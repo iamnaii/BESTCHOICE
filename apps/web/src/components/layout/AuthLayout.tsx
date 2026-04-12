@@ -17,7 +17,7 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
         <div className="w-full max-w-[440px]">
           {/* Mobile logo */}
           <div className="lg:hidden flex items-center gap-2.5 mb-8">
-            <div className="size-9 rounded-lg bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg shadow-primary/20">
+            <div className="size-9 rounded-lg bg-linear-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg shadow-primary/20">
               <span className="text-white font-bold text-sm">B</span>
             </div>
             <span className="text-xl font-bold text-foreground tracking-tight">
@@ -30,9 +30,9 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
       </div>
 
       {/* Right Side — Branded panel */}
-      <div className="hidden lg:flex lg:rounded-2xl lg:m-5 order-1 lg:order-2 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 relative overflow-hidden flex-col p-16 gap-5 justify-center text-white">
+      <div className="hidden lg:flex lg:rounded-2xl lg:m-5 order-1 lg:order-2 bg-linear-to-br from-slate-900 via-slate-800 to-slate-900 relative overflow-hidden flex-col p-16 gap-5 justify-center text-white">
         <Link to="/landing" className="flex items-center gap-3 mb-6">
-          <div className="size-11 rounded-xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg shadow-primary/30">
+          <div className="size-11 rounded-xl bg-linear-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg shadow-primary/30">
             <span className="text-white font-bold text-lg">B</span>
           </div>
           <span className="text-2xl font-bold tracking-tight">
@@ -50,15 +50,15 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
         </div>
 
         <div className="mt-6 grid grid-cols-3 gap-4">
-          <div className="bg-white/[0.06] backdrop-blur-sm border border-white/[0.08] rounded-xl p-5">
+          <div className="bg-white/6 backdrop-blur-xs border border-white/8 rounded-xl p-5">
             <div className="text-2xl font-bold">500+</div>
             <div className="text-sm text-white/50 mt-1">สินค้าในระบบ</div>
           </div>
-          <div className="bg-white/[0.06] backdrop-blur-sm border border-white/[0.08] rounded-xl p-5">
+          <div className="bg-white/6 backdrop-blur-xs border border-white/8 rounded-xl p-5">
             <div className="text-2xl font-bold">1,000+</div>
             <div className="text-sm text-white/50 mt-1">ลูกค้าทั้งหมด</div>
           </div>
-          <div className="bg-white/[0.06] backdrop-blur-sm border border-white/[0.08] rounded-xl p-5">
+          <div className="bg-white/6 backdrop-blur-xs border border-white/8 rounded-xl p-5">
             <div className="text-2xl font-bold">99.9%</div>
             <div className="text-sm text-white/50 mt-1">Uptime</div>
           </div>

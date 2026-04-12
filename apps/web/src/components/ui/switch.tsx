@@ -47,7 +47,7 @@ const switchVariants = cva(
 );
 
 const switchThumbVariants = cva(
-  'pointer-events-none block bg-white w-1/2 h-[calc(100%-4px)] shadow-lg ring-0 transition-transform start-0 data-[state=unchecked]:translate-x-[2px] data-[state=checked]:translate-x-[calc(100%-2px)] rtl:data-[state=unchecked]:-translate-x-[2px] rtl:data-[state=checked]:-translate-x-[calc(100%-2px)]',
+  'pointer-events-none block bg-white w-1/2 h-[calc(100%-4px)] shadow-lg ring-0 transition-transform inset-s-0 data-[state=unchecked]:translate-x-[2px] data-[state=checked]:translate-x-[calc(100%-2px)] data-[state=unchecked]:rtl:-translate-x-[2px] data-[state=checked]:rtl:-translate-x-[calc(100%-2px)]',
   {
     variants: {
       shape: {

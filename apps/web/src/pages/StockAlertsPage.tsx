@@ -447,7 +447,7 @@ export default function StockAlertsPage() {
         <select
           value={filterBranch}
           onChange={(e) => setFilterBranch(e.target.value)}
-          className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+          className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
         >
           <option value="">ทุกสาขา</option>
           {branches?.map((b) => (
@@ -458,7 +458,7 @@ export default function StockAlertsPage() {
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
-            className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+            className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
           >
             <option value="">ทุกสถานะ</option>
             <option value="ACTIVE">ต้องดำเนินการ</option>
@@ -587,7 +587,7 @@ export default function StockAlertsPage() {
                   <select
                     value={form.category}
                     onChange={(e) => setForm({ ...form, category: e.target.value, brand: '', model: '', storage: '' })}
-                    className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+                    className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
                   >
                     {Object.entries(categoryLabels).filter(([key]) => key !== 'ACCESSORY').map(([key, val]) => (
                       <option key={key} value={key}>{val}</option>
@@ -599,7 +599,7 @@ export default function StockAlertsPage() {
                   <select
                     value={form.brand}
                     onChange={(e) => setForm({ ...form, brand: e.target.value, model: '', storage: '' })}
-                    className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+                    className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
                     required
                   >
                     <option value="">-- เลือกแบรนด์ --</option>
@@ -619,7 +619,7 @@ export default function StockAlertsPage() {
                       const info = form.brand ? getModelInfo(form.brand, modelName) : undefined;
                       setForm({ ...form, model: modelName, storage: '', category: info?.category || form.category });
                     }}
-                    className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+                    className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
                     required
                     disabled={!form.brand}
                   >
@@ -634,7 +634,7 @@ export default function StockAlertsPage() {
                   <select
                     value={form.storage}
                     onChange={(e) => setForm({ ...form, storage: e.target.value })}
-                    className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+                    className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
                     disabled={!form.model}
                   >
                     <option value="">ทุกความจุ</option>
@@ -649,7 +649,7 @@ export default function StockAlertsPage() {
                 <select
                   value={form.branchId}
                   onChange={(e) => setForm({ ...form, branchId: e.target.value })}
-                  className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+                  className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
                   required
                 >
                   <option value="">เลือกสาขา</option>
@@ -668,7 +668,7 @@ export default function StockAlertsPage() {
                 min="1"
                 value={form.minQuantity}
                 onChange={(e) => setForm({ ...form, minQuantity: e.target.value })}
-                className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+                className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
                 required
               />
             </div>
@@ -679,7 +679,7 @@ export default function StockAlertsPage() {
                 min="1"
                 value={form.reorderQuantity}
                 onChange={(e) => setForm({ ...form, reorderQuantity: e.target.value })}
-                className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+                className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
                 required
               />
             </div>

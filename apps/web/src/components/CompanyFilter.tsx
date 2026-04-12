@@ -36,7 +36,7 @@ export default function CompanyFilter({ value, onChange, className }: CompanyFil
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none min-w-[150px]"
+        className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden min-w-[150px]"
       >
         <option value="">ทั้งหมด</option>
         {companies.map((c) => (

@@ -154,7 +154,7 @@ export function KanbanBoard<T extends { id: string }>({
       {columns.map((col) => (
         <div
           key={col.id}
-          className="flex-shrink-0 w-72 lg:w-80 flex flex-col bg-muted/50 rounded-xl"
+          className="shrink-0 w-72 lg:w-80 flex flex-col bg-muted/50 rounded-xl"
         >
           {/* Column header */}
           <div className="flex items-center gap-2.5 px-4 py-3 border-b border-border/50">

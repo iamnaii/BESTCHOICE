@@ -445,12 +445,12 @@ export default function SuppliersPage() {
           placeholder="ค้นหาชื่อ, ผู้ติดต่อ, ชื่อเล่น, เบอร์โทร, Tax ID..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="flex-1 px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+          className="flex-1 px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
         />
         <select
           value={filterActive}
           onChange={(e) => setFilterActive(e.target.value)}
-          className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+          className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
         >
           <option value="all">ทั้งหมด</option>
           <option value="true">เปิดใช้งาน</option>
@@ -481,9 +481,9 @@ export default function SuppliersPage() {
 
       {/* Create/Edit Modal */}
       {isModalOpen && (
-      <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-start justify-center pt-8 pb-8" role="dialog" aria-modal="true" aria-label={editingSupplier ? 'แก้ไขผู้ขาย' : 'เพิ่มผู้ขายใหม่'}>
+      <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-start justify-center pt-8 pb-8" role="dialog" aria-modal="true" aria-label={editingSupplier ? 'แก้ไขผู้ขาย' : 'เพิ่มผู้ขายใหม่'}>
         <div className="w-full max-w-2xl bg-background rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100vh-4rem)]">
-          <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b px-6 py-4 flex items-center justify-between shrink-0">
+          <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-xs border-b px-6 py-4 flex items-center justify-between shrink-0">
             <button type="button" onClick={closeModal} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
               กลับ
@@ -510,7 +510,7 @@ export default function SuppliersPage() {
                 type="text"
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
-                className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
                 required
               />
             </div>
@@ -520,7 +520,7 @@ export default function SuppliersPage() {
                 type="text"
                 value={form.contactName}
                 onChange={(e) => setForm({ ...form, contactName: e.target.value })}
-                className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
                 required
               />
             </div>
@@ -530,7 +530,7 @@ export default function SuppliersPage() {
                 type="text"
                 value={form.nickname}
                 onChange={(e) => setForm({ ...form, nickname: e.target.value })}
-                className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
               />
             </div>
             <div>
@@ -541,7 +541,7 @@ export default function SuppliersPage() {
                 onChange={(e) => setForm({ ...form, phone: formatPhone(e.target.value) })}
                 placeholder="0XX-XXX-XXXX"
                 maxLength={12}
-                className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
                 required
               />
             </div>
@@ -553,7 +553,7 @@ export default function SuppliersPage() {
                 onChange={(e) => setForm({ ...form, phoneSecondary: formatPhone(e.target.value) })}
                 placeholder="0XX-XXX-XXXX"
                 maxLength={12}
-                className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
               />
             </div>
             <div>
@@ -562,7 +562,7 @@ export default function SuppliersPage() {
                 type="text"
                 value={form.lineId}
                 onChange={(e) => setForm({ ...form, lineId: e.target.value })}
-                className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
               />
             </div>
             <div>
@@ -573,7 +573,7 @@ export default function SuppliersPage() {
                 onChange={(e) => setForm({ ...form, taxId: formatTaxId(e.target.value) })}
                 placeholder="X-XXXX-XXXXX-XX-X"
                 maxLength={17}
-                className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
               />
             </div>
             <div className="col-span-2">
@@ -656,7 +656,7 @@ export default function SuppliersPage() {
                       <select
                         value={pm.paymentMethod}
                         onChange={(e) => updatePaymentMethod(index, 'paymentMethod', e.target.value)}
-                        className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                        className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
                         required
                       >
                         <option value="">-- เลือก --</option>
@@ -674,7 +674,7 @@ export default function SuppliersPage() {
                         onChange={(e) => updatePaymentMethod(index, 'creditTermDays', e.target.value)}
                         placeholder="เช่น 30"
                         min={0}
-                        className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                        className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
                       />
                     </div>
                     {(pm.paymentMethod === 'BANK_TRANSFER' || pm.paymentMethod === 'CHECK') && (
@@ -686,7 +686,7 @@ export default function SuppliersPage() {
                             value={pm.bankName}
                             onChange={(e) => updatePaymentMethod(index, 'bankName', e.target.value)}
                             placeholder="เช่น กสิกรไทย, กรุงเทพ"
-                            className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                            className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
                           />
                         </div>
                         <div>
@@ -695,7 +695,7 @@ export default function SuppliersPage() {
                             type="text"
                             value={pm.bankAccountName}
                             onChange={(e) => updatePaymentMethod(index, 'bankAccountName', e.target.value)}
-                            className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                            className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
                           />
                         </div>
                         <div className="col-span-2">
@@ -705,7 +705,7 @@ export default function SuppliersPage() {
                             value={pm.bankAccountNumber}
                             onChange={(e) => updatePaymentMethod(index, 'bankAccountNumber', e.target.value)}
                             placeholder="XXX-X-XXXXX-X"
-                            className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                            className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
                           />
                         </div>
                       </>
@@ -742,11 +742,11 @@ export default function SuppliersPage() {
               value={form.notes}
               onChange={(e) => setForm({ ...form, notes: e.target.value })}
               rows={3}
-              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none"
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20 resize-none"
             />
           </div>
           </div>
-          <div className="sticky bottom-0 bg-background/95 backdrop-blur-sm border-t px-6 py-4 flex justify-end gap-3 shrink-0">
+          <div className="sticky bottom-0 bg-background/95 backdrop-blur-xs border-t px-6 py-4 flex justify-end gap-3 shrink-0">
             <button
               type="button"
               onClick={closeModal}

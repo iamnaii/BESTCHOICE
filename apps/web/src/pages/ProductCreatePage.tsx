@@ -301,7 +301,7 @@ export default function ProductCreatePage() {
     createMutation.mutate();
   };
 
-  const inputCls = 'w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none';
+  const inputCls = 'w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden';
 
   return (
     <div>
@@ -710,7 +710,7 @@ export default function ProductCreatePage() {
                   placeholder="ชื่อราคา เช่น ราคาผ่อน"
                   value={price.label}
                   onChange={(e) => updatePrice(index, 'label', e.target.value)}
-                  className="flex-1 px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none text-sm"
+                  className="flex-1 px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden text-sm"
                 />
                 <input
                   type="number"
@@ -718,7 +718,7 @@ export default function ProductCreatePage() {
                   placeholder="จำนวนเงิน"
                   value={price.amount}
                   onChange={(e) => updatePrice(index, 'amount', e.target.value)}
-                  className="w-40 px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none text-sm"
+                  className="w-40 px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden text-sm"
                 />
                 <label className="flex items-center gap-1.5 text-sm text-muted-foreground whitespace-nowrap cursor-pointer">
                   <input type="radio" name="defaultPrice" checked={price.isDefault} onChange={() => updatePrice(index, 'isDefault', true)} className="text-primary" />

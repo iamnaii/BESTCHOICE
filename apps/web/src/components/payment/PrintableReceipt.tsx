@@ -359,7 +359,7 @@ export default function PrintableReceipt({ receipt, size }: PrintableReceiptProp
         </div>
 
         {/* Spacer to push footer to bottom */}
-        <div className="flex-grow"></div>
+        <div className="grow"></div>
 
         {/* ========== FOOTER ========== */}
         <div className="mt-auto">

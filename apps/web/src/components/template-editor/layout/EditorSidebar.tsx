@@ -27,7 +27,7 @@ interface Props {
 
 export default function EditorSidebar({ activeId, onSelect, onBack }: Props) {
   return (
-    <div className="w-[200px] min-h-full bg-primary-950 flex flex-col flex-shrink-0">
+    <div className="w-[200px] min-h-full bg-primary-950 flex flex-col shrink-0">
       {/* Logo + Back */}
       <div className="px-4 py-4 border-b border-white/10">
         {onBack && (

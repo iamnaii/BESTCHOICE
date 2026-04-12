@@ -391,7 +391,7 @@ export default function RepossessionsPage() {
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-3 py-2 border border-input rounded-lg text-sm bg-background focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+          className="px-3 py-2 border border-input rounded-lg text-sm bg-background focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
         >
           <option value="">ทุกสถานะ</option>
           <option value="REPOSSESSED">ยึดคืนแล้ว</option>
@@ -416,7 +416,7 @@ export default function RepossessionsPage() {
         <div className="fixed inset-0 z-50 bg-slate-900/30 backdrop-blur-md flex items-start justify-center pt-8 pb-8" role="dialog" aria-modal="true" aria-label="บันทึกการยึดคืน">
           <div className="w-full max-w-3xl bg-white dark:bg-slate-950 rounded-2xl shadow-2xl shadow-slate-900/10 overflow-hidden flex flex-col max-h-[calc(100vh-4rem)] ring-1 ring-slate-200/60 dark:ring-slate-800/60">
             {/* Sticky Header */}
-            <div className="sticky top-0 z-10 bg-gradient-to-b from-white to-slate-50/80 dark:from-slate-950 dark:to-slate-900/80 backdrop-blur-xl border-b border-slate-200/60 dark:border-slate-800/60 px-6 py-5 flex items-center justify-between shrink-0">
+            <div className="sticky top-0 z-10 bg-linear-to-b from-white to-slate-50/80 dark:from-slate-950 dark:to-slate-900/80 backdrop-blur-xl border-b border-slate-200/60 dark:border-slate-800/60 px-6 py-5 flex items-center justify-between shrink-0">
               <button type="button" onClick={() => setIsCreateModalOpen(false)} className="flex items-center gap-1.5 text-sm font-medium text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
                 กลับ
@@ -434,7 +434,7 @@ export default function RepossessionsPage() {
                 {/* Section 1: เลือกสัญญา */}
                 <div className="group rounded-2xl border border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-950/60 p-5 shadow-sm hover:shadow-md hover:shadow-sky-500/5 hover:border-sky-200 dark:hover:border-sky-900/60 transition-all duration-300">
                   <div className="flex items-center gap-3.5 mb-5">
-                    <div className="flex items-center justify-center size-10 rounded-xl bg-gradient-to-br from-sky-50 to-blue-100/80 dark:from-sky-950/60 dark:to-blue-900/40 text-sky-600 dark:text-sky-400 ring-1 ring-sky-100 dark:ring-sky-900/60 group-hover:scale-105 transition-transform">
+                    <div className="flex items-center justify-center size-10 rounded-xl bg-linear-to-br from-sky-50 to-blue-100/80 dark:from-sky-950/60 dark:to-blue-900/40 text-sky-600 dark:text-sky-400 ring-1 ring-sky-100 dark:ring-sky-900/60 group-hover:scale-105 transition-transform">
                       <svg xmlns="http://www.w3.org/2000/svg" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
                     </div>
                     <div className="flex-1">
@@ -445,7 +445,7 @@ export default function RepossessionsPage() {
                   <select
                     value={createForm.contractId}
                     onChange={(e) => setCreateForm({ ...createForm, contractId: e.target.value })}
-                    className="w-full h-10 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm transition-colors hover:border-sky-300 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+                    className="w-full h-10 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm transition-colors hover:border-sky-300 focus:border-sky-500 focus:outline-hidden focus:ring-2 focus:ring-sky-500/20"
                     required
                   >
                     <option value="">-- เลือกสัญญา --</option>
@@ -461,7 +461,7 @@ export default function RepossessionsPage() {
                 {previewData && (
                   <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-950/60 p-5 shadow-sm">
                     <div className="flex items-center gap-3.5 mb-4">
-                      <div className="flex items-center justify-center size-10 rounded-xl bg-gradient-to-br from-indigo-50 to-violet-100/80 dark:from-indigo-950/60 dark:to-violet-900/40 text-indigo-600 dark:text-indigo-400 ring-1 ring-indigo-100 dark:ring-indigo-900/60">
+                      <div className="flex items-center justify-center size-10 rounded-xl bg-linear-to-br from-indigo-50 to-violet-100/80 dark:from-indigo-950/60 dark:to-violet-900/40 text-indigo-600 dark:text-indigo-400 ring-1 ring-indigo-100 dark:ring-indigo-900/60">
                         <svg xmlns="http://www.w3.org/2000/svg" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                       </div>
                       <div className="flex-1">
@@ -489,7 +489,7 @@ export default function RepossessionsPage() {
                 {/* Section 3: รายละเอียดการยึด */}
                 <div className="group rounded-2xl border border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-950/60 p-5 shadow-sm hover:shadow-md hover:shadow-orange-500/5 hover:border-orange-200 dark:hover:border-orange-900/60 transition-all duration-300">
                   <div className="flex items-center gap-3.5 mb-5">
-                    <div className="flex items-center justify-center size-10 rounded-xl bg-gradient-to-br from-orange-50 to-amber-100/80 dark:from-orange-950/60 dark:to-amber-900/40 text-orange-600 dark:text-orange-400 ring-1 ring-orange-100 dark:ring-orange-900/60 group-hover:scale-105 transition-transform">
+                    <div className="flex items-center justify-center size-10 rounded-xl bg-linear-to-br from-orange-50 to-amber-100/80 dark:from-orange-950/60 dark:to-amber-900/40 text-orange-600 dark:text-orange-400 ring-1 ring-orange-100 dark:ring-orange-900/60 group-hover:scale-105 transition-transform">
                       <svg xmlns="http://www.w3.org/2000/svg" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                     </div>
                     <div className="flex-1">
@@ -503,7 +503,7 @@ export default function RepossessionsPage() {
                       <ThaiDateInput
                         value={createForm.repossessedDate}
                         onChange={(e) => setCreateForm({ ...createForm, repossessedDate: e.target.value })}
-                        className="w-full h-10 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm transition-colors hover:border-orange-300 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                        className="w-full h-10 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm transition-colors hover:border-orange-300 focus:border-orange-500 focus:outline-hidden focus:ring-2 focus:ring-orange-500/20"
                         required
                       />
                     </div>
@@ -512,7 +512,7 @@ export default function RepossessionsPage() {
                       <select
                         value={createForm.conditionGrade}
                         onChange={(e) => setCreateForm({ ...createForm, conditionGrade: e.target.value })}
-                        className="w-full h-10 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm transition-colors hover:border-orange-300 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                        className="w-full h-10 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm transition-colors hover:border-orange-300 focus:border-orange-500 focus:outline-hidden focus:ring-2 focus:ring-orange-500/20"
                       >
                         <option value="A">A - ดีมาก</option>
                         <option value="B">B - ดี</option>
@@ -526,7 +526,7 @@ export default function RepossessionsPage() {
                         type="number"
                         value={createForm.appraisalPrice}
                         onChange={(e) => setCreateForm({ ...createForm, appraisalPrice: e.target.value })}
-                        className="w-full h-10 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm transition-colors hover:border-orange-300 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                        className="w-full h-10 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm transition-colors hover:border-orange-300 focus:border-orange-500 focus:outline-hidden focus:ring-2 focus:ring-orange-500/20"
                         placeholder="0"
                         required
                       />
@@ -537,7 +537,7 @@ export default function RepossessionsPage() {
                         type="number"
                         value={createForm.repairCost}
                         onChange={(e) => setCreateForm({ ...createForm, repairCost: e.target.value })}
-                        className="w-full h-10 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm transition-colors hover:border-orange-300 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                        className="w-full h-10 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm transition-colors hover:border-orange-300 focus:border-orange-500 focus:outline-hidden focus:ring-2 focus:ring-orange-500/20"
                         placeholder="0"
                       />
                     </div>
@@ -548,7 +548,7 @@ export default function RepossessionsPage() {
                 {previewData && (
                   <div className="group rounded-2xl border border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-950/60 p-5 shadow-sm hover:shadow-md hover:shadow-teal-500/5 hover:border-teal-200 dark:hover:border-teal-900/60 transition-all duration-300">
                     <div className="flex items-center gap-3.5 mb-5">
-                      <div className="flex items-center justify-center size-10 rounded-xl bg-gradient-to-br from-teal-50 to-emerald-100/80 dark:from-teal-950/60 dark:to-emerald-900/40 text-teal-600 dark:text-teal-400 ring-1 ring-teal-100 dark:ring-teal-900/60 group-hover:scale-105 transition-transform">
+                      <div className="flex items-center justify-center size-10 rounded-xl bg-linear-to-br from-teal-50 to-emerald-100/80 dark:from-teal-950/60 dark:to-emerald-900/40 text-teal-600 dark:text-teal-400 ring-1 ring-teal-100 dark:ring-teal-900/60 group-hover:scale-105 transition-transform">
                         <svg xmlns="http://www.w3.org/2000/svg" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
                       </div>
                       <div className="flex-1">
@@ -565,7 +565,7 @@ export default function RepossessionsPage() {
                           type="number"
                           value={createForm.marketValue}
                           onChange={(e) => setCreateForm({ ...createForm, marketValue: e.target.value })}
-                          className="w-full h-10 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm transition-colors hover:border-teal-300 focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                          className="w-full h-10 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm transition-colors hover:border-teal-300 focus:border-teal-500 focus:outline-hidden focus:ring-2 focus:ring-teal-500/20"
                           placeholder={String(previewData.calculation.marketValue || 0)}
                         />
                       </div>
@@ -575,7 +575,7 @@ export default function RepossessionsPage() {
                           type="number"
                           value={createForm.discountPct}
                           onChange={(e) => setCreateForm({ ...createForm, discountPct: e.target.value })}
-                          className="w-full h-10 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm transition-colors hover:border-teal-300 focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                          className="w-full h-10 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm transition-colors hover:border-teal-300 focus:border-teal-500 focus:outline-hidden focus:ring-2 focus:ring-teal-500/20"
                           placeholder="50"
                         />
                       </div>
@@ -594,7 +594,7 @@ export default function RepossessionsPage() {
                     </label>
 
                     {/* Live breakdown */}
-                    <div className="rounded-xl bg-gradient-to-br from-slate-50 to-slate-100/60 dark:from-slate-900 dark:to-slate-900/60 p-4 space-y-2">
+                    <div className="rounded-xl bg-linear-to-br from-slate-50 to-slate-100/60 dark:from-slate-900 dark:to-slate-900/60 p-4 space-y-2">
                       <div className="flex justify-between text-xs">
                         <span className="text-slate-600 dark:text-slate-400">ยอดค้าง (รวม VAT)</span>
                         <span className="font-medium text-slate-900 dark:text-slate-100">{previewData.calculation.outstandingBalance.toLocaleString()} ฿</span>
@@ -649,7 +649,7 @@ export default function RepossessionsPage() {
                 {/* Section 5: หมายเหตุ */}
                 <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-950/60 p-5 shadow-sm">
                   <div className="flex items-center gap-3.5 mb-4">
-                    <div className="flex items-center justify-center size-10 rounded-xl bg-gradient-to-br from-slate-50 to-slate-100/80 dark:from-slate-900 dark:to-slate-800/40 text-slate-600 dark:text-slate-400 ring-1 ring-slate-200 dark:ring-slate-700">
+                    <div className="flex items-center justify-center size-10 rounded-xl bg-linear-to-br from-slate-50 to-slate-100/80 dark:from-slate-900 dark:to-slate-800/40 text-slate-600 dark:text-slate-400 ring-1 ring-slate-200 dark:ring-slate-700">
                       <svg xmlns="http://www.w3.org/2000/svg" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>
                     </div>
                     <div>
@@ -661,18 +661,18 @@ export default function RepossessionsPage() {
                     value={createForm.notes}
                     onChange={(e) => setCreateForm({ ...createForm, notes: e.target.value })}
                     rows={3}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm transition-colors hover:border-slate-300 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400/20 resize-none"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm transition-colors hover:border-slate-300 focus:border-slate-400 focus:outline-hidden focus:ring-2 focus:ring-slate-400/20 resize-none"
                     placeholder="หมายเหตุ..."
                   />
                 </div>
               </div>
 
               {/* Sticky Footer */}
-              <div className="sticky bottom-0 bg-gradient-to-t from-white to-slate-50/80 dark:from-slate-950 dark:to-slate-900/80 backdrop-blur-xl border-t border-slate-200/60 dark:border-slate-800/60 px-6 py-4 flex justify-end gap-3 shrink-0">
+              <div className="sticky bottom-0 bg-linear-to-t from-white to-slate-50/80 dark:from-slate-950 dark:to-slate-900/80 backdrop-blur-xl border-t border-slate-200/60 dark:border-slate-800/60 px-6 py-4 flex justify-end gap-3 shrink-0">
                 <button type="button" onClick={() => setIsCreateModalOpen(false)} className="px-5 py-2.5 text-sm border border-slate-200 dark:border-slate-700/80 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800/60 hover:border-slate-300 dark:hover:border-slate-600 transition-all font-medium text-slate-700 dark:text-slate-300">
                   ยกเลิก
                 </button>
-                <button type="submit" disabled={createMutation.isPending} className="px-6 py-2.5 text-sm bg-gradient-to-b from-sky-500 to-sky-600 hover:from-sky-600 hover:to-sky-700 text-white rounded-xl disabled:opacity-50 disabled:cursor-not-allowed font-semibold transition-all shadow-sm shadow-sky-600/20 hover:shadow-md hover:shadow-sky-600/30 ring-1 ring-sky-600/20">
+                <button type="submit" disabled={createMutation.isPending} className="px-6 py-2.5 text-sm bg-linear-to-b from-sky-500 to-sky-600 hover:from-sky-600 hover:to-sky-700 text-white rounded-xl disabled:opacity-50 disabled:cursor-not-allowed font-semibold transition-all shadow-sm shadow-sky-600/20 hover:shadow-md hover:shadow-sky-600/30 ring-1 ring-sky-600/20">
                   {createMutation.isPending ? 'กำลังบันทึก...' : 'บันทึกการยึดคืน'}
                 </button>
               </div>
@@ -695,7 +695,7 @@ export default function RepossessionsPage() {
               <select
                 value={updateForm.status}
                 onChange={(e) => setUpdateForm({ ...updateForm, status: e.target.value })}
-                className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
               >
                 {/* Show only valid status transitions based on current status */}
                 {selectedRepo.status === 'REPOSSESSED' && <>
@@ -723,7 +723,7 @@ export default function RepossessionsPage() {
                   type="number"
                   value={updateForm.repairCost}
                   onChange={(e) => setUpdateForm({ ...updateForm, repairCost: e.target.value })}
-                  className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+                  className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
                 />
               </div>
               <div>
@@ -732,7 +732,7 @@ export default function RepossessionsPage() {
                   type="number"
                   value={updateForm.resellPrice}
                   onChange={(e) => setUpdateForm({ ...updateForm, resellPrice: e.target.value })}
-                  className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+                  className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
                 />
               </div>
             </div>
@@ -742,7 +742,7 @@ export default function RepossessionsPage() {
                 value={updateForm.notes}
                 onChange={(e) => setUpdateForm({ ...updateForm, notes: e.target.value })}
                 rows={2}
-                className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
               />
             </div>
             <div className="flex justify-end gap-3 pt-2">

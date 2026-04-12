@@ -77,7 +77,7 @@ export default function SearchableSelect({
         placeholder={placeholder}
         disabled={disabled}
         className={cn(
-          'flex h-[34px] w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
+          'flex h-[34px] w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
         )}
         autoComplete="off"
       />

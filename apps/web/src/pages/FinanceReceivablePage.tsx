@@ -47,7 +47,7 @@ const statusColors: Record<string, string> = {
   PARTIALLY_RECEIVED: 'bg-warning/10 text-warning dark:bg-warning/15', OVERDUE: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
   DISPUTED: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
 };
-const inputClass = 'w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none';
+const inputClass = 'w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden';
 
 interface InterCompanyTransaction {
   id: string;

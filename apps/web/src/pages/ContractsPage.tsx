@@ -380,10 +380,10 @@ export default function ContractsPage() {
               placeholder="ค้นหาเลขสัญญา, ชื่อลูกค้า..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 border border-input rounded-lg text-sm bg-background outline-none focus:ring-2 focus:ring-ring/30"
+              className="w-full pl-9 pr-3 py-2 border border-input rounded-lg text-sm bg-background outline-hidden focus:ring-2 focus:ring-ring/30"
             />
           </div>
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-none focus:ring-2 focus:ring-ring/30">
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-hidden focus:ring-2 focus:ring-ring/30">
             <option value="">ทุกสถานะ</option>
             <option value="DRAFT">ร่าง</option>
             <option value="ACTIVE">ผ่อนอยู่</option>
@@ -395,7 +395,7 @@ export default function ContractsPage() {
             <option value="CLOSED_BAD_DEBT">หนี้สูญ</option>
           </select>
           {isOwner && (
-            <select value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)} className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-none focus:ring-2 focus:ring-ring/30">
+            <select value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)} className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-hidden focus:ring-2 focus:ring-ring/30">
               <option value="">ทุกสาขา</option>
               {branches.map((b) => (
                 <option key={b.id} value={b.id}>{b.name}</option>
@@ -414,7 +414,7 @@ export default function ContractsPage() {
             {startDateFilter || endDateFilter ? 'กำหนดเวลาไว้' : 'ช่วงเวลา'}
           </button>
           {viewTab === 'all' && (
-            <select value={workflowFilter} onChange={(e) => setWorkflowFilter(e.target.value)} className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-none focus:ring-2 focus:ring-ring/30">
+            <select value={workflowFilter} onChange={(e) => setWorkflowFilter(e.target.value)} className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-hidden focus:ring-2 focus:ring-ring/30">
               <option value="">ทุก Workflow</option>
               <option value="CREATING">กำลังสร้าง</option>
               <option value="PENDING_REVIEW">รอตรวจสอบ</option>

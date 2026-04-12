@@ -27,7 +27,7 @@ export default function DashboardAlerts({ alerts }: DashboardAlertsProps) {
             className={cn(
               'flex items-center gap-3 px-4 py-3.5 rounded-xl border cursor-pointer text-left w-full',
               'hover:-translate-y-0.5 hover:shadow-md transition-all duration-200',
-              'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
+              'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
               styles.container,
             )}
           >

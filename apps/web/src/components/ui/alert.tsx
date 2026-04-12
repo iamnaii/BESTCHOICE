@@ -42,31 +42,31 @@ const alertVariants = cva('flex items-stretch w-full gap-2', {
       variant: 'primary',
       appearance: 'light',
       className:
-        'text-foreground bg-blue-50 border border-blue-100 [&_[data-slot=alert-icon]]:text-primary dark:bg-blue-950 dark:border-blue-900',
+        'text-foreground bg-blue-50 border border-blue-100 **:data-[slot=alert-icon]:text-primary dark:bg-blue-950 dark:border-blue-900',
     },
     {
       variant: 'destructive',
       appearance: 'light',
       className:
-        'bg-red-50 border border-red-100 text-foreground [&_[data-slot=alert-icon]]:text-destructive dark:bg-red-950 dark:border-red-900',
+        'bg-red-50 border border-red-100 text-foreground **:data-[slot=alert-icon]:text-destructive dark:bg-red-950 dark:border-red-900',
     },
     {
       variant: 'success',
       appearance: 'light',
       className:
-        'bg-green-50 border border-green-200 text-foreground [&_[data-slot=alert-icon]]:text-green-600 dark:bg-green-950 dark:border-green-900',
+        'bg-green-50 border border-green-200 text-foreground **:data-[slot=alert-icon]:text-green-600 dark:bg-green-950 dark:border-green-900',
     },
     {
       variant: 'info',
       appearance: 'light',
       className:
-        'bg-violet-50 border border-violet-100 text-foreground [&_[data-slot=alert-icon]]:text-violet-600 dark:bg-violet-950 dark:border-violet-900',
+        'bg-violet-50 border border-violet-100 text-foreground **:data-[slot=alert-icon]:text-violet-600 dark:bg-violet-950 dark:border-violet-900',
     },
     {
       variant: 'warning',
       appearance: 'light',
       className:
-        'bg-yellow-50 border border-yellow-200 text-foreground [&_[data-slot=alert-icon]]:text-yellow-600 dark:bg-yellow-950 dark:border-yellow-900',
+        'bg-yellow-50 border border-yellow-200 text-foreground **:data-[slot=alert-icon]:text-yellow-600 dark:bg-yellow-950 dark:border-yellow-900',
     },
   ],
   defaultVariants: {
@@ -130,7 +130,7 @@ function AlertContent({ className, ...props }: React.HTMLAttributes<HTMLParagrap
   return (
     <div
       data-slot="alert-content"
-      className={cn('space-y-2 [&_[data-slot=alert-title]]:font-semibold', className)}
+      className={cn('space-y-2 **:data-[slot=alert-title]:font-semibold', className)}
       {...props}
     />
   );

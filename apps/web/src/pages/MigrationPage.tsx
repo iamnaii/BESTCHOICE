@@ -188,7 +188,7 @@ export default function MigrationPage() {
             value={jsonInput}
             onChange={(e) => setJsonInput(e.target.value)}
             rows={16}
-            className="w-full px-3 py-2 border border-input rounded-lg text-xs font-mono focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+            className="w-full px-3 py-2 border border-input rounded-lg text-xs font-mono focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
             placeholder={`วาง JSON ข้อมูล${importMode === 'customers' ? 'ลูกค้า' : importMode === 'contracts' ? 'สัญญา' : ''} ที่นี่...`}
           />
 

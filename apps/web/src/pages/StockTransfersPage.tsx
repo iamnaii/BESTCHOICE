@@ -370,7 +370,7 @@ export default function StockTransfersPage() {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+              className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
             >
               <option value="PENDING">รอจัดส่ง</option>
               <option value="IN_TRANSIT">ระหว่างโอนสินค้า</option>
@@ -406,7 +406,7 @@ export default function StockTransfersPage() {
                       className="w-full px-4 py-3 flex items-center gap-4 hover:bg-muted/50 transition-colors text-left"
                     >
                       <svg
-                        className={`w-4 h-4 text-muted-foreground transition-transform flex-shrink-0 ${isExpanded ? 'rotate-90' : ''}`}
+                        className={`w-4 h-4 text-muted-foreground transition-transform shrink-0 ${isExpanded ? 'rotate-90' : ''}`}
                         fill="none" viewBox="0 0 24 24" stroke="currentColor"
                       >
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -422,11 +422,11 @@ export default function StockTransfersPage() {
                           {batch.items.length} รายการ
                         </span>
                       </div>
-                      <div className="flex items-center gap-4 text-xs text-muted-foreground flex-shrink-0">
+                      <div className="flex items-center gap-4 text-xs text-muted-foreground shrink-0">
                         <span>{batch.fromBranch.name} → {batch.toBranch.name}</span>
                         <span>{formatDateShort(batch.createdAt)}</span>
                       </div>
-                      <div className="flex gap-2 flex-shrink-0" role="presentation" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex gap-2 shrink-0" role="presentation" onClick={(e) => e.stopPropagation()}>
                         {batch.status === 'PENDING' && (
                           <button
                             onClick={() => {
@@ -555,7 +555,7 @@ export default function StockTransfersPage() {
                       className="w-full px-4 py-3 flex items-center gap-4 hover:bg-warning/5 dark:bg-warning/10 transition-colors text-left"
                     >
                       <svg
-                        className={`w-4 h-4 text-muted-foreground transition-transform flex-shrink-0 ${isExpanded ? 'rotate-90' : ''}`}
+                        className={`w-4 h-4 text-muted-foreground transition-transform shrink-0 ${isExpanded ? 'rotate-90' : ''}`}
                         fill="none" viewBox="0 0 24 24" stroke="currentColor"
                       >
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -571,11 +571,11 @@ export default function StockTransfersPage() {
                           {batch.items.length} รายการ
                         </span>
                       </div>
-                      <div className="flex items-center gap-4 text-xs text-muted-foreground flex-shrink-0">
+                      <div className="flex items-center gap-4 text-xs text-muted-foreground shrink-0">
                         <span>จาก: {batch.fromBranch.name}</span>
                         {batch.dispatchedAt && <span>ส่ง: {formatDateShort(batch.dispatchedAt)}</span>}
                       </div>
-                      <div className="flex-shrink-0" role="presentation" onClick={(e) => e.stopPropagation()}>
+                      <div className="shrink-0" role="presentation" onClick={(e) => e.stopPropagation()}>
                         <button
                           onClick={() => openBatchReceiveModal(batch.items)}
                           className="px-3 py-1.5 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700"
@@ -810,7 +810,7 @@ export default function StockTransfersPage() {
                   <div key={t.id} className={`border rounded-lg p-3 ${s.status === 'REJECT' ? 'border-destructive/20 bg-destructive/5 dark:bg-destructive/10' : 'border-border'}`}>
                     {/* Item header */}
                     <div className="flex items-start gap-3 mb-2">
-                      <span className="text-xs text-muted-foreground mt-0.5 w-5 flex-shrink-0">{idx + 1}.</span>
+                      <span className="text-xs text-muted-foreground mt-0.5 w-5 shrink-0">{idx + 1}.</span>
                       <div className="flex-1 min-w-0">
                         <div className="font-medium text-sm">{t.product.brand} {t.product.model}</div>
                         <div className="text-xs text-muted-foreground">
@@ -820,7 +820,7 @@ export default function StockTransfersPage() {
                         </div>
                       </div>
                       {/* PASS/REJECT toggle */}
-                      <div className="flex gap-1 flex-shrink-0">
+                      <div className="flex gap-1 shrink-0">
                         <button
                           type="button"
                           onClick={() => updateItemStatus(t.id, 'status', 'PASS')}

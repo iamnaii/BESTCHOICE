@@ -44,7 +44,7 @@ interface Company {
 type EditableFields = Omit<Company, 'id' | 'branches'>;
 
 const inputClass =
-  'w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none text-sm';
+  'w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden text-sm';
 
 function InfoRow({ label, value }: { label: string; value: string | number | null | undefined }) {
   return (

@@ -251,7 +251,7 @@ function StepperTrigger({ asChild = false, className, children, tabIndex, ...pro
       data-state={state}
       data-loading={isLoading}
       className={cn(
-        'cursor-pointer focus-visible:border-ring focus-visible:ring-ring/50 inline-flex items-center gap-3 rounded-full outline-none focus-visible:z-10 focus-visible:ring-[3px] disabled:pointer-events-none disabled:opacity-60',
+        'cursor-pointer focus-visible:border-ring focus-visible:ring-ring/50 inline-flex items-center gap-3 rounded-full outline-hidden focus-visible:z-10 focus-visible:ring-[3px] disabled:pointer-events-none disabled:opacity-60',
         className,
       )}
       onClick={() => setActiveStep(step)}

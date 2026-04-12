@@ -15,6 +15,7 @@ import { CHAT_EVENTS, CHAT_CLIENT_EVENTS, CHAT_ROOMS } from '../chat-engine/cons
 import { MessageRouterService } from '../chat-engine/services/message-router.service';
 import { SessionManagerService } from '../chat-engine/services/session-manager.service';
 import { PresenceService } from './services/presence.service';
+import { CollisionDetectionService } from './services/collision-detection.service';
 
 /**
  * Staff Chat WebSocket Gateway — the /chat namespace.
@@ -43,6 +44,7 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
     private messageRouter: MessageRouterService,
     private sessionManager: SessionManagerService,
     private presenceService: PresenceService,
+    private collisionDetectionService: CollisionDetectionService,
     private jwtService: JwtService,
     private configService: ConfigService,
   ) {}
@@ -96,6 +98,9 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
 
     this.presenceService.setOffline(userId, client.id);
 
+    // Clean up collision detection viewers for this user
+    this.collisionDetectionService.removeViewerFromAll(userId);
+
     // Only broadcast offline if no more connections from this user
     if (!this.presenceService.isOnline(userId)) {
       this.server.to(CHAT_ROOMS.INBOX).emit(CHAT_EVENTS.PRESENCE, {
@@ -121,7 +126,20 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { sessionId: string },
   ): void {
+    const userId = (client as any).userId as string;
     client.leave(CHAT_ROOMS.session(data.sessionId));
+
+    // Remove from collision detection
+    if (userId) {
+      this.collisionDetectionService.removeViewer(data.sessionId, userId);
+
+      // Broadcast updated viewer list to remaining viewers
+      const viewers = this.collisionDetectionService.getViewers(data.sessionId);
+      this.server.to(CHAT_ROOMS.session(data.sessionId)).emit(CHAT_EVENTS.VIEWERS, {
+        sessionId: data.sessionId,
+        viewers,
+      });
+    }
   }
 
   @SubscribeMessage(CHAT_CLIENT_EVENTS.SEND)
@@ -131,6 +149,15 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
   ): Promise<void> {
     const userId = (client as any).userId as string;
     if (!userId || !data.sessionId || !data.text) return;
+
+    // Warn if another staff is also viewing this session
+    if (this.collisionDetectionService.isCollision(data.sessionId, userId)) {
+      const viewers = this.collisionDetectionService.getViewers(data.sessionId);
+      client.emit(CHAT_EVENTS.COLLISION_WARNING, {
+        sessionId: data.sessionId,
+        viewers: viewers.filter((v) => v.userId !== userId),
+      });
+    }
 
     // Send through engine (saves message + sends to customer via adapter)
     await this.messageRouter.sendStaffMessage({
@@ -183,6 +210,36 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
     // Mark all unread messages in this session as read
     // This is a UI-level action — actual DB update is light
     this.logger.debug(`[WS] Mark read: session ${data.sessionId}`);
+  }
+
+  @SubscribeMessage(CHAT_CLIENT_EVENTS.VIEW_SESSION)
+  handleViewSession(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { sessionId: string },
+  ): void {
+    const userId = (client as any).userId as string;
+    const userName = (client as any).userName as string;
+    if (!userId || !data.sessionId) return;
+
+    // Track this viewer
+    this.collisionDetectionService.addViewer(data.sessionId, userId, userName);
+
+    // Get all current viewers
+    const viewers = this.collisionDetectionService.getViewers(data.sessionId);
+
+    // Broadcast viewer list to everyone in the session room
+    this.server.to(CHAT_ROOMS.session(data.sessionId)).emit(CHAT_EVENTS.VIEWERS, {
+      sessionId: data.sessionId,
+      viewers,
+    });
+
+    // If collision detected, send warning to the joining user
+    if (this.collisionDetectionService.isCollision(data.sessionId, userId)) {
+      client.emit(CHAT_EVENTS.COLLISION_WARNING, {
+        sessionId: data.sessionId,
+        viewers: viewers.filter((v) => v.userId !== userId),
+      });
+    }
   }
 
   // ─── Public methods for other services to emit events ──────

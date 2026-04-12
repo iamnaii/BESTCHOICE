@@ -18,6 +18,7 @@ import { AssignmentService } from '../chat-engine/services/assignment.service';
 import { ConversationTagService } from '../chat-engine/services/conversation-tag.service';
 import { HandoffManagerService } from '../chat-engine/services/handoff-manager.service';
 import { StaffMessageService } from './services/staff-message.service';
+import { AiAssistantService } from './services/ai-assistant.service';
 import { SessionQueryDto } from '../chat-engine/dto/session-query.dto';
 import { ChatSessionStatus, ChatChannel, ChatPriority } from '@prisma/client';
 
@@ -30,6 +31,7 @@ export class StaffChatController {
     private tags: ConversationTagService,
     private handoff: HandoffManagerService,
     private staffMessage: StaffMessageService,
+    private aiAssistant: AiAssistantService,
   ) {}
 
   // ─── Sessions ──────────────────────────────────────────
@@ -202,5 +204,21 @@ export class StaffChatController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   async getOnlineStaff() {
     return this.assignment.getStaffSessionCounts();
+  }
+
+  // ─── AI Assistant ──────────────────────────────────────
+
+  @Post('sessions/:id/summary')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  async summarizeSession(@Param('id') id: string) {
+    const summary = await this.aiAssistant.summarizeConversation(id);
+    return { summary };
+  }
+
+  @Post('ai/adjust-tone')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  async adjustTone(@Body() body: { text: string; tone: 'formal' | 'casual' | 'friendly' }) {
+    const adjusted = await this.aiAssistant.adjustTone(body.text, body.tone);
+    return { text: adjusted };
   }
 }

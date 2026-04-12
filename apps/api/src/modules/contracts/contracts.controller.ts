@@ -149,7 +149,7 @@ export class ContractsController {
   }
 
   @Post(':id/early-payoff')
-  @Roles('OWNER', 'BRANCH_MANAGER')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER')
   async earlyPayoff(
     @Param('id') id: string,
     @Body() dto: EarlyPayoffDto,

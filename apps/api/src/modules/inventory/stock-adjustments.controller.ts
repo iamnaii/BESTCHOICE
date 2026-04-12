@@ -25,7 +25,7 @@ export class StockAdjustmentsController {
   }
 
   @Get()
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   findAll(
     @Query('branchId') branchId?: string,
     @Query('reason') reason?: string,
@@ -49,7 +49,7 @@ export class StockAdjustmentsController {
   }
 
   @Get('summary')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   getSummary(
     @Query('branchId') branchId?: string,
     @Query('startDate') startDate?: string,
@@ -59,7 +59,7 @@ export class StockAdjustmentsController {
   }
 
   @Get(':id')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   findOne(@Param('id') id: string) {
     return this.stockAdjustmentsService.findOne(id);
   }

@@ -252,7 +252,7 @@ describe('JournalAutoService', () => {
     const baseContract = {
       id: 'contract-1',
       contractNumber: 'BC-202601-0001',
-      sellingPrice: 10000,
+      sellingPrice: 12300,
       downPayment: 3000,
       financedAmount: 9300,
       interestTotal: 800,
@@ -305,7 +305,8 @@ describe('JournalAutoService', () => {
       const hpLine = lines.find((l) => l.accountCode === JournalAutoService.ACC.HP_RECEIVABLE);
 
       expect(Number(cashLine?.debit)).toBeCloseTo(3000, 2);
-      expect(Number(hpLine?.debit)).toBeCloseTo(9300, 2);
+      // HP Receivable = financedAmount + interest + commission + VAT = 9300+800+500+1000
+      expect(Number(hpLine?.debit)).toBeCloseTo(11600, 2);
     });
 
     it('credits VAT_OUTPUT with vatAmount', async () => {
@@ -521,7 +522,7 @@ describe('JournalAutoService', () => {
         contract: {
           id: 'contract-tb',
           contractNumber: 'BC-TB-0001',
-          sellingPrice: 10000,
+          sellingPrice: 12300,
           downPayment: 3000,
           financedAmount: 9300,
           interestTotal: 800,

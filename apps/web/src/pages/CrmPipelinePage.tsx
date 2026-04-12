@@ -24,17 +24,17 @@ export default function CrmPipelinePage() {
   const leadsQuery = useQuery({
     queryKey: ['crm-leads', activeStage],
     queryFn: () =>
-      api.get('/api/crm/leads', { params: { stage: activeStage, limit: 100 } }).then((r: any) => r.data),
+      api.get('/crm/leads', { params: { stage: activeStage, limit: 100 } }).then((r: any) => r.data),
   });
 
   const dashboardQuery = useQuery({
     queryKey: ['crm-dashboard'],
-    queryFn: () => api.get('/api/crm/dashboard').then((r: any) => r.data),
+    queryFn: () => api.get('/crm/dashboard').then((r: any) => r.data),
   });
 
   const moveStageMutation = useMutation({
     mutationFn: ({ id, stage }: { id: string; stage: string }) =>
-      api.patch(`/api/crm/leads/${id}/stage`, { stage }),
+      api.patch(`/crm/leads/${id}/stage`, { stage }),
     onSuccess: () => {
       toast.success('อัปเดต stage แล้ว');
       queryClient.invalidateQueries({ queryKey: ['crm-leads'] });

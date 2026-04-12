@@ -21,12 +21,12 @@ const PLATFORM_COLORS: Record<string, string> = {
 export default function AdsTrackingPage() {
   const roiQuery = useQuery({
     queryKey: ['ads-roi'],
-    queryFn: () => api.get('/api/ads/roi').then((r: any) => r.data),
+    queryFn: () => api.get('/ads/roi').then((r: any) => r.data),
   });
 
   const campaignsQuery = useQuery({
     queryKey: ['ads-campaigns'],
-    queryFn: () => api.get('/api/ads/campaigns').then((r: any) => r.data),
+    queryFn: () => api.get('/ads/campaigns').then((r: any) => r.data),
   });
 
   const roiData = roiQuery.data ?? [];

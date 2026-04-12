@@ -1,10 +1,11 @@
 import { Module } from '@nestjs/common';
+import { JwtModule } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { StaffChatGateway } from './staff-chat.gateway';
 import { StaffChatController } from './staff-chat.controller';
 import { StaffMessageService } from './services/staff-message.service';
 import { PresenceService } from './services/presence.service';
 import { ChatEngineModule } from '../chat-engine/chat-engine.module';
-import { AuthModule } from '../auth/auth.module';
 
 /**
  * StaffChatModule — real-time staff chat interface.
@@ -16,7 +17,15 @@ import { AuthModule } from '../auth/auth.module';
  * - Canned response access
  */
 @Module({
-  imports: [ChatEngineModule, AuthModule],
+  imports: [
+    ChatEngineModule,
+    JwtModule.registerAsync({
+      useFactory: (configService: ConfigService) => ({
+        secret: configService.get<string>('JWT_SECRET'),
+      }),
+      inject: [ConfigService],
+    }),
+  ],
   controllers: [StaffChatController],
   providers: [StaffChatGateway, StaffMessageService, PresenceService],
   exports: [StaffChatGateway, PresenceService],

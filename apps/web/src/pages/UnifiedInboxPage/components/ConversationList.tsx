@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Search, Filter } from 'lucide-react';
 import { useDebounce } from '@/hooks/useDebounce';
 import ConversationItem from './ConversationItem';
@@ -29,9 +29,12 @@ export default function ConversationList({
   const debouncedSearch = useDebounce(searchInput, 300);
 
   // Update parent filter when debounced search changes
-  if (debouncedSearch !== filters.search) {
-    onFiltersChange({ ...filters, search: debouncedSearch || undefined });
-  }
+  useEffect(() => {
+    const normalizedDebounced = debouncedSearch || undefined;
+    if (normalizedDebounced !== filters.search) {
+      onFiltersChange({ ...filters, search: normalizedDebounced });
+    }
+  }, [debouncedSearch]);
 
   return (
     <div className="flex flex-col h-full border-r border-gray-200">

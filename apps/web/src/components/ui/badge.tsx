@@ -18,7 +18,7 @@ export interface BadgeButtonProps
 export type BadgeDotProps = React.HTMLAttributes<HTMLSpanElement>;
 
 const badgeVariants = cva(
-  'inline-flex items-center justify-center border border-transparent font-medium focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 [&_svg]:-ms-px [&_svg]:shrink-0',
+  'inline-flex items-center justify-center border border-transparent font-medium focus:outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-2 [&_svg]:-ms-px [&_svg]:shrink-0',
   {
     variants: {
       variant: {
@@ -40,10 +40,10 @@ const badgeVariants = cva(
         true: 'opacity-50 pointer-events-none',
       },
       size: {
-        lg: 'rounded-md px-[0.5rem] h-7 min-w-[28px] gap-1.5 text-xs [&_svg]:size-3.5',
+        lg: 'rounded-md px-2 h-7 min-w-[28px] gap-1.5 text-xs [&_svg]:size-3.5',
         md: 'rounded-md px-[0.45rem] h-6 min-w-[24px] gap-1.5 text-xs [&_svg]:size-3.5',
-        sm: 'rounded-sm px-[0.325rem] h-5 min-w-[20px] gap-1 text-[0.6875rem] leading-[0.75rem] [&_svg]:size-3',
-        xs: 'rounded-sm px-[0.25rem] h-4 min-w-[16px] gap-1 text-[0.625rem] leading-[0.5rem] [&_svg]:size-3',
+        sm: 'rounded-sm px-[0.325rem] h-5 min-w-[20px] gap-1 text-[0.6875rem] leading-3 [&_svg]:size-3',
+        xs: 'rounded-sm px-1 h-4 min-w-[16px] gap-1 text-[0.625rem] leading-2 [&_svg]:size-3',
       },
       shape: {
         default: '',
@@ -150,7 +150,7 @@ const badgeVariants = cva(
 );
 
 const badgeButtonVariants = cva(
-  'cursor-pointer transition-all inline-flex items-center justify-center leading-none size-3.5 [&>svg]:!opacity-100 [&>svg]:!size-3.5 p-0 rounded-md -mr-0.5 opacity-60 hover:opacity-100',
+  'cursor-pointer transition-all inline-flex items-center justify-center leading-none size-3.5 [&>svg]:opacity-100! [&>svg]:size-3.5! p-0 rounded-md -mr-0.5 opacity-60 hover:opacity-100',
   {
     variants: {
       variant: {

@@ -64,7 +64,7 @@ export default function RichTextEditor({ value, onChange, onEditorReady, placeho
     },
     editorProps: {
       attributes: {
-        class: 'prose prose-sm max-w-none focus:outline-none min-h-[240px] px-4 py-3',
+        class: 'prose prose-sm max-w-none focus:outline-hidden min-h-[240px] px-4 py-3',
       },
     },
   });

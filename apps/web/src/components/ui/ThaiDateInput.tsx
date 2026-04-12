@@ -165,7 +165,7 @@ export default function ThaiDateInput({
             required={required}
             disabled={disabled}
             className={cn(
-              'w-full px-3 py-2 pr-9 border border-input rounded-lg text-sm bg-background cursor-pointer focus:outline-none focus:ring-2 focus:ring-ring/30',
+              'w-full px-3 py-2 pr-9 border border-input rounded-lg text-sm bg-background cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-ring/30',
               className,
             )}
           />

@@ -250,7 +250,7 @@ export default function LiffFinanceVerify() {
               }}
               className={`w-full px-4 py-3 rounded-lg border text-center text-lg tracking-widest bg-background ${
                 phoneError ? 'border-destructive bg-destructive/5' : 'border-input'
-              } focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary`}
+              } focus:outline-hidden focus:ring-2 focus:ring-primary/30 focus:border-primary`}
             />
             {phoneError && <p className="text-destructive text-xs mt-2 text-center">{phoneError}</p>}
 
@@ -297,7 +297,7 @@ export default function LiffFinanceVerify() {
               }}
               className={`w-full px-4 py-3 rounded-lg border text-center text-2xl tracking-[0.5em] bg-background ${
                 otpError ? 'border-destructive bg-destructive/5' : 'border-input'
-              } focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary`}
+              } focus:outline-hidden focus:ring-2 focus:ring-primary/30 focus:border-primary`}
               maxLength={6}
             />
             {otpError && <p className="text-destructive text-xs mt-2 text-center">{otpError}</p>}

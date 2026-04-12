@@ -245,7 +245,7 @@ export default function LiffContract() {
               key={c.id}
               variant={i === selectedContract ? 'primary' : 'outline'}
               size="sm"
-              className="flex-shrink-0"
+              className="shrink-0"
               onClick={() => { setSelectedContract(i); setShowAllPayments(false); }}
             >
               {c.contractNumber}

@@ -69,7 +69,7 @@ export default function StickerPrintPage() {
                   value={productId}
                   onChange={(e) => setProductId(e.target.value)}
                   placeholder="ระบุ ID สินค้า"
-                  className="flex-1 px-3 py-2 border border-input rounded-lg text-sm outline-none focus:ring-2 focus:ring-ring/30 focus:border-ring transition-colors"
+                  className="flex-1 px-3 py-2 border border-input rounded-lg text-sm outline-hidden focus:ring-2 focus:ring-ring/30 focus:border-ring transition-colors"
                 />
                 <button onClick={() => productId && previewMutation.mutate()} disabled={!productId || previewMutation.isPending} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-primary/90 transition-colors">
                   โหลด
@@ -81,7 +81,7 @@ export default function StickerPrintPage() {
               <select
                 value={selectedTemplate}
                 onChange={(e) => setSelectedTemplate(e.target.value)}
-                className="w-full px-3 py-2 border border-input rounded-lg text-sm outline-none bg-background focus:ring-2 focus:ring-ring/30 focus:border-ring transition-colors"
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm outline-hidden bg-background focus:ring-2 focus:ring-ring/30 focus:border-ring transition-colors"
               >
                 <option value="">เลือก Template</option>
                 {templates.filter((t) => t.isActive).map((t) => (

@@ -214,7 +214,7 @@ export default function ProductPhotosPanel({
               {photo ? (
                 <div className="relative">
                   <div
-                    className="w-full aspect-[4/3] rounded overflow-hidden border border-green-300 cursor-pointer"
+                    className="w-full aspect-4/3 rounded overflow-hidden border border-green-300 cursor-pointer"
                     onClick={() => setPreviewPhoto({ angle, src: photo })}
                   >
                     <img
@@ -248,7 +248,7 @@ export default function ProductPhotosPanel({
                 <button
                   onClick={() => canEdit && triggerUpload(angle)}
                   disabled={!canEdit || isUploading}
-                  className={`w-full aspect-[4/3] rounded border-2 border-dashed flex flex-col items-center justify-center gap-0.5 transition-colors ${
+                  className={`w-full aspect-4/3 rounded border-2 border-dashed flex flex-col items-center justify-center gap-0.5 transition-colors ${
                     canEdit
                       ? 'border-border hover:border-primary/40 hover:bg-primary/5 cursor-pointer'
                       : 'border-border bg-muted cursor-default'

@@ -139,7 +139,7 @@ function DataGrid<TData extends object>({ children, table, ...props }: DataGridP
       base: '',
       header: '',
       headerRow: '',
-      headerSticky: 'sticky top-0 z-10 bg-background/90 backdrop-blur-sm',
+      headerSticky: 'sticky top-0 z-10 bg-background/90 backdrop-blur-xs',
       body: '',
       bodyRow: '',
       footer: '',

@@ -672,7 +672,7 @@ export default function NotificationsPage() {
             <select
               value={channelFilter}
               onChange={(e) => setChannelFilter(e.target.value)}
-              className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+              className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
             >
               <option value="">ทุกช่องทาง</option>
               <option value="LINE">LINE</option>
@@ -682,7 +682,7 @@ export default function NotificationsPage() {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+              className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
             >
               <option value="">ทุกสถานะ</option>
               <option value="SENT">ส่งแล้ว</option>
@@ -732,7 +732,7 @@ export default function NotificationsPage() {
                 type="text"
                 value={sendForm.customerId}
                 onChange={(e) => setSendForm({ ...sendForm, customerId: e.target.value })}
-                className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
                 placeholder="รหัสลูกค้า"
                 required
               />
@@ -742,7 +742,7 @@ export default function NotificationsPage() {
               <select
                 value={sendForm.channel}
                 onChange={(e) => setSendForm({ ...sendForm, channel: e.target.value })}
-                className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
               >
                 <option value="LINE">LINE</option>
                 <option value="SMS">SMS</option>
@@ -755,7 +755,7 @@ export default function NotificationsPage() {
                 type="text"
                 value={sendForm.subject}
                 onChange={(e) => setSendForm({ ...sendForm, subject: e.target.value })}
-                className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
                 placeholder="หัวข้อการแจ้งเตือน"
               />
             </div>
@@ -765,7 +765,7 @@ export default function NotificationsPage() {
                 value={sendForm.message}
                 onChange={(e) => setSendForm({ ...sendForm, message: e.target.value })}
                 rows={4}
-                className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
                 placeholder="เนื้อหาข้อความแจ้งเตือน"
                 required
               />
@@ -797,7 +797,7 @@ export default function NotificationsPage() {
               type="text"
               value={templateForm.name}
               onChange={(e) => setTemplateForm({ ...templateForm, name: e.target.value })}
-              className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+              className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
               required
             />
           </div>
@@ -807,7 +807,7 @@ export default function NotificationsPage() {
               <select
                 value={templateForm.eventType}
                 onChange={(e) => setTemplateForm({ ...templateForm, eventType: e.target.value })}
-                className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
               >
                 <option value="PAYMENT_REMINDER">เตือนชำระ</option>
                 <option value="OVERDUE_NOTICE">ทวงหนี้</option>
@@ -820,7 +820,7 @@ export default function NotificationsPage() {
               <select
                 value={templateForm.channel}
                 onChange={(e) => setTemplateForm({ ...templateForm, channel: e.target.value })}
-                className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
               >
                 <option value="LINE">LINE</option>
                 <option value="SMS">SMS</option>
@@ -831,7 +831,7 @@ export default function NotificationsPage() {
               <select
                 value={templateForm.format}
                 onChange={(e) => setTemplateForm({ ...templateForm, format: e.target.value as 'text' | 'flex' })}
-                className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
                 disabled={templateForm.channel !== 'LINE'}
               >
                 <option value="text">ข้อความ (Text)</option>
@@ -849,7 +849,7 @@ export default function NotificationsPage() {
               value={templateForm.messageTemplate}
               onChange={(e) => setTemplateForm({ ...templateForm, messageTemplate: e.target.value })}
               rows={templateForm.format === 'flex' ? 3 : 5}
-              className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none font-mono"
+              className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden font-mono"
               placeholder="สวัสดีค่ะ คุณ{customer_name}&#10;แจ้งเตือนค่างวดที่ {installment_no}..."
               required
             />
@@ -908,7 +908,7 @@ export default function NotificationsPage() {
                 value={templateForm.flexTemplate}
                 onChange={(e) => handleFlexTemplateChange(e.target.value)}
                 rows={16}
-                className={`w-full px-3 py-2 border rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none font-mono leading-relaxed ${
+                className={`w-full px-3 py-2 border rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden font-mono leading-relaxed ${
                   jsonError ? 'border-red-400 bg-red-50/50' : 'border-input'
                 }`}
                 placeholder='{"type":"flex","altText":"...","contents":{...}}'
@@ -961,7 +961,7 @@ export default function NotificationsPage() {
               type="text"
               value={templateForm.description}
               onChange={(e) => setTemplateForm({ ...templateForm, description: e.target.value })}
-              className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+              className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
             />
           </div>
           <div className="flex justify-end gap-3 pt-2">

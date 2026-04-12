@@ -113,9 +113,9 @@ export default function ReceiptModal({ receiptId, onClose }: ReceiptModalProps) 
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-start justify-center pt-8 pb-8 print:static print:bg-transparent print:p-0" role="dialog" aria-modal="true" aria-label="ใบเสร็จรับเงิน">
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-start justify-center pt-8 pb-8 print:static print:bg-transparent print:p-0" role="dialog" aria-modal="true" aria-label="ใบเสร็จรับเงิน">
       <div className={`w-full ${getMaxWidth()} bg-background rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100vh-4rem)] print:max-w-full print:max-h-full print:shadow-none print:rounded-none`}>
-        <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b px-6 py-4 flex items-center justify-between shrink-0 print:hidden">
+        <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-xs border-b px-6 py-4 flex items-center justify-between shrink-0 print:hidden">
           <button type="button" onClick={onClose} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
             กลับ
@@ -146,7 +146,7 @@ export default function ReceiptModal({ receiptId, onClose }: ReceiptModalProps) 
             <select
               value={printSize}
               onChange={(e) => setPrintSize(e.target.value as PrintSize)}
-              className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+              className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
             >
               <option value="mobile">📱 แบบมือถือ</option>
               <option value="a5">📄 พิมพ์ A5 (148×210 มม.)</option>
@@ -213,7 +213,7 @@ export default function ReceiptModal({ receiptId, onClose }: ReceiptModalProps) 
       )}
           </div>
           {receipt && (
-            <div className="sticky bottom-0 bg-background/95 backdrop-blur-sm border-t px-6 py-4 flex justify-end gap-3 shrink-0 print:hidden">
+            <div className="sticky bottom-0 bg-background/95 backdrop-blur-xs border-t px-6 py-4 flex justify-end gap-3 shrink-0 print:hidden">
               <button
                 type="button"
                 onClick={onClose}

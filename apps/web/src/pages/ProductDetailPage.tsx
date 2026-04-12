@@ -542,7 +542,7 @@ export default function ProductDetailPage() {
               value={priceForm.label}
               onChange={(e) => setPriceForm({ ...priceForm, label: e.target.value })}
               placeholder='เช่น "ราคาเงินสด", "ราคาผ่อน"'
-              className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+              className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
               required
             />
           </div>
@@ -553,7 +553,7 @@ export default function ProductDetailPage() {
               step="0.01"
               value={priceForm.amount}
               onChange={(e) => setPriceForm({ ...priceForm, amount: e.target.value })}
-              className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+              className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
               required
             />
           </div>
@@ -711,7 +711,7 @@ export default function ProductDetailPage() {
             <select
               value={transferForm.toBranchId}
               onChange={(e) => setTransferForm({ ...transferForm, toBranchId: e.target.value })}
-              className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+              className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
               required
             >
               <option value="">เลือกสาขา</option>
@@ -728,7 +728,7 @@ export default function ProductDetailPage() {
               value={transferForm.notes}
               onChange={(e) => setTransferForm({ ...transferForm, notes: e.target.value })}
               rows={2}
-              className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none resize-none"
+              className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden resize-none"
             />
           </div>
           <div className="flex justify-end gap-3 pt-2">

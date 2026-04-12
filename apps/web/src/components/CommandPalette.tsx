@@ -112,7 +112,7 @@ export default function CommandPalette() {
     <div className="fixed inset-0 z-50">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/50 backdrop-blur-sm animate-in fade-in-0 duration-150"
+        className="fixed inset-0 bg-black/50 backdrop-blur-xs animate-in fade-in-0 duration-150"
         onClick={() => setOpen(false)}
       />
 

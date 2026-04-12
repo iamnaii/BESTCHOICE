@@ -66,11 +66,11 @@ function UserDropdown() {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
-          className="flex items-center gap-2.5 pl-1 pr-2 py-1.5 rounded-xl hover:bg-muted/60 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex items-center gap-2.5 pl-1 pr-2 py-1.5 rounded-xl hover:bg-muted/60 transition-colors duration-150 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           aria-label="เมนูผู้ใช้"
         >
           {/* Avatar */}
-          <div className="size-8 rounded-full bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center ring-2 ring-primary/20 shrink-0">
+          <div className="size-8 rounded-full bg-linear-to-br from-primary to-primary/70 flex items-center justify-center ring-2 ring-primary/20 shrink-0">
             <span className="text-white text-[13px] font-bold leading-none">{initials}</span>
           </div>
           {/* Name (hidden on small) */}
@@ -88,7 +88,7 @@ function UserDropdown() {
         {/* User info header */}
         <DropdownMenuLabel className="font-normal pb-2">
           <div className="flex items-center gap-3">
-            <div className="size-10 rounded-full bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center ring-2 ring-primary/20 shrink-0">
+            <div className="size-10 rounded-full bg-linear-to-br from-primary to-primary/70 flex items-center justify-center ring-2 ring-primary/20 shrink-0">
               <span className="text-white text-sm font-bold leading-none">{initials}</span>
             </div>
             <div className="flex flex-col min-w-0">

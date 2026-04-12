@@ -326,7 +326,7 @@ export default function POSPage() {
     });
   };
 
-  const inputClass = 'w-full px-3 py-2 border border-input rounded-lg text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background';
+  const inputClass = 'w-full px-3 py-2 border border-input rounded-lg text-sm outline-hidden focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background';
   const selectClass = inputClass;
 
   return (
@@ -854,7 +854,7 @@ export default function POSPage() {
         <div className="flex flex-col gap-5">
           <Card className="sticky top-20 border-border/60 shadow-md overflow-hidden">
             {/* Card accent header */}
-            <div className="h-1.5 w-full bg-gradient-to-r from-primary to-primary/60" />
+            <div className="h-1.5 w-full bg-linear-to-r from-primary to-primary/60" />
             <CardHeader>
               <div className="flex items-center justify-between w-full">
                 <div className="text-sm font-semibold text-foreground">สรุปรายการ</div>

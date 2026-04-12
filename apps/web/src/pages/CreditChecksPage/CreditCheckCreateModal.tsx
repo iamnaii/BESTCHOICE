@@ -112,10 +112,10 @@ export default function CreditCheckCreateModal({
   const _bookBankRef = bookBankFileRef;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-start justify-center pt-8 pb-8">
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-start justify-center pt-8 pb-8">
       <div className="w-full max-w-4xl bg-background rounded-xl shadow-2xl overflow-y-auto max-h-[calc(100vh-4rem)]">
         {/* Header */}
-        <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b px-6 py-4 flex items-center justify-between">
+        <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-xs border-b px-6 py-4 flex items-center justify-between">
           <button
             onClick={onClose}
             className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
@@ -604,7 +604,7 @@ export default function CreditCheckCreateModal({
 
         {/* Footer */}
         {selectedCustomer && (
-          <div className="sticky bottom-0 z-10 bg-background/95 backdrop-blur-sm border-t px-6 py-4 flex items-center justify-between">
+          <div className="sticky bottom-0 z-10 bg-background/95 backdrop-blur-xs border-t px-6 py-4 flex items-center justify-between">
             <button
               onClick={onClose}
               className="px-4 py-2 text-sm border border-input rounded-lg hover:bg-muted"

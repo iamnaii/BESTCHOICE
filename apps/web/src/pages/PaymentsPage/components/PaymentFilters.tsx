@@ -76,13 +76,13 @@ export default function PaymentFilters({
               value={searchTerm}
               onChange={(e) => onSearchChange(e.target.value)}
               placeholder="ค้นหาเลขสัญญา, ชื่อ, เบอร์โทร..."
-              className="w-full pl-9 pr-3 py-2 border border-input rounded-lg text-sm bg-background outline-none focus:ring-2 focus:ring-ring/30"
+              className="w-full pl-9 pr-3 py-2 border border-input rounded-lg text-sm bg-background outline-hidden focus:ring-2 focus:ring-ring/30"
             />
           </div>
           <select
             value={statusFilter}
             onChange={(e) => onStatusFilterChange(e.target.value)}
-            className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-none focus:ring-2 focus:ring-ring/30"
+            className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-hidden focus:ring-2 focus:ring-ring/30"
           >
             <option value="">ทุกสถานะ</option>
             <option value="PENDING">รอชำระ</option>
@@ -93,7 +93,7 @@ export default function PaymentFilters({
             <select
               value={branchFilter}
               onChange={(e) => onBranchFilterChange(e.target.value)}
-              className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-none focus:ring-2 focus:ring-ring/30"
+              className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-hidden focus:ring-2 focus:ring-ring/30"
             >
               <option value="">ทุกสาขา</option>
               {branches.map((b) => (

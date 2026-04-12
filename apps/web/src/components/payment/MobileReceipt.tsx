@@ -28,7 +28,7 @@ export default function MobileReceipt({ receipt }: MobileReceiptProps) {
   return (
     <div className="mobile-receipt w-full max-w-md mx-auto bg-white rounded-xl shadow-lg overflow-hidden">
       {/* Header with gradient */}
-      <div className="bg-gradient-to-r from-blue-600 to-primary p-6 text-white">
+      <div className="bg-linear-to-r from-blue-600 to-primary p-6 text-white">
         <div className="text-center mb-3">
           {receipt.company?.logoUrl ? (
             <img
@@ -50,7 +50,7 @@ export default function MobileReceipt({ receipt }: MobileReceiptProps) {
             </p>
           )}
         </div>
-        <div className="bg-white/20 backdrop-blur-sm rounded-lg p-3 text-center">
+        <div className="bg-white/20 backdrop-blur-xs rounded-lg p-3 text-center">
           <div className="text-sm opacity-90 mb-1">
             {typeLabels[receipt.receiptType] || receipt.receiptType}
           </div>
@@ -68,7 +68,7 @@ export default function MobileReceipt({ receipt }: MobileReceiptProps) {
       {/* Content */}
       <div className="p-6 space-y-4">
         {/* Amount Card - Highlight */}
-        <div className="bg-gradient-to-br from-green-50 to-green-100 border-2 border-green-300 rounded-xl p-5">
+        <div className="bg-linear-to-br from-green-50 to-green-100 border-2 border-green-300 rounded-xl p-5">
           <div className="text-center">
             <div className="text-sm text-green-700 font-medium mb-2">ยอดชำระครั้งนี้</div>
             <div className="text-4xl font-bold text-green-600 mb-1">
@@ -83,7 +83,7 @@ export default function MobileReceipt({ receipt }: MobileReceiptProps) {
 
         {/* Remaining Balance - Highlight if exists */}
         {receipt.remainingBalance != null && (
-          <div className="bg-gradient-to-br from-orange-50 to-orange-100 border-2 border-orange-300 rounded-xl p-5">
+          <div className="bg-linear-to-br from-orange-50 to-orange-100 border-2 border-orange-300 rounded-xl p-5">
             <div className="text-center">
               <div className="text-sm text-orange-700 font-medium mb-2">ยอดคงเหลือ</div>
               <div className="text-3xl font-bold text-orange-600 mb-1">

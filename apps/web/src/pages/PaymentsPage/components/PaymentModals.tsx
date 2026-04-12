@@ -118,13 +118,13 @@ export function RecordPaymentModal({
   const received = payForm.amount;
   const change = received - outstanding;
 
-  const inputClass = 'w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none';
+  const inputClass = 'w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden';
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-start justify-center pt-8 pb-8">
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-start justify-center pt-8 pb-8">
       <div className="w-full max-w-2xl bg-background rounded-xl shadow-2xl overflow-y-auto max-h-[calc(100vh-4rem)]">
         {/* Sticky Header */}
-        <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b px-6 py-4 flex items-center justify-between">
+        <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-xs border-b px-6 py-4 flex items-center justify-between">
           <button onClick={onClose} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
             ← กลับ
           </button>
@@ -243,7 +243,7 @@ export function RecordPaymentModal({
 
               {/* Summary box */}
               {received > 0 && (
-                <div className="bg-gradient-to-br from-primary/5 to-primary/10 dark:from-primary/10 dark:to-primary/15 rounded-xl p-4 space-y-2 text-sm border border-primary/15">
+                <div className="bg-linear-to-br from-primary/5 to-primary/10 dark:from-primary/10 dark:to-primary/15 rounded-xl p-4 space-y-2 text-sm border border-primary/15">
                   <div className="flex justify-between"><span className="text-muted-foreground">ยอดคงค้าง</span><span className="font-medium">{outstanding.toLocaleString()} ฿</span></div>
                   <div className="flex justify-between"><span className="text-muted-foreground">จำนวนที่รับ</span><span className="font-medium">{received.toLocaleString()} ฿</span></div>
                   <div className="border-t border-primary/20 pt-2.5 mt-1 flex justify-between font-bold text-lg">
@@ -260,7 +260,7 @@ export function RecordPaymentModal({
         </div>
 
         {/* Sticky Footer */}
-        <div className="sticky bottom-0 bg-background/95 backdrop-blur-sm border-t px-6 py-4 flex justify-end gap-3">
+        <div className="sticky bottom-0 bg-background/95 backdrop-blur-xs border-t px-6 py-4 flex justify-end gap-3">
           <button onClick={onClose} className="px-6 py-2.5 text-sm border border-input rounded-lg hover:bg-muted transition-colors">ยกเลิก</button>
           <button onClick={onSubmit} disabled={isPending || payForm.amount <= 0} className="px-6 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-semibold transition-colors shadow-sm">
             {isPending ? 'กำลังบันทึก...' : 'ยืนยันรับชำระ'}

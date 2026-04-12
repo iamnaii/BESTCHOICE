@@ -121,7 +121,7 @@ function EditField({ item, value, onChange }: { item: ConfigGroupItem; value: st
             step={item.step}
             value={value}
             onChange={(e) => onChange(e.target.value)}
-            className={`w-full px-3 py-2 border border-input rounded-lg text-sm ${isAddress ? '' : 'text-right'} focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none`}
+            className={`w-full px-3 py-2 border border-input rounded-lg text-sm ${isAddress ? '' : 'text-right'} focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden`}
           />
         </div>
       </div>
@@ -408,7 +408,7 @@ function SignatureEditor({
             value={signerName}
             onChange={(e) => onSignerNameChange(e.target.value)}
             placeholder="เช่น เอกนรินทร์ คงเดช"
-            className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+            className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
           />
         </div>
       </div>

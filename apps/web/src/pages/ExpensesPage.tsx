@@ -103,7 +103,7 @@ const categoryGroups: Record<string, { value: string; label: string }[]> = {
   ],
 };
 
-const inputClass = 'w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none';
+const inputClass = 'w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden';
 
 function fmt(n: string | number | null | undefined): string {
   if (n == null) return '-';
@@ -214,10 +214,10 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
   const netPay = total - wht;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-start justify-center pt-8 pb-8">
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-start justify-center pt-8 pb-8">
       <div className="w-full max-w-4xl bg-background rounded-xl shadow-2xl overflow-y-auto max-h-[calc(100vh-4rem)]">
         {/* Header */}
-        <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b px-6 py-4 flex items-center justify-between">
+        <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-xs border-b px-6 py-4 flex items-center justify-between">
           <button onClick={onClose} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
             <ArrowLeft className="size-4" /> กลับ
           </button>
@@ -336,7 +336,7 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
 
               {/* Summary box */}
               {amt > 0 && (
-                <div className="bg-gradient-to-br from-primary/5 to-primary/10 dark:from-primary/10 dark:to-primary/15 rounded-xl p-4 space-y-2 text-sm border border-primary/15">
+                <div className="bg-linear-to-br from-primary/5 to-primary/10 dark:from-primary/10 dark:to-primary/15 rounded-xl p-4 space-y-2 text-sm border border-primary/15">
                   <div className="flex justify-between"><span className="text-muted-foreground">รวมก่อน VAT</span><span className="font-medium">{fmt(amt)}</span></div>
                   {vat > 0 && <div className="flex justify-between"><span className="text-muted-foreground">VAT 7%</span><span className="font-medium">{fmt(vat)}</span></div>}
                   {wht > 0 && <div className="flex justify-between text-destructive"><span>หัก ณ ที่จ่าย</span><span className="font-medium">({fmt(wht)})</span></div>}
@@ -451,7 +451,7 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
             {saveMutation.isPending ? 'กำลังบันทึก...' : 'บันทึกร่าง'}
           </Button>
           <button onClick={() => handleSave(true)} disabled={saveMutation.isPending}
-            className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-green-600 text-white rounded-lg text-sm font-semibold shadow-sm hover:shadow-md hover:from-emerald-600 hover:to-green-700 transition-all disabled:opacity-50 inline-flex items-center gap-2">
+            className="px-5 py-2.5 bg-linear-to-r from-emerald-500 to-green-600 text-white rounded-lg text-sm font-semibold shadow-sm hover:shadow-md hover:from-emerald-600 hover:to-green-700 transition-all disabled:opacity-50 inline-flex items-center gap-2">
             {saveMutation.isPending ? (
               <><div className="animate-spin rounded-full h-4 w-4 border-2 border-white/30 border-t-white" /> กำลังบันทึก...</>
             ) : 'บันทึกและส่งอนุมัติ'}
@@ -632,7 +632,7 @@ export default function ExpensesPage() {
                 </div>
                 <div>
                   <AnimatedCounter value={card.amount || 0} className={`text-xl font-bold ${'accent' in card && card.accent ? card.color : 'text-foreground'}`} />
-                  <div className="text-2xs text-muted-foreground mt-1 min-h-[1rem]">
+                  <div className="text-2xs text-muted-foreground mt-1 min-h-4">
                     {'sub' in card && card.sub ? card.sub : '\u00A0'}
                   </div>
                 </div>

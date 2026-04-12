@@ -548,7 +548,7 @@ export default function CustomersPage() {
     },
   ], [navigateToCustomer, result?.page]);
 
-  const inputClass = 'w-full px-3 py-2 border border-input rounded-lg text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background';
+  const inputClass = 'w-full px-3 py-2 border border-input rounded-lg text-sm outline-hidden focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background';
   const selectClass = `${inputClass}`;
   const sectionClass = 'border border-border rounded-lg p-4';
   const sectionTitle = 'text-sm font-semibold text-foreground mb-3';
@@ -623,13 +623,13 @@ export default function CustomersPage() {
               placeholder="ค้นหาชื่อ, เบอร์โทร, เลขบัตร ปชช..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 border border-input rounded-lg text-sm outline-none focus:ring-2 focus:ring-ring/30 focus:border-ring transition-colors bg-background"
+              className="w-full pl-9 pr-3 py-2 border border-input rounded-lg text-sm outline-hidden focus:ring-2 focus:ring-ring/30 focus:border-ring transition-colors bg-background"
             />
           </div>
           <select
             value={contractStatusFilter}
             onChange={(e) => setContractStatusFilter(e.target.value)}
-            className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-none focus:ring-2 focus:ring-ring/30"
+            className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-hidden focus:ring-2 focus:ring-ring/30"
           >
             <option value="">ทุกสถานะสัญญา</option>
             <option value="ACTIVE">มีสัญญา Active</option>
@@ -639,7 +639,7 @@ export default function CustomersPage() {
           <select
             value={creditStatusFilter}
             onChange={(e) => setCreditStatusFilter(e.target.value)}
-            className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-none focus:ring-2 focus:ring-ring/30"
+            className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-hidden focus:ring-2 focus:ring-ring/30"
           >
             <option value="">ทุกสถานะเครดิต</option>
             <option value="APPROVED">ผ่าน</option>
@@ -665,7 +665,7 @@ export default function CustomersPage() {
             <select
               value={branchFilter}
               onChange={(e) => setBranchFilter(e.target.value)}
-              className="px-3 py-1.5 border border-input rounded-lg text-xs bg-background outline-none focus:ring-2 focus:ring-ring/30"
+              className="px-3 py-1.5 border border-input rounded-lg text-xs bg-background outline-hidden focus:ring-2 focus:ring-ring/30"
             >
               <option value="">ทุกสาขา</option>
               {branches.map((b) => (
@@ -680,7 +680,7 @@ export default function CustomersPage() {
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
-              className="px-2 py-1.5 border border-input rounded-lg text-xs bg-background outline-none focus:ring-2 focus:ring-ring/30"
+              className="px-2 py-1.5 border border-input rounded-lg text-xs bg-background outline-hidden focus:ring-2 focus:ring-ring/30"
             >
               <option value="">ค่าเริ่มต้น</option>
               <option value="name">ชื่อ</option>
@@ -727,10 +727,10 @@ export default function CustomersPage() {
       </QueryBoundary>
 
       {isModalOpen && (
-      <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-start justify-center pt-8 pb-8" role="dialog" aria-modal="true" aria-label="เพิ่มลูกค้าใหม่">
+      <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-start justify-center pt-8 pb-8" role="dialog" aria-modal="true" aria-label="เพิ่มลูกค้าใหม่">
         <div className="w-full max-w-2xl bg-background rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100vh-4rem)]">
           {/* Sticky Header */}
-          <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b px-6 py-4 flex items-center justify-between shrink-0">
+          <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-xs border-b px-6 py-4 flex items-center justify-between shrink-0">
             <button type="button" onClick={() => setIsModalOpen(false)} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
               กลับ
@@ -748,7 +748,7 @@ export default function CustomersPage() {
               type="button"
               onClick={handleSmartCardRead}
               disabled={cardReaderLoading || ocrLoading}
-              className="inline-flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-emerald-500 to-green-600 text-white rounded-xl text-sm font-semibold shadow-sm hover:from-emerald-600 hover:to-green-700 disabled:opacity-50 transition-all"
+              className="inline-flex items-center justify-center gap-2 py-3 bg-linear-to-r from-emerald-500 to-green-600 text-white rounded-xl text-sm font-semibold shadow-sm hover:from-emerald-600 hover:to-green-700 disabled:opacity-50 transition-all"
             >
               {cardReaderLoading ? (
                 <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> กำลังอ่านบัตร...</>
@@ -761,7 +761,7 @@ export default function CustomersPage() {
               type="button"
               onClick={() => ocrFileRef.current?.click()}
               disabled={ocrLoading}
-              className="inline-flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl text-sm font-semibold shadow-sm hover:from-blue-600 hover:to-indigo-700 disabled:opacity-50 transition-all"
+              className="inline-flex items-center justify-center gap-2 py-3 bg-linear-to-r from-blue-500 to-indigo-600 text-white rounded-xl text-sm font-semibold shadow-sm hover:from-blue-600 hover:to-indigo-700 disabled:opacity-50 transition-all"
             >
               {ocrLoading ? (
                 <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> กำลังอ่าน...</>
@@ -1206,7 +1206,7 @@ export default function CustomersPage() {
 
           </div>
           {/* Sticky Footer */}
-          <div className="sticky bottom-0 bg-background/95 backdrop-blur-sm border-t px-6 py-4 flex justify-end gap-3 shrink-0">
+          <div className="sticky bottom-0 bg-background/95 backdrop-blur-xs border-t px-6 py-4 flex justify-end gap-3 shrink-0">
             <button type="button" onClick={() => setIsModalOpen(false)} className="px-6 py-2.5 text-sm text-muted-foreground border border-input rounded-lg hover:bg-accent transition-colors">ยกเลิก</button>
             <button type="submit" disabled={createMutation.isPending} className="px-6 py-2.5 bg-primary text-primary-foreground rounded-lg text-sm font-semibold shadow-sm hover:bg-primary/90 transition-colors disabled:opacity-50">
               {createMutation.isPending ? (

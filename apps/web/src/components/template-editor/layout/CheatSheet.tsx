@@ -15,7 +15,7 @@ export default function CheatSheet() {
 
   return (
     <div className="w-[300px] bg-card border-r border-border overflow-y-auto">
-      <div className="sticky top-0 z-10 bg-card/95 backdrop-blur-sm border-b border-border px-4 py-3">
+      <div className="sticky top-0 z-10 bg-card/95 backdrop-blur-xs border-b border-border px-4 py-3">
         <h3 className="text-base font-bold text-foreground">Template Syntax</h3>
         <p className="text-sm text-muted-foreground mt-0.5">คลิกเพื่อ copy syntax</p>
       </div>
@@ -34,9 +34,9 @@ export default function CheatSheet() {
                 >
                   <span className="truncate max-w-[200px]">{item.label}</span>
                   {copied === item.syntax ? (
-                    <Check size={14} className="text-green-600 flex-shrink-0" />
+                    <Check size={14} className="text-green-600 shrink-0" />
                   ) : (
-                    <Copy size={14} className="opacity-0 group-hover/item:opacity-100 flex-shrink-0 transition-opacity" />
+                    <Copy size={14} className="opacity-0 group-hover/item:opacity-100 shrink-0 transition-opacity" />
                   )}
                 </button>
               ))}

@@ -39,7 +39,7 @@ export default function ProgressStepper({ steps, currentStep }: ProgressStepperP
               </div>
               {i < steps.length - 1 && (
                 <div
-                  className={`flex-1 h-0.5 mx-2 mt-[-1rem] ${
+                  className={`flex-1 h-0.5 mx-2 -mt-4 ${
                     i < currentStep ? 'bg-green-500' : 'bg-border'
                   }`}
                 />

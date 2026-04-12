@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "prisma generate && nest build && npm run verify:assets",
+    "build": "prisma generate && npx nest build && npm run verify:assets",
     "verify:assets": "node -e \"const fs=require('fs');const f='dist/src/modules/contracts/templates/hire-purchase-contract.html';if(!fs.existsSync(f)){console.error('❌ Missing critical asset:',f);process.exit(1)}console.log('✓ Assets verified')\"",
     "dev": "nest start --watch",
     "start": "prisma migrate deploy && node dist/src/main",

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { toast } from 'sonner';
@@ -7,6 +7,10 @@ import ConversationList from './components/ConversationList';
 import ChatPanel from './components/ChatPanel';
 import Customer360Panel from './components/Customer360Panel';
 import { useChatSocket } from './hooks/useChatSocket';
+
+// Sound notification
+const NOTIFICATION_SOUND_URL = 'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU4GAAB/f39/f39/f39/f3+AgICBgYKCg4OEhIWFhoaHh4iIiYmKiouLjIyNjY6Oj4+QkJGRkpKTk5SUlZWWlpeXmJiZmZqam5ucnJ2dnp6fn6CgoaGioqOjpKSlpaampqeop6ioqamqqqqrq6ysra2urq+vsLCxsbKys7O0tLW1tra3t7i4ubm6uru7vLy9vb6+v7/AwMHBwsLDw8TExcXGxsfHyMjJycrKy8vMzM3Nzs7Pz9DQ0dHS0tPT1NTV1dbW19fY2NnZ2tra29vc3N3d3t7f3+Dg4eHi4uPj5OTl5ebm5+fo6Onp6urr6+zs7e3u7u/v8PDx8fLy8/P09PX19vb39/j4+fn6+vv7/Pz9/f7+/v7+/v7+';
+
 
 /**
  * UnifiedInboxPage — 3-panel chat interface.
@@ -23,16 +27,50 @@ export default function UnifiedInboxPage() {
     search?: string;
   }>({});
 
+  // Request browser notification permission on mount
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, []);
+
+  // Play sound + show browser notification
+  const notifyNewMessage = useCallback((data: any) => {
+    // Sound
+    try {
+      const audio = new Audio(NOTIFICATION_SOUND_URL);
+      audio.volume = 0.3;
+      audio.play().catch(() => {});
+    } catch {}
+
+    // Browser notification (if not focused on this session)
+    if (
+      'Notification' in window &&
+      Notification.permission === 'granted' &&
+      data.sessionId !== activeSessionId
+    ) {
+      new Notification('ข้อความใหม่ — BESTCHOICE', {
+        body: data.text?.substring(0, 100) || 'มีข้อความใหม่',
+        icon: '/favicon.ico',
+        tag: `chat-${data.sessionId}`, // prevents duplicate notifications per session
+      });
+    }
+  }, [activeSessionId]);
+
   // WebSocket for real-time updates
   const { joinSession, leaveSession, sendMessage } = useChatSocket({
     onNewMessage: (data) => {
-      // Invalidate messages for the session
       queryClient.invalidateQueries({ queryKey: ['chat-messages', data.sessionId] });
-      // Update session list (last message preview)
       queryClient.invalidateQueries({ queryKey: ['chat-sessions'] });
+      queryClient.invalidateQueries({ queryKey: ['chat-unread-count'] });
+      // Sound + browser notification
+      if (data.role === 'CUSTOMER') {
+        notifyNewMessage(data);
+      }
     },
     onSessionUpdate: () => {
       queryClient.invalidateQueries({ queryKey: ['chat-sessions'] });
+      queryClient.invalidateQueries({ queryKey: ['chat-unread-count'] });
     },
   });
 

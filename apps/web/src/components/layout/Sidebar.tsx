@@ -1,4 +1,5 @@
-import { useMemo, useCallback, memo, useState } from 'react';
+import { useMemo, useCallback, memo, useState, Suspense } from 'react';
+import { useUnreadChat } from '@/hooks/useUnreadChat';
 import { Link, useLocation } from 'react-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
@@ -80,6 +81,7 @@ interface NavItem {
   path: string;
   icon?: LucideIcon;
   roles?: string[];
+  badgeKey?: string; // 'chat-unread' — renders live badge
 }
 
 interface NavSection {
@@ -173,7 +175,7 @@ const navSections: NavSection[] = [
     icon: MessageSquareMore,
     group: 'general',
     items: [
-      { label: 'กล่องข้อความ', path: '/inbox', icon: MessageSquareMore, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES'] },
+      { label: 'กล่องข้อความ', path: '/inbox', icon: MessageSquareMore, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES'], badgeKey: 'chat-unread' },
       { label: 'CRM Pipeline', path: '/crm', icon: Kanban, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES'] },
       { label: 'Ads & ROI', path: '/ads', icon: Target, roles: ['OWNER'] },
       { label: 'เชื่อมต่อช่องทาง', path: '/settings/channels', icon: Plug, roles: ['OWNER'] },
@@ -407,7 +409,7 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
                         )}
                       />
                     )}
-                    <span>{item.label}</span>
+                    <span>{item.label}</span><NavBadge badgeKey={item.badgeKey} />
                     {isItemActive(item.path) && (
                       <ChevronRight className="size-3 ml-auto opacity-40" />
                     )}
@@ -733,6 +735,22 @@ function MobileSidebarContent() {
       )}
     </div>
   );
+}
+
+/* ─── Chat Unread Badge ──────────────────────────── */
+function ChatUnreadBadge() {
+  const count = useUnreadChat();
+  if (count <= 0) return null;
+  return (
+    <span className="ml-auto min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold leading-none">
+      {count > 99 ? '99+' : count}
+    </span>
+  );
+}
+
+function NavBadge({ badgeKey }: { badgeKey?: string }) {
+  if (badgeKey === 'chat-unread') return <ChatUnreadBadge />;
+  return null;
 }
 
 /* ─── Main Sidebar Component ─────────────────────── */

@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState } from 'react';
-import { Send, MoreVertical, ArrowLeft } from 'lucide-react';
+import { Send, MoreVertical, ArrowLeft, Paperclip, Smile } from 'lucide-react';
 import MessageBubble from './MessageBubble';
 import SessionActions from './SessionActions';
 
@@ -8,6 +8,7 @@ interface ChatPanelProps {
   messages: any[];
   isLoadingMessages: boolean;
   onSendMessage: (text: string) => void;
+  onSendFile?: (file: File) => void;
   onBack: () => void;
   onAssign: (staffId: string) => void;
   onResolve: () => void;
@@ -19,6 +20,7 @@ export default function ChatPanel({
   messages,
   isLoadingMessages,
   onSendMessage,
+  onSendFile,
   onBack,
   onAssign,
   onResolve,
@@ -26,8 +28,26 @@ export default function ChatPanel({
 }: ChatPanelProps) {
   const [inputText, setInputText] = useState('');
   const [showActions, setShowActions] = useState(false);
+  const [showEmoji, setShowEmoji] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const QUICK_EMOJIS = ['😊', '👍', '🙏', '❤️', '😄', '👋', '✅', '📱', '💰', '🎉'];
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && onSendFile) {
+      onSendFile(file);
+    }
+    e.target.value = ''; // reset
+  };
+
+  const insertEmoji = (emoji: string) => {
+    setInputText((prev) => prev + emoji);
+    setShowEmoji(false);
+    inputRef.current?.focus();
+  };
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -113,7 +133,44 @@ export default function ChatPanel({
       {/* Input */}
       {!isResolved && (
         <div className="border-t border-gray-200 p-3 bg-white">
+          {/* Emoji picker */}
+          {showEmoji && (
+            <div className="flex gap-1 mb-2 p-1.5 bg-gray-50 rounded-lg flex-wrap">
+              {QUICK_EMOJIS.map((emoji) => (
+                <button
+                  key={emoji}
+                  onClick={() => insertEmoji(emoji)}
+                  className="w-8 h-8 flex items-center justify-center text-lg hover:bg-gray-200 rounded transition-colors"
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="flex items-end gap-2">
+            {/* File upload */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,.pdf,.doc,.docx"
+              onChange={handleFileSelect}
+              className="hidden"
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              title="แนบไฟล์/รูปภาพ"
+            >
+              <Paperclip className="w-5 h-5" />
+            </button>
+            {/* Emoji toggle */}
+            <button
+              onClick={() => setShowEmoji(!showEmoji)}
+              className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              title="Emoji"
+            >
+              <Smile className="w-5 h-5" />
+            </button>
             <textarea
               ref={inputRef}
               value={inputText}

@@ -31,11 +31,11 @@ interface CreditCheckCreateModalProps {
 
   // Book bank
   bookBankLoading: boolean;
-  bookBankFileRef: React.RefObject<HTMLInputElement>;
+  bookBankFileRef: React.RefObject<HTMLInputElement | null>;
   onBookBankScan: (e: React.ChangeEvent<HTMLInputElement>) => void;
 
   // Salary slip
-  salarySlipFileRef: React.RefObject<HTMLInputElement>;
+  salarySlipFileRef: React.RefObject<HTMLInputElement | null>;
   salarySlipFiles: File[];
   onSalarySlipFilesChange: (files: File[]) => void;
   salarySlipLoading: boolean;
@@ -47,7 +47,7 @@ interface CreditCheckCreateModalProps {
   // Statement
   statementBankName: string;
   onStatementBankNameChange: (v: string) => void;
-  statementFileRef: React.RefObject<HTMLInputElement>;
+  statementFileRef: React.RefObject<HTMLInputElement | null>;
   statementFiles: File[];
   onStatementFilesChange: (files: File[]) => void;
   statementLoading: boolean;
@@ -63,7 +63,7 @@ interface CreditCheckCreateModalProps {
 
   // Footer actions
   bankName: string;
-  fileRef: React.RefObject<HTMLInputElement>;
+  fileRef: React.RefObject<HTMLInputElement | null>;
   isUploadPending: boolean;
   onSave: () => void;
   onApprove: () => void;

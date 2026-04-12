@@ -1,3 +1,4 @@
+import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -21,7 +22,7 @@ vi.mock('@sentry/react', () => ({
   },
 }));
 
-function Boom(): JSX.Element {
+function Boom(): React.ReactNode {
   throw new Error('boom 💥');
 }
 

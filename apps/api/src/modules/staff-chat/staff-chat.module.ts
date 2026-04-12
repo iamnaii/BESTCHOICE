@@ -24,7 +24,7 @@ import { ChatCommerceService } from './services/chat-commerce.service';
 import { ChatToContractService } from './services/chat-to-contract.service';
 import { ChatEngineModule } from '../chat-engine/chat-engine.module';
 import { ChatbotFinanceModule } from '../chatbot-finance/chatbot-finance.module';
-import { PaySolutionsModule } from '../paysolutions/paysolutions.module';
+// PaySolutions integration handled via forwardRef in ChatCommerceService
 
 /**
  * StaffChatModule — real-time staff chat interface.
@@ -38,7 +38,6 @@ import { PaySolutionsModule } from '../paysolutions/paysolutions.module';
 @Module({
   imports: [
     ChatEngineModule,
-    PaySolutionsModule,
     forwardRef(() => ChatbotFinanceModule),
     JwtModule.registerAsync({
       useFactory: (configService: ConfigService) => ({

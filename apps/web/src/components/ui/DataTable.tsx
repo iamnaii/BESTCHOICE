@@ -377,7 +377,7 @@ function DataTable<T extends { id: string }>({
                   className={cn(
                     'transition-colors hover:bg-muted/50',
                     (onRowClick || onRowDoubleClick) && 'cursor-pointer',
-                    row.getIsSelected() && 'bg-primary/5 border-l-[2px] border-l-primary',
+                    row.getIsSelected() && 'bg-primary/5 border-l-2 border-l-primary',
                   )}
                   onClick={() => onRowClick?.(row.original)}
                   onDoubleClick={() => onRowDoubleClick?.(row.original)}

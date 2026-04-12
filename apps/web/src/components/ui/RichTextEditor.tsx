@@ -336,7 +336,7 @@ export default function RichTextEditor({ value, onChange, placeholder, minHeight
         <textarea
           value={sourceValue}
           onChange={(e) => setSourceValue(e.target.value)}
-          className="flex-1 px-4 py-3 text-xs font-mono resize-none focus:outline-none"
+          className="flex-1 px-4 py-3 text-xs font-mono resize-none focus:outline-hidden"
           style={{ minHeight }}
           spellCheck={false}
         />
@@ -345,7 +345,7 @@ export default function RichTextEditor({ value, onChange, placeholder, minHeight
           ref={editorRef}
           contentEditable
           suppressContentEditableWarning
-          className="flex-1 px-4 py-3 text-sm focus:outline-none overflow-auto"
+          className="flex-1 px-4 py-3 text-sm focus:outline-hidden overflow-auto"
           style={{ minHeight }}
           onInput={emitChange}
           onKeyUp={updateActiveStates}

@@ -235,8 +235,8 @@ export default function InterestConfigPage() {
     return { down, loan, interest, commission, vatAmount, total, monthly, months };
   };
 
-  const inputClass = 'w-full px-3 py-2 border rounded-lg text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background';
-  const errorInputClass = 'w-full px-3 py-2 border border-red-400 rounded-lg text-sm outline-none focus-visible:ring-2 focus-visible:ring-red-400';
+  const inputClass = 'w-full px-3 py-2 border rounded-lg text-sm outline-hidden focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background';
+  const errorInputClass = 'w-full px-3 py-2 border border-red-400 rounded-lg text-sm outline-hidden focus-visible:ring-2 focus-visible:ring-red-400';
 
   return (
     <div>
@@ -290,7 +290,7 @@ export default function InterestConfigPage() {
                         step={item.step}
                         value={defaults[item.key] ?? ''}
                         onChange={(e) => handleDefaultChange(item.key, e.target.value)}
-                        className="w-full px-3 py-2 border border-input rounded-lg text-sm text-right focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+                        className="w-full px-3 py-2 border border-input rounded-lg text-sm text-right focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
                       />
                     </div>
                   </div>

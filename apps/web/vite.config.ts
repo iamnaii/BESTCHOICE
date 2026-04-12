@@ -1,9 +1,10 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 import path from 'path';
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -11,19 +12,15 @@ export default defineConfig({
     },
   },
   build: {
-    target: 'es2020',
-    rollupOptions: {
+    rolldownOptions: {
       output: {
-        manualChunks: {
-          vendor: ['react', 'react-dom', 'react-router-dom'],
-          query: ['@tanstack/react-query'],
-          liff: ['@line/liff'],
-          // Heavy libs split into separate chunks so the initial JS bundle
-          // doesn't pay for them on every page load. Each chunk only
-          // downloads when a page that uses it is navigated to.
-          excel: ['exceljs'],
-          pdf: ['jspdf', 'jspdf-autotable'],
-          charts: ['recharts'],
+        manualChunks(id) {
+          if (id.includes('node_modules/react-dom/') || id.includes('node_modules/react/') || id.includes('node_modules/react-router/')) return 'vendor';
+          if (id.includes('node_modules/@tanstack/react-query/')) return 'query';
+          if (id.includes('node_modules/@line/liff/')) return 'liff';
+          if (id.includes('node_modules/exceljs/')) return 'excel';
+          if (id.includes('node_modules/jspdf')) return 'pdf';
+          if (id.includes('node_modules/recharts/')) return 'charts';
         },
       },
     },

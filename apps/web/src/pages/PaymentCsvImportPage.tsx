@@ -163,7 +163,7 @@ export default function PaymentCsvImportPage() {
             onChange={(e) => { setCsvText(e.target.value); setResult(null); }}
             placeholder="วางข้อมูล CSV ที่นี่..."
             rows={8}
-            className="w-full px-3.5 py-2.5 border border-input rounded-lg text-sm font-mono outline-none bg-background text-foreground placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/30 resize-y"
+            className="w-full px-3.5 py-2.5 border border-input rounded-lg text-sm font-mono outline-hidden bg-background text-foreground placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/30 resize-y"
           />
 
           {csvText && (

@@ -90,7 +90,7 @@ function DataGridTableHeadRow<TData>({
       className={cn(
         'bg-muted/40',
         props.tableLayout?.headerBorder && '[&>th]:border-b',
-        props.tableLayout?.cellBorder && '[&_>:last-child]:border-e-0',
+        props.tableLayout?.cellBorder && '*:last:border-e-0',
         props.tableLayout?.stripped && 'bg-transparent',
         props.tableLayout?.headerBackground === false && 'bg-transparent',
         props.tableClassNames?.headerRow,
@@ -161,7 +161,7 @@ function DataGridTableHeadRowCellResize<TData>({ header }: { header: Header<TDat
         onMouseDown: header.getResizeHandler(),
         onTouchStart: header.getResizeHandler(),
         className:
-          'absolute top-0 h-full w-4 cursor-col-resize user-select-none touch-none -end-2 z-10 flex justify-center before:absolute before:w-px before:inset-y-0 before:bg-border before:-translate-x-px',
+          'absolute top-0 h-full w-4 cursor-col-resize user-select-none touch-none -inset-e-2 z-10 flex justify-center before:absolute before:w-px before:inset-y-0 before:bg-border before:-translate-x-px',
       }}
     />
   );
@@ -198,9 +198,9 @@ function DataGridTableBodyRowSkeleton({ children }: { children: ReactNode }) {
         !props.tableLayout?.stripped &&
           props.tableLayout?.rowBorder &&
           'border-b border-border [&:not(:last-child)>td]:border-b',
-        props.tableLayout?.cellBorder && '[&_>:last-child]:border-e-0',
+        props.tableLayout?.cellBorder && '*:last:border-e-0',
         props.tableLayout?.stripped && 'odd:bg-muted/90 hover:bg-transparent odd:hover:bg-muted',
-        table.options.enableRowSelection && '[&_>:first-child]:relative',
+        table.options.enableRowSelection && '*:first:relative',
         props.tableClassNames?.bodyRow,
       )}
     >
@@ -258,9 +258,9 @@ function DataGridTableBodyRow<TData>({
         !props.tableLayout?.stripped &&
           props.tableLayout?.rowBorder &&
           'border-b border-border [&:not(:last-child)>td]:border-b',
-        props.tableLayout?.cellBorder && '[&_>:last-child]:border-e-0',
+        props.tableLayout?.cellBorder && '*:last:border-e-0',
         props.tableLayout?.stripped && 'odd:bg-muted/90 hover:bg-transparent odd:hover:bg-muted',
-        table.options.enableRowSelection && '[&_>:first-child]:relative',
+        table.options.enableRowSelection && '*:first:relative',
         props.tableClassNames?.bodyRow,
       )}
     >
@@ -373,7 +373,7 @@ function DataGridTableRowSelect<TData>({ row, size }: { row: Row<TData>; size?: 
   return (
     <>
       <div
-        className={cn('hidden absolute top-0 bottom-0 start-0 w-[2px] bg-primary', row.getIsSelected() && 'block')}
+        className={cn('hidden absolute top-0 bottom-0 inset-s-0 w-[2px] bg-primary', row.getIsSelected() && 'block')}
       ></div>
       <Checkbox
         checked={row.getIsSelected()}

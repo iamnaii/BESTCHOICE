@@ -243,7 +243,7 @@ function PDPAPage() {
               placeholder="ใส่ Customer ID เพื่อค้นหา consent..."
               value={customerIdSearch}
               onChange={(e) => setCustomerIdSearch(e.target.value)}
-              className="flex-1 px-3 py-2 border border-input rounded-lg text-sm bg-background focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+              className="flex-1 px-3 py-2 border border-input rounded-lg text-sm bg-background focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
             />
             <button
               onClick={() => refetchConsents()}

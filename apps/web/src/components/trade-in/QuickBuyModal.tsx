@@ -274,7 +274,7 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
     >
       <div className="w-full max-w-3xl bg-white dark:bg-slate-950 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100vh-3rem)] ring-1 ring-slate-200 dark:ring-slate-800">
         {/* Header — sticky */}
-        <div className="sticky top-0 z-10 bg-gradient-to-b from-emerald-50 to-white dark:from-emerald-950/30 dark:to-slate-950 border-b border-emerald-200/60 dark:border-emerald-900/40 px-6 py-4 flex items-center justify-between">
+        <div className="sticky top-0 z-10 bg-linear-to-b from-emerald-50 to-white dark:from-emerald-950/30 dark:to-slate-950 border-b border-emerald-200/60 dark:border-emerald-900/40 px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="size-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-sm">
               <ShoppingBag className="size-5" />

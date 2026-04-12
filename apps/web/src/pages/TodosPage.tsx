@@ -579,7 +579,7 @@ export default function TodosPage() {
           placeholder="ค้นหางาน..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-9 pr-3 py-2.5 border border-input bg-card rounded-xl text-sm focus-visible:ring-2 focus-visible:ring-primary/20 focus:border-primary/50 outline-none transition-colors"
+          className="w-full pl-9 pr-3 py-2.5 border border-input bg-card rounded-xl text-sm focus-visible:ring-2 focus-visible:ring-primary/20 focus:border-primary/50 outline-hidden transition-colors"
         />
       </div>
 
@@ -714,7 +714,7 @@ export default function TodosPage() {
                     <div className="flex items-center gap-1.5 shrink-0">
                       {t.assignee && (
                         <div
-                          className={`size-6 rounded-full bg-gradient-to-br ${avatarColor(
+                          className={`size-6 rounded-full bg-linear-to-br ${avatarColor(
                             assigneeName,
                           )} text-white text-[10px] font-bold inline-flex items-center justify-center ring-2 ring-card shadow-sm`}
                           title={assigneeName}
@@ -747,7 +747,7 @@ export default function TodosPage() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto p-0 gap-0">
           {/* Gradient header */}
-          <DialogHeader className="px-6 py-5 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border-b border-border">
+          <DialogHeader className="px-6 py-5 bg-linear-to-r from-primary/10 via-primary/5 to-transparent border-b border-border">
             <DialogTitle className="flex items-center gap-2.5 text-lg">
               <div className="size-9 rounded-xl bg-primary/15 text-primary flex items-center justify-center">
                 <CheckSquare className="size-5" />
@@ -767,7 +767,7 @@ export default function TodosPage() {
                 type="text"
                 value={form.title || ''}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
-                className="w-full px-4 py-2.5 border border-input rounded-xl text-sm bg-card focus-visible:ring-2 focus-visible:ring-primary/20 focus:border-primary/50 outline-none transition-colors"
+                className="w-full px-4 py-2.5 border border-input rounded-xl text-sm bg-card focus-visible:ring-2 focus-visible:ring-primary/20 focus:border-primary/50 outline-hidden transition-colors"
                 placeholder="เช่น โทรตามลูกค้า A"
                 autoFocus
               />
@@ -790,7 +790,7 @@ export default function TodosPage() {
                 }}
                 rows={3}
                 placeholder="อธิบายรายละเอียดงาน..."
-                className="w-full px-4 py-2.5 border border-input rounded-xl text-sm bg-card focus-visible:ring-2 focus-visible:ring-primary/20 focus:border-primary/50 outline-none transition-colors resize-none overflow-y-auto min-h-[88px]"
+                className="w-full px-4 py-2.5 border border-input rounded-xl text-sm bg-card focus-visible:ring-2 focus-visible:ring-primary/20 focus:border-primary/50 outline-hidden transition-colors resize-none overflow-y-auto min-h-[88px]"
               />
             </div>
 
@@ -867,7 +867,7 @@ export default function TodosPage() {
                   type="date"
                   value={form.dueDate || ''}
                   onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
-                  className="w-full px-4 py-2.5 border border-input rounded-xl text-sm bg-card focus-visible:ring-2 focus-visible:ring-primary/20 focus:border-primary/50 outline-none transition-colors"
+                  className="w-full px-4 py-2.5 border border-input rounded-xl text-sm bg-card focus-visible:ring-2 focus-visible:ring-primary/20 focus:border-primary/50 outline-hidden transition-colors"
                 />
               </div>
               <div>
@@ -878,7 +878,7 @@ export default function TodosPage() {
                 <select
                   value={form.assigneeId || ''}
                   onChange={(e) => setForm({ ...form, assigneeId: e.target.value })}
-                  className="w-full px-4 py-2.5 border border-input rounded-xl text-sm bg-card focus-visible:ring-2 focus-visible:ring-primary/20 focus:border-primary/50 outline-none transition-colors"
+                  className="w-full px-4 py-2.5 border border-input rounded-xl text-sm bg-card focus-visible:ring-2 focus-visible:ring-primary/20 focus:border-primary/50 outline-hidden transition-colors"
                 >
                   <option value="">ไม่ระบุ</option>
                   {staffUsers.map((u) => (
@@ -923,7 +923,7 @@ export default function TodosPage() {
                     }
                   }}
                   placeholder={form.tags?.length ? '' : 'พิมพ์แล้วกด Enter'}
-                  className="flex-1 min-w-[120px] outline-none bg-transparent text-sm py-0.5"
+                  className="flex-1 min-w-[120px] outline-hidden bg-transparent text-sm py-0.5"
                 />
               </div>
             </div>
@@ -973,7 +973,7 @@ export default function TodosPage() {
                       type="text"
                       value={c.text}
                       onChange={(e) => updateChecklist(c.id, { text: e.target.value })}
-                      className={`flex-1 bg-transparent outline-none text-sm ${
+                      className={`flex-1 bg-transparent outline-hidden text-sm ${
                         c.done ? 'line-through text-muted-foreground' : ''
                       }`}
                       placeholder="รายการย่อย..."
@@ -1119,14 +1119,14 @@ export default function TodosPage() {
       </Dialog>
 
       {/* Lightbox: full-size image preview. Click backdrop or press Escape
-          to close. Sits at z-[60] to appear above the edit Dialog (z-50). */}
+          to close. Sits at z-60 to appear above the edit Dialog (z-50). */}
       {lightboxUrl && (
         <div
           role="dialog"
           aria-modal="true"
           aria-label="ภาพขยาย"
           onClick={() => setLightboxUrl(null)}
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/85 backdrop-blur-sm p-4 cursor-zoom-out animate-in fade-in"
+          className="fixed inset-0 z-60 flex items-center justify-center bg-black/85 backdrop-blur-xs p-4 cursor-zoom-out animate-in fade-in"
         >
           <button
             type="button"

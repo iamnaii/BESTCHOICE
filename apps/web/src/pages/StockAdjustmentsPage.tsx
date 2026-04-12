@@ -297,13 +297,13 @@ export default function StockAdjustmentsPage() {
             placeholder="ค้นหาชื่อ, ยี่ห้อ, รุ่น, IMEI..."
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-            className="flex-1 min-w-[200px] px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+            className="flex-1 min-w-[200px] px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
           />
         )}
         <select
           value={filterBranch}
           onChange={(e) => { setFilterBranch(e.target.value); setPage(1); }}
-          className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+          className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
         >
           <option value="">ทุกสาขา</option>
           {branches?.map((b) => (
@@ -314,7 +314,7 @@ export default function StockAdjustmentsPage() {
           <select
             value={filterReason}
             onChange={(e) => { setFilterReason(e.target.value); setPage(1); }}
-            className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+            className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
           >
             <option value="">ทุกสาเหตุ</option>
             {Object.entries(reasonLabels).map(([key, val]) => (
@@ -430,7 +430,7 @@ export default function StockAdjustmentsPage() {
               type="text"
               value={productSearch}
               onChange={(e) => { setProductSearch(e.target.value); setForm({ ...form, productId: '' }); }}
-              className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+              className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
               placeholder="พิมพ์ชื่อ, ยี่ห้อ, รุ่น, IMEI..."
             />
             {debouncedProductSearch && searchProducts?.products && searchProducts.products.length > 0 && !form.productId && (
@@ -460,7 +460,7 @@ export default function StockAdjustmentsPage() {
             <select
               value={form.reason}
               onChange={(e) => setForm({ ...form, reason: e.target.value })}
-              className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+              className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
             >
               {Object.entries(reasonLabels).map(([key, val]) => (
                 <option key={key} value={key}>{val.label}</option>
@@ -483,7 +483,7 @@ export default function StockAdjustmentsPage() {
               value={form.notes}
               onChange={(e) => setForm({ ...form, notes: e.target.value })}
               rows={3}
-              className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+              className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
               placeholder="รายละเอียดเพิ่มเติม..."
             />
           </div>

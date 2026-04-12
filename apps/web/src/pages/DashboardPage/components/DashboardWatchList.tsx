@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { Card, CardHeader, CardTitle, CardToolbar, CardTable } from '@/components/ui/card';
 import {
   ShieldAlert,

@@ -63,12 +63,12 @@ const tabsListVariants = cva('flex items-center shrink-0', {
     {
       variant: 'default',
       shape: 'pill',
-      className: 'rounded-full [&_[role=tab]]:rounded-full',
+      className: 'rounded-full **:[[role=tab]]:rounded-full',
     },
     {
       variant: 'button',
       shape: 'pill',
-      className: 'rounded-full [&_[role=tab]]:rounded-full',
+      className: 'rounded-full **:[[role=tab]]:rounded-full',
     },
   ],
   defaultVariants: {
@@ -79,7 +79,7 @@ const tabsListVariants = cva('flex items-center shrink-0', {
 
 // Variants for TabsTrigger
 const tabsTriggerVariants = cva(
-  'shrink-0 cursor-pointer whitespace-nowrap inline-flex justify-center items-center font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:shrink-0 [&_svg]:text-muted-foreground [&:hover_svg]:text-primary [&[data-state=active]_svg]:text-primary',
+  'shrink-0 cursor-pointer whitespace-nowrap inline-flex justify-center items-center font-medium ring-offset-background transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:shrink-0 [&_svg]:text-muted-foreground [&:hover_svg]:text-primary [&[data-state=active]_svg]:text-primary',
   {
     variants: {
       variant: {
@@ -121,7 +121,7 @@ const tabsTriggerVariants = cva(
 
 // Variants for TabsContent
 const tabsContentVariants = cva(
-  'mt-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+  'mt-2.5 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
   {
     variants: {
       variant: {

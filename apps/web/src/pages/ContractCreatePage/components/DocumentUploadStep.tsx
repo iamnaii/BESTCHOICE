@@ -62,15 +62,15 @@ function DocTypeSection({
             {docs.map((doc) => (
               <div key={doc.id} className="flex items-center gap-2 bg-muted rounded px-3 py-1.5">
                 {doc.file.type.startsWith('image/') ? (
-                  <img src={doc.preview} alt="ตัวอย่างเอกสาร" className="w-8 h-8 rounded object-cover flex-shrink-0" />
+                  <img src={doc.preview} alt="ตัวอย่างเอกสาร" className="w-8 h-8 rounded object-cover shrink-0" />
                 ) : (
-                  <div className="w-8 h-8 rounded bg-red-100 flex items-center justify-center text-2xs font-bold text-destructive flex-shrink-0">PDF</div>
+                  <div className="w-8 h-8 rounded bg-red-100 flex items-center justify-center text-2xs font-bold text-destructive shrink-0">PDF</div>
                 )}
                 <div className="min-w-0 flex-1">
                   <div className="text-xs font-medium text-foreground truncate">{doc.file.name}</div>
                   <div className="text-2xs text-muted-foreground">{(doc.file.size / 1024).toFixed(0)} KB</div>
                 </div>
-                <button onClick={() => handleRemoveDoc(doc.id)} className="text-2xs text-red-500 hover:text-red-700 flex-shrink-0">ลบ</button>
+                <button onClick={() => handleRemoveDoc(doc.id)} className="text-2xs text-red-500 hover:text-red-700 shrink-0">ลบ</button>
               </div>
             ))}
           </div>

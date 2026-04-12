@@ -5,7 +5,7 @@ import { Slot } from '@radix-ui/react-slot';
 import { cn } from '@/lib/utils';
 
 const buttonVariants = cva(
-  'cursor-pointer group whitespace-nowrap focus-visible:outline-none inline-flex items-center justify-center whitespace-nowrap text-sm font-medium ring-offset-background transition-[color,box-shadow] disabled:pointer-events-none disabled:opacity-60 [&_svg]:shrink-0',
+  'cursor-pointer group whitespace-nowrap focus-visible:outline-hidden inline-flex items-center justify-center whitespace-nowrap text-sm font-medium ring-offset-background transition-[color,box-shadow] disabled:pointer-events-none disabled:opacity-60 [&_svg]:shrink-0',
   {
     variants: {
       variant: {
@@ -54,8 +54,8 @@ const buttonVariants = cva(
         icon: 'focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 shrink-0',
         link: 'text-primary h-auto p-0 bg-transparent rounded-none hover:bg-transparent data-[state=open]:bg-transparent',
         input: `
-            justify-start font-normal hover:bg-background [&_svg]:transition-colors [&_svg]:hover:text-foreground data-[state=open]:bg-background
-            focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/30
+            justify-start font-normal hover:bg-background [&_svg]:transition-colors hover:[&_svg]:text-foreground data-[state=open]:bg-background
+            focus-visible:border-ring focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring/30
             aria-invalid:border-destructive/60 aria-invalid:ring-destructive/10 dark:aria-invalid:border-destructive dark:aria-invalid:ring-destructive/20
           `,
       },

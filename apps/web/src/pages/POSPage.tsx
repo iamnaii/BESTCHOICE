@@ -1,9 +1,9 @@
 import { useState, useMemo } from 'react';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
+import { standardSchemaResolver } from '@hookform/resolvers/standard-schema';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import { Copy } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
@@ -91,7 +91,7 @@ export default function POSPage() {
 
   // Sale form — replaces individual useState for sale detail fields
   const saleForm = useForm<PosSaleFormData>({
-    resolver: zodResolver(posSaleSchema),
+    resolver: standardSchemaResolver(posSaleSchema),
     defaultValues: {
       saleType: 'CASH',
       sellingPrice: 0,
@@ -326,7 +326,7 @@ export default function POSPage() {
     });
   };
 
-  const inputClass = 'w-full px-3 py-2 border border-input rounded-lg text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background';
+  const inputClass = 'w-full px-3 py-2 border border-input rounded-lg text-sm outline-hidden focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background';
   const selectClass = inputClass;
 
   return (
@@ -854,7 +854,7 @@ export default function POSPage() {
         <div className="flex flex-col gap-5">
           <Card className="sticky top-20 border-border/60 shadow-md overflow-hidden">
             {/* Card accent header */}
-            <div className="h-1.5 w-full bg-gradient-to-r from-primary to-primary/60" />
+            <div className="h-1.5 w-full bg-linear-to-r from-primary to-primary/60" />
             <CardHeader>
               <div className="flex items-center justify-between w-full">
                 <div className="text-sm font-semibold text-foreground">สรุปรายการ</div>

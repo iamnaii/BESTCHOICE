@@ -205,7 +205,7 @@ export default function ExchangePage() {
             <select
               value={selectedContractId}
               onChange={(e) => setSelectedContractId(e.target.value)}
-              className="w-full max-w-lg px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+              className="w-full max-w-lg px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
             >
               <option value="">-- เลือกสัญญา --</option>
               {contracts.map((c) => (
@@ -221,7 +221,7 @@ export default function ExchangePage() {
             <select
               value={selectedProductId}
               onChange={(e) => { setSelectedProductId(e.target.value); setSelectedPriceId(''); }}
-              className="w-full max-w-lg px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+              className="w-full max-w-lg px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
             >
               <option value="">-- เลือกสินค้า --</option>
               {products.map((p) => (
@@ -238,7 +238,7 @@ export default function ExchangePage() {
               <select
                 value={selectedPriceId}
                 onChange={(e) => setSelectedPriceId(e.target.value)}
-                className="w-full max-w-lg px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+                className="w-full max-w-lg px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
               >
                 <option value="">-- เลือกราคา --</option>
                 {selectedProduct.prices.map((pr) => (
@@ -332,7 +332,7 @@ export default function ExchangePage() {
                     value={downPayment}
                     onChange={(e) => setDownPayment(e.target.value)}
                     placeholder="ขั้นต่ำ 15% ของราคาสินค้า"
-                    className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+                    className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
                   />
                   <div className="text-xs text-muted-foreground mt-1">
                     ขั้นต่ำ ~{Math.ceil(quote.newProduct.selectedPrice.amount * 0.15).toLocaleString()} บาท (15%)
@@ -343,7 +343,7 @@ export default function ExchangePage() {
                   <select
                     value={totalMonths}
                     onChange={(e) => setTotalMonths(e.target.value)}
-                    className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+                    className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
                   >
                     {[6, 7, 8, 9, 10, 11, 12].map((m) => (
                       <option key={m} value={m}>{m} เดือน</option>
@@ -358,7 +358,7 @@ export default function ExchangePage() {
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   rows={2}
-                  className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+                  className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
                   placeholder="หมายเหตุเพิ่มเติม..."
                 />
               </div>

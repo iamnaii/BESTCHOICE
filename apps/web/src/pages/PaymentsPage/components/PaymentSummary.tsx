@@ -24,7 +24,7 @@ export default function PaymentSummary({
         <ThaiDateInput
           value={summaryDate}
           onChange={(e) => onDateChange(e.target.value)}
-          className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-none focus:ring-2 focus:ring-ring/30"
+          className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-hidden focus:ring-2 focus:ring-ring/30"
         />
       </div>
 

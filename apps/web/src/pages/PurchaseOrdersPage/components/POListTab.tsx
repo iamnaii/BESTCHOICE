@@ -183,7 +183,7 @@ export function POListTab({
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-3 py-2 border border-input rounded-lg text-sm bg-background focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background transition-colors outline-none"
+          className="px-3 py-2 border border-input rounded-lg text-sm bg-background focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background transition-colors outline-hidden"
         >
           <option value="">ทุกสถานะ</option>
           <option value="DRAFT">รออนุมัติ</option>

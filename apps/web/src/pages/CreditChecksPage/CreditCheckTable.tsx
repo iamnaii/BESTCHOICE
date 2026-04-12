@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import DataTable from '@/components/ui/DataTable';
 import QueryBoundary from '@/components/QueryBoundary';
 import { formatDateShort } from '@/utils/formatters';

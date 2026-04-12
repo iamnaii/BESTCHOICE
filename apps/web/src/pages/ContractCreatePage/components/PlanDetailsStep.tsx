@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
+import { standardSchemaResolver } from '@hookform/resolvers/standard-schema';
 import type { Product, InterestConfig, Customer } from '../types';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
@@ -87,7 +87,7 @@ export function PlanDetailsStep({
   monthOptions,
 }: PlanDetailsStepProps) {
   const form = useForm<ContractPlanFormData>({
-    resolver: zodResolver(contractPlanSchema),
+    resolver: standardSchemaResolver(contractPlanSchema),
     defaultValues: {
       downPayment,
       totalMonths,

@@ -1,5 +1,5 @@
 import { useState, FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { toast } from 'sonner';
 import api from '@/lib/api';
 import AuthLayout from '@/components/layout/AuthLayout';
@@ -57,7 +57,7 @@ export default function ForgotPasswordPage() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full h-10 px-3.5 border border-input rounded-lg text-sm outline-none transition-all bg-background text-foreground placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background"
+                className="w-full h-10 px-3.5 border border-input rounded-lg text-sm outline-hidden transition-all bg-background text-foreground placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background"
                 placeholder="email@example.com"
                 autoComplete="email"
                 required

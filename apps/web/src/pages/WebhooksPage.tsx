@@ -93,7 +93,7 @@ function AddWebhookForm({ onClose, onSuccess }: { onClose: () => void; onSuccess
             placeholder="เช่น Partner XYZ Integration"
             value={form.name}
             onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-            className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500"
             required
           />
         </div>
@@ -106,7 +106,7 @@ function AddWebhookForm({ onClose, onSuccess }: { onClose: () => void; onSuccess
             placeholder="https://partner.com/webhook"
             value={form.url}
             onChange={(e) => setForm((f) => ({ ...f, url: e.target.value }))}
-            className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500"
             required
           />
         </div>
@@ -121,7 +121,7 @@ function AddWebhookForm({ onClose, onSuccess }: { onClose: () => void; onSuccess
           placeholder="your-secret-key"
           value={form.secret}
           onChange={(e) => setForm((f) => ({ ...f, secret: e.target.value }))}
-          className="w-full border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full border rounded-lg px-3 py-2 text-sm font-mono focus:outline-hidden focus:ring-2 focus:ring-blue-500"
           required
         />
       </div>
@@ -200,7 +200,7 @@ function WebhookRow({
       <div className="flex items-center gap-3 p-4 bg-white">
         <button
           onClick={() => setExpanded((v) => !v)}
-          className="flex-shrink-0 text-gray-400 hover:text-gray-600"
+          className="shrink-0 text-gray-400 hover:text-gray-600"
           aria-label={expanded ? 'ซ่อน' : 'แสดงรายละเอียด'}
         >
           <ChevronIcon className="w-4 h-4" aria-hidden="true" />
@@ -236,7 +236,7 @@ function WebhookRow({
           <p className="text-xs text-gray-400 mt-0.5 truncate font-mono">{sub.url}</p>
         </div>
 
-        <div className="flex items-center gap-2 flex-shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={() => testMutation.mutate()}
             disabled={testMutation.isPending}

@@ -32,10 +32,10 @@ export function GoodsReceivingModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-start justify-center pt-8 pb-8" role="dialog" aria-modal="true" aria-label="รับสินค้า">
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-start justify-center pt-8 pb-8" role="dialog" aria-modal="true" aria-label="รับสินค้า">
       <div className="w-full max-w-3xl bg-background rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100vh-4rem)]">
         {/* Sticky Header */}
-        <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b px-6 py-4 flex items-center justify-between shrink-0">
+        <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-xs border-b px-6 py-4 flex items-center justify-between shrink-0">
           <button type="button" onClick={onClose} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
             กลับ
@@ -115,14 +115,14 @@ export function GoodsReceivingModal({
                           placeholder="IMEI"
                           value={unit.imeiSerial}
                           onChange={(e) => updateReceivingUnit(idx, 'imeiSerial', e.target.value)}
-                          className="px-2 py-1.5 border border-input rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none font-mono"
+                          className="px-2 py-1.5 border border-input rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden font-mono"
                         />
                         <input
                           type="text"
                           placeholder="หมายเลขซีเรียล"
                           value={unit.serialNumber}
                           onChange={(e) => updateReceivingUnit(idx, 'serialNumber', e.target.value)}
-                          className="px-2 py-1.5 border border-input rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none font-mono"
+                          className="px-2 py-1.5 border border-input rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden font-mono"
                         />
                       </div>
                       )}
@@ -137,7 +137,7 @@ export function GoodsReceivingModal({
                                 placeholder="เช่น 87"
                                 value={unit.batteryHealth}
                                 onChange={(e) => updateReceivingUnit(idx, 'batteryHealth', e.target.value)}
-                                className="w-full px-2 py-1.5 border border-input rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+                                className="w-full px-2 py-1.5 border border-input rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
                                 min="0"
                                 max="100"
                               />
@@ -178,7 +178,7 @@ export function GoodsReceivingModal({
                                 <ThaiDateInput
                                   value={unit.warrantyExpireDate}
                                   onChange={(e) => updateReceivingUnit(idx, 'warrantyExpireDate', e.target.value)}
-                                  className="flex-1 px-2 py-1.5 border border-input rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+                                  className="flex-1 px-2 py-1.5 border border-input rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
                                 />
                               )}
                             </div>
@@ -213,7 +213,7 @@ export function GoodsReceivingModal({
                                           placeholder="หมายเหตุ"
                                           value={c.note}
                                           onChange={(e) => updateChecklist(idx, checkIdx, 'note', e.target.value)}
-                                          className="w-32 px-1.5 py-0.5 border border-red-300 rounded text-xs focus-visible:ring-1 focus-visible:ring-ring/30 outline-none"
+                                          className="w-32 px-1.5 py-0.5 border border-red-300 rounded text-xs focus-visible:ring-1 focus-visible:ring-ring/30 outline-hidden"
                                         />
                                       )}
                                     </div>
@@ -237,7 +237,7 @@ export function GoodsReceivingModal({
                               placeholder="เช่น 15000"
                               value={unit.sellingPrice}
                               onChange={(e) => updateReceivingUnit(idx, 'sellingPrice', e.target.value)}
-                              className="w-full px-2 py-1.5 border border-input rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+                              className="w-full px-2 py-1.5 border border-input rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
                               min="0"
                             />
                           </div>
@@ -249,7 +249,7 @@ export function GoodsReceivingModal({
                           placeholder="เหตุผลที่ไม่ผ่าน *"
                           value={unit.rejectReason}
                           onChange={(e) => updateReceivingUnit(idx, 'rejectReason', e.target.value)}
-                          className="mt-2 w-full px-2 py-1.5 border border-red-300 rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+                          className="mt-2 w-full px-2 py-1.5 border border-red-300 rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
                         />
                       )}
                     </div>
@@ -300,14 +300,14 @@ export function GoodsReceivingModal({
                   value={receivingNotes}
                   onChange={(e) => setReceivingNotes(e.target.value)}
                   rows={2}
-                  className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+                  className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
                   placeholder="บันทึกเพิ่มเติม..."
                 />
               </div>
             </div>
 
             {/* Sticky Footer */}
-            <div className="sticky bottom-0 bg-background/95 backdrop-blur-sm border-t px-6 py-4 flex justify-end gap-3 shrink-0">
+            <div className="sticky bottom-0 bg-background/95 backdrop-blur-xs border-t px-6 py-4 flex justify-end gap-3 shrink-0">
               <button
                 type="button"
                 onClick={() => onClose()}

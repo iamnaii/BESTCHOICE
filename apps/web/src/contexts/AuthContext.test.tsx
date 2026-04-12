@@ -68,8 +68,11 @@ afterEach(() => {
 
 describe('<AuthProvider />', () => {
   describe('initial session restore', () => {
-    it('stays unauthenticated and skips /auth/me when no token is stored', async () => {
+    it('stays unauthenticated when /auth/me fails (no valid session)', async () => {
       getAccessTokenMock.mockReturnValue(null);
+      // AuthContext always calls /auth/me (refresh cookie may exist).
+      // Simulate 401 — no valid session.
+      apiGetMock.mockRejectedValueOnce({ response: { status: 401 } });
 
       renderHarness();
 
@@ -77,8 +80,7 @@ describe('<AuthProvider />', () => {
         expect(screen.getByTestId('loading')).toHaveTextContent('done');
       });
       expect(screen.getByTestId('auth')).toHaveTextContent('no');
-      expect(apiGetMock).not.toHaveBeenCalled();
-      expect(setUserMock).not.toHaveBeenCalled();
+      expect(apiGetMock).toHaveBeenCalledWith('/auth/me', { timeout: 10000 });
     });
 
     it('restores the user via /auth/me and tags Sentry when a token exists', async () => {

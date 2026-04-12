@@ -86,7 +86,7 @@ const statusColors: Record<string, string> = {
 };
 
 const inputClass =
-  'w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none';
+  'w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden';
 
 function fmt(n: string | number | null | undefined): string {
   if (n == null) return '-';
@@ -543,10 +543,10 @@ export default function AssetManagementPage() {
 
       {/* Create / Edit Full-Screen Form */}
       {showModal && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-start justify-center pt-8 pb-8">
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-start justify-center pt-8 pb-8">
           <div className="w-full max-w-4xl bg-background rounded-xl shadow-2xl overflow-y-auto max-h-[calc(100vh-4rem)]">
             {/* Sticky Header */}
-            <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b px-6 py-4 flex items-center justify-between">
+            <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-xs border-b px-6 py-4 flex items-center justify-between">
               <button onClick={closeModal} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
                 <ArrowLeft className="size-4" /> กลับ
               </button>
@@ -722,7 +722,7 @@ export default function AssetManagementPage() {
 
                   {/* Live depreciation summary */}
                   {Number(form.costValue) > 0 && Number(form.usefulLife) > 0 && (
-                    <div className="bg-gradient-to-br from-emerald-500/5 to-emerald-500/10 dark:from-emerald-500/10 dark:to-emerald-500/15 rounded-xl p-4 space-y-2 text-sm border border-emerald-500/15">
+                    <div className="bg-linear-to-br from-emerald-500/5 to-emerald-500/10 dark:from-emerald-500/10 dark:to-emerald-500/15 rounded-xl p-4 space-y-2 text-sm border border-emerald-500/15">
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">ราคาทุน</span>
                         <span className="font-medium">{fmt(form.costValue)}</span>

@@ -468,13 +468,13 @@ export default function SlipReviewTab() {
       {/* Review Modal */}
       {selectedEvidence && (
         <div
-          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-start justify-center pt-8 pb-8"
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-start justify-center pt-8 pb-8"
           role="dialog"
           aria-modal="true"
           aria-label={`ตรวจสอบสลิป - ${selectedEvidence.contract.customer.name}`}
         >
           <div className="w-full max-w-5xl bg-background rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100vh-4rem)]">
-            <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b px-6 py-4 flex items-center justify-between shrink-0">
+            <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-xs border-b px-6 py-4 flex items-center justify-between shrink-0">
               <button
                 type="button"
                 onClick={() => {
@@ -673,7 +673,7 @@ export default function SlipReviewTab() {
             </div>
           </div>
               </div>
-              <div className="sticky bottom-0 bg-background/95 backdrop-blur-sm border-t px-6 py-4 flex justify-end gap-3 shrink-0">
+              <div className="sticky bottom-0 bg-background/95 backdrop-blur-xs border-t px-6 py-4 flex justify-end gap-3 shrink-0">
                 <button
                   type="button"
                   onClick={() => {

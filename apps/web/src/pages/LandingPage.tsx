@@ -1,5 +1,5 @@
 import { useRef, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import LandingNav from '@/components/landing/LandingNav';
 import ProductCard from '@/components/landing/ProductCard';
@@ -90,15 +90,15 @@ export default function LandingPage() {
 
                 {/* Stats */}
                 <div className="mt-12 grid grid-cols-3 gap-6">
-                  <div className="bg-white/[0.06] backdrop-blur-sm border border-white/[0.08] rounded-xl p-4">
+                  <div className="bg-white/6 backdrop-blur-xs border border-white/8 rounded-xl p-4">
                     <div className="text-2xl lg:text-3xl font-bold text-white">500+</div>
                     <div className="text-sm text-white/50 mt-1">สินค้าพร้อมขาย</div>
                   </div>
-                  <div className="bg-white/[0.06] backdrop-blur-sm border border-white/[0.08] rounded-xl p-4">
+                  <div className="bg-white/6 backdrop-blur-xs border border-white/8 rounded-xl p-4">
                     <div className="text-2xl lg:text-3xl font-bold text-white">1,000+</div>
                     <div className="text-sm text-white/50 mt-1">ลูกค้าที่ไว้ใจ</div>
                   </div>
-                  <div className="bg-white/[0.06] backdrop-blur-sm border border-white/[0.08] rounded-xl p-4">
+                  <div className="bg-white/6 backdrop-blur-xs border border-white/8 rounded-xl p-4">
                     <div className="text-2xl lg:text-3xl font-bold text-white">5+</div>
                     <div className="text-sm text-white/50 mt-1">สาขาทั่วประเทศ</div>
                   </div>
@@ -108,8 +108,8 @@ export default function LandingPage() {
               {/* Phone Illustration */}
               <div className="hidden lg:flex justify-center">
                 <div className="relative">
-                  <div className="w-64 h-[500px] bg-gradient-to-b from-white/10 to-white/5 rounded-[3rem] border border-white/20 flex items-center justify-center animate-float">
-                    <div className="w-56 h-[460px] bg-gradient-to-b from-primary-800 to-primary-900 rounded-[2.5rem] flex flex-col items-center justify-center gap-4">
+                  <div className="w-64 h-[500px] bg-linear-to-b from-white/10 to-white/5 rounded-[3rem] border border-white/20 flex items-center justify-center animate-float">
+                    <div className="w-56 h-[460px] bg-linear-to-b from-primary-800 to-primary-900 rounded-[2.5rem] flex flex-col items-center justify-center gap-4">
                       <svg className="w-20 h-20 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
                       </svg>
@@ -338,7 +338,7 @@ export default function LandingPage() {
           <div className="grid md:grid-cols-4 gap-8">
             <div className="md:col-span-2">
               <div className="flex items-center gap-2 mb-4">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-400 to-primary-500 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-lg bg-linear-to-br from-primary-400 to-primary-500 flex items-center justify-center">
                   <span className="text-white font-bold text-sm">B</span>
                 </div>
                 <span className="text-xl font-bold text-white">

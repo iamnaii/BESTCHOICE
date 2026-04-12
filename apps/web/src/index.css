@@ -1,9 +1,263 @@
 /* ── Google Fonts: Inter + Noto Sans Thai ───────────── */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap')
+layer(base);
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+
+@plugin 'tailwindcss-animate';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --font-sans: 'Inter', 'Noto Sans Thai', system-ui, -apple-system, sans-serif;
+  --font-sarabun: 'Noto Sans Thai', sans-serif;
+
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1.2;
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1.33;
+  --text-2sm: 0.8125rem;
+  --text-2sm--line-height: 1.32;
+  --text-sm: 0.875rem;
+  --text-sm--line-height: 1.43;
+  --text-base: 1rem;
+  --text-base--line-height: 1.5;
+  --text-lg: 1.125rem;
+  --text-lg--line-height: 1.56;
+  --text-xl: 1.25rem;
+  --text-xl--line-height: 1.4;
+  --text-2xl: 1.5rem;
+  --text-2xl--line-height: 1.33;
+  --text-3xl: 1.875rem;
+  --text-3xl--line-height: 1.27;
+  --text-4xl: 2.25rem;
+  --text-4xl--line-height: 1.11;
+
+  --animate-fadeIn: fadeIn 0.3s ease-out;
+  --animate-slideUp: slideUp 0.5s ease-out;
+  --animate-float: float 3s ease-in-out infinite;
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+  --animate-collapsible-down: collapsible-down 0.2s ease-out;
+  --animate-collapsible-up: collapsible-up 0.2s ease-out;
+  --animate-pulse-subtle: pulse-subtle 2s ease-in-out infinite;
+
+  --color-primary-50: #eef5ff;
+  --color-primary-100: #d9e8ff;
+  --color-primary-200: #bcd7ff;
+  --color-primary-300: #8ebeff;
+  --color-primary-400: #599aff;
+  --color-primary-500: #3699ff;
+  --color-primary-600: #1b84ff;
+  --color-primary-700: #1469d1;
+  --color-primary-800: #1756a9;
+  --color-primary-900: #194985;
+  --color-primary-950: #142e51;
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+
+  --color-success-50: #ecfdf5;
+  --color-success-100: #d1fae5;
+  --color-success-200: #a7f3d0;
+  --color-success-500: #17c653;
+  --color-success-600: #0bb642;
+  --color-success-700: #0a8f35;
+  --color-success: hsl(var(--success));
+  --color-success-foreground: hsl(var(--success-foreground));
+
+  --color-warning-50: #fffbeb;
+  --color-warning-100: #fef3c7;
+  --color-warning-500: #f6b100;
+  --color-warning-600: #e5a600;
+  --color-warning: hsl(var(--warning));
+  --color-warning-foreground: hsl(var(--warning-foreground));
+
+  --color-info-50: #f5f3ff;
+  --color-info-100: #ede9fe;
+  --color-info-500: #7239ea;
+  --color-info-600: #6528d7;
+  --color-info: hsl(var(--info));
+  --color-info-foreground: hsl(var(--info-foreground));
+
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+
+  --color-sidebar-bg: hsl(var(--sidebar-bg));
+  --color-sidebar-fg: hsl(var(--sidebar-fg));
+  --color-sidebar-active: hsl(var(--sidebar-active));
+  --color-sidebar-hover: hsl(var(--sidebar-hover));
+  --color-sidebar-border: hsl(var(--sidebar-border));
+  --color-sidebar-dark: #1b1b28;
+
+  --color-chart-1: hsl(var(--chart-1));
+  --color-chart-2: hsl(var(--chart-2));
+  --color-chart-3: hsl(var(--chart-3));
+  --color-chart-4: hsl(var(--chart-4));
+  --color-chart-5: hsl(var(--chart-5));
+
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+
+  --shadow-xs:
+    0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 0 40px rgba(49, 52, 122, 0.04);
+  --shadow-card: 0 0 50px rgba(49, 52, 122, 0.08);
+  --shadow-card-hover: 0 0 50px rgba(49, 52, 122, 0.15);
+  --shadow-sidebar: 4px 0 20px rgba(0, 0, 0, 0.15);
+  --shadow-topbar: 0 1px 0 rgba(0, 0, 0, 0.05);
+
+  @keyframes fadeIn {
+    0% {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @keyframes slideUp {
+    0% {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @keyframes float {
+    0%,
+    100% {
+      transform: translateY(0px);
+    }
+    50% {
+      transform: translateY(-10px);
+    }
+  }
+  @keyframes accordion-down {
+    from {
+      height: 0;
+    }
+    to {
+      height: var(--radix-accordion-content-height);
+    }
+  }
+  @keyframes accordion-up {
+    from {
+      height: var(--radix-accordion-content-height);
+    }
+    to {
+      height: 0;
+    }
+  }
+  @keyframes collapsible-down {
+    from {
+      height: 0;
+    }
+    to {
+      height: var(--radix-collapsible-content-height);
+    }
+  }
+  @keyframes collapsible-up {
+    from {
+      height: var(--radix-collapsible-content-height);
+    }
+    to {
+      height: 0;
+    }
+  }
+  @keyframes pulse-subtle {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.7;
+    }
+  }
+}
+
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+}
+
+@utility text-gradient {
+  @apply bg-clip-text text-transparent bg-linear-to-r from-blue-400 to-indigo-500;
+}
+
+@utility bg-hero-gradient {
+  background: linear-gradient(
+    135deg,
+    var(--color-hero-1) 0%,
+    var(--color-hero-2) 25%,
+    var(--color-hero-3) 50%,
+    var(--color-hero-4) 75%,
+    var(--color-hero-5) 100%
+  );
+}
+
+@utility glass-card {
+  @apply bg-white/80 backdrop-blur-xs border border-white/20;
+}
+
+@utility font-sarabun {
+  /* Font shortcut for document/receipt/contract areas */
+  font-family: 'Noto Sans Thai', sans-serif;
+}
+
+@utility safe-area-bottom {
+  /* Safe area padding for iOS bottom bar / notch */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@utility stat-card {
+  /* Metronic-style stat card */
+  @apply bg-card rounded-xl border border-border p-5 transition-shadow hover:shadow-md;
+}
+
+@utility kt-separator {
+  /* Metronic-style section separator */
+  @apply border-t border-border my-5;
+}
 
 /* ── Metronic v9.4.6 Theme Variables (aligned with config.reui.css) ─ */
 @layer base {
@@ -115,91 +369,72 @@
 
   /* Metronic global focus style */
   *:focus-visible {
-    @apply outline-none ring-2 ring-ring/30 ring-offset-[3px] ring-offset-background rounded-sm;
+    @apply outline-hidden ring-2 ring-ring/30 ring-offset-[3px] ring-offset-background rounded-sm;
   }
-}
-
-/* ── TH Sarabun PSK (legacy fallback — kept for old templates) ──── */
-/* Primary Thai font is now Noto Sans Thai (loaded via Google Fonts above) */
-@font-face {
-  font-family: 'TH Sarabun PSK';
-  src: url('/fonts/THSarabunPSK-Regular.ttf') format('truetype');
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: 'TH Sarabun PSK';
-  src: url('/fonts/THSarabunPSK-Bold.ttf') format('truetype');
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
-}
-
-/* ── Smooth Scroll ──────────────────────────────── */
-html {
-  scroll-behavior: smooth;
-}
-
-/* ── Custom Scrollbar ───────────────────────────── */
-::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: hsl(var(--input));
-  border-radius: 5px;
-}
-* {
-  scrollbar-width: thin;
-  scrollbar-color: hsl(var(--input)) transparent;
-}
-
-/* ── Base Styles (Metronic v9.4.6) ───────────────── */
-body {
-  font-family: 'Inter', 'Noto Sans Thai', system-ui, -apple-system, sans-serif;
-  font-size: 0.875rem; /* 14px - Metronic default text-sm */
-  line-height: 1.5;
-  color: hsl(var(--foreground));
-  background-color: hsl(var(--background));
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-/* Metronic border-border default on all elements */
-*, *::before, *::after {
-  border-color: hsl(var(--border));
 }
 
 @layer utilities {
-  .text-gradient {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-indigo-500;
+  /* ── TH Sarabun PSK (legacy fallback — kept for old templates) ──── */
+  /* Primary Thai font is now Noto Sans Thai (loaded via Google Fonts above) */
+  @font-face {
+    font-family: 'TH Sarabun PSK';
+    src: url('/fonts/THSarabunPSK-Regular.ttf') format('truetype');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
   }
-  .bg-hero-gradient {
-    background: linear-gradient(135deg, var(--color-hero-1) 0%, var(--color-hero-2) 25%, var(--color-hero-3) 50%, var(--color-hero-4) 75%, var(--color-hero-5) 100%);
+
+  @font-face {
+    font-family: 'TH Sarabun PSK';
+    src: url('/fonts/THSarabunPSK-Bold.ttf') format('truetype');
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
   }
-  .glass-card {
-    @apply bg-white/80 backdrop-blur-sm border border-white/20;
+
+  /* ── Smooth Scroll ──────────────────────────────── */
+  html {
+    scroll-behavior: smooth;
   }
-  /* Font shortcut for document/receipt/contract areas */
-  .font-sarabun {
-    font-family: 'Noto Sans Thai', sans-serif;
+
+  /* ── Custom Scrollbar ───────────────────────────── */
+  ::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
   }
-  /* Safe area padding for iOS bottom bar / notch */
-  .safe-area-bottom {
-    padding-bottom: env(safe-area-inset-bottom, 0px);
+  ::-webkit-scrollbar-track {
+    background: transparent;
   }
-  /* Metronic-style stat card */
-  .stat-card {
-    @apply bg-card rounded-xl border border-border p-5 transition-shadow hover:shadow-md;
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--input));
+    border-radius: 5px;
   }
-  /* Metronic-style section separator */
-  .kt-separator {
-    @apply border-t border-border my-5;
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--input)) transparent;
+  }
+
+  /* ── Base Styles (Metronic v9.4.6) ───────────────── */
+  body {
+    font-family:
+      'Inter',
+      'Noto Sans Thai',
+      system-ui,
+      -apple-system,
+      sans-serif;
+    font-size: 0.875rem; /* 14px - Metronic default text-sm */
+    line-height: 1.5;
+    color: hsl(var(--foreground));
+    background-color: hsl(var(--background));
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Metronic border-border default on all elements */
+  *,
+  *::before,
+  *::after {
+    border-color: hsl(var(--border));
   }
 }
 

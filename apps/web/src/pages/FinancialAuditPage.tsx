@@ -129,7 +129,7 @@ export default function FinancialAuditPage() {
               onChange={(e) => setSearchInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
               placeholder="ค้นหาด้วย Contract ID..."
-              className="flex-1 h-10 px-3.5 border border-input rounded-lg text-sm outline-none bg-background text-foreground placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/30"
+              className="flex-1 h-10 px-3.5 border border-input rounded-lg text-sm outline-hidden bg-background text-foreground placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/30"
             />
             <button
               onClick={handleSearch}

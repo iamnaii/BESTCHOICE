@@ -58,7 +58,7 @@ export function PriceManagementModal({
                         value={priceForm.label}
                         onChange={(e) => setPriceForm({ ...priceForm, label: e.target.value })}
                         placeholder="ชื่อราคา"
-                        className="px-2 py-1.5 border border-input rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+                        className="px-2 py-1.5 border border-input rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
                         required
                       />
                       <input
@@ -67,7 +67,7 @@ export function PriceManagementModal({
                         value={priceForm.amount}
                         onChange={(e) => setPriceForm({ ...priceForm, amount: e.target.value })}
                         placeholder="ราคา (บาท)"
-                        className="px-2 py-1.5 border border-input rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+                        className="px-2 py-1.5 border border-input rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
                         required
                       />
                     </div>
@@ -156,7 +156,7 @@ export function PriceManagementModal({
                   value={priceForm.label}
                   onChange={(e) => setPriceForm({ ...priceForm, label: e.target.value })}
                   placeholder='เช่น "ราคาเงินสด"'
-                  className="px-2 py-1.5 border border-input rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+                  className="px-2 py-1.5 border border-input rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
                   required
                 />
                 <input
@@ -165,7 +165,7 @@ export function PriceManagementModal({
                   value={priceForm.amount}
                   onChange={(e) => setPriceForm({ ...priceForm, amount: e.target.value })}
                   placeholder="ราคา (บาท)"
-                  className="px-2 py-1.5 border border-input rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-none"
+                  className="px-2 py-1.5 border border-input rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
                   required
                 />
               </div>

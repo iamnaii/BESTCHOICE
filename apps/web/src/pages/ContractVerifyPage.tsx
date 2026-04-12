@@ -1,4 +1,4 @@
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { formatDateMedium } from '@/utils/formatters';

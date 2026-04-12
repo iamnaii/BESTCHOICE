@@ -33,7 +33,7 @@ export class FinanceAiService {
   private readonly anthropic: Anthropic | null;
 
   // Sonnet for tool use — accurate for multi-step conversations
-  private readonly modelSonnet = 'claude-sonnet-4-5-20250929';
+  private readonly modelSonnet = 'claude-sonnet-4-5-20250514';
   private readonly maxTokens = 1024;
   private readonly historyLimit = 20;
 

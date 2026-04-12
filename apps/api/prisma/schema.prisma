@@ -314,6 +314,7 @@ model Branch {
   interCompanyTransactions InterCompanyTransaction[]
   fixedAssets              FixedAsset[]
   tradeIns                 TradeIn[]
+  crmLeads                 CrmLead[]
 
   @@index([companyId])
   @@map("branches")
@@ -397,8 +398,14 @@ model User {
   todosCreated           Todo[]               @relation("TodoCreatedBy")
   todosAssigned          Todo[]               @relation("TodoAssignedTo")
   handoffSessions        ChatSession[]        @relation("ChatHandoffStaff")
+  assignedSessions       ChatSession[]        @relation("ChatAssignedStaff")
+  chatMessages           ChatMessage[]        @relation("ChatMessageStaff")
+  staffChatActivities    StaffChatActivity[]  @relation("StaffChatActivityUser")
+  chatNotes              ChatNote[]           @relation("ChatNoteStaff")
   kbSuggestionsReviewed  ChatKbSuggestion[]   @relation("KbSuggestionReviewer")
   webhookSubscriptions   WebhookSubscription[]
+  crmLeadsAssigned       CrmLead[]            @relation("CrmLeadAssignedTo")
+  crmNotes               CrmNote[]            @relation("CrmNoteStaff")
 
   @@index([branchId])
   @@map("users")
@@ -475,6 +482,11 @@ model Customer {
   notifPaymentReminder Boolean @default(true) @map("notif_payment_reminder")
   notifOverdueNotice   Boolean @default(true) @map("notif_overdue_notice")
   notifReceipt         Boolean @default(true) @map("notif_receipt")
+
+  // Ads + CRM
+  adsAttributions  AdsAttribution[]
+  crmLeads         CrmLead[]
+  customerScore    CustomerScore?
 
   @@index([phone])
   @@index([name])
@@ -586,6 +598,10 @@ model Contract {
   // Collections tracking fields (Phase 5)
   collectionNotes  String?   @map("collection_notes") // internal notes from collector
   lastContactDate  DateTime? @map("last_contact_date") // last time customer was contacted
+
+  // Ads + CRM
+  adsAttributions AdsAttribution[]
+  crmLeads        CrmLead[]        @relation("CrmLeadContract")
 
   @@index([customerId])
   @@index([branchId])
@@ -2759,6 +2775,22 @@ enum ChatChannel {
   LINE_SHOP
   FACEBOOK
   TIKTOK
+  WEB
+}
+
+enum ChatSessionStatus {
+  OPEN
+  PENDING
+  HANDOFF
+  RESOLVED
+  ARCHIVED
+}
+
+enum ChatPriority {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
 }
 
 enum ChatStatus {
@@ -2826,13 +2858,20 @@ model CustomerLineLink {
 
 /// Chat session — ลูกค้า 1 คน 1 session ต่อ channel
 model ChatSession {
-  id         String    @id @default(uuid())
-  lineUserId String    @map("line_user_id")
-  customerId String?   @map("customer_id")
-  customer   Customer? @relation(fields: [customerId], references: [id])
+  id             String    @id @default(uuid())
+  lineUserId     String    @map("line_user_id")
+  externalUserId String?   @map("external_user_id") // FB PSID, TikTok user, web visitor ID
+  customerId     String?   @map("customer_id")
+  customer       Customer? @relation(fields: [customerId], references: [id])
 
-  channel ChatChannel @default(LINE_FINANCE)
-  status  ChatStatus  @default(ACTIVE)
+  channel       ChatChannel       @default(LINE_FINANCE)
+  status        ChatStatus        @default(ACTIVE)
+  sessionStatus ChatSessionStatus @default(OPEN) @map("session_status")
+  priority      ChatPriority      @default(NORMAL)
+
+  // Assignment
+  assignedToId String? @map("assigned_to_id")
+  assignedTo   User?   @relation("ChatAssignedStaff", fields: [assignedToId], references: [id])
 
   // Verification
   verifiedAt           DateTime? @map("verified_at")
@@ -2845,12 +2884,18 @@ model ChatSession {
   handoffStaffId  String?   @map("handoff_staff_id")
   handoffStaff    User?     @relation("ChatHandoffStaff", fields: [handoffStaffId], references: [id])
 
+  // SLA tracking
+  firstResponseAt DateTime? @map("first_response_at")
+  resolvedAt      DateTime? @map("resolved_at")
+
   // Stats
   totalMessages Int      @default(0) @map("total_messages")
   lastMessageAt DateTime @default(now()) @map("last_message_at")
 
   messages  ChatMessage[]
   feedbacks ChatFeedback[]
+  tags      ConversationTag[]
+  notes     ChatNote[]
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
@@ -2858,15 +2903,18 @@ model ChatSession {
 
   @@unique([lineUserId, channel])
   @@index([customerId])
+  @@index([assignedToId, sessionStatus])
+  @@index([sessionStatus, priority])
   @@index([handoffMode, status])
   @@map("chat_sessions")
 }
 
 /// Chat message — ทุกข้อความใน session
 model ChatMessage {
-  id        String      @id @default(uuid())
-  sessionId String      @map("session_id")
-  session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  id                String      @id @default(uuid())
+  externalMessageId String?     @unique @map("external_message_id") // LINE/FB/TikTok message ID
+  sessionId         String      @map("session_id")
+  session           ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   role MessageRole
   type MessageType @default(TEXT)
@@ -2874,6 +2922,14 @@ model ChatMessage {
   text      String? @db.Text
   mediaUrl  String? @map("media_url")
   mediaType String? @map("media_type")
+
+  // Staff attribution
+  staffId String? @map("staff_id")
+  staff   User?   @relation("ChatMessageStaff", fields: [staffId], references: [id])
+
+  // Delivery tracking
+  deliveredAt DateTime? @map("delivered_at")
+  readAt      DateTime? @map("read_at")
 
   // AI metadata
   intent       String?
@@ -2897,6 +2953,7 @@ model ChatMessage {
   @@index([sessionId, createdAt])
   @@index([intent])
   @@index([role])
+  @@index([staffId])
   @@index([deletedAt])
   @@map("chat_messages")
 }
@@ -3071,6 +3128,243 @@ model ProcessedWebhookEvent {
 
   @@index([processedAt])
   @@map("processed_webhook_events")
+}
+
+// ============================================================
+// UNIFIED CHAT ENGINE — Phase 1 foundation models
+// ============================================================
+
+/// Tags on chat sessions (e.g. "VIP", "refund", "complaint")
+model ConversationTag {
+  id        String      @id @default(uuid())
+  sessionId String      @map("session_id")
+  session   ChatSession @relation(fields: [sessionId], references: [id])
+  tag       String      // free-form tag string
+  createdAt DateTime    @default(now()) @map("created_at")
+
+  @@unique([sessionId, tag])
+  @@index([tag])
+  @@map("conversation_tags")
+}
+
+/// Pre-defined quick replies for staff ("/ขอบคุณ", "/ส่งสลิป" etc.)
+model CannedResponse {
+  id        String  @id @default(uuid())
+  shortcut  String  @unique // "/thanks", "/slip" — searchable command
+  title     String  // "ขอบคุณค่ะ" — display label
+  content   String  @db.Text // full response text (may include placeholders)
+  category  String? // "greeting", "payment", "general"
+  sortOrder Int     @default(0) @map("sort_order")
+  isActive  Boolean @default(true) @map("is_active")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@index([isActive, category])
+  @@index([deletedAt])
+  @@map("canned_responses")
+}
+
+/// Tracks staff online/offline + activity inside the chat system
+model StaffChatActivity {
+  id       String   @id @default(uuid())
+  staffId  String   @map("staff_id")
+  staff    User     @relation("StaffChatActivityUser", fields: [staffId], references: [id])
+  action   String   // "online", "offline", "join_session", "leave_session", "reply"
+  metadata Json?    // { sessionId, channel } etc.
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([staffId, createdAt])
+  @@index([action])
+  @@map("staff_chat_activities")
+}
+
+/// Internal staff notes on a chat session (not visible to customer)
+model ChatNote {
+  id        String      @id @default(uuid())
+  sessionId String      @map("session_id")
+  session   ChatSession @relation(fields: [sessionId], references: [id])
+  staffId   String      @map("staff_id")
+  staff     User        @relation("ChatNoteStaff", fields: [staffId], references: [id])
+  content   String      @db.Text
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@index([sessionId])
+  @@index([staffId])
+  @@index([deletedAt])
+  @@map("chat_notes")
+}
+
+// ============================================================
+// ADS ATTRIBUTION — track campaign ROI
+// ============================================================
+
+enum AdsPlatform {
+  LINE_ADS
+  FACEBOOK_ADS
+  TIKTOK_ADS
+  GOOGLE_ADS
+}
+
+model AdsCampaign {
+  id           String      @id @default(uuid())
+  platform     AdsPlatform
+  campaignId   String      @map("campaign_id")
+  campaignName String      @map("campaign_name")
+  adSetName    String?     @map("ad_set_name")
+  adName       String?     @map("ad_name")
+  budget       Decimal?    @db.Decimal(12, 2)
+  startDate    DateTime?   @map("start_date")
+  endDate      DateTime?   @map("end_date")
+  isActive     Boolean     @default(true) @map("is_active")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+  deletedAt    DateTime?   @map("deleted_at")
+
+  attributions AdsAttribution[]
+
+  @@unique([platform, campaignId])
+  @@index([isActive])
+  @@index([deletedAt])
+  @@map("ads_campaigns")
+}
+
+model AdsAttribution {
+  id           String       @id @default(uuid())
+  campaignId   String       @map("campaign_id")
+  campaign     AdsCampaign  @relation(fields: [campaignId], references: [id])
+  customerId   String?      @map("customer_id")
+  customer     Customer?    @relation(fields: [customerId], references: [id])
+  contractId   String?      @map("contract_id")
+  contract     Contract?    @relation(fields: [contractId], references: [id])
+
+  // Tracking data
+  utmSource    String?      @map("utm_source")
+  utmMedium    String?      @map("utm_medium")
+  utmCampaign  String?      @map("utm_campaign")
+  utmContent   String?      @map("utm_content")
+  referrerUrl  String?      @map("referrer_url")
+
+  // Attribution events
+  firstTouch   DateTime     @map("first_touch")
+  lastTouch    DateTime?    @map("last_touch")
+  convertedAt  DateTime?    @map("converted_at")
+
+  // Revenue (from contract)
+  revenue      Decimal?     @db.Decimal(12, 2)
+  createdAt    DateTime     @default(now()) @map("created_at")
+
+  @@index([campaignId])
+  @@index([customerId])
+  @@index([utmSource, utmCampaign])
+  @@map("ads_attributions")
+}
+
+// ============================================================
+// CRM PIPELINE — lead tracking + customer scoring
+// ============================================================
+
+enum LeadStage {
+  NEW_LEAD
+  QUALIFIED
+  PROPOSAL
+  NEGOTIATION
+  WON
+  LOST
+}
+
+enum LeadSource {
+  CHAT
+  WALK_IN
+  REFERRAL
+  ADS
+  PHONE
+}
+
+enum CustomerTier {
+  VIP
+  STANDARD
+  AT_RISK
+  NEW
+}
+
+model CrmLead {
+  id              String       @id @default(uuid())
+  customerId      String?      @map("customer_id")
+  customer        Customer?    @relation(fields: [customerId], references: [id])
+  contractId      String?      @map("contract_id")
+  contract        Contract?    @relation("CrmLeadContract", fields: [contractId], references: [id])
+
+  stage           LeadStage    @default(NEW_LEAD)
+  source          LeadSource
+  channel         String?      // ChatChannel value if from chat
+
+  // Assignment
+  assignedToId    String?      @map("assigned_to_id")
+  assignedTo      User?        @relation("CrmLeadAssignedTo", fields: [assignedToId], references: [id])
+  branchId        String?      @map("branch_id")
+  branch          Branch?      @relation(fields: [branchId], references: [id])
+
+  // Product interest
+  interestedProduct String?    @map("interested_product")
+  estimatedValue    Decimal?   @db.Decimal(12, 2) @map("estimated_value")
+
+  // Outcome
+  lostReason   String?         @map("lost_reason")
+  wonAt        DateTime?       @map("won_at")
+  lostAt       DateTime?       @map("lost_at")
+
+  // Follow-up
+  nextFollowUp DateTime?       @map("next_follow_up")
+  notes        CrmNote[]
+
+  createdAt    DateTime         @default(now()) @map("created_at")
+  updatedAt    DateTime         @updatedAt @map("updated_at")
+  deletedAt    DateTime?        @map("deleted_at")
+
+  @@index([stage, assignedToId])
+  @@index([customerId])
+  @@index([branchId, stage])
+  @@index([deletedAt])
+  @@map("crm_leads")
+}
+
+model CrmNote {
+  id        String   @id @default(uuid())
+  leadId    String   @map("lead_id")
+  lead      CrmLead  @relation(fields: [leadId], references: [id])
+  staffId   String   @map("staff_id")
+  staff     User     @relation("CrmNoteStaff", fields: [staffId], references: [id])
+  content   String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([leadId])
+  @@map("crm_notes")
+}
+
+model CustomerScore {
+  id              String       @id @default(uuid())
+  customerId      String       @unique @map("customer_id")
+  customer        Customer     @relation(fields: [customerId], references: [id])
+
+  // Score components (0-100 each)
+  paymentScore    Int          @default(50) @map("payment_score")
+  engagementScore Int          @default(50) @map("engagement_score")
+  valueScore      Int          @default(50) @map("value_score")
+  riskScore       Int          @default(50) @map("risk_score")
+
+  totalScore   Int             @default(50) @map("total_score")
+  tier         CustomerTier    @default(STANDARD)
+
+  lastCalculatedAt DateTime    @default(now()) @map("last_calculated_at")
+  updatedAt    DateTime        @updatedAt @map("updated_at")
+
+  @@map("customer_scores")
 }
 
 // ============================================================

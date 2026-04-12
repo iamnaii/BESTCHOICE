@@ -58,6 +58,12 @@ import { PromotionsModule } from './modules/promotions/promotions.module';
 import { AssetModule } from './modules/asset/asset.module';
 import { TodosModule } from './modules/todos/todos.module';
 import { ChatbotFinanceModule } from './modules/chatbot-finance/chatbot-finance.module';
+import { ChatEngineModule } from './modules/chat-engine/chat-engine.module';
+import { ChatAdaptersModule } from './modules/chat-adapters/chat-adapters.module';
+import { StaffChatModule } from './modules/staff-chat/staff-chat.module';
+import { ChatAnalyticsModule } from './modules/chat-analytics/chat-analytics.module';
+import { AdsTrackingModule } from './modules/ads-tracking/ads-tracking.module';
+import { CrmModule } from './modules/crm/crm.module';
 import { HealthModule } from './modules/health/health.module';
 import { PeakModule } from './modules/peak/peak.module';
 import { MdmModule } from './modules/mdm/mdm.module';
@@ -163,6 +169,18 @@ import { AppCacheModule } from './cache/cache.module';
     TodosModule,
     // Chatbot Finance — น้องเบส (LINE OA "ชำระค่างวด BESTCHOICE")
     ChatbotFinanceModule,
+    // Unified Chat Engine — foundation for multi-channel chat system
+    ChatEngineModule,
+    // Chat Channel Adapters (LINE Finance/Shop, Facebook, TikTok, Web)
+    ChatAdaptersModule,
+    // Staff Chat — WebSocket gateway + REST controller for unified inbox
+    StaffChatModule,
+    // Chat Analytics — response time, resolution rate, channel volume
+    ChatAnalyticsModule,
+    // Ads Attribution — campaign tracking + ROI
+    AdsTrackingModule,
+    // CRM Pipeline — lead tracking + customer scoring
+    CrmModule,
     // Health check — liveness probe for Cloud Run / load balancers
     HealthModule,
     // External integrations (scaffold — activate when credentials are available)

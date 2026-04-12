@@ -1430,6 +1430,30 @@ async function main() {
   console.log('ContractTemplates: 1');
   console.log('StickerTemplates: 2');
   console.log('ChartOfAccounts: 76 (full Thai SME chart)');
+
+  // ─── Canned Responses (Unified Chat) ─────────────────
+  console.log('\nSeeding canned responses...');
+  const cannedResponses = [
+    { shortcut: '/สวัสดี', title: 'ทักทาย', content: 'สวัสดีค่ะ มีอะไรให้ช่วยเหลือไหมคะ?', category: 'greeting', sortOrder: 1 },
+    { shortcut: '/ขอบคุณ', title: 'ขอบคุณ', content: 'ขอบคุณค่ะ มีอะไรสอบถามเพิ่มเติมได้เลยนะคะ', category: 'greeting', sortOrder: 2 },
+    { shortcut: '/รอ', title: 'รอสักครู่', content: 'รบกวนรอสักครู่นะคะ กำลังตรวจสอบข้อมูลให้ค่ะ', category: 'general', sortOrder: 3 },
+    { shortcut: '/งวด', title: 'สอบถามยอดค้าง', content: 'สอบถามเรื่องยอดค้างชำระใช่ไหมคะ? รบกวนแจ้งเลขสัญญาหรือชื่อ-นามสกุลด้วยนะคะ', category: 'payment', sortOrder: 4 },
+    { shortcut: '/สลิป', title: 'ขอสลิป', content: 'รบกวนส่งรูปสลิปการโอนเงินมาได้เลยค่ะ ระบบจะตรวจสอบให้อัตโนมัตินะคะ', category: 'payment', sortOrder: 5 },
+    { shortcut: '/ปิด', title: 'ปิดบทสนทนา', content: 'ขอบคุณที่ติดต่อมาค่ะ หากมีข้อสงสัยเพิ่มเติม สอบถามได้ตลอดเวลานะคะ', category: 'closing', sortOrder: 6 },
+    { shortcut: '/เวลา', title: 'เวลาทำการ', content: 'ร้านเปิดให้บริการทุกวัน 10:00 - 20:00 น. ค่ะ', category: 'general', sortOrder: 7 },
+    { shortcut: '/ที่อยู่', title: 'ที่อยู่ร้าน', content: 'สามารถดูที่อยู่สาขาได้ที่เว็บไซต์ของเราค่ะ หรือแจ้งสาขาที่สนใจ เราจะส่งแผนที่ให้ค่ะ', category: 'general', sortOrder: 8 },
+    { shortcut: '/ผ่อน', title: 'สอบถามผ่อน', content: 'สนใจผ่อนมือถือใช่ไหมคะ? มีทั้งเครื่องใหม่และมือสอง ผ่อนได้สูงสุด 12 งวด ดาวน์เริ่มต้น 30% ค่ะ', category: 'sales', sortOrder: 9 },
+    { shortcut: '/โอน', title: 'แจ้งบัญชีโอน', content: 'สามารถชำระผ่าน QR Code PromptPay ในระบบได้เลยค่ะ หรือจะโอนเข้าบัญชีบริษัทก็ได้นะคะ', category: 'payment', sortOrder: 10 },
+  ];
+  for (const cr of cannedResponses) {
+    await prisma.cannedResponse.upsert({
+      where: { shortcut: cr.shortcut },
+      update: { title: cr.title, content: cr.content, category: cr.category, sortOrder: cr.sortOrder },
+      create: cr,
+    });
+  }
+  console.log(`CannedResponses: ${cannedResponses.length}`);
+
   console.log('========================================\n');
 }
 

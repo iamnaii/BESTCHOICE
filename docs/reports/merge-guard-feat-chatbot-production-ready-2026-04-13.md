@@ -5,7 +5,7 @@
 **Author**: iamnaii <akenarin.ak@gmail.com>  
 **Base**: `origin/main`  
 **Reviewer**: Pre-Merge Guard Agent  
-**Recommendation**: ⚠️ REVIEW (fix Warning #1 before merge)
+**Recommendation**: 🔴 BLOCK (2 Critical issues — fix before merge)
 
 ---
 
@@ -39,24 +39,18 @@
 
 ## Issues by Severity
 
-### Critical — 0 issues ✅
+### Critical — 2 issues 🔴
 
-No critical issues found.
+Security checklist (no issues):
+- All new/modified controllers have `@UseGuards(JwtAuthGuard, RolesGuard)` at class level ✅
+- All new endpoints have `@Roles(...)` decorators ✅
+- No `Number()` on financial fields (`Number()` lines in diff are in *deleted* CHATCONE code) ✅
+- No hardcoded secrets or API keys ✅
+- No unparameterized `$queryRaw` ✅
+- LIFF controller is intentionally public (listed in security rules) ✅
 
-- All new/modified controllers have `@UseGuards(JwtAuthGuard, RolesGuard)` at class level
-- All new endpoints have `@Roles(...)` decorators
-- No `Number()` usage on financial/money fields in new code (the `Number()` lines in the diff are in *deleted* CHATCONE code)
-- No hardcoded secrets or API keys
-- No unparameterized `$queryRaw`
-- LIFF controller is intentionally public (listed in security rules) and uses throttle guards
+#### C-001 — Missing backend routes for System Prompt Editor (Broken Feature)
 
----
-
-### Warning — 3 issues ⚠️
-
-#### W-001 — Missing API endpoints for System Prompt tab (Broken Feature)
-
-**Severity**: Warning — broken UI feature for OWNER users  
 **File**: `apps/web/src/pages/ChatbotFinanceKnowledgePage.tsx`
 
 The `SystemPromptEditor` component calls three endpoints that **do not exist** in any controller:
@@ -107,10 +101,9 @@ async resetPrompt() {
 
 ---
 
-#### W-002 — Missing `deletedAt: null` filter on SystemConfig query
+#### C-002 — Missing `deletedAt: null` filter on SystemConfig query
 
-**Severity**: Warning — violates soft-delete convention  
-**File**: `apps/api/src/modules/chatbot-finance/services/finance-config.service.ts:464`
+**File**: `apps/api/src/modules/chatbot-finance/services/finance-config.service.ts:104`
 
 ```typescript
 // Current (missing soft-delete filter)
@@ -130,9 +123,11 @@ const config = await this.prisma.systemConfig.findFirst({
 
 ---
 
-#### W-003 — Duplicated KB seed logic (DRY violation)
+### Warning — 1 issue ⚠️
 
-**Severity**: Warning — maintenance hazard  
+#### W-001 — Duplicated KB seed logic (DRY violation)
+
+
 **Files**: `apps/api/src/modules/chatbot-finance/services/knowledge.service.ts:520` and `apps/api/prisma/seeds/knowledge-base.ts:11`
 
 Both `KnowledgeService.seedDefaults()` and `seedKnowledgeBase()` in the seed file contain nearly identical `findFirst + create` loops over `KB_SEED_ENTRIES`. Any future change to seed logic (e.g., updating `channel`, adding new fields) must be made in two places.
@@ -141,9 +136,21 @@ Both `KnowledgeService.seedDefaults()` and `seedKnowledgeBase()` in the seed fil
 
 ---
 
-### Info — 2 issues ℹ️
+### Info — 3 issues ℹ️
 
-#### I-001 — `useEffect` eslint-disable comment on prompt draft sync
+#### I-001 — Feedback Quick Reply `messageId` placeholder never replaced
+
+**File**: `apps/api/src/modules/chatbot-finance/services/chatbot-finance.service.ts`
+
+Quick Reply postback data is built with `messageId=__MSG_ID__` as a literal placeholder:
+```typescript
+data: `action=feedback&rating=1&sessionId=${sessionId}&messageId=__MSG_ID__`,
+```
+If `replyAndSave` doesn't replace this placeholder after obtaining the saved message ID, feedback postbacks will send `__MSG_ID__` verbatim. Verify the substitution happens — or remove the field if it's not needed by `FeedbackService.saveFeedback()`.
+
+---
+
+#### I-002 — `useEffect` eslint-disable comment on prompt draft sync
 
 **File**: `apps/web/src/pages/ChatbotFinanceKnowledgePage.tsx:66`
 
@@ -157,7 +164,7 @@ useEffect(() => {
 
 The disable comment suppresses the warning about missing `promptData` in the deps array. The intent is to only sync on `prompt` string change, not on the full `promptData` object reference. Functionally correct, but the comment is a code smell. Consider using a `useRef` to track initial sync or the `initialData` pattern.
 
-#### I-002 — New documentation file in repo root
+#### I-003 — New documentation file in repo root
 
 **File**: `docs/CTO-ROADMAP-2026.md` (216 lines)
 
@@ -169,14 +176,17 @@ A strategy/roadmap document was added. Not a code issue, but confirm this is int
 
 | Severity | Count | Status |
 |----------|-------|--------|
-| Critical | 0 | ✅ |
-| Warning | 3 | ⚠️ |
-| Info | 2 | ℹ️ |
+| Critical | 2 | 🔴 |
+| Warning | 1 | ⚠️ |
+| Info | 3 | ℹ️ |
 
-**Overall Recommendation: ⚠️ REVIEW**
+**Overall Recommendation: 🔴 BLOCK**
 
-The branch is clean from a security standpoint — all controllers have proper guards, no money type violations, no hardcoded secrets. However, **W-001 is a functional blocker**: the System Prompt editor tab (which becomes the default landing tab for OWNER users) will fail with 404 errors because the three API endpoints it calls are never implemented in any controller. The service methods and DTO exist — the controller wiring is simply missing.
+The branch is clean from a security standpoint — guards, Roles, money types, and secrets all pass. However two Critical issues must be fixed:
 
-**W-002** (missing `deletedAt` filter) is a convention violation that could cause a soft-deleted system prompt record to persist in the UI.
+- **C-001** is a broken feature: the System Prompt editor (default landing tab for OWNER users) will return 404 on every API call because the three controller endpoints were never wired up. The service methods and DTO exist — only the routes are missing.
+- **C-002** is a soft-delete convention violation in `finance-config.service.ts`: `findUnique` must become `findFirst` with `deletedAt: null` to comply with project-wide rules.
 
-Recommend fixing W-001 and W-002 before merge. W-003 can be addressed in a follow-up.
+Also **rebase onto `main`** before merge to pick up the 5 Docker build and journal-auto test fixes.
+
+W-001 (DRY seed duplication) and Info items can be addressed in a follow-up PR.

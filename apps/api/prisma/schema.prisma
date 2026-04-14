@@ -280,6 +280,21 @@ enum ContractDocumentType {
   OTHER
 }
 
+enum DunningChannel {
+  LINE
+  SMS
+  CALL_TASK
+  INTERNAL_ALERT
+}
+
+enum DunningActionStatus {
+  PENDING
+  SENT
+  DELIVERED
+  FAILED
+  SKIPPED
+}
+
 // ============================================================
 // CORE ENTITIES
 // ============================================================
@@ -408,6 +423,7 @@ model User {
   crmNotes               CrmNote[]            @relation("CrmNoteStaff")
   chatSnoozes            ChatSnooze[]         @relation("ChatSnoozeStaff")
   chatSideMessages       ChatSideMessage[]    @relation("ChatSideMessageStaff")
+  dunningActionsExecuted DunningAction[]      @relation("DunningActionExecutor")
 
   @@index([branchId])
   @@map("users")
@@ -605,6 +621,8 @@ model Contract {
   adsAttributions AdsAttribution[]
   crmLeads        CrmLead[]        @relation("CrmLeadContract")
 
+  dunningActions   DunningAction[]
+
   @@index([customerId])
   @@index([branchId])
   @@index([assignedToId])
@@ -661,6 +679,7 @@ model Payment {
   paymentLinks     PaymentLink[]
   paymentEvidences PaymentEvidence[]
   loyaltyPoint     LoyaltyPoint?
+  dunningActions   DunningAction[]
 
   @@unique([contractId, installmentNo])
   @@index([contractId])
@@ -1284,6 +1303,55 @@ model CallLog {
   @@index([contractId])
   @@index([callerId])
   @@map("call_logs")
+}
+
+model DunningRule {
+  id                 String         @id @default(uuid())
+  name               String
+  triggerDay         Int            @map("trigger_day")
+  channel            DunningChannel
+  messageTemplate    String         @map("message_template")
+  includePaymentLink Boolean        @default(false) @map("include_payment_link")
+  autoExecute        Boolean        @default(true) @map("auto_execute")
+  escalateTo         UserRole?      @map("escalate_to")
+  isActive           Boolean        @default(true) @map("is_active")
+  sortOrder          Int            @default(0) @map("sort_order")
+  createdAt          DateTime       @default(now()) @map("created_at")
+  updatedAt          DateTime       @updatedAt @map("updated_at")
+  deletedAt          DateTime?      @map("deleted_at")
+
+  actions            DunningAction[]
+
+  @@index([triggerDay])
+  @@index([isActive])
+  @@map("dunning_rules")
+}
+
+model DunningAction {
+  id               String              @id @default(uuid())
+  dunningRuleId    String              @map("dunning_rule_id")
+  dunningRule      DunningRule         @relation(fields: [dunningRuleId], references: [id], onDelete: Restrict)
+  contractId       String              @map("contract_id")
+  contract         Contract            @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  paymentId        String?             @map("payment_id")
+  payment          Payment?            @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  channel          DunningChannel
+  status           DunningActionStatus @default(PENDING)
+  messageContent   String?             @map("message_content")
+  result           String?
+  paymentLinkUrl   String?             @map("payment_link_url")
+  executedAt       DateTime?           @map("executed_at")
+  executedById     String?             @map("executed_by_id")
+  executedBy       User?               @relation("DunningActionExecutor", fields: [executedById], references: [id])
+  createdAt        DateTime            @default(now()) @map("created_at")
+  updatedAt        DateTime            @updatedAt @map("updated_at")
+  deletedAt        DateTime?           @map("deleted_at")
+
+  @@unique([dunningRuleId, contractId, paymentId])
+  @@index([contractId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("dunning_actions")
 }
 
 model AuditLog {

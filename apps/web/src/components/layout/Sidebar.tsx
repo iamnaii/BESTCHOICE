@@ -138,6 +138,7 @@ const navSections: NavSection[] = [
     group: 'finance',
     items: [
       { label: 'ลูกค้าค้างชำระ', path: '/overdue', icon: AlertTriangle },
+      { label: 'Collection Dashboard', path: '/collection-dashboard', icon: BarChart3, roles: ['OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER'] },
       { label: 'เปลี่ยนเครื่อง', path: '/exchange', icon: RefreshCw, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER'] },
       { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER'] },
     ],

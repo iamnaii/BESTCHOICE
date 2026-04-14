@@ -95,6 +95,8 @@ const AnalyticsPage = lazy(() => import('@/pages/AnalyticsPage'));
 const WebhooksPage = lazy(() => import('@/pages/WebhooksPage'));
 const ChatAnalyticsPage = lazy(() => import('@/pages/ChatAnalyticsPage'));
 const CannedResponseAdminPage = lazy(() => import('@/pages/CannedResponseAdminPage'));
+const CollectionDashboardPage = lazy(() => import('@/pages/CollectionDashboardPage'));
+const DunningSettingsPage = lazy(() => import('@/pages/DunningSettingsPage'));
 
 const PageLoader = () => (
   <div className="flex items-center justify-center py-20">
@@ -390,6 +392,14 @@ function App() {
           />
           <Route path="/verify/:receiptNumber" element={<ReceiptVerifyPage />} />
           <Route path="/overdue" element={<OverduePage />} />
+          <Route
+            path="/collection-dashboard"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER']}>
+                <CollectionDashboardPage />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/exchange"
             element={

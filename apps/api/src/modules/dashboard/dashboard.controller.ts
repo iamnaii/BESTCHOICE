@@ -104,6 +104,16 @@ export class DashboardController {
     return this.dashboardService.getWatchList(effectiveBranch);
   }
 
+  @Get('collection-metrics')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER')
+  getCollectionMetrics(
+    @CurrentUser() user: { role: string; branchId: string | null },
+    @Query('branchId') branchId?: string,
+  ) {
+    const effectiveBranch = this.getEffectiveBranch(branchId, user);
+    return this.dashboardService.getCollectionMetrics(effectiveBranch);
+  }
+
   @Get('staff-performance')
   getStaffPerformance(
     @CurrentUser() user: { role: string; branchId: string | null },

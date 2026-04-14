@@ -2,12 +2,16 @@ import { Module } from '@nestjs/common';
 import { OverdueController } from './overdue.controller';
 import { OverdueService } from './overdue.service';
 import { OverdueChatService } from './overdue-chat.service';
+import { DunningRuleService } from './dunning-rule.service';
+import { DunningEngineService } from './dunning-engine.service';
 import { ChatEngineModule } from '../chat-engine/chat-engine.module';
+import { NotificationsModule } from '../notifications/notifications.module';
+import { LineOaModule } from '../line-oa/line-oa.module';
 
 @Module({
-  imports: [ChatEngineModule],
+  imports: [ChatEngineModule, NotificationsModule, LineOaModule],
   controllers: [OverdueController],
-  providers: [OverdueService, OverdueChatService],
-  exports: [OverdueService],
+  providers: [OverdueService, OverdueChatService, DunningRuleService, DunningEngineService],
+  exports: [OverdueService, DunningRuleService, DunningEngineService],
 })
 export class OverdueModule {}

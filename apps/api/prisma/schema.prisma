@@ -258,6 +258,13 @@ enum TaxReportStatus {
   FILED
 }
 
+enum AccountingPeriodStatus {
+  OPEN
+  REVIEW
+  CLOSED
+  SYNCED
+}
+
 enum ContractDocumentType {
   SIGNED_CONTRACT
   ID_CARD_COPY
@@ -424,6 +431,8 @@ model User {
   chatSnoozes            ChatSnooze[]         @relation("ChatSnoozeStaff")
   chatSideMessages       ChatSideMessage[]    @relation("ChatSideMessageStaff")
   dunningActionsExecuted DunningAction[]      @relation("DunningActionExecutor")
+  periodsReviewStarted   AccountingPeriod[]   @relation("PeriodReviewStartedBy")
+  periodsClosed          AccountingPeriod[]   @relation("PeriodClosedBy")
 
   @@index([branchId])
   @@map("users")
@@ -1956,6 +1965,7 @@ model CompanyInfo {
   journalEntries     JournalEntry[]
   taxReports         TaxReport[]
   ownedProducts      Product[]                 @relation("ProductOwnership")
+  accountingPeriods  AccountingPeriod[]
 
   @@map("company_info")
 }
@@ -3494,4 +3504,40 @@ model DataAuditLog {
   @@index([checkName, executedAt])
   @@index([status])
   @@map("data_audit_logs")
+}
+
+// ============================================================
+// ACCOUNTING PERIOD — monthly close lifecycle management
+// ============================================================
+
+/// Tracks the lifecycle of each accounting period (year+month) per company.
+/// Status flows: OPEN → REVIEW → CLOSED → SYNCED
+/// Once CLOSED, journals for that period are locked.
+model AccountingPeriod {
+  id        String  @id @default(uuid())
+  companyId String  @map("company_id")
+  company   CompanyInfo @relation(fields: [companyId], references: [id])
+  year      Int
+  month     Int
+  status    AccountingPeriodStatus @default(OPEN)
+
+  reviewStartedAt   DateTime? @map("review_started_at")
+  reviewStartedById String?   @map("review_started_by_id")
+  reviewStartedBy   User?     @relation("PeriodReviewStartedBy", fields: [reviewStartedById], references: [id])
+  closedAt          DateTime? @map("closed_at")
+  closedById        String?   @map("closed_by_id")
+  closedBy          User?     @relation("PeriodClosedBy", fields: [closedById], references: [id])
+
+  peakSyncedAt   DateTime? @map("peak_synced_at")
+  peakSyncResult Json?     @map("peak_sync_result")
+  reportSnapshot Json?     @map("report_snapshot")
+  auditIssues    Json?     @map("audit_issues")
+  notes          String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([companyId, year, month])
+  @@index([status])
+  @@map("accounting_periods")
 }

@@ -1,0 +1,28 @@
+-- NOOP: Backfill payment breakdown fields
+--
+-- Decision: Do NOT auto-compute monthlyPrincipal / monthlyInterest /
+-- monthlyCommission / vatAmount for existing Payment rows where these
+-- fields are NULL.
+--
+-- Rationale:
+--   1. Accurate allocation requires per-contract store commission and VAT
+--      percentages that may not be uniformly available for all historical
+--      contracts.
+--   2. A wrong backfill would silently corrupt double-entry journal data —
+--      the risk far outweighs any benefit of populated NULLs.
+--   3. JournalAutoService already has fallback logic that handles NULL
+--      breakdown fields gracefully (uses contract-level aggregates).
+--   4. MonthlyCloseService audit step will flag payments without breakdown
+--      under check "payments_missing_breakdown" so finance staff can review
+--      and correct individual records manually if needed.
+--
+-- When a manual correction is needed for a specific payment:
+--   UPDATE payments
+--   SET
+--     monthly_principal = <value>,
+--     monthly_interest  = <value>,
+--     monthly_commission = <value>,
+--     vat_amount        = <value>
+--   WHERE id = '<payment_uuid>';
+--
+-- This migration intentionally contains no DDL/DML.

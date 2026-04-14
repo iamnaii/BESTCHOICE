@@ -58,6 +58,8 @@ async function main() {
   await prisma.financeReceivable.deleteMany();
   await prisma.repossession.deleteMany();
   await prisma.callLog.deleteMany();
+  await prisma.dunningAction.deleteMany();
+  await prisma.dunningRule.deleteMany();
   await prisma.paymentEvidence.deleteMany();
   await prisma.paymentLink.deleteMany();
   await prisma.receipt.deleteMany();
@@ -1382,6 +1384,125 @@ async function main() {
   console.log('StickerTemplates created: 2');
 
   // ============================================================
+  // STEP 34: DunningRules (8 default rules)
+  // ============================================================
+  console.log('STEP 34: Creating DunningRules...');
+
+  const dunningRules = [
+    {
+      name: 'แจ้งเตือน 3 วันก่อนกำหนด',
+      triggerDay: -3,
+      channel: 'LINE' as const,
+      messageTemplate: 'สวัสดีค่ะ คุณ{{customerName}} งวดที่ {{installmentNo}} สัญญา {{contractNumber}} ครบกำหนดชำระ {{dueDate}} จำนวน {{amount}} บาท',
+      includePaymentLink: true,
+      autoExecute: true,
+      escalateTo: null,
+      sortOrder: 1,
+    },
+    {
+      name: 'แจ้งเตือน 1 วันก่อนกำหนด',
+      triggerDay: -1,
+      channel: 'SMS' as const,
+      messageTemplate: 'BESTCHOICE: พรุ่งนี้ครบกำหนดชำระงวดที่ {{installmentNo}} จำนวน {{amount}} บาท สัญญา {{contractNumber}}',
+      includePaymentLink: false,
+      autoExecute: true,
+      escalateTo: null,
+      sortOrder: 2,
+    },
+    {
+      name: 'ทวงหนี้วันที่ 1 หลังกำหนด',
+      triggerDay: 1,
+      channel: 'LINE' as const,
+      messageTemplate: 'สวัสดีค่ะ คุณ{{customerName}} งวดที่ {{installmentNo}} สัญญา {{contractNumber}} เลยกำหนดชำระ {{daysOverdue}} วัน ยอดค้าง {{amount}} บาท กรุณาชำระโดยเร็วค่ะ',
+      includePaymentLink: true,
+      autoExecute: true,
+      escalateTo: null,
+      sortOrder: 3,
+    },
+    {
+      name: 'ทวงหนี้วันที่ 3 (SMS)',
+      triggerDay: 3,
+      channel: 'SMS' as const,
+      messageTemplate: 'BESTCHOICE: ค้างชำระ {{daysOverdue}} วัน ยอด {{amount}} บาท สัญญา {{contractNumber}} กรุณาชำระทันที',
+      includePaymentLink: false,
+      autoExecute: true,
+      escalateTo: null,
+      sortOrder: 4,
+    },
+    {
+      name: 'ทวงหนี้วันที่ 7 + สร้าง call task',
+      triggerDay: 7,
+      channel: 'CALL_TASK' as const,
+      messageTemplate: 'โทรติดตาม: คุณ{{customerName}} สัญญา {{contractNumber}} ค้างชำระ {{daysOverdue}} วัน ยอด {{amount}} บาท',
+      includePaymentLink: true,
+      autoExecute: false,
+      escalateTo: null,
+      sortOrder: 5,
+    },
+    {
+      name: 'แจ้งค่าปรับ + escalate FM',
+      triggerDay: 14,
+      channel: 'LINE' as const,
+      messageTemplate: 'คุณ{{customerName}} สัญญา {{contractNumber}} ค้างชำระ {{daysOverdue}} วัน มีค่าปรับล่าช้าสะสม กรุณาติดต่อชำระเงินทันทีเพื่อหลีกเลี่ยงค่าปรับเพิ่มเติม',
+      includePaymentLink: true,
+      autoExecute: true,
+      escalateTo: 'FINANCE_MANAGER' as const,
+      sortOrder: 6,
+    },
+    {
+      name: 'แจ้งเตือนก่อนยึดเครื่อง',
+      triggerDay: 30,
+      channel: 'INTERNAL_ALERT' as const,
+      messageTemplate: 'สัญญา {{contractNumber}} ค้างชำระ {{daysOverdue}} วัน — พิจารณา MDM Lock',
+      includePaymentLink: false,
+      autoExecute: false,
+      escalateTo: 'OWNER' as const,
+      sortOrder: 7,
+    },
+    {
+      name: 'Flag bad debt candidate',
+      triggerDay: 90,
+      channel: 'INTERNAL_ALERT' as const,
+      messageTemplate: 'สัญญา {{contractNumber}} ค้างชำระ {{daysOverdue}} วัน — พิจารณาตัดเป็นหนี้สูญ',
+      includePaymentLink: false,
+      autoExecute: false,
+      escalateTo: 'OWNER' as const,
+      sortOrder: 8,
+    },
+  ];
+
+  for (const rule of dunningRules) {
+    await prisma.dunningRule.upsert({
+      where: { id: `dunning-rule-${rule.sortOrder}` },
+      update: {
+        name: rule.name,
+        triggerDay: rule.triggerDay,
+        channel: rule.channel,
+        messageTemplate: rule.messageTemplate,
+        includePaymentLink: rule.includePaymentLink,
+        autoExecute: rule.autoExecute,
+        escalateTo: rule.escalateTo,
+        sortOrder: rule.sortOrder,
+        isActive: true,
+      },
+      create: {
+        id: `dunning-rule-${rule.sortOrder}`,
+        name: rule.name,
+        triggerDay: rule.triggerDay,
+        channel: rule.channel,
+        messageTemplate: rule.messageTemplate,
+        includePaymentLink: rule.includePaymentLink,
+        autoExecute: rule.autoExecute,
+        escalateTo: rule.escalateTo,
+        sortOrder: rule.sortOrder,
+        isActive: true,
+      },
+    });
+  }
+
+  console.log('DunningRules created:', dunningRules.length);
+
+  // ============================================================
   // SUMMARY
   // ============================================================
   console.log('\n========================================');
@@ -1435,6 +1556,7 @@ async function main() {
   console.log('AuditLogs: 10');
   console.log('ContractTemplates: 1');
   console.log('StickerTemplates: 2');
+  console.log('DunningRules: 8');
   console.log('ChartOfAccounts: 76 (full Thai SME chart)');
 
   // ─── Canned Responses (Unified Chat) ─────────────────

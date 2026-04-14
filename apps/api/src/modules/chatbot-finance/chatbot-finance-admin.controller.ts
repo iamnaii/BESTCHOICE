@@ -96,6 +96,17 @@ export class ChatbotFinanceAdminController {
 
   // ─── Knowledge Base CRUD (delegated to KnowledgeService) ─
 
+  @Post('knowledge/seed')
+  @HttpCode(200)
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  async seedKnowledge() {
+    const result = await this.knowledge.seedDefaults();
+    return {
+      ...result,
+      message: `สร้าง ${result.created} รายการ, ข้าม ${result.skipped} รายการ`,
+    };
+  }
+
   @Get('knowledge')
   @Roles('OWNER', 'FINANCE_MANAGER')
   async listKnowledge() {

@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { seedChartOfAccounts } from './seeds/chart-of-accounts';
 import { seedTradeInValuations } from './seeds/trade-in-valuations';
+import { seedKnowledgeBase } from './seeds/knowledge-base';
 
 const prisma = new PrismaClient();
 
@@ -1394,6 +1395,11 @@ async function main() {
   // ============================================================
   await seedTradeInValuations(prisma);
 
+  // ============================================================
+  // KNOWLEDGE BASE (FAQ สำหรับ Finance Bot)
+  // ============================================================
+  const kbResult = await seedKnowledgeBase(prisma);
+
   console.log('=== SEED COMPLETED SUCCESSFULLY ===');
   console.log('========================================');
   console.log('CompanyInfo: 1');
@@ -1453,7 +1459,7 @@ async function main() {
     });
   }
   console.log(`CannedResponses: ${cannedResponses.length}`);
-
+  console.log(`KnowledgeBase: created=${kbResult.created}, skipped=${kbResult.skipped}`);
   console.log('========================================\n');
 }
 

@@ -5,6 +5,7 @@ import {
   FINANCE_CONTACT_PHONE,
   BANK_INFO_BLOCK,
 } from '../constants/finance-rules';
+import { FINANCE_BOT_SYSTEM_PROMPT } from '../prompts/system-prompt';
 
 interface FinanceBankConfig {
   bankName: string;
@@ -19,6 +20,7 @@ const SYSTEM_CONFIG_KEYS = {
   accountNumber: 'finance_bank_account',
   accountName: 'finance_bank_account_name',
   contactPhone: 'finance_contact_phone',
+  systemPrompt: 'finance_bot_system_prompt',
 } as const;
 
 /**
@@ -98,6 +100,37 @@ export class FinanceConfigService implements OnModuleInit {
     const slipDigits = slipAccount.replace(/\D/g, '');
     const expectedDigits = this.cached.accountNumber.replace(/\D/g, '');
     return slipDigits === expectedDigits;
+  }
+
+  // ─── System Prompt ────────────────────────────────────────
+
+  /** Get system prompt from DB, fallback to hardcoded constant */
+  async getSystemPrompt(): Promise<string> {
+    const config = await this.prisma.systemConfig.findUnique({
+      where: { key: SYSTEM_CONFIG_KEYS.systemPrompt },
+    });
+    return config?.value || FINANCE_BOT_SYSTEM_PROMPT;
+  }
+
+  /** Update system prompt in DB */
+  async updateSystemPrompt(prompt: string): Promise<void> {
+    await this.prisma.systemConfig.upsert({
+      where: { key: SYSTEM_CONFIG_KEYS.systemPrompt },
+      update: { value: prompt },
+      create: { key: SYSTEM_CONFIG_KEYS.systemPrompt, value: prompt },
+    });
+  }
+
+  /** Reset system prompt to hardcoded default */
+  async resetSystemPrompt(): Promise<void> {
+    await this.prisma.systemConfig.deleteMany({
+      where: { key: SYSTEM_CONFIG_KEYS.systemPrompt },
+    });
+  }
+
+  /** Get the hardcoded default prompt (for display) */
+  getDefaultSystemPrompt(): string {
+    return FINANCE_BOT_SYSTEM_PROMPT;
   }
 
   // ─── private ──────────────────────────────────────────────

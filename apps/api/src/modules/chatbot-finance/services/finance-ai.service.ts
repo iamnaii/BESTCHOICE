@@ -4,9 +4,10 @@ import * as Sentry from '@sentry/nestjs';
 import Anthropic from '@anthropic-ai/sdk';
 import type { MessageParam, ToolUseBlock } from '@anthropic-ai/sdk/resources/messages';
 import { ChatMessage, MessageRole } from '@prisma/client';
-import { FINANCE_BOT_SYSTEM_PROMPT } from '../prompts/system-prompt';
 import { FINANCE_TOOLS } from '../tools/tool-definitions';
 import { FinanceToolExecutor } from '../tools/tool-executor';
+import { FinanceConfigService } from './finance-config.service';
+import { FINANCE_BOT_SYSTEM_PROMPT } from '../prompts/system-prompt';
 
 export interface AiReply {
   text: string;
@@ -37,9 +38,14 @@ export class FinanceAiService {
   private readonly maxTokens = 1024;
   private readonly historyLimit = 20;
 
+  /** Cached system prompt from DB — TTL 5 minutes */
+  private promptCache: { text: string; fetchedAt: number } | null = null;
+  private static readonly PROMPT_CACHE_TTL = 5 * 60 * 1000; // 5 min
+
   constructor(
     private config: ConfigService,
     private toolExecutor: FinanceToolExecutor,
+    private financeConfig: FinanceConfigService,
   ) {
     const apiKey = (
       this.config.get<string>('ANTHROPIC_API_KEY') ||
@@ -74,7 +80,7 @@ export class FinanceAiService {
     if (!this.anthropic) return null;
 
     try {
-      const systemPrompt = this.buildSystemPrompt(params.customerName);
+      const systemPrompt = await this.buildSystemPrompt(params.customerName);
       const messages = this.buildMessages(params.history, params.userMessage);
 
       let totalInput = 0;
@@ -174,9 +180,33 @@ export class FinanceAiService {
     }
   }
 
-  private buildSystemPrompt(customerName?: string): string {
-    if (!customerName) return FINANCE_BOT_SYSTEM_PROMPT;
-    return `${FINANCE_BOT_SYSTEM_PROMPT}\n\n# ลูกค้าปัจจุบัน\nชื่อ: คุณ${customerName} (verify แล้ว)\nคุณสามารถใช้ tools เพื่อดึงข้อมูลของลูกค้าคนนี้ได้เลย — ไม่ต้องถามเลขสัญญา`;
+  /** Fetch system prompt with 5-min cache */
+  private async getSystemPromptText(): Promise<string> {
+    const now = Date.now();
+    if (this.promptCache && now - this.promptCache.fetchedAt < FinanceAiService.PROMPT_CACHE_TTL) {
+      return this.promptCache.text;
+    }
+    try {
+      const text = await this.financeConfig.getSystemPrompt();
+      this.promptCache = { text, fetchedAt: now };
+      return text;
+    } catch (err) {
+      this.logger.warn(
+        `[FinanceAI] Failed to fetch system prompt from DB, using cache/default: ${err instanceof Error ? err.message : err}`,
+      );
+      return this.promptCache?.text || FINANCE_BOT_SYSTEM_PROMPT;
+    }
+  }
+
+  /** Invalidate prompt cache (called after admin edits) */
+  invalidatePromptCache(): void {
+    this.promptCache = null;
+  }
+
+  private async buildSystemPrompt(customerName?: string): Promise<string> {
+    const basePrompt = await this.getSystemPromptText();
+    if (!customerName) return basePrompt;
+    return `${basePrompt}\n\n# ลูกค้าปัจจุบัน\nชื่อ: คุณ${customerName} (verify แล้ว)\nคุณสามารถใช้ tools เพื่อดึงข้อมูลของลูกค้าคนนี้ได้เลย — ไม่ต้องถามเลขสัญญา`;
   }
 
   private buildMessages(history: ChatMessage[], currentUserMessage: string): MessageParam[] {

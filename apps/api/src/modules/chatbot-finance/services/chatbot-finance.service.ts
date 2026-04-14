@@ -5,13 +5,16 @@ import {
   LineFinanceWebhookEvent,
   LineMessageEvent,
   LineFollowEvent,
+  LinePostbackEvent,
 } from '../dto/line-webhook.dto';
 import { LineFinanceClientService } from './line-finance-client.service';
+import { LineQuickReply } from './line-finance-client.service';
 import { ChatSessionService } from './chat-session.service';
 import { VerificationService } from './verification.service';
 import { FinanceAiService } from './finance-ai.service';
 import { HandoffService } from './handoff.service';
 import { SlipProcessingService } from './slip-processing.service';
+import { FeedbackService } from './feedback.service';
 import { INTENTS } from '../constants/intents';
 import { buildBrowserUrl } from '../../../utils/line-login.util';
 
@@ -43,6 +46,7 @@ export class ChatbotFinanceService {
     private ai: FinanceAiService,
     private handoff: HandoffService,
     private slipProcessing: SlipProcessingService,
+    private feedback: FeedbackService,
   ) {}
 
   /**
@@ -96,8 +100,7 @@ export class ChatbotFinanceService {
         this.logger.log(`User unfollowed: ${event.source.userId}`);
         return;
       case 'postback':
-        this.logger.log(`Postback: ${(event as { postback: { data: string } }).postback.data}`);
-        return;
+        return this.handlePostback(event as LinePostbackEvent);
       default:
         this.logger.debug(`Unhandled event type: ${(event as { type: string }).type}`);
     }
@@ -239,13 +242,20 @@ export class ChatbotFinanceService {
       // With prompt caching enabled, actual input cost is lower (~$0.30/M for cache hits)
       const costUsd =
         (aiReply.inputTokens * 3 + aiReply.outputTokens * 15) / 1_000_000;
+
+      // Send feedback Quick Reply when AI used tools (data-backed answers)
+      const feedbackQuickReply =
+        aiReply.toolsUsed.length > 0
+          ? this.buildFeedbackQuickReply(session.id)
+          : undefined;
+
       await this.replyAndSave(session.id, event.replyToken, aiReply.text, intent, {
         model: aiReply.model,
         inputTokens: aiReply.inputTokens,
         outputTokens: aiReply.outputTokens,
         toolsUsed: aiReply.toolsUsed,
         costUsd,
-      });
+      }, feedbackQuickReply);
     } else {
       await this.replyAndSave(session.id, event.replyToken, FALLBACK_REPLY, INTENTS.FALLBACK);
     }
@@ -304,6 +314,80 @@ export class ChatbotFinanceService {
 
   // ─── helpers ─────────────────────────────────────────────
 
+  // ─── postback handler ──────────────────────────────────
+
+  private async handlePostback(event: LinePostbackEvent): Promise<void> {
+    const data = event.postback.data;
+    this.logger.log(`[Finance] Postback: ${data}`);
+
+    const params = new URLSearchParams(data);
+    const action = params.get('action');
+
+    if (action === 'feedback') {
+      const rating = parseInt(params.get('rating') ?? '', 10);
+      const sessionId = params.get('sessionId');
+      const messageId = params.get('messageId');
+      const userId = event.source.userId;
+
+      if (!userId || !sessionId || isNaN(rating)) {
+        this.logger.warn(`[Finance] Invalid feedback postback: ${data}`);
+        return;
+      }
+
+      try {
+        await this.feedback.saveFeedback({
+          lineUserId: userId,
+          sessionId,
+          messageId: messageId ?? undefined,
+          rating,
+        });
+
+        const thankYou =
+          rating === 1
+            ? 'ขอบคุณสำหรับ feedback ค่ะ 😊'
+            : 'ขอบคุณสำหรับ feedback ค่ะ 🙏 ทีมงานจะปรับปรุงให้ดียิ่งขึ้นนะคะ';
+
+        if (event.replyToken) {
+          await this.replyAndSave(sessionId, event.replyToken, thankYou, INTENTS.FEEDBACK);
+        }
+      } catch (err) {
+        this.logger.error(
+          `[Finance] Feedback save failed: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+      return;
+    }
+
+    this.logger.debug(`[Finance] Unhandled postback action: ${action}`);
+  }
+
+  /** Build Quick Reply with 👍/👎 feedback buttons */
+  private buildFeedbackQuickReply(sessionId: string): LineQuickReply {
+    // messageId placeholder — will be replaced after save
+    return {
+      items: [
+        {
+          type: 'action',
+          action: {
+            type: 'postback',
+            label: '👍 ถูกต้อง',
+            data: `action=feedback&rating=1&sessionId=${sessionId}&messageId=__MSG_ID__`,
+            displayText: '👍 ถูกต้อง',
+          },
+        },
+        {
+          type: 'action',
+          action: {
+            type: 'postback',
+            label: '👎 ไม่ถูกต้อง',
+            data: `action=feedback&rating=0&sessionId=${sessionId}&messageId=__MSG_ID__`,
+            displayText: '👎 ไม่ถูกต้อง',
+          },
+        },
+      ],
+    };
+  }
+
   private async replyAndSave(
     sessionId: string,
     replyToken: string,
@@ -316,16 +400,10 @@ export class ChatbotFinanceService {
       toolsUsed?: string[];
       costUsd?: number;
     },
-  ): Promise<void> {
-    try {
-      await this.lineClient.replyText(replyToken, text);
-    } catch (err) {
-      this.logger.error(
-        `[Finance] reply failed: ${err instanceof Error ? err.message : err}`,
-      );
-    }
-
-    await this.sessions.saveMessage({
+    quickReply?: LineQuickReply,
+  ): Promise<string> {
+    // Save message first to get the ID for feedback Quick Reply
+    const savedMsg = await this.sessions.saveMessage({
       sessionId,
       role: MessageRole.BOT,
       text,
@@ -336,5 +414,31 @@ export class ChatbotFinanceService {
       toolsUsed: modelMeta?.toolsUsed,
       costUsd: modelMeta?.costUsd,
     });
+
+    try {
+      if (quickReply) {
+        // Replace placeholder with actual message ID
+        const resolvedQuickReply: LineQuickReply = {
+          items: quickReply.items.map((item) => ({
+            ...item,
+            action: {
+              ...item.action,
+              ...(item.action.type === 'postback'
+                ? { data: item.action.data.replace('__MSG_ID__', savedMsg.id) }
+                : {}),
+            },
+          })),
+        } as LineQuickReply;
+        await this.lineClient.replyWithQuickReply(replyToken, text, resolvedQuickReply);
+      } else {
+        await this.lineClient.replyText(replyToken, text);
+      }
+    } catch (err) {
+      this.logger.error(
+        `[Finance] reply failed: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+
+    return savedMsg.id;
   }
 }

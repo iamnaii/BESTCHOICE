@@ -24,6 +24,9 @@ export const INTENTS = {
   FOLLOW_GREETING: 'follow_greeting',
   UNSUPPORTED_TYPE: 'unsupported_type',
 
+  // Feedback
+  FEEDBACK: 'feedback',
+
   // Product (v5 — from improvement proposal)
   PRODUCT_INQUIRY: 'product_inquiry',
   ANDROID_REDIRECT: 'android_redirect',

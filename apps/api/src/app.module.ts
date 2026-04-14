@@ -73,7 +73,6 @@ import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { LoyaltyModule } from './modules/loyalty/loyalty.module';
 import { DataAuditModule } from './modules/data-audit/data-audit.module';
-import { ChatconeModule } from './modules/chatcone/chatcone.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { SecurityMiddleware } from './modules/audit/security.middleware';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
@@ -192,7 +191,6 @@ import { AppCacheModule } from './cache/cache.module';
     // External integrations (scaffold — activate when credentials are available)
     PeakModule,
     MdmModule,
-    ChatconeModule,
     // Loyalty Program (สะสมแต้ม + referral)
     LoyaltyModule,
     // MASTER: Management

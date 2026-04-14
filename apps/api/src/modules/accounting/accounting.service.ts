@@ -114,8 +114,15 @@ export class AccountingService {
   // ─── Expenses CRUD ───────────────────────────────────────────────────────────
 
   async createExpense(dto: CreateExpenseDto, createdById: string) {
-    // W-013: Validate expense date is not in a closed period
-    await this.validatePeriodOpen(new Date(dto.expenseDate));
+    // W-013: Validate expense date is not in a closed period.
+    // Resolve companyId from branchId so AccountingPeriod model can be checked.
+    const branch = dto.branchId
+      ? await this.prisma.branch.findUnique({
+          where: { id: dto.branchId },
+          select: { companyId: true },
+        })
+      : null;
+    await this.validatePeriodOpen(new Date(dto.expenseDate), branch?.companyId ?? undefined);
 
     const expectedAccountType = CATEGORY_ACCOUNT_MAP[dto.category];
     if (expectedAccountType && expectedAccountType !== dto.accountType) {
@@ -886,9 +893,16 @@ export class AccountingService {
 
   // ─── W-013: Period Closing Lock ───────────────────────────────────────────────
 
-  /** Check if a date falls in a closed accounting period */
-  private async validatePeriodOpen(date: Date): Promise<void> {
-    return validatePeriodOpenUtil(this.prisma, date);
+  /**
+   * Check if a date falls in a closed accounting period.
+   *
+   * @param date        - The transaction date to validate.
+   * @param companyId   - Optional. When provided, also checks the AccountingPeriod
+   *                      model for a CLOSED/SYNCED period for that company's year+month.
+   *                      Falls back to legacy SystemConfig check regardless.
+   */
+  private async validatePeriodOpen(date: Date, companyId?: string): Promise<void> {
+    return validatePeriodOpenUtil(this.prisma, date, companyId);
   }
 
   async closeAccountingPeriod(closedUntil: string) {

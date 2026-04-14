@@ -81,6 +81,10 @@ describe('AccountingService', () => {
       },
       branch: {
         findMany: jest.fn().mockResolvedValue([]),
+        findUnique: jest.fn().mockResolvedValue({ companyId: null }),
+      },
+      accountingPeriod: {
+        findUnique: jest.fn().mockResolvedValue(null),
       },
       $transaction: jest.fn().mockImplementation(async (fn) => {
         if (typeof fn === 'function') {
@@ -751,6 +755,85 @@ describe('AccountingService', () => {
         description: 'ไม่มีการล็อครอบบัญชี',
         amount: 1000,
         expenseDate: '2026-01-01',
+        paymentMethod: PaymentMethod.CASH,
+      };
+
+      await expect(service.createExpense(dto, 'user-1')).resolves.toBeDefined();
+    });
+
+    // ── AccountingPeriod model checks ──────────────────────────────────────
+
+    it('throws BadRequestException when AccountingPeriod is CLOSED for the expense month', async () => {
+      // Branch belongs to company-1
+      prisma.branch.findUnique.mockResolvedValue({ companyId: 'company-1' });
+      // AccountingPeriod for 2026-04 is CLOSED
+      prisma.accountingPeriod.findUnique.mockResolvedValue({ status: 'CLOSED' });
+      // No legacy lock
+      prisma.systemConfig.findUnique.mockResolvedValue(null);
+
+      const dto: CreateExpenseDto = {
+        branchId: 'branch-1',
+        accountType: 'ADMINISTRATIVE_EXPENSE',
+        category: 'ADMIN_RENT',
+        description: 'เมษายน (ปิดงวด)',
+        amount: 2000,
+        expenseDate: '2026-04-10',
+        paymentMethod: PaymentMethod.BANK_TRANSFER,
+      };
+
+      await expect(service.createExpense(dto, 'user-1')).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('throws BadRequestException when AccountingPeriod is SYNCED for the expense month', async () => {
+      prisma.branch.findUnique.mockResolvedValue({ companyId: 'company-1' });
+      prisma.accountingPeriod.findUnique.mockResolvedValue({ status: 'SYNCED' });
+      prisma.systemConfig.findUnique.mockResolvedValue(null);
+
+      const dto: CreateExpenseDto = {
+        branchId: 'branch-1',
+        accountType: 'ADMINISTRATIVE_EXPENSE',
+        category: 'ADMIN_RENT',
+        description: 'มีนาคม (ซิงค์แล้ว)',
+        amount: 3000,
+        expenseDate: '2026-03-20',
+        paymentMethod: PaymentMethod.CASH,
+      };
+
+      await expect(service.createExpense(dto, 'user-1')).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('allows expense creation when AccountingPeriod is REVIEW (not fully locked)', async () => {
+      prisma.branch.findUnique.mockResolvedValue({ companyId: 'company-1' });
+      prisma.accountingPeriod.findUnique.mockResolvedValue({ status: 'REVIEW' });
+      prisma.systemConfig.findUnique.mockResolvedValue(null);
+      prisma.$transaction.mockImplementationOnce(async () => ({ id: 'exp-review', expenseNumber: 'EXP-202604-0002' }));
+
+      const dto: CreateExpenseDto = {
+        branchId: 'branch-1',
+        accountType: 'ADMINISTRATIVE_EXPENSE',
+        category: 'ADMIN_RENT',
+        description: 'ระหว่างตรวจสอบ',
+        amount: 1500,
+        expenseDate: '2026-04-05',
+        paymentMethod: PaymentMethod.BANK_TRANSFER,
+      };
+
+      await expect(service.createExpense(dto, 'user-1')).resolves.toBeDefined();
+    });
+
+    it('allows expense creation when no AccountingPeriod record exists for the month', async () => {
+      prisma.branch.findUnique.mockResolvedValue({ companyId: 'company-1' });
+      prisma.accountingPeriod.findUnique.mockResolvedValue(null); // no record = OPEN
+      prisma.systemConfig.findUnique.mockResolvedValue(null);
+      prisma.$transaction.mockImplementationOnce(async () => ({ id: 'exp-open', expenseNumber: 'EXP-202605-0001' }));
+
+      const dto: CreateExpenseDto = {
+        branchId: 'branch-1',
+        accountType: 'ADMINISTRATIVE_EXPENSE',
+        category: 'ADMIN_RENT',
+        description: 'พฤษภาคม (ยังไม่ปิดงวด)',
+        amount: 1200,
+        expenseDate: '2026-05-01',
         paymentMethod: PaymentMethod.CASH,
       };
 

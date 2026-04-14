@@ -538,6 +538,14 @@ function App() {
             }
           />
           <Route
+            path="/settings/dunning"
+            element={
+              <ProtectedRoute roles={['OWNER']}>
+                <DunningSettingsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/trade-in"
             element={
               <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'SALES']}>

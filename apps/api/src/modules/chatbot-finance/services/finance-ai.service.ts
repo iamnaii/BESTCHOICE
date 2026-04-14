@@ -7,6 +7,7 @@ import { ChatMessage, MessageRole } from '@prisma/client';
 import { FINANCE_TOOLS } from '../tools/tool-definitions';
 import { FinanceToolExecutor } from '../tools/tool-executor';
 import { FinanceConfigService } from './finance-config.service';
+import { FINANCE_BOT_SYSTEM_PROMPT } from '../prompts/system-prompt';
 
 export interface AiReply {
   text: string;
@@ -193,7 +194,7 @@ export class FinanceAiService {
       this.logger.warn(
         `[FinanceAI] Failed to fetch system prompt from DB, using cache/default: ${err instanceof Error ? err.message : err}`,
       );
-      return this.promptCache?.text || (await this.financeConfig.getSystemPrompt());
+      return this.promptCache?.text || FINANCE_BOT_SYSTEM_PROMPT;
     }
   }
 

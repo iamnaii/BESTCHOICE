@@ -2,12 +2,15 @@ import { Module } from '@nestjs/common';
 import { AccountingController } from './accounting.controller';
 import { AccountingService } from './accounting.service';
 import { BadDebtService } from './bad-debt.service';
+import { MonthlyCloseService } from './monthly-close.service';
 import { JournalModule } from '../journal/journal.module';
+import { TaxModule } from '../tax/tax.module';
+import { PeakModule } from '../peak/peak.module';
 
 @Module({
-  imports: [JournalModule],
+  imports: [JournalModule, TaxModule, PeakModule],
   controllers: [AccountingController],
-  providers: [AccountingService, BadDebtService],
-  exports: [AccountingService, BadDebtService],
+  providers: [AccountingService, BadDebtService, MonthlyCloseService],
+  exports: [AccountingService, BadDebtService, MonthlyCloseService],
 })
 export class AccountingModule {}

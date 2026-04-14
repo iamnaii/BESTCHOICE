@@ -15,6 +15,7 @@ import { buildPaymentReminderFlex } from '../line-oa/flex-messages/payment-remin
 import { buildDailyReportFlex } from '../line-oa/flex-messages/daily-report.flex';
 import { DashboardService } from '../dashboard/dashboard.service';
 import { PDPAService } from '../pdpa/pdpa.service';
+import { DunningEngineService } from '../overdue/dunning-engine.service';
 
 @Injectable()
 export class SchedulerService {
@@ -31,6 +32,7 @@ export class SchedulerService {
     private paymentLinkService: PaymentLinkService,
     private dashboardService: DashboardService,
     private pdpaService: PDPAService,
+    private dunningEngineService: DunningEngineService,
   ) {}
 
   /**
@@ -326,6 +328,23 @@ export class SchedulerService {
       this.logger.log(`SLA check complete: ${pendingContracts.length} contracts pending, ${sent} notifications sent`);
     } catch (error) {
       this.reportCronFailure('sla-notification-check', error);
+    }
+  }
+
+  /**
+   * Run daily at 08:15: execute configurable dunning rules
+   * Runs AFTER payment reminders (08:00) and BEFORE overdue notices (09:00)
+   */
+  @Cron('15 8 * * *')
+  async handleDunningRuleExecution() {
+    this.logger.log('Starting configurable dunning rule execution...');
+    try {
+      const result = await this.dunningEngineService.executeRules();
+      this.logger.log(
+        `Dunning rules complete: ${result.executed} executed, ${result.skipped} skipped, ${result.failed} failed`,
+      );
+    } catch (error) {
+      this.reportCronFailure('dunning-rule-execution', error);
     }
   }
 

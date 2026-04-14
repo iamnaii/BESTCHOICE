@@ -52,6 +52,10 @@ export interface DailySummary {
   data: DailySummaryPayment[];
 }
 
+/**
+ * @deprecated Use `getStatusBadgeProps(status, paymentStatusMap)` from `@/lib/status-badges` instead.
+ * Kept for backwards-compat until all callers are migrated.
+ */
 export const paymentStatusLabels: Record<string, { label: string; className: string }> = {
   PENDING: { label: 'รอชำระ', className: 'bg-muted text-foreground' },
   PAID: { label: 'ชำระแล้ว', className: 'bg-success/10 text-success dark:bg-success/15' },

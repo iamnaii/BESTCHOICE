@@ -1,0 +1,123 @@
+/**
+ * Centralized status badge configuration.
+ * Maps every status enum to a Badge variant + Thai label so all pages
+ * show consistent colours without inline className strings.
+ *
+ * Usage:
+ *   import { getStatusBadgeProps, contractStatusMap } from '@/lib/status-badges';
+ *   const cfg = getStatusBadgeProps(contract.status, contractStatusMap);
+ *   <Badge variant={cfg.variant} appearance={cfg.appearance}>{cfg.label}</Badge>
+ */
+
+import type { VariantProps } from 'class-variance-authority';
+import type { badgeVariants } from '@/components/ui/badge';
+
+export interface StatusConfig {
+  variant: VariantProps<typeof badgeVariants>['variant'];
+  appearance?: VariantProps<typeof badgeVariants>['appearance'];
+  label: string;
+}
+
+// ─── Contract statuses ───────────────────────────────────────────────────────
+
+export const contractStatusMap: Record<string, StatusConfig> = {
+  DRAFT: { variant: 'secondary', label: 'ร่าง' },
+  ACTIVE: { variant: 'success', appearance: 'light', label: 'ผ่อนอยู่' },
+  OVERDUE: { variant: 'warning', appearance: 'light', label: 'ค้างชำระ' },
+  DEFAULT: { variant: 'destructive', appearance: 'light', label: 'ผิดนัด' },
+  EARLY_PAYOFF: { variant: 'primary', appearance: 'light', label: 'ปิดก่อนกำหนด' },
+  COMPLETED: { variant: 'success', appearance: 'light', label: 'ครบกำหนด' },
+  EXCHANGED: { variant: 'info', appearance: 'light', label: 'เปลี่ยนเครื่อง' },
+  CLOSED_BAD_DEBT: { variant: 'destructive', label: 'ตัดหนี้สูญ' },
+};
+
+// ─── Payment statuses ─────────────────────────────────────────────────────────
+
+export const paymentStatusMap: Record<string, StatusConfig> = {
+  PENDING: { variant: 'secondary', label: 'รอชำระ' },
+  PAID: { variant: 'success', appearance: 'light', label: 'ชำระแล้ว' },
+  PARTIALLY_PAID: { variant: 'warning', appearance: 'light', label: 'ชำระบางส่วน' },
+  OVERDUE: { variant: 'destructive', appearance: 'light', label: 'ค้างชำระ' },
+};
+
+// ─── Dunning stages ───────────────────────────────────────────────────────────
+
+export const dunningStageMap: Record<string, StatusConfig> = {
+  NONE: { variant: 'secondary', label: 'ปกติ' },
+  REMINDER: { variant: 'warning', appearance: 'light', label: 'แจ้งเตือน' },
+  NOTICE: { variant: 'warning', label: 'แจ้งค้างชำระ' },
+  FINAL_WARNING: { variant: 'destructive', appearance: 'light', label: 'เตือนครั้งสุดท้าย' },
+  LEGAL_ACTION: { variant: 'destructive', label: 'ดำเนินคดี' },
+};
+
+// ─── Collection stages ────────────────────────────────────────────────────────
+
+export const collectionStageMap: Record<string, StatusConfig> = {
+  NORMAL: { variant: 'secondary', label: 'ปกติ' },
+  REMINDED: { variant: 'warning', appearance: 'light', label: 'แจ้งเตือนแล้ว' },
+  OVERDUE: { variant: 'warning', label: 'ค้างชำระ' },
+  CONTACTED: { variant: 'info', appearance: 'light', label: 'ติดต่อแล้ว' },
+  PROMISE_TO_PAY: { variant: 'info', label: 'สัญญาจ่าย' },
+  ESCALATED_FM: { variant: 'destructive', appearance: 'light', label: 'ส่งผจก.การเงิน' },
+  MDM_LOCKED: { variant: 'destructive', label: 'ล็อคเครื่องแล้ว' },
+  REPOSSESSION: { variant: 'destructive', label: 'ยึดเครื่องแล้ว' },
+};
+
+// ─── Finance receivable statuses ──────────────────────────────────────────────
+
+export const financeReceivableStatusMap: Record<string, StatusConfig> = {
+  PENDING: { variant: 'warning', appearance: 'light', label: 'รอรับเงิน' },
+  PARTIALLY_RECEIVED: { variant: 'warning', label: 'ได้รับบางส่วน' },
+  RECEIVED: { variant: 'success', appearance: 'light', label: 'ได้รับแล้ว' },
+  OVERDUE: { variant: 'destructive', appearance: 'light', label: 'เกินกำหนด' },
+  DISPUTED: { variant: 'destructive', label: 'มีปัญหา' },
+};
+
+// ─── Inter-company transaction statuses ──────────────────────────────────────
+
+export const interCompanyStatusMap: Record<string, StatusConfig> = {
+  PENDING: { variant: 'warning', appearance: 'light', label: 'รอดำเนินการ' },
+  CONFIRMED: { variant: 'primary', appearance: 'light', label: 'ยืนยันแล้ว' },
+  RECONCILED: { variant: 'success', appearance: 'light', label: 'กระทบยอดแล้ว' },
+};
+
+// ─── Stock transfer statuses ──────────────────────────────────────────────────
+
+export const transferStatusMap: Record<string, StatusConfig> = {
+  PENDING: { variant: 'warning', appearance: 'light', label: 'รอจัดส่ง' },
+  IN_TRANSIT: { variant: 'info', appearance: 'light', label: 'ระหว่างโอนสินค้า' },
+  CONFIRMED: { variant: 'success', appearance: 'light', label: 'รับแล้ว' },
+  REJECTED: { variant: 'destructive', appearance: 'light', label: 'ปฏิเสธ' },
+};
+
+// ─── Product statuses ─────────────────────────────────────────────────────────
+
+export const productStatusMap: Record<string, StatusConfig> = {
+  PO_RECEIVED: { variant: 'primary', appearance: 'light', label: 'รับจาก PO' },
+  QC_PENDING: { variant: 'warning', appearance: 'light', label: 'รอตรวจรับ' },
+  PHOTO_PENDING: { variant: 'primary', appearance: 'light', label: 'รอถ่ายรูป' },
+  INSPECTION: { variant: 'warning', label: 'กำลังตรวจ' },
+  IN_STOCK: { variant: 'success', appearance: 'light', label: 'พร้อมขาย' },
+  RESERVED: { variant: 'info', appearance: 'light', label: 'จอง' },
+  SOLD_INSTALLMENT: { variant: 'primary', label: 'ขายผ่อน' },
+  SOLD_CASH: { variant: 'success', label: 'ขายสด' },
+  REPOSSESSED: { variant: 'destructive', appearance: 'light', label: 'ยึดคืน' },
+  REFURBISHED: { variant: 'warning', label: 'ซ่อมแล้ว' },
+  SOLD_RESELL: { variant: 'info', label: 'ขายต่อ' },
+  DAMAGED: { variant: 'destructive', appearance: 'light', label: 'เสียหาย' },
+  LOST: { variant: 'destructive', label: 'สูญหาย' },
+  WRITTEN_OFF: { variant: 'secondary', label: 'ตัดจำหน่าย' },
+};
+
+// ─── General helper ───────────────────────────────────────────────────────────
+
+/**
+ * Look up a status in a map.  Falls back to `{ variant: 'secondary', label: status }`
+ * so unknown values still render safely.
+ */
+export function getStatusBadgeProps(
+  status: string,
+  map: Record<string, StatusConfig>,
+): StatusConfig {
+  return map[status] ?? { variant: 'secondary', label: status };
+}

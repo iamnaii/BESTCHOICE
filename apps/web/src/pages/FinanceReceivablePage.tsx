@@ -9,12 +9,14 @@ import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Banknote, Clock, AlertTriangle, CheckCircle2, Ban, Pencil, MoreVertical, Receipt, Percent, Wallet } from 'lucide-react';
 import AnimatedCounter from '@/components/ui/animated-counter';
 import { Button } from '@/components/ui/button';
 import { formatDateShortThai, formatDateShort } from '@/utils/formatters';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { getStatusBadgeProps, financeReceivableStatusMap, interCompanyStatusMap } from '@/lib/status-badges';
 
 interface FinanceReceivable {
   id: string; financeCompany: string; financeRefNumber: string | null;
@@ -38,15 +40,6 @@ interface Summary {
   pendingAmount: string; receivedAmount: string; overdueAmount: string; disputedAmount: string;
 }
 
-const statusLabels: Record<string, string> = {
-  PENDING: 'รอรับเงิน', RECEIVED: 'ได้รับแล้ว', PARTIALLY_RECEIVED: 'ได้รับบางส่วน',
-  OVERDUE: 'เกินกำหนด', DISPUTED: 'มีปัญหา',
-};
-const statusColors: Record<string, string> = {
-  PENDING: 'bg-warning/10 text-warning dark:bg-warning/15', RECEIVED: 'bg-success/10 text-success dark:bg-success/15',
-  PARTIALLY_RECEIVED: 'bg-warning/10 text-warning dark:bg-warning/15', OVERDUE: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
-  DISPUTED: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
-};
 const inputClass = 'w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden';
 
 interface InterCompanyTransaction {
@@ -71,16 +64,6 @@ interface InterCompanyProfitSummary {
   combined: { totalVat: number; totalProfit: number };
 }
 
-const icStatusLabels: Record<string, string> = {
-  PENDING: 'รอดำเนินการ',
-  CONFIRMED: 'ยืนยันแล้ว',
-  RECONCILED: 'กระทบยอดแล้ว',
-};
-const icStatusColors: Record<string, string> = {
-  PENDING: 'bg-warning/10 text-warning dark:bg-warning/15',
-  CONFIRMED: 'bg-primary/10 text-primary dark:bg-primary/15',
-  RECONCILED: 'bg-success/10 text-success dark:bg-success/15',
-};
 
 function fmt(n: string | number | null | undefined): string {
   if (n == null) return '-';
@@ -137,11 +120,10 @@ function BestchoiceFinanceTab() {
     },
     {
       key: 'status', label: 'สถานะ',
-      render: (r: InterCompanyTransaction) => (
-        <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${icStatusColors[r.status] || 'bg-muted'}`}>
-          {icStatusLabels[r.status] || r.status}
-        </span>
-      ),
+      render: (r: InterCompanyTransaction) => {
+        const cfg = getStatusBadgeProps(r.status, interCompanyStatusMap);
+        return <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>;
+      },
     },
     {
       key: 'createdAt', label: 'วันที่',
@@ -346,10 +328,15 @@ export default function FinanceReceivablePage() {
     },
     {
       key: 'status', label: 'สถานะ',
-      render: (r: FinanceReceivable) => (
-        <div><span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusColors[r.status] || 'bg-muted'}`}>{statusLabels[r.status] || r.status}</span>
-          {r.note && r.status === 'DISPUTED' && <div className="text-xs text-red-500 mt-0.5 truncate max-w-[100px]">{r.note}</div>}</div>
-      ),
+      render: (r: FinanceReceivable) => {
+        const cfg = getStatusBadgeProps(r.status, financeReceivableStatusMap);
+        return (
+          <div>
+            <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>
+            {r.note && r.status === 'DISPUTED' && <div className="text-xs text-destructive mt-0.5 truncate max-w-[100px]">{r.note}</div>}
+          </div>
+        );
+      },
     },
     {
       key: 'actions', label: '',
@@ -425,7 +412,7 @@ export default function FinanceReceivablePage() {
           <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สถานะ</label>
           <select value={statusFilter} onChange={(e) => setFilter('status', e.target.value)} className={`${inputClass} w-auto min-w-[130px]`}>
             <option value="">ทั้งหมด</option>
-            {Object.entries(statusLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            {Object.entries(financeReceivableStatusMap).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
           </select>
         </div>
         <div>

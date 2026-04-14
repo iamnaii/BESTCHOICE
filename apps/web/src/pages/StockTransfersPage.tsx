@@ -7,10 +7,11 @@ import api, { getErrorMessage } from '@/lib/api';
 import { formatDateShort, formatDateTime } from '@/utils/formatters';
 import PageHeader from '@/components/ui/PageHeader';
 import Modal from '@/components/ui/Modal';
-import { transferStatusLabels } from '@/lib/constants';
+import { Badge } from '@/components/ui/badge';
 import { exportToExcel } from '@/utils/excel.util';
 import { Download } from 'lucide-react';
 import QueryBoundary from '@/components/QueryBoundary';
+import { getStatusBadgeProps, transferStatusMap } from '@/lib/status-badges';
 
 interface TransferProduct {
   id: string;
@@ -317,7 +318,7 @@ export default function StockTransfersPage() {
                       batchNumber: bg.batchNumber || '-',
                       fromBranch: bg.fromBranch.name,
                       toBranch: bg.toBranch.name,
-                      status: transferStatusLabels[bg.status]?.label || bg.status,
+                      status: getStatusBadgeProps(bg.status, transferStatusMap).label,
                       productCount: bg.items.length,
                       createdAt: formatDateShort(bg.createdAt),
                     })),
@@ -354,9 +355,9 @@ export default function StockTransfersPage() {
             >
               {tab.label}
               {tab.key === 'incoming' && pendingList.length > 0 && (
-                <span className="ml-1.5 px-1.5 py-0.5 text-xs rounded-full font-semibold bg-warning/10 text-warning dark:bg-warning/15">
+                <Badge variant="warning" appearance="light" size="xs" shape="circle" className="ml-1.5">
                   {pendingList.length}
-                </span>
+                </Badge>
               )}
             </button>
           ))}
@@ -397,7 +398,7 @@ export default function StockTransfersPage() {
             <div className="space-y-2">
               {batchGroups.map((batch) => {
                 const isExpanded = expandedBatches.has(batch.batchKey);
-                const s = transferStatusLabels[batch.status] || { label: batch.status, className: 'bg-muted text-foreground' };
+                const batchCfg = getStatusBadgeProps(batch.status, transferStatusMap);
                 return (
                   <div key={batch.batchKey} className="rounded-xl border border-border/50 bg-card overflow-hidden shadow-sm hover:shadow-card-hover transition-shadow">
                     {/* Batch Header */}
@@ -415,9 +416,7 @@ export default function StockTransfersPage() {
                         <span className="font-mono text-sm font-semibold text-primary">
                           {batch.batchNumber || '-'}
                         </span>
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.className}`}>
-                          {s.label}
-                        </span>
+                        <Badge variant={batchCfg.variant} appearance={batchCfg.appearance} size="sm">{batchCfg.label}</Badge>
                         <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
                           {batch.items.length} รายการ
                         </span>
@@ -470,7 +469,7 @@ export default function StockTransfersPage() {
                           </thead>
                           <tbody className="divide-y divide-border/50">
                             {batch.items.map((t, idx) => {
-                              const itemStatus = transferStatusLabels[t.status] || { label: t.status, className: 'bg-muted text-foreground' };
+                              const itemCfg = getStatusBadgeProps(t.status, transferStatusMap);
                               return (
                                 <tr key={t.id} className="hover:bg-muted/50">
                                   <td className="px-4 py-2 text-xs text-muted-foreground">{idx + 1}</td>
@@ -491,9 +490,7 @@ export default function StockTransfersPage() {
                                     {[t.product.color, t.product.storage].filter(Boolean).join(' / ') || '-'}
                                   </td>
                                   <td className="px-4 py-2">
-                                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${itemStatus.className}`}>
-                                      {itemStatus.label}
-                                    </span>
+                                    <Badge variant={itemCfg.variant} appearance={itemCfg.appearance} size="sm">{itemCfg.label}</Badge>
                                   </td>
                                   <td className="px-4 py-2 text-xs text-muted-foreground">
                                     {t.trackingNote || t.notes || '-'}
@@ -564,9 +561,7 @@ export default function StockTransfersPage() {
                         <span className="font-mono text-sm font-semibold text-primary">
                           {batch.batchNumber || '-'}
                         </span>
-                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-warning/10 text-warning dark:bg-warning/15">
-                          รอตรวจรับ
-                        </span>
+                        <Badge variant="warning" appearance="light" size="sm">รอตรวจรับ</Badge>
                         <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
                           {batch.items.length} รายการ
                         </span>
@@ -671,11 +666,9 @@ export default function StockTransfersPage() {
                       <td className="px-4 py-3">{r.transfer?.fromBranch?.name || '-'}</td>
                       <td className="px-4 py-3">{r.receivedBy?.name || '-'}</td>
                       <td className="px-4 py-3 text-center">
-                        <span className={`px-2 py-0.5 rounded-full text-xs ${
-                          r.status === 'COMPLETED' ? 'bg-success/10 text-success dark:bg-success/15' : 'bg-destructive/10 text-destructive dark:bg-destructive/15'
-                        }`}>
+                        <Badge variant={r.status === 'COMPLETED' ? 'success' : 'destructive'} appearance="light" size="sm">
                           {r.status === 'COMPLETED' ? 'ผ่าน' : 'ไม่ผ่าน'}
-                        </span>
+                        </Badge>
                       </td>
                       <td className="px-4 py-3 text-xs text-muted-foreground">
                         {formatDateShort(r.createdAt)}

@@ -42,7 +42,7 @@ export default function LiffFinanceVerify() {
     queryKey: ['liff-finance-verify-status', lineId],
     queryFn: async () => {
       const { data } = await liffApi.get<LinkStatus>(
-        `/chatbot/finance/liff/status?lineUserId=${encodeURIComponent(lineId)}`,
+        '/chatbot/finance/liff/status',
       );
       return data;
     },
@@ -81,7 +81,7 @@ export default function LiffFinanceVerify() {
     mutationFn: async (phoneInput: string) => {
       const { data } = await liffApi.post<RequestOtpResponse>(
         '/chatbot/finance/liff/request-otp',
-        { lineUserId: lineId, phone: phoneInput },
+        { phone: phoneInput },
       );
       return data;
     },
@@ -103,7 +103,7 @@ export default function LiffFinanceVerify() {
     mutationFn: async (otpInput: string) => {
       const { data } = await liffApi.post<VerifyOtpResponse>(
         '/chatbot/finance/liff/verify-otp',
-        { lineUserId: lineId, otp: otpInput },
+        { otp: otpInput },
       );
       return data;
     },

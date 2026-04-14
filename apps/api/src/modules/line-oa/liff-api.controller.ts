@@ -29,6 +29,7 @@ import {
   LiffCreatePaymentLinkDto,
   LiffEarlyPayoffDto,
   LiffConsentDto,
+  LiffNotificationPreferencesDto,
 } from './dto/liff.dto';
 // Return types (mirrors packages/shared/src/liff-types.ts)
 interface LiffContractResponse { customer: { name: string }; contracts: unknown[]; }
@@ -442,9 +443,9 @@ export class LiffApiController {
   @Post('liff/notification-preferences')
   async updateNotificationPreferences(
     @Req() req: Request,
-    @Body() body: { paymentReminder: boolean; overdueNotice: boolean; receiptNotification: boolean },
+    @Body() dto: LiffNotificationPreferencesDto,
   ) {
     const lineId = (req as unknown as LiffRequest).liffUserId;
-    return this.liffApiService.updateNotificationPreferences(lineId, body);
+    return this.liffApiService.updateNotificationPreferences(lineId, dto);
   }
 }

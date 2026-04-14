@@ -14,13 +14,13 @@ export class PricingTemplatesController {
   constructor(private service: PricingTemplatesService) {}
 
   @Get()
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   findAll(@Query('brand') brand?: string, @Query('category') category?: string) {
     return this.service.findAll({ brand, category });
   }
 
   @Get('lookup')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   lookup(
     @Query('brand') brand: string,
     @Query('model') model: string,
@@ -33,7 +33,7 @@ export class PricingTemplatesController {
   }
 
   @Get(':id')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   findOne(@Param('id') id: string) {
     return this.service.findOne(id);
   }

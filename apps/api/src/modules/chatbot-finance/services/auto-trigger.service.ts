@@ -6,7 +6,7 @@ import { LineFinanceClientService } from './line-finance-client.service';
 import { ChatSessionService } from './chat-session.service';
 import { TEMPLATES, ReminderPayload } from '../constants/reminder-templates';
 import { LATE_FEE_PER_DAY } from '../constants/finance-rules';
-import { formatThaiDate } from '../utils/thai-date';
+import { formatThaiDateText as formatThaiDate } from '../../../utils/thai-date.util';
 import { FinanceConfigService } from './finance-config.service';
 import {
   AutoTriggerType,

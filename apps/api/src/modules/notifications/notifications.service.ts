@@ -585,10 +585,17 @@ export class NotificationsService implements OnModuleInit {
   async processRetryQueue(): Promise<{ retried: number; succeeded: number; failed: number }> {
     const now = new Date();
 
+    // Force-fail orphaned RETRY_PENDING without nextRetryAt
+    await this.prisma.notificationLog.updateMany({
+      where: { status: 'RETRY_PENDING', nextRetryAt: null },
+      data: { status: 'FAILED', errorMsg: 'Orphaned retry record — no nextRetryAt set' },
+    });
+
     const pendingRetries = await this.prisma.notificationLog.findMany({
       where: {
         status: 'RETRY_PENDING',
         nextRetryAt: { lte: now },
+        createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
       },
       orderBy: { nextRetryAt: 'asc' },
       take: 50, // Process max 50 per batch to avoid blocking

@@ -28,7 +28,7 @@ export class ProductsController {
   ) {}
 
   @Get()
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   findAll(
     @Query() pagination: PaginationDto,
     @Query('search') search?: string,
@@ -46,7 +46,7 @@ export class ProductsController {
   }
 
   @Get('stock')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   getStock(
     @Query() pagination: PaginationDto,
     @Query('search') search?: string,
@@ -63,19 +63,19 @@ export class ProductsController {
   }
 
   @Get('stock/dashboard')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   getStockDashboard(@Query('branchId') branchId?: string) {
     return this.productsStockService.getStockDashboard(branchId);
   }
 
   @Get('brands')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   getBrands() {
     return this.productsService.getBrands();
   }
 
   @Get('warranty/expiring')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   getWarrantyExpiring(
     @Query('days') days?: string,
     @Query('branchId') branchId?: string,
@@ -123,7 +123,7 @@ export class ProductsController {
   }
 
   @Get('transfers/:transferId')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   getTransferById(
     @Param('transferId') transferId: string,
     @CurrentUser() user: { role: string; branchId: string | null },
@@ -132,13 +132,13 @@ export class ProductsController {
   }
 
   @Get(':id/workflow')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   getWorkflowStatus(@Param('id') id: string) {
     return this.productsService.getWorkflowStatus(id);
   }
 
   @Get(':id')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   findOne(@Param('id') id: string) {
     return this.productsService.findOne(id);
   }

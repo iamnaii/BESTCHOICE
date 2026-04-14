@@ -47,6 +47,14 @@ export class LineFinanceWebhookGuard implements CanActivate {
 
     // Use raw body bytes for HMAC — JSON.stringify may differ from LINE's original payload
     const rawBody = (request as unknown as RawBodyRequest).rawBody;
+    if (!rawBody) {
+      const isDev = process.env.NODE_ENV !== 'production';
+      if (!isDev) {
+        this.logger.error('rawBody missing in production — refusing webhook');
+        throw new UnauthorizedException('Cannot verify webhook signature without rawBody');
+      }
+      this.logger.warn('rawBody missing — falling back to JSON.stringify (DEV ONLY)');
+    }
     const body = rawBody ?? Buffer.from(JSON.stringify(request.body));
     const expected = createHmac('SHA256', this.channelSecret).update(body).digest('base64');
 

@@ -7,6 +7,7 @@ import { VerificationService } from './verification.service';
 import { FinanceAiService } from './finance-ai.service';
 import { HandoffService } from './handoff.service';
 import { SlipProcessingService } from './slip-processing.service';
+import { FeedbackService } from './feedback.service';
 
 describe('ChatbotFinanceService', () => {
   let service: ChatbotFinanceService;
@@ -72,6 +73,7 @@ describe('ChatbotFinanceService', () => {
         { provide: FinanceAiService, useValue: ai },
         { provide: HandoffService, useValue: handoff },
         { provide: SlipProcessingService, useValue: slipProcessing },
+        { provide: FeedbackService, useValue: { saveFeedback: jest.fn().mockResolvedValue({ ok: true }) } },
       ],
     }).compile();
 

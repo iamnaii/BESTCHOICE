@@ -20,7 +20,6 @@ interface DashboardKPIsProps {
 /**
  * MoM comparison indicator.
  * Shows percentage change vs previous month when `value` is provided.
- * TODO: Wire to real API data when /dashboard/kpis returns `previousMonth` fields.
  */
 function MoMIndicator({ value }: { value?: number | null }) {
   if (value == null) return null;
@@ -46,12 +45,11 @@ export default function DashboardKPIs({ kpis, comparativePL }: DashboardKPIsProp
   const revenueMoM = comparativePL?.momChange.revenue ?? null;
   const netProfitMoM = comparativePL?.momChange.netProfit ?? null;
 
-  // KPI-level MoM fallback (if kpis API returns them in future)
-  const kpisAny = kpis as unknown as Record<string, unknown>;
-  const contractsMoM = (kpisAny.contractsMoM as number | undefined) ?? null;
-  const overdueMoM = (kpisAny.overdueMoM as number | undefined) ?? null;
+  // KPI-level MoM from /dashboard/kpis
+  const contractsMoM = kpis.contractsMoM ?? null;
+  const overdueMoM = kpis.overdueMoM ?? null;
   const paymentsMoM = revenueMoM;  // revenue MoM is the best proxy for payments
-  const stockMoM = (kpisAny.stockMoM as number | undefined) ?? null;
+  const stockMoM = kpis.stockMoM ?? null;
 
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-5">

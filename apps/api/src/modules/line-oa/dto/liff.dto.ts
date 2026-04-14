@@ -75,3 +75,16 @@ export class LiffConsentDto {
   @IsBoolean({ message: 'กรุณาระบุสถานะการยินยอม' })
   consent!: boolean;
 }
+
+// ─── LIFF Notification Preferences ──────────────────
+
+export class LiffNotificationPreferencesDto {
+  @IsBoolean({ message: 'กรุณาระบุค่า paymentReminder' })
+  paymentReminder!: boolean;
+
+  @IsBoolean({ message: 'กรุณาระบุค่า overdueNotice' })
+  overdueNotice!: boolean;
+
+  @IsBoolean({ message: 'กรุณาระบุค่า receiptNotification' })
+  receiptNotification!: boolean;
+}

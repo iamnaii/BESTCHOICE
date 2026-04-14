@@ -97,6 +97,8 @@ const ChatAnalyticsPage = lazy(() => import('@/pages/ChatAnalyticsPage'));
 const CannedResponseAdminPage = lazy(() => import('@/pages/CannedResponseAdminPage'));
 const CollectionDashboardPage = lazy(() => import('@/pages/CollectionDashboardPage'));
 const DunningSettingsPage = lazy(() => import('@/pages/DunningSettingsPage'));
+const MonthlyClosePage = lazy(() => import('@/pages/MonthlyClosePage'));
+const PeakSyncPage = lazy(() => import('@/pages/PeakSyncPage'));
 
 const PageLoader = () => (
   <div className="flex items-center justify-center py-20">
@@ -490,6 +492,14 @@ function App() {
             }
           />
           <Route
+            path="/monthly-close"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <MonthlyClosePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/system-status"
             element={
               <ProtectedRoute roles={['OWNER']}>
@@ -542,6 +552,14 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER']}>
                 <DunningSettingsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings/peak-sync"
+            element={
+              <ProtectedRoute roles={['OWNER', 'ACCOUNTANT']}>
+                <PeakSyncPage />
               </ProtectedRoute>
             }
           />

@@ -52,6 +52,7 @@ import {
   Kanban,
   Plug,
   ChevronRight,
+  CalendarDays,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import {
@@ -155,6 +156,7 @@ const navSections: NavSection[] = [
       { label: 'กำไร-ขาดทุน', path: '/profit-loss', icon: PieChart, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
       { label: 'ค่าคอม', path: '/commissions', icon: Coins, roles: ['OWNER', 'FINANCE_MANAGER', 'SALES'] },
       { label: 'สินทรัพย์', path: '/assets', icon: Landmark, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
+      { label: 'ปิดบัญชีรายเดือน', path: '/monthly-close', icon: CalendarDays, roles: ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
     ],
   },
   {
@@ -201,6 +203,7 @@ const navSections: NavSection[] = [
       { label: 'Audit Log', path: '/audit-logs', icon: ScrollText, roles: ['OWNER'] },
       { label: 'ผังบัญชี', path: '/settings/chart-of-accounts', icon: ClipboardList, roles: ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
       { label: 'ตรวจสอบบัญชี', path: '/financial-audit', icon: ClipboardList, roles: ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
+      { label: 'PEAK Sync', path: '/settings/peak-sync', icon: Plug, roles: ['OWNER', 'ACCOUNTANT'] },
       { label: 'ระบบทวงหนี้อัตโนมัติ', path: '/settings/dunning', icon: Bell, roles: ['OWNER'] },
     ],
   },

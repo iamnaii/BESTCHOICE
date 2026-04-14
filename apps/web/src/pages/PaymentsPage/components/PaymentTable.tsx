@@ -2,10 +2,12 @@ import { useMemo } from 'react';
 import { toast } from 'sonner';
 import { Copy } from 'lucide-react';
 import DataTable from '@/components/ui/DataTable';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { formatDateShort } from '@/utils/formatters';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import type { PendingPayment } from '../types';
-import { paymentStatusLabels } from '../types';
+import { getStatusBadgeProps, paymentStatusMap } from '@/lib/status-badges';
 
 interface PaymentTableProps {
   pendingPayments: PendingPayment[];
@@ -88,8 +90,8 @@ export default function PaymentTable({
       key: 'status',
       label: 'สถานะ',
       render: (p: PendingPayment) => {
-        const s = paymentStatusLabels[p.status] || { label: p.status, className: 'bg-muted' };
-        return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.className}`}>{s.label}</span>;
+        const cfg = getStatusBadgeProps(p.status, paymentStatusMap);
+        return <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>;
       },
     },
     { key: 'branch', label: 'สาขา', render: (p: PendingPayment) => <span className="text-xs">{p.contract.branch.name}</span> },
@@ -114,11 +116,18 @@ export default function PaymentTable({
 
   return (
     <>
-      {loadingPending ? (
-        <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>
-      ) : (
-        <DataTable columns={pendingColumns} data={pendingPayments} emptyMessage="ไม่มีรายการรอชำระ" />
-      )}
+      <Card>
+        <CardHeader>
+          <CardTitle>รายการรอชำระ</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          {loadingPending ? (
+            <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>
+          ) : (
+            <DataTable columns={pendingColumns} data={pendingPayments} emptyMessage="ไม่มีรายการรอชำระ" />
+          )}
+        </CardContent>
+      </Card>
 
       {/* Batch action bar */}
       {selectedIds.size > 0 && (

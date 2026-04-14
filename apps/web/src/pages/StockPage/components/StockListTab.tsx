@@ -1,6 +1,7 @@
 import DataTable, { Column } from '@/components/ui/DataTable';
 import { statusLabels, categoryLabels } from '@/lib/constants';
 import { StockProduct } from '../types';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 export interface StockListTabProps {
   search: string;
@@ -88,18 +89,25 @@ export function StockListTab({
         )}
       </div>
 
-      <DataTable
-        columns={columns}
-        data={listProducts}
-        isLoading={listLoading}
-        emptyMessage="ไม่พบสินค้า"
-        pagination={listResult ? {
-          page: listResult.page,
-          totalPages: listResult.totalPages,
-          total: listResult.total,
-          onPageChange: setPage,
-        } : undefined}
-      />
+      <Card>
+        <CardHeader>
+          <CardTitle>รายการสินค้า</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <DataTable
+            columns={columns}
+            data={listProducts}
+            isLoading={listLoading}
+            emptyMessage="ไม่พบสินค้า"
+            pagination={listResult ? {
+              page: listResult.page,
+              totalPages: listResult.totalPages,
+              total: listResult.total,
+              onPageChange: setPage,
+            } : undefined}
+          />
+        </CardContent>
+      </Card>
     </>
   );
 }

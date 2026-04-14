@@ -21,7 +21,7 @@ import QueryBoundary from '@/components/QueryBoundary';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
 
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import AddressForm, { AddressData, emptyAddress, serializeAddress } from '@/components/ui/AddressForm';
 import { Download, ChevronUp, ChevronDown, CreditCard, Camera, User, MapPin, Phone, Briefcase, Users } from 'lucide-react';
 import type { OcrResult } from '@/types/ocr';
@@ -703,27 +703,34 @@ export default function CustomersPage() {
         </div>
       </div>
 
-      <QueryBoundary
-        isLoading={isLoading && !result}
-        isError={isError}
-        error={error}
-        onRetry={refetch}
-        errorTitle="ไม่สามารถโหลดรายชื่อลูกค้าได้"
-      >
-        <DataTable
-          columns={columns}
-          data={customers}
-          isLoading={isLoading}
-          emptyMessage="ไม่พบลูกค้า"
-          onRowDoubleClick={(c) => navigate(`/customers/${c.id}`)}
-          pagination={result ? {
-            page: result.page,
-            totalPages: result.totalPages,
-            total: result.total,
-            onPageChange: setPage,
-          } : undefined}
-        />
-      </QueryBoundary>
+      <Card>
+        <CardHeader>
+          <CardTitle>รายชื่อลูกค้า</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <QueryBoundary
+            isLoading={isLoading && !result}
+            isError={isError}
+            error={error}
+            onRetry={refetch}
+            errorTitle="ไม่สามารถโหลดรายชื่อลูกค้าได้"
+          >
+            <DataTable
+              columns={columns}
+              data={customers}
+              isLoading={isLoading}
+              emptyMessage="ไม่พบลูกค้า"
+              onRowDoubleClick={(c) => navigate(`/customers/${c.id}`)}
+              pagination={result ? {
+                page: result.page,
+                totalPages: result.totalPages,
+                total: result.total,
+                onPageChange: setPage,
+              } : undefined}
+            />
+          </QueryBoundary>
+        </CardContent>
+      </Card>
 
       {isModalOpen && (
       <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-start justify-center pt-8 pb-8" role="dialog" aria-modal="true" aria-label="เพิ่มลูกค้าใหม่">

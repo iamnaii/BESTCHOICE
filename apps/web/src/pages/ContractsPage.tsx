@@ -6,10 +6,11 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { useAuth } from '@/contexts/AuthContext';
 import PageHeader from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import DataTable from '@/components/ui/DataTable';
 import WorkflowStatusBadge from '@/components/contract/WorkflowStatusBadge';
 import AnimatedCounter from '@/components/ui/animated-counter';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { Download, Plus, LayoutGrid, List, Calendar, DollarSign, User } from 'lucide-react';
 import { KanbanBoard, type KanbanColumn } from '@/components/ui/KanbanBoard';
@@ -17,6 +18,7 @@ import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { exportToExcel } from '@/utils/excel.util';
 import { formatDateShort, formatDateShortThai } from '@/utils/formatters';
 import QueryBoundary from '@/components/QueryBoundary';
+import { getStatusBadgeProps, contractStatusMap } from '@/lib/status-badges';
 
 interface Contract {
   id: string;
@@ -38,16 +40,6 @@ interface Contract {
   _count: { payments: number; contractDocuments: number };
 }
 
-const statusLabels: Record<string, { label: string; className: string }> = {
-  DRAFT: { label: 'ร่าง', className: 'bg-muted text-foreground' },
-  ACTIVE: { label: 'ผ่อนอยู่', className: 'bg-success/10 text-success dark:bg-success/15' },
-  OVERDUE: { label: 'ค้างชำระ', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
-  DEFAULT: { label: 'ผิดนัด', className: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },
-  EARLY_PAYOFF: { label: 'ปิดก่อน', className: 'bg-primary/10 text-primary dark:bg-primary/15' },
-  COMPLETED: { label: 'ครบ', className: 'bg-success/10 text-success dark:bg-success/15' },
-  EXCHANGED: { label: 'เปลี่ยนเครื่อง', className: 'bg-info/10 text-info dark:bg-info/15' },
-  CLOSED_BAD_DEBT: { label: 'หนี้สูญ', className: 'bg-destructive/15 text-destructive dark:bg-destructive/20' },
-};
 
 interface PaginatedResponse<T> {
   data: T[];
@@ -166,7 +158,7 @@ export default function ContractsPage() {
         product: `${c.product.brand} ${c.product.model}`,
         sellingPrice: Number(c.sellingPrice).toLocaleString(),
         monthlyPayment: Number(c.monthlyPayment).toLocaleString(),
-        status: statusLabels[c.status]?.label || c.status,
+        status: getStatusBadgeProps(c.status, contractStatusMap).label,
         branch: c.branch.name,
         salesperson: c.salesperson.name,
         createdAt: formatDateShort(c.createdAt),
@@ -233,8 +225,8 @@ export default function ContractsPage() {
       key: 'status',
       label: 'สถานะ',
       render: (c: Contract) => {
-        const s = statusLabels[c.status] || { label: c.status, className: 'bg-muted text-foreground' };
-        return <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${s.className}`}>{s.label}</span>;
+        const cfg = getStatusBadgeProps(c.status, contractStatusMap);
+        return <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>;
       },
     },
     {
@@ -269,12 +261,12 @@ export default function ContractsPage() {
   /* ─── Kanban columns: group contracts by status ─── */
   const kanbanColumns = useMemo<KanbanColumn<Contract>[]>(() => {
     const groups: { id: string; title: string; color: string; statuses: string[] }[] = [
-      { id: 'draft', title: 'ร่าง', color: 'bg-zinc-400', statuses: ['DRAFT'] },
-      { id: 'active', title: 'ผ่อนอยู่', color: 'bg-green-500', statuses: ['ACTIVE'] },
-      { id: 'overdue', title: 'ค้างชำระ', color: 'bg-yellow-500', statuses: ['OVERDUE'] },
-      { id: 'default', title: 'ผิดนัด', color: 'bg-red-500', statuses: ['DEFAULT'] },
-      { id: 'completed', title: 'ปิดสัญญา', color: 'bg-blue-500', statuses: ['COMPLETED', 'EARLY_PAYOFF'] },
-      { id: 'other', title: 'อื่นๆ', color: 'bg-purple-500', statuses: ['EXCHANGED', 'CLOSED_BAD_DEBT'] },
+      { id: 'draft', title: 'ร่าง', color: 'bg-secondary', statuses: ['DRAFT'] },
+      { id: 'active', title: 'ผ่อนอยู่', color: 'bg-success', statuses: ['ACTIVE'] },
+      { id: 'overdue', title: 'ค้างชำระ', color: 'bg-warning', statuses: ['OVERDUE'] },
+      { id: 'default', title: 'ผิดนัด', color: 'bg-destructive', statuses: ['DEFAULT'] },
+      { id: 'completed', title: 'ปิดสัญญา', color: 'bg-primary', statuses: ['COMPLETED', 'EARLY_PAYOFF'] },
+      { id: 'other', title: 'อื่นๆ', color: 'bg-info', statuses: ['EXCHANGED', 'CLOSED_BAD_DEBT'] },
     ];
     return groups.map((g) => ({
       ...g,
@@ -478,64 +470,73 @@ export default function ContractsPage() {
         </div>
       </div>
 
-      <QueryBoundary
-        isLoading={isLoading && !result}
-        isError={isError}
-        error={error}
-        onRetry={refetch}
-        errorTitle="ไม่สามารถโหลดสัญญาได้"
-      >
-      {/* Table View */}
-      {viewMode === 'table' && (
-        <DataTable
-          columns={columns}
-          data={contracts}
-          isLoading={isLoading}
-          emptyMessage="ยังไม่มีสัญญา"
-          pagination={result ? {
-            page: result.page,
-            totalPages: result.totalPages,
-            total: result.total,
-            onPageChange: setPage,
-          } : undefined}
-        />
-      )}
+      <Card>
+        <CardHeader>
+          <CardTitle>รายการสัญญา</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <QueryBoundary
+            isLoading={isLoading && !result}
+            isError={isError}
+            error={error}
+            onRetry={refetch}
+            errorTitle="ไม่สามารถโหลดสัญญาได้"
+          >
+          {/* Table View */}
+          {viewMode === 'table' && (
+            <DataTable
+              columns={columns}
+              data={contracts}
+              isLoading={isLoading}
+              emptyMessage="ยังไม่มีสัญญา"
+              pagination={result ? {
+                page: result.page,
+                totalPages: result.totalPages,
+                total: result.total,
+                onPageChange: setPage,
+              } : undefined}
+            />
+          )}
 
-      {/* Kanban View */}
-      {viewMode === 'kanban' && !isLoading && (
-        <KanbanBoard<Contract>
-          columns={kanbanColumns}
-          onCardClick={(c) => navigate(`/contracts/${c.id}`)}
-          renderCard={(c) => (
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-mono text-primary font-medium">{c.contractNumber}</span>
-                <span className={`px-1.5 py-0.5 rounded text-2xs font-medium ${(statusLabels[c.status] || { className: 'bg-muted' }).className}`}>
-                  {(statusLabels[c.status] || { label: c.status }).label}
-                </span>
-              </div>
-              <div className="text-sm font-medium text-foreground mb-1 flex items-center gap-1.5">
-                <User className="size-3 text-muted-foreground" />
-                {c.customer.name}
-              </div>
-              <div className="text-xs text-muted-foreground mb-2">
-                {c.product.brand} {c.product.model}
-              </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="flex items-center gap-1 text-muted-foreground">
-                  <DollarSign className="size-3" />
-                  {parseFloat(c.monthlyPayment).toLocaleString()} ฿ x {c.totalMonths}
-                </span>
-                <span className="flex items-center gap-1 text-muted-foreground">
-                  <Calendar className="size-3" />
-                  {formatDateShortThai(c.createdAt)}
-                </span>
-              </div>
+          {/* Kanban View */}
+          {viewMode === 'kanban' && !isLoading && (
+            <div className="p-5">
+              <KanbanBoard<Contract>
+                columns={kanbanColumns}
+                onCardClick={(c) => navigate(`/contracts/${c.id}`)}
+                renderCard={(c) => (
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-mono text-primary font-medium">{c.contractNumber}</span>
+                      <Badge variant={getStatusBadgeProps(c.status, contractStatusMap).variant} appearance={getStatusBadgeProps(c.status, contractStatusMap).appearance} size="xs">
+                        {getStatusBadgeProps(c.status, contractStatusMap).label}
+                      </Badge>
+                    </div>
+                    <div className="text-sm font-medium text-foreground mb-1 flex items-center gap-1.5">
+                      <User className="size-3 text-muted-foreground" />
+                      {c.customer.name}
+                    </div>
+                    <div className="text-xs text-muted-foreground mb-2">
+                      {c.product.brand} {c.product.model}
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="flex items-center gap-1 text-muted-foreground">
+                        <DollarSign className="size-3" />
+                        {parseFloat(c.monthlyPayment).toLocaleString()} ฿ x {c.totalMonths}
+                      </span>
+                      <span className="flex items-center gap-1 text-muted-foreground">
+                        <Calendar className="size-3" />
+                        {formatDateShortThai(c.createdAt)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              />
             </div>
           )}
-        />
-      )}
-      </QueryBoundary>
+          </QueryBoundary>
+        </CardContent>
+      </Card>
     </div>
   );
 }

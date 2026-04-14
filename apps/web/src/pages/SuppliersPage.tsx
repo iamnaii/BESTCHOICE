@@ -8,6 +8,7 @@ import { useDebounce } from '@/hooks/useDebounce';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import QueryBoundary from '@/components/QueryBoundary';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
 import AddressForm, { AddressData, emptyAddress, serializeAddress, deserializeAddress } from '@/components/ui/AddressForm';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -458,26 +459,33 @@ export default function SuppliersPage() {
         </select>
       </div>
 
-      <QueryBoundary
-        isLoading={isLoading && !result}
-        isError={isError}
-        error={error}
-        onRetry={refetch}
-        errorTitle="ไม่สามารถโหลดรายชื่อผู้ขายได้"
-      >
-        <DataTable
-          columns={columns}
-          data={suppliers}
-          isLoading={isLoading}
-          emptyMessage="ไม่พบผู้ขาย"
-          pagination={result ? {
-            page: result.page,
-            totalPages: result.totalPages,
-            total: result.total,
-            onPageChange: setPage,
-          } : undefined}
-        />
-      </QueryBoundary>
+      <Card>
+        <CardHeader>
+          <CardTitle>รายชื่อผู้ขาย</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <QueryBoundary
+            isLoading={isLoading && !result}
+            isError={isError}
+            error={error}
+            onRetry={refetch}
+            errorTitle="ไม่สามารถโหลดรายชื่อผู้ขายได้"
+          >
+            <DataTable
+              columns={columns}
+              data={suppliers}
+              isLoading={isLoading}
+              emptyMessage="ไม่พบผู้ขาย"
+              pagination={result ? {
+                page: result.page,
+                totalPages: result.totalPages,
+                total: result.total,
+                onPageChange: setPage,
+              } : undefined}
+            />
+          </QueryBoundary>
+        </CardContent>
+      </Card>
 
       {/* Create/Edit Modal */}
       {isModalOpen && (

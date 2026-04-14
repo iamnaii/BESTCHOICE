@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LATE_FEE_PER_DAY } from '../constants/finance-rules';
 import { FinanceConfigService } from './finance-config.service';
-import { formatThaiDate } from '../utils/thai-date';
+import { formatThaiDateText as formatThaiDate } from '../../../utils/thai-date.util';
 
 /**
  * Finance Tools — wrap DB queries สำหรับ Claude tool use

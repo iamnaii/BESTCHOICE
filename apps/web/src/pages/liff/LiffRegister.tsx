@@ -47,7 +47,6 @@ export default function LiffRegister() {
     mutationFn: async (cleaned: string) => {
       const { data: result } = await liffApi.post('/line-oa/liff/register/lookup', {
         phone: cleaned,
-        lineId: profile!.userId,
       });
       return result as { customerId: string; maskedName: string };
     },
@@ -70,8 +69,6 @@ export default function LiffRegister() {
       if (!lookupResult || !profile) throw new Error('ข้อมูลไม่ครบ');
       const { data: result } = await liffApi.post('/line-oa/liff/register/confirm', {
         customerId: lookupResult.customerId,
-        lineId: profile.userId,
-        displayName: profile.displayName,
       });
       return result;
     },

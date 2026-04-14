@@ -34,6 +34,12 @@ import { PromptPayQrService } from './promptpay/promptpay-qr.service';
 import { PaymentLinkService } from './payment-links/payment-link.service';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
 import { StorageService } from '../storage/storage.service';
+import {
+  SlipUploadBodyDto,
+  ApproveEvidenceDto,
+  BatchApproveEvidenceDto,
+  BatchRejectEvidenceDto,
+} from './dto/evidence.dto';
 
 @ApiTags('LINE OA - Payments')
 @ApiBearerAuth('JWT')
@@ -153,7 +159,7 @@ export class LineOaPaymentController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   async batchApproveEvidence(
-    @Body() body: { ids: string[]; paymentMethod: string },
+    @Body() body: BatchApproveEvidenceDto,
     @Req() req: Request,
   ) {
     const userId = (req as Request & { user?: { id: string } }).user?.id;
@@ -225,7 +231,7 @@ export class LineOaPaymentController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   async batchRejectEvidence(
-    @Body() body: { ids: string[]; reviewNote?: string },
+    @Body() body: BatchRejectEvidenceDto,
     @Req() req: Request,
   ) {
     const userId = (req as Request & { user?: { id: string } }).user?.id;
@@ -281,7 +287,7 @@ export class LineOaPaymentController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   async approveEvidence(
     @Param('id') id: string,
-    @Body() body: { installmentNo: number; amount: number; paymentMethod: string; reviewNote?: string },
+    @Body() body: ApproveEvidenceDto,
     @Req() req: Request,
   ) {
     const userId = (req as Request & { user?: { id: string } }).user?.id;
@@ -572,13 +578,13 @@ export class LineOaPaymentController {
       }),
     )
     file: Express.Multer.File,
-    @Body() body: { token: string; amount?: string },
+    @Body() body: SlipUploadBodyDto,
   ) {
 
     // Use transaction to prevent race condition (double slip upload)
     const link = await this.paymentLinkService.getPaymentLink(body.token);
     if (!link || link.status !== 'ACTIVE') {
-      return { error: 'ลิงก์ชำระเงินไม่ถูกต้องหรือหมดอายุ' };
+      throw new BadRequestException('ลิงก์ชำระเงินไม่ถูกต้องหรือหมดอายุ');
     }
 
     // Determine safe file extension from MIME type

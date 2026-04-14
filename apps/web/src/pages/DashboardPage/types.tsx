@@ -13,6 +13,9 @@ export interface KPIs {
   products: { total: number; inStock: number };
   financial: { totalReceivable: number; totalLateFees: number; todayPayments: number; todayPaymentCount: number };
   overdueRate: number;
+  contractsMoM?: number | null;
+  overdueMoM?: number | null;
+  stockMoM?: number | null;
 }
 
 export interface MonthlyTrend {

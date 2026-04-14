@@ -24,6 +24,7 @@ import { WeeklyAnalysisService } from './services/weekly-analysis.service';
 import { LineFinanceWebhookGuard } from './guards/line-finance-webhook.guard';
 import { WebhookDedupService } from './services/webhook-dedup.service';
 import { FinanceDomainHandler } from './finance-domain.handler';
+import { LiffTokenGuard } from '../line-oa/guards/liff-token.guard';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { StaffChatModule } from '../staff-chat/staff-chat.module';
 
@@ -68,6 +69,7 @@ import { StaffChatModule } from '../staff-chat/staff-chat.module';
     LearningService,
     WeeklyAnalysisService,
     LineFinanceWebhookGuard,
+    LiffTokenGuard,
     WebhookDedupService,
     FinanceDomainHandler,
   ],

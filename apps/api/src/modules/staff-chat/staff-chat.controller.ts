@@ -9,7 +9,13 @@ import {
   Req,
   UseGuards,
   Delete,
+  UseInterceptors,
+  UploadedFile,
+  ParseFilePipe,
+  MaxFileSizeValidator,
+  FileTypeValidator,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -22,7 +28,9 @@ import { AiAssistantService } from './services/ai-assistant.service';
 import { MediaContentService } from './services/media-content.service';
 import { ChatToContractService } from './services/chat-to-contract.service';
 import { SessionQueryDto } from '../chat-engine/dto/session-query.dto';
-import { ChatSessionStatus, ChatChannel, ChatPriority } from '@prisma/client';
+import { ChatSessionStatus, ChatChannel, ChatPriority, MessageRole, MessageType } from '@prisma/client';
+import { StorageService } from '../storage/storage.service';
+import { MessageRouterService } from '../chat-engine/services/message-router.service';
 
 @Controller('staff-chat')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -36,6 +44,8 @@ export class StaffChatController {
     private aiAssistant: AiAssistantService,
     private mediaContent: MediaContentService,
     private chatToContract: ChatToContractService,
+    private storageService: StorageService,
+    private messageRouter: MessageRouterService,
   ) {}
 
   // ─── Sessions ──────────────────────────────────────────
@@ -232,6 +242,55 @@ export class StaffChatController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   async getAudioUrl(@Param('messageId') messageId: string) {
     return this.mediaContent.getAudioUrl(messageId);
+  }
+
+  // ─── File Upload ──────────────────────────────────────
+
+  @Post('sessions/:id/upload')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadFile(
+    @Param('id') sessionId: string,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 10 * 1024 * 1024, message: 'ไฟล์มีขนาดเกิน 10MB' }),
+          new FileTypeValidator({ fileType: /^(image\/(jpeg|png|webp)|application\/pdf|application\/(msword|vnd\.openxmlformats))/ }),
+        ],
+        fileIsRequired: true,
+        errorHttpStatusCode: 400,
+      }),
+    )
+    file: Express.Multer.File,
+    @Req() req: Request,
+  ) {
+    const userId = (req as Request & { user?: { id: string } }).user?.id;
+    const extMap: Record<string, string> = {
+      'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp',
+      'application/pdf': '.pdf',
+      'application/msword': '.doc',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+    };
+    const ext = extMap[file.mimetype] || '';
+    const key = `staff-chat/${sessionId}/${Date.now()}${ext}`;
+
+    await this.storageService.upload(key, file.buffer, file.mimetype);
+    const downloadUrl = this.storageService.configured
+      ? await this.storageService.getSignedDownloadUrl(key, 3600)
+      : key;
+
+    // Save as a message with media
+    await this.sessionManager.saveMessage({
+      sessionId,
+      role: MessageRole.BOT,
+      type: file.mimetype.startsWith('image/') ? MessageType.IMAGE : MessageType.FILE,
+      text: file.originalname,
+      mediaUrl: key,
+      mediaType: file.mimetype,
+      staffId: userId,
+    });
+
+    return { success: true, url: downloadUrl, key, filename: file.originalname };
   }
 
   // ─── Contract Prefill ─────────────────────────────────

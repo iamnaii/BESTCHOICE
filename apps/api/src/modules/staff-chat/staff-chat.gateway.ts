@@ -207,9 +207,10 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
     @ConnectedSocket() _client: Socket,
     @MessageBody() data: { sessionId: string },
   ): Promise<void> {
-    // Mark all unread messages in this session as read
-    // This is a UI-level action — actual DB update is light
-    this.logger.debug(`[WS] Mark read: session ${data.sessionId}`);
+    if (!data.sessionId) return;
+    const now = new Date();
+    const result = await this.sessionManager.markMessagesRead(data.sessionId, now);
+    this.logger.debug(`[WS] Mark read: session ${data.sessionId} (${result.count} messages)`);
   }
 
   @SubscribeMessage(CHAT_CLIENT_EVENTS.VIEW_SESSION)

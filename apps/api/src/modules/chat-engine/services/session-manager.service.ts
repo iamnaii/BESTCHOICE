@@ -323,4 +323,20 @@ export class SessionManagerService {
     }
     return this.prisma.chatSession.update({ where: { id: sessionId }, data });
   }
+
+  /** Mark all unread customer messages in a session as read */
+  async markMessagesRead(
+    sessionId: string,
+    readAt: Date,
+  ): Promise<{ count: number }> {
+    const result = await this.prisma.chatMessage.updateMany({
+      where: {
+        sessionId,
+        role: MessageRole.CUSTOMER,
+        readAt: null,
+      },
+      data: { readAt },
+    });
+    return { count: result.count };
+  }
 }

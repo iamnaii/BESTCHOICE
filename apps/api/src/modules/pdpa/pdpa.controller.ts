@@ -44,7 +44,7 @@ export class PDPAController {
   constructor(private pdpaService: PDPAService) {}
 
   @Get('privacy-notice')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   getPrivacyNotice() {
     return this.pdpaService.getPrivacyNotice();
   }

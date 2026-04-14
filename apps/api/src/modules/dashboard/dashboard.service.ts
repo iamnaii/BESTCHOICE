@@ -87,6 +87,42 @@ export class DashboardService {
       ? ((overdueContracts + defaultContracts) / totalContracts * 100).toFixed(1)
       : '0.0';
 
+    // MoM comparison: current month vs previous month
+    const now = new Date();
+    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+    const [
+      currentMonthContracts,
+      prevMonthContracts,
+      currentMonthOverdue,
+      prevMonthOverdue,
+      currentMonthStock,
+      prevMonthStock,
+    ] = await Promise.all([
+      this.prisma.contract.count({
+        where: { createdAt: { gte: thisMonthStart }, deletedAt: null, ...branchFilter },
+      }),
+      this.prisma.contract.count({
+        where: { createdAt: { gte: prevMonthStart, lt: thisMonthStart }, deletedAt: null, ...branchFilter },
+      }),
+      this.prisma.contract.count({
+        where: { status: { in: ['OVERDUE', 'DEFAULT'] }, createdAt: { gte: thisMonthStart }, deletedAt: null, ...branchFilter },
+      }),
+      this.prisma.contract.count({
+        where: { status: { in: ['OVERDUE', 'DEFAULT'] }, createdAt: { gte: prevMonthStart, lt: thisMonthStart }, deletedAt: null, ...branchFilter },
+      }),
+      this.prisma.product.count({
+        where: { status: 'IN_STOCK', createdAt: { gte: thisMonthStart }, deletedAt: null, ...productBranchFilter },
+      }),
+      this.prisma.product.count({
+        where: { status: 'IN_STOCK', createdAt: { gte: prevMonthStart, lt: thisMonthStart }, deletedAt: null, ...productBranchFilter },
+      }),
+    ]);
+
+    const computeMoM = (current: number, prev: number): number | null =>
+      prev > 0 ? ((current - prev) / prev) * 100 : null;
+
     return {
       contracts: { total: totalContracts, active: activeContracts, overdue: overdueContracts, default: defaultContracts, completed: completedContracts },
       products: { total: totalProducts, inStock: inStockProducts },
@@ -97,6 +133,9 @@ export class DashboardService {
         todayPaymentCount: todayPayments._count || 0,
       },
       overdueRate: Number(overdueRate),
+      contractsMoM: computeMoM(currentMonthContracts, prevMonthContracts),
+      overdueMoM: computeMoM(currentMonthOverdue, prevMonthOverdue),
+      stockMoM: computeMoM(currentMonthStock, prevMonthStock),
     };
   }
 

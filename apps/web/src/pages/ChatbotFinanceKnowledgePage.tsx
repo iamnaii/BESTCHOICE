@@ -1,10 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import { toast } from 'sonner';
 import QueryBoundary from '@/components/QueryBoundary';
-import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { useAuth } from '@/contexts/AuthContext';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 
 interface KbEntry {
   id: string;
@@ -33,155 +32,35 @@ const EMPTY_FORM: FormState = {
   priority: 0,
 };
 
-// ─── System Prompt Editor (OWNER only) ──────────────────────
+// ─── KB Suggestion types ──────────────────────────────────
 
-interface PromptData {
-  prompt: string;
-  defaultPrompt: string;
-  isCustom: boolean;
+interface KbSuggestion {
+  id: string;
+  sessionId: string;
+  customerQuestion: string;
+  staffAnswer: string | null;
+  suggestedIntent: string;
+  suggestedKeywords: string[];
+  suggestedTemplate: string | null;
+  source: 'handoff' | 'low_rating' | 'auto_analysis';
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  reviewedById: string | null;
+  reviewedAt: string | null;
+  kbEntryId: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
-function SystemPromptEditor() {
-  const queryClient = useQueryClient();
-  const [draft, setDraft] = useState('');
-  const [showResetConfirm, setShowResetConfirm] = useState(false);
-
-  const promptQuery = useQuery<PromptData>({
-    queryKey: ['chatbot-finance-prompt'],
-    queryFn: async () => {
-      const { data } = await api.get<PromptData>('/chatbot/finance/admin/prompt');
-      return data;
-    },
-  });
-
-  // Sync draft with fetched data on first load
-  const promptData = promptQuery.data;
-  useEffect(() => {
-    if (promptData) {
-      setDraft(promptData.prompt);
-    }
-  }, [promptData?.prompt]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const saveMutation = useMutation({
-    mutationFn: async () => {
-      await api.put('/chatbot/finance/admin/prompt', { prompt: draft });
-    },
-    onSuccess: () => {
-      toast.success('บันทึก System Prompt แล้ว');
-      queryClient.invalidateQueries({ queryKey: ['chatbot-finance-prompt'] });
-    },
-    onError: (err) => toast.error(getErrorMessage(err)),
-  });
-
-  const resetMutation = useMutation({
-    mutationFn: async () => {
-      await api.post('/chatbot/finance/admin/prompt/reset');
-    },
-    onSuccess: () => {
-      toast.success('รีเซ็ต System Prompt เป็นค่าเริ่มต้นแล้ว');
-      setDraft('');
-      queryClient.invalidateQueries({ queryKey: ['chatbot-finance-prompt'] });
-    },
-    onError: (err) => toast.error(getErrorMessage(err)),
-  });
-
-  const hasChanges = promptData && draft !== promptData.prompt;
-  const charCount = draft.length;
-
-  return (
-    <div className="space-y-4">
-      <QueryBoundary
-        isLoading={promptQuery.isLoading && !promptQuery.data}
-        isError={promptQuery.isError}
-        error={promptQuery.error}
-        onRetry={promptQuery.refetch}
-        errorTitle="ไม่สามารถโหลด System Prompt ได้"
-      >
-        <div className="bg-white border rounded-xl p-5 space-y-4">
-          <div className="flex justify-between items-start">
-            <div>
-              <h2 className="font-bold text-lg">System Prompt ของน้องเบส</h2>
-              <p className="text-sm text-gray-500 mt-1">
-                Prompt หลักที่กำหนดบุคลิก กฎการตอบ และข้อมูลของบอท
-              </p>
-            </div>
-            {promptData?.isCustom && (
-              <span className="text-xs px-2 py-1 bg-yellow-100 text-yellow-700 rounded-full">
-                แก้ไขแล้ว
-              </span>
-            )}
-          </div>
-
-          <div>
-            <textarea
-              value={draft || promptData?.prompt || ''}
-              onChange={(e) => setDraft(e.target.value)}
-              className="w-full px-4 py-3 border rounded-lg text-sm font-mono leading-relaxed"
-              rows={20}
-              placeholder="กำลังโหลด..."
-            />
-            <div className="flex justify-between mt-1">
-              <span className={`text-xs ${charCount < 100 ? 'text-red-500' : charCount > 10000 ? 'text-red-500' : 'text-gray-400'}`}>
-                {charCount.toLocaleString()} ตัวอักษร (ต้องมี 100-10,000)
-              </span>
-              {hasChanges && (
-                <span className="text-xs text-amber-600">มีการเปลี่ยนแปลงที่ยังไม่บันทึก</span>
-              )}
-            </div>
-          </div>
-
-          <div className="flex gap-2 pt-3 border-t">
-            <button
-              onClick={() => saveMutation.mutate()}
-              disabled={saveMutation.isPending || !hasChanges || charCount < 100 || charCount > 10000}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50"
-            >
-              {saveMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
-            </button>
-            {promptData?.isCustom && (
-              <button
-                onClick={() => setShowResetConfirm(true)}
-                disabled={resetMutation.isPending}
-                className="px-4 py-2 border border-red-300 text-red-600 rounded-lg text-sm hover:bg-red-50 disabled:opacity-50"
-              >
-                รีเซ็ตเป็นค่าเริ่มต้น
-              </button>
-            )}
-            {hasChanges && (
-              <button
-                onClick={() => setDraft(promptData?.prompt || '')}
-                className="px-4 py-2 border border-gray-300 text-gray-600 rounded-lg text-sm hover:bg-gray-50"
-              >
-                ยกเลิกการแก้ไข
-              </button>
-            )}
-          </div>
-        </div>
-      </QueryBoundary>
-
-      <ConfirmDialog
-        open={showResetConfirm}
-        onOpenChange={setShowResetConfirm}
-        title="รีเซ็ต System Prompt"
-        description="ต้องการรีเซ็ต System Prompt กลับเป็นค่าเริ่มต้นหรือไม่? การแก้ไขทั้งหมดจะหายไป"
-        onConfirm={() => {
-          resetMutation.mutate();
-          setShowResetConfirm(false);
-        }}
-        confirmLabel="รีเซ็ต"
-        variant="destructive"
-      />
-    </div>
-  );
+interface SuggestionsResponse {
+  items: KbSuggestion[];
+  total: number;
+  page: number;
+  limit: number;
 }
 
-// ─── Knowledge Base Tab ─────────────────────────────────────
+// ─── Knowledge Base Tab ───────────────────────────────────
 
-export default function ChatbotFinanceKnowledgePage() {
-  const { user } = useAuth();
-  const isOwner = user?.role === 'OWNER';
-  const [activeTab, setActiveTab] = useState<'kb' | 'prompt'>(isOwner ? 'prompt' : 'kb');
-
+function KnowledgeBaseTab() {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<KbEntry | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
@@ -208,20 +87,6 @@ export default function ChatbotFinanceKnowledgePage() {
       toast.success('บันทึกแล้ว');
       queryClient.invalidateQueries({ queryKey: ['chatbot-finance-kb'] });
       reset();
-    },
-    onError: (err) => toast.error(getErrorMessage(err)),
-  });
-
-  const seedMutation = useMutation({
-    mutationFn: async () => {
-      const { data } = await api.post<{ created: number; skipped: number; message: string }>(
-        '/chatbot/finance/admin/knowledge/seed',
-      );
-      return data;
-    },
-    onSuccess: (data) => {
-      toast.success(data.message);
-      queryClient.invalidateQueries({ queryKey: ['chatbot-finance-kb'] });
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
@@ -272,43 +137,8 @@ export default function ChatbotFinanceKnowledgePage() {
   }
 
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-4">
-        <h1 className="text-xl font-bold">Finance Bot — Knowledge Base</h1>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex gap-1 mb-4 border-b">
-        {isOwner && (
-          <button
-            onClick={() => setActiveTab('prompt')}
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${activeTab === 'prompt' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-          >
-            System Prompt
-          </button>
-        )}
-        <button
-          onClick={() => setActiveTab('kb')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${activeTab === 'kb' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-        >
-          FAQ / Knowledge Base
-        </button>
-      </div>
-
-      {/* System Prompt Tab */}
-      {activeTab === 'prompt' && isOwner && <SystemPromptEditor />}
-
-      {/* Knowledge Base Tab */}
-      {activeTab === 'kb' && (
-      <>
-      <div className="flex justify-end gap-2 mb-4">
-        <button
-          onClick={() => seedMutation.mutate()}
-          disabled={seedMutation.isPending}
-          className="px-4 py-2 border border-blue-300 text-blue-600 rounded-lg text-sm hover:bg-blue-50 disabled:opacity-50"
-        >
-          {seedMutation.isPending ? 'กำลังสร้าง...' : 'Seed Default KB'}
-        </button>
+    <>
+      <div className="flex justify-end mb-4">
         <button
           onClick={startCreate}
           className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"
@@ -516,8 +346,258 @@ export default function ChatbotFinanceKnowledgePage() {
           )}
         </div>
       </div>
-      </>
-      )}
+    </>
+  );
+}
+
+// ─── Suggestions Tab ──────────────────────────────────────
+
+const SOURCE_LABELS: Record<string, string> = {
+  handoff: 'ส่งต่อพนักงาน',
+  low_rating: 'คะแนนต่ำ',
+  auto_analysis: 'วิเคราะห์อัตโนมัติ',
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  PENDING: 'รอตรวจสอบ',
+  APPROVED: 'อนุมัติแล้ว',
+  REJECTED: 'ปฏิเสธแล้ว',
+};
+
+const STATUS_COLORS: Record<string, string> = {
+  PENDING: 'bg-yellow-100 text-yellow-700',
+  APPROVED: 'bg-green-100 text-green-700',
+  REJECTED: 'bg-red-100 text-red-700',
+};
+
+function SuggestionsTab() {
+  const queryClient = useQueryClient();
+  const [statusFilter, setStatusFilter] = useState<string>('PENDING');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const suggestions = useQuery<SuggestionsResponse>({
+    queryKey: ['chatbot-finance-kb-suggestions', statusFilter],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (statusFilter) params.set('status', statusFilter);
+      params.set('limit', '50');
+      const { data } = await api.get<SuggestionsResponse>(
+        `/chatbot/finance/admin/kb-suggestions?${params.toString()}`
+      );
+      return data;
+    },
+  });
+
+  const approveMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await api.patch(`/chatbot/finance/admin/kb-suggestions/${id}/approve`);
+    },
+    onSuccess: () => {
+      toast.success('อนุมัติแล้ว — สร้าง KB entry เรียบร้อย');
+      queryClient.invalidateQueries({ queryKey: ['chatbot-finance-kb-suggestions'] });
+      queryClient.invalidateQueries({ queryKey: ['chatbot-finance-kb'] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const rejectMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await api.patch(`/chatbot/finance/admin/kb-suggestions/${id}/reject`);
+    },
+    onSuccess: () => {
+      toast.success('ปฏิเสธแล้ว');
+      queryClient.invalidateQueries({ queryKey: ['chatbot-finance-kb-suggestions'] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const items = suggestions.data?.items ?? [];
+
+  return (
+    <>
+      {/* Status filter */}
+      <div className="flex gap-2 mb-4">
+        {['', 'PENDING', 'APPROVED', 'REJECTED'].map((s) => (
+          <button
+            key={s}
+            onClick={() => setStatusFilter(s)}
+            className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${
+              statusFilter === s
+                ? 'bg-blue-600 text-white border-blue-600'
+                : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            {s === '' ? 'ทั้งหมด' : STATUS_LABELS[s]}
+          </button>
+        ))}
+      </div>
+
+      <QueryBoundary
+        isLoading={suggestions.isLoading && !suggestions.data}
+        isError={suggestions.isError}
+        error={suggestions.error}
+        onRetry={suggestions.refetch}
+        errorTitle="ไม่สามารถโหลดข้อเสนอแนะได้"
+      >
+        {items.length === 0 ? (
+          <p className="text-sm text-gray-400 py-8 text-center">
+            ไม่มีข้อเสนอแนะ{statusFilter ? ` (${STATUS_LABELS[statusFilter]})` : ''}
+          </p>
+        ) : (
+          <div className="space-y-2">
+            <p className="text-xs text-gray-500 mb-2">
+              แสดง {items.length} จาก {suggestions.data?.total ?? 0} รายการ
+            </p>
+
+            <div className="border rounded-xl overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 text-left text-xs text-gray-500 uppercase">
+                    <th className="px-4 py-3">คำถามลูกค้า</th>
+                    <th className="px-4 py-3">Intent</th>
+                    <th className="px-4 py-3">แหล่งที่มา</th>
+                    <th className="px-4 py-3">สถานะ</th>
+                    <th className="px-4 py-3">วันที่</th>
+                    <th className="px-4 py-3 text-right">จัดการ</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {items.map((s) => (
+                    <tr
+                      key={s.id}
+                      className="hover:bg-gray-50 cursor-pointer"
+                      onClick={() => setExpandedId(expandedId === s.id ? null : s.id)}
+                    >
+                      <td className="px-4 py-3">
+                        <p className="line-clamp-2 max-w-xs">{s.customerQuestion}</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded">
+                          {s.suggestedIntent}
+                        </code>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="text-xs">{SOURCE_LABELS[s.source] ?? s.source}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`text-[10px] px-2 py-0.5 rounded-full ${STATUS_COLORS[s.status] ?? 'bg-gray-100 text-gray-600'}`}
+                        >
+                          {STATUS_LABELS[s.status] ?? s.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
+                        {new Date(s.createdAt).toLocaleDateString('th-TH', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: '2-digit',
+                        })}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {s.status === 'PENDING' && (
+                          <div className="flex gap-1 justify-end">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                approveMutation.mutate(s.id);
+                              }}
+                              disabled={approveMutation.isPending}
+                              className="px-3 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700 disabled:opacity-50"
+                            >
+                              อนุมัติ
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                rejectMutation.mutate(s.id);
+                              }}
+                              disabled={rejectMutation.isPending}
+                              className="px-3 py-1 border border-red-300 text-red-600 rounded text-xs hover:bg-red-50 disabled:opacity-50"
+                            >
+                              ปฏิเสธ
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Expanded detail */}
+            {expandedId && (() => {
+              const item = items.find((s) => s.id === expandedId);
+              if (!item) return null;
+              return (
+                <div className="border rounded-xl p-4 bg-white space-y-3">
+                  <h3 className="font-semibold text-sm">รายละเอียดข้อเสนอแนะ</h3>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">คำถามลูกค้า</p>
+                      <p className="bg-gray-50 p-2 rounded text-sm">{item.customerQuestion}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">คำตอบพนักงาน</p>
+                      <p className="bg-gray-50 p-2 rounded text-sm">
+                        {item.staffAnswer ?? <span className="text-gray-400">ไม่มี</span>}
+                      </p>
+                    </div>
+                    {item.suggestedTemplate && (
+                      <div className="col-span-2">
+                        <p className="text-xs text-gray-500 mb-1">Template ที่แนะนำ</p>
+                        <pre className="bg-gray-50 p-2 rounded text-xs font-mono whitespace-pre-wrap">
+                          {item.suggestedTemplate}
+                        </pre>
+                      </div>
+                    )}
+                    {item.suggestedKeywords.length > 0 && (
+                      <div className="col-span-2">
+                        <p className="text-xs text-gray-500 mb-1">Keywords ที่แนะนำ</p>
+                        <div className="flex gap-1 flex-wrap">
+                          {item.suggestedKeywords.map((kw, i) => (
+                            <span
+                              key={i}
+                              className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full"
+                            >
+                              {kw}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        )}
+      </QueryBoundary>
+    </>
+  );
+}
+
+// ─── Main Page ────────────────────────────────────────────
+
+export default function ChatbotFinanceKnowledgePage() {
+  return (
+    <div className="p-6">
+      <h1 className="text-xl font-bold mb-4">Finance Bot — Knowledge Base</h1>
+
+      <Tabs defaultValue="knowledge">
+        <TabsList variant="line" size="md">
+          <TabsTrigger value="knowledge">Knowledge Base</TabsTrigger>
+          <TabsTrigger value="suggestions">ข้อเสนอแนะ</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="knowledge">
+          <KnowledgeBaseTab />
+        </TabsContent>
+
+        <TabsContent value="suggestions">
+          <SuggestionsTab />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

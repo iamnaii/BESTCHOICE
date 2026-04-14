@@ -48,6 +48,13 @@ export function formatMonthName(value: string | Date): string {
   return THAI_MONTHS[d.getMonth()];
 }
 
+/** 3 เม.ย. 2569 (no zero-padding — natural Thai text for messages) */
+export function formatThaiDateText(value: string | Date): string {
+  const d = toDate(value);
+  if (!d) return String(value);
+  return `${d.getDate()} ${THAI_MONTHS_SHORT[d.getMonth()]} ${d.getFullYear() + 543}`;
+}
+
 /** 03 มี.ค. (no year) */
 export function formatDateShortThai(value: string | Date): string {
   const d = toDate(value);

@@ -30,6 +30,10 @@ export class SessionQueryDto {
   assignedToId?: string;
 
   @IsOptional()
+  @IsString()
+  customerId?: string;
+
+  @IsOptional()
   @IsBoolean()
   @Type(() => Boolean)
   unassignedOnly?: boolean;

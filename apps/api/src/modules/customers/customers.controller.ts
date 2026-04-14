@@ -86,6 +86,12 @@ export class CustomersController {
     return this.customersService.getContracts(id);
   }
 
+  @Get(':id/chat-summary')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  getChatSummary(@Param('id') id: string) {
+    return this.customersService.getChatSummary(id);
+  }
+
   @Get(':id/risk-flag')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   getRiskFlag(@Param('id') id: string) {

@@ -193,6 +193,7 @@ export class SessionManagerService {
     sessionStatus?: ChatSessionStatus;
     priority?: ChatPriority;
     assignedToId?: string;
+    customerId?: string;
     unassignedOnly?: boolean;
     search?: string;
     page?: number;
@@ -210,6 +211,7 @@ export class SessionManagerService {
     if (params.sessionStatus) where.sessionStatus = params.sessionStatus;
     if (params.priority) where.priority = params.priority;
     if (params.assignedToId) where.assignedToId = params.assignedToId;
+    if (params.customerId) where.customerId = params.customerId;
     if (params.unassignedOnly) where.assignedToId = null;
     if (params.search) {
       where.OR = [

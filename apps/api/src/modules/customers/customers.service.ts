@@ -521,6 +521,126 @@ export class CustomersService {
     };
   }
 
+  async getChatSummary(customerId: string) {
+    // Verify customer exists
+    await this.findOne(customerId);
+
+    // 1. Recent payments across all contracts (last 5)
+    const recentPayments = await this.prisma.payment.findMany({
+      where: {
+        contract: { customerId, deletedAt: null },
+        deletedAt: null,
+        status: 'PAID',
+      },
+      orderBy: { paidDate: 'desc' },
+      take: 5,
+      select: {
+        id: true,
+        installmentNo: true,
+        amountPaid: true,
+        paidDate: true,
+        paymentMethod: true,
+        contract: { select: { contractNumber: true } },
+      },
+    });
+
+    // 2. Overdue summary
+    const overduePayments = await this.prisma.payment.count({
+      where: {
+        contract: { customerId, deletedAt: null },
+        deletedAt: null,
+        status: { in: ['PENDING', 'OVERDUE'] },
+        dueDate: { lt: new Date() },
+      },
+    });
+
+    const totalOutstanding = await this.prisma.payment.aggregate({
+      where: {
+        contract: { customerId, deletedAt: null },
+        deletedAt: null,
+        status: { in: ['PENDING', 'OVERDUE'] },
+      },
+      _sum: { amountDue: true },
+    });
+
+    // 3. Active contracts with product info
+    const activeContracts = await this.prisma.contract.findMany({
+      where: { customerId, deletedAt: null, status: { in: ['ACTIVE', 'OVERDUE', 'DEFAULT'] } },
+      select: {
+        id: true,
+        contractNumber: true,
+        status: true,
+        monthlyPayment: true,
+        totalMonths: true,
+        product: { select: { name: true, brand: true, model: true, serialNumber: true } },
+        payments: {
+          where: { deletedAt: null },
+          select: { status: true, dueDate: true },
+          orderBy: { installmentNo: 'asc' },
+        },
+      },
+    });
+
+    // Compute per-contract paid/total/next due
+    const contractSummaries = activeContracts.map((c) => {
+      const paid = c.payments.filter((p) => p.status === 'PAID').length;
+      const nextDue = c.payments.find((p) => p.status !== 'PAID');
+      return {
+        id: c.id,
+        contractNumber: c.contractNumber,
+        status: c.status,
+        monthlyPayment: c.monthlyPayment,
+        product: c.product,
+        paidInstallments: paid,
+        totalInstallments: c.totalMonths,
+        nextDueDate: nextDue?.dueDate ?? null,
+        serialNumber: c.product?.serialNumber ?? null,
+      };
+    });
+
+    // 4. Call logs across all contracts (last 5)
+    const callLogs = await this.prisma.callLog.findMany({
+      where: {
+        contract: { customerId, deletedAt: null },
+      },
+      orderBy: { calledAt: 'desc' },
+      take: 5,
+      select: {
+        id: true,
+        calledAt: true,
+        result: true,
+        notes: true,
+        caller: { select: { name: true } },
+        contract: { select: { contractNumber: true } },
+      },
+    });
+
+    // 5. Previous chat sessions (all channels)
+    const chatSessions = await this.prisma.chatSession.findMany({
+      where: { customerId, deletedAt: null },
+      orderBy: { lastMessageAt: 'desc' },
+      take: 10,
+      select: {
+        id: true,
+        channel: true,
+        sessionStatus: true,
+        totalMessages: true,
+        lastMessageAt: true,
+        createdAt: true,
+        assignedTo: { select: { name: true } },
+      },
+    });
+
+    return {
+      recentPayments,
+      overdueCount: overduePayments,
+      totalOutstanding: totalOutstanding._sum.amountDue ?? 0,
+      activeContracts: contractSummaries,
+      callLogs,
+      chatSessions,
+    };
+  }
+
   private validateNationalId(id: string): boolean {
     if (!/^\d{13}$/.test(id)) return false;
     let sum = 0;

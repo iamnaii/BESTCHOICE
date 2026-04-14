@@ -192,9 +192,9 @@ export default function UnifiedInboxPage() {
   const customerId = sessionQuery.data?.customerId ?? null;
 
   return (
-    <div className="h-[calc(100vh-4rem)] flex bg-white rounded-xl shadow-sm overflow-hidden">
+    <div className="h-[calc(100vh-5rem)] -mt-5 -mb-8 flex bg-white rounded-xl shadow-sm overflow-hidden">
       {/* Left panel: Conversation list */}
-      <div className={`w-80 flex-shrink-0 ${activeSessionId ? 'hidden lg:flex lg:flex-col' : 'flex flex-col w-full lg:w-80'}`}>
+      <div className={`w-72 flex-shrink-0 min-h-0 ${activeSessionId ? 'hidden lg:flex lg:flex-col' : 'flex flex-col w-full lg:w-72'}`}>
         <QueryBoundary
           isLoading={sessionsQuery.isLoading}
           isError={sessionsQuery.isError}
@@ -213,7 +213,7 @@ export default function UnifiedInboxPage() {
       </div>
 
       {/* Center panel: Chat */}
-      <div className={`flex-1 flex flex-col ${!activeSessionId ? 'hidden lg:flex' : 'flex'}`}>
+      <div className={`flex-1 flex flex-col min-h-0 min-w-0 ${!activeSessionId ? 'hidden lg:flex' : 'flex'}`}>
         <ChatPanel
           session={sessionQuery.data}
           messages={messagesQuery.data ?? []}
@@ -230,7 +230,7 @@ export default function UnifiedInboxPage() {
       </div>
 
       {/* Right panel: Customer 360 */}
-      <Customer360Panel customerId={customerId} />
+      <Customer360Panel customerId={customerId} activeSessionId={activeSessionId} />
     </div>
   );
 }

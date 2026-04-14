@@ -1,6 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ChatSessionStatus, ChatPriority } from '@prisma/client';
+import { IChatGateway, CHAT_GATEWAY_TOKEN } from '../interfaces/chat-gateway.interface';
 
 export interface HandoffParams {
   sessionId: string;
@@ -27,7 +28,10 @@ const PRIORITY_MAP: Record<string, ChatPriority> = {
 export class HandoffManagerService {
   private readonly logger = new Logger(HandoffManagerService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    @Optional() @Inject(CHAT_GATEWAY_TOKEN) private gateway?: IChatGateway,
+  ) {}
 
   /** Initiate handoff — mark session for staff pickup */
   async initiateHandoff(params: HandoffParams): Promise<void> {
@@ -46,8 +50,13 @@ export class HandoffManagerService {
       `[Handoff] sessionId=${params.sessionId} priority=${params.priority} reason="${params.reason}"`,
     );
 
-    // TODO Phase 2: emit WS event to staff inbox (chat:session:update)
-    // TODO Phase 2: send LINE Staff OA notification (StaffNotificationService)
+    this.gateway?.emitSessionUpdate(params.sessionId, {
+      event: 'handoff',
+      sessionId: params.sessionId,
+      priority: params.priority,
+      reason: params.reason,
+      summary: params.summary,
+    });
   }
 
   /** Resolve handoff — staff is done, return to AI or close */

@@ -161,6 +161,34 @@ export default function UnifiedInboxPage() {
     [activeSessionId, sendMessage, queryClient],
   );
 
+  const uploadFileMutation = useMutation({
+    mutationFn: async (file: File) => {
+      if (!activeSessionId) throw new Error('ไม่มี session');
+      const formData = new FormData();
+      formData.append('file', file);
+      const { data } = await api.post(`/staff-chat/sessions/${activeSessionId}/upload`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return data;
+    },
+    onSuccess: () => {
+      toast.success('อัพโหลดไฟล์เรียบร้อย');
+      if (activeSessionId) {
+        queryClient.invalidateQueries({ queryKey: ['chat-messages', activeSessionId] });
+      }
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { message?: string } } }).response?.data?.message
+        || (err instanceof Error ? err.message : 'อัพโหลดไม่สำเร็จ');
+      toast.error(msg);
+    },
+  });
+
+  const handleSendFile = useCallback(
+    (file: File) => uploadFileMutation.mutate(file),
+    [uploadFileMutation],
+  );
+
   const customerId = sessionQuery.data?.customerId ?? null;
 
   return (
@@ -191,6 +219,7 @@ export default function UnifiedInboxPage() {
           messages={messagesQuery.data ?? []}
           isLoadingMessages={messagesQuery.isLoading}
           onSendMessage={handleSendMessage}
+          onSendFile={handleSendFile}
           onBack={() => setActiveSessionId(null)}
           onAssign={(staffId) =>
             activeSessionId && assignMutation.mutate({ sessionId: activeSessionId, staffId })

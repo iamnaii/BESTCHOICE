@@ -36,6 +36,9 @@ import {
  *   POST   /admin/knowledge
  *   PATCH  /admin/knowledge/:id
  *   DELETE /admin/knowledge/:id
+ *   GET    /admin/kb-suggestions
+ *   PATCH  /admin/kb-suggestions/:id/approve
+ *   PATCH  /admin/kb-suggestions/:id/reject
  */
 @Controller('chatbot/finance/admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -166,6 +169,39 @@ export class ChatbotFinanceAdminController {
   @HttpCode(200)
   @Roles('OWNER', 'FINANCE_MANAGER')
   async rejectSuggestion(
+    @Param('id') id: string,
+    @CurrentUser('id') userId: string,
+  ) {
+    await this.learning.rejectSuggestion(id, userId);
+    return { ok: true };
+  }
+
+  // ─── KB Suggestions (alias routes) ──────────────────────
+
+  @Get('kb-suggestions')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  async listKbSuggestions(
+    @Query('status') status?: string,
+    @Query('source') source?: string,
+    @Query('page') page = 1,
+    @Query('limit') limit = 20,
+  ) {
+    return this.learning.listSuggestions({ status, source, page: +page, limit: +limit });
+  }
+
+  @Patch('kb-suggestions/:id/approve')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  async approveKbSuggestion(
+    @Param('id') id: string,
+    @CurrentUser('id') userId: string,
+  ) {
+    await this.learning.approveSuggestion(id, userId);
+    return { ok: true };
+  }
+
+  @Patch('kb-suggestions/:id/reject')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  async rejectKbSuggestion(
     @Param('id') id: string,
     @CurrentUser('id') userId: string,
   ) {

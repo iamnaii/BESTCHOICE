@@ -13,6 +13,7 @@ import {
 import { SessionManagerService } from './session-manager.service';
 import { HandoffManagerService } from './handoff-manager.service';
 import { AfterHoursService } from './after-hours.service';
+import { IChatGateway, CHAT_GATEWAY_TOKEN } from '../interfaces/chat-gateway.interface';
 
 /**
  * MessageRouter — the central nerve of the chat engine.
@@ -40,6 +41,9 @@ export class MessageRouterService {
     @Optional()
     @Inject(DOMAIN_HANDLER_TOKEN)
     handlers?: IDomainHandler[],
+    @Optional()
+    @Inject(CHAT_GATEWAY_TOKEN)
+    private gateway?: IChatGateway,
   ) {
     // Register adapters by channel
     if (adapters) {
@@ -95,7 +99,13 @@ export class MessageRouterService {
       this.logger.debug(
         `Session ${session.id} in handoff mode — skipping AI processing`,
       );
-      // TODO Phase 2: emit WS event to staff chat room
+      this.gateway?.emitNewMessage(session.id, {
+        role: 'CUSTOMER',
+        text: message.text,
+        type: message.type,
+        channel: message.channel,
+        sessionId: session.id,
+      });
       return;
     }
 

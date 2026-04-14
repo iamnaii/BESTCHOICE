@@ -24,6 +24,7 @@ import { ChatCommerceService } from './services/chat-commerce.service';
 import { ChatToContractService } from './services/chat-to-contract.service';
 import { ChatEngineModule } from '../chat-engine/chat-engine.module';
 import { ChatbotFinanceModule } from '../chatbot-finance/chatbot-finance.module';
+import { CHAT_GATEWAY_TOKEN } from '../chat-engine/interfaces/chat-gateway.interface';
 // PaySolutions integration handled via forwardRef in ChatCommerceService
 
 /**
@@ -47,7 +48,7 @@ import { ChatbotFinanceModule } from '../chatbot-finance/chatbot-finance.module'
     }),
   ],
   controllers: [StaffChatController, WebWidgetController, ChatCommerceController, ChannelSettingsController, SnoozeController, SessionOpsController, SideConversationController],
-  providers: [StaffChatGateway, WebWidgetGateway, StaffMessageService, ChatCommerceService, ChatToContractService, CannedResponseVariableService, PresenceService, CollisionDetectionService, AiAssistantService, MediaContentService, SideConversationService, SnoozeService, SnoozeCronService, SessionOpsService],
-  exports: [StaffChatGateway, WebWidgetGateway, PresenceService, CollisionDetectionService],
+  providers: [StaffChatGateway, WebWidgetGateway, StaffMessageService, ChatCommerceService, ChatToContractService, CannedResponseVariableService, PresenceService, CollisionDetectionService, AiAssistantService, MediaContentService, SideConversationService, SnoozeService, SnoozeCronService, SessionOpsService, { provide: CHAT_GATEWAY_TOKEN, useExisting: StaffChatGateway }],
+  exports: [StaffChatGateway, WebWidgetGateway, PresenceService, CollisionDetectionService, CHAT_GATEWAY_TOKEN],
 })
 export class StaffChatModule {}

@@ -1,18 +1,22 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, Inject, Optional } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ChatSessionStatus } from '@prisma/client';
+import { IChatGateway, CHAT_GATEWAY_TOKEN } from '../interfaces/chat-gateway.interface';
 
 /**
  * AssignmentService — manages staff ↔ session assignment.
  *
  * Handles assign, transfer (re-assign), and resolve operations.
- * In Phase 2, these actions will emit WebSocket events.
+ * Emits WebSocket events via IChatGateway for real-time updates.
  */
 @Injectable()
 export class AssignmentService {
   private readonly logger = new Logger(AssignmentService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    @Optional() @Inject(CHAT_GATEWAY_TOKEN) private gateway?: IChatGateway,
+  ) {}
 
   /** Assign a session to a staff member */
   async assign(sessionId: string, staffId: string): Promise<void> {
@@ -40,7 +44,8 @@ export class AssignmentService {
     });
 
     this.logger.log(`Session ${sessionId} assigned to staff ${staffId}`);
-    // TODO Phase 2: emit WS chat:assigned event
+    this.gateway?.emitSessionUpdate(sessionId, { event: 'assigned', sessionId, assignedToId: staffId });
+    this.gateway?.emitToStaff(staffId, 'chat:assigned', { sessionId, assignedToId: staffId });
   }
 
   /** Transfer a session from one staff to another */
@@ -79,7 +84,9 @@ export class AssignmentService {
     this.logger.log(
       `Session ${sessionId} transferred from ${fromStaffId} to ${toStaffId}`,
     );
-    // TODO Phase 2: emit WS chat:assigned event to both staff
+    this.gateway?.emitSessionUpdate(sessionId, { event: 'transferred', sessionId, assignedToId: toStaffId, fromStaffId });
+    this.gateway?.emitToStaff(fromStaffId, 'chat:assigned', { sessionId, assignedToId: toStaffId, transferred: true });
+    this.gateway?.emitToStaff(toStaffId, 'chat:assigned', { sessionId, assignedToId: toStaffId, transferred: true });
   }
 
   /** Resolve/close a session */
@@ -102,7 +109,7 @@ export class AssignmentService {
     });
 
     this.logger.log(`Session ${sessionId} resolved by staff ${staffId}`);
-    // TODO Phase 2: emit WS chat:resolved event
+    this.gateway?.emitSessionUpdate(sessionId, { event: 'resolved', sessionId, resolvedBy: staffId });
   }
 
   /**

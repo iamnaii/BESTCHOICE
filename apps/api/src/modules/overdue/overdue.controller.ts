@@ -1,10 +1,13 @@
-import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { OverdueService } from './overdue.service';
+import { DunningRuleService } from './dunning-rule.service';
+import { DunningEngineService } from './dunning-engine.service';
 import { CreateCallLogDto } from './dto/create-call-log.dto';
 import { AssignCollectorDto } from './dto/assign-collector.dto';
 import { RecordSettlementDto } from './dto/record-settlement.dto';
 import { LogContactDto } from './dto/log-contact.dto';
+import { CreateDunningRuleDto, UpdateDunningRuleDto } from './dto/dunning-rule.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
@@ -16,7 +19,11 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 @Controller('overdue')
 @UseGuards(JwtAuthGuard, RolesGuard, BranchGuard)
 export class OverdueController {
-  constructor(private overdueService: OverdueService) {}
+  constructor(
+    private overdueService: OverdueService,
+    private dunningRuleService: DunningRuleService,
+    private dunningEngineService: DunningEngineService,
+  ) {}
 
   @Get()
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'FINANCE_MANAGER', 'ACCOUNTANT')
@@ -141,5 +148,57 @@ export class OverdueController {
     const lateFees = await this.overdueService.calculateLateFees();
     const statuses = await this.overdueService.updateContractStatuses();
     return { lateFees, statuses, runAt: new Date() };
+  }
+
+  // --- Dunning Rules CRUD ---
+
+  @Get('dunning-rules')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  findDunningRules() {
+    return this.dunningRuleService.findAll();
+  }
+
+  @Post('dunning-rules')
+  @Roles('OWNER')
+  createDunningRule(@Body() dto: CreateDunningRuleDto) {
+    return this.dunningRuleService.create(dto);
+  }
+
+  @Patch('dunning-rules/:id')
+  @Roles('OWNER')
+  updateDunningRule(@Param('id') id: string, @Body() dto: UpdateDunningRuleDto) {
+    return this.dunningRuleService.update(id, dto);
+  }
+
+  @Delete('dunning-rules/:id')
+  @Roles('OWNER')
+  deleteDunningRule(@Param('id') id: string) {
+    return this.dunningRuleService.softDelete(id);
+  }
+
+  // --- Dunning Actions ---
+
+  @Get('contracts/:id/dunning-actions')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER')
+  getDunningActions(
+    @Param('id') id: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const parsedPage = page ? parseInt(page, 10) : undefined;
+    const parsedLimit = limit ? parseInt(limit, 10) : undefined;
+    return this.dunningEngineService.getActionsForContract(
+      id,
+      parsedPage && !isNaN(parsedPage) ? parsedPage : undefined,
+      parsedLimit && !isNaN(parsedLimit) ? parsedLimit : undefined,
+    );
+  }
+
+  // --- Manual Trigger ---
+
+  @Post('cron/execute-dunning-rules')
+  @Roles('OWNER')
+  executeDunningRules() {
+    return this.dunningEngineService.executeRules();
   }
 }

@@ -12,7 +12,9 @@ import {
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { AccountingService } from './accounting.service';
 import { BadDebtService } from './bad-debt.service';
+import { MonthlyCloseService } from './monthly-close.service';
 import { CreateExpenseDto, UpdateExpenseDto, RejectExpenseDto } from './dto/expense.dto';
+import { CloseMonthDto } from './dto/monthly-close.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
@@ -28,6 +30,7 @@ export class AccountingController {
   constructor(
     private service: AccountingService,
     private badDebtService: BadDebtService,
+    private monthlyCloseService: MonthlyCloseService,
   ) {}
 
   @Post()
@@ -207,5 +210,64 @@ export class AccountingController {
       body.approvedById,
       body.notes,
     );
+  }
+
+  // ============================================================
+  // Monthly Close Workflow
+  // ============================================================
+
+  @Get('periods/overview')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getPeriodsOverview(
+    @Query('companyId') companyId: string,
+    @Query('year') year: string,
+  ) {
+    return this.monthlyCloseService.getPeriodsOverview(companyId, parseInt(year));
+  }
+
+  @Get('periods/:companyId/:year/:month')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getMonthlyPeriodStatus(
+    @Param('companyId') companyId: string,
+    @Param('year') year: string,
+    @Param('month') month: string,
+  ) {
+    return this.monthlyCloseService.getPeriodStatus(companyId, parseInt(year), parseInt(month));
+  }
+
+  @Post('periods/start-review')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  startReview(
+    @Body() dto: CloseMonthDto,
+    @Request() req: { user: { id: string } },
+  ) {
+    return this.monthlyCloseService.startReview(dto.companyId, dto.year, dto.month, req.user.id);
+  }
+
+  @Post('periods/close')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  closeMonthlyPeriod(
+    @Body() dto: CloseMonthDto,
+    @Request() req: { user: { id: string } },
+  ) {
+    return this.monthlyCloseService.closePeriod(
+      dto.companyId,
+      dto.year,
+      dto.month,
+      req.user.id,
+      dto.notes,
+    );
+  }
+
+  @Post('periods/sync-peak')
+  @Roles('OWNER', 'ACCOUNTANT')
+  syncToPeak(@Body() dto: CloseMonthDto) {
+    return this.monthlyCloseService.syncToPeak(dto.companyId, dto.year, dto.month);
+  }
+
+  @Post('periods/reopen')
+  @Roles('OWNER')
+  reopenPeriod(@Body() dto: CloseMonthDto) {
+    return this.monthlyCloseService.reopenPeriod(dto.companyId, dto.year, dto.month);
   }
 }

@@ -269,7 +269,7 @@ export default function UnifiedInboxPage() {
       </div>
 
       {/* Right panel: Customer 360 */}
-      <Customer360Panel customerId={customerId} activeRoomId={activeRoomId} />
+      <Customer360Panel customerId={customerId} activeRoomId={activeRoomId} onSelectRoom={handleSelectRoom} />
     </div>
   );
 }

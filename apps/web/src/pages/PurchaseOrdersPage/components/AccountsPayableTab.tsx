@@ -1,7 +1,8 @@
 import api from '@/lib/api';
 import { formatDateShort } from '@/utils/formatters';
 import { PurchaseOrder, PODetail } from '../types';
-import { paymentStatusLabels, paymentStatusColors } from '../constants';
+import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, poPaymentStatusMap } from '@/lib/status-badges';
 
 export interface AccountsPayableTabProps {
   payableData: {
@@ -84,9 +85,7 @@ export function AccountsPayableTab({ payableData, onOpenDetail }: AccountsPayabl
                   <td className="px-4 py-2.5 text-right text-success tabular-nums font-mono">{(Number(po.paidAmount) || 0).toLocaleString()}</td>
                   <td className="px-4 py-2.5 text-right font-semibold text-destructive tabular-nums font-mono">{(Number(po.remaining) || 0).toLocaleString()}</td>
                   <td className="px-4 py-2.5 text-center">
-                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${paymentStatusColors[po.paymentStatus] || 'bg-muted text-foreground'}`}>
-                      {paymentStatusLabels[po.paymentStatus] || po.paymentStatus}
-                    </span>
+                    {(() => { const cfg = getStatusBadgeProps(po.paymentStatus, poPaymentStatusMap); return <Badge variant={cfg.variant} appearance={cfg.appearance}>{cfg.label}</Badge>; })()}
                   </td>
                 </tr>
               ))}

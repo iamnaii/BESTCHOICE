@@ -2,7 +2,9 @@ import { UseMutationResult } from '@tanstack/react-query';
 import DataTable from '@/components/ui/DataTable';
 import { formatDateShort } from '@/utils/formatters';
 import { PurchaseOrder } from '../types';
-import { statusLabels, statusColors, paymentStatusLabels, paymentStatusColors } from '../constants';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
+import { getStatusBadgeProps, poStatusMap, poPaymentStatusMap } from '@/lib/status-badges';
 
 export interface POListTabProps {
   statusFilter: string;
@@ -86,23 +88,22 @@ export function POListTab({
     {
       key: 'status',
       label: 'สถานะ',
-      render: (po: PurchaseOrder) => (
-        <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${statusColors[po.status] || 'bg-muted text-foreground'}`}>
-          {statusLabels[po.status] || po.status}
-        </span>
-      ),
+      render: (po: PurchaseOrder) => {
+        const cfg = getStatusBadgeProps(po.status, poStatusMap);
+        return <Badge variant={cfg.variant} appearance={cfg.appearance}>{cfg.label}</Badge>;
+      },
     },
     {
       key: 'paymentStatus',
       label: 'การจ่ายเงิน',
-      render: (po: PurchaseOrder) => (
-        <button
-          onClick={() => openPaymentModal(po)}
-          className={`px-2.5 py-0.5 rounded-full text-xs font-semibold cursor-pointer hover:opacity-80 ${paymentStatusColors[po.paymentStatus] || 'bg-muted text-foreground'}`}
-        >
-          {paymentStatusLabels[po.paymentStatus] || po.paymentStatus || 'ยังไม่จ่าย'}
-        </button>
-      ),
+      render: (po: PurchaseOrder) => {
+        const cfg = getStatusBadgeProps(po.paymentStatus || 'UNPAID', poPaymentStatusMap);
+        return (
+          <button onClick={() => openPaymentModal(po)} className="cursor-pointer hover:opacity-80">
+            <Badge variant={cfg.variant} appearance={cfg.appearance}>{cfg.label}</Badge>
+          </button>
+        );
+      },
     },
     {
       key: 'received',
@@ -194,7 +195,11 @@ export function POListTab({
         </select>
       </div>
 
-      <DataTable columns={columns} data={pos} isLoading={isLoading} emptyMessage="ยังไม่มีใบสั่งซื้อ" />
+      <Card>
+        <CardContent className="p-0">
+          <DataTable columns={columns} data={pos} isLoading={isLoading} emptyMessage="ยังไม่มีใบสั่งซื้อ" />
+        </CardContent>
+      </Card>
     </>
   );
 }

@@ -8,6 +8,9 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, stockAlertStatusMap } from '@/lib/status-badges';
 import { categoryLabels } from '@/lib/constants';
 import { brands, getModels, getModelInfo } from '@/data/productCatalog';
 import { formatDateShort } from '@/utils/formatters';
@@ -254,12 +257,12 @@ export default function StockAlertsPage() {
       render: (r: ReorderPoint) => (
         <div className="flex items-center gap-2">
           {r.isLow ? (
-            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-destructive/10 text-destructive dark:bg-destructive/15">ต่ำกว่าเกณฑ์</span>
+            <Badge variant="destructive" appearance="light">ต่ำกว่าเกณฑ์</Badge>
           ) : (
-            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-success/10 text-success dark:bg-success/15">ปกติ</span>
+            <Badge variant="success" appearance="light">ปกติ</Badge>
           )}
           {!r.isActive && (
-            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground">ปิดใช้งาน</span>
+            <Badge variant="secondary">ปิดใช้งาน</Badge>
           )}
         </div>
       ),
@@ -347,21 +350,8 @@ export default function StockAlertsPage() {
       key: 'status',
       label: 'สถานะ',
       render: (a: StockAlert) => {
-        const styles: Record<string, string> = {
-          ACTIVE: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
-          PO_CREATED: 'bg-primary/10 text-primary dark:bg-primary/15',
-          RESOLVED: 'bg-success/10 text-success dark:bg-success/15',
-        };
-        const labels: Record<string, string> = {
-          ACTIVE: 'ต้องดำเนินการ',
-          PO_CREATED: 'สร้าง PO แล้ว',
-          RESOLVED: 'แก้ไขแล้ว',
-        };
-        return (
-          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${styles[a.status] || 'bg-muted text-foreground'}`}>
-            {labels[a.status] || a.status}
-          </span>
-        );
+        const cfg = getStatusBadgeProps(a.status, stockAlertStatusMap);
+        return <Badge variant={cfg.variant} appearance={cfg.appearance}>{cfg.label}</Badge>;
       },
     },
     {
@@ -546,13 +536,21 @@ export default function StockAlertsPage() {
       {/* Reorder Points Tab */}
       {activeTab === 'reorder-points' && (
         <QueryBoundary isLoading={loadingRP && !reorderPoints} isError={rpError} error={rpErrorObj} onRetry={rpRefetch} errorTitle="ไม่สามารถโหลด Reorder Points ได้">
-          <DataTable columns={rpColumns} data={reorderPoints || []} isLoading={loadingRP} emptyMessage="ยังไม่มี Reorder Point" />
+          <Card>
+            <CardContent className="p-0">
+              <DataTable columns={rpColumns} data={reorderPoints || []} isLoading={loadingRP} emptyMessage="ยังไม่มี Reorder Point" />
+            </CardContent>
+          </Card>
         </QueryBoundary>
       )}
 
       {/* Alerts Tab */}
       {activeTab === 'alerts' && (
-        <DataTable columns={alertColumns} data={alerts} isLoading={loadingAlerts} emptyMessage="ไม่มีแจ้งเตือน" />
+        <Card>
+          <CardContent className="p-0">
+            <DataTable columns={alertColumns} data={alerts} isLoading={loadingAlerts} emptyMessage="ไม่มีแจ้งเตือน" />
+          </CardContent>
+        </Card>
       )}
 
       {/* Create / Edit Reorder Point Modal */}

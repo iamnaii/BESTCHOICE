@@ -5,6 +5,8 @@ import api, { getErrorMessage } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import QueryBoundary from '@/components/QueryBoundary';
 import PageHeader from '@/components/ui/PageHeader';
+import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, inspectionStatusMap } from '@/lib/status-badges';
 import {
   Package,
   Search,
@@ -150,9 +152,7 @@ export default function InventoryWorkflowPage() {
                       {product.imeiSerial ?? product.name} · {product.branch.name}
                     </p>
                   </div>
-                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${step?.color ?? 'bg-gray-400'} text-white`}>
-                    {step?.label ?? product.status}
-                  </span>
+                  {(() => { const cfg = getStatusBadgeProps(product.status, inspectionStatusMap); return <Badge variant={cfg.variant} appearance={cfg.appearance}>{cfg.label}</Badge>; })()}
                 </div>
               );
             })}

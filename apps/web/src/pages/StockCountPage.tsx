@@ -7,6 +7,9 @@ import PageHeader from '@/components/ui/PageHeader';
 import DataTable, { type Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import QueryBoundary from '@/components/QueryBoundary';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, stockCountStatusMap } from '@/lib/status-badges';
 
 const getErrorMessage = (err: unknown) => {
   const error = err as { response?: { data?: { message?: string } } };
@@ -125,12 +128,6 @@ export default function StockCountPage() {
     submitMutation.mutate({ id: selectedCount.id, items: countItems });
   };
 
-  const statusColors: Record<string, string> = {
-    DRAFT: 'bg-muted text-foreground',
-    IN_PROGRESS: 'bg-warning/10 text-warning dark:bg-warning/15',
-    COMPLETED: 'bg-success/10 text-success dark:bg-success/15',
-    CANCELLED: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
-  };
 
   const counts: StockCount[] = stockCounts?.data || [];
 
@@ -142,11 +139,10 @@ export default function StockCountPage() {
     {
       key: 'status',
       label: 'สถานะ',
-      render: (item) => (
-        <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${statusColors[item.status] || 'bg-muted'}`}>
-          {item.status}
-        </span>
-      ),
+      render: (item) => {
+        const cfg = getStatusBadgeProps(item.status, stockCountStatusMap);
+        return <Badge variant={cfg.variant} appearance={cfg.appearance}>{cfg.label}</Badge>;
+      },
     },
     { key: 'createdAt', label: 'วันที่', render: (item) => <span className="text-xs text-muted-foreground">{formatDateShort(item.createdAt)}</span> },
     {
@@ -203,12 +199,16 @@ export default function StockCountPage() {
         onRetry={refetch}
         errorTitle="ไม่สามารถโหลดการตรวจนับสต็อกได้"
       >
-        <DataTable
-          columns={stockCountColumns}
-          data={counts}
-          isLoading={isLoading}
-          emptyMessage="ยังไม่มีการนับสต็อก"
-        />
+        <Card>
+          <CardContent className="p-0">
+            <DataTable
+              columns={stockCountColumns}
+              data={counts}
+              isLoading={isLoading}
+              emptyMessage="ยังไม่มีการนับสต็อก"
+            />
+          </CardContent>
+        </Card>
       </QueryBoundary>
 
       {/* Create Modal */}

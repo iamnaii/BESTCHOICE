@@ -7,6 +7,9 @@ import { useDebounce } from '@/hooks/useDebounce';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable, { type Column } from '@/components/ui/DataTable';
 import QueryBoundary from '@/components/QueryBoundary';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
+import { getStatusBadgeProps, inspectionStatusMap } from '@/lib/status-badges';
 import { Search } from 'lucide-react';
 import { formatDateShort } from '@/utils/formatters';
 
@@ -23,13 +26,6 @@ interface InspectionItem {
   branch: { id: string; name: string };
 }
 
-const statusBadge: Record<string, { label: string; class: string }> = {
-  RECEIVED: { label: 'รอตรวจ', class: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
-  INSPECTING: { label: 'กำลังตรวจ', class: 'bg-warning/10 text-warning dark:bg-warning/15' },
-  QC_PASSED: { label: 'ผ่าน QC', class: 'bg-success/10 text-success dark:bg-success/15' },
-  QC_FAILED: { label: 'ไม่ผ่าน QC', class: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },
-  IN_STOCK: { label: 'เข้าสต็อกแล้ว', class: 'bg-primary/10 text-primary' },
-};
 
 export default function InspectionPage() {
   const { user } = useAuth();
@@ -84,12 +80,8 @@ export default function InspectionPage() {
       key: 'status',
       label: 'สถานะ',
       render: (row) => {
-        const badge = statusBadge[row.status] ?? { label: row.status, class: 'bg-gray-100 text-gray-700' };
-        return (
-          <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${badge.class}`}>
-            {badge.label}
-          </span>
-        );
+        const cfg = getStatusBadgeProps(row.status, inspectionStatusMap);
+        return <Badge variant={cfg.variant} appearance={cfg.appearance}>{cfg.label}</Badge>;
       },
     },
     {
@@ -146,27 +138,31 @@ export default function InspectionPage() {
       </div>
 
       {/* Table */}
-      <QueryBoundary
-        isLoading={isLoading && !data}
-        isError={isError}
-        error={error}
-        onRetry={refetch}
-        errorTitle="ไม่สามารถโหลดรายการตรวจสอบได้"
-      >
-        <DataTable
-          columns={columns}
-          data={items}
-          isLoading={isLoading}
-          pagination={{
-            page,
-            totalPages: Math.ceil(total / limit),
-            total,
-            onPageChange: setPage,
-          }}
-          onRowClick={(row) => navigate(`/inspections/${row.id}`)}
-          emptyMessage="ไม่พบรายการตรวจสอบ"
-        />
-      </QueryBoundary>
+      <Card>
+        <CardContent className="p-0">
+          <QueryBoundary
+            isLoading={isLoading && !data}
+            isError={isError}
+            error={error}
+            onRetry={refetch}
+            errorTitle="ไม่สามารถโหลดรายการตรวจสอบได้"
+          >
+            <DataTable
+              columns={columns}
+              data={items}
+              isLoading={isLoading}
+              pagination={{
+                page,
+                totalPages: Math.ceil(total / limit),
+                total,
+                onPageChange: setPage,
+              }}
+              onRowClick={(row) => navigate(`/inspections/${row.id}`)}
+              emptyMessage="ไม่พบรายการตรวจสอบ"
+            />
+          </QueryBoundary>
+        </CardContent>
+      </Card>
     </div>
   );
 }

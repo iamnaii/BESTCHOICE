@@ -8,6 +8,9 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { formatDateShort } from '@/utils/formatters';
 import { useAuth } from '@/contexts/AuthContext';
 import PageHeader from '@/components/ui/PageHeader';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { getStatusBadgeProps, productStatusMap, poStatusMap, poPaymentStatusMap } from '@/lib/status-badges';
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb';
 import DataTable from '@/components/ui/DataTable';
 import { displayAddress } from '@/components/ui/AddressForm';
@@ -78,26 +81,6 @@ interface PORecord {
   _count: { products: number };
 }
 
-const statusLabels: Record<string, { label: string; className: string }> = {
-  PO_RECEIVED: { label: 'รับจาก PO', className: 'bg-primary-100 text-primary-700' },
-  INSPECTION: { label: 'กำลังตรวจ', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
-  IN_STOCK: { label: 'พร้อมขาย', className: 'bg-success/10 text-success dark:bg-success/15' },
-  RESERVED: { label: 'จอง', className: 'bg-primary-100 text-primary-700' },
-  SOLD_INSTALLMENT: { label: 'ขายผ่อน', className: 'bg-indigo-100 text-indigo-700' },
-  SOLD_CASH: { label: 'ขายสด', className: 'bg-success/10 text-success dark:bg-success/15' },
-  REPOSSESSED: { label: 'ยึดคืน', className: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },
-  REFURBISHED: { label: 'ซ่อมแล้ว', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
-  SOLD_RESELL: { label: 'ขายต่อ', className: 'bg-cyan-100 text-cyan-700' },
-};
-
-const poStatusLabels: Record<string, { label: string; className: string }> = {
-  DRAFT: { label: 'ร่าง', className: 'bg-muted text-foreground' },
-  PENDING: { label: 'รอรับสินค้า', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
-  APPROVED: { label: 'อนุมัติ', className: 'bg-primary-100 text-primary-700' },
-  PARTIALLY_RECEIVED: { label: 'รับบางส่วน', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
-  FULLY_RECEIVED: { label: 'รับครบ', className: 'bg-success/10 text-success dark:bg-success/15' },
-  CANCELLED: { label: 'ยกเลิก', className: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },
-};
 
 const categoryLabels: Record<string, string> = {
   PHONE_NEW: 'มือถือใหม่',
@@ -178,8 +161,8 @@ export default function SupplierDetailPage() {
       <span className="font-medium">{parseFloat(p.costPrice).toLocaleString()} ฿</span>
     )},
     { key: 'status', label: 'สถานะ', render: (p: ProductRecord) => {
-      const s = statusLabels[p.status] || { label: p.status, className: 'bg-muted text-foreground' };
-      return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.className}`}>{s.label}</span>;
+      const cfg = getStatusBadgeProps(p.status, productStatusMap);
+      return <Badge variant={cfg.variant} appearance={cfg.appearance}>{cfg.label}</Badge>;
     }},
     { key: 'branch', label: 'สาขา', render: (p: ProductRecord) => (
       <span className="text-xs">{p.branch.name}</span>
@@ -197,8 +180,8 @@ export default function SupplierDetailPage() {
       <span className="text-sm">{formatDateShort(po.orderDate)}</span>
     )},
     { key: 'status', label: 'สถานะ', render: (po: PORecord) => {
-      const s = poStatusLabels[po.status] || { label: po.status, className: 'bg-muted text-foreground' };
-      return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.className}`}>{s.label}</span>;
+      const cfg = getStatusBadgeProps(po.status, poStatusMap);
+      return <Badge variant={cfg.variant} appearance={cfg.appearance}>{cfg.label}</Badge>;
     }},
     { key: 'items', label: 'รายการ', render: (po: PORecord) => (
       <div className="text-xs">
@@ -211,16 +194,10 @@ export default function SupplierDetailPage() {
       <span className="font-medium">{parseFloat(po.totalAmount).toLocaleString()} ฿</span>
     )},
     { key: 'paymentStatus', label: 'การจ่ายเงิน', render: (po: PORecord) => {
-      const psLabels: Record<string, { label: string; className: string }> = {
-        UNPAID: { label: 'ยังไม่จ่าย', className: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },
-        DEPOSIT_PAID: { label: 'จ่ายมัดจำ', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
-        PARTIALLY_PAID: { label: 'จ่ายบางส่วน', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
-        FULLY_PAID: { label: 'จ่ายครบ', className: 'bg-success/10 text-success dark:bg-success/15' },
-      };
-      const ps = psLabels[po.paymentStatus || 'UNPAID'] || { label: po.paymentStatus || '-', className: 'bg-muted text-foreground' };
+      const cfg = getStatusBadgeProps(po.paymentStatus || 'UNPAID', poPaymentStatusMap);
       return (
         <div>
-          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ps.className}`}>{ps.label}</span>
+          <Badge variant={cfg.variant} appearance={cfg.appearance}>{cfg.label}</Badge>
           {po.paymentMethod && (
             <div className="text-xs text-muted-foreground mt-0.5">{paymentMethodLabels[po.paymentMethod] || po.paymentMethod}</div>
           )}
@@ -282,13 +259,9 @@ export default function SupplierDetailPage() {
         <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-primary" />
         <div className="flex items-start justify-between mb-4">
           <h2 className="text-lg font-semibold text-foreground">ข้อมูลผู้ขาย</h2>
-          <span
-            className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-              supplier.isActive ? 'bg-success/10 text-success dark:bg-success/15' : 'bg-destructive/10 text-destructive dark:bg-destructive/15'
-            }`}
-          >
+          <Badge variant={supplier.isActive ? 'success' : 'destructive'} appearance="light">
             {supplier.isActive ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}
-          </span>
+          </Badge>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           <InfoField label="ชื่อ - นามสกุล (ผู้ติดต่อ)" value={supplier.contactName} />
@@ -357,30 +330,34 @@ export default function SupplierDetailPage() {
       </div>
 
       {/* Purchase Orders */}
-      <div className="mb-6">
-        <h2 className="text-lg font-semibold text-foreground mb-3">
-          Purchase Orders ({history?.purchaseOrders.length || 0})
-        </h2>
-        <DataTable
-          columns={poColumns}
-          data={history?.purchaseOrders || []}
-          isLoading={historyLoading}
-          emptyMessage="ยังไม่มี PO"
-        />
-      </div>
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>Purchase Orders ({history?.purchaseOrders.length || 0})</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <DataTable
+            columns={poColumns}
+            data={history?.purchaseOrders || []}
+            isLoading={historyLoading}
+            emptyMessage="ยังไม่มี PO"
+          />
+        </CardContent>
+      </Card>
 
       {/* Products (Purchase History) */}
-      <div>
-        <h2 className="text-lg font-semibold text-foreground mb-3">
-          ประวัติการซื้อสินค้า ({history?.products.length || 0})
-        </h2>
-        <DataTable
-          columns={productColumns}
-          data={history?.products || []}
-          isLoading={historyLoading}
-          emptyMessage="ยังไม่มีสินค้าจากผู้ขายนี้"
-        />
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>ประวัติการซื้อสินค้า ({history?.products.length || 0})</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <DataTable
+            columns={productColumns}
+            data={history?.products || []}
+            isLoading={historyLoading}
+            emptyMessage="ยังไม่มีสินค้าจากผู้ขายนี้"
+          />
+        </CardContent>
+      </Card>
       <ConfirmDialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, open }))} description={confirmDialog.message} onConfirm={confirmDialog.action} />
     </div>
   );

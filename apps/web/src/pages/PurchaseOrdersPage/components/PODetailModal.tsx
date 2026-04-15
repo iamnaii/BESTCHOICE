@@ -1,6 +1,7 @@
 import { formatDateShort, formatDateMedium, formatDateTime } from '@/utils/formatters';
 import { PurchaseOrder, PODetail, POItem } from '../types';
-import { statusLabels, statusColors, paymentStatusLabels, paymentStatusColors } from '../constants';
+import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, poStatusMap, poPaymentStatusMap } from '@/lib/status-badges';
 
 export interface PODetailModalProps {
   isOpen: boolean;
@@ -69,9 +70,7 @@ export function PODetailModal({
                   </div>
                   <div>
                     <span className="text-muted-foreground">สถานะ:</span>{' '}
-                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${statusColors[selectedPO.status] || ''}`}>
-                      {statusLabels[selectedPO.status] || selectedPO.status}
-                    </span>
+                    {(() => { const cfg = getStatusBadgeProps(selectedPO.status, poStatusMap); return <Badge variant={cfg.variant} appearance={cfg.appearance}>{cfg.label}</Badge>; })()}
                   </div>
                   <div>
                     <span className="text-muted-foreground">วันที่สั่ง:</span>{' '}
@@ -109,9 +108,7 @@ export function PODetailModal({
                 </div>
                 <div className="text-sm mb-3">
                   <span className="text-muted-foreground">การจ่ายเงิน:</span>{' '}
-                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${paymentStatusColors[selectedPO.paymentStatus] || 'bg-muted text-foreground'}`}>
-                    {paymentStatusLabels[selectedPO.paymentStatus] || 'ยังไม่จ่าย'}
-                  </span>
+                  {(() => { const cfg = getStatusBadgeProps(selectedPO.paymentStatus || 'UNPAID', poPaymentStatusMap); return <Badge variant={cfg.variant} appearance={cfg.appearance}>{cfg.label}</Badge>; })()}
                   {selectedPO.paymentMethod && (
                     <span className="ml-1 text-xs text-muted-foreground">
                       ({selectedPO.paymentMethod === 'CASH' ? 'เงินสด' : selectedPO.paymentMethod === 'BANK_TRANSFER' ? 'โอน' : selectedPO.paymentMethod === 'CHECK' ? 'เช็ค' : selectedPO.paymentMethod === 'CREDIT' ? 'เครดิต' : selectedPO.paymentMethod})
@@ -318,11 +315,9 @@ export function PODetailModal({
                           <div className="space-y-1">
                             {gr.items.map((item) => (
                               <div key={item.id} className="flex items-center gap-2 text-xs">
-                                <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
-                                  item.status === 'PASS' ? 'bg-success/5 dark:bg-success/10 text-success' : 'bg-destructive/5 dark:bg-destructive/10 text-destructive'
-                                }`}>
+                                <Badge variant={item.status === 'PASS' ? 'success' : 'destructive'} appearance="light">
                                   {item.status === 'PASS' ? 'PASS' : 'REJECT'}
-                                </span>
+                                </Badge>
                                 {item.imeiSerial && (
                                   <span className="font-mono text-muted-foreground">IMEI: {item.imeiSerial}</span>
                                 )}

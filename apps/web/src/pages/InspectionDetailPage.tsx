@@ -5,6 +5,8 @@ import api, { getErrorMessage } from '@/lib/api';
 import QueryBoundary from '@/components/QueryBoundary';
 import { useAuth } from '@/contexts/AuthContext';
 import PageHeader from '@/components/ui/PageHeader';
+import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, inspectionStatusMap } from '@/lib/status-badges';
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb';
 import {
   ArrowLeft,
@@ -35,12 +37,12 @@ interface ProductDetail {
   supplier: { id: string; name: string } | null;
 }
 
-const statusConfig: Record<string, { label: string; class: string; icon: typeof Package }> = {
-  RECEIVED: { label: 'รอตรวจ', class: 'bg-blue-100 text-blue-700', icon: Package },
-  INSPECTING: { label: 'กำลังตรวจ', class: 'bg-warning/10 text-warning dark:bg-warning/15', icon: Clock },
-  QC_PASSED: { label: 'ผ่าน QC', class: 'bg-success/10 text-success dark:bg-success/15', icon: CheckCircle2 },
-  QC_FAILED: { label: 'ไม่ผ่าน QC', class: 'bg-destructive/10 text-destructive dark:bg-destructive/15', icon: XCircle },
-  IN_STOCK: { label: 'เข้าสต็อกแล้ว', class: 'bg-primary/10 text-primary', icon: Warehouse },
+const statusIconMap: Record<string, typeof Package> = {
+  RECEIVED: Package,
+  INSPECTING: Clock,
+  QC_PASSED: CheckCircle2,
+  QC_FAILED: XCircle,
+  IN_STOCK: Warehouse,
 };
 
 export default function InspectionDetailPage() {
@@ -96,12 +98,8 @@ export default function InspectionDetailPage() {
     );
   }
 
-  const currentStatus = statusConfig[product.status] ?? {
-    label: product.status,
-    class: 'bg-gray-100 text-gray-700',
-    icon: Package,
-  };
-  const StatusIcon = currentStatus.icon;
+  const currentStatusCfg = getStatusBadgeProps(product.status, inspectionStatusMap);
+  const StatusIcon = statusIconMap[product.status] ?? Package;
 
   const infoItems = [
     { label: 'ชื่อสินค้า', value: product.name },
@@ -167,10 +165,10 @@ export default function InspectionDetailPage() {
         <div className="lg:col-span-2 bg-card rounded-xl border border-border/50 shadow-sm">
           <div className="px-5 py-4 border-b border-border/50 flex items-center justify-between">
             <h3 className="text-sm font-semibold">ข้อมูลสินค้า</h3>
-            <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold inline-flex items-center gap-1.5 ${currentStatus.class}`}>
+            <Badge variant={currentStatusCfg.variant} appearance={currentStatusCfg.appearance} className="inline-flex items-center gap-1.5">
               <StatusIcon className="size-3.5" />
-              {currentStatus.label}
-            </span>
+              {currentStatusCfg.label}
+            </Badge>
           </div>
           <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
             {infoItems.map((item) => (

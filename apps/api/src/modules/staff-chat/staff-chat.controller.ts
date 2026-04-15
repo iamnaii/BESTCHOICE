@@ -35,6 +35,7 @@ import { AiTrainingService } from './services/ai-training.service';
 import { AiAutoReplyService } from './services/ai-auto-reply.service';
 import { AiImportService } from './services/ai-import.service';
 import { AiMetricsService } from './services/ai-metrics.service';
+import { TrainingExtractCron } from './cron/training-extract.cron';
 import { AiSuggestRequestDto } from './dto/ai-suggest.dto';
 import { SaveFeedbackDto } from './dto/ai-training.dto';
 import { UpdateAiSettingsDto } from './dto/ai-settings.dto';
@@ -65,6 +66,7 @@ export class StaffChatController {
     private aiImport: AiImportService,
     private aiMetrics: AiMetricsService,
     private config: ConfigService,
+    private trainingExtractCron: TrainingExtractCron,
   ) {}
 
   // ─── Sessions ──────────────────────────────────────────
@@ -389,5 +391,11 @@ export class StaffChatController {
       from ? new Date(from) : undefined,
       to ? new Date(to) : undefined,
     );
+  }
+
+  @Post('ai/training-extract')
+  @Roles('OWNER')
+  async triggerTrainingExtract() {
+    return this.trainingExtractCron.extractTrainingPairs();
   }
 }

@@ -9,7 +9,7 @@ export class TrainingExtractCron {
   constructor(private prisma: PrismaService) {}
 
   @Cron('0 3 * * *', { timeZone: 'Asia/Bangkok' })
-  async extractTrainingPairs(): Promise<void> {
+  async extractTrainingPairs(): Promise<{ created: number }> {
     this.logger.log('Starting daily training pair extraction');
 
     const cutoff = new Date();
@@ -62,5 +62,6 @@ export class TrainingExtractCron {
     }
 
     this.logger.log(`Extracted ${created} training pairs`);
+    return { created };
   }
 }

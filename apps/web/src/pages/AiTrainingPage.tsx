@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Brain, Upload, CheckCircle, Database } from 'lucide-react';
+import { Brain, Upload, CheckCircle, Database, RefreshCw } from 'lucide-react';
 
 interface TrainingStats {
   totalPairs: number;
@@ -41,6 +41,18 @@ export default function AiTrainingPage() {
   const statsQuery = useQuery<TrainingStats>({
     queryKey: ['ai-training-stats'],
     queryFn: () => api.get('/staff-chat/ai/training-stats').then((r: any) => r.data),
+  });
+
+  const reExtractMutation = useMutation({
+    mutationFn: () => api.post('/staff-chat/ai/training-extract'),
+    onSuccess: (res: any) => {
+      const count = res.data?.created ?? 0;
+      toast.success(`สกัด ${count} training pairs สำเร็จ`);
+      queryClient.invalidateQueries({ queryKey: ['ai-training-stats'] });
+    },
+    onError: () => {
+      toast.error('สกัดข้อมูลไม่สำเร็จ — กรุณาลองใหม่อีกครั้ง');
+    },
   });
 
   const importMutation = useMutation({
@@ -79,6 +91,19 @@ export default function AiTrainingPage() {
   return (
     <div>
       <PageHeader title="AI Training" subtitle="จัดการข้อมูล training สำหรับ AI" />
+
+      {/* Re-extract action */}
+      <div className="flex justify-end mb-4">
+        <button
+          type="button"
+          onClick={() => reExtractMutation.mutate()}
+          disabled={reExtractMutation.isPending}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
+        >
+          <RefreshCw className={`w-4 h-4 ${reExtractMutation.isPending ? 'animate-spin' : ''}`} />
+          {reExtractMutation.isPending ? 'กำลังสกัด...' : 'Re-extract จาก Chat History'}
+        </button>
+      </div>
 
       {/* Stats */}
       <QueryBoundary

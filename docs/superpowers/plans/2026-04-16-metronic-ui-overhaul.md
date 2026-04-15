@@ -768,9 +768,109 @@ git commit -m "style: update MobileBottomNav — Emerald active state, thinner i
 
 ---
 
+### Task 12: Update Supporting Components (Tabs, Tooltip, Skeleton, EmptyState, ConfirmDialog, Dropdown)
+
+**Files:**
+- Modify: `apps/web/src/components/ui/tabs.tsx`
+- Modify: `apps/web/src/components/ui/tooltip.tsx`
+- Modify: `apps/web/src/components/ui/skeleton.tsx`
+- Modify: `apps/web/src/components/ui/EmptyState.tsx`
+- Modify: `apps/web/src/components/ui/ConfirmDialog.tsx`
+- Modify: `apps/web/src/components/ui/dropdown-menu.tsx`
+
+- [ ] **Step 1: Update Tabs — Navy active state**
+
+In `tabs.tsx`, update the default variant active tab to use Navy:
+
+```typescript
+// Default variant active
+'data-[state=active]:bg-[#1e3a5f] data-[state=active]:text-white data-[state=active]:shadow-sm'
+
+// Line variant active — change from primary to Navy
+'data-[state=active]:border-[#1e3a5f] data-[state=active]:text-[#1e3a5f]'
+```
+
+Update the tabs list container background:
+
+```typescript
+'bg-[#f1f5f9] p-1'
+```
+
+- [ ] **Step 2: Update Tooltip — dark Navy bg**
+
+In `tooltip.tsx`, update the dark variant:
+
+```typescript
+dark: 'bg-[#1e293b] text-white shadow-md shadow-[#1e3a5f]/10'
+```
+
+- [ ] **Step 3: Update Skeleton — Navy tint**
+
+In `skeleton.tsx`, change the background to a lighter Navy tint:
+
+```typescript
+className={cn('animate-pulse rounded-md bg-[#f1f5f9]', className)}
+```
+
+- [ ] **Step 4: Update EmptyState — Lucide icon sizing + Navy accent**
+
+In `EmptyState.tsx`, update the icon container:
+
+```typescript
+// Icon container
+'size-16 rounded-2xl bg-[#f0f5ff] flex items-center justify-center mb-5'
+
+// Icon inside should be 24px, Navy colored
+// (icons passed as props — just update container bg)
+```
+
+- [ ] **Step 5: Update ConfirmDialog — Navy overlay + Emerald confirm**
+
+In `ConfirmDialog.tsx`, ensure:
+- Confirm button uses `variant="primary"` (already Emerald from Task 6)
+- Destructive variant uses `variant="destructive"` (unchanged)
+- No changes needed if it uses Dialog primitive (overlay handled by dialog.tsx)
+
+Check `dialog.tsx` overlay class — if it uses a generic overlay, update to Navy-tinted:
+
+```typescript
+'bg-[#0f2035]/60 backdrop-blur-sm'
+```
+
+- [ ] **Step 6: Update Dropdown Menu — subtle Navy hover**
+
+In `dropdown-menu.tsx`, update item focus/hover:
+
+```typescript
+// Item hover
+'focus:bg-[#f0f5ff] focus:text-[#1e3a5f]'
+
+// Content shadow
+'shadow-md shadow-[#1e3a5f]/5'
+```
+
+- [ ] **Step 7: Verify all supporting components**
+
+Test:
+- Tabs: open a page with tabs (Stock, Settings), check Navy active
+- Tooltip: hover sidebar collapsed icons, check dark bg
+- Skeleton: loading state on any list page
+- EmptyState: search for non-existent data
+- Dropdown: click user menu in TopBar
+- ConfirmDialog: try to delete something
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add apps/web/src/components/ui/tabs.tsx apps/web/src/components/ui/tooltip.tsx apps/web/src/components/ui/skeleton.tsx apps/web/src/components/ui/EmptyState.tsx apps/web/src/components/ui/ConfirmDialog.tsx apps/web/src/components/ui/dropdown-menu.tsx
+git commit -m "style: update supporting components — Tabs, Tooltip, Skeleton, EmptyState, Dropdown with Navy+Emerald"
+```
+
+---
+
 ## Phase 3: Apply PageHeader to Key Pages
 
-### Task 12: Add Gradient PageHeader to Dashboard
+### Task 13: Add Gradient PageHeader to Dashboard
 
 **Files:**
 - Modify: `apps/web/src/pages/DashboardPage/index.tsx`
@@ -813,7 +913,7 @@ git commit -m "feat: add gradient PageHeader to Dashboard"
 
 ---
 
-### Task 13: Add PageHeader to List Pages (batch)
+### Task 14: Add PageHeader to List Pages (batch)
 
 **Files:**
 - Modify: Key list pages — one by one
@@ -851,7 +951,7 @@ git commit -m "feat: add gradient PageHeader to key list pages"
 
 ---
 
-### Task 14: Add PageHeader to Detail Pages
+### Task 15: Add PageHeader to Detail Pages
 
 **Files:**
 - Modify: Key detail pages
@@ -887,7 +987,7 @@ git commit -m "feat: add gradient PageHeader to detail pages — back button + s
 
 ---
 
-### Task 15: Run TypeScript Check + Visual Verification
+### Task 16: Run TypeScript Check + Visual Verification
 
 **Files:** None (verification only)
 
@@ -926,7 +1026,7 @@ git commit -m "fix: resolve TypeScript errors from UI overhaul"
 
 ## Phase 4: Remaining Pages (batch by pattern)
 
-### Task 16: Apply PageHeader to All Remaining List Pages
+### Task 17: Apply PageHeader to All Remaining List Pages
 
 Apply the gradient PageHeader pattern to every remaining list page that doesn't have it yet. This includes:
 
@@ -948,7 +1048,7 @@ git commit -m "feat: add gradient PageHeader to all remaining pages"
 
 ---
 
-### Task 17: Final Verification + Cleanup
+### Task 18: Final Verification + Cleanup
 
 - [ ] **Step 1: Run full type check**
 

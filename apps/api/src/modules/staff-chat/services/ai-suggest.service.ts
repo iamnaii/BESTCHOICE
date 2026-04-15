@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import Anthropic from '@anthropic-ai/sdk';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ProductDetectService } from './product-detect.service';
+import { AiTrainingService } from './ai-training.service';
 import type { AiSuggestion, AiSuggestResponse } from '../dto/ai-suggest.dto';
 
 @Injectable()
@@ -15,6 +16,7 @@ export class AiSuggestService {
     private config: ConfigService,
     private prisma: PrismaService,
     private productDetect: ProductDetectService,
+    private aiTraining: AiTrainingService,
   ) {
     const apiKey = this.config.get<string>('ANTHROPIC_API_KEY');
     if (apiKey) {
@@ -127,7 +129,17 @@ export class AiSuggestService {
 
 intent ที่ใช้ได้: answer_price, answer_spec, answer_stock, answer_promotion, close_sale, ask_preference, greet, follow_up`;
 
-    const userMessage = `## ข้อมูลลูกค้า\n${customerContext}\n\n## สินค้าที่เกี่ยวข้อง\n${productContext}\n\n## โปรโมชันที่ active\n${promoContext}\n\n## บทสนทนา\n${conversationText}\n\n${currentDraft ? `## ข้อความที่พนักงานกำลังพิมพ์\n${currentDraft}` : ''}\n\nแนะนำข้อความตอบ 2-3 ข้อความ:`;
+    // Fetch few-shot examples from training data
+    const examples = await this.aiTraining.getFewShotExamples(null, 5);
+    const examplesText =
+      examples.length > 0
+        ? '## ตัวอย่างข้อความที่ดีจากพนักงาน\n\n' +
+          examples
+            .map((ex) => `ลูกค้า: "${ex.customerMessage}"\nพนักงาน: "${ex.staffResponse}"`)
+            .join('\n\n')
+        : '';
+
+    const userMessage = `## ข้อมูลลูกค้า\n${customerContext}\n\n## สินค้าที่เกี่ยวข้อง\n${productContext}\n\n## โปรโมชันที่ active\n${promoContext}\n\n${examplesText ? examplesText + '\n\n' : ''}## บทสนทนา\n${conversationText}\n\n${currentDraft ? `## ข้อความที่พนักงานกำลังพิมพ์\n${currentDraft}` : ''}\n\nแนะนำข้อความตอบ 2-3 ข้อความ:`;
 
     try {
       const response = await this.anthropic.messages.create({

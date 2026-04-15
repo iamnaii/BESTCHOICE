@@ -294,27 +294,7 @@ export const auditActionMap: Record<string, StatusConfig> = {
   REPOSSESSION: { variant: 'warning', appearance: 'light', label: 'ยึดคืน' },
   CREATE_CALL_LOG: { variant: 'success', appearance: 'light', label: 'บันทึกการโทร' },
   STATUS_CHANGE: { variant: 'primary', appearance: 'light', label: 'เปลี่ยนสถานะ' },
-};
-
-// ─── Generic active/inactive ──────────────────────────────────────────────────
-
-export const activeStatusMap: Record<string, StatusConfig> = {
-  active: { variant: 'success', appearance: 'light', label: 'Active' },
-  inactive: { variant: 'secondary', label: 'Inactive' },
-  configured: { variant: 'success', appearance: 'light', label: 'ตั้งค่าแล้ว' },
-  not_configured: { variant: 'destructive', appearance: 'light', label: 'ยังไม่ได้ตั้งค่า' },
-};
-
-// ─── Audit log action types ──────────────────────────────────────────────────
-
-export const auditActionMap: Record<string, StatusConfig> = {
-  CREATE: { variant: 'success', appearance: 'light', label: 'สร้าง' },
-  UPDATE: { variant: 'primary', appearance: 'light', label: 'แก้ไข' },
-  DELETE: { variant: 'destructive', appearance: 'light', label: 'ลบ' },
-  LOGIN: { variant: 'info', appearance: 'light', label: 'เข้าสู่ระบบ' },
-  LOGOUT: { variant: 'secondary', label: 'ออกจากระบบ' },
-  EXPORT: { variant: 'warning', appearance: 'light', label: 'ส่งออก' },
-  // Financial audit action types
+  // Financial audit actions
   PAYMENT_RECORDED: { variant: 'success', appearance: 'light', label: 'บันทึกชำระเงิน' },
   PAYMENT_PARTIAL: { variant: 'info', appearance: 'light', label: 'ชำระบางส่วน' },
   LATE_FEE_WAIVED: { variant: 'warning', appearance: 'light', label: 'ยกเว้นค่าปรับ' },
@@ -326,8 +306,17 @@ export const auditActionMap: Record<string, StatusConfig> = {
   CREDIT_BALANCE_APPLIED: { variant: 'info', appearance: 'light', label: 'ใช้ยอดเครดิต' },
   CONTRACT_COMPLETED: { variant: 'success', appearance: 'light', label: 'ปิดสัญญา' },
   DUNNING_ESCALATION: { variant: 'destructive', appearance: 'light', label: 'ยกระดับติดตามหนี้' },
-  STATUS_CHANGE: { variant: 'secondary', label: 'เปลี่ยนสถานะ' },
 };
+
+// ─── Generic active/inactive ──────────────────────────────────────────────────
+
+export const activeStatusMap: Record<string, StatusConfig> = {
+  active: { variant: 'success', appearance: 'light', label: 'Active' },
+  inactive: { variant: 'secondary', label: 'Inactive' },
+  configured: { variant: 'success', appearance: 'light', label: 'ตั้งค่าแล้ว' },
+  not_configured: { variant: 'destructive', appearance: 'light', label: 'ยังไม่ได้ตั้งค่า' },
+};
+
 
 // ─── User / branch active status ──────────────────────────────────────────────
 
@@ -408,24 +397,6 @@ export const webhookStatusMap: Record<string, StatusConfig> = {
   FAILED: { variant: 'destructive', appearance: 'light', label: 'ล้มเหลว' },
   PENDING: { variant: 'warning', appearance: 'light', label: 'รอ' },
   RETRYING: { variant: 'info', appearance: 'light', label: 'ลองใหม่' },
-};
-
-// ─── Todo priorities ──────────────────────────────────────────────────────────
-
-export const todoPriorityMap: Record<string, StatusConfig> = {
-  URGENT: { variant: 'destructive', label: 'เร่งด่วน' },
-  HIGH: { variant: 'warning', label: 'สูง' },
-  MEDIUM: { variant: 'primary', appearance: 'light', label: 'ปานกลาง' },
-  LOW: { variant: 'secondary', label: 'ต่ำ' },
-};
-
-// ─── Todo statuses ────────────────────────────────────────────────────────────
-
-export const todoStatusMap: Record<string, StatusConfig> = {
-  TODO: { variant: 'secondary', label: 'รอทำ' },
-  IN_PROGRESS: { variant: 'primary', appearance: 'light', label: 'กำลังทำ' },
-  DONE: { variant: 'success', appearance: 'light', label: 'เสร็จแล้ว' },
-  CANCELLED: { variant: 'destructive', appearance: 'light', label: 'ยกเลิก' },
 };
 
 // ─── Asset statuses ───────────────────────────────────────────────────────────

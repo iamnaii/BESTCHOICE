@@ -1,6 +1,23 @@
 import { Injectable, Logger, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
+export interface MenuButton {
+  label: string;
+  emoji?: string;
+  color?: string;
+  actionType: 'uri' | 'message';
+  actionValue: string;
+}
+
+export interface CreateMenuParams {
+  name?: string;
+  chatBarText?: string;
+  liffUrl?: string;
+  layout?: '2x3' | '1x3' | '2x2';
+  buttons?: MenuButton[];
+  setAsDefault?: boolean;
+}
+
 export interface RichMenuUrls {
   /** URL หน้าหลักร้าน / รายการสินค้า เช่น https://bestchoicephone.app */
   websiteUrl: string;
@@ -154,45 +171,105 @@ export class RichMenuService {
    * └─────────────────┴─────────────────┴─────────────────┘
    */
   async createDefaultRichMenu(liffUrl: string): Promise<string> {
-    const richMenu = {
-      size: { width: 2500, height: 1686 },
+    const result = await this.createCustomRichMenu({ liffUrl });
+    return result.richMenuId;
+  }
+
+  /**
+   * Create a fully customizable rich menu.
+   * Supports 2x3 (default), 1x3, and 2x2 layouts with custom buttons and actions.
+   */
+  async createCustomRichMenu(params: CreateMenuParams): Promise<{ richMenuId: string }> {
+    const {
+      name = 'BESTCHOICE Menu',
+      chatBarText = 'เมนู',
+      liffUrl = '',
+      layout = '2x3',
+      buttons,
+    } = params;
+
+    const { cols, rows, height } = this.getGridDimensions(layout);
+    const totalButtons = cols * rows;
+
+    // Use 2500-wide grid, divide evenly across columns
+    // Middle column in odd-cols layout gets +1px to reach exactly 2500
+    const cellHeight = height / rows;
+
+    const areas: Array<{ bounds: { x: number; y: number; width: number; height: number }; action: Record<string, string> }> = [];
+    for (let i = 0; i < totalButtons; i++) {
+      const row = Math.floor(i / cols);
+      const col = i % cols;
+      const btn = buttons?.[i];
+
+      // Distribute width evenly; last column takes remainder
+      const baseWidth = Math.floor(2500 / cols);
+      const lastColExtra = 2500 - baseWidth * (cols - 1);
+      const cellWidth = col === cols - 1 ? lastColExtra : baseWidth;
+      const xOffset = col * baseWidth;
+
+      let action: Record<string, string>;
+      if (btn) {
+        if (btn.actionType === 'uri') {
+          action = {
+            type: 'uri',
+            uri: btn.actionValue || liffUrl || '#',
+            label: btn.label,
+          };
+        } else {
+          action = {
+            type: 'message',
+            text: btn.actionValue || btn.label,
+            label: btn.label,
+          };
+        }
+      } else {
+        // Fallback defaults when no button config provided
+        const defaultActions: Record<string, string>[] = [
+          { type: 'uri', uri: liffUrl || '#', label: 'ดูสินค้า' },
+          { type: 'uri', uri: `${liffUrl}/liff/contract`, label: 'ผ่อนชำระ' },
+          { type: 'uri', uri: `${liffUrl}/liff/contract`, label: 'สัญญาของฉัน' },
+          { type: 'uri', uri: `${liffUrl}/liff/early-payoff`, label: 'ชำระเงิน' },
+          { type: 'message', text: 'โปรโมชัน', label: 'โปรโมชัน' },
+          { type: 'message', text: 'คุยกับพนักงาน', label: 'ติดต่อเรา' },
+        ];
+        action = defaultActions[i] ?? { type: 'message', text: `button${i + 1}`, label: `Button ${i + 1}` };
+      }
+
+      areas.push({
+        bounds: {
+          x: xOffset,
+          y: row * cellHeight,
+          width: cellWidth,
+          height: cellHeight,
+        },
+        action,
+      });
+    }
+
+    const body = {
+      size: { width: 2500, height },
       selected: true,
-      name: 'BESTCHOICE Menu',
-      chatBarText: 'เมนู',
-      areas: [
-        // Row 1
-        {
-          bounds: { x: 0, y: 0, width: 833, height: 843 },
-          action: { type: 'uri', label: 'ดูสินค้า', uri: liffUrl },
-        },
-        {
-          bounds: { x: 833, y: 0, width: 834, height: 843 },
-          action: { type: 'uri', label: 'ผ่อนชำระ', uri: `${liffUrl}/liff/contract` },
-        },
-        {
-          bounds: { x: 1667, y: 0, width: 833, height: 843 },
-          action: { type: 'uri', label: 'สัญญาของฉัน', uri: `${liffUrl}/liff/contract` },
-        },
-        // Row 2
-        {
-          bounds: { x: 0, y: 843, width: 833, height: 843 },
-          action: { type: 'uri', label: 'ชำระเงิน', uri: `${liffUrl}/liff/early-payoff` },
-        },
-        {
-          bounds: { x: 833, y: 843, width: 834, height: 843 },
-          action: { type: 'message', label: 'โปรโมชัน', text: 'โปรโมชัน' },
-        },
-        {
-          bounds: { x: 1667, y: 843, width: 833, height: 843 },
-          action: { type: 'message', label: 'ติดต่อเรา', text: 'คุยกับพนักงาน' },
-        },
-      ],
+      name,
+      chatBarText,
+      areas,
     };
 
-    const response = await this.callLineApi(`${this.lineApiBaseUrl}/richmenu`, richMenu);
+    const response = await this.callLineApi(`${this.lineApiBaseUrl}/richmenu`, body);
     const data = await response.json();
-    this.logger.log(`Default Rich Menu created: ${data.richMenuId}`);
-    return data.richMenuId;
+    this.logger.log(`Custom Rich Menu created: ${data.richMenuId} (layout=${layout})`);
+    return { richMenuId: data.richMenuId };
+  }
+
+  private getGridDimensions(layout: string): { cols: number; rows: number; height: number } {
+    switch (layout) {
+      case '1x3':
+        return { cols: 3, rows: 1, height: 843 };
+      case '2x2':
+        return { cols: 2, rows: 2, height: 1686 };
+      case '2x3':
+      default:
+        return { cols: 3, rows: 2, height: 1686 };
+    }
   }
 
   /**

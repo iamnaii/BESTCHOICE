@@ -8,7 +8,11 @@ import {
   Param,
   UseGuards,
   Logger,
+  BadRequestException,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { Request } from 'express';
 import { LineOaService } from './line-oa.service';
@@ -215,9 +219,57 @@ export class LineOaController {
   @Post('rich-menu/create-default')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('OWNER')
-  async createDefaultRichMenu(@Body() body: { liffUrl: string }) {
-    const richMenuId = await this.richMenuService.createDefaultRichMenu(body.liffUrl);
-    return { success: true, richMenuId };
+  async createDefaultRichMenu(@Body() body: {
+    liffUrl?: string;
+    name?: string;
+    chatBarText?: string;
+    layout?: string;
+    buttons?: any[];
+  }) {
+    const result = await this.richMenuService.createCustomRichMenu({
+      ...body,
+      layout: body.layout as '2x3' | '1x3' | '2x2' | undefined,
+    });
+    return { success: true, richMenuId: result.richMenuId };
+  }
+
+  @Post('rich-menu/:id/upload-image')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER')
+  @UseInterceptors(FileInterceptor('image'))
+  async uploadRichMenuImage(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) throw new BadRequestException('กรุณาอัปโหลดรูปภาพ');
+    await this.richMenuService.uploadRichMenuImage(id, file.buffer);
+    return { success: true, message: 'อัปโหลดรูป Rich Menu สำเร็จ' };
+  }
+
+  @Post('rich-menu/create-with-image')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER')
+  @UseInterceptors(FileInterceptor('image'))
+  async createWithImage(
+    @UploadedFile() file: Express.Multer.File,
+    @Body() body: any,
+  ) {
+    const config = typeof body.config === 'string' ? JSON.parse(body.config) : (body.config ?? {});
+
+    // 1. Create the menu structure
+    const result = await this.richMenuService.createCustomRichMenu(config);
+
+    // 2. Upload the image if provided
+    if (file && result.richMenuId) {
+      await this.richMenuService.uploadRichMenuImage(result.richMenuId, file.buffer);
+    }
+
+    // 3. Optionally set as default
+    if (config.setAsDefault && result.richMenuId) {
+      await this.richMenuService.setDefaultRichMenu(result.richMenuId);
+    }
+
+    return { success: true, richMenuId: result.richMenuId };
   }
 
   @Post('rich-menu/:id/set-default')

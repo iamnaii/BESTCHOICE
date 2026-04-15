@@ -361,25 +361,55 @@ export default function RichMenuPage() {
 
   // ── Mutations ─────────────────────────────────────────────────────────────
 
+  function getButtonCount(l: LayoutType): number {
+    if (l === '1x3') return 3;
+    if (l === '2x2') return 4;
+    return 6; // 2x3
+  }
+
   const createMutation = useMutation({
     mutationFn: async () => {
+      const visibleButtons = buttons.slice(0, getButtonCount(layout)).map((b) => ({
+        label: b.label,
+        emoji: b.emoji,
+        color: b.color,
+        actionType: b.actionType,
+        actionValue: b.actionValue || effectiveLiffUrl,
+      }));
+
+      if (customImageFile) {
+        // Use create-with-image endpoint (multipart form)
+        const fd = new FormData();
+        fd.append('image', customImageFile);
+        fd.append(
+          'config',
+          JSON.stringify({
+            name: menuName,
+            chatBarText,
+            liffUrl: effectiveLiffUrl,
+            layout,
+            buttons: visibleButtons,
+            setAsDefault: true,
+          }),
+        );
+        const res = await api.post('/line-oa/rich-menu/create-with-image', fd, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        return res.data as { richMenuId: string };
+      }
+
+      // Standard create (JSON)
       const res = await api.post('/line-oa/rich-menu/create-default', {
         liffUrl: effectiveLiffUrl,
         name: menuName,
         chatBarText,
-        buttons: buttons.map((b) => ({
-          label: b.label,
-          actionType: b.actionType,
-          actionValue: b.actionValue || effectiveLiffUrl,
-        })),
+        layout,
+        buttons: visibleButtons,
       });
       return res.data as { richMenuId: string };
     },
-    onSuccess: async (result) => {
+    onSuccess: () => {
       toast.success('สร้าง Rich Menu สำเร็จ');
-      if (customImageFile && result?.richMenuId) {
-        await uploadImageMutation.mutateAsync({ menuId: result.richMenuId, file: customImageFile });
-      }
       queryClient.invalidateQueries({ queryKey: ['rich-menu-list'] });
       setActiveTab('list');
     },

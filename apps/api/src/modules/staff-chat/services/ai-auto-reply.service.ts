@@ -15,24 +15,19 @@ export class AiAutoReplyService {
   ) {}
 
   async shouldAutoReply(session: any): Promise<boolean> {
-    // Check env flag
-    const enabled = this.config.get<string>('AI_AUTO_ENABLED');
-    if (enabled !== 'true') return false;
+    const settings = await this.getSettings();
+
+    if (!settings.aiAutoEnabled) return false;
 
     // Check channel allowlist
-    const channelsRaw = this.config.get<string>('AI_AUTO_CHANNELS') ?? '';
-    const channels = channelsRaw
-      .split(',')
-      .map((c) => c.trim())
-      .filter(Boolean);
-    if (channels.length > 0 && !channels.includes(session.channel)) return false;
+    if (settings.aiAutoChannels.length > 0 && !settings.aiAutoChannels.includes(session.channel))
+      return false;
 
     // Check per-session reply cap
-    const maxReplies = parseInt(this.config.get<string>('AI_AUTO_MAX_REPLIES') ?? '5', 10);
     const sentCount = await this.prisma.aiAutoReplyLog.count({
       where: { sessionId: session.id, autoSent: true },
     });
-    if (sentCount >= maxReplies) return false;
+    if (sentCount >= settings.aiAutoMaxRepliesPerSession) return false;
 
     return true;
   }
@@ -41,12 +36,9 @@ export class AiAutoReplyService {
     sessionId: string,
     customerMessage: string,
   ): Promise<{ reply: string; confidence: number } | null> {
-    const thresholdRaw = parseInt(
-      this.config.get<string>('AI_AUTO_CONFIDENCE_THRESHOLD') ?? '80',
-      10,
-    );
+    const settings = await this.getSettings();
     // Convert scale 0-100 → 0-1 for comparison with suggestion confidence
-    const threshold = thresholdRaw / 100;
+    const threshold = settings.aiAutoConfidenceThreshold / 100;
 
     const result = await this.aiSuggest.suggest(sessionId);
     if (!result.suggestions.length) return null;
@@ -77,30 +69,76 @@ export class AiAutoReplyService {
     });
   }
 
-  getSettings(): AiAutoSettings {
-    const channelsRaw = this.config.get<string>('AI_AUTO_CHANNELS') ?? '';
-    const channels = channelsRaw
-      .split(',')
-      .map((c) => c.trim())
-      .filter(Boolean);
+  async getSettings(): Promise<AiAutoSettings> {
+    const keys = [
+      'ai.autoEnabled',
+      'ai.autoChannels',
+      'ai.autoConfidenceThreshold',
+      'ai.autoMaxRepliesPerSession',
+    ];
+
+    const configs = await this.prisma.systemConfig.findMany({
+      where: { key: { in: keys }, deletedAt: null },
+    });
+
+    const configMap = new Map(configs.map((c) => [c.key, c.value]));
 
     return {
-      aiAutoEnabled: this.config.get<string>('AI_AUTO_ENABLED') === 'true',
-      aiAutoChannels: channels,
-      aiAutoConfidenceThreshold: parseInt(
-        this.config.get<string>('AI_AUTO_CONFIDENCE_THRESHOLD') ?? '80',
-        10,
-      ),
-      aiAutoMaxRepliesPerSession: parseInt(
-        this.config.get<string>('AI_AUTO_MAX_REPLIES') ?? '5',
-        10,
-      ),
+      aiAutoEnabled: configMap.has('ai.autoEnabled')
+        ? configMap.get('ai.autoEnabled') === 'true'
+        : this.config.get<string>('AI_AUTO_ENABLED') === 'true',
+      aiAutoChannels: configMap.has('ai.autoChannels')
+        ? JSON.parse(configMap.get('ai.autoChannels')!)
+        : (this.config.get<string>('AI_AUTO_CHANNELS') ?? '').split(',').filter(Boolean),
+      aiAutoConfidenceThreshold: configMap.has('ai.autoConfidenceThreshold')
+        ? Number(configMap.get('ai.autoConfidenceThreshold'))
+        : Number(this.config.get<string>('AI_AUTO_CONFIDENCE_THRESHOLD') ?? '80'),
+      aiAutoMaxRepliesPerSession: configMap.has('ai.autoMaxRepliesPerSession')
+        ? Number(configMap.get('ai.autoMaxRepliesPerSession'))
+        : Number(this.config.get<string>('AI_AUTO_MAX_REPLIES') ?? '5'),
     };
   }
 
-  updateSettings(dto: UpdateAiSettingsDto): AiAutoSettings {
-    this.logger.log('updateSettings called (persistence not yet implemented)', dto);
-    // Actual DB persistence will be added when settings model is available
+  async updateSettings(dto: UpdateAiSettingsDto): Promise<AiAutoSettings> {
+    const entries: { key: string; value: string; label: string }[] = [];
+
+    if (dto.aiAutoEnabled !== undefined) {
+      entries.push({
+        key: 'ai.autoEnabled',
+        value: String(dto.aiAutoEnabled),
+        label: 'AI Auto Mode เปิด/ปิด',
+      });
+    }
+    if (dto.aiAutoChannels !== undefined) {
+      entries.push({
+        key: 'ai.autoChannels',
+        value: JSON.stringify(dto.aiAutoChannels),
+        label: 'AI Auto Channels',
+      });
+    }
+    if (dto.aiAutoConfidenceThreshold !== undefined) {
+      entries.push({
+        key: 'ai.autoConfidenceThreshold',
+        value: String(dto.aiAutoConfidenceThreshold),
+        label: 'AI Confidence Threshold',
+      });
+    }
+    if (dto.aiAutoMaxRepliesPerSession !== undefined) {
+      entries.push({
+        key: 'ai.autoMaxRepliesPerSession',
+        value: String(dto.aiAutoMaxRepliesPerSession),
+        label: 'AI Max Replies per Session',
+      });
+    }
+
+    for (const entry of entries) {
+      await this.prisma.systemConfig.upsert({
+        where: { key: entry.key },
+        create: { key: entry.key, value: entry.value, label: entry.label },
+        update: { value: entry.value, deletedAt: null },
+      });
+    }
+
     return this.getSettings();
   }
 }

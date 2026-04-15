@@ -197,8 +197,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers }: TodoFormPr
     };
     // thumbUrls is intentionally read but not in deps — adding it would
     // cause an infinite loop because we setState on it inside the effect.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, form.attachments]);
+  }, [open, form.attachments]); // thumbUrls intentionally excluded — adding it causes infinite loop
 
   // When the dialog closes, drop all thumbnails and revoke their URLs.
   useEffect(() => {

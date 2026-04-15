@@ -10,7 +10,7 @@ import {
 import { ChatChannel } from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
-import { SessionManagerService } from '../chat-engine/services/session-manager.service';
+import { RoomManagerService } from '../chat-engine/services/room-manager.service';
 
 /**
  * WebWidgetController — REST endpoints for the web chat widget.
@@ -20,52 +20,52 @@ import { SessionManagerService } from '../chat-engine/services/session-manager.s
  */
 @Controller('widget')
 export class WebWidgetController {
-  constructor(private sessionManager: SessionManagerService) {}
+  constructor(private roomManager: RoomManagerService) {}
 
   /**
-   * Initialize a widget chat session.
-   * If a visitorId is provided and has an existing session, returns that session.
-   * Otherwise creates a new session with channel=WEB.
+   * Initialize a widget chat room.
+   * If a visitorId is provided and has an existing room, returns that room.
+   * Otherwise creates a new room with channel=WEB.
    */
   @Post('init')
   @SkipCsrf()
-  async initSession(
+  async initRoom(
     @Body() body: { visitorId?: string },
-  ): Promise<{ sessionId: string; visitorId: string }> {
+  ): Promise<{ roomId: string; visitorId: string }> {
     const visitorId = body.visitorId || uuidv4();
 
-    const session = await this.sessionManager.getOrCreateSession({
+    const room = await this.roomManager.getOrCreateRoom({
       externalUserId: visitorId,
       channel: ChatChannel.WEB,
     });
 
     return {
-      sessionId: session.id,
+      roomId: room.id,
       visitorId,
     };
   }
 
   /**
-   * Get messages for a widget session.
-   * No auth required — the sessionId acts as a capability token.
+   * Get messages for a widget room.
+   * No auth required — the roomId acts as a capability token.
    */
-  @Get('messages/:sessionId')
+  @Get('messages/:roomId')
   @SkipCsrf()
   async getMessages(
-    @Param('sessionId') sessionId: string,
+    @Param('roomId') roomId: string,
     @Query('limit') limit?: string,
   ) {
-    // Verify session exists and is a WEB channel session
-    const session = await this.sessionManager.findById(sessionId);
-    if (!session || session.channel !== ChatChannel.WEB) {
-      throw new NotFoundException('ไม่พบเซสชัน');
+    // Verify room exists and is a WEB channel room
+    const room = await this.roomManager.findById(roomId);
+    if (!room || room.channel !== ChatChannel.WEB) {
+      throw new NotFoundException('ไม่พบห้องแชท');
     }
 
     const messageLimit = limit ? Math.min(parseInt(limit, 10) || 50, 100) : 50;
-    const messages = await this.sessionManager.getRecentMessages(sessionId, messageLimit);
+    const messages = await this.roomManager.getRecentMessages(roomId, messageLimit);
 
     return {
-      sessionId,
+      roomId,
       messages: messages.map((msg) => ({
         id: msg.id,
         role: msg.role,

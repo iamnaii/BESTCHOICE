@@ -18,20 +18,20 @@ import { SideConversationService } from './services/side-conversation.service';
 export class SideConversationController {
   constructor(private sideConversation: SideConversationService) {}
 
-  @Post(':sessionId')
+  @Post(':roomId')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   async addMessage(
-    @Param('sessionId') sessionId: string,
+    @Param('roomId') roomId: string,
     @Body('text') text: string,
     @Req() req: any,
   ) {
-    return this.sideConversation.addMessage(sessionId, req.user.id, text);
+    return this.sideConversation.addMessage(roomId, req.user.id, text);
   }
 
-  @Get(':sessionId')
+  @Get(':roomId')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
-  async getMessages(@Param('sessionId') sessionId: string) {
-    return this.sideConversation.getMessages(sessionId);
+  async getMessages(@Param('roomId') roomId: string) {
+    return this.sideConversation.getMessages(roomId);
   }
 
   @Delete('message/:id')

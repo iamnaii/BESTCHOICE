@@ -20,7 +20,8 @@ import { ConfigService } from '@nestjs/config';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
-import { SessionManagerService } from '../chat-engine/services/session-manager.service';
+import { PrismaService } from '../../prisma/prisma.service';
+import { RoomManagerService } from '../chat-engine/services/room-manager.service';
 import { AssignmentService } from '../chat-engine/services/assignment.service';
 import { ConversationTagService } from '../chat-engine/services/conversation-tag.service';
 import { HandoffManagerService } from '../chat-engine/services/handoff-manager.service';
@@ -40,7 +41,7 @@ import { AiSuggestRequestDto } from './dto/ai-suggest.dto';
 import { SaveFeedbackDto } from './dto/ai-training.dto';
 import { UpdateAiSettingsDto } from './dto/ai-settings.dto';
 import { SessionQueryDto } from '../chat-engine/dto/session-query.dto';
-import { ChatSessionStatus, ChatChannel, ChatPriority, MessageRole, MessageType } from '@prisma/client';
+import { ChatRoomStatus, ChatChannel, ChatPriority, MessageRole, MessageType } from '@prisma/client';
 import { StorageService } from '../storage/storage.service';
 import { MessageRouterService } from '../chat-engine/services/message-router.service';
 
@@ -48,7 +49,8 @@ import { MessageRouterService } from '../chat-engine/services/message-router.ser
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class StaffChatController {
   constructor(
-    private sessionManager: SessionManagerService,
+    private prisma: PrismaService,
+    private roomManager: RoomManagerService,
     private assignment: AssignmentService,
     private tags: ConversationTagService,
     private handoff: HandoffManagerService,
@@ -69,14 +71,14 @@ export class StaffChatController {
     private trainingExtractCron: TrainingExtractCron,
   ) {}
 
-  // ─── Sessions ──────────────────────────────────────────
+  // ─── Rooms ────────────────────────────────────────────
 
-  @Get('sessions')
+  @Get('rooms')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
-  async listSessions(@Query() query: SessionQueryDto) {
-    return this.sessionManager.listSessions({
+  async listRooms(@Query() query: SessionQueryDto) {
+    return this.roomManager.listRooms({
       channel: query.channel as ChatChannel | undefined,
-      sessionStatus: query.sessionStatus as ChatSessionStatus | undefined,
+      roomStatus: query.sessionStatus as ChatRoomStatus | undefined,
       priority: query.priority as ChatPriority | undefined,
       assignedToId: query.assignedToId,
       unassignedOnly: query.unassignedOnly,
@@ -86,19 +88,19 @@ export class StaffChatController {
     });
   }
 
-  @Get('sessions/:id')
+  @Get('rooms/:id')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
-  async getSession(@Param('id') id: string) {
-    return this.sessionManager.findById(id);
+  async getRoom(@Param('id') id: string) {
+    return this.roomManager.findById(id);
   }
 
-  @Get('sessions/:id/messages')
+  @Get('rooms/:id/messages')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   async getMessages(
     @Param('id') id: string,
     @Query('limit') limit?: string,
   ) {
-    return this.sessionManager.getRecentMessages(id, limit ? parseInt(limit, 10) : 50);
+    return this.roomManager.getRecentMessages(id, limit ? parseInt(limit, 10) : 50);
   }
 
   // ─── Unread + Search ────────────────────────────────────
@@ -106,7 +108,7 @@ export class StaffChatController {
   @Get('unread-count')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   async getUnreadCount(@Req() req: any) {
-    return this.sessionManager.getUnreadCount(req.user.id);
+    return this.roomManager.getUnreadCount(req.user.id);
   }
 
   @Get('search')
@@ -117,7 +119,7 @@ export class StaffChatController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
-    return this.sessionManager.searchMessages({
+    return this.roomManager.searchMessages({
       query: query || '',
       channel: channel as any,
       page: page ? parseInt(page, 10) : undefined,
@@ -127,9 +129,9 @@ export class StaffChatController {
 
   // ─── Assignment ────────────────────────────────────────
 
-  @Patch('sessions/:id/assign')
+  @Patch('rooms/:id/assign')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER')
-  async assignSession(
+  async assignRoom(
     @Param('id') id: string,
     @Body('staffId') staffId: string,
   ) {
@@ -137,9 +139,9 @@ export class StaffChatController {
     return { success: true };
   }
 
-  @Patch('sessions/:id/transfer')
+  @Patch('rooms/:id/transfer')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER')
-  async transferSession(
+  async transferRoom(
     @Param('id') id: string,
     @Body('toStaffId') toStaffId: string,
     @Req() req: any,
@@ -148,16 +150,16 @@ export class StaffChatController {
     return { success: true };
   }
 
-  @Patch('sessions/:id/resolve')
+  @Patch('rooms/:id/resolve')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
-  async resolveSession(@Param('id') id: string, @Req() req: any) {
+  async resolveRoom(@Param('id') id: string, @Req() req: any) {
     await this.assignment.resolve(id, req.user.id);
     return { success: true };
   }
 
   // ─── Tags ──────────────────────────────────────────────
 
-  @Post('sessions/:id/tags')
+  @Post('rooms/:id/tags')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   async addTag(
     @Param('id') id: string,
@@ -167,7 +169,7 @@ export class StaffChatController {
     return { success: true };
   }
 
-  @Delete('sessions/:id/tags/:tag')
+  @Delete('rooms/:id/tags/:tag')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   async removeTag(@Param('id') id: string, @Param('tag') tag: string) {
     await this.tags.removeTag(id, tag);
@@ -182,7 +184,7 @@ export class StaffChatController {
 
   // ─── Notes ─────────────────────────────────────────────
 
-  @Post('sessions/:id/notes')
+  @Post('rooms/:id/notes')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   async addNote(
     @Param('id') id: string,
@@ -192,7 +194,7 @@ export class StaffChatController {
     return this.staffMessage.addNote(id, req.user.id, content);
   }
 
-  @Get('sessions/:id/notes')
+  @Get('rooms/:id/notes')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   async getNotes(@Param('id') id: string) {
     return this.staffMessage.getNotes(id);
@@ -226,7 +228,7 @@ export class StaffChatController {
 
   // ─── Handoff ───────────────────────────────────────────
 
-  @Patch('sessions/:id/return-to-ai')
+  @Patch('rooms/:id/return-to-ai')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER')
   async returnToAI(@Param('id') id: string) {
     await this.handoff.resolveHandoff(id, true);
@@ -243,9 +245,9 @@ export class StaffChatController {
 
   // ─── AI Assistant ──────────────────────────────────────
 
-  @Post('sessions/:id/summary')
+  @Post('rooms/:id/summary')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
-  async summarizeSession(@Param('id') id: string) {
+  async summarizeRoom(@Param('id') id: string) {
     const summary = await this.aiAssistant.summarizeConversation(id);
     return { summary };
   }
@@ -257,7 +259,7 @@ export class StaffChatController {
     return { text: adjusted };
   }
 
-  @Post('sessions/:id/suggest')
+  @Post('rooms/:id/suggest')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   async getSuggestions(@Param('id') id: string, @Body() dto: AiSuggestRequestDto) {
     const enabled = this.config.get<string>('AI_SUGGEST_ENABLED') === 'true';
@@ -267,15 +269,15 @@ export class StaffChatController {
     return this.aiSuggest.suggest(id, dto.currentDraft);
   }
 
-  @Get('sessions/:id/products')
+  @Get('rooms/:id/products')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   async getDetectedProducts(@Param('id') id: string): Promise<any[]> {
-    const messages = await this.sessionManager.getRecentMessages(id, 20);
+    const messages = await this.roomManager.getRecentMessages(id, 20);
     const texts = messages.map((m: any) => m.text ?? '').filter(Boolean);
     return this.productDetect.detectProducts(texts);
   }
 
-  @Get('sessions/:id/lead-score')
+  @Get('rooms/:id/lead-score')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   async getLeadScore(@Param('id') id: string): Promise<any> {
     return this.leadScoring.scoreSession(id);
@@ -291,11 +293,11 @@ export class StaffChatController {
 
   // ─── File Upload ──────────────────────────────────────
 
-  @Post('sessions/:id/upload')
+  @Post('rooms/:id/upload')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   @UseInterceptors(FileInterceptor('file'))
   async uploadFile(
-    @Param('id') sessionId: string,
+    @Param('id') roomId: string,
     @UploadedFile(
       new ParseFilePipe({
         validators: [
@@ -317,7 +319,7 @@ export class StaffChatController {
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
     };
     const ext = extMap[file.mimetype] || '';
-    const key = `staff-chat/${sessionId}/${Date.now()}${ext}`;
+    const key = `staff-chat/${roomId}/${Date.now()}${ext}`;
 
     await this.storageService.upload(key, file.buffer, file.mimetype);
     const downloadUrl = this.storageService.configured
@@ -325,8 +327,8 @@ export class StaffChatController {
       : key;
 
     // Save as a message with media
-    await this.sessionManager.saveMessage({
-      sessionId,
+    await this.roomManager.saveMessage({
+      roomId,
       role: MessageRole.BOT,
       type: file.mimetype.startsWith('image/') ? MessageType.IMAGE : MessageType.FILE,
       text: file.originalname,
@@ -340,10 +342,76 @@ export class StaffChatController {
 
   // ─── Contract Prefill ─────────────────────────────────
 
-  @Get('sessions/:id/contract-prefill')
+  @Get('rooms/:id/contract-prefill')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   async getContractPrefill(@Param('id') id: string) {
     return this.chatToContract.getContractPrefill(id);
+  }
+
+  // ─── Pin / Unpin Room ─────────────────────────────────
+
+  @Post('rooms/:id/pin')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  async pinRoom(@Param('id') id: string, @Req() req: any) {
+    const userId = req.user.id;
+    await this.prisma.chatRoom.update({
+      where: { id },
+      data: { pinnedAt: new Date(), pinnedById: userId },
+    });
+    return { success: true };
+  }
+
+  @Delete('rooms/:id/pin')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  async unpinRoom(@Param('id') id: string) {
+    await this.prisma.chatRoom.update({
+      where: { id },
+      data: { pinnedAt: null, pinnedById: null },
+    });
+    return { success: true };
+  }
+
+  // ─── Mark as Read ─────────────────────────────────────
+
+  @Post('rooms/:id/read')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  async markAsRead(@Param('id') id: string) {
+    const now = new Date();
+    const updated = await this.prisma.chatMessage.updateMany({
+      where: { roomId: id, role: 'CUSTOMER', readAt: null },
+      data: { readAt: now },
+    });
+    await this.prisma.chatRoom.update({
+      where: { id },
+      data: { unreadCount: 0 },
+    });
+    return { markedCount: updated.count };
+  }
+
+  // ─── Cross-Channel Rooms ──────────────────────────────
+
+  @Get('rooms/:id/cross-channel')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  async getCrossChannelRooms(@Param('id') id: string) {
+    const room = await this.prisma.chatRoom.findUnique({
+      where: { id },
+      select: { customerId: true },
+    });
+    if (!room?.customerId) return [];
+    return this.prisma.chatRoom.findMany({
+      where: { customerId: room.customerId, deletedAt: null },
+      select: {
+        id: true,
+        channel: true,
+        lastMessageAt: true,
+        messages: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: { text: true, createdAt: true },
+        },
+      },
+      orderBy: { lastMessageAt: 'desc' },
+    });
   }
 
   // ─── AI Training & Settings ───────────────────────────

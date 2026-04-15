@@ -23,9 +23,9 @@ export class AiAutoReplyService {
     if (settings.aiAutoChannels.length > 0 && !settings.aiAutoChannels.includes(session.channel))
       return false;
 
-    // Check per-session reply cap
+    // Check per-room reply cap
     const sentCount = await this.prisma.aiAutoReplyLog.count({
-      where: { sessionId: session.id, autoSent: true },
+      where: { roomId: session.id, autoSent: true },
     });
     if (sentCount >= settings.aiAutoMaxRepliesPerSession) return false;
 
@@ -33,14 +33,14 @@ export class AiAutoReplyService {
   }
 
   async autoReply(
-    sessionId: string,
+    roomId: string,
     customerMessage: string,
   ): Promise<{ reply: string; confidence: number } | null> {
     const settings = await this.getSettings();
     // Convert scale 0-100 → 0-1 for comparison with suggestion confidence
     const threshold = settings.aiAutoConfidenceThreshold / 100;
 
-    const result = await this.aiSuggest.suggest(sessionId);
+    const result = await this.aiSuggest.suggest(roomId);
     if (!result.suggestions.length) return null;
 
     const top = result.suggestions[0];
@@ -50,7 +50,7 @@ export class AiAutoReplyService {
   }
 
   async logAutoReply(params: {
-    sessionId: string;
+    roomId: string;
     customerMessage: string;
     aiReply: string;
     confidence: number;
@@ -59,7 +59,7 @@ export class AiAutoReplyService {
   }): Promise<void> {
     await this.prisma.aiAutoReplyLog.create({
       data: {
-        sessionId: params.sessionId,
+        roomId: params.roomId,
         customerMessage: params.customerMessage,
         aiReply: params.aiReply,
         confidence: params.confidence,

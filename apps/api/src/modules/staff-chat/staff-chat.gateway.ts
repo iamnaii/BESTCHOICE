@@ -13,7 +13,7 @@ import { JwtService } from '@nestjs/jwt';
 import { Server, Socket } from 'socket.io';
 import { CHAT_EVENTS, CHAT_CLIENT_EVENTS, CHAT_ROOMS } from '../chat-engine/constants/chat-events';
 import { MessageRouterService } from '../chat-engine/services/message-router.service';
-import { SessionManagerService } from '../chat-engine/services/session-manager.service';
+import { RoomManagerService } from '../chat-engine/services/room-manager.service';
 import { PresenceService } from './services/presence.service';
 import { CollisionDetectionService } from './services/collision-detection.service';
 import { LeadScoringService } from './services/lead-scoring.service';
@@ -27,8 +27,8 @@ import { LeadScoringService } from './services/lead-scoring.service';
  *
  * Authentication: JWT token passed in handshake auth or query params.
  * Rooms:
- * - chat:inbox — all staff see new/updated sessions
- * - chat:session:{id} — per-session room for messages
+ * - chat:inbox — all staff see new/updated rooms
+ * - chat:room:{id} — per-room channel for messages
  * - chat:staff:{userId} — personal notifications
  */
 @WebSocketGateway({
@@ -43,7 +43,7 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
 
   constructor(
     private messageRouter: MessageRouterService,
-    private sessionManager: SessionManagerService,
+    private roomManager: RoomManagerService,
     private presenceService: PresenceService,
     private collisionDetectionService: CollisionDetectionService,
     private jwtService: JwtService,
@@ -115,30 +115,30 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
   }
 
   @SubscribeMessage(CHAT_CLIENT_EVENTS.JOIN)
-  handleJoinSession(
+  handleJoinRoom(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { sessionId: string },
+    @MessageBody() data: { roomId: string },
   ): void {
-    client.join(CHAT_ROOMS.session(data.sessionId));
-    this.logger.debug(`[WS] ${(client as any).userId} joined session ${data.sessionId}`);
+    client.join(CHAT_ROOMS.room(data.roomId));
+    this.logger.debug(`[WS] ${(client as any).userId} joined room ${data.roomId}`);
   }
 
   @SubscribeMessage(CHAT_CLIENT_EVENTS.LEAVE)
-  handleLeaveSession(
+  handleLeaveRoom(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { sessionId: string },
+    @MessageBody() data: { roomId: string },
   ): void {
     const userId = (client as any).userId as string;
-    client.leave(CHAT_ROOMS.session(data.sessionId));
+    client.leave(CHAT_ROOMS.room(data.roomId));
 
     // Remove from collision detection
     if (userId) {
-      this.collisionDetectionService.removeViewer(data.sessionId, userId);
+      this.collisionDetectionService.removeViewer(data.roomId, userId);
 
       // Broadcast updated viewer list to remaining viewers
-      const viewers = this.collisionDetectionService.getViewers(data.sessionId);
-      this.server.to(CHAT_ROOMS.session(data.sessionId)).emit(CHAT_EVENTS.VIEWERS, {
-        sessionId: data.sessionId,
+      const viewers = this.collisionDetectionService.getViewers(data.roomId);
+      this.server.to(CHAT_ROOMS.room(data.roomId)).emit(CHAT_EVENTS.VIEWERS, {
+        roomId: data.roomId,
         viewers,
       });
     }
@@ -147,30 +147,30 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
   @SubscribeMessage(CHAT_CLIENT_EVENTS.SEND)
   async handleSendMessage(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { sessionId: string; text: string },
+    @MessageBody() data: { roomId: string; text: string },
   ): Promise<void> {
     const userId = (client as any).userId as string;
-    if (!userId || !data.sessionId || !data.text) return;
+    if (!userId || !data.roomId || !data.text) return;
 
-    // Warn if another staff is also viewing this session
-    if (this.collisionDetectionService.isCollision(data.sessionId, userId)) {
-      const viewers = this.collisionDetectionService.getViewers(data.sessionId);
+    // Warn if another staff is also viewing this room
+    if (this.collisionDetectionService.isCollision(data.roomId, userId)) {
+      const viewers = this.collisionDetectionService.getViewers(data.roomId);
       client.emit(CHAT_EVENTS.COLLISION_WARNING, {
-        sessionId: data.sessionId,
+        roomId: data.roomId,
         viewers: viewers.filter((v) => v.userId !== userId),
       });
     }
 
     // Send through engine (saves message + sends to customer via adapter)
     await this.messageRouter.sendStaffMessage({
-      sessionId: data.sessionId,
+      roomId: data.roomId,
       staffId: userId,
       text: data.text,
     });
 
-    // Broadcast to all staff in the session room
-    this.server.to(CHAT_ROOMS.session(data.sessionId)).emit(CHAT_EVENTS.MESSAGE_NEW, {
-      sessionId: data.sessionId,
+    // Broadcast to all staff in the room
+    this.server.to(CHAT_ROOMS.room(data.roomId)).emit(CHAT_EVENTS.MESSAGE_NEW, {
+      roomId: data.roomId,
       role: 'STAFF',
       staffId: userId,
       text: data.text,
@@ -178,7 +178,7 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
     });
 
     // Auto-update lead score after new message
-    this.leadScoring.scoreSession(data.sessionId).catch((err) =>
+    this.leadScoring.scoreSession(data.roomId).catch((err) =>
       this.logger.error('Lead scoring failed', err),
     );
   }
@@ -186,11 +186,11 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
   @SubscribeMessage(CHAT_CLIENT_EVENTS.TYPING_START)
   handleTypingStart(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { sessionId: string },
+    @MessageBody() data: { roomId: string },
   ): void {
     const userId = (client as any).userId as string;
-    client.to(CHAT_ROOMS.session(data.sessionId)).emit(CHAT_EVENTS.TYPING, {
-      sessionId: data.sessionId,
+    client.to(CHAT_ROOMS.room(data.roomId)).emit(CHAT_EVENTS.TYPING, {
+      roomId: data.roomId,
       userId,
       isTyping: true,
     });
@@ -199,11 +199,11 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
   @SubscribeMessage(CHAT_CLIENT_EVENTS.TYPING_STOP)
   handleTypingStop(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { sessionId: string },
+    @MessageBody() data: { roomId: string },
   ): void {
     const userId = (client as any).userId as string;
-    client.to(CHAT_ROOMS.session(data.sessionId)).emit(CHAT_EVENTS.TYPING, {
-      sessionId: data.sessionId,
+    client.to(CHAT_ROOMS.room(data.roomId)).emit(CHAT_EVENTS.TYPING, {
+      roomId: data.roomId,
       userId,
       isTyping: false,
     });
@@ -212,39 +212,39 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
   @SubscribeMessage(CHAT_CLIENT_EVENTS.READ)
   async handleMarkRead(
     @ConnectedSocket() _client: Socket,
-    @MessageBody() data: { sessionId: string },
+    @MessageBody() data: { roomId: string },
   ): Promise<void> {
-    if (!data.sessionId) return;
+    if (!data.roomId) return;
     const now = new Date();
-    const result = await this.sessionManager.markMessagesRead(data.sessionId, now);
-    this.logger.debug(`[WS] Mark read: session ${data.sessionId} (${result.count} messages)`);
+    const result = await this.roomManager.markMessagesRead(data.roomId, now);
+    this.logger.debug(`[WS] Mark read: room ${data.roomId} (${result.count} messages)`);
   }
 
-  @SubscribeMessage(CHAT_CLIENT_EVENTS.VIEW_SESSION)
-  handleViewSession(
+  @SubscribeMessage(CHAT_CLIENT_EVENTS.VIEW_ROOM)
+  handleViewRoom(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { sessionId: string },
+    @MessageBody() data: { roomId: string },
   ): void {
     const userId = (client as any).userId as string;
     const userName = (client as any).userName as string;
-    if (!userId || !data.sessionId) return;
+    if (!userId || !data.roomId) return;
 
     // Track this viewer
-    this.collisionDetectionService.addViewer(data.sessionId, userId, userName);
+    this.collisionDetectionService.addViewer(data.roomId, userId, userName);
 
     // Get all current viewers
-    const viewers = this.collisionDetectionService.getViewers(data.sessionId);
+    const viewers = this.collisionDetectionService.getViewers(data.roomId);
 
-    // Broadcast viewer list to everyone in the session room
-    this.server.to(CHAT_ROOMS.session(data.sessionId)).emit(CHAT_EVENTS.VIEWERS, {
-      sessionId: data.sessionId,
+    // Broadcast viewer list to everyone in the room
+    this.server.to(CHAT_ROOMS.room(data.roomId)).emit(CHAT_EVENTS.VIEWERS, {
+      roomId: data.roomId,
       viewers,
     });
 
     // If collision detected, send warning to the joining user
-    if (this.collisionDetectionService.isCollision(data.sessionId, userId)) {
+    if (this.collisionDetectionService.isCollision(data.roomId, userId)) {
       client.emit(CHAT_EVENTS.COLLISION_WARNING, {
-        sessionId: data.sessionId,
+        roomId: data.roomId,
         viewers: viewers.filter((v) => v.userId !== userId),
       });
     }
@@ -253,18 +253,18 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
   // ─── Public methods for other services to emit events ──────
 
   /** Notify staff about a new customer message (called by MessageRouter) */
-  emitNewMessage(sessionId: string, payload: Record<string, unknown>): void {
-    this.server?.to(CHAT_ROOMS.session(sessionId)).emit(CHAT_EVENTS.MESSAGE_NEW, payload);
-    this.server?.to(CHAT_ROOMS.INBOX).emit(CHAT_EVENTS.SESSION_UPDATE, {
-      sessionId,
+  emitNewMessage(roomId: string, payload: Record<string, unknown>): void {
+    this.server?.to(CHAT_ROOMS.room(roomId)).emit(CHAT_EVENTS.MESSAGE_NEW, payload);
+    this.server?.to(CHAT_ROOMS.INBOX).emit(CHAT_EVENTS.ROOM_UPDATE, {
+      roomId,
       ...payload,
     });
   }
 
-  /** Notify staff about session state change (assignment, status, etc.) */
-  emitSessionUpdate(sessionId: string, payload: Record<string, unknown>): void {
-    this.server?.to(CHAT_ROOMS.session(sessionId)).emit(CHAT_EVENTS.SESSION_UPDATE, payload);
-    this.server?.to(CHAT_ROOMS.INBOX).emit(CHAT_EVENTS.SESSION_UPDATE, payload);
+  /** Notify staff about room state change (assignment, status, etc.) */
+  emitRoomUpdate(roomId: string, payload: Record<string, unknown>): void {
+    this.server?.to(CHAT_ROOMS.room(roomId)).emit(CHAT_EVENTS.ROOM_UPDATE, payload);
+    this.server?.to(CHAT_ROOMS.INBOX).emit(CHAT_EVENTS.ROOM_UPDATE, payload);
   }
 
   /** Notify a specific staff member */

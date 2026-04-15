@@ -9,8 +9,8 @@ import { PrismaService } from '../../../prisma/prisma.service';
 /**
  * SessionOpsService — ticket linking & conversation merge for staff chat.
  *
- * - Create a Todo/ticket from a chat session (copies last 5 messages as context)
- * - Merge two sessions (move messages, notes, tags from secondary → primary)
+ * - Create a Todo/ticket from a chat room (copies last 5 messages as context)
+ * - Merge two rooms (move messages, notes, tags from secondary → primary)
  */
 @Injectable()
 export class SessionOpsService {
@@ -19,12 +19,12 @@ export class SessionOpsService {
   constructor(private prisma: PrismaService) {}
 
   /**
-   * Create a Todo/ticket from a chat session.
+   * Create a Todo/ticket from a chat room.
    * Builds title from customer name and description from last 5 messages.
    */
-  async createTicketFromSession(sessionId: string, staffId: string) {
-    const session = await this.prisma.chatSession.findFirst({
-      where: { id: sessionId, deletedAt: null },
+  async createTicketFromRoom(roomId: string, staffId: string) {
+    const session = await this.prisma.chatRoom.findFirst({
+      where: { id: roomId, deletedAt: null },
       include: {
         customer: { select: { id: true, name: true, nickname: true } },
         messages: {
@@ -37,7 +37,7 @@ export class SessionOpsService {
     });
 
     if (!session) {
-      throw new NotFoundException('ไม่พบเซสชันแชท');
+      throw new NotFoundException('ไม่พบห้องแชท');
     }
 
     const customerName = session.customer
@@ -64,35 +64,35 @@ export class SessionOpsService {
     });
 
     this.logger.log(
-      `Ticket created from session ${sessionId}: todo=${todo.id} by staff=${staffId}`,
+      `Ticket created from room ${roomId}: todo=${todo.id} by staff=${staffId}`,
     );
 
     return todo;
   }
 
   /**
-   * Merge two sessions — move all data from secondary into primary.
-   * Secondary session is soft-deleted after merge.
+   * Merge two rooms — move all data from secondary into primary.
+   * Secondary room is soft-deleted after merge.
    */
-  async mergeSessions(primaryId: string, secondaryId: string) {
+  async mergeRooms(primaryId: string, secondaryId: string) {
     if (primaryId === secondaryId) {
-      throw new BadRequestException('ไม่สามารถรวมเซสชันเดียวกันได้');
+      throw new BadRequestException('ไม่สามารถรวมห้องแชทเดียวกันได้');
     }
 
     const [primary, secondary] = await Promise.all([
-      this.prisma.chatSession.findFirst({
+      this.prisma.chatRoom.findFirst({
         where: { id: primaryId, deletedAt: null },
       }),
-      this.prisma.chatSession.findFirst({
+      this.prisma.chatRoom.findFirst({
         where: { id: secondaryId, deletedAt: null },
       }),
     ]);
 
     if (!primary) {
-      throw new NotFoundException('ไม่พบเซสชันหลัก');
+      throw new NotFoundException('ไม่พบห้องแชทหลัก');
     }
     if (!secondary) {
-      throw new NotFoundException('ไม่พบเซสชันรอง');
+      throw new NotFoundException('ไม่พบห้องแชทรอง');
     }
 
     // Validate same customer (or secondary has no customer)
@@ -109,51 +109,51 @@ export class SessionOpsService {
     await this.prisma.$transaction(async (tx) => {
       // a. Move ChatMessages from secondary → primary
       await tx.chatMessage.updateMany({
-        where: { sessionId: secondaryId },
-        data: { sessionId: primaryId },
+        where: { roomId: secondaryId },
+        data: { roomId: primaryId },
       });
 
       // b. Move ChatNotes from secondary → primary
       await tx.chatNote.updateMany({
-        where: { sessionId: secondaryId },
-        data: { sessionId: primaryId },
+        where: { roomId: secondaryId },
+        data: { roomId: primaryId },
       });
 
       // c. Move ConversationTags — skip duplicates via unique constraint
       const secondaryTags = await tx.conversationTag.findMany({
-        where: { sessionId: secondaryId },
+        where: { roomId: secondaryId },
       });
 
       for (const tag of secondaryTags) {
         try {
           await tx.conversationTag.update({
             where: { id: tag.id },
-            data: { sessionId: primaryId },
+            data: { roomId: primaryId },
           });
         } catch {
-          // Unique constraint violation (sessionId, tag) — duplicate tag, delete it
+          // Unique constraint violation (roomId, tag) — duplicate tag, delete it
           await tx.conversationTag.delete({ where: { id: tag.id } });
         }
       }
 
       // d. Recalculate primary totalMessages
       const messageCount = await tx.chatMessage.count({
-        where: { sessionId: primaryId, deletedAt: null },
+        where: { roomId: primaryId, deletedAt: null },
       });
-      await tx.chatSession.update({
+      await tx.chatRoom.update({
         where: { id: primaryId },
         data: { totalMessages: messageCount },
       });
 
-      // e. Soft-delete secondary session
-      await tx.chatSession.update({
+      // e. Soft-delete secondary room
+      await tx.chatRoom.update({
         where: { id: secondaryId },
         data: { deletedAt: new Date() },
       });
     });
 
     this.logger.log(
-      `Sessions merged: secondary=${secondaryId} → primary=${primaryId}`,
+      `Rooms merged: secondary=${secondaryId} → primary=${primaryId}`,
     );
   }
 }

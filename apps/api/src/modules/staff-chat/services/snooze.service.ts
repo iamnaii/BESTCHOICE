@@ -17,32 +17,32 @@ export class SnoozeService {
    * Create a snooze reminder for a chat session.
    */
   async createSnooze(
-    sessionId: string,
+    roomId: string,
     staffId: string,
     remindAt: Date,
     note?: string,
   ) {
-    // Verify session exists
-    const session = await this.prisma.chatSession.findFirst({
-      where: { id: sessionId, deletedAt: null },
+    // Verify room exists
+    const session = await this.prisma.chatRoom.findFirst({
+      where: { id: roomId, deletedAt: null },
     });
     if (!session) {
-      throw new NotFoundException('ไม่พบแชทเซสชัน');
+      throw new NotFoundException('ไม่พบห้องแชท');
     }
 
     const snooze = await this.prisma.chatSnooze.create({
       data: {
-        sessionId,
+        roomId,
         staffId,
         remindAt,
         note: note || null,
       },
       include: {
-        session: {
+        room: {
           select: {
             id: true,
             channel: true,
-            sessionStatus: true,
+            roomStatus: true,
             customer: { select: { id: true, name: true, phone: true } },
           },
         },
@@ -50,7 +50,7 @@ export class SnoozeService {
     });
 
     this.logger.log(
-      `[Snooze] Created snooze ${snooze.id} for session ${sessionId}, remind at ${remindAt.toISOString()}`,
+      `[Snooze] Created snooze ${snooze.id} for room ${roomId}, remind at ${remindAt.toISOString()}`,
     );
 
     return snooze;
@@ -85,11 +85,11 @@ export class SnoozeService {
         completed: false,
       },
       include: {
-        session: {
+        room: {
           select: {
             id: true,
             channel: true,
-            sessionStatus: true,
+            roomStatus: true,
             customer: { select: { id: true, name: true, phone: true } },
           },
         },
@@ -99,11 +99,11 @@ export class SnoozeService {
   }
 
   /**
-   * Get all snoozes for a specific session.
+   * Get all snoozes for a specific room.
    */
-  async getSessionSnoozes(sessionId: string) {
+  async getRoomSnoozes(roomId: string) {
     return this.prisma.chatSnooze.findMany({
-      where: { sessionId },
+      where: { roomId },
       include: {
         staff: {
           select: { id: true, name: true },

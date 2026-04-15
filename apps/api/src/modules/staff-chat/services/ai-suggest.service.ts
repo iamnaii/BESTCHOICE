@@ -26,7 +26,7 @@ export class AiSuggestService {
     }
   }
 
-  async suggest(sessionId: string, currentDraft?: string): Promise<AiSuggestResponse> {
+  async suggest(roomId: string, currentDraft?: string): Promise<AiSuggestResponse> {
     const start = Date.now();
 
     if (!this.anthropic) {
@@ -35,7 +35,7 @@ export class AiSuggestService {
 
     // 1. Fetch conversation
     const messages = await this.prisma.chatMessage.findMany({
-      where: { sessionId },
+      where: { roomId },
       orderBy: { createdAt: 'desc' },
       take: 20,
       include: { staff: { select: { name: true } } },
@@ -52,8 +52,8 @@ export class AiSuggestService {
     const products = await this.productDetect.detectProducts(messageTexts);
 
     // 3. Customer info
-    const session = await this.prisma.chatSession.findUnique({
-      where: { id: sessionId },
+    const session = await this.prisma.chatRoom.findUnique({
+      where: { id: roomId },
       include: {
         customer: {
           include: {

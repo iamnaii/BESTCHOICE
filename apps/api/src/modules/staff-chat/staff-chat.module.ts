@@ -40,7 +40,7 @@ import { CHAT_GATEWAY_TOKEN } from '../chat-engine/interfaces/chat-gateway.inter
  *
  * Provides:
  * - WebSocket gateway (/chat namespace) for real-time messaging
- * - REST controller for session management (assign, transfer, resolve, tags, notes)
+ * - REST controller for room management (assign, transfer, resolve, tags, notes)
  * - Presence tracking (online staff)
  * - Canned response access
  */

@@ -5,7 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { SessionManagerService } from '../../chat-engine/services/session-manager.service';
+import { RoomManagerService } from '../../chat-engine/services/room-manager.service';
 import { MessageRole } from '@prisma/client';
 
 /**
@@ -22,7 +22,7 @@ export class ChatCommerceService {
 
   constructor(
     private prisma: PrismaService,
-    private sessionManager: SessionManagerService,
+    private roomManager: RoomManagerService,
   ) {}
 
   /**
@@ -36,7 +36,7 @@ export class ChatCommerceService {
     installmentNo?: number;
   }): Promise<{ contractId: string; contractNumber: string; installmentNo: number; amount: number; paymentId: string }> {
     // 1. Find session to get customer lineUserId
-    const session = await this.prisma.chatSession.findUnique({
+    const session = await this.prisma.chatRoom.findUnique({
       where: { id: params.sessionId },
       select: {
         id: true,
@@ -47,11 +47,11 @@ export class ChatCommerceService {
     });
 
     if (!session) {
-      throw new NotFoundException('ไม่พบเซสชันแชท');
+      throw new NotFoundException('ไม่พบห้องแชท');
     }
 
     if (!session.customerId || !session.customer) {
-      throw new BadRequestException('เซสชันนี้ยังไม่ได้เชื่อมกับลูกค้า');
+      throw new BadRequestException('ห้องแชทนี้ยังไม่ได้เชื่อมกับลูกค้า');
     }
 
     const customerLineId = session.customer.lineId || session.lineUserId;
@@ -121,8 +121,8 @@ export class ChatCommerceService {
       `กรุณาชำระผ่านระบบ หรือติดต่อเจ้าหน้าที่ค่ะ`,
     ].join('\n');
 
-    await this.sessionManager.saveMessage({
-      sessionId: params.sessionId,
+    await this.roomManager.saveMessage({
+      roomId: params.sessionId,
       role: MessageRole.STAFF,
       text: messageText,
       staffId: params.staffId,
@@ -246,8 +246,8 @@ export class ChatCommerceService {
     ].join('\n');
 
     // 3. Save as staff message
-    await this.sessionManager.saveMessage({
-      sessionId: params.sessionId,
+    await this.roomManager.saveMessage({
+      roomId: params.sessionId,
       role: MessageRole.STAFF,
       text: messageText,
       staffId: params.staffId,

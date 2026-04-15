@@ -25,12 +25,12 @@ export class AiAssistantService {
   }
 
   /**
-   * Summarize a chat session's conversation in 2-3 Thai sentences.
-   * Results are cached for 5 minutes per session.
+   * Summarize a chat room's conversation in 2-3 Thai sentences.
+   * Results are cached for 5 minutes per room.
    */
-  async summarizeConversation(sessionId: string): Promise<string> {
+  async summarizeConversation(roomId: string): Promise<string> {
     // 1. Check cache
-    const cached = this.summaryCache.get(sessionId);
+    const cached = this.summaryCache.get(roomId);
     if (cached && cached.expiresAt > Date.now()) {
       return cached.text;
     }
@@ -42,7 +42,7 @@ export class AiAssistantService {
     try {
       // 2. Get last 50 messages from DB
       const messages = await this.prisma.chatMessage.findMany({
-        where: { sessionId, deletedAt: null },
+        where: { roomId, deletedAt: null },
         orderBy: { createdAt: 'desc' },
         take: 50,
         select: {
@@ -90,14 +90,14 @@ export class AiAssistantService {
           : 'ไม่สามารถสรุปได้';
 
       // 5. Cache result
-      this.summaryCache.set(sessionId, {
+      this.summaryCache.set(roomId, {
         text: summary,
         expiresAt: Date.now() + AiAssistantService.CACHE_TTL_MS,
       });
 
       return summary;
     } catch (error) {
-      this.logger.error(`Failed to summarize session ${sessionId}`, error);
+      this.logger.error(`Failed to summarize room ${roomId}`, error);
       return 'ไม่สามารถสรุปได้';
     }
   }

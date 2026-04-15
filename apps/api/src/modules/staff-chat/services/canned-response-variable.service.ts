@@ -28,7 +28,7 @@ export class CannedResponseVariableService {
    */
   async expandVariables(
     template: string,
-    context: { sessionId: string; customerId?: string },
+    context: { roomId: string; customerId?: string },
   ): Promise<string> {
     // 1. If no variables found, return template as-is
     if (!template.includes('{')) {

@@ -47,7 +47,7 @@ export class LeadScoringService {
     }
 
     // Returning customer (+15)
-    const session = await this.prisma.chatSession.findUnique({
+    const session = await this.prisma.chatRoom.findUnique({
       where: { id: sessionId },
       include: { customer: { include: { contracts: { where: { deletedAt: null } } } } },
     });
@@ -79,7 +79,7 @@ export class LeadScoringService {
     const temperature = score >= 80 ? 'HOT' : score >= 50 ? 'WARM' : 'COLD';
 
     // Update DB
-    await this.prisma.chatSession.update({
+    await this.prisma.chatRoom.update({
       where: { id: sessionId },
       data: { leadScore: score, leadTemperature: temperature },
     });

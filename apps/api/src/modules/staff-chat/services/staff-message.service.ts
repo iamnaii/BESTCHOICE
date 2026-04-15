@@ -14,20 +14,20 @@ export class StaffMessageService {
     private cannedResponseVariableService: CannedResponseVariableService,
   ) {}
 
-  /** Add an internal note to a session */
-  async addNote(sessionId: string, staffId: string, content: string) {
+  /** Add an internal note to a room */
+  async addNote(roomId: string, staffId: string, content: string) {
     return this.prisma.chatNote.create({
-      data: { sessionId, staffId, content },
+      data: { roomId, staffId, content },
       include: {
         staff: { select: { id: true, name: true, avatarUrl: true } },
       },
     });
   }
 
-  /** Get all notes for a session */
-  async getNotes(sessionId: string) {
+  /** Get all notes for a room */
+  async getNotes(roomId: string) {
     return this.prisma.chatNote.findMany({
-      where: { sessionId, deletedAt: null },
+      where: { roomId, deletedAt: null },
       orderBy: { createdAt: 'asc' },
       include: {
         staff: { select: { id: true, name: true, avatarUrl: true } },
@@ -77,7 +77,7 @@ export class StaffMessageService {
   /** Get a canned response with variables expanded using session context */
   async getCannedResponseExpanded(
     id: string,
-    sessionId: string,
+    roomId: string,
   ): Promise<{
     id: string;
     shortcut: string;
@@ -94,18 +94,18 @@ export class StaffMessageService {
       throw new NotFoundException('ไม่พบข้อความสำเร็จรูป');
     }
 
-    // 2. Find session to get customerId
-    const session = await this.prisma.chatSession.findFirst({
-      where: { id: sessionId },
+    // 2. Find room to get customerId
+    const room = await this.prisma.chatRoom.findFirst({
+      where: { id: roomId },
       select: { id: true, customerId: true },
     });
 
-    const customerId = session?.customerId ?? undefined;
+    const customerId = room?.customerId ?? undefined;
 
     // 3. Call expandVariables with context
     const expandedContent = await this.cannedResponseVariableService.expandVariables(
       cannedResponse.content,
-      { sessionId, customerId },
+      { roomId, customerId },
     );
 
     // 4. Return original + expanded

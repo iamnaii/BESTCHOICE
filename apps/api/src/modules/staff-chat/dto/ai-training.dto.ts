@@ -2,7 +2,7 @@ import { IsString, IsOptional, IsIn } from 'class-validator';
 
 export class SaveFeedbackDto {
   @IsString()
-  sessionId: string;
+  sessionId: string; // kept for backward compatibility — maps to roomId
 
   @IsIn(['ACCEPT', 'EDIT', 'REJECT'])
   type: 'ACCEPT' | 'EDIT' | 'REJECT';

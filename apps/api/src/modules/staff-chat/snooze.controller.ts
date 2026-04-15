@@ -21,11 +21,11 @@ export class SnoozeController {
   @Post()
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   async create(
-    @Body() body: { sessionId: string; remindAt: string; note?: string },
+    @Body() body: { roomId: string; remindAt: string; note?: string },
     @Req() req: any,
   ) {
     return this.snoozeService.createSnooze(
-      body.sessionId,
+      body.roomId,
       req.user.id,
       new Date(body.remindAt),
       body.note,

@@ -29,7 +29,7 @@ export class TrainingExtractCron {
       const fiveMinLater = new Date(custMsg.createdAt.getTime() + 5 * 60 * 1000);
       const staffReply = await this.prisma.chatMessage.findFirst({
         where: {
-          sessionId: custMsg.sessionId,
+          roomId: custMsg.roomId,
           role: 'STAFF',
           text: { not: null },
           createdAt: { gt: custMsg.createdAt, lte: fiveMinLater },
@@ -52,7 +52,7 @@ export class TrainingExtractCron {
         data: {
           type: 'ACCEPT',
           source: 'SYSTEM_EXTRACT',
-          sessionId: custMsg.sessionId,
+          roomId: custMsg.roomId,
           customerMessage: custMsg.text!,
           humanEdit: staffReply.text,
           quality: 0.6,

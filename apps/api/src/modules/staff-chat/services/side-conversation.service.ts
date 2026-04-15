@@ -8,18 +8,18 @@ export class SideConversationService {
   /**
    * Add a side message (internal staff-only note) to a chat session.
    */
-  async addMessage(sessionId: string, staffId: string, text: string) {
-    // Verify session exists
-    const session = await this.prisma.chatSession.findUnique({
-      where: { id: sessionId },
+  async addMessage(roomId: string, staffId: string, text: string) {
+    // Verify room exists
+    const session = await this.prisma.chatRoom.findUnique({
+      where: { id: roomId },
     });
     if (!session) {
-      throw new NotFoundException('ไม่พบ session');
+      throw new NotFoundException('ไม่พบห้องแชท');
     }
 
     return this.prisma.chatSideMessage.create({
       data: {
-        sessionId,
+        roomId,
         staffId,
         text,
       },
@@ -34,10 +34,10 @@ export class SideConversationService {
   /**
    * Get all non-deleted side messages for a session, ordered by createdAt asc.
    */
-  async getMessages(sessionId: string) {
+  async getMessages(roomId: string) {
     return this.prisma.chatSideMessage.findMany({
       where: {
-        sessionId,
+        roomId,
         deletedAt: null,
       },
       orderBy: { createdAt: 'asc' },

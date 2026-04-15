@@ -21,7 +21,7 @@ export class ChatToContractService {
     suggestedProducts?: Array<{ id: string; name: string; brand: string }>;
   }> {
     // 1. Find session with customer info
-    const session = await this.prisma.chatSession.findUnique({
+    const session = await this.prisma.chatRoom.findUnique({
       where: { id: sessionId },
       include: {
         customer: { select: { id: true, name: true, phone: true } },
@@ -29,7 +29,7 @@ export class ChatToContractService {
     });
 
     if (!session) {
-      throw new NotFoundException('ไม่พบเซสชันแชท');
+      throw new NotFoundException('ไม่พบห้องแชท');
     }
 
     // 2. Find mentioned products in recent messages (simple keyword search)

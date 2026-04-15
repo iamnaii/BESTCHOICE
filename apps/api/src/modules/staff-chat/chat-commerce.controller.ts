@@ -20,15 +20,15 @@ export class ChatCommerceController {
 
   // ─── Payment Links ────────────────────────────────────
 
-  @Post('sessions/:id/payment-link')
+  @Post('rooms/:id/payment-link')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   async createPaymentLink(
-    @Param('id') sessionId: string,
+    @Param('id') roomId: string,
     @Body() body: { contractId: string; installmentNo?: number },
     @Req() req: any,
   ) {
     return this.chatCommerce.createPaymentLinkInChat({
-      sessionId,
+      sessionId: roomId,
       staffId: req.user.id,
       contractId: body.contractId,
       installmentNo: body.installmentNo,
@@ -37,15 +37,15 @@ export class ChatCommerceController {
 
   // ─── Product Cards ────────────────────────────────────
 
-  @Post('sessions/:id/product-card')
+  @Post('rooms/:id/product-card')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   async sendProductCard(
-    @Param('id') sessionId: string,
+    @Param('id') roomId: string,
     @Body() body: { productId: string },
     @Req() req: any,
   ) {
     await this.chatCommerce.sendProductCard({
-      sessionId,
+      sessionId: roomId,
       staffId: req.user.id,
       productId: body.productId,
     });

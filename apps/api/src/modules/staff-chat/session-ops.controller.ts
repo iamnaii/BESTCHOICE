@@ -16,20 +16,20 @@ import { SessionOpsService } from './services/session-ops.service';
 export class SessionOpsController {
   constructor(private sessionOps: SessionOpsService) {}
 
-  @Post('sessions/:id/create-ticket')
+  @Post('rooms/:id/create-ticket')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   async createTicket(@Param('id') id: string, @Req() req: any) {
-    return this.sessionOps.createTicketFromSession(id, req.user.id);
+    return this.sessionOps.createTicketFromRoom(id, req.user.id);
   }
 
-  @Post('sessions/merge')
+  @Post('rooms/merge')
   @Roles('OWNER', 'BRANCH_MANAGER')
-  async mergeSessions(
-    @Body() body: { primarySessionId: string; secondarySessionId: string },
+  async mergeRooms(
+    @Body() body: { primaryRoomId: string; secondaryRoomId: string },
   ) {
-    await this.sessionOps.mergeSessions(
-      body.primarySessionId,
-      body.secondarySessionId,
+    await this.sessionOps.mergeRooms(
+      body.primaryRoomId,
+      body.secondaryRoomId,
     );
     return { success: true };
   }

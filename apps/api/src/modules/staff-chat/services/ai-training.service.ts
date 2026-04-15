@@ -48,7 +48,7 @@ export class AiTrainingService {
       data: {
         type: dto.type,
         source: 'SUGGEST_FEEDBACK',
-        sessionId: dto.sessionId,
+        roomId: dto.sessionId,
         customerMessage: dto.customerMessage,
         aiDraft: dto.aiDraft,
         humanEdit: dto.humanEdit,

@@ -34,10 +34,11 @@ export default function AdsTrackingPage() {
   const campaigns = campaignsQuery.data?.data ?? [];
 
   // Aggregate stats
-  const totalSpend = roiData.reduce((s: number, r: any) => s + (r.spend ?? 0), 0);
+  const totalSpend = roiData.reduce((s: number, r: any) => s + Number(r.spend ?? 0), 0);
   const totalRevenue = roiData.reduce((s: number, r: any) => s + (r.totalRevenue ?? 0), 0);
   const totalConversions = roiData.reduce((s: number, r: any) => s + (r.conversions ?? 0), 0);
   const overallROI = totalSpend > 0 ? Math.round(((totalRevenue - totalSpend) / totalSpend) * 100) : 0;
+  const costPerUnit = totalConversions > 0 ? totalSpend / totalConversions : 0;
 
   return (
     <div>
@@ -47,7 +48,7 @@ export default function AdsTrackingPage() {
       />
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
         <div className="bg-white rounded-xl p-4 shadow-sm">
           <div className="flex items-center gap-2 mb-2">
             <DollarSign className="w-4 h-4 text-red-500" />
@@ -82,6 +83,15 @@ export default function AdsTrackingPage() {
             {overallROI}%
           </p>
         </div>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-[13px] text-muted-foreground font-medium">Cost per Unit Sold</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold">฿{costPerUnit.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+            <p className="text-[11px] text-muted-foreground">ค่าโฆษณาต่อการขาย 1 เครื่อง</p>
+          </CardContent>
+        </Card>
       </div>
 
       {/* ROI per campaign */}
@@ -112,6 +122,7 @@ export default function AdsTrackingPage() {
                   <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">ค่าโฆษณา</th>
                   <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">รายได้</th>
                   <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">Conversions</th>
+                  <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">Cost/Unit</th>
                   <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">ROI</th>
                 </tr>
               </thead>
@@ -127,6 +138,9 @@ export default function AdsTrackingPage() {
                     <td className="px-4 py-3 text-right text-gray-600">{(row.spend ?? 0).toLocaleString()} ฿</td>
                     <td className="px-4 py-3 text-right text-gray-600">{(row.totalRevenue ?? 0).toLocaleString()} ฿</td>
                     <td className="px-4 py-3 text-right text-gray-600">{row.conversions ?? 0}</td>
+                    <td className="px-4 py-3 text-right text-gray-600">
+                      {row.conversions > 0 ? `฿${(Number(row.spend) / row.conversions).toLocaleString(undefined, { maximumFractionDigits: 0 })}` : '-'}
+                    </td>
                     <td className={`px-4 py-3 text-right font-semibold ${(row.roi ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                       {row.roi ?? 0}%
                     </td>

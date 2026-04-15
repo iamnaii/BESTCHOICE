@@ -5,7 +5,7 @@ import { cva, type VariantProps } from 'class-variance-authority';
 const inputVariants = cva(
   `
     flex w-full bg-background border border-input shadow-sm shadow-black/5 transition-[color,box-shadow] text-foreground placeholder:text-muted-foreground/80
-    focus-visible:ring-ring/30 focus-visible:border-ring focus-visible:outline-hidden focus-visible:ring-[3px]
+    focus-visible:ring-[#059669]/30 focus-visible:border-[#059669] focus-visible:outline-hidden focus-visible:ring-[3px]
     disabled:cursor-not-allowed disabled:opacity-60
     [[readonly]]:bg-muted/80 [[readonly]]:cursor-not-allowed
     file:h-full [[type=file]]:py-0 file:border-solid file:border-input file:bg-transparent
@@ -69,8 +69,8 @@ const inputGroupVariants = cva(
 const inputWrapperVariants = cva(
   `
     flex items-center gap-1.5
-    has-focus-visible:ring-ring/30
-    has-focus-visible:border-ring
+    has-focus-visible:ring-[#059669]/30
+    has-focus-visible:border-[#059669]
     has-focus-visible:outline-hidden
     has-focus-visible:ring-[3px]
 

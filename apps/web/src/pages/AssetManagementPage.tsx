@@ -9,6 +9,8 @@ import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, assetStatusMap } from '@/lib/status-badges';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Button } from '@/components/ui/button';
 import AnimatedCounter from '@/components/ui/animated-counter';
@@ -73,17 +75,12 @@ const categoryLabels: Record<string, string> = {
 
 const categoryOptions = Object.entries(categoryLabels).map(([value, label]) => ({ value, label }));
 
-const statusLabels: Record<string, string> = {
-  ACTIVE: 'ใช้งาน',
-  FULLY_DEPRECIATED: 'หมดค่าเสื่อม',
-  DISPOSED: 'จำหน่ายแล้ว',
-};
-
-const statusColors: Record<string, string> = {
-  ACTIVE: 'bg-success/10 text-success dark:bg-success/15',
-  FULLY_DEPRECIATED: 'bg-warning/10 text-warning dark:bg-warning/15',
-  DISPOSED: 'bg-muted text-muted-foreground',
-};
+// Status options for filter dropdown — keys match Prisma enum values
+const statusFilterOptions: { value: string; label: string }[] = [
+  { value: 'ACTIVE', label: 'ใช้งาน' },
+  { value: 'FULLY_DEPRECIATED', label: 'หมดค่าเสื่อม' },
+  { value: 'DISPOSED', label: 'จำหน่ายแล้ว' },
+];
 
 const inputClass =
   'w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden';
@@ -366,13 +363,10 @@ export default function AssetManagementPage() {
       {
         key: 'status',
         label: 'สถานะ',
-        render: (item: Asset) => (
-          <span
-            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[item.status] ?? 'bg-muted text-muted-foreground'}`}
-          >
-            {statusLabels[item.status] ?? item.status}
-          </span>
-        ),
+        render: (item: Asset) => {
+          const cfg = getStatusBadgeProps(item.status, assetStatusMap);
+          return <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>;
+        },
       },
       {
         key: 'actions',
@@ -494,8 +488,8 @@ export default function AssetManagementPage() {
           className={`${inputClass} max-w-[180px]`}
         >
           <option value="">สถานะทั้งหมด</option>
-          {Object.entries(statusLabels).map(([val, label]) => (
-            <option key={val} value={val}>
+          {statusFilterOptions.map(({ value, label }) => (
+            <option key={value} value={value}>
               {label}
             </option>
           ))}
@@ -869,13 +863,10 @@ export default function AssetManagementPage() {
               <DetailRow label="วันที่ซื้อ" value={viewAsset.purchaseDate?.split('T')[0] ?? '-'} />
               <DetailRow
                 label="สถานะ"
-                value={
-                  <span
-                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[viewAsset.status] ?? ''}`}
-                  >
-                    {statusLabels[viewAsset.status] ?? viewAsset.status}
-                  </span>
-                }
+                value={(() => {
+                  const cfg = getStatusBadgeProps(viewAsset.status, assetStatusMap);
+                  return <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>;
+                })()}
               />
             </div>
             {viewAsset.description && (

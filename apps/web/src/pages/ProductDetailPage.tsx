@@ -13,7 +13,9 @@ import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/card';
 import ProductPhotosPanel from '@/components/product/ProductPhotosPanel';
 import { ColorSelector, StorageSelector } from '@/components/product/VariantSelector';
 import { useAuth } from '@/contexts/AuthContext';
-import { statusLabels, categoryLabels, categoryOptions, transferableStatuses } from '@/lib/constants';
+import { categoryLabels, categoryOptions, transferableStatuses } from '@/lib/constants';
+import { getStatusBadgeProps, productStatusMap, conditionGradeMap } from '@/lib/status-badges';
+import { Badge } from '@/components/ui/badge';
 import { formatDateShort } from '@/utils/formatters';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 
@@ -277,7 +279,7 @@ export default function ProductDetailPage() {
     return <div className="text-center py-12 text-muted-foreground">ไม่พบสินค้า</div>;
   }
 
-  const s = statusLabels[product.status] || { label: product.status, className: 'bg-muted text-foreground' };
+  const statusCfg = getStatusBadgeProps(product.status, productStatusMap);
 
   return (
     <div>
@@ -381,7 +383,7 @@ export default function ProductDetailPage() {
       <Card className="mb-5 lg:mb-7.5 rounded-xl border border-border/50 bg-card shadow-sm">
         <CardHeader>
           <CardTitle>ข้อมูลสินค้า</CardTitle>
-          <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${s.className}`}>{s.label}</span>
+          <Badge variant={statusCfg.variant} appearance={statusCfg.appearance} size="sm">{statusCfg.label}</Badge>
         </CardHeader>
         <CardContent>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-5 lg:gap-7.5">
@@ -513,14 +515,17 @@ export default function ProductDetailPage() {
           </CardHeader>
           <CardContent>
           <div className="flex items-center gap-4">
-            <span className={`px-2.5 py-0.5 rounded-full text-sm font-semibold ${
-              product.inspection.isCompleted ? 'bg-success/10 text-success dark:bg-success/15' : 'bg-warning/10 text-warning dark:bg-warning/15'
-            }`}>
+            <Badge
+              variant={product.inspection.isCompleted ? 'success' : 'warning'}
+              appearance="light"
+              size="sm"
+            >
               {product.inspection.isCompleted ? 'ตรวจเสร็จ' : 'กำลังตรวจ'}
-            </span>
-            {product.inspection.overallGrade && (
-              <span className="text-sm">เกรด: <strong>{product.inspection.overallGrade}</strong></span>
-            )}
+            </Badge>
+            {product.inspection.overallGrade && (() => {
+              const gradeCfg = getStatusBadgeProps(product.inspection.overallGrade!, conditionGradeMap);
+              return <Badge variant={gradeCfg.variant} appearance={gradeCfg.appearance} size="sm">{gradeCfg.label}</Badge>;
+            })()}
           </div>
           </CardContent>
         </Card>
@@ -603,7 +608,7 @@ export default function ProductDetailPage() {
             <div>
               <label className="block text-xs font-medium text-foreground mb-1">สถานะ</label>
               <select value={editForm.status} onChange={(e) => setEditForm({ ...editForm, status: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm">
-                {Object.entries(statusLabels).map(([val, s]) => <option key={val} value={val}>{s.label}</option>)}
+                {Object.entries(productStatusMap).map(([val, s]) => <option key={val} value={val}>{s.label}</option>)}
               </select>
             </div>
           </div>

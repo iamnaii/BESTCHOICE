@@ -394,9 +394,10 @@ export const todoStatusMap: Record<string, StatusConfig> = {
 
 export const assetStatusMap: Record<string, StatusConfig> = {
   ACTIVE: { variant: 'success', appearance: 'light', label: 'ใช้งาน' },
+  FULLY_DEPRECIATED: { variant: 'warning', appearance: 'light', label: 'หมดค่าเสื่อม' },
   MAINTENANCE: { variant: 'warning', appearance: 'light', label: 'ซ่อมบำรุง' },
   RETIRED: { variant: 'secondary', label: 'เลิกใช้' },
-  DISPOSED: { variant: 'destructive', appearance: 'light', label: 'จำหน่ายแล้ว' },
+  DISPOSED: { variant: 'secondary', label: 'จำหน่ายแล้ว' },
 };
 
 // ─── Migration statuses ───────────────────────────────────────────────────────

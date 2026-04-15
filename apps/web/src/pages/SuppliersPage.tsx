@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
 import AddressForm, { AddressData, emptyAddress, serializeAddress, deserializeAddress } from '@/components/ui/AddressForm';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { Badge } from '@/components/ui/badge';
 import { exportToExcel } from '@/utils/excel.util';
 import { Download } from 'lucide-react';
 
@@ -320,13 +321,9 @@ export default function SuppliersPage() {
       key: 'isActive',
       label: 'สถานะ',
       render: (s: Supplier) => (
-        <span
-          className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-            s.isActive ? 'bg-success/10 text-success dark:bg-success/15' : 'bg-destructive/10 text-destructive dark:bg-destructive/15'
-          }`}
-        >
+        <Badge variant={s.isActive ? 'success' : 'destructive'} appearance="light" size="sm">
           {s.isActive ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}
-        </span>
+        </Badge>
       ),
     },
     {

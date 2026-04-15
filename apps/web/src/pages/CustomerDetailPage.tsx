@@ -19,6 +19,8 @@ import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { DetailPageSkeleton } from '@/components/ui/page-skeletons';
 import { maskNationalId } from '@/utils/mask.util';
 import { THAI_NAME_PREFIXES, RELATIONSHIP_OPTIONS } from '@/lib/constants';
+import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, contractStatusMap, creditCheckStatusMap } from '@/lib/status-badges';
 
 interface ReferenceData {
   prefix?: string;
@@ -73,16 +75,6 @@ interface RiskFlag {
   overdueContracts: { id: string; contractNumber: string; status: string }[];
 }
 
-const statusLabels: Record<string, { label: string; className: string }> = {
-  DRAFT: { label: 'ร่าง', className: 'bg-muted text-foreground' },
-  ACTIVE: { label: 'ผ่อนอยู่', className: 'bg-success/10 text-success dark:bg-success/15' },
-  OVERDUE: { label: 'ค้างชำระ', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
-  DEFAULT: { label: 'ผิดนัด', className: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },
-  EARLY_PAYOFF: { label: 'ปิดก่อน', className: 'bg-primary/10 text-primary dark:bg-primary/15' },
-  COMPLETED: { label: 'ครบ', className: 'bg-success/10 text-success dark:bg-success/15' },
-  EXCHANGED: { label: 'เปลี่ยนเครื่อง', className: 'bg-info/10 text-info dark:bg-info/15' },
-  CLOSED_BAD_DEBT: { label: 'หนี้สูญ', className: 'bg-destructive/15 text-destructive dark:bg-destructive/20' },
-};
 
 interface CreditCheckItem {
   id: string;
@@ -100,12 +92,6 @@ interface CreditCheckItem {
   createdAt: string;
 }
 
-const creditStatusLabels: Record<string, { label: string; className: string }> = {
-  PENDING: { label: 'รอวิเคราะห์', className: 'bg-muted text-foreground' },
-  APPROVED: { label: 'ผ่าน', className: 'bg-success/10 text-success dark:bg-success/15' },
-  REJECTED: { label: 'ไม่ผ่าน', className: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },
-  MANUAL_REVIEW: { label: 'ต้องตรวจเพิ่ม', className: 'bg-amber-100 text-amber-700' },
-};
 
 interface AuditLog {
   id: string;
@@ -431,8 +417,8 @@ export default function CustomerDetailPage() {
     { key: 'contractNumber', label: 'เลขสัญญา', render: (c: CustomerDetail['contracts'][0]) => <span className="font-mono text-sm tabular-nums">{c.contractNumber}</span> },
     { key: 'product', label: 'สินค้า', render: (c: CustomerDetail['contracts'][0]) => <span className="text-sm">{c.product.brand} {c.product.model}</span> },
     { key: 'status', label: 'สถานะ', render: (c: CustomerDetail['contracts'][0]) => {
-      const s = statusLabels[c.status] || { label: c.status, className: 'bg-muted' };
-      return <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${s.className}`}>{s.label}</span>;
+      const cfg = getStatusBadgeProps(c.status, contractStatusMap);
+      return <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>;
     }},
     { key: 'monthlyPayment', label: 'ค่างวด', render: (c: CustomerDetail['contracts'][0]) => <span className="text-sm tabular-nums font-mono">{parseFloat(c.monthlyPayment).toLocaleString()} ฿/เดือน</span> },
     { key: 'branch', label: 'สาขา', render: (c: CustomerDetail['contracts'][0]) => <span className="text-xs">{c.branch.name}</span> },
@@ -725,12 +711,12 @@ export default function CustomerDetailPage() {
         {creditChecks.length > 0 ? (
           <div className="space-y-3">
             {creditChecks.map((cc) => {
-              const cs = creditStatusLabels[cc.status] || { label: cc.status, className: 'bg-muted' };
+              const csCfg = getStatusBadgeProps(cc.status, creditCheckStatusMap);
               return (
                 <div key={cc.id} className="border border-border/60 rounded-xl p-4 space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${cs.className}`}>{cs.label}</span>
+                      <Badge variant={csCfg.variant} appearance={csCfg.appearance} size="sm">{csCfg.label}</Badge>
                       {cc.bankName && <span className="text-xs text-muted-foreground">ธนาคาร: {cc.bankName}</span>}
                       <span className="text-xs text-muted-foreground">{formatDateShort(cc.createdAt)}</span>
                       {cc.contract && <span className="text-xs text-primary">สัญญา: {cc.contract.contractNumber}</span>}

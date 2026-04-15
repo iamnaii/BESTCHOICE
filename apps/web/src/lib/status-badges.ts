@@ -109,6 +109,99 @@ export const productStatusMap: Record<string, StatusConfig> = {
   WRITTEN_OFF: { variant: 'secondary', label: 'ตัดจำหน่าย' },
 };
 
+// ─── Credit check statuses ───────────────────────────────────────────────────
+
+export const creditCheckStatusMap: Record<string, StatusConfig> = {
+  PENDING: { variant: 'secondary', label: 'รอวิเคราะห์' },
+  APPROVED: { variant: 'success', appearance: 'light', label: 'ผ่าน' },
+  REJECTED: { variant: 'destructive', appearance: 'light', label: 'ไม่ผ่าน' },
+  MANUAL_REVIEW: { variant: 'warning', appearance: 'light', label: 'ต้องตรวจเพิ่ม' },
+};
+
+// ─── Repossession statuses ────────────────────────────────────────────────────
+
+export const repossessionStatusMap: Record<string, StatusConfig> = {
+  REPOSSESSED: { variant: 'destructive', appearance: 'light', label: 'ยึดคืนแล้ว' },
+  UNDER_REPAIR: { variant: 'warning', appearance: 'light', label: 'กำลังซ่อม' },
+  READY_FOR_SALE: { variant: 'success', appearance: 'light', label: 'พร้อมขาย' },
+  SOLD: { variant: 'primary', appearance: 'light', label: 'ขายแล้ว' },
+};
+
+// ─── Condition grades ─────────────────────────────────────────────────────────
+
+export const conditionGradeMap: Record<string, StatusConfig> = {
+  A: { variant: 'success', appearance: 'light', label: 'เกรด A' },
+  B: { variant: 'primary', appearance: 'light', label: 'เกรด B' },
+  C: { variant: 'warning', appearance: 'light', label: 'เกรด C' },
+  D: { variant: 'destructive', appearance: 'light', label: 'เกรด D' },
+};
+
+// ─── Risk levels ──────────────────────────────────────────────────────────────
+
+export const riskLevelMap: Record<string, StatusConfig> = {
+  HIGH: { variant: 'destructive', appearance: 'light', label: 'สูง' },
+  MEDIUM: { variant: 'warning', appearance: 'light', label: 'กลาง' },
+  LOW: { variant: 'warning', label: 'ต่ำ' },
+};
+
+// ─── Purchase Order statuses ─────────────────────────────────────────────────
+
+export const poStatusMap: Record<string, StatusConfig> = {
+  PENDING: { variant: 'secondary', label: 'รอดำเนินการ' },
+  DRAFT: { variant: 'warning', appearance: 'light', label: 'รออนุมัติ' },
+  APPROVED: { variant: 'primary', appearance: 'light', label: 'อนุมัติแล้ว' },
+  PARTIALLY_RECEIVED: { variant: 'warning', appearance: 'light', label: 'รับบางส่วน' },
+  FULLY_RECEIVED: { variant: 'success', appearance: 'light', label: 'รับครบแล้ว' },
+  CANCELLED: { variant: 'destructive', appearance: 'light', label: 'ยกเลิก' },
+};
+
+// ─── Purchase Order payment statuses ─────────────────────────────────────────
+
+export const poPaymentStatusMap: Record<string, StatusConfig> = {
+  UNPAID: { variant: 'destructive', appearance: 'light', label: 'ยังไม่จ่าย' },
+  DEPOSIT_PAID: { variant: 'warning', appearance: 'light', label: 'จ่ายมัดจำ' },
+  PARTIALLY_PAID: { variant: 'primary', appearance: 'light', label: 'จ่ายบางส่วน' },
+  FULLY_PAID: { variant: 'success', appearance: 'light', label: 'จ่ายครบแล้ว' },
+};
+
+// ─── Stock count statuses ────────────────────────────────────────────────────
+
+export const stockCountStatusMap: Record<string, StatusConfig> = {
+  DRAFT: { variant: 'secondary', label: 'ร่าง' },
+  IN_PROGRESS: { variant: 'warning', appearance: 'light', label: 'กำลังตรวจนับ' },
+  COMPLETED: { variant: 'success', appearance: 'light', label: 'เสร็จสิ้น' },
+  CANCELLED: { variant: 'destructive', appearance: 'light', label: 'ยกเลิก' },
+};
+
+// ─── Inspection / QC statuses ────────────────────────────────────────────────
+
+export const inspectionStatusMap: Record<string, StatusConfig> = {
+  RECEIVED: { variant: 'info', appearance: 'light', label: 'รอตรวจ' },
+  INSPECTING: { variant: 'warning', appearance: 'light', label: 'กำลังตรวจ' },
+  QC_PASSED: { variant: 'success', appearance: 'light', label: 'ผ่าน QC' },
+  QC_FAILED: { variant: 'destructive', appearance: 'light', label: 'ไม่ผ่าน QC' },
+  IN_STOCK: { variant: 'primary', appearance: 'light', label: 'เข้าสต็อกแล้ว' },
+};
+
+// ─── Stock alert statuses ────────────────────────────────────────────────────
+
+export const stockAlertStatusMap: Record<string, StatusConfig> = {
+  ACTIVE: { variant: 'destructive', appearance: 'light', label: 'ต้องดำเนินการ' },
+  PO_CREATED: { variant: 'primary', appearance: 'light', label: 'สร้าง PO แล้ว' },
+  RESOLVED: { variant: 'success', appearance: 'light', label: 'แก้ไขแล้ว' },
+};
+
+// ─── Stock adjustment reasons ─────────────────────────────────────────────────
+
+export const stockAdjustmentReasonMap: Record<string, StatusConfig> = {
+  DAMAGED: { variant: 'destructive', appearance: 'light', label: 'เสียหาย' },
+  LOST: { variant: 'warning', appearance: 'light', label: 'สูญหาย' },
+  FOUND: { variant: 'success', appearance: 'light', label: 'พบเพิ่ม' },
+  CORRECTION: { variant: 'primary', appearance: 'light', label: 'แก้ไขข้อมูล' },
+  WRITE_OFF: { variant: 'secondary', label: 'ตัดจำหน่าย' },
+  OTHER: { variant: 'secondary', label: 'อื่นๆ' },
+};
+
 // ─── General helper ───────────────────────────────────────────────────────────
 
 /**

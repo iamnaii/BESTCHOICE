@@ -23,6 +23,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { DetailPageSkeleton } from '@/components/ui/page-skeletons';
 import { formatNumber, formatDateMedium } from '@/utils/formatters';
+import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, contractStatusMap } from '@/lib/status-badges';
 
 interface Payment {
   id: string;
@@ -81,16 +83,6 @@ interface EarlyPayoffQuote {
   totalPayoff: number;
 }
 
-const statusLabels: Record<string, { label: string; className: string }> = {
-  DRAFT: { label: 'ร่าง', className: 'bg-secondary text-foreground' },
-  ACTIVE: { label: 'ผ่อนอยู่', className: 'bg-success/10 text-success dark:bg-success/15' },
-  OVERDUE: { label: 'ค้างชำระ', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
-  DEFAULT: { label: 'ผิดนัด', className: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },
-  EARLY_PAYOFF: { label: 'ปิดก่อน', className: 'bg-primary/10 text-primary dark:bg-primary/15' },
-  COMPLETED: { label: 'ครบ', className: 'bg-success/10 text-success dark:bg-success/15' },
-  EXCHANGED: { label: 'เปลี่ยนเครื่อง', className: 'bg-info/10 text-info dark:bg-info/15' },
-  CLOSED_BAD_DEBT: { label: 'หนี้สูญ', className: 'bg-destructive/15 text-destructive dark:bg-destructive/20' },
-};
 
 
 export default function ContractDetailPage() {
@@ -267,7 +259,7 @@ const deleteMutation = useMutation({
     return <DetailPageSkeleton />;
   }
 
-  const s = statusLabels[contract.status] || { label: contract.status, className: 'bg-secondary' };
+  const statusCfg = getStatusBadgeProps(contract.status, contractStatusMap);
   const paidCount = contract.payments.filter((p) => p.status === 'PAID').length;
   const totalOutstanding = contract.payments
     .filter((p) => p.status !== 'PAID')
@@ -428,7 +420,7 @@ const deleteMutation = useMutation({
           <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-primary" />
           <CardContent className="p-5">
             <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สถานะสัญญา</div>
-            <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${s.className}`}>{s.label}</span>
+            <Badge variant={statusCfg.variant} appearance={statusCfg.appearance} size="sm">{statusCfg.label}</Badge>
           </CardContent>
         </Card>
         <Card className="rounded-xl border border-border/50 bg-card shadow-sm">

@@ -6,8 +6,9 @@ import {
   Phone,
   Sparkles,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import type { WatchList, UpsellCandidates } from '../types';
+import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, riskLevelMap } from '@/lib/status-badges';
 
 interface DashboardWatchListProps {
   watchListData: WatchList | undefined;
@@ -29,14 +30,10 @@ export default function DashboardWatchList({ watchListData, upsell }: DashboardW
             </CardTitle>
             <CardToolbar>
               {watchListData.highCount > 0 && (
-                <span className="text-2xs font-semibold text-red-600 bg-red-500/10 px-2.5 py-1 rounded-md">
-                  สูง {watchListData.highCount}
-                </span>
+                <Badge variant="destructive" appearance="light" size="sm">สูง {watchListData.highCount}</Badge>
               )}
               {watchListData.mediumCount > 0 && (
-                <span className="text-2xs font-semibold text-orange-600 bg-orange-500/10 px-2.5 py-1 rounded-md ml-1">
-                  กลาง {watchListData.mediumCount}
-                </span>
+                <Badge variant="warning" appearance="light" size="sm" className="ml-1">กลาง {watchListData.mediumCount}</Badge>
               )}
               <button
                 onClick={() => navigate('/customers')}
@@ -58,11 +55,7 @@ export default function DashboardWatchList({ watchListData, upsell }: DashboardW
               </thead>
               <tbody className="divide-y divide-border/40">
                 {watchListData.watchList.slice(0, 8).map((w) => {
-                  const riskStyles = {
-                    HIGH: { badge: 'bg-red-500/10 text-red-700 dark:text-red-400', dot: 'bg-red-500', label: 'สูง' },
-                    MEDIUM: { badge: 'bg-orange-500/10 text-orange-700 dark:text-orange-400', dot: 'bg-orange-500', label: 'กลาง' },
-                    LOW: { badge: 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400', dot: 'bg-yellow-500', label: 'ต่ำ' },
-                  }[w.riskLevel];
+                  const riskCfg = getStatusBadgeProps(w.riskLevel, riskLevelMap);
                   return (
                     <tr
                       key={w.contractId}
@@ -79,10 +72,7 @@ export default function DashboardWatchList({ watchListData, upsell }: DashboardW
                         <span className="text-xs text-foreground font-mono">{w.contractNumber}</span>
                       </td>
                       <td className="px-5 py-3.5">
-                        <span className={cn('text-xs px-2 py-0.5 rounded-full font-semibold flex items-center gap-1.5 w-fit', riskStyles.badge)}>
-                          <span className={cn('size-1.5 rounded-full', riskStyles.dot)} />
-                          {riskStyles.label}
-                        </span>
+                        <Badge variant={riskCfg.variant} appearance={riskCfg.appearance} size="sm">{riskCfg.label}</Badge>
                       </td>
                       <td className="px-5 py-3.5 hidden md:table-cell">
                         <div className="flex flex-wrap gap-1">

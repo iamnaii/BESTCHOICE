@@ -13,6 +13,8 @@ import { toast } from 'sonner';
 import { formatDateShort } from '@/utils/formatters';
 import { exportToExcel } from '@/utils/excel.util';
 import { Download, Info, UserPlus, CalendarCheck, LayoutList, Columns3, PhoneCall } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, contractStatusMap } from '@/lib/status-badges';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 
 interface OverduePayment {
@@ -644,13 +646,7 @@ export default function OverduePage() {
                             >
                               {c.contractNumber}
                             </button>
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-medium ${
-                              c.status === 'DEFAULT'
-                                ? 'bg-destructive/10 text-destructive'
-                                : 'bg-warning/10 text-warning'
-                            }`}>
-                              {c.status}
-                            </span>
+                            {(() => { const cfg = getStatusBadgeProps(c.status, contractStatusMap); return <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>; })()}
                           </div>
                           <div className="text-sm font-medium truncate">{c.customer.name}</div>
                           <div className="text-xs text-muted-foreground">{c.customer.phone}</div>

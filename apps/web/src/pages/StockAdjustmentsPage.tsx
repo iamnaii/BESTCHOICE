@@ -8,6 +8,9 @@ import QueryBoundary from '@/components/QueryBoundary';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, stockAdjustmentReasonMap } from '@/lib/status-badges';
 import { formatDateShort } from '@/utils/formatters';
 
 /* ------------------------------------------------------------------ */
@@ -46,14 +49,6 @@ interface Branch {
   name: string;
 }
 
-const reasonLabels: Record<string, { label: string; className: string }> = {
-  DAMAGED: { label: 'เสียหาย', className: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },
-  LOST: { label: 'สูญหาย', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
-  FOUND: { label: 'พบเพิ่ม', className: 'bg-success/10 text-success dark:bg-success/15' },
-  CORRECTION: { label: 'แก้ไขข้อมูล', className: 'bg-primary/10 text-primary dark:bg-primary/15' },
-  WRITE_OFF: { label: 'ตัดจำหน่าย', className: 'bg-muted text-foreground' },
-  OTHER: { label: 'อื่นๆ', className: 'bg-muted text-muted-foreground' },
-};
 
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
@@ -159,7 +154,7 @@ export default function StockAdjustmentsPage() {
       formatDateShort(a.createdAt),
       `${a.product.brand} ${a.product.model}`,
       a.product.imeiSerial || '',
-      reasonLabels[a.reason]?.label || a.reason,
+      getStatusBadgeProps(a.reason, stockAdjustmentReasonMap).label,
       a.previousStatus,
       a.notes || '',
       a.branch.name,
@@ -207,8 +202,8 @@ export default function StockAdjustmentsPage() {
       key: 'reason',
       label: 'สาเหตุ',
       render: (a: StockAdjustment) => {
-        const r = reasonLabels[a.reason] || { label: a.reason, className: 'bg-muted text-foreground' };
-        return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${r.className}`}>{r.label}</span>;
+        const cfg = getStatusBadgeProps(a.reason, stockAdjustmentReasonMap);
+        return <Badge variant={cfg.variant} appearance={cfg.appearance}>{cfg.label}</Badge>;
       },
     },
     {
@@ -317,7 +312,7 @@ export default function StockAdjustmentsPage() {
             className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
           >
             <option value="">ทุกสาเหตุ</option>
-            {Object.entries(reasonLabels).map(([key, val]) => (
+            {Object.entries(stockAdjustmentReasonMap).map(([key, val]) => (
               <option key={key} value={key}>{val.label}</option>
             ))}
           </select>
@@ -334,7 +329,11 @@ export default function StockAdjustmentsPage() {
           errorTitle="ไม่สามารถโหลดรายการปรับสต็อกได้"
         >
         <>
-          <DataTable columns={columns} data={adjustments} isLoading={isLoading} emptyMessage="ไม่มีรายการปรับสต็อก" />
+          <Card>
+            <CardContent className="p-0">
+              <DataTable columns={columns} data={adjustments} isLoading={isLoading} emptyMessage="ไม่มีรายการปรับสต็อก" />
+            </CardContent>
+          </Card>
           {adjustmentsData && adjustmentsData.totalPages > 1 && (
             <div className="flex justify-center gap-2 mt-4">
               <button
@@ -380,12 +379,12 @@ export default function StockAdjustmentsPage() {
             <h2 className="text-sm font-semibold text-foreground mb-4">สรุปตามสาเหตุ</h2>
             <div className="space-y-3">
               {Object.entries(summary.byReason).map(([reason, data]) => {
-                const r = reasonLabels[reason] || { label: reason, className: 'bg-muted text-foreground' };
+                const rCfg = getStatusBadgeProps(reason, stockAdjustmentReasonMap);
                 const pct = summary.totalCount > 0 ? (data.count / summary.totalCount) * 100 : 0;
                 return (
                   <div key={reason} className="flex items-center gap-4">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium w-24 text-center ${r.className}`}>
-                      {r.label}
+                    <span className="w-24 text-center">
+                      <Badge variant={rCfg.variant} appearance={rCfg.appearance} size="sm">{rCfg.label}</Badge>
                     </span>
                     <div className="flex-1">
                       <div className="bg-muted rounded-full h-4 overflow-hidden">
@@ -462,8 +461,8 @@ export default function StockAdjustmentsPage() {
               onChange={(e) => setForm({ ...form, reason: e.target.value })}
               className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
             >
-              {Object.entries(reasonLabels).map(([key, val]) => (
-                <option key={key} value={key}>{val.label}</option>
+              {Object.entries(stockAdjustmentReasonMap).map(([key, cfg]) => (
+                <option key={key} value={key}>{cfg.label}</option>
               ))}
             </select>
             <div className="mt-1 text-xs text-muted-foreground">

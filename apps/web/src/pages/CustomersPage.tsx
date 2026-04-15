@@ -25,6 +25,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import AddressForm, { AddressData, emptyAddress, serializeAddress } from '@/components/ui/AddressForm';
 import { Download, ChevronUp, ChevronDown, CreditCard, Camera, User, MapPin, Phone, Briefcase, Users } from 'lucide-react';
 import type { OcrResult } from '@/types/ocr';
+import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, creditCheckStatusMap } from '@/lib/status-badges';
 
 
 interface Customer {
@@ -523,16 +525,10 @@ export default function CustomersPage() {
       label: 'เครดิต',
       render: (c: Customer) => {
         if (!c.latestCreditStatus) return <span className="text-xs text-muted-foreground">—</span>;
-        const statusMap: Record<string, { label: string; cls: string }> = {
-          APPROVED: { label: 'ผ่าน', cls: 'bg-success/10 text-success dark:bg-success/15' },
-          REJECTED: { label: 'ไม่ผ่าน', cls: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },
-          PENDING: { label: 'รอตรวจ', cls: 'bg-warning/10 text-warning dark:bg-warning/15' },
-          MANUAL_REVIEW: { label: 'รอรีวิว', cls: 'bg-warning/10 text-warning dark:bg-warning/15' },
-        };
-        const s = statusMap[c.latestCreditStatus] || { label: c.latestCreditStatus, cls: 'bg-muted text-foreground' };
+        const cfg = getStatusBadgeProps(c.latestCreditStatus, creditCheckStatusMap);
         return (
           <div className="flex flex-col gap-0.5">
-            <span className={`inline-flex w-fit items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${s.cls}`}>{s.label}</span>
+            <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>
             {c.latestCreditScore != null && (
               <span className="text-2xs text-muted-foreground">{c.latestCreditScore}/100</span>
             )}

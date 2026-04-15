@@ -8,6 +8,8 @@ import type {
   BranchComparison,
 } from '../types';
 import { ErrorBlock } from '../types';
+import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, dunningStageMap } from '@/lib/status-badges';
 
 /** Map dunning stage to query param for /overdue drill-down */
 const stageToDunning: Record<string, string> = {
@@ -136,14 +138,23 @@ export default function DashboardTables({
                 const pct = collectionPipeline.totalContracts > 0
                   ? Math.round((stage.count / collectionPipeline.totalContracts) * 100)
                   : 0;
-                const stageColors: Record<string, { bar: string; badge: string; text: string }> = {
-                  NONE:          { bar: 'bg-muted-foreground/40', badge: 'bg-muted/60 text-muted-foreground', text: 'text-muted-foreground' },
-                  REMINDER:      { bar: 'bg-yellow-400', badge: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400', text: 'text-yellow-600 dark:text-yellow-400' },
-                  NOTICE:        { bar: 'bg-orange-400', badge: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400', text: 'text-orange-600 dark:text-orange-400' },
-                  FINAL_WARNING: { bar: 'bg-destructive/80', badge: 'bg-destructive/10 text-destructive', text: 'text-destructive' },
-                  LEGAL_ACTION:  { bar: 'bg-destructive', badge: 'bg-destructive/20 text-destructive font-bold', text: 'text-destructive font-semibold' },
+                const stageBarColors: Record<string, string> = {
+                  NONE:          'bg-muted-foreground/40',
+                  REMINDER:      'bg-yellow-400',
+                  NOTICE:        'bg-orange-400',
+                  FINAL_WARNING: 'bg-destructive/80',
+                  LEGAL_ACTION:  'bg-destructive',
                 };
-                const colors = stageColors[stage.stage] ?? stageColors['NONE'];
+                const stageTextColors: Record<string, string> = {
+                  NONE:          'text-muted-foreground',
+                  REMINDER:      'text-yellow-600 dark:text-yellow-400',
+                  NOTICE:        'text-orange-600 dark:text-orange-400',
+                  FINAL_WARNING: 'text-destructive',
+                  LEGAL_ACTION:  'text-destructive font-semibold',
+                };
+                const barColor = stageBarColors[stage.stage] ?? stageBarColors['NONE'];
+                const textColor = stageTextColors[stage.stage] ?? stageTextColors['NONE'];
+                const stageCfg = getStatusBadgeProps(stage.stage, dunningStageMap);
                 const dunningParam = stageToDunning[stage.stage];
                 const drillDownUrl = dunningParam
                   ? `/overdue?dunningStage=${dunningParam}`
@@ -158,18 +169,18 @@ export default function DashboardTables({
                     onKeyDown={(e) => { if (e.key === 'Enter') navigate(drillDownUrl); }}
                   >
                     <div className="w-44 shrink-0">
-                      <span className={cn('text-xs', colors.text)}>{stage.label}</span>
+                      <span className={cn('text-xs', textColor)}>{stage.label}</span>
                     </div>
                     <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
                       <div
-                        className={cn('h-full rounded-full transition-all duration-500', colors.bar)}
+                        className={cn('h-full rounded-full transition-all duration-500', barColor)}
                         style={{ width: `${pct}%` }}
                       />
                     </div>
                     <div className="flex items-center gap-2 shrink-0 min-w-[120px] justify-end">
-                      <span className={cn('text-xs px-2 py-0.5 rounded-md', colors.badge)}>
+                      <Badge variant={stageCfg.variant} appearance={stageCfg.appearance} size="sm">
                         {stage.count} สัญญา
-                      </span>
+                      </Badge>
                       <span className="text-xs text-muted-foreground w-8 text-right">{pct}%</span>
                     </div>
                   </div>

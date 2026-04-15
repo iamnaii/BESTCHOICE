@@ -10,6 +10,8 @@ import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { formatDateShort } from '@/utils/formatters';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
+import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, repossessionStatusMap, conditionGradeMap } from '@/lib/status-badges';
 
 interface Repossession {
   id: string;
@@ -32,26 +34,6 @@ interface Repossession {
   appraisedBy: { id: string; name: string };
 }
 
-const statusLabels: Record<string, string> = {
-  REPOSSESSED: 'ยึดคืนแล้ว',
-  UNDER_REPAIR: 'กำลังซ่อม',
-  READY_FOR_SALE: 'พร้อมขาย',
-  SOLD: 'ขายแล้ว',
-};
-
-const statusColors: Record<string, string> = {
-  REPOSSESSED: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
-  UNDER_REPAIR: 'bg-warning/10 text-warning dark:bg-warning/15',
-  READY_FOR_SALE: 'bg-success/10 text-success dark:bg-success/15',
-  SOLD: 'bg-primary/10 text-primary dark:bg-primary/15',
-};
-
-const gradeColors: Record<string, string> = {
-  A: 'bg-success/10 text-success dark:bg-success/15',
-  B: 'bg-primary/10 text-primary dark:bg-primary/15',
-  C: 'bg-warning/10 text-warning dark:bg-warning/15',
-  D: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
-};
 
 export default function RepossessionsPage() {
   const queryClient = useQueryClient();
@@ -222,11 +204,10 @@ export default function RepossessionsPage() {
     {
       key: 'grade',
       label: 'สภาพ',
-      render: (r: Repossession) => (
-        <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${gradeColors[r.conditionGrade]}`}>
-          เกรด {r.conditionGrade}
-        </span>
-      ),
+      render: (r: Repossession) => {
+        const cfg = getStatusBadgeProps(r.conditionGrade, conditionGradeMap);
+        return <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>;
+      },
     },
     {
       key: 'appraisalPrice',
@@ -248,11 +229,10 @@ export default function RepossessionsPage() {
     {
       key: 'status',
       label: 'สถานะ',
-      render: (r: Repossession) => (
-        <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${statusColors[r.status]}`}>
-          {statusLabels[r.status]}
-        </span>
-      ),
+      render: (r: Repossession) => {
+        const cfg = getStatusBadgeProps(r.status, repossessionStatusMap);
+        return <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>;
+      },
     },
     {
       key: 'date',
@@ -367,9 +347,7 @@ export default function RepossessionsPage() {
                     <td className="px-4 py-2">{item.customer}</td>
                     <td className="px-4 py-2">{item.product}</td>
                     <td className="px-4 py-2 text-center">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${gradeColors[item.conditionGrade] || ''}`}>
-                        {item.conditionGrade}
-                      </span>
+                      {(() => { const cfg = getStatusBadgeProps(item.conditionGrade, conditionGradeMap); return <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>; })()}
                     </td>
                     <td className="px-4 py-2 text-right">{item.appraisalPrice.toLocaleString()}</td>
                     <td className="px-4 py-2 text-right">{item.repairCost.toLocaleString()}</td>

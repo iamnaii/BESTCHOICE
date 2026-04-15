@@ -54,6 +54,6 @@ import { CHAT_GATEWAY_TOKEN } from '../chat-engine/interfaces/chat-gateway.inter
   ],
   controllers: [StaffChatController, WebWidgetController, ChatCommerceController, ChannelSettingsController, SnoozeController, SessionOpsController, SideConversationController],
   providers: [StaffChatGateway, WebWidgetGateway, StaffMessageService, ChatCommerceService, ChatToContractService, CannedResponseVariableService, PresenceService, CollisionDetectionService, AiAssistantService, MediaContentService, SideConversationService, SnoozeService, SnoozeCronService, SessionOpsService, AiSuggestService, AiAutoReplyService, ProductDetectService, LeadScoringService, AiTrainingService, { provide: CHAT_GATEWAY_TOKEN, useExisting: StaffChatGateway }],
-  exports: [StaffChatGateway, WebWidgetGateway, PresenceService, CollisionDetectionService, CHAT_GATEWAY_TOKEN],
+  exports: [StaffChatGateway, WebWidgetGateway, PresenceService, CollisionDetectionService, AiAutoReplyService, CHAT_GATEWAY_TOKEN],
 })
 export class StaffChatModule {}

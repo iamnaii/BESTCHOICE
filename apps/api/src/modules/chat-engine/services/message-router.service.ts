@@ -14,6 +14,7 @@ import { SessionManagerService } from './session-manager.service';
 import { HandoffManagerService } from './handoff-manager.service';
 import { AfterHoursService } from './after-hours.service';
 import { IChatGateway, CHAT_GATEWAY_TOKEN } from '../interfaces/chat-gateway.interface';
+import { AiAutoReplyService } from '../../staff-chat/services/ai-auto-reply.service';
 
 /**
  * MessageRouter — the central nerve of the chat engine.
@@ -35,6 +36,8 @@ export class MessageRouterService {
     @Optional()
     @Inject(forwardRef(() => AfterHoursService))
     private afterHoursService?: AfterHoursService,
+    @Optional()
+    private aiAutoReplyService?: AiAutoReplyService,
     @Optional()
     @Inject(CHANNEL_ADAPTER_TOKEN)
     adapters?: IChannelAdapter[],
@@ -71,10 +74,12 @@ export class MessageRouterService {
    * 1. Get/create session
    * 2. Save inbound message
    * 3. Check handoff mode → if yes, only notify staff
-   * 4. Find domain handler for channel
-   * 5. Process message → get reply
-   * 6. Send reply through adapter
-   * 7. Save outbound message
+   * 3.5. Check AI auto-reply → if confident, send and return; if not, handoff
+   * 4. Check after-hours → if yes, auto-reply and return
+   * 5. Find domain handler for channel
+   * 6. Process message → get reply
+   * 7. Send reply through adapter
+   * 8. Save outbound message
    */
   async routeInbound(message: InboundMessage): Promise<void> {
     // 1. Get or create session
@@ -110,7 +115,69 @@ export class MessageRouterService {
       return;
     }
 
-    // 3.5 After-hours auto-reply
+    // 3.5 AI auto-reply — runs when auto mode is enabled for the session channel
+    if (this.aiAutoReplyService && await this.aiAutoReplyService.shouldAutoReply(session)) {
+      const customerMessage = message.text ?? '';
+      try {
+        const result = await this.aiAutoReplyService.autoReply(session.id, customerMessage);
+
+        if (result !== null) {
+          // AI is confident — send reply and skip further processing
+          const adapter = this.adapterMap.get(message.channel);
+          if (adapter) {
+            await adapter.sendMessage({
+              externalUserId: message.externalUserId,
+              channel: message.channel,
+              type: 'TEXT' as any,
+              text: result.reply,
+            });
+            await this.sessionManager.saveMessage({
+              sessionId: session.id,
+              role: MessageRole.BOT,
+              text: result.reply,
+            });
+          }
+          await this.aiAutoReplyService.logAutoReply({
+            sessionId: session.id,
+            customerMessage,
+            aiReply: result.reply,
+            confidence: result.confidence,
+            autoSent: true,
+          });
+          this.logger.log(
+            `[AiAutoReply] Replied to session ${session.id} with confidence=${result.confidence}`,
+          );
+          return;
+        } else {
+          // AI not confident — initiate handoff to staff
+          await this.aiAutoReplyService.logAutoReply({
+            sessionId: session.id,
+            customerMessage,
+            aiReply: '',
+            confidence: 0,
+            autoSent: false,
+            handoffReason: 'ความมั่นใจของ AI ต่ำกว่า threshold',
+          });
+          await this.handoffManager.initiateHandoff({
+            sessionId: session.id,
+            reason: 'AI ไม่มั่นใจในการตอบ — ส่งต่อให้พนักงาน',
+            priority: 'normal',
+            summary: customerMessage,
+          });
+          this.logger.log(
+            `[AiAutoReply] Low confidence for session ${session.id} — initiated handoff`,
+          );
+          return;
+        }
+      } catch (err) {
+        this.logger.error(
+          `[AiAutoReply] Error for session ${session.id}: ${err instanceof Error ? err.message : err}`,
+        );
+        // Fall through to normal processing on error
+      }
+    }
+
+    // 4. After-hours auto-reply (only reached when AI auto mode is off or errored)
     if (this.afterHoursService?.isAfterHours() && !session.handoffMode) {
       try {
         const reply = await this.afterHoursService.getAutoReply(

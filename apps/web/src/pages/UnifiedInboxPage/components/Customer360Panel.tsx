@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useRef, useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import ProductContextCard from './ProductContextCard';
 import { Badge } from '@/components/ui/badge';
@@ -378,20 +379,11 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
       )}
 
       {/* ─── 6. Internal Notes ──────────────────────────── */}
-      {notesData?.length > 0 && (
-        <div className="p-4 border-b border-gray-100">
-          <SectionHeader icon={FileText} label="บันทึกภายใน" />
-          <div className="space-y-1.5">
-            {notesData.slice(0, 5).map((note: any) => (
-              <div key={note.id} className="p-2 bg-yellow-50 rounded text-xs border border-yellow-100">
-                <p className="text-gray-700">{note.content}</p>
-                <p className="text-[10px] text-gray-400 mt-0.5">
-                  {note.author?.name} · {format(new Date(note.createdAt), 'dd/MM HH:mm')}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
+      {activeRoomId && (
+        <InternalNotesSection
+          roomId={activeRoomId}
+          notes={notesData ?? []}
+        />
       )}
 
       {/* ─── 7. Quick Actions ────────────────────────────── */}
@@ -419,6 +411,157 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
             onClick={() => window.open(`/payments?search=${customer?.phone}`, '_blank')}
           />
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── InternalNotesSection ─────────────────────────────────
+
+function InternalNotesSection({ roomId, notes }: { roomId: string; notes: any[] }) {
+  const queryClient = useQueryClient();
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [noteText, setNoteText] = useState('');
+  const [showMentionDropdown, setShowMentionDropdown] = useState(false);
+  const [mentionFilter, setMentionFilter] = useState('');
+  const [mentionStart, setMentionStart] = useState(-1);
+
+  const { data: onlineStaff } = useQuery({
+    queryKey: ['online-staff'],
+    queryFn: () => api.get('/staff-chat/staff/online').then((r: any) => r.data?.data ?? r.data),
+    staleTime: 30_000,
+  });
+
+  const addNote = useMutation({
+    mutationFn: (content: string) =>
+      api.post(`/staff-chat/rooms/${roomId}/notes`, { content }).then((r: any) => r.data),
+    onSuccess: () => {
+      setNoteText('');
+      queryClient.invalidateQueries({ queryKey: ['customer-notes', roomId] });
+      toast.success('บันทึกโน้ตแล้ว');
+    },
+    onError: () => toast.error('ไม่สามารถบันทึกโน้ตได้'),
+  });
+
+  const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    setNoteText(val);
+
+    // Detect @mention: find last @ before cursor
+    const cursor = e.target.selectionStart ?? val.length;
+    const textBefore = val.slice(0, cursor);
+    const lastAt = textBefore.lastIndexOf('@');
+
+    if (lastAt !== -1) {
+      const afterAt = textBefore.slice(lastAt + 1);
+      // Only show if no space after @
+      if (!afterAt.includes(' ')) {
+        setMentionStart(lastAt);
+        setMentionFilter(afterAt.toLowerCase());
+        setShowMentionDropdown(true);
+        return;
+      }
+    }
+    setShowMentionDropdown(false);
+    setMentionFilter('');
+    setMentionStart(-1);
+  };
+
+  const handleSelectMention = (staffName: string) => {
+    if (mentionStart === -1) return;
+    const before = noteText.slice(0, mentionStart);
+    const cursor = textareaRef.current?.selectionStart ?? noteText.length;
+    const after = noteText.slice(cursor);
+    const inserted = `@${staffName} `;
+    setNoteText(before + inserted + after);
+    setShowMentionDropdown(false);
+    setMentionFilter('');
+    setMentionStart(-1);
+    // Refocus textarea
+    setTimeout(() => {
+      const ta = textareaRef.current;
+      if (ta) {
+        ta.focus();
+        const pos = before.length + inserted.length;
+        ta.setSelectionRange(pos, pos);
+      }
+    }, 0);
+  };
+
+  const filteredStaff = (Array.isArray(onlineStaff) ? onlineStaff : []).filter((s: any) =>
+    s.name?.toLowerCase().includes(mentionFilter),
+  );
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Escape') {
+      setShowMentionDropdown(false);
+    }
+    if (e.key === 'Enter' && e.ctrlKey) {
+      e.preventDefault();
+      if (noteText.trim()) addNote.mutate(noteText.trim());
+    }
+  };
+
+  return (
+    <div className="p-4 border-b border-gray-100">
+      <SectionHeader icon={FileText} label="บันทึกภายใน" />
+
+      {/* Existing notes */}
+      {notes.length > 0 && (
+        <div className="space-y-1.5 mb-3">
+          {notes.slice(0, 5).map((note: any) => (
+            <div key={note.id} className="p-2 bg-yellow-50 rounded text-xs border border-yellow-100">
+              <p className="text-gray-700 whitespace-pre-wrap">{note.content}</p>
+              <p className="text-[10px] text-gray-400 mt-0.5">
+                {note.author?.name} · {format(new Date(note.createdAt), 'dd/MM HH:mm')}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Note input with @mention */}
+      <div className="relative">
+        <textarea
+          ref={textareaRef}
+          value={noteText}
+          onChange={handleInput}
+          onKeyDown={handleKeyDown}
+          placeholder="เพิ่มโน้ต... (พิมพ์ @ เพื่อแท็กสมาชิก, Ctrl+Enter บันทึก)"
+          rows={2}
+          className="w-full text-xs rounded-lg border border-gray-200 px-2.5 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-blue-300 placeholder:text-gray-300"
+        />
+
+        {/* @mention dropdown */}
+        {showMentionDropdown && filteredStaff.length > 0 && (
+          <div className="absolute bottom-full left-0 mb-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-36 overflow-y-auto">
+            {filteredStaff.map((s: any) => (
+              <button
+                key={s.id}
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault(); // prevent textarea blur
+                  handleSelectMention(s.name);
+                }}
+                className="w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 flex items-center gap-2"
+              >
+                <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-[9px] font-bold flex-shrink-0">
+                  {s.name?.[0]?.toUpperCase() ?? '?'}
+                </span>
+                <span className="truncate">{s.name}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={() => { if (noteText.trim()) addNote.mutate(noteText.trim()); }}
+          disabled={!noteText.trim() || addNote.isPending}
+          className="mt-1.5 w-full text-xs bg-gray-800 hover:bg-gray-700 disabled:opacity-40 text-white rounded-lg py-1.5 transition-colors"
+        >
+          {addNote.isPending ? 'กำลังบันทึก...' : 'บันทึกโน้ต'}
+        </button>
       </div>
     </div>
   );

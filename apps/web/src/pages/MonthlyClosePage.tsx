@@ -18,6 +18,8 @@ import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, accountingPeriodStatusMap } from '@/lib/status-badges';
 import { Button } from '@/components/ui/button';
 import { THAI_MONTHS_FULL } from '@/lib/date';
 import { formatThaiDateShort } from '@/lib/date';
@@ -50,31 +52,23 @@ interface Period {
 
 const STATUS_CONFIG: Record<
   PeriodStatus,
-  { label: string; icon: React.ComponentType<{ className?: string }>; cardClass: string; badgeClass: string }
+  { icon: React.ComponentType<{ className?: string }>; cardClass: string }
 > = {
   OPEN: {
-    label: 'เปิด',
     icon: BookOpen,
     cardClass: 'border-border bg-card',
-    badgeClass: 'bg-sky-500/10 text-sky-500',
   },
   REVIEW: {
-    label: 'กำลัง Review',
     icon: Clock,
     cardClass: 'border-warning/40 bg-warning/5',
-    badgeClass: 'bg-warning/10 text-warning',
   },
   CLOSED: {
-    label: 'ปิดแล้ว',
     icon: Lock,
     cardClass: 'border-success/40 bg-success/5',
-    badgeClass: 'bg-success/10 text-success',
   },
   SYNCED: {
-    label: 'Sync แล้ว',
     icon: CheckCircle2,
     cardClass: 'border-primary/40 bg-primary/5',
-    badgeClass: 'bg-primary/10 text-primary',
   },
 };
 
@@ -91,6 +85,7 @@ function MonthCard({ month, period, isSelected, onClick }: MonthCardProps) {
   const status: PeriodStatus = period?.status ?? 'OPEN';
   const cfg = STATUS_CONFIG[status];
   const StatusIcon = cfg.icon;
+  const badgeCfg = getStatusBadgeProps(status, accountingPeriodStatusMap);
   const hasIssues = (period?.auditIssues?.length ?? 0) > 0;
 
   return (
@@ -110,10 +105,10 @@ function MonthCard({ month, period, isSelected, onClick }: MonthCardProps) {
         )}
       </div>
       <div className="flex items-center gap-1.5">
-        <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-2xs font-medium', cfg.badgeClass)}>
-          <StatusIcon className="h-3 w-3" />
-          {cfg.label}
-        </span>
+        <Badge variant={badgeCfg.variant} appearance={badgeCfg.appearance} size="sm">
+          <StatusIcon className="h-3 w-3 mr-1" />
+          {badgeCfg.label}
+        </Badge>
       </div>
     </button>
   );
@@ -134,6 +129,7 @@ function DetailPanel({ period, month, year, companyId, onActionSuccess }: Detail
   const status: PeriodStatus = period?.status ?? 'OPEN';
   const cfg = STATUS_CONFIG[status];
   const StatusIcon = cfg.icon;
+  const badgeCfg = getStatusBadgeProps(status, accountingPeriodStatusMap);
 
   const mutationOptions = {
     onSuccess: () => {
@@ -197,15 +193,10 @@ function DetailPanel({ period, month, year, companyId, onActionSuccess }: Detail
           <h3 className="text-base font-semibold">
             รายละเอียด — {THAI_MONTHS_FULL[month - 1]} {year}
           </h3>
-          <span
-            className={cn(
-              'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium',
-              cfg.badgeClass,
-            )}
-          >
-            <StatusIcon className="h-4 w-4" />
-            {cfg.label}
-          </span>
+          <Badge variant={badgeCfg.variant} appearance={badgeCfg.appearance}>
+            <StatusIcon className="h-4 w-4 mr-1" />
+            {badgeCfg.label}
+          </Badge>
         </div>
       </CardHeader>
       <CardContent className="space-y-5">

@@ -9,6 +9,9 @@ import QueryBoundary from '@/components/QueryBoundary';
 import { useAuth } from '@/contexts/AuthContext';
 import AddressForm, { AddressData, emptyAddress, composeAddress, deserializeAddress } from '@/components/ui/AddressForm';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, enabledStatusMap } from '@/lib/status-badges';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 
 interface Branch {
   id: string;
@@ -118,15 +121,10 @@ export default function BranchesPage() {
     {
       key: 'isActive',
       label: 'สถานะ',
-      render: (b: Branch) => (
-        <span
-          className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-            b.isActive ? 'bg-success/10 text-success dark:bg-success/15' : 'bg-destructive/10 text-destructive dark:bg-destructive/15'
-          }`}
-        >
-          {b.isActive ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}
-        </span>
-      ),
+      render: (b: Branch) => {
+        const cfg = getStatusBadgeProps(String(b.isActive), enabledStatusMap);
+        return <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>;
+      },
     },
     {
       key: '_count',
@@ -179,7 +177,7 @@ export default function BranchesPage() {
         }
       />
 
-      <div className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden">
+      <Card className="overflow-hidden">
         <QueryBoundary
           isLoading={isLoading && branches.length === 0}
           isError={isError}
@@ -189,7 +187,7 @@ export default function BranchesPage() {
         >
           <DataTable columns={columns} data={branches} isLoading={isLoading} />
         </QueryBoundary>
-      </div>
+      </Card>
 
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-start justify-center pt-8 pb-8" role="dialog" aria-modal="true" aria-label={editingBranch ? 'แก้ไขสาขา' : 'เพิ่มสาขาใหม่'}>

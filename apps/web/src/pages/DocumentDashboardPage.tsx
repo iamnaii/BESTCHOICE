@@ -5,6 +5,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatDateTime } from '@/utils/formatters';
+import { Badge } from '@/components/ui/badge';
 
 interface DocumentStats {
   totalContracts: number;
@@ -198,7 +199,7 @@ function DocumentDashboardPage() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-medium">{act.contractNumber}</span>
                     <span className="text-muted-foreground">{act.customerName}</span>
-                    <span className="px-2.5 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded-full text-xs font-semibold">{act.action}</span>
+                    <Badge variant="info" appearance="light" size="sm">{act.action}</Badge>
                     {act.branchName && <span className="text-xs text-muted-foreground">({act.branchName})</span>}
                   </div>
                   <span className="text-xs text-muted-foreground whitespace-nowrap ml-2">

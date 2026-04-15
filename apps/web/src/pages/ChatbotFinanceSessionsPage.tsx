@@ -3,6 +3,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import { toast } from 'sonner';
 import QueryBoundary from '@/components/QueryBoundary';
+import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, sessionStatusMap } from '@/lib/status-badges';
+import { Card, CardContent } from '@/components/ui/card';
 
 interface SessionItem {
   id: string;
@@ -112,7 +115,7 @@ export default function ChatbotFinanceSessionsPage() {
 
       <div className="grid grid-cols-12 gap-4">
         {/* List */}
-        <div className="col-span-5 border rounded-xl bg-white">
+        <Card className="col-span-5 overflow-hidden">
           <QueryBoundary
             isLoading={list.isLoading && !list.data}
             isError={list.isError}
@@ -137,11 +140,14 @@ export default function ChatbotFinanceSessionsPage() {
                       </p>
                       <p className="text-xs text-gray-500">{s.customer?.phone || s.lineUserId.slice(0, 12)}</p>
                     </div>
-                    {s.handoffMode && (
-                      <span className="text-[10px] px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full">
-                        Handoff
-                      </span>
-                    )}
+                    {s.handoffMode && (() => {
+                      const cfg = getStatusBadgeProps('HANDOFF', sessionStatusMap);
+                      return (
+                        <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">
+                          {cfg.label}
+                        </Badge>
+                      );
+                    })()}
                   </div>
                   <p className="text-xs text-gray-400 mt-1">
                     {s.totalMessages} ข้อความ · {new Date(s.lastMessageAt).toLocaleString('th-TH')}
@@ -173,10 +179,11 @@ export default function ChatbotFinanceSessionsPage() {
             </div>
           )}
           </QueryBoundary>
-        </div>
+        </Card>
 
         {/* Detail */}
-        <div className="col-span-7 border rounded-xl bg-white p-4">
+        <Card className="col-span-7">
+          <CardContent className="p-4">
           {!selectedId ? (
             <p className="text-gray-400 text-sm">เลือก session เพื่อดูรายละเอียด</p>
           ) : detail.isLoading ? (
@@ -226,7 +233,8 @@ export default function ChatbotFinanceSessionsPage() {
               </div>
             </>
           )}
-        </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

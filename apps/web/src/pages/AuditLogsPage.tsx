@@ -5,13 +5,14 @@ import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import { useDebounce } from '@/hooks/useDebounce';
 import QueryBoundary from '@/components/QueryBoundary';
-import { Badge } from '@/components/ui/badge';
-import { getStatusBadgeProps, auditActionMap } from '@/lib/status-badges';
 import { formatDateTimeSeconds } from '@/utils/formatters';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { toast } from 'sonner';
 import { exportToExcel } from '@/utils/excel.util';
 import { Download } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, auditActionMap } from '@/lib/status-badges';
+import { Card, CardHeader, CardTitle, CardToolbar, CardContent } from '@/components/ui/card';
 
 interface AuditLog {
   id: string;
@@ -34,6 +35,17 @@ interface AuditStats {
   totalCount: number;
   recentErrors: number;
 }
+
+const actionLabels: Record<string, string> = {
+  POST: 'สร้าง',
+  PUT: 'แก้ไข',
+  PATCH: 'อัพเดท',
+  DELETE: 'ลบ',
+  EXCHANGE: 'เปลี่ยนเครื่อง',
+  REPOSSESSION: 'ยึดคืน',
+  CREATE_CALL_LOG: 'บันทึกการโทร',
+  STATUS_CHANGE: 'เปลี่ยนสถานะ',
+};
 
 const entityLabels: Record<string, string> = {
   products: 'สินค้า',
@@ -116,7 +128,7 @@ export default function AuditLogsPage() {
                     data: logs.map((log) => ({
                       createdAt: formatDateTimeSeconds(log.createdAt),
                       user: log.user?.name || '-',
-                      action: getStatusBadgeProps(log.action, auditActionMap).label,
+                      action: actionLabels[log.action] || log.action,
                       entity: entityLabels[log.entity] || log.entity,
                       detail: log.entityId ? `${log.entity}/${log.entityId.substring(0, 8)}` : '-',
                     })),
@@ -220,7 +232,7 @@ export default function AuditLogsPage() {
       </div>
 
       {/* Logs Table */}
-      <div className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden">
+      <Card className="overflow-hidden">
         <QueryBoundary
           isLoading={isLoading && !result}
           isError={isError}
@@ -261,13 +273,10 @@ export default function AuditLogsPage() {
                           </div>
                           <div className="px-4 py-3 w-32 shrink-0">
                             {(() => {
-                              const cfg = getStatusBadgeProps(
-                                log.action.endsWith('_ERROR') ? 'DELETE' : log.action,
-                                auditActionMap,
-                              );
+                              const cfg = getStatusBadgeProps(log.action, auditActionMap);
                               return (
                                 <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">
-                                  {cfg.label}
+                                  {actionLabels[log.action] || log.action}
                                 </Badge>
                               );
                             })()}
@@ -355,7 +364,7 @@ export default function AuditLogsPage() {
           </div>
         )}
         </QueryBoundary>
-      </div>
+      </Card>
     </div>
   );
 }

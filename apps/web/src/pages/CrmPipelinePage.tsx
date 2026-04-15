@@ -5,6 +5,8 @@ import { toast } from 'sonner';
 import QueryBoundary from '@/components/QueryBoundary';
 import PageHeader from '@/components/ui/PageHeader';
 import { User, Phone, ChevronRight } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 
 const STAGES = [
   { key: 'NEW_LEAD', label: 'Lead ใหม่', color: 'bg-blue-500' },
@@ -100,11 +102,12 @@ export default function CrmPipelinePage() {
         error={leadsQuery.error}
         onRetry={() => leadsQuery.refetch()}
       >
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+        <Card className="overflow-hidden">
+          <CardContent className="p-0">
           {leads.length === 0 ? (
-            <div className="p-12 text-center text-gray-400">ไม่พบ Lead</div>
+            <div className="p-12 text-center text-muted-foreground">ไม่พบ Lead</div>
           ) : (
-            <div className="divide-y divide-gray-100">
+            <div className="divide-y">
               {leads.map((lead: any) => {
                 const stageInfo = STAGES.find((s) => s.key === lead.stage);
                 return (
@@ -116,9 +119,9 @@ export default function CrmPipelinePage() {
                         <span className="font-medium text-sm text-gray-900">
                           {lead.customer?.name ?? 'ไม่ระบุชื่อ'}
                         </span>
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                        <Badge variant="secondary" size="sm">
                           {stageInfo?.label}
-                        </span>
+                        </Badge>
                       </div>
                       <div className="flex items-center gap-3 mt-1 text-xs text-gray-400">
                         {lead.customer?.phone && (
@@ -156,7 +159,8 @@ export default function CrmPipelinePage() {
               })}
             </div>
           )}
-        </div>
+          </CardContent>
+        </Card>
       </QueryBoundary>
     </div>
   );

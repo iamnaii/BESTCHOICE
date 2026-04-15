@@ -11,6 +11,8 @@ import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, saleTypeMap, contractStatusMap } from '@/lib/status-badges';
 import { Download, RotateCcw } from 'lucide-react';
 import { formatDateShort } from '@/utils/formatters';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
@@ -58,10 +60,10 @@ interface SalesResponse {
   summary: SalesSummary;
 }
 
-const saleTypeLabels: Record<string, { label: string; className: string }> = {
-  CASH: { label: 'เงินสด', className: 'bg-success/10 text-success dark:bg-success/15' },
-  INSTALLMENT: { label: 'ผ่อนร้าน', className: 'bg-primary/10 text-primary dark:bg-primary/15' },
-  EXTERNAL_FINANCE: { label: 'ไฟแนนซ์', className: 'bg-primary/10 text-primary dark:bg-primary/15' },
+const saleTypeLabels: Record<string, string> = {
+  CASH: 'เงินสด',
+  INSTALLMENT: 'ผ่อนร้าน',
+  EXTERNAL_FINANCE: 'ไฟแนนซ์',
 };
 
 const paymentMethodLabels: Record<string, string> = {
@@ -70,13 +72,6 @@ const paymentMethodLabels: Record<string, string> = {
   QR_EWALLET: 'QR/E-Wallet',
 };
 
-const contractStatusLabels: Record<string, string> = {
-  ACTIVE: 'ใช้งาน',
-  OVERDUE: 'ค้างชำระ',
-  DEFAULT: 'ผิดนัด',
-  COMPLETED: 'ปิดแล้ว',
-  DRAFT: 'ร่าง',
-};
 
 export default function SalesHistoryPage() {
   useDocumentTitle('รายการขาย');
@@ -229,7 +224,7 @@ export default function SalesHistoryPage() {
           const row: Record<string, unknown> = {
             saleNumber: s.saleNumber,
             date: formatDateShort(s.createdAt),
-            saleType: saleTypeLabels[s.saleType]?.label || s.saleType,
+            saleType: saleTypeLabels[s.saleType] || s.saleType,
             product: `${s.product.brand} ${s.product.model}`,
             imei: s.product.imeiSerial || s.product.serialNumber || '-',
             customer: s.customer.name,
@@ -242,7 +237,7 @@ export default function SalesHistoryPage() {
             monthlyPayment: s.contract ? Number(s.contract.monthlyPayment) : '-',
             totalMonths: s.contract?.totalMonths || '-',
             contractNumber: s.contract?.contractNumber || '-',
-            contractStatus: s.contract ? (contractStatusLabels[s.contract.status] || s.contract.status) : '-',
+            contractStatus: s.contract ? (contractStatusMap[s.contract.status]?.label || s.contract.status) : '-',
             financeCompany: s.financeCompany || '-',
             financeAmount: s.financeAmount ? Number(s.financeAmount) : '-',
             financeRef: s.financeRefNumber || '-',
@@ -293,8 +288,8 @@ export default function SalesHistoryPage() {
       key: 'saleType',
       label: 'ประเภท',
       render: (s: Sale) => {
-        const st = saleTypeLabels[s.saleType] || { label: s.saleType, className: 'bg-muted text-foreground' };
-        return <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${st.className}`}>{st.label}</span>;
+        const cfg = getStatusBadgeProps(s.saleType, saleTypeMap);
+        return <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>;
       },
     },
     {
@@ -379,18 +374,11 @@ export default function SalesHistoryPage() {
       label: 'สัญญา',
       render: (s: Sale) => {
         if (!s.contract) return <span className="text-xs text-muted-foreground">-</span>;
-        const statusMap: Record<string, { label: string; cls: string }> = {
-          DRAFT: { label: 'ร่าง', cls: 'text-muted-foreground' },
-          ACTIVE: { label: 'ใช้งาน', cls: 'text-success' },
-          OVERDUE: { label: 'ค้างชำระ', cls: 'text-destructive' },
-          DEFAULT: { label: 'ผิดนัด', cls: 'text-destructive font-semibold' },
-          COMPLETED: { label: 'ปิดแล้ว', cls: 'text-muted-foreground' },
-        };
-        const cs = statusMap[s.contract.status] || { label: s.contract.status, cls: 'text-muted-foreground' };
+        const cfg = getStatusBadgeProps(s.contract.status, contractStatusMap);
         return (
           <div className="text-xs">
             <div className="font-mono text-primary">{s.contract.contractNumber}</div>
-            <div className={cs.cls}>{cs.label}</div>
+            <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>
           </div>
         );
       },

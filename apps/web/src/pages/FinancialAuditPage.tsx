@@ -5,6 +5,8 @@ import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, auditActionMap } from '@/lib/status-badges';
 import { formatDateShort } from '@/utils/formatters';
 
 interface AuditEntry {
@@ -18,32 +20,6 @@ interface AuditEntry {
   user: { id: string; name: string; email: string; role: string };
 }
 
-const ACTION_LABELS: Record<string, string> = {
-  PAYMENT_RECORDED: 'บันทึกชำระเงิน',
-  PAYMENT_PARTIAL: 'ชำระบางส่วน',
-  LATE_FEE_WAIVED: 'ยกเว้นค่าปรับ',
-  CREDIT_APPLIED: 'ใช้เครดิต',
-  RECEIPT_GENERATED: 'ออกใบเสร็จ',
-  RECEIPT_VOIDED: 'ยกเลิกใบเสร็จ',
-  CREDIT_NOTE_ISSUED: 'ออกใบลดหนี้',
-  OVERPAYMENT_CREDITED: 'บันทึกเครดิตเกิน',
-  CREDIT_BALANCE_APPLIED: 'ใช้ยอดเครดิต',
-  CONTRACT_COMPLETED: 'ปิดสัญญา',
-  DUNNING_ESCALATION: 'ยกระดับติดตามหนี้',
-  STATUS_CHANGE: 'เปลี่ยนสถานะ',
-};
-
-const ACTION_COLORS: Record<string, string> = {
-  PAYMENT_RECORDED: 'bg-success/10 text-success dark:bg-success/15',
-  PAYMENT_PARTIAL: 'bg-blue-100 text-blue-800',
-  LATE_FEE_WAIVED: 'bg-warning/10 text-warning dark:bg-warning/15',
-  CREDIT_APPLIED: 'bg-info/10 text-info dark:bg-info/15',
-  RECEIPT_GENERATED: 'bg-emerald-100 text-emerald-800',
-  RECEIPT_VOIDED: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
-  CREDIT_NOTE_ISSUED: 'bg-warning/10 text-warning dark:bg-warning/15',
-  DUNNING_ESCALATION: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
-  STATUS_CHANGE: 'bg-gray-100 text-gray-800',
-};
 
 export default function FinancialAuditPage() {
   const [contractId, setContractId] = useState('');
@@ -77,11 +53,10 @@ export default function FinancialAuditPage() {
     {
       key: 'action',
       label: 'เหตุการณ์',
-      render: (e: AuditEntry) => (
-        <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${ACTION_COLORS[e.action] || 'bg-muted text-muted-foreground'}`}>
-          {ACTION_LABELS[e.action] || e.action}
-        </span>
-      ),
+      render: (e: AuditEntry) => {
+        const cfg = getStatusBadgeProps(e.action, auditActionMap);
+        return <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>;
+      },
     },
     {
       key: 'user',

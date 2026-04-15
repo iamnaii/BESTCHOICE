@@ -3,8 +3,8 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import {
   AdsPlatform,
   ChatChannel,
-  ChatSession,
-  ChatSessionStatus,
+  ChatRoom,
+  ChatRoomStatus,
   ChatPriority,
   MessageRole,
   MessageType,
@@ -13,15 +13,16 @@ import {
 import { AssignmentService } from './assignment.service';
 
 /**
- * SessionManagerService — generalized from ChatSessionService.
+ * RoomManagerService — generalized from SessionManagerService.
  *
- * Manages chat sessions across ALL channels (not just LINE Finance).
- * The key difference from the original: it resolves sessions by
- * (externalUserId, channel) instead of hardcoding LINE_FINANCE.
+ * Manages chat rooms across ALL channels (not just LINE Finance).
+ * Key behaviour change: ALWAYS returns the existing room for the same
+ * (externalUserId, channel). Never creates a new room if one already exists.
+ * If the room is IDLE it is reopened to ACTIVE.
  */
 @Injectable()
-export class SessionManagerService {
-  private readonly logger = new Logger(SessionManagerService.name);
+export class RoomManagerService {
+  private readonly logger = new Logger(RoomManagerService.name);
 
   constructor(
     private prisma: PrismaService,
@@ -30,10 +31,11 @@ export class SessionManagerService {
   ) {}
 
   /**
-   * Find or create a session for any channel.
-   * Uses lineUserId for LINE channels, externalUserId for others.
+   * Find or create a room for any channel.
+   * ALWAYS returns existing room for same (externalUserId, channel).
+   * Only creates a new room if truly none exists.
    */
-  async getOrCreateSession(params: {
+  async getOrCreateRoom(params: {
     externalUserId: string;
     channel: ChatChannel;
     customerId?: string;
@@ -43,14 +45,16 @@ export class SessionManagerService {
       utmContent?: string;
       referrerUrl?: string;
     };
-  }): Promise<ChatSession> {
-    // LINE channels use the unique constraint on (lineUserId, channel)
+  }): Promise<ChatRoom> {
     const isLineChannel =
       params.channel === ChatChannel.LINE_FINANCE ||
       params.channel === ChatChannel.LINE_SHOP;
 
+    // Always find existing room first — no status filter
+    let existing: ChatRoom | null = null;
+
     if (isLineChannel) {
-      const existing = await this.prisma.chatSession.findUnique({
+      existing = await this.prisma.chatRoom.findUnique({
         where: {
           lineUserId_channel: {
             lineUserId: params.externalUserId,
@@ -58,17 +62,26 @@ export class SessionManagerService {
           },
         },
       });
-      if (existing) return existing;
     } else {
-      // Non-LINE channels: lookup by externalUserId + channel
-      const existing = await this.prisma.chatSession.findFirst({
+      existing = await this.prisma.chatRoom.findFirst({
         where: {
           externalUserId: params.externalUserId,
           channel: params.channel,
           deletedAt: null,
         },
       });
-      if (existing) return existing;
+    }
+
+    if (existing) {
+      // Reopen if IDLE
+      if (existing.status === ChatRoomStatus.IDLE) {
+        await this.prisma.chatRoom.update({
+          where: { id: existing.id },
+          data: { status: ChatRoomStatus.ACTIVE },
+        });
+        return { ...existing, status: ChatRoomStatus.ACTIVE };
+      }
+      return existing;
     }
 
     // Try to find linked customer
@@ -86,19 +99,19 @@ export class SessionManagerService {
       customerId = link?.customerId;
     }
 
-    const session = await this.prisma.chatSession.create({
+    const room = await this.prisma.chatRoom.create({
       data: {
         lineUserId: isLineChannel ? params.externalUserId : '',
         externalUserId: isLineChannel ? undefined : params.externalUserId,
         channel: params.channel,
         customerId,
         verifiedAt: customerId ? new Date() : null,
-        sessionStatus: ChatSessionStatus.OPEN,
+        status: ChatRoomStatus.ACTIVE,
         priority: ChatPriority.NORMAL,
       },
     });
 
-    // Link ads attribution on new sessions (best-effort — never block session creation)
+    // Link ads attribution on new rooms (best-effort — never block room creation)
     if (params.attribution?.utmSource) {
       try {
         const platformMap: Record<string, AdsPlatform> = {
@@ -140,34 +153,34 @@ export class SessionManagerService {
           },
         });
 
-        await this.prisma.chatSession.update({
-          where: { id: session.id },
+        await this.prisma.chatRoom.update({
+          where: { id: room.id },
           data: { attributionId: attribution.id },
         });
 
         this.logger.log(
-          `[Attribution] Linked campaign "${campaignKey}" to session ${session.id}`,
+          `[Attribution] Linked campaign "${campaignKey}" to room ${room.id}`,
         );
       } catch (err) {
         this.logger.error(
-          `[Attribution] Failed to link attribution for session ${session.id}: ${err instanceof Error ? err.message : err}`,
+          `[Attribution] Failed to link attribution for room ${room.id}: ${err instanceof Error ? err.message : err}`,
         );
       }
     }
 
     // Auto-assign to least-busy staff (best-effort)
     try {
-      await this.assignmentService?.autoAssign(session.id);
+      await this.assignmentService?.autoAssign(room.id);
     } catch {
-      // Assignment failure shouldn't block session creation
+      // Assignment failure shouldn't block room creation
     }
 
-    return session;
+    return room;
   }
 
-  /** Save a message and update session stats */
+  /** Save a message and update room stats */
   async saveMessage(params: {
-    sessionId: string;
+    roomId: string;
     externalMessageId?: string;
     role: MessageRole;
     type?: MessageType;
@@ -185,7 +198,7 @@ export class SessionManagerService {
   }) {
     const msg = await this.prisma.chatMessage.create({
       data: {
-        sessionId: params.sessionId,
+        roomId: params.roomId,
         externalMessageId: params.externalMessageId,
         role: params.role,
         type: params.type ?? MessageType.TEXT,
@@ -204,24 +217,24 @@ export class SessionManagerService {
     });
 
     // Track first staff/bot response for SLA
-    const updateData: Prisma.ChatSessionUpdateInput = {
+    const updateData: Prisma.ChatRoomUpdateInput = {
       totalMessages: { increment: 1 },
       lastMessageAt: new Date(),
     };
 
     if (params.role === MessageRole.STAFF || params.role === MessageRole.BOT) {
       // Set firstResponseAt if not already set (SLA metric)
-      const session = await this.prisma.chatSession.findUnique({
-        where: { id: params.sessionId },
+      const room = await this.prisma.chatRoom.findUnique({
+        where: { id: params.roomId },
         select: { firstResponseAt: true },
       });
-      if (!session?.firstResponseAt) {
+      if (!room?.firstResponseAt) {
         updateData.firstResponseAt = new Date();
       }
     }
 
-    await this.prisma.chatSession.update({
-      where: { id: params.sessionId },
+    await this.prisma.chatRoom.update({
+      where: { id: params.roomId },
       data: updateData,
     });
 
@@ -229,9 +242,9 @@ export class SessionManagerService {
   }
 
   /** Get recent messages for AI context or display */
-  async getRecentMessages(sessionId: string, limit = 20) {
+  async getRecentMessages(roomId: string, limit = 20) {
     const msgs = await this.prisma.chatMessage.findMany({
-      where: { sessionId, deletedAt: null },
+      where: { roomId, deletedAt: null },
       orderBy: { createdAt: 'desc' },
       take: limit,
       include: { staff: { select: { id: true, name: true, avatarUrl: true } } },
@@ -239,10 +252,10 @@ export class SessionManagerService {
     return msgs.reverse();
   }
 
-  /** Find session by ID with customer and assignment info */
-  async findById(sessionId: string) {
-    return this.prisma.chatSession.findUnique({
-      where: { id: sessionId },
+  /** Find room by ID with customer and assignment info */
+  async findById(roomId: string) {
+    return this.prisma.chatRoom.findUnique({
+      where: { id: roomId },
       include: {
         customer: { select: { id: true, name: true, phone: true, nationalId: true } },
         assignedTo: { select: { id: true, name: true, avatarUrl: true } },
@@ -251,10 +264,10 @@ export class SessionManagerService {
     });
   }
 
-  /** List sessions for the unified inbox with pagination and filters */
-  async listSessions(params: {
+  /** List rooms for the unified inbox with pagination and filters */
+  async listRooms(params: {
     channel?: ChatChannel;
-    sessionStatus?: ChatSessionStatus;
+    status?: ChatRoomStatus;
     priority?: ChatPriority;
     assignedToId?: string;
     customerId?: string;
@@ -267,12 +280,12 @@ export class SessionManagerService {
     const limit = params.limit ?? 50;
     const skip = (page - 1) * limit;
 
-    const where: Prisma.ChatSessionWhereInput = {
+    const where: Prisma.ChatRoomWhereInput = {
       deletedAt: null,
     };
 
     if (params.channel) where.channel = params.channel;
-    if (params.sessionStatus) where.sessionStatus = params.sessionStatus;
+    if (params.status) where.status = params.status;
     if (params.priority) where.priority = params.priority;
     if (params.assignedToId) where.assignedToId = params.assignedToId;
     if (params.customerId) where.customerId = params.customerId;
@@ -286,7 +299,7 @@ export class SessionManagerService {
     }
 
     const [data, total] = await this.prisma.$transaction([
-      this.prisma.chatSession.findMany({
+      this.prisma.chatRoom.findMany({
         where,
         orderBy: [
           { priority: 'desc' },
@@ -305,16 +318,16 @@ export class SessionManagerService {
           },
         },
       }),
-      this.prisma.chatSession.count({ where }),
+      this.prisma.chatRoom.count({ where }),
     ]);
 
     return { data, total, page, limit };
   }
 
-  /** Link session to a verified customer */
-  async linkSessionToCustomer(sessionId: string, customerId: string): Promise<void> {
-    await this.prisma.chatSession.update({
-      where: { id: sessionId },
+  /** Link room to a verified customer */
+  async linkRoomToCustomer(roomId: string, customerId: string): Promise<void> {
+    await this.prisma.chatRoom.update({
+      where: { id: roomId },
       data: {
         customerId,
         verifiedAt: new Date(),
@@ -323,20 +336,21 @@ export class SessionManagerService {
     });
   }
 
-  /** Get unread session count for a staff member (or all if no staffId) */
+  /** Get active room count for a staff member (or all if no staffId) */
   async getUnreadCount(staffId?: string) {
-    const where: Prisma.ChatSessionWhereInput = {
+    const where: Prisma.ChatRoomWhereInput = {
       deletedAt: null,
-      sessionStatus: { in: [ChatSessionStatus.OPEN, ChatSessionStatus.HANDOFF] },
+      status: ChatRoomStatus.ACTIVE,
+      handoffMode: true,
     };
     if (staffId) {
       where.OR = [{ assignedToId: staffId }, { assignedToId: null }];
     }
-    const count = await this.prisma.chatSession.count({ where });
+    const count = await this.prisma.chatRoom.count({ where });
     return { unread: count };
   }
 
-  /** Search messages across all sessions */
+  /** Search messages across all rooms */
   async searchMessages(params: {
     query: string;
     channel?: ChatChannel;
@@ -352,7 +366,7 @@ export class SessionManagerService {
       text: { contains: params.query, mode: 'insensitive' },
     };
     if (params.channel) {
-      where.session = { channel: params.channel, deletedAt: null };
+      where.room = { channel: params.channel, deletedAt: null };
     }
 
     const [data, total] = await this.prisma.$transaction([
@@ -362,7 +376,7 @@ export class SessionManagerService {
         skip,
         take: limit,
         include: {
-          session: {
+          room: {
             select: {
               id: true,
               channel: true,
@@ -378,26 +392,26 @@ export class SessionManagerService {
     return { data, total, page, limit };
   }
 
-  /** Update session status */
-  async updateSessionStatus(
-    sessionId: string,
-    status: ChatSessionStatus,
-  ): Promise<ChatSession> {
-    const data: Prisma.ChatSessionUpdateInput = { sessionStatus: status };
-    if (status === ChatSessionStatus.RESOLVED) {
+  /** Update room status */
+  async updateRoomStatus(
+    roomId: string,
+    status: ChatRoomStatus,
+  ): Promise<ChatRoom> {
+    const data: Prisma.ChatRoomUpdateInput = { status };
+    if (status === ChatRoomStatus.IDLE) {
       data.resolvedAt = new Date();
     }
-    return this.prisma.chatSession.update({ where: { id: sessionId }, data });
+    return this.prisma.chatRoom.update({ where: { id: roomId }, data });
   }
 
-  /** Mark all unread customer messages in a session as read */
+  /** Mark all unread customer messages in a room as read */
   async markMessagesRead(
-    sessionId: string,
+    roomId: string,
     readAt: Date,
   ): Promise<{ count: number }> {
     const result = await this.prisma.chatMessage.updateMany({
       where: {
-        sessionId,
+        roomId,
         role: MessageRole.CUSTOMER,
         readAt: null,
       },

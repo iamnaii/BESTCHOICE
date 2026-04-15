@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { ChatSessionStatus } from '@prisma/client';
+import { ChatRoomStatus } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 
 @Injectable()
@@ -12,16 +12,16 @@ export class ChatCronService {
 
   /**
    * SLA breach check — every 5 minutes
-   * Finds sessions that have not received a first response within 5 minutes.
+   * Finds rooms that have not received a first response within 5 minutes.
    */
   @Cron('*/5 * * * *', { timeZone: 'Asia/Bangkok' })
   async checkSlaBreaches(): Promise<void> {
     try {
       const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
 
-      const breachedSessions = await this.prisma.chatSession.findMany({
+      const breachedRooms = await this.prisma.chatRoom.findMany({
         where: {
-          sessionStatus: { in: [ChatSessionStatus.OPEN, ChatSessionStatus.HANDOFF] },
+          status: ChatRoomStatus.ACTIVE,
           firstResponseAt: null,
           createdAt: { lt: fiveMinutesAgo },
           deletedAt: null,
@@ -29,15 +29,15 @@ export class ChatCronService {
         select: { id: true, channel: true, createdAt: true },
       });
 
-      const count = breachedSessions.length;
+      const count = breachedRooms.length;
 
       if (count > 0) {
-        this.logger.warn(`SLA breach: ${count} session(s) without first response after 5 minutes`);
+        this.logger.warn(`SLA breach: ${count} room(s) without first response after 5 minutes`);
         Sentry.addBreadcrumb({
           category: 'chat-sla',
           message: `${count} SLA breach(es) detected`,
           level: 'warning',
-          data: { count, sessionIds: breachedSessions.map((s) => s.id).slice(0, 10) },
+          data: { count, roomIds: breachedRooms.map((r) => r.id).slice(0, 10) },
         });
       } else {
         this.logger.debug('SLA check: no breaches found');
@@ -49,34 +49,37 @@ export class ChatCronService {
   }
 
   /**
-   * Auto-resolve idle sessions — every hour
-   * Resolves sessions with no messages in the last 24 hours.
+   * Mark idle rooms — every hour
+   * Marks ACTIVE rooms with no messages in the last 24 hours as IDLE.
+   * Rooms are never destroyed — they stay around and will be reopened
+   * to ACTIVE automatically when the customer sends a new message.
    */
   @Cron('0 */1 * * *', { timeZone: 'Asia/Bangkok' })
-  async autoResolveIdleSessions(): Promise<void> {
+  async markIdleRooms(): Promise<void> {
     try {
       const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
       const now = new Date();
 
-      const result = await this.prisma.chatSession.updateMany({
+      const result = await this.prisma.chatRoom.updateMany({
         where: {
-          sessionStatus: { in: [ChatSessionStatus.OPEN, ChatSessionStatus.PENDING] },
+          status: ChatRoomStatus.ACTIVE,
+          handoffMode: false,
           lastMessageAt: { lt: twentyFourHoursAgo },
           deletedAt: null,
         },
         data: {
-          sessionStatus: ChatSessionStatus.RESOLVED,
+          status: ChatRoomStatus.IDLE,
           resolvedAt: now,
         },
       });
 
       if (result.count > 0) {
-        this.logger.log(`Auto-resolved ${result.count} idle session(s)`);
+        this.logger.log(`Marked ${result.count} idle room(s) as IDLE`);
       } else {
-        this.logger.debug('Auto-resolve: no idle sessions found');
+        this.logger.debug('Idle check: no rooms to mark idle');
       }
     } catch (error) {
-      this.logger.error('Failed to auto-resolve idle sessions', error);
+      this.logger.error('Failed to mark idle rooms', error);
       Sentry.captureException(error);
     }
   }

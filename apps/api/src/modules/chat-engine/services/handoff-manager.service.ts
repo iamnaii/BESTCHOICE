@@ -1,10 +1,10 @@
 import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { ChatSessionStatus, ChatPriority } from '@prisma/client';
+import { ChatRoomStatus, ChatPriority } from '@prisma/client';
 import { IChatGateway, CHAT_GATEWAY_TOKEN } from '../interfaces/chat-gateway.interface';
 
 export interface HandoffParams {
-  sessionId: string;
+  roomId: string;
   reason: string;
   priority: 'low' | 'normal' | 'high' | 'critical';
   summary: string;
@@ -33,60 +33,60 @@ export class HandoffManagerService {
     @Optional() @Inject(CHAT_GATEWAY_TOKEN) private gateway?: IChatGateway,
   ) {}
 
-  /** Initiate handoff — mark session for staff pickup */
+  /** Initiate handoff — mark room for staff pickup */
   async initiateHandoff(params: HandoffParams): Promise<void> {
-    await this.prisma.chatSession.update({
-      where: { id: params.sessionId },
+    await this.prisma.chatRoom.update({
+      where: { id: params.roomId },
       data: {
         handoffMode: true,
         handoffReason: params.reason,
         handoffTaggedAt: new Date(),
-        sessionStatus: ChatSessionStatus.HANDOFF,
+        status: ChatRoomStatus.ACTIVE,
         priority: PRIORITY_MAP[params.priority] ?? ChatPriority.NORMAL,
       },
     });
 
     this.logger.warn(
-      `[Handoff] sessionId=${params.sessionId} priority=${params.priority} reason="${params.reason}"`,
+      `[Handoff] roomId=${params.roomId} priority=${params.priority} reason="${params.reason}"`,
     );
 
-    this.gateway?.emitSessionUpdate(params.sessionId, {
+    this.gateway?.emitRoomUpdate(params.roomId, {
       event: 'handoff',
-      sessionId: params.sessionId,
+      roomId: params.roomId,
       priority: params.priority,
       reason: params.reason,
       summary: params.summary,
     });
   }
 
-  /** Resolve handoff — staff is done, return to AI or close */
+  /** Resolve handoff — staff is done, return to AI or mark IDLE */
   async resolveHandoff(
-    sessionId: string,
+    roomId: string,
     resolveToAI = false,
   ): Promise<void> {
-    await this.prisma.chatSession.update({
-      where: { id: sessionId },
+    await this.prisma.chatRoom.update({
+      where: { id: roomId },
       data: {
         handoffMode: false,
         handoffReason: null,
-        sessionStatus: resolveToAI
-          ? ChatSessionStatus.OPEN
-          : ChatSessionStatus.RESOLVED,
+        status: resolveToAI
+          ? ChatRoomStatus.ACTIVE
+          : ChatRoomStatus.IDLE,
         resolvedAt: resolveToAI ? undefined : new Date(),
       },
     });
 
     this.logger.log(
-      `[Handoff] resolved sessionId=${sessionId} returnToAI=${resolveToAI}`,
+      `[Handoff] resolved roomId=${roomId} returnToAI=${resolveToAI}`,
     );
   }
 
-  /** Check if a session is in handoff mode */
-  async isInHandoffMode(sessionId: string): Promise<boolean> {
-    const session = await this.prisma.chatSession.findUnique({
-      where: { id: sessionId },
+  /** Check if a room is in handoff mode */
+  async isInHandoffMode(roomId: string): Promise<boolean> {
+    const room = await this.prisma.chatRoom.findUnique({
+      where: { id: roomId },
       select: { handoffMode: true },
     });
-    return session?.handoffMode ?? false;
+    return room?.handoffMode ?? false;
   }
 }

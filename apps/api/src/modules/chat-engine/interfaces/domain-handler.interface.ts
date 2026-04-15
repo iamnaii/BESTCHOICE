@@ -1,4 +1,4 @@
-import { ChatChannel, ChatSession } from '@prisma/client';
+import { ChatChannel, ChatRoom } from '@prisma/client';
 import { InboundMessage, OutboundMessage } from './channel-adapter.interface';
 
 /**
@@ -6,13 +6,13 @@ import { InboundMessage, OutboundMessage } from './channel-adapter.interface';
  * how to process a message (AI reply, tool call, handoff, etc.)
  */
 export interface DomainContext {
-  /** The chat session (includes customer, verification state, etc.) */
-  session: ChatSession;
+  /** The chat room (includes customer, verification state, etc.) */
+  room: ChatRoom;
   /** The inbound message being processed */
   message: InboundMessage;
   /** Whether the customer is verified (has linked their identity) */
   isVerified: boolean;
-  /** Whether the session is in handoff mode (staff should reply) */
+  /** Whether the room is in handoff mode (staff should reply) */
   isHandoff: boolean;
 }
 
@@ -23,13 +23,13 @@ export interface DomainContext {
 export interface DomainResult {
   /** Messages to send back to the customer */
   replies: OutboundMessage[];
-  /** Should the session enter handoff mode? */
+  /** Should the room enter handoff mode? */
   shouldHandoff?: boolean;
   /** Reason for handoff (shown to staff) */
   handoffReason?: string;
-  /** Priority to set on the session */
+  /** Priority to set on the room */
   handoffPriority?: 'low' | 'normal' | 'high' | 'critical';
-  /** Tags to add to the session */
+  /** Tags to add to the room */
   tags?: string[];
 }
 

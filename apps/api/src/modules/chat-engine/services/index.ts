@@ -1,4 +1,4 @@
-export * from './session-manager.service';
+export * from './room-manager.service';
 export * from './message-router.service';
 export * from './handoff-manager.service';
 export * from './assignment.service';

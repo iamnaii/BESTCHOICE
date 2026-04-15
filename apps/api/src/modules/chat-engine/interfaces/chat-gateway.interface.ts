@@ -5,8 +5,8 @@
  * directly depending on the StaffChatGateway (avoids circular deps).
  */
 export interface IChatGateway {
-  emitNewMessage(sessionId: string, payload: Record<string, unknown>): void;
-  emitSessionUpdate(sessionId: string, payload: Record<string, unknown>): void;
+  emitNewMessage(roomId: string, payload: Record<string, unknown>): void;
+  emitRoomUpdate(roomId: string, payload: Record<string, unknown>): void;
   emitToStaff(staffId: string, event: string, payload: Record<string, unknown>): void;
 }
 

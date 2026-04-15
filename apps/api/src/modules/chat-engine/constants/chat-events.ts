@@ -5,23 +5,23 @@
 
 // Server → Client events
 export const CHAT_EVENTS = {
-  /** New message in a session */
+  /** New message in a room */
   MESSAGE_NEW: 'chat:message:new',
-  /** Session state changed (status, priority, assignment) */
-  SESSION_UPDATE: 'chat:session:update',
+  /** Room state changed (status, priority, assignment) */
+  ROOM_UPDATE: 'chat:room:update',
   /** Someone is typing */
   TYPING: 'chat:typing',
   /** Staff presence changed (online/offline) */
   PRESENCE: 'chat:presence',
-  /** Session assigned to a staff member */
+  /** Room assigned to a staff member */
   ASSIGNED: 'chat:assigned',
-  /** Session resolved */
+  /** Room resolved (marked IDLE) */
   RESOLVED: 'chat:resolved',
-  /** New note added to session */
+  /** New note added to room */
   NOTE_ADDED: 'chat:note:added',
-  /** Current viewers of a session */
+  /** Current viewers of a room */
   VIEWERS: 'chat:viewers',
-  /** Collision warning — another staff is viewing the same session */
+  /** Collision warning — another staff is viewing the same room */
   COLLISION_WARNING: 'chat:collision',
 } as const;
 
@@ -33,22 +33,22 @@ export const CHAT_CLIENT_EVENTS = {
   TYPING_START: 'chat:typing:start',
   /** Staff stops typing */
   TYPING_STOP: 'chat:typing:stop',
-  /** Staff joins a session room */
+  /** Staff joins a room */
   JOIN: 'chat:join',
-  /** Staff leaves a session room */
+  /** Staff leaves a room */
   LEAVE: 'chat:leave',
   /** Staff marks messages as read */
   READ: 'chat:read',
-  /** Staff opens/views a session (for collision detection) */
-  VIEW_SESSION: 'chat:view',
+  /** Staff opens/views a room (for collision detection) */
+  VIEW_ROOM: 'chat:view',
 } as const;
 
 // WebSocket room naming
 export const CHAT_ROOMS = {
-  /** Global inbox room — all staff see new sessions */
+  /** Global inbox room — all staff see new rooms */
   INBOX: 'chat:inbox',
-  /** Per-session room */
-  session: (sessionId: string) => `chat:session:${sessionId}`,
+  /** Per-room channel */
+  room: (roomId: string) => `chat:room:${roomId}`,
   /** Per-staff room — direct notifications */
   staff: (userId: string) => `chat:staff:${userId}`,
 } as const;

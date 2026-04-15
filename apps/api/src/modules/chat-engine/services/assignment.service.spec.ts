@@ -2,7 +2,7 @@ import { Test } from '@nestjs/testing';
 import { AssignmentService } from './assignment.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { NotFoundException } from '@nestjs/common';
-import { ChatSessionStatus } from '@prisma/client';
+import { ChatRoomStatus } from '@prisma/client';
 
 describe('AssignmentService', () => {
   let service: AssignmentService;
@@ -10,7 +10,7 @@ describe('AssignmentService', () => {
 
   beforeEach(async () => {
     prisma = {
-      chatSession: {
+      chatRoom: {
         findUnique: jest.fn(),
         update: jest.fn(),
         groupBy: jest.fn(),
@@ -32,24 +32,24 @@ describe('AssignmentService', () => {
   });
 
   describe('assign', () => {
-    it('should assign session and log activity', async () => {
-      prisma.chatSession.findUnique.mockResolvedValue({ id: 'sess-1' });
-      prisma.chatSession.update.mockResolvedValue({});
+    it('should assign room and log activity', async () => {
+      prisma.chatRoom.findUnique.mockResolvedValue({ id: 'room-1' });
+      prisma.chatRoom.update.mockResolvedValue({});
       prisma.staffChatActivity.create.mockResolvedValue({});
 
-      await service.assign('sess-1', 'staff-1');
+      await service.assign('room-1', 'staff-1');
 
-      expect(prisma.chatSession.update).toHaveBeenCalledWith({
-        where: { id: 'sess-1' },
-        data: { assignedToId: 'staff-1', sessionStatus: ChatSessionStatus.PENDING },
+      expect(prisma.chatRoom.update).toHaveBeenCalledWith({
+        where: { id: 'room-1' },
+        data: { assignedToId: 'staff-1', status: ChatRoomStatus.ACTIVE },
       });
       expect(prisma.staffChatActivity.create).toHaveBeenCalledWith({
-        data: { staffId: 'staff-1', action: 'assign', metadata: { sessionId: 'sess-1' } },
+        data: { staffId: 'staff-1', action: 'assign', metadata: { roomId: 'room-1' } },
       });
     });
 
-    it('should throw NotFoundException if session not found', async () => {
-      prisma.chatSession.findUnique.mockResolvedValue(null);
+    it('should throw NotFoundException if room not found', async () => {
+      prisma.chatRoom.findUnique.mockResolvedValue(null);
 
       await expect(service.assign('not-exist', 'staff-1')).rejects.toThrow(NotFoundException);
     });
@@ -57,14 +57,14 @@ describe('AssignmentService', () => {
 
   describe('transfer', () => {
     it('should transfer and log both sides', async () => {
-      prisma.chatSession.findUnique.mockResolvedValue({ id: 'sess-1' });
-      prisma.chatSession.update.mockResolvedValue({});
+      prisma.chatRoom.findUnique.mockResolvedValue({ id: 'room-1' });
+      prisma.chatRoom.update.mockResolvedValue({});
       prisma.staffChatActivity.createMany.mockResolvedValue({});
 
-      await service.transfer('sess-1', 'staff-A', 'staff-B');
+      await service.transfer('room-1', 'staff-A', 'staff-B');
 
-      expect(prisma.chatSession.update).toHaveBeenCalledWith({
-        where: { id: 'sess-1' },
+      expect(prisma.chatRoom.update).toHaveBeenCalledWith({
+        where: { id: 'room-1' },
         data: { assignedToId: 'staff-B' },
       });
       expect(prisma.staffChatActivity.createMany).toHaveBeenCalledWith({
@@ -77,16 +77,16 @@ describe('AssignmentService', () => {
   });
 
   describe('resolve', () => {
-    it('should resolve session and set resolvedAt', async () => {
-      prisma.chatSession.update.mockResolvedValue({});
+    it('should resolve room and set resolvedAt', async () => {
+      prisma.chatRoom.update.mockResolvedValue({});
       prisma.staffChatActivity.create.mockResolvedValue({});
 
-      await service.resolve('sess-1', 'staff-1');
+      await service.resolve('room-1', 'staff-1');
 
-      expect(prisma.chatSession.update).toHaveBeenCalledWith({
-        where: { id: 'sess-1' },
+      expect(prisma.chatRoom.update).toHaveBeenCalledWith({
+        where: { id: 'room-1' },
         data: expect.objectContaining({
-          sessionStatus: ChatSessionStatus.RESOLVED,
+          status: ChatRoomStatus.IDLE,
           handoffMode: false,
           resolvedAt: expect.any(Date),
         }),
@@ -94,18 +94,18 @@ describe('AssignmentService', () => {
     });
   });
 
-  describe('getStaffSessionCounts', () => {
+  describe('getStaffRoomCounts', () => {
     it('should return counts grouped by staff', async () => {
-      prisma.chatSession.groupBy.mockResolvedValue([
+      prisma.chatRoom.groupBy.mockResolvedValue([
         { assignedToId: 'staff-1', _count: { id: 3 } },
         { assignedToId: 'staff-2', _count: { id: 1 } },
       ]);
 
-      const result = await service.getStaffSessionCounts();
+      const result = await service.getStaffRoomCounts();
 
       expect(result).toEqual([
-        { staffId: 'staff-1', openCount: 3 },
-        { staffId: 'staff-2', openCount: 1 },
+        { staffId: 'staff-1', activeCount: 3 },
+        { staffId: 'staff-2', activeCount: 1 },
       ]);
     });
   });

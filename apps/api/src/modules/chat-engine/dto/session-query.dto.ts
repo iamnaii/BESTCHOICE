@@ -19,7 +19,7 @@ export class SessionQueryDto {
 
   @IsOptional()
   @IsString()
-  sessionStatus?: string;
+  status?: string;
 
   @IsOptional()
   @IsString()

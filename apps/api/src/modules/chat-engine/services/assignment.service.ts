@@ -1,10 +1,10 @@
 import { Injectable, Logger, NotFoundException, Inject, Optional } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { ChatSessionStatus } from '@prisma/client';
+import { ChatRoomStatus } from '@prisma/client';
 import { IChatGateway, CHAT_GATEWAY_TOKEN } from '../interfaces/chat-gateway.interface';
 
 /**
- * AssignmentService — manages staff ↔ session assignment.
+ * AssignmentService — manages staff ↔ room assignment.
  *
  * Handles assign, transfer (re-assign), and resolve operations.
  * Emits WebSocket events via IChatGateway for real-time updates.
@@ -18,19 +18,19 @@ export class AssignmentService {
     @Optional() @Inject(CHAT_GATEWAY_TOKEN) private gateway?: IChatGateway,
   ) {}
 
-  /** Assign a session to a staff member */
-  async assign(sessionId: string, staffId: string): Promise<void> {
-    const session = await this.prisma.chatSession.findUnique({
-      where: { id: sessionId },
+  /** Assign a room to a staff member */
+  async assign(roomId: string, staffId: string): Promise<void> {
+    const room = await this.prisma.chatRoom.findUnique({
+      where: { id: roomId },
       select: { id: true, assignedToId: true },
     });
-    if (!session) throw new NotFoundException('ไม่พบ session');
+    if (!room) throw new NotFoundException('ไม่พบ room');
 
-    await this.prisma.chatSession.update({
-      where: { id: sessionId },
+    await this.prisma.chatRoom.update({
+      where: { id: roomId },
       data: {
         assignedToId: staffId,
-        sessionStatus: ChatSessionStatus.PENDING,
+        status: ChatRoomStatus.ACTIVE,
       },
     });
 
@@ -39,29 +39,29 @@ export class AssignmentService {
       data: {
         staffId,
         action: 'assign',
-        metadata: { sessionId },
+        metadata: { roomId },
       },
     });
 
-    this.logger.log(`Session ${sessionId} assigned to staff ${staffId}`);
-    this.gateway?.emitSessionUpdate(sessionId, { event: 'assigned', sessionId, assignedToId: staffId });
-    this.gateway?.emitToStaff(staffId, 'chat:assigned', { sessionId, assignedToId: staffId });
+    this.logger.log(`Room ${roomId} assigned to staff ${staffId}`);
+    this.gateway?.emitRoomUpdate(roomId, { event: 'assigned', roomId, assignedToId: staffId });
+    this.gateway?.emitToStaff(staffId, 'chat:assigned', { roomId, assignedToId: staffId });
   }
 
-  /** Transfer a session from one staff to another */
+  /** Transfer a room from one staff to another */
   async transfer(
-    sessionId: string,
+    roomId: string,
     fromStaffId: string,
     toStaffId: string,
   ): Promise<void> {
-    const session = await this.prisma.chatSession.findUnique({
-      where: { id: sessionId },
+    const room = await this.prisma.chatRoom.findUnique({
+      where: { id: roomId },
       select: { id: true, assignedToId: true },
     });
-    if (!session) throw new NotFoundException('ไม่พบ session');
+    if (!room) throw new NotFoundException('ไม่พบ room');
 
-    await this.prisma.chatSession.update({
-      where: { id: sessionId },
+    await this.prisma.chatRoom.update({
+      where: { id: roomId },
       data: { assignedToId: toStaffId },
     });
 
@@ -71,30 +71,30 @@ export class AssignmentService {
         {
           staffId: fromStaffId,
           action: 'transfer_out',
-          metadata: { sessionId, toStaffId },
+          metadata: { roomId, toStaffId },
         },
         {
           staffId: toStaffId,
           action: 'transfer_in',
-          metadata: { sessionId, fromStaffId },
+          metadata: { roomId, fromStaffId },
         },
       ],
     });
 
     this.logger.log(
-      `Session ${sessionId} transferred from ${fromStaffId} to ${toStaffId}`,
+      `Room ${roomId} transferred from ${fromStaffId} to ${toStaffId}`,
     );
-    this.gateway?.emitSessionUpdate(sessionId, { event: 'transferred', sessionId, assignedToId: toStaffId, fromStaffId });
-    this.gateway?.emitToStaff(fromStaffId, 'chat:assigned', { sessionId, assignedToId: toStaffId, transferred: true });
-    this.gateway?.emitToStaff(toStaffId, 'chat:assigned', { sessionId, assignedToId: toStaffId, transferred: true });
+    this.gateway?.emitRoomUpdate(roomId, { event: 'transferred', roomId, assignedToId: toStaffId, fromStaffId });
+    this.gateway?.emitToStaff(fromStaffId, 'chat:assigned', { roomId, assignedToId: toStaffId, transferred: true });
+    this.gateway?.emitToStaff(toStaffId, 'chat:assigned', { roomId, assignedToId: toStaffId, transferred: true });
   }
 
-  /** Resolve/close a session */
-  async resolve(sessionId: string, staffId: string): Promise<void> {
-    await this.prisma.chatSession.update({
-      where: { id: sessionId },
+  /** Resolve/close a room — marks as IDLE */
+  async resolve(roomId: string, staffId: string): Promise<void> {
+    await this.prisma.chatRoom.update({
+      where: { id: roomId },
       data: {
-        sessionStatus: ChatSessionStatus.RESOLVED,
+        status: ChatRoomStatus.IDLE,
         handoffMode: false,
         resolvedAt: new Date(),
       },
@@ -104,12 +104,12 @@ export class AssignmentService {
       data: {
         staffId,
         action: 'resolve',
-        metadata: { sessionId },
+        metadata: { roomId },
       },
     });
 
-    this.logger.log(`Session ${sessionId} resolved by staff ${staffId}`);
-    this.gateway?.emitSessionUpdate(sessionId, { event: 'resolved', sessionId, resolvedBy: staffId });
+    this.logger.log(`Room ${roomId} resolved by staff ${staffId}`);
+    this.gateway?.emitRoomUpdate(roomId, { event: 'resolved', roomId, resolvedBy: staffId });
   }
 
   /**
@@ -117,10 +117,10 @@ export class AssignmentService {
    * Falls back to any staff with OWNER/BRANCH_MANAGER/FINANCE_MANAGER/SALES role
    * if no one is explicitly online.
    */
-  async autoAssign(sessionId: string): Promise<string | null> {
-    // Get staff with open session counts
-    const counts = await this.getStaffSessionCounts();
-    const countMap = new Map(counts.map((c) => [c.staffId, c.openCount]));
+  async autoAssign(roomId: string): Promise<string | null> {
+    // Get staff with open room counts
+    const counts = await this.getStaffRoomCounts();
+    const countMap = new Map(counts.map((c) => [c.staffId, c.activeCount]));
 
     // Get all eligible staff (active, not deleted)
     const eligibleStaff = await this.prisma.user.findMany({
@@ -134,7 +134,7 @@ export class AssignmentService {
 
     if (eligibleStaff.length === 0) return null;
 
-    // Pick the one with fewest open sessions (round-robin / least-busy)
+    // Pick the one with fewest active rooms (round-robin / least-busy)
     let bestStaffId = eligibleStaff[0].id;
     let bestCount = countMap.get(bestStaffId) ?? 0;
 
@@ -146,25 +146,19 @@ export class AssignmentService {
       }
     }
 
-    await this.assign(sessionId, bestStaffId);
+    await this.assign(roomId, bestStaffId);
     return bestStaffId;
   }
 
-  /** Get session counts per staff (for load balancing) */
-  async getStaffSessionCounts(): Promise<
-    { staffId: string; openCount: number }[]
+  /** Get room counts per staff (for load balancing) */
+  async getStaffRoomCounts(): Promise<
+    { staffId: string; activeCount: number }[]
   > {
-    const counts = await this.prisma.chatSession.groupBy({
+    const counts = await this.prisma.chatRoom.groupBy({
       by: ['assignedToId'],
       where: {
         assignedToId: { not: null },
-        sessionStatus: {
-          in: [
-            ChatSessionStatus.OPEN,
-            ChatSessionStatus.PENDING,
-            ChatSessionStatus.HANDOFF,
-          ],
-        },
+        status: ChatRoomStatus.ACTIVE,
         deletedAt: null,
       },
       _count: { id: true },
@@ -174,7 +168,7 @@ export class AssignmentService {
       .filter((c) => c.assignedToId !== null)
       .map((c) => ({
         staffId: c.assignedToId!,
-        openCount: c._count.id,
+        activeCount: c._count.id,
       }));
   }
 }

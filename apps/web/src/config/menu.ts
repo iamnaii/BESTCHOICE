@@ -284,6 +284,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'รายงาน', path: '/reports', icon: BarChart3 },
         { label: 'กำไร-ขาดทุน', path: '/profit-loss', icon: PieChart },
         { label: 'Ads & ROI', path: '/ads', icon: Target },
+        { label: 'Broadcast', path: '/broadcast', icon: Send },
       ],
     },
     {
@@ -361,7 +362,6 @@ const OWNER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'Rich Menu', path: '/settings/rich-menu', icon: LayoutGrid },
         { label: 'ข้อความต้อนรับ', path: '/settings/line-greeting', icon: MessageSquareMore },
-        { label: 'Broadcast', path: '/broadcast', icon: Send },
       ],
     },
     {

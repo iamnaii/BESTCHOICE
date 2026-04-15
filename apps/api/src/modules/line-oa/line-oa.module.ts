@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { LineOaController } from './line-oa.controller';
 import { LineOaChatbotController } from './line-oa-chatbot.controller';
 import { LineOaPaymentController } from './line-oa-payment.controller';
@@ -23,7 +23,7 @@ import { PDPAModule } from '../pdpa/pdpa.module';
 import { ChatbotFinanceModule } from '../chatbot-finance/chatbot-finance.module';
 
 @Module({
-  imports: [ContractsModule, PDPAModule, ChatbotFinanceModule],
+  imports: [forwardRef(() => ContractsModule), PDPAModule, forwardRef(() => ChatbotFinanceModule)],
   controllers: [LineOaController, LineOaChatbotController, LineOaPaymentController, LineOaCampaignController, LiffApiController, LineLoginController, BroadcastController],
   providers: [
     LineOaService,

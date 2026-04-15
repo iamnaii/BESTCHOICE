@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { NotificationsController } from './notifications.controller';
@@ -14,7 +14,7 @@ const enableWebSocket = process.env.ENABLE_WEBSOCKET === 'true';
 @Module({
   imports: [
     PrismaModule,
-    LineOaModule,
+    forwardRef(() => LineOaModule),
     ...(enableWebSocket ? [JwtModule.registerAsync({
       useFactory: (config: ConfigService) => ({
         secret: config.get<string>('JWT_SECRET'),

@@ -42,7 +42,7 @@ import { StaffChatModule } from '../staff-chat/staff-chat.module';
  *   E  ✅ admin endpoints + analytics/sessions/KB UI
  */
 @Module({
-  imports: [NotificationsModule, forwardRef(() => StaffChatModule)], // SMS for OTP + WS events to Unified Inbox
+  imports: [forwardRef(() => NotificationsModule), forwardRef(() => StaffChatModule)], // SMS for OTP + WS events to Unified Inbox
   controllers: [
     ChatbotFinanceController,
     ChatbotFinanceLiffController,

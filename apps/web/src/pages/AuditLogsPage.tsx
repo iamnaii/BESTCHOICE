@@ -5,6 +5,8 @@ import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import { useDebounce } from '@/hooks/useDebounce';
 import QueryBoundary from '@/components/QueryBoundary';
+import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, auditActionMap } from '@/lib/status-badges';
 import { formatDateTimeSeconds } from '@/utils/formatters';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { toast } from 'sonner';
@@ -32,28 +34,6 @@ interface AuditStats {
   totalCount: number;
   recentErrors: number;
 }
-
-const actionColors: Record<string, string> = {
-  POST: 'bg-success/10 text-success dark:bg-success/15',
-  PUT: 'bg-primary/10 text-primary dark:bg-primary/15',
-  PATCH: 'bg-warning/10 text-warning dark:bg-warning/15',
-  DELETE: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
-  EXCHANGE: 'bg-primary/10 text-primary dark:bg-primary/15',
-  REPOSSESSION: 'bg-warning/10 text-warning dark:bg-warning/15',
-  CREATE_CALL_LOG: 'bg-success/10 text-success dark:bg-success/15',
-  STATUS_CHANGE: 'bg-primary/10 text-primary dark:bg-primary/15',
-};
-
-const actionLabels: Record<string, string> = {
-  POST: 'สร้าง',
-  PUT: 'แก้ไข',
-  PATCH: 'อัพเดท',
-  DELETE: 'ลบ',
-  EXCHANGE: 'เปลี่ยนเครื่อง',
-  REPOSSESSION: 'ยึดคืน',
-  CREATE_CALL_LOG: 'บันทึกการโทร',
-  STATUS_CHANGE: 'เปลี่ยนสถานะ',
-};
 
 const entityLabels: Record<string, string> = {
   products: 'สินค้า',
@@ -136,7 +116,7 @@ export default function AuditLogsPage() {
                     data: logs.map((log) => ({
                       createdAt: formatDateTimeSeconds(log.createdAt),
                       user: log.user?.name || '-',
-                      action: actionLabels[log.action] || log.action,
+                      action: getStatusBadgeProps(log.action, auditActionMap).label,
                       entity: entityLabels[log.entity] || log.entity,
                       detail: log.entityId ? `${log.entity}/${log.entityId.substring(0, 8)}` : '-',
                     })),
@@ -280,12 +260,17 @@ export default function AuditLogsPage() {
                             {log.user?.name || '-'}
                           </div>
                           <div className="px-4 py-3 w-32 shrink-0">
-                            <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                              actionColors[log.action] ||
-                              (log.action.endsWith('_ERROR') ? 'bg-destructive/10 text-destructive dark:bg-destructive/15' : 'bg-muted text-foreground')
-                            }`}>
-                              {actionLabels[log.action] || log.action}
-                            </span>
+                            {(() => {
+                              const cfg = getStatusBadgeProps(
+                                log.action.endsWith('_ERROR') ? 'DELETE' : log.action,
+                                auditActionMap,
+                              );
+                              return (
+                                <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">
+                                  {cfg.label}
+                                </Badge>
+                              );
+                            })()}
                           </div>
                           <div className="px-4 py-3 w-28 shrink-0 text-foreground">
                             {entityLabels[log.entity] || log.entity}

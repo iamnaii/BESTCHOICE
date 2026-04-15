@@ -7,6 +7,8 @@ import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, payoutStatusMap } from '@/lib/status-badges';
 import { toast } from 'sonner';
 import { DollarSign, CheckCircle, Clock, Banknote, ListOrdered, Sparkles } from 'lucide-react';
 
@@ -37,17 +39,10 @@ interface CommissionPayout {
   notes?: string | null;
 }
 
-const statusConfig: Record<string, { label: string; className: string }> = {
+const commissionStatusMap: Record<string, { label: string; className: string }> = {
   PENDING: { label: 'รออนุมัติ', className: 'bg-warning/10 text-warning' },
   APPROVED: { label: 'อนุมัติแล้ว', className: 'bg-primary/10 text-primary' },
   PAID: { label: 'จ่ายแล้ว', className: 'bg-success/10 text-success' },
-};
-
-const payoutStatusConfig: Record<string, { label: string; className: string }> = {
-  DRAFT: { label: 'ร่าง', className: 'bg-muted text-muted-foreground' },
-  APPROVED: { label: 'อนุมัติแล้ว', className: 'bg-primary/10 text-primary' },
-  PAID: { label: 'จ่ายแล้ว', className: 'bg-success/10 text-success' },
-  CANCELLED: { label: 'ยกเลิก', className: 'bg-destructive/10 text-destructive' },
 };
 
 type Tab = 'commissions' | 'payouts';
@@ -249,7 +244,7 @@ export default function CommissionsPage() {
         key: 'status',
         label: 'สถานะ',
         render: (c: Commission) => {
-          const config = statusConfig[c.status] || {
+          const config = commissionStatusMap[c.status] || {
             label: c.status,
             className: 'bg-muted text-muted-foreground',
           };
@@ -335,14 +330,11 @@ export default function CommissionsPage() {
         key: 'status',
         label: 'สถานะ',
         render: (p: CommissionPayout) => {
-          const cfg = payoutStatusConfig[p.status] || {
-            label: p.status,
-            className: 'bg-muted text-muted-foreground',
-          };
+          const cfg = getStatusBadgeProps(p.status, payoutStatusMap);
           return (
-            <span className={`inline-flex px-2.5 py-0.5 rounded-md text-xs font-medium ${cfg.className}`}>
+            <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">
               {cfg.label}
-            </span>
+            </Badge>
           );
         },
       },

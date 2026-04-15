@@ -254,6 +254,44 @@ export const accountingPeriodStatusMap: Record<string, StatusConfig> = {
   SYNCED: { variant: 'success', appearance: 'light', label: 'Sync แล้ว' },
 };
 
+// ─── Commission payout statuses ───────────────────────────────────────────────
+
+export const payoutStatusMap: Record<string, StatusConfig> = {
+  DRAFT: { variant: 'secondary', label: 'ร่าง' },
+  APPROVED: { variant: 'primary', appearance: 'light', label: 'อนุมัติแล้ว' },
+  PAID: { variant: 'success', appearance: 'light', label: 'จ่ายแล้ว' },
+  CANCELLED: { variant: 'destructive', appearance: 'light', label: 'ยกเลิก' },
+};
+
+// ─── Todo statuses ────────────────────────────────────────────────────────────
+
+export const todoStatusMap: Record<string, StatusConfig> = {
+  TODO: { variant: 'secondary', label: 'รอทำ' },
+  DOING: { variant: 'primary', appearance: 'light', label: 'กำลังทำ' },
+  DONE: { variant: 'success', appearance: 'light', label: 'เสร็จแล้ว' },
+};
+
+// ─── Audit action types ───────────────────────────────────────────────────────
+
+export const auditActionMap: Record<string, StatusConfig> = {
+  CREATE: { variant: 'success', appearance: 'light', label: 'สร้าง' },
+  UPDATE: { variant: 'primary', appearance: 'light', label: 'แก้ไข' },
+  DELETE: { variant: 'destructive', appearance: 'light', label: 'ลบ' },
+  LOGIN: { variant: 'info', appearance: 'light', label: 'เข้าสู่ระบบ' },
+  LOGOUT: { variant: 'secondary', label: 'ออกจากระบบ' },
+  EXPORT: { variant: 'warning', appearance: 'light', label: 'ส่งออก' },
+  // HTTP method aliases (used by AuditLog interceptor)
+  POST: { variant: 'success', appearance: 'light', label: 'สร้าง' },
+  PUT: { variant: 'primary', appearance: 'light', label: 'แก้ไข' },
+  PATCH: { variant: 'primary', appearance: 'light', label: 'แก้ไข' },
+  GET: { variant: 'info', appearance: 'light', label: 'ดูข้อมูล' },
+  // Domain actions
+  EXCHANGE: { variant: 'primary', appearance: 'light', label: 'เปลี่ยนเครื่อง' },
+  REPOSSESSION: { variant: 'warning', appearance: 'light', label: 'ยึดคืน' },
+  CREATE_CALL_LOG: { variant: 'success', appearance: 'light', label: 'บันทึกการโทร' },
+  STATUS_CHANGE: { variant: 'primary', appearance: 'light', label: 'เปลี่ยนสถานะ' },
+};
+
 // ─── Generic active/inactive ──────────────────────────────────────────────────
 
 export const activeStatusMap: Record<string, StatusConfig> = {

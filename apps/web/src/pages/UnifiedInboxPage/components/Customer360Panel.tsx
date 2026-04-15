@@ -224,25 +224,62 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
         )}
       </div>
 
-      {/* ─── 1e. Warranty ────────────────────────────────── */}
+      {/* ─── 1e. Warranty (2-tier: manufacturer + shop) ─── */}
       <div className="p-4 border-b border-gray-100">
         <SectionHeader icon={Shield} label="การรับประกัน" />
-        {firstProduct?.warrantyExpireDate ? (
-          <div className="text-[12px]">
-            {isPast(new Date(firstProduct.warrantyExpireDate)) ? (
-              <span className="text-red-600">
-                ❌ หมดประกัน {format(new Date(firstProduct.warrantyExpireDate), 'dd MMM yyyy', { locale: th })}
-              </span>
-            ) : (
-              <div>
-                <span className="text-green-600">
-                  ✅ ถึง {format(new Date(firstProduct.warrantyExpireDate), 'dd MMM yyyy', { locale: th })}
-                </span>
-                <span className="text-muted-foreground ml-1">
-                  (เหลือ {differenceInDays(new Date(firstProduct.warrantyExpireDate), new Date())} วัน)
-                </span>
-              </div>
-            )}
+        {summary?.activeContracts?.length > 0 ? (
+          <div className="space-y-3">
+            {summary.activeContracts.map((c: any) => {
+              const product = c.product;
+              const productName = product?.name ?? `${product?.brand ?? ''} ${product?.model ?? ''}`.trim() ?? 'สินค้า';
+              const isUsed = !!c.shopWarrantyEndDate;
+              const conditionLabel = isUsed ? 'มือสอง' : 'ใหม่';
+
+              // Manufacturer warranty
+              const mfrDate = product?.warrantyExpireDate ? new Date(product.warrantyExpireDate) : null;
+              const mfrExpired = mfrDate ? isPast(mfrDate) : true;
+              const mfrDays = mfrDate && !mfrExpired ? differenceInDays(mfrDate, new Date()) : 0;
+
+              // Shop warranty
+              const shopDate = c.shopWarrantyEndDate ? new Date(c.shopWarrantyEndDate) : null;
+              const shopExpired = shopDate ? isPast(shopDate) : false;
+              const shopDays = shopDate && !shopExpired ? differenceInDays(shopDate, new Date()) : 0;
+
+              return (
+                <div key={c.id} className="text-[12px]">
+                  <p className="font-medium text-gray-700 mb-1">
+                    📱 {productName}{' '}
+                    <span className="text-[10px] text-gray-400 font-normal">({conditionLabel})</span>
+                  </p>
+
+                  {/* Manufacturer warranty */}
+                  {mfrDate ? (
+                    mfrExpired ? (
+                      <p className="text-red-500 ml-3">❌ ศูนย์: หมดแล้ว</p>
+                    ) : (
+                      <p className="text-green-600 ml-3">
+                        ✅ ศูนย์: ถึง {format(mfrDate, 'dd MMM yyyy', { locale: th })}{' '}
+                        <span className="text-gray-400">(เหลือ {mfrDays} วัน)</span>
+                      </p>
+                    )
+                  ) : (
+                    <p className="text-red-500 ml-3">❌ ศูนย์: หมดแล้ว</p>
+                  )}
+
+                  {/* Shop warranty — only show when exists */}
+                  {shopDate && (
+                    shopExpired ? (
+                      <p className="text-red-500 ml-3">❌ ร้าน: หมดแล้ว</p>
+                    ) : (
+                      <p className="text-green-600 ml-3">
+                        ✅ ร้าน: ถึง {format(shopDate, 'dd MMM yyyy', { locale: th })}{' '}
+                        <span className="text-gray-400">(เหลือ {shopDays} วัน)</span>
+                      </p>
+                    )
+                  )}
+                </div>
+              );
+            })}
           </div>
         ) : (
           <p className="text-[12px] text-muted-foreground">ไม่มีข้อมูลประกัน</p>

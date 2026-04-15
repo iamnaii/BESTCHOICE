@@ -17,7 +17,7 @@ interface AiSuggestResponse {
 
 interface AiSuggestPanelProps {
   sessionId: string;
-  onSelectSuggestion: (text: string) => void;
+  onSelectSuggestion: (text: string, metadata: { aiDraft: string; intent: string }) => void;
   lastMessageAt: number;
 }
 
@@ -73,7 +73,7 @@ export default function AiSuggestPanel({
           {data?.suggestions.map((suggestion, i) => (
             <button
               key={i}
-              onClick={() => onSelectSuggestion(suggestion.text)}
+              onClick={() => onSelectSuggestion(suggestion.text, { aiDraft: suggestion.text, intent: suggestion.intent })}
               className={cn(
                 'flex-1 min-w-[200px] max-w-[300px] text-left px-3 py-2 rounded-lg border transition-all duration-150',
                 'text-[12px] leading-relaxed text-foreground/80',

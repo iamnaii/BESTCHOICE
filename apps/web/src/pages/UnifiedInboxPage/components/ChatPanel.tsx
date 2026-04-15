@@ -5,6 +5,7 @@ import SessionActions from './SessionActions';
 import CommandPalette from './CommandPalette';
 import AiSuggestPanel from './AiSuggestPanel';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
+import api from '@/lib/api';
 
 interface ChatPanelProps {
   session: any;
@@ -30,6 +31,7 @@ export default function ChatPanel({
   onReturnToAI,
 }: ChatPanelProps) {
   const [inputText, setInputText] = useState('');
+  const [selectedSuggestion, setSelectedSuggestion] = useState<{ aiDraft: string; intent: string } | null>(null);
   const [showActions, setShowActions] = useState(false);
   const [showEmoji, setShowEmoji] = useState(false);
   const [showPalette, setShowPalette] = useState(false);
@@ -69,10 +71,27 @@ export default function ChatPanel({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages.length]);
 
+  const getLastCustomerMessage = () => {
+    const customerMsgs = messages.filter((m: any) => m.role === 'CUSTOMER');
+    return customerMsgs[customerMsgs.length - 1]?.text ?? customerMsgs[customerMsgs.length - 1]?.content ?? '';
+  };
+
   const handleSend = () => {
     const text = inputText.trim();
     if (!text) return;
     onSendMessage(text);
+    if (selectedSuggestion) {
+      const type = text === selectedSuggestion.aiDraft ? 'ACCEPT' : 'EDIT';
+      api.post('/staff-chat/ai/training-feedback', {
+        sessionId: session.id,
+        type,
+        customerMessage: getLastCustomerMessage(),
+        aiDraft: selectedSuggestion.aiDraft,
+        humanEdit: type === 'EDIT' ? text : undefined,
+        intent: selectedSuggestion.intent,
+      }).catch(() => {});
+      setSelectedSuggestion(null);
+    }
     setInputText('');
     inputRef.current?.focus();
   };
@@ -94,8 +113,9 @@ export default function ChatPanel({
       ? new Date(messages[messages.length - 1]?.createdAt ?? 0).getTime()
       : 0;
 
-  const handleSelectSuggestion = (text: string) => {
+  const handleSelectSuggestion = (text: string, metadata: { aiDraft: string; intent: string }) => {
     setInputText(text);
+    setSelectedSuggestion(metadata);
     inputRef.current?.focus();
   };
 

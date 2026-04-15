@@ -99,6 +99,9 @@ const CollectionDashboardPage = lazy(() => import('@/pages/CollectionDashboardPa
 const DunningSettingsPage = lazy(() => import('@/pages/DunningSettingsPage'));
 const MonthlyClosePage = lazy(() => import('@/pages/MonthlyClosePage'));
 const PeakSyncPage = lazy(() => import('@/pages/PeakSyncPage'));
+const AiSettingsPage = lazy(() => import('@/pages/AiSettingsPage'));
+const AiTrainingPage = lazy(() => import('@/pages/AiTrainingPage'));
+const AiPerformancePage = lazy(() => import('@/pages/AiPerformancePage'));
 
 const PageLoader = () => (
   <div className="flex items-center justify-center py-20">
@@ -624,6 +627,30 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER']}>
                 <CannedResponseAdminPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings/ai-chat"
+            element={
+              <ProtectedRoute roles={['OWNER']}>
+                <AiSettingsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings/ai-training"
+            element={
+              <ProtectedRoute roles={['OWNER']}>
+                <AiTrainingPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings/ai-performance"
+            element={
+              <ProtectedRoute roles={['OWNER']}>
+                <AiPerformancePage />
               </ProtectedRoute>
             }
           />

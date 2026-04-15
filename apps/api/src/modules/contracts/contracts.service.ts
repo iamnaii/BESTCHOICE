@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, Logger, Optional, NotFoundException, BadRequestException, ForbiddenException, InternalServerErrorException } from '@nestjs/common';
 import { StructuredLoggerService } from '../../common/logger';
 import { PlanType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -15,6 +15,7 @@ import { CreateContractDto, UpdateContractDto } from './dto/contract.dto';
 import { calculateInstallment, generatePaymentSchedule } from '../../utils/installment.util';
 import { loadInstallmentConfig, resolveInstallmentParams, resolveVatPctForBranch } from '../../utils/config.util';
 import { generateContractNumber } from '../../utils/sequence.util';
+import { WarrantyService } from '../warranty/warranty.service';
 import {
   validateIMEI,
   validateThaiPhone,
@@ -31,6 +32,7 @@ export class ContractsService {
   private readonly structuredLogger = new StructuredLoggerService(ContractsService.name);
   constructor(
     private prisma: PrismaService,
+    @Optional() private warrantyService?: WarrantyService,
   ) {}
 
   async findAll(filters: {
@@ -439,6 +441,14 @@ export class ContractsService {
     }
 
     const created = await this.findOne(contract!.id);
+
+    // Auto-set shop warranty for used phones (fire-and-forget)
+    if (this.warrantyService) {
+      this.warrantyService.setShopWarranty(created.id).catch((err) =>
+        this.logger.error('Failed to set shop warranty', err),
+      );
+    }
+
     this.structuredLogger.log('contract.created', {
       contractId: created.id,
       contractNumber: created.contractNumber,

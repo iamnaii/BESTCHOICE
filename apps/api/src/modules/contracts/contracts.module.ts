@@ -13,9 +13,10 @@ import { OcrModule } from '../ocr/ocr.module';
 import { SettingsModule } from '../settings/settings.module';
 import { JournalModule } from '../journal/journal.module';
 import { ProductsModule } from '../products/products.module';
+import { WarrantyModule } from '../warranty/warranty.module';
 
 @Module({
-  imports: [NotificationsModule, OcrModule, SettingsModule, JournalModule, ProductsModule],
+  imports: [NotificationsModule, OcrModule, SettingsModule, JournalModule, ProductsModule, WarrantyModule],
   controllers: [ContractsController, ContractDocumentsController, DocumentsController],
   providers: [ContractsService, ContractWorkflowService, ContractPaymentService, ContractDocumentService, ContractDocumentsService, DocumentsService],
   exports: [ContractsService, ContractWorkflowService, ContractPaymentService, ContractDocumentService, ContractDocumentsService, DocumentsService],

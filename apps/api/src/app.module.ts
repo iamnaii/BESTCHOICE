@@ -55,6 +55,7 @@ import { TaxModule } from './modules/tax/tax.module';
 import { CommissionModule } from './modules/commission/commission.module';
 import { TradeInModule } from './modules/trade-in/trade-in.module';
 import { PromotionsModule } from './modules/promotions/promotions.module';
+import { WarrantyModule } from './modules/warranty/warranty.module';
 import { AssetModule } from './modules/asset/asset.module';
 import { TodosModule } from './modules/todos/todos.module';
 import { ChatbotFinanceModule } from './modules/chatbot-finance/chatbot-finance.module';
@@ -165,6 +166,8 @@ import { AppCacheModule } from './cache/cache.module';
     // Trade-In & Promotions
     TradeInModule,
     PromotionsModule,
+    // Warranty
+    WarrantyModule,
     // Fixed Asset & Depreciation
     AssetModule,
     // Todos / Task management

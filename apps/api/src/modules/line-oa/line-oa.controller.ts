@@ -205,20 +205,34 @@ export class LineOaController {
   @Roles('OWNER')
   async getGreeting() {
     const config = await this.prisma.systemConfig.findUnique({
-      where: { key: 'line.greetingMessage' },
+      where: { key: 'line.greetingMessages' },
     });
-    return { greetingMessage: config?.value ?? '' };
+    const messages = config?.value ? JSON.parse(config.value) : [];
+    const showQuickReply = await this.prisma.systemConfig.findUnique({
+      where: { key: 'line.greetingQuickReply' },
+    });
+    return {
+      messages, // array of { type, content }
+      showQuickReply: showQuickReply?.value !== 'false',
+    };
   }
 
   @Put('greeting')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('OWNER')
-  async updateGreeting(@Body() body: { greetingMessage: string }) {
+  async updateGreeting(@Body() body: { messages: any[]; showQuickReply?: boolean }) {
     await this.prisma.systemConfig.upsert({
-      where: { key: 'line.greetingMessage' },
-      create: { key: 'line.greetingMessage', value: body.greetingMessage, label: 'LINE greeting message' },
-      update: { value: body.greetingMessage, deletedAt: null },
+      where: { key: 'line.greetingMessages' },
+      create: { key: 'line.greetingMessages', value: JSON.stringify(body.messages), label: 'LINE greeting messages' },
+      update: { value: JSON.stringify(body.messages), deletedAt: null },
     });
+    if (body.showQuickReply !== undefined) {
+      await this.prisma.systemConfig.upsert({
+        where: { key: 'line.greetingQuickReply' },
+        create: { key: 'line.greetingQuickReply', value: String(body.showQuickReply), label: 'Show Quick Reply after greeting' },
+        update: { value: String(body.showQuickReply), deletedAt: null },
+      });
+    }
     return { success: true };
   }
 

@@ -116,17 +116,60 @@ export class LineOaChatbotController {
     // Link LINE ID to customer (idempotent — no-op if already linked)
     await this.lineOaService.linkLineId(userId);
 
-    // Send welcome message with Quick Reply buttons
-    const welcomeText =
-      '🎉 ยินดีต้อนรับสู่ BESTCHOICE!\n\nร้านมือถือผ่อนราคาดี ดาวน์น้อย อนุมัติไว\nสนใจสอบถามได้เลยครับ/ค่ะ';
+    // Load greeting messages from SystemConfig
+    const [greetingConfig, quickReplyConfig] = await Promise.all([
+      this.prisma.systemConfig.findUnique({ where: { key: 'line.greetingMessages' } }),
+      this.prisma.systemConfig.findUnique({ where: { key: 'line.greetingQuickReply' } }),
+    ]);
 
-    await this.lineOaService.replyMessage(event.replyToken, [
-      {
+    const showQuickReply = quickReplyConfig?.value !== 'false';
+
+    let lineMessages: any[];
+
+    if (greetingConfig?.value) {
+      try {
+        const stored: Array<{ type: string; content: any }> = JSON.parse(greetingConfig.value);
+        lineMessages = stored.map((item, idx) => {
+          const isLast = idx === stored.length - 1;
+          const quickReplyObj = isLast && showQuickReply ? { quickReply: { items: this.quickReplyService.greeting() } } : {};
+
+          if (item.type === 'text') {
+            return { type: 'text', text: item.content?.text || '', ...quickReplyObj };
+          }
+          if (item.type === 'image') {
+            return { type: 'image', originalContentUrl: item.content?.imageUrl || '', previewImageUrl: item.content?.imageUrl || '', ...quickReplyObj };
+          }
+          if (item.type === 'flex') {
+            let flexContents: any;
+            if (item.content?.flexMode === 'json') {
+              try { flexContents = JSON.parse(item.content.jsonText); } catch { flexContents = null; }
+            } else {
+              flexContents = item.content?.flexContents || null;
+            }
+            if (!flexContents) return null;
+            return { type: 'flex', altText: item.content?.altText || 'ข้อความจาก BESTCHOICE', contents: flexContents, ...quickReplyObj };
+          }
+          return null;
+        }).filter(Boolean);
+      } catch {
+        lineMessages = [];
+      }
+    } else {
+      // Fallback default greeting
+      lineMessages = [];
+    }
+
+    if (lineMessages.length === 0) {
+      // Use hardcoded default if nothing stored
+      const welcomeText = 'สวัสดีครับ! ยินดีต้อนรับสู่ BESTCHOICE 🎉\n\nร้านมือถือผ่อนราคาดี ดาวน์น้อย อนุมัติไว\nสนใจสอบถามได้เลยครับ/ค่ะ';
+      lineMessages = [{
         type: 'text',
         text: welcomeText,
-        quickReply: { items: this.quickReplyService.greeting() },
-      },
-    ]);
+        ...(showQuickReply ? { quickReply: { items: this.quickReplyService.greeting() } } : {}),
+      }];
+    }
+
+    await this.lineOaService.replyMessage(event.replyToken, lineMessages);
   }
 
   // ─── Text Message Handler ─────────────────────────────

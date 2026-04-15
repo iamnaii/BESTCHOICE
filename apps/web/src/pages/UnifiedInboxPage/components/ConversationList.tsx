@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Search, Filter } from 'lucide-react';
 import { useDebounce } from '@/hooks/useDebounce';
+import { cn } from '@/lib/utils';
 import ConversationItem from './ConversationItem';
 import ChannelFilter from './ChannelFilter';
 
@@ -26,6 +27,7 @@ export default function ConversationList({
   onFiltersChange,
 }: ConversationListProps) {
   const [searchInput, setSearchInput] = useState(filters.search ?? '');
+  const [sortBy, setSortBy] = useState<'time' | 'priority'>('time');
   const debouncedSearch = useDebounce(searchInput, 300);
 
   // Update parent filter when debounced search changes
@@ -36,10 +38,17 @@ export default function ConversationList({
     }
   }, [debouncedSearch]);
 
+  const sortedSessions = useMemo(() => {
+    if (sortBy === 'priority') {
+      return [...sessions].sort((a, b) => (b.leadScore ?? 0) - (a.leadScore ?? 0));
+    }
+    return sessions;
+  }, [sessions, sortBy]);
+
   return (
     <div className="flex flex-col h-full border-r border-gray-200">
-      {/* Search */}
-      <div className="p-3 border-b border-gray-200">
+      {/* Search + Sort */}
+      <div className="p-3 border-b border-gray-200 space-y-2">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
@@ -49,6 +58,19 @@ export default function ConversationList({
             onChange={(e) => setSearchInput(e.target.value)}
             className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
           />
+        </div>
+        <div className="flex items-center justify-end">
+          <button
+            onClick={() => setSortBy(sortBy === 'time' ? 'priority' : 'time')}
+            className={cn(
+              'text-[11px] px-2 py-1 rounded-md border transition-colors',
+              sortBy === 'priority'
+                ? 'bg-primary/10 text-primary border-primary/30'
+                : 'text-muted-foreground border-border/50 hover:bg-muted/50',
+            )}
+          >
+            {sortBy === 'priority' ? '🔥 Priority' : '🕐 เวลา'}
+          </button>
         </div>
       </div>
 
@@ -72,7 +94,7 @@ export default function ConversationList({
             <span>ไม่พบการสนทนา</span>
           </div>
         ) : (
-          sessions.map((session) => (
+          sortedSessions.map((session) => (
             <ConversationItem
               key={session.id}
               session={session}

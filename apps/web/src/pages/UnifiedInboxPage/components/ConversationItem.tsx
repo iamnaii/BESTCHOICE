@@ -11,6 +11,8 @@ interface ConversationItemProps {
     channel: string;
     sessionStatus: string;
     priority: string;
+    leadTemperature?: string | null;
+    leadScore?: number | null;
     customer?: { id: string; name: string; phone?: string } | null;
     assignedTo?: { id: string; name: string; avatarUrl?: string | null } | null;
     tags?: { tag: string }[];
@@ -72,7 +74,19 @@ export default function ConversationItem({ session, isActive, onClick }: Convers
       {/* Content */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-2">
-          <span className="font-medium text-sm text-gray-900 truncate">{displayName}</span>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="font-medium text-sm text-gray-900 truncate">{displayName}</span>
+            {session.leadTemperature === 'HOT' && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-500/15 text-red-600 flex-shrink-0">
+                🔥 HOT
+              </span>
+            )}
+            {session.leadTemperature === 'WARM' && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/15 text-amber-600 flex-shrink-0">
+                WARM
+              </span>
+            )}
+          </div>
           <span className="text-xs text-gray-400 flex-shrink-0">
             {formatDistanceToNow(new Date(session.lastMessageAt), { addSuffix: true, locale: th })}
           </span>

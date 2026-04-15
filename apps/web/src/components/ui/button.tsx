@@ -9,8 +9,8 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        primary: 'bg-primary text-primary-foreground hover:bg-primary/90 data-[state=open]:bg-primary/90',
-        mono: 'bg-zinc-950 text-white dark:bg-zinc-300 dark:text-black hover:bg-zinc-950/90 dark:hover:bg-zinc-300/90 data-[state=open]:bg-zinc-950/90 dark:data-[state=open]:bg-zinc-300/90',
+        primary: 'bg-[#059669] text-white hover:bg-[#047857] active:bg-[#065f46] shadow-[0_2px_8px_rgba(5,150,105,0.25)]',
+        mono: 'bg-[#f0f5ff] text-[#1e3a5f] border border-[#d6e4ff] hover:bg-[#d6e4ff]',
         destructive:
           'bg-destructive text-destructive-foreground hover:bg-destructive/90 data-[state=open]:bg-destructive/90',
         secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/90 data-[state=open]:bg-secondary/90',
@@ -50,8 +50,8 @@ const buttonVariants = cva(
         circle: 'rounded-full',
       },
       mode: {
-        default: 'focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-        icon: 'focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 shrink-0',
+        default: 'focus-visible:ring-2 focus-visible:ring-[#059669]/30 focus-visible:ring-offset-2',
+        icon: 'focus-visible:ring-2 focus-visible:ring-[#059669]/30 focus-visible:ring-offset-2 shrink-0',
         link: 'text-primary h-auto p-0 bg-transparent rounded-none hover:bg-transparent data-[state=open]:bg-transparent',
         input: `
             justify-start font-normal hover:bg-background [&_svg]:transition-colors [&_svg]:hover:text-foreground data-[state=open]:bg-background

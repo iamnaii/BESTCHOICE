@@ -33,6 +33,8 @@ import { LeadScoringService } from './services/lead-scoring.service';
 import { ProductDetectService } from './services/product-detect.service';
 import { AiTrainingService } from './services/ai-training.service';
 import { AiAutoReplyService } from './services/ai-auto-reply.service';
+import { AiImportService } from './services/ai-import.service';
+import { AiMetricsService } from './services/ai-metrics.service';
 import { AiSuggestRequestDto } from './dto/ai-suggest.dto';
 import { SaveFeedbackDto } from './dto/ai-training.dto';
 import { UpdateAiSettingsDto } from './dto/ai-settings.dto';
@@ -60,6 +62,8 @@ export class StaffChatController {
     private productDetect: ProductDetectService,
     private aiTraining: AiTrainingService,
     private aiAutoReply: AiAutoReplyService,
+    private aiImport: AiImportService,
+    private aiMetrics: AiMetricsService,
     private config: ConfigService,
   ) {}
 
@@ -364,5 +368,26 @@ export class StaffChatController {
   @Roles('OWNER')
   async updateAiSettings(@Body() dto: UpdateAiSettingsDto) {
     return this.aiAutoReply.updateSettings(dto);
+  }
+
+  // ─── AI Import & Metrics ──────────────────────────────
+
+  @Post('ai/import')
+  @Roles('OWNER')
+  @UseInterceptors(FileInterceptor('file'))
+  async importChatHistory(@UploadedFile() file: Express.Multer.File) {
+    const content = file.buffer.toString('utf-8');
+    const isJSON = file.originalname.endsWith('.json');
+    const rows = isJSON ? this.aiImport.parseJSON(content) : this.aiImport.parseCSV(content);
+    return this.aiImport.importChatHistory(rows);
+  }
+
+  @Get('ai/metrics')
+  @Roles('OWNER')
+  async getAiMetrics(@Query('from') from?: string, @Query('to') to?: string) {
+    return this.aiMetrics.getMetrics(
+      from ? new Date(from) : undefined,
+      to ? new Date(to) : undefined,
+    );
   }
 }

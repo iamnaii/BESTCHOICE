@@ -7,8 +7,8 @@ import ChannelFilter from './ChannelFilter';
 
 interface ConversationListProps {
   sessions: any[];
-  activeSessionId: string | null;
-  onSelectSession: (sessionId: string) => void;
+  activeRoomId: string | null;
+  onSelectRoom: (roomId: string) => void;
   isLoading: boolean;
   filters: {
     channel?: string;
@@ -20,8 +20,8 @@ interface ConversationListProps {
 
 export default function ConversationList({
   sessions,
-  activeSessionId,
-  onSelectSession,
+  activeRoomId,
+  onSelectRoom,
   isLoading,
   filters,
   onFiltersChange,
@@ -98,8 +98,8 @@ export default function ConversationList({
             <ConversationItem
               key={session.id}
               session={session}
-              isActive={session.id === activeSessionId}
-              onClick={() => onSelectSession(session.id)}
+              isActive={session.id === activeRoomId}
+              onClick={() => onSelectRoom(session.id)}
             />
           ))
         )}

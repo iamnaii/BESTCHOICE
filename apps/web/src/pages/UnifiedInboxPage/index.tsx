@@ -20,7 +20,7 @@ const NOTIFICATION_SOUND_URL = 'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAA
  */
 export default function UnifiedInboxPage() {
   const queryClient = useQueryClient();
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [filters, setFilters] = useState<{
     channel?: string;
     sessionStatus?: string;
@@ -47,20 +47,20 @@ export default function UnifiedInboxPage() {
     if (
       'Notification' in window &&
       Notification.permission === 'granted' &&
-      data.sessionId !== activeSessionId
+      data.roomId !== activeRoomId
     ) {
       new Notification('ข้อความใหม่ — BESTCHOICE', {
         body: data.text?.substring(0, 100) || 'มีข้อความใหม่',
         icon: '/favicon.ico',
-        tag: `chat-${data.sessionId}`, // prevents duplicate notifications per session
+        tag: `chat-${data.roomId}`, // prevents duplicate notifications per room
       });
     }
-  }, [activeSessionId]);
+  }, [activeRoomId]);
 
   // WebSocket for real-time updates
-  const { joinSession, leaveSession, sendMessage, viewSession } = useChatSocket({
+  const { joinRoom, leaveRoom, sendMessage, viewRoom } = useChatSocket({
     onNewMessage: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['chat-messages', data.sessionId] });
+      queryClient.invalidateQueries({ queryKey: ['chat-messages', data.roomId] });
       queryClient.invalidateQueries({ queryKey: ['chat-sessions'] });
       queryClient.invalidateQueries({ queryKey: ['chat-unread-count'] });
       // Sound + browser notification
@@ -68,7 +68,7 @@ export default function UnifiedInboxPage() {
         notifyNewMessage(data);
       }
     },
-    onSessionUpdate: () => {
+    onRoomUpdate: () => {
       queryClient.invalidateQueries({ queryKey: ['chat-sessions'] });
       queryClient.invalidateQueries({ queryKey: ['chat-unread-count'] });
     },
@@ -83,55 +83,55 @@ export default function UnifiedInboxPage() {
     queryKey: ['chat-sessions', filters],
     queryFn: () =>
       api
-        .get('/staff-chat/sessions', { params: filters })
+        .get('/staff-chat/rooms', { params: filters })
         .then((r: any) => r.data),
   });
 
-  // Fetch active session details
+  // Fetch active room details
   const sessionQuery = useQuery({
-    queryKey: ['chat-session', activeSessionId],
+    queryKey: ['chat-session', activeRoomId],
     queryFn: () =>
-      api.get(`/staff-chat/sessions/${activeSessionId}`).then((r: any) => r.data),
-    enabled: !!activeSessionId,
+      api.get(`/staff-chat/rooms/${activeRoomId}`).then((r: any) => r.data),
+    enabled: !!activeRoomId,
   });
 
-  // Fetch messages for active session
+  // Fetch messages for active room
   const messagesQuery = useQuery({
-    queryKey: ['chat-messages', activeSessionId],
+    queryKey: ['chat-messages', activeRoomId],
     queryFn: () =>
       api
-        .get(`/staff-chat/sessions/${activeSessionId}/messages`, {
+        .get(`/staff-chat/rooms/${activeRoomId}/messages`, {
           params: { limit: 100 },
         })
         .then((r: any) => r.data),
-    enabled: !!activeSessionId,
+    enabled: !!activeRoomId,
     refetchInterval: 5000, // Poll every 5s as fallback for WS
   });
 
   // Mutations
   const assignMutation = useMutation({
-    mutationFn: ({ sessionId, staffId }: { sessionId: string; staffId: string }) =>
-      api.patch(`/staff-chat/sessions/${sessionId}/assign`, { staffId }),
+    mutationFn: ({ roomId, staffId }: { roomId: string; staffId: string }) =>
+      api.patch(`/staff-chat/rooms/${roomId}/assign`, { staffId }),
     onSuccess: () => {
       toast.success('มอบหมายแล้ว');
       queryClient.invalidateQueries({ queryKey: ['chat-sessions'] });
-      queryClient.invalidateQueries({ queryKey: ['chat-session', activeSessionId] });
+      queryClient.invalidateQueries({ queryKey: ['chat-session', activeRoomId] });
     },
   });
 
   const resolveMutation = useMutation({
-    mutationFn: (sessionId: string) =>
-      api.patch(`/staff-chat/sessions/${sessionId}/resolve`),
+    mutationFn: (roomId: string) =>
+      api.patch(`/staff-chat/rooms/${roomId}/resolve`),
     onSuccess: () => {
       toast.success('ปิดการสนทนาแล้ว');
       queryClient.invalidateQueries({ queryKey: ['chat-sessions'] });
-      queryClient.invalidateQueries({ queryKey: ['chat-session', activeSessionId] });
+      queryClient.invalidateQueries({ queryKey: ['chat-session', activeRoomId] });
     },
   });
 
   const returnToAIMutation = useMutation({
-    mutationFn: (sessionId: string) =>
-      api.patch(`/staff-chat/sessions/${sessionId}/return-to-ai`),
+    mutationFn: (roomId: string) =>
+      api.patch(`/staff-chat/rooms/${roomId}/return-to-ai`),
     onSuccess: () => {
       toast.success('ส่งกลับ Bot แล้ว');
       queryClient.invalidateQueries({ queryKey: ['chat-sessions'] });
@@ -139,42 +139,42 @@ export default function UnifiedInboxPage() {
   });
 
   // Handlers
-  const handleSelectSession = useCallback(
-    (sessionId: string) => {
-      if (activeSessionId) leaveSession(activeSessionId);
-      setActiveSessionId(sessionId);
-      joinSession(sessionId);
-      viewSession(sessionId);
+  const handleSelectRoom = useCallback(
+    (roomId: string) => {
+      if (activeRoomId) leaveRoom(activeRoomId);
+      setActiveRoomId(roomId);
+      joinRoom(roomId);
+      viewRoom(roomId);
     },
-    [activeSessionId, joinSession, leaveSession],
+    [activeRoomId, joinRoom, leaveRoom],
   );
 
   const handleSendMessage = useCallback(
     (text: string) => {
-      if (!activeSessionId) return;
-      sendMessage(activeSessionId, text);
+      if (!activeRoomId) return;
+      sendMessage(activeRoomId, text);
       // Optimistic: invalidate messages
       setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ['chat-messages', activeSessionId] });
+        queryClient.invalidateQueries({ queryKey: ['chat-messages', activeRoomId] });
       }, 300);
     },
-    [activeSessionId, sendMessage, queryClient],
+    [activeRoomId, sendMessage, queryClient],
   );
 
   const uploadFileMutation = useMutation({
     mutationFn: async (file: File) => {
-      if (!activeSessionId) throw new Error('ไม่มี session');
+      if (!activeRoomId) throw new Error('ไม่มี room');
       const formData = new FormData();
       formData.append('file', file);
-      const { data } = await api.post(`/staff-chat/sessions/${activeSessionId}/upload`, formData, {
+      const { data } = await api.post(`/staff-chat/rooms/${activeRoomId}/upload`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       return data;
     },
     onSuccess: () => {
       toast.success('อัพโหลดไฟล์เรียบร้อย');
-      if (activeSessionId) {
-        queryClient.invalidateQueries({ queryKey: ['chat-messages', activeSessionId] });
+      if (activeRoomId) {
+        queryClient.invalidateQueries({ queryKey: ['chat-messages', activeRoomId] });
       }
     },
     onError: (err: unknown) => {
@@ -194,7 +194,7 @@ export default function UnifiedInboxPage() {
   return (
     <div className="h-[calc(100vh-5rem)] -mt-5 -mb-8 flex bg-white rounded-xl shadow-sm overflow-hidden">
       {/* Left panel: Conversation list */}
-      <div className={`w-72 flex-shrink-0 min-h-0 ${activeSessionId ? 'hidden lg:flex lg:flex-col' : 'flex flex-col w-full lg:w-72'}`}>
+      <div className={`w-72 flex-shrink-0 min-h-0 ${activeRoomId ? 'hidden lg:flex lg:flex-col' : 'flex flex-col w-full lg:w-72'}`}>
         <QueryBoundary
           isLoading={sessionsQuery.isLoading}
           isError={sessionsQuery.isError}
@@ -203,8 +203,8 @@ export default function UnifiedInboxPage() {
         >
           <ConversationList
             sessions={sessionsQuery.data?.data ?? []}
-            activeSessionId={activeSessionId}
-            onSelectSession={handleSelectSession}
+            activeRoomId={activeRoomId}
+            onSelectRoom={handleSelectRoom}
             isLoading={sessionsQuery.isLoading}
             filters={filters}
             onFiltersChange={setFilters}
@@ -213,24 +213,24 @@ export default function UnifiedInboxPage() {
       </div>
 
       {/* Center panel: Chat */}
-      <div className={`flex-1 flex flex-col min-h-0 min-w-0 ${!activeSessionId ? 'hidden lg:flex' : 'flex'}`}>
+      <div className={`flex-1 flex flex-col min-h-0 min-w-0 ${!activeRoomId ? 'hidden lg:flex' : 'flex'}`}>
         <ChatPanel
           session={sessionQuery.data}
           messages={messagesQuery.data ?? []}
           isLoadingMessages={messagesQuery.isLoading}
           onSendMessage={handleSendMessage}
           onSendFile={handleSendFile}
-          onBack={() => setActiveSessionId(null)}
+          onBack={() => setActiveRoomId(null)}
           onAssign={(staffId) =>
-            activeSessionId && assignMutation.mutate({ sessionId: activeSessionId, staffId })
+            activeRoomId && assignMutation.mutate({ roomId: activeRoomId, staffId })
           }
-          onResolve={() => activeSessionId && resolveMutation.mutate(activeSessionId)}
-          onReturnToAI={() => activeSessionId && returnToAIMutation.mutate(activeSessionId)}
+          onResolve={() => activeRoomId && resolveMutation.mutate(activeRoomId)}
+          onReturnToAI={() => activeRoomId && returnToAIMutation.mutate(activeRoomId)}
         />
       </div>
 
       {/* Right panel: Customer 360 */}
-      <Customer360Panel customerId={customerId} activeSessionId={activeSessionId} />
+      <Customer360Panel customerId={customerId} activeRoomId={activeRoomId} />
     </div>
   );
 }

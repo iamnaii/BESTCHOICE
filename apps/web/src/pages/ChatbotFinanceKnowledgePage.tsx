@@ -38,7 +38,7 @@ const EMPTY_FORM: FormState = {
 
 interface KbSuggestion {
   id: string;
-  sessionId: string;
+  roomId: string;
   customerQuestion: string;
   staffAnswer: string | null;
   suggestedIntent: string;

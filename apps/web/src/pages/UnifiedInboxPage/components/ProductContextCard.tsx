@@ -4,15 +4,15 @@ import { Smartphone, Tag, BadgePercent } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
 interface ProductContextCardProps {
-  sessionId: string;
+  roomId: string;
 }
 
-export default function ProductContextCard({ sessionId }: ProductContextCardProps) {
+export default function ProductContextCard({ roomId }: ProductContextCardProps) {
   const { data: products, isLoading } = useQuery<any[]>({
-    queryKey: ['chat-products', sessionId],
+    queryKey: ['chat-products', roomId],
     queryFn: () =>
-      api.get(`/staff-chat/sessions/${sessionId}/products`).then((r: any) => r.data?.data ?? r.data),
-    enabled: !!sessionId,
+      api.get(`/staff-chat/rooms/${roomId}/products`).then((r: any) => r.data?.data ?? r.data),
+    enabled: !!roomId,
     staleTime: 60_000,
   });
 

@@ -83,7 +83,7 @@ export default function ChatPanel({
     if (selectedSuggestion) {
       const type = text === selectedSuggestion.aiDraft ? 'ACCEPT' : 'EDIT';
       api.post('/staff-chat/ai/training-feedback', {
-        sessionId: session.id,
+        roomId: session.id,
         type,
         customerMessage: getLastCustomerMessage(),
         aiDraft: selectedSuggestion.aiDraft,
@@ -183,7 +183,7 @@ export default function ChatPanel({
       {/* AI Suggestions */}
       {!isResolved && (
         <AiSuggestPanel
-          sessionId={session.id}
+          roomId={session.id}
           onSelectSuggestion={handleSelectSuggestion}
           lastMessageAt={lastMessageAt}
         />
@@ -256,7 +256,7 @@ export default function ChatPanel({
         onClose={() => setShowPalette(false)}
         onSelectCannedResponse={handleCannedResponse}
         onResolve={onResolve}
-        sessionId={session?.id ?? null}
+        roomId={session?.id ?? null}
       />
     </div>
   );

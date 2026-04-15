@@ -8,7 +8,7 @@ interface CommandPaletteProps {
   onClose: () => void;
   onSelectCannedResponse: (content: string) => void;
   onResolve: () => void;
-  sessionId: string | null;
+  roomId: string | null;
 }
 
 interface Command {
@@ -24,7 +24,7 @@ export default function CommandPalette({
   onClose,
   onSelectCannedResponse,
   onResolve,
-  sessionId,
+  roomId,
 }: CommandPaletteProps) {
   const [search, setSearch] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);

@@ -16,23 +16,23 @@ interface AiSuggestResponse {
 }
 
 interface AiSuggestPanelProps {
-  sessionId: string;
+  roomId: string;
   onSelectSuggestion: (text: string, metadata: { aiDraft: string; intent: string }) => void;
   lastMessageAt: number;
 }
 
 export default function AiSuggestPanel({
-  sessionId,
+  roomId,
   onSelectSuggestion,
   lastMessageAt,
 }: AiSuggestPanelProps) {
   const { data, isLoading, isError } = useQuery<AiSuggestResponse>({
-    queryKey: ['ai-suggest', sessionId, lastMessageAt],
+    queryKey: ['ai-suggest', roomId, lastMessageAt],
     queryFn: () =>
       api
-        .post<AiSuggestResponse>(`/staff-chat/sessions/${sessionId}/suggest`, {})
+        .post<AiSuggestResponse>(`/staff-chat/rooms/${roomId}/suggest`, {})
         .then((r) => r.data),
-    enabled: !!sessionId,
+    enabled: !!roomId,
     staleTime: 30_000,
     retry: false,
   });

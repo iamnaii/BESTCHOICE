@@ -13,7 +13,7 @@ interface LearningStats {
 
 interface KbSuggestion {
   id: string;
-  sessionId: string;
+  roomId: string;
   customerQuestion: string;
   staffAnswer: string | null;
   suggestedIntent: string;

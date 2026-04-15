@@ -22,7 +22,7 @@ import { toast } from 'sonner';
 
 interface Customer360PanelProps {
   customerId: string | null;
-  activeSessionId?: string | null;
+  activeRoomId?: string | null;
 }
 
 const channelLabel: Record<string, string> = {
@@ -58,7 +58,7 @@ const sessionStatusLabel: Record<string, string> = {
   ARCHIVED: 'เก็บ',
 };
 
-export default function Customer360Panel({ customerId, activeSessionId }: Customer360PanelProps) {
+export default function Customer360Panel({ customerId, activeRoomId }: Customer360PanelProps) {
   // ─── Customer basic info ──────────────────────────────
   const { data: customer, isLoading } = useQuery({
     queryKey: ['customer-360', customerId],
@@ -83,9 +83,9 @@ export default function Customer360Panel({ customerId, activeSessionId }: Custom
 
   // ─── Notes ──────────────────────────────────────────
   const { data: notesData } = useQuery({
-    queryKey: ['customer-notes', activeSessionId],
-    queryFn: () => api.get(`/staff-chat/sessions/${activeSessionId}/notes`).then((r: any) => r.data?.data ?? r.data),
-    enabled: !!activeSessionId,
+    queryKey: ['customer-notes', activeRoomId],
+    queryFn: () => api.get(`/staff-chat/rooms/${activeRoomId}/notes`).then((r: any) => r.data?.data ?? r.data),
+    enabled: !!activeRoomId,
   });
 
   if (!customerId) {
@@ -151,7 +151,7 @@ export default function Customer360Panel({ customerId, activeSessionId }: Custom
       </div>
 
       {/* ─── 1b. Product Context (detected from chat) ────── */}
-      {activeSessionId && <ProductContextCard sessionId={activeSessionId} />}
+      {activeRoomId && <ProductContextCard roomId={activeRoomId} />}
 
       {/* ─── 2. Active Contracts + Product/IMEI ─────────── */}
       <div className="p-4 border-b border-gray-100">
@@ -248,7 +248,7 @@ export default function Customer360Panel({ customerId, activeSessionId }: Custom
               <div
                 key={s.id}
                 className={`flex items-center gap-2 p-1.5 rounded text-xs ${
-                  s.id === activeSessionId ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50'
+                  s.id === activeRoomId ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50'
                 }`}
               >
                 <span className={`px-1 py-0.5 rounded text-[9px] font-medium ${channelColor[s.channel] ?? 'bg-gray-100'}`}>

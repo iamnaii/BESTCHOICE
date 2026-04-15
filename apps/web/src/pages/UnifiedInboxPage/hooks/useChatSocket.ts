@@ -6,7 +6,7 @@ import { API_URL } from '@/lib/env';
 
 interface ChatSocketEvents {
   onNewMessage?: (data: any) => void;
-  onSessionUpdate?: (data: any) => void;
+  onRoomUpdate?: (data: any) => void;
   onTyping?: (data: any) => void;
   onPresence?: (data: any) => void;
   onViewers?: (data: any) => void;
@@ -51,7 +51,7 @@ export function useChatSocket(events: ChatSocketEvents) {
     socketRef.current = socket;
 
     socket.on('chat:message:new', (data) => events.onNewMessage?.(data));
-    socket.on('chat:session:update', (data) => events.onSessionUpdate?.(data));
+    socket.on('chat:room:update', (data) => events.onRoomUpdate?.(data));
     socket.on('chat:typing', (data) => events.onTyping?.(data));
     socket.on('chat:presence', (data) => events.onPresence?.(data));
     socket.on('chat:viewers', (data) => events.onViewers?.(data));
@@ -66,29 +66,29 @@ export function useChatSocket(events: ChatSocketEvents) {
     };
   }, [user?.id]);
 
-  const joinSession = useCallback((sessionId: string) => {
-    socketRef.current?.emit('chat:join', { sessionId });
+  const joinRoom = useCallback((roomId: string) => {
+    socketRef.current?.emit('chat:join', { roomId });
   }, []);
 
-  const leaveSession = useCallback((sessionId: string) => {
-    socketRef.current?.emit('chat:leave', { sessionId });
+  const leaveRoom = useCallback((roomId: string) => {
+    socketRef.current?.emit('chat:leave', { roomId });
   }, []);
 
-  const sendMessage = useCallback((sessionId: string, text: string) => {
-    socketRef.current?.emit('chat:send', { sessionId, text });
+  const sendMessage = useCallback((roomId: string, text: string) => {
+    socketRef.current?.emit('chat:send', { roomId, text });
   }, []);
 
-  const startTyping = useCallback((sessionId: string) => {
-    socketRef.current?.emit('chat:typing:start', { sessionId });
+  const startTyping = useCallback((roomId: string) => {
+    socketRef.current?.emit('chat:typing:start', { roomId });
   }, []);
 
-  const stopTyping = useCallback((sessionId: string) => {
-    socketRef.current?.emit('chat:typing:stop', { sessionId });
+  const stopTyping = useCallback((roomId: string) => {
+    socketRef.current?.emit('chat:typing:stop', { roomId });
   }, []);
 
-  const viewSession = useCallback((sessionId: string) => {
-    socketRef.current?.emit('chat:view', { sessionId });
+  const viewRoom = useCallback((roomId: string) => {
+    socketRef.current?.emit('chat:view', { roomId });
   }, []);
 
-  return { joinSession, leaveSession, sendMessage, startTyping, stopTyping, viewSession };
+  return { joinRoom, leaveRoom, sendMessage, startTyping, stopTyping, viewRoom };
 }

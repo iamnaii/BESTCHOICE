@@ -43,7 +43,7 @@ function MobileBottomNav() {
                 )}
                 aria-label="เปิดเมนูเพิ่มเติม"
               >
-                <tab.icon className="size-[22px]" />
+                <tab.icon className="size-[22px]" strokeWidth={1.75} />
                 <span className="text-[10px] font-medium">{tab.label}</span>
               </button>
             );
@@ -56,23 +56,21 @@ function MobileBottomNav() {
               className={cn(
                 'relative flex flex-col items-center justify-center gap-0.5 flex-1 px-1 py-1.5',
                 'transition-all duration-150 active:scale-90 focus-visible:outline-hidden',
-                active ? 'text-primary' : 'text-muted-foreground/60 hover:text-muted-foreground',
+                active ? 'text-[#059669]' : 'text-muted-foreground/60 hover:text-muted-foreground',
               )}
               aria-current={active ? 'page' : undefined}
             >
               {/* Active top indicator bar */}
               {active && (
                 <span
-                  className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-[2.5px] bg-primary rounded-b-full"
+                  className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-[2.5px] bg-[#059669] rounded-b-full"
                   aria-hidden="true"
                 />
               )}
               <div className="relative">
                 <tab.icon
-                  className={cn(
-                    'transition-all duration-150',
-                    active ? 'size-[22px] stroke-[2.5]' : 'size-[22px] stroke-2',
-                  )}
+                  className="size-[22px] transition-all duration-150"
+                  strokeWidth={1.75}
                 />
                 {tab.badgeKey === 'chat-unread' && <ChatBadgeDot />}
               </div>

@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { Sparkles, Loader2 } from 'lucide-react';
@@ -26,18 +27,25 @@ export default function AiSuggestPanel({
   onSelectSuggestion,
   lastMessageAt,
 }: AiSuggestPanelProps) {
+  const [dismissed, setDismissed] = useState(false);
+
+  // Reset dismissed when new message arrives
+  useEffect(() => {
+    setDismissed(false);
+  }, [lastMessageAt]);
+
   const { data, isLoading, isError } = useQuery<AiSuggestResponse>({
     queryKey: ['ai-suggest', roomId, lastMessageAt],
     queryFn: () =>
       api
         .post<AiSuggestResponse>(`/staff-chat/rooms/${roomId}/suggest`, {})
         .then((r) => r.data),
-    enabled: !!roomId,
+    enabled: !!roomId && !dismissed,
     staleTime: 30_000,
     retry: false,
   });
 
-  if (isError || (!isLoading && (!data || data.suggestions.length === 0))) {
+  if (dismissed || isError || (!isLoading && (!data || data.suggestions.length === 0))) {
     return null;
   }
 
@@ -73,7 +81,10 @@ export default function AiSuggestPanel({
           {data?.suggestions.map((suggestion, i) => (
             <button
               key={i}
-              onClick={() => onSelectSuggestion(suggestion.text, { aiDraft: suggestion.text, intent: suggestion.intent })}
+              onClick={() => {
+                onSelectSuggestion(suggestion.text, { aiDraft: suggestion.text, intent: suggestion.intent });
+                setDismissed(true);
+              }}
               className={cn(
                 'flex-1 min-w-[200px] max-w-[300px] text-left px-3 py-2 rounded-lg border transition-all duration-150',
                 'text-[12px] leading-relaxed text-foreground/80',

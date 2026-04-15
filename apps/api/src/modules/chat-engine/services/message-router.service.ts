@@ -81,6 +81,7 @@ export class MessageRouterService {
     const session = await this.sessionManager.getOrCreateSession({
       externalUserId: message.externalUserId,
       channel: message.channel,
+      attribution: message.attribution,
     });
 
     // 2. Save inbound message

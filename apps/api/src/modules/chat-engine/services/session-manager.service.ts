@@ -1,6 +1,7 @@
 import { Injectable, Logger, Optional, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import {
+  AdsPlatform,
   ChatChannel,
   ChatSession,
   ChatSessionStatus,
@@ -36,6 +37,12 @@ export class SessionManagerService {
     externalUserId: string;
     channel: ChatChannel;
     customerId?: string;
+    attribution?: {
+      utmSource?: string;
+      utmCampaign?: string;
+      utmContent?: string;
+      referrerUrl?: string;
+    };
   }): Promise<ChatSession> {
     // LINE channels use the unique constraint on (lineUserId, channel)
     const isLineChannel =
@@ -90,6 +97,63 @@ export class SessionManagerService {
         priority: ChatPriority.NORMAL,
       },
     });
+
+    // Link ads attribution on new sessions (best-effort — never block session creation)
+    if (params.attribution?.utmSource) {
+      try {
+        const platformMap: Record<string, AdsPlatform> = {
+          facebook: AdsPlatform.FACEBOOK_ADS,
+          tiktok: AdsPlatform.TIKTOK_ADS,
+          line: AdsPlatform.LINE_ADS,
+          google: AdsPlatform.GOOGLE_ADS,
+        };
+        const platform =
+          platformMap[params.attribution.utmSource.toLowerCase()] ??
+          AdsPlatform.FACEBOOK_ADS;
+        const campaignKey = params.attribution.utmCampaign ?? 'organic';
+
+        let campaign = await this.prisma.adsCampaign.findFirst({
+          where: {
+            platform,
+            campaignId: campaignKey,
+            deletedAt: null,
+          },
+        });
+        if (!campaign) {
+          campaign = await this.prisma.adsCampaign.create({
+            data: {
+              platform,
+              campaignId: campaignKey,
+              campaignName: params.attribution.utmCampaign ?? 'Auto-detected',
+            },
+          });
+        }
+
+        const attribution = await this.prisma.adsAttribution.create({
+          data: {
+            campaignId: campaign.id,
+            utmSource: params.attribution.utmSource,
+            utmCampaign: params.attribution.utmCampaign,
+            utmContent: params.attribution.utmContent,
+            referrerUrl: params.attribution.referrerUrl,
+            firstTouch: new Date(),
+          },
+        });
+
+        await this.prisma.chatSession.update({
+          where: { id: session.id },
+          data: { attributionId: attribution.id },
+        });
+
+        this.logger.log(
+          `[Attribution] Linked campaign "${campaignKey}" to session ${session.id}`,
+        );
+      } catch (err) {
+        this.logger.error(
+          `[Attribution] Failed to link attribution for session ${session.id}: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+    }
 
     // Auto-assign to least-busy staff (best-effort)
     try {

@@ -125,6 +125,17 @@ export class FacebookWebhookController {
 
     const { type, text, mediaUrl } = this.parseMessage(message);
 
+    // Extract Facebook referral / ad attribution data
+    const referral = event.referral ?? event.postback?.referral;
+    const attribution = referral
+      ? {
+          utmSource: 'facebook',
+          utmCampaign: referral.ad_id ?? referral.ref ?? undefined,
+          utmContent: referral.ref ?? undefined,
+          referrerUrl: referral.source ?? undefined,
+        }
+      : undefined;
+
     const inbound: InboundMessage = {
       externalMessageId: message.mid,
       externalUserId: senderId,
@@ -134,10 +145,11 @@ export class FacebookWebhookController {
       mediaUrl: mediaUrl ?? undefined,
       rawPayload: event,
       timestamp: event.timestamp ? new Date(event.timestamp) : new Date(),
+      attribution,
     };
 
     this.logger.log(
-      `[FB Webhook] Inbound ${type} from PSID ${senderId} (mid: ${message.mid})`,
+      `[FB Webhook] Inbound ${type} from PSID ${senderId} (mid: ${message.mid})${attribution ? ' [with attribution]' : ''}`,
     );
 
     await this.messageRouter.routeInbound(inbound);

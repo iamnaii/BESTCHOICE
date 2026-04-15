@@ -23,6 +23,13 @@ export interface InboundMessage {
   rawPayload?: Record<string, unknown>;
   /** Timestamp from the platform (if available) */
   timestamp?: Date;
+  /** UTM / referral attribution data (e.g. from Facebook ad click) */
+  attribution?: {
+    utmSource?: string;
+    utmCampaign?: string;
+    utmContent?: string;
+    referrerUrl?: string;
+  };
 }
 
 /**

@@ -419,8 +419,8 @@ model User {
   assetsCreated          FixedAsset[]         @relation("AssetCreatedBy")
   todosCreated           Todo[]               @relation("TodoCreatedBy")
   todosAssigned          Todo[]               @relation("TodoAssignedTo")
-  handoffSessions        ChatSession[]        @relation("ChatHandoffStaff")
-  assignedSessions       ChatSession[]        @relation("ChatAssignedStaff")
+  handoffRooms           ChatRoom[]           @relation("ChatHandoffStaff")
+  assignedRooms          ChatRoom[]           @relation("ChatAssignedStaff")
   chatMessages           ChatMessage[]        @relation("ChatMessageStaff")
   staffChatActivities    StaffChatActivity[]  @relation("StaffChatActivityUser")
   chatNotes              ChatNote[]           @relation("ChatNoteStaff")
@@ -500,7 +500,7 @@ model Customer {
 
   // Multi-channel LINE binding (chatbot-finance)
   lineLinks        CustomerLineLink[]
-  chatSessions     ChatSession[]
+  chatRooms        ChatRoom[]
   chatAutoTriggers ChatAutoTrigger[]
   chatConsent      Boolean            @default(false) @map("chat_consent")
   chatConsentAt    DateTime?          @map("chat_consent_at")
@@ -2861,12 +2861,9 @@ enum ChatChannel {
   WEB
 }
 
-enum ChatSessionStatus {
-  OPEN
-  PENDING
-  HANDOFF
-  RESOLVED
-  ARCHIVED
+enum ChatRoomStatus {
+  ACTIVE
+  IDLE
 }
 
 enum ChatPriority {
@@ -2939,18 +2936,21 @@ model CustomerLineLink {
   @@map("customer_line_links")
 }
 
-/// Chat session — ลูกค้า 1 คน 1 session ต่อ channel
-model ChatSession {
+/// Chat room — ลูกค้า 1 คน 1 room ต่อ channel
+model ChatRoom {
   id             String    @id @default(uuid())
   lineUserId     String    @map("line_user_id")
   externalUserId String?   @map("external_user_id") // FB PSID, TikTok user, web visitor ID
   customerId     String?   @map("customer_id")
   customer       Customer? @relation(fields: [customerId], references: [id])
 
-  channel       ChatChannel       @default(LINE_FINANCE)
-  status        ChatStatus        @default(ACTIVE)
-  sessionStatus ChatSessionStatus @default(OPEN) @map("session_status")
-  priority      ChatPriority      @default(NORMAL)
+  channel  ChatChannel   @default(LINE_FINANCE)
+  status   ChatRoomStatus @default(ACTIVE)
+  priority ChatPriority  @default(NORMAL)
+
+  // Pin
+  pinnedAt   DateTime? @map("pinned_at")
+  pinnedById String?   @map("pinned_by_id")
 
   // Assignment
   assignedToId String? @map("assigned_to_id")
@@ -2978,6 +2978,7 @@ model ChatSession {
   resolvedAt      DateTime? @map("resolved_at")
 
   // Stats
+  unreadCount   Int      @default(0) @map("unread_count")
   totalMessages Int      @default(0) @map("total_messages")
   lastMessageAt DateTime @default(now()) @map("last_message_at")
 
@@ -2996,19 +2997,19 @@ model ChatSession {
 
   @@unique([lineUserId, channel])
   @@index([customerId])
-  @@index([assignedToId, sessionStatus])
-  @@index([sessionStatus, priority])
+  @@index([assignedToId, status])
+  @@index([status, priority])
   @@index([handoffMode, status])
   @@index([leadScore])
-  @@map("chat_sessions")
+  @@map("chat_rooms")
 }
 
-/// Chat message — ทุกข้อความใน session
+/// Chat message — ทุกข้อความใน room
 model ChatMessage {
-  id                String      @id @default(uuid())
-  externalMessageId String?     @unique @map("external_message_id") // LINE/FB/TikTok message ID
-  sessionId         String      @map("session_id")
-  session           ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  id                String   @id @default(uuid())
+  externalMessageId String?  @unique @map("external_message_id") // LINE/FB/TikTok message ID
+  roomId            String   @map("room_id")
+  room              ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
 
   role MessageRole
   type MessageType @default(TEXT)
@@ -3044,7 +3045,7 @@ model ChatMessage {
   createdAt DateTime  @default(now()) @map("created_at")
   deletedAt DateTime? @map("deleted_at")
 
-  @@index([sessionId, createdAt])
+  @@index([roomId, createdAt])
   @@index([intent])
   @@index([role])
   @@index([staffId])
@@ -3132,8 +3133,8 @@ model ChatbotOtpRequest {
 /// Customer feedback on bot responses (👍/👎)
 model ChatFeedback {
   id           String   @id @default(uuid())
-  sessionId    String   @map("session_id")
-  session      ChatSession @relation(fields: [sessionId], references: [id])
+  roomId       String   @map("room_id")
+  room         ChatRoom @relation(fields: [roomId], references: [id])
   messageId    String?  @map("message_id")
   rating       Int      // 0=👎, 1=👍
   feedbackText String?  @map("feedback_text") @db.Text
@@ -3142,7 +3143,7 @@ model ChatFeedback {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  @@index([sessionId])
+  @@index([roomId])
   @@index([rating])
   @@map("chat_feedbacks")
 }
@@ -3150,7 +3151,7 @@ model ChatFeedback {
 /// KB improvement suggestions from handoff/feedback/auto-analysis
 model ChatKbSuggestion {
   id                String   @id @default(uuid())
-  sessionId         String   @map("session_id")
+  roomId            String   @map("room_id")
   customerQuestion  String   @map("customer_question") @db.Text
   staffAnswer       String?  @map("staff_answer") @db.Text
   suggestedIntent   String   @map("suggested_intent")
@@ -3168,7 +3169,7 @@ model ChatKbSuggestion {
 
   @@index([status])
   @@index([source])
-  @@index([sessionId])
+  @@index([roomId])
   @@map("chat_kb_suggestions")
 }
 
@@ -3228,15 +3229,15 @@ model ProcessedWebhookEvent {
 // UNIFIED CHAT ENGINE — Phase 1 foundation models
 // ============================================================
 
-/// Tags on chat sessions (e.g. "VIP", "refund", "complaint")
+/// Tags on chat rooms (e.g. "VIP", "refund", "complaint")
 model ConversationTag {
-  id        String      @id @default(uuid())
-  sessionId String      @map("session_id")
-  session   ChatSession @relation(fields: [sessionId], references: [id])
-  tag       String      // free-form tag string
-  createdAt DateTime    @default(now()) @map("created_at")
+  id        String   @id @default(uuid())
+  roomId    String   @map("room_id")
+  room      ChatRoom @relation(fields: [roomId], references: [id])
+  tag       String   // free-form tag string
+  createdAt DateTime @default(now()) @map("created_at")
 
-  @@unique([sessionId, tag])
+  @@unique([roomId, tag])
   @@index([tag])
   @@map("conversation_tags")
 }
@@ -3277,54 +3278,54 @@ model StaffChatActivity {
   @@map("staff_chat_activities")
 }
 
-/// Internal staff notes on a chat session (not visible to customer)
+/// Internal staff notes on a chat room (not visible to customer)
 model ChatNote {
-  id        String      @id @default(uuid())
-  sessionId String      @map("session_id")
-  session   ChatSession @relation(fields: [sessionId], references: [id])
-  staffId   String      @map("staff_id")
-  staff     User        @relation("ChatNoteStaff", fields: [staffId], references: [id])
-  content   String      @db.Text
+  id      String   @id @default(uuid())
+  roomId  String   @map("room_id")
+  room    ChatRoom @relation(fields: [roomId], references: [id])
+  staffId String   @map("staff_id")
+  staff   User     @relation("ChatNoteStaff", fields: [staffId], references: [id])
+  content String   @db.Text
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  @@index([sessionId])
+  @@index([roomId])
   @@index([staffId])
   @@index([deletedAt])
   @@map("chat_notes")
 }
 
-/// Snooze / follow-up reminder on a chat session
+/// Snooze / follow-up reminder on a chat room
 model ChatSnooze {
-  id        String      @id @default(uuid())
-  sessionId String      @map("session_id")
-  session   ChatSession @relation(fields: [sessionId], references: [id])
-  staffId   String      @map("staff_id")
-  staff     User        @relation("ChatSnoozeStaff", fields: [staffId], references: [id])
-  remindAt  DateTime    @map("remind_at")
-  note      String?     @db.Text
-  completed Boolean     @default(false)
-  createdAt DateTime    @default(now()) @map("created_at")
+  id       String   @id @default(uuid())
+  roomId   String   @map("room_id")
+  room     ChatRoom @relation(fields: [roomId], references: [id])
+  staffId  String   @map("staff_id")
+  staff    User     @relation("ChatSnoozeStaff", fields: [staffId], references: [id])
+  remindAt DateTime @map("remind_at")
+  note     String?  @db.Text
+  completed Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
 
   @@index([remindAt, completed])
   @@index([staffId])
   @@map("chat_snoozes")
 }
 
-/// Internal staff-only side conversation on a chat session
+/// Internal staff-only side conversation on a chat room
 model ChatSideMessage {
-  id        String      @id @default(uuid())
-  sessionId String      @map("session_id")
-  session   ChatSession @relation(fields: [sessionId], references: [id])
-  staffId   String      @map("staff_id")
-  staff     User        @relation("ChatSideMessageStaff", fields: [staffId], references: [id])
-  text      String      @db.Text
-  createdAt DateTime    @default(now()) @map("created_at")
-  deletedAt DateTime?   @map("deleted_at")
+  id        String   @id @default(uuid())
+  roomId    String   @map("room_id")
+  room      ChatRoom @relation(fields: [roomId], references: [id])
+  staffId   String   @map("staff_id")
+  staff     User     @relation("ChatSideMessageStaff", fields: [staffId], references: [id])
+  text      String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+  deletedAt DateTime? @map("deleted_at")
 
-  @@index([sessionId])
+  @@index([roomId])
   @@map("chat_side_messages")
 }
 
@@ -3387,7 +3388,7 @@ model AdsAttribution {
   revenue      Decimal?     @db.Decimal(12, 2)
   createdAt    DateTime     @default(now()) @map("created_at")
 
-  chatSessions  ChatSession[]
+  chatRooms  ChatRoom[]
 
   @@index([campaignId])
   @@index([customerId])
@@ -3562,11 +3563,11 @@ model AccountingPeriod {
 
 /// Stores accepted/edited/rejected AI reply pairs for model fine-tuning
 model AiTrainingPair {
-  id              String       @id @default(uuid())
-  type            String       // ACCEPT, EDIT, REJECT
-  source          String       // SUGGEST_FEEDBACK, CHATCONE_IMPORT, SYSTEM_EXTRACT
-  sessionId       String?      @map("session_id")
-  session         ChatSession? @relation(fields: [sessionId], references: [id])
+  id              String    @id @default(uuid())
+  type            String    // ACCEPT, EDIT, REJECT
+  source          String    // SUGGEST_FEEDBACK, CHATCONE_IMPORT, SYSTEM_EXTRACT
+  roomId          String?   @map("room_id")
+  room            ChatRoom? @relation(fields: [roomId], references: [id])
   customerMessage String       @map("customer_message") @db.Text
   aiDraft         String?      @map("ai_draft") @db.Text
   humanEdit       String?      @map("human_edit") @db.Text
@@ -3583,17 +3584,17 @@ model AiTrainingPair {
 
 /// Logs every AI auto-reply attempt for monitoring and confidence tracking
 model AiAutoReplyLog {
-  id              String      @id @default(uuid())
-  sessionId       String      @map("session_id")
-  session         ChatSession @relation(fields: [sessionId], references: [id])
-  customerMessage String      @map("customer_message") @db.Text
-  aiReply         String      @map("ai_reply") @db.Text
+  id              String   @id @default(uuid())
+  roomId          String   @map("room_id")
+  room            ChatRoom @relation(fields: [roomId], references: [id])
+  customerMessage String   @map("customer_message") @db.Text
+  aiReply         String   @map("ai_reply") @db.Text
   confidence      Float
-  autoSent        Boolean     @map("auto_sent")
-  handoffReason   String?     @map("handoff_reason")
-  createdAt       DateTime    @default(now()) @map("created_at")
+  autoSent        Boolean  @map("auto_sent")
+  handoffReason   String?  @map("handoff_reason")
+  createdAt       DateTime @default(now()) @map("created_at")
 
-  @@index([sessionId])
+  @@index([roomId])
   @@index([autoSent, createdAt])
   @@map("ai_auto_reply_logs")
 }

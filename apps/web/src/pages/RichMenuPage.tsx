@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { LayoutGrid, Trash2, Star, Upload, Plus, ImageIcon } from 'lucide-react';
+import { LayoutGrid, Trash2, Star, Upload, Plus, ImageIcon, Pencil, Copy } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -333,6 +333,7 @@ export default function RichMenuPage() {
 
   // List tab state
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [editingMenuId, setEditingMenuId] = useState<string | null>(null);
 
   // ── Queries ──────────────────────────────────────────────────────────────
 
@@ -408,8 +409,24 @@ export default function RichMenuPage() {
       });
       return res.data as { richMenuId: string };
     },
-    onSuccess: () => {
-      toast.success('สร้าง Rich Menu สำเร็จ');
+    onSuccess: async (data) => {
+      toast.success(editingMenuId ? 'แก้ไข Rich Menu สำเร็จ' : 'สร้าง Rich Menu สำเร็จ');
+
+      if (editingMenuId) {
+        const oldMenuId = editingMenuId;
+        try {
+          // Set new menu as default first
+          if (data?.richMenuId) {
+            await api.post(`/line-oa/rich-menu/${data.richMenuId}/set-default`);
+          }
+          // Delete old menu
+          await api.delete(`/line-oa/rich-menu/${oldMenuId}`);
+        } catch (err) {
+          console.error('Failed to cleanup old menu', err);
+        }
+        setEditingMenuId(null);
+      }
+
       queryClient.invalidateQueries({ queryKey: ['rich-menu-list'] });
       setActiveTab('list');
     },
@@ -454,6 +471,20 @@ export default function RichMenuPage() {
   });
 
   // ── Handlers ──────────────────────────────────────────────────────────────
+
+  function handleEditMenu(menu: RichMenu) {
+    setMenuName(menu.name);
+    setEditingMenuId(menu.richMenuId);
+    setActiveTab('create');
+    toast.info('โหลดเมนูแล้ว — แก้ไขแล้วกดบันทึกเพื่อสร้างเมนูใหม่แทน');
+  }
+
+  function handleDuplicateMenu(menu: RichMenu) {
+    setMenuName(menu.name + ' (copy)');
+    setEditingMenuId(null);
+    setActiveTab('create');
+    toast.info('คัดลอกเมนูแล้ว — แก้ไขแล้วกดสร้างได้เลย');
+  }
 
   function updateButton(index: number, updates: Partial<MenuButton>) {
     setButtons((prev) => prev.map((b, i) => (i === index ? { ...b, ...updates } : b)));
@@ -502,6 +533,17 @@ export default function RichMenuPage() {
       {/* ── TAB: สร้างเมนู ─────────────────────────────────────────────────── */}
       {activeTab === 'create' && (
         <div className="space-y-6">
+          {editingMenuId && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Pencil size={16} className="text-amber-600" />
+                <span className="text-sm text-amber-800">กำลังแก้ไขเมนู — บันทึกจะสร้างเมนูใหม่แทนอันเก่า</span>
+              </div>
+              <Button size="sm" variant="ghost" onClick={() => setEditingMenuId(null)}>
+                ยกเลิก
+              </Button>
+            </div>
+          )}
 
           {/* Section 1: Preview + Button Editor */}
           <div className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden">
@@ -645,8 +687,18 @@ export default function RichMenuPage() {
                 disabled={createMutation.isPending || !effectiveLiffUrl}
                 className="bg-gradient-to-r from-[#06C755] to-[#04a844] hover:from-[#04a844] hover:to-[#038537] text-white border-0 shadow-sm"
               >
-                <Plus size={16} className="mr-1.5" />
-                {createMutation.isPending ? 'กำลังสร้าง...' : 'สร้าง Rich Menu'}
+                {editingMenuId ? (
+                  <Pencil size={16} className="mr-1.5" />
+                ) : (
+                  <Plus size={16} className="mr-1.5" />
+                )}
+                {createMutation.isPending
+                  ? editingMenuId
+                    ? 'กำลังบันทึก...'
+                    : 'กำลังสร้าง...'
+                  : editingMenuId
+                    ? 'บันทึกการแก้ไข'
+                    : 'สร้าง Rich Menu'}
               </Button>
               {!effectiveLiffUrl && (
                 <p className="text-xs text-destructive self-center">
@@ -710,7 +762,7 @@ export default function RichMenuPage() {
                           </Badge>
                         )}
                       </div>
-                      <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex flex-wrap items-center gap-2 shrink-0">
                         {!isDefault && (
                           <Button
                             size="sm"
@@ -722,6 +774,22 @@ export default function RichMenuPage() {
                             ตั้งเป็น Default
                           </Button>
                         )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleEditMenu(menu)}
+                        >
+                          <Pencil size={13} className="mr-1" />
+                          แก้ไข
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleDuplicateMenu(menu)}
+                        >
+                          <Copy size={13} className="mr-1" />
+                          คัดลอก
+                        </Button>
                         <Button
                           size="sm"
                           variant="outline"

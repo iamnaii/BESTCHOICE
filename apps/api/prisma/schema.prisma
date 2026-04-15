@@ -433,6 +433,7 @@ model User {
   dunningActionsExecuted DunningAction[]      @relation("DunningActionExecutor")
   periodsReviewStarted   AccountingPeriod[]   @relation("PeriodReviewStartedBy")
   periodsClosed          AccountingPeriod[]   @relation("PeriodClosedBy")
+  broadcastMessages      BroadcastMessage[]
 
   @@index([branchId])
   @@map("users")
@@ -3602,4 +3603,23 @@ model AiAutoReplyLog {
   @@index([roomId])
   @@index([autoSent, createdAt])
   @@map("ai_auto_reply_logs")
+}
+
+model BroadcastMessage {
+  id            String    @id @default(uuid())
+  type          String    // text, image, flex
+  content       Json
+  audience      String    // ALL, EXISTING, OVERDUE, NEW
+  audienceCount Int       @map("audience_count")
+  status        String    @default("SCHEDULED") // SENT, SCHEDULED, FAILED, CANCELLED
+  scheduledAt   DateTime? @map("scheduled_at")
+  sentAt        DateTime? @map("sent_at")
+  errorMessage  String?   @map("error_message")
+  createdById   String    @map("created_by_id")
+  createdBy     User      @relation(fields: [createdById], references: [id])
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  @@index([status, scheduledAt])
+  @@index([createdAt])
+  @@map("broadcast_messages")
 }

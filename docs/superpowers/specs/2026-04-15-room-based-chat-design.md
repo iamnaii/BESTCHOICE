@@ -244,6 +244,120 @@ New endpoints:
 3. Re-seed dev data if needed
 4. Global find-replace: ChatSession → ChatRoom, sessionId → roomId, session → room
 
+## UI Refactor — LINE OA Chat Style
+
+### Design Reference
+
+สไตล์เหมือน LINE OA Chat: สะอาด เรียบง่าย พนักงานร้านมือถือคุ้นเคย
+
+### Layout: 3-Panel (คงเดิมแต่ refactor ทุก panel)
+
+```
+┌─────────────┬──────────────────┬───────────┐
+│  Inbox      │  Chat            │  Info     │
+│  (w-80)     │  (flex-1)        │  (w-72)   │
+│             │                  │           │
+│ 🔍 Search   │ สมชาย (🟢LINE)   │ 👤 ลูกค้า │
+│             │                  │           │
+│ ของฉัน|ทั้งหมด|ใหม่│              │ สัญญา   │
+│ LINE|FB|TT|Web│              │ ชำระ     │
+│             │  ╭───────╮       │           │
+│ 📌สมชาย  3  │  │สวัสดีครับ│      │ ── ห้องอื่น── │
+│ 🟢สมหญิง   │  ╰───────╯       │ 🟢LINE 14เมย│
+│   ผ่อนกี่..  │      ╭─────╮    │ 🔵FB   15เมย│
+│ 🔵สมศักดิ์  │      │เท่าไหร่│   │           │
+│   ให้ไหม..  │      ╰─────╯    │           │
+│             │                  │           │
+│             │ ✨AI: 2 suggest  │           │
+│             │ [พิมพ์...]  ส่ง  │           │
+└─────────────┴──────────────────┴───────────┘
+```
+
+### Panel 1: Inbox (ด้านซ้าย)
+
+**Search bar** — ค้นหาชื่อ/เบอร์โทร
+
+**3 Tabs:**
+- ของฉัน (ห้องที่ assign ให้ฉัน)
+- ทั้งหมด
+- ยังไม่อ่าน (unreadCount > 0)
+
+**Channel filter chips:** LINE | Facebook | TikTok | Web (เลือกได้หลายอัน)
+
+**Room item แต่ละรายการ:**
+- Avatar วงกลม + สี channel (เขียว=LINE, น้ำเงิน=FB, ชมพู=TikTok, เทา=Web)
+- ชื่อลูกค้า + lead badge (🔥HOT / WARM)
+- ข้อความล่าสุด (1 บรรทัด ตัด)
+- เวลา (14:30 / เมื่อวาน / 14 เม.ย.)
+- Unread count badge (วงกลมแดง + ตัวเลข)
+- 📌 Pin icon ถ้าปักหมุด
+
+**เรียงลำดับ:** Pin อยู่บน → ล่าสุดอยู่บน
+
+### Panel 2: Chat (กลาง)
+
+**Header:**
+- ชื่อลูกค้า + channel badge (🟢LINE / 🔵Facebook)
+- ปุ่ม: assign, transfer, pin, more actions
+
+**Messages:**
+- ลูกค้า: bubble สีเทาอ่อน ชิดซ้าย (rounded-2xl, rounded-bl-sm)
+- พนักงาน: bubble สีน้ำเงิน ชิดขวา (rounded-2xl, rounded-br-sm)
+- Bot/AI: bubble สีม่วงอ่อน ชิดขวา
+- System: pill สีเทากลาง
+- ทุกข้อความมี: เวลา + ✓✓ (อ่านแล้ว) / ✓ (ส่งแล้ว)
+- Typing indicator: "กำลังพิมพ์..." animation จุด 3 จุด
+- วันที่ separator: "── 14 เมษายน 2026 ──"
+
+**AI Suggest Panel:** (ใต้ messages, เหนือ input)
+- แถบ suggestion cards แนวนอน scroll
+- กด → ใส่ใน input
+
+**Input area:**
+- ปุ่มแนบไฟล์ + emoji
+- Textarea (auto-grow)
+- ปุ่มส่ง (สีน้ำเงิน)
+
+### Panel 3: Info (ด้านขวา)
+
+**Customer profile:** ชื่อ, เบอร์, avatar
+
+**สัญญา & ชำระ:** (เหมือน Customer360 เดิม)
+
+**ห้องแชททั้งหมด (NEW):**
+```
+── ห้องแชททั้งหมด ──
+🟢 LINE:     "iPhone 16 เท่าไหร่"     14 เม.ย. 15:30
+🔵 Facebook: "ผ่อนกี่เดือนได้บ้าง"    15 เม.ย. 10:15 ← กำลังคุย
+```
+- แสดง: channel icon + ข้อความล่าสุด + วัน+เวลา
+- กดข้ามไปดูห้องอื่นได้
+
+**AI Summary:** สรุปรวมจากทุก channel (2-3 บรรทัด)
+
+**Quick actions:** ส่งลิงก์ชำระ, สร้างสัญญา, ดูข้อมูลลูกค้า
+
+### Mobile (responsive)
+
+- **Mobile:** แสดงทีละ panel — กดห้อง → เข้า chat → กด info → เห็น customer panel
+- **Bottom nav:** ยังใช้ role-based จาก sidemenu redesign (แชทอยู่ใน bottom nav)
+
+### Color Scheme
+
+| Element | Color |
+|---------|-------|
+| Customer bubble | `bg-gray-100 text-gray-900` |
+| Staff bubble | `bg-blue-500 text-white` |
+| Bot bubble | `bg-purple-50 text-purple-900 border-purple-100` |
+| System message | `bg-gray-50 text-gray-500` |
+| Unread badge | `bg-red-500 text-white` |
+| Read receipt ✓✓ | `text-blue-400` |
+| PIN icon | `text-amber-500` |
+| LINE channel | `bg-green-500` |
+| Facebook channel | `bg-blue-600` |
+| TikTok channel | `bg-pink-500` |
+| Web channel | `bg-gray-500` |
+
 ## สิ่งที่คงเดิม
 
 - Chat adapters (LINE, Facebook, TikTok, Web) — แค่เปลี่ยน reference

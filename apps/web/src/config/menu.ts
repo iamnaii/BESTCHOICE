@@ -355,6 +355,16 @@ const OWNER_CONFIG: RoleMenuConfig = {
       ],
     },
     {
+      key: 'owner-line',
+      label: 'LINE',
+      icon: MessageSquareMore,
+      items: [
+        { label: 'Rich Menu', path: '/settings/rich-menu', icon: LayoutGrid },
+        { label: 'ข้อความต้อนรับ', path: '/settings/line-greeting', icon: MessageSquareMore },
+        { label: 'Broadcast', path: '/broadcast', icon: Send },
+      ],
+    },
+    {
       key: 'owner-tools',
       label: 'เครื่องมือ & เชื่อมต่อ',
       icon: Plug,
@@ -367,9 +377,6 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'Dunning', path: '/settings/dunning', icon: Bell },
         { label: 'CRM Pipeline', path: '/crm', icon: Kanban },
         { label: 'Audit Log', path: '/audit-logs', icon: ScrollText },
-        { label: 'Broadcast', path: '/broadcast', icon: Send },
-        { label: 'Rich Menu', path: '/settings/rich-menu', icon: LayoutGrid },
-        { label: 'ข้อความต้อนรับ', path: '/settings/line-greeting', icon: MessageSquareMore },
       ],
     },
   ],

@@ -360,6 +360,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'AI Chat', path: '/settings/ai-chat', icon: Sparkles },
         { label: 'AI Training', path: '/settings/ai-training', icon: Brain },
         { label: 'AI Performance', path: '/settings/ai-performance', icon: BarChart3 },
+        { label: 'MDM Test', path: '/settings/mdm-test', icon: Smartphone },
       ],
     },
   ],

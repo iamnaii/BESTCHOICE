@@ -12,6 +12,8 @@ import { validatePeriodOpen } from '../../utils/period-lock.util';
 import { roundBaht } from '../../utils/installment.util';
 import { BUSINESS_RULES } from '../../utils/config.util';
 import { LineOaService } from '../line-oa/line-oa.service';
+import { FlexTemplatesService } from '../line-oa/flex-templates.service';
+import { QuickReplyService } from '../line-oa/quick-reply.service';
 import { formatDateShort } from '../../utils/thai-date.util';
 import { MdmAutoService } from '../mdm/mdm-auto.service';
 
@@ -27,6 +29,8 @@ export class PaymentsService {
     private journalAutoService: JournalAutoService,
     private productsService: ProductsService,
     private lineOaService: LineOaService,
+    private flexTemplates: FlexTemplatesService,
+    private quickReplyService: QuickReplyService,
     @Optional() private mdmAuto?: MdmAutoService,
   ) {}
 
@@ -844,6 +848,7 @@ export class PaymentsService {
 
   /**
    * Send LINE push notification after successful payment.
+   * Sends Flex Message with Quick Reply (afterPayment preset).
    * Respects customer notification preferences.
    */
   private async sendPaymentSuccessLine(
@@ -868,18 +873,23 @@ export class PaymentsService {
       });
       const remaining = contract.totalMonths - paidCount;
 
-      const flex = this.lineOaService.buildPaymentSuccess({
-        customerName: contract.customer.name,
+      const flex = this.flexTemplates.paymentReceipt({
         contractNumber: contract.contractNumber,
         installmentNo,
         totalInstallments: contract.totalMonths,
-        amountPaid: amount,
-        paymentMethod,
-        paidDate: formatDateShort(new Date()),
-        remainingInstallments: Math.max(0, remaining),
+        amount,
+        date: formatDateShort(new Date()),
       });
 
+      // Attach Quick Reply so customer can quickly check balance, receipt, or contract
+      flex.quickReply = { items: this.quickReplyService.afterPayment() };
+
       await this.lineOaService.sendFlexMessage(contract.customer.lineId, flex);
+
+      this.logger.log(
+        `[LINE] Payment success flex sent for contract ${contract.contractNumber} ` +
+          `installment ${installmentNo}/${contract.totalMonths} remaining=${Math.max(0, remaining)}`,
+      );
     } catch (err) {
       this.logger.warn(`LINE push failed for contract ${contractId}: ${err instanceof Error ? err.message : err}`);
     }

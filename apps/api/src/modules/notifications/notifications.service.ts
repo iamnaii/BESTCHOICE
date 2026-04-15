@@ -4,9 +4,9 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SendNotificationDto, CreateNotificationTemplateDto, UpdateNotificationTemplateDto } from './dto/create-notification.dto';
 import { NotificationChannel } from '@prisma/client';
-import { buildPaymentReminderFlex } from '../line-oa/flex-messages/payment-reminder.flex';
-import { buildOverdueNoticeFlex } from '../line-oa/flex-messages/overdue-notice.flex';
 import { FlexMessagePayload } from '../line-oa/flex-messages/base-template';
+import { FlexTemplatesService } from '../line-oa/flex-templates.service';
+import { QuickReplyService } from '../line-oa/quick-reply.service';
 
 @Injectable()
 export class NotificationsService implements OnModuleInit {
@@ -20,6 +20,8 @@ export class NotificationsService implements OnModuleInit {
   constructor(
     private prisma: PrismaService,
     private configService: ConfigService,
+    private flexTemplates: FlexTemplatesService,
+    private quickReplyService: QuickReplyService,
   ) {
     this.lineChannelAccessToken = this.configService.get<string>('LINE_CHANNEL_ACCESS_TOKEN');
     this.smsApiKey = this.configService.get<string>('SMS_API_KEY');
@@ -918,15 +920,14 @@ export class NotificationsService implements OnModuleInit {
       // Try LINE Flex Message first, fallback to text, then SMS
       if (customer.lineId) {
         try {
-          const flex = buildPaymentReminderFlex({
-            customerName: customer.name,
+          const flex = this.flexTemplates.paymentReminder({
             contractNumber: payment.contract.contractNumber,
             installmentNo: payment.installmentNo,
-            totalInstallments: payment.contract._count.payments,
-            amountDue: Number(payment.amountDue),
+            amount: Number(payment.amountDue),
             dueDate: formatDateShort(payment.dueDate),
-            daysUntilDue: daysUntil,
           });
+          // Attach Quick Reply so customer can pay quickly or see balance
+          flex.quickReply = { items: this.quickReplyService.afterPayment() };
           await this.sendLineFlexMessage(customer.lineId, flex);
           await this.prisma.notificationLog.create({
             data: {
@@ -1044,17 +1045,14 @@ export class NotificationsService implements OnModuleInit {
       // Try LINE Flex Message first, fallback to text, then SMS
       if (customer.lineId) {
         try {
-          const flex = buildOverdueNoticeFlex({
-            customerName: customer.name,
+          const flex = this.flexTemplates.overdueNotice({
             contractNumber: payment.contract.contractNumber,
-            installmentNo: payment.installmentNo,
-            totalInstallments: payment.contract._count.payments,
-            amountDue: Number(payment.amountDue),
+            overdueInstallments: daysOverdue,
+            totalAmount: outstanding,
             lateFee: Number(payment.lateFee),
-            totalOutstanding: outstanding,
-            dueDate: formatDateShort(payment.dueDate),
-            daysOverdue,
           });
+          // Attach Quick Reply so customer can pay immediately or see balance
+          flex.quickReply = { items: this.quickReplyService.afterPayment() };
           await this.sendLineFlexMessage(customer.lineId, flex);
           await this.prisma.notificationLog.create({
             data: {

@@ -44,6 +44,15 @@ export interface FlexMessagePayload {
   type: 'flex';
   altText: string;
   contents: FlexBubble | FlexCarousel;
+  quickReply?: {
+    items: Array<{
+      type: 'action';
+      action:
+        | { type: 'message'; label: string; text: string }
+        | { type: 'uri'; label: string; uri: string }
+        | { type: 'postback'; label: string; data: string; displayText?: string };
+    }>;
+  };
 }
 
 export interface FlexBubble {

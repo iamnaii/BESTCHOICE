@@ -114,11 +114,13 @@ export default function ChatPanel({
   const [showActions, setShowActions] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [showPalette, setShowPalette] = useState(false);
-  // emoji picker state
-  const [emojiTabIdx, setEmojiTabIdx] = useState(0); // index into EMOJI_CATEGORIES or sticker/gif sentinel
-  const [stickerPkgIdx, setStickerPkgIdx] = useState(0);
-  const STICKER_TAB_IDX = EMOJI_CATEGORIES.length; // sentinel value for sticker tab
-  const GIF_TAB_IDX = EMOJI_CATEGORIES.length + 1; // sentinel value for GIF tab
+  // picker top-level tab
+  type PickerTab = 'emoji' | 'sticker' | 'gif';
+  const [pickerTab, setPickerTab] = useState<PickerTab>('emoji');
+  // emoji sub-tab (category index)
+  const [emojiCategory, setEmojiCategory] = useState(0);
+  // sticker sub-tab (package index)
+  const [stickerPackage, setStickerPackage] = useState(0);
 
   // GIF picker state
   const [gifSearch, setGifSearch] = useState('');
@@ -154,7 +156,6 @@ export default function ChatPanel({
   useKeyboardShortcuts(shortcutActions);
 
   const isLineChannel = session?.channel?.startsWith('LINE');
-  const showGifTab = !isLineChannel;
 
   const GIPHY_KEY = 'dc6zaTOxFJmzC';
   const gifApiUrl = gifSearchDebounced
@@ -163,14 +164,14 @@ export default function ChatPanel({
 
   // Fetch GIFs whenever the GIF tab is active or the search query changes
   useEffect(() => {
-    if (emojiTabIdx !== GIF_TAB_IDX) return;
+    if (pickerTab !== 'gif') return;
     setLoadingGifs(true);
     fetch(gifApiUrl)
       .then((r) => r.json())
       .then((d) => setGifs(d.data ?? []))
       .catch(() => setGifs([]))
       .finally(() => setLoadingGifs(false));
-  }, [gifApiUrl, emojiTabIdx]);
+  }, [gifApiUrl, pickerTab]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -202,7 +203,6 @@ export default function ChatPanel({
     if (onSendSticker) {
       onSendSticker({ packageId, stickerId });
     } else {
-      // fallback: send as special text
       onSendMessage(`[sticker:${packageId}:${stickerId}]`);
     }
     setEmojiOpen(false);
@@ -449,51 +449,45 @@ export default function ChatPanel({
               <PopoverContent
                 side="top"
                 align="start"
-                className="w-72 p-0 shadow-lg border border-gray-200 rounded-xl overflow-hidden"
+                className="w-80 p-0 shadow-lg border border-gray-200 rounded-xl overflow-hidden"
                 sideOffset={6}
               >
-                {/* Category tabs */}
-                <div className="flex border-b border-gray-100 bg-gray-50 overflow-x-auto">
-                  {EMOJI_CATEGORIES.map((cat, idx) => (
-                    <button
-                      key={cat.name}
-                      onClick={() => setEmojiTabIdx(idx)}
-                      title={cat.name}
-                      className={cn(
-                        'flex-shrink-0 px-2.5 py-2 text-base transition-colors',
-                        emojiTabIdx === idx
-                          ? 'border-b-2 border-blue-500 bg-white'
-                          : 'hover:bg-gray-100',
-                      )}
-                    >
-                      {cat.label}
-                    </button>
-                  ))}
-                  {/* Sticker tab — LINE rooms only */}
+                {/* ── Top-level tabs ── */}
+                <div className="flex border-b border-gray-200 bg-white">
+                  <button
+                    onClick={() => setPickerTab('emoji')}
+                    className={cn(
+                      'flex items-center gap-1.5 px-4 py-2 text-xs font-medium transition-colors',
+                      pickerTab === 'emoji'
+                        ? 'text-blue-600 border-b-2 border-blue-500 -mb-px'
+                        : 'text-gray-500 hover:text-gray-700',
+                    )}
+                  >
+                    😊 Emoji
+                  </button>
+
                   {isLineChannel && (
                     <button
-                      onClick={() => setEmojiTabIdx(STICKER_TAB_IDX)}
-                      title="สติกเกอร์"
+                      onClick={() => setPickerTab('sticker')}
                       className={cn(
-                        'flex-shrink-0 px-2.5 py-2 text-xs font-medium transition-colors',
-                        emojiTabIdx === STICKER_TAB_IDX
-                          ? 'border-b-2 border-blue-500 bg-white text-blue-600'
-                          : 'text-gray-500 hover:bg-gray-100',
+                        'flex items-center gap-1.5 px-4 py-2 text-xs font-medium transition-colors',
+                        pickerTab === 'sticker'
+                          ? 'text-blue-600 border-b-2 border-blue-500 -mb-px'
+                          : 'text-gray-500 hover:text-gray-700',
                       )}
                     >
-                      📦
+                      📦 สติกเกอร์
                     </button>
                   )}
-                  {/* GIF tab — non-LINE channels (Facebook, TikTok, Web) */}
-                  {showGifTab && (
+
+                  {!isLineChannel && (
                     <button
-                      onClick={() => setEmojiTabIdx(GIF_TAB_IDX)}
-                      title="GIF"
+                      onClick={() => setPickerTab('gif')}
                       className={cn(
-                        'flex-shrink-0 px-2.5 py-2 text-xs font-medium transition-colors',
-                        emojiTabIdx === GIF_TAB_IDX
-                          ? 'border-b-2 border-blue-500 bg-white text-blue-600'
-                          : 'text-gray-500 hover:bg-gray-100',
+                        'flex items-center gap-1.5 px-4 py-2 text-xs font-medium transition-colors',
+                        pickerTab === 'gif'
+                          ? 'text-blue-600 border-b-2 border-blue-500 -mb-px'
+                          : 'text-gray-500 hover:text-gray-700',
                       )}
                     >
                       GIF
@@ -501,11 +495,28 @@ export default function ChatPanel({
                   )}
                 </div>
 
-                {/* Emoji grid */}
-                {emojiTabIdx < STICKER_TAB_IDX && emojiTabIdx !== GIF_TAB_IDX && (
-                  <div className="p-2 max-h-52 overflow-y-auto">
-                    <div className="grid grid-cols-8 gap-0.5">
-                      {EMOJI_CATEGORIES[emojiTabIdx]?.emojis.map((emoji) => (
+                {/* ── Emoji tab ── */}
+                {pickerTab === 'emoji' && (
+                  <div>
+                    {/* Category sub-tabs */}
+                    <div className="flex gap-1 px-2 py-1.5 border-b border-gray-100 bg-gray-50">
+                      {EMOJI_CATEGORIES.map((cat, i) => (
+                        <button
+                          key={cat.name}
+                          onClick={() => setEmojiCategory(i)}
+                          title={cat.name}
+                          className={cn(
+                            'p-1 rounded text-base transition-colors',
+                            emojiCategory === i ? 'bg-blue-50 ring-1 ring-blue-200' : 'hover:bg-gray-100',
+                          )}
+                        >
+                          {cat.label}
+                        </button>
+                      ))}
+                    </div>
+                    {/* Emoji grid */}
+                    <div className="grid grid-cols-8 gap-0.5 p-2 max-h-[200px] overflow-y-auto">
+                      {EMOJI_CATEGORIES[emojiCategory]?.emojis.map((emoji) => (
                         <button
                           key={emoji}
                           onClick={() => insertEmoji(emoji)}
@@ -518,20 +529,20 @@ export default function ChatPanel({
                   </div>
                 )}
 
-                {/* Sticker panel */}
-                {emojiTabIdx === STICKER_TAB_IDX && (
-                  <div className="flex flex-col">
-                    {/* Package tabs */}
-                    <div className="flex border-b border-gray-100 overflow-x-auto bg-white">
-                      {LINE_STICKER_PACKAGES.map((pkg, idx) => (
+                {/* ── Sticker tab (LINE only) ── */}
+                {pickerTab === 'sticker' && isLineChannel && (
+                  <div>
+                    {/* Package sub-tabs */}
+                    <div className="flex gap-1 px-2 py-1.5 border-b border-gray-100 bg-gray-50 overflow-x-auto">
+                      {LINE_STICKER_PACKAGES.map((pkg, i) => (
                         <button
                           key={pkg.packageId}
-                          onClick={() => setStickerPkgIdx(idx)}
+                          onClick={() => setStickerPackage(i)}
                           className={cn(
-                            'flex-shrink-0 px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap',
-                            stickerPkgIdx === idx
-                              ? 'border-b-2 border-blue-500 text-blue-600'
-                              : 'text-gray-500 hover:bg-gray-50',
+                            'flex-shrink-0 px-2 py-1 rounded text-[11px] font-medium transition-colors whitespace-nowrap',
+                            stickerPackage === i
+                              ? 'bg-[#06C755]/10 text-[#06C755]'
+                              : 'text-gray-500 hover:bg-gray-100',
                           )}
                         >
                           {pkg.name}
@@ -539,41 +550,39 @@ export default function ChatPanel({
                       ))}
                     </div>
                     {/* Sticker grid */}
-                    <div className="p-2 max-h-48 overflow-y-auto">
-                      <div className="grid grid-cols-4 gap-1">
-                        {LINE_STICKER_PACKAGES[stickerPkgIdx]?.stickers.map((sticker) => (
-                          <button
-                            key={sticker.id}
-                            onClick={() =>
-                              handleStickerClick(
-                                LINE_STICKER_PACKAGES[stickerPkgIdx].packageId,
-                                sticker.id,
-                              )
-                            }
-                            className="w-14 h-14 flex items-center justify-center hover:bg-gray-100 rounded-lg transition-colors overflow-hidden"
-                            title={`Sticker ${sticker.id}`}
-                          >
-                            <img
-                              src={stickerAnimUrl(sticker.id)}
-                              onError={(e) => {
-                                (e.target as HTMLImageElement).src = stickerStaticUrl(sticker.id);
-                              }}
-                              alt={`sticker-${sticker.id}`}
-                              className="w-[60px] h-[60px] object-contain cursor-pointer hover:scale-110 transition-transform"
-                              loading="lazy"
-                            />
-                          </button>
-                        ))}
-                      </div>
+                    <div className="grid grid-cols-4 gap-2 p-2 max-h-[200px] overflow-y-auto">
+                      {LINE_STICKER_PACKAGES[stickerPackage]?.stickers.map((sticker) => (
+                        <button
+                          key={sticker.id}
+                          onClick={() =>
+                            handleStickerClick(
+                              LINE_STICKER_PACKAGES[stickerPackage].packageId,
+                              sticker.id,
+                            )
+                          }
+                          className="w-14 h-14 flex items-center justify-center hover:bg-gray-100 rounded-lg transition-colors overflow-hidden"
+                          title={`Sticker ${sticker.id}`}
+                        >
+                          <img
+                            src={stickerAnimUrl(sticker.id)}
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = stickerStaticUrl(sticker.id);
+                            }}
+                            alt={`sticker-${sticker.id}`}
+                            className="w-[60px] h-[60px] object-contain hover:scale-110 transition-transform"
+                            loading="lazy"
+                          />
+                        </button>
+                      ))}
                     </div>
                   </div>
                 )}
 
-                {/* GIF panel — Facebook/TikTok/Web channels */}
-                {emojiTabIdx === GIF_TAB_IDX && (
+                {/* ── GIF tab (non-LINE only) ── */}
+                {pickerTab === 'gif' && !isLineChannel && (
                   <div className="flex flex-col">
                     {/* Search input */}
-                    <div className="px-2 py-2 border-b border-gray-100">
+                    <div className="px-2 py-1.5 border-b border-gray-100">
                       <input
                         type="text"
                         placeholder="ค้นหา GIF..."
@@ -612,7 +621,7 @@ export default function ChatPanel({
                       )}
                     </div>
                     {/* Giphy attribution */}
-                    <div className="px-2 pt-1 pb-1.5 text-[9px] text-gray-400 text-center border-t border-gray-100">
+                    <div className="text-[9px] text-gray-400 text-center pb-1 pt-0.5 border-t border-gray-100">
                       Powered by GIPHY
                     </div>
                   </div>

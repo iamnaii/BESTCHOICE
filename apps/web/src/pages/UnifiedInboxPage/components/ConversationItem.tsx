@@ -1,4 +1,4 @@
-import { MessageSquare, Phone, Globe, Video, Pin } from 'lucide-react';
+import { Pin } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import { th } from 'date-fns/locale';
@@ -27,24 +27,37 @@ interface ConversationItemProps {
   onPin?: (roomId: string, isPinned: boolean) => void;
 }
 
-const CHANNEL_ICONS: Record<string, typeof MessageSquare> = {
-  LINE_FINANCE: Phone,
-  LINE_SHOP: MessageSquare,
-  FACEBOOK: Globe,
-  TIKTOK: Video,
-  WEB: Globe,
-};
-
 const CHANNEL_COLORS: Record<string, string> = {
-  LINE_FINANCE: 'bg-green-500',
-  LINE_SHOP: 'bg-emerald-400',
-  FACEBOOK: 'bg-blue-600',
-  TIKTOK: 'bg-pink-500',
+  LINE_FINANCE: 'bg-[#06C755]',
+  LINE_SHOP: 'bg-[#06C755]',
+  FACEBOOK: 'bg-[#1877F2]',
+  TIKTOK: 'bg-black',
   WEB: 'bg-gray-500',
 };
 
+function ChannelIcon({ channel }: { channel: string }) {
+  const config: Record<string, { bg: string; label: string }> = {
+    LINE_FINANCE: { bg: 'bg-[#06C755]', label: 'L' },
+    LINE_SHOP: { bg: 'bg-[#06C755]', label: 'L' },
+    FACEBOOK: { bg: 'bg-[#1877F2]', label: 'f' },
+    TIKTOK: { bg: 'bg-black', label: '♪' },
+    WEB: { bg: 'bg-gray-500', label: 'W' },
+  };
+  const c = config[channel] ?? { bg: 'bg-gray-400', label: '?' };
+  return (
+    <span
+      className={cn(
+        'absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full border-2 border-white',
+        'flex items-center justify-center text-white text-[8px] font-bold',
+        c.bg,
+      )}
+    >
+      {c.label}
+    </span>
+  );
+}
+
 export default function ConversationItem({ session, isActive, onClick, onPin }: ConversationItemProps) {
-  const ChannelIcon = CHANNEL_ICONS[session.channel] ?? MessageSquare;
   const lastMessage = session.messages?.[0];
   const displayName = session.customer?.name ?? session.lineUserId?.slice(0, 12) ?? 'ไม่ทราบชื่อ';
   const isPinned = session.pinnedAt != null;
@@ -84,20 +97,7 @@ export default function ConversationItem({ session, isActive, onClick, onPin }: 
           {(session.customer?.name ?? '?')[0]}
         </div>
         {/* Channel badge (small circle bottom-right) */}
-        <span
-          className={cn(
-            'absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full border-2 border-white flex items-center justify-center text-white text-[7px] font-bold',
-            CHANNEL_COLORS[session.channel] ?? 'bg-gray-500',
-          )}
-        >
-          {session.channel === 'LINE_FINANCE' || session.channel === 'LINE_SHOP'
-            ? 'L'
-            : session.channel === 'FACEBOOK'
-              ? 'F'
-              : session.channel === 'TIKTOK'
-                ? 'T'
-                : 'W'}
-        </span>
+        <ChannelIcon channel={session.channel} />
       </div>
 
       {/* Content */}
@@ -107,16 +107,6 @@ export default function ConversationItem({ session, isActive, onClick, onPin }: 
             {/* Pin icon */}
             {isPinned && <Pin className="w-3 h-3 text-amber-500 flex-shrink-0" />}
             <span className="font-medium text-sm text-gray-900 truncate">{displayName}</span>
-            {session.leadTemperature === 'HOT' && (
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-500/15 text-red-600 flex-shrink-0">
-                🔥 HOT
-              </span>
-            )}
-            {session.leadTemperature === 'WARM' && (
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/15 text-amber-600 flex-shrink-0">
-                WARM
-              </span>
-            )}
           </div>
           <div className="flex items-center gap-1.5 flex-shrink-0">
             {/* Unread badge */}

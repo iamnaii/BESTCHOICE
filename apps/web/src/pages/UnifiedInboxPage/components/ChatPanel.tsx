@@ -267,9 +267,31 @@ export default function ChatPanel({
           </div>
           <div>
             <h3 className="font-medium text-sm text-gray-900">{displayName}</h3>
-            <span className="text-xs text-gray-400">
-              {session.channel.replace('_', ' ')} · {session.sessionStatus}
-            </span>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span
+                className={cn(
+                  'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium',
+                  session.channel === 'LINE_FINANCE' || session.channel === 'LINE_SHOP'
+                    ? 'bg-[#06C755]/10 text-[#06C755]'
+                    : session.channel === 'FACEBOOK'
+                      ? 'bg-[#1877F2]/10 text-[#1877F2]'
+                      : session.channel === 'TIKTOK'
+                        ? 'bg-black/10 text-black'
+                        : 'bg-gray-100 text-gray-600',
+                )}
+              >
+                {session.channel === 'LINE_FINANCE'
+                  ? 'LINE'
+                  : session.channel === 'LINE_SHOP'
+                    ? 'LINE Shop'
+                    : session.channel === 'FACEBOOK'
+                      ? 'Facebook'
+                      : session.channel === 'TIKTOK'
+                        ? 'TikTok'
+                        : 'Web'}
+              </span>
+              <span className="text-xs text-gray-400">{session.sessionStatus}</span>
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-1">

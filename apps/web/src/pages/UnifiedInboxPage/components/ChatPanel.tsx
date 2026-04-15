@@ -21,8 +21,10 @@ interface ChatPanelProps {
   onSendFile?: (file: File) => void;
   onBack: () => void;
   onAssign: (staffId: string) => void;
+  onTransfer: (staffId: string) => void;
   onResolve: () => void;
   onReturnToAI: () => void;
+  currentUserId: string;
 }
 
 export default function ChatPanel({
@@ -34,8 +36,10 @@ export default function ChatPanel({
   onSendFile,
   onBack,
   onAssign,
+  onTransfer,
   onResolve,
   onReturnToAI,
+  currentUserId,
 }: ChatPanelProps) {
   const [inputText, setInputText] = useState('');
   const [selectedSuggestion, setSelectedSuggestion] = useState<{ aiDraft: string; intent: string } | null>(null);
@@ -192,9 +196,11 @@ export default function ChatPanel({
         <SessionActions
           session={session}
           onAssign={onAssign}
+          onTransfer={onTransfer}
           onResolve={onResolve}
           onReturnToAI={onReturnToAI}
           onClose={() => setShowActions(false)}
+          currentUserId={currentUserId}
         />
       )}
 

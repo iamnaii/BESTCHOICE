@@ -148,6 +148,17 @@ export default function UnifiedInboxPage() {
     },
   });
 
+  const transferMutation = useMutation({
+    mutationFn: ({ roomId, staffId }: { roomId: string; staffId: string }) =>
+      api.patch(`/staff-chat/rooms/${roomId}/transfer`, { staffId }),
+    onSuccess: () => {
+      toast.success('โอนห้องสำเร็จ');
+      queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
+      queryClient.invalidateQueries({ queryKey: ['chat-sessions'] });
+      queryClient.invalidateQueries({ queryKey: ['chat-session', activeRoomId] });
+    },
+  });
+
   // Handlers
   const handleSelectRoom = useCallback(
     (roomId: string) => {
@@ -236,8 +247,12 @@ export default function UnifiedInboxPage() {
           onAssign={(staffId) =>
             activeRoomId && assignMutation.mutate({ roomId: activeRoomId, staffId })
           }
+          onTransfer={(staffId) =>
+            activeRoomId && transferMutation.mutate({ roomId: activeRoomId, staffId })
+          }
           onResolve={() => activeRoomId && resolveMutation.mutate(activeRoomId)}
           onReturnToAI={() => activeRoomId && returnToAIMutation.mutate(activeRoomId)}
+          currentUserId={user?.id ?? ''}
         />
       </div>
 

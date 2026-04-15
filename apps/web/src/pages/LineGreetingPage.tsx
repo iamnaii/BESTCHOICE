@@ -5,6 +5,7 @@ import { MessageSquareMore } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
 
 interface GreetingConfig {
   greetingMessage: string;
@@ -84,14 +85,12 @@ export default function LineGreetingPage() {
           ) : (
             <div className="space-y-3">
               <div>
-                <textarea
+                <Textarea
                   value={message}
                   onChange={(e) => handleChange(e.target.value)}
                   rows={12}
                   placeholder="ข้อความต้อนรับ..."
-                  className={`w-full border rounded-lg px-3 py-2.5 text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background resize-none font-sans ${
-                    isOverLimit ? 'border-destructive' : ''
-                  }`}
+                  className={isOverLimit ? 'border-destructive' : ''}
                 />
                 <div className={`flex justify-between text-xs mt-1 ${isOverLimit ? 'text-destructive' : 'text-muted-foreground'}`}>
                   <span>ใช้ได้ emoji, ตัวอักษร, และ line break</span>

@@ -6,6 +6,14 @@ import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 interface RichMenu {
   richMenuId: string;
@@ -159,12 +167,12 @@ export default function RichMenuPage() {
         <div className="space-y-3">
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">LIFF URL</label>
-            <input
+            <Input
               type="url"
               value={liffUrl}
               onChange={(e) => setLiffUrl(e.target.value)}
               placeholder={defaultLiffUrl || 'https://liff.line.me/xxxxxxx-xxxxxxxx'}
-              className="w-full border rounded-lg px-3 py-2.5 text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background font-mono"
+              className="font-mono"
             />
             {defaultLiffUrl && !liffUrl && (
               <p className="text-xs text-muted-foreground mt-1">
@@ -200,18 +208,21 @@ export default function RichMenuPage() {
           <div className="space-y-3">
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">เลือกเมนู</label>
-              <select
+              <Select
                 value={uploadMenuId ?? ''}
-                onChange={(e) => setUploadMenuId(e.target.value || null)}
-                className="w-full border rounded-lg px-3 py-2.5 text-sm bg-background"
+                onValueChange={(v) => setUploadMenuId(v || null)}
               >
-                <option value="">— เลือกเมนู —</option>
-                {data.menus.map((m) => (
-                  <option key={m.richMenuId} value={m.richMenuId}>
-                    {m.name} {m.richMenuId === data.defaultMenuId ? '(Default)' : ''}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="— เลือกเมนู —" />
+                </SelectTrigger>
+                <SelectContent>
+                  {data.menus.map((m) => (
+                    <SelectItem key={m.richMenuId} value={m.richMenuId}>
+                      {m.name} {m.richMenuId === data.defaultMenuId ? '(Default)' : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div>

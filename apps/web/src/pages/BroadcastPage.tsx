@@ -5,6 +5,7 @@ import { Send, Users } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import QueryBoundary from '@/components/QueryBoundary';
 
@@ -92,8 +93,8 @@ export default function BroadcastPage() {
               <label className="mb-1.5 block text-sm font-medium text-foreground">
                 ข้อความที่ต้องการส่ง
               </label>
-              <textarea
-                className="min-h-[140px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              <Textarea
+                className="min-h-[140px]"
                 placeholder="พิมพ์ข้อความที่ต้องการ broadcast..."
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}

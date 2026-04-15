@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { Input } from '@/components/ui/input';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Badge } from '@/components/ui/badge';
@@ -153,17 +154,13 @@ function PasswordField({
 
   return (
     <div className="relative">
-      <input
+      <Input
         id={field.key}
         type={show ? 'text' : 'password'}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className={cn(
-          'w-full pr-10 pl-3 py-2 text-sm border border-input rounded-md bg-background',
-          'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1',
-          'placeholder:text-muted-foreground',
-        )}
+        className="pr-10"
       />
       <button
         type="button"
@@ -353,7 +350,7 @@ function ConfigDrawer({
                       </span>
                     </label>
                   ) : (
-                    <input
+                    <Input
                       id={field.key}
                       type={field.type === 'number' ? 'number' : 'text'}
                       value={formValues[field.key] ?? ''}
@@ -361,11 +358,6 @@ function ConfigDrawer({
                         setFormValues((prev) => ({ ...prev, [field.key]: e.target.value }))
                       }
                       placeholder={field.placeholder ?? ''}
-                      className={cn(
-                        'w-full px-3 py-2 text-sm border border-input rounded-md bg-background',
-                        'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1',
-                        'placeholder:text-muted-foreground',
-                      )}
                     />
                   )}
                   {field.description && field.type !== 'boolean' && (

@@ -3,6 +3,7 @@ import { Send, MoreVertical, ArrowLeft, Paperclip, Smile } from 'lucide-react';
 import MessageBubble from './MessageBubble';
 import SessionActions from './SessionActions';
 import CommandPalette from './CommandPalette';
+import AiSuggestPanel from './AiSuggestPanel';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 
 interface ChatPanelProps {
@@ -88,6 +89,16 @@ export default function ChatPanel({
     inputRef.current?.focus();
   };
 
+  const lastMessageAt =
+    messages.length > 0
+      ? new Date(messages[messages.length - 1]?.createdAt ?? 0).getTime()
+      : 0;
+
+  const handleSelectSuggestion = (text: string) => {
+    setInputText(text);
+    inputRef.current?.focus();
+  };
+
   if (!session) {
     return (
       <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">
@@ -148,6 +159,15 @@ export default function ChatPanel({
           </>
         )}
       </div>
+
+      {/* AI Suggestions */}
+      {!isResolved && (
+        <AiSuggestPanel
+          sessionId={session.id}
+          onSelectSuggestion={handleSelectSuggestion}
+          lastMessageAt={lastMessageAt}
+        />
+      )}
 
       {/* Input */}
       {!isResolved && (

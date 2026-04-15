@@ -8,6 +8,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, activeStatusMap } from '@/lib/status-badges';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -210,9 +211,14 @@ function WebhookRow({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="font-medium text-gray-900">{sub.name}</span>
-            <Badge variant={sub.isActive ? 'success' : 'secondary'} appearance={sub.isActive ? 'light' : undefined} className="text-xs">
-              {sub.isActive ? 'Active' : 'Inactive'}
-            </Badge>
+            {(() => {
+              const cfg = getStatusBadgeProps(sub.isActive ? 'active' : 'inactive', activeStatusMap);
+              return (
+                <Badge variant={cfg.variant} appearance={cfg.appearance} className="text-xs">
+                  {sub.isActive ? 'Active' : 'Inactive'}
+                </Badge>
+              );
+            })()}
             {sub.lastDelivery && (
               <Badge
                 variant={sub.lastDelivery.success ? 'success' : 'destructive'}

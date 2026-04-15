@@ -10,6 +10,7 @@ import { formatDateTime } from '@/utils/formatters';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, notificationChannelMap, activeStatusMap, webhookStatusMap } from '@/lib/status-badges';
 
 interface NotificationLog {
   id: string;
@@ -57,11 +58,6 @@ const statusLabels: Record<string, string> = {
   PENDING: 'รอส่ง',
 };
 
-const statusColors: Record<string, string> = {
-  SENT: 'bg-success/10 text-success dark:bg-success/15',
-  FAILED: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
-  PENDING: 'bg-warning/10 text-warning dark:bg-warning/15',
-};
 
 const eventTypeLabels: Record<string, string> = {
   PAYMENT_REMINDER: 'เตือนชำระ',
@@ -511,11 +507,14 @@ export default function NotificationsPage() {
     {
       key: 'status',
       label: 'สถานะ',
-      render: (l: NotificationLog) => (
-        <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusColors[l.status]}`}>
-          {statusLabels[l.status]}
-        </span>
-      ),
+      render: (l: NotificationLog) => {
+        const cfg = getStatusBadgeProps(l.status, webhookStatusMap);
+        return (
+          <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">
+            {statusLabels[l.status] || cfg.label}
+          </Badge>
+        );
+      },
     },
     {
       key: 'sentAt',
@@ -540,9 +539,14 @@ export default function NotificationsPage() {
     {
       key: 'channel',
       label: 'ช่องทาง',
-      render: (t: NotificationTemplate) => (
-        <span className="text-sm font-medium">{channelLabels[t.channel]}</span>
-      ),
+      render: (t: NotificationTemplate) => {
+        const cfg = getStatusBadgeProps(t.channel, notificationChannelMap);
+        return (
+          <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">
+            {cfg.label}
+          </Badge>
+        );
+      },
     },
     {
       key: 'format',
@@ -563,11 +567,14 @@ export default function NotificationsPage() {
     {
       key: 'isActive',
       label: 'สถานะ',
-      render: (t: NotificationTemplate) => (
-        <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${t.isActive ? 'bg-success/10 text-success dark:bg-success/15' : 'bg-muted text-muted-foreground'}`}>
-          {t.isActive ? 'เปิดใช้งาน' : 'ปิด'}
-        </span>
-      ),
+      render: (t: NotificationTemplate) => {
+        const cfg = getStatusBadgeProps(t.isActive ? 'active' : 'inactive', activeStatusMap);
+        return (
+          <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">
+            {t.isActive ? 'เปิดใช้งาน' : 'ปิด'}
+          </Badge>
+        );
+      },
     },
     {
       key: 'actions',

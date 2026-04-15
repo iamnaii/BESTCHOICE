@@ -10,6 +10,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { maskNationalId } from '@/utils/mask.util';
 import { formatDateShort, formatDateTime } from '@/utils/formatters';
 import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, activeStatusMap, type StatusConfig } from '@/lib/status-badges';
 
 interface DSARRequest {
   id: string;
@@ -35,11 +37,11 @@ interface Consent {
   revokeReason: string | null;
 }
 
-const dsarStatusLabels: Record<string, { label: string; className: string }> = {
-  PENDING: { label: 'รอดำเนินการ', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
-  IN_PROGRESS: { label: 'กำลังดำเนินการ', className: 'bg-info/10 text-info dark:bg-info/15' },
-  COMPLETED: { label: 'เสร็จสิ้น', className: 'bg-success/10 text-success dark:bg-success/15' },
-  REJECTED: { label: 'ปฏิเสธ', className: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },
+const dsarStatusMap: Record<string, StatusConfig> = {
+  PENDING: { variant: 'warning', appearance: 'light', label: 'รอดำเนินการ' },
+  IN_PROGRESS: { variant: 'info', appearance: 'light', label: 'กำลังดำเนินการ' },
+  COMPLETED: { variant: 'success', appearance: 'light', label: 'เสร็จสิ้น' },
+  REJECTED: { variant: 'destructive', appearance: 'light', label: 'ปฏิเสธ' },
 };
 
 const requestTypeLabels: Record<string, string> = {
@@ -210,8 +212,12 @@ function PDPAPage() {
                 key: 'status',
                 label: 'สถานะ',
                 render: (r: DSARRequest) => {
-                  const s = dsarStatusLabels[r.status] || { label: r.status, className: 'bg-muted text-foreground' };
-                  return <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${s.className}`}>{s.label}</span>;
+                  const cfg = getStatusBadgeProps(r.status, dsarStatusMap);
+                  return (
+                    <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">
+                      {cfg.label}
+                    </Badge>
+                  );
                 },
               },
               {
@@ -264,9 +270,14 @@ function PDPAPage() {
                 <div key={c.id} className={`p-4 rounded-xl border shadow-sm ${c.isActive ? 'border-success/20 bg-success/5 dark:bg-success/10' : 'border-destructive/20 bg-destructive/5 dark:bg-destructive/10'}`}>
                   <div className="flex justify-between items-center">
                     <div>
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${c.isActive ? 'bg-success/10 text-success dark:bg-success/15' : 'bg-destructive/10 text-destructive dark:bg-destructive/15'}`}>
-                        {c.isActive ? 'Active' : 'Revoked'}
-                      </span>
+                      {(() => {
+                        const cfg = getStatusBadgeProps(c.isActive ? 'active' : 'inactive', activeStatusMap);
+                        return (
+                          <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">
+                            {c.isActive ? 'Active' : 'Revoked'}
+                          </Badge>
+                        );
+                      })()}
                       <span className="text-xs text-muted-foreground ml-2">Version: {c.consentVersion}</span>
                     </div>
                     <div className="text-xs text-muted-foreground">

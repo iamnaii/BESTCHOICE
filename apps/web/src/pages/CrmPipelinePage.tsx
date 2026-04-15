@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import QueryBoundary from '@/components/QueryBoundary';
 import PageHeader from '@/components/ui/PageHeader';
 import { User, Phone, ChevronRight } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 
 const STAGES = [
   { key: 'NEW_LEAD', label: 'Lead ใหม่', color: 'bg-blue-500' },
@@ -116,9 +117,9 @@ export default function CrmPipelinePage() {
                         <span className="font-medium text-sm text-gray-900">
                           {lead.customer?.name ?? 'ไม่ระบุชื่อ'}
                         </span>
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                        <Badge variant="secondary" size="sm">
                           {stageInfo?.label}
-                        </span>
+                        </Badge>
                       </div>
                       <div className="flex items-center gap-3 mt-1 text-xs text-gray-400">
                         {lead.customer?.phone && (

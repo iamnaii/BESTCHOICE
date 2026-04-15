@@ -3,6 +3,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import { toast } from 'sonner';
 import QueryBoundary from '@/components/QueryBoundary';
+import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, sessionStatusMap } from '@/lib/status-badges';
 
 interface SessionItem {
   id: string;
@@ -137,11 +139,14 @@ export default function ChatbotFinanceSessionsPage() {
                       </p>
                       <p className="text-xs text-gray-500">{s.customer?.phone || s.lineUserId.slice(0, 12)}</p>
                     </div>
-                    {s.handoffMode && (
-                      <span className="text-[10px] px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full">
-                        Handoff
-                      </span>
-                    )}
+                    {s.handoffMode && (() => {
+                      const cfg = getStatusBadgeProps('HANDOFF', sessionStatusMap);
+                      return (
+                        <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">
+                          {cfg.label}
+                        </Badge>
+                      );
+                    })()}
                   </div>
                   <p className="text-xs text-gray-400 mt-1">
                     {s.totalMessages} ข้อความ · {new Date(s.lastMessageAt).toLocaleString('th-TH')}

@@ -14,8 +14,9 @@ import { ApiTags } from '@nestjs/swagger';
 import { Request } from 'express';
 import { LineOaService } from './line-oa.service';
 import { ChatbotService } from './chatbot.service';
+import { QuickReplyService } from './quick-reply.service';
 import { LineWebhookGuard } from './line-webhook.guard';
-import { LineWebhookBody, LineMessageEvent, LinePostbackEvent } from './dto/webhook-event.dto';
+import { LineWebhookBody, LineMessageEvent, LinePostbackEvent, LineFollowEvent } from './dto/webhook-event.dto';
 import {
   CHATBOT_RESPONSES,
   ANDROID_KEYWORDS,
@@ -43,6 +44,7 @@ export class LineOaChatbotController {
   constructor(
     private lineOaService: LineOaService,
     private chatbotService: ChatbotService,
+    private quickReplyService: QuickReplyService,
     private prisma: PrismaService,
     private promptPayQrService: PromptPayQrService,
     private paymentLinkService: PaymentLinkService,
@@ -95,7 +97,7 @@ export class LineOaChatbotController {
         break;
       }
       case 'follow':
-        await this.lineOaService.linkLineId(event.source.userId);
+        await this.handleFollow(event as LineFollowEvent);
         break;
       case 'unfollow':
         await this.lineOaService.unlinkLineId(event.source.userId);
@@ -104,6 +106,27 @@ export class LineOaChatbotController {
         await this.handlePostback(event as LinePostbackEvent);
         break;
     }
+  }
+
+  // ─── Follow Handler ───────────────────────────────────
+
+  private async handleFollow(event: LineFollowEvent): Promise<void> {
+    const userId = event.source.userId;
+
+    // Link LINE ID to customer (idempotent — no-op if already linked)
+    await this.lineOaService.linkLineId(userId);
+
+    // Send welcome message with Quick Reply buttons
+    const welcomeText =
+      '🎉 ยินดีต้อนรับสู่ BESTCHOICE!\n\nร้านมือถือผ่อนราคาดี ดาวน์น้อย อนุมัติไว\nสนใจสอบถามได้เลยครับ/ค่ะ';
+
+    await this.lineOaService.replyMessage(event.replyToken, [
+      {
+        type: 'text',
+        text: welcomeText,
+        quickReply: { items: this.quickReplyService.greeting() },
+      },
+    ]);
   }
 
   // ─── Text Message Handler ─────────────────────────────

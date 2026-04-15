@@ -83,15 +83,29 @@ export interface LinePostbackEvent extends LineEventBase {
 
 // ─── LINE Message Types (for sending) ───────────────────
 
+export interface LineQuickReplyItem {
+  type: 'action';
+  action:
+    | { type: 'message'; label: string; text: string }
+    | { type: 'uri'; label: string; uri: string }
+    | { type: 'postback'; label: string; data: string; displayText?: string };
+}
+
+export interface LineQuickReply {
+  items: LineQuickReplyItem[];
+}
+
 export interface LineTextMessagePayload {
   type: 'text';
   text: string;
+  quickReply?: LineQuickReply;
 }
 
 export interface LineFlexMessagePayload {
   type: 'flex';
   altText: string;
   contents: unknown;
+  quickReply?: LineQuickReply;
 }
 
 export type LineMessagePayload = LineTextMessagePayload | LineFlexMessagePayload;

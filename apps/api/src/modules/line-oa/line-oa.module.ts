@@ -13,6 +13,7 @@ import { PromptPayQrService } from './promptpay/promptpay-qr.service';
 import { PaymentLinkService } from './payment-links/payment-link.service';
 import { RichMenuService } from './rich-menu/rich-menu.service';
 import { ChatbotService } from './chatbot.service';
+import { QuickReplyService } from './quick-reply.service';
 import { ShopDomainHandler } from './shop-domain.handler';
 import { FlexTemplatesService } from './flex-templates.service';
 import { ContractsModule } from '../contracts/contracts.module';
@@ -31,9 +32,10 @@ import { ChatbotFinanceModule } from '../chatbot-finance/chatbot-finance.module'
     PaymentLinkService,
     RichMenuService,
     ChatbotService,
+    QuickReplyService,
     ShopDomainHandler,
     FlexTemplatesService,
   ],
-  exports: [LineOaService, LiffApiService, PromptPayQrService, PaymentLinkService, RichMenuService, ShopDomainHandler, FlexTemplatesService],
+  exports: [LineOaService, LiffApiService, PromptPayQrService, PaymentLinkService, RichMenuService, ShopDomainHandler, FlexTemplatesService, QuickReplyService],
 })
 export class LineOaModule {}

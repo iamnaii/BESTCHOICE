@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
+import ProductContextCard from './ProductContextCard';
 import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, contractStatusMap, riskLevelMap } from '@/lib/status-badges';
 import {
@@ -148,6 +149,9 @@ export default function Customer360Panel({ customerId, activeSessionId }: Custom
           </div>
         )}
       </div>
+
+      {/* ─── 1b. Product Context (detected from chat) ────── */}
+      {activeSessionId && <ProductContextCard sessionId={activeSessionId} />}
 
       {/* ─── 2. Active Contracts + Product/IMEI ─────────── */}
       <div className="p-4 border-b border-gray-100">

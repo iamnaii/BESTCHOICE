@@ -30,7 +30,8 @@ export class AiSuggestService {
     const start = Date.now();
 
     if (!this.anthropic) {
-      return { suggestions: [], detectedProducts: [], processingTimeMs: 0 };
+      // Mock mode: return realistic suggestions when no API key
+      return this.getMockSuggestions(roomId);
     }
 
     // 1. Fetch conversation
@@ -181,5 +182,71 @@ intent ที่ใช้ได้: answer_price, answer_spec, answer_stock, ans
         processingTimeMs: Date.now() - start,
       };
     }
+  }
+
+  /** Mock suggestions when no API key — for dev/demo */
+  private async getMockSuggestions(roomId: string): Promise<AiSuggestResponse> {
+    const start = Date.now();
+
+    const messages = await this.prisma.chatMessage.findMany({
+      where: { roomId },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+    });
+
+    if (messages.length === 0) {
+      return { suggestions: [], detectedProducts: [], processingTimeMs: 0 };
+    }
+
+    const lastCustomerMsg = messages.find((m) => m.role === 'CUSTOMER')?.text?.toLowerCase() ?? '';
+
+    // Generate contextual mock suggestions based on last customer message
+    let suggestions: AiSuggestion[] = [];
+
+    if (/ราคา|เท่าไ[ห]?ร่|กี่บาท/.test(lastCustomerMsg)) {
+      suggestions = [
+        { text: 'ราคาเริ่มต้น 29,900 บาทครับ ผ่อนได้ 6-24 งวด ดาวน์ 30% สนใจดูเงื่อนไขผ่อนไหมครับ?', intent: 'answer_price', confidence: 0.92 },
+        { text: 'มีทั้งรุ่น 128GB (29,900) และ 256GB (34,900) ครับ ตอนนี้มีโปรแถมเคส+ฟิล์มด้วยครับ', intent: 'answer_price', confidence: 0.88 },
+        { text: 'ส่งรายละเอียดราคาและเงื่อนไขผ่อนให้ทาง LINE เลยนะครับ สะดวกเวลาไหนครับ?', intent: 'close_sale', confidence: 0.75 },
+      ];
+    } else if (/ผ่อน|งวด|ดาวน์|เงินดาวน์/.test(lastCustomerMsg)) {
+      suggestions = [
+        { text: 'ผ่อนได้ 6, 10, 12, 24 งวดครับ ดาวน์ขั้นต่ำ 30% ดอกเบี้ย flat rate 1.5%/เดือนครับ', intent: 'answer_price', confidence: 0.90 },
+        { text: 'ถ้าผ่อน 12 งวด ดาวน์ 30% งวดละประมาณ 2,500-3,000 บาทครับ อยากให้คำนวณให้ดูไหมครับ?', intent: 'answer_price', confidence: 0.85 },
+        { text: 'ใช้แค่บัตรประชาชนตัวจริงกับสลิปเงินเดือนครับ อนุมัติไวภายใน 30 นาทีครับ', intent: 'close_sale', confidence: 0.78 },
+      ];
+    } else if (/สี|สต็อก|มีไหม|เหลือ|กี่เครื่อง/.test(lastCustomerMsg)) {
+      suggestions = [
+        { text: 'มีสีดำ, ขาว, และทอง พร้อมส่งทุกสีครับ สนใจสีไหนครับ?', intent: 'answer_stock', confidence: 0.91 },
+        { text: 'สีทองยังมีเหลือ 3 เครื่องครับ ถ้าสนใจแนะนำจองไว้ก่อนนะครับ ของหมดเร็ว', intent: 'answer_stock', confidence: 0.87 },
+      ];
+    } else if (/สาขา|ที่ไหน|เปิด|ปิด|กี่โมง|แผนที่/.test(lastCustomerMsg)) {
+      suggestions = [
+        { text: 'สาขาลาดพร้าวเปิด 10:00-20:00 ทุกวันครับ อยู่ตรงข้าม MRT ลาดพร้าวครับ', intent: 'answer_spec', confidence: 0.93 },
+        { text: 'เปิดทุกวัน 10:00-20:00 ครับ แวะมาดูเครื่องจริงได้เลยครับ จะเตรียมเครื่องไว้ให้ดูนะครับ', intent: 'close_sale', confidence: 0.85 },
+      ];
+    } else if (/เอกสาร|ต้องใช้อะไร|เตรียม/.test(lastCustomerMsg)) {
+      suggestions = [
+        { text: 'ใช้แค่บัตรประชาชนตัวจริง + สลิปเงินเดือนล่าสุด 1 ใบครับ อนุมัติไวภายใน 30 นาที', intent: 'answer_spec', confidence: 0.92 },
+        { text: 'เอกสารง่ายมากครับ แค่บัตรประชาชน ถ้ามีสเตทเมนต์ย้อนหลัง 3 เดือนยิ่งดีครับ สะดวกมาวันไหนครับ?', intent: 'close_sale', confidence: 0.84 },
+      ];
+    } else if (/สวัสดี|หวัดดี|ดี/.test(lastCustomerMsg)) {
+      suggestions = [
+        { text: 'สวัสดีครับ ยินดีให้บริการครับ สนใจสินค้ารุ่นไหนครับ?', intent: 'greet', confidence: 0.95 },
+        { text: 'สวัสดีครับ BESTCHOICE ยินดีต้อนรับครับ วันนี้มีโปรพิเศษ ผ่อน 0% 6 งวดครับ', intent: 'greet', confidence: 0.88 },
+      ];
+    } else {
+      suggestions = [
+        { text: 'ครับ สนใจสอบถามเพิ่มเติมได้เลยนะครับ ยินดีให้บริการครับ', intent: 'follow_up', confidence: 0.80 },
+        { text: 'ต้องการข้อมูลเพิ่มเติมเรื่องไหนครับ? ราคา ผ่อน หรือโปรโมชัน ถามได้เลยครับ', intent: 'ask_preference', confidence: 0.75 },
+        { text: 'สะดวกแวะมาดูเครื่องจริงที่สาขาไหมครับ? เปิดทุกวัน 10:00-20:00 ครับ', intent: 'close_sale', confidence: 0.70 },
+      ];
+    }
+
+    return {
+      suggestions,
+      detectedProducts: ['iPhone 16 Pro'],
+      processingTimeMs: Date.now() - start,
+    };
   }
 }

@@ -263,7 +263,9 @@ export class StaffChatController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   async getSuggestions(@Param('id') id: string, @Body() dto: AiSuggestRequestDto) {
     const enabled = this.config.get<string>('AI_SUGGEST_ENABLED') === 'true';
-    if (!enabled) {
+    const hasApiKey = !!this.config.get<string>('ANTHROPIC_API_KEY');
+    // Allow mock mode (no API key) even without AI_SUGGEST_ENABLED
+    if (!enabled && hasApiKey) {
       return { suggestions: [], detectedProducts: [], processingTimeMs: 0 };
     }
     return this.aiSuggest.suggest(id, dto.currentDraft);

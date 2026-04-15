@@ -4,6 +4,8 @@ import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, receiptStatusMap } from '@/lib/status-badges';
 import ReceiptModal from '@/components/payment/ReceiptModal';
 import { useDebounce } from '@/hooks/useDebounce';
 import { exportToExcel } from '@/utils/excel.util';
@@ -109,9 +111,9 @@ function ReceiptsPage() {
       render: (r: Receipt) => {
         const isCredit = r.receiptType === 'CREDIT_NOTE';
         return (
-          <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${isCredit ? 'bg-warning/10 text-warning dark:bg-warning/15' : 'bg-primary/10 text-primary dark:bg-primary/15'}`}>
+          <Badge variant={isCredit ? 'warning' : 'primary'} appearance="light" size="sm">
             {receiptTypeLabels[r.receiptType] || r.receiptType}
-          </span>
+          </Badge>
         );
       },
     },
@@ -149,9 +151,11 @@ function ReceiptsPage() {
     {
       key: 'status',
       label: 'สถานะ',
-      render: (r: Receipt) => r.isVoided
-        ? <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold bg-destructive/10 text-destructive dark:bg-destructive/15">ยกเลิก</span>
-        : <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold bg-success/10 text-success dark:bg-success/15">ปกติ</span>,
+      render: (r: Receipt) => {
+        const statusKey = r.isVoided ? 'REJECTED' : 'VERIFIED';
+        const cfg = getStatusBadgeProps(statusKey, receiptStatusMap);
+        return <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">{r.isVoided ? 'ยกเลิก' : 'ปกติ'}</Badge>;
+      },
     },
     {
       key: 'actions',

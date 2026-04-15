@@ -6,6 +6,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, accountGroupMap } from '@/lib/status-badges';
 
 type AccountGroup = 'ASSET' | 'LIABILITY' | 'EQUITY' | 'REVENUE' | 'EXPENSE';
 
@@ -33,13 +34,6 @@ const GROUP_LABELS: Record<AccountGroup, string> = {
   EXPENSE: 'ค่าใช้จ่าย',
 };
 
-const GROUP_COLORS: Record<AccountGroup, string> = {
-  ASSET: 'bg-emerald-100 text-emerald-700',
-  LIABILITY: 'bg-orange-100 text-orange-700',
-  EQUITY: 'bg-violet-100 text-violet-700',
-  REVENUE: 'bg-sky-100 text-sky-700',
-  EXPENSE: 'bg-rose-100 text-rose-700',
-};
 
 interface FormState {
   code: string;
@@ -255,8 +249,12 @@ export default function ChartOfAccountsPage() {
             if (!list || list.length === 0) return null;
             return (
               <div key={g} className="rounded-xl border border-border bg-card overflow-hidden">
-                <div className={`px-4 py-2.5 border-b border-border ${GROUP_COLORS[g]} font-semibold text-sm`}>
-                  {GROUP_LABELS[g]} ({list.length})
+                <div className="px-4 py-2.5 border-b border-border bg-muted/40 font-semibold text-sm flex items-center gap-2">
+                  {(() => {
+                    const cfg = getStatusBadgeProps(g, accountGroupMap);
+                    return <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>;
+                  })()}
+                  <span className="text-muted-foreground font-normal text-xs">({list.length})</span>
                 </div>
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50 text-xs text-muted-foreground">

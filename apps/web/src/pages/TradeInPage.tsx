@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, tradeInStatusMap, conditionGradeMap } from '@/lib/status-badges';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useAuth } from '@/contexts/AuthContext';
 import { RefreshCw, Plus, Search, CheckCircle, XCircle, FileText, CreditCard, Upload, AlertTriangle, Zap } from 'lucide-react';
@@ -74,13 +75,6 @@ interface TradeInsResponse {
   limit: number;
 }
 
-const statusConfig: Record<string, { label: string; variant: 'primary' | 'secondary' | 'success' | 'warning' | 'destructive' | 'outline' }> = {
-  PENDING_APPRAISAL: { label: 'รอประเมิน', variant: 'warning' },
-  APPRAISED: { label: 'ประเมินแล้ว', variant: 'primary' },
-  ACCEPTED: { label: 'ยอมรับ', variant: 'success' },
-  REJECTED: { label: 'ปฏิเสธ', variant: 'destructive' },
-  COMPLETED: { label: 'เสร็จสิ้น', variant: 'secondary' },
-};
 
 const conditionOptions = [
   { value: 'A', label: 'A — ดีเยี่ยม' },
@@ -398,8 +392,8 @@ export default function TradeInPage() {
       key: 'status',
       label: 'สถานะ',
       render: (item) => {
-        const cfg = statusConfig[item.status] || { label: item.status, variant: 'outline' as const };
-        return <Badge variant={cfg.variant}>{cfg.label}</Badge>;
+        const cfg = getStatusBadgeProps(item.status, tradeInStatusMap);
+        return <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>;
       },
     },
     {

@@ -6,6 +6,8 @@ import QueryBoundary from '@/components/QueryBoundary';
 import { formatThaiDateShort, THAI_MONTHS_FULL } from '@/lib/date';
 import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, accountingPeriodStatusMap } from '@/lib/status-badges';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import CompanyFilter from '@/components/CompanyFilter';
 import { Button } from '@/components/ui/button';
@@ -73,12 +75,6 @@ const statusLabels: Record<string, string> = {
   DRAFT: 'แบบร่าง',
   GENERATED: 'สร้างแล้ว',
   SUBMITTED: 'ยื่นแล้ว',
-};
-
-const statusColors: Record<string, string> = {
-  DRAFT: 'bg-warning/10 text-warning',
-  GENERATED: 'bg-primary/10 text-primary',
-  SUBMITTED: 'bg-success/10 text-success',
 };
 
 // --- Sub-components ---
@@ -219,9 +215,10 @@ function ReportsList({
                 {MONTHS[r.reportMonth - 1]} {r.reportYear + 543}
               </td>
               <td className="py-2.5">
-                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[r.status] ?? 'bg-muted text-muted-foreground'}`}>
-                  {statusLabels[r.status] ?? r.status}
-                </span>
+                {(() => {
+                  const cfg = getStatusBadgeProps(r.status, accountingPeriodStatusMap);
+                  return <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>;
+                })()}
               </td>
               <td className="py-2.5 text-muted-foreground">{r.generatedBy?.name ?? '-'}</td>
               <td className="py-2.5 text-muted-foreground tabular-nums">

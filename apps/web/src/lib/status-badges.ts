@@ -252,6 +252,10 @@ export const accountingPeriodStatusMap: Record<string, StatusConfig> = {
   REVIEW: { variant: 'warning', appearance: 'light', label: 'รีวิว' },
   CLOSED: { variant: 'primary', appearance: 'light', label: 'ปิดแล้ว' },
   SYNCED: { variant: 'success', appearance: 'light', label: 'Sync แล้ว' },
+  // Tax report statuses
+  DRAFT: { variant: 'warning', appearance: 'light', label: 'แบบร่าง' },
+  GENERATED: { variant: 'primary', appearance: 'light', label: 'สร้างแล้ว' },
+  SUBMITTED: { variant: 'success', appearance: 'light', label: 'ยื่นแล้ว' },
 };
 
 // ─── Generic active/inactive ──────────────────────────────────────────────────
@@ -272,6 +276,19 @@ export const auditActionMap: Record<string, StatusConfig> = {
   LOGIN: { variant: 'info', appearance: 'light', label: 'เข้าสู่ระบบ' },
   LOGOUT: { variant: 'secondary', label: 'ออกจากระบบ' },
   EXPORT: { variant: 'warning', appearance: 'light', label: 'ส่งออก' },
+  // Financial audit action types
+  PAYMENT_RECORDED: { variant: 'success', appearance: 'light', label: 'บันทึกชำระเงิน' },
+  PAYMENT_PARTIAL: { variant: 'info', appearance: 'light', label: 'ชำระบางส่วน' },
+  LATE_FEE_WAIVED: { variant: 'warning', appearance: 'light', label: 'ยกเว้นค่าปรับ' },
+  CREDIT_APPLIED: { variant: 'info', appearance: 'light', label: 'ใช้เครดิต' },
+  RECEIPT_GENERATED: { variant: 'success', appearance: 'light', label: 'ออกใบเสร็จ' },
+  RECEIPT_VOIDED: { variant: 'destructive', appearance: 'light', label: 'ยกเลิกใบเสร็จ' },
+  CREDIT_NOTE_ISSUED: { variant: 'warning', appearance: 'light', label: 'ออกใบลดหนี้' },
+  OVERPAYMENT_CREDITED: { variant: 'primary', appearance: 'light', label: 'บันทึกเครดิตเกิน' },
+  CREDIT_BALANCE_APPLIED: { variant: 'info', appearance: 'light', label: 'ใช้ยอดเครดิต' },
+  CONTRACT_COMPLETED: { variant: 'success', appearance: 'light', label: 'ปิดสัญญา' },
+  DUNNING_ESCALATION: { variant: 'destructive', appearance: 'light', label: 'ยกระดับติดตามหนี้' },
+  STATUS_CHANGE: { variant: 'secondary', label: 'เปลี่ยนสถานะ' },
 };
 
 // ─── User / branch active status ──────────────────────────────────────────────
@@ -292,10 +309,13 @@ export const commissionStatusMap: Record<string, StatusConfig> = {
 // ─── Expense statuses ──────────────────────────────────────────────────────────
 
 export const expenseStatusMap: Record<string, StatusConfig> = {
+  DRAFT: { variant: 'secondary', label: 'ร่าง' },
   PENDING: { variant: 'warning', appearance: 'light', label: 'รออนุมัติ' },
+  PENDING_APPROVAL: { variant: 'warning', appearance: 'light', label: 'รออนุมัติ' },
   APPROVED: { variant: 'success', appearance: 'light', label: 'อนุมัติแล้ว' },
   REJECTED: { variant: 'destructive', appearance: 'light', label: 'ไม่อนุมัติ' },
   PAID: { variant: 'primary', appearance: 'light', label: 'จ่ายแล้ว' },
+  VOIDED: { variant: 'secondary', label: 'ยกเลิก' },
 };
 
 // ─── Exchange statuses ────────────────────────────────────────────────────────
@@ -319,6 +339,7 @@ export const promotionStatusMap: Record<string, StatusConfig> = {
 
 export const tradeInStatusMap: Record<string, StatusConfig> = {
   PENDING: { variant: 'warning', appearance: 'light', label: 'รอประเมิน' },
+  PENDING_APPRAISAL: { variant: 'warning', appearance: 'light', label: 'รอประเมิน' },
   APPRAISED: { variant: 'info', appearance: 'light', label: 'ประเมินแล้ว' },
   ACCEPTED: { variant: 'success', appearance: 'light', label: 'รับซื้อ' },
   REJECTED: { variant: 'destructive', appearance: 'light', label: 'ไม่รับซื้อ' },
@@ -424,6 +445,7 @@ export const saleTypeMap: Record<string, StatusConfig> = {
   CASH: { variant: 'success', appearance: 'light', label: 'เงินสด' },
   INSTALLMENT: { variant: 'primary', appearance: 'light', label: 'ผ่อนชำระ' },
   GFIN: { variant: 'info', appearance: 'light', label: 'GFIN' },
+  EXTERNAL_FINANCE: { variant: 'info', appearance: 'light', label: 'ไฟแนนซ์' },
 };
 
 // ─── Document statuses ────────────────────────────────────────────────────────

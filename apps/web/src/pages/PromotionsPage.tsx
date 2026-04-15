@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, promotionStatusMap } from '@/lib/status-badges';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Zap, Plus, Pencil, Trash2 } from 'lucide-react';
 import QueryBoundary from '@/components/QueryBoundary';
@@ -229,12 +230,19 @@ export default function PromotionsPage() {
       key: 'status',
       label: 'สถานะ',
       render: (item) => {
-        const active = isPromotionActive(item);
-        return (
-          <Badge variant={active ? 'secondary' : 'outline'}>
-            {active ? 'ใช้งาน' : 'ปิดใช้งาน'}
-          </Badge>
-        );
+        const now = new Date();
+        let statusKey: string;
+        if (!item.isActive) {
+          statusKey = 'EXPIRED';
+        } else if (item.startDate && new Date(item.startDate) > now) {
+          statusKey = 'SCHEDULED';
+        } else if (item.endDate && new Date(item.endDate) < now) {
+          statusKey = 'EXPIRED';
+        } else {
+          statusKey = 'ACTIVE';
+        }
+        const cfg = getStatusBadgeProps(statusKey, promotionStatusMap);
+        return <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>;
       },
     },
     {

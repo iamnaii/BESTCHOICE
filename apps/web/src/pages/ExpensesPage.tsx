@@ -16,6 +16,8 @@ import { Receipt, Plus, Pencil, Upload, X, ArrowLeft, ShoppingBag, Megaphone, Bu
 import AnimatedCounter from '@/components/ui/animated-counter';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, expenseStatusMap } from '@/lib/status-badges';
 import { formatDateShortThai } from '@/utils/formatters';
 
 // ─── Types ───
@@ -61,11 +63,6 @@ const statusLabels: Record<string, string> = {
   REJECTED: 'ไม่อนุมัติ', PAID: 'จ่ายแล้ว', VOIDED: 'ยกเลิก',
 };
 
-const statusColors: Record<string, string> = {
-  DRAFT: 'bg-muted text-muted-foreground', PENDING_APPROVAL: 'bg-warning/10 text-warning dark:bg-warning/15',
-  APPROVED: 'bg-primary/10 text-primary dark:bg-primary/15', REJECTED: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
-  PAID: 'bg-success/10 text-success dark:bg-success/15', VOIDED: 'bg-muted text-muted-foreground line-through',
-};
 
 const paymentMethodLabels: Record<string, string> = {
   CASH: 'เงินสด', BANK_TRANSFER: 'โอนเงิน', QR_EWALLET: 'QR/e-Wallet',
@@ -576,8 +573,15 @@ export default function ExpensesPage() {
     },
     {
       key: 'status', label: 'สถานะ',
-      render: (e: Expense) => (<div><span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusColors[e.status] || 'bg-muted'}`}>{statusLabels[e.status] || e.status}</span>
-        {e.rejectReason && <div className="text-xs text-red-500 mt-0.5 truncate max-w-[100px]">{e.rejectReason}</div>}</div>),
+      render: (e: Expense) => {
+        const cfg = getStatusBadgeProps(e.status, expenseStatusMap);
+        return (
+          <div>
+            <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>
+            {e.rejectReason && <div className="text-xs text-red-500 mt-0.5 truncate max-w-[100px]">{e.rejectReason}</div>}
+          </div>
+        );
+      },
     },
     {
       key: 'actions', label: '',

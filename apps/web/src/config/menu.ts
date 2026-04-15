@@ -356,6 +356,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'Chat Analytics', path: '/chat-analytics', icon: BarChart3 },
         { label: 'Canned Responses', path: '/canned-responses', icon: MessageSquareMore },
         { label: 'Channel Settings', path: '/settings/channels', icon: Plug },
+        { label: 'การเชื่อมต่อ', path: '/settings/integrations', icon: Plug },
         { label: 'AI Chat', path: '/settings/ai-chat', icon: Sparkles },
         { label: 'AI Training', path: '/settings/ai-training', icon: Brain },
         { label: 'AI Performance', path: '/settings/ai-performance', icon: BarChart3 },

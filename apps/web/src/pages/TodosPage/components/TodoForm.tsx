@@ -1,10 +1,6 @@
-import { useState, useMemo, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState, useEffect } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
-import { formatThaiDateShort } from '@/lib/date';
-import { useAuth } from '@/contexts/AuthContext';
-import PageHeader from '@/components/ui/PageHeader';
-import { KanbanBoard, type KanbanColumn } from '@/components/ui/KanbanBoard';
 import {
   Dialog,
   DialogContent,
@@ -13,21 +9,13 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import {
   CheckSquare,
   Plus,
-  Trash2,
   Calendar,
   Flag,
   X,
-  ListTodo,
-  Clock,
-  CalendarDays,
-  AlertCircle,
   CheckCircle2,
-  Search,
-  GripVertical,
   Paperclip,
   FileText,
   Image as ImageIcon,
@@ -37,259 +25,50 @@ import {
   AlignLeft,
   Type as TypeIcon,
 } from 'lucide-react';
-import QueryBoundary from '@/components/QueryBoundary';
+import {
+  type Todo,
+  type TodoPriority,
+  type AssigneeRef,
+  type Attachment,
+  type ChecklistItem,
+  priorityConfig,
+  formatBytes,
+  emptyForm,
+} from '../types';
 
-type TodoStatus = 'TODO' | 'DOING' | 'DONE';
-type TodoPriority = 'LOW' | 'MEDIUM' | 'HIGH';
-type TodoView = 'all' | 'today' | 'upcoming' | 'priority' | 'completed';
-
-interface ChecklistItem {
-  id: string;
-  text: string;
-  done: boolean;
+interface TodoFormProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  editing: Todo | null;
+  staffUsers: AssigneeRef[];
 }
 
-interface Attachment {
-  url: string;
-  name: string;
-  size: number;
-  mimeType: string;
-  uploadedAt: string;
-}
-
-interface AssigneeRef {
-  id: string;
-  name: string;
-  nickname?: string | null;
-  avatarUrl?: string | null;
-}
-
-interface Todo {
-  id: string;
-  title: string;
-  description?: string | null;
-  status: TodoStatus;
-  priority: TodoPriority;
-  dueDate?: string | null;
-  completedAt?: string | null;
-  assigneeId?: string | null;
-  assignee?: AssigneeRef | null;
-  createdById: string;
-  createdBy?: AssigneeRef | null;
-  tags: string[];
-  checklist?: ChecklistItem[] | null;
-  attachments?: Attachment[] | null;
-  createdAt: string;
-}
-
-interface TodosResponse {
-  data: Todo[];
-  total: number;
-  summary: {
-    all: number;
-    today: number;
-    upcoming: number;
-    priority: number;
-    completed: number;
-  };
-}
-
-const priorityConfig: Record<
-  TodoPriority,
-  { label: string; badge: string; bar: string; dot: string }
-> = {
-  LOW: {
-    label: 'ต่ำ',
-    badge: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
-    bar: 'bg-slate-300',
-    dot: 'bg-slate-400',
-  },
-  MEDIUM: {
-    label: 'ปานกลาง',
-    badge: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
-    bar: 'bg-amber-400',
-    dot: 'bg-amber-500',
-  },
-  HIGH: {
-    label: 'สูง',
-    badge: 'bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300',
-    bar: 'bg-rose-500',
-    dot: 'bg-rose-500',
-  },
-};
-
-const avatarColors = [
-  'from-blue-500 to-indigo-500',
-  'from-emerald-500 to-teal-500',
-  'from-purple-500 to-pink-500',
-  'from-orange-500 to-red-500',
-  'from-cyan-500 to-blue-500',
-  'from-violet-500 to-purple-500',
-];
-
-function avatarColor(name: string) {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) hash = (hash << 5) - hash + name.charCodeAt(i);
-  return avatarColors[Math.abs(hash) % avatarColors.length];
-}
-
-const tabs: { value: TodoView; label: string; icon: typeof ListTodo }[] = [
-  { value: 'all', label: 'ทั้งหมด', icon: ListTodo },
-  { value: 'today', label: 'วันนี้', icon: Clock },
-  { value: 'upcoming', label: 'กำลังจะถึง', icon: CalendarDays },
-  { value: 'priority', label: 'สำคัญ', icon: AlertCircle },
-  { value: 'completed', label: 'เสร็จแล้ว', icon: CheckCircle2 },
-];
-
-function formatDate(d?: string | null) {
-  if (!d) return '';
-  return formatThaiDateShort(d);
-}
-
-function isOverdue(d?: string | null) {
-  if (!d) return false;
-  return new Date(d).getTime() < Date.now() - 24 * 3600 * 1000;
-}
-
-const emptyForm: Partial<Todo> & { tagsInput?: string } = {
-  title: '',
-  description: '',
-  priority: 'MEDIUM',
-  status: 'TODO',
-  dueDate: '',
-  assigneeId: '',
-  tags: [],
-  checklist: [],
-  attachments: [],
-  tagsInput: '',
-};
-
-function formatBytes(bytes?: number) {
-  if (typeof bytes !== 'number' || !Number.isFinite(bytes) || bytes < 0) return '—';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
-
-export default function TodosPage() {
-  const { user } = useAuth();
+export function TodoForm({ open, onOpenChange, editing, staffUsers }: TodoFormProps) {
   const queryClient = useQueryClient();
-  const [view, setView] = useState<TodoView>('all');
-  const [search, setSearch] = useState('');
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; id: string }>({ open: false, id: '' });
-  const [editing, setEditing] = useState<Todo | null>(null);
-  const [form, setForm] = useState<typeof emptyForm>(emptyForm);
-  // Map of attachment.url → blob object URL for inline image previews.
-  // Populated lazily when the dialog opens; entries are revoked on close
-  // so we don't leak Blob URLs across edit sessions.
+  const [form, setForm] = useState<typeof emptyForm>({ ...emptyForm });
   const [thumbUrls, setThumbUrls] = useState<Record<string, string>>({});
-  // Lightbox state — blob URL of the image currently being viewed full-size
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
-  const { data: staffUsers = [] } = useQuery<AssigneeRef[]>({
-    queryKey: ['staff-users-todo'],
-    queryFn: async () => {
-      const { data } = await api.get('/users');
-      const list = data.data || data || [];
-      return Array.isArray(list) ? list : [];
-    },
-  });
-
-  const { data, isLoading, isError, error, refetch } = useQuery<TodosResponse>({
-    queryKey: ['todos', view, search],
-    queryFn: async () => {
-      const params = new URLSearchParams();
-      params.set('view', view);
-      if (search) params.set('search', search);
-      params.set('limit', '100');
-      const { data } = await api.get(`/todos?${params}`);
-      return data;
-    },
-  });
-
-  const todos = data?.data || [];
-  const summary = data?.summary || { all: 0, today: 0, upcoming: 0, priority: 0, completed: 0 };
-
-  const moveStatusMutation = useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: TodoStatus }) => {
-      const { data } = await api.patch(`/todos/${id}`, { status });
-      return data;
-    },
-    // Optimistic update: patch cache immediately so the card appears in
-    // the destination column without waiting for the API round-trip.
-    onMutate: async ({ id, status }) => {
-      await queryClient.cancelQueries({ queryKey: ['todos'] });
-      const snapshots = queryClient.getQueriesData<TodosResponse>({ queryKey: ['todos'] });
-      snapshots.forEach(([key, prev]) => {
-        if (!prev) return;
-        const next: TodosResponse = {
-          ...prev,
-          data: prev.data.map((t) =>
-            t.id === id
-              ? {
-                  ...t,
-                  status,
-                  completedAt: status === 'DONE' ? new Date().toISOString() : null,
-                }
-              : t,
-          ),
-        };
-        queryClient.setQueryData(key, next);
+  // Sync form when editing changes or dialog opens
+  useEffect(() => {
+    if (!open) return;
+    if (editing) {
+      setForm({
+        title: editing.title,
+        description: editing.description || '',
+        priority: editing.priority,
+        status: editing.status,
+        dueDate: editing.dueDate ? editing.dueDate.slice(0, 10) : '',
+        assigneeId: editing.assigneeId || '',
+        tags: editing.tags || [],
+        checklist: Array.isArray(editing.checklist) ? editing.checklist : [],
+        attachments: Array.isArray(editing.attachments) ? editing.attachments : [],
+        tagsInput: '',
       });
-      return { snapshots };
-    },
-    onError: (e, _vars, ctx) => {
-      // Rollback
-      ctx?.snapshots.forEach(([key, prev]) => queryClient.setQueryData(key, prev));
-      toast.error(getErrorMessage(e));
-    },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ['todos'] }),
-  });
-
-  const toggleMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const { data } = await api.patch(`/todos/${id}/toggle`);
-      return data;
-    },
-    onMutate: async (id) => {
-      await queryClient.cancelQueries({ queryKey: ['todos'] });
-      const snapshots = queryClient.getQueriesData<TodosResponse>({ queryKey: ['todos'] });
-      snapshots.forEach(([key, prev]) => {
-        if (!prev) return;
-        const next: TodosResponse = {
-          ...prev,
-          data: prev.data.map((t) =>
-            t.id === id
-              ? {
-                  ...t,
-                  status: t.status === 'DONE' ? 'TODO' : 'DONE',
-                  completedAt: t.status === 'DONE' ? null : new Date().toISOString(),
-                }
-              : t,
-          ),
-        };
-        queryClient.setQueryData(key, next);
-      });
-      return { snapshots };
-    },
-    onError: (e, _vars, ctx) => {
-      ctx?.snapshots.forEach(([key, prev]) => queryClient.setQueryData(key, prev));
-      toast.error(getErrorMessage(e));
-    },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ['todos'] }),
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await api.delete(`/todos/${id}`);
-    },
-    onSuccess: () => {
-      toast.success('ลบรายการแล้ว');
-      queryClient.invalidateQueries({ queryKey: ['todos'] });
-    },
-    onError: (e) => toast.error(getErrorMessage(e)),
-  });
+    } else {
+      setForm({ ...emptyForm });
+    }
+  }, [open, editing]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -315,35 +94,10 @@ export default function TodosPage() {
     onSuccess: () => {
       toast.success(editing ? 'อัปเดตรายการแล้ว' : 'สร้างรายการแล้ว');
       queryClient.invalidateQueries({ queryKey: ['todos'] });
-      setDialogOpen(false);
-      setEditing(null);
-      setForm(emptyForm);
+      onOpenChange(false);
     },
     onError: (e) => toast.error(getErrorMessage(e)),
   });
-
-  const openCreate = () => {
-    setEditing(null);
-    setForm({ ...emptyForm });
-    setDialogOpen(true);
-  };
-
-  const openEdit = (t: Todo) => {
-    setEditing(t);
-    setForm({
-      title: t.title,
-      description: t.description || '',
-      priority: t.priority,
-      status: t.status,
-      dueDate: t.dueDate ? t.dueDate.slice(0, 10) : '',
-      assigneeId: t.assigneeId || '',
-      tags: t.tags || [],
-      checklist: Array.isArray(t.checklist) ? t.checklist : [],
-      attachments: Array.isArray(t.attachments) ? t.attachments : [],
-      tagsInput: '',
-    });
-    setDialogOpen(true);
-  };
 
   const uploadAttachment = async (file: File) => {
     try {
@@ -363,10 +117,10 @@ export default function TodosPage() {
   };
 
   const removeAttachment = (url: string) =>
-    setForm({
-      ...form,
-      attachments: (form.attachments || []).filter((a) => a.url !== url),
-    });
+    setForm((prev) => ({
+      ...prev,
+      attachments: (prev.attachments || []).filter((a) => a.url !== url),
+    }));
 
   /**
    * Fetch a single attachment as a blob and return an object URL.
@@ -411,7 +165,7 @@ export default function TodosPage() {
   // attachment so we can show inline thumbnails. When the dialog
   // closes (or attachment list changes), revoke them to free memory.
   useEffect(() => {
-    if (!dialogOpen) return;
+    if (!open) return;
     const images = (form.attachments || []).filter((a) =>
       a.mimeType?.startsWith('image/'),
     );
@@ -443,16 +197,17 @@ export default function TodosPage() {
     };
     // thumbUrls is intentionally read but not in deps — adding it would
     // cause an infinite loop because we setState on it inside the effect.
-  }, [dialogOpen, form.attachments]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, form.attachments]);
 
   // When the dialog closes, drop all thumbnails and revoke their URLs.
   useEffect(() => {
-    if (dialogOpen) return;
+    if (open) return;
     setThumbUrls((prev) => {
       Object.values(prev).forEach((u) => URL.revokeObjectURL(u));
       return {};
     });
-  }, [dialogOpen]);
+  }, [open]);
 
   // Open the full-size lightbox for an image attachment.
   // Reuses the already-loaded thumbnail blob URL when available.
@@ -476,7 +231,6 @@ export default function TodosPage() {
     return () => window.removeEventListener('keydown', onKey);
   }, [lightboxUrl]);
 
-
   const addTag = () => {
     const v = (form.tagsInput || '').trim();
     if (!v) return;
@@ -487,11 +241,7 @@ export default function TodosPage() {
     setForm({ ...form, tags: (form.tags || []).filter((x) => x !== t) });
 
   const addChecklist = () => {
-    const next: ChecklistItem = {
-      id: crypto.randomUUID(),
-      text: '',
-      done: false,
-    };
+    const next: ChecklistItem = { id: crypto.randomUUID(), text: '', done: false };
     setForm({ ...form, checklist: [...(form.checklist || []), next] });
   };
   const updateChecklist = (id: string, patch: Partial<ChecklistItem>) =>
@@ -502,249 +252,10 @@ export default function TodosPage() {
   const removeChecklist = (id: string) =>
     setForm({ ...form, checklist: (form.checklist || []).filter((c) => c.id !== id) });
 
-  const columns = useMemo<KanbanColumn<Todo>[]>(() => {
-    const byStatus: Record<TodoStatus, Todo[]> = { TODO: [], DOING: [], DONE: [] };
-    todos.forEach((t) => {
-      byStatus[t.status].push(t);
-    });
-    return [
-      { id: 'TODO', title: 'รอทำ', color: 'bg-slate-400', items: byStatus.TODO },
-      { id: 'DOING', title: 'กำลังทำ', color: 'bg-amber-400', items: byStatus.DOING },
-      { id: 'DONE', title: 'เสร็จแล้ว', color: 'bg-emerald-500', items: byStatus.DONE },
-    ];
-  }, [todos]);
-
-  const tabCount = useMemo(
-    () => ({
-      all: summary.all,
-      today: summary.today,
-      upcoming: summary.upcoming,
-      priority: summary.priority,
-      completed: summary.completed,
-    }),
-    [summary],
-  );
-
   return (
-    <div>
-      <PageHeader
-        title="งาน / สิ่งที่ต้องทำ"
-        subtitle="จัดการรายการงานของทีม มอบหมาย ติดตามสถานะ"
-        icon={<CheckSquare className="size-5" />}
-        action={
-          <button
-            onClick={openCreate}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90"
-          >
-            <Plus className="size-4" />
-            เพิ่มงาน
-          </button>
-        }
-      />
-
-      {/* Tabs (pill style) */}
-      <div className="flex gap-1.5 mb-5 p-1 bg-muted/50 rounded-xl w-fit overflow-x-auto">
-        {tabs.map((t) => {
-          const Icon = t.icon;
-          const active = view === t.value;
-          return (
-            <button
-              key={t.value}
-              onClick={() => setView(t.value)}
-              className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all whitespace-nowrap ${
-                active
-                  ? 'bg-card text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <Icon className="size-4" />
-              {t.label}
-              <span
-                className={`px-1.5 min-w-[20px] text-center rounded-md text-2xs font-semibold ${
-                  active ? 'bg-primary/10 text-primary' : 'bg-muted-foreground/10 text-muted-foreground'
-                }`}
-              >
-                {tabCount[t.value]}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Search */}
-      <div className="mb-5 relative max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-        <input
-          type="text"
-          placeholder="ค้นหางาน..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-9 pr-3 py-2.5 border border-input bg-card rounded-xl text-sm focus-visible:ring-2 focus-visible:ring-primary/20 focus:border-primary/50 outline-hidden transition-colors"
-        />
-      </div>
-
-      {/* Kanban Board */}
-      <QueryBoundary
-        isLoading={isLoading && !data}
-        isError={isError}
-        error={error}
-        onRetry={refetch}
-        errorTitle="ไม่สามารถโหลดงานได้"
-      >
-        <KanbanBoard
-          columns={columns}
-          onCardClick={openEdit}
-          onCardMove={(id, _from, to) =>
-            moveStatusMutation.mutate({ id, status: to as TodoStatus })
-          }
-          emptyMessage="ไม่มีงานในคอลัมน์นี้"
-          renderCard={(t) => {
-            const pri = priorityConfig[t.priority];
-            const overdue = isOverdue(t.dueDate) && t.status !== 'DONE';
-            const checkDone = Array.isArray(t.checklist)
-              ? t.checklist.filter((c) => c.done).length
-              : 0;
-            const checkTotal = Array.isArray(t.checklist) ? t.checklist.length : 0;
-            const assigneeName = t.assignee?.nickname || t.assignee?.name || '';
-            const canDelete =
-              user?.role === 'OWNER' ||
-              user?.role === 'BRANCH_MANAGER' ||
-              t.createdById === user?.id;
-
-            return (
-              <div className="relative -m-3 p-3 group">
-                {/* Left priority accent bar */}
-                <div
-                  className={`absolute left-0 top-2 bottom-2 w-1 rounded-r-full ${pri.bar}`}
-                />
-
-                {/* Drag indicator (visible on hover) */}
-                <GripVertical className="absolute right-1.5 top-1.5 size-3.5 text-muted-foreground/30 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
-
-                <div className="pl-2 flex flex-col gap-2.5">
-                  {/* Title row */}
-                  <div className="flex items-start gap-2 pr-5">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleMutation.mutate(t.id);
-                      }}
-                      className={`mt-0.5 size-4 rounded-md border-2 flex items-center justify-center transition-all shrink-0 ${
-                        t.status === 'DONE'
-                          ? 'bg-emerald-500 border-emerald-500 text-white'
-                          : 'border-muted-foreground/30 hover:border-primary'
-                      }`}
-                      aria-label="toggle"
-                    >
-                      {t.status === 'DONE' && <CheckCircle2 className="size-3" />}
-                    </button>
-                    <span
-                      className={`text-sm font-semibold leading-snug flex-1 ${
-                        t.status === 'DONE'
-                          ? 'line-through text-muted-foreground'
-                          : 'text-foreground'
-                      }`}
-                    >
-                      {t.title}
-                    </span>
-                  </div>
-
-                  {/* Description */}
-                  {t.description && (
-                    <p className="text-xs text-muted-foreground line-clamp-2 pl-6">
-                      {t.description}
-                    </p>
-                  )}
-
-                  {/* Badges row: priority + tags */}
-                  <div className="flex flex-wrap items-center gap-1 pl-6">
-                    <span
-                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-2xs font-semibold ${pri.badge}`}
-                    >
-                      <Flag className="size-2.5" />
-                      {pri.label}
-                    </span>
-                    {t.tags.slice(0, 3).map((tag) => (
-                      <span
-                        key={tag}
-                        className="px-2 py-0.5 rounded-md text-2xs font-medium bg-primary/10 text-primary"
-                      >
-                        #{tag}
-                      </span>
-                    ))}
-                    {t.tags.length > 3 && (
-                      <span className="text-2xs text-muted-foreground">
-                        +{t.tags.length - 3}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Footer: meta + avatar + actions */}
-                  <div className="flex items-center justify-between gap-2 pt-2 pl-6 border-t border-dashed border-border/60">
-                    <div className="flex items-center gap-2.5 text-2xs text-muted-foreground min-w-0">
-                      {t.dueDate && (
-                        <span
-                          className={`inline-flex items-center gap-1 ${
-                            overdue
-                              ? 'text-rose-600 font-semibold dark:text-rose-400'
-                              : ''
-                          }`}
-                        >
-                          <Calendar className="size-3" />
-                          {formatDate(t.dueDate)}
-                        </span>
-                      )}
-                      {checkTotal > 0 && (
-                        <span className="inline-flex items-center gap-1">
-                          <CheckCircle2 className="size-3" />
-                          {checkDone}/{checkTotal}
-                        </span>
-                      )}
-                      {t.createdBy && (
-                        <span
-                          className="inline-flex items-center gap-1 truncate"
-                          title={`สร้างโดย ${t.createdBy.nickname || t.createdBy.name}`}
-                        >
-                          <UserIcon className="size-3" />
-                          โดย {t.createdBy.nickname || t.createdBy.name}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      {t.assignee && (
-                        <div
-                          className={`size-6 rounded-full bg-linear-to-br ${avatarColor(
-                            assigneeName,
-                          )} text-white text-[10px] font-bold inline-flex items-center justify-center ring-2 ring-card shadow-sm`}
-                          title={assigneeName}
-                        >
-                          {assigneeName.charAt(0).toUpperCase()}
-                        </div>
-                      )}
-                      {canDelete && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setDeleteConfirm({ open: true, id: t.id });
-                          }}
-                          className="size-6 rounded-md text-muted-foreground hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 inline-flex items-center justify-center transition-colors opacity-0 group-hover:opacity-100"
-                          aria-label="delete"
-                        >
-                          <Trash2 className="size-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          }}
-        />
-      </QueryBoundary>
-
+    <>
       {/* Create / Edit Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto p-0 gap-0">
           {/* Gradient header */}
           <DialogHeader className="px-6 py-5 bg-linear-to-r from-primary/10 via-primary/5 to-transparent border-b border-border">
@@ -1101,7 +612,7 @@ export default function TodosPage() {
           <DialogFooter className="px-6 py-4 border-t border-border bg-muted/20">
             <button
               type="button"
-              onClick={() => setDialogOpen(false)}
+              onClick={() => onOpenChange(false)}
               className="px-5 py-2.5 text-sm font-medium border border-input rounded-xl hover:bg-muted transition-colors"
             >
               ยกเลิก
@@ -1147,15 +658,6 @@ export default function TodosPage() {
           />
         </div>
       )}
-
-      <ConfirmDialog
-        open={deleteConfirm.open}
-        onOpenChange={(open) => setDeleteConfirm((prev) => ({ ...prev, open }))}
-        description="ต้องการลบรายการนี้?"
-        variant="destructive"
-        onConfirm={() => deleteMutation.mutate(deleteConfirm.id)}
-      />
-    </div>
+    </>
   );
 }
-

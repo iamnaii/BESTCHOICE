@@ -72,8 +72,10 @@ const LINE_STICKER_PACKAGES = [
   },
 ];
 
-const stickerUrl = (stickerId: number) =>
-  `https://stickershop.line-scdn.net/stickershop/v1/sticker/${stickerId}/iPhone/sticker.png`;
+const stickerAnimUrl = (stickerId: number) =>
+  `https://stickershop.line-scdn.net/stickershop/v1/sticker/${stickerId}/iPhone/sticker_animation.png`;
+const stickerStaticUrl = (stickerId: number) =>
+  `https://stickershop.line-scdn.net/stickershop/v1/sticker/${stickerId}/iPhone/sticker@2x.png`;
 
 interface ChatPanelProps {
   session: any;
@@ -512,9 +514,12 @@ export default function ChatPanel({
                             title={`Sticker ${sticker.id}`}
                           >
                             <img
-                              src={stickerUrl(sticker.id)}
+                              src={stickerAnimUrl(sticker.id)}
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).src = stickerStaticUrl(sticker.id);
+                              }}
                               alt={`sticker-${sticker.id}`}
-                              className="w-12 h-12 object-contain"
+                              className="w-[60px] h-[60px] object-contain cursor-pointer hover:scale-110 transition-transform"
                               loading="lazy"
                             />
                           </button>

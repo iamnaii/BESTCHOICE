@@ -32,6 +32,45 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
     );
   }
 
+  // Sticker message — render as animated image, no bubble background
+  const stickerMatch = message.text?.match(/\[sticker:(\d+):(\d+)\]/);
+  if (stickerMatch) {
+    const [, , stickerId] = stickerMatch;
+    return (
+      <div className={cn('flex gap-2 mb-3', isCustomer ? 'justify-start' : 'justify-end')}>
+        {isCustomer && (
+          <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden shrink-0 mt-1">
+            {customerAvatar ? (
+              <img src={customerAvatar} alt={customerInitial ?? ''} className="w-full h-full object-cover" />
+            ) : (
+              <span className="text-gray-400 text-[10px] font-bold">{customerInitial ?? '?'}</span>
+            )}
+          </div>
+        )}
+        <div className="flex flex-col">
+          <img
+            src={`https://stickershop.line-scdn.net/stickershop/v1/sticker/${stickerId}/iPhone/sticker_animation.png`}
+            onError={(e) => {
+              (e.target as HTMLImageElement).src = `https://stickershop.line-scdn.net/stickershop/v1/sticker/${stickerId}/iPhone/sticker@2x.png`;
+            }}
+            alt="sticker"
+            className="w-[120px] h-[120px] object-contain"
+          />
+          <span className="flex items-center mt-1 px-1 self-end">
+            <span className="text-[10px] text-gray-300">
+              {format(new Date(message.createdAt), 'HH:mm')}
+            </span>
+            {isStaff && (
+              <span className={cn('text-[10px] ml-1', message.readAt ? 'text-blue-400' : 'text-gray-400')}>
+                {message.readAt ? '✓✓' : '✓'}
+              </span>
+            )}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={cn('flex gap-2 mb-3', isCustomer ? 'justify-start' : 'justify-end')}>
       {/* Customer avatar */}

@@ -36,7 +36,7 @@ async function seedChatRooms() {
       status: 'ACTIVE',
       assignedToId: staff.id,
       unreadCount: 3,
-      totalMessages: 8,
+      totalMessages: 9,
       lastMessageAt: minutesAgo(5),
       leadScore: 88,
       leadTemperature: 'HOT',
@@ -88,6 +88,14 @@ async function seedChatRooms() {
         staffId: staff.id,
         createdAt: minutesAgo(25),
         readAt: minutesAgo(20),
+      },
+      {
+        roomId: room1.id,
+        text: '[sticker:11537:52002734]',
+        role: 'STAFF',
+        staffId: staff.id,
+        createdAt: minutesAgo(20),
+        readAt: minutesAgo(18),
       },
       {
         roomId: room1.id,

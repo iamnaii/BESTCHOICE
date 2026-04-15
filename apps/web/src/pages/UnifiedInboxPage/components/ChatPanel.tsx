@@ -1,5 +1,7 @@
 import { useRef, useEffect, useState, useMemo } from 'react';
 import { Send, MoreVertical, ArrowLeft, Paperclip, Smile } from 'lucide-react';
+import { format, isSameDay } from 'date-fns';
+import { th } from 'date-fns/locale/th';
 import MessageBubble from './MessageBubble';
 import SessionActions from './SessionActions';
 import CommandPalette from './CommandPalette';
@@ -11,6 +13,7 @@ interface ChatPanelProps {
   session: any;
   messages: any[];
   isLoadingMessages: boolean;
+  isCustomerTyping?: boolean;
   onSendMessage: (text: string) => void;
   onSendFile?: (file: File) => void;
   onBack: () => void;
@@ -23,6 +26,7 @@ export default function ChatPanel({
   session,
   messages,
   isLoadingMessages,
+  isCustomerTyping = false,
   onSendMessage,
   onSendFile,
   onBack,
@@ -172,9 +176,35 @@ export default function ChatPanel({
           </div>
         ) : (
           <>
-            {messages.map((msg) => (
-              <MessageBubble key={msg.id} message={msg} />
-            ))}
+            {messages.map((msg, i) => {
+              const showDateSeparator =
+                i === 0 ||
+                !isSameDay(new Date(messages[i - 1].createdAt), new Date(msg.createdAt));
+              return (
+                <div key={msg.id}>
+                  {showDateSeparator && (
+                    <div className="flex items-center gap-3 py-3 px-4">
+                      <div className="flex-1 h-px bg-border" />
+                      <span className="text-[11px] text-muted-foreground font-medium">
+                        {format(new Date(msg.createdAt), 'd MMMM yyyy', { locale: th })}
+                      </span>
+                      <div className="flex-1 h-px bg-border" />
+                    </div>
+                  )}
+                  <MessageBubble message={msg} />
+                </div>
+              );
+            })}
+            {isCustomerTyping && (
+              <div className="px-4 py-1.5 flex items-center gap-2">
+                <div className="flex gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+                </div>
+                <span className="text-[11px] text-muted-foreground">กำลังพิมพ์...</span>
+              </div>
+            )}
             <div ref={messagesEndRef} />
           </>
         )}

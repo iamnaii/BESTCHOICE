@@ -60,8 +60,15 @@ export default function UnifiedInboxPage() {
     }
   }, [activeRoomId]);
 
+  // Mark messages as read when opening a room
+  useEffect(() => {
+    if (activeRoomId) {
+      api.post(`/staff-chat/rooms/${activeRoomId}/read`).catch(() => {});
+    }
+  }, [activeRoomId]);
+
   // WebSocket for real-time updates
-  const { joinRoom, leaveRoom, sendMessage, viewRoom } = useChatSocket({
+  const { joinRoom, leaveRoom, sendMessage, viewRoom, isCustomerTyping } = useChatSocket({
     onNewMessage: (data) => {
       queryClient.invalidateQueries({ queryKey: ['chat-messages', data.roomId] });
       queryClient.invalidateQueries({ queryKey: ['chat-sessions'] });
@@ -79,7 +86,7 @@ export default function UnifiedInboxPage() {
       const viewerNames = data.viewers?.map((v: any) => v.userName).join(', ');
       toast.warning(`⚠️ ${viewerNames} กำลังดูแชทนี้อยู่`);
     },
-  });
+  }, activeRoomId);
 
   // Fetch sessions — send search to backend; tab/channel filtering is client-side
   const sessionsQuery = useQuery({
@@ -222,6 +229,7 @@ export default function UnifiedInboxPage() {
           session={sessionQuery.data}
           messages={messagesQuery.data ?? []}
           isLoadingMessages={messagesQuery.isLoading}
+          isCustomerTyping={isCustomerTyping}
           onSendMessage={handleSendMessage}
           onSendFile={handleSendFile}
           onBack={() => setActiveRoomId(null)}

@@ -19,7 +19,7 @@ import {
   Shield,
 } from 'lucide-react';
 import { format, isPast, differenceInDays } from 'date-fns';
-import { th } from 'date-fns/locale/th';
+import { th } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -452,5 +452,32 @@ function QuickActionBtn({
       {icon}
       {label}
     </button>
+  );
+}
+
+function ChannelBadge({ channel }: { channel: string }) {
+  const colors: Record<string, string> = {
+    LINE_FINANCE: 'bg-green-500',
+    LINE_SHOP: 'bg-emerald-400',
+    FACEBOOK: 'bg-blue-600',
+    TIKTOK: 'bg-pink-500',
+    WEB: 'bg-gray-500',
+  };
+  const labels: Record<string, string> = {
+    LINE_FINANCE: 'LINE',
+    LINE_SHOP: 'LINE Shop',
+    FACEBOOK: 'FB',
+    TIKTOK: 'TikTok',
+    WEB: 'Web',
+  };
+  return (
+    <span
+      className={cn(
+        'text-white text-[9px] font-bold px-1.5 py-0.5 rounded',
+        colors[channel] ?? 'bg-gray-400',
+      )}
+    >
+      {labels[channel] ?? channel}
+    </span>
   );
 }

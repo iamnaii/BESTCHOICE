@@ -1,7 +1,10 @@
 import { useRef, useEffect, useState, useMemo } from 'react';
-import { Send, MoreVertical, ArrowLeft, Paperclip, Smile } from 'lucide-react';
+import { Send, MoreVertical, ArrowLeft, Paperclip, Smile, Pin, PinOff } from 'lucide-react';
 import { format, isSameDay } from 'date-fns';
 import { th } from 'date-fns/locale/th';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 import MessageBubble from './MessageBubble';
 import SessionActions from './SessionActions';
 import CommandPalette from './CommandPalette';
@@ -42,6 +45,18 @@ export default function ChatPanel({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const queryClient = useQueryClient();
+  const pinMutation = useMutation({
+    mutationFn: (isPinned: boolean) =>
+      isPinned
+        ? api.delete(`/staff-chat/rooms/${session.id}/pin`)
+        : api.post(`/staff-chat/rooms/${session.id}/pin`, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
+      toast.success(session.pinnedAt ? 'ถอดหมุดแล้ว' : 'ปักหมุดแล้ว');
+    },
+  });
 
   // Keyboard shortcuts
   const shortcutActions = useMemo(
@@ -149,12 +164,27 @@ export default function ChatPanel({
             </span>
           </div>
         </div>
-        <button
-          onClick={() => setShowActions(!showActions)}
-          className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
-        >
-          <MoreVertical className="w-5 h-5" />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => pinMutation.mutate(!!session.pinnedAt)}
+            disabled={pinMutation.isPending}
+            className={cn(
+              'p-1.5 rounded-lg transition-colors',
+              session.pinnedAt
+                ? 'text-amber-500 hover:bg-amber-50'
+                : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600',
+            )}
+            title={session.pinnedAt ? 'ถอดหมุด' : 'ปักหมุด'}
+          >
+            {session.pinnedAt ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
+          </button>
+          <button
+            onClick={() => setShowActions(!showActions)}
+            className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
+          >
+            <MoreVertical className="w-5 h-5" />
+          </button>
+        </div>
       </div>
 
       {/* Actions dropdown */}

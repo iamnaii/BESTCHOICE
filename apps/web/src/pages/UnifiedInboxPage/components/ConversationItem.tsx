@@ -24,6 +24,7 @@ interface ConversationItemProps {
   };
   isActive: boolean;
   onClick: () => void;
+  onPin?: (roomId: string, isPinned: boolean) => void;
 }
 
 const CHANNEL_ICONS: Record<string, typeof MessageSquare> = {
@@ -42,7 +43,7 @@ const CHANNEL_COLORS: Record<string, string> = {
   WEB: 'bg-gray-500',
 };
 
-export default function ConversationItem({ session, isActive, onClick }: ConversationItemProps) {
+export default function ConversationItem({ session, isActive, onClick, onPin }: ConversationItemProps) {
   const ChannelIcon = CHANNEL_ICONS[session.channel] ?? MessageSquare;
   const lastMessage = session.messages?.[0];
   const displayName = session.customer?.name ?? session.lineUserId?.slice(0, 12) ?? 'ไม่ทราบชื่อ';
@@ -50,13 +51,13 @@ export default function ConversationItem({ session, isActive, onClick }: Convers
   const unreadCount = session.unreadCount ?? 0;
 
   return (
-    <button
-      onClick={onClick}
+    <div
       className={cn(
-        'w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors border-b border-gray-100',
+        'relative group w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors border-b border-gray-100 cursor-pointer',
         isActive && 'bg-blue-50 hover:bg-blue-50 border-l-2 border-l-blue-500',
         isPinned && !isActive && 'bg-amber-50/50',
       )}
+      onClick={onClick}
     >
       {/* Channel avatar */}
       <div className="relative flex-shrink-0 mt-0.5">
@@ -135,6 +136,25 @@ export default function ConversationItem({ session, isActive, onClick }: Convers
           )}
         </div>
       </div>
-    </button>
+
+      {/* Hover pin button */}
+      {onPin && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onPin(session.id, isPinned);
+          }}
+          className={cn(
+            'absolute right-2 top-2 p-1 rounded transition-all',
+            isPinned
+              ? 'text-amber-500 opacity-100'
+              : 'text-gray-400 opacity-0 group-hover:opacity-100 hover:text-amber-500',
+          )}
+          title={isPinned ? 'ถอดหมุด' : 'ปักหมุด'}
+        >
+          <Pin className="w-3.5 h-3.5" />
+        </button>
+      )}
+    </div>
   );
 }

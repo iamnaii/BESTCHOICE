@@ -1,7 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Search, Filter } from 'lucide-react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useDebounce } from '@/hooks/useDebounce';
 import { cn } from '@/lib/utils';
+import api from '@/lib/api';
 import ConversationItem from './ConversationItem';
 import ChannelFilter, { type InboxTab } from './ChannelFilter';
 
@@ -30,6 +32,17 @@ export default function ConversationList({
 }: ConversationListProps) {
   const [searchInput, setSearchInput] = useState(filters.search ?? '');
   const debouncedSearch = useDebounce(searchInput, 300);
+
+  const queryClient = useQueryClient();
+  const pinMutation = useMutation({
+    mutationFn: ({ roomId, isPinned }: { roomId: string; isPinned: boolean }) =>
+      isPinned
+        ? api.delete(`/staff-chat/rooms/${roomId}/pin`)
+        : api.post(`/staff-chat/rooms/${roomId}/pin`, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
+    },
+  });
 
   // Update parent filter when debounced search changes
   useEffect(() => {
@@ -127,6 +140,7 @@ export default function ConversationList({
               session={session}
               isActive={session.id === activeRoomId}
               onClick={() => onSelectRoom(session.id)}
+              onPin={(roomId, isPinned) => pinMutation.mutate({ roomId, isPinned })}
             />
           ))
         )}

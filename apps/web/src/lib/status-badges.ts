@@ -263,6 +263,176 @@ export const activeStatusMap: Record<string, StatusConfig> = {
   not_configured: { variant: 'destructive', appearance: 'light', label: 'ยังไม่ได้ตั้งค่า' },
 };
 
+// ─── Audit log action types ──────────────────────────────────────────────────
+
+export const auditActionMap: Record<string, StatusConfig> = {
+  CREATE: { variant: 'success', appearance: 'light', label: 'สร้าง' },
+  UPDATE: { variant: 'primary', appearance: 'light', label: 'แก้ไข' },
+  DELETE: { variant: 'destructive', appearance: 'light', label: 'ลบ' },
+  LOGIN: { variant: 'info', appearance: 'light', label: 'เข้าสู่ระบบ' },
+  LOGOUT: { variant: 'secondary', label: 'ออกจากระบบ' },
+  EXPORT: { variant: 'warning', appearance: 'light', label: 'ส่งออก' },
+};
+
+// ─── User / branch active status ──────────────────────────────────────────────
+
+export const enabledStatusMap: Record<string, StatusConfig> = {
+  true: { variant: 'success', appearance: 'light', label: 'ใช้งาน' },
+  false: { variant: 'secondary', label: 'ปิดใช้งาน' },
+};
+
+// ─── Commission statuses ──────────────────────────────────────────────────────
+
+export const commissionStatusMap: Record<string, StatusConfig> = {
+  PENDING: { variant: 'warning', appearance: 'light', label: 'รอจ่าย' },
+  PAID: { variant: 'success', appearance: 'light', label: 'จ่ายแล้ว' },
+  CANCELLED: { variant: 'destructive', appearance: 'light', label: 'ยกเลิก' },
+};
+
+// ─── Expense statuses ──────────────────────────────────────────────────────────
+
+export const expenseStatusMap: Record<string, StatusConfig> = {
+  PENDING: { variant: 'warning', appearance: 'light', label: 'รออนุมัติ' },
+  APPROVED: { variant: 'success', appearance: 'light', label: 'อนุมัติแล้ว' },
+  REJECTED: { variant: 'destructive', appearance: 'light', label: 'ไม่อนุมัติ' },
+  PAID: { variant: 'primary', appearance: 'light', label: 'จ่ายแล้ว' },
+};
+
+// ─── Exchange statuses ────────────────────────────────────────────────────────
+
+export const exchangeStatusMap: Record<string, StatusConfig> = {
+  PENDING: { variant: 'warning', appearance: 'light', label: 'รอดำเนินการ' },
+  COMPLETED: { variant: 'success', appearance: 'light', label: 'เสร็จสิ้น' },
+  CANCELLED: { variant: 'destructive', appearance: 'light', label: 'ยกเลิก' },
+};
+
+// ─── Promotion statuses ───────────────────────────────────────────────────────
+
+export const promotionStatusMap: Record<string, StatusConfig> = {
+  ACTIVE: { variant: 'success', appearance: 'light', label: 'ใช้งาน' },
+  SCHEDULED: { variant: 'info', appearance: 'light', label: 'รอเริ่ม' },
+  EXPIRED: { variant: 'secondary', label: 'หมดอายุ' },
+  DRAFT: { variant: 'warning', appearance: 'light', label: 'ร่าง' },
+};
+
+// ─── Trade-in statuses ────────────────────────────────────────────────────────
+
+export const tradeInStatusMap: Record<string, StatusConfig> = {
+  PENDING: { variant: 'warning', appearance: 'light', label: 'รอประเมิน' },
+  APPRAISED: { variant: 'info', appearance: 'light', label: 'ประเมินแล้ว' },
+  ACCEPTED: { variant: 'success', appearance: 'light', label: 'รับซื้อ' },
+  REJECTED: { variant: 'destructive', appearance: 'light', label: 'ไม่รับซื้อ' },
+  COMPLETED: { variant: 'primary', appearance: 'light', label: 'เสร็จสิ้น' },
+};
+
+// ─── Receipt statuses ─────────────────────────────────────────────────────────
+
+export const receiptStatusMap: Record<string, StatusConfig> = {
+  PENDING: { variant: 'warning', appearance: 'light', label: 'รอตรวจสอบ' },
+  VERIFIED: { variant: 'success', appearance: 'light', label: 'ตรวจแล้ว' },
+  REJECTED: { variant: 'destructive', appearance: 'light', label: 'ไม่ผ่าน' },
+};
+
+// ─── Notification channel types ───────────────────────────────────────────────
+
+export const notificationChannelMap: Record<string, StatusConfig> = {
+  LINE: { variant: 'success', appearance: 'light', label: 'LINE' },
+  SMS: { variant: 'info', appearance: 'light', label: 'SMS' },
+  EMAIL: { variant: 'primary', appearance: 'light', label: 'Email' },
+  PUSH: { variant: 'warning', appearance: 'light', label: 'Push' },
+};
+
+// ─── Webhook statuses ─────────────────────────────────────────────────────────
+
+export const webhookStatusMap: Record<string, StatusConfig> = {
+  SUCCESS: { variant: 'success', appearance: 'light', label: 'สำเร็จ' },
+  FAILED: { variant: 'destructive', appearance: 'light', label: 'ล้มเหลว' },
+  PENDING: { variant: 'warning', appearance: 'light', label: 'รอ' },
+  RETRYING: { variant: 'info', appearance: 'light', label: 'ลองใหม่' },
+};
+
+// ─── Todo priorities ──────────────────────────────────────────────────────────
+
+export const todoPriorityMap: Record<string, StatusConfig> = {
+  URGENT: { variant: 'destructive', label: 'เร่งด่วน' },
+  HIGH: { variant: 'warning', label: 'สูง' },
+  MEDIUM: { variant: 'primary', appearance: 'light', label: 'ปานกลาง' },
+  LOW: { variant: 'secondary', label: 'ต่ำ' },
+};
+
+// ─── Todo statuses ────────────────────────────────────────────────────────────
+
+export const todoStatusMap: Record<string, StatusConfig> = {
+  TODO: { variant: 'secondary', label: 'รอทำ' },
+  IN_PROGRESS: { variant: 'primary', appearance: 'light', label: 'กำลังทำ' },
+  DONE: { variant: 'success', appearance: 'light', label: 'เสร็จแล้ว' },
+  CANCELLED: { variant: 'destructive', appearance: 'light', label: 'ยกเลิก' },
+};
+
+// ─── Asset statuses ───────────────────────────────────────────────────────────
+
+export const assetStatusMap: Record<string, StatusConfig> = {
+  ACTIVE: { variant: 'success', appearance: 'light', label: 'ใช้งาน' },
+  MAINTENANCE: { variant: 'warning', appearance: 'light', label: 'ซ่อมบำรุง' },
+  RETIRED: { variant: 'secondary', label: 'เลิกใช้' },
+  DISPOSED: { variant: 'destructive', appearance: 'light', label: 'จำหน่ายแล้ว' },
+};
+
+// ─── Migration statuses ───────────────────────────────────────────────────────
+
+export const migrationStatusMap: Record<string, StatusConfig> = {
+  PENDING: { variant: 'secondary', label: 'รอ' },
+  RUNNING: { variant: 'warning', appearance: 'light', label: 'กำลังทำ' },
+  COMPLETED: { variant: 'success', appearance: 'light', label: 'เสร็จ' },
+  FAILED: { variant: 'destructive', appearance: 'light', label: 'ล้มเหลว' },
+  SKIPPED: { variant: 'info', appearance: 'light', label: 'ข้าม' },
+};
+
+// ─── System health statuses ───────────────────────────────────────────────────
+
+export const systemHealthMap: Record<string, StatusConfig> = {
+  healthy: { variant: 'success', appearance: 'light', label: 'ปกติ' },
+  degraded: { variant: 'warning', appearance: 'light', label: 'มีปัญหาบางส่วน' },
+  down: { variant: 'destructive', label: 'ล่ม' },
+};
+
+// ─── Chart of accounts group types ────────────────────────────────────────────
+
+export const accountGroupMap: Record<string, StatusConfig> = {
+  ASSET: { variant: 'primary', appearance: 'light', label: 'สินทรัพย์' },
+  LIABILITY: { variant: 'warning', appearance: 'light', label: 'หนี้สิน' },
+  EQUITY: { variant: 'info', appearance: 'light', label: 'ส่วนของเจ้าของ' },
+  REVENUE: { variant: 'success', appearance: 'light', label: 'รายได้' },
+  EXPENSE: { variant: 'destructive', appearance: 'light', label: 'ค่าใช้จ่าย' },
+};
+
+// ─── Dunning channel types ────────────────────────────────────────────────────
+
+export const dunningChannelMap: Record<string, StatusConfig> = {
+  LINE: { variant: 'success', appearance: 'light', label: 'LINE' },
+  SMS: { variant: 'info', appearance: 'light', label: 'SMS' },
+  CALL: { variant: 'warning', appearance: 'light', label: 'โทร' },
+  VISIT: { variant: 'primary', appearance: 'light', label: 'เยี่ยม' },
+  LEGAL: { variant: 'destructive', label: 'กฎหมาย' },
+};
+
+// ─── Sale types ───────────────────────────────────────────────────────────────
+
+export const saleTypeMap: Record<string, StatusConfig> = {
+  CASH: { variant: 'success', appearance: 'light', label: 'เงินสด' },
+  INSTALLMENT: { variant: 'primary', appearance: 'light', label: 'ผ่อนชำระ' },
+  GFIN: { variant: 'info', appearance: 'light', label: 'GFIN' },
+};
+
+// ─── Document statuses ────────────────────────────────────────────────────────
+
+export const documentStatusMap: Record<string, StatusConfig> = {
+  DRAFT: { variant: 'secondary', label: 'ร่าง' },
+  PENDING: { variant: 'warning', appearance: 'light', label: 'รอ' },
+  SIGNED: { variant: 'success', appearance: 'light', label: 'เซ็นแล้ว' },
+  EXPIRED: { variant: 'destructive', appearance: 'light', label: 'หมดอายุ' },
+};
+
 // ─── General helper ───────────────────────────────────────────────────────────
 
 /**

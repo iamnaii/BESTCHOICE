@@ -2984,6 +2984,8 @@ model ChatSession {
   notes         ChatNote[]
   snoozes       ChatSnooze[]
   sideMessages  ChatSideMessage[]
+  trainingPairs AiTrainingPair[]
+  autoReplyLogs AiAutoReplyLog[]
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
@@ -3549,4 +3551,46 @@ model AccountingPeriod {
   @@unique([companyId, year, month])
   @@index([status])
   @@map("accounting_periods")
+}
+
+// ============================================================
+// AI TRAINING & AUTO-REPLY — chat AI improvement models
+// ============================================================
+
+/// Stores accepted/edited/rejected AI reply pairs for model fine-tuning
+model AiTrainingPair {
+  id              String       @id @default(uuid())
+  type            String       // ACCEPT, EDIT, REJECT
+  source          String       // SUGGEST_FEEDBACK, CHATCONE_IMPORT, SYSTEM_EXTRACT
+  sessionId       String?      @map("session_id")
+  session         ChatSession? @relation(fields: [sessionId], references: [id])
+  customerMessage String       @map("customer_message") @db.Text
+  aiDraft         String?      @map("ai_draft") @db.Text
+  humanEdit       String?      @map("human_edit") @db.Text
+  intent          String?
+  quality         Float?
+  usedInPrompt    Boolean      @default(false) @map("used_in_prompt")
+  createdAt       DateTime     @default(now()) @map("created_at")
+
+  @@index([intent, quality])
+  @@index([source])
+  @@index([createdAt])
+  @@map("ai_training_pairs")
+}
+
+/// Logs every AI auto-reply attempt for monitoring and confidence tracking
+model AiAutoReplyLog {
+  id              String      @id @default(uuid())
+  sessionId       String      @map("session_id")
+  session         ChatSession @relation(fields: [sessionId], references: [id])
+  customerMessage String      @map("customer_message") @db.Text
+  aiReply         String      @map("ai_reply") @db.Text
+  confidence      Float
+  autoSent        Boolean     @map("auto_sent")
+  handoffReason   String?     @map("handoff_reason")
+  createdAt       DateTime    @default(now()) @map("created_at")
+
+  @@index([sessionId])
+  @@index([autoSent, createdAt])
+  @@map("ai_auto_reply_logs")
 }

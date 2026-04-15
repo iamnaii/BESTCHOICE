@@ -27,6 +27,10 @@ import { StaffMessageService } from './services/staff-message.service';
 import { AiAssistantService } from './services/ai-assistant.service';
 import { MediaContentService } from './services/media-content.service';
 import { ChatToContractService } from './services/chat-to-contract.service';
+import { AiSuggestService } from './services/ai-suggest.service';
+import { LeadScoringService } from './services/lead-scoring.service';
+import { ProductDetectService } from './services/product-detect.service';
+import { AiSuggestRequestDto } from './dto/ai-suggest.dto';
 import { SessionQueryDto } from '../chat-engine/dto/session-query.dto';
 import { ChatSessionStatus, ChatChannel, ChatPriority, MessageRole, MessageType } from '@prisma/client';
 import { StorageService } from '../storage/storage.service';
@@ -46,6 +50,9 @@ export class StaffChatController {
     private chatToContract: ChatToContractService,
     private storageService: StorageService,
     private messageRouter: MessageRouterService,
+    private aiSuggest: AiSuggestService,
+    private leadScoring: LeadScoringService,
+    private productDetect: ProductDetectService,
   ) {}
 
   // ─── Sessions ──────────────────────────────────────────
@@ -234,6 +241,26 @@ export class StaffChatController {
   async adjustTone(@Body() body: { text: string; tone: 'formal' | 'casual' | 'friendly' }) {
     const adjusted = await this.aiAssistant.adjustTone(body.text, body.tone);
     return { text: adjusted };
+  }
+
+  @Post('sessions/:id/suggest')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  async getSuggestions(@Param('id') id: string, @Body() dto: AiSuggestRequestDto) {
+    return this.aiSuggest.suggest(id, dto.currentDraft);
+  }
+
+  @Get('sessions/:id/products')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  async getDetectedProducts(@Param('id') id: string): Promise<any[]> {
+    const messages = await this.sessionManager.getRecentMessages(id, 20);
+    const texts = messages.map((m: any) => m.text ?? '').filter(Boolean);
+    return this.productDetect.detectProducts(texts);
+  }
+
+  @Get('sessions/:id/lead-score')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  async getLeadScore(@Param('id') id: string): Promise<any> {
+    return this.leadScoring.scoreSession(id);
   }
 
   // ─── Media Content ────────────────────────────────────

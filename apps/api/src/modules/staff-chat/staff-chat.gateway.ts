@@ -16,6 +16,7 @@ import { MessageRouterService } from '../chat-engine/services/message-router.ser
 import { SessionManagerService } from '../chat-engine/services/session-manager.service';
 import { PresenceService } from './services/presence.service';
 import { CollisionDetectionService } from './services/collision-detection.service';
+import { LeadScoringService } from './services/lead-scoring.service';
 
 /**
  * Staff Chat WebSocket Gateway — the /chat namespace.
@@ -47,6 +48,7 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
     private collisionDetectionService: CollisionDetectionService,
     private jwtService: JwtService,
     private configService: ConfigService,
+    private leadScoring: LeadScoringService,
   ) {}
 
   async handleConnection(client: Socket): Promise<void> {
@@ -174,6 +176,11 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
       text: data.text,
       createdAt: new Date().toISOString(),
     });
+
+    // Auto-update lead score after new message
+    this.leadScoring.scoreSession(data.sessionId).catch((err) =>
+      this.logger.error('Lead scoring failed', err),
+    );
   }
 
   @SubscribeMessage(CHAT_CLIENT_EVENTS.TYPING_START)

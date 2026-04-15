@@ -1,60 +1,15 @@
-import { useMemo, useCallback, memo, useState, Suspense } from 'react';
+import { useMemo, useCallback, memo, useState } from 'react';
 import { useUnreadChat } from '@/hooks/useUnreadChat';
 import { Link, useLocation } from 'react-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import {
-  ShoppingCart,
-  Warehouse,
-  BarChart3,
-  Settings,
   Home,
-  CreditCard,
-  Users,
-  FileCheck,
-  FileText,
-  Receipt,
-  AlertTriangle,
-  RefreshCw,
-  Undo2,
-  ClipboardList,
-  Bell,
-  Building2,
-  UserCog,
-  DollarSign,
-  FileSignature,
-  Shield,
-  ScrollText,
-  ArrowRightLeft,
   LogOut,
   ChevronsRight,
   ChevronsLeft,
-  Banknote,
-  Zap,
-  Store,
-  Package,
-  Truck,
-  HandCoins,
-  TrendingDown,
-  Smartphone,
-  Lock,
-  Wallet,
-  PieChart,
-  Calculator,
-  Landmark,
-  BadgePercent,
-  CircleDollarSign,
-  UserSearch,
-  Coins,
-  CheckSquare,
-  MessageSquareMore,
-  Target,
-  Kanban,
-  Plug,
   ChevronRight,
-  CalendarDays,
 } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
 import {
   AccordionMenu,
   AccordionMenuClassNames,
@@ -76,138 +31,8 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { useLayout } from './LayoutContext';
-
-interface NavItem {
-  label: string;
-  path: string;
-  icon?: LucideIcon;
-  roles?: string[];
-  badgeKey?: string; // 'chat-unread' — renders live badge
-}
-
-interface NavSection {
-  key: string;
-  label: string;
-  icon: LucideIcon;
-  group?: 'shop' | 'finance' | 'general';
-  items: NavItem[];
-}
-
-const navSections: NavSection[] = [
-  // ── SHOP (หน้าร้าน) ──────────────────────────────
-  {
-    key: 'sales',
-    label: 'ขาย',
-    icon: Store,
-    group: 'shop',
-    items: [
-      { label: 'ขายของ', path: '/pos', icon: ShoppingCart },
-      { label: 'ลูกค้า', path: '/customers', icon: Users },
-      { label: 'ตรวจสอบลูกค้า', path: '/credit-checks', icon: UserSearch },
-      { label: 'รับซื้อเครื่อง', path: '/trade-in', icon: Smartphone, roles: ['OWNER', 'BRANCH_MANAGER', 'SALES'] },
-    ],
-  },
-  {
-    key: 'inventory',
-    label: 'คลัง',
-    icon: Package,
-    group: 'shop',
-    items: [
-      { label: 'สต็อกสินค้า', path: '/stock', icon: Warehouse, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES'] },
-      { label: 'สั่งซื้อ', path: '/purchase-orders', icon: ClipboardList, roles: ['OWNER', 'BRANCH_MANAGER'] },
-      { label: 'โอนสินค้า', path: '/stock/transfers', icon: Truck, roles: ['OWNER', 'BRANCH_MANAGER'] },
-      { label: 'ผู้ขาย', path: '/suppliers', icon: Building2, roles: ['OWNER', 'BRANCH_MANAGER'] },
-    ],
-  },
-  // ── FINANCE (ไฟแนนซ์) ────────────────────────────
-  {
-    key: 'contracts',
-    label: 'สัญญา',
-    icon: FileSignature,
-    group: 'finance',
-    items: [
-      { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
-      { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
-      { label: 'เงินรับจาก FINANCE', path: '/finance-receivable', icon: Banknote, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
-      { label: 'พอร์ตสัญญา FINANCE', path: '/finance-portfolio', icon: CircleDollarSign, roles: ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
-    ],
-  },
-  {
-    key: 'debt',
-    label: 'ติดตาม',
-    icon: TrendingDown,
-    group: 'finance',
-    items: [
-      { label: 'ลูกค้าค้างชำระ', path: '/overdue', icon: AlertTriangle },
-      { label: 'Collection Dashboard', path: '/collection-dashboard', icon: BarChart3, roles: ['OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER'] },
-      { label: 'เปลี่ยนเครื่อง', path: '/exchange', icon: RefreshCw, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER'] },
-      { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER'] },
-    ],
-  },
-  // ── ทั่วไป ───────────────────────────────────────
-  {
-    key: 'accounting',
-    label: 'การเงิน',
-    icon: Wallet,
-    group: 'general',
-    items: [
-      { label: 'รายจ่าย', path: '/expenses', icon: Receipt, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
-      { label: 'ใบเสร็จ', path: '/receipts', icon: FileText, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
-      { label: 'กำไร-ขาดทุน', path: '/profit-loss', icon: PieChart, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
-      { label: 'ค่าคอม', path: '/commissions', icon: Coins, roles: ['OWNER', 'FINANCE_MANAGER', 'SALES'] },
-      { label: 'สินทรัพย์', path: '/assets', icon: Landmark, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
-      { label: 'ปิดบัญชีรายเดือน', path: '/monthly-close', icon: CalendarDays, roles: ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
-    ],
-  },
-  {
-    key: 'reports',
-    label: 'รายงาน',
-    icon: BarChart3,
-    group: 'general',
-    items: [
-      { label: 'รายงาน', path: '/reports', icon: BarChart3, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
-      { label: 'ภาษี', path: '/tax-reports', icon: Calculator, roles: ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
-      { label: 'แจ้งเตือน', path: '/notifications', icon: Bell, roles: ['OWNER', 'BRANCH_MANAGER'] },
-      { label: 'งาน / TODO', path: '/todos', icon: CheckSquare },
-      { label: 'น้องเบส (Finance Bot)', path: '/chatbot-finance', icon: Bell, roles: ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
-    ],
-  },
-  {
-    key: 'chat-crm',
-    label: 'แชท & CRM',
-    icon: MessageSquareMore,
-    group: 'general',
-    items: [
-      { label: 'กล่องข้อความ', path: '/inbox', icon: MessageSquareMore, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES'], badgeKey: 'chat-unread' },
-      { label: 'CRM Pipeline', path: '/crm', icon: Kanban, roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES'] },
-      { label: 'Ads & ROI', path: '/ads', icon: Target, roles: ['OWNER'] },
-      { label: 'เชื่อมต่อช่องทาง', path: '/settings/channels', icon: Plug, roles: ['OWNER'] },
-      { label: 'วิเคราะห์แชท', path: '/chat-analytics', icon: BarChart3, roles: ['OWNER', 'FINANCE_MANAGER'] },
-      { label: 'ข้อความสำเร็จรูป', path: '/canned-responses', icon: MessageSquareMore, roles: ['OWNER', 'BRANCH_MANAGER'] },
-    ],
-  },
-  {
-    key: 'settings',
-    label: 'ตั้งค่า',
-    icon: Settings,
-    group: 'general',
-    items: [
-      { label: 'ระบบ', path: '/settings', icon: Settings, roles: ['OWNER'] },
-      { label: 'ผู้ใช้', path: '/users', icon: UserCog, roles: ['OWNER'] },
-      { label: 'สาขา', path: '/branches', icon: Building2, roles: ['OWNER'] },
-      { label: 'บริษัท', path: '/settings/companies', icon: Building2, roles: ['OWNER'] },
-      { label: 'ตั้งราคา', path: '/settings/pricing-templates', icon: CircleDollarSign, roles: ['OWNER'] },
-      { label: 'แบบสัญญา', path: '/contract-templates', icon: FileCheck, roles: ['OWNER'] },
-      { label: 'โปรโมชัน', path: '/promotions', icon: BadgePercent, roles: ['OWNER'] },
-      { label: 'PDPA', path: '/pdpa', icon: Shield, roles: ['OWNER', 'BRANCH_MANAGER'] },
-      { label: 'Audit Log', path: '/audit-logs', icon: ScrollText, roles: ['OWNER'] },
-      { label: 'ผังบัญชี', path: '/settings/chart-of-accounts', icon: ClipboardList, roles: ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
-      { label: 'ตรวจสอบบัญชี', path: '/financial-audit', icon: ClipboardList, roles: ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
-      { label: 'PEAK Sync', path: '/settings/peak-sync', icon: Plug, roles: ['OWNER', 'ACCOUNTANT'] },
-      { label: 'ระบบทวงหนี้อัตโนมัติ', path: '/settings/dunning', icon: Bell, roles: ['OWNER'] },
-    ],
-  },
-];
+import { getMenuConfig } from '@/config/menu';
+import type { MenuSection } from '@/config/menu';
 
 /* ── Role label map ─────────────────────────────── */
 const roleBadgeMap: Record<string, { label: string; cls: string }> = {
@@ -216,13 +41,6 @@ const roleBadgeMap: Record<string, { label: string; cls: string }> = {
   FINANCE_MANAGER:{ label: 'ผจก.การเงิน',     cls: 'bg-violet-500/20 text-violet-300' },
   ACCOUNTANT:     { label: 'ฝ่ายบัญชี',       cls: 'bg-amber-500/20 text-amber-300' },
   SALES:          { label: 'พนักงานขาย',      cls: 'bg-emerald-500/20 text-emerald-300' },
-};
-
-/* ── Group metadata ─────────────────────────────── */
-const groupMeta: Record<string, { label: string; dot: string; line: string; text: string }> = {
-  shop:    { label: 'หน้าร้าน', dot: 'bg-sky-400',     line: 'bg-sky-400/20',     text: 'text-sky-300/90' },
-  finance: { label: 'ไฟแนนซ์',  dot: 'bg-violet-400',  line: 'bg-violet-400/20',  text: 'text-violet-300/90' },
-  general: { label: 'ทั่วไป',   dot: 'bg-emerald-400', line: 'bg-emerald-400/20', text: 'text-emerald-300/90' },
 };
 
 /* ── Expanded menu AccordionMenu classNames ─────── */
@@ -248,18 +66,9 @@ const expandedMenuClassNames: AccordionMenuClassNames = {
   subContent: 'py-0.5 pl-3 border-l border-white/6 ml-3.5',
 };
 
-/* ─── useFilteredSections ────────────────────────── */
-function useFilteredSections(user: ReturnType<typeof useAuth>['user']) {
-  return useMemo(
-    () =>
-      navSections
-        .map((s) => ({
-          ...s,
-          items: s.items.filter((item) => !item.roles || (user && item.roles.includes(user.role))),
-        }))
-        .filter((s) => s.items.length > 0),
-    [user],
-  );
+/* ─── useRoleMenu ───────────────────────────────── */
+function useRoleMenu(role: string): MenuSection[] {
+  return useMemo(() => getMenuConfig(role).sidebar, [role]);
 }
 
 /* ─── Collapsed Icon Rail (70px wide) ────────────── */
@@ -268,10 +77,10 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
   const { pathname } = useLocation();
   const [openPopover, setOpenPopover] = useState<string | null>(null);
 
-  const filteredSections = useFilteredSections(user);
+  const sections = useRoleMenu(user?.role ?? '');
 
   const isSectionActive = useCallback(
-    (section: NavSection): boolean =>
+    (section: MenuSection): boolean =>
       section.items.some(
         (item) =>
           item.path === pathname ||
@@ -324,36 +133,13 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
         </Tooltip>
       </TooltipProvider>
 
-      {/* Home */}
-      <TooltipProvider delayDuration={0}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Link
-              to="/"
-              className={cn(
-                'flex items-center justify-center size-10 rounded-lg transition-all duration-200 relative mb-1',
-                pathname === '/'
-                  ? 'bg-white/10 text-white shadow-sm before:absolute before:left-0 before:top-2.5 before:bottom-2.5 before:w-[3px] before:bg-primary before:rounded-r-full'
-                  : 'text-white/40 hover:text-white/80 hover:bg-white/[0.07]',
-              )}
-              aria-label="หน้าหลัก"
-            >
-              <Home className="size-[18px]" />
-            </Link>
-          </TooltipTrigger>
-          <TooltipContent side="right" sideOffset={12} className="text-[12px] font-medium">
-            หน้าหลัก
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-
       {/* Divider */}
       <div className="w-8 h-px bg-white/[0.07] my-2" />
 
       {/* Section icons with popovers */}
       <div className="flex-1 flex flex-col items-center gap-0.5 w-full px-2 overflow-y-auto scrollbar-none">
         <TooltipProvider delayDuration={0}>
-          {filteredSections.map((section) => (
+          {sections.map((section) => (
             <Popover
               key={section.key}
               open={openPopover === section.key}
@@ -408,15 +194,13 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
                         : 'text-foreground/75 hover:text-primary hover:bg-primary/6',
                     )}
                   >
-                    {item.icon && (
-                      <item.icon
-                        className={cn(
-                          'size-4 shrink-0',
-                          isItemActive(item.path) ? 'opacity-100' : 'opacity-50',
-                        )}
-                      />
-                    )}
-                    <span>{item.label}</span><NavBadge badgeKey={item.badgeKey} />
+                    <item.icon
+                      className={cn(
+                        'size-4 shrink-0',
+                        isItemActive(item.path) ? 'opacity-100' : 'opacity-50',
+                      )}
+                    />
+                    <span>{item.label}</span>
                     {isItemActive(item.path) && (
                       <ChevronRight className="size-3 ml-auto opacity-40" />
                     )}
@@ -482,7 +266,7 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
     [pathname],
   );
 
-  const filteredSections = useFilteredSections(user);
+  const sections = useRoleMenu(user?.role ?? '');
 
   const role = user?.role ?? '';
   const roleInfo = roleBadgeMap[role];
@@ -524,58 +308,27 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
           type="multiple"
           classNames={expandedMenuClassNames}
         >
-          {/* Home — standalone item */}
-          <AccordionMenuItem value="/" className="text-[13px] font-medium mb-2">
-            <Link to="/" className="flex items-center justify-between grow gap-2.5">
-              <Home data-slot="accordion-menu-icon" className="size-4 shrink-0" />
-              <span data-slot="accordion-menu-title">หน้าหลัก</span>
-            </Link>
-          </AccordionMenuItem>
-
-          {filteredSections.map((section, i) => {
-            const prevGroup = i > 0 ? filteredSections[i - 1].group : null;
-            const showGroupHeader = section.group && section.group !== prevGroup;
-            const gm = groupMeta[section.group!] ?? groupMeta.general;
-
-            return (
-              <div key={section.key}>
-                {/* Group divider header */}
-                {showGroupHeader && (
-                  <div className={cn('px-1 pb-2', i > 0 ? 'pt-5 mt-1' : 'pt-2')}>
-                    <div className="flex items-center gap-2">
-                      <div className={cn('size-1.5 rounded-full shrink-0', gm.dot)} />
-                      <span className={cn('text-[10px] font-bold uppercase tracking-[0.12em]', gm.text)}>
-                        {gm.label}
-                      </span>
-                      <div className={cn('flex-1 h-px', gm.line)} />
-                    </div>
-                  </div>
-                )}
-
-                <AccordionMenuSub value={section.key} data-testid={`nav-${section.key}`}>
-                  <AccordionMenuSubTrigger>
-                    <section.icon data-slot="accordion-menu-icon" className="size-[15px] shrink-0" />
-                    <span data-slot="accordion-menu-title">{section.label}</span>
-                  </AccordionMenuSubTrigger>
-                  <AccordionMenuSubContent parentValue={section.key} type="single" collapsible>
-                    {section.items.map((item) => (
-                      <AccordionMenuItem key={item.path} value={item.path} className="text-[13px]">
-                        <Link to={item.path} className="flex items-center gap-2.5 w-full">
-                          {item.icon && (
-                            <item.icon
-                              data-slot="accordion-menu-icon"
-                              className="size-[15px] shrink-0 opacity-60"
-                            />
-                          )}
-                          <span data-slot="accordion-menu-title">{item.label}</span>
-                        </Link>
-                      </AccordionMenuItem>
-                    ))}
-                  </AccordionMenuSubContent>
-                </AccordionMenuSub>
-              </div>
-            );
-          })}
+          {sections.map((section) => (
+            <AccordionMenuSub key={section.key} value={section.key} data-testid={`nav-${section.key}`}>
+              <AccordionMenuSubTrigger>
+                <section.icon data-slot="accordion-menu-icon" className="size-[15px] shrink-0" />
+                <span data-slot="accordion-menu-title">{section.label}</span>
+              </AccordionMenuSubTrigger>
+              <AccordionMenuSubContent parentValue={section.key} type="single" collapsible>
+                {section.items.map((item) => (
+                  <AccordionMenuItem key={item.path} value={item.path} className="text-[13px]">
+                    <Link to={item.path} className="flex items-center gap-2.5 w-full">
+                      <item.icon
+                        data-slot="accordion-menu-icon"
+                        className="size-[15px] shrink-0 opacity-60"
+                      />
+                      <span data-slot="accordion-menu-title">{item.label}</span>
+                    </Link>
+                  </AccordionMenuItem>
+                ))}
+              </AccordionMenuSubContent>
+            </AccordionMenuSub>
+          ))}
         </AccordionMenu>
       </ScrollArea>
 
@@ -629,7 +382,7 @@ function MobileSidebarContent() {
     [pathname],
   );
 
-  const filteredSections = useFilteredSections(user);
+  const sections = useRoleMenu(user?.role ?? '');
   const role = user?.role ?? '';
   const roleInfo = roleBadgeMap[role];
 
@@ -658,55 +411,27 @@ function MobileSidebarContent() {
           type="multiple"
           classNames={expandedMenuClassNames}
         >
-          <AccordionMenuItem value="/" className="text-[13px] font-medium mb-2">
-            <Link to="/" className="flex items-center justify-between grow gap-2.5">
-              <Home data-slot="accordion-menu-icon" className="size-4 shrink-0" />
-              <span data-slot="accordion-menu-title">หน้าหลัก</span>
-            </Link>
-          </AccordionMenuItem>
-
-          {filteredSections.map((section, i) => {
-            const prevGroup = i > 0 ? filteredSections[i - 1].group : null;
-            const showGroupHeader = section.group && section.group !== prevGroup;
-            const gm = groupMeta[section.group!] ?? groupMeta.general;
-
-            return (
-              <div key={section.key}>
-                {showGroupHeader && (
-                  <div className={cn('px-1 pb-2', i > 0 ? 'pt-5 mt-1' : 'pt-2')}>
-                    <div className="flex items-center gap-2">
-                      <div className={cn('size-1.5 rounded-full shrink-0', gm.dot)} />
-                      <span className={cn('text-[10px] font-bold uppercase tracking-[0.12em]', gm.text)}>
-                        {gm.label}
-                      </span>
-                      <div className={cn('flex-1 h-px', gm.line)} />
-                    </div>
-                  </div>
-                )}
-                <AccordionMenuSub value={section.key} data-testid={`nav-mobile-${section.key}`}>
-                  <AccordionMenuSubTrigger>
-                    <section.icon data-slot="accordion-menu-icon" className="size-[15px] shrink-0" />
-                    <span data-slot="accordion-menu-title">{section.label}</span>
-                  </AccordionMenuSubTrigger>
-                  <AccordionMenuSubContent parentValue={section.key} type="single" collapsible>
-                    {section.items.map((item) => (
-                      <AccordionMenuItem key={item.path} value={item.path} className="text-[13px]">
-                        <Link to={item.path} className="flex items-center gap-2.5 w-full">
-                          {item.icon && (
-                            <item.icon
-                              data-slot="accordion-menu-icon"
-                              className="size-[15px] shrink-0 opacity-60"
-                            />
-                          )}
-                          <span data-slot="accordion-menu-title">{item.label}</span>
-                        </Link>
-                      </AccordionMenuItem>
-                    ))}
-                  </AccordionMenuSubContent>
-                </AccordionMenuSub>
-              </div>
-            );
-          })}
+          {sections.map((section) => (
+            <AccordionMenuSub key={section.key} value={section.key} data-testid={`nav-mobile-${section.key}`}>
+              <AccordionMenuSubTrigger>
+                <section.icon data-slot="accordion-menu-icon" className="size-[15px] shrink-0" />
+                <span data-slot="accordion-menu-title">{section.label}</span>
+              </AccordionMenuSubTrigger>
+              <AccordionMenuSubContent parentValue={section.key} type="single" collapsible>
+                {section.items.map((item) => (
+                  <AccordionMenuItem key={item.path} value={item.path} className="text-[13px]">
+                    <Link to={item.path} className="flex items-center gap-2.5 w-full">
+                      <item.icon
+                        data-slot="accordion-menu-icon"
+                        className="size-[15px] shrink-0 opacity-60"
+                      />
+                      <span data-slot="accordion-menu-title">{item.label}</span>
+                    </Link>
+                  </AccordionMenuItem>
+                ))}
+              </AccordionMenuSubContent>
+            </AccordionMenuSub>
+          ))}
         </AccordionMenu>
       </ScrollArea>
 
@@ -744,20 +469,15 @@ function MobileSidebarContent() {
   );
 }
 
-/* ─── Chat Unread Badge ──────────────────────────── */
-function ChatUnreadBadge() {
+/* ─── Chat Unread Badge (exported for TopBar) ──────── */
+export function ChatUnreadBadge({ className }: { className?: string }) {
   const count = useUnreadChat();
   if (count <= 0) return null;
   return (
-    <span className="ml-auto min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold leading-none">
+    <span className={cn('min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold leading-none', className)}>
       {count > 99 ? '99+' : count}
     </span>
   );
-}
-
-function NavBadge({ badgeKey }: { badgeKey?: string }) {
-  if (badgeKey === 'chat-unread') return <ChatUnreadBadge />;
-  return null;
 }
 
 /* ─── Main Sidebar Component ─────────────────────── */

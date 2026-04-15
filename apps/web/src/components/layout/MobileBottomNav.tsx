@@ -1,28 +1,21 @@
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import { Link, useLocation } from 'react-router';
-import { Home, ShoppingCart, FileCheck, HandCoins, MoreHorizontal } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useLayout } from './LayoutContext';
-
-interface TabItem {
-  label: string;
-  path: string;
-  icon: typeof Home;
-  /** If 'sidebar', tapping opens the mobile sheet sidebar instead of navigating */
-  action?: 'sidebar';
-}
-
-const tabs: TabItem[] = [
-  { label: 'หน้าหลัก', path: '/',          icon: Home },
-  { label: 'ขาย',     path: '/pos',        icon: ShoppingCart },
-  { label: 'สัญญา',   path: '/contracts',  icon: FileCheck },
-  { label: 'ชำระ',    path: '/payments',   icon: HandCoins },
-  { label: 'เพิ่มเติม', path: '#more',     icon: MoreHorizontal, action: 'sidebar' },
-];
+import { useAuth } from '@/contexts/AuthContext';
+import { useUnreadChat } from '@/hooks/useUnreadChat';
+import { getMenuConfig } from '@/config/menu';
+import type { BottomNavItem } from '@/config/menu';
 
 function MobileBottomNav() {
   const { pathname } = useLocation();
   const { setMobileSidebarOpen } = useLayout();
+  const { user } = useAuth();
+
+  const tabs = useMemo(
+    () => getMenuConfig(user?.role ?? '').bottomNav,
+    [user?.role],
+  );
 
   const isActive = (path: string) => {
     if (path === '/') return pathname === '/';
@@ -74,12 +67,15 @@ function MobileBottomNav() {
                   aria-hidden="true"
                 />
               )}
-              <tab.icon
-                className={cn(
-                  'transition-all duration-150',
-                  active ? 'size-[22px] stroke-[2.5]' : 'size-[22px] stroke-2',
-                )}
-              />
+              <div className="relative">
+                <tab.icon
+                  className={cn(
+                    'transition-all duration-150',
+                    active ? 'size-[22px] stroke-[2.5]' : 'size-[22px] stroke-2',
+                  )}
+                />
+                {tab.badgeKey === 'chat-unread' && <ChatBadgeDot />}
+              </div>
               <span className={cn('text-[10px]', active ? 'font-bold' : 'font-medium')}>
                 {tab.label}
               </span>
@@ -88,6 +84,19 @@ function MobileBottomNav() {
         })}
       </div>
     </nav>
+  );
+}
+
+function ChatBadgeDot() {
+  const count = useUnreadChat();
+  if (count <= 0) return null;
+  return (
+    <span
+      className="absolute -top-1 -right-1.5 min-w-[16px] h-[16px] px-0.5 flex items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-bold leading-none ring-2 ring-background"
+      aria-label={`${count > 99 ? '99+' : count} ข้อความใหม่`}
+    >
+      {count > 99 ? '99+' : count}
+    </span>
   );
 }
 

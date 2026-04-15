@@ -16,6 +16,7 @@ import {
   Settings,
   User,
   ChevronDown,
+  MessageSquareMore,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -28,6 +29,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useCommandPalette } from '@/components/CommandPalette';
+import { ChatUnreadBadge } from './Sidebar';
+import { isChatVisibleForRole } from '@/config/menu';
 
 /* ── Role display metadata ─────────────────────── */
 const roleLabels: Record<string, string> = {
@@ -185,6 +188,21 @@ export default function TopBar() {
             ⌘K
           </kbd>
         </button>
+
+        {/* Chat inbox button */}
+        {user && isChatVisibleForRole(user.role) && (
+          <Button
+            variant="ghost"
+            size="icon"
+            asChild
+            className="size-9 rounded-xl relative text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors duration-150"
+          >
+            <Link to="/inbox" aria-label="กล่องข้อความ">
+              <MessageSquareMore className="size-[17px]" />
+              <ChatUnreadBadge className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] text-[9px]" />
+            </Link>
+          </Button>
+        )}
 
         {/* Notifications bell */}
         <Button

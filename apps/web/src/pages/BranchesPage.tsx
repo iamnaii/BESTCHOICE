@@ -9,6 +9,8 @@ import QueryBoundary from '@/components/QueryBoundary';
 import { useAuth } from '@/contexts/AuthContext';
 import AddressForm, { AddressData, emptyAddress, composeAddress, deserializeAddress } from '@/components/ui/AddressForm';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, enabledStatusMap } from '@/lib/status-badges';
 
 interface Branch {
   id: string;
@@ -118,15 +120,10 @@ export default function BranchesPage() {
     {
       key: 'isActive',
       label: 'สถานะ',
-      render: (b: Branch) => (
-        <span
-          className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-            b.isActive ? 'bg-success/10 text-success dark:bg-success/15' : 'bg-destructive/10 text-destructive dark:bg-destructive/15'
-          }`}
-        >
-          {b.isActive ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}
-        </span>
-      ),
+      render: (b: Branch) => {
+        const cfg = getStatusBadgeProps(String(b.isActive), enabledStatusMap);
+        return <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>;
+      },
     },
     {
       key: '_count',

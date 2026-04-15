@@ -18,6 +18,8 @@ import PageHeader from '@/components/ui/PageHeader';
 import Modal from '@/components/ui/Modal';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import QueryBoundary from '@/components/QueryBoundary';
+import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, dunningChannelMap } from '@/lib/status-badges';
 
 interface DunningRule {
   id: string;
@@ -36,12 +38,12 @@ type DunningChannel = DunningRule['channel'];
 
 const CHANNEL_CONFIG: Record<
   DunningChannel,
-  { label: string; icon: React.ComponentType<{ className?: string }>; cls: string }
+  { icon: React.ComponentType<{ className?: string }> }
 > = {
-  LINE: { label: 'LINE', icon: MessageSquare, cls: 'bg-green-500/20 text-green-400' },
-  SMS: { label: 'SMS', icon: MessageSquare, cls: 'bg-blue-500/20 text-blue-400' },
-  CALL_TASK: { label: 'โทรติดตาม', icon: Phone, cls: 'bg-orange-500/20 text-orange-400' },
-  INTERNAL_ALERT: { label: 'แจ้งเตือนภายใน', icon: Bell, cls: 'bg-purple-500/20 text-purple-400' },
+  LINE: { icon: MessageSquare },
+  SMS: { icon: MessageSquare },
+  CALL_TASK: { icon: Phone },
+  INTERNAL_ALERT: { icon: Bell },
 };
 
 const CHANNEL_OPTIONS: { value: DunningChannel; label: string }[] = [
@@ -290,12 +292,15 @@ export default function DunningSettingsPage() {
                                 : `D${rule.triggerDay}`}
                             </span>
                             {/* Channel badge */}
-                            <span
-                              className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${channelCfg.cls}`}
-                            >
-                              <ChannelIcon className="w-3 h-3" />
-                              {channelCfg.label}
-                            </span>
+                            {(() => {
+                              const cfg = getStatusBadgeProps(rule.channel, dunningChannelMap);
+                              return (
+                                <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm" className="flex items-center gap-1">
+                                  <ChannelIcon className="w-3 h-3" />
+                                  {cfg.label}
+                                </Badge>
+                              );
+                            })()}
                             {/* Payment link badge */}
                             {rule.includePaymentLink && (
                               <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400">

@@ -10,6 +10,8 @@ import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { toast } from 'sonner';
 import { exportToExcel } from '@/utils/excel.util';
 import { Download } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, auditActionMap } from '@/lib/status-badges';
 
 interface AuditLog {
   id: string;
@@ -32,17 +34,6 @@ interface AuditStats {
   totalCount: number;
   recentErrors: number;
 }
-
-const actionColors: Record<string, string> = {
-  POST: 'bg-success/10 text-success dark:bg-success/15',
-  PUT: 'bg-primary/10 text-primary dark:bg-primary/15',
-  PATCH: 'bg-warning/10 text-warning dark:bg-warning/15',
-  DELETE: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
-  EXCHANGE: 'bg-primary/10 text-primary dark:bg-primary/15',
-  REPOSSESSION: 'bg-warning/10 text-warning dark:bg-warning/15',
-  CREATE_CALL_LOG: 'bg-success/10 text-success dark:bg-success/15',
-  STATUS_CHANGE: 'bg-primary/10 text-primary dark:bg-primary/15',
-};
 
 const actionLabels: Record<string, string> = {
   POST: 'สร้าง',
@@ -280,12 +271,14 @@ export default function AuditLogsPage() {
                             {log.user?.name || '-'}
                           </div>
                           <div className="px-4 py-3 w-32 shrink-0">
-                            <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                              actionColors[log.action] ||
-                              (log.action.endsWith('_ERROR') ? 'bg-destructive/10 text-destructive dark:bg-destructive/15' : 'bg-muted text-foreground')
-                            }`}>
-                              {actionLabels[log.action] || log.action}
-                            </span>
+                            {(() => {
+                              const cfg = getStatusBadgeProps(log.action, auditActionMap);
+                              return (
+                                <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">
+                                  {actionLabels[log.action] || log.action}
+                                </Badge>
+                              );
+                            })()}
                           </div>
                           <div className="px-4 py-3 w-28 shrink-0 text-foreground">
                             {entityLabels[log.entity] || log.entity}

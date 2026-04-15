@@ -6,6 +6,8 @@ import Modal from '@/components/ui/Modal';
 import QueryBoundary from '@/components/QueryBoundary';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, enabledStatusMap } from '@/lib/status-badges';
 
 interface ConfigItem {
   id: string;
@@ -343,7 +345,7 @@ export default function InterestConfigPage() {
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
                       <h3 className="text-lg font-semibold text-foreground">{config.name}</h3>
-                      {!config.isActive && <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold bg-muted text-muted-foreground">ปิดใช้งาน</span>}
+                      {!config.isActive && (() => { const cfg = getStatusBadgeProps('false', enabledStatusMap); return <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>; })()}
                     </div>
                     <div className="flex flex-wrap gap-1 mb-3">
                       {config.productCategories.map((cat) => (

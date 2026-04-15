@@ -15,6 +15,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { checkCardReaderStatus, readSmartCard } from '@/lib/cardReader';
 import { useAuth } from '@/contexts/AuthContext';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
+import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, enabledStatusMap } from '@/lib/status-badges';
 
 interface User {
   id: string;
@@ -337,14 +339,17 @@ export default function UsersPage() {
     },
     {
       key: 'isActive', label: 'สถานะ',
-      render: (u: User) => (
-        <button
-          onClick={() => setConfirmDialog({ open: true, message: `ต้องการ${u.isActive ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}ผู้ใช้ "${u.name}" หรือไม่?`, action: () => toggleActiveMutation.mutate({ id: u.id, isActive: !u.isActive }) })}
-          className={`rounded-full px-2.5 py-0.5 text-xs font-semibold cursor-pointer ${u.isActive ? 'bg-success/10 text-success dark:bg-success/15' : 'bg-destructive/10 text-destructive dark:bg-destructive/15'}`}
-        >
-          {u.isActive ? 'ใช้งาน' : 'ปิดใช้งาน'}
-        </button>
-      ),
+      render: (u: User) => {
+        const cfg = getStatusBadgeProps(String(u.isActive), enabledStatusMap);
+        return (
+          <button
+            onClick={() => setConfirmDialog({ open: true, message: `ต้องการ${u.isActive ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}ผู้ใช้ "${u.name}" หรือไม่?`, action: () => toggleActiveMutation.mutate({ id: u.id, isActive: !u.isActive }) })}
+            className="cursor-pointer"
+          >
+            <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>
+          </button>
+        );
+      },
     },
     {
       key: 'actions', label: '',

@@ -412,7 +412,9 @@ export const dunningChannelMap: Record<string, StatusConfig> = {
   LINE: { variant: 'success', appearance: 'light', label: 'LINE' },
   SMS: { variant: 'info', appearance: 'light', label: 'SMS' },
   CALL: { variant: 'warning', appearance: 'light', label: 'โทร' },
+  CALL_TASK: { variant: 'warning', appearance: 'light', label: 'โทรติดตาม' },
   VISIT: { variant: 'primary', appearance: 'light', label: 'เยี่ยม' },
+  INTERNAL_ALERT: { variant: 'secondary', label: 'แจ้งเตือนภายใน' },
   LEGAL: { variant: 'destructive', label: 'กฎหมาย' },
 };
 

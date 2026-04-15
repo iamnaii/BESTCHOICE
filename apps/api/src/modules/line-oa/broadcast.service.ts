@@ -8,9 +8,13 @@ type LineMessage =
   | { type: 'image'; originalContentUrl: string; previewImageUrl: string }
   | { type: 'flex'; altText: string; contents: any };
 
-interface SendBroadcastParams {
+interface BroadcastMessageItem {
   type: string;
-  content: any; // stored as Json in BroadcastMessage
+  content: any;
+}
+
+interface SendBroadcastParams {
+  messages: BroadcastMessageItem[]; // array of { type, content }, up to 5
   audience: string; // ALL | EXISTING | OVERDUE | NEW
   scheduledAt?: Date;
   createdById: string;
@@ -149,7 +153,7 @@ export class BroadcastService {
     message: string;
     id?: string;
   }> {
-    const { type, content, audience, scheduledAt, createdById } = params;
+    const { messages, audience, scheduledAt, createdById } = params;
 
     // Get audience count for saving
     const counts = await this.getAudienceCount();
@@ -166,8 +170,7 @@ export class BroadcastService {
     if (scheduledAt && scheduledAt > new Date()) {
       const record = await this.prisma.broadcastMessage.create({
         data: {
-          type,
-          content,
+          messages: messages as any,
           audience,
           audienceCount,
           status: 'SCHEDULED',
@@ -178,18 +181,19 @@ export class BroadcastService {
       return { success: true, message: 'บันทึกตั้งเวลาส่งสำเร็จ', id: record.id };
     }
 
-    // Send immediately
-    const lineMessage = this.buildLineMessage(type, content);
-    if (!lineMessage) {
+    // Build LINE messages array (up to 5)
+    const lineMessages = messages
+      .map((m) => this.buildLineMessage(m.type, m.content))
+      .filter((m): m is LineMessage => m !== null);
+    if (lineMessages.length === 0) {
       return { success: false, message: 'รูปแบบข้อความไม่ถูกต้อง' };
     }
 
-    const result = await this.dispatchLineMessage(audience, lineMessage);
+    const result = await this.dispatchLineMessages(audience, lineMessages);
 
     const record = await this.prisma.broadcastMessage.create({
       data: {
-        type,
-        content,
+        messages: messages as any,
         audience,
         audienceCount,
         status: result.success ? 'SENT' : 'FAILED',
@@ -216,8 +220,11 @@ export class BroadcastService {
 
     for (const msg of due) {
       try {
-        const lineMessage = this.buildLineMessage(msg.type, msg.content as any);
-        if (!lineMessage) {
+        const msgItems = (msg.messages as unknown as BroadcastMessageItem[]) ?? [];
+        const lineMessages = msgItems
+          .map((m) => this.buildLineMessage(m.type, m.content))
+          .filter((m): m is LineMessage => m !== null);
+        if (lineMessages.length === 0) {
           await this.prisma.broadcastMessage.update({
             where: { id: msg.id },
             data: { status: 'FAILED', errorMessage: 'รูปแบบข้อความไม่ถูกต้อง' },
@@ -226,7 +233,7 @@ export class BroadcastService {
           continue;
         }
 
-        const result = await this.dispatchLineMessage(msg.audience, lineMessage);
+        const result = await this.dispatchLineMessages(msg.audience, lineMessages);
 
         await this.prisma.broadcastMessage.update({
           where: { id: msg.id },
@@ -369,9 +376,18 @@ export class BroadcastService {
     return null;
   }
 
+  /** Dispatch a single LINE message (legacy wrapper for broadcast() method) */
   private async dispatchLineMessage(
     audience: string,
     message: LineMessage,
+  ): Promise<{ success: boolean; message: string }> {
+    return this.dispatchLineMessages(audience, [message]);
+  }
+
+  /** Dispatch multiple LINE messages (up to 5) to the given audience */
+  private async dispatchLineMessages(
+    audience: string,
+    messages: LineMessage[],
   ): Promise<{ success: boolean; message: string }> {
     const token = this.configService.get<string>('LINE_CHANNEL_ACCESS_TOKEN');
     if (!token) return { success: false, message: 'LINE token not configured' };
@@ -385,7 +401,7 @@ export class BroadcastService {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ messages: [message] }),
+          body: JSON.stringify({ messages }),
           signal: AbortSignal.timeout(15000),
         });
 
@@ -424,7 +440,7 @@ export class BroadcastService {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ to: chunk, messages: [message] }),
+          body: JSON.stringify({ to: chunk, messages }),
           signal: AbortSignal.timeout(15000),
         });
 

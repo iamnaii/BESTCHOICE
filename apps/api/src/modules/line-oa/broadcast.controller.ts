@@ -33,15 +33,13 @@ export class BroadcastController {
   async sendBroadcast(
     @Body()
     body: {
-      type: string;
-      content: any;
+      messages: { type: string; content: any }[]; // array up to 5
       audience?: string; // ALL | EXISTING | OVERDUE | NEW, default ALL
     },
     @CurrentUser('id') userId: string,
   ) {
     return this.broadcastService.sendBroadcast({
-      type: body.type,
-      content: body.content,
+      messages: body.messages,
       audience: body.audience ?? 'ALL',
       createdById: userId,
     });
@@ -53,16 +51,14 @@ export class BroadcastController {
   async scheduleBroadcast(
     @Body()
     body: {
-      type: string;
-      content: any;
+      messages: { type: string; content: any }[]; // array up to 5
       audience?: string;
       scheduledAt: string; // ISO date string
     },
     @CurrentUser('id') userId: string,
   ) {
     return this.broadcastService.sendBroadcast({
-      type: body.type,
-      content: body.content,
+      messages: body.messages,
       audience: body.audience ?? 'ALL',
       scheduledAt: new Date(body.scheduledAt),
       createdById: userId,

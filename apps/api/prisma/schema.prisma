@@ -3607,8 +3607,7 @@ model AiAutoReplyLog {
 
 model BroadcastMessage {
   id            String    @id @default(uuid())
-  type          String    // text, image, flex
-  content       Json
+  messages      Json      // array: [{ type, content }] — supports up to 5 messages
   audience      String    // ALL, EXISTING, OVERDUE, NEW
   audienceCount Int       @map("audience_count")
   status        String    @default("SCHEDULED") // SENT, SCHEDULED, FAILED, CANCELLED

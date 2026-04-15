@@ -1,0 +1,325 @@
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import api, { getErrorMessage } from '@/lib/api';
+import PageHeader from '@/components/ui/PageHeader';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import NotificationLogTable from './components/NotificationLogTable';
+import TemplateManager from './components/TemplateManager';
+import TemplateForm, { type TemplateFormState } from './components/TemplateForm';
+
+interface NotificationTemplate {
+  id: string;
+  name: string;
+  eventType: string;
+  channel: string;
+  format?: string;
+  subject: string | null;
+  messageTemplate: string;
+  flexTemplate?: string;
+  description: string | null;
+  isActive: boolean;
+  updatedAt: string;
+}
+
+interface LogStats {
+  total: number;
+  sent: number;
+  failed: number;
+  pending: number;
+}
+
+const defaultTemplateForm: TemplateFormState = {
+  name: '',
+  eventType: 'PAYMENT_REMINDER',
+  channel: 'LINE',
+  format: 'text',
+  subject: '',
+  messageTemplate: '',
+  flexTemplate: '',
+  description: '',
+};
+
+export default function NotificationsPage() {
+  const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState<'logs' | 'templates' | 'send'>('logs');
+  const [channelFilter, setChannelFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<NotificationTemplate | null>(null);
+  const [templateForm, setTemplateForm] = useState<TemplateFormState>(defaultTemplateForm);
+  const [jsonError, setJsonError] = useState<string | null>(null);
+  const [sendForm, setSendForm] = useState({
+    customerId: '',
+    channel: 'LINE',
+    subject: '',
+    message: '',
+  });
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    message: string;
+    action: () => void;
+  }>({ open: false, message: '', action: () => {} });
+
+  const { data: stats } = useQuery<LogStats>({
+    queryKey: ['notification-stats'],
+    queryFn: async () => (await api.get('/notifications/logs/stats')).data,
+  });
+
+  const sendNotificationMutation = useMutation({
+    mutationFn: async (data: {
+      customerId: string;
+      channel: string;
+      subject: string;
+      message: string;
+    }) => api.post('/notifications/send', data),
+    onSuccess: () => {
+      toast.success('ส่งการแจ้งเตือนสำเร็จ');
+      queryClient.invalidateQueries({ queryKey: ['notification-logs'] });
+      queryClient.invalidateQueries({ queryKey: ['notification-stats'] });
+      setSendForm({ customerId: '', channel: 'LINE', subject: '', message: '' });
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  const sendRemindersMutation = useMutation({
+    mutationFn: async () => api.post('/notifications/cron/payment-reminders'),
+    onSuccess: (res) => {
+      toast.success(`ส่งเตือนแล้ว ${res.data.sent} รายการ`);
+      queryClient.invalidateQueries({ queryKey: ['notification-logs'] });
+      queryClient.invalidateQueries({ queryKey: ['notification-stats'] });
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  const sendOverdueMutation = useMutation({
+    mutationFn: async () => api.post('/notifications/cron/overdue-notices'),
+    onSuccess: (res) => {
+      toast.success(`ส่งทวงหนี้แล้ว ${res.data.sent} รายการ`);
+      queryClient.invalidateQueries({ queryKey: ['notification-logs'] });
+      queryClient.invalidateQueries({ queryKey: ['notification-stats'] });
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  const openCreateTemplate = () => {
+    setEditingTemplate(null);
+    setTemplateForm(defaultTemplateForm);
+    setJsonError(null);
+    setIsTemplateModalOpen(true);
+  };
+
+  const openEditTemplate = (t: NotificationTemplate) => {
+    setEditingTemplate(t);
+    setTemplateForm({
+      name: t.name,
+      eventType: t.eventType,
+      channel: t.channel,
+      format: (t.format as 'text' | 'flex') || 'text',
+      subject: t.subject || '',
+      messageTemplate: t.messageTemplate,
+      flexTemplate: t.flexTemplate || '',
+      description: t.description || '',
+    });
+    setJsonError(null);
+    setIsTemplateModalOpen(true);
+  };
+
+  const handleConfirmDelete = (message: string, action: () => void) => {
+    setConfirmDialog({ open: true, message, action });
+  };
+
+  return (
+    <div>
+      <PageHeader title="แจ้งเตือน" subtitle="ระบบแจ้งเตือน LINE / SMS" />
+
+      {/* Stats */}
+      {stats && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-5 mb-6">
+          <div className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
+            <div className="flex h-full">
+              <div className="w-1 shrink-0 bg-foreground/40" />
+              <div className="p-4 flex-1">
+                <div className="text-sm text-muted-foreground">ทั้งหมด</div>
+                <div className="text-2xl font-bold tabular-nums">{stats.total}</div>
+              </div>
+            </div>
+          </div>
+          <div className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
+            <div className="flex h-full">
+              <div className="w-1 shrink-0 bg-success" />
+              <div className="p-4 flex-1">
+                <div className="text-sm text-muted-foreground">ส่งสำเร็จ</div>
+                <div className="text-2xl font-bold tabular-nums text-success">{stats.sent}</div>
+              </div>
+            </div>
+          </div>
+          <div className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
+            <div className="flex h-full">
+              <div className="w-1 shrink-0 bg-destructive" />
+              <div className="p-4 flex-1">
+                <div className="text-sm text-muted-foreground">ล้มเหลว</div>
+                <div className="text-2xl font-bold tabular-nums text-destructive">{stats.failed}</div>
+              </div>
+            </div>
+          </div>
+          <div className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
+            <div className="flex h-full">
+              <div className="w-1 shrink-0 bg-warning" />
+              <div className="p-4 flex-1">
+                <div className="text-sm text-muted-foreground">รอส่ง</div>
+                <div className="text-2xl font-bold tabular-nums text-warning">{stats.pending}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Actions */}
+      <div className="flex gap-3 mb-6">
+        <button
+          onClick={() => sendRemindersMutation.mutate()}
+          disabled={sendRemindersMutation.isPending}
+          className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
+        >
+          {sendRemindersMutation.isPending ? 'กำลังส่ง...' : 'ส่งเตือนก่อนครบกำหนด'}
+        </button>
+        <button
+          onClick={() => sendOverdueMutation.mutate()}
+          disabled={sendOverdueMutation.isPending}
+          className="px-4 py-2 bg-orange-600 text-white rounded-lg text-sm font-medium hover:bg-orange-700 disabled:opacity-50"
+        >
+          {sendOverdueMutation.isPending ? 'กำลังส่ง...' : 'ส่งทวงหนี้ค้างชำระ'}
+        </button>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-1 mb-4 border-b">
+        <button
+          onClick={() => setActiveTab('logs')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${activeTab === 'logs' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+        >
+          ประวัติการส่ง
+        </button>
+        <button
+          onClick={() => setActiveTab('templates')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${activeTab === 'templates' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+        >
+          Template ข้อความ
+        </button>
+        <button
+          onClick={() => setActiveTab('send')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${activeTab === 'send' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+        >
+          ส่งการแจ้งเตือน
+        </button>
+      </div>
+
+      {activeTab === 'logs' && (
+        <NotificationLogTable
+          channelFilter={channelFilter}
+          setChannelFilter={setChannelFilter}
+          statusFilter={statusFilter}
+          setStatusFilter={setStatusFilter}
+          activeTab={activeTab}
+        />
+      )}
+
+      {activeTab === 'templates' && (
+        <TemplateManager
+          activeTab={activeTab}
+          onCreateTemplate={openCreateTemplate}
+          onEditTemplate={openEditTemplate}
+          onConfirmDelete={handleConfirmDelete}
+        />
+      )}
+
+      {activeTab === 'send' && (
+        <div className="rounded-xl border border-border/50 bg-card shadow-sm p-6 max-w-lg">
+          <h3 className="text-lg font-semibold mb-4">ส่งการแจ้งเตือนด้วยตนเอง</h3>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              sendNotificationMutation.mutate(sendForm);
+            }}
+            className="flex flex-col gap-4"
+          >
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">
+                Customer ID *
+              </label>
+              <input
+                type="text"
+                value={sendForm.customerId}
+                onChange={(e) => setSendForm({ ...sendForm, customerId: e.target.value })}
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
+                placeholder="รหัสลูกค้า"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">ช่องทาง *</label>
+              <select
+                value={sendForm.channel}
+                onChange={(e) => setSendForm({ ...sendForm, channel: e.target.value })}
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
+              >
+                <option value="LINE">LINE</option>
+                <option value="SMS">SMS</option>
+                <option value="IN_APP">ในระบบ (IN_APP)</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">หัวข้อ</label>
+              <input
+                type="text"
+                value={sendForm.subject}
+                onChange={(e) => setSendForm({ ...sendForm, subject: e.target.value })}
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
+                placeholder="หัวข้อการแจ้งเตือน"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">ข้อความ *</label>
+              <textarea
+                value={sendForm.message}
+                onChange={(e) => setSendForm({ ...sendForm, message: e.target.value })}
+                rows={4}
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
+                placeholder="เนื้อหาข้อความแจ้งเตือน"
+                required
+              />
+            </div>
+            <div>
+              <button
+                type="submit"
+                disabled={sendNotificationMutation.isPending}
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
+              >
+                {sendNotificationMutation.isPending ? 'กำลังส่ง...' : 'ส่งการแจ้งเตือน'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      <TemplateForm
+        isOpen={isTemplateModalOpen}
+        onClose={() => setIsTemplateModalOpen(false)}
+        editingTemplate={editingTemplate}
+        templateForm={templateForm}
+        setTemplateForm={setTemplateForm}
+        jsonError={jsonError}
+        setJsonError={setJsonError}
+      />
+
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onOpenChange={(open) => setConfirmDialog((prev) => ({ ...prev, open }))}
+        description={confirmDialog.message}
+        variant="destructive"
+        onConfirm={confirmDialog.action}
+      />
+    </div>
+  );
+}

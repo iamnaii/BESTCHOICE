@@ -76,7 +76,7 @@ export default function LandingPage() {
                 <div className="mt-8 flex flex-wrap gap-4">
                   <button
                     onClick={() => scrollTo('products')}
-                    className="px-8 py-3 text-sm font-semibold text-primary-foreground bg-primary hover:bg-primary/90 rounded-xl transition-all hover:shadow-lg hover:shadow-primary/30"
+                    className="px-8 py-3 text-sm font-semibold text-white bg-[#059669] hover:bg-[#047857] rounded-xl transition-all shadow-lg shadow-emerald-500/20"
                   >
                     ดูสินค้าทั้งหมด
                   </button>
@@ -250,7 +250,7 @@ export default function LandingPage() {
                 key={i}
                 className="text-center p-6 rounded-2xl bg-card border border-border/60 hover:shadow-card-hover hover:-translate-y-1 transition-all duration-300 group"
               >
-                <div className="w-14 h-14 mx-auto rounded-xl bg-primary/10 text-primary flex items-center justify-center group-hover:bg-primary group-hover:text-primary-foreground transition-colors duration-300">
+                <div className="w-14 h-14 mx-auto rounded-xl bg-[#f0f5ff] text-[#1e3a5f] flex items-center justify-center group-hover:bg-[#059669] group-hover:text-white transition-colors duration-300">
                   {service.icon}
                 </div>
                 <h3 className="mt-4 font-semibold text-foreground">{service.title}</h3>
@@ -333,7 +333,7 @@ export default function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="bg-primary-950 text-gray-400">
+      <footer className="bg-[#0f2035] text-gray-400">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
           <div className="grid md:grid-cols-4 gap-8">
             <div className="md:col-span-2">

@@ -31,7 +31,11 @@ import { ChatToContractService } from './services/chat-to-contract.service';
 import { AiSuggestService } from './services/ai-suggest.service';
 import { LeadScoringService } from './services/lead-scoring.service';
 import { ProductDetectService } from './services/product-detect.service';
+import { AiTrainingService } from './services/ai-training.service';
+import { AiAutoReplyService } from './services/ai-auto-reply.service';
 import { AiSuggestRequestDto } from './dto/ai-suggest.dto';
+import { SaveFeedbackDto } from './dto/ai-training.dto';
+import { UpdateAiSettingsDto } from './dto/ai-settings.dto';
 import { SessionQueryDto } from '../chat-engine/dto/session-query.dto';
 import { ChatSessionStatus, ChatChannel, ChatPriority, MessageRole, MessageType } from '@prisma/client';
 import { StorageService } from '../storage/storage.service';
@@ -54,6 +58,8 @@ export class StaffChatController {
     private aiSuggest: AiSuggestService,
     private leadScoring: LeadScoringService,
     private productDetect: ProductDetectService,
+    private aiTraining: AiTrainingService,
+    private aiAutoReply: AiAutoReplyService,
     private config: ConfigService,
   ) {}
 
@@ -332,5 +338,31 @@ export class StaffChatController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   async getContractPrefill(@Param('id') id: string) {
     return this.chatToContract.getContractPrefill(id);
+  }
+
+  // ─── AI Training & Settings ───────────────────────────
+
+  @Post('ai/training-feedback')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  async saveTrainingFeedback(@Body() dto: SaveFeedbackDto) {
+    return this.aiTraining.saveFeedback(dto);
+  }
+
+  @Get('ai/training-stats')
+  @Roles('OWNER')
+  async getTrainingStats() {
+    return this.aiTraining.getTrainingStats();
+  }
+
+  @Get('ai/settings')
+  @Roles('OWNER')
+  async getAiSettings() {
+    return this.aiAutoReply.getSettings();
+  }
+
+  @Patch('ai/settings')
+  @Roles('OWNER')
+  async updateAiSettings(@Body() dto: UpdateAiSettingsDto) {
+    return this.aiAutoReply.updateSettings(dto);
   }
 }

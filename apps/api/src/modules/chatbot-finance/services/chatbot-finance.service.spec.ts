@@ -41,7 +41,7 @@ describe('ChatbotFinanceService', () => {
       getOrCreate: jest.fn().mockResolvedValue(session),
       saveMessage: jest.fn().mockResolvedValue({ id: 'msg-1' }),
       getRecentMessages: jest.fn().mockResolvedValue([]),
-      linkSessionToCustomer: jest.fn().mockResolvedValue(undefined),
+      linkRoomToCustomer: jest.fn().mockResolvedValue(undefined),
     };
     verification = {
       isLinked: jest.fn().mockResolvedValue(linkedStatus),
@@ -192,6 +192,6 @@ describe('ChatbotFinanceService', () => {
 
     await service.handleEvent(makeTextEvent('ยอดเท่าไหร่'));
 
-    expect(sessions.linkSessionToCustomer).toHaveBeenCalledWith('sess-1', 'c1');
+    expect(sessions.linkRoomToCustomer).toHaveBeenCalledWith('sess-1', 'c1');
   });
 });

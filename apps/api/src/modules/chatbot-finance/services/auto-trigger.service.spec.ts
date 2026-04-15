@@ -146,7 +146,7 @@ describe('AutoTriggerService', () => {
     expect(sessions.getOrCreate).toHaveBeenCalledWith('U123');
     expect(sessions.saveMessage).toHaveBeenCalledWith(
       expect.objectContaining({
-        sessionId: 'sess-1',
+        roomId: 'sess-1',
         role: 'AUTO_TRIGGER',
       }),
     );

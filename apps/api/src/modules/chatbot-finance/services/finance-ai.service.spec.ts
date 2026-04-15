@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { FinanceAiService } from './finance-ai.service';
 import { FinanceToolExecutor } from '../tools/tool-executor';
+import { FinanceConfigService } from './finance-config.service';
 
 describe('FinanceAiService', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -28,6 +29,7 @@ describe('FinanceAiService', () => {
             useValue: { get: jest.fn().mockReturnValue('') },
           },
           { provide: FinanceToolExecutor, useValue: toolExecutor },
+          { provide: FinanceConfigService, useValue: { bankInfoBlock: '' } },
         ],
       }).compile();
 
@@ -57,6 +59,7 @@ describe('FinanceAiService', () => {
             useValue: { get: jest.fn().mockReturnValue('sk-ant-test-key') },
           },
           { provide: FinanceToolExecutor, useValue: toolExecutor },
+          { provide: FinanceConfigService, useValue: { bankInfoBlock: '🏦 Test Bank\n🔢 123-456' } },
         ],
       }).compile();
 
@@ -93,15 +96,15 @@ describe('FinanceAiService', () => {
       expect(result[0].role).toBe('user');
     });
 
-    it('appends customer name to system prompt', () => {
+    it('appends customer name to system prompt', async () => {
       const buildSystemPrompt = (service as any).buildSystemPrompt.bind(service);
-      const prompt = buildSystemPrompt('สมชาย');
+      const prompt = await buildSystemPrompt('สมชาย');
       expect(prompt).toContain('คุณสมชาย');
     });
 
-    it('does not append customer name when undefined', () => {
+    it('does not append customer name when undefined', async () => {
       const buildSystemPrompt = (service as any).buildSystemPrompt.bind(service);
-      const prompt = buildSystemPrompt(undefined);
+      const prompt = await buildSystemPrompt(undefined);
       expect(prompt).not.toContain('คุณundefined');
     });
   });

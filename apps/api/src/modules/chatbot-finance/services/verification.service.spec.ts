@@ -28,14 +28,14 @@ describe('VerificationService', () => {
         findUnique: jest.fn(),
         upsert: jest.fn().mockResolvedValue({}),
       },
-      chatSession: {
+      chatRoom: {
         updateMany: jest.fn().mockResolvedValue({}),
       },
       // Separate tx mock to verify service uses tx inside transaction, not this.prisma
       $transaction: jest.fn().mockImplementation((cb) => {
         const tx = {
           customerLineLink: { upsert: jest.fn().mockResolvedValue({}) },
-          chatSession: { updateMany: jest.fn().mockResolvedValue({}) },
+          chatRoom: { updateMany: jest.fn().mockResolvedValue({}) },
         };
         return cb(tx);
       }),

@@ -253,6 +253,18 @@ export default function ChatPanel({
           <button onClick={onBack} className="lg:hidden text-gray-400 hover:text-gray-600">
             <ArrowLeft className="w-5 h-5" />
           </button>
+          {/* Customer avatar */}
+          <div className="w-9 h-9 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden shrink-0">
+            {session.customer?.avatarUrl || session.customer?.lineAvatarUrl ? (
+              <img
+                src={session.customer.avatarUrl || session.customer.lineAvatarUrl}
+                alt={displayName}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <span className="text-gray-500 text-sm font-bold">{displayName[0]}</span>
+            )}
+          </div>
           <div>
             <h3 className="font-medium text-sm text-gray-900">{displayName}</h3>
             <span className="text-xs text-gray-400">
@@ -319,7 +331,11 @@ export default function ChatPanel({
                       <div className="flex-1 h-px bg-border" />
                     </div>
                   )}
-                  <MessageBubble message={msg} />
+                  <MessageBubble
+                    message={msg}
+                    customerAvatar={session.customer?.avatarUrl || session.customer?.lineAvatarUrl || undefined}
+                    customerInitial={displayName[0]}
+                  />
                 </div>
               );
             })}

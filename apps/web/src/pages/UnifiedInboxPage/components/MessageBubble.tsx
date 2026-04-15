@@ -12,9 +12,11 @@ interface MessageBubbleProps {
     readAt?: string | null;
     staff?: { id: string; name: string; avatarUrl?: string | null } | null;
   };
+  customerAvatar?: string;
+  customerInitial?: string;
 }
 
-export default function MessageBubble({ message }: MessageBubbleProps) {
+export default function MessageBubble({ message, customerAvatar, customerInitial }: MessageBubbleProps) {
   const isCustomer = message.role === 'CUSTOMER';
   const isBot = message.role === 'BOT';
   const isStaff = message.role === 'STAFF';
@@ -32,6 +34,16 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
 
   return (
     <div className={cn('flex gap-2 mb-3', isCustomer ? 'justify-start' : 'justify-end')}>
+      {/* Customer avatar */}
+      {isCustomer && (
+        <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden shrink-0 mt-1">
+          {customerAvatar ? (
+            <img src={customerAvatar} alt={customerInitial ?? ''} className="w-full h-full object-cover" />
+          ) : (
+            <span className="text-gray-400 text-[10px] font-bold">{customerInitial ?? '?'}</span>
+          )}
+        </div>
+      )}
       {/* Staff avatar */}
       {isStaff && message.staff?.avatarUrl && (
         <img

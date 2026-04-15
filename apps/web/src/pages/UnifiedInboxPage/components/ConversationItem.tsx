@@ -14,7 +14,7 @@ interface ConversationItemProps {
     leadScore?: number | null;
     pinnedAt?: string | null;
     unreadCount?: number;
-    customer?: { id: string; name: string; phone?: string } | null;
+    customer?: { id: string; name: string; phone?: string; avatarUrl?: string | null; lineAvatarUrl?: string | null } | null;
     assignedTo?: { id: string; name: string; avatarUrl?: string | null } | null;
     tags?: { tag: string }[];
     messages?: { text?: string | null; role: string; createdAt: string }[];
@@ -59,16 +59,45 @@ export default function ConversationItem({ session, isActive, onClick, onPin }: 
       )}
       onClick={onClick}
     >
-      {/* Channel avatar */}
+      {/* Customer avatar with channel badge */}
       <div className="relative flex-shrink-0 mt-0.5">
+        {(session.customer?.avatarUrl || session.customer?.lineAvatarUrl) ? (
+          <img
+            src={(session.customer.avatarUrl || session.customer.lineAvatarUrl) as string}
+            alt={session.customer?.name ?? ''}
+            className="w-10 h-10 rounded-full object-cover"
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = 'none';
+              const fallback = (e.target as HTMLImageElement).nextElementSibling as HTMLElement | null;
+              fallback?.classList.remove('hidden');
+            }}
+          />
+        ) : null}
+        {/* Fallback: initial letter circle */}
         <div
           className={cn(
-            'w-10 h-10 rounded-full flex items-center justify-center text-white',
+            'w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold',
+            CHANNEL_COLORS[session.channel] ?? 'bg-gray-500',
+            (session.customer?.avatarUrl || session.customer?.lineAvatarUrl) ? 'hidden' : '',
+          )}
+        >
+          {(session.customer?.name ?? '?')[0]}
+        </div>
+        {/* Channel badge (small circle bottom-right) */}
+        <span
+          className={cn(
+            'absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full border-2 border-white flex items-center justify-center text-white text-[7px] font-bold',
             CHANNEL_COLORS[session.channel] ?? 'bg-gray-500',
           )}
         >
-          <ChannelIcon className="w-5 h-5" />
-        </div>
+          {session.channel === 'LINE_FINANCE' || session.channel === 'LINE_SHOP'
+            ? 'L'
+            : session.channel === 'FACEBOOK'
+              ? 'F'
+              : session.channel === 'TIKTOK'
+                ? 'T'
+                : 'W'}
+        </span>
       </div>
 
       {/* Content */}

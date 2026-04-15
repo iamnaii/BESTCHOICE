@@ -131,8 +131,16 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
       {/* ─── 1. Customer Profile ────────────────────────── */}
       <div className="p-4 border-b border-gray-100">
         <div className="flex items-center gap-3 mb-2">
-          <div className="w-11 h-11 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
-            <User className="w-5 h-5 text-blue-600" />
+          <div className="w-11 h-11 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden flex-shrink-0">
+            {customer?.avatarUrl || customer?.lineAvatarUrl ? (
+              <img
+                src={customer.avatarUrl || customer.lineAvatarUrl}
+                alt={customer?.name ?? ''}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <span className="text-gray-400 text-lg font-bold">{(customer?.name ?? '?')[0]}</span>
+            )}
           </div>
           <div className="min-w-0 flex-1">
             <h3 className="font-semibold text-sm text-gray-900 truncate">{customer?.name}</h3>

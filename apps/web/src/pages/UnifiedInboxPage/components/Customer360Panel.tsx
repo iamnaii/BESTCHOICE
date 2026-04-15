@@ -16,13 +16,17 @@ import {
   ExternalLink,
   Link2,
   Send,
+  Shield,
 } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, isPast, differenceInDays } from 'date-fns';
+import { th } from 'date-fns/locale/th';
+import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 interface Customer360PanelProps {
   customerId: string | null;
   activeRoomId?: string | null;
+  onSelectRoom?: (roomId: string) => void;
 }
 
 const channelLabel: Record<string, string> = {
@@ -58,7 +62,7 @@ const sessionStatusLabel: Record<string, string> = {
   ARCHIVED: 'เก็บ',
 };
 
-export default function Customer360Panel({ customerId, activeRoomId }: Customer360PanelProps) {
+export default function Customer360Panel({ customerId, activeRoomId, onSelectRoom }: Customer360PanelProps) {
   // ─── Customer basic info ──────────────────────────────
   const { data: customer, isLoading } = useQuery({
     queryKey: ['customer-360', customerId],
@@ -88,6 +92,13 @@ export default function Customer360Panel({ customerId, activeRoomId }: Customer3
     enabled: !!activeRoomId,
   });
 
+  // ─── Cross-channel rooms ─────────────────────────────
+  const { data: crossRooms } = useQuery({
+    queryKey: ['cross-channel-rooms', activeRoomId],
+    queryFn: () => api.get(`/staff-chat/rooms/${activeRoomId}/cross-channel`).then((r: any) => r.data?.data ?? r.data),
+    enabled: !!activeRoomId,
+  });
+
   if (!customerId) {
     return (
       <div className="w-72 border-l border-gray-200 hidden lg:flex items-center justify-center text-gray-400 text-sm p-4">
@@ -109,6 +120,10 @@ export default function Customer360Panel({ customerId, activeRoomId }: Customer3
   }
 
   const riskLevel = riskData?.riskLevel ?? 'NONE';
+
+  // Derive contract + product from summary for MDM/Warranty sections
+  const firstContract = summary?.activeContracts?.[0];
+  const firstProduct = firstContract?.product;
 
   return (
     <div className="w-72 flex-shrink-0 border-l border-gray-200 hidden lg:block overflow-y-auto h-full">
@@ -151,7 +166,79 @@ export default function Customer360Panel({ customerId, activeRoomId }: Customer3
       </div>
 
       {/* ─── 1b. Product Context (detected from chat) ────── */}
-      {activeRoomId && <ProductContextCard roomId={activeRoomId} />}
+      <ProductContextCard roomId={activeRoomId ?? ''} />
+
+      {/* ─── 1c. Cross-Channel Rooms ─────────────────────── */}
+      {crossRooms && crossRooms.length > 0 && (
+        <div className="border-b border-gray-100">
+          <div className="px-4 pt-4 pb-2">
+            <SectionHeader icon={MessageSquare} label="ห้องแชททั้งหมด" />
+          </div>
+          {crossRooms.map((r: any) => (
+            <button
+              key={r.id}
+              onClick={() => onSelectRoom?.(r.id)}
+              className={cn(
+                'w-full flex items-center gap-2.5 px-4 py-2 text-left hover:bg-muted/50 transition-colors',
+                r.id === activeRoomId && 'bg-primary/5 border-l-2 border-primary',
+              )}
+            >
+              <ChannelBadge channel={r.channel} />
+              <div className="flex-1 min-w-0">
+                <p className="text-[12px] truncate">{r.messages?.[0]?.text ?? '...'}</p>
+                <p className="text-[10px] text-muted-foreground">
+                  {r.lastMessageAt
+                    ? format(new Date(r.lastMessageAt), 'dd MMM HH:mm', { locale: th })
+                    : ''}
+                </p>
+              </div>
+              {r.id === activeRoomId && (
+                <span className="text-[9px] text-primary font-bold">กำลังคุย</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ─── 1d. MDM Status ──────────────────────────────── */}
+      <div className="p-4 border-b border-gray-100">
+        <SectionHeader icon={Smartphone} label="สถานะ MDM" />
+        {firstContract?.mdmLockedAt ? (
+          <div className="px-0 py-0 text-[12px]">
+            <span className="text-red-600 font-medium">🔒 ล็อคอยู่</span>
+            <span className="text-muted-foreground ml-2">
+              ตั้งแต่ {format(new Date(firstContract.mdmLockedAt), 'dd MMM yyyy', { locale: th })}
+            </span>
+          </div>
+        ) : (
+          <div className="text-[12px] text-green-600 font-medium">🔓 ไม่ได้ล็อค</div>
+        )}
+      </div>
+
+      {/* ─── 1e. Warranty ────────────────────────────────── */}
+      <div className="p-4 border-b border-gray-100">
+        <SectionHeader icon={Shield} label="การรับประกัน" />
+        {firstProduct?.warrantyExpireDate ? (
+          <div className="text-[12px]">
+            {isPast(new Date(firstProduct.warrantyExpireDate)) ? (
+              <span className="text-red-600">
+                ❌ หมดประกัน {format(new Date(firstProduct.warrantyExpireDate), 'dd MMM yyyy', { locale: th })}
+              </span>
+            ) : (
+              <div>
+                <span className="text-green-600">
+                  ✅ ถึง {format(new Date(firstProduct.warrantyExpireDate), 'dd MMM yyyy', { locale: th })}
+                </span>
+                <span className="text-muted-foreground ml-1">
+                  (เหลือ {differenceInDays(new Date(firstProduct.warrantyExpireDate), new Date())} วัน)
+                </span>
+              </div>
+            )}
+          </div>
+        ) : (
+          <p className="text-[12px] text-muted-foreground">ไม่มีข้อมูลประกัน</p>
+        )}
+      </div>
 
       {/* ─── 2. Active Contracts + Product/IMEI ─────────── */}
       <div className="p-4 border-b border-gray-100">

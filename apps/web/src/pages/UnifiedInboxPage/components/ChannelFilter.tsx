@@ -1,7 +1,12 @@
 import { cn } from '@/lib/utils';
 
+const TABS = [
+  { key: 'mine', label: 'ของฉัน' },
+  { key: 'all', label: 'ทั้งหมด' },
+  { key: 'unread', label: 'ยังไม่อ่าน' },
+] as const;
+
 const CHANNELS = [
-  { key: undefined, label: 'ทั้งหมด' },
   { key: 'LINE_FINANCE', label: 'LINE การเงิน' },
   { key: 'LINE_SHOP', label: 'LINE ร้าน' },
   { key: 'FACEBOOK', label: 'Facebook' },
@@ -9,63 +14,60 @@ const CHANNELS = [
   { key: 'WEB', label: 'เว็บ' },
 ] as const;
 
-const STATUSES = [
-  { key: undefined, label: 'ทุกสถานะ' },
-  { key: 'OPEN', label: 'เปิด' },
-  { key: 'HANDOFF', label: 'รอพนักงาน' },
-  { key: 'PENDING', label: 'กำลังดูแล' },
-  { key: 'RESOLVED', label: 'เสร็จ' },
-] as const;
+export type InboxTab = 'mine' | 'all' | 'unread';
 
 interface ChannelFilterProps {
-  activeChannel?: string;
-  activeStatus?: string;
-  onChannelChange: (channel?: string) => void;
-  onStatusChange: (status?: string) => void;
+  activeTab: InboxTab;
+  selectedChannels: string[];
+  onTabChange: (tab: InboxTab) => void;
+  onChannelToggle: (channel: string) => void;
 }
 
 export default function ChannelFilter({
-  activeChannel,
-  activeStatus,
-  onChannelChange,
-  onStatusChange,
+  activeTab,
+  selectedChannels,
+  onTabChange,
+  onChannelToggle,
 }: ChannelFilterProps) {
   return (
     <div className="border-b border-gray-200">
-      {/* Channel tabs */}
-      <div className="flex overflow-x-auto px-2 pt-2 gap-1">
-        {CHANNELS.map((ch) => (
+      {/* Main tabs: mine / all / unread */}
+      <div className="flex border-b border-gray-100">
+        {TABS.map((tab) => (
           <button
-            key={ch.key ?? 'all'}
-            onClick={() => onChannelChange(ch.key)}
+            key={tab.key}
+            onClick={() => onTabChange(tab.key)}
             className={cn(
-              'px-3 py-1.5 text-xs rounded-full whitespace-nowrap transition-colors',
-              activeChannel === ch.key
-                ? 'bg-blue-500 text-white'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200',
+              'flex-1 py-2.5 text-xs font-medium transition-colors',
+              activeTab === tab.key
+                ? 'text-blue-600 border-b-2 border-blue-500 -mb-px'
+                : 'text-gray-500 hover:text-gray-700',
             )}
           >
-            {ch.label}
+            {tab.label}
           </button>
         ))}
       </div>
 
-      {/* Status tabs */}
+      {/* Channel filter chips (multi-select) */}
       <div className="flex overflow-x-auto px-2 py-2 gap-1">
-        {STATUSES.map((st) => (
-          <button
-            key={st.key ?? 'all'}
-            onClick={() => onStatusChange(st.key)}
-            className={cn(
-              'px-2.5 py-1 text-[11px] rounded-full whitespace-nowrap transition-colors',
-              activeStatus === st.key
-                ? 'bg-gray-700 text-white'
-                : 'bg-gray-50 text-gray-500 hover:bg-gray-100',
-            )}
-          >
-            {st.label}
-          </button>
-        ))}
+        {CHANNELS.map((ch) => {
+          const isActive = selectedChannels.includes(ch.key);
+          return (
+            <button
+              key={ch.key}
+              onClick={() => onChannelToggle(ch.key)}
+              className={cn(
+                'px-3 py-1.5 text-xs rounded-full whitespace-nowrap transition-colors',
+                isActive
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200',
+              )}
+            >
+              {ch.label}
+            </button>
+          );
+        })}
       </div>
     </div>
   );

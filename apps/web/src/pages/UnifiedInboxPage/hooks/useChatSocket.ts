@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useAuth } from '@/contexts/AuthContext';
 import { getAccessToken } from '@/lib/api';
@@ -29,9 +29,11 @@ function getWsBaseUrl(): string {
  * Sends JWT access token in handshake for server-side verification.
  * Connection is non-blocking — failures are silently retried.
  */
-export function useChatSocket(events: ChatSocketEvents) {
+export function useChatSocket(events: ChatSocketEvents, activeRoomId?: string | null) {
   const { user } = useAuth();
   const socketRef = useRef<Socket | null>(null);
+  const [isCustomerTyping, setIsCustomerTyping] = useState(false);
+  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -52,7 +54,15 @@ export function useChatSocket(events: ChatSocketEvents) {
 
     socket.on('chat:message:new', (data) => events.onNewMessage?.(data));
     socket.on('chat:room:update', (data) => events.onRoomUpdate?.(data));
-    socket.on('chat:typing', (data) => events.onTyping?.(data));
+    socket.on('chat:typing', (data) => {
+      events.onTyping?.(data);
+      // Show customer typing indicator for active room
+      if (data.roomId === activeRoomId && data.role !== 'STAFF') {
+        setIsCustomerTyping(true);
+        if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+        typingTimerRef.current = setTimeout(() => setIsCustomerTyping(false), 5000);
+      }
+    });
     socket.on('chat:presence', (data) => events.onPresence?.(data));
     socket.on('chat:viewers', (data) => events.onViewers?.(data));
     socket.on('chat:collision', (data) => events.onCollision?.(data));
@@ -64,7 +74,7 @@ export function useChatSocket(events: ChatSocketEvents) {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [user?.id]);
+  }, [user?.id, activeRoomId]);
 
   const joinRoom = useCallback((roomId: string) => {
     socketRef.current?.emit('chat:join', { roomId });
@@ -90,5 +100,5 @@ export function useChatSocket(events: ChatSocketEvents) {
     socketRef.current?.emit('chat:view', { roomId });
   }, []);
 
-  return { joinRoom, leaveRoom, sendMessage, startTyping, stopTyping, viewRoom };
+  return { joinRoom, leaveRoom, sendMessage, startTyping, stopTyping, viewRoom, isCustomerTyping };
 }

@@ -9,6 +9,7 @@ interface MessageBubbleProps {
     mediaUrl?: string | null;
     mediaType?: string | null;
     createdAt: string;
+    readAt?: string | null;
     staff?: { id: string; name: string; avatarUrl?: string | null } | null;
   };
 }
@@ -73,9 +74,16 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
           {message.text && <p className="whitespace-pre-wrap break-words">{message.text}</p>}
         </div>
 
-        {/* Timestamp */}
-        <span className="text-[10px] text-gray-300 mt-0.5 px-1">
-          {format(new Date(message.createdAt), 'HH:mm')}
+        {/* Timestamp + Read receipt */}
+        <span className="flex items-center mt-0.5 px-1">
+          <span className="text-[10px] text-gray-300">
+            {format(new Date(message.createdAt), 'HH:mm')}
+          </span>
+          {message.role === 'STAFF' && (
+            <span className={cn('text-[10px] ml-1', message.readAt ? 'text-blue-400' : 'text-gray-400')}>
+              {message.readAt ? '✓✓' : '✓'}
+            </span>
+          )}
         </span>
       </div>
     </div>

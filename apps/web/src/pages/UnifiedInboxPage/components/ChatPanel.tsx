@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState, useMemo } from 'react';
+import { useDebounce } from '@/hooks/useDebounce';
 import { Send, MoreVertical, ArrowLeft, Paperclip, Smile, Pin, PinOff } from 'lucide-react';
 import { format, isSameDay } from 'date-fns';
 import { th } from 'date-fns/locale/th';
@@ -114,9 +115,16 @@ export default function ChatPanel({
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [showPalette, setShowPalette] = useState(false);
   // emoji picker state
-  const [emojiTabIdx, setEmojiTabIdx] = useState(0); // index into EMOJI_CATEGORIES or sticker sentinel
+  const [emojiTabIdx, setEmojiTabIdx] = useState(0); // index into EMOJI_CATEGORIES or sticker/gif sentinel
   const [stickerPkgIdx, setStickerPkgIdx] = useState(0);
   const STICKER_TAB_IDX = EMOJI_CATEGORIES.length; // sentinel value for sticker tab
+  const GIF_TAB_IDX = EMOJI_CATEGORIES.length + 1; // sentinel value for GIF tab
+
+  // GIF picker state
+  const [gifSearch, setGifSearch] = useState('');
+  const gifSearchDebounced = useDebounce(gifSearch, 500);
+  const [gifs, setGifs] = useState<any[]>([]);
+  const [loadingGifs, setLoadingGifs] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -146,6 +154,23 @@ export default function ChatPanel({
   useKeyboardShortcuts(shortcutActions);
 
   const isLineChannel = session?.channel?.startsWith('LINE');
+  const showGifTab = !isLineChannel;
+
+  const GIPHY_KEY = 'dc6zaTOxFJmzC';
+  const gifApiUrl = gifSearchDebounced
+    ? `https://api.giphy.com/v1/gifs/search?api_key=${GIPHY_KEY}&q=${encodeURIComponent(gifSearchDebounced)}&limit=20&rating=g`
+    : `https://api.giphy.com/v1/gifs/trending?api_key=${GIPHY_KEY}&limit=20&rating=g`;
+
+  // Fetch GIFs whenever the GIF tab is active or the search query changes
+  useEffect(() => {
+    if (emojiTabIdx !== GIF_TAB_IDX) return;
+    setLoadingGifs(true);
+    fetch(gifApiUrl)
+      .then((r) => r.json())
+      .then((d) => setGifs(d.data ?? []))
+      .catch(() => setGifs([]))
+      .finally(() => setLoadingGifs(false));
+  }, [gifApiUrl, emojiTabIdx]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -459,10 +484,25 @@ export default function ChatPanel({
                       📦
                     </button>
                   )}
+                  {/* GIF tab — non-LINE channels (Facebook, TikTok, Web) */}
+                  {showGifTab && (
+                    <button
+                      onClick={() => setEmojiTabIdx(GIF_TAB_IDX)}
+                      title="GIF"
+                      className={cn(
+                        'flex-shrink-0 px-2.5 py-2 text-xs font-medium transition-colors',
+                        emojiTabIdx === GIF_TAB_IDX
+                          ? 'border-b-2 border-blue-500 bg-white text-blue-600'
+                          : 'text-gray-500 hover:bg-gray-100',
+                      )}
+                    >
+                      GIF
+                    </button>
+                  )}
                 </div>
 
                 {/* Emoji grid */}
-                {emojiTabIdx < STICKER_TAB_IDX && (
+                {emojiTabIdx < STICKER_TAB_IDX && emojiTabIdx !== GIF_TAB_IDX && (
                   <div className="p-2 max-h-52 overflow-y-auto">
                     <div className="grid grid-cols-8 gap-0.5">
                       {EMOJI_CATEGORIES[emojiTabIdx]?.emojis.map((emoji) => (
@@ -525,6 +565,55 @@ export default function ChatPanel({
                           </button>
                         ))}
                       </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* GIF panel — Facebook/TikTok/Web channels */}
+                {emojiTabIdx === GIF_TAB_IDX && (
+                  <div className="flex flex-col">
+                    {/* Search input */}
+                    <div className="px-2 py-2 border-b border-gray-100">
+                      <input
+                        type="text"
+                        placeholder="ค้นหา GIF..."
+                        value={gifSearch}
+                        onChange={(e) => setGifSearch(e.target.value)}
+                        className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                    {/* GIF grid */}
+                    <div className="grid grid-cols-2 gap-1 p-2 max-h-[200px] overflow-y-auto">
+                      {loadingGifs ? (
+                        <div className="col-span-2 text-center py-4 text-xs text-gray-400">
+                          กำลังโหลด...
+                        </div>
+                      ) : gifs.length === 0 ? (
+                        <div className="col-span-2 text-center py-4 text-xs text-gray-400">
+                          ไม่พบ GIF
+                        </div>
+                      ) : (
+                        gifs.map((gif: any) => (
+                          <img
+                            key={gif.id}
+                            src={gif.images?.fixed_width_small?.url ?? gif.images?.fixed_width?.url}
+                            alt={gif.title ?? 'gif'}
+                            className="w-full h-auto rounded cursor-pointer hover:opacity-80 transition-opacity"
+                            loading="lazy"
+                            onClick={() => {
+                              const url = gif.images?.fixed_width?.url;
+                              if (url) {
+                                onSendMessage(`[gif:${url}]`);
+                                setEmojiOpen(false);
+                              }
+                            }}
+                          />
+                        ))
+                      )}
+                    </div>
+                    {/* Giphy attribution */}
+                    <div className="px-2 pt-1 pb-1.5 text-[9px] text-gray-400 text-center border-t border-gray-100">
+                      Powered by GIPHY
                     </div>
                   </div>
                 )}

@@ -32,6 +32,43 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
     );
   }
 
+  // GIF message — render as image, no bubble background
+  const gifMatch = message.text?.match(/\[gif:(https?:\/\/[^\]]+)\]/);
+  if (gifMatch) {
+    const gifUrl = gifMatch[1];
+    return (
+      <div className={cn('flex gap-2 mb-3', isCustomer ? 'justify-start' : 'justify-end')}>
+        {isCustomer && (
+          <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden shrink-0 mt-1">
+            {customerAvatar ? (
+              <img src={customerAvatar} alt={customerInitial ?? ''} className="w-full h-full object-cover" />
+            ) : (
+              <span className="text-gray-400 text-[10px] font-bold">{customerInitial ?? '?'}</span>
+            )}
+          </div>
+        )}
+        <div className="flex flex-col">
+          <img
+            src={gifUrl}
+            alt="GIF"
+            className="max-w-[200px] rounded-lg"
+            loading="lazy"
+          />
+          <span className="flex items-center mt-1 px-1 self-end">
+            <span className="text-[10px] text-gray-300">
+              {format(new Date(message.createdAt), 'HH:mm')}
+            </span>
+            {isStaff && (
+              <span className={cn('text-[10px] ml-1', message.readAt ? 'text-blue-400' : 'text-gray-400')}>
+                {message.readAt ? '✓✓' : '✓'}
+              </span>
+            )}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
   // Sticker message — render as animated image, no bubble background
   const stickerMatch = message.text?.match(/\[sticker:(\d+):(\d+)\]/);
   if (stickerMatch) {

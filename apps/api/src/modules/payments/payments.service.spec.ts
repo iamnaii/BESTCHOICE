@@ -7,6 +7,9 @@ import { AuditService } from '../audit/audit.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { ProductsService } from '../products/products.service';
 import { LineOaService } from '../line-oa/line-oa.service';
+import { FlexTemplatesService } from '../line-oa/flex-templates.service';
+import { QuickReplyService } from '../line-oa/quick-reply.service';
+import { WarrantyService } from '../warranty/warranty.service';
 
 describe('PaymentsService', () => {
   let service: PaymentsService;
@@ -74,6 +77,24 @@ describe('PaymentsService', () => {
         { provide: JournalAutoService, useValue: { recordPayment: jest.fn(), recordExpense: jest.fn(), recordContractActivation: jest.fn() } },
         { provide: ProductsService, useValue: { transferOwnership: jest.fn() } },
         { provide: LineOaService, useValue: { buildPaymentSuccess: jest.fn().mockReturnValue({}), sendFlexMessage: jest.fn() } },
+        {
+          provide: FlexTemplatesService,
+          useValue: {
+            paymentReceipt: jest.fn().mockReturnValue({ type: 'flex', altText: 'test', contents: {} }),
+          },
+        },
+        {
+          provide: QuickReplyService,
+          useValue: {
+            afterPayment: jest.fn().mockReturnValue([]),
+          },
+        },
+        {
+          provide: WarrantyService,
+          useValue: {
+            setShopWarranty: jest.fn().mockResolvedValue(undefined),
+          },
+        },
       ],
     }).compile();
 

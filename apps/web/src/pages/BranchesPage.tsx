@@ -11,6 +11,7 @@ import AddressForm, { AddressData, emptyAddress, composeAddress, deserializeAddr
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, enabledStatusMap } from '@/lib/status-badges';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 
 interface Branch {
   id: string;
@@ -176,7 +177,7 @@ export default function BranchesPage() {
         }
       />
 
-      <div className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden">
+      <Card className="overflow-hidden">
         <QueryBoundary
           isLoading={isLoading && branches.length === 0}
           isError={isError}
@@ -186,7 +187,7 @@ export default function BranchesPage() {
         >
           <DataTable columns={columns} data={branches} isLoading={isLoading} />
         </QueryBoundary>
-      </div>
+      </Card>
 
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-start justify-center pt-8 pb-8" role="dialog" aria-modal="true" aria-label={editingBranch ? 'แก้ไขสาขา' : 'เพิ่มสาขาใหม่'}>

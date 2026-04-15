@@ -7,6 +7,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import Modal from '@/components/ui/Modal';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { Card, CardContent } from '@/components/ui/card';
 
 interface PricingTemplate {
   id: string;
@@ -303,7 +304,8 @@ export default function PricingTemplatesPage() {
           <button onClick={openCreate} className="text-sm text-primary hover:underline">เพิ่มราคาตั้งต้นรายการแรก</button>
         </div>
       ) : (
-        <div className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden">
+        <Card className="overflow-hidden">
+          <CardContent className="p-0">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -355,7 +357,8 @@ export default function PricingTemplatesPage() {
               </tbody>
             </table>
           </div>
-        </div>
+          </CardContent>
+        </Card>
       )}
       </QueryBoundary>
 

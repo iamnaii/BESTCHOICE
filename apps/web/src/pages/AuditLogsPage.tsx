@@ -12,6 +12,7 @@ import { exportToExcel } from '@/utils/excel.util';
 import { Download } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, auditActionMap } from '@/lib/status-badges';
+import { Card, CardHeader, CardTitle, CardToolbar, CardContent } from '@/components/ui/card';
 
 interface AuditLog {
   id: string;
@@ -231,7 +232,7 @@ export default function AuditLogsPage() {
       </div>
 
       {/* Logs Table */}
-      <div className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden">
+      <Card className="overflow-hidden">
         <QueryBoundary
           isLoading={isLoading && !result}
           isError={isError}
@@ -363,7 +364,7 @@ export default function AuditLogsPage() {
           </div>
         )}
         </QueryBoundary>
-      </div>
+      </Card>
     </div>
   );
 }

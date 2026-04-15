@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, sessionStatusMap } from '@/lib/status-badges';
+import { Card, CardContent } from '@/components/ui/card';
 
 interface SessionItem {
   id: string;
@@ -114,7 +115,7 @@ export default function ChatbotFinanceSessionsPage() {
 
       <div className="grid grid-cols-12 gap-4">
         {/* List */}
-        <div className="col-span-5 border rounded-xl bg-white">
+        <Card className="col-span-5 overflow-hidden">
           <QueryBoundary
             isLoading={list.isLoading && !list.data}
             isError={list.isError}
@@ -178,10 +179,11 @@ export default function ChatbotFinanceSessionsPage() {
             </div>
           )}
           </QueryBoundary>
-        </div>
+        </Card>
 
         {/* Detail */}
-        <div className="col-span-7 border rounded-xl bg-white p-4">
+        <Card className="col-span-7">
+          <CardContent className="p-4">
           {!selectedId ? (
             <p className="text-gray-400 text-sm">เลือก session เพื่อดูรายละเอียด</p>
           ) : detail.isLoading ? (
@@ -231,7 +233,8 @@ export default function ChatbotFinanceSessionsPage() {
               </div>
             </>
           )}
-        </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

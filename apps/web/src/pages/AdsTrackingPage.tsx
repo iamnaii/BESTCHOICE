@@ -3,6 +3,7 @@ import api from '@/lib/api';
 import QueryBoundary from '@/components/QueryBoundary';
 import PageHeader from '@/components/ui/PageHeader';
 import { TrendingUp, TrendingDown, DollarSign, Users, Target } from 'lucide-react';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 
 const PLATFORM_LABELS: Record<string, string> = {
   LINE_ADS: 'LINE Ads',
@@ -90,10 +91,11 @@ export default function AdsTrackingPage() {
         error={roiQuery.error}
         onRetry={() => roiQuery.refetch()}
       >
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-100">
-            <h3 className="text-sm font-semibold text-gray-700">ROI per Campaign</h3>
-          </div>
+        <Card className="overflow-hidden">
+          <CardHeader>
+            <CardTitle>ROI per Campaign</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
 
           {roiData.length === 0 ? (
             <div className="p-12 text-center text-gray-400">
@@ -133,7 +135,8 @@ export default function AdsTrackingPage() {
               </tbody>
             </table>
           )}
-        </div>
+          </CardContent>
+        </Card>
       </QueryBoundary>
     </div>
   );

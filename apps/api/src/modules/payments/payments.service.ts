@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger, Optional } from '@nestjs/common';
 import { StructuredLoggerService } from '../../common/logger';
 import { Prisma, PaymentMethod } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -13,6 +13,7 @@ import { roundBaht } from '../../utils/installment.util';
 import { BUSINESS_RULES } from '../../utils/config.util';
 import { LineOaService } from '../line-oa/line-oa.service';
 import { formatDateShort } from '../../utils/thai-date.util';
+import { MdmAutoService } from '../mdm/mdm-auto.service';
 
 @Injectable()
 export class PaymentsService {
@@ -26,6 +27,7 @@ export class PaymentsService {
     private journalAutoService: JournalAutoService,
     private productsService: ProductsService,
     private lineOaService: LineOaService,
+    @Optional() private mdmAuto?: MdmAutoService,
   ) {}
 
   /** Enforce branch-level access: SALES/BRANCH_MANAGER can only operate on their own branch */
@@ -252,6 +254,13 @@ export class PaymentsService {
 
       // LINE push notification (non-blocking)
       await this.sendPaymentSuccessLine(contractId, installmentNo, amount, paymentMethod);
+    }
+
+    // Auto unlock MDM if device was locked
+    if (this.mdmAuto) {
+      this.mdmAuto.autoUnlockAfterPayment(contractId).catch((err) =>
+        this.logger.error('MDM auto-unlock failed', err),
+      );
     }
 
     return updated;

@@ -5,6 +5,7 @@ import { LineOaPaymentController } from './line-oa-payment.controller';
 import { LineOaCampaignController } from './line-oa-campaign.controller';
 import { LiffApiController } from './liff-api.controller';
 import { LineLoginController } from './line-login.controller';
+import { BroadcastController } from './broadcast.controller';
 import { LineOaService } from './line-oa.service';
 import { LiffApiService } from './liff-api.service';
 import { LineWebhookGuard } from './line-webhook.guard';
@@ -16,13 +17,14 @@ import { ChatbotService } from './chatbot.service';
 import { QuickReplyService } from './quick-reply.service';
 import { ShopDomainHandler } from './shop-domain.handler';
 import { FlexTemplatesService } from './flex-templates.service';
+import { BroadcastService } from './broadcast.service';
 import { ContractsModule } from '../contracts/contracts.module';
 import { PDPAModule } from '../pdpa/pdpa.module';
 import { ChatbotFinanceModule } from '../chatbot-finance/chatbot-finance.module';
 
 @Module({
   imports: [ContractsModule, PDPAModule, ChatbotFinanceModule],
-  controllers: [LineOaController, LineOaChatbotController, LineOaPaymentController, LineOaCampaignController, LiffApiController, LineLoginController],
+  controllers: [LineOaController, LineOaChatbotController, LineOaPaymentController, LineOaCampaignController, LiffApiController, LineLoginController, BroadcastController],
   providers: [
     LineOaService,
     LiffApiService,
@@ -35,6 +37,7 @@ import { ChatbotFinanceModule } from '../chatbot-finance/chatbot-finance.module'
     QuickReplyService,
     ShopDomainHandler,
     FlexTemplatesService,
+    BroadcastService,
   ],
   exports: [LineOaService, LiffApiService, PromptPayQrService, PaymentLinkService, RichMenuService, ShopDomainHandler, FlexTemplatesService, QuickReplyService],
 })

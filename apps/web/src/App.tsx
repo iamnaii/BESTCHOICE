@@ -104,6 +104,7 @@ const AiTrainingPage = lazy(() => import('@/pages/AiTrainingPage'));
 const AiPerformancePage = lazy(() => import('@/pages/AiPerformancePage'));
 const IntegrationHubPage = lazy(() => import('@/pages/IntegrationHubPage'));
 const MdmTestPage = lazy(() => import('@/pages/MdmTestPage'));
+const BroadcastPage = lazy(() => import('@/pages/BroadcastPage'));
 
 const PageLoader = () => (
   <div className="flex items-center justify-center py-20">
@@ -669,6 +670,14 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER']}>
                 <MdmTestPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/broadcast"
+            element={
+              <ProtectedRoute roles={['OWNER']}>
+                <BroadcastPage />
               </ProtectedRoute>
             }
           />

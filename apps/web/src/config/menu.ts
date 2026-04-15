@@ -38,6 +38,7 @@ import {
   MoreHorizontal,
   Sparkles,
   Brain,
+  Send,
 } from 'lucide-react';
 
 /* ── Types ─────────────────────────────────────────── */
@@ -365,6 +366,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'Dunning', path: '/settings/dunning', icon: Bell },
         { label: 'CRM Pipeline', path: '/crm', icon: Kanban },
         { label: 'Audit Log', path: '/audit-logs', icon: ScrollText },
+        { label: 'Broadcast', path: '/broadcast', icon: Send },
       ],
     },
   ],

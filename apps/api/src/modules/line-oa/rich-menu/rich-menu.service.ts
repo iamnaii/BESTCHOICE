@@ -144,6 +144,86 @@ export class RichMenuService {
   }
 
   /**
+   * Create default 6-button rich menu from a single LIFF base URL.
+   * Convenience method for quick setup — mirrors the SHOP layout.
+   *
+   * ┌─────────────────┬─────────────────┬─────────────────┐
+   * │ 📱 ดูสินค้า    │ 💰 ผ่อนชำระ    │ 📋 สัญญาของฉัน │
+   * ├─────────────────┼─────────────────┼─────────────────┤
+   * │ 💳 ชำระเงิน   │ 🎁 โปรโมชัน    │ 💬 ติดต่อเรา   │
+   * └─────────────────┴─────────────────┴─────────────────┘
+   */
+  async createDefaultRichMenu(liffUrl: string): Promise<string> {
+    const richMenu = {
+      size: { width: 2500, height: 1686 },
+      selected: true,
+      name: 'BESTCHOICE Menu',
+      chatBarText: 'เมนู',
+      areas: [
+        // Row 1
+        {
+          bounds: { x: 0, y: 0, width: 833, height: 843 },
+          action: { type: 'uri', label: 'ดูสินค้า', uri: liffUrl },
+        },
+        {
+          bounds: { x: 833, y: 0, width: 834, height: 843 },
+          action: { type: 'uri', label: 'ผ่อนชำระ', uri: `${liffUrl}/liff/contract` },
+        },
+        {
+          bounds: { x: 1667, y: 0, width: 833, height: 843 },
+          action: { type: 'uri', label: 'สัญญาของฉัน', uri: `${liffUrl}/liff/contract` },
+        },
+        // Row 2
+        {
+          bounds: { x: 0, y: 843, width: 833, height: 843 },
+          action: { type: 'uri', label: 'ชำระเงิน', uri: `${liffUrl}/liff/early-payoff` },
+        },
+        {
+          bounds: { x: 833, y: 843, width: 834, height: 843 },
+          action: { type: 'message', label: 'โปรโมชัน', text: 'โปรโมชัน' },
+        },
+        {
+          bounds: { x: 1667, y: 843, width: 833, height: 843 },
+          action: { type: 'message', label: 'ติดต่อเรา', text: 'คุยกับพนักงาน' },
+        },
+      ],
+    };
+
+    const response = await this.callLineApi(`${this.lineApiBaseUrl}/richmenu`, richMenu);
+    const data = await response.json();
+    this.logger.log(`Default Rich Menu created: ${data.richMenuId}`);
+    return data.richMenuId;
+  }
+
+  /**
+   * Get current default Rich Menu ID
+   */
+  async getDefaultRichMenuId(): Promise<string | null> {
+    if (!this.lineChannelAccessToken) {
+      throw new BadRequestException('LINE channel access token not configured');
+    }
+
+    const url = `${this.lineApiBaseUrl}/user/all/richmenu`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${this.lineChannelAccessToken}` },
+      signal: AbortSignal.timeout(15000),
+    });
+
+    if (response.status === 404) {
+      return null;
+    }
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new InternalServerErrorException(`Failed to get default Rich Menu: ${response.status} ${errorBody}`);
+    }
+
+    const data = await response.json();
+    return (data as { richMenuId?: string }).richMenuId ?? null;
+  }
+
+  /**
    * Upload Rich Menu image
    * The image should be 2500x1686 pixels, JPEG or PNG
    */
@@ -160,6 +240,7 @@ export class RichMenuService {
         'Content-Type': 'image/png',
       },
       body: new Uint8Array(imageBuffer),
+      signal: AbortSignal.timeout(15000),
     });
 
     if (!response.ok) {
@@ -180,6 +261,7 @@ export class RichMenuService {
       headers: {
         Authorization: `Bearer ${this.lineChannelAccessToken}`,
       },
+      signal: AbortSignal.timeout(15000),
     });
 
     if (!response.ok) {
@@ -200,6 +282,7 @@ export class RichMenuService {
       headers: {
         Authorization: `Bearer ${this.lineChannelAccessToken}`,
       },
+      signal: AbortSignal.timeout(15000),
     });
 
     if (!response.ok) {
@@ -219,6 +302,7 @@ export class RichMenuService {
       headers: {
         Authorization: `Bearer ${this.lineChannelAccessToken}`,
       },
+      signal: AbortSignal.timeout(15000),
     });
 
     if (!response.ok) {
@@ -241,6 +325,7 @@ export class RichMenuService {
         Authorization: `Bearer ${this.lineChannelAccessToken}`,
       },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(15000),
     });
 
     if (!response.ok) {

@@ -2,8 +2,10 @@ import {
   Controller,
   Post,
   Get,
+  Delete,
   Body,
   Req,
+  Param,
   UseGuards,
   Logger,
 } from '@nestjs/common';
@@ -15,6 +17,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PromptPayQrService } from './promptpay/promptpay-qr.service';
+import { RichMenuService } from './rich-menu/rich-menu.service';
 
 /**
  * LINE OA Settings + Admin — owner-only configuration and test endpoints.
@@ -30,6 +33,7 @@ export class LineOaController {
     private lineOaService: LineOaService,
     private prisma: PrismaService,
     private promptPayQrService: PromptPayQrService,
+    private richMenuService: RichMenuService,
   ) {}
 
   // ─── LINE OA Settings (Owner) ───────────────────────
@@ -187,5 +191,48 @@ export class LineOaController {
   @Roles('OWNER', 'BRANCH_MANAGER')
   async getLineStats() {
     return this.lineOaService.getLineStats();
+  }
+
+  // ─── Rich Menu Management (Owner) ───────────────────
+
+  @Get('rich-menu/list')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER')
+  async listRichMenus() {
+    const richmenus = await this.richMenuService.listRichMenus();
+    const defaultId = await this.richMenuService.getDefaultRichMenuId().catch(() => null);
+    return { richmenus, defaultRichMenuId: defaultId };
+  }
+
+  @Get('rich-menu/default')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER')
+  async getDefaultRichMenu() {
+    const richMenuId = await this.richMenuService.getDefaultRichMenuId();
+    return { richMenuId };
+  }
+
+  @Post('rich-menu/create-default')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER')
+  async createDefaultRichMenu(@Body() body: { liffUrl: string }) {
+    const richMenuId = await this.richMenuService.createDefaultRichMenu(body.liffUrl);
+    return { success: true, richMenuId };
+  }
+
+  @Post('rich-menu/:id/set-default')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER')
+  async setDefaultRichMenu(@Param('id') id: string) {
+    await this.richMenuService.setDefaultRichMenu(id);
+    return { success: true, message: 'ตั้งค่า Rich Menu เริ่มต้นเรียบร้อย' };
+  }
+
+  @Delete('rich-menu/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER')
+  async deleteRichMenu(@Param('id') id: string) {
+    await this.richMenuService.deleteRichMenu(id);
+    return { success: true, message: 'ลบ Rich Menu เรียบร้อย' };
   }
 }

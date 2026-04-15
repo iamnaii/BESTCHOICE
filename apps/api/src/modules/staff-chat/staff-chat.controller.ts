@@ -16,6 +16,7 @@ import {
   FileTypeValidator,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { ConfigService } from '@nestjs/config';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -53,6 +54,7 @@ export class StaffChatController {
     private aiSuggest: AiSuggestService,
     private leadScoring: LeadScoringService,
     private productDetect: ProductDetectService,
+    private config: ConfigService,
   ) {}
 
   // ─── Sessions ──────────────────────────────────────────
@@ -246,6 +248,10 @@ export class StaffChatController {
   @Post('sessions/:id/suggest')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   async getSuggestions(@Param('id') id: string, @Body() dto: AiSuggestRequestDto) {
+    const enabled = this.config.get<string>('AI_SUGGEST_ENABLED') === 'true';
+    if (!enabled) {
+      return { suggestions: [], detectedProducts: [], processingTimeMs: 0 };
+    }
     return this.aiSuggest.suggest(id, dto.currentDraft);
   }
 

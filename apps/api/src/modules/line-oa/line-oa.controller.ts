@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Get,
+  Put,
   Delete,
   Body,
   Req,
@@ -195,6 +196,30 @@ export class LineOaController {
   @Roles('OWNER', 'BRANCH_MANAGER')
   async getLineStats() {
     return this.lineOaService.getLineStats();
+  }
+
+  // ─── Greeting Message (Owner) ───────────────────────
+
+  @Get('greeting')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER')
+  async getGreeting() {
+    const config = await this.prisma.systemConfig.findUnique({
+      where: { key: 'line.greetingMessage' },
+    });
+    return { greetingMessage: config?.value ?? '' };
+  }
+
+  @Put('greeting')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER')
+  async updateGreeting(@Body() body: { greetingMessage: string }) {
+    await this.prisma.systemConfig.upsert({
+      where: { key: 'line.greetingMessage' },
+      create: { key: 'line.greetingMessage', value: body.greetingMessage, label: 'LINE greeting message' },
+      update: { value: body.greetingMessage, deletedAt: null },
+    });
+    return { success: true };
   }
 
   // ─── Rich Menu Management (Owner) ───────────────────

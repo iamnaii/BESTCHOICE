@@ -2,6 +2,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import api from '@/lib/api';
+import PageHeader from '@/components/ui/PageHeader';
 import { DashboardSkeleton } from '@/components/ui/page-skeletons';
 import QueryBoundary from '@/components/QueryBoundary';
 import DashboardAlerts from './components/DashboardAlerts';
@@ -155,19 +156,16 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-5 lg:gap-7.5">
-      {/* Page Header — Metronic style */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground tracking-tight">แดชบอร์ด</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            สวัสดี <span className="font-medium text-foreground">{user?.name}</span> — {subtitle[role || ''] || 'ภาพรวมระบบ'}
-          </p>
-        </div>
-        <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground bg-muted/60 border border-border/50 rounded-lg px-3 py-2">
-          <span className="size-2 rounded-full bg-success animate-pulse inline-block" />
-          <span>อัปเดตอัตโนมัติทุก 5 นาที</span>
-        </div>
-      </div>
+      <PageHeader
+        title="แดชบอร์ด"
+        subtitle={`สวัสดี ${user?.name} — ${subtitle[role || ''] || 'ภาพรวมระบบ'}`}
+        action={
+          <div className="hidden sm:flex items-center gap-2 text-xs text-white/70 bg-white/10 border border-white/15 rounded-lg px-3 py-2">
+            <span className="size-2 rounded-full bg-green-400 animate-pulse inline-block" />
+            <span>อัปเดตอัตโนมัติทุก 5 นาที</span>
+          </div>
+        }
+      />
 
       {/* Smart Alerts — all roles */}
       <DashboardAlerts alerts={alerts} />

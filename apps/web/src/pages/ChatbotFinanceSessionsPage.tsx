@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
+import PageHeader from '@/components/ui/PageHeader';
 import { toast } from 'sonner';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Badge } from '@/components/ui/badge';
@@ -92,8 +93,11 @@ export default function ChatbotFinanceSessionsPage() {
   });
 
   return (
-    <div className="p-6">
-      <h1 className="text-xl font-bold mb-4">Finance Bot — Sessions</h1>
+    <div>
+      <PageHeader
+        title="Finance Bot — Sessions"
+        subtitle="ดูและจัดการบทสนทนาของ AI Finance Bot"
+      />
 
       <div className="flex gap-3 mb-4">
         <input

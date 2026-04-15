@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { Link } from 'react-router';
 import QueryBoundary from '@/components/QueryBoundary';
+import PageHeader from '@/components/ui/PageHeader';
 
 interface AnalyticsOverview {
   today: {
@@ -91,30 +92,33 @@ export default function ChatbotFinanceAnalyticsPage() {
   const maxMessages = Math.max(...data.recentDays.map((d) => d.messages), 1);
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold">น้องเบส — Finance Bot Analytics</h1>
-        <div className="flex gap-2">
-          <Link
-            to="/chatbot-finance/sessions"
-            className="px-4 py-2 rounded-lg border border-gray-300 text-sm hover:bg-gray-50"
-          >
-            ดูบทสนทนา
-          </Link>
-          <Link
-            to="/chatbot-finance/knowledge"
-            className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-700"
-          >
-            จัดการ Knowledge Base
-          </Link>
-          <Link
-            to="/chatbot-finance/learning"
-            className="px-4 py-2 rounded-lg border border-purple-300 text-purple-600 text-sm hover:bg-purple-50"
-          >
-            Learning Hub
-          </Link>
-        </div>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="น้องเบส — Finance Bot Analytics"
+        subtitle="สถิติการใช้งาน AI Finance Bot"
+        action={
+          <div className="flex gap-2">
+            <Link
+              to="/chatbot-finance/sessions"
+              className="px-4 py-2 rounded-lg border border-white/30 text-white text-sm hover:bg-white/10"
+            >
+              ดูบทสนทนา
+            </Link>
+            <Link
+              to="/chatbot-finance/knowledge"
+              className="px-4 py-2 rounded-lg bg-white text-[#1e3a5f] text-sm hover:bg-white/90 font-medium"
+            >
+              จัดการ Knowledge Base
+            </Link>
+            <Link
+              to="/chatbot-finance/learning"
+              className="px-4 py-2 rounded-lg border border-white/30 text-white text-sm hover:bg-white/10"
+            >
+              Learning Hub
+            </Link>
+          </div>
+        }
+      />
 
       {/* Today */}
       <section>

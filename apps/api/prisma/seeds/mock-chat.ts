@@ -1,7 +1,7 @@
-import { PrismaClient, ChatChannel, ChatSessionStatus, ChatPriority, ChatStatus, MessageRole, MessageType } from '@prisma/client';
+import { PrismaClient, ChatChannel, ChatRoomStatus, ChatPriority, MessageRole, MessageType } from '@prisma/client';
 
 /**
- * Seed mock chat sessions + messages for testing the Unified Inbox.
+ * Seed mock chat rooms + messages for testing the Unified Inbox.
  */
 export async function seedMockChat(prisma: PrismaClient): Promise<void> {
   // Get existing customers and staff
@@ -19,14 +19,13 @@ export async function seedMockChat(prisma: PrismaClient): Promise<void> {
   const now = new Date();
   const ago = (mins: number) => new Date(now.getTime() - mins * 60 * 1000);
 
-  // ─── Session 1: Active LINE Finance chat (handoff from bot) ───
-  const s1 = await prisma.chatSession.create({
+  // ─── Room 1: Active LINE Finance chat (handoff from bot) ───
+  const r1 = await prisma.chatRoom.create({
     data: {
       lineUserId: `mock-line-finance-${customers[0].id}`,
       customerId: customers[0].id,
       channel: ChatChannel.LINE_FINANCE,
-      status: ChatStatus.ACTIVE,
-      sessionStatus: ChatSessionStatus.HANDOFF,
+      status: ChatRoomStatus.ACTIVE,
       priority: ChatPriority.HIGH,
       handoffMode: true,
       handoffReason: 'ลูกค้าต้องการคุยกับเจ้าหน้าที่',
@@ -46,14 +45,13 @@ export async function seedMockChat(prisma: PrismaClient): Promise<void> {
     },
   });
 
-  // ─── Session 2: Pending LINE Shop chat (assigned to sales) ───
-  const s2 = await prisma.chatSession.create({
+  // ─── Room 2: Pending LINE Shop chat (assigned to sales) ───
+  const r2 = await prisma.chatRoom.create({
     data: {
       lineUserId: `mock-line-shop-${customers[1].id}`,
       customerId: customers[1].id,
       channel: ChatChannel.LINE_SHOP,
-      status: ChatStatus.ACTIVE,
-      sessionStatus: ChatSessionStatus.PENDING,
+      status: ChatRoomStatus.ACTIVE,
       priority: ChatPriority.NORMAL,
       assignedToId: staff[1]?.id,
       totalMessages: 4,
@@ -69,15 +67,14 @@ export async function seedMockChat(prisma: PrismaClient): Promise<void> {
     },
   });
 
-  // ─── Session 3: Facebook chat (open, unassigned) ───
-  const s3 = await prisma.chatSession.create({
+  // ─── Room 3: Facebook chat (open, unassigned) ───
+  const r3 = await prisma.chatRoom.create({
     data: {
       lineUserId: `mock-fb-${customers[2]?.id || 'anon'}`,
       externalUserId: 'fb-psid-mock-12345',
       customerId: customers[2]?.id,
       channel: ChatChannel.FACEBOOK,
-      status: ChatStatus.ACTIVE,
-      sessionStatus: ChatSessionStatus.OPEN,
+      status: ChatRoomStatus.ACTIVE,
       priority: ChatPriority.NORMAL,
       totalMessages: 3,
       lastMessageAt: ago(5),
@@ -91,14 +88,13 @@ export async function seedMockChat(prisma: PrismaClient): Promise<void> {
     },
   });
 
-  // ─── Session 4: Web widget (anonymous visitor) ───
-  const s4 = await prisma.chatSession.create({
+  // ─── Room 4: Web widget (anonymous visitor) ───
+  const r4 = await prisma.chatRoom.create({
     data: {
       lineUserId: 'web-visitor-mock-001',
       externalUserId: 'web-visitor-mock-001',
       channel: ChatChannel.WEB,
-      status: ChatStatus.ACTIVE,
-      sessionStatus: ChatSessionStatus.OPEN,
+      status: ChatRoomStatus.ACTIVE,
       priority: ChatPriority.LOW,
       totalMessages: 2,
       lastMessageAt: ago(3),
@@ -111,14 +107,13 @@ export async function seedMockChat(prisma: PrismaClient): Promise<void> {
     },
   });
 
-  // ─── Session 5: Resolved chat (for history) ───
-  const s5 = await prisma.chatSession.create({
+  // ─── Room 5: Resolved chat (for history) ───
+  const r5 = await prisma.chatRoom.create({
     data: {
       lineUserId: `mock-resolved-${customers[3]?.id || 'old'}`,
       customerId: customers[3]?.id,
       channel: ChatChannel.LINE_FINANCE,
-      status: ChatStatus.ACTIVE,
-      sessionStatus: ChatSessionStatus.RESOLVED,
+      status: ChatRoomStatus.IDLE,
       priority: ChatPriority.NORMAL,
       assignedToId: staff[0]?.id,
       resolvedAt: ago(120),
@@ -136,14 +131,13 @@ export async function seedMockChat(prisma: PrismaClient): Promise<void> {
     },
   });
 
-  // ─── Session 6: Critical overdue (needs attention) ───
-  const s6 = await prisma.chatSession.create({
+  // ─── Room 6: Critical overdue (needs attention) ───
+  const r6 = await prisma.chatRoom.create({
     data: {
       lineUserId: `mock-critical-${customers[4]?.id || 'urgent'}`,
       customerId: customers[4]?.id,
       channel: ChatChannel.LINE_FINANCE,
-      status: ChatStatus.ACTIVE,
-      sessionStatus: ChatSessionStatus.HANDOFF,
+      status: ChatRoomStatus.ACTIVE,
       priority: ChatPriority.CRITICAL,
       handoffMode: true,
       handoffReason: 'ลูกค้าค้างชำระเกิน 90 วัน — ต้องเจรจา',
@@ -160,5 +154,5 @@ export async function seedMockChat(prisma: PrismaClient): Promise<void> {
     },
   });
 
-  console.log(`[MockChat] Created 6 sessions: s1(HANDOFF/HIGH), s2(PENDING), s3(OPEN/FB), s4(OPEN/WEB), s5(RESOLVED), s6(CRITICAL)`);
+  console.log(`[MockChat] Created 6 rooms: r1(ACTIVE/HIGH/handoff), r2(ACTIVE), r3(ACTIVE/FB), r4(ACTIVE/WEB), r5(IDLE/resolved), r6(CRITICAL/handoff)`);
 }

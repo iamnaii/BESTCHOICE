@@ -28,7 +28,7 @@ export class ShopDomainHandler implements IDomainHandler {
   }
 
   async handleMessage(context: DomainContext): Promise<DomainResult> {
-    const { session, message, isHandoff } = context;
+    const { room, message, isHandoff } = context;
 
     if (isHandoff) {
       return { replies: [] };
@@ -37,7 +37,7 @@ export class ShopDomainHandler implements IDomainHandler {
     // Shop domain currently stores messages for staff pickup.
     // AI auto-reply for Shop will be added when Shop chatbot matures.
     this.logger.debug(
-      `[ShopDomain] message from session ${session.id}: ${message.text?.substring(0, 50) ?? '(media)'}`,
+      `[ShopDomain] message from room ${room.id}: ${message.text?.substring(0, 50) ?? '(media)'}`,
     );
 
     return { replies: [] };

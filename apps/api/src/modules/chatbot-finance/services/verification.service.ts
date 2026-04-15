@@ -242,7 +242,7 @@ export class VerificationService {
         update: { customerId, unlinkedAt: null, linkedAt: new Date() },
       });
 
-      await tx.chatSession.updateMany({
+      await tx.chatRoom.updateMany({
         where: { lineUserId, channel: 'LINE_FINANCE' },
         data: {
           customerId,

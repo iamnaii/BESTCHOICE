@@ -1,15 +1,15 @@
 import { Injectable, Logger, Optional, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { ChatChannel, ChatSession, MessageRole, MessageType, Prisma } from '@prisma/client';
+import { ChatChannel, ChatRoom, MessageRole, MessageType, Prisma } from '@prisma/client';
 import { StaffChatGateway } from '../../staff-chat/staff-chat.gateway';
 
 /**
- * จัดการ ChatSession + ChatMessage สำหรับ Finance Bot
+ * จัดการ ChatRoom + ChatMessage สำหรับ Finance Bot
  * + emits WebSocket events to Unified Inbox when messages are saved
  */
 @Injectable()
-export class ChatSessionService {
-  private readonly logger = new Logger(ChatSessionService.name);
+export class ChatRoomService {
+  private readonly logger = new Logger(ChatRoomService.name);
 
   constructor(
     private prisma: PrismaService,
@@ -17,9 +17,9 @@ export class ChatSessionService {
     private staffChatGateway?: StaffChatGateway,
   ) {}
 
-  /** หา session เดิม หรือสร้างใหม่ */
-  async getOrCreate(lineUserId: string): Promise<ChatSession> {
-    const existing = await this.prisma.chatSession.findUnique({
+  /** หา room เดิม หรือสร้างใหม่ */
+  async getOrCreate(lineUserId: string): Promise<ChatRoom> {
+    const existing = await this.prisma.chatRoom.findUnique({
       where: {
         lineUserId_channel: {
           lineUserId,
@@ -39,7 +39,7 @@ export class ChatSessionService {
       },
     });
 
-    return this.prisma.chatSession.create({
+    return this.prisma.chatRoom.create({
       data: {
         lineUserId,
         channel: ChatChannel.LINE_FINANCE,
@@ -49,9 +49,9 @@ export class ChatSessionService {
     });
   }
 
-  /** บันทึกข้อความ + อัปเดต session stats */
+  /** บันทึกข้อความ + อัปเดต room stats */
   async saveMessage(params: {
-    sessionId: string;
+    roomId: string;
     role: MessageRole;
     type?: MessageType;
     text?: string;
@@ -67,7 +67,7 @@ export class ChatSessionService {
   }) {
     const msg = await this.prisma.chatMessage.create({
       data: {
-        sessionId: params.sessionId,
+        roomId: params.roomId,
         role: params.role,
         type: params.type ?? MessageType.TEXT,
         text: params.text,
@@ -83,8 +83,8 @@ export class ChatSessionService {
       },
     });
 
-    await this.prisma.chatSession.update({
-      where: { id: params.sessionId },
+    await this.prisma.chatRoom.update({
+      where: { id: params.roomId },
       data: {
         totalMessages: { increment: 1 },
         lastMessageAt: new Date(),
@@ -93,8 +93,8 @@ export class ChatSessionService {
 
     // Emit to Unified Inbox via WebSocket (best-effort)
     try {
-      this.staffChatGateway?.emitNewMessage(params.sessionId, {
-        sessionId: params.sessionId,
+      this.staffChatGateway?.emitNewMessage(params.roomId, {
+        roomId: params.roomId,
         messageId: msg.id,
         role: params.role,
         text: params.text,
@@ -108,19 +108,19 @@ export class ChatSessionService {
   }
 
   /** ดึง history N ข้อความล่าสุด (สำหรับใส่ใน AI context) */
-  async getRecentMessages(sessionId: string, limit = 20) {
+  async getRecentMessages(roomId: string, limit = 20) {
     const msgs = await this.prisma.chatMessage.findMany({
-      where: { sessionId },
+      where: { roomId },
       orderBy: { createdAt: 'desc' },
       take: limit,
     });
     return msgs.reverse();
   }
 
-  /** Sync session.customerId หลังจาก LIFF verify (CustomerLineLink ถูกสร้างแล้ว) */
-  async linkSessionToCustomer(sessionId: string, customerId: string): Promise<void> {
-    await this.prisma.chatSession.update({
-      where: { id: sessionId },
+  /** Sync room.customerId หลังจาก LIFF verify (CustomerLineLink ถูกสร้างแล้ว) */
+  async linkRoomToCustomer(roomId: string, customerId: string): Promise<void> {
+    await this.prisma.chatRoom.update({
+      where: { id: roomId },
       data: {
         customerId,
         verifiedAt: new Date(),

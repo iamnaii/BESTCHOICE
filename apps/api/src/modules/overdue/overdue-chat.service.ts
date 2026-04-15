@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
-import { SessionManagerService } from '../chat-engine/services/session-manager.service';
+import { RoomManagerService } from '../chat-engine/services/room-manager.service';
 import { ConversationTagService } from '../chat-engine/services/conversation-tag.service';
 import { ChatChannel, ChatPriority, MessageRole, ContractStatus } from '@prisma/client';
 import { format } from 'date-fns';
@@ -23,7 +23,7 @@ export class OverdueChatService {
 
   constructor(
     private prisma: PrismaService,
-    private sessionManager: SessionManagerService,
+    private sessionManager: RoomManagerService,
     private tagService: ConversationTagService,
   ) {}
 
@@ -85,7 +85,7 @@ export class OverdueChatService {
 
         try {
           // 1. Get or create chat session
-          const session = await this.sessionManager.getOrCreateSession({
+          const session = await this.sessionManager.getOrCreateRoom({
             externalUserId: lineLink.lineUserId,
             channel: ChatChannel.LINE_FINANCE,
             customerId: contract.customerId,
@@ -95,7 +95,7 @@ export class OverdueChatService {
           await this.tagService.addTag(session.id, 'overdue');
 
           // 3. Update session priority to HIGH
-          await this.prisma.chatSession.update({
+          await this.prisma.chatRoom.update({
             where: { id: session.id },
             data: { priority: ChatPriority.HIGH },
           });
@@ -106,7 +106,7 @@ export class OverdueChatService {
           const dueDateFormatted = format(oldestUnpaid.dueDate, 'dd/MM/yyyy');
 
           await this.sessionManager.saveMessage({
-            sessionId: session.id,
+            roomId: session.id,
             role: MessageRole.SYSTEM,
             text: `⚠️ ลูกค้ามียอดค้างชำระ สัญญา ${contract.contractNumber} จำนวน ${amountFormatted} บาท ครบกำหนด ${dueDateFormatted}`,
           });

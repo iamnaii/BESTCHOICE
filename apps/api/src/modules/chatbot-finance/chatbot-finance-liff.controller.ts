@@ -20,7 +20,7 @@ class VerifyOtpDto {
 
 class SubmitFeedbackDto {
   @IsString()
-  sessionId!: string;
+  roomId!: string;
 
   @IsOptional()
   @IsString()
@@ -98,7 +98,7 @@ export class ChatbotFinanceLiffController {
   async submitFeedback(@Req() req: LiffRequest, @Body() dto: SubmitFeedbackDto) {
     return this.feedback.saveFeedback({
       lineUserId: req.liffUserId,
-      sessionId: dto.sessionId,
+      roomId: dto.roomId,
       messageId: dto.messageId,
       rating: dto.rating,
       feedbackText: dto.feedbackText,

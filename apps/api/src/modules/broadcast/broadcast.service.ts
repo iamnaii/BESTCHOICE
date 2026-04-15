@@ -142,8 +142,8 @@ export class BroadcastService {
       }));
     }
 
-    // For non-LINE channels, use ChatSession.externalUserId
-    const sessions = await this.prisma.chatSession.findMany({
+    // For non-LINE channels, use ChatRoom.externalUserId
+    const sessions = await this.prisma.chatRoom.findMany({
       where: {
         customerId: { in: customerIds },
         channel,
@@ -169,7 +169,7 @@ export class BroadcastService {
     channel: ChatChannel,
   ): Promise<BroadcastTarget[]> {
     // Find sessions that have ALL of the specified tags on the given channel
-    const sessions = await this.prisma.chatSession.findMany({
+    const sessions = await this.prisma.chatRoom.findMany({
       where: {
         channel,
         deletedAt: null,
@@ -223,8 +223,8 @@ export class BroadcastService {
       }));
     }
 
-    // Non-LINE channels: use ChatSession
-    const sessions = await this.prisma.chatSession.findMany({
+    // Non-LINE channels: use ChatRoom
+    const sessions = await this.prisma.chatRoom.findMany({
       where: {
         channel,
         deletedAt: null,

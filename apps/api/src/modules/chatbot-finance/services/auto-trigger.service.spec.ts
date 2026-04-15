@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AutoTriggerService } from './auto-trigger.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LineFinanceClientService } from './line-finance-client.service';
-import { ChatSessionService } from './chat-session.service';
+import { ChatRoomService } from './chat-room.service';
 import { FinanceConfigService } from './finance-config.service';
 
 describe('AutoTriggerService', () => {
@@ -53,7 +53,7 @@ describe('AutoTriggerService', () => {
         AutoTriggerService,
         { provide: PrismaService, useValue: prisma },
         { provide: LineFinanceClientService, useValue: lineClient },
-        { provide: ChatSessionService, useValue: sessions },
+        { provide: ChatRoomService, useValue: sessions },
         {
           provide: FinanceConfigService,
           useValue: { bankInfoBlock: '🏦 Test Bank\n🔢 123-456' },

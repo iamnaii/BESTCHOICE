@@ -9,7 +9,7 @@ import {
 } from '../dto/line-webhook.dto';
 import { LineFinanceClientService } from './line-finance-client.service';
 import { LineQuickReply } from './line-finance-client.service';
-import { ChatSessionService } from './chat-session.service';
+import { ChatRoomService } from './chat-room.service';
 import { VerificationService } from './verification.service';
 import { FinanceAiService } from './finance-ai.service';
 import { HandoffService } from './handoff.service';
@@ -41,7 +41,7 @@ export class ChatbotFinanceService {
   constructor(
     private prisma: PrismaService,
     private lineClient: LineFinanceClientService,
-    private sessions: ChatSessionService,
+    private sessions: ChatRoomService,
     private verification: VerificationService,
     private ai: FinanceAiService,
     private handoff: HandoffService,
@@ -114,7 +114,7 @@ export class ChatbotFinanceService {
 
     const session = await this.sessions.getOrCreate(userId);
     await this.sessions.saveMessage({
-      sessionId: session.id,
+      roomId: session.id,
       role: MessageRole.SYSTEM,
       text: '[follow event]',
     });
@@ -145,7 +145,7 @@ export class ChatbotFinanceService {
       const msgText =
         event.message.type === 'text' ? event.message.text : `[${event.message.type}]`;
       await this.sessions.saveMessage({
-        sessionId: session.id,
+        roomId: session.id,
         role: MessageRole.CUSTOMER,
         text: msgText,
       });
@@ -156,7 +156,7 @@ export class ChatbotFinanceService {
 
     // Sync session.customerId ถ้าจำเป็น
     if (!session.customerId && linkStatus.customerId) {
-      await this.sessions.linkSessionToCustomer(session.id, linkStatus.customerId);
+      await this.sessions.linkRoomToCustomer(session.id, linkStatus.customerId);
     }
 
     // Handoff gate — ถ้า session อยู่ใน handoff mode bot หยุดตอบ
@@ -166,7 +166,7 @@ export class ChatbotFinanceService {
       const msgText =
         event.message.type === 'text' ? event.message.text : `[${event.message.type}]`;
       await this.sessions.saveMessage({
-        sessionId: session.id,
+        roomId: session.id,
         role: MessageRole.CUSTOMER,
         text: msgText,
       });
@@ -196,7 +196,7 @@ export class ChatbotFinanceService {
         'น้องเบสยังรับเฉพาะข้อความและรูปภาพ (สลิป) นะคะ 🙏\n' +
         'ถ้ามีอย่างอื่น รบกวนติดต่อ 063-134-6356 ค่ะ';
       await this.sessions.saveMessage({
-        sessionId: session.id,
+        roomId: session.id,
         role: MessageRole.CUSTOMER,
         text: `[${event.message.type}]`,
       });
@@ -207,7 +207,7 @@ export class ChatbotFinanceService {
     // Text → AI (save full text, truncate for AI to prevent token bomb)
     const fullText = event.message.text.trim();
     await this.sessions.saveMessage({
-      sessionId: session.id,
+      roomId: session.id,
       role: MessageRole.CUSTOMER,
       text: fullText,
     });
@@ -233,7 +233,7 @@ export class ChatbotFinanceService {
       history: history.slice(0, -1),
       customerId: linkStatus.customerId,
       customerName: linkStatus.customerName,
-      sessionId: session.id,
+      roomId: session.id,
     });
 
     if (aiReply) {
@@ -265,7 +265,7 @@ export class ChatbotFinanceService {
 
   private async handleImage(
     event: LineMessageEvent,
-    sessionId: string,
+    roomId: string,
     customerId: string,
     lineUserId: string,
   ): Promise<void> {
@@ -273,7 +273,7 @@ export class ChatbotFinanceService {
 
     // บันทึก customer message
     await this.sessions.saveMessage({
-      sessionId,
+      roomId,
       role: MessageRole.CUSTOMER,
       type: 'IMAGE',
       text: '[image]',
@@ -288,7 +288,7 @@ export class ChatbotFinanceService {
         `[Finance] image download failed: ${err instanceof Error ? err.message : err}`,
       );
       await this.replyAndSave(
-        sessionId,
+        roomId,
         event.replyToken,
         'อ่านรูปไม่สำเร็จค่ะ 🙏 รบกวนส่งใหม่อีกครั้งนะคะ',
         INTENTS.IMAGE_ERROR,
@@ -305,7 +305,7 @@ export class ChatbotFinanceService {
     });
 
     await this.replyAndSave(
-      sessionId,
+      roomId,
       event.replyToken,
       result.reply,
       result.matched ? INTENTS.SLIP_MATCHED : INTENTS.SLIP_REVIEW,
@@ -325,11 +325,11 @@ export class ChatbotFinanceService {
 
     if (action === 'feedback') {
       const rating = parseInt(params.get('rating') ?? '', 10);
-      const sessionId = params.get('sessionId');
+      const roomId = params.get('roomId');
       const messageId = params.get('messageId');
       const userId = event.source.userId;
 
-      if (!userId || !sessionId || isNaN(rating)) {
+      if (!userId || !roomId || isNaN(rating)) {
         this.logger.warn(`[Finance] Invalid feedback postback: ${data}`);
         return;
       }
@@ -337,7 +337,7 @@ export class ChatbotFinanceService {
       try {
         await this.feedback.saveFeedback({
           lineUserId: userId,
-          sessionId,
+          roomId,
           messageId: messageId ?? undefined,
           rating,
         });
@@ -348,7 +348,7 @@ export class ChatbotFinanceService {
             : 'ขอบคุณสำหรับ feedback ค่ะ 🙏 ทีมงานจะปรับปรุงให้ดียิ่งขึ้นนะคะ';
 
         if (event.replyToken) {
-          await this.replyAndSave(sessionId, event.replyToken, thankYou, INTENTS.FEEDBACK);
+          await this.replyAndSave(roomId, event.replyToken, thankYou, INTENTS.FEEDBACK);
         }
       } catch (err) {
         this.logger.error(
@@ -362,7 +362,7 @@ export class ChatbotFinanceService {
   }
 
   /** Build Quick Reply with 👍/👎 feedback buttons */
-  private buildFeedbackQuickReply(sessionId: string): LineQuickReply {
+  private buildFeedbackQuickReply(roomId: string): LineQuickReply {
     // messageId placeholder — will be replaced after save
     return {
       items: [
@@ -371,7 +371,7 @@ export class ChatbotFinanceService {
           action: {
             type: 'postback',
             label: '👍 ถูกต้อง',
-            data: `action=feedback&rating=1&sessionId=${sessionId}&messageId=__MSG_ID__`,
+            data: `action=feedback&rating=1&roomId=${roomId}&messageId=__MSG_ID__`,
             displayText: '👍 ถูกต้อง',
           },
         },
@@ -380,7 +380,7 @@ export class ChatbotFinanceService {
           action: {
             type: 'postback',
             label: '👎 ไม่ถูกต้อง',
-            data: `action=feedback&rating=0&sessionId=${sessionId}&messageId=__MSG_ID__`,
+            data: `action=feedback&rating=0&roomId=${roomId}&messageId=__MSG_ID__`,
             displayText: '👎 ไม่ถูกต้อง',
           },
         },
@@ -389,7 +389,7 @@ export class ChatbotFinanceService {
   }
 
   private async replyAndSave(
-    sessionId: string,
+    roomId: string,
     replyToken: string,
     text: string,
     intent?: string,
@@ -404,7 +404,7 @@ export class ChatbotFinanceService {
   ): Promise<string> {
     // Save message first to get the ID for feedback Quick Reply
     const savedMsg = await this.sessions.saveMessage({
-      sessionId,
+      roomId,
       role: MessageRole.BOT,
       text,
       intent,

@@ -42,7 +42,7 @@ export class SnoozeService {
           select: {
             id: true,
             channel: true,
-            roomStatus: true,
+            status: true,
             customer: { select: { id: true, name: true, phone: true } },
           },
         },
@@ -89,7 +89,7 @@ export class SnoozeService {
           select: {
             id: true,
             channel: true,
-            roomStatus: true,
+            status: true,
             customer: { select: { id: true, name: true, phone: true } },
           },
         },

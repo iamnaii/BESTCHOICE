@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { ChatSessionStatus, MessageRole } from '@prisma/client';
+import { MessageRole } from '@prisma/client';
 
 /**
  * ChatAnalyticsService — aggregates chat metrics for the analytics dashboard.
@@ -28,11 +28,11 @@ export class ChatAnalyticsService {
       botMessages,
       staffMessages,
     ] = await Promise.all([
-      this.prisma.chatSession.count({ where }),
-      this.prisma.chatSession.count({
-        where: { ...where, sessionStatus: ChatSessionStatus.RESOLVED },
+      this.prisma.chatRoom.count({ where }),
+      this.prisma.chatRoom.count({
+        where: { ...where, resolvedAt: { not: null } },
       }),
-      this.prisma.chatSession.count({
+      this.prisma.chatRoom.count({
         where: { ...where, handoffMode: true },
       }),
       this.prisma.chatMessage.count({
@@ -76,7 +76,7 @@ export class ChatAnalyticsService {
 
   /** Volume per channel */
   async getChannelVolume(startDate: Date, endDate: Date) {
-    const result = await this.prisma.chatSession.groupBy({
+    const result = await this.prisma.chatRoom.groupBy({
       by: ['channel'],
       where: {
         createdAt: { gte: startDate, lte: endDate },
@@ -93,7 +93,7 @@ export class ChatAnalyticsService {
 
   /** Staff performance: resolved sessions & avg response time per staff */
   async getStaffPerformance(startDate: Date, endDate: Date) {
-    const sessions = await this.prisma.chatSession.findMany({
+    const sessions = await this.prisma.chatRoom.findMany({
       where: {
         createdAt: { gte: startDate, lte: endDate },
         assignedToId: { not: null },
@@ -101,7 +101,7 @@ export class ChatAnalyticsService {
       },
       select: {
         assignedToId: true,
-        sessionStatus: true,
+        resolvedAt: true,
         createdAt: true,
         firstResponseAt: true,
         assignedTo: { select: { id: true, name: true } },
@@ -125,7 +125,7 @@ export class ChatAnalyticsService {
       }
       const entry = staffMap.get(staffId)!;
 
-      if (s.sessionStatus === ChatSessionStatus.RESOLVED) {
+      if (s.resolvedAt !== null) {
         entry.resolvedCount++;
       }
       if (s.firstResponseAt) {
@@ -149,7 +149,7 @@ export class ChatAnalyticsService {
 
   /** Average first response time (in minutes) */
   async getAvgFirstResponseTime(startDate: Date, endDate: Date) {
-    const sessions = await this.prisma.chatSession.findMany({
+    const sessions = await this.prisma.chatRoom.findMany({
       where: {
         createdAt: { gte: startDate, lte: endDate },
         firstResponseAt: { not: null },

@@ -48,16 +48,16 @@ export class AdminAnalyticsService {
       topIntentsRaw,
       recentDaysRaw,
     ] = await Promise.all([
-      this.prisma.chatSession.count({
+      this.prisma.chatRoom.count({
         where: { channel: ChatChannel.LINE_FINANCE, createdAt: { gte: startOfToday } },
       }),
       this.prisma.chatMessage.count({
         where: {
           createdAt: { gte: startOfToday },
-          session: { channel: ChatChannel.LINE_FINANCE },
+          room: { channel: ChatChannel.LINE_FINANCE },
         },
       }),
-      this.prisma.chatSession.count({
+      this.prisma.chatRoom.count({
         where: {
           channel: ChatChannel.LINE_FINANCE,
           handoffMode: true,
@@ -68,23 +68,23 @@ export class AdminAnalyticsService {
         where: {
           createdAt: { gte: startOfToday },
           role: MessageRole.AUTO_TRIGGER,
-          session: { channel: ChatChannel.LINE_FINANCE },
+          room: { channel: ChatChannel.LINE_FINANCE },
         },
       }),
       this.prisma.chatMessage.aggregate({
         where: {
           createdAt: { gte: startOfToday },
-          session: { channel: ChatChannel.LINE_FINANCE },
+          room: { channel: ChatChannel.LINE_FINANCE },
         },
         _sum: { costUsd: true },
       }),
-      this.prisma.chatSession.count({
+      this.prisma.chatRoom.count({
         where: { channel: ChatChannel.LINE_FINANCE, deletedAt: null },
       }),
       this.prisma.customerLineLink.count({
         where: { channel: 'FINANCE', unlinkedAt: null },
       }),
-      this.prisma.chatSession.count({
+      this.prisma.chatRoom.count({
         where: { channel: ChatChannel.LINE_FINANCE, handoffMode: true },
       }),
       this.prisma.chatKnowledgeBase.count({
@@ -157,11 +157,11 @@ export class AdminAnalyticsService {
       this.prisma.chatMessage.aggregate({
         where: {
           createdAt: { gte: startDate, lte: endDate },
-          session: { channel: ChatChannel.LINE_FINANCE },
+          room: { channel: ChatChannel.LINE_FINANCE },
         },
         _sum: { costUsd: true },
       }),
-      this.prisma.chatSession.count({
+      this.prisma.chatRoom.count({
         where: {
           channel: ChatChannel.LINE_FINANCE,
           handoffMode: true,
@@ -182,9 +182,9 @@ export class AdminAnalyticsService {
     };
   }
 
-  // ─── Sessions list with filters ──────────────────────────
+  // ─── Rooms list with filters ──────────────────────────
 
-  async listSessions(params: {
+  async listRooms(params: {
     page: number;
     limit: number;
     search?: string;
@@ -208,7 +208,7 @@ export class AdminAnalyticsService {
     };
 
     const [items, total] = await Promise.all([
-      this.prisma.chatSession.findMany({
+      this.prisma.chatRoom.findMany({
         where,
         orderBy: { lastMessageAt: 'desc' },
         skip,
@@ -218,15 +218,15 @@ export class AdminAnalyticsService {
           handoffStaff: { select: { id: true, name: true } },
         },
       }),
-      this.prisma.chatSession.count({ where }),
+      this.prisma.chatRoom.count({ where }),
     ]);
 
     return { items, total, page: params.page, limit: params.limit };
   }
 
-  async getSessionDetail(sessionId: string) {
-    return this.prisma.chatSession.findUnique({
-      where: { id: sessionId },
+  async getRoomDetail(roomId: string) {
+    return this.prisma.chatRoom.findUnique({
+      where: { id: roomId },
       include: {
         customer: { select: { id: true, name: true, phone: true } },
         handoffStaff: { select: { id: true, name: true } },
@@ -238,9 +238,9 @@ export class AdminAnalyticsService {
     });
   }
 
-  async returnToBot(sessionId: string) {
-    return this.prisma.chatSession.update({
-      where: { id: sessionId },
+  async returnToBot(roomId: string) {
+    return this.prisma.chatRoom.update({
+      where: { id: roomId },
       data: {
         handoffMode: false,
         handoffReason: null,

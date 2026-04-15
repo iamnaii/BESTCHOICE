@@ -14,7 +14,7 @@ export class ChatToContractService {
 
   constructor(private prisma: PrismaService) {}
 
-  async getContractPrefill(sessionId: string): Promise<{
+  async getContractPrefill(roomId: string): Promise<{
     customerId?: string;
     customerName?: string;
     phone?: string;
@@ -22,7 +22,7 @@ export class ChatToContractService {
   }> {
     // 1. Find session with customer info
     const session = await this.prisma.chatRoom.findUnique({
-      where: { id: sessionId },
+      where: { id: roomId },
       include: {
         customer: { select: { id: true, name: true, phone: true } },
       },
@@ -35,7 +35,7 @@ export class ChatToContractService {
     // 2. Find mentioned products in recent messages (simple keyword search)
     // Look for product names/brands in last 20 messages
     const messages = await this.prisma.chatMessage.findMany({
-      where: { sessionId, deletedAt: null },
+      where: { roomId, deletedAt: null },
       orderBy: { createdAt: 'desc' },
       take: 20,
       select: { text: true },

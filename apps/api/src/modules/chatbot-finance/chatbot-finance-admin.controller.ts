@@ -74,7 +74,7 @@ export class ChatbotFinanceAdminController {
   @Get('sessions')
   @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   async listSessions(@Query() query: ListSessionsQueryDto) {
-    return this.analytics.listSessions({
+    return this.analytics.listRooms({
       page: query.page,
       limit: query.limit,
       search: query.search,
@@ -85,7 +85,7 @@ export class ChatbotFinanceAdminController {
   @Get('sessions/:id')
   @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   async getSession(@Param('id') id: string) {
-    return this.analytics.getSessionDetail(id);
+    return this.analytics.getRoomDetail(id);
   }
 
   @Post('sessions/:id/return-to-bot')

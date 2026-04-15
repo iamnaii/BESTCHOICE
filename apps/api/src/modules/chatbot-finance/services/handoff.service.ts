@@ -5,7 +5,7 @@ import { StaffNotificationService } from './staff-notification.service';
 export type HandoffPriority = 'low' | 'normal' | 'high' | 'critical';
 
 export interface HandoffParams {
-  sessionId: string;
+  roomId: string;
   reason: string;
   priority: HandoffPriority;
   summary: string;
@@ -28,8 +28,8 @@ export class HandoffService {
   ) {}
 
   async handoff(params: HandoffParams): Promise<{ handoffId: string; estimatedTime: string }> {
-    await this.prisma.chatSession.update({
-      where: { id: params.sessionId },
+    await this.prisma.chatRoom.update({
+      where: { id: params.roomId },
       data: {
         handoffMode: true,
         handoffReason: params.reason,
@@ -38,13 +38,13 @@ export class HandoffService {
     });
 
     this.logger.warn(
-      `🚨 [Handoff] sessionId=${params.sessionId} priority=${params.priority} reason="${params.reason}"`,
+      `🚨 [Handoff] roomId=${params.roomId} priority=${params.priority} reason="${params.reason}"`,
     );
 
     // ส่ง notification ไป Staff LINE OA (best-effort, ไม่ fail handoff)
     try {
       await this.staffNotify.notifyHandoff({
-        sessionId: params.sessionId,
+        roomId: params.roomId,
         reason: params.reason,
         priority: params.priority,
         summary: params.summary,
@@ -58,17 +58,17 @@ export class HandoffService {
     const estimatedTime = params.priority === 'critical' ? '30 นาที' : '2 ชั่วโมง';
 
     return {
-      handoffId: params.sessionId,
+      handoffId: params.roomId,
       estimatedTime,
     };
   }
 
-  /** เช็คว่า session อยู่ใน handoff mode หรือไม่ — bot จะหยุดตอบ */
-  async isInHandoffMode(sessionId: string): Promise<boolean> {
-    const session = await this.prisma.chatSession.findUnique({
-      where: { id: sessionId },
+  /** เช็คว่า room อยู่ใน handoff mode หรือไม่ — bot จะหยุดตอบ */
+  async isInHandoffMode(roomId: string): Promise<boolean> {
+    const room = await this.prisma.chatRoom.findUnique({
+      where: { id: roomId },
       select: { handoffMode: true },
     });
-    return session?.handoffMode ?? false;
+    return room?.handoffMode ?? false;
   }
 }

@@ -12,7 +12,7 @@ describe('FinanceAiService', () => {
     history: [],
     customerId: 'cust-1',
     customerName: 'สมชาย',
-    sessionId: 'sess-1',
+    roomId: 'sess-1',
   };
 
   describe('when ANTHROPIC_API_KEY is not set', () => {

@@ -615,15 +615,15 @@ export class CustomersService {
       },
     });
 
-    // 5. Previous chat sessions (all channels)
-    const chatSessions = await this.prisma.chatSession.findMany({
+    // 5. Previous chat rooms (all channels)
+    const chatRooms = await this.prisma.chatRoom.findMany({
       where: { customerId, deletedAt: null },
       orderBy: { lastMessageAt: 'desc' },
       take: 10,
       select: {
         id: true,
         channel: true,
-        sessionStatus: true,
+        status: true,
         totalMessages: true,
         lastMessageAt: true,
         createdAt: true,
@@ -637,7 +637,7 @@ export class CustomersService {
       totalOutstanding: totalOutstanding._sum.amountDue ?? 0,
       activeContracts: contractSummaries,
       callLogs,
-      chatSessions,
+      chatRooms,
     };
   }
 

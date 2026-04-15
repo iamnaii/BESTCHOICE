@@ -13,9 +13,9 @@ export class LeadScoringService {
 
   constructor(private prisma: PrismaService) {}
 
-  async scoreSession(sessionId: string): Promise<LeadScoreResult> {
+  async scoreSession(roomId: string): Promise<LeadScoreResult> {
     const messages = await this.prisma.chatMessage.findMany({
-      where: { sessionId, role: 'CUSTOMER' },
+      where: { roomId, role: 'CUSTOMER' },
       orderBy: { createdAt: 'desc' },
       take: 30,
     });
@@ -48,7 +48,7 @@ export class LeadScoringService {
 
     // Returning customer (+15)
     const session = await this.prisma.chatRoom.findUnique({
-      where: { id: sessionId },
+      where: { id: roomId },
       include: { customer: { include: { contracts: { where: { deletedAt: null } } } } },
     });
     if (session?.customer?.contracts && session.customer.contracts.length > 0) {
@@ -80,7 +80,7 @@ export class LeadScoringService {
 
     // Update DB
     await this.prisma.chatRoom.update({
-      where: { id: sessionId },
+      where: { id: roomId },
       data: { leadScore: score, leadTemperature: temperature },
     });
 

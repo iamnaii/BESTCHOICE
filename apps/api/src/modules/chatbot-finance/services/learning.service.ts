@@ -20,10 +20,10 @@ export class LearningService {
    * Extract learning from a completed handoff session.
    * Called when admin clicks "return to bot" after resolving.
    */
-  async extractFromHandoff(sessionId: string): Promise<void> {
+  async extractFromHandoff(roomId: string): Promise<void> {
     // Get messages: customer questions + staff answers
     const messages = await this.prisma.chatMessage.findMany({
-      where: { sessionId },
+      where: { roomId },
       orderBy: { createdAt: 'asc' },
       select: { role: true, text: true, intent: true },
     });
@@ -41,15 +41,15 @@ export class LearningService {
 
     if (!lastCustomerQ.text) return;
 
-    // Check if we already have a suggestion for this session
+    // Check if we already have a suggestion for this room
     const existing = await this.prisma.chatKbSuggestion.findFirst({
-      where: { sessionId, source: 'handoff' },
+      where: { roomId, source: 'handoff' },
     });
     if (existing) return;
 
     await this.prisma.chatKbSuggestion.create({
       data: {
-        sessionId,
+        roomId,
         customerQuestion: lastCustomerQ.text,
         staffAnswer: lastStaffA?.text,
         suggestedIntent: lastCustomerQ.intent ?? 'handoff_learned',
@@ -58,7 +58,7 @@ export class LearningService {
       },
     });
 
-    this.logger.log(`[Learning] Created suggestion from handoff session ${sessionId}`);
+    this.logger.log(`[Learning] Created suggestion from handoff room ${roomId}`);
   }
 
   // ─── Admin CRUD for suggestions ──────────────────────

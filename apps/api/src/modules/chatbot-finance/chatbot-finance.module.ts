@@ -4,7 +4,7 @@ import { ChatbotFinanceLiffController } from './chatbot-finance-liff.controller'
 import { ChatbotFinanceAdminController } from './chatbot-finance-admin.controller';
 import { ChatbotFinanceService } from './services/chatbot-finance.service';
 import { LineFinanceClientService } from './services/line-finance-client.service';
-import { ChatSessionService } from './services/chat-session.service';
+import { ChatRoomService } from './services/chat-room.service';
 import { FinanceAiService } from './services/finance-ai.service';
 import { FinanceToolsService } from './services/finance-tools.service';
 import { KnowledgeService } from './services/knowledge.service';
@@ -51,7 +51,7 @@ import { StaffChatModule } from '../staff-chat/staff-chat.module';
   providers: [
     ChatbotFinanceService,
     LineFinanceClientService,
-    ChatSessionService,
+    ChatRoomService,
     FinanceAiService,
     FinanceToolsService,
     KnowledgeService,
@@ -73,6 +73,6 @@ import { StaffChatModule } from '../staff-chat/staff-chat.module';
     WebhookDedupService,
     FinanceDomainHandler,
   ],
-  exports: [LineFinanceClientService, ChatSessionService, VerificationService, WebhookDedupService, FinanceDomainHandler],
+  exports: [LineFinanceClientService, ChatRoomService, VerificationService, WebhookDedupService, FinanceDomainHandler],
 })
 export class ChatbotFinanceModule {}

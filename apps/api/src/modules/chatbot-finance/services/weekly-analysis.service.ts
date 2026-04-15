@@ -9,7 +9,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
  * Cron: ทุกวันจันทร์ 06:00 Asia/Bangkok
  *
  * Logic:
- *   1. รวบรวม sessions 7 วันล่าสุดที่ handoff / 👎
+ *   1. รวบรวม rooms 7 วันล่าสุดที่ handoff / 👎
  *   2. Extract customer question patterns
  *   3. สร้าง KB Suggestions for admin review
  */
@@ -27,8 +27,8 @@ export class WeeklyAnalysisService {
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-      // 1. Find sessions with handoff or negative feedback
-      const handoffSessions = await this.prisma.chatSession.findMany({
+      // 1. Find rooms with handoff or negative feedback
+      const handoffRooms = await this.prisma.chatRoom.findMany({
         where: {
           channel: 'LINE_FINANCE',
           handoffMode: true,
@@ -37,60 +37,60 @@ export class WeeklyAnalysisService {
         select: { id: true },
       });
 
-      const negativeFeedbackSessions = await this.prisma.chatFeedback.findMany({
+      const negativeFeedbackRooms = await this.prisma.chatFeedback.findMany({
         where: {
           rating: 0,
           createdAt: { gte: sevenDaysAgo },
         },
-        select: { sessionId: true },
-        distinct: ['sessionId'],
+        select: { roomId: true },
+        distinct: ['roomId'],
       });
 
-      const sessionIds = new Set([
-        ...handoffSessions.map((s) => s.id),
-        ...negativeFeedbackSessions.map((f) => f.sessionId),
+      const roomIds = new Set([
+        ...handoffRooms.map((r) => r.id),
+        ...negativeFeedbackRooms.map((f) => f.roomId),
       ]);
 
-      if (sessionIds.size === 0) {
-        this.logger.log('[WeeklyAnalysis] No failed sessions found — nothing to analyze');
+      if (roomIds.size === 0) {
+        this.logger.log('[WeeklyAnalysis] No failed rooms found — nothing to analyze');
         return;
       }
 
-      const sessionIdArray = [...sessionIds];
+      const roomIdArray = [...roomIds];
 
       // 2. Batch: find existing suggestions to skip
       const existingSuggestions = await this.prisma.chatKbSuggestion.findMany({
-        where: { sessionId: { in: sessionIdArray }, source: 'auto_analysis' },
-        select: { sessionId: true },
+        where: { roomId: { in: roomIdArray }, source: 'auto_analysis' },
+        select: { roomId: true },
       });
-      const alreadyAnalyzed = new Set(existingSuggestions.map((s) => s.sessionId));
+      const alreadyAnalyzed = new Set(existingSuggestions.map((s) => s.roomId));
 
-      // 3. Batch: get first customer message per session
-      const newSessionIds = sessionIdArray.filter((id) => !alreadyAnalyzed.has(id));
-      if (newSessionIds.length === 0) {
-        this.logger.log(`[WeeklyAnalysis] All ${sessionIds.size} sessions already analyzed`);
+      // 3. Batch: get first customer message per room
+      const newRoomIds = roomIdArray.filter((id) => !alreadyAnalyzed.has(id));
+      if (newRoomIds.length === 0) {
+        this.logger.log(`[WeeklyAnalysis] All ${roomIds.size} rooms already analyzed`);
         return;
       }
 
       const customerMessages = await this.prisma.chatMessage.findMany({
         where: {
-          sessionId: { in: newSessionIds },
+          roomId: { in: newRoomIds },
           role: 'CUSTOMER',
           text: { not: null },
         },
         orderBy: { createdAt: 'asc' },
-        distinct: ['sessionId'],
+        distinct: ['roomId'],
       });
 
-      // Group by sessionId
-      const msgBySession = new Map(customerMessages.map((m) => [m.sessionId, m]));
+      // Group by roomId
+      const msgByRoom = new Map(customerMessages.map((m) => [m.roomId, m]));
 
       // 4. Create suggestions
       let created = 0;
       let skipped = alreadyAnalyzed.size;
 
-      for (const sessionId of newSessionIds) {
-        const msg = msgBySession.get(sessionId);
+      for (const roomId of newRoomIds) {
+        const msg = msgByRoom.get(roomId);
         if (!msg?.text) {
           skipped++;
           continue;
@@ -98,7 +98,7 @@ export class WeeklyAnalysisService {
 
         await this.prisma.chatKbSuggestion.create({
           data: {
-            sessionId,
+            roomId,
             customerQuestion: msg.text,
             suggestedIntent: msg.intent ?? 'auto_analyzed',
             source: 'auto_analysis',
@@ -109,7 +109,7 @@ export class WeeklyAnalysisService {
       }
 
       this.logger.log(
-        `[WeeklyAnalysis] Done. Sessions analyzed: ${sessionIds.size}, Suggestions created: ${created}, Skipped: ${skipped}`,
+        `[WeeklyAnalysis] Done. Rooms analyzed: ${roomIds.size}, Suggestions created: ${created}, Skipped: ${skipped}`,
       );
     } catch (error) {
       this.logger.error(

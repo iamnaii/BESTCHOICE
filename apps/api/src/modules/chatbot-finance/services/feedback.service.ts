@@ -20,22 +20,22 @@ export class FeedbackService {
 
   async saveFeedback(params: {
     lineUserId: string;
-    sessionId: string;
+    roomId: string;
     messageId?: string;
     rating: number; // 0=👎, 1=👍
     feedbackText?: string;
   }) {
-    // Verify session belongs to this LINE user
-    const session = await this.prisma.chatSession.findFirst({
-      where: { id: params.sessionId, lineUserId: params.lineUserId },
+    // Verify room belongs to this LINE user
+    const room = await this.prisma.chatRoom.findFirst({
+      where: { id: params.roomId, lineUserId: params.lineUserId },
     });
-    if (!session) {
-      throw new ForbiddenException('ไม่พบ session');
+    if (!room) {
+      throw new ForbiddenException('ไม่พบ room');
     }
 
     const feedback = await this.prisma.chatFeedback.create({
       data: {
-        sessionId: params.sessionId,
+        roomId: params.roomId,
         messageId: params.messageId,
         rating: params.rating,
         feedbackText: params.feedbackText,
@@ -43,16 +43,16 @@ export class FeedbackService {
     });
 
     this.logger.log(
-      `[Feedback] session=${params.sessionId} rating=${params.rating === 1 ? '👍' : '👎'}`,
+      `[Feedback] room=${params.roomId} rating=${params.rating === 1 ? '👍' : '👎'}`,
     );
 
     // 👎 → auto-create KB suggestion for review
     if (params.rating === 0 && params.messageId) {
-      await this.createSuggestionFromNegativeFeedback(params.sessionId, params.messageId);
+      await this.createSuggestionFromNegativeFeedback(params.roomId, params.messageId);
     }
 
     // Auto-adjust KB priority
-    await this.adjustKbPriority(params.sessionId, params.rating);
+    await this.adjustKbPriority(params.roomId, params.rating);
 
     return feedback;
   }
@@ -82,19 +82,19 @@ export class FeedbackService {
   // ─── Private ──────────────────────────────────────────
 
   private async createSuggestionFromNegativeFeedback(
-    sessionId: string,
+    roomId: string,
     messageId: string,
   ): Promise<void> {
     try {
       // Get the bot message and the customer message before it
       const botMessage = await this.prisma.chatMessage.findFirst({
-        where: { id: messageId, sessionId },
+        where: { id: messageId, roomId },
       });
       if (!botMessage) return;
 
       const customerMessage = await this.prisma.chatMessage.findFirst({
         where: {
-          sessionId,
+          roomId,
           role: 'CUSTOMER',
           createdAt: { lt: botMessage.createdAt },
         },
@@ -105,7 +105,7 @@ export class FeedbackService {
 
       await this.prisma.chatKbSuggestion.create({
         data: {
-          sessionId,
+          roomId,
           customerQuestion: customerMessage.text,
           suggestedIntent: botMessage.intent ?? 'unknown',
           source: 'low_rating',
@@ -122,10 +122,10 @@ export class FeedbackService {
   }
 
   /** 👍 → KB entry priority +1, 👎 → priority -2 (atomic, no race condition) */
-  private async adjustKbPriority(sessionId: string, rating: number): Promise<void> {
+  private async adjustKbPriority(roomId: string, rating: number): Promise<void> {
     try {
       const lastBotMsg = await this.prisma.chatMessage.findFirst({
-        where: { sessionId, role: 'BOT', intent: { not: null } },
+        where: { roomId, role: 'BOT', intent: { not: null } },
         orderBy: { createdAt: 'desc' },
       });
       if (!lastBotMsg?.intent) return;

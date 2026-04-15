@@ -11,7 +11,7 @@ export interface ToolCallRequest {
 
 export interface ToolCallContext {
   customerId: string;
-  sessionId: string;
+  roomId: string;
 }
 
 export interface ToolCallResult {
@@ -80,7 +80,7 @@ export class FinanceToolExecutor {
           const priority = String(req.input.priority || 'normal') as HandoffPriority;
           const summary = String(req.input.summary || '');
           const result = await this.handoff.handoff({
-            sessionId: ctx.sessionId,
+            roomId: ctx.roomId,
             reason,
             priority,
             summary,

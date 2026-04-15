@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ChatbotFinanceService } from './chatbot-finance.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LineFinanceClientService } from './line-finance-client.service';
-import { ChatSessionService } from './chat-session.service';
+import { ChatRoomService } from './chat-room.service';
 import { VerificationService } from './verification.service';
 import { FinanceAiService } from './finance-ai.service';
 import { HandoffService } from './handoff.service';
@@ -68,7 +68,7 @@ describe('ChatbotFinanceService', () => {
         ChatbotFinanceService,
         { provide: PrismaService, useValue: prisma },
         { provide: LineFinanceClientService, useValue: lineClient },
-        { provide: ChatSessionService, useValue: sessions },
+        { provide: ChatRoomService, useValue: sessions },
         { provide: VerificationService, useValue: verification },
         { provide: FinanceAiService, useValue: ai },
         { provide: HandoffService, useValue: handoff },

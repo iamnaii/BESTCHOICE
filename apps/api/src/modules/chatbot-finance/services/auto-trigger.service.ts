@@ -3,7 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LineFinanceClientService } from './line-finance-client.service';
-import { ChatSessionService } from './chat-session.service';
+import { ChatRoomService } from './chat-room.service';
 import { TEMPLATES, ReminderPayload } from '../constants/reminder-templates';
 import { LATE_FEE_PER_DAY } from '../constants/finance-rules';
 import { formatThaiDateText as formatThaiDate } from '../../../utils/thai-date.util';
@@ -43,7 +43,7 @@ export class AutoTriggerService {
   constructor(
     private prisma: PrismaService,
     private lineClient: LineFinanceClientService,
-    private sessions: ChatSessionService,
+    private sessions: ChatRoomService,
     private financeConfig: FinanceConfigService,
   ) {}
 
@@ -218,7 +218,7 @@ export class AutoTriggerService {
       // บันทึกใน ChatMessage (role=AUTO_TRIGGER)
       const session = await this.sessions.getOrCreate(args.lineUserId);
       const msg = await this.sessions.saveMessage({
-        sessionId: session.id,
+        roomId: session.id,
         role: MessageRole.AUTO_TRIGGER,
         text,
         intent: args.type,

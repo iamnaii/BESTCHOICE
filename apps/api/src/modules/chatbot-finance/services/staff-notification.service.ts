@@ -39,7 +39,7 @@ export class StaffNotificationService {
   // ─── Notification: Handoff ───────────────────────────────
 
   async notifyHandoff(params: {
-    sessionId: string;
+    roomId: string;
     reason: string;
     priority: HandoffPriority;
     summary: string;
@@ -47,8 +47,8 @@ export class StaffNotificationService {
     if (!this.lineStaff.isConfigured) return;
 
     // ดึง context: customer + 5 ข้อความล่าสุด
-    const session = await this.prisma.chatSession.findUnique({
-      where: { id: params.sessionId },
+    const room = await this.prisma.chatRoom.findUnique({
+      where: { id: params.roomId },
       include: {
         customer: { select: { name: true, phone: true } },
         messages: {
@@ -58,15 +58,15 @@ export class StaffNotificationService {
       },
     });
 
-    if (!session) {
-      this.logger.warn(`[StaffNotify] session ${params.sessionId} not found`);
+    if (!room) {
+      this.logger.warn(`[StaffNotify] room ${params.roomId} not found`);
       return;
     }
 
-    const customerName = session.customer?.name ?? '(ลูกค้าใหม่)';
-    const phone = session.customer?.phone ? maskPhone(session.customer.phone) : '-';
+    const customerName = room.customer?.name ?? '(ลูกค้าใหม่)';
+    const phone = room.customer?.phone ? maskPhone(room.customer.phone) : '-';
 
-    const recentMessages = session.messages
+    const recentMessages = room.messages
       .reverse()
       .map((m) => {
         const role =
@@ -90,7 +90,7 @@ export class StaffNotificationService {
       `📌 เรื่อง: ${params.reason}\n` +
       `📝 ${params.summary}\n\n` +
       `📜 บทสนทนาล่าสุด:\n${recentMessages}\n\n` +
-      `🔗 Session ID: ${params.sessionId.slice(0, 8)}...`;
+      `🔗 Room ID: ${params.roomId.slice(0, 8)}...`;
 
     try {
       await this.lineStaff.broadcastText(text);

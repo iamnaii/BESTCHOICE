@@ -34,7 +34,7 @@ export class FinanceDomainHandler implements IDomainHandler {
   }
 
   async handleMessage(context: DomainContext): Promise<DomainResult> {
-    const { session, message, isVerified, isHandoff } = context;
+    const { room, message, isVerified, isHandoff } = context;
 
     // If in handoff mode, don't process with AI
     if (isHandoff) {
@@ -79,7 +79,7 @@ export class FinanceDomainHandler implements IDomainHandler {
     // the original webhook→ChatbotFinanceService path handles AI replies.
     if (message.text) {
       this.logger.debug(
-        `[FinanceDomain] text message from session ${session.id}: ${message.text.substring(0, 50)}`,
+        `[FinanceDomain] text message from room ${room.id}: ${message.text.substring(0, 50)}`,
       );
       // The existing LINE webhook path (chatbot-finance.controller → chatbot-finance.service)
       // still handles AI replies directly. This handler will fully take over

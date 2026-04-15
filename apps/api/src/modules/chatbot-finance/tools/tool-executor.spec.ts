@@ -13,7 +13,7 @@ describe('FinanceToolExecutor', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let handoff: any;
 
-  const ctx = { customerId: 'cust-1', sessionId: 'sess-1' };
+  const ctx = { customerId: 'cust-1', roomId: 'sess-1' };
 
   beforeEach(async () => {
     tools = {
@@ -102,7 +102,7 @@ describe('FinanceToolExecutor', () => {
     expect(result.ok).toBe(true);
     expect(result.triggeredHandoff).toBe(true);
     expect(handoff.handoff).toHaveBeenCalledWith({
-      sessionId: 'sess-1',
+      roomId: 'sess-1',
       reason: 'complaint',
       priority: 'critical',
       summary: 'ลูกค้าไม่พอใจ',

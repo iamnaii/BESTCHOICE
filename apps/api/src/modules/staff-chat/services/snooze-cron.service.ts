@@ -32,7 +32,7 @@ export class SnoozeCronService {
         },
         select: {
           id: true,
-          sessionId: true,
+          roomId: true,
           staffId: true,
           note: true,
         },

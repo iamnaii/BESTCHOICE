@@ -14,19 +14,19 @@ export class CsatService {
   ) {}
 
   /**
-   * Send CSAT survey to customer after session resolution
+   * Send CSAT survey to customer after room resolution
    */
-  async sendSurvey(sessionId: string): Promise<void> {
-    const session = await this.prisma.chatSession.findFirst({
-      where: { id: sessionId, deletedAt: null },
+  async sendSurvey(roomId: string): Promise<void> {
+    const room = await this.prisma.chatRoom.findFirst({
+      where: { id: roomId, deletedAt: null },
     });
 
-    if (!session) {
-      throw new NotFoundException('ไม่พบเซสชันแชท');
+    if (!room) {
+      throw new NotFoundException('ไม่พบห้องแชท');
     }
 
-    if (!session.lineUserId) {
-      this.logger.warn(`[CSAT] Session ${sessionId} has no lineUserId — skipping survey`);
+    if (!room.lineUserId) {
+      this.logger.warn(`[CSAT] Room ${roomId} has no lineUserId — skipping survey`);
       return;
     }
 
@@ -46,29 +46,29 @@ export class CsatService {
       ].join('\n'),
     } as unknown as LineMessagePayload;
 
-    await this.lineOaService.pushMessage(session.lineUserId, [surveyMessage]);
-    this.logger.log(`[CSAT] Survey sent for session ${sessionId} to ${session.lineUserId}`);
+    await this.lineOaService.pushMessage(room.lineUserId, [surveyMessage]);
+    this.logger.log(`[CSAT] Survey sent for room ${roomId} to ${room.lineUserId}`);
   }
 
   /**
    * Submit rating (called from LIFF or webhook)
    */
   async submitRating(dto: SubmitRatingDto): Promise<{ id: string }> {
-    const session = await this.prisma.chatSession.findFirst({
-      where: { id: dto.sessionId, deletedAt: null },
+    const room = await this.prisma.chatRoom.findFirst({
+      where: { id: dto.roomId, deletedAt: null },
     });
 
-    if (!session) {
-      throw new NotFoundException('ไม่พบเซสชันแชท');
+    if (!room) {
+      throw new NotFoundException('ไม่พบห้องแชท');
     }
 
     const feedback = await this.prisma.chatFeedback.upsert({
       where: {
-        // Use sessionId index — one feedback per session
-        id: await this.findExistingFeedbackId(dto.sessionId),
+        // Use roomId index — one feedback per room
+        id: await this.findExistingFeedbackId(dto.roomId),
       },
       create: {
-        sessionId: dto.sessionId,
+        roomId: dto.roomId,
         rating: dto.rating,
         feedbackText: dto.feedbackText ?? null,
       },
@@ -78,7 +78,7 @@ export class CsatService {
       },
     });
 
-    this.logger.log(`[CSAT] Rating ${dto.rating}/5 submitted for session ${dto.sessionId}`);
+    this.logger.log(`[CSAT] Rating ${dto.rating}/5 submitted for room ${dto.roomId}`);
     return { id: feedback.id };
   }
 
@@ -126,9 +126,9 @@ export class CsatService {
   /**
    * Find existing feedback ID for upsert, or generate a new UUID placeholder
    */
-  private async findExistingFeedbackId(sessionId: string): Promise<string> {
+  private async findExistingFeedbackId(roomId: string): Promise<string> {
     const existing = await this.prisma.chatFeedback.findFirst({
-      where: { sessionId, deletedAt: null },
+      where: { roomId, deletedAt: null },
       select: { id: true },
     });
     // If no existing feedback, return a non-existent UUID so upsert creates a new record

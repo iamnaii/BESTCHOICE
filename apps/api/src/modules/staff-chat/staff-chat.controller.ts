@@ -78,7 +78,7 @@ export class StaffChatController {
   async listRooms(@Query() query: SessionQueryDto) {
     return this.roomManager.listRooms({
       channel: query.channel as ChatChannel | undefined,
-      roomStatus: query.sessionStatus as ChatRoomStatus | undefined,
+      status: query.status as ChatRoomStatus | undefined,
       priority: query.priority as ChatPriority | undefined,
       assignedToId: query.assignedToId,
       unassignedOnly: query.unassignedOnly,
@@ -240,7 +240,7 @@ export class StaffChatController {
   @Get('staff/online')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   async getOnlineStaff() {
-    return this.assignment.getStaffSessionCounts();
+    return this.assignment.getStaffRoomCounts();
   }
 
   // ─── AI Assistant ──────────────────────────────────────

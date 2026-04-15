@@ -75,7 +75,7 @@ export class FinanceAiService {
     history: ChatMessage[];
     customerId: string;
     customerName: string;
-    sessionId: string;
+    roomId: string;
   }): Promise<AiReply | null> {
     if (!this.anthropic) return null;
 
@@ -140,7 +140,7 @@ export class FinanceAiService {
             toolsUsed.push(block.name);
             const result = await this.toolExecutor.execute(
               { name: block.name, input: block.input as Record<string, unknown> },
-              { customerId: params.customerId, sessionId: params.sessionId },
+              { customerId: params.customerId, roomId: params.roomId },
             );
             if (result.triggeredHandoff) handoffTriggered = true;
             return {

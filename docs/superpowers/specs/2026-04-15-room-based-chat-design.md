@@ -335,6 +335,12 @@ New endpoints:
 
 **AI Summary:** สรุปรวมจากทุก channel (2-3 บรรทัด)
 
+**สินค้าที่สนใจ:** ProductContextCard ย้ายมาอยู่ถาวร (AI detect จากแชท + ราคา/สต็อก/โปร)
+
+**ประวัติ MDM:** สถานะเครื่อง (ล็อค/ไม่ล็อค) + วันที่ล็อค/ปลดล็อคล่าสุด (จาก contract.mdmLockedAt)
+
+**ประกันสินค้า:** วันหมดประกัน + เหลือกี่วัน (จาก product.warrantyExpireDate ที่มีอยู่)
+
 **Quick actions:** ส่งลิงก์ชำระ, สร้างสัญญา, ดูข้อมูลลูกค้า
 
 ### Mobile (responsive)

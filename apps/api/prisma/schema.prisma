@@ -626,6 +626,9 @@ model Contract {
   collectionNotes  String?   @map("collection_notes") // internal notes from collector
   lastContactDate  DateTime? @map("last_contact_date") // last time customer was contacted
 
+  // MDM (Mobile Device Management) lock tracking
+  mdmLockedAt      DateTime? @map("mdm_locked_at")
+
   // Ads + CRM
   adsAttributions AdsAttribution[]
   crmLeads        CrmLead[]        @relation("CrmLeadContract")

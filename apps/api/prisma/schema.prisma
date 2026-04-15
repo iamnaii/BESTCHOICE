@@ -635,6 +635,10 @@ model Contract {
 
   dunningActions   DunningAction[]
 
+  // Shop warranty tracking
+  shopWarrantyStartDate DateTime? @map("shop_warranty_start_date")
+  shopWarrantyEndDate   DateTime? @map("shop_warranty_end_date")
+
   @@index([customerId])
   @@index([branchId])
   @@index([assignedToId])
@@ -838,6 +842,7 @@ model Product {
   ownedByCompanyId   String?         @map("owned_by_company_id")
   status             ProductStatus   @default(IN_STOCK)
   batteryHealth      Int?            @map("battery_health")
+  shopWarrantyDays   Int?            @map("shop_warranty_days")
   warrantyExpired    Boolean?        @map("warranty_expired")
   warrantyExpireDate DateTime?       @map("warranty_expire_date")
   hasBox             Boolean?        @map("has_box")

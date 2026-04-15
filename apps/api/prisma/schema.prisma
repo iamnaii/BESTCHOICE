@@ -2964,6 +2964,12 @@ model ChatSession {
   handoffStaffId  String?   @map("handoff_staff_id")
   handoffStaff    User?     @relation("ChatHandoffStaff", fields: [handoffStaffId], references: [id])
 
+  // Lead scoring & attribution
+  leadScore         Int?              @map("lead_score")
+  leadTemperature   String?           @map("lead_temperature")
+  attributionId     String?           @map("attribution_id")
+  attribution       AdsAttribution?   @relation(fields: [attributionId], references: [id])
+
   // SLA tracking
   firstResponseAt DateTime? @map("first_response_at")
   resolvedAt      DateTime? @map("resolved_at")
@@ -2988,6 +2994,7 @@ model ChatSession {
   @@index([assignedToId, sessionStatus])
   @@index([sessionStatus, priority])
   @@index([handoffMode, status])
+  @@index([leadScore])
   @@map("chat_sessions")
 }
 
@@ -3374,6 +3381,8 @@ model AdsAttribution {
   // Revenue (from contract)
   revenue      Decimal?     @db.Decimal(12, 2)
   createdAt    DateTime     @default(now()) @map("created_at")
+
+  chatSessions  ChatSession[]
 
   @@index([campaignId])
   @@index([customerId])

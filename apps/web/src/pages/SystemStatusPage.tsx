@@ -4,6 +4,7 @@ import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { formatDateMedium } from '@/utils/formatters';
+import { Badge } from '@/components/ui/badge';
 
 interface SystemStatus {
   api: { status: string; version: string; uptime: number; nodeVersion: string; environment?: string };
@@ -387,9 +388,9 @@ export default function SystemStatusPage() {
               { label: 'Notification Queue', ok: svcs?.queue.available ?? false },
             ].map(item => (
               <div key={item.label} className="flex items-center gap-2">
-                <span className={`inline-flex items-center justify-center w-4 h-4 rounded text-[10px] font-bold ${item.ok ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                <Badge variant={item.ok ? 'success' : 'destructive'} appearance="light" className="w-4 h-4 inline-flex items-center justify-center p-0 text-[10px] font-bold rounded">
                   {item.ok ? '✓' : '✗'}
-                </span>
+                </Badge>
                 <span className={item.ok ? 'text-foreground' : 'text-muted-foreground'}>{item.label}</span>
               </div>
             ))}
@@ -419,9 +420,9 @@ function IntegrationCard({ name, configured, details }: { name: string; configur
         ))}
       </div>
       <div className="mt-2 text-right">
-        <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${configured ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' : 'bg-red-100 text-red-600 dark:bg-red-900 dark:text-red-300'}`}>
+        <Badge variant={configured ? 'success' : 'destructive'} appearance="light">
           {configured ? 'ตั้งค่าแล้ว' : 'ยังไม่ได้ตั้งค่า'}
-        </span>
+        </Badge>
       </div>
     </div>
   );

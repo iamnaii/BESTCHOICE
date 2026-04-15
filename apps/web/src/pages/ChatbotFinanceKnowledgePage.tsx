@@ -4,6 +4,8 @@ import api, { getErrorMessage } from '@/lib/api';
 import { toast } from 'sonner';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, kbResponseTypeMap, kbSuggestionStatusMap } from '@/lib/status-badges';
 
 interface KbEntry {
   id: string;
@@ -172,11 +174,16 @@ function KnowledgeBaseTab() {
                     <p className="text-xs text-gray-500">{kb.category}</p>
                   </div>
                   <div className="flex flex-col items-end gap-1">
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full ${kb.responseType === 'handoff' ? 'bg-orange-100 text-orange-700' : kb.responseType === 'info' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
-                      {kb.responseType}
-                    </span>
+                    {(() => {
+                      const cfg = getStatusBadgeProps(kb.responseType, kbResponseTypeMap);
+                      return (
+                        <Badge variant={cfg.variant} appearance={cfg.appearance} className="text-[10px] px-2 py-0.5">
+                          {kb.responseType}
+                        </Badge>
+                      );
+                    })()}
                     {!kb.active && (
-                      <span className="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full">inactive</span>
+                      <Badge variant="secondary" className="text-[10px] px-2 py-0.5">inactive</Badge>
                     )}
                   </div>
                 </div>
@@ -364,12 +371,6 @@ const STATUS_LABELS: Record<string, string> = {
   REJECTED: 'ปฏิเสธแล้ว',
 };
 
-const STATUS_COLORS: Record<string, string> = {
-  PENDING: 'bg-yellow-100 text-yellow-700',
-  APPROVED: 'bg-green-100 text-green-700',
-  REJECTED: 'bg-red-100 text-red-700',
-};
-
 function SuggestionsTab() {
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string>('PENDING');
@@ -480,11 +481,14 @@ function SuggestionsTab() {
                         <span className="text-xs">{SOURCE_LABELS[s.source] ?? s.source}</span>
                       </td>
                       <td className="px-4 py-3">
-                        <span
-                          className={`text-[10px] px-2 py-0.5 rounded-full ${STATUS_COLORS[s.status] ?? 'bg-gray-100 text-gray-600'}`}
-                        >
-                          {STATUS_LABELS[s.status] ?? s.status}
-                        </span>
+                        {(() => {
+                          const cfg = getStatusBadgeProps(s.status, kbSuggestionStatusMap);
+                          return (
+                            <Badge variant={cfg.variant} appearance={cfg.appearance} className="text-[10px] px-2 py-0.5">
+                              {STATUS_LABELS[s.status] ?? s.status}
+                            </Badge>
+                          );
+                        })()}
                       </td>
                       <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
                         {new Date(s.createdAt).toLocaleDateString('th-TH', {

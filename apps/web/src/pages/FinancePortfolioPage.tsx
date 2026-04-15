@@ -7,6 +7,8 @@ import QueryBoundary from '@/components/QueryBoundary';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, contractStatusMap } from '@/lib/status-badges';
 import { formatDateShort } from '@/utils/formatters';
 import {
   FileText,
@@ -84,15 +86,6 @@ const STATUS_LABEL: Record<string, string> = {
   ALL: 'ทั้งหมด',
 };
 
-const STATUS_COLOR: Record<string, string> = {
-  ACTIVE: 'bg-success/10 text-success',
-  OVERDUE: 'bg-destructive/10 text-destructive',
-  DEFAULT: 'bg-destructive/10 text-destructive',
-  COMPLETED: 'bg-muted text-muted-foreground',
-  EARLY_PAYOFF: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-  EXCHANGED: 'bg-warning/10 text-warning',
-  CLOSED_BAD_DEBT: 'bg-destructive/10 text-destructive',
-};
 
 const STATUS_OPTIONS = ['ALL', 'ACTIVE', 'OVERDUE', 'DEFAULT', 'COMPLETED', 'EARLY_PAYOFF', 'EXCHANGED'];
 
@@ -200,15 +193,14 @@ export default function FinancePortfolioPage() {
     {
       key: 'status',
       label: 'สถานะ',
-      render: (row: PortfolioContract) => (
-        <span
-          className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-            STATUS_COLOR[row.status] || 'bg-muted text-muted-foreground'
-          }`}
-        >
-          {STATUS_LABEL[row.status] || row.status}
-        </span>
-      ),
+      render: (row: PortfolioContract) => {
+        const cfg = getStatusBadgeProps(row.status, contractStatusMap);
+        return (
+          <Badge variant={cfg.variant} appearance={cfg.appearance}>
+            {cfg.label}
+          </Badge>
+        );
+      },
     },
   ];
 

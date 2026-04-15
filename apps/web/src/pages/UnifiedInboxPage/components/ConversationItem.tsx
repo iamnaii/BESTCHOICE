@@ -2,6 +2,8 @@ import { MessageSquare, Phone, Globe, Video } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import { th } from 'date-fns/locale';
+import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, sessionPriorityMap } from '@/lib/status-badges';
 
 interface ConversationItemProps {
   session: {
@@ -37,12 +39,6 @@ const CHANNEL_COLORS: Record<string, string> = {
   WEB: 'bg-gray-500',
 };
 
-const PRIORITY_BADGE: Record<string, string> = {
-  CRITICAL: 'bg-red-500 text-white',
-  HIGH: 'bg-orange-500 text-white',
-  NORMAL: '',
-  LOW: '',
-};
 
 const STATUS_DOT: Record<string, string> = {
   OPEN: 'bg-green-400',
@@ -92,14 +88,19 @@ export default function ConversationItem({ session, isActive, onClick }: Convers
         {/* Tags + priority */}
         <div className="flex items-center gap-1 mt-1">
           {session.tags?.some((t: any) => t.tag === 'overdue') && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-600 font-medium">
+            <Badge variant="destructive" appearance="light" className="text-[10px] px-1.5 py-0.5">
               ค้างชำระ
-            </span>
+            </Badge>
           )}
-          {session.priority && PRIORITY_BADGE[session.priority] && (
-            <span className={cn('text-[10px] px-1.5 py-0.5 rounded-full', PRIORITY_BADGE[session.priority])}>
-              {session.priority}
-            </span>
+          {session.priority && session.priority !== 'NORMAL' && session.priority !== 'LOW' && (
+            (() => {
+              const cfg = getStatusBadgeProps(session.priority, sessionPriorityMap);
+              return (
+                <Badge variant={cfg.variant} appearance={cfg.appearance} className="text-[10px] px-1.5 py-0.5">
+                  {cfg.label}
+                </Badge>
+              );
+            })()
           )}
           {session.tags?.slice(0, 3).map((t) => (
             <span key={t.tag} className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600">

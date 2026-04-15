@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { maskNationalId } from '@/utils/mask.util';
 import { formatDateShort, formatDateTime } from '@/utils/formatters';
+import { Card, CardContent } from '@/components/ui/card';
 
 interface DSARRequest {
   id: string;
@@ -36,7 +37,7 @@ interface Consent {
 
 const dsarStatusLabels: Record<string, { label: string; className: string }> = {
   PENDING: { label: 'รอดำเนินการ', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
-  IN_PROGRESS: { label: 'กำลังดำเนินการ', className: 'bg-blue-100 text-blue-700' },
+  IN_PROGRESS: { label: 'กำลังดำเนินการ', className: 'bg-info/10 text-info dark:bg-info/15' },
   COMPLETED: { label: 'เสร็จสิ้น', className: 'bg-success/10 text-success dark:bg-success/15' },
   REJECTED: { label: 'ปฏิเสธ', className: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },
 };
@@ -168,7 +169,8 @@ function PDPAPage() {
           onRetry={() => refetchDsar()}
           errorTitle="ไม่สามารถโหลดรายการ DSAR ได้"
         >
-        <div className="bg-card rounded-xl border border-border/50 shadow-sm">
+        <Card>
+          <CardContent className="p-0">
           <DataTable
             data={dsarRequests}
             isLoading={dsarLoading}
@@ -231,7 +233,8 @@ function PDPAPage() {
             ]}
             emptyMessage="ไม่มีคำร้อง DSAR"
           />
-        </div>
+          </CardContent>
+        </Card>
         </QueryBoundary>
       )}
 

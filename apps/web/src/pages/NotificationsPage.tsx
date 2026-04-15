@@ -8,6 +8,8 @@ import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { formatDateTime } from '@/utils/formatters';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 
 interface NotificationLog {
   id: string;
@@ -546,11 +548,9 @@ export default function NotificationsPage() {
       key: 'format',
       label: 'รูปแบบ',
       render: (t: NotificationTemplate) => (
-        <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-          t.format === 'flex' ? 'bg-info/10 text-info dark:bg-info/15' : 'bg-blue-100 text-blue-700'
-        }`}>
+        <Badge variant={t.format === 'flex' ? 'info' : 'primary'} appearance="light">
           {t.format === 'flex' ? 'Flex JSON' : 'Text'}
-        </span>
+        </Badge>
       ),
     },
     {
@@ -697,7 +697,11 @@ export default function NotificationsPage() {
             onRetry={logsRefetch}
             errorTitle="ไม่สามารถโหลดประวัติการแจ้งเตือนได้"
           >
-            <DataTable columns={logColumns} data={logs} isLoading={logsLoading} emptyMessage="ยังไม่มีประวัติ" />
+            <Card>
+              <CardContent className="p-0">
+                <DataTable columns={logColumns} data={logs} isLoading={logsLoading} emptyMessage="ยังไม่มีประวัติ" />
+              </CardContent>
+            </Card>
           </QueryBoundary>
         </>
       )}
@@ -712,7 +716,11 @@ export default function NotificationsPage() {
               + สร้าง Template
             </button>
           </div>
-          <DataTable columns={templateColumns} data={templates} isLoading={templatesLoading} emptyMessage="ยังไม่มี template" />
+          <Card>
+            <CardContent className="p-0">
+              <DataTable columns={templateColumns} data={templates} isLoading={templatesLoading} emptyMessage="ยังไม่มี template" />
+            </CardContent>
+          </Card>
         </>
       )}
 

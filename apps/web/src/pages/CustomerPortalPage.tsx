@@ -2,6 +2,8 @@ import { useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { formatDateShort, formatDateTime } from '@/utils/formatters';
+import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, contractStatusMap } from '@/lib/status-badges';
 
 interface ContractAccess {
   contract: {
@@ -129,13 +131,14 @@ function CustomerPortalPage() {
               <div className="text-xs text-muted-foreground">สัญญาเลขที่</div>
               <div className="font-bold text-lg">{c.contractNumber}</div>
             </div>
-            <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-              c.status === 'ACTIVE' ? 'bg-success/10 text-success dark:bg-success/15' :
-              c.status === 'COMPLETED' ? 'bg-blue-100 text-blue-700' :
-              'bg-warning/10 text-warning dark:bg-warning/15'
-            }`}>
-              {statusLabels[c.status] || c.status}
-            </span>
+            {(() => {
+              const cfg = getStatusBadgeProps(c.status, contractStatusMap);
+              return (
+                <Badge variant={cfg.variant} appearance={cfg.appearance}>
+                  {cfg.label}
+                </Badge>
+              );
+            })()}
           </div>
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div><span className="text-muted-foreground">ลูกค้า:</span> {c.customer.name}</div>

@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, contractStatusMap, riskLevelMap } from '@/lib/status-badges';
 import {
   User,
   FileText,
@@ -38,22 +40,13 @@ const channelColor: Record<string, string> = {
   WEB: 'bg-gray-100 text-gray-600',
 };
 
-const statusLabel: Record<string, string> = {
+const localContractStatusMap: Record<string, string> = {
   ACTIVE: 'ใช้งาน',
   OVERDUE: 'ค้างชำระ',
   DEFAULT: 'ผิดนัด',
   COMPLETED: 'ปิดแล้ว',
   CLOSED_EARLY: 'ปิดก่อน',
   CLOSED_BAD_DEBT: 'หนี้สูญ',
-};
-
-const statusColor: Record<string, string> = {
-  ACTIVE: 'bg-green-100 text-green-700',
-  OVERDUE: 'bg-amber-100 text-amber-700',
-  DEFAULT: 'bg-red-100 text-red-700',
-  COMPLETED: 'bg-blue-100 text-blue-700',
-  CLOSED_EARLY: 'bg-blue-100 text-blue-700',
-  CLOSED_BAD_DEBT: 'bg-red-100 text-red-700',
 };
 
 const sessionStatusLabel: Record<string, string> = {
@@ -115,12 +108,6 @@ export default function Customer360Panel({ customerId, activeSessionId }: Custom
   }
 
   const riskLevel = riskData?.riskLevel ?? 'NONE';
-  const riskBadge =
-    riskLevel === 'HIGH'
-      ? { label: 'เสี่ยงสูง', cls: 'bg-red-100 text-red-700 border-red-200' }
-      : riskLevel === 'MEDIUM'
-        ? { label: 'เฝ้าระวัง', cls: 'bg-amber-100 text-amber-700 border-amber-200' }
-        : { label: 'ปกติ', cls: 'bg-green-100 text-green-700 border-green-200' };
 
   return (
     <div className="w-72 flex-shrink-0 border-l border-gray-200 hidden lg:block overflow-y-auto h-full">
@@ -134,9 +121,14 @@ export default function Customer360Panel({ customerId, activeSessionId }: Custom
             <h3 className="font-semibold text-sm text-gray-900 truncate">{customer?.name}</h3>
             <p className="text-xs text-gray-500">{customer?.phone}</p>
           </div>
-          <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-medium ${riskBadge.cls}`}>
-            {riskBadge.label}
-          </span>
+          {(() => {
+            const riskCfg = getStatusBadgeProps(riskLevel, riskLevelMap);
+            return (
+              <Badge variant={riskCfg.variant} appearance={riskCfg.appearance} className="text-[10px] px-1.5 py-0.5">
+                {riskLevel === 'HIGH' ? 'เสี่ยงสูง' : riskLevel === 'MEDIUM' ? 'เฝ้าระวัง' : 'ปกติ'}
+              </Badge>
+            );
+          })()}
         </div>
 
         {customer?.email && (
@@ -167,9 +159,14 @@ export default function Customer360Panel({ customerId, activeSessionId }: Custom
               <div key={c.id} className="p-2.5 bg-gray-50 rounded-lg text-xs">
                 <div className="flex items-center justify-between mb-1">
                   <span className="font-medium text-gray-800">{c.contractNumber}</span>
-                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${statusColor[c.status] ?? 'bg-gray-100 text-gray-600'}`}>
-                    {statusLabel[c.status] ?? c.status}
-                  </span>
+                  {(() => {
+                    const sCfg = getStatusBadgeProps(c.status, contractStatusMap);
+                    return (
+                      <Badge variant={sCfg.variant} appearance={sCfg.appearance} className="text-[10px] px-1.5 py-0.5">
+                        {localContractStatusMap[c.status] ?? sCfg.label}
+                      </Badge>
+                    );
+                  })()}
                 </div>
 
                 {/* Product info */}

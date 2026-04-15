@@ -202,6 +202,67 @@ export const stockAdjustmentReasonMap: Record<string, StatusConfig> = {
   OTHER: { variant: 'secondary', label: 'อื่นๆ' },
 };
 
+// ─── Session / chat statuses ─────────────────────────────────────────────────
+
+export const sessionStatusMap: Record<string, StatusConfig> = {
+  OPEN: { variant: 'success', appearance: 'light', label: 'เปิด' },
+  PENDING: { variant: 'warning', appearance: 'light', label: 'รอ' },
+  HANDOFF: { variant: 'destructive', appearance: 'light', label: 'ส่งต่อ' },
+  RESOLVED: { variant: 'secondary', label: 'จบ' },
+  ARCHIVED: { variant: 'secondary', label: 'เก็บ' },
+};
+
+// ─── Session / message priority ──────────────────────────────────────────────
+
+export const sessionPriorityMap: Record<string, StatusConfig> = {
+  CRITICAL: { variant: 'destructive', label: 'CRITICAL' },
+  HIGH: { variant: 'warning', label: 'HIGH' },
+  NORMAL: { variant: 'secondary', label: 'ปกติ' },
+  LOW: { variant: 'secondary', label: 'ต่ำ' },
+};
+
+// ─── Chatbot KB response types ────────────────────────────────────────────────
+
+export const kbResponseTypeMap: Record<string, StatusConfig> = {
+  handoff: { variant: 'warning', appearance: 'light', label: 'handoff' },
+  info: { variant: 'info', appearance: 'light', label: 'info' },
+  auto: { variant: 'success', appearance: 'light', label: 'auto' },
+};
+
+// ─── Chatbot suggestion / KB suggestion statuses ──────────────────────────────
+
+export const kbSuggestionStatusMap: Record<string, StatusConfig> = {
+  PENDING: { variant: 'warning', appearance: 'light', label: 'รอตรวจสอบ' },
+  APPROVED: { variant: 'success', appearance: 'light', label: 'อนุมัติแล้ว' },
+  REJECTED: { variant: 'secondary', label: 'ปฏิเสธแล้ว' },
+};
+
+// ─── Chatbot suggestion source ────────────────────────────────────────────────
+
+export const kbSuggestionSourceMap: Record<string, StatusConfig> = {
+  handoff: { variant: 'warning', appearance: 'light', label: 'Handoff' },
+  low_rating: { variant: 'destructive', appearance: 'light', label: 'Feedback 👎' },
+  auto_analysis: { variant: 'info', appearance: 'light', label: 'Auto' },
+};
+
+// ─── Accounting period statuses ───────────────────────────────────────────────
+
+export const accountingPeriodStatusMap: Record<string, StatusConfig> = {
+  OPEN: { variant: 'secondary', label: 'เปิด' },
+  REVIEW: { variant: 'warning', appearance: 'light', label: 'รีวิว' },
+  CLOSED: { variant: 'primary', appearance: 'light', label: 'ปิดแล้ว' },
+  SYNCED: { variant: 'success', appearance: 'light', label: 'Sync แล้ว' },
+};
+
+// ─── Generic active/inactive ──────────────────────────────────────────────────
+
+export const activeStatusMap: Record<string, StatusConfig> = {
+  active: { variant: 'success', appearance: 'light', label: 'Active' },
+  inactive: { variant: 'secondary', label: 'Inactive' },
+  configured: { variant: 'success', appearance: 'light', label: 'ตั้งค่าแล้ว' },
+  not_configured: { variant: 'destructive', appearance: 'light', label: 'ยังไม่ได้ตั้งค่า' },
+};
+
 // ─── General helper ───────────────────────────────────────────────────────────
 
 /**

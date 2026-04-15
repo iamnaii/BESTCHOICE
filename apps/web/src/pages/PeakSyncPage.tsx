@@ -4,6 +4,8 @@ import { CheckCircle2, XCircle, RefreshCw, Link2, Calendar, Database } from 'luc
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
+import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, accountingPeriodStatusMap } from '@/lib/status-badges';
 import { formatDateMedium } from '@/utils/formatters';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -40,12 +42,6 @@ const THAI_MONTHS = [
   'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม',
 ];
 
-const STATUS_BADGE: Record<PeriodStatus, { label: string; cls: string }> = {
-  OPEN:   { label: 'เปิด',     cls: 'bg-gray-100 text-gray-600' },
-  REVIEW: { label: 'รีวิว',   cls: 'bg-yellow-100 text-yellow-700' },
-  CLOSED: { label: 'ปิดแล้ว', cls: 'bg-blue-100 text-blue-700' },
-  SYNCED: { label: 'Sync แล้ว', cls: 'bg-emerald-100 text-emerald-700' },
-};
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -269,7 +265,7 @@ export default function PeakSyncPage() {
                 </thead>
                 <tbody className="divide-y divide-border/40">
                   {periods.map((period) => {
-                    const badge = STATUS_BADGE[period.status] ?? STATUS_BADGE['OPEN'];
+                    const cfg = getStatusBadgeProps(period.status, accountingPeriodStatusMap);
                     return (
                       <tr
                         key={`${period.year}-${period.month}`}
@@ -279,11 +275,9 @@ export default function PeakSyncPage() {
                           {THAI_MONTHS[period.month - 1]}
                         </td>
                         <td className="px-5 py-3.5">
-                          <span
-                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${badge.cls}`}
-                          >
-                            {badge.label}
-                          </span>
+                          <Badge variant={cfg.variant} appearance={cfg.appearance}>
+                            {cfg.label}
+                          </Badge>
                         </td>
                         <td className="px-5 py-3.5 text-muted-foreground">
                           {period.peakSyncedAt ? (

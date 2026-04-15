@@ -7,6 +7,7 @@ import QueryBoundary from '@/components/QueryBoundary';
 import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { Badge } from '@/components/ui/badge';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -209,28 +210,22 @@ function WebhookRow({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="font-medium text-gray-900">{sub.name}</span>
-            <span
-              className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${
-                sub.isActive
-                  ? 'bg-emerald-100 text-emerald-700'
-                  : 'bg-gray-100 text-gray-500'
-              }`}
-            >
+            <Badge variant={sub.isActive ? 'success' : 'secondary'} appearance={sub.isActive ? 'light' : undefined} className="text-xs">
               {sub.isActive ? 'Active' : 'Inactive'}
-            </span>
+            </Badge>
             {sub.lastDelivery && (
-              <span
-                className={`inline-flex items-center gap-1 text-xs ${
-                  sub.lastDelivery.success ? 'text-emerald-600' : 'text-red-500'
-                }`}
+              <Badge
+                variant={sub.lastDelivery.success ? 'success' : 'destructive'}
+                appearance="light"
+                className="inline-flex items-center gap-1 text-xs"
               >
                 {sub.lastDelivery.success ? (
-                  <CheckCircle className="w-3.5 h-3.5" aria-hidden="true" />
+                  <CheckCircle className="w-3 h-3" aria-hidden="true" />
                 ) : (
-                  <XCircle className="w-3.5 h-3.5" aria-hidden="true" />
+                  <XCircle className="w-3 h-3" aria-hidden="true" />
                 )}
                 {sub.lastDelivery.success ? 'OK' : 'Failed'}
-              </span>
+              </Badge>
             )}
           </div>
           <p className="text-xs text-gray-400 mt-0.5 truncate font-mono">{sub.url}</p>

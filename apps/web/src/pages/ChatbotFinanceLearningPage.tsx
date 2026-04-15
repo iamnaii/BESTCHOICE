@@ -3,6 +3,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import { toast } from 'sonner';
 import QueryBoundary from '@/components/QueryBoundary';
+import { Badge } from '@/components/ui/badge';
+import { getStatusBadgeProps, kbSuggestionStatusMap, kbSuggestionSourceMap } from '@/lib/status-badges';
 
 interface LearningStats {
   suggestions: { pending: number; approved: number; rejected: number };
@@ -39,33 +41,20 @@ function StatCard({ label, value, accent = 'blue' }: { label: string; value: str
 }
 
 function SourceBadge({ source }: { source: string }) {
-  const styles: Record<string, string> = {
-    handoff: 'bg-orange-100 text-orange-700',
-    low_rating: 'bg-red-100 text-red-700',
-    auto_analysis: 'bg-purple-100 text-purple-700',
-  };
-  const labels: Record<string, string> = {
-    handoff: 'Handoff',
-    low_rating: 'Feedback \uD83D\uDC4E',
-    auto_analysis: 'Auto',
-  };
+  const cfg = getStatusBadgeProps(source, kbSuggestionSourceMap);
   return (
-    <span className={`text-[10px] px-2 py-0.5 rounded-full ${styles[source] ?? 'bg-gray-100 text-gray-600'}`}>
-      {labels[source] ?? source}
-    </span>
+    <Badge variant={cfg.variant} appearance={cfg.appearance} className="text-[10px] px-2 py-0.5">
+      {cfg.label}
+    </Badge>
   );
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const styles: Record<string, string> = {
-    PENDING: 'bg-yellow-100 text-yellow-700',
-    APPROVED: 'bg-green-100 text-green-700',
-    REJECTED: 'bg-gray-100 text-gray-500',
-  };
+  const cfg = getStatusBadgeProps(status, kbSuggestionStatusMap);
   return (
-    <span className={`text-[10px] px-2 py-0.5 rounded-full ${styles[status] ?? 'bg-gray-100'}`}>
-      {status}
-    </span>
+    <Badge variant={cfg.variant} appearance={cfg.appearance} className="text-[10px] px-2 py-0.5">
+      {cfg.label}
+    </Badge>
   );
 }
 

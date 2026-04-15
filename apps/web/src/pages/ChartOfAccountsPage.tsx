@@ -5,6 +5,7 @@ import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { Badge } from '@/components/ui/badge';
 
 type AccountGroup = 'ASSET' | 'LIABILITY' | 'EQUITY' | 'REVENUE' | 'EXPENSE';
 
@@ -279,9 +280,9 @@ export default function ChartOfAccountsPage() {
                         <td className="px-4 py-2">{a.level}</td>
                         <td className="px-4 py-2">
                           {a.isActive ? (
-                            <span className="text-xs px-2 py-0.5 rounded bg-emerald-100 text-emerald-700">ใช้งาน</span>
+                            <Badge variant="success" appearance="light">ใช้งาน</Badge>
                           ) : (
-                            <span className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">ปิด</span>
+                            <Badge variant="secondary">ปิด</Badge>
                           )}
                         </td>
                         <td className="px-4 py-2 text-right space-x-2">

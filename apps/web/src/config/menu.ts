@@ -39,6 +39,7 @@ import {
   Sparkles,
   Brain,
   Send,
+  LayoutGrid,
 } from 'lucide-react';
 
 /* ── Types ─────────────────────────────────────────── */
@@ -367,6 +368,8 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'CRM Pipeline', path: '/crm', icon: Kanban },
         { label: 'Audit Log', path: '/audit-logs', icon: ScrollText },
         { label: 'Broadcast', path: '/broadcast', icon: Send },
+        { label: 'Rich Menu', path: '/settings/rich-menu', icon: LayoutGrid },
+        { label: 'ข้อความต้อนรับ', path: '/settings/line-greeting', icon: MessageSquareMore },
       ],
     },
   ],

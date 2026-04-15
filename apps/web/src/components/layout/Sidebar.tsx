@@ -36,34 +36,34 @@ import type { MenuSection } from '@/config/menu';
 
 /* ── Role label map ─────────────────────────────── */
 const roleBadgeMap: Record<string, { label: string; cls: string }> = {
-  OWNER:          { label: 'เจ้าของ',         cls: 'bg-primary/20 text-primary' },
-  BRANCH_MANAGER: { label: 'ผจก.สาขา',        cls: 'bg-sky-500/20 text-sky-300' },
-  FINANCE_MANAGER:{ label: 'ผจก.การเงิน',     cls: 'bg-violet-500/20 text-violet-300' },
-  ACCOUNTANT:     { label: 'ฝ่ายบัญชี',       cls: 'bg-amber-500/20 text-amber-300' },
-  SALES:          { label: 'พนักงานขาย',      cls: 'bg-emerald-500/20 text-emerald-300' },
+  OWNER:          { label: 'OWNER',        cls: 'bg-gradient-to-r from-[#1e3a5f] to-[#059669] text-white' },
+  BRANCH_MANAGER: { label: 'ผจก.สาขา',    cls: 'bg-[#1e3a5f] text-white' },
+  FINANCE_MANAGER:{ label: 'การเงิน',      cls: 'bg-[#059669] text-white' },
+  ACCOUNTANT:     { label: 'บัญชี',        cls: 'bg-[#7c3aed] text-white' },
+  SALES:          { label: 'พนง.ขาย',      cls: 'bg-[#0ea5e9] text-white' },
 };
 
 /* ── Expanded menu AccordionMenu classNames ─────── */
 const expandedMenuClassNames: AccordionMenuClassNames = {
   root: 'space-y-0.5',
   item: [
-    'h-[34px] rounded-lg text-[13px] font-medium',
-    'text-white/55 hover:text-white hover:bg-white/6',
+    'h-[34px] rounded-md text-[12px] font-medium',
+    'text-white/45 hover:text-white/80 hover:bg-white/[0.06]',
     'transition-colors duration-150',
-    'data-[selected=true]:bg-white/9 data-[selected=true]:text-white',
+    'data-[selected=true]:bg-emerald-500/20 data-[selected=true]:text-emerald-300',
     'relative data-[selected=true]:before:absolute data-[selected=true]:before:left-0',
     'data-[selected=true]:before:top-[5px] data-[selected=true]:before:bottom-[5px]',
-    'data-[selected=true]:before:w-[3px] data-[selected=true]:before:bg-primary',
+    'data-[selected=true]:before:w-[3px] data-[selected=true]:before:bg-emerald-500',
     'data-[selected=true]:before:rounded-r-full',
   ].join(' '),
   sub: '',
   subTrigger: [
-    'h-[36px] rounded-lg text-[12px] font-semibold uppercase tracking-widest',
-    'text-white/30 hover:text-white/60 hover:bg-white/4',
-    'data-[state=open]:text-white/70 data-[state=open]:bg-white/4',
-    'transition-colors duration-150',
+    'h-[32px] rounded-md text-[10px] font-semibold uppercase tracking-[0.1em]',
+    'text-white/25 hover:text-white/50 hover:bg-transparent',
+    'data-[state=open]:text-white/40 data-[state=open]:bg-transparent',
+    'transition-colors duration-150 px-2',
   ].join(' '),
-  subContent: 'py-0.5 pl-3 border-l border-white/6 ml-3.5',
+  subContent: 'py-0.5 pl-0 border-l-0 ml-0',
 };
 
 /* ─── useRoleMenu ───────────────────────────────── */
@@ -102,13 +102,13 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
 
   return (
     <div
-      className="sidebar fixed top-0 bottom-0 left-0 z-20 w-[70px] flex flex-col items-center bg-sidebar-dark py-3 border-r border-white/4 shadow-[4px_0_24px_rgba(0,0,0,0.25)]"
+      className="sidebar fixed top-0 bottom-0 left-0 z-20 w-[70px] flex flex-col items-center bg-gradient-to-b from-[#1e3a5f] to-[#0f2035] py-3 border-r border-white/[0.06] shadow-[4px_0_24px_rgba(15,32,53,0.3)]"
       aria-label="เมนูหลัก (ย่อ)"
     >
       {/* Logo */}
       <Link to="/" className="flex items-center justify-center w-full mb-1 shrink-0 py-2">
-        <div className="size-[38px] rounded-xl bg-linear-to-br from-primary to-primary/70 flex items-center justify-center shadow-lg shadow-primary/30 ring-1 ring-white/10">
-          <span className="text-white text-[17px] font-bold leading-none">B</span>
+        <div className="size-[36px] rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-400 flex items-center justify-center shadow-lg shadow-emerald-500/20 shrink-0">
+          <span className="text-white text-[16px] font-bold leading-none">B</span>
         </div>
       </Link>
 
@@ -152,8 +152,8 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
                       className={cn(
                         'relative flex items-center justify-center size-10 w-full rounded-lg transition-all duration-200',
                         isSectionActive(section)
-                          ? 'bg-white/10 text-white before:absolute before:left-0 before:top-2.5 before:bottom-2.5 before:w-[3px] before:bg-primary before:rounded-r-full'
-                          : 'text-white/40 hover:text-white/80 hover:bg-white/[0.07]',
+                          ? 'bg-emerald-500/15 text-emerald-300 before:absolute before:left-0 before:top-2.5 before:bottom-2.5 before:w-[3px] before:bg-emerald-500 before:rounded-r-full'
+                          : 'text-white/35 hover:text-white/70 hover:bg-white/[0.06]',
                       )}
                       aria-label={section.label}
                     >
@@ -190,8 +190,8 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
                     className={cn(
                       'flex items-center gap-2.5 px-2.5 py-[7px] rounded-lg text-[13px] font-medium transition-colors duration-150',
                       isItemActive(item.path)
-                        ? 'bg-primary/10 text-primary'
-                        : 'text-foreground/75 hover:text-primary hover:bg-primary/6',
+                        ? 'bg-emerald-50 text-emerald-700'
+                        : 'text-foreground/75 hover:text-emerald-700 hover:bg-emerald-50/50',
                     )}
                   >
                     <item.icon
@@ -221,8 +221,8 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
           <TooltipProvider delayDuration={0}>
             <Tooltip>
               <TooltipTrigger asChild>
-                <div className="size-9 rounded-full bg-linear-to-br from-primary/40 to-primary/20 flex items-center justify-center cursor-default ring-2 ring-white/10">
-                  <span className="text-white text-sm font-bold">{user.name?.charAt(0)}</span>
+                <div className="size-9 rounded-full bg-white/10 flex items-center justify-center cursor-default ring-2 ring-white/10">
+                  <span className="text-emerald-300 text-sm font-bold">{user.name?.charAt(0)}</span>
                 </div>
               </TooltipTrigger>
               <TooltipContent side="right" sideOffset={12} className="text-[12px]">
@@ -273,32 +273,47 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
 
   return (
     <div
-      className="sidebar fixed top-0 bottom-0 left-0 z-20 w-[264px] flex flex-col bg-sidebar-dark border-r border-white/4 shadow-[4px_0_24px_rgba(0,0,0,0.25)] transition-all duration-300"
+      className="sidebar fixed top-0 bottom-0 left-0 z-20 w-[264px] flex flex-col bg-gradient-to-b from-[#1e3a5f] via-[#162d4a] to-[#0f2035] border-r border-white/[0.06] shadow-[4px_0_24px_rgba(15,32,53,0.3)] transition-all duration-300"
       aria-label="เมนูหลัก"
     >
       {/* ── Header ──────────────────────────────────── */}
-      <div className="flex items-center justify-between px-5 h-[70px] shrink-0 border-b border-white/5">
+      <div className="flex items-center px-5 h-[70px] shrink-0 border-b border-white/[0.06]">
         <Link to="/" className="flex items-center gap-3">
-          <div className="size-[38px] rounded-xl bg-linear-to-br from-primary to-primary/70 flex items-center justify-center shadow-lg shadow-primary/30 ring-1 ring-white/10 shrink-0">
-            <span className="text-white text-[17px] font-bold leading-none">B</span>
+          <div className="size-[36px] rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-400 flex items-center justify-center shadow-lg shadow-emerald-500/20 shrink-0">
+            <span className="text-white text-[16px] font-bold leading-none">B</span>
           </div>
           <div className="flex flex-col leading-tight">
-            <span className="text-[15px] font-extrabold text-white tracking-tight">
-              BEST<span className="text-primary">CHOICE</span>
+            <span className="text-[15px] font-bold text-white tracking-tight">
+              BESTCHOICE
             </span>
-            <span className="text-[10px] text-white/30 font-medium tracking-widest uppercase">
-              Finance System
+            <span className="text-[9px] text-white/30 font-medium tracking-widest uppercase">
+              Finance Management
             </span>
           </div>
         </Link>
-        <button
-          onClick={onToggle}
-          className="flex items-center justify-center size-7 rounded-lg text-white/25 hover:text-white/70 hover:bg-white/[0.07] transition-all duration-200 shrink-0"
-          aria-label="ย่อเมนู"
-        >
-          <ChevronsLeft className="size-4" />
-        </button>
       </div>
+
+      {/* ── User info ───────────────────────────────── */}
+      {user && (
+        <div className="flex items-center gap-2.5 px-5 py-3 border-b border-white/[0.06]">
+          <div className="size-8 rounded-full bg-white/10 flex items-center justify-center shrink-0">
+            <span className="text-emerald-300 text-xs font-bold">{user.name?.charAt(0)}</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[12px] font-medium text-white/70 truncate">{user.name}</p>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              {roleInfo && (
+                <span className={cn('inline-flex text-[9px] font-bold px-1.5 py-px rounded', roleInfo.cls)}>
+                  {roleInfo.label}
+                </span>
+              )}
+              {user.branchName && (
+                <span className="text-[9px] text-white/25 truncate">{user.branchName}</span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Navigation ──────────────────────────────── */}
       <ScrollArea className="flex-1 py-4 px-3">
@@ -332,41 +347,23 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
         </AccordionMenu>
       </ScrollArea>
 
-      {/* ── User footer ─────────────────────────────── */}
-      {user && (
-        <div className="px-4 py-3.5 border-t border-white/5 shrink-0 bg-white/1.5">
-          <div className="flex items-center gap-3">
-            {/* Avatar */}
-            <div className="size-9 rounded-full bg-linear-to-br from-primary/40 to-primary/20 flex items-center justify-center shrink-0 ring-2 ring-white/10">
-              <span className="text-white text-sm font-bold">{user.name?.charAt(0)}</span>
-            </div>
-
-            {/* Name + role */}
-            <div className="flex-1 min-w-0">
-              <p className="text-[13px] font-semibold text-white truncate leading-tight">{user.name}</p>
-              <div className="flex items-center gap-1.5 mt-0.5">
-                {roleInfo && (
-                  <span className={cn('inline-flex text-[10px] font-bold px-1.5 py-0.5 rounded-md', roleInfo.cls)}>
-                    {roleInfo.label}
-                  </span>
-                )}
-                {user.branchName && (
-                  <span className="text-[10px] text-white/30 truncate">{user.branchName}</span>
-                )}
-              </div>
-            </div>
-
-            {/* Logout */}
-            <button
-              onClick={logout}
-              className="flex items-center justify-center size-8 rounded-lg text-white/25 hover:text-red-400 hover:bg-red-500/10 transition-all duration-200 shrink-0"
-              aria-label="ออกจากระบบ"
-            >
-              <LogOut className="size-[15px]" />
-            </button>
-          </div>
-        </div>
-      )}
+      {/* ── Footer (collapse toggle + logout) ───────── */}
+      <div className="px-4 py-3 border-t border-white/[0.06] shrink-0 flex items-center justify-between">
+        <button
+          onClick={onToggle}
+          className="flex items-center justify-center size-8 rounded-lg text-white/25 hover:text-white/70 hover:bg-white/[0.07] transition-all duration-200"
+          aria-label="ย่อเมนู"
+        >
+          <ChevronsLeft className="size-4" />
+        </button>
+        <button
+          onClick={logout}
+          className="flex items-center justify-center size-8 rounded-lg text-white/25 hover:text-red-400 hover:bg-red-500/10 transition-all duration-200"
+          aria-label="ออกจากระบบ"
+        >
+          <LogOut className="size-[15px]" />
+        </button>
+      </div>
     </div>
   );
 }
@@ -387,21 +384,43 @@ function MobileSidebarContent() {
   const roleInfo = roleBadgeMap[role];
 
   return (
-    <div className="w-full h-full flex flex-col bg-sidebar-dark">
+    <div className="w-full h-full flex flex-col bg-gradient-to-b from-[#1e3a5f] via-[#162d4a] to-[#0f2035]">
       {/* Header */}
-      <div className="flex items-center gap-3 px-5 h-[66px] shrink-0 border-b border-white/5">
-        <div className="size-[36px] rounded-xl bg-linear-to-br from-primary to-primary/70 flex items-center justify-center shadow-lg shadow-primary/30 ring-1 ring-white/10 shrink-0">
-          <span className="text-white text-base font-bold leading-none">B</span>
+      <div className="flex items-center gap-3 px-5 h-[66px] shrink-0 border-b border-white/[0.06]">
+        <div className="size-[36px] rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-400 flex items-center justify-center shadow-lg shadow-emerald-500/20 shrink-0">
+          <span className="text-white text-[16px] font-bold leading-none">B</span>
         </div>
         <div className="flex flex-col leading-tight">
-          <span className="text-[15px] font-extrabold text-white tracking-tight">
-            BEST<span className="text-primary">CHOICE</span>
+          <span className="text-[15px] font-bold text-white tracking-tight">
+            BESTCHOICE
           </span>
-          <span className="text-[10px] text-white/30 font-medium tracking-widest uppercase">
-            Finance System
+          <span className="text-[9px] text-white/30 font-medium tracking-widest uppercase">
+            Finance Management
           </span>
         </div>
       </div>
+
+      {/* User info */}
+      {user && (
+        <div className="flex items-center gap-2.5 px-5 py-3 border-b border-white/[0.06]">
+          <div className="size-8 rounded-full bg-white/10 flex items-center justify-center shrink-0">
+            <span className="text-emerald-300 text-xs font-bold">{user.name?.charAt(0)}</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[12px] font-medium text-white/70 truncate">{user.name}</p>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              {roleInfo && (
+                <span className={cn('inline-flex text-[9px] font-bold px-1.5 py-px rounded', roleInfo.cls)}>
+                  {roleInfo.label}
+                </span>
+              )}
+              {user.branchName && (
+                <span className="text-[9px] text-white/25 truncate">{user.branchName}</span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Navigation */}
       <ScrollArea className="flex-1 py-4 px-3">
@@ -435,36 +454,16 @@ function MobileSidebarContent() {
         </AccordionMenu>
       </ScrollArea>
 
-      {/* User footer */}
-      {user && (
-        <div className="px-4 py-3.5 border-t border-white/5 shrink-0 bg-white/1.5">
-          <div className="flex items-center gap-3">
-            <div className="size-9 rounded-full bg-linear-to-br from-primary/40 to-primary/20 flex items-center justify-center shrink-0 ring-2 ring-white/10">
-              <span className="text-white text-sm font-bold">{user.name?.charAt(0)}</span>
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-[13px] font-semibold text-white truncate leading-tight">{user.name}</p>
-              <div className="flex items-center gap-1.5 mt-0.5">
-                {roleInfo && (
-                  <span className={cn('inline-flex text-[10px] font-bold px-1.5 py-0.5 rounded-md', roleInfo.cls)}>
-                    {roleInfo.label}
-                  </span>
-                )}
-                {user.branchName && (
-                  <span className="text-[10px] text-white/30 truncate">{user.branchName}</span>
-                )}
-              </div>
-            </div>
-            <button
-              onClick={logout}
-              className="flex items-center justify-center size-8 rounded-lg text-white/25 hover:text-red-400 hover:bg-red-500/10 transition-all duration-200 shrink-0"
-              aria-label="ออกจากระบบ"
-            >
-              <LogOut className="size-[15px]" />
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Footer (logout) */}
+      <div className="px-4 py-3 border-t border-white/[0.06] shrink-0 flex justify-end">
+        <button
+          onClick={logout}
+          className="flex items-center justify-center size-8 rounded-lg text-white/25 hover:text-red-400 hover:bg-red-500/10 transition-all duration-200"
+          aria-label="ออกจากระบบ"
+        >
+          <LogOut className="size-[15px]" />
+        </button>
+      </div>
     </div>
   );
 }

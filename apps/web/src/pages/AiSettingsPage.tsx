@@ -31,7 +31,12 @@ function AiSettingsForm({ initial }: { initial: AiSettings }) {
   }, [initial]);
 
   const mutation = useMutation({
-    mutationFn: (data: AiSettings) => api.patch('/staff-chat/ai/settings', data),
+    mutationFn: (data: AiSettings) => api.patch('/staff-chat/ai/settings', {
+      aiAutoEnabled: data.autoModeEnabled,
+      aiAutoChannels: data.enabledChannels,
+      aiAutoConfidenceThreshold: data.confidenceThreshold,
+      aiAutoMaxRepliesPerSession: data.maxRepliesPerSession,
+    }),
     onSuccess: () => {
       toast.success('บันทึกการตั้งค่า AI เรียบร้อย');
       queryClient.invalidateQueries({ queryKey: ['ai-settings'] });
@@ -179,7 +184,15 @@ function AiSettingsForm({ initial }: { initial: AiSettings }) {
 export default function AiSettingsPage() {
   const settingsQuery = useQuery<AiSettings>({
     queryKey: ['ai-settings'],
-    queryFn: () => api.get('/staff-chat/ai/settings').then((r: any) => r.data),
+    queryFn: () => api.get('/staff-chat/ai/settings').then((r: any) => {
+      const d = r.data?.data ?? r.data;
+      return {
+        autoModeEnabled: d.aiAutoEnabled ?? false,
+        enabledChannels: d.aiAutoChannels ?? [],
+        confidenceThreshold: d.aiAutoConfidenceThreshold ?? 70,
+        maxRepliesPerSession: d.aiAutoMaxRepliesPerSession ?? 5,
+      };
+    }),
   });
 
   const defaultSettings: AiSettings = {

@@ -1,0 +1,139 @@
+<h2>Flow งานประจำวันของแต่ละ Role</h2>
+<p class="subtitle">วิเคราะห์จาก business model — ช่วยตรวจว่าตรงกับความเป็นจริงไหม</p>
+
+<div class="section">
+  <h3>🟢 SALES — พนักงานขาย</h3>
+  <div class="mockup">
+    <div class="mockup-header">Flow หลัก: ขาย → สร้างสัญญา → รับเงิน</div>
+    <div class="mockup-body" style="padding:20px;">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <span style="background:#10b981;color:white;padding:6px 14px;border-radius:20px;font-size:14px;">1. เช็คสต็อก</span>
+        <span style="color:#666;">→</span>
+        <span style="background:#10b981;color:white;padding:6px 14px;border-radius:20px;font-size:14px;">2. ลูกค้าเข้าร้าน</span>
+        <span style="color:#666;">→</span>
+        <span style="background:#10b981;color:white;padding:6px 14px;border-radius:20px;font-size:14px;">3. ตรวจเครดิต</span>
+        <span style="color:#666;">→</span>
+        <span style="background:#10b981;color:white;padding:6px 14px;border-radius:20px;font-size:14px;">4. ขาย (POS)</span>
+        <span style="color:#666;">→</span>
+        <span style="background:#10b981;color:white;padding:6px 14px;border-radius:20px;font-size:14px;">5. สร้างสัญญาผ่อน</span>
+        <span style="color:#666;">→</span>
+        <span style="background:#10b981;color:white;padding:6px 14px;border-radius:20px;font-size:14px;">6. รับเงินดาวน์</span>
+      </div>
+      <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <span style="background:#6ee7b7;color:#065f46;padding:6px 14px;border-radius:20px;font-size:14px;">รับซื้อมือสอง (Trade-In)</span>
+        <span style="background:#6ee7b7;color:#065f46;padding:6px 14px;border-radius:20px;font-size:14px;">ดูยอดคอมฯ</span>
+        <span style="background:#6ee7b7;color:#065f46;padding:6px 14px;border-radius:20px;font-size:14px;">แชทลูกค้า (Inbox)</span>
+      </div>
+      <p style="margin-top:12px;font-size:13px;color:#888;">หน้าที่ใช้: สต็อก, ลูกค้า, ตรวจเครดิต, POS, สัญญา, ชำระ, Trade-In, คอมมิชชัน, Inbox</p>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>🔵 BRANCH_MANAGER — ผจก.สาขา</h3>
+  <div class="mockup">
+    <div class="mockup-header">Flow หลัก: ดูภาพรวม → จัดการสต็อก → ดูแลทีม</div>
+    <div class="mockup-body" style="padding:20px;">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <span style="background:#3b82f6;color:white;padding:6px 14px;border-radius:20px;font-size:14px;">1. Dashboard</span>
+        <span style="color:#666;">→</span>
+        <span style="background:#3b82f6;color:white;padding:6px 14px;border-radius:20px;font-size:14px;">2. เช็คสต็อก/แจ้งเตือน</span>
+        <span style="color:#666;">→</span>
+        <span style="background:#3b82f6;color:white;padding:6px 14px;border-radius:20px;font-size:14px;">3. สั่งซื้อ/โอนสต็อก</span>
+        <span style="color:#666;">→</span>
+        <span style="background:#3b82f6;color:white;padding:6px 14px;border-radius:20px;font-size:14px;">4. อนุมัติสัญญา</span>
+        <span style="color:#666;">→</span>
+        <span style="background:#3b82f6;color:white;padding:6px 14px;border-radius:20px;font-size:14px;">5. ดูยอดขาย</span>
+      </div>
+      <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <span style="background:#93c5fd;color:#1e3a5f;padding:6px 14px;border-radius:20px;font-size:14px;">ดูรายงาน</span>
+        <span style="background:#93c5fd;color:#1e3a5f;padding:6px 14px;border-radius:20px;font-size:14px;">จัดการ Supplier</span>
+        <span style="background:#93c5fd;color:#1e3a5f;padding:6px 14px;border-radius:20px;font-size:14px;">CRM / Inbox</span>
+        <span style="background:#93c5fd;color:#1e3a5f;padding:6px 14px;border-radius:20px;font-size:14px;">ค้างชำระ</span>
+      </div>
+      <p style="margin-top:12px;font-size:13px;color:#888;">หน้าที่ใช้: Dashboard, สต็อก(+alerts/transfers), PO, สัญญา, ยอดขาย, รายงาน, Supplier, CRM, ค้างชำระ</p>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>🟣 FINANCE_MANAGER — ผจก.การเงิน</h3>
+  <div class="mockup">
+    <div class="mockup-header">Flow หลัก: ตรวจค้างชำระ → ติดตาม → รับเงิน → จัดการพอร์ต</div>
+    <div class="mockup-body" style="padding:20px;">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <span style="background:#8b5cf6;color:white;padding:6px 14px;border-radius:20px;font-size:14px;">1. Dashboard</span>
+        <span style="color:#666;">→</span>
+        <span style="background:#8b5cf6;color:white;padding:6px 14px;border-radius:20px;font-size:14px;">2. ลูกค้าค้างชำระ</span>
+        <span style="color:#666;">→</span>
+        <span style="background:#8b5cf6;color:white;padding:6px 14px;border-radius:20px;font-size:14px;">3. Collection Dashboard</span>
+        <span style="color:#666;">→</span>
+        <span style="background:#8b5cf6;color:white;padding:6px 14px;border-radius:20px;font-size:14px;">4. รับชำระค่างวด</span>
+        <span style="color:#666;">→</span>
+        <span style="background:#8b5cf6;color:white;padding:6px 14px;border-radius:20px;font-size:14px;">5. ออกใบเสร็จ</span>
+      </div>
+      <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <span style="background:#c4b5fd;color:#3b0764;padding:6px 14px;border-radius:20px;font-size:14px;">Finance Portfolio</span>
+        <span style="background:#c4b5fd;color:#3b0764;padding:6px 14px;border-radius:20px;font-size:14px;">Finance Receivable</span>
+        <span style="background:#c4b5fd;color:#3b0764;padding:6px 14px;border-radius:20px;font-size:14px;">เปลี่ยน/ยึดเครื่อง</span>
+        <span style="background:#c4b5fd;color:#3b0764;padding:6px 14px;border-radius:20px;font-size:14px;">คอมมิชชัน</span>
+      </div>
+      <p style="margin-top:12px;font-size:13px;color:#888;">หน้าที่ใช้: Dashboard, ค้างชำระ, Collection, ชำระ, ใบเสร็จ, Portfolio, Receivable, Exchange, Repo, คอมฯ</p>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>🟡 ACCOUNTANT — ฝ่ายบัญชี</h3>
+  <div class="mockup">
+    <div class="mockup-header">Flow หลัก: บันทึกรายรับ-รายจ่าย → ตรวจสอบ → รายงาน</div>
+    <div class="mockup-body" style="padding:20px;">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <span style="background:#f59e0b;color:white;padding:6px 14px;border-radius:20px;font-size:14px;">1. ตรวจชำระ/ใบเสร็จ</span>
+        <span style="color:#666;">→</span>
+        <span style="background:#f59e0b;color:white;padding:6px 14px;border-radius:20px;font-size:14px;">2. บันทึกรายจ่าย</span>
+        <span style="color:#666;">→</span>
+        <span style="background:#f59e0b;color:white;padding:6px 14px;border-radius:20px;font-size:14px;">3. กำไร-ขาดทุน</span>
+        <span style="color:#666;">→</span>
+        <span style="background:#f59e0b;color:white;padding:6px 14px;border-radius:20px;font-size:14px;">4. ภาษี</span>
+      </div>
+      <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <span style="background:#fcd34d;color:#78350f;padding:6px 14px;border-radius:20px;font-size:14px;">ปิดบัญชีรายเดือน</span>
+        <span style="background:#fcd34d;color:#78350f;padding:6px 14px;border-radius:20px;font-size:14px;">ผังบัญชี</span>
+        <span style="background:#fcd34d;color:#78350f;padding:6px 14px;border-radius:20px;font-size:14px;">PEAK Sync</span>
+        <span style="background:#fcd34d;color:#78350f;padding:6px 14px;border-radius:20px;font-size:14px;">Financial Audit</span>
+      </div>
+      <p style="margin-top:12px;font-size:13px;color:#888;">หน้าที่ใช้: ชำระ, ใบเสร็จ, รายจ่าย, กำไร-ขาดทุน, ภาษี, Monthly Close, ผังบัญชี, PEAK, Audit</p>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>🔴 OWNER — เจ้าของ</h3>
+  <div class="mockup">
+    <div class="mockup-header">Flow หลัก: ภาพรวมธุรกิจ → ตัดสินใจ → ตั้งค่า</div>
+    <div class="mockup-body" style="padding:20px;">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <span style="background:#ef4444;color:white;padding:6px 14px;border-radius:20px;font-size:14px;">1. Dashboard KPIs</span>
+        <span style="color:#666;">→</span>
+        <span style="background:#ef4444;color:white;padding:6px 14px;border-radius:20px;font-size:14px;">2. รายงาน/กำไร-ขาดทุน</span>
+        <span style="color:#666;">→</span>
+        <span style="background:#ef4444;color:white;padding:6px 14px;border-radius:20px;font-size:14px;">3. Collection Overview</span>
+        <span style="color:#666;">→</span>
+        <span style="background:#ef4444;color:white;padding:6px 14px;border-radius:20px;font-size:14px;">4. ตั้งค่า/จัดการระบบ</span>
+      </div>
+      <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <span style="background:#fca5a5;color:#7f1d1d;padding:6px 14px;border-radius:20px;font-size:14px;">เข้าถึงทุกหน้า (54 หน้า)</span>
+        <span style="background:#fca5a5;color:#7f1d1d;padding:6px 14px;border-radius:20px;font-size:14px;">ตั้งค่าทั้งหมด (13 เมนู)</span>
+        <span style="background:#fca5a5;color:#7f1d1d;padding:6px 14px;border-radius:20px;font-size:14px;">Ads & ROI</span>
+      </div>
+      <p style="margin-top:12px;font-size:13px;color:#888;">ใช้ทุกหน้า แต่โฟกัส: Dashboard, Reports, P&L, Collection, Settings, Ads</p>
+    </div>
+  </div>
+</div>
+
+<div style="margin-top:24px;padding:16px;background:#1e293b;border-radius:12px;color:#94a3b8;">
+  <h3 style="color:#e2e8f0;margin-top:0;">💡 Key Insight</h3>
+  <p style="margin:8px 0;">ปัญหาหลัก: เมนูจัดตาม <strong style="color:#f87171;">"ประเภทข้อมูล"</strong> (สต็อก, สัญญา, ชำระ, ฯลฯ) แต่พนักงานคิดตาม <strong style="color:#34d399;">"flow งาน"</strong> (ขาย→สร้างสัญญา→รับเงิน)</p>
+  <p style="margin:8px 0;">ทำให้ต้อง click ข้าม section ไปมาตลอด — เช่น SALES ต้องกระโดดระหว่าง "ขาย" → "สัญญา" → "การเงิน" แค่จะปิดการขาย 1 รายการ</p>
+</div>

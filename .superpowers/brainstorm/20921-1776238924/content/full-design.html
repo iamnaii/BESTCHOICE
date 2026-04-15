@@ -1,0 +1,276 @@
+<h2>Design สรุป: Sidemenu & Navigation ใหม่</h2>
+<p class="subtitle">Role-based menu + Flow-based grouping + Chat on TopBar</p>
+
+<!-- Section 1: Architecture -->
+<div class="section">
+  <h3>1. Architecture Overview</h3>
+  <div class="mockup">
+    <div class="mockup-header">โครงสร้าง Navigation ใหม่</div>
+    <div class="mockup-body" style="padding:20px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+        <div>
+          <div style="font-size:12px;text-transform:uppercase;color:#f87171;font-weight:600;letter-spacing:1px;margin-bottom:8px;">❌ ก่อน (ปัจจุบัน)</div>
+          <ul style="font-size:14px;line-height:2;color:#94a3b8;">
+            <li>เมนูเดียวกันทุก role (ซ่อนตามสิทธิ์)</li>
+            <li>จัดตามประเภทข้อมูล (8 sections)</li>
+            <li>40+ menu items</li>
+            <li>แชทอยู่ใน sidebar กลุ่ม "แชท & CRM"</li>
+            <li>Mobile bottom nav เหมือนทุก role</li>
+          </ul>
+        </div>
+        <div>
+          <div style="font-size:12px;text-transform:uppercase;color:#34d399;font-weight:600;letter-spacing:1px;margin-bottom:8px;">✅ หลัง (ใหม่)</div>
+          <ul style="font-size:14px;line-height:2;color:#e2e8f0;">
+            <li><strong>แต่ละ role เห็นเมนูคนละชุด</strong></li>
+            <li><strong>จัดตาม flow งานจริง</strong></li>
+            <li>9-14 menu items ต่อ role</li>
+            <li><strong>แชทอยู่บน TopBar</strong> (ไอคอน + badge)</li>
+            <li><strong>Mobile bottom nav แยกตาม role</strong></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Section 2: Sidebar per Role -->
+<div class="section">
+  <h3>2. Sidebar แยกตาม Role</h3>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+    <!-- SALES -->
+    <div style="border:1px solid #334155;border-radius:12px;overflow:hidden;">
+      <div style="background:#10b981;color:white;padding:10px 16px;font-weight:600;">SALES — พนักงานขาย (9 เมนู)</div>
+      <div style="padding:4px 0;">
+        <div style="padding:6px 16px;font-size:11px;text-transform:uppercase;color:#10b981;font-weight:600;">งานขาย</div>
+        <div style="padding:6px 16px;font-size:14px;">🛒 ขายของ (POS)</div>
+        <div style="padding:6px 16px;font-size:14px;">👥 ลูกค้า</div>
+        <div style="padding:6px 16px;font-size:14px;">🔍 ตรวจเครดิต</div>
+        <div style="padding:6px 16px;font-size:14px;">📱 รับซื้อมือสอง</div>
+        <div style="padding:6px 16px;font-size:11px;text-transform:uppercase;color:#10b981;font-weight:600;margin-top:4px;">สัญญา & ชำระ</div>
+        <div style="padding:6px 16px;font-size:14px;">📄 สัญญาผ่อนชำระ</div>
+        <div style="padding:6px 16px;font-size:14px;">💰 รับชำระค่างวด</div>
+        <div style="padding:6px 16px;font-size:11px;text-transform:uppercase;color:#10b981;font-weight:600;margin-top:4px;">เครื่องมือ</div>
+        <div style="padding:6px 16px;font-size:14px;">📦 สต็อกสินค้า</div>
+        <div style="padding:6px 16px;font-size:14px;">💵 ค่าคอมมิชชัน</div>
+        <div style="padding:6px 16px;font-size:14px;">🔲 CRM Pipeline</div>
+      </div>
+    </div>
+
+    <!-- BRANCH_MANAGER -->
+    <div style="border:1px solid #334155;border-radius:12px;overflow:hidden;">
+      <div style="background:#3b82f6;color:white;padding:10px 16px;font-weight:600;">BRANCH_MGR — ผจก.สาขา (14 เมนู)</div>
+      <div style="padding:4px 0;">
+        <div style="padding:6px 16px;font-size:11px;text-transform:uppercase;color:#3b82f6;font-weight:600;">ภาพรวม</div>
+        <div style="padding:6px 16px;font-size:14px;">📊 Dashboard</div>
+        <div style="padding:6px 16px;font-size:14px;">📈 ยอดขาย</div>
+        <div style="padding:6px 16px;font-size:11px;text-transform:uppercase;color:#3b82f6;font-weight:600;margin-top:4px;">ขาย & สัญญา</div>
+        <div style="padding:6px 16px;font-size:14px;">🛒 ขายของ (POS)</div>
+        <div style="padding:6px 16px;font-size:14px;">👥 ลูกค้า</div>
+        <div style="padding:6px 16px;font-size:14px;">📄 สัญญาผ่อนชำระ</div>
+        <div style="padding:6px 16px;font-size:14px;">💰 รับชำระค่างวด</div>
+        <div style="padding:6px 16px;font-size:11px;text-transform:uppercase;color:#3b82f6;font-weight:600;margin-top:4px;">คลัง & จัดซื้อ</div>
+        <div style="padding:6px 16px;font-size:14px;">📦 สต็อกสินค้า</div>
+        <div style="padding:6px 16px;font-size:14px;">🚚 โอนสินค้า</div>
+        <div style="padding:6px 16px;font-size:14px;">📋 สั่งซื้อ (PO)</div>
+        <div style="padding:6px 16px;font-size:14px;">🏢 ผู้ขาย</div>
+        <div style="padding:6px 16px;font-size:11px;text-transform:uppercase;color:#3b82f6;font-weight:600;margin-top:4px;">ติดตาม & CRM</div>
+        <div style="padding:6px 16px;font-size:14px;">⚠️ ค้างชำระ</div>
+        <div style="padding:6px 16px;font-size:14px;">🔲 CRM Pipeline</div>
+        <div style="padding:6px 16px;font-size:14px;">📊 รายงาน</div>
+      </div>
+    </div>
+
+    <!-- FINANCE_MANAGER -->
+    <div style="border:1px solid #334155;border-radius:12px;overflow:hidden;">
+      <div style="background:#8b5cf6;color:white;padding:10px 16px;font-weight:600;">FINANCE_MGR — ผจก.การเงิน (13 เมนู)</div>
+      <div style="padding:4px 0;">
+        <div style="padding:6px 16px;font-size:11px;text-transform:uppercase;color:#8b5cf6;font-weight:600;">ภาพรวม</div>
+        <div style="padding:6px 16px;font-size:14px;">📊 Dashboard</div>
+        <div style="padding:6px 16px;font-size:14px;">💼 Finance Portfolio</div>
+        <div style="padding:6px 16px;font-size:11px;text-transform:uppercase;color:#8b5cf6;font-weight:600;margin-top:4px;">รับชำระ & สัญญา</div>
+        <div style="padding:6px 16px;font-size:14px;">📄 สัญญาผ่อนชำระ</div>
+        <div style="padding:6px 16px;font-size:14px;">💰 รับชำระค่างวด</div>
+        <div style="padding:6px 16px;font-size:14px;">💵 เงินรับจาก FINANCE</div>
+        <div style="padding:6px 16px;font-size:14px;">🧾 ใบเสร็จ</div>
+        <div style="padding:6px 16px;font-size:11px;text-transform:uppercase;color:#8b5cf6;font-weight:600;margin-top:4px;">ติดตามหนี้</div>
+        <div style="padding:6px 16px;font-size:14px;">⚠️ ลูกค้าค้างชำระ</div>
+        <div style="padding:6px 16px;font-size:14px;">📊 Collection Dashboard</div>
+        <div style="padding:6px 16px;font-size:14px;">🔄 เปลี่ยนเครื่อง</div>
+        <div style="padding:6px 16px;font-size:14px;">🔒 ยึดคืนเครื่อง</div>
+        <div style="padding:6px 16px;font-size:11px;text-transform:uppercase;color:#8b5cf6;font-weight:600;margin-top:4px;">การเงิน</div>
+        <div style="padding:6px 16px;font-size:14px;">💵 ค่าคอมมิชชัน</div>
+        <div style="padding:6px 16px;font-size:14px;">📝 รายจ่าย</div>
+        <div style="padding:6px 16px;font-size:14px;">📈 กำไร-ขาดทุน</div>
+      </div>
+    </div>
+
+    <!-- ACCOUNTANT -->
+    <div style="border:1px solid #334155;border-radius:12px;overflow:hidden;">
+      <div style="background:#f59e0b;color:white;padding:10px 16px;font-weight:600;">ACCOUNTANT — ฝ่ายบัญชี (12 เมนู)</div>
+      <div style="padding:4px 0;">
+        <div style="padding:6px 16px;font-size:11px;text-transform:uppercase;color:#f59e0b;font-weight:600;">งานประจำวัน</div>
+        <div style="padding:6px 16px;font-size:14px;">💰 รับชำระค่างวด</div>
+        <div style="padding:6px 16px;font-size:14px;">🧾 ใบเสร็จ</div>
+        <div style="padding:6px 16px;font-size:14px;">💵 เงินรับจาก FINANCE</div>
+        <div style="padding:6px 16px;font-size:14px;">📝 บันทึกรายจ่าย</div>
+        <div style="padding:6px 16px;font-size:11px;text-transform:uppercase;color:#f59e0b;font-weight:600;margin-top:4px;">รายงาน & ภาษี</div>
+        <div style="padding:6px 16px;font-size:14px;">📈 กำไร-ขาดทุน</div>
+        <div style="padding:6px 16px;font-size:14px;">🧮 ภาษี</div>
+        <div style="padding:6px 16px;font-size:14px;">📊 รายงาน</div>
+        <div style="padding:6px 16px;font-size:14px;">🏗️ สินทรัพย์</div>
+        <div style="padding:6px 16px;font-size:11px;text-transform:uppercase;color:#f59e0b;font-weight:600;margin-top:4px;">ปิดบัญชี & ตรวจสอบ</div>
+        <div style="padding:6px 16px;font-size:14px;">📅 ปิดบัญชีรายเดือน</div>
+        <div style="padding:6px 16px;font-size:14px;">📋 ผังบัญชี</div>
+        <div style="padding:6px 16px;font-size:14px;">🔗 PEAK Sync</div>
+        <div style="padding:6px 16px;font-size:14px;">🔍 ตรวจสอบบัญชี</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- OWNER -->
+  <div style="margin-top:16px;border:1px solid #334155;border-radius:12px;overflow:hidden;">
+    <div style="background:#ef4444;color:white;padding:10px 16px;font-weight:600;">OWNER — เจ้าของ (ทุกเมนู จัดตาม domain)</div>
+    <div style="padding:12px 16px;display:grid;grid-template-columns:repeat(3,1fr);gap:16px;">
+      <div>
+        <div style="font-size:11px;text-transform:uppercase;color:#ef4444;font-weight:600;margin-bottom:6px;">ภาพรวม</div>
+        <div style="font-size:13px;line-height:1.9;">📊 Dashboard<br>📈 รายงาน<br>📈 กำไร-ขาดทุน<br>🎯 Ads & ROI</div>
+      </div>
+      <div>
+        <div style="font-size:11px;text-transform:uppercase;color:#ef4444;font-weight:600;margin-bottom:6px;">หน้าร้าน</div>
+        <div style="font-size:13px;line-height:1.9;">🛒 POS<br>👥 ลูกค้า<br>🔍 ตรวจเครดิต<br>📱 รับซื้อมือสอง<br>📦 สต็อก<br>🚚 โอนสินค้า<br>📋 PO<br>🏢 ผู้ขาย</div>
+      </div>
+      <div>
+        <div style="font-size:11px;text-transform:uppercase;color:#ef4444;font-weight:600;margin-bottom:6px;">สัญญา & การเงิน</div>
+        <div style="font-size:13px;line-height:1.9;">📄 สัญญา<br>💰 รับชำระ<br>💵 Finance Receivable<br>💼 Finance Portfolio<br>🧾 ใบเสร็จ<br>💵 คอมมิชชัน<br>📝 รายจ่าย</div>
+      </div>
+      <div>
+        <div style="font-size:11px;text-transform:uppercase;color:#ef4444;font-weight:600;margin-bottom:6px;">ติดตามหนี้</div>
+        <div style="font-size:13px;line-height:1.9;">⚠️ ค้างชำระ<br>📊 Collection<br>🔄 เปลี่ยนเครื่อง<br>🔒 ยึดคืน</div>
+      </div>
+      <div>
+        <div style="font-size:11px;text-transform:uppercase;color:#ef4444;font-weight:600;margin-bottom:6px;">บัญชี & ภาษี</div>
+        <div style="font-size:13px;line-height:1.9;">🧮 ภาษี<br>📅 ปิดบัญชี<br>📋 ผังบัญชี<br>🔍 Audit<br>🏗️ สินทรัพย์<br>🔗 PEAK Sync</div>
+      </div>
+      <div>
+        <div style="font-size:11px;text-transform:uppercase;color:#ef4444;font-weight:600;margin-bottom:6px;">ตั้งค่า & ระบบ</div>
+        <div style="font-size:13px;line-height:1.9;">⚙️ ตั้งค่า<br>👤 ผู้ใช้<br>🏢 สาขา/บริษัท<br>📄 แบบสัญญา<br>💲 ตั้งราคา<br>🎁 โปรโมชัน<br>🔔 Dunning<br>📜 Audit Log<br>🔲 CRM & แชท</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Section 3: TopBar Chat -->
+<div class="section">
+  <h3>3. TopBar — แชทย้ายมาอยู่ขวาบน</h3>
+  <div class="mockup">
+    <div class="mockup-header">TopBar Layout</div>
+    <div class="mockup-body" style="padding:0;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 20px;background:#1e293b;">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div style="width:32px;height:32px;background:#3b82f6;border-radius:8px;display:flex;align-items:center;justify-content:center;color:white;font-size:14px;">☰</div>
+          <span style="font-size:16px;font-weight:600;color:white;">BESTCHOICE</span>
+          <span style="font-size:12px;color:#64748b;background:#334155;padding:2px 8px;border-radius:4px;">สาขาลาดพร้าว</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:16px;">
+          <!-- Chat icon with badge -->
+          <div style="position:relative;cursor:pointer;">
+            <div style="width:36px;height:36px;background:#334155;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;">💬</div>
+            <div style="position:absolute;top:-4px;right:-4px;background:#ef4444;color:white;font-size:10px;font-weight:700;padding:1px 5px;border-radius:10px;min-width:18px;text-align:center;">3</div>
+          </div>
+          <!-- Notification bell -->
+          <div style="position:relative;cursor:pointer;">
+            <div style="width:36px;height:36px;background:#334155;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;">🔔</div>
+            <div style="position:absolute;top:-4px;right:-4px;background:#f59e0b;color:white;font-size:10px;font-weight:700;padding:1px 5px;border-radius:10px;">5</div>
+          </div>
+          <!-- User avatar -->
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div style="width:32px;height:32px;background:#6366f1;border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-size:12px;">SM</div>
+            <div>
+              <div style="font-size:13px;color:white;">สมชาย</div>
+              <div style="font-size:10px;color:#10b981;">SALES</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Section 4: Mobile Bottom Nav -->
+<div class="section">
+  <h3>4. Mobile Bottom Nav — แยกตาม Role</h3>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+
+    <div style="border:1px solid #334155;border-radius:12px;overflow:hidden;">
+      <div style="background:#10b981;color:white;padding:6px 12px;font-size:13px;font-weight:600;">SALES</div>
+      <div style="display:flex;justify-content:space-around;padding:10px 4px;background:#0f172a;">
+        <div style="text-align:center;font-size:11px;color:#10b981;"><div style="font-size:18px;">🛒</div>POS</div>
+        <div style="text-align:center;font-size:11px;color:#94a3b8;"><div style="font-size:18px;">👥</div>ลูกค้า</div>
+        <div style="text-align:center;font-size:11px;color:#94a3b8;"><div style="font-size:18px;">📄</div>สัญญา</div>
+        <div style="text-align:center;font-size:11px;color:#94a3b8;position:relative;"><div style="font-size:18px;">💬</div>แชท<div style="position:absolute;top:-2px;right:2px;background:#ef4444;width:8px;height:8px;border-radius:50%;"></div></div>
+        <div style="text-align:center;font-size:11px;color:#94a3b8;"><div style="font-size:18px;">☰</div>เพิ่มเติม</div>
+      </div>
+    </div>
+
+    <div style="border:1px solid #334155;border-radius:12px;overflow:hidden;">
+      <div style="background:#3b82f6;color:white;padding:6px 12px;font-size:13px;font-weight:600;">BRANCH_MGR</div>
+      <div style="display:flex;justify-content:space-around;padding:10px 4px;background:#0f172a;">
+        <div style="text-align:center;font-size:11px;color:#3b82f6;"><div style="font-size:18px;">📊</div>Dashboard</div>
+        <div style="text-align:center;font-size:11px;color:#94a3b8;"><div style="font-size:18px;">📦</div>สต็อก</div>
+        <div style="text-align:center;font-size:11px;color:#94a3b8;"><div style="font-size:18px;">📄</div>สัญญา</div>
+        <div style="text-align:center;font-size:11px;color:#94a3b8;position:relative;"><div style="font-size:18px;">💬</div>แชท<div style="position:absolute;top:-2px;right:2px;background:#ef4444;width:8px;height:8px;border-radius:50%;"></div></div>
+        <div style="text-align:center;font-size:11px;color:#94a3b8;"><div style="font-size:18px;">☰</div>เพิ่มเติม</div>
+      </div>
+    </div>
+
+    <div style="border:1px solid #334155;border-radius:12px;overflow:hidden;">
+      <div style="background:#8b5cf6;color:white;padding:6px 12px;font-size:13px;font-weight:600;">FINANCE_MGR</div>
+      <div style="display:flex;justify-content:space-around;padding:10px 4px;background:#0f172a;">
+        <div style="text-align:center;font-size:11px;color:#8b5cf6;"><div style="font-size:18px;">📊</div>Dashboard</div>
+        <div style="text-align:center;font-size:11px;color:#94a3b8;"><div style="font-size:18px;">⚠️</div>ค้างชำระ</div>
+        <div style="text-align:center;font-size:11px;color:#94a3b8;"><div style="font-size:18px;">💰</div>ชำระ</div>
+        <div style="text-align:center;font-size:11px;color:#94a3b8;position:relative;"><div style="font-size:18px;">💬</div>แชท<div style="position:absolute;top:-2px;right:2px;background:#ef4444;width:8px;height:8px;border-radius:50%;"></div></div>
+        <div style="text-align:center;font-size:11px;color:#94a3b8;"><div style="font-size:18px;">☰</div>เพิ่มเติม</div>
+      </div>
+    </div>
+
+    <div style="border:1px solid #334155;border-radius:12px;overflow:hidden;">
+      <div style="background:#f59e0b;color:white;padding:6px 12px;font-size:13px;font-weight:600;">ACCOUNTANT</div>
+      <div style="display:flex;justify-content:space-around;padding:10px 4px;background:#0f172a;">
+        <div style="text-align:center;font-size:11px;color:#f59e0b;"><div style="font-size:18px;">💰</div>ชำระ</div>
+        <div style="text-align:center;font-size:11px;color:#94a3b8;"><div style="font-size:18px;">🧾</div>ใบเสร็จ</div>
+        <div style="text-align:center;font-size:11px;color:#94a3b8;"><div style="font-size:18px;">📝</div>รายจ่าย</div>
+        <div style="text-align:center;font-size:11px;color:#94a3b8;position:relative;"><div style="font-size:18px;">💬</div>แชท<div style="position:absolute;top:-2px;right:2px;background:#ef4444;width:8px;height:8px;border-radius:50%;"></div></div>
+        <div style="text-align:center;font-size:11px;color:#94a3b8;"><div style="font-size:18px;">☰</div>เพิ่มเติม</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Section 5: Key Decisions -->
+<div style="margin-top:24px;padding:20px;background:#1e293b;border-radius:12px;color:#94a3b8;">
+  <h3 style="color:#e2e8f0;margin-top:0;">Key Decisions สรุป</h3>
+  <table style="width:100%;border-collapse:collapse;font-size:14px;">
+    <tr style="border-bottom:1px solid #334155;">
+      <td style="padding:8px 0;color:#64748b;">Sidebar</td>
+      <td style="padding:8px 0;color:#e2e8f0;">แต่ละ role เห็นเมนูคนละชุด จัดตาม flow งาน</td>
+    </tr>
+    <tr style="border-bottom:1px solid #334155;">
+      <td style="padding:8px 0;color:#64748b;">กลุ่มเมนู</td>
+      <td style="padding:8px 0;color:#e2e8f0;">มีหัวกลุ่ม (section header) เรียงตามลำดับ flow</td>
+    </tr>
+    <tr style="border-bottom:1px solid #334155;">
+      <td style="padding:8px 0;color:#64748b;">แชท</td>
+      <td style="padding:8px 0;color:#e2e8f0;">ย้ายจาก sidebar → TopBar ขวาบน (ไอคอน + badge)</td>
+    </tr>
+    <tr style="border-bottom:1px solid #334155;">
+      <td style="padding:8px 0;color:#64748b;">Mobile Bottom Nav</td>
+      <td style="padding:8px 0;color:#e2e8f0;">แยกตาม role — 4 ปุ่มหลัก + "เพิ่มเติม" (แชทอยู่ใน bottom nav)</td>
+    </tr>
+    <tr>
+      <td style="padding:8px 0;color:#64748b;">Sidebar collapsed</td>
+      <td style="padding:8px 0;color:#e2e8f0;">คงเดิม — icon rail 70px, expand 264px</td>
+    </tr>
+  </table>
+</div>

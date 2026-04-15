@@ -182,6 +182,17 @@ export default function UnifiedInboxPage() {
     [activeRoomId, sendMessage, queryClient],
   );
 
+  const handleSendSticker = useCallback(
+    ({ packageId, stickerId }: { packageId: number; stickerId: number }) => {
+      if (!activeRoomId) return;
+      sendMessage(activeRoomId, `[sticker:${packageId}:${stickerId}]`);
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ['chat-messages', activeRoomId] });
+      }, 300);
+    },
+    [activeRoomId, sendMessage, queryClient],
+  );
+
   const uploadFileMutation = useMutation({
     mutationFn: async (file: File) => {
       if (!activeRoomId) throw new Error('ไม่มี room');
@@ -243,6 +254,7 @@ export default function UnifiedInboxPage() {
           isCustomerTyping={isCustomerTyping}
           onSendMessage={handleSendMessage}
           onSendFile={handleSendFile}
+          onSendSticker={handleSendSticker}
           onBack={() => setActiveRoomId(null)}
           onAssign={(staffId) =>
             activeRoomId && assignMutation.mutate({ roomId: activeRoomId, staffId })

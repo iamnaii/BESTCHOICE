@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { Brain, Upload, CheckCircle, Database, RefreshCw } from 'lucide-react';
 
 interface TrainingStats {
@@ -94,15 +95,15 @@ export default function AiTrainingPage() {
 
       {/* Re-extract action */}
       <div className="flex justify-end mb-4">
-        <button
+        <Button
           type="button"
           onClick={() => reExtractMutation.mutate()}
           disabled={reExtractMutation.isPending}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
+          className="flex items-center gap-2"
         >
           <RefreshCw className={`w-4 h-4 ${reExtractMutation.isPending ? 'animate-spin' : ''}`} />
           {reExtractMutation.isPending ? 'กำลังสกัด...' : 'Re-extract จาก Chat History'}
-        </button>
+        </Button>
       </div>
 
       {/* Stats */}
@@ -191,13 +192,13 @@ export default function AiTrainingPage() {
               />
             </div>
 
-            <button
+            <Button
               type="submit"
               disabled={!selectedFile || importMutation.isPending}
-              className="w-full px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-50 transition-colors"
+              className="w-full"
             >
               {importMutation.isPending ? 'กำลังนำเข้า...' : 'นำเข้าข้อมูล'}
-            </button>
+            </Button>
           </form>
         </CardContent>
       </Card>

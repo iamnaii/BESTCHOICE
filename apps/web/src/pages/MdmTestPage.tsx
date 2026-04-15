@@ -5,6 +5,8 @@ import { Search, Lock, Unlock, Smartphone, Wifi, WifiOff } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import QueryBoundary from '@/components/QueryBoundary';
 
@@ -168,22 +170,22 @@ export default function MdmTestPage() {
       <div className="rounded-xl border border-border/50 bg-card shadow-sm p-5 space-y-4">
         <h2 className="text-sm font-semibold text-foreground">ค้นหาเครื่องด้วย IMEI</h2>
         <div className="flex gap-2">
-          <input
+          <Input
             type="text"
             value={imeiInput}
             onChange={(e) => setImeiInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
             placeholder="ระบุ IMEI เช่น 356938035643809"
-            className="flex-1 px-3 py-2 rounded-md border border-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+            className="flex-1"
           />
-          <button
+          <Button
             onClick={handleSearch}
             disabled={deviceLoading}
-            className="flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm hover:bg-primary/90 disabled:opacity-50 transition-colors"
+            className="flex items-center gap-2"
           >
             <Search className="w-4 h-4" />
             {deviceLoading ? 'กำลังค้นหา...' : 'ค้นหา'}
-          </button>
+          </Button>
         </div>
 
         {/* Device result */}
@@ -244,24 +246,25 @@ export default function MdmTestPage() {
                 <h3 className="text-sm font-semibold text-foreground">Actions</h3>
                 <div className="flex gap-2 flex-wrap">
                   {/* Lock button */}
-                  <button
+                  <Button
+                    variant="destructive"
                     onClick={() => setShowLockForm(!showLockForm)}
                     disabled={isLocked || lockMutation.isPending}
-                    className="flex items-center gap-2 px-4 py-2 rounded-md bg-destructive text-destructive-foreground text-sm hover:bg-destructive/90 disabled:opacity-50 transition-colors"
+                    className="flex items-center gap-2"
                   >
                     <Lock className="w-4 h-4" />
                     ล็อคเครื่อง
-                  </button>
+                  </Button>
 
                   {/* Unlock button */}
-                  <button
+                  <Button
                     onClick={() => setConfirmUnlock(true)}
                     disabled={!isLocked || unlockMutation.isPending}
-                    className="flex items-center gap-2 px-4 py-2 rounded-md bg-green-600 text-white text-sm hover:bg-green-700 disabled:opacity-50 transition-colors"
+                    className="flex items-center gap-2 bg-green-600 hover:bg-green-700"
                   >
                     <Unlock className="w-4 h-4" />
                     ปลดล็อค
-                  </button>
+                  </Button>
                 </div>
 
                 {/* Lock reason form */}
@@ -271,33 +274,33 @@ export default function MdmTestPage() {
                     className="p-4 rounded-lg border border-border/50 bg-muted/20 space-y-3"
                   >
                     <p className="text-sm font-medium text-foreground">ระบุเหตุผลการล็อค</p>
-                    <input
+                    <Input
                       type="text"
                       value={lockReason}
                       onChange={(e) => setLockReason(e.target.value)}
                       placeholder="เช่น ค้างชำระ 3 งวด"
                       autoFocus
-                      className="w-full px-3 py-2 rounded-md border border-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
                     />
                     <div className="flex gap-2">
-                      <button
+                      <Button
                         type="submit"
+                        variant="destructive"
                         disabled={lockMutation.isPending}
-                        className="flex items-center gap-2 px-4 py-2 rounded-md bg-destructive text-destructive-foreground text-sm hover:bg-destructive/90 disabled:opacity-50 transition-colors"
+                        className="flex items-center gap-2"
                       >
                         <Lock className="w-4 h-4" />
                         {lockMutation.isPending ? 'กำลังล็อค...' : 'ยืนยันล็อค'}
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         type="button"
+                        variant="outline"
                         onClick={() => {
                           setShowLockForm(false);
                           setLockReason('');
                         }}
-                        className="px-4 py-2 rounded-md border border-border text-sm hover:bg-muted transition-colors"
                       >
                         ยกเลิก
-                      </button>
+                      </Button>
                     </div>
                   </form>
                 )}

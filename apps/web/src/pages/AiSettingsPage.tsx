@@ -5,6 +5,10 @@ import { toast } from 'sonner';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Switch } from '@/components/ui/switch';
+import { Slider } from '@/components/ui/slider';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { Sparkles } from 'lucide-react';
 
 const CHANNELS = [
@@ -72,21 +76,10 @@ function AiSettingsForm({ initial }: { initial: AiSettings }) {
         </CardHeader>
         <CardContent>
           <label className="flex items-center gap-3 cursor-pointer">
-            <button
-              type="button"
-              role="switch"
-              aria-checked={form.autoModeEnabled}
-              onClick={() => setForm((prev) => ({ ...prev, autoModeEnabled: !prev.autoModeEnabled }))}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 ${
-                form.autoModeEnabled ? 'bg-purple-600' : 'bg-gray-200'
-              }`}
-            >
-              <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
-                  form.autoModeEnabled ? 'translate-x-6' : 'translate-x-1'
-                }`}
-              />
-            </button>
+            <Switch
+              checked={form.autoModeEnabled}
+              onCheckedChange={(checked) => setForm((prev) => ({ ...prev, autoModeEnabled: checked }))}
+            />
             <span className="text-sm text-gray-700">
               {form.autoModeEnabled ? 'เปิดใช้งาน — AI จะตอบอัตโนมัติ' : 'ปิดใช้งาน — ไม่มีการตอบอัตโนมัติ'}
             </span>
@@ -133,13 +126,13 @@ function AiSettingsForm({ initial }: { initial: AiSettings }) {
             <span className="text-sm text-gray-500">ยิ่งสูง AI ยิ่งตอบน้อย แต่แม่นกว่า</span>
             <span className="text-lg font-bold text-purple-600">{form.confidenceThreshold}%</span>
           </div>
-          <input
-            type="range"
+          <Slider
+            value={[form.confidenceThreshold]}
+            onValueChange={([val]) => setForm((prev) => ({ ...prev, confidenceThreshold: val }))}
             min={0}
             max={100}
-            value={form.confidenceThreshold}
-            onChange={(e) => setForm((prev) => ({ ...prev, confidenceThreshold: Number(e.target.value) }))}
-            className="w-full accent-purple-600"
+            step={1}
+            className="w-full"
           />
           <div className="flex justify-between text-xs text-gray-400">
             <span>0% — ตอบมาก</span>
@@ -155,13 +148,13 @@ function AiSettingsForm({ initial }: { initial: AiSettings }) {
         </CardHeader>
         <CardContent>
           <div className="flex items-center gap-3">
-            <input
+            <Input
               type="number"
               min={1}
               max={100}
               value={form.maxRepliesPerSession}
               onChange={(e) => setForm((prev) => ({ ...prev, maxRepliesPerSession: Number(e.target.value) }))}
-              className="w-28 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+              className="w-28"
             />
             <span className="text-sm text-gray-500">ครั้ง — หลังจากนี้จะโอนให้พนักงาน</span>
           </div>
@@ -169,13 +162,9 @@ function AiSettingsForm({ initial }: { initial: AiSettings }) {
       </Card>
 
       <div className="flex justify-end">
-        <button
-          type="submit"
-          disabled={mutation.isPending}
-          className="px-6 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-50 transition-colors"
-        >
+        <Button type="submit" disabled={mutation.isPending}>
           {mutation.isPending ? 'กำลังบันทึก...' : 'บันทึกการตั้งค่า'}
-        </button>
+        </Button>
       </div>
     </form>
   );

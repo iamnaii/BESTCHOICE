@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
+import { Input } from '@/components/ui/input';
 import { BarChart3, Bot, ThumbsUp, ArrowRightLeft, Database, TrendingUp } from 'lucide-react';
 
 interface AiMetrics {
@@ -66,20 +67,20 @@ export default function AiPerformancePage() {
       <div className="flex items-center gap-3 mb-6 flex-wrap">
         <div className="flex items-center gap-2">
           <label className="text-sm text-gray-600">จาก</label>
-          <input
+          <Input
             type="date"
             value={from}
             onChange={(e) => setFrom(e.target.value)}
-            className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+            className="w-auto"
           />
         </div>
         <div className="flex items-center gap-2">
           <label className="text-sm text-gray-600">ถึง</label>
-          <input
+          <Input
             type="date"
             value={to}
             onChange={(e) => setTo(e.target.value)}
-            className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+            className="w-auto"
           />
         </div>
       </div>

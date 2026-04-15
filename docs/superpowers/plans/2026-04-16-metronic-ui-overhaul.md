@@ -1048,7 +1048,203 @@ git commit -m "feat: add gradient PageHeader to all remaining pages"
 
 ---
 
-### Task 18: Final Verification + Cleanup
+### Task 18: Update Login + Auth Pages
+
+**Files:**
+- Modify: `apps/web/src/pages/LoginPage.tsx`
+- Modify: `apps/web/src/pages/ForgotPasswordPage.tsx`
+- Modify: `apps/web/src/pages/ResetPasswordPage.tsx`
+- Explore: `apps/web/src/components/layout/` for AuthLayout if it exists
+
+Login, Forgot, Reset pages use `bg-primary` / `text-primary` which already picks up Navy from Task 1. But we need to add brand identity and Emerald CTA.
+
+- [ ] **Step 1: Update LoginPage — add brand header + Emerald login button**
+
+Add a brand section at the top of the login card:
+
+```tsx
+{/* Brand */}
+<div className="flex items-center gap-3 mb-6">
+  <div className="size-10 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-400 flex items-center justify-center shadow-lg shadow-emerald-500/20">
+    <span className="text-white text-lg font-bold">B</span>
+  </div>
+  <div>
+    <div className="text-lg font-bold text-foreground">BESTCHOICE</div>
+    <div className="text-xs text-muted-foreground">Finance Management</div>
+  </div>
+</div>
+```
+
+Change login button from `bg-primary` to Emerald CTA:
+
+```tsx
+className="w-full bg-[#059669] text-white h-10 px-4 rounded-lg font-semibold hover:bg-[#047857] shadow-[0_2px_8px_rgba(5,150,105,0.25)]"
+```
+
+Update dev quick-login cards border from `border-primary/20` to `border-[#1e3a5f]/20 hover:bg-[#f0f5ff]`.
+
+- [ ] **Step 2: Update ForgotPasswordPage + ResetPasswordPage**
+
+Same pattern — add brand header, change submit button to Emerald.
+
+- [ ] **Step 3: Check if AuthLayout exists and update background**
+
+If there's a shared AuthLayout wrapper, add a subtle gradient or pattern background:
+
+```tsx
+className="min-h-screen bg-gradient-to-br from-[#f8fafc] to-[#f0f5ff] flex items-center justify-center p-4"
+```
+
+- [ ] **Step 4: Verify auth flow**
+
+Open: /login → login → /forgot-password → /reset-password
+Check: brand logo, Emerald buttons, Navy links, consistent look.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add apps/web/src/pages/LoginPage.tsx apps/web/src/pages/ForgotPasswordPage.tsx apps/web/src/pages/ResetPasswordPage.tsx
+git commit -m "style: update auth pages — brand header, Emerald CTA, Navy links"
+```
+
+---
+
+### Task 19: Update Landing Page
+
+**Files:**
+- Modify: `apps/web/src/pages/LandingPage.tsx`
+- Modify: `apps/web/src/index.css` (hero gradient variables)
+
+Landing page is the public face — must match Navy+Emerald brand.
+
+- [ ] **Step 1: Update hero gradient variables in index.css**
+
+The hero gradient (`--color-hero-*`) was already updated in Task 1. Verify these values:
+
+```css
+--color-hero-1: #0f2035;
+--color-hero-2: #162d4a;
+--color-hero-3: #1e3a5f;
+--color-hero-4: #234b73;
+--color-hero-5: #059669;
+```
+
+- [ ] **Step 2: Update CTA buttons in hero**
+
+Primary CTA — change to Emerald:
+
+```tsx
+className="px-8 py-3 bg-[#059669] hover:bg-[#047857] text-white rounded-xl font-semibold shadow-lg shadow-emerald-500/20 transition-all"
+```
+
+Secondary CTA — keep ghost white:
+
+```tsx
+className="px-8 py-3 border border-white/30 text-white hover:bg-white/10 rounded-xl font-medium transition-all"
+```
+
+- [ ] **Step 3: Update service cards icon wrapper**
+
+Change from `bg-primary/10 text-primary` to:
+
+```tsx
+className="w-14 h-14 rounded-xl bg-[#f0f5ff] text-[#1e3a5f] group-hover:bg-[#059669] group-hover:text-white transition-all"
+```
+
+- [ ] **Step 4: Update footer**
+
+Change `bg-primary-950` to Navy dark:
+
+```tsx
+className="bg-[#0f2035] text-gray-400"
+```
+
+- [ ] **Step 5: Update stat cards in hero**
+
+Make sure stat cards use Navy-tinted glass:
+
+```tsx
+className="bg-white/6 backdrop-blur-sm border border-white/10 rounded-xl p-4"
+```
+
+- [ ] **Step 6: Verify landing page**
+
+Open /landing — check hero gradient (Navy→Emerald), CTA buttons, service cards hover, footer.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add apps/web/src/pages/LandingPage.tsx apps/web/src/index.css
+git commit -m "style: update LandingPage — Navy+Emerald hero, green CTA, Navy footer"
+```
+
+---
+
+### Task 20: Update LIFF Pages (Customer-Facing Mobile)
+
+**Files:**
+- Modify: `apps/web/src/pages/liff/LiffContract.tsx`
+- Modify: `apps/web/src/pages/liff/LiffPayment.tsx`
+- Modify: `apps/web/src/pages/liff/LiffHistory.tsx`
+- Modify: `apps/web/src/pages/liff/LiffProfile.tsx`
+- Modify: `apps/web/src/pages/liff/LiffRegister.tsx`
+- Modify: `apps/web/src/pages/liff/LiffEarlyPayoff.tsx`
+- Modify: `apps/web/src/pages/liff/LiffFinanceVerify.tsx`
+- Modify: `apps/web/src/pages/liff/LiffBranches.tsx`
+- Modify: `apps/web/src/pages/liff/LiffReceipts.tsx`
+- Modify: `apps/web/src/pages/liff/LiffNotificationSettings.tsx`
+
+All LIFF pages share a pattern: `bg-primary` header with `text-primary-foreground`. Since Task 1 changed `--primary` to Navy, the headers will already be Navy. But we want to make them look premium with a gradient.
+
+- [ ] **Step 1: Update LIFF header pattern across all 10 pages**
+
+Every LIFF page has a header block like:
+
+```tsx
+<div className="bg-primary rounded-xl p-5 text-primary-foreground">
+```
+
+Change to gradient + refined styling:
+
+```tsx
+<div className="bg-gradient-to-r from-[#1e3a5f] to-[#059669] rounded-xl p-5 text-white shadow-md">
+```
+
+Do this for all 10 LIFF files. Search for `bg-primary rounded-xl p-5` pattern.
+
+- [ ] **Step 2: Update LIFF CTA buttons**
+
+In LiffPayment.tsx and LiffEarlyPayoff.tsx, the main payment button should be Emerald:
+
+Find `variant="primary"` buttons and verify they render as Emerald (should already work from Task 6).
+
+- [ ] **Step 3: Update LIFF icon boxes**
+
+Change `bg-primary/10 text-primary` to:
+
+```tsx
+className="bg-[#f0f5ff] text-[#1e3a5f]"
+```
+
+- [ ] **Step 4: Verify LIFF pages**
+
+These are tricky to test without LINE LIFF SDK. Open directly:
+- /liff/contract
+- /liff/history  
+- /liff/profile
+
+Check: gradient headers, Navy text, Emerald buttons, consistent look.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add apps/web/src/pages/liff/
+git commit -m "style: update LIFF pages — gradient headers, Navy+Emerald brand consistency"
+```
+
+---
+
+### Task 21: Final Verification + Cleanup
 
 - [ ] **Step 1: Run full type check**
 
@@ -1075,6 +1271,9 @@ Navigate every major page, verify:
 - Modal overlay is Navy-tinted
 - Mobile bottom nav has Emerald active
 - Dark mode works across all changes
+- Login page: brand logo, Emerald login button
+- Landing page: Navy→Emerald hero gradient, green CTA
+- LIFF pages: gradient headers, consistent brand
 
 - [ ] **Step 4: Commit any final fixes**
 

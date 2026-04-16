@@ -32,7 +32,11 @@ export class LiffTokenGuard implements CanActivate {
 
   constructor(private config: ConfigService) {
     // LIFF channel ID (LINE Login channel, not Messaging API)
-    this.channelId = this.config.get<string>('LIFF_CHANNEL_ID') || '2009442540';
+    const channelId = this.config.get<string>('LIFF_CHANNEL_ID');
+    if (!channelId) {
+      this.logger.error('LIFF_CHANNEL_ID is not configured — LIFF auth will fail');
+    }
+    this.channelId = channelId || '';
   }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {

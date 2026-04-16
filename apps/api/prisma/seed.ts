@@ -9,6 +9,13 @@ import { seedKnowledgeBase } from './seeds/knowledge-base';
 const prisma = new PrismaClient();
 
 async function main() {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      '❌ Cannot run seed in production! This script deletes ALL data. ' +
+        'Use seed-production.ts for production master data.',
+    );
+  }
+
   console.log('=== Resetting & Seeding database ===');
 
   // DELETE ALL DATA (reverse dependency order)

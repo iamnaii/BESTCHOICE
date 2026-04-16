@@ -263,7 +263,7 @@ export default function ChatPanel({
 
   if (!session) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center text-center px-8 bg-muted/20">
+      <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
         <div className="relative mb-5">
           <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center">
             <MessageSquare className="w-8 h-8 text-primary/40" />

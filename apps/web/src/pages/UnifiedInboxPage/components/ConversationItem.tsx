@@ -84,11 +84,11 @@ export default function ConversationItem({ session, isActive, onClick, onPin }: 
   return (
     <div
       className={cn(
-        'relative group flex items-start gap-3 px-3 py-3 mx-1.5 my-0.5 rounded-lg cursor-pointer transition-all duration-150',
+        'relative group flex items-start gap-3 px-4 py-3 cursor-pointer transition-colors duration-100 border-b border-border/40',
         isActive
-          ? 'bg-primary/8 ring-1 ring-primary/20'
-          : 'hover:bg-muted/50',
-        isPinned && !isActive && 'bg-amber-50/30',
+          ? 'bg-primary/5 border-l-2 border-l-primary'
+          : 'hover:bg-muted/40',
+        isPinned && !isActive && 'bg-amber-50/20',
       )}
       onClick={onClick}
     >
@@ -163,7 +163,7 @@ export default function ConversationItem({ session, isActive, onClick, onPin }: 
             onPin(session.id, isPinned);
           }}
           className={cn(
-            'absolute right-1.5 top-1.5 p-1 rounded-md transition-all',
+            'absolute right-2 top-2 p-1 rounded-md transition-all',
             isPinned
               ? 'text-amber-500 opacity-100'
               : 'text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-amber-500 hover:bg-muted',

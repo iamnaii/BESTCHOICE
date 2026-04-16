@@ -32,8 +32,8 @@ export default function ChannelFilter({
 }: ChannelFilterProps) {
   return (
     <div>
-      {/* Main tabs — pill style */}
-      <div className="flex gap-1 px-3 py-2">
+      {/* Main tabs */}
+      <div className="flex px-4 pt-1 gap-0.5">
         {TABS.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.key;
@@ -42,10 +42,10 @@ export default function ChannelFilter({
               key={tab.key}
               onClick={() => onTabChange(tab.key)}
               className={cn(
-                'flex-1 flex items-center justify-center gap-1.5 py-1.5 text-[11px] font-semibold rounded-md transition-all duration-200',
+                'flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-medium rounded-md transition-colors',
                 isActive
-                  ? 'bg-primary text-primary-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/70',
+                  ? 'bg-muted text-foreground'
+                  : 'text-muted-foreground hover:text-foreground',
               )}
             >
               <Icon className="w-3 h-3" />

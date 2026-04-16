@@ -102,7 +102,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
 
   if (!customerId) {
     return (
-      <div className="w-80 border-l border-border flex flex-col items-center justify-center text-center p-6 bg-muted/20">
+      <div className="w-80 border-l border-border flex flex-col items-center justify-center text-center p-6">
         <div className="relative mb-4">
           <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-muted to-muted/50 flex items-center justify-center">
             <User className="w-7 h-7 text-muted-foreground/30" />

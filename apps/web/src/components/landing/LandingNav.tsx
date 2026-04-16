@@ -60,6 +60,8 @@ export default function LandingNav({ onScrollTo }: LandingNavProps) {
           {/* Mobile Menu Button */}
           <button
             onClick={() => setMobileOpen(!mobileOpen)}
+            aria-label={mobileOpen ? 'ปิดเมนู' : 'เปิดเมนู'}
+            aria-expanded={mobileOpen}
             className="md:hidden p-2 text-white/70 hover:text-white"
           >
             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">

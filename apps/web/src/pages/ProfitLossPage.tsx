@@ -1,14 +1,16 @@
-import { useState } from 'react';
+import { useState, lazy, Suspense } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import QueryBoundary from '@/components/QueryBoundary';
 import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { TrendingUp, TrendingDown, DollarSign, ArrowDown, ArrowUp, Minus } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { formatDateMedium } from '@/utils/formatters';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import CompanyFilter from '@/components/CompanyFilter';
+
+// Lazy-load recharts to keep it out of the initial bundle (~200KB gzip)
+const PLChart = lazy(() => import('@/components/charts/PLChart'));
 
 interface PLData {
   period: { start: string; end: string };
@@ -245,18 +247,9 @@ export default function ProfitLossPage() {
                 <h2 className="text-lg font-bold">เปรียบเทียบรายเดือน {monthlyData.year}</h2>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={monthlyData.months}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="label" />
-                    <YAxis tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
-                    <Tooltip formatter={(v) => fmt(v as number)} />
-                    <Legend />
-                    <Bar dataKey="revenue" name="รายได้" fill="#22c55e" />
-                    <Bar dataKey="expenses" name="ค่าใช้จ่าย" fill="#ef4444" />
-                    <Bar dataKey="netProfit" name="กำไรสุทธิ" fill="#3b82f6" />
-                  </BarChart>
-                </ResponsiveContainer>
+                <Suspense fallback={<div className="h-[300px] flex items-center justify-center text-muted-foreground text-sm">กำลังโหลดกราฟ...</div>}>
+                  <PLChart data={monthlyData.months} formatter={fmt} />
+                </Suspense>
               </CardContent>
             </Card>
           )}

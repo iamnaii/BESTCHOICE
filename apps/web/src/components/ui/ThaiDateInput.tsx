@@ -178,6 +178,7 @@ export default function ThaiDateInput({
           <div className="flex items-center justify-between mb-2">
             <button
               type="button"
+              aria-label="ย้อนกลับ"
               onClick={() => { if (viewMode === 'years') setYearRangeStart(yearRangeStart - 12); else prevMonth(); }}
               className="size-8 flex items-center justify-center rounded-md hover:bg-accent text-muted-foreground hover:text-foreground"
             >
@@ -200,6 +201,7 @@ export default function ThaiDateInput({
             </button>
             <button
               type="button"
+              aria-label="ถัดไป"
               onClick={() => { if (viewMode === 'years') setYearRangeStart(yearRangeStart + 12); else nextMonth(); }}
               className="size-8 flex items-center justify-center rounded-md hover:bg-accent text-muted-foreground hover:text-foreground"
             >

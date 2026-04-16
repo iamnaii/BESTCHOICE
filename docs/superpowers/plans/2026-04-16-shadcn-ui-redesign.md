@@ -57,12 +57,12 @@ Replace the entire `:root` block (lines 274-335) with:
     --input: 240 5.9% 90%;
     --ring: 160 84% 39%;
     --radius: 0.5rem;
-    /* Sidebar — Dark zinc */
-    --sidebar-bg: 240 5.9% 10%;
-    --sidebar-fg: 0 0% 98%;
+    /* Sidebar — White/Light */
+    --sidebar-bg: 0 0% 100%;
+    --sidebar-fg: 240 10% 3.9%;
     --sidebar-active: 160 84% 39%;
-    --sidebar-hover: 240 3.7% 15.9%;
-    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-hover: 240 4.8% 95.9%;
+    --sidebar-border: 240 5.9% 90%;
     /* Charts — emerald-led */
     --chart-1: 160 84% 39%;
     --chart-2: 240 5% 64.9%;
@@ -128,11 +128,11 @@ Replace the entire `.dark` block (lines 337-378) with:
     --border: 240 3.7% 15.9%;
     --input: 240 3.7% 15.9%;
     --ring: 160 84% 39%;
-    /* Sidebar */
-    --sidebar-bg: 240 5.9% 10%;
+    /* Sidebar — dark mode */
+    --sidebar-bg: 240 3.7% 15.9%;
     --sidebar-fg: 0 0% 95%;
     --sidebar-active: 160 84% 39%;
-    --sidebar-hover: 240 3.7% 15.9%;
+    --sidebar-hover: 240 3.7% 20%;
     --sidebar-border: 240 3.7% 15.9%;
     --chart-1: 160 84% 45%;
     --chart-2: 240 5% 50%;
@@ -243,7 +243,65 @@ git commit -m "feat(ui): migrate theme to Minimal Zinc + Emerald Accent"
 
 ---
 
-### Task 4: Button Component
+### Task 4: Thai Font — Noto Sans Thai → IBM Plex Sans Thai
+
+**Files:**
+- Modify: `apps/web/src/index.css`
+
+- [ ] **Step 1: Replace Google Fonts import (line 2)**
+
+```
+Before: @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap')
+After:  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap')
+```
+
+- [ ] **Step 2: Update font-family declarations in `@theme` (line 12-13)**
+
+```
+Before:
+  --font-sans: 'Inter', 'Noto Sans Thai', system-ui, -apple-system, sans-serif;
+  --font-sarabun: 'Noto Sans Thai', sans-serif;
+
+After:
+  --font-sans: 'Inter', 'IBM Plex Sans Thai', system-ui, -apple-system, sans-serif;
+  --font-sarabun: 'IBM Plex Sans Thai', sans-serif;
+```
+
+- [ ] **Step 3: Update body font-family (line 430-431)**
+
+```
+Before: 'Inter', 'Noto Sans Thai', system-ui, ...
+After:  'Inter', 'IBM Plex Sans Thai', system-ui, ...
+```
+
+- [ ] **Step 4: Update all other `Noto Sans Thai` references in index.css**
+
+Replace all remaining `'Noto Sans Thai'` with `'IBM Plex Sans Thai'` (lines 254, 456, 562)
+
+- [ ] **Step 5: Update Google Fonts comment (line 1)**
+
+```
+Before: /* ── Google Fonts: Inter + Noto Sans Thai ── */
+After:  /* ── Google Fonts: Inter + IBM Plex Sans Thai ── */
+```
+
+- [ ] **Step 6: Verify in browser — Thai text renders with IBM Plex Sans Thai**
+
+Open any page with Thai text (e.g., login page) and verify:
+- Thai characters look clean and professional
+- Thai and English text have similar x-height and weight
+- No font loading flash (FOUT)
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add apps/web/src/index.css
+git commit -m "feat(ui): switch Thai font from Noto Sans Thai to IBM Plex Sans Thai"
+```
+
+---
+
+### Task 5: Button Component (was Task 4)
 
 **Files:**
 - Modify: `apps/web/src/components/ui/button.tsx`
@@ -426,20 +484,26 @@ ACCOUNTANT:     bg-[#7c3aed] → bg-violet-600 text-white (keep)
 SALES:          bg-[#0ea5e9] → bg-sky-500 text-white (keep)
 ```
 
-- [ ] **Step 2: Update expandedMenuClassNames — replace emerald with primary tokens**
+- [ ] **Step 2: Change sidebar to White/Light style**
 
+Sidebar background: dark navy → `bg-white border-r border-border` (light mode)
 ```
-item active:    bg-emerald-500/20 text-emerald-300 → bg-primary/20 text-white
+item:           text-white/45 → text-muted-foreground
+item hover:     bg-white/[0.06] → bg-accent text-foreground
+item active:    bg-emerald-500/20 text-emerald-300 → bg-primary/10 text-primary font-semibold
 before bar:     before:bg-emerald-500 → before:bg-primary
-subTrigger:     text-emerald-400/50 hover:text-emerald-400/70 → text-zinc-500 hover:text-zinc-400
-border:         border-white/[0.06] → border-white/[0.06] (keep)
+subTrigger:     text-emerald-400/50 → text-muted-foreground/60
+section border: border-white/[0.06] → border-border
 ```
 
 - [ ] **Step 3: Update sidebar background references**
 
-Replace any remaining `#1e3a5f`, `#059669`, `#162d4a`, `#0f2035` with sidebar CSS variable tokens (`bg-sidebar-bg`, `text-sidebar-fg`, etc.)
+Replace any remaining `#1e3a5f`, `#059669`, `#162d4a`, `#0f2035` with:
+- Light mode: `bg-background` (white) + `border-r border-border`
+- Text: `text-foreground` / `text-muted-foreground`
+- Logo: `bg-primary` (emerald)
 
-- [ ] **Step 4: Verify sidebar in browser — dark zinc bg, emerald active bar**
+- [ ] **Step 4: Verify sidebar in browser — white bg, emerald active bar + left border accent**
 
 - [ ] **Step 5: Commit**
 

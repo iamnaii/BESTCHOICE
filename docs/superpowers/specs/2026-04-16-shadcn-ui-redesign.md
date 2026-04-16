@@ -10,7 +10,7 @@
 
 - **Minimal & Clean** — shadcn/ui default aesthetic, zinc neutral base
 - **Emerald accent only on interactive elements** — buttons, badges, active states, links
-- **Dark sidebar for contrast** — zinc-900/950 sidebar เป็น anchor point
+- **White/Light sidebar** — ขาว + border-right + emerald active highlight (K PLUS, Notion style)
 - **Startup finance look** — เหมือน K PLUS, Wise: พื้น clean + สี brand 1 จุด
 - **ธาตุไม้ (Wood element)** — Emerald green = growth, prosperity
 
@@ -62,12 +62,12 @@
 --ring: 160 84% 39%;              /* Emerald focus ring (was: zinc) */
 --radius: 0.5rem;
 
-/* Sidebar — Dark zinc */
---sidebar-bg: 240 5.9% 10%;       /* zinc-900 (was: Navy) */
---sidebar-fg: 0 0% 98%;
---sidebar-active: 160 84% 39%;    /* Emerald (คงเดิม) */
---sidebar-hover: 240 3.7% 15.9%;  /* zinc-800 */
---sidebar-border: 240 3.7% 15.9%;
+/* Sidebar — White/Light */
+--sidebar-bg: 0 0% 100%;          /* white */
+--sidebar-fg: 240 10% 3.9%;       /* foreground */
+--sidebar-active: 160 84% 39%;    /* Emerald */
+--sidebar-hover: 240 4.8% 95.9%;  /* zinc-100 */
+--sidebar-border: 240 5.9% 90%;   /* border */
 
 /* Charts — emerald-led palette */
 --chart-1: 160 84% 39%;           /* Emerald (was: Navy) */
@@ -110,10 +110,10 @@
 --input: 240 3.7% 15.9%;
 --ring: 160 84% 39%;
 
---sidebar-bg: 240 5.9% 10%;
+--sidebar-bg: 240 3.7% 15.9%;     /* zinc-800 in dark */
 --sidebar-fg: 0 0% 95%;
 --sidebar-active: 160 84% 39%;
---sidebar-hover: 240 3.7% 15.9%;
+--sidebar-hover: 240 3.7% 20%;
 --sidebar-border: 240 3.7% 15.9%;
 
 --chart-1: 160 84% 45%;
@@ -243,7 +243,7 @@ After:
 
 ### 5.1 Sidebar (`components/layout/Sidebar.tsx`)
 
-**Background:** `bg-[navy gradient]` → `bg-[var(--sidebar-bg)]` (zinc-900)
+**Background:** `bg-[navy gradient]` → `bg-white` (light) / `bg-zinc-800` (dark) + `border-right border-border`
 
 **Role badge map:**
 ```
@@ -258,18 +258,20 @@ After:
   FINANCE_MANAGER: bg-primary text-primary-foreground
 ```
 
-**Expanded menu classNames:**
+**Expanded menu classNames (White/Light sidebar):**
 ```
 Before:
+  item: text-white/45 hover:bg-white/[0.06]
   item active: bg-emerald-500/20 text-emerald-300 + before:bg-emerald-500
   subTrigger: text-emerald-400/50 hover:text-emerald-400/70
 
 After:
-  item active: bg-primary/20 text-primary-foreground + before:bg-primary
-  subTrigger: text-zinc-500 hover:text-zinc-400 (neutral section headers)
+  item: text-muted-foreground hover:bg-accent hover:text-foreground
+  item active: bg-primary/10 text-primary font-semibold + before:bg-primary
+  subTrigger: text-muted-foreground/60 hover:text-muted-foreground (neutral section headers)
 ```
 
-**Collapsed sidebar:** เปลี่ยน Navy bg → zinc-900, active icon → emerald
+**Collapsed sidebar:** เปลี่ยน Navy bg → white + border-right, active icon → emerald
 
 ### 5.2 TopBar (`components/layout/TopBar.tsx`)
 
@@ -435,10 +437,12 @@ npx shadcn@latest add login-04
 
 ## 8. Typography & Spacing
 
-### Font — คงเดิม (ดีอยู่แล้ว)
-- **Inter** — main text
-- **Noto Sans Thai** — Thai text
-- ไม่เปลี่ยน
+### Font — เปลี่ยน Thai font
+- **Inter** — English text (คงเดิม)
+- **IBM Plex Sans Thai** — Thai text (เปลี่ยนจาก Noto Sans Thai)
+  - เหตุผล: metrics ใกล้เคียง Inter, professional สำหรับ finance app (SCB Easy, Robinhood ใช้)
+  - Weights: 300 (Light), 400 (Regular), 500 (Medium), 600 (SemiBold), 700 (Bold)
+  - Google Fonts: `IBM+Plex+Sans+Thai:wght@300;400;500;600;700`
 
 ### Spacing adjustments
 - PageHeader: `py-5 lg:py-6` (banner) → `pb-6` (plain, less vertical space)

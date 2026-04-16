@@ -123,12 +123,12 @@ layer(base);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
 
-  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.06);
-  --shadow-sidebar: 4px 0 20px rgba(0, 0, 0, 0.15);
-  --shadow-topbar: 0 1px 0 rgba(0, 0, 0, 0.05);
-  --shadow-modal: 0 10px 25px rgba(0, 0, 0, 0.12), 0 4px 10px rgba(0, 0, 0, 0.06);
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.03);
+  --shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.04);
+  --shadow-sidebar: 4px 0 20px rgba(0, 0, 0, 0.08);
+  --shadow-topbar: 0 1px 0 rgba(0, 0, 0, 0.04);
+  --shadow-modal: 0 10px 25px rgba(0, 0, 0, 0.10), 0 4px 10px rgba(0, 0, 0, 0.05);
 
   @keyframes fadeIn {
     0% {
@@ -253,23 +253,23 @@ layer(base);
 /* ── shadcn/ui Theme Variables — Minimal Zinc + Emerald Accent ─ */
 @layer base {
   :root {
-    /* Minimal Zinc + Emerald Accent */
-    --background: 240 4.8% 98%;
-    --foreground: 240 10% 3.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
+    /* Warm Cream + Emerald Accent (Claude Desktop-inspired) */
+    --background: 40 23% 97%;
+    --foreground: 25 14% 12%;
+    --card: 40 20% 99%;
+    --card-foreground: 25 14% 12%;
+    --popover: 40 20% 99%;
+    --popover-foreground: 25 14% 12%;
     /* Primary: Emerald (Wood element) — slightly darker for text contrast */
     --primary: 160 84% 32%;
     --primary-foreground: 0 0% 100%;
-    /* Secondary/Muted/Accent: zinc neutral */
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 5.3% 33.9%;
-    --accent: 240 4.8% 95.9%;
-    --accent-foreground: 240 5.9% 10%;
+    /* Secondary/Muted/Accent: warm sand neutrals */
+    --secondary: 36 14% 93%;
+    --secondary-foreground: 25 12% 14%;
+    --muted: 36 14% 93%;
+    --muted-foreground: 25 8% 42%;
+    --accent: 36 14% 93%;
+    --accent-foreground: 25 12% 14%;
     /* Destructive */
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
@@ -280,20 +280,20 @@ layer(base);
     --warning-foreground: 0 0% 100%;
     --info: 199 89% 48%;
     --info-foreground: 0 0% 100%;
-    /* Border */
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
+    /* Border — warm */
+    --border: 34 12% 88%;
+    --input: 34 12% 88%;
     --ring: 160 84% 39%;
     --radius: 0.5rem;
-    /* Sidebar — White/Light */
-    --sidebar-bg: 0 0% 100%;  /* white — same as background */
-    --sidebar-fg: 240 10% 3.9%;
+    /* Sidebar — warm off-white */
+    --sidebar-bg: 40 20% 99%;
+    --sidebar-fg: 25 14% 12%;
     --sidebar-active: 160 84% 39%;
-    --sidebar-hover: 240 4.8% 95.9%;
-    --sidebar-border: 240 5.9% 90%;
+    --sidebar-hover: 36 16% 94%;
+    --sidebar-border: 34 12% 90%;
     /* Charts — emerald-led */
     --chart-1: 160 84% 39%;
-    --chart-2: 240 5% 64.9%;
+    --chart-2: 25 8% 55%;
     --chart-3: 48 96% 53%;
     --chart-4: 0 84% 60%;
     --chart-5: 271 91% 65%;

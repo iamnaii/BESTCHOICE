@@ -119,7 +119,7 @@ export default function LiffNotificationSettings() {
                     <p className="text-xs text-muted-foreground">{setting.description}</p>
                   </div>
                   <div className={`relative w-11 h-6 rounded-full transition-colors ${enabled ? 'bg-primary' : 'bg-muted'}`}>
-                    <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform ${enabled ? 'translate-x-[22px]' : 'translate-x-0.5'}`} />
+                    <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-background shadow-sm transition-transform ${enabled ? 'translate-x-[22px]' : 'translate-x-0.5'}`} />
                   </div>
                 </button>
               </CardContent>

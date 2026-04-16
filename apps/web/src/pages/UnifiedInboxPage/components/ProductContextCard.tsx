@@ -19,7 +19,7 @@ export default function ProductContextCard({ roomId }: ProductContextCardProps) 
   if (isLoading || !products || products.length === 0) return null;
 
   return (
-    <div className="border-t border-gray-200 pt-3">
+    <div className="border-t border-border pt-3">
       <div className="flex items-center gap-2 mb-2 px-4">
         <Smartphone className="size-3.5 text-primary opacity-60" />
         <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground/60">

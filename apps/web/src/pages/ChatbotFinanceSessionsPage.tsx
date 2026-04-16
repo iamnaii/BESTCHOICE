@@ -45,7 +45,7 @@ const ROLE_BADGE: Record<string, { label: string; cls: string }> = {
   BOT: { label: '🤖 น้องเบส', cls: 'bg-green-50 border-green-200' },
   STAFF: { label: '👨‍💼 พนักงาน', cls: 'bg-purple-50 border-purple-200' },
   AUTO_TRIGGER: { label: '⏰ Auto', cls: 'bg-yellow-50 border-yellow-200' },
-  SYSTEM: { label: '⚙️ System', cls: 'bg-muted border-gray-200' },
+  SYSTEM: { label: '⚙️ System', cls: 'bg-muted border-border' },
 };
 
 export default function ChatbotFinanceSessionsPage() {

@@ -419,6 +419,7 @@ model User {
   assetsCreated          FixedAsset[]         @relation("AssetCreatedBy")
   todosCreated           Todo[]               @relation("TodoCreatedBy")
   todosAssigned          Todo[]               @relation("TodoAssignedTo")
+  todoComments           TodoComment[]        @relation("TodoCommentUser")
   handoffRooms           ChatRoom[]           @relation("ChatHandoffStaff")
   assignedRooms          ChatRoom[]           @relation("ChatAssignedStaff")
   chatMessages           ChatMessage[]        @relation("ChatMessageStaff")
@@ -2840,6 +2841,7 @@ model Todo {
 
   createdBy User  @relation("TodoCreatedBy", fields: [createdById], references: [id])
   assignee  User? @relation("TodoAssignedTo", fields: [assigneeId], references: [id])
+  comments  TodoComment[]
 
   @@index([assigneeId])
   @@index([createdById])
@@ -2847,6 +2849,20 @@ model Todo {
   @@index([dueDate])
   @@index([branchId])
   @@map("todos")
+}
+
+model TodoComment {
+  id      String @id @default(uuid())
+  todoId  String @map("todo_id")
+  todo    Todo   @relation(fields: [todoId], references: [id], onDelete: Cascade)
+  userId  String @map("user_id")
+  user    User   @relation("TodoCommentUser", fields: [userId], references: [id])
+  content String @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([todoId, createdAt])
+  @@map("todo_comments")
 }
 
 // ============================================================

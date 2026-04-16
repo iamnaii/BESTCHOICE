@@ -22,7 +22,7 @@ import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { Response } from 'express';
 import { TodosService } from './todos.service';
 import { StorageService } from '../storage/storage.service';
-import { CreateTodoDto, UpdateTodoDto, TodosQueryDto } from './dto/todo.dto';
+import { CreateTodoDto, UpdateTodoDto, TodosQueryDto, CreateTodoCommentDto } from './dto/todo.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -147,5 +147,19 @@ export class TodosController {
   @Delete(':id')
   remove(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     return this.todosService.remove(id, user.id, user.role);
+  }
+
+  @Get(':id/comments')
+  getComments(@Param('id') id: string) {
+    return this.todosService.getComments(id);
+  }
+
+  @Post(':id/comments')
+  addComment(
+    @Param('id') id: string,
+    @Body() dto: CreateTodoCommentDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.todosService.addComment(id, user.id, dto.content);
   }
 }

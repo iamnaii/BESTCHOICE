@@ -6,6 +6,7 @@ import {
   IsDateString,
   IsUUID,
   IsInt,
+  IsNotEmpty,
   Min,
   Max,
   MaxLength,
@@ -129,6 +130,12 @@ export class CreateTodoDto {
   @ValidateNested({ each: true })
   @Type(() => AttachmentDto)
   attachments?: AttachmentDto[];
+}
+
+export class CreateTodoCommentDto {
+  @IsString()
+  @IsNotEmpty({ message: 'กรุณาระบุข้อความ' })
+  content!: string;
 }
 
 export class UpdateTodoDto {

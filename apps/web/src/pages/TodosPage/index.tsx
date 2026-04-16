@@ -20,6 +20,7 @@ export default function TodosPage() {
   const queryClient = useQueryClient();
   const [view, setView] = useState<TodoView>('all');
   const [search, setSearch] = useState('');
+  const [assigneeFilter, setAssigneeFilter] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; id: string }>({
     open: false,
@@ -37,11 +38,12 @@ export default function TodosPage() {
   });
 
   const { data, isLoading, isError, error, refetch } = useQuery<TodosResponse>({
-    queryKey: ['todos', view, search],
+    queryKey: ['todos', view, search, assigneeFilter],
     queryFn: async () => {
       const params = new URLSearchParams();
       params.set('view', view);
       if (search) params.set('search', search);
+      if (assigneeFilter) params.set('assigneeId', assigneeFilter);
       params.set('limit', '100');
       const { data } = await api.get(`/todos?${params}`);
       return data;
@@ -177,6 +179,9 @@ export default function TodosPage() {
         search={search}
         onSearchChange={setSearch}
         tabCounts={tabCounts}
+        staffUsers={staffUsers}
+        assigneeFilter={assigneeFilter}
+        onAssigneeFilterChange={setAssigneeFilter}
       />
 
       <TodoKanbanView

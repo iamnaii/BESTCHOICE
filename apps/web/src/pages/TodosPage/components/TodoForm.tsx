@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import {
   Dialog,
@@ -24,9 +24,12 @@ import {
   Tag,
   AlignLeft,
   Type as TypeIcon,
+  MessageSquare,
+  Send,
 } from 'lucide-react';
 import {
   type Todo,
+  type TodoComment,
   type TodoPriority,
   type AssigneeRef,
   type Attachment,
@@ -43,11 +46,49 @@ interface TodoFormProps {
   staffUsers: AssigneeRef[];
 }
 
+/** Format a date string as a relative time label (Thai) */
+function formatRelative(dateStr: string) {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const minutes = Math.floor(diff / 60_000);
+  if (minutes < 1) return 'เมื่อสักครู่';
+  if (minutes < 60) return `${minutes} นาทีที่แล้ว`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} ชั่วโมงที่แล้ว`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days} วันที่แล้ว`;
+  return new Date(dateStr).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
 export function TodoForm({ open, onOpenChange, editing, staffUsers }: TodoFormProps) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState<typeof emptyForm>({ ...emptyForm });
   const [thumbUrls, setThumbUrls] = useState<Record<string, string>>({});
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [commentText, setCommentText] = useState('');
+
+  // Fetch comments when editing an existing todo
+  const { data: comments = [] } = useQuery<TodoComment[]>({
+    queryKey: ['todo-comments', editing?.id],
+    queryFn: async () => {
+      const { data } = await api.get(`/todos/${editing!.id}/comments`);
+      return data;
+    },
+    enabled: !!editing?.id && open,
+  });
+
+  const addCommentMutation = useMutation({
+    mutationFn: async () => {
+      const { data } = await api.post(`/todos/${editing!.id}/comments`, {
+        content: commentText.trim(),
+      });
+      return data;
+    },
+    onSuccess: () => {
+      setCommentText('');
+      queryClient.invalidateQueries({ queryKey: ['todo-comments', editing?.id] });
+    },
+    onError: (e) => toast.error(getErrorMessage(e)),
+  });
 
   // Sync form when editing changes or dialog opens
   useEffect(() => {
@@ -606,6 +647,75 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers }: TodoFormPr
                 </div>
               )}
             </div>
+
+            {/* Comments — only show when editing an existing todo */}
+            {editing && (
+              <div>
+                <label className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                  <MessageSquare className="size-3.5" />
+                  ความคิดเห็น
+                  {comments.length > 0 && (
+                    <span className="text-2xs font-normal text-muted-foreground/70">
+                      ({comments.length})
+                    </span>
+                  )}
+                </label>
+
+                {/* Comment list */}
+                {comments.length > 0 ? (
+                  <div className="space-y-3 mb-3 max-h-64 overflow-y-auto pr-1">
+                    {comments.map((c) => (
+                      <div key={c.id} className="flex gap-2.5">
+                        <div className="size-7 rounded-full bg-gradient-to-br from-[#1e3a5f] to-[#059669] flex items-center justify-center text-white text-[10px] font-bold shrink-0">
+                          {(c.user?.nickname || c.user?.name || '?')[0].toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-semibold text-foreground">
+                              {c.user?.nickname || c.user?.name}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground">
+                              {formatRelative(c.createdAt)}
+                            </span>
+                          </div>
+                          <p className="text-sm text-foreground/80 mt-0.5 whitespace-pre-wrap break-words">
+                            {c.content}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground italic mb-3">ยังไม่มีความคิดเห็น</p>
+                )}
+
+                {/* Add comment input */}
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={commentText}
+                    onChange={(e) => setCommentText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && commentText.trim()) {
+                        e.preventDefault();
+                        addCommentMutation.mutate();
+                      }
+                    }}
+                    placeholder="เพิ่มความคิดเห็น..."
+                    className="flex-1 px-3 py-2 border border-input rounded-lg text-sm bg-card focus-visible:ring-2 focus-visible:ring-[#059669]/20 outline-hidden transition-colors"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => addCommentMutation.mutate()}
+                    disabled={!commentText.trim() || addCommentMutation.isPending}
+                    className="px-3 py-2 bg-[#1e3a5f] text-white rounded-lg text-sm font-medium hover:bg-[#162d4a] disabled:opacity-50 inline-flex items-center gap-1.5 transition-colors"
+                  >
+                    <Send className="size-3.5" />
+                    ส่ง
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           <DialogFooter className="px-6 py-4 border-t border-border bg-muted/20">

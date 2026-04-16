@@ -219,6 +219,27 @@ export class TodosService {
     });
   }
 
+  async getComments(todoId: string) {
+    await this.findOne(todoId); // verify todo exists
+    return this.prisma.todoComment.findMany({
+      where: { todoId },
+      include: {
+        user: { select: { id: true, name: true, nickname: true, avatarUrl: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  async addComment(todoId: string, userId: string, content: string) {
+    await this.findOne(todoId); // verify todo exists
+    return this.prisma.todoComment.create({
+      data: { todoId, userId, content },
+      include: {
+        user: { select: { id: true, name: true, nickname: true, avatarUrl: true } },
+      },
+    });
+  }
+
   async remove(id: string, currentUserId: string, role: string) {
     const todo = await this.findOne(id);
     // Owner/Manager can delete any; others only own

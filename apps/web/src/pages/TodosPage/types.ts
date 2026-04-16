@@ -41,6 +41,15 @@ export interface Todo {
   createdAt: string;
 }
 
+export interface TodoComment {
+  id: string;
+  todoId: string;
+  userId: string;
+  content: string;
+  createdAt: string;
+  user: AssigneeRef;
+}
+
 export interface TodosResponse {
   data: Todo[];
   total: number;

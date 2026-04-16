@@ -9,14 +9,14 @@ import QueryBoundary from '@/components/QueryBoundary';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-  SheetBody,
-  SheetFooter,
-} from '@/components/ui/sheet';
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogBody,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import {
   Plug,
   Eye,
@@ -287,20 +287,20 @@ function ConfigDrawer({
   if (!entry) return null;
 
   return (
-    <Sheet open={open} onOpenChange={handleOpenChange}>
-      <SheetContent side="right" className="w-full sm:max-w-md flex flex-col">
-        <SheetHeader>
-          <SheetTitle className="flex items-center gap-2">
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
             {(() => {
               const Icon = getIntegrationIcon(entry.key);
               return <Icon className="size-5 text-muted-foreground" />;
             })()}
             {entry.name}
-          </SheetTitle>
-          <SheetDescription>{entry.description}</SheetDescription>
-        </SheetHeader>
+          </DialogTitle>
+          <DialogDescription>{entry.description}</DialogDescription>
+        </DialogHeader>
 
-        <SheetBody className="flex-1 overflow-y-auto">
+        <DialogBody className="max-h-[60vh] overflow-y-auto">
           {configQuery.isLoading ? (
             <div className="flex items-center justify-center py-10">
               <Loader2 className="size-6 animate-spin text-muted-foreground" />
@@ -386,9 +386,9 @@ function ConfigDrawer({
               )}
             </form>
           )}
-        </SheetBody>
+        </DialogBody>
 
-        <SheetFooter className="flex flex-col gap-2 sm:flex-col">
+        <DialogFooter className="flex flex-col gap-2 sm:flex-row-reverse">
           <Button
             type="button"
             variant="outline"
@@ -426,9 +426,9 @@ function ConfigDrawer({
               'บันทึก'
             )}
           </Button>
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

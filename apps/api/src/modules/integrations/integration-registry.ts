@@ -20,7 +20,13 @@ export interface IntegrationDef {
   description: string;
   icon: string;
   fields: IntegrationField[];
+  /** Webhook URL that the external service should POST to (shown in UI as read-only info). */
+  webhookUrl?: string;
+  /** Short instruction shown next to the webhook URL. */
+  webhookNote?: string;
 }
+
+const BASE = process.env.API_BASE_URL || 'https://api.bestchoicephone.app';
 
 export const INTEGRATIONS: IntegrationDef[] = [
   {
@@ -28,6 +34,8 @@ export const INTEGRATIONS: IntegrationDef[] = [
     name: 'LINE Official Account',
     description: 'LINE OA สำหรับแจ้งเตือนลูกค้าและพนักงาน',
     icon: 'line',
+    webhookUrl: `${BASE}/api/line-oa/webhook`,
+    webhookNote: 'ตั้งค่า Webhook URL นี้ที่ LINE Developers Console → Messaging API → Webhook URL (สำหรับ Shop OA) | Finance OA ใช้ URL: ' + `${BASE}/api/chatbot-finance/webhook`,
     fields: [
       {
         key: 'shopChannelToken',
@@ -78,6 +86,8 @@ export const INTEGRATIONS: IntegrationDef[] = [
     name: 'SMS Gateway',
     description: 'ส่ง SMS แจ้งเตือนลูกค้า',
     icon: 'message-square',
+    webhookUrl: `${BASE}/api/sms-webhook`,
+    webhookNote: 'ตั้งค่า Delivery Report URL นี้ที่ ThaiBulkSMS dashboard (optional)',
     fields: [
       {
         key: 'apiKey',
@@ -143,6 +153,8 @@ export const INTEGRATIONS: IntegrationDef[] = [
     name: 'PaySolutions',
     description: 'รับชำระค่างวดผ่าน QR Code',
     icon: 'credit-card',
+    webhookUrl: `${BASE}/api/paysolutions/webhook`,
+    webhookNote: 'ตั้งค่า Postback URL นี้ที่ PaySolutions merchant dashboard',
     fields: [
       {
         key: 'merchantId',

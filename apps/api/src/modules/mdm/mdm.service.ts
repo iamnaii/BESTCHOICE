@@ -410,6 +410,11 @@ export class MdmService {
       return { success: false, message: `ไม่พบเครื่อง IMEI: ${imei} ในระบบ MDM` };
     }
 
+    // Already unlocked — skip API call to preserve rate limit
+    if (device.lossStatus !== 1) {
+      return { success: true, message: 'เครื่องไม่ได้อยู่ใน Lost Mode', deviceId: device.id };
+    }
+
     const result = await this.disableLostMode(device.id);
 
     const success = result?.code === 200;
@@ -502,7 +507,7 @@ export class MdmService {
         return { code: res.status, msg: errorData.message || `Auth error ${res.status}` };
       }
 
-      const data = (await res.json()) as MdmResponse<T>;
+      const data = (await res.json().catch(() => ({ code: res.status, msg: `Unexpected response from MDM (HTTP ${res.status})` }))) as MdmResponse<T>;
       return data;
     } catch (err) {
       clearTimeout(timeout);

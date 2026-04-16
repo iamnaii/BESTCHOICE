@@ -66,6 +66,7 @@ export class MdmAutoService {
     }
 
     // Find overdue/default contracts that are not yet MDM-locked and have an IMEI
+    // Limit to 80 per run to stay within MDM rate limit (100 req/60s — each lock needs ~2 calls)
     const contracts = await this.prisma.contract.findMany({
       where: {
         status: { in: ['OVERDUE', 'DEFAULT'] },
@@ -82,11 +83,14 @@ export class MdmAutoService {
           where: {
             status: { in: ['OVERDUE', 'PENDING'] },
             dueDate: { lt: new Date() },
+            paidAt: null,
           },
           orderBy: { dueDate: 'asc' },
           take: 1,
         },
       },
+      take: 80,
+      orderBy: { createdAt: 'asc' },
     });
 
     let locked = 0;
@@ -115,6 +119,11 @@ export class MdmAutoService {
       }
 
       try {
+        // Throttle: 1s delay between MDM calls to stay within 100 req/60s
+        if (locked + failed > 0) {
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+
         const reason = `ค้างชำระ ${daysOverdue} วัน (สัญญา ${contract.contractNumber})`;
         const result = await this.mdmService.lockDeviceByImei(imei, reason);
 
@@ -195,11 +204,12 @@ export class MdmAutoService {
         return;
       }
 
-      // Check if there are any remaining overdue payments
+      // Check if there are any remaining unpaid overdue payments
       const overdueCount = await this.prisma.payment.count({
         where: {
           contractId,
           status: 'OVERDUE',
+          paidAt: null,
           deletedAt: null,
         },
       });

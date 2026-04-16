@@ -15,7 +15,6 @@ import {
   LockDeviceDto,
   UnlockDeviceDto,
   DeviceStatusDto,
-  DeviceByIdDto,
   SetLockScreenTextDto,
   AddDeviceDto,
   EditDeviceDto,
@@ -41,7 +40,7 @@ export class MdmController {
   // ─── Device Lookup ──────────────────────────────────────
 
   @Get('devices')
-  @Roles('OWNER')
+  @Roles('OWNER', 'BRANCH_MANAGER')
   listDevices(
     @Query('pageNum') pageNum?: string,
     @Query('pageSize') pageSize?: string,
@@ -69,7 +68,7 @@ export class MdmController {
   }
 
   @Get('device-status')
-  @Roles('OWNER', 'BRANCH_MANAGER')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   getDeviceStatus(@Query() dto: DeviceStatusDto) {
     return this.mdmService.getDeviceStatus(dto.imei);
   }
@@ -115,13 +114,13 @@ export class MdmController {
   // ─── Lost Mode (overdue lock/unlock) ───────────────────
 
   @Post('lock')
-  @Roles('OWNER')
+  @Roles('OWNER', 'FINANCE_MANAGER')
   lockDevice(@Body() dto: LockDeviceDto) {
     return this.mdmService.lockDeviceByImei(dto.imei, dto.reason);
   }
 
   @Post('unlock')
-  @Roles('OWNER')
+  @Roles('OWNER', 'FINANCE_MANAGER')
   unlockDevice(@Body() dto: UnlockDeviceDto) {
     return this.mdmService.unlockDeviceByImei(dto.imei);
   }

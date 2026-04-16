@@ -108,9 +108,7 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
     >
       {/* Logo */}
       <Link to="/" className="flex items-center justify-center w-full mb-1 shrink-0 py-2">
-        <div className="size-[36px] rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-400 flex items-center justify-center shadow-lg shadow-emerald-500/20 shrink-0">
-          <span className="text-white text-[16px] font-bold leading-none">B</span>
-        </div>
+        <img src="/logo-icon.svg" alt="BESTCHOICE" className="size-[36px] shrink-0" />
       </Link>
 
       {/* Divider */}
@@ -279,15 +277,13 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
     >
       {/* ── Header ──────────────────────────────────── */}
       <div className="flex items-center px-5 h-[60px] shrink-0 border-b border-border">
-        <Link to="/" className="flex items-center gap-3">
-          <div className="size-[36px] rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-400 flex items-center justify-center shadow-lg shadow-emerald-500/20 shrink-0">
-            <span className="text-white text-[16px] font-bold leading-none">B</span>
-          </div>
+        <Link to="/" className="flex items-center gap-2.5">
+          <img src="/logo-icon.svg" alt="BESTCHOICE" className="size-[32px] shrink-0" />
           <div className="flex flex-col leading-tight">
-            <span className="text-[15px] font-bold text-foreground tracking-tight">
-              BESTCHOICE
+            <span className="text-[14px] font-extrabold text-foreground tracking-tight">
+              BEST<span className="text-primary">CHOICE</span>
             </span>
-            <span className="text-[12px] text-muted-foreground/50 font-medium tracking-widest uppercase">
+            <span className="text-[10px] text-muted-foreground/50 font-medium tracking-widest uppercase">
               Finance Management
             </span>
           </div>
@@ -388,14 +384,12 @@ function MobileSidebarContent() {
     <div className="w-full h-full flex flex-col bg-background">
       {/* Header */}
       <div className="flex items-center gap-3 px-5 h-[66px] shrink-0 border-b border-border">
-        <div className="size-[36px] rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-400 flex items-center justify-center shadow-lg shadow-emerald-500/20 shrink-0">
-          <span className="text-white text-[16px] font-bold leading-none">B</span>
-        </div>
+        <img src="/logo-icon.svg" alt="BESTCHOICE" className="size-[32px] shrink-0" />
         <div className="flex flex-col leading-tight">
-          <span className="text-[15px] font-bold text-foreground tracking-tight">
-            BESTCHOICE
+          <span className="text-[14px] font-extrabold text-foreground tracking-tight">
+            BEST<span className="text-primary">CHOICE</span>
           </span>
-          <span className="text-[12px] text-muted-foreground/50 font-medium tracking-widest uppercase">
+          <span className="text-[10px] text-muted-foreground/50 font-medium tracking-widest uppercase">
             Finance Management
           </span>
         </div>

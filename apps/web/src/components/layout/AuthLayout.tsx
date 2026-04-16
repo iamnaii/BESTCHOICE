@@ -17,10 +17,8 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
         <div className="w-full max-w-[440px]">
           {/* Mobile logo */}
           <div className="lg:hidden flex items-center gap-2.5 mb-8">
-            <div className="size-9 rounded-lg bg-linear-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg shadow-primary/20">
-              <span className="text-white font-bold text-sm">B</span>
-            </div>
-            <span className="text-xl font-bold text-foreground tracking-tight">
+            <img src="/logo-icon.svg" alt="BESTCHOICE" className="size-9 shrink-0" />
+            <span className="text-xl font-extrabold text-foreground tracking-tight">
               BEST<span className="text-primary">CHOICE</span>
             </span>
           </div>
@@ -32,10 +30,8 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
       {/* Right Side — Branded panel */}
       <div className="hidden lg:flex lg:rounded-2xl lg:m-5 order-1 lg:order-2 bg-zinc-950 relative overflow-hidden flex-col p-16 gap-5 justify-center text-white">
         <Link to="/landing" className="flex items-center gap-3 mb-6">
-          <div className="size-11 rounded-xl bg-linear-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg shadow-primary/30">
-            <span className="text-white font-bold text-lg">B</span>
-          </div>
-          <span className="text-2xl font-bold tracking-tight">
+          <img src="/logo-icon.svg" alt="BESTCHOICE" className="size-11 shrink-0" />
+          <span className="text-2xl font-extrabold tracking-tight">
             BEST<span className="text-primary">CHOICE</span>
           </span>
         </Link>

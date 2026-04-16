@@ -26,11 +26,9 @@ export default function LandingNav({ onScrollTo }: LandingNavProps) {
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-linear-to-br from-primary-400 to-sky-500 flex items-center justify-center">
-              <span className="text-white font-bold text-sm">B</span>
-            </div>
-            <span className="text-xl font-bold text-white">
-              best<span className="text-primary-400">choice</span>
+            <img src="/logo-icon.svg" alt="BESTCHOICE" className="w-8 h-8 shrink-0" />
+            <span className="text-xl font-extrabold text-white tracking-tight">
+              BEST<span className="text-primary-400">CHOICE</span>
             </span>
           </div>
 

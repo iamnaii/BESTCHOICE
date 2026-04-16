@@ -38,11 +38,9 @@ export default function ForgotPasswordPage() {
 
       <div className="bg-card rounded-xl shadow-card border border-border/60 p-6">
         <div className="flex items-center gap-3 mb-6">
-          <div className="size-10 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-400 flex items-center justify-center shadow-lg shadow-emerald-500/20">
-            <span className="text-white text-lg font-bold">B</span>
-          </div>
+          <img src="/logo-icon.svg" alt="BESTCHOICE" className="size-10 shrink-0" />
           <div>
-            <div className="text-lg font-bold text-foreground">BESTCHOICE</div>
+            <div className="text-lg font-extrabold text-foreground">BEST<span className="text-primary">CHOICE</span></div>
             <div className="text-xs text-muted-foreground">Finance Management</div>
           </div>
         </div>

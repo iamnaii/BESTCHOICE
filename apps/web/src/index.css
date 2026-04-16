@@ -260,14 +260,14 @@ layer(base);
     --card-foreground: 240 10% 3.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 240 10% 3.9%;
-    /* Primary: Emerald (Wood element) */
-    --primary: 160 84% 39%;
+    /* Primary: Emerald (Wood element) — slightly darker for text contrast */
+    --primary: 160 84% 32%;
     --primary-foreground: 0 0% 100%;
     /* Secondary/Muted/Accent: zinc neutral */
     --secondary: 240 4.8% 95.9%;
     --secondary-foreground: 240 5.9% 10%;
     --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
+    --muted-foreground: 240 5.3% 33.9%;
     --accent: 240 4.8% 95.9%;
     --accent-foreground: 240 5.9% 10%;
     /* Destructive */

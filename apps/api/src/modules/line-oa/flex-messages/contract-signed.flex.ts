@@ -1,12 +1,18 @@
 import {
   FlexBubble,
   FlexMessagePayload,
-  COLORS,
-  GRADIENTS,
-  createHeader,
-  createDetailRow,
+  FlexComponent,
   wrapFlexMessage,
+  formatBaht,
 } from './base-template';
+import {
+  STYLE_C,
+  createStyleCHeader,
+  createStyleCProgress,
+  createTipBox,
+  createStyleCButtons,
+} from './style-c';
+import { ICONS } from './icons';
 
 export interface ContractSignedData {
   customerName: string;
@@ -19,63 +25,143 @@ export interface ContractSignedData {
 }
 
 export function buildContractSignedFlex(data: ContractSignedData): FlexMessagePayload {
+  const detailRows: FlexComponent[] = [
+    // Info card — contract details
+    {
+      type: 'box',
+      layout: 'vertical',
+      contents: [
+        {
+          type: 'box',
+          layout: 'horizontal',
+          contents: [
+            {
+              type: 'text',
+              text: 'ลูกค้า',
+              size: 'xs',
+              color: STYLE_C.TEXT.SECONDARY,
+              flex: 1,
+            },
+            {
+              type: 'text',
+              text: data.customerName,
+              size: 'xs',
+              color: STYLE_C.TEXT.PRIMARY,
+              weight: 'bold',
+              align: 'end',
+              flex: 2,
+              wrap: true,
+            },
+          ],
+          justifyContent: 'space-between',
+          margin: 'sm',
+        },
+        {
+          type: 'box',
+          layout: 'horizontal',
+          contents: [
+            {
+              type: 'text',
+              text: 'สินค้า',
+              size: 'xs',
+              color: STYLE_C.TEXT.SECONDARY,
+              flex: 1,
+            },
+            {
+              type: 'text',
+              text: data.productName,
+              size: 'xs',
+              color: STYLE_C.TEXT.PRIMARY,
+              weight: 'bold',
+              align: 'end',
+              flex: 2,
+              wrap: true,
+            },
+          ],
+          justifyContent: 'space-between',
+          margin: 'sm',
+        },
+        {
+          type: 'box',
+          layout: 'horizontal',
+          contents: [
+            {
+              type: 'text',
+              text: 'ค่างวด',
+              size: 'xs',
+              color: STYLE_C.TEXT.SECONDARY,
+              flex: 1,
+            },
+            {
+              type: 'text',
+              text: `${data.totalMonths} งวด x ${formatBaht(data.monthlyPayment)}`,
+              size: 'xs',
+              color: STYLE_C.TEXT.PRIMARY,
+              weight: 'bold',
+              align: 'end',
+              flex: 2,
+              wrap: true,
+            },
+          ],
+          justifyContent: 'space-between',
+          margin: 'sm',
+        },
+        {
+          type: 'box',
+          layout: 'horizontal',
+          contents: [
+            {
+              type: 'text',
+              text: 'วันที่เซ็น',
+              size: 'xs',
+              color: STYLE_C.TEXT.SECONDARY,
+              flex: 1,
+            },
+            {
+              type: 'text',
+              text: data.signedAt,
+              size: 'xs',
+              color: STYLE_C.TEXT.PRIMARY,
+              weight: 'bold',
+              align: 'end',
+              flex: 2,
+            },
+          ],
+          justifyContent: 'space-between',
+          margin: 'sm',
+        },
+      ],
+      backgroundColor: STYLE_C.INFO_CARD_BG.SUCCESS,
+      cornerRadius: '12px',
+      paddingAll: '16px',
+      margin: 'lg',
+    } as FlexComponent,
+  ];
+
   const bubble: FlexBubble = {
     type: 'bubble',
     size: 'mega',
-    header: createHeader('📝 เซ็นสัญญาเรียบร้อย', `สัญญา ${data.contractNumber}`, GRADIENTS.GREEN),
+    header: createStyleCHeader(
+      ICONS.FILE_TEXT,
+      'เซ็นสัญญาเรียบร้อย',
+      `สัญญา ${data.contractNumber}`,
+      STYLE_C.GRADIENT.GREEN,
+      { text: 'เปิดสัญญา', bg: STYLE_C.BADGE.SUCCESS.bg, textColor: STYLE_C.BADGE.SUCCESS.text },
+    ),
     body: {
       type: 'box',
       layout: 'vertical',
       contents: [
-        // Success icon
-        {
-          type: 'box',
-          layout: 'vertical',
-          contents: [
-            {
-              type: 'text',
-              text: '✓',
-              size: '3xl',
-              color: COLORS.PRIMARY,
-              align: 'center',
-              weight: 'bold',
-            },
-            {
-              type: 'text',
-              text: 'เซ็นสัญญาเรียบร้อยแล้ว',
-              size: 'md',
-              color: COLORS.DARK,
-              align: 'center',
-              weight: 'bold',
-              margin: 'sm',
-            },
-          ],
-          backgroundColor: COLORS.SUCCESS_LIGHT,
-          cornerRadius: '12px',
-          paddingAll: '16px',
-        },
-        { type: 'separator', margin: 'lg', color: COLORS.BORDER },
-        createDetailRow('ลูกค้า', data.customerName),
-        createDetailRow('สินค้า', data.productName),
-        createDetailRow('ผ่อนชำระ', `${data.totalMonths} งวด x ฿${data.monthlyPayment.toLocaleString()}`),
-        createDetailRow('วันที่เซ็น', data.signedAt),
-        {
-          type: 'box',
-          layout: 'vertical',
-          contents: [
-            {
-              type: 'text',
-              text: '💡 ชำระค่างวดตรงเวลาทุกเดือน สะสมแต้มแลกส่วนลดดาวน์เครื่องใหม่',
-              size: 'xs',
-              color: COLORS.PRIMARY,
-              wrap: true,
-            },
-          ],
-          backgroundColor: COLORS.SUCCESS_LIGHT,
-          cornerRadius: '8px',
-          paddingAll: '12px',
-          margin: 'xl',
-        },
+        ...detailRows,
+        // Progress bar starting at 0%
+        createStyleCProgress(0, data.totalMonths, STYLE_C.PROGRESS.GREEN, '0 งวด', '0%'),
+        // Tip box
+        createTipBox(
+          ICONS.INFO_CIRCLE,
+          'ชำระค่างวดตรงเวลาทุกเดือน สะสมแต้มแลกส่วนลดดาวน์เครื่องใหม่',
+          STYLE_C.INFO_CARD_BG.SUCCESS,
+          STYLE_C.BUTTON.GREEN,
+        ),
       ],
       paddingAll: '20px',
       spacing: 'sm',
@@ -85,12 +171,11 @@ export function buildContractSignedFlex(data: ContractSignedData): FlexMessagePa
           type: 'box',
           layout: 'vertical',
           contents: [
-            {
-              type: 'button',
-              action: { type: 'uri', label: '📄 ดาวน์โหลดสัญญา PDF', uri: data.downloadUrl },
-              style: 'primary',
-              color: COLORS.PRIMARY,
-            },
+            createStyleCButtons(
+              'ดาวน์โหลดสัญญา PDF',
+              { type: 'uri', label: 'ดาวน์โหลดสัญญา PDF', uri: data.downloadUrl },
+              STYLE_C.BUTTON.GREEN,
+            ),
           ],
           paddingAll: '12px',
         }

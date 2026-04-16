@@ -2,10 +2,9 @@ import {
   FlexMessagePayload,
   FlexBubble,
   FlexComponent,
-  COLORS,
-  createHeader,
-  createDetailRow,
 } from './base-template';
+import { STYLE_C, createStyleCHeader } from './style-c';
+import { ICONS } from './icons';
 
 export interface ReceiptHistoryData {
   customerName: string;
@@ -22,23 +21,77 @@ export function buildReceiptHistory(data: ReceiptHistoryData): FlexMessagePayloa
       type: 'box' as const,
       layout: 'horizontal' as const,
       contents: [
-        { type: 'text' as const, text: `งวด ${p.installmentNo}`, size: 'sm', color: COLORS.DARK, flex: 0 },
-        { type: 'text' as const, text: p.paidDate, size: 'xs', color: COLORS.MUTED, align: 'center' as const, flex: 0 },
-        { type: 'text' as const, text: `${p.amountPaid.toLocaleString()} ฿`, size: 'sm', color: COLORS.PRIMARY, weight: 'bold', align: 'end' as const, flex: 0 },
+        {
+          type: 'text' as const,
+          text: `งวด ${p.installmentNo}`,
+          size: 'sm',
+          color: STYLE_C.TEXT.PRIMARY,
+          flex: 0,
+        },
+        {
+          type: 'text' as const,
+          text: p.paidDate,
+          size: 'xs',
+          color: STYLE_C.TEXT.MUTED,
+          align: 'center' as const,
+          flex: 1,
+        },
+        {
+          type: 'text' as const,
+          text: `${p.amountPaid.toLocaleString()} ฿`,
+          size: 'sm',
+          color: STYLE_C.BUTTON.GREEN,
+          weight: 'bold' as const,
+          align: 'end' as const,
+          flex: 0,
+        },
       ],
       justifyContent: 'space-between',
       margin: 'md',
+      paddingAll: '8px',
+      backgroundColor: STYLE_C.INFO_CARD_BG.DEFAULT,
+      cornerRadius: '8px',
     }));
 
     const bodyContents: FlexComponent[] = [
       ...paymentRows,
-      { type: 'separator' as const, margin: 'lg' },
-      createDetailRow('งวดที่เหลือ', `${contract.remainingCount} งวด`),
+      { type: 'separator' as const, margin: 'lg', color: '#e2e8f0' },
+      // Remaining count summary
+      {
+        type: 'box',
+        layout: 'horizontal',
+        contents: [
+          {
+            type: 'text',
+            text: 'งวดที่เหลือ',
+            size: 'xs',
+            color: STYLE_C.TEXT.SECONDARY,
+            flex: 1,
+          },
+          {
+            type: 'text',
+            text: `${contract.remainingCount} งวด`,
+            size: 'xs',
+            color: STYLE_C.TEXT.PRIMARY,
+            weight: 'bold',
+            align: 'end',
+            flex: 0,
+          },
+        ],
+        justifyContent: 'space-between',
+        margin: 'sm',
+      },
     ];
 
     return {
       type: 'bubble',
-      header: createHeader('ประวัติการชำระ', `สัญญา ${contract.contractNumber}`, COLORS.INFO),
+      size: 'mega',
+      header: createStyleCHeader(
+        ICONS.LIST,
+        'ประวัติการชำระ',
+        `สัญญา ${contract.contractNumber}`,
+        STYLE_C.GRADIENT.GREEN,
+      ),
       body: {
         type: 'box',
         layout: 'vertical',
@@ -50,8 +103,16 @@ export function buildReceiptHistory(data: ReceiptHistoryData): FlexMessagePayloa
   });
 
   if (bubbles.length === 1) {
-    return { type: 'flex', altText: `ประวัติการชำระ - ${data.customerName}`, contents: bubbles[0] };
+    return {
+      type: 'flex',
+      altText: `ประวัติการชำระ - ${data.customerName}`,
+      contents: bubbles[0],
+    };
   }
 
-  return { type: 'flex', altText: `ประวัติการชำระ - ${data.customerName}`, contents: { type: 'carousel', contents: bubbles } };
+  return {
+    type: 'flex',
+    altText: `ประวัติการชำระ - ${data.customerName}`,
+    contents: { type: 'carousel', contents: bubbles },
+  };
 }

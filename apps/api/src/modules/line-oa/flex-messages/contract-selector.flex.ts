@@ -1,9 +1,6 @@
-import {
-  FlexMessagePayload,
-  FlexComponent,
-  COLORS,
-  createHeader,
-} from './base-template';
+import { FlexMessagePayload, FlexComponent, COLORS } from './base-template';
+import { STYLE_C, createStyleCHeader } from './style-c';
+import { ICONS } from './icons';
 
 export interface ContractOption {
   contractNumber: string;
@@ -24,7 +21,7 @@ export function buildContractSelector(
       data: `action=${action}&contract=${c.contractNumber}`,
     },
     style: 'primary' as const,
-    color: c.status === 'OVERDUE' ? COLORS.DANGER : COLORS.PRIMARY,
+    color: c.status === 'OVERDUE' ? COLORS.DANGER : STYLE_C.BUTTON.GREEN,
     height: 'sm' as const,
     margin: 'sm',
   }));
@@ -34,12 +31,24 @@ export function buildContractSelector(
     altText: `เลือกสัญญา - ${customerName}`,
     contents: {
       type: 'bubble',
-      header: createHeader('เลือกสัญญา', `คุณ${customerName}`, COLORS.INFO),
+      size: 'mega',
+      header: createStyleCHeader(
+        ICONS.FILE_TEXT,
+        'เลือกสัญญา',
+        `คุณ${customerName}`,
+        STYLE_C.GRADIENT.GREEN,
+      ),
       body: {
         type: 'box',
         layout: 'vertical',
         contents: [
-          { type: 'text' as const, text: 'กรุณาเลือกสัญญาที่ต้องการ', size: 'sm', color: COLORS.MUTED, margin: 'md' },
+          {
+            type: 'text' as const,
+            text: 'กรุณาเลือกสัญญาที่ต้องการ',
+            size: 'sm',
+            color: STYLE_C.TEXT.SECONDARY,
+            margin: 'md',
+          },
         ],
         paddingAll: '20px',
       },

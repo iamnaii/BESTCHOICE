@@ -23,8 +23,10 @@ export class IntegrationsService {
   constructor(private readonly configService: IntegrationConfigService) {}
 
   async listAll(): Promise<IntegrationStatus[]> {
-    return Promise.all(
-      INTEGRATIONS.map(async (integration: IntegrationDef) => {
+    // Sequential to avoid exhausting DB connection pool on small instances
+    const results: IntegrationStatus[] = [];
+    for (const integration of INTEGRATIONS) {
+      try {
         const config = await this.configService.getConfig(integration.key);
         const requiredFields = integration.fields.filter((f) => f.required);
         const isConfigured =
@@ -34,16 +36,27 @@ export class IntegrationsService {
             return value !== undefined && value !== null && value !== '';
           });
 
-        return {
+        results.push({
           key: integration.key,
           name: integration.name,
           description: integration.description,
           icon: integration.icon,
-          status: isConfigured ? ('connected' as const) : ('not_configured' as const),
+          status: isConfigured ? 'connected' : 'not_configured',
           webhookUrl: integration.webhookUrl,
-        };
-      }),
-    );
+        });
+      } catch {
+        // If one integration fails, still show the rest
+        results.push({
+          key: integration.key,
+          name: integration.name,
+          description: integration.description,
+          icon: integration.icon,
+          status: 'not_configured',
+          webhookUrl: integration.webhookUrl,
+        });
+      }
+    }
+    return results;
   }
 
   async testConnection(integrationKey: string): Promise<TestConnectionResult> {

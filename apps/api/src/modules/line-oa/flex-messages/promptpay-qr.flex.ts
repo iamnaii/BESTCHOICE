@@ -1,13 +1,17 @@
 import {
   FlexMessagePayload,
   FlexBubble,
-  COLORS,
-  GRADIENTS,
-  createHeader,
-  createDetailRow,
-  createUriButton,
+  FlexComponent,
+  formatBaht,
   wrapFlexMessage,
 } from './base-template';
+import {
+  STYLE_C,
+  createStyleCHeader,
+  createInfoCard,
+  createStyleCButtons,
+} from './style-c';
+import { ICONS } from './icons';
 
 export interface PromptPayQrData {
   customerName: string;
@@ -22,100 +26,88 @@ export interface PromptPayQrData {
 }
 
 export function buildPromptPayQrFlex(data: PromptPayQrData): FlexMessagePayload {
-  const bubble: FlexBubble = {
-    type: 'bubble',
-    size: 'mega',
-    header: createHeader('💳 ชำระเงิน', `สัญญา ${data.contractNumber}`, GRADIENTS.BLUE),
-    hero: {
+  const bodyContents: FlexComponent[] = [
+    // QR Code image
+    {
       type: 'image',
       url: data.qrImageUrl,
       size: 'full',
       aspectRatio: '1:1',
       aspectMode: 'fit',
+      margin: 'none',
     },
-    body: {
+    // Amount info card
+    createInfoCard(
+      `คุณ${data.customerName}`,
+      `งวดที่ ${data.installmentNo}/${data.totalInstallments}`,
+      formatBaht(data.amount),
+      STYLE_C.BUTTON.GREEN,
+      undefined,
+      undefined,
+      STYLE_C.INFO_CARD_BG.SUCCESS,
+      STYLE_C.INFO_CARD_BORDER.SUCCESS,
+    ),
+    // PromptPay details row
+    {
       type: 'box',
       layout: 'vertical',
       contents: [
         {
           type: 'text',
-          text: `คุณ${data.customerName}`,
-          size: 'md',
-          weight: 'bold',
-          color: COLORS.DARK,
-        },
-        // Amount card
-        {
-          type: 'box',
-          layout: 'vertical',
-          contents: [
-            {
-              type: 'text',
-              text: 'ยอดชำระ',
-              size: 'xs',
-              color: COLORS.MUTED,
-              align: 'center',
-            },
-            {
-              type: 'text',
-              text: `฿${data.amount.toLocaleString()}`,
-              size: 'xxl',
-              color: COLORS.INFO,
-              weight: 'bold',
-              align: 'center',
-              margin: 'sm',
-            },
-          ],
-          backgroundColor: COLORS.INFO_LIGHT,
-          cornerRadius: '12px',
-          paddingAll: '14px',
-          margin: 'lg',
-        },
-        createDetailRow('งวดที่', `${data.installmentNo}/${data.totalInstallments}`),
-        {
-          type: 'separator',
-          margin: 'lg',
-          color: COLORS.BORDER,
-        },
-        {
-          type: 'box',
-          layout: 'vertical',
-          contents: [
-            {
-              type: 'text',
-              text: `PromptPay: ${data.maskedPromptPayId}`,
-              size: 'xs',
-              color: COLORS.MUTED,
-              align: 'center',
-            },
-            {
-              type: 'text',
-              text: `ชื่อ: ${data.accountName}`,
-              size: 'xs',
-              color: COLORS.MUTED,
-              margin: 'sm',
-              align: 'center',
-            },
-          ],
-          margin: 'lg',
+          text: `PromptPay: ${data.maskedPromptPayId}`,
+          size: 'xs',
+          color: STYLE_C.TEXT.SECONDARY,
+          align: 'center',
         },
         {
           type: 'text',
-          text: '📱 สแกน QR หรือกดปุ่มด้านล่าง',
+          text: `ชื่อบัญชี: ${data.accountName}`,
           size: 'xs',
-          color: COLORS.SUBTLE,
-          margin: 'md',
+          color: STYLE_C.TEXT.MUTED,
           align: 'center',
+          margin: 'sm',
         },
       ],
+      margin: 'md',
+    },
+    // Hint text
+    {
+      type: 'text',
+      text: 'สแกน QR หรือกดปุ่มด้านล่างเพื่อชำระเงิน',
+      size: 'xs',
+      color: STYLE_C.TEXT.MUTED,
+      align: 'center',
+      wrap: true,
+      margin: 'md',
+    },
+  ];
+
+  const bubble: FlexBubble = {
+    type: 'bubble',
+    size: 'mega',
+    header: createStyleCHeader(
+      ICONS.QR_CODE,
+      'ชำระเงิน',
+      `สัญญา ${data.contractNumber}`,
+      STYLE_C.GRADIENT.GREEN,
+    ),
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      contents: bodyContents,
       paddingAll: '20px',
+      spacing: 'sm',
     },
     footer: data.paymentLinkUrl
       ? {
           type: 'box',
           layout: 'vertical',
           contents: [
-            createUriButton('📸 ส่งสลิปชำระเงิน', data.paymentLinkUrl, COLORS.PRIMARY),
+            createStyleCButtons(
+              'ส่งสลิปชำระเงิน',
+              { type: 'uri', label: 'ส่งสลิปชำระเงิน', uri: data.paymentLinkUrl },
+              STYLE_C.BUTTON.GREEN,
+            ),
           ],
           paddingAll: '12px',
         }

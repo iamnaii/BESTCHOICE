@@ -106,7 +106,7 @@ export default function ChatbotFinanceAnalyticsPage() {
             </Link>
             <Link
               to="/chatbot-finance/knowledge"
-              className="px-4 py-2 rounded-lg bg-white text-[#1e3a5f] text-sm hover:bg-white/90 font-medium"
+              className="px-4 py-2 rounded-lg bg-white text-foreground text-sm hover:bg-white/90 font-medium"
             >
               จัดการ Knowledge Base
             </Link>

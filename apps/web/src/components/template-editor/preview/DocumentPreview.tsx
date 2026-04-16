@@ -83,8 +83,8 @@ export default function DocumentPreview({ compact }: Props) {
         >
           {/* Letterhead */}
           {settings.letterhead === 'bestchoice' && (
-            <div className="text-center mb-5 pb-3" style={{ borderBottom: '2px solid #059669' }}>
-              <h1 style={{ fontSize: '20px', fontWeight: 700, color: '#059669', letterSpacing: '1px', marginBottom: '4px' }}>
+            <div className="text-center mb-5 pb-3" style={{ borderBottom: '2px solid var(--color-primary)' }}>
+              <h1 style={{ fontSize: '20px', fontWeight: 700, color: 'var(--color-primary)', letterSpacing: '1px', marginBottom: '4px' }}>
                 BESTCHOICEPHONE Co., Ltd.
               </h1>
               <p style={{ fontSize: '14px', color: '#4a4a4a', marginBottom: '2px' }}>

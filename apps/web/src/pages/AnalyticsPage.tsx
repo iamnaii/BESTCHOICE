@@ -193,7 +193,7 @@ function RevenueForecastChart({ data }: { data: ForecastData }) {
           {lastHistoricalMonth && (
             <ReferenceLine
               x={lastHistoricalMonth}
-              stroke="#94a3b8"
+              stroke="var(--color-muted-foreground, #94a3b8)"
               strokeDasharray="4 4"
               label={{ value: 'ปัจจุบัน', position: 'top', fontSize: 10, fill: '#64748b' }}
             />

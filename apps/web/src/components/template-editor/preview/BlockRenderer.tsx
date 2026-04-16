@@ -34,7 +34,7 @@ function RichHtmlContent({ html, previewMode, ctx }: { html: string; previewMode
     ? resolved
     : resolved.replace(
         /\{\{=\s*([^}]*)\}\}/g,
-        '<span style="background:#d1fae5;color:#047857;padding:1px 4px;border-radius:3px;font-family:monospace;font-size:0.85em">{{= $1}}</span>'
+        '<span style="background:var(--color-primary-100, #d1fae5);color:var(--color-primary-700, #047857);padding:1px 4px;border-radius:3px;font-family:monospace;font-size:0.85em">{{= $1}}</span>'
       );
   const clean = DOMPurify.sanitize(withHighlights, {
     ADD_TAGS: ['span'],
@@ -50,7 +50,7 @@ function InlineHtmlContent({ html, previewMode, ctx }: { html: string; previewMo
     ? resolved
     : resolved.replace(
         /\{\{=\s*([^}]*)\}\}/g,
-        '<span style="background:#d1fae5;color:#047857;padding:1px 4px;border-radius:3px;font-family:monospace;font-size:0.85em">{{= $1}}</span>'
+        '<span style="background:var(--color-primary-100, #d1fae5);color:var(--color-primary-700, #047857);padding:1px 4px;border-radius:3px;font-family:monospace;font-size:0.85em">{{= $1}}</span>'
       );
   // Strip block-level wrappers so content stays inline
   const stripped = withHighlights

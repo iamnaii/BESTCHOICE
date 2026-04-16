@@ -26,7 +26,7 @@ export default function EmptyState({
   return (
     <div className={cn('flex flex-col items-center justify-center py-16 px-6 text-center', className)}>
       {/* Icon circle */}
-      <div className="size-16 rounded-2xl bg-muted flex items-center justify-center mb-5">
+      <div className="size-16 rounded-2xl bg-[#f0f5ff] flex items-center justify-center mb-5">
         <Icon className="size-7 text-muted-foreground/60" />
       </div>
 

@@ -22,11 +22,11 @@ const badgeVariants = cva(
   {
     variants: {
       variant: {
-        primary: 'bg-primary text-primary-foreground',
+        primary: 'bg-[#1e3a5f] text-white border-transparent',
         secondary: 'bg-secondary text-secondary-foreground',
         success: 'bg-success text-success-foreground',
         warning: 'bg-warning text-warning-foreground',
-        info: 'bg-info text-info-foreground',
+        info: 'bg-[#1e3a5f] text-white border-transparent',
         outline: 'bg-transparent border border-border text-secondary-foreground',
         destructive: 'bg-destructive text-destructive-foreground',
       },
@@ -40,8 +40,8 @@ const badgeVariants = cva(
         true: 'opacity-50 pointer-events-none',
       },
       size: {
-        lg: 'rounded-md px-2 h-7 min-w-[28px] gap-1.5 text-xs [&_svg]:size-3.5',
-        md: 'rounded-md px-[0.45rem] h-6 min-w-[24px] gap-1.5 text-xs [&_svg]:size-3.5',
+        lg: 'rounded-full px-2 h-7 min-w-[28px] gap-1.5 text-xs [&_svg]:size-3.5',
+        md: 'rounded-full px-[0.45rem] h-6 min-w-[24px] gap-1.5 text-xs [&_svg]:size-3.5',
         sm: 'rounded-sm px-[0.325rem] h-5 min-w-[20px] gap-1 text-[0.6875rem] leading-3 [&_svg]:size-3',
         xs: 'rounded-sm px-1 h-4 min-w-[16px] gap-1 text-[0.625rem] leading-2 [&_svg]:size-3',
       },
@@ -54,7 +54,7 @@ const badgeVariants = cva(
       {
         variant: 'primary',
         appearance: 'light',
-        className: 'text-primary bg-primary/10 dark:bg-primary/15',
+        className: 'bg-[#f0f5ff] text-[#1e3a5f] border-transparent',
       },
       {
         variant: 'secondary',
@@ -74,7 +74,7 @@ const badgeVariants = cva(
       {
         variant: 'info',
         appearance: 'light',
-        className: 'text-info bg-info/10 dark:bg-info/15',
+        className: 'bg-[#f0f5ff] text-[#1e3a5f] border-transparent',
       },
       {
         variant: 'destructive',

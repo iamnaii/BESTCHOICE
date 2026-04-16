@@ -61,6 +61,15 @@ export default function ResetPasswordPage() {
       </div>
 
       <div className="bg-card rounded-xl shadow-card border border-border/60 p-6">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="size-10 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-400 flex items-center justify-center shadow-lg shadow-emerald-500/20">
+            <span className="text-white text-lg font-bold">B</span>
+          </div>
+          <div>
+            <div className="text-lg font-bold text-foreground">BESTCHOICE</div>
+            <div className="text-xs text-muted-foreground">Finance Management</div>
+          </div>
+        </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label htmlFor="newPassword" className="block text-2sm font-medium text-foreground mb-1.5">
@@ -95,7 +104,7 @@ export default function ResetPasswordPage() {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="w-full bg-primary text-primary-foreground h-10 px-4 rounded-lg font-semibold text-sm hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-card"
+            className="w-full bg-[#059669] text-white h-10 px-4 rounded-lg font-semibold text-sm hover:bg-[#047857] disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-[0_2px_8px_rgba(5,150,105,0.25)]"
           >
             {isSubmitting ? 'กำลังรีเซ็ต...' : 'รีเซ็ตรหัสผ่าน'}
           </button>

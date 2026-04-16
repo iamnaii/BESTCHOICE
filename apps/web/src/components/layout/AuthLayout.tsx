@@ -11,7 +11,7 @@ interface AuthLayoutProps {
  */
 export default function AuthLayout({ children }: AuthLayoutProps) {
   return (
-    <div className="grid lg:grid-cols-2 grow min-h-screen bg-background">
+    <div className="grid lg:grid-cols-2 grow min-h-screen bg-gradient-to-br from-[#f8fafc] to-[#f0f5ff]">
       {/* Left Side — Form */}
       <div className="flex justify-center items-center p-8 lg:p-10 order-2 lg:order-1">
         <div className="w-full max-w-[440px]">

@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Link } from 'react-router';
+import { useMemo } from 'react';
+import { Link, useLocation } from 'react-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { useTheme } from 'next-themes';
@@ -14,7 +14,6 @@ import {
   Building2,
   LogOut,
   Settings,
-  User,
   ChevronDown,
   MessageSquareMore,
 } from 'lucide-react';
@@ -73,7 +72,7 @@ function UserDropdown() {
           aria-label="เมนูผู้ใช้"
         >
           {/* Avatar */}
-          <div className="size-8 rounded-full bg-linear-to-br from-primary to-primary/70 flex items-center justify-center ring-2 ring-primary/20 shrink-0">
+          <div className="size-8 rounded-full bg-gradient-to-br from-[#1e3a5f] to-[#059669] flex items-center justify-center ring-2 ring-primary/20 shrink-0">
             <span className="text-white text-[13px] font-bold leading-none">{initials}</span>
           </div>
           {/* Name (hidden on small) */}
@@ -83,7 +82,7 @@ function UserDropdown() {
               {roleLabel}
             </span>
           </div>
-          <ChevronDown className="size-3.5 text-muted-foreground/60 hidden sm:block" />
+          <ChevronDown className="size-3.5 text-muted-foreground/60 hidden sm:block" strokeWidth={1.75} />
         </button>
       </DropdownMenuTrigger>
 
@@ -91,7 +90,7 @@ function UserDropdown() {
         {/* User info header */}
         <DropdownMenuLabel className="font-normal pb-2">
           <div className="flex items-center gap-3">
-            <div className="size-10 rounded-full bg-linear-to-br from-primary to-primary/70 flex items-center justify-center ring-2 ring-primary/20 shrink-0">
+            <div className="size-10 rounded-full bg-gradient-to-br from-[#1e3a5f] to-[#059669] flex items-center justify-center ring-2 ring-primary/20 shrink-0">
               <span className="text-white text-sm font-bold leading-none">{initials}</span>
             </div>
             <div className="flex flex-col min-w-0">
@@ -101,7 +100,7 @@ function UserDropdown() {
               </span>
               {user.branchName && (
                 <p className="text-[11px] text-muted-foreground flex items-center gap-1 mt-0.5">
-                  <Building2 className="size-3 opacity-60" />
+                  <Building2 className="size-3 opacity-60" strokeWidth={1.75} />
                   {user.branchName}
                 </p>
               )}
@@ -114,7 +113,7 @@ function UserDropdown() {
         <DropdownMenuGroup>
           <DropdownMenuItem asChild>
             <Link to="/settings" className="flex items-center gap-2.5 cursor-pointer">
-              <Settings className="size-4 text-muted-foreground" />
+              <Settings className="size-4 text-muted-foreground" strokeWidth={1.75} />
               <span>ตั้งค่าระบบ</span>
             </Link>
           </DropdownMenuItem>
@@ -126,7 +125,7 @@ function UserDropdown() {
           onClick={logout}
           className="flex items-center gap-2.5 text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer"
         >
-          <LogOut className="size-4" />
+          <LogOut className="size-4" strokeWidth={1.75} />
           <span>ออกจากระบบ</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
@@ -141,11 +140,27 @@ export default function TopBar() {
   const { setMobileSidebarOpen } = useLayout();
   const { theme, setTheme } = useTheme();
   const { open: openCommandPalette } = useCommandPalette();
+  const { pathname } = useLocation();
+
+  const pageTitle = useMemo(() => {
+    const map: Record<string, string> = {
+      '/': 'Dashboard', '/pos': 'POS', '/customers': 'ลูกค้า',
+      '/contracts': 'สัญญา', '/payments': 'ชำระเงิน', '/stock': 'สต็อก',
+      '/overdue': 'ค้างชำระ', '/settings': 'ตั้งค่า', '/users': 'ผู้ใช้',
+      '/branches': 'สาขา', '/suppliers': 'ผู้จำหน่าย', '/commissions': 'คอมมิชชัน',
+      '/receipts': 'ใบเสร็จ', '/audit-logs': 'Audit Logs', '/notifications': 'แจ้งเตือน',
+    };
+    const exactMatch = map[pathname];
+    if (exactMatch) return exactMatch;
+    // Try prefix match
+    const prefix = Object.keys(map).find(k => k !== '/' && pathname.startsWith(k));
+    return prefix ? map[prefix] : pathname.split('/').filter(Boolean).pop()?.replace(/-/g, ' ') || 'Dashboard';
+  }, [pathname]);
 
   return (
-    <header className="header sticky top-0 z-10 flex items-center justify-between shrink-0 h-[60px] px-5 lg:px-6 bg-background/95 backdrop-blur-md border-b border-border/50 shadow-[0_1px_0_rgba(0,0,0,0.04)]">
+    <header className="sticky top-0 z-10 h-[60px] bg-white dark:bg-card border-b border-[#e2e8f0] dark:border-border flex items-center justify-between shrink-0 px-5 lg:px-6">
 
-      {/* ── Left: hamburger (mobile) + branch context ── */}
+      {/* ── Left: hamburger (mobile) + breadcrumb ── */}
       <div className="flex items-center gap-2.5">
         {/* Mobile hamburger */}
         {isMobile && (
@@ -156,14 +171,25 @@ export default function TopBar() {
             aria-label="เปิดเมนู"
             onClick={() => setMobileSidebarOpen(true)}
           >
-            <Menu className="size-5 text-muted-foreground/70" />
+            <Menu className="size-5 text-muted-foreground/70" strokeWidth={1.75} />
           </Button>
         )}
 
-        {/* Branch badge — desktop only */}
+        {/* Breadcrumb — desktop only */}
+        <nav className="hidden lg:flex items-center gap-1.5 text-sm">
+          <Link to="/" className="text-[#94a3b8] hover:text-foreground transition-colors">หน้าหลัก</Link>
+          {pathname !== '/' && (
+            <>
+              <span className="text-[#cbd5e1]">/</span>
+              <span className="text-foreground font-medium">{pageTitle}</span>
+            </>
+          )}
+        </nav>
+
+        {/* Branch badge — shown on mobile/tablet when no breadcrumb */}
         {user?.branchName && (
-          <span className="hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-muted/60 text-[12px] font-medium text-muted-foreground border border-border/40">
-            <Building2 className="size-3 opacity-50" />
+          <span className="lg:hidden inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-muted/60 text-[12px] font-medium text-muted-foreground border border-border/40">
+            <Building2 className="size-3 opacity-50" strokeWidth={1.75} />
             {user.branchName}
           </span>
         )}
@@ -174,19 +200,12 @@ export default function TopBar() {
 
         {/* Search button → opens Command Palette */}
         <button
-          onClick={openCommandPalette}
-          className={cn(
-            'flex items-center gap-2 h-9 rounded-xl border border-border/50 bg-muted/40 text-[13px] text-muted-foreground',
-            'hover:bg-muted/70 hover:border-border/70 transition-all duration-150',
-            'px-2.5 sm:px-3',
-          )}
+          onClick={() => openCommandPalette()}
+          className="hidden md:flex items-center gap-2 h-9 px-3 rounded-md bg-[#f1f5f9] dark:bg-muted text-muted-foreground text-xs hover:bg-[#e2e8f0] transition-colors min-w-[180px]"
           aria-label="ค้นหา (Ctrl+K)"
         >
-          <Search className="size-3.5 opacity-50 shrink-0" />
-          <span className="hidden sm:inline text-[13px]">ค้นหา...</span>
-          <kbd className="hidden lg:inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-background/80 text-[10px] text-muted-foreground/50 border border-border/40 font-mono ml-5">
-            ⌘K
-          </kbd>
+          <Search className="size-3.5 text-[#94a3b8]" strokeWidth={1.75} />
+          <span className="text-[#94a3b8]">ค้นหา... (⌘K)</span>
         </button>
 
         {/* Chat inbox button */}
@@ -198,7 +217,7 @@ export default function TopBar() {
             className="size-9 rounded-xl relative text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors duration-150"
           >
             <Link to="/inbox" aria-label="กล่องข้อความ">
-              <MessageSquareMore className="size-[17px]" />
+              <MessageSquareMore className="size-[17px]" strokeWidth={1.75} />
               <ChatUnreadBadge className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] text-[9px]" />
             </Link>
           </Button>
@@ -211,7 +230,7 @@ export default function TopBar() {
           aria-label="การแจ้งเตือน"
           className="size-9 rounded-xl relative text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors duration-150"
         >
-          <Bell className="size-[17px]" />
+          <Bell className="size-[17px]" strokeWidth={1.75} />
           {/* Active indicator dot */}
           <span
             className="absolute top-[9px] right-[9px] size-[7px] rounded-full bg-emerald-500 ring-[1.5px] ring-background"
@@ -227,8 +246,8 @@ export default function TopBar() {
           className="size-9 rounded-xl relative text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors duration-150"
           aria-label="สลับธีม"
         >
-          <Sun className="size-[17px] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-          <Moon className="absolute size-[17px] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+          <Sun className="size-[17px] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" strokeWidth={1.75} />
+          <Moon className="absolute size-[17px] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" strokeWidth={1.75} />
         </Button>
 
         {/* Vertical divider */}

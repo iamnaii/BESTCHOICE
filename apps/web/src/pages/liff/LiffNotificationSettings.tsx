@@ -95,7 +95,7 @@ export default function LiffNotificationSettings() {
   return (
     <div className="min-h-screen bg-background p-4 pb-8">
       {/* Header */}
-      <div className="bg-primary rounded-xl p-5 text-primary-foreground mb-4">
+      <div className="bg-gradient-to-r from-[#1e3a5f] to-[#059669] rounded-xl p-5 text-white shadow-md mb-4">
         <p className="text-xs opacity-80">BEST CHOICE</p>
         <h1 className="text-base font-bold mt-1">ตั้งค่าการแจ้งเตือน</h1>
         <p className="text-xs opacity-80 mt-1">เลือกการแจ้งเตือนที่ต้องการรับผ่าน LINE</p>

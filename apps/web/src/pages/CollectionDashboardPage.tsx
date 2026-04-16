@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import api from '@/lib/api';
+import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import QueryBoundary from '@/components/QueryBoundary';
 import { cn } from '@/lib/utils';
@@ -134,17 +135,16 @@ export default function CollectionDashboardPage() {
 
   return (
     <div className="flex flex-col gap-5 lg:gap-7.5">
-      {/* ─── Header ─── */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground tracking-tight">Collection Dashboard</h1>
-          <p className="text-sm text-muted-foreground mt-1">ติดตามและวิเคราะห์การเก็บเงินค้างชำระ</p>
-        </div>
-        <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground bg-muted/60 border border-border/50 rounded-lg px-3 py-2">
-          <RefreshCw className="size-3 animate-spin [animation-duration:10s]" />
-          <span>อัปเดตอัตโนมัติทุก 60 วินาที</span>
-        </div>
-      </div>
+      <PageHeader
+        title="Collection Dashboard"
+        subtitle="ติดตามและวิเคราะห์การเก็บเงินค้างชำระ"
+        action={
+          <div className="hidden sm:flex items-center gap-2 text-xs text-white/70 bg-white/10 border border-white/15 rounded-lg px-3 py-2">
+            <RefreshCw className="size-3 animate-spin [animation-duration:10s]" />
+            <span>อัปเดตอัตโนมัติทุก 60 วินาที</span>
+          </div>
+        }
+      />
 
       <QueryBoundary
         isLoading={isLoading}

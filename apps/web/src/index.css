@@ -42,17 +42,27 @@ layer(base);
   --animate-collapsible-up: collapsible-up 0.2s ease-out;
   --animate-pulse-subtle: pulse-subtle 2s ease-in-out infinite;
 
-  --color-primary-50: #eef5ff;
-  --color-primary-100: #d9e8ff;
-  --color-primary-200: #bcd7ff;
-  --color-primary-300: #8ebeff;
-  --color-primary-400: #599aff;
-  --color-primary-500: #3699ff;
-  --color-primary-600: #1b84ff;
-  --color-primary-700: #1469d1;
-  --color-primary-800: #1756a9;
-  --color-primary-900: #194985;
-  --color-primary-950: #142e51;
+  --color-primary-50: #f0f5ff;
+  --color-primary-100: #d6e4ff;
+  --color-primary-200: #a3bffa;
+  --color-primary-300: #7da2ef;
+  --color-primary-400: #5b8def;
+  --color-primary-500: #3a6fd8;
+  --color-primary-600: #2d5a8a;
+  --color-primary-700: #1e3a5f;
+  --color-primary-800: #162d4a;
+  --color-primary-900: #0f2035;
+  --color-primary-950: #091626;
+  --color-accent-50: #ecfdf5;
+  --color-accent-100: #d1fae5;
+  --color-accent-200: #a7f3d0;
+  --color-accent-300: #6ee7b7;
+  --color-accent-400: #34d399;
+  --color-accent-500: #10b981;
+  --color-accent-600: #059669;
+  --color-accent-700: #047857;
+  --color-accent-800: #065f46;
+  --color-accent-900: #064e3b;
   --color-primary: hsl(var(--primary));
   --color-primary-foreground: hsl(var(--primary-foreground));
 
@@ -109,7 +119,7 @@ layer(base);
   --color-sidebar-active: hsl(var(--sidebar-active));
   --color-sidebar-hover: hsl(var(--sidebar-hover));
   --color-sidebar-border: hsl(var(--sidebar-border));
-  --color-sidebar-dark: #1b1b28;
+  --color-sidebar-dark: #162d4a;
 
   --color-chart-1: hsl(var(--chart-1));
   --color-chart-2: hsl(var(--chart-2));
@@ -123,12 +133,12 @@ layer(base);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
 
-  --shadow-xs:
-    0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 0 40px rgba(49, 52, 122, 0.04);
-  --shadow-card: 0 0 50px rgba(49, 52, 122, 0.08);
-  --shadow-card-hover: 0 0 50px rgba(49, 52, 122, 0.15);
-  --shadow-sidebar: 4px 0 20px rgba(0, 0, 0, 0.15);
-  --shadow-topbar: 0 1px 0 rgba(0, 0, 0, 0.05);
+  --shadow-xs: 0 1px 2px rgba(30, 58, 95, 0.05);
+  --shadow-card: 0 1px 3px rgba(30, 58, 95, 0.08), 0 1px 2px rgba(30, 58, 95, 0.04);
+  --shadow-card-hover: 0 4px 12px rgba(30, 58, 95, 0.1), 0 1px 3px rgba(30, 58, 95, 0.06);
+  --shadow-sidebar: 4px 0 20px rgba(15, 32, 53, 0.2);
+  --shadow-topbar: 0 1px 0 rgba(30, 58, 95, 0.05);
+  --shadow-modal: 0 10px 25px rgba(30, 58, 95, 0.12), 0 4px 10px rgba(30, 58, 95, 0.06);
 
   @keyframes fadeIn {
     0% {
@@ -269,16 +279,16 @@ layer(base);
     --card-foreground: 240 6% 10%;
     --popover: 0 0% 100%;
     --popover-foreground: 240 6% 10%;
-    /* Primary: blue-500 */
-    --primary: 217 91% 60%;
+    /* Primary: Navy */
+    --primary: 210 52% 24%;
     --primary-foreground: 0 0% 100%;
     /* Secondary/Muted/Accent: zinc-100 */
     --secondary: 240 5% 96%;
     --secondary-foreground: 240 6% 10%;
     --muted: 240 5% 96%;
     --muted-foreground: 240 4% 46%;
-    --accent: 240 5% 96%;
-    --accent-foreground: 240 6% 10%;
+    --accent: 160 84% 39%;
+    --accent-foreground: 0 0% 100%;
     /* Destructive: red-600 */
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
@@ -287,7 +297,7 @@ layer(base);
     --success-foreground: 0 0% 100%;
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
-    --info: 262 83% 58%;
+    --info: 210 52% 24%;
     --info-foreground: 0 0% 100%;
     /* Border: between zinc-100 and zinc-200 */
     --border: 240 6% 90%;
@@ -295,24 +305,24 @@ layer(base);
     --ring: 240 5% 65%;
     /* Metronic uses 0.5rem (8px) base radius */
     --radius: 0.5rem;
-    /* Sidebar - Demo 9 dark icon rail */
-    --sidebar-bg: 0 0% 100%;
-    --sidebar-fg: 240 4% 46%;
-    --sidebar-active: 217 91% 60%;
-    --sidebar-hover: 240 5% 96%;
-    --sidebar-border: 240 6% 90%;
-    /* Charts: blue, green, yellow, red, purple */
-    --chart-1: 217 91% 60%;
+    /* Sidebar - Navy dark rail */
+    --sidebar-bg: 210 52% 24%;
+    --sidebar-fg: 0 0% 100%;
+    --sidebar-active: 160 84% 39%;
+    --sidebar-hover: 210 52% 20%;
+    --sidebar-border: 210 52% 18%;
+    /* Charts: navy, emerald, yellow, red, purple */
+    --chart-1: 210 52% 24%;
     --chart-2: 142 71% 45%;
     --chart-3: 48 96% 53%;
     --chart-4: 0 84% 60%;
     --chart-5: 271 91% 65%;
     /* Hero gradient colors */
-    --color-hero-1: #1b2559;
-    --color-hero-2: #1b3a8a;
-    --color-hero-3: #1b84ff;
-    --color-hero-4: #3699ff;
-    --color-hero-5: #69b3ff;
+    --color-hero-1: #0f2035;
+    --color-hero-2: #162d4a;
+    --color-hero-3: #1e3a5f;
+    --color-hero-4: #234b73;
+    --color-hero-5: #059669;
     /* Tiptap editor colors */
     --color-editor-text: #1a1a1a;
     --color-editor-heading: #111;
@@ -332,34 +342,34 @@ layer(base);
     --card-foreground: 0 0% 98%;
     --popover: 240 10% 8%;
     --popover-foreground: 0 0% 98%;
-    /* Primary: blue-600 in dark */
-    --primary: 217 91% 60%;
+    /* Primary: Navy in dark */
+    --primary: 210 52% 30%;
     --primary-foreground: 0 0% 100%;
     /* Secondary/Muted/Accent: zinc-800 */
     --secondary: 240 4% 16%;
     --secondary-foreground: 0 0% 98%;
     --muted: 240 4% 16%;
     --muted-foreground: 240 4% 46%;
-    --accent: 240 4% 16%;
-    --accent-foreground: 0 0% 98%;
+    --accent: 160 84% 39%;
+    --accent-foreground: 0 0% 100%;
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
     --success: 142 71% 40%;
     --success-foreground: 0 0% 100%;
     --warning: 38 92% 45%;
     --warning-foreground: 0 0% 100%;
-    --info: 262 83% 55%;
+    --info: 210 52% 30%;
     --info-foreground: 0 0% 100%;
     /* Border: zinc-800 */
     --border: 240 4% 16%;
     --input: 240 4% 16%;
     --ring: 240 5% 40%;
-    /* Sidebar - Demo 9 dark mode */
-    --sidebar-bg: 240 10% 6%;
-    --sidebar-fg: 240 4% 55%;
-    --sidebar-active: 217 91% 60%;
-    --sidebar-hover: 240 4% 12%;
-    --sidebar-border: 240 4% 16%;
+    /* Sidebar - Navy dark mode */
+    --sidebar-bg: 210 52% 12%;
+    --sidebar-fg: 0 0% 95%;
+    --sidebar-active: 160 84% 39%;
+    --sidebar-hover: 210 52% 16%;
+    --sidebar-border: 210 52% 16%;
     --chart-1: 217 91% 60%;
     --chart-2: 142 71% 45%;
     --chart-3: 48 96% 53%;

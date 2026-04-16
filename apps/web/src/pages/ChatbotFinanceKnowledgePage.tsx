@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
+import PageHeader from '@/components/ui/PageHeader';
 import { toast } from 'sonner';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -585,8 +586,11 @@ function SuggestionsTab() {
 
 export default function ChatbotFinanceKnowledgePage() {
   return (
-    <div className="p-6">
-      <h1 className="text-xl font-bold mb-4">Finance Bot — Knowledge Base</h1>
+    <div>
+      <PageHeader
+        title="Finance Bot — Knowledge Base"
+        subtitle="จัดการ FAQ และ KB สำหรับ AI Finance Bot"
+      />
 
       <Tabs defaultValue="knowledge">
         <TabsList variant="line" size="md">

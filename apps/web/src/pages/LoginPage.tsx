@@ -94,7 +94,7 @@ export default function LoginPage() {
                 type="submit"
                 data-testid="login-submit"
                 disabled={isSubmitting}
-                className="w-full bg-[#059669] text-white h-10 px-4 rounded-lg font-semibold text-sm hover:bg-[#047857] disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-[0_2px_8px_rgba(5,150,105,0.25)]"
+                className="w-full bg-primary text-white h-10 px-4 rounded-lg font-semibold text-sm hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
               >
                 {isSubmitting ? (
                   <span className="flex items-center justify-center gap-2">
@@ -111,8 +111,8 @@ export default function LoginPage() {
             </form>
 
             {import.meta.env.DEV && (
-              <div className="mt-5 p-3.5 bg-[#f0f5ff] rounded-lg border border-[#1e3a5f]/10">
-                <p className="font-medium text-[#1e3a5f] text-xs mb-2">เข้าสู่ระบบด่วน:</p>
+              <div className="mt-5 p-3.5 bg-muted rounded-lg border border-border">
+                <p className="font-medium text-foreground text-xs mb-2">เข้าสู่ระบบด่วน:</p>
                 <div className="grid grid-cols-2 gap-2">
                   {[
                     { label: 'Admin', email: 'admin@bestchoice.com', pw: 'admin1234', role: 'OWNER' },
@@ -139,10 +139,10 @@ export default function LoginPage() {
                           setIsSubmitting(false);
                         }
                       }}
-                      className="flex flex-col items-center gap-0.5 p-2 rounded-md border border-[#1e3a5f]/20 hover:bg-[#f0f5ff] hover:border-[#1e3a5f]/40 transition-all text-xs disabled:opacity-50"
+                      className="flex flex-col items-center gap-0.5 p-2 rounded-md border border-border hover:bg-accent hover:border-border transition-all text-xs disabled:opacity-50"
                     >
-                      <span className="font-semibold text-[#1e3a5f]">{acc.label}</span>
-                      <span className="text-[#1e3a5f]/60 text-[10px]">{acc.role}</span>
+                      <span className="font-semibold text-foreground">{acc.label}</span>
+                      <span className="text-muted-foreground text-[10px]">{acc.role}</span>
                     </button>
                   ))}
                 </div>

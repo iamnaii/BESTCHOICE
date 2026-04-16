@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState, useMemo } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
-import { Send, MoreVertical, ArrowLeft, Paperclip, Smile, Pin, PinOff } from 'lucide-react';
+import { Send, MoreVertical, ArrowLeft, Paperclip, Smile, Pin, PinOff, MessageSquare } from 'lucide-react';
 import { format, isSameDay } from 'date-fns';
 import { th } from 'date-fns/locale/th';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -263,8 +263,12 @@ export default function ChatPanel({
 
   if (!session) {
     return (
-      <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
-        เลือกการสนทนาจากรายการด้านซ้าย
+      <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
+        <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center mb-4">
+          <MessageSquare className="w-7 h-7 text-muted-foreground/50" />
+        </div>
+        <p className="text-sm font-medium text-foreground/70 leading-snug">เลือกการสนทนาจากรายการด้านซ้าย</p>
+        <p className="text-xs text-muted-foreground mt-1">เพื่อเริ่มตอบแชทลูกค้า</p>
       </div>
     );
   }
@@ -438,7 +442,7 @@ export default function ChatPanel({
                   className={cn(
                     'p-2 rounded-lg transition-colors',
                     emojiOpen
-                      ? 'text-blue-500 bg-blue-50 dark:bg-blue-950/30'
+                      ? 'text-primary bg-primary/10'
                       : 'text-muted-foreground hover:text-foreground hover:bg-muted',
                   )}
                   title="Emoji / สติกเกอร์"
@@ -459,7 +463,7 @@ export default function ChatPanel({
                     className={cn(
                       'flex items-center gap-1.5 px-4 py-2 text-xs font-medium transition-colors',
                       pickerTab === 'emoji'
-                        ? 'text-blue-600 border-b-2 border-blue-500 -mb-px'
+                        ? 'text-primary border-b-2 border-primary -mb-px'
                         : 'text-muted-foreground hover:text-foreground',
                     )}
                   >
@@ -472,7 +476,7 @@ export default function ChatPanel({
                       className={cn(
                         'flex items-center gap-1.5 px-4 py-2 text-xs font-medium transition-colors',
                         pickerTab === 'sticker'
-                          ? 'text-blue-600 border-b-2 border-blue-500 -mb-px'
+                          ? 'text-primary border-b-2 border-primary -mb-px'
                           : 'text-muted-foreground hover:text-foreground',
                       )}
                     >
@@ -486,7 +490,7 @@ export default function ChatPanel({
                       className={cn(
                         'flex items-center gap-1.5 px-4 py-2 text-xs font-medium transition-colors',
                         pickerTab === 'gif'
-                          ? 'text-blue-600 border-b-2 border-blue-500 -mb-px'
+                          ? 'text-primary border-b-2 border-primary -mb-px'
                           : 'text-muted-foreground hover:text-foreground',
                       )}
                     >
@@ -507,7 +511,7 @@ export default function ChatPanel({
                           title={cat.name}
                           className={cn(
                             'p-1 rounded text-base transition-colors',
-                            emojiCategory === i ? 'bg-blue-50 dark:bg-blue-950/30 ring-1 ring-blue-200 dark:ring-blue-800' : 'hover:bg-muted',
+                            emojiCategory === i ? 'bg-primary/10 ring-1 ring-primary/30' : 'hover:bg-muted',
                           )}
                         >
                           {cat.label}
@@ -588,7 +592,7 @@ export default function ChatPanel({
                         placeholder="ค้นหา GIF..."
                         value={gifSearch}
                         onChange={(e) => setGifSearch(e.target.value)}
-                        className="w-full px-2 py-1.5 text-xs border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 bg-background"
+                        className="w-full px-2 py-1.5 text-xs border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary bg-background"
                       />
                     </div>
                     {/* GIF grid */}
@@ -635,12 +639,12 @@ export default function ChatPanel({
               onKeyDown={handleKeyDown}
               placeholder="พิมพ์ข้อความ... (Enter ส่ง, Shift+Enter ขึ้นบรรทัดใหม่)"
               rows={1}
-              className="flex-1 resize-none px-3 py-2 text-sm border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 max-h-32"
+              className="flex-1 resize-none px-3 py-2 text-sm border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary max-h-32"
             />
             <button
               onClick={handleSend}
               disabled={!inputText.trim()}
-              className="p-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="p-2.5 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               <Send className="w-4 h-4" />
             </button>

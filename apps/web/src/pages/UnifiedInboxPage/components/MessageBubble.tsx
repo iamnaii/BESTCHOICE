@@ -145,7 +145,7 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
               ? 'bg-muted text-foreground rounded-bl-md'
               : isBot
                 ? 'bg-purple-50 text-purple-900 rounded-br-md border border-purple-100'
-                : 'bg-blue-500 text-white rounded-br-md',
+                : 'bg-primary text-primary-foreground rounded-br-md',
           )}
         >
           {/* Media */}

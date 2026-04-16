@@ -102,15 +102,19 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
 
   if (!customerId) {
     return (
-      <div className="w-72 border-l border-border hidden lg:flex items-center justify-center text-muted-foreground text-sm p-4">
-        เลือกการสนทนาเพื่อดูข้อมูลลูกค้า
+      <div className="w-80 border-l border-border flex flex-col items-center justify-center text-center p-6">
+        <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center mb-3">
+          <User className="w-6 h-6 text-muted-foreground/50" />
+        </div>
+        <p className="text-sm font-medium text-foreground/70 leading-snug">เลือกการสนทนาเพื่อดูข้อมูลลูกค้า</p>
+        <p className="text-xs text-muted-foreground mt-1">ข้อมูลลูกค้า สัญญา และประวัติจะแสดงที่นี่</p>
       </div>
     );
   }
 
   if (isLoading) {
     return (
-      <div className="w-80 border-l border-border hidden lg:flex items-center justify-center text-muted-foreground text-sm">
+      <div className="w-80 border-l border-border">
         <div className="animate-pulse space-y-3 w-full p-4">
           <div className="h-16 bg-muted rounded-lg" />
           <div className="h-24 bg-muted rounded-lg" />
@@ -127,7 +131,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
   const firstProduct = firstContract?.product;
 
   return (
-    <div className="w-72 flex-shrink-0 border-l border-border hidden lg:block overflow-y-auto h-full">
+    <div className="w-80 flex-shrink-0 border-l border-border overflow-y-auto h-full">
       {/* ─── 1. Customer Profile ────────────────────────── */}
       <div className="p-4 border-b border-border">
         <div className="flex items-center gap-3 mb-2">
@@ -323,7 +327,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
                   </div>
                   <div className="w-full bg-border rounded-full h-1.5">
                     <div
-                      className="bg-blue-500 h-1.5 rounded-full transition-all"
+                      className="bg-primary h-1.5 rounded-full transition-all"
                       style={{ width: `${(c.paidInstallments / c.totalInstallments) * 100}%` }}
                     />
                   </div>
@@ -381,7 +385,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
               <div
                 key={s.id}
                 className={`flex items-center gap-2 p-1.5 rounded text-xs ${
-                  s.id === activeRoomId ? 'bg-blue-50 border border-blue-200' : 'hover:bg-muted/50'
+                  s.id === activeRoomId ? 'bg-primary/5 border border-primary/20' : 'hover:bg-muted/50'
                 }`}
               >
                 <span className={`px-1 py-0.5 rounded text-[9px] font-medium ${channelColor[s.channel] ?? 'bg-muted'}`}>
@@ -574,7 +578,7 @@ function InternalNotesSection({ roomId, notes }: { roomId: string; notes: any[] 
           onKeyDown={handleKeyDown}
           placeholder="เพิ่มโน้ต... (พิมพ์ @ เพื่อแท็กสมาชิก, Ctrl+Enter บันทึก)"
           rows={2}
-          className="w-full text-xs rounded-lg border border-border px-2.5 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-blue-300 placeholder:text-muted-foreground/50"
+          className="w-full text-xs rounded-lg border border-border px-2.5 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-primary/30 placeholder:text-muted-foreground/50"
         />
 
         {/* @mention dropdown */}
@@ -588,9 +592,9 @@ function InternalNotesSection({ roomId, notes }: { roomId: string; notes: any[] 
                   e.preventDefault(); // prevent textarea blur
                   handleSelectMention(s.name);
                 }}
-                className="w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 flex items-center gap-2"
+                className="w-full text-left px-3 py-1.5 text-xs hover:bg-accent flex items-center gap-2"
               >
-                <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-[9px] font-bold flex-shrink-0">
+                <span className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[9px] font-bold flex-shrink-0">
                   {s.name?.[0]?.toUpperCase() ?? '?'}
                 </span>
                 <span className="truncate">{s.name}</span>

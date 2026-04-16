@@ -109,7 +109,7 @@ export default function ConversationList({
             placeholder="ค้นหาชื่อ, เบอร์..."
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 text-sm border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+            className="w-full pl-9 pr-3 py-2 text-sm border border-border rounded-lg bg-muted/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary focus:bg-background transition-colors"
           />
         </div>
       </div>

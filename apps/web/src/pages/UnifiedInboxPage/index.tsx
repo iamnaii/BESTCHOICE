@@ -224,9 +224,9 @@ export default function UnifiedInboxPage() {
   const customerId = sessionQuery.data?.customerId ?? null;
 
   return (
-    <div className="h-[calc(100vh-5rem)] -mt-5 -mb-8 flex bg-card rounded-xl shadow-sm overflow-hidden">
+    <div className="h-[calc(100vh-4rem)] flex border border-border bg-card rounded-xl overflow-hidden">
       {/* Left panel: Conversation list */}
-      <div className={`w-72 flex-shrink-0 min-h-0 ${activeRoomId ? 'hidden lg:flex lg:flex-col' : 'flex flex-col w-full lg:w-72'}`}>
+      <div className={`w-80 flex-shrink-0 min-h-0 ${activeRoomId ? 'hidden lg:flex lg:flex-col' : 'flex flex-col w-full lg:w-80'}`}>
         <QueryBoundary
           isLoading={sessionsQuery.isLoading}
           isError={sessionsQuery.isError}
@@ -269,7 +269,9 @@ export default function UnifiedInboxPage() {
       </div>
 
       {/* Right panel: Customer 360 */}
-      <Customer360Panel customerId={customerId} activeRoomId={activeRoomId} onSelectRoom={handleSelectRoom} />
+      <div className="hidden xl:block">
+        <Customer360Panel customerId={customerId} activeRoomId={activeRoomId} onSelectRoom={handleSelectRoom} />
+      </div>
     </div>
   );
 }

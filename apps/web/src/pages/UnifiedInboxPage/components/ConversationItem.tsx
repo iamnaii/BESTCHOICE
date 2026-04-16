@@ -4,6 +4,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { th } from 'date-fns/locale';
 import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, sessionPriorityMap } from '@/lib/status-badges';
+import { useState } from 'react';
 
 interface ConversationItemProps {
   session: {
@@ -31,8 +32,8 @@ const CHANNEL_COLORS: Record<string, string> = {
   LINE_FINANCE: 'bg-[#06C755]',
   LINE_SHOP: 'bg-[#06C755]',
   FACEBOOK: 'bg-[#1877F2]',
-  TIKTOK: 'bg-black',
-  WEB: 'bg-gray-500',
+  TIKTOK: 'bg-foreground',
+  WEB: 'bg-muted-foreground',
 };
 
 function ChannelIcon({ channel }: { channel: string }) {
@@ -40,10 +41,10 @@ function ChannelIcon({ channel }: { channel: string }) {
     LINE_FINANCE: { bg: 'bg-[#06C755]', label: 'L' },
     LINE_SHOP: { bg: 'bg-[#06C755]', label: 'L' },
     FACEBOOK: { bg: 'bg-[#1877F2]', label: 'f' },
-    TIKTOK: { bg: 'bg-black', label: '♪' },
-    WEB: { bg: 'bg-gray-500', label: 'W' },
+    TIKTOK: { bg: 'bg-foreground', label: '♪' },
+    WEB: { bg: 'bg-muted-foreground', label: 'W' },
   };
-  const c = config[channel] ?? { bg: 'bg-gray-400', label: '?' };
+  const c = config[channel] ?? { bg: 'bg-muted-foreground', label: '?' };
   return (
     <span
       className={cn(
@@ -57,6 +58,33 @@ function ChannelIcon({ channel }: { channel: string }) {
   );
 }
 
+function Avatar({ session, displayName }: { session: ConversationItemProps['session']; displayName: string }) {
+  const [imgError, setImgError] = useState(false);
+  const avatarUrl = session.customer?.avatarUrl || session.customer?.lineAvatarUrl;
+
+  if (avatarUrl && !imgError) {
+    return (
+      <img
+        src={avatarUrl}
+        alt={session.customer?.name ?? ''}
+        className="w-10 h-10 rounded-full object-cover"
+        onError={() => setImgError(true)}
+      />
+    );
+  }
+
+  return (
+    <div
+      className={cn(
+        'w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold',
+        CHANNEL_COLORS[session.channel] ?? 'bg-muted-foreground',
+      )}
+    >
+      {displayName[0]}
+    </div>
+  );
+}
+
 export default function ConversationItem({ session, isActive, onClick, onPin }: ConversationItemProps) {
   const lastMessage = session.messages?.[0];
   const displayName = session.customer?.name ?? session.lineUserId?.slice(0, 12) ?? 'ไม่ทราบชื่อ';
@@ -66,37 +94,17 @@ export default function ConversationItem({ session, isActive, onClick, onPin }: 
   return (
     <div
       className={cn(
-        'relative group w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-accent transition-colors border-b border-border cursor-pointer',
-        isActive && 'bg-blue-50 hover:bg-blue-50 border-l-2 border-l-blue-500',
+        'relative group w-full flex items-start gap-3 px-4 py-3 text-left transition-colors border-b border-border cursor-pointer',
+        isActive
+          ? 'bg-primary/5 hover:bg-primary/5 border-l-2 border-l-primary'
+          : 'hover:bg-accent',
         isPinned && !isActive && 'bg-amber-50/50',
       )}
       onClick={onClick}
     >
       {/* Customer avatar with channel badge */}
       <div className="relative flex-shrink-0 mt-0.5">
-        {(session.customer?.avatarUrl || session.customer?.lineAvatarUrl) ? (
-          <img
-            src={(session.customer.avatarUrl || session.customer.lineAvatarUrl) as string}
-            alt={session.customer?.name ?? ''}
-            className="w-10 h-10 rounded-full object-cover"
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = 'none';
-              const fallback = (e.target as HTMLImageElement).nextElementSibling as HTMLElement | null;
-              fallback?.classList.remove('hidden');
-            }}
-          />
-        ) : null}
-        {/* Fallback: initial letter circle */}
-        <div
-          className={cn(
-            'w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold',
-            CHANNEL_COLORS[session.channel] ?? 'bg-gray-500',
-            (session.customer?.avatarUrl || session.customer?.lineAvatarUrl) ? 'hidden' : '',
-          )}
-        >
-          {(session.customer?.name ?? '?')[0]}
-        </div>
-        {/* Channel badge (small circle bottom-right) */}
+        <Avatar session={session} displayName={displayName} />
         <ChannelIcon channel={session.channel} />
       </div>
 
@@ -104,26 +112,26 @@ export default function ConversationItem({ session, isActive, onClick, onPin }: 
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 min-w-0">
-            {/* Pin icon */}
             {isPinned && <Pin className="w-3 h-3 text-amber-500 flex-shrink-0" />}
-            <span className="font-medium text-sm text-foreground truncate">{displayName}</span>
+            <span className={cn('font-medium text-sm truncate', unreadCount > 0 ? 'text-foreground' : 'text-foreground/80')}>
+              {displayName}
+            </span>
           </div>
           <div className="flex items-center gap-1.5 flex-shrink-0">
-            {/* Unread badge */}
             {unreadCount > 0 && (
-              <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold leading-none">
+              <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold leading-none">
                 {unreadCount > 99 ? '99+' : unreadCount}
               </span>
             )}
-            <span className="text-xs text-muted-foreground">
+            <span className="text-[11px] text-muted-foreground">
               {formatDistanceToNow(new Date(session.lastMessageAt), { addSuffix: true, locale: th })}
             </span>
           </div>
         </div>
 
         {/* Last message preview */}
-        <p className="text-xs text-muted-foreground truncate mt-0.5">
-          {lastMessage?.role === 'STAFF' && <span className="text-blue-500">คุณ: </span>}
+        <p className={cn('text-xs truncate mt-0.5', unreadCount > 0 ? 'text-foreground/70 font-medium' : 'text-muted-foreground')}>
+          {lastMessage?.role === 'STAFF' && <span className="text-primary">คุณ: </span>}
           {lastMessage?.role === 'BOT' && <span className="text-purple-500">Bot: </span>}
           {lastMessage?.text ?? '(ข้อความสื่อ)'}
         </p>

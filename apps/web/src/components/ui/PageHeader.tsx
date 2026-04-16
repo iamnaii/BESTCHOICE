@@ -27,7 +27,7 @@ export default function PageHeader({
   className,
 }: PageHeaderProps) {
   return (
-    <div className={cn('flex flex-col gap-2 pb-5 mb-5 border-b border-border', className)}>
+    <div className={cn('flex flex-col gap-2 py-5 mb-5 border-b border-border', className)}>
       {breadcrumb}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-3">

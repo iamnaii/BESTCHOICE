@@ -489,7 +489,28 @@ export default function IntegrationHubPage() {
 
   const registryQuery = useQuery<Registry>({
     queryKey: ['integrations-registry'],
-    queryFn: () => api.get('/integrations/registry').then((r: any) => r.data),
+    queryFn: async () => {
+      const data = (await api.get('/integrations/registry')).data;
+      // API returns array of IntegrationDef, convert to { [key]: RegistryEntry }
+      const list = Array.isArray(data) ? data : Object.values(data);
+      const map: Registry = {};
+      for (const entry of list) {
+        map[entry.key] = {
+          key: entry.key,
+          name: entry.name,
+          description: entry.description,
+          fields: (entry.fields ?? []).map((f: any) => ({
+            key: f.key,
+            label: f.label,
+            type: f.type ?? (f.sensitive ? 'password' : 'text'),
+            required: f.required ?? false,
+            placeholder: f.placeholder ?? f.defaultValue ?? '',
+            description: f.description,
+          })),
+        };
+      }
+      return map;
+    },
   });
 
   const isLoading = integrationsQuery.isLoading || registryQuery.isLoading;

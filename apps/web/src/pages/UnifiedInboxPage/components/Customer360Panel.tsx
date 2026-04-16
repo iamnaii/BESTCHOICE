@@ -142,9 +142,9 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
   const firstProduct = firstContract?.product;
 
   return (
-    <div className="w-80 flex-shrink-0 border-l border-border overflow-y-auto h-full">
-      {/* ─── 1. Customer Profile ────────────────────────── */}
-      <div className="p-4 border-b border-border">
+    <div className="w-80 flex-shrink-0 border-l border-border flex flex-col h-full">
+      {/* ─── 1. Customer Profile (sticky) ──────────────── */}
+      <div className="p-4 border-b border-border shrink-0 bg-card">
         <div className="flex items-center gap-3 mb-2">
           <div className="w-11 h-11 rounded-full bg-muted flex items-center justify-center overflow-hidden flex-shrink-0">
             {customer?.avatarUrl || customer?.lineAvatarUrl ? (
@@ -189,6 +189,8 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
         )}
       </div>
 
+      {/* ─── Scrollable content ──────────────────────── */}
+      <div className="flex-1 overflow-y-auto">
       {/* ─── 1b. Product Context (detected from chat) ────── */}
       <ProductContextCard roomId={activeRoomId ?? ''} />
 
@@ -472,6 +474,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
           />
         </div>
       </div>
+      </div>{/* end scrollable */}
     </div>
   );
 }

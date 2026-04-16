@@ -6,6 +6,7 @@ import MainLayout from '@/components/layout/MainLayout';
 
 // Lazy-load all pages (separate chunks, loaded on demand)
 const LandingPage = lazy(() => import('@/pages/LandingPage'));
+const PrivacyPolicyPage = lazy(() => import('@/pages/PrivacyPolicyPage'));
 const LoginPage = lazy(() => import('@/pages/LoginPage'));
 const ForgotPasswordPage = lazy(() => import('@/pages/ForgotPasswordPage'));
 const ResetPasswordPage = lazy(() => import('@/pages/ResetPasswordPage'));
@@ -141,6 +142,7 @@ function App() {
           path="/login"
           element={isAuthenticated ? <Navigate to="/" replace /> : <LoginPage />}
         />
+        <Route path="/privacy" element={<PrivacyPolicyPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/register" element={<RegisterInvitePage />} />

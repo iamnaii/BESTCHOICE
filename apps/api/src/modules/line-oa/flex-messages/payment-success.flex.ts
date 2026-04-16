@@ -1,13 +1,15 @@
+import { FlexBubble, FlexMessagePayload, wrapFlexMessage } from './base-template';
 import {
-  FlexBubble,
-  FlexMessagePayload,
-  COLORS,
-  GRADIENTS,
-  createHeader,
-  createDetailRow,
-  createProgressBar,
-  wrapFlexMessage,
-} from './base-template';
+  createStyleCHeader,
+  createInfoCard,
+  createStyleCProgress,
+  createStyleCButtons,
+  STYLE_C,
+  FlexBox,
+  FlexComponent,
+} from './style-c';
+import { ICONS } from './icons';
+import { formatBaht } from './base-template';
 
 export interface PaymentSuccessData {
   customerName: string;
@@ -31,112 +33,102 @@ export function buildPaymentSuccessFlex(data: PaymentSuccessData): FlexMessagePa
   const methodLabel = PAYMENT_METHOD_LABELS[data.paymentMethod] || data.paymentMethod;
   const isComplete = data.remainingInstallments === 0;
 
+  const badge = {
+    text: 'สำเร็จ',
+    bg: STYLE_C.BADGE.SUCCESS.bg,
+    textColor: STYLE_C.BADGE.SUCCESS.text,
+  };
+
+  // Separator
+  const separator: FlexComponent = {
+    type: 'separator',
+    margin: 'lg',
+    color: '#e2e8f0',
+  } as FlexComponent;
+
+  const infoCard = createInfoCard(
+    'สัญญา ' + data.contractNumber,
+    `งวดที่ ${data.installmentNo}/${data.totalInstallments}`,
+    formatBaht(data.amountPaid),
+    STYLE_C.BUTTON.GREEN,
+    `ชำระเมื่อ ${data.paidDate} — ${methodLabel}`,
+    STYLE_C.TEXT.MUTED,
+    STYLE_C.INFO_CARD_BG.SUCCESS,
+    STYLE_C.INFO_CARD_BORDER.SUCCESS,
+  );
+
+  const progress = createStyleCProgress(
+    data.installmentNo,
+    data.totalInstallments,
+    STYLE_C.PROGRESS.GREEN,
+  );
+
+  const detailRows: FlexComponent[] = [
+    {
+      type: 'box',
+      layout: 'horizontal',
+      contents: [
+        { type: 'text', text: 'ช่องทาง', size: 'sm', color: STYLE_C.TEXT.SECONDARY, flex: 1 } as FlexComponent,
+        { type: 'text', text: methodLabel, size: 'sm', color: STYLE_C.TEXT.PRIMARY, weight: 'bold', align: 'end' } as FlexComponent,
+      ],
+      margin: 'md',
+    } as FlexBox,
+    ...(isComplete
+      ? []
+      : [
+          {
+            type: 'box',
+            layout: 'horizontal',
+            contents: [
+              { type: 'text', text: 'งวดคงเหลือ', size: 'sm', color: STYLE_C.TEXT.SECONDARY, flex: 1 } as FlexComponent,
+              { type: 'text', text: `${data.remainingInstallments} งวด`, size: 'sm', color: STYLE_C.TEXT.PRIMARY, weight: 'bold', align: 'end' } as FlexComponent,
+            ],
+            margin: 'sm',
+          } as FlexBox,
+        ]),
+  ];
+
+  const buttons = createStyleCButtons(
+    'ดูใบเสร็จ',
+    { type: 'postback', label: 'ดูใบเสร็จ', data: `action=view_receipt&contract=${data.contractNumber}&installment=${data.installmentNo}` },
+    STYLE_C.BUTTON.GREEN,
+    'ดูสัญญา',
+    { type: 'postback', label: 'ดูสัญญา', data: `action=check_installments&contract=${data.contractNumber}` },
+  );
+
   const bubble: FlexBubble = {
     type: 'bubble',
     size: 'mega',
-    header: createHeader(
-      isComplete ? '🎉 ชำระครบแล้ว!' : '✅ ชำระเงินสำเร็จ',
-      `สัญญา ${data.contractNumber}`,
-      GRADIENTS.GREEN,
+    header: createStyleCHeader(
+      ICONS.CHECK_CIRCLE,
+      'ชำระเงินสำเร็จ',
+      'BESTCHOICE FINANCE',
+      STYLE_C.GRADIENT.GREEN,
+      badge,
     ),
     body: {
       type: 'box',
       layout: 'vertical',
       contents: [
-        // Amount display
-        {
-          type: 'box',
-          layout: 'vertical',
-          contents: [
-            {
-              type: 'text',
-              text: '✓',
-              size: '3xl',
-              color: COLORS.PRIMARY,
-              align: 'center',
-              weight: 'bold',
-            },
-            {
-              type: 'text',
-              text: `฿${data.amountPaid.toLocaleString()}`,
-              size: 'xxl',
-              color: COLORS.PRIMARY,
-              align: 'center',
-              weight: 'bold',
-              margin: 'sm',
-            },
-            {
-              type: 'text',
-              text: 'ชำระเรียบร้อยแล้ว',
-              size: 'xs',
-              color: COLORS.MUTED,
-              align: 'center',
-              margin: 'sm',
-            },
-          ],
-          backgroundColor: COLORS.SUCCESS_LIGHT,
-          cornerRadius: '12px',
-          paddingAll: '16px',
-        },
-        // Progress
-        createProgressBar(data.installmentNo, data.totalInstallments, COLORS.PRIMARY),
-        {
-          type: 'separator',
-          margin: 'lg',
-          color: COLORS.BORDER,
-        },
-        createDetailRow('ลูกค้า', `คุณ${data.customerName}`),
-        createDetailRow('งวดที่', `${data.installmentNo}/${data.totalInstallments}`),
-        createDetailRow('ช่องทาง', methodLabel),
-        createDetailRow('วันที่ชำระ', data.paidDate),
-        ...(isComplete
-          ? [
-              {
-                type: 'box' as const,
-                layout: 'vertical' as const,
-                contents: [
-                  {
-                    type: 'text' as const,
-                    text: '🎊 ชำระครบทุกงวดแล้ว ขอบคุณค่ะ',
-                    size: 'sm',
-                    color: COLORS.PRIMARY,
-                    weight: 'bold',
-                    align: 'center',
-                    wrap: true,
-                  },
-                ],
-                backgroundColor: COLORS.SUCCESS_LIGHT,
-                cornerRadius: '8px',
-                paddingAll: '12px',
-                margin: 'xl',
-              },
-            ]
-          : [createDetailRow('งวดคงเหลือ', `${data.remainingInstallments} งวด`)]),
+        separator,
+        infoCard,
+        progress,
+        ...detailRows,
       ],
       paddingAll: '20px',
-      spacing: 'sm',
+      spacing: 'none',
     },
     footer: {
       type: 'box',
       layout: 'vertical',
-      contents: [
-        {
-          type: 'text',
-          text: isComplete
-            ? '🌟 ขอบคุณที่ไว้วางใจ BEST CHOICE'
-            : '💡 ชำระตรงเวลาทุกงวด สะสมแต้มแลกส่วนลด',
-          size: 'xs',
-          color: COLORS.MUTED,
-          align: 'center',
-          wrap: true,
-        },
-      ],
+      contents: [buttons],
       paddingAll: '15px',
+      spacing: 'sm',
     },
   };
 
   return wrapFlexMessage(
-    `ชำระเงินสำเร็จ: งวดที่ ${data.installmentNo} จำนวน ${data.amountPaid.toLocaleString()} บาท`,
+    `ชำระเงินสำเร็จ: งวดที่ ${data.installmentNo} จำนวน ${formatBaht(data.amountPaid)}`,
     bubble,
   );
 }

@@ -40,7 +40,7 @@ export default function LandingNav({ onScrollTo }: LandingNavProps) {
               <button
                 key={item.section}
                 onClick={() => handleClick(item.section)}
-                className="text-sm text-gray-300 hover:text-white transition-colors font-medium"
+                className="text-sm text-white/70 hover:text-white transition-colors font-medium"
               >
                 {item.label}
               </button>
@@ -60,7 +60,7 @@ export default function LandingNav({ onScrollTo }: LandingNavProps) {
           {/* Mobile Menu Button */}
           <button
             onClick={() => setMobileOpen(!mobileOpen)}
-            className="md:hidden p-2 text-gray-300 hover:text-white"
+            className="md:hidden p-2 text-white/70 hover:text-white"
           >
             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               {mobileOpen ? (
@@ -81,7 +81,7 @@ export default function LandingNav({ onScrollTo }: LandingNavProps) {
               <button
                 key={item.section}
                 onClick={() => handleClick(item.section)}
-                className="block w-full text-left px-3 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition-colors"
+                className="block w-full text-left px-3 py-2.5 text-sm text-white/70 hover:text-white hover:bg-white/5 rounded-lg transition-colors"
               >
                 {item.label}
               </button>

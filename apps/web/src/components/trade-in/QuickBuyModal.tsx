@@ -272,7 +272,7 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
       role="dialog"
       aria-modal="true"
     >
-      <div className="w-full max-w-3xl bg-white dark:bg-slate-950 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100vh-3rem)] ring-1 ring-slate-200 dark:ring-slate-800">
+      <div className="w-full max-w-3xl bg-card dark:bg-slate-950 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100vh-3rem)] ring-1 ring-slate-200 dark:ring-slate-800">
         {/* Header — sticky */}
         <div className="sticky top-0 z-10 bg-linear-to-b from-emerald-50 to-white dark:from-emerald-950/30 dark:to-slate-950 border-b border-emerald-200/60 dark:border-emerald-900/40 px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -561,7 +561,7 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
                     className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium border transition-all ${
                       form.paymentMethod === 'CASH'
                         ? 'bg-emerald-500 text-white border-emerald-500'
-                        : 'bg-white text-slate-700 border-slate-200 hover:border-emerald-300'
+                        : 'bg-card text-foreground border-border hover:border-emerald-300'
                     }`}
                   >เงินสด</button>
                   <button
@@ -570,7 +570,7 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
                     className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium border transition-all ${
                       form.paymentMethod === 'TRANSFER'
                         ? 'bg-sky-500 text-white border-sky-500'
-                        : 'bg-white text-slate-700 border-slate-200 hover:border-sky-300'
+                        : 'bg-card text-foreground border-border hover:border-sky-300'
                     }`}
                   >โอน</button>
                 </div>
@@ -597,7 +597,7 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
         </div>
 
         {/* Footer — sticky */}
-        <div className="sticky bottom-0 bg-white dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 px-6 py-4 flex justify-between gap-3">
+        <div className="sticky bottom-0 bg-card dark:bg-slate-950 border-t border-border dark:border-slate-800 px-6 py-4 flex justify-between gap-3">
           <Button variant="outline" onClick={prev} disabled={step === 1}>
             <ChevronLeft className="size-4 mr-1" /> ย้อนกลับ
           </Button>

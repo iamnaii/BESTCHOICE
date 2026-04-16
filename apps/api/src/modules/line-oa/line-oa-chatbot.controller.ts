@@ -285,7 +285,7 @@ export class LineOaChatbotController {
     } else if (IPAD_USED_KEYWORDS.some((kw) => textLower.includes(kw))) {
       await this.handleIpadUsedRedirect(event.replyToken);
     } else {
-      await this.handleFreeformMessage(text, event.replyToken);
+      await this.handleFreeformMessage(text, event.replyToken, userId);
     }
   }
 
@@ -524,8 +524,8 @@ export class LineOaChatbotController {
     await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: CHATBOT_RESPONSES.ipadUsedRedirect }]);
   }
 
-  private async handleFreeformMessage(text: string, replyToken: string): Promise<void> {
-    const aiResponse = await this.chatbotService.generateResponse(text);
+  private async handleFreeformMessage(text: string, replyToken: string, userId?: string): Promise<void> {
+    const aiResponse = await this.chatbotService.generateResponse(text, userId);
     await this.lineOaService.replyMessage(replyToken, [
       { type: 'text', text: aiResponse ?? 'ได้รับข้อความแล้วค่ะ น้องเบสจะตอบกลับภายใน 5 นาทีนะคะ 🙏' },
     ]);

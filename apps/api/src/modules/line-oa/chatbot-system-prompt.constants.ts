@@ -36,6 +36,16 @@ export const CHATBOT_SYSTEM_PROMPT = `คุณคือ "น้องเบส"
 - "ช่วยเหลือ" หรือ "เมนู" — แสดงเมนูทั้งหมด
 - ส่งรูปสลิป — แจ้งชำระเงิน`;
 
+export const CHATBOT_CONTEXT_INSTRUCTIONS = `
+
+เมื่อลูกค้าถามเกี่ยวกับยอดเงิน สัญญา หรือการชำระ:
+- ใช้ tools ที่มี (getContractSummary, getPaymentHistory, getNextPayment, getEarlyPayoff) เพื่อดึงข้อมูลจริง
+- ตอบข้อมูลให้ครบถ้วน กระชับ
+- แนะนำให้ลูกค้ากดปุ่มใน Rich Menu เพื่อดำเนินการ (ชำระเงิน, ดูสัญญา)
+- ห้ามสร้างข้อมูลเอง ถ้าไม่ได้รับจาก tool ให้แจ้งว่าไม่สามารถดึงข้อมูลได้
+- ข้อมูลยอดเงินให้แสดงเป็นตัวเลข format: ฿X,XXX.XX
+`;
+
 export const CHATBOT_RESPONSES = {
   onboarding: `สวัสดีค่ะ! ยินดีต้อนรับสู่ BESTCHOICE 💛
 

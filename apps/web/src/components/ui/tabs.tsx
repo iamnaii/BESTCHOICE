@@ -84,10 +84,10 @@ const tabsTriggerVariants = cva(
     variants: {
       variant: {
         default:
-          'text-muted-foreground data-[state=active]:bg-[#1e3a5f] data-[state=active]:text-white hover:text-foreground data-[state=active]:shadow-sm data-[state=active]:shadow-black/5',
+          'text-muted-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground hover:text-foreground data-[state=active]:shadow-sm data-[state=active]:shadow-black/5',
         button:
           'focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-lg text-accent-foreground hover:text-foreground data-[state=active]:bg-accent data-[state=active]:text-foreground',
-        line: 'border-b-2 text-muted-foreground border-transparent data-[state=active]:border-[#1e3a5f] hover:text-primary data-[state=active]:text-[#1e3a5f] data-[state=active]:border-[#1e3a5f] data-[state=active]:text-[#1e3a5f]',
+        line: 'border-b-2 text-muted-foreground border-transparent data-[state=active]:border-primary hover:text-primary data-[state=active]:text-primary',
       },
       size: {
         lg: 'gap-2.5 [&_svg]:size-5 text-sm',

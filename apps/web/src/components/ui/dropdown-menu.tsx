@@ -72,7 +72,7 @@ function DropdownMenuContent({
         data-slot="dropdown-menu-content"
         sideOffset={sideOffset}
         className={cn(
-          'space-y-0.5 z-50 min-w-32 overflow-hidden rounded-md border border-border bg-popover p-2 text-popover-foreground shadow-md shadow-[#1e3a5f]/5 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2',
+          'space-y-0.5 z-50 min-w-32 overflow-hidden rounded-md border border-border bg-popover p-2 text-popover-foreground shadow-md shadow-black/5 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2',
           className,
         )}
         {...props}
@@ -99,7 +99,7 @@ function DropdownMenuItem({
       data-slot="dropdown-menu-item"
       className={cn(
         'text-foreground relative flex cursor-default select-none items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-hidden transition-colors data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([role=img]):not([class*=text-])]:opacity-60 [&_svg:not([class*=size-])]:size-4 [&_svg]:shrink-0',
-        'focus:bg-[#f0f5ff] focus:text-[#1e3a5f]',
+        'focus:bg-accent focus:text-accent-foreground',
         'data-[active=true]:bg-accent data-[active=true]:text-accent-foreground',
         inset && 'pl-8',
         variant === 'destructive' &&

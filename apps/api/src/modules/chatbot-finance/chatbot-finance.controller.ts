@@ -70,7 +70,7 @@ export class ChatbotFinanceController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('OWNER')
   async testPush(@Body() body: { to: string; text: string }): Promise<{ ok: boolean }> {
-    if (!this.lineClient.isConfigured) {
+    if (!(await this.lineClient.isConfigured())) {
       return { ok: false };
     }
     await this.lineClient.pushText(body.to, body.text);

@@ -27,6 +27,7 @@ import { FinanceDomainHandler } from './finance-domain.handler';
 import { LiffTokenGuard } from '../line-oa/guards/liff-token.guard';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { StaffChatModule } from '../staff-chat/staff-chat.module';
+import { IntegrationsModule } from '../integrations/integrations.module';
 
 /**
  * Finance Bot Module ("น้องเบส")
@@ -42,7 +43,7 @@ import { StaffChatModule } from '../staff-chat/staff-chat.module';
  *   E  ✅ admin endpoints + analytics/sessions/KB UI
  */
 @Module({
-  imports: [forwardRef(() => NotificationsModule), forwardRef(() => StaffChatModule)], // SMS for OTP + WS events to Unified Inbox
+  imports: [forwardRef(() => NotificationsModule), forwardRef(() => StaffChatModule), IntegrationsModule], // SMS for OTP + WS events to Unified Inbox
   controllers: [
     ChatbotFinanceController,
     ChatbotFinanceLiffController,

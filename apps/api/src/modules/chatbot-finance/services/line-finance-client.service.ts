@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import * as Sentry from '@sentry/nestjs';
+import { IntegrationConfigService } from '../../integrations/integration-config.service';
 
 interface LineTextMessage {
   type: 'text';
@@ -23,21 +23,22 @@ export interface LineQuickReply {
 
 /**
  * LINE Messaging API client สำหรับ Finance OA โดยเฉพาะ
- * ใช้ token แยกจาก Shop OA — env: LINE_FINANCE_CHANNEL_ACCESS_TOKEN
+ * ใช้ token แยกจาก Shop OA — config key: line-oa / financeChannelToken
  */
 @Injectable()
 export class LineFinanceClientService {
   private readonly logger = new Logger(LineFinanceClientService.name);
-  private readonly accessToken: string | undefined;
   private readonly apiBase = 'https://api.line.me/v2/bot';
   private readonly dataApiBase = 'https://api-data.line.me/v2/bot';
 
-  constructor(private configService: ConfigService) {
-    this.accessToken = this.configService.get<string>('LINE_FINANCE_CHANNEL_ACCESS_TOKEN');
+  constructor(private readonly integrationConfig: IntegrationConfigService) {}
+
+  private async getAccessToken(): Promise<string> {
+    return (await this.integrationConfig.getValue('line-oa', 'financeChannelToken')) || '';
   }
 
-  get isConfigured(): boolean {
-    return !!this.accessToken;
+  async isConfigured(): Promise<boolean> {
+    return !!(await this.getAccessToken());
   }
 
   async pushText(to: string, text: string): Promise<void> {
@@ -68,9 +69,10 @@ export class LineFinanceClientService {
 
   /** ดาวน์โหลด media (รูป/เสียง) จาก LINE Content API */
   async getMessageContent(messageId: string): Promise<Buffer> {
-    if (!this.accessToken) throw new Error('LINE Finance access token not configured');
+    const token = await this.getAccessToken();
+    if (!token) throw new Error('LINE Finance access token not configured');
     const res = await fetch(`${this.dataApiBase}/message/${messageId}/content`, {
-      headers: { Authorization: `Bearer ${this.accessToken}` },
+      headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) {
       throw new Error(`LINE content API error ${res.status}`);
@@ -80,7 +82,8 @@ export class LineFinanceClientService {
   }
 
   private async callApi(url: string, body: unknown): Promise<void> {
-    if (!this.accessToken) {
+    const token = await this.getAccessToken();
+    if (!token) {
       this.logger.warn('[LINE Finance] access token not configured — skipping send');
       return;
     }
@@ -88,7 +91,7 @@ export class LineFinanceClientService {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.accessToken}`,
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify(body),
     });

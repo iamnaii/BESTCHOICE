@@ -5,37 +5,37 @@ import {
   Logger,
   UnauthorizedException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { Request } from 'express';
 import { RawBodyRequest } from '../../../common/types/raw-body-request';
+import { IntegrationConfigService } from '../../integrations/integration-config.service';
 
 /**
  * Verify LINE webhook signature สำหรับ Finance OA
- * ใช้ secret คนละตัวกับ Shop OA — env: LINE_FINANCE_CHANNEL_SECRET
+ * ใช้ secret คนละตัวกับ Shop OA — config key: line-oa / financeChannelSecret
  */
 @Injectable()
 export class LineFinanceWebhookGuard implements CanActivate {
   private readonly logger = new Logger(LineFinanceWebhookGuard.name);
-  private readonly channelSecret: string | undefined;
 
-  constructor(private configService: ConfigService) {
-    this.channelSecret = this.configService.get<string>('LINE_FINANCE_CHANNEL_SECRET');
-  }
+  constructor(private readonly integrationConfig: IntegrationConfigService) {}
 
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    const channelSecret =
+      (await this.integrationConfig.getValue('line-oa', 'financeChannelSecret')) || undefined;
+
     const request = context.switchToHttp().getRequest<Request>();
 
-    if (!this.channelSecret) {
+    if (!channelSecret) {
       // SECURITY: dev-only bypass. In production, missing secret = hard
       // refusal — otherwise an attacker could replay any "LINE webhook"
       // and we would accept it.
       const isDev = process.env.NODE_ENV !== 'production';
       if (isDev) {
-        this.logger.warn('LINE_FINANCE_CHANNEL_SECRET not configured — skipping verification (DEV ONLY)');
+        this.logger.warn('LINE Finance channel secret not configured — skipping verification (DEV ONLY)');
         return true;
       }
-      this.logger.error('LINE_FINANCE_CHANNEL_SECRET missing in production — refusing webhook');
+      this.logger.error('LINE Finance channel secret missing in production — refusing webhook');
       throw new UnauthorizedException('Webhook signature verification not configured');
     }
 
@@ -56,7 +56,7 @@ export class LineFinanceWebhookGuard implements CanActivate {
       this.logger.warn('rawBody missing — falling back to JSON.stringify (DEV ONLY)');
     }
     const body = rawBody ?? Buffer.from(JSON.stringify(request.body));
-    const expected = createHmac('SHA256', this.channelSecret).update(body).digest('base64');
+    const expected = createHmac('SHA256', channelSecret).update(body).digest('base64');
 
     const sigBuf = Buffer.from(signature, 'base64');
     const expBuf = Buffer.from(expected, 'base64');

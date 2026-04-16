@@ -44,7 +44,7 @@ export class StaffNotificationService {
     priority: HandoffPriority;
     summary: string;
   }): Promise<void> {
-    if (!this.lineStaff.isConfigured) return;
+    if (!(await this.lineStaff.isConfigured())) return;
 
     // ดึง context: customer + 5 ข้อความล่าสุด
     const room = await this.prisma.chatRoom.findUnique({
@@ -112,7 +112,7 @@ export class StaffNotificationService {
     reason: 'amount_mismatch' | 'wrong_account' | 'unmatched';
     evidenceId: string;
   }): Promise<void> {
-    if (!this.lineStaff.isConfigured) return;
+    if (!(await this.lineStaff.isConfigured())) return;
 
     const reasonText = {
       amount_mismatch: '💰 ยอดไม่ตรง',

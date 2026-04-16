@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import * as Sentry from '@sentry/nestjs';
+import { IntegrationConfigService } from '../../integrations/integration-config.service';
 
 interface LineTextMessage {
   type: 'text';
@@ -9,56 +9,52 @@ interface LineTextMessage {
 
 /**
  * LINE Messaging API client สำหรับ Staff OA โดยเฉพาะ
- * ใช้ token แยกจาก Shop/Finance OA — env: LINE_STAFF_CHANNEL_ACCESS_TOKEN
+ * ใช้ token แยกจาก Shop/Finance OA — config key: line-oa / staffChannelToken
  *
- * Recipients: env LINE_STAFF_NOTIFY_TARGETS (comma-separated lineUserIds)
+ * Recipients: config key: line-oa / staffNotifyTargets (comma-separated lineUserIds)
  */
 @Injectable()
 export class LineStaffClientService {
   private readonly logger = new Logger(LineStaffClientService.name);
-  private readonly accessToken: string | undefined;
-  private readonly recipients: string[];
   private readonly apiBase = 'https://api.line.me/v2/bot';
 
-  constructor(private configService: ConfigService) {
-    this.accessToken = this.configService.get<string>('LINE_STAFF_CHANNEL_ACCESS_TOKEN');
-    const raw = this.configService.get<string>('LINE_STAFF_NOTIFY_TARGETS') ?? '';
-    this.recipients = raw
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
+  constructor(private readonly integrationConfig: IntegrationConfigService) {}
 
-    if (this.accessToken && this.recipients.length > 0) {
-      this.logger.log(`[LINE Staff] Initialized with ${this.recipients.length} recipient(s)`);
-    } else {
-      this.logger.warn(
-        '[LINE Staff] Not configured — set LINE_STAFF_CHANNEL_ACCESS_TOKEN and LINE_STAFF_NOTIFY_TARGETS',
-      );
-    }
+  private async getAccessToken(): Promise<string> {
+    return (await this.integrationConfig.getValue('line-oa', 'staffChannelToken')) || '';
   }
 
-  get isConfigured(): boolean {
-    return !!this.accessToken && this.recipients.length > 0;
+  private async getRecipients(): Promise<string[]> {
+    const raw = (await this.integrationConfig.getValue('line-oa', 'staffNotifyTargets')) || '';
+    return raw.split(',').map((s) => s.trim()).filter(Boolean);
+  }
+
+  async isConfigured(): Promise<boolean> {
+    const token = await this.getAccessToken();
+    const recipients = await this.getRecipients();
+    return !!token && recipients.length > 0;
   }
 
   /** Broadcast text message ไปทุก staff ที่อยู่ใน recipients list */
   async broadcastText(text: string): Promise<void> {
-    if (!this.isConfigured) {
+    if (!(await this.isConfigured())) {
       this.logger.warn('[LINE Staff] broadcast skipped — not configured');
       return;
     }
 
+    const recipients = await this.getRecipients();
     // ใช้ LINE multicast (ถ้า ≤500 users) — efficient + 1 API call
     await this.callApi(`${this.apiBase}/message/multicast`, {
-      to: this.recipients,
+      to: recipients,
       messages: [{ type: 'text', text } satisfies LineTextMessage],
     });
-    this.logger.log(`[LINE Staff] broadcast → ${this.recipients.length} recipient(s)`);
+    this.logger.log(`[LINE Staff] broadcast → ${recipients.length} recipient(s)`);
   }
 
   /** Push text ไปยัง user เดียว (ใช้กรณี route ตาม role/branch ในอนาคต) */
   async pushText(to: string, text: string): Promise<void> {
-    if (!this.accessToken) return;
+    const token = await this.getAccessToken();
+    if (!token) return;
     await this.callApi(`${this.apiBase}/message/push`, {
       to,
       messages: [{ type: 'text', text } satisfies LineTextMessage],
@@ -66,12 +62,13 @@ export class LineStaffClientService {
   }
 
   private async callApi(url: string, body: unknown): Promise<void> {
-    if (!this.accessToken) return;
+    const token = await this.getAccessToken();
+    if (!token) return;
     const res = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.accessToken}`,
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify(body),
     });

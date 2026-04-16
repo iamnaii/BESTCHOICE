@@ -63,7 +63,7 @@ export default function SystemStatusPage() {
 
   const { data, isLoading, isError, error, refetch } = useQuery<SystemStatus>({
     queryKey: ['system-status'],
-    queryFn: async () => { const { data } = await api.get('/system-status'); return data; },
+    queryFn: async () => { const { data } = await api.get('/system-status'); return data.data ?? data; },
     refetchInterval: 30000,
   });
 

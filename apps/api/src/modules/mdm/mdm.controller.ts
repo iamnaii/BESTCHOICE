@@ -73,6 +73,12 @@ export class MdmController {
     return this.mdmService.getDeviceStatus(dto.imei);
   }
 
+  @Get('devices/wallpapers')
+  @Roles('OWNER')
+  getWallpapers() {
+    return this.mdmService.getWallpapers();
+  }
+
   @Get('devices/:id')
   @Roles('OWNER', 'BRANCH_MANAGER')
   getDeviceById(@Param('id', ParseIntPipe) id: number) {
@@ -126,6 +132,25 @@ export class MdmController {
   }
 
   // ─── Policies ───────────────────────────────────────────
+
+  @Post('devices/lock-screen')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  lockScreen(@Body() body: { id: number }) {
+    return this.mdmService.lockDeviceScreen(body.id);
+  }
+
+  @Post('devices/restrictions')
+  @Roles('OWNER')
+  setRestrictions(@Body() body: { id: number; [key: string]: unknown }) {
+    const { id, ...options } = body;
+    return this.mdmService.installRestrictions(id, options as Record<string, number>);
+  }
+
+  @Post('devices/wallpaper')
+  @Roles('OWNER')
+  setWallpaper(@Body() body: { deviceId: number; imageId: number }) {
+    return this.mdmService.setWallpaper(body.deviceId, body.imageId);
+  }
 
   @Post('devices/lock-screen-text')
   @Roles('OWNER')

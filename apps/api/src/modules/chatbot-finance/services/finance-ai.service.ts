@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import * as Sentry from '@sentry/nestjs';
 import Anthropic from '@anthropic-ai/sdk';
 import type { MessageParam, ToolUseBlock } from '@anthropic-ai/sdk/resources/messages';
@@ -8,6 +7,7 @@ import { FINANCE_TOOLS } from '../tools/tool-definitions';
 import { FinanceToolExecutor } from '../tools/tool-executor';
 import { FinanceConfigService } from './finance-config.service';
 import { FINANCE_BOT_SYSTEM_PROMPT } from '../prompts/system-prompt';
+import { IntegrationConfigService } from '../../integrations/integration-config.service';
 
 export interface AiReply {
   text: string;
@@ -31,7 +31,7 @@ const MAX_TOOL_ITERATIONS = 5;
 @Injectable()
 export class FinanceAiService {
   private readonly logger = new Logger(FinanceAiService.name);
-  private readonly anthropic: Anthropic | null;
+  private anthropic: Anthropic | null = null;
 
   // Sonnet for tool use — accurate for multi-step conversations
   private readonly modelSonnet = 'claude-sonnet-4-5-20250514';
@@ -43,23 +43,19 @@ export class FinanceAiService {
   private static readonly PROMPT_CACHE_TTL = 5 * 60 * 1000; // 5 min
 
   constructor(
-    private config: ConfigService,
     private toolExecutor: FinanceToolExecutor,
     private financeConfig: FinanceConfigService,
-  ) {
-    const apiKey = (
-      this.config.get<string>('ANTHROPIC_API_KEY') ||
-      process.env.ANTHROPIC_API_KEY ||
-      ''
-    ).trim();
+    private integrationConfig: IntegrationConfigService,
+  ) {}
 
-    if (apiKey) {
+  private async getAnthropicClient(): Promise<Anthropic | null> {
+    const apiKey = ((await this.integrationConfig.getValue('claude-ai', 'apiKey')) || '').trim();
+    if (!apiKey) return null;
+    if (!this.anthropic) {
       this.anthropic = new Anthropic({ apiKey });
       this.logger.log('[FinanceAI] Initialized (Sonnet + tools)');
-    } else {
-      this.anthropic = null;
-      this.logger.warn('[FinanceAI] ANTHROPIC_API_KEY not set — AI disabled');
     }
+    return this.anthropic;
   }
 
   get isEnabled(): boolean {
@@ -77,7 +73,8 @@ export class FinanceAiService {
     customerName: string;
     roomId: string;
   }): Promise<AiReply | null> {
-    if (!this.anthropic) return null;
+    const client = await this.getAnthropicClient();
+    if (!client) return null;
 
     try {
       const systemPrompt = await this.buildSystemPrompt(params.customerName);
@@ -91,7 +88,7 @@ export class FinanceAiService {
 
       // Tool use loop
       for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
-        const response = await this.anthropic.messages.create({
+        const response = await client.messages.create({
           model: activeModel,
           max_tokens: this.maxTokens,
           system: [

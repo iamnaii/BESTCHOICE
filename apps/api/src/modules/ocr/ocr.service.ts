@@ -4,8 +4,8 @@ import {
   InternalServerErrorException,
   Logger,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import Anthropic from '@anthropic-ai/sdk';
+import { IntegrationConfigService } from '../integrations/integration-config.service';
 import {
   OcrIdCardResult,
   OcrAddressStructured,
@@ -50,21 +50,15 @@ export class OcrService {
     'อุทัยธานี', 'อุบลราชธานี',
   ];
 
-  constructor(private configService: ConfigService) {
-    const apiKey = (
-      this.configService.get<string>('ANTHROPIC_API_KEY') ||
-      process.env.ANTHROPIC_API_KEY ||
-      ''
-    ).trim();
-    if (apiKey) {
+  constructor(private integrationConfig: IntegrationConfigService) {}
+
+  private async getAnthropicClient(): Promise<Anthropic | null> {
+    const apiKey = ((await this.integrationConfig.getValue('claude-ai', 'apiKey')) || '').trim();
+    if (!apiKey) return null;
+    if (!this.anthropic) {
       this.anthropic = new Anthropic({ apiKey, timeout: 120_000 });
-      this.logger.log('OCR service initialized with Anthropic API key');
-    } else {
-      this.logger.warn(
-        'ANTHROPIC_API_KEY not configured — OCR features will be unavailable. ' +
-        'Set ANTHROPIC_API_KEY in .env file at project root or as environment variable.',
-      );
     }
+    return this.anthropic;
   }
 
   // ─── Shared Helpers ─────────────────────────────────────
@@ -215,21 +209,24 @@ export class OcrService {
     return hasData ? structured : null;
   }
 
-  private ensureAnthropicReady(): void {
-    if (!this.anthropic) {
-      throw new BadRequestException('ระบบ OCR ยังไม่พร้อมใช้งาน (ไม่ได้ตั้งค่า API Key)');
+  private async ensureAnthropicReady(): Promise<Anthropic> {
+    const client = await this.getAnthropicClient();
+    if (!client) {
+      throw new BadRequestException('OCR ไม่พร้อมใช้งาน — ยังไม่ได้ตั้งค่า ANTHROPIC_API_KEY');
     }
+    return client;
   }
 
   /** Check if Anthropic AI is configured and reachable */
   async checkAiStatus(): Promise<{ configured: boolean; connected: boolean; model: string; error?: string }> {
     const model = OcrService.OCR_MODEL;
-    if (!this.anthropic) {
+    const client = await this.getAnthropicClient();
+    if (!client) {
       return { configured: false, connected: false, model, error: 'ANTHROPIC_API_KEY ไม่ได้ตั้งค่า' };
     }
     try {
       // Use count_tokens as a lightweight ping — no tokens consumed
-      await this.anthropic.messages.countTokens({
+      await client.messages.countTokens({
         model,
         messages: [{ role: 'user', content: 'ping' }],
       });
@@ -237,7 +234,7 @@ export class OcrService {
     } catch (err) {
       // If count_tokens not available, try a simple messages call
       try {
-        await this.anthropic.messages.create({
+        await client.messages.create({
           model,
           max_tokens: 1,
           messages: [{ role: 'user', content: 'hi' }],
@@ -255,7 +252,8 @@ export class OcrService {
     base64Data: string,
     prompt: string,
   ): Promise<Record<string, unknown>> {
-    const response = await this.anthropic!.messages.create({
+    const client = await this.ensureAnthropicReady();
+    const response = await client.messages.create({
       model: OcrService.OCR_MODEL,
       max_tokens: 2048,
       temperature: 0,
@@ -336,7 +334,7 @@ export class OcrService {
 7. ถ้าเอกสารไม่ใช่สัญญาหรือเอกสารทางธุรกิจ ให้สร้างเทมเพลตสัญญาผ่อนชำระทั่วไป โดยอ้างอิงจากรูปแบบที่เห็น`;
 
   async generateTemplateHtml(fileBase64: string): Promise<{ contentHtml: string; placeholders: string[] }> {
-    this.ensureAnthropicReady();
+    const client = await this.ensureAnthropicReady();
     const { mediaType, base64Data, isDocument } = this.validateFileBase64(fileBase64);
 
     try {
@@ -344,7 +342,7 @@ export class OcrService {
         ? { type: 'document' as const, source: { type: 'base64' as const, media_type: mediaType as 'application/pdf', data: base64Data } }
         : { type: 'image' as const, source: { type: 'base64' as const, media_type: mediaType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp', data: base64Data } };
 
-      const response = await this.anthropic!.messages.create({
+      const response = await client.messages.create({
         model: OcrService.OCR_MODEL,
         max_tokens: 8192,
         temperature: 0.2,
@@ -400,7 +398,7 @@ export class OcrService {
   // ─── 1. Extract ID Card ─────────────────────────────────
 
   async extractIdCard(imageBase64: string): Promise<OcrIdCardResult> {
-    this.ensureAnthropicReady();
+    await this.ensureAnthropicReady();
     const { mediaType, base64Data } = this.validateImageBase64(imageBase64);
 
     const basePrompt = `อ่านข้อมูลจากบัตรประชาชนไทยในรูปนี้อย่างละเอียด ตอบเป็น JSON ตามรูปแบบนี้:
@@ -512,7 +510,7 @@ ${basePrompt.split('ตอบเป็น JSON ตามรูปแบบนี
   // ─── 2. Extract Payment Slip ────────────────────────────
 
   async extractPaymentSlip(imageBase64: string): Promise<OcrPaymentSlipResult> {
-    this.ensureAnthropicReady();
+    await this.ensureAnthropicReady();
     const { mediaType, base64Data } = this.validateImageBase64(imageBase64);
 
     const basePrompt = `อ่านสลิปการโอนเงิน/ชำระเงินจากธนาคารไทยในรูปนี้ ตอบเป็น JSON:
@@ -611,7 +609,7 @@ ${basePrompt}`;
   // ─── 3. Extract Book Bank ───────────────────────────────
 
   async extractBookBank(imageBase64: string): Promise<OcrBookBankResult> {
-    this.ensureAnthropicReady();
+    await this.ensureAnthropicReady();
     const { mediaType, base64Data } = this.validateImageBase64(imageBase64);
 
     const basePrompt = `อ่านข้อมูลจากหน้าสมุดบัญชีธนาคาร (Book Bank / Passbook) ไทยในรูปนี้ ตอบเป็น JSON:
@@ -690,7 +688,7 @@ ${basePrompt}`;
   // ─── 4. Extract Driving License ─────────────────────────
 
   async extractDrivingLicense(imageBase64: string): Promise<OcrDrivingLicenseResult> {
-    this.ensureAnthropicReady();
+    await this.ensureAnthropicReady();
     const { mediaType, base64Data } = this.validateImageBase64(imageBase64);
 
     const basePrompt = `อ่านข้อมูลจากใบขับขี่ไทยในรูปนี้อย่างละเอียด ตอบเป็น JSON:
@@ -812,7 +810,7 @@ ${basePrompt}`;
     'ตอบเป็น JSON: { netSalary, employerName, slipDate, payDay, bankName, confidence }';
 
   async analyzeSalarySlip(imageBase64: string): Promise<OcrSalarySlipResult> {
-    this.ensureAnthropicReady();
+    await this.ensureAnthropicReady();
     const { mediaType, base64Data } = this.validateImageBase64(imageBase64);
 
     try {
@@ -865,7 +863,7 @@ ${basePrompt}`;
     'ตอบเป็น JSON: { accountName, bankName, totalIncome, totalExpense, balance, transactionCount, dateRange, confidence }';
 
   async analyzeBankStatement(imageBase64: string): Promise<OcrBankStatementResult> {
-    this.ensureAnthropicReady();
+    await this.ensureAnthropicReady();
     const { mediaType, base64Data } = this.validateImageBase64(imageBase64);
 
     try {

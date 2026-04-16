@@ -1,9 +1,9 @@
 import { Injectable, NotFoundException, BadRequestException, InternalServerErrorException, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { Prisma, CreditCheckStatus } from '@prisma/client';
 import Anthropic from '@anthropic-ai/sdk';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCreditCheckDto, OverrideCreditCheckDto } from './dto/credit-check.dto';
+import { IntegrationConfigService } from '../integrations/integration-config.service';
 
 @Injectable()
 export class CreditCheckService {
@@ -12,16 +12,16 @@ export class CreditCheckService {
 
   constructor(
     private prisma: PrismaService,
-    private configService: ConfigService,
-  ) {
-    const apiKey = (
-      this.configService.get<string>('ANTHROPIC_API_KEY') ||
-      process.env.ANTHROPIC_API_KEY ||
-      ''
-    ).trim();
-    if (apiKey) {
+    private integrationConfig: IntegrationConfigService,
+  ) {}
+
+  private async getAnthropicClient(): Promise<Anthropic | null> {
+    const apiKey = ((await this.integrationConfig.getValue('claude-ai', 'apiKey')) || '').trim();
+    if (!apiKey) return null;
+    if (!this.anthropic) {
       this.anthropic = new Anthropic({ apiKey });
     }
+    return this.anthropic;
   }
 
   async findAll(filters: {
@@ -838,7 +838,8 @@ export class CreditCheckService {
     customerOccupation: string | null;
   }) {
     // Try Claude Vision API first, fallback to rule-based if unavailable
-    if (this.anthropic && params.statementFiles.length > 0) {
+    const client = await this.getAnthropicClient();
+    if (client && params.statementFiles.length > 0) {
       try {
         return await this.performClaudeAnalysis(params);
       } catch (error: unknown) {
@@ -858,7 +859,8 @@ export class CreditCheckService {
     customerSalary: number;
     customerOccupation: string | null;
   }) {
-    if (!this.anthropic) {
+    const client = await this.getAnthropicClient();
+    if (!client) {
       throw new InternalServerErrorException('Anthropic client not initialized');
     }
 
@@ -915,7 +917,7 @@ export class CreditCheckService {
 ตอบเป็น JSON เท่านั้น ไม่ต้องมี markdown code block`,
     });
 
-    const response = await this.anthropic.messages.create({
+    const response = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1024,
       messages: [{ role: 'user', content: contentBlocks }],

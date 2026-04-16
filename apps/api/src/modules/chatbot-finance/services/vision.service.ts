@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import * as Sentry from '@sentry/nestjs';
 import Anthropic from '@anthropic-ai/sdk';
+import { IntegrationConfigService } from '../../integrations/integration-config.service';
 
 export interface SlipExtraction {
   isSlip: boolean;
@@ -43,17 +43,19 @@ const SLIP_PROMPT = `คุณคือระบบ extract ข้อมูล�
 @Injectable()
 export class VisionService {
   private readonly logger = new Logger(VisionService.name);
-  private readonly anthropic: Anthropic | null;
+  private anthropic: Anthropic | null = null;
   // Haiku for slip extraction — ~80% cheaper than Sonnet, sufficient for structured JSON extraction
   private readonly model = 'claude-haiku-4-5-20251001';
 
-  constructor(private config: ConfigService) {
-    const apiKey = (
-      this.config.get<string>('ANTHROPIC_API_KEY') ||
-      process.env.ANTHROPIC_API_KEY ||
-      ''
-    ).trim();
-    this.anthropic = apiKey ? new Anthropic({ apiKey }) : null;
+  constructor(private integrationConfig: IntegrationConfigService) {}
+
+  private async getAnthropicClient(): Promise<Anthropic | null> {
+    const apiKey = ((await this.integrationConfig.getValue('claude-ai', 'apiKey')) || '').trim();
+    if (!apiKey) return null;
+    if (!this.anthropic) {
+      this.anthropic = new Anthropic({ apiKey });
+    }
+    return this.anthropic;
   }
 
   get isEnabled(): boolean {
@@ -61,7 +63,8 @@ export class VisionService {
   }
 
   async extractSlip(imageBuffer: Buffer, mediaType = 'image/jpeg'): Promise<SlipExtraction | null> {
-    if (!this.anthropic) {
+    const client = await this.getAnthropicClient();
+    if (!client) {
       this.logger.warn('[Vision] Disabled — no API key');
       return null;
     }
@@ -69,7 +72,7 @@ export class VisionService {
     try {
       const base64 = imageBuffer.toString('base64');
 
-      const response = await this.anthropic.messages.create({
+      const response = await client.messages.create({
         model: this.model,
         max_tokens: 500,
         messages: [

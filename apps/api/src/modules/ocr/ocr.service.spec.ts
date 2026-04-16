@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { OcrService } from './ocr.service';
+import { IntegrationConfigService } from '../integrations/integration-config.service';
 
 // Mock Anthropic SDK
 const mockCreate = jest.fn();
@@ -35,6 +36,16 @@ describe('OcrService', () => {
               if (key === 'ANTHROPIC_API_KEY') return 'test-api-key';
               return undefined;
             }),
+          },
+        },
+        {
+          provide: IntegrationConfigService,
+          useValue: {
+            getValue: jest.fn().mockResolvedValue('test-api-key'),
+            getConfig: jest.fn().mockResolvedValue({ apiKey: 'test-api-key' }),
+            getMaskedConfig: jest.fn().mockResolvedValue({ apiKey: '••••key' }),
+            saveConfig: jest.fn().mockResolvedValue(undefined),
+            isConfigured: jest.fn().mockResolvedValue(true),
           },
         },
       ],
@@ -396,6 +407,16 @@ describe('OcrService', () => {
               get: jest.fn(() => undefined),
             },
           },
+          {
+            provide: IntegrationConfigService,
+            useValue: {
+              getValue: jest.fn().mockResolvedValue(''),
+              getConfig: jest.fn().mockResolvedValue({ apiKey: '' }),
+              getMaskedConfig: jest.fn().mockResolvedValue({ apiKey: '' }),
+              saveConfig: jest.fn().mockResolvedValue(undefined),
+              isConfigured: jest.fn().mockResolvedValue(false),
+            },
+          },
         ],
       }).compile();
 
@@ -403,7 +424,7 @@ describe('OcrService', () => {
 
       await expect(
         serviceWithoutKey.extractIdCard('data:image/jpeg;base64,/9j/4A=='),
-      ).rejects.toThrow('ไม่ได้ตั้งค่า API Key');
+      ).rejects.toThrow('ANTHROPIC_API_KEY');
     });
   });
 
@@ -860,6 +881,16 @@ describe('OcrService', () => {
             provide: ConfigService,
             useValue: { get: jest.fn(() => undefined) },
           },
+          {
+            provide: IntegrationConfigService,
+            useValue: {
+              getValue: jest.fn().mockResolvedValue(''),
+              getConfig: jest.fn().mockResolvedValue({ apiKey: '' }),
+              getMaskedConfig: jest.fn().mockResolvedValue({ apiKey: '' }),
+              saveConfig: jest.fn().mockResolvedValue(undefined),
+              isConfigured: jest.fn().mockResolvedValue(false),
+            },
+          },
         ],
       }).compile();
 
@@ -867,7 +898,7 @@ describe('OcrService', () => {
 
       await expect(
         noKeyService.extractDrivingLicense('data:image/jpeg;base64,/9j/4A=='),
-      ).rejects.toThrow('ไม่ได้ตั้งค่า API Key');
+      ).rejects.toThrow('ANTHROPIC_API_KEY');
     });
   });
 });

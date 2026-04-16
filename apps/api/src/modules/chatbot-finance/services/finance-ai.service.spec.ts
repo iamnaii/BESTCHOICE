@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { FinanceAiService } from './finance-ai.service';
 import { FinanceToolExecutor } from '../tools/tool-executor';
 import { FinanceConfigService } from './finance-config.service';
+import { IntegrationConfigService } from '../../integrations/integration-config.service';
 
 describe('FinanceAiService', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -30,6 +31,16 @@ describe('FinanceAiService', () => {
           },
           { provide: FinanceToolExecutor, useValue: toolExecutor },
           { provide: FinanceConfigService, useValue: { bankInfoBlock: '' } },
+          {
+            provide: IntegrationConfigService,
+            useValue: {
+              getValue: jest.fn().mockResolvedValue(''),
+              getConfig: jest.fn().mockResolvedValue({ apiKey: '' }),
+              getMaskedConfig: jest.fn().mockResolvedValue({ apiKey: '' }),
+              saveConfig: jest.fn().mockResolvedValue(undefined),
+              isConfigured: jest.fn().mockResolvedValue(false),
+            },
+          },
         ],
       }).compile();
 
@@ -60,13 +71,25 @@ describe('FinanceAiService', () => {
           },
           { provide: FinanceToolExecutor, useValue: toolExecutor },
           { provide: FinanceConfigService, useValue: { bankInfoBlock: '🏦 Test Bank\n🔢 123-456' } },
+          {
+            provide: IntegrationConfigService,
+            useValue: {
+              getValue: jest.fn().mockResolvedValue('test-api-key'),
+              getConfig: jest.fn().mockResolvedValue({ apiKey: 'test-api-key' }),
+              getMaskedConfig: jest.fn().mockResolvedValue({ apiKey: '••••key' }),
+              saveConfig: jest.fn().mockResolvedValue(undefined),
+              isConfigured: jest.fn().mockResolvedValue(true),
+            },
+          },
         ],
       }).compile();
 
       service = module.get(FinanceAiService);
     });
 
-    it('reports isEnabled = true', () => {
+    it('reports isEnabled = true', async () => {
+      // Trigger lazy client initialization (service uses async getValue now)
+      await (service as any).getAnthropicClient();
       expect(service.isEnabled).toBe(true);
     });
 

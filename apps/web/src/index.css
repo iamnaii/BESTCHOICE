@@ -1,5 +1,5 @@
-/* ── Google Fonts: Inter + Prompt ───────────── */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Prompt:wght@300;400;500;600;700&display=swap')
+/* ── Google Fonts: Inter + Noto Sans Thai ───────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap')
 layer(base);
 
 @import 'tailwindcss';
@@ -9,8 +9,8 @@ layer(base);
 @custom-variant dark (&:is(.dark *));
 
 @theme {
-  --font-sans: 'Inter', 'Prompt', system-ui, -apple-system, sans-serif;
-  --font-sarabun: 'Prompt', sans-serif;
+  --font-sans: 'Inter', 'Noto Sans Thai', system-ui, -apple-system, sans-serif;
+  --font-sarabun: 'Noto Sans Thai', sans-serif;
 
   --text-2xs: 0.6875rem;
   --text-2xs--line-height: 1.2;
@@ -234,7 +234,7 @@ layer(base);
 
 @utility font-sarabun {
   /* Font shortcut for document/receipt/contract areas */
-  font-family: 'Prompt', sans-serif;
+  font-family: 'Noto Sans Thai', sans-serif;
 }
 
 @utility safe-area-bottom {
@@ -354,7 +354,7 @@ layer(base);
 
 @layer utilities {
   /* ── TH Sarabun PSK (legacy fallback — kept for old templates) ──── */
-  /* Primary Thai font is now Prompt (loaded via Google Fonts above) */
+  /* Primary Thai font is now Noto Sans Thai (loaded via Google Fonts above) */
   @font-face {
     font-family: 'TH Sarabun PSK';
     src: url('/fonts/THSarabunPSK-Regular.ttf') format('truetype');
@@ -397,7 +397,7 @@ layer(base);
   body {
     font-family:
       'Inter',
-      'Prompt',
+      'Noto Sans Thai',
       system-ui,
       -apple-system,
       sans-serif;
@@ -422,7 +422,7 @@ layer(base);
   min-height: 240px;
   padding: 16px 20px;
   outline: none;
-  font-family: 'Prompt', sans-serif;
+  font-family: 'Noto Sans Thai', sans-serif;
   font-size: 18px;
   line-height: 1.8;
   color: var(--color-editor-text);
@@ -528,7 +528,7 @@ layer(base);
 
   /* Receipt print area — font + layout */
   #receipt-print-area {
-    font-family: 'Prompt', sans-serif;
+    font-family: 'Noto Sans Thai', sans-serif;
     font-size: 14pt;
     line-height: 1.5;
   }

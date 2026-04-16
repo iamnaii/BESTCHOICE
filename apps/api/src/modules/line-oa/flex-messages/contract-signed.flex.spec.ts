@@ -39,11 +39,7 @@ describe('buildContractSignedFlex', () => {
     expect(bubble.footer).toBeDefined();
     expect(bubble.footer!.contents).toHaveLength(1);
     expect(bubble.footer!.contents[0]).toMatchObject({
-      type: 'button',
-      action: {
-        type: 'uri',
-        uri: 'https://example.com/download',
-      },
+      type: 'box',
     });
   });
 

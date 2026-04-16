@@ -30,11 +30,11 @@ export default function PageHeader({
     <div className={cn('flex flex-col gap-2 pb-6 lg:pb-7.5', className)}>
       {breadcrumb}
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-start gap-2.5">
           {onBack && (
             <button
               onClick={onBack}
-              className="flex items-center justify-center size-8 rounded-md hover:bg-accent text-muted-foreground transition-colors"
+              className="flex items-center justify-center size-8 mt-0.5 rounded-md hover:bg-accent text-muted-foreground transition-colors"
               aria-label="กลับ"
             >
               <svg
@@ -51,10 +51,10 @@ export default function PageHeader({
               </svg>
             </button>
           )}
-          {icon}
+          {icon && <span className="mt-1 shrink-0">{icon}</span>}
           <div>
             <div className="flex items-center gap-2.5">
-              <h1 className="text-xl font-bold text-foreground">{title}</h1>
+              <h1 className="text-xl font-bold text-foreground leading-tight">{title}</h1>
               {badge}
             </div>
             {subtitle && <p className="text-sm text-muted-foreground mt-0.5">{subtitle}</p>}

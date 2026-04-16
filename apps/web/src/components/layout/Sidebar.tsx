@@ -61,8 +61,8 @@ const expandedMenuClassNames: AccordionMenuClassNames = {
     'h-[32px] rounded-none text-[13px] font-semibold tracking-wider uppercase leading-snug',
     'text-muted-foreground/60 hover:text-muted-foreground hover:bg-transparent',
     'data-[state=open]:text-muted-foreground/60 data-[state=open]:bg-transparent',
-    'transition-colors duration-150 px-2 mt-5 mb-0.5',
-    'border-t border-border pt-4',
+    'transition-colors duration-150 px-2 mt-3 mb-1',
+    'border-t border-border pt-3',
   ].join(' '),
   subContent: 'py-0.5 pl-0 border-l-0 ml-0',
 };

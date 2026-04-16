@@ -289,9 +289,9 @@ export class MessageRouterService {
       return;
     }
 
-    // Resolve the external user ID
+    // Resolve the external user ID (externalUserId for FB/TikTok, lineUserId for LINE)
     const externalUserId =
-      room.externalUserId || room.lineUserId;
+      room.externalUserId ?? room.lineUserId ?? '';
 
     // Save the staff message
     await this.roomManager.saveMessage({

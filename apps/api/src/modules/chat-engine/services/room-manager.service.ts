@@ -101,7 +101,7 @@ export class RoomManagerService {
 
     const room = await this.prisma.chatRoom.create({
       data: {
-        lineUserId: isLineChannel ? params.externalUserId : '',
+        lineUserId: isLineChannel ? params.externalUserId : null,
         externalUserId: isLineChannel ? undefined : params.externalUserId,
         channel: params.channel,
         customerId,

@@ -2962,7 +2962,7 @@ model CustomerLineLink {
 /// Chat room — ลูกค้า 1 คน 1 room ต่อ channel
 model ChatRoom {
   id             String    @id @default(uuid())
-  lineUserId     String    @map("line_user_id")
+  lineUserId     String?   @map("line_user_id")
   externalUserId String?   @map("external_user_id") // FB PSID, TikTok user, web visitor ID
   customerId     String?   @map("customer_id")
   customer       Customer? @relation(fields: [customerId], references: [id])

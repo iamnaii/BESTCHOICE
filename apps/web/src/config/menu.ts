@@ -70,20 +70,19 @@ export interface RoleMenuConfig {
   bottomNav: BottomNavItem[];
 }
 
-/* ── SALES — พนักงานขาย (9 เมนู) ──────────────────── */
+/* ── SALES — พนักงานขาย (10 เมนู) ──────────────────── */
 
 const SALES_CONFIG: RoleMenuConfig = {
   sidebar: [
     {
       key: 'sales-work',
-      label: 'งานขาย',
+      label: 'ขาย',
       icon: ShoppingCart,
       items: [
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
         { label: 'ลูกค้า', path: '/customers', icon: Users },
         { label: 'ตรวจเครดิต', path: '/credit-checks', icon: UserSearch },
         { label: 'รับซื้อมือสอง', path: '/trade-in', icon: Smartphone },
-        { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
       ],
     },
     {
@@ -103,6 +102,7 @@ const SALES_CONFIG: RoleMenuConfig = {
         { label: 'สต็อกสินค้า', path: '/stock', icon: Warehouse },
         { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
         { label: 'CRM Pipeline', path: '/crm', icon: Kanban },
+        { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
       ],
     },
   ],
@@ -115,7 +115,7 @@ const SALES_CONFIG: RoleMenuConfig = {
   ],
 };
 
-/* ── BRANCH_MANAGER — ผจก.สาขา (13 เมนู) ──────────── */
+/* ── BRANCH_MANAGER — ผจก.สาขา (12 เมนู) ──────────── */
 
 const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
   sidebar: [
@@ -131,7 +131,7 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
     },
     {
       key: 'bm-sales',
-      label: 'ขาย & สัญญา',
+      label: 'ขาย',
       icon: ShoppingCart,
       items: [
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
@@ -146,14 +146,13 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
       icon: Warehouse,
       items: [
         { label: 'สต็อกสินค้า', path: '/stock', icon: Warehouse },
-        { label: 'โอนสินค้า', path: '/stock/transfers', icon: Truck },
         { label: 'สั่งซื้อ (PO)', path: '/purchase-orders', icon: ClipboardList },
         { label: 'ผู้ขาย', path: '/suppliers', icon: Building2 },
       ],
     },
     {
       key: 'bm-followup',
-      label: 'ติดตาม & CRM',
+      label: 'ติดตาม',
       icon: AlertTriangle,
       items: [
         { label: 'ค้างชำระ', path: '/overdue', icon: AlertTriangle },
@@ -171,7 +170,7 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
   ],
 };
 
-/* ── FINANCE_MANAGER — ผจก.การเงิน (13 เมนู) ─────── */
+/* ── FINANCE_MANAGER — ผจก.การเงิน (12 เมนู) ─────── */
 
 const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
   sidebar: [
@@ -181,18 +180,17 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
       icon: Home,
       items: [
         { label: 'Dashboard', path: '/', icon: Home },
-        { label: 'Finance Portfolio', path: '/finance-portfolio', icon: CircleDollarSign },
+        { label: 'Finance Overview', path: '/finance-portfolio', icon: CircleDollarSign },
         { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
       ],
     },
     {
       key: 'fm-payments',
-      label: 'รับชำระ & สัญญา',
+      label: 'สัญญา & ชำระ',
       icon: FileCheck,
       items: [
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
-        { label: 'เงินรับจาก FINANCE', path: '/finance-receivable', icon: Banknote },
         { label: 'ใบเสร็จ', path: '/receipts', icon: FileText },
       ],
     },
@@ -201,15 +199,14 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
       label: 'ติดตามหนี้',
       icon: AlertTriangle,
       items: [
-        { label: 'ลูกค้าค้างชำระ', path: '/overdue', icon: AlertTriangle },
-        { label: 'Collection Dashboard', path: '/collection-dashboard', icon: BarChart3 },
+        { label: 'ติดตามหนี้', path: '/overdue', icon: AlertTriangle },
         { label: 'เปลี่ยนเครื่อง', path: '/exchange', icon: RefreshCw },
         { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
       ],
     },
     {
       key: 'fm-finance',
-      label: 'การเงิน',
+      label: 'บัญชี & รายงาน',
       icon: Coins,
       items: [
         { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
@@ -227,7 +224,7 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
   ],
 };
 
-/* ── ACCOUNTANT — ฝ่ายบัญชี (12 เมนู) ─────────────── */
+/* ── ACCOUNTANT — ฝ่ายบัญชี (11 เมนู) ─────────────── */
 
 const ACCOUNTANT_CONFIG: RoleMenuConfig = {
   sidebar: [
@@ -238,14 +235,13 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
         { label: 'ใบเสร็จ', path: '/receipts', icon: FileText },
-        { label: 'เงินรับจาก FINANCE', path: '/finance-receivable', icon: Banknote },
         { label: 'บันทึกรายจ่าย', path: '/expenses', icon: Receipt },
         { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
       ],
     },
     {
       key: 'acc-reports',
-      label: 'รายงาน & ภาษี',
+      label: 'บัญชี & รายงาน',
       icon: BarChart3,
       items: [
         { label: 'กำไร-ขาดทุน', path: '/profit-loss', icon: PieChart },
@@ -256,13 +252,13 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
     },
     {
       key: 'acc-close',
-      label: 'ปิดบัญชี & ตรวจสอบ',
+      label: 'ปิดบัญชี',
       icon: CalendarDays,
       items: [
         { label: 'ปิดบัญชีรายเดือน', path: '/monthly-close', icon: CalendarDays },
         { label: 'ผังบัญชี', path: '/settings/chart-of-accounts', icon: ClipboardList },
-        { label: 'PEAK Sync', path: '/settings/peak-sync', icon: Plug },
         { label: 'ตรวจสอบบัญชี', path: '/financial-audit', icon: ClipboardList },
+        { label: 'PEAK Sync', path: '/settings/peak-sync', icon: Plug },
       ],
     },
   ],

@@ -3,6 +3,9 @@ import { Link } from 'react-router';
 import { toast } from 'sonner';
 import api from '@/lib/api';
 import AuthLayout from '@/components/layout/AuthLayout';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -58,27 +61,26 @@ export default function ForgotPasswordPage() {
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label htmlFor="email" className="block text-2sm font-medium text-foreground mb-1.5">
-                อีเมล
-              </label>
-              <input
+              <Label htmlFor="email">อีเมล</Label>
+              <Input
                 id="email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full h-10 px-3.5 border border-input rounded-lg text-sm outline-hidden transition-all bg-background text-foreground placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background"
                 placeholder="email@example.com"
                 autoComplete="email"
                 required
               />
             </div>
-            <button
+            <Button
               type="submit"
               disabled={isSubmitting}
-              className="w-full bg-primary text-white h-10 px-4 rounded-lg font-semibold text-sm hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
+              className="w-full"
+              variant="primary"
+              size="lg"
             >
               {isSubmitting ? 'กำลังส่ง...' : 'ส่งลิงก์รีเซ็ตรหัสผ่าน'}
-            </button>
+            </Button>
           </form>
         )}
       </div>

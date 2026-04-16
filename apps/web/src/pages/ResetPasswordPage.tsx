@@ -3,6 +3,9 @@ import { Link, useSearchParams, useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import api from '@/lib/api';
 import AuthLayout from '@/components/layout/AuthLayout';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
 
 export default function ResetPasswordPage() {
   const [searchParams] = useSearchParams();
@@ -72,42 +75,38 @@ export default function ResetPasswordPage() {
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label htmlFor="newPassword" className="block text-2sm font-medium text-foreground mb-1.5">
-              รหัสผ่านใหม่
-            </label>
-            <input
+            <Label htmlFor="newPassword">รหัสผ่านใหม่</Label>
+            <Input
               id="newPassword"
               type="password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              className="w-full h-10 px-3.5 border border-input rounded-lg text-sm outline-hidden transition-all bg-background text-foreground placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background"
               placeholder="รหัสผ่านใหม่ (อย่างน้อย 6 ตัวอักษร)"
               required
               minLength={6}
             />
           </div>
           <div>
-            <label htmlFor="confirmPassword" className="block text-2sm font-medium text-foreground mb-1.5">
-              ยืนยันรหัสผ่านใหม่
-            </label>
-            <input
+            <Label htmlFor="confirmPassword">ยืนยันรหัสผ่านใหม่</Label>
+            <Input
               id="confirmPassword"
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              className="w-full h-10 px-3.5 border border-input rounded-lg text-sm outline-hidden transition-all bg-background text-foreground placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background"
               placeholder="ยืนยันรหัสผ่านใหม่"
               required
               minLength={6}
             />
           </div>
-          <button
+          <Button
             type="submit"
             disabled={isSubmitting}
-            className="w-full bg-primary text-white h-10 px-4 rounded-lg font-semibold text-sm hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
+            className="w-full"
+            variant="primary"
+            size="lg"
           >
             {isSubmitting ? 'กำลังรีเซ็ต...' : 'รีเซ็ตรหัสผ่าน'}
-          </button>
+          </Button>
         </form>
       </div>
 

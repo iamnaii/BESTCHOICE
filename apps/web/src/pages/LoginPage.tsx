@@ -3,6 +3,9 @@ import { useNavigate, Link } from 'react-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import AuthLayout from '@/components/layout/AuthLayout';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -56,16 +59,13 @@ export default function LoginPage() {
             </div>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label htmlFor="email" className="block text-2sm font-medium text-foreground mb-1.5">
-                  อีเมล
-                </label>
-                <input
+                <Label htmlFor="email">อีเมล</Label>
+                <Input
                   id="email"
                   type="email"
                   data-testid="login-email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full h-10 px-3.5 border border-input rounded-lg text-sm outline-hidden transition-all bg-background text-foreground placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background"
                   placeholder="email@example.com"
                   autoComplete="email"
                   required
@@ -73,16 +73,13 @@ export default function LoginPage() {
               </div>
 
               <div>
-                <label htmlFor="password" className="block text-2sm font-medium text-foreground mb-1.5">
-                  รหัสผ่าน
-                </label>
-                <input
+                <Label htmlFor="password">รหัสผ่าน</Label>
+                <Input
                   id="password"
                   type="password"
                   data-testid="login-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full h-10 px-3.5 border border-input rounded-lg text-sm outline-hidden transition-all bg-background text-foreground placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background"
                   placeholder="รหัสผ่าน"
                   autoComplete="current-password"
                   required
@@ -90,11 +87,13 @@ export default function LoginPage() {
                 />
               </div>
 
-              <button
+              <Button
                 type="submit"
                 data-testid="login-submit"
                 disabled={isSubmitting}
-                className="w-full bg-primary text-white h-10 px-4 rounded-lg font-semibold text-sm hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
+                className="w-full"
+                variant="primary"
+                size="lg"
               >
                 {isSubmitting ? (
                   <span className="flex items-center justify-center gap-2">
@@ -107,7 +106,7 @@ export default function LoginPage() {
                 ) : (
                   'เข้าสู่ระบบ'
                 )}
-              </button>
+              </Button>
             </form>
 
             {import.meta.env.DEV && (
@@ -121,9 +120,11 @@ export default function LoginPage() {
                     { label: 'บัญชี', email: 'accountant@bestchoice.com', pw: 'password123', role: 'ACCOUNTANT' },
                     { label: 'ผจก.การเงิน', email: 'finance@bestchoice.com', pw: 'admin1234', role: 'FINANCE_MANAGER' },
                   ].map((acc) => (
-                    <button
+                    <Button
                       key={acc.email}
                       type="button"
+                      variant="outline"
+                      size="sm"
                       disabled={isSubmitting}
                       onClick={async () => {
                         setIsSubmitting(true);
@@ -139,11 +140,11 @@ export default function LoginPage() {
                           setIsSubmitting(false);
                         }
                       }}
-                      className="flex flex-col items-center gap-0.5 p-2 rounded-md border border-border hover:bg-accent hover:border-border transition-all text-xs disabled:opacity-50"
+                      className="flex flex-col items-center gap-0.5 h-auto py-2"
                     >
                       <span className="font-semibold text-foreground">{acc.label}</span>
                       <span className="text-muted-foreground text-[10px]">{acc.role}</span>
-                    </button>
+                    </Button>
                   ))}
                 </div>
               </div>

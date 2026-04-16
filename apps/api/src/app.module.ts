@@ -61,6 +61,7 @@ import { TodosModule } from './modules/todos/todos.module';
 import { ChatbotFinanceModule } from './modules/chatbot-finance/chatbot-finance.module';
 import { ChatEngineModule } from './modules/chat-engine/chat-engine.module';
 import { ChatAdaptersModule } from './modules/chat-adapters/chat-adapters.module';
+import { FacebookDomainModule } from './modules/facebook-domain/facebook-domain.module';
 import { StaffChatModule } from './modules/staff-chat/staff-chat.module';
 import { ChatAnalyticsModule } from './modules/chat-analytics/chat-analytics.module';
 import { CsatModule } from './modules/csat/csat.module';
@@ -178,6 +179,8 @@ import { AppCacheModule } from './cache/cache.module';
     ChatEngineModule,
     // Chat Channel Adapters (LINE Finance/Shop, Facebook, TikTok, Web)
     ChatAdaptersModule,
+    // Facebook Domain — IDomainHandler for Facebook Messenger business logic
+    FacebookDomainModule,
     // Staff Chat — WebSocket gateway + REST controller for unified inbox
     StaffChatModule,
     // Chat Analytics — response time, resolution rate, channel volume

@@ -52,12 +52,28 @@ export class FacebookAdapter implements IChannelAdapter {
     }
 
     try {
+      const fbMessage: Record<string, unknown> = {};
+
+      if (message.templatePayload) {
+        // Check if templatePayload is a Facebook attachment (has type + payload)
+        if (message.templatePayload.type && message.templatePayload.payload) {
+          fbMessage.attachment = message.templatePayload;
+        }
+
+        // Quick replies can be set on templatePayload
+        if (message.templatePayload.quick_replies) {
+          fbMessage.quick_replies = message.templatePayload.quick_replies;
+        }
+      }
+
+      if (message.text && !fbMessage.attachment) {
+        fbMessage.text = message.text;
+      }
+
       const body: Record<string, unknown> = {
-        messaging_type: 'RESPONSE', // within 24h reply window
+        messaging_type: 'RESPONSE',
         recipient: { id: message.externalUserId },
-        message: message.text
-          ? { text: message.text }
-          : { attachment: message.templatePayload },
+        message: fbMessage,
       };
 
       const res = await fetch(`${this.graphApiUrl}?access_token=${this.pageAccessToken}`, {

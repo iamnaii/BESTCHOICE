@@ -111,17 +111,49 @@ export class FacebookWebhookController {
 
   /**
    * Process a single messaging event from Facebook.
-   * Supports: text messages, attachments (image/audio/video/file).
+   * Supports: text messages, attachments (image/audio/video/file), postbacks.
    * Ignores: read receipts, delivery confirmations, echoes.
    */
   private async processMessagingEvent(event: any): Promise<void> {
     const senderId: string | undefined = event.sender?.id;
     const message = event.message;
+    const postback = event.postback;
 
     // Skip echo messages (sent by our page), delivery, and read events
-    if (!senderId || !message || message.is_echo) {
+    if (!senderId) return;
+
+    // Handle postback events (persistent menu clicks, button taps)
+    if (postback && !message) {
+      const referral = postback.referral ?? event.referral;
+      const attribution = referral
+        ? {
+            utmSource: 'facebook',
+            utmCampaign: referral.ad_id ?? referral.ref ?? undefined,
+            utmContent: referral.ref ?? undefined,
+            referrerUrl: referral.source ?? undefined,
+          }
+        : undefined;
+
+      const inbound: InboundMessage = {
+        externalMessageId: `postback_${Date.now()}_${senderId}`,
+        externalUserId: senderId,
+        channel: ChatChannel.FACEBOOK,
+        type: MessageType.TEXT,
+        text: postback.payload ?? postback.title ?? '',
+        rawPayload: event,
+        timestamp: event.timestamp ? new Date(event.timestamp) : new Date(),
+        attribution,
+      };
+
+      this.logger.log(
+        `[FB Webhook] Postback from PSID ${senderId}: "${postback.payload}"`,
+      );
+
+      await this.messageRouter.routeInbound(inbound);
       return;
     }
+
+    if (!message || message.is_echo) return;
 
     const { type, text, mediaUrl } = this.parseMessage(message);
 

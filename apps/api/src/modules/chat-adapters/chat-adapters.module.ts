@@ -9,6 +9,7 @@ import { CHANNEL_ADAPTER_TOKEN } from '../chat-engine/interfaces/channel-adapter
 import { ChatbotFinanceModule } from '../chatbot-finance/chatbot-finance.module';
 import { LineOaModule } from '../line-oa/line-oa.module';
 import { ChatEngineModule } from '../chat-engine/chat-engine.module';
+import { FacebookDomainModule } from '../facebook-domain/facebook-domain.module';
 
 /**
  * ChatAdaptersModule — provides IChannelAdapter implementations for all channels.
@@ -20,7 +21,7 @@ import { ChatEngineModule } from '../chat-engine/chat-engine.module';
  * can collect and route messages through them.
  */
 @Module({
-  imports: [ChatbotFinanceModule, LineOaModule, ChatEngineModule],
+  imports: [ChatbotFinanceModule, LineOaModule, ChatEngineModule, FacebookDomainModule],
   controllers: [FacebookWebhookController],
   providers: [
     LineFinanceAdapter,

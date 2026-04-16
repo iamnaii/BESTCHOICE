@@ -25,6 +25,7 @@ import { DetailPageSkeleton } from '@/components/ui/page-skeletons';
 import { formatNumber, formatDateMedium } from '@/utils/formatters';
 import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, contractStatusMap } from '@/lib/status-badges';
+import MdmDeviceWidget from '@/components/mdm/MdmDeviceWidget';
 
 interface Payment {
   id: string;
@@ -724,6 +725,11 @@ const deleteMutation = useMutation({
             </div>
             <button onClick={() => navigate(`/products/${contract.product.id}`)} className="mt-3 text-xs text-primary hover:underline">ดูรายละเอียดสินค้า</button>
           </div>
+
+          {/* MDM Device Widget */}
+          {contract.product.imeiSerial && (
+            <MdmDeviceWidget imei={contract.product.imeiSerial} />
+          )}
 
           {/* QR Code Verification */}
           {contract.contractHash && (

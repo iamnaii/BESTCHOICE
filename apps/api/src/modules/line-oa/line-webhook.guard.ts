@@ -1,9 +1,8 @@
 import { CanActivate, ExecutionContext, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { Request } from 'express';
 import { RawBodyRequest } from '../../common/types/raw-body-request';
-import { PrismaService } from '../../prisma/prisma.service';
+import { IntegrationConfigService } from '../integrations/integration-config.service';
 
 /**
  * Guard for LINE Webhook signature verification
@@ -13,33 +12,15 @@ import { PrismaService } from '../../prisma/prisma.service';
 @Injectable()
 export class LineWebhookGuard implements CanActivate {
   private readonly logger = new Logger(LineWebhookGuard.name);
-  private channelSecret: string | undefined;
 
-  constructor(
-    private configService: ConfigService,
-    private prisma: PrismaService,
-  ) {
-    this.channelSecret = this.configService.get<string>('LINE_CHANNEL_SECRET');
-  }
+  constructor(private integrationConfig: IntegrationConfigService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
 
-    // Try loading from DB if not set via env
-    if (!this.channelSecret) {
-      try {
-        const config = await this.prisma.systemConfig.findUnique({
-          where: { key: 'line_channel_secret' },
-        });
-        if (config?.value) {
-          this.channelSecret = config.value;
-        }
-      } catch {
-        // DB not ready
-      }
-    }
+    const channelSecret = (await this.integrationConfig.getValue('line-oa', 'shopChannelSecret')) || '';
 
-    if (!this.channelSecret) {
+    if (!channelSecret) {
       const isDev = process.env.NODE_ENV !== 'production';
       if (isDev) {
         this.logger.warn('LINE_CHANNEL_SECRET not configured — skipping verification (DEV ONLY)');
@@ -59,7 +40,7 @@ export class LineWebhookGuard implements CanActivate {
     // Use raw body bytes for HMAC — JSON.stringify may differ from LINE's original payload
     const rawBody = (request as unknown as RawBodyRequest).rawBody;
     const body = rawBody ?? Buffer.from(JSON.stringify(request.body));
-    const expectedSignature = createHmac('SHA256', this.channelSecret)
+    const expectedSignature = createHmac('SHA256', channelSecret)
       .update(body)
       .digest('base64');
 

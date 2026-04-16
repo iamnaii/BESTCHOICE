@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
+import { IntegrationConfigService } from '../integrations/integration-config.service';
 
 type LineMessage =
   | { type: 'text'; text: string }
@@ -28,6 +29,7 @@ export class BroadcastService {
     private configService: ConfigService,
     private prisma: PrismaService,
     private storageService: StorageService,
+    private integrationConfig: IntegrationConfigService,
   ) {}
 
   // ─── Audience ────────────────────────────────────────────────────────────────
@@ -331,7 +333,7 @@ export class BroadcastService {
 
   /** Get follower count via LINE Insight API */
   async getFollowerCount(): Promise<number> {
-    const token = this.configService.get<string>('LINE_CHANNEL_ACCESS_TOKEN');
+    const token = await this.integrationConfig.getValue('line-oa', 'shopChannelToken');
     if (!token) return 0;
 
     try {
@@ -389,7 +391,7 @@ export class BroadcastService {
     audience: string,
     messages: LineMessage[],
   ): Promise<{ success: boolean; message: string }> {
-    const token = this.configService.get<string>('LINE_CHANNEL_ACCESS_TOKEN');
+    const token = await this.integrationConfig.getValue('line-oa', 'shopChannelToken');
     if (!token) return { success: false, message: 'LINE token not configured' };
 
     try {

@@ -22,9 +22,10 @@ import { BroadcastCron } from './broadcast.cron';
 import { ContractsModule } from '../contracts/contracts.module';
 import { PDPAModule } from '../pdpa/pdpa.module';
 import { ChatbotFinanceModule } from '../chatbot-finance/chatbot-finance.module';
+import { IntegrationsModule } from '../integrations/integrations.module';
 
 @Module({
-  imports: [forwardRef(() => ContractsModule), PDPAModule, forwardRef(() => ChatbotFinanceModule)],
+  imports: [forwardRef(() => ContractsModule), PDPAModule, forwardRef(() => ChatbotFinanceModule), IntegrationsModule],
   controllers: [LineOaController, LineOaChatbotController, LineOaPaymentController, LineOaCampaignController, LiffApiController, LineLoginController, BroadcastController],
   providers: [
     LineOaService,

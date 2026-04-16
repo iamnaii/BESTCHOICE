@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { toNum } from '../../utils/decimal.util';
 import { PDPAService } from '../pdpa/pdpa.service';
+import { IntegrationConfigService } from '../integrations/integration-config.service';
 import { LineMessagePayload } from './dto/webhook-event.dto';
 import { FlexMessagePayload } from './flex-messages/base-template';
 import { buildPaymentSuccessFlex, PaymentSuccessData } from './flex-messages/payment-success.flex';
@@ -27,7 +28,6 @@ import {
 @Injectable()
 export class LineOaService {
   private readonly logger = new Logger(LineOaService.name);
-  private lineChannelAccessToken: string | undefined;
   private readonly lineApiBaseUrl = 'https://api.line.me/v2/bot';
   private readonly lineDataApiBaseUrl = 'https://api-data.line.me/v2/bot';
 
@@ -35,38 +35,21 @@ export class LineOaService {
     private configService: ConfigService,
     private prisma: PrismaService,
     private pdpaService: PDPAService,
-  ) {
-    this.lineChannelAccessToken = this.configService.get<string>('LINE_CHANNEL_ACCESS_TOKEN');
-    // Load from DB on startup (async)
-    this.loadConfigFromDb();
-  }
+    private integrationConfig: IntegrationConfigService,
+  ) {}
 
-  private async loadConfigFromDb(): Promise<void> {
-    try {
-      const config = await this.prisma.systemConfig.findUnique({
-        where: { key: 'line_channel_access_token' },
-      });
-      // Only override env token if DB has a real value (not empty/masked)
-      if (config?.value && config.value.length > 10 && !config.value.startsWith('****')) {
-        this.lineChannelAccessToken = config.value;
-        this.logger.log('[LINE] Config loaded from database');
-      }
-    } catch {
-      // DB might not be ready yet on startup, that's fine
-    }
-  }
-
-  async reloadConfig(): Promise<void> {
-    await this.loadConfigFromDb();
+  private async getShopChannelToken(): Promise<string> {
+    return (await this.integrationConfig.getValue('line-oa', 'shopChannelToken')) || '';
   }
 
   async testConnection(): Promise<{ displayName: string; userId: string; pictureUrl?: string }> {
-    if (!this.lineChannelAccessToken) {
+    const token = await this.getShopChannelToken();
+    if (!token) {
       throw new BadRequestException('LINE Channel Access Token ยังไม่ได้ตั้งค่า');
     }
 
     const response = await fetch(`${this.lineApiBaseUrl}/info`, {
-      headers: { Authorization: `Bearer ${this.lineChannelAccessToken}` },
+      headers: { Authorization: `Bearer ${token}` },
     });
 
     if (!response.ok) {
@@ -112,14 +95,15 @@ export class LineOaService {
    * Download content (image, video, etc.) from LINE
    */
   async downloadContent(messageId: string): Promise<Buffer> {
-    if (!this.lineChannelAccessToken) {
+    const token = await this.getShopChannelToken();
+    if (!token) {
       throw new BadRequestException('LINE channel access token not configured');
     }
 
     const url = `${this.lineDataApiBaseUrl}/message/${messageId}/content`;
     const response = await fetch(url, {
       headers: {
-        Authorization: `Bearer ${this.lineChannelAccessToken}`,
+        Authorization: `Bearer ${token}`,
       },
     });
 
@@ -135,14 +119,15 @@ export class LineOaService {
    * Get user profile
    */
   async getUserProfile(userId: string): Promise<{ displayName: string; pictureUrl?: string; statusMessage?: string }> {
-    if (!this.lineChannelAccessToken) {
+    const token = await this.getShopChannelToken();
+    if (!token) {
       throw new BadRequestException('LINE channel access token not configured');
     }
 
     const url = `${this.lineApiBaseUrl}/profile/${userId}`;
     const response = await fetch(url, {
       headers: {
-        Authorization: `Bearer ${this.lineChannelAccessToken}`,
+        Authorization: `Bearer ${token}`,
       },
     });
 
@@ -724,7 +709,8 @@ export class LineOaService {
   // ─── Private Helpers ──────────────────────────────────
 
   private async callLineApi(url: string, body: unknown): Promise<void> {
-    if (!this.lineChannelAccessToken) {
+    const token = await this.getShopChannelToken();
+    if (!token) {
       throw new BadRequestException('LINE channel access token not configured');
     }
 
@@ -732,7 +718,7 @@ export class LineOaService {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.lineChannelAccessToken}`,
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify(body),
     });

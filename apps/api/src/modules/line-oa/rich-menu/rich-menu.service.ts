@@ -1,6 +1,7 @@
 import { Injectable, Logger, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { IntegrationConfigService } from '../../integrations/integration-config.service';
 
 export interface MenuButton {
   label: string;
@@ -39,14 +40,16 @@ export interface RichMenuUrls {
 @Injectable()
 export class RichMenuService {
   private readonly logger = new Logger(RichMenuService.name);
-  private readonly lineChannelAccessToken: string | undefined;
   private readonly lineApiBaseUrl = 'https://api.line.me/v2/bot';
 
   constructor(
     private configService: ConfigService,
     private prisma: PrismaService,
-  ) {
-    this.lineChannelAccessToken = this.configService.get<string>('LINE_CHANNEL_ACCESS_TOKEN');
+    private integrationConfig: IntegrationConfigService,
+  ) {}
+
+  private async getShopChannelToken(): Promise<string> {
+    return (await this.integrationConfig.getValue('line-oa', 'shopChannelToken')) || '';
   }
 
   /**
@@ -280,14 +283,15 @@ export class RichMenuService {
    * Get current default Rich Menu ID
    */
   async getDefaultRichMenuId(): Promise<string | null> {
-    if (!this.lineChannelAccessToken) {
+    const token = await this.getShopChannelToken();
+    if (!token) {
       throw new BadRequestException('LINE channel access token not configured');
     }
 
     const url = `${this.lineApiBaseUrl}/user/all/richmenu`;
     const response = await fetch(url, {
       method: 'GET',
-      headers: { Authorization: `Bearer ${this.lineChannelAccessToken}` },
+      headers: { Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(15000),
     });
 
@@ -309,7 +313,8 @@ export class RichMenuService {
    * The image should be 2500x1686 pixels, JPEG or PNG
    */
   async uploadRichMenuImage(richMenuId: string, imageBuffer: Buffer): Promise<void> {
-    if (!this.lineChannelAccessToken) {
+    const token = await this.getShopChannelToken();
+    if (!token) {
       throw new BadRequestException('LINE channel access token not configured');
     }
 
@@ -317,7 +322,7 @@ export class RichMenuService {
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${this.lineChannelAccessToken}`,
+        Authorization: `Bearer ${token}`,
         'Content-Type': 'image/png',
       },
       body: new Uint8Array(imageBuffer),
@@ -336,11 +341,12 @@ export class RichMenuService {
    * Set default Rich Menu for all users
    */
   async setDefaultRichMenu(richMenuId: string): Promise<void> {
+    const token = await this.getShopChannelToken();
     const url = `${this.lineApiBaseUrl}/user/all/richmenu/${richMenuId}`;
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${this.lineChannelAccessToken}`,
+        Authorization: `Bearer ${token}`,
       },
       signal: AbortSignal.timeout(15000),
     });
@@ -357,11 +363,12 @@ export class RichMenuService {
    * Delete a Rich Menu
    */
   async deleteRichMenu(richMenuId: string): Promise<void> {
+    const token = await this.getShopChannelToken();
     const url = `${this.lineApiBaseUrl}/richmenu/${richMenuId}`;
     const response = await fetch(url, {
       method: 'DELETE',
       headers: {
-        Authorization: `Bearer ${this.lineChannelAccessToken}`,
+        Authorization: `Bearer ${token}`,
       },
       signal: AbortSignal.timeout(15000),
     });
@@ -378,10 +385,11 @@ export class RichMenuService {
    * List all Rich Menus
    */
   async listRichMenus(): Promise<unknown[]> {
+    const token = await this.getShopChannelToken();
     const url = `${this.lineApiBaseUrl}/richmenu/list`;
     const response = await fetch(url, {
       headers: {
-        Authorization: `Bearer ${this.lineChannelAccessToken}`,
+        Authorization: `Bearer ${token}`,
       },
       signal: AbortSignal.timeout(15000),
     });
@@ -398,11 +406,12 @@ export class RichMenuService {
    * Link a specific Rich Menu to a LINE user
    */
   async linkRichMenuToUser(userId: string, richMenuId: string): Promise<void> {
+    const token = await this.getShopChannelToken();
     const url = `${this.lineApiBaseUrl}/user/${userId}/richmenu/${richMenuId}`;
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${this.lineChannelAccessToken}`,
+        Authorization: `Bearer ${token}`,
       },
       signal: AbortSignal.timeout(15000),
     });
@@ -426,11 +435,12 @@ export class RichMenuService {
    * Unlink Rich Menu from a LINE user (revert to default)
    */
   async unlinkRichMenuFromUser(userId: string): Promise<void> {
+    const token = await this.getShopChannelToken();
     const url = `${this.lineApiBaseUrl}/user/${userId}/richmenu`;
     const response = await fetch(url, {
       method: 'DELETE',
       headers: {
-        Authorization: `Bearer ${this.lineChannelAccessToken}`,
+        Authorization: `Bearer ${token}`,
       },
       signal: AbortSignal.timeout(15000),
     });
@@ -483,7 +493,8 @@ export class RichMenuService {
   }
 
   private async callLineApi(url: string, body: unknown): Promise<Response> {
-    if (!this.lineChannelAccessToken) {
+    const token = await this.getShopChannelToken();
+    if (!token) {
       throw new BadRequestException('LINE channel access token not configured');
     }
 
@@ -491,7 +502,7 @@ export class RichMenuService {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.lineChannelAccessToken}`,
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(15000),

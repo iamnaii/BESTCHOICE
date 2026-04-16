@@ -116,7 +116,6 @@ export class LineOaController {
       }
     }
 
-    await this.lineOaService.reloadConfig();
     if (body.promptpay_id || body.promptpay_account_name) {
       this.promptPayQrService.setConfig(body.promptpay_id || '', body.promptpay_account_name || '');
     }

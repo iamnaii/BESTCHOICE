@@ -4,6 +4,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CHATBOT_SYSTEM_PROMPT, CHATBOT_CONTEXT_INSTRUCTIONS } from './chatbot-system-prompt.constants';
 import { CHATBOT_TOOLS, ChatbotToolName } from './chatbot/chatbot-tools';
+import { IntegrationConfigService } from '../integrations/integration-config.service';
 
 /**
  * ChatbotService — AI-powered response generation สำหรับน้องเบส
@@ -20,18 +21,16 @@ export class ChatbotService {
   constructor(
     private configService: ConfigService,
     private prisma: PrismaService,
-  ) {
-    const apiKey = (
-      this.configService.get<string>('ANTHROPIC_API_KEY') ||
-      process.env.ANTHROPIC_API_KEY ||
-      ''
-    ).trim();
-    if (apiKey) {
+    private integrationConfig: IntegrationConfigService,
+  ) {}
+
+  private async getAnthropicClient(): Promise<Anthropic | null> {
+    const apiKey = ((await this.integrationConfig.getValue('claude-ai', 'apiKey')) || '').trim();
+    if (!apiKey) return null;
+    if (!this.anthropic) {
       this.anthropic = new Anthropic({ apiKey });
-      this.logger.log('[Chatbot] AI service initialized');
-    } else {
-      this.logger.warn('[Chatbot] ANTHROPIC_API_KEY not set — AI responses disabled');
     }
+    return this.anthropic;
   }
 
   get isEnabled(): boolean {
@@ -44,7 +43,8 @@ export class ChatbotService {
    * ถ้า AI ไม่พร้อม จะ return null (controller จะใช้ fallback response แทน)
    */
   async generateResponse(userMessage: string, lineUserId?: string): Promise<string | null> {
-    if (!this.anthropic) {
+    const anthropic = await this.getAnthropicClient();
+    if (!anthropic) {
       return null;
     }
 
@@ -75,7 +75,7 @@ export class ChatbotService {
         : CHATBOT_SYSTEM_PROMPT;
 
       // First API call — include tools if we have customer context
-      const createParams: Parameters<typeof this.anthropic.messages.create>[0] = {
+      const createParams: Parameters<typeof anthropic.messages.create>[0] = {
         model: ChatbotService.MODEL,
         max_tokens: ChatbotService.MAX_TOKENS,
         system: systemPrompt,
@@ -83,7 +83,7 @@ export class ChatbotService {
         ...(customerContext ? { tools: CHATBOT_TOOLS as any } : {}),
       };
 
-      const response = (await this.anthropic.messages.create(createParams)) as Anthropic.Message;
+      const response = (await anthropic.messages.create(createParams)) as Anthropic.Message;
 
       // Handle tool_use stop reason
       if (response.stop_reason === 'tool_use' && customerContext) {
@@ -96,7 +96,7 @@ export class ChatbotService {
           );
 
           // Second API call with tool result
-          const followUp = (await this.anthropic.messages.create({
+          const followUp = (await anthropic.messages.create({
             model: ChatbotService.MODEL,
             max_tokens: ChatbotService.MAX_TOKENS,
             system: systemPrompt,

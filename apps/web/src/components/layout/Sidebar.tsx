@@ -317,7 +317,7 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
       )}
 
       {/* ── Navigation ──────────────────────────────── */}
-      <ScrollArea className="flex-1 py-4 px-3">
+      <ScrollArea className="flex-1 pt-2 pb-4 px-3">
         <AccordionMenu
           selectedValue={pathname}
           matchPath={matchPath}

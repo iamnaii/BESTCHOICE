@@ -8,7 +8,9 @@ import {
   HttpCode,
   Logger,
   BadRequestException,
+  Res,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
 import { MessageRouterService } from '../chat-engine/services/message-router.service';
 import { InboundMessage } from '../chat-engine/interfaces/channel-adapter.interface';
@@ -50,14 +52,16 @@ export class FacebookWebhookController {
     @Query('hub.mode') mode: string,
     @Query('hub.verify_token') token: string,
     @Query('hub.challenge') challenge: string,
-  ): string {
+    @Res() res: Response,
+  ): void {
     const verifyToken = this.configService.get<string>('FB_VERIFY_TOKEN');
     if (mode === 'subscribe' && token === verifyToken) {
       this.logger.log('[FB Webhook] Verification succeeded');
-      return challenge;
+      res.status(200).send(challenge);
+      return;
     }
     this.logger.warn(`[FB Webhook] Verification failed — mode=${mode}`);
-    throw new BadRequestException('Verification failed');
+    res.status(400).send('Verification failed');
   }
 
   /**

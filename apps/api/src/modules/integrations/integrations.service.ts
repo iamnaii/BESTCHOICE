@@ -148,7 +148,7 @@ export class IntegrationsService {
       }
 
       const basicAuth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
-      const res = await fetch('https://bulk.thaibulksms.com/sms-api/v2/credit', {
+      const res = await fetch('https://api-v2.thaibulksms.com/credit', {
         headers: { Authorization: `Basic ${basicAuth}` },
         signal: AbortSignal.timeout(10000),
       });
@@ -242,35 +242,58 @@ export class IntegrationsService {
         (config as Record<string, string> | null)?.connectId || process.env.PEAK_CONNECT_ID;
       const secretKey =
         (config as Record<string, string> | null)?.secretKey || process.env.PEAK_SECRET_KEY;
+      const baseUrl =
+        (config as Record<string, string> | null)?.baseUrl ||
+        process.env.PEAK_BASE_URL ||
+        'https://api.peakaccount.com/api/v1';
 
       if (!userToken || !connectId || !secretKey) {
         return { success: false, message: 'ยังไม่ได้ตั้งค่า PEAK ให้ครบ (User Token, Connect ID, Secret Key)' };
       }
 
-      const timestamp = Math.floor(Date.now() / 1000).toString();
-      const signature = crypto.createHmac('sha1', secretKey).update(timestamp).digest('hex');
+      // Generate timestamp in yyyyMMddHHmmss format (matches PeakService)
+      const now = new Date();
+      const timeStamp = [
+        now.getFullYear(),
+        String(now.getMonth() + 1).padStart(2, '0'),
+        String(now.getDate()).padStart(2, '0'),
+        String(now.getHours()).padStart(2, '0'),
+        String(now.getMinutes()).padStart(2, '0'),
+        String(now.getSeconds()).padStart(2, '0'),
+      ].join('');
 
-      const res = await fetch('https://api.peakaccount.com/api/v1/company', {
+      // HMAC-SHA1(timeStamp, connectId) using connectId as key
+      const timeSignature = crypto
+        .createHmac('sha1', connectId)
+        .update(timeStamp)
+        .digest('hex');
+
+      // Step 1: Get Client-Token
+      const tokenRes = await fetch(`${baseUrl}/ClientToken`, {
+        method: 'POST',
         headers: {
-          Authorization: `Bearer ${userToken}`,
-          'X-PeakConnect-ID': connectId,
-          'X-Timestamp': timestamp,
-          'X-Signature': signature,
+          'Content-Type': 'application/json',
+          'Time-Stamp': timeStamp,
+          'Time-Signature': timeSignature,
+          'User-Token': userToken,
         },
         signal: AbortSignal.timeout(10000),
       });
 
-      if (!res.ok) {
-        return { success: false, message: `PEAK API ตอบกลับ HTTP ${res.status}` };
+      if (!tokenRes.ok) {
+        return { success: false, message: `PEAK ClientToken ตอบกลับ HTTP ${tokenRes.status}` };
       }
 
-      const data = (await res.json()) as { name?: string; id?: string; companyName?: string };
-      const companyName = data.companyName ?? data.name ?? 'unknown';
+      const tokenData = (await tokenRes.json()) as { clientToken?: string; ClientToken?: string };
+      const clientToken = tokenData.clientToken || tokenData.ClientToken;
+
+      if (!clientToken) {
+        return { success: false, message: 'PEAK ไม่ส่ง Client-Token กลับมา — ตรวจสอบ credentials' };
+      }
 
       return {
         success: true,
-        message: `เชื่อมต่อสำเร็จ: ${companyName}`,
-        details: { companyName },
+        message: 'เชื่อมต่อ PEAK สำเร็จ (Client-Token ได้รับแล้ว)',
       };
     } catch (err: unknown) {
       return { success: false, message: (err as Error).message };
@@ -293,7 +316,7 @@ export class IntegrationsService {
         return { success: false, message: 'ยังไม่ได้ตั้งค่า MDM API Key' };
       }
 
-      const res = await fetch(`${baseUrl}/api/v1/devices?limit=1`, {
+      const res = await fetch(`${baseUrl}/api/mdm/devices?pageSize=1`, {
         headers: { 'X-API-Key': apiKey },
         signal: AbortSignal.timeout(10000),
       });
@@ -332,7 +355,7 @@ export class IntegrationsService {
           'content-type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'claude-haiku-4-5',
+          model: 'claude-haiku-4-5-20251001',
           max_tokens: 1,
           messages: [{ role: 'user', content: 'hi' }],
         }),

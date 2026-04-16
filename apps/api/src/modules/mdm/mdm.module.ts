@@ -5,12 +5,13 @@ import { IntegrationsModule } from '../integrations/integrations.module';
 import { MdmAutoCron } from './mdm-auto.cron';
 import { MdmAutoService } from './mdm-auto.service';
 import { MdmController } from './mdm.controller';
+import { MdmRestrictionsService } from './mdm-restrictions.service';
 import { MdmService } from './mdm.service';
 
 @Module({
   imports: [PrismaModule, LineOaModule, IntegrationsModule],
   controllers: [MdmController],
-  providers: [MdmService, MdmAutoService, MdmAutoCron],
-  exports: [MdmService, MdmAutoService],
+  providers: [MdmService, MdmAutoService, MdmAutoCron, MdmRestrictionsService],
+  exports: [MdmService, MdmAutoService, MdmRestrictionsService],
 })
 export class MdmModule {}

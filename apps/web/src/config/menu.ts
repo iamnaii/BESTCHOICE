@@ -368,21 +368,13 @@ const OWNER_CONFIG: RoleMenuConfig = {
       ],
     },
     {
-      key: 'owner-line',
-      label: 'LINE OA',
-      icon: MessageSquareMore,
-      items: [
-        { label: 'Rich Menu', path: '/settings/rich-menu', icon: LayoutGrid },
-        { label: 'ข้อความต้อนรับ', path: '/settings/line-greeting', icon: MessageSquareMore },
-      ],
-    },
-    {
       key: 'owner-tools',
       label: 'เครื่องมือ',
       icon: Plug,
       items: [
         { label: 'AI Assistant', path: '/settings/ai-chat', icon: Sparkles },
         { label: 'การเชื่อมต่อ', path: '/settings/integrations', icon: Plug },
+        { label: 'LINE OA', path: '/settings/rich-menu', icon: MessageSquareMore },
         { label: 'Dunning', path: '/settings/dunning', icon: Bell },
         { label: 'Audit Log', path: '/audit-logs', icon: ScrollText },
       ],

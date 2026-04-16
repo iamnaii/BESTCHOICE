@@ -85,7 +85,7 @@ export class PaySolutionsController {
     this.logger.log(`Webhook received: ${JSON.stringify(safeFields)}`);
 
     // Verify merchantid ตรงกับ config
-    const isValid = this.paySolutionsService.verifyWebhookMerchant(body.merchantid || '');
+    const isValid = await this.paySolutionsService.verifyWebhookMerchant(body.merchantid || '');
     if (!isValid) {
       this.logger.warn('Invalid webhook merchantid');
       return { received: true, processed: false };

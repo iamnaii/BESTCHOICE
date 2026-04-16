@@ -17,6 +17,7 @@ import { PaymentMethod } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LineOaService } from '../line-oa/line-oa.service';
 import { buildPaymentSuccessFlex } from '../line-oa/flex-messages/payment-success.flex';
+import { IntegrationConfigService } from '../integrations/integration-config.service';
 
 export interface PaymentIntentResult {
   paymentId: string;
@@ -37,32 +38,43 @@ export interface PaymentStatusResult {
 @Injectable()
 export class PaySolutionsService {
   private readonly logger = new Logger(PaySolutionsService.name);
-  private readonly merchantId: string;
-  private readonly secretKey: string;
-  private readonly apiKey: string;
-  private readonly apiUrl: string;
   private readonly returnUrl: string;
   private readonly apiBaseUrl: string;
-  private readonly terminalId: string;
 
   constructor(
     private prisma: PrismaService,
     private config: ConfigService,
     private lineOaService: LineOaService,
+    private integrationConfig: IntegrationConfigService,
   ) {
-    this.merchantId = this.config.get<string>('PAYSOLUTIONS_MERCHANT_ID', '');
-    this.secretKey = this.config.get<string>('PAYSOLUTIONS_SECRET_KEY', '');
-    this.apiKey = this.config.get<string>('PAYSOLUTIONS_API_KEY', '');
-    this.apiUrl = this.config.get<string>(
-      'PAYSOLUTIONS_API_URL',
-      'https://apis.paysolutions.asia',
-    );
     this.returnUrl = this.config.get<string>('PAYSOLUTIONS_RETURN_URL', '');
     this.apiBaseUrl = this.config.get<string>(
       'API_BASE_URL',
       'https://api.bestchoicephone.app',
     );
-    this.terminalId = this.config.get<string>('PAYSOLUTIONS_TERMINAL_ID', 'TID00001');
+  }
+
+  private async getMerchantId(): Promise<string> {
+    return (await this.integrationConfig.getValue('paysolutions', 'merchantId')) || '';
+  }
+
+  private async getSecretKey(): Promise<string> {
+    return (await this.integrationConfig.getValue('paysolutions', 'secretKey')) || '';
+  }
+
+  private async getApiKey(): Promise<string> {
+    return (await this.integrationConfig.getValue('paysolutions', 'apiKey')) || '';
+  }
+
+  private async getApiUrl(): Promise<string> {
+    return (
+      (await this.integrationConfig.getValue('paysolutions', 'apiUrl')) ||
+      'https://apis.paysolutions.asia'
+    );
+  }
+
+  private async getTerminalId(): Promise<string> {
+    return (await this.integrationConfig.getValue('paysolutions', 'terminalId')) || 'TID00001';
   }
 
   /**
@@ -125,7 +137,7 @@ export class PaySolutionsService {
     const returnUrlWithRef = `${this.returnUrl || `${this.config.get('FRONTEND_URL', 'http://localhost:5173')}/liff/contract`}?ref=${orderRef}`;
 
     const paymentPayload = {
-      merchantId: this.merchantId,
+      merchantId: await this.getMerchantId(),
       customerEmail: contract.customer.email || 'noreply@bestchoice.com',
       referenceNo: orderRef,
       description: description || `ชำระค่างวด สัญญา ${contract.contractNumber}`,
@@ -136,7 +148,7 @@ export class PaySolutionsService {
       lang: 'TH',
       returnUrl: returnUrlWithRef,
       postbackUrl: `${this.apiBaseUrl}/api/paysolutions/webhook`,
-      terminalId: this.terminalId,
+      terminalId: await this.getTerminalId(),
       keyVersion: 1,
     };
 
@@ -152,13 +164,13 @@ export class PaySolutionsService {
 
     try {
       const response = await fetch(
-        `${this.apiUrl}/payment/gateway/v2/ui-payments`,
+        `${await this.getApiUrl()}/payment/gateway/v2/ui-payments`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json; charset=utf-8',
-            'apiKey': this.apiKey,
-            'secretKey': this.secretKey,
+            'apiKey': await this.getApiKey(),
+            'secretKey': await this.getSecretKey(),
           },
           body: JSON.stringify(paymentPayload),
           signal: abortController.signal,
@@ -278,16 +290,17 @@ export class PaySolutionsService {
    * ตรวจสอบ webhook callback จาก Pay Solutions
    * Pay Solutions ส่ง form POST กลับมาพร้อม merchantid — ตรวจว่าตรงกับ config
    */
-  verifyWebhookMerchant(merchantid: string): boolean {
-    if (!this.merchantId) {
+  async verifyWebhookMerchant(merchantid: string): Promise<boolean> {
+    const merchantId = await this.getMerchantId();
+    if (!merchantId) {
       this.logger.error('PAYSOLUTIONS_MERCHANT_ID not configured — rejecting all webhooks for security');
       return false;
     }
 
-    const isValid = merchantid === this.merchantId;
+    const isValid = merchantid === merchantId;
     if (!isValid) {
       this.logger.warn(
-        `Webhook merchantid mismatch: received=${merchantid}, expected=${this.merchantId}`,
+        `Webhook merchantid mismatch: received=${merchantid}, expected=${merchantId}`,
       );
     }
     return isValid;

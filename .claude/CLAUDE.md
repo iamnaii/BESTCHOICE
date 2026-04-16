@@ -209,7 +209,9 @@ scripts/                     # Deploy & backup scripts
 - **Notifications**: `toast.success()` / `toast.error()` from sonner
 - **Routing**: lazy-loaded pages, `ProtectedRoute` wrapper, `MainLayout`
 - **API calls**: `api.get()` / `api.post()` from `@/lib/api`
-- **UI**: Radix UI primitives + Tailwind CSS + lucide-react icons
+- **UI**: shadcn/ui components + Radix UI primitives + Tailwind CSS + lucide-react icons
+- **Theme**: Minimal Zinc + Emerald Accent (ธาตุไม้), White/Light sidebar, IBM Plex Sans Thai font
+- **Design tokens**: CSS variables in `index.css` — ห้ามใช้ hardcoded hex/gray colors, ใช้ tokens เท่านั้น (bg-primary, text-muted-foreground, etc.)
 
 ### Integrations
 - LINE LIFF — customer mobile access (`/liff/*` routes)

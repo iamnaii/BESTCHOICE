@@ -16,9 +16,20 @@
 - API client จัดการ JWT refresh อัตโนมัติผ่าน interceptors
 
 ## UI Components
-- ใช้ **Radix UI** primitives + **Tailwind CSS** + **lucide-react** icons
+- ใช้ **shadcn/ui** components + **Radix UI** primitives + **Tailwind CSS** + **lucide-react** icons
 - **ห้ามใช้** Material UI, Ant Design, หรือ component library อื่น
 - Components ต้องเป็น functional components + hooks เท่านั้น — **ห้ามใช้** class components
+
+## Design Tokens & Colors
+- **ห้ามใช้** hardcoded hex colors (`#1e3a5f`, `#059669`) — ใช้ CSS variable tokens เท่านั้น
+- **ห้ามใช้** `text-gray-*`, `bg-gray-*`, `bg-white` (ยกเว้น print/receipt context) — ใช้ semantic tokens:
+  - `bg-background`, `bg-card`, `bg-muted` แทน `bg-white`, `bg-gray-50`
+  - `text-foreground`, `text-muted-foreground` แทน `text-gray-*`
+  - `border-border` แทน `border-gray-*`
+  - `hover:bg-accent` แทน `hover:bg-gray-*`
+- **Theme**: Minimal Zinc + Emerald Accent (primary = emerald, sidebar = white/light)
+- **Font**: Inter (English) + IBM Plex Sans Thai (ไทย)
+- **Thai text**: ใช้ `leading-snug` เสมอ (ห้าม `leading-none` — ตัด สระบน ไทย)
 
 ## Notifications
 - ใช้ `toast.success()` / `toast.error()` จาก `sonner`

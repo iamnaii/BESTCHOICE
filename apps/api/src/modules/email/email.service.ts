@@ -1,35 +1,43 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
+import { IntegrationConfigService } from '../integrations/integration-config.service';
 
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
-  private transporter: nodemailer.Transporter | null = null;
 
-  constructor(private configService: ConfigService) {
-    const host = this.configService.get<string>('SMTP_HOST');
-    const port = parseInt(this.configService.get<string>('SMTP_PORT', '587'), 10);
-    const user = this.configService.get<string>('SMTP_USER');
-    const pass = this.configService.get<string>('SMTP_PASS');
+  constructor(
+    private configService: ConfigService,
+    private integrationConfig: IntegrationConfigService,
+  ) {}
 
-    if (host && user && pass) {
-      this.transporter = nodemailer.createTransport({
-        host,
-        port,
-        secure: port === 465,
-        auth: { user, pass },
-        connectionTimeout: 5000,
-        greetingTimeout: 5000,
-        socketTimeout: 10000,
-      });
-      this.logger.log(`SMTP transport configured (host: ${host})`);
-    } else {
-      this.logger.warn(
-        'SMTP not configured — emails will be logged to console instead of sent. ' +
-          'Set SMTP_HOST, SMTP_USER, SMTP_PASS to enable.',
-      );
+  private async getTransporter(): Promise<nodemailer.Transporter | null> {
+    const host = (await this.integrationConfig.getValue('email', 'host')) || '';
+    const port = parseInt((await this.integrationConfig.getValue('email', 'port')) || '587', 10);
+    const user = (await this.integrationConfig.getValue('email', 'user')) || '';
+    const pass = (await this.integrationConfig.getValue('email', 'pass')) || '';
+
+    if (!host || !user || !pass) {
+      return null;
     }
+
+    return nodemailer.createTransport({
+      host,
+      port,
+      secure: port === 465,
+      auth: { user, pass },
+      connectionTimeout: 5000,
+      greetingTimeout: 5000,
+      socketTimeout: 10000,
+    });
+  }
+
+  private async getFrom(): Promise<string> {
+    return (
+      (await this.integrationConfig.getValue('email', 'from')) ||
+      'BESTCHOICE <noreply@bestchoice.com>'
+    );
   }
 
   /**
@@ -38,12 +46,12 @@ export class EmailService {
   async sendPasswordResetEmail(to: string, resetToken: string, userName: string): Promise<void> {
     const frontendUrl = this.configService.get<string>('FRONTEND_URL', 'http://localhost:5173');
     const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}`;
-    const from = this.configService.get<string>('SMTP_FROM', 'BESTCHOICE <noreply@bestchoice.com>');
 
     const subject = 'รีเซ็ตรหัสผ่าน BESTCHOICE';
     const html = this.buildPasswordResetHtml(userName, resetUrl);
 
-    if (!this.transporter) {
+    const transporter = await this.getTransporter();
+    if (!transporter) {
       this.logger.warn('=== EMAIL NOT SENT (SMTP not configured) ===');
       this.logger.warn(`To: ${to}`);
       this.logger.warn(`Subject: ${subject}`);
@@ -52,8 +60,9 @@ export class EmailService {
       return;
     }
 
+    const from = await this.getFrom();
     try {
-      await this.transporter.sendMail({ from, to, subject, html });
+      await transporter.sendMail({ from, to, subject, html });
       this.logger.log(`Password reset email sent to ${to}`);
     } catch (err) {
       this.logger.error(`Failed to send password reset email to ${to}: ${err}`);
@@ -72,12 +81,12 @@ export class EmailService {
   ): Promise<void> {
     const frontendUrl = this.configService.get<string>('FRONTEND_URL', 'http://localhost:5173');
     const registerUrl = `${frontendUrl}/register?token=${rawToken}`;
-    const from = this.configService.get<string>('SMTP_FROM', 'BESTCHOICE <noreply@bestchoice.com>');
 
     const subject = 'คุณได้รับเชิญเข้าใช้งานระบบ BESTCHOICE';
     const html = this.buildInviteHtml(inviterName, roleName, branchName, registerUrl);
 
-    if (!this.transporter) {
+    const transporter = await this.getTransporter();
+    if (!transporter) {
       this.logger.warn('=== EMAIL NOT SENT (SMTP not configured) ===');
       this.logger.warn(`To: ${to}`);
       this.logger.warn(`Subject: ${subject}`);
@@ -86,8 +95,9 @@ export class EmailService {
       return;
     }
 
+    const from = await this.getFrom();
     try {
-      await this.transporter.sendMail({ from, to, subject, html });
+      await transporter.sendMail({ from, to, subject, html });
       this.logger.log(`Invite email sent to ${to}`);
     } catch (err) {
       this.logger.error(`Failed to send invite email to ${to}: ${err}`);

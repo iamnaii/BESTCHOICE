@@ -1,5 +1,5 @@
-/* ── Google Fonts: Inter + IBM Plex Sans Thai ───────────── */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&display=swap')
+/* ── Google Fonts: Inter + Prompt ───────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Prompt:wght@300;400;500;600;700&display=swap')
 layer(base);
 
 @import 'tailwindcss';
@@ -9,8 +9,8 @@ layer(base);
 @custom-variant dark (&:is(.dark *));
 
 @theme {
-  --font-sans: 'Inter', 'IBM Plex Sans Thai Adjusted', 'IBM Plex Sans Thai', system-ui, -apple-system, sans-serif;
-  --font-sarabun: 'IBM Plex Sans Thai', sans-serif;
+  --font-sans: 'Inter', 'Prompt', system-ui, -apple-system, sans-serif;
+  --font-sarabun: 'Prompt', sans-serif;
 
   --text-2xs: 0.6875rem;
   --text-2xs--line-height: 1.2;
@@ -234,7 +234,7 @@ layer(base);
 
 @utility font-sarabun {
   /* Font shortcut for document/receipt/contract areas */
-  font-family: 'IBM Plex Sans Thai', sans-serif;
+  font-family: 'Prompt', sans-serif;
 }
 
 @utility safe-area-bottom {
@@ -354,7 +354,7 @@ layer(base);
 
 @layer utilities {
   /* ── TH Sarabun PSK (legacy fallback — kept for old templates) ──── */
-  /* Primary Thai font is now IBM Plex Sans Thai (loaded via Google Fonts above) */
+  /* Primary Thai font is now Prompt (loaded via Google Fonts above) */
   @font-face {
     font-family: 'TH Sarabun PSK';
     src: url('/fonts/THSarabunPSK-Regular.ttf') format('truetype');
@@ -393,57 +393,11 @@ layer(base);
     scrollbar-color: hsl(var(--input)) transparent;
   }
 
-  /* ── IBM Plex Sans Thai — adjust metrics to align with Inter ── */
-  /* IBM Plex Sans Thai has taller ascenders than Inter, causing text
-     to sit above center in fixed-height containers (buttons, badges).
-     We use @font-face overrides to normalize the metrics. */
-  @font-face {
-    font-family: 'IBM Plex Sans Thai Adjusted';
-    src: local('IBM Plex Sans Thai');
-    font-weight: 300;
-    ascent-override: 100%;
-    descent-override: 30%;
-    line-gap-override: 0%;
-  }
-  @font-face {
-    font-family: 'IBM Plex Sans Thai Adjusted';
-    src: local('IBM Plex Sans Thai');
-    font-weight: 400;
-    ascent-override: 100%;
-    descent-override: 30%;
-    line-gap-override: 0%;
-  }
-  @font-face {
-    font-family: 'IBM Plex Sans Thai Adjusted';
-    src: local('IBM Plex Sans Thai');
-    font-weight: 500;
-    ascent-override: 100%;
-    descent-override: 30%;
-    line-gap-override: 0%;
-  }
-  @font-face {
-    font-family: 'IBM Plex Sans Thai Adjusted';
-    src: local('IBM Plex Sans Thai');
-    font-weight: 600;
-    ascent-override: 100%;
-    descent-override: 30%;
-    line-gap-override: 0%;
-  }
-  @font-face {
-    font-family: 'IBM Plex Sans Thai Adjusted';
-    src: local('IBM Plex Sans Thai');
-    font-weight: 700;
-    ascent-override: 100%;
-    descent-override: 30%;
-    line-gap-override: 0%;
-  }
-
   /* ── Base Styles ─────────────────────────────────── */
   body {
     font-family:
       'Inter',
-      'IBM Plex Sans Thai Adjusted',
-      'IBM Plex Sans Thai',
+      'Prompt',
       system-ui,
       -apple-system,
       sans-serif;
@@ -468,7 +422,7 @@ layer(base);
   min-height: 240px;
   padding: 16px 20px;
   outline: none;
-  font-family: 'IBM Plex Sans Thai', sans-serif;
+  font-family: 'Prompt', sans-serif;
   font-size: 18px;
   line-height: 1.8;
   color: var(--color-editor-text);
@@ -574,7 +528,7 @@ layer(base);
 
   /* Receipt print area — font + layout */
   #receipt-print-area {
-    font-family: 'IBM Plex Sans Thai', sans-serif;
+    font-family: 'Prompt', sans-serif;
     font-size: 14pt;
     line-height: 1.5;
   }

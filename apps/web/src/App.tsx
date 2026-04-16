@@ -104,6 +104,7 @@ const AiTrainingPage = lazy(() => import('@/pages/AiTrainingPage'));
 const AiPerformancePage = lazy(() => import('@/pages/AiPerformancePage'));
 const IntegrationHubPage = lazy(() => import('@/pages/IntegrationHubPage'));
 const MdmTestPage = lazy(() => import('@/pages/MdmTestPage'));
+const MdmDashboardPage = lazy(() => import('@/pages/MdmDashboardPage'));
 const BroadcastPage = lazy(() => import('@/pages/BroadcastPage'));
 const RichMenuPage = lazy(() => import('@/pages/RichMenuPage'));
 const LineGreetingPage = lazy(() => import('@/pages/LineGreetingPage'));
@@ -672,6 +673,14 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER']}>
                 <MdmTestPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/mdm"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER']}>
+                <MdmDashboardPage />
               </ProtectedRoute>
             }
           />

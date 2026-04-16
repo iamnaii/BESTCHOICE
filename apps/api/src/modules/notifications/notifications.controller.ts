@@ -116,44 +116,6 @@ export class NotificationsController {
   }
 
   // ============================================================
-  // SMS SETTINGS
-  // ============================================================
-
-  @Get('sms-settings')
-  @Roles('OWNER')
-  getSmsSettings() {
-    return this.notificationsService.getSmsSettings();
-  }
-
-  @Post('sms-settings')
-  @Roles('OWNER')
-  async saveSmsSettings(@Body() body: Record<string, string>) {
-    const result = await this.notificationsService.saveSmsSettings(body);
-    this.logger.log('[SMS] Settings updated by admin');
-    return result;
-  }
-
-  @Post('sms-settings/test-connection')
-  @Roles('OWNER')
-  async testSmsConnection() {
-    const result = await this.notificationsService.checkSmsCredit();
-    return {
-      success: result.configured && !result.error,
-      credit: result.credit,
-      error: result.error,
-    };
-  }
-
-  @Post('sms-settings/test-send')
-  @Roles('OWNER')
-  async testSmsSend(@Body() body: { phone: string }) {
-    if (!body.phone) {
-      return { success: false, error: 'กรุณาระบุเบอร์โทรศัพท์' };
-    }
-    return this.notificationsService.sendTestSms(body.phone);
-  }
-
-  // ============================================================
   // CRON / SCHEDULING ENDPOINTS
   // ============================================================
 

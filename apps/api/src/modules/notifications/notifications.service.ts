@@ -335,19 +335,6 @@ export class NotificationsService {
   }
 
   /**
-   * Send a test SMS to verify configuration works
-   */
-  async sendTestSms(phone: string): Promise<{ success: boolean; message?: string; error?: string }> {
-    try {
-      const testMessage = `[BESTCHOICE] ทดสอบระบบ SMS สำเร็จ (${formatDateTime(new Date())})`;
-      await this.sendSms(phone, testMessage);
-      return { success: true, message: `ส่ง SMS ทดสอบไปยัง ${phone} สำเร็จ` };
-    } catch (err) {
-      return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
-    }
-  }
-
-  /**
    * Handle SMS delivery report webhook from ThaiBulkSMS
    * Updates NotificationLog with delivery status
    */
@@ -630,55 +617,6 @@ export class NotificationsService {
     }
 
     return { retried: pendingRetries.length, succeeded, failed };
-  }
-
-  // ============================================================
-  // SMS SETTINGS
-  // ============================================================
-
-  /**
-   * Get SMS settings from IntegrationConfigService, masking sensitive values
-   */
-  async getSmsSettings(): Promise<{ settings: Record<string, string>; isConfigured: boolean }> {
-    const masked = await this.integrationConfig.getMaskedConfig('sms');
-
-    // Map integration field keys back to old key names for UI compatibility
-    const settings: Record<string, string> = {
-      sms_api_key: masked.apiKey || '',
-      sms_api_secret: masked.apiSecret || '',
-      sms_sender: masked.sender || '',
-      sms_force: masked.force || '',
-    };
-
-    const isConfigured = !!(masked.apiKey && masked.apiKey !== '' && masked.apiSecret && masked.apiSecret !== '');
-    return { settings, isConfigured };
-  }
-
-  /**
-   * Save SMS settings via IntegrationConfigService
-   */
-  async saveSmsSettings(body: Record<string, string>): Promise<{ success: boolean }> {
-    const values: Record<string, string> = {};
-
-    // Map old key names to integration field keys
-    const keyMap: Record<string, string> = {
-      sms_api_key: 'apiKey',
-      sms_api_secret: 'apiSecret',
-      sms_sender: 'sender',
-      sms_force: 'force',
-    };
-
-    for (const [oldKey, fieldKey] of Object.entries(keyMap)) {
-      if (body[oldKey] !== undefined && body[oldKey] !== '' && !body[oldKey].startsWith('****')) {
-        values[fieldKey] = body[oldKey];
-      }
-    }
-
-    if (Object.keys(values).length > 0) {
-      await this.integrationConfig.saveConfig('sms', values);
-    }
-
-    return { success: true };
   }
 
   // ============================================================

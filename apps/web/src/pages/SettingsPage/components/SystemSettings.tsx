@@ -190,21 +190,6 @@ function ExternalLinks() {
           ตั้งค่าดอกเบี้ย
         </button>
       </div>
-
-      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center justify-between">
-        <div>
-          <div className="text-sm font-medium text-blue-800">ตั้งค่า SMS (ThaiBulkSMS)</div>
-          <div className="text-xs text-blue-600 mt-0.5">
-            เชื่อมต่อ ThaiBulkSMS เพื่อส่ง OTP ยืนยันตัวตน และแจ้งเตือนค่างวดผ่าน SMS
-          </div>
-        </div>
-        <button
-          onClick={() => navigate('/settings/sms')}
-          className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 whitespace-nowrap"
-        >
-          ตั้งค่า SMS
-        </button>
-      </div>
     </>
   );
 }

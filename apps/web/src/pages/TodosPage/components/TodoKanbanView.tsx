@@ -108,7 +108,7 @@ export function TodoKanbanView({
                     className={`mt-0.5 size-4 rounded-md border-2 flex items-center justify-center transition-all shrink-0 ${
                       t.status === 'DONE'
                         ? 'bg-emerald-500 border-emerald-500 text-white'
-                        : 'border-muted-foreground/30 hover:border-[#059669]'
+                        : 'border-muted-foreground/30 hover:border-primary'
                     }`}
                     aria-label="toggle"
                   >
@@ -143,7 +143,7 @@ export function TodoKanbanView({
                   {t.tags.slice(0, 3).map((tag) => (
                     <span
                       key={tag}
-                      className="px-2 py-0.5 rounded-md text-2xs font-medium bg-[#059669]/10 text-[#059669]"
+                      className="px-2 py-0.5 rounded-md text-2xs font-medium bg-primary/10 text-primary"
                     >
                       #{tag}
                     </span>

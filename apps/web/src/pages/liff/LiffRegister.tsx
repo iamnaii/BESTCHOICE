@@ -168,7 +168,7 @@ export default function LiffRegister() {
     return (
       <div className="min-h-screen bg-background p-4">
         {/* Header */}
-        <div className="bg-gradient-to-r from-[#1e3a5f] to-[#059669] rounded-xl p-5 text-white shadow-md mb-4">
+        <div className="bg-primary rounded-xl p-5 text-white shadow-md mb-4">
           <p className="text-xs opacity-80">BEST CHOICE</p>
           <h1 className="text-base font-bold mt-1">ลงทะเบียนผูก LINE</h1>
         </div>
@@ -181,7 +181,7 @@ export default function LiffRegister() {
                 {profile.pictureUrl ? (
                   <img src={profile.pictureUrl} alt="รูปโปรไฟล์ LINE" className="w-12 h-12 rounded-full" />
                 ) : (
-                  <div className="w-12 h-12 rounded-full bg-[#f0f5ff] flex items-center justify-center text-[#1e3a5f] font-bold text-lg">
+                  <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-lg">
                     {profile.displayName.charAt(0)}
                   </div>
                 )}
@@ -240,7 +240,7 @@ export default function LiffRegister() {
     return (
       <div className="min-h-screen bg-background p-4">
         {/* Header */}
-        <div className="bg-gradient-to-r from-[#1e3a5f] to-[#059669] rounded-xl p-5 text-white shadow-md mb-4">
+        <div className="bg-primary rounded-xl p-5 text-white shadow-md mb-4">
           <p className="text-xs opacity-80">BEST CHOICE</p>
           <h1 className="text-base font-bold mt-1">ยืนยันตัวตน</h1>
         </div>

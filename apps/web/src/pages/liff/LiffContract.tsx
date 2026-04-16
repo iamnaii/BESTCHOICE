@@ -231,7 +231,7 @@ export default function LiffContract() {
       )}
 
       {/* Header */}
-      <div className="bg-gradient-to-r from-[#1e3a5f] to-[#059669] rounded-xl p-5 text-white shadow-md mb-4">
+      <div className="bg-primary rounded-xl p-5 text-white shadow-md mb-4">
         <p className="text-xs opacity-80">BEST CHOICE</p>
         <h1 className="text-base font-bold mt-1">สัญญาของฉัน</h1>
         <p className="text-sm opacity-90 mt-1">คุณ{data.customer.name}</p>

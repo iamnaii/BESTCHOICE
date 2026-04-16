@@ -100,7 +100,7 @@ export default function LiffProfile() {
   return (
     <div className="min-h-screen bg-background p-4 pb-8">
       {/* Header */}
-      <div className="bg-gradient-to-r from-[#1e3a5f] to-[#059669] rounded-xl p-5 text-white shadow-md mb-4">
+      <div className="bg-primary rounded-xl p-5 text-white shadow-md mb-4">
         <p className="text-xs opacity-80">BEST CHOICE</p>
         <h1 className="text-base font-bold mt-1">โปรไฟล์ของฉัน</h1>
       </div>
@@ -134,7 +134,7 @@ export default function LiffProfile() {
       <Card className="mb-4">
         <CardContent>
           <h2 className="text-sm font-bold mb-3">แต้มสะสม</h2>
-          <div className="flex items-center justify-between bg-[#f0f5ff] rounded-lg p-4">
+          <div className="flex items-center justify-between bg-primary/5 rounded-lg p-4">
             <div>
               <p className="text-xs text-muted-foreground mb-0.5">แต้มสะสมของคุณ</p>
               <p className="text-2xl font-bold text-primary">

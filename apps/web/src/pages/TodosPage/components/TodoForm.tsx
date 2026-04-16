@@ -298,9 +298,9 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers }: TodoFormPr
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto p-0 gap-0">
           {/* Gradient header */}
-          <DialogHeader className="px-6 py-5 bg-linear-to-r from-[#1e3a5f]/10 via-[#059669]/5 to-transparent border-b border-border">
+          <DialogHeader className="px-6 py-5 bg-linear-to-r from-primary/10 via-primary/5 to-transparent border-b border-border">
             <DialogTitle className="flex items-center gap-2.5 text-lg">
-              <div className="size-9 rounded-xl bg-[#1e3a5f]/15 text-[#1e3a5f] flex items-center justify-center">
+              <div className="size-9 rounded-xl bg-primary/15 text-primary flex items-center justify-center">
                 <CheckSquare className="size-5" />
               </div>
               {editing ? 'แก้ไขงาน' : 'เพิ่มงานใหม่'}
@@ -318,7 +318,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers }: TodoFormPr
                 type="text"
                 value={form.title || ''}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
-                className="w-full px-4 py-2.5 border border-input rounded-xl text-sm bg-card focus-visible:ring-2 focus-visible:ring-[#059669]/20 focus:border-[#059669]/50 outline-hidden transition-colors"
+                className="w-full px-4 py-2.5 border border-input rounded-xl text-sm bg-card focus-visible:ring-2 focus-visible:ring-primary/20 focus:border-primary/50 outline-hidden transition-colors"
                 placeholder="เช่น โทรตามลูกค้า A"
                 autoFocus
               />
@@ -341,7 +341,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers }: TodoFormPr
                 }}
                 rows={3}
                 placeholder="อธิบายรายละเอียดงาน..."
-                className="w-full px-4 py-2.5 border border-input rounded-xl text-sm bg-card focus-visible:ring-2 focus-visible:ring-[#059669]/20 focus:border-[#059669]/50 outline-hidden transition-colors resize-none overflow-y-auto min-h-[88px]"
+                className="w-full px-4 py-2.5 border border-input rounded-xl text-sm bg-card focus-visible:ring-2 focus-visible:ring-primary/20 focus:border-primary/50 outline-hidden transition-colors resize-none overflow-y-auto min-h-[88px]"
               />
             </div>
 
@@ -395,7 +395,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers }: TodoFormPr
                         onClick={() => setForm({ ...form, status: s.v })}
                         className={`flex-1 inline-flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-xs font-semibold border-2 transition-all ${
                           active
-                            ? 'border-[#059669] bg-[#059669]/5 text-[#059669]'
+                            ? 'border-primary bg-primary/5 text-primary'
                             : 'border-border bg-card text-muted-foreground hover:bg-muted/50'
                         }`}
                       >
@@ -419,7 +419,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers }: TodoFormPr
                   type="date"
                   value={form.dueDate || ''}
                   onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
-                  className="w-full px-4 py-2.5 border border-input rounded-xl text-sm bg-card focus-visible:ring-2 focus-visible:ring-[#059669]/20 focus:border-[#059669]/50 outline-hidden transition-colors"
+                  className="w-full px-4 py-2.5 border border-input rounded-xl text-sm bg-card focus-visible:ring-2 focus-visible:ring-primary/20 focus:border-primary/50 outline-hidden transition-colors"
                 />
               </div>
               <div>
@@ -430,7 +430,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers }: TodoFormPr
                 <select
                   value={form.assigneeId || ''}
                   onChange={(e) => setForm({ ...form, assigneeId: e.target.value })}
-                  className="w-full px-4 py-2.5 border border-input rounded-xl text-sm bg-card focus-visible:ring-2 focus-visible:ring-[#059669]/20 focus:border-[#059669]/50 outline-hidden transition-colors"
+                  className="w-full px-4 py-2.5 border border-input rounded-xl text-sm bg-card focus-visible:ring-2 focus-visible:ring-primary/20 focus:border-primary/50 outline-hidden transition-colors"
                 >
                   <option value="">ไม่ระบุ</option>
                   {staffUsers.map((u) => (
@@ -448,11 +448,11 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers }: TodoFormPr
                 <Tag className="size-3.5" />
                 แท็ก
               </label>
-              <div className="flex flex-wrap items-center gap-1.5 px-3 py-2 border border-input rounded-xl bg-card focus-within:ring-2 focus-within:ring-[#059669]/20 focus-within:border-[#059669]/50 transition-colors">
+              <div className="flex flex-wrap items-center gap-1.5 px-3 py-2 border border-input rounded-xl bg-card focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/50 transition-colors">
                 {(form.tags || []).map((tag) => (
                   <span
                     key={tag}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-[#059669]/10 text-[#059669]"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary"
                   >
                     #{tag}
                     <button
@@ -495,7 +495,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers }: TodoFormPr
                 <button
                   type="button"
                   onClick={addChecklist}
-                  className="inline-flex items-center gap-1 text-xs font-medium text-[#059669] hover:bg-[#059669]/10 px-2 py-1 rounded-md transition-colors"
+                  className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:bg-primary/10 px-2 py-1 rounded-md transition-colors"
                 >
                   <Plus className="size-3" />
                   เพิ่มรายการ
@@ -558,7 +558,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers }: TodoFormPr
 
               {/* Upload zone */}
               <label
-                className="flex flex-col items-center justify-center gap-2 px-4 py-6 border-2 border-dashed border-border rounded-xl cursor-pointer hover:border-[#059669]/50 hover:bg-[#059669]/5 transition-colors"
+                className="flex flex-col items-center justify-center gap-2 px-4 py-6 border-2 border-dashed border-border rounded-xl cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors"
                 onDragOver={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
@@ -572,7 +572,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers }: TodoFormPr
               >
                 <Upload className="size-6 text-muted-foreground" />
                 <div className="text-xs text-center">
-                  <span className="font-semibold text-[#059669]">คลิกเพื่ออัปโหลด</span>{' '}
+                  <span className="font-semibold text-primary">คลิกเพื่ออัปโหลด</span>{' '}
                   <span className="text-muted-foreground">หรือลากไฟล์มาวาง</span>
                 </div>
                 <p className="text-2xs text-muted-foreground">ไฟล์สูงสุด 10MB</p>
@@ -606,7 +606,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers }: TodoFormPr
                             onClick={() => openLightbox(a)}
                             disabled={!thumb}
                             aria-label={`ดูรูป ${a.name}`}
-                            className="size-12 rounded-md overflow-hidden shrink-0 border border-border bg-muted flex items-center justify-center hover:ring-2 hover:ring-[#059669]/40 transition-all disabled:cursor-wait"
+                            className="size-12 rounded-md overflow-hidden shrink-0 border border-border bg-muted flex items-center justify-center hover:ring-2 hover:ring-primary/40 transition-all disabled:cursor-wait"
                           >
                             {thumb ? (
                               <img
@@ -627,7 +627,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers }: TodoFormPr
                           <button
                             type="button"
                             onClick={() => (isImage ? openLightbox(a) : openAttachment(a))}
-                            className="text-sm font-medium truncate block hover:text-[#059669] transition-colors text-left w-full"
+                            className="text-sm font-medium truncate block hover:text-primary transition-colors text-left w-full"
                           >
                             {a.name || 'ไฟล์แนบ'}
                           </button>
@@ -667,7 +667,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers }: TodoFormPr
                   <div className="space-y-3 mb-3 max-h-64 overflow-y-auto pr-1">
                     {comments.map((c) => (
                       <div key={c.id} className="flex gap-2.5">
-                        <div className="size-7 rounded-full bg-gradient-to-br from-[#1e3a5f] to-[#059669] flex items-center justify-center text-white text-[10px] font-bold shrink-0">
+                        <div className="size-7 rounded-full bg-primary flex items-center justify-center text-white text-[10px] font-bold shrink-0">
                           {(c.user?.nickname || c.user?.name || '?')[0].toUpperCase()}
                         </div>
                         <div className="flex-1 min-w-0">
@@ -703,13 +703,13 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers }: TodoFormPr
                       }
                     }}
                     placeholder="เพิ่มความคิดเห็น..."
-                    className="flex-1 px-3 py-2 border border-input rounded-lg text-sm bg-card focus-visible:ring-2 focus-visible:ring-[#059669]/20 outline-hidden transition-colors"
+                    className="flex-1 px-3 py-2 border border-input rounded-lg text-sm bg-card focus-visible:ring-2 focus-visible:ring-primary/20 outline-hidden transition-colors"
                   />
                   <button
                     type="button"
                     onClick={() => addCommentMutation.mutate()}
                     disabled={!commentText.trim() || addCommentMutation.isPending}
-                    className="px-3 py-2 bg-[#1e3a5f] text-white rounded-lg text-sm font-medium hover:bg-[#162d4a] disabled:opacity-50 inline-flex items-center gap-1.5 transition-colors"
+                    className="px-3 py-2 bg-foreground text-background rounded-lg text-sm font-medium hover:bg-foreground/90 disabled:opacity-50 inline-flex items-center gap-1.5 transition-colors"
                   >
                     <Send className="size-3.5" />
                     ส่ง
@@ -731,7 +731,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers }: TodoFormPr
               type="button"
               onClick={() => saveMutation.mutate()}
               disabled={saveMutation.isPending}
-              className="px-5 py-2.5 text-sm font-semibold bg-[#059669] text-white hover:bg-[#047857] rounded-xl disabled:opacity-50 shadow-sm transition-all"
+              className="px-5 py-2.5 text-sm font-semibold bg-primary text-white hover:bg-primary/90 rounded-xl disabled:opacity-50 shadow-sm transition-all"
             >
               {saveMutation.isPending ? 'กำลังบันทึก...' : editing ? 'บันทึกการแก้ไข' : 'สร้างงาน'}
             </button>

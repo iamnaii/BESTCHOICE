@@ -1,6 +1,6 @@
 ---
 name: pre-deploy
-description: ตรวจสอบ Checklist ก่อน Deploy/Merge
+description: ตรวจสอบ Checklist ก่อน Deploy/Merge — รัน type check, tests, migration status, env vars ครบ
 user_invocable: true
 ---
 
@@ -25,6 +25,8 @@ user_invocable: true
 ```
 รัน lint + TypeScript + E2E tests ทั้งหมด
 
+> **Quick mode**: ถ้าต้องการ check เร็วโดยไม่รัน E2E → `./tools/run-tests.sh --skip-e2e`
+
 ### 4. Migration Status
 ```bash
 cd apps/api && npx prisma migrate status
@@ -32,10 +34,20 @@ cd apps/api && npx prisma migrate status
 ตรวจว่าไม่มี pending migrations ที่ยังไม่ได้ apply
 
 ### 5. Environment Variables
-- เปรียบเทียบ `.env.example` กับ environment variables ที่ใช้จริง
-- ตรวจว่า production มี variables ใหม่ครบ (ถ้ามีการเพิ่ม)
+```bash
+# ตรวจ env vars ที่เพิ่มใหม่
+diff <(grep -oP '^[A-Z_]+' apps/api/.env.example | sort) <(grep -oP '^[A-Z_]+' apps/api/.env | sort) || echo "มี env vars ไม่ตรงกัน"
+```
+ตรวจว่า production มี variables ใหม่ครบ (ถ้ามีการเพิ่ม)
 
-### 6. สรุปผล
+### 6. ตรวจ Git Status
+```bash
+git status
+git log --oneline -5
+```
+ตรวจว่าไม่มีไฟล์ที่ลืม commit หรือ sensitive files (.env, credentials)
+
+### 7. สรุปผล
 แสดงผลเป็น checklist:
 
 ```
@@ -46,6 +58,8 @@ Pre-Deploy Checklist:
 [✓/✗] E2E Tests — ทุก test ผ่าน
 [✓/✗] Migrations — ไม่มี pending migrations
 [✓/✗] Env Variables — variables ครบ
+[✓/✗] Git Clean — ไม่มีไฟล์ sensitive ค้าง
 ```
 
-ถ้ามี item ไม่ผ่าน → แจ้ง user พร้อมรายละเอียดและแนะนำวิธีแก้ไข
+ถ้า **ทุก item ผ่าน** → พร้อม merge/deploy
+ถ้า **มี item ไม่ผ่าน** → แจ้ง user พร้อมรายละเอียดและแนะนำวิธีแก้ไข

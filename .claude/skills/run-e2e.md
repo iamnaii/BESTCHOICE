@@ -59,3 +59,20 @@ curl -s http://localhost:3000/api/health | grep -q "ok" && echo "API ready" || e
 - "รัน human flow tests" → รัน `npx playwright test e2e/human-flows/ --project=chromium`
 - "รัน agent tests" → รัน `npx playwright test e2e/agents/ --project=chromium`
 - `/run-e2e login` → รัน login spec โดยตรง
+
+## Advanced Options
+
+| ตัวเลือก | คำสั่ง | ใช้เมื่อ |
+|---|---|---|
+| Debug mode | `npx playwright test --debug` | ต้องการ step-through debugger |
+| UI mode | `npx playwright test --ui` | ต้องการ interactive test runner |
+| Trace on | `npx playwright test --trace on` | ต้องการ trace ดู timeline |
+
+## Common Issues
+
+| ปัญหา | วิธีแก้ |
+|---|---|
+| API ไม่ได้รัน (port 3000) | `cd apps/api && npm run dev` |
+| DB connection failed | `docker compose up -d db` |
+| Test flaky (ผ่านบ้างไม่ผ่านบ้าง) | รัน 3 ครั้ง — ถ้า flaky จริงให้ investigate race condition |
+| Timeout errors | เพิ่ม timeout หรือตรวจ network/API speed |

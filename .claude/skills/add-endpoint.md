@@ -1,12 +1,20 @@
 ---
 name: add-endpoint
-description: เพิ่ม API Endpoint ใน Module ที่มีอยู่
+description: เพิ่ม API Endpoint ใน Module ที่มีอยู่ — ใช้เมื่อ module มีแล้วแต่ต้องการเพิ่ม route ใหม่
 user_invocable: true
 ---
 
 # Skill: เพิ่ม API Endpoint
 
 เพิ่ม route ใหม่ใน NestJS module ที่มีอยู่แล้ว โดยไม่ต้องสร้าง module ใหม่
+
+## เมื่อไหร่ควรใช้ / ไม่ควรใช้
+
+| สถานการณ์ | ใช้ skill นี้? | ใช้อะไรแทน |
+|---|---|---|
+| เพิ่ม route ใหม่ใน module ที่มีอยู่ | ✅ ใช้เลย | — |
+| สร้าง module ใหม่ทั้ง module | ❌ | `/create-module` |
+| ต้องการทั้ง API + หน้า frontend | ❌ | `/create-feature` |
 
 ## ขั้นตอน
 
@@ -51,3 +59,17 @@ user_invocable: true
 ```bash
 ./tools/check-types.sh api
 ```
+
+## Common Mistakes
+
+| ผิดบ่อย | วิธีถูก |
+|---|---|
+| ลืม `@Roles()` บน method ใหม่ | ทุก method ต้องมี `@Roles(...)` ระบุ roles |
+| Route path ซ้ำกับ endpoint ที่มี | ตรวจ controller ก่อนเพิ่ม — NestJS จะ override |
+| เพิ่ม field required ใน DTO ที่ใช้ร่วมกัน | สร้าง DTO แยกสำหรับ endpoint ใหม่ ถ้า shape ต่างจากเดิม |
+| ลืม soft delete filter ใน query ใหม่ | ทุก `findMany`/`findFirst` ต้อง `where: { deletedAt: null }` |
+
+## Rollback
+1. ลบ method ใน controller + service
+2. ลบ DTO ที่สร้างใหม่ (ถ้ามี)
+3. รัน `./tools/check-types.sh api`

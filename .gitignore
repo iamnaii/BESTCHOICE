@@ -27,3 +27,12 @@ blob-report/
 apps/web/.playwright-auth.json
 backups/
 .superpowers/
+
+# Anthropic skills - binary assets (fonts, PDFs, images)
+.claude/skills/**/*.ttf
+.claude/skills/**/*.otf
+.claude/skills/**/*.woff
+.claude/skills/**/*.woff2
+.claude/skills/**/*.pdf
+.claude/skills/**/*.png
+.claude/skills/**/*.jpg

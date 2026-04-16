@@ -1,12 +1,22 @@
 ---
 name: create-feature
-description: สร้าง Full-Stack Feature ครบวงจร (Prisma → API → Page)
+description: สร้าง Full-Stack Feature ครบวงจร (Prisma → API → Page) — ใช้เมื่อต้องการ feature ใหม่ทั้ง backend + frontend ครบ
 user_invocable: true
 ---
 
 # Skill: สร้าง Full-Stack Feature
 
 สร้าง feature ใหม่ครบวงจร ตั้งแต่ Prisma model → NestJS API module → React page
+
+## เมื่อไหร่ควรใช้ / ไม่ควรใช้
+
+| สถานการณ์ | ใช้ skill นี้? | ใช้อะไรแทน |
+|---|---|---|
+| ต้องการ feature ใหม่ครบ (DB + API + UI) | ✅ ใช้เลย | — |
+| มี model + API แล้ว ขาดแค่หน้า | ❌ | `/create-page` |
+| มี model แล้ว ขาดแค่ API | ❌ | `/create-module` |
+| เพิ่ม endpoint ใน module ที่มี | ❌ | `/add-endpoint` |
+| แก้ schema อย่างเดียว | ❌ | `/db-change` |
 
 ## ขั้นตอน
 
@@ -55,13 +65,41 @@ user_invocable: true
   - `toast.success()` / `toast.error()` จาก sonner
   - `queryClient.invalidateQueries()` หลัง mutation
 - Reuse components: PageHeader, DataTable, Modal
-- เพิ่ม lazy import + route ใน `apps/web/src/App.tsx`
-- เพิ่ม navigation link ใน Sidebar ถ้าจำเป็น
+- ครอบ data-fetching ด้วย `QueryBoundary` เพื่อ error+retry UI
+
+### 6.5 เพิ่ม Route + Navigation
+- เพิ่ม lazy import ใน `apps/web/src/App.tsx`: `const XxxPage = lazy(() => import('@/pages/XxxPage'))`
+- เพิ่ม route ภายใต้ `<ProtectedRoute>` + `<MainLayout>`
+- เพิ่ม navigation link ใน Sidebar พร้อม icon จาก lucide-react
 - Reference: `apps/web/src/pages/CustomersPage.tsx`
 
 ### 7. Verify
 ```bash
+# TypeScript ทั้ง API + Web
 ./tools/check-types.sh all
+
+# ถ้ามี E2E test ที่เกี่ยวข้อง
+cd apps/web && npx playwright test --grep "<feature>" --project=chromium
 ```
 
 ถ้า type check ผ่าน → feature พร้อมใช้งาน
+
+## Common Mistakes
+
+| ผิดบ่อย | วิธีถูก |
+|---|---|
+| ลืม `deletedAt` ใน model | ทุก model ต้องมี `deletedAt DateTime?` |
+| ใช้ `Float` สำหรับเงิน | ใช้ `Decimal @db.Decimal(12, 2)` เท่านั้น |
+| ลืม register module ใน `app.module.ts` | Step 5 — เพิ่ม import ใน app.module |
+| ลืม `where: { deletedAt: null }` ใน queries | ทุก findMany/findFirst ต้อง filter soft delete |
+| ลืมเพิ่ม route ใน App.tsx | Step 6.5 — lazy import + ProtectedRoute |
+| ใช้ `fetch()` แทน `api.get()` | ใช้ `@/lib/api` เท่านั้น (มี JWT refresh) |
+| ลืม `@UseGuards(JwtAuthGuard, RolesGuard)` | ทุก controller ต้องมี guards |
+
+## Rollback / Recovery
+
+ถ้าสร้างไปแล้วแต่ต้องย้อนกลับ:
+1. **Migration ผิด**: `cd apps/api && npx prisma migrate resolve --rolled-back <migration_name>` แล้วลบไฟล์ migration
+2. **Module ผิด**: ลบ folder `apps/api/src/modules/<name>/` + ลบ import จาก `app.module.ts`
+3. **Page ผิด**: ลบไฟล์ page + ลบ route จาก `App.tsx` + ลบ sidebar link
+4. **ทุกกรณี**: รัน `./tools/check-types.sh all` หลัง rollback เพื่อยืนยันไม่มี broken references

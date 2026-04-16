@@ -118,6 +118,20 @@ Skills อยู่ใน `.claude/skills/` — แต่ละ skill จะ:
 4. ใช้ tools (generate-module.sh, check-types.sh) อัตโนมัติ
 5. Verify ด้วย TypeScript check
 
+### Anthropic Skills (General-Purpose)
+
+Skills จาก [anthropics/skills](https://github.com/anthropics/skills) ที่ install ไว้ — ใช้ได้กับทุกงานไม่จำกัดเฉพาะ BESTCHOICE
+
+| Category | Skills | ใช้เมื่อ |
+|----------|--------|---------|
+| Documents | `/docx`, `/xlsx`, `/pdf`, `/pptx` | สร้าง/แก้เอกสาร Word, Excel, PDF, PowerPoint |
+| Design | `/frontend-design`, `/canvas-design`, `/algorithmic-art` | สร้าง UI สวยๆ, poster, generative art |
+| Styling | `/theme-factory`, `/brand-guidelines` | ใส่ theme/branding ให้ artifacts |
+| Dev Tools | `/claude-api`, `/mcp-builder`, `/webapp-testing` | Claude API, สร้าง MCP server, ทดสอบ web app |
+| Communication | `/internal-comms`, `/doc-coauthoring` | เขียน comms ภายใน, ร่วมเขียนเอกสาร |
+| Creative | `/slack-gif-creator`, `/web-artifacts-builder` | สร้าง GIF, สร้าง web artifacts |
+| Meta | `/skill-creator` | สร้าง/แก้ไข skills ใหม่ |
+
 ### Subagents
 
 Subagents คือ agent เฉพาะทางที่ทำงานแยก — ใช้ Sonnet model เพื่อประหยัด cost และไม่ปนเปื้อน context ของ parent
@@ -309,6 +323,25 @@ tools/                        # Shell scripts — deterministic execution
   db-change.md                # /db-change — Prisma schema changes
   pre-deploy.md               # /pre-deploy — Pre-deploy checklist
   run-e2e.md                  # /run-e2e — Playwright E2E tests
+  accounting-audit.md         # /accounting-audit — ตรวจระบบบัญชี
+  # Anthropic Skills (from github.com/anthropics/skills)
+  algorithmic-art/            # Generative art with p5.js
+  brand-guidelines/           # Brand identity guidelines
+  canvas-design/              # Visual art (.png/.pdf)
+  claude-api/                 # Claude API/SDK integration
+  doc-coauthoring/            # Co-authoring documentation
+  docx/                       # Word document manipulation
+  frontend-design/            # Production-grade UI design
+  internal-comms/             # Internal communications
+  mcp-builder/                # MCP server builder
+  pdf/                        # PDF manipulation
+  pptx/                       # PowerPoint manipulation
+  skill-creator/              # Create/improve skills
+  slack-gif-creator/          # Animated GIFs for Slack
+  theme-factory/              # Theme styling toolkit
+  web-artifacts-builder/      # Complex web artifacts
+  webapp-testing/             # Playwright web testing
+  xlsx/                       # Excel spreadsheet manipulation
 
 .claude/rules/                # Convention rules — auto-loaded
   database.md                 # Prisma/PostgreSQL conventions

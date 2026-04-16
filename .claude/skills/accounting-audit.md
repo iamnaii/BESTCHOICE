@@ -73,3 +73,14 @@ user_invocable: true
 - Performance / Scalability
 - UI/UX Design
 - Security vulnerabilities (มี audit แยก)
+
+## เกณฑ์ PASS / FAIL / PARTIAL
+
+| ผลลัพธ์ | เกณฑ์ |
+|---|---|
+| **PASS** | ทำตาม checklist ครบ ไม่มี deviation |
+| **PARTIAL** | ทำบางข้อ แต่มี gaps ที่ไม่กระทบ legal compliance |
+| **FAIL** | ขาด critical item ที่กระทบความถูกต้องทางบัญชี/ภาษี |
+
+## Prerequisite
+- ต้องมีไฟล์ `docs/prompts/ACCOUNTING-AUDIT-PROMPT.md` — ถ้าไม่มีให้แจ้ง user ก่อนเริ่ม

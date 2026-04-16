@@ -21,7 +21,7 @@ export class PeakController {
 
   @Get('status')
   @Roles('OWNER')
-  getStatus() {
+  async getStatus() {
     return this.peakService.getStatus();
   }
 

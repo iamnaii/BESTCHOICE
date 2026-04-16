@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import * as Sentry from '@sentry/nestjs';
 import { createHmac } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
+import { IntegrationConfigService } from '../integrations/integration-config.service';
 
 export interface PeakExportResult {
   exported: number;
@@ -41,20 +42,22 @@ export class PeakService {
   constructor(
     private prisma: PrismaService,
     private configService: ConfigService,
+    private integrationConfig: IntegrationConfigService,
   ) {}
 
   /** Check if PEAK integration is configured */
-  isConfigured(): boolean {
-    const config = this.getConfig();
+  async isConfigured(): Promise<boolean> {
+    const config = await this.getConfig();
     return !!(config.userToken && config.connectId && config.secretKey);
   }
 
-  getStatus(): { configured: boolean; baseUrl: string; message: string } {
-    const config = this.getConfig();
+  async getStatus(): Promise<{ configured: boolean; baseUrl: string; message: string }> {
+    const config = await this.getConfig();
+    const configured = await this.isConfigured();
     return {
-      configured: this.isConfigured(),
+      configured,
       baseUrl: config.baseUrl,
-      message: this.isConfigured()
+      message: configured
         ? 'PEAK เชื่อมต่อแล้ว'
         : 'ยังไม่ได้ตั้งค่า — ต้องการ PEAK_USER_TOKEN, PEAK_CONNECT_ID, PEAK_SECRET_KEY',
     };
@@ -65,7 +68,7 @@ export class PeakService {
    * Maps JournalEntry → POST /DailyJournals
    */
   async exportJournalEntries(startDate: Date, endDate: Date): Promise<PeakExportResult> {
-    if (!this.isConfigured()) {
+    if (!(await this.isConfigured())) {
       return { exported: 0, skipped: 0, errors: ['PEAK ยังไม่ได้ตั้งค่า'] };
     }
 
@@ -119,18 +122,18 @@ export class PeakService {
 
   /** Fetch chart of accounts from PEAK */
   async getAccountCodes(): Promise<unknown> {
-    if (!this.isConfigured()) return { error: 'PEAK ยังไม่ได้ตั้งค่า' };
+    if (!(await this.isConfigured())) return { error: 'PEAK ยังไม่ได้ตั้งค่า' };
     return this.getFromPeak('/DailyJournals/AccountCode');
   }
 
   // ─── PEAK API Communication ──────────────────────────────
 
-  private getConfig(): PeakConfig {
+  private async getConfig(): Promise<PeakConfig> {
     return {
-      baseUrl: this.configService.get('PEAK_BASE_URL') || 'https://api.peakaccount.com/api/v1',
-      userToken: this.configService.get('PEAK_USER_TOKEN') || '',
-      connectId: this.configService.get('PEAK_CONNECT_ID') || '',
-      secretKey: this.configService.get('PEAK_SECRET_KEY') || '',
+      baseUrl: (await this.integrationConfig.getValue('peak', 'baseUrl')) || 'https://api.peakaccount.com/api/v1',
+      userToken: (await this.integrationConfig.getValue('peak', 'userToken')) || '',
+      connectId: (await this.integrationConfig.getValue('peak', 'connectId')) || '',
+      secretKey: (await this.integrationConfig.getValue('peak', 'secretKey')) || '',
     };
   }
 
@@ -147,8 +150,7 @@ export class PeakService {
   }
 
   /** HMAC-SHA1(timeStamp, connectId) using secretKey → Time-Signature */
-  private generateTimeSignature(timeStamp: string): string {
-    const config = this.getConfig();
+  private generateTimeSignature(timeStamp: string, config: PeakConfig): string {
     return createHmac('sha1', config.connectId)
       .update(timeStamp)
       .digest('hex');
@@ -156,9 +158,9 @@ export class PeakService {
 
   /** Build auth headers for PEAK API */
   private async buildHeaders(): Promise<Record<string, string>> {
-    const config = this.getConfig();
+    const config = await this.getConfig();
     const timeStamp = this.generateTimeStamp();
-    const timeSignature = this.generateTimeSignature(timeStamp);
+    const timeSignature = this.generateTimeSignature(timeStamp, config);
 
     // Get or refresh Client-Token
     const clientToken = await this.ensureClientToken(timeStamp, timeSignature, config);
@@ -206,7 +208,7 @@ export class PeakService {
 
   /** POST to PEAK API */
   private async postToPeak(path: string, body: unknown): Promise<{ resCode: string; resDesc: string; [key: string]: unknown }> {
-    const config = this.getConfig();
+    const config = await this.getConfig();
     const headers = await this.buildHeaders();
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15_000);
@@ -233,7 +235,7 @@ export class PeakService {
 
   /** GET from PEAK API */
   private async getFromPeak(path: string): Promise<unknown> {
-    const config = this.getConfig();
+    const config = await this.getConfig();
     const headers = await this.buildHeaders();
 
     const res = await fetch(`${config.baseUrl}${path}`, {

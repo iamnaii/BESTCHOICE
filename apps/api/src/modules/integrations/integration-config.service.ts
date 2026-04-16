@@ -14,6 +14,9 @@ export type MaskedIntegrationConfig = Record<string, string>;
 export class IntegrationConfigService {
   private readonly logger = new Logger(IntegrationConfigService.name);
 
+  private static readonly CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+  private cache = new Map<string, { config: IntegrationConfig; cachedAt: number }>();
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
@@ -36,6 +39,17 @@ export class IntegrationConfigService {
     if (!value) return '';
     if (value.length <= 4) return '••••';
     return `••••${value.slice(-4)}`;
+  }
+
+  /** Check if cached entry is still fresh. */
+  private getCached(integrationKey: string): IntegrationConfig | null {
+    const entry = this.cache.get(integrationKey);
+    if (!entry) return null;
+    if (Date.now() - entry.cachedAt > IntegrationConfigService.CACHE_TTL_MS) {
+      this.cache.delete(integrationKey);
+      return null;
+    }
+    return entry.config;
   }
 
   // ─── Public API ───────────────────────────────────────────────────────────
@@ -74,6 +88,10 @@ export class IntegrationConfigService {
    * Get all field values for an integration (plaintext).
    */
   async getConfig(integrationKey: string): Promise<IntegrationConfig> {
+    // Check cache first
+    const cached = this.getCached(integrationKey);
+    if (cached) return cached;
+
     const def = getIntegrationDef(integrationKey);
     if (!def) throw new NotFoundException(`Integration '${integrationKey}' not found`);
 
@@ -82,6 +100,9 @@ export class IntegrationConfigService {
       const value = await this.getValue(integrationKey, field.key);
       result[field.key] = value ?? '';
     }
+
+    // Store in cache
+    this.cache.set(integrationKey, { config: result, cachedAt: Date.now() });
     return result;
   }
 
@@ -138,6 +159,8 @@ export class IntegrationConfigService {
     }
 
     this.logger.log(`Saved config for integration '${integrationKey}'`);
+    // Invalidate cache so next read picks up new values
+    this.cache.delete(integrationKey);
   }
 
   /**
@@ -158,6 +181,7 @@ export class IntegrationConfigService {
     });
 
     this.logger.log(`Deleted config for integration '${integrationKey}'`);
+    this.cache.delete(integrationKey);
   }
 
   /**

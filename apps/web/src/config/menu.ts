@@ -138,6 +138,7 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'ลูกค้า', path: '/customers', icon: Users },
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
+        { label: 'จัดการอุปกรณ์', path: '/mdm', icon: Smartphone },
       ],
     },
     {
@@ -158,7 +159,6 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'ค้างชำระ', path: '/overdue', icon: AlertTriangle },
         { label: 'CRM Pipeline', path: '/crm', icon: Kanban },
         { label: 'รายงาน', path: '/reports', icon: BarChart3 },
-        { label: 'จัดการอุปกรณ์', path: '/mdm', icon: Smartphone },
       ],
     },
   ],
@@ -193,6 +193,7 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
         { label: 'ใบเสร็จ', path: '/receipts', icon: FileText },
+        { label: 'จัดการอุปกรณ์', path: '/mdm', icon: Smartphone },
       ],
     },
     {
@@ -213,7 +214,6 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
         { label: 'รายจ่าย', path: '/expenses', icon: Receipt },
         { label: 'กำไร-ขาดทุน', path: '/profit-loss', icon: PieChart },
-        { label: 'จัดการอุปกรณ์', path: '/mdm', icon: Smartphone },
       ],
     },
   ],
@@ -317,6 +317,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
         { label: 'Finance Overview', path: '/finance-portfolio', icon: CircleDollarSign },
         { label: 'ใบเสร็จ', path: '/receipts', icon: FileText },
+        { label: 'จัดการอุปกรณ์', path: '/mdm', icon: Smartphone },
       ],
     },
     {
@@ -375,7 +376,6 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'LINE OA', path: '/settings/rich-menu', icon: MessageSquareMore },
         { label: 'Dunning', path: '/settings/dunning', icon: Bell },
         { label: 'Audit Log', path: '/audit-logs', icon: ScrollText },
-        { label: 'จัดการอุปกรณ์', path: '/mdm', icon: Smartphone },
       ],
     },
   ],

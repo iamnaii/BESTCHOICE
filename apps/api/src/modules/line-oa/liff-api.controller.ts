@@ -15,6 +15,7 @@ import {
 import { ApiTags } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { LiffApiService } from './liff-api.service';
+import { RichMenuService } from './rich-menu/rich-menu.service';
 import { PaymentLinkService } from './payment-links/payment-link.service';
 import { ContractPaymentService } from '../contracts/contract-payment.service';
 import { toNum } from '../../utils/decimal.util';
@@ -46,6 +47,7 @@ export class LiffApiController {
 
   constructor(
     private liffApiService: LiffApiService,
+    private richMenuService: RichMenuService,
     private paymentLinkService: PaymentLinkService,
     private contractPaymentService: ContractPaymentService,
     private documentsService: DocumentsService,
@@ -100,6 +102,15 @@ export class LiffApiController {
     const result = await this.liffApiService.confirmLinkLine(dto.customerId, lineId);
     if (!result.success) {
       throw new BadRequestException(result.error || 'ลงทะเบียนไม่สำเร็จ');
+    }
+
+    // Switch Rich Menu to verified after successful registration (non-blocking)
+    if (lineId) {
+      try {
+        await this.richMenuService.switchRichMenu(lineId, true, 'finance');
+      } catch (err) {
+        this.logger.error('Failed to switch Rich Menu after verify', err);
+      }
     }
 
     return { success: true, message: 'ลงทะเบียนสำเร็จ' };

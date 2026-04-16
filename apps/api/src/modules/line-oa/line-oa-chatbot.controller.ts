@@ -15,6 +15,7 @@ import { Request } from 'express';
 import { LineOaService } from './line-oa.service';
 import { ChatbotService } from './chatbot.service';
 import { QuickReplyService } from './quick-reply.service';
+import { RichMenuService } from './rich-menu/rich-menu.service';
 import { LineWebhookGuard } from './line-webhook.guard';
 import { LineWebhookBody, LineMessageEvent, LinePostbackEvent, LineFollowEvent } from './dto/webhook-event.dto';
 import {
@@ -24,6 +25,7 @@ import {
   GREETING_KEYWORDS,
 } from './chatbot-system-prompt.constants';
 import { PrismaService } from '../../prisma/prisma.service';
+import { buildWelcomeFlex, buildReWelcomeFlex } from './flex-messages/welcome.flex';
 import { PromptPayQrService } from './promptpay/promptpay-qr.service';
 import { PaymentLinkService } from './payment-links/payment-link.service';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
@@ -45,6 +47,7 @@ export class LineOaChatbotController {
     private lineOaService: LineOaService,
     private chatbotService: ChatbotService,
     private quickReplyService: QuickReplyService,
+    private richMenuService: RichMenuService,
     private prisma: PrismaService,
     private promptPayQrService: PromptPayQrService,
     private paymentLinkService: PaymentLinkService,
@@ -116,14 +119,40 @@ export class LineOaChatbotController {
     // Link LINE ID to customer (idempotent — no-op if already linked)
     await this.lineOaService.linkLineId(userId);
 
-    // Load greeting messages from SystemConfig
+    // Check if already verified (re-follow vs new follow)
+    const customer = await this.lineOaService.findCustomerByLineId(userId);
+
+    if (customer) {
+      // Re-follow: verified customer returning
+      try {
+        await this.richMenuService.switchRichMenu(userId, true, 'shop');
+      } catch (err) {
+        this.logger.warn(`Failed to switch Rich Menu on re-follow: ${err instanceof Error ? err.message : err}`);
+      }
+
+      const reWelcomeFlex = buildReWelcomeFlex(customer.name);
+      const reWelcomeMsg = {
+        ...reWelcomeFlex,
+        quickReply: { items: this.quickReplyService.verifiedReturn() },
+      };
+      await this.lineOaService.replyMessage(event.replyToken, [reWelcomeMsg]);
+      return;
+    }
+
+    // New follow: not yet verified
+    try {
+      await this.richMenuService.switchRichMenu(userId, false, 'shop');
+    } catch (err) {
+      this.logger.warn(`Failed to switch Rich Menu on new follow: ${err instanceof Error ? err.message : err}`);
+    }
+
+    // Check SystemConfig for custom greeting override
     const [greetingConfig, quickReplyConfig] = await Promise.all([
       this.prisma.systemConfig.findUnique({ where: { key: 'line.greetingMessages' } }),
       this.prisma.systemConfig.findUnique({ where: { key: 'line.greetingQuickReply' } }),
     ]);
 
     const showQuickReply = quickReplyConfig?.value !== 'false';
-
     let lineMessages: any[];
 
     if (greetingConfig?.value) {
@@ -131,7 +160,7 @@ export class LineOaChatbotController {
         const stored: Array<{ type: string; content: any }> = JSON.parse(greetingConfig.value);
         lineMessages = stored.map((item, idx) => {
           const isLast = idx === stored.length - 1;
-          const quickReplyObj = isLast && showQuickReply ? { quickReply: { items: this.quickReplyService.greeting() } } : {};
+          const quickReplyObj = isLast && showQuickReply ? { quickReply: { items: this.quickReplyService.shopOnboarding() } } : {};
 
           if (item.type === 'text') {
             return { type: 'text', text: item.content?.text || '', ...quickReplyObj };
@@ -155,18 +184,19 @@ export class LineOaChatbotController {
         lineMessages = [];
       }
     } else {
-      // Fallback default greeting
       lineMessages = [];
     }
 
     if (lineMessages.length === 0) {
-      // Use hardcoded default if nothing stored
-      const welcomeText = 'สวัสดีครับ! ยินดีต้อนรับสู่ BESTCHOICE 🎉\n\nร้านมือถือผ่อนราคาดี ดาวน์น้อย อนุมัติไว\nสนใจสอบถามได้เลยครับ/ค่ะ';
-      lineMessages = [{
-        type: 'text',
-        text: welcomeText,
-        ...(showQuickReply ? { quickReply: { items: this.quickReplyService.greeting() } } : {}),
-      }];
+      // Fallback: send Welcome Flex with register URL
+      const liffRegisterUrl = buildBrowserUrl('/liff/register');
+      const welcomeFlex = buildWelcomeFlex({ oaType: 'shop', liffRegisterUrl });
+      lineMessages = [
+        {
+          ...welcomeFlex,
+          ...(showQuickReply ? { quickReply: { items: this.quickReplyService.shopOnboarding() } } : {}),
+        },
+      ];
     }
 
     await this.lineOaService.replyMessage(event.replyToken, lineMessages);

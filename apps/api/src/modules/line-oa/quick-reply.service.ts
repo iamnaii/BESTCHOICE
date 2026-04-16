@@ -43,4 +43,29 @@ export class QuickReplyService {
       { type: 'action', action: { type: 'message', label: '💬 คุยกับพนักงาน', text: 'คุยกับพนักงาน' } },
     ];
   }
+
+  /** Quick Reply สำหรับ onboarding ใหม่ SHOP */
+  shopOnboarding(): LineQuickReplyItem[] {
+    return [
+      { type: 'action', action: { type: 'message', label: 'ฉันเป็นลูกค้าใหม่', text: 'ลูกค้าใหม่' } },
+      { type: 'action', action: { type: 'message', label: 'ฉันมีสัญญาอยู่แล้ว', text: 'ลงทะเบียน' } },
+    ];
+  }
+
+  /** Quick Reply สำหรับ onboarding ใหม่ FINANCE */
+  financeOnboarding(): LineQuickReplyItem[] {
+    return [
+      { type: 'action', action: { type: 'message', label: 'ลงทะเบียนสัญญา', text: 'ลงทะเบียน' } },
+      { type: 'action', action: { type: 'message', label: 'วิธีชำระเงิน', text: 'วิธีชำระเงิน' } },
+    ];
+  }
+
+  /** Quick Reply สำหรับลูกค้า verified ที่กลับมา */
+  verifiedReturn(): LineQuickReplyItem[] {
+    return [
+      { type: 'action', action: { type: 'message', label: 'เช็คยอด', text: 'เช็คยอด' } },
+      { type: 'action', action: { type: 'message', label: 'ดูสัญญา', text: 'สัญญา' } },
+      { type: 'action', action: { type: 'message', label: 'ช่วยเหลือ', text: 'ช่วยเหลือ' } },
+    ];
+  }
 }

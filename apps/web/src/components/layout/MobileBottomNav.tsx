@@ -56,14 +56,14 @@ function MobileBottomNav() {
               className={cn(
                 'relative flex flex-col items-center justify-center gap-0.5 flex-1 px-1 py-1.5',
                 'transition-all duration-150 active:scale-90 focus-visible:outline-hidden',
-                active ? 'text-[#059669]' : 'text-muted-foreground/60 hover:text-muted-foreground',
+                active ? 'text-primary' : 'text-muted-foreground/60 hover:text-muted-foreground',
               )}
               aria-current={active ? 'page' : undefined}
             >
               {/* Active top indicator bar */}
               {active && (
                 <span
-                  className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-[2.5px] bg-[#059669] rounded-b-full"
+                  className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-[2.5px] bg-primary rounded-b-full"
                   aria-hidden="true"
                 />
               )}

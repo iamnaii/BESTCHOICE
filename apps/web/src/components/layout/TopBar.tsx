@@ -72,7 +72,7 @@ function UserDropdown() {
           aria-label="เมนูผู้ใช้"
         >
           {/* Avatar */}
-          <div className="size-8 rounded-full bg-gradient-to-br from-[#1e3a5f] to-[#059669] flex items-center justify-center ring-2 ring-primary/20 shrink-0">
+          <div className="size-8 rounded-full bg-primary flex items-center justify-center ring-2 ring-primary/20 shrink-0">
             <span className="text-white text-[13px] font-bold leading-none">{initials}</span>
           </div>
           {/* Name (hidden on small) */}
@@ -90,7 +90,7 @@ function UserDropdown() {
         {/* User info header */}
         <DropdownMenuLabel className="font-normal pb-2">
           <div className="flex items-center gap-3">
-            <div className="size-10 rounded-full bg-gradient-to-br from-[#1e3a5f] to-[#059669] flex items-center justify-center ring-2 ring-primary/20 shrink-0">
+            <div className="size-10 rounded-full bg-primary flex items-center justify-center ring-2 ring-primary/20 shrink-0">
               <span className="text-white text-sm font-bold leading-none">{initials}</span>
             </div>
             <div className="flex flex-col min-w-0">
@@ -158,7 +158,7 @@ export default function TopBar() {
   }, [pathname]);
 
   return (
-    <header className="sticky top-0 z-10 h-[60px] bg-white dark:bg-card border-b border-[#e2e8f0] dark:border-border flex items-center justify-between shrink-0 px-5 lg:px-6">
+    <header className="sticky top-0 z-10 h-[60px] bg-background border-b border-border flex items-center justify-between shrink-0 px-5 lg:px-6">
 
       {/* ── Left: hamburger (mobile) + breadcrumb ── */}
       <div className="flex items-center gap-2.5">
@@ -177,10 +177,10 @@ export default function TopBar() {
 
         {/* Breadcrumb — desktop only */}
         <nav className="hidden lg:flex items-center gap-1.5 text-sm">
-          <Link to="/" className="text-[#94a3b8] hover:text-foreground transition-colors">หน้าหลัก</Link>
+          <Link to="/" className="text-muted-foreground hover:text-foreground transition-colors">หน้าหลัก</Link>
           {pathname !== '/' && (
             <>
-              <span className="text-[#cbd5e1]">/</span>
+              <span className="text-muted-foreground/40">/</span>
               <span className="text-foreground font-medium">{pageTitle}</span>
             </>
           )}
@@ -201,11 +201,11 @@ export default function TopBar() {
         {/* Search button → opens Command Palette */}
         <button
           onClick={() => openCommandPalette()}
-          className="hidden md:flex items-center gap-2 h-9 px-3 rounded-md bg-[#f1f5f9] dark:bg-muted text-muted-foreground text-xs hover:bg-[#e2e8f0] transition-colors min-w-[180px]"
+          className="hidden md:flex items-center gap-2 h-9 px-3 rounded-md bg-muted text-muted-foreground text-xs hover:bg-accent transition-colors min-w-[180px]"
           aria-label="ค้นหา (Ctrl+K)"
         >
-          <Search className="size-3.5 text-[#94a3b8]" strokeWidth={1.75} />
-          <span className="text-[#94a3b8]">ค้นหา... (⌘K)</span>
+          <Search className="size-3.5 text-muted-foreground" strokeWidth={1.75} />
+          <span className="text-muted-foreground">ค้นหา... (⌘K)</span>
         </button>
 
         {/* Chat inbox button */}

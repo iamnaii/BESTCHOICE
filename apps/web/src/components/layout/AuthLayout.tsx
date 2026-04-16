@@ -11,7 +11,7 @@ interface AuthLayoutProps {
  */
 export default function AuthLayout({ children }: AuthLayoutProps) {
   return (
-    <div className="grid lg:grid-cols-2 grow min-h-screen bg-gradient-to-br from-[#f8fafc] to-[#f0f5ff]">
+    <div className="grid lg:grid-cols-2 grow min-h-screen bg-background">
       {/* Left Side — Form */}
       <div className="flex justify-center items-center p-8 lg:p-10 order-2 lg:order-1">
         <div className="w-full max-w-[440px]">
@@ -30,7 +30,7 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
       </div>
 
       {/* Right Side — Branded panel */}
-      <div className="hidden lg:flex lg:rounded-2xl lg:m-5 order-1 lg:order-2 bg-linear-to-br from-slate-900 via-slate-800 to-slate-900 relative overflow-hidden flex-col p-16 gap-5 justify-center text-white">
+      <div className="hidden lg:flex lg:rounded-2xl lg:m-5 order-1 lg:order-2 bg-zinc-950 relative overflow-hidden flex-col p-16 gap-5 justify-center text-white">
         <Link to="/landing" className="flex items-center gap-3 mb-6">
           <div className="size-11 rounded-xl bg-linear-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg shadow-primary/30">
             <span className="text-white font-bold text-lg">B</span>

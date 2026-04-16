@@ -75,7 +75,7 @@ function MainContent() {
         <main
           id="main"
           tabIndex={-1}
-          className="flex-1 grow bg-[#f8fafc] dark:bg-background focus-visible:outline-hidden"
+          className="flex-1 grow bg-background focus-visible:outline-hidden"
           key={pathname}
         >
           <div className="container-fluid px-5 lg:px-7 pt-0 pb-20 lg:pb-8 animate-fadeIn">

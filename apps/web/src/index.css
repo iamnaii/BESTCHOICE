@@ -42,27 +42,17 @@ layer(base);
   --animate-collapsible-up: collapsible-up 0.2s ease-out;
   --animate-pulse-subtle: pulse-subtle 2s ease-in-out infinite;
 
-  --color-primary-50: #f0f5ff;
-  --color-primary-100: #d6e4ff;
-  --color-primary-200: #a3bffa;
-  --color-primary-300: #7da2ef;
-  --color-primary-400: #5b8def;
-  --color-primary-500: #3a6fd8;
-  --color-primary-600: #2d5a8a;
-  --color-primary-700: #1e3a5f;
-  --color-primary-800: #162d4a;
-  --color-primary-900: #0f2035;
-  --color-primary-950: #091626;
-  --color-accent-50: #ecfdf5;
-  --color-accent-100: #d1fae5;
-  --color-accent-200: #a7f3d0;
-  --color-accent-300: #6ee7b7;
-  --color-accent-400: #34d399;
-  --color-accent-500: #10b981;
-  --color-accent-600: #059669;
-  --color-accent-700: #047857;
-  --color-accent-800: #065f46;
-  --color-accent-900: #064e3b;
+  --color-primary-50: #ecfdf5;
+  --color-primary-100: #d1fae5;
+  --color-primary-200: #a7f3d0;
+  --color-primary-300: #6ee7b7;
+  --color-primary-400: #34d399;
+  --color-primary-500: #10b981;
+  --color-primary-600: #059669;
+  --color-primary-700: #047857;
+  --color-primary-800: #065f46;
+  --color-primary-900: #064e3b;
+  --color-primary-950: #022c22;
   --color-primary: hsl(var(--primary));
   --color-primary-foreground: hsl(var(--primary-foreground));
 
@@ -119,7 +109,7 @@ layer(base);
   --color-sidebar-active: hsl(var(--sidebar-active));
   --color-sidebar-hover: hsl(var(--sidebar-hover));
   --color-sidebar-border: hsl(var(--sidebar-border));
-  --color-sidebar-dark: #162d4a;
+
 
   --color-chart-1: hsl(var(--chart-1));
   --color-chart-2: hsl(var(--chart-2));
@@ -133,12 +123,12 @@ layer(base);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
 
-  --shadow-xs: 0 1px 2px rgba(30, 58, 95, 0.05);
-  --shadow-card: 0 1px 3px rgba(30, 58, 95, 0.08), 0 1px 2px rgba(30, 58, 95, 0.04);
-  --shadow-card-hover: 0 4px 12px rgba(30, 58, 95, 0.1), 0 1px 3px rgba(30, 58, 95, 0.06);
-  --shadow-sidebar: 4px 0 20px rgba(15, 32, 53, 0.2);
-  --shadow-topbar: 0 1px 0 rgba(30, 58, 95, 0.05);
-  --shadow-modal: 0 10px 25px rgba(30, 58, 95, 0.12), 0 4px 10px rgba(30, 58, 95, 0.06);
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-sidebar: 4px 0 20px rgba(0, 0, 0, 0.15);
+  --shadow-topbar: 0 1px 0 rgba(0, 0, 0, 0.05);
+  --shadow-modal: 0 10px 25px rgba(0, 0, 0, 0.12), 0 4px 10px rgba(0, 0, 0, 0.06);
 
   @keyframes fadeIn {
     0% {
@@ -235,14 +225,7 @@ layer(base);
 }
 
 @utility bg-hero-gradient {
-  background: linear-gradient(
-    135deg,
-    var(--color-hero-1) 0%,
-    var(--color-hero-2) 25%,
-    var(--color-hero-3) 50%,
-    var(--color-hero-4) 75%,
-    var(--color-hero-5) 100%
-  );
+  background: hsl(var(--primary));
 }
 
 @utility glass-card {
@@ -260,70 +243,61 @@ layer(base);
 }
 
 @utility stat-card {
-  /* Metronic-style stat card */
   @apply bg-card rounded-xl border border-border p-5 transition-shadow hover:shadow-md;
 }
 
 @utility kt-separator {
-  /* Metronic-style section separator */
   @apply border-t border-border my-5;
 }
 
-/* ── Metronic v9.4.6 Theme Variables (aligned with config.reui.css) ─ */
+/* ── shadcn/ui Theme Variables — Minimal Zinc + Emerald Accent ─ */
 @layer base {
   :root {
-    /* Core: light gray bg (Demo 9 extended header style), zinc-950 fg */
-    --background: 240 5% 96%;
-    --foreground: 240 6% 10%;
+    /* Minimal Zinc + Emerald Accent */
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
     --card: 0 0% 100%;
-    --card-foreground: 240 6% 10%;
+    --card-foreground: 240 10% 3.9%;
     --popover: 0 0% 100%;
-    --popover-foreground: 240 6% 10%;
-    /* Primary: Navy */
-    --primary: 210 52% 24%;
+    --popover-foreground: 240 10% 3.9%;
+    /* Primary: Emerald (Wood element) */
+    --primary: 160 84% 39%;
     --primary-foreground: 0 0% 100%;
-    /* Secondary/Muted/Accent: zinc-100 */
-    --secondary: 240 5% 96%;
-    --secondary-foreground: 240 6% 10%;
-    --muted: 240 5% 96%;
-    --muted-foreground: 240 4% 46%;
-    --accent: 160 84% 39%;
-    --accent-foreground: 0 0% 100%;
-    /* Destructive: red-600 */
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 0 0% 100%;
+    /* Secondary/Muted/Accent: zinc neutral */
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
+    --accent: 240 4.8% 95.9%;
+    --accent-foreground: 240 5.9% 10%;
+    /* Destructive */
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
     /* Semantic */
     --success: 142 71% 45%;
     --success-foreground: 0 0% 100%;
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
-    --info: 210 52% 24%;
+    --info: 199 89% 48%;
     --info-foreground: 0 0% 100%;
-    /* Border: between zinc-100 and zinc-200 */
-    --border: 240 6% 90%;
-    --input: 240 6% 83%;
-    --ring: 240 5% 65%;
-    /* Metronic uses 0.5rem (8px) base radius */
+    /* Border */
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 160 84% 39%;
     --radius: 0.5rem;
-    /* Sidebar - Navy dark rail */
-    --sidebar-bg: 210 52% 24%;
-    --sidebar-fg: 0 0% 100%;
+    /* Sidebar — White/Light */
+    --sidebar-bg: 0 0% 100%;
+    --sidebar-fg: 240 10% 3.9%;
     --sidebar-active: 160 84% 39%;
-    --sidebar-hover: 210 52% 20%;
-    --sidebar-border: 210 52% 18%;
-    /* Charts: navy, emerald, yellow, red, purple */
-    --chart-1: 210 52% 24%;
-    --chart-2: 142 71% 45%;
+    --sidebar-hover: 240 4.8% 95.9%;
+    --sidebar-border: 240 5.9% 90%;
+    /* Charts — emerald-led */
+    --chart-1: 160 84% 39%;
+    --chart-2: 240 5% 64.9%;
     --chart-3: 48 96% 53%;
     --chart-4: 0 84% 60%;
     --chart-5: 271 91% 65%;
-    /* Hero gradient colors */
-    --color-hero-1: #0f2035;
-    --color-hero-2: #162d4a;
-    --color-hero-3: #1e3a5f;
-    --color-hero-4: #234b73;
-    --color-hero-5: #059669;
-    /* Tiptap editor colors */
+    /* Tiptap editor colors (keep as-is) */
     --color-editor-text: #1a1a1a;
     --color-editor-heading: #111;
     --color-editor-subheading: #222;
@@ -335,49 +309,44 @@ layer(base);
   }
 
   .dark {
-    /* Demo 9 dark: slightly lighter card on dark bg for contrast */
-    --background: 240 10% 4%;
+    --background: 240 10% 3.9%;
     --foreground: 0 0% 98%;
-    --card: 240 10% 8%;
+    --card: 240 10% 3.9%;
     --card-foreground: 0 0% 98%;
-    --popover: 240 10% 8%;
+    --popover: 240 10% 3.9%;
     --popover-foreground: 0 0% 98%;
-    /* Primary: Navy in dark */
-    --primary: 210 52% 30%;
+    --primary: 160 84% 39%;
     --primary-foreground: 0 0% 100%;
-    /* Secondary/Muted/Accent: zinc-800 */
-    --secondary: 240 4% 16%;
+    --secondary: 240 3.7% 15.9%;
     --secondary-foreground: 0 0% 98%;
-    --muted: 240 4% 16%;
-    --muted-foreground: 240 4% 46%;
-    --accent: 160 84% 39%;
-    --accent-foreground: 0 0% 100%;
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 0 0% 100%;
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+    --accent: 240 3.7% 15.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
     --success: 142 71% 40%;
     --success-foreground: 0 0% 100%;
     --warning: 38 92% 45%;
     --warning-foreground: 0 0% 100%;
-    --info: 210 52% 30%;
+    --info: 199 89% 48%;
     --info-foreground: 0 0% 100%;
-    /* Border: zinc-800 */
-    --border: 240 4% 16%;
-    --input: 240 4% 16%;
-    --ring: 240 5% 40%;
-    /* Sidebar - Navy dark mode */
-    --sidebar-bg: 210 52% 12%;
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    --ring: 160 84% 39%;
+    --sidebar-bg: 240 3.7% 15.9%;
     --sidebar-fg: 0 0% 95%;
     --sidebar-active: 160 84% 39%;
-    --sidebar-hover: 210 52% 16%;
-    --sidebar-border: 210 52% 16%;
-    --chart-1: 217 91% 60%;
-    --chart-2: 142 71% 45%;
+    --sidebar-hover: 240 3.7% 20%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --chart-1: 160 84% 45%;
+    --chart-2: 240 5% 50%;
     --chart-3: 48 96% 53%;
     --chart-4: 0 84% 60%;
     --chart-5: 271 91% 65%;
   }
 
-  /* Metronic global focus style */
+  /* Global focus style */
   *:focus-visible {
     @apply outline-hidden ring-2 ring-ring/30 ring-offset-[3px] ring-offset-background rounded-sm;
   }
@@ -424,7 +393,7 @@ layer(base);
     scrollbar-color: hsl(var(--input)) transparent;
   }
 
-  /* ── Base Styles (Metronic v9.4.6) ───────────────── */
+  /* ── Base Styles ─────────────────────────────────── */
   body {
     font-family:
       'Inter',
@@ -432,7 +401,7 @@ layer(base);
       system-ui,
       -apple-system,
       sans-serif;
-    font-size: 0.875rem; /* 14px - Metronic default text-sm */
+    font-size: 0.875rem; /* 14px */
     line-height: 1.5;
     color: hsl(var(--foreground));
     background-color: hsl(var(--background));
@@ -440,7 +409,7 @@ layer(base);
     -moz-osx-font-smoothing: grayscale;
   }
 
-  /* Metronic border-border default on all elements */
+  /* Border color default */
   *,
   *::before,
   *::after {

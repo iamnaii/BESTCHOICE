@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, InternalServerErrorException, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, InternalServerErrorException, Logger } from '@nestjs/common';
 import { formatDateShort, formatDateTime } from '../../utils/thai-date.util';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -7,55 +7,38 @@ import { NotificationChannel } from '@prisma/client';
 import { FlexMessagePayload } from '../line-oa/flex-messages/base-template';
 import { FlexTemplatesService } from '../line-oa/flex-templates.service';
 import { QuickReplyService } from '../line-oa/quick-reply.service';
+import { IntegrationConfigService } from '../integrations/integration-config.service';
 
 @Injectable()
-export class NotificationsService implements OnModuleInit {
+export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
-  private readonly lineChannelAccessToken: string | undefined;
-  private smsApiKey: string | undefined;
-  private smsApiSecret: string | undefined;
-  private smsSender: string | undefined;
-  private smsForce: string | undefined;
 
   constructor(
     private prisma: PrismaService,
     private configService: ConfigService,
     private flexTemplates: FlexTemplatesService,
     private quickReplyService: QuickReplyService,
-  ) {
-    this.lineChannelAccessToken = this.configService.get<string>('LINE_CHANNEL_ACCESS_TOKEN');
-    this.smsApiKey = this.configService.get<string>('SMS_API_KEY');
-    this.smsApiSecret = this.configService.get<string>('SMS_API_SECRET');
-    this.smsSender = this.configService.get<string>('SMS_SENDER') || 'BESTCHOICE';
-    this.smsForce = this.configService.get<string>('SMS_FORCE') || 'standard';
+    private integrationConfig: IntegrationConfigService,
+  ) {}
+
+  private async getLineToken(): Promise<string> {
+    return (await this.integrationConfig.getValue('line-oa', 'shopChannelToken')) || '';
   }
 
-  async onModuleInit() {
-    await this.reloadSmsConfig();
+  private async getSmsApiKey(): Promise<string> {
+    return (await this.integrationConfig.getValue('sms', 'apiKey')) || '';
   }
 
-  /**
-   * Reload SMS config from SystemConfig DB, falling back to env vars
-   */
-  async reloadSmsConfig() {
-    try {
-      const configs = await this.prisma.systemConfig.findMany({
-        where: { key: { in: ['sms_api_key', 'sms_api_secret', 'sms_sender', 'sms_force'] }, deletedAt: null },
-      });
-      const dbConfig: Record<string, string> = {};
-      for (const c of configs) {
-        dbConfig[c.key] = c.value;
-      }
+  private async getSmsApiSecret(): Promise<string> {
+    return (await this.integrationConfig.getValue('sms', 'apiSecret')) || '';
+  }
 
-      if (dbConfig.sms_api_key) this.smsApiKey = dbConfig.sms_api_key;
-      if (dbConfig.sms_api_secret) this.smsApiSecret = dbConfig.sms_api_secret;
-      if (dbConfig.sms_sender) this.smsSender = dbConfig.sms_sender;
-      if (dbConfig.sms_force) this.smsForce = dbConfig.sms_force;
+  private async getSmsSender(): Promise<string> {
+    return (await this.integrationConfig.getValue('sms', 'sender')) || 'BESTCHOICE';
+  }
 
-      this.logger.log(`[SMS] Config loaded (source: ${dbConfig.sms_api_key ? 'database' : 'env'})`);
-    } catch (err) {
-      this.logger.warn(`[SMS] Failed to load DB config, using env vars: ${err instanceof Error ? err.message : err}`);
-    }
+  private async getSmsForce(): Promise<string> {
+    return (await this.integrationConfig.getValue('sms', 'force')) || 'standard';
   }
 
   // ============================================================
@@ -150,7 +133,8 @@ export class NotificationsService implements OnModuleInit {
    * Send LINE message via LINE Messaging API (Push Message)
    */
   private async sendLine(recipient: string, message: string): Promise<void> {
-    if (!this.lineChannelAccessToken) {
+    const lineChannelAccessToken = await this.getLineToken();
+    if (!lineChannelAccessToken) {
       throw new BadRequestException('LINE channel access token not configured');
     }
 
@@ -164,7 +148,7 @@ export class NotificationsService implements OnModuleInit {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.lineChannelAccessToken}`,
+        'Authorization': `Bearer ${lineChannelAccessToken}`,
       },
       body: JSON.stringify(body),
     });
@@ -181,7 +165,8 @@ export class NotificationsService implements OnModuleInit {
    * Send a LINE Flex Message via LINE Messaging API (Push Message)
    */
   private async sendLineFlexMessage(recipient: string, flexMessage: FlexMessagePayload): Promise<void> {
-    if (!this.lineChannelAccessToken) {
+    const lineChannelAccessToken = await this.getLineToken();
+    if (!lineChannelAccessToken) {
       throw new BadRequestException('LINE channel access token not configured');
     }
 
@@ -195,7 +180,7 @@ export class NotificationsService implements OnModuleInit {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.lineChannelAccessToken}`,
+        'Authorization': `Bearer ${lineChannelAccessToken}`,
       },
       body: JSON.stringify(body),
     });
@@ -224,7 +209,10 @@ export class NotificationsService implements OnModuleInit {
       return undefined;
     }
 
-    if (!this.smsApiKey || !this.smsApiSecret) {
+    const smsApiKey = await this.getSmsApiKey();
+    const smsApiSecret = await this.getSmsApiSecret();
+
+    if (!smsApiKey || !smsApiSecret) {
       throw new BadRequestException('SMS API key/secret not configured. Set SMS_API_KEY and SMS_API_SECRET in .env');
     }
 
@@ -233,12 +221,12 @@ export class NotificationsService implements OnModuleInit {
 
     // ThaiBulkSMS API V2 — Basic Auth + JSON response
     const url = 'https://api-v2.thaibulksms.com/sms';
-    const basicAuth = Buffer.from(`${this.smsApiKey}:${this.smsApiSecret}`).toString('base64');
+    const basicAuth = Buffer.from(`${smsApiKey}:${smsApiSecret}`).toString('base64');
     const params = new URLSearchParams({
       msisdn: cleanPhone,
       message,
-      sender: this.smsSender || 'BESTCHOICE',
-      force: this.smsForce || 'standard',
+      sender: await this.getSmsSender(),
+      force: await this.getSmsForce(),
     });
 
     const response = await fetch(url, {
@@ -316,12 +304,15 @@ export class NotificationsService implements OnModuleInit {
    * Returns credit info or error if not configured
    */
   async checkSmsCredit(): Promise<{ configured: boolean; credit?: number; error?: string }> {
-    if (!this.smsApiKey || !this.smsApiSecret) {
+    const smsApiKey = await this.getSmsApiKey();
+    const smsApiSecret = await this.getSmsApiSecret();
+
+    if (!smsApiKey || !smsApiSecret) {
       return { configured: false, error: 'SMS_API_KEY and SMS_API_SECRET not set in .env' };
     }
 
     try {
-      const basicAuth = Buffer.from(`${this.smsApiKey}:${this.smsApiSecret}`).toString('base64');
+      const basicAuth = Buffer.from(`${smsApiKey}:${smsApiSecret}`).toString('base64');
       const response = await fetch('https://api-v2.thaibulksms.com/credit', {
         headers: {
           'Accept': 'application/json',
@@ -645,53 +636,48 @@ export class NotificationsService implements OnModuleInit {
   // SMS SETTINGS
   // ============================================================
 
-  private static readonly SMS_CONFIG_KEYS = ['sms_api_key', 'sms_api_secret', 'sms_sender', 'sms_force'] as const;
-
   /**
-   * Get SMS settings from SystemConfig, masking sensitive values
+   * Get SMS settings from IntegrationConfigService, masking sensitive values
    */
   async getSmsSettings(): Promise<{ settings: Record<string, string>; isConfigured: boolean }> {
-    const configs = await this.prisma.systemConfig.findMany({
-      where: { key: { in: [...NotificationsService.SMS_CONFIG_KEYS] }, deletedAt: null },
-    });
+    const masked = await this.integrationConfig.getMaskedConfig('sms');
 
-    const settings: Record<string, string> = {};
-    for (const key of NotificationsService.SMS_CONFIG_KEYS) {
-      const config = configs.find((c) => c.key === key);
-      if (!config) {
-        settings[key] = '';
-        continue;
-      }
-      // Mask sensitive keys
-      if (key === 'sms_api_key' || key === 'sms_api_secret') {
-        const val = config.value;
-        settings[key] = val.length > 4 ? '****' + val.slice(-4) : '****';
-      } else {
-        settings[key] = config.value;
-      }
-    }
+    // Map integration field keys back to old key names for UI compatibility
+    const settings: Record<string, string> = {
+      sms_api_key: masked.apiKey || '',
+      sms_api_secret: masked.apiSecret || '',
+      sms_sender: masked.sender || '',
+      sms_force: masked.force || '',
+    };
 
-    const isConfigured = !!(settings.sms_api_key && settings.sms_api_key !== ''
-      && settings.sms_api_secret && settings.sms_api_secret !== '');
+    const isConfigured = !!(masked.apiKey && masked.apiKey !== '' && masked.apiSecret && masked.apiSecret !== '');
     return { settings, isConfigured };
   }
 
   /**
-   * Save SMS settings to SystemConfig and reload in-memory config
+   * Save SMS settings via IntegrationConfigService
    */
   async saveSmsSettings(body: Record<string, string>): Promise<{ success: boolean }> {
-    for (const key of NotificationsService.SMS_CONFIG_KEYS) {
-      if (body[key] !== undefined && body[key] !== '' && !body[key].startsWith('****')) {
-        await this.prisma.systemConfig.upsert({
-          where: { key },
-          create: { key, value: body[key], label: `SMS Config: ${key}` },
-          update: { value: body[key] },
-        });
+    const values: Record<string, string> = {};
+
+    // Map old key names to integration field keys
+    const keyMap: Record<string, string> = {
+      sms_api_key: 'apiKey',
+      sms_api_secret: 'apiSecret',
+      sms_sender: 'sender',
+      sms_force: 'force',
+    };
+
+    for (const [oldKey, fieldKey] of Object.entries(keyMap)) {
+      if (body[oldKey] !== undefined && body[oldKey] !== '' && !body[oldKey].startsWith('****')) {
+        values[fieldKey] = body[oldKey];
       }
     }
 
-    // Reload in-memory SMS config
-    await this.reloadSmsConfig();
+    if (Object.keys(values).length > 0) {
+      await this.integrationConfig.saveConfig('sms', values);
+    }
+
     return { success: true };
   }
 

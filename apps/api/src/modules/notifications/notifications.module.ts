@@ -7,6 +7,7 @@ import { NotificationsService } from './notifications.service';
 import { EventsGateway } from './events.gateway';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { LineOaModule } from '../line-oa/line-oa.module';
+import { IntegrationsModule } from '../integrations/integrations.module';
 
 // WebSocket gateway requires ENABLE_WEBSOCKET=true (disabled by default in Cloud Run)
 const enableWebSocket = process.env.ENABLE_WEBSOCKET === 'true';
@@ -14,6 +15,7 @@ const enableWebSocket = process.env.ENABLE_WEBSOCKET === 'true';
 @Module({
   imports: [
     PrismaModule,
+    IntegrationsModule,
     forwardRef(() => LineOaModule),
     ...(enableWebSocket ? [JwtModule.registerAsync({
       useFactory: (config: ConfigService) => ({

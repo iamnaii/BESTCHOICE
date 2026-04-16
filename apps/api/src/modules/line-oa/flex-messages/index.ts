@@ -6,3 +6,5 @@ export * from './balance-summary.flex';
 export * from './promptpay-qr.flex';
 export * from './contract-signed.flex';
 export * from './campaign.flex';
+export * from './icons';
+export * from './style-c';

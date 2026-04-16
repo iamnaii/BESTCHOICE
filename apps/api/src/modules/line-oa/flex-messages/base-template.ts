@@ -411,3 +411,6 @@ export function wrapFlexMessage(altText: string, bubble: FlexBubble): FlexMessag
 export function formatBaht(amount: number): string {
   return `฿${amount.toLocaleString('th-TH')}`;
 }
+
+export { STYLE_C } from './style-c';
+export { ICONS } from './icons';

@@ -1,4 +1,4 @@
-export type TodoStatus = 'TODO' | 'DOING' | 'DONE';
+export type TodoStatus = 'TODO' | 'DOING' | 'REVIEW' | 'DONE';
 export type TodoPriority = 'LOW' | 'MEDIUM' | 'HIGH';
 export type TodoView = 'all' | 'today' | 'upcoming' | 'priority' | 'completed';
 

@@ -384,6 +384,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers }: TodoFormPr
                   {([
                     { v: 'TODO', label: 'รอทำ', color: 'bg-slate-400' },
                     { v: 'DOING', label: 'กำลังทำ', color: 'bg-amber-400' },
+                    { v: 'REVIEW', label: 'รอแก้ไข', color: 'bg-orange-400' },
                     { v: 'DONE', label: 'เสร็จ', color: 'bg-emerald-500' },
                   ] as const).map((s) => {
                     const active = form.status === s.v;

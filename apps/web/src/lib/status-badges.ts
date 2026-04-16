@@ -272,6 +272,7 @@ export const payoutStatusMap: Record<string, StatusConfig> = {
 export const todoStatusMap: Record<string, StatusConfig> = {
   TODO: { variant: 'secondary', label: 'รอทำ' },
   DOING: { variant: 'primary', appearance: 'light', label: 'กำลังทำ' },
+  REVIEW: { variant: 'warning', appearance: 'light', label: 'รอแก้ไข' },
   DONE: { variant: 'success', appearance: 'light', label: 'เสร็จแล้ว' },
 };
 

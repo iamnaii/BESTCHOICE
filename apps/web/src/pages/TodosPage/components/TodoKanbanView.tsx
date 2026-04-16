@@ -49,13 +49,14 @@ export function TodoKanbanView({
   const { user } = useAuth();
 
   const columns = useMemo<KanbanColumn<Todo>[]>(() => {
-    const byStatus: Record<TodoStatus, Todo[]> = { TODO: [], DOING: [], DONE: [] };
+    const byStatus: Record<TodoStatus, Todo[]> = { TODO: [], DOING: [], REVIEW: [], DONE: [] };
     todos.forEach((t) => {
       byStatus[t.status].push(t);
     });
     return [
       { id: 'TODO', title: 'รอทำ', color: 'bg-slate-400', items: byStatus.TODO },
       { id: 'DOING', title: 'กำลังทำ', color: 'bg-amber-400', items: byStatus.DOING },
+      { id: 'REVIEW', title: 'รอแก้ไข', color: 'bg-orange-400', items: byStatus.REVIEW },
       { id: 'DONE', title: 'เสร็จแล้ว', color: 'bg-emerald-500', items: byStatus.DONE },
     ];
   }, [todos]);

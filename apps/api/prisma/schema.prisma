@@ -38,6 +38,7 @@ enum ContractStatus {
 enum TodoStatus {
   TODO
   DOING
+  REVIEW
   DONE
 }
 

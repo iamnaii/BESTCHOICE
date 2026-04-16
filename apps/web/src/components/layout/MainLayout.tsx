@@ -41,11 +41,16 @@ function MobileSidebar() {
 }
 
 /* ── Main Content Area ────────────────────────────── */
+/* ── Full-bleed routes (no TopBar, no container padding) ── */
+const FULL_BLEED_ROUTES = ['/inbox'];
+
 function MainContent() {
   const isMobile = useIsMobile();
   const { sidebarCollapse } = useLayout();
   const { pathname } = useLocation();
   const { showShortcutsHelp, setShowShortcutsHelp } = useGlobalShortcuts();
+
+  const isFullBleed = FULL_BLEED_ROUTES.some((r) => pathname === r || pathname.startsWith(r + '/'));
 
   /* Sidebar offset applied via padding-left so the content
      shifts correctly when sidebar collapses / expands. */
@@ -70,7 +75,7 @@ function MainContent() {
         className="wrapper flex-1 flex flex-col min-w-0 transition-[padding-left] duration-300 ease-in-out"
         style={{ paddingLeft: sidebarOffset }}
       >
-        <TopBar />
+        {!isFullBleed && <TopBar />}
 
         <main
           id="main"
@@ -78,9 +83,13 @@ function MainContent() {
           className="flex-1 grow bg-background focus-visible:outline-hidden"
           key={pathname}
         >
-          <div className="container-fluid px-5 lg:px-7 pt-0 pb-20 lg:pb-8 animate-fadeIn">
+          {isFullBleed ? (
             <Outlet />
-          </div>
+          ) : (
+            <div className="container-fluid px-5 lg:px-7 pt-0 pb-20 lg:pb-8 animate-fadeIn">
+              <Outlet />
+            </div>
+          )}
         </main>
       </div>
 

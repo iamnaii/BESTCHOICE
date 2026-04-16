@@ -52,11 +52,11 @@ export default function PageHeader({
                 </svg>
               </button>
             )}
-            {icon && <span className="shrink-0">{icon}</span>}
-            <h1 className="text-xl font-bold text-foreground">{title}</h1>
+            {icon && <span className="flex items-center justify-center shrink-0 text-muted-foreground/80">{icon}</span>}
+            <h1 className="text-xl font-bold text-foreground leading-snug">{title}</h1>
             {badge}
           </div>
-          {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}
+          {subtitle && <p className="text-sm text-muted-foreground leading-snug">{subtitle}</p>}
         </div>
         {action && <div className="flex items-center gap-2.5">{action}</div>}
       </div>

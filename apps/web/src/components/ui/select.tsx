@@ -51,9 +51,9 @@ const selectTriggerVariants = cva(
   {
     variants: {
       size: {
-        sm: 'h-7 px-2.5 text-xs gap-1 rounded-md',
+        sm: 'h-7 px-2.5 text-xs leading-snug gap-1 rounded-md',
         md: 'h-[34px] px-3 text-[0.8125rem] leading-snug gap-1 rounded-md',
-        lg: 'h-10 px-4 text-sm gap-1.5 rounded-md',
+        lg: 'h-10 px-4 text-sm leading-snug gap-1.5 rounded-md',
       },
     },
     defaultVariants: {

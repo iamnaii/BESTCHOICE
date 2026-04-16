@@ -47,7 +47,7 @@ const roleBadgeMap: Record<string, { label: string; cls: string }> = {
 const expandedMenuClassNames: AccordionMenuClassNames = {
   root: 'space-y-0.5',
   item: [
-    'h-[34px] rounded-md text-[15px] font-medium',
+    'h-[34px] rounded-md text-[15px] font-medium leading-snug',
     'text-muted-foreground hover:text-foreground hover:bg-accent',
     'transition-colors duration-150',
     'data-[selected=true]:bg-primary/10 data-[selected=true]:text-primary data-[selected=true]:font-semibold',
@@ -58,7 +58,7 @@ const expandedMenuClassNames: AccordionMenuClassNames = {
   ].join(' '),
   sub: '',
   subTrigger: [
-    'h-[32px] rounded-none text-[13px] font-semibold tracking-wider uppercase',
+    'h-[32px] rounded-none text-[13px] font-semibold tracking-wider uppercase leading-snug',
     'text-muted-foreground/60 hover:text-muted-foreground hover:bg-transparent',
     'data-[state=open]:text-muted-foreground/60 data-[state=open]:bg-transparent',
     'transition-colors duration-150 px-2 mt-5 mb-0.5',

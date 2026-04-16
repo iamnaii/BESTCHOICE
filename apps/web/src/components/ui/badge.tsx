@@ -42,8 +42,8 @@ const badgeVariants = cva(
       size: {
         lg: 'rounded-full px-2 h-7 min-w-[28px] gap-1.5 text-xs [&_svg]:size-3.5',
         md: 'rounded-full px-[0.45rem] h-6 min-w-[24px] gap-1.5 text-xs [&_svg]:size-3.5',
-        sm: 'rounded-sm px-[0.325rem] h-5 min-w-[20px] gap-1 text-[0.6875rem] leading-3 [&_svg]:size-3',
-        xs: 'rounded-sm px-1 h-4 min-w-[16px] gap-1 text-[0.625rem] leading-2 [&_svg]:size-3',
+        sm: 'rounded-sm px-[0.325rem] h-5 min-w-[20px] gap-1 text-[0.6875rem] leading-snug [&_svg]:size-3',
+        xs: 'rounded-sm px-1 h-5 min-w-[20px] gap-1 text-[0.625rem] leading-snug [&_svg]:size-3',
       },
       shape: {
         default: '',
@@ -150,7 +150,7 @@ const badgeVariants = cva(
 );
 
 const badgeButtonVariants = cva(
-  'cursor-pointer transition-all inline-flex items-center justify-center leading-none size-3.5 [&>svg]:opacity-100! [&>svg]:size-3.5! p-0 rounded-md -mr-0.5 opacity-60 hover:opacity-100',
+  'cursor-pointer transition-all inline-flex items-center justify-center leading-snug size-3.5 [&>svg]:opacity-100! [&>svg]:size-3.5! p-0 rounded-md -mr-0.5 opacity-60 hover:opacity-100',
   {
     variants: {
       variant: {

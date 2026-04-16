@@ -176,7 +176,7 @@ export default function TopBar() {
         )}
 
         {/* Breadcrumb — desktop only */}
-        <nav className="hidden lg:flex items-center gap-1.5 text-sm">
+        <nav className="hidden lg:flex items-center gap-1.5 text-sm leading-snug">
           <Link to="/" className="text-muted-foreground hover:text-foreground transition-colors">หน้าหลัก</Link>
           {pathname !== '/' && (
             <>

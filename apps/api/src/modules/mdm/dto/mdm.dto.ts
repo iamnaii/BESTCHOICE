@@ -1,4 +1,23 @@
-import { IsString, IsNotEmpty, IsOptional, MaxLength } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsInt, MaxLength, Min } from 'class-validator';
+import { Type } from 'class-transformer';
+
+// ─── Device lookup ────────────────────────────────────────
+
+export class DeviceStatusDto {
+  @IsString()
+  @IsNotEmpty({ message: 'กรุณาระบุหมายเลข IMEI' })
+  @MaxLength(20, { message: 'หมายเลข IMEI ต้องไม่เกิน 20 ตัวอักษร' })
+  imei: string;
+}
+
+export class DeviceByIdDto {
+  @Type(() => Number)
+  @IsInt({ message: 'ID ต้องเป็นตัวเลข' })
+  @Min(1)
+  id: number;
+}
+
+// ─── Lost Mode (lock/unlock for overdue) ──────────────────
 
 export class LockDeviceDto {
   @IsString()
@@ -24,9 +43,51 @@ export class UnlockDeviceDto {
   note?: string;
 }
 
-export class DeviceStatusDto {
+// ─── Lock screen text ─────────────────────────────────────
+
+export class SetLockScreenTextDto {
+  @Type(() => Number)
+  @IsInt({ message: 'ID ต้องเป็นตัวเลข' })
+  id: number;
+
   @IsString()
-  @IsNotEmpty({ message: 'กรุณาระบุหมายเลข IMEI' })
-  @MaxLength(20, { message: 'หมายเลข IMEI ต้องไม่เกิน 20 ตัวอักษร' })
-  imei: string;
+  @IsNotEmpty({ message: 'กรุณาระบุข้อความ' })
+  @MaxLength(500, { message: 'ข้อความต้องไม่เกิน 500 ตัวอักษร' })
+  message: string;
+}
+
+// ─── Add device ───────────────────────────────────────────
+
+export class AddDeviceDto {
+  @IsString()
+  @IsNotEmpty({ message: 'กรุณาระบุ Serial Number' })
+  deviceId: string;
+
+  @IsString()
+  @IsNotEmpty({ message: 'กรุณาระบุชื่อ' })
+  name: string;
+
+  @IsString()
+  @IsNotEmpty({ message: 'กรุณาระบุเบอร์โทร' })
+  phone: string;
+}
+
+// ─── Edit device ──────────────────────────────────────────
+
+export class EditDeviceDto {
+  @Type(() => Number)
+  @IsInt()
+  id: number;
+
+  @IsString()
+  @IsNotEmpty({ message: 'กรุณาระบุชื่อ' })
+  name: string;
+
+  @IsString()
+  @IsNotEmpty({ message: 'กรุณาระบุเบอร์โทร' })
+  phone: string;
+
+  @IsString()
+  @IsNotEmpty({ message: 'กรุณาระบุชื่ออุปกรณ์' })
+  deviceName: string;
 }

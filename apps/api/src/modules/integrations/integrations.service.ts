@@ -317,7 +317,7 @@ export class IntegrationsService {
       }
 
       const res = await fetch(`${baseUrl}/api/mdm/devices?pageSize=1`, {
-        headers: { 'X-API-Key': apiKey },
+        headers: { 'X-API-Key': apiKey, 'Content-Type': 'application/json' },
         signal: AbortSignal.timeout(10000),
       });
 

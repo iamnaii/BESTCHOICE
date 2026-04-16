@@ -116,7 +116,7 @@ export class MdmAutoService {
 
       try {
         const reason = `ค้างชำระ ${daysOverdue} วัน (สัญญา ${contract.contractNumber})`;
-        const result = await this.mdmService.lockDevice(imei, reason);
+        const result = await this.mdmService.lockDeviceByImei(imei, reason);
 
         if (result.success) {
           await this.prisma.contract.update({
@@ -211,7 +211,7 @@ export class MdmAutoService {
         return;
       }
 
-      const result = await this.mdmService.unlockDevice(imei);
+      const result = await this.mdmService.unlockDeviceByImei(imei);
 
       if (result.success) {
         await this.prisma.contract.update({

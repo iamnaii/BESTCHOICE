@@ -102,23 +102,34 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
 
   if (!customerId) {
     return (
-      <div className="w-80 border-l border-border flex flex-col items-center justify-center text-center p-6">
-        <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center mb-3">
-          <User className="w-6 h-6 text-muted-foreground/50" />
+      <div className="w-80 border-l border-border flex flex-col items-center justify-center text-center p-6 bg-muted/20">
+        <div className="relative mb-4">
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-muted to-muted/50 flex items-center justify-center">
+            <User className="w-7 h-7 text-muted-foreground/30" />
+          </div>
         </div>
-        <p className="text-sm font-medium text-foreground/70 leading-snug">เลือกการสนทนาเพื่อดูข้อมูลลูกค้า</p>
-        <p className="text-xs text-muted-foreground mt-1">ข้อมูลลูกค้า สัญญา และประวัติจะแสดงที่นี่</p>
+        <p className="text-xs font-semibold text-foreground/50 leading-snug">ข้อมูลลูกค้า</p>
+        <p className="text-[11px] text-muted-foreground/50 mt-1 max-w-[180px] leading-relaxed">
+          เลือกแชทเพื่อดูข้อมูลลูกค้า สัญญา และประวัติ
+        </p>
       </div>
     );
   }
 
   if (isLoading) {
     return (
-      <div className="w-80 border-l border-border">
-        <div className="animate-pulse space-y-3 w-full p-4">
+      <div className="w-80 border-l border-border p-4">
+        <div className="animate-pulse space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-full bg-muted" />
+            <div className="flex-1 space-y-2">
+              <div className="h-3 w-24 bg-muted rounded" />
+              <div className="h-2.5 w-16 bg-muted rounded" />
+            </div>
+          </div>
+          <div className="h-20 bg-muted rounded-lg" />
+          <div className="h-28 bg-muted rounded-lg" />
           <div className="h-16 bg-muted rounded-lg" />
-          <div className="h-24 bg-muted rounded-lg" />
-          <div className="h-32 bg-muted rounded-lg" />
         </div>
       </div>
     );

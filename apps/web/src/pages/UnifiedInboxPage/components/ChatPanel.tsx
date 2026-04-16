@@ -263,12 +263,19 @@ export default function ChatPanel({
 
   if (!session) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
-        <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center mb-4">
-          <MessageSquare className="w-7 h-7 text-muted-foreground/50" />
+      <div className="flex-1 flex flex-col items-center justify-center text-center px-8 bg-muted/20">
+        <div className="relative mb-5">
+          <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center">
+            <MessageSquare className="w-8 h-8 text-primary/40" />
+          </div>
+          <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center">
+            <span className="w-2 h-2 rounded-full bg-primary/60 animate-pulse" />
+          </div>
         </div>
-        <p className="text-sm font-medium text-foreground/70 leading-snug">เลือกการสนทนาจากรายการด้านซ้าย</p>
-        <p className="text-xs text-muted-foreground mt-1">เพื่อเริ่มตอบแชทลูกค้า</p>
+        <p className="text-sm font-semibold text-foreground/60 leading-snug">เลือกการสนทนา</p>
+        <p className="text-xs text-muted-foreground/60 mt-1.5 max-w-[200px] leading-relaxed">
+          เลือกแชทจากรายการด้านซ้ายเพื่อเริ่มตอบลูกค้า
+        </p>
       </div>
     );
   }
@@ -279,13 +286,13 @@ export default function ChatPanel({
   return (
     <div className="flex-1 flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-card">
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/60 bg-card">
         <div className="flex items-center gap-3">
-          <button onClick={onBack} className="lg:hidden text-muted-foreground hover:text-foreground/70">
+          <button onClick={onBack} className="lg:hidden p-1 text-muted-foreground hover:text-foreground rounded-md hover:bg-muted transition-colors">
             <ArrowLeft className="w-5 h-5" />
           </button>
           {/* Customer avatar */}
-          <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center overflow-hidden shrink-0">
+          <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center overflow-hidden shrink-0 ring-2 ring-background">
             {session.customer?.avatarUrl || session.customer?.lineAvatarUrl ? (
               <img
                 src={session.customer.avatarUrl || session.customer.lineAvatarUrl}
@@ -297,11 +304,11 @@ export default function ChatPanel({
             )}
           </div>
           <div>
-            <h3 className="font-medium text-sm text-foreground">{displayName}</h3>
+            <h3 className="font-semibold text-[13px] text-foreground">{displayName}</h3>
             <div className="flex items-center gap-1.5 mt-0.5">
               <span
                 className={cn(
-                  'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium',
+                  'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold',
                   session.channel === 'LINE_FINANCE' || session.channel === 'LINE_SHOP'
                     ? 'bg-[#06C755]/10 text-[#06C755]'
                     : session.channel === 'FACEBOOK'
@@ -311,17 +318,26 @@ export default function ChatPanel({
                         : 'bg-muted text-foreground/70',
                 )}
               >
+                <span className={cn(
+                  'w-1.5 h-1.5 rounded-full',
+                  session.channel === 'LINE_FINANCE' || session.channel === 'LINE_SHOP'
+                    ? 'bg-[#06C755]'
+                    : session.channel === 'FACEBOOK'
+                      ? 'bg-[#1877F2]'
+                      : 'bg-current',
+                )} />
                 {session.channel === 'LINE_FINANCE'
-                  ? 'LINE'
+                  ? 'LINE การเงิน'
                   : session.channel === 'LINE_SHOP'
-                    ? 'LINE Shop'
+                    ? 'LINE ร้าน'
                     : session.channel === 'FACEBOOK'
                       ? 'Facebook'
                       : session.channel === 'TIKTOK'
                         ? 'TikTok'
                         : 'Web'}
               </span>
-              <span className="text-xs text-muted-foreground">{session.sessionStatus}</span>
+              <span className="w-px h-3 bg-border" />
+              <span className="text-[10px] text-muted-foreground/70 font-medium">{session.sessionStatus}</span>
             </div>
           </div>
         </div>
@@ -418,8 +434,8 @@ export default function ChatPanel({
 
       {/* Input */}
       {!isResolved && (
-        <div className="border-t border-border p-3 bg-background">
-          <div className="flex items-end gap-2">
+        <div className="border-t border-border/60 px-3 py-2.5 bg-card">
+          <div className="flex items-end gap-1.5">
             {/* File upload */}
             <input
               ref={fileInputRef}
@@ -430,10 +446,10 @@ export default function ChatPanel({
             />
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
+              className="p-2 text-muted-foreground/60 hover:text-foreground hover:bg-muted rounded-lg transition-colors"
               title="แนบไฟล์/รูปภาพ"
             >
-              <Paperclip className="w-5 h-5" />
+              <Paperclip className="w-4 h-4" />
             </button>
             {/* Emoji / Sticker picker */}
             <Popover open={emojiOpen} onOpenChange={setEmojiOpen}>
@@ -443,11 +459,11 @@ export default function ChatPanel({
                     'p-2 rounded-lg transition-colors',
                     emojiOpen
                       ? 'text-primary bg-primary/10'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-muted',
+                      : 'text-muted-foreground/60 hover:text-foreground hover:bg-muted',
                   )}
                   title="Emoji / สติกเกอร์"
                 >
-                  <Smile className="w-5 h-5" />
+                  <Smile className="w-4 h-4" />
                 </button>
               </PopoverTrigger>
               <PopoverContent
@@ -637,14 +653,19 @@ export default function ChatPanel({
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="พิมพ์ข้อความ... (Enter ส่ง, Shift+Enter ขึ้นบรรทัดใหม่)"
+              placeholder="พิมพ์ข้อความ..."
               rows={1}
-              className="flex-1 resize-none px-3 py-2 text-sm border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary max-h-32"
+              className="flex-1 resize-none px-3 py-2 text-sm bg-muted/40 rounded-lg border-0 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:bg-background max-h-32 transition-all placeholder:text-muted-foreground/40"
             />
             <button
               onClick={handleSend}
               disabled={!inputText.trim()}
-              className="p-2.5 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className={cn(
+                'p-2 rounded-lg transition-all duration-200',
+                inputText.trim()
+                  ? 'bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 hover:shadow-md'
+                  : 'bg-muted text-muted-foreground/40 cursor-not-allowed',
+              )}
             >
               <Send className="w-4 h-4" />
             </button>

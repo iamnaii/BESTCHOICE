@@ -43,6 +43,7 @@ interface Integration {
   configured: boolean;
   icon?: string;
   webhookUrl?: string;
+  details?: Record<string, string>;
 }
 
 interface RegistryField {
@@ -136,8 +137,20 @@ function IntegrationCard({
           )}
         </div>
       </div>
+      {/* Connected details */}
+      {integration.configured && integration.details && Object.keys(integration.details).length > 0 && (
+        <div className="mt-3 pt-3 border-t border-border/50 space-y-1">
+          {Object.entries(integration.details).map(([label, value]) => (
+            <div key={label} className="flex justify-between text-2xs">
+              <span className="text-muted-foreground">{label}</span>
+              <span className="text-foreground font-mono truncate max-w-[180px]" title={value}>{value}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {/* Webhook URL */}
       {integration.webhookUrl && (
-        <div className="mt-3 pt-3 border-t border-border/50">
+        <div className={`${integration.configured && integration.details ? 'mt-2 pt-2' : 'mt-3 pt-3'} border-t border-border/50`}>
           <p className="text-2xs font-medium text-muted-foreground mb-1">Webhook URL</p>
           <code className="text-2xs bg-muted rounded px-1.5 py-0.5 font-mono text-foreground break-all">
             {integration.webhookUrl}

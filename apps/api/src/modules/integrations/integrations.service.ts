@@ -10,6 +10,8 @@ export interface IntegrationStatus {
   icon: string;
   status: 'connected' | 'not_configured';
   webhookUrl?: string;
+  /** Non-sensitive config summary shown on the card (e.g. Merchant ID, SMTP host) */
+  details?: Record<string, string>;
 }
 
 export interface TestConnectionResult {
@@ -36,6 +38,22 @@ export class IntegrationsService {
             return value !== undefined && value !== null && value !== '';
           });
 
+        // Build non-sensitive details summary for connected integrations
+        const details: Record<string, string> = {};
+        if (isConfigured) {
+          for (const f of integration.fields) {
+            if (!f.sensitive && config[f.key]) {
+              details[f.label] = config[f.key];
+            }
+          }
+          // Add masked preview of first sensitive field (last 4 chars)
+          const firstSensitive = integration.fields.find((f) => f.sensitive && config[f.key]);
+          if (firstSensitive && config[firstSensitive.key]) {
+            const val = config[firstSensitive.key];
+            details[firstSensitive.label] = `••••${val.slice(-4)}`;
+          }
+        }
+
         results.push({
           key: integration.key,
           name: integration.name,
@@ -43,6 +61,7 @@ export class IntegrationsService {
           icon: integration.icon,
           status: isConfigured ? 'connected' : 'not_configured',
           webhookUrl: integration.webhookUrl,
+          details: isConfigured ? details : undefined,
         });
       } catch {
         // If one integration fails, still show the rest

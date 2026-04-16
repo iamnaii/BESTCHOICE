@@ -1,14 +1,15 @@
+import { FlexBubble, FlexMessagePayload, wrapFlexMessage } from './base-template';
 import {
-  FlexBubble,
-  FlexMessagePayload,
-  COLORS,
-  GRADIENTS,
-  createHeader,
-  createDetailRow,
-  createAmountRow,
-  createPostbackButton,
-  wrapFlexMessage,
-} from './base-template';
+  createStyleCHeader,
+  createInfoCard,
+  createTipBox,
+  createStyleCButtons,
+  STYLE_C,
+  FlexBox,
+  FlexComponent,
+} from './style-c';
+import { ICONS } from './icons';
+import { formatBaht } from './base-template';
 
 export interface OverdueNoticeData {
   customerName: string;
@@ -23,88 +24,105 @@ export interface OverdueNoticeData {
 }
 
 export function buildOverdueNoticeFlex(data: OverdueNoticeData): FlexMessagePayload {
+  const badge = {
+    text: 'ค้างชำระ',
+    bg: STYLE_C.BADGE.DANGER.bg,
+    textColor: STYLE_C.BADGE.DANGER.text,
+  };
+
+  // Separator
+  const separator: FlexComponent = {
+    type: 'separator',
+    margin: 'lg',
+    color: '#e2e8f0',
+  } as FlexComponent;
+
+  // Breakdown sub text
+  const breakdownText =
+    data.lateFee > 0
+      ? `ค่างวด ${formatBaht(data.amountDue)} + ค่าปรับ ${formatBaht(data.lateFee)}`
+      : `ค่างวด ${formatBaht(data.amountDue)}`;
+
+  const infoCard = createInfoCard(
+    'สัญญา ' + data.contractNumber,
+    `เกินกำหนด ${data.daysOverdue} วัน`,
+    formatBaht(data.totalOutstanding),
+    STYLE_C.BADGE.DANGER.text,
+    breakdownText,
+    STYLE_C.BADGE.DANGER.text,
+    STYLE_C.INFO_CARD_BG.DANGER,
+    STYLE_C.INFO_CARD_BORDER.DANGER,
+  );
+
+  const detailRows: FlexComponent[] = [
+    {
+      type: 'box',
+      layout: 'horizontal',
+      contents: [
+        { type: 'text', text: 'งวดที่', size: 'sm', color: STYLE_C.TEXT.SECONDARY, flex: 1 } as FlexComponent,
+        { type: 'text', text: `${data.installmentNo}/${data.totalInstallments}`, size: 'sm', color: STYLE_C.TEXT.PRIMARY, weight: 'bold', align: 'end' } as FlexComponent,
+      ],
+      margin: 'md',
+    } as FlexBox,
+    {
+      type: 'box',
+      layout: 'horizontal',
+      contents: [
+        { type: 'text', text: 'ครบกำหนดชำระ', size: 'sm', color: STYLE_C.TEXT.SECONDARY, flex: 1 } as FlexComponent,
+        { type: 'text', text: data.dueDate, size: 'sm', color: STYLE_C.TEXT.PRIMARY, weight: 'bold', align: 'end' } as FlexComponent,
+      ],
+      margin: 'sm',
+    } as FlexBox,
+  ];
+
+  const tipBox = createTipBox(
+    ICONS.INFO_CIRCLE,
+    'ชำระภายในวันนี้เพื่อหลีกเลี่ยงค่าปรับเพิ่มเติม',
+    STYLE_C.TIP_BOX.ORANGE_BG,
+    STYLE_C.TIP_BOX.ORANGE_TEXT,
+  );
+
+  const buttons = createStyleCButtons(
+    'ชำระเงินทันที',
+    { type: 'postback', label: 'ชำระเงินทันที', data: `action=pay&contract=${data.contractNumber}` },
+    STYLE_C.BUTTON.RED,
+    'ติดต่อเจ้าหน้าที่',
+    { type: 'postback', label: 'ติดต่อเจ้าหน้าที่', data: `action=contact_staff&contract=${data.contractNumber}` },
+  );
+
   const bubble: FlexBubble = {
     type: 'bubble',
     size: 'mega',
-    header: createHeader('⚠️ แจ้งค้างชำระ', `สัญญา ${data.contractNumber}`, GRADIENTS.RED),
+    header: createStyleCHeader(
+      ICONS.ALERT_TRIANGLE,
+      'แจ้งเตือนค้างชำระ',
+      'BESTCHOICE FINANCE',
+      STYLE_C.GRADIENT.RED,
+      badge,
+    ),
     body: {
       type: 'box',
       layout: 'vertical',
       contents: [
-        {
-          type: 'text',
-          text: `คุณ${data.customerName}`,
-          size: 'md',
-          color: COLORS.DARK,
-          weight: 'bold',
-        },
-        // Overdue badge
-        {
-          type: 'box',
-          layout: 'horizontal',
-          contents: [
-            {
-              type: 'text',
-              text: `❗ เลยกำหนด ${data.daysOverdue} วัน`,
-              size: 'sm',
-              color: COLORS.WHITE,
-              weight: 'bold',
-              align: 'center',
-            },
-          ],
-          backgroundColor: COLORS.DANGER,
-          cornerRadius: '20px',
-          paddingAll: '8px',
-          margin: 'md',
-        },
-        createAmountRow('ยอดค้างชำระ', data.totalOutstanding, COLORS.DANGER),
-        {
-          type: 'separator',
-          margin: 'lg',
-          color: COLORS.BORDER,
-        },
-        createDetailRow('งวดที่', `${data.installmentNo}/${data.totalInstallments}`),
-        createDetailRow('ค่างวด', `฿${data.amountDue.toLocaleString()}`),
-        ...(data.lateFee > 0
-          ? [createDetailRow('ค่าปรับ', `+฿${data.lateFee.toLocaleString()}`, COLORS.DANGER)]
-          : []),
-        createDetailRow('ครบกำหนด', data.dueDate),
-        // Warning box
-        {
-          type: 'box',
-          layout: 'vertical',
-          contents: [
-            {
-              type: 'text',
-              text: '⚠️ กรุณาชำระโดยเร็ว เพื่อหลีกเลี่ยงค่าปรับเพิ่มเติม',
-              size: 'xs',
-              color: COLORS.DANGER,
-              wrap: true,
-            },
-          ],
-          backgroundColor: COLORS.DANGER_LIGHT,
-          cornerRadius: '8px',
-          paddingAll: '12px',
-          margin: 'xl',
-        },
+        separator,
+        infoCard,
+        ...detailRows,
+        tipBox,
       ],
       paddingAll: '20px',
-      spacing: 'sm',
+      spacing: 'none',
     },
     footer: {
       type: 'box',
       layout: 'vertical',
-      contents: [
-        createPostbackButton('💳 ชำระเงินทันที', `action=pay&contract=${data.contractNumber}`, COLORS.DANGER),
-        createPostbackButton('📋 ดูรายละเอียด', `action=check_balance&contract=${data.contractNumber}`, '#AAAAAA'),
-      ],
+      contents: [buttons],
       paddingAll: '15px',
       spacing: 'sm',
     },
   };
 
   return wrapFlexMessage(
-    `แจ้งค้างชำระ: งวดที่ ${data.installmentNo} ยอด ${data.totalOutstanding.toLocaleString()} บาท เลยกำหนด ${data.daysOverdue} วัน`,
+    `แจ้งค้างชำระ: งวดที่ ${data.installmentNo} ยอด ${formatBaht(data.totalOutstanding)} เลยกำหนด ${data.daysOverdue} วัน`,
     bubble,
   );
 }

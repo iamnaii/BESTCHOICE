@@ -58,7 +58,7 @@ const expandedMenuClassNames: AccordionMenuClassNames = {
   ].join(' '),
   sub: '',
   subTrigger: [
-    'h-[30px] rounded-none text-[12px] font-semibold tracking-wider uppercase',
+    'h-[32px] rounded-none text-[13px] font-semibold tracking-wider uppercase',
     'text-emerald-400/50 hover:text-emerald-400/70 hover:bg-transparent',
     'data-[state=open]:text-emerald-400/60 data-[state=open]:bg-transparent',
     'transition-colors duration-150 px-2 mt-5 mb-0.5',

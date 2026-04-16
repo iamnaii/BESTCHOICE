@@ -415,7 +415,7 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
           {/* Section: หมายเหตุ */}
           <div className="rounded-xl border border-border bg-card p-5">
             <div className="flex items-center gap-2.5 mb-4">
-              <div className="flex items-center justify-center size-8 rounded-lg bg-slate-500/10 text-slate-500">
+              <div className="flex items-center justify-center size-8 rounded-lg bg-muted text-muted-foreground">
                 <StickyNote className="size-4" strokeWidth={1.5} />
               </div>
               <div>

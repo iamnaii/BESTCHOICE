@@ -272,7 +272,7 @@ export default function AssetForm({
               onClick={() => setShowAdvanced(!showAdvanced)}
               className="flex items-center gap-2.5 w-full text-left"
             >
-              <div className="flex items-center justify-center size-8 rounded-lg bg-slate-500/10 text-slate-500">
+              <div className="flex items-center justify-center size-8 rounded-lg bg-muted text-muted-foreground">
                 <Settings className="size-4" strokeWidth={1.5} />
               </div>
               <div className="flex-1">

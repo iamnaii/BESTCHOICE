@@ -133,7 +133,7 @@ export default function PaymentTable({
       {selectedIds.size > 0 && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground px-6 py-3 rounded-xl shadow-lg flex items-center gap-4 z-50">
           <span className="text-sm font-medium">เลือก {selectedIds.size} รายการ ({Math.round(batchTotal).toLocaleString()} ฿)</span>
-          <button onClick={onShowBatchModal} className="px-4 py-1.5 bg-card text-primary rounded-lg text-sm font-medium hover:bg-white/90">
+          <button onClick={onShowBatchModal} className="px-4 py-1.5 bg-card text-primary rounded-lg text-sm font-medium hover:bg-card/90">
             รับชำระรวม
           </button>
           <button onClick={onClearSelection} className="text-xs text-white/70 hover:text-white">ยกเลิก</button>

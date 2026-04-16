@@ -80,7 +80,7 @@ function AiSettingsForm({ initial }: { initial: AiSettings }) {
               checked={form.autoModeEnabled}
               onCheckedChange={(checked) => setForm((prev) => ({ ...prev, autoModeEnabled: checked }))}
             />
-            <span className="text-sm text-gray-700">
+            <span className="text-sm text-foreground">
               {form.autoModeEnabled ? 'เปิดใช้งาน — AI จะตอบอัตโนมัติ' : 'ปิดใช้งาน — ไม่มีการตอบอัตโนมัติ'}
             </span>
           </label>
@@ -100,7 +100,7 @@ function AiSettingsForm({ initial }: { initial: AiSettings }) {
                 className={`flex items-center gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${
                   form.enabledChannels.includes(ch.value)
                     ? 'border-purple-400 bg-purple-50'
-                    : 'border-gray-200 bg-white hover:bg-gray-50'
+                    : 'border-border bg-card hover:bg-accent'
                 }`}
               >
                 <input
@@ -109,7 +109,7 @@ function AiSettingsForm({ initial }: { initial: AiSettings }) {
                   onChange={() => toggleChannel(ch.value)}
                   className="accent-purple-600"
                 />
-                <span className="text-sm text-gray-700">{ch.label}</span>
+                <span className="text-sm text-foreground">{ch.label}</span>
               </label>
             ))}
           </div>
@@ -123,7 +123,7 @@ function AiSettingsForm({ initial }: { initial: AiSettings }) {
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-500">ยิ่งสูง AI ยิ่งตอบน้อย แต่แม่นกว่า</span>
+            <span className="text-sm text-muted-foreground">ยิ่งสูง AI ยิ่งตอบน้อย แต่แม่นกว่า</span>
             <span className="text-lg font-bold text-purple-600">{form.confidenceThreshold}%</span>
           </div>
           <Slider
@@ -134,7 +134,7 @@ function AiSettingsForm({ initial }: { initial: AiSettings }) {
             step={1}
             className="w-full"
           />
-          <div className="flex justify-between text-xs text-gray-400">
+          <div className="flex justify-between text-xs text-muted-foreground">
             <span>0% — ตอบมาก</span>
             <span>100% — ตอบเฉพาะที่แน่ใจมาก</span>
           </div>
@@ -156,7 +156,7 @@ function AiSettingsForm({ initial }: { initial: AiSettings }) {
               onChange={(e) => setForm((prev) => ({ ...prev, maxRepliesPerSession: Number(e.target.value) }))}
               className="w-28"
             />
-            <span className="text-sm text-gray-500">ครั้ง — หลังจากนี้จะโอนให้พนักงาน</span>
+            <span className="text-sm text-muted-foreground">ครั้ง — หลังจากนี้จะโอนให้พนักงาน</span>
           </div>
         </CardContent>
       </Card>

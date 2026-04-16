@@ -99,17 +99,17 @@ export default function ConversationList({
   }, [sessions, filters, currentUserId]);
 
   return (
-    <div className="flex flex-col h-full border-r border-gray-200">
+    <div className="flex flex-col h-full border-r border-border">
       {/* Search bar */}
-      <div className="p-3 border-b border-gray-200">
+      <div className="p-3 border-b border-border">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <input
             type="text"
             placeholder="ค้นหาชื่อ, เบอร์..."
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+            className="w-full pl-9 pr-3 py-2 text-sm border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
           />
         </div>
       </div>
@@ -125,11 +125,11 @@ export default function ConversationList({
       {/* Room list */}
       <div className="flex-1 overflow-y-auto">
         {isLoading ? (
-          <div className="flex items-center justify-center py-12 text-gray-400 text-sm">
+          <div className="flex items-center justify-center py-12 text-muted-foreground text-sm">
             กำลังโหลด...
           </div>
         ) : filteredAndSorted.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-gray-400 text-sm">
+          <div className="flex flex-col items-center justify-center py-12 text-muted-foreground text-sm">
             <Filter className="w-8 h-8 mb-2" />
             <span>ไม่พบการสนทนา</span>
           </div>

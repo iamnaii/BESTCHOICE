@@ -35,7 +35,7 @@ function StatCard({ label, value, accent = 'blue' }: { label: string; value: str
   };
   return (
     <div className={`rounded-xl border p-4 ${colors[accent]}`}>
-      <p className="text-xs text-gray-500">{label}</p>
+      <p className="text-xs text-muted-foreground">{label}</p>
       <p className="text-2xl font-bold mt-1">{value}</p>
     </div>
   );
@@ -148,7 +148,7 @@ export default function ChatbotFinanceLearningPage() {
             className={`px-4 py-1.5 rounded-full text-sm ${
               statusFilter === s
                 ? 'bg-blue-600 text-white'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                : 'bg-muted text-gray-600 hover:bg-muted/80'
             }`}
           >
             {s} {s === 'PENDING' && stats.data?.suggestions.pending ? `(${stats.data.suggestions.pending})` : ''}
@@ -167,14 +167,14 @@ export default function ChatbotFinanceLearningPage() {
             errorTitle="ไม่สามารถโหลด suggestions ได้"
           >
             {suggestions.data?.items.length === 0 ? (
-              <p className="text-sm text-gray-400 p-4">ไม่มี suggestions สถานะ {statusFilter}</p>
+              <p className="text-sm text-muted-foreground p-4">ไม่มี suggestions สถานะ {statusFilter}</p>
             ) : (
               suggestions.data?.items.map((s) => (
                 <div
                   key={s.id}
                   onClick={() => setSelectedSuggestion(s)}
-                  className={`p-3 border rounded-lg cursor-pointer hover:bg-gray-50 ${
-                    selectedSuggestion?.id === s.id ? 'border-blue-400 bg-blue-50' : 'bg-white'
+                  className={`p-3 border rounded-lg cursor-pointer hover:bg-accent ${
+                    selectedSuggestion?.id === s.id ? 'border-blue-400 bg-blue-50' : 'bg-card'
                   }`}
                 >
                   <div className="flex justify-between items-start">
@@ -184,7 +184,7 @@ export default function ChatbotFinanceLearningPage() {
                       <StatusBadge status={s.status} />
                     </div>
                   </div>
-                  <p className="text-xs text-gray-400 mt-1">
+                  <p className="text-xs text-muted-foreground mt-1">
                     {new Date(s.createdAt).toLocaleDateString('th-TH')} — {s.suggestedIntent}
                   </p>
                 </div>
@@ -194,9 +194,9 @@ export default function ChatbotFinanceLearningPage() {
         </div>
 
         {/* Detail */}
-        <div className="col-span-7 bg-white border rounded-xl p-5">
+        <div className="col-span-7 bg-card border rounded-xl p-5">
           {!selectedSuggestion ? (
-            <p className="text-gray-400 text-sm">เลือก suggestion จากด้านซ้ายเพื่อดูรายละเอียด</p>
+            <p className="text-muted-foreground text-sm">เลือก suggestion จากด้านซ้ายเพื่อดูรายละเอียด</p>
           ) : (
             <div className="space-y-4">
               <div className="flex justify-between items-start">
@@ -208,34 +208,34 @@ export default function ChatbotFinanceLearningPage() {
               </div>
 
               <div>
-                <label className="text-xs text-gray-500">คำถามลูกค้า</label>
+                <label className="text-xs text-muted-foreground">คำถามลูกค้า</label>
                 <p className="text-sm bg-yellow-50 p-3 rounded-lg mt-1">{selectedSuggestion.customerQuestion}</p>
               </div>
 
               {selectedSuggestion.staffAnswer && (
                 <div>
-                  <label className="text-xs text-gray-500">คำตอบจากพนักงาน</label>
+                  <label className="text-xs text-muted-foreground">คำตอบจากพนักงาน</label>
                   <p className="text-sm bg-green-50 p-3 rounded-lg mt-1 whitespace-pre-wrap">{selectedSuggestion.staffAnswer}</p>
                 </div>
               )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs text-gray-500">Intent</label>
+                  <label className="text-xs text-muted-foreground">Intent</label>
                   <p className="text-sm font-mono mt-1">{selectedSuggestion.suggestedIntent}</p>
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500">Source</label>
+                  <label className="text-xs text-muted-foreground">Source</label>
                   <p className="text-sm mt-1">{selectedSuggestion.source}</p>
                 </div>
               </div>
 
               {selectedSuggestion.suggestedKeywords.length > 0 && (
                 <div>
-                  <label className="text-xs text-gray-500">Keywords</label>
+                  <label className="text-xs text-muted-foreground">Keywords</label>
                   <div className="flex flex-wrap gap-1 mt-1">
                     {selectedSuggestion.suggestedKeywords.map((kw, i) => (
-                      <span key={i} className="text-xs bg-gray-100 px-2 py-0.5 rounded">{kw}</span>
+                      <span key={i} className="text-xs bg-muted px-2 py-0.5 rounded">{kw}</span>
                     ))}
                   </div>
                 </div>
@@ -243,7 +243,7 @@ export default function ChatbotFinanceLearningPage() {
 
               {selectedSuggestion.suggestedTemplate && (
                 <div>
-                  <label className="text-xs text-gray-500">Suggested Template</label>
+                  <label className="text-xs text-muted-foreground">Suggested Template</label>
                   <p className="text-sm bg-blue-50 p-3 rounded-lg mt-1 whitespace-pre-wrap">{selectedSuggestion.suggestedTemplate}</p>
                 </div>
               )}
@@ -268,7 +268,7 @@ export default function ChatbotFinanceLearningPage() {
               )}
 
               {selectedSuggestion.reviewedAt && (
-                <p className="text-xs text-gray-400">
+                <p className="text-xs text-muted-foreground">
                   Reviewed: {new Date(selectedSuggestion.reviewedAt).toLocaleString('th-TH')}
                 </p>
               )}

@@ -23,13 +23,13 @@ interface StatCardProps {
 
 function StatCard({ icon, label, value, sub }: StatCardProps) {
   return (
-    <div className="bg-white rounded-xl p-4 shadow-sm">
+    <div className="bg-card rounded-xl p-4 shadow-sm">
       <div className="flex items-center gap-2 mb-2">
         {icon}
-        <span className="text-xs text-gray-500">{label}</span>
+        <span className="text-xs text-muted-foreground">{label}</span>
       </div>
-      <p className="text-2xl font-bold text-gray-900">{value}</p>
-      {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
+      <p className="text-2xl font-bold text-foreground">{value}</p>
+      {sub && <p className="text-xs text-muted-foreground mt-1">{sub}</p>}
     </div>
   );
 }
@@ -150,8 +150,8 @@ export default function AiTrainingPage() {
               <div className="space-y-2">
                 {Object.entries(stats?.bySource ?? {}).map(([source, count]) => (
                   <div key={source} className="flex justify-between items-center text-sm">
-                    <span className="text-gray-700">{source}</span>
-                    <span className="font-medium text-gray-900">{(count as number).toLocaleString()} pairs</span>
+                    <span className="text-foreground">{source}</span>
+                    <span className="font-medium text-foreground">{(count as number).toLocaleString()} pairs</span>
                   </div>
                 ))}
               </div>
@@ -171,16 +171,16 @@ export default function AiTrainingPage() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div
-              className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-purple-400 transition-colors cursor-pointer"
+              className="border-2 border-dashed border-border rounded-xl p-6 text-center hover:border-purple-400 transition-colors cursor-pointer"
               onClick={() => fileInputRef.current?.click()}
             >
-              <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+              <Upload className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
               {selectedFile ? (
                 <p className="text-sm text-purple-600 font-medium">{selectedFile.name}</p>
               ) : (
                 <>
-                  <p className="text-sm text-gray-600">คลิกเพื่อเลือกไฟล์</p>
-                  <p className="text-xs text-gray-400 mt-1">รองรับ .csv และ .json</p>
+                  <p className="text-sm text-muted-foreground">คลิกเพื่อเลือกไฟล์</p>
+                  <p className="text-xs text-muted-foreground mt-1">รองรับ .csv และ .json</p>
                 </>
               )}
               <input

@@ -25,7 +25,7 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
   if (isSystem) {
     return (
       <div className="flex justify-center my-2">
-        <span className="text-[11px] text-gray-400 bg-gray-50 px-3 py-1 rounded-full">
+        <span className="text-[11px] text-muted-foreground bg-muted px-3 py-1 rounded-full">
           {message.text}
         </span>
       </div>
@@ -39,11 +39,11 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
     return (
       <div className={cn('flex gap-2 mb-3', isCustomer ? 'justify-start' : 'justify-end')}>
         {isCustomer && (
-          <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden shrink-0 mt-1">
+          <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center overflow-hidden shrink-0 mt-1">
             {customerAvatar ? (
               <img src={customerAvatar} alt={customerInitial ?? ''} className="w-full h-full object-cover" />
             ) : (
-              <span className="text-gray-400 text-[10px] font-bold">{customerInitial ?? '?'}</span>
+              <span className="text-muted-foreground text-[10px] font-bold">{customerInitial ?? '?'}</span>
             )}
           </div>
         )}
@@ -55,11 +55,11 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
             loading="lazy"
           />
           <span className="flex items-center mt-1 px-1 self-end">
-            <span className="text-[10px] text-gray-300">
+            <span className="text-[10px] text-muted-foreground">
               {format(new Date(message.createdAt), 'HH:mm')}
             </span>
             {isStaff && (
-              <span className={cn('text-[10px] ml-1', message.readAt ? 'text-blue-400' : 'text-gray-400')}>
+              <span className={cn('text-[10px] ml-1', message.readAt ? 'text-blue-400' : 'text-muted-foreground')}>
                 {message.readAt ? '✓✓' : '✓'}
               </span>
             )}
@@ -76,11 +76,11 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
     return (
       <div className={cn('flex gap-2 mb-3', isCustomer ? 'justify-start' : 'justify-end')}>
         {isCustomer && (
-          <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden shrink-0 mt-1">
+          <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center overflow-hidden shrink-0 mt-1">
             {customerAvatar ? (
               <img src={customerAvatar} alt={customerInitial ?? ''} className="w-full h-full object-cover" />
             ) : (
-              <span className="text-gray-400 text-[10px] font-bold">{customerInitial ?? '?'}</span>
+              <span className="text-muted-foreground text-[10px] font-bold">{customerInitial ?? '?'}</span>
             )}
           </div>
         )}
@@ -94,11 +94,11 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
             className="w-[120px] h-[120px] object-contain"
           />
           <span className="flex items-center mt-1 px-1 self-end">
-            <span className="text-[10px] text-gray-300">
+            <span className="text-[10px] text-muted-foreground">
               {format(new Date(message.createdAt), 'HH:mm')}
             </span>
             {isStaff && (
-              <span className={cn('text-[10px] ml-1', message.readAt ? 'text-blue-400' : 'text-gray-400')}>
+              <span className={cn('text-[10px] ml-1', message.readAt ? 'text-blue-400' : 'text-muted-foreground')}>
                 {message.readAt ? '✓✓' : '✓'}
               </span>
             )}
@@ -112,11 +112,11 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
     <div className={cn('flex gap-2 mb-3', isCustomer ? 'justify-start' : 'justify-end')}>
       {/* Customer avatar */}
       {isCustomer && (
-        <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden shrink-0 mt-1">
+        <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center overflow-hidden shrink-0 mt-1">
           {customerAvatar ? (
             <img src={customerAvatar} alt={customerInitial ?? ''} className="w-full h-full object-cover" />
           ) : (
-            <span className="text-gray-400 text-[10px] font-bold">{customerInitial ?? '?'}</span>
+            <span className="text-muted-foreground text-[10px] font-bold">{customerInitial ?? '?'}</span>
           )}
         </div>
       )}
@@ -132,7 +132,7 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
       <div className={cn('max-w-[75%] flex flex-col', isCustomer ? 'items-start' : 'items-end')}>
         {/* Sender label */}
         {(isBot || isStaff) && (
-          <span className="text-[10px] text-gray-400 mb-0.5 px-1">
+          <span className="text-[10px] text-muted-foreground mb-0.5 px-1">
             {isBot ? 'Bot' : message.staff?.name ?? 'พนักงาน'}
           </span>
         )}
@@ -142,7 +142,7 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
           className={cn(
             'px-3.5 py-2 rounded-2xl text-sm leading-relaxed',
             isCustomer
-              ? 'bg-gray-100 text-gray-900 rounded-bl-md'
+              ? 'bg-muted text-foreground rounded-bl-md'
               : isBot
                 ? 'bg-purple-50 text-purple-900 rounded-br-md border border-purple-100'
                 : 'bg-blue-500 text-white rounded-br-md',
@@ -164,11 +164,11 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
 
         {/* Timestamp + Read receipt */}
         <span className="flex items-center mt-0.5 px-1">
-          <span className="text-[10px] text-gray-300">
+          <span className="text-[10px] text-muted-foreground">
             {format(new Date(message.createdAt), 'HH:mm')}
           </span>
           {message.role === 'STAFF' && (
-            <span className={cn('text-[10px] ml-1', message.readAt ? 'text-blue-400' : 'text-gray-400')}>
+            <span className={cn('text-[10px] ml-1', message.readAt ? 'text-blue-400' : 'text-muted-foreground')}>
               {message.readAt ? '✓✓' : '✓'}
             </span>
           )}

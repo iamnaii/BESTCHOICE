@@ -45,7 +45,7 @@ const ROLE_BADGE: Record<string, { label: string; cls: string }> = {
   BOT: { label: '🤖 น้องเบส', cls: 'bg-green-50 border-green-200' },
   STAFF: { label: '👨‍💼 พนักงาน', cls: 'bg-purple-50 border-purple-200' },
   AUTO_TRIGGER: { label: '⏰ Auto', cls: 'bg-yellow-50 border-yellow-200' },
-  SYSTEM: { label: '⚙️ System', cls: 'bg-gray-50 border-gray-200' },
+  SYSTEM: { label: '⚙️ System', cls: 'bg-muted border-gray-200' },
 };
 
 export default function ChatbotFinanceSessionsPage() {
@@ -128,21 +128,21 @@ export default function ChatbotFinanceSessionsPage() {
             errorTitle="ไม่สามารถโหลด Sessions ได้"
           >
           {list.data?.items.length === 0 ? (
-            <div className="p-4 text-gray-400 text-sm">ไม่พบ session</div>
+            <div className="p-4 text-muted-foreground text-sm">ไม่พบ session</div>
           ) : (
             <ul className="divide-y">
               {list.data?.items.map((s) => (
                 <li
                   key={s.id}
                   onClick={() => setSelectedId(s.id)}
-                  className={`p-3 cursor-pointer hover:bg-gray-50 ${selectedId === s.id ? 'bg-blue-50' : ''}`}
+                  className={`p-3 cursor-pointer hover:bg-muted ${selectedId === s.id ? 'bg-blue-50' : ''}`}
                 >
                   <div className="flex justify-between items-start">
                     <div>
                       <p className="font-medium text-sm">
                         {s.customer?.name || '(ยังไม่ verify)'}
                       </p>
-                      <p className="text-xs text-gray-500">{s.customer?.phone || s.lineUserId.slice(0, 12)}</p>
+                      <p className="text-xs text-muted-foreground">{s.customer?.phone || s.lineUserId.slice(0, 12)}</p>
                     </div>
                     {s.handoffMode && (() => {
                       const cfg = getStatusBadgeProps('HANDOFF', sessionStatusMap);
@@ -153,7 +153,7 @@ export default function ChatbotFinanceSessionsPage() {
                       );
                     })()}
                   </div>
-                  <p className="text-xs text-gray-400 mt-1">
+                  <p className="text-xs text-muted-foreground mt-1">
                     {s.totalMessages} ข้อความ · {new Date(s.lastMessageAt).toLocaleString('th-TH')}
                   </p>
                 </li>
@@ -170,7 +170,7 @@ export default function ChatbotFinanceSessionsPage() {
               >
                 ← ก่อนหน้า
               </button>
-              <span className="text-gray-500">
+              <span className="text-muted-foreground">
                 {page} / {Math.ceil(list.data.total / list.data.limit)}
               </span>
               <button
@@ -189,17 +189,17 @@ export default function ChatbotFinanceSessionsPage() {
         <Card className="col-span-7">
           <CardContent className="p-4">
           {!selectedId ? (
-            <p className="text-gray-400 text-sm">เลือก session เพื่อดูรายละเอียด</p>
+            <p className="text-muted-foreground text-sm">เลือก session เพื่อดูรายละเอียด</p>
           ) : detail.isLoading ? (
-            <p className="text-gray-500 text-sm">กำลังโหลด...</p>
+            <p className="text-muted-foreground text-sm">กำลังโหลด...</p>
           ) : !detail.data ? (
-            <p className="text-gray-400 text-sm">ไม่พบข้อมูล</p>
+            <p className="text-muted-foreground text-sm">ไม่พบข้อมูล</p>
           ) : (
             <>
               <div className="flex justify-between items-start mb-3">
                 <div>
                   <h2 className="font-bold">{detail.data.customer?.name || '(ยังไม่ verify)'}</h2>
-                  <p className="text-xs text-gray-500">{detail.data.customer?.phone || detail.data.lineUserId}</p>
+                  <p className="text-xs text-muted-foreground">{detail.data.customer?.phone || detail.data.lineUserId}</p>
                 </div>
                 {detail.data.handoffMode && (
                   <button
@@ -223,13 +223,13 @@ export default function ChatbotFinanceSessionsPage() {
                   const badge = ROLE_BADGE[m.role] ?? ROLE_BADGE.SYSTEM;
                   return (
                     <div key={m.id} className={`border rounded-lg p-2 text-sm ${badge.cls}`}>
-                      <div className="flex justify-between text-[10px] text-gray-500 mb-1">
+                      <div className="flex justify-between text-[10px] text-muted-foreground mb-1">
                         <span>{badge.label}</span>
                         <span>{new Date(m.createdAt).toLocaleTimeString('th-TH')}</span>
                       </div>
                       <p className="whitespace-pre-wrap">{m.text}</p>
                       {m.intent && (
-                        <p className="text-[10px] text-gray-400 mt-1">intent: {m.intent}</p>
+                        <p className="text-[10px] text-muted-foreground mt-1">intent: {m.intent}</p>
                       )}
                     </div>
                   );

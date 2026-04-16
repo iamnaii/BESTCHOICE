@@ -55,18 +55,18 @@ export default function CrmPipelinePage() {
       {/* Dashboard summary */}
       {dashboard && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <div className="bg-white rounded-xl p-4 shadow-sm">
-            <p className="text-xs text-gray-500">ทั้งหมด</p>
-            <p className="text-2xl font-bold text-gray-900">{dashboard.total}</p>
+          <div className="bg-card rounded-xl p-4 shadow-sm">
+            <p className="text-xs text-muted-foreground">ทั้งหมด</p>
+            <p className="text-2xl font-bold text-foreground">{dashboard.total}</p>
           </div>
-          <div className="bg-white rounded-xl p-4 shadow-sm">
-            <p className="text-xs text-gray-500">Conversion Rate</p>
+          <div className="bg-card rounded-xl p-4 shadow-sm">
+            <p className="text-xs text-muted-foreground">Conversion Rate</p>
             <p className="text-2xl font-bold text-green-600">{dashboard.conversionRate}%</p>
           </div>
           {STAGES.slice(0, 2).map((s) => (
-            <div key={s.key} className="bg-white rounded-xl p-4 shadow-sm">
-              <p className="text-xs text-gray-500">{s.label}</p>
-              <p className="text-2xl font-bold text-gray-900">{dashboard.stages?.[s.key] ?? 0}</p>
+            <div key={s.key} className="bg-card rounded-xl p-4 shadow-sm">
+              <p className="text-xs text-muted-foreground">{s.label}</p>
+              <p className="text-2xl font-bold text-foreground">{dashboard.stages?.[s.key] ?? 0}</p>
             </div>
           ))}
         </div>
@@ -77,7 +77,7 @@ export default function CrmPipelinePage() {
         <button
           onClick={() => setActiveStage(undefined)}
           className={`px-4 py-2 rounded-lg text-sm whitespace-nowrap transition-colors ${
-            !activeStage ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'
+            !activeStage ? 'bg-gray-900 text-white' : 'bg-card text-muted-foreground hover:bg-muted'
           }`}
         >
           ทั้งหมด
@@ -87,7 +87,7 @@ export default function CrmPipelinePage() {
             key={s.key}
             onClick={() => setActiveStage(s.key)}
             className={`px-4 py-2 rounded-lg text-sm whitespace-nowrap transition-colors ${
-              activeStage === s.key ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'
+              activeStage === s.key ? 'bg-gray-900 text-white' : 'bg-card text-muted-foreground hover:bg-muted'
             }`}
           >
             {s.label}
@@ -111,19 +111,19 @@ export default function CrmPipelinePage() {
               {leads.map((lead: any) => {
                 const stageInfo = STAGES.find((s) => s.key === lead.stage);
                 return (
-                  <div key={lead.id} className="px-4 py-3 flex items-center gap-4 hover:bg-gray-50">
+                  <div key={lead.id} className="px-4 py-3 flex items-center gap-4 hover:bg-accent">
                     <div className={`w-2 h-2 rounded-full flex-shrink-0 ${stageInfo?.color ?? 'bg-gray-400'}`} />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <User className="w-4 h-4 text-gray-400" />
-                        <span className="font-medium text-sm text-gray-900">
+                        <User className="w-4 h-4 text-muted-foreground" />
+                        <span className="font-medium text-sm text-foreground">
                           {lead.customer?.name ?? 'ไม่ระบุชื่อ'}
                         </span>
                         <Badge variant="secondary" size="sm">
                           {stageInfo?.label}
                         </Badge>
                       </div>
-                      <div className="flex items-center gap-3 mt-1 text-xs text-gray-400">
+                      <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
                         {lead.customer?.phone && (
                           <span className="flex items-center gap-1">
                             <Phone className="w-3 h-3" /> {lead.customer.phone}
@@ -147,7 +147,7 @@ export default function CrmPipelinePage() {
                               moveStageMutation.mutate({ id: lead.id, stage: nextStage.key });
                             }
                           }}
-                          className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg"
+                          className="p-1.5 text-muted-foreground hover:text-blue-500 hover:bg-blue-50 rounded-lg"
                           title="ไปขั้นต่อไป"
                         >
                           <ChevronRight className="w-4 h-4" />

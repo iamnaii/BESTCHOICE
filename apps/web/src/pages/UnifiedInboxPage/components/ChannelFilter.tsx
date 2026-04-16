@@ -30,9 +30,9 @@ export default function ChannelFilter({
   onChannelToggle,
 }: ChannelFilterProps) {
   return (
-    <div className="border-b border-gray-200">
+    <div className="border-b border-border">
       {/* Main tabs: mine / all / unread */}
-      <div className="flex border-b border-gray-100">
+      <div className="flex border-b border-border">
         {TABS.map((tab) => (
           <button
             key={tab.key}
@@ -41,7 +41,7 @@ export default function ChannelFilter({
               'flex-1 py-2.5 text-xs font-medium transition-colors',
               activeTab === tab.key
                 ? 'text-blue-600 border-b-2 border-blue-500 -mb-px'
-                : 'text-gray-500 hover:text-gray-700',
+                : 'text-muted-foreground hover:text-foreground',
             )}
           >
             {tab.label}
@@ -61,7 +61,7 @@ export default function ChannelFilter({
                 'px-3 py-1.5 text-xs rounded-full whitespace-nowrap transition-colors',
                 isActive
                   ? 'bg-blue-500 text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200',
+                  : 'bg-muted text-muted-foreground hover:bg-muted/80',
               )}
             >
               {ch.label}

@@ -24,15 +24,15 @@ interface StatCardProps {
   color?: string;
 }
 
-function StatCard({ icon, label, value, sub, color = 'text-gray-900' }: StatCardProps) {
+function StatCard({ icon, label, value, sub, color = 'text-foreground' }: StatCardProps) {
   return (
-    <div className="bg-white rounded-xl p-4 shadow-sm">
+    <div className="bg-card rounded-xl p-4 shadow-sm">
       <div className="flex items-center gap-2 mb-2">
         {icon}
-        <span className="text-xs text-gray-500">{label}</span>
+        <span className="text-xs text-muted-foreground">{label}</span>
       </div>
       <p className={`text-2xl font-bold ${color}`}>{value}</p>
-      {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
+      {sub && <p className="text-xs text-muted-foreground mt-1">{sub}</p>}
     </div>
   );
 }
@@ -66,7 +66,7 @@ export default function AiPerformancePage() {
       {/* Date filter */}
       <div className="flex items-center gap-3 mb-6 flex-wrap">
         <div className="flex items-center gap-2">
-          <label className="text-sm text-gray-600">จาก</label>
+          <label className="text-sm text-muted-foreground">จาก</label>
           <Input
             type="date"
             value={from}
@@ -75,7 +75,7 @@ export default function AiPerformancePage() {
           />
         </div>
         <div className="flex items-center gap-2">
-          <label className="text-sm text-gray-600">ถึง</label>
+          <label className="text-sm text-muted-foreground">ถึง</label>
           <Input
             type="date"
             value={to}
@@ -134,14 +134,14 @@ export default function AiPerformancePage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
             {data.totalSessions !== undefined && (
               <StatCard
-                icon={<BarChart3 className="w-4 h-4 text-gray-500" />}
+                icon={<BarChart3 className="w-4 h-4 text-muted-foreground" />}
                 label="Sessions ทั้งหมด"
                 value={data.totalSessions.toLocaleString()}
               />
             )}
             {data.totalAutoReplies !== undefined && (
               <StatCard
-                icon={<Bot className="w-4 h-4 text-gray-500" />}
+                icon={<Bot className="w-4 h-4 text-muted-foreground" />}
                 label="AI ตอบทั้งหมด"
                 value={data.totalAutoReplies.toLocaleString()}
                 sub="ครั้ง"
@@ -151,7 +151,7 @@ export default function AiPerformancePage() {
         )}
 
         {!data && !metricsQuery.isLoading && (
-          <div className="mt-8 text-center py-12 text-gray-400">
+          <div className="mt-8 text-center py-12 text-muted-foreground">
             <BarChart3 className="w-10 h-10 mx-auto mb-2" />
             <p>ยังไม่มีข้อมูลในช่วงเวลาที่เลือก</p>
           </div>

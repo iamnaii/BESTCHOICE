@@ -102,7 +102,7 @@ export default function AcceptModal({
                 className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium border transition-all ${
                   form.paymentMethod === 'CASH'
                     ? 'bg-emerald-500 text-white border-emerald-500'
-                    : 'bg-white text-slate-700 border-slate-200 hover:border-emerald-300'
+                    : 'bg-card text-foreground border-border hover:border-emerald-300'
                 }`}
               >
                 เงินสด
@@ -113,7 +113,7 @@ export default function AcceptModal({
                 className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium border transition-all ${
                   form.paymentMethod === 'TRANSFER'
                     ? 'bg-sky-500 text-white border-sky-500'
-                    : 'bg-white text-slate-700 border-slate-200 hover:border-sky-300'
+                    : 'bg-card text-foreground border-border hover:border-sky-300'
                 }`}
               >
                 โอน

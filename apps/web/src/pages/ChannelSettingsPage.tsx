@@ -106,13 +106,13 @@ export default function ChannelSettingsPage() {
             const webhook = webhooks?.[channelKey];
 
             return (
-              <div key={channelKey} className="bg-white rounded-xl shadow-sm overflow-hidden">
+              <div key={channelKey} className="bg-card rounded-xl shadow-sm overflow-hidden">
                 {/* Header */}
-                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-border">
                   <div className="flex items-center gap-3">
                     <span className="text-2xl">{meta.icon}</span>
                     <div>
-                      <h3 className="font-semibold text-gray-900">{channelCfg.label}</h3>
+                      <h3 className="font-semibold text-foreground">{channelCfg.label}</h3>
                       <div className="flex items-center gap-1.5 mt-0.5">
                         {channelCfg.isConfigured ? (
                           <>
@@ -121,8 +121,8 @@ export default function ChannelSettingsPage() {
                           </>
                         ) : (
                           <>
-                            <XCircle className="w-3.5 h-3.5 text-gray-400" />
-                            <span className="text-xs text-gray-400">ยังไม่ได้เชื่อมต่อ</span>
+                            <XCircle className="w-3.5 h-3.5 text-muted-foreground" />
+                            <span className="text-xs text-muted-foreground">ยังไม่ได้เชื่อมต่อ</span>
                           </>
                         )}
                       </div>
@@ -156,7 +156,7 @@ export default function ChannelSettingsPage() {
                             }))
                           }
                           placeholder={field.placeholder}
-                          className="w-full px-3 py-2 pr-10 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                          className="w-full px-3 py-2 pr-10 text-sm border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                         />
                         {field.secret && (
                           <button
@@ -164,7 +164,7 @@ export default function ChannelSettingsPage() {
                             onClick={() =>
                               setShowSecrets((prev) => ({ ...prev, [field.key]: !prev[field.key] }))
                             }
-                            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
+                            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-muted-foreground"
                           >
                             {showSecrets[field.key] ? (
                               <EyeOff className="w-4 h-4" />
@@ -179,12 +179,12 @@ export default function ChannelSettingsPage() {
 
                   {/* Webhook URL */}
                   {webhook && (
-                    <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-                      <label className="block text-xs font-medium text-gray-500 mb-1">
+                    <div className="mt-4 p-3 bg-muted rounded-lg">
+                      <label className="block text-xs font-medium text-muted-foreground mb-1">
                         Webhook URL (ตั้งค่าใน Developer Console)
                       </label>
                       <div className="flex items-center gap-2">
-                        <code className="flex-1 text-xs text-gray-600 bg-white px-2 py-1.5 rounded border border-gray-200 truncate">
+                        <code className="flex-1 text-xs text-muted-foreground bg-card px-2 py-1.5 rounded border border-border truncate">
                           {webhook.url}
                         </code>
                         <button
@@ -192,12 +192,12 @@ export default function ChannelSettingsPage() {
                             navigator.clipboard.writeText(webhook.url);
                             toast.success('คัดลอก Webhook URL แล้ว');
                           }}
-                          className="p-1.5 text-gray-400 hover:text-gray-600"
+                          className="p-1.5 text-muted-foreground hover:text-muted-foreground"
                         >
                           <Copy className="w-4 h-4" />
                         </button>
                       </div>
-                      <p className="text-[10px] text-gray-400 mt-1">{webhook.method}</p>
+                      <p className="text-[10px] text-muted-foreground mt-1">{webhook.method}</p>
                     </div>
                   )}
                 </div>

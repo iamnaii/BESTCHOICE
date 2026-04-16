@@ -347,7 +347,7 @@ const deleteMutation = useMutation({
                 {deleteMutation.isPending ? 'กำลังลบ...' : 'ลบสัญญา'}
               </button>
             )}
-            <button onClick={() => navigate('/contracts')} className="px-4 py-2 text-sm bg-slate-600 text-white rounded-lg hover:bg-slate-700 shadow-sm">
+            <button onClick={() => navigate('/contracts')} className="px-4 py-2 text-sm bg-muted text-foreground rounded-lg hover:bg-muted/80 shadow-sm">
               กลับ
             </button>
           </div>

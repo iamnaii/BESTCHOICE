@@ -124,12 +124,12 @@ export default function CommandPalette({
 
       {/* Palette */}
       <div
-        className="relative mt-20 w-full max-w-lg bg-white rounded-xl shadow-2xl overflow-hidden"
+        className="relative mt-20 w-full max-w-lg bg-card rounded-xl shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Search input */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100">
-          <Search className="w-5 h-5 text-gray-400 shrink-0" />
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
+          <Search className="w-5 h-5 text-muted-foreground shrink-0" />
           <input
             ref={inputRef}
             type="text"
@@ -137,34 +137,34 @@ export default function CommandPalette({
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="พิมพ์คำสั่งหรือค้นหาข้อความสำเร็จรูป..."
-            className="flex-1 text-sm outline-none placeholder:text-gray-400"
+            className="flex-1 text-sm outline-none placeholder:text-muted-foreground"
           />
           <button
             onClick={onClose}
-            className="p-1 text-gray-400 hover:text-gray-600 rounded transition-colors"
+            className="p-1 text-muted-foreground hover:text-foreground rounded transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Shortcut hint */}
-        <div className="px-4 py-1.5 bg-gray-50 text-[11px] text-gray-400 flex items-center gap-4 border-b border-gray-100">
+        <div className="px-4 py-1.5 bg-muted text-[11px] text-muted-foreground flex items-center gap-4 border-b border-border">
           <span>
-            <kbd className="px-1 py-0.5 bg-gray-200 rounded text-[10px]">Ctrl+K</kbd> เปิด
+            <kbd className="px-1 py-0.5 bg-muted/80 rounded text-[10px]">Ctrl+K</kbd> เปิด
           </span>
           <span>
-            <kbd className="px-1 py-0.5 bg-gray-200 rounded text-[10px]">Ctrl+Shift+R</kbd>{' '}
+            <kbd className="px-1 py-0.5 bg-muted/80 rounded text-[10px]">Ctrl+Shift+R</kbd>{' '}
             ปิดสนทนา
           </span>
           <span>
-            <kbd className="px-1 py-0.5 bg-gray-200 rounded text-[10px]">Esc</kbd> ปิด
+            <kbd className="px-1 py-0.5 bg-muted/80 rounded text-[10px]">Esc</kbd> ปิด
           </span>
         </div>
 
         {/* Results */}
         <div ref={listRef} className="max-h-72 overflow-y-auto py-1">
           {filtered.length === 0 ? (
-            <div className="px-4 py-8 text-center text-sm text-gray-400">
+            <div className="px-4 py-8 text-center text-sm text-muted-foreground">
               ไม่พบคำสั่งที่ตรงกัน
             </div>
           ) : (
@@ -177,16 +177,16 @@ export default function CommandPalette({
                   onClick={cmd.action}
                   onMouseEnter={() => setSelectedIndex(index)}
                   className={`w-full flex items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors ${
-                    isActive ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50'
+                    isActive ? 'bg-blue-50 text-blue-700' : 'text-foreground hover:bg-muted'
                   }`}
                 >
                   <Icon
-                    className={`w-4 h-4 shrink-0 ${isActive ? 'text-blue-500' : 'text-gray-400'}`}
+                    className={`w-4 h-4 shrink-0 ${isActive ? 'text-blue-500' : 'text-muted-foreground'}`}
                   />
                   <div className="flex-1 min-w-0">
                     <span className="font-medium">{cmd.label}</span>
                     {cmd.description && cmd.description !== cmd.label && (
-                      <span className="ml-2 text-gray-400 text-xs">{cmd.description}</span>
+                      <span className="ml-2 text-muted-foreground text-xs">{cmd.description}</span>
                     )}
                   </div>
                 </button>

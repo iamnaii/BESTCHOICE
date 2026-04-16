@@ -38,7 +38,7 @@ export default function SessionActions({
   const assignedStaffName = session?.assignedStaff?.name ?? session?.assignedStaff?.email ?? null;
 
   return (
-    <div className="border-b border-gray-200 bg-gray-50 px-4 py-2">
+    <div className="border-b border-border bg-muted px-4 py-2">
       <div className="flex items-center gap-2 flex-wrap">
         {/* Assign to me */}
         {!assignedToMe && (
@@ -56,8 +56,8 @@ export default function SessionActions({
 
         {/* Current assignment badge */}
         {assignedStaffName && (
-          <span className="text-xs text-gray-500 px-2 py-1.5 bg-white border border-gray-200 rounded-lg">
-            มอบหมายให้: <span className="font-medium text-gray-700">{assignedStaffName}</span>
+          <span className="text-xs text-muted-foreground px-2 py-1.5 bg-card border border-border rounded-lg">
+            มอบหมายให้: <span className="font-medium text-foreground">{assignedStaffName}</span>
           </span>
         )}
 
@@ -73,9 +73,9 @@ export default function SessionActions({
           </button>
 
           {showStaffList && (
-            <div className="absolute left-0 top-full mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-20 py-1">
+            <div className="absolute left-0 top-full mt-1 w-48 bg-card border border-border rounded-lg shadow-lg z-20 py-1">
               {staffQuery.isLoading && (
-                <div className="flex items-center justify-center gap-2 px-3 py-3 text-xs text-gray-400">
+                <div className="flex items-center justify-center gap-2 px-3 py-3 text-xs text-muted-foreground">
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   กำลังโหลด...
                 </div>
@@ -84,7 +84,7 @@ export default function SessionActions({
                 <div className="px-3 py-2 text-xs text-red-500">โหลดรายชื่อไม่ได้</div>
               )}
               {staffQuery.data && (staffQuery.data as any[]).length === 0 && (
-                <div className="px-3 py-2 text-xs text-gray-400">ไม่มีพนักงานออนไลน์</div>
+                <div className="px-3 py-2 text-xs text-muted-foreground">ไม่มีพนักงานออนไลน์</div>
               )}
               {(staffQuery.data as any[] | undefined)
                 ?.filter((s: any) => s.id !== currentUserId)
@@ -96,7 +96,7 @@ export default function SessionActions({
                       setShowStaffList(false);
                       onClose();
                     }}
-                    className="flex items-center gap-2 w-full px-3 py-2 text-sm text-left hover:bg-gray-50 transition-colors"
+                    className="flex items-center gap-2 w-full px-3 py-2 text-sm text-left hover:bg-muted transition-colors"
                   >
                     <span className="w-2 h-2 rounded-full bg-green-400 flex-shrink-0" title="ออนไลน์" />
                     <span className="truncate">{staff.name ?? staff.email}</span>
@@ -142,7 +142,7 @@ export default function SessionActions({
         <div className="ml-auto">
           <button
             onClick={onClose}
-            className="p-1 text-gray-400 hover:text-gray-600"
+            className="p-1 text-muted-foreground hover:text-foreground"
           >
             <X className="w-4 h-4" />
           </button>

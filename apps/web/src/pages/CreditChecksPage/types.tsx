@@ -127,7 +127,7 @@ export const statusLabels: Record<string, { label: string; className: string }> 
 export function getRiskBadge(aiScore: number | null) {
   if (aiScore === null) {
     return (
-      <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
+      <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground">
         รอวิเคราะห์
       </span>
     );

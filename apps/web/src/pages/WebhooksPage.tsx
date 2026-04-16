@@ -87,7 +87,7 @@ function AddWebhookForm({ onClose, onSuccess }: { onClose: () => void; onSuccess
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="block text-sm font-medium text-foreground mb-1">
             ชื่อ <span className="text-red-500">*</span>
           </label>
           <input
@@ -100,7 +100,7 @@ function AddWebhookForm({ onClose, onSuccess }: { onClose: () => void; onSuccess
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="block text-sm font-medium text-foreground mb-1">
             URL <span className="text-red-500">*</span>
           </label>
           <input
@@ -114,9 +114,9 @@ function AddWebhookForm({ onClose, onSuccess }: { onClose: () => void; onSuccess
         </div>
       </div>
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-sm font-medium text-foreground mb-1">
           Secret Key <span className="text-red-500">*</span>
-          <span className="text-xs text-gray-400 ml-1">(ใช้สำหรับ HMAC-SHA256 signature ใน header X-Webhook-Signature)</span>
+          <span className="text-xs text-muted-foreground ml-1">(ใช้สำหรับ HMAC-SHA256 signature ใน header X-Webhook-Signature)</span>
         </label>
         <input
           type="text"
@@ -128,7 +128,7 @@ function AddWebhookForm({ onClose, onSuccess }: { onClose: () => void; onSuccess
         />
       </div>
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="block text-sm font-medium text-foreground mb-2">
           Events <span className="text-red-500">*</span>
         </label>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -143,7 +143,7 @@ function AddWebhookForm({ onClose, onSuccess }: { onClose: () => void; onSuccess
               <span className="text-sm">
                 <span className="font-mono text-blue-600 text-xs">{ev.value}</span>
                 <br />
-                <span className="text-gray-600 text-xs">{ev.label}</span>
+                <span className="text-muted-foreground text-xs">{ev.label}</span>
               </span>
             </label>
           ))}
@@ -160,7 +160,7 @@ function AddWebhookForm({ onClose, onSuccess }: { onClose: () => void; onSuccess
         <button
           type="button"
           onClick={onClose}
-          className="px-4 py-2 border rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
+          className="px-4 py-2 border rounded-lg text-sm font-medium hover:bg-muted transition-colors"
         >
           ยกเลิก
         </button>
@@ -199,10 +199,10 @@ function WebhookRow({
 
   return (
     <div className="border rounded-lg overflow-hidden">
-      <div className="flex items-center gap-3 p-4 bg-white">
+      <div className="flex items-center gap-3 p-4 bg-card">
         <button
           onClick={() => setExpanded((v) => !v)}
-          className="shrink-0 text-gray-400 hover:text-gray-600"
+          className="shrink-0 text-muted-foreground hover:text-muted-foreground"
           aria-label={expanded ? 'ซ่อน' : 'แสดงรายละเอียด'}
         >
           <ChevronIcon className="w-4 h-4" aria-hidden="true" />
@@ -210,7 +210,7 @@ function WebhookRow({
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="font-medium text-gray-900">{sub.name}</span>
+            <span className="font-medium text-foreground">{sub.name}</span>
             {(() => {
               const cfg = getStatusBadgeProps(sub.isActive ? 'active' : 'inactive', activeStatusMap);
               return (
@@ -234,7 +234,7 @@ function WebhookRow({
               </Badge>
             )}
           </div>
-          <p className="text-xs text-gray-400 mt-0.5 truncate font-mono">{sub.url}</p>
+          <p className="text-xs text-muted-foreground mt-0.5 truncate font-mono">{sub.url}</p>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
@@ -259,9 +259,9 @@ function WebhookRow({
       </div>
 
       {expanded && (
-        <div className="border-t bg-gray-50 p-4 space-y-3">
+        <div className="border-t bg-muted p-4 space-y-3">
           <div>
-            <p className="text-xs font-medium text-gray-500 mb-1.5">Events ที่ subscribe</p>
+            <p className="text-xs font-medium text-muted-foreground mb-1.5">Events ที่ subscribe</p>
             <div className="flex flex-wrap gap-1.5">
               {sub.events.map((ev) => (
                 <span
@@ -273,7 +273,7 @@ function WebhookRow({
               ))}
             </div>
           </div>
-          <div className="text-xs text-gray-500 space-y-1">
+          <div className="text-xs text-muted-foreground space-y-1">
             <p>สร้างโดย: {sub.createdBy.name}</p>
             <p>สร้างเมื่อ: {new Date(sub.createdAt).toLocaleString('th-TH')}</p>
             {sub.lastDelivery && (
@@ -337,7 +337,7 @@ export default function WebhooksPage() {
       {showForm && (
         <Card>
           <CardHeader>
-            <h2 className="text-base font-semibold text-gray-900">ลงทะเบียน Webhook ใหม่</h2>
+            <h2 className="text-base font-semibold text-foreground">ลงทะเบียน Webhook ใหม่</h2>
           </CardHeader>
           <CardContent>
             <AddWebhookForm
@@ -369,8 +369,8 @@ export default function WebhooksPage() {
         errorTitle="ไม่สามารถโหลด webhooks ได้"
       >
         {data && data.length === 0 ? (
-          <div className="text-center py-16 text-gray-500">
-            <Webhook className="w-10 h-10 mx-auto mb-3 text-gray-300" aria-hidden="true" />
+          <div className="text-center py-16 text-muted-foreground">
+            <Webhook className="w-10 h-10 mx-auto mb-3 text-muted-foreground" aria-hidden="true" />
             <p>ยังไม่มี webhook subscription</p>
             <p className="text-sm mt-1">คลิก "เพิ่ม Webhook" เพื่อเริ่มต้น</p>
           </div>

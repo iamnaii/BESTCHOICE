@@ -66,7 +66,7 @@ export default function ConversationItem({ session, isActive, onClick, onPin }: 
   return (
     <div
       className={cn(
-        'relative group w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors border-b border-gray-100 cursor-pointer',
+        'relative group w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-accent transition-colors border-b border-border cursor-pointer',
         isActive && 'bg-blue-50 hover:bg-blue-50 border-l-2 border-l-blue-500',
         isPinned && !isActive && 'bg-amber-50/50',
       )}
@@ -106,7 +106,7 @@ export default function ConversationItem({ session, isActive, onClick, onPin }: 
           <div className="flex items-center gap-1.5 min-w-0">
             {/* Pin icon */}
             {isPinned && <Pin className="w-3 h-3 text-amber-500 flex-shrink-0" />}
-            <span className="font-medium text-sm text-gray-900 truncate">{displayName}</span>
+            <span className="font-medium text-sm text-foreground truncate">{displayName}</span>
           </div>
           <div className="flex items-center gap-1.5 flex-shrink-0">
             {/* Unread badge */}
@@ -115,14 +115,14 @@ export default function ConversationItem({ session, isActive, onClick, onPin }: 
                 {unreadCount > 99 ? '99+' : unreadCount}
               </span>
             )}
-            <span className="text-xs text-gray-400">
+            <span className="text-xs text-muted-foreground">
               {formatDistanceToNow(new Date(session.lastMessageAt), { addSuffix: true, locale: th })}
             </span>
           </div>
         </div>
 
         {/* Last message preview */}
-        <p className="text-xs text-gray-500 truncate mt-0.5">
+        <p className="text-xs text-muted-foreground truncate mt-0.5">
           {lastMessage?.role === 'STAFF' && <span className="text-blue-500">คุณ: </span>}
           {lastMessage?.role === 'BOT' && <span className="text-purple-500">Bot: </span>}
           {lastMessage?.text ?? '(ข้อความสื่อ)'}
@@ -146,12 +146,12 @@ export default function ConversationItem({ session, isActive, onClick, onPin }: 
             })()
           )}
           {session.tags?.slice(0, 3).map((t) => (
-            <span key={t.tag} className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600">
+            <span key={t.tag} className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
               {t.tag}
             </span>
           ))}
           {session.assignedTo && (
-            <span className="text-[10px] text-gray-400 ml-auto">{session.assignedTo.name}</span>
+            <span className="text-[10px] text-muted-foreground ml-auto">{session.assignedTo.name}</span>
           )}
         </div>
       </div>
@@ -167,7 +167,7 @@ export default function ConversationItem({ session, isActive, onClick, onPin }: 
             'absolute right-2 top-2 p-1 rounded transition-all',
             isPinned
               ? 'text-amber-500 opacity-100'
-              : 'text-gray-400 opacity-0 group-hover:opacity-100 hover:text-amber-500',
+              : 'text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-amber-500',
           )}
           title={isPinned ? 'ถอดหมุด' : 'ปักหมุด'}
         >

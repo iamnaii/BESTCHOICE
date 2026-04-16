@@ -100,27 +100,27 @@ export default function ConversationList({
 
   return (
     <div className="flex flex-col h-full border-r border-border">
-      {/* Search bar */}
-      <div className="p-3 border-b border-border">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="ค้นหาชื่อ, เบอร์..."
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 text-sm border border-border rounded-lg bg-muted/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary focus:bg-background transition-colors"
-          />
+      {/* Search + Tab + Channel filter */}
+      <div className="border-b border-border">
+        <div className="px-3 pt-3 pb-2">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="ค้นหาชื่อ, เบอร์..."
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              className="w-full pl-9 pr-3 py-1.5 text-sm rounded-md bg-muted/50 border-0 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:bg-background transition-colors placeholder:text-muted-foreground/60"
+            />
+          </div>
         </div>
+        <ChannelFilter
+          activeTab={filters.tab}
+          selectedChannels={filters.channels ?? []}
+          onTabChange={(tab) => onFiltersChange({ ...filters, tab })}
+          onChannelToggle={handleChannelToggle}
+        />
       </div>
-
-      {/* Tab + channel filter */}
-      <ChannelFilter
-        activeTab={filters.tab}
-        selectedChannels={filters.channels ?? []}
-        onTabChange={(tab) => onFiltersChange({ ...filters, tab })}
-        onChannelToggle={handleChannelToggle}
-      />
 
       {/* Room list */}
       <div className="flex-1 overflow-y-auto">

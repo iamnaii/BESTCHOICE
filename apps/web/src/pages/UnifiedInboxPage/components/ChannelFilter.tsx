@@ -30,9 +30,9 @@ export default function ChannelFilter({
   onChannelToggle,
 }: ChannelFilterProps) {
   return (
-    <div className="border-b border-border">
+    <div>
       {/* Main tabs */}
-      <div className="flex">
+      <div className="flex border-b border-border/50">
         {TABS.map((tab) => (
           <button
             key={tab.key}

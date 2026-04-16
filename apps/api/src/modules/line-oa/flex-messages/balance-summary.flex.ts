@@ -1,16 +1,15 @@
+import { FlexBubble, FlexCarousel, FlexMessagePayload } from './base-template';
 import {
-  FlexBubble,
-  FlexCarousel,
-  FlexMessagePayload,
-  COLORS,
-  GRADIENTS,
-  createHeader,
-  createDetailRow,
-  createAmountRow,
-  createProgressBar,
-  createBadge,
-  createPostbackButton,
-} from './base-template';
+  createStyleCHeader,
+  createInfoCard,
+  createStyleCProgress,
+  createHintCards,
+  createStyleCButtons,
+  STYLE_C,
+  FlexComponent,
+} from './style-c';
+import { ICONS } from './icons';
+import { formatBaht } from './base-template';
 
 export interface BalanceSummaryData {
   customerName: string;
@@ -25,28 +24,18 @@ export interface BalanceSummaryData {
   }>;
 }
 
-const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string }> = {
-  ACTIVE: { label: '✅ ปกติ', bg: COLORS.SUCCESS_LIGHT, text: COLORS.PRIMARY },
-  OVERDUE: { label: '❌ ค้างชำระ', bg: COLORS.DANGER_LIGHT, text: COLORS.DANGER },
-  DEFAULT: { label: '⚠️ ผิดนัด', bg: COLORS.DANGER_LIGHT, text: COLORS.DANGER },
-  COMPLETED: { label: '🎉 ชำระครบ', bg: COLORS.SUCCESS_LIGHT, text: COLORS.PRIMARY },
-  EARLY_PAYOFF: { label: '⚡ ปิดก่อนกำหนด', bg: COLORS.INFO_LIGHT, text: COLORS.INFO },
-};
-
 export function buildBalanceSummaryFlex(data: BalanceSummaryData): FlexMessagePayload {
   if (data.contracts.length === 1) {
     const c = data.contracts[0];
-    const bubble = buildContractBubble(data.customerName, c);
+    const bubble = buildContractBubble(c);
     return {
       type: 'flex',
-      altText: `สรุปยอด: สัญญา ${c.contractNumber} ยอดค้าง ฿${c.totalOutstanding.toLocaleString()}`,
+      altText: `สรุปยอด: สัญญา ${c.contractNumber} ยอดค้าง ${formatBaht(c.totalOutstanding)}`,
       contents: bubble,
     };
   }
 
-  const bubbles = data.contracts.slice(0, 10).map((c) =>
-    buildContractBubble(data.customerName, c),
-  );
+  const bubbles = data.contracts.slice(0, 10).map((c) => buildContractBubble(c));
 
   return {
     type: 'flex',
@@ -56,64 +45,87 @@ export function buildBalanceSummaryFlex(data: BalanceSummaryData): FlexMessagePa
 }
 
 function buildContractBubble(
-  customerName: string,
   c: BalanceSummaryData['contracts'][number],
 ): FlexBubble {
   const isOverdue = c.status === 'OVERDUE' || c.status === 'DEFAULT';
-  const gradient = isOverdue ? GRADIENTS.RED : GRADIENTS.GREEN;
-  const amountColor = isOverdue ? COLORS.DANGER : COLORS.PRIMARY;
-  const statusCfg = STATUS_CONFIG[c.status] || { label: c.status, bg: COLORS.LIGHT_BG, text: COLORS.TEXT };
+
+  const badge = isOverdue
+    ? { text: 'ค้างชำระ', bg: STYLE_C.BADGE.DANGER.bg, textColor: STYLE_C.BADGE.DANGER.text }
+    : { text: 'ปกติ', bg: STYLE_C.BADGE.SUCCESS.bg, textColor: STYLE_C.BADGE.SUCCESS.text };
+
+  const gradient = isOverdue ? STYLE_C.GRADIENT.BLUE : STYLE_C.GRADIENT.BLUE;
+  const amountColor = isOverdue ? STYLE_C.BADGE.DANGER.text : STYLE_C.TEXT.PRIMARY;
+
+  // Separator
+  const separator: FlexComponent = {
+    type: 'separator',
+    margin: 'lg',
+    color: '#e2e8f0',
+  } as FlexComponent;
+
+  const infoCard = createInfoCard(
+    'ยอดคงเหลือทั้งหมด',
+    `สัญญา ${c.contractNumber}`,
+    formatBaht(c.totalOutstanding),
+    amountColor,
+    undefined,
+    undefined,
+    STYLE_C.INFO_CARD_BG.DEFAULT,
+    undefined,
+  );
+
+  // Hint cards: paid + next due
+  const hintCards = createHintCards([
+    {
+      label: 'ชำระแล้ว',
+      value: `${c.paidInstallments}/${c.totalInstallments} งวด`,
+      bgColor: STYLE_C.HINT_CARD.GREEN,
+    },
+    {
+      label: 'งวดถัดไป',
+      value: c.nextDueDate ? formatBaht(c.nextAmountDue) : '-',
+      bgColor: STYLE_C.HINT_CARD.YELLOW,
+    },
+  ]);
+
+  const progress = createStyleCProgress(
+    c.paidInstallments,
+    c.totalInstallments,
+    STYLE_C.PROGRESS.BLUE,
+  );
+
+  const buttons = createStyleCButtons(
+    'ดูรายละเอียดสัญญา',
+    { type: 'postback', label: 'ดูรายละเอียดสัญญา', data: `action=check_installments&contract=${c.contractNumber}` },
+    STYLE_C.BUTTON.BLUE,
+  );
 
   return {
     type: 'bubble',
     size: 'mega',
-    header: createHeader('📊 สรุปยอด', `สัญญา ${c.contractNumber}`, gradient),
+    header: createStyleCHeader(
+      ICONS.BAR_CHART,
+      'สรุปยอดสัญญา',
+      'BESTCHOICE FINANCE',
+      gradient,
+      badge,
+    ),
     body: {
       type: 'box',
       layout: 'vertical',
       contents: [
-        {
-          type: 'box',
-          layout: 'horizontal',
-          contents: [
-            {
-              type: 'text',
-              text: `คุณ${customerName}`,
-              size: 'md',
-              color: COLORS.DARK,
-              weight: 'bold',
-              flex: 1,
-            },
-            createBadge(statusCfg.label, statusCfg.bg, statusCfg.text),
-          ],
-          alignItems: 'center',
-        },
-        createAmountRow('ยอดค้างชำระ', c.totalOutstanding, amountColor),
-        createProgressBar(c.paidInstallments, c.totalInstallments, amountColor),
-        {
-          type: 'separator',
-          margin: 'lg',
-          color: COLORS.BORDER,
-        },
-        createDetailRow('ชำระแล้ว', `${c.paidInstallments}/${c.totalInstallments} งวด`),
-        ...(c.nextDueDate
-          ? [
-              createDetailRow('งวดถัดไป', `฿${c.nextAmountDue.toLocaleString()}`),
-              createDetailRow('ครบกำหนด', c.nextDueDate),
-            ]
-          : []),
+        separator,
+        infoCard,
+        hintCards,
+        progress,
       ],
       paddingAll: '20px',
-      spacing: 'sm',
+      spacing: 'none',
     },
     footer: {
       type: 'box',
       layout: 'vertical',
-      contents: [
-        ...(c.totalOutstanding > 0
-          ? [createPostbackButton('💳 ชำระเงิน', `action=pay&contract=${c.contractNumber}`, amountColor)]
-          : []),
-      ],
+      contents: [buttons],
       paddingAll: '15px',
       spacing: 'sm',
     },

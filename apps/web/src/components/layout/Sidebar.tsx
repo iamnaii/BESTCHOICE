@@ -58,10 +58,11 @@ const expandedMenuClassNames: AccordionMenuClassNames = {
   ].join(' '),
   sub: '',
   subTrigger: [
-    'h-[28px] rounded-md text-[11px] font-bold uppercase tracking-[0.15em]',
-    'text-white/35 hover:text-white/50 hover:bg-transparent',
-    'data-[state=open]:text-white/45 data-[state=open]:bg-transparent',
-    'transition-colors duration-150 px-2 mt-4 mb-1',
+    'h-[30px] rounded-none text-[12px] font-semibold tracking-wider uppercase',
+    'text-emerald-400/50 hover:text-emerald-400/70 hover:bg-transparent',
+    'data-[state=open]:text-emerald-400/60 data-[state=open]:bg-transparent',
+    'transition-colors duration-150 px-2 mt-5 mb-0.5',
+    'border-t border-white/[0.06] pt-4',
   ].join(' '),
   subContent: 'py-0.5 pl-0 border-l-0 ml-0',
 };

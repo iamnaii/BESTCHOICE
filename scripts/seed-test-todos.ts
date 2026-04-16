@@ -40,13 +40,14 @@ async function main() {
         u.email?.toLowerCase().includes(keyword.toLowerCase()),
     );
 
-  // เจ้าของ = OWNER คนแรก (คนที่ตั้งค่าระบบ + integrations)
-  // แนน = หัวหน้าพนักงาน (เทส core flows + ตรวจรวม)
-  // กวาง, ตุ๊กตา = พนักงาน (เทสตาม checklist)
-  const owner = allUsers.find((u) => u.role === 'OWNER');
-  const nan = findUser('แนน') || findUser('nan') || owner;
-  const kwang = findUser('กวาง') || findUser('kwang') || nan;
-  const tukta = findUser('ตุ๊กตา') || findUser('tukta') || nan;
+  // เจ้าของ = เอกนรินทร์ (akenarin.ak@gmail.com)
+  // แนน = กรรณิกา กองชีพ — หัวหน้าพนักงาน
+  // กวาง = ศิรินทร์ทิพย์ ยกน้อยวงศ์
+  // ตุ๊กตา = สายรุ้ง เวลาดี
+  const owner = findUser('akenarin.ak@gmail.com') || allUsers.find((u) => u.role === 'OWNER');
+  const nan = findUser('backofficebest2569@gmail.com') || owner;
+  const kwang = findUser('bestchoice2569@gmail.com') || owner;
+  const tukta = findUser('bestchoice2568@gmail.com') || owner;
 
   if (!owner) {
     console.error('❌ ไม่พบ OWNER user — สร้าง user accounts ก่อนรัน script นี้');

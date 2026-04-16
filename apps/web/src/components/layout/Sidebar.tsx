@@ -278,7 +278,7 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
       aria-label="เมนูหลัก"
     >
       {/* ── Header ──────────────────────────────────── */}
-      <div className="flex items-center px-5 h-[70px] shrink-0 border-b border-border">
+      <div className="flex items-center px-5 h-[60px] shrink-0 border-b border-border">
         <Link to="/" className="flex items-center gap-3">
           <div className="size-[36px] rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-400 flex items-center justify-center shadow-lg shadow-emerald-500/20 shrink-0">
             <span className="text-white text-[16px] font-bold leading-none">B</span>

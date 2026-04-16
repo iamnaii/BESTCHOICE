@@ -27,36 +27,42 @@ export default function PageHeader({
   className,
 }: PageHeaderProps) {
   return (
-    <div className={cn('flex flex-col gap-2 pb-6 lg:pb-7.5', className)}>
+    <div className={cn('flex flex-col gap-2 pb-5 mb-5 border-b border-border', className)}>
       {breadcrumb}
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="flex flex-col gap-0.5">
-          <div className="flex items-center gap-2.5">
-            {onBack && (
-              <button
-                onClick={onBack}
-                className="flex items-center justify-center size-8 rounded-md hover:bg-accent text-muted-foreground transition-colors"
-                aria-label="กลับ"
+        <div className="flex items-center gap-3">
+          {onBack && (
+            <button
+              onClick={onBack}
+              className="flex items-center justify-center size-9 rounded-md hover:bg-accent text-muted-foreground transition-colors"
+              aria-label="กลับ"
+            >
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.75"
+                strokeLinecap="round"
+                strokeLinejoin="round"
               >
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.75"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="m15 18-6-6 6-6" />
-                </svg>
-              </button>
-            )}
-            {icon && <span className="flex items-center justify-center shrink-0 text-muted-foreground/80">{icon}</span>}
-            <h1 className="text-xl font-bold text-foreground leading-snug">{title}</h1>
-            {badge}
+                <path d="m15 18-6-6 6-6" />
+              </svg>
+            </button>
+          )}
+          {icon && (
+            <div className="flex items-center justify-center size-9 rounded-lg bg-primary/10 text-primary shrink-0">
+              {icon}
+            </div>
+          )}
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h1 className="text-lg font-semibold text-foreground">{title}</h1>
+              {badge}
+            </div>
+            {subtitle && <p className="text-[13px] text-muted-foreground">{subtitle}</p>}
           </div>
-          {subtitle && <p className="text-sm text-muted-foreground leading-snug">{subtitle}</p>}
         </div>
         {action && <div className="flex items-center gap-2.5">{action}</div>}
       </div>

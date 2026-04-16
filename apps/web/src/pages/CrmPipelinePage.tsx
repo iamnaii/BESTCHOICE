@@ -77,7 +77,7 @@ export default function CrmPipelinePage() {
         <button
           onClick={() => setActiveStage(undefined)}
           className={`px-4 py-2 rounded-lg text-sm whitespace-nowrap transition-colors ${
-            !activeStage ? 'bg-gray-900 text-white' : 'bg-card text-muted-foreground hover:bg-muted'
+            !activeStage ? 'bg-foreground text-background' : 'bg-card text-muted-foreground hover:bg-muted'
           }`}
         >
           ทั้งหมด
@@ -87,7 +87,7 @@ export default function CrmPipelinePage() {
             key={s.key}
             onClick={() => setActiveStage(s.key)}
             className={`px-4 py-2 rounded-lg text-sm whitespace-nowrap transition-colors ${
-              activeStage === s.key ? 'bg-gray-900 text-white' : 'bg-card text-muted-foreground hover:bg-muted'
+              activeStage === s.key ? 'bg-foreground text-background' : 'bg-card text-muted-foreground hover:bg-muted'
             }`}
           >
             {s.label}

@@ -59,7 +59,7 @@ function retentionColor(pct: number) {
   if (pct >= 40) return 'bg-yellow-400 text-foreground';
   if (pct >= 20) return 'bg-orange-400 text-white';
   if (pct > 0) return 'bg-red-400 text-white';
-  return 'bg-gray-100 text-gray-400';
+  return 'bg-muted text-muted-foreground';
 }
 
 function heatmapColor(value: number, max: number) {

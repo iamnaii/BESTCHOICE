@@ -286,7 +286,7 @@ layer(base);
     --ring: 160 84% 39%;
     --radius: 0.5rem;
     /* Sidebar — White/Light */
-    --sidebar-bg: 0 0% 100%;
+    --sidebar-bg: 0 0% 100%;  /* white — same as background */
     --sidebar-fg: 240 10% 3.9%;
     --sidebar-active: 160 84% 39%;
     --sidebar-hover: 240 4.8% 95.9%;

@@ -47,7 +47,7 @@ function ChannelIcon({ channel }: { channel: string }) {
   return (
     <span
       className={cn(
-        'absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full border-2 border-white',
+        'absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full border-2 border-background',
         'flex items-center justify-center text-white text-[8px] font-bold',
         c.bg,
       )}

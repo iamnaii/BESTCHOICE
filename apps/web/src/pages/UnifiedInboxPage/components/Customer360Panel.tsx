@@ -249,7 +249,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
                 <div key={c.id} className="text-[12px]">
                   <p className="font-medium text-foreground/80 mb-1">
                     📱 {productName}{' '}
-                    <span className="text-[10px] text-gray-400 font-normal">({conditionLabel})</span>
+                    <span className="text-[10px] text-muted-foreground font-normal">({conditionLabel})</span>
                   </p>
 
                   {/* Manufacturer warranty */}

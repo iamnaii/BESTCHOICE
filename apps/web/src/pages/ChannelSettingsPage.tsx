@@ -142,7 +142,7 @@ export default function ChannelSettingsPage() {
                 <div className="px-6 py-4 space-y-4">
                   {meta.fields.map((field) => (
                     <div key={field.key}>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label className="block text-sm font-medium text-foreground mb-1">
                         {field.label}
                       </label>
                       <div className="relative">

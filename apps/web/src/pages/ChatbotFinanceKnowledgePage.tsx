@@ -535,7 +535,7 @@ function SuggestionsTab() {
               const item = items.find((s) => s.id === expandedId);
               if (!item) return null;
               return (
-                <div className="border rounded-xl p-4 bg-white space-y-3">
+                <div className="border rounded-xl p-4 bg-card space-y-3">
                   <h3 className="font-semibold text-sm">รายละเอียดข้อเสนอแนะ</h3>
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
@@ -545,7 +545,7 @@ function SuggestionsTab() {
                     <div>
                       <p className="text-xs text-muted-foreground mb-1">คำตอบพนักงาน</p>
                       <p className="bg-muted p-2 rounded text-sm">
-                        {item.staffAnswer ?? <span className="text-gray-400">ไม่มี</span>}
+                        {item.staffAnswer ?? <span className="text-muted-foreground">ไม่มี</span>}
                       </p>
                     </div>
                     {item.suggestedTemplate && (

@@ -166,7 +166,7 @@ export default function ChatbotFinanceSessionsPage() {
               <button
                 onClick={() => setPage(Math.max(1, page - 1))}
                 disabled={page === 1}
-                className="text-blue-600 disabled:text-gray-300"
+                className="text-blue-600 disabled:text-muted-foreground/50"
               >
                 ← ก่อนหน้า
               </button>
@@ -176,7 +176,7 @@ export default function ChatbotFinanceSessionsPage() {
               <button
                 onClick={() => setPage(page + 1)}
                 disabled={page * list.data.limit >= list.data.total}
-                className="text-blue-600 disabled:text-gray-300"
+                className="text-blue-600 disabled:text-muted-foreground/50"
               >
                 ถัดไป →
               </button>

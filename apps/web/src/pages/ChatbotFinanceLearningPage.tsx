@@ -148,7 +148,7 @@ export default function ChatbotFinanceLearningPage() {
             className={`px-4 py-1.5 rounded-full text-sm ${
               statusFilter === s
                 ? 'bg-blue-600 text-white'
-                : 'bg-muted text-gray-600 hover:bg-muted/80'
+                : 'bg-muted text-muted-foreground hover:bg-muted/80'
             }`}
           >
             {s} {s === 'PENDING' && stats.data?.suggestions.pending ? `(${stats.data.suggestions.pending})` : ''}

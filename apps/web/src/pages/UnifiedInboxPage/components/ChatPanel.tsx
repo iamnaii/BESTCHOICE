@@ -263,7 +263,7 @@ export default function ChatPanel({
 
   if (!session) {
     return (
-      <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">
+      <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
         เลือกการสนทนาจากรายการด้านซ้าย
       </div>
     );
@@ -303,7 +303,7 @@ export default function ChatPanel({
                     : session.channel === 'FACEBOOK'
                       ? 'bg-[#1877F2]/10 text-[#1877F2]'
                       : session.channel === 'TIKTOK'
-                        ? 'bg-black/10 text-black'
+                        ? 'bg-foreground/10 text-foreground'
                         : 'bg-muted text-foreground/70',
                 )}
               >
@@ -360,7 +360,7 @@ export default function ChatPanel({
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-3">
         {isLoadingMessages ? (
-          <div className="flex items-center justify-center py-12 text-gray-400 text-sm">
+          <div className="flex items-center justify-center py-12 text-muted-foreground text-sm">
             กำลังโหลดข้อความ...
           </div>
         ) : (
@@ -391,9 +391,9 @@ export default function ChatPanel({
             {isCustomerTyping && (
               <div className="px-4 py-1.5 flex items-center gap-2">
                 <div className="flex gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+                  <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: '300ms' }} />
                 </div>
                 <span className="text-[11px] text-muted-foreground">กำลังพิมพ์...</span>
               </div>
@@ -414,7 +414,7 @@ export default function ChatPanel({
 
       {/* Input */}
       {!isResolved && (
-        <div className="border-t border-gray-200 p-3 bg-white">
+        <div className="border-t border-border p-3 bg-background">
           <div className="flex items-end gap-2">
             {/* File upload */}
             <input
@@ -426,7 +426,7 @@ export default function ChatPanel({
             />
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
               title="แนบไฟล์/รูปภาพ"
             >
               <Paperclip className="w-5 h-5" />
@@ -438,8 +438,8 @@ export default function ChatPanel({
                   className={cn(
                     'p-2 rounded-lg transition-colors',
                     emojiOpen
-                      ? 'text-blue-500 bg-blue-50'
-                      : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100',
+                      ? 'text-blue-500 bg-blue-50 dark:bg-blue-950/30'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted',
                   )}
                   title="Emoji / สติกเกอร์"
                 >
@@ -449,18 +449,18 @@ export default function ChatPanel({
               <PopoverContent
                 side="top"
                 align="start"
-                className="w-80 p-0 shadow-lg border border-gray-200 rounded-xl overflow-hidden"
+                className="w-80 p-0 shadow-lg border border-border rounded-xl overflow-hidden"
                 sideOffset={6}
               >
                 {/* ── Top-level tabs ── */}
-                <div className="flex border-b border-gray-200 bg-white">
+                <div className="flex border-b border-border bg-card">
                   <button
                     onClick={() => setPickerTab('emoji')}
                     className={cn(
                       'flex items-center gap-1.5 px-4 py-2 text-xs font-medium transition-colors',
                       pickerTab === 'emoji'
                         ? 'text-blue-600 border-b-2 border-blue-500 -mb-px'
-                        : 'text-gray-500 hover:text-gray-700',
+                        : 'text-muted-foreground hover:text-foreground',
                     )}
                   >
                     😊 Emoji
@@ -473,7 +473,7 @@ export default function ChatPanel({
                         'flex items-center gap-1.5 px-4 py-2 text-xs font-medium transition-colors',
                         pickerTab === 'sticker'
                           ? 'text-blue-600 border-b-2 border-blue-500 -mb-px'
-                          : 'text-gray-500 hover:text-gray-700',
+                          : 'text-muted-foreground hover:text-foreground',
                       )}
                     >
                       📦 สติกเกอร์
@@ -487,7 +487,7 @@ export default function ChatPanel({
                         'flex items-center gap-1.5 px-4 py-2 text-xs font-medium transition-colors',
                         pickerTab === 'gif'
                           ? 'text-blue-600 border-b-2 border-blue-500 -mb-px'
-                          : 'text-gray-500 hover:text-gray-700',
+                          : 'text-muted-foreground hover:text-foreground',
                       )}
                     >
                       GIF
@@ -499,7 +499,7 @@ export default function ChatPanel({
                 {pickerTab === 'emoji' && (
                   <div>
                     {/* Category sub-tabs */}
-                    <div className="flex gap-1 px-2 py-1.5 border-b border-gray-100 bg-gray-50">
+                    <div className="flex gap-1 px-2 py-1.5 border-b border-border bg-muted/50">
                       {EMOJI_CATEGORIES.map((cat, i) => (
                         <button
                           key={cat.name}
@@ -507,7 +507,7 @@ export default function ChatPanel({
                           title={cat.name}
                           className={cn(
                             'p-1 rounded text-base transition-colors',
-                            emojiCategory === i ? 'bg-blue-50 ring-1 ring-blue-200' : 'hover:bg-gray-100',
+                            emojiCategory === i ? 'bg-blue-50 dark:bg-blue-950/30 ring-1 ring-blue-200 dark:ring-blue-800' : 'hover:bg-muted',
                           )}
                         >
                           {cat.label}
@@ -520,7 +520,7 @@ export default function ChatPanel({
                         <button
                           key={emoji}
                           onClick={() => insertEmoji(emoji)}
-                          className="w-8 h-8 flex items-center justify-center text-lg hover:bg-gray-100 rounded transition-colors"
+                          className="w-8 h-8 flex items-center justify-center text-lg hover:bg-muted rounded transition-colors"
                         >
                           {emoji}
                         </button>
@@ -533,7 +533,7 @@ export default function ChatPanel({
                 {pickerTab === 'sticker' && isLineChannel && (
                   <div>
                     {/* Package sub-tabs */}
-                    <div className="flex gap-1 px-2 py-1.5 border-b border-gray-100 bg-gray-50 overflow-x-auto">
+                    <div className="flex gap-1 px-2 py-1.5 border-b border-border bg-muted/50 overflow-x-auto">
                       {LINE_STICKER_PACKAGES.map((pkg, i) => (
                         <button
                           key={pkg.packageId}
@@ -542,7 +542,7 @@ export default function ChatPanel({
                             'flex-shrink-0 px-2 py-1 rounded text-[11px] font-medium transition-colors whitespace-nowrap',
                             stickerPackage === i
                               ? 'bg-[#06C755]/10 text-[#06C755]'
-                              : 'text-gray-500 hover:bg-gray-100',
+                              : 'text-muted-foreground hover:bg-muted',
                           )}
                         >
                           {pkg.name}
@@ -560,7 +560,7 @@ export default function ChatPanel({
                               sticker.id,
                             )
                           }
-                          className="w-14 h-14 flex items-center justify-center hover:bg-gray-100 rounded-lg transition-colors overflow-hidden"
+                          className="w-14 h-14 flex items-center justify-center hover:bg-muted rounded-lg transition-colors overflow-hidden"
                           title={`Sticker ${sticker.id}`}
                         >
                           <img
@@ -582,23 +582,23 @@ export default function ChatPanel({
                 {pickerTab === 'gif' && !isLineChannel && (
                   <div className="flex flex-col">
                     {/* Search input */}
-                    <div className="px-2 py-1.5 border-b border-gray-100">
+                    <div className="px-2 py-1.5 border-b border-border">
                       <input
                         type="text"
                         placeholder="ค้นหา GIF..."
                         value={gifSearch}
                         onChange={(e) => setGifSearch(e.target.value)}
-                        className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        className="w-full px-2 py-1.5 text-xs border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 bg-background"
                       />
                     </div>
                     {/* GIF grid */}
                     <div className="grid grid-cols-2 gap-1 p-2 max-h-[200px] overflow-y-auto">
                       {loadingGifs ? (
-                        <div className="col-span-2 text-center py-4 text-xs text-gray-400">
+                        <div className="col-span-2 text-center py-4 text-xs text-muted-foreground">
                           กำลังโหลด...
                         </div>
                       ) : gifs.length === 0 ? (
-                        <div className="col-span-2 text-center py-4 text-xs text-gray-400">
+                        <div className="col-span-2 text-center py-4 text-xs text-muted-foreground">
                           ไม่พบ GIF
                         </div>
                       ) : (
@@ -621,7 +621,7 @@ export default function ChatPanel({
                       )}
                     </div>
                     {/* Giphy attribution */}
-                    <div className="text-[9px] text-gray-400 text-center pb-1 pt-0.5 border-t border-gray-100">
+                    <div className="text-[9px] text-muted-foreground text-center pb-1 pt-0.5 border-t border-border">
                       Powered by GIPHY
                     </div>
                   </div>

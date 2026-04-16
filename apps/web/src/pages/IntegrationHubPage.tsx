@@ -224,7 +224,7 @@ function ConfigDrawer({
   const configQuery = useQuery<IntegrationConfig>({
     queryKey: ['integration-config', integrationKey],
     queryFn: () =>
-      api.get(`/integrations/${integrationKey}/config`).then((r: any) => r.data),
+      api.get(`/integrations/${integrationKey}/config`).then((r: any) => r.data?.config ?? r.data),
     enabled: open && !!integrationKey,
   });
 

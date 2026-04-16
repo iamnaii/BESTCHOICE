@@ -1,8 +1,10 @@
-# UI Redesign (Metronic) — Master Implementation Plan
+# ~~UI Redesign (Metronic) — Master Implementation Plan~~
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **SUPERSEDED** — แผนนี้ถูกแทนที่ด้วย implementation plan ใหม่สำหรับ [shadcn-ui-redesign.md](../specs/2026-04-16-shadcn-ui-redesign.md)
 
-**Goal:** Redesign all 79 pages and 62 UI components to use Metronic v9 design system with dark mode, consistent design tokens, and mobile-responsive layouts.
+---
+
+~~**Goal:** Redesign all 79 pages and 62 UI components to use Metronic v9 design system with dark mode, consistent design tokens, and mobile-responsive layouts.~~
 
 **Architecture:** Progressive migration — build a Metronic-based component library first, then migrate pages group by group. Old pages remain functional during transition. Each group can be implemented independently after Group 0 (Foundation) is complete.
 

@@ -23,7 +23,7 @@ BESTCHOICE is a full-stack installment payment management system for mobile/phon
 - PEAK (บัญชี), CHATCONE (แชท LINE/Facebook/TikTok), MDM PJ-Soft (ล็อคเครื่อง), PaySolutions (QR)
 
 ## Tech Stack
-- **Frontend**: React 18 + TypeScript + Vite 6 + Tailwind CSS + Metronic v9 (`apps/web`)
+- **Frontend**: React 18 + TypeScript + Vite 6 + Tailwind CSS + shadcn/ui + Radix UI (`apps/web`)
 - **Backend**: NestJS + Prisma + PostgreSQL (`apps/api`)
 - **Monorepo**: Turborepo with npm workspaces
 - **Shared**: `packages/shared/` for shared types/utilities

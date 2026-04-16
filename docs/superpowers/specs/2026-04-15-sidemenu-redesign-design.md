@@ -1,5 +1,8 @@
 # Sidemenu & Navigation Redesign
 
+> **NOTE:** Sidebar styling ถูกแทนที่ด้วย [shadcn-ui-redesign.md](2026-04-16-shadcn-ui-redesign.md) (zinc-900 dark sidebar + emerald accent)
+> เอกสารนี้ยังมีค่าสำหรับ **menu structure & role-based grouping** แต่ส่วน visual/color ให้ดูที่ spec ใหม่
+
 > Role-based menu + Flow-based grouping + Chat on TopBar
 
 ## Problem

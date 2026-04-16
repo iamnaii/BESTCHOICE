@@ -1,8 +1,13 @@
-# Metronic UI Overhaul Implementation Plan
+# ~~Metronic UI Overhaul Implementation Plan~~
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **SUPERSEDED** — แผนนี้ถูกแทนที่ด้วย implementation plan ใหม่สำหรับ [shadcn-ui-redesign.md](../specs/2026-04-16-shadcn-ui-redesign.md)
+> Direction เปลี่ยนจาก Navy+Emerald Metronic → Minimal Zinc + Emerald Accent (shadcn/ui style)
 
-**Goal:** Transform the BESTCHOICE frontend from its current blue-primary custom design to a Navy+Emerald Metronic-style theme with gradient headers, refined sidebar, and consistent page patterns.
+---
+
+> ~~**For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.~~
+
+~~**Goal:** Transform the BESTCHOICE frontend from its current blue-primary custom design to a Navy+Emerald Metronic-style theme with gradient headers, refined sidebar, and consistent page patterns.~~
 
 **Architecture:** Top-down approach — change design tokens + layout shell first (instant visual impact on all pages), then swap core components, then polish individual pages. All changes are frontend-only; backend, Prisma, routing, and business logic remain untouched.
 

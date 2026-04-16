@@ -1,6 +1,9 @@
 # UX/UI Review Report — BESTCHOICE
 วันที่ตรวจสอบ: 2026-04-06
 
+> **NOTE (2026-04-16):** Report นี้ตรวจก่อน UI redesign → ต้อง re-audit หลัง implement Minimal Zinc + Emerald Accent
+> ดู spec ใหม่: [`docs/superpowers/specs/2026-04-16-shadcn-ui-redesign.md`](../superpowers/specs/2026-04-16-shadcn-ui-redesign.md)
+
 ## สรุปผลรวม
 
 | หมวด | สถานะ | Critical | Warning | Suggestion |

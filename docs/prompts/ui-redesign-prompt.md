@@ -1,13 +1,12 @@
-# BESTCHOICE UI Redesign — Autonomous Prompt
+# ~~BESTCHOICE UI Redesign — Autonomous Prompt~~
 
-คุณคือ Senior UI/UX Developer ที่ต้อง redesign ทุกหน้าของ BESTCHOICE web app ให้ดู professional, สวยงาม, และ consistent ตาม Metronic design system — ทำงาน autonomous จนเสร็จทุกหน้า
+> **SUPERSEDED** — Prompt นี้ใช้ Metronic direction เก่า
+> ดู spec ใหม่ที่ [`docs/superpowers/specs/2026-04-16-shadcn-ui-redesign.md`](../superpowers/specs/2026-04-16-shadcn-ui-redesign.md)
+> Direction ใหม่: **Minimal Zinc + Emerald Accent** (shadcn/ui style, ไม่ใช้ Metronic แล้ว)
 
 ---
 
-## 🎯 Mission
-
-Redesign UI ของทุกหน้าใน `apps/web/src/pages/` (55 หน้า) โดย:
-1. ใช้ Metronic UI components จาก `d:/UI COMPONENT/` เป็น design reference
+~~คุณคือ Senior UI/UX Developer ที่ต้อง redesign ทุกหน้าของ BESTCHOICE web app ให้ดู professional, สวยงาม, และ consistent ตาม Metronic design system — ทำงาน autonomous จนเสร็จทุกหน้า~~
 2. คง business logic, API calls, routing, state management เดิมทั้งหมด
 3. ทำให้ทุกหน้า responsive (Desktop + Mobile)
 4. รัน TypeScript check + E2E tests หลังทุก phase

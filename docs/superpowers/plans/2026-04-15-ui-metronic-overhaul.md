@@ -1,8 +1,10 @@
-# UI Metronic Full Overhaul — Implementation Plan
+# ~~UI Metronic Full Overhaul — Implementation Plan~~
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **SUPERSEDED** — แผนนี้ถูกแทนที่ด้วย implementation plan ใหม่สำหรับ [shadcn-ui-redesign.md](../specs/2026-04-16-shadcn-ui-redesign.md)
 
-**Goal:** Fully align BESTCHOICE UI with Metronic v9 design system — sync diverged components, migrate all 46 pages to centralized badge system, create reusable business partials, and restructure 10 heavy pages into composable sub-components.
+---
+
+~~**Goal:** Fully align BESTCHOICE UI with Metronic v9 design system — sync diverged components, migrate all 46 pages to centralized badge system, create reusable business partials, and restructure 10 heavy pages into composable sub-components.~~
 
 **Architecture:** Four sequential phases. Phase 1 syncs the component foundation. Phase 2 is a mechanical batch migration of badge colors. Phase 3 creates reusable partials inspired by Metronic patterns. Phase 4 decomposes monolithic page files into the Metronic Page → Content → Components pattern.
 

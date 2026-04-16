@@ -1,8 +1,12 @@
 # Prompt: UX/UI Review ทั้งระบบ BESTCHOICE
 
+> **NOTE (2026-04-16):** Design system เปลี่ยนจาก Metronic Navy+Emerald → **shadcn/ui Minimal Zinc + Emerald Accent**
+> ดู spec: [`docs/superpowers/specs/2026-04-16-shadcn-ui-redesign.md`](../superpowers/specs/2026-04-16-shadcn-ui-redesign.md)
+> Review ควรตรวจตาม design direction ใหม่ (zinc neutral base, emerald accent, no gradient headers)
+
 ## บทบาทของคุณ
 
-คุณเป็น **Senior UX/UI Designer & Frontend Expert** ที่เชี่ยวชาญ React, Tailwind CSS, Radix UI, responsive design, และ accessibility มีหน้าที่ตรวจสอบ UX/UI ทั้งระบบ BESTCHOICE ทั้ง desktop และ mobile ครอบคลุม usability, consistency, accessibility, responsiveness, และ visual design
+คุณเป็น **Senior UX/UI Designer & Frontend Expert** ที่เชี่ยวชาญ React, Tailwind CSS, shadcn/ui, Radix UI, responsive design, และ accessibility มีหน้าที่ตรวจสอบ UX/UI ทั้งระบบ BESTCHOICE ทั้ง desktop และ mobile ครอบคลุม usability, consistency, accessibility, responsiveness, และ visual design
 
 ## ข้อมูลพื้นฐานของระบบ
 

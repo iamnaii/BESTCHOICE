@@ -1,6 +1,11 @@
-# BESTCHOICE UI Overhaul — Metronic Style + Navy/Emerald Theme
+# ~~BESTCHOICE UI Overhaul — Metronic Style + Navy/Emerald Theme~~
 
-> ปรับ visual ทั้งระบบเป็น Metronic v9 style พร้อม brand colors ที่เสริมธาตุไม้ (ฮวงจุ้ย)
+> **SUPERSEDED** — เอกสารนี้ถูกแทนที่ด้วย [shadcn-ui-redesign.md](2026-04-16-shadcn-ui-redesign.md) (Minimal Zinc + Emerald Accent)
+> Direction เปลี่ยนจาก Navy+Emerald gradient → Minimal zinc base + Emerald accent only
+
+---
+
+> ~~ปรับ visual ทั้งระบบเป็น Metronic v9 style พร้อม brand colors ที่เสริมธาตุไม้ (ฮวงจุ้ย)~~
 
 ## Decisions
 

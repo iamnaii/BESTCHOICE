@@ -403,7 +403,7 @@ function DataTable<T extends { id: string }>({
 
       {/* Pagination — enhanced */}
       {pagination && pagination.totalPages > 1 && (
-        <div className="flex items-center justify-between px-5 py-3 border-t border-border/60 bg-muted/20">
+        <div className="flex items-center justify-between gap-2 flex-wrap px-5 py-3 border-t border-border/60 bg-muted/20">
           <span className="text-sm text-muted-foreground">
             ทั้งหมด {pagination.total.toLocaleString()} รายการ
           </span>
@@ -425,7 +425,7 @@ function DataTable<T extends { id: string }>({
               disabled={pagination.page <= 1}
             >
               <ChevronLeft className="h-3.5 w-3.5 mr-1" />
-              ก่อนหน้า
+              <span className="hidden sm:inline">ก่อนหน้า</span>
             </Button>
             <span className="px-3 py-1 text-sm text-muted-foreground tabular-nums">
               {pagination.page} / {pagination.totalPages}
@@ -436,7 +436,7 @@ function DataTable<T extends { id: string }>({
               onClick={() => pagination.onPageChange(pagination.page + 1)}
               disabled={pagination.page >= pagination.totalPages}
             >
-              ถัดไป
+              <span className="hidden sm:inline">ถัดไป</span>
               <ChevronRight className="h-3.5 w-3.5 ml-1" />
             </Button>
             <Button

@@ -40,6 +40,7 @@ import {
   Brain,
   Send,
   LayoutGrid,
+  CheckSquare,
 } from 'lucide-react';
 
 /* ── Types ─────────────────────────────────────────── */
@@ -83,6 +84,7 @@ const SALES_CONFIG: RoleMenuConfig = {
         { label: 'ลูกค้า', path: '/customers', icon: Users },
         { label: 'ตรวจเครดิต', path: '/credit-checks', icon: UserSearch },
         { label: 'รับซื้อมือสอง', path: '/trade-in', icon: Smartphone },
+        { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
       ],
     },
     {
@@ -125,6 +127,7 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'Dashboard', path: '/', icon: Home },
         { label: 'ยอดขาย', path: '/sales', icon: TrendingUp },
+        { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
       ],
     },
     {
@@ -180,6 +183,7 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'Dashboard', path: '/', icon: Home },
         { label: 'Finance Portfolio', path: '/finance-portfolio', icon: CircleDollarSign },
+        { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
       ],
     },
     {
@@ -237,6 +241,7 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
         { label: 'ใบเสร็จ', path: '/receipts', icon: FileText },
         { label: 'เงินรับจาก FINANCE', path: '/finance-receivable', icon: Banknote },
         { label: 'บันทึกรายจ่าย', path: '/expenses', icon: Receipt },
+        { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
       ],
     },
     {
@@ -285,6 +290,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'กำไร-ขาดทุน', path: '/profit-loss', icon: PieChart },
         { label: 'Ads & ROI', path: '/ads', icon: Target },
         { label: 'Broadcast', path: '/broadcast', icon: Send },
+        { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
       ],
     },
     {

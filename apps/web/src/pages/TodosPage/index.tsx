@@ -163,7 +163,7 @@ export default function TodosPage() {
         action={
           <button
             onClick={openCreate}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90"
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#059669] text-white hover:bg-[#047857] shadow-[0_2px_8px_rgba(5,150,105,0.25)] rounded-lg text-sm font-medium"
           >
             <Plus className="size-4" />
             เพิ่มงาน

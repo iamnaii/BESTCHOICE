@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
+import { IntegrationConfigService } from '../integrations/integration-config.service';
 
 /**
  * MDM PJ-Soft Proxy API Client
@@ -89,31 +90,33 @@ export class MdmService {
   constructor(
     private prisma: PrismaService,
     private configService: ConfigService,
+    private integrationConfig: IntegrationConfigService,
   ) {}
 
   // ─── Configuration ──────────────────────────────────────
 
-  isConfigured(): boolean {
-    return !!this.getApiKey();
+  async isConfigured(): Promise<boolean> {
+    return !!(await this.getApiKey());
   }
 
-  getStatus(): { configured: boolean; baseUrl: string; message: string; rateLimit: MdmRateLimit | null } {
+  async getStatus(): Promise<{ configured: boolean; baseUrl: string; message: string; rateLimit: MdmRateLimit | null }> {
+    const configured = await this.isConfigured();
     return {
-      configured: this.isConfigured(),
-      baseUrl: this.getBaseUrl(),
-      message: this.isConfigured()
+      configured,
+      baseUrl: await this.getBaseUrl(),
+      message: configured
         ? 'MDM PJ-Soft เชื่อมต่อแล้ว'
         : 'ยังไม่ได้ตั้งค่า — ต้องการ MDM_API_KEY',
       rateLimit: this.rateLimit,
     };
   }
 
-  private getApiKey(): string {
-    return this.configService.get('MDM_API_KEY') || '';
+  private async getApiKey(): Promise<string> {
+    return (await this.integrationConfig.getValue('mdm', 'apiKey')) || '';
   }
 
-  private getBaseUrl(): string {
-    return this.configService.get('MDM_BASE_URL') || 'https://mdm-th.com';
+  private async getBaseUrl(): Promise<string> {
+    return (await this.integrationConfig.getValue('mdm', 'baseUrl')) || 'https://mdm-th.com';
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -141,7 +144,7 @@ export class MdmService {
     phone?: string;
     deviceId?: string;
   }): Promise<{ total: number; devices: MdmDevice[] }> {
-    if (!this.isConfigured()) return { total: 0, devices: [] };
+    if (!(await this.isConfigured())) return { total: 0, devices: [] };
 
     const query = new URLSearchParams();
     if (params?.pageNum) query.set('pageNum', String(params.pageNum));
@@ -163,28 +166,28 @@ export class MdmService {
 
   /** GET /api/mdm/devices/types — device types (iPhone, iPad, Mac) */
   async getDeviceTypes(): Promise<MdmDeviceType[]> {
-    if (!this.isConfigured()) return [];
+    if (!(await this.isConfigured())) return [];
     const result = await this.apiGet<MdmDeviceType[]>('/api/mdm/devices/types');
     return result?.data || [];
   }
 
   /** GET /api/mdm/devices/{id} — device detail by MDM ID */
   async getDeviceById(id: number): Promise<MdmDevice | null> {
-    if (!this.isConfigured()) return null;
+    if (!(await this.isConfigured())) return null;
     const result = await this.apiGet<MdmDevice>(`/api/mdm/devices/${id}`);
     return result?.data || null;
   }
 
   /** GET /api/mdm/devices/imei/{imei} — device by IMEI (dedicated endpoint) */
   async findDeviceByImei(imei: string): Promise<MdmDevice | null> {
-    if (!this.isConfigured()) return null;
+    if (!(await this.isConfigured())) return null;
     const result = await this.apiGet<MdmDevice>(`/api/mdm/devices/imei/${encodeURIComponent(imei)}`);
     return result?.data || null;
   }
 
   /** GET /api/mdm/devices/by-serial?deviceId=XXX — device by serial number */
   async findDeviceBySerial(serial: string): Promise<MdmDevice | null> {
-    if (!this.isConfigured()) return null;
+    if (!(await this.isConfigured())) return null;
     const result = await this.apiGet<MdmDevice>(
       `/api/mdm/devices/by-serial?deviceId=${encodeURIComponent(serial)}`,
     );
@@ -193,7 +196,7 @@ export class MdmService {
 
   /** GET /api/mdm/devices/location?id=XXX — device GPS location */
   async getDeviceLocation(id: number): Promise<MdmDeviceLocation | null> {
-    if (!this.isConfigured()) return null;
+    if (!(await this.isConfigured())) return null;
     const result = await this.apiGet<MdmDeviceLocation>(`/api/mdm/devices/location?id=${id}`);
     return result?.data || null;
   }
@@ -358,7 +361,7 @@ export class MdmService {
    * This is the main method called by auto-lock cron.
    */
   async lockDeviceByImei(imei: string, reason: string): Promise<MdmActionResult> {
-    if (!this.isConfigured()) {
+    if (!(await this.isConfigured())) {
       return { success: false, message: 'MDM ยังไม่ได้ตั้งค่า' };
     }
 
@@ -401,7 +404,7 @@ export class MdmService {
    * This is the main method called by auto-unlock.
    */
   async unlockDeviceByImei(imei: string): Promise<MdmActionResult> {
-    if (!this.isConfigured()) {
+    if (!(await this.isConfigured())) {
       return { success: false, message: 'MDM ยังไม่ได้ตั้งค่า' };
     }
 
@@ -437,7 +440,7 @@ export class MdmService {
     device: MdmDevice | null;
     lockStatus: string;
   }> {
-    if (!this.isConfigured()) {
+    if (!(await this.isConfigured())) {
       return { found: false, device: null, lockStatus: 'MDM ยังไม่ได้ตั้งค่า' };
     }
 
@@ -473,11 +476,11 @@ export class MdmService {
     const timeout = setTimeout(() => controller.abort(), 15_000);
 
     try {
-      const url = `${this.getBaseUrl()}${path}`;
+      const url = `${await this.getBaseUrl()}${path}`;
       const options: RequestInit = {
         method,
         headers: {
-          'X-API-Key': this.getApiKey(),
+          'X-API-Key': await this.getApiKey(),
           'Content-Type': 'application/json',
         },
         signal: controller.signal,

@@ -1,5 +1,6 @@
 import { Injectable, Logger, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { PrismaService } from '../../../prisma/prisma.service';
 
 export interface MenuButton {
   label: string;
@@ -41,7 +42,10 @@ export class RichMenuService {
   private readonly lineChannelAccessToken: string | undefined;
   private readonly lineApiBaseUrl = 'https://api.line.me/v2/bot';
 
-  constructor(private configService: ConfigService) {
+  constructor(
+    private configService: ConfigService,
+    private prisma: PrismaService,
+  ) {
     this.lineChannelAccessToken = this.configService.get<string>('LINE_CHANNEL_ACCESS_TOKEN');
   }
 
@@ -388,6 +392,94 @@ export class RichMenuService {
 
     const data = await response.json();
     return data.richmenus || [];
+  }
+
+  /**
+   * Link a specific Rich Menu to a LINE user
+   */
+  async linkRichMenuToUser(userId: string, richMenuId: string): Promise<void> {
+    const url = `${this.lineApiBaseUrl}/user/${userId}/richmenu/${richMenuId}`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.lineChannelAccessToken}`,
+      },
+      signal: AbortSignal.timeout(15000),
+    });
+
+    if (response.status === 404) {
+      // User may have blocked the OA — ignore silently
+      return;
+    }
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new InternalServerErrorException(
+        `Failed to link Rich Menu to user ${userId}: ${response.status} ${errorBody}`,
+      );
+    }
+
+    this.logger.log(`Rich Menu ${richMenuId} linked to user ${userId}`);
+  }
+
+  /**
+   * Unlink Rich Menu from a LINE user (revert to default)
+   */
+  async unlinkRichMenuFromUser(userId: string): Promise<void> {
+    const url = `${this.lineApiBaseUrl}/user/${userId}/richmenu`;
+    const response = await fetch(url, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${this.lineChannelAccessToken}`,
+      },
+      signal: AbortSignal.timeout(15000),
+    });
+
+    if (response.status === 404) {
+      // No menu linked — ignore
+      return;
+    }
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new InternalServerErrorException(
+        `Failed to unlink Rich Menu from user ${userId}: ${response.status} ${errorBody}`,
+      );
+    }
+
+    this.logger.log(`Rich Menu unlinked from user ${userId}`);
+  }
+
+  /**
+   * Read a Rich Menu ID from SystemConfig by key
+   */
+  async getRichMenuIdFromConfig(key: string): Promise<string | null> {
+    const config = await this.prisma.systemConfig.findFirst({
+      where: { key, deletedAt: null },
+    });
+    return config?.value ?? null;
+  }
+
+  /**
+   * Switch a LINE user's Rich Menu based on verification status and channel
+   * Keys: line.richMenu.shopVerified | line.richMenu.shopDefault | line.richMenu.financeVerified | line.richMenu.financeDefault
+   */
+  async switchRichMenu(
+    userId: string,
+    isVerified: boolean,
+    channel: 'shop' | 'finance',
+  ): Promise<void> {
+    const channelPart = channel === 'shop' ? 'shop' : 'finance';
+    const statusPart = isVerified ? 'Verified' : 'Default';
+    const key = `line.richMenu.${channelPart}${statusPart}`;
+
+    const richMenuId = await this.getRichMenuIdFromConfig(key);
+    if (!richMenuId) {
+      this.logger.warn(`Rich Menu config not found for key "${key}" — skipping switch`);
+      return;
+    }
+
+    await this.linkRichMenuToUser(userId, richMenuId);
   }
 
   private async callLineApi(url: string, body: unknown): Promise<Response> {

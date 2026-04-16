@@ -47,7 +47,7 @@ const roleBadgeMap: Record<string, { label: string; cls: string }> = {
 const expandedMenuClassNames: AccordionMenuClassNames = {
   root: 'space-y-0.5',
   item: [
-    'h-[34px] rounded-md text-[14px] font-medium',
+    'h-[34px] rounded-md text-[15px] font-medium',
     'text-white/45 hover:text-white/80 hover:bg-white/[0.06]',
     'transition-colors duration-150',
     'data-[selected=true]:bg-emerald-500/20 data-[selected=true]:text-emerald-300',
@@ -58,7 +58,7 @@ const expandedMenuClassNames: AccordionMenuClassNames = {
   ].join(' '),
   sub: '',
   subTrigger: [
-    'h-[32px] rounded-md text-[11px] font-semibold uppercase tracking-[0.1em]',
+    'h-[32px] rounded-md text-[12px] font-semibold uppercase tracking-[0.1em]',
     'text-white/25 hover:text-white/50 hover:bg-transparent',
     'data-[state=open]:text-white/40 data-[state=open]:bg-transparent',
     'transition-colors duration-150 px-2',
@@ -286,7 +286,7 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
             <span className="text-[15px] font-bold text-white tracking-tight">
               BESTCHOICE
             </span>
-            <span className="text-[11px] text-white/30 font-medium tracking-widest uppercase">
+            <span className="text-[12px] text-white/30 font-medium tracking-widest uppercase">
               Finance Management
             </span>
           </div>
@@ -300,15 +300,15 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
             <span className="text-emerald-300 text-xs font-bold">{user.name?.charAt(0)}</span>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-[13px] font-medium text-white/70 truncate">{user.name}</p>
+            <p className="text-[14px] font-medium text-white/70 truncate">{user.name}</p>
             <div className="flex items-center gap-1.5 mt-0.5">
               {roleInfo && (
-                <span className={cn('inline-flex text-[11px] font-bold px-1.5 py-px rounded', roleInfo.cls)}>
+                <span className={cn('inline-flex text-[12px] font-bold px-1.5 py-px rounded', roleInfo.cls)}>
                   {roleInfo.label}
                 </span>
               )}
               {user.branchName && (
-                <span className="text-[11px] text-white/25 truncate">{user.branchName}</span>
+                <span className="text-[12px] text-white/25 truncate">{user.branchName}</span>
               )}
             </div>
           </div>
@@ -331,7 +331,7 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
               </AccordionMenuSubTrigger>
               <AccordionMenuSubContent parentValue={section.key} type="single" collapsible>
                 {section.items.map((item) => (
-                  <AccordionMenuItem key={item.path} value={item.path} className="text-[13px]">
+                  <AccordionMenuItem key={item.path} value={item.path} className="text-[15px]">
                     <Link to={item.path} className="flex items-center gap-2.5 w-full">
                       <item.icon
                         data-slot="accordion-menu-icon"
@@ -394,7 +394,7 @@ function MobileSidebarContent() {
           <span className="text-[15px] font-bold text-white tracking-tight">
             BESTCHOICE
           </span>
-          <span className="text-[11px] text-white/30 font-medium tracking-widest uppercase">
+          <span className="text-[12px] text-white/30 font-medium tracking-widest uppercase">
             Finance Management
           </span>
         </div>
@@ -407,15 +407,15 @@ function MobileSidebarContent() {
             <span className="text-emerald-300 text-xs font-bold">{user.name?.charAt(0)}</span>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-[13px] font-medium text-white/70 truncate">{user.name}</p>
+            <p className="text-[14px] font-medium text-white/70 truncate">{user.name}</p>
             <div className="flex items-center gap-1.5 mt-0.5">
               {roleInfo && (
-                <span className={cn('inline-flex text-[11px] font-bold px-1.5 py-px rounded', roleInfo.cls)}>
+                <span className={cn('inline-flex text-[12px] font-bold px-1.5 py-px rounded', roleInfo.cls)}>
                   {roleInfo.label}
                 </span>
               )}
               {user.branchName && (
-                <span className="text-[11px] text-white/25 truncate">{user.branchName}</span>
+                <span className="text-[12px] text-white/25 truncate">{user.branchName}</span>
               )}
             </div>
           </div>
@@ -438,7 +438,7 @@ function MobileSidebarContent() {
               </AccordionMenuSubTrigger>
               <AccordionMenuSubContent parentValue={section.key} type="single" collapsible>
                 {section.items.map((item) => (
-                  <AccordionMenuItem key={item.path} value={item.path} className="text-[13px]">
+                  <AccordionMenuItem key={item.path} value={item.path} className="text-[15px]">
                     <Link to={item.path} className="flex items-center gap-2.5 w-full">
                       <item.icon
                         data-slot="accordion-menu-icon"

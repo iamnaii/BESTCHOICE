@@ -74,7 +74,7 @@ export default function PageHeader({
               {badge}
             </div>
             {subtitle && (
-              <p className="text-[13px] text-white/60 mt-1">{subtitle}</p>
+              <p className="text-sm text-white/60 mt-1">{subtitle}</p>
             )}
           </div>
         </div>

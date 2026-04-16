@@ -275,13 +275,13 @@ export default function ChatPanel({
   return (
     <div className="flex-1 flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-white">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-card">
         <div className="flex items-center gap-3">
-          <button onClick={onBack} className="lg:hidden text-gray-400 hover:text-gray-600">
+          <button onClick={onBack} className="lg:hidden text-muted-foreground hover:text-foreground/70">
             <ArrowLeft className="w-5 h-5" />
           </button>
           {/* Customer avatar */}
-          <div className="w-9 h-9 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden shrink-0">
+          <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center overflow-hidden shrink-0">
             {session.customer?.avatarUrl || session.customer?.lineAvatarUrl ? (
               <img
                 src={session.customer.avatarUrl || session.customer.lineAvatarUrl}
@@ -289,11 +289,11 @@ export default function ChatPanel({
                 className="w-full h-full object-cover"
               />
             ) : (
-              <span className="text-gray-500 text-sm font-bold">{displayName[0]}</span>
+              <span className="text-muted-foreground text-sm font-bold">{displayName[0]}</span>
             )}
           </div>
           <div>
-            <h3 className="font-medium text-sm text-gray-900">{displayName}</h3>
+            <h3 className="font-medium text-sm text-foreground">{displayName}</h3>
             <div className="flex items-center gap-1.5 mt-0.5">
               <span
                 className={cn(
@@ -304,7 +304,7 @@ export default function ChatPanel({
                       ? 'bg-[#1877F2]/10 text-[#1877F2]'
                       : session.channel === 'TIKTOK'
                         ? 'bg-black/10 text-black'
-                        : 'bg-gray-100 text-gray-600',
+                        : 'bg-muted text-foreground/70',
                 )}
               >
                 {session.channel === 'LINE_FINANCE'
@@ -317,7 +317,7 @@ export default function ChatPanel({
                         ? 'TikTok'
                         : 'Web'}
               </span>
-              <span className="text-xs text-gray-400">{session.sessionStatus}</span>
+              <span className="text-xs text-muted-foreground">{session.sessionStatus}</span>
             </div>
           </div>
         </div>
@@ -329,7 +329,7 @@ export default function ChatPanel({
               'p-1.5 rounded-lg transition-colors',
               session.pinnedAt
                 ? 'text-amber-500 hover:bg-amber-50'
-                : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600',
+                : 'text-muted-foreground hover:bg-accent hover:text-foreground/70',
             )}
             title={session.pinnedAt ? 'ถอดหมุด' : 'ปักหมุด'}
           >
@@ -337,7 +337,7 @@ export default function ChatPanel({
           </button>
           <button
             onClick={() => setShowActions(!showActions)}
-            className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
+            className="p-1.5 text-muted-foreground hover:text-foreground/70 hover:bg-accent rounded-lg"
           >
             <MoreVertical className="w-5 h-5" />
           </button>

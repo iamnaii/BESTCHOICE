@@ -161,18 +161,18 @@ function KnowledgeBaseTab() {
             errorTitle="ไม่สามารถโหลด Knowledge Base ได้"
           >
           {list.data?.length === 0 ? (
-            <p className="text-sm text-gray-400">ยังไม่มี FAQ</p>
+            <p className="text-sm text-muted-foreground">ยังไม่มี FAQ</p>
           ) : (
             list.data?.map((kb) => (
               <div
                 key={kb.id}
-                className={`p-3 border rounded-lg cursor-pointer hover:bg-gray-50 ${editing?.id === kb.id ? 'border-blue-400 bg-blue-50' : 'bg-white'}`}
+                className={`p-3 border rounded-lg cursor-pointer hover:bg-muted/50 ${editing?.id === kb.id ? 'border-blue-400 bg-blue-50' : 'bg-card'}`}
                 onClick={() => startEditWithReset(kb)}
               >
                 <div className="flex justify-between items-start">
                   <div>
                     <p className="font-semibold text-sm">{kb.intent}</p>
-                    <p className="text-xs text-gray-500">{kb.category}</p>
+                    <p className="text-xs text-muted-foreground">{kb.category}</p>
                   </div>
                   <div className="flex flex-col items-end gap-1">
                     {(() => {
@@ -188,7 +188,7 @@ function KnowledgeBaseTab() {
                     )}
                   </div>
                 </div>
-                <p className="text-xs text-gray-400 mt-1 line-clamp-2">{kb.responseTemplate}</p>
+                <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{kb.responseTemplate}</p>
               </div>
             ))
           )}
@@ -196,9 +196,9 @@ function KnowledgeBaseTab() {
         </div>
 
         {/* Form */}
-        <div className="col-span-7 bg-white border rounded-xl p-4">
+        <div className="col-span-7 bg-card border rounded-xl p-4">
           {!isCreating && !editing ? (
-            <p className="text-gray-400 text-sm">เลือก FAQ จากด้านซ้ายเพื่อแก้ไข หรือกด "+ เพิ่ม FAQ"</p>
+            <p className="text-muted-foreground text-sm">เลือก FAQ จากด้านซ้ายเพื่อแก้ไข หรือกด "+ เพิ่ม FAQ"</p>
           ) : (
             <form
               onSubmit={(e) => { e.preventDefault(); saveMutation.mutate(); }}
@@ -208,7 +208,7 @@ function KnowledgeBaseTab() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs text-gray-600">Intent (ID ภาษาอังกฤษ)</label>
+                  <label className="text-xs text-muted-foreground">Intent (ID ภาษาอังกฤษ)</label>
                   <input
                     type="text"
                     value={form.intent}
@@ -219,7 +219,7 @@ function KnowledgeBaseTab() {
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-600">Category</label>
+                  <label className="text-xs text-muted-foreground">Category</label>
                   <input
                     type="text"
                     value={form.category}
@@ -232,7 +232,7 @@ function KnowledgeBaseTab() {
               </div>
 
               <div>
-                <label className="text-xs text-gray-600">Trigger Keywords (คั่นด้วย comma)</label>
+                <label className="text-xs text-muted-foreground">Trigger Keywords (คั่นด้วย comma)</label>
                 <input
                   type="text"
                   value={form.triggerKeywords.join(', ')}
@@ -243,7 +243,7 @@ function KnowledgeBaseTab() {
               </div>
 
               <div>
-                <label className="text-xs text-gray-600">Example Questions (1 บรรทัด/คำถาม)</label>
+                <label className="text-xs text-muted-foreground">Example Questions (1 บรรทัด/คำถาม)</label>
                 <textarea
                   value={form.exampleQuestions.join('\n')}
                   onChange={(e) => setForm({ ...form, exampleQuestions: e.target.value.split('\n').map((s) => s.trim()).filter(Boolean) })}
@@ -254,7 +254,7 @@ function KnowledgeBaseTab() {
               </div>
 
               <div>
-                <label className="text-xs text-gray-600">Response Template</label>
+                <label className="text-xs text-muted-foreground">Response Template</label>
                 <textarea
                   value={form.responseTemplate}
                   onChange={(e) => setForm({ ...form, responseTemplate: e.target.value })}
@@ -266,7 +266,7 @@ function KnowledgeBaseTab() {
 
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="text-xs text-gray-600">Response Type</label>
+                  <label className="text-xs text-muted-foreground">Response Type</label>
                   <select
                     value={form.responseType}
                     onChange={(e) => setForm({ ...form, responseType: e.target.value })}
@@ -278,7 +278,7 @@ function KnowledgeBaseTab() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs text-gray-600">Priority</label>
+                  <label className="text-xs text-muted-foreground">Priority</label>
                   <input
                     type="number"
                     value={form.priority}
@@ -286,7 +286,7 @@ function KnowledgeBaseTab() {
                     className="w-full px-3 py-2 border rounded-lg text-sm mt-1"
                   />
                 </div>
-                <div className="flex flex-col text-xs text-gray-600 mt-1">
+                <div className="flex flex-col text-xs text-muted-foreground mt-1">
                   <label className="flex items-center gap-2 mt-2">
                     <input
                       type="checkbox"
@@ -336,7 +336,7 @@ function KnowledgeBaseTab() {
                     <button
                       type="button"
                       onClick={() => setPendingDelete(false)}
-                      className="px-4 py-2 border border-gray-300 text-gray-600 rounded-lg text-sm hover:bg-gray-50"
+                      className="px-4 py-2 border border-border text-foreground/70 rounded-lg text-sm hover:bg-muted"
                     >
                       ไม่ลบ
                     </button>
@@ -345,7 +345,7 @@ function KnowledgeBaseTab() {
                 <button
                   type="button"
                   onClick={reset}
-                  className="px-4 py-2 border border-gray-300 text-gray-600 rounded-lg text-sm hover:bg-gray-50"
+                  className="px-4 py-2 border border-border text-foreground/70 rounded-lg text-sm hover:bg-muted"
                 >
                   ยกเลิก
                 </button>
@@ -426,7 +426,7 @@ function SuggestionsTab() {
             className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${
               statusFilter === s
                 ? 'bg-blue-600 text-white border-blue-600'
-                : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+                : 'bg-card text-foreground/70 border-border hover:bg-muted'
             }`}
           >
             {s === '' ? 'ทั้งหมด' : STATUS_LABELS[s]}
@@ -442,19 +442,19 @@ function SuggestionsTab() {
         errorTitle="ไม่สามารถโหลดข้อเสนอแนะได้"
       >
         {items.length === 0 ? (
-          <p className="text-sm text-gray-400 py-8 text-center">
+          <p className="text-sm text-muted-foreground py-8 text-center">
             ไม่มีข้อเสนอแนะ{statusFilter ? ` (${STATUS_LABELS[statusFilter]})` : ''}
           </p>
         ) : (
           <div className="space-y-2">
-            <p className="text-xs text-gray-500 mb-2">
+            <p className="text-xs text-muted-foreground mb-2">
               แสดง {items.length} จาก {suggestions.data?.total ?? 0} รายการ
             </p>
 
             <div className="border rounded-xl overflow-hidden">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-gray-50 text-left text-xs text-gray-500 uppercase">
+                  <tr className="bg-muted text-left text-xs text-muted-foreground uppercase">
                     <th className="px-4 py-3">คำถามลูกค้า</th>
                     <th className="px-4 py-3">Intent</th>
                     <th className="px-4 py-3">แหล่งที่มา</th>
@@ -467,14 +467,14 @@ function SuggestionsTab() {
                   {items.map((s) => (
                     <tr
                       key={s.id}
-                      className="hover:bg-gray-50 cursor-pointer"
+                      className="hover:bg-muted/50 cursor-pointer"
                       onClick={() => setExpandedId(expandedId === s.id ? null : s.id)}
                     >
                       <td className="px-4 py-3">
                         <p className="line-clamp-2 max-w-xs">{s.customerQuestion}</p>
                       </td>
                       <td className="px-4 py-3">
-                        <code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded">
+                        <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
                           {s.suggestedIntent}
                         </code>
                       </td>
@@ -491,7 +491,7 @@ function SuggestionsTab() {
                           );
                         })()}
                       </td>
-                      <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
+                      <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
                         {new Date(s.createdAt).toLocaleDateString('th-TH', {
                           day: 'numeric',
                           month: 'short',
@@ -539,26 +539,26 @@ function SuggestionsTab() {
                   <h3 className="font-semibold text-sm">รายละเอียดข้อเสนอแนะ</h3>
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
-                      <p className="text-xs text-gray-500 mb-1">คำถามลูกค้า</p>
-                      <p className="bg-gray-50 p-2 rounded text-sm">{item.customerQuestion}</p>
+                      <p className="text-xs text-muted-foreground mb-1">คำถามลูกค้า</p>
+                      <p className="bg-muted p-2 rounded text-sm">{item.customerQuestion}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-gray-500 mb-1">คำตอบพนักงาน</p>
-                      <p className="bg-gray-50 p-2 rounded text-sm">
+                      <p className="text-xs text-muted-foreground mb-1">คำตอบพนักงาน</p>
+                      <p className="bg-muted p-2 rounded text-sm">
                         {item.staffAnswer ?? <span className="text-gray-400">ไม่มี</span>}
                       </p>
                     </div>
                     {item.suggestedTemplate && (
                       <div className="col-span-2">
-                        <p className="text-xs text-gray-500 mb-1">Template ที่แนะนำ</p>
-                        <pre className="bg-gray-50 p-2 rounded text-xs font-mono whitespace-pre-wrap">
+                        <p className="text-xs text-muted-foreground mb-1">Template ที่แนะนำ</p>
+                        <pre className="bg-muted p-2 rounded text-xs font-mono whitespace-pre-wrap">
                           {item.suggestedTemplate}
                         </pre>
                       </div>
                     )}
                     {item.suggestedKeywords.length > 0 && (
                       <div className="col-span-2">
-                        <p className="text-xs text-gray-500 mb-1">Keywords ที่แนะนำ</p>
+                        <p className="text-xs text-muted-foreground mb-1">Keywords ที่แนะนำ</p>
                         <div className="flex gap-1 flex-wrap">
                           {item.suggestedKeywords.map((kw, i) => (
                             <span

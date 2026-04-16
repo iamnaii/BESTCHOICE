@@ -185,7 +185,7 @@ function FlexPreviewCard({ content }: { content: FlexContent }) {
 
   if (!jsonObj) {
     return (
-      <div className="flex h-24 items-center justify-center rounded-xl bg-gray-100 text-xs text-gray-400">
+      <div className="flex h-24 items-center justify-center rounded-xl bg-muted text-xs text-muted-foreground">
         JSON ไม่ถูกต้อง
       </div>
     );
@@ -203,7 +203,7 @@ function FlexPreviewCard({ content }: { content: FlexContent }) {
   const heroUrl = typeof hero?.url === 'string' ? hero.url : null;
 
   return (
-    <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-md text-xs max-w-[200px]">
+    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-md text-xs max-w-[200px]">
       {heroUrl && (
         <img
           src={heroUrl}
@@ -216,10 +216,10 @@ function FlexPreviewCard({ content }: { content: FlexContent }) {
       )}
       <div className="p-3 space-y-1">
         {titleItem && (
-          <p className="font-bold text-sm text-gray-900 line-clamp-2">{titleItem.text as string}</p>
+          <p className="font-bold text-sm text-foreground line-clamp-2">{titleItem.text as string}</p>
         )}
         {bodyItems.map((item, i) => (
-          <p key={i} className="text-gray-500 line-clamp-2">
+          <p key={i} className="text-muted-foreground line-clamp-2">
             {item.text as string}
           </p>
         ))}
@@ -241,9 +241,9 @@ function MessagePreviewBubble({ message }: { message: MessageItem }) {
   if (message.type === 'text') {
     const c = message.content as TextContent;
     return (
-      <div className="bg-white rounded-2xl rounded-tl-sm px-3.5 py-2.5 max-w-[85%] shadow-sm">
-        <p className="text-[13px] text-gray-800 whitespace-pre-wrap leading-relaxed">
-          {c.text || <span className="text-gray-400">ข้อความจะแสดงที่นี่...</span>}
+      <div className="bg-card rounded-2xl rounded-tl-sm px-3.5 py-2.5 max-w-[85%] shadow-sm">
+        <p className="text-[13px] text-foreground/90 whitespace-pre-wrap leading-relaxed">
+          {c.text || <span className="text-muted-foreground">ข้อความจะแสดงที่นี่...</span>}
         </p>
       </div>
     );
@@ -252,7 +252,7 @@ function MessagePreviewBubble({ message }: { message: MessageItem }) {
   if (message.type === 'image') {
     const c = message.content as ImageContent;
     return (
-      <div className="bg-white rounded-2xl rounded-tl-sm overflow-hidden max-w-[85%] shadow-sm">
+      <div className="bg-card rounded-2xl rounded-tl-sm overflow-hidden max-w-[85%] shadow-sm">
         {c.imageUrl ? (
           <img
             src={c.imageUrl}
@@ -263,11 +263,11 @@ function MessagePreviewBubble({ message }: { message: MessageItem }) {
             }}
           />
         ) : (
-          <div className="flex h-20 items-center justify-center bg-gray-100 text-xs text-gray-400">
+          <div className="flex h-20 items-center justify-center bg-muted text-xs text-muted-foreground">
             รูปภาพจะแสดงที่นี่
           </div>
         )}
-        {c.caption && <p className="px-3 py-1.5 text-xs text-gray-600">{c.caption}</p>}
+        {c.caption && <p className="px-3 py-1.5 text-xs text-foreground/70">{c.caption}</p>}
       </div>
     );
   }
@@ -309,7 +309,7 @@ function ImageEditor({ message, onChange }: EditorProps) {
   return (
     <div className="space-y-3">
       <div>
-        <label className="mb-1.5 block text-sm font-medium text-gray-700">URL รูปภาพ</label>
+        <label className="mb-1.5 block text-sm font-medium text-foreground/80">URL รูปภาพ</label>
         <Input
           placeholder="https://example.com/image.jpg"
           value={c.imageUrl}
@@ -318,8 +318,8 @@ function ImageEditor({ message, onChange }: EditorProps) {
         <p className="mt-1 text-xs text-muted-foreground">ต้องเป็น HTTPS และขนาดไม่เกิน 10MB</p>
       </div>
       <div>
-        <label className="mb-1.5 block text-sm font-medium text-gray-700">
-          Caption <span className="text-gray-400 font-normal">(ไม่บังคับ)</span>
+        <label className="mb-1.5 block text-sm font-medium text-foreground/80">
+          Caption <span className="text-muted-foreground font-normal">(ไม่บังคับ)</span>
         </label>
         <Input
           placeholder="คำบรรยายใต้รูป..."
@@ -340,7 +340,7 @@ function FlexEditor({ message, onChange }: EditorProps) {
     <div className="space-y-4">
       {/* Alt text */}
       <div>
-        <label className="mb-1.5 block text-sm font-medium text-gray-700">Alt Text</label>
+        <label className="mb-1.5 block text-sm font-medium text-foreground/80">Alt Text</label>
         <Input
           placeholder="ข้อความสำรองสำหรับการแจ้งเตือน"
           value={c.altText}
@@ -350,7 +350,7 @@ function FlexEditor({ message, onChange }: EditorProps) {
       </div>
 
       {/* Mode toggle */}
-      <div className="flex gap-1 rounded-full bg-gray-100 p-1 w-fit">
+      <div className="flex gap-1 rounded-full bg-muted p-1 w-fit">
         {(['template', 'json'] as FlexMode[]).map((mode) => (
           <button
             key={mode}
@@ -359,8 +359,8 @@ function FlexEditor({ message, onChange }: EditorProps) {
             className={cn(
               'rounded-full px-5 py-1.5 text-sm font-medium transition-all duration-200',
               c.flexMode === mode
-                ? 'bg-white text-blue-700 shadow-sm'
-                : 'text-gray-500 hover:text-gray-700',
+                ? 'bg-card text-blue-700 shadow-sm'
+                : 'text-muted-foreground hover:text-foreground/80',
             )}
           >
             {mode === 'template' ? 'Template' : 'JSON'}
@@ -385,7 +385,7 @@ function FlexEditor({ message, onChange }: EditorProps) {
                   'rounded-full border-2 px-4 py-1.5 text-sm font-medium transition-all duration-200',
                   c.templateKey === key
                     ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm'
-                    : 'border-gray-200 text-gray-600 hover:border-blue-300 hover:text-blue-600',
+                    : 'border-border text-foreground/70 hover:border-blue-300 hover:text-blue-600',
                 )}
               >
                 {t.name}
@@ -396,7 +396,7 @@ function FlexEditor({ message, onChange }: EditorProps) {
           <div className="space-y-3">
             {tpl.fields.map((fieldName) => (
               <div key={fieldName}>
-                <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                <label className="mb-1.5 block text-sm font-medium text-foreground/80">
                   {fieldName}
                   {fieldName === tpl.fields[0] && <span className="text-red-500 ml-0.5">*</span>}
                 </label>
@@ -415,7 +415,7 @@ function FlexEditor({ message, onChange }: EditorProps) {
           </div>
           {/* Mini preview */}
           <div className="space-y-2">
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Preview</p>
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Preview</p>
             <FlexPreviewCard content={c} />
           </div>
         </div>
@@ -423,15 +423,15 @@ function FlexEditor({ message, onChange }: EditorProps) {
         /* JSON mode */
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <div className="space-y-2">
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">JSON Editor</p>
-            <div className="rounded-xl overflow-hidden border border-gray-700 shadow-sm">
-              <div className="bg-[#161b22] px-3 py-2 flex items-center gap-2 border-b border-gray-700">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">JSON Editor</p>
+            <div className="rounded-xl overflow-hidden border border-border shadow-sm">
+              <div className="bg-[#161b22] px-3 py-2 flex items-center gap-2 border-b border-border">
                 <div className="flex gap-1.5">
                   <div className="size-2.5 rounded-full bg-red-500" />
                   <div className="size-2.5 rounded-full bg-yellow-500" />
                   <div className="size-2.5 rounded-full bg-green-500" />
                 </div>
-                <span className="text-xs text-gray-400 ml-1">flex.json</span>
+                <span className="text-xs text-muted-foreground ml-1">flex.json</span>
               </div>
               <Textarea
                 className="font-mono text-xs bg-[#0d1117] text-[#c9d1d9] min-h-[200px] resize-y border-0 rounded-none focus-visible:ring-0 focus-visible:ring-offset-0"
@@ -462,7 +462,7 @@ function FlexEditor({ message, onChange }: EditorProps) {
             )}
           </div>
           <div className="space-y-2">
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Live Preview</p>
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Live Preview</p>
             <FlexPreviewCard content={c} />
           </div>
         </div>
@@ -503,11 +503,11 @@ function MessageCard({ message, index, total, onChange, onDelete }: MessageCardP
       <CardHeader className="pb-3 bg-gradient-to-r from-blue-50/70 to-indigo-50/70 rounded-t-xl border-b border-blue-100/50">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <GripVertical className="size-4 text-gray-400" />
+            <GripVertical className="size-4 text-muted-foreground" />
             <div className="flex size-6 items-center justify-center rounded-full bg-blue-500 text-white text-xs font-semibold shadow-sm">
               {index + 1}
             </div>
-            <CardTitle className="text-sm font-semibold text-gray-700">
+            <CardTitle className="text-sm font-semibold text-foreground/80">
               ข้อความที่ {index + 1}
             </CardTitle>
           </div>
@@ -535,7 +535,7 @@ function MessageCard({ message, index, total, onChange, onDelete }: MessageCardP
                 'flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-all duration-200',
                 message.type === btn.type
                   ? 'border-blue-500 bg-blue-500 text-white shadow-sm'
-                  : 'border-gray-200 text-gray-500 hover:border-blue-300 hover:text-blue-600 bg-white',
+                  : 'border-border text-muted-foreground hover:border-blue-300 hover:text-blue-600 bg-card',
               )}
             >
               {btn.icon}
@@ -660,7 +660,7 @@ export default function LineGreetingPage() {
               <button
                 type="button"
                 onClick={addMessage}
-                className="w-full flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-200 py-3.5 text-sm text-gray-500 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50/40 transition-all duration-200"
+                className="w-full flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border py-3.5 text-sm text-muted-foreground hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50/40 transition-all duration-200"
               >
                 <Plus className="size-4" />
                 เพิ่มข้อความ ({messages.length}/5)
@@ -722,7 +722,7 @@ export default function LineGreetingPage() {
             </div>
             <div className="p-4 flex justify-center">
               <div className="relative max-w-[280px] w-full">
-                <div className="bg-gray-800 rounded-[2.5rem] p-3 shadow-2xl">
+                <div className="bg-foreground/90 rounded-[2.5rem] p-3 shadow-2xl">
                   {/* Notch */}
                   <div className="bg-black w-20 h-4 rounded-full mx-auto mb-2" />
                   {/* LINE screen */}
@@ -774,7 +774,7 @@ export default function LineGreetingPage() {
 
                     {/* Bottom input bar */}
                     <div className="bg-white/95 border-t px-3 py-2 flex items-center gap-2 shrink-0">
-                      <div className="flex-1 bg-gray-100 rounded-full px-3 py-1 text-[11px] text-gray-400">
+                      <div className="flex-1 bg-muted rounded-full px-3 py-1 text-[11px] text-muted-foreground">
                         Aa
                       </div>
                     </div>

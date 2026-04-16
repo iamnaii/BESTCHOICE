@@ -40,9 +40,9 @@ function StatCard({ label, value, hint, accent }: { label: string; value: string
   const cls = colors[accent ?? 'blue'];
   return (
     <div className={`rounded-xl border p-4 ${cls}`}>
-      <p className="text-xs text-gray-500">{label}</p>
+      <p className="text-xs text-muted-foreground">{label}</p>
       <p className="text-2xl font-bold mt-1">{value}</p>
-      {hint && <p className="text-xs text-gray-400 mt-1">{hint}</p>}
+      {hint && <p className="text-xs text-muted-foreground mt-1">{hint}</p>}
     </div>
   );
 }
@@ -122,7 +122,7 @@ export default function ChatbotFinanceAnalyticsPage() {
 
       {/* Today */}
       <section>
-        <h2 className="text-sm font-semibold text-gray-700 mb-2">วันนี้</h2>
+        <h2 className="text-sm font-semibold text-foreground/80 mb-2">วันนี้</h2>
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <StatCard label="Sessions ใหม่" value={data.today.sessions} accent="blue" />
           <StatCard label="ข้อความรวม" value={data.today.messages} accent="blue" />
@@ -139,7 +139,7 @@ export default function ChatbotFinanceAnalyticsPage() {
 
       {/* Total */}
       <section>
-        <h2 className="text-sm font-semibold text-gray-700 mb-2">รวมทั้งหมด</h2>
+        <h2 className="text-sm font-semibold text-foreground/80 mb-2">รวมทั้งหมด</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <StatCard label="Sessions ทั้งหมด" value={data.total.sessions} />
           <StatCard label="ลูกค้า Verified" value={data.total.verifiedCustomers} accent="green" />
@@ -153,22 +153,22 @@ export default function ChatbotFinanceAnalyticsPage() {
       </section>
 
       {/* Recent days chart (simple bars) */}
-      <section className="bg-white border rounded-xl p-4">
-        <h2 className="text-sm font-semibold text-gray-700 mb-3">ข้อความ 7 วันย้อนหลัง</h2>
+      <section className="bg-card border border-border rounded-xl p-4">
+        <h2 className="text-sm font-semibold text-foreground/80 mb-3">ข้อความ 7 วันย้อนหลัง</h2>
         <div className="space-y-2">
           {data.recentDays.length === 0 ? (
-            <p className="text-sm text-gray-400">ยังไม่มีข้อมูล</p>
+            <p className="text-sm text-muted-foreground">ยังไม่มีข้อมูล</p>
           ) : (
             data.recentDays.map((d) => (
               <div key={d.date} className="flex items-center gap-3">
-                <div className="w-24 text-xs text-gray-500">{d.date}</div>
-                <div className="flex-1 h-6 bg-gray-100 rounded relative overflow-hidden">
+                <div className="w-24 text-xs text-muted-foreground">{d.date}</div>
+                <div className="flex-1 h-6 bg-muted rounded relative overflow-hidden">
                   <div
                     className="h-full bg-blue-500"
                     style={{ width: `${(d.messages / maxMessages) * 100}%` }}
                   />
                 </div>
-                <div className="w-12 text-right text-xs text-gray-700">{d.messages}</div>
+                <div className="w-12 text-right text-xs text-foreground/80">{d.messages}</div>
               </div>
             ))
           )}
@@ -176,16 +176,16 @@ export default function ChatbotFinanceAnalyticsPage() {
       </section>
 
       {/* Top intents */}
-      <section className="bg-white border rounded-xl p-4">
-        <h2 className="text-sm font-semibold text-gray-700 mb-3">Top Intents (7 วัน)</h2>
+      <section className="bg-card border border-border rounded-xl p-4">
+        <h2 className="text-sm font-semibold text-foreground/80 mb-3">Top Intents (7 วัน)</h2>
         {data.topIntents.length === 0 ? (
-          <p className="text-sm text-gray-400">ยังไม่มีข้อมูล</p>
+          <p className="text-sm text-muted-foreground">ยังไม่มีข้อมูล</p>
         ) : (
           <div className="space-y-2">
             {data.topIntents.map((i) => (
               <div key={i.intent} className="flex justify-between text-sm">
-                <span className="text-gray-700">{i.intent}</span>
-                <span className="font-semibold text-gray-900">{i.count}</span>
+                <span className="text-foreground/80">{i.intent}</span>
+                <span className="font-semibold text-foreground">{i.count}</span>
               </div>
             ))}
           </div>
@@ -193,9 +193,9 @@ export default function ChatbotFinanceAnalyticsPage() {
       </section>
 
       {/* Date range analytics + cost */}
-      <section className="bg-white border rounded-xl p-4">
+      <section className="bg-card border border-border rounded-xl p-4">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-semibold text-gray-700">ข้อความ + Cost ตามช่วงเวลา</h2>
+          <h2 className="text-sm font-semibold text-foreground/80">ข้อความ + Cost ตามช่วงเวลา</h2>
           <div className="flex items-center gap-2">
             <input
               type="date"
@@ -203,7 +203,7 @@ export default function ChatbotFinanceAnalyticsPage() {
               onChange={(e) => setStartDate(e.target.value)}
               className="px-2 py-1 border rounded text-xs"
             />
-            <span className="text-xs text-gray-400">ถึง</span>
+            <span className="text-xs text-muted-foreground">ถึง</span>
             <input
               type="date"
               value={endDate}
@@ -230,21 +230,21 @@ export default function ChatbotFinanceAnalyticsPage() {
 
               <div className="space-y-1">
                 {dateRange.data.dailyStats.length === 0 ? (
-                  <p className="text-sm text-gray-400">ไม่มีข้อมูลในช่วงนี้</p>
+                  <p className="text-sm text-muted-foreground">ไม่มีข้อมูลในช่วงนี้</p>
                 ) : (
                   dateRange.data.dailyStats.map((d) => {
                     const maxMsg = Math.max(...dateRange.data!.dailyStats.map((x) => x.messages), 1);
                     return (
                       <div key={d.date} className="flex items-center gap-3">
-                        <div className="w-20 text-[10px] text-gray-500">{d.date}</div>
-                        <div className="flex-1 h-5 bg-gray-100 rounded relative overflow-hidden">
+                        <div className="w-20 text-[10px] text-muted-foreground">{d.date}</div>
+                        <div className="flex-1 h-5 bg-muted rounded relative overflow-hidden">
                           <div
                             className="h-full bg-blue-400"
                             style={{ width: `${(d.messages / maxMsg) * 100}%` }}
                           />
                         </div>
-                        <div className="w-10 text-right text-[10px] text-gray-700">{d.messages}</div>
-                        <div className="w-16 text-right text-[10px] text-gray-400">
+                        <div className="w-10 text-right text-[10px] text-foreground/80">{d.messages}</div>
+                        <div className="w-16 text-right text-[10px] text-muted-foreground">
                           ${d.cost.toFixed(4)}
                         </div>
                       </div>

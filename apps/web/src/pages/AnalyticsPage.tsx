@@ -56,7 +56,7 @@ function formatBaht(v: number) {
 function retentionColor(pct: number) {
   if (pct >= 80) return 'bg-emerald-600 text-white';
   if (pct >= 60) return 'bg-emerald-400 text-white';
-  if (pct >= 40) return 'bg-yellow-400 text-gray-900';
+  if (pct >= 40) return 'bg-yellow-400 text-foreground';
   if (pct >= 20) return 'bg-orange-400 text-white';
   if (pct > 0) return 'bg-red-400 text-white';
   return 'bg-gray-100 text-gray-400';
@@ -82,16 +82,16 @@ function CohortTable({ data }: { data: CohortData }) {
       <table className="text-xs w-full border-collapse">
         <thead>
           <tr>
-            <th className="sticky left-0 bg-white px-3 py-2 text-left font-semibold text-gray-600 border-b border-r min-w-[100px]">
+            <th className="sticky left-0 bg-card px-3 py-2 text-left font-semibold text-foreground/70 border-b border-r min-w-[100px]">
               เดือน
             </th>
-            <th className="px-2 py-2 text-right font-semibold text-gray-600 border-b border-r min-w-[60px]">
+            <th className="px-2 py-2 text-right font-semibold text-foreground/70 border-b border-r min-w-[60px]">
               ลูกค้า
             </th>
             {offsets.map((o) => (
               <th
                 key={o}
-                className="px-2 py-2 text-center font-semibold text-gray-500 border-b min-w-[48px]"
+                className="px-2 py-2 text-center font-semibold text-muted-foreground border-b min-w-[48px]"
               >
                 M+{o}
               </th>
@@ -100,11 +100,11 @@ function CohortTable({ data }: { data: CohortData }) {
         </thead>
         <tbody>
           {data.cohorts.map((cohort) => (
-            <tr key={cohort.month} className="hover:bg-gray-50">
-              <td className="sticky left-0 bg-white px-3 py-1.5 font-medium text-gray-700 border-r border-b">
+            <tr key={cohort.month} className="hover:bg-muted/50">
+              <td className="sticky left-0 bg-card px-3 py-1.5 font-medium text-foreground/80 border-r border-b">
                 {cohort.month}
               </td>
-              <td className="px-2 py-1.5 text-right text-gray-600 border-r border-b">
+              <td className="px-2 py-1.5 text-right text-foreground/70 border-r border-b">
                 {cohort.customers}
               </td>
               {offsets.map((o) => {
@@ -123,7 +123,7 @@ function CohortTable({ data }: { data: CohortData }) {
         </tbody>
       </table>
       <div className="flex gap-2 mt-3 flex-wrap items-center">
-        <span className="text-xs text-gray-500">สี:</span>
+        <span className="text-xs text-muted-foreground">สี:</span>
         {[
           { label: '≥80%', cls: 'bg-emerald-600' },
           { label: '60–79%', cls: 'bg-emerald-400' },
@@ -158,7 +158,7 @@ function RevenueForecastChart({ data }: { data: ForecastData }) {
       ? 'text-emerald-600'
       : data.trend === 'down'
         ? 'text-red-500'
-        : 'text-gray-400';
+        : 'text-muted-foreground';
 
   return (
     <div className="space-y-3">
@@ -221,8 +221,8 @@ function RevenueForecastChart({ data }: { data: ForecastData }) {
           {data.forecast.map((f) => (
             <div key={f.month} className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-center">
               <p className="text-xs text-amber-600 font-medium">{f.month}</p>
-              <p className="text-lg font-bold text-gray-800 mt-1">฿{formatBaht(f.amount)}</p>
-              <p className="text-xs text-gray-500 mt-0.5">
+              <p className="text-lg font-bold text-foreground/90 mt-1">฿{formatBaht(f.amount)}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
                 {formatBaht(f.lower)} – {formatBaht(f.upper)}
               </p>
               <p className="text-xs text-amber-500">{f.confidence}% confidence</p>
@@ -251,7 +251,7 @@ function SalesHeatmapGrid({ data }: { data: HeatmapData }) {
   return (
     <div className="space-y-3">
       {data.peakDay && data.peakHour !== null && (
-        <p className="text-sm text-gray-600">
+        <p className="text-sm text-foreground/70">
           Peak: <strong>{data.peakDay.name}</strong> เวลา <strong>{data.peakHour}:00</strong>
         </p>
       )}
@@ -259,9 +259,9 @@ function SalesHeatmapGrid({ data }: { data: HeatmapData }) {
         <table className="border-collapse text-xs">
           <thead>
             <tr>
-              <th className="px-2 py-1 text-left text-gray-500 min-w-[52px]">วัน\ชม.</th>
+              <th className="px-2 py-1 text-left text-muted-foreground min-w-[52px]">วัน\ชม.</th>
               {hours.map((h) => (
-                <th key={h} className="px-1 py-1 text-center text-gray-400 min-w-[28px]">
+                <th key={h} className="px-1 py-1 text-center text-muted-foreground min-w-[28px]">
                   {h}
                 </th>
               ))}
@@ -270,7 +270,7 @@ function SalesHeatmapGrid({ data }: { data: HeatmapData }) {
           <tbody>
             {days.map((d) => (
               <tr key={d}>
-                <td className="px-2 py-1 font-medium text-gray-600">{data.dayNames[d]}</td>
+                <td className="px-2 py-1 font-medium text-foreground/70">{data.dayNames[d]}</td>
                 {hours.map((h) => {
                   const entry = lookup[`${d}-${h}`];
                   const count = entry?.count || 0;
@@ -280,7 +280,7 @@ function SalesHeatmapGrid({ data }: { data: HeatmapData }) {
                       key={h}
                       title={entry ? `${count} รายการ ฿${formatBaht(entry.amount)}` : '0'}
                       style={{ backgroundColor: bg }}
-                      className="w-7 h-7 text-center border border-gray-100 cursor-default"
+                      className="w-7 h-7 text-center border border-border cursor-default"
                       aria-label={`วัน${data.dayNames[d]} ชั่วโมง ${h}: ${count} รายการ`}
                     >
                       {count > 0 ? count : ''}
@@ -292,7 +292,7 @@ function SalesHeatmapGrid({ data }: { data: HeatmapData }) {
           </tbody>
         </table>
       </div>
-      <div className="flex items-center gap-2 text-xs text-gray-500">
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <span>น้อย</span>
         <div className="flex gap-0.5">
           {[0, 0.25, 0.5, 0.75, 1].map((v) => (
@@ -366,7 +366,7 @@ export default function AnalyticsPage() {
       />
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-gray-200">
+      <div className="flex gap-1 border-b border-border">
         {TABS.map((tab) => {
           const Icon = tab.icon;
           return (
@@ -375,8 +375,8 @@ export default function AnalyticsPage() {
               onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-t-lg transition-colors ${
                 activeTab === tab.id
-                  ? 'bg-white border border-b-white border-gray-200 text-blue-600 -mb-px'
-                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                  ? 'bg-card border border-b-card border-border text-blue-600 -mb-px'
+                  : 'text-muted-foreground hover:text-foreground/80 hover:bg-muted'
               }`}
               aria-selected={activeTab === tab.id}
               role="tab"
@@ -401,12 +401,12 @@ export default function AnalyticsPage() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-base font-semibold text-gray-900">Cohort Retention Analysis</h2>
-                  <p className="text-sm text-gray-500 mt-0.5">
+                  <h2 className="text-base font-semibold text-foreground">Cohort Retention Analysis</h2>
+                  <p className="text-sm text-muted-foreground mt-0.5">
                     ติดตามว่าลูกค้าในแต่ละ cohort ยังคงชำระเงินอยู่กี่เปอร์เซ็นต์ในเดือนถัดไป
                   </p>
                 </div>
-                <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <Calendar className="w-3.5 h-3.5" aria-hidden="true" />
                   อัปเดต: {new Date(cohortQuery.data.generatedAt).toLocaleString('th-TH')}
                 </div>
@@ -414,7 +414,7 @@ export default function AnalyticsPage() {
             </CardHeader>
             <CardContent>
               {cohortQuery.data.cohorts.length === 0 ? (
-                <p className="text-sm text-gray-500 py-8 text-center">ยังไม่มีข้อมูล cohort</p>
+                <p className="text-sm text-muted-foreground py-8 text-center">ยังไม่มีข้อมูล cohort</p>
               ) : (
                 <CohortTable data={cohortQuery.data} />
               )}
@@ -425,8 +425,8 @@ export default function AnalyticsPage() {
         {activeTab === 'forecast' && forecastQuery.data && (
           <Card>
             <CardHeader>
-              <h2 className="text-base font-semibold text-gray-900">Revenue Forecast</h2>
-              <p className="text-sm text-gray-500 mt-0.5">
+              <h2 className="text-base font-semibold text-foreground">Revenue Forecast</h2>
+              <p className="text-sm text-muted-foreground mt-0.5">
                 พยากรณ์รายได้ 3 เดือนข้างหน้าจากข้อมูลย้อนหลัง 6 เดือน (linear regression)
               </p>
             </CardHeader>
@@ -441,8 +441,8 @@ export default function AnalyticsPage() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-base font-semibold text-gray-900">Sales Heatmap</h2>
-                  <p className="text-sm text-gray-500 mt-0.5">
+                  <h2 className="text-base font-semibold text-foreground">Sales Heatmap</h2>
+                  <p className="text-sm text-muted-foreground mt-0.5">
                     ยอดขายตามวันและชั่วโมง (ข้อมูล {heatmapQuery.data.periodMonths} เดือนล่าสุด)
                   </p>
                 </div>

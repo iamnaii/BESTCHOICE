@@ -49,35 +49,35 @@ export default function AdsTrackingPage() {
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-        <div className="bg-white rounded-xl p-4 shadow-sm">
+        <div className="bg-card rounded-xl p-4 shadow-sm">
           <div className="flex items-center gap-2 mb-2">
             <DollarSign className="w-4 h-4 text-red-500" />
-            <span className="text-xs text-gray-500">ค่าโฆษณารวม</span>
+            <span className="text-xs text-muted-foreground">ค่าโฆษณารวม</span>
           </div>
-          <p className="text-xl font-bold text-gray-900">{totalSpend.toLocaleString()} ฿</p>
+          <p className="text-xl font-bold text-foreground">{totalSpend.toLocaleString()} ฿</p>
         </div>
-        <div className="bg-white rounded-xl p-4 shadow-sm">
+        <div className="bg-card rounded-xl p-4 shadow-sm">
           <div className="flex items-center gap-2 mb-2">
             <DollarSign className="w-4 h-4 text-green-500" />
-            <span className="text-xs text-gray-500">รายได้จาก Ads</span>
+            <span className="text-xs text-muted-foreground">รายได้จาก Ads</span>
           </div>
-          <p className="text-xl font-bold text-gray-900">{totalRevenue.toLocaleString()} ฿</p>
+          <p className="text-xl font-bold text-foreground">{totalRevenue.toLocaleString()} ฿</p>
         </div>
-        <div className="bg-white rounded-xl p-4 shadow-sm">
+        <div className="bg-card rounded-xl p-4 shadow-sm">
           <div className="flex items-center gap-2 mb-2">
             <Users className="w-4 h-4 text-blue-500" />
-            <span className="text-xs text-gray-500">Conversions</span>
+            <span className="text-xs text-muted-foreground">Conversions</span>
           </div>
-          <p className="text-xl font-bold text-gray-900">{totalConversions}</p>
+          <p className="text-xl font-bold text-foreground">{totalConversions}</p>
         </div>
-        <div className="bg-white rounded-xl p-4 shadow-sm">
+        <div className="bg-card rounded-xl p-4 shadow-sm">
           <div className="flex items-center gap-2 mb-2">
             {overallROI >= 0 ? (
               <TrendingUp className="w-4 h-4 text-green-500" />
             ) : (
               <TrendingDown className="w-4 h-4 text-red-500" />
             )}
-            <span className="text-xs text-gray-500">ROI รวม</span>
+            <span className="text-xs text-muted-foreground">ROI รวม</span>
           </div>
           <p className={`text-xl font-bold ${overallROI >= 0 ? 'text-green-600' : 'text-red-600'}`}>
             {overallROI}%
@@ -108,37 +108,37 @@ export default function AdsTrackingPage() {
           <CardContent className="p-0">
 
           {roiData.length === 0 ? (
-            <div className="p-12 text-center text-gray-400">
+            <div className="p-12 text-center text-muted-foreground">
               <Target className="w-8 h-8 mx-auto mb-2" />
               <p>ยังไม่มีแคมเปญ</p>
               <p className="text-xs mt-1">เพิ่มแคมเปญผ่าน API: POST /api/ads/campaigns</p>
             </div>
           ) : (
             <table className="w-full text-sm">
-              <thead className="bg-gray-50">
+              <thead className="bg-muted">
                 <tr>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">แคมเปญ</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Platform</th>
-                  <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">ค่าโฆษณา</th>
-                  <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">รายได้</th>
-                  <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">Conversions</th>
-                  <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">Cost/Unit</th>
-                  <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">ROI</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">แคมเปญ</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Platform</th>
+                  <th className="px-4 py-2 text-right text-xs font-medium text-muted-foreground">ค่าโฆษณา</th>
+                  <th className="px-4 py-2 text-right text-xs font-medium text-muted-foreground">รายได้</th>
+                  <th className="px-4 py-2 text-right text-xs font-medium text-muted-foreground">Conversions</th>
+                  <th className="px-4 py-2 text-right text-xs font-medium text-muted-foreground">Cost/Unit</th>
+                  <th className="px-4 py-2 text-right text-xs font-medium text-muted-foreground">ROI</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-border">
                 {roiData.map((row: any) => (
-                  <tr key={row.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 font-medium text-gray-900">{row.campaignName}</td>
+                  <tr key={row.id} className="hover:bg-muted/50">
+                    <td className="px-4 py-3 font-medium text-foreground">{row.campaignName}</td>
                     <td className="px-4 py-3">
-                      <span className={`text-xs px-2 py-1 rounded-full text-white ${PLATFORM_COLORS[row.platform] ?? 'bg-gray-500'}`}>
+                      <span className={`text-xs px-2 py-1 rounded-full text-white ${PLATFORM_COLORS[row.platform] ?? 'bg-muted-foreground'}`}>
                         {PLATFORM_LABELS[row.platform] ?? row.platform}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-right text-gray-600">{(row.spend ?? 0).toLocaleString()} ฿</td>
-                    <td className="px-4 py-3 text-right text-gray-600">{(row.totalRevenue ?? 0).toLocaleString()} ฿</td>
-                    <td className="px-4 py-3 text-right text-gray-600">{row.conversions ?? 0}</td>
-                    <td className="px-4 py-3 text-right text-gray-600">
+                    <td className="px-4 py-3 text-right text-foreground/70">{(row.spend ?? 0).toLocaleString()} ฿</td>
+                    <td className="px-4 py-3 text-right text-foreground/70">{(row.totalRevenue ?? 0).toLocaleString()} ฿</td>
+                    <td className="px-4 py-3 text-right text-foreground/70">{row.conversions ?? 0}</td>
+                    <td className="px-4 py-3 text-right text-foreground/70">
                       {row.conversions > 0 ? `฿${(Number(row.spend) / row.conversions).toLocaleString(undefined, { maximumFractionDigits: 0 })}` : '-'}
                     </td>
                     <td className={`px-4 py-3 text-right font-semibold ${(row.roi ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>

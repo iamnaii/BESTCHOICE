@@ -43,7 +43,7 @@ const channelColor: Record<string, string> = {
   LINE_SHOP: 'bg-lime-100 text-lime-700',
   FACEBOOK: 'bg-blue-100 text-blue-700',
   TIKTOK: 'bg-pink-100 text-pink-700',
-  WEB: 'bg-gray-100 text-gray-600',
+  WEB: 'bg-muted text-muted-foreground',
 };
 
 const localContractStatusMap: Record<string, string> = {
@@ -102,7 +102,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
 
   if (!customerId) {
     return (
-      <div className="w-72 border-l border-gray-200 hidden lg:flex items-center justify-center text-gray-400 text-sm p-4">
+      <div className="w-72 border-l border-border hidden lg:flex items-center justify-center text-muted-foreground text-sm p-4">
         เลือกการสนทนาเพื่อดูข้อมูลลูกค้า
       </div>
     );
@@ -110,11 +110,11 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
 
   if (isLoading) {
     return (
-      <div className="w-80 border-l border-gray-200 hidden lg:flex items-center justify-center text-gray-400 text-sm">
+      <div className="w-80 border-l border-border hidden lg:flex items-center justify-center text-muted-foreground text-sm">
         <div className="animate-pulse space-y-3 w-full p-4">
-          <div className="h-16 bg-gray-100 rounded-lg" />
-          <div className="h-24 bg-gray-100 rounded-lg" />
-          <div className="h-32 bg-gray-100 rounded-lg" />
+          <div className="h-16 bg-muted rounded-lg" />
+          <div className="h-24 bg-muted rounded-lg" />
+          <div className="h-32 bg-muted rounded-lg" />
         </div>
       </div>
     );
@@ -127,11 +127,11 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
   const firstProduct = firstContract?.product;
 
   return (
-    <div className="w-72 flex-shrink-0 border-l border-gray-200 hidden lg:block overflow-y-auto h-full">
+    <div className="w-72 flex-shrink-0 border-l border-border hidden lg:block overflow-y-auto h-full">
       {/* ─── 1. Customer Profile ────────────────────────── */}
-      <div className="p-4 border-b border-gray-100">
+      <div className="p-4 border-b border-border">
         <div className="flex items-center gap-3 mb-2">
-          <div className="w-11 h-11 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden flex-shrink-0">
+          <div className="w-11 h-11 rounded-full bg-muted flex items-center justify-center overflow-hidden flex-shrink-0">
             {customer?.avatarUrl || customer?.lineAvatarUrl ? (
               <img
                 src={customer.avatarUrl || customer.lineAvatarUrl}
@@ -139,12 +139,12 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
                 className="w-full h-full object-cover"
               />
             ) : (
-              <span className="text-gray-400 text-lg font-bold">{(customer?.name ?? '?')[0]}</span>
+              <span className="text-muted-foreground text-lg font-bold">{(customer?.name ?? '?')[0]}</span>
             )}
           </div>
           <div className="min-w-0 flex-1">
-            <h3 className="font-semibold text-sm text-gray-900 truncate">{customer?.name}</h3>
-            <p className="text-xs text-gray-500">{customer?.phone}</p>
+            <h3 className="font-semibold text-sm text-foreground truncate">{customer?.name}</h3>
+            <p className="text-xs text-muted-foreground">{customer?.phone}</p>
           </div>
           {(() => {
             const riskCfg = getStatusBadgeProps(riskLevel, riskLevelMap);
@@ -157,7 +157,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
         </div>
 
         {customer?.email && (
-          <p className="text-[11px] text-gray-400 ml-14">{customer.email}</p>
+          <p className="text-[11px] text-muted-foreground ml-14">{customer.email}</p>
         )}
 
         {/* Overdue alert */}
@@ -179,7 +179,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
 
       {/* ─── 1c. Cross-Channel Rooms ─────────────────────── */}
       {crossRooms && crossRooms.length > 0 && (
-        <div className="border-b border-gray-100">
+        <div className="border-b border-border">
           <div className="px-4 pt-4 pb-2">
             <SectionHeader icon={MessageSquare} label="ห้องแชททั้งหมด" />
           </div>
@@ -210,7 +210,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
       )}
 
       {/* ─── 1d. MDM Status ──────────────────────────────── */}
-      <div className="p-4 border-b border-gray-100">
+      <div className="p-4 border-b border-border">
         <SectionHeader icon={Smartphone} label="สถานะ MDM" />
         {firstContract?.mdmLockedAt ? (
           <div className="px-0 py-0 text-[12px]">
@@ -225,7 +225,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
       </div>
 
       {/* ─── 1e. Warranty (2-tier: manufacturer + shop) ─── */}
-      <div className="p-4 border-b border-gray-100">
+      <div className="p-4 border-b border-border">
         <SectionHeader icon={Shield} label="การรับประกัน" />
         {summary?.activeContracts?.length > 0 ? (
           <div className="space-y-3">
@@ -247,7 +247,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
 
               return (
                 <div key={c.id} className="text-[12px]">
-                  <p className="font-medium text-gray-700 mb-1">
+                  <p className="font-medium text-foreground/80 mb-1">
                     📱 {productName}{' '}
                     <span className="text-[10px] text-gray-400 font-normal">({conditionLabel})</span>
                   </p>
@@ -259,7 +259,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
                     ) : (
                       <p className="text-green-600 ml-3">
                         ✅ ศูนย์: ถึง {format(mfrDate, 'dd MMM yyyy', { locale: th })}{' '}
-                        <span className="text-gray-400">(เหลือ {mfrDays} วัน)</span>
+                        <span className="text-muted-foreground">(เหลือ {mfrDays} วัน)</span>
                       </p>
                     )
                   ) : (
@@ -273,7 +273,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
                     ) : (
                       <p className="text-green-600 ml-3">
                         ✅ ร้าน: ถึง {format(shopDate, 'dd MMM yyyy', { locale: th })}{' '}
-                        <span className="text-gray-400">(เหลือ {shopDays} วัน)</span>
+                        <span className="text-muted-foreground">(เหลือ {shopDays} วัน)</span>
                       </p>
                     )
                   )}
@@ -287,15 +287,15 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
       </div>
 
       {/* ─── 2. Active Contracts + Product/IMEI ─────────── */}
-      <div className="p-4 border-b border-gray-100">
+      <div className="p-4 border-b border-border">
         <SectionHeader icon={FileText} label="สัญญา" />
 
         {summary?.activeContracts?.length > 0 ? (
           <div className="space-y-2">
             {summary.activeContracts.map((c: any) => (
-              <div key={c.id} className="p-2.5 bg-gray-50 rounded-lg text-xs">
+              <div key={c.id} className="p-2.5 bg-muted rounded-lg text-xs">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="font-medium text-gray-800">{c.contractNumber}</span>
+                  <span className="font-medium text-foreground/90">{c.contractNumber}</span>
                   {(() => {
                     const sCfg = getStatusBadgeProps(c.status, contractStatusMap);
                     return (
@@ -307,28 +307,28 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
                 </div>
 
                 {/* Product info */}
-                <div className="flex items-center gap-1 text-gray-500 mb-1">
+                <div className="flex items-center gap-1 text-muted-foreground mb-1">
                   <Smartphone className="w-3 h-3" />
                   <span>{c.product?.name ?? `${c.product?.brand} ${c.product?.model}`}</span>
                 </div>
                 {c.serialNumber && (
-                  <p className="text-[10px] text-gray-400 ml-4">IMEI: {c.serialNumber}</p>
+                  <p className="text-[10px] text-muted-foreground ml-4">IMEI: {c.serialNumber}</p>
                 )}
 
                 {/* Payment progress */}
                 <div className="mt-1.5">
-                  <div className="flex justify-between text-[10px] text-gray-400 mb-0.5">
+                  <div className="flex justify-between text-[10px] text-muted-foreground mb-0.5">
                     <span>ชำระแล้ว {c.paidInstallments}/{c.totalInstallments} งวด</span>
                     <span>{Number(c.monthlyPayment).toLocaleString()} บ./งวด</span>
                   </div>
-                  <div className="w-full bg-gray-200 rounded-full h-1.5">
+                  <div className="w-full bg-border rounded-full h-1.5">
                     <div
                       className="bg-blue-500 h-1.5 rounded-full transition-all"
                       style={{ width: `${(c.paidInstallments / c.totalInstallments) * 100}%` }}
                     />
                   </div>
                   {c.nextDueDate && (
-                    <p className="text-[10px] text-gray-400 mt-0.5">
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
                       ถัดไป: {format(new Date(c.nextDueDate), 'dd/MM/yyyy')}
                     </p>
                   )}
@@ -337,12 +337,12 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
             ))}
           </div>
         ) : (
-          <p className="text-xs text-gray-400">ไม่มีสัญญาที่ใช้งาน</p>
+          <p className="text-xs text-muted-foreground">ไม่มีสัญญาที่ใช้งาน</p>
         )}
       </div>
 
       {/* ─── 3. Recent Payments ──────────────────────────── */}
-      <div className="p-4 border-b border-gray-100">
+      <div className="p-4 border-b border-border">
         <SectionHeader icon={CreditCard} label="การชำระล่าสุด" />
 
         {summary?.recentPayments?.length > 0 ? (
@@ -350,15 +350,15 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
             {summary.recentPayments.map((p: any) => (
               <div key={p.id} className="flex items-center justify-between text-xs">
                 <div>
-                  <span className="text-gray-700">{p.contract?.contractNumber}</span>
-                  <span className="text-gray-400 ml-1">งวด {p.installmentNo}</span>
+                  <span className="text-foreground/80">{p.contract?.contractNumber}</span>
+                  <span className="text-muted-foreground ml-1">งวด {p.installmentNo}</span>
                 </div>
                 <div className="text-right">
                   <span className="font-medium text-green-600">
                     {Number(p.amountPaid).toLocaleString()} บ.
                   </span>
                   {p.paidDate && (
-                    <p className="text-[10px] text-gray-400">
+                    <p className="text-[10px] text-muted-foreground">
                       {format(new Date(p.paidDate), 'dd/MM/yy')}
                     </p>
                   )}
@@ -367,12 +367,12 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
             ))}
           </div>
         ) : (
-          <p className="text-xs text-gray-400">ยังไม่มีการชำระ</p>
+          <p className="text-xs text-muted-foreground">ยังไม่มีการชำระ</p>
         )}
       </div>
 
       {/* ─── 4. Chat History (all channels) ──────────────── */}
-      <div className="p-4 border-b border-gray-100">
+      <div className="p-4 border-b border-border">
         <SectionHeader icon={MessageSquare} label="ประวัติแชท" />
 
         {summary?.chatSessions?.length > 0 ? (
@@ -381,42 +381,42 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
               <div
                 key={s.id}
                 className={`flex items-center gap-2 p-1.5 rounded text-xs ${
-                  s.id === activeRoomId ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50'
+                  s.id === activeRoomId ? 'bg-blue-50 border border-blue-200' : 'hover:bg-muted/50'
                 }`}
               >
-                <span className={`px-1 py-0.5 rounded text-[9px] font-medium ${channelColor[s.channel] ?? 'bg-gray-100'}`}>
+                <span className={`px-1 py-0.5 rounded text-[9px] font-medium ${channelColor[s.channel] ?? 'bg-muted'}`}>
                   {channelLabel[s.channel] ?? s.channel}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <span className="text-gray-500">{sessionStatusLabel[s.sessionStatus] ?? s.sessionStatus}</span>
-                  <span className="text-gray-300 mx-1">·</span>
-                  <span className="text-gray-400">{s.totalMessages} ข้อความ</span>
+                  <span className="text-muted-foreground">{sessionStatusLabel[s.sessionStatus] ?? s.sessionStatus}</span>
+                  <span className="text-muted-foreground/50 mx-1">·</span>
+                  <span className="text-muted-foreground">{s.totalMessages} ข้อความ</span>
                 </div>
-                <span className="text-[10px] text-gray-400 flex-shrink-0">
+                <span className="text-[10px] text-muted-foreground flex-shrink-0">
                   {format(new Date(s.lastMessageAt), 'dd/MM')}
                 </span>
               </div>
             ))}
           </div>
         ) : (
-          <p className="text-xs text-gray-400">ไม่มีประวัติแชท</p>
+          <p className="text-xs text-muted-foreground">ไม่มีประวัติแชท</p>
         )}
       </div>
 
       {/* ─── 5. Call Logs ────────────────────────────────── */}
       {summary?.callLogs?.length > 0 && (
-        <div className="p-4 border-b border-gray-100">
+        <div className="p-4 border-b border-border">
           <SectionHeader icon={Phone} label="ประวัติโทร" />
           <div className="space-y-1.5">
             {summary.callLogs.map((log: any) => (
               <div key={log.id} className="text-xs">
                 <div className="flex justify-between">
-                  <span className="text-gray-700">{log.caller?.name ?? 'ระบบ'}</span>
-                  <span className="text-[10px] text-gray-400">
+                  <span className="text-foreground/80">{log.caller?.name ?? 'ระบบ'}</span>
+                  <span className="text-[10px] text-muted-foreground">
                     {format(new Date(log.calledAt), 'dd/MM HH:mm')}
                   </span>
                 </div>
-                {log.notes && <p className="text-gray-400 truncate">{log.notes}</p>}
+                {log.notes && <p className="text-muted-foreground truncate">{log.notes}</p>}
               </div>
             ))}
           </div>
@@ -548,7 +548,7 @@ function InternalNotesSection({ roomId, notes }: { roomId: string; notes: any[] 
   };
 
   return (
-    <div className="p-4 border-b border-gray-100">
+    <div className="p-4 border-b border-border">
       <SectionHeader icon={FileText} label="บันทึกภายใน" />
 
       {/* Existing notes */}
@@ -556,8 +556,8 @@ function InternalNotesSection({ roomId, notes }: { roomId: string; notes: any[] 
         <div className="space-y-1.5 mb-3">
           {notes.slice(0, 5).map((note: any) => (
             <div key={note.id} className="p-2 bg-yellow-50 rounded text-xs border border-yellow-100">
-              <p className="text-gray-700 whitespace-pre-wrap">{note.content}</p>
-              <p className="text-[10px] text-gray-400 mt-0.5">
+              <p className="text-foreground/80 whitespace-pre-wrap">{note.content}</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">
                 {note.author?.name} · {format(new Date(note.createdAt), 'dd/MM HH:mm')}
               </p>
             </div>
@@ -574,12 +574,12 @@ function InternalNotesSection({ roomId, notes }: { roomId: string; notes: any[] 
           onKeyDown={handleKeyDown}
           placeholder="เพิ่มโน้ต... (พิมพ์ @ เพื่อแท็กสมาชิก, Ctrl+Enter บันทึก)"
           rows={2}
-          className="w-full text-xs rounded-lg border border-gray-200 px-2.5 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-blue-300 placeholder:text-gray-300"
+          className="w-full text-xs rounded-lg border border-border px-2.5 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-blue-300 placeholder:text-muted-foreground/50"
         />
 
         {/* @mention dropdown */}
         {showMentionDropdown && filteredStaff.length > 0 && (
-          <div className="absolute bottom-full left-0 mb-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-36 overflow-y-auto">
+          <div className="absolute bottom-full left-0 mb-1 w-full bg-card border border-border rounded-lg shadow-lg z-50 max-h-36 overflow-y-auto">
             {filteredStaff.map((s: any) => (
               <button
                 key={s.id}
@@ -603,7 +603,7 @@ function InternalNotesSection({ roomId, notes }: { roomId: string; notes: any[] 
           type="button"
           onClick={() => { if (noteText.trim()) addNote.mutate(noteText.trim()); }}
           disabled={!noteText.trim() || addNote.isPending}
-          className="mt-1.5 w-full text-xs bg-gray-800 hover:bg-gray-700 disabled:opacity-40 text-white rounded-lg py-1.5 transition-colors"
+          className="mt-1.5 w-full text-xs bg-foreground/90 hover:bg-foreground/80 disabled:opacity-40 text-white rounded-lg py-1.5 transition-colors"
         >
           {addNote.isPending ? 'กำลังบันทึก...' : 'บันทึกโน้ต'}
         </button>
@@ -617,8 +617,8 @@ function InternalNotesSection({ roomId, notes }: { roomId: string; notes: any[] 
 function SectionHeader({ icon: Icon, label }: { icon: any; label: string }) {
   return (
     <div className="flex items-center gap-1.5 mb-2">
-      <Icon className="w-3.5 h-3.5 text-gray-400" />
-      <h4 className="text-[11px] font-semibold text-gray-600 uppercase tracking-wide">{label}</h4>
+      <Icon className="w-3.5 h-3.5 text-muted-foreground" />
+      <h4 className="text-[11px] font-semibold text-foreground/70 uppercase tracking-wide">{label}</h4>
     </div>
   );
 }
@@ -635,7 +635,7 @@ function QuickActionBtn({
   return (
     <button
       onClick={onClick}
-      className="flex items-center gap-1.5 px-2 py-2 text-[11px] bg-gray-50 hover:bg-gray-100 rounded-lg text-gray-600 transition-colors"
+      className="flex items-center gap-1.5 px-2 py-2 text-[11px] bg-muted hover:bg-accent rounded-lg text-foreground/70 transition-colors"
     >
       {icon}
       {label}
@@ -649,7 +649,7 @@ function ChannelBadge({ channel }: { channel: string }) {
     LINE_SHOP: 'bg-emerald-400',
     FACEBOOK: 'bg-blue-600',
     TIKTOK: 'bg-pink-500',
-    WEB: 'bg-gray-500',
+    WEB: 'bg-muted-foreground',
   };
   const labels: Record<string, string> = {
     LINE_FINANCE: 'LINE',
@@ -662,7 +662,7 @@ function ChannelBadge({ channel }: { channel: string }) {
     <span
       className={cn(
         'text-white text-[9px] font-bold px-1.5 py-0.5 rounded',
-        colors[channel] ?? 'bg-gray-400',
+        colors[channel] ?? 'bg-muted-foreground/30',
       )}
     >
       {labels[channel] ?? channel}

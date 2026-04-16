@@ -361,7 +361,7 @@ function FileUploadZone({
 
   return (
     <div
-      className="flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed border-gray-200 p-6 text-center hover:border-blue-400 hover:bg-blue-50/50 transition-all duration-200"
+      className="flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed border-border p-6 text-center hover:border-blue-400 hover:bg-blue-50/50 transition-all duration-200"
       onClick={() => inputRef.current?.click()}
       onDragOver={(e) => e.preventDefault()}
       onDrop={handleDrop}
@@ -369,12 +369,12 @@ function FileUploadZone({
       tabIndex={0}
       onKeyDown={(e) => e.key === 'Enter' && inputRef.current?.click()}
     >
-      <div className="flex size-10 items-center justify-center rounded-full bg-gray-100">
-        <Upload className="size-5 text-gray-400" />
+      <div className="flex size-10 items-center justify-center rounded-full bg-muted">
+        <Upload className="size-5 text-muted-foreground" />
       </div>
       <div>
-        <p className="text-sm font-medium text-gray-700">{label}</p>
-        <p className="text-xs text-gray-400 mt-0.5">PNG, JPG — ไม่เกิน 5MB</p>
+        <p className="text-sm font-medium text-foreground/80">{label}</p>
+        <p className="text-xs text-muted-foreground mt-0.5">PNG, JPG — ไม่เกิน 5MB</p>
       </div>
       <input ref={inputRef} type="file" accept={accept} className="hidden" onChange={handleChange} />
     </div>
@@ -399,7 +399,7 @@ function FlexPreviewCard({ content }: FlexPreviewCardProps) {
 
   if (!jsonObj) {
     return (
-      <div className="flex h-24 items-center justify-center rounded-xl bg-gray-100 text-xs text-gray-400">
+      <div className="flex h-24 items-center justify-center rounded-xl bg-muted text-xs text-muted-foreground">
         JSON ไม่ถูกต้อง
       </div>
     );
@@ -418,7 +418,7 @@ function FlexPreviewCard({ content }: FlexPreviewCardProps) {
   const heroUrl = typeof hero?.url === 'string' ? hero.url : null;
 
   return (
-    <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-md text-xs max-w-[200px]">
+    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-md text-xs max-w-[200px]">
       {heroUrl && (
         <img
           src={heroUrl}
@@ -431,12 +431,12 @@ function FlexPreviewCard({ content }: FlexPreviewCardProps) {
       )}
       <div className="p-3 space-y-1">
         {titleItem && (
-          <p className="font-bold text-sm text-gray-900 line-clamp-2">
+          <p className="font-bold text-sm text-foreground line-clamp-2">
             {titleItem.text as string}
           </p>
         )}
         {bodyItems.map((item, i) => (
-          <p key={i} className="text-gray-500 line-clamp-2">
+          <p key={i} className="text-muted-foreground line-clamp-2">
             {item.text as string}
           </p>
         ))}
@@ -460,9 +460,9 @@ function MessagePreviewBubble({ message }: MessagePreviewBubbleProps) {
   if (message.type === 'text') {
     const c = message.content as TextContent;
     return (
-      <div className="bg-white rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm max-w-[85%] shadow-sm">
-        <p className="whitespace-pre-wrap text-gray-800 text-xs leading-relaxed">
-          {c.text || <span className="text-gray-400">ข้อความจะแสดงที่นี่...</span>}
+      <div className="bg-card rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm max-w-[85%] shadow-sm">
+        <p className="whitespace-pre-wrap text-foreground/90 text-xs leading-relaxed">
+          {c.text || <span className="text-muted-foreground">ข้อความจะแสดงที่นี่...</span>}
         </p>
       </div>
     );
@@ -471,15 +471,15 @@ function MessagePreviewBubble({ message }: MessagePreviewBubbleProps) {
   if (message.type === 'image') {
     const c = message.content as ImageContent;
     return (
-      <div className="bg-white rounded-2xl rounded-tl-sm overflow-hidden max-w-[85%] shadow-sm">
+      <div className="bg-card rounded-2xl rounded-tl-sm overflow-hidden max-w-[85%] shadow-sm">
         {c.imagePreview ? (
           <img src={c.imagePreview} alt="preview" className="max-w-full rounded-t-2xl" />
         ) : (
-          <div className="flex h-20 items-center justify-center bg-gray-100 text-xs text-gray-400">
+          <div className="flex h-20 items-center justify-center bg-muted text-xs text-muted-foreground">
             รูปภาพจะแสดงที่นี่
           </div>
         )}
-        {c.caption && <p className="px-3 py-1.5 text-xs text-gray-600">{c.caption}</p>}
+        {c.caption && <p className="px-3 py-1.5 text-xs text-foreground/70">{c.caption}</p>}
       </div>
     );
   }
@@ -487,7 +487,7 @@ function MessagePreviewBubble({ message }: MessagePreviewBubbleProps) {
   if (message.type === 'video') {
     const c = message.content as VideoContent;
     return (
-      <div className="bg-white rounded-2xl rounded-tl-sm overflow-hidden max-w-[85%] shadow-sm">
+      <div className="bg-card rounded-2xl rounded-tl-sm overflow-hidden max-w-[85%] shadow-sm">
         {c.thumbnailPreview ? (
           <div className="relative">
             <img src={c.thumbnailPreview} alt="thumbnail" className="max-w-full" />
@@ -498,7 +498,7 @@ function MessagePreviewBubble({ message }: MessagePreviewBubbleProps) {
             </div>
           </div>
         ) : (
-          <div className="flex h-20 items-center justify-center bg-gray-100 text-xs text-gray-400 gap-2">
+          <div className="flex h-20 items-center justify-center bg-muted text-xs text-muted-foreground gap-2">
             <Video className="size-4" />
             วิดีโอจะแสดงที่นี่
           </div>
@@ -515,11 +515,11 @@ function MessagePreviewBubble({ message }: MessagePreviewBubbleProps) {
   if (message.type === 'rich') {
     const c = message.content as RichContent;
     return (
-      <div className="bg-white rounded-2xl rounded-tl-sm overflow-hidden max-w-[85%] shadow-sm">
+      <div className="bg-card rounded-2xl rounded-tl-sm overflow-hidden max-w-[85%] shadow-sm">
         {c.imagePreview ? (
           <img src={c.imagePreview} alt="rich" className="max-w-full" />
         ) : (
-          <div className="flex h-20 items-center justify-center bg-gray-100 text-xs text-gray-400">
+          <div className="flex h-20 items-center justify-center bg-muted text-xs text-muted-foreground">
             Rich Message
           </div>
         )}
@@ -606,8 +606,8 @@ function ImageEditor({ message, onChange, uploadingIds, setUploadingIds }: Messa
         isUploading={uploadingIds.has(message.id)}
       />
       <div>
-        <label className="mb-1.5 block text-sm font-medium text-gray-700">
-          Caption <span className="text-gray-400 font-normal">(ไม่บังคับ)</span>
+        <label className="mb-1.5 block text-sm font-medium text-foreground/80">
+          Caption <span className="text-muted-foreground font-normal">(ไม่บังคับ)</span>
         </label>
         <Input
           placeholder="คำบรรยายใต้รูป..."
@@ -683,7 +683,7 @@ function VideoEditor({ message, onChange, uploadingIds, setUploadingIds }: Messa
   return (
     <div className="space-y-4">
       <div>
-        <label className="mb-1.5 block text-sm font-medium text-gray-700">ไฟล์วิดีโอ</label>
+        <label className="mb-1.5 block text-sm font-medium text-foreground/80">ไฟล์วิดีโอ</label>
         <FileUploadZone
           preview={null}
           onFile={handleVideoFile}
@@ -700,7 +700,7 @@ function VideoEditor({ message, onChange, uploadingIds, setUploadingIds }: Messa
         )}
       </div>
       <div>
-        <label className="mb-1.5 block text-sm font-medium text-gray-700">Thumbnail (รูปปก)</label>
+        <label className="mb-1.5 block text-sm font-medium text-foreground/80">Thumbnail (รูปปก)</label>
         <FileUploadZone
           preview={c.thumbnailPreview}
           onFile={handleThumbFile}
@@ -724,7 +724,7 @@ function FlexEditor({ message, onChange }: MessageEditorProps) {
   return (
     <div className="space-y-4">
       {/* Mode toggle */}
-      <div className="flex gap-1 rounded-full bg-gray-100 p-1 w-fit">
+      <div className="flex gap-1 rounded-full bg-muted p-1 w-fit">
         {(['template', 'json'] as FlexMode[]).map((mode) => (
           <button
             key={mode}
@@ -733,8 +733,8 @@ function FlexEditor({ message, onChange }: MessageEditorProps) {
             className={cn(
               'rounded-full px-5 py-1.5 text-sm font-medium transition-all duration-200',
               c.flexMode === mode
-                ? 'bg-white text-blue-700 shadow-sm'
-                : 'text-gray-500 hover:text-gray-700',
+                ? 'bg-card text-blue-700 shadow-sm'
+                : 'text-muted-foreground hover:text-foreground/80',
             )}
           >
             {mode === 'template' ? 'Template' : 'JSON'}
@@ -761,7 +761,7 @@ function FlexEditor({ message, onChange }: MessageEditorProps) {
                     'rounded-full border-2 px-4 py-1.5 text-sm font-medium transition-all duration-200',
                     c.templateKey === key
                       ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm'
-                      : 'border-gray-200 text-gray-600 hover:border-blue-300 hover:text-blue-600',
+                      : 'border-border text-foreground/70 hover:border-blue-300 hover:text-blue-600',
                   )}
                 >
                   {t.name}
@@ -773,7 +773,7 @@ function FlexEditor({ message, onChange }: MessageEditorProps) {
           <div className="space-y-3">
             {tpl.fields.map((fieldName) => (
               <div key={fieldName}>
-                <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                <label className="mb-1.5 block text-sm font-medium text-foreground/80">
                   {fieldName}
                   {fieldName === tpl.fields[0] && <span className="text-red-500 ml-0.5">*</span>}
                 </label>
@@ -792,7 +792,7 @@ function FlexEditor({ message, onChange }: MessageEditorProps) {
           </div>
           {/* Mini preview */}
           <div className="space-y-2">
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Preview</p>
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Preview</p>
             <FlexPreviewCard content={c} />
           </div>
         </div>
@@ -800,15 +800,15 @@ function FlexEditor({ message, onChange }: MessageEditorProps) {
         /* JSON mode */
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <div className="space-y-2">
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">JSON Editor</p>
-            <div className="rounded-xl overflow-hidden border border-gray-700 shadow-sm">
-              <div className="bg-[#161b22] px-3 py-2 flex items-center gap-2 border-b border-gray-700">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">JSON Editor</p>
+            <div className="rounded-xl overflow-hidden border border-border shadow-sm">
+              <div className="bg-[#161b22] px-3 py-2 flex items-center gap-2 border-b border-border">
                 <div className="flex gap-1.5">
                   <div className="size-2.5 rounded-full bg-red-500" />
                   <div className="size-2.5 rounded-full bg-yellow-500" />
                   <div className="size-2.5 rounded-full bg-green-500" />
                 </div>
-                <span className="text-xs text-gray-400 ml-1">flex.json</span>
+                <span className="text-xs text-muted-foreground ml-1">flex.json</span>
               </div>
               <Textarea
                 className="font-mono text-xs bg-[#0d1117] text-[#c9d1d9] min-h-[200px] resize-y border-0 rounded-none focus-visible:ring-0 focus-visible:ring-offset-0"
@@ -839,7 +839,7 @@ function FlexEditor({ message, onChange }: MessageEditorProps) {
             )}
           </div>
           <div className="space-y-2">
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Live Preview</p>
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Live Preview</p>
             <FlexPreviewCard content={c} />
           </div>
         </div>
@@ -890,8 +890,8 @@ function RichEditor({ message, onChange, uploadingIds, setUploadingIds }: Messag
         isUploading={uploadingIds.has(message.id)}
       />
       <div>
-        <label className="mb-1.5 block text-sm font-medium text-gray-700">
-          ลิงก์เมื่อกด <span className="text-gray-400 font-normal">(ไม่บังคับ)</span>
+        <label className="mb-1.5 block text-sm font-medium text-foreground/80">
+          ลิงก์เมื่อกด <span className="text-muted-foreground font-normal">(ไม่บังคับ)</span>
         </label>
         <Input
           placeholder="https://..."
@@ -951,11 +951,11 @@ function MessageCard({
       <CardHeader className="pb-3 bg-gradient-to-r from-blue-50/70 to-indigo-50/70 rounded-t-xl border-b border-blue-100/50">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <GripVertical className="size-4 text-gray-400" />
+            <GripVertical className="size-4 text-muted-foreground" />
             <div className="flex size-6 items-center justify-center rounded-full bg-blue-500 text-white text-xs font-semibold shadow-sm">
               {index + 1}
             </div>
-            <CardTitle className="text-sm font-semibold text-gray-700">ข้อความที่ {index + 1}</CardTitle>
+            <CardTitle className="text-sm font-semibold text-foreground/80">ข้อความที่ {index + 1}</CardTitle>
           </div>
           {total > 1 && (
             <button
@@ -981,7 +981,7 @@ function MessageCard({
                 'flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-all duration-200',
                 message.type === btn.type
                   ? 'border-blue-500 bg-blue-500 text-white shadow-sm'
-                  : 'border-gray-200 text-gray-500 hover:border-blue-300 hover:text-blue-600 bg-white',
+                  : 'border-border text-muted-foreground hover:border-blue-300 hover:text-blue-600 bg-card',
               )}
             >
               {btn.icon}
@@ -1236,10 +1236,10 @@ export default function BroadcastPage() {
     <div className="space-y-8">
       {/* Messages section */}
       <div className="space-y-1">
-        <h3 className="text-lg font-semibold text-gray-800 pb-2 border-b border-gray-100">
+        <h3 className="text-lg font-semibold text-foreground/90 pb-2 border-b border-border">
           ข้อความ
         </h3>
-        <p className="text-xs text-gray-500 mb-4">เพิ่มได้สูงสุด 5 ข้อความต่อ 1 broadcast</p>
+        <p className="text-xs text-muted-foreground mb-4">เพิ่มได้สูงสุด 5 ข้อความต่อ 1 broadcast</p>
         <div className="space-y-4 pt-2">
           {messages.map((msg, index) => (
             <MessageCard
@@ -1256,12 +1256,12 @@ export default function BroadcastPage() {
           {messages.length < 5 && (
             <Button
               variant="outline"
-              className="w-full border-dashed border-2 gap-2 h-12 text-gray-500 hover:text-blue-600 hover:border-blue-400 hover:bg-blue-50/50 transition-all duration-200"
+              className="w-full border-dashed border-2 gap-2 h-12 text-muted-foreground hover:text-blue-600 hover:border-blue-400 hover:bg-blue-50/50 transition-all duration-200"
               onClick={addMessage}
             >
               <Plus className="size-4" />
               เพิ่มข้อความ
-              <span className="text-xs text-gray-400">(เหลือ {5 - messages.length} ข้อความ)</span>
+              <span className="text-xs text-muted-foreground">(เหลือ {5 - messages.length} ข้อความ)</span>
             </Button>
           )}
         </div>
@@ -1269,10 +1269,10 @@ export default function BroadcastPage() {
 
       {/* Audience section */}
       <div className="space-y-1">
-        <h3 className="text-lg font-semibold text-gray-800 pb-2 border-b border-gray-100">
+        <h3 className="text-lg font-semibold text-foreground/90 pb-2 border-b border-border">
           กลุ่มเป้าหมาย
         </h3>
-        <p className="text-xs text-gray-500 mb-4">เลือกกลุ่มผู้รับข้อความ</p>
+        <p className="text-xs text-muted-foreground mb-4">เลือกกลุ่มผู้รับข้อความ</p>
         <div className="grid grid-cols-2 gap-3 pt-2">
           {AUDIENCE_OPTIONS.map((a) => {
             const count = audienceQuery.data?.[a.key];
@@ -1284,7 +1284,7 @@ export default function BroadcastPage() {
                   'flex cursor-pointer items-start gap-3 rounded-xl border-2 p-4 transition-all duration-200',
                   isSelected
                     ? 'border-blue-500 bg-blue-50 shadow-md ring-2 ring-blue-500/20'
-                    : 'border-gray-200 bg-white hover:border-blue-400 hover:shadow-md',
+                    : 'border-border bg-card hover:border-blue-400 hover:shadow-md',
                 )}
               >
                 <input
@@ -1298,16 +1298,16 @@ export default function BroadcastPage() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5 mb-0.5">
                     <span className={cn('shrink-0', a.color)}>{a.icon}</span>
-                    <span className="text-sm font-semibold text-gray-800 truncate">{a.label}</span>
+                    <span className="text-sm font-semibold text-foreground/90 truncate">{a.label}</span>
                   </div>
-                  <div className="text-xs text-gray-500 mb-1.5">{a.description}</div>
-                  <div className={cn('text-2xl font-bold tabular-nums', isSelected ? 'text-blue-600' : 'text-gray-700')}>
+                  <div className="text-xs text-muted-foreground mb-1.5">{a.description}</div>
+                  <div className={cn('text-2xl font-bold tabular-nums', isSelected ? 'text-blue-600' : 'text-foreground/80')}>
                     {count !== undefined ? count.toLocaleString() : (
-                      <span className="text-base font-normal text-gray-400">กำลังโหลด...</span>
+                      <span className="text-base font-normal text-muted-foreground">กำลังโหลด...</span>
                     )}
                   </div>
                   {count !== undefined && (
-                    <div className="text-xs text-gray-400">คน</div>
+                    <div className="text-xs text-muted-foreground">คน</div>
                   )}
                 </div>
               </label>
@@ -1318,10 +1318,10 @@ export default function BroadcastPage() {
 
       {/* Schedule section */}
       <div className="space-y-1">
-        <h3 className="text-lg font-semibold text-gray-800 pb-2 border-b border-gray-100">
+        <h3 className="text-lg font-semibold text-foreground/90 pb-2 border-b border-border">
           เวลาส่ง
         </h3>
-        <p className="text-xs text-gray-500 mb-4">เลือกส่งทันทีหรือตั้งเวลา</p>
+        <p className="text-xs text-muted-foreground mb-4">เลือกส่งทันทีหรือตั้งเวลา</p>
         <div className="space-y-4 pt-2">
           <div className="flex gap-3">
             {(
@@ -1336,7 +1336,7 @@ export default function BroadcastPage() {
                   'flex cursor-pointer items-start gap-3 rounded-xl border-2 px-4 py-3 flex-1 transition-all duration-200',
                   scheduleType === s.value
                     ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm'
-                    : 'border-gray-200 text-gray-600 hover:border-blue-300 bg-white',
+                    : 'border-border text-foreground/70 hover:border-blue-300 bg-card',
                 )}
               >
                 <input
@@ -1349,22 +1349,22 @@ export default function BroadcastPage() {
                 />
                 <div className={cn(
                   'mt-0.5 shrink-0',
-                  scheduleType === s.value ? 'text-blue-600' : 'text-gray-400',
+                  scheduleType === s.value ? 'text-blue-600' : 'text-muted-foreground',
                 )}>
                   {s.icon}
                 </div>
                 <div>
                   <div className="text-sm font-semibold">{s.label}</div>
-                  <div className="text-xs text-gray-500 mt-0.5">{s.desc}</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">{s.desc}</div>
                 </div>
               </label>
             ))}
           </div>
           {scheduleType === 'scheduled' && (
-            <div className="flex gap-3 p-4 rounded-xl bg-gray-50 border border-gray-200">
+            <div className="flex gap-3 p-4 rounded-xl bg-muted border border-border">
               <div className="flex-1">
-                <label className="mb-1.5 flex items-center gap-1.5 text-sm font-medium text-gray-700">
-                  <Calendar className="size-3.5 text-gray-400" />
+                <label className="mb-1.5 flex items-center gap-1.5 text-sm font-medium text-foreground/80">
+                  <Calendar className="size-3.5 text-muted-foreground" />
                   วันที่
                 </label>
                 <Input
@@ -1375,8 +1375,8 @@ export default function BroadcastPage() {
                 />
               </div>
               <div className="flex-1">
-                <label className="mb-1.5 flex items-center gap-1.5 text-sm font-medium text-gray-700">
-                  <Clock className="size-3.5 text-gray-400" />
+                <label className="mb-1.5 flex items-center gap-1.5 text-sm font-medium text-foreground/80">
+                  <Clock className="size-3.5 text-muted-foreground" />
                   เวลา
                 </label>
                 <Input
@@ -1392,13 +1392,13 @@ export default function BroadcastPage() {
 
       {/* Preview + Summary + Send */}
       <div className="space-y-1">
-        <h3 className="text-lg font-semibold text-gray-800 pb-2 border-b border-gray-100">
+        <h3 className="text-lg font-semibold text-foreground/90 pb-2 border-b border-border">
           Preview &amp; ส่ง
         </h3>
         <div className="pt-4 space-y-6">
           {/* Phone frame preview */}
           <div className="relative max-w-[320px] mx-auto">
-            <div className="bg-gray-800 rounded-[2.5rem] p-3 shadow-2xl">
+            <div className="bg-foreground/90 rounded-[2.5rem] p-3 shadow-2xl">
               {/* Notch */}
               <div className="bg-black w-24 h-5 rounded-full mx-auto mb-2" />
               {/* Screen */}
@@ -1484,7 +1484,7 @@ export default function BroadcastPage() {
       return (
         <div className="space-y-3">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-20 animate-pulse rounded-xl bg-gray-100" />
+            <div key={i} className="h-20 animate-pulse rounded-xl bg-muted" />
           ))}
         </div>
       );
@@ -1504,12 +1504,12 @@ export default function BroadcastPage() {
     if (items.length === 0) {
       return (
         <div className="flex flex-col items-center gap-4 py-20 text-center">
-          <div className="flex size-16 items-center justify-center rounded-full bg-gray-100">
-            <History className="size-8 text-gray-300" />
+          <div className="flex size-16 items-center justify-center rounded-full bg-muted">
+            <History className="size-8 text-muted-foreground/50" />
           </div>
           <div>
-            <p className="text-sm font-medium text-gray-600">ยังไม่มีประวัติการส่ง</p>
-            <p className="text-xs text-gray-400 mt-1">ประวัติ Broadcast จะแสดงที่นี่</p>
+            <p className="text-sm font-medium text-foreground/70">ยังไม่มีประวัติการส่ง</p>
+            <p className="text-xs text-muted-foreground mt-1">ประวัติ Broadcast จะแสดงที่นี่</p>
           </div>
         </div>
       );

@@ -237,6 +237,79 @@ export class FacebookWebhookController {
   }
 
   /**
+   * Data Deletion Request — Facebook sends POST when user requests data deletion.
+   *
+   * Facebook requires this endpoint to comply with GDPR/PDPA.
+   * Must return a JSON response with:
+   *   { url: "<status_check_url>", confirmation_code: "<unique_code>" }
+   *
+   * Docs: https://developers.facebook.com/docs/development/create-an-app/app-dashboard/data-deletion-callback
+   */
+  @Post('data-deletion')
+  @SkipCsrf()
+  @HttpCode(200)
+  async handleDataDeletion(
+    @Body() body: { signed_request?: string },
+  ): Promise<{ url: string; confirmation_code: string }> {
+    const appSecret = this.configService.get<string>('FB_APP_SECRET');
+    if (!appSecret || !body.signed_request) {
+      this.logger.warn('[FB Data Deletion] Missing app secret or signed_request');
+      throw new BadRequestException('Invalid request');
+    }
+
+    // Parse Facebook signed_request (base64url encoded: sig.payload)
+    const [sigB64, payloadB64] = body.signed_request.split('.');
+    if (!sigB64 || !payloadB64) {
+      throw new BadRequestException('Malformed signed_request');
+    }
+
+    // Verify signature
+    const expectedSig = createHmac('sha256', appSecret)
+      .update(payloadB64)
+      .digest('base64url');
+
+    if (sigB64 !== expectedSig) {
+      this.logger.warn('[FB Data Deletion] Signature verification failed');
+      throw new BadRequestException('Invalid signature');
+    }
+
+    // Decode payload
+    const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf-8'));
+    const userId: string = payload.user_id;
+
+    const confirmationCode = `fb_del_${userId}_${Date.now()}`;
+
+    this.logger.log(
+      `[FB Data Deletion] Request received for Facebook user ${userId} — code: ${confirmationCode}`,
+    );
+
+    // TODO: If we store Facebook user data (PSID→customer mapping),
+    // queue a deletion job here. For now, we log and acknowledge.
+    // Our chat system doesn't persist FB user profiles beyond the chat session.
+
+    const baseUrl = this.configService.get<string>('FRONTEND_URL') || 'https://bestchoicephone.app';
+
+    return {
+      url: `${baseUrl}/privacy?deletion=${confirmationCode}`,
+      confirmation_code: confirmationCode,
+    };
+  }
+
+  /**
+   * Deauthorize Callback — Facebook sends POST when user removes the app.
+   */
+  @Post('deauthorize')
+  @SkipCsrf()
+  @HttpCode(200)
+  async handleDeauthorize(
+    @Body() body: { signed_request?: string },
+  ): Promise<{ success: boolean }> {
+    this.logger.log('[FB Deauthorize] User revoked app authorization');
+    // Acknowledge — no user data to delete beyond chat messages
+    return { success: true };
+  }
+
+  /**
    * Verify Facebook webhook signature using HMAC-SHA256.
    * Uses timing-safe comparison to prevent timing attacks.
    */

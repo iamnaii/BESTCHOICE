@@ -42,6 +42,7 @@ interface Integration {
   description: string;
   configured: boolean;
   icon?: string;
+  webhookUrl?: string;
 }
 
 interface RegistryField {
@@ -135,6 +136,14 @@ function IntegrationCard({
           )}
         </div>
       </div>
+      {integration.webhookUrl && (
+        <div className="mt-3 pt-3 border-t border-border/50">
+          <p className="text-2xs font-medium text-muted-foreground mb-1">Webhook URL</p>
+          <code className="text-2xs bg-muted rounded px-1.5 py-0.5 font-mono text-foreground break-all">
+            {integration.webhookUrl}
+          </code>
+        </div>
+      )}
     </button>
   );
 }
@@ -513,7 +522,14 @@ function IntegrationGrid({
 export default function IntegrationHubPage() {
   const integrationsQuery = useQuery<Integration[]>({
     queryKey: ['integrations'],
-    queryFn: () => api.get('/integrations').then((r: any) => r.data),
+    queryFn: async () => {
+      const res = await api.get('/integrations');
+      const items = Array.isArray(res.data) ? res.data : res.data?.data ?? res.data;
+      return items.map((i: any) => ({
+        ...i,
+        configured: i.configured ?? i.status === 'connected',
+      }));
+    },
   });
 
   const registryQuery = useQuery<Registry>({

@@ -9,6 +9,7 @@ export interface IntegrationStatus {
   description: string;
   icon: string;
   status: 'connected' | 'not_configured';
+  webhookUrl?: string;
 }
 
 export interface TestConnectionResult {
@@ -39,6 +40,7 @@ export class IntegrationsService {
           description: integration.description,
           icon: integration.icon,
           status: isConfigured ? ('connected' as const) : ('not_configured' as const),
+          webhookUrl: integration.webhookUrl,
         };
       }),
     );

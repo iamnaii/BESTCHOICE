@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { LayoutGrid, Trash2, Star, Upload, Plus, ImageIcon, Pencil, Copy } from 'lucide-react';
@@ -341,12 +341,19 @@ export default function RichMenuPage() {
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [editingMenuId, setEditingMenuId] = useState<string | null>(null);
 
+  useEffect(() => {
+    setLiffUrl('');
+    setEditingMenuId(null);
+    setCustomImageFile(null);
+    setCustomImagePreview(null);
+  }, [channel]);
+
   // ── Queries ──────────────────────────────────────────────────────────────
 
   const { data, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['rich-menu-list'],
+    queryKey: ['rich-menu-list', channel],
     queryFn: async () => {
-      const res = await api.get('/line-oa/rich-menu/list');
+      const res = await api.get(`/line-oa/rich-menu/list?channel=${channel}`);
       return res.data as RichMenuListResponse;
     },
     retry: 1,
@@ -360,10 +367,32 @@ export default function RichMenuPage() {
     },
   });
 
-  const defaultLiffUrl = lineSettings?.settings?.liff_id
-    ? `https://liff.line.me/${lineSettings.settings.liff_id}`
-    : '';
+  const { data: financeIntegration } = useQuery({
+    queryKey: ['integration-config', 'line-finance'],
+    queryFn: async () => {
+      const res = await api.get('/integrations/line-finance/config');
+      return res.data as { config: Record<string, string> };
+    },
+  });
 
+  const { data: aliases } = useQuery({
+    queryKey: ['rich-menu-aliases'],
+    queryFn: async () => {
+      const res = await api.get('/line-oa/rich-menu/aliases');
+      return res.data as {
+        shopDefault: string | null;
+        shopVerified: string | null;
+        financeDefault: string | null;
+        financeVerified: string | null;
+      };
+    },
+  });
+  void aliases; // consumed in Task 10
+
+  const shopLiffId = lineSettings?.settings?.liff_id;
+  const financeLiffId = financeIntegration?.config?.liffId;
+  const activeLiffId = channel === 'shop' ? shopLiffId : financeLiffId;
+  const defaultLiffUrl = activeLiffId ? `https://liff.line.me/${activeLiffId}` : '';
   const effectiveLiffUrl = liffUrl || defaultLiffUrl;
 
   // ── Mutations ─────────────────────────────────────────────────────────────

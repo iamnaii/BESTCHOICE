@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
+import QueryBoundary from '@/components/QueryBoundary';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
@@ -379,6 +380,13 @@ export default function MdmDashboardPage() {
       </div>
 
       {/* Table */}
+      <QueryBoundary
+        isLoading={devicesQuery.isLoading}
+        isError={devicesQuery.isError}
+        error={devicesQuery.error}
+        onRetry={devicesQuery.refetch}
+        errorTitle="ไม่สามารถโหลดรายการอุปกรณ์ MDM ได้"
+      >
       <div className="rounded-lg border border-border bg-card overflow-x-auto">
         <table className="w-full text-[13px]">
           <thead>
@@ -525,6 +533,8 @@ export default function MdmDashboardPage() {
           </tbody>
         </table>
       </div>
+
+      </QueryBoundary>
 
       {/* Pagination */}
       {totalPages > 1 && (

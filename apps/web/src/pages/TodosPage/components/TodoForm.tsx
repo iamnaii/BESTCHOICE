@@ -38,6 +38,7 @@ import {
   formatBytes,
   emptyForm,
 } from '../types';
+import { formatDateMedium } from '@/utils/formatters';
 
 interface TodoFormProps {
   open: boolean;
@@ -56,7 +57,7 @@ function formatRelative(dateStr: string) {
   if (hours < 24) return `${hours} ชั่วโมงที่แล้ว`;
   const days = Math.floor(hours / 24);
   if (days < 30) return `${days} วันที่แล้ว`;
-  return new Date(dateStr).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' });
+  return formatDateMedium(new Date(dateStr));
 }
 
 export function TodoForm({ open, onOpenChange, editing, staffUsers }: TodoFormProps) {

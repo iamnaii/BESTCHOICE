@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
+import QueryBoundary from '@/components/QueryBoundary';
 
 interface StickerTemplate {
   id: string;
@@ -31,7 +32,7 @@ export default function StickerPrintPage() {
   const [selectedTemplate, setSelectedTemplate] = useState('');
   const [previewData, setPreviewData] = useState<StickerData | null>(null);
 
-  const { data: templates = [] } = useQuery<StickerTemplate[]>({
+  const { data: templates = [], isLoading: templatesLoading, isError: templatesError, error: templatesErrorObj, refetch: refetchTemplates } = useQuery<StickerTemplate[]>({
     queryKey: ['sticker-templates'],
     queryFn: async () => {
       const { data } = await api.get('/sticker-templates');
@@ -59,6 +60,13 @@ export default function StickerPrintPage() {
       <div className="print:hidden">
         <PageHeader title="พิมพ์สติกเกอร์" subtitle="สร้างสติกเกอร์ QR code สำหรับสินค้า" />
 
+        <QueryBoundary
+          isLoading={templatesLoading}
+          isError={templatesError}
+          error={templatesErrorObj}
+          onRetry={refetchTemplates}
+          errorTitle="ไม่สามารถโหลด Template สติกเกอร์ได้"
+        >
         <div className="bg-card rounded-xl border border-border/50 shadow-sm p-6 mb-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5 lg:gap-7.5">
             <div>
@@ -100,6 +108,7 @@ export default function StickerPrintPage() {
             </div>
           </div>
         </div>
+        </QueryBoundary>
       </div>
 
       {/* Preview / Print Area */}

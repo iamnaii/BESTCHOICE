@@ -25,6 +25,7 @@ import {
 import { cn } from '@/lib/utils';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
+import QueryBoundary from '@/components/QueryBoundary';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -1273,6 +1274,13 @@ export default function BroadcastPage() {
           กลุ่มเป้าหมาย
         </h3>
         <p className="text-xs text-muted-foreground mb-4">เลือกกลุ่มผู้รับข้อความ</p>
+        <QueryBoundary
+          isLoading={audienceQuery.isLoading}
+          isError={audienceQuery.isError}
+          error={audienceQuery.error}
+          onRetry={audienceQuery.refetch}
+          errorTitle="ไม่สามารถโหลดข้อมูลกลุ่มเป้าหมายได้"
+        >
         <div className="grid grid-cols-2 gap-3 pt-2">
           {AUDIENCE_OPTIONS.map((a) => {
             const count = audienceQuery.data?.[a.key];
@@ -1314,6 +1322,7 @@ export default function BroadcastPage() {
             );
           })}
         </div>
+        </QueryBoundary>
       </div>
 
       {/* Schedule section */}

@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
+import QueryBoundary from '@/components/QueryBoundary';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import NotificationLogTable from './components/NotificationLogTable';
 import TemplateManager from './components/TemplateManager';
@@ -61,7 +62,7 @@ export default function NotificationsPage() {
     action: () => void;
   }>({ open: false, message: '', action: () => {} });
 
-  const { data: stats } = useQuery<LogStats>({
+  const { data: stats, isLoading: statsLoading, isError: statsError, error: statsErrorObj, refetch: refetchStats } = useQuery<LogStats>({
     queryKey: ['notification-stats'],
     queryFn: async () => (await api.get('/notifications/logs/stats')).data,
   });
@@ -134,6 +135,13 @@ export default function NotificationsPage() {
       <PageHeader title="แจ้งเตือน" subtitle="ระบบแจ้งเตือน LINE / SMS" />
 
       {/* Stats */}
+      <QueryBoundary
+        isLoading={statsLoading}
+        isError={statsError}
+        error={statsErrorObj}
+        onRetry={refetchStats}
+        errorTitle="ไม่สามารถโหลดสถิติการแจ้งเตือนได้"
+      >
       {stats && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-5 mb-6">
           <div className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
@@ -174,6 +182,8 @@ export default function NotificationsPage() {
           </div>
         </div>
       )}
+
+      </QueryBoundary>
 
       {/* Quick Actions */}
       <div className="flex gap-3 mb-6">

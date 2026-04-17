@@ -9,6 +9,7 @@ import api, { getErrorMessage } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { saleTypeConfig, type SaleType } from '@/lib/constants';
 import PageHeader from '@/components/ui/PageHeader';
+import QueryBoundary from '@/components/QueryBoundary';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { posSaleSchema, type PosSaleFormData } from '@/lib/schemas';
 import type { Product, Customer, PosConfig, TopProduct } from './types';
@@ -78,7 +79,7 @@ export default function POSPage() {
   const financeCompany = saleForm.watch('financeCompany') ?? '';
 
   // POS config (interest rate, down payment %, months range)
-  const { data: posConfig } = useQuery<PosConfig>({
+  const posConfigQuery = useQuery<PosConfig>({
     queryKey: ['pos-config'],
     queryFn: async () => {
       const { data } = await api.get('/sales/config');
@@ -86,6 +87,7 @@ export default function POSPage() {
     },
     staleTime: 5 * 60 * 1000,
   });
+  const posConfig = posConfigQuery.data;
 
   // Top selling products for quick picks
   const { data: topProducts = [] } = useQuery<TopProduct[]>({
@@ -251,6 +253,13 @@ export default function POSPage() {
     <div>
       <PageHeader title="POS - ขายสินค้า" subtitle="ระบบขายหน้าร้าน" />
 
+      <QueryBoundary
+        isLoading={posConfigQuery.isLoading}
+        isError={posConfigQuery.isError}
+        error={posConfigQuery.error}
+        onRetry={posConfigQuery.refetch}
+        errorTitle="ไม่สามารถโหลดการตั้งค่า POS ได้"
+      >
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 lg:gap-7.5">
         {/* Left Column - Main Form */}
         <div className="lg:col-span-2 flex flex-col gap-5">
@@ -374,6 +383,7 @@ export default function POSPage() {
           />
         </div>
       </div>
+      </QueryBoundary>
     </div>
   );
 }

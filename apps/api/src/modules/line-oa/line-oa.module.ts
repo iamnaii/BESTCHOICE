@@ -23,9 +23,16 @@ import { ContractsModule } from '../contracts/contracts.module';
 import { PDPAModule } from '../pdpa/pdpa.module';
 import { ChatbotFinanceModule } from '../chatbot-finance/chatbot-finance.module';
 import { IntegrationsModule } from '../integrations/integrations.module';
+import { ChatEngineModule } from '../chat-engine/chat-engine.module';
 
 @Module({
-  imports: [forwardRef(() => ContractsModule), PDPAModule, forwardRef(() => ChatbotFinanceModule), IntegrationsModule],
+  imports: [
+    forwardRef(() => ContractsModule),
+    PDPAModule,
+    forwardRef(() => ChatbotFinanceModule),
+    IntegrationsModule,
+    forwardRef(() => ChatEngineModule),
+  ],
   controllers: [LineOaController, LineOaChatbotController, LineOaPaymentController, LineOaCampaignController, LiffApiController, LineLoginController, BroadcastController],
   providers: [
     LineOaService,

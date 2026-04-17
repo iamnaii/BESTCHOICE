@@ -42,8 +42,12 @@ export class LineFinanceAdapter implements IChannelAdapter {
     // LINE doesn't have a typing indicator API for bots
   }
 
-  async getUserProfile(_externalUserId: string): Promise<UserProfile | null> {
-    // LINE profile API would go here — deferred to Phase 2 polish
-    return null;
+  async getUserProfile(externalUserId: string): Promise<UserProfile | null> {
+    const profile = await this.lineClient.getUserProfile(externalUserId);
+    if (!profile) return null;
+    return {
+      displayName: profile.displayName,
+      avatarUrl: profile.pictureUrl,
+    };
   }
 }

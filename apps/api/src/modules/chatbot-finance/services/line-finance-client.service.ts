@@ -67,6 +67,37 @@ export class LineFinanceClientService {
     this.logger.log(`[LINE Finance] reply sent`);
   }
 
+  /**
+   * Fetch LINE user profile (displayName + pictureUrl). Best-effort — returns null on failure
+   * so webhook handling is never blocked by a profile API issue.
+   */
+  async getUserProfile(
+    userId: string,
+  ): Promise<{ displayName: string; pictureUrl?: string; statusMessage?: string } | null> {
+    const token = await this.getAccessToken();
+    if (!token) return null;
+    try {
+      const res = await fetch(`${this.apiBase}/profile/${userId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!res.ok) {
+        this.logger.warn(`[LINE Finance] profile API ${res.status} for ${userId.slice(0, 8)}...`);
+        return null;
+      }
+      return (await res.json()) as {
+        displayName: string;
+        pictureUrl?: string;
+        statusMessage?: string;
+      };
+    } catch (err) {
+      this.logger.warn(
+        `[LINE Finance] profile fetch failed: ${err instanceof Error ? err.message : err}`,
+      );
+      return null;
+    }
+  }
+
   /** ดาวน์โหลด media (รูป/เสียง) จาก LINE Content API */
   async getMessageContent(messageId: string): Promise<Buffer> {
     const token = await this.getAccessToken();

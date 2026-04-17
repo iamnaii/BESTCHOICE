@@ -39,6 +39,8 @@ export class RoomManagerService {
     externalUserId: string;
     channel: ChatChannel;
     customerId?: string;
+    displayName?: string | null;
+    pictureUrl?: string | null;
     attribution?: {
       utmSource?: string;
       utmCampaign?: string;
@@ -73,13 +75,21 @@ export class RoomManagerService {
     }
 
     if (existing) {
+      const updateData: Prisma.ChatRoomUpdateInput = {};
       // Reopen if IDLE
       if (existing.status === ChatRoomStatus.IDLE) {
-        await this.prisma.chatRoom.update({
+        updateData.status = ChatRoomStatus.ACTIVE;
+      }
+      // Backfill profile for legacy rooms (pre-feature rooms had null displayName)
+      if (!existing.displayName && params.displayName) {
+        updateData.displayName = params.displayName;
+        updateData.pictureUrl = params.pictureUrl ?? null;
+      }
+      if (Object.keys(updateData).length > 0) {
+        return this.prisma.chatRoom.update({
           where: { id: existing.id },
-          data: { status: ChatRoomStatus.ACTIVE },
+          data: updateData,
         });
-        return { ...existing, status: ChatRoomStatus.ACTIVE };
       }
       return existing;
     }
@@ -108,6 +118,8 @@ export class RoomManagerService {
         verifiedAt: customerId ? new Date() : null,
         status: ChatRoomStatus.ACTIVE,
         priority: ChatPriority.NORMAL,
+        displayName: params.displayName ?? null,
+        pictureUrl: params.pictureUrl ?? null,
       },
     });
 

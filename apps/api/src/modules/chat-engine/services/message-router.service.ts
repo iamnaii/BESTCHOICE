@@ -1,5 +1,5 @@
 import { Injectable, Logger, Inject, Optional, forwardRef } from '@nestjs/common';
-import { ChatChannel, MessageRole } from '@prisma/client';
+import { ChatChannel, MessageRole, MessageType } from '@prisma/client';
 import {
   IChannelAdapter,
   InboundMessage,
@@ -82,10 +82,25 @@ export class MessageRouterService {
    * 8. Save outbound message
    */
   async routeInbound(message: InboundMessage): Promise<void> {
+    // 0. Best-effort profile fetch — never block webhook on profile API issues
+    const adapter = this.adapterMap.get(message.channel);
+    let profile: { displayName?: string; avatarUrl?: string } | null = null;
+    if (adapter?.getUserProfile) {
+      try {
+        profile = await adapter.getUserProfile(message.externalUserId);
+      } catch (err) {
+        this.logger.warn(
+          `[${message.channel}] profile fetch threw: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+    }
+
     // 1. Get or create room
     const room = await this.roomManager.getOrCreateRoom({
       externalUserId: message.externalUserId,
       channel: message.channel,
+      displayName: profile?.displayName,
+      pictureUrl: profile?.avatarUrl,
       attribution: message.attribution,
     });
 
@@ -275,6 +290,77 @@ export class MessageRouterService {
       );
       // Don't throw — message is already saved, failure is logged
     }
+  }
+
+  /**
+   * Mirror an inbound message to ChatRoom/ChatMessage only — no AI, no
+   * after-hours, no domain handler dispatch. Used by channel handlers that
+   * own their own reply logic (e.g. Shop command-based bot) but want their
+   * conversations visible in the Unified Inbox with platform profile.
+   */
+  async mirrorInbound(message: InboundMessage): Promise<void> {
+    const adapter = this.adapterMap.get(message.channel);
+    let profile: { displayName?: string; avatarUrl?: string } | null = null;
+    if (adapter?.getUserProfile) {
+      try {
+        profile = await adapter.getUserProfile(message.externalUserId);
+      } catch (err) {
+        this.logger.warn(
+          `[${message.channel}] profile fetch threw: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+    }
+
+    const room = await this.roomManager.getOrCreateRoom({
+      externalUserId: message.externalUserId,
+      channel: message.channel,
+      displayName: profile?.displayName,
+      pictureUrl: profile?.avatarUrl,
+      attribution: message.attribution,
+    });
+
+    await this.roomManager.saveMessage({
+      roomId: room.id,
+      externalMessageId: message.externalMessageId,
+      role: MessageRole.CUSTOMER,
+      type: message.type,
+      text: message.text,
+      mediaUrl: message.mediaUrl,
+      mediaType: message.mediaType,
+    });
+
+    // Emit to Unified Inbox (best-effort)
+    this.gateway?.emitNewMessage(room.id, {
+      role: 'CUSTOMER',
+      text: message.text,
+      type: message.type,
+      channel: message.channel,
+      roomId: room.id,
+    });
+  }
+
+  /** Mirror an outbound (bot/staff) message to ChatRoom — for channels that send outside MessageRouter */
+  async mirrorOutbound(params: {
+    externalUserId: string;
+    channel: ChatChannel;
+    role: typeof MessageRole.BOT | typeof MessageRole.STAFF;
+    text?: string;
+    type?: MessageType;
+    mediaUrl?: string;
+    staffId?: string;
+  }): Promise<void> {
+    const room = await this.roomManager.getOrCreateRoom({
+      externalUserId: params.externalUserId,
+      channel: params.channel,
+    });
+    await this.roomManager.saveMessage({
+      roomId: room.id,
+      role: params.role,
+      text: params.text,
+      type: params.type,
+      mediaUrl: params.mediaUrl,
+      staffId: params.staffId,
+    });
   }
 
   /** Send a staff message through the appropriate adapter */

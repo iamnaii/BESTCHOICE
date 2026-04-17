@@ -2,6 +2,7 @@ import { Injectable, Logger, Optional, Inject, forwardRef } from '@nestjs/common
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ChatChannel, ChatRoom, MessageRole, MessageType, Prisma } from '@prisma/client';
 import { StaffChatGateway } from '../../staff-chat/staff-chat.gateway';
+import { LineFinanceClientService } from './line-finance-client.service';
 
 /**
  * จัดการ ChatRoom + ChatMessage สำหรับ Finance Bot
@@ -13,6 +14,7 @@ export class ChatRoomService {
 
   constructor(
     private prisma: PrismaService,
+    private lineClient: LineFinanceClientService,
     @Optional() @Inject(forwardRef(() => StaffChatGateway))
     private staffChatGateway?: StaffChatGateway,
   ) {}
@@ -27,7 +29,19 @@ export class ChatRoomService {
         },
       },
     });
-    if (existing) return existing;
+    if (existing) {
+      // Backfill profile once per legacy room (pre-feature rooms have null displayName)
+      if (!existing.displayName) {
+        const profile = await this.lineClient.getUserProfile(lineUserId);
+        if (profile?.displayName) {
+          return this.prisma.chatRoom.update({
+            where: { id: existing.id },
+            data: { displayName: profile.displayName, pictureUrl: profile.pictureUrl ?? null },
+          });
+        }
+      }
+      return existing;
+    }
 
     // ลองหา customer ที่ link ไว้แล้วผ่าน CustomerLineLink
     const link = await this.prisma.customerLineLink.findUnique({
@@ -39,12 +53,16 @@ export class ChatRoomService {
       },
     });
 
+    const profile = await this.lineClient.getUserProfile(lineUserId);
+
     return this.prisma.chatRoom.create({
       data: {
         lineUserId,
         channel: ChatChannel.LINE_FINANCE,
         customerId: link?.customerId,
         verifiedAt: link ? new Date() : null,
+        displayName: profile?.displayName ?? null,
+        pictureUrl: profile?.pictureUrl ?? null,
       },
     });
   }

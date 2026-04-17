@@ -18,7 +18,7 @@ export class LineWebhookGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
 
-    const channelSecret = (await this.integrationConfig.getValue('line-oa', 'shopChannelSecret')) || '';
+    const channelSecret = (await this.integrationConfig.getValue('line-shop', 'channelSecret')) || '';
 
     if (!channelSecret) {
       const isDev = process.env.NODE_ENV !== 'production';

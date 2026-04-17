@@ -80,8 +80,12 @@ export class IntegrationsService {
 
   async testConnection(integrationKey: string): Promise<TestConnectionResult> {
     switch (integrationKey) {
-      case 'line-oa':
-        return this.testLineOa();
+      case 'line-shop':
+        return this.testLineBot('line-shop', 'ไลน์ร้าน (SHOP)');
+      case 'line-finance':
+        return this.testLineBot('line-finance', 'ไลน์การเงิน (FINANCE)');
+      case 'line-staff':
+        return this.testLineBot('line-staff', 'ไลน์พนักงาน (STAFF)');
       case 'sms':
         return this.testSms();
       case 'facebook':
@@ -101,16 +105,17 @@ export class IntegrationsService {
     }
   }
 
-  // ─── LINE OA ───────────────────────────────────────────────────────────────
+  // ─── LINE Bot (ใช้ร่วมกันทั้ง 3 OA) ────────────────────────────────────
 
-  private async testLineOa(): Promise<TestConnectionResult> {
+  private async testLineBot(
+    integrationKey: string,
+    displayLabel: string,
+  ): Promise<TestConnectionResult> {
     try {
-      const config = await this.configService.getConfig('line-oa');
-      const token =
-        (config as Record<string, string> | null)?.shopChannelToken ||
-        process.env.LINE_CHANNEL_ACCESS_TOKEN;
+      const config = await this.configService.getConfig(integrationKey);
+      const token = (config as Record<string, string> | null)?.channelToken;
       if (!token) {
-        return { success: false, message: 'ยังไม่ได้ตั้งค่า LINE Channel Access Token' };
+        return { success: false, message: `ยังไม่ได้ตั้งค่า Channel Access Token ของ ${displayLabel}` };
       }
 
       const res = await fetch('https://api.line.me/v2/bot/info', {
@@ -125,7 +130,7 @@ export class IntegrationsService {
       const data = (await res.json()) as { displayName?: string; basicId?: string };
       return {
         success: true,
-        message: `เชื่อมต่อสำเร็จ: ${data.displayName ?? 'unknown'}`,
+        message: `เชื่อมต่อ ${displayLabel} สำเร็จ: ${data.displayName ?? 'unknown'}`,
         details: { displayName: data.displayName, basicId: data.basicId },
       };
     } catch (err: unknown) {

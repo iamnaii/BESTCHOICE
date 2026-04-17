@@ -333,7 +333,7 @@ export class BroadcastService {
 
   /** Get follower count via LINE Insight API */
   async getFollowerCount(): Promise<number> {
-    const token = await this.integrationConfig.getValue('line-oa', 'shopChannelToken');
+    const token = await this.integrationConfig.getValue('line-shop', 'channelToken');
     if (!token) return 0;
 
     try {
@@ -391,7 +391,7 @@ export class BroadcastService {
     audience: string,
     messages: LineMessage[],
   ): Promise<{ success: boolean; message: string }> {
-    const token = await this.integrationConfig.getValue('line-oa', 'shopChannelToken');
+    const token = await this.integrationConfig.getValue('line-shop', 'channelToken');
     if (!token) return { success: false, message: 'LINE token not configured' };
 
     try {

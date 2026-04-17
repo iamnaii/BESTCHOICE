@@ -39,7 +39,7 @@ export class LineOaService {
   ) {}
 
   private async getShopChannelToken(): Promise<string> {
-    return (await this.integrationConfig.getValue('line-oa', 'shopChannelToken')) || '';
+    return (await this.integrationConfig.getValue('line-shop', 'channelToken')) || '';
   }
 
   async testConnection(): Promise<{ displayName: string; userId: string; pictureUrl?: string }> {

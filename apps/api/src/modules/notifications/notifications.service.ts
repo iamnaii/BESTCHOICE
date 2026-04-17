@@ -23,7 +23,7 @@ export class NotificationsService {
   ) {}
 
   private async getLineToken(): Promise<string> {
-    return (await this.integrationConfig.getValue('line-oa', 'shopChannelToken')) || '';
+    return (await this.integrationConfig.getValue('line-shop', 'channelToken')) || '';
   }
 
   private async getSmsApiKey(): Promise<string> {

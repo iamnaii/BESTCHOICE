@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
+import QueryBoundary from '@/components/QueryBoundary';
 import SystemSettings from './components/SystemSettings';
 import CompanySettings from './components/CompanySettings';
 import GeneralSettings from './components/GeneralSettings';
@@ -18,7 +19,7 @@ export default function SettingsPage() {
   const [draftSignatureImage, setDraftSignatureImage] = useState('');
   const [draftSignerName, setDraftSignerName] = useState('');
 
-  const { data: configs = [], isLoading } = useQuery<ConfigItem[]>({
+  const { data: configs = [], isLoading, isError, error, refetch } = useQuery<ConfigItem[]>({
     queryKey: ['settings'],
     queryFn: async () => (await api.get('/settings')).data,
   });
@@ -75,18 +76,17 @@ export default function SettingsPage() {
     setValues(updated);
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    );
-  }
-
   return (
     <div>
       <PageHeader title="ตั้งค่าระบบ" subtitle="กำหนดพารามิเตอร์การทำงานของระบบ" />
 
+      <QueryBoundary
+        isLoading={isLoading}
+        isError={isError}
+        error={error}
+        onRetry={refetch}
+        errorTitle="ไม่สามารถโหลดการตั้งค่าระบบได้"
+      >
       <div className="flex flex-col gap-5 lg:gap-7.5">
         <SystemSettings />
 
@@ -125,6 +125,7 @@ export default function SettingsPage() {
           isSaving={saveMutation.isPending}
         />
       </div>
+      </QueryBoundary>
     </div>
   );
 }

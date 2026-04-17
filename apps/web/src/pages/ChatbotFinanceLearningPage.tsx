@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, kbSuggestionStatusMap, kbSuggestionSourceMap } from '@/lib/status-badges';
+import { formatDateMedium, formatDateTime } from '@/utils/formatters';
 
 interface LearningStats {
   suggestions: { pending: number; approved: number; rejected: number };
@@ -185,7 +186,7 @@ export default function ChatbotFinanceLearningPage() {
                     </div>
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {new Date(s.createdAt).toLocaleDateString('th-TH')} — {s.suggestedIntent}
+                    {formatDateMedium(new Date(s.createdAt))} — {s.suggestedIntent}
                   </p>
                 </div>
               ))
@@ -269,7 +270,7 @@ export default function ChatbotFinanceLearningPage() {
 
               {selectedSuggestion.reviewedAt && (
                 <p className="text-xs text-muted-foreground">
-                  Reviewed: {new Date(selectedSuggestion.reviewedAt).toLocaleString('th-TH')}
+                  Reviewed: {formatDateTime(new Date(selectedSuggestion.reviewedAt))}
                 </p>
               )}
             </div>

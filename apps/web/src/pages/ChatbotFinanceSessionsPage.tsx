@@ -7,6 +7,7 @@ import QueryBoundary from '@/components/QueryBoundary';
 import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, sessionStatusMap } from '@/lib/status-badges';
 import { Card, CardContent } from '@/components/ui/card';
+import { formatDateTime } from '@/utils/formatters';
 
 interface SessionItem {
   id: string;
@@ -154,7 +155,7 @@ export default function ChatbotFinanceSessionsPage() {
                     })()}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {s.totalMessages} ข้อความ · {new Date(s.lastMessageAt).toLocaleString('th-TH')}
+                    {s.totalMessages} ข้อความ · {formatDateTime(new Date(s.lastMessageAt))}
                   </p>
                 </li>
               ))}

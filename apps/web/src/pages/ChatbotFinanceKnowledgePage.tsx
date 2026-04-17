@@ -7,6 +7,7 @@ import QueryBoundary from '@/components/QueryBoundary';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, kbResponseTypeMap, kbSuggestionStatusMap } from '@/lib/status-badges';
+import { formatDateMedium } from '@/utils/formatters';
 
 interface KbEntry {
   id: string;
@@ -492,11 +493,7 @@ function SuggestionsTab() {
                         })()}
                       </td>
                       <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
-                        {new Date(s.createdAt).toLocaleDateString('th-TH', {
-                          day: 'numeric',
-                          month: 'short',
-                          year: '2-digit',
-                        })}
+                        {formatDateMedium(new Date(s.createdAt))}
                       </td>
                       <td className="px-4 py-3 text-right">
                         {s.status === 'PENDING' && (

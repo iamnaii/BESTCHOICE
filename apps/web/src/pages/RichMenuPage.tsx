@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { LayoutGrid, Trash2, Star, Upload, Plus, ImageIcon, Pencil, Copy } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
+import QueryBoundary from '@/components/QueryBoundary';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -337,7 +338,7 @@ export default function RichMenuPage() {
 
   // ── Queries ──────────────────────────────────────────────────────────────
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['rich-menu-list'],
     queryFn: async () => {
       const res = await api.get('/line-oa/rich-menu/list');
@@ -712,6 +713,13 @@ export default function RichMenuPage() {
 
       {/* ── TAB: รายการเมนู ────────────────────────────────────────────────── */}
       {activeTab === 'list' && (
+        <QueryBoundary
+          isLoading={isLoading}
+          isError={isError}
+          error={error}
+          onRetry={refetch}
+          errorTitle="ไม่สามารถโหลดรายการ Rich Menu ได้"
+        >
         <div className="space-y-4">
           {isLoading ? (
             <div className="rounded-xl border border-border/50 bg-card shadow-sm p-10 text-center">
@@ -840,6 +848,7 @@ export default function RichMenuPage() {
             </div>
           )}
         </div>
+        </QueryBoundary>
       )}
 
       {/* Confirm Delete Dialog */}

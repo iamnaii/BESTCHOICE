@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import PageHeader from '@/components/ui/PageHeader';
+import QueryBoundary from '@/components/QueryBoundary';
 
 interface BotInfo {
   displayName: string;
@@ -33,7 +34,7 @@ export default function LineOaSettingsPage() {
   const [testMsgType, setTestMsgType] = useState('payment_reminder');
   const [testSendResult, setTestSendResult] = useState<{ success: boolean; message?: string; error?: string } | null>(null);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['line-oa-settings'],
     queryFn: async () => {
       const res = await api.get('/line-oa/settings');
@@ -131,14 +132,6 @@ export default function LineOaSettingsPage() {
 
   const hasLiff = !!(form.liff_id);
 
-  if (isLoading) {
-    return (
-      <div className="p-6">
-        <div className="text-center py-12 text-muted-foreground">กำลังโหลด...</div>
-      </div>
-    );
-  }
-
   return (
     <div className="p-6 max-w-4xl mx-auto">
       <PageHeader
@@ -146,6 +139,13 @@ export default function LineOaSettingsPage() {
         subtitle="ตั้งค่าเชื่อมต่อ LINE Official Account เพื่อส่งแจ้งเตือนและรับชำระเงินผ่านไลน์"
       />
 
+      <QueryBoundary
+        isLoading={isLoading}
+        isError={isError}
+        error={error}
+        onRetry={refetch}
+        errorTitle="ไม่สามารถโหลดการตั้งค่า LINE OA ได้"
+      >
       {/* Connection Status Card */}
       <div className={`mb-8 p-5 rounded-xl border-2 ${
         data?.isConfigured && testResult?.success
@@ -548,6 +548,7 @@ export default function LineOaSettingsPage() {
           ))}
         </div>
       </div>
+      </QueryBoundary>
     </div>
   );
 }

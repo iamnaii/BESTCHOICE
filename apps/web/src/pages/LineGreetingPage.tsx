@@ -17,6 +17,7 @@ import {
 import { cn } from '@/lib/utils';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
+import QueryBoundary from '@/components/QueryBoundary';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -575,7 +576,7 @@ export default function LineGreetingPage() {
   const [showQuickReply, setShowQuickReply] = useState(true);
   const [isDirty, setIsDirty] = useState(false);
 
-  const { isLoading, data: greetingData } = useQuery({
+  const { isLoading, isError, error, refetch, data: greetingData } = useQuery({
     queryKey: ['line-greeting-config'],
     queryFn: async () => {
       const res = await api.get<GreetingResponse>('/line-oa/greeting');
@@ -637,9 +638,13 @@ export default function LineGreetingPage() {
         icon={<MessageSquareMore size={22} />}
       />
 
-      {isLoading ? (
-        <div className="text-sm text-muted-foreground py-8 text-center">กำลังโหลด...</div>
-      ) : (
+      <QueryBoundary
+        isLoading={isLoading}
+        isError={isError}
+        error={error}
+        onRetry={refetch}
+        errorTitle="ไม่สามารถโหลดข้อความต้อนรับได้"
+      >
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6 items-start">
           {/* ─── Editor Column ─── */}
           <div className="space-y-4">
@@ -786,7 +791,7 @@ export default function LineGreetingPage() {
             </div>
           </div>
         </div>
-      )}
+      </QueryBoundary>
 
       {/* ─── Tips Card ─── */}
       <div className="rounded-xl bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 p-5">

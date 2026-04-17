@@ -25,6 +25,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { PromptPayQrService } from './promptpay/promptpay-qr.service';
 import { RichMenuService } from './rich-menu/rich-menu.service';
 import { SetAliasDto } from './rich-menu/dto/set-alias.dto';
+import { DeployTemplateDto, SetCallCenterPhoneDto } from './rich-menu/dto/deploy-template.dto';
 
 /**
  * LINE OA Settings + Admin — owner-only configuration and test endpoints.
@@ -348,6 +349,35 @@ export class LineOaController {
   async setRichMenuAlias(@Param('id') id: string, @Body() dto: SetAliasDto) {
     await this.richMenuService.setRichMenuAlias(dto.channel, dto.variant, id);
     return { success: true, message: 'ตั้งค่า alias สำเร็จ' };
+  }
+
+  @Post('rich-menu/deploy-template')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER')
+  async deployRichMenuTemplate(@Body() dto: DeployTemplateDto) {
+    const richMenuId = await this.richMenuService.deployFromTemplate(dto.templateKey);
+    return {
+      success: true,
+      richMenuId,
+      message: 'Generate + deploy rich menu จาก template สำเร็จ',
+    };
+  }
+
+  @Get('rich-menu/call-center-phone')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER')
+  async getCallCenterPhone(@Query('channel') channel?: string) {
+    const ch = this.parseChannel(channel);
+    const phone = await this.richMenuService.getCallCenterPhone(ch);
+    return { phone };
+  }
+
+  @Post('rich-menu/call-center-phone')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER')
+  async setCallCenterPhone(@Body() dto: SetCallCenterPhoneDto) {
+    await this.richMenuService.setCallCenterPhone(dto.channel, dto.phone);
+    return { success: true, message: 'บันทึกเบอร์ติดต่อเรียบร้อย' };
   }
 
   private parseChannel(channel?: string): 'shop' | 'finance' {

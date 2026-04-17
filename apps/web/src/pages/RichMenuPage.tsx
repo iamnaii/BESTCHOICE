@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { LayoutGrid, Trash2, Star, Upload, Plus, ImageIcon, Pencil, Copy } from 'lucide-react';
+import { LayoutGrid, Trash2, Star, Upload, Plus, ImageIcon, Pencil, Copy, Sparkles, Phone } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
@@ -555,6 +555,48 @@ export default function RichMenuPage() {
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
+  // Template deployment (FINANCE only for now)
+  const { data: callCenterPhoneData, refetch: refetchCallCenterPhone } = useQuery({
+    queryKey: ['rich-menu-call-center-phone', channel],
+    queryFn: async () => {
+      const res = await api.get(`/line-oa/rich-menu/call-center-phone?channel=${channel}`);
+      return res.data as { phone: string | null };
+    },
+    enabled: channel === 'finance',
+  });
+
+  const [callCenterPhone, setCallCenterPhone] = useState('');
+  useEffect(() => {
+    if (callCenterPhoneData?.phone) {
+      setCallCenterPhone(callCenterPhoneData.phone);
+    }
+  }, [callCenterPhoneData]);
+
+  const saveCallCenterPhoneMutation = useMutation({
+    mutationFn: async (phone: string) => {
+      await api.post('/line-oa/rich-menu/call-center-phone', { channel, phone });
+    },
+    onSuccess: () => {
+      toast.success('บันทึกเบอร์ติดต่อเรียบร้อย');
+      refetchCallCenterPhone();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const deployTemplateMutation = useMutation({
+    mutationFn: async (templateKey: 'finance-default' | 'finance-verified') => {
+      const res = await api.post('/line-oa/rich-menu/deploy-template', { templateKey });
+      return res.data as { richMenuId: string };
+    },
+    onSuccess: () => {
+      toast.success('สร้าง + deploy Rich Menu จาก template สำเร็จ');
+      queryClient.invalidateQueries({ queryKey: ['rich-menu-list', channel] });
+      queryClient.invalidateQueries({ queryKey: ['rich-menu-aliases'] });
+      setActiveTab('list');
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
   // ── Handlers ──────────────────────────────────────────────────────────────
 
   function handleEditMenu(menu: RichMenu) {
@@ -638,6 +680,100 @@ export default function RichMenuPage() {
       {/* ── TAB: สร้างเมนู ─────────────────────────────────────────────────── */}
       {activeTab === 'create' && (
         <div className="space-y-6">
+          {/* FINANCE-only: Generate from template */}
+          {channel === 'finance' && !editingMenuId && (
+            <div className="rounded-xl border border-primary/20 bg-primary/5 shadow-sm overflow-hidden">
+              <div className="px-5 py-3.5 border-b border-primary/20 bg-primary/10 flex items-center gap-2">
+                <Sparkles size={18} className="text-primary" />
+                <div>
+                  <h2 className="text-base font-semibold text-foreground">สร้างอัตโนมัติจาก Template</h2>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    ระบบจะ generate รูป + ติดตั้ง alias ให้ครบในคลิกเดียว
+                  </p>
+                </div>
+              </div>
+              <div className="p-5 space-y-4">
+                {/* Call center phone input */}
+                <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 items-end">
+                  <div>
+                    <label className="text-sm font-medium text-foreground mb-1 flex items-center gap-1.5">
+                      <Phone size={14} />
+                      เบอร์โทรศูนย์บริการ (Call Center)
+                    </label>
+                    <Input
+                      type="tel"
+                      value={callCenterPhone}
+                      onChange={(e) => setCallCenterPhone(e.target.value)}
+                      placeholder="เช่น 02-xxx-xxxx"
+                      className="font-mono"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      ใช้บนปุ่ม "โทรหาเจ้าหน้าที่" ในเมนูหลัง verify
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={() => saveCallCenterPhoneMutation.mutate(callCenterPhone)}
+                    disabled={!callCenterPhone || saveCallCenterPhoneMutation.isPending}
+                  >
+                    บันทึก
+                  </Button>
+                </div>
+
+                {/* Template cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="rounded-lg border border-border bg-card p-4 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Badge className="bg-muted text-muted-foreground border-0">Pre-verify</Badge>
+                      <span className="font-semibold text-sm">FINANCE — Default</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      เมนูก่อนลูกค้าผูกเบอร์: ผูกเบอร์ (hero) · วิธีชำระ · วิธีใช้งาน · ติดต่อ · FAQ · เปลี่ยนเบอร์
+                    </p>
+                    <Button
+                      className="w-full bg-gradient-to-r from-[#06C755] to-[#04a844] hover:from-[#04a844] hover:to-[#038537] text-white border-0"
+                      onClick={() => deployTemplateMutation.mutate('finance-default')}
+                      disabled={deployTemplateMutation.isPending}
+                    >
+                      <Sparkles size={14} className="mr-1.5" />
+                      {deployTemplateMutation.isPending &&
+                      deployTemplateMutation.variables === 'finance-default'
+                        ? 'กำลัง generate...'
+                        : 'Generate + Deploy'}
+                    </Button>
+                  </div>
+
+                  <div className="rounded-lg border border-border bg-card p-4 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Badge className="bg-primary/10 text-primary border-primary/30">Verified</Badge>
+                      <span className="font-semibold text-sm">FINANCE — Verified</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      เมนูหลังผูกเบอร์: เช็คยอด (hero) · ตารางงวด · ชำระเงิน · ประวัติ · สัญญา · โทรหาเจ้าหน้าที่
+                    </p>
+                    <Button
+                      className="w-full bg-gradient-to-r from-[#06C755] to-[#04a844] hover:from-[#04a844] hover:to-[#038537] text-white border-0"
+                      onClick={() => deployTemplateMutation.mutate('finance-verified')}
+                      disabled={deployTemplateMutation.isPending || !callCenterPhoneData?.phone}
+                      title={!callCenterPhoneData?.phone ? 'กรุณาบันทึกเบอร์โทรก่อน' : undefined}
+                    >
+                      <Sparkles size={14} className="mr-1.5" />
+                      {deployTemplateMutation.isPending &&
+                      deployTemplateMutation.variables === 'finance-verified'
+                        ? 'กำลัง generate...'
+                        : 'Generate + Deploy'}
+                    </Button>
+                    {!callCenterPhoneData?.phone && (
+                      <p className="text-xs text-destructive">
+                        ต้องบันทึกเบอร์โทรก่อนจึงจะ deploy ได้
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {editingMenuId && (
             <div className="bg-warning/10 border border-warning/20 rounded-xl p-3 flex items-center justify-between">
               <div className="flex items-center gap-2">

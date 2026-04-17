@@ -2,6 +2,9 @@ import { Injectable, Logger, BadRequestException, InternalServerErrorException }
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { IntegrationConfigService } from '../../integrations/integration-config.service';
+import { RichMenuRendererService } from './rich-menu-renderer.service';
+import { getTemplateEntry, TemplateKey } from './templates/registry';
+import { TemplateContext } from './templates/types';
 
 export interface MenuButton {
   label: string;
@@ -46,6 +49,7 @@ export class RichMenuService {
     private configService: ConfigService,
     private prisma: PrismaService,
     private integrationConfig: IntegrationConfigService,
+    private renderer: RichMenuRendererService,
   ) {}
 
   private async getChannelToken(channel: 'shop' | 'finance' = 'shop'): Promise<string> {
@@ -522,6 +526,111 @@ export class RichMenuService {
     }
 
     this.logger.log(`Rich Menu alias set: ${key} = ${richMenuId}`);
+  }
+
+  /**
+   * Deploy a rich menu from a built-in HTML/CSS template.
+   *
+   * End-to-end flow: load template context (LIFF id, call-center phone) →
+   * build template → render HTML to PNG via puppeteer → create LINE rich
+   * menu → upload PNG → set alias (and if variant=default, set as channel
+   * default for new friends).
+   *
+   * Returns the newly created richMenuId.
+   */
+  async deployFromTemplate(templateKey: TemplateKey): Promise<string> {
+    const entry = getTemplateEntry(templateKey);
+    if (!entry) {
+      throw new BadRequestException(`ไม่พบ template: ${templateKey}`);
+    }
+
+    const ctx = await this.loadTemplateContext(entry.channel, entry.requires);
+    const template = entry.build(ctx);
+
+    const imageBuffer = await this.renderer.render(template.html);
+
+    const createResponse = await this.callLineApi(
+      `${this.lineApiBaseUrl}/richmenu`,
+      {
+        size: template.size,
+        selected: true,
+        name: template.name,
+        chatBarText: template.chatBarText,
+        areas: template.areas,
+      },
+      entry.channel,
+    );
+    const { richMenuId } = (await createResponse.json()) as { richMenuId: string };
+    this.logger.log(`Rich menu created from template "${templateKey}": ${richMenuId}`);
+
+    await this.uploadRichMenuImage(richMenuId, imageBuffer, entry.channel);
+    await this.setRichMenuAlias(entry.channel, entry.variant, richMenuId);
+
+    return richMenuId;
+  }
+
+  /**
+   * Load all TemplateContext fields that a template declares it needs.
+   * liffId comes from the channel's integration config; callCenterPhone from
+   * a dedicated SystemConfig key. Throws if a required field is missing so the
+   * caller gets a clear error instead of a broken template.
+   */
+  private async loadTemplateContext(
+    channel: 'shop' | 'finance',
+    required: Array<keyof TemplateContext>,
+  ): Promise<TemplateContext> {
+    const integrationKey = channel === 'shop' ? 'line-shop' : 'line-finance';
+    const ctx: TemplateContext = { liffId: '' };
+
+    if (required.includes('liffId')) {
+      const liffId = (await this.integrationConfig.getValue(integrationKey, 'liffId')) || '';
+      if (!liffId) {
+        throw new BadRequestException(
+          `LIFF ID ของ ${channel === 'shop' ? 'SHOP' : 'FINANCE'} ยังไม่ถูกตั้งค่า — กรุณาไปที่ /settings/integrations`,
+        );
+      }
+      ctx.liffId = liffId;
+    }
+
+    if (required.includes('callCenterPhone')) {
+      const phoneKey = `richMenu.${channel}.callCenterPhone`;
+      const record = await this.prisma.systemConfig.findFirst({
+        where: { key: phoneKey, deletedAt: null },
+      });
+      if (!record?.value) {
+        throw new BadRequestException(
+          `ยังไม่ได้ตั้งเบอร์ call center — ระบุที่ช่อง "เบอร์ติดต่อเจ้าหน้าที่" ก่อน generate`,
+        );
+      }
+      ctx.callCenterPhone = record.value;
+    }
+
+    return ctx;
+  }
+
+  /**
+   * Upsert the call-center phone used by Verified rich menu templates.
+   * Stored in SystemConfig under `richMenu.{channel}.callCenterPhone`.
+   */
+  async setCallCenterPhone(channel: 'shop' | 'finance', phone: string): Promise<void> {
+    const trimmed = phone.trim();
+    if (!trimmed) {
+      throw new BadRequestException('กรุณาระบุเบอร์โทร');
+    }
+    const key = `richMenu.${channel}.callCenterPhone`;
+    await this.prisma.systemConfig.upsert({
+      where: { key },
+      create: { key, value: trimmed },
+      update: { value: trimmed, deletedAt: null },
+    });
+  }
+
+  async getCallCenterPhone(channel: 'shop' | 'finance'): Promise<string | null> {
+    const key = `richMenu.${channel}.callCenterPhone`;
+    const record = await this.prisma.systemConfig.findFirst({
+      where: { key, deletedAt: null },
+    });
+    return record?.value ?? null;
   }
 
   /**

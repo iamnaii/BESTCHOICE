@@ -335,6 +335,21 @@ export class LineOaController {
     return { success: true, message: 'ลบ Rich Menu เรียบร้อย' };
   }
 
+  @Get('rich-menu/aliases')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER')
+  async getRichMenuAliases() {
+    return this.richMenuService.getRichMenuAliases();
+  }
+
+  @Post('rich-menu/:id/set-alias')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER')
+  async setRichMenuAlias(@Param('id') id: string, @Body() dto: SetAliasDto) {
+    await this.richMenuService.setRichMenuAlias(dto.channel, dto.variant, id);
+    return { success: true, message: 'ตั้งค่า alias สำเร็จ' };
+  }
+
   private parseChannel(channel?: string): 'shop' | 'finance' {
     if (channel === 'finance') return 'finance';
     if (channel === 'shop' || channel === undefined || channel === '') return 'shop';

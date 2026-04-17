@@ -122,8 +122,10 @@ export class NotificationsService {
       },
     });
 
-    // If failed, schedule for persistent retry queue
-    if (status === 'FAILED' && dto.channel !== 'IN_APP') {
+    // If failed, schedule for persistent retry queue — unless the caller
+    // flagged the message as time-sensitive (e.g. OTP: the code expires in
+    // 10 min, so retrying later is useless and spammy).
+    if (status === 'FAILED' && dto.channel !== 'IN_APP' && !dto.noRetry) {
       await this.markForRetry(log.id, 0);
     }
 

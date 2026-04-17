@@ -39,6 +39,12 @@ export class LineOaService {
     private integrationConfig: IntegrationConfigService,
   ) {}
 
+  /**
+   * LineOaService is SHOP-only by design. FINANCE has its own client at
+   * chatbot-finance/services/line-finance-client.service.ts which reads
+   * the `line-finance` integration independently. If you need FINANCE LINE
+   * messaging, use that service — do NOT generalize this one.
+   */
   private async getShopChannelToken(): Promise<string> {
     return (await this.integrationConfig.getValue('line-shop', 'channelToken')) || '';
   }

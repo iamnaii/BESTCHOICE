@@ -117,6 +117,63 @@ describe('RichMenuService', () => {
     });
   });
 
+  describe('switchRichMenu', () => {
+    it.each([
+      ['shop', true, 'line.richMenu.shopVerified'],
+      ['shop', false, 'line.richMenu.shopDefault'],
+      ['finance', true, 'line.richMenu.financeVerified'],
+      ['finance', false, 'line.richMenu.financeDefault'],
+    ] as const)(
+      'composes SystemConfig key for channel=%s verified=%s -> %s',
+      async (channel, isVerified, expectedKey) => {
+        const getConfigSpy = jest
+          .spyOn(service, 'getRichMenuIdFromConfig')
+          .mockResolvedValue(null);
+
+        await service.switchRichMenu('U123', isVerified, channel);
+
+        expect(getConfigSpy).toHaveBeenCalledWith(expectedKey);
+      },
+    );
+
+    it('uses channel-specific token when linking Rich Menu', async () => {
+      jest.spyOn(service, 'getRichMenuIdFromConfig').mockResolvedValue('rm-finance-99');
+      integrationConfig.getValue.mockImplementation((key) =>
+        Promise.resolve(key === 'line-finance' ? 'finance-token' : null),
+      );
+      const fetchMock = jest.fn().mockResolvedValue({ ok: true, status: 200 });
+      const originalFetch = global.fetch;
+      global.fetch = fetchMock as any;
+
+      try {
+        await service.switchRichMenu('U123', true, 'finance');
+
+        expect(fetchMock).toHaveBeenCalledWith(
+          expect.stringContaining('/user/U123/richmenu/rm-finance-99'),
+          expect.objectContaining({
+            headers: expect.objectContaining({ Authorization: 'Bearer finance-token' }),
+          }),
+        );
+      } finally {
+        global.fetch = originalFetch;
+      }
+    });
+
+    it('skips LINE API call when config key has no value', async () => {
+      jest.spyOn(service, 'getRichMenuIdFromConfig').mockResolvedValue(null);
+      const fetchMock = jest.fn();
+      const originalFetch = global.fetch;
+      global.fetch = fetchMock as any;
+
+      try {
+        await service.switchRichMenu('U123', false, 'shop');
+        expect(fetchMock).not.toHaveBeenCalled();
+      } finally {
+        global.fetch = originalFetch;
+      }
+    });
+  });
+
   describe('listRichMenus', () => {
     const originalFetch = global.fetch;
     afterEach(() => { global.fetch = originalFetch; });

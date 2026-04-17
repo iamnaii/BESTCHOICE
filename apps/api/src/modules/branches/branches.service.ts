@@ -33,7 +33,7 @@ export class BranchesService {
         _count: { select: { products: true, contracts: true } },
       },
     });
-    if (!branch) throw new NotFoundException('ไม่พบสาขา');
+    if (!branch || branch.deletedAt) throw new NotFoundException('ไม่พบสาขา');
     return branch;
   }
 
@@ -59,7 +59,7 @@ export class BranchesService {
     await this.findOne(id);
     return this.prisma.branch.update({
       where: { id },
-      data: { isActive: false },
+      data: { deletedAt: new Date(), isActive: false },
     });
   }
 }

@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../../prisma/prisma.service';
 
 @Injectable()
@@ -12,56 +13,62 @@ export class TrainingExtractCron {
   async extractTrainingPairs(): Promise<{ created: number }> {
     this.logger.log('Starting daily training pair extraction');
 
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - 1);
+    try {
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 1);
 
-    const customerMessages = await this.prisma.chatMessage.findMany({
-      where: {
-        role: 'CUSTOMER',
-        text: { not: null },
-        createdAt: { gte: cutoff },
-      },
-      orderBy: { createdAt: 'asc' },
-    });
-
-    let created = 0;
-    for (const custMsg of customerMessages) {
-      const fiveMinLater = new Date(custMsg.createdAt.getTime() + 5 * 60 * 1000);
-      const staffReply = await this.prisma.chatMessage.findFirst({
+      const customerMessages = await this.prisma.chatMessage.findMany({
         where: {
-          roomId: custMsg.roomId,
-          role: 'STAFF',
+          role: 'CUSTOMER',
           text: { not: null },
-          createdAt: { gt: custMsg.createdAt, lte: fiveMinLater },
+          createdAt: { gte: cutoff },
         },
         orderBy: { createdAt: 'asc' },
       });
 
-      if (!staffReply?.text) continue;
+      let created = 0;
+      for (const custMsg of customerMessages) {
+        const fiveMinLater = new Date(custMsg.createdAt.getTime() + 5 * 60 * 1000);
+        const staffReply = await this.prisma.chatMessage.findFirst({
+          where: {
+            roomId: custMsg.roomId,
+            role: 'STAFF',
+            text: { not: null },
+            createdAt: { gt: custMsg.createdAt, lte: fiveMinLater },
+          },
+          orderBy: { createdAt: 'asc' },
+        });
 
-      const exists = await this.prisma.aiTrainingPair.findFirst({
-        where: {
-          source: 'SYSTEM_EXTRACT',
-          customerMessage: custMsg.text!,
-          humanEdit: staffReply.text,
-        },
-      });
-      if (exists) continue;
+        if (!staffReply?.text) continue;
 
-      await this.prisma.aiTrainingPair.create({
-        data: {
-          type: 'ACCEPT',
-          source: 'SYSTEM_EXTRACT',
-          roomId: custMsg.roomId,
-          customerMessage: custMsg.text!,
-          humanEdit: staffReply.text,
-          quality: 0.6,
-        },
-      });
-      created++;
+        const exists = await this.prisma.aiTrainingPair.findFirst({
+          where: {
+            source: 'SYSTEM_EXTRACT',
+            customerMessage: custMsg.text!,
+            humanEdit: staffReply.text,
+          },
+        });
+        if (exists) continue;
+
+        await this.prisma.aiTrainingPair.create({
+          data: {
+            type: 'ACCEPT',
+            source: 'SYSTEM_EXTRACT',
+            roomId: custMsg.roomId,
+            customerMessage: custMsg.text!,
+            humanEdit: staffReply.text,
+            quality: 0.6,
+          },
+        });
+        created++;
+      }
+
+      this.logger.log(`Extracted ${created} training pairs`);
+      return { created };
+    } catch (error) {
+      this.logger.error('Training-extract cron failed', error);
+      Sentry.captureException(error, { tags: { kind: 'cron-job', cron: 'training-extract' } });
+      return { created: 0 };
     }
-
-    this.logger.log(`Extracted ${created} training pairs`);
-    return { created };
   }
 }

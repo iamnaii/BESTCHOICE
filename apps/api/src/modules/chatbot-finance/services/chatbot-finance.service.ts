@@ -8,7 +8,7 @@ import {
   LinePostbackEvent,
 } from '../dto/line-webhook.dto';
 import { LineFinanceClientService } from './line-finance-client.service';
-import { LineQuickReply } from './line-finance-client.service';
+import { LineQuickReply, FlexContainer } from './line-finance-client.service';
 import { ChatRoomService } from './chat-room.service';
 import { VerificationService } from './verification.service';
 import { FinanceAiService } from './finance-ai.service';
@@ -21,18 +21,15 @@ import { buildBrowserUrl } from '../../../utils/line-login.util';
 const FALLBACK_REPLY =
   'ขออภัยค่ะ ระบบขัดข้องชั่วคราว 🙏\nรบกวนติดต่อเจ้าหน้าที่ 063-134-6356 ในเวลาทำการนะคะ';
 
-// Path removed — Endpoint URL in LINE Developers is set to full path
-// https://bestchoicephone.app/liff/finance-verify
-const VERIFY_PATH = '';
-
 /** Max chars sent to Claude — prevents token bomb from oversized messages */
 const MAX_USER_TEXT_LENGTH = 2000;
+
+const VERIFY_ALT_TEXT = 'รบกวนยืนยันตัวตนก่อนนะคะ เพื่อความปลอดภัยของข้อมูลค่ะ 🔐';
 
 /**
  * Orchestration สำหรับ Finance Bot
  *
- * Verification: ใช้ LIFF (เปิด page ใน LINE) — chat แค่ส่ง link
- * LIFF URL อ่านจาก SystemConfig.liff_id (เซ็ตผ่านหน้า /settings/line-oa)
+ * Verification: ส่ง Flex card พร้อมปุ่มเปิด LINE Login OAuth → /liff/finance-verify
  */
 @Injectable()
 export class ChatbotFinanceService {
@@ -49,38 +46,76 @@ export class ChatbotFinanceService {
     private feedback: FeedbackService,
   ) {}
 
-  /**
-   * อ่าน LIFF base URL จาก SystemConfig (pattern เดียวกับ line-oa.controller)
-   * Returns null ถ้ายังไม่ได้ตั้งค่า
-   */
-  private async getLiffVerifyUrl(): Promise<string | null> {
-    const liffConfig = await this.prisma.systemConfig.findUnique({
-      where: { key: 'liff_id' },
-    });
-    if (!liffConfig?.value) return null;
-    // LIFF รองรับ path-based routing: https://liff.line.me/{liffId}{path}
-    return `https://liff.line.me/${liffConfig.value}${VERIFY_PATH}`;
-  }
-
-
-  /** ข้อความให้ลูกค้าเปิด LIFF + fallback ถ้ายังไม่ได้ตั้งค่า */
-  private async buildVerifyPrompt(): Promise<string> {
-    const url = await this.getLiffVerifyUrl();
-    const browserUrl = buildBrowserUrl('/liff/finance-verify');
-    if (!url) {
-      this.logger.warn('[Finance] LIFF ID not configured in SystemConfig');
-      return (
-        'รบกวนยืนยันตัวตนก่อนนะคะ เพื่อความปลอดภัยของข้อมูลค่ะ 🔐\n\n' +
-        `👉 ยืนยันตัวตน:\n${browserUrl}\n\n` +
-        'ใช้เวลาประมาณ 1 นาทีค่ะ'
-      );
-    }
-    return (
-      'รบกวนยืนยันตัวตนก่อนนะคะ เพื่อความปลอดภัยของข้อมูลค่ะ 🔐\n\n' +
-      `👉 ${url}\n\n` +
-      `🌐 เปิดใน browser:\n${browserUrl}\n\n` +
-      'ใช้เวลาประมาณ 1 นาทีค่ะ'
-    );
+  /** Flex card สำหรับ prompt ยืนยันตัวตน — ปุ่มเปิด LINE Login OAuth */
+  private buildVerifyFlex(): FlexContainer {
+    const verifyUrl = buildBrowserUrl('/liff/finance-verify');
+    return {
+      type: 'bubble',
+      size: 'kilo',
+      header: {
+        type: 'box',
+        layout: 'vertical',
+        backgroundColor: '#059669',
+        paddingAll: '20px',
+        contents: [
+          { type: 'text', text: 'BEST CHOICE FINANCE', color: '#FFFFFF', size: 'xxs' },
+          {
+            type: 'text',
+            text: '🔐 ยืนยันตัวตน',
+            color: '#FFFFFF',
+            size: 'xl',
+            weight: 'bold',
+            margin: 'sm',
+          },
+        ],
+      },
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        spacing: 'md',
+        paddingAll: '20px',
+        contents: [
+          {
+            type: 'text',
+            text: 'รบกวนยืนยันตัวตนก่อนนะคะ เพื่อความปลอดภัยของข้อมูลค่ะ',
+            wrap: true,
+            size: 'sm',
+            color: '#1F2937',
+          },
+          {
+            type: 'box',
+            layout: 'vertical',
+            backgroundColor: '#F9FAFB',
+            cornerRadius: 'md',
+            paddingAll: '12px',
+            margin: 'md',
+            spacing: 'sm',
+            contents: [
+              { type: 'text', text: '⏱️  ใช้เวลาประมาณ 1 นาที', size: 'xs', color: '#6B7280' },
+              { type: 'text', text: '📱  กรอกเบอร์ + รับ OTP ทาง SMS', size: 'xs', color: '#6B7280' },
+            ],
+          },
+        ],
+      },
+      footer: {
+        type: 'box',
+        layout: 'vertical',
+        paddingAll: '16px',
+        contents: [
+          {
+            type: 'button',
+            style: 'primary',
+            color: '#059669',
+            height: 'sm',
+            action: {
+              type: 'uri',
+              label: 'เริ่มยืนยันตัวตน',
+              uri: verifyUrl,
+            },
+          },
+        ],
+      },
+    };
   }
 
   async handleEvent(event: LineFinanceWebhookEvent): Promise<void> {
@@ -119,11 +154,11 @@ export class ChatbotFinanceService {
       text: '[follow event]',
     });
 
-    const greeting =
-      'สวัสดีค่ะ น้องเบสยินดีให้บริการนะคะ 😊\n\n' +
-      (await this.buildVerifyPrompt());
-
-    await this.replyAndSave(session.id, event.replyToken, greeting);
+    await this.replyVerifyFlexAndSave(
+      session.id,
+      event.replyToken,
+      'สวัสดีค่ะ น้องเบสยินดีให้บริการนะคะ 😊',
+    );
   }
 
   // ─── message ─────────────────────────────────────────────
@@ -149,8 +184,12 @@ export class ChatbotFinanceService {
         role: MessageRole.CUSTOMER,
         text: msgText,
       });
-      const reply = await this.buildVerifyPrompt();
-      await this.replyAndSave(session.id, event.replyToken, reply, INTENTS.VERIFY_REQUIRED);
+      await this.replyVerifyFlexAndSave(
+        session.id,
+        event.replyToken,
+        undefined,
+        INTENTS.VERIFY_REQUIRED,
+      );
       return;
     }
 
@@ -440,5 +479,44 @@ export class ChatbotFinanceService {
     }
 
     return savedMsg.id;
+  }
+
+  /**
+   * Reply with optional text greeting + verify Flex card (2 messages in one reply).
+   * Saves both messages for session history (flex saved with altText).
+   */
+  private async replyVerifyFlexAndSave(
+    roomId: string,
+    replyToken: string,
+    greeting?: string,
+    intent: string = INTENTS.VERIFY_REQUIRED,
+  ): Promise<void> {
+    if (greeting) {
+      await this.sessions.saveMessage({
+        roomId,
+        role: MessageRole.BOT,
+        text: greeting,
+      });
+    }
+    await this.sessions.saveMessage({
+      roomId,
+      role: MessageRole.BOT,
+      text: VERIFY_ALT_TEXT,
+      intent,
+    });
+
+    try {
+      const messages = greeting
+        ? [
+            { type: 'text' as const, text: greeting },
+            { type: 'flex' as const, altText: VERIFY_ALT_TEXT, contents: this.buildVerifyFlex() },
+          ]
+        : [{ type: 'flex' as const, altText: VERIFY_ALT_TEXT, contents: this.buildVerifyFlex() }];
+      await this.lineClient.replyMessage(replyToken, messages);
+    } catch (err) {
+      this.logger.error(
+        `[Finance] verify flex reply failed: ${err instanceof Error ? err.message : err}`,
+      );
+    }
   }
 }

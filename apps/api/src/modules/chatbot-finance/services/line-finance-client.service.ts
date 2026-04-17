@@ -8,7 +8,17 @@ interface LineTextMessage {
   quickReply?: LineQuickReply;
 }
 
-type LineMessage = LineTextMessage;
+/** LINE Flex Message — see https://developers.line.biz/en/docs/messaging-api/using-flex-messages/ */
+export type FlexContainer = Record<string, unknown>;
+
+interface LineFlexMessage {
+  type: 'flex';
+  altText: string;
+  contents: FlexContainer;
+  quickReply?: LineQuickReply;
+}
+
+type LineMessage = LineTextMessage | LineFlexMessage;
 
 export interface LineQuickReplyItem {
   type: 'action';
@@ -52,6 +62,14 @@ export class LineFinanceClientService {
 
   async replyText(replyToken: string, text: string): Promise<void> {
     return this.replyMessage(replyToken, [{ type: 'text', text }]);
+  }
+
+  async replyFlex(
+    replyToken: string,
+    altText: string,
+    contents: FlexContainer,
+  ): Promise<void> {
+    return this.replyMessage(replyToken, [{ type: 'flex', altText, contents }]);
   }
 
   async replyWithQuickReply(

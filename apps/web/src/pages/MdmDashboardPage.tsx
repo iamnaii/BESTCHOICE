@@ -247,7 +247,6 @@ export default function MdmDashboardPage() {
         setRestrictions(restrictionsData);
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restrictionsData]);
 
   // Mutations

@@ -55,11 +55,14 @@ export class LiffTokenGuard implements CanActivate {
     }
 
     // Verify with LINE API
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10_000);
     try {
       const res = await fetch('https://api.line.me/oauth2/v2.1/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: `id_token=${encodeURIComponent(idToken)}&client_id=${this.channelId}`,
+        signal: controller.signal,
       });
 
       if (!res.ok) {
@@ -89,6 +92,8 @@ export class LiffTokenGuard implements CanActivate {
         `[LiffToken] Verify error: ${err instanceof Error ? err.message : err}`,
       );
       throw new UnauthorizedException('ไม่สามารถยืนยันตัวตนได้');
+    } finally {
+      clearTimeout(timeout);
     }
   }
 

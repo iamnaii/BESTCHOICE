@@ -238,12 +238,23 @@ export class PeakService {
     const config = await this.getConfig();
     const headers = await this.buildHeaders();
 
-    const res = await fetch(`${config.baseUrl}${path}`, {
-      method: 'GET',
-      headers,
-    });
-
-    return res.json();
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+    try {
+      const res = await fetch(`${config.baseUrl}${path}`, {
+        method: 'GET',
+        headers,
+        signal: controller.signal,
+      });
+      return res.json();
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        throw new Error('PEAK API timeout (15s)');
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   // ─── Mapping ─────────────────────────────────────────────

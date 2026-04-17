@@ -125,14 +125,26 @@ export class MdmAutoService {
         }
 
         const reason = `ค้างชำระ ${daysOverdue} วัน (สัญญา ${contract.contractNumber})`;
-        const result = await this.mdmService.lockDeviceByImei(imei, reason);
 
-        if (result.success) {
+        // Write mdmLockedAt optimistically; rollback if MDM call fails
+        await this.prisma.contract.update({
+          where: { id: contract.id },
+          data: { mdmLockedAt: new Date() },
+        });
+
+        let result: { success: boolean; message?: string };
+        try {
+          result = await this.mdmService.lockDeviceByImei(imei, reason);
+        } catch (err) {
+          // Rollback optimistic update
           await this.prisma.contract.update({
             where: { id: contract.id },
-            data: { mdmLockedAt: new Date() },
+            data: { mdmLockedAt: null },
           });
+          throw err;
+        }
 
+        if (result.success) {
           this.logger.log(
             `MDM auto-lock: locked ${imei} for contract ${contract.contractNumber} (${daysOverdue} days overdue)`,
           );
@@ -143,6 +155,11 @@ export class MdmAutoService {
 
           locked++;
         } else {
+          // MDM returned failure — rollback optimistic update
+          await this.prisma.contract.update({
+            where: { id: contract.id },
+            data: { mdmLockedAt: null },
+          });
           this.logger.warn(
             `MDM auto-lock: failed to lock ${imei} for contract ${contract.contractNumber} — ${result.message}`,
           );

@@ -386,7 +386,7 @@ function FlexEditor({ message, onChange }: EditorProps) {
                   'rounded-full border-2 px-4 py-1.5 text-sm font-medium transition-all duration-200',
                   c.templateKey === key
                     ? 'border-primary bg-primary/5 text-primary shadow-sm'
-                    : 'border-border text-foreground/70 hover:border-blue-300 hover:text-blue-600',
+                    : 'border-border text-foreground/70 hover:border-primary/50 hover:text-primary',
                 )}
               >
                 {t.name}
@@ -429,8 +429,8 @@ function FlexEditor({ message, onChange }: EditorProps) {
               <div className="bg-[#161b22] px-3 py-2 flex items-center gap-2 border-b border-border">
                 <div className="flex gap-1.5">
                   <div className="size-2.5 rounded-full bg-destructive" />
-                  <div className="size-2.5 rounded-full bg-yellow-500" />
-                  <div className="size-2.5 rounded-full bg-green-500" />
+                  <div className="size-2.5 rounded-full bg-warning" />
+                  <div className="size-2.5 rounded-full bg-success" />
                 </div>
                 <span className="text-xs text-muted-foreground ml-1">flex.json</span>
               </div>
@@ -500,8 +500,8 @@ function MessageCard({ message, index, total, onChange, onDelete }: MessageCardP
   }
 
   return (
-    <Card className="relative shadow-sm hover:shadow-md transition-shadow duration-200 ring-1 ring-blue-500/10">
-      <CardHeader className="pb-3 bg-muted/50 rounded-t-xl border-b border-blue-100/50">
+    <Card className="relative shadow-sm hover:shadow-md transition-shadow duration-200 ring-1 ring-primary/10">
+      <CardHeader className="pb-3 bg-muted/50 rounded-t-xl border-b border-border/50">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <GripVertical className="size-4 text-muted-foreground" />
@@ -516,7 +516,7 @@ function MessageCard({ message, index, total, onChange, onDelete }: MessageCardP
             <button
               type="button"
               onClick={onDelete}
-              className="flex items-center gap-1 rounded-full px-3 py-1 text-xs text-red-500 hover:bg-red-50 transition-all duration-200"
+              className="flex items-center gap-1 rounded-full px-3 py-1 text-xs text-destructive hover:bg-destructive/10 transition-all duration-200"
             >
               <Trash2 className="size-3.5" />
               ลบ
@@ -536,7 +536,7 @@ function MessageCard({ message, index, total, onChange, onDelete }: MessageCardP
                 'flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-all duration-200',
                 message.type === btn.type
                   ? 'border-primary bg-primary text-primary-foreground shadow-sm'
-                  : 'border-border text-muted-foreground hover:border-blue-300 hover:text-blue-600 bg-card',
+                  : 'border-border text-muted-foreground hover:border-primary/50 hover:text-primary bg-card',
               )}
             >
               {btn.icon}
@@ -665,7 +665,7 @@ export default function LineGreetingPage() {
               <button
                 type="button"
                 onClick={addMessage}
-                className="w-full flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border py-3.5 text-sm text-muted-foreground hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50/40 transition-all duration-200"
+                className="w-full flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border py-3.5 text-sm text-muted-foreground hover:border-primary/50 hover:text-primary hover:bg-primary/5 transition-all duration-200"
               >
                 <Plus className="size-4" />
                 เพิ่มข้อความ ({messages.length}/5)
@@ -712,8 +712,8 @@ export default function LineGreetingPage() {
                 รีเซ็ต
               </Button>
               {isDirty && (
-                <span className="flex items-center gap-1.5 text-xs text-amber-600 ml-1">
-                  <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+                <span className="flex items-center gap-1.5 text-xs text-warning ml-1">
+                  <span className="w-2 h-2 rounded-full bg-warning shrink-0" />
                   มีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก
                 </span>
               )}
@@ -797,9 +797,9 @@ export default function LineGreetingPage() {
       <div className="rounded-xl bg-info/10 border border-info/20 p-5">
         <div className="flex items-center gap-2 mb-3">
           <span className="text-lg">💡</span>
-          <h3 className="font-semibold text-blue-900 text-sm">เคล็ดลับการเขียนข้อความต้อนรับที่ดี</h3>
+          <h3 className="font-semibold text-info text-sm">เคล็ดลับการเขียนข้อความต้อนรับที่ดี</h3>
         </div>
-        <ul className="space-y-1.5 text-sm text-blue-800">
+        <ul className="space-y-1.5 text-sm text-info/90">
           <li className="flex items-start gap-2">
             <span className="mt-0.5 shrink-0">•</span>
             <span>ส่งได้สูงสุด 5 ข้อความพร้อมกัน — ผสม Text, รูปภาพ, และ Flex Card ได้ตามต้องการ</span>

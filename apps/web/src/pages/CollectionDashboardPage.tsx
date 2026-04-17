@@ -217,8 +217,17 @@ export default function CollectionDashboardPage() {
 
             {/* KPI: ยอดค้างทั้งหมด */}
             <Card
-              className="overflow-hidden cursor-pointer group hover:shadow-md hover:-translate-y-0.5 transition-all duration-200"
+              role="button"
+              tabIndex={0}
+              aria-label="ดูยอดค้างทั้งหมด"
+              className="overflow-hidden cursor-pointer group hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               onClick={() => navigate('/overdue')}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  navigate('/overdue');
+                }
+              }}
             >
               <CardContent className="p-5 relative">
                 <div className="absolute inset-y-0 left-0 w-1 bg-destructive rounded-l-xl" />

@@ -48,23 +48,40 @@ export class MessageRouterService {
     @Inject(CHAT_GATEWAY_TOKEN)
     private gateway?: IChatGateway,
   ) {
-    // Register adapters by channel
+    // Register adapters by channel (via constructor — only works when ChatEngineModule
+    // imports a module that exports CHANNEL_ADAPTER_TOKEN. For the current wiring where
+    // ChatAdaptersModule imports ChatEngineModule instead, adapters self-register via
+    // registerAdapter() in ChatAdaptersModule.onModuleInit().)
     if (adapters) {
       for (const adapter of Array.isArray(adapters) ? adapters : [adapters]) {
-        this.adapterMap.set(adapter.channel, adapter);
-        this.logger.log(`Registered adapter: ${adapter.channel}`);
+        this.registerAdapter(adapter);
       }
     }
 
-    // Register domain handlers
     if (handlers) {
-      this.domainHandlers.push(
-        ...(Array.isArray(handlers) ? handlers : [handlers]),
-      );
-      this.logger.log(
-        `Registered ${this.domainHandlers.length} domain handler(s)`,
-      );
+      for (const handler of Array.isArray(handlers) ? handlers : [handlers]) {
+        this.registerDomainHandler(handler);
+      }
     }
+  }
+
+  /**
+   * Register a channel adapter. Idempotent — safe to call from module init hooks
+   * when the DI token-based registration isn't reachable due to module scope.
+   */
+  registerAdapter(adapter: IChannelAdapter): void {
+    const existing = this.adapterMap.get(adapter.channel);
+    if (existing === adapter) return;
+    this.adapterMap.set(adapter.channel, adapter);
+    this.logger.log(`Registered adapter: ${adapter.channel}`);
+  }
+
+  registerDomainHandler(handler: IDomainHandler): void {
+    if (this.domainHandlers.includes(handler)) return;
+    this.domainHandlers.push(handler);
+    this.logger.log(
+      `Registered domain handler (${this.domainHandlers.length} total)`,
+    );
   }
 
   /**
@@ -363,16 +380,20 @@ export class MessageRouterService {
     });
   }
 
-  /** Send a staff message through the appropriate adapter */
+  /**
+   * Send a staff message through the appropriate adapter.
+   * Returns { success, error? } so the caller (WS gateway) can notify the UI
+   * when delivery to the external channel fails (LINE push quota, blocked OA, etc.)
+   */
   async sendStaffMessage(params: {
     roomId: string;
     staffId: string;
     text: string;
-  }): Promise<void> {
+  }): Promise<{ success: boolean; error?: string }> {
     const room = await this.roomManager.findById(params.roomId);
     if (!room) {
       this.logger.error(`Room not found: ${params.roomId}`);
-      return;
+      return { success: false, error: 'Room not found' };
     }
 
     // Resolve the external user ID (externalUserId for FB/TikTok, lineUserId for LINE)
@@ -389,20 +410,27 @@ export class MessageRouterService {
 
     // Send through adapter
     const adapter = this.adapterMap.get(room.channel);
-    if (adapter) {
-      const result = await adapter.sendMessage({
-        externalUserId,
-        channel: room.channel,
-        type: 'TEXT' as any,
-        text: params.text,
-      });
-
-      if (!result.success) {
-        this.logger.error(
-          `Failed to send staff message on ${room.channel}: ${result.error}`,
-        );
-      }
+    if (!adapter) {
+      const error = `No adapter registered for channel ${room.channel}`;
+      this.logger.error(error);
+      return { success: false, error };
     }
+
+    const result = await adapter.sendMessage({
+      externalUserId,
+      channel: room.channel,
+      type: 'TEXT' as any,
+      text: params.text,
+    });
+
+    if (!result.success) {
+      this.logger.error(
+        `Failed to send staff message on ${room.channel}: ${result.error}`,
+      );
+      return { success: false, error: result.error ?? 'send failed' };
+    }
+
+    return { success: true };
   }
 
   /** Get registered adapter for a channel */

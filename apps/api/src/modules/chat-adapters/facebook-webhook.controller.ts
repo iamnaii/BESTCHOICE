@@ -268,7 +268,7 @@ export class FacebookWebhookController {
       .update(payloadB64)
       .digest('base64url');
 
-    if (sigB64 !== expectedSig) {
+    if (!this.timingSafeCompare(sigB64, expectedSig)) {
       this.logger.warn('[FB Data Deletion] Signature verification failed');
       throw new BadRequestException('Invalid signature');
     }
@@ -304,6 +304,20 @@ export class FacebookWebhookController {
   async handleDeauthorize(
     @Body() body: { signed_request?: string },
   ): Promise<{ success: boolean }> {
+    if (body.signed_request) {
+      const [sigB64, payloadB64] = body.signed_request.split('.');
+      if (sigB64 && payloadB64) {
+        const appSecret = this.configService.get<string>('FB_APP_SECRET');
+        if (appSecret) {
+          const expectedSig = createHmac('sha256', appSecret)
+            .update(payloadB64)
+            .digest('base64url');
+          if (!this.timingSafeCompare(sigB64, expectedSig)) {
+            this.logger.warn('[FB Deauthorize] Invalid signed_request signature');
+          }
+        }
+      }
+    }
     this.logger.log('[FB Deauthorize] User revoked app authorization');
     // Acknowledge — no user data to delete beyond chat messages
     return { success: true };
@@ -320,21 +334,28 @@ export class FacebookWebhookController {
       return false;
     }
 
+    // NOTE: Using JSON.stringify(body) instead of raw bytes.
+    // Facebook signs the raw request body. JSON.stringify of the parsed object
+    // may produce different byte sequence. If signature verification fails
+    // in production, switch to rawBody approach (requires main.ts bodyParser config).
     const expectedSig =
       'sha256=' +
       createHmac('sha256', appSecret)
         .update(JSON.stringify(body))
         .digest('hex');
 
-    // Timing-safe comparison
+    return this.timingSafeCompare(signature, expectedSig);
+  }
+
+  /**
+   * Timing-safe string comparison to prevent timing attacks.
+   * Returns false on length mismatch (different lengths also indicate mismatch).
+   */
+  private timingSafeCompare(a: string, b: string): boolean {
     try {
-      return timingSafeEqual(
-        Buffer.from(signature),
-        Buffer.from(expectedSig),
-      );
+      return timingSafeEqual(Buffer.from(a), Buffer.from(b));
     } catch {
-      // Buffers have different lengths — signature mismatch
-      return false;
+      return false; // length mismatch
     }
   }
 }

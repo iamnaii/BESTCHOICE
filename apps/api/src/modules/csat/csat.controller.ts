@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -14,6 +15,7 @@ export class CsatController {
    * No JwtAuthGuard — customers submit ratings without staff login
    */
   @Post('submit')
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
   async submitRating(@Body() dto: SubmitRatingDto) {
     return this.csatService.submitRating(dto);
   }

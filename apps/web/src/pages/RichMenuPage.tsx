@@ -9,6 +9,12 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -387,7 +393,6 @@ export default function RichMenuPage() {
       };
     },
   });
-  void aliases; // consumed in Task 10
 
   const shopLiffId = lineSettings?.settings?.liff_id;
   const financeLiffId = financeIntegration?.config?.liffId;
@@ -426,6 +431,7 @@ export default function RichMenuPage() {
             layout,
             buttons: visibleButtons,
             setAsDefault: true,
+            channel,
           }),
         );
         const res = await api.post('/line-oa/rich-menu/create-with-image', fd, {
@@ -441,6 +447,7 @@ export default function RichMenuPage() {
         chatBarText,
         layout,
         buttons: visibleButtons,
+        channel,
       });
       return res.data as { richMenuId: string };
     },
@@ -450,19 +457,18 @@ export default function RichMenuPage() {
       if (editingMenuId) {
         const oldMenuId = editingMenuId;
         try {
-          // Set new menu as default first
           if (data?.richMenuId) {
-            await api.post(`/line-oa/rich-menu/${data.richMenuId}/set-default`);
+            await api.post(`/line-oa/rich-menu/${data.richMenuId}/set-default?channel=${channel}`);
           }
-          // Delete old menu
-          await api.delete(`/line-oa/rich-menu/${oldMenuId}`);
+          await api.delete(`/line-oa/rich-menu/${oldMenuId}?channel=${channel}`);
         } catch (err) {
           console.error('Failed to cleanup old menu', err);
         }
         setEditingMenuId(null);
       }
 
-      queryClient.invalidateQueries({ queryKey: ['rich-menu-list'] });
+      queryClient.invalidateQueries({ queryKey: ['rich-menu-list', channel] });
+      queryClient.invalidateQueries({ queryKey: ['rich-menu-aliases'] });
       setActiveTab('list');
     },
     onError: (err) => toast.error(getErrorMessage(err)),
@@ -470,22 +476,24 @@ export default function RichMenuPage() {
 
   const setDefaultMutation = useMutation({
     mutationFn: async (menuId: string) => {
-      await api.post(`/line-oa/rich-menu/${menuId}/set-default`);
+      await api.post(`/line-oa/rich-menu/${menuId}/set-default?channel=${channel}`);
     },
     onSuccess: () => {
       toast.success('ตั้งเป็น Default แล้ว');
-      queryClient.invalidateQueries({ queryKey: ['rich-menu-list'] });
+      queryClient.invalidateQueries({ queryKey: ['rich-menu-list', channel] });
+      queryClient.invalidateQueries({ queryKey: ['rich-menu-aliases'] });
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (menuId: string) => {
-      await api.delete(`/line-oa/rich-menu/${menuId}`);
+      await api.delete(`/line-oa/rich-menu/${menuId}?channel=${channel}`);
     },
     onSuccess: () => {
       toast.success('ลบ Rich Menu แล้ว');
-      queryClient.invalidateQueries({ queryKey: ['rich-menu-list'] });
+      queryClient.invalidateQueries({ queryKey: ['rich-menu-list', channel] });
+      queryClient.invalidateQueries({ queryKey: ['rich-menu-aliases'] });
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
@@ -494,13 +502,25 @@ export default function RichMenuPage() {
     mutationFn: async ({ menuId, file }: { menuId: string; file: File }) => {
       const formData = new FormData();
       formData.append('image', file);
-      await api.post(`/line-oa/rich-menu/${menuId}/upload-image`, formData, {
+      await api.post(`/line-oa/rich-menu/${menuId}/upload-image?channel=${channel}`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
     },
     onSuccess: () => {
       toast.success('อัปโหลดรูป Rich Menu สำเร็จ');
-      queryClient.invalidateQueries({ queryKey: ['rich-menu-list'] });
+      queryClient.invalidateQueries({ queryKey: ['rich-menu-list', channel] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const setAliasMutation = useMutation({
+    mutationFn: async ({ menuId, variant }: { menuId: string; variant: 'default' | 'verified' }) => {
+      await api.post(`/line-oa/rich-menu/${menuId}/set-alias`, { channel, variant });
+    },
+    onSuccess: (_, vars) => {
+      toast.success(`ตั้งเป็น ${vars.variant === 'default' ? 'Default' : 'Verified'} แล้ว`);
+      queryClient.invalidateQueries({ queryKey: ['rich-menu-aliases'] });
+      queryClient.invalidateQueries({ queryKey: ['rich-menu-list', channel] });
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
@@ -798,18 +818,25 @@ export default function RichMenuPage() {
             </div>
           ) : (
             data.menus.map((menu) => {
-              const isDefault = menu.richMenuId === data.defaultMenuId;
+              const channelAliases = aliases
+                ? {
+                    default: channel === 'shop' ? aliases.shopDefault : aliases.financeDefault,
+                    verified: channel === 'shop' ? aliases.shopVerified : aliases.financeVerified,
+                  }
+                : { default: null, verified: null };
+              const isDefault = menu.richMenuId === channelAliases.default;
+              const isVerified = menu.richMenuId === channelAliases.verified;
               return (
                 <div
                   key={menu.richMenuId}
                   className={`rounded-xl border shadow-sm hover:shadow-md transition-shadow bg-card overflow-hidden ${
-                    isDefault ? 'border-success/30' : 'border-border/50'
+                    isDefault || isVerified ? 'border-success/30' : 'border-border/50'
                   }`}
                 >
-                  <div className={`px-5 py-3 ${isDefault ? 'bg-success/10' : 'bg-muted/20'}`}>
+                  <div className={`px-5 py-3 ${isDefault || isVerified ? 'bg-success/10' : 'bg-muted/20'}`}>
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-3 min-w-0">
-                        {isDefault && (
+                        {(isDefault || isVerified) && (
                           <Star size={16} className="text-success shrink-0" fill="currentColor" />
                         )}
                         <div className="min-w-0">
@@ -820,22 +847,40 @@ export default function RichMenuPage() {
                         </div>
                         {isDefault && (
                           <Badge className="bg-success/10 text-success hover:bg-success/10 border-success/30 shrink-0">
-                            Default
+                            ⭐ Default
+                          </Badge>
+                        )}
+                        {isVerified && (
+                          <Badge className="bg-primary/10 text-primary hover:bg-primary/10 border-primary/30 shrink-0">
+                            ✓ Verified
                           </Badge>
                         )}
                       </div>
                       <div className="flex flex-wrap items-center gap-2 shrink-0">
-                        {!isDefault && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setDefaultMutation.mutate(menu.richMenuId)}
-                            disabled={setDefaultMutation.isPending}
-                          >
-                            <Star size={13} className="mr-1" />
-                            ตั้งเป็น Default
-                          </Button>
-                        )}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button size="sm" variant="outline">
+                              <Star size={13} className="mr-1" />
+                              ตั้งเป็น...
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() =>
+                                setAliasMutation.mutate({ menuId: menu.richMenuId, variant: 'default' })
+                              }
+                            >
+                              ⭐ Default (ลูกค้าใหม่)
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() =>
+                                setAliasMutation.mutate({ menuId: menu.richMenuId, variant: 'verified' })
+                              }
+                            >
+                              ✓ Verified (ลูกค้าที่ verify แล้ว)
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                         <Button
                           size="sm"
                           variant="outline"

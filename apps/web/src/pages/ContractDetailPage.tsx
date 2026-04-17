@@ -17,7 +17,7 @@ import ContractDocuments from '@/components/contract/ContractDocuments';
 import { ContractEarlyPayoffQuote, EarlyPayoffOverlay } from '@/components/contract/ContractEarlyPayoff';
 import { toast } from 'sonner';
 import { useState, useRef, useEffect } from 'react';
-import { Copy } from 'lucide-react';
+import { Copy, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import { useAuth } from '@/contexts/AuthContext';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -507,57 +507,113 @@ const deleteMutation = useMutation({
       </div>
 
       {/* Workflow Actions for Reviewer */}
-      {contract.workflowStatus === 'PENDING_REVIEW' && isReviewer && (
-        <div className="bg-warning/5 dark:bg-warning/10 border border-warning/20 rounded-xl p-5 mb-6 relative overflow-hidden">
-          <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-warning" />
-          <h3 className="text-sm font-semibold text-warning mb-3">รอการตรวจสอบจากคุณ</h3>
-          <div className="space-y-3">
-            {/* Document checklist */}
-            {docChecklist && (
-              <div className="space-y-1">
-                <p className="text-xs font-medium text-warning">เอกสารที่ต้องมี:</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
-                  {docChecklist.checklist.map((item) => (
-                    <div key={item.type} className={`flex items-center gap-1.5 text-xs ${item.present ? 'text-success' : 'text-destructive'}`}>
-                      <span>{item.present ? '✓' : '✗'}</span>
-                      <span>{item.label}</span>
-                    </div>
-                  ))}
+      {contract.workflowStatus === 'PENDING_REVIEW' && isReviewer && (() => {
+        const missingItems = docChecklist?.checklist.filter((i) => !i.present) ?? [];
+        const presentItems = docChecklist?.checklist.filter((i) => i.present) ?? [];
+        const total = docChecklist?.checklist.length ?? 0;
+        const completeCount = presentItems.length;
+        return (
+          <div className="bg-card border border-border rounded-xl shadow-sm p-6 mb-6 relative overflow-hidden">
+            <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-warning" />
+
+            {/* Header */}
+            <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-full bg-warning/15 dark:bg-warning/25 flex items-center justify-center flex-shrink-0">
+                  <AlertTriangle className="w-5 h-5 text-warning" />
                 </div>
-                {!docChecklist.complete && (
-                  <p className="text-xs text-destructive font-medium mt-1">กรุณาอัปโหลดเอกสารให้ครบก่อนอนุมัติ</p>
+                <h3 className="text-lg font-semibold text-foreground">รอการตรวจสอบจากคุณ</h3>
+              </div>
+              {docChecklist && (
+                <span
+                  className={`text-sm font-semibold px-3 py-1 rounded-full ${
+                    docChecklist.complete
+                      ? 'bg-success/15 text-success dark:bg-success/25'
+                      : 'bg-destructive/15 text-destructive dark:bg-destructive/25'
+                  }`}
+                >
+                  เอกสาร {completeCount}/{total}
+                </span>
+              )}
+            </div>
+
+            {docChecklist && (
+              <div className="space-y-4 mb-5">
+                {/* Missing items — highlighted red box */}
+                {missingItems.length > 0 && (
+                  <div className="bg-destructive/10 dark:bg-destructive/20 border-2 border-destructive/40 rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <XCircle className="w-5 h-5 text-destructive flex-shrink-0" />
+                      <p className="text-sm font-bold text-destructive">
+                        ยังขาดเอกสาร {missingItems.length} รายการ
+                      </p>
+                    </div>
+                    <ul className="space-y-2">
+                      {missingItems.map((item) => (
+                        <li key={item.type} className="flex items-start gap-2 text-sm text-destructive font-medium">
+                          <span className="text-destructive mt-0.5">•</span>
+                          <span>{item.label}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="text-xs text-destructive/90 dark:text-destructive mt-3 pt-3 border-t border-destructive/30">
+                      กรุณาอัปโหลดเอกสารให้ครบก่อนจึงจะสามารถอนุมัติสัญญาได้
+                    </p>
+                  </div>
+                )}
+
+                {/* Present items — clean list */}
+                {presentItems.length > 0 && (
+                  <details open={missingItems.length === 0} className="group">
+                    <summary className="text-sm font-medium text-muted-foreground mb-2 cursor-pointer hover:text-foreground select-none list-none flex items-center gap-1.5">
+                      <span className="group-open:rotate-90 transition-transform inline-block">▶</span>
+                      เอกสารที่พร้อมแล้ว ({presentItems.length})
+                    </summary>
+                    <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 mt-2 pl-5">
+                      {presentItems.map((item) => (
+                        <li key={item.type} className="flex items-start gap-2 text-sm">
+                          <CheckCircle2 className="w-4 h-4 text-success flex-shrink-0 mt-0.5" />
+                          <span className="text-foreground">{item.label}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
                 )}
               </div>
             )}
-            <div>
-              <label className="block text-xs text-warning mb-1">หมายเหตุ (ไม่บังคับ)</label>
+
+            <div className="mb-5">
+              <label className="block text-sm font-medium text-foreground mb-1.5">
+                หมายเหตุ <span className="text-muted-foreground font-normal">(ไม่บังคับ)</span>
+              </label>
               <input
                 type="text"
                 value={approveNotes}
                 onChange={(e) => setApproveNotes(e.target.value)}
-                placeholder="หมายเหตุการอนุมัติ..."
-                className="w-full px-3 py-2 border border-warning/40 rounded-lg text-sm"
+                placeholder="เช่น ตรวจสอบเอกสารครบแล้ว..."
+                className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
               />
             </div>
-            <div className="flex gap-2">
+
+            <div className="flex gap-2 flex-wrap">
               <button
                 onClick={() => approveMutation.mutate()}
                 disabled={approveMutation.isPending || (docChecklist && !docChecklist.complete)}
                 title={docChecklist && !docChecklist.complete ? 'เอกสารยังไม่ครบ' : ''}
-                className="px-6 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
+                className="px-6 py-2.5 text-sm font-semibold bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {approveMutation.isPending ? 'กำลังอนุมัติ...' : 'อนุมัติสัญญา'}
               </button>
               <button
                 onClick={() => setShowRejectModal(true)}
-                className="px-6 py-2 text-sm bg-destructive text-destructive-foreground rounded-lg hover:bg-destructive/90"
+                className="px-6 py-2.5 text-sm font-semibold bg-destructive text-destructive-foreground rounded-lg hover:bg-destructive/90 transition-colors"
               >
                 ปฏิเสธ
               </button>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Rejection notes */}
       {contract.workflowStatus === 'REJECTED' && contract.reviewNotes && (

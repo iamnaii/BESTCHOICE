@@ -42,12 +42,12 @@ interface DocumentStats {
 
 function StatCard({ label, value, color = 'blue', icon }: { label: string; value: number; color?: string; icon: string }) {
   const colors: Record<string, string> = {
-    blue: 'bg-blue-50 text-blue-700 border-blue-200 border-l-primary',
+    blue: 'bg-info/10 text-info border-info/20 border-l-primary',
     green: 'bg-success/5 dark:bg-success/10 text-success border-success/20 border-l-success',
-    yellow: 'bg-warning/5 dark:bg-warning/10 text-yellow-700 border-yellow-200 border-l-warning',
+    yellow: 'bg-warning/5 dark:bg-warning/10 text-warning border-warning/20 border-l-warning',
     red: 'bg-destructive/5 dark:bg-destructive/10 text-destructive border-destructive/20 border-l-destructive',
-    purple: 'bg-purple-50 text-purple-700 border-purple-200 border-l-purple-500',
-    orange: 'bg-warning/5 dark:bg-warning/10 text-orange-700 border-orange-200 border-l-warning',
+    purple: 'bg-secondary/50 text-secondary-foreground border-border border-l-secondary',
+    orange: 'bg-warning/5 dark:bg-warning/10 text-warning border-warning/20 border-l-warning',
   };
   return (
     <div className={`rounded-xl border border-l-[3px] shadow-sm p-4 hover:shadow-card-hover transition-all ${colors[color] || colors.blue}`}>
@@ -143,7 +143,7 @@ function DocumentDashboardPage() {
                     {alert.branchName && <span className="text-xs text-muted-foreground ml-2">({alert.branchName})</span>}
                   </div>
                   <div className="text-right">
-                    <span className={`font-medium text-sm ${alert.hoursWaiting >= 48 ? 'text-destructive' : 'text-yellow-600'}`}>
+                    <span className={`font-medium text-sm ${alert.hoursWaiting >= 48 ? 'text-destructive' : 'text-warning'}`}>
                       {alert.hoursWaiting >= 24 ? `${Math.floor(alert.hoursWaiting / 24)} วัน` : `${alert.hoursWaiting} ชม.`}
                     </span>
                     <div className="text-xs text-muted-foreground">{alert.workflowStatus}</div>

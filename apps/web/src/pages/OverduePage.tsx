@@ -419,7 +419,7 @@ export default function OverduePage() {
                 <button
                   onClick={() => runCronMutation.mutate()}
                   disabled={runCronMutation.isPending}
-                  className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 disabled:opacity-50"
+                  className="px-4 py-2 bg-destructive text-destructive-foreground text-sm font-medium rounded-lg hover:bg-destructive/90 disabled:opacity-50"
                 >
                   {runCronMutation.isPending ? 'กำลังคำนวณ...' : 'คำนวณค่าปรับ'}
                 </button>
@@ -710,10 +710,8 @@ export default function OverduePage() {
       {logContactContractId && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center"
-          role="button"
-          tabIndex={0}
+          aria-hidden="true"
           onClick={() => setLogContactContractId(null)}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setLogContactContractId(null); } }}
         >
           <div className="absolute inset-0 bg-black/30" />
           <div className="relative bg-background rounded-xl shadow-xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
@@ -787,10 +785,8 @@ export default function OverduePage() {
       {assignContractId && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center"
-          role="button"
-          tabIndex={0}
+          aria-hidden="true"
           onClick={() => setAssignContractId(null)}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setAssignContractId(null); } }}
         >
           <div className="absolute inset-0 bg-black/30" />
           <div className="relative bg-background rounded-xl shadow-xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
@@ -833,10 +829,8 @@ export default function OverduePage() {
       {settlementContractId && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center"
-          role="button"
-          tabIndex={0}
+          aria-hidden="true"
           onClick={() => setSettlementContractId(null)}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSettlementContractId(null); } }}
         >
           <div className="absolute inset-0 bg-black/30" />
           <div className="relative bg-background rounded-xl shadow-xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
@@ -906,10 +900,8 @@ export default function OverduePage() {
       {timelineContractId && (
         <div
           className="fixed inset-0 z-50 flex justify-end"
-          role="button"
-          tabIndex={0}
+          aria-hidden="true"
           onClick={() => setTimelineContractId(null)}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setTimelineContractId(null); } }}
         >
           <div className="absolute inset-0 bg-black/30" />
           <div className="relative w-full max-w-md bg-background shadow-xl overflow-y-auto" onClick={(e) => e.stopPropagation()}>

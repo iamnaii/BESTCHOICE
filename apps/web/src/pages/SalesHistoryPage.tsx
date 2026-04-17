@@ -321,7 +321,7 @@ export default function SalesHistoryPage() {
         <div>
           <div className="text-sm font-medium">{Number(s.netAmount).toLocaleString()} ฿</div>
           {Number(s.discount) > 0 && (
-            <div className="text-xs text-red-500">ลด {Number(s.discount).toLocaleString()} ฿</div>
+            <div className="text-xs text-destructive">ลด {Number(s.discount).toLocaleString()} ฿</div>
           )}
         </div>
       ),
@@ -436,11 +436,11 @@ export default function SalesHistoryPage() {
           </Card>
           <Card className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
             <div className="flex h-full">
-              <div className="w-1 shrink-0 rounded-r-full bg-blue-500" />
+              <div className="w-1 shrink-0 rounded-r-full bg-primary" />
               <CardContent className="p-5 flex-1">
                 <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ไฟแนนซ์</div>
-                <div className="text-xl font-bold tabular-nums text-blue-600">{summary.financeCount}</div>
-                <div className="text-sm text-blue-600 mt-1 tabular-nums">{summary.financeAmount.toLocaleString()} ฿</div>
+                <div className="text-xl font-bold tabular-nums text-primary">{summary.financeCount}</div>
+                <div className="text-sm text-primary mt-1 tabular-nums">{summary.financeAmount.toLocaleString()} ฿</div>
               </CardContent>
             </div>
           </Card>
@@ -530,7 +530,7 @@ export default function SalesHistoryPage() {
                 ล้างตัวกรอง
               </button>
             )}
-            <button onClick={exportExcel} className="flex items-center gap-1.5 px-4 py-2 text-xs rounded-lg bg-green-600 text-white hover:bg-green-700 transition-colors font-medium">
+            <button onClick={exportExcel} className="flex items-center gap-1.5 px-4 py-2 text-xs rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors font-medium">
               <Download className="w-3.5 h-3.5" />
               ส่งออก Excel
             </button>

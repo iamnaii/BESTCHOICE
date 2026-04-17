@@ -238,7 +238,7 @@ export default function InterestConfigPage() {
   };
 
   const inputClass = 'w-full px-3 py-2 border rounded-lg text-sm outline-hidden focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background';
-  const errorInputClass = 'w-full px-3 py-2 border border-red-400 rounded-lg text-sm outline-hidden focus-visible:ring-2 focus-visible:ring-red-400';
+  const errorInputClass = 'w-full px-3 py-2 border border-destructive rounded-lg text-sm outline-hidden focus-visible:ring-2 focus-visible:ring-destructive';
 
   return (
     <div>
@@ -253,12 +253,12 @@ export default function InterestConfigPage() {
       />
 
       {/* Default fallback config — card style */}
-      <div className="rounded-xl border border-amber-200 bg-card shadow-sm p-5 mb-5 lg:mb-7.5">
+      <div className="rounded-xl border border-warning/30 bg-card shadow-sm p-5 mb-5 lg:mb-7.5">
         <div className="flex items-start justify-between">
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-2">
               <h3 className="text-lg font-semibold text-foreground">ค่า Default</h3>
-              <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold bg-amber-100 text-amber-700">ใช้เมื่อไม่มี config ตามประเภท</span>
+              <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold bg-warning/20 text-warning">ใช้เมื่อไม่มี config ตามประเภท</span>
             </div>
             {!editingDefaults ? (
               <>
@@ -399,7 +399,7 @@ export default function InterestConfigPage() {
                     <button onClick={() => openEdit(config)} className="text-xs text-primary hover:underline px-2 py-1">แก้ไข</button>
                     <button
                       onClick={() => setConfirmDialog({ open: true, message: 'ต้องการลบ?', action: () => deleteMutation.mutate(config.id) })}
-                      className="text-xs text-red-600 hover:underline px-2 py-1"
+                      className="text-xs text-destructive hover:underline px-2 py-1"
                     >
                       ลบ
                     </button>
@@ -426,7 +426,7 @@ export default function InterestConfigPage() {
                 placeholder="เช่น มือ 1, มือ 2..."
                 className={touched && errors.name ? errorInputClass : `${inputClass} border-input`}
               />
-              {touched && errors.name && <p className="text-xs text-red-500 mt-1">{errors.name}</p>}
+              {touched && errors.name && <p className="text-xs text-destructive mt-1">{errors.name}</p>}
             </div>
 
             {/* ประเภทสินค้า */}
@@ -448,7 +448,7 @@ export default function InterestConfigPage() {
                   </button>
                 ))}
               </div>
-              {touched && errors.productCategories && <p className="text-xs text-red-500 mt-1">{errors.productCategories}</p>}
+              {touched && errors.productCategories && <p className="text-xs text-destructive mt-1">{errors.productCategories}</p>}
             </div>
 
             {/* ดอกเบี้ย + ดาวน์ขั้นต่ำ */}
@@ -464,7 +464,7 @@ export default function InterestConfigPage() {
                   max="100"
                   className={touched && errors.interestRate ? errorInputClass : `${inputClass} border-input`}
                 />
-                {touched && errors.interestRate && <p className="text-xs text-red-500 mt-1">{errors.interestRate}</p>}
+                {touched && errors.interestRate && <p className="text-xs text-destructive mt-1">{errors.interestRate}</p>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1">ดาวน์ขั้นต่ำ (%)</label>
@@ -477,7 +477,7 @@ export default function InterestConfigPage() {
                   max="100"
                   className={touched && errors.minDownPaymentPct ? errorInputClass : `${inputClass} border-input`}
                 />
-                {touched && errors.minDownPaymentPct && <p className="text-xs text-red-500 mt-1">{errors.minDownPaymentPct}</p>}
+                {touched && errors.minDownPaymentPct && <p className="text-xs text-destructive mt-1">{errors.minDownPaymentPct}</p>}
               </div>
             </div>
 
@@ -494,7 +494,7 @@ export default function InterestConfigPage() {
                   max="100"
                   className={touched && errors.storeCommissionPct ? errorInputClass : `${inputClass} border-input`}
                 />
-                {touched && errors.storeCommissionPct && <p className="text-xs text-red-500 mt-1">{errors.storeCommissionPct}</p>}
+                {touched && errors.storeCommissionPct && <p className="text-xs text-destructive mt-1">{errors.storeCommissionPct}</p>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1">VAT (%)</label>
@@ -507,7 +507,7 @@ export default function InterestConfigPage() {
                   max="100"
                   className={touched && errors.vatPct ? errorInputClass : `${inputClass} border-input`}
                 />
-                {touched && errors.vatPct && <p className="text-xs text-red-500 mt-1">{errors.vatPct}</p>}
+                {touched && errors.vatPct && <p className="text-xs text-destructive mt-1">{errors.vatPct}</p>}
               </div>
             </div>
 
@@ -522,7 +522,7 @@ export default function InterestConfigPage() {
                   min="1"
                   className={touched && errors.minInstallmentMonths ? errorInputClass : `${inputClass} border-input`}
                 />
-                {touched && errors.minInstallmentMonths && <p className="text-xs text-red-500 mt-1">{errors.minInstallmentMonths}</p>}
+                {touched && errors.minInstallmentMonths && <p className="text-xs text-destructive mt-1">{errors.minInstallmentMonths}</p>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1">งวดสูงสุด (เดือน)</label>
@@ -533,7 +533,7 @@ export default function InterestConfigPage() {
                   min="1"
                   className={touched && errors.maxInstallmentMonths ? errorInputClass : `${inputClass} border-input`}
                 />
-                {touched && errors.maxInstallmentMonths && <p className="text-xs text-red-500 mt-1">{errors.maxInstallmentMonths}</p>}
+                {touched && errors.maxInstallmentMonths && <p className="text-xs text-destructive mt-1">{errors.maxInstallmentMonths}</p>}
               </div>
             </div>
 

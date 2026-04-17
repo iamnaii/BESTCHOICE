@@ -119,17 +119,17 @@ export default function InspectionDetailPage() {
   // Available next-status transitions
   const transitions: Record<string, { label: string; status: string; variant: string }[]> = {
     RECEIVED: [
-      { label: 'เริ่มตรวจสอบ', status: 'INSPECTING', variant: 'bg-yellow-500 hover:bg-yellow-600 text-white' },
+      { label: 'เริ่มตรวจสอบ', status: 'INSPECTING', variant: 'bg-warning text-warning-foreground hover:bg-warning/90' },
     ],
     INSPECTING: [
-      { label: 'ผ่าน QC', status: 'QC_PASSED', variant: 'bg-green-500 hover:bg-green-600 text-white' },
-      { label: 'ไม่ผ่าน QC', status: 'QC_FAILED', variant: 'bg-red-500 hover:bg-red-600 text-white' },
+      { label: 'ผ่าน QC', status: 'QC_PASSED', variant: 'bg-success text-success-foreground hover:bg-success/90' },
+      { label: 'ไม่ผ่าน QC', status: 'QC_FAILED', variant: 'bg-destructive text-destructive-foreground hover:bg-destructive/90' },
     ],
     QC_PASSED: [
       { label: 'เข้าสต็อก', status: 'IN_STOCK', variant: 'bg-primary hover:bg-primary/90 text-white' },
     ],
     QC_FAILED: [
-      { label: 'ตรวจใหม่', status: 'INSPECTING', variant: 'bg-yellow-500 hover:bg-yellow-600 text-white' },
+      { label: 'ตรวจใหม่', status: 'INSPECTING', variant: 'bg-warning text-warning-foreground hover:bg-warning/90' },
     ],
   };
 
@@ -205,7 +205,7 @@ export default function InspectionDetailPage() {
               ))
             ) : (
               <div className="text-center py-6 text-muted-foreground">
-                <CheckCircle2 className="size-8 mx-auto mb-2 text-green-500" />
+                <CheckCircle2 className="size-8 mx-auto mb-2 text-success" />
                 <p className="text-sm">สินค้าเข้าสต็อกแล้ว</p>
               </div>
             )}

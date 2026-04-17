@@ -6,7 +6,7 @@ import QueryBoundary from '@/components/QueryBoundary';
 import ConversationList from './components/ConversationList';
 import ChatPanel from './components/ChatPanel';
 import Customer360Panel from './components/Customer360Panel';
-import { useChatSocket } from './hooks/useChatSocket';
+import { useChatSocket, type ChatMessageEvent } from './hooks/useChatSocket';
 import { useAuth } from '@/contexts/AuthContext';
 import type { InboxTab } from './components/ChannelFilter';
 
@@ -38,7 +38,7 @@ export default function UnifiedInboxPage() {
   }, []);
 
   // Play sound + show browser notification
-  const notifyNewMessage = useCallback((data: any) => {
+  const notifyNewMessage = useCallback((data: ChatMessageEvent) => {
     // Sound
     try {
       const audio = new Audio(NOTIFICATION_SOUND_URL);
@@ -83,7 +83,7 @@ export default function UnifiedInboxPage() {
       queryClient.invalidateQueries({ queryKey: ['chat-unread-count'] });
     },
     onCollision: (data) => {
-      const viewerNames = data.viewers?.map((v: any) => v.userName).join(', ');
+      const viewerNames = data.viewers?.map((v) => v.userName).join(', ');
       toast.warning(`⚠️ ${viewerNames} กำลังดูแชทนี้อยู่`);
     },
   }, activeRoomId);
@@ -94,14 +94,14 @@ export default function UnifiedInboxPage() {
     queryFn: () =>
       api
         .get('/staff-chat/rooms', { params: { search: filters.search } })
-        .then((r: any) => r.data),
+        .then((r) => r.data),
   });
 
   // Fetch active room details
   const sessionQuery = useQuery({
     queryKey: ['chat-session', activeRoomId],
     queryFn: () =>
-      api.get(`/staff-chat/rooms/${activeRoomId}`).then((r: any) => r.data),
+      api.get(`/staff-chat/rooms/${activeRoomId}`).then((r) => r.data),
     enabled: !!activeRoomId,
   });
 
@@ -113,7 +113,7 @@ export default function UnifiedInboxPage() {
         .get(`/staff-chat/rooms/${activeRoomId}/messages`, {
           params: { limit: 100 },
         })
-        .then((r: any) => r.data),
+        .then((r) => r.data),
     enabled: !!activeRoomId,
     refetchInterval: 5000, // Poll every 5s as fallback for WS
   });

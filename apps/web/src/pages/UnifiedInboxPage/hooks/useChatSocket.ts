@@ -4,13 +4,50 @@ import { useAuth } from '@/contexts/AuthContext';
 import { getAccessToken } from '@/lib/api';
 import { API_URL } from '@/lib/env';
 
+export interface ChatMessageEvent {
+  roomId: string;
+  role?: 'CUSTOMER' | 'STAFF' | 'AI';
+  text?: string;
+  messageId?: string;
+}
+
+export interface ChatRoomUpdateEvent {
+  roomId: string;
+}
+
+export interface ChatTypingEvent {
+  roomId: string;
+  role?: 'CUSTOMER' | 'STAFF';
+}
+
+export interface ChatPresenceEvent {
+  userId: string;
+  userName?: string;
+  status?: 'online' | 'offline';
+}
+
+export interface ChatViewer {
+  userId: string;
+  userName: string;
+}
+
+export interface ChatViewersEvent {
+  roomId: string;
+  viewers: ChatViewer[];
+}
+
+export interface ChatCollisionEvent {
+  roomId: string;
+  viewers: ChatViewer[];
+}
+
 interface ChatSocketEvents {
-  onNewMessage?: (data: any) => void;
-  onRoomUpdate?: (data: any) => void;
-  onTyping?: (data: any) => void;
-  onPresence?: (data: any) => void;
-  onViewers?: (data: any) => void;
-  onCollision?: (data: any) => void;
+  onNewMessage?: (data: ChatMessageEvent) => void;
+  onRoomUpdate?: (data: ChatRoomUpdateEvent) => void;
+  onTyping?: (data: ChatTypingEvent) => void;
+  onPresence?: (data: ChatPresenceEvent) => void;
+  onViewers?: (data: ChatViewersEvent) => void;
+  onCollision?: (data: ChatCollisionEvent) => void;
 }
 
 // Resolve WebSocket base URL: in dev, API runs on port 3000

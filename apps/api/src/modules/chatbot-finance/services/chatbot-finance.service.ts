@@ -516,7 +516,7 @@ export class ChatbotFinanceService {
     await this.sessions.saveMessage({
       roomId,
       role: MessageRole.BOT,
-      text: VERIFY_ALT_TEXT,
+      text: '[flex:verify]',
       intent,
     });
 

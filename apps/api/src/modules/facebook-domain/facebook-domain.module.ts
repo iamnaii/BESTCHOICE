@@ -1,9 +1,11 @@
-import { Module } from '@nestjs/common';
+import { Module, OnModuleInit } from '@nestjs/common';
 import { FacebookDomainHandler } from './facebook-domain.handler';
 import { FacebookQuickReplyService } from './facebook-quick-reply.service';
 import { FacebookTemplateService } from './facebook-template.service';
 import { FacebookPersistentMenuService } from './facebook-persistent-menu.service';
 import { DOMAIN_HANDLER_TOKEN } from '../chat-engine/interfaces/domain-handler.interface';
+import { MessageRouterService } from '../chat-engine/services/message-router.service';
+import { ChatEngineModule } from '../chat-engine/chat-engine.module';
 
 /**
  * FacebookDomainModule — handles Facebook Messenger business logic.
@@ -15,6 +17,7 @@ import { DOMAIN_HANDLER_TOKEN } from '../chat-engine/interfaces/domain-handler.i
  * - FacebookPersistentMenuService (persistent menu setup)
  */
 @Module({
+  imports: [ChatEngineModule],
   providers: [
     FacebookDomainHandler,
     FacebookQuickReplyService,
@@ -33,4 +36,13 @@ import { DOMAIN_HANDLER_TOKEN } from '../chat-engine/interfaces/domain-handler.i
     DOMAIN_HANDLER_TOKEN,
   ],
 })
-export class FacebookDomainModule {}
+export class FacebookDomainModule implements OnModuleInit {
+  constructor(
+    private messageRouter: MessageRouterService,
+    private facebookHandler: FacebookDomainHandler,
+  ) {}
+
+  onModuleInit(): void {
+    this.messageRouter.registerDomainHandler(this.facebookHandler);
+  }
+}

@@ -21,7 +21,7 @@ export class LineFinanceAdapter implements IChannelAdapter {
 
   async sendMessage(message: OutboundMessage): Promise<SendResult> {
     try {
-      if (!this.lineClient.isConfigured) {
+      if (!(await this.lineClient.isConfigured())) {
         return { success: false, error: 'LINE Finance token not configured' };
       }
 

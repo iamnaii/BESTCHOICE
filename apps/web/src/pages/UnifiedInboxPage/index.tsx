@@ -86,6 +86,10 @@ export default function UnifiedInboxPage() {
       const viewerNames = data.viewers?.map((v) => v.userName).join(', ');
       toast.warning(`⚠️ ${viewerNames} กำลังดูแชทนี้อยู่`);
     },
+    onSendFailed: (data) => {
+      toast.error(`ส่งข้อความไปยังลูกค้าไม่สำเร็จ${data.error ? ` — ${data.error}` : ''}`);
+      queryClient.invalidateQueries({ queryKey: ['chat-messages', data.roomId] });
+    },
   }, activeRoomId);
 
   // Fetch sessions — send search to backend; tab/channel filtering is client-side

@@ -24,6 +24,62 @@ import { th } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
+interface ContractSummaryItem {
+  id: string;
+  contractNumber: string;
+  status: string;
+  product?: { name?: string; brand?: string; model?: string; warrantyExpireDate?: string };
+  serialNumber?: string;
+  paidInstallments: number;
+  totalInstallments: number;
+  monthlyPayment: number | string;
+  nextDueDate?: string;
+  mdmLockedAt?: string;
+  shopWarrantyEndDate?: string;
+}
+
+interface PaymentSummaryItem {
+  id: string;
+  contract?: { contractNumber: string };
+  installmentNo: number;
+  amountPaid: number | string;
+  paidDate?: string;
+}
+
+interface ChatSessionItem {
+  id: string;
+  channel: string;
+  sessionStatus: string;
+  totalMessages: number;
+  lastMessageAt: string;
+}
+
+interface CallLogItem {
+  id: string;
+  caller?: { name: string };
+  calledAt: string;
+  notes?: string;
+}
+
+interface CrossRoomItem {
+  id: string;
+  channel: string;
+  lastMessageAt?: string;
+  messages?: { text: string }[];
+}
+
+interface InternalNoteItem {
+  id: string;
+  content: string;
+  createdAt: string;
+  author?: { name: string };
+}
+
+interface StaffItem {
+  id: string;
+  name: string;
+}
+
 interface Customer360PanelProps {
   customerId: string | null;
   activeRoomId?: string | null;
@@ -67,21 +123,21 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
   // ─── Customer basic info ──────────────────────────────
   const { data: customer, isLoading } = useQuery({
     queryKey: ['customer-360', customerId],
-    queryFn: () => api.get(`/customers/${customerId}`).then((r: any) => r.data?.data ?? r.data),
+    queryFn: () => api.get(`/customers/${customerId}`).then((r) => r.data?.data ?? r.data),
     enabled: !!customerId,
   });
 
   // ─── Risk flag ────────────────────────────────────────
   const { data: riskData } = useQuery({
     queryKey: ['customer-risk', customerId],
-    queryFn: () => api.get(`/customers/${customerId}/risk-flag`).then((r: any) => r.data?.data ?? r.data),
+    queryFn: () => api.get(`/customers/${customerId}/risk-flag`).then((r) => r.data?.data ?? r.data),
     enabled: !!customerId,
   });
 
   // ─── Chat summary (payments, contracts, call logs, sessions) ──
   const { data: summary } = useQuery({
     queryKey: ['customer-chat-summary', customerId],
-    queryFn: () => api.get(`/customers/${customerId}/chat-summary`).then((r: any) => r.data?.data ?? r.data),
+    queryFn: () => api.get(`/customers/${customerId}/chat-summary`).then((r) => r.data?.data ?? r.data),
     enabled: !!customerId,
     staleTime: 30_000,
   });
@@ -89,14 +145,14 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
   // ─── Notes ──────────────────────────────────────────
   const { data: notesData } = useQuery({
     queryKey: ['customer-notes', activeRoomId],
-    queryFn: () => api.get(`/staff-chat/rooms/${activeRoomId}/notes`).then((r: any) => r.data?.data ?? r.data),
+    queryFn: () => api.get(`/staff-chat/rooms/${activeRoomId}/notes`).then((r) => r.data?.data ?? r.data),
     enabled: !!activeRoomId,
   });
 
   // ─── Cross-channel rooms ─────────────────────────────
   const { data: crossRooms } = useQuery({
     queryKey: ['cross-channel-rooms', activeRoomId],
-    queryFn: () => api.get(`/staff-chat/rooms/${activeRoomId}/cross-channel`).then((r: any) => r.data?.data ?? r.data),
+    queryFn: () => api.get(`/staff-chat/rooms/${activeRoomId}/cross-channel`).then((r) => r.data?.data ?? r.data),
     enabled: !!activeRoomId,
   });
 
@@ -200,7 +256,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
           <div className="px-4 pt-4 pb-2">
             <SectionHeader icon={MessageSquare} label="ห้องแชททั้งหมด" />
           </div>
-          {crossRooms.map((r: any) => (
+          {(crossRooms as CrossRoomItem[]).map((r) => (
             <button
               key={r.id}
               onClick={() => onSelectRoom?.(r.id)}
@@ -246,7 +302,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
         <SectionHeader icon={Shield} label="การรับประกัน" />
         {summary?.activeContracts?.length > 0 ? (
           <div className="space-y-3">
-            {summary.activeContracts.map((c: any) => {
+            {(summary.activeContracts as ContractSummaryItem[]).map((c) => {
               const product = c.product;
               const productName = product?.name ?? `${product?.brand ?? ''} ${product?.model ?? ''}`.trim() ?? 'สินค้า';
               const isUsed = !!c.shopWarrantyEndDate;
@@ -309,7 +365,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
 
         {summary?.activeContracts?.length > 0 ? (
           <div className="space-y-2">
-            {summary.activeContracts.map((c: any) => (
+            {(summary.activeContracts as ContractSummaryItem[]).map((c) => (
               <div key={c.id} className="p-2.5 bg-muted rounded-lg text-xs">
                 <div className="flex items-center justify-between mb-1">
                   <span className="font-medium text-foreground/90">{c.contractNumber}</span>
@@ -364,7 +420,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
 
         {summary?.recentPayments?.length > 0 ? (
           <div className="space-y-1.5">
-            {summary.recentPayments.map((p: any) => (
+            {(summary.recentPayments as PaymentSummaryItem[]).map((p) => (
               <div key={p.id} className="flex items-center justify-between text-xs">
                 <div>
                   <span className="text-foreground/80">{p.contract?.contractNumber}</span>
@@ -394,7 +450,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
 
         {summary?.chatSessions?.length > 0 ? (
           <div className="space-y-1.5">
-            {summary.chatSessions.map((s: any) => (
+            {(summary.chatSessions as ChatSessionItem[]).map((s) => (
               <div
                 key={s.id}
                 className={`flex items-center gap-2 p-1.5 rounded text-xs ${
@@ -425,7 +481,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
         <div className="p-4 border-b border-border">
           <SectionHeader icon={Phone} label="ประวัติโทร" />
           <div className="space-y-1.5">
-            {summary.callLogs.map((log: any) => (
+            {(summary.callLogs as CallLogItem[]).map((log) => (
               <div key={log.id} className="text-xs">
                 <div className="flex justify-between">
                   <span className="text-foreground/80">{log.caller?.name ?? 'ระบบ'}</span>
@@ -481,7 +537,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
 
 // ─── InternalNotesSection ─────────────────────────────────
 
-function InternalNotesSection({ roomId, notes }: { roomId: string; notes: any[] }) {
+function InternalNotesSection({ roomId, notes }: { roomId: string; notes: InternalNoteItem[] }) {
   const queryClient = useQueryClient();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [noteText, setNoteText] = useState('');
@@ -491,13 +547,13 @@ function InternalNotesSection({ roomId, notes }: { roomId: string; notes: any[] 
 
   const { data: onlineStaff } = useQuery({
     queryKey: ['online-staff'],
-    queryFn: () => api.get('/staff-chat/staff/online').then((r: any) => r.data?.data ?? r.data),
+    queryFn: () => api.get('/staff-chat/staff/online').then((r) => r.data?.data ?? r.data),
     staleTime: 30_000,
   });
 
   const addNote = useMutation({
     mutationFn: (content: string) =>
-      api.post(`/staff-chat/rooms/${roomId}/notes`, { content }).then((r: any) => r.data),
+      api.post(`/staff-chat/rooms/${roomId}/notes`, { content }).then((r) => r.data),
     onSuccess: () => {
       setNoteText('');
       queryClient.invalidateQueries({ queryKey: ['customer-notes', roomId] });
@@ -551,7 +607,7 @@ function InternalNotesSection({ roomId, notes }: { roomId: string; notes: any[] 
     }, 0);
   };
 
-  const filteredStaff = (Array.isArray(onlineStaff) ? onlineStaff : []).filter((s: any) =>
+  const filteredStaff = (Array.isArray(onlineStaff) ? (onlineStaff as StaffItem[]) : []).filter((s) =>
     s.name?.toLowerCase().includes(mentionFilter),
   );
 
@@ -572,7 +628,7 @@ function InternalNotesSection({ roomId, notes }: { roomId: string; notes: any[] 
       {/* Existing notes */}
       {notes.length > 0 && (
         <div className="space-y-1.5 mb-3">
-          {notes.slice(0, 5).map((note: any) => (
+          {notes.slice(0, 5).map((note) => (
             <div key={note.id} className="p-2 bg-yellow-50 rounded text-xs border border-yellow-100">
               <p className="text-foreground/80 whitespace-pre-wrap">{note.content}</p>
               <p className="text-[10px] text-muted-foreground mt-0.5">

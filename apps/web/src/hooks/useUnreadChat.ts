@@ -11,7 +11,7 @@ export function useUnreadChat() {
 
   const { data } = useQuery({
     queryKey: ['chat-unread-count'],
-    queryFn: () => api.get('/staff-chat/unread-count').then((r: any) => r.data),
+    queryFn: () => api.get<{ unread: number }>('/staff-chat/unread-count').then((r) => r.data),
     enabled: !!user,
     refetchInterval: 30000,
     staleTime: 10000,

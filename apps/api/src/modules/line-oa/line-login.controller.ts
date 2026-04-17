@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Response } from 'express';
+import * as Sentry from '@sentry/nestjs';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
 
 /**
@@ -92,6 +93,7 @@ export class LineLoginController {
           client_id: this.channelId,
           client_secret: this.channelSecret,
         }),
+        signal: AbortSignal.timeout(10_000),
       });
 
       if (!tokenRes.ok) {
@@ -110,6 +112,7 @@ export class LineLoginController {
       // Get user profile with access token
       const profileRes = await fetch('https://api.line.me/v2/profile', {
         headers: { Authorization: `Bearer ${tokenData.access_token}` },
+        signal: AbortSignal.timeout(10_000),
       });
 
       if (!profileRes.ok) {
@@ -146,7 +149,15 @@ export class LineLoginController {
 
       res.redirect(redirectUrl.toString());
     } catch (err) {
-      this.logger.error(`[LineLogin] Error: ${err instanceof Error ? err.message : err}`);
+      const isTimeout = err instanceof Error && err.name === 'TimeoutError';
+      this.logger.error(
+        `[LineLogin] Error${isTimeout ? ' (timeout)' : ''}: ${err instanceof Error ? err.message : err}`,
+      );
+      if (isTimeout) {
+        Sentry.captureException(err, {
+          tags: { module: 'line-login', reason: 'timeout' },
+        });
+      }
       res.redirect(`${this.frontendBaseUrl}${returnPath}?login_error=true`);
     }
   }

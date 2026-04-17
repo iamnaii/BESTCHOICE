@@ -2260,6 +2260,8 @@ model JournalEntry {
   @@index([referenceType, referenceId])
   @@index([deletedAt])
   @@map("journal_entries")
+  // Partial unique index enforced via migration (CREATE UNIQUE INDEX ... WHERE reference_type IS NOT NULL)
+  // Prisma cannot express partial @@unique; see migration 20260428010000_journal_entries_ref_unique
 }
 
 model JournalLine {

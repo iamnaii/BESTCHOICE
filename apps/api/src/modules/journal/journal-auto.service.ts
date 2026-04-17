@@ -31,7 +31,7 @@ export class JournalAutoService {
     INVENTORY_USED: '11-3102',
     VAT_INPUT: '11-4101',
     VAT_OUTPUT: '21-2101',
-    ALLOWANCE_DOUBTFUL: '11-2901',  // ค่าเผื่อหนี้สงสัยจะสูญ (contra asset)
+    ALLOWANCE_DOUBTFUL: '11-2103',  // ค่าเผื่อหนี้สงสัยจะสูญ (contra asset; matches chart-of-accounts seed)
     CUSTOMER_CREDIT: '21-5101',
     REVENUE_NEW: '41-1101',
     REVENUE_USED: '41-1102',

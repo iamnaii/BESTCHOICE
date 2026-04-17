@@ -69,7 +69,7 @@ export default function LandingPage() {
                   <br />
                   ราคาเป็นกันเอง
                 </h1>
-                <p className="mt-6 text-lg text-gray-300 max-w-lg leading-relaxed">
+                <p className="mt-6 text-lg text-white/70 max-w-lg leading-relaxed">
                   เลือกซื้อสมาร์ทโฟนคุณภาพ ทั้งเครื่องใหม่และมือสอง
                   พร้อมบริการผ่อนชำระที่ยืดหยุ่น ดูแลหลังการขายครบวงจร
                 </p>
@@ -267,7 +267,7 @@ export default function LandingPage() {
           <h2 className="text-3xl lg:text-4xl font-bold text-white">
             พร้อมเป็นเจ้าของสมาร์ทโฟนในฝัน?
           </h2>
-          <p className="mt-4 text-lg text-gray-300">
+          <p className="mt-4 text-lg text-white/70">
             เยี่ยมชมร้านของเราหรือติดต่อสอบถามได้เลยวันนี้
           </p>
           <div className="mt-8 flex justify-center gap-4">

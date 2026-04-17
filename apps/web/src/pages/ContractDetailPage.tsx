@@ -17,7 +17,7 @@ import ContractDocuments from '@/components/contract/ContractDocuments';
 import { ContractEarlyPayoffQuote, EarlyPayoffOverlay } from '@/components/contract/ContractEarlyPayoff';
 import { toast } from 'sonner';
 import { useState, useRef, useEffect } from 'react';
-import { Copy } from 'lucide-react';
+import { Copy, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import { useAuth } from '@/contexts/AuthContext';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -507,57 +507,92 @@ const deleteMutation = useMutation({
       </div>
 
       {/* Workflow Actions for Reviewer */}
-      {contract.workflowStatus === 'PENDING_REVIEW' && isReviewer && (
-        <div className="bg-warning/5 dark:bg-warning/10 border border-warning/20 rounded-xl p-5 mb-6 relative overflow-hidden">
-          <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-warning" />
-          <h3 className="text-sm font-semibold text-warning mb-3">รอการตรวจสอบจากคุณ</h3>
-          <div className="space-y-3">
-            {/* Document checklist */}
+      {contract.workflowStatus === 'PENDING_REVIEW' && isReviewer && (() => {
+        const missingItems = docChecklist?.checklist.filter((i) => !i.present) ?? [];
+        const presentItems = docChecklist?.checklist.filter((i) => i.present) ?? [];
+        const total = docChecklist?.checklist.length ?? 0;
+        const completeCount = presentItems.length;
+        return (
+          <div className="bg-warning/5 dark:bg-warning/10 border border-warning/20 rounded-xl p-6 mb-6 relative overflow-hidden">
+            <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-warning" />
+
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-semibold text-warning">รอการตรวจสอบจากคุณ</h3>
+              {docChecklist && (
+                <span className={`text-sm font-medium ${docChecklist.complete ? 'text-success' : 'text-destructive'}`}>
+                  เอกสารครบ {completeCount}/{total}
+                </span>
+              )}
+            </div>
+
             {docChecklist && (
-              <div className="space-y-1">
-                <p className="text-xs font-medium text-warning">เอกสารที่ต้องมี:</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
-                  {docChecklist.checklist.map((item) => (
-                    <div key={item.type} className={`flex items-center gap-1.5 text-xs ${item.present ? 'text-success' : 'text-destructive'}`}>
-                      <span>{item.present ? '✓' : '✗'}</span>
-                      <span>{item.label}</span>
+              <div className="space-y-4 mb-5">
+                {/* Missing items — highlighted at top */}
+                {missingItems.length > 0 && (
+                  <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-4">
+                    <div className="flex items-start gap-2 mb-2">
+                      <AlertTriangle className="w-4 h-4 text-destructive flex-shrink-0 mt-0.5" />
+                      <p className="text-sm font-semibold text-destructive">เอกสารที่ยังขาด ({missingItems.length})</p>
                     </div>
-                  ))}
-                </div>
-                {!docChecklist.complete && (
-                  <p className="text-xs text-destructive font-medium mt-1">กรุณาอัปโหลดเอกสารให้ครบก่อนอนุมัติ</p>
+                    <ul className="space-y-1.5 pl-6">
+                      {missingItems.map((item) => (
+                        <li key={item.type} className="flex items-start gap-2 text-sm text-destructive">
+                          <XCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                          <span>{item.label}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="text-xs text-destructive/80 mt-3 pl-6">กรุณาอัปโหลดเอกสารให้ครบก่อนอนุมัติ</p>
+                  </div>
+                )}
+
+                {/* Present items — collapsed-style list */}
+                {presentItems.length > 0 && (
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground mb-2">เอกสารที่พร้อมแล้ว</p>
+                    <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
+                      {presentItems.map((item) => (
+                        <li key={item.type} className="flex items-start gap-2 text-sm text-success">
+                          <CheckCircle2 className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                          <span className="text-foreground">{item.label}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 )}
               </div>
             )}
-            <div>
-              <label className="block text-xs text-warning mb-1">หมายเหตุ (ไม่บังคับ)</label>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-foreground mb-1.5">หมายเหตุ (ไม่บังคับ)</label>
               <input
                 type="text"
                 value={approveNotes}
                 onChange={(e) => setApproveNotes(e.target.value)}
                 placeholder="หมายเหตุการอนุมัติ..."
-                className="w-full px-3 py-2 border border-warning/40 rounded-lg text-sm"
+                className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
               />
             </div>
+
             <div className="flex gap-2">
               <button
                 onClick={() => approveMutation.mutate()}
                 disabled={approveMutation.isPending || (docChecklist && !docChecklist.complete)}
                 title={docChecklist && !docChecklist.complete ? 'เอกสารยังไม่ครบ' : ''}
-                className="px-6 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
+                className="px-6 py-2.5 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {approveMutation.isPending ? 'กำลังอนุมัติ...' : 'อนุมัติสัญญา'}
               </button>
               <button
                 onClick={() => setShowRejectModal(true)}
-                className="px-6 py-2 text-sm bg-destructive text-destructive-foreground rounded-lg hover:bg-destructive/90"
+                className="px-6 py-2.5 text-sm font-medium bg-destructive text-destructive-foreground rounded-lg hover:bg-destructive/90"
               >
                 ปฏิเสธ
               </button>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Rejection notes */}
       {contract.workflowStatus === 'REJECTED' && contract.reviewNotes && (

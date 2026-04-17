@@ -33,6 +33,7 @@ import { SkipCsrf } from '../../guards/skip-csrf.decorator';
 import { StorageService } from '../storage/storage.service';
 import { WebhookDedupService } from '../chatbot-finance/services/webhook-dedup.service';
 import { MessageRouterService } from '../chat-engine/services/message-router.service';
+import { formatStickerToken } from '../chat-engine/utils/sticker-token.util';
 import { ChatChannel, MessageType } from '@prisma/client';
 import { toNum as d, calcOutstanding as sumOutstanding } from '../../utils/decimal.util';
 import { buildBrowserUrl } from '../../utils/line-login.util';
@@ -104,6 +105,8 @@ export class LineOaChatbotController {
           await this.handleTextMessage(msgEvent);
         } else if (msgEvent.message.type === 'image') {
           await this.handleImageMessage(msgEvent);
+        } else if (msgEvent.message.type === 'sticker') {
+          await this.handleStickerMessage(msgEvent);
         }
         break;
       }
@@ -307,6 +310,26 @@ export class LineOaChatbotController {
       await this.handleIpadUsedRedirect(event.replyToken);
     } else {
       await this.handleFreeformMessage(text, event.replyToken, userId);
+    }
+  }
+
+  // ─── Sticker Handler ──────────────────────────────────
+  // Customer-sent stickers are mirrored to Unified Inbox as a
+  // [sticker:packageId:stickerId] token so MessageBubble can render the image.
+
+  private async handleStickerMessage(event: LineMessageEvent): Promise<void> {
+    if (event.message.type !== 'sticker') return;
+    const { packageId, stickerId } = event.message;
+    try {
+      await this.messageRouter.mirrorInbound({
+        externalMessageId: event.message.id,
+        externalUserId: event.source.userId,
+        channel: ChatChannel.LINE_SHOP,
+        type: MessageType.TEXT,
+        text: formatStickerToken(packageId, stickerId),
+      });
+    } catch (err) {
+      this.logger.warn(`[SHOP mirror] sticker: ${err instanceof Error ? err.message : err}`);
     }
   }
 

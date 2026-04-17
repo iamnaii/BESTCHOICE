@@ -108,4 +108,14 @@ export interface LineFlexMessagePayload {
   quickReply?: LineQuickReply;
 }
 
-export type LineMessagePayload = LineTextMessagePayload | LineFlexMessagePayload;
+export interface LineStickerMessagePayload {
+  type: 'sticker';
+  packageId: string;
+  stickerId: string;
+  quickReply?: LineQuickReply;
+}
+
+export type LineMessagePayload =
+  | LineTextMessagePayload
+  | LineFlexMessagePayload
+  | LineStickerMessagePayload;

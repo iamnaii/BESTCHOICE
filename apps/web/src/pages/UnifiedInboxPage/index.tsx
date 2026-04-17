@@ -9,6 +9,7 @@ import Customer360Panel from './components/Customer360Panel';
 import { useChatSocket, type ChatMessageEvent } from './hooks/useChatSocket';
 import { useAuth } from '@/contexts/AuthContext';
 import type { InboxTab } from './components/ChannelFilter';
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 
 // Sound notification
 const NOTIFICATION_SOUND_URL = 'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU4GAAB/f39/f39/f39/f3+AgICBgYKCg4OEhIWFhoaHh4iIiYmKiouLjIyNjY6Oj4+QkJGRkpKTk5SUlZWWlpeXmJiZmZqam5ucnJ2dnp6fn6CgoaGioqOjpKSlpaampqeop6ioqamqqqqrq6ysra2urq+vsLCxsbKys7O0tLW1tra3t7i4ubm6uru7vLy9vb6+v7/AwMHBwsLDw8TExcXGxsfHyMjJycrKy8vMzM3Nzs7Pz9DQ0dHS0tPT1NTV1dbW19fY2NnZ2tra29vc3N3d3t7f3+Dg4eHi4uPj5OTl5ebm5+fo6Onp6urr6+zs7e3u7u/v8PDx8fLy8/P09PX19vb39/j4+fn6+vv7/Pz9/f7+/v7+/v7+';
@@ -24,6 +25,7 @@ export default function UnifiedInboxPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
+  const [customerPanelOpen, setCustomerPanelOpen] = useState(false);
   const [filters, setFilters] = useState<{
     tab: InboxTab;
     channels: string[];
@@ -268,13 +270,29 @@ export default function UnifiedInboxPage() {
           onResolve={() => activeRoomId && resolveMutation.mutate(activeRoomId)}
           onReturnToAI={() => activeRoomId && returnToAIMutation.mutate(activeRoomId)}
           currentUserId={user?.id ?? ''}
+          onShowCustomerInfo={() => setCustomerPanelOpen(true)}
         />
       </div>
 
-      {/* Right panel: Customer 360 */}
+      {/* Right panel: Customer 360 — always visible on xl+ */}
       <div className="hidden xl:block">
         <Customer360Panel customerId={customerId} activeRoomId={activeRoomId} onSelectRoom={handleSelectRoom} />
       </div>
+
+      {/* Right panel as Drawer on < xl */}
+      <Sheet open={customerPanelOpen} onOpenChange={setCustomerPanelOpen}>
+        <SheetContent side="right" className="w-80 p-0 xl:hidden">
+          <SheetTitle className="sr-only">ข้อมูลลูกค้า</SheetTitle>
+          <Customer360Panel
+            customerId={customerId}
+            activeRoomId={activeRoomId}
+            onSelectRoom={(id) => {
+              handleSelectRoom(id);
+              setCustomerPanelOpen(false);
+            }}
+          />
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

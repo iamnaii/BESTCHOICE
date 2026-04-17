@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState, useMemo } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
-import { Send, MoreVertical, ArrowLeft, Paperclip, Smile, Pin, PinOff, MessageSquare } from 'lucide-react';
+import { Send, MoreVertical, ArrowLeft, Paperclip, Smile, Pin, PinOff, MessageSquare, UserCircle2 } from 'lucide-react';
 import { format, isSameDay } from 'date-fns';
 import { th } from 'date-fns/locale/th';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -92,6 +92,7 @@ interface ChatPanelProps {
   onResolve: () => void;
   onReturnToAI: () => void;
   currentUserId: string;
+  onShowCustomerInfo?: () => void;
 }
 
 export default function ChatPanel({
@@ -108,6 +109,7 @@ export default function ChatPanel({
   onResolve,
   onReturnToAI,
   currentUserId,
+  onShowCustomerInfo,
 }: ChatPanelProps) {
   const [inputText, setInputText] = useState('');
   const [selectedSuggestion, setSelectedSuggestion] = useState<{ aiDraft: string; intent: string } | null>(null);
@@ -348,6 +350,16 @@ export default function ChatPanel({
           </div>
         </div>
         <div className="flex items-center gap-1">
+          {onShowCustomerInfo && (
+            <button
+              onClick={onShowCustomerInfo}
+              className="xl:hidden p-1.5 text-muted-foreground hover:text-foreground/70 hover:bg-accent rounded-lg"
+              title="ข้อมูลลูกค้า"
+              aria-label="เปิดข้อมูลลูกค้า"
+            >
+              <UserCircle2 className="w-5 h-5" />
+            </button>
+          )}
           <button
             onClick={() => pinMutation.mutate(!!session.pinnedAt)}
             disabled={pinMutation.isPending}

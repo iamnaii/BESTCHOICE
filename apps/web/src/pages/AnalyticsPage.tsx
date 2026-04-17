@@ -63,6 +63,8 @@ function retentionColor(pct: number) {
 }
 
 function heatmapColor(value: number, max: number) {
+  // Chart SVG colors — CSS variables don't work in SVG fill/stroke attrs.
+  // These match the design token palette but must be hardcoded for Recharts.
   if (max === 0) return '#f3f4f6';
   const intensity = value / max;
   if (intensity === 0) return '#f3f4f6';

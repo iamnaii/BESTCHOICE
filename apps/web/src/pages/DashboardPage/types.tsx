@@ -196,6 +196,8 @@ export const agingTextColors: Record<string, string> = {
 };
 
 /* Pie chart hex colors (matching statusColors Tailwind classes) */
+// Status indicator colors — intentionally hardcoded to match Tailwind palette.
+// These are used in chart SVGs where CSS variables aren't applicable.
 export const pieColors: Record<string, string> = {
   ACTIVE: '#22c55e',
   OVERDUE: '#eab308',

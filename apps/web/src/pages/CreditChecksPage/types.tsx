@@ -121,7 +121,7 @@ export const statusLabels: Record<string, { label: string; className: string }> 
   PENDING: { label: 'รอวิเคราะห์', className: 'bg-muted text-foreground' },
   APPROVED: { label: 'ผ่าน', className: 'bg-success/10 text-success dark:bg-success/15' },
   REJECTED: { label: 'ไม่ผ่าน', className: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },
-  MANUAL_REVIEW: { label: 'ต้องตรวจเพิ่ม', className: 'bg-amber-100 text-amber-700' },
+  MANUAL_REVIEW: { label: 'ต้องตรวจเพิ่ม', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
 };
 
 export function getRiskBadge(aiScore: number | null) {

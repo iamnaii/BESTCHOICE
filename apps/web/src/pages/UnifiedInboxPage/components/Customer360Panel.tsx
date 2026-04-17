@@ -95,10 +95,10 @@ const channelLabel: Record<string, string> = {
 };
 
 const channelColor: Record<string, string> = {
-  LINE_FINANCE: 'bg-green-100 text-green-700',
-  LINE_SHOP: 'bg-lime-100 text-lime-700',
-  FACEBOOK: 'bg-blue-100 text-blue-700',
-  TIKTOK: 'bg-pink-100 text-pink-700',
+  LINE_FINANCE: 'bg-success/10 text-success',
+  LINE_SHOP: 'bg-success/10 text-success',
+  FACEBOOK: 'bg-info/10 text-info',
+  TIKTOK: 'bg-primary/10 text-primary',
   WEB: 'bg-muted text-muted-foreground',
 };
 
@@ -233,11 +233,11 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
 
         {/* Overdue alert */}
         {summary && summary.overdueCount > 0 && (
-          <div className="mt-2 p-2 bg-red-50 border border-red-100 rounded-lg flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />
+          <div className="mt-2 p-2 bg-destructive/10 border border-destructive/20 rounded-lg flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-destructive flex-shrink-0" />
             <div className="text-xs">
-              <span className="font-semibold text-red-700">ค้าง {summary.overdueCount} งวด</span>
-              <span className="text-red-500 ml-1">
+              <span className="font-semibold text-destructive">ค้าง {summary.overdueCount} งวด</span>
+              <span className="text-destructive ml-1">
                 ({Number(summary.totalOutstanding).toLocaleString()} บ.)
               </span>
             </div>
@@ -287,13 +287,13 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
         <SectionHeader icon={Smartphone} label="สถานะ MDM" />
         {firstContract?.mdmLockedAt ? (
           <div className="px-0 py-0 text-[12px]">
-            <span className="text-red-600 font-medium">🔒 ล็อคอยู่</span>
+            <span className="text-destructive font-medium">🔒 ล็อคอยู่</span>
             <span className="text-muted-foreground ml-2">
               ตั้งแต่ {format(new Date(firstContract.mdmLockedAt), 'dd MMM yyyy', { locale: th })}
             </span>
           </div>
         ) : (
-          <div className="text-[12px] text-green-600 font-medium">🔓 ไม่ได้ล็อค</div>
+          <div className="text-[12px] text-success font-medium">🔓 ไม่ได้ล็อค</div>
         )}
       </div>
 
@@ -328,23 +328,23 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
                   {/* Manufacturer warranty */}
                   {mfrDate ? (
                     mfrExpired ? (
-                      <p className="text-red-500 ml-3">❌ ศูนย์: หมดแล้ว</p>
+                      <p className="text-destructive ml-3">❌ ศูนย์: หมดแล้ว</p>
                     ) : (
-                      <p className="text-green-600 ml-3">
+                      <p className="text-success ml-3">
                         ✅ ศูนย์: ถึง {format(mfrDate, 'dd MMM yyyy', { locale: th })}{' '}
                         <span className="text-muted-foreground">(เหลือ {mfrDays} วัน)</span>
                       </p>
                     )
                   ) : (
-                    <p className="text-red-500 ml-3">❌ ศูนย์: หมดแล้ว</p>
+                    <p className="text-destructive ml-3">❌ ศูนย์: หมดแล้ว</p>
                   )}
 
                   {/* Shop warranty — only show when exists */}
                   {shopDate && (
                     shopExpired ? (
-                      <p className="text-red-500 ml-3">❌ ร้าน: หมดแล้ว</p>
+                      <p className="text-destructive ml-3">❌ ร้าน: หมดแล้ว</p>
                     ) : (
-                      <p className="text-green-600 ml-3">
+                      <p className="text-success ml-3">
                         ✅ ร้าน: ถึง {format(shopDate, 'dd MMM yyyy', { locale: th })}{' '}
                         <span className="text-muted-foreground">(เหลือ {shopDays} วัน)</span>
                       </p>
@@ -427,7 +427,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
                   <span className="text-muted-foreground ml-1">งวด {p.installmentNo}</span>
                 </div>
                 <div className="text-right">
-                  <span className="font-medium text-green-600">
+                  <span className="font-medium text-success">
                     {Number(p.amountPaid).toLocaleString()} บ.
                   </span>
                   {p.paidDate && (
@@ -629,7 +629,7 @@ function InternalNotesSection({ roomId, notes }: { roomId: string; notes: Intern
       {notes.length > 0 && (
         <div className="space-y-1.5 mb-3">
           {notes.slice(0, 5).map((note) => (
-            <div key={note.id} className="p-2 bg-yellow-50 rounded text-xs border border-yellow-100">
+            <div key={note.id} className="p-2 bg-warning/10 rounded text-xs border border-warning/20">
               <p className="text-foreground/80 whitespace-pre-wrap">{note.content}</p>
               <p className="text-[10px] text-muted-foreground mt-0.5">
                 {note.author?.name} · {format(new Date(note.createdAt), 'dd/MM HH:mm')}
@@ -719,10 +719,10 @@ function QuickActionBtn({
 
 function ChannelBadge({ channel }: { channel: string }) {
   const colors: Record<string, string> = {
-    LINE_FINANCE: 'bg-green-500',
-    LINE_SHOP: 'bg-emerald-400',
-    FACEBOOK: 'bg-blue-600',
-    TIKTOK: 'bg-pink-500',
+    LINE_FINANCE: 'bg-success',
+    LINE_SHOP: 'bg-success/80',
+    FACEBOOK: 'bg-info',
+    TIKTOK: 'bg-primary',
     WEB: 'bg-muted-foreground',
   };
   const labels: Record<string, string> = {

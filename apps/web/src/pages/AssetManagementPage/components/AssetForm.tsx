@@ -34,7 +34,7 @@ export default function AssetForm({
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-start justify-center pt-8 pb-8">
+    <div className="fixed inset-0 z-50 bg-foreground/50 backdrop-blur-xs flex items-start justify-center pt-8 pb-8">
       <div className="w-full max-w-4xl bg-background rounded-xl shadow-2xl overflow-y-auto max-h-[calc(100vh-4rem)]">
         {/* Sticky Header */}
         <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-xs border-b px-6 py-4 flex items-center justify-between">
@@ -114,7 +114,7 @@ export default function AssetForm({
           {/* Section 2: การจัดหมวดหมู่ */}
           <div className="rounded-xl border border-border bg-card p-5">
             <div className="flex items-center gap-2.5 mb-4">
-              <div className="flex items-center justify-center size-8 rounded-lg bg-orange-500/10 text-orange-500">
+              <div className="flex items-center justify-center size-8 rounded-lg bg-warning/10 text-warning">
                 <Tag className="size-4" strokeWidth={1.5} />
               </div>
               <div>
@@ -158,7 +158,7 @@ export default function AssetForm({
           {/* Section 3: ข้อมูลทางการเงิน */}
           <div className="rounded-xl border border-border bg-card p-5">
             <div className="flex items-center gap-2.5 mb-4">
-              <div className="flex items-center justify-center size-8 rounded-lg bg-emerald-500/10 text-emerald-500">
+              <div className="flex items-center justify-center size-8 rounded-lg bg-success/10 text-success">
                 <Calculator className="size-4" strokeWidth={1.5} />
               </div>
               <div>
@@ -222,7 +222,7 @@ export default function AssetForm({
 
               {/* Live depreciation summary */}
               {Number(form.costValue) > 0 && Number(form.usefulLife) > 0 && (
-                <div className="bg-linear-to-br from-emerald-500/5 to-emerald-500/10 dark:from-emerald-500/10 dark:to-emerald-500/15 rounded-xl p-4 space-y-2 text-sm border border-emerald-500/15">
+                <div className="bg-linear-to-br from-success/5 to-success/10 dark:from-success/10 dark:to-success/15 rounded-xl p-4 space-y-2 text-sm border border-success/15">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">ราคาทุน</span>
                     <span className="font-medium">{fmt(form.costValue)}</span>
@@ -237,10 +237,10 @@ export default function AssetForm({
                       {fmt(Number(form.costValue) - Number(form.salvageValue || 0))}
                     </span>
                   </div>
-                  <div className="border-t border-emerald-500/20 pt-2.5 mt-1 space-y-1.5">
+                  <div className="border-t border-success/20 pt-2.5 mt-1 space-y-1.5">
                     <div className="flex justify-between font-bold">
-                      <span className="text-emerald-600 dark:text-emerald-400">ค่าเสื่อมราคาต่อปี</span>
-                      <span className="text-emerald-600 dark:text-emerald-400">
+                      <span className="text-success">ค่าเสื่อมราคาต่อปี</span>
+                      <span className="text-success">
                         {fmt(
                           (Number(form.costValue) - Number(form.salvageValue || 0)) /
                             Number(form.usefulLife),
@@ -248,10 +248,10 @@ export default function AssetForm({
                       </span>
                     </div>
                     <div className="flex justify-between font-bold text-lg">
-                      <span className="text-emerald-600 dark:text-emerald-400">
+                      <span className="text-success">
                         ค่าเสื่อมราคาต่อเดือน
                       </span>
-                      <span className="text-emerald-600 dark:text-emerald-400">
+                      <span className="text-success">
                         {fmt(
                           (Number(form.costValue) - Number(form.salvageValue || 0)) /
                             Number(form.usefulLife) /

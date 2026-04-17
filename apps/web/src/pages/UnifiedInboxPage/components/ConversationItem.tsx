@@ -95,7 +95,7 @@ export default function ConversationItem({ session, isActive, onClick, onPin }: 
         isActive
           ? 'bg-primary/5 border-l-2 border-l-primary'
           : 'hover:bg-muted/40',
-        isPinned && !isActive && 'bg-amber-50/20',
+        isPinned && !isActive && 'bg-warning/5',
       )}
       onClick={onClick}
     >
@@ -105,7 +105,7 @@ export default function ConversationItem({ session, isActive, onClick, onPin }: 
       <div className="flex-1 min-w-0 pt-0.5">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1 min-w-0">
-            {isPinned && <Pin className="w-2.5 h-2.5 text-amber-500 flex-shrink-0 fill-amber-500" />}
+            {isPinned && <Pin className="w-2.5 h-2.5 text-warning flex-shrink-0 fill-warning" />}
             <span className={cn(
               'text-[13px] truncate',
               hasUnread ? 'font-bold text-foreground' : 'font-medium text-foreground/80',
@@ -125,7 +125,7 @@ export default function ConversationItem({ session, isActive, onClick, onPin }: 
             hasUnread ? 'text-foreground/70' : 'text-muted-foreground/70',
           )}>
             {lastMessage?.role === 'STAFF' && <span className="text-primary font-medium">คุณ: </span>}
-            {lastMessage?.role === 'BOT' && <span className="text-purple-500 font-medium">Bot: </span>}
+            {lastMessage?.role === 'BOT' && <span className="text-muted-foreground font-medium">Bot: </span>}
             {lastMessage?.text ?? '(ข้อความสื่อ)'}
           </p>
           {hasUnread && (
@@ -172,8 +172,8 @@ export default function ConversationItem({ session, isActive, onClick, onPin }: 
           className={cn(
             'absolute right-2 top-2 p-1 rounded-md transition-all',
             isPinned
-              ? 'text-amber-500 opacity-100'
-              : 'text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-amber-500 hover:bg-muted',
+              ? 'text-warning opacity-100'
+              : 'text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-warning hover:bg-muted',
           )}
           title={isPinned ? 'ถอดหมุด' : 'ปักหมุด'}
         >

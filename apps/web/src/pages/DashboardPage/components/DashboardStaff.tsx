@@ -56,7 +56,7 @@ export default function DashboardStaff({
                   <div className="w-16 text-xs font-medium text-foreground shrink-0">{bucket.range} วัน</div>
                   <div className="flex-1 bg-muted rounded-full h-4 overflow-hidden">
                     <div
-                      className={cn('h-full rounded-full opacity-80', agingBarColors[bucket.color] || 'bg-zinc-400')}
+                      className={cn('h-full rounded-full opacity-80', agingBarColors[bucket.color] || 'bg-muted-foreground')}
                       style={{
                         width: agingMax > 0 ? `${(bucket.amount / agingMax) * 100}%` : '0%',
                         minWidth: bucket.amount > 0 ? '8px' : '0',
@@ -139,7 +139,7 @@ export default function DashboardStaff({
                                     ? 'bg-destructive/10 text-destructive'
                                     : s.overdueRate > 10
                                       ? 'bg-warning/10 text-warning'
-                                      : 'bg-success/10 text-success dark:bg-success/15 dark:bg-green-900/30 dark:text-green-400',
+                                      : 'bg-success/10 text-success dark:bg-success/15',
                                 )}
                               >
                                 {s.overdueRate}%

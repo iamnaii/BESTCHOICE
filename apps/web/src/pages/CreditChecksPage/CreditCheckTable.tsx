@@ -79,7 +79,7 @@ export default function CreditCheckTable({
                 cc.aiScore >= 70
                   ? 'text-success'
                   : cc.aiScore >= 50
-                    ? 'text-amber-600'
+                    ? 'text-warning'
                     : 'text-destructive'
               }`}
             >
@@ -89,10 +89,10 @@ export default function CreditCheckTable({
               <div
                 className={`h-1.5 rounded-full ${
                   cc.aiScore >= 70
-                    ? 'bg-green-500'
+                    ? 'bg-success'
                     : cc.aiScore >= 50
-                      ? 'bg-amber-500'
-                      : 'bg-red-500'
+                      ? 'bg-warning'
+                      : 'bg-destructive'
                 }`}
                 style={{ width: `${cc.aiScore}%` }}
               />
@@ -151,7 +151,7 @@ export default function CreditCheckTable({
           {canOverride && cc.aiScore !== null && (
             <button
               onClick={() => onOverrideOpen(cc.id, cc.customer.id)}
-              className="px-3 py-1 text-xs bg-primary-100 text-primary-700 rounded-lg hover:bg-primary-200"
+              className="px-3 py-1 text-xs bg-primary/10 text-primary rounded-lg hover:bg-primary/20"
             >
               ปรับแก้
             </button>

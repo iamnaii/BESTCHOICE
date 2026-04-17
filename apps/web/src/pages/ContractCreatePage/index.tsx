@@ -220,7 +220,7 @@ export default function ContractCreatePage() {
               size="lg"
               onClick={() => handleSubmit(true)}
               disabled={data.createMutation.isPending}
-              className="bg-green-600 hover:bg-green-700"
+              className="bg-success text-success-foreground hover:bg-success/90"
             >
               <Send className="size-4" />
               {data.createMutation.isPending ? 'กำลังส่ง...' : 'สร้าง + ส่งตรวจสอบ'}

@@ -28,7 +28,7 @@ function ShortcutCard({ icon: Icon, label, path, color }: { icon: LucideIcon; la
     >
       <CardContent className="p-4 flex flex-col items-center justify-center gap-2.5 text-center min-h-[100px]">
         <div className={cn('size-12 rounded-2xl flex items-center justify-center transition-all group-hover:scale-110 group-hover:shadow-md shadow-sm', color)}>
-          <Icon className="size-5 text-white" />
+          <Icon className="size-5 text-primary-foreground" />
         </div>
         <span className="text-xs font-semibold text-foreground leading-tight">{label}</span>
       </CardContent>
@@ -82,17 +82,17 @@ export default function DashboardRevenue({
       {/* Quick Action Shortcuts -- role-based */}
       <div className="lg:col-span-5">
         <div className="grid grid-cols-2 gap-4">
-          <ShortcutCard icon={ShoppingCart} label="POS ขายสินค้า" path="/pos" color="bg-blue-500" />
-          <ShortcutCard icon={FileCheck} label="สัญญาผ่อน" path="/contracts" color="bg-indigo-500" />
+          <ShortcutCard icon={ShoppingCart} label="POS ขายสินค้า" path="/pos" color="bg-primary" />
+          <ShortcutCard icon={FileCheck} label="สัญญาผ่อน" path="/contracts" color="bg-primary" />
           {(userRole !== 'SALES') && (
-            <ShortcutCard icon={DollarSign} label="ชำระเงิน" path="/payments" color="bg-green-500" />
+            <ShortcutCard icon={DollarSign} label="ชำระเงิน" path="/payments" color="bg-success" />
           )}
-          <ShortcutCard icon={Users} label="ลูกค้า" path="/customers" color="bg-purple-500" />
+          <ShortcutCard icon={Users} label="ลูกค้า" path="/customers" color="bg-primary" />
           {(userRole === 'OWNER' || userRole === 'BRANCH_MANAGER') && (
-            <ShortcutCard icon={Warehouse} label="คลังสินค้า" path="/stock" color="bg-orange-500" />
+            <ShortcutCard icon={Warehouse} label="คลังสินค้า" path="/stock" color="bg-warning" />
           )}
           {(userRole === 'OWNER' || userRole === 'BRANCH_MANAGER' || userRole === 'FINANCE_MANAGER' || userRole === 'ACCOUNTANT') && (
-            <ShortcutCard icon={BarChart3} label="รายงาน" path="/reports" color="bg-cyan-500" />
+            <ShortcutCard icon={BarChart3} label="รายงาน" path="/reports" color="bg-info" />
           )}
         </div>
       </div>
@@ -118,7 +118,7 @@ export default function DashboardRevenue({
               ) : revenue ? (
                 <div className="divide-y divide-border/50">
                   <div className="flex items-center gap-4 px-5 py-3.5">
-                    <div className="w-1 h-8 rounded-full bg-blue-500" />
+                    <div className="w-1 h-8 rounded-full bg-primary" />
                     <div className="flex-1">
                       <div className="text-sm font-medium text-foreground">ยอดชำระรวม</div>
                       <div className="text-2xs text-muted-foreground">รับชำระทั้งเดือน</div>
@@ -126,7 +126,7 @@ export default function DashboardRevenue({
                     <div className="text-sm font-semibold text-foreground">{revenue.totalPayments.toLocaleString()} ฿</div>
                   </div>
                   <div className="flex items-center gap-4 px-5 py-3.5">
-                    <div className="w-1 h-8 rounded-full bg-green-500" />
+                    <div className="w-1 h-8 rounded-full bg-success" />
                     <div className="flex-1">
                       <div className="text-sm font-medium text-foreground">ดอกเบี้ยรับ</div>
                       <div className="text-2xs text-muted-foreground">ส่วนดอกเบี้ยจากค่างวด</div>
@@ -134,7 +134,7 @@ export default function DashboardRevenue({
                     <div className="text-sm font-semibold text-success">{revenue.interestIncome.toLocaleString()} ฿</div>
                   </div>
                   <div className="flex items-center gap-4 px-5 py-3.5">
-                    <div className="w-1 h-8 rounded-full bg-yellow-500" />
+                    <div className="w-1 h-8 rounded-full bg-warning" />
                     <div className="flex-1">
                       <div className="text-sm font-medium text-foreground">ค่าปรับ</div>
                       <div className="text-2xs text-muted-foreground">ค่าปรับล่าช้าสะสม</div>
@@ -178,7 +178,7 @@ export default function DashboardRevenue({
               {entityProfit ? (
                 <div className="divide-y divide-border/50">
                   <div className="flex items-center gap-4 px-5 py-3.5">
-                    <div className="w-1 h-8 rounded-full bg-blue-500" />
+                    <div className="w-1 h-8 rounded-full bg-primary" />
                     <div className="flex-1">
                       <div className="text-sm font-medium text-foreground">BESTCHOICE หน้าร้าน</div>
                       <div className="text-2xs text-muted-foreground">ดาวน์ + เงินต้น + คอมมิชชัน - ต้นทุน</div>
@@ -188,7 +188,7 @@ export default function DashboardRevenue({
                     </div>
                   </div>
                   <div className="flex items-center gap-4 px-5 py-3.5">
-                    <div className="w-1 h-8 rounded-full bg-indigo-500" />
+                    <div className="w-1 h-8 rounded-full bg-primary" />
                     <div className="flex-1">
                       <div className="text-sm font-medium text-foreground">BESTCHOICE ไฟแนนซ์</div>
                       <div className="text-2xs text-muted-foreground">ดอกเบี้ย - คอมมิชชัน + ค่าปรับ</div>
@@ -201,7 +201,7 @@ export default function DashboardRevenue({
                     className="flex items-center gap-4 px-5 py-3.5 cursor-pointer hover:bg-muted/50 transition-colors"
                     onClick={() => navigate('/reports')}
                   >
-                    <div className="w-1 h-8 rounded-full bg-green-500" />
+                    <div className="w-1 h-8 rounded-full bg-success" />
                     <div className="flex-1">
                       <div className="text-sm font-medium text-foreground">กำไรรวม</div>
                       <div className="text-2xs text-muted-foreground">หน้าร้าน + ไฟแนนซ์ (ไม่รวม VAT)</div>
@@ -231,7 +231,7 @@ export default function DashboardRevenue({
                   className="flex items-center gap-4 px-5 py-3.5 cursor-pointer hover:bg-muted/50 transition-colors"
                   onClick={() => navigate('/contracts')}
                 >
-                  <div className="w-1 h-8 rounded-full bg-blue-500" />
+                  <div className="w-1 h-8 rounded-full bg-primary" />
                   <div className="flex-1">
                     <div className="text-sm font-medium text-foreground">ลูกหนี้คงค้าง</div>
                     <div className="text-2xs text-muted-foreground">ยอดค้างรับทั้งหมด</div>
@@ -243,7 +243,7 @@ export default function DashboardRevenue({
                   className="flex items-center gap-4 px-5 py-3.5 cursor-pointer hover:bg-muted/50 transition-colors"
                   onClick={() => navigate('/contracts')}
                 >
-                  <div className="w-1 h-8 rounded-full bg-green-500" />
+                  <div className="w-1 h-8 rounded-full bg-success" />
                   <div className="flex-1">
                     <div className="text-sm font-medium text-foreground">ปิดสัญญาแล้ว</div>
                     <div className="text-2xs text-muted-foreground">สัญญาที่ชำระครบ</div>
@@ -252,7 +252,7 @@ export default function DashboardRevenue({
                   <ArrowRight className="size-4 text-muted-foreground" />
                 </div>
                 <div className="flex items-center gap-4 px-5 py-3.5">
-                  <div className="w-1 h-8 rounded-full bg-yellow-500" />
+                  <div className="w-1 h-8 rounded-full bg-warning" />
                   <div className="flex-1">
                     <div className="text-sm font-medium text-foreground">ค่าปรับรวม</div>
                     <div className="text-2xs text-muted-foreground">ค่าปรับสะสมทั้งหมด</div>
@@ -263,7 +263,7 @@ export default function DashboardRevenue({
                   className="flex items-center gap-4 px-5 py-3.5 cursor-pointer hover:bg-muted/50 transition-colors"
                   onClick={() => navigate('/overdue')}
                 >
-                  <div className="w-1 h-8 rounded-full bg-red-500" />
+                  <div className="w-1 h-8 rounded-full bg-destructive" />
                   <div className="flex-1">
                     <div className="text-sm font-medium text-foreground">ค้างชำระ / ผิดนัด</div>
                     <div className="text-2xs text-muted-foreground">สัญญาที่ต้องติดตาม</div>

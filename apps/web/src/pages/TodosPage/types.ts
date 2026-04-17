@@ -68,31 +68,31 @@ export const priorityConfig: Record<
 > = {
   LOW: {
     label: 'ต่ำ',
-    badge: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
-    bar: 'bg-slate-300',
-    dot: 'bg-slate-400',
+    badge: 'bg-muted text-muted-foreground',
+    bar: 'bg-muted-foreground/40',
+    dot: 'bg-muted-foreground',
   },
   MEDIUM: {
     label: 'ปานกลาง',
-    badge: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
-    bar: 'bg-amber-400',
-    dot: 'bg-amber-500',
+    badge: 'bg-warning/10 text-warning',
+    bar: 'bg-warning/60',
+    dot: 'bg-warning',
   },
   HIGH: {
     label: 'สูง',
-    badge: 'bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300',
-    bar: 'bg-rose-500',
-    dot: 'bg-rose-500',
+    badge: 'bg-destructive/10 text-destructive',
+    bar: 'bg-destructive',
+    dot: 'bg-destructive',
   },
 };
 
 export const avatarColors = [
-  'from-blue-500 to-indigo-500',
-  'from-emerald-500 to-teal-500',
-  'from-purple-500 to-pink-500',
-  'from-orange-500 to-red-500',
-  'from-cyan-500 to-blue-500',
-  'from-violet-500 to-purple-500',
+  'from-primary to-primary/70',
+  'from-success to-success/70',
+  'from-info to-info/70',
+  'from-warning to-warning/70',
+  'from-destructive to-destructive/70',
+  'from-muted-foreground to-muted-foreground/70',
 ];
 
 export function avatarColor(name: string) {

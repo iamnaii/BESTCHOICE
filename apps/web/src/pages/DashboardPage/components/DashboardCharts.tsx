@@ -60,8 +60,8 @@ export default function DashboardCharts({
             ) : trend.length > 0 ? (
               <ChartContainer
                 config={{
-                  newContracts: { label: 'สัญญาใหม่', color: 'hsl(217 91% 60%)' },
-                  paymentsReceived: { label: 'ยอดชำระ (฿)', color: 'hsl(142 71% 45%)' },
+                  newContracts: { label: 'สัญญาใหม่', color: 'hsl(var(--chart-1))' },
+                  paymentsReceived: { label: 'ยอดชำระ (฿)', color: 'hsl(var(--chart-4))' },
                 } satisfies ChartConfig}
                 className="h-[280px] w-full"
               >
@@ -137,7 +137,7 @@ export default function DashboardCharts({
                       data={statusDist.map((s) => ({
                         name: statusLabels[s.status] || s.status,
                         value: s.count,
-                        fill: pieColors[s.status] || '#a1a1aa',
+                        fill: pieColors[s.status] || 'hsl(var(--muted-foreground))',
                       }))}
                       cx="50%"
                       cy="50%"
@@ -148,7 +148,7 @@ export default function DashboardCharts({
                       stroke="none"
                     >
                       {statusDist.map((s) => (
-                        <Cell key={s.status} fill={pieColors[s.status] || '#a1a1aa'} />
+                        <Cell key={s.status} fill={pieColors[s.status] || 'hsl(var(--muted-foreground))'} />
                       ))}
                     </Pie>
                     <RechartsTooltip
@@ -167,12 +167,12 @@ export default function DashboardCharts({
                   {statusDist.map((s) => (
                     <div key={s.status} className="flex items-center gap-3">
                       <div className="w-24 text-xs text-foreground font-medium flex items-center gap-2">
-                        <span className={cn('size-2 rounded-full', statusColors[s.status] || 'bg-zinc-400')} />
+                        <span className={cn('size-2 rounded-full', statusColors[s.status] || 'bg-muted-foreground')} />
                         {statusLabels[s.status] || s.status}
                       </div>
                       <div className="flex-1 bg-muted rounded-full h-2.5 overflow-hidden">
                         <div
-                          className={cn('h-full rounded-full opacity-80', statusColors[s.status] || 'bg-zinc-400')}
+                          className={cn('h-full rounded-full opacity-80', statusColors[s.status] || 'bg-muted-foreground')}
                           style={{
                             width: totalStatusCount > 0 ? `${(s.count / totalStatusCount) * 100}%` : '0%',
                             minWidth: s.count > 0 ? '8px' : '0',

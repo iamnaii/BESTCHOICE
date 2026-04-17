@@ -120,10 +120,10 @@ export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyE
             <div className="rounded-xl border border-border/60 p-5 shadow-card">
               <SectionTitle>อัตราหมุนเวียนสต๊อค</SectionTitle>
               <div className="grid grid-cols-2 gap-4">
-                <StatCard label="อายุเฉลี่ยในสต๊อค" value={`${dashboard.stockTurnover.avgDaysInStock} วัน`} accent="border-l-primary-500" />
-                <StatCard label="สต๊อคปัจจุบัน" value={dashboard.stockTurnover.currentStock} sub="ชิ้น (IN_STOCK)" accent="border-l-green-500" />
-                <StatCard label="ขายเดือนนี้" value={dashboard.stockTurnover.soldThisMonth} sub="ชิ้น" accent="border-l-indigo-500" />
-                <StatCard label="ขายเดือนที่แล้ว" value={dashboard.stockTurnover.soldLastMonth} sub="ชิ้น" accent="border-l-gray-400" />
+                <StatCard label="อายุเฉลี่ยในสต๊อค" value={`${dashboard.stockTurnover.avgDaysInStock} วัน`} accent="border-l-primary" />
+                <StatCard label="สต๊อคปัจจุบัน" value={dashboard.stockTurnover.currentStock} sub="ชิ้น (IN_STOCK)" accent="border-l-success" />
+                <StatCard label="ขายเดือนนี้" value={dashboard.stockTurnover.soldThisMonth} sub="ชิ้น" accent="border-l-primary" />
+                <StatCard label="ขายเดือนที่แล้ว" value={dashboard.stockTurnover.soldLastMonth} sub="ชิ้น" accent="border-l-muted-foreground" />
               </div>
             </div>
           </div>
@@ -133,7 +133,7 @@ export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyE
             <SectionTitle>อายุสต๊อค (Stock Aging)</SectionTitle>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {dashboard.stockAging.map((bucket, i) => {
-                const colors = ['border-l-green-500', 'border-l-yellow-500', 'border-l-orange-500', 'border-l-red-500'];
+                const colors = ['border-l-success', 'border-l-warning', 'border-l-warning', 'border-l-destructive'];
                 return (
                   <div key={bucket.label} className={`bg-muted rounded-xl p-4 border-l-4 ${colors[i]}`}>
                     <div className="text-sm font-medium text-foreground">{bucket.label}</div>
@@ -179,8 +179,8 @@ export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyE
               <SectionTitle>การเคลื่อนไหวสต๊อค (6 เดือน)</SectionTitle>
               <div className="space-y-3">
                 <div className="flex items-center gap-4 text-xs text-muted-foreground mb-2">
-                  <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-400 inline-block" /> รับเข้า</span>
-                  <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-indigo-400 inline-block" /> ขายออก</span>
+                  <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-success inline-block" /> รับเข้า</span>
+                  <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-primary inline-block" /> ขายออก</span>
                 </div>
                 {(() => {
                   const maxVal = Math.max(...dashboard.stockMovement.map((x) => Math.max(x.in, x.out)), 1);
@@ -190,13 +190,13 @@ export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyE
                       <div className="flex items-center gap-2">
                         <div className="w-12 text-xs text-right text-success">{m.in}</div>
                         <div className="flex-1 bg-muted rounded-full h-3 overflow-hidden">
-                          <div className="h-full bg-green-400 rounded-full" style={{ width: `${(m.in / maxVal) * 100}%` }} />
+                          <div className="h-full bg-success rounded-full" style={{ width: `${(m.in / maxVal) * 100}%` }} />
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <div className="w-12 text-xs text-right text-indigo-600">{m.out}</div>
+                        <div className="w-12 text-xs text-right text-primary">{m.out}</div>
                         <div className="flex-1 bg-muted rounded-full h-3 overflow-hidden">
-                          <div className="h-full bg-indigo-400 rounded-full" style={{ width: `${(m.out / maxVal) * 100}%` }} />
+                          <div className="h-full bg-primary rounded-full" style={{ width: `${(m.out / maxVal) * 100}%` }} />
                         </div>
                       </div>
                     </div>
@@ -252,7 +252,7 @@ export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyE
                     label={item.name}
                     count={item.count}
                     total={dashboard.stockTurnover.currentStock}
-                    color="bg-pink-400"
+                    color="bg-primary/60"
                   />
                 ))}
                 {dashboard.byColor.length === 0 && <div className="text-sm text-muted-foreground text-center py-2">-</div>}
@@ -269,7 +269,7 @@ export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyE
                     label={item.name}
                     count={item.count}
                     total={dashboard.stockTurnover.currentStock}
-                    color="bg-teal-400"
+                    color="bg-success/60"
                   />
                 ))}
                 {dashboard.byStorage.length === 0 && <div className="text-sm text-muted-foreground text-center py-2">-</div>}
@@ -285,24 +285,24 @@ export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyE
                 <StatCard
                   label="มูลค่าทุนรวม"
                   value={`${dashboard.marginOverview.totalCost.toLocaleString()} ฿`}
-                  accent="border-l-gray-400"
+                  accent="border-l-muted-foreground"
                 />
                 <StatCard
                   label="มูลค่าขายรวม"
                   value={`${dashboard.marginOverview.totalSell.toLocaleString()} ฿`}
-                  accent="border-l-primary-500"
+                  accent="border-l-primary"
                 />
                 <StatCard
                   label="กำไรรวม (ถ้าขายหมด)"
                   value={`${dashboard.marginOverview.totalMargin.toLocaleString()} ฿`}
                   sub={`Margin ${dashboard.marginOverview.avgMarginPct}%`}
-                  accent="border-l-green-500"
+                  accent="border-l-success"
                 />
                 <StatCard
                   label="กำไรเฉลี่ย/ชิ้น"
                   value={`${dashboard.marginOverview.avgMarginPerUnit.toLocaleString()} ฿`}
                   sub={`จาก ${dashboard.marginOverview.itemsWithPrice} ชิ้นที่มีราคาขาย`}
-                  accent="border-l-indigo-500"
+                  accent="border-l-primary"
                 />
               </div>
             </div>
@@ -326,7 +326,7 @@ export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyE
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-medium text-foreground truncate">{item.name}</div>
                       </div>
-                      <span className="text-sm font-bold text-indigo-600">{item.count} ชิ้น</span>
+                      <span className="text-sm font-bold text-primary">{item.count} ชิ้น</span>
                     </div>
                   ))}
                 </div>
@@ -351,7 +351,7 @@ export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyE
                         <div className="text-sm font-medium text-foreground truncate">{item.name}</div>
                         {isManager && <div className="text-xs text-muted-foreground">{(Number(item.costPrice) || 0).toLocaleString()} ฿</div>}
                       </div>
-                      <span className={`text-sm font-bold ${item.days > 90 ? 'text-destructive' : item.days > 60 ? 'text-warning' : 'text-yellow-600'}`}>
+                      <span className={`text-sm font-bold ${item.days > 90 ? 'text-destructive' : item.days > 60 ? 'text-warning' : 'text-warning'}`}>
                         {item.days} วัน
                       </span>
                     </div>
@@ -367,7 +367,7 @@ export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyE
 
       {!dashboard && (
         <div className="rounded-xl border border-border/60 p-8 text-center text-muted-foreground">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto mb-3"></div>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-3"></div>
           กำลังโหลด Dashboard...
         </div>
       )}

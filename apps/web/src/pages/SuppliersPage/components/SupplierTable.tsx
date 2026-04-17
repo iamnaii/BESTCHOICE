@@ -186,7 +186,7 @@ export default function SupplierTable({
               onToggleActive(s);
             }}
             className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-              s.isActive ? 'bg-green-500' : 'bg-border'
+              s.isActive ? 'bg-success' : 'bg-border'
             }`}
           >
             <span

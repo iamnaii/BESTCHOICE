@@ -65,8 +65,8 @@ export default function ResetPasswordPage() {
 
       <div className="bg-card rounded-xl shadow-card border border-border/60 p-6">
         <div className="flex items-center gap-3 mb-6">
-          <div className="size-10 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-400 flex items-center justify-center shadow-lg shadow-emerald-500/20">
-            <span className="text-white text-lg font-bold">B</span>
+          <div className="size-10 rounded-lg bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg shadow-primary/20">
+            <span className="text-primary-foreground text-lg font-bold">B</span>
           </div>
           <div>
             <div className="text-lg font-bold text-foreground">BESTCHOICE</div>

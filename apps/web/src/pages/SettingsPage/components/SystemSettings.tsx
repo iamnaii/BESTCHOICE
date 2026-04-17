@@ -53,7 +53,7 @@ function CardReaderSetup() {
       green: 'bg-success/5 dark:bg-success/10 border-success/20',
       yellow: 'bg-warning/5 dark:bg-warning/10 border-warning/20',
       red: 'bg-destructive/5 dark:bg-destructive/10 border-destructive/20',
-      blue: 'bg-primary-50 border-primary-200',
+      blue: 'bg-primary/10 border-primary/20',
       gray: 'bg-muted border-border',
     }[statusInfo.color] || 'bg-muted border-border';
 
@@ -62,7 +62,7 @@ function CardReaderSetup() {
       green: 'text-success',
       yellow: 'text-warning',
       red: 'text-destructive',
-      blue: 'text-primary-700',
+      blue: 'text-primary',
       gray: 'text-muted-foreground',
     }[statusInfo.color] || 'text-muted-foreground';
 
@@ -170,15 +170,15 @@ function ExternalLinks() {
         </div>
         <button
           onClick={() => navigate('/settings/line-oa')}
-          className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 whitespace-nowrap"
+          className="px-4 py-2 text-sm bg-success text-success-foreground rounded-lg hover:bg-success/90 whitespace-nowrap"
         >
           ตั้งค่า LINE OA
         </button>
       </div>
 
-      <div className="bg-primary-50 border border-primary-200 rounded-xl p-4 flex items-center justify-between">
+      <div className="bg-primary/10 border border-primary/20 rounded-xl p-4 flex items-center justify-between">
         <div>
-          <div className="text-sm font-medium text-primary-800">ตั้งค่าอัตราดอกเบี้ยตามประเภทสินค้า</div>
+          <div className="text-sm font-medium text-primary">ตั้งค่าอัตราดอกเบี้ยตามประเภทสินค้า</div>
           <div className="text-xs text-primary mt-0.5">
             ตั้งค่าดอกเบี้ย เงินดาวน์ขั้นต่ำ จำนวนงวด แยกตามประเภทสินค้า (มือ1, มือ2, แท็บเล็ต ฯลฯ)
           </div>

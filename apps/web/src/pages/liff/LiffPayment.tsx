@@ -353,7 +353,7 @@ export default function LiffPayment() {
             <p className="text-muted-foreground text-sm mb-3">
               ระบบไม่สามารถดำเนินการชำระเงินได้
             </p>
-            <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-3 text-left text-xs text-amber-800 dark:text-amber-200 mb-4 space-y-1">
+            <div className="bg-warning/10 border border-warning/20 rounded-lg p-3 text-left text-xs text-warning mb-4 space-y-1">
               <p className="font-semibold">สาเหตุที่เป็นไปได้:</p>
               <p>- ยอดเงินในบัญชีไม่เพียงพอ</p>
               <p>- QR Code หมดอายุ (ใช้ได้ 30 นาที)</p>
@@ -489,7 +489,7 @@ export default function LiffPayment() {
                 <span>กำลังตรวจสอบสถานะอัตโนมัติ...</span>
               </div>
             ) : (
-              <div className="mt-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-3 text-sm text-amber-800 dark:text-amber-200">
+              <div className="mt-4 bg-warning/10 border border-warning/20 rounded-lg p-3 text-sm text-warning">
                 <p className="font-medium mb-1">หมดเวลาตรวจสอบอัตโนมัติ</p>
                 <p className="text-xs mb-2">
                   หากชำระเงินแล้ว ระบบจะยืนยันให้ภายใน 5 นาทีผ่าน LINE
@@ -554,7 +554,7 @@ export default function LiffPayment() {
           {expirySeconds !== null && expirySeconds > 0 && (
             <div className="text-right">
               <p className="text-[10px] opacity-70">หมดอายุใน</p>
-              <p className={`text-sm font-mono font-bold ${expirySeconds < 300 ? 'text-amber-200' : ''}`}>
+              <p className={`text-sm font-mono font-bold ${expirySeconds < 300 ? 'text-warning-foreground' : ''}`}>
                 {Math.floor(expirySeconds / 60).toString().padStart(2, '0')}:
                 {(expirySeconds % 60).toString().padStart(2, '0')}
               </p>
@@ -661,7 +661,7 @@ export default function LiffPayment() {
               <div className="py-2">
                 {/* Expiry warning */}
                 {expirySeconds !== null && expirySeconds > 0 && expirySeconds < 300 && (
-                  <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-2 mb-3 text-center text-xs text-amber-800 dark:text-amber-200">
+                  <div className="bg-warning/10 border border-warning/20 rounded-lg p-2 mb-3 text-center text-xs text-warning">
                     QR หมดอายุใน {Math.floor(expirySeconds / 60)}:{(expirySeconds % 60).toString().padStart(2, '0')} นาที
                   </div>
                 )}

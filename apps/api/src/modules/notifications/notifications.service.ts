@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, InternalServerErrorException, Logger } from '@nestjs/common';
 import { formatDateShort, formatDateTime } from '../../utils/thai-date.util';
+import { maskPhone } from '../../utils/mask.util';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SendNotificationDto, CreateNotificationTemplateDto, UpdateNotificationTemplateDto } from './dto/create-notification.dto';
@@ -205,7 +206,7 @@ export class NotificationsService {
   private async sendSms(recipient: string, message: string): Promise<string | undefined> {
     // In non-production, skip actual SMS sending
     if (this.configService.get('NODE_ENV') !== 'production') {
-      this.logger.warn(`[SMS-DEV] Skipping real SMS. Message to ${recipient}: ${message}`);
+      this.logger.warn(`[SMS-DEV] Skipping real SMS to ${maskPhone(recipient)} (${message.length} chars)`);
       return undefined;
     }
 
@@ -342,7 +343,8 @@ export class NotificationsService {
     const messageId = (body.message_id || body.messageId || body.id) as string | undefined;
     const dlrStatus = (body.status || body.delivery_status) as string | undefined;
 
-    this.logger.log(`[SMS-DLR] Received: message_id=${messageId}, status=${dlrStatus}, body=${JSON.stringify(body).substring(0, 500)}`);
+    const safeFields = { message_id: messageId, status: dlrStatus };
+    this.logger.log(`[SMS-DLR] Received: ${JSON.stringify(safeFields)}`);
 
     if (!messageId) {
       this.logger.warn('[SMS-DLR] No message_id in delivery report');

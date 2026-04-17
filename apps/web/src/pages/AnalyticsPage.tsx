@@ -219,13 +219,13 @@ function RevenueForecastChart({ data }: { data: ForecastData }) {
       {data.forecast.length > 0 && (
         <div className="grid grid-cols-3 gap-3">
           {data.forecast.map((f) => (
-            <div key={f.month} className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-center">
-              <p className="text-xs text-amber-600 font-medium">{f.month}</p>
-              <p className="text-lg font-bold text-foreground/90 mt-1">฿{formatBaht(f.amount)}</p>
+            <div key={f.month} className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-center">
+              <p className="text-xs text-warning font-medium">{f.month}</p>
+              <p className="text-lg font-semibold text-foreground/90 mt-1">฿{formatBaht(f.amount)}</p>
               <p className="text-xs text-muted-foreground mt-0.5">
                 {formatBaht(f.lower)} – {formatBaht(f.upper)}
               </p>
-              <p className="text-xs text-amber-500">{f.confidence}% confidence</p>
+              <p className="text-xs text-warning/80">{f.confidence}% confidence</p>
             </div>
           ))}
         </div>

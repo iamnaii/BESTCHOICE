@@ -423,7 +423,7 @@ export default function RepossessionsPage() {
                   <select
                     value={createForm.contractId}
                     onChange={(e) => setCreateForm({ ...createForm, contractId: e.target.value })}
-                    className="w-full h-10 px-3 rounded-lg border border-border bg-card text-sm transition-colors hover:border-sky-300 focus:border-sky-500 focus:outline-hidden focus:ring-2 focus:ring-sky-500/20"
+                    className="w-full h-10 px-3 rounded-lg border border-border bg-card text-sm transition-colors hover:border-info/30 focus:border-info focus:outline-hidden focus:ring-2 focus:ring-info/20"
                     required
                   >
                     <option value="">-- เลือกสัญญา --</option>
@@ -477,20 +477,20 @@ export default function RepossessionsPage() {
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-medium text-foreground mb-1.5">วันที่ยึดคืน <span className="text-rose-500">*</span></label>
+                      <label className="block text-xs font-medium text-foreground mb-1.5">วันที่ยึดคืน <span className="text-destructive">*</span></label>
                       <ThaiDateInput
                         value={createForm.repossessedDate}
                         onChange={(e) => setCreateForm({ ...createForm, repossessedDate: e.target.value })}
-                        className="w-full h-10 px-3 rounded-lg border border-border bg-card text-sm transition-colors hover:border-orange-300 focus:border-orange-500 focus:outline-hidden focus:ring-2 focus:ring-orange-500/20"
+                        className="w-full h-10 px-3 rounded-lg border border-border bg-card text-sm transition-colors hover:border-warning/30 focus:border-warning focus:outline-hidden focus:ring-2 focus:ring-warning/20"
                         required
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-foreground mb-1.5">สภาพเครื่อง <span className="text-rose-500">*</span></label>
+                      <label className="block text-xs font-medium text-foreground mb-1.5">สภาพเครื่อง <span className="text-destructive">*</span></label>
                       <select
                         value={createForm.conditionGrade}
                         onChange={(e) => setCreateForm({ ...createForm, conditionGrade: e.target.value })}
-                        className="w-full h-10 px-3 rounded-lg border border-border bg-card text-sm transition-colors hover:border-orange-300 focus:border-orange-500 focus:outline-hidden focus:ring-2 focus:ring-orange-500/20"
+                        className="w-full h-10 px-3 rounded-lg border border-border bg-card text-sm transition-colors hover:border-warning/30 focus:border-warning focus:outline-hidden focus:ring-2 focus:ring-warning/20"
                       >
                         <option value="A">A - ดีมาก</option>
                         <option value="B">B - ดี</option>
@@ -499,12 +499,12 @@ export default function RepossessionsPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-foreground mb-1.5">ราคาตี (บาท) <span className="text-rose-500">*</span></label>
+                      <label className="block text-xs font-medium text-foreground mb-1.5">ราคาตี (บาท) <span className="text-destructive">*</span></label>
                       <input
                         type="number"
                         value={createForm.appraisalPrice}
                         onChange={(e) => setCreateForm({ ...createForm, appraisalPrice: e.target.value })}
-                        className="w-full h-10 px-3 rounded-lg border border-border bg-card text-sm transition-colors hover:border-orange-300 focus:border-orange-500 focus:outline-hidden focus:ring-2 focus:ring-orange-500/20"
+                        className="w-full h-10 px-3 rounded-lg border border-border bg-card text-sm transition-colors hover:border-warning/30 focus:border-warning focus:outline-hidden focus:ring-2 focus:ring-warning/20"
                         placeholder="0"
                         required
                       />
@@ -515,7 +515,7 @@ export default function RepossessionsPage() {
                         type="number"
                         value={createForm.repairCost}
                         onChange={(e) => setCreateForm({ ...createForm, repairCost: e.target.value })}
-                        className="w-full h-10 px-3 rounded-lg border border-border bg-card text-sm transition-colors hover:border-orange-300 focus:border-orange-500 focus:outline-hidden focus:ring-2 focus:ring-orange-500/20"
+                        className="w-full h-10 px-3 rounded-lg border border-border bg-card text-sm transition-colors hover:border-warning/30 focus:border-warning focus:outline-hidden focus:ring-2 focus:ring-warning/20"
                         placeholder="0"
                       />
                     </div>
@@ -543,7 +543,7 @@ export default function RepossessionsPage() {
                           type="number"
                           value={createForm.marketValue}
                           onChange={(e) => setCreateForm({ ...createForm, marketValue: e.target.value })}
-                          className="w-full h-10 px-3 rounded-lg border border-border bg-card text-sm transition-colors hover:border-teal-300 focus:border-teal-500 focus:outline-hidden focus:ring-2 focus:ring-teal-500/20"
+                          className="w-full h-10 px-3 rounded-lg border border-border bg-card text-sm transition-colors hover:border-success/30 focus:border-success focus:outline-hidden focus:ring-2 focus:ring-success/20"
                           placeholder={String(previewData.calculation.marketValue || 0)}
                         />
                       </div>
@@ -553,7 +553,7 @@ export default function RepossessionsPage() {
                           type="number"
                           value={createForm.discountPct}
                           onChange={(e) => setCreateForm({ ...createForm, discountPct: e.target.value })}
-                          className="w-full h-10 px-3 rounded-lg border border-border bg-card text-sm transition-colors hover:border-teal-300 focus:border-teal-500 focus:outline-hidden focus:ring-2 focus:ring-teal-500/20"
+                          className="w-full h-10 px-3 rounded-lg border border-border bg-card text-sm transition-colors hover:border-success/30 focus:border-success focus:outline-hidden focus:ring-2 focus:ring-success/20"
                           placeholder="50"
                         />
                       </div>
@@ -565,7 +565,7 @@ export default function RepossessionsPage() {
                         type="checkbox"
                         checked={createForm.customerRefundEnabled}
                         onChange={(e) => setCreateForm({ ...createForm, customerRefundEnabled: e.target.checked })}
-                        className="rounded border-border text-teal-600 focus:ring-2 focus:ring-teal-500/20"
+                        className="rounded border-border text-success focus:ring-2 focus:ring-success/20"
                       />
                       <span className="text-sm font-medium text-foreground">คืนเงินส่วนต่างให้ลูกค้า</span>
                       <span className="text-xs text-muted-foreground ml-auto">(กรณีราคากลาง &gt; ยอดปิด)</span>

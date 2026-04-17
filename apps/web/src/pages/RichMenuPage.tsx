@@ -751,14 +751,14 @@ export default function RichMenuPage() {
                 <div
                   key={menu.richMenuId}
                   className={`rounded-xl border shadow-sm hover:shadow-md transition-shadow bg-card overflow-hidden ${
-                    isDefault ? 'border-green-300' : 'border-border/50'
+                    isDefault ? 'border-success/30' : 'border-border/50'
                   }`}
                 >
-                  <div className={`px-5 py-3 ${isDefault ? 'bg-green-50' : 'bg-muted/20'}`}>
+                  <div className={`px-5 py-3 ${isDefault ? 'bg-success/10' : 'bg-muted/20'}`}>
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-3 min-w-0">
                         {isDefault && (
-                          <Star size={16} className="text-green-600 shrink-0" fill="currentColor" />
+                          <Star size={16} className="text-success shrink-0" fill="currentColor" />
                         )}
                         <div className="min-w-0">
                           <p className="text-sm font-semibold text-foreground truncate">{menu.name}</p>
@@ -767,7 +767,7 @@ export default function RichMenuPage() {
                           </p>
                         </div>
                         {isDefault && (
-                          <Badge className="bg-green-100 text-green-700 hover:bg-green-100 border-green-200 shrink-0">
+                          <Badge className="bg-success/10 text-success hover:bg-success/10 border-success/30 shrink-0">
                             Default
                           </Badge>
                         )}

@@ -694,7 +694,7 @@ function VideoEditor({ message, onChange, uploadingIds, setUploadingIds }: Messa
           isUploading={uploadingIds.has(message.id + '-video')}
         />
         {c.videoUrl && (
-          <p className="mt-1.5 flex items-center gap-1.5 text-xs text-green-600">
+          <p className="mt-1.5 flex items-center gap-1.5 text-xs text-success">
             <CheckCircle2 className="size-3.5" />
             <span className="truncate">{c.videoUrl}</span>
           </p>
@@ -762,7 +762,7 @@ function FlexEditor({ message, onChange }: MessageEditorProps) {
                     'rounded-full border-2 px-4 py-1.5 text-sm font-medium transition-all duration-200',
                     c.templateKey === key
                       ? 'border-primary bg-primary/5 text-primary shadow-sm'
-                      : 'border-border text-foreground/70 hover:border-blue-300 hover:text-blue-600',
+                      : 'border-border text-foreground/70 hover:border-primary/60 hover:text-primary',
                   )}
                 >
                   {t.name}
@@ -776,7 +776,7 @@ function FlexEditor({ message, onChange }: MessageEditorProps) {
               <div key={fieldName}>
                 <label className="mb-1.5 block text-sm font-medium text-foreground/80">
                   {fieldName}
-                  {fieldName === tpl.fields[0] && <span className="text-red-500 ml-0.5">*</span>}
+                  {fieldName === tpl.fields[0] && <span className="text-destructive ml-0.5">*</span>}
                 </label>
                 <Input
                   placeholder={fieldName}
@@ -805,9 +805,9 @@ function FlexEditor({ message, onChange }: MessageEditorProps) {
             <div className="rounded-xl overflow-hidden border border-border shadow-sm">
               <div className="bg-[#161b22] px-3 py-2 flex items-center gap-2 border-b border-border">
                 <div className="flex gap-1.5">
-                  <div className="size-2.5 rounded-full bg-red-500" />
-                  <div className="size-2.5 rounded-full bg-yellow-500" />
-                  <div className="size-2.5 rounded-full bg-green-500" />
+                  <div className="size-2.5 rounded-full bg-destructive" />
+                  <div className="size-2.5 rounded-full bg-warning" />
+                  <div className="size-2.5 rounded-full bg-success" />
                 </div>
                 <span className="text-xs text-muted-foreground ml-1">flex.json</span>
               </div>
@@ -828,12 +828,12 @@ function FlexEditor({ message, onChange }: MessageEditorProps) {
               />
             </div>
             {c.jsonValid ? (
-              <span className="flex items-center gap-1.5 text-xs text-green-600">
+              <span className="flex items-center gap-1.5 text-xs text-success">
                 <CheckCircle2 className="size-3.5" />
                 JSON ถูกต้อง
               </span>
             ) : (
-              <span className="flex items-center gap-1.5 text-xs text-red-600">
+              <span className="flex items-center gap-1.5 text-xs text-destructive">
                 <X className="size-3.5" />
                 JSON ไม่ถูกต้อง
               </span>
@@ -949,11 +949,11 @@ function MessageCard({
 
   return (
     <Card className="relative shadow-sm hover:shadow-md transition-shadow duration-200 ring-1 ring-primary/10">
-      <CardHeader className="pb-3 bg-muted/50 rounded-t-xl border-b border-blue-100/50">
+      <CardHeader className="pb-3 bg-muted/50 rounded-t-xl border-b border-border">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <GripVertical className="size-4 text-muted-foreground" />
-            <div className="flex size-6 items-center justify-center rounded-full bg-blue-500 text-white text-xs font-semibold shadow-sm">
+            <div className="flex size-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-semibold shadow-sm">
               {index + 1}
             </div>
             <CardTitle className="text-sm font-semibold text-foreground/80">ข้อความที่ {index + 1}</CardTitle>
@@ -962,7 +962,7 @@ function MessageCard({
             <button
               type="button"
               onClick={onDelete}
-              className="flex items-center gap-1 rounded-full px-3 py-1 text-xs text-red-500 hover:bg-red-50 transition-all duration-200"
+              className="flex items-center gap-1 rounded-full px-3 py-1 text-xs text-destructive hover:bg-destructive/10 transition-all duration-200"
             >
               <Trash2 className="size-3.5" />
               ลบ
@@ -981,8 +981,8 @@ function MessageCard({
               className={cn(
                 'flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-all duration-200',
                 message.type === btn.type
-                  ? 'border-blue-500 bg-blue-500 text-white shadow-sm'
-                  : 'border-border text-muted-foreground hover:border-blue-300 hover:text-blue-600 bg-card',
+                  ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+                  : 'border-border text-muted-foreground hover:border-primary/60 hover:text-primary bg-card',
               )}
             >
               {btn.icon}
@@ -1257,7 +1257,7 @@ export default function BroadcastPage() {
           {messages.length < 5 && (
             <Button
               variant="outline"
-              className="w-full border-dashed border-2 gap-2 h-12 text-muted-foreground hover:text-blue-600 hover:border-blue-400 hover:bg-blue-50/50 transition-all duration-200"
+              className="w-full border-dashed border-2 gap-2 h-12 text-muted-foreground hover:text-primary hover:border-primary/60 hover:bg-primary/5 transition-all duration-200"
               onClick={addMessage}
             >
               <Plus className="size-4" />
@@ -1292,7 +1292,7 @@ export default function BroadcastPage() {
                   'flex cursor-pointer items-start gap-3 rounded-xl border-2 p-4 transition-all duration-200',
                   isSelected
                     ? 'border-primary bg-primary/5 shadow-md ring-2 ring-primary/20'
-                    : 'border-border bg-card hover:border-blue-400 hover:shadow-md',
+                    : 'border-border bg-card hover:border-primary/60 hover:shadow-md',
                 )}
               >
                 <input
@@ -1301,7 +1301,7 @@ export default function BroadcastPage() {
                   value={a.key}
                   checked={isSelected}
                   onChange={() => setAudience(a.key)}
-                  className="mt-0.5 accent-blue-600"
+                  className="mt-0.5 accent-primary"
                 />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5 mb-0.5">
@@ -1309,7 +1309,7 @@ export default function BroadcastPage() {
                     <span className="text-sm font-semibold text-foreground/90 truncate">{a.label}</span>
                   </div>
                   <div className="text-xs text-muted-foreground mb-1.5">{a.description}</div>
-                  <div className={cn('text-2xl font-bold tabular-nums', isSelected ? 'text-blue-600' : 'text-foreground/80')}>
+                  <div className={cn('text-2xl font-bold tabular-nums', isSelected ? 'text-primary' : 'text-foreground/80')}>
                     {count !== undefined ? count.toLocaleString() : (
                       <span className="text-base font-normal text-muted-foreground">กำลังโหลด...</span>
                     )}
@@ -1344,8 +1344,8 @@ export default function BroadcastPage() {
                 className={cn(
                   'flex cursor-pointer items-start gap-3 rounded-xl border-2 px-4 py-3 flex-1 transition-all duration-200',
                   scheduleType === s.value
-                    ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm'
-                    : 'border-border text-foreground/70 hover:border-blue-300 bg-card',
+                    ? 'border-primary bg-primary/10 text-primary shadow-sm'
+                    : 'border-border text-foreground/70 hover:border-primary/60 bg-card',
                 )}
               >
                 <input
@@ -1358,7 +1358,7 @@ export default function BroadcastPage() {
                 />
                 <div className={cn(
                   'mt-0.5 shrink-0',
-                  scheduleType === s.value ? 'text-blue-600' : 'text-muted-foreground',
+                  scheduleType === s.value ? 'text-primary' : 'text-muted-foreground',
                 )}>
                   {s.icon}
                 </div>
@@ -1531,7 +1531,7 @@ export default function BroadcastPage() {
           return (
             <Card
               key={item.id}
-              className="hover:shadow-md transition-all duration-200 hover:border-blue-200"
+              className="hover:shadow-md transition-all duration-200 hover:border-primary/30"
             >
               <CardContent className="p-4">
                 <div className="flex items-start justify-between gap-4">
@@ -1567,7 +1567,7 @@ export default function BroadcastPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="shrink-0 gap-1.5 text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors"
+                      className="shrink-0 gap-1.5 text-destructive hover:bg-destructive/10 hover:text-destructive transition-colors"
                       onClick={() => setCancelId(item.id)}
                     >
                       <Ban className="size-3.5" />

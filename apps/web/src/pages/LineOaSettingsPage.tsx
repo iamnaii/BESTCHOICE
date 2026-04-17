@@ -221,8 +221,8 @@ export default function LineOaSettingsPage() {
 
           <div className="rounded-xl border border-border/50 bg-card shadow-sm p-5 ml-4 border-l-4 border-l-primary">
             <div className="bg-info/10 border border-info/20 rounded-lg p-4 mb-5">
-              <p className="text-sm text-blue-800 font-medium mb-2">วิธีหา Token:</p>
-              <ol className="text-sm text-blue-700 space-y-1.5 list-decimal list-inside">
+              <p className="text-sm text-info font-medium mb-2">วิธีหา Token:</p>
+              <ol className="text-sm text-info space-y-1.5 list-decimal list-inside">
                 <li>เปิด <a href="https://developers.line.biz/" target="_blank" rel="noopener noreferrer" className="underline font-medium">developers.line.biz</a> แล้วล็อกอิน</li>
                 <li>กดสร้าง <strong>Provider</strong> ใหม่ (ตั้งชื่อบริษัท)</li>
                 <li>กด <strong>Create a Messaging API channel</strong></li>
@@ -283,7 +283,7 @@ export default function LineOaSettingsPage() {
         <div className="mb-6">
           <div className="flex items-center gap-3 mb-4">
             <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
-              hasToken && hasSecret ? 'bg-blue-500 text-white' : 'bg-muted text-muted-foreground'
+              hasToken && hasSecret ? 'bg-info text-info-foreground' : 'bg-muted text-muted-foreground'
             }`}>
               2
             </div>
@@ -296,7 +296,7 @@ export default function LineOaSettingsPage() {
           <div className="rounded-xl border border-border/50 bg-card shadow-sm p-5 ml-4 border-l-4 border-l-success">
             <div className="bg-success/5 dark:bg-success/10 border border-success/20 rounded-lg p-4 mb-4">
               <p className="text-sm text-success font-medium mb-2">คัดลอก URL ด้านล่าง แล้วไปวางใน LINE Developers Console:</p>
-              <ol className="text-sm text-green-700 space-y-1 list-decimal list-inside">
+              <ol className="text-sm text-success space-y-1 list-decimal list-inside">
                 <li>เปิด LINE Developers Console &rarr; เลือก Channel ของคุณ</li>
                 <li>ไปที่ tab <strong>"Messaging API"</strong></li>
                 <li>หา <strong>"Webhook URL"</strong> &rarr; กด Edit &rarr; วาง URL ด้านล่าง</li>
@@ -339,13 +339,13 @@ export default function LineOaSettingsPage() {
           <div className="rounded-xl border border-border/50 bg-card shadow-sm p-5 ml-4 border-l-4 border-l-warning">
             <div className="bg-warning/5 dark:bg-warning/10 border border-warning/20 rounded-lg p-4 mb-4">
               <p className="text-sm text-warning font-medium mb-2">วิธีสร้าง LIFF App:</p>
-              <ol className="text-sm text-orange-700 space-y-1.5 list-decimal list-inside">
+              <ol className="text-sm text-warning space-y-1.5 list-decimal list-inside">
                 <li>เปิด LINE Developers Console &rarr; เลือก Channel</li>
                 <li>ไปที่ tab <strong>"LIFF"</strong> &rarr; กด <strong>"Add"</strong></li>
                 <li>ตั้งค่า:
                   <ul className="ml-5 mt-1 space-y-0.5 list-disc">
                     <li><strong>Size</strong>: Full</li>
-                    <li><strong>Endpoint URL</strong>: <code className="bg-orange-100 px-1 rounded">{`${window.location.origin}/liff/register`}</code></li>
+                    <li><strong>Endpoint URL</strong>: <code className="bg-warning/20 px-1 rounded">{`${window.location.origin}/liff/register`}</code></li>
                     <li><strong>Scope</strong>: เลือก <strong>profile</strong> และ <strong>openid</strong></li>
                     <li><strong>Bot link feature</strong>: Aggressive</li>
                   </ul>
@@ -434,7 +434,7 @@ export default function LineOaSettingsPage() {
               <div className="text-sm text-muted-foreground mt-1">สลิปรอตรวจสอบ</div>
             </div>
             <div className="rounded-xl border border-border/50 bg-card shadow-sm p-5 text-center">
-              <div className="text-3xl font-bold text-blue-500">{stats.todayNotifications}</div>
+              <div className="text-3xl font-bold text-info">{stats.todayNotifications}</div>
               <div className="text-sm text-muted-foreground mt-1">ข้อความวันนี้</div>
             </div>
           </div>
@@ -445,7 +445,7 @@ export default function LineOaSettingsPage() {
       {data?.isConfigured && (
         <div className="mt-10 mb-6">
           <h3 className="font-semibold text-foreground mb-4 ml-4">ทดสอบส่งข้อความ</h3>
-          <div className="rounded-xl border border-border/50 bg-card shadow-sm p-5 ml-4 border-l-4 border-l-yellow-400">
+          <div className="rounded-xl border border-border/50 bg-card shadow-sm p-5 ml-4 border-l-4 border-l-warning">
             <p className="text-sm text-muted-foreground mb-4">
               ส่งตัวอย่าง Flex Message ให้ตัวเองดูก่อน เพื่อตรวจสอบว่าข้อความแสดงผลถูกต้อง
             </p>
@@ -469,14 +469,14 @@ export default function LineOaSettingsPage() {
                       queryClient.invalidateQueries({ queryKey: ['line-oa-settings'] });
                       toast.success('โหลดข้อมูลใหม่แล้ว');
                     }}
-                    className="px-4 py-2.5 bg-blue-100 text-blue-700 text-sm rounded-lg hover:bg-blue-200 shrink-0 font-medium"
+                    className="px-4 py-2.5 bg-info/10 text-info text-sm rounded-lg hover:bg-info/20 shrink-0 font-medium"
                   >
                     ดึง User ID
                   </button>
                 </div>
                 <div className="mt-2 p-3 bg-warning/5 dark:bg-warning/10 border border-warning/20 rounded-lg">
-                  <p className="text-sm text-yellow-800 font-medium mb-1">วิธีง่ายที่สุด:</p>
-                  <ol className="text-xs text-yellow-700 space-y-1 list-decimal list-inside">
+                  <p className="text-sm text-warning font-medium mb-1">วิธีง่ายที่สุด:</p>
+                  <ol className="text-xs text-warning space-y-1 list-decimal list-inside">
                     <li>เพิ่ม Bot เป็นเพื่อนในไลน์</li>
                     <li>พิมพ์ <strong>#owner</strong> ส่งไปในแชท Bot</li>
                     <li>กลับมากดปุ่ม <strong>"ดึง User ID"</strong> ด้านบน</li>

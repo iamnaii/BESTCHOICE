@@ -142,6 +142,8 @@ export default function ContractDetailPage() {
     queryClient.invalidateQueries({ queryKey: ['contract', id] });
     queryClient.invalidateQueries({ queryKey: ['contract-preview', id] });
     queryClient.invalidateQueries({ queryKey: ['contract-payoff', id] });
+    queryClient.invalidateQueries({ queryKey: ['contract-edocuments', id] });
+    queryClient.invalidateQueries({ queryKey: ['contract-doc-checklist', id] });
     queryClient.invalidateQueries({ queryKey: ['contracts'] });
   };
 
@@ -369,11 +371,14 @@ const deleteMutation = useMutation({
           { text: '' },
           { text: 'อัปโหลดเอกสารที่จำเป็น', action: () => setActiveTab('documents'), actionLabel: 'ไปแนบเอกสาร' },
           { text: 'ให้ลูกค้ายินยอม PDPA และลงนามสัญญา', action: () => navigate(`/contracts/${id}/sign`), actionLabel: 'ไปลงนาม' },
-          {
-            text: isCreator && allSigned ? 'ลงนามครบแล้ว พร้อมส่งตรวจสอบ' : !allSigned ? 'ลงนามให้ครบก่อนส่งตรวจสอบ' : 'รอผู้จัดการตรวจสอบสัญญา',
-            action: isCreator && allSigned ? () => setShowSubmitConfirm(true) : undefined,
-            actionLabel: isCreator && allSigned ? 'ส่งตรวจสอบ' : undefined,
-          },
+          (() => {
+            const canSubmit = isCreator && allSigned && (contract.workflowStatus === 'CREATING' || contract.workflowStatus === 'REJECTED');
+            return {
+              text: canSubmit ? 'ลงนามครบแล้ว พร้อมส่งตรวจสอบ' : !allSigned ? 'ลงนามให้ครบก่อนส่งตรวจสอบ' : 'รอผู้จัดการตรวจสอบสัญญา',
+              action: canSubmit ? () => setShowSubmitConfirm(true) : undefined,
+              actionLabel: canSubmit ? 'ส่งตรวจสอบ' : undefined,
+            };
+          })(),
           {
             text: allSigned ? 'สัญญาอนุมัติแล้ว พร้อมเปิดใช้งาน' : 'ต้องลงนามครบก่อนเปิดใช้งาน',
             action: allSigned ? () => activateMutation.mutate() : undefined,

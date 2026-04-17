@@ -18,7 +18,14 @@ interface LineFlexMessage {
   quickReply?: LineQuickReply;
 }
 
-type LineMessage = LineTextMessage | LineFlexMessage;
+interface LineStickerMessage {
+  type: 'sticker';
+  packageId: string;
+  stickerId: string;
+  quickReply?: LineQuickReply;
+}
+
+type LineMessage = LineTextMessage | LineFlexMessage | LineStickerMessage;
 
 export interface LineQuickReplyItem {
   type: 'action';
@@ -53,6 +60,10 @@ export class LineFinanceClientService {
 
   async pushText(to: string, text: string): Promise<void> {
     return this.pushMessage(to, [{ type: 'text', text }]);
+  }
+
+  async pushSticker(to: string, packageId: string, stickerId: string): Promise<void> {
+    return this.pushMessage(to, [{ type: 'sticker', packageId, stickerId }]);
   }
 
   async pushMessage(to: string, messages: LineMessage[]): Promise<void> {

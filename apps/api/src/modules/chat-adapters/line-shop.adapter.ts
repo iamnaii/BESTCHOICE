@@ -6,7 +6,9 @@ import {
   SendResult,
   UserProfile,
 } from '../chat-engine/interfaces/channel-adapter.interface';
+import { parseStickerToken } from '../chat-engine/utils/sticker-token.util';
 import { LineOaService } from '../line-oa/line-oa.service';
+import type { LineMessagePayload } from '../line-oa/dto/webhook-event.dto';
 
 /**
  * LINE Shop adapter — wraps LineOaService (Shop OA)
@@ -21,11 +23,14 @@ export class LineShopAdapter implements IChannelAdapter {
 
   async sendMessage(message: OutboundMessage): Promise<SendResult> {
     try {
-      if (message.text) {
-        await this.lineOaService.pushMessage(message.externalUserId, [
-          { type: 'text', text: message.text },
-        ]);
-      }
+      if (!message.text) return { success: true };
+
+      const sticker = parseStickerToken(message.text);
+      const payload: LineMessagePayload = sticker
+        ? { type: 'sticker', packageId: sticker.packageId, stickerId: sticker.stickerId }
+        : { type: 'text', text: message.text };
+
+      await this.lineOaService.pushMessage(message.externalUserId, [payload]);
       return { success: true };
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);

@@ -35,6 +35,7 @@ describe('ChatbotFinanceService', () => {
     };
     lineClient = {
       replyText: jest.fn().mockResolvedValue(undefined),
+      replyMessage: jest.fn().mockResolvedValue(undefined),
       getMessageContent: jest.fn().mockResolvedValue(Buffer.from('img')),
     };
     sessions = {
@@ -101,15 +102,20 @@ describe('ChatbotFinanceService', () => {
     expect(lineClient.replyText).toHaveBeenCalledWith('rt-1', 'สวัสดีค่ะ');
   });
 
-  it('sends verify prompt when not linked', async () => {
+  it('sends verify Flex prompt when not linked', async () => {
     verification.isLinked.mockResolvedValue({ linked: false });
 
     await service.handleEvent(makeTextEvent('สวัสดี'));
 
     expect(ai.generateReply).not.toHaveBeenCalled();
-    expect(lineClient.replyText).toHaveBeenCalledWith(
+    expect(lineClient.replyMessage).toHaveBeenCalledWith(
       'rt-1',
-      expect.stringContaining('ยืนยันตัวตน'),
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'flex',
+          altText: expect.stringContaining('ยืนยันตัวตน'),
+        }),
+      ]),
     );
   });
 
@@ -153,7 +159,7 @@ describe('ChatbotFinanceService', () => {
     );
   });
 
-  it('handles follow event with greeting', async () => {
+  it('handles follow event with greeting + verify Flex', async () => {
     const followEvent = {
       type: 'follow' as const,
       mode: 'active',
@@ -166,9 +172,15 @@ describe('ChatbotFinanceService', () => {
 
     await service.handleEvent(followEvent);
 
-    expect(lineClient.replyText).toHaveBeenCalledWith(
+    expect(lineClient.replyMessage).toHaveBeenCalledWith(
       'rt-3',
-      expect.stringContaining('ยินดีให้บริการ'),
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'text',
+          text: expect.stringContaining('ยินดีให้บริการ'),
+        }),
+        expect.objectContaining({ type: 'flex' }),
+      ]),
     );
   });
 

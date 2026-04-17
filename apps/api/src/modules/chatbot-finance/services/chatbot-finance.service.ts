@@ -17,6 +17,7 @@ import { SlipProcessingService } from './slip-processing.service';
 import { FeedbackService } from './feedback.service';
 import { INTENTS } from '../constants/intents';
 import { buildBrowserUrl } from '../../../utils/line-login.util';
+import { formatStickerToken } from '../../chat-engine/utils/sticker-token.util';
 
 const FALLBACK_REPLY =
   'ขออภัยค่ะ ระบบขัดข้องชั่วคราว 🙏\nรบกวนติดต่อเจ้าหน้าที่ 063-134-6356 ในเวลาทำการนะคะ';
@@ -161,6 +162,14 @@ export class ChatbotFinanceService {
     );
   }
 
+  /** Customer message → plain text for inbox storage.
+   *  Stickers become [sticker:packageId:stickerId] so MessageBubble renders the image. */
+  private inboundMessageToText(message: LineMessageEvent['message']): string {
+    if (message.type === 'text') return message.text;
+    if (message.type === 'sticker') return formatStickerToken(message.packageId, message.stickerId);
+    return `[${message.type}]`;
+  }
+
   // ─── message ─────────────────────────────────────────────
 
   private async handleMessage(event: LineMessageEvent): Promise<void> {
@@ -177,12 +186,10 @@ export class ChatbotFinanceService {
     const linkStatus = await this.verification.isLinked(userId);
     if (!linkStatus.linked) {
       // บันทึก customer message ก่อน
-      const msgText =
-        event.message.type === 'text' ? event.message.text : `[${event.message.type}]`;
       await this.sessions.saveMessage({
         roomId: session.id,
         role: MessageRole.CUSTOMER,
-        text: msgText,
+        text: this.inboundMessageToText(event.message),
       });
       await this.replyVerifyFlexAndSave(
         session.id,
@@ -202,12 +209,10 @@ export class ChatbotFinanceService {
     if (await this.handoff.isInHandoffMode(session.id)) {
       this.logger.log(`[Finance] Skip — session ${session.id} in handoff mode`);
       // ยังบันทึกข้อความเพื่อ history แต่ไม่ตอบ
-      const msgText =
-        event.message.type === 'text' ? event.message.text : `[${event.message.type}]`;
       await this.sessions.saveMessage({
         roomId: session.id,
         role: MessageRole.CUSTOMER,
-        text: msgText,
+        text: this.inboundMessageToText(event.message),
       });
       return;
     }
@@ -229,6 +234,16 @@ export class ChatbotFinanceService {
       return;
     }
 
+    // Sticker → mirror as token so inbox shows the sticker image; no bot reply needed
+    if (event.message.type === 'sticker') {
+      await this.sessions.saveMessage({
+        roomId: session.id,
+        role: MessageRole.CUSTOMER,
+        text: this.inboundMessageToText(event.message),
+      });
+      return;
+    }
+
     // Other non-text → unsupported
     if (event.message.type !== 'text') {
       const msg =
@@ -237,7 +252,7 @@ export class ChatbotFinanceService {
       await this.sessions.saveMessage({
         roomId: session.id,
         role: MessageRole.CUSTOMER,
-        text: `[${event.message.type}]`,
+        text: this.inboundMessageToText(event.message),
       });
       await this.replyAndSave(session.id, event.replyToken, msg);
       return;

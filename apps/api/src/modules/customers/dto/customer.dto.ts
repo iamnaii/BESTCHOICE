@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsArray, IsBoolean, IsDateString, IsNumber, Length, ValidateNested } from 'class-validator';
+import { IsString, IsOptional, IsArray, IsBoolean, IsDateString, IsEmail, IsNumber, Length, Matches, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateCustomerDto {
@@ -26,13 +26,15 @@ export class CreateCustomerDto {
   birthDate?: string;
 
   @IsString()
+  @Matches(/^0[0-9]{9}$/, { message: 'เบอร์โทรต้องเป็นเลข 10 หลัก ขึ้นต้นด้วย 0' })
   phone: string;
 
   @IsString()
   @IsOptional()
+  @Matches(/^0[0-9]{9}$/, { message: 'เบอร์โทรสำรองต้องเป็นเลข 10 หลัก ขึ้นต้นด้วย 0' })
   phoneSecondary?: string;
 
-  @IsString()
+  @IsEmail({}, { message: 'กรุณาระบุอีเมลให้ถูกต้อง' })
   @IsOptional()
   email?: string;
 
@@ -127,13 +129,15 @@ export class UpdateCustomerDto {
 
   @IsString()
   @IsOptional()
+  @Matches(/^0[0-9]{9}$/, { message: 'เบอร์โทรต้องเป็นเลข 10 หลัก ขึ้นต้นด้วย 0' })
   phone?: string;
 
   @IsString()
   @IsOptional()
+  @Matches(/^0[0-9]{9}$/, { message: 'เบอร์โทรสำรองต้องเป็นเลข 10 หลัก ขึ้นต้นด้วย 0' })
   phoneSecondary?: string;
 
-  @IsString()
+  @IsEmail({}, { message: 'กรุณาระบุอีเมลให้ถูกต้อง' })
   @IsOptional()
   email?: string;
 

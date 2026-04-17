@@ -64,14 +64,34 @@ export class LineStaffClientService {
   private async callApi(url: string, body: unknown): Promise<void> {
     const token = await this.getAccessToken();
     if (!token) return;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(body),
-    });
+
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(10_000),
+      });
+    } catch (err) {
+      const isTimeout = err instanceof Error && err.name === 'TimeoutError';
+      this.logger.error(
+        `[LINE Staff] fetch failed${isTimeout ? ' (timeout)' : ''}: ${err instanceof Error ? err.message : err}`,
+      );
+      Sentry.captureException(err, {
+        tags: {
+          module: 'chatbot-finance',
+          action: 'line_staff_api',
+          reason: isTimeout ? 'timeout' : 'network',
+        },
+        extra: { url },
+      });
+      throw err;
+    }
+
     if (!res.ok) {
       const errBody = await res.text();
       this.logger.error(`[LINE Staff] API error ${res.status}: ${errBody}`);

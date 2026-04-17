@@ -73,6 +73,7 @@ export class LineFinanceClientService {
     if (!token) throw new Error('LINE Finance access token not configured');
     const res = await fetch(`${this.dataApiBase}/message/${messageId}/content`, {
       headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) {
       throw new Error(`LINE content API error ${res.status}`);
@@ -87,22 +88,35 @@ export class LineFinanceClientService {
       this.logger.warn('[LINE Finance] access token not configured — skipping send');
       return;
     }
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      const errBody = await res.text();
-      this.logger.error(`[LINE Finance] API error ${res.status}: ${errBody}`);
-      const err = new Error(`LINE API ${res.status}: ${errBody}`);
-      Sentry.captureException(err, {
-        tags: { module: 'chatbot-finance', action: 'line_finance_api' },
-        extra: { url, status: res.status },
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(10000),
       });
+      if (!res.ok) {
+        const errBody = await res.text();
+        this.logger.error(`[LINE Finance] API error ${res.status}: ${errBody}`);
+        const err = new Error(`LINE API ${res.status}: ${errBody}`);
+        Sentry.captureException(err, {
+          tags: { module: 'chatbot-finance', action: 'line_finance_api' },
+          extra: { url, status: res.status },
+        });
+        throw err;
+      }
+    } catch (err) {
+      if (err instanceof Error && err.name === 'TimeoutError') {
+        this.logger.error(`[LINE Finance] API timeout after 10s: ${url}`);
+        Sentry.captureException(err, {
+          tags: { module: 'chatbot-finance', action: 'line_finance_api', reason: 'timeout' },
+          extra: { url },
+        });
+        throw new Error('LINE Finance API timeout');
+      }
       throw err;
     }
   }

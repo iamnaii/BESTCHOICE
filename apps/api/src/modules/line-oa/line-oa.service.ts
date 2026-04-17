@@ -1,4 +1,5 @@
 import { Injectable, Logger, BadRequestException, InternalServerErrorException } from '@nestjs/common';
+import * as Sentry from '@sentry/nestjs';
 import { CHATBOT_RESPONSES } from './chatbot-system-prompt.constants';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -50,6 +51,7 @@ export class LineOaService {
 
     const response = await fetch(`${this.lineApiBaseUrl}/info`, {
       headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(10_000),
     });
 
     if (!response.ok) {
@@ -105,6 +107,7 @@ export class LineOaService {
       headers: {
         Authorization: `Bearer ${token}`,
       },
+      signal: AbortSignal.timeout(15_000),
     });
 
     if (!response.ok) {
@@ -129,6 +132,7 @@ export class LineOaService {
       headers: {
         Authorization: `Bearer ${token}`,
       },
+      signal: AbortSignal.timeout(10_000),
     });
 
     if (!response.ok) {
@@ -714,18 +718,31 @@ export class LineOaService {
       throw new BadRequestException('LINE channel access token not configured');
     }
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(body),
-    });
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(10000),
+      });
 
-    if (!response.ok) {
-      const errorBody = await response.text();
-      throw new InternalServerErrorException(`LINE API error ${response.status}: ${errorBody}`);
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new InternalServerErrorException(`LINE API error ${response.status}: ${errorBody}`);
+      }
+    } catch (err) {
+      if (err instanceof Error && err.name === 'TimeoutError') {
+        this.logger.error(`[LINE SHOP] API timeout after 10s: ${url}`);
+        Sentry.captureException(err, {
+          tags: { module: 'line-shop', action: 'line_api', reason: 'timeout' },
+          extra: { url },
+        });
+        throw new InternalServerErrorException('LINE API timeout');
+      }
+      throw err;
     }
   }
 }

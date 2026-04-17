@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import * as Sentry from '@sentry/nestjs';
 import { WarrantyService } from './warranty.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -30,6 +31,7 @@ export class WarrantyCron {
       this.logger.log(`Found ${expiring.length} expiring warranties`);
     } catch (error) {
       this.logger.error('Warranty check failed', error);
+      Sentry.captureException(error, { tags: { kind: 'cron-job', cron: 'warranty-check' } });
     }
   }
 }

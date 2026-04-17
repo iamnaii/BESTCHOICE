@@ -99,8 +99,9 @@ export class BroadcastService {
           },
         },
         select: { lineUserId: true },
+        distinct: ['lineUserId'],
       });
-      return [...new Set(links.map((l) => l.lineUserId))];
+      return links.map((l) => l.lineUserId);
     }
 
     if (audience === 'EXISTING') {
@@ -119,8 +120,9 @@ export class BroadcastService {
           },
         },
         select: { lineUserId: true },
+        distinct: ['lineUserId'],
       });
-      return [...new Set(links.map((l) => l.lineUserId))];
+      return links.map((l) => l.lineUserId);
     }
 
     if (audience === 'NEW') {
@@ -140,8 +142,9 @@ export class BroadcastService {
           },
         },
         select: { lineUserId: true },
+        distinct: ['lineUserId'],
       });
-      return [...new Set(links.map((l) => l.lineUserId))];
+      return links.map((l) => l.lineUserId);
     }
 
     return [];
@@ -210,11 +213,15 @@ export class BroadcastService {
 
   /** Called by cron — process all due SCHEDULED messages */
   async sendScheduledMessages(): Promise<{ sent: number; failed: number }> {
+    // Cap per-run batch size so a single cron tick cannot run longer than its 1-min interval
+    // and to keep memory bounded when backlog is large
     const due = await this.prisma.broadcastMessage.findMany({
       where: {
         status: 'SCHEDULED',
         scheduledAt: { lte: new Date() },
       },
+      orderBy: { scheduledAt: 'asc' },
+      take: 200,
     });
 
     let sent = 0;

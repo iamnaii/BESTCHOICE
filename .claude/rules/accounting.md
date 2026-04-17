@@ -20,7 +20,7 @@
 ```
 11-1101  เงินสด/ธนาคาร (Cash & Bank)
 11-2102  ลูกหนี้เช่าซื้อ (HP Receivable)
-11-2901  ค่าเผื่อหนี้สงสัยจะสูญ (Allowance for Doubtful)
+11-2103  ค่าเผื่อหนี้สงสัยจะสูญ (Allowance for Doubtful)
 11-3101  สินค้าคงเหลือ — เครื่องใหม่ (Inventory New)
 11-3102  สินค้าคงเหลือ — มือสอง (Inventory Used)
 11-4101  ภาษีซื้อ (VAT Input)

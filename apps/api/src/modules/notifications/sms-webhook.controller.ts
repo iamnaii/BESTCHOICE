@@ -1,4 +1,5 @@
 import { Controller, Post, Get, Body, Query, Logger } from '@nestjs/common';
+import * as Sentry from '@sentry/nestjs';
 import { ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
@@ -32,7 +33,13 @@ export class SmsWebhookController {
   @Throttle({ default: { limit: 60, ttl: 60000 } })
   async handleDeliveryReportGet(@Query() query: Record<string, unknown>) {
     this.logger.log(`[SMS-Webhook] Delivery report received (GET)`);
-    return this.notificationsService.handleSmsDeliveryReport(query);
+    try {
+      return await this.notificationsService.handleSmsDeliveryReport(query);
+    } catch (err) {
+      this.logger.error(`[SMS-Webhook] handler error: ${err instanceof Error ? err.message : err}`);
+      Sentry.captureException(err, { tags: { module: 'sms-webhook', method: 'GET' } });
+      return { ok: false };
+    }
   }
 
   @Post('sms-webhook')
@@ -40,6 +47,12 @@ export class SmsWebhookController {
   @Throttle({ default: { limit: 60, ttl: 60000 } })
   async handleDeliveryReportPost(@Body() body: Record<string, unknown>) {
     this.logger.log(`[SMS-Webhook] Delivery report received (POST)`);
-    return this.notificationsService.handleSmsDeliveryReport(body);
+    try {
+      return await this.notificationsService.handleSmsDeliveryReport(body);
+    } catch (err) {
+      this.logger.error(`[SMS-Webhook] handler error: ${err instanceof Error ? err.message : err}`);
+      Sentry.captureException(err, { tags: { module: 'sms-webhook', method: 'POST' } });
+      return { ok: false };
+    }
   }
 }

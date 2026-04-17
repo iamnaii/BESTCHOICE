@@ -149,7 +149,7 @@ export class SuppliersService {
     await this.findOne(id);
     return this.prisma.supplier.update({
       where: { id },
-      data: { isActive: false },
+      data: { deletedAt: new Date(), isActive: false },
     });
   }
 

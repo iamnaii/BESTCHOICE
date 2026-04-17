@@ -33,7 +33,23 @@ import { LeadScoringService } from './services/lead-scoring.service';
  */
 @WebSocketGateway({
   namespace: '/chat',
-  cors: { origin: '*', credentials: true },
+  cors: {
+    origin: (
+      origin: string | undefined,
+      callback: (err: Error | null, allow?: boolean | string) => void,
+    ) => {
+      if (!origin) return callback(null, true);
+      const allowed = (process.env.FRONTEND_URL || 'http://localhost:5173')
+        .split(',')
+        .map((o) => o.trim());
+      if (!allowed.includes('https://bestchoicephone.app')) {
+        allowed.push('https://bestchoicephone.app');
+      }
+      if (allowed.includes(origin)) return callback(null, origin);
+      callback(null, false);
+    },
+    credentials: true,
+  },
 })
 export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()

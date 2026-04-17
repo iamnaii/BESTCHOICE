@@ -4,13 +4,50 @@ import { useAuth } from '@/contexts/AuthContext';
 import { getAccessToken } from '@/lib/api';
 import { API_URL } from '@/lib/env';
 
+export interface ChatMessageEvent {
+  roomId: string;
+  role?: 'CUSTOMER' | 'STAFF' | 'AI';
+  text?: string;
+  messageId?: string;
+}
+
+export interface ChatRoomUpdateEvent {
+  roomId: string;
+}
+
+export interface ChatTypingEvent {
+  roomId: string;
+  role?: 'CUSTOMER' | 'STAFF';
+}
+
+export interface ChatPresenceEvent {
+  userId: string;
+  userName?: string;
+  status?: 'online' | 'offline';
+}
+
+export interface ChatViewer {
+  userId: string;
+  userName: string;
+}
+
+export interface ChatViewersEvent {
+  roomId: string;
+  viewers: ChatViewer[];
+}
+
+export interface ChatCollisionEvent {
+  roomId: string;
+  viewers: ChatViewer[];
+}
+
 interface ChatSocketEvents {
-  onNewMessage?: (data: any) => void;
-  onRoomUpdate?: (data: any) => void;
-  onTyping?: (data: any) => void;
-  onPresence?: (data: any) => void;
-  onViewers?: (data: any) => void;
-  onCollision?: (data: any) => void;
+  onNewMessage?: (data: ChatMessageEvent) => void;
+  onRoomUpdate?: (data: ChatRoomUpdateEvent) => void;
+  onTyping?: (data: ChatTypingEvent) => void;
+  onPresence?: (data: ChatPresenceEvent) => void;
+  onViewers?: (data: ChatViewersEvent) => void;
+  onCollision?: (data: ChatCollisionEvent) => void;
 }
 
 // Resolve WebSocket base URL: in dev, API runs on port 3000
@@ -34,6 +71,12 @@ export function useChatSocket(events: ChatSocketEvents, activeRoomId?: string | 
   const socketRef = useRef<Socket | null>(null);
   const [isCustomerTyping, setIsCustomerTyping] = useState(false);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Keep latest activeRoomId + event handlers in refs so the socket effect
+  // doesn't tear down on room switches or handler identity changes
+  const activeRoomIdRef = useRef(activeRoomId);
+  const eventsRef = useRef(events);
+  useEffect(() => { activeRoomIdRef.current = activeRoomId; }, [activeRoomId]);
+  useEffect(() => { eventsRef.current = events; }, [events]);
 
   useEffect(() => {
     if (!user) return;
@@ -52,29 +95,30 @@ export function useChatSocket(events: ChatSocketEvents, activeRoomId?: string | 
 
     socketRef.current = socket;
 
-    socket.on('chat:message:new', (data) => events.onNewMessage?.(data));
-    socket.on('chat:room:update', (data) => events.onRoomUpdate?.(data));
+    socket.on('chat:message:new', (data) => eventsRef.current.onNewMessage?.(data));
+    socket.on('chat:room:update', (data) => eventsRef.current.onRoomUpdate?.(data));
     socket.on('chat:typing', (data) => {
-      events.onTyping?.(data);
+      eventsRef.current.onTyping?.(data);
       // Show customer typing indicator for active room
-      if (data.roomId === activeRoomId && data.role !== 'STAFF') {
+      if (data.roomId === activeRoomIdRef.current && data.role !== 'STAFF') {
         setIsCustomerTyping(true);
         if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
         typingTimerRef.current = setTimeout(() => setIsCustomerTyping(false), 5000);
       }
     });
-    socket.on('chat:presence', (data) => events.onPresence?.(data));
-    socket.on('chat:viewers', (data) => events.onViewers?.(data));
-    socket.on('chat:collision', (data) => events.onCollision?.(data));
+    socket.on('chat:presence', (data) => eventsRef.current.onPresence?.(data));
+    socket.on('chat:viewers', (data) => eventsRef.current.onViewers?.(data));
+    socket.on('chat:collision', (data) => eventsRef.current.onCollision?.(data));
     socket.on('connect_error', () => {
       // Silent — reconnection handles retry
     });
 
     return () => {
+      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [user?.id, activeRoomId]);
+  }, [user?.id]);
 
   const joinRoom = useCallback((roomId: string) => {
     socketRef.current?.emit('chat:join', { roomId });

@@ -49,7 +49,7 @@ export class RichMenuService {
   ) {}
 
   private async getShopChannelToken(): Promise<string> {
-    return (await this.integrationConfig.getValue('line-oa', 'shopChannelToken')) || '';
+    return (await this.integrationConfig.getValue('line-shop', 'channelToken')) || '';
   }
 
   /**

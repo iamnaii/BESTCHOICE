@@ -12,7 +12,7 @@ import { IntegrationConfigService } from '../../integrations/integration-config.
 
 /**
  * Verify LINE webhook signature สำหรับ Finance OA
- * ใช้ secret คนละตัวกับ Shop OA — config key: line-oa / financeChannelSecret
+ * ใช้ secret คนละตัวกับ Shop OA — config key: line-finance / channelSecret
  */
 @Injectable()
 export class LineFinanceWebhookGuard implements CanActivate {
@@ -22,7 +22,7 @@ export class LineFinanceWebhookGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const channelSecret =
-      (await this.integrationConfig.getValue('line-oa', 'financeChannelSecret')) || undefined;
+      (await this.integrationConfig.getValue('line-finance', 'channelSecret')) || undefined;
 
     const request = context.switchToHttp().getRequest<Request>();
 

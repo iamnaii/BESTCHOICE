@@ -23,7 +23,7 @@ export interface LineQuickReply {
 
 /**
  * LINE Messaging API client สำหรับ Finance OA โดยเฉพาะ
- * ใช้ token แยกจาก Shop OA — config key: line-oa / financeChannelToken
+ * ใช้ token แยกจาก Shop OA — config key: line-finance / channelToken
  */
 @Injectable()
 export class LineFinanceClientService {
@@ -34,7 +34,7 @@ export class LineFinanceClientService {
   constructor(private readonly integrationConfig: IntegrationConfigService) {}
 
   private async getAccessToken(): Promise<string> {
-    return (await this.integrationConfig.getValue('line-oa', 'financeChannelToken')) || '';
+    return (await this.integrationConfig.getValue('line-finance', 'channelToken')) || '';
   }
 
   async isConfigured(): Promise<boolean> {

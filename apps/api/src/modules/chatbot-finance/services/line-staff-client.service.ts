@@ -9,9 +9,9 @@ interface LineTextMessage {
 
 /**
  * LINE Messaging API client สำหรับ Staff OA โดยเฉพาะ
- * ใช้ token แยกจาก Shop/Finance OA — config key: line-oa / staffChannelToken
+ * ใช้ token แยกจาก Shop/Finance OA — config key: line-staff / channelToken
  *
- * Recipients: config key: line-oa / staffNotifyTargets (comma-separated lineUserIds)
+ * Recipients: config key: line-staff / notifyTargets (comma-separated lineUserIds)
  */
 @Injectable()
 export class LineStaffClientService {
@@ -21,11 +21,11 @@ export class LineStaffClientService {
   constructor(private readonly integrationConfig: IntegrationConfigService) {}
 
   private async getAccessToken(): Promise<string> {
-    return (await this.integrationConfig.getValue('line-oa', 'staffChannelToken')) || '';
+    return (await this.integrationConfig.getValue('line-staff', 'channelToken')) || '';
   }
 
   private async getRecipients(): Promise<string[]> {
-    const raw = (await this.integrationConfig.getValue('line-oa', 'staffNotifyTargets')) || '';
+    const raw = (await this.integrationConfig.getValue('line-staff', 'notifyTargets')) || '';
     return raw.split(',').map((s) => s.trim()).filter(Boolean);
   }
 

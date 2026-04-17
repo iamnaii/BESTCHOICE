@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateInterCompanyTransactionDto } from './dto/inter-company.dto';
 import { Prisma, InterCompanyTransactionStatus } from '@prisma/client';
+import { d, dAdd } from '../../utils/decimal.util';
 
 @Injectable()
 export class InterCompanyService {
@@ -249,49 +250,61 @@ export class InterCompanyService {
       },
     });
 
-    const summary = {
-      transactionCount: transactions.length,
-      shop: {
-        totalRevenue: 0,
-        totalCost: 0,
-        totalCommission: 0,
-        totalProfit: 0,
-      },
-      finance: {
-        totalInterest: 0,
-        totalCommissionPaid: 0,
-        totalProfit: 0,
-      },
-      combined: {
-        totalVat: 0,
-        totalProfit: 0,
-      },
+    const acc = {
+      shopRevenue: new Prisma.Decimal(0),
+      shopCost: new Prisma.Decimal(0),
+      shopCommission: new Prisma.Decimal(0),
+      shopProfit: new Prisma.Decimal(0),
+      financeInterest: new Prisma.Decimal(0),
+      financeCommissionPaid: new Prisma.Decimal(0),
+      financeProfit: new Prisma.Decimal(0),
+      combinedVat: new Prisma.Decimal(0),
+      combinedProfit: new Prisma.Decimal(0),
     };
 
     for (const t of transactions) {
-      const shopProfit = Number(t.shopProfit);
-      const financeProfit = Number(t.financeProfit);
-      const commission = Number(t.commission);
-      const interestTotal = Number(t.interestTotal);
-      const costPrice = Number(t.costPrice);
-      const vatAmount = Number(t.vatAmount);
-      const downPayment = Number(t.downPayment);
-      const principal = Number(t.principal);
+      const shopProfit = d(t.shopProfit);
+      const financeProfit = d(t.financeProfit);
+      const commission = d(t.commission);
+      const interestTotal = d(t.interestTotal);
+      const costPrice = d(t.costPrice);
+      const vatAmount = d(t.vatAmount);
+      const downPayment = d(t.downPayment);
+      const principal = d(t.principal);
 
       // Shop: downPayment + principal + commission - costPrice
-      summary.shop.totalRevenue += downPayment + principal + commission;
-      summary.shop.totalCost += costPrice;
-      summary.shop.totalCommission += commission;
-      summary.shop.totalProfit += shopProfit;
+      acc.shopRevenue = dAdd(acc.shopRevenue, dAdd(dAdd(downPayment, principal), commission));
+      acc.shopCost = dAdd(acc.shopCost, costPrice);
+      acc.shopCommission = dAdd(acc.shopCommission, commission);
+      acc.shopProfit = dAdd(acc.shopProfit, shopProfit);
 
       // Finance: interestTotal - commission
-      summary.finance.totalInterest += interestTotal;
-      summary.finance.totalCommissionPaid += commission;
-      summary.finance.totalProfit += financeProfit;
+      acc.financeInterest = dAdd(acc.financeInterest, interestTotal);
+      acc.financeCommissionPaid = dAdd(acc.financeCommissionPaid, commission);
+      acc.financeProfit = dAdd(acc.financeProfit, financeProfit);
 
-      summary.combined.totalVat += vatAmount;
-      summary.combined.totalProfit += shopProfit + financeProfit;
+      acc.combinedVat = dAdd(acc.combinedVat, vatAmount);
+      acc.combinedProfit = dAdd(acc.combinedProfit, dAdd(shopProfit, financeProfit));
     }
+
+    const summary = {
+      transactionCount: transactions.length,
+      shop: {
+        totalRevenue: acc.shopRevenue.toNumber(),
+        totalCost: acc.shopCost.toNumber(),
+        totalCommission: acc.shopCommission.toNumber(),
+        totalProfit: acc.shopProfit.toNumber(),
+      },
+      finance: {
+        totalInterest: acc.financeInterest.toNumber(),
+        totalCommissionPaid: acc.financeCommissionPaid.toNumber(),
+        totalProfit: acc.financeProfit.toNumber(),
+      },
+      combined: {
+        totalVat: acc.combinedVat.toNumber(),
+        totalProfit: acc.combinedProfit.toNumber(),
+      },
+    };
 
     return summary;
   }

@@ -2,6 +2,7 @@ import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { AccountingPeriodStatus, Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
+import { d, dSum, dClose } from '../../utils/decimal.util';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { TaxService } from '../tax/tax.service';
 import { AccountingService } from './accounting.service';
@@ -362,15 +363,9 @@ export class MonthlyCloseService {
 
     let unbalancedJournals = 0;
     for (const entry of journalLines) {
-      const totalDebit = entry.lines.reduce(
-        (s, l) => s + Number(l.debit ?? 0),
-        0,
-      );
-      const totalCredit = entry.lines.reduce(
-        (s, l) => s + Number(l.credit ?? 0),
-        0,
-      );
-      if (Math.abs(totalDebit - totalCredit) > 0.01) {
+      const totalDebit = dSum(entry.lines.map((l) => d(l.debit)));
+      const totalCredit = dSum(entry.lines.map((l) => d(l.credit)));
+      if (!dClose(totalDebit, totalCredit)) {
         unbalancedJournals++;
       }
     }

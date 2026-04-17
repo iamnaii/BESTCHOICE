@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateRepossessionDto, UpdateRepossessionDto } from './dto/create-repossession.dto';
 import { ConditionGrade, RepossessionStatus, ProductStatus } from '@prisma/client';
+import { d, dAdd, dSub } from '../../utils/decimal.util';
 
 // VAT rate used to back out principal from VAT-inclusive amounts
 const VAT_RATE = new Prisma.Decimal('1.07');
@@ -193,34 +194,36 @@ export class RepossessionsService {
       }
 
       // Calculate outstanding balance for profit/loss
-      let outstandingBalance = 0;
-      let totalPaid = 0;
+      let outstandingBalance = new Prisma.Decimal(0);
+      let totalPaid = new Prisma.Decimal(0);
       let remainingMonths = 0;
       for (const p of contract.payments) {
         if (['PENDING', 'OVERDUE', 'PARTIALLY_PAID'].includes(p.status)) {
-          const lateFee = p.lateFeeWaived ? 0 : Number(p.lateFee);
-          outstandingBalance += Number(p.amountDue) - Number(p.amountPaid) + lateFee;
+          const lateFee = p.lateFeeWaived ? new Prisma.Decimal(0) : d(p.lateFee);
+          outstandingBalance = dAdd(outstandingBalance, dSub(dAdd(d(p.amountDue), lateFee), d(p.amountPaid)));
           remainingMonths += 1;
         }
-        totalPaid += Number(p.amountPaid);
+        totalPaid = dAdd(totalPaid, d(p.amountPaid));
       }
 
       // ─── FINANCE P&L Calculation (ex-VAT, FINANCE perspective) ───
       // ต้นทุน FINANCE = financedAmount + storeCommission (เงินที่ FINANCE จ่ายให้ SHOP)
-      const financeCost = Number(contract.financedAmount) + Number(contract.storeCommission || 0);
+      const financeCost = TWO_DP(dAdd(d(contract.financedAmount), d(contract.storeCommission || 0)));
       // ต้นทุนคงเหลือ = (ต้นทุน ÷ งวดทั้งหมด) × งวดคงค้าง
-      const remainingCost = Math.round((financeCost / contract.totalMonths) * remainingMonths * 100) / 100;
+      const remainingCost = TWO_DP(financeCost.div(contract.totalMonths).mul(remainingMonths));
       // ส่วนลดให้ลูกค้า (default 50%)
       const discountPct = dto.discountPct ?? 50;
       // ค่างวดไม่รวม VAT = outstanding ÷ 1.07 (สำหรับโปรไฟล์ลูกค้าปิดบัญชีเอง — ไม่ใช้ในสูตรกำไร FINANCE)
-      const principalExVat = Math.round((outstandingBalance / 1.07) * 100) / 100;
-      const discountAmount = Math.round((principalExVat - remainingCost) * (discountPct / 100) * 100) / 100;
-      const closingAmount = Math.round((principalExVat - discountAmount) * 100) / 100;
+      const principalExVat = TWO_DP(outstandingBalance.div(VAT_RATE));
+      const discountAmount = TWO_DP(Prisma.Decimal.max(0, principalExVat.sub(remainingCost)).mul(discountPct).div(100));
+      const closingAmount = TWO_DP(principalExVat.sub(discountAmount));
       // ราคากลางจาก trade-in pricing (auto) หรือจาก dto
-      const marketValue = dto.marketValue ?? Number(dto.appraisalPrice);
+      const marketValue = d(dto.marketValue ?? dto.appraisalPrice);
       // กำไร/ขาดทุน = ราคากลาง - ต้นทุนคงเหลือ - เงินคืนลูกค้า (ถ้าคืน)
-      const customerRefund = dto.customerRefundEnabled ? Math.max(0, marketValue - closingAmount) : 0;
-      const profitLoss = Math.round((marketValue - remainingCost - customerRefund) * 100) / 100;
+      const customerRefund = dto.customerRefundEnabled
+        ? TWO_DP(Prisma.Decimal.max(0, marketValue.sub(closingAmount)))
+        : new Prisma.Decimal(0);
+      const profitLoss = TWO_DP(marketValue.sub(remainingCost).sub(customerRefund));
 
       // Create repossession
       const repossession = await tx.repossession.create({
@@ -286,9 +289,9 @@ export class RepossessionsService {
 
       return {
         ...repossession,
-        outstandingBalance,
-        totalPaid,
-        loss: outstandingBalance - dto.appraisalPrice,
+        outstandingBalance: outstandingBalance.toNumber(),
+        totalPaid: totalPaid.toNumber(),
+        loss: outstandingBalance.sub(d(dto.appraisalPrice)).toNumber(),
       };
     });
   }

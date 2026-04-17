@@ -5,6 +5,7 @@ import * as Sentry from '@sentry/nestjs';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
+import { d, dAbs, dSub } from '../../utils/decimal.util';
 
 // ── Types ───────────────────────────────────────────────────────
 
@@ -225,7 +226,7 @@ export class DataAuditService {
         AND p.status IN ('PAID', 'PARTIALLY_PAID')
         AND p.amount_paid > 0
     `;
-    const diff = Math.abs(Number(journalVat[0].total) - Number(paymentVat[0].total));
+    const diff = dAbs(dSub(journalVat[0].total, paymentVat[0].total)).toNumber();
     return {
       name: 'vat_mismatch',
       severity: 'HIGH',
@@ -262,9 +263,9 @@ export class DataAuditService {
         AND c.status IN ('ACTIVE', 'OVERDUE', 'DEFAULT')
         AND p.status IN ('PENDING', 'PARTIALLY_PAID')
     `;
-    const jBal = Number(journalBalance[0].balance);
-    const cOut = Number(contractOutstanding[0].outstanding);
-    const diff = Math.abs(jBal - cOut);
+    const jBal = d(journalBalance[0].balance).toNumber();
+    const cOut = d(contractOutstanding[0].outstanding).toNumber();
+    const diff = dAbs(dSub(jBal, cOut)).toNumber();
     const threshold = Math.max(cOut * 0.001, 100);
     return {
       name: 'hp_receivable_reconciliation',

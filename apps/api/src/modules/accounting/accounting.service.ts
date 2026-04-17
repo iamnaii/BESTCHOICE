@@ -10,6 +10,7 @@ import { ExpenseAccountType, ExpenseCategory, ExpenseStatus, Prisma, WhtIncomeTy
 import { CreateExpenseDto, UpdateExpenseDto } from './dto/expense.dto';
 import { validatePeriodOpen as validatePeriodOpenUtil } from '../../utils/period-lock.util';
 import { JournalAutoService } from '../journal/journal-auto.service';
+import { d, dAdd } from '../../utils/decimal.util';
 
 /**
  * INVENTORY COSTING METHOD: Specific Identification
@@ -287,13 +288,13 @@ export class AccountingService {
     if (dto.taxInvoiceNo !== undefined) data.taxInvoiceNo = dto.taxInvoiceNo;
     if (dto.note !== undefined) data.note = dto.note;
 
-    const amount = dto.amount ?? Number(expense.amount);
-    const vatAmount = dto.vatAmount ?? Number(expense.vatAmount);
-    const withholdingTax = dto.withholdingTax ?? Number(expense.withholdingTax);
+    const amount = dto.amount !== undefined ? dto.amount : d(expense.amount).toNumber();
+    const vatAmount = dto.vatAmount !== undefined ? dto.vatAmount : d(expense.vatAmount).toNumber();
+    const withholdingTax = dto.withholdingTax !== undefined ? dto.withholdingTax : d(expense.withholdingTax).toNumber();
     if (dto.amount !== undefined || dto.vatAmount !== undefined || dto.withholdingTax !== undefined) {
       data.amount = amount;
       data.vatAmount = vatAmount;
-      data.totalAmount = amount + vatAmount;
+      data.totalAmount = dAdd(amount, vatAmount).toNumber();
       data.withholdingTax = withholdingTax;
     }
 

@@ -1,4 +1,5 @@
 import { Body, Controller, HttpCode, Logger, Post, UseGuards } from '@nestjs/common';
+import * as Sentry from '@sentry/nestjs';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
 import { ChatbotFinanceService } from './services/chatbot-finance.service';
 import { LineFinanceClientService } from './services/line-finance-client.service';
@@ -55,6 +56,10 @@ export class ChatbotFinanceController {
         this.logger.error(
           `[Finance webhook] event error: ${err instanceof Error ? err.message : err}`,
         );
+        Sentry.captureException(err, {
+          tags: { module: 'line-finance-webhook' },
+          extra: { eventId: event.webhookEventId, eventType: event.type },
+        });
         // ห้าม throw — LINE ต้องการ 200 เสมอ มิฉะนั้นจะ retry
       }
     }

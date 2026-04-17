@@ -10,6 +10,7 @@ import {
   Logger,
   HttpCode,
 } from '@nestjs/common';
+import * as Sentry from '@sentry/nestjs';
 import { ApiTags } from '@nestjs/swagger';
 import { Request } from 'express';
 import { LineOaService } from './line-oa.service';
@@ -82,6 +83,10 @@ export class LineOaChatbotController {
         await this.processEvent(event);
       } catch (err) {
         this.logger.error(`Error processing LINE event: ${err instanceof Error ? err.message : err}`);
+        Sentry.captureException(err, {
+          tags: { module: 'line-shop-webhook' },
+          extra: { eventId, eventType: event.type },
+        });
       }
     }
 

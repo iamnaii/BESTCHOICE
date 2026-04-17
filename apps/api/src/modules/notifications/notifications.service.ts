@@ -49,7 +49,7 @@ export class NotificationsService {
   /**
    * Send a notification via LINE, SMS, or IN_APP with retry support
    */
-  async send(dto: SendNotificationDto): Promise<{ id: string; status: string }> {
+  async send(dto: SendNotificationDto): Promise<{ id: string; status: string; errorMsg?: string }> {
     let status = 'PENDING';
     let errorMsg: string | null = null;
     let sentAt: Date | null = null;
@@ -127,7 +127,7 @@ export class NotificationsService {
       await this.markForRetry(log.id, 0);
     }
 
-    return { id: log.id, status };
+    return { id: log.id, status, errorMsg: errorMsg ?? undefined };
   }
 
   /**

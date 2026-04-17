@@ -135,8 +135,14 @@ export class LineLoginController {
       if (profile.pictureUrl) {
         redirectUrl.searchParams.set('line_picture', profile.pictureUrl);
       }
-      // Pass ID token for server-side verification
-      redirectUrl.searchParams.set('line_id_token', tokenData.id_token);
+      // Set ID token in httpOnly cookie instead of URL (prevents leaking in browser history/Referrer)
+      res.cookie('line_id_token', tokenData.id_token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 60000, // 60 seconds — one-time use
+        path: '/',
+      });
 
       res.redirect(redirectUrl.toString());
     } catch (err) {

@@ -3,6 +3,7 @@ import { Prisma, POPaymentStatus, ProductCategory } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreatePODto, UpdatePODto, ReceivePODto, GoodsReceivingDto, UpdatePaymentDto } from './dto/create-po.dto';
 import { generatePONumber } from '../../utils/sequence.util';
+import { d, dAdd, dSub, dSum } from '../../utils/decimal.util';
 
 @Injectable()
 export class PurchaseOrdersService {
@@ -279,11 +280,11 @@ export class PurchaseOrdersService {
     }>();
 
     for (const po of pos) {
-      const net = Number(po.netAmount);
-      const paid = Number(po.paidAmount);
-      const remaining = net - paid;
+      const net = d(po.netAmount);
+      const paid = d(po.paidAmount);
+      const remaining = dSub(net, paid);
 
-      if (remaining <= 0) continue;
+      if (remaining.lte(0)) continue;
 
       const entry = supplierMap.get(po.supplierId) || {
         supplier: po.supplier as { id: string; name: string; contactName: string; phone: string },
@@ -294,9 +295,9 @@ export class PurchaseOrdersService {
         pos: [] as { id: string; poNumber: string; orderDate: string; dueDate: string | null; netAmount: number; paidAmount: number; remaining: number; paymentStatus: string; status: string; itemsSummary: string }[],
       };
 
-      entry.totalNet += net;
-      entry.totalPaid += paid;
-      entry.totalRemaining += remaining;
+      entry.totalNet = dAdd(entry.totalNet, net).toNumber();
+      entry.totalPaid = dAdd(entry.totalPaid, paid).toNumber();
+      entry.totalRemaining = dAdd(entry.totalRemaining, remaining).toNumber();
       entry.poCount++;
 
       // Build items summary
@@ -311,9 +312,9 @@ export class PurchaseOrdersService {
         poNumber: po.poNumber,
         orderDate: po.orderDate.toISOString(),
         dueDate: po.dueDate ? po.dueDate.toISOString() : null,
-        netAmount: net,
-        paidAmount: paid,
-        remaining,
+        netAmount: net.toNumber(),
+        paidAmount: paid.toNumber(),
+        remaining: remaining.toNumber(),
         paymentStatus: po.paymentStatus,
         status: po.status,
         itemsSummary,
@@ -323,7 +324,7 @@ export class PurchaseOrdersService {
     }
 
     const suppliers = Array.from(supplierMap.values()).sort((a, b) => b.totalRemaining - a.totalRemaining);
-    const grandTotal = suppliers.reduce((sum, s) => sum + s.totalRemaining, 0);
+    const grandTotal = dSum(suppliers.map((s) => s.totalRemaining)).toNumber();
     const total = suppliers.length;
     const data = suppliers.slice((page - 1) * safeLimit, page * safeLimit);
 

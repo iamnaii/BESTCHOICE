@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { d } from '../../utils/decimal.util';
 
 @Injectable()
 export class AnalyticsService {
@@ -120,7 +121,7 @@ export class AnalyticsService {
 
     const historical = rows.map((r) => ({
       month: r.month,
-      amount: parseFloat(r.amount) || 0,
+      amount: d(r.amount).toNumber(),
     }));
 
     if (historical.length < 2) {
@@ -208,7 +209,7 @@ export class AnalyticsService {
       day: Number(r.day),
       hour: Number(r.hour),
       count: parseInt(r.count) || 0,
-      amount: parseFloat(r.amount) || 0,
+      amount: d(r.amount).toNumber(),
     }));
 
     const dayNames = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัส', 'ศุกร์', 'เสาร์'];

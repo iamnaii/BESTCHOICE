@@ -15,6 +15,7 @@ import { CreateContractDto, UpdateContractDto } from './dto/contract.dto';
 import { calculateInstallment, generatePaymentSchedule } from '../../utils/installment.util';
 import { loadInstallmentConfig, resolveInstallmentParams, resolveVatPctForBranch } from '../../utils/config.util';
 import { generateContractNumber } from '../../utils/sequence.util';
+import { d } from '../../utils/decimal.util';
 import { WarrantyService } from '../warranty/warranty.service';
 import {
   validateIMEI,
@@ -481,8 +482,8 @@ export class ContractsService {
     }
 
     // Determine final values
-    const sellingPrice = dto.sellingPrice ?? Number(contract.sellingPrice);
-    const downPayment = dto.downPayment ?? Number(contract.downPayment);
+    const sellingPrice = dto.sellingPrice ?? d(contract.sellingPrice).toNumber();
+    const downPayment = dto.downPayment ?? d(contract.downPayment).toNumber();
     const totalMonths = dto.totalMonths ?? contract.totalMonths;
     const paymentDueDay = dto.paymentDueDay ?? contract.paymentDueDay;
 
@@ -492,7 +493,7 @@ export class ContractsService {
       : null;
 
     const systemConfig = await loadInstallmentConfig(this.prisma);
-    const baseParams = resolveInstallmentParams(interestConfig, systemConfig, dto.interestRate ?? Number(contract.interestRate));
+    const baseParams = resolveInstallmentParams(interestConfig, systemConfig, dto.interestRate ?? d(contract.interestRate).toNumber());
     // Override vatPct based on the contract's branch VAT registration status
     const effectiveVatPct = await resolveVatPctForBranch(this.prisma, contract.branchId, baseParams.vatPct);
     const params = { ...baseParams, vatPct: effectiveVatPct };

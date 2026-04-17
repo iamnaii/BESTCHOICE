@@ -222,8 +222,12 @@ export default function CustomerDetailPage() {
     setEditSameAddress(
       customer.addressIdCard != null && customer.addressIdCard === customer.addressCurrent
     );
-    // Initialize references with 4 slots
-    const existingRefs = (customer.references || []) as ReferenceData[];
+    // Initialize references with 4 slots (sanitize: drop non-object garbage like null/strings/nested arrays)
+    const existingRefs = Array.isArray(customer.references)
+      ? customer.references.filter(
+          (r): r is ReferenceData => r !== null && typeof r === 'object' && !Array.isArray(r),
+        )
+      : [];
     const refs = [...existingRefs];
     while (refs.length < 4) refs.push({});
     setEditRefs(refs);
@@ -425,7 +429,11 @@ export default function CustomerDetailPage() {
   ];
 
   const displayName = [customer.prefix, customer.name].filter(Boolean).join('');
-  const refs = customer.references as ReferenceData[] | null;
+  const refs = Array.isArray(customer.references)
+    ? (customer.references.filter(
+        (r): r is ReferenceData => r !== null && typeof r === 'object' && !Array.isArray(r),
+      ))
+    : null;
 
   return (
     <div>

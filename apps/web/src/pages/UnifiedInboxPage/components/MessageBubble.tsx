@@ -168,7 +168,7 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
             {format(new Date(message.createdAt), 'HH:mm')}
           </span>
           {message.role === 'STAFF' && (
-            <span className={cn('text-[10px] ml-1', message.readAt ? 'text-blue-400' : 'text-muted-foreground')}>
+            <span className={cn('text-[10px] ml-1', message.readAt ? 'text-primary' : 'text-muted-foreground')}>
               {message.readAt ? '✓✓' : '✓'}
             </span>
           )}

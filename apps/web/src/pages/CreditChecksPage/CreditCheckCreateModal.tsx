@@ -185,7 +185,7 @@ export default function CreditCheckCreateModal({
                             ลูกค้าเก่า
                           </span>
                         ) : (
-                          <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
+                          <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-warning/10 text-warning">
                             ลูกค้าใหม่
                           </span>
                         )
@@ -233,7 +233,7 @@ export default function CreditCheckCreateModal({
           {selectedCustomer && (
             <div className="rounded-xl border border-border bg-card p-5">
               <div className="flex items-center gap-2.5 mb-4">
-                <div className="flex items-center justify-center size-8 rounded-lg bg-emerald-500/10 text-emerald-500">
+                <div className="flex items-center justify-center size-8 rounded-lg bg-success/10 text-success">
                   <FileText className="size-4" strokeWidth={1.5} />
                 </div>
                 <div>
@@ -259,12 +259,12 @@ export default function CreditCheckCreateModal({
                         onSalarySlipFilesChange(files);
                       }
                     }}
-                    className="flex-1 text-sm text-muted-foreground file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-emerald-500/10 file:text-emerald-600"
+                    className="flex-1 text-sm text-muted-foreground file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-success/10 file:text-success"
                   />
                   <button
                     onClick={onSalarySlipOcr}
                     disabled={salarySlipLoading || salarySlipFiles.length === 0}
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-xs font-medium hover:bg-emerald-700 disabled:opacity-50"
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-success text-success-foreground rounded-lg text-xs font-medium hover:bg-success/90 disabled:opacity-50"
                   >
                     {salarySlipLoading ? (
                       <>
@@ -374,12 +374,12 @@ export default function CreditCheckCreateModal({
                     onChange={(e) => {
                       if (e.target.files) onStatementFilesChange(Array.from(e.target.files));
                     }}
-                    className="flex-1 text-sm text-muted-foreground file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-emerald-500/10 file:text-emerald-600"
+                    className="flex-1 text-sm text-muted-foreground file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-success/10 file:text-success"
                   />
                   <button
                     onClick={onStatementOcr}
                     disabled={statementLoading || statementFiles.length === 0}
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-xs font-medium hover:bg-emerald-700 disabled:opacity-50"
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-success text-success-foreground rounded-lg text-xs font-medium hover:bg-success/90 disabled:opacity-50"
                   >
                     {statementLoading ? (
                       <>
@@ -428,7 +428,7 @@ export default function CreditCheckCreateModal({
           {selectedCustomer && (
             <div className="rounded-xl border border-border bg-card p-5">
               <div className="flex items-center gap-2.5 mb-4">
-                <div className="flex items-center justify-center size-8 rounded-lg bg-violet-500/10 text-violet-500">
+                <div className="flex items-center justify-center size-8 rounded-lg bg-primary/10 text-primary">
                   <Clock className="size-4" strokeWidth={1.5} />
                 </div>
                 <div>
@@ -444,7 +444,7 @@ export default function CreditCheckCreateModal({
                         ลูกค้าเก่า
                       </span>
                     ) : (
-                      <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
+                      <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-warning/10 text-warning">
                         ลูกค้าใหม่
                       </span>
                     )}
@@ -466,7 +466,7 @@ export default function CreditCheckCreateModal({
                     <div className="text-lg font-bold">
                       <span className="text-success">{customerHistory.closedContracts}</span>
                       <span className="text-xs font-normal text-muted-foreground"> / </span>
-                      <span className="text-amber-600">{customerHistory.activeContracts}</span>
+                      <span className="text-warning">{customerHistory.activeContracts}</span>
                     </div>
                   </div>
                   <div className="bg-muted/50 rounded-lg border p-3">
@@ -476,7 +476,7 @@ export default function CreditCheckCreateModal({
                         (customerHistory.onTimePaymentPct ?? 0) >= 80
                           ? 'text-success'
                           : (customerHistory.onTimePaymentPct ?? 0) >= 50
-                            ? 'text-amber-600'
+                            ? 'text-warning'
                             : 'text-destructive'
                       }`}
                     >
@@ -503,7 +503,7 @@ export default function CreditCheckCreateModal({
           {selectedCustomer && (
             <div className="rounded-xl border border-border bg-card p-5">
               <div className="flex items-center gap-2.5 mb-4">
-                <div className="flex items-center justify-center size-8 rounded-lg bg-orange-500/10 text-orange-500">
+                <div className="flex items-center justify-center size-8 rounded-lg bg-warning/10 text-warning">
                   <BarChart3 className="size-4" strokeWidth={1.5} />
                 </div>
                 <div>
@@ -517,7 +517,7 @@ export default function CreditCheckCreateModal({
                   <button
                     onClick={() => onCalculateRisk(selectedCustomer.id)}
                     disabled={riskLoading}
-                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600 disabled:opacity-50"
+                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-warning text-warning-foreground rounded-lg text-sm font-medium hover:bg-warning/90 disabled:opacity-50"
                   >
                     {riskLoading ? (
                       <>
@@ -539,7 +539,7 @@ export default function CreditCheckCreateModal({
                           riskScore.riskLevel === 'LOW'
                             ? 'bg-success/10 text-success'
                             : riskScore.riskLevel === 'MEDIUM'
-                              ? 'bg-amber-100 text-amber-700'
+                              ? 'bg-warning/10 text-warning'
                               : 'bg-destructive/10 text-destructive'
                         }`}
                       >
@@ -558,7 +558,7 @@ export default function CreditCheckCreateModal({
                           (riskScore.debtToIncome ?? 0) <= 40
                             ? 'text-success'
                             : (riskScore.debtToIncome ?? 0) <= 60
-                              ? 'text-amber-600'
+                              ? 'text-warning'
                               : 'text-destructive'
                         }`}
                       >
@@ -621,13 +621,13 @@ export default function CreditCheckCreateModal({
               </button>
               <button
                 onClick={onApprove}
-                className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700"
+                className="px-4 py-2 text-sm bg-success text-success-foreground rounded-lg hover:bg-success/90"
               >
                 อนุมัติ
               </button>
               <button
                 onClick={onReject}
-                className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700"
+                className="px-4 py-2 text-sm bg-destructive text-destructive-foreground rounded-lg hover:bg-destructive/90"
               >
                 ไม่อนุมัติ
               </button>

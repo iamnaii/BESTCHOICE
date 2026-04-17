@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException } from '@nestjs/common';
 import { RichMenuService } from './rich-menu.service';
+import { RichMenuRendererService } from './rich-menu-renderer.service';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { IntegrationConfigService } from '../../integrations/integration-config.service';
@@ -18,6 +19,7 @@ describe('RichMenuService', () => {
         { provide: ConfigService, useValue: { get: jest.fn() } },
         { provide: PrismaService, useValue: { systemConfig: { findFirst: jest.fn(), upsert: jest.fn() } } },
         { provide: IntegrationConfigService, useValue: integrationConfig },
+        { provide: RichMenuRendererService, useValue: { renderTemplate: jest.fn() } },
       ],
     }).compile();
 

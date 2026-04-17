@@ -54,6 +54,69 @@ describe('RichMenuService', () => {
     });
   });
 
+  describe('setRichMenuAlias', () => {
+    it('writes SystemConfig with correct key for shop/default', async () => {
+      const prismaUpsert = jest.fn().mockResolvedValue({});
+      (service as any).prisma = {
+        systemConfig: { upsert: prismaUpsert, findFirst: jest.fn() },
+      };
+      // Mock setDefaultRichMenu (variant=default triggers LINE API)
+      const setDefaultSpy = jest.spyOn(service, 'setDefaultRichMenu').mockResolvedValue(undefined);
+
+      await service.setRichMenuAlias('shop', 'default', 'rm-123');
+
+      expect(prismaUpsert).toHaveBeenCalledWith({
+        where: { key: 'line.richMenu.shopDefault' },
+        create: { key: 'line.richMenu.shopDefault', value: 'rm-123' },
+        update: { value: 'rm-123', deletedAt: null },
+      });
+      expect(setDefaultSpy).toHaveBeenCalledWith('rm-123', 'shop');
+    });
+
+    it('writes SystemConfig for finance/verified without calling setDefaultRichMenu', async () => {
+      const prismaUpsert = jest.fn().mockResolvedValue({});
+      (service as any).prisma = {
+        systemConfig: { upsert: prismaUpsert, findFirst: jest.fn() },
+      };
+      const setDefaultSpy = jest.spyOn(service, 'setDefaultRichMenu').mockResolvedValue(undefined);
+
+      await service.setRichMenuAlias('finance', 'verified', 'rm-456');
+
+      expect(prismaUpsert).toHaveBeenCalledWith({
+        where: { key: 'line.richMenu.financeVerified' },
+        create: { key: 'line.richMenu.financeVerified', value: 'rm-456' },
+        update: { value: 'rm-456', deletedAt: null },
+      });
+      expect(setDefaultSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getRichMenuAliases', () => {
+    it('returns all 4 alias values with null for missing keys', async () => {
+      const prismaFindFirst = jest.fn().mockImplementation(({ where }) => {
+        if (where.key === 'line.richMenu.shopDefault') {
+          return Promise.resolve({ value: 'rm-shop-default' });
+        }
+        if (where.key === 'line.richMenu.financeVerified') {
+          return Promise.resolve({ value: 'rm-finance-verified' });
+        }
+        return Promise.resolve(null);
+      });
+      (service as any).prisma = {
+        systemConfig: { findFirst: prismaFindFirst, upsert: jest.fn() },
+      };
+
+      const aliases = await service.getRichMenuAliases();
+
+      expect(aliases).toEqual({
+        shopDefault: 'rm-shop-default',
+        shopVerified: null,
+        financeDefault: null,
+        financeVerified: 'rm-finance-verified',
+      });
+    });
+  });
+
   describe('listRichMenus', () => {
     const originalFetch = global.fetch;
     afterEach(() => { global.fetch = originalFetch; });

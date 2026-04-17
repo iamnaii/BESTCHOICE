@@ -502,4 +502,58 @@ export class RichMenuService {
     }
     return response;
   }
+
+  /**
+   * Set Rich Menu alias for a channel/variant combination.
+   * Writes SystemConfig key `line.richMenu.{channel}{Variant}`.
+   * For variant='default', also calls LINE setDefaultRichMenu (new friends see this menu).
+   */
+  async setRichMenuAlias(
+    channel: 'shop' | 'finance',
+    variant: 'default' | 'verified',
+    richMenuId: string,
+  ): Promise<void> {
+    const variantPart = variant === 'default' ? 'Default' : 'Verified';
+    const key = `line.richMenu.${channel}${variantPart}`;
+
+    await this.prisma.systemConfig.upsert({
+      where: { key },
+      create: { key, value: richMenuId },
+      update: { value: richMenuId, deletedAt: null },
+    });
+
+    if (variant === 'default') {
+      await this.setDefaultRichMenu(richMenuId, channel);
+    }
+
+    this.logger.log(`Rich Menu alias set: ${key} = ${richMenuId}`);
+  }
+
+  /**
+   * Read all 4 Rich Menu aliases from SystemConfig.
+   */
+  async getRichMenuAliases(): Promise<{
+    shopDefault: string | null;
+    shopVerified: string | null;
+    financeDefault: string | null;
+    financeVerified: string | null;
+  }> {
+    const keys = [
+      'line.richMenu.shopDefault',
+      'line.richMenu.shopVerified',
+      'line.richMenu.financeDefault',
+      'line.richMenu.financeVerified',
+    ];
+    const records = await Promise.all(
+      keys.map((key) =>
+        this.prisma.systemConfig.findFirst({ where: { key, deletedAt: null } }),
+      ),
+    );
+    return {
+      shopDefault: records[0]?.value ?? null,
+      shopVerified: records[1]?.value ?? null,
+      financeDefault: records[2]?.value ?? null,
+      financeVerified: records[3]?.value ?? null,
+    };
+  }
 }

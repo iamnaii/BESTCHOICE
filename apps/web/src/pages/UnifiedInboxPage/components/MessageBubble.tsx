@@ -69,6 +69,43 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
     );
   }
 
+  // Flex verify card — render preview mimicking the LINE Flex bubble
+  if (message.text === '[flex:verify]') {
+    return (
+      <div className={cn('flex gap-2 mb-3', isCustomer ? 'justify-start' : 'justify-end')}>
+        <div className="flex flex-col max-w-[75%] items-end">
+          {(isBot || isStaff) && (
+            <span className="text-[10px] text-muted-foreground mb-0.5 px-1">
+              {isBot ? 'Bot' : message.staff?.name ?? 'พนักงาน'}
+            </span>
+          )}
+          <div className="w-[240px] rounded-2xl overflow-hidden border border-border bg-card shadow-sm">
+            <div className="bg-primary px-3.5 py-2 text-primary-foreground">
+              <div className="text-[10px] opacity-90 leading-snug">BEST CHOICE FINANCE</div>
+              <div className="text-sm font-semibold leading-snug mt-0.5">🔐 ยืนยันตัวตน</div>
+            </div>
+            <div className="px-3.5 py-3 text-sm text-foreground leading-snug">
+              รบกวนยืนยันตัวตนก่อนนะคะ เพื่อความปลอดภัยของข้อมูลค่ะ
+            </div>
+            <div className="px-3.5 pb-3">
+              <div className="w-full text-center text-xs font-medium py-2 rounded-lg bg-primary/10 text-primary border border-primary/20">
+                ยืนยันตัวตน
+              </div>
+            </div>
+            <div className="px-3.5 py-1.5 bg-muted/50 border-t border-border">
+              <span className="text-[9px] text-muted-foreground">Flex Message</span>
+            </div>
+          </div>
+          <span className="flex items-center mt-0.5 px-1">
+            <span className="text-[10px] text-muted-foreground">
+              {format(new Date(message.createdAt), 'HH:mm')}
+            </span>
+          </span>
+        </div>
+      </div>
+    );
+  }
+
   // Sticker message — render as animated image, no bubble background
   const stickerMatch = message.text?.match(/\[sticker:(\d+):(\d+)\]/);
   if (stickerMatch) {

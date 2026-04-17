@@ -72,7 +72,9 @@ export class KycService {
         fallbackPhone: channel === 'LINE' ? customer.phone : undefined,
       });
       if (result.status === 'FAILED') {
-        throw new InternalServerErrorException('Notification service returned FAILED status');
+        throw new InternalServerErrorException(
+          result.errorMsg || 'Notification service returned FAILED status',
+        );
       }
     } catch (err) {
       const errMessage = err instanceof Error ? err.message : String(err);

@@ -11,6 +11,7 @@ import { hasCrossBranchAccess } from '../auth/branch-access.util';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
 import { roundBaht } from '../../utils/installment.util';
 import { BUSINESS_RULES } from '../../utils/config.util';
+import { d, dAdd, dSub, dMul, dRound, dGte } from '../../utils/decimal.util';
 import { LineOaService } from '../line-oa/line-oa.service';
 import { FlexTemplatesService } from '../line-oa/flex-templates.service';
 import { QuickReplyService } from '../line-oa/quick-reply.service';
@@ -117,36 +118,36 @@ export class PaymentsService {
       capturedDueDate = payment.dueDate;
 
       // Real-time late fee: recalculate at payment time (cron may not have run yet)
-      let lateFee = Number(payment.lateFee);
+      let lateFee = d(payment.lateFee);
       if (!payment.lateFeeWaived && payment.dueDate < new Date()) {
         const daysOverdue = Math.floor((Date.now() - payment.dueDate.getTime()) / (1000 * 60 * 60 * 24));
         if (daysOverdue > 0) {
           const config = await tx.systemConfig.findUnique({ where: { key: 'late_fee_per_day' } });
           const capConfig = await tx.systemConfig.findUnique({ where: { key: 'late_fee_cap' } });
-          const feePerDay = config ? Number(config.value) : 50;
-          const cap = capConfig ? Number(capConfig.value) : 1500;
-          const pctCap = Number(payment.amountDue) * BUSINESS_RULES.LATE_FEE_CAP_PCT;
-          const calculatedFee = Math.round(Math.min(daysOverdue * feePerDay, cap, pctCap) * 100) / 100;
-          if (calculatedFee > lateFee) {
+          const feePerDay = config ? d(config.value) : d(50);
+          const cap = capConfig ? d(capConfig.value) : d(1500);
+          const pctCap = dMul(payment.amountDue, BUSINESS_RULES.LATE_FEE_CAP_PCT);
+          const calculatedFee = dRound(Prisma.Decimal.min(dMul(feePerDay, daysOverdue), cap, pctCap));
+          if (calculatedFee.gt(lateFee)) {
             lateFee = calculatedFee;
             await tx.payment.update({ where: { id: payment.id }, data: { lateFee } });
           }
         }
       }
 
-      const amountDue = roundBaht(Number(payment.amountDue) + lateFee);
-      const prevPaid = roundBaht(Number(payment.amountPaid));
-      const remaining = roundBaht(amountDue - prevPaid);
+      const amountDue = dRound(dAdd(payment.amountDue, lateFee));
+      const prevPaid = dRound(d(payment.amountPaid));
+      const remaining = dRound(dSub(amountDue, prevPaid));
 
       // Prevent overpayment: cap amount at what is owed for this installment
-      if (amount > remaining) {
+      if (d(amount).gt(remaining)) {
         throw new BadRequestException(
-          `จำนวนเงินเกินยอดค้างชำระ (ยอดค้าง ${remaining.toLocaleString()} บาท, ชำระ ${amount.toLocaleString()} บาท) กรุณาใช้ระบบจัดสรรอัตโนมัติสำหรับการชำระหลายงวด`,
+          `จำนวนเงินเกินยอดค้างชำระ (ยอดค้าง ${remaining.toNumber().toLocaleString()} บาท, ชำระ ${amount.toLocaleString()} บาท) กรุณาใช้ระบบจัดสรรอัตโนมัติสำหรับการชำระหลายงวด`,
         );
       }
-      const totalPaid = prevPaid + amount;
+      const totalPaid = dAdd(prevPaid, amount);
 
-      const isPaidInFull = totalPaid >= amountDue;
+      const isPaidInFull = dGte(totalPaid, amountDue);
 
       // Append transactionRef to notes for idempotency tracking
       const updatedNotes = transactionRef
@@ -205,7 +206,7 @@ export class PaymentsService {
       contractId,
       installmentNo,
       amount,
-      totalPaid: Number(updated.amountPaid),
+      totalPaid: d(updated.amountPaid).toNumber(),
       status: updated.status,
       paymentMethod,
       transactionRef: transactionRef ?? null,
@@ -220,7 +221,7 @@ export class PaymentsService {
       action: updated.status === 'PAID' ? 'PAYMENT_RECORDED' : 'PAYMENT_PARTIAL',
       amount,
       installmentNo,
-      details: { paymentMethod, transactionRef, totalPaid: Number(updated.amountPaid) },
+      details: { paymentMethod, transactionRef, totalPaid: d(updated.amountPaid).toNumber() },
     });
 
     // Auto-generate e-Receipt after successful payment
@@ -293,7 +294,7 @@ export class PaymentsService {
         throw new BadRequestException('ไม่สามารถชำระเงินได้ สัญญาต้องอยู่ในสถานะ ACTIVE, OVERDUE หรือ DEFAULT');
       }
 
-      let remaining = amount;
+      let remaining = d(amount);
       const results: Awaited<ReturnType<typeof tx.payment.update>>[] = [];
 
       // Get unpaid payments in order
@@ -301,12 +302,12 @@ export class PaymentsService {
       if (unpaid.length === 0) throw new BadRequestException('ไม่มีงวดค้างชำระ');
 
       for (const payment of unpaid) {
-        if (remaining <= 0) break;
+        if (remaining.lte(0)) break;
 
-        const amountDue = roundBaht(Number(payment.amountDue) + Number(payment.lateFee) - Number(payment.amountPaid));
-        const payAmount = roundBaht(Math.min(remaining, amountDue));
-        const totalPaid = roundBaht(Number(payment.amountPaid) + payAmount);
-        const isPaidInFull = totalPaid >= roundBaht(Number(payment.amountDue) + Number(payment.lateFee));
+        const amountDue = dRound(dSub(dAdd(payment.amountDue, payment.lateFee), payment.amountPaid));
+        const payAmount = dRound(Prisma.Decimal.min(remaining, amountDue));
+        const totalPaid = dRound(dAdd(payment.amountPaid, payAmount));
+        const isPaidInFull = dGte(totalPaid, dRound(dAdd(payment.amountDue, payment.lateFee)));
 
         const updated = await tx.payment.update({
           where: { id: payment.id },
@@ -321,7 +322,7 @@ export class PaymentsService {
         });
 
         results.push(updated);
-        remaining = roundBaht(remaining - payAmount);
+        remaining = dSub(remaining, payAmount);
 
         // Check contract completion after each full payment
         if (isPaidInFull) {
@@ -336,7 +337,7 @@ export class PaymentsService {
             contractId,
             paid.id,
             'INSTALLMENT',
-            roundBaht(Number(paid.amountPaid)),
+            dRound(d(paid.amountPaid)).toNumber(),
             paid.installmentNo,
             paymentMethod,
             null,
@@ -350,8 +351,8 @@ export class PaymentsService {
         }
       }
 
-      const overpayment = remaining > 0 ? Math.round(remaining * 100) / 100 : 0;
-      if (overpayment > 0) {
+      const overpayment = remaining.gt(0) ? dRound(remaining) : d(0);
+      if (overpayment.gt(0)) {
         // Store overpayment as credit balance on the contract
         await tx.contract.update({
           where: { id: contractId },
@@ -361,17 +362,17 @@ export class PaymentsService {
         });
 
         this.logger.warn(
-          `Overpayment of ${overpayment} THB credited to contract ${contractId}. ` +
-          `Customer paid ${amount} THB, ${amount - remaining} THB allocated, ${overpayment} THB stored as credit.`,
+          `Overpayment of ${overpayment.toNumber()} THB credited to contract ${contractId}. ` +
+          `Customer paid ${amount} THB, ${d(amount).sub(remaining).toNumber()} THB allocated, ${overpayment.toNumber()} THB stored as credit.`,
         );
       }
 
       return {
         allocatedPayments: results,
-        totalAllocated: amount - remaining,
-        overpayment,
-        overpaymentMessage: overpayment > 0
-          ? `มีเงินเกินจำนวน ${overpayment.toLocaleString()} บาท บันทึกเป็นยอดเครดิตในสัญญา`
+        totalAllocated: dSub(amount, remaining).toNumber(),
+        overpayment: overpayment.toNumber(),
+        overpaymentMessage: overpayment.gt(0)
+          ? `มีเงินเกินจำนวน ${overpayment.toNumber().toLocaleString()} บาท บันทึกเป็นยอดเครดิตในสัญญา`
           : null,
       };
     });
@@ -616,8 +617,8 @@ export class PaymentsService {
       });
       if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
 
-      const credit = Number(contract.creditBalance);
-      if (credit <= 0) {
+      const credit = d(contract.creditBalance);
+      if (credit.lte(0)) {
         throw new BadRequestException('ไม่มียอดเครดิตในสัญญานี้');
       }
 
@@ -631,12 +632,12 @@ export class PaymentsService {
       const results: Awaited<ReturnType<typeof tx.payment.update>>[] = [];
 
       for (const payment of unpaid) {
-        if (remaining <= 0) break;
+        if (remaining.lte(0)) break;
 
-        const amountDue = roundBaht(Number(payment.amountDue) + Number(payment.lateFee) - Number(payment.amountPaid));
-        const payAmount = roundBaht(Math.min(remaining, amountDue));
-        const totalPaid = roundBaht(Number(payment.amountPaid) + payAmount);
-        const isPaidInFull = totalPaid >= roundBaht(Number(payment.amountDue) + Number(payment.lateFee));
+        const amountDue = dRound(dSub(dAdd(payment.amountDue, payment.lateFee), payment.amountPaid));
+        const payAmount = dRound(Prisma.Decimal.min(remaining, amountDue));
+        const totalPaid = dRound(dAdd(payment.amountPaid, payAmount));
+        const isPaidInFull = dGte(totalPaid, dRound(dAdd(payment.amountDue, payment.lateFee)));
 
         const updated = await tx.payment.update({
           where: { id: payment.id },
@@ -646,12 +647,12 @@ export class PaymentsService {
             paymentMethod: 'CREDIT_BALANCE',
             status: isPaidInFull ? 'PAID' : 'PARTIALLY_PAID',
             recordedById,
-            notes: [payment.notes, `ใช้เครดิต ${payAmount.toLocaleString()} บาท`].filter(Boolean).join(' | '),
+            notes: [payment.notes, `ใช้เครดิต ${payAmount.toNumber().toLocaleString()} บาท`].filter(Boolean).join(' | '),
           },
         });
 
         results.push(updated);
-        remaining = roundBaht(remaining - payAmount);
+        remaining = dSub(remaining, payAmount);
 
         if (isPaidInFull) {
           await this.checkContractCompletion(contractId, tx);
@@ -659,7 +660,7 @@ export class PaymentsService {
       }
 
       // Update credit balance
-      const usedCredit = roundBaht(credit - remaining);
+      const usedCredit = dRound(dSub(credit, remaining));
       await tx.contract.update({
         where: { id: contractId },
         data: { creditBalance: remaining },
@@ -667,8 +668,8 @@ export class PaymentsService {
 
       return {
         allocatedPayments: results,
-        creditUsed: usedCredit,
-        creditRemaining: remaining,
+        creditUsed: usedCredit.toNumber(),
+        creditRemaining: remaining.toNumber(),
       };
     });
   }

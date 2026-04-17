@@ -7,13 +7,14 @@ import {
 } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
 import { formatDateLong } from '../../utils/thai-date.util';
+import { d, dAdd, dSub, dClose } from '../../utils/decimal.util';
 
 // Pay Solutions external API timeout. Their published SLA is "instant"
 // but real-world we've seen 5-10s on busy hours. 15s leaves headroom
 // without holding our request thread forever.
 const PAYSOLUTIONS_TIMEOUT_MS = 15_000;
 import { ConfigService } from '@nestjs/config';
-import { PaymentMethod } from '@prisma/client';
+import { Prisma, PaymentMethod } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LineOaService } from '../line-oa/line-oa.service';
 import { buildPaymentSuccessFlex } from '../line-oa/flex-messages/payment-success.flex';
@@ -125,10 +126,10 @@ export class PaySolutionsService {
       }
 
       // Validate amount matches actual outstanding for this installment
-      const expectedAmount = Number(paymentRecord.amountDue) + Number(paymentRecord.lateFee) - Number(paymentRecord.amountPaid);
-      if (Math.abs(amount - expectedAmount) > 0.01) {
+      const expectedAmount = dSub(dAdd(paymentRecord.amountDue, paymentRecord.lateFee), paymentRecord.amountPaid);
+      if (!dClose(amount, expectedAmount)) {
         throw new BadRequestException(
-          `ยอดชำระไม่ตรง: ส่งมา ${amount.toLocaleString()} บาท แต่ยอดค้างจริง ${expectedAmount.toLocaleString()} บาท`,
+          `ยอดชำระไม่ตรง: ส่งมา ${amount.toLocaleString()} บาท แต่ยอดค้างจริง ${expectedAmount.toNumber().toLocaleString()} บาท`,
         );
       }
     }
@@ -384,7 +385,7 @@ export class PaySolutionsService {
             where: { id: paymentLink.paymentId },
             data: {
               status: 'PAID',
-              amountPaid: total ? parseFloat(total) : paymentLink.amount,
+              amountPaid: total && !isNaN(Number(total)) ? new Prisma.Decimal(total) : paymentLink.amount,
               paidDate: new Date(),
               paidAt: new Date(),
               paymentMethod: PaymentMethod.ONLINE_GATEWAY,

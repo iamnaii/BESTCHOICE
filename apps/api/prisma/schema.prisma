@@ -2941,6 +2941,7 @@ enum TriggerStatus {
 }
 
 /// Multi-channel LINE binding (1 customer สามารถ link หลาย channel ได้)
+/// linkedAt = createdAt (domain-meaningful alias). State transitions via unlinkedAt → deletedAt.
 model CustomerLineLink {
   id         String          @id @default(uuid())
   customerId String          @map("customer_id")
@@ -2949,6 +2950,8 @@ model CustomerLineLink {
   channel    LineChannelType
   linkedAt   DateTime        @default(now()) @map("linked_at")
   unlinkedAt DateTime?       @map("unlinked_at")
+  createdAt  DateTime        @default(now()) @map("created_at")
+  updatedAt  DateTime        @updatedAt @map("updated_at")
   deletedAt  DateTime?       @map("deleted_at")
 
   @@unique([lineUserId, channel])
@@ -3516,7 +3519,8 @@ model CustomerScore {
   tier         CustomerTier    @default(STANDARD)
 
   lastCalculatedAt DateTime    @default(now()) @map("last_calculated_at")
-  updatedAt    DateTime        @updatedAt @map("updated_at")
+  createdAt        DateTime    @default(now()) @map("created_at")
+  updatedAt        DateTime    @updatedAt @map("updated_at")
 
   @@map("customer_scores")
 }

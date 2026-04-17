@@ -5,12 +5,20 @@
 - ห้ามใช้ autoincrement
 
 ## Timestamps
-ทุก model ต้องมี 3 fields นี้:
+โดย default ทุก model ต้องมี 3 fields นี้:
 ```prisma
 createdAt DateTime @default(now())
 updatedAt DateTime @updatedAt
 deletedAt DateTime?
 ```
+
+### Exception patterns (ข้อยกเว้นที่ documented)
+- **Immutable audit logs** (AuditLog, DocumentAuditLog, DataAuditLog, WebhookDelivery) — ไม่มี `updatedAt`/`deletedAt` เพราะ immutable by design. Retention handled by dedicated cron
+- **One-time tokens** (PasswordResetToken, InviteToken, CustomerAccessToken, ChatbotOtpRequest) — ไม่มี `updatedAt`/`deletedAt` เพราะ use-once + TTL cleanup
+- **Idempotency records** (ProcessedWebhookEvent) — มีแค่ `processedAt` เป็น createdAt-equivalent. Immutable, retention via cron
+- **Append-only event logs** (ChatMessage, CallLog, BroadcastMessage receipts) — ไม่มี `updatedAt` เพราะ events ไม่แก้หลัง insert
+
+**Rule**: ถ้า model ใหม่ควรยกเว้นต้องมี `///` comment อธิบายเหตุผล เช่น `/// Immutable audit log — updatedAt/deletedAt intentionally omitted`
 
 ## Soft Delete
 - ใช้ `deletedAt DateTime?` — **ห้าม hard delete** เด็ดขาด

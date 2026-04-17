@@ -122,7 +122,7 @@ export default function ConversationItem({ session, isActive, onClick, onPin }: 
             {lastMessage?.text ?? '(ข้อความสื่อ)'}
           </p>
           {hasUnread && (
-            <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold leading-none flex-shrink-0">
+            <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold leading-snug flex-shrink-0">
               {unreadCount > 99 ? '99+' : unreadCount}
             </span>
           )}

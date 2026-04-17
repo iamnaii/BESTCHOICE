@@ -90,7 +90,7 @@ function ChatBadgeDot() {
   if (count <= 0) return null;
   return (
     <span
-      className="absolute -top-1 -right-1.5 min-w-[16px] h-[16px] px-0.5 flex items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-bold leading-none ring-2 ring-background"
+      className="absolute -top-1 -right-1.5 min-w-[16px] h-[16px] px-0.5 flex items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-bold leading-snug ring-2 ring-background"
       aria-label={`${count > 99 ? '99+' : count} ข้อความใหม่`}
     >
       {count > 99 ? '99+' : count}

@@ -468,7 +468,7 @@ export function ChatUnreadBadge({ className }: { className?: string }) {
   const count = useUnreadChat();
   if (count <= 0) return null;
   return (
-    <span className={cn('min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold leading-none', className)}>
+    <span className={cn('min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold leading-snug', className)}>
       {count > 99 ? '99+' : count}
     </span>
   );

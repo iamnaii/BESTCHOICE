@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger, Optional } from '@nestjs/common';
+import * as Sentry from '@sentry/node';
 import { StructuredLoggerService } from '../../common/logger';
 import { Prisma, PaymentMethod } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -192,8 +193,11 @@ export class PaymentsService {
             userId: recordedById,
           });
         } catch (err) {
-          // Don't fail payment if journal fails — log and continue
           this.logger.error(`Auto-journal failed for payment ${result.id}: ${err}`);
+          Sentry.captureException(err, {
+            tags: { module: 'payments', action: 'auto-journal' },
+            extra: { paymentId: result.id, contractId },
+          });
         }
       }
 

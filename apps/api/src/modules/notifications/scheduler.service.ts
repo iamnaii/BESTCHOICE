@@ -209,20 +209,29 @@ export class SchedulerService {
     try {
       const result = await this.overdueService.escalateDunningStages();
 
+      // Batch-fetch all escalated contracts to avoid N+1 queries
+      const escalatedIds = result.escalated.map((e) => e.contractId);
+      const now = new Date();
+      const contractsById = new Map(
+        (
+          await this.prisma.contract.findMany({
+            where: { id: { in: escalatedIds } },
+            include: {
+              customer: { select: { name: true, lineId: true, phone: true } },
+              payments: {
+                where: { status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] }, dueDate: { lt: now } },
+                orderBy: { installmentNo: 'asc' },
+              },
+            },
+          })
+        ).map((c) => [c.id, c]),
+      );
+
       // Send stage-specific LINE notifications
       let notified = 0;
       for (const esc of result.escalated) {
         try {
-          const contract = await this.prisma.contract.findUnique({
-            where: { id: esc.contractId },
-            include: {
-              customer: { select: { name: true, lineId: true, phone: true } },
-              payments: {
-                where: { status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] }, dueDate: { lt: new Date() } },
-                orderBy: { installmentNo: 'asc' },
-              },
-            },
-          });
+          const contract = contractsById.get(esc.contractId);
           if (!contract?.customer?.lineId) continue;
 
           const totalOverdue = contract.payments.reduce(
@@ -320,8 +329,9 @@ export class SchedulerService {
             },
           });
           sent++;
-        } catch {
-          // Skip if notification log creation fails
+        } catch (err) {
+          this.logger.error(`[SLA] Failed to create notification log: ${err}`);
+          Sentry.captureException(err, { tags: { module: 'scheduler', action: 'sla-notification' } });
         }
       }
 

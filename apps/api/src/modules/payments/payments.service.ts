@@ -202,7 +202,7 @@ export class PaymentsService {
       }
 
       return result;
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
     // Structured log for financial audit / observability
     this.structuredLogger.log('payment.recorded', {
@@ -379,7 +379,7 @@ export class PaymentsService {
           ? `มีเงินเกินจำนวน ${overpayment.toNumber().toLocaleString()} บาท บันทึกเป็นยอดเครดิตในสัญญา`
           : null,
       };
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
   // ─── Get payments for a contract ──────────────────────
@@ -675,7 +675,7 @@ export class PaymentsService {
         creditUsed: usedCredit.toNumber(),
         creditRemaining: remaining.toNumber(),
       };
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
   // ─── Get credit balance for a contract ─────────────

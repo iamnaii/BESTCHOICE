@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import * as Sentry from '@sentry/nestjs';
 import { BroadcastService } from './broadcast.service';
 
 @Injectable()
@@ -17,6 +18,7 @@ export class BroadcastCron {
       }
     } catch (error) {
       this.logger.error('Broadcast cron failed', error);
+      Sentry.captureException(error, { tags: { kind: 'cron-job', cron: 'broadcast' } });
     }
   }
 }

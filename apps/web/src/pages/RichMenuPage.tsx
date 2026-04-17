@@ -26,8 +26,8 @@ interface RichMenu {
 }
 
 interface RichMenuListResponse {
-  menus: RichMenu[];
-  defaultMenuId: string | null;
+  richmenus: RichMenu[];
+  defaultRichMenuId: string | null;
 }
 
 interface MenuButton {
@@ -799,7 +799,7 @@ export default function RichMenuPage() {
             <div className="rounded-xl border border-border/50 bg-card shadow-sm p-10 text-center">
               <div className="text-sm text-muted-foreground">กำลังโหลด...</div>
             </div>
-          ) : !data?.menus?.length ? (
+          ) : !data?.richmenus?.length ? (
             <div className="rounded-xl border border-border/50 bg-card shadow-sm p-12 text-center">
               <LayoutGrid size={40} className="mx-auto mb-3 text-muted-foreground/40" />
               <p className="text-sm font-medium text-muted-foreground">ยังไม่มี Rich Menu</p>
@@ -817,7 +817,7 @@ export default function RichMenuPage() {
               </Button>
             </div>
           ) : (
-            data.menus.map((menu) => {
+            data.richmenus.map((menu) => {
               const channelAliases = aliases
                 ? {
                     default: channel === 'shop' ? aliases.shopDefault : aliases.financeDefault,
@@ -934,7 +934,7 @@ export default function RichMenuPage() {
           )}
 
           {/* Add new button */}
-          {(data?.menus?.length ?? 0) > 0 && (
+          {(data?.richmenus?.length ?? 0) > 0 && (
             <div className="flex justify-end">
               <Button
                 variant="outline"

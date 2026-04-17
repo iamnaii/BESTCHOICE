@@ -59,11 +59,6 @@ export class RichMenuService {
     return token;
   }
 
-  /** @deprecated Use getChannelToken('shop') instead */
-  private async getShopChannelToken(): Promise<string> {
-    return this.getChannelToken('shop');
-  }
-
   /**
    * BESTCHOICE SHOP Rich Menu (2026 Brand — v3)
    * Layout: 2 rows x 3 columns (2500x1686)

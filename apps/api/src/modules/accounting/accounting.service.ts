@@ -10,7 +10,7 @@ import { ExpenseAccountType, ExpenseCategory, ExpenseStatus, Prisma, WhtIncomeTy
 import { CreateExpenseDto, UpdateExpenseDto } from './dto/expense.dto';
 import { validatePeriodOpen as validatePeriodOpenUtil } from '../../utils/period-lock.util';
 import { JournalAutoService } from '../journal/journal-auto.service';
-import { d, dAdd } from '../../utils/decimal.util';
+import { d, dAdd, dSub, dMul, dRound } from '../../utils/decimal.util';
 
 /**
  * INVENTORY COSTING METHOD: Specific Identification
@@ -135,14 +135,14 @@ export class AccountingService {
     let vatAmount = dto.vatAmount || 0;
     if (dto.includeVat && !dto.vatAmount) {
       const vatConfig = await this.prisma.systemConfig.findUnique({ where: { key: 'vat_pct' } });
-      const vatRate = vatConfig ? Number(vatConfig.value) : 0.07;
-      vatAmount = Math.round(dto.amount * vatRate * 100) / 100;
+      const vatRate = vatConfig ? d(vatConfig.value) : d(0.07);
+      vatAmount = dRound(dMul(dto.amount, vatRate)).toNumber();
     }
     const withholdingTax = dto.withholdingTax || 0;
     const whtRate = dto.whtRate || null;
     const whtIncomeType = (dto.whtIncomeType as WhtIncomeType) || null;
-    const totalAmount = dto.amount + vatAmount;
-    const netPayment = Math.round((totalAmount - withholdingTax) * 100) / 100;
+    const totalAmount = dRound(dAdd(dto.amount, vatAmount)).toNumber();
+    const netPayment = dRound(dSub(totalAmount, withholdingTax)).toNumber();
     const accountCode = dto.accountCode || CATEGORY_CODE_MAP[dto.category] || null;
 
     const expense = await this.prisma.$transaction(async (tx) => {

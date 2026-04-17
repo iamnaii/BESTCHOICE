@@ -71,7 +71,7 @@ export default function UnifiedInboxPage() {
   const { joinRoom, leaveRoom, sendMessage, viewRoom, isCustomerTyping } = useChatSocket({
     onNewMessage: (data) => {
       queryClient.invalidateQueries({ queryKey: ['chat-messages', data.roomId] });
-      queryClient.invalidateQueries({ queryKey: ['chat-sessions'] });
+      queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
       queryClient.invalidateQueries({ queryKey: ['chat-unread-count'] });
       // Sound + browser notification
       if (data.role === 'CUSTOMER') {
@@ -79,7 +79,7 @@ export default function UnifiedInboxPage() {
       }
     },
     onRoomUpdate: () => {
-      queryClient.invalidateQueries({ queryKey: ['chat-sessions'] });
+      queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
       queryClient.invalidateQueries({ queryKey: ['chat-unread-count'] });
     },
     onCollision: (data) => {
@@ -90,7 +90,7 @@ export default function UnifiedInboxPage() {
 
   // Fetch sessions — send search to backend; tab/channel filtering is client-side
   const sessionsQuery = useQuery({
-    queryKey: ['chat-sessions', filters.search],
+    queryKey: ['chat-rooms', filters.search],
     queryFn: () =>
       api
         .get('/staff-chat/rooms', { params: { search: filters.search } })
@@ -99,7 +99,7 @@ export default function UnifiedInboxPage() {
 
   // Fetch active room details
   const sessionQuery = useQuery({
-    queryKey: ['chat-session', activeRoomId],
+    queryKey: ['chat-room', activeRoomId],
     queryFn: () =>
       api.get(`/staff-chat/rooms/${activeRoomId}`).then((r) => r.data),
     enabled: !!activeRoomId,
@@ -124,8 +124,8 @@ export default function UnifiedInboxPage() {
       api.patch(`/staff-chat/rooms/${roomId}/assign`, { staffId }),
     onSuccess: () => {
       toast.success('มอบหมายแล้ว');
-      queryClient.invalidateQueries({ queryKey: ['chat-sessions'] });
-      queryClient.invalidateQueries({ queryKey: ['chat-session', activeRoomId] });
+      queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
+      queryClient.invalidateQueries({ queryKey: ['chat-room', activeRoomId] });
     },
   });
 
@@ -134,8 +134,8 @@ export default function UnifiedInboxPage() {
       api.patch(`/staff-chat/rooms/${roomId}/resolve`),
     onSuccess: () => {
       toast.success('ปิดการสนทนาแล้ว');
-      queryClient.invalidateQueries({ queryKey: ['chat-sessions'] });
-      queryClient.invalidateQueries({ queryKey: ['chat-session', activeRoomId] });
+      queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
+      queryClient.invalidateQueries({ queryKey: ['chat-room', activeRoomId] });
     },
   });
 
@@ -144,7 +144,7 @@ export default function UnifiedInboxPage() {
       api.patch(`/staff-chat/rooms/${roomId}/return-to-ai`),
     onSuccess: () => {
       toast.success('ส่งกลับ Bot แล้ว');
-      queryClient.invalidateQueries({ queryKey: ['chat-sessions'] });
+      queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
     },
   });
 
@@ -154,8 +154,7 @@ export default function UnifiedInboxPage() {
     onSuccess: () => {
       toast.success('โอนห้องสำเร็จ');
       queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
-      queryClient.invalidateQueries({ queryKey: ['chat-sessions'] });
-      queryClient.invalidateQueries({ queryKey: ['chat-session', activeRoomId] });
+      queryClient.invalidateQueries({ queryKey: ['chat-room', activeRoomId] });
     },
   });
 

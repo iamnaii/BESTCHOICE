@@ -2976,6 +2976,10 @@ model ChatRoom {
   status   ChatRoomStatus @default(ACTIVE)
   priority ChatPriority  @default(NORMAL)
 
+  // Platform profile (fetched from LINE/FB on first contact — not always available for TikTok)
+  displayName String? @map("display_name")
+  pictureUrl  String? @map("picture_url")
+
   // Pin
   pinnedAt   DateTime? @map("pinned_at")
   pinnedById String?   @map("pinned_by_id")

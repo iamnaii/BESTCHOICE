@@ -32,6 +32,8 @@ import { PaymentLinkService } from './payment-links/payment-link.service';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
 import { StorageService } from '../storage/storage.service';
 import { WebhookDedupService } from '../chatbot-finance/services/webhook-dedup.service';
+import { MessageRouterService } from '../chat-engine/services/message-router.service';
+import { ChatChannel, MessageType } from '@prisma/client';
 import { toNum as d, calcOutstanding as sumOutstanding } from '../../utils/decimal.util';
 import { buildBrowserUrl } from '../../utils/line-login.util';
 
@@ -54,6 +56,7 @@ export class LineOaChatbotController {
     private paymentLinkService: PaymentLinkService,
     private storageService: StorageService,
     private webhookDedupService: WebhookDedupService,
+    private messageRouter: MessageRouterService,
   ) {}
 
   // ─── LINE Webhook ─────────────────────────────────────
@@ -222,6 +225,19 @@ export class LineOaChatbotController {
     const textLower = text.toLowerCase();
     const userId = event.source.userId;
 
+    // Mirror to Unified Inbox (best-effort — never block Shop bot reply flow)
+    try {
+      await this.messageRouter.mirrorInbound({
+        externalMessageId: event.message.id,
+        externalUserId: userId,
+        channel: ChatChannel.LINE_SHOP,
+        type: MessageType.TEXT,
+        text,
+      });
+    } catch (err) {
+      this.logger.warn(`[SHOP mirror] text: ${err instanceof Error ? err.message : err}`);
+    }
+
     // Owner self-register
     if (textLower === '#owner') {
       try {
@@ -299,6 +315,18 @@ export class LineOaChatbotController {
   private async handleImageMessage(event: LineMessageEvent): Promise<void> {
     if (event.message.type !== 'image') return;
     const userId = event.source.userId;
+
+    // Mirror to Unified Inbox (best-effort — image URL filled after upload below)
+    try {
+      await this.messageRouter.mirrorInbound({
+        externalMessageId: event.message.id,
+        externalUserId: userId,
+        channel: ChatChannel.LINE_SHOP,
+        type: MessageType.IMAGE,
+      });
+    } catch (err) {
+      this.logger.warn(`[SHOP mirror] image: ${err instanceof Error ? err.message : err}`);
+    }
 
     const customer = await this.lineOaService.findCustomerByLineId(userId);
     if (!customer) {

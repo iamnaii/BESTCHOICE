@@ -75,11 +75,13 @@ function PhonePreview({
   selectedButton,
   onSelectButton,
   layout,
+  hasCustomImage = false,
 }: {
   buttons: MenuButton[];
   selectedButton: number;
   onSelectButton: (i: number) => void;
   layout: LayoutType;
+  hasCustomImage?: boolean;
 }) {
   const layoutCfg = LAYOUT_OPTIONS.find((l) => l.value === layout) ?? LAYOUT_OPTIONS[0];
   const visibleButtons = buttons.slice(0, layoutCfg.cols * layoutCfg.rows);
@@ -127,17 +129,23 @@ function PhonePreview({
                 <button
                   key={i}
                   onClick={() => onSelectButton(i)}
-                  aria-label={btn.label || `เลือกปุ่ม ${i + 1}`}
+                  aria-label={`เลือกช่อง ${i + 1}`}
                   className="relative flex flex-col items-center justify-center py-3 gap-1 transition-all hover:brightness-90 focus:outline-none"
-                  style={{ backgroundColor: btn.color }}
+                  style={{ backgroundColor: hasCustomImage ? '#9ca3af' : btn.color }}
                 >
                   {i === selectedButton && (
                     <div className="absolute inset-0 border-2 border-primary rounded-sm z-10 pointer-events-none" />
                   )}
-                  <span className="text-lg leading-snug">{btn.emoji}</span>
-                  <span className="text-white text-[9px] font-semibold leading-tight px-1 text-center">
-                    {btn.label}
-                  </span>
+                  {hasCustomImage ? (
+                    <span className="text-white text-xs font-bold">ช่อง {i + 1}</span>
+                  ) : (
+                    <>
+                      <span className="text-lg leading-snug">{btn.emoji}</span>
+                      <span className="text-white text-[9px] font-semibold leading-tight px-1 text-center">
+                        {btn.label}
+                      </span>
+                    </>
+                  )}
                 </button>
               ))}
             </div>
@@ -166,6 +174,7 @@ function ButtonEditor({
   onUpdateButton,
   layout,
   onLayoutChange,
+  hasCustomImage = false,
 }: {
   buttons: MenuButton[];
   selectedButton: number;
@@ -173,6 +182,7 @@ function ButtonEditor({
   onUpdateButton: (i: number, updates: Partial<MenuButton>) => void;
   layout: LayoutType;
   onLayoutChange: (l: LayoutType) => void;
+  hasCustomImage?: boolean;
 }) {
   const layoutCfg = LAYOUT_OPTIONS.find((l) => l.value === layout) ?? LAYOUT_OPTIONS[0];
   const visibleCount = layoutCfg.cols * layoutCfg.rows;
@@ -198,7 +208,7 @@ function ButtonEditor({
 
       {/* Button tabs */}
       <div>
-        <label className="block text-sm font-medium text-foreground mb-1.5">เลือกปุ่ม</label>
+        <label className="block text-sm font-medium text-foreground mb-1.5">เลือกช่อง</label>
         <div className="flex flex-wrap gap-1.5">
           {buttons.slice(0, visibleCount).map((b, i) => (
             <button
@@ -209,10 +219,20 @@ function ButtonEditor({
                   ? 'border-transparent text-white shadow-sm'
                   : 'border-border bg-background text-muted-foreground hover:border-primary/50'
               }`}
-              style={i === selectedButton ? { backgroundColor: b.color } : {}}
+              style={
+                i === selectedButton
+                  ? { backgroundColor: hasCustomImage ? 'hsl(var(--primary))' : b.color }
+                  : {}
+              }
             >
-              <span>{b.emoji}</span>
-              <span>{b.label}</span>
+              {hasCustomImage ? (
+                <span>ช่อง {i + 1}</span>
+              ) : (
+                <>
+                  <span>{b.emoji}</span>
+                  <span>{b.label}</span>
+                </>
+              )}
             </button>
           ))}
         </div>
@@ -223,53 +243,63 @@ function ButtonEditor({
         <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3">
           <div
             className="flex items-center gap-2 pb-2 border-b border-border"
-            style={{ color: btn.color }}
+            style={{ color: hasCustomImage ? 'hsl(var(--foreground))' : btn.color }}
           >
-            <span className="text-lg">{btn.emoji}</span>
-            <span className="font-semibold text-sm">ปุ่มที่ {selectedButton + 1}: {btn.label}</span>
+            {hasCustomImage ? (
+              <span className="font-semibold text-sm">ช่องที่ {selectedButton + 1}</span>
+            ) : (
+              <>
+                <span className="text-lg">{btn.emoji}</span>
+                <span className="font-semibold text-sm">ปุ่มที่ {selectedButton + 1}: {btn.label}</span>
+              </>
+            )}
           </div>
 
-          {/* Emoji */}
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1">ไอคอน (Emoji)</label>
-            <Input
-              value={btn.emoji}
-              onChange={(e) => onUpdateButton(selectedButton, { emoji: e.target.value })}
-              className="w-16 text-center text-lg"
-              maxLength={2}
-            />
-          </div>
-
-          {/* Label */}
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1">ชื่อปุ่ม</label>
-            <Input
-              value={btn.label}
-              onChange={(e) => onUpdateButton(selectedButton, { label: e.target.value })}
-              placeholder="เช่น ดูสินค้า"
-              maxLength={12}
-            />
-            <p className="text-xs text-muted-foreground mt-0.5">{btn.label.length}/12 ตัวอักษร</p>
-          </div>
-
-          {/* Color */}
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1.5">สีพื้นหลัง</label>
-            <div className="flex flex-wrap gap-1.5">
-              {COLOR_PRESETS.map((preset) => (
-                <button
-                  key={preset.value}
-                  onClick={() => onUpdateButton(selectedButton, { color: preset.value })}
-                  title={preset.name}
-                  aria-label={preset.name}
-                  className={`w-7 h-7 rounded-full border-2 transition-transform hover:scale-110 ${
-                    btn.color === preset.value ? 'border-foreground scale-110' : 'border-transparent'
-                  }`}
-                  style={{ backgroundColor: preset.value }}
+          {!hasCustomImage && (
+            <>
+              {/* Emoji */}
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">ไอคอน (Emoji)</label>
+                <Input
+                  value={btn.emoji}
+                  onChange={(e) => onUpdateButton(selectedButton, { emoji: e.target.value })}
+                  className="w-16 text-center text-lg"
+                  maxLength={2}
                 />
-              ))}
-            </div>
-          </div>
+              </div>
+
+              {/* Label */}
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">ชื่อปุ่ม</label>
+                <Input
+                  value={btn.label}
+                  onChange={(e) => onUpdateButton(selectedButton, { label: e.target.value })}
+                  placeholder="เช่น ดูสินค้า"
+                  maxLength={12}
+                />
+                <p className="text-xs text-muted-foreground mt-0.5">{btn.label.length}/12 ตัวอักษร</p>
+              </div>
+
+              {/* Color */}
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1.5">สีพื้นหลัง</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {COLOR_PRESETS.map((preset) => (
+                    <button
+                      key={preset.value}
+                      onClick={() => onUpdateButton(selectedButton, { color: preset.value })}
+                      title={preset.name}
+                      aria-label={preset.name}
+                      className={`w-7 h-7 rounded-full border-2 transition-transform hover:scale-110 ${
+                        btn.color === preset.value ? 'border-foreground scale-110' : 'border-transparent'
+                      }`}
+                      style={{ backgroundColor: preset.value }}
+                    />
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
 
           {/* Action type */}
           <div>
@@ -636,6 +666,7 @@ export default function RichMenuPage() {
                 selectedButton={selectedButton}
                 onSelectButton={setSelectedButton}
                 layout={layout}
+                hasCustomImage={customImageFile !== null}
               />
 
               {/* Button Editor */}
@@ -646,6 +677,7 @@ export default function RichMenuPage() {
                 onUpdateButton={updateButton}
                 layout={layout}
                 onLayoutChange={setLayout}
+                hasCustomImage={customImageFile !== null}
               />
             </div>
           </div>

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { LayoutGrid, Trash2, Star, Upload, Plus, ImageIcon, Pencil, Copy } from 'lucide-react';
@@ -9,6 +9,12 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -20,8 +26,8 @@ interface RichMenu {
 }
 
 interface RichMenuListResponse {
-  menus: RichMenu[];
-  defaultMenuId: string | null;
+  richmenus: RichMenu[];
+  defaultRichMenuId: string | null;
 }
 
 interface MenuButton {
@@ -69,11 +75,13 @@ function PhonePreview({
   selectedButton,
   onSelectButton,
   layout,
+  hasCustomImage = false,
 }: {
   buttons: MenuButton[];
   selectedButton: number;
   onSelectButton: (i: number) => void;
   layout: LayoutType;
+  hasCustomImage?: boolean;
 }) {
   const layoutCfg = LAYOUT_OPTIONS.find((l) => l.value === layout) ?? LAYOUT_OPTIONS[0];
   const visibleButtons = buttons.slice(0, layoutCfg.cols * layoutCfg.rows);
@@ -121,17 +129,23 @@ function PhonePreview({
                 <button
                   key={i}
                   onClick={() => onSelectButton(i)}
-                  aria-label={btn.label || `เลือกปุ่ม ${i + 1}`}
+                  aria-label={`เลือกช่อง ${i + 1}`}
                   className="relative flex flex-col items-center justify-center py-3 gap-1 transition-all hover:brightness-90 focus:outline-none"
-                  style={{ backgroundColor: btn.color }}
+                  style={{ backgroundColor: hasCustomImage ? '#9ca3af' : btn.color }}
                 >
                   {i === selectedButton && (
                     <div className="absolute inset-0 border-2 border-primary rounded-sm z-10 pointer-events-none" />
                   )}
-                  <span className="text-lg leading-snug">{btn.emoji}</span>
-                  <span className="text-white text-[9px] font-semibold leading-tight px-1 text-center">
-                    {btn.label}
-                  </span>
+                  {hasCustomImage ? (
+                    <span className="text-white text-xs font-bold">ช่อง {i + 1}</span>
+                  ) : (
+                    <>
+                      <span className="text-lg leading-snug">{btn.emoji}</span>
+                      <span className="text-white text-[9px] font-semibold leading-tight px-1 text-center">
+                        {btn.label}
+                      </span>
+                    </>
+                  )}
                 </button>
               ))}
             </div>
@@ -160,6 +174,7 @@ function ButtonEditor({
   onUpdateButton,
   layout,
   onLayoutChange,
+  hasCustomImage = false,
 }: {
   buttons: MenuButton[];
   selectedButton: number;
@@ -167,6 +182,7 @@ function ButtonEditor({
   onUpdateButton: (i: number, updates: Partial<MenuButton>) => void;
   layout: LayoutType;
   onLayoutChange: (l: LayoutType) => void;
+  hasCustomImage?: boolean;
 }) {
   const layoutCfg = LAYOUT_OPTIONS.find((l) => l.value === layout) ?? LAYOUT_OPTIONS[0];
   const visibleCount = layoutCfg.cols * layoutCfg.rows;
@@ -192,7 +208,7 @@ function ButtonEditor({
 
       {/* Button tabs */}
       <div>
-        <label className="block text-sm font-medium text-foreground mb-1.5">เลือกปุ่ม</label>
+        <label className="block text-sm font-medium text-foreground mb-1.5">เลือกช่อง</label>
         <div className="flex flex-wrap gap-1.5">
           {buttons.slice(0, visibleCount).map((b, i) => (
             <button
@@ -203,10 +219,20 @@ function ButtonEditor({
                   ? 'border-transparent text-white shadow-sm'
                   : 'border-border bg-background text-muted-foreground hover:border-primary/50'
               }`}
-              style={i === selectedButton ? { backgroundColor: b.color } : {}}
+              style={
+                i === selectedButton
+                  ? { backgroundColor: hasCustomImage ? 'hsl(var(--primary))' : b.color }
+                  : {}
+              }
             >
-              <span>{b.emoji}</span>
-              <span>{b.label}</span>
+              {hasCustomImage ? (
+                <span>ช่อง {i + 1}</span>
+              ) : (
+                <>
+                  <span>{b.emoji}</span>
+                  <span>{b.label}</span>
+                </>
+              )}
             </button>
           ))}
         </div>
@@ -217,53 +243,63 @@ function ButtonEditor({
         <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3">
           <div
             className="flex items-center gap-2 pb-2 border-b border-border"
-            style={{ color: btn.color }}
+            style={{ color: hasCustomImage ? 'hsl(var(--foreground))' : btn.color }}
           >
-            <span className="text-lg">{btn.emoji}</span>
-            <span className="font-semibold text-sm">ปุ่มที่ {selectedButton + 1}: {btn.label}</span>
+            {hasCustomImage ? (
+              <span className="font-semibold text-sm">ช่องที่ {selectedButton + 1}</span>
+            ) : (
+              <>
+                <span className="text-lg">{btn.emoji}</span>
+                <span className="font-semibold text-sm">ปุ่มที่ {selectedButton + 1}: {btn.label}</span>
+              </>
+            )}
           </div>
 
-          {/* Emoji */}
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1">ไอคอน (Emoji)</label>
-            <Input
-              value={btn.emoji}
-              onChange={(e) => onUpdateButton(selectedButton, { emoji: e.target.value })}
-              className="w-16 text-center text-lg"
-              maxLength={2}
-            />
-          </div>
-
-          {/* Label */}
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1">ชื่อปุ่ม</label>
-            <Input
-              value={btn.label}
-              onChange={(e) => onUpdateButton(selectedButton, { label: e.target.value })}
-              placeholder="เช่น ดูสินค้า"
-              maxLength={12}
-            />
-            <p className="text-xs text-muted-foreground mt-0.5">{btn.label.length}/12 ตัวอักษร</p>
-          </div>
-
-          {/* Color */}
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1.5">สีพื้นหลัง</label>
-            <div className="flex flex-wrap gap-1.5">
-              {COLOR_PRESETS.map((preset) => (
-                <button
-                  key={preset.value}
-                  onClick={() => onUpdateButton(selectedButton, { color: preset.value })}
-                  title={preset.name}
-                  aria-label={preset.name}
-                  className={`w-7 h-7 rounded-full border-2 transition-transform hover:scale-110 ${
-                    btn.color === preset.value ? 'border-foreground scale-110' : 'border-transparent'
-                  }`}
-                  style={{ backgroundColor: preset.value }}
+          {!hasCustomImage && (
+            <>
+              {/* Emoji */}
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">ไอคอน (Emoji)</label>
+                <Input
+                  value={btn.emoji}
+                  onChange={(e) => onUpdateButton(selectedButton, { emoji: e.target.value })}
+                  className="w-16 text-center text-lg"
+                  maxLength={2}
                 />
-              ))}
-            </div>
-          </div>
+              </div>
+
+              {/* Label */}
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">ชื่อปุ่ม</label>
+                <Input
+                  value={btn.label}
+                  onChange={(e) => onUpdateButton(selectedButton, { label: e.target.value })}
+                  placeholder="เช่น ดูสินค้า"
+                  maxLength={12}
+                />
+                <p className="text-xs text-muted-foreground mt-0.5">{btn.label.length}/12 ตัวอักษร</p>
+              </div>
+
+              {/* Color */}
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1.5">สีพื้นหลัง</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {COLOR_PRESETS.map((preset) => (
+                    <button
+                      key={preset.value}
+                      onClick={() => onUpdateButton(selectedButton, { color: preset.value })}
+                      title={preset.name}
+                      aria-label={preset.name}
+                      className={`w-7 h-7 rounded-full border-2 transition-transform hover:scale-110 ${
+                        btn.color === preset.value ? 'border-foreground scale-110' : 'border-transparent'
+                      }`}
+                      style={{ backgroundColor: preset.value }}
+                    />
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
 
           {/* Action type */}
           <div>
@@ -318,6 +354,9 @@ function ButtonEditor({
 export default function RichMenuPage() {
   const queryClient = useQueryClient();
 
+  // Channel
+  const [channel, setChannel] = useState<'shop' | 'finance'>('shop');
+
   // Tab
   const [activeTab, setActiveTab] = useState<'create' | 'list'>('create');
 
@@ -338,12 +377,19 @@ export default function RichMenuPage() {
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [editingMenuId, setEditingMenuId] = useState<string | null>(null);
 
+  useEffect(() => {
+    setLiffUrl('');
+    setEditingMenuId(null);
+    setCustomImageFile(null);
+    setCustomImagePreview(null);
+  }, [channel]);
+
   // ── Queries ──────────────────────────────────────────────────────────────
 
   const { data, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['rich-menu-list'],
+    queryKey: ['rich-menu-list', channel],
     queryFn: async () => {
-      const res = await api.get('/line-oa/rich-menu/list');
+      const res = await api.get(`/line-oa/rich-menu/list?channel=${channel}`);
       return res.data as RichMenuListResponse;
     },
     retry: 1,
@@ -357,10 +403,31 @@ export default function RichMenuPage() {
     },
   });
 
-  const defaultLiffUrl = lineSettings?.settings?.liff_id
-    ? `https://liff.line.me/${lineSettings.settings.liff_id}`
-    : '';
+  const { data: financeIntegration } = useQuery({
+    queryKey: ['integration-config', 'line-finance'],
+    queryFn: async () => {
+      const res = await api.get('/integrations/line-finance/config');
+      return res.data as { config: Record<string, string> };
+    },
+  });
 
+  const { data: aliases } = useQuery({
+    queryKey: ['rich-menu-aliases'],
+    queryFn: async () => {
+      const res = await api.get('/line-oa/rich-menu/aliases');
+      return res.data as {
+        shopDefault: string | null;
+        shopVerified: string | null;
+        financeDefault: string | null;
+        financeVerified: string | null;
+      };
+    },
+  });
+
+  const shopLiffId = lineSettings?.settings?.liff_id;
+  const financeLiffId = financeIntegration?.config?.liffId;
+  const activeLiffId = channel === 'shop' ? shopLiffId : financeLiffId;
+  const defaultLiffUrl = activeLiffId ? `https://liff.line.me/${activeLiffId}` : '';
   const effectiveLiffUrl = liffUrl || defaultLiffUrl;
 
   // ── Mutations ─────────────────────────────────────────────────────────────
@@ -394,6 +461,7 @@ export default function RichMenuPage() {
             layout,
             buttons: visibleButtons,
             setAsDefault: true,
+            channel,
           }),
         );
         const res = await api.post('/line-oa/rich-menu/create-with-image', fd, {
@@ -409,6 +477,7 @@ export default function RichMenuPage() {
         chatBarText,
         layout,
         buttons: visibleButtons,
+        channel,
       });
       return res.data as { richMenuId: string };
     },
@@ -418,19 +487,18 @@ export default function RichMenuPage() {
       if (editingMenuId) {
         const oldMenuId = editingMenuId;
         try {
-          // Set new menu as default first
           if (data?.richMenuId) {
-            await api.post(`/line-oa/rich-menu/${data.richMenuId}/set-default`);
+            await api.post(`/line-oa/rich-menu/${data.richMenuId}/set-default?channel=${channel}`);
           }
-          // Delete old menu
-          await api.delete(`/line-oa/rich-menu/${oldMenuId}`);
+          await api.delete(`/line-oa/rich-menu/${oldMenuId}?channel=${channel}`);
         } catch (err) {
           console.error('Failed to cleanup old menu', err);
         }
         setEditingMenuId(null);
       }
 
-      queryClient.invalidateQueries({ queryKey: ['rich-menu-list'] });
+      queryClient.invalidateQueries({ queryKey: ['rich-menu-list', channel] });
+      queryClient.invalidateQueries({ queryKey: ['rich-menu-aliases'] });
       setActiveTab('list');
     },
     onError: (err) => toast.error(getErrorMessage(err)),
@@ -438,22 +506,24 @@ export default function RichMenuPage() {
 
   const setDefaultMutation = useMutation({
     mutationFn: async (menuId: string) => {
-      await api.post(`/line-oa/rich-menu/${menuId}/set-default`);
+      await api.post(`/line-oa/rich-menu/${menuId}/set-default?channel=${channel}`);
     },
     onSuccess: () => {
       toast.success('ตั้งเป็น Default แล้ว');
-      queryClient.invalidateQueries({ queryKey: ['rich-menu-list'] });
+      queryClient.invalidateQueries({ queryKey: ['rich-menu-list', channel] });
+      queryClient.invalidateQueries({ queryKey: ['rich-menu-aliases'] });
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (menuId: string) => {
-      await api.delete(`/line-oa/rich-menu/${menuId}`);
+      await api.delete(`/line-oa/rich-menu/${menuId}?channel=${channel}`);
     },
     onSuccess: () => {
       toast.success('ลบ Rich Menu แล้ว');
-      queryClient.invalidateQueries({ queryKey: ['rich-menu-list'] });
+      queryClient.invalidateQueries({ queryKey: ['rich-menu-list', channel] });
+      queryClient.invalidateQueries({ queryKey: ['rich-menu-aliases'] });
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
@@ -462,13 +532,25 @@ export default function RichMenuPage() {
     mutationFn: async ({ menuId, file }: { menuId: string; file: File }) => {
       const formData = new FormData();
       formData.append('image', file);
-      await api.post(`/line-oa/rich-menu/${menuId}/upload-image`, formData, {
+      await api.post(`/line-oa/rich-menu/${menuId}/upload-image?channel=${channel}`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
     },
     onSuccess: () => {
       toast.success('อัปโหลดรูป Rich Menu สำเร็จ');
-      queryClient.invalidateQueries({ queryKey: ['rich-menu-list'] });
+      queryClient.invalidateQueries({ queryKey: ['rich-menu-list', channel] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const setAliasMutation = useMutation({
+    mutationFn: async ({ menuId, variant }: { menuId: string; variant: 'default' | 'verified' }) => {
+      await api.post(`/line-oa/rich-menu/${menuId}/set-alias`, { channel, variant });
+    },
+    onSuccess: (_, vars) => {
+      toast.success(`ตั้งเป็น ${vars.variant === 'default' ? 'Default' : 'Verified'} แล้ว`);
+      queryClient.invalidateQueries({ queryKey: ['rich-menu-aliases'] });
+      queryClient.invalidateQueries({ queryKey: ['rich-menu-list', channel] });
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
@@ -512,6 +594,26 @@ export default function RichMenuPage() {
         subtitle="จัดการเมนูลัด LINE OA ที่ลูกค้าเห็นในหน้าแชท"
         icon={<LayoutGrid size={22} />}
       />
+
+      {/* Channel tabs (SHOP / FINANCE) */}
+      <div className="flex gap-1 mb-6 border-b border-border">
+        {[
+          { key: 'shop', label: '🛍 SHOP' },
+          { key: 'finance', label: '💰 FINANCE' },
+        ].map((ch) => (
+          <button
+            key={ch.key}
+            onClick={() => setChannel(ch.key as 'shop' | 'finance')}
+            className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
+              channel === ch.key
+                ? 'border-[#06C755] text-[#06C755]'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {ch.label}
+          </button>
+        ))}
+      </div>
 
       {/* Tabs */}
       <div className="flex gap-1 mb-6 border-b border-border">
@@ -564,6 +666,7 @@ export default function RichMenuPage() {
                 selectedButton={selectedButton}
                 onSelectButton={setSelectedButton}
                 layout={layout}
+                hasCustomImage={customImageFile !== null}
               />
 
               {/* Button Editor */}
@@ -574,6 +677,7 @@ export default function RichMenuPage() {
                 onUpdateButton={updateButton}
                 layout={layout}
                 onLayoutChange={setLayout}
+                hasCustomImage={customImageFile !== null}
               />
             </div>
           </div>
@@ -727,7 +831,7 @@ export default function RichMenuPage() {
             <div className="rounded-xl border border-border/50 bg-card shadow-sm p-10 text-center">
               <div className="text-sm text-muted-foreground">กำลังโหลด...</div>
             </div>
-          ) : !data?.menus?.length ? (
+          ) : !data?.richmenus?.length ? (
             <div className="rounded-xl border border-border/50 bg-card shadow-sm p-12 text-center">
               <LayoutGrid size={40} className="mx-auto mb-3 text-muted-foreground/40" />
               <p className="text-sm font-medium text-muted-foreground">ยังไม่มี Rich Menu</p>
@@ -745,19 +849,26 @@ export default function RichMenuPage() {
               </Button>
             </div>
           ) : (
-            data.menus.map((menu) => {
-              const isDefault = menu.richMenuId === data.defaultMenuId;
+            data.richmenus.map((menu) => {
+              const channelAliases = aliases
+                ? {
+                    default: channel === 'shop' ? aliases.shopDefault : aliases.financeDefault,
+                    verified: channel === 'shop' ? aliases.shopVerified : aliases.financeVerified,
+                  }
+                : { default: null, verified: null };
+              const isDefault = menu.richMenuId === channelAliases.default;
+              const isVerified = menu.richMenuId === channelAliases.verified;
               return (
                 <div
                   key={menu.richMenuId}
                   className={`rounded-xl border shadow-sm hover:shadow-md transition-shadow bg-card overflow-hidden ${
-                    isDefault ? 'border-success/30' : 'border-border/50'
+                    isDefault || isVerified ? 'border-success/30' : 'border-border/50'
                   }`}
                 >
-                  <div className={`px-5 py-3 ${isDefault ? 'bg-success/10' : 'bg-muted/20'}`}>
+                  <div className={`px-5 py-3 ${isDefault || isVerified ? 'bg-success/10' : 'bg-muted/20'}`}>
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-3 min-w-0">
-                        {isDefault && (
+                        {(isDefault || isVerified) && (
                           <Star size={16} className="text-success shrink-0" fill="currentColor" />
                         )}
                         <div className="min-w-0">
@@ -768,22 +879,40 @@ export default function RichMenuPage() {
                         </div>
                         {isDefault && (
                           <Badge className="bg-success/10 text-success hover:bg-success/10 border-success/30 shrink-0">
-                            Default
+                            ⭐ Default
+                          </Badge>
+                        )}
+                        {isVerified && (
+                          <Badge className="bg-primary/10 text-primary hover:bg-primary/10 border-primary/30 shrink-0">
+                            ✓ Verified
                           </Badge>
                         )}
                       </div>
                       <div className="flex flex-wrap items-center gap-2 shrink-0">
-                        {!isDefault && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setDefaultMutation.mutate(menu.richMenuId)}
-                            disabled={setDefaultMutation.isPending}
-                          >
-                            <Star size={13} className="mr-1" />
-                            ตั้งเป็น Default
-                          </Button>
-                        )}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button size="sm" variant="outline">
+                              <Star size={13} className="mr-1" />
+                              ตั้งเป็น...
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() =>
+                                setAliasMutation.mutate({ menuId: menu.richMenuId, variant: 'default' })
+                              }
+                            >
+                              ⭐ Default (ลูกค้าใหม่)
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() =>
+                                setAliasMutation.mutate({ menuId: menu.richMenuId, variant: 'verified' })
+                              }
+                            >
+                              ✓ Verified (ลูกค้าที่ verify แล้ว)
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                         <Button
                           size="sm"
                           variant="outline"
@@ -837,7 +966,7 @@ export default function RichMenuPage() {
           )}
 
           {/* Add new button */}
-          {(data?.menus?.length ?? 0) > 0 && (
+          {(data?.richmenus?.length ?? 0) > 0 && (
             <div className="flex justify-end">
               <Button
                 variant="outline"

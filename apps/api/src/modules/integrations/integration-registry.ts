@@ -82,6 +82,13 @@ export const INTEGRATIONS: IntegrationDef[] = [
         required: true,
         envVar: 'LINE_FINANCE_CHANNEL_SECRET',
       },
+      {
+        key: 'liffId',
+        label: 'LIFF ID',
+        sensitive: false,
+        required: false,
+        envVar: 'VITE_LIFF_ID_FINANCE',
+      },
     ],
   },
   {

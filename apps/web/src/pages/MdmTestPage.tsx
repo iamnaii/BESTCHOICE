@@ -147,9 +147,9 @@ export default function MdmTestPage() {
         {mdmStatus && (
           <div className="rounded-xl border border-border/50 bg-card shadow-sm p-4 flex items-center gap-3">
             {mdmStatus.configured ? (
-              <Wifi className="w-5 h-5 text-green-400 flex-shrink-0" />
+              <Wifi className="w-5 h-5 text-success flex-shrink-0" />
             ) : (
-              <WifiOff className="w-5 h-5 text-red-400 flex-shrink-0" />
+              <WifiOff className="w-5 h-5 text-destructive flex-shrink-0" />
             )}
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-foreground">{mdmStatus.message}</p>
@@ -260,7 +260,7 @@ export default function MdmTestPage() {
                   <Button
                     onClick={() => setConfirmUnlock(true)}
                     disabled={!isLocked || unlockMutation.isPending}
-                    className="flex items-center gap-2 bg-green-600 hover:bg-green-700"
+                    className="flex items-center gap-2 bg-primary hover:bg-primary/90"
                   >
                     <Unlock className="w-4 h-4" />
                     ปลดล็อค

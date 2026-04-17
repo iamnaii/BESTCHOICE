@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -233,18 +233,21 @@ export default function MdmDashboardPage() {
     setRestrictionsDevice(device);
   };
 
-  // Sync restrictions when query resolves
+  // Sync restrictions when query resolves — use useEffect to avoid setState during render
   const restrictionsData = restrictionsQuery.data;
-  if (restrictionsData && restrictionsDevice) {
-    const isInSync =
-      restrictions.allowCamera === restrictionsData.allowCamera &&
-      restrictions.allowScreenCapture === restrictionsData.allowScreenCapture &&
-      restrictions.allowAppInstallation === restrictionsData.allowAppInstallation &&
-      restrictions.allowSafari === restrictionsData.allowSafari;
-    if (!isInSync) {
-      setRestrictions(restrictionsData);
+  useEffect(() => {
+    if (restrictionsData && restrictionsDevice) {
+      const isInSync =
+        restrictions.allowCamera === restrictionsData.allowCamera &&
+        restrictions.allowScreenCapture === restrictionsData.allowScreenCapture &&
+        restrictions.allowAppInstallation === restrictionsData.allowAppInstallation &&
+        restrictions.allowSafari === restrictionsData.allowSafari;
+      if (!isInSync) {
+        setRestrictions(restrictionsData);
+      }
     }
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restrictionsData]);
 
   // Mutations
   const lockMutation = useMutation({

@@ -280,7 +280,13 @@ export default function ChatPanel({
     );
   }
 
-  const displayName = session.customer?.name ?? session.lineUserId?.slice(0, 12) ?? 'ไม่ทราบชื่อ';
+  const displayName =
+    session.customer?.name ??
+    session.displayName ??
+    session.lineUserId?.slice(0, 12) ??
+    'ไม่ทราบชื่อ';
+  const avatarUrl =
+    session.customer?.avatarUrl || session.customer?.lineAvatarUrl || session.pictureUrl;
   const isResolved = session.sessionStatus === 'RESOLVED';
 
   return (
@@ -293,9 +299,9 @@ export default function ChatPanel({
           </button>
           {/* Customer avatar */}
           <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center overflow-hidden shrink-0 ring-2 ring-background">
-            {session.customer?.avatarUrl || session.customer?.lineAvatarUrl ? (
+            {avatarUrl ? (
               <img
-                src={session.customer.avatarUrl || session.customer.lineAvatarUrl}
+                src={avatarUrl}
                 alt={displayName}
                 className="w-full h-full object-cover"
               />
@@ -402,7 +408,7 @@ export default function ChatPanel({
                   )}
                   <MessageBubble
                     message={msg}
-                    customerAvatar={session.customer?.avatarUrl || session.customer?.lineAvatarUrl || undefined}
+                    customerAvatar={avatarUrl || undefined}
                     customerInitial={displayName[0]}
                   />
                 </div>

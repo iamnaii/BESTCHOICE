@@ -444,7 +444,7 @@ describe('ContractsService', () => {
     });
 
     it('creates a contract and generates a payment schedule on success', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       let paymentCreateManyCalled = false;
 
       prisma.$transaction.mockImplementation(

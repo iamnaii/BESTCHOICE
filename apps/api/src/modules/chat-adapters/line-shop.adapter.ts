@@ -38,7 +38,19 @@ export class LineShopAdapter implements IChannelAdapter {
     // LINE doesn't support typing indicators from bots
   }
 
-  async getUserProfile(_externalUserId: string): Promise<UserProfile | null> {
-    return null;
+  async getUserProfile(externalUserId: string): Promise<UserProfile | null> {
+    // LineOaService.getUserProfile throws on any failure — wrap so webhook never blocks
+    try {
+      const profile = await this.lineOaService.getUserProfile(externalUserId);
+      return {
+        displayName: profile.displayName,
+        avatarUrl: profile.pictureUrl,
+      };
+    } catch (err) {
+      this.logger.warn(
+        `[LineShopAdapter] profile fetch failed: ${err instanceof Error ? err.message : err}`,
+      );
+      return null;
+    }
   }
 }

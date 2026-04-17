@@ -22,6 +22,8 @@ interface ConversationItemProps {
     lastMessageAt: string;
     totalMessages: number;
     lineUserId?: string;
+    displayName?: string | null;
+    pictureUrl?: string | null;
   };
   isActive: boolean;
   onClick: () => void;
@@ -38,7 +40,8 @@ const CHANNEL_CONFIG: Record<string, { bg: string; label: string; text: string }
 
 function Avatar({ session, displayName }: { session: ConversationItemProps['session']; displayName: string }) {
   const [imgError, setImgError] = useState(false);
-  const avatarUrl = session.customer?.avatarUrl || session.customer?.lineAvatarUrl;
+  const avatarUrl =
+    session.customer?.avatarUrl || session.customer?.lineAvatarUrl || session.pictureUrl;
   const channelCfg = CHANNEL_CONFIG[session.channel] ?? { bg: 'bg-muted-foreground', label: '?' };
 
   return (
@@ -76,7 +79,11 @@ function Avatar({ session, displayName }: { session: ConversationItemProps['sess
 
 export default function ConversationItem({ session, isActive, onClick, onPin }: ConversationItemProps) {
   const lastMessage = session.messages?.[0];
-  const displayName = session.customer?.name ?? session.lineUserId?.slice(0, 12) ?? 'ไม่ทราบชื่อ';
+  const displayName =
+    session.customer?.name ??
+    session.displayName ??
+    session.lineUserId?.slice(0, 12) ??
+    'ไม่ทราบชื่อ';
   const isPinned = session.pinnedAt != null;
   const unreadCount = session.unreadCount ?? 0;
   const hasUnread = unreadCount > 0;

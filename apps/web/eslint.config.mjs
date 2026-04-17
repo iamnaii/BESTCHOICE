@@ -40,12 +40,6 @@ export default tseslint.config(
     },
   },
   {
-    files: ['src/pages/LineGreetingPage.tsx', 'src/pages/RichMenuPage.tsx', 'src/pages/BroadcastPage.tsx'],
-    rules: {
-      'no-restricted-syntax': 'off',
-    },
-  },
-  {
     ignores: ['dist/', 'playwright-report/', 'e2e/'],
   },
 );

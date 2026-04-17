@@ -48,8 +48,20 @@ export class RichMenuService {
     private integrationConfig: IntegrationConfigService,
   ) {}
 
+  private async getChannelToken(channel: 'shop' | 'finance' = 'shop'): Promise<string> {
+    const key = channel === 'shop' ? 'line-shop' : 'line-finance';
+    const token = await this.integrationConfig.getValue(key, 'channelToken');
+    if (!token) {
+      throw new BadRequestException(
+        `LINE ${channel === 'shop' ? 'SHOP' : 'FINANCE'} channel token ยังไม่ถูกตั้งค่า — กรุณาไปที่ /settings/integrations`,
+      );
+    }
+    return token;
+  }
+
+  /** @deprecated Use getChannelToken('shop') instead */
   private async getShopChannelToken(): Promise<string> {
-    return (await this.integrationConfig.getValue('line-shop', 'channelToken')) || '';
+    return this.getChannelToken('shop');
   }
 
   /**

@@ -23,12 +23,16 @@ const COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
 function setRefreshCookie(res: Response, token: string) {
   const isProduction = process.env.NODE_ENV === 'production';
   // Cookie domain: .bestchoicephone.app — shared between
-  // bestchoicephone.app (frontend) and api.bestchoicephone.app (API)
+  // bestchoicephone.app (frontend) and api.bestchoicephone.app (API).
+  // These are same-site (same registrable domain), so SameSite=Lax is
+  // sufficient AND avoids being treated as a third-party cookie by
+  // Safari ITP / Chrome 3rd-party blocking / Brave shields — which
+  // silently dropped the cookie on refresh and forced re-login every F5.
   const cookieDomain = process.env.COOKIE_DOMAIN || undefined; // e.g. '.bestchoicephone.app'
   res.cookie(REFRESH_COOKIE, token, {
     httpOnly: true,
     secure: isProduction || !!cookieDomain,
-    sameSite: cookieDomain ? 'none' : 'lax', // 'none' needed for subdomain cookie sharing
+    sameSite: 'lax',
     maxAge: COOKIE_MAX_AGE,
     path: '/api/auth',
     ...(cookieDomain ? { domain: cookieDomain } : {}),

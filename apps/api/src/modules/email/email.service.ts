@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
+import { maskEmail } from '../../utils/mask.util';
 
 @Injectable()
 export class EmailService {
@@ -63,9 +64,9 @@ export class EmailService {
     const from = await this.getFrom();
     try {
       await transporter.sendMail({ from, to, subject, html });
-      this.logger.log(`Password reset email sent to ${to}`);
+      this.logger.log(`Password reset email sent to ${maskEmail(to)}`);
     } catch (err) {
-      this.logger.error(`Failed to send password reset email to ${to}: ${err}`);
+      this.logger.error(`Failed to send password reset email to ${maskEmail(to)}: ${err}`);
     }
   }
 
@@ -98,9 +99,9 @@ export class EmailService {
     const from = await this.getFrom();
     try {
       await transporter.sendMail({ from, to, subject, html });
-      this.logger.log(`Invite email sent to ${to}`);
+      this.logger.log(`Invite email sent to ${maskEmail(to)}`);
     } catch (err) {
-      this.logger.error(`Failed to send invite email to ${to}: ${err}`);
+      this.logger.error(`Failed to send invite email to ${maskEmail(to)}: ${err}`);
     }
   }
 

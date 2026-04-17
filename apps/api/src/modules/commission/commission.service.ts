@@ -91,6 +91,8 @@ export class CommissionService {
       include: {
         salesperson: { select: { id: true, name: true } },
       },
+      take: 10000, // safety cap — prevent unbounded memory usage
+      orderBy: { createdAt: 'desc' },
     });
 
     // Group by salesperson — use Prisma.Decimal for accumulators so adding

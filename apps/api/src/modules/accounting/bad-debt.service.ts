@@ -77,6 +77,7 @@ export class BadDebtService {
       include: {
         contract: { select: { id: true, status: true } },
       },
+      take: 10000, // safety cap — prevent unbounded memory usage
       orderBy: { dueDate: 'asc' },
     });
 

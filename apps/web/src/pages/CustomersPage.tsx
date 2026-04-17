@@ -555,7 +555,7 @@ export default function CustomersPage() {
         subtitle={`ทั้งหมด ${result?.total ?? 0} ราย`}
         action={
           <div className="flex gap-2">
-            <button onClick={exportExcel} className="inline-flex items-center gap-1.5 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700">
+            <button onClick={exportExcel} className="inline-flex items-center gap-1.5 px-4 py-2 bg-success text-success-foreground rounded-lg text-sm font-medium hover:bg-success/90">
               <Download className="w-4 h-4" />
               ส่งออก Excel
             </button>
@@ -730,7 +730,7 @@ export default function CustomersPage() {
 
       {isModalOpen && (
       <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-start justify-center pt-8 pb-8" role="dialog" aria-modal="true" aria-label="เพิ่มลูกค้าใหม่">
-        <div className="w-full max-w-2xl bg-background rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100vh-4rem)]">
+        <div className="w-full max-w-2xl bg-background rounded-xl shadow-modal overflow-hidden flex flex-col max-h-[calc(100vh-4rem)]">
           {/* Sticky Header */}
           <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-xs border-b px-6 py-4 flex items-center justify-between shrink-0">
             <button type="button" onClick={() => setIsModalOpen(false)} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
@@ -750,10 +750,10 @@ export default function CustomersPage() {
               type="button"
               onClick={handleSmartCardRead}
               disabled={cardReaderLoading || ocrLoading}
-              className="inline-flex items-center justify-center gap-2 py-3 bg-linear-to-r from-emerald-500 to-green-600 text-white rounded-xl text-sm font-semibold shadow-sm hover:from-emerald-600 hover:to-green-700 disabled:opacity-50 transition-all"
+              className="inline-flex items-center justify-center gap-2 py-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold shadow-sm hover:bg-primary/90 disabled:opacity-50 transition-all"
             >
               {cardReaderLoading ? (
-                <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> กำลังอ่านบัตร...</>
+                <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-foreground" /> กำลังอ่านบัตร...</>
               ) : (
                 <><CreditCard className="h-4 w-4" strokeWidth={1.5} /> อ่านบัตร Smart Card</>
               )}
@@ -763,10 +763,10 @@ export default function CustomersPage() {
               type="button"
               onClick={() => ocrFileRef.current?.click()}
               disabled={ocrLoading}
-              className="inline-flex items-center justify-center gap-2 py-3 bg-linear-to-r from-blue-500 to-indigo-600 text-white rounded-xl text-sm font-semibold shadow-sm hover:from-blue-600 hover:to-indigo-700 disabled:opacity-50 transition-all"
+              className="inline-flex items-center justify-center gap-2 py-3 bg-secondary text-secondary-foreground rounded-xl text-sm font-semibold shadow-sm hover:bg-secondary/80 disabled:opacity-50 transition-all"
             >
               {ocrLoading ? (
-                <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> กำลังอ่าน...</>
+                <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current" /> กำลังอ่าน...</>
               ) : (
                 <><Camera className="h-4 w-4" strokeWidth={1.5} /> สแกนบัตร OCR</>
               )}
@@ -915,8 +915,8 @@ export default function CustomersPage() {
           {/* ===== ที่อยู่ (collapsible) ===== */}
           <details className="group rounded-xl border border-border bg-card">
             <summary className="list-none flex items-center gap-2.5 p-5 cursor-pointer select-none hover:bg-accent/50 transition-colors [&::-webkit-details-marker]:hidden">
-              <div className="size-8 rounded-lg bg-orange-500/10 flex items-center justify-center">
-                <MapPin className="size-4 text-orange-500" strokeWidth={1.5} />
+              <div className="size-8 rounded-lg bg-muted flex items-center justify-center">
+                <MapPin className="size-4 text-muted-foreground" strokeWidth={1.5} />
               </div>
               <div className="flex-1">
                 <h3 className="text-sm font-semibold text-foreground">ที่อยู่</h3>
@@ -962,8 +962,8 @@ export default function CustomersPage() {
           {/* ===== ข้อมูลติดต่อเพิ่มเติม (collapsible) ===== */}
           <details className="group rounded-xl border border-border bg-card">
             <summary className="list-none flex items-center gap-2.5 p-5 cursor-pointer select-none hover:bg-accent/50 transition-colors [&::-webkit-details-marker]:hidden">
-              <div className="size-8 rounded-lg bg-violet-500/10 flex items-center justify-center">
-                <Phone className="size-4 text-violet-500" strokeWidth={1.5} />
+              <div className="size-8 rounded-lg bg-muted flex items-center justify-center">
+                <Phone className="size-4 text-muted-foreground" strokeWidth={1.5} />
               </div>
               <div className="flex-1">
                 <h3 className="text-sm font-semibold text-foreground">ข้อมูลติดต่อเพิ่มเติม</h3>
@@ -1059,8 +1059,8 @@ export default function CustomersPage() {
           {/* ===== ข้อมูลที่ทำงาน (collapsible) ===== */}
           <details className="group rounded-xl border border-border bg-card">
             <summary className="list-none flex items-center gap-2.5 p-5 cursor-pointer select-none hover:bg-accent/50 transition-colors [&::-webkit-details-marker]:hidden">
-              <div className="size-8 rounded-lg bg-cyan-500/10 flex items-center justify-center">
-                <Briefcase className="size-4 text-cyan-500" strokeWidth={1.5} />
+              <div className="size-8 rounded-lg bg-muted flex items-center justify-center">
+                <Briefcase className="size-4 text-muted-foreground" strokeWidth={1.5} />
               </div>
               <div className="flex-1">
                 <h3 className="text-sm font-semibold text-foreground">ข้อมูลที่ทำงาน</h3>
@@ -1157,8 +1157,8 @@ export default function CustomersPage() {
           {/* ===== บุคคลอ้างอิง (collapsible) ===== */}
           <details className="group rounded-xl border border-border bg-card">
             <summary className="list-none flex items-center gap-2.5 p-5 cursor-pointer select-none hover:bg-accent/50 transition-colors [&::-webkit-details-marker]:hidden">
-              <div className="size-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
-                <Users className="size-4 text-amber-500" strokeWidth={1.5} />
+              <div className="size-8 rounded-lg bg-muted flex items-center justify-center">
+                <Users className="size-4 text-muted-foreground" strokeWidth={1.5} />
               </div>
               <div className="flex-1">
                 <h3 className="text-sm font-semibold text-foreground">บุคคลอ้างอิง</h3>
@@ -1170,7 +1170,7 @@ export default function CustomersPage() {
               {references.map((ref, idx) => (
                 <div key={idx} className="rounded-lg border border-dashed border-border p-4">
                   <div className="flex items-center gap-2 mb-3">
-                    <span className="size-5 rounded-full bg-amber-500/10 text-amber-600 flex items-center justify-center text-xs font-semibold">{idx + 1}</span>
+                    <span className="size-5 rounded-full bg-muted text-muted-foreground flex items-center justify-center text-xs font-semibold">{idx + 1}</span>
                     <span className="text-xs font-medium text-foreground">บุคคลอ้างอิง {idx + 1}</span>
                   </div>
                   <div className="grid grid-cols-6 gap-3">

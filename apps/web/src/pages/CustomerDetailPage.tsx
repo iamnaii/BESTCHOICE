@@ -644,7 +644,7 @@ export default function CustomerDetailPage() {
                 multiple
                 onChange={(e) => e.target.files && uploadDocumentMutation.mutate(e.target.files)}
                 disabled={uploadDocumentMutation.isPending}
-                className="w-full text-sm text-muted-foreground file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary-50 file:text-primary-700"
+                className="w-full text-sm text-muted-foreground file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary/10 file:text-primary"
               />
               {uploadDocumentMutation.isPending && <div className="text-sm text-primary mt-2">กำลังอัปโหลด...</div>}
             </div>
@@ -665,7 +665,7 @@ export default function CustomerDetailPage() {
                         <button
                           onClick={() => deleteDocumentMutation.mutate(docUrl)}
                           disabled={deleteDocumentMutation.isPending}
-                          className="text-xs text-red-600 hover:text-red-700 disabled:opacity-50"
+                          className="text-xs text-destructive hover:text-destructive/80 disabled:opacity-50"
                         >
                           ลบ
                         </button>
@@ -701,7 +701,7 @@ export default function CustomerDetailPage() {
             </div>
             <div>
               <label className="block text-xs font-medium text-foreground mb-1.5">Statement (ภาพ/PDF)</label>
-              <input ref={creditFileRef} type="file" accept="image/*,.pdf" multiple onChange={(e) => e.target.files && uploadCreditMutation.mutate(e.target.files)} disabled={uploadCreditMutation.isPending} className="w-full text-sm text-muted-foreground file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary-50 file:text-primary-700" />
+              <input ref={creditFileRef} type="file" accept="image/*,.pdf" multiple onChange={(e) => e.target.files && uploadCreditMutation.mutate(e.target.files)} disabled={uploadCreditMutation.isPending} className="w-full text-sm text-muted-foreground file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary/10 file:text-primary" />
             </div>
           </div>
           {uploadCreditMutation.isPending && <div className="text-sm text-primary">กำลังอัปโหลด...</div>}
@@ -729,16 +729,16 @@ export default function CustomerDetailPage() {
                   </div>
                   {cc.aiScore !== null && (
                     <div className="flex items-center gap-4">
-                      <div className={`text-2xl font-bold ${cc.aiScore >= 70 ? 'text-success' : cc.aiScore >= 50 ? 'text-amber-600' : 'text-destructive'}`}>{cc.aiScore}</div>
+                      <div className={`text-2xl font-bold ${cc.aiScore >= 70 ? 'text-success' : cc.aiScore >= 50 ? 'text-warning' : 'text-destructive'}`}>{cc.aiScore}</div>
                       <div className="flex-1">
                         <div className="w-full bg-border rounded-full h-2">
-                          <div className={`h-2 rounded-full ${cc.aiScore >= 70 ? 'bg-green-500' : cc.aiScore >= 50 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${cc.aiScore}%` }} />
+                          <div className={`h-2 rounded-full ${cc.aiScore >= 70 ? 'bg-success' : cc.aiScore >= 50 ? 'bg-warning' : 'bg-destructive'}`} style={{ width: `${cc.aiScore}%` }} />
                         </div>
                       </div>
                     </div>
                   )}
                   {cc.aiSummary && <div className="text-xs text-muted-foreground">{cc.aiSummary}</div>}
-                  {cc.aiRecommendation && <div className={`text-xs font-medium p-2 rounded ${cc.aiScore && cc.aiScore >= 70 ? 'bg-success/5 dark:bg-success/10 text-success' : cc.aiScore && cc.aiScore >= 50 ? 'bg-amber-50 text-amber-700' : 'bg-destructive/5 dark:bg-destructive/10 text-destructive'}`}>{cc.aiRecommendation}</div>}
+                  {cc.aiRecommendation && <div className={`text-xs font-medium p-2 rounded ${cc.aiScore && cc.aiScore >= 70 ? 'bg-success/5 dark:bg-success/10 text-success' : cc.aiScore && cc.aiScore >= 50 ? 'bg-warning/10 text-warning' : 'bg-destructive/5 dark:bg-destructive/10 text-destructive'}`}>{cc.aiRecommendation}</div>}
                   {cc.checkedBy && <div className="text-xs text-primary">ตรวจสอบโดย: {cc.checkedBy.name}{cc.reviewNotes ? ` - ${cc.reviewNotes}` : ''}</div>}
                 </div>
               );
@@ -970,7 +970,7 @@ export default function CustomerDetailPage() {
       {/* Edit Customer Modal */}
       {showEditModal && (
       <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-start justify-center pt-8 pb-8" role="dialog" aria-modal="true" aria-label="แก้ไขข้อมูลลูกค้า">
-        <div className="w-full max-w-3xl bg-background rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100vh-4rem)]">
+        <div className="w-full max-w-3xl bg-background rounded-xl shadow-modal overflow-hidden flex flex-col max-h-[calc(100vh-4rem)]">
           <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-xs border-b px-6 py-4 flex items-center justify-between shrink-0">
             <button type="button" onClick={() => setShowEditModal(false)} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
@@ -1184,8 +1184,8 @@ export default function CustomerDetailPage() {
 
           {/* Warning about existing contracts */}
           {customer.contracts.length > 0 && (
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-              <div className="text-xs text-amber-700">
+            <div className="bg-warning/10 border border-warning/30 rounded-lg p-3">
+              <div className="text-xs text-warning">
                 การแก้ไขข้อมูลลูกค้าจะไม่กระทบสัญญาที่สร้างไปแล้ว ({customer.contracts.length} สัญญา)
               </div>
             </div>

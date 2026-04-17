@@ -157,7 +157,7 @@ export default function ChatPanel({
 
   const isLineChannel = session?.channel?.startsWith('LINE');
 
-  const GIPHY_KEY = 'dc6zaTOxFJmzC';
+  const GIPHY_KEY = import.meta.env.VITE_GIPHY_KEY || 'dc6zaTOxFJmzC';
   const gifApiUrl = gifSearchDebounced
     ? `https://api.giphy.com/v1/gifs/search?api_key=${GIPHY_KEY}&q=${encodeURIComponent(gifSearchDebounced)}&limit=20&rating=g`
     : `https://api.giphy.com/v1/gifs/trending?api_key=${GIPHY_KEY}&limit=20&rating=g`;
@@ -166,7 +166,7 @@ export default function ChatPanel({
   useEffect(() => {
     if (pickerTab !== 'gif') return;
     setLoadingGifs(true);
-    fetch(gifApiUrl)
+    fetch(gifApiUrl, { signal: AbortSignal.timeout(10_000) })
       .then((r) => r.json())
       .then((d) => setGifs(d.data ?? []))
       .catch(() => setGifs([]))

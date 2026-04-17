@@ -379,15 +379,20 @@ export class StaffChatController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   async markAsRead(@Param('id') id: string) {
     const now = new Date();
-    const updated = await this.prisma.chatMessage.updateMany({
-      where: { roomId: id, role: 'CUSTOMER', readAt: null },
-      data: { readAt: now },
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.chatMessage.updateMany({
+        where: { roomId: id, role: 'CUSTOMER', readAt: null },
+        data: { readAt: now },
+      });
+      const remaining = await tx.chatMessage.count({
+        where: { roomId: id, role: 'CUSTOMER', readAt: null },
+      });
+      await tx.chatRoom.update({
+        where: { id },
+        data: { unreadCount: remaining },
+      });
+      return { markedCount: updated.count };
     });
-    await this.prisma.chatRoom.update({
-      where: { id },
-      data: { unreadCount: 0 },
-    });
-    return { markedCount: updated.count };
   }
 
   // ─── Cross-Channel Rooms ──────────────────────────────

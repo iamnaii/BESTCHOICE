@@ -151,16 +151,16 @@ export default function LineOaSettingsPage() {
         data?.isConfigured && testResult?.success
           ? 'bg-success/5 dark:bg-success/10 border-success/30'
           : data?.isConfigured
-            ? 'bg-blue-50 border-blue-300'
+            ? 'bg-info/10 border-info/30'
             : 'bg-warning/5 dark:bg-warning/10 border-warning/30'
       }`}>
         <div className="flex items-start gap-4">
           <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl shrink-0 ${
             data?.isConfigured && testResult?.success
-              ? 'bg-green-200'
+              ? 'bg-success/20'
               : data?.isConfigured
-                ? 'bg-blue-200'
-                : 'bg-orange-200'
+                ? 'bg-info/20'
+                : 'bg-warning/20'
           }`}>
             {data?.isConfigured && testResult?.success ? '✅' : data?.isConfigured ? '🔗' : '⚠️'}
           </div>
@@ -185,16 +185,16 @@ export default function LineOaSettingsPage() {
             <button
               onClick={() => testMutation.mutate()}
               disabled={testMutation.isPending}
-              className="px-5 py-2.5 bg-green-600 text-white rounded-xl font-medium hover:bg-green-700 disabled:bg-muted shrink-0"
+              className="px-5 py-2.5 bg-primary text-primary-foreground rounded-xl font-medium hover:bg-primary/90 disabled:bg-muted shrink-0"
             >
               {testMutation.isPending ? 'กำลังทดสอบ...' : 'ทดสอบการเชื่อมต่อ'}
             </button>
           )}
         </div>
         {testResult && !testResult.success && (
-          <div className="mt-3 p-3 bg-red-100 border border-red-200 rounded-lg">
+          <div className="mt-3 p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
             <p className="text-sm text-destructive">เชื่อมต่อไม่สำเร็จ: {testResult.error}</p>
-            <p className="text-xs text-red-500 mt-1">กรุณาตรวจสอบ Channel Access Token ว่าถูกต้อง</p>
+            <p className="text-xs text-destructive mt-1">กรุณาตรวจสอบ Channel Access Token ว่าถูกต้อง</p>
           </div>
         )}
       </div>
@@ -209,7 +209,7 @@ export default function LineOaSettingsPage() {
         <div className="mb-6">
           <div className="flex items-center gap-3 mb-4">
             <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
-              hasToken && hasSecret ? 'bg-green-500 text-white' : 'bg-muted text-muted-foreground'
+              hasToken && hasSecret ? 'bg-success text-success-foreground' : 'bg-muted text-muted-foreground'
             }`}>
               {hasToken && hasSecret ? '✓' : '1'}
             </div>
@@ -219,8 +219,8 @@ export default function LineOaSettingsPage() {
             </div>
           </div>
 
-          <div className="rounded-xl border border-border/50 bg-card shadow-sm p-5 ml-4 border-l-4 border-l-blue-400">
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-5">
+          <div className="rounded-xl border border-border/50 bg-card shadow-sm p-5 ml-4 border-l-4 border-l-primary">
+            <div className="bg-info/10 border border-info/20 rounded-lg p-4 mb-5">
               <p className="text-sm text-blue-800 font-medium mb-2">วิธีหา Token:</p>
               <ol className="text-sm text-blue-700 space-y-1.5 list-decimal list-inside">
                 <li>เปิด <a href="https://developers.line.biz/" target="_blank" rel="noopener noreferrer" className="underline font-medium">developers.line.biz</a> แล้วล็อกอิน</li>
@@ -234,7 +234,7 @@ export default function LineOaSettingsPage() {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1">
-                  Channel Access Token <span className="text-red-500">*</span>
+                  Channel Access Token <span className="text-destructive">*</span>
                 </label>
                 <div className="relative">
                   <input
@@ -247,7 +247,7 @@ export default function LineOaSettingsPage() {
                   <button
                     type="button"
                     onClick={() => setShowSecrets((p) => ({ ...p, token: !p.token }))}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-primary hover:text-primary/80 px-2 py-1 bg-blue-50 rounded"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-primary hover:text-primary/80 px-2 py-1 bg-primary/10 rounded"
                   >
                     {showSecrets['token'] ? 'ซ่อน' : 'แสดง'}
                   </button>
@@ -256,7 +256,7 @@ export default function LineOaSettingsPage() {
 
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1">
-                  Channel Secret <span className="text-red-500">*</span>
+                  Channel Secret <span className="text-destructive">*</span>
                 </label>
                 <div className="relative">
                   <input
@@ -269,7 +269,7 @@ export default function LineOaSettingsPage() {
                   <button
                     type="button"
                     onClick={() => setShowSecrets((p) => ({ ...p, secret: !p.secret }))}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-primary hover:text-primary/80 px-2 py-1 bg-blue-50 rounded"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-primary hover:text-primary/80 px-2 py-1 bg-primary/10 rounded"
                   >
                     {showSecrets['secret'] ? 'ซ่อน' : 'แสดง'}
                   </button>
@@ -293,7 +293,7 @@ export default function LineOaSettingsPage() {
             </div>
           </div>
 
-          <div className="rounded-xl border border-border/50 bg-card shadow-sm p-5 ml-4 border-l-4 border-l-green-400">
+          <div className="rounded-xl border border-border/50 bg-card shadow-sm p-5 ml-4 border-l-4 border-l-success">
             <div className="bg-success/5 dark:bg-success/10 border border-success/20 rounded-lg p-4 mb-4">
               <p className="text-sm text-success font-medium mb-2">คัดลอก URL ด้านล่าง แล้วไปวางใน LINE Developers Console:</p>
               <ol className="text-sm text-green-700 space-y-1 list-decimal list-inside">
@@ -313,7 +313,7 @@ export default function LineOaSettingsPage() {
                 <button
                   type="button"
                   onClick={() => copyToClipboard(webhookData.webhookUrl)}
-                  className="px-4 py-3 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 shrink-0 font-medium"
+                  className="px-4 py-3 bg-primary text-primary-foreground text-sm rounded-lg hover:bg-primary/90 shrink-0 font-medium"
                 >
                   คัดลอก
                 </button>
@@ -326,7 +326,7 @@ export default function LineOaSettingsPage() {
         <div className="mb-6">
           <div className="flex items-center gap-3 mb-4">
             <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
-              hasLiff ? 'bg-green-500 text-white' : 'bg-muted text-muted-foreground'
+              hasLiff ? 'bg-success text-success-foreground' : 'bg-muted text-muted-foreground'
             }`}>
               {hasLiff ? '✓' : '3'}
             </div>
@@ -336,7 +336,7 @@ export default function LineOaSettingsPage() {
             </div>
           </div>
 
-          <div className="rounded-xl border border-border/50 bg-card shadow-sm p-5 ml-4 border-l-4 border-l-orange-400">
+          <div className="rounded-xl border border-border/50 bg-card shadow-sm p-5 ml-4 border-l-4 border-l-warning">
             <div className="bg-warning/5 dark:bg-warning/10 border border-warning/20 rounded-lg p-4 mb-4">
               <p className="text-sm text-warning font-medium mb-2">วิธีสร้าง LIFF App:</p>
               <ol className="text-sm text-orange-700 space-y-1.5 list-decimal list-inside">
@@ -410,7 +410,7 @@ export default function LineOaSettingsPage() {
               type="button"
               onClick={() => testMutation.mutate()}
               disabled={testMutation.isPending}
-              className="px-6 py-3 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 disabled:bg-muted text-base shadow-card"
+              className="px-6 py-3 bg-primary text-primary-foreground rounded-xl font-semibold hover:bg-primary/90 disabled:bg-muted text-base shadow-card"
             >
               {testMutation.isPending ? 'กำลังทดสอบ...' : 'ทดสอบการเชื่อมต่อ'}
             </button>
@@ -428,7 +428,7 @@ export default function LineOaSettingsPage() {
               <div className="text-sm text-muted-foreground mt-1">ลูกค้าเชื่อมต่อ LINE</div>
             </div>
             <div className="rounded-xl border border-border/50 bg-card shadow-sm p-5 text-center">
-              <div className={`text-3xl font-bold ${stats.pendingSlips > 0 ? 'text-orange-500' : 'text-green-500'}`}>
+              <div className={`text-3xl font-bold ${stats.pendingSlips > 0 ? 'text-warning' : 'text-success'}`}>
                 {stats.pendingSlips}
               </div>
               <div className="text-sm text-muted-foreground mt-1">สลิปรอตรวจสอบ</div>
@@ -511,7 +511,7 @@ export default function LineOaSettingsPage() {
                   type="button"
                   onClick={() => testSendMutation.mutate()}
                   disabled={testSendMutation.isPending || !form.owner_line_id}
-                  className="px-6 py-2.5 bg-yellow-500 text-white rounded-xl font-semibold hover:bg-yellow-600 disabled:bg-muted disabled:cursor-not-allowed text-sm shadow-card"
+                  className="px-6 py-2.5 bg-warning text-warning-foreground rounded-xl font-semibold hover:bg-warning/90 disabled:bg-muted disabled:cursor-not-allowed text-sm shadow-card"
                 >
                   {testSendMutation.isPending ? 'กำลังส่ง...' : 'ส่งทดสอบ'}
                 </button>

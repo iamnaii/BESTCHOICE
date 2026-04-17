@@ -81,10 +81,10 @@ function PhonePreview({
   return (
     <div className="flex flex-col items-center">
       {/* Phone frame */}
-      <div className="bg-gray-800 rounded-[2.5rem] p-3 shadow-2xl w-[240px]">
+      <div className="bg-foreground rounded-[2.5rem] p-3 shadow-modal w-[240px]">
         {/* Notch */}
         <div className="flex justify-center mb-1">
-          <div className="w-16 h-4 bg-gray-900 rounded-full" />
+          <div className="w-16 h-4 bg-foreground rounded-full" />
         </div>
 
         {/* Screen */}
@@ -112,22 +112,23 @@ function PhonePreview({
           </div>
 
           {/* Rich Menu */}
-          <div className="border-t border-gray-300">
+          <div className="border-t border-border">
             <div
-              className="grid gap-px bg-gray-300"
+              className="grid gap-px bg-border"
               style={{ gridTemplateColumns: `repeat(${layoutCfg.cols}, 1fr)` }}
             >
               {visibleButtons.map((btn, i) => (
                 <button
                   key={i}
                   onClick={() => onSelectButton(i)}
+                  aria-label={btn.label || `เลือกปุ่ม ${i + 1}`}
                   className="relative flex flex-col items-center justify-center py-3 gap-1 transition-all hover:brightness-90 focus:outline-none"
                   style={{ backgroundColor: btn.color }}
                 >
                   {i === selectedButton && (
-                    <div className="absolute inset-0 border-2 border-blue-400 rounded-sm z-10 pointer-events-none" />
+                    <div className="absolute inset-0 border-2 border-primary rounded-sm z-10 pointer-events-none" />
                   )}
-                  <span className="text-lg leading-none">{btn.emoji}</span>
+                  <span className="text-lg leading-snug">{btn.emoji}</span>
                   <span className="text-white text-[9px] font-semibold leading-tight px-1 text-center">
                     {btn.label}
                   </span>
@@ -139,7 +140,7 @@ function PhonePreview({
 
         {/* Home indicator */}
         <div className="flex justify-center mt-2">
-          <div className="w-10 h-1 bg-gray-600 rounded-full" />
+          <div className="w-10 h-1 bg-muted-foreground rounded-full" />
         </div>
       </div>
 
@@ -254,8 +255,9 @@ function ButtonEditor({
                   key={preset.value}
                   onClick={() => onUpdateButton(selectedButton, { color: preset.value })}
                   title={preset.name}
+                  aria-label={preset.name}
                   className={`w-7 h-7 rounded-full border-2 transition-transform hover:scale-110 ${
-                    btn.color === preset.value ? 'border-gray-800 scale-110' : 'border-transparent'
+                    btn.color === preset.value ? 'border-foreground scale-110' : 'border-transparent'
                   }`}
                   style={{ backgroundColor: preset.value }}
                 />
@@ -535,10 +537,10 @@ export default function RichMenuPage() {
       {activeTab === 'create' && (
         <div className="space-y-6">
           {editingMenuId && (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center justify-between">
+            <div className="bg-warning/10 border border-warning/20 rounded-xl p-3 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Pencil size={16} className="text-amber-600" />
-                <span className="text-sm text-amber-800">กำลังแก้ไขเมนู — บันทึกจะสร้างเมนูใหม่แทนอันเก่า</span>
+                <Pencil size={16} className="text-warning" />
+                <span className="text-sm text-warning">กำลังแก้ไขเมนู — บันทึกจะสร้างเมนูใหม่แทนอันเก่า</span>
               </div>
               <Button size="sm" variant="ghost" onClick={() => setEditingMenuId(null)}>
                 ยกเลิก

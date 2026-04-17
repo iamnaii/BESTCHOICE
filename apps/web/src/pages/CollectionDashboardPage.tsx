@@ -77,7 +77,7 @@ function MoMIndicator({ value, invertColors = false }: { value: number | null | 
     <div
       className={cn(
         'flex items-center gap-0.5 text-xs font-medium mt-1',
-        isGood ? 'text-green-600 dark:text-green-400' : 'text-destructive',
+        isGood ? 'text-success' : 'text-destructive',
       )}
     >
       <Icon className="size-3" />
@@ -91,12 +91,12 @@ function MoMIndicator({ value, invertColors = false }: { value: number | null | 
 
 /* ─── Aging bucket color by index ─── */
 const AGING_COLORS = [
-  { bg: 'bg-green-500/10', bar: 'bg-green-500', text: 'text-green-600 dark:text-green-400', border: 'border-green-200 dark:border-green-800' },
-  { bg: 'bg-yellow-500/10', bar: 'bg-yellow-500', text: 'text-yellow-600 dark:text-yellow-400', border: 'border-yellow-200 dark:border-yellow-800' },
-  { bg: 'bg-orange-400/10', bar: 'bg-orange-400', text: 'text-orange-600 dark:text-orange-400', border: 'border-orange-200 dark:border-orange-800' },
-  { bg: 'bg-orange-600/10', bar: 'bg-orange-600', text: 'text-orange-700 dark:text-orange-400', border: 'border-orange-300 dark:border-orange-700' },
-  { bg: 'bg-red-500/10', bar: 'bg-red-500', text: 'text-red-600 dark:text-red-400', border: 'border-red-200 dark:border-red-800' },
-  { bg: 'bg-red-700/10', bar: 'bg-red-700', text: 'text-red-700 dark:text-red-400', border: 'border-red-300 dark:border-red-700' },
+  { bg: 'bg-success/10', bar: 'bg-success', text: 'text-success', border: 'border-success/20' },
+  { bg: 'bg-warning/10', bar: 'bg-warning', text: 'text-warning', border: 'border-warning/20' },
+  { bg: 'bg-warning/20', bar: 'bg-warning', text: 'text-warning', border: 'border-warning/40' },
+  { bg: 'bg-warning/20', bar: 'bg-warning', text: 'text-warning', border: 'border-warning/40' },
+  { bg: 'bg-destructive/10', bar: 'bg-destructive', text: 'text-destructive', border: 'border-destructive/20' },
+  { bg: 'bg-destructive/20', bar: 'bg-destructive', text: 'text-destructive', border: 'border-destructive/40' },
 ];
 
 /* ─── Channel label map ─── */
@@ -139,7 +139,7 @@ export default function CollectionDashboardPage() {
         title="Collection Dashboard"
         subtitle="ติดตามและวิเคราะห์การเก็บเงินค้างชำระ"
         action={
-          <div className="hidden sm:flex items-center gap-2 text-xs text-white/70 bg-white/10 border border-white/15 rounded-lg px-3 py-2">
+          <div className="hidden sm:flex items-center gap-2 text-xs text-primary-foreground/70 bg-primary-foreground/10 border border-primary-foreground/15 rounded-lg px-3 py-2">
             <RefreshCw className="size-3 animate-spin [animation-duration:10s]" />
             <span>อัปเดตอัตโนมัติทุก 60 วินาที</span>
           </div>
@@ -184,13 +184,22 @@ export default function CollectionDashboardPage() {
             <Card
               className="overflow-hidden cursor-pointer group hover:shadow-md hover:-translate-y-0.5 transition-all duration-200"
               onClick={() => navigate('/payments')}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  navigate('/payments');
+                }
+              }}
+              aria-label="ดูการชำระเงิน"
             >
               <CardContent className="p-5 relative">
-                <div className="absolute inset-y-0 left-0 w-1 bg-green-500 rounded-l-xl" />
+                <div className="absolute inset-y-0 left-0 w-1 bg-success rounded-l-xl" />
                 <div className="pl-2">
                   <div className="flex items-center justify-between mb-4">
-                    <div className="size-10 rounded-xl bg-green-500/10 flex items-center justify-center group-hover:bg-green-500/20 transition-colors">
-                      <TrendingUp className="size-5 text-green-600 dark:text-green-400" />
+                    <div className="size-10 rounded-xl bg-success/10 flex items-center justify-center group-hover:bg-success/20 transition-colors">
+                      <TrendingUp className="size-5 text-success" />
                     </div>
                     <span className="text-xs font-semibold text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
                       {data?.collected.count ?? 0} รายการ
@@ -304,9 +313,10 @@ export default function CollectionDashboardPage() {
                 ) : (
                   <div className="divide-y divide-border">
                     {(data?.topDelinquent ?? []).slice(0, 10).map((item, idx) => (
-                      <div
+                      <button
                         key={item.customerId}
-                        className="flex items-center gap-3 px-5 py-3 hover:bg-muted/40 transition-colors cursor-pointer"
+                        type="button"
+                        className="flex w-full items-center gap-3 px-5 py-3 hover:bg-muted/40 transition-colors cursor-pointer text-left"
                         onClick={() => navigate(`/customers/${item.customerId}`)}
                       >
                         {/* Rank */}
@@ -314,11 +324,11 @@ export default function CollectionDashboardPage() {
                           className={cn(
                             'size-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0',
                             idx === 0
-                              ? 'bg-red-500 text-white'
+                              ? 'bg-destructive text-destructive-foreground'
                               : idx === 1
-                              ? 'bg-orange-500 text-white'
+                              ? 'bg-warning text-warning-foreground'
                               : idx === 2
-                              ? 'bg-yellow-500 text-white'
+                              ? 'bg-warning/70 text-warning-foreground'
                               : 'bg-muted text-muted-foreground',
                           )}
                         >
@@ -333,7 +343,7 @@ export default function CollectionDashboardPage() {
                         <div className="text-sm font-semibold text-destructive shrink-0">
                           {formatBaht(item.totalOverdue)}
                         </div>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 )}

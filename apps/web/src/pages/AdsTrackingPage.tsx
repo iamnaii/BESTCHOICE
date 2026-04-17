@@ -13,10 +13,10 @@ const PLATFORM_LABELS: Record<string, string> = {
 };
 
 const PLATFORM_COLORS: Record<string, string> = {
-  LINE_ADS: 'bg-green-500',
-  FACEBOOK_ADS: 'bg-blue-600',
-  TIKTOK_ADS: 'bg-pink-500',
-  GOOGLE_ADS: 'bg-red-500',
+  LINE_ADS: 'bg-success',
+  FACEBOOK_ADS: 'bg-info',
+  TIKTOK_ADS: 'bg-secondary',
+  GOOGLE_ADS: 'bg-destructive',
 };
 
 export default function AdsTrackingPage() {
@@ -51,21 +51,21 @@ export default function AdsTrackingPage() {
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
         <div className="bg-card rounded-xl p-4 shadow-sm">
           <div className="flex items-center gap-2 mb-2">
-            <DollarSign className="w-4 h-4 text-red-500" />
+            <DollarSign className="w-4 h-4 text-destructive" />
             <span className="text-xs text-muted-foreground">ค่าโฆษณารวม</span>
           </div>
           <p className="text-xl font-bold text-foreground">{totalSpend.toLocaleString()} ฿</p>
         </div>
         <div className="bg-card rounded-xl p-4 shadow-sm">
           <div className="flex items-center gap-2 mb-2">
-            <DollarSign className="w-4 h-4 text-green-500" />
+            <DollarSign className="w-4 h-4 text-success" />
             <span className="text-xs text-muted-foreground">รายได้จาก Ads</span>
           </div>
           <p className="text-xl font-bold text-foreground">{totalRevenue.toLocaleString()} ฿</p>
         </div>
         <div className="bg-card rounded-xl p-4 shadow-sm">
           <div className="flex items-center gap-2 mb-2">
-            <Users className="w-4 h-4 text-blue-500" />
+            <Users className="w-4 h-4 text-muted-foreground" />
             <span className="text-xs text-muted-foreground">Conversions</span>
           </div>
           <p className="text-xl font-bold text-foreground">{totalConversions}</p>
@@ -73,13 +73,13 @@ export default function AdsTrackingPage() {
         <div className="bg-card rounded-xl p-4 shadow-sm">
           <div className="flex items-center gap-2 mb-2">
             {overallROI >= 0 ? (
-              <TrendingUp className="w-4 h-4 text-green-500" />
+              <TrendingUp className="w-4 h-4 text-success" />
             ) : (
-              <TrendingDown className="w-4 h-4 text-red-500" />
+              <TrendingDown className="w-4 h-4 text-destructive" />
             )}
             <span className="text-xs text-muted-foreground">ROI รวม</span>
           </div>
-          <p className={`text-xl font-bold ${overallROI >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+          <p className={`text-xl font-bold ${overallROI >= 0 ? 'text-success' : 'text-destructive'}`}>
             {overallROI}%
           </p>
         </div>
@@ -141,7 +141,7 @@ export default function AdsTrackingPage() {
                     <td className="px-4 py-3 text-right text-foreground/70">
                       {row.conversions > 0 ? `฿${(Number(row.spend) / row.conversions).toLocaleString(undefined, { maximumFractionDigits: 0 })}` : '-'}
                     </td>
-                    <td className={`px-4 py-3 text-right font-semibold ${(row.roi ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    <td className={`px-4 py-3 text-right font-semibold ${(row.roi ?? 0) >= 0 ? 'text-success' : 'text-destructive'}`}>
                       {row.roi ?? 0}%
                     </td>
                   </tr>

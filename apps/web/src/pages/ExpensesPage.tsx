@@ -212,7 +212,7 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-start justify-center pt-8 pb-8">
-      <div className="w-full max-w-4xl bg-background rounded-xl shadow-2xl overflow-y-auto max-h-[calc(100vh-4rem)]">
+      <div className="w-full max-w-4xl bg-background rounded-xl shadow-modal overflow-y-auto max-h-[calc(100vh-4rem)]">
         {/* Header */}
         <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-xs border-b px-6 py-4 flex items-center justify-between">
           <button onClick={onClose} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
@@ -257,7 +257,7 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
           {/* Section: ผู้รับเงิน */}
           <div className="rounded-xl border border-border bg-card p-5">
             <div className="flex items-center gap-2.5 mb-4">
-              <div className="flex items-center justify-center size-8 rounded-lg bg-orange-500/10 text-orange-500">
+              <div className="flex items-center justify-center size-8 rounded-lg bg-muted text-muted-foreground">
                 <Store className="size-4" strokeWidth={1.5} />
               </div>
               <div>
@@ -280,7 +280,7 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
           {/* Section: รายการค่าใช้จ่าย */}
           <div className="rounded-xl border border-border bg-card p-5">
             <div className="flex items-center gap-2.5 mb-4">
-              <div className="flex items-center justify-center size-8 rounded-lg bg-violet-500/10 text-violet-500">
+              <div className="flex items-center justify-center size-8 rounded-lg bg-muted text-muted-foreground">
                 <Layers className="size-4" strokeWidth={1.5} />
               </div>
               <div>
@@ -348,7 +348,7 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
           {/* Section: ข้อมูลการจ่ายเงิน */}
           <div className="rounded-xl border border-border bg-card p-5">
             <div className="flex items-center gap-2.5 mb-4">
-              <div className="flex items-center justify-center size-8 rounded-lg bg-emerald-500/10 text-emerald-500">
+              <div className="flex items-center justify-center size-8 rounded-lg bg-muted text-muted-foreground">
                 <CreditCard className="size-4" strokeWidth={1.5} />
               </div>
               <div>
@@ -378,7 +378,7 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
           {/* Section: แนบไฟล์ */}
           <div className="rounded-xl border border-border bg-card p-5">
             <div className="flex items-center gap-2.5 mb-4">
-              <div className="flex items-center justify-center size-8 rounded-lg bg-rose-500/10 text-rose-500">
+              <div className="flex items-center justify-center size-8 rounded-lg bg-muted text-muted-foreground">
                 <Paperclip className="size-4" strokeWidth={1.5} />
               </div>
               <div>
@@ -398,9 +398,10 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
                 </div>
               </div>
             ) : (
-              <div
+              <button
+                type="button"
                 onClick={() => fileRef.current?.click()}
-                className="border-2 border-dashed border-input rounded-xl p-8 text-center cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-all"
+                className="w-full border-2 border-dashed border-input rounded-xl p-8 text-center cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-all"
               >
                 <input type="file" accept="image/*,.pdf" hidden ref={fileRef} onChange={handleFileSelect} />
                 <div className="flex items-center justify-center size-12 rounded-full bg-muted mx-auto mb-3">
@@ -408,7 +409,7 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
                 </div>
                 <p className="text-sm font-medium text-foreground">คลิกหรือลากไฟล์มาวาง</p>
                 <p className="text-xs text-muted-foreground mt-1">JPG, PNG ไม่เกิน 5MB</p>
-              </div>
+              </button>
             )}
           </div>
 
@@ -448,7 +449,7 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
             {saveMutation.isPending ? 'กำลังบันทึก...' : 'บันทึกร่าง'}
           </Button>
           <button onClick={() => handleSave(true)} disabled={saveMutation.isPending}
-            className="px-5 py-2.5 bg-linear-to-r from-emerald-500 to-green-600 text-white rounded-lg text-sm font-semibold shadow-sm hover:shadow-md hover:from-emerald-600 hover:to-green-700 transition-all disabled:opacity-50 inline-flex items-center gap-2">
+            className="px-5 py-2.5 bg-primary text-primary-foreground rounded-lg text-sm font-semibold shadow-sm hover:shadow-md hover:bg-primary/90 transition-all disabled:opacity-50 inline-flex items-center gap-2">
             {saveMutation.isPending ? (
               <><div className="animate-spin rounded-full h-4 w-4 border-2 border-white/30 border-t-white" /> กำลังบันทึก...</>
             ) : 'บันทึกและส่งอนุมัติ'}
@@ -548,8 +549,8 @@ export default function ExpensesPage() {
   // Primary action per status
   const getPrimaryAction = (e: Expense) => {
     if (e.status === 'DRAFT' || e.status === 'REJECTED') return { label: 'ส่งอนุมัติ', action: 'submit', cls: 'bg-primary text-primary-foreground hover:bg-primary/90' };
-    if (e.status === 'PENDING_APPROVAL' && isOwner) return { label: 'อนุมัติ', action: 'approve', cls: 'bg-green-600 text-white hover:bg-green-700' };
-    if (e.status === 'APPROVED') return { label: 'จ่ายแล้ว', action: 'pay', cls: 'bg-green-600 text-white hover:bg-green-700' };
+    if (e.status === 'PENDING_APPROVAL' && isOwner) return { label: 'อนุมัติ', action: 'approve', cls: 'bg-primary text-primary-foreground hover:bg-primary/90' };
+    if (e.status === 'APPROVED') return { label: 'จ่ายแล้ว', action: 'pay', cls: 'bg-primary text-primary-foreground hover:bg-primary/90' };
     return null;
   };
 
@@ -578,7 +579,7 @@ export default function ExpensesPage() {
         return (
           <div>
             <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>
-            {e.rejectReason && <div className="text-xs text-red-500 mt-0.5 truncate max-w-[100px]">{e.rejectReason}</div>}
+            {e.rejectReason && <div className="text-xs text-destructive mt-0.5 truncate max-w-[100px]">{e.rejectReason}</div>}
           </div>
         );
       },
@@ -726,7 +727,7 @@ export default function ExpensesPage() {
           <div className="flex justify-end gap-3">
             <button onClick={() => setRejectDialog({ open: false, expenseId: '', reason: '' })} className="px-4 py-2 text-sm text-muted-foreground">ยกเลิก</button>
             <button onClick={() => { if (!rejectDialog.reason.trim()) { toast.error('กรุณาระบุเหตุผล'); return; } actionMutation.mutate({ id: rejectDialog.expenseId, action: 'reject', body: { reason: rejectDialog.reason } }); setRejectDialog({ open: false, expenseId: '', reason: '' }); }}
-              className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700">ยืนยันไม่อนุมัติ</button>
+              className="px-4 py-2 bg-destructive text-destructive-foreground rounded-lg text-sm font-medium hover:bg-destructive/90">ยืนยันไม่อนุมัติ</button>
           </div>
         </div>
       </Modal>

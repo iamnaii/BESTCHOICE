@@ -2,12 +2,13 @@ import {
   Controller,
   Get,
   Query,
+  Req,
   Res,
   Logger,
   BadRequestException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import * as Sentry from '@sentry/nestjs';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
 
@@ -160,5 +161,20 @@ export class LineLoginController {
       }
       res.redirect(`${this.frontendBaseUrl}${returnPath}?login_error=true`);
     }
+  }
+
+  /**
+   * One-shot endpoint — returns id_token from httpOnly cookie then clears it.
+   * Frontend calls this right after the /callback redirect to pick up the token
+   * the callback stored. Token is then kept in JS memory for LIFF API headers.
+   */
+  @Get('id-token')
+  getIdToken(@Req() req: Request, @Res() res: Response) {
+    const token = (req.cookies as Record<string, string> | undefined)?.line_id_token;
+    res.clearCookie('line_id_token', { path: '/' });
+    if (!token) {
+      return res.status(401).json({ error: 'No id_token cookie' });
+    }
+    return res.json({ token });
   }
 }

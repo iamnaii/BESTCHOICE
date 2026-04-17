@@ -7,6 +7,7 @@ import {
   Body,
   Req,
   Param,
+  Query,
   UseGuards,
   Logger,
   BadRequestException,
@@ -23,6 +24,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PromptPayQrService } from './promptpay/promptpay-qr.service';
 import { RichMenuService } from './rich-menu/rich-menu.service';
+import { SetAliasDto } from './rich-menu/dto/set-alias.dto';
 
 /**
  * LINE OA Settings + Admin — owner-only configuration and test endpoints.
@@ -236,38 +238,46 @@ export class LineOaController {
   }
 
   // ─── Rich Menu Management (Owner) ───────────────────
+  // All endpoints accept ?channel=shop|finance (default: shop)
 
   @Get('rich-menu/list')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('OWNER')
-  async listRichMenus() {
-    const richmenus = await this.richMenuService.listRichMenus();
-    const defaultId = await this.richMenuService.getDefaultRichMenuId().catch(() => null);
+  async listRichMenus(@Query('channel') channel?: string) {
+    const ch = this.parseChannel(channel);
+    const richmenus = await this.richMenuService.listRichMenus(ch);
+    const defaultId = await this.richMenuService.getDefaultRichMenuId(ch).catch(() => null);
     return { richmenus, defaultRichMenuId: defaultId };
   }
 
   @Get('rich-menu/default')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('OWNER')
-  async getDefaultRichMenu() {
-    const richMenuId = await this.richMenuService.getDefaultRichMenuId();
+  async getDefaultRichMenu(@Query('channel') channel?: string) {
+    const ch = this.parseChannel(channel);
+    const richMenuId = await this.richMenuService.getDefaultRichMenuId(ch);
     return { richMenuId };
   }
 
   @Post('rich-menu/create-default')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('OWNER')
-  async createDefaultRichMenu(@Body() body: {
-    liffUrl?: string;
-    name?: string;
-    chatBarText?: string;
-    layout?: string;
-    buttons?: any[];
-  }) {
-    const result = await this.richMenuService.createCustomRichMenu({
-      ...body,
-      layout: body.layout as '2x3' | '1x3' | '2x2' | undefined,
-    });
+  async createDefaultRichMenu(
+    @Body()
+    body: {
+      liffUrl?: string;
+      name?: string;
+      chatBarText?: string;
+      layout?: string;
+      buttons?: any[];
+      channel?: string;
+    },
+  ) {
+    const ch = this.parseChannel(body.channel);
+    const result = await this.richMenuService.createCustomRichMenu(
+      { ...body, layout: body.layout as '2x3' | '1x3' | '2x2' | undefined },
+      ch,
+    );
     return { success: true, richMenuId: result.richMenuId };
   }
 
@@ -278,9 +288,11 @@ export class LineOaController {
   async uploadRichMenuImage(
     @Param('id') id: string,
     @UploadedFile() file: Express.Multer.File,
+    @Query('channel') channel?: string,
   ) {
     if (!file) throw new BadRequestException('กรุณาอัปโหลดรูปภาพ');
-    await this.richMenuService.uploadRichMenuImage(id, file.buffer);
+    const ch = this.parseChannel(channel);
+    await this.richMenuService.uploadRichMenuImage(id, file.buffer, ch);
     return { success: true, message: 'อัปโหลดรูป Rich Menu สำเร็จ' };
   }
 
@@ -288,23 +300,18 @@ export class LineOaController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('OWNER')
   @UseInterceptors(FileInterceptor('image'))
-  async createWithImage(
-    @UploadedFile() file: Express.Multer.File,
-    @Body() body: any,
-  ) {
+  async createWithImage(@UploadedFile() file: Express.Multer.File, @Body() body: any) {
     const config = typeof body.config === 'string' ? JSON.parse(body.config) : (body.config ?? {});
+    const ch = this.parseChannel(config.channel);
 
-    // 1. Create the menu structure
-    const result = await this.richMenuService.createCustomRichMenu(config);
+    const result = await this.richMenuService.createCustomRichMenu(config, ch);
 
-    // 2. Upload the image if provided
     if (file && result.richMenuId) {
-      await this.richMenuService.uploadRichMenuImage(result.richMenuId, file.buffer);
+      await this.richMenuService.uploadRichMenuImage(result.richMenuId, file.buffer, ch);
     }
 
-    // 3. Optionally set as default
     if (config.setAsDefault && result.richMenuId) {
-      await this.richMenuService.setDefaultRichMenu(result.richMenuId);
+      await this.richMenuService.setDefaultRichMenu(result.richMenuId, ch);
     }
 
     return { success: true, richMenuId: result.richMenuId };
@@ -313,16 +320,24 @@ export class LineOaController {
   @Post('rich-menu/:id/set-default')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('OWNER')
-  async setDefaultRichMenu(@Param('id') id: string) {
-    await this.richMenuService.setDefaultRichMenu(id);
+  async setDefaultRichMenu(@Param('id') id: string, @Query('channel') channel?: string) {
+    const ch = this.parseChannel(channel);
+    await this.richMenuService.setDefaultRichMenu(id, ch);
     return { success: true, message: 'ตั้งค่า Rich Menu เริ่มต้นเรียบร้อย' };
   }
 
   @Delete('rich-menu/:id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('OWNER')
-  async deleteRichMenu(@Param('id') id: string) {
-    await this.richMenuService.deleteRichMenu(id);
+  async deleteRichMenu(@Param('id') id: string, @Query('channel') channel?: string) {
+    const ch = this.parseChannel(channel);
+    await this.richMenuService.deleteRichMenu(id, ch);
     return { success: true, message: 'ลบ Rich Menu เรียบร้อย' };
+  }
+
+  private parseChannel(channel?: string): 'shop' | 'finance' {
+    if (channel === 'finance') return 'finance';
+    if (channel === 'shop' || channel === undefined || channel === '') return 'shop';
+    throw new BadRequestException('channel ต้องเป็น shop หรือ finance');
   }
 }

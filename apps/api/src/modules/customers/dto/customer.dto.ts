@@ -91,10 +91,9 @@ export class CreateCustomerDto {
   @IsOptional()
   addressWork?: string;
 
-  @IsArray()
   @IsOptional()
   @Transform(({ value }) => value, { toClassOnly: true })
-  references?: Record<string, unknown>[];
+  references?: unknown;
 
   @IsString()
   @IsOptional()
@@ -194,10 +193,9 @@ export class UpdateCustomerDto {
   @IsOptional()
   addressWork?: string;
 
-  @IsArray()
   @IsOptional()
   @Transform(({ value }) => value, { toClassOnly: true })
-  references?: Record<string, unknown>[];
+  references?: unknown;
 
   @IsString()
   @IsOptional()

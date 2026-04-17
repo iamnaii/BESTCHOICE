@@ -8,15 +8,17 @@ import {
   HttpCode,
   Logger,
   BadRequestException,
+  Req,
   Res,
 } from '@nestjs/common';
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
 import { MessageRouterService } from '../chat-engine/services/message-router.service';
 import { InboundMessage } from '../chat-engine/interfaces/channel-adapter.interface';
 import { ConfigService } from '@nestjs/config';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { ChatChannel, MessageType } from '@prisma/client';
+import { RawBodyRequest } from '../../common/types/raw-body-request';
 
 /**
  * Facebook Messenger Webhook Controller
@@ -77,11 +79,13 @@ export class FacebookWebhookController {
   @SkipCsrf()
   @HttpCode(200)
   async handleWebhook(
+    @Req() req: Request,
     @Body() body: any,
     @Headers('x-hub-signature-256') signature: string,
   ): Promise<string> {
-    // 1. Verify HMAC-SHA256 signature
-    if (!this.verifySignature(body, signature)) {
+    // 1. Verify HMAC-SHA256 signature against raw request bytes
+    const rawBody = (req as unknown as RawBodyRequest).rawBody;
+    if (!this.verifySignature(rawBody, signature)) {
       this.logger.warn('[FB Webhook] Invalid signature — rejecting payload');
       throw new BadRequestException('Invalid signature');
     }
@@ -324,24 +328,28 @@ export class FacebookWebhookController {
   }
 
   /**
-   * Verify Facebook webhook signature using HMAC-SHA256.
+   * Verify Facebook webhook signature using HMAC-SHA256 against raw request bytes.
    * Uses timing-safe comparison to prevent timing attacks.
+   *
+   * Facebook signs the exact raw body bytes — we MUST use rawBody (captured by
+   * main.ts json() verify callback), not JSON.stringify(parsed), because
+   * re-serialization can differ in whitespace/ordering and break verification.
    */
-  private verifySignature(body: any, signature: string): boolean {
+  private verifySignature(rawBody: Buffer | undefined, signature: string): boolean {
     const appSecret = this.configService.get<string>('FB_APP_SECRET');
     if (!appSecret || !signature) {
       this.logger.warn('[FB Webhook] Missing app secret or signature');
       return false;
     }
+    if (!rawBody) {
+      this.logger.warn('[FB Webhook] Missing raw body — cannot verify signature');
+      return false;
+    }
 
-    // NOTE: Using JSON.stringify(body) instead of raw bytes.
-    // Facebook signs the raw request body. JSON.stringify of the parsed object
-    // may produce different byte sequence. If signature verification fails
-    // in production, switch to rawBody approach (requires main.ts bodyParser config).
     const expectedSig =
       'sha256=' +
       createHmac('sha256', appSecret)
-        .update(JSON.stringify(body))
+        .update(rawBody)
         .digest('hex');
 
     return this.timingSafeCompare(signature, expectedSig);

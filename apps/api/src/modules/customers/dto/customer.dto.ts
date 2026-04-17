@@ -1,5 +1,5 @@
 import { IsString, IsOptional, IsArray, IsBoolean, IsDateString, IsEmail, IsNumber, Length, Matches } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 
 export class CreateCustomerDto {
   @IsString()
@@ -93,6 +93,7 @@ export class CreateCustomerDto {
 
   @IsArray()
   @IsOptional()
+  @Transform(({ value }) => value, { toClassOnly: true })
   references?: Record<string, unknown>[];
 
   @IsString()
@@ -195,6 +196,7 @@ export class UpdateCustomerDto {
 
   @IsArray()
   @IsOptional()
+  @Transform(({ value }) => value, { toClassOnly: true })
   references?: Record<string, unknown>[];
 
   @IsString()

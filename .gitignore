@@ -36,3 +36,9 @@ backups/
 .claude/skills/**/*.pdf
 .claude/skills/**/*.png
 .claude/skills/**/*.jpg
+
+# Claude Code runtime
+.claude/scheduled_tasks.lock
+
+# UI audit tool outputs (generated artifacts)
+scripts/ui-audit/

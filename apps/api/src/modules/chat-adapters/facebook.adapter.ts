@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ChatChannel } from '@prisma/client';
+import * as Sentry from '@sentry/nestjs';
 import {
   IChannelAdapter,
   OutboundMessage,
@@ -80,6 +81,7 @@ export class FacebookAdapter implements IChannelAdapter {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
+        signal: AbortSignal.timeout(10000),
       });
 
       if (!res.ok) {
@@ -92,7 +94,13 @@ export class FacebookAdapter implements IChannelAdapter {
       return { success: true, externalMessageId: data.message_id };
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
-      this.logger.error(`[FB] send failed: ${errorMsg}`);
+      const isTimeout = err instanceof Error && err.name === 'TimeoutError';
+      this.logger.error(`[FB] send failed${isTimeout ? ' (timeout)' : ''}: ${errorMsg}`);
+      if (isTimeout) {
+        Sentry.captureException(err, {
+          tags: { module: 'chat-adapter-facebook', action: 'send_message', reason: 'timeout' },
+        });
+      }
       return { success: false, error: errorMsg };
     }
   }
@@ -107,6 +115,7 @@ export class FacebookAdapter implements IChannelAdapter {
           recipient: { id: externalUserId },
           sender_action: 'typing_on',
         }),
+        signal: AbortSignal.timeout(10000),
       });
     } catch {
       // Best-effort, ignore errors
@@ -118,6 +127,7 @@ export class FacebookAdapter implements IChannelAdapter {
     try {
       const res = await fetch(
         `https://graph.facebook.com/v25.0/${externalUserId}?fields=first_name,last_name,profile_pic&access_token=${this.pageAccessToken}`,
+        { signal: AbortSignal.timeout(10000) },
       );
       if (!res.ok) return null;
       const data = (await res.json()) as {
@@ -129,7 +139,14 @@ export class FacebookAdapter implements IChannelAdapter {
         displayName: `${data.first_name ?? ''} ${data.last_name ?? ''}`.trim(),
         avatarUrl: data.profile_pic,
       };
-    } catch {
+    } catch (err) {
+      const isTimeout = err instanceof Error && err.name === 'TimeoutError';
+      if (isTimeout) {
+        this.logger.warn(`[FB] getUserProfile timeout for PSID ${externalUserId}`);
+        Sentry.captureException(err, {
+          tags: { module: 'chat-adapter-facebook', action: 'get_user_profile', reason: 'timeout' },
+        });
+      }
       return null;
     }
   }

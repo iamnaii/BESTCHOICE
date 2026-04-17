@@ -71,7 +71,12 @@ export default function CustomerEditModal({ customerId, customerSnapshot, custom
         setAddrCurrent(deserializeAddress(fc.addressCurrent));
         setAddrWork(deserializeAddress(fc.addressWork));
         setSameAddress(fc.addressIdCard != null && fc.addressIdCard === fc.addressCurrent);
-        const existingRefs = (fc.references || []) as CustReferenceData[];
+        // Sanitize: drop non-object garbage (legacy bug could persist null/strings/arrays)
+        const existingRefs = Array.isArray(fc.references)
+          ? (fc.references as unknown[]).filter(
+              (r): r is CustReferenceData => r !== null && typeof r === 'object' && !Array.isArray(r),
+            )
+          : [];
         const refs = [...existingRefs];
         while (refs.length < 4) refs.push({});
         setReferences(refs);

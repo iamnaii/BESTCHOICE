@@ -113,7 +113,7 @@ export class RichMenuService {
       ],
     };
 
-    const response = await this.callLineApi(`${this.lineApiBaseUrl}/richmenu`, richMenu);
+    const response = await this.callLineApi(`${this.lineApiBaseUrl}/richmenu`, richMenu, 'shop');
     const data = await response.json();
     this.logger.log(`SHOP Rich Menu created: ${data.richMenuId}`);
     return data.richMenuId;
@@ -168,7 +168,7 @@ export class RichMenuService {
       ],
     };
 
-    const response = await this.callLineApi(`${this.lineApiBaseUrl}/richmenu`, richMenu);
+    const response = await this.callLineApi(`${this.lineApiBaseUrl}/richmenu`, richMenu, 'finance');
     const data = await response.json();
     this.logger.log(`FINANCE Rich Menu created: ${data.richMenuId}`);
     return data.richMenuId;
@@ -198,7 +198,10 @@ export class RichMenuService {
    * Create a fully customizable rich menu.
    * Supports 2x3 (default), 1x3, and 2x2 layouts with custom buttons and actions.
    */
-  async createCustomRichMenu(params: CreateMenuParams): Promise<{ richMenuId: string }> {
+  async createCustomRichMenu(
+    params: CreateMenuParams,
+    channel: 'shop' | 'finance' = 'shop',
+  ): Promise<{ richMenuId: string }> {
     const {
       name = 'BESTCHOICE Menu',
       chatBarText = 'เมนู',
@@ -273,9 +276,9 @@ export class RichMenuService {
       areas,
     };
 
-    const response = await this.callLineApi(`${this.lineApiBaseUrl}/richmenu`, body);
+    const response = await this.callLineApi(`${this.lineApiBaseUrl}/richmenu`, body, channel);
     const data = await response.json();
-    this.logger.log(`Custom Rich Menu created: ${data.richMenuId} (layout=${layout})`);
+    this.logger.log(`Custom Rich Menu created: ${data.richMenuId} (layout=${layout}, channel=${channel})`);
     return { richMenuId: data.richMenuId };
   }
 
@@ -294,12 +297,8 @@ export class RichMenuService {
   /**
    * Get current default Rich Menu ID
    */
-  async getDefaultRichMenuId(): Promise<string | null> {
-    const token = await this.getShopChannelToken();
-    if (!token) {
-      throw new BadRequestException('LINE channel access token not configured');
-    }
-
+  async getDefaultRichMenuId(channel: 'shop' | 'finance' = 'shop'): Promise<string | null> {
+    const token = await this.getChannelToken(channel);
     const url = `${this.lineApiBaseUrl}/user/all/richmenu`;
     const response = await fetch(url, {
       method: 'GET',
@@ -307,9 +306,7 @@ export class RichMenuService {
       signal: AbortSignal.timeout(15000),
     });
 
-    if (response.status === 404) {
-      return null;
-    }
+    if (response.status === 404) return null;
 
     if (!response.ok) {
       const errorBody = await response.text();
@@ -324,92 +321,81 @@ export class RichMenuService {
    * Upload Rich Menu image
    * The image should be 2500x1686 pixels, JPEG or PNG
    */
-  async uploadRichMenuImage(richMenuId: string, imageBuffer: Buffer): Promise<void> {
-    const token = await this.getShopChannelToken();
-    if (!token) {
-      throw new BadRequestException('LINE channel access token not configured');
-    }
-
+  async uploadRichMenuImage(
+    richMenuId: string,
+    imageBuffer: Buffer,
+    channel: 'shop' | 'finance' = 'shop',
+  ): Promise<void> {
+    const token = await this.getChannelToken(channel);
     const url = `https://api-data.line.me/v2/bot/richmenu/${richMenuId}/content`;
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'image/png',
-      },
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'image/png' },
       body: new Uint8Array(imageBuffer),
       signal: AbortSignal.timeout(15000),
     });
-
     if (!response.ok) {
       const errorBody = await response.text();
       throw new InternalServerErrorException(`Failed to upload Rich Menu image: ${response.status} ${errorBody}`);
     }
-
-    this.logger.log(`Rich Menu image uploaded for ${richMenuId}`);
+    this.logger.log(`Rich Menu image uploaded for ${richMenuId} (channel=${channel})`);
   }
 
   /**
    * Set default Rich Menu for all users
    */
-  async setDefaultRichMenu(richMenuId: string): Promise<void> {
-    const token = await this.getShopChannelToken();
+  async setDefaultRichMenu(
+    richMenuId: string,
+    channel: 'shop' | 'finance' = 'shop',
+  ): Promise<void> {
+    const token = await this.getChannelToken(channel);
     const url = `${this.lineApiBaseUrl}/user/all/richmenu/${richMenuId}`;
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(15000),
     });
-
     if (!response.ok) {
       const errorBody = await response.text();
       throw new InternalServerErrorException(`Failed to set default Rich Menu: ${response.status} ${errorBody}`);
     }
-
-    this.logger.log(`Default Rich Menu set to ${richMenuId}`);
+    this.logger.log(`Default Rich Menu set to ${richMenuId} (channel=${channel})`);
   }
 
   /**
    * Delete a Rich Menu
    */
-  async deleteRichMenu(richMenuId: string): Promise<void> {
-    const token = await this.getShopChannelToken();
+  async deleteRichMenu(
+    richMenuId: string,
+    channel: 'shop' | 'finance' = 'shop',
+  ): Promise<void> {
+    const token = await this.getChannelToken(channel);
     const url = `${this.lineApiBaseUrl}/richmenu/${richMenuId}`;
     const response = await fetch(url, {
       method: 'DELETE',
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(15000),
     });
-
     if (!response.ok) {
       const errorBody = await response.text();
       throw new InternalServerErrorException(`Failed to delete Rich Menu: ${response.status} ${errorBody}`);
     }
-
-    this.logger.log(`Rich Menu deleted: ${richMenuId}`);
+    this.logger.log(`Rich Menu deleted: ${richMenuId} (channel=${channel})`);
   }
 
   /**
    * List all Rich Menus
    */
-  async listRichMenus(): Promise<unknown[]> {
-    const token = await this.getShopChannelToken();
+  async listRichMenus(channel: 'shop' | 'finance' = 'shop'): Promise<unknown[]> {
+    const token = await this.getChannelToken(channel);
     const url = `${this.lineApiBaseUrl}/richmenu/list`;
     const response = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(15000),
     });
-
     if (!response.ok) {
       throw new InternalServerErrorException(`Failed to list Rich Menus: ${response.status}`);
     }
-
     const data = await response.json();
     return data.richmenus || [];
   }
@@ -417,59 +403,50 @@ export class RichMenuService {
   /**
    * Link a specific Rich Menu to a LINE user
    */
-  async linkRichMenuToUser(userId: string, richMenuId: string): Promise<void> {
-    const token = await this.getShopChannelToken();
+  async linkRichMenuToUser(
+    userId: string,
+    richMenuId: string,
+    channel: 'shop' | 'finance' = 'shop',
+  ): Promise<void> {
+    const token = await this.getChannelToken(channel);
     const url = `${this.lineApiBaseUrl}/user/${userId}/richmenu/${richMenuId}`;
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(15000),
     });
-
-    if (response.status === 404) {
-      // User may have blocked the OA — ignore silently
-      return;
-    }
-
+    if (response.status === 404) return;
     if (!response.ok) {
       const errorBody = await response.text();
       throw new InternalServerErrorException(
         `Failed to link Rich Menu to user ${userId}: ${response.status} ${errorBody}`,
       );
     }
-
-    this.logger.log(`Rich Menu ${richMenuId} linked to user ${userId}`);
+    this.logger.log(`Rich Menu ${richMenuId} linked to user ${userId} (channel=${channel})`);
   }
 
   /**
    * Unlink Rich Menu from a LINE user (revert to default)
    */
-  async unlinkRichMenuFromUser(userId: string): Promise<void> {
-    const token = await this.getShopChannelToken();
+  async unlinkRichMenuFromUser(
+    userId: string,
+    channel: 'shop' | 'finance' = 'shop',
+  ): Promise<void> {
+    const token = await this.getChannelToken(channel);
     const url = `${this.lineApiBaseUrl}/user/${userId}/richmenu`;
     const response = await fetch(url, {
       method: 'DELETE',
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(15000),
     });
-
-    if (response.status === 404) {
-      // No menu linked — ignore
-      return;
-    }
-
+    if (response.status === 404) return;
     if (!response.ok) {
       const errorBody = await response.text();
       throw new InternalServerErrorException(
         `Failed to unlink Rich Menu from user ${userId}: ${response.status} ${errorBody}`,
       );
     }
-
-    this.logger.log(`Rich Menu unlinked from user ${userId}`);
+    this.logger.log(`Rich Menu unlinked from user ${userId} (channel=${channel})`);
   }
 
   /**
@@ -501,15 +478,15 @@ export class RichMenuService {
       return;
     }
 
-    await this.linkRichMenuToUser(userId, richMenuId);
+    await this.linkRichMenuToUser(userId, richMenuId, channel);
   }
 
-  private async callLineApi(url: string, body: unknown): Promise<Response> {
-    const token = await this.getShopChannelToken();
-    if (!token) {
-      throw new BadRequestException('LINE channel access token not configured');
-    }
-
+  private async callLineApi(
+    url: string,
+    body: unknown,
+    channel: 'shop' | 'finance' = 'shop',
+  ): Promise<Response> {
+    const token = await this.getChannelToken(channel);
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -519,12 +496,10 @@ export class RichMenuService {
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(15000),
     });
-
     if (!response.ok) {
       const errorBody = await response.text();
       throw new InternalServerErrorException(`LINE API error ${response.status}: ${errorBody}`);
     }
-
     return response;
   }
 }

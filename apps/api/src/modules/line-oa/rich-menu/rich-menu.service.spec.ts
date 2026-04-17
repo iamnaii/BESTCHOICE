@@ -53,4 +53,49 @@ describe('RichMenuService', () => {
       await expect((service as any).getChannelToken('finance')).rejects.toThrow(BadRequestException);
     });
   });
+
+  describe('listRichMenus', () => {
+    const originalFetch = global.fetch;
+    afterEach(() => { global.fetch = originalFetch; });
+
+    it('uses FINANCE token when channel=finance', async () => {
+      integrationConfig.getValue.mockImplementation((key) =>
+        Promise.resolve(key === 'line-finance' ? 'finance-token' : null),
+      );
+      const fetchMock = jest.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ richmenus: [] }),
+      });
+      global.fetch = fetchMock as any;
+
+      await service.listRichMenus('finance');
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining('/richmenu/list'),
+        expect.objectContaining({
+          headers: expect.objectContaining({ Authorization: 'Bearer finance-token' }),
+        }),
+      );
+    });
+
+    it('defaults to SHOP token when channel omitted', async () => {
+      integrationConfig.getValue.mockImplementation((key) =>
+        Promise.resolve(key === 'line-shop' ? 'shop-token' : null),
+      );
+      const fetchMock = jest.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ richmenus: [] }),
+      });
+      global.fetch = fetchMock as any;
+
+      await service.listRichMenus();
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          headers: expect.objectContaining({ Authorization: 'Bearer shop-token' }),
+        }),
+      );
+    });
+  });
 });

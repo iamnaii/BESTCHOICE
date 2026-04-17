@@ -70,6 +70,7 @@ export class KycService {
         message,
         relatedId: contractId,
         fallbackPhone: channel === 'LINE' ? customer.phone : undefined,
+        noRetry: true, // OTP expires in 10 min — retry queue would only spam
       });
       if (result.status === 'FAILED') {
         throw new InternalServerErrorException(

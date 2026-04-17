@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsArray, IsDateString } from 'class-validator';
+import { IsString, IsOptional, IsArray, IsDateString, IsBoolean } from 'class-validator';
 
 export class SendNotificationDto {
   @IsString()
@@ -21,6 +21,13 @@ export class SendNotificationDto {
   @IsString()
   @IsOptional()
   fallbackPhone?: string; // SMS fallback if LINE fails
+
+  // Time-sensitive messages (e.g. OTP with 10-min TTL) should not be queued
+  // for delayed retry — retries would arrive after the OTP has already expired
+  // and spam the recipient. Caller sets this to true to skip the retry queue.
+  @IsBoolean()
+  @IsOptional()
+  noRetry?: boolean;
 }
 
 export class CreateNotificationTemplateDto {

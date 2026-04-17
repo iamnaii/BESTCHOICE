@@ -13,6 +13,7 @@ import { LiffTokenGuard } from './guards/liff-token.guard';
 import { PromptPayQrService } from './promptpay/promptpay-qr.service';
 import { PaymentLinkService } from './payment-links/payment-link.service';
 import { RichMenuService } from './rich-menu/rich-menu.service';
+import { RichMenuRendererService } from './rich-menu/rich-menu-renderer.service';
 import { ChatbotService } from './chatbot.service';
 import { QuickReplyService } from './quick-reply.service';
 import { ShopDomainHandler } from './shop-domain.handler';
@@ -42,6 +43,7 @@ import { ChatEngineModule } from '../chat-engine/chat-engine.module';
     PromptPayQrService,
     PaymentLinkService,
     RichMenuService,
+    RichMenuRendererService,
     ChatbotService,
     QuickReplyService,
     ShopDomainHandler,

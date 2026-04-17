@@ -102,14 +102,15 @@ export default function SystemStatusPage() {
         errorTitle="ไม่สามารถโหลดสถานะระบบได้"
       >
 
+      {!data ? null : (<>
       {/* ═══════════════════ Page 1: Connection Diagram ═══════════════════ */}
       <A4Page pageNum={1} totalPages={totalPages}>
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-xl font-bold text-foreground">รายงานสถานะระบบ</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            วันที่: {formatDateMedium(data!.timestamp)}
-            {' '}เวลา: {new Date(data!.timestamp).toLocaleTimeString('th-TH')}
+            วันที่: {formatDateMedium(data.timestamp)}
+            {' '}เวลา: {new Date(data.timestamp).toLocaleTimeString('th-TH')}
           </p>
         </div>
 
@@ -138,19 +139,19 @@ export default function SystemStatusPage() {
             color="blue"
           />
 
-          <VerticalLine ok={data!.api.status === 'ok'} />
+          <VerticalLine ok={data.api.status === 'ok'} />
 
           {/* API Server */}
           <ServiceCard
             icon={<ServerIcon />}
             title="API Server (Backend)"
-            status={data!.api.status === 'ok' ? 'ok' : 'error'}
-            statusText={data!.api.status === 'ok' ? 'ทำงานปกติ' : 'มีปัญหา'}
+            status={data.api.status === 'ok' ? 'ok' : 'error'}
+            statusText={data.api.status === 'ok' ? 'ทำงานปกติ' : 'มีปัญหา'}
             details={[
-              { label: 'เวอร์ชัน', value: data!.api.version },
-              { label: 'Uptime', value: formatUptime(data!.api.uptime) },
-              { label: 'Node.js', value: data!.api.nodeVersion },
-              { label: 'RAM ใช้งาน', value: `${data!.memory.heapUsedMB} / ${data!.memory.heapTotalMB} MB` },
+              { label: 'เวอร์ชัน', value: data.api.version },
+              { label: 'Uptime', value: formatUptime(data.api.uptime) },
+              { label: 'Node.js', value: data.api.nodeVersion },
+              { label: 'RAM ใช้งาน', value: `${data.memory.heapUsedMB} / ${data.memory.heapTotalMB} MB` },
             ]}
             color="indigo"
           />
@@ -158,8 +159,8 @@ export default function SystemStatusPage() {
           {/* Branch lines to DB and AI */}
           <div className="w-80 h-10 relative">
             <svg className="w-full h-full" viewBox="0 0 320 40" preserveAspectRatio="none">
-              <path d="M160,0 L160,20 L60,20 L60,40" fill="none" stroke={data!.database.connected ? '#86efac' : '#fca5a5'} strokeWidth="2" />
-              <path d="M160,0 L160,20 L260,20 L260,40" fill="none" stroke={data!.ai.connected ? '#86efac' : '#fca5a5'} strokeWidth="2" />
+              <path d="M160,0 L160,20 L60,20 L60,40" fill="none" stroke={data.database.connected ? '#86efac' : '#fca5a5'} strokeWidth="2" />
+              <path d="M160,0 L160,20 L260,20 L260,40" fill="none" stroke={data.ai.connected ? '#86efac' : '#fca5a5'} strokeWidth="2" />
             </svg>
           </div>
 
@@ -169,11 +170,11 @@ export default function SystemStatusPage() {
               <ServiceCard
                 icon={<DatabaseIcon />}
                 title="Database (PostgreSQL)"
-                status={data!.database.connected ? 'ok' : 'error'}
-                statusText={data!.database.connected ? 'เชื่อมต่อแล้ว' : 'ไม่สามารถเชื่อมต่อ'}
+                status={data.database.connected ? 'ok' : 'error'}
+                statusText={data.database.connected ? 'เชื่อมต่อแล้ว' : 'ไม่สามารถเชื่อมต่อ'}
                 details={[
-                  { label: 'Latency', value: data!.database.connected ? `${data!.database.latencyMs} ms` : '-' },
-                  ...(data!.database.error ? [{ label: 'Error', value: data!.database.error }] : []),
+                  { label: 'Latency', value: data.database.connected ? `${data.database.latencyMs} ms` : '-' },
+                  ...(data.database.error ? [{ label: 'Error', value: data.database.error }] : []),
                 ]}
                 color="emerald"
                 full
@@ -183,16 +184,16 @@ export default function SystemStatusPage() {
               <ServiceCard
                 icon={<AiIcon />}
                 title="AI (Claude)"
-                status={data!.ai.connected ? 'ok' : data!.ai.configured ? 'warn' : 'error'}
+                status={data.ai.connected ? 'ok' : data.ai.configured ? 'warn' : 'error'}
                 statusText={
-                  data!.ai.connected ? 'เชื่อมต่อแล้ว' :
-                  data!.ai.configured ? 'ตั้งค่าแล้ว แต่เชื่อมต่อไม่ได้' :
+                  data.ai.connected ? 'เชื่อมต่อแล้ว' :
+                  data.ai.configured ? 'ตั้งค่าแล้ว แต่เชื่อมต่อไม่ได้' :
                   'ยังไม่ได้ตั้งค่า'
                 }
                 details={[
-                  { label: 'Model', value: data!.ai.model },
-                  { label: 'API Key', value: data!.ai.configured ? 'ตั้งค่าแล้ว' : 'ยังไม่ได้ตั้งค่า' },
-                  ...(data!.ai.error ? [{ label: 'Error', value: data!.ai.error }] : []),
+                  { label: 'Model', value: data.ai.model },
+                  { label: 'API Key', value: data.ai.configured ? 'ตั้งค่าแล้ว' : 'ยังไม่ได้ตั้งค่า' },
+                  ...(data.ai.error ? [{ label: 'Error', value: data.ai.error }] : []),
                 ]}
                 color="blue"
                 full
@@ -229,29 +230,29 @@ export default function SystemStatusPage() {
             <tr>
               <td className="p-3 border border-border font-medium">API Server</td>
               <td className="p-3 border border-border">
-                <span className="inline-flex items-center gap-1.5"><StatusDot ok={data!.api.status === 'ok'} /> {data!.api.status === 'ok' ? 'ทำงานปกติ' : 'มีปัญหา'}</span>
+                <span className="inline-flex items-center gap-1.5"><StatusDot ok={data.api.status === 'ok'} /> {data.api.status === 'ok' ? 'ทำงานปกติ' : 'มีปัญหา'}</span>
               </td>
-              <td className="p-3 border border-border text-muted-foreground">v{data!.api.version} | Uptime: {formatUptime(data!.api.uptime)} | {data!.api.nodeVersion}</td>
+              <td className="p-3 border border-border text-muted-foreground">v{data.api.version} | Uptime: {formatUptime(data.api.uptime)} | {data.api.nodeVersion}</td>
             </tr>
             <tr>
               <td className="p-3 border border-border font-medium">Database</td>
               <td className="p-3 border border-border">
-                <span className="inline-flex items-center gap-1.5"><StatusDot ok={data!.database.connected} /> {data!.database.connected ? 'เชื่อมต่อแล้ว' : 'ไม่สามารถเชื่อมต่อ'}</span>
+                <span className="inline-flex items-center gap-1.5"><StatusDot ok={data.database.connected} /> {data.database.connected ? 'เชื่อมต่อแล้ว' : 'ไม่สามารถเชื่อมต่อ'}</span>
               </td>
               <td className="p-3 border border-border text-muted-foreground">
-                {data!.database.connected ? `Latency: ${data!.database.latencyMs} ms` : data!.database.error || '-'}
+                {data.database.connected ? `Latency: ${data.database.latencyMs} ms` : data.database.error || '-'}
               </td>
             </tr>
             <tr>
               <td className="p-3 border border-border font-medium">AI (Claude)</td>
               <td className="p-3 border border-border">
                 <span className="inline-flex items-center gap-1.5">
-                  <StatusDot ok={data!.ai.connected} />
-                  {data!.ai.connected ? 'เชื่อมต่อแล้ว' : data!.ai.configured ? 'เชื่อมต่อไม่ได้' : 'ยังไม่ตั้งค่า'}
+                  <StatusDot ok={data.ai.connected} />
+                  {data.ai.connected ? 'เชื่อมต่อแล้ว' : data.ai.configured ? 'เชื่อมต่อไม่ได้' : 'ยังไม่ตั้งค่า'}
                 </span>
               </td>
               <td className="p-3 border border-border text-muted-foreground">
-                Model: {data!.ai.model}{data!.ai.error ? ` | Error: ${data!.ai.error}` : ''}
+                Model: {data.ai.model}{data.ai.error ? ` | Error: ${data.ai.error}` : ''}
               </td>
             </tr>
           </tbody>
@@ -260,9 +261,9 @@ export default function SystemStatusPage() {
         {/* Memory */}
         <h2 className="text-base font-bold text-foreground mb-4 border-b pb-2">ทรัพยากรระบบ</h2>
         <div className="grid grid-cols-3 gap-4 mb-8">
-          <MemoryCard label="Heap ใช้งาน" value={`${data!.memory.heapUsedMB} MB`} total={`${data!.memory.heapTotalMB} MB`} pct={Math.round((data!.memory.heapUsedMB / data!.memory.heapTotalMB) * 100)} />
-          <MemoryCard label="Heap ทั้งหมด" value={`${data!.memory.heapTotalMB} MB`} />
-          <MemoryCard label="RSS (ทั้งหมด)" value={`${data!.memory.rssMB} MB`} />
+          <MemoryCard label="Heap ใช้งาน" value={`${data.memory.heapUsedMB} MB`} total={`${data.memory.heapTotalMB} MB`} pct={Math.round((data.memory.heapUsedMB / data.memory.heapTotalMB) * 100)} />
+          <MemoryCard label="Heap ทั้งหมด" value={`${data.memory.heapTotalMB} MB`} />
+          <MemoryCard label="RSS (ทั้งหมด)" value={`${data.memory.rssMB} MB`} />
         </div>
 
         {/* AI Features */}
@@ -274,7 +275,7 @@ export default function SystemStatusPage() {
             { name: 'อ่านสลิปการโอน', desc: 'อ่านข้อมูลจากสลิปการโอนเงิน' },
             { name: 'อ่านสมุดบัญชี', desc: 'อ่านข้อมูลจากสมุดบัญชีธนาคาร' },
           ].map(f => {
-            const ok = data!.ai.connected;
+            const ok = data.ai.connected;
             return (
               <div key={f.name} className={`flex items-start gap-3 p-3 rounded-lg border ${ok ? 'bg-success/5 dark:bg-success/10 border-success/20' : 'bg-muted border-border'}`}>
                 <StatusDot ok={ok} />
@@ -296,10 +297,10 @@ export default function SystemStatusPage() {
           {/* Redis */}
           <IntegrationCard
             name="Redis Cache"
-            configured={data!.redis?.connected ?? false}
+            configured={data.redis?.connected ?? false}
             details={[
-              { label: 'ประเภท', value: data!.redis?.type || 'unknown' },
-              { label: 'สถานะ', value: data!.redis?.connected ? 'เชื่อมต่อแล้ว' : (data!.redis?.error || 'ไม่ได้เชื่อมต่อ') },
+              { label: 'ประเภท', value: data.redis?.type || 'unknown' },
+              { label: 'สถานะ', value: data.redis?.connected ? 'เชื่อมต่อแล้ว' : (data.redis?.error || 'ไม่ได้เชื่อมต่อ') },
             ]}
           />
 
@@ -376,9 +377,9 @@ export default function SystemStatusPage() {
           <h3 className="text-sm font-semibold mb-3">Checklist ก่อน Go-Live</h3>
           <div className="grid grid-cols-2 gap-2 text-xs">
             {[
-              { label: 'Database', ok: data!.database.connected },
-              { label: 'AI (Anthropic)', ok: data!.ai.connected },
-              { label: 'Redis Cache', ok: data!.redis?.connected ?? false },
+              { label: 'Database', ok: data.database.connected },
+              { label: 'AI (Anthropic)', ok: data.ai.connected },
+              { label: 'Redis Cache', ok: data.redis?.connected ?? false },
               { label: 'S3 Storage', ok: svcs?.s3.configured ?? false },
               { label: 'LINE OA', ok: svcs?.line.configured ?? false },
               { label: 'SMS', ok: svcs?.sms.configured ?? false },
@@ -398,6 +399,7 @@ export default function SystemStatusPage() {
         </div>
       </A4Page>
 
+      </>)}
       </QueryBoundary>
     </div>
   );

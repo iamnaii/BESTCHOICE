@@ -122,7 +122,7 @@ export default function PaymentHistorySheet({ contractId, onClose, onViewReceipt
                           <span className="text-sm font-bold">งวด {p.installmentNo}</span>
                           <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.className}`}>{s.label}</span>
                         </div>
-                        <span className={`text-xs ${isOverdue ? 'text-red-600 font-medium' : 'text-muted-foreground'}`}>
+                        <span className={`text-xs ${isOverdue ? 'text-destructive font-medium' : 'text-muted-foreground'}`}>
                           {formatDateShort(p.dueDate)}
                         </span>
                       </div>
@@ -135,15 +135,15 @@ export default function PaymentHistorySheet({ contractId, onClose, onViewReceipt
                         </div>
                         <div>
                           <div className="text-muted-foreground">จ่ายแล้ว</div>
-                          <div className={`font-medium ${Number(p.amountPaid) > 0 ? 'text-green-600' : ''}`}>
+                          <div className={`font-medium ${Number(p.amountPaid) > 0 ? 'text-success' : ''}`}>
                             {Number(p.amountPaid).toLocaleString()} ฿
                           </div>
                         </div>
                         <div>
                           <div className="text-muted-foreground">ค่าปรับ</div>
-                          <div className={`font-medium ${Number(p.lateFee) > 0 ? 'text-red-600' : ''}`}>
+                          <div className={`font-medium ${Number(p.lateFee) > 0 ? 'text-destructive' : ''}`}>
                             {Number(p.lateFee) > 0 ? `${Number(p.lateFee).toLocaleString()} ฿` : '-'}
-                            {p.lateFeeWaived && <span className="text-green-600 ml-1">(ยกเว้น)</span>}
+                            {p.lateFeeWaived && <span className="text-success ml-1">(ยกเว้น)</span>}
                           </div>
                         </div>
                       </div>
@@ -168,7 +168,7 @@ export default function PaymentHistorySheet({ contractId, onClose, onViewReceipt
                         {Number(p.lateFee) > 0 && !p.lateFeeWaived && p.status !== 'PAID' && (
                           <button
                             onClick={() => { setWaiveTarget(p); setWaiveReason(''); setShowWaiveModal(true); }}
-                            className="px-2 py-1 text-xs border border-yellow-400 text-yellow-700 rounded hover:bg-yellow-50"
+                            className="px-2 py-1 text-xs border border-warning/40 text-warning rounded hover:bg-warning/10"
                           >
                             ยกเว้นค่าปรับ
                           </button>
@@ -182,11 +182,11 @@ export default function PaymentHistorySheet({ contractId, onClose, onViewReceipt
                 <div className="border-t pt-3 mt-3 space-y-1">
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">ชำระแล้วรวม</span>
-                    <span className="font-bold text-green-600">{totalPaid.toLocaleString()} ฿</span>
+                    <span className="font-bold text-success">{totalPaid.toLocaleString()} ฿</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">ยอดคงค้าง</span>
-                    <span className="font-bold text-red-600">{Math.max(0, totalRemaining).toLocaleString()} ฿</span>
+                    <span className="font-bold text-destructive">{Math.max(0, totalRemaining).toLocaleString()} ฿</span>
                   </div>
                 </div>
               </div>
@@ -201,10 +201,10 @@ export default function PaymentHistorySheet({ contractId, onClose, onViewReceipt
           <div className="flex flex-col gap-4">
             <div className="bg-warning/5 dark:bg-warning/10 border border-warning/20 rounded-lg p-3">
               <div className="text-sm"><span className="text-muted-foreground">งวดที่: </span><span className="font-bold">{waiveTarget.installmentNo}</span></div>
-              <div className="text-sm"><span className="text-muted-foreground">ค่าปรับปัจจุบัน: </span><span className="font-bold text-red-600">{Number(waiveTarget.lateFee).toLocaleString()} ฿</span></div>
+              <div className="text-sm"><span className="text-muted-foreground">ค่าปรับปัจจุบัน: </span><span className="font-bold text-destructive">{Number(waiveTarget.lateFee).toLocaleString()} ฿</span></div>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">เหตุผลที่ยกเว้น <span className="text-red-500">*</span></label>
+              <label className="block text-sm font-medium mb-1">เหตุผลที่ยกเว้น <span className="text-destructive">*</span></label>
               <input
                 type="text"
                 value={waiveReason}
@@ -220,7 +220,7 @@ export default function PaymentHistorySheet({ contractId, onClose, onViewReceipt
               <button
                 onClick={() => waiveMutation.mutate({ paymentId: waiveTarget.id, reason: waiveReason })}
                 disabled={!waiveReason.trim() || waiveMutation.isPending}
-                className="flex-1 px-4 py-2 text-sm bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 disabled:opacity-50"
+                className="flex-1 px-4 py-2 text-sm bg-warning text-warning-foreground rounded-lg hover:bg-warning/90 disabled:opacity-50"
               >
                 {waiveMutation.isPending ? 'กำลังบันทึก...' : 'ยืนยันยกเว้น'}
               </button>

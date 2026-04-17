@@ -177,11 +177,11 @@ export default function CommandPalette({
                   onClick={cmd.action}
                   onMouseEnter={() => setSelectedIndex(index)}
                   className={`w-full flex items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors ${
-                    isActive ? 'bg-blue-50 text-blue-700' : 'text-foreground hover:bg-muted'
+                    isActive ? 'bg-primary/10 text-primary' : 'text-foreground hover:bg-muted'
                   }`}
                 >
                   <Icon
-                    className={`w-4 h-4 shrink-0 ${isActive ? 'text-blue-500' : 'text-muted-foreground'}`}
+                    className={`w-4 h-4 shrink-0 ${isActive ? 'text-primary' : 'text-muted-foreground'}`}
                   />
                   <div className="flex-1 min-w-0">
                     <span className="font-medium">{cmd.label}</span>

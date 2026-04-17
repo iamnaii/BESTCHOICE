@@ -47,7 +47,7 @@ export default function AcceptModal({
     <Modal isOpen={!!item} onClose={onClose} title="ยืนยันการรับซื้อเครื่อง" size="md">
       {item && (
         <div className="space-y-4">
-          <div className="rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 p-3 text-xs text-amber-700 dark:text-amber-400 flex gap-2">
+          <div className="rounded-lg bg-warning/10 dark:bg-warning/15 border border-warning/20 dark:border-warning/30 p-3 text-xs text-warning flex gap-2">
             <AlertTriangle className="size-4 shrink-0 mt-0.5" />
             <div>กรุณายืนยันตามขั้นตอนป้องกันการรับซื้อของโจรก่อนกดยอมรับ</div>
           </div>
@@ -101,8 +101,8 @@ export default function AcceptModal({
                 onClick={() => onChange({ paymentMethod: 'CASH' })}
                 className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium border transition-all ${
                   form.paymentMethod === 'CASH'
-                    ? 'bg-emerald-500 text-white border-emerald-500'
-                    : 'bg-card text-foreground border-border hover:border-emerald-300'
+                    ? 'bg-success text-success-foreground border-success'
+                    : 'bg-card text-foreground border-border hover:border-success/50'
                 }`}
               >
                 เงินสด
@@ -112,8 +112,8 @@ export default function AcceptModal({
                 onClick={() => onChange({ paymentMethod: 'TRANSFER' })}
                 className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium border transition-all ${
                   form.paymentMethod === 'TRANSFER'
-                    ? 'bg-sky-500 text-white border-sky-500'
-                    : 'bg-card text-foreground border-border hover:border-sky-300'
+                    ? 'bg-info text-info-foreground border-info'
+                    : 'bg-card text-foreground border-border hover:border-info/50'
                 }`}
               >
                 โอน

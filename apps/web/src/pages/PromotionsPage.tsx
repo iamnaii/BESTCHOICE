@@ -179,7 +179,7 @@ export default function PromotionsPage() {
       render: (item) => (
         <div className="flex items-center gap-2">
           {isPromotionActive(item) && (
-            <span className="size-2 rounded-full bg-green-500 shrink-0" title="กำลังใช้งาน" />
+            <span className="size-2 rounded-full bg-success shrink-0" title="กำลังใช้งาน" />
           )}
           <span className="font-medium text-foreground">{item.name}</span>
         </div>

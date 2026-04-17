@@ -87,7 +87,7 @@ export function PaymentModal({
                   <span>จ่ายแล้วก่อนหน้า:</span>
                   <span>{Number(selectedPO.paidAmount).toLocaleString()} บาท</span>
                 </div>
-                <div className="flex justify-between font-semibold text-amber-700">
+                <div className="flex justify-between font-semibold text-warning">
                   <span>คงเหลือ:</span>
                   <span>{(Number(selectedPO.netAmount ?? selectedPO.totalAmount) - Number(selectedPO.paidAmount)).toLocaleString()} บาท</span>
                 </div>
@@ -107,7 +107,7 @@ export function PaymentModal({
 
           <div className="rounded-xl border border-border/50 bg-card p-5 shadow-sm">
             <div className="flex items-center gap-2.5 mb-4">
-              <div className="flex items-center justify-center size-8 rounded-lg bg-emerald-500/10 text-emerald-500">
+              <div className="flex items-center justify-center size-8 rounded-lg bg-success/10 text-success">
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
               </div>
               <div>
@@ -195,8 +195,8 @@ export function PaymentModal({
               const remaining = netAmt - paid;
               if (paid > 0 && remaining > 0) {
                 return (
-                  <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded-lg text-sm">
-                    <div className="flex justify-between text-amber-800">
+                  <div className="mt-2 p-2 bg-warning/10 border border-warning/20 rounded-lg text-sm">
+                    <div className="flex justify-between text-warning">
                       <span>ยอดคงเหลือที่ต้องจ่าย:</span>
                       <span className="font-semibold">{remaining.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท</span>
                     </div>
@@ -218,7 +218,7 @@ export function PaymentModal({
 
           <div className="rounded-xl border border-border/50 bg-card p-5 shadow-sm">
             <div className="flex items-center gap-2.5 mb-4">
-              <div className="flex items-center justify-center size-8 rounded-lg bg-sky-500/10 text-sky-500">
+              <div className="flex items-center justify-center size-8 rounded-lg bg-info/10 text-info">
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
               </div>
               <div>
@@ -238,7 +238,7 @@ export function PaymentModal({
           {/* Attachments - File upload + URL */}
           <div className="rounded-xl border border-border/50 bg-card p-5 shadow-sm">
             <div className="flex items-center gap-2.5 mb-4">
-              <div className="flex items-center justify-center size-8 rounded-lg bg-rose-500/10 text-rose-500">
+              <div className="flex items-center justify-center size-8 rounded-lg bg-destructive/10 text-destructive">
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
               </div>
               <div>
@@ -302,7 +302,7 @@ export function PaymentModal({
                     <button
                       type="button"
                       onClick={() => setPaymentAttachments(paymentAttachments.filter((_, i) => i !== idx))}
-                      className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-destructive text-destructive-foreground rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                     >
                       &times;
                     </button>

@@ -45,7 +45,7 @@ export default function CreditCheckDetail({ creditCheck: cc, onClose }: CreditCh
             <div className="bg-muted/40 rounded-xl border border-border/50 p-3">
               <div className="text-xs text-muted-foreground">ความสม่ำเสมอรายได้</div>
               <div
-                className={`text-sm font-bold mt-1 ${ai.incomeConsistency === 'stable' ? 'text-success' : 'text-amber-600'}`}
+                className={`text-sm font-bold mt-1 ${ai.incomeConsistency === 'stable' ? 'text-success' : 'text-warning'}`}
               >
                 {ai.incomeConsistency === 'stable' ? 'สม่ำเสมอ' : 'ไม่สม่ำเสมอ'}
               </div>

@@ -59,7 +59,7 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
               {format(new Date(message.createdAt), 'HH:mm')}
             </span>
             {isStaff && (
-              <span className={cn('text-[10px] ml-1', message.readAt ? 'text-blue-400' : 'text-muted-foreground')}>
+              <span className={cn('text-[10px] ml-1', message.readAt ? 'text-info' : 'text-muted-foreground')}>
                 {message.readAt ? '✓✓' : '✓'}
               </span>
             )}
@@ -98,7 +98,7 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
               {format(new Date(message.createdAt), 'HH:mm')}
             </span>
             {isStaff && (
-              <span className={cn('text-[10px] ml-1', message.readAt ? 'text-blue-400' : 'text-muted-foreground')}>
+              <span className={cn('text-[10px] ml-1', message.readAt ? 'text-info' : 'text-muted-foreground')}>
                 {message.readAt ? '✓✓' : '✓'}
               </span>
             )}
@@ -144,7 +144,7 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
             isCustomer
               ? 'bg-muted text-foreground rounded-bl-md'
               : isBot
-                ? 'bg-purple-50 text-purple-900 rounded-br-md border border-purple-100'
+                ? 'bg-muted text-foreground rounded-br-md border border-border'
                 : 'bg-primary text-primary-foreground rounded-br-md',
           )}
         >
@@ -168,7 +168,7 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
             {format(new Date(message.createdAt), 'HH:mm')}
           </span>
           {message.role === 'STAFF' && (
-            <span className={cn('text-[10px] ml-1', message.readAt ? 'text-blue-400' : 'text-muted-foreground')}>
+            <span className={cn('text-[10px] ml-1', message.readAt ? 'text-primary' : 'text-muted-foreground')}>
               {message.readAt ? '✓✓' : '✓'}
             </span>
           )}

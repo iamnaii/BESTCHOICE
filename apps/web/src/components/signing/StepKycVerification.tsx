@@ -131,7 +131,7 @@ export default function StepKycVerification({ contractId, customerName, customer
     return (
       <div className="flex flex-col items-center justify-center min-h-[50vh] px-4">
         <div className="text-5xl mb-4">&#10003;</div>
-        <h2 className="text-xl font-semibold text-green-700 mb-2">ยืนยันตัวตนเรียบร้อยแล้ว</h2>
+        <h2 className="text-xl font-semibold text-success mb-2">ยืนยันตัวตนเรียบร้อยแล้ว</h2>
         <p className="text-sm text-muted-foreground mb-6">{customerName}</p>
         <button
           onClick={onComplete}
@@ -171,7 +171,7 @@ export default function StepKycVerification({ contractId, customerName, customer
               <button
                 onClick={() => handleSendOtp('LINE')}
                 disabled={sendOtpMutation.isPending}
-                className="flex-1 px-4 py-4 text-sm border-2 border-green-300 rounded-xl hover:bg-green-50 flex flex-col items-center gap-2 disabled:opacity-50"
+                className="flex-1 px-4 py-4 text-sm border-2 border-success/30 rounded-xl hover:bg-success/10 flex flex-col items-center gap-2 disabled:opacity-50"
               >
                 <span className="text-2xl">💚</span>
                 <span className="font-medium">ส่ง OTP ผ่าน LINE</span>
@@ -183,10 +183,10 @@ export default function StepKycVerification({ contractId, customerName, customer
 
               {/* Ref Code */}
               {otpRef && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2.5 text-center">
-                  <span className="text-xs text-blue-600">Ref:</span>
-                  <span className="ml-2 text-lg font-bold text-blue-800 tracking-widest">{otpRef}</span>
-                  <p className="text-xs text-blue-500 mt-0.5">ตรวจสอบ Ref ให้ตรงกับ SMS ที่ได้รับ</p>
+                <div className="bg-info/10 border border-info/30 rounded-lg px-4 py-2.5 text-center">
+                  <span className="text-xs text-info">Ref:</span>
+                  <span className="ml-2 text-lg font-bold text-info tracking-widest">{otpRef}</span>
+                  <p className="text-xs text-info mt-0.5">ตรวจสอบ Ref ให้ตรงกับ SMS ที่ได้รับ</p>
                 </div>
               )}
 
@@ -211,7 +211,7 @@ export default function StepKycVerification({ contractId, customerName, customer
                     OTP หมดอายุใน <span className="font-mono font-semibold text-foreground">{formatCountdown(countdown)}</span>
                   </p>
                 ) : otpSent ? (
-                  <p className="text-sm text-orange-600 font-medium">OTP หมดอายุแล้ว กรุณากดส่งใหม่</p>
+                  <p className="text-sm text-warning font-medium">OTP หมดอายุแล้ว กรุณากดส่งใหม่</p>
                 ) : null}
 
                 <button
@@ -231,7 +231,7 @@ export default function StepKycVerification({ contractId, customerName, customer
       {otpVerified && !idCardDone && (
         <div className="w-full space-y-4">
           <div className="flex items-center gap-2 mb-2">
-            <span className="text-green-500 text-sm">&#10003; OTP ยืนยันแล้ว</span>
+            <span className="text-success text-sm">&#10003; OTP ยืนยันแล้ว</span>
           </div>
           <h3 className="text-sm font-semibold text-foreground">ขั้นตอนที่ 2: ถ่ายรูปบัตรประชาชน</h3>
           <p className="text-xs text-muted-foreground">ถ่ายรูปด้านหน้าบัตรประชาชนของลูกค้าเพื่อยืนยันตัวตน</p>
@@ -249,7 +249,7 @@ export default function StepKycVerification({ contractId, customerName, customer
       {otpVerified && idCardDone && (
         <div className="w-full text-center space-y-4">
           <div className="text-4xl mb-2">&#10003;</div>
-          <h3 className="text-lg font-semibold text-green-700">ยืนยันตัวตนสำเร็จ</h3>
+          <h3 className="text-lg font-semibold text-success">ยืนยันตัวตนสำเร็จ</h3>
           <button
             onClick={onComplete}
             className="w-full px-8 py-3.5 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90"

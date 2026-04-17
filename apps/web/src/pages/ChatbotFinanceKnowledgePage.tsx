@@ -145,7 +145,7 @@ function KnowledgeBaseTab() {
       <div className="flex justify-end mb-4">
         <button
           onClick={startCreate}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"
+          className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm hover:bg-primary/90"
         >
           + เพิ่ม FAQ
         </button>
@@ -167,7 +167,7 @@ function KnowledgeBaseTab() {
             list.data?.map((kb) => (
               <div
                 key={kb.id}
-                className={`p-3 border rounded-lg cursor-pointer hover:bg-muted/50 ${editing?.id === kb.id ? 'border-blue-400 bg-blue-50' : 'bg-card'}`}
+                className={`p-3 border rounded-lg cursor-pointer hover:bg-muted/50 ${editing?.id === kb.id ? 'border-primary bg-primary/5' : 'bg-card'}`}
                 onClick={() => startEditWithReset(kb)}
               >
                 <div className="flex justify-between items-start">
@@ -311,7 +311,7 @@ function KnowledgeBaseTab() {
                 <button
                   type="submit"
                   disabled={saveMutation.isPending}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50"
+                  className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm hover:bg-primary/90 disabled:opacity-50"
                 >
                   {saveMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
                 </button>
@@ -319,7 +319,7 @@ function KnowledgeBaseTab() {
                   <button
                     type="button"
                     onClick={() => setPendingDelete(true)}
-                    className="px-4 py-2 border border-red-300 text-red-600 rounded-lg text-sm hover:bg-red-50"
+                    className="px-4 py-2 border border-destructive/30 text-destructive rounded-lg text-sm hover:bg-destructive/10"
                   >
                     ลบ
                   </button>
@@ -330,7 +330,7 @@ function KnowledgeBaseTab() {
                       type="button"
                       onClick={() => { deleteMutation.mutate(editing.id); setPendingDelete(false); }}
                       disabled={deleteMutation.isPending}
-                      className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700 disabled:opacity-50"
+                      className="px-4 py-2 bg-destructive text-destructive-foreground rounded-lg text-sm hover:bg-destructive/90 disabled:opacity-50"
                     >
                       ยืนยันลบ
                     </button>
@@ -426,7 +426,7 @@ function SuggestionsTab() {
             onClick={() => setStatusFilter(s)}
             className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${
               statusFilter === s
-                ? 'bg-blue-600 text-white border-blue-600'
+                ? 'bg-primary text-primary-foreground border-primary'
                 : 'bg-card text-foreground/70 border-border hover:bg-muted'
             }`}
           >
@@ -504,7 +504,7 @@ function SuggestionsTab() {
                                 approveMutation.mutate(s.id);
                               }}
                               disabled={approveMutation.isPending}
-                              className="px-3 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700 disabled:opacity-50"
+                              className="px-3 py-1 bg-primary text-primary-foreground rounded text-xs hover:bg-primary/90 disabled:opacity-50"
                             >
                               อนุมัติ
                             </button>
@@ -514,7 +514,7 @@ function SuggestionsTab() {
                                 rejectMutation.mutate(s.id);
                               }}
                               disabled={rejectMutation.isPending}
-                              className="px-3 py-1 border border-red-300 text-red-600 rounded text-xs hover:bg-red-50 disabled:opacity-50"
+                              className="px-3 py-1 border border-destructive/30 text-destructive rounded text-xs hover:bg-destructive/10 disabled:opacity-50"
                             >
                               ปฏิเสธ
                             </button>
@@ -560,7 +560,7 @@ function SuggestionsTab() {
                           {item.suggestedKeywords.map((kw, i) => (
                             <span
                               key={i}
-                              className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full"
+                              className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded-full"
                             >
                               {kw}
                             </span>

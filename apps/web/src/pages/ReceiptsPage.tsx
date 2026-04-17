@@ -255,7 +255,7 @@ function ReceiptsPage() {
             <button
               onClick={exportExcel}
               disabled={!receipts.length}
-              className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+              className="px-4 py-2 text-sm bg-success text-success-foreground rounded-lg hover:bg-success/90 disabled:opacity-50"
             >
               Excel
             </button>

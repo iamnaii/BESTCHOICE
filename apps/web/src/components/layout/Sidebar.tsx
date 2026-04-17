@@ -37,7 +37,7 @@ import type { MenuSection } from '@/config/menu';
 /* ── Role label map ─────────────────────────────── */
 const roleBadgeMap: Record<string, { label: string; cls: string }> = {
   OWNER:          { label: 'OWNER',        cls: 'bg-primary text-primary-foreground' },
-  BRANCH_MANAGER: { label: 'ผจก.สาขา',    cls: 'bg-sky-600 text-white' },
+  BRANCH_MANAGER: { label: 'ผจก.สาขา',    cls: 'bg-info text-info-foreground' },
   FINANCE_MANAGER:{ label: 'การเงิน',      cls: 'bg-primary text-primary-foreground' },
   ACCOUNTANT:     { label: 'บัญชี',        cls: 'bg-[#7c3aed] text-white' },
   SALES:          { label: 'พนง.ขาย',      cls: 'bg-[#0ea5e9] text-white' },
@@ -189,8 +189,8 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
                     className={cn(
                       'flex items-center gap-2.5 px-2.5 py-[7px] rounded-lg text-[13px] font-medium transition-colors duration-150',
                       isItemActive(item.path)
-                        ? 'bg-emerald-50 text-emerald-700'
-                        : 'text-foreground/75 hover:text-emerald-700 hover:bg-emerald-50/50',
+                        ? 'bg-primary/10 text-primary'
+                        : 'text-foreground/75 hover:text-primary hover:bg-primary/5',
                     )}
                   >
                     <item.icon
@@ -237,7 +237,7 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
               <TooltipTrigger asChild>
                 <button
                   onClick={logout}
-                  className="flex items-center justify-center size-9 rounded-lg text-muted-foreground/40 hover:text-red-500 hover:bg-red-500/10 transition-all duration-200"
+                  className="flex items-center justify-center size-9 rounded-lg text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 transition-all duration-200"
                   aria-label="ออกจากระบบ"
                 >
                   <LogOut className="size-[17px]" />
@@ -355,7 +355,7 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
         </button>
         <button
           onClick={logout}
-          className="flex items-center justify-center size-8 rounded-lg text-muted-foreground/40 hover:text-red-500 hover:bg-red-500/10 transition-all duration-200"
+          className="flex items-center justify-center size-8 rounded-lg text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 transition-all duration-200"
           aria-label="ออกจากระบบ"
         >
           <LogOut className="size-[15px]" />
@@ -453,7 +453,7 @@ function MobileSidebarContent() {
       <div className="px-4 py-3 border-t border-border shrink-0 flex justify-end">
         <button
           onClick={logout}
-          className="flex items-center justify-center size-8 rounded-lg text-muted-foreground/40 hover:text-red-500 hover:bg-red-500/10 transition-all duration-200"
+          className="flex items-center justify-center size-8 rounded-lg text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 transition-all duration-200"
           aria-label="ออกจากระบบ"
         >
           <LogOut className="size-[15px]" />
@@ -468,7 +468,7 @@ export function ChatUnreadBadge({ className }: { className?: string }) {
   const count = useUnreadChat();
   if (count <= 0) return null;
   return (
-    <span className={cn('min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold leading-snug', className)}>
+    <span className={cn('min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold leading-snug', className)}>
       {count > 99 ? '99+' : count}
     </span>
   );

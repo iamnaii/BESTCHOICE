@@ -22,9 +22,9 @@ interface CreditCheckData {
 
 const statusLabels: Record<string, { label: string; className: string }> = {
   PENDING: { label: 'รอวิเคราะห์', className: 'bg-muted text-foreground' },
-  APPROVED: { label: 'ผ่าน', className: 'bg-green-100 text-green-700' },
-  REJECTED: { label: 'ไม่ผ่าน', className: 'bg-red-100 text-red-700' },
-  MANUAL_REVIEW: { label: 'ต้องตรวจเพิ่ม', className: 'bg-amber-100 text-amber-700' },
+  APPROVED: { label: 'ผ่าน', className: 'bg-success/10 text-success' },
+  REJECTED: { label: 'ไม่ผ่าน', className: 'bg-destructive/10 text-destructive' },
+  MANUAL_REVIEW: { label: 'ต้องตรวจเพิ่ม', className: 'bg-warning/10 text-warning' },
 };
 
 export default function CreditCheckPanel({ contractId }: { contractId: string }) {
@@ -113,15 +113,15 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
   };
 
   const getScoreColor = (score: number) => {
-    if (score >= 70) return 'text-green-600';
-    if (score >= 50) return 'text-amber-600';
-    return 'text-red-600';
+    if (score >= 70) return 'text-success';
+    if (score >= 50) return 'text-warning';
+    return 'text-destructive';
   };
 
   const getScoreBg = (score: number) => {
-    if (score >= 70) return 'bg-green-500';
-    if (score >= 50) return 'bg-amber-500';
-    return 'bg-red-500';
+    if (score >= 70) return 'bg-success';
+    if (score >= 50) return 'bg-warning';
+    return 'bg-destructive';
   };
 
   const canOverride = user && ['OWNER', 'BRANCH_MANAGER'].includes(user.role);
@@ -187,7 +187,7 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
             <button
               onClick={() => analyzeMutation.mutate()}
               disabled={analyzeMutation.isPending}
-              className="px-4 py-2 text-sm bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50"
+              className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
             >
               {analyzeMutation.isPending ? 'กำลังวิเคราะห์...' : 'AI วิเคราะห์เครดิต'}
             </button>
@@ -223,7 +223,7 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
               {/* Recommendation */}
               {creditCheck.aiRecommendation && (
                 <div className={`rounded-lg p-3 ${
-                  creditCheck.aiScore >= 70 ? 'bg-green-50' : creditCheck.aiScore >= 50 ? 'bg-amber-50' : 'bg-red-50'
+                  creditCheck.aiScore >= 70 ? 'bg-success/10' : creditCheck.aiScore >= 50 ? 'bg-warning/10' : 'bg-destructive/10'
                 }`}>
                   <div className="text-xs text-muted-foreground mb-1">คำแนะนำ</div>
                   <div className="text-sm font-medium">{creditCheck.aiRecommendation}</div>
@@ -289,7 +289,7 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
                 <button
                   onClick={() => overrideMutation.mutate()}
                   disabled={!overrideStatus || overrideMutation.isPending}
-                  className="px-4 py-1.5 text-sm bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50"
+                  className="px-4 py-1.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
                 >
                   บันทึก
                 </button>

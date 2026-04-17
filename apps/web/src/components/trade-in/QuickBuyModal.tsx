@@ -268,51 +268,51 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-md flex items-start justify-center pt-6 pb-6"
+      className="fixed inset-0 z-50 bg-foreground/40 backdrop-blur-md flex items-start justify-center pt-6 pb-6"
       role="dialog"
       aria-modal="true"
     >
-      <div className="w-full max-w-3xl bg-card dark:bg-slate-950 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100vh-3rem)] ring-1 ring-slate-200 dark:ring-slate-800">
+      <div className="w-full max-w-3xl bg-card rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100vh-3rem)] ring-1 ring-border">
         {/* Header — sticky */}
-        <div className="sticky top-0 z-10 bg-linear-to-b from-emerald-50 to-white dark:from-emerald-950/30 dark:to-slate-950 border-b border-emerald-200/60 dark:border-emerald-900/40 px-6 py-4 flex items-center justify-between">
+        <div className="sticky top-0 z-10 bg-linear-to-b from-success/10 to-card border-b border-success/30 px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="size-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-sm">
+            <div className="size-10 rounded-xl bg-success text-success-foreground flex items-center justify-center shadow-sm">
               <ShoppingBag className="size-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-900 dark:text-slate-50">รับซื้อมือถือมือสอง</h2>
-              <p className="text-xs text-slate-600 dark:text-slate-400">กรอกข้อมูลผู้ขาย เครื่อง และยืนยันการรับซื้อ</p>
+              <h2 className="text-base font-bold text-foreground">รับซื้อมือถือมือสอง</h2>
+              <p className="text-xs text-muted-foreground">กรอกข้อมูลผู้ขาย เครื่อง และยืนยันการรับซื้อ</p>
             </div>
           </div>
           <button
             type="button"
             onClick={close}
-            className="text-slate-500 hover:text-slate-900 dark:hover:text-slate-50 text-sm font-medium"
+            className="text-muted-foreground hover:text-foreground text-sm font-medium"
           >
             ปิด ✕
           </button>
         </div>
 
         {/* Stepper */}
-        <div className="px-6 py-3 bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-800">
+        <div className="px-6 py-3 bg-muted/50 border-b border-border">
           <div className="flex items-center justify-between max-w-md mx-auto">
             {[1, 2, 3].map((s) => (
               <div key={s} className="flex items-center flex-1 last:flex-initial">
                 <div
                   className={`size-8 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
                     s < step
-                      ? 'bg-emerald-500 text-white'
+                      ? 'bg-success text-success-foreground'
                       : s === step
-                      ? 'bg-emerald-600 text-white ring-4 ring-emerald-200 dark:ring-emerald-900/40'
-                      : 'bg-slate-200 dark:bg-slate-800 text-slate-500'
+                      ? 'bg-success text-success-foreground ring-4 ring-success/20'
+                      : 'bg-muted text-muted-foreground'
                   }`}
                 >
                   {s < step ? '✓' : s}
                 </div>
-                <div className="ml-2 text-xs font-medium text-slate-700 dark:text-slate-300">
+                <div className="ml-2 text-xs font-medium text-foreground">
                   {s === 1 ? 'ผู้ขาย' : s === 2 ? 'เครื่อง + ราคา' : 'ยืนยัน + เซ็น'}
                 </div>
-                {s < 3 && <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800 mx-3" />}
+                {s < 3 && <div className="flex-1 h-px bg-border mx-3" />}
               </div>
             ))}
           </div>
@@ -328,7 +328,7 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
                 <button
                   type="button"
                   onClick={readFromCardReader}
-                  className="px-3 py-2 rounded-lg bg-sky-500 text-white text-xs font-semibold hover:bg-sky-600 flex items-center gap-1.5"
+                  className="px-3 py-2 rounded-lg bg-info text-info-foreground text-xs font-semibold hover:bg-info/90 flex items-center gap-1.5"
                 >
                   <CreditCard className="size-3.5" />
                   อ่านบัตรประชาชน
@@ -338,8 +338,8 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
               {sellerHistory?.found && (
                 <div className={`rounded-lg p-3 text-xs flex gap-2 ${
                   sellerHistory.warning
-                    ? 'bg-red-50 border border-red-200 text-red-800'
-                    : 'bg-blue-50 border border-blue-200 text-blue-800'
+                    ? 'bg-destructive/10 border border-destructive/20 text-destructive'
+                    : 'bg-info/10 border border-info/20 text-info'
                 }`}>
                   <AlertTriangle className="size-4 shrink-0 mt-0.5" />
                   <div>
@@ -394,11 +394,11 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
                 <AddressForm value={address} onChange={setAddress} label="ที่อยู่ตามบัตร" />
                 <div>
                   <Label>แนบรูปบัตรประชาชน</Label>
-                  <label className="mt-1 flex items-center justify-center gap-2 h-12 px-3 rounded-lg border border-dashed border-input bg-background text-sm cursor-pointer hover:border-sky-400 hover:bg-sky-50/50 transition-colors">
+                  <label className="mt-1 flex items-center justify-center gap-2 h-12 px-3 rounded-lg border border-dashed border-input bg-background text-sm cursor-pointer hover:border-info/60 hover:bg-info/5 transition-colors">
                     {form.idCardPhotoBase64 ? (
                       <>
-                        <CheckCircle className="size-5 text-emerald-500" />
-                        <span className="text-emerald-600 font-medium">อัปโหลดแล้ว — คลิกเพื่อเปลี่ยน</span>
+                        <CheckCircle className="size-5 text-success" />
+                        <span className="text-success font-medium">อัปโหลดแล้ว — คลิกเพื่อเปลี่ยน</span>
                       </>
                     ) : (
                       <>
@@ -495,7 +495,7 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
                   />
                   {imeiCheckResult && (
                     <div className={`mt-1 flex items-center gap-1.5 text-xs ${
-                      imeiCheckResult.result === 'clean' ? 'text-emerald-600' : 'text-red-600'
+                      imeiCheckResult.result === 'clean' ? 'text-success' : 'text-destructive'
                     }`}>
                       {imeiCheckResult.result === 'clean' ? (
                         <><CheckCircle className="size-3" /> ไม่พบ IMEI ซ้ำ</>
@@ -522,15 +522,15 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
           {/* ─── STEP 3: CONFIRM + SIGN ─── */}
           {step === 3 && (
             <div className="space-y-4">
-              <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800 flex gap-2">
+              <div className="rounded-lg bg-warning/10 border border-warning/20 p-3 text-xs text-warning flex gap-2">
                 <AlertTriangle className="size-4 shrink-0 mt-0.5" />
                 <div>กรุณายืนยันขั้นตอนป้องกันการรับซื้อของโจรก่อนกดบันทึก</div>
               </div>
 
-              <div className="bg-slate-50 dark:bg-slate-900/50 rounded-lg p-4 text-sm space-y-1">
+              <div className="bg-muted/50 rounded-lg p-4 text-sm space-y-1">
                 <div><strong>ผู้ขาย:</strong> {form.sellerName}</div>
                 <div><strong>เครื่อง:</strong> {form.deviceBrand} {form.deviceModel} {form.deviceStorage}</div>
-                <div><strong>ราคารับซื้อ:</strong> <span className="text-lg font-bold text-emerald-600">฿{Number(form.agreedPrice || 0).toLocaleString()}</span></div>
+                <div><strong>ราคารับซื้อ:</strong> <span className="text-lg font-bold text-success">฿{Number(form.agreedPrice || 0).toLocaleString()}</span></div>
               </div>
 
               <label className="flex items-start gap-2 cursor-pointer p-2 rounded-lg hover:bg-muted">
@@ -560,8 +560,8 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
                     onClick={() => setForm((f) => ({ ...f, paymentMethod: 'CASH' }))}
                     className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium border transition-all ${
                       form.paymentMethod === 'CASH'
-                        ? 'bg-emerald-500 text-white border-emerald-500'
-                        : 'bg-card text-foreground border-border hover:border-emerald-300'
+                        ? 'bg-success text-success-foreground border-success'
+                        : 'bg-card text-foreground border-border hover:border-success/40'
                     }`}
                   >เงินสด</button>
                   <button
@@ -569,8 +569,8 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
                     onClick={() => setForm((f) => ({ ...f, paymentMethod: 'TRANSFER' }))}
                     className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium border transition-all ${
                       form.paymentMethod === 'TRANSFER'
-                        ? 'bg-sky-500 text-white border-sky-500'
-                        : 'bg-card text-foreground border-border hover:border-sky-300'
+                        ? 'bg-info text-info-foreground border-info'
+                        : 'bg-card text-foreground border-border hover:border-info/40'
                     }`}
                   >โอน</button>
                 </div>
@@ -597,7 +597,7 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
         </div>
 
         {/* Footer — sticky */}
-        <div className="sticky bottom-0 bg-card dark:bg-slate-950 border-t border-border dark:border-slate-800 px-6 py-4 flex justify-between gap-3">
+        <div className="sticky bottom-0 bg-card border-t border-border px-6 py-4 flex justify-between gap-3">
           <Button variant="outline" onClick={prev} disabled={step === 1}>
             <ChevronLeft className="size-4 mr-1" /> ย้อนกลับ
           </Button>
@@ -612,7 +612,7 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
             <Button
               onClick={submit}
               disabled={quickBuyMutation.isPending}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+              className="bg-success hover:bg-success/90 text-success-foreground font-bold"
             >
               {quickBuyMutation.isPending ? 'กำลังบันทึก...' : '✓ บันทึก + ออกใบสำคัญ'}
             </Button>

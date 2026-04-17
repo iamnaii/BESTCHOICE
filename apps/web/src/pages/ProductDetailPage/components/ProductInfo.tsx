@@ -192,7 +192,7 @@ export default function ProductInfo({
                       </button>
                       <button
                         onClick={() => onDeletePrice(price.id)}
-                        className="text-xs text-red-500 hover:text-red-700"
+                        className="text-xs text-destructive hover:text-destructive/80"
                       >
                         ลบ
                       </button>

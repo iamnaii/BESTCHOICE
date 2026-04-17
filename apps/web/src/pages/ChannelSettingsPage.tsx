@@ -14,7 +14,7 @@ interface ChannelConfig {
 
 const CHANNEL_META: Record<string, { color: string; icon: string; fields: { key: string; label: string; secret: boolean; placeholder: string }[] }> = {
   LINE_SHOP: {
-    color: 'bg-emerald-500',
+    color: 'bg-success',
     icon: '🟢',
     fields: [
       { key: 'line_channel_access_token', label: 'Channel Access Token', secret: true, placeholder: 'ดึงจาก LINE Developers Console' },
@@ -23,7 +23,7 @@ const CHANNEL_META: Record<string, { color: string; icon: string; fields: { key:
     ],
   },
   LINE_FINANCE: {
-    color: 'bg-green-600',
+    color: 'bg-success',
     icon: '💚',
     fields: [
       { key: 'line_finance_channel_access_token', label: 'Channel Access Token (Finance)', secret: true, placeholder: 'Token ของ OA "ชำระค่างวด"' },
@@ -32,7 +32,7 @@ const CHANNEL_META: Record<string, { color: string; icon: string; fields: { key:
     ],
   },
   FACEBOOK: {
-    color: 'bg-blue-600',
+    color: 'bg-info',
     icon: '🔵',
     fields: [
       { key: 'fb_page_access_token', label: 'Page Access Token', secret: true, placeholder: 'ดึงจาก Facebook Developer Console' },
@@ -42,7 +42,7 @@ const CHANNEL_META: Record<string, { color: string; icon: string; fields: { key:
     ],
   },
   TIKTOK: {
-    color: 'bg-pink-500',
+    color: 'bg-secondary',
     icon: '🎵',
     fields: [
       { key: 'tiktok_bm_access_token', label: 'Business Messaging Access Token', secret: true, placeholder: 'ดึงจาก TikTok Business API Portal' },
@@ -116,8 +116,8 @@ export default function ChannelSettingsPage() {
                       <div className="flex items-center gap-1.5 mt-0.5">
                         {channelCfg.isConfigured ? (
                           <>
-                            <CheckCircle className="w-3.5 h-3.5 text-green-500" />
-                            <span className="text-xs text-green-600">เชื่อมต่อแล้ว</span>
+                            <CheckCircle className="w-3.5 h-3.5 text-success" />
+                            <span className="text-xs text-success">เชื่อมต่อแล้ว</span>
                           </>
                         ) : (
                           <>
@@ -131,7 +131,7 @@ export default function ChannelSettingsPage() {
                   <button
                     onClick={() => saveMutation.mutate(channelKey)}
                     disabled={saveMutation.isPending}
-                    className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600 disabled:opacity-50 transition-colors"
+                    className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground text-sm rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors"
                   >
                     <Save className="w-4 h-4" />
                     บันทึก
@@ -156,7 +156,7 @@ export default function ChannelSettingsPage() {
                             }))
                           }
                           placeholder={field.placeholder}
-                          className="w-full px-3 py-2 pr-10 text-sm border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                          className="w-full px-3 py-2 pr-10 text-sm border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring"
                         />
                         {field.secret && (
                           <button
@@ -164,6 +164,7 @@ export default function ChannelSettingsPage() {
                             onClick={() =>
                               setShowSecrets((prev) => ({ ...prev, [field.key]: !prev[field.key] }))
                             }
+                            aria-label={showSecrets[field.key] ? 'ซ่อน secret' : 'แสดง secret'}
                             className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-muted-foreground"
                           >
                             {showSecrets[field.key] ? (
@@ -192,6 +193,7 @@ export default function ChannelSettingsPage() {
                             navigator.clipboard.writeText(webhook.url);
                             toast.success('คัดลอก Webhook URL แล้ว');
                           }}
+                          aria-label="คัดลอก webhook URL"
                           className="p-1.5 text-muted-foreground hover:text-muted-foreground"
                         >
                           <Copy className="w-4 h-4" />

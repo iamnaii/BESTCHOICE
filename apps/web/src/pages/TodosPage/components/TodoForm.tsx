@@ -313,7 +313,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers }: TodoFormPr
             <div>
               <label className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
                 <TypeIcon className="size-3.5" />
-                ชื่องาน <span className="text-rose-500">*</span>
+                ชื่องาน <span className="text-destructive">*</span>
               </label>
               <input
                 type="text"
@@ -383,10 +383,10 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers }: TodoFormPr
                 </label>
                 <div className="flex gap-1.5">
                   {([
-                    { v: 'TODO', label: 'รอทำ', color: 'bg-slate-400' },
-                    { v: 'DOING', label: 'กำลังทำ', color: 'bg-amber-400' },
-                    { v: 'REVIEW', label: 'รอแก้ไข', color: 'bg-orange-400' },
-                    { v: 'DONE', label: 'เสร็จ', color: 'bg-emerald-500' },
+                    { v: 'TODO', label: 'รอทำ', color: 'bg-muted-foreground' },
+                    { v: 'DOING', label: 'กำลังทำ', color: 'bg-warning' },
+                    { v: 'REVIEW', label: 'รอแก้ไข', color: 'bg-warning' },
+                    { v: 'DONE', label: 'เสร็จ', color: 'bg-success' },
                   ] as const).map((s) => {
                     const active = form.status === s.v;
                     return (
@@ -458,7 +458,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers }: TodoFormPr
                     #{tag}
                     <button
                       onClick={() => removeTag(tag)}
-                      className="hover:text-rose-600"
+                      className="hover:text-destructive"
                       aria-label="remove tag"
                     >
                       <X className="size-3" />
@@ -516,7 +516,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers }: TodoFormPr
                       onClick={() => updateChecklist(c.id, { done: !c.done })}
                       className={`size-4 rounded-md border-2 flex items-center justify-center transition-all shrink-0 ${
                         c.done
-                          ? 'bg-emerald-500 border-emerald-500 text-white'
+                          ? 'bg-success border-success text-success-foreground'
                           : 'border-muted-foreground/30 hover:border-primary'
                       }`}
                     >
@@ -534,7 +534,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers }: TodoFormPr
                     <button
                       type="button"
                       onClick={() => removeChecklist(c.id)}
-                      className="text-muted-foreground/50 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-all"
+                      className="text-muted-foreground/50 hover:text-destructive opacity-0 group-hover:opacity-100 transition-all"
                     >
                       <X className="size-3.5" />
                     </button>
@@ -620,7 +620,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers }: TodoFormPr
                             )}
                           </button>
                         ) : (
-                          <div className="size-12 rounded-md flex items-center justify-center shrink-0 bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
+                          <div className="size-12 rounded-md flex items-center justify-center shrink-0 bg-info/10 text-info">
                             <FileText className="size-5" />
                           </div>
                         )}
@@ -639,7 +639,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers }: TodoFormPr
                         <button
                           type="button"
                           onClick={() => removeAttachment(a.url)}
-                          className="text-muted-foreground/50 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-all"
+                          className="text-muted-foreground/50 hover:text-destructive opacity-0 group-hover:opacity-100 transition-all"
                         >
                           <X className="size-3.5" />
                         </button>

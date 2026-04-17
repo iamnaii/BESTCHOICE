@@ -73,11 +73,11 @@ export default function VariableHighlighter({ text, previewMode, resolvedText }:
 
   const colorMap = {
     text: '',
-    print: 'bg-primary-100 text-primary-700 px-1 rounded',
-    loop: 'bg-primary-100 text-primary-700 px-1 rounded',
-    condition: 'bg-amber-100 text-amber-700 px-1 rounded',
-    signature: 'bg-emerald-100 text-emerald-700 px-1 rounded',
-    invalid: 'bg-red-100 text-red-700 px-1 rounded line-through',
+    print: 'bg-primary/15 text-primary px-1 rounded',
+    loop: 'bg-primary/15 text-primary px-1 rounded',
+    condition: 'bg-warning/15 text-warning px-1 rounded',
+    signature: 'bg-success/15 text-success px-1 rounded',
+    invalid: 'bg-destructive/15 text-destructive px-1 rounded line-through',
   };
 
   return (

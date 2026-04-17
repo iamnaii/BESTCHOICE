@@ -100,7 +100,7 @@ export default function PaymentTable({
       label: '',
       render: (p: PendingPayment) => (
         <div className="flex gap-1">
-          <button onClick={() => onOpenPayModal(p)} className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700">
+          <button onClick={() => onOpenPayModal(p)} className="px-2 py-1 text-xs bg-success text-success-foreground rounded hover:bg-success/90">
             รับชำระ
           </button>
           <button onClick={() => onOpenAdvanceModal(p)} className="px-2 py-1 text-xs border border-primary text-primary rounded hover:bg-primary/10">
@@ -136,7 +136,7 @@ export default function PaymentTable({
           <button onClick={onShowBatchModal} className="px-4 py-1.5 bg-card text-primary rounded-lg text-sm font-medium hover:bg-card/90">
             รับชำระรวม
           </button>
-          <button onClick={onClearSelection} className="text-xs text-white/70 hover:text-white">ยกเลิก</button>
+          <button onClick={onClearSelection} className="text-xs text-primary-foreground/70 hover:text-primary-foreground">ยกเลิก</button>
         </div>
       )}
     </>

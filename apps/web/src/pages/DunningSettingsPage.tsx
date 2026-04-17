@@ -81,11 +81,11 @@ function getTriggerLabel(day: number): string {
 }
 
 function getTriggerBadgeCls(day: number): string {
-  if (day < 0) return 'bg-sky-500/20 text-sky-400 border border-sky-500/30';
-  if (day === 0) return 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30';
-  if (day <= 7) return 'bg-orange-500/20 text-orange-400 border border-orange-500/30';
-  if (day <= 30) return 'bg-red-500/20 text-red-400 border border-red-500/30';
-  return 'bg-rose-700/20 text-rose-400 border border-rose-700/30';
+  if (day < 0) return 'bg-info/20 text-info border border-info/30';
+  if (day === 0) return 'bg-warning/20 text-warning border border-warning/30';
+  if (day <= 7) return 'bg-warning/30 text-warning border border-warning/40';
+  if (day <= 30) return 'bg-destructive/20 text-destructive border border-destructive/30';
+  return 'bg-destructive/30 text-destructive border border-destructive/40';
 }
 
 export default function DunningSettingsPage() {
@@ -303,14 +303,14 @@ export default function DunningSettingsPage() {
                             })()}
                             {/* Payment link badge */}
                             {rule.includePaymentLink && (
-                              <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400">
+                              <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-info/20 text-info">
                                 <Link2 className="w-3 h-3" />
                                 Payment Link
                               </span>
                             )}
                             {/* Manual badge */}
                             {!rule.autoExecute && (
-                              <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400">
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-warning/20 text-warning">
                                 Manual
                               </span>
                             )}
@@ -384,7 +384,7 @@ export default function DunningSettingsPage() {
           {/* Name */}
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">
-              ชื่อ Rule <span className="text-red-400">*</span>
+              ชื่อ Rule <span className="text-destructive">*</span>
             </label>
             <input
               type="text"

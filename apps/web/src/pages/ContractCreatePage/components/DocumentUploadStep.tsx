@@ -46,12 +46,12 @@ function DocTypeSection({
     <div className="rounded-xl border border-border/50 overflow-hidden bg-card shadow-sm">
       <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border/50 bg-muted/40">
         {docs.length > 0 ? (
-          <span className="text-green-500 text-sm font-bold">&#10003;</span>
+          <span className="text-success text-sm font-bold">&#10003;</span>
         ) : (
-          <span className={`${isRequired ? 'text-red-400' : 'text-muted-foreground/50'} text-sm`}>&#9675;</span>
+          <span className={`${isRequired ? 'text-destructive/70' : 'text-muted-foreground/50'} text-sm`}>&#9675;</span>
         )}
         <span className={`text-sm font-medium ${isRequired ? 'text-foreground' : 'text-muted-foreground'}`}>
-          {dt.label} {isRequired && <span className="text-red-500">*</span>}
+          {dt.label} {isRequired && <span className="text-destructive">*</span>}
         </span>
         {docs.length > 0 && <span className="text-xs text-muted-foreground ml-auto">{docs.length} ไฟล์</span>}
       </div>
@@ -64,13 +64,13 @@ function DocTypeSection({
                 {doc.file.type.startsWith('image/') ? (
                   <img src={doc.preview} alt="ตัวอย่างเอกสาร" className="w-8 h-8 rounded object-cover shrink-0" />
                 ) : (
-                  <div className="w-8 h-8 rounded bg-red-100 flex items-center justify-center text-2xs font-bold text-destructive shrink-0">PDF</div>
+                  <div className="w-8 h-8 rounded bg-destructive/10 flex items-center justify-center text-2xs font-bold text-destructive shrink-0">PDF</div>
                 )}
                 <div className="min-w-0 flex-1">
                   <div className="text-xs font-medium text-foreground truncate">{doc.file.name}</div>
                   <div className="text-2xs text-muted-foreground">{(doc.file.size / 1024).toFixed(0)} KB</div>
                 </div>
-                <button onClick={() => handleRemoveDoc(doc.id)} className="text-2xs text-red-500 hover:text-red-700 shrink-0">ลบ</button>
+                <button onClick={() => handleRemoveDoc(doc.id)} className="text-2xs text-destructive hover:text-destructive/80 shrink-0">ลบ</button>
               </div>
             ))}
           </div>
@@ -242,10 +242,10 @@ export function DocumentUploadStep({
               </div>
             )}
           </div>
-          <div className="flex gap-2 pt-2 border-t border-green-200">
+          <div className="flex gap-2 pt-2 border-t border-success/30">
             <button
               onClick={() => updateCustomerFromOcr(selectedCustomer)}
-              className="px-4 py-1.5 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700"
+              className="px-4 py-1.5 text-xs bg-success text-success-foreground rounded-lg hover:bg-success/90"
             >
               อัปเดตข้อมูลลูกค้า
             </button>

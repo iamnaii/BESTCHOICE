@@ -4,20 +4,20 @@
 // --- Product Status ---
 
 export const statusLabels: Record<string, { label: string; className: string }> = {
-  PO_RECEIVED: { label: 'รับจาก PO', className: 'bg-primary-100 text-primary-700' },
-  QC_PENDING: { label: 'รอตรวจรับ', className: 'bg-amber-100 text-amber-700' },
-  PHOTO_PENDING: { label: 'รอถ่ายรูป', className: 'bg-primary-100 text-primary-700' },
-  INSPECTION: { label: 'กำลังตรวจ', className: 'bg-yellow-100 text-yellow-700' },
-  IN_STOCK: { label: 'พร้อมขาย', className: 'bg-green-100 text-green-700' },
-  RESERVED: { label: 'จอง', className: 'bg-primary-100 text-primary-700' },
-  SOLD_INSTALLMENT: { label: 'ขายผ่อน', className: 'bg-indigo-100 text-indigo-700' },
-  SOLD_CASH: { label: 'ขายสด', className: 'bg-teal-100 text-teal-700' },
-  REPOSSESSED: { label: 'ยึดคืน', className: 'bg-red-100 text-red-700' },
-  REFURBISHED: { label: 'ซ่อมแล้ว', className: 'bg-orange-100 text-orange-700' },
-  SOLD_RESELL: { label: 'ขายต่อ', className: 'bg-cyan-100 text-cyan-700' },
-  DAMAGED: { label: 'เสียหาย', className: 'bg-red-100 text-red-700' },
-  LOST: { label: 'สูญหาย', className: 'bg-red-100 text-red-700' },
-  WRITTEN_OFF: { label: 'ตัดจำหน่าย', className: 'bg-gray-100 text-gray-700' },
+  PO_RECEIVED: { label: 'รับจาก PO', className: 'bg-primary/10 text-primary' },
+  QC_PENDING: { label: 'รอตรวจรับ', className: 'bg-warning/10 text-warning' },
+  PHOTO_PENDING: { label: 'รอถ่ายรูป', className: 'bg-primary/10 text-primary' },
+  INSPECTION: { label: 'กำลังตรวจ', className: 'bg-warning/10 text-warning' },
+  IN_STOCK: { label: 'พร้อมขาย', className: 'bg-success/10 text-success' },
+  RESERVED: { label: 'จอง', className: 'bg-primary/10 text-primary' },
+  SOLD_INSTALLMENT: { label: 'ขายผ่อน', className: 'bg-primary/10 text-primary' },
+  SOLD_CASH: { label: 'ขายสด', className: 'bg-info/10 text-info' },
+  REPOSSESSED: { label: 'ยึดคืน', className: 'bg-destructive/10 text-destructive' },
+  REFURBISHED: { label: 'ซ่อมแล้ว', className: 'bg-warning/10 text-warning' },
+  SOLD_RESELL: { label: 'ขายต่อ', className: 'bg-info/10 text-info' },
+  DAMAGED: { label: 'เสียหาย', className: 'bg-destructive/10 text-destructive' },
+  LOST: { label: 'สูญหาย', className: 'bg-destructive/10 text-destructive' },
+  WRITTEN_OFF: { label: 'ตัดจำหน่าย', className: 'bg-muted text-muted-foreground' },
 };
 
 // Statuses that are valid for product creation
@@ -59,9 +59,9 @@ export const categoryOptions = [
 export type SaleType = 'CASH' | 'INSTALLMENT' | 'EXTERNAL_FINANCE';
 
 export const saleTypeConfig: Record<SaleType, { label: string; color: string; bg: string }> = {
-  CASH: { label: 'เงินสด', color: 'text-green-700', bg: 'bg-green-50 border-green-300 ring-green-500' },
-  INSTALLMENT: { label: 'ผ่อนกับ BESTCHOICE', color: 'text-primary-700', bg: 'bg-primary-50 border-primary-300 ring-primary-500' },
-  EXTERNAL_FINANCE: { label: 'ผ่อนไฟแนนซ์', color: 'text-primary-700', bg: 'bg-primary-50 border-primary-300 ring-primary-500' },
+  CASH: { label: 'เงินสด', color: 'text-success', bg: 'bg-success/10 border-success/30 ring-success' },
+  INSTALLMENT: { label: 'ผ่อนกับ BESTCHOICE', color: 'text-primary', bg: 'bg-primary/10 border-primary/30 ring-primary' },
+  EXTERNAL_FINANCE: { label: 'ผ่อนไฟแนนซ์', color: 'text-primary', bg: 'bg-primary/10 border-primary/30 ring-primary' },
 };
 
 // --- Plan Type (single type: STORE_DIRECT) ---
@@ -79,8 +79,8 @@ export const paymentMethods = [
 // --- Transfer Status ---
 
 export const transferStatusLabels: Record<string, { label: string; className: string }> = {
-  PENDING: { label: 'รอจัดส่ง', className: 'bg-orange-100 text-orange-700' },
-  IN_TRANSIT: { label: 'ระหว่างโอนสินค้า', className: 'bg-primary-100 text-primary-700' },
-  CONFIRMED: { label: 'รับแล้ว', className: 'bg-green-100 text-green-700' },
-  REJECTED: { label: 'ปฏิเสธ', className: 'bg-red-100 text-red-700' },
+  PENDING: { label: 'รอจัดส่ง', className: 'bg-warning/10 text-warning' },
+  IN_TRANSIT: { label: 'ระหว่างโอนสินค้า', className: 'bg-primary/10 text-primary' },
+  CONFIRMED: { label: 'รับแล้ว', className: 'bg-success/10 text-success' },
+  REJECTED: { label: 'ปฏิเสธ', className: 'bg-destructive/10 text-destructive' },
 };

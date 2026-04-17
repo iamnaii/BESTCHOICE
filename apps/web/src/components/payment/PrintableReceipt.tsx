@@ -155,7 +155,7 @@ export default function PrintableReceipt({ receipt, size }: PrintableReceiptProp
               {typeLabels[receipt.receiptType] || receipt.receiptType}
             </h2>
             {receipt.isVoided && (
-              <span className={`inline-block mt-1 px-3 py-1 bg-red-100 text-red-700 ${styles.body} font-bold rounded`}>
+              <span className={`inline-block mt-1 px-3 py-1 bg-destructive/10 text-destructive ${styles.body} font-bold rounded`}>
                 *** ยกเลิกแล้ว ***
               </span>
             )}
@@ -227,11 +227,11 @@ export default function PrintableReceipt({ receipt, size }: PrintableReceiptProp
 
         {/* ========== PRODUCT DETAILS ========== */}
         {receipt.contract?.product && (
-          <div className={`bg-blue-50 border border-blue-200 rounded p-2 ${styles.sectionGap} ${styles.body}`}>
-            <div className="font-bold text-blue-800 mb-0.5">รายละเอียดสินค้า:</div>
-            <div className="text-blue-900 font-medium">{receipt.contract.product.name}</div>
+          <div className={`bg-primary/5 border border-primary/20 rounded p-2 ${styles.sectionGap} ${styles.body}`}>
+            <div className="font-bold text-primary mb-0.5">รายละเอียดสินค้า:</div>
+            <div className="text-primary font-medium">{receipt.contract.product.name}</div>
             {(receipt.contract.product.imeiSerial || receipt.contract.product.serialNumber) && (
-              <div className={`mt-0.5 ${styles.small} text-blue-700`}>
+              <div className={`mt-0.5 ${styles.small} text-primary/80`}>
                 {receipt.contract.product.imeiSerial && (
                   <div>IMEI/Serial: <span className="font-mono">{receipt.contract.product.imeiSerial}</span></div>
                 )}
@@ -324,24 +324,24 @@ export default function PrintableReceipt({ receipt, size }: PrintableReceiptProp
 
         {/* ========== PAYMENT SUMMARY ========== */}
         <div className={`grid grid-cols-2 gap-2 ${styles.sectionGap}`}>
-          <div className={`bg-green-50 border border-green-400 rounded ${styles.summaryPadding} text-center flex flex-col items-center justify-center`}>
+          <div className={`bg-success/10 border border-success rounded ${styles.summaryPadding} text-center flex flex-col items-center justify-center`}>
             <div className={`${styles.small} text-gray-600 font-medium`}>ยอดชำระครั้งนี้</div>
             <div>
-              <div className={`${styles.title} font-bold text-green-600`}>
+              <div className={`${styles.title} font-bold text-success`}>
                 {formatCurrency(receipt.amount)}
               </div>
-              <div className={`${styles.body} text-green-600`}>บาท</div>
+              <div className={`${styles.body} text-success`}>บาท</div>
             </div>
           </div>
 
           {receipt.remainingBalance != null && Number(receipt.remainingBalance) > 0 ? (
-            <div className={`bg-orange-50 border border-orange-400 rounded ${styles.summaryPadding} text-center flex flex-col items-center justify-center`}>
+            <div className={`bg-warning/10 border border-warning rounded ${styles.summaryPadding} text-center flex flex-col items-center justify-center`}>
               <div className={`${styles.small} text-gray-600 font-medium`}>ยอดคงเหลือ</div>
               <div>
-                <div className={`${styles.title} font-bold text-orange-600`}>
+                <div className={`${styles.title} font-bold text-warning`}>
                   {formatCurrency(receipt.remainingBalance)}
                 </div>
-                <div className={`${styles.body} text-orange-600`}>
+                <div className={`${styles.body} text-warning`}>
                   บาท {receipt.remainingMonths != null && receipt.remainingMonths > 0 && (
                     <span className={`${styles.small} text-gray-500`}>({receipt.remainingMonths} งวด)</span>
                   )}

@@ -125,28 +125,28 @@ const AUDIENCE_OPTIONS: {
     label: 'ทั้งหมด',
     description: 'ผู้ติดตาม LINE OA ทั้งหมด',
     icon: <Users className="size-4" />,
-    color: 'text-blue-500',
+    color: 'text-primary',
   },
   {
     key: 'active',
     label: 'ลูกค้าเก่า — มีสัญญา',
     description: 'ลูกค้าที่มีสัญญาผ่อนชำระ',
     icon: <UserCheck className="size-4" />,
-    color: 'text-green-500',
+    color: 'text-success',
   },
   {
     key: 'overdue',
     label: 'ค้างชำระ',
     description: 'ลูกค้าที่ค้างชำระงวด',
     icon: <AlertCircle className="size-4" />,
-    color: 'text-red-500',
+    color: 'text-destructive',
   },
   {
     key: 'new',
     label: 'ลูกค้าใหม่',
     description: 'follow แต่ยังไม่ซื้อ',
     icon: <UserPlus className="size-4" />,
-    color: 'text-purple-500',
+    color: 'text-muted-foreground',
   },
 ];
 
@@ -347,7 +347,7 @@ function FileUploadZone({
         <button
           type="button"
           onClick={onRemove}
-          className="absolute -right-2 -top-2 flex size-5 items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600 shadow-sm transition-colors"
+          className="absolute -right-2 -top-2 flex size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-sm transition-colors"
         >
           <X className="size-3" />
         </button>
@@ -362,7 +362,7 @@ function FileUploadZone({
 
   return (
     <div
-      className="flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed border-border p-6 text-center hover:border-blue-400 hover:bg-blue-50/50 transition-all duration-200"
+      className="flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed border-border p-6 text-center hover:border-primary hover:bg-primary/5 transition-all duration-200"
       onClick={() => inputRef.current?.click()}
       onDragOver={(e) => e.preventDefault()}
       onDrop={handleDrop}
@@ -444,7 +444,7 @@ function FlexPreviewCard({ content }: FlexPreviewCardProps) {
       </div>
       {action && (
         <div className="px-3 pb-3">
-          <div className="rounded-lg bg-gradient-to-r from-blue-500 to-blue-600 py-1.5 text-center text-white text-xs font-medium shadow-sm">
+          <div className="rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 py-1.5 text-center text-xs font-medium shadow-sm">
             {action.label as string || 'ดูเพิ่มเติม'}
           </div>
         </div>
@@ -694,7 +694,7 @@ function VideoEditor({ message, onChange, uploadingIds, setUploadingIds }: Messa
           isUploading={uploadingIds.has(message.id + '-video')}
         />
         {c.videoUrl && (
-          <p className="mt-1.5 flex items-center gap-1.5 text-xs text-green-600">
+          <p className="mt-1.5 flex items-center gap-1.5 text-xs text-success">
             <CheckCircle2 className="size-3.5" />
             <span className="truncate">{c.videoUrl}</span>
           </p>
@@ -734,7 +734,7 @@ function FlexEditor({ message, onChange }: MessageEditorProps) {
             className={cn(
               'rounded-full px-5 py-1.5 text-sm font-medium transition-all duration-200',
               c.flexMode === mode
-                ? 'bg-card text-blue-700 shadow-sm'
+                ? 'bg-card text-primary shadow-sm'
                 : 'text-muted-foreground hover:text-foreground/80',
             )}
           >
@@ -761,8 +761,8 @@ function FlexEditor({ message, onChange }: MessageEditorProps) {
                   className={cn(
                     'rounded-full border-2 px-4 py-1.5 text-sm font-medium transition-all duration-200',
                     c.templateKey === key
-                      ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm'
-                      : 'border-border text-foreground/70 hover:border-blue-300 hover:text-blue-600',
+                      ? 'border-primary bg-primary/5 text-primary shadow-sm'
+                      : 'border-border text-foreground/70 hover:border-primary/60 hover:text-primary',
                   )}
                 >
                   {t.name}
@@ -776,7 +776,7 @@ function FlexEditor({ message, onChange }: MessageEditorProps) {
               <div key={fieldName}>
                 <label className="mb-1.5 block text-sm font-medium text-foreground/80">
                   {fieldName}
-                  {fieldName === tpl.fields[0] && <span className="text-red-500 ml-0.5">*</span>}
+                  {fieldName === tpl.fields[0] && <span className="text-destructive ml-0.5">*</span>}
                 </label>
                 <Input
                   placeholder={fieldName}
@@ -805,9 +805,9 @@ function FlexEditor({ message, onChange }: MessageEditorProps) {
             <div className="rounded-xl overflow-hidden border border-border shadow-sm">
               <div className="bg-[#161b22] px-3 py-2 flex items-center gap-2 border-b border-border">
                 <div className="flex gap-1.5">
-                  <div className="size-2.5 rounded-full bg-red-500" />
-                  <div className="size-2.5 rounded-full bg-yellow-500" />
-                  <div className="size-2.5 rounded-full bg-green-500" />
+                  <div className="size-2.5 rounded-full bg-destructive" />
+                  <div className="size-2.5 rounded-full bg-warning" />
+                  <div className="size-2.5 rounded-full bg-success" />
                 </div>
                 <span className="text-xs text-muted-foreground ml-1">flex.json</span>
               </div>
@@ -828,12 +828,12 @@ function FlexEditor({ message, onChange }: MessageEditorProps) {
               />
             </div>
             {c.jsonValid ? (
-              <span className="flex items-center gap-1.5 text-xs text-green-600">
+              <span className="flex items-center gap-1.5 text-xs text-success">
                 <CheckCircle2 className="size-3.5" />
                 JSON ถูกต้อง
               </span>
             ) : (
-              <span className="flex items-center gap-1.5 text-xs text-red-600">
+              <span className="flex items-center gap-1.5 text-xs text-destructive">
                 <X className="size-3.5" />
                 JSON ไม่ถูกต้อง
               </span>
@@ -948,12 +948,12 @@ function MessageCard({
   }
 
   return (
-    <Card className="relative shadow-sm hover:shadow-md transition-shadow duration-200 ring-1 ring-blue-500/10">
-      <CardHeader className="pb-3 bg-gradient-to-r from-blue-50/70 to-indigo-50/70 rounded-t-xl border-b border-blue-100/50">
+    <Card className="relative shadow-sm hover:shadow-md transition-shadow duration-200 ring-1 ring-primary/10">
+      <CardHeader className="pb-3 bg-muted/50 rounded-t-xl border-b border-border">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <GripVertical className="size-4 text-muted-foreground" />
-            <div className="flex size-6 items-center justify-center rounded-full bg-blue-500 text-white text-xs font-semibold shadow-sm">
+            <div className="flex size-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-semibold shadow-sm">
               {index + 1}
             </div>
             <CardTitle className="text-sm font-semibold text-foreground/80">ข้อความที่ {index + 1}</CardTitle>
@@ -962,7 +962,7 @@ function MessageCard({
             <button
               type="button"
               onClick={onDelete}
-              className="flex items-center gap-1 rounded-full px-3 py-1 text-xs text-red-500 hover:bg-red-50 transition-all duration-200"
+              className="flex items-center gap-1 rounded-full px-3 py-1 text-xs text-destructive hover:bg-destructive/10 transition-all duration-200"
             >
               <Trash2 className="size-3.5" />
               ลบ
@@ -981,8 +981,8 @@ function MessageCard({
               className={cn(
                 'flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-all duration-200',
                 message.type === btn.type
-                  ? 'border-blue-500 bg-blue-500 text-white shadow-sm'
-                  : 'border-border text-muted-foreground hover:border-blue-300 hover:text-blue-600 bg-card',
+                  ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+                  : 'border-border text-muted-foreground hover:border-primary/60 hover:text-primary bg-card',
               )}
             >
               {btn.icon}
@@ -1257,7 +1257,7 @@ export default function BroadcastPage() {
           {messages.length < 5 && (
             <Button
               variant="outline"
-              className="w-full border-dashed border-2 gap-2 h-12 text-muted-foreground hover:text-blue-600 hover:border-blue-400 hover:bg-blue-50/50 transition-all duration-200"
+              className="w-full border-dashed border-2 gap-2 h-12 text-muted-foreground hover:text-primary hover:border-primary/60 hover:bg-primary/5 transition-all duration-200"
               onClick={addMessage}
             >
               <Plus className="size-4" />
@@ -1291,8 +1291,8 @@ export default function BroadcastPage() {
                 className={cn(
                   'flex cursor-pointer items-start gap-3 rounded-xl border-2 p-4 transition-all duration-200',
                   isSelected
-                    ? 'border-blue-500 bg-blue-50 shadow-md ring-2 ring-blue-500/20'
-                    : 'border-border bg-card hover:border-blue-400 hover:shadow-md',
+                    ? 'border-primary bg-primary/5 shadow-md ring-2 ring-primary/20'
+                    : 'border-border bg-card hover:border-primary/60 hover:shadow-md',
                 )}
               >
                 <input
@@ -1301,7 +1301,7 @@ export default function BroadcastPage() {
                   value={a.key}
                   checked={isSelected}
                   onChange={() => setAudience(a.key)}
-                  className="mt-0.5 accent-blue-600"
+                  className="mt-0.5 accent-primary"
                 />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5 mb-0.5">
@@ -1309,7 +1309,7 @@ export default function BroadcastPage() {
                     <span className="text-sm font-semibold text-foreground/90 truncate">{a.label}</span>
                   </div>
                   <div className="text-xs text-muted-foreground mb-1.5">{a.description}</div>
-                  <div className={cn('text-2xl font-bold tabular-nums', isSelected ? 'text-blue-600' : 'text-foreground/80')}>
+                  <div className={cn('text-2xl font-bold tabular-nums', isSelected ? 'text-primary' : 'text-foreground/80')}>
                     {count !== undefined ? count.toLocaleString() : (
                       <span className="text-base font-normal text-muted-foreground">กำลังโหลด...</span>
                     )}
@@ -1344,8 +1344,8 @@ export default function BroadcastPage() {
                 className={cn(
                   'flex cursor-pointer items-start gap-3 rounded-xl border-2 px-4 py-3 flex-1 transition-all duration-200',
                   scheduleType === s.value
-                    ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm'
-                    : 'border-border text-foreground/70 hover:border-blue-300 bg-card',
+                    ? 'border-primary bg-primary/10 text-primary shadow-sm'
+                    : 'border-border text-foreground/70 hover:border-primary/60 bg-card',
                 )}
               >
                 <input
@@ -1358,7 +1358,7 @@ export default function BroadcastPage() {
                 />
                 <div className={cn(
                   'mt-0.5 shrink-0',
-                  scheduleType === s.value ? 'text-blue-600' : 'text-muted-foreground',
+                  scheduleType === s.value ? 'text-primary' : 'text-muted-foreground',
                 )}>
                   {s.icon}
                 </div>
@@ -1409,7 +1409,7 @@ export default function BroadcastPage() {
           <div className="relative max-w-[320px] mx-auto">
             <div className="bg-foreground/90 rounded-[2.5rem] p-3 shadow-2xl">
               {/* Notch */}
-              <div className="bg-black w-24 h-5 rounded-full mx-auto mb-2" />
+              <div className="bg-foreground w-24 h-5 rounded-full mx-auto mb-2" />
               {/* Screen */}
               <div className="bg-[#7b9ebc] rounded-2xl overflow-hidden min-h-[400px]">
                 {/* Chat header */}
@@ -1433,25 +1433,25 @@ export default function BroadcastPage() {
           </div>
 
           {/* Summary box */}
-          <div className="rounded-xl bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 px-5 py-4 shadow-sm">
-            <p className="text-sm font-semibold text-green-800 mb-3">สรุปการส่ง</p>
+          <div className="rounded-xl bg-success/10 border border-success/20 px-5 py-4 shadow-sm">
+            <p className="text-sm font-semibold text-success mb-3">สรุปการส่ง</p>
             <div className="space-y-2">
-              <div className="flex items-center gap-2 text-sm text-green-700">
-                <CheckCircle2 className="size-4 text-green-500 shrink-0" />
+              <div className="flex items-center gap-2 text-sm text-success">
+                <CheckCircle2 className="size-4 text-success shrink-0" />
                 <span>{messages.length} ข้อความ</span>
               </div>
-              <div className="flex items-center gap-2 text-sm text-green-700">
-                <CheckCircle2 className="size-4 text-green-500 shrink-0" />
+              <div className="flex items-center gap-2 text-sm text-success">
+                <CheckCircle2 className="size-4 text-success shrink-0" />
                 <span>
                   ส่งถึง{' '}
-                  <span className="font-semibold text-green-900">
+                  <span className="font-semibold text-success">
                     {selectedCount !== null ? selectedCount.toLocaleString() : '...'} คน
                   </span>{' '}
                   ({AUDIENCE_LABEL[audience]})
                 </span>
               </div>
-              <div className="flex items-center gap-2 text-sm text-green-700">
-                <CheckCircle2 className="size-4 text-green-500 shrink-0" />
+              <div className="flex items-center gap-2 text-sm text-success">
+                <CheckCircle2 className="size-4 text-success shrink-0" />
                 <span>
                   {scheduleType === 'now'
                     ? 'ส่งทันที'
@@ -1531,7 +1531,7 @@ export default function BroadcastPage() {
           return (
             <Card
               key={item.id}
-              className="hover:shadow-md transition-all duration-200 hover:border-blue-200"
+              className="hover:shadow-md transition-all duration-200 hover:border-primary/30"
             >
               <CardContent className="p-4">
                 <div className="flex items-start justify-between gap-4">
@@ -1567,7 +1567,7 @@ export default function BroadcastPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="shrink-0 gap-1.5 text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors"
+                      className="shrink-0 gap-1.5 text-destructive hover:bg-destructive/10 hover:text-destructive transition-colors"
                       onClick={() => setCancelId(item.id)}
                     >
                       <Ban className="size-3.5" />

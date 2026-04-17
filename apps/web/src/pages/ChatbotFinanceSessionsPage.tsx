@@ -42,10 +42,10 @@ interface SessionDetail extends SessionItem {
 }
 
 const ROLE_BADGE: Record<string, { label: string; cls: string }> = {
-  CUSTOMER: { label: '👤 ลูกค้า', cls: 'bg-blue-50 border-blue-200' },
-  BOT: { label: '🤖 น้องเบส', cls: 'bg-green-50 border-green-200' },
-  STAFF: { label: '👨‍💼 พนักงาน', cls: 'bg-purple-50 border-purple-200' },
-  AUTO_TRIGGER: { label: '⏰ Auto', cls: 'bg-yellow-50 border-yellow-200' },
+  CUSTOMER: { label: '👤 ลูกค้า', cls: 'bg-info/10 border-info/20' },
+  BOT: { label: '🤖 น้องเบส', cls: 'bg-success/10 border-success/20' },
+  STAFF: { label: '👨‍💼 พนักงาน', cls: 'bg-secondary/20 border-secondary/30' },
+  AUTO_TRIGGER: { label: '⏰ Auto', cls: 'bg-warning/10 border-warning/20' },
   SYSTEM: { label: '⚙️ System', cls: 'bg-muted border-border' },
 };
 
@@ -135,8 +135,16 @@ export default function ChatbotFinanceSessionsPage() {
               {list.data?.items.map((s) => (
                 <li
                   key={s.id}
+                  role="button"
+                  tabIndex={0}
                   onClick={() => setSelectedId(s.id)}
-                  className={`p-3 cursor-pointer hover:bg-muted ${selectedId === s.id ? 'bg-blue-50' : ''}`}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setSelectedId(s.id);
+                    }
+                  }}
+                  className={`p-3 cursor-pointer hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${selectedId === s.id ? 'bg-primary/5' : ''}`}
                 >
                   <div className="flex justify-between items-start">
                     <div>
@@ -167,7 +175,7 @@ export default function ChatbotFinanceSessionsPage() {
               <button
                 onClick={() => setPage(Math.max(1, page - 1))}
                 disabled={page === 1}
-                className="text-blue-600 disabled:text-muted-foreground/50"
+                className="text-primary disabled:text-muted-foreground/50"
               >
                 ← ก่อนหน้า
               </button>
@@ -177,7 +185,7 @@ export default function ChatbotFinanceSessionsPage() {
               <button
                 onClick={() => setPage(page + 1)}
                 disabled={page * list.data.limit >= list.data.total}
-                className="text-blue-600 disabled:text-muted-foreground/50"
+                className="text-primary disabled:text-muted-foreground/50"
               >
                 ถัดไป →
               </button>
@@ -206,7 +214,7 @@ export default function ChatbotFinanceSessionsPage() {
                   <button
                     onClick={() => returnToBot.mutate(detail.data!.id)}
                     disabled={returnToBot.isPending}
-                    className="px-3 py-1.5 text-xs bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50"
+                    className="px-3 py-1.5 text-xs bg-warning text-warning-foreground rounded-lg hover:bg-warning/90 disabled:opacity-50"
                   >
                     คืนให้บอท
                   </button>
@@ -214,7 +222,7 @@ export default function ChatbotFinanceSessionsPage() {
               </div>
 
               {detail.data.handoffReason && (
-                <div className="mb-3 p-2 bg-orange-50 border border-orange-200 rounded-lg text-xs">
+                <div className="mb-3 p-2 bg-warning/10 border border-warning/20 rounded-lg text-xs">
                   📌 Handoff: {detail.data.handoffReason}
                 </div>
               )}

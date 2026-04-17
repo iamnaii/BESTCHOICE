@@ -51,7 +51,7 @@ export function PriceManagementModal({
               <div key={price.id}>
                 {editingPriceId === price.id ? (
                   /* Inline edit form */
-                  <form onSubmit={handlePriceSubmit} className="border-2 border-primary-200 rounded-lg p-3 bg-primary-50 space-y-2">
+                  <form onSubmit={handlePriceSubmit} className="border-2 border-primary/20 rounded-lg p-3 bg-primary/5 space-y-2">
                     <div className="grid grid-cols-2 gap-2">
                       <input
                         type="text"
@@ -106,7 +106,7 @@ export function PriceManagementModal({
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-foreground">{price.label}</span>
                       {price.isDefault && (
-                        <span className="px-1.5 py-0.5 bg-primary-100 text-primary-700 text-xs rounded font-medium">
+                        <span className="px-1.5 py-0.5 bg-primary/10 text-primary text-xs rounded font-medium">
                           ค่าเริ่มต้น
                         </span>
                       )}
@@ -127,7 +127,7 @@ export function PriceManagementModal({
                           onClick={() => {
                             setConfirmDialog({ open: true, message: 'ต้องการลบราคานี้?', action: () => deletePriceMutation.mutate({ productId: editingProduct.id, priceId: price.id }) });
                           }}
-                          className="p-1 text-muted-foreground hover:text-red-500 transition-colors"
+                          className="p-1 text-muted-foreground hover:text-destructive transition-colors"
                           title="ลบ"
                         >
                           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -148,7 +148,7 @@ export function PriceManagementModal({
 
           {/* Add new price form */}
           {editingPriceId === 'new' ? (
-            <form onSubmit={handlePriceSubmit} className="border-2 border-green-200 rounded-lg p-3 bg-green-50 space-y-2">
+            <form onSubmit={handlePriceSubmit} className="border-2 border-success/20 rounded-lg p-3 bg-success/5 space-y-2">
               <div className="text-xs font-medium text-success mb-1">เพิ่มราคาใหม่</div>
               <div className="grid grid-cols-2 gap-2">
                 <input
@@ -186,7 +186,7 @@ export function PriceManagementModal({
                   <button
                     type="submit"
                     disabled={priceMutation.isPending}
-                    className="px-3 py-1 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700 disabled:opacity-50"
+                    className="px-3 py-1 bg-success text-success-foreground rounded text-xs font-medium hover:bg-success/90 disabled:opacity-50"
                   >
                     {priceMutation.isPending ? 'เพิ่ม...' : 'เพิ่ม'}
                   </button>
@@ -197,7 +197,7 @@ export function PriceManagementModal({
             <button
               type="button"
               onClick={startAddPrice}
-              className="w-full py-2 border-2 border-dashed border-input rounded-lg text-sm text-muted-foreground hover:border-primary-400 hover:text-primary transition-colors"
+              className="w-full py-2 border-2 border-dashed border-input rounded-lg text-sm text-muted-foreground hover:border-primary/60 hover:text-primary transition-colors"
             >
               + เพิ่มราคาใหม่
             </button>

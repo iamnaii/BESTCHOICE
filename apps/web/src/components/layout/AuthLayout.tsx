@@ -28,7 +28,7 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
       </div>
 
       {/* Right Side — Branded panel */}
-      <div className="hidden lg:flex lg:rounded-2xl lg:m-5 order-1 lg:order-2 bg-zinc-950 relative overflow-hidden flex-col p-16 gap-5 justify-center text-white">
+      <div className="hidden lg:flex lg:rounded-2xl lg:m-5 order-1 lg:order-2 bg-foreground relative overflow-hidden flex-col p-16 gap-5 justify-center text-background">
         <Link to="/landing" className="flex items-center gap-3 mb-6">
           <img src="/logo-icon.svg" alt="BESTCHOICE" className="size-11 shrink-0" />
           <span className="text-2xl font-extrabold tracking-tight">

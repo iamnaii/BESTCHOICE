@@ -21,19 +21,19 @@ interface CreditCheckFiltersProps {
 
 function avgScoreColor(score: number) {
   if (score >= 60) return 'text-success';
-  if (score >= 40) return 'text-amber-700 dark:text-amber-500';
+  if (score >= 40) return 'text-warning';
   return 'text-destructive';
 }
 
 function avgScoreBg(score: number) {
   if (score >= 60) return 'bg-success/5 dark:bg-success/10 border-success/20';
-  if (score >= 40) return 'bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/20';
+  if (score >= 40) return 'bg-warning/5 dark:bg-warning/10 border-warning/20';
   return 'bg-destructive/5 dark:bg-destructive/10 border-destructive/20';
 }
 
 function avgScoreLabel(score: number) {
   if (score >= 60) return 'text-success';
-  if (score >= 40) return 'text-amber-600 dark:text-amber-500';
+  if (score >= 40) return 'text-warning';
   return 'text-destructive';
 }
 
@@ -147,9 +147,9 @@ export default function CreditCheckFilters({
           <div className="text-xs text-success">ผ่าน</div>
           <div className="text-xl font-bold text-success">{summary?.approvedCount ?? 0}</div>
         </div>
-        <div className="bg-amber-50 dark:bg-amber-500/10 rounded-xl border border-amber-200 dark:border-amber-500/20 shadow-sm border-l-[3px] border-l-warning p-4 hover:shadow-card-hover transition-all">
-          <div className="text-xs text-amber-600 dark:text-amber-500">รอวิเคราะห์ / ตรวจเพิ่ม</div>
-          <div className="text-xl font-bold text-amber-700 dark:text-amber-500">
+        <div className="bg-warning/5 dark:bg-warning/10 rounded-xl border border-warning/20 shadow-sm border-l-[3px] border-l-warning p-4 hover:shadow-card-hover transition-all">
+          <div className="text-xs text-warning">รอวิเคราะห์ / ตรวจเพิ่ม</div>
+          <div className="text-xl font-bold text-warning">
             {summary?.pendingCount ?? 0}
           </div>
         </div>

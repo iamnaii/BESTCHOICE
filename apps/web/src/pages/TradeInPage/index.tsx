@@ -146,7 +146,7 @@ export default function TradeInPage() {
         action={
           <Button
             onClick={() => setShowQuickBuy(true)}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            className="bg-success hover:bg-success/90 text-success-foreground"
           >
             <Plus className="size-4 mr-1.5" />
             รับซื้อเครื่อง

@@ -463,14 +463,14 @@ export default function TemplateForm({
                 <button
                   type="button"
                   onClick={loadDefaultFlexTemplate}
-                  className="px-3 py-1 text-xs bg-info/10 text-info dark:bg-info/15 rounded-md hover:bg-purple-200 font-medium"
+                  className="px-3 py-1 text-xs bg-info/10 text-info dark:bg-info/15 rounded-md hover:bg-info/20 font-medium"
                 >
                   โหลด Template เริ่มต้น
                 </button>
                 <button
                   type="button"
                   onClick={formatJson}
-                  className="px-3 py-1 text-xs bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 font-medium"
+                  className="px-3 py-1 text-xs bg-primary/10 text-primary rounded-md hover:bg-primary/20 font-medium"
                 >
                   จัด Format JSON
                 </button>
@@ -478,7 +478,7 @@ export default function TemplateForm({
                   href="https://developers.line.biz/flex-simulator/"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-3 py-1 text-xs bg-success/10 text-success dark:bg-success/15 rounded-md hover:bg-green-200 font-medium"
+                  className="px-3 py-1 text-xs bg-success/10 text-success dark:bg-success/15 rounded-md hover:bg-success/20 font-medium"
                 >
                   LINE Flex Simulator
                 </a>
@@ -489,7 +489,7 @@ export default function TemplateForm({
               onChange={(e) => handleFlexTemplateChange(e.target.value)}
               rows={16}
               className={`w-full px-3 py-2 border rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden font-mono leading-relaxed ${
-                jsonError ? 'border-red-400 bg-red-50/50' : 'border-input'
+                jsonError ? 'border-destructive bg-destructive/5' : 'border-input'
               }`}
               placeholder='{"type":"flex","altText":"...","contents":{...}}'
               spellCheck={false}
@@ -499,8 +499,8 @@ export default function TemplateForm({
                 <p className="text-xs text-destructive">{jsonError}</p>
               </div>
             )}
-            <div className="mt-2 p-3 bg-purple-50 border border-purple-200 rounded-lg">
-              <p className="text-xs text-purple-700 font-medium mb-1">ใช้ Placeholder ใน JSON ได้:</p>
+            <div className="mt-2 p-3 bg-primary/5 border border-primary/20 rounded-lg">
+              <p className="text-xs text-primary font-medium mb-1">ใช้ Placeholder ใน JSON ได้:</p>
               <div className="flex flex-wrap gap-1">
                 {placeholdersList.map((p) => (
                   <button
@@ -523,13 +523,13 @@ export default function TemplateForm({
                         }, 0);
                       }
                     }}
-                    className="px-2 py-0.5 bg-purple-100 rounded text-xs text-purple-700 hover:bg-purple-200"
+                    className="px-2 py-0.5 bg-primary/10 rounded text-xs text-primary hover:bg-primary/20"
                   >
                     {p}
                   </button>
                 ))}
               </div>
-              <p className="text-xs text-purple-500 mt-2">
+              <p className="text-xs text-primary/70 mt-2">
                 ระบบจะแทนที่ placeholder ด้วยข้อมูลจริงก่อนส่ง เช่น {'{customer_name}'} → ชื่อลูกค้า
               </p>
             </div>

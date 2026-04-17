@@ -333,8 +333,8 @@ function ConfigDrawer({
             <form id="integration-config-form" onSubmit={handleSave} className="space-y-4">
               {/* Webhook URL info box */}
               {entry.webhookUrl && (
-                <div className="rounded-lg border border-blue-200 bg-blue-50/50 dark:bg-blue-950/20 dark:border-blue-900 p-3 space-y-1.5">
-                  <p className="text-xs font-semibold text-blue-800 dark:text-blue-300">Webhook URL</p>
+                <div className="rounded-lg border border-info/20 bg-info/10 p-3 space-y-1.5">
+                  <p className="text-xs font-semibold text-info">Webhook URL</p>
                   <div className="flex items-center gap-2">
                     <code className="text-xs bg-background border border-border rounded px-2 py-1 flex-1 truncate select-all font-mono">
                       {entry.webhookUrl}
@@ -353,7 +353,7 @@ function ConfigDrawer({
                     </Button>
                   </div>
                   {entry.webhookNote && (
-                    <p className="text-xs text-blue-700 dark:text-blue-400 leading-snug">{entry.webhookNote}</p>
+                    <p className="text-xs text-info leading-snug">{entry.webhookNote}</p>
                   )}
                 </div>
               )}

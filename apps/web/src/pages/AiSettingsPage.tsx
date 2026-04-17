@@ -70,7 +70,7 @@ function AiSettingsForm({ initial }: { initial: AiSettings }) {
       <Card>
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-purple-500" />
+            <Sparkles className="w-4 h-4 text-muted-foreground" />
             AI Auto Mode
           </CardTitle>
         </CardHeader>
@@ -99,7 +99,7 @@ function AiSettingsForm({ initial }: { initial: AiSettings }) {
                 key={ch.value}
                 className={`flex items-center gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${
                   form.enabledChannels.includes(ch.value)
-                    ? 'border-purple-400 bg-purple-50'
+                    ? 'border-primary bg-primary/5'
                     : 'border-border bg-card hover:bg-accent'
                 }`}
               >
@@ -107,7 +107,7 @@ function AiSettingsForm({ initial }: { initial: AiSettings }) {
                   type="checkbox"
                   checked={form.enabledChannels.includes(ch.value)}
                   onChange={() => toggleChannel(ch.value)}
-                  className="accent-purple-600"
+                  className="accent-primary"
                 />
                 <span className="text-sm text-foreground">{ch.label}</span>
               </label>
@@ -124,7 +124,7 @@ function AiSettingsForm({ initial }: { initial: AiSettings }) {
         <CardContent className="space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">ยิ่งสูง AI ยิ่งตอบน้อย แต่แม่นกว่า</span>
-            <span className="text-lg font-bold text-purple-600">{form.confidenceThreshold}%</span>
+            <span className="text-lg font-bold text-primary">{form.confidenceThreshold}%</span>
           </div>
           <Slider
             value={[form.confidenceThreshold]}

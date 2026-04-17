@@ -124,7 +124,7 @@ export default function TemplateManager({
               )
             }
             disabled={deleteTemplateMutation.isPending}
-            className="text-red-600 hover:text-red-500 text-sm font-medium"
+            className="text-destructive hover:text-destructive/80 text-sm font-medium"
           >
             ลบ
           </button>

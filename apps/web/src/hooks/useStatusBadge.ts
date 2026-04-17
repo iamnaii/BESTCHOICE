@@ -46,35 +46,35 @@ const paymentStatus: Record<string, BadgeConfig> = {
 
 // --- Product Status (re-exported from constants.ts pattern) ---
 const productStatus: Record<string, BadgeConfig> = {
-  PO_RECEIVED: { label: 'รับจาก PO', className: 'bg-primary-100 text-primary-700' },
-  QC_PENDING: { label: 'รอตรวจรับ', className: 'bg-amber-100 text-amber-700' },
-  PHOTO_PENDING: { label: 'รอถ่ายรูป', className: 'bg-primary-100 text-primary-700' },
-  INSPECTION: { label: 'กำลังตรวจ', className: 'bg-yellow-100 text-yellow-700' },
-  IN_STOCK: { label: 'พร้อมขาย', className: 'bg-green-100 text-green-700' },
-  RESERVED: { label: 'จอง', className: 'bg-primary-100 text-primary-700' },
-  SOLD_INSTALLMENT: { label: 'ขายผ่อน', className: 'bg-indigo-100 text-indigo-700' },
-  SOLD_CASH: { label: 'ขายสด', className: 'bg-teal-100 text-teal-700' },
-  REPOSSESSED: { label: 'ยึดคืน', className: 'bg-red-100 text-red-700' },
-  REFURBISHED: { label: 'ซ่อมแล้ว', className: 'bg-orange-100 text-orange-700' },
-  SOLD_RESELL: { label: 'ขายต่อ', className: 'bg-cyan-100 text-cyan-700' },
-  DAMAGED: { label: 'เสียหาย', className: 'bg-red-100 text-red-700' },
-  LOST: { label: 'สูญหาย', className: 'bg-red-100 text-red-700' },
-  WRITTEN_OFF: { label: 'ตัดจำหน่าย', className: 'bg-gray-100 text-gray-700' },
+  PO_RECEIVED: { label: 'รับจาก PO', className: 'bg-primary/10 text-primary' },
+  QC_PENDING: { label: 'รอตรวจรับ', className: 'bg-warning/10 text-warning' },
+  PHOTO_PENDING: { label: 'รอถ่ายรูป', className: 'bg-primary/10 text-primary' },
+  INSPECTION: { label: 'กำลังตรวจ', className: 'bg-warning/10 text-warning' },
+  IN_STOCK: { label: 'พร้อมขาย', className: 'bg-success/10 text-success' },
+  RESERVED: { label: 'จอง', className: 'bg-primary/10 text-primary' },
+  SOLD_INSTALLMENT: { label: 'ขายผ่อน', className: 'bg-primary/10 text-primary' },
+  SOLD_CASH: { label: 'ขายสด', className: 'bg-info/10 text-info' },
+  REPOSSESSED: { label: 'ยึดคืน', className: 'bg-destructive/10 text-destructive' },
+  REFURBISHED: { label: 'ซ่อมแล้ว', className: 'bg-warning/10 text-warning' },
+  SOLD_RESELL: { label: 'ขายต่อ', className: 'bg-info/10 text-info' },
+  DAMAGED: { label: 'เสียหาย', className: 'bg-destructive/10 text-destructive' },
+  LOST: { label: 'สูญหาย', className: 'bg-destructive/10 text-destructive' },
+  WRITTEN_OFF: { label: 'ตัดจำหน่าย', className: 'bg-muted text-muted-foreground' },
 };
 
 // --- Transfer Status ---
 const transferStatus: Record<string, BadgeConfig> = {
-  PENDING: { label: 'รอจัดส่ง', className: 'bg-orange-100 text-orange-700' },
-  IN_TRANSIT: { label: 'ระหว่างโอนสินค้า', className: 'bg-primary-100 text-primary-700' },
-  CONFIRMED: { label: 'รับแล้ว', className: 'bg-green-100 text-green-700' },
-  REJECTED: { label: 'ปฏิเสธ', className: 'bg-red-100 text-red-700' },
+  PENDING: { label: 'รอจัดส่ง', className: 'bg-warning/10 text-warning' },
+  IN_TRANSIT: { label: 'ระหว่างโอนสินค้า', className: 'bg-primary/10 text-primary' },
+  CONFIRMED: { label: 'รับแล้ว', className: 'bg-success/10 text-success' },
+  REJECTED: { label: 'ปฏิเสธ', className: 'bg-destructive/10 text-destructive' },
 };
 
 // --- Purchase Order Status ---
 const purchaseOrderStatus: Record<string, BadgeConfig> = {
   PENDING: { label: 'รอดำเนินการ', className: 'bg-muted text-foreground' },
   DRAFT: { label: 'รออนุมัติ', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
-  APPROVED: { label: 'อนุมัติแล้ว', className: 'bg-primary-100 text-primary-700' },
+  APPROVED: { label: 'อนุมัติแล้ว', className: 'bg-primary/10 text-primary' },
   PARTIALLY_RECEIVED: { label: 'รับบางส่วน', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
   FULLY_RECEIVED: { label: 'รับครบแล้ว', className: 'bg-success/10 text-success dark:bg-success/15' },
   CANCELLED: { label: 'ยกเลิก', className: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },
@@ -84,7 +84,7 @@ const purchaseOrderStatus: Record<string, BadgeConfig> = {
 const poPaymentStatus: Record<string, BadgeConfig> = {
   UNPAID: { label: 'ยังไม่จ่าย', className: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },
   DEPOSIT_PAID: { label: 'จ่ายมัดจำ', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
-  PARTIALLY_PAID: { label: 'จ่ายบางส่วน', className: 'bg-primary-100 text-primary-700' },
+  PARTIALLY_PAID: { label: 'จ่ายบางส่วน', className: 'bg-primary/10 text-primary' },
   FULLY_PAID: { label: 'จ่ายครบแล้ว', className: 'bg-success/10 text-success dark:bg-success/15' },
 };
 

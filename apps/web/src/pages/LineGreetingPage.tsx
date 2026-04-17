@@ -227,7 +227,7 @@ function FlexPreviewCard({ content }: { content: FlexContent }) {
       </div>
       {action && (
         <div className="px-3 pb-3">
-          <div className="rounded-lg bg-gradient-to-r from-blue-500 to-blue-600 py-1.5 text-center text-white text-xs font-medium shadow-sm">
+          <div className="rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 py-1.5 text-center text-xs font-medium shadow-sm">
             {(action.label as string) || 'ดูเพิ่มเติม'}
           </div>
         </div>
@@ -360,7 +360,7 @@ function FlexEditor({ message, onChange }: EditorProps) {
             className={cn(
               'rounded-full px-5 py-1.5 text-sm font-medium transition-all duration-200',
               c.flexMode === mode
-                ? 'bg-card text-blue-700 shadow-sm'
+                ? 'bg-card text-primary shadow-sm'
                 : 'text-muted-foreground hover:text-foreground/80',
             )}
           >
@@ -385,8 +385,8 @@ function FlexEditor({ message, onChange }: EditorProps) {
                 className={cn(
                   'rounded-full border-2 px-4 py-1.5 text-sm font-medium transition-all duration-200',
                   c.templateKey === key
-                    ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm'
-                    : 'border-border text-foreground/70 hover:border-blue-300 hover:text-blue-600',
+                    ? 'border-primary bg-primary/5 text-primary shadow-sm'
+                    : 'border-border text-foreground/70 hover:border-primary/50 hover:text-primary',
                 )}
               >
                 {t.name}
@@ -399,7 +399,7 @@ function FlexEditor({ message, onChange }: EditorProps) {
               <div key={fieldName}>
                 <label className="mb-1.5 block text-sm font-medium text-foreground/80">
                   {fieldName}
-                  {fieldName === tpl.fields[0] && <span className="text-red-500 ml-0.5">*</span>}
+                  {fieldName === tpl.fields[0] && <span className="text-destructive ml-0.5">*</span>}
                 </label>
                 <Input
                   placeholder={fieldName}
@@ -428,9 +428,9 @@ function FlexEditor({ message, onChange }: EditorProps) {
             <div className="rounded-xl overflow-hidden border border-border shadow-sm">
               <div className="bg-[#161b22] px-3 py-2 flex items-center gap-2 border-b border-border">
                 <div className="flex gap-1.5">
-                  <div className="size-2.5 rounded-full bg-red-500" />
-                  <div className="size-2.5 rounded-full bg-yellow-500" />
-                  <div className="size-2.5 rounded-full bg-green-500" />
+                  <div className="size-2.5 rounded-full bg-destructive" />
+                  <div className="size-2.5 rounded-full bg-warning" />
+                  <div className="size-2.5 rounded-full bg-success" />
                 </div>
                 <span className="text-xs text-muted-foreground ml-1">flex.json</span>
               </div>
@@ -451,12 +451,12 @@ function FlexEditor({ message, onChange }: EditorProps) {
               />
             </div>
             {c.jsonValid ? (
-              <span className="flex items-center gap-1.5 text-xs text-green-600">
+              <span className="flex items-center gap-1.5 text-xs text-success">
                 <CheckCircle2 className="size-3.5" />
                 JSON ถูกต้อง
               </span>
             ) : (
-              <span className="flex items-center gap-1.5 text-xs text-red-600">
+              <span className="flex items-center gap-1.5 text-xs text-destructive">
                 <X className="size-3.5" />
                 JSON ไม่ถูกต้อง
               </span>
@@ -500,12 +500,12 @@ function MessageCard({ message, index, total, onChange, onDelete }: MessageCardP
   }
 
   return (
-    <Card className="relative shadow-sm hover:shadow-md transition-shadow duration-200 ring-1 ring-blue-500/10">
-      <CardHeader className="pb-3 bg-gradient-to-r from-blue-50/70 to-indigo-50/70 rounded-t-xl border-b border-blue-100/50">
+    <Card className="relative shadow-sm hover:shadow-md transition-shadow duration-200 ring-1 ring-primary/10">
+      <CardHeader className="pb-3 bg-muted/50 rounded-t-xl border-b border-border/50">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <GripVertical className="size-4 text-muted-foreground" />
-            <div className="flex size-6 items-center justify-center rounded-full bg-blue-500 text-white text-xs font-semibold shadow-sm">
+            <div className="flex size-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-semibold shadow-sm">
               {index + 1}
             </div>
             <CardTitle className="text-sm font-semibold text-foreground/80">
@@ -516,7 +516,7 @@ function MessageCard({ message, index, total, onChange, onDelete }: MessageCardP
             <button
               type="button"
               onClick={onDelete}
-              className="flex items-center gap-1 rounded-full px-3 py-1 text-xs text-red-500 hover:bg-red-50 transition-all duration-200"
+              className="flex items-center gap-1 rounded-full px-3 py-1 text-xs text-destructive hover:bg-destructive/10 transition-all duration-200"
             >
               <Trash2 className="size-3.5" />
               ลบ
@@ -535,8 +535,8 @@ function MessageCard({ message, index, total, onChange, onDelete }: MessageCardP
               className={cn(
                 'flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-all duration-200',
                 message.type === btn.type
-                  ? 'border-blue-500 bg-blue-500 text-white shadow-sm'
-                  : 'border-border text-muted-foreground hover:border-blue-300 hover:text-blue-600 bg-card',
+                  ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+                  : 'border-border text-muted-foreground hover:border-primary/50 hover:text-primary bg-card',
               )}
             >
               {btn.icon}
@@ -665,7 +665,7 @@ export default function LineGreetingPage() {
               <button
                 type="button"
                 onClick={addMessage}
-                className="w-full flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border py-3.5 text-sm text-muted-foreground hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50/40 transition-all duration-200"
+                className="w-full flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border py-3.5 text-sm text-muted-foreground hover:border-primary/50 hover:text-primary hover:bg-primary/5 transition-all duration-200"
               >
                 <Plus className="size-4" />
                 เพิ่มข้อความ ({messages.length}/5)
@@ -712,8 +712,8 @@ export default function LineGreetingPage() {
                 รีเซ็ต
               </Button>
               {isDirty && (
-                <span className="flex items-center gap-1.5 text-xs text-amber-600 ml-1">
-                  <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+                <span className="flex items-center gap-1.5 text-xs text-warning ml-1">
+                  <span className="w-2 h-2 rounded-full bg-warning shrink-0" />
                   มีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก
                 </span>
               )}
@@ -727,7 +727,7 @@ export default function LineGreetingPage() {
             </div>
             <div className="p-4 flex justify-center">
               <div className="relative max-w-[280px] w-full">
-                <div className="bg-foreground/90 rounded-[2.5rem] p-3 shadow-2xl">
+                <div className="bg-foreground/90 rounded-[2.5rem] p-3 shadow-modal">
                   {/* Notch */}
                   <div className="bg-black w-20 h-4 rounded-full mx-auto mb-2" />
                   {/* LINE screen */}
@@ -794,12 +794,12 @@ export default function LineGreetingPage() {
       </QueryBoundary>
 
       {/* ─── Tips Card ─── */}
-      <div className="rounded-xl bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 p-5">
+      <div className="rounded-xl bg-info/10 border border-info/20 p-5">
         <div className="flex items-center gap-2 mb-3">
           <span className="text-lg">💡</span>
-          <h3 className="font-semibold text-blue-900 text-sm">เคล็ดลับการเขียนข้อความต้อนรับที่ดี</h3>
+          <h3 className="font-semibold text-info text-sm">เคล็ดลับการเขียนข้อความต้อนรับที่ดี</h3>
         </div>
-        <ul className="space-y-1.5 text-sm text-blue-800">
+        <ul className="space-y-1.5 text-sm text-info/90">
           <li className="flex items-start gap-2">
             <span className="mt-0.5 shrink-0">•</span>
             <span>ส่งได้สูงสุด 5 ข้อความพร้อมกัน — ผสม Text, รูปภาพ, และ Flex Card ได้ตามต้องการ</span>

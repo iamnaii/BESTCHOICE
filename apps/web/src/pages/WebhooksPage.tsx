@@ -88,34 +88,34 @@ function AddWebhookForm({ onClose, onSuccess }: { onClose: () => void; onSuccess
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-foreground mb-1">
-            ชื่อ <span className="text-red-500">*</span>
+            ชื่อ <span className="text-destructive">*</span>
           </label>
           <input
             type="text"
             placeholder="เช่น Partner XYZ Integration"
             value={form.name}
             onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-            className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+            className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-ring"
             required
           />
         </div>
         <div>
           <label className="block text-sm font-medium text-foreground mb-1">
-            URL <span className="text-red-500">*</span>
+            URL <span className="text-destructive">*</span>
           </label>
           <input
             type="url"
             placeholder="https://partner.com/webhook"
             value={form.url}
             onChange={(e) => setForm((f) => ({ ...f, url: e.target.value }))}
-            className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+            className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-ring"
             required
           />
         </div>
       </div>
       <div>
         <label className="block text-sm font-medium text-foreground mb-1">
-          Secret Key <span className="text-red-500">*</span>
+          Secret Key <span className="text-destructive">*</span>
           <span className="text-xs text-muted-foreground ml-1">(ใช้สำหรับ HMAC-SHA256 signature ใน header X-Webhook-Signature)</span>
         </label>
         <input
@@ -123,13 +123,13 @@ function AddWebhookForm({ onClose, onSuccess }: { onClose: () => void; onSuccess
           placeholder="your-secret-key"
           value={form.secret}
           onChange={(e) => setForm((f) => ({ ...f, secret: e.target.value }))}
-          className="w-full border rounded-lg px-3 py-2 text-sm font-mono focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+          className="w-full border rounded-lg px-3 py-2 text-sm font-mono focus:outline-hidden focus:ring-2 focus:ring-ring"
           required
         />
       </div>
       <div>
         <label className="block text-sm font-medium text-foreground mb-2">
-          Events <span className="text-red-500">*</span>
+          Events <span className="text-destructive">*</span>
         </label>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
           {SUPPORTED_EVENTS.map((ev) => (
@@ -141,7 +141,7 @@ function AddWebhookForm({ onClose, onSuccess }: { onClose: () => void; onSuccess
                 className="mt-0.5"
               />
               <span className="text-sm">
-                <span className="font-mono text-blue-600 text-xs">{ev.value}</span>
+                <span className="font-mono text-primary text-xs">{ev.value}</span>
                 <br />
                 <span className="text-muted-foreground text-xs">{ev.label}</span>
               </span>
@@ -153,7 +153,7 @@ function AddWebhookForm({ onClose, onSuccess }: { onClose: () => void; onSuccess
         <button
           type="submit"
           disabled={mutation.isPending}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
+          className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
         >
           {mutation.isPending ? 'กำลังบันทึก...' : 'ลงทะเบียน Webhook'}
         </button>
@@ -241,7 +241,7 @@ function WebhookRow({
           <button
             onClick={() => testMutation.mutate()}
             disabled={testMutation.isPending}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs border rounded-md hover:bg-blue-50 hover:border-blue-300 text-blue-600 transition-colors disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs border rounded-md hover:bg-primary/10 hover:border-primary/30 text-primary transition-colors disabled:opacity-50"
             aria-label="ส่ง test event"
           >
             <Send className="w-3.5 h-3.5" aria-hidden="true" />
@@ -249,7 +249,7 @@ function WebhookRow({
           </button>
           <button
             onClick={() => onDelete(sub.id, sub.name)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs border rounded-md hover:bg-red-50 hover:border-red-300 text-red-600 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs border rounded-md hover:bg-destructive/10 hover:border-destructive/30 text-destructive transition-colors"
             aria-label="ลบ webhook"
           >
             <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
@@ -266,7 +266,7 @@ function WebhookRow({
               {sub.events.map((ev) => (
                 <span
                   key={ev}
-                  className="inline-block font-mono text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded"
+                  className="inline-block font-mono text-xs bg-info/20 text-info px-2 py-0.5 rounded"
                 >
                   {ev}
                 </span>
@@ -325,7 +325,7 @@ export default function WebhooksPage() {
           !showForm ? (
             <button
               onClick={() => setShowForm(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
             >
               <Plus className="w-4 h-4" aria-hidden="true" />
               เพิ่ม Webhook
@@ -352,11 +352,11 @@ export default function WebhooksPage() {
       )}
 
       {/* Info box */}
-      <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+      <div className="rounded-lg border border-info/20 bg-info/10 p-4 text-sm text-info">
         <p className="font-medium mb-1">วิธีตรวจสอบ Signature</p>
-        <p className="text-xs text-blue-700">
+        <p className="text-xs text-info">
           ทุก request จะมี header{' '}
-          <code className="font-mono bg-blue-100 px-1 rounded">X-Webhook-Signature: sha256=&lt;hmac&gt;</code>{' '}
+          <code className="font-mono bg-info/20 px-1 rounded">X-Webhook-Signature: sha256=&lt;hmac&gt;</code>{' '}
           — คำนวณด้วย HMAC-SHA256 ของ request body โดยใช้ secret key ที่ตั้งค่าไว้
         </p>
       </div>

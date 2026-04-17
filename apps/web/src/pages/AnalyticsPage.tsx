@@ -54,24 +54,22 @@ function formatBaht(v: number) {
 }
 
 function retentionColor(pct: number) {
-  if (pct >= 80) return 'bg-emerald-600 text-white';
-  if (pct >= 60) return 'bg-emerald-400 text-white';
-  if (pct >= 40) return 'bg-yellow-400 text-foreground';
-  if (pct >= 20) return 'bg-orange-400 text-white';
-  if (pct > 0) return 'bg-red-400 text-white';
+  if (pct >= 80) return 'bg-success text-success-foreground';
+  if (pct >= 60) return 'bg-success/70 text-success-foreground';
+  if (pct >= 40) return 'bg-warning/60 text-foreground';
+  if (pct >= 20) return 'bg-warning text-warning-foreground';
+  if (pct > 0) return 'bg-destructive/80 text-destructive-foreground';
   return 'bg-muted text-muted-foreground';
 }
 
 function heatmapColor(value: number, max: number) {
-  // Chart SVG colors — CSS variables don't work in SVG fill/stroke attrs.
-  // These match the design token palette but must be hardcoded for Recharts.
-  if (max === 0) return '#f3f4f6';
+  // Tokenized: interpolate opacity over hsl(var(--chart-1)) against bg-muted.
+  // Style attribute accepts CSS variables, so we use the design-system chart-1 hue
+  // and vary alpha with intensity. At intensity=0 we render the muted surface.
+  if (max === 0) return 'hsl(var(--muted))';
   const intensity = value / max;
-  if (intensity === 0) return '#f3f4f6';
-  const r = Math.round(255 - intensity * (255 - 59));
-  const g = Math.round(255 - intensity * (255 - 130));
-  const b = Math.round(255 - intensity * (255 - 246));
-  return `rgb(${r},${g},${b})`;
+  if (intensity === 0) return 'hsl(var(--muted))';
+  return `hsl(var(--chart-1) / ${intensity})`;
 }
 
 // ─── Cohort Table ─────────────────────────────────────────────────────────────
@@ -127,11 +125,11 @@ function CohortTable({ data }: { data: CohortData }) {
       <div className="flex gap-2 mt-3 flex-wrap items-center">
         <span className="text-xs text-muted-foreground">สี:</span>
         {[
-          { label: '≥80%', cls: 'bg-emerald-600' },
-          { label: '60–79%', cls: 'bg-emerald-400' },
-          { label: '40–59%', cls: 'bg-yellow-400' },
-          { label: '20–39%', cls: 'bg-orange-400' },
-          { label: '<20%', cls: 'bg-red-400' },
+          { label: '≥80%', cls: 'bg-success' },
+          { label: '60–79%', cls: 'bg-success/70' },
+          { label: '40–59%', cls: 'bg-warning/60' },
+          { label: '20–39%', cls: 'bg-warning' },
+          { label: '<20%', cls: 'bg-destructive/80' },
         ].map((item) => (
           <span key={item.label} className="flex items-center gap-1 text-xs">
             <span className={`inline-block w-3 h-3 rounded ${item.cls}`} />
@@ -157,9 +155,9 @@ function RevenueForecastChart({ data }: { data: ForecastData }) {
     data.trend === 'up' ? TrendingUp : data.trend === 'down' ? TrendingDown : Minus;
   const trendColor =
     data.trend === 'up'
-      ? 'text-emerald-600'
+      ? 'text-success'
       : data.trend === 'down'
-        ? 'text-red-500'
+        ? 'text-destructive'
         : 'text-muted-foreground';
 
   return (
@@ -176,12 +174,12 @@ function RevenueForecastChart({ data }: { data: ForecastData }) {
       </div>
 
       {data.note && (
-        <p className="text-sm text-amber-600 bg-amber-50 rounded p-2">{data.note}</p>
+        <p className="text-sm text-warning bg-warning/10 rounded p-2">{data.note}</p>
       )}
 
       <ResponsiveContainer width="100%" height={280}>
         <LineChart data={combined} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
           <XAxis dataKey="month" tick={{ fontSize: 11 }} />
           <YAxis
             tick={{ fontSize: 11 }}
@@ -195,21 +193,21 @@ function RevenueForecastChart({ data }: { data: ForecastData }) {
           {lastHistoricalMonth && (
             <ReferenceLine
               x={lastHistoricalMonth}
-              stroke="var(--color-muted-foreground, #94a3b8)"
+              stroke="hsl(var(--muted-foreground))"
               strokeDasharray="4 4"
-              label={{ value: 'ปัจจุบัน', position: 'top', fontSize: 10, fill: '#64748b' }}
+              label={{ value: 'ปัจจุบัน', position: 'top', fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
             />
           )}
           <Line
             dataKey="amount"
-            stroke="#3b82f6"
+            stroke="hsl(var(--chart-1))"
             strokeWidth={2}
             dot={(props) => {
               const { cx, cy, payload } = props;
               return payload.type === 'forecast' ? (
-                <circle key={`dot-${cx}-${cy}`} cx={cx} cy={cy} r={4} fill="#f59e0b" stroke="#f59e0b" />
+                <circle key={`dot-${cx}-${cy}`} cx={cx} cy={cy} r={4} fill="hsl(var(--chart-3))" stroke="hsl(var(--chart-3))" />
               ) : (
-                <circle key={`dot-${cx}-${cy}`} cx={cx} cy={cy} r={3} fill="#3b82f6" stroke="#3b82f6" />
+                <circle key={`dot-${cx}-${cy}`} cx={cx} cy={cy} r={3} fill="hsl(var(--chart-1))" stroke="hsl(var(--chart-1))" />
               );
             }}
             strokeDasharray="0"
@@ -221,13 +219,13 @@ function RevenueForecastChart({ data }: { data: ForecastData }) {
       {data.forecast.length > 0 && (
         <div className="grid grid-cols-3 gap-3">
           {data.forecast.map((f) => (
-            <div key={f.month} className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-center">
-              <p className="text-xs text-amber-600 font-medium">{f.month}</p>
-              <p className="text-lg font-bold text-foreground/90 mt-1">฿{formatBaht(f.amount)}</p>
+            <div key={f.month} className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-center">
+              <p className="text-xs text-warning font-medium">{f.month}</p>
+              <p className="text-lg font-semibold text-foreground/90 mt-1">฿{formatBaht(f.amount)}</p>
               <p className="text-xs text-muted-foreground mt-0.5">
                 {formatBaht(f.lower)} – {formatBaht(f.upper)}
               </p>
-              <p className="text-xs text-amber-500">{f.confidence}% confidence</p>
+              <p className="text-xs text-warning/80">{f.confidence}% confidence</p>
             </div>
           ))}
         </div>
@@ -377,7 +375,7 @@ export default function AnalyticsPage() {
               onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-t-lg transition-colors ${
                 activeTab === tab.id
-                  ? 'bg-card border border-b-card border-border text-blue-600 -mb-px'
+                  ? 'bg-card border border-b-card border-border text-primary -mb-px'
                   : 'text-muted-foreground hover:text-foreground/80 hover:bg-muted'
               }`}
               aria-selected={activeTab === tab.id}

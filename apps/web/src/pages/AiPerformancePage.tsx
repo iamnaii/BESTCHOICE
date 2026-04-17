@@ -94,38 +94,38 @@ export default function AiPerformancePage() {
       >
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           <StatCard
-            icon={<Bot className="w-4 h-4 text-purple-500" />}
+            icon={<Bot className="w-4 h-4 text-muted-foreground" />}
             label="Auto-Reply Rate"
             value={data ? `${data.autoReplyRate.toFixed(1)}%` : '—'}
             sub="% ของแชทที่ AI ตอบได้"
-            color="text-purple-700"
+            color="text-foreground"
           />
           <StatCard
-            icon={<ThumbsUp className="w-4 h-4 text-green-500" />}
+            icon={<ThumbsUp className="w-4 h-4 text-success" />}
             label="Accept Rate"
             value={data ? `${data.acceptRate.toFixed(1)}%` : '—'}
             sub="ลูกค้ายอมรับคำตอบ AI"
-            color="text-green-700"
+            color="text-foreground"
           />
           <StatCard
-            icon={<ArrowRightLeft className="w-4 h-4 text-orange-500" />}
+            icon={<ArrowRightLeft className="w-4 h-4 text-muted-foreground" />}
             label="Handoff Rate"
             value={data ? `${data.handoffRate.toFixed(1)}%` : '—'}
             sub="โอนให้พนักงาน"
-            color="text-orange-700"
+            color="text-foreground"
           />
           <StatCard
-            icon={<Database className="w-4 h-4 text-blue-500" />}
+            icon={<Database className="w-4 h-4 text-muted-foreground" />}
             label="Training Pairs"
             value={data ? (data.trainingPairs ?? 0).toLocaleString() : '—'}
             sub="คู่ข้อมูล training"
           />
           <StatCard
-            icon={<TrendingUp className="w-4 h-4 text-indigo-500" />}
+            icon={<TrendingUp className="w-4 h-4 text-muted-foreground" />}
             label="Avg Confidence"
             value={data ? `${(data.avgConfidence * 100).toFixed(1)}%` : '—'}
             sub="ความมั่นใจเฉลี่ย"
-            color="text-indigo-700"
+            color="text-foreground"
           />
         </div>
 

@@ -76,7 +76,6 @@ export default function CreditChecksPage() {
   const [statementResult, setStatementResult] = useState<OcrBankStatementResult | null>(null);
 
   // Customer history / risk
-  const [customerHistory, setCustomerHistory] = useState<CustomerHistory | null>(null);
   const [riskScore, setRiskScore] = useState<RiskScoreResult | null>(null);
   const [riskLoading, setRiskLoading] = useState(false);
   const [reviewNotesDraft, setReviewNotesDraft] = useState('');
@@ -162,10 +161,9 @@ export default function CreditChecksPage() {
     enabled: showCreateModal,
   });
 
-  // Load customer history when customer selected
+  // Reset dependent state when customer cleared
   useEffect(() => {
     if (!selectedCustomer) {
-      setCustomerHistory(null);
       setRiskScore(null);
       setSalarySlipResult(null);
       setSalarySlipFiles([]);
@@ -174,13 +172,24 @@ export default function CreditChecksPage() {
       setStatementBankName('');
       setReviewNotesDraft('');
       setSalarySlipEditable({ netSalary: '', employerName: '', payDay: '', bankName: '' });
-      return;
     }
-    api
-      .get(`/credit-checks/customer-history/${selectedCustomer.id}`)
-      .then(({ data }) => setCustomerHistory(data))
-      .catch(() => setCustomerHistory(null));
   }, [selectedCustomer?.id, selectedCustomer]);
+
+  // Load customer history when customer selected
+  const { data: customerHistory = null } = useQuery<CustomerHistory | null>({
+    queryKey: ['credit-check-customer-history', selectedCustomer?.id],
+    queryFn: async () => {
+      try {
+        const { data } = await api.get(
+          `/credit-checks/customer-history/${selectedCustomer!.id}`,
+        );
+        return data;
+      } catch {
+        return null;
+      }
+    },
+    enabled: !!selectedCustomer,
+  });
 
   // ── OCR Handlers ─────────────────────────────────────────────────────────
   const handleSalarySlipOcr = async () => {
@@ -369,62 +378,61 @@ export default function CreditChecksPage() {
   });
 
   // ── Create modal save/approve/reject handlers ────────────────────────────
+  const saveCreditCheckMutation = useMutation({
+    mutationFn: async ({
+      customerId,
+      status,
+    }: {
+      customerId: string;
+      status?: 'APPROVED' | 'REJECTED';
+    }) => {
+      const { data } = await api.post(`/customers/${customerId}/credit-check`, {
+        bankName: statementBankName || bankName || undefined,
+        statementFiles: [],
+        statementMonths: 3,
+        reviewNotes: reviewNotesDraft || undefined,
+        ...(status ? { status } : {}),
+      });
+      return { data, status };
+    },
+    onSuccess: ({ status }) => {
+      if (status === 'APPROVED') {
+        toast.success('อนุมัติเครดิตสำเร็จ');
+      } else if (status === 'REJECTED') {
+        toast.success('ปฏิเสธเครดิตแล้ว');
+      } else {
+        toast.success('บันทึกร่างตรวจเครดิตสำเร็จ');
+      }
+      queryClient.invalidateQueries({ queryKey: ['credit-checks'] });
+      resetCreateForm();
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
   const handleSave = () => {
     if (!selectedCustomer) return;
     const files = fileRef.current?.files;
     if (files && files.length > 0) {
       uploadMutation.mutate(files);
     } else {
-      api
-        .post(`/customers/${selectedCustomer.id}/credit-check`, {
-          bankName: statementBankName || bankName || undefined,
-          statementFiles: [],
-          statementMonths: 3,
-          reviewNotes: reviewNotesDraft || undefined,
-        })
-        .then(() => {
-          toast.success('บันทึกร่างตรวจเครดิตสำเร็จ');
-          queryClient.invalidateQueries({ queryKey: ['credit-checks'] });
-          resetCreateForm();
-        })
-        .catch((err: unknown) => toast.error(getErrorMessage(err)));
+      saveCreditCheckMutation.mutate({ customerId: selectedCustomer.id });
     }
   };
 
   const handleApprove = () => {
     if (!selectedCustomer) return;
-    api
-      .post(`/customers/${selectedCustomer.id}/credit-check`, {
-        bankName: statementBankName || bankName || undefined,
-        statementFiles: [],
-        statementMonths: 3,
-        reviewNotes: reviewNotesDraft || undefined,
-        status: 'APPROVED',
-      })
-      .then(() => {
-        toast.success('อนุมัติเครดิตสำเร็จ');
-        queryClient.invalidateQueries({ queryKey: ['credit-checks'] });
-        resetCreateForm();
-      })
-      .catch((err: unknown) => toast.error(getErrorMessage(err)));
+    saveCreditCheckMutation.mutate({
+      customerId: selectedCustomer.id,
+      status: 'APPROVED',
+    });
   };
 
   const handleReject = () => {
     if (!selectedCustomer) return;
-    api
-      .post(`/customers/${selectedCustomer.id}/credit-check`, {
-        bankName: statementBankName || bankName || undefined,
-        statementFiles: [],
-        statementMonths: 3,
-        reviewNotes: reviewNotesDraft || undefined,
-        status: 'REJECTED',
-      })
-      .then(() => {
-        toast.success('ปฏิเสธเครดิตแล้ว');
-        queryClient.invalidateQueries({ queryKey: ['credit-checks'] });
-        resetCreateForm();
-      })
-      .catch((err: unknown) => toast.error(getErrorMessage(err)));
+    saveCreditCheckMutation.mutate({
+      customerId: selectedCustomer.id,
+      status: 'REJECTED',
+    });
   };
 
   // ── Excel export ─────────────────────────────────────────────────────────

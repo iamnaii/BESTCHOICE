@@ -173,38 +173,36 @@ export const statusLabels: Record<string, string> = {
 };
 
 export const statusColors: Record<string, string> = {
-  ACTIVE: 'bg-green-500',
-  OVERDUE: 'bg-yellow-500',
-  DEFAULT: 'bg-red-500',
-  COMPLETED: 'bg-blue-500',
-  EXCHANGED: 'bg-purple-500',
-  CLOSED_BAD_DEBT: 'bg-zinc-400',
+  ACTIVE: 'bg-success',
+  OVERDUE: 'bg-warning',
+  DEFAULT: 'bg-destructive',
+  COMPLETED: 'bg-primary',
+  EXCHANGED: 'bg-primary',
+  CLOSED_BAD_DEBT: 'bg-muted-foreground',
 };
 
 export const agingBarColors: Record<string, string> = {
-  green: 'bg-green-500',
-  yellow: 'bg-yellow-500',
-  orange: 'bg-orange-500',
-  red: 'bg-red-500',
+  green: 'bg-success',
+  yellow: 'bg-warning',
+  orange: 'bg-warning',
+  red: 'bg-destructive',
 };
 
 export const agingTextColors: Record<string, string> = {
-  green: 'text-green-600 dark:text-green-400',
-  yellow: 'text-yellow-600 dark:text-yellow-400',
-  orange: 'text-orange-600 dark:text-orange-400',
-  red: 'text-red-600 dark:text-red-400',
+  green: 'text-success',
+  yellow: 'text-warning',
+  orange: 'text-warning',
+  red: 'text-destructive',
 };
 
-/* Pie chart hex colors (matching statusColors Tailwind classes) */
-// Status indicator colors — intentionally hardcoded to match Tailwind palette.
-// These are used in chart SVGs where CSS variables aren't applicable.
+/* Pie chart colors — use chart CSS variables so colors respect theme tokens */
 export const pieColors: Record<string, string> = {
-  ACTIVE: '#22c55e',
-  OVERDUE: '#eab308',
-  DEFAULT: '#ef4444',
-  COMPLETED: '#3b82f6',
-  EXCHANGED: '#a855f7',
-  CLOSED_BAD_DEBT: '#a1a1aa',
+  ACTIVE: 'hsl(var(--chart-1))',
+  OVERDUE: 'hsl(var(--chart-2))',
+  DEFAULT: 'hsl(var(--chart-3))',
+  COMPLETED: 'hsl(var(--chart-4))',
+  EXCHANGED: 'hsl(var(--chart-5))',
+  CLOSED_BAD_DEBT: 'hsl(var(--muted-foreground))',
 };
 
 /* ─── Alert Icon Map ─── */
@@ -223,10 +221,10 @@ export const alertSeverityStyles = {
     count: 'text-destructive',
   },
   warning: {
-    container: 'border-yellow-500/30 bg-yellow-500/5',
-    icon: 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400',
-    badge: 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400',
-    count: 'text-yellow-600 dark:text-yellow-400',
+    container: 'border-warning/30 bg-warning/5',
+    icon: 'bg-warning/10 text-warning',
+    badge: 'bg-warning/10 text-warning',
+    count: 'text-warning',
   },
   info: {
     container: 'border-primary/20 bg-primary/5',

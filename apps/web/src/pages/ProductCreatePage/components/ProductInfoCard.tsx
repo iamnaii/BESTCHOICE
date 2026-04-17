@@ -395,7 +395,7 @@ export default function ProductInfoCard({
         {/* Used phone fields */}
         {form.category === 'PHONE_USED' && (
           <div className="col-span-2 mt-2 border border-warning/20 bg-warning/5 dark:bg-warning/10 rounded-lg p-4 space-y-4">
-            <h3 className="text-sm font-semibold text-orange-700">ข้อมูลมือสอง</h3>
+            <h3 className="text-sm font-semibold text-warning">ข้อมูลมือสอง</h3>
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1">% แบตเตอรี่</label>
@@ -442,14 +442,14 @@ export default function ProductInfoCard({
                   <button
                     type="button"
                     onClick={() => setForm({ ...form, hasBox: true })}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${form.hasBox ? 'bg-green-600 text-white' : 'bg-secondary text-muted-foreground hover:bg-green-100'}`}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${form.hasBox ? 'bg-success text-success-foreground' : 'bg-secondary text-muted-foreground hover:bg-success/10'}`}
                   >
                     มีกล่อง
                   </button>
                   <button
                     type="button"
                     onClick={() => setForm({ ...form, hasBox: false })}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${!form.hasBox ? 'bg-red-600 text-white' : 'bg-secondary text-muted-foreground hover:bg-red-100'}`}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${!form.hasBox ? 'bg-destructive text-destructive-foreground' : 'bg-secondary text-muted-foreground hover:bg-destructive/10'}`}
                   >
                     ไม่มีกล่อง
                   </button>

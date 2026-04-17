@@ -407,7 +407,7 @@ export default function PaymentsPage() {
             >
               {quickOcrLoading ? (
                 <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-foreground" />
                   กำลังสแกนสลิป...
                 </>
               ) : (

@@ -71,6 +71,11 @@ export default function StockTransfersPage() {
   const [isSlipModalOpen, setIsSlipModalOpen] = useState(false);
   const [slipBatchItems, setSlipBatchItems] = useState<StockTransfer[]>([]);
 
+  // --- Ship/dispatch modal state ---
+  const [showShipModal, setShowShipModal] = useState(false);
+  const [shippingNote, setShippingNote] = useState('');
+  const [pendingShipBatch, setPendingShipBatch] = useState<StockTransfer[]>([]);
+
   const goToTab = (key: TabKey) => setSearchParams({ view: key });
 
   // ============ OUTGOING TAB QUERIES ============
@@ -429,12 +434,9 @@ export default function StockTransfersPage() {
                         {batch.status === 'PENDING' && (
                           <button
                             onClick={() => {
-                              const note = prompt('หมายเหตุการจัดส่ง (ถ้ามี):');
-                              if (note !== null) {
-                                batch.items.forEach((item) => {
-                                  dispatchMutation.mutate({ transferId: item.id, trackingNote: note || undefined });
-                                });
-                              }
+                              setPendingShipBatch(batch.items);
+                              setShippingNote('');
+                              setShowShipModal(true);
                             }}
                             disabled={dispatchMutation.isPending}
                             className="px-3 py-1 bg-primary text-primary-foreground rounded text-xs font-medium hover:bg-primary/90 disabled:opacity-50"
@@ -573,7 +575,7 @@ export default function StockTransfersPage() {
                       <div className="shrink-0" role="presentation" onClick={(e) => e.stopPropagation()}>
                         <button
                           onClick={() => openBatchReceiveModal(batch.items)}
-                          className="px-3 py-1.5 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700"
+                          className="px-3 py-1.5 bg-primary text-primary-foreground rounded text-xs font-medium hover:bg-primary/90"
                         >
                           ตรวจรับทั้งใบ
                         </button>
@@ -818,7 +820,7 @@ export default function StockTransfersPage() {
                           type="button"
                           onClick={() => updateItemStatus(t.id, 'status', 'PASS')}
                           className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
-                            s.status === 'PASS' ? 'bg-green-600 text-white' : 'bg-muted text-muted-foreground hover:bg-green-100'
+                            s.status === 'PASS' ? 'bg-success text-success-foreground' : 'bg-muted text-muted-foreground hover:bg-success/20'
                           }`}
                         >
                           ผ่าน
@@ -827,7 +829,7 @@ export default function StockTransfersPage() {
                           type="button"
                           onClick={() => updateItemStatus(t.id, 'status', 'REJECT')}
                           className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
-                            s.status === 'REJECT' ? 'bg-red-600 text-white' : 'bg-muted text-muted-foreground hover:bg-red-100'
+                            s.status === 'REJECT' ? 'bg-destructive text-destructive-foreground' : 'bg-muted text-muted-foreground hover:bg-destructive/20'
                           }`}
                         >
                           ไม่ผ่าน
@@ -873,7 +875,7 @@ export default function StockTransfersPage() {
                           value={s.rejectReason}
                           onChange={(e) => updateItemStatus(t.id, 'rejectReason', e.target.value)}
                           placeholder="เหตุผลที่ไม่ผ่าน *"
-                          className="w-full px-2 py-1 border border-red-300 rounded text-xs"
+                          className="w-full px-2 py-1 border border-destructive/30 rounded text-xs"
                           required
                         />
                       </div>
@@ -907,13 +909,57 @@ export default function StockTransfersPage() {
               <button
                 type="submit"
                 disabled={batchSubmitting}
-                className="w-full py-2.5 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 disabled:opacity-50"
+                className="w-full py-2.5 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 disabled:opacity-50"
               >
                 {batchSubmitting ? 'กำลังบันทึก...' : `ยืนยันตรวจรับ ${receivingBatch.length} รายการ`}
               </button>
             </div>
           </form>
         )}
+      </Modal>
+
+      {/* ============ SHIP (DISPATCH) MODAL ============ */}
+      <Modal
+        isOpen={showShipModal}
+        onClose={() => !dispatchMutation.isPending && setShowShipModal(false)}
+        title="จัดส่งทั้งใบ"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">หมายเหตุการจัดส่ง (ถ้ามี)</label>
+            <textarea
+              value={shippingNote}
+              onChange={(e) => setShippingNote(e.target.value)}
+              className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+              rows={3}
+              placeholder="เช่น เลขพัสดุ, ชื่อขนส่ง..."
+            />
+          </div>
+          <div className="flex gap-2 justify-end">
+            <button
+              type="button"
+              onClick={() => setShowShipModal(false)}
+              disabled={dispatchMutation.isPending}
+              className="px-4 py-2 text-sm border border-input rounded-lg hover:bg-muted disabled:opacity-50"
+            >
+              ยกเลิก
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                pendingShipBatch.forEach((item) => {
+                  dispatchMutation.mutate({ transferId: item.id, trackingNote: shippingNote || undefined });
+                });
+                setShowShipModal(false);
+              }}
+              disabled={dispatchMutation.isPending}
+              className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 disabled:opacity-50"
+            >
+              {dispatchMutation.isPending ? 'กำลังส่ง...' : 'ยืนยันจัดส่ง'}
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

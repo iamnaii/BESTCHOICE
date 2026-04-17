@@ -9,12 +9,12 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 
 const STAGES = [
-  { key: 'NEW_LEAD', label: 'Lead ใหม่', color: 'bg-blue-500' },
-  { key: 'QUALIFIED', label: 'สนใจจริง', color: 'bg-cyan-500' },
-  { key: 'PROPOSAL', label: 'เสนอราคา', color: 'bg-yellow-500' },
-  { key: 'NEGOTIATION', label: 'รอตัดสินใจ', color: 'bg-orange-500' },
-  { key: 'WON', label: 'ปิดการขาย', color: 'bg-green-500' },
-  { key: 'LOST', label: 'ไม่ซื้อ', color: 'bg-gray-400' },
+  { key: 'NEW_LEAD', label: 'Lead ใหม่', color: 'bg-info' },
+  { key: 'QUALIFIED', label: 'สนใจจริง', color: 'bg-info/80' },
+  { key: 'PROPOSAL', label: 'เสนอราคา', color: 'bg-warning' },
+  { key: 'NEGOTIATION', label: 'รอตัดสินใจ', color: 'bg-warning/80' },
+  { key: 'WON', label: 'ปิดการขาย', color: 'bg-success' },
+  { key: 'LOST', label: 'ไม่ซื้อ', color: 'bg-muted' },
 ];
 
 export default function CrmPipelinePage() {
@@ -61,7 +61,7 @@ export default function CrmPipelinePage() {
           </div>
           <div className="bg-card rounded-xl p-4 shadow-sm">
             <p className="text-xs text-muted-foreground">Conversion Rate</p>
-            <p className="text-2xl font-bold text-green-600">{dashboard.conversionRate}%</p>
+            <p className="text-2xl font-bold text-success">{dashboard.conversionRate}%</p>
           </div>
           {STAGES.slice(0, 2).map((s) => (
             <div key={s.key} className="bg-card rounded-xl p-4 shadow-sm">
@@ -112,7 +112,7 @@ export default function CrmPipelinePage() {
                 const stageInfo = STAGES.find((s) => s.key === lead.stage);
                 return (
                   <div key={lead.id} className="px-4 py-3 flex items-center gap-4 hover:bg-accent">
-                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${stageInfo?.color ?? 'bg-gray-400'}`} />
+                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${stageInfo?.color ?? 'bg-muted'}`} />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <User className="w-4 h-4 text-muted-foreground" />
@@ -147,8 +147,9 @@ export default function CrmPipelinePage() {
                               moveStageMutation.mutate({ id: lead.id, stage: nextStage.key });
                             }
                           }}
-                          className="p-1.5 text-muted-foreground hover:text-blue-500 hover:bg-blue-50 rounded-lg"
+                          className="p-1.5 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg"
                           title="ไปขั้นต่อไป"
+                          aria-label="ไปขั้นต่อไป"
                         >
                           <ChevronRight className="w-4 h-4" />
                         </button>

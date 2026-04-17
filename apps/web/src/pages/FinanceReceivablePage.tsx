@@ -90,8 +90,8 @@ function BestchoiceFinanceTab() {
 
   const icSummaryCards = [
     { label: 'รายการทั้งหมด', value: profitSummary?.transactionCount || 0, isCount: true, icon: Receipt, color: 'text-primary', iconBg: 'bg-primary/20', stripe: 'bg-primary' },
-    { label: 'ยอดเงินต้นรวม', value: profitSummary?.shop?.totalRevenue || 0, isCount: false, icon: Banknote, color: 'text-blue-600', iconBg: 'bg-blue-100 dark:bg-blue-900/30', stripe: 'bg-blue-500' },
-    { label: 'ค่าคอมมิชชันรวม', value: profitSummary?.finance?.totalCommissionPaid || 0, isCount: false, icon: Percent, color: 'text-amber-600', iconBg: 'bg-amber-100 dark:bg-amber-900/30', stripe: 'bg-amber-500' },
+    { label: 'ยอดเงินต้นรวม', value: profitSummary?.shop?.totalRevenue || 0, isCount: false, icon: Banknote, color: 'text-info', iconBg: 'bg-info/10', stripe: 'bg-info' },
+    { label: 'ค่าคอมมิชชันรวม', value: profitSummary?.finance?.totalCommissionPaid || 0, isCount: false, icon: Percent, color: 'text-warning', iconBg: 'bg-warning/10', stripe: 'bg-warning' },
     { label: 'ยอดจ่ายรวม', value: profitSummary?.shop?.totalCost || 0, isCount: false, icon: Wallet, color: 'text-success', iconBg: 'bg-success/20', stripe: 'bg-success' },
   ];
 
@@ -344,7 +344,7 @@ export default function FinanceReceivablePage() {
         if (r.status === 'RECEIVED') return null;
         return (
           <div className="flex items-center gap-1.5">
-            <button onClick={() => openReceiveModal(r)} className="px-2.5 py-1 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700">บันทึกรับเงิน</button>
+            <button onClick={() => openReceiveModal(r)} className="px-2.5 py-1 bg-primary text-primary-foreground rounded text-xs font-medium hover:bg-primary/90">บันทึกรับเงิน</button>
             <div className="relative">
               <button onClick={() => setOpenMenuId(openMenuId === r.id ? null : r.id)} className="p-1 hover:bg-muted rounded"><MoreVertical className="size-4 text-muted-foreground" /></button>
               {openMenuId === r.id && (
@@ -517,7 +517,7 @@ export default function FinanceReceivablePage() {
             <div><label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">หมายเหตุ</label><textarea value={receiveForm.note} onChange={(e) => setReceiveForm({ ...receiveForm, note: e.target.value })} rows={2} className={inputClass} /></div>
             <div className="flex justify-end gap-3 pt-2">
               <button type="button" onClick={() => setIsReceiveModalOpen(false)} className="px-4 py-2 text-sm text-muted-foreground">ยกเลิก</button>
-              <button type="submit" disabled={recordReceiveMutation.isPending} className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50">{recordReceiveMutation.isPending ? 'กำลังบันทึก...' : 'บันทึกรับเงิน'}</button>
+              <button type="submit" disabled={recordReceiveMutation.isPending} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50">{recordReceiveMutation.isPending ? 'กำลังบันทึก...' : 'บันทึกรับเงิน'}</button>
             </div>
           </form>
         )}
@@ -548,7 +548,7 @@ export default function FinanceReceivablePage() {
             <div className="flex justify-end gap-3">
               <button onClick={() => setIsDisputeModalOpen(false)} className="px-4 py-2 text-sm text-muted-foreground">ยกเลิก</button>
               <button onClick={() => { if (!disputeReason.trim()) { toast.error('กรุณาระบุเหตุผล'); return; } disputeMutation.mutate({ id: selectedRecord.id, note: disputeReason }); }}
-                disabled={disputeMutation.isPending} className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50">{disputeMutation.isPending ? 'กำลังบันทึก...' : 'ยืนยัน'}</button>
+                disabled={disputeMutation.isPending} className="px-4 py-2 bg-destructive text-destructive-foreground rounded-lg text-sm font-medium hover:bg-destructive/90 disabled:opacity-50">{disputeMutation.isPending ? 'กำลังบันทึก...' : 'ยืนยัน'}</button>
             </div>
           </div>
         )}

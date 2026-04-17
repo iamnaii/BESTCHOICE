@@ -644,7 +644,7 @@ export default function CustomerDetailPage() {
                 multiple
                 onChange={(e) => e.target.files && uploadDocumentMutation.mutate(e.target.files)}
                 disabled={uploadDocumentMutation.isPending}
-                className="w-full text-sm text-muted-foreground file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary-50 file:text-primary-700"
+                className="w-full text-sm text-muted-foreground file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary/10 file:text-primary"
               />
               {uploadDocumentMutation.isPending && <div className="text-sm text-primary mt-2">กำลังอัปโหลด...</div>}
             </div>
@@ -665,7 +665,7 @@ export default function CustomerDetailPage() {
                         <button
                           onClick={() => deleteDocumentMutation.mutate(docUrl)}
                           disabled={deleteDocumentMutation.isPending}
-                          className="text-xs text-red-600 hover:text-red-700 disabled:opacity-50"
+                          className="text-xs text-destructive hover:text-destructive/80 disabled:opacity-50"
                         >
                           ลบ
                         </button>
@@ -701,7 +701,7 @@ export default function CustomerDetailPage() {
             </div>
             <div>
               <label className="block text-xs font-medium text-foreground mb-1.5">Statement (ภาพ/PDF)</label>
-              <input ref={creditFileRef} type="file" accept="image/*,.pdf" multiple onChange={(e) => e.target.files && uploadCreditMutation.mutate(e.target.files)} disabled={uploadCreditMutation.isPending} className="w-full text-sm text-muted-foreground file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary-50 file:text-primary-700" />
+              <input ref={creditFileRef} type="file" accept="image/*,.pdf" multiple onChange={(e) => e.target.files && uploadCreditMutation.mutate(e.target.files)} disabled={uploadCreditMutation.isPending} className="w-full text-sm text-muted-foreground file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary/10 file:text-primary" />
             </div>
           </div>
           {uploadCreditMutation.isPending && <div className="text-sm text-primary">กำลังอัปโหลด...</div>}
@@ -729,16 +729,16 @@ export default function CustomerDetailPage() {
                   </div>
                   {cc.aiScore !== null && (
                     <div className="flex items-center gap-4">
-                      <div className={`text-2xl font-bold ${cc.aiScore >= 70 ? 'text-success' : cc.aiScore >= 50 ? 'text-amber-600' : 'text-destructive'}`}>{cc.aiScore}</div>
+                      <div className={`text-2xl font-bold ${cc.aiScore >= 70 ? 'text-success' : cc.aiScore >= 50 ? 'text-warning' : 'text-destructive'}`}>{cc.aiScore}</div>
                       <div className="flex-1">
                         <div className="w-full bg-border rounded-full h-2">
-                          <div className={`h-2 rounded-full ${cc.aiScore >= 70 ? 'bg-green-500' : cc.aiScore >= 50 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${cc.aiScore}%` }} />
+                          <div className={`h-2 rounded-full ${cc.aiScore >= 70 ? 'bg-success' : cc.aiScore >= 50 ? 'bg-warning' : 'bg-destructive'}`} style={{ width: `${cc.aiScore}%` }} />
                         </div>
                       </div>
                     </div>
                   )}
                   {cc.aiSummary && <div className="text-xs text-muted-foreground">{cc.aiSummary}</div>}
-                  {cc.aiRecommendation && <div className={`text-xs font-medium p-2 rounded ${cc.aiScore && cc.aiScore >= 70 ? 'bg-success/5 dark:bg-success/10 text-success' : cc.aiScore && cc.aiScore >= 50 ? 'bg-amber-50 text-amber-700' : 'bg-destructive/5 dark:bg-destructive/10 text-destructive'}`}>{cc.aiRecommendation}</div>}
+                  {cc.aiRecommendation && <div className={`text-xs font-medium p-2 rounded ${cc.aiScore && cc.aiScore >= 70 ? 'bg-success/5 dark:bg-success/10 text-success' : cc.aiScore && cc.aiScore >= 50 ? 'bg-warning/10 text-warning' : 'bg-destructive/5 dark:bg-destructive/10 text-destructive'}`}>{cc.aiRecommendation}</div>}
                   {cc.checkedBy && <div className="text-xs text-primary">ตรวจสอบโดย: {cc.checkedBy.name}{cc.reviewNotes ? ` - ${cc.reviewNotes}` : ''}</div>}
                 </div>
               );
@@ -970,7 +970,7 @@ export default function CustomerDetailPage() {
       {/* Edit Customer Modal */}
       {showEditModal && (
       <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-start justify-center pt-8 pb-8" role="dialog" aria-modal="true" aria-label="แก้ไขข้อมูลลูกค้า">
-        <div className="w-full max-w-3xl bg-background rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100vh-4rem)]">
+        <div className="w-full max-w-3xl bg-background rounded-xl shadow-modal overflow-hidden flex flex-col max-h-[calc(100vh-4rem)]">
           <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-xs border-b px-6 py-4 flex items-center justify-between shrink-0">
             <button type="button" onClick={() => setShowEditModal(false)} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
@@ -1019,7 +1019,7 @@ export default function CustomerDetailPage() {
           {/* ที่อยู่ */}
           <div className="rounded-xl border border-border bg-card p-5">
             <div className="flex items-center gap-2.5 mb-4">
-              <div className="flex items-center justify-center size-8 rounded-lg bg-violet-500/10 text-violet-500">
+              <div className="flex items-center justify-center size-8 rounded-lg bg-primary/10 text-primary">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
               </div>
               <div>
@@ -1032,7 +1032,7 @@ export default function CustomerDetailPage() {
           <div className="rounded-xl border border-border bg-card p-5">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2.5">
-                <div className="flex items-center justify-center size-8 rounded-lg bg-violet-500/10 text-violet-500">
+                <div className="flex items-center justify-center size-8 rounded-lg bg-muted text-muted-foreground">
                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9 12 2l9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
                 </div>
                 <div>
@@ -1059,7 +1059,7 @@ export default function CustomerDetailPage() {
           {/* ข้อมูลติดต่อ */}
           <div className="rounded-xl border border-border bg-card p-5">
             <div className="flex items-center gap-2.5 mb-4">
-              <div className="flex items-center justify-center size-8 rounded-lg bg-orange-500/10 text-orange-500">
+              <div className="flex items-center justify-center size-8 rounded-lg bg-warning/10 text-warning">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
               </div>
               <div>
@@ -1102,7 +1102,7 @@ export default function CustomerDetailPage() {
           {/* ข้อมูลที่ทำงาน */}
           <div className="rounded-xl border border-border bg-card p-5">
             <div className="flex items-center gap-2.5 mb-4">
-              <div className="flex items-center justify-center size-8 rounded-lg bg-sky-500/10 text-sky-500">
+              <div className="flex items-center justify-center size-8 rounded-lg bg-info/10 text-info">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="14" x="2" y="7" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
               </div>
               <div>
@@ -1137,7 +1137,7 @@ export default function CustomerDetailPage() {
           {/* รายชื่อบุคคลอ้างอิง */}
           <div className="rounded-xl border border-border bg-card p-5">
             <div className="flex items-center gap-2.5 mb-4">
-              <div className="flex items-center justify-center size-8 rounded-lg bg-amber-500/10 text-amber-500">
+              <div className="flex items-center justify-center size-8 rounded-lg bg-warning/10 text-warning">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
               </div>
               <div>
@@ -1184,8 +1184,8 @@ export default function CustomerDetailPage() {
 
           {/* Warning about existing contracts */}
           {customer.contracts.length > 0 && (
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-              <div className="text-xs text-amber-700">
+            <div className="bg-warning/10 border border-warning/30 rounded-lg p-3">
+              <div className="text-xs text-warning">
                 การแก้ไขข้อมูลลูกค้าจะไม่กระทบสัญญาที่สร้างไปแล้ว ({customer.contracts.length} สัญญา)
               </div>
             </div>

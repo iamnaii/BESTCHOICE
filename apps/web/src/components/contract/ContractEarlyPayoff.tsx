@@ -152,7 +152,7 @@ export function EarlyPayoffOverlay({
           {/* Section 2: คำนวณยอดปิดสัญญา */}
           <div className="rounded-xl border border-border bg-card p-5">
             <div className="flex items-center gap-2.5 mb-4">
-              <div className="flex items-center justify-center size-8 rounded-lg bg-violet-500/10 text-violet-500">
+              <div className="flex items-center justify-center size-8 rounded-lg bg-primary/10 text-primary">
                 <svg xmlns="http://www.w3.org/2000/svg" className="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25" />
                 </svg>
@@ -225,7 +225,7 @@ export function EarlyPayoffOverlay({
           {/* Section 3: รับชำระ */}
           <div className="rounded-xl border border-border bg-card p-5">
             <div className="flex items-center gap-2.5 mb-4">
-              <div className="flex items-center justify-center size-8 rounded-lg bg-orange-500/10 text-orange-500">
+              <div className="flex items-center justify-center size-8 rounded-lg bg-warning/10 text-warning">
                 <svg xmlns="http://www.w3.org/2000/svg" className="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z" />
                 </svg>
@@ -274,7 +274,7 @@ export function EarlyPayoffOverlay({
           {/* Section 4: สิ่งที่จะเกิดขึ้น */}
           <div className="rounded-xl border border-border bg-card p-5">
             <div className="flex items-center gap-2.5 mb-4">
-              <div className="flex items-center justify-center size-8 rounded-lg bg-emerald-500/10 text-emerald-500">
+              <div className="flex items-center justify-center size-8 rounded-lg bg-success/10 text-success">
                 <svg xmlns="http://www.w3.org/2000/svg" className="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
@@ -347,7 +347,7 @@ function Row({
 function Effect({ text, warning }: { text: string; warning?: boolean }) {
   return (
     <li className="flex items-start gap-2">
-      <span className={warning ? 'text-warning' : 'text-emerald-500'}>{warning ? '⚠' : '✓'}</span>
+      <span className={warning ? 'text-warning' : 'text-success'}>{warning ? '⚠' : '✓'}</span>
       <span className={warning ? 'text-warning' : 'text-foreground'}>{text}</span>
     </li>
   );

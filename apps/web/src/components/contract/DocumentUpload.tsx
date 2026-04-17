@@ -351,7 +351,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
             isDragOver
               ? 'border-primary bg-primary/5'
               : selectedFile
-                ? 'border-green-400 bg-green-50'
+                ? 'border-success/40 bg-success/10'
                 : 'border-border hover:border-primary/40 hover:bg-muted'
           }`}
         >
@@ -366,11 +366,11 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
           <div className="flex flex-col items-center gap-2">
             {selectedFile ? (
               <>
-                <svg className="w-8 h-8 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-8 h-8 text-success" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <div className="text-sm font-medium text-green-700">{selectedFile.name}</div>
-                <p className="text-xs text-green-500">{(selectedFile.size / 1024).toFixed(0)} KB — คลิก &quot;อัปโหลดเอกสาร&quot; หรือเลือกไฟล์ใหม่</p>
+                <div className="text-sm font-medium text-success">{selectedFile.name}</div>
+                <p className="text-xs text-success">{(selectedFile.size / 1024).toFixed(0)} KB — คลิก &quot;อัปโหลดเอกสาร&quot; หรือเลือกไฟล์ใหม่</p>
               </>
             ) : (
               <>
@@ -390,11 +390,11 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
           <button
             onClick={handleUpload}
             disabled={!selectedFile || uploadMutation.isPending}
-            className="px-5 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-5 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {uploadMutation.isPending ? (
               <span className="flex items-center gap-2">
-                <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-foreground" />
                 กำลังอัปโหลด...
               </span>
             ) : 'อัปโหลดเอกสาร'}
@@ -415,11 +415,11 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
 
       {/* OCR Results Panel */}
       {showOcrPanel && ocrResult && (
-        <div className={`${ocrResult.confidence < 0.7 ? 'bg-yellow-50 border-yellow-200' : 'bg-green-50 border-green-200'} border rounded-lg p-4 space-y-3`}>
+        <div className={`${ocrResult.confidence < 0.7 ? 'bg-warning/10 border-warning/30' : 'bg-success/10 border-success/30'} border rounded-lg p-4 space-y-3`}>
           <div className="flex items-center justify-between">
-            <h3 className={`text-sm font-semibold ${ocrResult.confidence < 0.7 ? 'text-yellow-800' : 'text-green-800'}`}>ข้อมูลที่อ่านจากบัตรประชาชน</h3>
+            <h3 className={`text-sm font-semibold ${ocrResult.confidence < 0.7 ? 'text-warning' : 'text-success'}`}>ข้อมูลที่อ่านจากบัตรประชาชน</h3>
             <div className="flex items-center gap-2">
-              <span className={`text-xs ${ocrResult.confidence < 0.5 ? 'text-red-600 font-bold' : ocrResult.confidence < 0.7 ? 'text-yellow-600 font-semibold' : 'text-green-600'}`}>ความมั่นใจ: {(ocrResult.confidence * 100).toFixed(0)}%</span>
+              <span className={`text-xs ${ocrResult.confidence < 0.5 ? 'text-destructive font-bold' : ocrResult.confidence < 0.7 ? 'text-warning font-semibold' : 'text-success'}`}>ความมั่นใจ: {(ocrResult.confidence * 100).toFixed(0)}%</span>
               <button onClick={() => setShowOcrPanel(false)} className="text-xs text-muted-foreground hover:text-foreground">ปิด</button>
             </div>
           </div>
@@ -470,10 +470,10 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
             )}
           </div>
           {customerId && (
-            <div className="flex gap-2 pt-2 border-t border-green-200">
+            <div className="flex gap-2 pt-2 border-t border-success/30">
               <button
                 onClick={updateCustomerFromOcr}
-                className="px-4 py-1.5 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700"
+                className="px-4 py-1.5 text-xs bg-success text-success-foreground rounded-lg hover:bg-success/90"
               >
                 อัปเดตข้อมูลลูกค้า
               </button>
@@ -499,7 +499,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
               <div key={doc.id} className="px-4 py-3 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold ${
-                    doc.fileName.endsWith('.pdf') ? 'bg-red-100 text-red-600' : 'bg-primary/10 text-primary'
+                    doc.fileName.endsWith('.pdf') ? 'bg-destructive/10 text-destructive' : 'bg-primary/10 text-primary'
                   }`}>
                     {doc.fileName.endsWith('.pdf') ? 'PDF' : 'IMG'}
                   </div>
@@ -526,7 +526,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
                     onClick={() => {
                       setConfirmDialog({ open: true, message: `ต้องการลบเอกสาร "${doc.fileName}" (${getTypeLabel(doc.documentType)}) หรือไม่?`, action: () => deleteMutation.mutate(doc.id) });
                     }}
-                    className="text-xs text-red-600 hover:text-red-800 px-2 py-1"
+                    className="text-xs text-destructive hover:text-destructive/80 px-2 py-1"
                   >
                     ลบ
                   </button>

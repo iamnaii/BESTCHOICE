@@ -108,7 +108,7 @@ function AgingReport() {
   const buckets = data?.buckets || [];
   const total = data?.total || { count: 0, amount: 0 };
 
-  const agingColors = ['#22c55e', '#eab308', '#f97316', '#ef4444', '#dc2626'];
+  const agingColors = ['hsl(var(--chart-1))', 'hsl(var(--chart-2))', 'hsl(var(--chart-3))', 'hsl(var(--chart-4))', 'hsl(var(--chart-5))'];
 
   return (
     <QueryBoundary isLoading={isLoading} isError={isError} error={error} onRetry={() => refetch()} errorTitle="ไม่สามารถโหลดรายงานอายุหนี้ได้">

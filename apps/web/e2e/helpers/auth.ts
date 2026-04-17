@@ -26,6 +26,7 @@ export const ROLE_ACCOUNTS: Record<TestRole, { email: string; password: string; 
 };
 
 const AUTH_FILE = path.join(__dirname, '../../.playwright-auth.json');
+const ROLE_AUTH_FILE = path.join(__dirname, '../../.playwright-roles-auth.json');
 
 // JWT expiry is 15m — treat token as stale after 12 min to be safe
 const TOKEN_MAX_AGE_MS = 12 * 60 * 1000;
@@ -157,6 +158,28 @@ export async function loginViaAPI(page: Page) {
 const roleTokenCache: Partial<Record<TestRole, { token: string; timestamp: number }>> = {};
 const ROLE_TOKEN_MAX_AGE_MS = 10 * 60 * 1000; // 10 min (JWT expires at 15 min)
 
+async function apiLoginRole(page: Page, role: TestRole): Promise<string> {
+  const account = ROLE_ACCOUNTS[role];
+  const apiURL = process.env.API_DIRECT_URL || 'http://localhost:3000';
+  const response = await page.request.post(`${apiURL}/api/auth/login`, {
+    data: { email: account.email, password: account.password },
+    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+  });
+
+  if (!response.ok()) {
+    throw new Error(`loginAsRole(${role}) failed: HTTP ${response.status()}`);
+  }
+
+  const data = unwrapResponse(await response.json());
+  if (!data.accessToken) {
+    throw new Error(`loginAsRole(${role}): no accessToken in response`);
+  }
+
+  const token = data.accessToken as string;
+  roleTokenCache[role] = { token, timestamp: Date.now() };
+  return token;
+}
+
 /**
  * Login as a specific role via API (cached per worker to avoid rate limiting).
  * Use this for role-based access tests where you need non-OWNER accounts.
@@ -167,25 +190,29 @@ export async function loginAsRole(page: Page, role: TestRole) {
   const cached = roleTokenCache[role];
   if (cached && Date.now() - cached.timestamp < ROLE_TOKEN_MAX_AGE_MS) {
     token = cached.token;
+  } else if (fs.existsSync(ROLE_AUTH_FILE)) {
+    // Reuse tokens pre-fetched by global-setup.ts. Sharing tokens across workers
+    // avoids hammering /auth/login (throttled at 10/min) when sharded CI runs
+    // many workers in parallel.
+    try {
+      const cache = JSON.parse(fs.readFileSync(ROLE_AUTH_FILE, 'utf-8')) as {
+        tokens: Record<string, string>;
+        timestamp: number;
+      };
+      if (
+        cache.tokens?.[role] &&
+        Date.now() - cache.timestamp < ROLE_TOKEN_MAX_AGE_MS
+      ) {
+        token = cache.tokens[role];
+        roleTokenCache[role] = { token, timestamp: cache.timestamp };
+      } else {
+        token = await apiLoginRole(page, role);
+      }
+    } catch {
+      token = await apiLoginRole(page, role);
+    }
   } else {
-    const account = ROLE_ACCOUNTS[role];
-    const apiURL = process.env.API_DIRECT_URL || 'http://localhost:3000';
-    const response = await page.request.post(`${apiURL}/api/auth/login`, {
-      data: { email: account.email, password: account.password },
-      headers: { 'X-Requested-With': 'XMLHttpRequest' },
-    });
-
-    if (!response.ok()) {
-      throw new Error(`loginAsRole(${role}) failed: HTTP ${response.status()}`);
-    }
-
-    const data = unwrapResponse(await response.json());
-    if (!data.accessToken) {
-      throw new Error(`loginAsRole(${role}): no accessToken in response`);
-    }
-
-    token = data.accessToken;
-    roleTokenCache[role] = { token, timestamp: Date.now() };
+    token = await apiLoginRole(page, role);
   }
 
   await page.setExtraHTTPHeaders({

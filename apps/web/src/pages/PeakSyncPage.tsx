@@ -49,10 +49,10 @@ function StatusDot({ ok }: { ok: boolean }) {
   return (
     <span className="relative flex h-3 w-3 shrink-0">
       {ok && (
-        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success/70 opacity-75" />
       )}
       <span
-        className={`relative inline-flex rounded-full h-3 w-3 ${ok ? 'bg-green-500' : 'bg-red-500'}`}
+        className={`relative inline-flex rounded-full h-3 w-3 ${ok ? 'bg-success' : 'bg-destructive'}`}
       />
     </span>
   );
@@ -169,15 +169,15 @@ export default function PeakSyncPage() {
           <div
             className={`mb-6 rounded-xl border p-5 flex items-start gap-4 shadow-sm ${
               peakConfigured
-                ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30'
-                : 'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/30'
+                ? 'border-success/20 bg-success/10'
+                : 'border-destructive/20 bg-destructive/10'
             }`}
           >
             <div className="mt-0.5">
               {peakConfigured ? (
-                <CheckCircle2 className="w-6 h-6 text-emerald-600" />
+                <CheckCircle2 className="w-6 h-6 text-success" />
               ) : (
-                <XCircle className="w-6 h-6 text-red-600" />
+                <XCircle className="w-6 h-6 text-destructive" />
               )}
             </div>
             <div className="flex-1 min-w-0">
@@ -210,26 +210,26 @@ export default function PeakSyncPage() {
           <SummaryCard
             label="ส่ง PEAK แล้ว (ปีนี้)"
             value={syncedCount}
-            icon={<CheckCircle2 className="w-5 h-5 text-emerald-600" />}
-            colorClass="bg-emerald-100"
+            icon={<CheckCircle2 className="w-5 h-5 text-success" />}
+            colorClass="bg-success/20"
           />
           <SummaryCard
             label="รอส่ง PEAK (ปิดแล้ว)"
             value={pendingCount}
-            icon={<Database className="w-5 h-5 text-blue-600" />}
-            colorClass="bg-blue-100"
+            icon={<Database className="w-5 h-5 text-info" />}
+            colorClass="bg-info/20"
           />
           <SummaryCard
             label="สถานะการเชื่อมต่อ"
             value={peakConfigured ? 'เชื่อมต่อแล้ว' : 'ยังไม่เชื่อมต่อ'}
             icon={
               peakConfigured ? (
-                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                <CheckCircle2 className="w-5 h-5 text-success" />
               ) : (
-                <XCircle className="w-5 h-5 text-red-600" />
+                <XCircle className="w-5 h-5 text-destructive" />
               )
             }
-            colorClass={peakConfigured ? 'bg-emerald-100' : 'bg-red-100'}
+            colorClass={peakConfigured ? 'bg-success/20' : 'bg-destructive/20'}
           />
         </div>
 
@@ -281,7 +281,7 @@ export default function PeakSyncPage() {
                         </td>
                         <td className="px-5 py-3.5 text-muted-foreground">
                           {period.peakSyncedAt ? (
-                            <span className="text-emerald-700 font-medium">
+                            <span className="text-success font-medium">
                               {formatDateMedium(period.peakSyncedAt)}
                             </span>
                           ) : (

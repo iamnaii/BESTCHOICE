@@ -15,21 +15,21 @@ interface Props {
 }
 
 const TYPE_COLORS: Record<string, string> = {
-  'heading': 'bg-blue-50 text-blue-700',
-  'subheading': 'bg-blue-50 text-blue-600',
+  'heading': 'bg-primary/10 text-primary',
+  'subheading': 'bg-primary/10 text-primary',
   'paragraph': 'bg-muted text-foreground',
-  'clause': 'bg-amber-50 text-amber-700',
-  'party-info': 'bg-emerald-50 text-emerald-700',
-  'product-info': 'bg-teal-50 text-teal-700',
-  'payment-table': 'bg-purple-50 text-purple-700',
-  'signature-block': 'bg-pink-50 text-pink-700',
-  'photo-attachment': 'bg-indigo-50 text-indigo-700',
-  'contract-header': 'bg-sky-50 text-sky-700',
+  'clause': 'bg-warning/10 text-warning',
+  'party-info': 'bg-success/10 text-success',
+  'product-info': 'bg-info/10 text-info',
+  'payment-table': 'bg-primary/10 text-primary',
+  'signature-block': 'bg-primary/10 text-primary',
+  'photo-attachment': 'bg-primary/10 text-primary',
+  'contract-header': 'bg-info/10 text-info',
   'agreement': 'bg-muted text-foreground',
-  'emergency-contacts': 'bg-orange-50 text-orange-700',
-  'attachment-list': 'bg-violet-50 text-violet-700',
-  'column': 'bg-cyan-50 text-cyan-700',
-  'column-vertical': 'bg-cyan-50 text-cyan-700',
+  'emergency-contacts': 'bg-warning/10 text-warning',
+  'attachment-list': 'bg-primary/10 text-primary',
+  'column': 'bg-info/10 text-info',
+  'column-vertical': 'bg-info/10 text-info',
   'numbered': 'bg-muted text-foreground',
 };
 
@@ -58,14 +58,14 @@ export default function BlockItem({ block, index, totalBlocks, clauseIndex }: Pr
   const plainText = block.content.replace(/<[^>]*>/g, '').replace(/\{\{[^}]*\}\}/g, '[…]');
   const displayContent = plainText.substring(0, 160);
 
-  const badgeColor = TYPE_COLORS[block.type] || 'bg-primary-50 text-primary-700';
+  const badgeColor = TYPE_COLORS[block.type] || 'bg-primary/10 text-primary';
 
   return (
     <div
       ref={setNodeRef}
       style={style}
       className={`group border rounded-xl bg-card transition-all ${
-        isDragging ? 'shadow-lg border-primary-300' : 'border-border hover:border-primary-200 hover:shadow-md'
+        isDragging ? 'shadow-lg border-primary/40' : 'border-border hover:border-primary/30 hover:shadow-md'
       }`}
     >
       {/* Header */}
@@ -124,21 +124,21 @@ export default function BlockItem({ block, index, totalBlocks, clauseIndex }: Pr
 
           <button
             onClick={() => setEditingBlock(block)}
-            className="p-2 text-muted-foreground hover:text-primary-600 rounded-lg hover:bg-primary-50"
+            className="p-2 text-muted-foreground hover:text-primary rounded-lg hover:bg-primary/10"
             title="แก้ไข"
           >
             <Edit3 size={18} />
           </button>
           <button
             onClick={() => duplicateBlock(block.id)}
-            className="p-2 text-muted-foreground hover:text-emerald-600 rounded-lg hover:bg-emerald-50"
+            className="p-2 text-muted-foreground hover:text-success rounded-lg hover:bg-success/10"
             title="สำเนา"
           >
             <Copy size={18} />
           </button>
           <button
             onClick={handleDelete}
-            className="p-2 text-muted-foreground hover:text-red-600 rounded-lg hover:bg-red-50"
+            className="p-2 text-muted-foreground hover:text-destructive rounded-lg hover:bg-destructive/10"
             title="ลบ"
           >
             <Trash2 size={18} />

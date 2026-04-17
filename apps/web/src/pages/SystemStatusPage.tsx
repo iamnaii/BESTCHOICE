@@ -36,8 +36,8 @@ function formatUptime(seconds: number): string {
 function StatusDot({ ok }: { ok: boolean }) {
   return (
     <span className="relative flex h-3 w-3 shrink-0">
-      {ok && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75 print:hidden" />}
-      <span className={`relative inline-flex rounded-full h-3 w-3 ${ok ? 'bg-green-500' : 'bg-red-500'}`} />
+      {ok && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success/70 opacity-75 print:hidden" />}
+      <span className={`relative inline-flex rounded-full h-3 w-3 ${ok ? 'bg-success' : 'bg-destructive'}`} />
     </span>
   );
 }
@@ -88,7 +88,7 @@ export default function SystemStatusPage() {
             disabled={isRefreshing}
             className="px-4 py-2 text-sm border border-input rounded-lg hover:bg-muted/50 disabled:opacity-50 flex items-center gap-2 print:hidden"
           >
-            <svg className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+            <svg aria-hidden="true" className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
             รีเฟรช
           </button>
         }
@@ -115,10 +115,10 @@ export default function SystemStatusPage() {
         </div>
 
         {/* Overall Status */}
-        <div className={`rounded-lg p-4 mb-8 flex items-center gap-3 ${allOk ? 'bg-success/5 dark:bg-success/10 border border-success/20' : 'bg-amber-50 border border-amber-200'}`}>
+        <div className={`rounded-lg p-4 mb-8 flex items-center gap-3 ${allOk ? 'bg-success/5 dark:bg-success/10 border border-success/20' : 'bg-warning/10 border border-warning/20'}`}>
           <StatusDot ok={allOk} />
           <div>
-            <p className={`font-semibold ${allOk ? 'text-success' : 'text-amber-800'}`}>
+            <p className={`font-semibold ${allOk ? 'text-success' : 'text-warning'}`}>
               {allOk ? 'ระบบทั้งหมดทำงานปกติ' : 'มีบางบริการที่ไม่พร้อมใช้งาน'}
             </p>
             <p className="text-xs text-muted-foreground mt-0.5">รีเฟรชอัตโนมัติทุก 30 วินาที</p>
@@ -159,8 +159,8 @@ export default function SystemStatusPage() {
           {/* Branch lines to DB and AI */}
           <div className="w-80 h-10 relative">
             <svg className="w-full h-full" viewBox="0 0 320 40" preserveAspectRatio="none">
-              <path d="M160,0 L160,20 L60,20 L60,40" fill="none" stroke={data.database.connected ? '#86efac' : '#fca5a5'} strokeWidth="2" />
-              <path d="M160,0 L160,20 L260,20 L260,40" fill="none" stroke={data.ai.connected ? '#86efac' : '#fca5a5'} strokeWidth="2" />
+              <path d="M160,0 L160,20 L60,20 L60,40" fill="none" stroke={data.database.connected ? 'hsl(var(--success))' : 'hsl(var(--destructive))'} strokeWidth="2" />
+              <path d="M160,0 L160,20 L260,20 L260,40" fill="none" stroke={data.ai.connected ? 'hsl(var(--success))' : 'hsl(var(--destructive))'} strokeWidth="2" />
             </svg>
           </div>
 
@@ -408,7 +408,7 @@ export default function SystemStatusPage() {
 /* ─── Integration Service Card ─── */
 function IntegrationCard({ name, configured, details }: { name: string; configured: boolean; details: { label: string; value: string }[] }) {
   return (
-    <div className={`rounded-xl border p-4 shadow-sm ${configured ? 'border-green-200 bg-green-50/50 dark:bg-green-950/20 dark:border-green-900' : 'border-border/50 bg-muted/30'}`}>
+    <div className={`rounded-xl border p-4 shadow-sm ${configured ? 'border-success/20 bg-success/5' : 'border-border/50 bg-muted/30'}`}>
       <div className="flex items-center gap-2 mb-2">
         <StatusDot ok={configured} />
         <span className="text-sm font-medium text-foreground">{name}</span>
@@ -435,7 +435,7 @@ function IntegrationCard({ name, configured, details }: { name: string; configur
 function VerticalLine({ ok }: { ok: boolean }) {
   return (
     <div className="flex items-center justify-center">
-      <div className={`w-0.5 h-8 ${ok ? 'bg-green-300' : 'bg-red-300'}`} />
+      <div className={`w-0.5 h-8 ${ok ? 'bg-success/60' : 'bg-destructive/60'}`} />
     </div>
   );
 }
@@ -448,7 +448,7 @@ function MemoryCard({ label, value, total, pct }: { label: string; value: string
       {total && pct !== undefined && (
         <>
           <div className="w-full bg-muted rounded-full h-1.5 mt-2">
-            <div className={`h-1.5 rounded-full ${pct > 80 ? 'bg-red-500' : pct > 60 ? 'bg-amber-500' : 'bg-green-500'}`} style={{ width: `${pct}%` }} />
+            <div className={`h-1.5 rounded-full ${pct > 80 ? 'bg-destructive' : pct > 60 ? 'bg-warning' : 'bg-success'}`} style={{ width: `${pct}%` }} />
           </div>
           <p className="text-xs text-muted-foreground mt-1">{pct}% ของ {total}</p>
         </>
@@ -470,17 +470,17 @@ function ServiceCard({
 }) {
   const bgColors: Record<string, string> = {
     blue: 'bg-primary/5 border-primary/20',
-    indigo: 'bg-indigo-50 border-indigo-200',
-    emerald: 'bg-emerald-50 border-emerald-200',
+    indigo: 'bg-secondary/20 border-secondary/30',
+    emerald: 'bg-success/10 border-success/20',
   };
   const iconColors: Record<string, string> = {
     blue: 'text-primary',
-    indigo: 'text-indigo-600',
-    emerald: 'text-emerald-600',
+    indigo: 'text-muted-foreground',
+    emerald: 'text-success',
   };
   const statusColors: Record<string, string> = {
     ok: 'text-success',
-    warn: 'text-amber-700',
+    warn: 'text-warning',
     error: 'text-destructive',
   };
 

@@ -77,7 +77,7 @@ export function POListTab({
         <div>
           <span className="text-sm font-medium">{Number(po.netAmount ?? po.totalAmount).toLocaleString()} บาท</span>
           {Number(po.discount) > 0 && (
-            <div className="text-xs text-red-500">ส่วนลด -{Number(po.discount).toLocaleString()}</div>
+            <div className="text-xs text-destructive">ส่วนลด -{Number(po.discount).toLocaleString()}</div>
           )}
           {Number(po.vatAmount) > 0 && (
             <div className="text-xs text-primary">รวม VAT {Number(po.vatAmount).toLocaleString()}</div>
@@ -119,7 +119,7 @@ export function POListTab({
             {totalOrdered > 0 && (
               <div className="w-16 bg-secondary rounded-full h-1.5">
                 <div
-                  className="bg-green-500 h-1.5 rounded-full"
+                  className="bg-success h-1.5 rounded-full"
                   style={{ width: `${Math.min((totalReceived / totalOrdered) * 100, 100)}%` }}
                 />
               </div>
@@ -148,7 +148,7 @@ export function POListTab({
                   setConfirmDialog({ open: true, message: `อนุมัติ PO ${po.poNumber}?`, action: () => approveMutation.mutate(po.id) });
                 }}
                 disabled={approveMutation.isPending}
-                className="text-green-600 hover:text-green-700 text-sm font-medium disabled:opacity-50"
+                className="text-success hover:text-success/90 text-sm font-medium disabled:opacity-50"
               >
                 อนุมัติ
               </button>
@@ -158,7 +158,7 @@ export function POListTab({
                   if (reason) rejectPOMutation.mutate({ id: po.id, reason });
                 }}
                 disabled={rejectPOMutation.isPending}
-                className="text-orange-600 hover:text-orange-700 text-sm font-medium disabled:opacity-50"
+                className="text-warning hover:text-warning/90 text-sm font-medium disabled:opacity-50"
               >
                 ปฏิเสธ
               </button>
@@ -166,7 +166,7 @@ export function POListTab({
                 onClick={() => {
                   setConfirmDialog({ open: true, message: 'ต้องการยกเลิก PO นี้?', action: () => cancelMutation.mutate(po.id) });
                 }}
-                className="text-red-600 hover:text-red-700 text-sm font-medium"
+                className="text-destructive hover:text-destructive/90 text-sm font-medium"
               >
                 ยกเลิก
               </button>

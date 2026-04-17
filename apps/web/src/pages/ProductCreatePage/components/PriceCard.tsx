@@ -59,7 +59,7 @@ export default function PriceCard({ prices, onAdd, onRemove, onUpdate }: PriceCa
                 <button
                   type="button"
                   onClick={() => onRemove(index)}
-                  className="text-red-400 hover:text-red-600 text-lg"
+                  className="text-destructive/70 hover:text-destructive text-lg"
                 >
                   &times;
                 </button>

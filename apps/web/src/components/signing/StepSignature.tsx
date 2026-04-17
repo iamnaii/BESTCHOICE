@@ -201,8 +201,8 @@ export default function StepSignature({
     if (allDone) {
       return (
         <div className="flex flex-col items-center justify-center min-h-[50vh] px-4">
-          <div className="text-5xl mb-4 text-green-500">&#10003;</div>
-          <h2 className="text-xl font-semibold text-green-700">ลงนามครบถ้วนแล้ว</h2>
+          <div className="text-5xl mb-4 text-success">&#10003;</div>
+          <h2 className="text-xl font-semibold text-success">ลงนามครบถ้วนแล้ว</h2>
           <button onClick={onAllSigned} className="mt-6 px-8 py-3.5 bg-primary text-primary-foreground rounded-xl text-sm font-medium">
             ดำเนินการต่อ
           </button>
@@ -237,8 +237,8 @@ export default function StepSignature({
               className={`px-3 py-1.5 rounded-full text-xs font-medium border flex items-center gap-1.5 transition-colors ${
                 signed
                   ? isCurrent
-                    ? 'bg-green-100 border-green-500 text-green-800 ring-2 ring-green-300'
-                    : 'bg-green-50 border-green-300 text-green-700'
+                    ? 'bg-success/20 border-success text-success ring-2 ring-success/30'
+                    : 'bg-success/10 border-success/30 text-success'
                   : isCurrent
                     ? 'bg-primary/10 border-primary text-primary ring-2 ring-primary/30'
                     : 'bg-muted border-border text-muted-foreground hover:bg-muted/80'
@@ -251,7 +251,7 @@ export default function StepSignature({
                     e.stopPropagation();
                     setConfirmDialog({ open: true, message: `ต้องการลบลายเซ็น${SIGNER_LABELS[type]}และเซ็นใหม่?`, action: () => deleteSignatureMutation.mutate(type) });
                   }}
-                  className="ml-1 text-2xs text-red-500 hover:text-red-700 underline"
+                  className="ml-1 text-2xs text-destructive hover:text-destructive/80 underline"
                 >
                   เซ็นใหม่
                 </span>
@@ -264,8 +264,8 @@ export default function StepSignature({
       {isCurrentSignerSigned ? (
         /* Signed state - show confirmation */
         <div className="w-full flex flex-col items-center py-8">
-          <div className="text-4xl mb-3 text-green-500">&#10003;</div>
-          <h3 className="text-lg font-semibold text-green-700 mb-2">
+          <div className="text-4xl mb-3 text-success">&#10003;</div>
+          <h3 className="text-lg font-semibold text-success mb-2">
             {SIGNER_LABELS[currentSigner]} ลงนามเรียบร้อยแล้ว
           </h3>
           <p className="text-sm text-muted-foreground mb-6">กรุณาเลือกผู้ลงนามคนถัดไปด้านบน</p>

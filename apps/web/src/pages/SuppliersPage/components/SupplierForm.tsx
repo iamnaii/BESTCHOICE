@@ -272,7 +272,7 @@ export default function SupplierForm({
             <div className="rounded-xl border border-border bg-card p-5">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2.5">
-                  <div className="flex items-center justify-center size-8 rounded-lg bg-emerald-500/10 text-emerald-500">
+                  <div className="flex items-center justify-center size-8 rounded-lg bg-success/10 text-success">
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
                       width="16"
@@ -329,7 +329,7 @@ export default function SupplierForm({
                     <button
                       type="button"
                       onClick={() => removePaymentMethod(index)}
-                      className="text-red-400 hover:text-red-600 text-xs font-medium"
+                      className="text-destructive/80 hover:text-destructive text-xs font-medium"
                     >
                       ลบ
                     </button>
@@ -418,7 +418,7 @@ export default function SupplierForm({
             {/* Address */}
             <div className="rounded-xl border border-border bg-card p-5">
               <div className="flex items-center gap-2.5 mb-4">
-                <div className="flex items-center justify-center size-8 rounded-lg bg-violet-500/10 text-violet-500">
+                <div className="flex items-center justify-center size-8 rounded-lg bg-primary/10 text-primary">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     width="16"
@@ -445,7 +445,7 @@ export default function SupplierForm({
             {/* Notes */}
             <div className="rounded-xl border border-border bg-card p-5">
               <div className="flex items-center gap-2.5 mb-4">
-                <div className="flex items-center justify-center size-8 rounded-lg bg-rose-500/10 text-rose-500">
+                <div className="flex items-center justify-center size-8 rounded-lg bg-destructive/10 text-destructive">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     width="16"

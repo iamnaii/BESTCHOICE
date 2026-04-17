@@ -159,7 +159,7 @@ export default function StockCountPage() {
           {item.status === 'IN_PROGRESS' && (
             <button
               onClick={(e) => { e.stopPropagation(); cancelMutation.mutate(item.id); }}
-              className="px-2 py-1 text-xs bg-destructive/10 text-destructive dark:bg-destructive/15 rounded hover:bg-red-200"
+              className="px-2 py-1 text-xs bg-destructive/10 text-destructive dark:bg-destructive/15 rounded hover:bg-destructive/20"
             >
               ยกเลิก
             </button>
@@ -243,7 +243,7 @@ export default function StockCountPage() {
                 <div
                   key={item.id}
                   className={`border rounded-lg p-3 ${
-                    countItems[idx]?.actualFound ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'
+                    countItems[idx]?.actualFound ? 'border-success/20 bg-success/10' : 'border-destructive/20 bg-destructive/10'
                   }`}
                 >
                   <div className="flex items-center justify-between">
@@ -258,7 +258,7 @@ export default function StockCountPage() {
                         type="button"
                         onClick={() => updateItem(idx, 'actualFound', true)}
                         className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
-                          countItems[idx]?.actualFound ? 'bg-green-600 text-white' : 'bg-muted text-muted-foreground'
+                          countItems[idx]?.actualFound ? 'bg-success text-success-foreground' : 'bg-muted text-muted-foreground'
                         }`}
                       >
                         พบ
@@ -267,7 +267,7 @@ export default function StockCountPage() {
                         type="button"
                         onClick={() => updateItem(idx, 'actualFound', false)}
                         className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
-                          !countItems[idx]?.actualFound ? 'bg-red-600 text-white' : 'bg-muted text-muted-foreground'
+                          !countItems[idx]?.actualFound ? 'bg-destructive text-destructive-foreground' : 'bg-muted text-muted-foreground'
                         }`}
                       >
                         ไม่พบ
@@ -280,7 +280,7 @@ export default function StockCountPage() {
                       placeholder="หมายเหตุ (ถ้ามี)"
                       value={countItems[idx]?.conditionNotes || ''}
                       onChange={(e) => updateItem(idx, 'conditionNotes', e.target.value)}
-                      className="mt-2 w-full px-2 py-1.5 border border-red-300 rounded text-sm"
+                      className="mt-2 w-full px-2 py-1.5 border border-destructive/30 rounded text-sm"
                     />
                   )}
                 </div>

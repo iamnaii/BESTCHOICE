@@ -8,10 +8,10 @@ import * as AvatarPrimitive from '@radix-ui/react-avatar';
 const avatarStatusVariants = cva('flex items-center rounded-full size-2 border-2 border-background', {
   variants: {
     variant: {
-      online: 'bg-green-600',
+      online: 'bg-success',
       offline: 'bg-muted-foreground',
-      busy: 'bg-yellow-600',
-      away: 'bg-blue-600',
+      busy: 'bg-warning',
+      away: 'bg-info',
     },
   },
   defaultVariants: {

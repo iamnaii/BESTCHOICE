@@ -85,7 +85,7 @@ export default function IdCardCapture({ onCapture, disabled }: IdCardCaptureProp
   if (mode === 'preview' && previewSrc) {
     return (
       <div className="space-y-4">
-        <div className="relative rounded-xl overflow-hidden border-2 border-green-300">
+        <div className="relative rounded-xl overflow-hidden border-2 border-success/30">
           <img src={previewSrc} alt="บัตรประชาชน" className="w-full" />
         </div>
         <div className="flex gap-3">
@@ -99,7 +99,7 @@ export default function IdCardCapture({ onCapture, disabled }: IdCardCaptureProp
           <button
             onClick={confirmCapture}
             disabled={disabled}
-            className="flex-1 px-4 py-3.5 text-sm bg-green-600 text-white rounded-xl hover:bg-green-700 font-medium disabled:opacity-50"
+            className="flex-1 px-4 py-3.5 text-sm bg-success text-success-foreground rounded-xl hover:bg-success/90 font-medium disabled:opacity-50"
           >
             ยืนยันรูปบัตร
           </button>
@@ -142,7 +142,7 @@ export default function IdCardCapture({ onCapture, disabled }: IdCardCaptureProp
   return (
     <div className="space-y-3">
       {cameraError && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-700">
+        <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 text-sm text-warning">
           {cameraError}
         </div>
       )}

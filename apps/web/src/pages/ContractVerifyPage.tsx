@@ -60,8 +60,8 @@ export default function ContractVerifyPage() {
 
           {error && (
             <div className="flex flex-col items-center py-8 text-center">
-              <div className="size-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mb-4">
-                <svg className="size-6 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <div className="size-12 rounded-full bg-destructive/10 flex items-center justify-center mb-4">
+                <svg className="size-6 text-destructive" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </div>
@@ -74,22 +74,22 @@ export default function ContractVerifyPage() {
             <>
               {data.verified ? (
                 <div className="flex flex-col items-center text-center mb-5">
-                  <div className="size-12 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mb-3">
-                    <svg className="size-6 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <div className="size-12 rounded-full bg-success/10 flex items-center justify-center mb-3">
+                    <svg className="size-6 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                     </svg>
                   </div>
-                  <h2 className="text-lg font-semibold text-green-700 dark:text-green-400">สัญญาถูกต้อง</h2>
+                  <h2 className="text-lg font-semibold text-success">สัญญาถูกต้อง</h2>
                   <p className="text-sm text-muted-foreground mt-1">{data.reason}</p>
                 </div>
               ) : (
                 <div className="flex flex-col items-center text-center mb-5">
-                  <div className="size-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mb-3">
-                    <svg className="size-6 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <div className="size-12 rounded-full bg-destructive/10 flex items-center justify-center mb-3">
+                    <svg className="size-6 text-destructive" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                     </svg>
                   </div>
-                  <h2 className="text-lg font-semibold text-red-700 dark:text-red-400">ไม่สามารถยืนยันสัญญา</h2>
+                  <h2 className="text-lg font-semibold text-destructive">ไม่สามารถยืนยันสัญญา</h2>
                   <p className="text-sm text-muted-foreground mt-1">{data.reason}</p>
                 </div>
               )}

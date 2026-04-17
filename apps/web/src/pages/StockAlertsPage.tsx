@@ -288,6 +288,7 @@ export default function StockAlertsPage() {
                 }}
                 className="text-muted-foreground hover:text-primary"
                 title="แก้ไข"
+                aria-label="แก้ไข"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
@@ -295,7 +296,7 @@ export default function StockAlertsPage() {
               </button>
               <button
                 onClick={() => updateMutation.mutate({ id: r.id, data: { isActive: !r.isActive } })}
-                className={`text-xs ${r.isActive ? 'text-muted-foreground hover:text-red-600' : 'text-muted-foreground hover:text-success'}`}
+                className={`text-xs ${r.isActive ? 'text-muted-foreground hover:text-destructive' : 'text-muted-foreground hover:text-success'}`}
                 title={r.isActive ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}
               >
                 {r.isActive ? 'ปิด' : 'เปิด'}
@@ -303,7 +304,7 @@ export default function StockAlertsPage() {
               {user?.role === 'OWNER' && (
                 <button
                   onClick={() => setConfirmDialog({ open: true, message: 'ลบ Reorder Point นี้?', action: () => deleteMutation.mutate(r.id) })}
-                  className="text-muted-foreground hover:text-red-600"
+                  className="text-muted-foreground hover:text-destructive"
                   title="ลบ"
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -507,7 +508,7 @@ export default function StockAlertsPage() {
                         </div>
                         <div className="bg-muted rounded-full h-2 overflow-hidden">
                           <div
-                            className={`h-full rounded-full ${ratio > 50 ? 'bg-yellow-400' : 'bg-red-400'}`}
+                            className={`h-full rounded-full ${ratio > 50 ? 'bg-warning' : 'bg-destructive'}`}
                             style={{ width: `${Math.min(ratio, 100)}%` }}
                           />
                         </div>

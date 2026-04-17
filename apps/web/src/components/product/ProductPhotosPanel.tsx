@@ -177,7 +177,7 @@ export default function ProductPhotosPanel({
           <h2 className="text-sm font-semibold text-foreground">
             รูปถ่าย 6 มุม
           </h2>
-          <span className={`text-xs ${isCompleted ? 'text-green-600 font-medium' : 'text-muted-foreground'}`}>
+          <span className={`text-xs ${isCompleted ? 'text-success font-medium' : 'text-muted-foreground'}`}>
             {isCompleted ? 'ครบแล้ว' : `${completedCount}/6`}
           </span>
         </div>
@@ -185,7 +185,7 @@ export default function ProductPhotosPanel({
           <button
             onClick={() => completeMutation.mutate()}
             disabled={completeMutation.isPending}
-            className="px-3 py-1 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700 disabled:opacity-50"
+            className="px-3 py-1 bg-success text-success-foreground rounded text-xs font-medium hover:bg-success/90 disabled:opacity-50"
           >
             {completeMutation.isPending ? 'ยืนยัน...' : 'ยืนยันรูปครบ'}
           </button>
@@ -195,7 +195,7 @@ export default function ProductPhotosPanel({
       {/* Compact progress bar */}
       <div className="w-full bg-muted rounded-full h-1 mb-2">
         <div
-          className={`h-1 rounded-full transition-all ${isCompleted ? 'bg-green-500' : 'bg-primary'}`}
+          className={`h-1 rounded-full transition-all ${isCompleted ? 'bg-success' : 'bg-primary'}`}
           style={{ width: `${(completedCount / 6) * 100}%` }}
         />
       </div>
@@ -214,7 +214,7 @@ export default function ProductPhotosPanel({
               {photo ? (
                 <div className="relative">
                   <div
-                    className="w-full aspect-4/3 rounded overflow-hidden border border-green-300 cursor-pointer"
+                    className="w-full aspect-4/3 rounded overflow-hidden border border-success/40 cursor-pointer"
                     onClick={() => setPreviewPhoto({ angle, src: photo })}
                   >
                     <img
@@ -237,7 +237,7 @@ export default function ProductPhotosPanel({
                           setConfirmDialog({ open: true, message: `ลบรูป${ANGLE_LABELS[angle]}?`, action: () => deleteMutation.mutate(angle) });
                         }}
                         disabled={deleteMutation.isPending}
-                        className="flex-1 px-1 py-0.5 bg-red-50 rounded text-[10px] text-red-600 hover:bg-red-100 font-medium disabled:opacity-50"
+                        className="flex-1 px-1 py-0.5 bg-destructive/10 rounded text-[10px] text-destructive hover:bg-destructive/20 font-medium disabled:opacity-50"
                       >
                         ลบ
                       </button>

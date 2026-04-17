@@ -32,10 +32,10 @@ interface DateRangeStats {
 
 function StatCard({ label, value, hint, accent }: { label: string; value: string | number; hint?: string; accent?: 'blue' | 'orange' | 'green' | 'red' }) {
   const colors = {
-    blue: 'border-blue-200 bg-blue-50',
-    orange: 'border-orange-200 bg-orange-50',
-    green: 'border-green-200 bg-green-50',
-    red: 'border-red-200 bg-red-50',
+    blue: 'border-info/20 bg-info/10',
+    orange: 'border-warning/20 bg-warning/10',
+    green: 'border-success/20 bg-success/10',
+    red: 'border-destructive/20 bg-destructive/10',
   };
   const cls = colors[accent ?? 'blue'];
   return (
@@ -100,19 +100,19 @@ export default function ChatbotFinanceAnalyticsPage() {
           <div className="flex gap-2">
             <Link
               to="/chatbot-finance/sessions"
-              className="px-4 py-2 rounded-lg border border-white/30 text-white text-sm hover:bg-white/10"
+              className="px-4 py-2 rounded-lg border border-border text-foreground text-sm hover:bg-accent"
             >
               ดูบทสนทนา
             </Link>
             <Link
               to="/chatbot-finance/knowledge"
-              className="px-4 py-2 rounded-lg bg-white text-foreground text-sm hover:bg-white/90 font-medium"
+              className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm hover:bg-primary/90 font-medium"
             >
               จัดการ Knowledge Base
             </Link>
             <Link
               to="/chatbot-finance/learning"
-              className="px-4 py-2 rounded-lg border border-white/30 text-white text-sm hover:bg-white/10"
+              className="px-4 py-2 rounded-lg border border-border text-foreground text-sm hover:bg-accent"
             >
               Learning Hub
             </Link>
@@ -164,7 +164,7 @@ export default function ChatbotFinanceAnalyticsPage() {
                 <div className="w-24 text-xs text-muted-foreground">{d.date}</div>
                 <div className="flex-1 h-6 bg-muted rounded relative overflow-hidden">
                   <div
-                    className="h-full bg-blue-500"
+                    className="h-full bg-primary"
                     style={{ width: `${(d.messages / maxMessages) * 100}%` }}
                   />
                 </div>
@@ -239,7 +239,7 @@ export default function ChatbotFinanceAnalyticsPage() {
                         <div className="w-20 text-[10px] text-muted-foreground">{d.date}</div>
                         <div className="flex-1 h-5 bg-muted rounded relative overflow-hidden">
                           <div
-                            className="h-full bg-blue-400"
+                            className="h-full bg-primary/70"
                             style={{ width: `${(d.messages / maxMsg) * 100}%` }}
                           />
                         </div>

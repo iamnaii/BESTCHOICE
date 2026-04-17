@@ -294,7 +294,7 @@ const deleteMutation = useMutation({
         }
         action={
           <div className="flex gap-2 flex-wrap">
-            <button onClick={() => navigate(`/contracts/${id}/sign`)} className="px-4 py-2 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700 shadow-sm">
+            <button onClick={() => navigate(`/contracts/${id}/sign`)} className="px-4 py-2 text-sm bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/80 shadow-sm">
               ลงนาม/เอกสาร
             </button>
             <button
@@ -313,20 +313,20 @@ const deleteMutation = useMutation({
                   toast.error(getErrorMessage(err) || 'ไม่สามารถสร้าง PDF ได้', { id: 'pdf-gen' });
                 }
               }}
-              className="px-4 py-2 text-sm bg-sky-600 text-white rounded-lg hover:bg-sky-700 shadow-sm"
+              className="px-4 py-2 text-sm border border-input bg-background text-foreground rounded-lg hover:bg-accent hover:text-accent-foreground shadow-sm"
             >
               ดาวน์โหลด PDF
             </button>
 
             {/* Workflow buttons */}
             {contract.workflowStatus === 'APPROVED' && contract.status === 'DRAFT' && (
-              <button onClick={() => activateMutation.mutate()} disabled={activateMutation.isPending || !allSigned} title={!allSigned ? 'ต้องลงนามครบทั้งลูกค้าและพนักงานก่อน' : ''} className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50">
+              <button onClick={() => activateMutation.mutate()} disabled={activateMutation.isPending || !allSigned} title={!allSigned ? 'ต้องลงนามครบทั้งลูกค้าและพนักงานก่อน' : ''} className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50">
                 {activateMutation.isPending ? 'กำลังเปิด...' : 'เปิดใช้งานสัญญา'}
               </button>
             )}
 
             {['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status) && (
-              <button onClick={() => setShowPayoffModal(true)} className="px-4 py-2 text-sm bg-amber-600 text-white rounded-lg hover:bg-amber-700 shadow-sm">
+              <button onClick={() => setShowPayoffModal(true)} className="px-4 py-2 text-sm bg-warning text-warning-foreground rounded-lg hover:bg-warning/90 shadow-sm">
                 ปิดก่อนกำหนด
               </button>
             )}
@@ -334,7 +334,7 @@ const deleteMutation = useMutation({
               <button
                 onClick={() => customerLinkMutation.mutate()}
                 disabled={customerLinkMutation.isPending}
-                className="px-4 py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 shadow-sm"
+                className="px-4 py-2 text-sm bg-success text-success-foreground rounded-lg hover:bg-success/90 disabled:opacity-50 shadow-sm"
               >
                 {customerLinkMutation.isPending ? 'กำลังสร้าง...' : 'ส่งลิงก์ลูกค้า'}
               </button>
@@ -343,7 +343,7 @@ const deleteMutation = useMutation({
               <button
                 onClick={() => setConfirmDialog({ open: true, title: 'ลบสัญญา', message: 'ยืนยันลบสัญญานี้?', variant: 'destructive', action: () => deleteMutation.mutate() })}
                 disabled={deleteMutation.isPending}
-                className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+                className="px-4 py-2 text-sm bg-destructive text-destructive-foreground rounded-lg hover:bg-destructive/90 disabled:opacity-50"
               >
                 {deleteMutation.isPending ? 'กำลังลบ...' : 'ลบสัญญา'}
               </button>
@@ -388,7 +388,7 @@ const deleteMutation = useMutation({
               {steps.map((step, i) => (
                 <div key={i} className="flex items-center flex-1 last:flex-none">
                   <div className="flex flex-col items-center gap-1 min-w-0">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${step.done ? 'bg-green-600 text-white' : i === currentStep ? 'bg-primary text-primary-foreground ring-2 ring-primary/30 ring-offset-1' : 'bg-muted text-muted-foreground'}`}>
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${step.done ? 'bg-success text-success-foreground' : i === currentStep ? 'bg-primary text-primary-foreground ring-2 ring-primary/30 ring-offset-1' : 'bg-muted text-muted-foreground'}`}>
                       {step.done ? '✓' : i + 1}
                     </div>
                     <span className={`text-2xs md:text-xs text-center leading-tight ${step.done ? 'text-success font-medium' : i === currentStep ? 'text-primary font-medium' : 'text-muted-foreground'}`}>
@@ -396,7 +396,7 @@ const deleteMutation = useMutation({
                     </span>
                   </div>
                   {i < steps.length - 1 && (
-                    <div className={`flex-1 h-0.5 mx-1 mt-[-16px] ${step.done ? 'bg-green-500' : 'bg-muted'}`} />
+                    <div className={`flex-1 h-0.5 mx-1 mt-[-16px] ${step.done ? 'bg-success' : 'bg-muted'}`} />
                   )}
                 </div>
               ))}
@@ -479,7 +479,7 @@ const deleteMutation = useMutation({
                     }
                   },
                 })}
-                className="mt-2 px-3 py-1 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700"
+                className="mt-2 px-3 py-1 text-xs bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
               >
                 ใช้เครดิตชำระ
               </button>
@@ -498,7 +498,7 @@ const deleteMutation = useMutation({
               contract.dunningStage === 'LEGAL_ACTION' ? 'text-destructive' :
               contract.dunningStage === 'FINAL_WARNING' ? 'text-destructive' :
               contract.dunningStage === 'NOTICE' ? 'text-warning' :
-              'text-yellow-600'
+              'text-warning/80'
             }`}>
               {{ REMINDER: 'แจ้งเตือน', NOTICE: 'แจ้งค้างชำระ', FINAL_WARNING: 'เตือนครั้งสุดท้าย', LEGAL_ACTION: 'ดำเนินคดี' }[contract.dunningStage]}
             </div>
@@ -536,7 +536,7 @@ const deleteMutation = useMutation({
                 value={approveNotes}
                 onChange={(e) => setApproveNotes(e.target.value)}
                 placeholder="หมายเหตุการอนุมัติ..."
-                className="w-full px-3 py-2 border border-amber-300 rounded-lg text-sm"
+                className="w-full px-3 py-2 border border-warning/40 rounded-lg text-sm"
               />
             </div>
             <div className="flex gap-2">
@@ -544,13 +544,13 @@ const deleteMutation = useMutation({
                 onClick={() => approveMutation.mutate()}
                 disabled={approveMutation.isPending || (docChecklist && !docChecklist.complete)}
                 title={docChecklist && !docChecklist.complete ? 'เอกสารยังไม่ครบ' : ''}
-                className="px-6 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                className="px-6 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
               >
                 {approveMutation.isPending ? 'กำลังอนุมัติ...' : 'อนุมัติสัญญา'}
               </button>
               <button
                 onClick={() => setShowRejectModal(true)}
-                className="px-6 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700"
+                className="px-6 py-2 text-sm bg-destructive text-destructive-foreground rounded-lg hover:bg-destructive/90"
               >
                 ปฏิเสธ
               </button>
@@ -564,7 +564,7 @@ const deleteMutation = useMutation({
         <div className="bg-destructive/5 dark:bg-destructive/10 border border-destructive/20 rounded-lg p-4 mb-6">
           <h3 className="text-sm font-semibold text-destructive">สัญญาถูกปฏิเสธ</h3>
           <div className="text-sm text-destructive mt-1">เหตุผล: {contract.reviewNotes}</div>
-          {contract.reviewedBy && <div className="text-xs text-red-500 mt-1">โดย: {contract.reviewedBy.name} | {contract.reviewedAt && formatDateMedium(contract.reviewedAt)}</div>}
+          {contract.reviewedBy && <div className="text-xs text-muted-foreground mt-1">โดย: {contract.reviewedBy.name} | {contract.reviewedAt && formatDateMedium(contract.reviewedAt)}</div>}
         </div>
       )}
 
@@ -737,7 +737,7 @@ const deleteMutation = useMutation({
               <h2 className="text-sm font-semibold text-foreground mb-2">ตรวจสอบสัญญา (QR Verify)</h2>
               <div className="text-xs text-muted-foreground mb-2">Hash: <span className="font-mono">{contract.contractHash?.slice(0, 16)}...</span></div>
               <div className="flex items-center gap-2">
-                <span className="inline-block w-3 h-3 bg-green-500 rounded-full"></span>
+                <span className="inline-block w-3 h-3 bg-success rounded-full"></span>
                 <span className="text-xs text-success">สัญญาได้รับการยืนยันแล้ว</span>
               </div>
               <div className="mt-2 text-xs text-muted-foreground">
@@ -794,7 +794,7 @@ const deleteMutation = useMutation({
 
       {/* Tab Content */}
       {activeTab === 'preview' && (
-        <div className="bg-muted rounded-lg border overflow-hidden" style={{ height: '80vh' }}>
+        <div className="bg-muted rounded-lg border overflow-hidden h-[80vh]">
           {previewLoading ? (
             <div className="flex items-center justify-center py-12 bg-background">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -893,7 +893,7 @@ const deleteMutation = useMutation({
               <button
                 onClick={() => rejectMutation.mutate()}
                 disabled={!rejectNotes.trim() || rejectMutation.isPending}
-                className="flex-1 px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+                className="flex-1 px-4 py-2 text-sm bg-destructive text-destructive-foreground rounded-lg hover:bg-destructive/90 disabled:opacity-50"
               >
                 {rejectMutation.isPending ? 'กำลังส่ง...' : 'ยืนยันปฏิเสธ'}
               </button>

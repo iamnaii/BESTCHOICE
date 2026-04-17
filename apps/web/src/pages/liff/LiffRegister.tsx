@@ -251,8 +251,8 @@ export default function LiffRegister() {
             <p className="text-2xl font-bold mb-1">{lookupResult.maskedName}</p>
             <p className="text-xs text-muted-foreground mb-6">เบอร์โทร: {phone}</p>
 
-            <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-4 mb-6">
-              <p className="text-sm text-amber-800 dark:text-amber-200">
+            <div className="bg-warning/10 border border-warning/20 rounded-lg p-4 mb-6">
+              <p className="text-sm text-warning">
                 หากชื่อนี้คือคุณ กดยืนยันเพื่อผูกบัญชี LINE กับระบบ
               </p>
             </div>

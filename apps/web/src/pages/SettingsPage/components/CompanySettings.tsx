@@ -129,7 +129,7 @@ function SignatureEditor({
             <button
               onClick={onRemove}
               type="button"
-              className="text-xs text-red-600 hover:underline"
+              className="text-xs text-destructive hover:underline"
             >
               ลบลายเซ็น
             </button>

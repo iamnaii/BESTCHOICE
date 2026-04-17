@@ -347,7 +347,7 @@ export default function PricingTemplatesPage() {
                       <button onClick={() => openEdit(t)} className="text-xs text-primary hover:underline mr-2">แก้ไข</button>
                       <button
                         onClick={() => setConfirmDialog({ open: true, message: 'ต้องการลบ?', action: () => deleteMutation.mutate(t.id) })}
-                        className="text-xs text-red-600 hover:underline"
+                        className="text-xs text-destructive hover:underline"
                       >
                         ลบ
                       </button>

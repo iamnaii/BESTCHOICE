@@ -198,7 +198,7 @@ export default function AssetManagementPage() {
         label: 'มูลค่ารวม',
         value: summary?.totalCostValue ?? 0,
         icon: Banknote,
-        color: 'border-l-blue-500',
+        color: 'border-l-primary',
         isCurrency: true,
       },
       {

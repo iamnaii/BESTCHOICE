@@ -134,7 +134,7 @@ export default function ReceiptModal({ receiptId, onClose }: ReceiptModalProps) 
           {/* Print Size Selector - hidden when printing */}
           <div className="rounded-xl border border-border bg-card p-5 print:hidden">
             <div className="flex items-center gap-2.5 mb-4">
-              <div className="flex items-center justify-center size-8 rounded-lg bg-orange-500/10 text-orange-500">
+              <div className="flex items-center justify-center size-8 rounded-lg bg-warning/10 text-warning">
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
               </div>
               <div>
@@ -157,7 +157,7 @@ export default function ReceiptModal({ receiptId, onClose }: ReceiptModalProps) 
           {/* Receipt Content */}
           <div className="rounded-xl border border-border bg-card p-5 print:border-0 print:p-0">
             <div className="flex items-center gap-2.5 mb-4 print:hidden">
-              <div className="flex items-center justify-center size-8 rounded-lg bg-violet-500/10 text-violet-500">
+              <div className="flex items-center justify-center size-8 rounded-lg bg-primary/10 text-primary">
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
               </div>
               <div>
@@ -180,15 +180,15 @@ export default function ReceiptModal({ receiptId, onClose }: ReceiptModalProps) 
 
           {/* Void confirmation */}
           {showVoidConfirm && (
-            <div className="border border-red-200 bg-red-50 rounded-lg p-4 print:hidden">
-              <div className="text-sm font-medium text-red-800 mb-2">ยืนยันยกเลิกใบเสร็จ</div>
-              <p className="text-xs text-red-600 mb-2">ระบบจะสร้างใบลดหนี้ (Credit Note) อ้างอิงใบเสร็จนี้</p>
+            <div className="border border-destructive/30 bg-destructive/10 rounded-lg p-4 print:hidden">
+              <div className="text-sm font-medium text-destructive mb-2">ยืนยันยกเลิกใบเสร็จ</div>
+              <p className="text-xs text-destructive mb-2">ระบบจะสร้างใบลดหนี้ (Credit Note) อ้างอิงใบเสร็จนี้</p>
               <input
                 type="text"
                 value={voidReason}
                 onChange={(e) => setVoidReason(e.target.value)}
                 placeholder="ระบุเหตุผลที่ยกเลิก..."
-                className="w-full px-3 py-2 border border-red-200 rounded-lg text-sm mb-2"
+                className="w-full px-3 py-2 border border-destructive/30 rounded-lg text-sm mb-2"
               />
               <div className="flex gap-2">
                 <button
@@ -200,7 +200,7 @@ export default function ReceiptModal({ receiptId, onClose }: ReceiptModalProps) 
                 <button
                   onClick={() => voidMutation.mutate({ id: receipt.id, reason: voidReason })}
                   disabled={!voidReason.trim() || voidMutation.isPending}
-                  className="px-3 py-1.5 text-xs bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+                  className="px-3 py-1.5 text-xs bg-destructive text-destructive-foreground rounded-lg hover:bg-destructive/90 disabled:opacity-50"
                 >
                   {voidMutation.isPending ? 'กำลังยกเลิก...' : 'ยืนยันยกเลิก'}
                 </button>
@@ -225,7 +225,7 @@ export default function ReceiptModal({ receiptId, onClose }: ReceiptModalProps) 
                 <button
                   type="button"
                   onClick={() => setShowVoidConfirm(true)}
-                  className="px-6 py-2.5 text-sm border border-red-300 text-red-600 rounded-lg hover:bg-red-50 font-semibold transition-colors"
+                  className="px-6 py-2.5 text-sm border border-destructive/30 text-destructive rounded-lg hover:bg-destructive/10 font-semibold transition-colors"
                 >
                   ยกเลิกใบเสร็จ
                 </button>
@@ -235,11 +235,11 @@ export default function ReceiptModal({ receiptId, onClose }: ReceiptModalProps) 
                   type="button"
                   onClick={handleSendLine}
                   disabled={isSendingLine || !receipt.contract?.customer}
-                  className="px-6 py-2.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 font-semibold transition-colors shadow-sm flex items-center gap-2"
+                  className="px-6 py-2.5 text-sm bg-success text-success-foreground rounded-lg hover:bg-success/90 disabled:opacity-50 font-semibold transition-colors shadow-sm flex items-center gap-2"
                   title={!receipt.contract?.customer ? 'ไม่พบข้อมูล LINE ของลูกค้า' : 'ส่งใบเสร็จทาง LINE'}
                 >
                   {isSendingLine ? (
-                    <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                    <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-success-foreground" />
                   ) : (
                     <Send className="h-4 w-4" />
                   )}
@@ -250,11 +250,11 @@ export default function ReceiptModal({ receiptId, onClose }: ReceiptModalProps) 
                   type="button"
                   onClick={handleExportPDF}
                   disabled={isGeneratingPDF}
-                  className="px-6 py-2.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-semibold transition-colors shadow-sm flex items-center gap-2"
+                  className="px-6 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-semibold transition-colors shadow-sm flex items-center gap-2"
                   title="บันทึกเป็น PDF (ตรงกับที่แสดง)"
                 >
                   {isGeneratingPDF ? (
-                    <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                    <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-foreground" />
                   ) : (
                     <Download className="h-4 w-4" />
                   )}

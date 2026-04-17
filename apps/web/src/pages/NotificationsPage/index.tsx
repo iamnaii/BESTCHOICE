@@ -197,7 +197,7 @@ export default function NotificationsPage() {
         <button
           onClick={() => sendOverdueMutation.mutate()}
           disabled={sendOverdueMutation.isPending}
-          className="px-4 py-2 bg-orange-600 text-white rounded-lg text-sm font-medium hover:bg-orange-700 disabled:opacity-50"
+          className="px-4 py-2 bg-warning text-warning-foreground rounded-lg text-sm font-medium hover:bg-warning/90 disabled:opacity-50"
         >
           {sendOverdueMutation.isPending ? 'กำลังส่ง...' : 'ส่งทวงหนี้ค้างชำระ'}
         </button>

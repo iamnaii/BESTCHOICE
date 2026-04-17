@@ -55,9 +55,9 @@ export function TodoKanbanView({
     });
     return [
       { id: 'TODO', title: 'รอทำ', color: 'bg-muted-foreground', items: byStatus.TODO },
-      { id: 'DOING', title: 'กำลังทำ', color: 'bg-amber-400', items: byStatus.DOING },
-      { id: 'REVIEW', title: 'รอแก้ไข', color: 'bg-orange-400', items: byStatus.REVIEW },
-      { id: 'DONE', title: 'เสร็จแล้ว', color: 'bg-emerald-500', items: byStatus.DONE },
+      { id: 'DOING', title: 'กำลังทำ', color: 'bg-warning', items: byStatus.DOING },
+      { id: 'REVIEW', title: 'รอแก้ไข', color: 'bg-warning', items: byStatus.REVIEW },
+      { id: 'DONE', title: 'เสร็จแล้ว', color: 'bg-success', items: byStatus.DONE },
     ];
   }, [todos]);
 
@@ -107,7 +107,7 @@ export function TodoKanbanView({
                     }}
                     className={`mt-0.5 size-4 rounded-md border-2 flex items-center justify-center transition-all shrink-0 ${
                       t.status === 'DONE'
-                        ? 'bg-emerald-500 border-emerald-500 text-white'
+                        ? 'bg-success border-success text-success-foreground'
                         : 'border-muted-foreground/30 hover:border-primary'
                     }`}
                     aria-label="toggle"
@@ -162,7 +162,7 @@ export function TodoKanbanView({
                       <span
                         className={`inline-flex items-center gap-1 ${
                           overdue
-                            ? 'text-rose-600 font-semibold dark:text-rose-400'
+                            ? 'text-destructive font-semibold'
                             : ''
                         }`}
                       >
@@ -204,7 +204,7 @@ export function TodoKanbanView({
                           e.stopPropagation();
                           onDeleteRequest(t.id);
                         }}
-                        className="size-6 rounded-md text-muted-foreground hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 inline-flex items-center justify-center transition-colors opacity-0 group-hover:opacity-100"
+                        className="size-6 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 inline-flex items-center justify-center transition-colors opacity-0 group-hover:opacity-100"
                         aria-label="delete"
                       >
                         <Trash2 className="size-3.5" />

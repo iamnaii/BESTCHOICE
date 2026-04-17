@@ -54,7 +54,7 @@ export default function CustomerSearch({
                 {selectedCustomer.phone} | สัญญา {selectedCustomer._count.contracts} รายการ
               </div>
             </div>
-            <button onClick={onClearCustomer} className="text-xs text-red-500 hover:underline">
+            <button onClick={onClearCustomer} className="text-xs text-destructive hover:underline">
               เปลี่ยน
             </button>
           </div>

@@ -47,7 +47,7 @@ export default function SessionActions({
               onAssign(currentUserId);
               onClose();
             }}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors"
           >
             <UserPlus className="w-3.5 h-3.5" />
             รับเรื่องนี้
@@ -65,7 +65,7 @@ export default function SessionActions({
         <div className="relative">
           <button
             onClick={() => setShowStaffList((v) => !v)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-orange-50 text-orange-700 rounded-lg hover:bg-orange-100 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-warning/10 text-warning rounded-lg hover:bg-warning/20 transition-colors"
           >
             <ArrowRightLeft className="w-3.5 h-3.5" />
             โอนให้พนักงาน
@@ -81,7 +81,7 @@ export default function SessionActions({
                 </div>
               )}
               {staffQuery.isError && (
-                <div className="px-3 py-2 text-xs text-red-500">โหลดรายชื่อไม่ได้</div>
+                <div className="px-3 py-2 text-xs text-destructive">โหลดรายชื่อไม่ได้</div>
               )}
               {staffQuery.data && (staffQuery.data as any[]).length === 0 && (
                 <div className="px-3 py-2 text-xs text-muted-foreground">ไม่มีพนักงานออนไลน์</div>
@@ -98,7 +98,7 @@ export default function SessionActions({
                     }}
                     className="flex items-center gap-2 w-full px-3 py-2 text-sm text-left hover:bg-muted transition-colors"
                   >
-                    <span className="w-2 h-2 rounded-full bg-green-400 flex-shrink-0" title="ออนไลน์" />
+                    <span className="w-2 h-2 rounded-full bg-success flex-shrink-0" title="ออนไลน์" />
                     <span className="truncate">{staff.name ?? staff.email}</span>
                   </button>
                 ))}
@@ -109,7 +109,7 @@ export default function SessionActions({
         {/* Resolve */}
         <button
           onClick={onResolve}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-success/10 text-success rounded-lg hover:bg-success/20 transition-colors"
         >
           <CheckCircle className="w-3.5 h-3.5" />
           ปิดการสนทนา
@@ -121,7 +121,7 @@ export default function SessionActions({
             onClick={() => {
               navigate(`/contracts/create?customerId=${session.customerId}`);
             }}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors"
           >
             <FileSignature className="w-3.5 h-3.5" />
             สร้างสัญญา
@@ -132,7 +132,7 @@ export default function SessionActions({
         {session.handoffMode && (
           <button
             onClick={onReturnToAI}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-muted text-muted-foreground rounded-lg hover:bg-accent transition-colors"
           >
             <Bot className="w-3.5 h-3.5" />
             ส่งกลับ Bot

@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router';
+import { Link } from 'react-router';
 import api, { getErrorMessage } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import QueryBoundary from '@/components/QueryBoundary';
@@ -31,15 +31,14 @@ interface WorkflowProduct {
 }
 
 const workflowSteps = [
-  { key: 'RECEIVED', label: 'รับเข้า', icon: Package, color: 'bg-blue-500' },
-  { key: 'INSPECTING', label: 'ตรวจสอบ', icon: Search, color: 'bg-yellow-500' },
-  { key: 'QC_PASSED', label: 'ผ่าน QC', icon: CheckCircle2, color: 'bg-green-500' },
+  { key: 'RECEIVED', label: 'รับเข้า', icon: Package, color: 'bg-info' },
+  { key: 'INSPECTING', label: 'ตรวจสอบ', icon: Search, color: 'bg-warning' },
+  { key: 'QC_PASSED', label: 'ผ่าน QC', icon: CheckCircle2, color: 'bg-success' },
   { key: 'IN_STOCK', label: 'เข้าสต็อก', icon: Warehouse, color: 'bg-primary' },
 ];
 
 export default function InventoryWorkflowPage() {
   const { user } = useAuth();
-  const navigate = useNavigate();
   const [selectedStep, setSelectedStep] = useState<string | null>(null);
 
   const { data: products, isLoading, isError, error, refetch } = useQuery<WorkflowProduct[]>({
@@ -136,12 +135,12 @@ export default function InventoryWorkflowPage() {
             {filtered.map((product) => {
               const step = workflowSteps.find((s) => s.key === product.status);
               return (
-                <div
+                <Link
                   key={product.id}
+                  to={`/inspections/${product.id}`}
                   className="flex items-center gap-4 px-5 py-3.5 hover:bg-muted/50 cursor-pointer transition-colors"
-                  onClick={() => navigate(`/inspections/${product.id}`)}
                 >
-                  <div className={`size-8 rounded-lg ${step?.color ?? 'bg-gray-400'} flex items-center justify-center shrink-0`}>
+                  <div className={`size-8 rounded-lg ${step?.color ?? 'bg-muted'} flex items-center justify-center shrink-0`}>
                     {step?.icon && <step.icon className="size-4 text-white" />}
                   </div>
                   <div className="flex-1 min-w-0">
@@ -153,7 +152,7 @@ export default function InventoryWorkflowPage() {
                     </p>
                   </div>
                   {(() => { const cfg = getStatusBadgeProps(product.status, inspectionStatusMap); return <Badge variant={cfg.variant} appearance={cfg.appearance}>{cfg.label}</Badge>; })()}
-                </div>
+                </Link>
               );
             })}
           </div>

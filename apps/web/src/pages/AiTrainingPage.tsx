@@ -115,12 +115,12 @@ export default function AiTrainingPage() {
       >
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           <StatCard
-            icon={<Database className="w-4 h-4 text-blue-500" />}
+            icon={<Database className="w-4 h-4 text-muted-foreground" />}
             label="Training Pairs ทั้งหมด"
             value={(stats?.totalPairs ?? 0).toLocaleString()}
           />
           <StatCard
-            icon={<CheckCircle className="w-4 h-4 text-green-500" />}
+            icon={<CheckCircle className="w-4 h-4 text-success" />}
             label="Pairs ใช้ได้ (quality ≥ 0.7)"
             value={(stats?.usablePairs ?? 0).toLocaleString()}
             sub={
@@ -132,7 +132,7 @@ export default function AiTrainingPage() {
           {Object.entries(stats?.bySource ?? {}).slice(0, 2).map(([source, count]) => (
             <StatCard
               key={source}
-              icon={<Brain className="w-4 h-4 text-purple-500" />}
+              icon={<Brain className="w-4 h-4 text-muted-foreground" />}
               label={source}
               value={(count as number).toLocaleString()}
               sub="pairs"
@@ -164,19 +164,19 @@ export default function AiTrainingPage() {
       <Card className="max-w-lg">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
-            <Upload className="w-4 h-4 text-purple-500" />
+            <Upload className="w-4 h-4 text-muted-foreground" />
             นำเข้าข้อมูลจาก Chatcone
           </CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div
-              className="border-2 border-dashed border-border rounded-xl p-6 text-center hover:border-purple-400 transition-colors cursor-pointer"
+              className="border-2 border-dashed border-border rounded-xl p-6 text-center hover:border-primary transition-colors cursor-pointer"
               onClick={() => fileInputRef.current?.click()}
             >
               <Upload className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
               {selectedFile ? (
-                <p className="text-sm text-purple-600 font-medium">{selectedFile.name}</p>
+                <p className="text-sm text-foreground font-medium">{selectedFile.name}</p>
               ) : (
                 <>
                   <p className="text-sm text-muted-foreground">คลิกเพื่อเลือกไฟล์</p>

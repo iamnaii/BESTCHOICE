@@ -161,7 +161,7 @@ export default function DashboardPage() {
         subtitle={`สวัสดี ${user?.name} — ${subtitle[role || ''] || 'ภาพรวมระบบ'}`}
         action={
           <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground bg-muted border border-border rounded-lg px-3 py-2">
-            <span className="size-2 rounded-full bg-green-400 animate-pulse inline-block" />
+            <span className="size-2 rounded-full bg-success animate-pulse inline-block" />
             <span>อัปเดตอัตโนมัติทุก 5 นาที</span>
           </div>
         }

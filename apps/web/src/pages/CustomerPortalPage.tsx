@@ -156,7 +156,7 @@ function CustomerPortalPage() {
           </div>
           <div className="w-full bg-muted rounded-full h-3 mb-2">
             <div
-              className="bg-green-500 h-3 rounded-full transition-all"
+              className="bg-success h-3 rounded-full transition-all"
               style={{ width: `${(paidCount / c.totalMonths) * 100}%` }}
             />
           </div>
@@ -183,7 +183,7 @@ function CustomerPortalPage() {
                 <div className="text-right">
                   <div className="text-sm">{Number(p.amountDue).toLocaleString()} ฿</div>
                   {Number(p.lateFee) > 0 && (
-                    <div className="text-xs text-red-500">+ค่าปรับ {Number(p.lateFee).toLocaleString()} ฿</div>
+                    <div className="text-xs text-destructive">+ค่าปรับ {Number(p.lateFee).toLocaleString()} ฿</div>
                   )}
                   <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${paymentStatusColors[p.status] || 'bg-muted text-muted-foreground'}`}>
                     {statusLabels[p.status] || p.status}

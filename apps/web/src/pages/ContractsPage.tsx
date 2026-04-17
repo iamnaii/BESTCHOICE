@@ -217,7 +217,7 @@ export default function ContractsPage() {
         const allFour = hasCust && hasCompany && hasW1 && hasW2;
         const count = [hasCust, hasCompany, hasW1, hasW2].filter(Boolean).length;
         if (allFour) return <span className="text-xs text-success font-medium">ครบ ({count}/4)</span>;
-        if (count > 0) return <span className="text-xs text-amber-600">{count}/4</span>;
+        if (count > 0) return <span className="text-xs text-warning">{count}/4</span>;
         return <span className="text-xs text-muted-foreground">-</span>;
       },
     },
@@ -355,7 +355,7 @@ export default function ContractsPage() {
         {isManager && (
           <button
             onClick={() => updateParams({ tab: 'pending_review', status: '', workflow: '', q: '', page: '' })}
-            className={`px-5 py-3 text-sm font-medium border-b-2 -mb-px transition-all ${viewTab === 'pending_review' ? 'border-amber-500 text-amber-600 dark:text-amber-400' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+            className={`px-5 py-3 text-sm font-medium border-b-2 -mb-px transition-all ${viewTab === 'pending_review' ? 'border-warning text-warning' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
           >
             รอตรวจสอบ
           </button>
@@ -369,6 +369,7 @@ export default function ContractsPage() {
             <svg className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
             <input
               type="text"
+              aria-label="ค้นหาสัญญา"
               placeholder="ค้นหาเลขสัญญา, ชื่อลูกค้า..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}

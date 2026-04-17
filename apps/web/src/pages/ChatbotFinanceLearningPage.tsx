@@ -29,10 +29,10 @@ interface KbSuggestion {
 
 function StatCard({ label, value, accent = 'blue' }: { label: string; value: string | number; accent?: 'blue' | 'orange' | 'green' | 'red' }) {
   const colors = {
-    blue: 'border-blue-200 bg-blue-50',
-    orange: 'border-orange-200 bg-orange-50',
-    green: 'border-green-200 bg-green-50',
-    red: 'border-red-200 bg-red-50',
+    blue: 'border-info/20 bg-info/10',
+    orange: 'border-warning/20 bg-warning/10',
+    green: 'border-success/20 bg-success/10',
+    red: 'border-destructive/20 bg-destructive/10',
   };
   return (
     <div className={`rounded-xl border p-4 ${colors[accent]}`}>
@@ -148,7 +148,7 @@ export default function ChatbotFinanceLearningPage() {
             onClick={() => { setStatusFilter(s); setSelectedSuggestion(null); }}
             className={`px-4 py-1.5 rounded-full text-sm ${
               statusFilter === s
-                ? 'bg-blue-600 text-white'
+                ? 'bg-primary text-primary-foreground'
                 : 'bg-muted text-muted-foreground hover:bg-muted/80'
             }`}
           >
@@ -175,7 +175,7 @@ export default function ChatbotFinanceLearningPage() {
                   key={s.id}
                   onClick={() => setSelectedSuggestion(s)}
                   className={`p-3 border rounded-lg cursor-pointer hover:bg-accent ${
-                    selectedSuggestion?.id === s.id ? 'border-blue-400 bg-blue-50' : 'bg-card'
+                    selectedSuggestion?.id === s.id ? 'border-primary bg-primary/5' : 'bg-card'
                   }`}
                 >
                   <div className="flex justify-between items-start">
@@ -210,13 +210,13 @@ export default function ChatbotFinanceLearningPage() {
 
               <div>
                 <label className="text-xs text-muted-foreground">คำถามลูกค้า</label>
-                <p className="text-sm bg-yellow-50 p-3 rounded-lg mt-1">{selectedSuggestion.customerQuestion}</p>
+                <p className="text-sm bg-warning/10 p-3 rounded-lg mt-1">{selectedSuggestion.customerQuestion}</p>
               </div>
 
               {selectedSuggestion.staffAnswer && (
                 <div>
                   <label className="text-xs text-muted-foreground">คำตอบจากพนักงาน</label>
-                  <p className="text-sm bg-green-50 p-3 rounded-lg mt-1 whitespace-pre-wrap">{selectedSuggestion.staffAnswer}</p>
+                  <p className="text-sm bg-success/10 p-3 rounded-lg mt-1 whitespace-pre-wrap">{selectedSuggestion.staffAnswer}</p>
                 </div>
               )}
 
@@ -245,7 +245,7 @@ export default function ChatbotFinanceLearningPage() {
               {selectedSuggestion.suggestedTemplate && (
                 <div>
                   <label className="text-xs text-muted-foreground">Suggested Template</label>
-                  <p className="text-sm bg-blue-50 p-3 rounded-lg mt-1 whitespace-pre-wrap">{selectedSuggestion.suggestedTemplate}</p>
+                  <p className="text-sm bg-info/10 p-3 rounded-lg mt-1 whitespace-pre-wrap">{selectedSuggestion.suggestedTemplate}</p>
                 </div>
               )}
 
@@ -254,14 +254,14 @@ export default function ChatbotFinanceLearningPage() {
                   <button
                     onClick={() => approveMutation.mutate(selectedSuggestion.id)}
                     disabled={approveMutation.isPending}
-                    className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50"
+                    className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm hover:bg-primary/90 disabled:opacity-50"
                   >
                     {approveMutation.isPending ? 'กำลัง...' : 'Approve → สร้าง KB'}
                   </button>
                   <button
                     onClick={() => rejectMutation.mutate(selectedSuggestion.id)}
                     disabled={rejectMutation.isPending}
-                    className="px-4 py-2 border border-red-300 text-red-600 rounded-lg text-sm hover:bg-red-50 disabled:opacity-50"
+                    className="px-4 py-2 border border-destructive/30 text-destructive rounded-lg text-sm hover:bg-destructive/10 disabled:opacity-50"
                   >
                     Reject
                   </button>

@@ -98,7 +98,7 @@ export function PODetailModal({
               {/* การจ่ายเงิน */}
               <div className="rounded-xl border border-border/50 bg-card p-5 shadow-sm">
                 <div className="flex items-center gap-2.5 mb-4">
-                  <div className="flex items-center justify-center size-8 rounded-lg bg-emerald-500/10 text-emerald-500">
+                  <div className="flex items-center justify-center size-8 rounded-lg bg-success/10 text-success">
                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 17a5 5 0 0 0 10 0c0-2.76-2.24-5-5-5s-5 2.24-5 5Z"/><path d="M12 17a5 5 0 0 0 10 0c0-2.76-2.24-5-5-5s-5 2.24-5 5Z"/><path d="M7 7a5 5 0 0 0 10 0c0-2.76-2.24-5-5-5S7 4.24 7 7Z"/></svg>
                   </div>
                   <div>
@@ -145,7 +145,7 @@ export function PODetailModal({
                           const remaining = net - paid;
                           if (remaining > 0 && paid > 0) {
                             return (
-                              <span className="text-amber-700 font-semibold">
+                              <span className="text-warning font-semibold">
                                 คงเหลือ {remaining.toLocaleString()} บาท
                               </span>
                             );
@@ -156,7 +156,7 @@ export function PODetailModal({
                       {Number(selectedPO.netAmount ?? selectedPO.totalAmount) > 0 && (
                         <div className="w-full bg-secondary rounded-full h-1.5 mt-1">
                           <div
-                            className="bg-green-500 h-1.5 rounded-full"
+                            className="bg-success h-1.5 rounded-full"
                             style={{ width: `${Math.min((Number(selectedPO.paidAmount || 0) / Number(selectedPO.netAmount ?? selectedPO.totalAmount)) * 100, 100)}%` }}
                           />
                         </div>
@@ -182,7 +182,7 @@ export function PODetailModal({
               {selectedPO.attachments && selectedPO.attachments.length > 0 && (
                 <div className="rounded-xl border border-border/50 bg-card p-5 shadow-sm">
                   <div className="flex items-center gap-2.5 mb-4">
-                    <div className="flex items-center justify-center size-8 rounded-lg bg-violet-500/10 text-violet-500">
+                    <div className="flex items-center justify-center size-8 rounded-lg bg-primary/10 text-primary">
                       <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
                     </div>
                     <div>
@@ -207,7 +207,7 @@ export function PODetailModal({
               {/* รายการสินค้า */}
               <div className="rounded-xl border border-border/50 bg-card p-5 shadow-sm">
                 <div className="flex items-center gap-2.5 mb-4">
-                  <div className="flex items-center justify-center size-8 rounded-lg bg-orange-500/10 text-orange-500">
+                  <div className="flex items-center justify-center size-8 rounded-lg bg-warning/10 text-warning">
                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
                   </div>
                   <div>
@@ -242,7 +242,7 @@ export function PODetailModal({
                         <td className="px-3 py-2.5 text-right tabular-nums">{item.quantity}</td>
                         <td className="px-3 py-2.5 text-right tabular-nums font-mono">{Number(item.unitPrice).toLocaleString()}</td>
                         <td className="px-3 py-2.5 text-right">
-                          <span className={item.receivedQty >= item.quantity ? 'text-success font-semibold' : 'text-yellow-600 font-medium'}>
+                          <span className={item.receivedQty >= item.quantity ? 'text-success font-semibold' : 'text-warning font-medium'}>
                             {item.receivedQty}
                           </span>
                         </td>
@@ -264,7 +264,7 @@ export function PODetailModal({
               {selectedPO.notes && (
                 <div className="rounded-xl border border-border/50 bg-card p-5 shadow-sm">
                   <div className="flex items-center gap-2.5 mb-4">
-                    <div className="flex items-center justify-center size-8 rounded-lg bg-amber-500/10 text-amber-500">
+                    <div className="flex items-center justify-center size-8 rounded-lg bg-warning/10 text-warning">
                       <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.855z"/></svg>
                     </div>
                     <div>
@@ -280,7 +280,7 @@ export function PODetailModal({
               {poDetail?.goodsReceivings && poDetail.goodsReceivings.length > 0 && (
                 <div className="rounded-xl border border-border/50 bg-card p-5 shadow-sm">
                   <div className="flex items-center gap-2.5 mb-4">
-                    <div className="flex items-center justify-center size-8 rounded-lg bg-sky-500/10 text-sky-500">
+                    <div className="flex items-center justify-center size-8 rounded-lg bg-info/10 text-info">
                       <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m9 12 2 2 4-4"/></svg>
                     </div>
                     <div>
@@ -325,7 +325,7 @@ export function PODetailModal({
                                   <span className="font-mono text-muted-foreground">SN: {item.serialNumber}</span>
                                 )}
                                 {item.rejectReason && (
-                                  <span className="text-red-500">({item.rejectReason})</span>
+                                  <span className="text-destructive">({item.rejectReason})</span>
                                 )}
                               </div>
                             ))}

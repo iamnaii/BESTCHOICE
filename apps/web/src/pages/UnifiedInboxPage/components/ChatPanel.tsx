@@ -354,7 +354,7 @@ export default function ChatPanel({
             className={cn(
               'p-1.5 rounded-lg transition-colors',
               session.pinnedAt
-                ? 'text-amber-500 hover:bg-amber-50'
+                ? 'text-warning hover:bg-warning/10'
                 : 'text-muted-foreground hover:bg-accent hover:text-foreground/70',
             )}
             title={session.pinnedAt ? 'ถอดหมุด' : 'ปักหมุด'}

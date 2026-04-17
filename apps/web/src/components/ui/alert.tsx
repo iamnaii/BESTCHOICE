@@ -28,45 +28,45 @@ const alertVariants = cva('flex items-stretch w-full gap-2', {
     { variant: 'secondary', appearance: 'solid', className: 'bg-muted text-foreground' },
     { variant: 'primary', appearance: 'solid', className: 'bg-primary text-primary-foreground' },
     { variant: 'destructive', appearance: 'solid', className: 'bg-destructive text-destructive-foreground' },
-    { variant: 'success', appearance: 'solid', className: 'bg-green-500 text-white' },
-    { variant: 'info', appearance: 'solid', className: 'bg-violet-600 text-white' },
-    { variant: 'warning', appearance: 'solid', className: 'bg-yellow-500 text-white' },
+    { variant: 'success', appearance: 'solid', className: 'bg-success text-success-foreground' },
+    { variant: 'info', appearance: 'solid', className: 'bg-info text-info-foreground' },
+    { variant: 'warning', appearance: 'solid', className: 'bg-warning text-warning-foreground' },
     { variant: 'secondary', appearance: 'outline', className: 'border border-border bg-background text-foreground' },
     { variant: 'primary', appearance: 'outline', className: 'border border-border bg-background text-primary' },
     { variant: 'destructive', appearance: 'outline', className: 'border border-border bg-background text-destructive' },
-    { variant: 'success', appearance: 'outline', className: 'border border-border bg-background text-green-500' },
-    { variant: 'info', appearance: 'outline', className: 'border border-border bg-background text-violet-600' },
-    { variant: 'warning', appearance: 'outline', className: 'border border-border bg-background text-yellow-500' },
+    { variant: 'success', appearance: 'outline', className: 'border border-border bg-background text-success' },
+    { variant: 'info', appearance: 'outline', className: 'border border-border bg-background text-info' },
+    { variant: 'warning', appearance: 'outline', className: 'border border-border bg-background text-warning' },
     { variant: 'secondary', appearance: 'light', className: 'bg-muted border border-border text-foreground' },
     {
       variant: 'primary',
       appearance: 'light',
       className:
-        'text-foreground bg-blue-50 border border-blue-100 **:data-[slot=alert-icon]:text-primary dark:bg-blue-950 dark:border-blue-900',
+        'text-foreground bg-primary/10 border border-primary/20 **:data-[slot=alert-icon]:text-primary',
     },
     {
       variant: 'destructive',
       appearance: 'light',
       className:
-        'bg-red-50 border border-red-100 text-foreground **:data-[slot=alert-icon]:text-destructive dark:bg-red-950 dark:border-red-900',
+        'bg-destructive/10 border border-destructive/20 text-foreground **:data-[slot=alert-icon]:text-destructive',
     },
     {
       variant: 'success',
       appearance: 'light',
       className:
-        'bg-green-50 border border-green-200 text-foreground **:data-[slot=alert-icon]:text-green-600 dark:bg-green-950 dark:border-green-900',
+        'bg-success/10 border border-success/20 text-foreground **:data-[slot=alert-icon]:text-success',
     },
     {
       variant: 'info',
       appearance: 'light',
       className:
-        'bg-violet-50 border border-violet-100 text-foreground **:data-[slot=alert-icon]:text-violet-600 dark:bg-violet-950 dark:border-violet-900',
+        'bg-info/10 border border-info/20 text-foreground **:data-[slot=alert-icon]:text-info',
     },
     {
       variant: 'warning',
       appearance: 'light',
       className:
-        'bg-yellow-50 border border-yellow-200 text-foreground **:data-[slot=alert-icon]:text-yellow-600 dark:bg-yellow-950 dark:border-yellow-900',
+        'bg-warning/10 border border-warning/20 text-foreground **:data-[slot=alert-icon]:text-warning',
     },
   ],
   defaultVariants: {

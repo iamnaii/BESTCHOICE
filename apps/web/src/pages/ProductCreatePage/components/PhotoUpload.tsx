@@ -22,7 +22,7 @@ export default function PhotoUpload({ photoPreviews, onAdd, onRemove }: PhotoUpl
               <button
                 type="button"
                 onClick={() => onRemove(index)}
-                className="absolute top-0.5 right-0.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center hover:bg-red-600"
+                className="absolute top-0.5 right-0.5 w-5 h-5 bg-destructive text-destructive-foreground rounded-full text-xs flex items-center justify-center hover:bg-destructive/90"
               >
                 &times;
               </button>

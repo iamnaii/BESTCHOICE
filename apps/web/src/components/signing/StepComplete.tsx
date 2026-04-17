@@ -53,7 +53,7 @@ export default function StepComplete({
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] px-4 text-center">
-      <div className="text-6xl mb-6 text-green-500">&#10003;</div>
+      <div className="text-6xl mb-6 text-success">&#10003;</div>
       <h2 className="text-2xl font-bold text-foreground mb-2">เซ็นสัญญาเรียบร้อยแล้ว!</h2>
       <p className="text-muted-foreground mb-6">สัญญาเลขที่ {contractNumber}</p>
 
@@ -77,14 +77,14 @@ export default function StepComplete({
           </div>
         )}
         {generateMutation.isSuccess && (
-          <div className="text-sm text-green-600 font-medium">สร้างเอกสาร PDF เรียบร้อย</div>
+          <div className="text-sm text-success font-medium">สร้างเอกสาร PDF เรียบร้อย</div>
         )}
         {generateMutation.isError && (
           <div className="space-y-2">
-            <div className="text-sm text-red-600">สร้างเอกสารไม่สำเร็จ</div>
+            <div className="text-sm text-destructive">สร้างเอกสารไม่สำเร็จ</div>
             <button
               onClick={() => generateMutation.mutate()}
-              className="px-4 py-2 text-sm bg-red-50 text-red-700 border border-red-200 rounded-lg hover:bg-red-100"
+              className="px-4 py-2 text-sm bg-destructive/10 text-destructive border border-destructive/30 rounded-lg hover:bg-destructive/20"
             >
               ลองใหม่
             </button>

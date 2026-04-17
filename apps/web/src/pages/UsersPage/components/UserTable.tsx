@@ -192,7 +192,7 @@ export function InviteTable({
             {status.label === 'รอลงทะเบียน' && (
               <button
                 onClick={() => onRevoke(i.id, i.email)}
-                className="text-red-500 hover:text-red-600 text-sm font-medium"
+                className="text-destructive hover:text-destructive/80 text-sm font-medium"
               >
                 ยกเลิก
               </button>

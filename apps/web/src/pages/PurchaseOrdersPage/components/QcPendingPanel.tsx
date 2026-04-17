@@ -47,13 +47,13 @@ export function QcPendingPanel({
                 />
                 <button
                   onClick={() => qcConfirmMutation.mutate({ items: [{ productId: item.productId, passed: true, notes: qcNotes[item.productId] || undefined }] })}
-                  className="px-3 py-1 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700"
+                  className="px-3 py-1 bg-success text-success-foreground rounded text-xs font-medium hover:bg-success/90"
                 >
                   ผ่าน
                 </button>
                 <button
                   onClick={() => qcConfirmMutation.mutate({ items: [{ productId: item.productId, passed: false, notes: qcNotes[item.productId] || undefined }] })}
-                  className="px-3 py-1 bg-red-600 text-white rounded text-xs font-medium hover:bg-red-700"
+                  className="px-3 py-1 bg-destructive text-destructive-foreground rounded text-xs font-medium hover:bg-destructive/90"
                 >
                   ไม่ผ่าน
                 </button>

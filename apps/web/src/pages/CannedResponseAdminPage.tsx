@@ -172,7 +172,7 @@ export default function CannedResponseAdminPage() {
           !isCreating && !editingId ? (
             <button
               onClick={startCreate}
-              className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-white hover:bg-primary/90 transition-colors"
+              className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
             >
               <Plus className="size-4" />
               เพิ่มข้อความ
@@ -282,7 +282,7 @@ export default function CannedResponseAdminPage() {
               <button
                 type="submit"
                 disabled={isSaving}
-                className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 transition-colors disabled:opacity-50"
+                className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
               >
                 <Save className="size-4" />
                 {isSaving ? 'กำลังบันทึก...' : 'บันทึก'}

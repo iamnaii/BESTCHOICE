@@ -42,10 +42,10 @@ const roleLabels: Record<string, string> = {
 
 const roleBadgeColors: Record<string, string> = {
   OWNER:          'bg-primary/10 text-primary',
-  BRANCH_MANAGER: 'bg-sky-500/10 text-sky-600 dark:text-sky-400',
-  FINANCE_MANAGER:'bg-violet-500/10 text-violet-600 dark:text-violet-400',
-  SALES:          'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
-  ACCOUNTANT:     'bg-amber-500/10 text-amber-600 dark:text-amber-400',
+  BRANCH_MANAGER: 'bg-info/10 text-info',
+  FINANCE_MANAGER:'bg-primary/10 text-primary',
+  SALES:          'bg-success/10 text-success',
+  ACCOUNTANT:     'bg-warning/10 text-warning',
 };
 
 /* ── UserDropdown ──────────────────────────────── */
@@ -233,7 +233,7 @@ export default function TopBar() {
           <Bell className="size-[17px]" strokeWidth={1.75} />
           {/* Active indicator dot */}
           <span
-            className="absolute top-[9px] right-[9px] size-[7px] rounded-full bg-emerald-500 ring-[1.5px] ring-background"
+            className="absolute top-[9px] right-[9px] size-[7px] rounded-full bg-success ring-[1.5px] ring-background"
             aria-hidden="true"
           />
         </Button>

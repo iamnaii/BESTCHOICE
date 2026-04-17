@@ -59,30 +59,30 @@ export default function LandingPage() {
             <div className="grid lg:grid-cols-2 gap-12 items-center">
               {/* Text Content */}
               <div className="animate-slideUp">
-                <span className="inline-block px-4 py-1.5 text-xs font-semibold text-primary-200 bg-white/10 rounded-full mb-6">
+                <span className="inline-block px-4 py-1.5 text-xs font-semibold text-primary-foreground/80 bg-primary-foreground/10 rounded-full mb-6">
                   ร้านมือถือที่คุณไว้วางใจ
                 </span>
-                <h1 className="text-4xl lg:text-5xl xl:text-6xl font-bold text-white leading-tight">
+                <h1 className="text-3xl lg:text-4xl xl:text-5xl font-bold text-primary-foreground leading-tight">
                   สินค้าคุณภาพ
                   <br />
                   <span className="text-gradient">ผ่อนสบาย</span>
                   <br />
                   ราคาเป็นกันเอง
                 </h1>
-                <p className="mt-6 text-lg text-white/70 max-w-lg leading-relaxed">
+                <p className="mt-6 text-lg text-primary-foreground/70 max-w-lg leading-relaxed">
                   เลือกซื้อสมาร์ทโฟนคุณภาพ ทั้งเครื่องใหม่และมือสอง
                   พร้อมบริการผ่อนชำระที่ยืดหยุ่น ดูแลหลังการขายครบวงจร
                 </p>
                 <div className="mt-8 flex flex-wrap gap-4">
                   <button
                     onClick={() => scrollTo('products')}
-                    className="px-8 py-3 text-sm font-semibold text-white bg-primary hover:bg-primary/90 rounded-xl transition-all shadow-lg shadow-emerald-500/20"
+                    className="px-8 py-3 text-sm font-semibold text-primary-foreground bg-primary hover:bg-primary/90 rounded-xl transition-all shadow-lg shadow-emerald-500/20"
                   >
                     ดูสินค้าทั้งหมด
                   </button>
                   <button
                     onClick={() => scrollTo('contact')}
-                    className="px-8 py-3 text-sm font-semibold text-white border border-white/30 hover:bg-white/10 rounded-xl transition-all"
+                    className="px-8 py-3 text-sm font-semibold text-primary-foreground border border-primary-foreground/30 hover:bg-primary-foreground/10 rounded-xl transition-all"
                   >
                     ติดต่อเรา
                   </button>
@@ -90,17 +90,17 @@ export default function LandingPage() {
 
                 {/* Stats */}
                 <div className="mt-12 grid grid-cols-3 gap-6">
-                  <div className="bg-white/6 backdrop-blur-xs border border-white/8 rounded-xl p-4">
-                    <div className="text-2xl lg:text-3xl font-bold text-white">500+</div>
-                    <div className="text-sm text-white/50 mt-1">สินค้าพร้อมขาย</div>
+                  <div className="bg-primary-foreground/5 backdrop-blur-xs border border-primary-foreground/10 rounded-xl p-4">
+                    <div className="text-2xl lg:text-3xl font-bold text-primary-foreground">500+</div>
+                    <div className="text-sm text-primary-foreground/50 mt-1">สินค้าพร้อมขาย</div>
                   </div>
-                  <div className="bg-white/6 backdrop-blur-xs border border-white/8 rounded-xl p-4">
-                    <div className="text-2xl lg:text-3xl font-bold text-white">1,000+</div>
-                    <div className="text-sm text-white/50 mt-1">ลูกค้าที่ไว้ใจ</div>
+                  <div className="bg-primary-foreground/5 backdrop-blur-xs border border-primary-foreground/10 rounded-xl p-4">
+                    <div className="text-2xl lg:text-3xl font-bold text-primary-foreground">1,000+</div>
+                    <div className="text-sm text-primary-foreground/50 mt-1">ลูกค้าที่ไว้ใจ</div>
                   </div>
-                  <div className="bg-white/6 backdrop-blur-xs border border-white/8 rounded-xl p-4">
-                    <div className="text-2xl lg:text-3xl font-bold text-white">5+</div>
-                    <div className="text-sm text-white/50 mt-1">สาขาทั่วประเทศ</div>
+                  <div className="bg-primary-foreground/5 backdrop-blur-xs border border-primary-foreground/10 rounded-xl p-4">
+                    <div className="text-2xl lg:text-3xl font-bold text-primary-foreground">5+</div>
+                    <div className="text-sm text-primary-foreground/50 mt-1">สาขาทั่วประเทศ</div>
                   </div>
                 </div>
               </div>
@@ -110,10 +110,10 @@ export default function LandingPage() {
                 <div className="relative">
                   <div className="w-64 h-[500px] bg-linear-to-b from-white/10 to-white/5 rounded-[3rem] border border-white/20 flex items-center justify-center animate-float">
                     <div className="w-56 h-[460px] bg-linear-to-b from-primary-800 to-primary-900 rounded-[2.5rem] flex flex-col items-center justify-center gap-4">
-                      <svg className="w-20 h-20 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <svg className="w-20 h-20 text-primary-foreground/80" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
                       </svg>
-                      <p className="text-primary-300 text-sm font-medium">Best Choice</p>
+                      <p className="text-primary-foreground/80 text-sm font-medium">Best Choice</p>
                     </div>
                   </div>
                   {/* Decorative circles */}
@@ -250,7 +250,7 @@ export default function LandingPage() {
                 key={i}
                 className="text-center p-6 rounded-2xl bg-card border border-border/60 hover:shadow-card-hover hover:-translate-y-1 transition-all duration-300 group"
               >
-                <div className="w-14 h-14 mx-auto rounded-xl bg-muted text-foreground flex items-center justify-center group-hover:bg-primary group-hover:text-white transition-colors duration-300">
+                <div className="w-14 h-14 mx-auto rounded-xl bg-muted text-foreground flex items-center justify-center group-hover:bg-primary group-hover:text-primary-foreground transition-colors duration-300">
                   {service.icon}
                 </div>
                 <h3 className="mt-4 font-semibold text-foreground">{service.title}</h3>
@@ -264,22 +264,22 @@ export default function LandingPage() {
       {/* CTA Section */}
       <section className="py-20 bg-hero-gradient">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-3xl lg:text-4xl font-bold text-white">
+          <h2 className="text-3xl lg:text-4xl font-bold text-primary-foreground">
             พร้อมเป็นเจ้าของสมาร์ทโฟนในฝัน?
           </h2>
-          <p className="mt-4 text-lg text-white/70">
+          <p className="mt-4 text-lg text-primary-foreground/70">
             เยี่ยมชมร้านของเราหรือติดต่อสอบถามได้เลยวันนี้
           </p>
           <div className="mt-8 flex justify-center gap-4">
             <Link
               to="/login"
-              className="px-8 py-3 text-sm font-semibold text-primary-900 bg-card hover:bg-muted rounded-xl transition-all hover:shadow-lg"
+              className="px-8 py-3 text-sm font-semibold text-primary bg-card hover:bg-muted rounded-xl transition-all hover:shadow-lg"
             >
               เข้าสู่ระบบ
             </Link>
             <button
               onClick={() => scrollTo('contact')}
-              className="px-8 py-3 text-sm font-semibold text-white border border-white/30 hover:bg-white/10 rounded-xl transition-all"
+              className="px-8 py-3 text-sm font-semibold text-primary-foreground border border-primary-foreground/30 hover:bg-primary-foreground/10 rounded-xl transition-all"
             >
               ติดต่อเรา
             </button>
@@ -310,7 +310,7 @@ export default function LandingPage() {
               <p className="mt-2 text-sm text-muted-foreground">02-xxx-xxxx</p>
             </div>
             <div className="text-center p-6 rounded-2xl bg-muted">
-              <div className="w-12 h-12 mx-auto rounded-xl bg-green-100 text-green-600 flex items-center justify-center mb-4">
+              <div className="w-12 h-12 mx-auto rounded-xl bg-success/10 text-success flex items-center justify-center mb-4">
                 <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                 </svg>
@@ -333,16 +333,16 @@ export default function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="bg-zinc-950 text-muted-foreground">
+      <footer className="bg-foreground text-background/70">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
           <div className="grid md:grid-cols-4 gap-8">
             <div className="md:col-span-2">
               <div className="flex items-center gap-2 mb-4">
-                <div className="w-8 h-8 rounded-lg bg-linear-to-br from-primary-400 to-primary-500 flex items-center justify-center">
-                  <span className="text-white font-bold text-sm">B</span>
+                <div className="w-8 h-8 rounded-lg bg-linear-to-br from-primary/70 to-primary flex items-center justify-center">
+                  <span className="text-background font-bold text-sm">B</span>
                 </div>
-                <span className="text-xl font-bold text-white">
-                  best<span className="text-primary-400">choice</span>
+                <span className="text-xl font-bold text-background">
+                  best<span className="text-primary/80">choice</span>
                 </span>
               </div>
               <p className="text-sm leading-relaxed max-w-sm">
@@ -351,23 +351,23 @@ export default function LandingPage() {
               </p>
             </div>
             <div>
-              <h4 className="text-white font-semibold mb-4">ลิงก์</h4>
+              <h4 className="text-background font-semibold mb-4">ลิงก์</h4>
               <ul className="space-y-2 text-sm">
-                <li><button onClick={() => scrollTo('hero')} className="hover:text-white transition-colors">หน้าแรก</button></li>
-                <li><button onClick={() => scrollTo('products')} className="hover:text-white transition-colors">สินค้า</button></li>
-                <li><button onClick={() => scrollTo('services')} className="hover:text-white transition-colors">บริการ</button></li>
-                <li><button onClick={() => scrollTo('contact')} className="hover:text-white transition-colors">ติดต่อเรา</button></li>
+                <li><button onClick={() => scrollTo('hero')} className="hover:text-background transition-colors">หน้าแรก</button></li>
+                <li><button onClick={() => scrollTo('products')} className="hover:text-background transition-colors">สินค้า</button></li>
+                <li><button onClick={() => scrollTo('services')} className="hover:text-background transition-colors">บริการ</button></li>
+                <li><button onClick={() => scrollTo('contact')} className="hover:text-background transition-colors">ติดต่อเรา</button></li>
               </ul>
             </div>
             <div>
-              <h4 className="text-white font-semibold mb-4">เวลาเปิดทำการ</h4>
+              <h4 className="text-background font-semibold mb-4">เวลาเปิดทำการ</h4>
               <ul className="space-y-2 text-sm">
                 <li>จันทร์ - เสาร์: 09:00 - 20:00</li>
                 <li>อาทิตย์: 10:00 - 18:00</li>
               </ul>
             </div>
           </div>
-          <div className="mt-12 pt-8 border-t border-white/10 text-center text-sm">
+          <div className="mt-12 pt-8 border-t border-background/10 text-center text-sm">
             <p>&copy; 2024 Best Choice Mobile. All rights reserved.</p>
           </div>
         </div>

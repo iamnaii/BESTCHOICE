@@ -49,15 +49,29 @@ export function useLiffInit(): UseLiffInitResult {
           const userId = params.get('line_user_id');
           const displayName = params.get('line_display_name');
           const pictureUrl = params.get('line_picture');
-          const lineIdToken = params.get('line_id_token');
 
           if (userId && displayName) {
             // Clean URL — remove login params
             const cleanUrl = new URL(window.location.href);
-            ['line_login', 'line_user_id', 'line_display_name', 'line_picture', 'line_id_token'].forEach(
+            ['line_login', 'line_user_id', 'line_display_name', 'line_picture'].forEach(
               (k) => cleanUrl.searchParams.delete(k),
             );
             window.history.replaceState({}, '', cleanUrl.toString());
+
+            // Fetch id_token from one-shot cookie endpoint (httpOnly, not readable from JS)
+            let lineIdToken: string | null = null;
+            try {
+              const base = API_URL.startsWith('http') ? API_URL : `${window.location.origin}${API_URL}`;
+              const tokenRes = await fetch(`${base}/line-oa/line-login/id-token`, {
+                credentials: 'include',
+              });
+              if (tokenRes.ok) {
+                const body = (await tokenRes.json()) as { token?: string };
+                lineIdToken = body.token ?? null;
+              }
+            } catch {
+              // Cookie missing or network error — subsequent LIFF API calls will 401
+            }
 
             if (!cancelled) {
               setLineId(userId);

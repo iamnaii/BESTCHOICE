@@ -51,6 +51,7 @@ export class LineOaService {
 
     const response = await fetch(`${this.lineApiBaseUrl}/info`, {
       headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(10_000),
     });
 
     if (!response.ok) {
@@ -106,6 +107,7 @@ export class LineOaService {
       headers: {
         Authorization: `Bearer ${token}`,
       },
+      signal: AbortSignal.timeout(15_000),
     });
 
     if (!response.ok) {
@@ -130,6 +132,7 @@ export class LineOaService {
       headers: {
         Authorization: `Bearer ${token}`,
       },
+      signal: AbortSignal.timeout(10_000),
     });
 
     if (!response.ok) {

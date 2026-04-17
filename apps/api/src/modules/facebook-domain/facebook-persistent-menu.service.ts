@@ -81,6 +81,7 @@ export class FacebookPersistentMenuService {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(menu),
+          signal: AbortSignal.timeout(10_000),
         },
       );
 
@@ -114,6 +115,7 @@ export class FacebookPersistentMenuService {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ fields: ['persistent_menu'] }),
+          signal: AbortSignal.timeout(10_000),
         },
       );
 

@@ -152,6 +152,7 @@ export class NotificationsService {
         'Authorization': `Bearer ${lineChannelAccessToken}`,
       },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(10_000),
     });
 
     if (!response.ok) {
@@ -184,6 +185,7 @@ export class NotificationsService {
         'Authorization': `Bearer ${lineChannelAccessToken}`,
       },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(10_000),
     });
 
     if (!response.ok) {
@@ -238,6 +240,7 @@ export class NotificationsService {
         'Authorization': `Basic ${basicAuth}`,
       },
       body: params.toString(),
+      signal: AbortSignal.timeout(15_000),
     });
     const responseText = await response.text();
 
@@ -319,6 +322,7 @@ export class NotificationsService {
           'Accept': 'application/json',
           'Authorization': `Basic ${basicAuth}`,
         },
+        signal: AbortSignal.timeout(10_000),
       });
       const data = await response.json() as Record<string, unknown>;
 

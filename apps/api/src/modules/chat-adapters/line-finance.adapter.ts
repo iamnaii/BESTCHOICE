@@ -7,6 +7,7 @@ import {
   UserProfile,
 } from '../chat-engine/interfaces/channel-adapter.interface';
 import { LineFinanceClientService } from '../chatbot-finance/services/line-finance-client.service';
+import { parseStickerToken } from '../chat-engine/utils/sticker-token.util';
 
 /**
  * LINE Finance adapter — wraps LineFinanceClientService
@@ -26,7 +27,16 @@ export class LineFinanceAdapter implements IChannelAdapter {
       }
 
       if (message.text) {
-        await this.lineClient.pushText(message.externalUserId, message.text);
+        const sticker = parseStickerToken(message.text);
+        if (sticker) {
+          await this.lineClient.pushSticker(
+            message.externalUserId,
+            sticker.packageId,
+            sticker.stickerId,
+          );
+        } else {
+          await this.lineClient.pushText(message.externalUserId, message.text);
+        }
       }
       // TODO: support Flex messages via templatePayload
 

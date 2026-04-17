@@ -8,7 +8,24 @@ interface LineTextMessage {
   quickReply?: LineQuickReply;
 }
 
-type LineMessage = LineTextMessage;
+/** LINE Flex Message — see https://developers.line.biz/en/docs/messaging-api/using-flex-messages/ */
+export type FlexContainer = Record<string, unknown>;
+
+interface LineFlexMessage {
+  type: 'flex';
+  altText: string;
+  contents: FlexContainer;
+  quickReply?: LineQuickReply;
+}
+
+interface LineStickerMessage {
+  type: 'sticker';
+  packageId: string;
+  stickerId: string;
+  quickReply?: LineQuickReply;
+}
+
+type LineMessage = LineTextMessage | LineFlexMessage | LineStickerMessage;
 
 export interface LineQuickReplyItem {
   type: 'action';
@@ -45,6 +62,10 @@ export class LineFinanceClientService {
     return this.pushMessage(to, [{ type: 'text', text }]);
   }
 
+  async pushSticker(to: string, packageId: string, stickerId: string): Promise<void> {
+    return this.pushMessage(to, [{ type: 'sticker', packageId, stickerId }]);
+  }
+
   async pushMessage(to: string, messages: LineMessage[]): Promise<void> {
     await this.callApi(`${this.apiBase}/message/push`, { to, messages });
     this.logger.log(`[LINE Finance] push → ${to}`);
@@ -52,6 +73,14 @@ export class LineFinanceClientService {
 
   async replyText(replyToken: string, text: string): Promise<void> {
     return this.replyMessage(replyToken, [{ type: 'text', text }]);
+  }
+
+  async replyFlex(
+    replyToken: string,
+    altText: string,
+    contents: FlexContainer,
+  ): Promise<void> {
+    return this.replyMessage(replyToken, [{ type: 'flex', altText, contents }]);
   }
 
   async replyWithQuickReply(

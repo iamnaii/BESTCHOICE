@@ -40,6 +40,18 @@ export default tseslint.config(
     },
   },
   {
+    // Print/receipt templates intentionally use gray/white/black Tailwind
+    // scales for monochrome paper output where semantic tokens aren't
+    // reliable through browser print stylesheets.
+    files: [
+      'src/components/payment/PrintableReceipt.tsx',
+      'src/components/payment/MobileReceipt.tsx',
+    ],
+    rules: {
+      'no-restricted-syntax': 'off',
+    },
+  },
+  {
     ignores: ['dist/', 'playwright-report/', 'e2e/'],
   },
 );

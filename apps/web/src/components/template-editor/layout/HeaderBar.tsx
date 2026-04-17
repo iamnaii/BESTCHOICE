@@ -121,7 +121,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
         value={currentTemplate.id}
         onChange={handleTemplateChange}
         disabled={isLoading}
-        className="px-3 py-2 text-base font-medium border border-input rounded-lg bg-background focus:ring-2 focus:ring-primary-500 focus:border-primary-500 max-w-[320px] disabled:opacity-50"
+        className="px-3 py-2 text-base font-medium border border-input rounded-lg bg-background focus:ring-2 focus:ring-primary focus:border-primary max-w-[320px] disabled:opacity-50"
       >
         {templates.length === 0 && (
           <option value="">กำลังโหลด...</option>
@@ -134,12 +134,12 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
       </select>
 
       {isDirty && (
-        <span className="text-sm font-medium text-amber-500 bg-amber-50 px-2.5 py-1 rounded-full">
+        <span className="text-sm font-medium text-warning bg-warning/10 px-2.5 py-1 rounded-full">
           ยังไม่บันทึก
         </span>
       )}
       {isSaving && (
-        <span className="text-sm text-primary-600 flex items-center gap-1">
+        <span className="text-sm text-primary flex items-center gap-1">
           <Loader2 size={14} className="animate-spin" />
           <span>กำลังบันทึก...</span>
         </span>
@@ -155,7 +155,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
             onClick={() => setPreviewMode(!previewMode)}
             className={`flex items-center gap-1.5 px-3 py-2 text-base rounded-lg transition-colors ${
               previewMode
-                ? 'bg-blue-100 text-blue-700 border border-blue-300'
+                ? 'bg-info/15 text-info border border-info/30'
                 : 'text-muted-foreground border border-input hover:bg-muted'
             }`}
             title="แสดงข้อมูลตัวอย่าง"
@@ -170,7 +170,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
             onClick={onToggleCheatSheet}
             className={`flex items-center gap-1.5 px-3 py-2 text-base rounded-lg transition-colors ${
               showCheatSheet
-                ? 'bg-amber-100 text-amber-700 border border-amber-300'
+                ? 'bg-warning/15 text-warning border border-warning/30'
                 : 'text-muted-foreground border border-input hover:bg-muted'
             }`}
           >
@@ -208,7 +208,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
                 <button
                   key={b.type}
                   onClick={() => handleAddBlock(b.type)}
-                  className="w-full text-left px-4 py-2.5 text-base text-foreground hover:bg-primary-50 hover:text-primary-700 transition-colors"
+                  className="w-full text-left px-4 py-2.5 text-base text-foreground hover:bg-primary/10 hover:text-primary transition-colors"
                 >
                   {b.label}
                 </button>
@@ -259,7 +259,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
               onClick={() => onViewModeChange(mode)}
               className={`flex items-center gap-1.5 px-3 py-2 text-base transition-colors ${
                 viewMode === mode
-                  ? 'bg-primary-600 text-white'
+                  ? 'bg-primary text-primary-foreground'
                   : 'text-muted-foreground hover:bg-muted'
               }`}
               title={label}
@@ -272,7 +272,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
 
         <button
           onClick={() => setShowExportModal(true)}
-          className="flex items-center gap-1.5 px-4 py-2 text-base font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+          className="flex items-center gap-1.5 px-4 py-2 text-base font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
         >
           <Download size={17} />
           PDF

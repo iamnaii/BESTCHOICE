@@ -28,7 +28,7 @@ export default function MobileReceipt({ receipt }: MobileReceiptProps) {
   return (
     <div className="mobile-receipt w-full max-w-md mx-auto bg-white rounded-xl shadow-lg overflow-hidden">
       {/* Header with gradient */}
-      <div className="bg-linear-to-r from-blue-600 to-primary p-6 text-white">
+      <div className="bg-linear-to-r from-primary to-primary p-6 text-primary-foreground">
         <div className="text-center mb-3">
           {receipt.company?.logoUrl ? (
             <img
@@ -50,7 +50,7 @@ export default function MobileReceipt({ receipt }: MobileReceiptProps) {
             </p>
           )}
         </div>
-        <div className="bg-white/20 backdrop-blur-xs rounded-lg p-3 text-center">
+        <div className="bg-primary-foreground/20 backdrop-blur-xs rounded-lg p-3 text-center">
           <div className="text-sm opacity-90 mb-1">
             {typeLabels[receipt.receiptType] || receipt.receiptType}
           </div>
@@ -58,7 +58,7 @@ export default function MobileReceipt({ receipt }: MobileReceiptProps) {
         </div>
         {receipt.isVoided && (
           <div className="mt-3 text-center">
-            <span className="inline-block px-4 py-1 bg-red-500 text-white rounded-full text-xs font-medium">
+            <span className="inline-block px-4 py-1 bg-destructive text-destructive-foreground rounded-full text-xs font-medium">
               ใบเสร็จนี้ถูกยกเลิกแล้ว
             </span>
           </div>
@@ -68,30 +68,30 @@ export default function MobileReceipt({ receipt }: MobileReceiptProps) {
       {/* Content */}
       <div className="p-6 space-y-4">
         {/* Amount Card - Highlight */}
-        <div className="bg-linear-to-br from-green-50 to-green-100 border-2 border-green-300 rounded-xl p-5">
+        <div className="bg-linear-to-br from-success/10 to-success/20 border-2 border-success/40 rounded-xl p-5">
           <div className="text-center">
-            <div className="text-sm text-green-700 font-medium mb-2">ยอดชำระครั้งนี้</div>
-            <div className="text-4xl font-bold text-green-600 mb-1">
+            <div className="text-sm text-success font-medium mb-2">ยอดชำระครั้งนี้</div>
+            <div className="text-4xl font-bold text-success mb-1">
               {Number(receipt.amount).toLocaleString()}
               <span className="text-2xl ml-1">฿</span>
             </div>
             {receipt.installmentNo && (
-              <div className="text-sm text-green-700 mt-2">งวดที่ {receipt.installmentNo}</div>
+              <div className="text-sm text-success mt-2">งวดที่ {receipt.installmentNo}</div>
             )}
           </div>
         </div>
 
         {/* Remaining Balance - Highlight if exists */}
         {receipt.remainingBalance != null && (
-          <div className="bg-linear-to-br from-orange-50 to-orange-100 border-2 border-orange-300 rounded-xl p-5">
+          <div className="bg-linear-to-br from-warning/10 to-warning/20 border-2 border-warning/40 rounded-xl p-5">
             <div className="text-center">
-              <div className="text-sm text-orange-700 font-medium mb-2">ยอดคงเหลือ</div>
-              <div className="text-3xl font-bold text-orange-600 mb-1">
+              <div className="text-sm text-warning font-medium mb-2">ยอดคงเหลือ</div>
+              <div className="text-3xl font-bold text-warning mb-1">
                 {Number(receipt.remainingBalance).toLocaleString()}
                 <span className="text-xl ml-1">฿</span>
               </div>
               {receipt.remainingMonths != null && (
-                <div className="text-sm text-orange-700 mt-2">
+                <div className="text-sm text-warning mt-2">
                   เหลืออีก {receipt.remainingMonths} งวด
                 </div>
               )}
@@ -101,13 +101,13 @@ export default function MobileReceipt({ receipt }: MobileReceiptProps) {
 
         {/* Product Section */}
         {receipt.contract?.product && (
-          <div className="bg-blue-50 border-l-4 border-blue-500 rounded-r-lg p-4 mb-4">
-            <div className="text-xs text-blue-700 font-medium mb-2">รายละเอียดสินค้า</div>
-            <div className="text-sm font-medium text-blue-900">
+          <div className="bg-primary/10 border-l-4 border-primary rounded-r-lg p-4 mb-4">
+            <div className="text-xs text-primary font-medium mb-2">รายละเอียดสินค้า</div>
+            <div className="text-sm font-medium text-primary">
               {receipt.contract.product.name}
             </div>
             {(receipt.contract.product.imeiSerial || receipt.contract.product.serialNumber) && (
-              <div className="text-xs text-blue-700 mt-1 space-y-0.5">
+              <div className="text-xs text-primary mt-1 space-y-0.5">
                 {receipt.contract.product.imeiSerial && (
                   <div className="font-mono">IMEI/Serial: {receipt.contract.product.imeiSerial}</div>
                 )}
@@ -159,9 +159,9 @@ export default function MobileReceipt({ receipt }: MobileReceiptProps) {
 
         {/* Void Reason */}
         {receipt.isVoided && receipt.voidReason && (
-          <div className="bg-red-50 border-l-4 border-red-500 rounded-r-lg p-4">
-            <div className="text-xs font-bold text-red-700 mb-1">เหตุผลที่ยกเลิก:</div>
-            <div className="text-sm text-red-600">{receipt.voidReason}</div>
+          <div className="bg-destructive/10 border-l-4 border-destructive rounded-r-lg p-4">
+            <div className="text-xs font-bold text-destructive mb-1">เหตุผลที่ยกเลิก:</div>
+            <div className="text-sm text-destructive">{receipt.voidReason}</div>
           </div>
         )}
 

@@ -28,8 +28,8 @@ export default function StepPdpaConsent({ contractId, alreadyConsented, onComple
   if (alreadyConsented) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[50vh] px-4">
-        <div className="text-5xl mb-4 text-green-500">&#10003;</div>
-        <h2 className="text-xl font-semibold text-green-700 mb-2">ยินยอม PDPA เรียบร้อยแล้ว</h2>
+        <div className="text-5xl mb-4 text-success">&#10003;</div>
+        <h2 className="text-xl font-semibold text-success mb-2">ยินยอม PDPA เรียบร้อยแล้ว</h2>
         <button
           onClick={onComplete}
           className="mt-4 px-8 py-3.5 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90"

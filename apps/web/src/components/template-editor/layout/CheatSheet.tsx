@@ -34,7 +34,7 @@ export default function CheatSheet() {
                 >
                   <span className="truncate max-w-[200px]">{item.label}</span>
                   {copied === item.syntax ? (
-                    <Check size={14} className="text-green-600 shrink-0" />
+                    <Check size={14} className="text-success shrink-0" />
                   ) : (
                     <Copy size={14} className="opacity-0 group-hover/item:opacity-100 shrink-0 transition-opacity" />
                   )}
@@ -48,12 +48,12 @@ export default function CheatSheet() {
         <div className="pt-4 border-t border-border">
           <div className="text-sm font-bold text-muted-foreground uppercase tracking-wider mb-2.5">ตัวอย่าง</div>
           <div className="space-y-1.5 text-sm text-foreground font-mono bg-muted rounded-lg p-3 leading-relaxed">
-            <p><span className="text-primary-600">{'{{= CONTRACT.NUMBER}}'}</span></p>
-            <p><span className="text-teal-600">{'{{= CONTRACT.DATE | date:l}}'}</span></p>
-            <p><span className="text-teal-600">{'{{= CONTRACT.TOTAL_AMOUNT | num:2}}'}</span></p>
-            <p className="text-primary-600 mt-2">{'{{for ITEM in INSTALLMENTS}}'}</p>
-            <p className="ml-3 text-primary-600">{'{{= ITEM.NO}} {{= ITEM.AMOUNT | num:2}}'}</p>
-            <p className="text-primary-600">{'{{/for}}'}</p>
+            <p><span className="text-primary">{'{{= CONTRACT.NUMBER}}'}</span></p>
+            <p><span className="text-info">{'{{= CONTRACT.DATE | date:l}}'}</span></p>
+            <p><span className="text-info">{'{{= CONTRACT.TOTAL_AMOUNT | num:2}}'}</span></p>
+            <p className="text-primary mt-2">{'{{for ITEM in INSTALLMENTS}}'}</p>
+            <p className="ml-3 text-primary">{'{{= ITEM.NO}} {{= ITEM.AMOUNT | num:2}}'}</p>
+            <p className="text-primary">{'{{/for}}'}</p>
           </div>
         </div>
       </div>

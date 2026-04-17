@@ -406,14 +406,14 @@ export default function SlipReviewTab() {
             <button
               onClick={() => batchApproveMutation.mutate()}
               disabled={batchApproveMutation.isPending}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:bg-muted"
+              className="px-4 py-2 bg-success text-success-foreground rounded-lg text-sm font-medium hover:bg-success/90 disabled:bg-muted"
             >
               {batchApproveMutation.isPending ? 'กำลังอนุมัติ...' : 'อนุมัติทั้งหมด'}
             </button>
             <button
               onClick={() => setShowBatchRejectModal(true)}
               disabled={batchRejectMutation.isPending}
-              className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:bg-muted"
+              className="px-4 py-2 bg-destructive text-destructive-foreground rounded-lg text-sm font-medium hover:bg-destructive/90 disabled:bg-muted"
             >
               ปฏิเสธทั้งหมด
             </button>
@@ -447,7 +447,7 @@ export default function SlipReviewTab() {
               <button
                 onClick={() => batchRejectMutation.mutate()}
                 disabled={batchRejectMutation.isPending}
-                className="flex-1 bg-red-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-red-700 disabled:bg-muted"
+                className="flex-1 bg-destructive text-destructive-foreground py-2 px-4 rounded-lg font-medium hover:bg-destructive/90 disabled:bg-muted"
               >
                 {batchRejectMutation.isPending ? 'กำลังปฏิเสธ...' : 'ยืนยันปฏิเสธ'}
               </button>
@@ -692,7 +692,7 @@ export default function SlipReviewTab() {
                       type="button"
                       onClick={() => rejectMutation.mutate(selectedEvidence.id)}
                       disabled={rejectMutation.isPending}
-                      className="px-6 py-2.5 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 font-semibold transition-colors shadow-sm"
+                      className="px-6 py-2.5 text-sm bg-destructive text-destructive-foreground rounded-lg hover:bg-destructive/90 disabled:opacity-50 font-semibold transition-colors shadow-sm"
                     >
                       {rejectMutation.isPending ? 'กำลังบันทึก...' : 'ปฏิเสธ'}
                     </button>
@@ -700,7 +700,7 @@ export default function SlipReviewTab() {
                       type="button"
                       onClick={() => approveMutation.mutate(selectedEvidence.id)}
                       disabled={!approveAmount || approveMutation.isPending}
-                      className="px-6 py-2.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 font-semibold transition-colors shadow-sm"
+                      className="px-6 py-2.5 text-sm bg-success text-success-foreground rounded-lg hover:bg-success/90 disabled:opacity-50 font-semibold transition-colors shadow-sm"
                     >
                       {approveMutation.isPending ? 'กำลังบันทึก...' : 'อนุมัติ'}
                     </button>

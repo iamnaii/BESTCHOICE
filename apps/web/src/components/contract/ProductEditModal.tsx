@@ -154,7 +154,7 @@ export default function ProductEditModal({ product, onClose, onSuccess }: Props)
 
         <div className="rounded-xl border border-border bg-card p-5">
           <div className="flex items-center gap-2.5 mb-4">
-            <div className="flex items-center justify-center size-8 rounded-lg bg-emerald-500/10 text-emerald-500">
+            <div className="flex items-center justify-center size-8 rounded-lg bg-success/10 text-success">
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
             </div>
             <div>
@@ -181,7 +181,7 @@ export default function ProductEditModal({ product, onClose, onSuccess }: Props)
         {product.category === 'PHONE_USED' && (
           <div className="rounded-xl border border-border bg-card p-5">
             <div className="flex items-center gap-2.5 mb-4">
-              <div className="flex items-center justify-center size-8 rounded-lg bg-amber-500/10 text-amber-500">
+              <div className="flex items-center justify-center size-8 rounded-lg bg-warning/10 text-warning">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="16" height="20" x="4" y="2" rx="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01"/><path d="M16 6h.01"/><path d="M12 6h.01"/></svg>
               </div>
               <div>

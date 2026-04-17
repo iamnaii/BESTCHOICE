@@ -23,6 +23,8 @@ export const CHAT_EVENTS = {
   VIEWERS: 'chat:viewers',
   /** Collision warning — another staff is viewing the same room */
   COLLISION_WARNING: 'chat:collision',
+  /** Outbound delivery to external channel failed (LINE push error etc.) */
+  MESSAGE_SEND_FAILED: 'chat:message:send-failed',
 } as const;
 
 // Client → Server events

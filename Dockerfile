@@ -51,8 +51,23 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-# Install wget for health check
-RUN apk add --no-cache wget
+# Install wget (health check) + chromium (puppeteer PDF generation)
+# Puppeteer-core has no bundled Chromium — must provide system one.
+# Chromium + minimal font/ca deps are needed for headless PDF rendering in
+# documents.service.ts::htmlToPdf. Thai fonts (TH Sarabun PSK) are base64
+# embedded at runtime from public/fonts/, so we only need ttf-freefont here
+# for fallback glyphs.
+RUN apk add --no-cache \
+      wget \
+      chromium \
+      nss \
+      freetype \
+      harfbuzz \
+      ca-certificates \
+      ttf-freefont
+
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
 # Create non-root user
 RUN addgroup --system --gid 1001 appgroup && \
@@ -63,6 +78,9 @@ RUN addgroup --system --gid 1001 appgroup && \
 # no apps/api/node_modules copy needed (see builder stage comment).
 COPY --from=builder --chown=appuser:appgroup /app/apps/api/dist ./apps/api/dist
 COPY --from=builder --chown=appuser:appgroup /app/apps/api/package.json ./apps/api/
+# TH Sarabun PSK fonts are embedded into PDFs at runtime. htmlToPdf reads
+# them from process.cwd()/public/fonts (and fallbacks); ensure they exist.
+COPY --chown=appuser:appgroup apps/api/public ./public
 COPY --from=deps --chown=appuser:appgroup /app/node_modules ./node_modules
 COPY --from=builder --chown=appuser:appgroup /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder --chown=appuser:appgroup /app/apps/api/prisma ./apps/api/prisma

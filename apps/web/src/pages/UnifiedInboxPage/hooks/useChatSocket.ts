@@ -41,6 +41,12 @@ export interface ChatCollisionEvent {
   viewers: ChatViewer[];
 }
 
+export interface ChatSendFailedEvent {
+  roomId: string;
+  text: string;
+  error?: string;
+}
+
 interface ChatSocketEvents {
   onNewMessage?: (data: ChatMessageEvent) => void;
   onRoomUpdate?: (data: ChatRoomUpdateEvent) => void;
@@ -48,6 +54,7 @@ interface ChatSocketEvents {
   onPresence?: (data: ChatPresenceEvent) => void;
   onViewers?: (data: ChatViewersEvent) => void;
   onCollision?: (data: ChatCollisionEvent) => void;
+  onSendFailed?: (data: ChatSendFailedEvent) => void;
 }
 
 // Resolve WebSocket base URL: in dev, API runs on port 3000
@@ -109,6 +116,9 @@ export function useChatSocket(events: ChatSocketEvents, activeRoomId?: string | 
     socket.on('chat:presence', (data) => eventsRef.current.onPresence?.(data));
     socket.on('chat:viewers', (data) => eventsRef.current.onViewers?.(data));
     socket.on('chat:collision', (data) => eventsRef.current.onCollision?.(data));
+    socket.on('chat:message:send-failed', (data) =>
+      eventsRef.current.onSendFailed?.(data),
+    );
     socket.on('connect_error', () => {
       // Silent — reconnection handles retry
     });

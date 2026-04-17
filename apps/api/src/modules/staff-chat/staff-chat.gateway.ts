@@ -178,7 +178,7 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
     }
 
     // Send through engine (saves message + sends to customer via adapter)
-    await this.messageRouter.sendStaffMessage({
+    const sendResult = await this.messageRouter.sendStaffMessage({
       roomId: data.roomId,
       staffId: userId,
       text: data.text,
@@ -192,6 +192,16 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
       text: data.text,
       createdAt: new Date().toISOString(),
     });
+
+    // Notify the sending staff if external delivery (LINE/FB/etc.) failed so the
+    // UI can show the message as "not delivered" instead of a silent success tick.
+    if (!sendResult.success) {
+      client.emit(CHAT_EVENTS.MESSAGE_SEND_FAILED, {
+        roomId: data.roomId,
+        text: data.text,
+        error: sendResult.error,
+      });
+    }
 
     // Auto-update lead score after new message
     this.leadScoring.scoreSession(data.roomId).catch((err) =>

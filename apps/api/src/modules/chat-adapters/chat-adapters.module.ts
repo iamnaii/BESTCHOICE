@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, OnModuleInit } from '@nestjs/common';
 import { LineFinanceAdapter } from './line-finance.adapter';
 import { LineShopAdapter } from './line-shop.adapter';
 import { FacebookAdapter } from './facebook.adapter';
@@ -10,6 +10,7 @@ import { ChatbotFinanceModule } from '../chatbot-finance/chatbot-finance.module'
 import { LineOaModule } from '../line-oa/line-oa.module';
 import { ChatEngineModule } from '../chat-engine/chat-engine.module';
 import { FacebookDomainModule } from '../facebook-domain/facebook-domain.module';
+import { MessageRouterService } from '../chat-engine/services/message-router.service';
 
 /**
  * ChatAdaptersModule — provides IChannelAdapter implementations for all channels.
@@ -56,4 +57,21 @@ import { FacebookDomainModule } from '../facebook-domain/facebook-domain.module'
     WebWidgetAdapter,
   ],
 })
-export class ChatAdaptersModule {}
+export class ChatAdaptersModule implements OnModuleInit {
+  constructor(
+    private messageRouter: MessageRouterService,
+    private lineFinance: LineFinanceAdapter,
+    private lineShop: LineShopAdapter,
+    private facebook: FacebookAdapter,
+    private tiktok: TiktokAdapter,
+    private web: WebWidgetAdapter,
+  ) {}
+
+  onModuleInit(): void {
+    this.messageRouter.registerAdapter(this.lineFinance);
+    this.messageRouter.registerAdapter(this.lineShop);
+    this.messageRouter.registerAdapter(this.facebook);
+    this.messageRouter.registerAdapter(this.tiktok);
+    this.messageRouter.registerAdapter(this.web);
+  }
+}

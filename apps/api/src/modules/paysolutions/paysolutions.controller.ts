@@ -8,12 +8,14 @@ import {
   Logger,
   BadRequestException,
   ParseUUIDPipe,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
 import { PaySolutionsService } from './paysolutions.service';
 import { CreatePaymentIntentDto } from './dto';
+import { LiffTokenGuard } from '../line-oa/guards/liff-token.guard';
 
 /**
  * PaySolutions Payment Gateway Controller
@@ -32,10 +34,11 @@ export class PaySolutionsController {
   /**
    * POST /api/paysolutions/create-intent
    * สร้าง payment intent — ส่งไป Pay Solutions, ได้ payment URL กลับมา
-   * ใช้จาก LIFF (ไม่ต้อง JWT — ใช้ lineId verify ตัวตนแทน)
+   * ใช้จาก LIFF — ต้องมี X-Liff-Id-Token header (verified ด้วย LINE API)
    */
   @Post('create-intent')
   @SkipCsrf()
+  @UseGuards(LiffTokenGuard)
   @Throttle({ short: { ttl: 10000, limit: 5 } })
   async createPaymentIntent(@Body() dto: CreatePaymentIntentDto) {
     if (!dto.contractId || !dto.amount) {
@@ -83,6 +86,10 @@ export class PaySolutionsController {
       total: body.total,
     };
     this.logger.log(`Webhook received: ${JSON.stringify(safeFields)}`);
+
+    // NOTE: PaySolutions does not provide HMAC signature verification.
+    // merchantId match + HTTPS + throttle is the current defense-in-depth.
+    // If PaySolutions adds signing support in the future, implement it here.
 
     // Verify merchantid ตรงกับ config
     const isValid = await this.paySolutionsService.verifyWebhookMerchant(body.merchantid || '');

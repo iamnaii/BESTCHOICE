@@ -73,6 +73,7 @@ export class LineFinanceClientService {
     if (!token) throw new Error('LINE Finance access token not configured');
     const res = await fetch(`${this.dataApiBase}/message/${messageId}/content`, {
       headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) {
       throw new Error(`LINE content API error ${res.status}`);

@@ -192,6 +192,7 @@ export class PeakService {
         'Time-Signature': timeSignature,
         'User-Token': config.userToken,
       },
+      signal: AbortSignal.timeout(15_000),
     });
 
     if (!res.ok) {

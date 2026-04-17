@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
-import { SignerType, Prisma } from '@prisma/client';
+import { SignerType, Prisma, ContractDocumentType } from '@prisma/client';
 import { formatDateShort, formatDateMedium, formatDateLong, getThaiDateParts } from '../../utils/thai-date.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
@@ -148,7 +148,101 @@ export class DocumentsService {
       },
     });
 
+    // After all 4 required signatures are present, auto-generate the signed
+    // contract PDF and save it as a ContractDocument (SIGNED_CONTRACT).
+    // This satisfies the reviewer checklist without the user having to
+    // manually upload a signed PDF — the system already has everything it
+    // needs to produce one deterministically.
+    const REQUIRED: Array<'CUSTOMER' | 'COMPANY' | 'WITNESS_1' | 'WITNESS_2'> = [
+      'CUSTOMER',
+      'COMPANY',
+      'WITNESS_1',
+      'WITNESS_2',
+    ];
+    const allSignerTypes = new Set<string>([
+      ...contract.signatures.map((s) => (s.signerType === 'STAFF' ? 'COMPANY' : s.signerType)),
+      normalizedType,
+    ]);
+    const allSigned = REQUIRED.every((t) => allSignerTypes.has(t));
+    if (allSigned) {
+      // Fire-and-forget — don't block the signing response on PDF generation
+      // (puppeteer can take a few seconds). A salesperson fallback handles
+      // the CUSTOMER-signs-via-LIFF case where staffUserId is null.
+      const uploaderId = options?.staffUserId || contract.salespersonId;
+      this.ensureSignedContractDocument(contractId, uploaderId).catch((err) =>
+        this.logger.error(
+          `Auto-save SIGNED_CONTRACT for ${contractId} failed: ${err instanceof Error ? err.message : err}`,
+        ),
+      );
+    }
+
     return signature;
+  }
+
+  // ─── Auto-save signed contract PDF as ContractDocument ───
+  // Called after all 4 required signatures are in place. Generates the
+  // contract PDF (reusing the existing eDocument pipeline, which handles
+  // template resolution + placeholder substitution + puppeteer + S3), then
+  // creates a ContractDocument row pointing at the same S3 file so the
+  // reviewer checklist sees SIGNED_CONTRACT as present.
+  async ensureSignedContractDocument(contractId: string, uploadedByUserId: string) {
+    const existing = await this.prisma.contractDocument.findFirst({
+      where: {
+        contractId,
+        documentType: ContractDocumentType.SIGNED_CONTRACT,
+        isLatest: true,
+        deletedAt: null,
+      },
+    });
+    if (existing) {
+      this.logger.log(`SIGNED_CONTRACT already exists for contract ${contractId} — skipping auto-save`);
+      return existing;
+    }
+
+    const edoc = await this.generateDocument(contractId, uploadedByUserId, 'CONTRACT');
+    if (!edoc.pdfGenerated) {
+      this.logger.warn(
+        `Auto-save SIGNED_CONTRACT for ${contractId}: PDF generation fell back to HTML — not saving as ContractDocument`,
+      );
+      return null;
+    }
+
+    const contract = await this.prisma.contract.findUnique({
+      where: { id: contractId },
+      select: { contractNumber: true },
+    });
+    const fileName = `${contract?.contractNumber || contractId}_signed.pdf`;
+
+    const doc = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.contractDocument.create({
+        data: {
+          contractId,
+          documentType: ContractDocumentType.SIGNED_CONTRACT,
+          fileName,
+          originalName: fileName,
+          fileUrl: edoc.fileUrl,
+          fileHash: edoc.fileHash,
+          mimeType: 'application/pdf',
+          version: 1,
+          isLatest: true,
+          isImmutable: false,
+          uploadedById: uploadedByUserId,
+        },
+      });
+      await tx.documentAuditLog.create({
+        data: {
+          documentId: created.id,
+          contractId,
+          action: 'UPLOAD',
+          userId: uploadedByUserId,
+          details: { source: 'auto-signed-contract', fileName, fileHash: edoc.fileHash } as Prisma.InputJsonValue,
+        },
+      });
+      return created;
+    });
+
+    this.logger.log(`Auto-saved SIGNED_CONTRACT document ${doc.id} for contract ${contractId}`);
+    return doc;
   }
 
   // ─── Delete Signature (ลบลายเซ็นเพื่อเซ็นใหม่, เฉพาะก่อน ACTIVE) ───

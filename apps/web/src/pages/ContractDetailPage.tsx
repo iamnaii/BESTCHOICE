@@ -513,79 +513,100 @@ const deleteMutation = useMutation({
         const total = docChecklist?.checklist.length ?? 0;
         const completeCount = presentItems.length;
         return (
-          <div className="bg-warning/5 dark:bg-warning/10 border border-warning/20 rounded-xl p-6 mb-6 relative overflow-hidden">
-            <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-warning" />
+          <div className="bg-card border border-border rounded-xl shadow-sm p-6 mb-6 relative overflow-hidden">
+            <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-warning" />
 
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-base font-semibold text-warning">รอการตรวจสอบจากคุณ</h3>
+            {/* Header */}
+            <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-full bg-warning/15 dark:bg-warning/25 flex items-center justify-center flex-shrink-0">
+                  <AlertTriangle className="w-5 h-5 text-warning" />
+                </div>
+                <h3 className="text-lg font-semibold text-foreground">รอการตรวจสอบจากคุณ</h3>
+              </div>
               {docChecklist && (
-                <span className={`text-sm font-medium ${docChecklist.complete ? 'text-success' : 'text-destructive'}`}>
-                  เอกสารครบ {completeCount}/{total}
+                <span
+                  className={`text-sm font-semibold px-3 py-1 rounded-full ${
+                    docChecklist.complete
+                      ? 'bg-success/15 text-success dark:bg-success/25'
+                      : 'bg-destructive/15 text-destructive dark:bg-destructive/25'
+                  }`}
+                >
+                  เอกสาร {completeCount}/{total}
                 </span>
               )}
             </div>
 
             {docChecklist && (
               <div className="space-y-4 mb-5">
-                {/* Missing items — highlighted at top */}
+                {/* Missing items — highlighted red box */}
                 {missingItems.length > 0 && (
-                  <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-4">
-                    <div className="flex items-start gap-2 mb-2">
-                      <AlertTriangle className="w-4 h-4 text-destructive flex-shrink-0 mt-0.5" />
-                      <p className="text-sm font-semibold text-destructive">เอกสารที่ยังขาด ({missingItems.length})</p>
+                  <div className="bg-destructive/10 dark:bg-destructive/20 border-2 border-destructive/40 rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <XCircle className="w-5 h-5 text-destructive flex-shrink-0" />
+                      <p className="text-sm font-bold text-destructive">
+                        ยังขาดเอกสาร {missingItems.length} รายการ
+                      </p>
                     </div>
-                    <ul className="space-y-1.5 pl-6">
+                    <ul className="space-y-2">
                       {missingItems.map((item) => (
-                        <li key={item.type} className="flex items-start gap-2 text-sm text-destructive">
-                          <XCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                        <li key={item.type} className="flex items-start gap-2 text-sm text-destructive font-medium">
+                          <span className="text-destructive mt-0.5">•</span>
                           <span>{item.label}</span>
                         </li>
                       ))}
                     </ul>
-                    <p className="text-xs text-destructive/80 mt-3 pl-6">กรุณาอัปโหลดเอกสารให้ครบก่อนอนุมัติ</p>
+                    <p className="text-xs text-destructive/90 dark:text-destructive mt-3 pt-3 border-t border-destructive/30">
+                      กรุณาอัปโหลดเอกสารให้ครบก่อนจึงจะสามารถอนุมัติสัญญาได้
+                    </p>
                   </div>
                 )}
 
-                {/* Present items — collapsed-style list */}
+                {/* Present items — clean list */}
                 {presentItems.length > 0 && (
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground mb-2">เอกสารที่พร้อมแล้ว</p>
-                    <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
+                  <details open={missingItems.length === 0} className="group">
+                    <summary className="text-sm font-medium text-muted-foreground mb-2 cursor-pointer hover:text-foreground select-none list-none flex items-center gap-1.5">
+                      <span className="group-open:rotate-90 transition-transform inline-block">▶</span>
+                      เอกสารที่พร้อมแล้ว ({presentItems.length})
+                    </summary>
+                    <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 mt-2 pl-5">
                       {presentItems.map((item) => (
-                        <li key={item.type} className="flex items-start gap-2 text-sm text-success">
-                          <CheckCircle2 className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                        <li key={item.type} className="flex items-start gap-2 text-sm">
+                          <CheckCircle2 className="w-4 h-4 text-success flex-shrink-0 mt-0.5" />
                           <span className="text-foreground">{item.label}</span>
                         </li>
                       ))}
                     </ul>
-                  </div>
+                  </details>
                 )}
               </div>
             )}
 
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-foreground mb-1.5">หมายเหตุ (ไม่บังคับ)</label>
+            <div className="mb-5">
+              <label className="block text-sm font-medium text-foreground mb-1.5">
+                หมายเหตุ <span className="text-muted-foreground font-normal">(ไม่บังคับ)</span>
+              </label>
               <input
                 type="text"
                 value={approveNotes}
                 onChange={(e) => setApproveNotes(e.target.value)}
-                placeholder="หมายเหตุการอนุมัติ..."
-                className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                placeholder="เช่น ตรวจสอบเอกสารครบแล้ว..."
+                className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
               />
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <button
                 onClick={() => approveMutation.mutate()}
                 disabled={approveMutation.isPending || (docChecklist && !docChecklist.complete)}
                 title={docChecklist && !docChecklist.complete ? 'เอกสารยังไม่ครบ' : ''}
-                className="px-6 py-2.5 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-6 py-2.5 text-sm font-semibold bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {approveMutation.isPending ? 'กำลังอนุมัติ...' : 'อนุมัติสัญญา'}
               </button>
               <button
                 onClick={() => setShowRejectModal(true)}
-                className="px-6 py-2.5 text-sm font-medium bg-destructive text-destructive-foreground rounded-lg hover:bg-destructive/90"
+                className="px-6 py-2.5 text-sm font-semibold bg-destructive text-destructive-foreground rounded-lg hover:bg-destructive/90 transition-colors"
               >
                 ปฏิเสธ
               </button>

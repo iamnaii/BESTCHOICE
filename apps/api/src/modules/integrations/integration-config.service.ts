@@ -1,5 +1,6 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import * as Sentry from '@sentry/node';
 import { PrismaService } from '../../prisma/prisma.service';
 import { encryptPII, decryptPII, isEncrypted } from '../../utils/crypto.util';
 import { getIntegrationDef, INTEGRATIONS } from './integration-registry';
@@ -11,7 +12,7 @@ export type IntegrationConfig = Record<string, string>;
 export type MaskedIntegrationConfig = Record<string, string>;
 
 @Injectable()
-export class IntegrationConfigService {
+export class IntegrationConfigService implements OnModuleInit {
   private readonly logger = new Logger(IntegrationConfigService.name);
 
   private static readonly CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
@@ -21,6 +22,14 @@ export class IntegrationConfigService {
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
   ) {}
+
+  onModuleInit() {
+    const key = this.configService.get<string>('INTEGRATION_ENCRYPTION_KEY');
+    if (!key) {
+      this.logger.warn('[IntegrationConfig] INTEGRATION_ENCRYPTION_KEY not set — credentials stored in plaintext!');
+      Sentry.captureMessage('INTEGRATION_ENCRYPTION_KEY not configured', 'warning');
+    }
+  }
 
   // ─── Private helpers ──────────────────────────────────────────────────────
 

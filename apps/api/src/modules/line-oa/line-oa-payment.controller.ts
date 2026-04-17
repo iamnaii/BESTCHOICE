@@ -478,7 +478,8 @@ export class LineOaPaymentController {
   // ─── PromptPay QR Code ──────────────────────────────
 
   @Get('payment/:paymentId/qr')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   async generateQrCode(
     @Param('paymentId') paymentId: string,
     @Query('amount') amountStr: string,

@@ -131,7 +131,7 @@ export default function ConversationItem({ session, isActive, onClick, onPin }: 
         {/* Tags + priority + assigned */}
         {(session.tags?.length || (session.priority && session.priority !== 'NORMAL' && session.priority !== 'LOW') || session.assignedTo) && (
           <div className="flex items-center gap-1 mt-1.5">
-            {session.tags?.some((t: any) => t.tag === 'overdue') && (
+            {session.tags?.some((t: { tag: string }) => t.tag === 'overdue') && (
               <Badge variant="destructive" appearance="light" className="text-[9px] px-1.5 py-0 h-4">
                 ค้างชำระ
               </Badge>

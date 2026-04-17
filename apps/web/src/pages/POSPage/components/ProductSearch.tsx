@@ -156,11 +156,14 @@ export default function ProductSearch({
                         <div className="text-xs text-muted-foreground">
                           {p.imeiSerial && <span className="font-mono">IMEI: {p.imeiSerial}</span>}
                           <span className="ml-2">{p.branch?.name}</span>
-                          {p.prices.find((pr) => pr.isDefault) && (
-                            <span className="ml-2 text-primary font-medium">
-                              {parseFloat(p.prices.find((pr) => pr.isDefault)!.amount).toLocaleString()} ฿
-                            </span>
-                          )}
+                          {(() => {
+                            const defaultPrice = p.prices.find((pr) => pr.isDefault);
+                            return defaultPrice ? (
+                              <span className="ml-2 text-primary font-medium">
+                                {parseFloat(defaultPrice.amount).toLocaleString()} ฿
+                              </span>
+                            ) : null;
+                          })()}
                         </div>
                       </button>
                     ))

@@ -318,6 +318,9 @@ function ButtonEditor({
 export default function RichMenuPage() {
   const queryClient = useQueryClient();
 
+  // Channel
+  const [channel, setChannel] = useState<'shop' | 'finance'>('shop');
+
   // Tab
   const [activeTab, setActiveTab] = useState<'create' | 'list'>('create');
 
@@ -512,6 +515,26 @@ export default function RichMenuPage() {
         subtitle="จัดการเมนูลัด LINE OA ที่ลูกค้าเห็นในหน้าแชท"
         icon={<LayoutGrid size={22} />}
       />
+
+      {/* Channel tabs (SHOP / FINANCE) */}
+      <div className="flex gap-1 mb-6 border-b border-border">
+        {[
+          { key: 'shop', label: '🛍 SHOP' },
+          { key: 'finance', label: '💰 FINANCE' },
+        ].map((ch) => (
+          <button
+            key={ch.key}
+            onClick={() => setChannel(ch.key as 'shop' | 'finance')}
+            className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
+              channel === ch.key
+                ? 'border-[#06C755] text-[#06C755]'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {ch.label}
+          </button>
+        ))}
+      </div>
 
       {/* Tabs */}
       <div className="flex gap-1 mb-6 border-b border-border">

@@ -918,7 +918,10 @@ export class CreditCheckService {
     });
 
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      // Keep in sync with the Sonnet ID used in finance-ai.service.ts and ocr.service.ts.
+      // Mismatch (`claude-sonnet-4-20250514`) previously caused the API call to fail
+      // and silently fall back to rule-based scoring with no alert.
+      model: 'claude-sonnet-4-5-20250514',
       max_tokens: 1024,
       messages: [{ role: 'user', content: contentBlocks }],
     });

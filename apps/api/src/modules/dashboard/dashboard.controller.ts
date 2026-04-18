@@ -11,7 +11,11 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 @ApiBearerAuth('JWT')
 @Controller('dashboard')
 @UseGuards(JwtAuthGuard, RolesGuard, BranchGuard)
-@Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+// SALES is intentionally excluded from the dashboard — all metrics here
+// expose collection / credit / financial intelligence that falls outside
+// a salesperson's need-to-know and could be abused for pricing leverage.
+// Reports controller follows the same rule.
+@Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
 export class DashboardController {
   constructor(private dashboardService: DashboardService) {}
 
@@ -127,7 +131,9 @@ export class DashboardController {
     branchId: string | undefined,
     user: { role: string; branchId: string | null },
   ): string | undefined {
-    return user.role === 'SALES' || user.role === 'BRANCH_MANAGER'
+    // BRANCH_MANAGER is always scoped to own branch; cross-branch roles
+    // (OWNER / FINANCE_MANAGER / ACCOUNTANT) may pass any branchId filter.
+    return user.role === 'BRANCH_MANAGER'
       ? user.branchId || undefined
       : branchId || undefined;
   }

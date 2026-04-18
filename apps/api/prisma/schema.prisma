@@ -485,9 +485,13 @@ model Customer {
   guardianAddress    String? @map("guardian_address")
 
   // Referral — ลูกค้าที่แนะนำมา
-  referredById String?    @map("referred_by_id")
-  referredBy   Customer?  @relation("Referral", fields: [referredById], references: [id])
-  referrals    Customer[] @relation("Referral")
+  referredById      String?    @map("referred_by_id")
+  referredBy        Customer?  @relation("Referral", fields: [referredById], references: [id])
+  referrals         Customer[] @relation("Referral")
+  // Atomic idempotency marker for awardReferralPoints. Set inside the same
+  // transaction that credits points to the referrer, so retries/races cannot
+  // award twice. NULL = not yet awarded.
+  referralAwardedAt DateTime?  @map("referral_awarded_at")
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")

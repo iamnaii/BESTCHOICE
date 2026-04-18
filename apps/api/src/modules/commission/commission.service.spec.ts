@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { Prisma } from '@prisma/client';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { CommissionService } from './commission.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -21,6 +21,10 @@ describe('CommissionService', () => {
       commissionRule: {
         create: jest.fn(),
         findMany: jest.fn(),
+        findFirst: jest.fn(),
+        update: jest.fn(),
+      },
+      commissionPayout: {
         findFirst: jest.fn(),
         update: jest.fn(),
       },
@@ -209,6 +213,19 @@ describe('CommissionService', () => {
       await expect(service.approve('c1', 'u1')).rejects.toBeInstanceOf(BadRequestException);
     });
 
+    it('refuses self-approval (Segregation of Duties — salesperson cannot approve own commission)', async () => {
+      prisma.salesCommission.findFirst.mockResolvedValue({
+        id: 'c1',
+        status: 'PENDING',
+        salespersonId: 'salesperson-1',
+      });
+
+      await expect(service.approve('c1', 'salesperson-1')).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+      expect(prisma.salesCommission.update).not.toHaveBeenCalled();
+    });
+
     it('flips PENDING to APPROVED with approver and timestamp', async () => {
       prisma.salesCommission.findFirst.mockResolvedValue({ id: 'c1', status: 'PENDING' });
       prisma.salesCommission.update.mockImplementation(
@@ -297,6 +314,73 @@ describe('CommissionService', () => {
 
       const result = await service.findAll({ page: 1, limit: 50 });
       expect(result).toEqual({ data: [], total: 0, page: 1, limit: 50, totalPages: 0 });
+    });
+  });
+
+  // Segregation of Duties on commission payout approval.
+  // Prevents the salesperson who earns a payout from self-approving it.
+  describe('approvePayout — Segregation of Duties', () => {
+    const draftPayout = {
+      id: 'payout-1',
+      salespersonId: 'salesperson-1',
+      status: 'DRAFT',
+      deletedAt: null,
+    };
+
+    it('throws ForbiddenException if approver is the salesperson (SoD violation)', async () => {
+      prisma.commissionPayout.findFirst.mockResolvedValue(draftPayout);
+
+      await expect(
+        service.approvePayout('payout-1', 'salesperson-1', { notes: 'self-approve attempt' }),
+      ).rejects.toThrow(ForbiddenException);
+      await expect(
+        service.approvePayout('payout-1', 'salesperson-1', { notes: 'self-approve attempt' }),
+      ).rejects.toThrow(/Segregation of Duties|ห้ามอนุมัติ/);
+
+      // Must not call update when SoD violated
+      expect(prisma.commissionPayout.update).not.toHaveBeenCalled();
+    });
+
+    it('allows approval when approver is a different user from the salesperson', async () => {
+      prisma.commissionPayout.findFirst.mockResolvedValue(draftPayout);
+      prisma.commissionPayout.update.mockResolvedValue({
+        ...draftPayout,
+        status: 'APPROVED',
+        approvedById: 'manager-1',
+        approvedAt: new Date(),
+      });
+
+      const result = await service.approvePayout('payout-1', 'manager-1', { notes: 'ok' });
+
+      expect(result.status).toBe('APPROVED');
+      expect(prisma.commissionPayout.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'payout-1' },
+          data: expect.objectContaining({
+            status: 'APPROVED',
+            approvedById: 'manager-1',
+          }),
+        }),
+      );
+    });
+
+    it('throws NotFoundException when payout does not exist', async () => {
+      prisma.commissionPayout.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.approvePayout('missing', 'manager-1', {}),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws BadRequestException when payout is not in DRAFT status', async () => {
+      prisma.commissionPayout.findFirst.mockResolvedValue({
+        ...draftPayout,
+        status: 'APPROVED',
+      });
+
+      await expect(
+        service.approvePayout('payout-1', 'manager-1', {}),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 });

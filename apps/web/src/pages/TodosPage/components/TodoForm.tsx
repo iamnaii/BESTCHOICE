@@ -114,6 +114,11 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers }: TodoFormPr
 
   const saveMutation = useMutation({
     mutationFn: async () => {
+      // Drop blank-text items so saving with only "+" clicks doesn't leave
+      // empty rows in DB — and trim whitespace to keep data clean.
+      const checklist = (form.checklist || [])
+        .map((c) => ({ ...c, text: (c.text || '').trim() }))
+        .filter((c) => c.text.length > 0);
       const payload = {
         title: form.title?.trim(),
         description: form.description || undefined,
@@ -122,7 +127,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers }: TodoFormPr
         dueDate: form.dueDate || undefined,
         assigneeId: form.assigneeId || undefined,
         tags: form.tags || [],
-        checklist: form.checklist || [],
+        checklist,
         attachments: form.attachments || [],
       };
       if (!payload.title) throw new Error('กรุณาระบุชื่องาน');

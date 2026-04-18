@@ -7,7 +7,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/button';
 import { statusLabels, categoryLabels } from '@/lib/constants';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { ArrowRightLeft, Download, Plus } from 'lucide-react';
+import { ArrowRightLeft, Download, Eye, Plus } from 'lucide-react';
 import { StockProduct } from './types';
 import { useStockData, useEditingProductSync } from './hooks/useStockData';
 import { useStockFilters } from './hooks/useStockFilters';
@@ -201,6 +201,20 @@ export default function StockPage() {
       key: 'branch',
       label: 'สาขา',
       render: (p: StockProduct) => <span className="text-xs font-medium">{p.branch.name}</span>,
+    },
+    {
+      key: 'actions',
+      label: '',
+      render: (p: StockProduct) => (
+        <button
+          onClick={(e) => { e.stopPropagation(); navigateToProduct(p.id); }}
+          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-muted-foreground hover:text-primary hover:bg-accent transition-colors"
+          title="ดูรายละเอียดสินค้า"
+        >
+          <Eye className="size-3.5" />
+          ดูรายละเอียด
+        </button>
+      ),
     },
   ], [navigateToProduct, openPriceEdit, isManager, selectedIds, listProducts]);
 

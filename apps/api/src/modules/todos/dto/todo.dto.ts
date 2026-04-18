@@ -7,6 +7,7 @@ import {
   IsUUID,
   IsInt,
   IsNotEmpty,
+  IsBoolean,
   Min,
   Max,
   MaxLength,
@@ -62,6 +63,7 @@ export class ChecklistItemDto {
   text!: string;
 
   @IsOptional()
+  @IsBoolean()
   done?: boolean;
 }
 
@@ -123,6 +125,9 @@ export class CreateTodoDto {
   tags?: string[];
 
   @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ChecklistItemDto)
   checklist?: ChecklistItemDto[];
 
   @IsOptional()
@@ -170,6 +175,9 @@ export class UpdateTodoDto {
   tags?: string[];
 
   @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ChecklistItemDto)
   checklist?: ChecklistItemDto[];
 
   @IsOptional()

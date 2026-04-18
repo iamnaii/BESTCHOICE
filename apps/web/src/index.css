@@ -415,6 +415,30 @@ layer(base);
   *::after {
     border-color: hsl(var(--border));
   }
+
+  /* Native form-control theming — tells browsers which scheme to render
+     select dropdown panels, date pickers, and scrollbars in. Without
+     this, dark-mode pages get white-panel native <select> option lists
+     that are unreadable against dark selected text. */
+  :root {
+    color-scheme: light;
+  }
+  .dark {
+    color-scheme: dark;
+  }
+
+  /* Native <select> options inherit browser defaults (Safari especially
+     ignores parent bg/color). Force them onto theme tokens so the
+     dropdown panel stays readable in both modes. */
+  select option {
+    background-color: hsl(var(--popover));
+    color: hsl(var(--popover-foreground));
+  }
+  select option:checked,
+  select option:hover {
+    background-color: hsl(var(--accent));
+    color: hsl(var(--accent-foreground));
+  }
 }
 
 /* ── Tiptap Rich Text Editor ─────────────────────────── */

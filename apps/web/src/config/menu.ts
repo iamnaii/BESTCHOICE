@@ -20,6 +20,7 @@ import {
   Banknote,
   FileText,
   RefreshCw,
+  Wrench,
   Lock,
   Receipt,
   PieChart,
@@ -203,6 +204,7 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'ติดตามหนี้', path: '/overdue', icon: AlertTriangle },
         { label: 'เปลี่ยนเครื่อง', path: '/exchange', icon: RefreshCw },
+        { label: 'เปลี่ยนเครื่องเสีย (7 วัน)', path: '/defect-exchange', icon: Wrench },
         { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
       ],
     },
@@ -327,6 +329,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'ติดตามหนี้', path: '/overdue', icon: AlertTriangle },
         { label: 'เปลี่ยนเครื่อง', path: '/exchange', icon: RefreshCw },
+        { label: 'เปลี่ยนเครื่องเสีย (7 วัน)', path: '/defect-exchange', icon: Wrench },
         { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
       ],
     },

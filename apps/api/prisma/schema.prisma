@@ -36,6 +36,7 @@ enum ContractStatus {
   EARLY_PAYOFF
   COMPLETED
   EXCHANGED
+  DEFECT_EXCHANGED
   CLOSED_BAD_DEBT
 }
 
@@ -80,6 +81,7 @@ enum ProductStatus {
   REFURBISHED
   SOLD_RESELL
   DAMAGED
+  DEFECT_RETURN
   LOST
   WRITTEN_OFF
 }
@@ -647,6 +649,10 @@ model Contract {
   // Shop warranty tracking
   shopWarrantyStartDate DateTime? @map("shop_warranty_start_date")
   shopWarrantyEndDate   DateTime? @map("shop_warranty_end_date")
+
+  // วันที่ลูกค้ารับเครื่องจริง (ใช้เป็น baseline นับ 7-day defect exchange window)
+  // Defaults to activatedAt/createdAt if not set
+  deviceReceivedAt DateTime? @map("device_received_at")
 
   @@index([customerId])
   @@index([branchId])

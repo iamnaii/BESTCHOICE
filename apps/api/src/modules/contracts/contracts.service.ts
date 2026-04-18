@@ -1,4 +1,4 @@
-import { Injectable, Logger, Optional, NotFoundException, BadRequestException, ForbiddenException, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, Logger, Optional, NotFoundException, BadRequestException, ForbiddenException, ConflictException, InternalServerErrorException } from '@nestjs/common';
 import { StructuredLoggerService } from '../../common/logger';
 import { PlanType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -248,7 +248,28 @@ export class ContractsService {
     };
   }
 
-  async create(dto: CreateContractDto, salespersonId: string) {
+  async create(dto: CreateContractDto, salespersonId: string, salespersonRole?: string) {
+    // Block if customer already has active contract(s), unless OWNER/BRANCH_MANAGER overrides
+    const activeContracts = await this.prisma.contract.findMany({
+      where: {
+        customerId: dto.customerId,
+        deletedAt: null,
+        status: { in: ['ACTIVE', 'OVERDUE', 'DEFAULT'] },
+      },
+      select: { id: true, contractNumber: true, status: true },
+    });
+    if (activeContracts.length > 0) {
+      const canOverride = salespersonRole === 'OWNER' || salespersonRole === 'BRANCH_MANAGER';
+      if (!(canOverride && dto.overrideActiveContractCheck)) {
+        throw new ConflictException({
+          message: 'ลูกค้ายังมีสัญญาที่กำลังผ่อนอยู่ ไม่สามารถเปิดสัญญาใหม่ได้',
+          code: 'CUSTOMER_HAS_ACTIVE_CONTRACT',
+          activeContracts,
+          canOverride,
+        });
+      }
+    }
+
     // Try to find interest config by product category
     const product = await this.prisma.product.findUnique({ where: { id: dto.productId } });
     if (!product || product.deletedAt || product.status !== 'IN_STOCK') {

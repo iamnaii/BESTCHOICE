@@ -225,7 +225,7 @@ export class CustomersService {
   }
 
   async search(q: string) {
-    return this.prisma.customer.findMany({
+    const rows = await this.prisma.customer.findMany({
       where: {
         deletedAt: null,
         OR: [
@@ -240,10 +240,25 @@ export class CustomersService {
         phone: true,
         nationalId: true,
         _count: { select: { contracts: true } },
+        contracts: {
+          where: {
+            deletedAt: null,
+            status: { in: ['ACTIVE', 'OVERDUE', 'DEFAULT'] },
+          },
+          select: { id: true },
+        },
       },
       take: 10,
       orderBy: { name: 'asc' },
     });
+    return rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      phone: r.phone,
+      nationalId: r.nationalId,
+      _count: r._count,
+      activeContractCount: r.contracts.length,
+    }));
   }
 
   async create(dto: CreateCustomerDto) {

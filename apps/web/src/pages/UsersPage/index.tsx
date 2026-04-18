@@ -9,7 +9,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Mail, Link2, Users, UserCheck, Shield } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
-import { User, InviteToken, roleLabels, emptyForm } from './types';
+import { User, InviteToken, emptyForm } from './types';
 import { UserTable, InviteTable } from './components/UserTable';
 import UserForm from './components/UserForm';
 import InviteModal from './components/InviteModal';
@@ -213,6 +213,21 @@ export default function UsersPage() {
     });
   };
 
+  const handleBulkDeactivate = (selected: User[]) => {
+    const active = selected.filter((u) => u.isActive);
+    if (active.length === 0) {
+      toast.error('ไม่มีผู้ใช้ที่ใช้งานอยู่ในรายการที่เลือก');
+      return;
+    }
+    setConfirmDialog({
+      open: true,
+      message: `ต้องการปิดใช้งานผู้ใช้ ${active.length} คนที่เลือกหรือไม่?`,
+      action: () => {
+        active.forEach((u) => toggleActiveMutation.mutate({ id: u.id, isActive: false }));
+      },
+    });
+  };
+
   const handleResendInvite = (id: string, email: string) => {
     setConfirmDialog({
       open: true,
@@ -325,43 +340,46 @@ export default function UsersPage() {
               </CardContent>
             </div>
           </Card>
-          <Card className="rounded-xl border border-border/50 shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
-            <div className="flex h-full">
-              <div className="w-1 shrink-0 bg-warning" />
-              <CardContent className="p-5 flex-1">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-warning/10">
-                    <Shield className="size-5 text-warning" />
-                  </div>
-                  <div>
-                    <div className="text-2xl font-bold text-foreground">
-                      {(() => {
-                        const roleCounts = users.reduce<Record<string, number>>((acc, u) => {
-                          acc[u.role] = (acc[u.role] || 0) + 1;
-                          return acc;
-                        }, {});
-                        const topRole = Object.entries(roleCounts).sort((a, b) => b[1] - a[1])[0];
-                        return topRole ? `${roleLabels[topRole[0]] || topRole[0]}` : '-';
-                      })()}
+          {(() => {
+            const ownerCount = users.filter((u) => u.role === 'OWNER' && u.isActive).length;
+            const tooMany = ownerCount > 2;
+            return (
+              <Card className="rounded-xl border border-border/50 shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
+                <div className="flex h-full">
+                  <div className={`w-1 shrink-0 ${tooMany ? 'bg-destructive' : 'bg-warning'}`} />
+                  <CardContent className="p-5 flex-1">
+                    <div className="flex items-center gap-3">
+                      <div className={`p-2 rounded-lg ${tooMany ? 'bg-destructive/10' : 'bg-warning/10'}`}>
+                        <Shield className={`size-5 ${tooMany ? 'text-destructive' : 'text-warning'}`} />
+                      </div>
+                      <div>
+                        <div className="text-2xl font-bold tabular-nums text-foreground">
+                          {ownerCount}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {tooMany ? 'เจ้าของร้าน (ควรมีไม่เกิน 2 คน)' : 'เจ้าของร้าน'}
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-xs text-muted-foreground">ตำแหน่งที่มีมากที่สุด</div>
-                  </div>
+                  </CardContent>
                 </div>
-              </CardContent>
-            </div>
-          </Card>
+              </Card>
+            );
+          })()}
         </div>
       )}
 
       {activeTab === 'users' ? (
         <UserTable
           users={users}
+          branches={branches}
           isLoading={isLoading}
           isError={isError}
           error={error}
           onRetry={refetch}
           onEdit={openEdit}
           onToggleActive={handleToggleActive}
+          onBulkDeactivate={handleBulkDeactivate}
         />
       ) : (
         <InviteTable

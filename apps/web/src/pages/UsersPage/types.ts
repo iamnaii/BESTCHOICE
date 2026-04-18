@@ -14,9 +14,18 @@ export interface User {
   startDate: string | null;
   nationalId: string | null;
   birthDate: string | null;
+  lastLoginAt: string | null;
   createdAt: string;
   branch: { id: string; name: string } | null;
 }
+
+export const roleAvatarColors: Record<string, string> = {
+  OWNER: 'bg-destructive/15 text-destructive',
+  BRANCH_MANAGER: 'bg-primary/15 text-primary',
+  FINANCE_MANAGER: 'bg-info/15 text-info',
+  SALES: 'bg-success/15 text-success',
+  ACCOUNTANT: 'bg-warning/15 text-warning',
+};
 
 export interface InviteToken {
   id: string;
@@ -39,8 +48,8 @@ export const roleLabels: Record<string, string> = {
 };
 
 export const roleColors: Record<string, string> = {
-  OWNER: 'bg-primary-100 text-primary-700',
-  BRANCH_MANAGER: 'bg-primary-100 text-primary-700',
+  OWNER: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
+  BRANCH_MANAGER: 'bg-primary/10 text-primary dark:bg-primary/15',
   FINANCE_MANAGER: 'bg-info/10 text-info dark:bg-info/15',
   SALES: 'bg-success/10 text-success dark:bg-success/15',
   ACCOUNTANT: 'bg-warning/10 text-warning dark:bg-warning/15',

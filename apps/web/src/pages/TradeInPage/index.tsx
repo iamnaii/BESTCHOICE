@@ -90,6 +90,9 @@ export default function TradeInPage() {
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
+  // Track ว่ากำลังเปิด PDF ใบไหนอยู่ — โชว์ spinner ที่ปุ่มนั้น
+  const [voucherLoadingId, setVoucherLoadingId] = useState<string | null>(null);
+
   const generateVoucherMutation = useMutation({
     mutationFn: async (id: string) => api.post(`/trade-ins/${id}/voucher`),
     onSuccess: async (res, id) => {
@@ -104,6 +107,7 @@ export default function TradeInPage() {
 
   // ดาวน์โหลด PDF เป็น blob (ผ่าน axios — ส่ง JWT แนบ) แล้วเปิดในแท็บใหม่
   async function openVoucherPdf(id: string) {
+    setVoucherLoadingId(id);
     try {
       const res = await api.get(`/trade-ins/${id}/voucher.pdf`, { responseType: 'blob' });
       const blob = new Blob([res.data], { type: 'application/pdf' });
@@ -113,6 +117,8 @@ export default function TradeInPage() {
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (err) {
       toast.error(getErrorMessage(err));
+    } finally {
+      setVoucherLoadingId(null);
     }
   }
 
@@ -178,7 +184,7 @@ export default function TradeInPage() {
         onReject={(id) => rejectMutation.mutate(id)}
         onVoucher={handleVoucher}
         isRejectPending={rejectMutation.isPending}
-        isVoucherPending={generateVoucherMutation.isPending}
+        voucherLoadingId={voucherLoadingId ?? (generateVoucherMutation.isPending ? (generateVoucherMutation.variables ?? null) : null)}
       />
 
       <AppraisalModal

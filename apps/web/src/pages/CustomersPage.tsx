@@ -23,7 +23,15 @@ import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import AddressForm, { AddressData, emptyAddress, serializeAddress } from '@/components/ui/AddressForm';
-import { Download, ChevronUp, ChevronDown, CreditCard, Camera, User, MapPin, Phone, Briefcase, Users } from 'lucide-react';
+import { Download, ChevronUp, ChevronDown, CreditCard, Camera, User, MapPin, Phone, Briefcase, Users, Copy } from 'lucide-react';
+import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import type { OcrResult } from '@/types/ocr';
 import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, creditCheckStatusMap } from '@/lib/status-badges';
@@ -72,6 +80,34 @@ interface ReferenceData {
 
 const emptyReference: ReferenceData = { prefix: '', firstName: '', lastName: '', phone: '', relationship: '' };
 
+// 8 Tailwind token combos — deterministic hash from name → stable color per customer
+const AVATAR_COLORS = [
+  'bg-primary/15 text-primary',
+  'bg-success/15 text-success',
+  'bg-info/15 text-info',
+  'bg-warning/15 text-warning',
+  'bg-destructive/15 text-destructive',
+  'bg-purple-500/15 text-purple-600 dark:text-purple-400',
+  'bg-pink-500/15 text-pink-600 dark:text-pink-400',
+  'bg-cyan-500/15 text-cyan-600 dark:text-cyan-400',
+];
+
+const avatarColorFor = (name: string): string => {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+  return AVATAR_COLORS[hash % AVATAR_COLORS.length];
+};
+
+const formatRelativeDate = (iso: string): string => {
+  const diffDays = Math.floor((Date.now() - new Date(iso).getTime()) / (1000 * 60 * 60 * 24));
+  if (diffDays === 0) return 'วันนี้';
+  if (diffDays === 1) return 'เมื่อวาน';
+  if (diffDays < 7) return `${diffDays} วันก่อน`;
+  if (diffDays < 30) return `${Math.floor(diffDays / 7)} สัปดาห์ก่อน`;
+  if (diffDays < 365) return `${Math.floor(diffDays / 30)} เดือนก่อน`;
+  return formatDateShort(iso);
+};
+
 const emptyForm: CustomerFormData & { facebookFriends: string; googleMapLink: string; addressCurrentType: string } = {
   prefix: '',
   firstName: '',
@@ -101,6 +137,7 @@ export default function CustomersPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const { copy } = useCopyToClipboard();
   const isOwner = user?.role === 'OWNER';
   const isOwnerOrManager = ['OWNER', 'BRANCH_MANAGER'].includes(user?.role ?? '');
   const canViewSalary = ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'].includes(user?.role ?? '');
@@ -388,6 +425,15 @@ export default function CustomersPage() {
 
   const navigateToCustomer = useCallback((id: string) => navigate(`/customers/${id}`), [navigate]);
 
+  const copyValue = useCallback(
+    (e: React.MouseEvent, value: string, label: string) => {
+      e.stopPropagation();
+      copy(value);
+      toast.success(`คัดลอก${label}แล้ว`);
+    },
+    [copy],
+  );
+
   const exportExcel = async () => {
     try {
       toast.loading('กำลังสร้างไฟล์ Excel...', { id: 'excel-export' });
@@ -455,26 +501,22 @@ export default function CustomersPage() {
 
   const columns = useMemo(() => [
     {
-      key: 'index',
-      label: '#',
-      render: (_c: Customer, _col: unknown, idx?: number) => (
-        <span className="text-xs text-muted-foreground tabular-nums">{((result?.page || 1) - 1) * (result?.limit || 50) + (idx ?? 0) + 1}</span>
-      ),
-    },
-    {
       key: 'name',
       label: 'ลูกค้า',
       render: (c: Customer) => (
-        <div className="flex items-center gap-3">
-          {/* Avatar circle — Metronic contact list style */}
-          <div className="size-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0 text-primary font-semibold text-sm select-none">
+        <div className="flex items-center gap-3 min-w-0">
+          <div
+            className={`size-9 rounded-full flex items-center justify-center shrink-0 font-semibold text-sm select-none ${avatarColorFor(c.name)}`}
+          >
             {c.name.charAt(0).toUpperCase()}
           </div>
           <div className="min-w-0">
-            <button onClick={() => navigateToCustomer(c.id)} className="text-left group">
-              <div className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors truncate">{c.name}</div>
-              {c.nickname && <div className="text-xs text-muted-foreground">({c.nickname})</div>}
-            </button>
+            <div className="text-sm font-semibold text-foreground truncate">
+              {c.name}
+              {c.nickname && (
+                <span className="text-muted-foreground font-normal"> ({c.nickname})</span>
+              )}
+            </div>
           </div>
         </div>
       ),
@@ -483,22 +525,49 @@ export default function CustomersPage() {
       key: 'phone',
       label: 'เบอร์โทร',
       render: (c: Customer) => (
-        <span className="text-sm text-foreground tabular-nums">{c.phone}</span>
+        <div className="group inline-flex items-center gap-1.5">
+          <span className="text-sm text-foreground tabular-nums">{c.phone}</span>
+          <button
+            type="button"
+            onClick={(e) => copyValue(e, c.phone, 'เบอร์โทร')}
+            className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-opacity"
+            aria-label="คัดลอกเบอร์โทร"
+          >
+            <Copy className="size-3.5" />
+          </button>
+        </div>
       ),
     },
     {
       key: 'nationalId',
       label: 'เลขบัตร',
-      render: (c: Customer) => <span className="font-mono text-xs text-muted-foreground">{maskNationalId(c.nationalId)}</span>,
+      hideable: true,
+      render: (c: Customer) => (
+        <div className="group inline-flex items-center gap-1.5">
+          <span className="font-mono text-xs text-muted-foreground">{maskNationalId(c.nationalId)}</span>
+          {isOwnerOrManager && (
+            <button
+              type="button"
+              onClick={(e) => copyValue(e, c.nationalId, 'เลขบัตร')}
+              className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-opacity"
+              aria-label="คัดลอกเลขบัตร"
+            >
+              <Copy className="size-3.5" />
+            </button>
+          )}
+        </div>
+      ),
     },
     {
       key: 'occupation',
       label: 'อาชีพ',
+      hideable: true,
       render: (c: Customer) => <span className="text-sm text-muted-foreground">{c.occupation || '—'}</span>,
     },
     ...(canViewSalary ? [{
       key: 'salary',
       label: 'เงินเดือน',
+      hideable: true,
       render: (c: Customer) => (
         <span className="text-sm tabular-nums">{c.salary ? Number(c.salary).toLocaleString('th-TH') + ' ฿' : '—'}</span>
       ),
@@ -523,6 +592,7 @@ export default function CustomersPage() {
     {
       key: 'credit',
       label: 'เครดิต',
+      hideable: true,
       render: (c: Customer) => {
         if (!c.latestCreditStatus) return <span className="text-xs text-muted-foreground">—</span>;
         const cfg = getStatusBadgeProps(c.latestCreditStatus, creditCheckStatusMap);
@@ -539,9 +609,12 @@ export default function CustomersPage() {
     {
       key: 'createdAt',
       label: 'วันที่เพิ่ม',
-      render: (c: Customer) => <span className="text-xs text-muted-foreground">{formatDateShort(c.createdAt)}</span>,
+      hideable: true,
+      render: (c: Customer) => (
+        <span className="text-xs text-muted-foreground whitespace-nowrap">{formatRelativeDate(c.createdAt)}</span>
+      ),
     },
-  ], [navigateToCustomer, result?.page]);
+  ], [canViewSalary, isOwnerOrManager, copyValue]);
 
   const inputClass = 'w-full px-3 py-2 border border-input rounded-lg text-sm outline-hidden focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background';
   const selectClass = `${inputClass}`;
@@ -555,7 +628,10 @@ export default function CustomersPage() {
         subtitle={`ทั้งหมด ${result?.total ?? 0} ราย`}
         action={
           <div className="flex gap-2">
-            <button onClick={exportExcel} className="inline-flex items-center gap-1.5 px-4 py-2 bg-success text-success-foreground rounded-lg text-sm font-medium hover:bg-success/90">
+            <button
+              onClick={exportExcel}
+              className="inline-flex items-center gap-1.5 px-4 py-2 border border-input text-foreground rounded-lg text-sm font-medium hover:bg-accent transition-colors"
+            >
               <Download className="w-4 h-4" />
               ส่งออก Excel
             </button>
@@ -582,7 +658,7 @@ export default function CustomersPage() {
             <CardContent className="p-5 relative">
               <div className="absolute inset-y-0 left-0 w-1 bg-success rounded-l-xl" />
               <div className="pl-2">
-                <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">มีสัญญา Active</div>
+                <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">มีสัญญาผ่อน</div>
                 <div className="text-2xl font-bold text-success">{result.summary.withActiveContract.toLocaleString()}</div>
               </div>
             </CardContent>
@@ -621,27 +697,35 @@ export default function CustomersPage() {
               className="w-full pl-9 pr-3 py-2 border border-input rounded-lg text-sm outline-hidden focus:ring-2 focus:ring-ring/30 focus:border-ring transition-colors bg-background"
             />
           </div>
-          <select
-            value={contractStatusFilter}
-            onChange={(e) => setContractStatusFilter(e.target.value)}
-            className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-hidden focus:ring-2 focus:ring-ring/30"
+          <Select
+            value={contractStatusFilter || 'ALL'}
+            onValueChange={(v) => setContractStatusFilter(v === 'ALL' ? '' : v)}
           >
-            <option value="">ทุกสถานะสัญญา</option>
-            <option value="ACTIVE">มีสัญญา Active</option>
-            <option value="COMPLETED">ปิดสัญญาแล้ว</option>
-            <option value="DRAFT">ร่าง</option>
-          </select>
-          <select
-            value={creditStatusFilter}
-            onChange={(e) => setCreditStatusFilter(e.target.value)}
-            className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-hidden focus:ring-2 focus:ring-ring/30"
+            <SelectTrigger className="h-10">
+              <SelectValue placeholder="ทุกสถานะสัญญา" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">ทุกสถานะสัญญา</SelectItem>
+              <SelectItem value="ACTIVE">มีสัญญา Active</SelectItem>
+              <SelectItem value="COMPLETED">ปิดสัญญาแล้ว</SelectItem>
+              <SelectItem value="DRAFT">ร่าง</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select
+            value={creditStatusFilter || 'ALL'}
+            onValueChange={(v) => setCreditStatusFilter(v === 'ALL' ? '' : v)}
           >
-            <option value="">ทุกสถานะเครดิต</option>
-            <option value="APPROVED">ผ่าน</option>
-            <option value="REJECTED">ไม่ผ่าน</option>
-            <option value="PENDING">รอตรวจ</option>
-            <option value="MANUAL_REVIEW">รอตรวจสอบด้วยตนเอง</option>
-          </select>
+            <SelectTrigger className="h-10">
+              <SelectValue placeholder="ทุกสถานะเครดิต" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">ทุกสถานะเครดิต</SelectItem>
+              <SelectItem value="APPROVED">ผ่าน</SelectItem>
+              <SelectItem value="REJECTED">ไม่ผ่าน</SelectItem>
+              <SelectItem value="PENDING">รอตรวจ</SelectItem>
+              <SelectItem value="MANUAL_REVIEW">รอตรวจสอบด้วยตนเอง</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         <div className="flex items-center gap-3 flex-wrap">
@@ -657,32 +741,37 @@ export default function CustomersPage() {
             ค้างชำระ
           </button>
           {isOwner && (
-            <select
-              value={branchFilter}
-              onChange={(e) => setBranchFilter(e.target.value)}
-              className="px-3 py-1.5 border border-input rounded-lg text-xs bg-background outline-hidden focus:ring-2 focus:ring-ring/30"
+            <Select
+              value={branchFilter || 'ALL'}
+              onValueChange={(v) => setBranchFilter(v === 'ALL' ? '' : v)}
             >
-              <option value="">ทุกสาขา</option>
-              {branches.map((b) => (
-                <option key={b.id} value={b.id}>{b.name}</option>
-              ))}
-            </select>
+              <SelectTrigger className="h-9 w-auto min-w-[140px]">
+                <SelectValue placeholder="ทุกสาขา" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">ทุกสาขา</SelectItem>
+                {branches.map((b) => (
+                  <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
 
           {/* Sorting inline */}
           <div className="flex items-center gap-2 ml-auto text-xs">
             <span className="text-muted-foreground hidden sm:inline">เรียงโดย:</span>
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              className="px-2 py-1.5 border border-input rounded-lg text-xs bg-background outline-hidden focus:ring-2 focus:ring-ring/30"
-            >
-              <option value="">ค่าเริ่มต้น</option>
-              <option value="name">ชื่อ</option>
-              <option value="createdAt">วันที่เพิ่ม</option>
-              <option value="contractCount">จำนวนสัญญา</option>
-              <option value="creditScore">เครดิตสกอร์</option>
-            </select>
+            <Select value={sortBy || 'DEFAULT'} onValueChange={(v) => setSortBy(v === 'DEFAULT' ? '' : v)}>
+              <SelectTrigger className="h-9 w-auto min-w-[140px] text-xs">
+                <SelectValue placeholder="ค่าเริ่มต้น" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="DEFAULT">ค่าเริ่มต้น</SelectItem>
+                <SelectItem value="name">ชื่อ</SelectItem>
+                <SelectItem value="createdAt">วันที่เพิ่ม</SelectItem>
+                <SelectItem value="contractCount">จำนวนสัญญา</SelectItem>
+                <SelectItem value="creditScore">เครดิตสกอร์</SelectItem>
+              </SelectContent>
+            </Select>
             {sortBy && (
               <button
                 onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
@@ -715,8 +804,9 @@ export default function CustomersPage() {
               columns={columns}
               data={customers}
               isLoading={isLoading}
+              columnToggle
               emptyMessage="ไม่พบลูกค้า"
-              onRowDoubleClick={(c) => navigate(`/customers/${c.id}`)}
+              onRowClick={(c) => navigate(`/customers/${c.id}`)}
               pagination={result ? {
                 page: result.page,
                 totalPages: result.totalPages,

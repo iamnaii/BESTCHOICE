@@ -188,20 +188,29 @@ export class TradeInVoucherService {
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle">${path}</svg>`;
   }
 
-  /** BESTCHOICE logo SVG inline (จากไฟล์ apps/web/public/logo.svg) */
+  /** BESTCHOICE logo SVG — อ่านจาก apps/web/public/logo.svg (cached) */
+  private cachedLogoSvg: string | null = null;
   private logoSvg(): string {
-    return `<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" style="width:100px;height:100px">
-  <defs>
-    <linearGradient id="lg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#2dd4bf"/>
-      <stop offset="100%" stop-color="#059669"/>
-    </linearGradient>
-  </defs>
-  <path d="M 55 20 L 110 20 Q 130 20, 130 42 Q 130 58, 112 62 Q 135 68, 135 90 Q 135 115, 110 115 L 55 115 L 55 88 L 100 88 Q 108 88, 108 80 Q 108 72, 100 72 L 55 72 L 55 48 L 95 48 Q 103 48, 103 40 Q 103 32, 95 32 L 55 32 Z" fill="url(#lg)"/>
-  <text x="100" y="160" text-anchor="middle" font-family="Arial,sans-serif" font-size="28" font-weight="700" letter-spacing="2">
-    <tspan fill="#4b5563">BEST</tspan><tspan fill="#059669">CHOICE</tspan>
-  </text>
-</svg>`;
+    if (this.cachedLogoSvg) return this.cachedLogoSvg;
+    const candidates = [
+      path.join(process.cwd(), 'public', 'logo.svg'),
+      path.join(__dirname, '..', '..', '..', '..', '..', 'public', 'logo.svg'),
+      path.join(process.cwd(), '..', 'web', 'public', 'logo.svg'),
+      path.join(__dirname, '..', '..', '..', '..', '..', 'web', 'public', 'logo.svg'),
+    ];
+    const found = candidates.find((p) => fs.existsSync(p));
+    if (found) {
+      const raw = fs.readFileSync(found, 'utf8');
+      // ใส่ width/height ให้พอดีกับ header (ต้นฉบับ viewBox 710×425)
+      this.cachedLogoSvg = raw.replace(
+        /<svg\b([^>]*)>/,
+        '<svg$1 style="width:160px;height:auto;display:block">',
+      );
+      return this.cachedLogoSvg;
+    }
+    // fallback — ถ้าหาไฟล์ไม่เจอ ใช้ text แทน (ไม่ใช่ SVG เทียม)
+    this.cachedLogoSvg = `<div style="font-family:Arial,sans-serif;font-size:22pt;font-weight:800;letter-spacing:1px"><span style="color:#4D4D4D">BEST</span><span style="color:#1DA579">CHOICE</span></div>`;
+    return this.cachedLogoSvg;
   }
 
   // ─── Helpers ──────────────────────────────────────────────
@@ -354,7 +363,8 @@ export class TradeInVoucherService {
       align-items: center;
       margin-bottom: 12px;
     }
-    .top-header .logo { display: flex; }
+    .top-header .logo { display: flex; align-items: center; }
+    .top-header .logo > svg { max-width: 170px; max-height: 70px; }
     .top-header .title-block { text-align: right; }
     .top-header .title {
       font-family: 'TH Sarabun PSK', sans-serif;
@@ -692,15 +702,13 @@ export class TradeInVoucherService {
       margin-bottom: 14px;
     }
     .sig-section .signer-img {
-      height: 40px;
+      height: 42px;
       margin-bottom: 4px;
-      color: #6dbe7a;
-      font-family: 'TH Sarabun PSK', cursive;
-      font-size: 22pt;
+      display: inline-flex;
+      align-items: flex-end;
+      color: #9ca3af;
+      font-size: 10pt;
       font-style: italic;
-      font-weight: 700;
-      transform: skewX(-8deg);
-      display: inline-block;
     }
     .sig-section .signer-line {
       width: 220px;
@@ -947,7 +955,7 @@ export class TradeInVoucherService {
             ${
               data.issuerSignatureBase64
                 ? `<img src="${data.issuerSignatureBase64}" alt="signature" style="height:42px;display:block;margin-bottom:2px;object-fit:contain" />`
-                : `<div class="signer-img">${this.escapeHtml(data.issuerName)}</div>`
+                : `<div class="signer-img">(รอลายเซ็น)</div>`
             }
             <div class="signer-line">
               <div class="signer-name">${this.escapeHtml(data.issuerName)}</div>
@@ -960,7 +968,7 @@ export class TradeInVoucherService {
             ${
               data.sellerSignatureBase64
                 ? `<img src="${data.sellerSignatureBase64}" alt="seller signature" style="height:42px;display:block;margin-bottom:2px;object-fit:contain" />`
-                : `<div class="signer-img">${this.escapeHtml(data.sellerName)}</div>`
+                : `<div class="signer-img">(รอลายเซ็น)</div>`
             }
             <div class="signer-line">
               <div class="signer-name">${this.escapeHtml(data.sellerName)}</div>
@@ -999,50 +1007,110 @@ export class TradeInVoucherService {
     return `<div class="imei-badge"><span class="lbl">IMEI</span>${this.escapeHtml(m[1])}</div>`;
   }
 
+  // ─── Font cache (base64) — โหลด TTF ครั้งเดียว ใช้ทุกครั้ง ──
+  private cachedFontCss: string | null | undefined;
+  private resolveFontCss(): string | null {
+    if (this.cachedFontCss !== undefined) return this.cachedFontCss;
+    try {
+      const fontPaths = [
+        path.join(process.cwd(), 'public', 'fonts'),
+        path.join(__dirname, '..', '..', '..', '..', '..', 'public', 'fonts'),
+        path.join(process.cwd(), '..', 'web', 'public', 'fonts'),
+      ];
+      const fontsDir = fontPaths.find((p) =>
+        fs.existsSync(path.join(p, 'THSarabunPSK-Regular.ttf')),
+      );
+      if (!fontsDir) {
+        this.cachedFontCss = null;
+        return null;
+      }
+      const reg = path.join(fontsDir, 'THSarabunPSK-Regular.ttf');
+      const bold = path.join(fontsDir, 'THSarabunPSK-Bold.ttf');
+      let css = '';
+      if (fs.existsSync(reg)) {
+        css += `@font-face{font-family:'TH Sarabun PSK';src:url(data:font/truetype;base64,${fs
+          .readFileSync(reg)
+          .toString('base64')}) format('truetype');font-weight:400;font-style:normal;}`;
+      }
+      if (fs.existsSync(bold)) {
+        css += `@font-face{font-family:'TH Sarabun PSK';src:url(data:font/truetype;base64,${fs
+          .readFileSync(bold)
+          .toString('base64')}) format('truetype');font-weight:700;font-style:normal;}`;
+      }
+      this.cachedFontCss = css || null;
+      return this.cachedFontCss;
+    } catch (err) {
+      this.logger.warn(`Font preload failed: ${err instanceof Error ? err.message : err}`);
+      this.cachedFontCss = null;
+      return null;
+    }
+  }
+
+  // ─── Shared browser (singleton) — ลดเวลา launch Chromium ลง ──
+  private static sharedBrowser: Promise<unknown> | null = null;
+  private async getBrowser() {
+    const puppeteer = await import('puppeteer');
+    if (!TradeInVoucherService.sharedBrowser) {
+      TradeInVoucherService.sharedBrowser = puppeteer.default.launch({
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+      });
+    }
+    try {
+      const browser = (await TradeInVoucherService.sharedBrowser) as {
+        newPage: () => Promise<unknown>;
+        connected?: boolean;
+        process?: () => unknown;
+      };
+      if (browser.connected === false || !browser.process?.()) {
+        TradeInVoucherService.sharedBrowser = puppeteer.default.launch({
+          headless: true,
+          args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+        });
+        return (await TradeInVoucherService.sharedBrowser) as {
+          newPage: () => Promise<unknown>;
+        };
+      }
+      return browser as { newPage: () => Promise<unknown> };
+    } catch {
+      TradeInVoucherService.sharedBrowser = puppeteer.default.launch({
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+      });
+      return (await TradeInVoucherService.sharedBrowser) as {
+        newPage: () => Promise<unknown>;
+      };
+    }
+  }
+
   // ─── PDF render (puppeteer) ───────────────────────────────
   private async htmlToPdf(html: string): Promise<Buffer> {
-    // Use full puppeteer (bundled Chromium) — works on Windows dev + Linux prod
-    const puppeteer = await import('puppeteer');
-    const browser = await puppeteer.default.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-    });
-    try {
-      const page = await browser.newPage();
-      await page.setContent(html, { waitUntil: 'networkidle0', timeout: 15000 });
+    // Inject fonts เข้า <head> ของ HTML ก่อนส่งให้ Chromium
+    // (ก่อนหน้านี้ใช้ addStyleTag หลัง setContent — ฟอนต์มาช้า text render ไม่ทัน)
+    const fontCss = this.resolveFontCss();
+    const htmlWithFonts = fontCss
+      ? html.replace('</head>', `<style>${fontCss}</style></head>`)
+      : html;
 
-      // Embed TH Sarabun PSK fonts (same pattern as documents.service)
+    const browser = await this.getBrowser();
+    const page = (await browser.newPage()) as {
+      setContent: (html: string, opts: { waitUntil: string; timeout: number }) => Promise<void>;
+      evaluateHandle: (fn: string) => Promise<unknown>;
+      pdf: (opts: {
+        format: string;
+        printBackground: boolean;
+        preferCSSPageSize: boolean;
+      }) => Promise<Uint8Array>;
+      close: () => Promise<void>;
+    };
+    try {
+      // domcontentloaded + รอ fonts ready — เร็วกว่า networkidle0 มาก
+      // เพราะเนื้อหาเป็น self-contained HTML ไม่มี external network call
+      await page.setContent(htmlWithFonts, { waitUntil: 'domcontentloaded', timeout: 15000 });
       try {
-        const fontPaths = [
-          path.join(process.cwd(), 'public', 'fonts'),
-          path.join(__dirname, '..', '..', '..', '..', '..', 'public', 'fonts'),
-          path.join(process.cwd(), '..', 'web', 'public', 'fonts'),
-        ];
-        const fontsDir = fontPaths.find((p) =>
-          fs.existsSync(path.join(p, 'THSarabunPSK-Regular.ttf')),
-        );
-        if (fontsDir) {
-          let fontCss = '';
-          const reg = path.join(fontsDir, 'THSarabunPSK-Regular.ttf');
-          const bold = path.join(fontsDir, 'THSarabunPSK-Bold.ttf');
-          if (fs.existsSync(reg)) {
-            fontCss += `@font-face{font-family:'TH Sarabun PSK';src:url(data:font/truetype;base64,${fs
-              .readFileSync(reg)
-              .toString('base64')}) format('truetype');font-weight:400;}`;
-          }
-          if (fs.existsSync(bold)) {
-            fontCss += `@font-face{font-family:'TH Sarabun PSK';src:url(data:font/truetype;base64,${fs
-              .readFileSync(bold)
-              .toString('base64')}) format('truetype');font-weight:700;}`;
-          }
-          if (fontCss) {
-            await page.addStyleTag({ content: fontCss });
-          }
-        }
-      } catch (err) {
-        this.logger.warn(
-          `Font embed failed: ${err instanceof Error ? err.message : err}`,
-        );
+        await page.evaluateHandle('document.fonts.ready');
+      } catch {
+        // fonts API อาจไม่พร้อม — ไม่ block PDF
       }
 
       const pdf = await page.pdf({
@@ -1052,7 +1120,7 @@ export class TradeInVoucherService {
       });
       return Buffer.from(pdf);
     } finally {
-      await browser.close();
+      await page.close().catch(() => undefined);
     }
   }
 }

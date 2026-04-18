@@ -12,22 +12,28 @@ EXCEPTION
     WHEN duplicate_object THEN NULL;
 END $$;
 
--- 2. Normalize legacy values (ARCHIVED/BLOCKED → IDLE) before casting.
---    Only rows whose current text value is not in the new enum are touched.
-UPDATE "chat_rooms"
-   SET "status" = 'IDLE'
- WHERE "status"::text NOT IN ('ACTIVE', 'IDLE');
-
--- 3. Swap the column type from the legacy enum to the new one.
+-- 2. Drop default so the column type can be changed
 ALTER TABLE "chat_rooms"
     ALTER COLUMN "status" DROP DEFAULT;
 
+-- 3. Cast column to TEXT first, so we can freely rewrite values
+--    (UPDATE cannot set 'IDLE' while the column is still the legacy enum).
+ALTER TABLE "chat_rooms"
+    ALTER COLUMN "status" TYPE TEXT USING "status"::text;
+
+-- 4. Normalize legacy values (ARCHIVED/BLOCKED/anything else → IDLE)
+UPDATE "chat_rooms"
+   SET "status" = 'IDLE'
+ WHERE "status" NOT IN ('ACTIVE', 'IDLE');
+
+-- 5. Swap TEXT → new enum
 ALTER TABLE "chat_rooms"
     ALTER COLUMN "status" TYPE "ChatRoomStatus"
-        USING ("status"::text::"ChatRoomStatus");
+        USING "status"::"ChatRoomStatus";
 
+-- 6. Restore default
 ALTER TABLE "chat_rooms"
     ALTER COLUMN "status" SET DEFAULT 'ACTIVE';
 
--- 4. Drop the now-unused legacy enum (no other tables reference it).
+-- 7. Drop the now-unused legacy enum (no other tables reference it).
 DROP TYPE IF EXISTS "ChatStatus";

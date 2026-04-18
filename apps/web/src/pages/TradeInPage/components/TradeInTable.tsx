@@ -114,10 +114,20 @@ export default function TradeInTable({
       sortable: true,
       render: (item) => {
         const value = item.agreedPrice ?? item.offeredPrice ?? item.estimatedValue;
-        return value != null ? (
-          <span className="font-medium">฿{Number(value).toLocaleString()}</span>
-        ) : (
-          <span className="text-muted-foreground">-</span>
+        if (value == null) return <span className="text-muted-foreground">-</span>;
+        const methodLabel =
+          item.paymentMethod === 'CASH'
+            ? 'เงินสด'
+            : item.paymentMethod === 'TRANSFER'
+              ? 'โอน'
+              : null;
+        return (
+          <div>
+            <div className="font-medium">฿{Number(value).toLocaleString()}</div>
+            {methodLabel && (
+              <div className="text-xs text-muted-foreground">{methodLabel}</div>
+            )}
+          </div>
         );
       },
     },
@@ -130,6 +140,17 @@ export default function TradeInTable({
         if (!buyer) return <span className="text-sm text-muted-foreground">รอรับซื้อ</span>;
         return <span className="text-sm text-foreground">{buyer.name}</span>;
       },
+    },
+    {
+      key: 'branch',
+      label: 'สาขา',
+      hideable: true,
+      render: (item) =>
+        item.branch ? (
+          <span className="text-sm text-foreground">{item.branch.name}</span>
+        ) : (
+          <span className="text-sm text-muted-foreground">-</span>
+        ),
     },
     {
       key: 'voucherNumber',

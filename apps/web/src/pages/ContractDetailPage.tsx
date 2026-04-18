@@ -7,7 +7,6 @@ import PageHeader from '@/components/ui/PageHeader';
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb';
 import QueryBoundary from '@/components/QueryBoundary';
 import Modal from '@/components/ui/Modal';
-import WorkflowStatusBadge from '@/components/contract/WorkflowStatusBadge';
 import DocumentUpload from '@/components/contract/DocumentUpload';
 import CreditCheckPanel from '@/components/contract/CreditCheckPanel';
 import ProductEditModal from '@/components/contract/ProductEditModal';
@@ -23,8 +22,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { DetailPageSkeleton } from '@/components/ui/page-skeletons';
 import { formatNumber, formatDateMedium } from '@/utils/formatters';
-import { Badge } from '@/components/ui/badge';
-import { getStatusBadgeProps, contractStatusMap } from '@/lib/status-badges';
 import MdmDeviceWidget from '@/components/mdm/MdmDeviceWidget';
 
 interface Payment {
@@ -262,7 +259,6 @@ const deleteMutation = useMutation({
     return <DetailPageSkeleton />;
   }
 
-  const statusCfg = getStatusBadgeProps(contract.status, contractStatusMap);
   const paidCount = contract.payments.filter((p) => p.status === 'PAID').length;
   const totalOutstanding = contract.payments
     .filter((p) => p.status !== 'PAID')
@@ -420,21 +416,8 @@ const deleteMutation = useMutation({
         );
       })()}
 
-      {/* Status + Workflow + Summary */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-        <Card className="rounded-xl border border-border/50 bg-card shadow-sm relative overflow-hidden">
-          <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-primary" />
-          <CardContent className="p-5">
-            <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สถานะสัญญา</div>
-            <Badge variant={statusCfg.variant} appearance={statusCfg.appearance} size="sm">{statusCfg.label}</Badge>
-          </CardContent>
-        </Card>
-        <Card className="rounded-xl border border-border/50 bg-card shadow-sm">
-          <CardContent className="p-5">
-            <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Workflow</div>
-            <WorkflowStatusBadge status={contract.workflowStatus} />
-          </CardContent>
-        </Card>
+      {/* Summary Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <Card className="rounded-xl border border-border/50 bg-card shadow-sm relative overflow-hidden">
           <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-primary" />
           <CardContent className="p-5">
@@ -455,15 +438,18 @@ const deleteMutation = useMutation({
             <div className="text-xl font-bold tabular-nums font-mono">{formatNumber(contract.financedAmount)} บาท</div>
           </CardContent>
         </Card>
-        {['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status) && totalOutstanding > 0 && (
-          <Card className="rounded-xl border border-border/50 bg-card shadow-sm relative overflow-hidden">
-            <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-destructive" />
-            <CardContent className="p-5">
-              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ยอดค้างรวม</div>
-              <div className="text-xl font-bold text-destructive tabular-nums font-mono">{formatNumber(totalOutstanding)} บาท</div>
-            </CardContent>
-          </Card>
-        )}
+        <Card className={`rounded-xl border border-border/50 bg-card shadow-sm relative overflow-hidden ${totalOutstanding > 0 ? '' : 'opacity-60'}`}>
+          <div className={`absolute left-0 top-0 bottom-0 w-1 rounded-r-full ${totalOutstanding > 0 ? 'bg-destructive' : 'bg-muted-foreground/30'}`} />
+          <CardContent className="p-5">
+            <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ยอดค้างชำระ</div>
+            <div className={`text-xl font-bold tabular-nums font-mono ${totalOutstanding > 0 ? 'text-destructive' : 'text-muted-foreground'}`}>{formatNumber(totalOutstanding)} บาท</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Credit balance + dunning badges */}
+      {(!!(contract.creditBalance && parseFloat(contract.creditBalance) > 0) || (contract.dunningStage && contract.dunningStage !== 'NONE')) && (
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         {contract.creditBalance && parseFloat(contract.creditBalance) > 0 && (
           <div className="rounded-lg border border-success/20 bg-success/5 dark:bg-success/10 p-4">
             <div className="text-xs text-success mb-1">ยอดเครดิตคงเหลือ</div>
@@ -510,6 +496,7 @@ const deleteMutation = useMutation({
           </div>
         )}
       </div>
+      )}
 
       {/* Workflow Actions for Reviewer */}
       {contract.workflowStatus === 'PENDING_REVIEW' && isReviewer && (() => {
@@ -725,20 +712,46 @@ const deleteMutation = useMutation({
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-3">
-              <Info label="ประเภทแผน" value="ผ่อนกับ BESTCHOICE" />
-              <Info label="ราคาขาย" value={`${formatNumber(contract.sellingPrice)} บาท`} />
-              <Info label="เงินดาวน์" value={`${formatNumber(contract.downPayment)} บาท`} />
-              <Info label="ยอดปล่อย (Loan)" value={`${formatNumber(parseFloat(contract.sellingPrice) - parseFloat(contract.downPayment))} บาท`} />
-              <Info label="อัตราดอกเบี้ย" value={`${(parseFloat(contract.interestRate) * 100).toFixed(2)}%${contract.interestConfig ? ` (${contract.interestConfig.name})` : ''}`} />
-              <Info label="ดอกเบี้ยรวม" value={`${formatNumber(contract.interestTotal)} บาท`} />
-              <Info label="ยอดจัดไฟแนนซ์" value={`${formatNumber(contract.financedAmount)} บาท`} />
-              <Info label="จำนวนงวด" value={`${contract.totalMonths} เดือน`} />
-              <Info label="วันชำระ" value={contract.paymentDueDay === 31 ? 'สิ้นเดือน' : contract.paymentDueDay ? `ทุกวันที่ ${contract.paymentDueDay}` : 'วันที่ 1'} />
-              <Info label="พนักงานขาย" value={contract.salesperson.name} />
-              <Info label="สาขา" value={contract.branch.name} />
-              <Info label="วันที่สร้าง" value={formatDateMedium(contract.createdAt)} />
-              {contract.notes && <Info label="หมายเหตุ" value={contract.notes} />}
+            <div className="space-y-4">
+              {/* Hero — key numbers */}
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1">ราคาขาย</div>
+                  <div className="text-base font-semibold text-foreground tabular-nums font-mono">{formatNumber(contract.sellingPrice)}<span className="text-xs font-normal text-muted-foreground ml-1">฿</span></div>
+                </div>
+                <div>
+                  <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1">เงินดาวน์</div>
+                  <div className="text-base font-semibold text-foreground tabular-nums font-mono">{formatNumber(contract.downPayment)}<span className="text-xs font-normal text-muted-foreground ml-1">฿</span></div>
+                </div>
+                <div>
+                  <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1">ผ่อน {contract.totalMonths} งวด</div>
+                  <div className="text-base font-semibold text-primary tabular-nums font-mono">{formatNumber(contract.monthlyPayment)}<span className="text-xs font-normal text-muted-foreground ml-1">฿/เดือน</span></div>
+                </div>
+              </div>
+
+              {/* Calculation breakdown — collapsible */}
+              <details className="group border-t border-border/50 pt-3">
+                <summary className="cursor-pointer text-sm font-medium text-muted-foreground hover:text-primary transition-colors select-none flex items-center gap-1.5 list-none">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="transition-transform group-open:rotate-90"><polyline points="9 18 15 12 9 6"/></svg>
+                  รายละเอียดการคำนวณ
+                </summary>
+                <div className="grid grid-cols-2 gap-3 mt-3">
+                  <Info label="ยอดปล่อย (Loan)" value={`${formatNumber(parseFloat(contract.sellingPrice) - parseFloat(contract.downPayment))} บาท`} />
+                  <Info label="อัตราดอกเบี้ย" value={`${(parseFloat(contract.interestRate) * 100).toFixed(2)}%${contract.interestConfig ? ` (${contract.interestConfig.name})` : ''}`} />
+                  <Info label="ดอกเบี้ยรวม" value={`${formatNumber(contract.interestTotal)} บาท`} />
+                  <Info label="ยอดจัดไฟแนนซ์" value={`${formatNumber(contract.financedAmount)} บาท`} />
+                </div>
+              </details>
+
+              {/* Meta — context */}
+              <div className="grid grid-cols-2 gap-3 border-t border-border/50 pt-3">
+                <Info label="ประเภทแผน" value="ผ่อนกับ BESTCHOICE" />
+                <Info label="วันชำระ" value={contract.paymentDueDay === 31 ? 'สิ้นเดือน' : contract.paymentDueDay ? `ทุกวันที่ ${contract.paymentDueDay}` : 'วันที่ 1'} />
+                <Info label="สาขา" value={contract.branch.name} />
+                <Info label="พนักงานขาย" value={contract.salesperson.name} />
+                <Info label="วันที่สร้าง" value={formatDateMedium(contract.createdAt)} />
+                {contract.notes && <Info label="หมายเหตุ" value={contract.notes} />}
+              </div>
             </div>
           )}
         </div>

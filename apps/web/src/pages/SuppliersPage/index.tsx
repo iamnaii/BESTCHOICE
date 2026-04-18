@@ -84,16 +84,25 @@ export default function SuppliersPage() {
           isDefault: pm.isDefault,
         }));
 
+      const isIndividual = formData.type === 'INDIVIDUAL';
+      // For individuals, contactName = person themselves (with title if present)
+      const resolvedContactName = isIndividual
+        ? [formData.titleName, formData.name].filter(Boolean).join(' ').trim() || formData.name
+        : formData.contactName;
+
       const payload = {
+        type: formData.type,
         name: formData.name,
-        contactName: formData.contactName,
+        titleName: isIndividual ? formData.titleName || undefined : undefined,
+        contactName: resolvedContactName,
         nickname: formData.nickname || undefined,
+        branchCode: !isIndividual && formData.hasVat ? formData.branchCode || undefined : undefined,
         phone: formData.phone,
         phoneSecondary: formData.phoneSecondary || undefined,
         lineId: formData.lineId || undefined,
         address: serializedAddress || undefined,
         taxId: formData.taxId || undefined,
-        hasVat: formData.hasVat,
+        hasVat: isIndividual ? false : formData.hasVat,
         notes: formData.notes || undefined,
         paymentMethods: validPaymentMethods,
       };
@@ -136,9 +145,12 @@ export default function SuppliersPage() {
   const openEdit = (supplier: Supplier) => {
     setEditingSupplier(supplier);
     setForm({
+      type: supplier.type ?? 'JURISTIC',
       name: supplier.name,
+      titleName: supplier.titleName || '',
       contactName: supplier.contactName,
       nickname: supplier.nickname || '',
+      branchCode: supplier.branchCode || '',
       phone: supplier.phone,
       phoneSecondary: supplier.phoneSecondary || '',
       lineId: supplier.lineId || '',

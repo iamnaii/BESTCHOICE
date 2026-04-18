@@ -23,6 +23,11 @@ enum UserRole {
   OWNER
 }
 
+enum SupplierType {
+  INDIVIDUAL
+  JURISTIC
+}
+
 enum ContractStatus {
   DRAFT
   ACTIVE
@@ -716,18 +721,24 @@ model Payment {
 // ============================================================
 
 model Supplier {
-  id             String    @id @default(uuid())
+  id             String       @id @default(uuid())
+  /// Entity type: JURISTIC = บริษัท/นิติบุคคล, INDIVIDUAL = บุคคลธรรมดา
+  type           SupplierType @default(JURISTIC)
   name           String
-  contactName    String    @map("contact_name")
+  contactName    String       @map("contact_name")
   nickname       String?
+  /// Salutation for INDIVIDUAL type (นาย/นาง/นางสาว/คุณ)
+  titleName      String?      @map("title_name")
+  /// 5-digit branch code for JURISTIC type. "00000" = สำนักงานใหญ่. Required on tax invoices for VAT registrants.
+  branchCode     String?      @map("branch_code")
   phone          String
-  phoneSecondary String?   @map("phone_secondary")
-  lineId         String?   @map("line_id")
+  phoneSecondary String?      @map("phone_secondary")
+  lineId         String?      @map("line_id")
   address        String?
-  taxId          String?   @map("tax_id")
-  hasVat         Boolean   @default(false) @map("has_vat")
+  taxId          String?      @map("tax_id")
+  hasVat         Boolean      @default(false) @map("has_vat")
   notes          String?
-  isActive       Boolean   @default(true) @map("is_active")
+  isActive       Boolean      @default(true) @map("is_active")
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
   deletedAt      DateTime? @map("deleted_at")

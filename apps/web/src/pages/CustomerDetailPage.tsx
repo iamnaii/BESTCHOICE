@@ -123,6 +123,7 @@ export default function CustomerDetailPage() {
   const creditFileRef = useRef<HTMLInputElement>(null);
   const docFileRef = useRef<HTMLInputElement>(null);
   const [creditBankName, setCreditBankName] = useState('');
+  const [activeTab, setActiveTab] = useState('info');
 
   // Edit customer state
   const [showEditModal, setShowEditModal] = useState(false);
@@ -472,9 +473,13 @@ export default function CustomerDetailPage() {
               <div className="flex flex-wrap items-center gap-2 mt-1.5">
                 {customer?.phone && <span className="text-sm text-muted-foreground">{customer.phone}</span>}
                 {customer?.contracts?.length > 0 && (
-                  <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold bg-primary/10 text-primary">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('contracts')}
+                    className="rounded-full px-2.5 py-0.5 text-xs font-semibold bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer"
+                  >
                     {customer.contracts.length} สัญญา
-                  </span>
+                  </button>
                 )}
                 {customer.isForeigner && (
                   <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold bg-warning/10 text-warning">
@@ -500,13 +505,48 @@ export default function CustomerDetailPage() {
         </div>
       )}
 
+      {/* Summary Cards */}
+      {(() => {
+        const totalContracts = customer.contracts?.length ?? 0;
+        const activeContracts = customer.contracts?.filter((c) => c.status === 'ACTIVE').length ?? 0;
+        const overdueContracts = customer.contracts?.filter((c) => ['OVERDUE', 'DEFAULT'].includes(c.status)).length ?? 0;
+        return (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <Card className="rounded-xl border border-border/50 bg-card shadow-sm">
+              <CardContent className="p-4">
+                <div className="text-xs text-muted-foreground mb-1">จำนวนสัญญาทั้งหมด</div>
+                <div className="text-2xl font-bold text-foreground tabular-nums">{totalContracts}</div>
+              </CardContent>
+            </Card>
+            <Card className="rounded-xl border border-border/50 bg-card shadow-sm">
+              <CardContent className="p-4">
+                <div className="text-xs text-muted-foreground mb-1">สัญญาใช้งาน</div>
+                <div className="text-2xl font-bold text-primary tabular-nums">{activeContracts}</div>
+              </CardContent>
+            </Card>
+            <Card className="rounded-xl border border-border/50 bg-card shadow-sm">
+              <CardContent className="p-4">
+                <div className="text-xs text-muted-foreground mb-1">ค้างชำระ / ผิดนัด</div>
+                <div className={`text-2xl font-bold tabular-nums ${overdueContracts > 0 ? 'text-destructive' : 'text-foreground'}`}>{overdueContracts}</div>
+              </CardContent>
+            </Card>
+            <Card className="rounded-xl border border-border/50 bg-card shadow-sm">
+              <CardContent className="p-4">
+                <div className="text-xs text-muted-foreground mb-1">วันที่ลงทะเบียน</div>
+                <div className="text-base font-semibold text-foreground">{formatDateShort(customer.createdAt)}</div>
+              </CardContent>
+            </Card>
+          </div>
+        );
+      })()}
+
       {/* Customer Info — Tabbed Layout */}
-      <Tabs defaultValue="info" className="mb-6">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-6">
         <TabsList variant="line" className="mb-5">
           <TabsTrigger value="info">ข้อมูลส่วนตัว</TabsTrigger>
           <TabsTrigger value="contact">ติดต่อ & ที่อยู่</TabsTrigger>
-          <TabsTrigger value="work">งาน & อ้างอิง</TabsTrigger>
-          <TabsTrigger value="credit">เครดิต</TabsTrigger>
+          <TabsTrigger value="work">งาน & อ้างอิง ({refs?.length ?? 0})</TabsTrigger>
+          <TabsTrigger value="credit">เครดิต ({creditChecks.length})</TabsTrigger>
           <TabsTrigger value="contracts">สัญญา ({customer.contracts.length})</TabsTrigger>
           <TabsTrigger value="loyalty">
             แต้มสะสม

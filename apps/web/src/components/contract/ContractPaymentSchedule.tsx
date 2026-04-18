@@ -1,5 +1,5 @@
 import DataTable from '@/components/ui/DataTable';
-import PaymentTimeline from '@/components/contract/PaymentTimeline';
+import PaymentProgressOverview from '@/components/contract/PaymentTimeline';
 import { formatNumber, formatDateMedium } from '@/utils/formatters';
 
 interface Payment {
@@ -60,7 +60,7 @@ export default function ContractPaymentSchedule({ payments }: ContractPaymentSch
 
   return (
     <>
-      <PaymentTimeline payments={payments} />
+      <PaymentProgressOverview payments={payments} />
       <DataTable columns={paymentColumns} data={payments} emptyMessage="ยังไม่มีตารางผ่อน" />
     </>
   );

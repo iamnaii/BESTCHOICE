@@ -88,6 +88,67 @@ describe('<ErrorBoundary />', () => {
     );
   });
 
+  it('auto-reloads on "Failed to fetch dynamically imported module" (stale bundle after deploy)', () => {
+    const reloadSpy = vi.fn();
+    const originalLocation = window.location;
+    // @ts-expect-error — jsdom's location is non-configurable; replace via delete+assign
+    delete window.location;
+    // @ts-expect-error — reassigning window.location with a stub for the test
+    window.location = { ...originalLocation, reload: reloadSpy };
+    sessionStorage.clear();
+
+    function ChunkBoom(): React.ReactNode {
+      throw new Error(
+        'Failed to fetch dynamically imported module: https://example.com/assets/Foo-abc.js',
+      );
+    }
+
+    render(
+      <ErrorBoundary>
+        <ChunkBoom />
+      </ErrorBoundary>,
+    );
+
+    expect(reloadSpy).toHaveBeenCalledTimes(1);
+    // Sentry should NOT be called when we choose to auto-reload — the reload
+    // is the recovery path, not a reportable crash.
+    expect(captureExceptionMock).not.toHaveBeenCalled();
+
+    // @ts-expect-error — restore original location after test
+    window.location = originalLocation;
+    sessionStorage.clear();
+  });
+
+  it('does not reload twice in a row (cooldown prevents infinite loop)', () => {
+    const reloadSpy = vi.fn();
+    const originalLocation = window.location;
+    // @ts-expect-error — jsdom's location is non-configurable; replace via delete+assign
+    delete window.location;
+    // @ts-expect-error — reassigning window.location with a stub for the test
+    window.location = { ...originalLocation, reload: reloadSpy };
+    // Pretend we already reloaded 1 second ago.
+    sessionStorage.setItem('bc:chunk-load-reload-at', String(Date.now() - 1000));
+
+    function ChunkBoom(): React.ReactNode {
+      throw new Error('Failed to fetch dynamically imported module: /assets/X.js');
+    }
+
+    render(
+      <ErrorBoundary>
+        <ChunkBoom />
+      </ErrorBoundary>,
+    );
+
+    expect(reloadSpy).not.toHaveBeenCalled();
+    expect(screen.getByText('เกิดข้อผิดพลาด')).toBeInTheDocument();
+    // Fall-through means Sentry still gets notified.
+    expect(captureExceptionMock).toHaveBeenCalledTimes(1);
+
+    // @ts-expect-error — restore original location after test
+    window.location = originalLocation;
+    sessionStorage.clear();
+  });
+
   it('resets and re-renders children after "ลองใหม่" is clicked', async () => {
     const user = userEvent.setup();
     const { rerender } = render(

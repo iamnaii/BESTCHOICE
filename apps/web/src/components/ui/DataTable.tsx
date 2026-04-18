@@ -330,7 +330,7 @@ function DataTable<T extends { id: string }>({
                     <th
                       key={header.id}
                       className={cn(
-                        'px-5 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider',
+                        'px-5 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap',
                         canSort && 'cursor-pointer select-none hover:text-foreground transition-colors',
                         isSelect && 'w-10 px-3',
                       )}

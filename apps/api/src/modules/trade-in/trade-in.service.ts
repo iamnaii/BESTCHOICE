@@ -226,6 +226,8 @@ export class TradeInService {
         include: {
           customer: { select: { id: true, name: true, phone: true } },
           branch: { select: { id: true, name: true } },
+          appraisedBy: { select: { id: true, name: true } },
+          idCardVerifiedBy: { select: { id: true, name: true } },
         },
       }),
       this.prisma.tradeIn.count({ where }),

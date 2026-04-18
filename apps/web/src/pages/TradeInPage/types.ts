@@ -15,7 +15,10 @@ export interface TradeIn {
   voucherNumber: string | null;
   voucherPdfUrl: string | null;
   createdAt: string;
+  idCardVerifiedAt?: string | null;
   customer: { id: string; name: string } | null;
+  appraisedBy?: { id: string; name: string } | null;
+  idCardVerifiedBy?: { id: string; name: string } | null;
 }
 
 export interface TradeInsResponse {

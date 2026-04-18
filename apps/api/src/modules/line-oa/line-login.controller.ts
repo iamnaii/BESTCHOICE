@@ -140,12 +140,16 @@ export class LineLoginController {
         redirectUrl.searchParams.set('line_picture', profile.pictureUrl);
       }
       // Set ID token in httpOnly cookie instead of URL (prevents leaking in browser history/Referrer)
+      // COOKIE_DOMAIN (e.g. '.bestchoicephone.app') makes the cookie readable from
+      // the root domain frontend, not only the api.* subdomain that served this callback.
+      const cookieDomain = process.env.COOKIE_DOMAIN || undefined;
       res.cookie('line_id_token', tokenData.id_token, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
+        secure: process.env.NODE_ENV === 'production' || !!cookieDomain,
         sameSite: 'lax',
         maxAge: 60000, // 60 seconds — one-time use
         path: '/',
+        ...(cookieDomain ? { domain: cookieDomain } : {}),
       });
 
       res.redirect(redirectUrl.toString());
@@ -171,7 +175,11 @@ export class LineLoginController {
   @Get('id-token')
   getIdToken(@Req() req: Request, @Res() res: Response) {
     const token = (req.cookies as Record<string, string> | undefined)?.line_id_token;
-    res.clearCookie('line_id_token', { path: '/' });
+    const cookieDomain = process.env.COOKIE_DOMAIN || undefined;
+    res.clearCookie('line_id_token', {
+      path: '/',
+      ...(cookieDomain ? { domain: cookieDomain } : {}),
+    });
     if (!token) {
       return res.status(401).json({ error: 'No id_token cookie' });
     }

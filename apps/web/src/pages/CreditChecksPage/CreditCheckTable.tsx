@@ -76,8 +76,8 @@ export default function CreditCheckTable({
       label: 'ลูกค้า',
       render: (cc: CreditCheckItem) => (
         <div>
-          <div className="text-sm font-medium text-foreground">{cc.customer.name}</div>
-          <div className="group/phone flex items-center gap-1 text-xs text-muted-foreground">
+          <div className="text-sm font-medium text-foreground whitespace-nowrap">{cc.customer.name}</div>
+          <div className="group/phone flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap">
             <span>{cc.customer.phone}</span>
             {cc.customer.phone && (
               <button
@@ -100,7 +100,7 @@ export default function CreditCheckTable({
       render: (cc: CreditCheckItem) => {
         const s = statusLabels[cc.status] || { label: cc.status, className: 'bg-muted' };
         return (
-          <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${s.className}`}>
+          <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap ${s.className}`}>
             {s.label}
           </span>
         );

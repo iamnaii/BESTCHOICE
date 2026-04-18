@@ -72,19 +72,19 @@ export default function DashboardTables({
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-muted/40 border-b border-border/60 text-left text-muted-foreground">
-                    <th className="px-5 pb-3 pt-4 font-medium text-xs">เลขสัญญา</th>
-                    <th className="px-5 pb-3 pt-4 font-medium text-xs">ลูกค้า</th>
-                    <th className="px-5 pb-3 pt-4 font-medium text-xs">เบอร์โทร</th>
-                    <th className="px-5 pb-3 pt-4 font-medium text-xs text-right">ยอดค้าง (บาท)</th>
-                    <th className="px-5 pb-3 pt-4 font-medium text-xs text-right">เกินกำหนด</th>
+                    <th className="px-5 pb-3 pt-4 font-medium text-xs whitespace-nowrap">เลขสัญญา</th>
+                    <th className="px-5 pb-3 pt-4 font-medium text-xs whitespace-nowrap">ลูกค้า</th>
+                    <th className="px-5 pb-3 pt-4 font-medium text-xs whitespace-nowrap">เบอร์โทร</th>
+                    <th className="px-5 pb-3 pt-4 font-medium text-xs text-right whitespace-nowrap">ยอดค้าง (บาท)</th>
+                    <th className="px-5 pb-3 pt-4 font-medium text-xs text-right whitespace-nowrap">เกินกำหนด</th>
                   </tr>
                 </thead>
                 <tbody>
                   {topOverdue.map((item) => (
                     <tr key={item.contractNumber} className="border-b border-border/30 last:border-0 hover:bg-muted/50 transition-colors">
-                      <td className="px-5 py-3 font-medium text-primary">{item.contractNumber}</td>
-                      <td className="px-5 py-3 text-foreground">{item.customer.name}</td>
-                      <td className="px-5 py-3 text-muted-foreground">{item.customer.phone}</td>
+                      <td className="px-5 py-3 font-medium text-primary whitespace-nowrap">{item.contractNumber}</td>
+                      <td className="px-5 py-3 text-foreground whitespace-nowrap">{item.customer.name}</td>
+                      <td className="px-5 py-3 text-muted-foreground whitespace-nowrap">{item.customer.phone}</td>
                       <td className="px-5 py-3 text-right text-destructive font-semibold">
                         {item.totalOutstanding.toLocaleString()}
                       </td>
@@ -220,18 +220,18 @@ export default function DashboardTables({
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-muted/40 border-b border-border/60 text-left text-muted-foreground">
-                    <th className="px-5 pb-3 pt-4 font-medium text-xs">สาขา</th>
-                    <th className="px-5 pb-3 pt-4 font-medium text-xs text-right">สัญญา</th>
-                    <th className="px-5 pb-3 pt-4 font-medium text-xs text-right">สินค้า</th>
-                    <th className="px-5 pb-3 pt-4 font-medium text-xs text-right">พนักงาน</th>
-                    <th className="px-5 pb-3 pt-4 font-medium text-xs text-right">ค้างชำระ</th>
-                    <th className="px-5 pb-3 pt-4 font-medium text-xs text-right">ยอดชำระ/เดือน</th>
+                    <th className="px-5 pb-3 pt-4 font-medium text-xs whitespace-nowrap">สาขา</th>
+                    <th className="px-5 pb-3 pt-4 font-medium text-xs text-right whitespace-nowrap">สัญญา</th>
+                    <th className="px-5 pb-3 pt-4 font-medium text-xs text-right whitespace-nowrap">สินค้า</th>
+                    <th className="px-5 pb-3 pt-4 font-medium text-xs text-right whitespace-nowrap">พนักงาน</th>
+                    <th className="px-5 pb-3 pt-4 font-medium text-xs text-right whitespace-nowrap">ค้างชำระ</th>
+                    <th className="px-5 pb-3 pt-4 font-medium text-xs text-right whitespace-nowrap">ยอดชำระ/เดือน</th>
                   </tr>
                 </thead>
                 <tbody>
                   {branchData.map((b) => (
                     <tr key={b.name} className="border-b border-border/30 last:border-0 hover:bg-muted/50 transition-colors">
-                      <td className="px-5 py-3 font-medium text-foreground">{b.name}</td>
+                      <td className="px-5 py-3 font-medium text-foreground whitespace-nowrap">{b.name}</td>
                       <td className="px-5 py-3 text-right text-foreground">{b.contracts}</td>
                       <td className="px-5 py-3 text-right text-foreground">{b.products}</td>
                       <td className="px-5 py-3 text-right text-foreground">{b.users}</td>

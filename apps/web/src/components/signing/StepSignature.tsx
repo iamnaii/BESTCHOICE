@@ -133,6 +133,9 @@ export default function StepSignature({
 
       // Invalidate + refetch to reliably update the UI
       await queryClient.invalidateQueries({ queryKey: ['contract-signatures', contractId] });
+      queryClient.invalidateQueries({ queryKey: ['contract', contractId] });
+      queryClient.invalidateQueries({ queryKey: ['contract-edocuments', contractId] });
+      queryClient.invalidateQueries({ queryKey: ['contract-documents', contractId] });
       const freshSignatures = queryClient.getQueryData<Signature[]>(['contract-signatures', contractId]) || [];
 
       const freshSignedTypes = new Set(freshSignatures.map(s => normalizeSignerType(s.signerType)));

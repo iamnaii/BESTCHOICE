@@ -27,9 +27,14 @@ interface SupplierPaymentMethod {
 
 interface Supplier {
   id: string;
+  type: 'INDIVIDUAL' | 'JURISTIC';
   name: string;
-  contactName: string;
+  titleName: string | null;
+  contactName: string | null;
+  contactPhone: string | null;
+  contactPosition: string | null;
   nickname: string | null;
+  branchCode: string | null;
   phone: string;
   phoneSecondary: string | null;
   lineId: string | null;
@@ -120,8 +125,8 @@ export default function SupplierDetailPage() {
   });
 
   const { data: history, isLoading: historyLoading } = useQuery<{
-    products: ProductRecord[];
-    purchaseOrders: PORecord[];
+    products: { data: ProductRecord[]; total: number; page: number; limit: number };
+    purchaseOrders: { data: PORecord[]; total: number; page: number; limit: number };
   }>({
     queryKey: ['supplier-history', id],
     queryFn: async () => {
@@ -129,6 +134,11 @@ export default function SupplierDetailPage() {
       return data;
     },
   });
+
+  const products = history?.products.data ?? [];
+  const purchaseOrders = history?.purchaseOrders.data ?? [];
+  const productsTotal = history?.products.total ?? 0;
+  const purchaseOrdersTotal = history?.purchaseOrders.total ?? 0;
 
   if (supplierLoading) {
     return <QueryBoundary isLoading={true} isError={false}>{null}</QueryBoundary>;
@@ -142,7 +152,7 @@ export default function SupplierDetailPage() {
     return <div className="text-center py-12 text-muted-foreground">ไม่พบข้อมูลผู้ขาย</div>;
   }
 
-  const totalCost = history?.products.reduce((sum, p) => sum + parseFloat(p.costPrice), 0) || 0;
+  const totalCost = products.reduce((sum, p) => sum + parseFloat(p.costPrice), 0);
 
   const productColumns = [
     { key: 'name', label: 'สินค้า', render: (p: ProductRecord) => (
@@ -258,18 +268,39 @@ export default function SupplierDetailPage() {
       <div className="rounded-xl border border-border/50 bg-card p-5 mb-6 shadow-sm relative overflow-hidden">
         <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-primary" />
         <div className="flex items-start justify-between mb-4">
-          <h2 className="text-lg font-semibold text-foreground">ข้อมูลผู้ขาย</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-semibold text-foreground">ข้อมูลผู้ขาย</h2>
+            <Badge
+              variant={supplier.type === 'JURISTIC' ? 'primary' : 'secondary'}
+              appearance="light"
+              size="sm"
+            >
+              {supplier.type === 'JURISTIC' ? 'นิติบุคคล' : 'บุคคลธรรมดา'}
+            </Badge>
+          </div>
           <Badge variant={supplier.isActive ? 'success' : 'destructive'} appearance="light">
             {supplier.isActive ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}
           </Badge>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          <InfoField label="ชื่อ - นามสกุล (ผู้ติดต่อ)" value={supplier.contactName} />
-          <InfoField label="ชื่อเล่น" value={supplier.nickname} />
+          {supplier.type === 'INDIVIDUAL' ? (
+            <>
+              <InfoField
+                label="ชื่อ - นามสกุล"
+                value={[supplier.titleName, supplier.name].filter(Boolean).join(' ') || supplier.name}
+              />
+              <InfoField label="ชื่อเล่น" value={supplier.nickname} />
+            </>
+          ) : (
+            <InfoField label="ชื่อบริษัท" value={supplier.name} />
+          )}
           <InfoField label="เบอร์โทร" value={supplier.phone} />
           <InfoField label="เบอร์สำรอง" value={supplier.phoneSecondary} />
           <InfoField label="LINE ID" value={supplier.lineId} />
-          <InfoField label="เลขประจำตัวผู้เสียภาษี (Tax ID Number)" value={supplier.taxId} />
+          <InfoField label="เลขประจำตัวผู้เสียภาษี (Tax ID)" value={supplier.taxId} />
+          {supplier.type === 'JURISTIC' && (
+            <InfoField label="รหัสสาขา" value={supplier.branchCode} />
+          )}
           <div>
             <div className="text-xs text-muted-foreground mb-0.5">สถานะ VAT</div>
             <span
@@ -280,14 +311,24 @@ export default function SupplierDetailPage() {
               {supplier.hasVat ? 'มี VAT (7%)' : 'ไม่มี VAT'}
             </span>
           </div>
-          <InfoField
-            label="วันที่เพิ่ม"
-            value={formatDateShort(supplier.createdAt)}
-          />
+          <InfoField label="วันที่เพิ่ม" value={formatDateShort(supplier.createdAt)} />
           <InfoField label="ที่อยู่" value={displayAddress(supplier.address)} />
           {supplier.notes && <InfoField label="หมายเหตุ" value={supplier.notes} />}
         </div>
       </div>
+
+      {/* ผู้ติดต่อ (JURISTIC only) */}
+      {supplier.type === 'JURISTIC' &&
+        (supplier.contactName || supplier.contactPhone || supplier.contactPosition) && (
+          <div className="rounded-xl border border-border/50 bg-card p-5 mb-6 shadow-sm">
+            <h2 className="text-lg font-semibold text-foreground mb-4">ผู้ติดต่อ</h2>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <InfoField label="ชื่อ - นามสกุล" value={supplier.contactName} />
+              <InfoField label="ตำแหน่ง" value={supplier.contactPosition} />
+              <InfoField label="เบอร์โทร" value={supplier.contactPhone} />
+            </div>
+          </div>
+        )}
 
       {/* Payment Methods Card */}
       <div className="rounded-xl border border-border/50 bg-card p-5 mb-6 shadow-sm">
@@ -332,12 +373,12 @@ export default function SupplierDetailPage() {
       {/* Purchase Orders */}
       <Card className="mb-6">
         <CardHeader>
-          <CardTitle>Purchase Orders ({history?.purchaseOrders.length || 0})</CardTitle>
+          <CardTitle>Purchase Orders ({purchaseOrdersTotal})</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <DataTable
             columns={poColumns}
-            data={history?.purchaseOrders || []}
+            data={purchaseOrders}
             isLoading={historyLoading}
             emptyMessage="ยังไม่มี PO"
           />
@@ -347,12 +388,12 @@ export default function SupplierDetailPage() {
       {/* Products (Purchase History) */}
       <Card>
         <CardHeader>
-          <CardTitle>ประวัติการซื้อสินค้า ({history?.products.length || 0})</CardTitle>
+          <CardTitle>ประวัติการซื้อสินค้า ({productsTotal})</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <DataTable
             columns={productColumns}
-            data={history?.products || []}
+            data={products}
             isLoading={historyLoading}
             emptyMessage="ยังไม่มีสินค้าจากผู้ขายนี้"
           />

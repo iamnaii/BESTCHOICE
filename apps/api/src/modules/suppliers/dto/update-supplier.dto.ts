@@ -61,6 +61,14 @@ export class UpdateSupplierDto {
 
   @IsString()
   @IsOptional()
+  contactPhone?: string;
+
+  @IsString()
+  @IsOptional()
+  contactPosition?: string;
+
+  @IsString()
+  @IsOptional()
   nickname?: string;
 
   @IsString()

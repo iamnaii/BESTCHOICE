@@ -88,15 +88,17 @@ export default function SuppliersPage() {
       // For individuals, contactName = person themselves (with title if present)
       const resolvedContactName = isIndividual
         ? [formData.titleName, formData.name].filter(Boolean).join(' ').trim() || formData.name
-        : formData.contactName;
+        : formData.contactName || undefined;
 
       const payload = {
         type: formData.type,
         name: formData.name,
         titleName: isIndividual ? formData.titleName || undefined : undefined,
         contactName: resolvedContactName,
-        nickname: formData.nickname || undefined,
-        branchCode: !isIndividual && formData.hasVat ? formData.branchCode || undefined : undefined,
+        contactPhone: isIndividual ? undefined : formData.contactPhone || undefined,
+        contactPosition: isIndividual ? undefined : formData.contactPosition || undefined,
+        nickname: isIndividual ? formData.nickname || undefined : undefined,
+        branchCode: isIndividual ? undefined : formData.branchCode || undefined,
         phone: formData.phone,
         phoneSecondary: formData.phoneSecondary || undefined,
         lineId: formData.lineId || undefined,
@@ -148,7 +150,9 @@ export default function SuppliersPage() {
       type: supplier.type ?? 'JURISTIC',
       name: supplier.name,
       titleName: supplier.titleName || '',
-      contactName: supplier.contactName,
+      contactName: supplier.contactName || '',
+      contactPhone: supplier.contactPhone || '',
+      contactPosition: supplier.contactPosition || '',
       nickname: supplier.nickname || '',
       branchCode: supplier.branchCode || '',
       phone: supplier.phone,

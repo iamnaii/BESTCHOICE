@@ -19,7 +19,9 @@ export interface Supplier {
   type: 'INDIVIDUAL' | 'JURISTIC';
   name: string;
   titleName: string | null;
-  contactName: string;
+  contactName: string | null;
+  contactPhone: string | null;
+  contactPosition: string | null;
   nickname: string | null;
   branchCode: string | null;
   phone: string;
@@ -106,6 +108,12 @@ export default function SupplierTable({
       render: (s: Supplier) => (
         <div>
           <div className="text-foreground">{s.contactName || '-'}</div>
+          {s.contactPosition && (
+            <div className="text-xs text-muted-foreground">{s.contactPosition}</div>
+          )}
+          {s.contactPhone && (
+            <div className="text-xs text-muted-foreground">{s.contactPhone}</div>
+          )}
           {s.nickname && <div className="text-xs text-muted-foreground">({s.nickname})</div>}
         </div>
       ),

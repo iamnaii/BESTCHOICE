@@ -39,7 +39,11 @@ export default function StepComplete({
         toast.error('ไม่สามารถสร้างเอกสารได้');
       }
       queryClient.invalidateQueries({ queryKey: ['contract', contractId] });
+      queryClient.invalidateQueries({ queryKey: ['contract-edocuments', contractId] });
       queryClient.invalidateQueries({ queryKey: ['contract-documents', contractId] });
+      queryClient.invalidateQueries({ queryKey: ['contract-signatures', contractId] });
+      queryClient.invalidateQueries({ queryKey: ['contract-preview', contractId] });
+      queryClient.invalidateQueries({ queryKey: ['contract-doc-checklist', contractId] });
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });

@@ -10,6 +10,8 @@ export const emptyForm = {
   name: '',
   titleName: '',
   contactName: '',
+  contactPhone: '',
+  contactPosition: '',
   nickname: '',
   branchCode: '',
   phone: '',
@@ -89,8 +91,11 @@ export default function SupplierForm({
       type: nextType,
       // reset type-specific fields so stale data ไม่ค้าง
       titleName: nextType === 'INDIVIDUAL' ? form.titleName : '',
+      nickname: nextType === 'INDIVIDUAL' ? form.nickname : '',
       branchCode: nextType === 'JURISTIC' ? form.branchCode : '',
       contactName: nextType === 'JURISTIC' ? form.contactName : '',
+      contactPhone: nextType === 'JURISTIC' ? form.contactPhone : '',
+      contactPosition: nextType === 'JURISTIC' ? form.contactPosition : '',
       hasVat: nextType === 'JURISTIC' ? form.hasVat : false,
     });
   };
@@ -282,15 +287,6 @@ export default function SupplierForm({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1.5">ชื่อเล่น</label>
-                  <input
-                    type="text"
-                    value={form.nickname}
-                    onChange={(e) => setForm({ ...form, nickname: e.target.value })}
-                    className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
-                  />
-                </div>
-                <div>
                   <label className="block text-xs font-medium text-foreground mb-1.5">
                     เบอร์โทรศัพท์ <span className="text-destructive">*</span>
                   </label>
@@ -317,7 +313,7 @@ export default function SupplierForm({
                     className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
                   />
                 </div>
-                <div>
+                <div className={cn(isJuristic ? 'col-span-2' : 'col-span-1')}>
                   <label className="block text-xs font-medium text-foreground mb-1.5">LINE ID</label>
                   <input
                     type="text"
@@ -326,9 +322,21 @@ export default function SupplierForm({
                     className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
                   />
                 </div>
-                <div>
+                {!isJuristic && (
+                  <div>
+                    <label className="block text-xs font-medium text-foreground mb-1.5">ชื่อเล่น</label>
+                    <input
+                      type="text"
+                      value={form.nickname}
+                      onChange={(e) => setForm({ ...form, nickname: e.target.value })}
+                      className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+                    />
+                  </div>
+                )}
+                <div className="col-span-2 border-t pt-4">
                   <label className="block text-xs font-medium text-foreground mb-1.5">
-                    {isJuristic ? 'เลขประจำตัวผู้เสียภาษี' : 'เลขประจำตัวประชาชน'}
+                    {isJuristic ? 'เลขประจำตัวผู้เสียภาษี' : 'เลขประจำตัวประชาชน'}{' '}
+                    <span className="text-destructive">*</span>
                   </label>
                   <input
                     type="text"
@@ -337,53 +345,55 @@ export default function SupplierForm({
                     placeholder="X-XXXX-XXXXX-XX-X"
                     maxLength={17}
                     className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+                    required
                   />
                 </div>
                 {isJuristic && (
-                  <div className="col-span-2 flex flex-col gap-4 border-t pt-4">
-                    <label className="flex items-center gap-3 cursor-pointer">
-                      <span className="text-sm font-medium text-foreground">จดทะเบียน VAT</span>
-                      <button
-                        type="button"
-                        onClick={() => setForm({ ...form, hasVat: !form.hasVat })}
-                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                          form.hasVat ? 'bg-primary' : 'bg-border'
-                        }`}
-                      >
-                        <span
-                          className={`inline-block h-4 w-4 transform rounded-full bg-background transition-transform ${
-                            form.hasVat ? 'translate-x-6' : 'translate-x-1'
+                  <>
+                    <div className="col-span-2">
+                      <label className="block text-xs font-medium text-foreground mb-1.5">
+                        รหัสสาขา (5 หลัก) <span className="text-destructive">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={form.branchCode}
+                        onChange={(e) =>
+                          setForm({ ...form, branchCode: formatBranchCode(e.target.value) })
+                        }
+                        placeholder="00000 = สำนักงานใหญ่"
+                        maxLength={5}
+                        inputMode="numeric"
+                        className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm font-mono transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+                        required
+                      />
+                      <p className="mt-1 text-2xs text-muted-foreground">
+                        "00000" สำหรับสำนักงานใหญ่ — ใช้ในใบกำกับภาษีของผู้จด VAT
+                      </p>
+                    </div>
+                    <div className="col-span-2">
+                      <label className="flex items-center gap-3 cursor-pointer">
+                        <span className="text-sm font-medium text-foreground">จดทะเบียน VAT</span>
+                        <button
+                          type="button"
+                          onClick={() => setForm({ ...form, hasVat: !form.hasVat })}
+                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                            form.hasVat ? 'bg-primary' : 'bg-border'
                           }`}
-                        />
-                      </button>
-                      <span
-                        className={`text-sm font-medium ${form.hasVat ? 'text-primary' : 'text-muted-foreground'}`}
-                      >
-                        {form.hasVat ? 'มี VAT (7%)' : 'ไม่มี VAT'}
-                      </span>
-                    </label>
-                    {form.hasVat && (
-                      <div>
-                        <label className="block text-xs font-medium text-foreground mb-1.5">
-                          รหัสสาขา (5 หลัก)
-                        </label>
-                        <input
-                          type="text"
-                          value={form.branchCode}
-                          onChange={(e) =>
-                            setForm({ ...form, branchCode: formatBranchCode(e.target.value) })
-                          }
-                          placeholder="00000 = สำนักงานใหญ่"
-                          maxLength={5}
-                          inputMode="numeric"
-                          className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm font-mono transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
-                        />
-                        <p className="mt-1 text-2xs text-muted-foreground">
-                          ใช้ในใบกำกับภาษี — "00000" สำหรับสำนักงานใหญ่
-                        </p>
-                      </div>
-                    )}
-                  </div>
+                        >
+                          <span
+                            className={`inline-block h-4 w-4 transform rounded-full bg-background transition-transform ${
+                              form.hasVat ? 'translate-x-6' : 'translate-x-1'
+                            }`}
+                          />
+                        </button>
+                        <span
+                          className={`text-sm font-medium ${form.hasVat ? 'text-primary' : 'text-muted-foreground'}`}
+                        >
+                          {form.hasVat ? 'มี VAT (7%)' : 'ไม่มี VAT'}
+                        </span>
+                      </label>
+                    </div>
+                  </>
                 )}
               </div>
             </div>
@@ -398,21 +408,50 @@ export default function SupplierForm({
                   <div>
                     <h3 className="text-sm font-semibold text-foreground">ผู้ติดต่อ</h3>
                     <p className="text-xs text-muted-foreground">
-                      ชื่อพนักงาน/ฝ่ายที่ติดต่อกับเรา
+                      ชื่อพนักงาน/ฝ่ายที่ติดต่อกับเรา (ไม่บังคับ)
                     </p>
                   </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-foreground mb-1.5">
-                    ชื่อ - นามสกุล <span className="text-destructive">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={form.contactName}
-                    onChange={(e) => setForm({ ...form, contactName: e.target.value })}
-                    className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
-                    required
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="col-span-2">
+                    <label className="block text-xs font-medium text-foreground mb-1.5">
+                      ชื่อ - นามสกุล
+                    </label>
+                    <input
+                      type="text"
+                      value={form.contactName}
+                      onChange={(e) => setForm({ ...form, contactName: e.target.value })}
+                      placeholder="เช่น สมหญิง ทองคำ"
+                      className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-foreground mb-1.5">
+                      เบอร์โทร
+                    </label>
+                    <input
+                      type="text"
+                      value={form.contactPhone}
+                      onChange={(e) =>
+                        setForm({ ...form, contactPhone: formatPhone(e.target.value) })
+                      }
+                      placeholder="0XX-XXX-XXXX"
+                      maxLength={12}
+                      className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-foreground mb-1.5">
+                      ตำแหน่ง
+                    </label>
+                    <input
+                      type="text"
+                      value={form.contactPosition}
+                      onChange={(e) => setForm({ ...form, contactPosition: e.target.value })}
+                      placeholder="เช่น เซลส์, บัญชี, จัดซื้อ"
+                      className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+                    />
+                  </div>
                 </div>
               </div>
             )}

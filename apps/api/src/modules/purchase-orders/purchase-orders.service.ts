@@ -85,12 +85,13 @@ export class PurchaseOrdersService {
 
     // Calculate total with discount & VAT (only if supplier has VAT)
     const totalAmount = dto.items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
-    const discount = dto.discount || 0;
+    const discount = dto.discount || 0; // ส่วนลดก่อน VAT
+    const discountAfterVat = supplier.hasVat ? dto.discountAfterVat || 0 : 0; // ส่วนลดหลัง VAT (เฉพาะ supplier มี VAT)
     const subtotalAfterDiscount = totalAmount - discount;
     const vatConfig = await this.prisma.systemConfig.findUnique({ where: { key: 'vat_pct' } });
     const vatRate = vatConfig ? Number(vatConfig.value) : 0.07;
     const vatAmount = supplier.hasVat ? Math.round(subtotalAfterDiscount * vatRate * 100) / 100 : 0;
-    const netAmount = subtotalAfterDiscount + vatAmount;
+    const netAmount = subtotalAfterDiscount + vatAmount - discountAfterVat;
 
     // Calculate due date from supplier credit terms
     const orderDateObj = new Date(dto.orderDate);
@@ -118,6 +119,7 @@ export class PurchaseOrdersService {
           dueDate,
           totalAmount,
           discount,
+          discountAfterVat,
           vatAmount,
           netAmount,
           notes: dto.notes,

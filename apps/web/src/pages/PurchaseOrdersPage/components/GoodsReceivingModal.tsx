@@ -108,22 +108,30 @@ export function GoodsReceivingModal({
                           </button>
                         </div>
                       </div>
-                      {unit.category !== 'ACCESSORY' && (
+                      {unit.category !== 'ACCESSORY' && unit.status === 'PASS' && (
                       <div className="grid grid-cols-2 gap-2">
-                        <input
-                          type="text"
-                          placeholder="IMEI"
-                          value={unit.imeiSerial}
-                          onChange={(e) => updateReceivingUnit(idx, 'imeiSerial', e.target.value)}
-                          className="px-2 py-1.5 border border-input rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden font-mono"
-                        />
-                        <input
-                          type="text"
-                          placeholder="หมายเลขซีเรียล"
-                          value={unit.serialNumber}
-                          onChange={(e) => updateReceivingUnit(idx, 'serialNumber', e.target.value)}
-                          className="px-2 py-1.5 border border-input rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden font-mono"
-                        />
+                        <div>
+                          <label className="block text-xs text-muted-foreground mb-0.5">IMEI <span className="text-destructive">*</span></label>
+                          <input
+                            type="text"
+                            placeholder="IMEI"
+                            value={unit.imeiSerial}
+                            onChange={(e) => updateReceivingUnit(idx, 'imeiSerial', e.target.value)}
+                            required
+                            className="w-full px-2 py-1.5 border border-input rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden font-mono"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-muted-foreground mb-0.5">หมายเลขซีเรียล <span className="text-destructive">*</span></label>
+                          <input
+                            type="text"
+                            placeholder="หมายเลขซีเรียล"
+                            value={unit.serialNumber}
+                            onChange={(e) => updateReceivingUnit(idx, 'serialNumber', e.target.value)}
+                            required
+                            className="w-full px-2 py-1.5 border border-input rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden font-mono"
+                          />
+                        </div>
                       </div>
                       )}
                       {unit.category === 'PHONE_USED' && unit.status === 'PASS' && (
@@ -131,12 +139,13 @@ export function GoodsReceivingModal({
                           <div className="text-xs font-medium text-warning mb-1">ข้อมูลมือสอง</div>
                           <div className="grid grid-cols-2 gap-2">
                             <div>
-                              <label className="block text-xs text-muted-foreground mb-0.5">% แบตเตอรี่</label>
+                              <label className="block text-xs text-muted-foreground mb-0.5">% แบตเตอรี่ <span className="text-destructive">*</span></label>
                               <input
                                 type="number"
                                 placeholder="เช่น 87"
                                 value={unit.batteryHealth}
                                 onChange={(e) => updateReceivingUnit(idx, 'batteryHealth', e.target.value)}
+                                required
                                 className="w-full px-2 py-1.5 border border-input rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
                                 min="0"
                                 max="100"
@@ -163,7 +172,7 @@ export function GoodsReceivingModal({
                             </div>
                           </div>
                           <div>
-                            <label className="block text-xs text-muted-foreground mb-0.5">ประกันศูนย์</label>
+                            <label className="block text-xs text-muted-foreground mb-0.5">ประกันศูนย์ <span className="text-destructive">*</span></label>
                             <div className="flex items-center gap-3">
                               <label className="flex items-center gap-1.5 cursor-pointer">
                                 <input
@@ -178,6 +187,7 @@ export function GoodsReceivingModal({
                                 <ThaiDateInput
                                   value={unit.warrantyExpireDate}
                                   onChange={(e) => updateReceivingUnit(idx, 'warrantyExpireDate', e.target.value)}
+                                  required
                                   className="flex-1 px-2 py-1.5 border border-input rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
                                 />
                               )}
@@ -231,12 +241,13 @@ export function GoodsReceivingModal({
                         <div className="mt-2 border border-primary/20 bg-primary/5 dark:bg-primary/10 rounded-xl p-3 space-y-2">
                           <div className="text-xs font-medium text-primary mb-1">ราคาขาย</div>
                           <div>
-                            <label className="block text-xs text-muted-foreground mb-0.5">ราคาขาย (บาท)</label>
+                            <label className="block text-xs text-muted-foreground mb-0.5">ราคาขาย (บาท) <span className="text-destructive">*</span></label>
                             <input
                               type="number"
                               placeholder="เช่น 15000"
                               value={unit.sellingPrice}
                               onChange={(e) => updateReceivingUnit(idx, 'sellingPrice', e.target.value)}
+                              required
                               className="w-full px-2 py-1.5 border border-input rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
                               min="0"
                             />
@@ -249,6 +260,7 @@ export function GoodsReceivingModal({
                           placeholder="เหตุผลที่ไม่ผ่าน *"
                           value={unit.rejectReason}
                           onChange={(e) => updateReceivingUnit(idx, 'rejectReason', e.target.value)}
+                          required
                           className="mt-2 w-full px-2 py-1.5 border border-destructive/30 rounded text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
                         />
                       )}

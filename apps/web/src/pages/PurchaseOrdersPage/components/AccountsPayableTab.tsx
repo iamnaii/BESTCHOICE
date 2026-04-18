@@ -8,7 +8,7 @@ export interface AccountsPayableTabProps {
   payableData: {
     grandTotal: number;
     suppliers: {
-      supplier: { id: string; name: string; contactName: string; phone: string };
+      supplier: { id: string; name: string; contactName: string | null; phone: string };
       totalNet: number;
       totalPaid: number;
       totalRemaining: number;
@@ -40,7 +40,9 @@ export function AccountsPayableTab({ payableData, onOpenDetail }: AccountsPayabl
           <div className="px-4 py-3 bg-muted/40 border-b border-border/50 flex items-center justify-between">
             <div>
               <div className="font-medium text-foreground">{entry.supplier.name}</div>
-              <div className="text-xs text-muted-foreground">{entry.supplier.contactName} | {entry.supplier.phone}</div>
+              <div className="text-xs text-muted-foreground">
+                {[entry.supplier.contactName, entry.supplier.phone].filter(Boolean).join(' | ')}
+              </div>
             </div>
             <div className="text-right">
               <div className="text-lg font-bold text-destructive tabular-nums font-mono">{(Number(entry.totalRemaining) || 0).toLocaleString()} บาท</div>

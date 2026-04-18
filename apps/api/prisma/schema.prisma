@@ -725,7 +725,9 @@ model Supplier {
   /// Entity type: JURISTIC = บริษัท/นิติบุคคล, INDIVIDUAL = บุคคลธรรมดา
   type           SupplierType @default(JURISTIC)
   name           String
-  contactName    String       @map("contact_name")
+  contactName    String?      @map("contact_name")
+  contactPhone   String?      @map("contact_phone")
+  contactPosition String?     @map("contact_position")
   nickname       String?
   /// Salutation for INDIVIDUAL type (นาย/นาง/นางสาว/คุณ)
   titleName      String?      @map("title_name")
@@ -778,10 +780,11 @@ model PurchaseOrder {
   expectedDate  DateTime?       @map("expected_date")
   dueDate       DateTime?       @map("due_date")
   status        POStatus        @default(DRAFT)
-  totalAmount   Decimal         @map("total_amount") @db.Decimal(12, 2)
-  discount      Decimal         @default(0) @db.Decimal(12, 2)
-  vatAmount     Decimal         @default(0) @map("vat_amount") @db.Decimal(12, 2)
-  netAmount     Decimal         @default(0) @map("net_amount") @db.Decimal(12, 2)
+  totalAmount      Decimal         @map("total_amount") @db.Decimal(12, 2)
+  discount         Decimal         @default(0) @db.Decimal(12, 2) // ส่วนลดก่อน VAT
+  discountAfterVat Decimal         @default(0) @map("discount_after_vat") @db.Decimal(12, 2)
+  vatAmount        Decimal         @default(0) @map("vat_amount") @db.Decimal(12, 2)
+  netAmount        Decimal         @default(0) @map("net_amount") @db.Decimal(12, 2)
   paymentStatus POPaymentStatus @default(UNPAID) @map("payment_status")
   paymentMethod String?         @map("payment_method")
   paidAmount    Decimal         @default(0) @map("paid_amount") @db.Decimal(12, 2)

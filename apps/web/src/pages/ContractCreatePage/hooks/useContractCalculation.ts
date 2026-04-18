@@ -62,7 +62,7 @@ export function useContractCalculation({
   const interestTotal = principal * interestRate * totalMonths;
   const vatAmount = (principal + storeCommission + interestTotal) * vatPct;
   const financedAmount = principal + storeCommission + interestTotal + vatAmount;
-  const monthlyPayment = totalMonths > 0 ? Math.ceil(financedAmount / totalMonths) : 0;
+  const monthlyPayment = totalMonths > 0 ? Math.round((financedAmount / totalMonths) * 100) / 100 : 0;
 
   const monthOptions: number[] = [];
   for (let m = minMonths; m <= maxMonths; m++) {

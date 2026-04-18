@@ -62,7 +62,13 @@ export class CreatePODto {
 
   @IsNumber()
   @IsOptional()
+  @Min(0)
   discount?: number;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  discountAfterVat?: number;
 
   @IsIn(['UNPAID', 'DEPOSIT_PAID', 'PARTIALLY_PAID', 'FULLY_PAID'])
   @IsOptional()

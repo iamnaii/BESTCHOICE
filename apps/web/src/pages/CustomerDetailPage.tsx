@@ -17,7 +17,7 @@ import { toast } from 'sonner';
 import { formatDateShort, formatDateTime } from '@/utils/formatters';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { DetailPageSkeleton } from '@/components/ui/page-skeletons';
-import { maskNationalId } from '@/utils/mask.util';
+import { maskNationalId, formatNationalId } from '@/utils/mask.util';
 import { THAI_NAME_PREFIXES, RELATIONSHIP_OPTIONS } from '@/lib/constants';
 import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, contractStatusMap, creditCheckStatusMap } from '@/lib/status-badges';
@@ -528,7 +528,7 @@ export default function CustomerDetailPage() {
             <Info label="คำนำหน้า" value={customer.prefix} />
             <Info label="ชื่อ-นามสกุล" value={customer.name} />
             <Info label="ชื่อเล่น" value={customer.nickname} />
-            <Info label="เลขบัตร ปชช." value={maskNationalId(customer.nationalId)} />
+            <Info label="เลขบัตร ปชช." value={user?.role === 'OWNER' ? formatNationalId(customer.nationalId) : maskNationalId(customer.nationalId)} />
             <Info label="วันเกิด" value={customer.birthDate ? formatDateShort(customer.birthDate) : null} />
             <Info label="อายุ" value={customer.birthDate ? (() => {
               const bd = new Date(customer.birthDate);

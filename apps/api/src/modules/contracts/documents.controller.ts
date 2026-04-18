@@ -151,6 +151,13 @@ export class DocumentsController {
     return this.documentsService.generateSignedDocuments(id, user.id);
   }
 
+  /** Bulk-regenerate signed contract PDFs after template changes. Old PDFs retained. */
+  @Post('contracts/admin/regenerate-signed-pdfs')
+  @Roles('OWNER')
+  regenerateSignedContractPdfs(@CurrentUser() user: { id: string }) {
+    return this.documentsService.regenerateSignedContractPdfs(user.id);
+  }
+
   @Post('contracts/:id/generate-pdpa-document')
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
   generatePdpaDocument(

@@ -15,7 +15,7 @@ import type { Product, InterestConfig } from '../types';
  *   interestTotal   = principal * interestRate * totalMonths   (flat rate)
  *   vatAmount       = (principal + storeCommission + interestTotal) * vatPct
  *   financedAmount  = principal + storeCommission + interestTotal + vatAmount
- *   monthlyPayment  = ceil(financedAmount / totalMonths)
+ *   monthlyPayment  = round(financedAmount / totalMonths, 2)   (satang precision)
  *
  * If this hook drifts, every contract gets the wrong numbers.
  */
@@ -117,7 +117,7 @@ describe('useContractCalculation', () => {
     //   subtotalForVat  = 20000 + 2000 + 3600 = 25600
     //   vatAmount       = 25600 * 0.07 = 1792
     //   financedAmount  = 25600 + 1792 = 27392
-    //   monthlyPayment  = ceil(27392 / 12) = 2283
+    //   monthlyPayment  = round(27392 / 12, 2) = 2282.67
     it('matches the canonical numbers for the 25000/5000/12 case', () => {
       const { result } = setupHook({
         product: makeProduct(25000),
@@ -131,7 +131,7 @@ describe('useContractCalculation', () => {
       expect(result.current.interestTotal).toBe(3600);
       expect(result.current.vatAmount).toBeCloseTo(1792, 6);
       expect(result.current.financedAmount).toBeCloseTo(27392, 6);
-      expect(result.current.monthlyPayment).toBe(2283);
+      expect(result.current.monthlyPayment).toBeCloseTo(2282.67, 2);
     });
   });
 
@@ -149,13 +149,13 @@ describe('useContractCalculation', () => {
         result.current.setDownPayment(0);
       });
       // principal=10000, comm=1000, interest=0
-      // vatable=11000, vat=770, financed=11770, monthly=ceil(1177)=1177
+      // vatable=11000, vat=770, financed=11770, monthly=11770/10=1177
       expect(result.current.principal).toBe(10000);
       expect(result.current.storeCommission).toBe(1000);
       expect(result.current.interestTotal).toBe(0);
       expect(result.current.vatAmount).toBeCloseTo(770, 6);
       expect(result.current.financedAmount).toBeCloseTo(11770, 6);
-      expect(result.current.monthlyPayment).toBe(1177);
+      expect(result.current.monthlyPayment).toBeCloseTo(1177, 2);
     });
   });
 
@@ -168,12 +168,12 @@ describe('useContractCalculation', () => {
         initialMonths: 24,
       });
       // principal=24000, comm=2400, interest=24000*0.015*24=8640
-      // vatable=35040, vat=2452.8, financed=37492.8, monthly=ceil(37492.8/24)=ceil(1562.2)=1563
+      // vatable=35040, vat=2452.8, financed=37492.8, monthly=round(37492.8/24,2)=1562.2
       expect(result.current.principal).toBe(24000);
       expect(result.current.interestTotal).toBe(8640);
       expect(result.current.vatAmount).toBeCloseTo(2452.8, 4);
       expect(result.current.financedAmount).toBeCloseTo(37492.8, 4);
-      expect(result.current.monthlyPayment).toBe(1563);
+      expect(result.current.monthlyPayment).toBeCloseTo(1562.2, 2);
     });
   });
 

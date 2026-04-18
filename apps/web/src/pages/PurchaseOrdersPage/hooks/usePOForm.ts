@@ -6,7 +6,7 @@ import { UseMutationResult } from '@tanstack/react-query';
 
 interface UsePOFormOptions {
   createMutation: UseMutationResult<unknown, unknown, Record<string, unknown>, unknown>;
-  suppliers: { id: string; name: string; contactName: string; hasVat: boolean; paymentMethods: { paymentMethod: string; bankName?: string; bankAccountName?: string; bankAccountNumber?: string; creditTermDays?: number; isDefault: boolean }[] }[];
+  suppliers: { id: string; name: string; contactName: string | null; hasVat: boolean; paymentMethods: { paymentMethod: string; bankName?: string; bankAccountName?: string; bankAccountNumber?: string; creditTermDays?: number; isDefault: boolean }[] }[];
 }
 
 export function usePOForm({ createMutation, suppliers }: UsePOFormOptions) {
@@ -16,6 +16,7 @@ export function usePOForm({ createMutation, suppliers }: UsePOFormOptions) {
     expectedDate: '',
     notes: '',
     discount: '',
+    discountAfterVat: '',
     paymentStatus: 'UNPAID',
     paymentMethod: '',
     paidAmount: '',
@@ -26,7 +27,7 @@ export function usePOForm({ createMutation, suppliers }: UsePOFormOptions) {
   const [formAttachments, setFormAttachments] = useState<string[]>([]);
 
   const resetForm = () => {
-    setForm({ supplierId: '', orderDate: new Date().toISOString().split('T')[0], expectedDate: '', notes: '', discount: '', paymentStatus: 'UNPAID', paymentMethod: '', paidAmount: '', paymentNotes: '' });
+    setForm({ supplierId: '', orderDate: new Date().toISOString().split('T')[0], expectedDate: '', notes: '', discount: '', discountAfterVat: '', paymentStatus: 'UNPAID', paymentMethod: '', paidAmount: '', paymentNotes: '' });
     setItems([{ ...emptyItem }]);
     setFormAttachments([]);
     setAttachmentUrl('');
@@ -92,6 +93,7 @@ export function usePOForm({ createMutation, suppliers }: UsePOFormOptions) {
       expectedDate: form.expectedDate || undefined,
       notes: form.notes || undefined,
       discount: form.discount ? Number(form.discount) : undefined,
+      discountAfterVat: form.discountAfterVat ? Number(form.discountAfterVat) : undefined,
       paymentStatus: form.paymentStatus !== 'UNPAID' ? form.paymentStatus : undefined,
       paymentMethod: form.paymentMethod || undefined,
       paidAmount: form.paidAmount ? Number(form.paidAmount) : undefined,
@@ -119,7 +121,11 @@ export function usePOForm({ createMutation, suppliers }: UsePOFormOptions) {
   const discountNum = Math.min(Number(form.discount) || 0, subtotal);
   const subtotalAfterDiscount = subtotal - discountNum;
   const vatAmount = supplierHasVat ? Math.round(subtotalAfterDiscount * 0.07 * 100) / 100 : 0;
-  const netAmount = subtotalAfterDiscount + vatAmount;
+  const totalWithVat = subtotalAfterDiscount + vatAmount;
+  const discountAfterVatNum = supplierHasVat
+    ? Math.min(Number(form.discountAfterVat) || 0, totalWithVat)
+    : 0;
+  const netAmount = totalWithVat - discountAfterVatNum;
 
   return {
     form,
@@ -142,6 +148,8 @@ export function usePOForm({ createMutation, suppliers }: UsePOFormOptions) {
     discountNum,
     subtotalAfterDiscount,
     vatAmount,
+    totalWithVat,
+    discountAfterVatNum,
     netAmount,
   };
 }

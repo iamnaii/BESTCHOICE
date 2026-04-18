@@ -74,6 +74,8 @@ describe('TradeInService', () => {
       },
       product: {
         findUnique: jest.fn(),
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'prod-new-1' }),
       },
       $transaction: jest.fn().mockImplementation(async (fn: unknown) => {
         if (typeof fn === 'function') return fn(prisma);

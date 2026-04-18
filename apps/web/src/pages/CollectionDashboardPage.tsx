@@ -91,12 +91,12 @@ function MoMIndicator({ value, invertColors = false }: { value: number | null | 
 
 /* ─── Aging bucket color by index ─── */
 const AGING_COLORS = [
-  { bg: 'bg-success/10', bar: 'bg-success', text: 'text-success', border: 'border-success/20' },
-  { bg: 'bg-warning/10', bar: 'bg-warning', text: 'text-warning', border: 'border-warning/20' },
-  { bg: 'bg-warning/20', bar: 'bg-warning', text: 'text-warning', border: 'border-warning/40' },
-  { bg: 'bg-warning/20', bar: 'bg-warning', text: 'text-warning', border: 'border-warning/40' },
-  { bg: 'bg-destructive/10', bar: 'bg-destructive', text: 'text-destructive', border: 'border-destructive/20' },
-  { bg: 'bg-destructive/20', bar: 'bg-destructive', text: 'text-destructive', border: 'border-destructive/40' },
+  { bg: 'bg-success/10 dark:bg-success/15', bar: 'bg-success', text: 'text-success', border: 'border-success/20' },
+  { bg: 'bg-warning/10 dark:bg-warning/15', bar: 'bg-warning', text: 'text-warning', border: 'border-warning/20' },
+  { bg: 'bg-warning/20 dark:bg-warning/25', bar: 'bg-warning', text: 'text-warning', border: 'border-warning/40' },
+  { bg: 'bg-warning/20 dark:bg-warning/25', bar: 'bg-warning', text: 'text-warning', border: 'border-warning/40' },
+  { bg: 'bg-destructive/10 dark:bg-destructive/20', bar: 'bg-destructive', text: 'text-destructive', border: 'border-destructive/20 dark:border-destructive/40' },
+  { bg: 'bg-destructive/20 dark:bg-destructive/30', bar: 'bg-destructive', text: 'text-destructive', border: 'border-destructive/40 dark:border-destructive/50' },
 ];
 
 /* ─── Channel label map ─── */

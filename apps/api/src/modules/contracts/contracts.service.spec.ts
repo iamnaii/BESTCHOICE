@@ -353,6 +353,12 @@ describe('ContractsService', () => {
       totalMonths: 12,
     };
 
+    // The active-contract guard runs before all create-path validations.
+    // Default mock to "no active contracts" so these tests exercise downstream logic.
+    beforeEach(() => {
+      prisma.contract.findMany.mockResolvedValue([]);
+    });
+
     it('throws BadRequestException when product does not exist', async () => {
       prisma.product.findUnique.mockResolvedValue(null);
       await expect(service.create(validDto, 'user-1')).rejects.toBeInstanceOf(BadRequestException);

@@ -2,6 +2,7 @@ import DataTable, { Column } from '@/components/ui/DataTable';
 import { statusLabels, categoryLabels } from '@/lib/constants';
 import { StockProduct } from '../types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Package, Search, X } from 'lucide-react';
 
 export interface StockListTabProps {
   search: string;
@@ -79,15 +80,46 @@ export function StockListTab({
             <option key={b.id} value={b.id}>{b.name}</option>
           ))}
         </select>
-        {filterBranch && (
-          <button
-            onClick={() => setFilterBranch('')}
-            className="px-3 py-2 text-sm text-primary hover:text-primary-700"
-          >
-            ล้างตัวกรอง
-          </button>
-        )}
       </div>
+
+      {/* Active filter chips */}
+      {(search || filterStatus || filterCategory || filterBranch) && (
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          <span className="text-xs text-muted-foreground">ตัวกรองที่ใช้:</span>
+          {search && (
+            <FilterChip label={`ค้นหา: "${search}"`} onRemove={() => setSearch('')} />
+          )}
+          {filterStatus && (
+            <FilterChip
+              label={`สถานะ: ${statusLabels[filterStatus]?.label || filterStatus}`}
+              onRemove={() => setFilterStatus('')}
+            />
+          )}
+          {filterCategory && (
+            <FilterChip
+              label={`ประเภท: ${categoryLabels[filterCategory] || filterCategory}`}
+              onRemove={() => setFilterCategory('')}
+            />
+          )}
+          {filterBranch && (
+            <FilterChip
+              label={`สาขา: ${branches.find((b) => b.id === filterBranch)?.name || filterBranch}`}
+              onRemove={() => setFilterBranch('')}
+            />
+          )}
+          <button
+            onClick={() => {
+              setSearch('');
+              setFilterStatus('');
+              setFilterCategory('');
+              setFilterBranch('');
+            }}
+            className="ml-1 text-xs text-muted-foreground hover:text-foreground underline"
+          >
+            ล้างทั้งหมด
+          </button>
+        </div>
+      )}
 
       <Card>
         <CardHeader>
@@ -98,7 +130,10 @@ export function StockListTab({
             columns={columns}
             data={listProducts}
             isLoading={listLoading}
-            emptyMessage="ไม่พบสินค้า"
+            emptyMessage={search || filterStatus || filterCategory || filterBranch ? 'ไม่พบสินค้าที่ตรงกับตัวกรอง' : 'ยังไม่มีสินค้าในคลัง'}
+            emptyIcon={search ? Search : Package}
+            emptyDescription={search || filterStatus || filterCategory || filterBranch ? 'ลองล้างตัวกรองหรือค้นหาด้วยคำอื่น' : undefined}
+            columnToggle
             pagination={listResult ? {
               page: listResult.page,
               totalPages: listResult.totalPages,
@@ -109,5 +144,20 @@ export function StockListTab({
         </CardContent>
       </Card>
     </>
+  );
+}
+
+function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }) {
+  return (
+    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium">
+      {label}
+      <button
+        onClick={onRemove}
+        className="hover:bg-primary/20 rounded-full p-0.5 transition-colors"
+        aria-label={`ลบ ${label}`}
+      >
+        <X className="size-3" />
+      </button>
+    </span>
   );
 }

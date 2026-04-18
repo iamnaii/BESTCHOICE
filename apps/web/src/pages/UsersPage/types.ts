@@ -14,9 +14,18 @@ export interface User {
   startDate: string | null;
   nationalId: string | null;
   birthDate: string | null;
+  lastLoginAt: string | null;
   createdAt: string;
   branch: { id: string; name: string } | null;
 }
+
+export const roleAvatarColors: Record<string, string> = {
+  OWNER: 'bg-destructive/15 text-destructive',
+  BRANCH_MANAGER: 'bg-primary/15 text-primary',
+  FINANCE_MANAGER: 'bg-info/15 text-info',
+  SALES: 'bg-success/15 text-success',
+  ACCOUNTANT: 'bg-warning/15 text-warning',
+};
 
 export interface InviteToken {
   id: string;

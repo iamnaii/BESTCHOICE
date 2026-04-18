@@ -80,13 +80,15 @@ export class AuthService {
       throw new UnauthorizedException('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
     }
 
-    // Successful login → reset counters if they were non-zero.
-    if (user.failedLoginAttempts > 0 || user.lockedUntil) {
-      await this.prisma.user.update({
-        where: { id: user.id },
-        data: { failedLoginAttempts: 0, lockedUntil: null },
-      });
-    }
+    // Successful login → reset counters + stamp lastLoginAt.
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        failedLoginAttempts: 0,
+        lockedUntil: null,
+        lastLoginAt: new Date(),
+      },
+    });
 
     const payload = {
       sub: user.id,

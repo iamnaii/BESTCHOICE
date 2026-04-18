@@ -213,6 +213,21 @@ export default function UsersPage() {
     });
   };
 
+  const handleBulkDeactivate = (selected: User[]) => {
+    const active = selected.filter((u) => u.isActive);
+    if (active.length === 0) {
+      toast.error('ไม่มีผู้ใช้ที่ใช้งานอยู่ในรายการที่เลือก');
+      return;
+    }
+    setConfirmDialog({
+      open: true,
+      message: `ต้องการปิดใช้งานผู้ใช้ ${active.length} คนที่เลือกหรือไม่?`,
+      action: () => {
+        active.forEach((u) => toggleActiveMutation.mutate({ id: u.id, isActive: false }));
+      },
+    });
+  };
+
   const handleResendInvite = (id: string, email: string) => {
     setConfirmDialog({
       open: true,
@@ -357,12 +372,14 @@ export default function UsersPage() {
       {activeTab === 'users' ? (
         <UserTable
           users={users}
+          branches={branches}
           isLoading={isLoading}
           isError={isError}
           error={error}
           onRetry={refetch}
           onEdit={openEdit}
           onToggleActive={handleToggleActive}
+          onBulkDeactivate={handleBulkDeactivate}
         />
       ) : (
         <InviteTable

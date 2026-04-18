@@ -150,7 +150,7 @@ function DataTable<T extends { id: string }>({
           {
             id: col.key,
             header: col.label,
-            enableSorting: col.sortable !== false && !col.render,
+            enableSorting: col.sortable === true || (col.sortable !== false && !col.render),
             enableHiding: col.hideable !== false,
             cell: (info) => {
               if (col.render) {

@@ -5,6 +5,10 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import * as bcrypt from 'bcrypt';
 
+// Emails of service accounts used by scripts/migrations — hidden from the
+// standard user list so they don't inflate headcount or clutter the UI.
+const SYSTEM_USER_EMAILS = ['legacy-import@bestchoice.com'];
+
 @Injectable()
 export class UsersService {
   constructor(private prisma: PrismaService) {}
@@ -29,11 +33,15 @@ export class UsersService {
       startDate: true,
       nationalId: true,
       birthDate: true,
+      lastLoginAt: true,
       createdAt: true,
       branch: { select: { id: true, name: true } },
     };
 
-    const where = { deletedAt: null };
+    const where: Prisma.UserWhereInput = {
+      deletedAt: null,
+      email: { notIn: SYSTEM_USER_EMAILS },
+    };
 
     const [data, total] = await Promise.all([
       this.prisma.user.findMany({

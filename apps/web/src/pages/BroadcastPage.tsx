@@ -803,7 +803,7 @@ function FlexEditor({ message, onChange }: MessageEditorProps) {
           <div className="space-y-2">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">JSON Editor</p>
             <div className="rounded-xl overflow-hidden border border-border shadow-sm">
-              <div className="bg-[#161b22] px-3 py-2 flex items-center gap-2 border-b border-border">
+              <div className="bg-muted px-3 py-2 flex items-center gap-2 border-b border-border">
                 <div className="flex gap-1.5">
                   <div className="size-2.5 rounded-full bg-destructive" />
                   <div className="size-2.5 rounded-full bg-warning" />
@@ -812,7 +812,7 @@ function FlexEditor({ message, onChange }: MessageEditorProps) {
                 <span className="text-xs text-muted-foreground ml-1">flex.json</span>
               </div>
               <Textarea
-                className="font-mono text-xs bg-[#0d1117] text-[#c9d1d9] min-h-[200px] resize-y border-0 rounded-none focus-visible:ring-0 focus-visible:ring-offset-0"
+                className="font-mono text-xs bg-card text-foreground min-h-[200px] resize-y border-0 rounded-none focus-visible:ring-0 focus-visible:ring-offset-0"
                 value={c.jsonText}
                 onChange={(e) => {
                   const text = e.target.value;

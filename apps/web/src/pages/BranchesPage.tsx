@@ -29,7 +29,7 @@ export default function BranchesPage() {
   const queryClient = useQueryClient();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
-  const [form, setForm] = useState({ name: '', phone: '' });
+  const [form, setForm] = useState({ name: '', phone: '', isActive: true });
   const [address, setAddress] = useState<AddressData>(emptyAddress);
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
 
@@ -48,14 +48,15 @@ export default function BranchesPage() {
   });
 
   const saveMutation = useMutation({
-    mutationFn: async (data: { name: string; phone: string; address: AddressData }) => {
+    mutationFn: async (data: { name: string; phone: string; isActive: boolean; address: AddressData }) => {
       const location = composeAddress(data.address) || undefined;
-      const payload = {
+      const payload: { name: string; location?: string; phone?: string; isActive?: boolean } = {
         name: data.name,
         location,
         phone: data.phone || undefined,
       };
       if (editingBranch) {
+        payload.isActive = data.isActive;
         return api.patch(`/branches/${editingBranch.id}`, payload);
       }
       return api.post('/branches', payload);
@@ -72,14 +73,14 @@ export default function BranchesPage() {
 
   const openCreate = () => {
     setEditingBranch(null);
-    setForm({ name: '', phone: '' });
+    setForm({ name: '', phone: '', isActive: true });
     setAddress(emptyAddress);
     setIsModalOpen(true);
   };
 
   const openEdit = (branch: Branch) => {
     setEditingBranch(branch);
-    setForm({ name: branch.name, phone: branch.phone || '' });
+    setForm({ name: branch.name, phone: branch.phone || '', isActive: branch.isActive });
     setAddress(deserializeAddress(branch.location));
     setIsModalOpen(true);
   };
@@ -232,6 +233,22 @@ export default function BranchesPage() {
                         className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
                       />
                     </div>
+                    {editingBranch && (
+                      <label className="flex items-center justify-between gap-3 rounded-lg border border-input bg-muted/30 px-3 py-2.5 cursor-pointer hover:bg-muted/50 transition-colors">
+                        <div>
+                          <div className="text-sm font-medium text-foreground">เปิดใช้งานสาขา</div>
+                          <div className="text-xs text-muted-foreground">
+                            ปิดเพื่อซ่อนจาก dropdown และหน้าสต็อก (ข้อมูลเดิมยังคงอยู่)
+                          </div>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={form.isActive}
+                          onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
+                          className="size-4 accent-primary cursor-pointer"
+                        />
+                      </label>
+                    )}
                   </div>
                 </div>
 

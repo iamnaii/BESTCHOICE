@@ -697,14 +697,15 @@ const deleteMutation = useMutation({
                 const interest = p * editForm.interestRate * editForm.totalMonths;
                 const vat = (p + comm + interest) * vPct;
                 const total = p + comm + interest + vat;
-                const monthly = Math.ceil(total / editForm.totalMonths);
+                const monthly = Math.round((total / editForm.totalMonths) * 100) / 100;
+                const fmt2 = (v: number) => v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                 return (
                   <div className="bg-muted rounded-lg p-3 text-xs space-y-1">
-                    <div>ยอดปล่อย: {formatNumber(p)} บาท</div>
-                    <div>ค่าคอมหน้าร้าน ({(commPct * 100).toFixed(0)}%): {formatNumber(Math.round(comm))} บาท</div>
-                    <div>ดอกเบี้ยรวม: {formatNumber(Math.round(interest))} บาท</div>
-                    <div>VAT ({(vPct * 100).toFixed(0)}%): {formatNumber(Math.round(vat))} บาท</div>
-                    <div className="font-semibold">ค่างวด/เดือน: {formatNumber(monthly)} บาท</div>
+                    <div>ยอดปล่อย: {fmt2(p)} บาท</div>
+                    <div>ค่าคอมหน้าร้าน ({(commPct * 100).toFixed(0)}%): {fmt2(comm)} บาท</div>
+                    <div>ดอกเบี้ยรวม: {fmt2(interest)} บาท</div>
+                    <div>VAT ({(vPct * 100).toFixed(0)}%): {fmt2(vat)} บาท</div>
+                    <div className="font-semibold">ค่างวด/เดือน: {fmt2(monthly)} บาท</div>
                   </div>
                 );
               })()}
@@ -729,7 +730,7 @@ const deleteMutation = useMutation({
               <Info label="ราคาขาย" value={`${formatNumber(contract.sellingPrice)} บาท`} />
               <Info label="เงินดาวน์" value={`${formatNumber(contract.downPayment)} บาท`} />
               <Info label="ยอดปล่อย (Loan)" value={`${formatNumber(parseFloat(contract.sellingPrice) - parseFloat(contract.downPayment))} บาท`} />
-              <Info label="อัตราดอกเบี้ย" value={`${(parseFloat(contract.interestRate) * 100).toFixed(1)}%${contract.interestConfig ? ` (${contract.interestConfig.name})` : ''}`} />
+              <Info label="อัตราดอกเบี้ย" value={`${(parseFloat(contract.interestRate) * 100).toFixed(2)}%${contract.interestConfig ? ` (${contract.interestConfig.name})` : ''}`} />
               <Info label="ดอกเบี้ยรวม" value={`${formatNumber(contract.interestTotal)} บาท`} />
               <Info label="ยอดจัดไฟแนนซ์" value={`${formatNumber(contract.financedAmount)} บาท`} />
               <Info label="จำนวนงวด" value={`${contract.totalMonths} เดือน`} />

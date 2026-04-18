@@ -13,6 +13,7 @@ export interface CreatePOModalProps {
     expectedDate: string;
     notes: string;
     discount: string;
+    discountAfterVat: string;
     paymentStatus: string;
     paymentMethod: string;
     paidAmount: string;
@@ -25,7 +26,7 @@ export interface CreatePOModalProps {
   removeItem: (idx: number) => void;
   updateItem: (idx: number, field: string, value: string) => void;
   toggleModel: (idx: number, modelName: string) => void;
-  suppliers: { id: string; name: string; contactName: string; hasVat: boolean; paymentMethods: { paymentMethod: string; bankName?: string; bankAccountName?: string; bankAccountNumber?: string; creditTermDays?: number; isDefault: boolean }[] }[];
+  suppliers: { id: string; name: string; contactName: string | null; hasVat: boolean; paymentMethods: { paymentMethod: string; bankName?: string; bankAccountName?: string; bankAccountNumber?: string; creditTermDays?: number; isDefault: boolean }[] }[];
   suppliersLoading: boolean;
   suppliersError: boolean;
   selectedSupplier: CreatePOModalProps['suppliers'][number] | undefined;
@@ -34,6 +35,8 @@ export interface CreatePOModalProps {
   discountNum: number;
   subtotalAfterDiscount: number;
   vatAmount: number;
+  totalWithVat: number;
+  discountAfterVatNum: number;
   netAmount: number;
   createMutation: UseMutationResult<unknown, unknown, Record<string, unknown>, unknown>;
   handleCreate: (e: React.FormEvent) => void;
@@ -63,6 +66,8 @@ export function CreatePOModal({
   discountNum,
   subtotalAfterDiscount,
   vatAmount,
+  totalWithVat,
+  discountAfterVatNum,
   netAmount,
   createMutation,
   handleCreate,
@@ -126,14 +131,14 @@ export function CreatePOModal({
                   >
                     <option value="">{suppliersLoading ? 'กำลังโหลด...' : suppliersError ? '⚠ โหลดข้อมูลไม่ได้' : '-- เลือกผู้ขาย --'}</option>
                     {suppliers.map((s) => (
-                      <option key={s.id} value={s.id}>{s.name} ({s.contactName}){s.hasVat ? ' [VAT]' : ''}</option>
+                      <option key={s.id} value={s.id}>{s.name}{s.contactName && s.contactName !== s.name ? ` (${s.contactName})` : ''}{s.hasVat ? ' [VAT]' : ''}</option>
                     ))}
                   </select>
                   {selectedSupplier && (
                     <div className="mt-1 flex gap-2 flex-wrap">
                       <span
                         className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                          supplierHasVat ? 'bg-primary-100 text-primary-700' : 'bg-muted text-muted-foreground'
+                          supplierHasVat ? 'bg-primary/10 text-primary dark:bg-primary/15' : 'bg-muted text-muted-foreground'
                         }`}
                       >
                         {supplierHasVat ? 'ผู้ขายมี VAT - จะคำนวณ VAT 7% อัตโนมัติ' : 'ผู้ขายไม่มี VAT'}
@@ -208,7 +213,7 @@ export function CreatePOModal({
                   })() : '';
 
                   return (
-                    <div key={idx} className={`border rounded-lg p-3 space-y-2 relative ${isAccessory ? 'border-primary-200 bg-primary-50' : 'border-border bg-muted'}`}>
+                    <div key={idx} className={`border rounded-lg p-3 space-y-2 relative ${isAccessory ? 'border-primary/30 bg-primary/5 dark:bg-primary/10' : 'border-border bg-muted/50'}`}>
                       {items.length > 1 && (
                         <button
                           type="button"
@@ -220,7 +225,7 @@ export function CreatePOModal({
                       )}
                       <div className="text-xs font-medium text-muted-foreground mb-1">
                         รายการ #{idx + 1}
-                        {isAccessory && <span className="ml-2 px-1.5 py-0.5 bg-primary-200 text-primary-700 rounded text-xs">อุปกรณ์เสริม</span>}
+                        {isAccessory && <span className="ml-2 px-1.5 py-0.5 bg-primary/15 text-primary dark:bg-primary/20 rounded text-xs">อุปกรณ์เสริม</span>}
                       </div>
 
                       {/* Row 1: Category FIRST, then Brand/Model or AccessoryType */}
@@ -339,7 +344,7 @@ export function CreatePOModal({
                                   className={`px-2 py-0.5 rounded-full text-xs font-medium border transition-colors ${
                                     isSelected
                                       ? 'bg-primary text-primary-foreground border-primary'
-                                      : 'bg-background text-muted-foreground border-input hover:border-primary-400 hover:text-primary'
+                                      : 'bg-background text-muted-foreground border-input hover:border-primary/50 hover:text-primary'
                                   }`}
                                 >
                                   {m.name}
@@ -348,7 +353,7 @@ export function CreatePOModal({
                             })}
                           </div>
                           {selectedModels.length > 0 && (
-                            <div className="text-xs text-primary-500 mt-1">เลือกแล้ว {selectedModels.length} รุ่น</div>
+                            <div className="text-xs text-primary mt-1">เลือกแล้ว {selectedModels.length} รุ่น</div>
                           )}
                         </div>
                       )}
@@ -389,7 +394,7 @@ export function CreatePOModal({
                             </div>
                           </div>
                           {accessoryAutoName && (
-                            <div className="text-xs text-primary bg-primary-100 rounded px-2 py-1">
+                            <div className="text-xs text-primary bg-primary/10 dark:bg-primary/15 rounded px-2 py-1">
                               ชื่อสินค้า: {accessoryAutoName}
                             </div>
                           )}
@@ -465,35 +470,70 @@ export function CreatePOModal({
                 </div>
               </div>
 
-              <div className="bg-muted rounded-lg p-3 space-y-1 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">ยอดรวมสินค้า</span>
-                  <span className="font-medium tabular-nums font-mono">{subtotal.toLocaleString()} บาท</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-muted-foreground">ส่วนลด</span>
-                  <input
-                    type="number"
-                    value={form.discount}
-                    onChange={(e) => setForm({ ...form, discount: e.target.value })}
-                    className="w-32 px-2 py-1 border border-input rounded text-sm text-right focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
-                    min="0"
-                    placeholder="0"
-                  />
-                </div>
-                {discountNum > 0 && (
-                  <div className="flex justify-between text-muted-foreground">
-                    <span>หลังหักส่วนลด</span>
-                    <span>{subtotalAfterDiscount.toLocaleString()} บาท</span>
-                  </div>
+              <div className="bg-muted/50 rounded-lg p-3 space-y-1.5 text-sm">
+                {supplierHasVat ? (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">มูลค่าสินค้า (ก่อน VAT 7%)</span>
+                      <span className="font-medium tabular-nums font-mono">{subtotal.toLocaleString()} บาท</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground">ส่วนลด (ก่อน VAT 7%)</span>
+                      <input
+                        type="number"
+                        value={form.discount}
+                        onChange={(e) => setForm({ ...form, discount: e.target.value })}
+                        className="w-32 px-2 py-1 border border-input rounded text-sm text-right focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
+                        min="0"
+                        placeholder="0"
+                      />
+                    </div>
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>VAT 7%</span>
+                      <span className="tabular-nums font-mono">{vatAmount.toLocaleString()} บาท</span>
+                    </div>
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>มูลค่าสินค้า (รวม VAT 7%)</span>
+                      <span className="tabular-nums font-mono">{totalWithVat.toLocaleString()} บาท</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground">ส่วนลด (หลัง VAT 7%)</span>
+                      <input
+                        type="number"
+                        value={form.discountAfterVat}
+                        onChange={(e) => setForm({ ...form, discountAfterVat: e.target.value })}
+                        className="w-32 px-2 py-1 border border-input rounded text-sm text-right focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
+                        min="0"
+                        placeholder="0"
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">ยอดรวมสินค้า</span>
+                      <span className="font-medium tabular-nums font-mono">{subtotal.toLocaleString()} บาท</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground">ส่วนลด</span>
+                      <input
+                        type="number"
+                        value={form.discount}
+                        onChange={(e) => setForm({ ...form, discount: e.target.value })}
+                        className="w-32 px-2 py-1 border border-input rounded text-sm text-right focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
+                        min="0"
+                        placeholder="0"
+                      />
+                    </div>
+                    {discountNum > 0 && (
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>หลังหักส่วนลด</span>
+                        <span className="tabular-nums font-mono">{subtotalAfterDiscount.toLocaleString()} บาท</span>
+                      </div>
+                    )}
+                  </>
                 )}
-                {supplierHasVat && (
-                  <div className="flex justify-between text-muted-foreground">
-                    <span>VAT 7%</span>
-                    <span>{vatAmount.toLocaleString()} บาท</span>
-                  </div>
-                )}
-                <div className="flex justify-between border-t pt-1 mt-1 font-semibold text-base">
+                <div className="flex justify-between border-t pt-1.5 mt-1.5 font-semibold text-base">
                   <span>ยอดสุทธิ</span>
                   <span className="text-primary tabular-nums font-mono">{netAmount.toLocaleString()} บาท</span>
                 </div>
@@ -608,7 +648,7 @@ export function CreatePOModal({
                 </div>
 
                 <div className="flex gap-2">
-                  <label className="flex items-center gap-1 px-3 py-2 bg-primary-50 text-primary-700 border border-primary-200 rounded-lg text-xs cursor-pointer hover:bg-primary-100 whitespace-nowrap">
+                  <label className="flex items-center gap-1 px-3 py-2 bg-primary/10 text-primary border border-primary/30 rounded-lg text-xs cursor-pointer hover:bg-primary/15 dark:bg-primary/15 dark:hover:bg-primary/20 whitespace-nowrap">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                     เลือกรูป
                     <input
@@ -656,7 +696,7 @@ export function CreatePOModal({
                         {att.startsWith('data:image') ? (
                           <img src={att} alt={`แนบ ${idx + 1}`} className="h-16 w-16 object-cover rounded-lg border" />
                         ) : (
-                          <div className="h-16 w-16 flex items-center justify-center bg-primary-50 rounded-lg border text-2xs text-primary p-1 break-all overflow-hidden">
+                          <div className="h-16 w-16 flex items-center justify-center bg-primary/10 dark:bg-primary/15 rounded-lg border text-2xs text-primary p-1 break-all overflow-hidden">
                             <a href={att} target="_blank" rel="noopener noreferrer" className="hover:underline">{att.length > 20 ? att.slice(0, 20) + '...' : att}</a>
                           </div>
                         )}

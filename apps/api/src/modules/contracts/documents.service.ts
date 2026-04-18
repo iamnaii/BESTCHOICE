@@ -521,6 +521,41 @@ export class DocumentsService {
     return results;
   }
 
+  /**
+   * Bulk-regenerate CONTRACT PDFs for contracts that have a CUSTOMER signature.
+   * Use this after template changes (e.g. lessor name correction) to refresh already-signed
+   * contracts. Old PDFs remain in S3 as legal evidence — new rows are appended to EDocument.
+   */
+  async regenerateSignedContractPdfs(createdById: string, limit = 500) {
+    const contracts = await this.prisma.contract.findMany({
+      where: {
+        deletedAt: null,
+        signatures: { some: { signerType: 'CUSTOMER', deletedAt: null } },
+      },
+      select: { id: true, contractNumber: true },
+      take: limit,
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const success: string[] = [];
+    const failed: { contractNumber: string; error: string }[] = [];
+
+    for (const c of contracts) {
+      try {
+        await this.generateDocument(c.id, createdById, 'CONTRACT');
+        success.push(c.contractNumber);
+      } catch (err) {
+        failed.push({
+          contractNumber: c.contractNumber,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    this.logger.log(`Regenerated ${success.length}/${contracts.length} signed contract PDFs (${failed.length} failed)`);
+    return { total: contracts.length, success: success.length, failed };
+  }
+
   // ─── Preview ──────────────────────────────────────────
   async previewContract(contractId: string, templateId?: string) {
     const contract = await this.prisma.contract.findUnique({
@@ -880,16 +915,16 @@ ${(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const customerSig = contract.signatures?.find((s: any) => s.signerType === 'CUSTOMER');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let staffSig = contract.signatures?.find((s: any) => s.signerType === 'STAFF' || s.signerType === 'COMPANY');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const witness1Sig = contract.signatures?.find((s: any) => s.signerType === 'WITNESS_1');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const witness2Sig = contract.signatures?.find((s: any) => s.signerType === 'WITNESS_2');
 
-    // Fallback to system settings lessor signature if no COMPANY/STAFF signature on contract
-    if (!staffSig && lessorSig) {
-      staffSig = { signatureImage: lessorSig.image, signerName: lessorSig.name, signerType: 'COMPANY' };
-    }
+    // Lessor (ผู้ให้เช่าซื้อ) signature always comes from system settings — never per-contract.
+    // Falls back to contract STAFF/COMPANY signature only if system signature is missing.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let staffSig: any = lessorSig
+      ? { signatureImage: lessorSig.image, signerName: lessorSig.name, signerType: 'COMPANY' }
+      : contract.signatures?.find((s: any) => s.signerType === 'STAFF' || s.signerType === 'COMPANY');
 
     // Validate signature images are safe data URLs before embedding
     const customerSigSafe = customerSig && this.isSafeImageDataUrl(customerSig.signatureImage);
@@ -973,6 +1008,7 @@ ${(() => {
       '{branch_address}': esc(contract.branch?.location || ''),
       '{branch_phone}': esc(contract.branch?.phone || ''),
       '{salesperson_name}': esc(contract.salesperson?.name || ''),
+      '{lessor_name}': esc(lessorSig?.name || cfg('company_director', 'เอกนรินทร์ คงเดช')),
       '{witness1_name}': witness1Sig?.signerName ? esc(witness1Sig.signerName) : (references[0] ? esc(`${references[0].prefix || ''}${references[0].firstName || ''} ${references[0].lastName || ''}`.trim()) : ''),
       '{witness2_name}': witness2Sig?.signerName ? esc(witness2Sig.signerName) : (references[1] ? esc(`${references[1].prefix || ''}${references[1].firstName || ''} ${references[1].lastName || ''}`.trim()) : ''),
       '{staff_signer_name}': esc(contract.salesperson?.name || ''),

@@ -12,7 +12,7 @@ import { compressImageForOcr } from '@/lib/compressImage';
 import { checkCardReaderStatus, readSmartCard, type SmartCardData } from '@/lib/cardReader';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useAuth } from '@/contexts/AuthContext';
-import { maskNationalId } from '@/utils/mask.util';
+import { maskNationalId, formatNationalId } from '@/utils/mask.util';
 import { THAI_NAME_PREFIXES, RELATIONSHIP_OPTIONS } from '@/lib/constants';
 import { customerSchema, type CustomerFormData } from '@/lib/schemas';
 import PageHeader from '@/components/ui/PageHeader';
@@ -544,7 +544,7 @@ export default function CustomersPage() {
       hideable: true,
       render: (c: Customer) => (
         <div className="group inline-flex items-center gap-1.5">
-          <span className="font-mono text-xs text-muted-foreground">{maskNationalId(c.nationalId)}</span>
+          <span className="font-mono text-xs text-muted-foreground">{isOwner ? formatNationalId(c.nationalId) : maskNationalId(c.nationalId)}</span>
           {isOwnerOrManager && (
             <button
               type="button"

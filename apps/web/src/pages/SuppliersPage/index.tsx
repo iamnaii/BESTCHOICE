@@ -84,16 +84,27 @@ export default function SuppliersPage() {
           isDefault: pm.isDefault,
         }));
 
+      const isIndividual = formData.type === 'INDIVIDUAL';
+      // For individuals, contactName = person themselves (with title if present)
+      const resolvedContactName = isIndividual
+        ? [formData.titleName, formData.name].filter(Boolean).join(' ').trim() || formData.name
+        : formData.contactName || undefined;
+
       const payload = {
+        type: formData.type,
         name: formData.name,
-        contactName: formData.contactName,
-        nickname: formData.nickname || undefined,
+        titleName: isIndividual ? formData.titleName || undefined : undefined,
+        contactName: resolvedContactName,
+        contactPhone: isIndividual ? undefined : formData.contactPhone || undefined,
+        contactPosition: isIndividual ? undefined : formData.contactPosition || undefined,
+        nickname: isIndividual ? formData.nickname || undefined : undefined,
+        branchCode: isIndividual ? undefined : formData.branchCode || undefined,
         phone: formData.phone,
         phoneSecondary: formData.phoneSecondary || undefined,
         lineId: formData.lineId || undefined,
         address: serializedAddress || undefined,
         taxId: formData.taxId || undefined,
-        hasVat: formData.hasVat,
+        hasVat: isIndividual ? false : formData.hasVat,
         notes: formData.notes || undefined,
         paymentMethods: validPaymentMethods,
       };
@@ -136,9 +147,14 @@ export default function SuppliersPage() {
   const openEdit = (supplier: Supplier) => {
     setEditingSupplier(supplier);
     setForm({
+      type: supplier.type ?? 'JURISTIC',
       name: supplier.name,
-      contactName: supplier.contactName,
+      titleName: supplier.titleName || '',
+      contactName: supplier.contactName || '',
+      contactPhone: supplier.contactPhone || '',
+      contactPosition: supplier.contactPosition || '',
       nickname: supplier.nickname || '',
+      branchCode: supplier.branchCode || '',
       phone: supplier.phone,
       phoneSecondary: supplier.phoneSecondary || '',
       lineId: supplier.lineId || '',

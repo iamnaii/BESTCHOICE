@@ -120,12 +120,23 @@ export function PODetailModal({
                 </div>
 
                 {/* Summary */}
-                {(Number(selectedPO.discount) > 0 || Number(selectedPO.vatAmount) > 0) && (
+                {(Number(selectedPO.discount) > 0 || Number(selectedPO.discountAfterVat) > 0 || Number(selectedPO.vatAmount) > 0) && (
                   <div className="bg-muted rounded-lg p-3 text-sm space-y-1 mb-3">
-                    <div className="flex justify-between"><span className="text-muted-foreground">ยอดรวมสินค้า</span><span>{Number(selectedPO.totalAmount).toLocaleString()} บาท</span></div>
-                    {Number(selectedPO.discount) > 0 && <div className="flex justify-between"><span className="text-muted-foreground">ส่วนลด</span><span className="text-destructive">-{Number(selectedPO.discount).toLocaleString()} บาท</span></div>}
-                    {Number(selectedPO.vatAmount) > 0 && <div className="flex justify-between"><span className="text-muted-foreground">VAT 7%</span><span>{Number(selectedPO.vatAmount).toLocaleString()} บาท</span></div>}
-                    <div className="flex justify-between font-semibold border-t pt-1"><span>ยอดสุทธิ</span><span>{Number(selectedPO.netAmount).toLocaleString()} บาท</span></div>
+                    {Number(selectedPO.vatAmount) > 0 ? (
+                      <>
+                        <div className="flex justify-between"><span className="text-muted-foreground">มูลค่าสินค้า (ก่อน VAT 7%)</span><span className="tabular-nums">{Number(selectedPO.totalAmount).toLocaleString()} บาท</span></div>
+                        {Number(selectedPO.discount) > 0 && <div className="flex justify-between"><span className="text-muted-foreground">ส่วนลด (ก่อน VAT 7%)</span><span className="text-destructive tabular-nums">-{Number(selectedPO.discount).toLocaleString()} บาท</span></div>}
+                        <div className="flex justify-between"><span className="text-muted-foreground">VAT 7%</span><span className="tabular-nums">{Number(selectedPO.vatAmount).toLocaleString()} บาท</span></div>
+                        <div className="flex justify-between"><span className="text-muted-foreground">มูลค่าสินค้า (รวม VAT 7%)</span><span className="tabular-nums">{(Number(selectedPO.totalAmount) - Number(selectedPO.discount) + Number(selectedPO.vatAmount)).toLocaleString()} บาท</span></div>
+                        {Number(selectedPO.discountAfterVat) > 0 && <div className="flex justify-between"><span className="text-muted-foreground">ส่วนลด (หลัง VAT 7%)</span><span className="text-destructive tabular-nums">-{Number(selectedPO.discountAfterVat).toLocaleString()} บาท</span></div>}
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex justify-between"><span className="text-muted-foreground">ยอดรวมสินค้า</span><span className="tabular-nums">{Number(selectedPO.totalAmount).toLocaleString()} บาท</span></div>
+                        {Number(selectedPO.discount) > 0 && <div className="flex justify-between"><span className="text-muted-foreground">ส่วนลด</span><span className="text-destructive tabular-nums">-{Number(selectedPO.discount).toLocaleString()} บาท</span></div>}
+                      </>
+                    )}
+                    <div className="flex justify-between font-semibold border-t pt-1"><span>ยอดสุทธิ</span><span className="tabular-nums">{Number(selectedPO.netAmount).toLocaleString()} บาท</span></div>
                   </div>
                 )}
 

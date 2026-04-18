@@ -106,7 +106,7 @@ export default function PurchaseOrdersPage() {
           onClick={() => data.setActiveTab('payable')}
           className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${data.activeTab === 'payable' ? 'border-destructive text-destructive' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
-          ยอดค้างจ่ายผู้ขาย
+          ยอดค้างชำระ ( ผู้ขาย )
           {data.payableData && data.payableData.grandTotal > 0 && (
             <span className="ml-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-destructive/10 text-destructive dark:bg-destructive/15">{(Number(data.payableData.grandTotal) || 0).toLocaleString()}</span>
           )}
@@ -159,6 +159,8 @@ export default function PurchaseOrdersPage() {
         discountNum={poForm.discountNum}
         subtotalAfterDiscount={poForm.subtotalAfterDiscount}
         vatAmount={poForm.vatAmount}
+        totalWithVat={poForm.totalWithVat}
+        discountAfterVatNum={poForm.discountAfterVatNum}
         netAmount={poForm.netAmount}
         createMutation={data.createMutation}
         handleCreate={poForm.handleCreate}

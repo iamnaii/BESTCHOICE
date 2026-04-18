@@ -173,7 +173,10 @@ export function POListTab({
             {Number(po.netAmount ?? po.totalAmount).toLocaleString()} บาท
           </span>
           {Number(po.discount) > 0 && (
-            <div className="text-xs text-destructive">ส่วนลด -{Number(po.discount).toLocaleString()}</div>
+            <div className="text-xs text-destructive">ส่วนลดก่อน VAT -{Number(po.discount).toLocaleString()}</div>
+          )}
+          {Number(po.discountAfterVat) > 0 && (
+            <div className="text-xs text-destructive">ส่วนลดหลัง VAT -{Number(po.discountAfterVat).toLocaleString()}</div>
           )}
           {Number(po.vatAmount) > 0 && (
             <div className="text-xs text-primary">รวม VAT {Number(po.vatAmount).toLocaleString()}</div>

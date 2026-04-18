@@ -24,7 +24,7 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
   const [paymentAttachments, setPaymentAttachments] = useState<string[]>([]);
   const [paymentAttachmentUrl, setPaymentAttachmentUrl] = useState('');
 
-  const { data: suppliersRes, isLoading: suppliersLoading, isError: suppliersError } = useQuery<{ data: { id: string; name: string; contactName: string; hasVat: boolean; paymentMethods: { paymentMethod: string; bankName?: string; bankAccountName?: string; bankAccountNumber?: string; creditTermDays?: number; isDefault: boolean }[] }[] }>({
+  const { data: suppliersRes, isLoading: suppliersLoading, isError: suppliersError } = useQuery<{ data: { id: string; name: string; contactName: string | null; hasVat: boolean; paymentMethods: { paymentMethod: string; bankName?: string; bankAccountName?: string; bankAccountNumber?: string; creditTermDays?: number; isDefault: boolean }[] }[] }>({
     queryKey: ['suppliers-for-po'],
     queryFn: async () => (await api.get('/suppliers?limit=200&isActive=true')).data,
     retry: 2,
@@ -34,7 +34,7 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
   type PayableData = {
     grandTotal: number;
     suppliers: {
-      supplier: { id: string; name: string; contactName: string; phone: string };
+      supplier: { id: string; name: string; contactName: string | null; phone: string };
       totalNet: number;
       totalPaid: number;
       totalRemaining: number;
@@ -294,6 +294,40 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     const missingReasons = receivingUnits.filter((u) => u.status === 'REJECT' && !u.rejectReason.trim());
     if (missingReasons.length > 0) {
       toast.error('กรุณาระบุเหตุผลสำหรับรายการที่ไม่ผ่าน');
+      return;
+    }
+
+    const passUnits = receivingUnits.filter((u) => u.status === 'PASS');
+
+    const missingImei = passUnits.filter((u) => u.category !== 'ACCESSORY' && !u.imeiSerial.trim());
+    if (missingImei.length > 0) {
+      toast.error('กรุณาระบุ IMEI ให้ครบทุกรายการที่ผ่าน');
+      return;
+    }
+
+    const missingSerial = passUnits.filter((u) => u.category !== 'ACCESSORY' && !u.serialNumber.trim());
+    if (missingSerial.length > 0) {
+      toast.error('กรุณาระบุหมายเลขซีเรียลให้ครบทุกรายการที่ผ่าน');
+      return;
+    }
+
+    const missingSellingPrice = passUnits.filter((u) => !u.sellingPrice.trim() || Number(u.sellingPrice) <= 0);
+    if (missingSellingPrice.length > 0) {
+      toast.error('กรุณาระบุราคาขายให้ครบทุกรายการที่ผ่าน');
+      return;
+    }
+
+    const usedPhonePass = passUnits.filter((u) => u.category === 'PHONE_USED');
+
+    const missingBattery = usedPhonePass.filter((u) => !u.batteryHealth.trim());
+    if (missingBattery.length > 0) {
+      toast.error('กรุณาระบุ % แบตเตอรี่สำหรับมือสองทุกเครื่อง');
+      return;
+    }
+
+    const missingWarranty = usedPhonePass.filter((u) => !u.warrantyExpired && !u.warrantyExpireDate.trim());
+    if (missingWarranty.length > 0) {
+      toast.error('กรุณาระบุวันหมดประกันหรือติ๊กหมดประกันแล้ว');
       return;
     }
 

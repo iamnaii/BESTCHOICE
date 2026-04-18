@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { CheckCircle2, Circle, Plus, Eye, Trash2, Loader2, FileText, Link2 } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
 import { compressImageForOcr } from '@/lib/compressImage';
 import { formatDateShort } from '@/utils/formatters';
@@ -19,75 +20,80 @@ interface ContractDocument {
 }
 
 const DOCUMENT_TYPES = [
-  { value: 'ID_CARD_COPY', label: 'สำเนาบัตรประชาชน (หน้า)' },
-  { value: 'ID_CARD_BACK', label: 'สำเนาบัตรประชาชน (หลัง)' },
-  { value: 'KYC_SELFIE', label: 'รูปถ่ายลูกค้าถือบัตรประชาชน' },
-  { value: 'DEVICE_PHOTO', label: 'รูปถ่ายสินค้า' },
-  { value: 'DEVICE_IMEI_PHOTO', label: 'รูปถ่าย IMEI สินค้า' },
-  { value: 'DOWN_PAYMENT_RECEIPT', label: 'หลักฐานการชำระเงินดาวน์' },
-  { value: 'PDPA_CONSENT', label: 'เอกสาร Consent PDPA' },
-  { value: 'SIGNED_CONTRACT', label: 'PDF สัญญาที่เซ็นแล้ว' },
-  { value: 'GUARDIAN_DOC', label: 'เอกสารผู้ปกครอง (อายุ 17-19)' },
-  { value: 'KYC', label: 'เอกสาร KYC อื่นๆ' },
-  { value: 'FACEBOOK_PROFILE', label: 'Profile Facebook' },
-  { value: 'FACEBOOK_POST', label: 'Post Facebook ล่าสุด (ไม่เกิน 1 เดือน)' },
-  { value: 'LINE_PROFILE', label: 'Profile LINE' },
-  { value: 'DEVICE_RECEIPT_PHOTO', label: 'รูปรับเครื่อง' },
-  { value: 'BANK_STATEMENT', label: 'Statement ธนาคาร' },
-  { value: 'DRIVING_LICENSE', label: 'ใบขับขี่' },
-  { value: 'BOOK_BANK', label: 'หน้า Book Bank' },
-  { value: 'OTHER', label: 'อื่นๆ' },
+  { value: 'ID_CARD_COPY', label: 'สำเนาบัตรประชาชน (หน้า)', required: true },
+  { value: 'KYC_SELFIE', label: 'รูปถ่ายลูกค้าถือบัตรประชาชน', required: true },
+  { value: 'DEVICE_PHOTO', label: 'รูปถ่ายสินค้า', required: true },
+  { value: 'DEVICE_IMEI_PHOTO', label: 'รูปถ่าย IMEI สินค้า', required: true },
+  { value: 'SIGNED_CONTRACT', label: 'PDF สัญญาที่เซ็นแล้ว (อัตโนมัติจากระบบ)', required: true },
+  { value: 'FACEBOOK_PROFILE', label: 'Profile Facebook', required: true },
+  { value: 'FACEBOOK_POST', label: 'Post Facebook ล่าสุด (ไม่เกิน 1 เดือน)', required: true },
+  { value: 'LINE_PROFILE', label: 'Profile LINE', required: true },
+  { value: 'DEVICE_RECEIPT_PHOTO', label: 'รูปรับเครื่อง', required: true },
+  { value: 'BANK_STATEMENT', label: 'Statement ธนาคาร / หลักฐานการทำงาน', required: true },
 ];
+
+const OCR_TYPES: Record<string, { endpoint: string; label: string }> = {
+  ID_CARD_COPY: { endpoint: '/ocr/id-card', label: 'บัตรประชาชน' },
+};
 
 export default function DocumentUpload({ contractId, customerId }: { contractId: string; customerId?: string }) {
   const queryClient = useQueryClient();
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [selectedType, setSelectedType] = useState('ID_CARD_COPY');
-  const [notes, setNotes] = useState('');
+  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const [ocrResult, setOcrResult] = useState<OcrResult | null>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [ocrLoading, setOcrLoading] = useState(false);
   const [showOcrPanel, setShowOcrPanel] = useState(false);
   const [viewingDoc, setViewingDoc] = useState<ContractDocument | null>(null);
-  const [isDragOver, setIsDragOver] = useState(false);
+  const [dragOverType, setDragOverType] = useState<string | null>(null);
+  const [uploadingType, setUploadingType] = useState<string | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
 
   const { data: documents = [] } = useQuery<ContractDocument[]>({
     queryKey: ['contract-documents', contractId],
     queryFn: async () => {
-      const { data } = await api.get(`/contracts/${contractId}/documents`);
-      return data;
+      const { data } = await api.get(`/contracts/${contractId}/documents`, { params: { limit: 200 } });
+      return Array.isArray(data) ? data : (data?.data ?? []);
     },
   });
 
+  const { data: creditCheck } = useQuery<{ statementFiles: string[] } | null>({
+    queryKey: ['contract-credit-check-statement', contractId],
+    queryFn: async () => {
+      try {
+        const { data } = await api.get(`/contracts/${contractId}/credit-check`);
+        return data;
+      } catch {
+        return null;
+      }
+    },
+  });
+  const statementFiles = creditCheck?.statementFiles ?? [];
+
   const uploadMutation = useMutation({
-    mutationFn: async (file: File) => {
+    mutationFn: async ({ file, documentType }: { file: File; documentType: string }) => {
       const reader = new FileReader();
       const fileUrl = await new Promise<string>((resolve, reject) => {
         reader.onload = () => resolve(reader.result as string);
         reader.onerror = () => reject(new Error('ไม่สามารถอ่านไฟล์ได้'));
         reader.readAsDataURL(file);
       });
-
       const { data } = await api.post(`/contracts/${contractId}/documents`, {
-        documentType: selectedType,
+        documentType,
         fileName: file.name,
         fileUrl,
         fileSize: file.size,
         mimeType: file.type || undefined,
-        notes: notes || undefined,
       });
       return data;
     },
     onSuccess: () => {
       toast.success('อัปโหลดเอกสารสำเร็จ');
       queryClient.invalidateQueries({ queryKey: ['contract-documents', contractId] });
-      setNotes('');
-      setSelectedFile(null);
-      if (fileInputRef.current) fileInputRef.current.value = '';
     },
     onError: (err: unknown) => {
       toast.error(getErrorMessage(err));
+    },
+    onSettled: () => {
+      setUploadingType(null);
     },
   });
 
@@ -104,28 +110,19 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
     },
   });
 
-  const OCR_ENDPOINTS: Record<string, { endpoint: string; label: string }> = {
-    ID_CARD_COPY: { endpoint: '/ocr/id-card', label: 'บัตรประชาชน' },
-    DRIVING_LICENSE: { endpoint: '/ocr/driving-license', label: 'ใบขับขี่' },
-    BOOK_BANK: { endpoint: '/ocr/book-bank', label: 'Book Bank' },
-  };
-
-  const performOcr = async (file: File, docType = 'ID_CARD_COPY') => {
-    const ocrConfig = OCR_ENDPOINTS[docType] || OCR_ENDPOINTS.ID_CARD_COPY;
+  const performOcr = async (file: File, docType: string) => {
+    const cfg = OCR_TYPES[docType];
+    if (!cfg) return;
     setOcrLoading(true);
     try {
       const imageBase64 = await compressImageForOcr(file);
-      const { data } = await api.post(ocrConfig.endpoint, { imageBase64 }, { timeout: 90000 });
+      const { data } = await api.post(cfg.endpoint, { imageBase64 }, { timeout: 90000 });
       setOcrResult(data);
       setShowOcrPanel(true);
       const pct = (data.confidence * 100).toFixed(0);
-      if (data.confidence < 0.5) {
-        toast.error(`อ่าน${ocrConfig.label}ได้ แต่ความมั่นใจต่ำมาก (${pct}%) กรุณาตรวจสอบข้อมูล`);
-      } else if (data.confidence < 0.7) {
-        toast.warning(`อ่าน${ocrConfig.label}สำเร็จ แต่ความมั่นใจค่อนข้างต่ำ (${pct}%)`);
-      } else {
-        toast.success(`อ่าน${ocrConfig.label}สำเร็จ (ความมั่นใจ ${pct}%)`);
-      }
+      if (data.confidence < 0.5) toast.error(`อ่าน${cfg.label}ได้ แต่ความมั่นใจต่ำมาก (${pct}%) กรุณาตรวจสอบข้อมูล`);
+      else if (data.confidence < 0.7) toast.warning(`อ่าน${cfg.label}สำเร็จ แต่ความมั่นใจค่อนข้างต่ำ (${pct}%)`);
+      else toast.success(`อ่าน${cfg.label}สำเร็จ (ความมั่นใจ ${pct}%)`);
     } catch (err: unknown) {
       const axiosErr = err as { code?: string; response?: unknown };
       if (axiosErr.code === 'ECONNABORTED' || !axiosErr.response) {
@@ -138,7 +135,6 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
     }
   };
 
-  // Helper: build structured address JSON from OCR result
   const buildOcrAddressJson = (data: OcrResult): string | undefined => {
     if (data.addressStructured) {
       const a = data.addressStructured;
@@ -171,7 +167,6 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
       if (provinceMatch) addr.province = provinceMatch[1];
       const hasStructured = Object.values(addr).some((v) => v !== '');
       if (hasStructured) return JSON.stringify(addr);
-      // Wrap raw address text as JSON for consistent backend parsing
       return JSON.stringify({ ...addr, raw });
     }
     return undefined;
@@ -187,7 +182,6 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
       if (ocrResult.birthDate) updateData.birthDate = ocrResult.birthDate;
       const addrJson = buildOcrAddressJson(ocrResult);
       if (addrJson) updateData.addressIdCard = addrJson;
-
       await api.patch(`/customers/${customerId}`, updateData);
       toast.success('อัปเดตข้อมูลลูกค้าสำเร็จ');
       setShowOcrPanel(false);
@@ -196,86 +190,44 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
     }
   };
 
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragOver(true);
-  }, []);
-
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    // Only clear drag state when actually leaving the drop zone (not moving over children)
-    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-      setIsDragOver(false);
-    }
-  }, []);
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragOver(false);
-    const file = e.dataTransfer.files?.[0];
-    if (!file) return;
+  const validateFile = (file: File, docType: string): boolean => {
     if (file.size > 10 * 1024 * 1024) {
       toast.error('ไฟล์ต้องมีขนาดไม่เกิน 10MB');
-      return;
+      return false;
     }
     const validTypes = ['image/', 'application/pdf'];
     if (!validTypes.some((t) => file.type.startsWith(t))) {
       toast.error('รองรับเฉพาะไฟล์รูปภาพหรือ PDF เท่านั้น');
-      return;
+      return false;
     }
-    setSelectedFile(file);
-  }, []);
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error('ไฟล์ต้องมีขนาดไม่เกิน 10MB');
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      return;
-    }
-
-    // Check file type for ID card before uploading
-    const isIdCard = selectedType === 'ID_CARD_COPY';
-    if (isIdCard && !file.type.startsWith('image/')) {
+    if (docType === 'ID_CARD_COPY' && !file.type.startsWith('image/')) {
       toast.error('สำเนาบัตรประชาชนต้องเป็นไฟล์รูปภาพเท่านั้น');
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      return;
+      return false;
     }
-
-    setSelectedFile(file);
+    return true;
   };
 
-  const handleUpload = () => {
-    if (!selectedFile) return;
-    const fileToProcess = selectedFile;
-    const typeToProcess = selectedType;
-
-    uploadMutation.mutate(fileToProcess, {
-      onSuccess: () => {
-        // Trigger OCR only after upload succeeds, using captured references
-        if (['ID_CARD_COPY', 'DRIVING_LICENSE', 'BOOK_BANK'].includes(typeToProcess) && fileToProcess.type.startsWith('image/') && !ocrLoading) {
-          performOcr(fileToProcess, typeToProcess);
-        }
-      },
+  const uploadFiles = useCallback((files: FileList | File[], docType: string) => {
+    const fileArr = Array.from(files);
+    const valid = fileArr.filter((f) => validateFile(f, docType));
+    if (valid.length === 0) return;
+    setUploadingType(docType);
+    valid.forEach((file, idx) => {
+      uploadMutation.mutate({ file, documentType: docType }, {
+        onSuccess: () => {
+          if (idx === 0 && OCR_TYPES[docType] && file.type.startsWith('image/') && !ocrLoading) {
+            performOcr(file, docType);
+          }
+        },
+      });
     });
-  };
-
-  const getTypeLabel = (type: string) => DOCUMENT_TYPES.find((t) => t.value === type)?.label || type;
+  }, [uploadMutation, ocrLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openDocument = (doc: ContractDocument) => {
     if (!doc.fileUrl) return;
-    // For base64 data URLs, convert to blob and open or show in modal
     if (doc.fileUrl.startsWith('data:')) {
       const isImage = doc.fileUrl.startsWith('data:image/');
-      if (isImage) {
-        setViewingDoc(doc);
-        return;
-      }
-      // For PDFs and other files, convert base64 to blob URL
+      if (isImage) { setViewingDoc(doc); return; }
       try {
         const commaIdx = doc.fileUrl.indexOf(',');
         if (commaIdx === -1) { setViewingDoc(doc); return; }
@@ -289,123 +241,247 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
         const blob = new Blob([bytes], { type: mime });
         const url = URL.createObjectURL(blob);
         const win = window.open(url, '_blank');
-        if (!win) {
-          // Popup blocked - fallback to modal view
-          URL.revokeObjectURL(url);
-          setViewingDoc(doc);
-          return;
-        }
-        // Revoke blob URL after new window loads (cleanup memory)
-        win.addEventListener('load', () => {
-          setTimeout(() => URL.revokeObjectURL(url), 5000);
-        });
+        if (!win) { URL.revokeObjectURL(url); setViewingDoc(doc); return; }
+        win.addEventListener('load', () => setTimeout(() => URL.revokeObjectURL(url), 5000));
       } catch {
-        // Fallback: show in modal
         setViewingDoc(doc);
       }
     } else {
       const win = window.open(doc.fileUrl, '_blank');
-      if (!win) {
-        toast.error('เบราว์เซอร์บล็อก popup กรุณาอนุญาต popup สำหรับเว็บนี้');
-      }
+      if (!win) toast.error('เบราว์เซอร์บล็อก popup กรุณาอนุญาต popup สำหรับเว็บนี้');
     }
+  };
+
+  const hasTypeFiles = (dt: typeof DOCUMENT_TYPES[number]) => {
+    if (dt.value === 'BANK_STATEMENT') return statementFiles.length > 0;
+    return documents.some((d) => d.documentType === dt.value);
+  };
+  const uploadedCount = DOCUMENT_TYPES.filter(hasTypeFiles).length;
+  const requiredTypes = DOCUMENT_TYPES.filter((dt) => dt.required);
+  const optionalTypes = DOCUMENT_TYPES.filter((dt) => !dt.required);
+  const requiredDone = requiredTypes.filter(hasTypeFiles).length;
+
+  const renderBankStatementCard = (dt: typeof DOCUMENT_TYPES[number]) => {
+    const hasFiles = statementFiles.length > 0;
+    return (
+      <div key={dt.value} className={`rounded-lg border overflow-hidden ${hasFiles ? 'border-primary/30 bg-card' : 'border-border bg-card'}`}>
+        <div className={`flex items-center gap-2 px-4 py-2.5 border-b border-border/50 ${hasFiles ? 'bg-primary/10' : 'bg-muted/40'}`}>
+          {hasFiles ? (
+            <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
+          ) : (
+            <Circle className={`w-4 h-4 shrink-0 ${dt.required ? 'text-destructive/70' : 'text-muted-foreground/50'}`} />
+          )}
+          <span className={`text-sm font-medium truncate ${hasFiles || dt.required ? 'text-foreground' : 'text-muted-foreground'}`}>
+            {dt.label} {dt.required && !hasFiles && <span className="text-destructive">*</span>}
+          </span>
+          {hasFiles && (
+            <span className="ml-auto px-1.5 py-0.5 rounded-full bg-primary/20 text-primary text-[10px] font-mono shrink-0">{statementFiles.length}</span>
+          )}
+        </div>
+        <div className="p-3 space-y-2">
+          {hasFiles ? (
+            <div className="grid grid-cols-3 gap-2">
+              {statementFiles.map((url, idx) => {
+                const isImage = url.startsWith('data:image/') || /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(url);
+                return (
+                  <div key={idx} className="relative group aspect-square bg-muted rounded border border-border overflow-hidden">
+                    {isImage ? (
+                      <img src={url} alt={`statement-${idx + 1}`} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center gap-1 p-1">
+                        <FileText className="w-6 h-6 text-destructive" />
+                        <div className="text-[9px] text-muted-foreground text-center truncate w-full px-1">Statement {idx + 1}</div>
+                      </div>
+                    )}
+                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                      <a
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-1.5 bg-background/90 rounded text-foreground hover:bg-background"
+                        aria-label="ดูเอกสาร"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                      </a>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="w-full border-2 border-dashed border-border rounded-lg p-6 flex flex-col items-center gap-1 text-center">
+              <Link2 className="w-6 h-6 text-muted-foreground" />
+              <span className="text-xs text-muted-foreground">ยังไม่มีไฟล์</span>
+              <span className="text-[10px] text-muted-foreground/70">อัปโหลดที่หน้าเช็คเครดิตของสัญญานี้</span>
+            </div>
+          )}
+          <div className="text-[11px] text-muted-foreground flex items-center gap-1 pt-1 border-t border-border/40">
+            <Link2 className="w-3 h-3" />
+            <span>ข้อมูลจากหน้าเช็คเครดิต — แก้ไขได้ที่หน้านั้น</span>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderCard = (dt: typeof DOCUMENT_TYPES[number]) => {
+    if (dt.value === 'BANK_STATEMENT') return renderBankStatementCard(dt);
+    const docs = documents.filter((d) => d.documentType === dt.value);
+    const hasFiles = docs.length > 0;
+    const isOver = dragOverType === dt.value;
+    const isUploading = uploadingType === dt.value && uploadMutation.isPending;
+
+    return (
+      <div
+        key={dt.value}
+        className={`rounded-lg border overflow-hidden transition-colors ${
+          isOver ? 'border-primary bg-primary/5' : hasFiles ? 'border-primary/30 bg-card' : 'border-border bg-card'
+        }`}
+        onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragOverType(dt.value); }}
+        onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverType(null); }}
+        onDrop={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setDragOverType(null);
+          const files = e.dataTransfer.files;
+          if (files && files.length > 0) uploadFiles(files, dt.value);
+        }}
+      >
+        <div className={`flex items-center gap-2 px-4 py-2.5 border-b border-border/50 ${hasFiles ? 'bg-primary/10' : 'bg-muted/40'}`}>
+          {hasFiles ? (
+            <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
+          ) : (
+            <Circle className={`w-4 h-4 shrink-0 ${dt.required ? 'text-destructive/70' : 'text-muted-foreground/50'}`} />
+          )}
+          <span className={`text-sm font-medium truncate ${hasFiles || dt.required ? 'text-foreground' : 'text-muted-foreground'}`}>
+            {dt.label} {dt.required && !hasFiles && <span className="text-destructive">*</span>}
+          </span>
+          {hasFiles && (
+            <span className="ml-auto px-1.5 py-0.5 rounded-full bg-primary/20 text-primary text-[10px] font-mono shrink-0">{docs.length}</span>
+          )}
+        </div>
+
+        <div className="p-3">
+          <input
+            ref={(el) => { fileInputRefs.current[dt.value] = el; }}
+            type="file"
+            multiple
+            accept="image/*,.pdf"
+            onChange={(e) => {
+              const files = e.target.files;
+              if (files && files.length > 0) uploadFiles(files, dt.value);
+              if (fileInputRefs.current[dt.value]) fileInputRefs.current[dt.value]!.value = '';
+            }}
+            className="hidden"
+          />
+
+          {hasFiles ? (
+            <div className="grid grid-cols-3 gap-2">
+              {docs.map((doc) => {
+                const isImage = doc.fileUrl?.startsWith('data:image/') || /\.(jpg|jpeg|png|gif|webp)$/i.test(doc.fileName);
+                return (
+                  <div key={doc.id} className="relative group aspect-square bg-muted rounded border border-border overflow-hidden">
+                    {isImage && doc.fileUrl ? (
+                      <img src={doc.fileUrl} alt={doc.fileName} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center gap-1 p-1">
+                        <FileText className="w-6 h-6 text-destructive" />
+                        <div className="text-[9px] text-muted-foreground text-center truncate w-full px-1">{doc.fileName}</div>
+                      </div>
+                    )}
+                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => openDocument(doc)}
+                        className="p-1.5 bg-background/90 rounded text-foreground hover:bg-background"
+                        aria-label="ดูเอกสาร"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDialog({ open: true, message: `ต้องการลบเอกสาร "${doc.fileName}" หรือไม่?`, action: () => deleteMutation.mutate(doc.id) })}
+                        className="p-1.5 bg-destructive/90 rounded text-destructive-foreground hover:bg-destructive"
+                        aria-label="ลบเอกสาร"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+
+              <button
+                type="button"
+                onClick={() => fileInputRefs.current[dt.value]?.click()}
+                disabled={isUploading}
+                className="aspect-square border-2 border-dashed border-border hover:border-primary/50 rounded flex flex-col items-center justify-center gap-1 transition disabled:opacity-50"
+              >
+                {isUploading ? (
+                  <Loader2 className="w-5 h-5 text-primary animate-spin" />
+                ) : (
+                  <>
+                    <Plus className="w-5 h-5 text-muted-foreground" />
+                    <span className="text-[10px] text-muted-foreground">เพิ่ม</span>
+                  </>
+                )}
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => fileInputRefs.current[dt.value]?.click()}
+              disabled={isUploading}
+              className={`w-full border-2 border-dashed rounded-lg p-6 flex flex-col items-center gap-1 transition disabled:opacity-50 ${
+                isOver ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50 hover:bg-muted/50'
+              }`}
+            >
+              {isUploading ? (
+                <Loader2 className="w-6 h-6 text-primary animate-spin" />
+              ) : (
+                <>
+                  <Plus className={`w-6 h-6 ${isOver ? 'text-primary' : 'text-muted-foreground'}`} />
+                  <span className={`text-xs ${isOver ? 'text-primary font-medium' : 'text-muted-foreground'}`}>
+                    {isOver ? 'ปล่อยไฟล์ที่นี่' : 'ลากไฟล์หรือคลิกเพิ่ม'}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground/70">หลายไฟล์ได้</span>
+                </>
+              )}
+            </button>
+          )}
+        </div>
+      </div>
+    );
   };
 
   return (
     <div className="space-y-4">
-      {/* Upload form */}
-      <div className="bg-card rounded-lg border p-4 space-y-3">
-        <h3 className="text-sm font-semibold text-foreground">อัปโหลดเอกสาร</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs text-muted-foreground mb-1">ประเภทเอกสาร</label>
-            <select
-              value={selectedType}
-              onChange={(e) => setSelectedType(e.target.value)}
-              className="w-full px-3 py-2 border border-input rounded-lg text-sm"
-            >
-              {DOCUMENT_TYPES.map((t) => (
-                <option key={t.value} value={t.value}>{t.label}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs text-muted-foreground mb-1">หมายเหตุ (ไม่บังคับ)</label>
-            <input
-              type="text"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="หมายเหตุ..."
-              className="w-full px-3 py-2 border border-input rounded-lg text-sm"
-            />
-          </div>
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">อัปโหลดเอกสาร</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {uploadedCount} จาก {DOCUMENT_TYPES.length} ประเภทครบ · {documents.length} ไฟล์ · บังคับ {requiredDone}/{requiredTypes.length}
+          </p>
         </div>
-
-        {/* Drag & Drop Zone */}
-        <div
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-          onClick={() => fileInputRef.current?.click()}
-          className={`relative border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
-            isDragOver
-              ? 'border-primary bg-primary/5'
-              : selectedFile
-                ? 'border-success/40 bg-success/10'
-                : 'border-border hover:border-primary/40 hover:bg-muted'
-          }`}
-        >
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*,.pdf"
-            onChange={handleFileChange}
-            disabled={uploadMutation.isPending}
-            className="hidden"
-          />
-          <div className="flex flex-col items-center gap-2">
-            {selectedFile ? (
-              <>
-                <svg className="w-8 h-8 text-success" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <div className="text-sm font-medium text-success">{selectedFile.name}</div>
-                <p className="text-xs text-success">{(selectedFile.size / 1024).toFixed(0)} KB — คลิก &quot;อัปโหลดเอกสาร&quot; หรือเลือกไฟล์ใหม่</p>
-              </>
-            ) : (
-              <>
-                <svg className={`w-8 h-8 ${isDragOver ? 'text-primary' : 'text-muted-foreground'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                </svg>
-                <div className={`text-sm font-medium ${isDragOver ? 'text-primary' : 'text-foreground'}`}>
-                  {isDragOver ? 'ปล่อยไฟล์เพื่ออัปโหลด' : 'ลากไฟล์มาวางที่นี่ หรือคลิกเพื่อเลือกไฟล์'}
-                </div>
-                <p className="text-xs text-muted-foreground">รองรับไฟล์ภาพ และ PDF ขนาดไม่เกิน 10MB</p>
-              </>
-            )}
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleUpload}
-            disabled={!selectedFile || uploadMutation.isPending}
-            className="px-5 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {uploadMutation.isPending ? (
-              <span className="flex items-center gap-2">
-                <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-foreground" />
-                กำลังอัปโหลด...
-              </span>
-            ) : 'อัปโหลดเอกสาร'}
-          </button>
+        <div className="w-40 h-1.5 bg-muted rounded-full overflow-hidden">
+          <div className="h-full bg-primary transition-all" style={{ width: `${(uploadedCount / DOCUMENT_TYPES.length) * 100}%` }} />
         </div>
       </div>
 
-      {/* OCR Loading */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {requiredTypes.map(renderCard)}
+      </div>
+
+      <div className="pt-2">
+        <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1 mb-2">เอกสารเพิ่มเติม (ไม่บังคับ)</h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {optionalTypes.map(renderCard)}
+        </div>
+      </div>
+
       {ocrLoading && (
         <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 flex items-center gap-3">
-          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary" />
+          <Loader2 className="w-5 h-5 text-primary animate-spin" />
           <div>
             <div className="text-sm font-medium text-primary">กำลังอ่านข้อมูลจากบัตรประชาชน...</div>
             <div className="text-xs text-primary">ระบบ AI กำลังประมวลผลรูปภาพ</div>
@@ -413,7 +489,6 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
         </div>
       )}
 
-      {/* OCR Results Panel */}
       {showOcrPanel && ocrResult && (
         <div className={`${ocrResult.confidence < 0.7 ? 'bg-warning/10 border-warning/30' : 'bg-success/10 border-success/30'} border rounded-lg p-4 space-y-3`}>
           <div className="flex items-center justify-between">
@@ -488,61 +563,12 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
         </div>
       )}
 
-      {/* Document list */}
-      {documents.length > 0 && (
-        <div className="bg-card rounded-lg border">
-          <div className="px-4 py-3 border-b">
-            <h3 className="text-sm font-semibold text-foreground">เอกสารที่แนบ ({documents.length})</h3>
-          </div>
-          <div className="divide-y">
-            {documents.map((doc) => (
-              <div key={doc.id} className="px-4 py-3 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold ${
-                    doc.fileName.endsWith('.pdf') ? 'bg-destructive/10 text-destructive' : 'bg-primary/10 text-primary'
-                  }`}>
-                    {doc.fileName.endsWith('.pdf') ? 'PDF' : 'IMG'}
-                  </div>
-                  <div>
-                    <div className="text-sm font-medium text-foreground">{doc.fileName}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {getTypeLabel(doc.documentType)}
-                      {doc.notes && ` - ${doc.notes}`}
-                      {' | '}อัปโหลดโดย {doc.uploadedBy.name}
-                      {' | '}{formatDateShort(doc.createdAt)}
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  {doc.fileUrl && (
-                    <button
-                      onClick={() => openDocument(doc)}
-                      className="text-xs text-primary hover:text-primary/90 px-2 py-1"
-                    >
-                      ดู
-                    </button>
-                  )}
-                  <button
-                    onClick={() => {
-                      setConfirmDialog({ open: true, message: `ต้องการลบเอกสาร "${doc.fileName}" (${getTypeLabel(doc.documentType)}) หรือไม่?`, action: () => deleteMutation.mutate(doc.id) });
-                    }}
-                    className="text-xs text-destructive hover:text-destructive/80 px-2 py-1"
-                  >
-                    ลบ
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-      {/* Document viewer modal */}
       {viewingDoc && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={() => setViewingDoc(null)} onKeyDown={(e) => { if (e.key === 'Escape') setViewingDoc(null); }} role="dialog" aria-modal="true" aria-label={`ดูเอกสาร ${viewingDoc.fileName}`} tabIndex={-1} ref={(el) => el?.focus()}>
           <div className="relative max-w-4xl max-h-[90vh] w-full" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between bg-card rounded-t-lg px-4 py-2">
               <div className="text-sm font-medium text-foreground">
-                {getTypeLabel(viewingDoc.documentType)} - {viewingDoc.fileName}
+                {DOCUMENT_TYPES.find((t) => t.value === viewingDoc.documentType)?.label || viewingDoc.documentType} - {viewingDoc.fileName}
               </div>
               <button onClick={() => setViewingDoc(null)} className="text-muted-foreground hover:text-foreground text-lg font-bold px-2">
                 &times;
@@ -558,6 +584,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
           </div>
         </div>
       )}
+
       <ConfirmDialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, open }))} description={confirmDialog.message} variant="destructive" onConfirm={confirmDialog.action} />
     </div>
   );

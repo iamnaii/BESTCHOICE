@@ -29,7 +29,7 @@ export function roundBaht(value: number): number {
  * 3. interestTotal = principal × interestRate × totalMonths  (flat rate)
  * 4. vatAmount = (principal + storeCommission + interestTotal) × vatPct
  * 5. financedAmount = principal + storeCommission + interestTotal + vatAmount
- * 6. monthlyPayment = ceil(financedAmount / totalMonths) — rounded to whole baht
+ * 6. monthlyPayment = round(financedAmount / totalMonths, 2) — satang precision (no rounding up)
  *
  * All intermediate values are computed at satang precision (2 decimal places)
  * to prevent floating-point accumulation errors.
@@ -54,9 +54,9 @@ export function calculateInstallment(
   const interestTotal = roundBaht(principal * interestRate * totalMonths);
   const vatAmount = roundBaht((principal + storeCommission + interestTotal) * vatPct);
   const financedAmount = roundBaht(principal + storeCommission + interestTotal + vatAmount);
-  // Monthly payment rounded UP to whole baht (customer pays slightly more on earlier
-  // installments; last installment adjusts in generatePaymentSchedule)
-  const monthlyPayment = Math.ceil(financedAmount / totalMonths);
+  // Monthly payment at satang precision (no ceil). Last installment absorbs rounding
+  // remainder in generatePaymentSchedule.
+  const monthlyPayment = roundBaht(financedAmount / totalMonths);
 
   return { principal, interestTotal, storeCommission, vatAmount, financedAmount, monthlyPayment };
 }

@@ -1,10 +1,19 @@
+import { Building2, User2 } from 'lucide-react';
 import AddressForm, { AddressData } from '@/components/ui/AddressForm';
+import { cn } from '@/lib/utils';
 import type { PaymentMethod } from './SupplierTable';
 
+export type SupplierType = 'INDIVIDUAL' | 'JURISTIC';
+
 export const emptyForm = {
+  type: 'JURISTIC' as SupplierType,
   name: '',
+  titleName: '',
   contactName: '',
+  contactPhone: '',
+  contactPosition: '',
   nickname: '',
+  branchCode: '',
   phone: '',
   phoneSecondary: '',
   lineId: '',
@@ -24,6 +33,8 @@ export const emptyPaymentMethod: PaymentMethod = {
   isDefault: false,
 };
 
+const TITLE_OPTIONS = ['นาย', 'นาง', 'นางสาว', 'คุณ'];
+
 export function formatPhone(value: string): string {
   const digits = value.replace(/\D/g, '').slice(0, 10);
   if (digits.length <= 3) return digits;
@@ -40,6 +51,10 @@ export function formatTaxId(value: string): string {
   if (digits.length <= 12)
     return `${digits.slice(0, 1)}-${digits.slice(1, 5)}-${digits.slice(5, 10)}-${digits.slice(10)}`;
   return `${digits.slice(0, 1)}-${digits.slice(1, 5)}-${digits.slice(5, 10)}-${digits.slice(10, 12)}-${digits.slice(12)}`;
+}
+
+export function formatBranchCode(value: string): string {
+  return value.replace(/\D/g, '').slice(0, 5);
 }
 
 interface SupplierFormProps {
@@ -67,6 +82,24 @@ export default function SupplierForm({
   onClose,
   onSubmit,
 }: SupplierFormProps) {
+  const isJuristic = form.type === 'JURISTIC';
+
+  const changeType = (nextType: SupplierType) => {
+    if (nextType === form.type) return;
+    setForm({
+      ...form,
+      type: nextType,
+      // reset type-specific fields so stale data ไม่ค้าง
+      titleName: nextType === 'INDIVIDUAL' ? form.titleName : '',
+      nickname: nextType === 'INDIVIDUAL' ? form.nickname : '',
+      branchCode: nextType === 'JURISTIC' ? form.branchCode : '',
+      contactName: nextType === 'JURISTIC' ? form.contactName : '',
+      contactPhone: nextType === 'JURISTIC' ? form.contactPhone : '',
+      contactPosition: nextType === 'JURISTIC' ? form.contactPosition : '',
+      hasVat: nextType === 'JURISTIC' ? form.hasVat : false,
+    });
+  };
+
   const addPaymentMethod = () => {
     setPaymentMethods([
       ...paymentMethods,
@@ -136,61 +169,121 @@ export default function SupplierForm({
 
         <form onSubmit={onSubmit} className="flex-1 overflow-y-auto flex flex-col">
           <div className="p-6 space-y-5 flex-1">
-            {/* Supplier Info */}
+            {/* Type Selector */}
+            <div className="rounded-xl border border-border bg-card p-5">
+              <div className="mb-3">
+                <h3 className="text-sm font-semibold text-foreground">ประเภทผู้ขาย</h3>
+                <p className="text-xs text-muted-foreground">
+                  เลือกให้ตรงกับเอกสารประกอบใบกำกับภาษี
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => changeType('JURISTIC')}
+                  className={cn(
+                    'flex items-start gap-3 rounded-lg border p-3 text-left transition-colors',
+                    isJuristic
+                      ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
+                      : 'border-input hover:border-primary/40 hover:bg-muted',
+                  )}
+                >
+                  <div
+                    className={cn(
+                      'flex items-center justify-center size-9 rounded-lg shrink-0',
+                      isJuristic
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted text-muted-foreground',
+                    )}
+                  >
+                    <Building2 className="size-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-foreground">นิติบุคคล</div>
+                    <div className="text-xs text-muted-foreground leading-snug">
+                      บริษัท, ห้างหุ้นส่วน, ร้านค้าจดทะเบียน
+                    </div>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => changeType('INDIVIDUAL')}
+                  className={cn(
+                    'flex items-start gap-3 rounded-lg border p-3 text-left transition-colors',
+                    !isJuristic
+                      ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
+                      : 'border-input hover:border-primary/40 hover:bg-muted',
+                  )}
+                >
+                  <div
+                    className={cn(
+                      'flex items-center justify-center size-9 rounded-lg shrink-0',
+                      !isJuristic
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted text-muted-foreground',
+                    )}
+                  >
+                    <User2 className="size-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-foreground">บุคคลธรรมดา</div>
+                    <div className="text-xs text-muted-foreground leading-snug">
+                      ขายของมือสอง, freelancer, รายย่อย
+                    </div>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            {/* Main Info */}
             <div className="rounded-xl border border-border bg-card p-5">
               <div className="flex items-center gap-2.5 mb-4">
                 <div className="flex items-center justify-center size-8 rounded-lg bg-primary/10 text-primary">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M3 9 12 2l9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-                  </svg>
+                  {isJuristic ? <Building2 className="size-4" /> : <User2 className="size-4" />}
                 </div>
                 <div>
-                  <h3 className="text-sm font-semibold text-foreground">ข้อมูลผู้ขาย</h3>
-                  <p className="text-xs text-muted-foreground">ชื่อบริษัท, ผู้ติดต่อ, ภาษี</p>
+                  <h3 className="text-sm font-semibold text-foreground">
+                    {isJuristic ? 'ข้อมูลบริษัท' : 'ข้อมูลผู้ขาย'}
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    {isJuristic
+                      ? 'ชื่อบริษัท, เลขผู้เสียภาษี, รหัสสาขา'
+                      : 'คำนำหน้า, ชื่อ-นามสกุล, เลขประชาชน'}
+                  </p>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2">
+                {!isJuristic && (
+                  <div>
+                    <label className="block text-xs font-medium text-foreground mb-1.5">
+                      คำนำหน้า
+                    </label>
+                    <select
+                      value={form.titleName}
+                      onChange={(e) => setForm({ ...form, titleName: e.target.value })}
+                      className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+                    >
+                      <option value="">-- เลือก --</option>
+                      {TITLE_OPTIONS.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                <div className={cn(isJuristic ? 'col-span-2' : 'col-span-1')}>
                   <label className="block text-xs font-medium text-foreground mb-1.5">
-                    ชื่อผู้ขาย / บริษัท <span className="text-destructive">*</span>
+                    {isJuristic ? 'ชื่อบริษัท' : 'ชื่อ - นามสกุล'}{' '}
+                    <span className="text-destructive">*</span>
                   </label>
                   <input
                     type="text"
                     value={form.name}
                     onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    placeholder={isJuristic ? 'บริษัท ... จำกัด' : 'เช่น สมชาย ใจดี'}
                     className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
                     required
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-foreground mb-1.5">
-                    ชื่อ - นามสกุล (ผู้ติดต่อ) <span className="text-destructive">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={form.contactName}
-                    onChange={(e) => setForm({ ...form, contactName: e.target.value })}
-                    className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-foreground mb-1.5">ชื่อเล่น</label>
-                  <input
-                    type="text"
-                    value={form.nickname}
-                    onChange={(e) => setForm({ ...form, nickname: e.target.value })}
-                    className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
                   />
                 </div>
                 <div>
@@ -220,7 +313,7 @@ export default function SupplierForm({
                     className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
                   />
                 </div>
-                <div>
+                <div className={cn(isJuristic ? 'col-span-2' : 'col-span-1')}>
                   <label className="block text-xs font-medium text-foreground mb-1.5">LINE ID</label>
                   <input
                     type="text"
@@ -229,9 +322,21 @@ export default function SupplierForm({
                     className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
                   />
                 </div>
-                <div>
+                {!isJuristic && (
+                  <div>
+                    <label className="block text-xs font-medium text-foreground mb-1.5">ชื่อเล่น</label>
+                    <input
+                      type="text"
+                      value={form.nickname}
+                      onChange={(e) => setForm({ ...form, nickname: e.target.value })}
+                      className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+                    />
+                  </div>
+                )}
+                <div className="col-span-2 border-t pt-4">
                   <label className="block text-xs font-medium text-foreground mb-1.5">
-                    เลขประจำตัวผู้เสียภาษี (Tax ID Number)
+                    {isJuristic ? 'เลขประจำตัวผู้เสียภาษี' : 'เลขประจำตัวประชาชน'}{' '}
+                    <span className="text-destructive">*</span>
                   </label>
                   <input
                     type="text"
@@ -240,33 +345,116 @@ export default function SupplierForm({
                     placeholder="X-XXXX-XXXXX-XX-X"
                     maxLength={17}
                     className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+                    required
                   />
                 </div>
-                <div className="col-span-2">
-                  <label className="flex items-center gap-3 cursor-pointer">
-                    <span className="text-sm font-medium text-foreground">จดทะเบียน VAT</span>
-                    <button
-                      type="button"
-                      onClick={() => setForm({ ...form, hasVat: !form.hasVat })}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                        form.hasVat ? 'bg-primary' : 'bg-border'
-                      }`}
-                    >
-                      <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-background transition-transform ${
-                          form.hasVat ? 'translate-x-6' : 'translate-x-1'
-                        }`}
+                {isJuristic && (
+                  <>
+                    <div className="col-span-2">
+                      <label className="block text-xs font-medium text-foreground mb-1.5">
+                        รหัสสาขา (5 หลัก) <span className="text-destructive">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={form.branchCode}
+                        onChange={(e) =>
+                          setForm({ ...form, branchCode: formatBranchCode(e.target.value) })
+                        }
+                        placeholder="00000 = สำนักงานใหญ่"
+                        maxLength={5}
+                        inputMode="numeric"
+                        className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm font-mono transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+                        required
                       />
-                    </button>
-                    <span
-                      className={`text-sm font-medium ${form.hasVat ? 'text-primary' : 'text-muted-foreground'}`}
-                    >
-                      {form.hasVat ? 'มี VAT (7%)' : 'ไม่มี VAT'}
-                    </span>
-                  </label>
-                </div>
+                      <p className="mt-1 text-2xs text-muted-foreground">
+                        "00000" สำหรับสำนักงานใหญ่ — ใช้ในใบกำกับภาษีของผู้จด VAT
+                      </p>
+                    </div>
+                    <div className="col-span-2">
+                      <label className="flex items-center gap-3 cursor-pointer">
+                        <span className="text-sm font-medium text-foreground">จดทะเบียน VAT</span>
+                        <button
+                          type="button"
+                          onClick={() => setForm({ ...form, hasVat: !form.hasVat })}
+                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                            form.hasVat ? 'bg-primary' : 'bg-border'
+                          }`}
+                        >
+                          <span
+                            className={`inline-block h-4 w-4 transform rounded-full bg-background transition-transform ${
+                              form.hasVat ? 'translate-x-6' : 'translate-x-1'
+                            }`}
+                          />
+                        </button>
+                        <span
+                          className={`text-sm font-medium ${form.hasVat ? 'text-primary' : 'text-muted-foreground'}`}
+                        >
+                          {form.hasVat ? 'มี VAT (7%)' : 'ไม่มี VAT'}
+                        </span>
+                      </label>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
+
+            {/* Contact Person (JURISTIC only) */}
+            {isJuristic && (
+              <div className="rounded-xl border border-border bg-card p-5">
+                <div className="flex items-center gap-2.5 mb-4">
+                  <div className="flex items-center justify-center size-8 rounded-lg bg-primary/10 text-primary">
+                    <User2 className="size-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold text-foreground">ผู้ติดต่อ</h3>
+                    <p className="text-xs text-muted-foreground">
+                      ชื่อพนักงาน/ฝ่ายที่ติดต่อกับเรา (ไม่บังคับ)
+                    </p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="col-span-2">
+                    <label className="block text-xs font-medium text-foreground mb-1.5">
+                      ชื่อ - นามสกุล
+                    </label>
+                    <input
+                      type="text"
+                      value={form.contactName}
+                      onChange={(e) => setForm({ ...form, contactName: e.target.value })}
+                      placeholder="เช่น สมหญิง ทองคำ"
+                      className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-foreground mb-1.5">
+                      เบอร์โทร
+                    </label>
+                    <input
+                      type="text"
+                      value={form.contactPhone}
+                      onChange={(e) =>
+                        setForm({ ...form, contactPhone: formatPhone(e.target.value) })
+                      }
+                      placeholder="0XX-XXX-XXXX"
+                      maxLength={12}
+                      className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-foreground mb-1.5">
+                      ตำแหน่ง
+                    </label>
+                    <input
+                      type="text"
+                      value={form.contactPosition}
+                      onChange={(e) => setForm({ ...form, contactPosition: e.target.value })}
+                      placeholder="เช่น เซลส์, บัญชี, จัดซื้อ"
+                      className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Payment Methods */}
             <div className="rounded-xl border border-border bg-card p-5">
@@ -435,8 +623,14 @@ export default function SupplierForm({
                   </svg>
                 </div>
                 <div>
-                  <h3 className="text-sm font-semibold text-foreground">ที่อยู่</h3>
-                  <p className="text-xs text-muted-foreground">ที่อยู่ผู้ขาย</p>
+                  <h3 className="text-sm font-semibold text-foreground">
+                    {isJuristic ? 'ที่อยู่จดทะเบียน' : 'ที่อยู่ตามบัตรประชาชน'}
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    {isJuristic
+                      ? 'ที่อยู่บริษัทสำหรับใบกำกับภาษี'
+                      : 'ที่อยู่ผู้ขาย'}
+                  </p>
                 </div>
               </div>
               <AddressForm value={supplierAddress} onChange={setSupplierAddress} label="" />

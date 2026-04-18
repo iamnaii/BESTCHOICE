@@ -16,9 +16,14 @@ export interface PaymentMethod {
 
 export interface Supplier {
   id: string;
+  type: 'INDIVIDUAL' | 'JURISTIC';
   name: string;
-  contactName: string;
+  titleName: string | null;
+  contactName: string | null;
+  contactPhone: string | null;
+  contactPosition: string | null;
   nickname: string | null;
+  branchCode: string | null;
   phone: string;
   phoneSecondary: string | null;
   lineId: string | null;
@@ -77,9 +82,25 @@ export default function SupplierTable({
     {
       key: 'name',
       label: 'ชื่อผู้ขาย',
-      render: (s: Supplier) => (
-        <span className="font-medium text-foreground">{s.name}</span>
-      ),
+      render: (s: Supplier) => {
+        const fullName =
+          s.type === 'INDIVIDUAL' && s.titleName ? `${s.titleName} ${s.name}` : s.name;
+        return (
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <Badge
+                variant={s.type === 'JURISTIC' ? 'primary' : 'secondary'}
+                appearance="light"
+                size="sm"
+                className="whitespace-nowrap"
+              >
+                {s.type === 'JURISTIC' ? 'นิติบุคคล' : 'บุคคลธรรมดา'}
+              </Badge>
+            </div>
+            <div className="font-medium text-foreground mt-0.5">{fullName}</div>
+          </div>
+        );
+      },
     },
     {
       key: 'contactName',
@@ -87,6 +108,12 @@ export default function SupplierTable({
       render: (s: Supplier) => (
         <div>
           <div className="text-foreground">{s.contactName || '-'}</div>
+          {s.contactPosition && (
+            <div className="text-xs text-muted-foreground">{s.contactPosition}</div>
+          )}
+          {s.contactPhone && (
+            <div className="text-xs text-muted-foreground">{s.contactPhone}</div>
+          )}
           {s.nickname && <div className="text-xs text-muted-foreground">({s.nickname})</div>}
         </div>
       ),

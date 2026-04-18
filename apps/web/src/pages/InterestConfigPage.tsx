@@ -357,7 +357,7 @@ export default function InterestConfigPage() {
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                       <div>
                         <div className="text-xs text-muted-foreground">ดอกเบี้ย</div>
-                        <div className="text-lg font-bold text-primary">{(parseFloat(config.interestRate) * 100).toFixed(1)}%</div>
+                        <div className="text-lg font-bold text-primary">{(parseFloat(config.interestRate) * 100).toFixed(2)}%</div>
                       </div>
                       <div>
                         <div className="text-xs text-muted-foreground">ดาวน์ขั้นต่ำ</div>

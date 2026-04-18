@@ -41,6 +41,7 @@ export interface PurchaseOrder {
   vatAmount: string;
   totalAmount: string;
   discount: string;
+  discountAfterVat: string;
   netAmount: string;
   paymentStatus: string;
   paymentMethod: string | null;
@@ -48,7 +49,7 @@ export interface PurchaseOrder {
   paymentNotes: string | null;
   attachments: string[];
   notes: string | null;
-  supplier: { id: string; name: string; contactName: string; phone: string; hasVat: boolean };
+  supplier: { id: string; name: string; contactName: string | null; phone: string; hasVat: boolean };
   createdBy: { id: string; name: string };
   approvedBy: { id: string; name: string } | null;
   items: POItem[];

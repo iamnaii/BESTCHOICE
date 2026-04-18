@@ -1,5 +1,16 @@
-import { IsString, IsOptional, IsBoolean, IsArray, ValidateNested, IsInt, Min } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsBoolean,
+  IsArray,
+  ValidateNested,
+  IsInt,
+  Min,
+  IsEnum,
+  Matches,
+} from 'class-validator';
 import { Type } from 'class-transformer';
+import { SupplierType } from '@prisma/client';
 
 export class PaymentMethodUpdateDto {
   @IsString()
@@ -32,9 +43,17 @@ export class PaymentMethodUpdateDto {
 }
 
 export class UpdateSupplierDto {
+  @IsEnum(SupplierType, { message: 'ประเภทผู้ขายไม่ถูกต้อง' })
+  @IsOptional()
+  type?: SupplierType;
+
   @IsString()
   @IsOptional()
   name?: string;
+
+  @IsString()
+  @IsOptional()
+  titleName?: string;
 
   @IsString()
   @IsOptional()
@@ -42,7 +61,20 @@ export class UpdateSupplierDto {
 
   @IsString()
   @IsOptional()
+  contactPhone?: string;
+
+  @IsString()
+  @IsOptional()
+  contactPosition?: string;
+
+  @IsString()
+  @IsOptional()
   nickname?: string;
+
+  @IsString()
+  @Matches(/^\d{5}$/, { message: 'รหัสสาขาต้องเป็นตัวเลข 5 หลัก' })
+  @IsOptional()
+  branchCode?: string;
 
   @IsString()
   @IsOptional()

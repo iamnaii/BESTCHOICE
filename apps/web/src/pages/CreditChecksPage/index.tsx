@@ -471,7 +471,8 @@ export default function CreditChecksPage() {
       cols.push(
         { header: 'อัตราภาระหนี้ (%)', key: 'affordabilityRatio', width: 14 },
         { header: 'ความสม่ำเสมอรายได้', key: 'incomeConsistency', width: 16 },
-        { header: 'ผู้ตรวจ', key: 'checkedByName', width: 18 },
+        { header: 'ผู้อนุมัติ', key: 'checkedByName', width: 18 },
+        { header: 'วันที่อนุมัติ', key: 'checkedAt', width: 16 },
         { header: 'หมายเหตุ', key: 'reviewNotes', width: 25 },
         { header: 'เลขสัญญา', key: 'contractNumber', width: 18 },
         { header: 'วันที่สร้าง', key: 'createdAt', width: 16 },
@@ -504,6 +505,7 @@ export default function CreditChecksPage() {
                 : '-',
             incomeConsistency: ai?.incomeConsistency || '-',
             checkedByName: cc.checkedBy?.name || '-',
+            checkedAt: cc.checkedAt ? formatDateShort(cc.checkedAt) : '-',
             reviewNotes: cc.reviewNotes || '-',
             contractNumber: cc.contract?.contractNumber || '-',
             createdAt: formatDateShort(cc.createdAt),

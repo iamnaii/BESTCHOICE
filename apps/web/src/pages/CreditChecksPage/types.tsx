@@ -79,6 +79,7 @@ export interface CreditCheckItem {
   aiAnalysis: AiAnalysisData | null;
   reviewNotes: string | null;
   checkedBy: { id: string; name: string } | null;
+  checkedAt: string | null;
   customer: { id: string; name: string; phone: string; salary: string | null; occupation: string | null };
   contract: { id: string; contractNumber: string } | null;
   createdAt: string;

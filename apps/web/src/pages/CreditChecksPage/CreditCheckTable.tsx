@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router';
 import DataTable from '@/components/ui/DataTable';
 import QueryBoundary from '@/components/QueryBoundary';
-import { formatDateShort } from '@/utils/formatters';
+import { formatDateShort, formatDateTime } from '@/utils/formatters';
 import { type CreditCheckItem, type CreditChecksResponse, statusLabels, getRiskBadge } from './types';
 import CreditCheckDetail from './CreditCheckDetail';
 
@@ -129,10 +129,25 @@ export default function CreditCheckTable({
     },
     {
       key: 'createdAt',
-      label: 'วันที่',
+      label: 'วันที่สร้าง',
       render: (cc: CreditCheckItem) => (
         <span className="text-xs text-muted-foreground">{formatDateShort(cc.createdAt)}</span>
       ),
+    },
+    {
+      key: 'approver',
+      label: 'ผู้อนุมัติ',
+      render: (cc: CreditCheckItem) =>
+        cc.checkedBy ? (
+          <div>
+            <div className="text-sm font-medium text-foreground">{cc.checkedBy.name}</div>
+            {cc.checkedAt && (
+              <div className="text-xs text-muted-foreground">{formatDateTime(cc.checkedAt)}</div>
+            )}
+          </div>
+        ) : (
+          <span className="text-xs text-muted-foreground">-</span>
+        ),
     },
     {
       key: 'actions',

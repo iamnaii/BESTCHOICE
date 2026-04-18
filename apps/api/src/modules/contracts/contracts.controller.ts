@@ -89,8 +89,8 @@ export class ContractsController {
 
   @Post()
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
-  create(@Body() dto: CreateContractDto, @CurrentUser() user: { id: string }) {
-    return this.contractsService.create(dto, user.id);
+  create(@Body() dto: CreateContractDto, @CurrentUser() user: { id: string; role: string }) {
+    return this.contractsService.create(dto, user.id, user.role);
   }
 
   @Patch(':id')

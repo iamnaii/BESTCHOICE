@@ -18,6 +18,8 @@ export interface Customer {
   salary: string | null;
   occupation: string | null;
   salaryPayDay: number | null;
+  activeContracts?: number;
+  overdueContracts?: number;
 }
 
 export interface InterestConfig {

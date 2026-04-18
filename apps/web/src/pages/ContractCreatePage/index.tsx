@@ -114,6 +114,8 @@ export default function ContractCreatePage() {
           customerCreditApproved={data.customerCreditApproved}
           navigate={data.navigate}
           onOpenCustomerModal={() => { data.resetCustForm(); data.setShowCustomerModal(true); }}
+          overrideActiveContractCheck={data.overrideActiveContractCheck}
+          setOverrideActiveContractCheck={data.setOverrideActiveContractCheck}
         />
       )}
 

@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, IsInt, Min, Max, Matches } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsInt, IsBoolean, Min, Max, Matches } from 'class-validator';
 
 export class CreateContractDto {
   @IsString()
@@ -46,6 +46,11 @@ export class CreateContractDto {
   @Max(31, { message: 'วันครบกำหนดชำระต้องอยู่ระหว่าง 1-31' })
   @IsOptional()
   paymentDueDay?: number;
+
+  /** OWNER/BRANCH_MANAGER อนุญาตให้ลูกค้าผ่อนซ้อนได้ (override active-contract check) */
+  @IsBoolean()
+  @IsOptional()
+  overrideActiveContractCheck?: boolean;
 }
 
 export class UpdateContractDto {

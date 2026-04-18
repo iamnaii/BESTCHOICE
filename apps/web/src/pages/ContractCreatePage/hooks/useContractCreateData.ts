@@ -24,6 +24,7 @@ export function useContractCreateData() {
   const [totalMonths, setTotalMonths] = useState(6);
   const [notes, setNotes] = useState('');
   const [paymentDueDay, setPaymentDueDay] = useState<number>(1);
+  const [overrideActiveContractCheck, setOverrideActiveContractCheck] = useState(false);
 
   const submitForReviewRef = useRef(false);
 
@@ -47,6 +48,11 @@ export function useContractCreateData() {
       setPaymentDueDay(selectedCustomer.salaryPayDay);
     }
   }, [selectedCustomer]);
+
+  // Reset override flag when customer changes
+  useEffect(() => {
+    setOverrideActiveContractCheck(false);
+  }, [selectedCustomer?.id]);
 
   // Restore draft on mount
   useEffect(() => {
@@ -324,6 +330,7 @@ export function useContractCreateData() {
         totalMonths,
         notes: notes || undefined,
         paymentDueDay,
+        ...(overrideActiveContractCheck ? { overrideActiveContractCheck: true } : {}),
       },
       pendingDocs,
     });
@@ -336,7 +343,12 @@ export function useContractCreateData() {
 
   const canNext = (sellingPrice: number, minDownPct: number, minMonths: number, maxMonths: number) => {
     if (step === 0) return !!selectedProduct;
-    if (step === 1) return !!selectedCustomer && customerCreditApproved;
+    if (step === 1) {
+      if (!selectedCustomer || !customerCreditApproved) return false;
+      const blocking = (selectedCustomer.activeContracts ?? 0) + (selectedCustomer.overdueContracts ?? 0);
+      if (blocking > 0 && !overrideActiveContractCheck) return false;
+      return true;
+    }
     if (step === 2) return downPayment >= sellingPrice * minDownPct && totalMonths >= minMonths && totalMonths <= maxMonths;
     return true;
   };
@@ -361,6 +373,8 @@ export function useContractCreateData() {
     setNotes,
     paymentDueDay,
     setPaymentDueDay,
+    overrideActiveContractCheck,
+    setOverrideActiveContractCheck,
     submitForReviewRef,
 
     // Queries

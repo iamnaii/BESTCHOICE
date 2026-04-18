@@ -274,6 +274,8 @@ export class TradeInService {
   }
 
   // ─── Accept (with anti-theft gate) ────────────────────────
+  // เมื่อ ACCEPTED → auto-create Product (PHONE_USED, PHOTO_PENDING) + ลิงก์ TradeIn.productId
+  // ตาม pattern เดียวกับ PurchaseOrder.receive() — สินค้ามือสองต้องถ่ายรูป 6 มุมก่อนเข้าคลังจริง
   async accept(id: string, dto: AcceptTradeInDto, userId: string) {
     return this.prisma.$transaction(async (tx) => {
       const tradeIn = await tx.tradeIn.findUnique({ where: { id } });
@@ -296,6 +298,11 @@ export class TradeInService {
           );
         }
       }
+      if (!tradeIn.branchId) {
+        throw new BadRequestException(
+          'รายการเทรดอินไม่มีข้อมูลสาขา — ไม่สามารถรับเข้าสต๊อคได้',
+        );
+      }
 
       // เก็บลายเซ็นผู้ขายเป็น base64 ตรง ๆ (ไม่พึ่ง S3)
       // size guard: ลายเซ็นจาก SignaturePadFull canvas ปกติ < 30KB
@@ -307,11 +314,60 @@ export class TradeInService {
         signatureBase64 = dto.sellerSignatureBase64;
       }
 
+      // IMEI uniqueness check — Product.imeiSerial เป็น @unique, ต้องไม่ชนกับสินค้าที่มีอยู่
+      // (รวม soft-deleted เพราะ DB constraint ไม่สนใจ deletedAt)
+      if (tradeIn.imei) {
+        const existing = await tx.product.findFirst({
+          where: { imeiSerial: tradeIn.imei },
+          select: { id: true, name: true, deletedAt: true },
+        });
+        if (existing) {
+          const suffix = existing.deletedAt ? ' [ตัดจำหน่ายแล้ว]' : '';
+          throw new BadRequestException(
+            `IMEI ${tradeIn.imei} มีอยู่ในระบบแล้ว: ${existing.name}${suffix}`,
+          );
+        }
+      }
+
+      // ─── สร้าง Product (PHONE_USED → PHOTO_PENDING) ───
+      // mirror pattern จาก purchase-orders.service.ts receive() เพื่อ workflow สอดคล้อง
+      const nameParts = [
+        tradeIn.deviceBrand,
+        tradeIn.deviceModel,
+        tradeIn.deviceColor,
+        tradeIn.deviceStorage,
+      ].filter(Boolean);
+      const productName = nameParts.join(' ');
+      const costPrice = tradeIn.offeredPrice ?? tradeIn.estimatedValue ?? new Prisma.Decimal(0);
+
+      const product = await tx.product.create({
+        data: {
+          name: productName,
+          brand: tradeIn.deviceBrand,
+          model: tradeIn.deviceModel,
+          color: tradeIn.deviceColor ?? null,
+          storage: tradeIn.deviceStorage ?? null,
+          category: 'PHONE_USED',
+          costPrice,
+          branchId: tradeIn.branchId,
+          status: 'PHOTO_PENDING',
+          imeiSerial: tradeIn.imei ?? null,
+          checklistResults: {
+            source: 'trade-in',
+            tradeInId: tradeIn.id,
+            deviceCondition: tradeIn.deviceCondition ?? null,
+            agreedPrice: Number(costPrice),
+            notes: tradeIn.notes ?? null,
+          } as unknown as Prisma.InputJsonValue,
+        },
+      });
+
       return tx.tradeIn.update({
         where: { id },
         data: {
           status: 'ACCEPTED',
           agreedPrice: tradeIn.offeredPrice,
+          productId: product.id,
           idCardVerifiedAt: new Date(),
           idCardVerifiedById: userId,
           sellerConsentSigned: true,

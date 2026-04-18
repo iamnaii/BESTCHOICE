@@ -194,42 +194,72 @@ describe('KycService', () => {
       );
     });
 
-    it('should auto-accept any OTP in dev mode (NODE_ENV !== production)', async () => {
-      // In dev mode, verifyOtp auto-accepts any OTP code and returns verified: true
-      prisma.kycVerification.findFirst.mockResolvedValueOnce({
+    it('should reject invalid OTP in all environments (no dev bypass)', async () => {
+      // Security regression guard — invalid OTP must always be rejected,
+      // never silently accepted in non-prod environments.
+      prisma.kycVerification.findFirst.mockResolvedValue({
         ...mockKycRecord,
         otpHash: 'correct-hash-that-wont-match',
       });
 
-      const result = await service.verifyOtp('contract-1', 'wrong');
-      expect(result.verified).toBe(true);
-      expect(prisma.kycVerification.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ status: 'OTP_VERIFIED' }),
-        }),
-      );
+      await expect(service.verifyOtp('contract-1', 'wrong')).rejects.toThrow(BadRequestException);
+      await expect(service.verifyOtp('contract-1', 'wrong')).rejects.toThrow(/OTP ไม่ถูกต้อง/);
     });
 
-    it('should auto-accept even with expired OTP in dev mode', async () => {
-      // In dev mode, expiry and hash checks are skipped entirely
-      prisma.kycVerification.findFirst.mockResolvedValueOnce({
+    it('should throw when OTP expired (in all environments)', async () => {
+      // T3-C1 fix: expiry check runs regardless of NODE_ENV
+      prisma.kycVerification.findFirst.mockResolvedValue({
         ...mockKycRecord,
         expiresAt: new Date(Date.now() - 1000), // expired
       });
 
-      const result = await service.verifyOtp('contract-1', '123456');
-      expect(result.verified).toBe(true);
+      await expect(service.verifyOtp('contract-1', '123456')).rejects.toThrow(BadRequestException);
+      await expect(service.verifyOtp('contract-1', '123456')).rejects.toThrow(/หมดอายุ/);
     });
 
-    it('should auto-accept even when max attempts reached in dev mode', async () => {
-      // In dev mode, attempt count is not checked
-      prisma.kycVerification.findFirst.mockResolvedValueOnce({
+    it('should throw when max attempts reached (in all environments)', async () => {
+      // T3-C1 fix: attempt count check runs regardless of NODE_ENV
+      prisma.kycVerification.findFirst.mockResolvedValue({
         ...mockKycRecord,
         otpAttempts: 5,
       });
 
-      const result = await service.verifyOtp('contract-1', '123456');
-      expect(result.verified).toBe(true);
+      await expect(service.verifyOtp('contract-1', '123456')).rejects.toThrow(BadRequestException);
+      await expect(service.verifyOtp('contract-1', '123456')).rejects.toThrow(/เกินจำนวน/);
+    });
+
+    it('should increment otpAttempts on wrong OTP', async () => {
+      // T3-C1 fix: verify attempt counter increments correctly (no dev bypass short-circuits this)
+      prisma.kycVerification.findFirst.mockResolvedValueOnce({
+        ...mockKycRecord,
+        otpHash: 'correct-hash-that-wont-match',
+        otpAttempts: 2,
+      });
+
+      await expect(service.verifyOtp('contract-1', 'wrong')).rejects.toThrow(BadRequestException);
+      expect(prisma.kycVerification.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ otpAttempts: 3 }),
+        }),
+      );
+    });
+
+    it('should NOT bypass OTP even if NODE_ENV is development', async () => {
+      // T3-C1 security regression guard: prevent accidentally reintroducing the DEV bypass.
+      const originalEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'development';
+      try {
+        prisma.kycVerification.findFirst.mockResolvedValueOnce({
+          ...mockKycRecord,
+          otpHash: 'correct-hash-that-wont-match',
+        });
+
+        await expect(service.verifyOtp('contract-1', 'anything')).rejects.toThrow(
+          BadRequestException,
+        );
+      } finally {
+        process.env.NODE_ENV = originalEnv;
+      }
     });
 
     it('should throw when no pending KYC record found', async () => {

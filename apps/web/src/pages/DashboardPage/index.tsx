@@ -37,28 +37,37 @@ export default function DashboardPage() {
 
   const dashboardStaleTime = 5 * 60 * 1000;
 
+  // Backend now rejects SALES from every /dashboard/* endpoint (need-to-know).
+  // Gate all dashboard queries to non-SALES to avoid a flood of 403 toasts
+  // when a SALES user lands on this page.
+  const canReadDashboard = user?.role !== undefined && user.role !== 'SALES';
+
   /* ─── Queries ─── */
   const { data: kpis, isLoading: kpisLoading, isError: kpisError, refetch: refetchKpis } = useQuery<KPIs>({
     queryKey: ['dashboard-kpis'],
     queryFn: async () => (await api.get('/dashboard/kpis')).data,
+    enabled: canReadDashboard,
     staleTime: dashboardStaleTime,
   });
 
   const { data: trend = [], isError: trendError, refetch: refetchTrend } = useQuery<MonthlyTrend[]>({
     queryKey: ['dashboard-trend'],
     queryFn: async () => (await api.get('/dashboard/monthly-trend')).data,
+    enabled: canReadDashboard,
     staleTime: dashboardStaleTime,
   });
 
   const { data: topOverdue = [], isError: topOverdueError, refetch: refetchTopOverdue } = useQuery<TopOverdue[]>({
     queryKey: ['dashboard-top-overdue'],
     queryFn: async () => (await api.get('/dashboard/top-overdue')).data,
+    enabled: canReadDashboard,
     staleTime: dashboardStaleTime,
   });
 
   const { data: statusDist = [], isError: statusDistError, refetch: refetchStatusDist } = useQuery<StatusDistribution[]>({
     queryKey: ['dashboard-status-dist'],
     queryFn: async () => (await api.get('/dashboard/status-distribution')).data,
+    enabled: canReadDashboard,
     staleTime: dashboardStaleTime,
   });
 
@@ -79,6 +88,7 @@ export default function DashboardPage() {
   const { data: aging, isError: agingError, refetch: refetchAging } = useQuery<AgingSummary>({
     queryKey: ['dashboard-aging'],
     queryFn: async () => (await api.get('/dashboard/aging-summary')).data,
+    enabled: canReadDashboard,
     staleTime: dashboardStaleTime,
   });
 
@@ -98,6 +108,7 @@ export default function DashboardPage() {
   const { data: alerts = [] } = useQuery<DashboardAlert[]>({
     queryKey: ['dashboard-alerts'],
     queryFn: async () => (await api.get('/dashboard/alerts')).data,
+    enabled: canReadDashboard,
     staleTime: 30 * 1000,
     refetchInterval: 60 * 1000,
   });
@@ -111,6 +122,7 @@ export default function DashboardPage() {
   const { data: watchListData } = useQuery<WatchList>({
     queryKey: ['dashboard-watch-list'],
     queryFn: async () => (await api.get('/dashboard/watch-list')).data,
+    enabled: canReadDashboard,
     staleTime: 2 * 60 * 1000,
     refetchInterval: 5 * 60 * 1000,
   });

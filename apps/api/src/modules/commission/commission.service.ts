@@ -1,4 +1,10 @@
-import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCommissionRuleDto, UpdateCommissionRuleDto } from './dto/commission.dto';
@@ -148,6 +154,14 @@ export class CommissionService {
     if (!commission) throw new NotFoundException('ไม่พบข้อมูลค่าคอมมิชชัน');
     if (commission.status !== 'PENDING') {
       throw new BadRequestException('สามารถอนุมัติได้เฉพาะรายการที่รอดำเนินการเท่านั้น');
+    }
+
+    // Segregation of Duties — salesperson who earns the commission must not
+    // self-approve. Mirrors the same guard in approvePayout() below.
+    if (commission.salespersonId === userId) {
+      throw new ForbiddenException(
+        'ผู้อนุมัติต้องไม่ใช่ผู้รับคอมมิชชัน (Segregation of Duties)',
+      );
     }
 
     return this.prisma.salesCommission.update({
@@ -398,6 +412,14 @@ export class CommissionService {
     if (!payout) throw new NotFoundException('ไม่พบใบจ่ายคอมมิชชัน');
     if (payout.status !== 'DRAFT') {
       throw new BadRequestException('สามารถอนุมัติได้เฉพาะรายการที่อยู่ในสถานะ DRAFT เท่านั้น');
+    }
+
+    // Segregation of Duties — salesperson who earns the payout must not
+    // self-approve. Mirrors bad-debt write-off guard.
+    if (payout.salespersonId === userId) {
+      throw new ForbiddenException(
+        'ผู้อนุมัติต้องไม่ใช่ผู้รับคอมมิชชัน (Segregation of Duties)',
+      );
     }
 
     return this.prisma.commissionPayout.update({

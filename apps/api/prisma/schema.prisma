@@ -2913,12 +2913,6 @@ enum ChatPriority {
   CRITICAL
 }
 
-enum ChatStatus {
-  ACTIVE
-  ARCHIVED
-  BLOCKED
-}
-
 enum MessageRole {
   CUSTOMER
   BOT

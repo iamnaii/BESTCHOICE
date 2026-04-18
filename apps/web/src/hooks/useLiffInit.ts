@@ -70,7 +70,12 @@ export function useLiffInit(): UseLiffInitResult {
                 lineIdToken = body.token ?? null;
               }
             } catch {
-              // Cookie missing or network error — subsequent LIFF API calls will 401
+              // Cookie missing or network error
+            }
+
+            if (!lineIdToken) {
+              if (!cancelled) setError('ไม่สามารถรับ ID Token จาก LINE กรุณาปิดหน้านี้แล้วเปิดใหม่จาก LINE OA');
+              return;
             }
 
             if (!cancelled) {
@@ -101,6 +106,15 @@ export function useLiffInit(): UseLiffInitResult {
 
           const p = await liff.getProfile();
           const token = liff.getIDToken();
+
+          // No ID token = LIFF channel missing 'openid' scope OR token expired.
+          // Without ID token, server can't verify identity — surface a clear error
+          // instead of silently letting downstream API calls 401.
+          if (!token) {
+            if (!cancelled) setError('ไม่สามารถรับ ID Token จาก LINE กรุณาปิดหน้านี้แล้วเปิดใหม่จาก LINE OA');
+            return;
+          }
+
           if (!cancelled) {
             setLineId(p.userId);
             setIdToken(token);

@@ -51,7 +51,8 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     queryKey: ['purchase-orders', statusFilter],
     queryFn: async () => {
       const params = statusFilter ? `?status=${statusFilter}` : '';
-      return (await api.get(`/purchase-orders${params}`)).data;
+      const res = await api.get(`/purchase-orders${params}`);
+      return Array.isArray(res.data) ? res.data : (res.data?.data ?? []);
     },
   });
 

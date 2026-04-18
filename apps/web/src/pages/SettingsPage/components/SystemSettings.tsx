@@ -161,21 +161,6 @@ function ExternalLinks() {
 
   return (
     <>
-      <div className="bg-success/5 dark:bg-success/10 border border-success/20 rounded-xl p-4 flex items-center justify-between">
-        <div>
-          <div className="text-sm font-medium text-success">เชื่อมต่อ LINE OA</div>
-          <div className="text-xs text-success mt-0.5">
-            เชื่อมต่อ LINE Official Account เพื่อส่งแจ้งเตือนค่างวด, สลิปชำระเงิน และติดตามหนี้ผ่าน LINE
-          </div>
-        </div>
-        <button
-          onClick={() => navigate('/settings/line-oa')}
-          className="px-4 py-2 text-sm bg-success text-success-foreground rounded-lg hover:bg-success/90 whitespace-nowrap"
-        >
-          ตั้งค่า LINE OA
-        </button>
-      </div>
-
       <div className="bg-primary/10 border border-primary/20 rounded-xl p-4 flex items-center justify-between">
         <div>
           <div className="text-sm font-medium text-primary">ตั้งค่าอัตราดอกเบี้ยตามประเภทสินค้า</div>

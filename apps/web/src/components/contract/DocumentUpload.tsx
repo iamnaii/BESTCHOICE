@@ -221,7 +221,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
         },
       });
     });
-  }, [uploadMutation, ocrLoading]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [uploadMutation, ocrLoading]);
 
   const openDocument = (doc: ContractDocument) => {
     if (!doc.fileUrl) return;

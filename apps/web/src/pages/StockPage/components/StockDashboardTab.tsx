@@ -2,6 +2,33 @@ import { StockDashboard } from '../types';
 import { statusLabels, categoryLabels } from '@/lib/constants';
 import AnimatedCounter from '@/components/ui/animated-counter';
 import { formatDateShort } from '@/utils/formatters';
+import {
+  AlertTriangle,
+  BarChart3,
+  Clock,
+  HardDrive,
+  Package,
+  Palette,
+  PieChart as PieChartIcon,
+  Tag,
+  Trophy,
+  TrendingUp,
+  Wallet,
+} from 'lucide-react';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Legend,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
+
+// Slow-mover threshold — only highlight items that have been sitting for at least this many days.
+// Below this, the list would just echo the newest arrivals and carry no signal.
+const SLOW_MOVER_MIN_DAYS = 30;
 
 export interface StockDashboardTabProps {
   dashboard: StockDashboard | undefined;
@@ -12,11 +39,16 @@ export interface StockDashboardTabProps {
 
 // --- Small Reusable Components (only used in dashboard) ---
 
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return <h2 className="text-sm font-semibold text-foreground mb-3">{children}</h2>;
+function SectionTitle({ icon, children }: { icon?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+      {icon && <span className="text-muted-foreground [&>svg]:size-4">{icon}</span>}
+      {children}
+    </h2>
+  );
 }
 
-function StatCard({ label, value, sub, accent }: { label: string; value: string | number; sub?: string; accent?: string }) {
+function StatCard({ label, value, sub, accent }: { label: string; value: string | number; sub?: React.ReactNode; accent?: string }) {
   return (
     <div className={`rounded-xl border p-4 transition-shadow hover:shadow-xs ${accent ? `border-l-4 ${accent}` : ''}`}>
       <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">{label}</div>
@@ -41,12 +73,39 @@ function BarInline({ label, count, total, color }: { label: string; count: numbe
   );
 }
 
+// Status → Tailwind bg color for the stacked bar. Falls back to muted-foreground.
+const STATUS_BAR_COLOR: Record<string, string> = {
+  IN_STOCK: 'bg-success',
+  SOLD_INSTALLMENT: 'bg-primary',
+  SOLD_CASH: 'bg-primary/70',
+  RESERVED: 'bg-warning',
+  QC_PENDING: 'bg-warning/70',
+  PHOTO_PENDING: 'bg-warning/70',
+  REPOSSESSED: 'bg-destructive',
+};
+
+function MoMBadge({ current, previous }: { current: number; previous: number }) {
+  if (previous === 0) {
+    return <span className="text-xs text-muted-foreground">เริ่มบันทึกข้อมูลเดือนนี้</span>;
+  }
+  const delta = ((current - previous) / previous) * 100;
+  const up = delta >= 0;
+  const color = up ? 'text-success' : 'text-destructive';
+  return (
+    <span className={`text-xs font-medium ${color}`}>
+      {up ? '+' : ''}
+      {delta.toFixed(0)}% MoM
+    </span>
+  );
+}
+
 export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyExpiring }: StockDashboardTabProps) {
   return (
     <>
       {warrantyExpiring.length > 0 && (
         <div className="bg-warning/5 dark:bg-warning/10 border border-warning/20 rounded-xl p-4 mb-4">
-          <div className="text-sm font-medium text-warning">
+          <div className="text-sm font-medium text-warning flex items-center gap-2">
+            <AlertTriangle className="size-4" />
             รับประกันใกล้หมด: {warrantyExpiring.length} รายการ
           </div>
           <div className="mt-2 space-y-1">
@@ -68,7 +127,7 @@ export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyE
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 lg:gap-7.5">
             {/* Action Required */}
             <div className="rounded-xl border border-border/60 p-5 shadow-card">
-              <SectionTitle>รอดำเนินการ ({actionTotal})</SectionTitle>
+              <SectionTitle icon={<AlertTriangle />}>รอดำเนินการ ({actionTotal})</SectionTitle>
               <div className="grid grid-cols-2 gap-3">
                 {dashboard.actionRequired.inspection > 0 && (
                   <div className="flex items-center gap-3 p-3 bg-warning/5 dark:bg-warning/10 rounded-xl">
@@ -118,19 +177,29 @@ export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyE
 
             {/* Stock Turnover */}
             <div className="rounded-xl border border-border/60 p-5 shadow-card">
-              <SectionTitle>อัตราหมุนเวียนสต๊อค</SectionTitle>
+              <SectionTitle icon={<TrendingUp />}>อัตราหมุนเวียนสต๊อค</SectionTitle>
               <div className="grid grid-cols-2 gap-4">
                 <StatCard label="อายุเฉลี่ยในสต๊อค" value={`${dashboard.stockTurnover.avgDaysInStock} วัน`} accent="border-l-primary" />
                 <StatCard label="สต๊อคปัจจุบัน" value={dashboard.stockTurnover.currentStock} sub="ชิ้น (IN_STOCK)" accent="border-l-success" />
                 <StatCard label="ขายเดือนนี้" value={dashboard.stockTurnover.soldThisMonth} sub="ชิ้น" accent="border-l-primary" />
-                <StatCard label="ขายเดือนที่แล้ว" value={dashboard.stockTurnover.soldLastMonth} sub="ชิ้น" accent="border-l-muted-foreground" />
+                <StatCard
+                  label="ขายเดือนที่แล้ว"
+                  value={dashboard.stockTurnover.soldLastMonth}
+                  sub={
+                    <MoMBadge
+                      current={dashboard.stockTurnover.soldThisMonth}
+                      previous={dashboard.stockTurnover.soldLastMonth}
+                    />
+                  }
+                  accent="border-l-muted-foreground"
+                />
               </div>
             </div>
           </div>
 
           {/* Row 2: Stock Aging */}
           <div className="rounded-xl border border-border/60 p-5 shadow-card">
-            <SectionTitle>อายุสต๊อค (Stock Aging)</SectionTitle>
+            <SectionTitle icon={<Clock />}>อายุสต๊อค (Stock Aging)</SectionTitle>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {dashboard.stockAging.map((bucket, i) => {
                 const colors = ['border-l-success', 'border-l-warning', 'border-l-warning', 'border-l-destructive'];
@@ -147,62 +216,121 @@ export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyE
 
           {/* Row 3: Value by Status + Stock Movement */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 lg:gap-7.5">
-            {/* Value by Status */}
+            {/* Value by Status — stacked bar + list */}
             <div className="rounded-xl border border-border/60 p-5 shadow-card">
-              <SectionTitle>มูลค่าสต๊อคตามสถานะ</SectionTitle>
-              <div className="space-y-2">
-                {dashboard.valueByStatus.map((item) => {
-                  const s = statusLabels[item.status] || { label: item.status, className: 'bg-muted text-foreground' };
+              <SectionTitle icon={<PieChartIcon />}>มูลค่าสต๊อคตามสถานะ</SectionTitle>
+              {(() => {
+                const total = dashboard.valueByStatus.reduce((s, i) => s + i.value, 0);
+                if (total === 0) {
                   return (
-                    <div key={item.status} className="flex items-center justify-between py-2 border-b border-border last:border-0">
-                      <div className="flex items-center gap-2">
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.className}`}>{s.label}</span>
-                        <span className="text-sm text-muted-foreground">{item.count} ชิ้น</span>
-                      </div>
-                      <span className="text-sm font-medium text-foreground">{item.value.toLocaleString()} ฿</span>
-                    </div>
+                    <div className="text-sm text-muted-foreground text-center py-6">ยังไม่มีข้อมูลสต๊อค</div>
                   );
-                })}
-                {dashboard.valueByStatus.length > 0 && (
-                  <div className="flex items-center justify-between pt-2 border-t border-border font-medium">
-                    <span className="text-sm text-foreground">รวมทั้งหมด</span>
-                    <span className="text-sm text-foreground">
-                      {dashboard.valueByStatus.reduce((s, i) => s + i.value, 0).toLocaleString()} ฿
-                    </span>
-                  </div>
-                )}
-              </div>
+                }
+                return (
+                  <>
+                    <div className="flex h-3 w-full overflow-hidden rounded-full bg-muted mb-4">
+                      {dashboard.valueByStatus.map((item) => {
+                        const pct = (item.value / total) * 100;
+                        const color = STATUS_BAR_COLOR[item.status] ?? 'bg-muted-foreground';
+                        return (
+                          <div
+                            key={item.status}
+                            className={color}
+                            style={{ width: `${pct}%` }}
+                            title={`${statusLabels[item.status]?.label ?? item.status}: ${pct.toFixed(1)}%`}
+                          />
+                        );
+                      })}
+                    </div>
+                    <div className="space-y-2">
+                      {dashboard.valueByStatus.map((item) => {
+                        const s = statusLabels[item.status] || { label: item.status, className: 'bg-muted text-foreground' };
+                        const pct = total > 0 ? (item.value / total) * 100 : 0;
+                        return (
+                          <div
+                            key={item.status}
+                            className="flex items-center justify-between py-2 border-b border-border last:border-0"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.className}`}>{s.label}</span>
+                              <span className="text-sm text-muted-foreground">{item.count} ชิ้น</span>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className="text-xs text-muted-foreground tabular-nums">{pct.toFixed(1)}%</span>
+                              <span className="text-sm font-medium text-foreground tabular-nums">
+                                {item.value.toLocaleString()} ฿
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <div className="flex items-center justify-between pt-2 border-t border-border font-medium">
+                        <span className="text-sm text-foreground">รวมทั้งหมด</span>
+                        <span className="text-sm text-foreground tabular-nums">{total.toLocaleString()} ฿</span>
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
 
-            {/* Stock Movement */}
+            {/* Stock Movement — recharts grouped bar */}
             <div className="rounded-xl border border-border/60 p-5 shadow-card">
-              <SectionTitle>การเคลื่อนไหวสต๊อค (6 เดือน)</SectionTitle>
-              <div className="space-y-3">
-                <div className="flex items-center gap-4 text-xs text-muted-foreground mb-2">
-                  <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-success inline-block" /> รับเข้า</span>
-                  <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-primary inline-block" /> ขายออก</span>
-                </div>
-                {(() => {
-                  const maxVal = Math.max(...dashboard.stockMovement.map((x) => Math.max(x.in, x.out)), 1);
-                  return dashboard.stockMovement.map((m) => (
-                    <div key={m.month} className="space-y-1">
-                      <div className="text-xs text-muted-foreground font-medium">{m.month}</div>
-                      <div className="flex items-center gap-2">
-                        <div className="w-12 text-xs text-right text-success">{m.in}</div>
-                        <div className="flex-1 bg-muted rounded-full h-3 overflow-hidden">
-                          <div className="h-full bg-success rounded-full" style={{ width: `${(m.in / maxVal) * 100}%` }} />
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="w-12 text-xs text-right text-primary">{m.out}</div>
-                        <div className="flex-1 bg-muted rounded-full h-3 overflow-hidden">
-                          <div className="h-full bg-primary rounded-full" style={{ width: `${(m.out / maxVal) * 100}%` }} />
-                        </div>
-                      </div>
+              <SectionTitle icon={<BarChart3 />}>การเคลื่อนไหวสต๊อค (6 เดือน)</SectionTitle>
+              {(() => {
+                // Trim leading zero-months so charts with only recent data don't look broken.
+                const firstNonZero = dashboard.stockMovement.findIndex((m) => m.in > 0 || m.out > 0);
+                const data =
+                  firstNonZero === -1 ? [] : dashboard.stockMovement.slice(firstNonZero);
+
+                if (data.length === 0) {
+                  return (
+                    <div className="text-sm text-muted-foreground text-center py-10">
+                      ยังไม่มีการเคลื่อนไหวของสต๊อค
                     </div>
-                  ));
-                })()}
-              </div>
+                  );
+                }
+                return (
+                  <div className="h-64 -ml-2">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={data} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
+                        <CartesianGrid
+                          strokeDasharray="3 3"
+                          className="stroke-border"
+                          vertical={false}
+                        />
+                        <XAxis
+                          dataKey="month"
+                          tick={{ fontSize: 11 }}
+                          className="fill-muted-foreground"
+                          axisLine={false}
+                          tickLine={false}
+                        />
+                        <YAxis
+                          tick={{ fontSize: 11 }}
+                          className="fill-muted-foreground"
+                          axisLine={false}
+                          tickLine={false}
+                          allowDecimals={false}
+                        />
+                        <Tooltip
+                          cursor={{ fill: 'hsl(var(--muted) / 0.5)' }}
+                          contentStyle={{
+                            backgroundColor: 'hsl(var(--popover))',
+                            border: '1px solid hsl(var(--border))',
+                            borderRadius: 8,
+                            fontSize: 12,
+                          }}
+                          labelStyle={{ color: 'hsl(var(--foreground))' }}
+                        />
+                        <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" />
+                        <Bar dataKey="in" name="รับเข้า" fill="hsl(var(--success))" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="out" name="ขายออก" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                );
+              })()}
             </div>
           </div>
 
@@ -210,7 +338,7 @@ export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyE
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 lg:gap-7.5">
             {/* By Category */}
             <div className="rounded-xl border border-border/60 p-5 shadow-card">
-              <SectionTitle>ตามประเภท</SectionTitle>
+              <SectionTitle icon={<Package />}>ตามประเภท</SectionTitle>
               <div className="space-y-2">
                 {dashboard.byCategory.map((item) => (
                   <BarInline
@@ -227,7 +355,7 @@ export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyE
 
             {/* By Brand */}
             <div className="rounded-xl border border-border/60 p-5 shadow-card">
-              <SectionTitle>ตามแบรนด์</SectionTitle>
+              <SectionTitle icon={<Tag />}>ตามแบรนด์</SectionTitle>
               <div className="space-y-2">
                 {dashboard.byBrand.slice(0, 8).map((item) => (
                   <BarInline
@@ -244,7 +372,7 @@ export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyE
 
             {/* By Color */}
             <div className="rounded-xl border border-border/60 p-5 shadow-card">
-              <SectionTitle>ตามสี</SectionTitle>
+              <SectionTitle icon={<Palette />}>ตามสี</SectionTitle>
               <div className="space-y-2">
                 {dashboard.byColor.slice(0, 8).map((item) => (
                   <BarInline
@@ -261,7 +389,7 @@ export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyE
 
             {/* By Storage */}
             <div className="rounded-xl border border-border/60 p-5 shadow-card">
-              <SectionTitle>ตามความจุ</SectionTitle>
+              <SectionTitle icon={<HardDrive />}>ตามความจุ</SectionTitle>
               <div className="space-y-2">
                 {dashboard.byStorage.slice(0, 8).map((item) => (
                   <BarInline
@@ -280,7 +408,7 @@ export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyE
           {/* Row 5: Margin Overview -- Owner/Manager only */}
           {isManager && (
             <div className="rounded-xl border border-border/60 p-5 shadow-card">
-              <SectionTitle>กำไรเฉลี่ย (Margin Overview) - สินค้าพร้อมขาย</SectionTitle>
+              <SectionTitle icon={<Wallet />}>กำไรเฉลี่ย (Margin Overview) - สินค้าพร้อมขาย</SectionTitle>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <StatCard
                   label="มูลค่าทุนรวม"
@@ -312,7 +440,7 @@ export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyE
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 lg:gap-7.5">
             {/* Top Sellers */}
             <div className="rounded-xl border border-border/60 p-5 shadow-card">
-              <SectionTitle>สินค้าขายดี (6 เดือนล่าสุด)</SectionTitle>
+              <SectionTitle icon={<Trophy />}>สินค้าขายดี (6 เดือนล่าสุด)</SectionTitle>
               {dashboard.topSellers.length > 0 ? (
                 <div className="space-y-2">
                   {dashboard.topSellers.map((item, i) => (
@@ -337,29 +465,49 @@ export function StockDashboardTab({ dashboard, isManager, actionTotal, warrantyE
 
             {/* Slow Movers */}
             <div className="rounded-xl border border-border/60 p-5 shadow-card">
-              <SectionTitle>สินค้าค้างสต๊อคนานสุด</SectionTitle>
-              {dashboard.slowMovers.length > 0 ? (
-                <div className="space-y-2">
-                  {dashboard.slowMovers.map((item, i) => (
-                    <div key={`${item.name}-${i}`} className="flex items-center gap-3">
-                      <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                        item.days > 90 ? 'bg-destructive/10 text-destructive dark:bg-destructive/15' :
-                        item.days > 60 ? 'bg-warning/10 text-warning dark:bg-warning/15' :
-                        'bg-warning/10 text-warning dark:bg-warning/15'
-                      }`}>{i + 1}</span>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-foreground truncate">{item.name}</div>
-                        {isManager && <div className="text-xs text-muted-foreground">{(Number(item.costPrice) || 0).toLocaleString()} ฿</div>}
-                      </div>
-                      <span className={`text-sm font-bold ${item.days > 90 ? 'text-destructive' : item.days > 60 ? 'text-warning' : 'text-warning'}`}>
-                        {item.days} วัน
-                      </span>
+              <SectionTitle icon={<AlertTriangle />}>สินค้าค้างสต๊อคนานสุด</SectionTitle>
+              {(() => {
+                const slow = dashboard.slowMovers.filter((i) => i.days >= SLOW_MOVER_MIN_DAYS);
+                if (slow.length === 0) {
+                  return (
+                    <div className="text-sm text-muted-foreground text-center py-4">
+                      ยังไม่มีสินค้าค้างเกิน {SLOW_MOVER_MIN_DAYS} วัน
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-sm text-muted-foreground text-center py-4">ไม่มีสินค้าในสต๊อค</div>
-              )}
+                  );
+                }
+                return (
+                  <div className="space-y-2">
+                    {slow.map((item, i) => (
+                      <div key={`${item.name}-${i}`} className="flex items-center gap-3">
+                        <span
+                          className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                            item.days > 90
+                              ? 'bg-destructive/10 text-destructive dark:bg-destructive/15'
+                              : 'bg-warning/10 text-warning dark:bg-warning/15'
+                          }`}
+                        >
+                          {i + 1}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-foreground truncate">{item.name}</div>
+                          {isManager && (
+                            <div className="text-xs text-muted-foreground">
+                              {(Number(item.costPrice) || 0).toLocaleString()} ฿
+                            </div>
+                          )}
+                        </div>
+                        <span
+                          className={`text-sm font-bold ${
+                            item.days > 90 ? 'text-destructive' : 'text-warning'
+                          }`}
+                        >
+                          {item.days} วัน
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>

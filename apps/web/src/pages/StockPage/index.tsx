@@ -13,6 +13,7 @@ import { useStockData, useEditingProductSync } from './hooks/useStockData';
 import { useStockFilters } from './hooks/useStockFilters';
 import QueryBoundary from '@/components/QueryBoundary';
 import { BranchSummaryCards } from './components/BranchSummaryCards';
+import { StockHeroKpi } from './components/StockHeroKpi';
 import { StockDashboardTab } from './components/StockDashboardTab';
 import { StockListTab } from './components/StockListTab';
 import { BulkTransferModal } from './components/BulkTransferModal';
@@ -211,7 +212,7 @@ export default function StockPage() {
     <div>
       <PageHeader
         title="คลังสินค้า"
-        subtitle={`พร้อมขาย ${totalInStock} ชิ้น | มูลค่ารวม ${totalValue.toLocaleString()} ฿`}
+        subtitle="จัดการคลังสินค้าและดูภาพรวมสต๊อค"
         action={
           isManager && activeTab === 'list' ? (
             <div className="flex gap-2">
@@ -232,6 +233,13 @@ export default function StockPage() {
             </div>
           ) : undefined
         }
+      />
+
+      <StockHeroKpi
+        totalInStock={totalInStock}
+        totalValue={totalValue}
+        dashboard={dashboard}
+        isManager={isManager}
       />
 
       <BranchSummaryCards

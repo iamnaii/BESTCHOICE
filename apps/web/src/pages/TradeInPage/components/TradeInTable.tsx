@@ -102,7 +102,12 @@ export default function TradeInTable({
       render: (item) => {
         const cfg = getStatusBadgeProps(item.status, tradeInStatusMap);
         return (
-          <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">
+          <Badge
+            variant={cfg.variant}
+            appearance={cfg.appearance}
+            size="sm"
+            className="whitespace-nowrap"
+          >
             {cfg.label}
           </Badge>
         );
@@ -137,8 +142,9 @@ export default function TradeInTable({
       hideable: true,
       render: (item) => {
         const buyer = item.idCardVerifiedBy ?? item.appraisedBy;
-        if (!buyer) return <span className="text-sm text-muted-foreground">รอรับซื้อ</span>;
-        return <span className="text-sm text-foreground">{buyer.name}</span>;
+        if (!buyer)
+          return <span className="text-sm text-muted-foreground whitespace-nowrap">รอรับซื้อ</span>;
+        return <span className="text-sm text-foreground whitespace-nowrap">{buyer.name}</span>;
       },
     },
     {
@@ -147,7 +153,7 @@ export default function TradeInTable({
       hideable: true,
       render: (item) =>
         item.branch ? (
-          <span className="text-sm text-foreground">{item.branch.name}</span>
+          <span className="text-sm text-foreground whitespace-nowrap">{item.branch.name}</span>
         ) : (
           <span className="text-sm text-muted-foreground">-</span>
         ),

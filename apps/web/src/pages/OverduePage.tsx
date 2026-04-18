@@ -268,15 +268,15 @@ export default function OverduePage() {
       label: 'สัญญา',
       render: (p: OverduePayment) => (
         <button onClick={() => navigateToContract(p.contract.id)} className="text-left">
-          <div className="font-mono text-sm text-primary hover:underline">{p.contract.contractNumber}</div>
-          <div className="text-xs text-muted-foreground">{p.contract.customer.name}</div>
+          <div className="font-mono text-sm text-primary hover:underline whitespace-nowrap">{p.contract.contractNumber}</div>
+          <div className="text-xs text-muted-foreground whitespace-nowrap">{p.contract.customer.name}</div>
         </button>
       ),
     },
     {
       key: 'customer',
       label: 'เบอร์โทร',
-      render: (p: OverduePayment) => <span className="text-sm">{p.contract.customer.phone}</span>,
+      render: (p: OverduePayment) => <span className="text-sm whitespace-nowrap">{p.contract.customer.phone}</span>,
     },
     {
       key: 'installmentNo',

@@ -39,8 +39,8 @@ export const roleLabels: Record<string, string> = {
 };
 
 export const roleColors: Record<string, string> = {
-  OWNER: 'bg-primary-100 text-primary-700',
-  BRANCH_MANAGER: 'bg-primary-100 text-primary-700',
+  OWNER: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
+  BRANCH_MANAGER: 'bg-primary/10 text-primary dark:bg-primary/15',
   FINANCE_MANAGER: 'bg-info/10 text-info dark:bg-info/15',
   SALES: 'bg-success/10 text-success dark:bg-success/15',
   ACCOUNTANT: 'bg-warning/10 text-warning dark:bg-warning/15',

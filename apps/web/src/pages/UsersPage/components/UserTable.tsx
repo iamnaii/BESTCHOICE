@@ -5,6 +5,8 @@ import { getStatusBadgeProps, enabledStatusMap } from '@/lib/status-badges';
 import { formatDateShort, formatDateMedium } from '@/utils/formatters';
 import { User, InviteToken, roleLabels, roleColors, getInviteStatus } from '../types';
 
+const Empty = () => <span className="text-muted-foreground/50">—</span>;
+
 interface UserTableProps {
   users: User[];
   isLoading: boolean;
@@ -61,13 +63,17 @@ export function UserTable({
         </div>
       ),
     },
-    { key: 'employeeId', label: 'รหัสพนง.', render: (u: User) => u.employeeId || '-' },
+    {
+      key: 'employeeId',
+      label: 'รหัสพนง.',
+      render: (u: User) => u.employeeId || <Empty />,
+    },
     {
       key: 'role',
       label: 'ตำแหน่ง',
       render: (u: User) => (
         <span
-          className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+          className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap ${
             roleColors[u.role] || 'bg-muted text-foreground'
           }`}
         >
@@ -75,13 +81,18 @@ export function UserTable({
         </span>
       ),
     },
-    { key: 'branch', label: 'สาขา', render: (u: User) => u.branch?.name || '-' },
-    { key: 'phone', label: 'เบอร์โทร', render: (u: User) => u.phone || '-' },
-    { key: 'lineId', label: 'LINE ID', render: (u: User) => u.lineId || '-' },
+    { key: 'branch', label: 'สาขา', render: (u: User) => u.branch?.name || <Empty /> },
+    { key: 'phone', label: 'เบอร์โทร', render: (u: User) => u.phone || <Empty /> },
+    { key: 'lineId', label: 'LINE ID', render: (u: User) => u.lineId || <Empty /> },
     {
       key: 'startDate',
       label: 'วันเริ่มงาน',
-      render: (u: User) => (u.startDate ? formatDateShort(u.startDate) : '-'),
+      render: (u: User) =>
+        u.startDate ? (
+          <span className="whitespace-nowrap">{formatDateShort(u.startDate)}</span>
+        ) : (
+          <Empty />
+        ),
     },
     {
       key: 'isActive',
@@ -91,7 +102,7 @@ export function UserTable({
         return (
           <button
             onClick={() => onToggleActive(u.id, u.isActive, u.name)}
-            className="cursor-pointer"
+            className="cursor-pointer whitespace-nowrap"
           >
             <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">
               {cfg.label}
@@ -106,7 +117,7 @@ export function UserTable({
       render: (u: User) => (
         <button
           onClick={() => onEdit(u)}
-          className="text-primary hover:text-primary/80 text-sm font-medium"
+          className="text-primary hover:text-primary/80 text-sm font-medium whitespace-nowrap"
         >
           แก้ไข
         </button>
@@ -147,7 +158,7 @@ export function InviteTable({
       label: 'ตำแหน่ง',
       render: (i: InviteToken) => (
         <span
-          className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+          className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap ${
             roleColors[i.role] || 'bg-muted text-foreground'
           }`}
         >
@@ -155,15 +166,15 @@ export function InviteTable({
         </span>
       ),
     },
-    { key: 'branch', label: 'สาขา', render: (i: InviteToken) => i.branch?.name || '-' },
-    { key: 'inviter', label: 'เชิญโดย', render: (i: InviteToken) => i.inviter?.name || '-' },
+    { key: 'branch', label: 'สาขา', render: (i: InviteToken) => i.branch?.name || <Empty /> },
+    { key: 'inviter', label: 'เชิญโดย', render: (i: InviteToken) => i.inviter?.name || <Empty /> },
     {
       key: 'status',
       label: 'สถานะ',
       render: (i: InviteToken) => {
         const s = getInviteStatus(i);
         return (
-          <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${s.className}`}>
+          <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap ${s.className}`}>
             {s.label}
           </span>
         );
@@ -172,7 +183,9 @@ export function InviteTable({
     {
       key: 'createdAt',
       label: 'วันที่สร้าง',
-      render: (i: InviteToken) => formatDateMedium(i.createdAt),
+      render: (i: InviteToken) => (
+        <span className="whitespace-nowrap">{formatDateMedium(i.createdAt)}</span>
+      ),
     },
     {
       key: 'actions',
@@ -181,7 +194,7 @@ export function InviteTable({
         const status = getInviteStatus(i);
         if (status.label === 'ใช้แล้ว') return null;
         return (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3 whitespace-nowrap">
             <button
               onClick={() => onResend(i.id, i.email)}
               disabled={isResendPending}

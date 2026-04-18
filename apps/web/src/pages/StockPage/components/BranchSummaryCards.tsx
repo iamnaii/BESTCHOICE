@@ -7,9 +7,17 @@ export interface BranchSummaryCardsProps {
 }
 
 export function BranchSummaryCards({ summary, filterBranch, setFilterBranch }: BranchSummaryCardsProps) {
+  // Hide branches with zero stock so inactive/legacy branches don't clutter the dashboard.
+  // Fallback: if every branch has zero, show the full list so user isn't stuck with blank UI.
+  const visible = summary.some((s) => s.total > 0)
+    ? summary.filter((s) => s.total > 0)
+    : summary;
+
+  if (visible.length === 0) return null;
+
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-      {summary.map((s) => (
+      {visible.map((s) => (
         <button
           key={s.branch.id}
           onClick={() => setFilterBranch(filterBranch === s.branch.id ? '' : s.branch.id)}

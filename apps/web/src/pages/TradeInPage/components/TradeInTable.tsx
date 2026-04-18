@@ -11,7 +11,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { getStatusBadgeProps, tradeInStatusMap } from '@/lib/status-badges';
-import { formatThaiDate } from '@/lib/date';
+import { formatThaiDateTime } from '@/lib/date';
 import {
   RefreshCw,
   CheckCircle,
@@ -39,16 +39,6 @@ interface TradeInTableProps {
   onVoucher: (item: TradeIn) => void;
   isRejectPending: boolean;
   voucherLoadingId: string | null;
-}
-
-function formatRelativeDate(iso: string): string {
-  const diffDays = Math.floor((Date.now() - new Date(iso).getTime()) / (1000 * 60 * 60 * 24));
-  if (diffDays === 0) return 'วันนี้';
-  if (diffDays === 1) return 'เมื่อวาน';
-  if (diffDays < 7) return `${diffDays} วันก่อน`;
-  if (diffDays < 30) return `${Math.floor(diffDays / 7)} สัปดาห์ก่อน`;
-  if (diffDays < 365) return `${Math.floor(diffDays / 30)} เดือนก่อน`;
-  return formatThaiDate(iso);
 }
 
 export default function TradeInTable({
@@ -124,12 +114,43 @@ export default function TradeInTable({
       sortable: true,
       render: (item) => {
         const value = item.agreedPrice ?? item.offeredPrice ?? item.estimatedValue;
-        return value != null ? (
-          <span className="font-medium">฿{Number(value).toLocaleString()}</span>
-        ) : (
-          <span className="text-muted-foreground">-</span>
+        if (value == null) return <span className="text-muted-foreground">-</span>;
+        const methodLabel =
+          item.paymentMethod === 'CASH'
+            ? 'เงินสด'
+            : item.paymentMethod === 'TRANSFER'
+              ? 'โอน'
+              : null;
+        return (
+          <div>
+            <div className="font-medium">฿{Number(value).toLocaleString()}</div>
+            {methodLabel && (
+              <div className="text-xs text-muted-foreground">{methodLabel}</div>
+            )}
+          </div>
         );
       },
+    },
+    {
+      key: 'buyer',
+      label: 'ผู้รับซื้อ',
+      hideable: true,
+      render: (item) => {
+        const buyer = item.idCardVerifiedBy ?? item.appraisedBy;
+        if (!buyer) return <span className="text-sm text-muted-foreground">รอรับซื้อ</span>;
+        return <span className="text-sm text-foreground">{buyer.name}</span>;
+      },
+    },
+    {
+      key: 'branch',
+      label: 'สาขา',
+      hideable: true,
+      render: (item) =>
+        item.branch ? (
+          <span className="text-sm text-foreground">{item.branch.name}</span>
+        ) : (
+          <span className="text-sm text-muted-foreground">-</span>
+        ),
     },
     {
       key: 'voucherNumber',
@@ -137,19 +158,21 @@ export default function TradeInTable({
       hideable: true,
       render: (item) =>
         item.voucherNumber ? (
-          <span className="text-xs font-mono text-foreground">{item.voucherNumber}</span>
+          <span className="text-sm font-mono font-semibold text-foreground">
+            {item.voucherNumber}
+          </span>
         ) : (
-          <span className="text-xs text-muted-foreground">-</span>
+          <span className="text-sm text-muted-foreground">-</span>
         ),
     },
     {
       key: 'createdAt',
-      label: 'วันที่',
+      label: 'วันที่ / เวลา',
       sortable: true,
       hideable: true,
       render: (item) => (
-        <span className="text-xs text-muted-foreground whitespace-nowrap">
-          {formatRelativeDate(item.createdAt)}
+        <span className="text-sm text-foreground whitespace-nowrap">
+          {formatThaiDateTime(item.idCardVerifiedAt ?? item.createdAt)}
         </span>
       ),
     },

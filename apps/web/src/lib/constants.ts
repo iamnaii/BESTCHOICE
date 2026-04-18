@@ -4,12 +4,12 @@
 // --- Product Status ---
 
 export const statusLabels: Record<string, { label: string; className: string }> = {
-  PO_RECEIVED: { label: 'รับจาก PO', className: 'bg-primary/10 text-primary' },
+  PO_RECEIVED: { label: 'รับจาก PO', className: 'bg-info/10 text-info' },
   QC_PENDING: { label: 'รอตรวจรับ', className: 'bg-warning/10 text-warning' },
-  PHOTO_PENDING: { label: 'รอถ่ายรูป', className: 'bg-primary/10 text-primary' },
+  PHOTO_PENDING: { label: 'รอถ่ายรูป', className: 'bg-warning/10 text-warning' },
   INSPECTION: { label: 'กำลังตรวจ', className: 'bg-warning/10 text-warning' },
   IN_STOCK: { label: 'พร้อมขาย', className: 'bg-success/10 text-success' },
-  RESERVED: { label: 'จอง', className: 'bg-primary/10 text-primary' },
+  RESERVED: { label: 'จอง', className: 'bg-warning/10 text-warning' },
   SOLD_INSTALLMENT: { label: 'ขายผ่อน', className: 'bg-primary/10 text-primary' },
   SOLD_CASH: { label: 'ขายสด', className: 'bg-info/10 text-info' },
   REPOSSESSED: { label: 'ยึดคืน', className: 'bg-destructive/10 text-destructive' },

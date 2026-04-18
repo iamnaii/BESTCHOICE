@@ -126,6 +126,7 @@ export default function PurchaseOrdersPage() {
           rejectPOMutation={data.rejectPOMutation}
           cancelMutation={data.cancelMutation}
           setConfirmDialog={data.setConfirmDialog}
+          suppliers={data.suppliers}
         />
       ) : (
         <AccountsPayableTab

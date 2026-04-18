@@ -1,4 +1,5 @@
 import { UseMutationResult } from '@tanstack/react-query';
+import { ClipboardCheck, ChevronDown, ChevronRight } from 'lucide-react';
 
 export interface QcPendingPanelProps {
   qcPendingItems: { productId: string; productName: string; imeiSerial?: string }[];
@@ -24,9 +25,12 @@ export function QcPendingPanel({
       <button
         onClick={() => setShowQcPanel(!showQcPanel)}
         className="flex items-center gap-2 px-4 py-2 bg-warning/5 dark:bg-warning/10 border border-warning/20 rounded-xl text-sm font-medium text-warning hover:bg-warning/10 dark:hover:bg-warning/15 transition-colors"
+        aria-expanded={showQcPanel}
       >
+        <ClipboardCheck className="size-4" />
         รอตรวจ QC
         <span className="px-2 py-0.5 bg-warning/10 text-warning dark:bg-warning/15 rounded-full text-xs font-bold">{qcPendingItems.length}</span>
+        {showQcPanel ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
       </button>
       {showQcPanel && (
         <div className="mt-2 border border-warning/20 rounded-xl bg-warning/5 dark:bg-warning/10 p-4">

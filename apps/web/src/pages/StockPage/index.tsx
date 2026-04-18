@@ -7,16 +7,34 @@ import PageHeader from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/button';
 import { statusLabels, categoryLabels } from '@/lib/constants';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { ArrowRightLeft, Download, Plus } from 'lucide-react';
+import { ArrowRightLeft, Check, Copy, Download, Eye, Plus } from 'lucide-react';
 import { StockProduct } from './types';
+import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import { useStockData, useEditingProductSync } from './hooks/useStockData';
 import { useStockFilters } from './hooks/useStockFilters';
 import QueryBoundary from '@/components/QueryBoundary';
 import { BranchSummaryCards } from './components/BranchSummaryCards';
+import { StockHeroKpi } from './components/StockHeroKpi';
 import { StockDashboardTab } from './components/StockDashboardTab';
 import { StockListTab } from './components/StockListTab';
 import { BulkTransferModal } from './components/BulkTransferModal';
 import { PriceManagementModal } from './components/PriceManagementModal';
+
+function ImeiCopyBadge({ imei }: { imei: string }) {
+  const { copy, copied } = useCopyToClipboard();
+  return (
+    <span className="flex items-center gap-1">
+      <span className="text-xs text-muted-foreground font-mono">{imei}</span>
+      <button
+        onClick={(e) => { e.stopPropagation(); copy(imei); }}
+        className="text-muted-foreground/60 hover:text-primary transition-colors"
+        title="คัดลอก IMEI/Serial"
+      >
+        {copied ? <Check className="size-3 text-success" /> : <Copy className="size-3" />}
+      </button>
+    </span>
+  );
+}
 
 export default function StockPage() {
   useDocumentTitle('สต็อกสินค้า');
@@ -133,45 +151,61 @@ export default function StockPage() {
     {
       key: 'name',
       label: 'สินค้า',
+      sortable: false,
+      hideable: false,
       render: (p: StockProduct) => (
-        <button
-          onClick={() => navigateToProduct(p.id)}
-          className="text-left hover:underline"
-        >
-          <div className="text-primary font-medium">{p.brand} {p.model}</div>
-          {p.imeiSerial && <div className="text-xs text-muted-foreground font-mono">{p.imeiSerial}</div>}
-        </button>
+        <div>
+          <button
+            onClick={() => navigateToProduct(p.id)}
+            className="text-left hover:underline"
+          >
+            <div className="text-primary font-medium">{p.brand} {p.model}</div>
+          </button>
+          {p.imeiSerial && <ImeiCopyBadge imei={p.imeiSerial} />}
+        </div>
       ),
     },
     {
       key: 'category',
       label: 'ประเภท',
+      sortable: true,
+      hideable: true,
       render: (p: StockProduct) => <span className="text-xs">{categoryLabels[p.category] || p.category}</span>,
     },
     {
       key: 'color',
       label: 'สี',
-      render: (p: StockProduct) => <span className="text-sm">{p.color || '-'}</span>,
+      sortable: true,
+      hideable: true,
+      render: (p: StockProduct) => <span className="text-sm">{p.color || <span className="text-muted-foreground">—</span>}</span>,
     },
     {
       key: 'storage',
       label: 'ความจุ',
-      render: (p: StockProduct) => <span className="text-sm">{p.storage || '-'}</span>,
+      sortable: true,
+      hideable: true,
+      render: (p: StockProduct) => <span className="text-sm">{p.storage || <span className="text-muted-foreground">—</span>}</span>,
     },
     {
       key: 'prices',
       label: 'ราคา',
+      sortable: false,
+      hideable: false,
       render: (p: StockProduct) => {
         const defaultPrice = p.prices?.find((pr) => pr.isDefault) || p.prices?.[0];
+        const priceValue = defaultPrice ? parseFloat(defaultPrice.amount) : 0;
+        const costValue = parseFloat(p.costPrice);
         return (
           <div className="flex items-center gap-1.5">
             <div>
-              {defaultPrice ? (
-                <div className="font-medium">{parseFloat(defaultPrice.amount).toLocaleString()} ฿</div>
+              {priceValue > 0 ? (
+                <div className="font-medium">{priceValue.toLocaleString()} ฿</div>
               ) : (
-                <span className="text-muted-foreground">-</span>
+                <span className="text-muted-foreground">—</span>
               )}
-              {isManager && <div className="text-xs text-muted-foreground">ทุน: {parseFloat(p.costPrice).toLocaleString()} ฿</div>}
+              {isManager && costValue > 0 && (
+                <div className="text-xs text-muted-foreground">ทุน: {costValue.toLocaleString()} ฿</div>
+              )}
             </div>
             {isManager && (
               <button
@@ -191,6 +225,8 @@ export default function StockPage() {
     {
       key: 'status',
       label: 'สถานะ',
+      sortable: true,
+      hideable: false,
       render: (p: StockProduct) => {
         const s = statusLabels[p.status] || { label: p.status, className: 'bg-muted text-foreground' };
         return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.className}`}>{s.label}</span>;
@@ -199,7 +235,23 @@ export default function StockPage() {
     {
       key: 'branch',
       label: 'สาขา',
+      sortable: false,
+      hideable: true,
       render: (p: StockProduct) => <span className="text-xs font-medium">{p.branch.name}</span>,
+    },
+    {
+      key: 'actions',
+      label: '',
+      render: (p: StockProduct) => (
+        <button
+          onClick={(e) => { e.stopPropagation(); navigateToProduct(p.id); }}
+          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-muted-foreground hover:text-primary hover:bg-accent transition-colors"
+          title="ดูรายละเอียดสินค้า"
+        >
+          <Eye className="size-3.5" />
+          ดูรายละเอียด
+        </button>
+      ),
     },
   ], [navigateToProduct, openPriceEdit, isManager, selectedIds, listProducts]);
 
@@ -211,7 +263,7 @@ export default function StockPage() {
     <div>
       <PageHeader
         title="คลังสินค้า"
-        subtitle={`พร้อมขาย ${totalInStock} ชิ้น | มูลค่ารวม ${totalValue.toLocaleString()} ฿`}
+        subtitle="จัดการคลังสินค้าและดูภาพรวมสต๊อค"
         action={
           isManager && activeTab === 'list' ? (
             <div className="flex gap-2">
@@ -232,6 +284,13 @@ export default function StockPage() {
             </div>
           ) : undefined
         }
+      />
+
+      <StockHeroKpi
+        totalInStock={totalInStock}
+        totalValue={totalValue}
+        dashboard={dashboard}
+        isManager={isManager}
       />
 
       <BranchSummaryCards

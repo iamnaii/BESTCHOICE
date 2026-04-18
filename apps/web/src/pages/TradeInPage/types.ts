@@ -15,7 +15,12 @@ export interface TradeIn {
   voucherNumber: string | null;
   voucherPdfUrl: string | null;
   createdAt: string;
+  idCardVerifiedAt?: string | null;
+  paymentMethod?: 'CASH' | 'TRANSFER' | null;
   customer: { id: string; name: string } | null;
+  branch?: { id: string; name: string } | null;
+  appraisedBy?: { id: string; name: string } | null;
+  idCardVerifiedBy?: { id: string; name: string } | null;
 }
 
 export interface TradeInsResponse {

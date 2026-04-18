@@ -86,7 +86,11 @@ export class CustomersService {
       }),
       this.prisma.customer.count({ where }),
       this.prisma.customer.count({
-        where: { deletedAt: null, contracts: { some: { status: 'ACTIVE', deletedAt: null } } },
+        // "มีสัญญาผ่อน" = ยังไม่จบ (รวม ACTIVE + OVERDUE + DEFAULT) — พอร์ตสัญญาที่ business ใส่ใจ
+        where: {
+          deletedAt: null,
+          contracts: { some: { status: { in: ['ACTIVE', 'OVERDUE', 'DEFAULT'] }, deletedAt: null } },
+        },
       }),
       this.prisma.customer.count({
         where: { deletedAt: null, contracts: { some: { status: { in: ['OVERDUE', 'DEFAULT'] }, deletedAt: null } } },

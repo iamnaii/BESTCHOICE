@@ -658,7 +658,7 @@ export default function CustomersPage() {
             <CardContent className="p-5 relative">
               <div className="absolute inset-y-0 left-0 w-1 bg-success rounded-l-xl" />
               <div className="pl-2">
-                <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">มีสัญญา Active</div>
+                <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">มีสัญญาผ่อน</div>
                 <div className="text-2xl font-bold text-success">{result.summary.withActiveContract.toLocaleString()}</div>
               </div>
             </CardContent>

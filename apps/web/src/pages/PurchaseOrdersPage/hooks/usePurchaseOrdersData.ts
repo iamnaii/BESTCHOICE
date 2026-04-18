@@ -31,7 +31,7 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
   });
   const suppliers = suppliersRes?.data || [];
 
-  const { data: payableData } = useQuery<{
+  type PayableData = {
     grandTotal: number;
     suppliers: {
       supplier: { id: string; name: string; contactName: string; phone: string };
@@ -41,9 +41,17 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
       poCount: number;
       pos: { id: string; poNumber: string; orderDate: string; dueDate: string | null; netAmount: number; paidAmount: number; remaining: number; paymentStatus: string; status: string; itemsSummary: string }[];
     }[];
-  }>({
+  };
+  const { data: payableData } = useQuery<PayableData>({
     queryKey: ['accounts-payable'],
-    queryFn: async () => (await api.get('/purchase-orders/accounts-payable')).data,
+    queryFn: async (): Promise<PayableData> => {
+      const res = await api.get('/purchase-orders/accounts-payable');
+      // Backend returns { grandTotal, data: suppliers[], total, page, limit }
+      // Normalize to legacy shape { grandTotal, suppliers: [...] }
+      const raw = res.data as { grandTotal?: number; data?: PayableData['suppliers']; suppliers?: PayableData['suppliers'] };
+      const suppliers = Array.isArray(raw?.suppliers) ? raw.suppliers : Array.isArray(raw?.data) ? raw.data : [];
+      return { grandTotal: Number(raw?.grandTotal) || 0, suppliers };
+    },
     enabled: activeTab === 'payable',
   });
 
@@ -58,7 +66,12 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
 
   const { data: qcPendingItems = [] } = useQuery<{ productId: string; productName: string; imeiSerial?: string }[]>({
     queryKey: ['qc-pending'],
-    queryFn: async () => (await api.get('/purchase-orders/qc-pending')).data,
+    queryFn: async () => {
+      const res = await api.get('/purchase-orders/qc-pending');
+      // Backend now returns { data: [...], total, page, limit, totalPages }
+      // Fallback to legacy array shape for older builds
+      return Array.isArray(res.data) ? res.data : (res.data?.data ?? []);
+    },
   });
 
   const qcConfirmMutation = useMutation({

@@ -1,10 +1,12 @@
 import { Body, Controller, Get, HttpCode, Logger, Post, Req, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
+import { LineChannelType } from '@prisma/client';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
 import { IsNumber, IsOptional, IsString, Length, Matches, Max, Min } from 'class-validator';
 import { VerificationService } from './services/verification.service';
 import { FeedbackService } from './services/feedback.service';
 import { LiffTokenGuard, LiffRequest } from '../line-oa/guards/liff-token.guard';
+import { LiffChannel } from '../line-oa/guards/liff-channel.decorator';
 
 class RequestOtpDto {
   @IsString()
@@ -51,6 +53,7 @@ class SubmitFeedbackDto {
 @Controller('chatbot/finance/liff')
 @SkipCsrf()
 @UseGuards(LiffTokenGuard)
+@LiffChannel(LineChannelType.FINANCE)
 export class ChatbotFinanceLiffController {
   private readonly logger = new Logger(ChatbotFinanceLiffController.name);
 

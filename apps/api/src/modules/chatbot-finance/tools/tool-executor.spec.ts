@@ -1,8 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import * as Sentry from '@sentry/nestjs';
 import { FinanceToolExecutor } from './tool-executor';
 import { FinanceToolsService } from '../services/finance-tools.service';
 import { KnowledgeService } from '../services/knowledge.service';
 import { HandoffService } from '../services/handoff.service';
+
+jest.mock('@sentry/nestjs', () => ({
+  captureMessage: jest.fn(),
+  captureException: jest.fn(),
+}));
 
 describe('FinanceToolExecutor', () => {
   let executor: FinanceToolExecutor;
@@ -70,7 +76,7 @@ describe('FinanceToolExecutor', () => {
       ctx,
     );
     expect(result.ok).toBe(false);
-    expect(result.error).toContain('ไม่ติดลบ');
+    expect(result.error).toContain('0-3650');
   });
 
   it('routes search_knowledge_base to knowledge service', async () => {
@@ -88,7 +94,7 @@ describe('FinanceToolExecutor', () => {
       ctx,
     );
     expect(result.ok).toBe(false);
-    expect(result.error).toContain('required');
+    expect(result.error).toContain('ห้ามว่าง');
   });
 
   it('routes handoff_to_human and sets triggeredHandoff', async () => {
@@ -120,5 +126,59 @@ describe('FinanceToolExecutor', () => {
     const result = await executor.execute({ name: 'get_current_balance', input: {} }, ctx);
     expect(result.ok).toBe(false);
     expect(result.error).toBe('DB down');
+  });
+
+  // ─── T6-C16: tool input validation + PII redaction ─────────────
+  describe('T6-C16 — tool input validation', () => {
+    beforeEach(() => {
+      (Sentry.captureMessage as jest.Mock).mockClear();
+    });
+
+    it('accepts valid input and proceeds to service call', async () => {
+      const result = await executor.execute(
+        { name: 'calculate_fine', input: { daysOverdue: 5 } },
+        ctx,
+      );
+      expect(result.ok).toBe(true);
+      expect(tools.calculateFine).toHaveBeenCalledWith(5);
+      expect(Sentry.captureMessage).not.toHaveBeenCalled();
+    });
+
+    it('rejects invalid schema (wrong type for daysOverdue) and logs to Sentry', async () => {
+      const result = await executor.execute(
+        { name: 'calculate_fine', input: { daysOverdue: 'abc' } },
+        ctx,
+      );
+      expect(result.ok).toBe(false);
+      expect(tools.calculateFine).not.toHaveBeenCalled();
+      expect(Sentry.captureMessage).toHaveBeenCalledWith(
+        'FinanceAI tool input rejected',
+        expect.objectContaining({
+          level: 'warning',
+          tags: expect.objectContaining({ action: 'tool_input_invalid' }),
+        }),
+      );
+    });
+
+    it('redacts PII-looking keys in audit log extras', async () => {
+      await executor.execute(
+        {
+          name: 'search_knowledge_base',
+          input: {
+            query: '',
+            password: 'hunter2',
+            national_id: '1234567890123',
+            apiSecret: 'sk-xxx',
+          },
+        },
+        ctx,
+      );
+      const call = (Sentry.captureMessage as jest.Mock).mock.calls[0];
+      const extra = call[1].extra.inputRedacted;
+      expect(extra.password).toBe('[REDACTED]');
+      expect(extra.national_id).toBe('[REDACTED]');
+      expect(extra.apiSecret).toBe('[REDACTED]');
+      expect(extra.query).toBe('');
+    });
   });
 });

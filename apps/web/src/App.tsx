@@ -103,6 +103,7 @@ const PeakSyncPage = lazy(() => import('@/pages/PeakSyncPage'));
 const AiSettingsPage = lazy(() => import('@/pages/AiSettingsPage'));
 const AiTrainingPage = lazy(() => import('@/pages/AiTrainingPage'));
 const AiPerformancePage = lazy(() => import('@/pages/AiPerformancePage'));
+const AiAdminPage = lazy(() => import('@/pages/AiAdminPage'));
 const IntegrationHubPage = lazy(() => import('@/pages/IntegrationHubPage'));
 const MdmTestPage = lazy(() => import('@/pages/MdmTestPage'));
 const MdmDashboardPage = lazy(() => import('@/pages/MdmDashboardPage'));
@@ -659,6 +660,14 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER']}>
                 <AiPerformancePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings/ai-admin"
+            element={
+              <ProtectedRoute roles={['OWNER']}>
+                <AiAdminPage />
               </ProtectedRoute>
             }
           />

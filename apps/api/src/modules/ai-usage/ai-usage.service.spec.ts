@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { AiUsageService } from './ai-usage.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -16,7 +17,11 @@ describe('AiUsageService.record', () => {
       aiUsageLog: { create: jest.fn().mockResolvedValue({ id: 'au-1' }) },
     };
     const mod: TestingModule = await Test.createTestingModule({
-      providers: [AiUsageService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        AiUsageService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: ConfigService, useValue: { get: () => '10' } },
+      ],
     }).compile();
     service = mod.get(AiUsageService);
   });

@@ -19,6 +19,7 @@ import { ConfigService } from '@nestjs/config';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { ChatChannel, MessageType } from '@prisma/client';
 import { RawBodyRequest } from '../../common/types/raw-body-request';
+import { WebhookAnomalyService } from '../webhook-security/webhook-anomaly.service';
 
 /**
  * Facebook Messenger Webhook Controller
@@ -42,6 +43,7 @@ export class FacebookWebhookController {
   constructor(
     private messageRouter: MessageRouterService,
     private configService: ConfigService,
+    private anomaly: WebhookAnomalyService,
   ) {}
 
   /**
@@ -87,6 +89,12 @@ export class FacebookWebhookController {
     const rawBody = (req as unknown as RawBodyRequest).rawBody;
     if (!this.verifySignature(rawBody, signature)) {
       this.logger.warn('[FB Webhook] Invalid signature — rejecting payload');
+      void this.anomaly.record({
+        provider: 'facebook',
+        reason: signature ? 'invalid_signature' : 'missing_signature',
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'] as string | undefined,
+      });
       throw new BadRequestException('Invalid signature');
     }
 

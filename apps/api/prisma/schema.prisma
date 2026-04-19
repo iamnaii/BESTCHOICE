@@ -2512,6 +2512,8 @@ enum CommissionStatus {
   PENDING
   APPROVED
   PAID
+  CLAWED_BACK
+  PARTIALLY_CLAWED_BACK
 }
 
 enum CommissionRuleType {
@@ -2554,6 +2556,13 @@ model SalesCommission {
   approvedAt       DateTime?        @map("approved_at")
   paidAt           DateTime?        @map("paid_at")
   paidAmount       Decimal?         @map("paid_amount") @db.Decimal(12, 2)
+  // Clawback on contract default. percent is 0-100 and amount = commission_amount × percent/100.
+  // Set when the referenced contract enters DEFAULTED / WRITTEN_OFF / CLOSED_BAD_DEBT.
+  clawbackAmount         Decimal?  @map("clawback_amount") @db.Decimal(12, 2)
+  clawbackPercent        Int?      @map("clawback_percent")
+  clawbackAt             DateTime? @map("clawback_at")
+  clawbackReason         String?   @map("clawback_reason")
+  monthsPaidBeforeDefault Int?     @map("months_paid_before_default")
   notes            String?
   createdAt        DateTime         @default(now()) @map("created_at")
   updatedAt        DateTime         @updatedAt @map("updated_at")

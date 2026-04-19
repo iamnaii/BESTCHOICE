@@ -2,6 +2,7 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateJournalEntryDto } from './dto/journal.dto';
+import { validatePeriodOpen } from '../../utils/period-lock.util';
 
 @Injectable()
 export class JournalService {
@@ -54,6 +55,11 @@ export class JournalService {
     if (!company) {
       throw new NotFoundException('ไม่พบบริษัท');
     }
+
+    // Block manual entries dated inside a closed/synced accounting period.
+    // Without this, period close is only cosmetic because this endpoint lets
+    // anyone backdate a journal into a closed month.
+    await validatePeriodOpen(this.prisma, new Date(dto.entryDate), dto.companyId);
 
     // 4. Validate accountCodes exist in ChartOfAccount + allowed for this company
     const accountCodes = dto.lines.map((line) => line.accountCode);

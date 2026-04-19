@@ -117,8 +117,12 @@ export class ContractsController {
     return this.workflowService.submitForReview(id, user.id);
   }
 
+  // Contract approval is restricted to OWNER + FINANCE_MANAGER. Letting a
+  // BRANCH_MANAGER approve contracts allowed BM-to-BM collusion within a
+  // branch (peer approval without central finance review). BRANCH_MANAGER
+  // can still submit-for-review; final approval must go through finance.
   @Post(':id/approve')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER')
+  @Roles('OWNER', 'FINANCE_MANAGER')
   approve(
     @Param('id') id: string,
     @Body() dto: ReviewContractDto,
@@ -127,8 +131,9 @@ export class ContractsController {
     return this.workflowService.approveContract(id, user.id, user.role, dto.reviewNotes);
   }
 
+  // Reject mirrors approve — same authority required to close the loop.
   @Post(':id/reject')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER')
+  @Roles('OWNER', 'FINANCE_MANAGER')
   reject(
     @Param('id') id: string,
     @Body() dto: RejectContractDto,

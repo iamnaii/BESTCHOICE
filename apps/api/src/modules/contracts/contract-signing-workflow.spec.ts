@@ -340,7 +340,7 @@ describe('Contract Signing & Workflow', () => {
         reviewedById: 'manager-1',
       });
 
-      await workflowService.approveContract('contract-1', 'manager-1', 'BRANCH_MANAGER');
+      await workflowService.approveContract('contract-1', 'manager-1', 'FINANCE_MANAGER');
       expect(prisma.contract.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
@@ -358,7 +358,7 @@ describe('Contract Signing & Workflow', () => {
       });
       prisma.contract.findUnique.mockResolvedValue(pendingContract());
 
-      await expect(workflowService.approveContract('contract-1', 'manager-1', 'BRANCH_MANAGER'))
+      await expect(workflowService.approveContract('contract-1', 'manager-1', 'FINANCE_MANAGER'))
         .rejects.toThrow('เอกสารไม่ครบ');
     });
 
@@ -370,7 +370,7 @@ describe('Contract Signing & Workflow', () => {
       });
       prisma.contract.findUnique.mockResolvedValue(pendingContract());
 
-      await expect(workflowService.approveContract('contract-1', 'manager-1', 'BRANCH_MANAGER'))
+      await expect(workflowService.approveContract('contract-1', 'manager-1', 'FINANCE_MANAGER'))
         .rejects.toThrow('ลายเซ็นไม่ครบ');
     });
 
@@ -395,7 +395,7 @@ describe('Contract Signing & Workflow', () => {
     it('APR-6: สัญญาไม่อยู่ PENDING_REVIEW → BadRequestException', async () => {
       prisma.contract.findUnique.mockResolvedValue(makeContract({ workflowStatus: 'CREATING' }));
 
-      await expect(workflowService.approveContract('contract-1', 'manager-1', 'BRANCH_MANAGER'))
+      await expect(workflowService.approveContract('contract-1', 'manager-1', 'FINANCE_MANAGER'))
         .rejects.toThrow(BadRequestException);
     });
 
@@ -412,7 +412,7 @@ describe('Contract Signing & Workflow', () => {
         }),
       );
 
-      await expect(workflowService.approveContract('contract-1', 'manager-1', 'BRANCH_MANAGER'))
+      await expect(workflowService.approveContract('contract-1', 'manager-1', 'FINANCE_MANAGER'))
         .rejects.toThrow('เอกสารไม่ครบ');
     });
   });
@@ -424,7 +424,7 @@ describe('Contract Signing & Workflow', () => {
     it('REJ-1: ปฏิเสธสำเร็จ → REJECTED + reviewNotes', async () => {
       prisma.contract.findUnique.mockResolvedValue(makeContract({ workflowStatus: 'PENDING_REVIEW' }));
 
-      await workflowService.rejectContract('contract-1', 'manager-1', 'BRANCH_MANAGER', 'เอกสารไม่ชัด');
+      await workflowService.rejectContract('contract-1', 'manager-1', 'FINANCE_MANAGER', 'เอกสารไม่ชัด');
       expect(prisma.contract.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
@@ -456,7 +456,7 @@ describe('Contract Signing & Workflow', () => {
     it('REJ-4: สัญญาไม่อยู่ PENDING_REVIEW → BadRequestException', async () => {
       prisma.contract.findUnique.mockResolvedValue(makeContract({ workflowStatus: 'CREATING' }));
 
-      await expect(workflowService.rejectContract('contract-1', 'manager-1', 'BRANCH_MANAGER', 'ปฏิเสธ'))
+      await expect(workflowService.rejectContract('contract-1', 'manager-1', 'FINANCE_MANAGER', 'ปฏิเสธ'))
         .rejects.toThrow(BadRequestException);
     });
   });

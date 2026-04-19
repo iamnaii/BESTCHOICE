@@ -16,6 +16,7 @@ import {
   UpsertValuationDto,
 } from './dto/trade-in.dto';
 import { TradeInVoucherService } from './services/voucher.service';
+import { encryptPII } from '../../utils/crypto.util';
 import { Prisma, PrismaClient } from '@prisma/client';
 
 // tradeInValuation is added via migration — cast prisma to any until `prisma generate` runs
@@ -28,6 +29,34 @@ export class TradeInService {
     private storage: StorageService,
     private voucher: TradeInVoucherService,
   ) {}
+
+  // ─── PII encryption helpers (Phase 3) ────────────────────
+  private get piiKey(): string {
+    return process.env.PII_ENCRYPTION_KEY || '';
+  }
+
+  /**
+   * Phase 3 dual-write: encrypt customer's bank info for trade-in payout.
+   * Returns object to spread into Prisma update data.
+   * Only includes encrypted fields when paymentMethod=TRANSFER (matches plaintext behavior).
+   */
+  private buildTradeInPiiEncryptedFields(input: {
+    paymentMethod?: string;
+    transferAccountNumber?: string | null;
+    transferAccountName?: string | null;
+  }): Record<string, unknown> {
+    const key = this.piiKey;
+    const isTransfer = input.paymentMethod === 'TRANSFER';
+    const enc = (v: string | null | undefined): string | null | undefined => {
+      if (v === undefined) return undefined;
+      if (v === null || v === '') return v;
+      return key ? encryptPII(v, key) : v;
+    };
+    return {
+      transferAccountNumberEncrypted: isTransfer ? enc(input.transferAccountNumber) : null,
+      transferAccountNameEncrypted: isTransfer ? enc(input.transferAccountName) : null,
+    };
+  }
 
   // ─── Validation helpers ───────────────────────────────────
   private validateThaiNationalId(id: string): boolean {
@@ -484,6 +513,11 @@ export class TradeInService {
             dto.paymentMethod === 'TRANSFER' ? dto.transferAccountNumber : null,
           transferAccountName:
             dto.paymentMethod === 'TRANSFER' ? dto.transferAccountName : null,
+          ...this.buildTradeInPiiEncryptedFields({
+            paymentMethod: dto.paymentMethod,
+            transferAccountNumber: dto.transferAccountNumber,
+            transferAccountName: dto.transferAccountName,
+          }),
           sellerSignatureBase64: signatureBase64 ?? undefined,
         },
       });

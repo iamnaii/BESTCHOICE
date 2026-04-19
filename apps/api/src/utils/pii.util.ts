@@ -1,4 +1,45 @@
 import { createHmac } from 'crypto';
+import { encryptPII as _encryptPII, decryptPII as _decryptPII, isEncrypted } from './crypto.util';
+
+const REFERENCE_PII_FIELDS = ['firstName', 'lastName', 'phone', 'nationalId', 'address'];
+
+/**
+ * Encrypt PII fields inside the `references` JSON array.
+ * Preserves array structure; only PII strings (firstName, lastName, phone, nationalId, address)
+ * inside each reference object are encrypted.
+ * Non-string or empty values are left as-is.
+ */
+export function encryptReferencesJson(refs: unknown, key: string): unknown {
+  if (!Array.isArray(refs)) return refs;
+  return refs.map((ref) => {
+    if (typeof ref !== 'object' || ref === null) return ref;
+    const out: Record<string, unknown> = { ...(ref as Record<string, unknown>) };
+    for (const field of REFERENCE_PII_FIELDS) {
+      if (typeof out[field] === 'string' && out[field]) {
+        out[field] = _encryptPII(out[field] as string, key);
+      }
+    }
+    return out;
+  });
+}
+
+/**
+ * Decrypt PII fields inside an already-encrypted references JSON array.
+ * Mirror of encryptReferencesJson — used by Phase 5 reads.
+ */
+export function decryptReferencesJson(refs: unknown, key: string): unknown {
+  if (!Array.isArray(refs)) return refs;
+  return refs.map((ref) => {
+    if (typeof ref !== 'object' || ref === null) return ref;
+    const out: Record<string, unknown> = { ...(ref as Record<string, unknown>) };
+    for (const field of REFERENCE_PII_FIELDS) {
+      if (typeof out[field] === 'string' && isEncrypted(out[field] as string)) {
+        out[field] = _decryptPII(out[field] as string, key);
+      }
+    }
+    return out;
+  });
+}
 
 /**
  * Deterministic hash for PII lookup. Uses HMAC-SHA-256 with PII_HASH_SALT.

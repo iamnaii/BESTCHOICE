@@ -563,6 +563,50 @@ describe('TradeInService', () => {
   });
 
   // ──────────────────────────────────────────────────────────────────────────
+  // PII dual-write (Phase 3)
+  // ──────────────────────────────────────────────────────────────────────────
+  describe('PII dual-write (Phase 3)', () => {
+    beforeEach(() => {
+      process.env.PII_ENCRYPTION_KEY = 'a'.repeat(64);
+    });
+
+    afterEach(() => {
+      delete process.env.PII_ENCRYPTION_KEY;
+    });
+
+    it('encrypts both transfer fields when paymentMethod=TRANSFER', () => {
+      const result = (service as any).buildTradeInPiiEncryptedFields({
+        paymentMethod: 'TRANSFER',
+        transferAccountNumber: '1234567890',
+        transferAccountName: 'Mr Test',
+      });
+      expect(result.transferAccountNumberEncrypted).toMatch(/^[0-9a-f]+:[0-9a-f]+$/);
+      expect(result.transferAccountNameEncrypted).toMatch(/^[0-9a-f]+:[0-9a-f]+$/);
+    });
+
+    it('returns null encrypted fields when paymentMethod=CASH', () => {
+      const result = (service as any).buildTradeInPiiEncryptedFields({
+        paymentMethod: 'CASH',
+        transferAccountNumber: undefined,
+        transferAccountName: undefined,
+      });
+      expect(result.transferAccountNumberEncrypted).toBeNull();
+      expect(result.transferAccountNameEncrypted).toBeNull();
+    });
+
+    it('skips encryption when PII_ENCRYPTION_KEY missing (dev fallback)', () => {
+      delete process.env.PII_ENCRYPTION_KEY;
+      const result = (service as any).buildTradeInPiiEncryptedFields({
+        paymentMethod: 'TRANSFER',
+        transferAccountNumber: '1234567890',
+        transferAccountName: 'Test',
+      });
+      // Falls back to plaintext when no key
+      expect(result.transferAccountNumberEncrypted).toBe('1234567890');
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
   // update — seller info guard after ACCEPTED
   // ──────────────────────────────────────────────────────────────────────────
   describe('update — seller info immutability after accept', () => {

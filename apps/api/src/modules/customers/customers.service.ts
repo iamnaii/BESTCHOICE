@@ -3,6 +3,8 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { paginatedResponse } from '../../common/helpers/pagination.helper';
 import { CreateCustomerDto, UpdateCustomerDto } from './dto/customer.dto';
+import { encryptPII } from '../../utils/crypto.util';
+import { hashPII, encryptReferencesJson } from '../../utils/pii.util';
 
 @Injectable()
 export class CustomersService {
@@ -261,6 +263,78 @@ export class CustomersService {
     }));
   }
 
+  private get piiKey(): string {
+    return process.env.PII_ENCRYPTION_KEY || '';
+  }
+
+  private get hashSalt(): string {
+    return process.env.PII_HASH_SALT || '';
+  }
+
+  /**
+   * Phase 3 dual-write: produces an object with encrypted + hash columns
+   * matching the plaintext fields in `data`. Caller spreads result into
+   * the Prisma create/update data object.
+   *
+   * Skips encryption when PII_ENCRYPTION_KEY missing (dev mode without key set).
+   * Skips hash when PII_HASH_SALT missing.
+   *
+   * Only fields explicitly present in `data` are encrypted — undefined values
+   * are NOT touched (matters for partial updates).
+   */
+  private buildPiiEncryptedFields(data: {
+    nationalId?: string | null;
+    phone?: string | null;
+    phoneSecondary?: string | null;
+    email?: string | null;
+    addressIdCard?: string | null;
+    addressCurrent?: string | null;
+    addressWork?: string | null;
+    guardianNationalId?: string | null;
+    guardianPhone?: string | null;
+    guardianAddress?: string | null;
+    references?: unknown;
+  }): Record<string, unknown> {
+    const key = this.piiKey;
+    const salt = this.hashSalt;
+    const out: Record<string, unknown> = {};
+
+    const enc = (v: string | null | undefined): string | null | undefined => {
+      if (v === undefined) return undefined;
+      if (v === null || v === '') return v;
+      return key ? encryptPII(v, key) : v;
+    };
+    const hsh = (v: string | null | undefined): string | null | undefined => {
+      if (v === undefined) return undefined;
+      if (v === null || v === '') return v;
+      return salt ? hashPII(v, salt) : v;
+    };
+
+    if (data.nationalId !== undefined) {
+      out.nationalIdEncrypted = enc(data.nationalId);
+      out.nationalIdHash = hsh(data.nationalId);
+    }
+    if (data.phone !== undefined) {
+      out.phoneEncrypted = enc(data.phone);
+      out.phoneHash = hsh(data.phone);
+    }
+    if (data.phoneSecondary !== undefined) out.phoneSecondaryEncrypted = enc(data.phoneSecondary);
+    if (data.email !== undefined) out.emailEncrypted = enc(data.email);
+    if (data.addressIdCard !== undefined) out.addressIdCardEncrypted = enc(data.addressIdCard);
+    if (data.addressCurrent !== undefined) out.addressCurrentEncrypted = enc(data.addressCurrent);
+    if (data.addressWork !== undefined) out.addressWorkEncrypted = enc(data.addressWork);
+    if (data.guardianNationalId !== undefined)
+      out.guardianNationalIdEncrypted = enc(data.guardianNationalId);
+    if (data.guardianPhone !== undefined) out.guardianPhoneEncrypted = enc(data.guardianPhone);
+    if (data.guardianAddress !== undefined) out.guardianAddressEncrypted = enc(data.guardianAddress);
+    if (data.references !== undefined) {
+      out.referencesEncrypted =
+        key && data.references ? encryptReferencesJson(data.references, key) : data.references;
+    }
+
+    return out;
+  }
+
   /**
    * Normalize NID/passport for dedup. Strips spaces, dashes, then uppercases.
    * "1-1234-56789-00-1" → "1123456789001". Without this, the @unique constraint
@@ -375,12 +449,26 @@ export class CustomersService {
     // T3-C9: reject duplicate phone / email at application level.
     await this.assertContactNotDuplicate(normalizedPhone, normalizedEmail);
 
-    const data: Prisma.CustomerCreateInput = {
+    const dataPlaintext = {
       ...dto,
       nationalId: normalizedNid,
       phone: normalizedPhone ?? dto.phone,
       phoneSecondary: normalizedPhoneSecondary ?? dto.phoneSecondary ?? null,
       email: normalizedEmail ?? dto.email ?? null,
+    };
+    const piiEncrypted = this.buildPiiEncryptedFields({
+      nationalId: dataPlaintext.nationalId,
+      phone: dataPlaintext.phone,
+      phoneSecondary: dataPlaintext.phoneSecondary,
+      email: dataPlaintext.email,
+      addressIdCard: dto.addressIdCard,
+      addressCurrent: dto.addressCurrent,
+      addressWork: dto.addressWork,
+      references: dto.references,
+    });
+    const data: Prisma.CustomerCreateInput = {
+      ...dataPlaintext,
+      ...(piiEncrypted as Partial<Prisma.CustomerCreateInput>),
       references: dto.references !== undefined
         ? (dto.references as Prisma.InputJsonValue)
         : undefined,
@@ -406,6 +494,22 @@ export class CustomersService {
       id,
     );
 
+    // Compute final plaintext values for fields being updated
+    const finalPhone = normalizedPhone !== undefined ? (normalizedPhone ?? dto.phone) : undefined;
+    const finalPhoneSecondary = normalizedPhoneSecondary;
+    const finalEmail = normalizedEmail;
+
+    const piiEncrypted = this.buildPiiEncryptedFields({
+      // nationalId not in UpdateDto by design — never updated
+      phone: finalPhone,
+      phoneSecondary: finalPhoneSecondary,
+      email: finalEmail,
+      addressIdCard: dto.addressIdCard,
+      addressCurrent: dto.addressCurrent,
+      addressWork: dto.addressWork,
+      references: dto.references,
+    });
+
     const data: Prisma.CustomerUpdateInput = {
       ...dto,
       ...(normalizedPhone !== undefined ? { phone: normalizedPhone ?? dto.phone } : {}),
@@ -413,6 +517,7 @@ export class CustomersService {
         ? { phoneSecondary: normalizedPhoneSecondary }
         : {}),
       ...(normalizedEmail !== undefined ? { email: normalizedEmail } : {}),
+      ...(piiEncrypted as Partial<Prisma.CustomerUpdateInput>),
       references: dto.references !== undefined
         ? (dto.references as Prisma.InputJsonValue)
         : undefined,

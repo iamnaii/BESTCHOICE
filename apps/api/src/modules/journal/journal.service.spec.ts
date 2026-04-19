@@ -131,6 +131,13 @@ describe('JournalService.post — SoD enforcement', () => {
         findFirst: jest.fn().mockResolvedValue(balancedEntry('u-author')),
         update: jest.fn((args) => Promise.resolve({ ...balancedEntry('u-author'), ...args.data })),
       },
+      journalPostAuditLog: {
+        create: jest.fn().mockResolvedValue({ id: 'jpal-1' }),
+      },
+      // post() now wraps update + audit insert in a $transaction so a
+      // failed audit row rolls the post back.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      $transaction: jest.fn(async (cb: (tx: any) => Promise<unknown>) => cb(prisma)),
     };
     const mod: TestingModule = await Test.createTestingModule({
       providers: [JournalService, { provide: PrismaService, useValue: prisma }],
@@ -162,5 +169,32 @@ describe('JournalService.post — SoD enforcement', () => {
       status: 'POSTED',
     });
     await expect(service.post('je-1', 'u-reviewer')).rejects.toThrow(BadRequestException);
+  });
+
+  // T2-C14 — post() writes an immutable JournalPostAuditLog row in the
+  // same $transaction. Failure of that insert rolls the post back.
+  it('writes JournalPostAuditLog row in the same $transaction as the post', async () => {
+    await service.post('je-1', 'u-reviewer', {
+      ipAddress: '10.0.0.1',
+      userAgent: 'jest',
+    });
+    expect(prisma.journalPostAuditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          journalEntryId: 'je-1',
+          postedById: 'u-reviewer',
+          ipAddress: '10.0.0.1',
+          userAgent: 'jest',
+        }),
+      }),
+    );
+    // audit + update must share a transaction (both inside the $transaction cb)
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('rolls the post back if JournalPostAuditLog insert fails', async () => {
+    prisma.journalPostAuditLog.create.mockRejectedValue(new Error('audit insert failed'));
+    // Simulate transactional rollback: $transaction propagates the throw.
+    await expect(service.post('je-1', 'u-reviewer')).rejects.toThrow(/audit insert failed/);
   });
 });

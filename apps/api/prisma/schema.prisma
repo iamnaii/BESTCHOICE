@@ -809,6 +809,11 @@ model Refund {
   bankReversalRef String?     @map("bank_reversal_ref")
   bankReversalAt  DateTime?   @map("bank_reversal_at")
   bankReversalNotes String?   @map("bank_reversal_notes")
+  /// T1-C8: once bankReversalRef is first written, this row is frozen.
+  /// Any subsequent attempt to mutate bankReversalRef / bankReversalAt is
+  /// rejected in the service layer. Prevents staff from silently editing
+  /// the bank evidence after the fact (reg auditors care about this).
+  bankReversalLockedAt DateTime? @map("bank_reversal_locked_at")
   failureReason   String?     @map("failure_reason")
 
   createdAt DateTime  @default(now()) @map("created_at")
@@ -2440,6 +2445,7 @@ model JournalEntry {
   lines     JournalLine[]
   createdBy User          @relation("JournalCreatedBy", fields: [createdById], references: [id])
   postedBy  User?         @relation("JournalPostedBy", fields: [postedById], references: [id])
+  postAuditLogs JournalPostAuditLog[]
 
   @@index([companyId])
   @@index([entryDate])
@@ -2449,6 +2455,27 @@ model JournalEntry {
   @@map("journal_entries")
   // Partial unique index enforced via migration (CREATE UNIQUE INDEX ... WHERE reference_type IS NOT NULL)
   // Prisma cannot express partial @@unique; see migration 20260428010000_journal_entries_ref_unique
+}
+
+/// T2-C14: Immutable audit log of every DRAFT→POSTED transition on
+/// JournalEntry. Inserted in the SAME $transaction as the post() update so
+/// that a failed audit-log insert rolls the post back. updatedAt/deletedAt
+/// intentionally omitted (immutable audit log — append-only).
+model JournalPostAuditLog {
+  id             String   @id @default(uuid())
+  journalEntryId String   @map("journal_entry_id")
+  postedById     String   @map("posted_by_id")
+  postedAt       DateTime @map("posted_at")
+  ipAddress      String?  @map("ip_address")
+  userAgent      String?  @map("user_agent")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  journalEntry JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
+
+  @@index([journalEntryId])
+  @@index([postedById])
+  @@index([postedAt])
+  @@map("journal_post_audit_logs")
 }
 
 model JournalLine {

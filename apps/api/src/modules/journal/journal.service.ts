@@ -197,7 +197,11 @@ export class JournalService {
     return entry;
   }
 
-  async post(id: string, userId: string) {
+  async post(
+    id: string,
+    userId: string,
+    meta: { ipAddress?: string; userAgent?: string } = {},
+  ) {
     const entry = await this.findOne(id);
 
     if (entry.status !== 'DRAFT') {
@@ -228,14 +232,34 @@ export class JournalService {
       throw new BadRequestException('ยอดเดบิตและเครดิตไม่สมดุล');
     }
 
-    return this.prisma.journalEntry.update({
-      where: { id },
-      data: {
-        status: 'POSTED',
-        postedAt: new Date(),
-        postedById: userId,
-      },
-      include: { lines: true },
+    // T2-C14: write the immutable JournalPostAuditLog row inside the same
+    // $transaction as the post. If the audit insert fails for any reason
+    // (FK breakage, trigger rejection, DB outage mid-call) the post() is
+    // rolled back so we never end up with a POSTED entry that has no
+    // corresponding audit row.
+    const postedAt = new Date();
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.journalEntry.update({
+        where: { id },
+        data: {
+          status: 'POSTED',
+          postedAt,
+          postedById: userId,
+        },
+        include: { lines: true },
+      });
+
+      await tx.journalPostAuditLog.create({
+        data: {
+          journalEntryId: id,
+          postedById: userId,
+          postedAt,
+          ipAddress: meta.ipAddress ?? null,
+          userAgent: meta.userAgent ?? null,
+        },
+      });
+
+      return updated;
     });
   }
 

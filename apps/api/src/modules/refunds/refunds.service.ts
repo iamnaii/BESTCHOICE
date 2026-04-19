@@ -192,14 +192,25 @@ export class RefundsService {
         `สิทธิ์บันทึก bank reversal เฉพาะ ${RefundsService.APPROVER_ROLES.join(' / ')}`,
       );
     }
+    // T1-C8: bank reversal is write-once. If bankReversalRef is already set
+    // (or the lock timestamp exists), reject further writes outright so staff
+    // can't silently edit the bank evidence after the fact.
+    if (refund.bankReversalLockedAt || refund.bankReversalRef) {
+      throw new BadRequestException(
+        'ข้อมูล bank reversal ถูกล็อคแล้วหลังจากบันทึกครั้งแรก — แก้ไขไม่ได้',
+      );
+    }
 
+    const now = new Date();
     const updated = await this.prisma.refund.update({
       where: { id: refundId },
       data: {
         status: 'PROCESSED',
         bankReversalRef: dto.bankReversalRef,
-        bankReversalAt: new Date(),
+        bankReversalAt: now,
         bankReversalNotes: dto.notes,
+        // T1-C8 — freeze bankReversalRef / bankReversalAt on first write.
+        bankReversalLockedAt: now,
       },
     });
 

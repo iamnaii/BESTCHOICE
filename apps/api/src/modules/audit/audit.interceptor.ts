@@ -21,7 +21,30 @@ export class AuditInterceptor implements NestInterceptor {
     'email', 'lineId', 'lineUserId',
     'address', 'currentAddress', 'registeredAddress',
     'bankAccount', 'bankAccountNumber', 'accountNumber',
+    // T2-C15: integration secrets stored under SystemConfig or passed in
+    // third-party webhook payloads. These leak through the audit log as
+    // "newValue" otherwise.
+    'bankApiKey', 'paymentGateway', 'peakSecretKey', 'mdmApiKey',
+    'connectId', 'userToken', 'appSecret', 'webhookSecret',
+    'secretKey', 'smsApiSecret',
   ];
+
+  /**
+   * T2-C15: pattern-match catch-all for secret-shaped keys we haven't
+   * listed explicitly (e.g. `xyzApiKey`, `someSecret`, `myToken`). Keeps
+   * us safe when new fields are added to SystemConfig without touching
+   * this file.
+   */
+  private static readonly SENSITIVE_FIELD_PATTERNS: RegExp[] = [
+    /secret/i,
+    /apikey/i,
+    /token/i,
+  ];
+
+  private static isSensitiveKey(key: string): boolean {
+    if (AuditInterceptor.SENSITIVE_FIELDS.includes(key)) return true;
+    return AuditInterceptor.SENSITIVE_FIELD_PATTERNS.some((re) => re.test(key));
+  }
 
   constructor(private auditService: AuditService) {}
 
@@ -122,12 +145,16 @@ export class AuditInterceptor implements NestInterceptor {
   private sanitizeBody(body: Record<string, unknown>): Record<string, unknown> | undefined {
     if (!body || typeof body !== 'object' || Object.keys(body).length === 0) return undefined;
     const sanitized = { ...body };
-    for (const field of AuditInterceptor.SENSITIVE_FIELDS) {
-      if (field in sanitized) {
-        sanitized[field] = '[REDACTED]';
+    // T2-C15: redact by exact name OR by regex match (e.g. xyzApiKey,
+    // someSecret). Covers the SystemConfig integration-secrets surface
+    // without having to enumerate every possible key.
+    for (const key of Object.keys(sanitized)) {
+      if (AuditInterceptor.isSensitiveKey(key)) {
+        sanitized[key] = '[REDACTED]';
       }
     }
     for (const [key, value] of Object.entries(sanitized)) {
+      if (sanitized[key] === '[REDACTED]') continue;
       if (typeof value === 'string' && value.startsWith('data:image/')) {
         sanitized[key] = '[IMAGE_DATA]';
       } else if (Array.isArray(value)) {

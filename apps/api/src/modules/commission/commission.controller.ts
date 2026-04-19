@@ -1,4 +1,14 @@
-import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Param,
+  Body,
+  Query,
+  Headers,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { CommissionService } from './commission.service';
 import { CreateCommissionRuleDto, UpdateCommissionRuleDto } from './dto/commission.dto';
@@ -78,9 +88,16 @@ export class CommissionController {
   updateRule(
     @Param('id') id: string,
     @Body() dto: UpdateCommissionRuleDto,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: { id: string; role: string },
+    @Headers('x-retroactive-approval') retroactiveApproval?: string,
   ) {
-    return this.commissionService.updateRule(id, dto, user.id);
+    // T2-C16 — retroactive rate change requires OWNER + explicit
+    // X-Retroactive-Approval: true header. Any other truthy value is
+    // rejected too, so a sloppy "yes" or "1" in the header won't bypass.
+    return this.commissionService.updateRule(id, dto, user.id, {
+      role: user.role,
+      retroactiveApproval: retroactiveApproval?.toLowerCase() === 'true',
+    });
   }
 
   // ============================================================

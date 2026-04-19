@@ -270,6 +270,20 @@ export class AccountingService {
       throw new BadRequestException('ไม่สามารถแก้ไขรายจ่ายที่อนุมัติหรือจ่ายแล้ว');
     }
 
+    // T2-C12: once a staff member submits the expense for approval, the
+    // monetary fields (amount, vatAmount, withholdingTax) are frozen. Only
+    // description-like metadata may still be edited. Prevents silently
+    // bumping a number between submission and approval. (APPROVED / PAID
+    // are already fully blocked above — this catches PENDING_APPROVAL.)
+    if (
+      expense.status === 'PENDING_APPROVAL' &&
+      (dto.amount !== undefined || dto.vatAmount !== undefined || dto.withholdingTax !== undefined)
+    ) {
+      throw new BadRequestException(
+        'แก้ไขจำนวนเงิน / VAT / ภาษีหัก ณ ที่จ่าย ไม่ได้เมื่อรายจ่ายอยู่ในสถานะรออนุมัติ — ยกเลิกการส่งอนุมัติก่อน',
+      );
+    }
+
     const data: Prisma.ExpenseUpdateInput = {};
     if (dto.accountType !== undefined) data.accountType = dto.accountType;
     if (dto.category !== undefined) {

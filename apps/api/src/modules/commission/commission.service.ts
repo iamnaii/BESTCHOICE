@@ -18,7 +18,13 @@ export class CommissionService {
   constructor(private prisma: PrismaService) {}
 
   /**
-   * Create a sales commission record for a sale
+   * Create a sales commission record for a sale.
+   *
+   * T5-C19: if a commissionRuleId is provided we snapshot the rule's current
+   * updatedAt timestamp into ruleVersionId. At approve() time we re-read the
+   * rule and reject if rate drifted — protecting against the case where a
+   * manager retroactively bumps a rule while PENDING commissions still
+   * reference the old rate snapshot.
    */
   async createCommissionForSale(
     saleId: string,
@@ -26,6 +32,7 @@ export class CommissionService {
     saleAmount: number,
     commissionRate: number,
     contractId?: string,
+    commissionRuleId?: string,
   ) {
     const now = new Date();
     const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -35,11 +42,25 @@ export class CommissionService {
       .mul(commissionRate)
       .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
 
+    // Capture rule version for audit + approve-time re-validation.
+    let ruleVersionId: string | null = null;
+    if (commissionRuleId) {
+      const rule = await this.prisma.commissionRule.findFirst({
+        where: { id: commissionRuleId, deletedAt: null },
+        select: { updatedAt: true },
+      });
+      if (rule) {
+        ruleVersionId = rule.updatedAt.toISOString();
+      }
+    }
+
     return this.prisma.salesCommission.create({
       data: {
         salespersonId,
         contractId: contractId || null,
         saleId,
+        commissionRuleId: commissionRuleId || null,
+        ruleVersionId,
         period,
         saleAmount,
         commissionRate,
@@ -148,7 +169,15 @@ export class CommissionService {
   }
 
   /**
-   * Approve a pending commission
+   * Approve a pending commission.
+   *
+   * T5-C19: re-read the linked CommissionRule and reject if the current rate
+   * differs from the snapshotted commissionRate on this row. Prevents the
+   * scenario where a rule is edited after a commission was created —
+   * approving the stale snapshot would silently pay the wrong amount.
+   * T2-C5 already blocks rule rate changes while PENDING commissions exist
+   * for the current period, but this is belt-and-suspenders for cross-period
+   * or soft-deleted-rule edge cases.
    */
   async approve(id: string, userId: string) {
     const commission = await this.prisma.salesCommission.findFirst({
@@ -165,6 +194,21 @@ export class CommissionService {
       throw new ForbiddenException(
         'ผู้อนุมัติต้องไม่ใช่ผู้รับคอมมิชชัน (Segregation of Duties)',
       );
+    }
+
+    // T5-C19: rate snapshot validation. Only when the commission carries a
+    // rule reference — legacy rows without commissionRuleId are approved
+    // using their snapshotted rate (unchanged behaviour).
+    if (commission.commissionRuleId) {
+      const rule = await this.prisma.commissionRule.findFirst({
+        where: { id: commission.commissionRuleId, deletedAt: null },
+        select: { rate: true },
+      });
+      if (rule && !rule.rate.equals(new Prisma.Decimal(commission.commissionRate))) {
+        throw new ConflictException(
+          `อัตราคอมมิชชันในกฎถูกแก้ไขหลังสร้างรายการนี้ (snapshot ${commission.commissionRate.toString()} → ปัจจุบัน ${rule.rate.toString()}) — กรุณาคำนวณใหม่ก่อนอนุมัติ`,
+        );
+      }
     }
 
     return this.prisma.salesCommission.update({

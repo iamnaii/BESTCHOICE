@@ -256,7 +256,8 @@ jobs:
           PAYSOLUTIONS_TERMINAL_ID=TID00001,\
           GCS_BUCKET=bestchoice-documents,\
           API_BASE_URL=https://api.bestchoicephone.app,\
-          LIFF_CHANNEL_ID=2009442540" \
+          LIFF_CHANNEL_ID=2009442540,\
+          SMS_PAYMENT_REMINDER_DISABLED=true" \
             --set-cloudsql-instances=${{ secrets.CLOUD_SQL_CONNECTION_NAME }} \
             --allow-unauthenticated
 

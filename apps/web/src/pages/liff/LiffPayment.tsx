@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router';
 import { formatDateShort, formatDateTime } from '@/utils/formatters';
 import {
@@ -20,6 +20,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { liffApi } from '@/lib/api';
 import { LIFF_ERRORS, validateSlipFile } from '@/constants/liff-errors';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 
 import type { LiffPaymentLinkData as PaymentLinkData } from '@installment/shared';
 
@@ -129,7 +130,7 @@ export default function LiffPayment() {
   const pollInterval = pollCount < 10 ? 3000 : pollCount < 30 ? 5000 : 10000;
   const isPolling = !!activePaymentId && view === 'gateway-pending' && pollCount < MAX_POLL_ATTEMPTS;
 
-  const { data: paymentStatus } = useQuery<PaymentStatusResult>({
+  const { data: paymentStatus, isError: pollErrored } = useQuery<PaymentStatusResult>({
     queryKey: ['payment-status', activePaymentId],
     queryFn: async () => {
       setPollCount((c) => c + 1);
@@ -141,7 +142,22 @@ export default function LiffPayment() {
     enabled: isPolling,
     refetchInterval: isPolling ? pollInterval : false,
     refetchIntervalInBackground: false,
+    retry: 3,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
   });
+
+  const online = useOnlineStatus();
+  const wasOffline = useRef(false);
+  useEffect(() => {
+    if (!online) {
+      wasOffline.current = true;
+      return;
+    }
+    if (wasOffline.current) {
+      toast.success('เชื่อมต่ออินเทอร์เน็ตอีกครั้งแล้ว');
+      wasOffline.current = false;
+    }
+  }, [online]);
 
   // Watch payment status changes
   useEffect(() => {
@@ -480,6 +496,18 @@ export default function LiffPayment() {
               <p className="text-xs text-muted-foreground mt-2">
                 เลขอ้างอิง: <span className="font-mono">{gatewayRef}</span>
               </p>
+            )}
+
+            {/* Connection recovery banner: offline or poll error while still polling */}
+            {isPolling && (!online || pollErrored) && (
+              <div className="mt-4 bg-muted/70 border border-border rounded-lg p-3 text-sm text-muted-foreground flex items-center gap-2 justify-center">
+                <Loader2 className="size-4 animate-spin" />
+                <span>
+                  {!online
+                    ? 'ไม่ได้เชื่อมต่ออินเทอร์เน็ต — กำลังรอสัญญาณ...'
+                    : 'เชื่อมต่อไม่เสถียร กำลังลองใหม่...'}
+                </span>
+              </div>
             )}
 
             {/* Polling indicator */}

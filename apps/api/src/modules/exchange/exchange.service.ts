@@ -85,7 +85,12 @@ export class ExchangeService {
   }
 
   /**
-   * Execute device exchange: close old contract + create new one
+   * Execute device exchange: close old contract + create new one.
+   *
+   * T5-C10 anti-abuse guards:
+   *   - reason=DEFECT requires ≥ 3 photos as evidence
+   *   - Max 1 exchange per contract (no repeat swaps)
+   *   - Max 2 exchanges per customer per rolling 12 months
    */
   async executeExchange(dto: CreateExchangeDto, userId: string) {
     return this.prisma.$transaction(async (tx) => {
@@ -98,6 +103,57 @@ export class ExchangeService {
       if (!oldContract || oldContract.deletedAt) throw new NotFoundException('ไม่พบสัญญาเดิม');
       if (!['ACTIVE', 'OVERDUE'].includes(oldContract.status)) {
         throw new BadRequestException('สัญญานี้ไม่สามารถเปลี่ยนเครื่องได้');
+      }
+
+      // Defect-reason photo evidence (T5-C10)
+      if (dto.reason === 'DEFECT') {
+        const photoCount = dto.defectPhotos?.length ?? 0;
+        if (photoCount < 3) {
+          throw new BadRequestException(
+            'ต้องแนบรูปหลักฐาน defect อย่างน้อย 3 รูป (อัปโหลดรูปแล้วส่ง URL มาใน defectPhotos)',
+          );
+        }
+      }
+
+      // Frequency cap 1: one exchange per contract.
+      // Exchanges aren't a separate table — they flip the old contract to
+      // EXCHANGED and spawn a new contract with parentContractId pointing at
+      // the old one. So "already exchanged" means either (a) the old contract
+      // already has status EXCHANGED, or (b) some contract has the old id as
+      // parentContractId.
+      if (oldContract.status === 'EXCHANGED') {
+        throw new BadRequestException(
+          'สัญญานี้เปลี่ยนเครื่องไปแล้ว — ห้ามเปลี่ยนซ้ำ',
+        );
+      }
+      const priorExchangeOfThisContract = await tx.contract.count({
+        where: { parentContractId: dto.oldContractId, deletedAt: null },
+      });
+      if (priorExchangeOfThisContract > 0) {
+        throw new BadRequestException(
+          'สัญญานี้มีการเปลี่ยนเครื่องแล้ว — ติดต่อหัวหน้างานเพื่อขอ override',
+        );
+      }
+
+      // Frequency cap 2: ≤ 2 exchanges per customer per 12 months.
+      // An exchange leaves a new contract whose parentContractId points at
+      // the previous contract for that customer — count those in the window.
+      if (oldContract.customerId) {
+        const yearAgo = new Date();
+        yearAgo.setFullYear(yearAgo.getFullYear() - 1);
+        const customerExchanges = await tx.contract.count({
+          where: {
+            customerId: oldContract.customerId,
+            parentContractId: { not: null },
+            createdAt: { gte: yearAgo },
+            deletedAt: null,
+          },
+        });
+        if (customerExchanges >= 2) {
+          throw new BadRequestException(
+            'ลูกค้ารายนี้เปลี่ยนเครื่อง 2 ครั้งใน 12 เดือนแล้ว — ต้องได้รับอนุมัติจาก OWNER',
+          );
+        }
       }
 
       // Validate new product

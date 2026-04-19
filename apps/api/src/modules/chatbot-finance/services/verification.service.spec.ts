@@ -210,4 +210,74 @@ describe('VerificationService', () => {
       expect(result.linked).toBe(false);
     });
   });
+
+  // ─────────────────────────────────────────────────────────────
+  // T4-C9: per-lineUserId lookup rate limit
+  // ─────────────────────────────────────────────────────────────
+  describe('T4-C9 per-lineUserId lookup rate limit', () => {
+    beforeEach(() => {
+      service._resetLookupTrackerForTests();
+    });
+
+    it('allows 3 successful lookups in a row (counter clears on success)', async () => {
+      prisma.customer.findFirst.mockResolvedValue({
+        id: 'c1',
+        name: 'สมชาย',
+        phone: '0891234567',
+      });
+
+      for (let i = 0; i < 3; i++) {
+        await expect(
+          service.requestOtp({ lineUserId: 'U-success', phone: '0891234567' }),
+        ).resolves.toBeDefined();
+        // reset cooldown row so next iteration isn't blocked by it
+        prisma.chatbotOtpRequest.findUnique.mockResolvedValue(null);
+      }
+      expect(notifications.sendSmsFromQueue).toHaveBeenCalledTimes(3);
+    });
+
+    it('locks lineUserId after 3 failed lookups', async () => {
+      // Unknown phone — service throws on each call
+      prisma.customer.findFirst.mockResolvedValue(null);
+
+      // 3 failing lookups
+      for (let i = 0; i < 3; i++) {
+        await expect(
+          service.requestOtp({ lineUserId: 'U-bad', phone: '0810000000' }),
+        ).rejects.toThrow(BadRequestException);
+      }
+
+      // 4th attempt — locked message ("รออีก … วินาที")
+      await expect(
+        service.requestOtp({ lineUserId: 'U-bad', phone: '0810000000' }),
+      ).rejects.toThrow(/รออีก/);
+    });
+
+    it('lock expires after 30 minutes (jest fake timers)', async () => {
+      jest.useFakeTimers();
+      try {
+        prisma.customer.findFirst.mockResolvedValue(null);
+        for (let i = 0; i < 3; i++) {
+          await expect(
+            service.requestOtp({ lineUserId: 'U-exp', phone: '0810000000' }),
+          ).rejects.toThrow(BadRequestException);
+        }
+
+        // Immediately locked
+        await expect(
+          service.requestOtp({ lineUserId: 'U-exp', phone: '0810000000' }),
+        ).rejects.toThrow(/รออีก/);
+
+        // Advance 31 minutes — lock should be released
+        jest.advanceTimersByTime(31 * 60 * 1000);
+
+        // Now we're back to "normal not-found" behavior
+        await expect(
+          service.requestOtp({ lineUserId: 'U-exp', phone: '0810000000' }),
+        ).rejects.toThrow(/ไม่พบเบอร์โทรนี้ในระบบ/);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+  });
 });

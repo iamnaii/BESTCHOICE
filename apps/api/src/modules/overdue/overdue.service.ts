@@ -294,10 +294,27 @@ export class OverdueService {
           },
         },
       },
-      select: { id: true },
+      select: { id: true, blockAutoEscalation: true },
     });
 
-    const activeIds = activeContracts.map((c) => c.id);
+    // T3-C11: skip contracts that have an active manual hold OR had a
+    // PROMISED call log in the last 24h. Rationale: staff is in the middle
+    // of a recovery conversation — auto-flipping the status would look
+    // schizophrenic to the customer and undermine the promise-to-pay.
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const recentlyPromised = await this.prisma.callLog.findMany({
+      where: {
+        contractId: { in: activeContracts.map((c) => c.id) },
+        result: 'PROMISED',
+        calledAt: { gte: yesterday },
+      },
+      select: { contractId: true },
+    });
+    const promisedIds = new Set(recentlyPromised.map((c) => c.contractId));
+    const activeIds = activeContracts
+      .filter((c) => !(c.blockAutoEscalation && c.blockAutoEscalation > now))
+      .filter((c) => !promisedIds.has(c.id))
+      .map((c) => c.id);
     let overdueUpdated = 0;
 
     if (activeIds.length > 0) {
@@ -707,6 +724,59 @@ export class OverdueService {
     const totalAmount = result.reduce((sum, s) => sum + s.totalAmount, 0);
 
     return { stages: result, totalContracts, totalAmount };
+  }
+
+  /**
+   * T3-C11: Place a manual hold on auto-escalation for a contract. Blocks
+   * the overdue cron from flipping status/stages while a human is actively
+   * working the customer. Default hold is 48h from now.
+   *
+   * Roles: OWNER / FINANCE_MANAGER / BRANCH_MANAGER — anyone below that has
+   * no business overriding collections automation.
+   */
+  async holdAutoEscalation(
+    contractId: string,
+    userId: string,
+    userRole: string,
+    hoursFromNow = 48,
+  ) {
+    const allowed = ['OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER'];
+    if (!allowed.includes(userRole)) {
+      throw new ForbiddenException(
+        `สิทธิ์กด hold escalation เฉพาะ ${allowed.join(' / ')}`,
+      );
+    }
+    if (!Number.isFinite(hoursFromNow) || hoursFromNow <= 0 || hoursFromNow > 168) {
+      throw new BadRequestException('ระยะเวลา hold ต้องอยู่ระหว่าง 1 ถึง 168 ชั่วโมง');
+    }
+
+    const contract = await this.prisma.contract.findFirst({
+      where: { id: contractId, deletedAt: null },
+      select: { id: true, contractNumber: true, blockAutoEscalation: true },
+    });
+    if (!contract) throw new NotFoundException('ไม่พบสัญญา');
+
+    const now = new Date();
+    const until = new Date(now.getTime() + hoursFromNow * 60 * 60 * 1000);
+
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.contract.update({
+        where: { id: contractId },
+        data: { blockAutoEscalation: until },
+      }),
+      this.prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'HOLD_AUTO_ESCALATION',
+          entity: 'contract',
+          entityId: contractId,
+          oldValue: { blockAutoEscalation: contract.blockAutoEscalation },
+          newValue: { blockAutoEscalation: until, hoursFromNow },
+        },
+      }),
+    ]);
+
+    return { ...updated, holdUntil: until };
   }
 
   /**

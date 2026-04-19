@@ -160,3 +160,129 @@ describe('OverdueService.approveDunningEscalation (T4-C2)', () => {
     );
   });
 });
+
+// ─────────────────────────────────────────────────────────────
+// T3-C11: manual hold on auto-escalation cron
+// ─────────────────────────────────────────────────────────────
+describe('OverdueService.updateContractStatuses (T3-C11 hold guard)', () => {
+  let service: OverdueService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let prisma: any;
+
+  const setupService = async () => {
+    const mod = await Test.createTestingModule({
+      providers: [OverdueService, { provide: PrismaService, useValue: prisma }],
+    }).compile();
+    service = mod.get(OverdueService);
+  };
+
+  beforeEach(async () => {
+    prisma = {
+      contract: {
+        findMany: jest.fn(),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      callLog: { findMany: jest.fn().mockResolvedValue([]) },
+      user: { findFirst: jest.fn().mockResolvedValue({ id: 'owner-1' }) },
+      systemConfig: { findUnique: jest.fn().mockResolvedValue({ value: '7' }) },
+      payment: { aggregate: jest.fn() },
+      auditLog: { createMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
+    };
+    await setupService();
+  });
+
+  it('escalates contracts with no hold and no recent PROMISED', async () => {
+    prisma.contract.findMany.mockResolvedValueOnce([
+      { id: 'c-1', blockAutoEscalation: null },
+    ]);
+    prisma.callLog.findMany.mockResolvedValue([]);
+
+    const result = await service.updateContractStatuses();
+    expect(result.overdueUpdated).toBe(1);
+    expect(prisma.contract.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { status: 'OVERDUE' } }),
+    );
+  });
+
+  it('skips contracts with active blockAutoEscalation', async () => {
+    const future = new Date(Date.now() + 48 * 60 * 60 * 1000);
+    prisma.contract.findMany.mockResolvedValueOnce([
+      { id: 'c-1', blockAutoEscalation: future },
+    ]);
+    prisma.callLog.findMany.mockResolvedValue([]);
+
+    const result = await service.updateContractStatuses();
+    expect(result.overdueUpdated).toBe(0);
+    expect(prisma.contract.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('re-escalates after the hold expires', async () => {
+    const past = new Date(Date.now() - 60 * 1000);
+    prisma.contract.findMany.mockResolvedValueOnce([
+      { id: 'c-1', blockAutoEscalation: past },
+    ]);
+    prisma.callLog.findMany.mockResolvedValue([]);
+
+    const result = await service.updateContractStatuses();
+    expect(result.overdueUpdated).toBe(1);
+  });
+
+  it('skips contracts with a PROMISED call log in last 24h', async () => {
+    prisma.contract.findMany.mockResolvedValueOnce([
+      { id: 'c-1', blockAutoEscalation: null },
+    ]);
+    prisma.callLog.findMany.mockResolvedValue([{ contractId: 'c-1' }]);
+
+    const result = await service.updateContractStatuses();
+    expect(result.overdueUpdated).toBe(0);
+    expect(prisma.contract.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('OverdueService.holdAutoEscalation (T3-C11)', () => {
+  let service: OverdueService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let prisma: any;
+
+  beforeEach(async () => {
+    prisma = {
+      contract: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'c-1',
+          contractNumber: 'BC-001',
+          blockAutoEscalation: null,
+        }),
+        update: jest.fn().mockResolvedValue({ id: 'c-1' }),
+      },
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
+      $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
+    };
+    const mod = await Test.createTestingModule({
+      providers: [OverdueService, { provide: PrismaService, useValue: prisma }],
+    }).compile();
+    service = mod.get(OverdueService);
+  });
+
+  it('sets blockAutoEscalation to now+48h by default for BM', async () => {
+    const before = Date.now();
+    const result = await service.holdAutoEscalation('c-1', 'u-1', 'BRANCH_MANAGER');
+    const until = (result as { holdUntil: Date }).holdUntil.getTime();
+    expect(until - before).toBeGreaterThan(47 * 60 * 60 * 1000);
+    expect(until - before).toBeLessThan(49 * 60 * 60 * 1000);
+  });
+
+  it('rejects SALES role (insufficient privilege)', async () => {
+    const { ForbiddenException } = await import('@nestjs/common');
+    await expect(
+      service.holdAutoEscalation('c-1', 'u-1', 'SALES'),
+    ).rejects.toThrow(ForbiddenException);
+  });
+
+  it('rejects hoursFromNow > 168 (1 week max)', async () => {
+    await expect(
+      service.holdAutoEscalation('c-1', 'u-1', 'OWNER', 200),
+    ).rejects.toThrow(BadRequestException);
+  });
+});

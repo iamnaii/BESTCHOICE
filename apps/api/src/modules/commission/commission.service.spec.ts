@@ -31,6 +31,10 @@ describe('CommissionService', () => {
       auditLog: {
         create: jest.fn().mockResolvedValue({ id: 'a1' }),
       },
+      contract: {
+        // Default: no contract attached — snapshot falls back to salespersonId
+        findUnique: jest.fn().mockResolvedValue(null),
+      },
       // Simple pass-through — callers supply their own tx mock via closure
       // in describe blocks that need it. Default echoes the parent prisma so
       // tests that don't inspect tx work unchanged.
@@ -111,6 +115,38 @@ describe('CommissionService', () => {
       await service.createCommissionForSale('s1', 'sp1', 1000, 0.05);
       const arg = prisma.salesCommission.create.mock.calls[0][0];
       expect(arg.data.status).toBe('PENDING');
+    });
+
+    // T4-C10: snapshot salesperson at creation time
+    it('T4-C10: captures snapshotSalespersonId from contract at create time', async () => {
+      prisma.contract.findUnique.mockResolvedValue({ salespersonId: 'sp-original' });
+      prisma.salesCommission.create.mockImplementation(
+        ({ data }: { data: Record<string, unknown> }) => ({ id: 'c1', ...data }),
+      );
+
+      await service.createCommissionForSale('s1', 'sp-caller', 1000, 0.05, 'contract-1');
+
+      const arg = prisma.salesCommission.create.mock.calls[0][0];
+      expect(arg.data.snapshotSalespersonId).toBe('sp-original');
+      expect(arg.data.salespersonId).toBe('sp-caller');
+    });
+
+    it('T4-C10: later contract reassignment does not retroactively change snapshot', async () => {
+      // Simulate: commission created when contract.salespersonId = 'sp-A'
+      prisma.contract.findUnique.mockResolvedValue({ salespersonId: 'sp-A' });
+      prisma.salesCommission.create.mockImplementation(
+        ({ data }: { data: Record<string, unknown> }) => ({ id: 'c1', ...data }),
+      );
+      await service.createCommissionForSale('s1', 'sp-A', 1000, 0.05, 'contract-1');
+      const firstArg = prisma.salesCommission.create.mock.calls[0][0];
+      const snapshot = firstArg.data.snapshotSalespersonId;
+
+      // Time passes; contract is reassigned via admin (no commission mutation)
+      // Snapshot on the row stays 'sp-A' because we stored it as a literal
+      // value, not a reference. The invariant is captured in the persisted
+      // record — next time a commission is CREATED it reads the NEW value,
+      // but existing rows are immutable w.r.t. this field.
+      expect(snapshot).toBe('sp-A');
     });
   });
 

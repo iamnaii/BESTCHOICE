@@ -449,6 +449,7 @@ model User {
   broadcastMessages      BroadcastMessage[]   @relation("BroadcastCreatedBy")
   broadcastsApproved     BroadcastMessage[]   @relation("BroadcastApprovedBy")
   broadcastsRejected     BroadcastMessage[]   @relation("BroadcastRejectedBy")
+  broadcastApprovals     BroadcastApproval[]  @relation("BroadcastApprovalBy")
   refundsRequested       Refund[]             @relation("RefundRequestedBy")
   refundsApproved        Refund[]             @relation("RefundApprovedBy")
   refundsRejected        Refund[]             @relation("RefundRejectedBy")
@@ -633,6 +634,13 @@ model Contract {
   /// these fields.
   pendingDunningStage DunningStage? @map("pending_dunning_stage")
   pendingDunningSince DateTime?    @map("pending_dunning_since")
+
+  /// T3-C11: Manual hold on auto-escalation. When set to a future timestamp,
+  /// the cron (overdue.updateContractStatuses / escalateDunningStages) skips
+  /// this contract. Used when a BM/FM wants to give the customer more time
+  /// without tripping the escalator mid-conversation. Default hold duration
+  /// is 48h — long enough to resolve a promise-to-pay cycle.
+  blockAutoEscalation  DateTime? @map("block_auto_escalation")
 
   // Retention policy
   retentionStatus DocumentRetentionStatus @default(ACTIVE) @map("retention_status")
@@ -2794,6 +2802,13 @@ model CommissionRule {
 model SalesCommission {
   id               String           @id @default(uuid())
   salespersonId    String           @map("salesperson_id")
+  /// T4-C10: Snapshot of contract.salespersonId at the moment the commission
+  /// was created. If the contract is reassigned later via contracts admin,
+  /// the commission stays tied to whoever actually closed the deal. Read this
+  /// field (not salespersonId) when producing commission reports for payouts.
+  /// Nullable for legacy rows pre-migration — backfill to salespersonId in
+  /// that case.
+  snapshotSalespersonId String?     @map("snapshot_salesperson_id")
   contractId       String?          @map("contract_id")
   saleId           String?          @map("sale_id")
   commissionRuleId String?          @map("commission_rule_id")
@@ -2832,6 +2847,7 @@ model SalesCommission {
   approvedBy     User?           @relation("CommissionApprovedBy", fields: [approvedById], references: [id])
 
   @@index([salespersonId])
+  @@index([snapshotSalespersonId])
   @@index([contractId])
   @@index([saleId])
   @@index([period])
@@ -4181,9 +4197,38 @@ model BroadcastMessage {
   rejectedAt     DateTime? @map("rejected_at")
   rejectedReason String?   @map("rejected_reason")
 
+  approvals     BroadcastApproval[]
+
   @@index([status, scheduledAt])
   @@index([createdAt])
   @@index([approvedById])
   @@index([rejectedById])
   @@map("broadcast_messages")
+}
+
+/// T4-C6: Immutable per-approver audit row for broadcast approvals.
+/// Large-audience (>1000) or high-risk (legal/collection trigger words)
+/// broadcasts require TWO distinct OWNER approvers before dispatch. Each
+/// approval creates one row — the service counts them and only flips the
+/// BroadcastMessage to APPROVED once the threshold is met. Rows are never
+/// updated or deleted; retention is handled by audit cron (1yr).
+///
+/// Immutable append-only audit — updatedAt/deletedAt intentionally omitted.
+model BroadcastApproval {
+  id              String           @id @default(uuid())
+  broadcastId     String           @map("broadcast_id")
+  broadcast       BroadcastMessage @relation(fields: [broadcastId], references: [id], onDelete: Cascade)
+  approverId      String           @map("approver_id")
+  approver        User             @relation("BroadcastApprovalBy", fields: [approverId], references: [id])
+  /// Why the second approval was required (AUDIENCE_SIZE | TRIGGER_WORD).
+  reason          String
+  /// Matched trigger word (if reason = TRIGGER_WORD) — null otherwise.
+  triggerMatched  String?          @map("trigger_matched")
+  audienceSize    Int              @map("audience_size")
+  approvedAt      DateTime         @default(now()) @map("approved_at")
+
+  @@unique([broadcastId, approverId])
+  @@index([broadcastId])
+  @@index([approverId])
+  @@map("broadcast_approvals")
 }

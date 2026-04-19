@@ -5,6 +5,7 @@ import { BulkUpdateSettingsDto } from './dto/update-settings.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @ApiTags('Settings')
 @ApiBearerAuth('JWT')
@@ -20,7 +21,7 @@ export class SettingsController {
   }
 
   @Patch()
-  bulkUpdate(@Body() dto: BulkUpdateSettingsDto) {
-    return this.settingsService.bulkUpdate(dto.items);
+  bulkUpdate(@Body() dto: BulkUpdateSettingsDto, @CurrentUser() user: { id: string }) {
+    return this.settingsService.bulkUpdate(dto.items, user.id);
   }
 }

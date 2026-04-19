@@ -175,4 +175,86 @@ describe('SlipProcessingService', () => {
     const result = await service.processSlip(defaultParams);
     expect(result.matched).toBe(false);
   });
+
+  describe('auto-approve on high OCR confidence', () => {
+    // P2Q10=A: Auto-approve when confidence >= 0.9 AND amount matched AND correct account.
+    // Goal: reduce manual review load without sacrificing fraud controls.
+    // When ANY condition is missing (low confidence, wrong amount, wrong account)
+    // evidence stays PENDING_REVIEW and humans look at it.
+    it('auto-approves when confidence >= 0.9 + matched + valid account + paymentId', async () => {
+      vision.extractSlip.mockResolvedValue({
+        isSlip: true,
+        amount: 3500,
+        toAccount: '203-1-16520-5',
+        bankName: 'KBank',
+        confidence: 0.95,
+      });
+
+      await service.processSlip(defaultParams);
+
+      const createdPayload = prisma.paymentEvidence.create.mock.calls[0][0].data;
+      expect(createdPayload.status).toBe('APPROVED');
+      expect(createdPayload.reviewedById).toBeNull();
+      expect(createdPayload.reviewedAt).toBeInstanceOf(Date);
+      expect(createdPayload.reviewNote).toContain('auto-approved');
+    });
+
+    it('keeps PENDING_REVIEW when confidence below 0.9 even if matched', async () => {
+      vision.extractSlip.mockResolvedValue({
+        isSlip: true,
+        amount: 3500,
+        toAccount: '203-1-16520-5',
+        confidence: 0.85, // just below threshold
+      });
+
+      await service.processSlip(defaultParams);
+
+      const createdPayload = prisma.paymentEvidence.create.mock.calls[0][0].data;
+      expect(createdPayload.status).toBe('PENDING_REVIEW');
+    });
+
+    it('keeps PENDING_REVIEW when amount does not match (high confidence)', async () => {
+      vision.extractSlip.mockResolvedValue({
+        isSlip: true,
+        amount: 2000, // != 3500 expected
+        toAccount: '203-1-16520-5',
+        confidence: 0.99,
+      });
+
+      await service.processSlip(defaultParams);
+
+      const createdPayload = prisma.paymentEvidence.create.mock.calls[0][0].data;
+      expect(createdPayload.status).toBe('PENDING_REVIEW');
+    });
+
+    it('keeps PENDING_REVIEW when no active payment to match against', async () => {
+      prisma.payment.findFirst.mockResolvedValue(null);
+      vision.extractSlip.mockResolvedValue({
+        isSlip: true,
+        amount: 3500,
+        toAccount: '203-1-16520-5',
+        confidence: 0.99,
+      });
+
+      await service.processSlip(defaultParams);
+
+      const createdPayload = prisma.paymentEvidence.create.mock.calls[0][0].data;
+      expect(createdPayload.status).toBe('PENDING_REVIEW');
+    });
+
+    it('does NOT auto-approve wrong-account evidence (confidence irrelevant)', async () => {
+      financeConfig.isCompanyBankAccount.mockReturnValue(false);
+      vision.extractSlip.mockResolvedValue({
+        isSlip: true,
+        amount: 3500,
+        toAccount: '999-9-99999-9',
+        confidence: 1.0,
+      });
+
+      await service.processSlip(defaultParams);
+
+      const createdPayload = prisma.paymentEvidence.create.mock.calls[0][0].data;
+      expect(createdPayload.status).toBe('PENDING_REVIEW');
+    });
+  });
 });

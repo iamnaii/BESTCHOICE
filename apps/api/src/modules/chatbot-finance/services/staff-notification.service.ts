@@ -143,6 +143,36 @@ export class StaffNotificationService {
     }
   }
 
+  // ─── Notification: Slip SLA breached ─────────────────────
+
+  /**
+   * Alert staff when slips have been sitting in PENDING_REVIEW past the SLA.
+   * Called by the slip-sla cron. One aggregate message per run — don't spam
+   * per-evidence since the cron re-runs hourly and the same stuck slip would
+   * alert forever.
+   */
+  async notifySlipSlaBreached(params: {
+    count: number;
+    oldestAgeHours: number;
+  }): Promise<void> {
+    if (!(await this.lineStaff.isConfigured())) return;
+    if (params.count === 0) return;
+
+    const text =
+      `⏰ สลิปรอตรวจสอบเกิน SLA\n\n` +
+      `📋 จำนวน: ${params.count} ใบ\n` +
+      `⏳ ใบเก่าสุดรอมาแล้ว ${params.oldestAgeHours.toFixed(1)} ชั่วโมง\n\n` +
+      `🔗 กดเข้าไปดูที่ admin › ตรวจสลิป`;
+
+    try {
+      await this.lineStaff.broadcastText(text);
+    } catch (err) {
+      this.logger.error(
+        `[StaffNotify] slip SLA broadcast failed: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
   // ─── helpers ─────────────────────────────────────────────
 
 }

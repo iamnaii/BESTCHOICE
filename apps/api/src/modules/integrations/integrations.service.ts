@@ -267,9 +267,9 @@ export class IntegrationsService {
         String(now.getSeconds()).padStart(2, '0'),
       ].join('');
 
-      // HMAC-SHA1(timeStamp, connectId) using connectId as key
+      // HMAC-SHA1(message=timeStamp, key=secretKey) — must match PeakService.generateTimeSignature
       const timeSignature = crypto
-        .createHmac('sha1', connectId)
+        .createHmac('sha1', secretKey)
         .update(timeStamp)
         .digest('hex');
 

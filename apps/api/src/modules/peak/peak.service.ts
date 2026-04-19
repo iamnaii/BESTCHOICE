@@ -26,8 +26,8 @@ interface PeakConfig {
  *
  * Authentication flow:
  * 1. Create Time-Stamp (yyyyMMddHHmmss)
- * 2. HMAC-SHA1(Time-Stamp, connectId) using secretKey → Time-Signature
- * 3. POST /ClientToken → get Client-Token
+ * 2. Time-Signature = HMAC-SHA1(message=Time-Stamp, key=secretKey)
+ * 3. POST /ClientToken (with connectId as a body/header identifier) → get Client-Token
  * 4. Include all 4 headers on every request
  *
  * Key endpoint: POST /DailyJournals — create journal entries
@@ -91,6 +91,7 @@ export class PeakService {
     }
 
     let exported = 0;
+    let skipped = 0;
     const errors: string[] = [];
 
     for (const entry of entries) {
@@ -99,11 +100,23 @@ export class PeakService {
         const result = await this.postToPeak('/DailyJournals', peakPayload);
 
         if (result.resCode === '200') {
-          await this.prisma.journalEntry.update({
-            where: { id: entry.id },
+          // T6-C5: idempotent mark — only update if still unsynced. If a
+          // concurrent cron run already marked it, `count` is 0 and we skip
+          // without double-counting. Protects against the case where two
+          // workers pick up the same entry between findMany and update.
+          const marked = await this.prisma.journalEntry.updateMany({
+            where: { id: entry.id, peakSyncedAt: null },
             data: { peakSyncedAt: new Date() },
           });
-          exported++;
+          if (marked.count === 1) {
+            exported++;
+          } else {
+            skipped++;
+            Sentry.captureMessage(
+              `PEAK: duplicate sync attempt for ${entry.entryNumber} — entry already marked`,
+              { level: 'info', tags: { kind: 'peak-sync', entryNumber: entry.entryNumber } },
+            );
+          }
         } else {
           errors.push(`${entry.entryNumber}: ${result.resDesc || 'Unknown PEAK error'}`);
         }
@@ -116,8 +129,10 @@ export class PeakService {
       }
     }
 
-    this.logger.log(`PEAK export: ${exported} exported, ${errors.length} errors out of ${entries.length}`);
-    return { exported, skipped: entries.length - exported - errors.length, errors };
+    this.logger.log(
+      `PEAK export: ${exported} exported, ${skipped} skipped (already synced), ${errors.length} errors out of ${entries.length}`,
+    );
+    return { exported, skipped, errors };
   }
 
   /** Fetch chart of accounts from PEAK */
@@ -149,9 +164,15 @@ export class PeakService {
     return `${y}${M}${d}${h}${m}${s}`;
   }
 
-  /** HMAC-SHA1(timeStamp, connectId) using secretKey → Time-Signature */
+  /**
+   * Time-Signature = HMAC-SHA1(message=timeStamp, key=secretKey).
+   *
+   * T6-C4 fix: earlier versions signed with `connectId` (public identifier) as
+   * the HMAC key, which would have let anyone with the connectId forge signed
+   * requests. The spec requires secretKey as the key.
+   */
   private generateTimeSignature(timeStamp: string, config: PeakConfig): string {
-    return createHmac('sha1', config.connectId)
+    return createHmac('sha1', config.secretKey)
       .update(timeStamp)
       .digest('hex');
   }

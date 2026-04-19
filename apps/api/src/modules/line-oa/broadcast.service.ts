@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
@@ -150,9 +150,13 @@ export class BroadcastService {
     return [];
   }
 
-  // ─── Send ─────────────────────────────────────────────────────────────────────
+  // ─── Send / Approve / Reject ─────────────────────────────────────────────
 
-  /** Send or schedule a broadcast */
+  /**
+   * Create a broadcast as PENDING_APPROVAL (P2Q15=A — two-person SoD).
+   * The request no longer dispatches immediately; a second manager must call
+   * approveBroadcast() to either send it now or queue it at scheduledAt.
+   */
   async sendBroadcast(params: SendBroadcastParams): Promise<{
     success: boolean;
     message: string;
@@ -160,7 +164,13 @@ export class BroadcastService {
   }> {
     const { messages, audience, scheduledAt, createdById } = params;
 
-    // Get audience count for saving
+    const lineMessages = messages
+      .map((m) => this.buildLineMessage(m.type, m.content))
+      .filter((m): m is LineMessage => m !== null);
+    if (lineMessages.length === 0) {
+      return { success: false, message: 'รูปแบบข้อความไม่ถูกต้อง' };
+    }
+
     const counts = await this.getAudienceCount();
     const audienceCount =
       audience === 'ALL'
@@ -171,44 +181,120 @@ export class BroadcastService {
             ? counts.overdue
             : counts.new;
 
-    // If scheduled → save as SCHEDULED, no send
-    if (scheduledAt && scheduledAt > new Date()) {
-      const record = await this.prisma.broadcastMessage.create({
-        data: {
-          messages: messages as any,
-          audience,
-          audienceCount,
-          status: 'SCHEDULED',
-          scheduledAt,
-          createdById,
-        },
-      });
-      return { success: true, message: 'บันทึกตั้งเวลาส่งสำเร็จ', id: record.id };
-    }
-
-    // Build LINE messages array (up to 5)
-    const lineMessages = messages
-      .map((m) => this.buildLineMessage(m.type, m.content))
-      .filter((m): m is LineMessage => m !== null);
-    if (lineMessages.length === 0) {
-      return { success: false, message: 'รูปแบบข้อความไม่ถูกต้อง' };
-    }
-
-    const result = await this.dispatchLineMessages(audience, lineMessages);
-
     const record = await this.prisma.broadcastMessage.create({
       data: {
         messages: messages as any,
         audience,
         audienceCount,
-        status: result.success ? 'SENT' : 'FAILED',
-        sentAt: result.success ? new Date() : null,
-        errorMessage: result.success ? null : result.message,
+        status: 'PENDING_APPROVAL',
+        scheduledAt: scheduledAt ?? null,
         createdById,
       },
     });
 
-    return { ...result, id: record.id };
+    return {
+      success: true,
+      message: 'บันทึก broadcast แล้ว รอผู้อนุมัติคนที่สองก่อนส่งจริง',
+      id: record.id,
+    };
+  }
+
+  /**
+   * Approve a PENDING_APPROVAL broadcast and dispatch / queue it.
+   *   - approverId must differ from createdById (SoD guard)
+   *   - scheduledAt in future  → status becomes SCHEDULED, cron picks up
+   *   - otherwise              → dispatch LINE messages immediately
+   */
+  async approveBroadcast(
+    id: string,
+    approverId: string,
+  ): Promise<{ success: boolean; message: string; id: string }> {
+    const record = await this.prisma.broadcastMessage.findUnique({ where: { id } });
+    if (!record) throw new NotFoundException('ไม่พบ broadcast');
+    if (record.status !== 'PENDING_APPROVAL') {
+      throw new BadRequestException(
+        `broadcast อยู่ในสถานะ ${record.status} — อนุมัติได้เฉพาะสถานะ PENDING_APPROVAL`,
+      );
+    }
+    if (record.createdById === approverId) {
+      throw new ForbiddenException(
+        'ผู้อนุมัติต้องไม่ใช่ผู้สร้าง broadcast (Segregation of Duties)',
+      );
+    }
+
+    const now = new Date();
+
+    // If scheduled in the future → just mark SCHEDULED, cron dispatches.
+    if (record.scheduledAt && record.scheduledAt > now) {
+      await this.prisma.broadcastMessage.update({
+        where: { id },
+        data: {
+          status: 'SCHEDULED',
+          approvedById: approverId,
+          approvedAt: now,
+        },
+      });
+      return {
+        success: true,
+        message: `อนุมัติแล้ว — จะถูกส่งตามเวลา ${record.scheduledAt.toLocaleString('th-TH')}`,
+        id,
+      };
+    }
+
+    // Otherwise dispatch now.
+    const msgItems = (record.messages as unknown as BroadcastMessageItem[]) ?? [];
+    const lineMessages = msgItems
+      .map((m) => this.buildLineMessage(m.type, m.content))
+      .filter((m): m is LineMessage => m !== null);
+
+    const result = await this.dispatchLineMessages(record.audience, lineMessages);
+
+    await this.prisma.broadcastMessage.update({
+      where: { id },
+      data: {
+        status: result.success ? 'SENT' : 'FAILED',
+        sentAt: result.success ? now : null,
+        errorMessage: result.success ? null : result.message,
+        approvedById: approverId,
+        approvedAt: now,
+      },
+    });
+
+    return { success: result.success, message: result.message, id };
+  }
+
+  async rejectBroadcast(
+    id: string,
+    rejecterId: string,
+    reason: string,
+  ): Promise<{ success: boolean; message: string; id: string }> {
+    if (!reason || reason.trim().length < 5) {
+      throw new BadRequestException('กรุณาระบุเหตุผลการปฏิเสธ (อย่างน้อย 5 ตัวอักษร)');
+    }
+    const record = await this.prisma.broadcastMessage.findUnique({ where: { id } });
+    if (!record) throw new NotFoundException('ไม่พบ broadcast');
+    if (record.status !== 'PENDING_APPROVAL') {
+      throw new BadRequestException(
+        `broadcast อยู่ในสถานะ ${record.status} — ปฏิเสธได้เฉพาะสถานะ PENDING_APPROVAL`,
+      );
+    }
+    if (record.createdById === rejecterId) {
+      throw new ForbiddenException(
+        'ผู้ปฏิเสธต้องไม่ใช่ผู้สร้าง broadcast (Segregation of Duties)',
+      );
+    }
+
+    await this.prisma.broadcastMessage.update({
+      where: { id },
+      data: {
+        status: 'REJECTED',
+        rejectedById: rejecterId,
+        rejectedAt: new Date(),
+        rejectedReason: reason.trim(),
+      },
+    });
+
+    return { success: true, message: 'ปฏิเสธ broadcast แล้ว', id };
   }
 
   /** Called by cron — process all due SCHEDULED messages */

@@ -445,7 +445,9 @@ model User {
   dunningActionsExecuted DunningAction[]      @relation("DunningActionExecutor")
   periodsReviewStarted   AccountingPeriod[]   @relation("PeriodReviewStartedBy")
   periodsClosed          AccountingPeriod[]   @relation("PeriodClosedBy")
-  broadcastMessages      BroadcastMessage[]
+  broadcastMessages      BroadcastMessage[]   @relation("BroadcastCreatedBy")
+  broadcastsApproved     BroadcastMessage[]   @relation("BroadcastApprovedBy")
+  broadcastsRejected     BroadcastMessage[]   @relation("BroadcastRejectedBy")
 
   @@index([branchId])
   @@map("users")
@@ -3700,15 +3702,30 @@ model BroadcastMessage {
   messages      Json      // array: [{ type, content }] — supports up to 5 messages
   audience      String    // ALL, EXISTING, OVERDUE, NEW
   audienceCount Int       @map("audience_count")
-  status        String    @default("SCHEDULED") // SENT, SCHEDULED, FAILED, CANCELLED
+  /// PENDING_APPROVAL (default — creator submits for review)
+  /// APPROVED       (approver cleared; sent immediately or queued if scheduledAt in future)
+  /// SCHEDULED      (approved + scheduledAt in future; cron picks up)
+  /// SENT / FAILED / CANCELLED / REJECTED (terminal states)
+  status        String    @default("PENDING_APPROVAL")
   scheduledAt   DateTime? @map("scheduled_at")
   sentAt        DateTime? @map("sent_at")
   errorMessage  String?   @map("error_message")
   createdById   String    @map("created_by_id")
-  createdBy     User      @relation(fields: [createdById], references: [id])
+  createdBy     User      @relation("BroadcastCreatedBy", fields: [createdById], references: [id])
   createdAt     DateTime  @default(now()) @map("created_at")
+
+  /// SoD: approver ≠ creator. Enforced in service layer.
+  approvedById   String?   @map("approved_by_id")
+  approvedBy     User?     @relation("BroadcastApprovedBy", fields: [approvedById], references: [id])
+  approvedAt     DateTime? @map("approved_at")
+  rejectedById   String?   @map("rejected_by_id")
+  rejectedBy     User?     @relation("BroadcastRejectedBy", fields: [rejectedById], references: [id])
+  rejectedAt     DateTime? @map("rejected_at")
+  rejectedReason String?   @map("rejected_reason")
 
   @@index([status, scheduledAt])
   @@index([createdAt])
+  @@index([approvedById])
+  @@index([rejectedById])
   @@map("broadcast_messages")
 }

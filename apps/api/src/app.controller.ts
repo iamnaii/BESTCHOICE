@@ -1,4 +1,4 @@
-import { Controller, Get, HttpCode, UseGuards, Inject, Optional } from '@nestjs/common';
+import { Controller, Get, UseGuards, Inject, Optional } from '@nestjs/common';
 import { SkipThrottle } from '@nestjs/throttler';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
@@ -29,33 +29,6 @@ export class AppController {
       version: process.env.npm_package_version || '1.0.0',
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
-    };
-  }
-
-  @Get('health')
-  @HttpCode(200)
-  async deepHealthCheck() {
-    const checks: Record<string, string> = {};
-
-    try {
-      await this.prisma.$queryRaw`SELECT 1`;
-      checks.database = 'ok';
-    } catch {
-      checks.database = 'error';
-    }
-
-    const memUsage = process.memoryUsage();
-    const memMB = Math.round(memUsage.heapUsed / 1024 / 1024);
-    checks.memory = `${memMB}MB`;
-
-    const allOk = checks.database === 'ok';
-
-    return {
-      status: allOk ? 'ok' : 'degraded',
-      service: 'installment-api',
-      timestamp: new Date().toISOString(),
-      uptime: process.uptime(),
-      checks,
     };
   }
 

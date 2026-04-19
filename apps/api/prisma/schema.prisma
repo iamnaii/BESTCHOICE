@@ -458,6 +458,8 @@ model User {
   crmLeadAssignFromHistory CrmLeadAssignment[] @relation("CrmLeadAssignFrom")
   crmLeadAssignToHistory   CrmLeadAssignment[] @relation("CrmLeadAssignTo")
   crmLeadAssignChangedBy   CrmLeadAssignment[] @relation("CrmLeadAssignChangedBy")
+  paymentsWaived           Payment[]            @relation("PaymentWaivedBy")
+  paymentsWaivedApproved   Payment[]            @relation("PaymentWaivedApprovedBy")
 
   @@index([branchId])
   @@map("users")
@@ -708,6 +710,16 @@ model Payment {
   gatewayResponse Json?          @map("gateway_response")
   paidAt          DateTime?      @map("paid_at")
 
+  /// Late fee waiver audit (T3-C10). `lateFeeWaived` (bool) tells you "yes
+  /// the fee was waived"; these fields tell you WHO did it, WHEN, WHY, and
+  /// WHO approved. The approver must differ from waivedById per SoD
+  /// enforced by payments.service.waiveLateFee().
+  waivedById         String?   @map("waived_by_id")
+  waivedAt           DateTime? @map("waived_at")
+  waivedReason       String?   @map("waived_reason")
+  waivedApprovedById String?   @map("waived_approved_by_id")
+  waivedAmount       Decimal?  @map("waived_amount") @db.Decimal(12, 2)
+
   // Payment breakdown (เงินต้น + ค่าคอม + ดอกเบี้ย + VAT = amountDue)
   monthlyPrincipal  Decimal? @map("monthly_principal") @db.Decimal(12, 2)
   monthlyInterest   Decimal? @map("monthly_interest") @db.Decimal(12, 2)
@@ -727,6 +739,8 @@ model Payment {
   // trail in one accidental hard-delete (see ultraplan v3 audit).
   contract         Contract          @relation(fields: [contractId], references: [id], onDelete: Restrict)
   recordedBy       User?             @relation("RecordedBy", fields: [recordedById], references: [id])
+  waivedBy         User?             @relation("PaymentWaivedBy", fields: [waivedById], references: [id])
+  waivedApprovedBy User?             @relation("PaymentWaivedApprovedBy", fields: [waivedApprovedById], references: [id])
   paymentLinks     PaymentLink[]
   paymentEvidences PaymentEvidence[]
   loyaltyPoint     LoyaltyPoint?
@@ -740,6 +754,8 @@ model Payment {
   @@index([paidDate])
   @@index([status, dueDate])
   @@index([recordedById])
+  @@index([waivedById])
+  @@index([waivedApprovedById])
   @@map("payments")
 }
 

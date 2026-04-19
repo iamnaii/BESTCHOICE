@@ -814,6 +814,11 @@ export class PaymentsService {
         data: {
           lateFee: 0,
           lateFeeWaived: true,
+          waivedById: userId,
+          waivedAt: new Date(),
+          waivedReason: reason,
+          waivedApprovedById: approverId,
+          waivedAmount: originalLateFee,
           notes,
           ...(isNowFullyPaid && payment.status !== 'PAID' ? { status: 'PAID', paidDate: new Date() } : {}),
         },

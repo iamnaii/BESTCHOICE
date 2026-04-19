@@ -106,8 +106,9 @@ export class TradeInController {
     @Param('id') id: string,
     @Body() dto: AppraiseTradeInDto,
     @CurrentUser('id') userId: string,
+    @CurrentUser('role') userRole: string,
   ) {
-    return this.tradeInService.appraise(id, dto, userId);
+    return this.tradeInService.appraise(id, dto, userId, userRole);
   }
 
   @Post(':id/accept')

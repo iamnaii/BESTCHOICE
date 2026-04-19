@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateInterCompanyTransactionDto } from './dto/inter-company.dto';
 import { Prisma, InterCompanyTransactionStatus } from '@prisma/client';
@@ -11,8 +16,32 @@ export class InterCompanyService {
   /**
    * Create inter-company transaction from sale data.
    * Called automatically when an installment sale is created.
+   *
+   * T5-C21: Resolves FINANCE/SHOP company FKs at create time — throws
+   * explicit Thai error if CompanyInfo rows are missing (stubs are seeded
+   * by migration 20260528300000 so this should only fire if someone has
+   * soft-deleted a canonical row).
    */
   async createFromSale(dto: CreateInterCompanyTransactionDto) {
+    const [financeCompany, shopCompany] = await Promise.all([
+      this.prisma.companyInfo.findFirst({ where: { companyCode: 'FINANCE', deletedAt: null }, select: { id: true } }),
+      this.prisma.companyInfo.findFirst({ where: { companyCode: 'SHOP', deletedAt: null }, select: { id: true } }),
+    ]);
+    if (!financeCompany || !shopCompany) {
+      const missing: string[] = [];
+      if (!financeCompany) missing.push('FINANCE');
+      if (!shopCompany) missing.push('SHOP');
+      throw new InternalServerErrorException(
+        `ไม่พบข้อมูลบริษัท ${missing.join(', ')} (CompanyInfo) ในระบบ — ` +
+          'กรุณาเพิ่มข้อมูลบริษัทผ่านหน้า ตั้งค่า -> บริษัท ก่อนทำรายการ Inter-Company',
+      );
+    }
+
+    // Direction: if dto.fromEntity contains "FINANCE" keyword -> from=FINANCE.
+    const fromIsFinance = /FINANCE/i.test(dto.fromEntity);
+    const fromCompanyId = fromIsFinance ? financeCompany.id : shopCompany.id;
+    const toCompanyId = fromIsFinance ? shopCompany.id : financeCompany.id;
+
     return this.prisma.interCompanyTransaction.create({
       data: {
         saleId: dto.saleId,
@@ -21,6 +50,8 @@ export class InterCompanyService {
         type: 'FINANCE_PURCHASE',
         fromEntity: dto.fromEntity,
         toEntity: dto.toEntity,
+        fromCompanyId,
+        toCompanyId,
         principal: dto.principal,
         commission: dto.commission,
         commissionPct: dto.commissionPct,
@@ -65,11 +96,24 @@ export class InterCompanyService {
     const totalSalesRevenue = data.downPayment + data.principal + data.commission;
     const note = `SHOP: Debit เงินสด ${data.downPayment} + ลูกหนี้เช่าซื้อ ${data.principal + data.commission}, Credit รายได้จากการขาย ${totalSalesRevenue}; FINANCE: Debit ลูกหนี้เช่าซื้อ ${data.principal + data.interestTotal}, Credit เจ้าหนี้ SHOP ${data.principal + data.commission}`;
 
-    // Resolve company IDs from companyCode
+    // T5-C21: Resolve company IDs from companyCode. Both FINANCE and SHOP
+    // rows MUST exist — the migration seeds stub rows so fresh environments
+    // never hit this path. If we still can't find one, it means someone
+    // soft-deleted a seeded company and we refuse to silently lose the FK.
     const [financeCompany, shopCompany] = await Promise.all([
       tx.companyInfo.findFirst({ where: { companyCode: 'FINANCE', deletedAt: null }, select: { id: true } }),
       tx.companyInfo.findFirst({ where: { companyCode: 'SHOP', deletedAt: null }, select: { id: true } }),
     ]);
+
+    if (!financeCompany || !shopCompany) {
+      const missing: string[] = [];
+      if (!financeCompany) missing.push('FINANCE');
+      if (!shopCompany) missing.push('SHOP');
+      throw new InternalServerErrorException(
+        `ไม่พบข้อมูลบริษัท ${missing.join(', ')} (CompanyInfo) ในระบบ — ` +
+          'กรุณาเพิ่มข้อมูลบริษัทผ่านหน้า ตั้งค่า -> บริษัท ก่อนทำรายการ Inter-Company',
+      );
+    }
 
     return tx.interCompanyTransaction.create({
       data: {
@@ -79,8 +123,8 @@ export class InterCompanyService {
         type: 'FINANCE_PURCHASE',
         fromEntity: 'BESTCHOICE FINANCE',
         toEntity: 'BESTCHOICE SHOP',
-        fromCompanyId: financeCompany?.id ?? undefined,
-        toCompanyId: shopCompany?.id ?? undefined,
+        fromCompanyId: financeCompany.id,
+        toCompanyId: shopCompany.id,
         principal: data.principal,
         commission: data.commission,
         commissionPct: data.commissionPct,

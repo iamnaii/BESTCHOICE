@@ -81,6 +81,9 @@ describe('TradeInService', () => {
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({ id: 'prod-new-1' }),
       },
+      auditLog: {
+        create: jest.fn().mockResolvedValue({ id: 'audit-1' }),
+      },
       $transaction: jest.fn().mockImplementation(async (fn: unknown) => {
         if (typeof fn === 'function') return fn(prisma);
         return Promise.all(fn as Promise<unknown>[]);
@@ -287,6 +290,77 @@ describe('TradeInService', () => {
         // No throw; base price not snapshotted
         const data = prisma.tradeIn.update.mock.calls[0][0].data;
         expect(data.basePriceAtAppraisal).toBeUndefined();
+      });
+    });
+
+    // ────────────────────────────────────────────────────────────────────────
+    // T5-C17: appraisal price lock — once offeredPrice is set, subsequent
+    // appraise() calls with a different price must be rejected unless OWNER
+    // explicitly forces the change (audited). This prevents staff from
+    // re-appraising downward until the seller accepts.
+    // ────────────────────────────────────────────────────────────────────────
+    describe('T5-C17 appraisal lock', () => {
+      it('first appraise sets offeredPrice, firstAppraisedAt and appraisalLocked=true', async () => {
+        prisma.tradeIn.findUnique.mockResolvedValue(
+          makeTradeIn({ status: 'PENDING_APPRAISAL', appraisalLocked: false, firstAppraisedAt: null }),
+        );
+        prisma.tradeIn.update.mockResolvedValue(makeTradeIn({ status: 'APPRAISED' }));
+
+        await service.appraise(
+          'ti-1',
+          { offeredPrice: 5000, deviceCondition: 'B' },
+          'user-1',
+        );
+
+        const data = prisma.tradeIn.update.mock.calls[0][0].data;
+        expect(data.appraisalLocked).toBe(true);
+        expect(data.firstAppraisedAt).toBeInstanceOf(Date);
+        expect(data.offeredPrice).toBe(5000);
+      });
+
+      it('re-appraising with the SAME price on a locked record is an idempotent no-op', async () => {
+        const existingTimestamp = new Date('2026-04-01T10:00:00Z');
+        const locked = makeTradeIn({
+          status: 'APPRAISED',
+          offeredPrice: 5000,
+          appraisalLocked: true,
+          firstAppraisedAt: existingTimestamp,
+        });
+        prisma.tradeIn.findUnique.mockResolvedValue(locked);
+
+        const result = await service.appraise(
+          'ti-1',
+          { offeredPrice: 5000, deviceCondition: 'B' },
+          'user-1',
+        );
+
+        // No update call, no audit log
+        expect(prisma.tradeIn.update).not.toHaveBeenCalled();
+        expect(prisma.auditLog.create).not.toHaveBeenCalled();
+        expect(result).toBe(locked);
+      });
+
+      it('re-appraising with a DIFFERENT price on a locked record is rejected (ForbiddenException)', async () => {
+        prisma.tradeIn.findUnique.mockResolvedValue(
+          makeTradeIn({
+            status: 'APPRAISED',
+            offeredPrice: 5000,
+            appraisalLocked: true,
+            firstAppraisedAt: new Date('2026-04-01T10:00:00Z'),
+          }),
+        );
+
+        await expect(
+          service.appraise(
+            'ti-1',
+            { offeredPrice: 4500, deviceCondition: 'B' },
+            'user-1',
+          ),
+        ).rejects.toThrow(/ตีราคาไปแล้ว|ไม่สามารถแก้ราคาซ้ำ/);
+
+        // No mutations, no audit log
+        expect(prisma.tradeIn.update).not.toHaveBeenCalled();
+        expect(prisma.auditLog.create).not.toHaveBeenCalled();
       });
     });
   });

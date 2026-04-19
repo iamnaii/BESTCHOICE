@@ -121,6 +121,18 @@ export class AppraiseTradeInDto {
   @IsString()
   @IsOptional()
   deviationReason?: string;
+
+  /// T5-C17: OWNER-only override that allows re-appraising an already-locked
+  /// trade-in with a DIFFERENT offeredPrice. Requires `forceReason`. Both are
+  /// written to AuditLog for accountability — staff can no longer silently
+  /// drift prices down until the seller agrees.
+  @IsBoolean()
+  @IsOptional()
+  force?: boolean;
+
+  @IsString()
+  @IsOptional()
+  forceReason?: string;
 }
 
 export class AcceptTradeInDto {

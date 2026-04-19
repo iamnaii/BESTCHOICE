@@ -77,7 +77,15 @@ export class PurchaseOrdersService {
         deletedAt: true,
         hasVat: true,
         paymentMethods: {
-          select: { paymentMethod: true, creditTermDays: true, isDefault: true },
+          where: { deletedAt: null },
+          orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
+          select: {
+            paymentMethod: true,
+            creditTermDays: true,
+            isDefault: true,
+            bankName: true,
+            bankAccountNumber: true,
+          },
         },
       },
     });
@@ -104,6 +112,13 @@ export class PurchaseOrdersService {
       dueDate.setDate(dueDate.getDate() + selectedPm.creditTermDays);
     }
 
+    // T5-C18: Snapshot supplier's primary bank at create-time so edits to the
+    // supplier record later cannot silently re-target historical POs. `selectedPm`
+    // above already resolves the correct payment method (requested method or
+    // supplier default).
+    const bankAccountSnapshot = selectedPm?.bankAccountNumber ?? null;
+    const bankNameSnapshot = selectedPm?.bankName ?? null;
+
     // Use transaction to prevent PO number race condition
     return this.prisma.$transaction(async (tx) => {
       // Generate PO number inside transaction: PO-YYYY-MM-NNN format (monthly sequence)
@@ -124,6 +139,8 @@ export class PurchaseOrdersService {
           netAmount,
           notes: dto.notes,
           stockCheckRef: dto.stockCheckRef || null,
+          bankAccountSnapshot,
+          bankNameSnapshot,
           createdById: userId,
           status: 'DRAFT',
           paymentStatus: (dto.paymentStatus as POPaymentStatus) || 'UNPAID',
@@ -462,324 +479,363 @@ export class PurchaseOrdersService {
 
   /**
    * Legacy receive - kept for backward compatibility
+   *
+   * T5-C16: wrapped in Serializable transaction + per-item re-read so two
+   * concurrent GR requests cannot both pass the `totalReceived > quantity`
+   * check against stale in-memory receivedQty. The inner re-read (inside
+   * the same serializable tx) guarantees one of the two concurrent writers
+   * will see the other's update and either retry or fail the invariant.
    */
   async receive(id: string, dto: ReceivePODto, userId: string, branchId: string) {
-    return this.prisma.$transaction(async (tx) => {
-      const po = await tx.purchaseOrder.findUnique({
-        where: { id },
-        include: { items: true, supplier: true },
-      });
-
-      if (!po || po.deletedAt) throw new NotFoundException('ไม่พบใบสั่งซื้อ');
-      if (!['APPROVED', 'PARTIALLY_RECEIVED'].includes(po.status)) {
-        throw new BadRequestException('PO นี้ไม่อยู่ในสถานะที่สามารถรับสินค้าได้');
-      }
-
-      const receivedProducts: Awaited<ReturnType<typeof tx.product.create>>[] = [];
-
-      for (const receiveItem of dto.items) {
-        const poItem = po.items.find((i) => i.id === receiveItem.poItemId);
-        if (!poItem) {
-          throw new NotFoundException(`ไม่พบรายการ PO: ${receiveItem.poItemId}`);
-        }
-
-        const totalReceived = poItem.receivedQty + receiveItem.receivedQty;
-        if (totalReceived > poItem.quantity) {
-          throw new BadRequestException(
-            `จำนวนรับเกิน: ${poItem.brand} ${poItem.model} (สั่ง ${poItem.quantity}, รับแล้ว ${poItem.receivedQty}, กำลังรับ ${receiveItem.receivedQty})`,
-          );
-        }
-
-        await tx.pOItem.update({
-          where: { id: receiveItem.poItemId },
-          data: { receivedQty: totalReceived },
+    return this.prisma.$transaction(
+      async (tx) => {
+        const po = await tx.purchaseOrder.findUnique({
+          where: { id },
+          include: { items: true, supplier: true },
         });
 
-        for (let i = 0; i < receiveItem.receivedQty; i++) {
-          const productCategory = (poItem.category as ProductCategory) || 'PHONE_NEW';
-          let productName: string;
-          if (productCategory === 'ACCESSORY') {
-            const isCharger = poItem.accessoryType === 'ชุดชาร์จ';
-            if (isCharger) {
-              // Charger: "ชุดชาร์จ Anker Type-C" (model = connector type)
-              productName = [poItem.accessoryType, poItem.accessoryBrand, poItem.model].filter(Boolean).join(' ');
-            } else {
-              // Other accessories: "เคส Spigen สำหรับ iPhone 16 Pro, iPhone 16 Pro Max"
-              const accParts = [poItem.accessoryType, poItem.accessoryBrand].filter(Boolean);
-              productName = poItem.model
-                ? `${accParts.join(' ')} สำหรับ ${poItem.model}`
-                : accParts.join(' ');
-            }
-          } else {
-            const nameParts = [poItem.brand, poItem.model, poItem.color, poItem.storage].filter(Boolean);
-            productName = nameParts.join(' ');
-          }
-          const product = await tx.product.create({
-            data: {
-              name: productName,
-              brand: poItem.brand || '',
-              model: poItem.model || '',
-              color: poItem.color || null,
-              storage: poItem.storage || null,
-              category: productCategory,
-              costPrice: Number(poItem.unitPrice),
-              supplierId: po.supplierId,
-              poId: po.id,
-              branchId,
-              status: 'PO_RECEIVED',
-              accessoryType: poItem.accessoryType || null,
-              accessoryBrand: poItem.accessoryBrand || null,
-            },
-          });
-          receivedProducts.push(product);
+        if (!po || po.deletedAt) throw new NotFoundException('ไม่พบใบสั่งซื้อ');
+        if (!['APPROVED', 'PARTIALLY_RECEIVED'].includes(po.status)) {
+          throw new BadRequestException('PO นี้ไม่อยู่ในสถานะที่สามารถรับสินค้าได้');
         }
-      }
 
-      const updatedPO = await tx.purchaseOrder.findUnique({
-        where: { id },
-        include: { items: true },
-      });
+        const receivedProducts: Awaited<ReturnType<typeof tx.product.create>>[] = [];
 
-      const allReceived = updatedPO!.items.every((item) => item.receivedQty >= item.quantity);
-      const newStatus = allReceived ? 'FULLY_RECEIVED' : 'PARTIALLY_RECEIVED';
+        for (const receiveItem of dto.items) {
+          const poItem = po.items.find((i) => i.id === receiveItem.poItemId);
+          if (!poItem) {
+            throw new NotFoundException(`ไม่พบรายการ PO: ${receiveItem.poItemId}`);
+          }
 
-      await tx.purchaseOrder.update({
-        where: { id },
-        data: { status: newStatus },
-      });
+          // T5-C16: Re-read inside the serializable tx instead of trusting
+          // the cached poItem.receivedQty. This closes the race where two
+          // GR requests both read 0 and both pass the ceiling check.
+          const fresh = await tx.pOItem.findUnique({
+            where: { id: receiveItem.poItemId },
+            select: { receivedQty: true, quantity: true },
+          });
+          const currentReceived = fresh?.receivedQty ?? poItem.receivedQty;
+          const orderedQty = fresh?.quantity ?? poItem.quantity;
+          const totalReceived = currentReceived + receiveItem.receivedQty;
+          if (totalReceived > orderedQty) {
+            throw new BadRequestException(
+              `จำนวนรับเกิน: ${poItem.brand} ${poItem.model} (สั่ง ${orderedQty}, รับแล้ว ${currentReceived}, กำลังรับ ${receiveItem.receivedQty})`,
+            );
+          }
 
-      return {
-        poId: id,
-        status: newStatus,
-        receivedProducts: receivedProducts.length,
-        products: receivedProducts,
-      };
-    });
+          await tx.pOItem.update({
+            where: { id: receiveItem.poItemId },
+            data: { receivedQty: totalReceived },
+          });
+
+          for (let i = 0; i < receiveItem.receivedQty; i++) {
+            const productCategory = (poItem.category as ProductCategory) || 'PHONE_NEW';
+            let productName: string;
+            if (productCategory === 'ACCESSORY') {
+              const isCharger = poItem.accessoryType === 'ชุดชาร์จ';
+              if (isCharger) {
+                // Charger: "ชุดชาร์จ Anker Type-C" (model = connector type)
+                productName = [poItem.accessoryType, poItem.accessoryBrand, poItem.model].filter(Boolean).join(' ');
+              } else {
+                // Other accessories: "เคส Spigen สำหรับ iPhone 16 Pro, iPhone 16 Pro Max"
+                const accParts = [poItem.accessoryType, poItem.accessoryBrand].filter(Boolean);
+                productName = poItem.model
+                  ? `${accParts.join(' ')} สำหรับ ${poItem.model}`
+                  : accParts.join(' ');
+              }
+            } else {
+              const nameParts = [poItem.brand, poItem.model, poItem.color, poItem.storage].filter(Boolean);
+              productName = nameParts.join(' ');
+            }
+            const product = await tx.product.create({
+              data: {
+                name: productName,
+                brand: poItem.brand || '',
+                model: poItem.model || '',
+                color: poItem.color || null,
+                storage: poItem.storage || null,
+                category: productCategory,
+                costPrice: Number(poItem.unitPrice),
+                supplierId: po.supplierId,
+                poId: po.id,
+                branchId,
+                status: 'PO_RECEIVED',
+                accessoryType: poItem.accessoryType || null,
+                accessoryBrand: poItem.accessoryBrand || null,
+              },
+            });
+            receivedProducts.push(product);
+          }
+        }
+
+        const updatedPO = await tx.purchaseOrder.findUnique({
+          where: { id },
+          include: { items: true },
+        });
+
+        const allReceived = updatedPO!.items.every((item) => item.receivedQty >= item.quantity);
+        const newStatus = allReceived ? 'FULLY_RECEIVED' : 'PARTIALLY_RECEIVED';
+
+        await tx.purchaseOrder.update({
+          where: { id },
+          data: { status: newStatus },
+        });
+
+        return {
+          poId: id,
+          status: newStatus,
+          receivedProducts: receivedProducts.length,
+          products: receivedProducts,
+        };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
   }
 
   /**
    * New goods receiving flow with IMEI/Serial/photos/pass-reject per unit
+   *
+   * T5-C16: wrapped in Serializable transaction — two concurrent GR batches
+   * cannot both pass the `totalReceived > quantity` ceiling check against
+   * stale in-memory receivedQty. Ceiling is recomputed from SUM() of all
+   * POItem rows by id inside the tx so no cached copy is trusted.
    */
   async goodsReceiving(id: string, dto: GoodsReceivingDto, userId: string) {
-    return this.prisma.$transaction(async (tx) => {
-      const po = await tx.purchaseOrder.findUnique({
-        where: { id },
-        include: { items: true, supplier: true },
-      });
-
-      if (!po || po.deletedAt) throw new NotFoundException('ไม่พบใบสั่งซื้อ');
-      if (!['APPROVED', 'PARTIALLY_RECEIVED'].includes(po.status)) {
-        throw new BadRequestException('PO นี้ไม่อยู่ในสถานะที่สามารถรับสินค้าได้ (ต้อง APPROVED หรือ PARTIALLY_RECEIVED)');
-      }
-
-      // Find main warehouse branch
-      let mainWarehouse = await tx.branch.findFirst({
-        where: { isMainWarehouse: true, isActive: true, deletedAt: null },
-      });
-      if (!mainWarehouse) {
-        // Fallback: use first active branch
-        mainWarehouse = await tx.branch.findFirst({
-          where: { isActive: true, deletedAt: null },
-          orderBy: { createdAt: 'asc' },
+    return this.prisma.$transaction(
+      async (tx) => {
+        const po = await tx.purchaseOrder.findUnique({
+          where: { id },
+          include: { items: true, supplier: true },
         });
-      }
-      if (!mainWarehouse) {
-        throw new BadRequestException('ไม่พบคลังกลาง กรุณาตั้งค่าสาขาคลังกลางก่อน');
-      }
 
-      // Create goods receiving record
-      const receiving = await tx.goodsReceiving.create({
-        data: {
-          poId: id,
-          receivedById: userId,
-          notes: dto.notes,
-        },
-      });
-
-      const passedProducts: Awaited<ReturnType<typeof tx.product.update>>[] = [];
-      const rejectedItems: Awaited<ReturnType<typeof tx.goodsReceivingItem.create>>[] = [];
-
-      // Group items by poItemId to count per PO item
-      const countByPoItem: Record<string, number> = {};
-      for (const item of dto.items) {
-        if (item.status === 'PASS') {
-          countByPoItem[item.poItemId] = (countByPoItem[item.poItemId] || 0) + 1;
+        if (!po || po.deletedAt) throw new NotFoundException('ไม่พบใบสั่งซื้อ');
+        if (!['APPROVED', 'PARTIALLY_RECEIVED'].includes(po.status)) {
+          throw new BadRequestException('PO นี้ไม่อยู่ในสถานะที่สามารถรับสินค้าได้ (ต้อง APPROVED หรือ PARTIALLY_RECEIVED)');
         }
-      }
 
-      // Validate quantities
-      for (const [poItemId, passCount] of Object.entries(countByPoItem)) {
-        const poItem = po.items.find((i) => i.id === poItemId);
-        if (!poItem) throw new NotFoundException(`ไม่พบรายการ PO: ${poItemId}`);
-
-        const totalReceived = poItem.receivedQty + passCount;
-        if (totalReceived > poItem.quantity) {
-          throw new BadRequestException(
-            `จำนวนรับเกิน: ${poItem.brand} ${poItem.model} (สั่ง ${poItem.quantity}, รับแล้ว ${poItem.receivedQty}, กำลังรับ ${passCount})`,
-          );
-        }
-      }
-
-      // Validate duplicate IMEI/Serial in this batch
-      const imeiList = dto.items
-        .filter((i) => i.status === 'PASS' && i.imeiSerial)
-        .map((i) => i.imeiSerial!);
-      const uniqueImeis = new Set(imeiList);
-      if (uniqueImeis.size !== imeiList.length) {
-        throw new BadRequestException('พบ IMEI ซ้ำกันในรายการที่กำลังรับเข้า');
-      }
-
-      // Validate IMEI not already exists in system (include soft-deleted due to DB unique constraint)
-      if (imeiList.length > 0) {
-        const existingProducts = await tx.product.findMany({
-          where: { imeiSerial: { in: imeiList } },
-          select: { imeiSerial: true, name: true, deletedAt: true },
+        // Find main warehouse branch
+        let mainWarehouse = await tx.branch.findFirst({
+          where: { isMainWarehouse: true, isActive: true, deletedAt: null },
         });
-        if (existingProducts.length > 0) {
-          const dupes = existingProducts.map((p) => {
-            const suffix = p.deletedAt ? ' [ตัดจำหน่ายแล้ว]' : '';
-            return `${p.imeiSerial} (${p.name}${suffix})`;
-          }).join(', ');
-          throw new BadRequestException(`IMEI ซ้ำกับสินค้าที่มีในระบบแล้ว: ${dupes}`);
-        }
-      }
-
-      // Process each item
-      for (const item of dto.items) {
-        const poItem = po.items.find((i) => i.id === item.poItemId);
-        if (!poItem) throw new NotFoundException(`ไม่พบรายการ PO: ${item.poItemId}`);
-
-        if (item.status === 'PASS') {
-          // Build product name from PO item details
-          const productCategory = (poItem.category as ProductCategory) || 'PHONE_NEW';
-          let productName: string;
-          if (productCategory === 'ACCESSORY') {
-            const isCharger = poItem.accessoryType === 'ชุดชาร์จ';
-            if (isCharger) {
-              productName = [poItem.accessoryType, poItem.accessoryBrand, poItem.model].filter(Boolean).join(' ');
-            } else {
-              const accParts = [poItem.accessoryType, poItem.accessoryBrand].filter(Boolean);
-              productName = poItem.model
-                ? `${accParts.join(' ')} สำหรับ ${poItem.model}`
-                : accParts.join(' ');
-            }
-          } else {
-            const nameParts = [poItem.brand, poItem.model, poItem.color, poItem.storage].filter(Boolean);
-            productName = nameParts.join(' ');
-          }
-
-          // Create product for passed items
-          // PHONE_USED → PHOTO_PENDING (ต้องถ่ายรูป 6 มุมก่อนเข้าคลัง)
-          // PHONE_NEW / ACCESSORY → IN_STOCK (เข้าคลังได้เลย)
-          const initialStatus = productCategory === 'PHONE_USED' ? 'PHOTO_PENDING' : 'IN_STOCK';
-          const product = await tx.product.create({
-            data: {
-              name: productName,
-              brand: poItem.brand || '',
-              model: poItem.model || '',
-              color: poItem.color || null,
-              storage: poItem.storage || null,
-              category: productCategory,
-              costPrice: Number(poItem.unitPrice),
-              supplierId: po.supplierId,
-              poId: po.id,
-              branchId: mainWarehouse!.id,
-              status: initialStatus,
-              imeiSerial: item.imeiSerial || null,
-              serialNumber: item.serialNumber || null,
-              photos: item.photos || [],
-              batteryHealth: item.batteryHealth ?? null,
-              warrantyExpired: item.warrantyExpired ?? null,
-              warrantyExpireDate: item.warrantyExpireDate ? new Date(item.warrantyExpireDate) : null,
-              hasBox: item.hasBox ?? null,
-              checklistResults: item.checklistResults ? (item.checklistResults as unknown as Prisma.InputJsonValue) : undefined,
-              accessoryType: poItem.accessoryType || null,
-              accessoryBrand: poItem.accessoryBrand || null,
-            },
+        if (!mainWarehouse) {
+          // Fallback: use first active branch
+          mainWarehouse = await tx.branch.findFirst({
+            where: { isActive: true, deletedAt: null },
+            orderBy: { createdAt: 'asc' },
           });
+        }
+        if (!mainWarehouse) {
+          throw new BadRequestException('ไม่พบคลังกลาง กรุณาตั้งค่าสาขาคลังกลางก่อน');
+        }
 
-          // Create selling price if provided
-          if (item.sellingPrice && item.sellingPrice > 0) {
-            await tx.productPrice.create({
+        // Create goods receiving record
+        const receiving = await tx.goodsReceiving.create({
+          data: {
+            poId: id,
+            receivedById: userId,
+            notes: dto.notes,
+          },
+        });
+
+        const passedProducts: Awaited<ReturnType<typeof tx.product.update>>[] = [];
+        const rejectedItems: Awaited<ReturnType<typeof tx.goodsReceivingItem.create>>[] = [];
+
+        // Group items by poItemId to count per PO item
+        const countByPoItem: Record<string, number> = {};
+        for (const item of dto.items) {
+          if (item.status === 'PASS') {
+            countByPoItem[item.poItemId] = (countByPoItem[item.poItemId] || 0) + 1;
+          }
+        }
+
+        // T5-C16: Re-read POItem rows inside the serializable tx to get the
+        // authoritative receivedQty at this instant. Any parallel GR batch
+        // that committed before us will be visible here; any that commits
+        // after us will be serialized and retry. `countByPoItem` inside this
+        // batch is already aggregated to avoid double-counting when the same
+        // poItemId appears twice in dto.items.
+        const freshPoItems = await tx.pOItem.findMany({
+          where: { id: { in: Object.keys(countByPoItem) } },
+          select: { id: true, quantity: true, receivedQty: true, brand: true, model: true },
+        });
+        const freshByPoItem = new Map(freshPoItems.map((p) => [p.id, p]));
+
+        // Validate quantities using fresh DB rows (not cached po.items)
+        for (const [poItemId, passCount] of Object.entries(countByPoItem)) {
+          const fresh = freshByPoItem.get(poItemId);
+          if (!fresh) throw new NotFoundException(`ไม่พบรายการ PO: ${poItemId}`);
+
+          const totalReceived = fresh.receivedQty + passCount;
+          if (totalReceived > fresh.quantity) {
+            throw new BadRequestException(
+              `จำนวนรับเกิน: ${fresh.brand ?? ''} ${fresh.model ?? ''} (สั่ง ${fresh.quantity}, รับแล้ว ${fresh.receivedQty}, กำลังรับ ${passCount})`,
+            );
+          }
+        }
+
+        // Validate duplicate IMEI/Serial in this batch
+        const imeiList = dto.items
+          .filter((i) => i.status === 'PASS' && i.imeiSerial)
+          .map((i) => i.imeiSerial!);
+        const uniqueImeis = new Set(imeiList);
+        if (uniqueImeis.size !== imeiList.length) {
+          throw new BadRequestException('พบ IMEI ซ้ำกันในรายการที่กำลังรับเข้า');
+        }
+
+        // Validate IMEI not already exists in system (include soft-deleted due to DB unique constraint)
+        if (imeiList.length > 0) {
+          const existingProducts = await tx.product.findMany({
+            where: { imeiSerial: { in: imeiList } },
+            select: { imeiSerial: true, name: true, deletedAt: true },
+          });
+          if (existingProducts.length > 0) {
+            const dupes = existingProducts.map((p) => {
+              const suffix = p.deletedAt ? ' [ตัดจำหน่ายแล้ว]' : '';
+              return `${p.imeiSerial} (${p.name}${suffix})`;
+            }).join(', ');
+            throw new BadRequestException(`IMEI ซ้ำกับสินค้าที่มีในระบบแล้ว: ${dupes}`);
+          }
+        }
+
+        // Process each item
+        for (const item of dto.items) {
+          const poItem = po.items.find((i) => i.id === item.poItemId);
+          if (!poItem) throw new NotFoundException(`ไม่พบรายการ PO: ${item.poItemId}`);
+
+          if (item.status === 'PASS') {
+            // Build product name from PO item details
+            const productCategory = (poItem.category as ProductCategory) || 'PHONE_NEW';
+            let productName: string;
+            if (productCategory === 'ACCESSORY') {
+              const isCharger = poItem.accessoryType === 'ชุดชาร์จ';
+              if (isCharger) {
+                productName = [poItem.accessoryType, poItem.accessoryBrand, poItem.model].filter(Boolean).join(' ');
+              } else {
+                const accParts = [poItem.accessoryType, poItem.accessoryBrand].filter(Boolean);
+                productName = poItem.model
+                  ? `${accParts.join(' ')} สำหรับ ${poItem.model}`
+                  : accParts.join(' ');
+              }
+            } else {
+              const nameParts = [poItem.brand, poItem.model, poItem.color, poItem.storage].filter(Boolean);
+              productName = nameParts.join(' ');
+            }
+
+            // Create product for passed items
+            // PHONE_USED → PHOTO_PENDING (ต้องถ่ายรูป 6 มุมก่อนเข้าคลัง)
+            // PHONE_NEW / ACCESSORY → IN_STOCK (เข้าคลังได้เลย)
+            const initialStatus = productCategory === 'PHONE_USED' ? 'PHOTO_PENDING' : 'IN_STOCK';
+            const product = await tx.product.create({
               data: {
-                productId: product.id,
-                label: 'ราคาขาย',
-                amount: item.sellingPrice,
-                isDefault: true,
+                name: productName,
+                brand: poItem.brand || '',
+                model: poItem.model || '',
+                color: poItem.color || null,
+                storage: poItem.storage || null,
+                category: productCategory,
+                costPrice: Number(poItem.unitPrice),
+                supplierId: po.supplierId,
+                poId: po.id,
+                branchId: mainWarehouse!.id,
+                status: initialStatus,
+                imeiSerial: item.imeiSerial || null,
+                serialNumber: item.serialNumber || null,
+                photos: item.photos || [],
+                batteryHealth: item.batteryHealth ?? null,
+                warrantyExpired: item.warrantyExpired ?? null,
+                warrantyExpireDate: item.warrantyExpireDate ? new Date(item.warrantyExpireDate) : null,
+                hasBox: item.hasBox ?? null,
+                checklistResults: item.checklistResults ? (item.checklistResults as unknown as Prisma.InputJsonValue) : undefined,
+                accessoryType: poItem.accessoryType || null,
+                accessoryBrand: poItem.accessoryBrand || null,
               },
             });
+
+            // Create selling price if provided
+            if (item.sellingPrice && item.sellingPrice > 0) {
+              await tx.productPrice.create({
+                data: {
+                  productId: product.id,
+                  label: 'ราคาขาย',
+                  amount: item.sellingPrice,
+                  isDefault: true,
+                },
+              });
+            }
+
+            // Create receiving item linked to product
+            await tx.goodsReceivingItem.create({
+              data: {
+                receivingId: receiving.id,
+                poItemId: item.poItemId,
+                imeiSerial: item.imeiSerial,
+                serialNumber: item.serialNumber,
+                photos: item.photos || [],
+                status: 'PASS',
+                productId: product.id,
+                batteryHealth: item.batteryHealth ?? null,
+                warrantyExpired: item.warrantyExpired ?? null,
+                warrantyExpireDate: item.warrantyExpireDate ? new Date(item.warrantyExpireDate) : null,
+                hasBox: item.hasBox ?? null,
+                checklistResults: item.checklistResults ? (item.checklistResults as unknown as Prisma.InputJsonValue) : undefined,
+              },
+            });
+
+            passedProducts.push(product);
+          } else {
+            // Create receiving item for rejected items (no product created)
+            const rejectedItem = await tx.goodsReceivingItem.create({
+              data: {
+                receivingId: receiving.id,
+                poItemId: item.poItemId,
+                imeiSerial: item.imeiSerial,
+                serialNumber: item.serialNumber,
+                photos: item.photos || [],
+                status: 'REJECT',
+                rejectReason: item.rejectReason,
+              },
+            });
+
+            rejectedItems.push(rejectedItem);
           }
-
-          // Create receiving item linked to product
-          await tx.goodsReceivingItem.create({
-            data: {
-              receivingId: receiving.id,
-              poItemId: item.poItemId,
-              imeiSerial: item.imeiSerial,
-              serialNumber: item.serialNumber,
-              photos: item.photos || [],
-              status: 'PASS',
-              productId: product.id,
-              batteryHealth: item.batteryHealth ?? null,
-              warrantyExpired: item.warrantyExpired ?? null,
-              warrantyExpireDate: item.warrantyExpireDate ? new Date(item.warrantyExpireDate) : null,
-              hasBox: item.hasBox ?? null,
-              checklistResults: item.checklistResults ? (item.checklistResults as unknown as Prisma.InputJsonValue) : undefined,
-            },
-          });
-
-          passedProducts.push(product);
-        } else {
-          // Create receiving item for rejected items (no product created)
-          const rejectedItem = await tx.goodsReceivingItem.create({
-            data: {
-              receivingId: receiving.id,
-              poItemId: item.poItemId,
-              imeiSerial: item.imeiSerial,
-              serialNumber: item.serialNumber,
-              photos: item.photos || [],
-              status: 'REJECT',
-              rejectReason: item.rejectReason,
-            },
-          });
-
-          rejectedItems.push(rejectedItem);
         }
-      }
 
-      // Update PO item received quantities (only passed items count)
-      for (const [poItemId, passCount] of Object.entries(countByPoItem)) {
-        const poItem = po.items.find((i) => i.id === poItemId)!;
-        await tx.pOItem.update({
-          where: { id: poItemId },
-          data: { receivedQty: poItem.receivedQty + passCount },
+        // T5-C16: Update PO item received quantities using fresh values
+        // (not cached po.items which could be stale against a parallel tx).
+        for (const [poItemId, passCount] of Object.entries(countByPoItem)) {
+          const fresh = freshByPoItem.get(poItemId)!;
+          await tx.pOItem.update({
+            where: { id: poItemId },
+            data: { receivedQty: fresh.receivedQty + passCount },
+          });
+        }
+
+        // Check if all items fully received
+        const updatedPO = await tx.purchaseOrder.findUnique({
+          where: { id },
+          include: { items: true },
         });
-      }
 
-      // Check if all items fully received
-      const updatedPO = await tx.purchaseOrder.findUnique({
-        where: { id },
-        include: { items: true },
-      });
+        const allReceived = updatedPO!.items.every((item) => item.receivedQty >= item.quantity);
+        const newStatus = allReceived ? 'FULLY_RECEIVED' : 'PARTIALLY_RECEIVED';
 
-      const allReceived = updatedPO!.items.every((item) => item.receivedQty >= item.quantity);
-      const newStatus = allReceived ? 'FULLY_RECEIVED' : 'PARTIALLY_RECEIVED';
+        await tx.purchaseOrder.update({
+          where: { id },
+          data: { status: newStatus },
+        });
 
-      await tx.purchaseOrder.update({
-        where: { id },
-        data: { status: newStatus },
-      });
-
-      return {
-        receivingId: receiving.id,
-        poId: id,
-        status: newStatus,
-        passed: passedProducts.length,
-        rejected: rejectedItems.length,
-        products: passedProducts,
-        mainWarehouse: mainWarehouse!.name,
-      };
-    });
+        return {
+          receivingId: receiving.id,
+          poId: id,
+          status: newStatus,
+          passed: passedProducts.length,
+          rejected: rejectedItems.length,
+          products: passedProducts,
+          mainWarehouse: mainWarehouse!.name,
+        };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
   }
 
   /**

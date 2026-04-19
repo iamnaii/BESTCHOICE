@@ -1,3 +1,13 @@
+jest.mock('@sentry/node', () => ({
+  captureMessage: jest.fn(),
+  captureException: jest.fn(),
+}));
+jest.mock('@sentry/nestjs', () => ({
+  captureMessage: jest.fn(),
+  captureException: jest.fn(),
+  SentryModule: class {},
+}));
+
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { PaymentsService } from './payments.service';
@@ -10,6 +20,7 @@ import { LineOaService } from '../line-oa/line-oa.service';
 import { FlexTemplatesService } from '../line-oa/flex-templates.service';
 import { QuickReplyService } from '../line-oa/quick-reply.service';
 import { WarrantyService } from '../warranty/warranty.service';
+import * as Sentry from '@sentry/node';
 
 describe('PaymentsService', () => {
   let service: PaymentsService;
@@ -468,6 +479,64 @@ describe('PaymentsService', () => {
         expect((err as Error).message).toContain('reversePayment');
         expect((err as Error).message).toContain('amountPaid');
       }
+    });
+  });
+
+  // T1-C9 — large waiver Sentry alarm. A 200-baht goodwill waiver is
+  // routine; a 6,000-baht waiver probably deserves a second set of eyes
+  // from finance. Sentry fires at the >5,000 THB threshold so waves of
+  // abuse show up before they drain margin.
+  describe('waiveLateFee — T1-C9 large-amount Sentry alarm', () => {
+    beforeEach(() => {
+      (Sentry.captureMessage as jest.Mock).mockClear();
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'approver-1',
+        role: 'FINANCE_MANAGER',
+        isActive: true,
+        deletedAt: null,
+      });
+    });
+
+    it('does NOT call Sentry.captureMessage when waivedAmount ≤ 5,000', async () => {
+      prisma.payment.findUnique.mockResolvedValue({
+        ...mockPayment,
+        lateFee: 5000, // exactly at threshold — not >
+        lateFeeWaived: false,
+      });
+      prisma.payment.update.mockResolvedValue({
+        ...mockPayment,
+        lateFee: 0,
+        lateFeeWaived: true,
+      });
+
+      await service.waiveLateFee('payment-1', 'goodwill', 'user-1', 'approver-1');
+      expect(Sentry.captureMessage).not.toHaveBeenCalled();
+    });
+
+    it('calls Sentry.captureMessage with level=warning when waivedAmount > 5,000', async () => {
+      prisma.payment.findUnique.mockResolvedValue({
+        ...mockPayment,
+        contractId: 'contract-1',
+        lateFee: 7500,
+        lateFeeWaived: false,
+      });
+      prisma.payment.update.mockResolvedValue({
+        ...mockPayment,
+        lateFee: 0,
+        lateFeeWaived: true,
+      });
+
+      await service.waiveLateFee('payment-1', 'goodwill', 'user-1', 'approver-1');
+      expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+      const [message, opts] = (Sentry.captureMessage as jest.Mock).mock.calls[0];
+      expect(message).toBe('Large late-fee waiver');
+      expect(opts.level).toBe('warning');
+      expect(opts.tags).toMatchObject({ kind: 'finance' });
+      expect(opts.extra).toMatchObject({
+        waivedBy: 'user-1',
+        contractId: 'contract-1',
+        amount: 7500,
+      });
     });
   });
 });

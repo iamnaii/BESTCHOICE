@@ -909,4 +909,41 @@ describe('AccountingService', () => {
       expect(where.companyId).toBe('company-1');
     });
   });
+
+  // T2-C12 — once expense is PENDING_APPROVAL, money fields are frozen.
+  // Staff can still tweak description/notes/reference while the approver
+  // reviews (typos, vendor clarifications). Changing the amount after
+  // submission was the loophole.
+  describe('updateExpense — T2-C12 amount lock on PENDING_APPROVAL', () => {
+    const pendingExpense = {
+      id: 'exp-1',
+      status: 'PENDING_APPROVAL',
+      deletedAt: null,
+      amount: new Prisma.Decimal(1000),
+      vatAmount: new Prisma.Decimal(70),
+      totalAmount: new Prisma.Decimal(1070),
+      withholdingTax: new Prisma.Decimal(0),
+      accountCode: '51-1101',
+      description: 'old desc',
+    };
+
+    it('rejects amount edit when status is PENDING_APPROVAL', async () => {
+      prisma.expense.findFirst.mockResolvedValue(pendingExpense);
+      await expect(service.updateExpense('exp-1', { amount: 2000 })).rejects.toThrow(
+        /แก้ไขจำนวนเงิน/,
+      );
+      expect(prisma.expense.update).not.toHaveBeenCalled();
+    });
+
+    it('allows description-only edit when status is PENDING_APPROVAL', async () => {
+      prisma.expense.findFirst.mockResolvedValue(pendingExpense);
+      prisma.expense.update.mockResolvedValue({ ...pendingExpense, description: 'fixed typo' });
+      await service.updateExpense('exp-1', { description: 'fixed typo', note: 'clarified vendor' });
+      expect(prisma.expense.update).toHaveBeenCalledTimes(1);
+      const data = prisma.expense.update.mock.calls[0][0].data;
+      expect(data.description).toBe('fixed typo');
+      expect(data.amount).toBeUndefined();
+      expect(data.vatAmount).toBeUndefined();
+    });
+  });
 });

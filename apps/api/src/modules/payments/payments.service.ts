@@ -859,6 +859,23 @@ export class PaymentsService {
       approverId,
     });
 
+    // T1-C9 — unusual-waiver alarm. Most waivers are a few hundred baht
+    // (goodwill, one-off late days). Anything above 5,000 THB is worth a
+    // human eyeball on Sentry so finance can spot pattern abuse early.
+    if (result.originalLateFee > 5000) {
+      Sentry.captureMessage('Large late-fee waiver', {
+        level: 'warning',
+        tags: { kind: 'finance' },
+        extra: {
+          waivedBy: userId,
+          contractId: result.contractId,
+          amount: result.originalLateFee,
+          paymentId,
+          approverId,
+        },
+      });
+    }
+
     // Financial audit trail (outside transaction — audit failure shouldn't roll back waiver)
     await this.auditService.logPaymentEvent({
       userId,

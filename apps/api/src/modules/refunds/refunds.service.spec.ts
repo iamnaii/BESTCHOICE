@@ -191,6 +191,59 @@ describe('RefundsService', () => {
     });
   });
 
+  // T1-C8 — bankReversalRef / bankReversalAt are write-once. First write
+  // sets bankReversalLockedAt; any subsequent markReversed attempt must
+  // reject with a Thai error.
+  describe('markReversed — T1-C8 bank reversal lock', () => {
+    it('first write sets bankReversalLockedAt', async () => {
+      prisma.refund.findUnique.mockResolvedValue(
+        refundRecord({ status: 'APPROVED', bankReversalLockedAt: null, bankReversalRef: null }),
+      );
+      await service.markReversed(
+        'rf-1',
+        { bankReversalRef: 'SCB-00001', notes: 'first write' },
+        'u-owner',
+        'OWNER',
+      );
+      const data = prisma.refund.update.mock.calls[0][0].data;
+      expect(data.bankReversalRef).toBe('SCB-00001');
+      expect(data.bankReversalLockedAt).toBeInstanceOf(Date);
+    });
+
+    it('rejects a second write once bankReversalLockedAt is set', async () => {
+      prisma.refund.findUnique.mockResolvedValue(
+        refundRecord({
+          status: 'APPROVED',
+          bankReversalRef: 'SCB-00001',
+          bankReversalAt: new Date('2026-04-01'),
+          bankReversalLockedAt: new Date('2026-04-01'),
+        }),
+      );
+      await expect(
+        service.markReversed(
+          'rf-1',
+          { bankReversalRef: 'SCB-99999', notes: 'try to overwrite' },
+          'u-owner',
+          'OWNER',
+        ),
+      ).rejects.toThrow(/ถูกล็อคแล้ว/);
+      expect(prisma.refund.update).not.toHaveBeenCalled();
+    });
+
+    it('reading still works after lock is set (findOne)', async () => {
+      const frozen = refundRecord({
+        status: 'PROCESSED',
+        bankReversalRef: 'SCB-00001',
+        bankReversalAt: new Date('2026-04-01'),
+        bankReversalLockedAt: new Date('2026-04-01'),
+      });
+      prisma.refund.findUnique.mockResolvedValue(frozen);
+      const result = await service.findOne('rf-1');
+      expect(result.bankReversalRef).toBe('SCB-00001');
+      expect(result.bankReversalLockedAt).toBeInstanceOf(Date);
+    });
+  });
+
   describe('markFailed', () => {
     it('sets FAILED with reason when bank declined', async () => {
       prisma.refund.findUnique.mockResolvedValue(refundRecord({ status: 'APPROVED' }));

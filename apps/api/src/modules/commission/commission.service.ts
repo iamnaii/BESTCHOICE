@@ -317,7 +317,12 @@ export class CommissionService {
    *    this audit log is the source of truth for _why_ that snapshot is
    *    what it is.
    */
-  async updateRule(id: string, dto: UpdateCommissionRuleDto, userId?: string) {
+  async updateRule(
+    id: string,
+    dto: UpdateCommissionRuleDto,
+    userId?: string,
+    actor: { role?: string; retroactiveApproval?: boolean } = {},
+  ) {
     const rule = await this.prisma.commissionRule.findFirst({
       where: { id, deletedAt: null },
     });
@@ -326,6 +331,8 @@ export class CommissionService {
     if (dto.rate !== undefined && !rule.rate.equals(new Prisma.Decimal(dto.rate))) {
       const now = new Date();
       const currentPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      // T2-C5 — block rate changes while PENDING commissions exist for the
+      // current period (snapshot invariant on SalesCommission).
       const pending = await this.prisma.salesCommission.count({
         where: {
           commissionRuleId: id,
@@ -338,6 +345,28 @@ export class CommissionService {
         throw new ConflictException(
           `เปลี่ยนอัตราไม่ได้ — มี commission ที่รอดำเนินการ ${pending} รายการใน period ${currentPeriod} ปิด period ก่อนหรือรอเดือนหน้า`,
         );
+      }
+
+      // T2-C16 — block rate changes while APPROVED-but-not-PAID commissions
+      // exist for the rule. APPROVED rows carry a rate snapshot, but a rate
+      // change could be read as retroactive re-pricing by an auditor. Only
+      // OWNER with an explicit X-Retroactive-Approval header may proceed.
+      const unpaid = await this.prisma.salesCommission.count({
+        where: {
+          commissionRuleId: id,
+          status: 'APPROVED',
+          deletedAt: null,
+        },
+      });
+      if (unpaid > 0) {
+        const isOwner = actor.role === 'OWNER';
+        const retroApproved = actor.retroactiveApproval === true;
+        if (!(isOwner && retroApproved)) {
+          throw new ForbiddenException(
+            `เปลี่ยนอัตราไม่ได้ — มี commission อนุมัติแล้วแต่ยังไม่จ่าย ${unpaid} รายการ. ` +
+              `ต้องให้ OWNER ส่ง header X-Retroactive-Approval: true เพื่อยืนยันการเปลี่ยนย้อนหลัง`,
+          );
+        }
       }
     }
 

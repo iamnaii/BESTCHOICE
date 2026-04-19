@@ -28,6 +28,9 @@ describe('CommissionService', () => {
         findFirst: jest.fn(),
         update: jest.fn(),
       },
+      auditLog: {
+        create: jest.fn().mockResolvedValue({ id: 'a1' }),
+      },
       // Simple pass-through — callers supply their own tx mock via closure
       // in describe blocks that need it. Default echoes the parent prisma so
       // tests that don't inspect tx work unchanged.
@@ -442,6 +445,70 @@ describe('CommissionService', () => {
       prisma.salesCommission.count.mockResolvedValue(999);
 
       await expect(service.updateRule('rule-1', { rate: 0.03 })).resolves.toBeDefined();
+    });
+  });
+
+  // T2-C16 — retroactive-change block. APPROVED-but-unpaid commissions
+  // carry a rate snapshot; letting the master rate change silently after
+  // approval reads to an auditor as retroactive re-pricing. Only OWNER +
+  // explicit X-Retroactive-Approval header overrides.
+  describe('updateRule — T2-C16 retroactive approval guard', () => {
+    const rule = () => ({
+      id: 'rule-1',
+      name: 'default-rule',
+      ruleType: 'PERCENTAGE',
+      rate: new Prisma.Decimal('0.03'),
+      fixedAmount: null,
+      minSaleAmount: null,
+      maxSaleAmount: null,
+    });
+    const updatedRule = (newRate = '0.05') => ({
+      ...rule(),
+      rate: new Prisma.Decimal(newRate),
+    });
+
+    it('allows rate change when no APPROVED-unpaid commissions exist', async () => {
+      prisma.commissionRule.findFirst.mockResolvedValue(rule());
+      prisma.commissionRule.update.mockResolvedValue(updatedRule());
+      // PENDING count = 0, APPROVED (unpaid) count = 0
+      prisma.salesCommission.count.mockResolvedValue(0);
+
+      await expect(
+        service.updateRule('rule-1', { rate: 0.05 }, 'u-owner', { role: 'OWNER' }),
+      ).resolves.toBeDefined();
+      expect(prisma.commissionRule.update).toHaveBeenCalled();
+    });
+
+    it('rejects rate change when APPROVED-unpaid commissions exist and header missing', async () => {
+      prisma.commissionRule.findFirst.mockResolvedValue(rule());
+      // first count = PENDING (0), second count = APPROVED-unpaid (3)
+      prisma.salesCommission.count
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(3);
+
+      await expect(
+        service.updateRule('rule-1', { rate: 0.05 }, 'u-owner', {
+          role: 'OWNER',
+          retroactiveApproval: false,
+        }),
+      ).rejects.toThrow(/X-Retroactive-Approval/);
+      expect(prisma.commissionRule.update).not.toHaveBeenCalled();
+    });
+
+    it('allows rate change when OWNER + X-Retroactive-Approval: true', async () => {
+      prisma.commissionRule.findFirst.mockResolvedValue(rule());
+      prisma.commissionRule.update.mockResolvedValue(updatedRule());
+      prisma.salesCommission.count
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(3);
+
+      await expect(
+        service.updateRule('rule-1', { rate: 0.05 }, 'u-owner', {
+          role: 'OWNER',
+          retroactiveApproval: true,
+        }),
+      ).resolves.toBeDefined();
+      expect(prisma.commissionRule.update).toHaveBeenCalled();
     });
   });
 

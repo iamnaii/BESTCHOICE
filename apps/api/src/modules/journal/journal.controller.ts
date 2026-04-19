@@ -5,11 +5,13 @@ import {
   Param,
   Body,
   Query,
+  Req,
   UseGuards,
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import type { Request } from 'express';
 import { JournalService } from './journal.service';
 import { JournalAutoService } from './journal-auto.service';
 import { CreateJournalEntryDto } from './dto/journal.dto';
@@ -74,8 +76,19 @@ export class JournalController {
 
   @Post(':id/post')
   @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
-  post(@Param('id') id: string, @CurrentUser('id') userId: string) {
-    return this.journalService.post(id, userId);
+  post(
+    @Param('id') id: string,
+    @CurrentUser('id') userId: string,
+    @Req() req: Request,
+  ) {
+    // T2-C14 — capture ip + UA at the controller edge. JournalPostAuditLog
+    // is the "who POSTED what, from where" legal-retention trail.
+    const ipAddress =
+      (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() ||
+      req.ip ||
+      undefined;
+    const userAgent = req.headers['user-agent'] ?? undefined;
+    return this.journalService.post(id, userId, { ipAddress, userAgent });
   }
 
   @Post(':id/void')

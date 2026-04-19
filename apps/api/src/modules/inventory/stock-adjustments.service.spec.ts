@@ -118,4 +118,86 @@ describe('StockAdjustmentsService.create — T5-C3 4-eyes', () => {
       service.create({ ...baseDto, approverId: 'approver-owner' }, 'user-1'),
     ).resolves.toBeDefined();
   });
+
+  describe('T5-C8: FOUND restoration gates', () => {
+    const foundDto = { ...baseDto, reason: 'FOUND' as const };
+
+    it('rejects BRANCH_MANAGER approving FOUND on a DAMAGED product', async () => {
+      prisma.product.findUnique.mockResolvedValue({
+        id: 'p1',
+        status: 'DAMAGED',
+        branchId: 'branch-1',
+        deletedAt: new Date(),
+      });
+      await expect(
+        service.create({ ...foundDto, approverId: 'approver-bm' }, 'user-1'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('rejects FINANCE_MANAGER approving FOUND on WRITTEN_OFF product', async () => {
+      prisma.product.findUnique.mockResolvedValue({
+        id: 'p1',
+        status: 'WRITTEN_OFF',
+        branchId: 'branch-1',
+        deletedAt: new Date(),
+      });
+      await expect(
+        service.create({ ...foundDto, approverId: 'approver-fm' }, 'user-1'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('allows OWNER to approve FOUND on DAMAGED', async () => {
+      prisma.product.findUnique.mockResolvedValue({
+        id: 'p1',
+        status: 'DAMAGED',
+        branchId: 'branch-1',
+        deletedAt: new Date(),
+      });
+      await expect(
+        service.create({ ...foundDto, approverId: 'approver-owner' }, 'user-1'),
+      ).resolves.toBeDefined();
+      // Restoration stamp applied
+      expect(prisma.product.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: 'IN_STOCK',
+            restoredFromTerminalAt: expect.any(Date),
+          }),
+        }),
+      );
+    });
+
+    it('allows BRANCH_MANAGER to approve FOUND on LOST (not damage fraud pattern)', async () => {
+      prisma.product.findUnique.mockResolvedValue({
+        id: 'p1',
+        status: 'LOST',
+        branchId: 'branch-1',
+        deletedAt: new Date(),
+      });
+      await expect(
+        service.create({ ...foundDto, approverId: 'approver-bm' }, 'user-1'),
+      ).resolves.toBeDefined();
+    });
+
+    it('DAMAGED adjustment flips wasPreviouslyDamaged=true', async () => {
+      prisma.product.findUnique.mockResolvedValue({
+        id: 'p1',
+        status: 'IN_STOCK',
+        branchId: 'branch-1',
+        deletedAt: null,
+      });
+      await service.create(
+        { ...baseDto, reason: 'DAMAGED', approverId: 'approver-bm' },
+        'user-1',
+      );
+      expect(prisma.product.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: 'DAMAGED',
+            wasPreviouslyDamaged: true,
+          }),
+        }),
+      );
+    });
+  });
 });

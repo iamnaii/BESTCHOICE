@@ -51,6 +51,19 @@ export class StockAdjustmentsService {
         if (!product.deletedAt && product.status === 'IN_STOCK') {
           throw new BadRequestException('สินค้านี้อยู่ในสต๊อคอยู่แล้ว ไม่สามารถใช้เหตุผล "พบคืน" ได้');
         }
+        // T5-C8: restoring from DAMAGED/WRITTEN_OFF requires OWNER approver.
+        // The generic 4-eyes allows BRANCH_MANAGER to approve — that's fine
+        // for LOST→FOUND (missing phone reappears), but DAMAGED→FOUND is the
+        // classic fraud vector (manager flags damage, sells to accomplice as
+        // scrap, then resurrects for a clean retail resale). OWNER sign-off
+        // raises that bar.
+        const isDamageResurrection =
+          product.status === 'DAMAGED' || product.status === 'WRITTEN_OFF';
+        if (isDamageResurrection && approver.role !== 'OWNER') {
+          throw new ForbiddenException(
+            'การกู้คืนสินค้าจากสถานะ DAMAGED/WRITTEN_OFF ต้องให้ OWNER อนุมัติเท่านั้น (ไม่ใช่ BRANCH_MANAGER/FINANCE_MANAGER)',
+          );
+        }
       } else {
         // DAMAGED, LOST, WRITE_OFF, CORRECTION, OTHER: product must exist and be in stock
         if (!product || product.deletedAt) {
@@ -87,16 +100,31 @@ export class StockAdjustmentsService {
 
       // Update product status based on reason
       if (dto.reason === 'FOUND') {
+        const wasDamageRestore =
+          product.status === 'DAMAGED' || product.status === 'WRITTEN_OFF';
         await tx.product.update({
           where: { id: dto.productId },
-          data: { status: 'IN_STOCK', deletedAt: null, stockInDate: new Date() },
+          data: {
+            status: 'IN_STOCK',
+            deletedAt: null,
+            stockInDate: new Date(),
+            // T5-C8: stamp the restoration so sales can detect a recent
+            // damage-then-resurrect pattern. wasPreviouslyDamaged is already
+            // set from the prior DAMAGED adjustment — never flip it back.
+            restoredFromTerminalAt: wasDamageRestore ? new Date() : undefined,
+          },
         });
       } else if (['DAMAGED', 'LOST', 'WRITE_OFF'].includes(dto.reason)) {
         // DAMAGED, LOST, WRITE_OFF → update status and soft delete
         const statusMap: Record<string, 'DAMAGED' | 'LOST' | 'WRITTEN_OFF'> = { DAMAGED: 'DAMAGED', LOST: 'LOST', WRITE_OFF: 'WRITTEN_OFF' };
         await tx.product.update({
           where: { id: dto.productId },
-          data: { status: statusMap[dto.reason] || dto.reason, deletedAt: new Date() },
+          data: {
+            status: statusMap[dto.reason] || dto.reason,
+            deletedAt: new Date(),
+            // T5-C8: sticky flag — stays true even if FOUND later resurrects.
+            wasPreviouslyDamaged: true,
+          },
         });
       }
       // CORRECTION, OTHER → record only, no status/deletion change

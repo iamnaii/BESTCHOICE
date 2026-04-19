@@ -1,4 +1,9 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { PaymentMethod, PlanType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateSaleDto } from './dto/sale.dto';
@@ -245,6 +250,31 @@ export class SalesService {
     const discount = baseDiscount + loyaltyPoints;
     const netAmount = dto.sellingPrice - discount;
 
+    // T5-C8 pre-check (before sub-methods' own verifyProductInStock which
+    // only validates stock state). We resolve wasPreviouslyDamaged upfront
+    // so we can fail fast with the right Thai error before touching the
+    // tx, and so the downstream verifyProductInStock inside the tx just
+    // needs to re-confirm in-stock — not duplicate role checks.
+    if (dto.productId) {
+      const productFlags = await this.prisma.product.findUnique({
+        where: { id: dto.productId },
+        select: { wasPreviouslyDamaged: true, deletedAt: true },
+      });
+      if (productFlags?.wasPreviouslyDamaged && !productFlags.deletedAt) {
+        if (!dto.previouslyDamagedAcknowledged) {
+          throw new BadRequestException(
+            'สินค้านี้เคยมีสถานะ DAMAGED/LOST/WRITTEN_OFF — ต้องยืนยัน previouslyDamagedAcknowledged=true และต้องได้รับอนุมัติจาก OWNER/FINANCE_MANAGER',
+          );
+        }
+        const allowedRoles = ['OWNER', 'FINANCE_MANAGER'];
+        if (!allowedRoles.includes(userRole)) {
+          throw new ForbiddenException(
+            `ขายสินค้าที่เคย DAMAGED ต้องทำโดย ${allowedRoles.join(' / ')} เท่านั้น`,
+          );
+        }
+      }
+    }
+
     // Look up product cost so the service can enforce a cost floor.
     let costPrice: number | null = null;
     if (dto.productId) {
@@ -309,11 +339,41 @@ export class SalesService {
     return sale;
   }
 
-  /** Check product availability inside transaction to prevent race conditions */
-  private async verifyProductInStock(tx: Parameters<Parameters<typeof this.prisma.$transaction>[0]>[0], productId: string) {
+  /**
+   * Check product availability inside transaction to prevent race conditions.
+   *
+   * T5-C8: products that were ever flagged DAMAGED/LOST/WRITTEN_OFF keep
+   * `wasPreviouslyDamaged=true` permanently. Selling such a phone is
+   * allowed only when the caller (a) passes `previouslyDamagedAcknowledged`
+   * in the DTO — proof that the customer was told the phone has a damage
+   * history — and (b) is OWNER/FINANCE_MANAGER. BRANCH_MANAGER/SALES can't
+   * push these through alone.
+   */
+  private async verifyProductInStock(
+    tx: Parameters<Parameters<typeof this.prisma.$transaction>[0]>[0],
+    productId: string,
+    opts?: {
+      userRole?: string;
+      acknowledged?: boolean;
+    },
+  ) {
     const product = await tx.product.findUnique({ where: { id: productId } });
     if (!product || product.deletedAt || product.status !== 'IN_STOCK') {
       throw new BadRequestException('สินค้าไม่พร้อมขาย หรือถูกขายไปแล้ว');
+    }
+    if (product.wasPreviouslyDamaged) {
+      const allowedRoles = ['OWNER', 'FINANCE_MANAGER'];
+      if (!opts?.acknowledged) {
+        throw new BadRequestException(
+          'สินค้านี้เคยมีสถานะ DAMAGED/LOST/WRITTEN_OFF — ต้องยืนยันว่าได้แจ้งลูกค้าแล้ว ' +
+            '(previouslyDamagedAcknowledged=true) และได้รับอนุมัติจาก OWNER/FINANCE_MANAGER',
+        );
+      }
+      if (opts.userRole && !allowedRoles.includes(opts.userRole)) {
+        throw new ForbiddenException(
+          `ขายสินค้าที่เคย DAMAGED ต้องทำโดย ${allowedRoles.join(' / ')} เท่านั้น`,
+        );
+      }
     }
     return product;
   }

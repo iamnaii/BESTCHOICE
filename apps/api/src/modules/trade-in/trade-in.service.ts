@@ -16,7 +16,7 @@ import {
   UpsertValuationDto,
 } from './dto/trade-in.dto';
 import { TradeInVoucherService } from './services/voucher.service';
-import { encryptPII } from '../../utils/crypto.util';
+import { encryptPII, decryptPII, isEncrypted } from '../../utils/crypto.util';
 import { Prisma, PrismaClient } from '@prisma/client';
 
 // tradeInValuation is added via migration — cast prisma to any until `prisma generate` runs
@@ -33,6 +33,34 @@ export class TradeInService {
   // ─── PII encryption helpers (Phase 3) ────────────────────
   private get piiKey(): string {
     return process.env.PII_ENCRYPTION_KEY || '';
+  }
+
+  // ─── PII decryption helpers (Phase 5) ────────────────────
+
+  /**
+   * Phase 5 read decrypt: maps transferAccountNumberEncrypted / transferAccountNameEncrypted
+   * back to plaintext. Falls back to legacy plaintext columns when encrypted column is null.
+   */
+  private decryptTradeInPII<T extends Record<string, unknown>>(t: T | null): T | null {
+    if (!t) return t;
+    const key = this.piiKey;
+    if (!key) return t;
+    const dec = (encField: string, legacyField: string): string | null | undefined => {
+      const enc = t[encField] as string | null | undefined;
+      if (enc && typeof enc === 'string' && isEncrypted(enc)) {
+        return decryptPII(enc, key);
+      }
+      return t[legacyField] as string | null | undefined;
+    };
+    return {
+      ...t,
+      transferAccountNumber: dec('transferAccountNumberEncrypted', 'transferAccountNumber'),
+      transferAccountName: dec('transferAccountNameEncrypted', 'transferAccountName'),
+    } as T;
+  }
+
+  private decryptTradeInList<T extends Record<string, unknown>>(rows: T[]): T[] {
+    return rows.map((r) => this.decryptTradeInPII(r) as T);
   }
 
   /**
@@ -263,7 +291,8 @@ export class TradeInService {
       this.prisma.tradeIn.count({ where }),
     ]);
 
-    return paginatedResponse(data, total, page, limit);
+    const decrypted = this.decryptTradeInList(data as Array<Record<string, unknown>>);
+    return paginatedResponse(decrypted, total, page, limit);
   }
 
   async findOne(id: string) {
@@ -280,7 +309,7 @@ export class TradeInService {
     if (!tradeIn || tradeIn.deletedAt) {
       throw new NotFoundException('ไม่พบรายการเทรดอิน');
     }
-    return tradeIn;
+    return this.decryptTradeInPII(tradeIn as unknown as Record<string, unknown>) as typeof tradeIn;
   }
 
   // ─── Appraise ─────────────────────────────────────────────

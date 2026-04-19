@@ -1,0 +1,107 @@
+import { Test } from '@nestjs/testing';
+import { CustomersController } from './customers.controller';
+import { CustomersService } from './customers.service';
+import { PiiAuditService } from '../pii/pii-audit.service';
+
+describe('CustomersController PII (Phase 5)', () => {
+  let controller: CustomersController;
+  let service: { findOne: jest.Mock; findAll: jest.Mock; search: jest.Mock };
+  let piiAudit: { logDecryption: jest.Mock };
+
+  beforeEach(async () => {
+    service = {
+      findOne: jest.fn(),
+      findAll: jest.fn(),
+      search: jest.fn(),
+    };
+    piiAudit = { logDecryption: jest.fn().mockResolvedValue(undefined) };
+
+    const module = await Test.createTestingModule({
+      controllers: [CustomersController],
+      providers: [
+        { provide: CustomersService, useValue: service },
+        { provide: PiiAuditService, useValue: piiAudit },
+      ],
+    })
+      .overrideGuard(require('../auth/guards/jwt-auth.guard').JwtAuthGuard)
+      .useValue({ canActivate: () => true })
+      .overrideGuard(require('../auth/guards/roles.guard').RolesGuard)
+      .useValue({ canActivate: () => true })
+      .overrideGuard(require('../auth/guards/branch.guard').BranchGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
+
+    controller = module.get(CustomersController);
+  });
+
+  const reqOf = (role: string) =>
+    ({
+      user: { id: 'u1', role },
+      ip: '1.2.3.4',
+      headers: { 'user-agent': 'jest' },
+    }) as any;
+
+  it('masks nationalId for SALES role on findOne', async () => {
+    service.findOne.mockResolvedValue({ id: 'c1', nationalId: '1234567890123', phone: '0812345678' });
+    const result = await controller.findOne('c1', reqOf('SALES'));
+    expect((result as any).nationalId).toBe('12345-XXXXX-XX-3');
+    expect((result as any).phone).toBe('0812345678'); // not masked per Q1 matrix
+  });
+
+  it('returns full nationalId for OWNER on findOne', async () => {
+    service.findOne.mockResolvedValue({ id: 'c1', nationalId: '1234567890123' });
+    const result = await controller.findOne('c1', reqOf('OWNER'));
+    expect((result as any).nationalId).toBe('1234567890123');
+  });
+
+  it('logs PII_DECRYPT_MASKED for SALES on findOne', async () => {
+    service.findOne.mockResolvedValue({ id: 'c1', nationalId: '1234567890123' });
+    await controller.findOne('c1', reqOf('SALES'));
+    // Wait microtask for void this.piiAudit.logDecryption to fire
+    await new Promise((r) => setImmediate(r));
+    expect(piiAudit.logDecryption).toHaveBeenCalledWith(
+      expect.objectContaining({ masked: true, role: 'SALES', userId: 'u1' }),
+    );
+  });
+
+  it('logs PII_DECRYPT_FULL for OWNER on findOne', async () => {
+    service.findOne.mockResolvedValue({ id: 'c1', nationalId: '1234567890123' });
+    await controller.findOne('c1', reqOf('OWNER'));
+    await new Promise((r) => setImmediate(r));
+    expect(piiAudit.logDecryption).toHaveBeenCalledWith(
+      expect.objectContaining({ masked: false, role: 'OWNER' }),
+    );
+  });
+
+  it('masks list response for SALES on findAll', async () => {
+    service.findAll.mockResolvedValue({
+      data: [
+        { id: 'c1', nationalId: '1234567890123', phone: '0812345678' },
+        { id: 'c2', nationalId: '1234567890124', phone: '0823456789' },
+      ],
+      total: 2,
+      page: 1,
+      limit: 50,
+    });
+    const result = await controller.findAll(
+      { page: 1, limit: 50 } as any,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      reqOf('SALES'),
+    );
+    expect((result.data[0] as any).nationalId).toBe('12345-XXXXX-XX-3');
+    expect((result.data[1] as any).nationalId).toBe('12345-XXXXX-XX-4');
+    expect((result.data[0] as any).phone).toBe('0812345678');
+  });
+
+  it('returns null gracefully on findOne when customer not found', async () => {
+    service.findOne.mockResolvedValue(null);
+    const result = await controller.findOne('nope', reqOf('SALES'));
+    expect(result).toBeNull();
+  });
+});

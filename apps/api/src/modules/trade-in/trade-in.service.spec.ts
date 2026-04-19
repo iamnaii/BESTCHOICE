@@ -627,4 +627,44 @@ describe('TradeInService', () => {
       ).resolves.toBeDefined();
     });
   });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // PII read decryption (Phase 5)
+  // ──────────────────────────────────────────────────────────────────────────
+  describe('PII read decryption (Phase 5)', () => {
+    beforeEach(() => {
+      process.env.PII_ENCRYPTION_KEY = 'a'.repeat(64);
+    });
+    afterEach(() => {
+      delete process.env.PII_ENCRYPTION_KEY;
+    });
+
+    it('decrypts transferAccountNumber and transferAccountName when returning trade-in', async () => {
+      const { encryptPII } = require('../../utils/crypto.util');
+      const key = 'a'.repeat(64);
+      prisma.tradeIn.findUnique.mockResolvedValue({
+        ...makeTradeIn(),
+        transferAccountNumber: 'legacy-1234',
+        transferAccountNumberEncrypted: encryptPII('1234567890', key),
+        transferAccountName: 'legacy-name',
+        transferAccountNameEncrypted: encryptPII('Mr Test', key),
+      });
+      const result = await service.findOne('t1');
+      expect(result.transferAccountNumber).toBe('1234567890');
+      expect(result.transferAccountName).toBe('Mr Test');
+    });
+
+    it('falls back to legacy plaintext when encrypted column is null', async () => {
+      prisma.tradeIn.findUnique.mockResolvedValue({
+        ...makeTradeIn(),
+        transferAccountNumber: '0987654321',
+        transferAccountNumberEncrypted: null,
+        transferAccountName: 'Legacy Name',
+        transferAccountNameEncrypted: null,
+      });
+      const result = await service.findOne('t2');
+      expect(result.transferAccountNumber).toBe('0987654321');
+      expect(result.transferAccountName).toBe('Legacy Name');
+    });
+  });
 });

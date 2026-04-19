@@ -7,9 +7,10 @@ import {
   Body,
   Query,
   Res,
+  Req,
   UseGuards,
 } from '@nestjs/common';
-import type { Response } from 'express';
+import type { Response, Request } from 'express';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { TradeInService } from './trade-in.service';
 import {
@@ -27,13 +28,48 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { PiiAuditService } from '../pii/pii-audit.service';
+import { maskBankAccount } from '../../utils/pii.util';
+
+type AuthRequest = Request & { user?: { id: string; role: string } };
 
 @ApiTags('Trade-In')
 @ApiBearerAuth('JWT')
 @Controller('trade-ins')
 @UseGuards(JwtAuthGuard, RolesGuard, BranchGuard)
 export class TradeInController {
-  constructor(private tradeInService: TradeInService) {}
+  constructor(
+    private tradeInService: TradeInService,
+    private piiAudit: PiiAuditService,
+  ) {}
+
+  // ---------------------------------------------------------------------------
+  // Role-based PII masking helpers (Phase 5)
+  // BRANCH_MANAGER + SALES see transferAccountNumber masked; others see full
+  // ---------------------------------------------------------------------------
+
+  private applyRoleMask<T extends { transferAccountNumber?: string | null }>(
+    t: T | null,
+    userRole: string,
+  ): T | null {
+    if (!t) return t;
+    if (userRole === 'BRANCH_MANAGER' || userRole === 'SALES') {
+      return {
+        ...t,
+        transferAccountNumber: t.transferAccountNumber
+          ? maskBankAccount(t.transferAccountNumber)
+          : t.transferAccountNumber,
+      };
+    }
+    return t;
+  }
+
+  private applyRoleMaskList<T extends { transferAccountNumber?: string | null }>(
+    list: T[],
+    userRole: string,
+  ): T[] {
+    return list.map((t) => this.applyRoleMask(t, userRole) as T);
+  }
 
   @Post()
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
@@ -43,14 +79,15 @@ export class TradeInController {
 
   @Get()
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
-  findAll(
+  async findAll(
     @Query() pagination: PaginationDto,
     @Query('customerId') customerId?: string,
     @Query('branchId') branchId?: string,
     @Query('status') status?: string,
     @Query('search') search?: string,
+    @Req() req?: AuthRequest,
   ) {
-    return this.tradeInService.findAll({
+    const result = await this.tradeInService.findAll({
       customerId,
       branchId,
       status,
@@ -58,6 +95,26 @@ export class TradeInController {
       page: pagination.page,
       limit: pagination.limit,
     });
+
+    const role = req?.user?.role || 'UNKNOWN';
+
+    void this.piiAudit.logDecryption({
+      userId: req?.user?.id || 'system',
+      customerId: `BATCH:${result.data?.length ?? 0}`,
+      fields: ['transferAccountNumber'],
+      role,
+      masked: role === 'BRANCH_MANAGER' || role === 'SALES',
+      ipAddress: req?.ip,
+      userAgent: req?.headers['user-agent'] as string | undefined,
+    });
+
+    return {
+      ...result,
+      data: this.applyRoleMaskList(
+        result.data as Array<{ transferAccountNumber?: string | null }>,
+        role,
+      ),
+    };
   }
 
   // Quick Buy — 1-shot create + appraise + accept + voucher allocate
@@ -90,8 +147,24 @@ export class TradeInController {
 
   @Get(':id')
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
-  findOne(@Param('id') id: string) {
-    return this.tradeInService.findOne(id);
+  async findOne(@Param('id') id: string, @Req() req: AuthRequest) {
+    const t = await this.tradeInService.findOne(id);
+    if (!t) return t;
+
+    const role = req.user?.role || 'UNKNOWN';
+
+    // Fire-and-forget: never let audit log block the response
+    void this.piiAudit.logDecryption({
+      userId: req.user?.id || 'system',
+      customerId: id,
+      fields: ['transferAccountNumber'],
+      role,
+      masked: role === 'BRANCH_MANAGER' || role === 'SALES',
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'] as string | undefined,
+    });
+
+    return this.applyRoleMask(t as unknown as { transferAccountNumber?: string | null }, role);
   }
 
   @Patch(':id')

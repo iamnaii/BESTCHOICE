@@ -3,8 +3,8 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { paginatedResponse } from '../../common/helpers/pagination.helper';
 import { CreateCustomerDto, UpdateCustomerDto } from './dto/customer.dto';
-import { encryptPII } from '../../utils/crypto.util';
-import { hashPII, encryptReferencesJson } from '../../utils/pii.util';
+import { encryptPII, decryptPII, isEncrypted } from '../../utils/crypto.util';
+import { hashPII, encryptReferencesJson, decryptReferencesJson } from '../../utils/pii.util';
 
 @Injectable()
 export class CustomersService {
@@ -67,9 +67,11 @@ export class CustomersService {
         select: {
           id: true,
           nationalId: true,
+          nationalIdEncrypted: true,
           name: true,
           nickname: true,
           phone: true,
+          phoneEncrypted: true,
           occupation: true,
           salary: true,
           lineId: true,
@@ -111,8 +113,13 @@ export class CustomersService {
       const overdueContracts = c.contracts.filter((ct) => ['OVERDUE', 'DEFAULT'].includes(ct.status)).length;
       const latestCredit = c.creditChecks[0] || null;
       const { contracts, creditChecks, ...rest } = c;
+      // Phase 5: decrypt PII fields, then strip encrypted columns from response
+      const decrypted = this.decryptCustomerPII(rest as Record<string, unknown>);
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { nationalIdEncrypted: _ne, phoneEncrypted: _pe, ...clean } =
+        decrypted as typeof rest & { nationalIdEncrypted?: unknown; phoneEncrypted?: unknown };
       return {
-        ...rest,
+        ...clean,
         activeContracts,
         overdueContracts,
         latestCreditStatus: latestCredit?.status || null,
@@ -164,7 +171,8 @@ export class CustomersService {
       },
     });
     if (!customer || customer.deletedAt) throw new NotFoundException('ไม่พบลูกค้า');
-    return customer;
+    // Phase 5: decrypt PII before returning
+    return this.decryptCustomerPII(customer as unknown as Record<string, unknown>) as typeof customer;
   }
 
   async getReferrals(id: string) {
@@ -240,7 +248,9 @@ export class CustomersService {
         id: true,
         name: true,
         phone: true,
+        phoneEncrypted: true,
         nationalId: true,
+        nationalIdEncrypted: true,
         _count: { select: { contracts: true } },
         contracts: {
           where: {
@@ -253,13 +263,14 @@ export class CustomersService {
       take: 10,
       orderBy: { name: 'asc' },
     });
-    return rows.map((r) => ({
-      id: r.id,
-      name: r.name,
-      phone: r.phone,
-      nationalId: r.nationalId,
-      _count: r._count,
-      activeContractCount: r.contracts.length,
+    // Phase 5: decrypt PII, then project only the fields callers expect
+    return this.decryptCustomerList(rows as unknown as Record<string, unknown>[]).map((r) => ({
+      id: r['id'],
+      name: r['name'],
+      phone: r['phone'],
+      nationalId: r['nationalId'],
+      _count: r['_count'],
+      activeContractCount: (r['contracts'] as unknown[]).length,
     }));
   }
 
@@ -336,6 +347,50 @@ export class CustomersService {
   }
 
   /**
+   * Phase 5 read-path: decrypt PII columns into the legacy field names.
+   * After backfill (Phase 3 production step), every encrypted column should
+   * be populated. We still gracefully fall back to the legacy plaintext
+   * column if encrypted is NULL — supports rolling deploy + rollback safety.
+   */
+  private decryptCustomerPII<T extends Record<string, unknown>>(c: T | null): T | null {
+    if (!c) return c;
+    const key = this.piiKey;
+    if (!key) return c;
+
+    const dec = (encField: string, legacyField: string): string | null | undefined => {
+      const enc = c[encField] as string | null | undefined;
+      if (enc && typeof enc === 'string' && isEncrypted(enc)) {
+        return decryptPII(enc, key);
+      }
+      return c[legacyField] as string | null | undefined;
+    };
+
+    return {
+      ...c,
+      nationalId: dec('nationalIdEncrypted', 'nationalId'),
+      phone: dec('phoneEncrypted', 'phone'),
+      phoneSecondary: dec('phoneSecondaryEncrypted', 'phoneSecondary'),
+      email: dec('emailEncrypted', 'email'),
+      addressIdCard: dec('addressIdCardEncrypted', 'addressIdCard'),
+      addressCurrent: dec('addressCurrentEncrypted', 'addressCurrent'),
+      addressWork: dec('addressWorkEncrypted', 'addressWork'),
+      guardianNationalId: dec('guardianNationalIdEncrypted', 'guardianNationalId'),
+      guardianPhone: dec('guardianPhoneEncrypted', 'guardianPhone'),
+      guardianAddress: dec('guardianAddressEncrypted', 'guardianAddress'),
+      references: c['referencesEncrypted']
+        ? decryptReferencesJson(c['referencesEncrypted'], key)
+        : c['references'],
+    } as T;
+  }
+
+  /**
+   * Decrypt a list of customer rows.
+   */
+  private decryptCustomerList<T extends Record<string, unknown>>(rows: T[]): T[] {
+    return rows.map((r) => this.decryptCustomerPII(r) as T);
+  }
+
+  /**
    * Normalize NID/passport for dedup. Strips spaces, dashes, then uppercases.
    * "1-1234-56789-00-1" → "1123456789001". Without this, the @unique constraint
    * is only effective when callers happen to pass already-clean strings —
@@ -386,11 +441,13 @@ export class CustomersService {
     ignoreCustomerId?: string,
   ): Promise<void> {
     if (phone) {
+      // Phase 5: use phoneHash for lookup (faster, correct post-Phase 6 drop of plaintext)
+      const phoneHash = hashPII(phone, this.hashSalt);
       const dupPhone = await this.prisma.customer.findFirst({
         where: {
-          phone,
+          phoneHash,
           deletedAt: null,
-          ...(ignoreCustomerId ? { NOT: { id: ignoreCustomerId } } : {}),
+          ...(ignoreCustomerId ? { id: { not: ignoreCustomerId } } : {}),
         },
         select: { id: true, name: true },
       });
@@ -430,9 +487,10 @@ export class CustomersService {
     const normalizedPhoneSecondary = this.normalizePhone(dto.phoneSecondary);
     const normalizedEmail = this.normalizeEmail(dto.email);
 
-    // Check duplicate national ID (normalized — so format variations still collide)
+    // Phase 5: use nationalIdHash for dedup (faster + correct post-Phase 6 drop of plaintext)
+    const nidHash = hashPII(normalizedNid, this.hashSalt);
     const existing = await this.prisma.customer.findUnique({
-      where: { nationalId: normalizedNid },
+      where: { nationalIdHash: nidHash },
     });
     if (existing && !existing.deletedAt) {
       throw new ConflictException({

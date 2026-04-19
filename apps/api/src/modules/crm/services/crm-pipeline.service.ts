@@ -105,10 +105,57 @@ export class CrmPipelineService {
     return this.prisma.crmLead.update({ where: { id }, data });
   }
 
-  async assignLead(id: string, staffId: string) {
-    return this.prisma.crmLead.update({
+  /**
+   * Reassign a lead. Writes an immutable history row alongside the update
+   * so any later "who took my lead?" question has a definitive answer.
+   * `changedById` is the user making the change (often a manager reassigning
+   * a junior's lead); `toUserId` is the new owner.
+   */
+  async assignLead(
+    id: string,
+    staffId: string,
+    changedById: string,
+    reason?: string,
+  ) {
+    const existing = await this.prisma.crmLead.findUnique({
       where: { id },
-      data: { assignedToId: staffId },
+      select: { id: true, assignedToId: true },
+    });
+    if (!existing) {
+      throw new Error(`CRM lead ${id} not found`);
+    }
+    if (existing.assignedToId === staffId) {
+      // No-op — don't pad the history log with repeats of the same owner
+      return this.prisma.crmLead.findUnique({ where: { id } });
+    }
+
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.crmLead.update({
+        where: { id },
+        data: { assignedToId: staffId },
+      }),
+      this.prisma.crmLeadAssignment.create({
+        data: {
+          leadId: id,
+          fromUserId: existing.assignedToId,
+          toUserId: staffId,
+          changedById,
+          reason: reason?.trim() || null,
+        },
+      }),
+    ]);
+    return updated;
+  }
+
+  async getAssignmentHistory(leadId: string) {
+    return this.prisma.crmLeadAssignment.findMany({
+      where: { leadId },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        fromUser: { select: { id: true, name: true } },
+        toUser: { select: { id: true, name: true } },
+        changedBy: { select: { id: true, name: true } },
+      },
     });
   }
 

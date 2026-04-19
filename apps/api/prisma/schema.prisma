@@ -455,6 +455,9 @@ model User {
   loginAudits            LoginAuditLog[]      @relation("LoginAudits")
   dataAuditAcknowledgements DataAuditLog[]    @relation("DataAuditAcknowledgedBy")
   warrantyAudits         WarrantyAuditLog[]   @relation("WarrantyAuditUser")
+  crmLeadAssignFromHistory CrmLeadAssignment[] @relation("CrmLeadAssignFrom")
+  crmLeadAssignToHistory   CrmLeadAssignment[] @relation("CrmLeadAssignTo")
+  crmLeadAssignChangedBy   CrmLeadAssignment[] @relation("CrmLeadAssignChangedBy")
 
   @@index([branchId])
   @@map("users")
@@ -3628,11 +3631,39 @@ model CrmLead {
   updatedAt    DateTime         @updatedAt @map("updated_at")
   deletedAt    DateTime?        @map("deleted_at")
 
+  assignmentHistory CrmLeadAssignment[] @relation("CrmLeadHistory")
+
   @@index([stage, assignedToId])
   @@index([customerId])
   @@index([branchId, stage])
   @@index([deletedAt])
   @@map("crm_leads")
+}
+
+/// Immutable history of lead ownership changes (T5-C7). Prevents silent
+/// lead theft — e.g. MANAGER pulls a hot lead from a junior SALES into
+/// their own queue. Every assignLead() writes one row; the current
+/// owner is still CrmLead.assignedToId for query speed.
+///
+/// Immutable audit — updatedAt/deletedAt intentionally omitted
+model CrmLeadAssignment {
+  id            String   @id @default(uuid())
+  leadId        String   @map("lead_id")
+  fromUserId    String?  @map("from_user_id") // null = first assignment
+  toUserId      String   @map("to_user_id")
+  changedById   String   @map("changed_by_id") // the manager/user who made the change
+  reason        String?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  lead      CrmLead @relation("CrmLeadHistory", fields: [leadId], references: [id], onDelete: Restrict)
+  fromUser  User?   @relation("CrmLeadAssignFrom", fields: [fromUserId], references: [id], onDelete: SetNull)
+  toUser    User    @relation("CrmLeadAssignTo", fields: [toUserId], references: [id])
+  changedBy User    @relation("CrmLeadAssignChangedBy", fields: [changedById], references: [id])
+
+  @@index([leadId, createdAt])
+  @@index([toUserId])
+  @@index([changedById, createdAt])
+  @@map("crm_lead_assignments")
 }
 
 model CrmNote {

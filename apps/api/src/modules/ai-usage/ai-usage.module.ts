@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import { AiUsageService } from './ai-usage.service';
+import { AiUsageController } from './ai-usage.controller';
 import { AiBudgetCron } from './ai-budget.cron';
 
 /**
@@ -8,6 +9,7 @@ import { AiBudgetCron } from './ai-budget.cron';
  */
 @Global()
 @Module({
+  controllers: [AiUsageController],
   providers: [AiUsageService, AiBudgetCron],
   exports: [AiUsageService],
 })

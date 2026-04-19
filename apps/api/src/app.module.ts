@@ -33,6 +33,7 @@ import { WebhookSecurityModule } from './modules/webhook-security/webhook-securi
 import { AiUsageModule } from './modules/ai-usage/ai-usage.module';
 import { RefundsModule } from './modules/refunds/refunds.module';
 import { ReceivableReconModule } from './modules/receivable-recon/receivable-recon.module';
+import { MetricsModule } from './modules/metrics/metrics.module';
 import { UsersModule } from './modules/users/users.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
@@ -146,6 +147,7 @@ import { AppCacheModule } from './cache/cache.module';
     AiUsageModule,
     RefundsModule,
     ReceivableReconModule,
+    MetricsModule,
     // Legal Compliance & PDPA
     PDPAModule,
     KycModule,

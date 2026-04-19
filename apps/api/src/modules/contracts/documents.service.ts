@@ -922,7 +922,7 @@ ${(() => {
     // Lessor (ผู้ให้เช่าซื้อ) signature always comes from system settings — never per-contract.
     // Falls back to contract STAFF/COMPANY signature only if system signature is missing.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let staffSig: any = lessorSig
+    const staffSig: any = lessorSig
       ? { signatureImage: lessorSig.image, signerName: lessorSig.name, signerType: 'COMPANY' }
       : contract.signatures?.find((s: any) => s.signerType === 'STAFF' || s.signerType === 'COMPANY');
 

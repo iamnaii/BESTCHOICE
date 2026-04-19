@@ -38,7 +38,7 @@ describe('CommissionService', () => {
       // Simple pass-through — callers supply their own tx mock via closure
       // in describe blocks that need it. Default echoes the parent prisma so
       // tests that don't inspect tx work unchanged.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       $transaction: jest.fn(async (cb: (tx: unknown) => Promise<unknown>) => cb(prisma)),
     };
 

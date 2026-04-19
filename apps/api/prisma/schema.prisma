@@ -1411,12 +1411,18 @@ model AuditLog {
   userAgent String?  @map("user_agent")
   duration  Int? // request duration in ms
   createdAt DateTime @default(now()) @map("created_at")
+  // T2-C4 — soft archive instead of hard delete so the row remains
+  // queryable for forensics until the 7-year legal retention is actually
+  // hit. A Postgres trigger (installed by migration 20260520300000)
+  // rejects DELETE on this table regardless of path.
+  archivedAt DateTime? @map("archived_at")
 
   user User @relation(fields: [userId], references: [id])
 
   @@index([entity, entityId])
   @@index([userId])
   @@index([createdAt])
+  @@index([archivedAt])
   @@map("audit_logs")
 }
 

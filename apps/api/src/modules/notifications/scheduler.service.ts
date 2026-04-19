@@ -507,20 +507,27 @@ export class SchedulerService {
       // ─── Append-only log retention (audit + notifications) ────────────
       // PDPA: ลูกค้ามีสิทธิ์ขอให้ลบข้อมูลส่วนตัว — append-only logs ที่
       // โตแบบไม่มีหยุดเป็น compliance risk + ทำให้ DB ช้า. นโยบาย:
-      //   - AuditLog:        เก็บ 1 ปี (PDPA + ขนาด)
+      //   - AuditLog:        เก็บ 7 ปี (Thai Revenue Code + financial industry
+      //                      standard). Soft-archive via archivedAt instead of
+      //                      DELETE — a DB trigger also rejects DELETE so this
+      //                      logic cannot be weaponised by a malicious path.
       //   - NotificationLog: เก็บ 6 เดือน (delivery report ไม่ต้องเก็บนาน)
-      // ใช้ hard delete เพราะเป็นข้อมูลที่ไม่ต้องเก็บ trail (เป็น trail เอง)
-      const oneYearAgoForLogs = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+      const sevenYearsAgo = new Date(
+        now.getFullYear() - 7,
+        now.getMonth(),
+        now.getDate(),
+      );
       const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate());
 
-      let auditLogsCleared = 0;
+      let auditLogsArchived = 0;
       try {
-        const result = await this.prisma.auditLog.deleteMany({
-          where: { createdAt: { lt: oneYearAgoForLogs } },
+        const result = await this.prisma.auditLog.updateMany({
+          where: { createdAt: { lt: sevenYearsAgo }, archivedAt: null },
+          data: { archivedAt: now },
         });
-        auditLogsCleared = result.count;
+        auditLogsArchived = result.count;
       } catch (err) {
-        this.logger.warn(`AuditLog cleanup failed: ${err instanceof Error ? err.message : err}`);
+        this.logger.warn(`AuditLog archive failed: ${err instanceof Error ? err.message : err}`);
       }
 
       let notificationLogsCleared = 0;
@@ -536,7 +543,7 @@ export class SchedulerService {
       this.logger.log(
         `Data retention complete: ${completedAnonymized.count} completed, ${cancelledAnonymized.count} cancelled soft-deleted, ` +
         `${tokensCleared} expired tokens, ${consentsCleared} withdrawn consents, ` +
-        `${auditLogsCleared} audit logs, ${notificationLogsCleared} notification logs cleared`,
+        `${auditLogsArchived} audit logs archived, ${notificationLogsCleared} notification logs cleared`,
       );
     } catch (error) {
       this.reportCronFailure('data-retention', error);

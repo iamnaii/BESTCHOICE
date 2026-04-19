@@ -453,6 +453,7 @@ model User {
   refundsApproved        Refund[]             @relation("RefundApprovedBy")
   refundsRejected        Refund[]             @relation("RefundRejectedBy")
   loginAudits            LoginAuditLog[]      @relation("LoginAudits")
+  dataAuditAcknowledgements DataAuditLog[]    @relation("DataAuditAcknowledgedBy")
 
   @@index([branchId])
   @@map("users")
@@ -3680,11 +3681,22 @@ model DataAuditLog {
   count      Int      @default(0)
   details    Json?
   executedAt DateTime @default(now()) @map("executed_at")
+
+  /// T2-C7: FAIL results need human acknowledgement. SLA is 24h for
+  /// CRITICAL/HIGH — past that, an escalation cron fires a Sentry alert
+  /// so the finance team is forced to engage.
+  acknowledgedAt    DateTime? @map("acknowledged_at")
+  acknowledgedById  String?   @map("acknowledged_by_id")
+  acknowledgeNotes  String?   @map("acknowledge_notes")
+
   createdAt  DateTime @default(now()) @map("created_at")
+
+  acknowledgedBy User? @relation("DataAuditAcknowledgedBy", fields: [acknowledgedById], references: [id], onDelete: SetNull)
 
   @@index([runId])
   @@index([checkName, executedAt])
   @@index([status])
+  @@index([status, acknowledgedAt])
   @@map("data_audit_logs")
 }
 

@@ -1,18 +1,42 @@
-import { Controller, Get, Post, Param, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Post,
+  Param,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { DataAuditService } from './data-audit.service';
 import { AuditFilterDto, TraceFilterDto, AuditHistoryDto } from './dto/audit-filter.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @ApiTags('Data Audit')
 @ApiBearerAuth('JWT')
 @Controller('data-audit')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('OWNER')
+@Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
 export class DataAuditController {
   constructor(private dataAuditService: DataAuditService) {}
+
+  /** Unacknowledged FAIL findings — CRITICAL/HIGH ordered by oldest first */
+  @Get('findings')
+  async findings(@Query('severity') severity?: string) {
+    return this.dataAuditService.getUnacknowledgedFindings(severity);
+  }
+
+  @Post('findings/:id/acknowledge')
+  async acknowledge(
+    @Param('id') id: string,
+    @Body() body: { notes?: string },
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.dataAuditService.acknowledgeFinding(id, user.id, body?.notes);
+  }
 
   /** Run all 12 audit checks */
   @Get('run')

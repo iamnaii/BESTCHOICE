@@ -26,6 +26,8 @@ import { PromptPayQrService } from './promptpay/promptpay-qr.service';
 import { RichMenuService } from './rich-menu/rich-menu.service';
 import { SetAliasDto } from './rich-menu/dto/set-alias.dto';
 import { DeployTemplateDto, SetCallCenterPhoneDto } from './rich-menu/dto/deploy-template.dto';
+import { AuditService } from '../audit/audit.service';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 /**
  * LINE OA Settings + Admin — owner-only configuration and test endpoints.
@@ -42,6 +44,7 @@ export class LineOaController {
     private prisma: PrismaService,
     private promptPayQrService: PromptPayQrService,
     private richMenuService: RichMenuService,
+    private audit: AuditService,
   ) {}
 
   // ─── LINE OA Settings (Owner) ───────────────────────
@@ -273,12 +276,26 @@ export class LineOaController {
       buttons?: any[];
       channel?: string;
     },
+    @CurrentUser() user: { id: string },
   ) {
     const ch = this.parseChannel(body.channel);
     const result = await this.richMenuService.createCustomRichMenu(
       { ...body, layout: body.layout as '2x3' | '1x3' | '2x2' | undefined },
       ch,
     );
+    await this.audit.log({
+      userId: user.id,
+      action: 'RICH_MENU_CREATE',
+      entity: 'RichMenu',
+      entityId: result.richMenuId ?? '',
+      newValue: {
+        channel: ch,
+        name: body.name,
+        chatBarText: body.chatBarText,
+        layout: body.layout,
+        buttonCount: body.buttons?.length ?? 0,
+      },
+    });
     return { success: true, richMenuId: result.richMenuId };
   }
 
@@ -301,7 +318,11 @@ export class LineOaController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('OWNER')
   @UseInterceptors(FileInterceptor('image'))
-  async createWithImage(@UploadedFile() file: Express.Multer.File, @Body() body: any) {
+  async createWithImage(
+    @UploadedFile() file: Express.Multer.File,
+    @Body() body: any,
+    @CurrentUser() user: { id: string },
+  ) {
     const config = typeof body.config === 'string' ? JSON.parse(body.config) : (body.config ?? {});
     const ch = this.parseChannel(config.channel);
 
@@ -315,24 +336,69 @@ export class LineOaController {
       await this.richMenuService.setDefaultRichMenu(result.richMenuId, ch);
     }
 
+    await this.audit.log({
+      userId: user.id,
+      action: 'RICH_MENU_CREATE_WITH_IMAGE',
+      entity: 'RichMenu',
+      entityId: result.richMenuId ?? '',
+      newValue: {
+        channel: ch,
+        name: config.name,
+        layout: config.layout,
+        setAsDefault: !!config.setAsDefault,
+        hasImage: !!file,
+      },
+    });
+
     return { success: true, richMenuId: result.richMenuId };
   }
 
   @Post('rich-menu/:id/set-default')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('OWNER')
-  async setDefaultRichMenu(@Param('id') id: string, @Query('channel') channel?: string) {
+  async setDefaultRichMenu(
+    @Param('id') id: string,
+    @Query('channel') channel?: string,
+    @CurrentUser() user?: { id: string },
+  ) {
     const ch = this.parseChannel(channel);
+    // Capture the previous default so audit log shows the swap, not just the new value.
+    const previousDefault = await this.richMenuService
+      .getDefaultRichMenuId(ch)
+      .catch(() => null);
     await this.richMenuService.setDefaultRichMenu(id, ch);
+    if (user?.id) {
+      await this.audit.log({
+        userId: user.id,
+        action: 'RICH_MENU_SET_DEFAULT',
+        entity: 'RichMenu',
+        entityId: id,
+        oldValue: { channel: ch, defaultRichMenuId: previousDefault },
+        newValue: { channel: ch, defaultRichMenuId: id },
+      });
+    }
     return { success: true, message: 'ตั้งค่า Rich Menu เริ่มต้นเรียบร้อย' };
   }
 
   @Delete('rich-menu/:id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('OWNER')
-  async deleteRichMenu(@Param('id') id: string, @Query('channel') channel?: string) {
+  async deleteRichMenu(
+    @Param('id') id: string,
+    @Query('channel') channel?: string,
+    @CurrentUser() user?: { id: string },
+  ) {
     const ch = this.parseChannel(channel);
     await this.richMenuService.deleteRichMenu(id, ch);
+    if (user?.id) {
+      await this.audit.log({
+        userId: user.id,
+        action: 'RICH_MENU_DELETE',
+        entity: 'RichMenu',
+        entityId: id,
+        oldValue: { channel: ch, richMenuId: id },
+      });
+    }
     return { success: true, message: 'ลบ Rich Menu เรียบร้อย' };
   }
 

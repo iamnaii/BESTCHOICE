@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { Prisma, StockAdjustmentReason } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateStockAdjustmentDto } from './dto/create-stock-adjustment.dto';
@@ -8,6 +13,29 @@ export class StockAdjustmentsService {
   constructor(private prisma: PrismaService) {}
 
   async create(dto: CreateStockAdjustmentDto, userId: string) {
+    // T5-C3 — 4-eyes: approver ≠ adjuster, must be manager-tier + active.
+    if (!dto.approverId) {
+      throw new BadRequestException('ต้องระบุผู้อนุมัติ (approverId)');
+    }
+    if (dto.approverId === userId) {
+      throw new ForbiddenException(
+        'ผู้ปรับสต๊อคและผู้อนุมัติต้องเป็นคนละคน (Segregation of Duties)',
+      );
+    }
+    const approver = await this.prisma.user.findUnique({
+      where: { id: dto.approverId },
+      select: { id: true, role: true, isActive: true, deletedAt: true },
+    });
+    if (!approver || !approver.isActive || approver.deletedAt) {
+      throw new NotFoundException('ไม่พบผู้อนุมัติ หรือถูกปิดการใช้งาน');
+    }
+    const approverAllowed = ['OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER'];
+    if (!approverAllowed.includes(approver.role)) {
+      throw new ForbiddenException(
+        `ผู้อนุมัติต้องเป็น ${approverAllowed.join(' / ')} (role ปัจจุบัน: ${approver.role})`,
+      );
+    }
+
     return this.prisma.$transaction(async (tx) => {
       // Find product inside transaction to prevent race conditions
       const product = await tx.product.findUnique({
@@ -36,7 +64,7 @@ export class StockAdjustmentsService {
         }
       }
 
-      // Create adjustment record
+      // Create adjustment record (with 4-eyes approver captured)
       const adjustment = await tx.stockAdjustment.create({
         data: {
           productId: dto.productId,
@@ -46,11 +74,14 @@ export class StockAdjustmentsService {
           notes: dto.notes,
           photos: dto.photos || [],
           adjustedById: userId,
+          approvedById: dto.approverId,
+          approvedAt: new Date(),
         },
         include: {
           product: { select: { id: true, name: true, imeiSerial: true, brand: true, model: true } },
           branch: { select: { id: true, name: true } },
           adjustedBy: { select: { id: true, name: true } },
+          approvedBy: { select: { id: true, name: true } },
         },
       });
 

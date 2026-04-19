@@ -1141,14 +1141,17 @@ async function main() {
   // ============================================================
   console.log('STEP 26: Creating StockAdjustments...');
 
+  // Seed data keeps the 4-eyes invariant: adjuster and approver are always
+  // different users. Production data must satisfy the same rule (enforced
+  // by StockAdjustmentsService at the service layer).
   await prisma.stockAdjustment.create({
-    data: { productId: 'prod-031', branchId: 'branch-001', reason: 'DAMAGED', previousStatus: 'IN_STOCK', notes: 'หน้าจอแตก ตัวเครื่องบุบ จากการตรวจสอบ', adjustedById: 'user-001' },
+    data: { productId: 'prod-031', branchId: 'branch-001', reason: 'DAMAGED', previousStatus: 'IN_STOCK', notes: 'หน้าจอแตก ตัวเครื่องบุบ จากการตรวจสอบ', adjustedById: 'user-001', approvedById: 'user-002' },
   });
   await prisma.stockAdjustment.create({
-    data: { productId: 'prod-003', branchId: 'branch-002', reason: 'CORRECTION', previousStatus: 'IN_STOCK', notes: 'แก้ไขสถานะหลังโอนย้ายสาขา', adjustedById: 'user-002' },
+    data: { productId: 'prod-003', branchId: 'branch-002', reason: 'CORRECTION', previousStatus: 'IN_STOCK', notes: 'แก้ไขสถานะหลังโอนย้ายสาขา', adjustedById: 'user-002', approvedById: 'user-001' },
   });
   await prisma.stockAdjustment.create({
-    data: { productId: 'prod-033', branchId: 'branch-004', reason: 'FOUND', previousStatus: 'DAMAGED', notes: 'พบเครื่องที่แจ้งหาย สภาพดี', adjustedById: 'user-008' },
+    data: { productId: 'prod-033', branchId: 'branch-004', reason: 'FOUND', previousStatus: 'DAMAGED', notes: 'พบเครื่องที่แจ้งหาย สภาพดี', adjustedById: 'user-008', approvedById: 'user-001' },
   });
 
   console.log('StockAdjustments created: 3');

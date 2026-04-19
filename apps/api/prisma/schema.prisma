@@ -984,6 +984,18 @@ model Product {
   photos             String[]        @default([])
   stockInDate        DateTime?       @map("stock_in_date")
 
+  /// T5-C8: flagged to `true` the first time this product lands in a
+  /// terminal damage status (DAMAGED / LOST / WRITTEN_OFF). If a FOUND
+  /// adjustment later restores the row, this field stays `true` forever —
+  /// sales logic uses it to force OWNER approval + customer disclosure
+  /// before the phone can be resold, even though the current `status` is
+  /// IN_STOCK again.
+  wasPreviouslyDamaged Boolean   @default(false) @map("was_previously_damaged")
+  /// Timestamp of the last FOUND restoration from a terminal damage status.
+  /// Used by audit + Sentry to flag resale attempts within the suspicious
+  /// "damaged-then-resurrected" window.
+  restoredFromTerminalAt DateTime? @map("restored_from_terminal_at")
+
   // Legacy migration tracking (จากโปรแกรมเขียว)
   legacyProductCode String? @unique @map("legacy_product_code")
 

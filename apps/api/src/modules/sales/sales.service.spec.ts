@@ -781,4 +781,64 @@ describe('SalesService', () => {
       ).rejects.not.toThrow(/เกินขีดจำกัด|ต่ำกว่าขั้นต่ำ|ต้องมีผู้อนุมัติ/);
     });
   });
+
+  describe('create — wasPreviouslyDamaged guard (T5-C8)', () => {
+    const cashDto = (overrides: Record<string, unknown> = {}) => ({
+      saleType: 'CASH' as const,
+      productId: 'p1',
+      sellingPrice: 20000,
+      discount: 0,
+      paymentMethod: 'CASH',
+      ...overrides,
+    });
+
+    beforeEach(() => {
+      // Product has damage history flag set
+      prisma.product.findUnique = jest.fn().mockResolvedValue({
+        costPrice: 18000,
+        wasPreviouslyDamaged: true,
+        deletedAt: null,
+      });
+    });
+
+    it('rejects sale when acknowledgement flag missing', async () => {
+      await expect(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        service.create(cashDto() as any, 'owner-1', 'OWNER'),
+      ).rejects.toThrow(/previouslyDamagedAcknowledged/);
+    });
+
+    it('rejects SALES even with acknowledgement', async () => {
+      await expect(
+        service.create(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          cashDto({ previouslyDamagedAcknowledged: true }) as any,
+          'sp-1',
+          'SALES',
+        ),
+      ).rejects.toThrow(/OWNER \/ FINANCE_MANAGER/);
+    });
+
+    it('rejects BRANCH_MANAGER even with acknowledgement', async () => {
+      await expect(
+        service.create(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          cashDto({ previouslyDamagedAcknowledged: true }) as any,
+          'bm-1',
+          'BRANCH_MANAGER',
+        ),
+      ).rejects.toThrow(/OWNER \/ FINANCE_MANAGER/);
+    });
+
+    it('OWNER + acknowledgement passes the T5-C8 guard (fails later on unrelated stock check, not on T5-C8)', async () => {
+      await expect(
+        service.create(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          cashDto({ previouslyDamagedAcknowledged: true }) as any,
+          'owner-1',
+          'OWNER',
+        ),
+      ).rejects.not.toThrow(/previouslyDamagedAcknowledged|OWNER \/ FINANCE_MANAGER/);
+    });
+  });
 });

@@ -38,6 +38,12 @@ export class CreateSaleDto {
   @Min(0, { message: 'loyaltyPointsRedeemed ต้องเป็น 0 หรือมากกว่า' })
   loyaltyPointsRedeemed?: number;
 
+  // T5-C8 — required when product.wasPreviouslyDamaged=true. Attest that the
+  // customer was told the phone has a damage history. Sale is also restricted
+  // to OWNER / FINANCE_MANAGER in that case.
+  @IsOptional()
+  previouslyDamagedAcknowledged?: boolean;
+
   // Payment method (all sale types)
   @IsIn(['CASH', 'BANK_TRANSFER', 'QR_EWALLET'], { message: 'กรุณาระบุวิธีชำระเงิน' })
   @IsOptional()

@@ -37,6 +37,8 @@ describe('DataAuditService', () => {
       dataAuditLog: {
         createMany: jest.fn().mockResolvedValue({ count: 0 }),
         findMany: jest.fn().mockResolvedValue([]),
+        findUnique: jest.fn(),
+        update: jest.fn(),
       },
     };
 
@@ -577,6 +579,88 @@ describe('DataAuditService', () => {
           where: { checkName: 'journal_balance' },
         }),
       );
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // T2-C7: Acknowledgement + SLA
+  // ═══════════════════════════════════════════════════════════════
+
+  describe('acknowledgement workflow', () => {
+    it('getUnacknowledgedFindings defaults to CRITICAL/HIGH', async () => {
+      prisma.dataAuditLog.findMany.mockResolvedValue([]);
+      await service.getUnacknowledgedFindings();
+      const where = prisma.dataAuditLog.findMany.mock.calls[0][0].where;
+      expect(where.status).toBe('FAIL');
+      expect(where.acknowledgedAt).toBeNull();
+      expect(where.severity.in).toEqual(['CRITICAL', 'HIGH']);
+    });
+
+    it('getUnacknowledgedFindings respects severity override', async () => {
+      await service.getUnacknowledgedFindings('medium');
+      const where = prisma.dataAuditLog.findMany.mock.calls[0][0].where;
+      expect(where.severity.in).toEqual(['MEDIUM']);
+    });
+
+    it('acknowledgeFinding is idempotent (already-ack returns existing row)', async () => {
+      const existing = {
+        id: 'da-1',
+        status: 'FAIL',
+        severity: 'HIGH',
+        acknowledgedAt: new Date('2026-04-10'),
+      };
+      prisma.dataAuditLog.findUnique.mockResolvedValue(existing);
+      const result = await service.acknowledgeFinding('da-1', 'u-1');
+      expect(result).toBe(existing);
+      expect(prisma.dataAuditLog.update).not.toHaveBeenCalled();
+    });
+
+    it('acknowledgeFinding rejects non-FAIL rows', async () => {
+      prisma.dataAuditLog.findUnique.mockResolvedValue({
+        id: 'da-1',
+        status: 'PASS',
+        acknowledgedAt: null,
+      });
+      await expect(
+        service.acknowledgeFinding('da-1', 'u-1'),
+      ).rejects.toThrow();
+    });
+
+    it('acknowledgeFinding writes acknowledgedBy + At + notes', async () => {
+      prisma.dataAuditLog.findUnique.mockResolvedValue({
+        id: 'da-1',
+        status: 'FAIL',
+        severity: 'CRITICAL',
+        acknowledgedAt: null,
+      });
+      prisma.dataAuditLog.update.mockResolvedValue({ id: 'da-1' });
+      await service.acknowledgeFinding('da-1', 'u-accountant', 'fixed in PR #XXX');
+      expect(prisma.dataAuditLog.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            acknowledgedById: 'u-accountant',
+            acknowledgeNotes: 'fixed in PR #XXX',
+          }),
+        }),
+      );
+    });
+
+    it('scanForSlaBreaches returns 0 when no overdue findings', async () => {
+      prisma.dataAuditLog.findMany.mockResolvedValue([]);
+      const result = await service.scanForSlaBreaches();
+      expect(result.breached).toBe(0);
+    });
+
+    it('scanForSlaBreaches flags findings older than 24h', async () => {
+      prisma.dataAuditLog.findMany.mockResolvedValue([
+        { id: 'da-1', checkName: 'journal_balance', severity: 'CRITICAL', executedAt: new Date() },
+        { id: 'da-2', checkName: 'orphan_contracts', severity: 'HIGH', executedAt: new Date() },
+      ]);
+      const result = await service.scanForSlaBreaches();
+      expect(result.breached).toBe(2);
+      const where = prisma.dataAuditLog.findMany.mock.calls[0][0].where;
+      expect(where.acknowledgedAt).toBeNull();
+      expect(where.severity.in).toEqual(['CRITICAL', 'HIGH']);
     });
   });
 });

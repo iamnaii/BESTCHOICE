@@ -454,6 +454,7 @@ model User {
   refundsRejected        Refund[]             @relation("RefundRejectedBy")
   loginAudits            LoginAuditLog[]      @relation("LoginAudits")
   dataAuditAcknowledgements DataAuditLog[]    @relation("DataAuditAcknowledgedBy")
+  warrantyAudits         WarrantyAuditLog[]   @relation("WarrantyAuditUser")
 
   @@index([branchId])
   @@map("users")
@@ -667,6 +668,8 @@ model Contract {
   // วันที่ลูกค้ารับเครื่องจริง (ใช้เป็น baseline นับ 7-day defect exchange window)
   // Defaults to activatedAt/createdAt if not set
   deviceReceivedAt DateTime? @map("device_received_at")
+
+  warrantyAudits WarrantyAuditLog[] @relation("WarrantyAuditContract")
 
   @@index([customerId])
   @@index([branchId])
@@ -3776,6 +3779,32 @@ model AiAutoReplyLog {
   @@index([roomId])
   @@index([autoSent, createdAt])
   @@map("ai_auto_reply_logs")
+}
+
+/// Warranty date audit trail (T5-C6). Every manual shopWarrantyEndDate
+/// adjustment goes through WarrantyService.adjustShopWarranty() which writes
+/// one row here. Backward adjustments are OWNER-only; any adjustment requires
+/// a reason (can't be "just because"). This table plus the service guard is
+/// the full control — there's no external endpoint touching the field today.
+///
+/// Immutable — updatedAt/deletedAt intentionally omitted
+model WarrantyAuditLog {
+  id         String   @id @default(uuid())
+  contractId String   @map("contract_id")
+  userId     String   @map("user_id")
+  oldEndDate DateTime? @map("old_end_date")
+  newEndDate DateTime  @map("new_end_date")
+  direction  String // 'FORWARD' | 'BACKWARD' | 'INITIAL'
+  reason     String
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user     User     @relation("WarrantyAuditUser", fields: [userId], references: [id])
+  contract Contract @relation("WarrantyAuditContract", fields: [contractId], references: [id], onDelete: Restrict)
+
+  @@index([contractId])
+  @@index([userId, createdAt])
+  @@index([direction, createdAt])
+  @@map("warranty_audit_logs")
 }
 
 /// Per-branch daily snapshot of HP receivable balance vs aggregated payment

@@ -204,6 +204,16 @@ export class JournalService {
       throw new BadRequestException('สถานะไม่ถูกต้อง');
     }
 
+    // T2-C2: Segregation of Duties — the accountant who drafted a journal
+    // entry must not be the same person who posts it to the ledger. System-
+    // generated entries (journal-auto.service) have createdById = null and
+    // are exempt; any human-created entry has an author to check against.
+    if (entry.createdById && entry.createdById === userId) {
+      throw new BadRequestException(
+        'ผู้โพสต์ต้องไม่ใช่ผู้สร้าง journal entry (Segregation of Duties)',
+      );
+    }
+
     // Re-validate balance
     const totalDebit = entry.lines.reduce(
       (sum, line) => sum.add(line.debit),

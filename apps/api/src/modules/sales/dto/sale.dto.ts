@@ -30,6 +30,14 @@ export class CreateSaleDto {
   @IsOptional()
   secondApproverId?: string;
 
+  // T6-C1 — optional loyalty points redeemed toward this sale. 1 point = 1 baht
+  // off, applied on top of `discount`. Service validates balance + atomicity.
+  @IsNumber({}, { message: 'loyaltyPointsRedeemed ต้องเป็นตัวเลข' })
+  @IsOptional()
+  @Type(() => Number)
+  @Min(0, { message: 'loyaltyPointsRedeemed ต้องเป็น 0 หรือมากกว่า' })
+  loyaltyPointsRedeemed?: number;
+
   // Payment method (all sale types)
   @IsIn(['CASH', 'BANK_TRANSFER', 'QR_EWALLET'], { message: 'กรุณาระบุวิธีชำระเงิน' })
   @IsOptional()

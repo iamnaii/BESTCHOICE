@@ -105,4 +105,27 @@ export class BroadcastController {
   async cancelScheduled(@Param('id') id: string) {
     return this.broadcastService.cancelScheduled(id);
   }
+
+  /**
+   * Approve a PENDING_APPROVAL broadcast (P2Q15=A — SoD).
+   * FINANCE_MANAGER included so the owner doesn't have to approve every send.
+   */
+  @Post(':id/approve')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  async approveBroadcast(
+    @Param('id') id: string,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.broadcastService.approveBroadcast(id, userId);
+  }
+
+  @Post(':id/reject')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  async rejectBroadcast(
+    @Param('id') id: string,
+    @Body() body: { reason: string },
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.broadcastService.rejectBroadcast(id, userId, body.reason);
+  }
 }

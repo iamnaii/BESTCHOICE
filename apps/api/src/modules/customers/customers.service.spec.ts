@@ -163,3 +163,77 @@ describe('CustomersService.create — T3-C9 phone + email dedup', () => {
     expect(createArgs.data.email).toBe('bar@example.com');
   });
 });
+
+describe('PII dual-write (Phase 3)', () => {
+  let service: CustomersService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let prisma: any;
+
+  beforeEach(async () => {
+    prisma = {
+      customer: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'c1' }),
+        update: jest.fn().mockResolvedValue({}),
+      },
+    };
+    const mod: TestingModule = await Test.createTestingModule({
+      providers: [CustomersService, { provide: PrismaService, useValue: prisma }],
+    }).compile();
+    service = mod.get(CustomersService);
+
+    process.env.PII_ENCRYPTION_KEY = 'a'.repeat(64);
+    process.env.PII_HASH_SALT = 'b'.repeat(32);
+  });
+
+  afterEach(() => {
+    delete process.env.PII_ENCRYPTION_KEY;
+    delete process.env.PII_HASH_SALT;
+  });
+
+  it('writes encrypted + hash columns alongside legacy columns on create', async () => {
+    const dto = {
+      nationalId: '1234567890123',
+      phone: '0812345678',
+      email: 'test@example.com',
+      name: 'Test',
+      isForeigner: true, // skip Thai NID checksum
+    } as unknown as Parameters<CustomersService['create']>[0];
+
+    await service.create(dto);
+
+    const call = (prisma.customer.create as jest.Mock).mock.calls[0][0];
+    // Legacy columns still populated
+    expect(call.data.nationalId).toBe('1234567890123');
+    expect(call.data.phone).toMatch(/^08\d{8}$/);
+    // Encrypted columns populated (iv:cipher format)
+    expect(call.data.nationalIdEncrypted).toMatch(/^[0-9a-f]+:[0-9a-f]+$/);
+    expect(call.data.phoneEncrypted).toMatch(/^[0-9a-f]+:[0-9a-f]+$/);
+    expect(call.data.emailEncrypted).toMatch(/^[0-9a-f]+:[0-9a-f]+$/);
+    // Hash columns populated (sha256 = 64 hex chars)
+    expect(call.data.nationalIdHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(call.data.phoneHash).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('only encrypts fields present in update dto', async () => {
+    (prisma.customer.findUnique as jest.Mock).mockResolvedValue({ id: 'c1', deletedAt: null });
+
+    await service.update('c1', { name: 'NewName' } as unknown as Parameters<CustomersService['update']>[1]);
+
+    const call = (prisma.customer.update as jest.Mock).mock.calls[0][0];
+    expect(call.data.phoneEncrypted).toBeUndefined();
+    expect(call.data.emailEncrypted).toBeUndefined();
+  });
+
+  it('encrypts new phone on update', async () => {
+    (prisma.customer.findUnique as jest.Mock).mockResolvedValue({ id: 'c1', deletedAt: null });
+
+    await service.update('c1', { phone: '0899999999' } as unknown as Parameters<CustomersService['update']>[1]);
+
+    const call = (prisma.customer.update as jest.Mock).mock.calls[0][0];
+    expect(call.data.phone).toMatch(/^08\d{8}$/);
+    expect(call.data.phoneEncrypted).toMatch(/^[0-9a-f]+:[0-9a-f]+$/);
+    expect(call.data.phoneHash).toMatch(/^[0-9a-f]{64}$/);
+  });
+});

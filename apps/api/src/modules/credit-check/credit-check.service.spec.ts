@@ -27,6 +27,10 @@ describe('CreditCheckService override audit', () => {
         findUnique: jest.fn().mockResolvedValue(baseCheck),
         update: jest.fn((args) => Promise.resolve({ id: 'cc-1', ...args.data })),
       },
+      auditLog: {
+        create: jest.fn().mockResolvedValue({}),
+      },
+      $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
     };
     integrationConfig = { getValue: jest.fn().mockResolvedValue(null) };
 
@@ -45,7 +49,7 @@ describe('CreditCheckService override audit', () => {
     await expect(
       service.override('con-missing', {
         status: 'APPROVED',
-        overrideReason: 'lorem ipsum valid',
+        overrideReason: 'lorem ipsum valid reason 30+ characters',
       }, 'u-1', 'OWNER'),
     ).rejects.toThrow(NotFoundException);
   });
@@ -104,7 +108,7 @@ describe('CreditCheckService override audit', () => {
     await expect(
       service.override('con-1', {
         status: 'APPROVED',
-        overrideReason: 'no-op change',
+        overrideReason: 'no-op change test 20+ characters',
       }, 'u-1', 'OWNER'),
     ).rejects.toThrow(BadRequestException);
   });
@@ -118,12 +122,108 @@ describe('CreditCheckService override audit', () => {
     });
     await service.override('con-1', {
       status: 'MANUAL_REVIEW',
-      overrideReason: 'reconsider on new info',
+      overrideReason: 'reconsider on new info from customer',
     }, 'u-owner', 'OWNER');
 
     const data = prisma.creditCheck.update.mock.calls[0][0].data;
     // Still REJECTED / 35 — we don't lose the AI's original verdict
     expect(data.originalStatus).toBe('REJECTED');
     expect(data.originalScore).toBe(35);
+  });
+
+  // ─── T4-C4: evidence gate on overrideById() ──────────────────────────────
+  describe('T4-C4 overrideById — evidence gate', () => {
+    const shortReason = 'too short'; // 9 chars
+    const validReason = 'customer produced additional salary slip evidence'; // > 20 chars
+
+    it('persists attachmentIds + reason in audit log on successful override', async () => {
+      prisma.creditCheck.findUnique.mockResolvedValue({
+        ...baseCheck,
+        id: 'cc-42',
+        status: 'MANUAL_REVIEW',
+      });
+
+      await service.overrideById(
+        'cc-42',
+        {
+          status: 'APPROVED',
+          overrideReason: validReason,
+          attachmentIds: ['att-1', 'att-2'],
+        },
+        'u-owner',
+        'OWNER',
+      );
+
+      expect(prisma.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            action: 'CREDIT_CHECK_OVERRIDE',
+            entity: 'credit_check',
+            entityId: 'cc-42',
+            userId: 'u-owner',
+            newValue: expect.objectContaining({
+              overrideReason: validReason,
+              attachmentIds: ['att-1', 'att-2'],
+            }),
+          }),
+        }),
+      );
+    });
+
+    it('allows empty attachmentIds (informational) but still writes audit log', async () => {
+      prisma.creditCheck.findUnique.mockResolvedValue({
+        ...baseCheck,
+        status: 'MANUAL_REVIEW',
+      });
+
+      await service.overrideById(
+        'cc-1',
+        {
+          status: 'APPROVED',
+          overrideReason: validReason,
+          attachmentIds: [],
+        },
+        'u-fm',
+        'FINANCE_MANAGER',
+      );
+
+      const audit = prisma.auditLog.create.mock.calls[0][0];
+      expect(audit.data.newValue.attachmentIds).toEqual([]);
+      expect(prisma.creditCheck.update).toHaveBeenCalled();
+    });
+
+    // Note: @MinLength(20) runs at the DTO-validation layer (ValidationPipe)
+    // before reaching the service. Service itself accepts short strings but
+    // the contract is enforced by class-validator — assert the decorator via
+    // metadata rather than calling the service with a short reason.
+    it('DTO rejects overrideReason with less than 20 chars via class-validator', async () => {
+      const { validate } = await import('class-validator');
+      const { OverrideCreditCheckDto } = await import('./dto/credit-check.dto');
+      const { plainToInstance } = await import('class-transformer');
+
+      const dto = plainToInstance(OverrideCreditCheckDto, {
+        status: 'APPROVED',
+        overrideReason: shortReason,
+      });
+      const errors = await validate(dto);
+      expect(errors.length).toBeGreaterThan(0);
+      const reasonError = errors.find((e) => e.property === 'overrideReason');
+      expect(reasonError).toBeDefined();
+      expect(JSON.stringify(reasonError?.constraints)).toContain('20 ตัวอักษร');
+    });
+
+    it('DTO accepts overrideReason >= 20 chars and attachmentIds array', async () => {
+      const { validate } = await import('class-validator');
+      const { OverrideCreditCheckDto } = await import('./dto/credit-check.dto');
+      const { plainToInstance } = await import('class-transformer');
+
+      const dto = plainToInstance(OverrideCreditCheckDto, {
+        status: 'APPROVED',
+        overrideReason: validReason,
+        attachmentIds: ['doc-123'],
+      });
+      const errors = await validate(dto);
+      expect(errors).toHaveLength(0);
+    });
   });
 });

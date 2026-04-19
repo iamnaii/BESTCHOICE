@@ -226,26 +226,50 @@ export class CreditCheckService {
 
     this.enforceOverridePolicy(creditCheck.status, dto.status, userRole);
 
-    return this.prisma.creditCheck.update({
-      where: { id: creditCheckId },
-      data: {
-        status: dto.status as CreditCheckStatus,
-        reviewNotes: dto.reviewNotes,
-        checkedById: userId,
-        checkedAt: new Date(),
-        // Freeze the AI decision at the first override so future audits can
-        // compare final vs original. Don't overwrite on repeat overrides.
-        originalStatus: creditCheck.originalStatus ?? creditCheck.status,
-        originalScore: creditCheck.originalScore ?? creditCheck.aiScore,
-        overriddenAt: new Date(),
-        overriddenById: userId,
-        overrideReason: dto.overrideReason,
-      },
-      include: {
-        customer: { select: { id: true, name: true, phone: true, salary: true, occupation: true } },
-        checkedBy: { select: { id: true, name: true } },
-      },
-    });
+    // T4-C4: wrap update + audit-log write in one transaction so the
+    // evidence trail never drifts out of sync with the status change.
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.creditCheck.update({
+        where: { id: creditCheckId },
+        data: {
+          status: dto.status as CreditCheckStatus,
+          reviewNotes: dto.reviewNotes,
+          checkedById: userId,
+          checkedAt: new Date(),
+          // Freeze the AI decision at the first override so future audits can
+          // compare final vs original. Don't overwrite on repeat overrides.
+          originalStatus: creditCheck.originalStatus ?? creditCheck.status,
+          originalScore: creditCheck.originalScore ?? creditCheck.aiScore,
+          overriddenAt: new Date(),
+          overriddenById: userId,
+          overrideReason: dto.overrideReason,
+        },
+        include: {
+          customer: { select: { id: true, name: true, phone: true, salary: true, occupation: true } },
+          checkedBy: { select: { id: true, name: true } },
+        },
+      }),
+      this.prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'CREDIT_CHECK_OVERRIDE',
+          entity: 'credit_check',
+          entityId: creditCheckId,
+          oldValue: {
+            status: creditCheck.status,
+            aiScore: creditCheck.aiScore,
+          },
+          newValue: {
+            status: dto.status,
+            overrideReason: dto.overrideReason,
+            attachmentIds: dto.attachmentIds ?? [],
+            userRole,
+          },
+        },
+      }),
+    ]);
+
+    return updated;
   }
 
   /**
@@ -399,24 +423,48 @@ export class CreditCheckService {
 
     this.enforceOverridePolicy(creditCheck.status, dto.status, userRole);
 
-    return this.prisma.creditCheck.update({
-      where: { contractId },
-      data: {
-        status: dto.status as CreditCheckStatus,
-        reviewNotes: dto.reviewNotes,
-        checkedById: userId,
-        checkedAt: new Date(),
-        originalStatus: creditCheck.originalStatus ?? creditCheck.status,
-        originalScore: creditCheck.originalScore ?? creditCheck.aiScore,
-        overriddenAt: new Date(),
-        overriddenById: userId,
-        overrideReason: dto.overrideReason,
-      },
-      include: {
-        customer: { select: { id: true, name: true, phone: true, salary: true, occupation: true } },
-        checkedBy: { select: { id: true, name: true } },
-      },
-    });
+    // T4-C4: atomic update + audit — same contract of evidence preservation
+    // as overrideById().
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.creditCheck.update({
+        where: { contractId },
+        data: {
+          status: dto.status as CreditCheckStatus,
+          reviewNotes: dto.reviewNotes,
+          checkedById: userId,
+          checkedAt: new Date(),
+          originalStatus: creditCheck.originalStatus ?? creditCheck.status,
+          originalScore: creditCheck.originalScore ?? creditCheck.aiScore,
+          overriddenAt: new Date(),
+          overriddenById: userId,
+          overrideReason: dto.overrideReason,
+        },
+        include: {
+          customer: { select: { id: true, name: true, phone: true, salary: true, occupation: true } },
+          checkedBy: { select: { id: true, name: true } },
+        },
+      }),
+      this.prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'CREDIT_CHECK_OVERRIDE',
+          entity: 'credit_check',
+          entityId: creditCheck.id,
+          oldValue: {
+            status: creditCheck.status,
+            aiScore: creditCheck.aiScore,
+          },
+          newValue: {
+            status: dto.status,
+            overrideReason: dto.overrideReason,
+            attachmentIds: dto.attachmentIds ?? [],
+            userRole,
+          },
+        },
+      }),
+    ]);
+
+    return updated;
   }
 
   // === Customer History ===

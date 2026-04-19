@@ -544,22 +544,33 @@ export class ContractsService {
 
     // Update contract + recreate payment schedule
     await this.prisma.$transaction(async (tx) => {
-      // Prevent schedule recalculation when any payments have been made
+      // T5-C4 — Any existing payment row (PAID/PARTIALLY_PAID/PENDING/OVERDUE)
+      // means the installment schedule is contractually locked in. Editing
+      // financial fields after that point would silently rewrite already-
+      // committed amounts/due-dates. Only non-financial fields (notes, etc.)
+      // remain mutable.
+      const existingPaymentCount = await tx.payment.count({
+        where: { contractId: id, deletedAt: null },
+      });
       const paidOrPartialCount = await tx.payment.count({
         where: { contractId: id, status: { in: ['PAID', 'PARTIALLY_PAID'] } },
       });
 
-      if (paidOrPartialCount > 0) {
-        // If payments exist, only allow updating notes/non-financial fields
+      if (existingPaymentCount > 0) {
+        const interestRateChanged =
+          dto.interestRate !== undefined &&
+          Number(dto.interestRate) !== Number(contract.interestRate);
         const financialsChanged =
           sellingPrice !== Number(contract.sellingPrice) ||
           downPayment !== Number(contract.downPayment) ||
-          totalMonths !== contract.totalMonths;
+          totalMonths !== contract.totalMonths ||
+          interestRateChanged;
 
         if (financialsChanged) {
           throw new BadRequestException(
-            'ไม่สามารถแก้ไขเงื่อนไขทางการเงินได้ เนื่องจากมีการชำระเงินแล้ว ' +
-            `(ชำระแล้ว ${paidOrPartialCount} งวด) กรุณาสร้างสัญญาใหม่แทน`,
+            'ไม่สามารถแก้ไขเงื่อนไขทางการเงินได้ เนื่องจากมีตารางผ่อนชำระแล้ว ' +
+            `(งวดทั้งหมด ${existingPaymentCount} งวด) ` +
+            'แก้ไขได้เฉพาะข้อมูลที่ไม่ใช่ตัวเงิน เช่น หมายเหตุ เท่านั้น กรุณาสร้างสัญญาใหม่แทน',
           );
         }
       }
@@ -579,8 +590,10 @@ export class ContractsService {
         },
       });
 
-      // Only recreate schedule if no payments have been made and none are overdue
-      if (paidOrPartialCount === 0) {
+      // Only recreate schedule if no payments have been made and none are overdue.
+      // T5-C4 — also skip recreation when no financial fields changed; there is
+      // no reason to wipe PENDING rows (and their IDs) if the math is identical.
+      if (paidOrPartialCount === 0 && existingPaymentCount === 0) {
         // Check for overdue payments — don't delete them as it would lose delinquency history
         const overdueCount = await tx.payment.count({
           where: { contractId: id, status: 'OVERDUE' },
@@ -611,12 +624,34 @@ export class ContractsService {
   async softDelete(id: string, userId: string) {
     const contract = await this.findOne(id);
 
-    // ห้ามลบสัญญาที่สถานะ ACTIVE ขึ้นไป (Immutable Contract)
-    if (!['DRAFT'].includes(contract.status) ||
+    // T5-C2 — Explicit terminal-status lockdown. Once a contract leaves DRAFT
+    // (activation, payoff, repossession, bad-debt close-out, etc.) it becomes
+    // a legal/financial record and MUST NOT be deletable — even if workflow
+    // drift left it in an unexpected state. Only DRAFT is mutable.
+    const immutableStatuses: string[] = [
+      'ACTIVE',
+      'OVERDUE',
+      'DEFAULT',
+      'EARLY_PAYOFF',
+      'COMPLETED',
+      'EXCHANGED',
+      'DEFECT_EXCHANGED',
+      'CLOSED_BAD_DEBT',
+    ];
+    if (immutableStatuses.includes(contract.status)) {
+      throw new BadRequestException(
+        `ไม่สามารถลบสัญญาที่อยู่ในสถานะ ${contract.status} ได้ — ` +
+        'สัญญาที่เปิดใช้งานหรือปิดรายการแล้วเป็นหลักฐานทางการเงินและทางกฎหมาย ห้ามลบเด็ดขาด',
+      );
+    }
+
+    // Beyond the terminal-status check, still require workflow to be
+    // CREATING/REJECTED (i.e. not already submitted/approved).
+    if (contract.status !== 'DRAFT' ||
         (contract.workflowStatus !== 'CREATING' && contract.workflowStatus !== 'REJECTED')) {
       throw new BadRequestException(
         'ลบได้เฉพาะสัญญาที่อยู่ในสถานะ DRAFT + กำลังสร้าง/ถูกปฏิเสธ เท่านั้น ' +
-        '(สัญญาที่ลงนามแล้วห้ามลบเด็ดขาด ใช้ soft delete เท่านั้น)'
+        '(สัญญาที่ลงนามแล้วห้ามลบเด็ดขาด ใช้ soft delete เท่านั้น)',
       );
     }
 
@@ -635,5 +670,105 @@ export class ContractsService {
     ]);
 
     return { message: 'ลบสัญญาเรียบร้อย (soft delete)' };
+  }
+
+  /**
+   * T4-C1 — Reassign salesperson after contract is created.
+   *
+   * Salesperson identity ties to commission payout and audit trail. Once a
+   * contract is APPROVED or has any `Signature` row, the salesperson
+   * attribution is effectively locked: changing it would rewrite a historical
+   * fact (who sold what, who gets the commission, whose signature witnessed
+   * the customer's). We therefore reject reassignment in those cases, with
+   * an OWNER-only override (logged to AuditLog, commission recalc must be
+   * scheduled separately).
+   *
+   * @param contractId      contract to update
+   * @param newSalespersonId  user id of the new salesperson
+   * @param actor           the user performing the change (with role)
+   */
+  async updateSalesperson(
+    contractId: string,
+    newSalespersonId: string,
+    actor: { id: string; role: string },
+  ) {
+    const contract = await this.prisma.contract.findUnique({
+      where: { id: contractId },
+      include: { signatures: { select: { id: true } } },
+    });
+    if (!contract || contract.deletedAt) {
+      throw new NotFoundException('ไม่พบสัญญา');
+    }
+
+    // Verify the new salesperson exists and is active
+    const newSalesperson = await this.prisma.user.findUnique({
+      where: { id: newSalespersonId },
+      select: { id: true, role: true, deletedAt: true },
+    });
+    if (!newSalesperson || newSalesperson.deletedAt) {
+      throw new BadRequestException('ไม่พบพนักงานขายที่เลือก');
+    }
+
+    // No-op
+    if (contract.salespersonId === newSalespersonId) {
+      return { message: 'พนักงานขายเดิมอยู่แล้ว ไม่มีการเปลี่ยนแปลง', contractId };
+    }
+
+    const hasSignatures = (contract.signatures?.length ?? 0) > 0;
+    const isApproved = contract.workflowStatus === 'APPROVED';
+    const isLocked = isApproved || hasSignatures;
+
+    if (isLocked && actor.role !== 'OWNER') {
+      throw new ForbiddenException(
+        'ไม่สามารถเปลี่ยนพนักงานขายได้ เนื่องจากสัญญาถูกอนุมัติหรือลงนามแล้ว ' +
+        '(เฉพาะ OWNER เท่านั้นที่มีสิทธิ์แก้ไข)',
+      );
+    }
+
+    const previousSalespersonId = contract.salespersonId;
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.contract.update({
+        where: { id: contractId },
+        data: { salespersonId: newSalespersonId },
+      });
+
+      // Audit trail — required whenever a locked contract is overridden by OWNER,
+      // and cheap/useful even for the unlocked DRAFT path.
+      await tx.auditLog.create({
+        data: {
+          userId: actor.id,
+          action: 'UPDATE_SALESPERSON',
+          entity: 'contract',
+          entityId: contractId,
+          oldValue: { salespersonId: previousSalespersonId },
+          newValue: {
+            salespersonId: newSalespersonId,
+            overrideReason: isLocked ? 'OWNER_OVERRIDE_AFTER_LOCK' : 'PRE_APPROVAL_REASSIGN',
+            workflowStatus: contract.workflowStatus,
+            signatureCount: contract.signatures?.length ?? 0,
+          },
+        },
+      });
+    });
+
+    this.structuredLogger.log('contract.salesperson.reassigned', {
+      contractId,
+      contractNumber: contract.contractNumber,
+      previousSalespersonId,
+      newSalespersonId,
+      actorId: actor.id,
+      actorRole: actor.role,
+      wasLocked: isLocked,
+    });
+
+    // TODO(T4-C1): Commission recalculation is out of scope of this change.
+    // When a locked contract's salesperson is reassigned by OWNER, any
+    // already-posted commission attributions must be reversed on the
+    // previous salesperson and re-accrued to the new salesperson.
+    // Schedule this via CommissionService once the reconciliation flow is
+    // designed (see docs/ceo-review/tier-8-fraud-heatmap-master.md §T4-C1).
+
+    return this.findOne(contractId);
   }
 }

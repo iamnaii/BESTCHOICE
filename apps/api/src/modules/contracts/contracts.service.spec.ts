@@ -705,4 +705,285 @@ describe('ContractsService', () => {
       expect(result).toEqual({ message: expect.stringContaining('soft delete') });
     });
   });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // T5-C2 — softDelete immutability guard against drifted terminal statuses
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  describe('T5-C2 — softDelete terminal-status immutability', () => {
+    const txAsArray = async (opsOrFn: unknown) => {
+      if (typeof opsOrFn === 'function') return (opsOrFn as (tx: unknown) => Promise<unknown>)(prisma);
+      return Promise.all(opsOrFn as Promise<unknown>[]);
+    };
+
+    it('DRAFT contract can still be soft-deleted (happy path)', async () => {
+      prisma.contract.findUnique.mockResolvedValue({
+        ...mockContract,
+        status: 'DRAFT',
+        workflowStatus: 'CREATING',
+        signatures: [],
+      });
+      prisma.$transaction.mockImplementation(txAsArray);
+
+      const result = await service.softDelete('contract-1', 'user-1');
+      expect(result).toEqual({ message: expect.stringContaining('soft delete') });
+    });
+
+    it('ACTIVE contract is rejected with an immutability error (not the old generic error)', async () => {
+      prisma.contract.findUnique.mockResolvedValue({
+        ...mockContract,
+        status: 'ACTIVE',
+        workflowStatus: 'APPROVED',
+        signatures: [],
+      });
+
+      await expect(service.softDelete('contract-1', 'user-1')).rejects.toThrow(
+        /สถานะ ACTIVE/,
+      );
+    });
+
+    it('CLOSED_BAD_DEBT contract is rejected even though workflow might still look CREATING', async () => {
+      // Edge case: status drifted to CLOSED_BAD_DEBT while workflow never
+      // updated — the explicit terminal-status guard catches this.
+      prisma.contract.findUnique.mockResolvedValue({
+        ...mockContract,
+        status: 'CLOSED_BAD_DEBT',
+        workflowStatus: 'CREATING',
+        signatures: [],
+      });
+
+      await expect(service.softDelete('contract-1', 'user-1')).rejects.toThrow(
+        /CLOSED_BAD_DEBT/,
+      );
+    });
+
+    it('DEFAULT contract is rejected with an immutability error', async () => {
+      prisma.contract.findUnique.mockResolvedValue({
+        ...mockContract,
+        status: 'DEFAULT',
+        workflowStatus: 'APPROVED',
+        signatures: [],
+      });
+
+      await expect(service.softDelete('contract-1', 'user-1')).rejects.toThrow(
+        /สถานะ DEFAULT/,
+      );
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // T5-C4 — financial fields locked once any payment row exists (incl. PENDING)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  describe('T5-C4 — update financials blocked when any payment rows exist', () => {
+    it('no payments yet → financial edit is allowed', async () => {
+      prisma.contract.findUnique.mockResolvedValue({
+        ...mockContract,
+        salespersonId: 'user-1',
+        workflowStatus: 'CREATING',
+      });
+      prisma.user.findUnique.mockResolvedValue({ role: 'SALES' });
+
+      prisma.$transaction.mockImplementation(
+        async (fn: (tx: unknown) => Promise<unknown>) => {
+          const txPrisma = {
+            ...prisma,
+            payment: {
+              // 1st call: existingPaymentCount, 2nd call: paidOrPartialCount, 3rd: overdueCount
+              count: jest.fn().mockResolvedValue(0),
+              updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+              createMany: jest.fn().mockResolvedValue({ count: 12 }),
+            },
+            contract: { update: jest.fn().mockResolvedValue({}) },
+          };
+          return fn(txPrisma);
+        },
+      );
+      prisma.contract.findUnique
+        .mockResolvedValueOnce({ ...mockContract, salespersonId: 'user-1', workflowStatus: 'CREATING' })
+        .mockResolvedValueOnce(mockContract);
+
+      await expect(
+        service.update('contract-1', { sellingPrice: 21000, downPayment: 3500, totalMonths: 12 }, 'user-1'),
+      ).resolves.toBeDefined();
+    });
+
+    it('one PENDING payment exists → changing sellingPrice is rejected', async () => {
+      prisma.contract.findUnique.mockResolvedValue({
+        ...mockContract,
+        salespersonId: 'user-1',
+        workflowStatus: 'CREATING',
+      });
+      prisma.user.findUnique.mockResolvedValue({ role: 'SALES' });
+
+      prisma.$transaction.mockImplementation(
+        async (fn: (tx: unknown) => Promise<unknown>) => {
+          const txPrisma = {
+            ...prisma,
+            payment: {
+              // existingPaymentCount: 1, paidOrPartialCount: 0
+              count: jest.fn()
+                .mockResolvedValueOnce(1)
+                .mockResolvedValueOnce(0),
+              updateMany: jest.fn(),
+              createMany: jest.fn(),
+            },
+            contract: { update: jest.fn().mockResolvedValue({}) },
+          };
+          return fn(txPrisma);
+        },
+      );
+
+      // sellingPrice=19000 → 15% min = 2850, existing downPayment=3000 satisfies the floor.
+      // This isolates the failure to the T5-C4 financial-change guard rather than
+      // the minDownPaymentPct validation.
+      await expect(
+        service.update('contract-1', { sellingPrice: 19000 }, 'user-1'),
+      ).rejects.toThrow(/ไม่สามารถแก้ไขเงื่อนไขทางการเงินได้/);
+    });
+
+    it('PENDING payment exists but only notes change → allowed', async () => {
+      prisma.contract.findUnique.mockResolvedValue({
+        ...mockContract,
+        salespersonId: 'user-1',
+        workflowStatus: 'CREATING',
+      });
+      prisma.user.findUnique.mockResolvedValue({ role: 'SALES' });
+
+      prisma.$transaction.mockImplementation(
+        async (fn: (tx: unknown) => Promise<unknown>) => {
+          const txPrisma = {
+            ...prisma,
+            payment: {
+              // existingPaymentCount: 1, paidOrPartialCount: 0 — no schedule recreation since existingPaymentCount>0
+              count: jest.fn()
+                .mockResolvedValueOnce(1)
+                .mockResolvedValueOnce(0),
+              updateMany: jest.fn(),
+              createMany: jest.fn(),
+            },
+            contract: { update: jest.fn().mockResolvedValue({}) },
+          };
+          return fn(txPrisma);
+        },
+      );
+      prisma.contract.findUnique
+        .mockResolvedValueOnce({ ...mockContract, salespersonId: 'user-1', workflowStatus: 'CREATING' })
+        .mockResolvedValueOnce(mockContract);
+
+      await expect(
+        service.update('contract-1', { notes: 'อัปเดตหมายเหตุ' }, 'user-1'),
+      ).resolves.toBeDefined();
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // T4-C1 — salesperson reassignment guard
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  describe('T4-C1 — updateSalesperson', () => {
+    beforeEach(() => {
+      prisma.auditLog = { create: jest.fn().mockResolvedValue({}) };
+      prisma.$transaction.mockImplementation(
+        async (fnOrArr: unknown) => {
+          if (typeof fnOrArr === 'function') return (fnOrArr as (tx: unknown) => Promise<unknown>)(prisma);
+          return Promise.all(fnOrArr as Promise<unknown>[]);
+        },
+      );
+      // user.findUnique is used both for the actor role check (update path) and
+      // new-salesperson lookup — return a generic active user by default.
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'user-new',
+        role: 'SALES',
+        deletedAt: null,
+      });
+    });
+
+    it('DRAFT contract → SALES user can reassign (no lock, still audit-logged)', async () => {
+      prisma.contract.findUnique
+        .mockResolvedValueOnce({
+          ...mockContract,
+          status: 'DRAFT',
+          workflowStatus: 'CREATING',
+          salespersonId: 'user-old',
+          signatures: [],
+        })
+        // second call: findOne() after update
+        .mockResolvedValueOnce({ ...mockContract, salespersonId: 'user-new' });
+
+      const result = await service.updateSalesperson('contract-1', 'user-new', {
+        id: 'manager-1',
+        role: 'BRANCH_MANAGER',
+      });
+
+      expect(result).toBeDefined();
+      expect(prisma.contract.update).toHaveBeenCalledWith({
+        where: { id: 'contract-1' },
+        data: { salespersonId: 'user-new' },
+      });
+      expect(prisma.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            action: 'UPDATE_SALESPERSON',
+            entity: 'contract',
+            entityId: 'contract-1',
+          }),
+        }),
+      );
+    });
+
+    it('APPROVED contract + non-OWNER actor → ForbiddenException', async () => {
+      prisma.contract.findUnique.mockResolvedValueOnce({
+        ...mockContract,
+        status: 'ACTIVE',
+        workflowStatus: 'APPROVED',
+        salespersonId: 'user-old',
+        signatures: [],
+      });
+
+      await expect(
+        service.updateSalesperson('contract-1', 'user-new', {
+          id: 'manager-1',
+          role: 'BRANCH_MANAGER',
+        }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(prisma.contract.update).not.toHaveBeenCalled();
+      expect(prisma.auditLog.create).not.toHaveBeenCalled();
+    });
+
+    it('APPROVED contract + OWNER actor → allowed and audit entry records override', async () => {
+      prisma.contract.findUnique
+        .mockResolvedValueOnce({
+          ...mockContract,
+          status: 'ACTIVE',
+          workflowStatus: 'APPROVED',
+          salespersonId: 'user-old',
+          signatures: [{ id: 'sig-1' }],
+          contractNumber: 'BC-2026-001',
+        })
+        .mockResolvedValueOnce({ ...mockContract, salespersonId: 'user-new' });
+
+      const result = await service.updateSalesperson('contract-1', 'user-new', {
+        id: 'owner-1',
+        role: 'OWNER',
+      });
+
+      expect(result).toBeDefined();
+      expect(prisma.contract.update).toHaveBeenCalledWith({
+        where: { id: 'contract-1' },
+        data: { salespersonId: 'user-new' },
+      });
+      expect(prisma.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            userId: 'owner-1',
+            action: 'UPDATE_SALESPERSON',
+            newValue: expect.objectContaining({
+              overrideReason: 'OWNER_OVERRIDE_AFTER_LOCK',
+            }),
+          }),
+        }),
+      );
+    });
+  });
 });

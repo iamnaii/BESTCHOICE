@@ -3,6 +3,7 @@ import { createHmac, timingSafeEqual } from 'crypto';
 import { Request } from 'express';
 import { RawBodyRequest } from '../../common/types/raw-body-request';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
+import { WebhookAnomalyService } from '../webhook-security/webhook-anomaly.service';
 
 /**
  * Guard for LINE Webhook signature verification
@@ -13,10 +14,15 @@ import { IntegrationConfigService } from '../integrations/integration-config.ser
 export class LineWebhookGuard implements CanActivate {
   private readonly logger = new Logger(LineWebhookGuard.name);
 
-  constructor(private integrationConfig: IntegrationConfigService) {}
+  constructor(
+    private integrationConfig: IntegrationConfigService,
+    private anomaly: WebhookAnomalyService,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
+    const ipAddress = request.ip;
+    const userAgent = request.headers['user-agent'] as string | undefined;
 
     const channelSecret = (await this.integrationConfig.getValue('line-shop', 'channelSecret')) || '';
 
@@ -27,6 +33,7 @@ export class LineWebhookGuard implements CanActivate {
         return true;
       }
       this.logger.error('LINE_CHANNEL_SECRET missing in production — refusing webhook');
+      void this.anomaly.record({ provider: 'line-shop', reason: 'missing_secret', ipAddress, userAgent });
       throw new UnauthorizedException('Webhook signature verification not configured');
     }
 
@@ -34,6 +41,7 @@ export class LineWebhookGuard implements CanActivate {
 
     if (!signature) {
       this.logger.warn('Missing x-line-signature header');
+      void this.anomaly.record({ provider: 'line-shop', reason: 'missing_signature', ipAddress, userAgent });
       throw new UnauthorizedException('Missing LINE signature');
     }
 
@@ -48,6 +56,7 @@ export class LineWebhookGuard implements CanActivate {
     const expBuf = Buffer.from(expectedSignature, 'base64');
     if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) {
       this.logger.warn('Invalid LINE webhook signature');
+      void this.anomaly.record({ provider: 'line-shop', reason: 'invalid_signature', ipAddress, userAgent });
       throw new UnauthorizedException('Invalid LINE signature');
     }
 

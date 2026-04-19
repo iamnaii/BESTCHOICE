@@ -4,9 +4,11 @@ import {
   HttpCode,
   HttpException,
   HttpStatus,
+  Logger,
   UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import * as Sentry from '@sentry/nestjs';
 import { Public } from '../auth/decorators/public.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -37,13 +39,19 @@ interface DetailedHealthResponse extends PublicHealthResponse {
  * GET /api/health           — public liveness probe (minimal response so we
  *                             don't leak which backends are deployed or why a
  *                             check failed).
- * GET /api/health/detailed  — OWNER / FINANCE_MANAGER only. Returns per-check
- *                             messages (env var names, DB errors) that are
- *                             useful for ops but should not be public.
+ * GET /api/health/detailed  — OWNER / FINANCE_MANAGER only. Returns generic
+ *                             per-check messages (no env var names, no raw
+ *                             DB errors). Specific diagnostics — including
+ *                             the list of missing env vars — are forwarded
+ *                             to Sentry so ops can see them without leaking
+ *                             integration topology to authenticated users
+ *                             whose account might be compromised (T7-C3).
  */
 @ApiTags('Health')
 @Controller('health')
 export class HealthController {
+  private readonly logger = new Logger(HealthController.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
@@ -102,9 +110,17 @@ export class HealthController {
       await this.prisma.$queryRaw`SELECT 1`;
       return { status: 'ok' };
     } catch (err) {
+      // Do not surface raw DB error to the client — it can reveal driver,
+      // schema, or network topology. Keep the message generic and forward
+      // specifics to Sentry + server logs for ops (T7-C3).
+      const detail = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Health: database check failed — ${detail}`);
+      Sentry.captureException(err instanceof Error ? err : new Error(detail), {
+        tags: { healthCheck: 'database' },
+      });
       return {
         status: 'error',
-        message: err instanceof Error ? err.message : 'database unreachable',
+        message: 'Database unavailable',
       };
     }
   }
@@ -113,9 +129,20 @@ export class HealthController {
     const required = ['S3_ENDPOINT', 'S3_ACCESS_KEY', 'S3_SECRET_KEY', 'S3_BUCKET'];
     const missing = required.filter((key) => !this.configService.get<string>(key));
     if (missing.length > 0) {
+      // Do NOT echo env var names in the HTTP response — this lets attackers
+      // map which integrations are deployed (S3 vs GCS, etc). Forward the
+      // specifics to Sentry + server logs for ops visibility only (T7-C3).
+      this.logger.error(
+        `Health: storage misconfigured — missing env vars: ${missing.join(', ')}`,
+      );
+      Sentry.captureMessage('Health: storage misconfigured', {
+        level: 'error',
+        tags: { healthCheck: 'storage' },
+        extra: { missingEnvVars: missing },
+      });
       return {
         status: 'error',
-        message: `missing env vars: ${missing.join(', ')}`,
+        message: 'Storage misconfigured',
       };
     }
     return { status: 'ok' };

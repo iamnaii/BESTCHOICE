@@ -8,6 +8,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { LoginAuditService } from './login-audit.service';
 
+const mockEmailSender = { sendPasswordResetEmail: jest.fn().mockResolvedValue(undefined) };
+
 describe('AuthService', () => {
   let service: AuthService;
   let prisma: PrismaService;
@@ -30,6 +32,7 @@ describe('AuthService', () => {
   });
 
   beforeEach(async () => {
+    mockEmailSender.sendPasswordResetEmail.mockClear();
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
@@ -47,6 +50,10 @@ describe('AuthService', () => {
               update: jest.fn().mockResolvedValue({}),
               updateMany: jest.fn().mockResolvedValue({ count: 1 }),
               deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+            },
+            passwordResetToken: {
+              create: jest.fn().mockResolvedValue({ id: 'prt-1' }),
+              updateMany: jest.fn().mockResolvedValue({ count: 0 }),
             },
             $transaction: jest.fn().mockImplementation((args) => {
               // Batch transaction: execute all promises in the array
@@ -78,9 +85,7 @@ describe('AuthService', () => {
         },
         {
           provide: EmailService,
-          useValue: {
-            sendPasswordResetEmail: jest.fn().mockResolvedValue(undefined),
-          },
+          useValue: mockEmailSender,
         },
         {
           provide: LoginAuditService,
@@ -263,6 +268,58 @@ describe('AuthService', () => {
         where: { userId: 'user-123', isRevoked: false },
         data: { isRevoked: true, revokedAt: expect.any(Date) },
       });
+    });
+  });
+
+  describe('forgotPassword (T7-C2 per-email rate limit)', () => {
+    const existingUser = {
+      id: 'user-42',
+      name: 'User 42',
+      email: 'ratelimit@test.com',
+      isActive: true,
+      deletedAt: null,
+    };
+
+    it('sends email for the first 3 requests in the window', async () => {
+      (prisma.user.findUnique as jest.Mock).mockResolvedValue(existingUser);
+
+      for (let i = 0; i < 3; i++) {
+        const res = await service.forgotPassword({ email: 'ratelimit@test.com' });
+        expect(res).toEqual({ message: expect.any(String) });
+      }
+
+      expect(mockEmailSender.sendPasswordResetEmail).toHaveBeenCalledTimes(3);
+    });
+
+    it('silently suppresses the 4th request within the window (still 200, no email)', async () => {
+      (prisma.user.findUnique as jest.Mock).mockResolvedValue(existingUser);
+
+      // Burn through the 3 allowed requests
+      await service.forgotPassword({ email: 'ratelimit@test.com' });
+      await service.forgotPassword({ email: 'ratelimit@test.com' });
+      await service.forgotPassword({ email: 'ratelimit@test.com' });
+      expect(mockEmailSender.sendPasswordResetEmail).toHaveBeenCalledTimes(3);
+
+      // 4th hit: must still resolve with a generic success message
+      // (no exception — enumeration-resistance) but must NOT send email
+      const res = await service.forgotPassword({ email: 'ratelimit@test.com' });
+      expect(res).toEqual({ message: expect.any(String) });
+      expect(mockEmailSender.sendPasswordResetEmail).toHaveBeenCalledTimes(3);
+
+      // Must NOT create a DB token either — saves writes on abusive input
+      expect(prisma.passwordResetToken.create).toHaveBeenCalledTimes(3);
+    });
+
+    it('treats email as case-insensitive for the rate limit', async () => {
+      (prisma.user.findUnique as jest.Mock).mockResolvedValue(existingUser);
+
+      await service.forgotPassword({ email: 'Case@Test.Com' });
+      await service.forgotPassword({ email: 'case@test.com' });
+      await service.forgotPassword({ email: 'CASE@TEST.COM' });
+
+      // 4th should be suppressed regardless of casing
+      await service.forgotPassword({ email: 'case@test.com' });
+      expect(mockEmailSender.sendPasswordResetEmail).toHaveBeenCalledTimes(3);
     });
   });
 });

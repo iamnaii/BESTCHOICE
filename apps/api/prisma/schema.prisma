@@ -623,6 +623,13 @@ model Contract {
   dunningStage        DunningStage @default(NONE) @map("dunning_stage")
   dunningEscalatedAt  DateTime?    @map("dunning_escalated_at")
   dunningLastActionAt DateTime?    @map("dunning_last_action_at")
+  /// T4-C2: auto-escalation can advance up to NOTICE only. FINAL_WARNING and
+  /// LEGAL_ACTION require human approval — the cron parks the proposed stage
+  /// here and waits. An OWNER/FINANCE_MANAGER approves via
+  /// overdue.approveDunningEscalation() which flips dunningStage and clears
+  /// these fields.
+  pendingDunningStage DunningStage? @map("pending_dunning_stage")
+  pendingDunningSince DateTime?    @map("pending_dunning_since")
 
   // Retention policy
   retentionStatus DocumentRetentionStatus @default(ACTIVE) @map("retention_status")

@@ -201,4 +201,36 @@ export class OverdueController {
   executeDunningRules() {
     return this.dunningEngineService.executeRules();
   }
+
+  // --- Dunning approval (T4-C2: FINAL_WARNING / LEGAL_ACTION) ---
+
+  @Get('pending-escalations')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  pendingEscalations() {
+    return this.overdueService.getPendingEscalations();
+  }
+
+  @Post('contracts/:id/approve-escalation')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  approveEscalation(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string; role: string },
+  ) {
+    return this.overdueService.approveDunningEscalation(id, user.id, user.role);
+  }
+
+  @Post('contracts/:id/reject-escalation')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  rejectEscalation(
+    @Param('id') id: string,
+    @Body() body: { reason: string },
+    @CurrentUser() user: { id: string; role: string },
+  ) {
+    return this.overdueService.rejectDunningEscalation(
+      id,
+      user.id,
+      user.role,
+      body.reason,
+    );
+  }
 }

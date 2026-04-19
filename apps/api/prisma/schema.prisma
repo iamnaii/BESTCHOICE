@@ -1345,6 +1345,10 @@ model CallLog {
   notes           String?
   settlementDate  DateTime? @map("settlement_date") // วันที่นัดชำระ (กรณี PROMISED)
   settlementNotes String?   @map("settlement_notes") // รายละเอียดการนัดชำระ
+  /// Timestamp เมื่อ cron พบว่าลูกค้าผิดคำสัญญาชำระ (settlementDate ผ่านแล้วแต่ยังไม่ชำระ).
+  /// ใช้ร่วมกับ result='PROMISED' เพื่อนับ broken-promise count → ป้อนเข้า dunning
+  /// escalation และ credit-check ถัดไป
+  brokenAt        DateTime? @map("broken_at")
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
   deletedAt       DateTime? @map("deleted_at")
@@ -1356,6 +1360,7 @@ model CallLog {
 
   @@index([contractId])
   @@index([callerId])
+  @@index([result, settlementDate, brokenAt])
   @@map("call_logs")
 }
 

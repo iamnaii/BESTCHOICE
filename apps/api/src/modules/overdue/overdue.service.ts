@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCallLogDto } from './dto/create-call-log.dto';
 import { Prisma, DunningStage } from '@prisma/client';
@@ -570,7 +570,13 @@ export class OverdueService {
   }
 
   /**
-   * Record a settlement/promise-to-pay from a call
+   * Record a settlement/promise-to-pay from a call.
+   *
+   * Rules:
+   *  - settlementDate ต้อง > วันนี้ (จะ promise ย้อนหลังไม่ได้ — ป้องกันการกรอก
+   *    วันเก่าเพื่อเบนความสนใจจาก aging bucket)
+   *  - settlementDate ห่างจาก now เกิน 30 วัน → reject (นัดไกลเกินไป =
+   *    staff พยายามยืดเวลาลูกหนี้)
    */
   async recordSettlement(
     contractId: string,
@@ -582,14 +588,31 @@ export class OverdueService {
     });
     if (!contract) throw new NotFoundException('ไม่พบสัญญา');
 
+    const now = new Date();
+    const promised = new Date(dto.settlementDate);
+    const maxDays = 30;
+    const maxDate = new Date(now.getTime() + maxDays * 24 * 60 * 60 * 1000);
+
+    if (isNaN(promised.getTime())) {
+      throw new BadRequestException('วันนัดชำระไม่ถูกต้อง');
+    }
+    if (promised.getTime() <= now.getTime()) {
+      throw new BadRequestException('วันนัดชำระต้องเป็นวันในอนาคต');
+    }
+    if (promised.getTime() > maxDate.getTime()) {
+      throw new BadRequestException(
+        `วันนัดชำระห่างจากวันนี้เกิน ${maxDays} วัน — กรุณาติดต่อหัวหน้างาน`,
+      );
+    }
+
     return this.prisma.callLog.create({
       data: {
         contractId,
         callerId,
-        calledAt: new Date(),
+        calledAt: now,
         result: 'PROMISED',
         notes: dto.notes,
-        settlementDate: new Date(dto.settlementDate),
+        settlementDate: promised,
         settlementNotes: dto.settlementNotes,
       },
     });

@@ -3697,6 +3697,33 @@ model AiAutoReplyLog {
   @@map("ai_auto_reply_logs")
 }
 
+/// Append-only log of Claude API calls: one row per request. Used by the
+/// daily cost cron to detect runaway usage + budget alerts. Storing every
+/// call is cheap at current volume (~thousands/day) and far easier than
+/// reconstructing from logs.
+///
+/// Immutable — updatedAt/deletedAt intentionally omitted (cost history
+/// shouldn't be editable after the fact)
+model AiUsageLog {
+  id           String   @id @default(uuid())
+  service      String // 'finance-ai' | 'vision-slip' | 'ocr' | 'credit-check' | 'chatbot' | etc.
+  method       String? // optional: specific method inside the service
+  model        String // Claude model id (e.g. 'claude-haiku-4-5-20251001')
+  inputTokens  Int      @map("input_tokens")
+  outputTokens Int      @map("output_tokens")
+  /// USD — stored with 6 decimals so sub-cent calls stay precise
+  costUsd      Decimal  @map("cost_usd") @db.Decimal(12, 6)
+  userId       String?  @map("user_id")
+  status       String // 'success' | 'error'
+  errorKind    String?  @map("error_kind")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([service, createdAt])
+  @@index([createdAt])
+  @@index([userId])
+  @@map("ai_usage_logs")
+}
+
 /// Append-only log of suspicious webhook events: HMAC signature mismatches,
 /// missing-secret attempts, merchantid mismatches. Used by the observation
 /// cron to detect spikes that may signal credential-stuffing or a rotated

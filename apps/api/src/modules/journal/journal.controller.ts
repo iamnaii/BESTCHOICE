@@ -80,7 +80,7 @@ export class JournalController {
 
   @Post(':id/void')
   @Roles('OWNER')
-  void(@Param('id') id: string) {
-    return this.journalService.void(id);
+  void(@Param('id') id: string, @CurrentUser('id') userId: string) {
+    return this.journalService.void(id, userId);
   }
 }

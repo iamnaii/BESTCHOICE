@@ -6,6 +6,8 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { TwoFactorService } from './two-factor.service';
 import { AuthTokenCleanupService } from './auth-token-cleanup.service';
+import { LoginAuditService } from './login-audit.service';
+import { LoginAuditRetentionCron } from './login-audit-retention.cron';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { EmailModule } from '../email/email.module';
 
@@ -27,7 +29,14 @@ import { EmailModule } from '../email/email.module';
     EmailModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, TwoFactorService, AuthTokenCleanupService, JwtStrategy],
-  exports: [AuthService, TwoFactorService, JwtStrategy, PassportModule],
+  providers: [
+    AuthService,
+    TwoFactorService,
+    AuthTokenCleanupService,
+    LoginAuditService,
+    LoginAuditRetentionCron,
+    JwtStrategy,
+  ],
+  exports: [AuthService, TwoFactorService, LoginAuditService, JwtStrategy, PassportModule],
 })
 export class AuthModule {}

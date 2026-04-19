@@ -6,6 +6,7 @@ import * as bcrypt from 'bcrypt';
 import { AuthService } from './auth.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
+import { LoginAuditService } from './login-audit.service';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -80,6 +81,10 @@ describe('AuthService', () => {
           useValue: {
             sendPasswordResetEmail: jest.fn().mockResolvedValue(undefined),
           },
+        },
+        {
+          provide: LoginAuditService,
+          useValue: { record: jest.fn().mockResolvedValue(undefined) },
         },
       ],
     }).compile();

@@ -8,10 +8,12 @@ import {
   HttpCode,
   Logger,
   BadRequestException,
+  InternalServerErrorException,
   Req,
   Res,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
+import * as Sentry from '@sentry/nestjs';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
 import { MessageRouterService } from '../chat-engine/services/message-router.service';
 import { InboundMessage } from '../chat-engine/interfaces/channel-adapter.interface';
@@ -85,8 +87,29 @@ export class FacebookWebhookController {
     @Body() body: any,
     @Headers('x-hub-signature-256') signature: string,
   ): Promise<string> {
-    // 1. Verify HMAC-SHA256 signature against raw request bytes
     const rawBody = (req as unknown as RawBodyRequest).rawBody;
+
+    // 0. SLO alert — rawBody missing means the json() verify callback in
+    // main.ts never fired for this request. That's a middleware ordering /
+    // body parser regression and every FB event would silently fail HMAC
+    // verification. Escalate to Sentry + force Facebook to retry (500)
+    // rather than silently 200-ing a broken request.
+    if (!rawBody) {
+      this.logger.error(
+        '[FB Webhook] rawBody missing — json() verify callback did not capture bytes. Middleware ordering bug?',
+      );
+      Sentry.captureMessage('Facebook webhook rawBody capture failed', { level: 'error' });
+      void this.anomaly.record({
+        provider: 'facebook',
+        reason: 'other',
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'] as string | undefined,
+        meta: { note: 'missing_raw_body' },
+      });
+      throw new InternalServerErrorException('Webhook body capture failed');
+    }
+
+    // 1. Verify HMAC-SHA256 signature against raw request bytes
     if (!this.verifySignature(rawBody, signature)) {
       this.logger.warn('[FB Webhook] Invalid signature — rejecting payload');
       void this.anomaly.record({

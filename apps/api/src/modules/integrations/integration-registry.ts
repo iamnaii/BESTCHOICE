@@ -293,6 +293,13 @@ export const INTEGRATIONS: IntegrationDef[] = [
         envVar: 'MDM_API_KEY',
       },
       {
+        key: 'apiKeyPrevious',
+        label: 'API Key (ก่อนหน้า) — ใช้ช่วง grace period หลัง rotate',
+        sensitive: true,
+        required: false,
+        envVar: 'MDM_API_KEY_PREVIOUS',
+      },
+      {
         key: 'baseUrl',
         label: 'Base URL',
         sensitive: false,

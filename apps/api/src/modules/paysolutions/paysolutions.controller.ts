@@ -9,16 +9,19 @@ import {
   BadRequestException,
   ParseUUIDPipe,
   Req,
+  Headers,
   UseGuards,
 } from '@nestjs/common';
 import { Request } from 'express';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
+import { createHmac, timingSafeEqual } from 'crypto';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
 import { PaySolutionsService } from './paysolutions.service';
 import { CreatePaymentIntentDto } from './dto';
 import { LiffTokenGuard } from '../line-oa/guards/liff-token.guard';
 import { WebhookAnomalyService } from '../webhook-security/webhook-anomaly.service';
+import { RawBodyRequest } from '../../common/types/raw-body-request';
 
 /**
  * PaySolutions Payment Gateway Controller
@@ -74,12 +77,27 @@ export class PaySolutionsController {
   /**
    * POST /api/paysolutions/webhook
    * Webhook callback จาก Pay Solutions — ไม่มี auth guard
-   * Pay Solutions ส่ง form POST พร้อม parameters กลับมา ตรวจ merchantid แทน signature
+   *
+   * Defense-in-depth:
+   *   1. Throttle per merchantId (60/min) — prevents a single bad
+   *      merchant from drowning the endpoint
+   *   2. HMAC-SHA256 (optional) — if PAYSOLUTIONS_WEBHOOK_SECRET is set,
+   *      verify X-PaySolutions-Signature header using timingSafeEqual.
+   *      If not set, log a warning and fall through to merchantId check
+   *      (backward-compat with provider configs that haven't enabled
+   *      signing yet).
+   *   3. merchantId match — final gate; rejects webhooks with wrong
+   *      merchantId even when HMAC is off.
    */
   @Post('webhook')
   @SkipCsrf()
   @HttpCode(200)
-  async handleWebhook(@Body() body: Record<string, string>, @Req() req: Request) {
+  @Throttle({ default: { limit: 60, ttl: 60000 } })
+  async handleWebhook(
+    @Body() body: Record<string, string>,
+    @Req() req: Request,
+    @Headers('x-paysolutions-signature') signature: string | undefined,
+  ) {
     // PII-safe log: only fields needed to trace a webhook in support
     // tickets. Customer email/phone/name are NOT in the v2 webhook
     // payload but we still want a positive allow-list to prevent
@@ -93,11 +111,28 @@ export class PaySolutionsController {
     };
     this.logger.log(`Webhook received: ${JSON.stringify(safeFields)}`);
 
-    // NOTE: PaySolutions does not provide HMAC signature verification.
-    // merchantId match + HTTPS + throttle is the current defense-in-depth.
-    // If PaySolutions adds signing support in the future, implement it here.
+    // 1. HMAC-SHA256 verification (if secret configured)
+    const webhookSecret = process.env.PAYSOLUTIONS_WEBHOOK_SECRET;
+    if (webhookSecret) {
+      const rawBody = (req as unknown as RawBodyRequest).rawBody;
+      if (!this.verifyPaySolutionsSignature(rawBody, signature, webhookSecret)) {
+        this.logger.warn('[PaySolutions] HMAC signature mismatch — rejecting webhook');
+        void this.anomaly.record({
+          provider: 'paysolutions',
+          reason: signature ? 'invalid_signature' : 'missing_signature',
+          ipAddress: req.ip,
+          userAgent: req.headers['user-agent'] as string | undefined,
+          meta: { refno: body.refno, order_no: body.order_no },
+        });
+        return { received: true, processed: false };
+      }
+    } else {
+      this.logger.warn(
+        '[PaySolutions] PAYSOLUTIONS_WEBHOOK_SECRET not set — skipping HMAC verification (backward compat)',
+      );
+    }
 
-    // Verify merchantid ตรงกับ config
+    // 2. Verify merchantid ตรงกับ config
     const isValid = await this.paySolutionsService.verifyWebhookMerchant(body.merchantid || '');
     if (!isValid) {
       this.logger.warn('Invalid webhook merchantid');
@@ -111,7 +146,7 @@ export class PaySolutionsController {
       return { received: true, processed: false };
     }
 
-    // Process payment callback
+    // 3. Process payment callback
     try {
       await this.paySolutionsService.handlePaymentCallback(body);
     } catch (error) {
@@ -120,6 +155,30 @@ export class PaySolutionsController {
     }
 
     return { received: true, processed: true };
+  }
+
+  /**
+   * Verify PaySolutions webhook HMAC-SHA256 signature using raw request bytes.
+   * PaySolutions' exact signing scheme is not published; we assume the common
+   * convention of HMAC-SHA256(rawBody, secret) returned as hex. The header
+   * may be prefixed with 'sha256=' — accept both shapes.
+   */
+  private verifyPaySolutionsSignature(
+    rawBody: Buffer | undefined,
+    signature: string | undefined,
+    secret: string,
+  ): boolean {
+    if (!rawBody || !signature) return false;
+    const expected = createHmac('sha256', secret).update(rawBody).digest('hex');
+    const received = signature.startsWith('sha256=') ? signature.slice(7) : signature;
+    try {
+      const a = Buffer.from(expected, 'hex');
+      const b = Buffer.from(received, 'hex');
+      if (a.length !== b.length) return false;
+      return timingSafeEqual(a, b);
+    } catch {
+      return false;
+    }
   }
 
   /**

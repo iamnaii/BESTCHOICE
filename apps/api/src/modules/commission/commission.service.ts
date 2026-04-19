@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   BadRequestException,
   ConflictException,
@@ -12,6 +13,8 @@ import { GeneratePayoutDto, ApprovePayoutDto } from './dto/commission-payout.dto
 
 @Injectable()
 export class CommissionService {
+  private readonly logger = new Logger(CommissionService.name);
+
   constructor(private prisma: PrismaService) {}
 
   /**
@@ -301,19 +304,25 @@ export class CommissionService {
   }
 
   /**
-   * Update a commission rule
+   * Update a commission rule.
+   *
+   * Two guardrails:
+   *  - Block rate changes while PENDING commissions exist for the current
+   *    period. Letting the rate move mid-cycle breaks the snapshot invariant
+   *    that each SalesCommission row carries the rate in force when it was
+   *    created.
+   *  - Every update writes an AuditLog entry with before/after so a later
+   *    "who changed the rate from X to Y?" question has an answer. The rate
+   *    snapshot on SalesCommission is the source of truth for money paid;
+   *    this audit log is the source of truth for _why_ that snapshot is
+   *    what it is.
    */
-  async updateRule(id: string, dto: UpdateCommissionRuleDto) {
+  async updateRule(id: string, dto: UpdateCommissionRuleDto, userId?: string) {
     const rule = await this.prisma.commissionRule.findFirst({
       where: { id, deletedAt: null },
     });
     if (!rule) throw new NotFoundException('ไม่พบกฎค่าคอมมิชชัน');
 
-    // Block rate changes while PENDING commissions exist for the current
-    // period. Letting the rate move mid-cycle creates ambiguity about which
-    // rate was in effect when each commission row was created — the whole
-    // point of snapshotting the rate per SalesCommission record is defeated
-    // if the master rate can drift during an open period.
     if (dto.rate !== undefined && !rule.rate.equals(new Prisma.Decimal(dto.rate))) {
       const now = new Date();
       const currentPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -332,7 +341,7 @@ export class CommissionService {
       }
     }
 
-    return this.prisma.commissionRule.update({
+    const updated = await this.prisma.commissionRule.update({
       where: { id },
       data: {
         ...(dto.name !== undefined && { name: dto.name }),
@@ -344,6 +353,41 @@ export class CommissionService {
         ...(dto.maxSaleAmount !== undefined && { maxSaleAmount: dto.maxSaleAmount }),
       },
     });
+
+    if (userId) {
+      await this.prisma.auditLog
+        .create({
+          data: {
+            userId,
+            action: 'COMMISSION_RULE_UPDATE',
+            entity: 'CommissionRule',
+            entityId: id,
+            oldValue: {
+              name: rule.name,
+              ruleType: rule.ruleType,
+              rate: rule.rate.toString(),
+              fixedAmount: rule.fixedAmount?.toString() ?? null,
+              minSaleAmount: rule.minSaleAmount?.toString() ?? null,
+              maxSaleAmount: rule.maxSaleAmount?.toString() ?? null,
+            },
+            newValue: {
+              name: updated.name,
+              ruleType: updated.ruleType,
+              rate: updated.rate.toString(),
+              fixedAmount: updated.fixedAmount?.toString() ?? null,
+              minSaleAmount: updated.minSaleAmount?.toString() ?? null,
+              maxSaleAmount: updated.maxSaleAmount?.toString() ?? null,
+            },
+          },
+        })
+        .catch((err) =>
+          this.logger.warn(
+            `Audit log write failed for commission rule update: ${err.message}`,
+          ),
+        );
+    }
+
+    return updated;
   }
 
   // ============================================================

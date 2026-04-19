@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LeadStage, LeadSource, Prisma } from '@prisma/client';
 
@@ -95,14 +95,76 @@ export class CrmPipelineService {
     return lead;
   }
 
-  async moveStage(id: string, stage: LeadStage, lostReason?: string) {
+  /**
+   * Move a CRM lead to a new stage. T5-C15: every call writes an immutable
+   * CrmLeadStageHistory row (no-op if stage unchanged) so later audits can
+   * answer "when did this lead flip to WON/LOST and who did it?".
+   *
+   * Backdated WON is rejected — wonAt is set to now() and compared to the
+   * lead's createdAt to prevent retroactive "sales" being recorded against
+   * a lead that pre-dates the transition.
+   */
+  async moveStage(
+    id: string,
+    stage: LeadStage,
+    stagedById: string,
+    lostReason?: string,
+  ) {
+    const existing = await this.prisma.crmLead.findUnique({
+      where: { id },
+      select: { id: true, stage: true, createdAt: true },
+    });
+    if (!existing) {
+      throw new NotFoundException('ไม่พบ Lead');
+    }
+
+    // No-op — same stage, no history row, no update
+    if (existing.stage === stage) {
+      return this.prisma.crmLead.findUnique({ where: { id } });
+    }
+
+    const now = new Date();
+
+    // Guard against backdated WON — wonAt must not precede the lead's
+    // own creation (defensive: now() on a healthy clock cannot be earlier
+    // than createdAt, but this catches clock skew or data-fix tooling).
+    if (stage === LeadStage.WON && now.getTime() < existing.createdAt.getTime()) {
+      throw new BadRequestException(
+        'ไม่สามารถปิดดีล WON ย้อนหลังก่อนวันที่สร้าง Lead ได้',
+      );
+    }
+
     const data: Prisma.CrmLeadUpdateInput = { stage };
-    if (stage === LeadStage.WON) data.wonAt = new Date();
+    if (stage === LeadStage.WON) data.wonAt = now;
     if (stage === LeadStage.LOST) {
-      data.lostAt = new Date();
+      data.lostAt = now;
       data.lostReason = lostReason;
     }
-    return this.prisma.crmLead.update({ where: { id }, data });
+
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.crmLead.update({ where: { id }, data }),
+      this.prisma.crmLeadStageHistory.create({
+        data: {
+          leadId: id,
+          oldStage: existing.stage,
+          newStage: stage,
+          stagedById,
+          reason: lostReason?.trim() || null,
+          stagedAt: now,
+        },
+      }),
+    ]);
+    return updated;
+  }
+
+  async getStageHistory(leadId: string) {
+    return this.prisma.crmLeadStageHistory.findMany({
+      where: { leadId },
+      orderBy: { stagedAt: 'asc' },
+      include: {
+        stagedBy: { select: { id: true, name: true } },
+      },
+    });
   }
 
   /**

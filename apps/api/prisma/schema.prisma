@@ -460,6 +460,7 @@ model User {
   crmLeadAssignFromHistory CrmLeadAssignment[] @relation("CrmLeadAssignFrom")
   crmLeadAssignToHistory   CrmLeadAssignment[] @relation("CrmLeadAssignTo")
   crmLeadAssignChangedBy   CrmLeadAssignment[] @relation("CrmLeadAssignChangedBy")
+  crmLeadStageHistoryStagedBy CrmLeadStageHistory[] @relation("CrmLeadStageHistoryStagedBy")
   paymentsWaived           Payment[]            @relation("PaymentWaivedBy")
   paymentsWaivedApproved   Payment[]            @relation("PaymentWaivedApprovedBy")
 
@@ -2806,6 +2807,13 @@ model SalesCommission {
   updatedAt        DateTime         @updatedAt @map("updated_at")
   deletedAt        DateTime?        @map("deleted_at")
 
+  // T5-C19: stable version reference to the CommissionRule as it was at creation
+  // time. Stored as a string (ISO timestamp of rule.updatedAt or uuid) so a
+  // later rule edit doesn't silently change what this commission was based on.
+  // At approve() we compare the rule's current rate to the snapshotted
+  // commissionRate and reject if they diverge.
+  ruleVersionId  String?   @map("rule_version_id")
+
   salesperson    User            @relation("CommissionSalesperson", fields: [salespersonId], references: [id])
   contract       Contract?       @relation(fields: [contractId], references: [id])
   sale           Sale?           @relation(fields: [saleId], references: [id])
@@ -3760,6 +3768,7 @@ model CrmLead {
   deletedAt    DateTime?        @map("deleted_at")
 
   assignmentHistory CrmLeadAssignment[] @relation("CrmLeadHistory")
+  stageHistory      CrmLeadStageHistory[] @relation("CrmLeadStageHistory")
 
   @@index([stage, assignedToId])
   @@index([customerId])
@@ -3792,6 +3801,30 @@ model CrmLeadAssignment {
   @@index([toUserId])
   @@index([changedById, createdAt])
   @@map("crm_lead_assignments")
+}
+
+/// Immutable history of CRM lead stage transitions (T5-C15).
+/// Every moveStage() call writes one row so "when did this lead go to WON / LOST?"
+/// and "who marked it?" have definitive answers — CrmLead.stage is the current
+/// owner for query speed, this table is the audit of how it got there.
+///
+/// Immutable audit — updatedAt/deletedAt intentionally omitted
+model CrmLeadStageHistory {
+  id          String    @id @default(uuid())
+  leadId      String    @map("lead_id")
+  oldStage    LeadStage? @map("old_stage")
+  newStage    LeadStage @map("new_stage")
+  stagedById  String    @map("staged_by_id")
+  reason      String?
+  stagedAt    DateTime  @default(now()) @map("staged_at")
+
+  lead      CrmLead @relation("CrmLeadStageHistory", fields: [leadId], references: [id], onDelete: Restrict)
+  stagedBy  User    @relation("CrmLeadStageHistoryStagedBy", fields: [stagedById], references: [id])
+
+  @@index([leadId, stagedAt])
+  @@index([newStage, stagedAt])
+  @@index([stagedById, stagedAt])
+  @@map("crm_lead_stage_history")
 }
 
 model CrmNote {

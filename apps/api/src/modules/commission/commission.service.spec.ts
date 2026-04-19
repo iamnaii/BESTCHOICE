@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { Prisma } from '@prisma/client';
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { CommissionService } from './commission.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -605,6 +605,90 @@ describe('CommissionService', () => {
     it('rejects negative or non-finite monthsPaid', async () => {
       await expect(service.applyClawbackForContract('c', -1, 'bad')).rejects.toThrow(BadRequestException);
       await expect(service.applyClawbackForContract('c', Number.NaN, 'bad')).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  // ============================================================
+  // T5-C19: rule version snapshot + approve-time rate validation
+  // ============================================================
+  describe('T5-C19 rule version snapshot', () => {
+    it('approve() succeeds when rule rate still matches the snapshot', async () => {
+      prisma.salesCommission.findFirst.mockResolvedValue({
+        id: 'c1',
+        status: 'PENDING',
+        salespersonId: 'sp1',
+        commissionRuleId: 'rule-1',
+        commissionRate: new Prisma.Decimal('0.03'),
+      });
+      prisma.commissionRule.findFirst.mockResolvedValue({
+        rate: new Prisma.Decimal('0.03'),
+      });
+      prisma.salesCommission.update.mockImplementation(
+        ({ data }: { data: Record<string, unknown> }) => ({ id: 'c1', ...data }),
+      );
+
+      const result = await service.approve('c1', 'manager-1');
+      expect(result.status).toBe('APPROVED');
+      expect(prisma.salesCommission.update).toHaveBeenCalled();
+    });
+
+    it('approve() rejects with ConflictException when rule rate drifted from snapshot', async () => {
+      prisma.salesCommission.findFirst.mockResolvedValue({
+        id: 'c1',
+        status: 'PENDING',
+        salespersonId: 'sp1',
+        commissionRuleId: 'rule-1',
+        commissionRate: new Prisma.Decimal('0.03'),
+      });
+      // Rule rate was bumped from 3% to 5% after this commission was created
+      prisma.commissionRule.findFirst.mockResolvedValue({
+        rate: new Prisma.Decimal('0.05'),
+      });
+
+      await expect(service.approve('c1', 'manager-1')).rejects.toBeInstanceOf(
+        ConflictException,
+      );
+      await expect(service.approve('c1', 'manager-1')).rejects.toThrow(/คำนวณใหม่/);
+      expect(prisma.salesCommission.update).not.toHaveBeenCalled();
+    });
+
+    it('createCommissionForSale captures ruleVersionId from rule.updatedAt', async () => {
+      const ruleUpdatedAt = new Date('2026-04-01T00:00:00Z');
+      prisma.commissionRule.findFirst.mockResolvedValue({ updatedAt: ruleUpdatedAt });
+      prisma.salesCommission.create.mockImplementation(
+        ({ data }: { data: Record<string, unknown> }) => ({ id: 'c1', ...data }),
+      );
+
+      await service.createCommissionForSale('s1', 'sp1', 1000, 0.03, 'contract-1', 'rule-1');
+
+      const arg = prisma.salesCommission.create.mock.calls[0][0];
+      expect(arg.data.commissionRuleId).toBe('rule-1');
+      expect(arg.data.ruleVersionId).toBe(ruleUpdatedAt.toISOString());
+    });
+
+    it('createCommissionForSale leaves ruleVersionId null when no rule provided (legacy path)', async () => {
+      prisma.salesCommission.create.mockImplementation(
+        ({ data }: { data: Record<string, unknown> }) => ({ id: 'c1', ...data }),
+      );
+      await service.createCommissionForSale('s1', 'sp1', 1000, 0.03);
+      const arg = prisma.salesCommission.create.mock.calls[0][0];
+      expect(arg.data.commissionRuleId).toBeNull();
+      expect(arg.data.ruleVersionId).toBeNull();
+    });
+
+    it('approve() skips rate re-validation for legacy rows with no commissionRuleId', async () => {
+      prisma.salesCommission.findFirst.mockResolvedValue({
+        id: 'c1',
+        status: 'PENDING',
+        salespersonId: 'sp1',
+        commissionRuleId: null,
+        commissionRate: new Prisma.Decimal('0.03'),
+      });
+      prisma.salesCommission.update.mockResolvedValue({ id: 'c1', status: 'APPROVED' });
+
+      await service.approve('c1', 'manager-1');
+      expect(prisma.commissionRule.findFirst).not.toHaveBeenCalled();
+      expect(prisma.salesCommission.update).toHaveBeenCalled();
     });
   });
 });

@@ -65,9 +65,16 @@ export class CrmController {
   async moveStage(
     @Param('id') id: string,
     @Body('stage') stage: LeadStage,
+    @CurrentUser() user: { id: string },
     @Body('lostReason') lostReason?: string,
   ) {
-    return this.pipeline.moveStage(id, stage, lostReason);
+    return this.pipeline.moveStage(id, stage, user.id, lostReason);
+  }
+
+  @Get('leads/:id/stage-history')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  async getStageHistory(@Param('id') id: string) {
+    return this.pipeline.getStageHistory(id);
   }
 
   @Patch('leads/:id/assign')

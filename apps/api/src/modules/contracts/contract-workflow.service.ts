@@ -24,6 +24,117 @@ export class ContractWorkflowService {
     private productsService: ProductsService,
   ) {}
 
+  /**
+   * T5-C20: compute the integrity hash for a contract.
+   *
+   * Covers the core money + identity fields AND the "weak" supporting
+   * evidence — notes (free text that salespeople occasionally edit post-hoc),
+   * customer.nationalId (a later change points to identity substitution),
+   * signatures (id/signerType/signedAt/staffUserId — a re-sign would shift
+   * timestamps) and contract documents (id + fileHash — a swapped PDF would
+   * keep the id but flip the fileHash).
+   *
+   * Signatures and documents are sorted by id so insertion order can't
+   * silently change the hash.
+   *
+   * We intentionally DO NOT include signatureImage/signatureSvg in the hash —
+   * those are base64/SVG blobs; downstream code sometimes re-serializes them
+   * (PNG optimization, etc.) without changing their legal effect. The
+   * Signature row's id + signedAt + staffUserId is the authoritative
+   * "this signature happened" fingerprint.
+   */
+  private computeContractHash(contract: {
+    contractNumber: string;
+    customerId: string;
+    productId: string;
+    sellingPrice: Prisma.Decimal | number | string;
+    downPayment: Prisma.Decimal | number | string;
+    totalMonths: number;
+    monthlyPayment: Prisma.Decimal | number | string;
+    notes?: string | null;
+    customer?: { nationalId?: string | null } | null;
+    signatures?: Array<{
+      id?: string;
+      signerType?: string;
+      signedAt?: Date | string;
+      staffUserId?: string | null;
+    }> | null;
+    contractDocuments?: Array<{
+      id?: string;
+      fileHash?: string | null;
+    }> | null;
+  }): string {
+    // Defensive sort — older fixtures may not carry an id. Fallback to
+    // signerType/signedAt so the ordering is still deterministic.
+    const sigKey = (s: { id?: string; signerType?: string; signedAt?: Date | string }) =>
+      s.id ?? `${s.signerType ?? ''}|${s.signedAt ?? ''}`;
+    const signatures = (contract.signatures ?? [])
+      .slice()
+      .sort((a, b) => sigKey(a).localeCompare(sigKey(b)))
+      .map((s) => ({
+        id: s.id ?? null,
+        signerType: s.signerType,
+        signedAt:
+          s.signedAt instanceof Date
+            ? s.signedAt.toISOString()
+            : s.signedAt != null
+              ? String(s.signedAt)
+              : null,
+        staffUserId: s.staffUserId ?? null,
+      }));
+
+    const docKey = (d: { id?: string; fileHash?: string | null }) =>
+      d.id ?? d.fileHash ?? '';
+    const documents = (contract.contractDocuments ?? [])
+      .slice()
+      .sort((a, b) => docKey(a).localeCompare(docKey(b)))
+      .map((d) => ({ id: d.id ?? null, fileHash: d.fileHash ?? null }));
+
+    // Decimal/number/string → string so we don't depend on JSON's numeric
+    // formatting (1.00 vs 1 would otherwise hash differently).
+    const asStr = (v: Prisma.Decimal | number | string) =>
+      typeof v === 'string' ? v : v.toString();
+
+    const payload = JSON.stringify({
+      contractNumber: contract.contractNumber,
+      customerId: contract.customerId,
+      productId: contract.productId,
+      sellingPrice: asStr(contract.sellingPrice),
+      downPayment: asStr(contract.downPayment),
+      totalMonths: contract.totalMonths,
+      monthlyPayment: asStr(contract.monthlyPayment),
+      notes: contract.notes ?? null,
+      customerNationalId: contract.customer?.nationalId ?? null,
+      signatures,
+      documents,
+    });
+    return crypto.createHash('sha256').update(payload).digest('hex');
+  }
+
+  /**
+   * T5-C20: re-validate the stored contractHash against the current state.
+   * Throws BadRequestException (Thai message) on mismatch. Called at every
+   * post-submit state transition (APPROVED, ACTIVE) so silent edits to
+   * notes / docs / signatures are caught before money moves.
+   */
+  private verifyContractHash(
+    contract: Parameters<ContractWorkflowService['computeContractHash']>[0] & {
+      contractHash?: string | null;
+    },
+    transition: string,
+  ): void {
+    if (!contract.contractHash) return; // legacy contracts without hash — skip
+    const current = this.computeContractHash(contract);
+    if (current !== contract.contractHash) {
+      this.logger.warn(
+        `Contract hash mismatch on ${transition} — expected=${contract.contractHash} actual=${current}`,
+      );
+      throw new BadRequestException(
+        'ข้อมูลสัญญาถูกแก้ไขหลังส่งตรวจสอบ — contractHash ไม่ตรงกัน กรุณาส่งตรวจใหม่',
+      );
+    }
+  }
+
   // === WORKFLOW: ส่งตรวจสอบ (ตรวจ Validation ทั้งหมดก่อนส่ง) ===
   async submitForReview(id: string, userId: string) {
     const contract = await this.findOne(id);
@@ -94,17 +205,10 @@ export class ContractWorkflowService {
       throw new BadRequestException('ต้องลงนามครบทั้งลูกค้าและผู้ขายก่อนส่งตรวจสอบ (ขั้นตอนที่ 5)');
     }
 
-    // Generate contract hash for integrity
-    const contractData = JSON.stringify({
-      contractNumber: contract.contractNumber,
-      customerId: contract.customerId,
-      productId: contract.productId,
-      sellingPrice: contract.sellingPrice,
-      downPayment: contract.downPayment,
-      totalMonths: contract.totalMonths,
-      monthlyPayment: contract.monthlyPayment,
-    });
-    const contractHash = crypto.createHash('sha256').update(contractData).digest('hex');
+    // T5-C20: extended integrity hash — covers notes, customer nationalId,
+    // signatures (id+type+timestamp+staff), and document fileHashes in
+    // addition to the core money fields.
+    const contractHash = this.computeContractHash(contract);
 
     await this.prisma.contract.update({
       where: { id },
@@ -131,24 +235,10 @@ export class ContractWorkflowService {
       throw new BadRequestException('สัญญาต้องอยู่ในสถานะ รอตรวจสอบ');
     }
 
-    // Verify contract hash integrity — detect if critical data was modified after submission
-    if (contract.contractHash) {
-      const currentData = JSON.stringify({
-        contractNumber: contract.contractNumber,
-        customerId: contract.customerId,
-        productId: contract.productId,
-        sellingPrice: contract.sellingPrice,
-        downPayment: contract.downPayment,
-        totalMonths: contract.totalMonths,
-        monthlyPayment: contract.monthlyPayment,
-      });
-      const currentHash = crypto.createHash('sha256').update(currentData).digest('hex');
-      if (currentHash !== contract.contractHash) {
-        throw new BadRequestException(
-          'ข้อมูลสัญญาถูกแก้ไขหลังส่งตรวจสอบ — contractHash ไม่ตรงกัน กรุณาส่งตรวจใหม่',
-        );
-      }
-    }
+    // T5-C20: verify extended hash — detects post-submit edits to notes,
+    // customer nationalId, signatures or document contents as well as the
+    // core money fields.
+    this.verifyContractHash(contract, 'APPROVED');
 
     // Prevent self-approval: salesperson cannot approve their own contract
     // Exception: OWNER can always approve (for small business where owner is also salesperson)
@@ -241,6 +331,12 @@ export class ContractWorkflowService {
     if (!contract.pdpaConsentId) {
       throw new BadRequestException('ต้องได้รับความยินยอม PDPA ก่อนเปิดใช้งานสัญญา');
     }
+
+    // T5-C20: re-verify integrity hash before activation. Approval already
+    // checked it, but documents/signatures can still drift between approve
+    // and activate — activate is where money/ownership moves so a second
+    // check is cheap insurance.
+    this.verifyContractHash(contract, 'ACTIVE');
 
     // Require all required signatures (customer + company + 2 witnesses)
     const customerSigned = contract.signatures?.some((s: { signerType: string }) => s.signerType === 'CUSTOMER');

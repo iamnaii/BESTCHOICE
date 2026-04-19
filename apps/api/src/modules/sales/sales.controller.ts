@@ -85,8 +85,8 @@ export class SalesController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
   create(
     @Body() dto: CreateSaleDto,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: { id: string; role: string },
   ) {
-    return this.salesService.create(dto, user.id);
+    return this.salesService.create(dto, user.id, user.role);
   }
 }

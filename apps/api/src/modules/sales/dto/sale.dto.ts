@@ -23,6 +23,13 @@ export class CreateSaleDto {
   @Type(() => Number)
   discount?: number;
 
+  // T5-C1 — when a discount exceeds the per-role soft threshold (10% for
+  // non-OWNER roles), the caller must attach the userId of a second-person
+  // approver (manager who pre-agreed to the discount in person).
+  @IsString({ message: 'secondApproverId ต้องเป็นข้อความ' })
+  @IsOptional()
+  secondApproverId?: string;
+
   // Payment method (all sale types)
   @IsIn(['CASH', 'BANK_TRANSFER', 'QR_EWALLET'], { message: 'กรุณาระบุวิธีชำระเงิน' })
   @IsOptional()

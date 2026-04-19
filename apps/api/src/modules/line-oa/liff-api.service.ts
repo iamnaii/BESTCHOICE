@@ -5,7 +5,7 @@ import { toNum, calcOutstanding } from '../../utils/decimal.util';
 import { maskThaiName } from '../../utils/mask-name.util';
 // Return types for LIFF API (mirrors packages/shared/src/liff-types.ts)
 interface LiffPaymentItem { installmentNo: number; dueDate: string; amountDue: number; amountPaid: number; lateFee: number; status: string; paidDate: string | null; paymentMethod: string | null; }
-interface LiffContractItem { id: string; contractNumber: string; status: string; product: string; sellingPrice: number; downPayment: number; monthlyPayment: number; totalMonths: number; paidInstallments: number; totalOutstanding: number; createdAt: string; payments: LiffPaymentItem[]; }
+interface LiffContractItem { id: string; contractNumber: string; status: string; dunningStage: string; daysOverdue: number; product: string; sellingPrice: number; downPayment: number; monthlyPayment: number; totalMonths: number; paidInstallments: number; totalOutstanding: number; createdAt: string; payments: LiffPaymentItem[]; }
 interface LiffContractResponse { customer: { name: string }; contracts: LiffContractItem[]; }
 interface LiffHistoryPayment { contractNumber: string; installmentNo: number; amountPaid: number; paidDate: string | null; paymentMethod: string | null; lateFee: number; }
 interface LiffHistoryResponse { customer: { name: string }; payments: LiffHistoryPayment[]; }
@@ -36,6 +36,10 @@ export class LiffApiService {
             id: true,
             contractNumber: true,
             status: true,
+            // T4-C5 — surface the dunning stage so the LIFF badge can show
+            // the customer where they are in the collection cycle rather
+            // than them only finding out via a surprise SMS.
+            dunningStage: true,
             sellingPrice: true,
             downPayment: true,
             monthlyPayment: true,
@@ -73,10 +77,24 @@ export class LiffApiService {
           c.payments.filter((p) => p.status !== 'PAID'),
         );
 
+        // T4-C5 — compute days past due from the oldest unpaid installment.
+        // The LIFF badge uses this number directly; service is the single
+        // source of truth so the client never invents a count of its own.
+        const now = Date.now();
+        const oldestUnpaid = c.payments
+          .filter((p) => p.status !== 'PAID')
+          .sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime())[0];
+        const daysOverdue =
+          oldestUnpaid && oldestUnpaid.dueDate.getTime() < now
+            ? Math.floor((now - oldestUnpaid.dueDate.getTime()) / 86_400_000)
+            : 0;
+
         return {
           id: c.id,
           contractNumber: c.contractNumber,
           status: c.status,
+          dunningStage: c.dunningStage ?? 'NONE',
+          daysOverdue,
           product: c.product
             ? `${c.product.brand || ''} ${c.product.model || c.product.name}`.trim()
             : '-',

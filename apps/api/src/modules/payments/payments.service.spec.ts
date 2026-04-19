@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { PaymentsService } from './payments.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ReceiptsService } from '../receipts/receipts.service';
@@ -47,9 +47,18 @@ describe('PaymentsService', () => {
       payment: {
         findFirst: jest.fn().mockResolvedValue(mockPayment),
         findMany: jest.fn().mockResolvedValue([]),
+        findUnique: jest.fn().mockResolvedValue(mockPayment),
         update: jest.fn(),
         count: jest.fn().mockResolvedValue(0),
         aggregate: jest.fn().mockResolvedValue({ _sum: { amountPaid: 0, lateFee: 0 } }),
+      },
+      user: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'approver-1',
+          role: 'FINANCE_MANAGER',
+          isActive: true,
+          deletedAt: null,
+        }),
       },
       systemConfig: {
         findUnique: jest.fn().mockResolvedValue(null), // CR-7: period lock check
@@ -313,6 +322,85 @@ describe('PaymentsService', () => {
       expect(result.totalAmount).toBe(8000);
       expect(result.totalLateFees).toBe(100);
       expect(result.byMethod).toEqual({ CASH: 3000, TRANSFER: 5000 });
+    });
+  });
+
+  // T1-C2 — every late fee waiver must be 4-eyes: a different manager must
+  // approve. Self-approval was the previous attack surface (~60k/day worst
+  // case at full branch density).
+  describe('waiveLateFee — T1-C2 4-eyes', () => {
+    const payableWithFee = { ...mockPayment, lateFee: 200, lateFeeWaived: false };
+
+    beforeEach(() => {
+      prisma.payment.findUnique.mockResolvedValue(payableWithFee);
+    });
+
+    it('rejects self-approval (requester === approver)', async () => {
+      await expect(
+        service.waiveLateFee('payment-1', 'goodwill', 'user-1', 'user-1'),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prisma.payment.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects when approverId is missing/empty', async () => {
+      await expect(
+        service.waiveLateFee('payment-1', 'goodwill', 'user-1', ''),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.payment.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects when approver does not exist', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+      await expect(
+        service.waiveLateFee('payment-1', 'goodwill', 'user-1', 'ghost'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('rejects when approver is deactivated', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'approver-1',
+        role: 'FINANCE_MANAGER',
+        isActive: false,
+        deletedAt: null,
+      });
+      await expect(
+        service.waiveLateFee('payment-1', 'goodwill', 'user-1', 'approver-1'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('rejects when approver is not manager-tier (e.g. SALES)', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'sales-1',
+        role: 'SALES',
+        isActive: true,
+        deletedAt: null,
+      });
+      await expect(
+        service.waiveLateFee('payment-1', 'goodwill', 'user-1', 'sales-1'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('allows waiver when requester ≠ manager-tier approver', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'approver-1',
+        role: 'FINANCE_MANAGER',
+        isActive: true,
+        deletedAt: null,
+      });
+      prisma.payment.update.mockResolvedValue({
+        ...payableWithFee,
+        lateFee: 0,
+        lateFeeWaived: true,
+      });
+
+      const res = await service.waiveLateFee(
+        'payment-1',
+        'customer hardship',
+        'user-1',
+        'approver-1',
+      );
+      expect(res.lateFeeWaived).toBe(true);
+      expect(prisma.payment.update).toHaveBeenCalled();
     });
   });
 });

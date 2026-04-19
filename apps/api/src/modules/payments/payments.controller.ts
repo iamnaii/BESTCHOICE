@@ -161,13 +161,13 @@ export class PaymentsController {
   }
 
   @Patch(':paymentId/waive-late-fee')
-  @Roles('OWNER', 'BRANCH_MANAGER')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   waiveLateFee(
     @Param('paymentId') paymentId: string,
     @Body() dto: WaiveLateFeeDto,
     @CurrentUser() user: { id: string },
   ) {
-    return this.paymentsService.waiveLateFee(paymentId, dto.reason, user.id);
+    return this.paymentsService.waiveLateFee(paymentId, dto.reason, user.id, dto.approverId);
   }
 
   /** Force branch filtering for non-global roles */

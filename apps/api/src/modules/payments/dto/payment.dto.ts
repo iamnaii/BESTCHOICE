@@ -52,4 +52,11 @@ export class WaiveLateFeeDto {
   @IsString()
   @IsNotEmpty({ message: 'กรุณาระบุเหตุผลการยกเว้นค่าปรับ' })
   reason: string;
+
+  // T1-C2 — 4-eyes (Segregation of Duties). No self-approval is allowed,
+  // regardless of amount; a different manager-tier user must be named as
+  // the approver for every waiver.
+  @IsString()
+  @IsNotEmpty({ message: 'กรุณาระบุผู้อนุมัติ (approverId)' })
+  approverId: string;
 }

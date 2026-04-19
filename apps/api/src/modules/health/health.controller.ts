@@ -4,7 +4,6 @@ import {
   HttpCode,
   HttpException,
   HttpStatus,
-  ServiceUnavailableException,
   UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
@@ -55,26 +54,13 @@ export class HealthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Public liveness probe',
-    description: 'Returns 200 {status:"ok"} or 503 {status:"error"}. No internal details.',
+    description: 'Returns 200 {status:"ok"}. No dependency checks — use /health/detailed for that.',
   })
-  async check(): Promise<PublicHealthResponse> {
-    const timestamp = new Date().toISOString();
-    const [dbCheck, storageCheck] = await Promise.all([
-      this.checkDatabase(),
-      this.checkStorage(),
-    ]);
-
-    const allOk = dbCheck.status === 'ok' && storageCheck.status === 'ok';
-    const response: PublicHealthResponse = {
-      status: allOk ? 'ok' : 'error',
-      timestamp,
+  check(): PublicHealthResponse {
+    return {
+      status: 'ok',
+      timestamp: new Date().toISOString(),
     };
-
-    if (!allOk) {
-      // Public callers get status only — never the message field.
-      throw new ServiceUnavailableException(response);
-    }
-    return response;
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)

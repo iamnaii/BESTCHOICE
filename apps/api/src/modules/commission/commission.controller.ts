@@ -75,8 +75,12 @@ export class CommissionController {
 
   @Patch('rules/:id')
   @Roles('OWNER')
-  updateRule(@Param('id') id: string, @Body() dto: UpdateCommissionRuleDto) {
-    return this.commissionService.updateRule(id, dto);
+  updateRule(
+    @Param('id') id: string,
+    @Body() dto: UpdateCommissionRuleDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.commissionService.updateRule(id, dto, user.id);
   }
 
   // ============================================================

@@ -1,4 +1,11 @@
-import { Injectable, Logger, NotFoundException, Inject, Optional } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  ForbiddenException,
+  Inject,
+  Optional,
+} from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ChatRoomStatus } from '@prisma/client';
 import { IChatGateway, CHAT_GATEWAY_TOKEN } from '../interfaces/chat-gateway.interface';
@@ -48,17 +55,77 @@ export class AssignmentService {
     this.gateway?.emitToStaff(staffId, 'chat:assigned', { roomId, assignedToId: staffId });
   }
 
-  /** Transfer a room from one staff to another */
+  /**
+   * Transfer a room from one staff to another.
+   *
+   * T4-C11 — commission-hijack guard: if the customer in this chat room
+   * has already SIGNED a contract (any contract the customer owns that is
+   * post-DRAFT / has a signature or has moved into ACTIVE workflow), the
+   * sale is effectively booked to the current owner of the chat. Allowing
+   * a transfer post-signature lets agent B inherit the chat ownership
+   * and claim the commission on agent A's deal via CRM attribution.
+   *
+   * Reject the transfer. OWNER may override (with audit trail) when a
+   * genuine escalation is needed — the override is the loud path so
+   * collusion leaves fingerprints.
+   */
   async transfer(
     roomId: string,
     fromStaffId: string,
     toStaffId: string,
+    actorRole?: string,
   ): Promise<void> {
     const room = await this.prisma.chatRoom.findUnique({
       where: { id: roomId },
-      select: { id: true, assignedToId: true },
+      select: { id: true, assignedToId: true, customerId: true },
     });
     if (!room) throw new NotFoundException('ไม่พบ room');
+
+    // T4-C11: block handoff if customer has a signed / active contract
+    if (room.customerId) {
+      const signedContract = await this.prisma.contract.findFirst({
+        where: {
+          customerId: room.customerId,
+          deletedAt: null,
+          OR: [
+            // Workflow-level: approved means contract is past signature gate
+            { workflowStatus: 'APPROVED' },
+            // Status-level: anything past DRAFT is "already signed" territory
+            { status: { in: ['ACTIVE', 'COMPLETED', 'OVERDUE', 'DEFAULT'] } },
+            // Belt-and-suspenders: any signature row on the contract
+            { signatures: { some: { deletedAt: null } } },
+          ],
+        },
+        select: { id: true, contractNumber: true },
+      });
+
+      if (signedContract) {
+        if (actorRole !== 'OWNER') {
+          throw new ForbiddenException(
+            `ลูกค้าเซ็นสัญญาแล้ว (${signedContract.contractNumber}) — ห้ามโอนห้องแชทเพื่อป้องกันการแย่งค่าคอมมิชชัน หากจำเป็น ให้ OWNER เป็นผู้โอน`,
+          );
+        }
+        // OWNER override — loud audit log
+        await this.prisma.auditLog.create({
+          data: {
+            userId: fromStaffId,
+            action: 'CHAT_HANDOFF_POST_SIGNATURE_OVERRIDE',
+            entity: 'chat_room',
+            entityId: roomId,
+            newValue: {
+              contractId: signedContract.id,
+              contractNumber: signedContract.contractNumber,
+              fromStaffId,
+              toStaffId,
+              overriddenBy: 'OWNER',
+            },
+          },
+        });
+        this.logger.warn(
+          `[Handoff] OWNER override — room ${roomId} transferred post-signature (${signedContract.contractNumber})`,
+        );
+      }
+    }
 
     await this.prisma.chatRoom.update({
       where: { id: roomId },

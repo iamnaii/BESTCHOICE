@@ -146,7 +146,8 @@ export class StaffChatController {
     @Body('toStaffId') toStaffId: string,
     @Req() req: any,
   ) {
-    await this.assignment.transfer(id, req.user.id, toStaffId);
+    // T4-C11: service rejects post-signature handoff unless actorRole=OWNER
+    await this.assignment.transfer(id, req.user.id, toStaffId, req.user.role);
     return { success: true };
   }
 

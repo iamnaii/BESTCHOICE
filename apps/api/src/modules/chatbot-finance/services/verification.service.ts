@@ -12,6 +12,16 @@ const OTP_MAX_ATTEMPTS = 3;
 const OTP_LENGTH = 6;
 const OTP_REQUEST_COOLDOWN_MS = 60 * 1000; // 1 นาที
 
+// T4-C9: per-lineUserId phone-lookup rate limit. LIFF-level throttle above
+// (5/min/IP) caps spam from a single client IP, but a single LINE user can
+// still rotate IPs (mobile network + wifi). Count failed lookups per
+// lineUserId and lock for 30 min after 3 fails inside a 30-min window.
+// In-memory Map is fine — single-process API; if we scale to multi-node we
+// lift this to Redis (TODO).
+const LOOKUP_FAIL_WINDOW_MS = 30 * 60 * 1000;
+const LOOKUP_FAIL_THRESHOLD = 3;
+const LOOKUP_LOCK_DURATION_MS = 30 * 60 * 1000;
+
 /**
  * Verification — DB-backed OTP store (works across multiple instances)
  *
@@ -28,10 +38,59 @@ const OTP_REQUEST_COOLDOWN_MS = 60 * 1000; // 1 นาที
 export class VerificationService {
   private readonly logger = new Logger(VerificationService.name);
 
+  // T4-C9: per-lineUserId failure timestamps + lock-until. Map key is
+  // lineUserId. Entry with `lockedUntil` set is fast-rejected until expiry.
+  private readonly lookupFailTracker = new Map<
+    string,
+    { fails: number[]; lockedUntil?: number }
+  >();
+
   constructor(
     private prisma: PrismaService,
     private notifications: NotificationsService,
   ) {}
+
+  /**
+   * T4-C9 helper: check if the caller is currently rate-limited AND record
+   * / clear fails. Exposed for tests via a single method so the lock state
+   * is observable + reset deterministically.
+   */
+  private checkLookupLock(lineUserId: string, now = Date.now()): void {
+    const entry = this.lookupFailTracker.get(lineUserId);
+    if (entry?.lockedUntil && entry.lockedUntil > now) {
+      const waitSec = Math.ceil((entry.lockedUntil - now) / 1000);
+      throw new BadRequestException(
+        `ค้นหาเบอร์ล้มเหลวหลายครั้ง กรุณารออีก ${waitSec} วินาที`,
+      );
+    }
+    if (entry?.lockedUntil && entry.lockedUntil <= now) {
+      // lock expired — reset
+      this.lookupFailTracker.delete(lineUserId);
+    }
+  }
+
+  private recordLookupFail(lineUserId: string, now = Date.now()): void {
+    const entry = this.lookupFailTracker.get(lineUserId) ?? { fails: [] };
+    // prune outside the window
+    entry.fails = entry.fails.filter((t) => now - t < LOOKUP_FAIL_WINDOW_MS);
+    entry.fails.push(now);
+    if (entry.fails.length >= LOOKUP_FAIL_THRESHOLD) {
+      entry.lockedUntil = now + LOOKUP_LOCK_DURATION_MS;
+      this.logger.warn(
+        `[Verify] lineUserId locked after ${entry.fails.length} failed lookups`,
+      );
+    }
+    this.lookupFailTracker.set(lineUserId, entry);
+  }
+
+  private clearLookupFails(lineUserId: string): void {
+    this.lookupFailTracker.delete(lineUserId);
+  }
+
+  /** T4-C9 test hook: reset the in-memory tracker between test cases. */
+  _resetLookupTrackerForTests(): void {
+    this.lookupFailTracker.clear();
+  }
 
   /**
    * Step 1: เริ่ม OTP flow
@@ -44,8 +103,12 @@ export class VerificationService {
     maskedPhone: string;
     expiresInSeconds: number;
   }> {
+    // T4-C9: per-lineUserId lock guard — fail fast before any DB work.
+    this.checkLookupLock(params.lineUserId);
+
     const phone = this.normalizePhone(params.phone);
     if (!phone) {
+      this.recordLookupFail(params.lineUserId);
       throw new BadRequestException('เบอร์โทรไม่ถูกต้อง');
     }
 
@@ -78,11 +141,16 @@ export class VerificationService {
     };
 
     if (!customer) {
+      // T4-C9: failed phone→customer lookup. Record fail and maybe lock.
+      this.recordLookupFail(params.lineUserId);
       this.logger.log(`[Verify] OTP requested for unknown phone`);
       throw new BadRequestException(
         'ไม่พบเบอร์โทรนี้ในระบบค่ะ กรุณาตรวจสอบเบอร์โทร หรือติดต่อสาขา 063-134-6356',
       );
     }
+
+    // T4-C9: successful lookup clears the fail counter
+    this.clearLookupFails(params.lineUserId);
 
     // Generate OTP + persist
     const otp = this.generateOtp();

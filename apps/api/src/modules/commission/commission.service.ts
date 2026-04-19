@@ -25,6 +25,13 @@ export class CommissionService {
    * rule and reject if rate drifted — protecting against the case where a
    * manager retroactively bumps a rule while PENDING commissions still
    * reference the old rate snapshot.
+   *
+   * T4-C10: snapshots contract.salespersonId at creation time into
+   * SalesCommission.snapshotSalespersonId. If the contract salesperson is
+   * reassigned later (via admin), the commission stays tied to whoever
+   * actually closed the deal. The snapshot falls back to `salespersonId` so
+   * cash sales and contracts with mismatched pointers still get a deterministic
+   * value to query payouts from.
    */
   async createCommissionForSale(
     saleId: string,
@@ -42,7 +49,7 @@ export class CommissionService {
       .mul(commissionRate)
       .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
 
-    // Capture rule version for audit + approve-time re-validation.
+    // T5-C19: capture rule version for audit + approve-time re-validation.
     let ruleVersionId: string | null = null;
     if (commissionRuleId) {
       const rule = await this.prisma.commissionRule.findFirst({
@@ -54,9 +61,24 @@ export class CommissionService {
       }
     }
 
+    // T4-C10: lock in the original earner. Read the contract's current
+    // salespersonId (if a contract is attached) so a later reassignment
+    // doesn't retroactively move the commission to someone else.
+    let snapshotSalespersonId = salespersonId;
+    if (contractId) {
+      const contract = await this.prisma.contract.findUnique({
+        where: { id: contractId },
+        select: { salespersonId: true },
+      });
+      if (contract?.salespersonId) {
+        snapshotSalespersonId = contract.salespersonId;
+      }
+    }
+
     return this.prisma.salesCommission.create({
       data: {
         salespersonId,
+        snapshotSalespersonId,
         contractId: contractId || null,
         saleId,
         commissionRuleId: commissionRuleId || null,

@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Req, UseGuards } from '@nestjs/common';
+import { Controller, Post, Body, Param, Req, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { BroadcastService } from './broadcast.service';
 import { CreateBroadcastDto } from './dto/create-broadcast.dto';
@@ -17,5 +17,17 @@ export class BroadcastController {
   @Roles('OWNER')
   async send(@Body() dto: CreateBroadcastDto, @Req() req: any) {
     return this.broadcastService.sendBroadcast(dto, req.user.id);
+  }
+
+  // T4-C6: a SECOND OWNER (not the creator) must approve large-audience or
+  // trigger-word-containing broadcasts. Must be a distinct userId from the
+  // one who called /send.
+  @Post(':id/approve')
+  @Roles('OWNER')
+  async approve(
+    @Param('id') id: string,
+    @Req() req: any,
+  ) {
+    return this.broadcastService.approveBroadcast(id, req.user.id, req.user.role);
   }
 }

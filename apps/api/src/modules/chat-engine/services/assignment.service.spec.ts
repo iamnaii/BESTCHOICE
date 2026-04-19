@@ -1,7 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { AssignmentService } from './assignment.service';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { NotFoundException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { ChatRoomStatus } from '@prisma/client';
 
 describe('AssignmentService', () => {
@@ -15,9 +15,15 @@ describe('AssignmentService', () => {
         update: jest.fn(),
         groupBy: jest.fn(),
       },
+      contract: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
       staffChatActivity: {
         create: jest.fn(),
         createMany: jest.fn(),
+      },
+      auditLog: {
+        create: jest.fn(),
       },
     };
 
@@ -73,6 +79,63 @@ describe('AssignmentService', () => {
           expect.objectContaining({ staffId: 'staff-B', action: 'transfer_in' }),
         ]),
       });
+    });
+
+    // T4-C11: commission hijack guard
+    it('allows handoff when customer has NO signed contract', async () => {
+      prisma.chatRoom.findUnique.mockResolvedValue({
+        id: 'room-1',
+        customerId: 'cust-1',
+      });
+      prisma.contract.findFirst.mockResolvedValue(null); // no signed contract
+      prisma.chatRoom.update.mockResolvedValue({});
+      prisma.staffChatActivity.createMany.mockResolvedValue({});
+
+      await expect(
+        service.transfer('room-1', 'staff-A', 'staff-B', 'BRANCH_MANAGER'),
+      ).resolves.toBeUndefined();
+      expect(prisma.chatRoom.update).toHaveBeenCalled();
+    });
+
+    it('T4-C11: rejects handoff after customer signed contract (non-OWNER)', async () => {
+      prisma.chatRoom.findUnique.mockResolvedValue({
+        id: 'room-1',
+        customerId: 'cust-1',
+      });
+      prisma.contract.findFirst.mockResolvedValue({
+        id: 'contract-99',
+        contractNumber: 'CT-2026-0099',
+      });
+
+      await expect(
+        service.transfer('room-1', 'staff-A', 'staff-B', 'BRANCH_MANAGER'),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prisma.chatRoom.update).not.toHaveBeenCalled();
+    });
+
+    it('T4-C11: OWNER can override handoff post-signature with audit log', async () => {
+      prisma.chatRoom.findUnique.mockResolvedValue({
+        id: 'room-1',
+        customerId: 'cust-1',
+      });
+      prisma.contract.findFirst.mockResolvedValue({
+        id: 'contract-99',
+        contractNumber: 'CT-2026-0099',
+      });
+      prisma.chatRoom.update.mockResolvedValue({});
+      prisma.staffChatActivity.createMany.mockResolvedValue({});
+      prisma.auditLog.create.mockResolvedValue({});
+
+      await service.transfer('room-1', 'owner-1', 'staff-B', 'OWNER');
+
+      expect(prisma.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            action: 'CHAT_HANDOFF_POST_SIGNATURE_OVERRIDE',
+          }),
+        }),
+      );
+      expect(prisma.chatRoom.update).toHaveBeenCalled();
     });
   });
 

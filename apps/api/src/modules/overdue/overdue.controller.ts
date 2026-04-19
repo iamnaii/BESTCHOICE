@@ -98,6 +98,25 @@ export class OverdueController {
     return this.overdueService.assignCollector(contractId, dto.assignedToId);
   }
 
+  // T3-C11: Manual hold on auto-escalation cron. Path mirrors task spec
+  // (`POST /contracts/:id/hold-escalation`) so frontend can call either
+  // namespace. Scoped to BM+ because sales must not be able to silence
+  // collections automation on their own deals (SoD).
+  @Post('contracts/:id/hold-escalation')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER')
+  holdEscalation(
+    @Param('id') id: string,
+    @Body() body: { hoursFromNow?: number },
+    @CurrentUser() user: { id: string; role: string },
+  ) {
+    return this.overdueService.holdAutoEscalation(
+      id,
+      user.id,
+      user.role,
+      body?.hoursFromNow,
+    );
+  }
+
   @Post(':contractId/settlement')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   recordSettlement(

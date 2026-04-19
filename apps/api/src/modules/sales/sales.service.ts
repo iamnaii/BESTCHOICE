@@ -453,6 +453,8 @@ export class SalesService {
       await tx.salesCommission.create({
         data: {
           salespersonId,
+          // T4-C10: cash sale has no contract — snapshot = current earner
+          snapshotSalespersonId: salespersonId,
           saleId: sale.id,
           period,
           saleAmount: netAmount,
@@ -627,6 +629,10 @@ export class SalesService {
       await tx.salesCommission.create({
         data: {
           salespersonId,
+          // T4-C10: snapshot earner from the contract at creation time. If
+          // the contract is later reassigned (admin action), commission
+          // stays tied to the original earner.
+          snapshotSalespersonId: contract.salespersonId,
           contractId: contract.id,
           saleId: sale.id,
           period,

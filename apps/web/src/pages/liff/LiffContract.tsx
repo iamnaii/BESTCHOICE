@@ -247,23 +247,46 @@ export default function LiffContract() {
       <div className="bg-primary rounded-xl p-5 text-white shadow-md mb-4">
         <p className="text-xs opacity-80">BEST CHOICE</p>
         <h1 className="text-base font-bold mt-1">สัญญาของฉัน</h1>
-        <p className="text-sm opacity-90 mt-1">คุณ{data.customer.name}</p>
+        <p className="text-sm opacity-90 mt-1">
+          คุณ{data.customer.name}
+          {data.contracts.length > 1 && (
+            <>
+              {' '}· <span className="opacity-80">{data.contracts.length} สัญญา</span>
+            </>
+          )}
+        </p>
       </div>
 
-      {/* Contract Tabs (if multiple) */}
+      {/* Contract Tabs (T4-C7: multi-contract) — show product + status dot
+          when customer has more than one contract, so they can scan the tab
+          row at a glance without tapping through each one. */}
       {data.contracts.length > 1 && (
-        <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
-          {data.contracts.map((c, i) => (
-            <Button
-              key={c.id}
-              variant={i === selectedContract ? 'primary' : 'outline'}
-              size="sm"
-              className="shrink-0"
-              onClick={() => { setSelectedContract(i); setShowAllPayments(false); }}
-            >
-              {c.contractNumber}
-            </Button>
-          ))}
+        <div className="flex gap-2 mb-4 overflow-x-auto pb-1 -mx-1 px-1">
+          {data.contracts.map((c, i) => {
+            const isActive = i === selectedContract;
+            const statusDot =
+              c.status === 'OVERDUE' || c.status === 'DEFAULT'
+                ? 'bg-destructive'
+                : c.status === 'ACTIVE'
+                  ? 'bg-primary'
+                  : 'bg-muted-foreground';
+            const productLabel = c.product.split(' ').slice(0, 2).join(' ');
+            return (
+              <Button
+                key={c.id}
+                variant={isActive ? 'primary' : 'outline'}
+                size="sm"
+                className="shrink-0 flex items-center gap-1.5 min-w-[110px]"
+                onClick={() => { setSelectedContract(i); setShowAllPayments(false); }}
+              >
+                <span className={`inline-block size-1.5 rounded-full ${statusDot}`} />
+                <span className="flex flex-col items-start leading-tight">
+                  <span className="text-[10px] font-mono opacity-70">{c.contractNumber}</span>
+                  <span className="text-xs">{productLabel}</span>
+                </span>
+              </Button>
+            );
+          })}
         </div>
       )}
 

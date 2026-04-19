@@ -11,6 +11,7 @@ import {
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { CrmPipelineService } from './services/crm-pipeline.service';
 import { CustomerScoringService } from './services/customer-scoring.service';
 import { LeadStage, LeadSource } from '@prisma/client';
@@ -74,8 +75,16 @@ export class CrmController {
   async assignLead(
     @Param('id') id: string,
     @Body('staffId') staffId: string,
+    @Body('reason') reason: string | undefined,
+    @CurrentUser() user: { id: string },
   ) {
-    return this.pipeline.assignLead(id, staffId);
+    return this.pipeline.assignLead(id, staffId, user.id, reason);
+  }
+
+  @Get('leads/:id/assignment-history')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER')
+  async getAssignmentHistory(@Param('id') id: string) {
+    return this.pipeline.getAssignmentHistory(id);
   }
 
   @Post('leads/:id/notes')

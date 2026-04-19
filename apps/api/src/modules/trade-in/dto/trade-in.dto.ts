@@ -114,6 +114,13 @@ export class AppraiseTradeInDto {
   @IsString()
   @IsOptional()
   notes?: string;
+
+  /// Reason required when the appraiser exceeds the ±15% ceiling vs the
+  /// TradeInValuation base table. Service enforces this — DTO keeps it optional
+  /// for the happy path where no exception is needed.
+  @IsString()
+  @IsOptional()
+  deviationReason?: string;
 }
 
 export class AcceptTradeInDto {

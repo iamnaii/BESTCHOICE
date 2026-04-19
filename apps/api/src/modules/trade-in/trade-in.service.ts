@@ -254,11 +254,43 @@ export class TradeInService {
   }
 
   // ─── Appraise ─────────────────────────────────────────────
+  /** offeredPrice must stay within ±15% of the valuation base table (P2Q2=A). */
+  static readonly PRICE_CEILING_RATIO = 1.15;
+  static readonly PRICE_FLOOR_RATIO = 0.85;
+
   async appraise(id: string, dto: AppraiseTradeInDto, userId: string) {
     const tradeIn = await this.findOne(id);
     if (tradeIn.status !== 'PENDING_APPRAISAL') {
       throw new BadRequestException('รายการนี้ไม่อยู่ในสถานะรอประเมิน');
     }
+
+    // Snapshot the valuation base price if we can find one for this spec.
+    // If the table has no row (new brand/storage/condition combo) we allow
+    // the price through — staff has no reference to compare against.
+    const valuation = tradeIn.deviceStorage
+      ? await this.lookupValuation(
+          tradeIn.deviceBrand,
+          tradeIn.deviceModel,
+          tradeIn.deviceStorage,
+          dto.deviceCondition,
+        )
+      : null;
+
+    let basePriceAtAppraisal: number | null = null;
+    if (valuation?.found && valuation.suggestedPrice !== null) {
+      basePriceAtAppraisal = valuation.suggestedPrice;
+      const ceiling = basePriceAtAppraisal * TradeInService.PRICE_CEILING_RATIO;
+      const floor = basePriceAtAppraisal * TradeInService.PRICE_FLOOR_RATIO;
+      if (dto.offeredPrice > ceiling || dto.offeredPrice < floor) {
+        throw new BadRequestException(
+          `ราคาที่เสนอ ${dto.offeredPrice.toLocaleString()} บาท อยู่นอกช่วง ±15% ` +
+            `ของราคากลาง (${basePriceAtAppraisal.toLocaleString()} บาท, ` +
+            `ช่วง ${floor.toLocaleString()}–${ceiling.toLocaleString()} บาท) — ` +
+            `ต้องได้รับอนุมัติจากหัวหน้างาน`,
+        );
+      }
+    }
+
     return this.prisma.tradeIn.update({
       where: { id },
       data: {
@@ -267,6 +299,7 @@ export class TradeInService {
         notes: dto.notes ?? tradeIn.notes,
         appraisedById: userId,
         status: 'APPRAISED',
+        basePriceAtAppraisal: basePriceAtAppraisal ?? undefined,
       },
       include: {
         customer: { select: { id: true, name: true, phone: true } },

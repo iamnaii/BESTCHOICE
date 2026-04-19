@@ -723,4 +723,62 @@ describe('SalesService', () => {
       expect(where.deletedAt).toBeNull();
     });
   });
+
+  // T5-C1 — discount cost-floor + role cap guard. Checks only the early
+  // assertion path — we don't expect the full sale to succeed in this block.
+  describe('create — discount cost-floor + role cap (T5-C1)', () => {
+    const cashDto = (overrides: Record<string, unknown> = {}) => ({
+      saleType: 'CASH' as const,
+      productId: 'p1',
+      sellingPrice: 20000,
+      discount: 0,
+      paymentMethod: 'CASH',
+      ...overrides,
+    });
+
+    beforeEach(() => {
+      prisma.product.findUnique = jest.fn().mockResolvedValue({ costPrice: 18000 });
+    });
+
+    it('rejects a SALES discount above 5%', async () => {
+      await expect(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        service.create(cashDto({ discount: 1200 }) as any, 'sp-1', 'SALES'),
+      ).rejects.toThrow(/เกินขีดจำกัด 5%/);
+    });
+
+    it('rejects a BRANCH_MANAGER discount above 15%', async () => {
+      await expect(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        service.create(cashDto({ discount: 3100 }) as any, 'bm-1', 'BRANCH_MANAGER'),
+      ).rejects.toThrow(/เกินขีดจำกัด 15%/);
+    });
+
+    it('rejects a 12% BRANCH_MANAGER discount without a second approver', async () => {
+      await expect(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        service.create(cashDto({ discount: 2400 }) as any, 'bm-1', 'BRANCH_MANAGER'),
+      ).rejects.toThrow(/ต้องมีผู้อนุมัติเพิ่มเติม/);
+    });
+
+    it('rejects when the net price drops below the cost floor for non-OWNER', async () => {
+      // cost 18000, BM floor = 18000 × (1 - 0.15) = 15300. 20000 - 5000 = 15000.
+      // Discount 5000 / 20000 = 25% > BM 15% cap → role cap error fires first.
+      await expect(
+        service.create(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          cashDto({ discount: 5000, secondApproverId: 'fm-1' }) as any,
+          'bm-1',
+          'BRANCH_MANAGER',
+        ),
+      ).rejects.toThrow(/เกินขีดจำกัด 15%/);
+    });
+
+    it('allows OWNER unlimited discount (strategic / dead stock clearance)', async () => {
+      await expect(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        service.create(cashDto({ discount: 10000 }) as any, 'owner-1', 'OWNER'),
+      ).rejects.not.toThrow(/เกินขีดจำกัด|ต่ำกว่าขั้นต่ำ|ต้องมีผู้อนุมัติ/);
+    });
+  });
 });

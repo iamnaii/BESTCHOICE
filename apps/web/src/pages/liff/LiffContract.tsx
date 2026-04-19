@@ -25,6 +25,19 @@ const statusConfig: Record<string, { label: string; variant: 'success' | 'destru
   EARLY_PAYOFF: { label: 'ปิดก่อนกำหนด', variant: 'info' },
 };
 
+// T4-C5 — dunning stage badge. Bank-like tone: professional, not threatening.
+// Only rendered when the stage has progressed past NONE/REMINDER.
+const dunningConfig: Record<
+  string,
+  { label: string; variant: 'success' | 'destructive' | 'secondary' | 'info' } | null
+> = {
+  NONE: null,
+  REMINDER: null,
+  NOTICE: { label: 'กรุณาชำระเร็วที่สุด', variant: 'info' },
+  FINAL_WARNING: { label: 'แจ้งเตือนสุดท้าย', variant: 'destructive' },
+  LEGAL_ACTION: { label: 'เข้าสู่ขั้นตอนทางกฎหมาย', variant: 'destructive' },
+};
+
 const paymentStatusIcon: Record<string, string> = {
   PAID: '✅',
   OVERDUE: '❌',
@@ -259,14 +272,37 @@ export default function LiffContract() {
         <CardContent>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-bold">{contract.contractNumber}</h2>
-            <Badge
-              variant={statusConfig[contract.status]?.variant || 'secondary'}
-              appearance="light"
-              size="sm"
-            >
-              {statusConfig[contract.status]?.label || contract.status}
-            </Badge>
+            <div className="flex items-center gap-1.5 flex-wrap justify-end">
+              <Badge
+                variant={statusConfig[contract.status]?.variant || 'secondary'}
+                appearance="light"
+                size="sm"
+              >
+                {statusConfig[contract.status]?.label || contract.status}
+              </Badge>
+              {/* T4-C5 — only show dunning badge when it differs from the
+                  default contract status badge (NOTICE and beyond). */}
+              {(() => {
+                const dunning = dunningConfig[
+                  (contract as Contract & { dunningStage?: string }).dunningStage ?? 'NONE'
+                ];
+                if (!dunning) return null;
+                return (
+                  <Badge variant={dunning.variant} appearance="light" size="sm">
+                    {dunning.label}
+                  </Badge>
+                );
+              })()}
+            </div>
           </div>
+          {/* T4-C5 — days-overdue subtitle (plain text, not an emoji-only cue
+              so screen readers and color-blind users can consume it). */}
+          {(contract as Contract & { daysOverdue?: number }).daysOverdue != null &&
+            (contract as Contract & { daysOverdue?: number }).daysOverdue! > 0 && (
+              <p className="text-destructive text-xs font-medium mb-2">
+                ค้างชำระ {(contract as Contract & { daysOverdue?: number }).daysOverdue} วัน
+              </p>
+            )}
           <p className="text-muted-foreground text-sm mb-3">{contract.product}</p>
           <div className="grid grid-cols-2 gap-3">
             <div>

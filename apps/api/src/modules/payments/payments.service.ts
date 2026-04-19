@@ -763,7 +763,38 @@ export class PaymentsService {
   }
 
   // ─── Waive late fee (wrapped in transaction to prevent race condition) ─
-  async waiveLateFee(paymentId: string, reason: string, userId: string) {
+  async waiveLateFee(
+    paymentId: string,
+    reason: string,
+    userId: string,
+    approverId: string,
+  ) {
+    // T1-C2 — 4-eyes (Segregation of Duties): requester ≠ approver, and
+    // approver must be a manager-tier user. Waiver bypass previously let a
+    // single accountant self-approve fee writedowns, which our phone-shop
+    // margin (~10%) cannot absorb at volume.
+    if (!approverId) {
+      throw new BadRequestException('ต้องระบุผู้อนุมัติ (approverId)');
+    }
+    if (approverId === userId) {
+      throw new ForbiddenException(
+        'ผู้ขอยกเว้นและผู้อนุมัติต้องเป็นคนละคน (Segregation of Duties)',
+      );
+    }
+    const approver = await this.prisma.user.findUnique({
+      where: { id: approverId },
+      select: { id: true, role: true, isActive: true, deletedAt: true },
+    });
+    if (!approver || !approver.isActive || approver.deletedAt) {
+      throw new NotFoundException('ไม่พบผู้อนุมัติ หรือผู้อนุมัติถูกปิดการใช้งาน');
+    }
+    const approverAllowed = ['OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER'];
+    if (!approverAllowed.includes(approver.role)) {
+      throw new ForbiddenException(
+        `ผู้อนุมัติต้องมีสิทธิ์ OWNER / FINANCE_MANAGER / BRANCH_MANAGER (role ปัจจุบัน: ${approver.role})`,
+      );
+    }
+
     const result = await this.prisma.$transaction(async (tx) => {
       const payment = await tx.payment.findUnique({ where: { id: paymentId } });
       if (!payment || payment.deletedAt) throw new NotFoundException('ไม่พบรายการชำระ');
@@ -805,6 +836,7 @@ export class PaymentsService {
       becameFullyPaid: result.isNowFullyPaid,
       reason,
       userId,
+      approverId,
     });
 
     // Financial audit trail (outside transaction — audit failure shouldn't roll back waiver)
@@ -815,7 +847,12 @@ export class PaymentsService {
       action: 'LATE_FEE_WAIVED',
       amount: result.originalLateFee,
       installmentNo: result.installmentNo,
-      details: { reason, wasFeeAmount: result.originalLateFee, becameFullyPaid: result.isNowFullyPaid },
+      details: {
+        reason,
+        approverId,
+        wasFeeAmount: result.originalLateFee,
+        becameFullyPaid: result.isNowFullyPaid,
+      },
     });
 
     return { ...result.updated, originalLateFee: result.originalLateFee };

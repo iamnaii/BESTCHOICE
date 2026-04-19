@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, InternalServerErrorException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, InternalServerErrorException, Logger } from '@nestjs/common';
 import { Prisma, CreditCheckStatus } from '@prisma/client';
 import Anthropic from '@anthropic-ai/sdk';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -215,14 +215,16 @@ export class CreditCheckService {
     });
   }
 
-  async overrideById(creditCheckId: string, dto: OverrideCreditCheckDto, userId: string) {
+  async overrideById(
+    creditCheckId: string,
+    dto: OverrideCreditCheckDto,
+    userId: string,
+    userRole: string,
+  ) {
     const creditCheck = await this.prisma.creditCheck.findUnique({ where: { id: creditCheckId } });
     if (!creditCheck || creditCheck.deletedAt) throw new NotFoundException('ไม่พบข้อมูลตรวจสอบเครดิต');
 
-    const validStatuses = ['APPROVED', 'REJECTED', 'MANUAL_REVIEW'];
-    if (!validStatuses.includes(dto.status)) {
-      throw new BadRequestException('สถานะไม่ถูกต้อง');
-    }
+    this.enforceOverridePolicy(creditCheck.status, dto.status, userRole);
 
     return this.prisma.creditCheck.update({
       where: { id: creditCheckId },
@@ -231,12 +233,48 @@ export class CreditCheckService {
         reviewNotes: dto.reviewNotes,
         checkedById: userId,
         checkedAt: new Date(),
+        // Freeze the AI decision at the first override so future audits can
+        // compare final vs original. Don't overwrite on repeat overrides.
+        originalStatus: creditCheck.originalStatus ?? creditCheck.status,
+        originalScore: creditCheck.originalScore ?? creditCheck.aiScore,
+        overriddenAt: new Date(),
+        overriddenById: userId,
+        overrideReason: dto.overrideReason,
       },
       include: {
         customer: { select: { id: true, name: true, phone: true, salary: true, occupation: true } },
         checkedBy: { select: { id: true, name: true } },
       },
     });
+  }
+
+  /**
+   * Enforce the override policy.
+   * - status must be one of the three valid values
+   * - must be a real change (no no-op overrides that pad the audit trail)
+   * - escalating REJECTED → APPROVED (AI said no, human says yes) is the
+   *   riskiest move and is restricted to OWNER / FINANCE_MANAGER
+   */
+  private enforceOverridePolicy(
+    currentStatus: CreditCheckStatus,
+    requestedStatus: string,
+    userRole: string,
+  ) {
+    const validStatuses = ['APPROVED', 'REJECTED', 'MANUAL_REVIEW'];
+    if (!validStatuses.includes(requestedStatus)) {
+      throw new BadRequestException('สถานะไม่ถูกต้อง');
+    }
+    if (currentStatus === requestedStatus) {
+      throw new BadRequestException('สถานะเดิมกับที่ขอเปลี่ยน — ไม่ต้องใช้ override');
+    }
+    if (currentStatus === 'REJECTED' && requestedStatus === 'APPROVED') {
+      const allowed = ['OWNER', 'FINANCE_MANAGER'];
+      if (!allowed.includes(userRole)) {
+        throw new ForbiddenException(
+          'การเปลี่ยนผลจาก REJECTED เป็น APPROVED ต้องได้รับอนุมัติจากผู้จัดการการเงินหรือเจ้าของ',
+        );
+      }
+    }
   }
 
   async create(contractId: string, dto: CreateCreditCheckDto, _userId: string) {
@@ -350,14 +388,16 @@ export class CreditCheckService {
     return updatedCheck;
   }
 
-  async override(contractId: string, dto: OverrideCreditCheckDto, userId: string) {
+  async override(
+    contractId: string,
+    dto: OverrideCreditCheckDto,
+    userId: string,
+    userRole: string,
+  ) {
     const creditCheck = await this.prisma.creditCheck.findUnique({ where: { contractId } });
     if (!creditCheck || creditCheck.deletedAt) throw new NotFoundException('ไม่พบข้อมูลตรวจสอบเครดิต');
 
-    const validStatuses = ['APPROVED', 'REJECTED', 'MANUAL_REVIEW'];
-    if (!validStatuses.includes(dto.status)) {
-      throw new BadRequestException('สถานะไม่ถูกต้อง');
-    }
+    this.enforceOverridePolicy(creditCheck.status, dto.status, userRole);
 
     return this.prisma.creditCheck.update({
       where: { contractId },
@@ -366,6 +406,11 @@ export class CreditCheckService {
         reviewNotes: dto.reviewNotes,
         checkedById: userId,
         checkedAt: new Date(),
+        originalStatus: creditCheck.originalStatus ?? creditCheck.status,
+        originalScore: creditCheck.originalScore ?? creditCheck.aiScore,
+        overriddenAt: new Date(),
+        overriddenById: userId,
+        overrideReason: dto.overrideReason,
       },
       include: {
         customer: { select: { id: true, name: true, phone: true, salary: true, occupation: true } },

@@ -404,6 +404,7 @@ model User {
   stockAdjustmentsApproved StockAdjustment[] @relation("StockAdjustmentApprovedBy")
   documentsUploaded      ContractDocument[]   @relation("DocumentUploadedBy")
   creditChecks           CreditCheck[]        @relation("CreditCheckedBy")
+  creditOverrides        CreditCheck[]        @relation("CreditOverriddenBy")
   branchReceivings       BranchReceiving[]    @relation("BranchReceivedBy")
   stockCounts            StockCount[]         @relation("StockCountedBy")
   productPhotosUploaded  ProductPhoto[]       @relation("ProductPhotoUploadedBy")
@@ -1586,17 +1587,28 @@ model CreditCheck {
   checkedById String?   @map("checked_by_id")
   checkedAt   DateTime? @map("checked_at")
   reviewNotes String?   @map("review_notes")
+
+  // Override audit — เมื่อ manager เปลี่ยนผลจาก AI ต้องบันทึก original เพื่อ
+  // ตรวจย้อนหลัง และบังคับให้ใส่ reason เพื่อสร้าง accountability
+  originalStatus CreditCheckStatus? @map("original_status")
+  originalScore  Int?               @map("original_score")
+  overriddenAt   DateTime?          @map("overridden_at")
+  overriddenById String?            @map("overridden_by_id")
+  overrideReason String?            @map("override_reason")
+
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
   deletedAt   DateTime? @map("deleted_at")
 
-  contract  Contract? @relation(fields: [contractId], references: [id])
-  customer  Customer  @relation(fields: [customerId], references: [id])
-  checkedBy User?     @relation("CreditCheckedBy", fields: [checkedById], references: [id])
+  contract     Contract? @relation(fields: [contractId], references: [id])
+  customer     Customer  @relation(fields: [customerId], references: [id])
+  checkedBy    User?     @relation("CreditCheckedBy", fields: [checkedById], references: [id])
+  overriddenBy User?     @relation("CreditOverriddenBy", fields: [overriddenById], references: [id])
 
   @@index([contractId])
   @@index([customerId])
   @@index([status])
+  @@index([overriddenById])
   @@map("credit_checks")
 }
 

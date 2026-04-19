@@ -24,6 +24,7 @@ import { WeeklyAnalysisService } from './services/weekly-analysis.service';
 import { LineFinanceWebhookGuard } from './guards/line-finance-webhook.guard';
 import { WebhookDedupService } from './services/webhook-dedup.service';
 import { FinanceDomainHandler } from './finance-domain.handler';
+import { SlipSlaCron } from './crons/slip-sla.cron';
 import { LiffTokenGuard } from '../line-oa/guards/liff-token.guard';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { StaffChatModule } from '../staff-chat/staff-chat.module';
@@ -73,6 +74,7 @@ import { IntegrationsModule } from '../integrations/integrations.module';
     LiffTokenGuard,
     WebhookDedupService,
     FinanceDomainHandler,
+    SlipSlaCron,
   ],
   exports: [LineFinanceClientService, ChatRoomService, VerificationService, WebhookDedupService, FinanceDomainHandler],
 })

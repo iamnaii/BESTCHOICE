@@ -9,6 +9,14 @@ import { FinanceConfigService } from './finance-config.service';
 
 const AMOUNT_TOLERANCE = 0.5; // ±0.50 บาท
 
+/**
+ * OCR confidence threshold for auto-approving a slip.
+ * Below this, evidence stays PENDING_REVIEW for human verification.
+ * 0.90 is the team's calibrated minimum — Claude Haiku self-reports >= 0.90
+ * almost always when bank name + amount + ref are all legible.
+ */
+const AUTO_APPROVE_CONFIDENCE = 0.9;
+
 export interface SlipProcessResult {
   ok: boolean;
   reply: string;
@@ -146,14 +154,23 @@ export class SlipProcessingService {
         .abs()
         .lte(new Prisma.Decimal(AMOUNT_TOLERANCE));
 
-    // 6. สร้าง PaymentEvidence (status: PENDING_REVIEW เสมอ — admin อนุมัติ manual)
+    // 6. สร้าง PaymentEvidence
+    // Auto-approve เฉพาะกรณีที่ทุก guard ผ่าน: amount ตรง + บัญชีถูก + paymentId เจอ +
+    // OCR confidence >= 0.9 ถ้าเงื่อนไขใดขาดหาย → PENDING_REVIEW ให้ staff ตรวจ
+    const canAutoApprove =
+      matched &&
+      !!nextPayment &&
+      extracted.confidence !== undefined &&
+      extracted.confidence >= AUTO_APPROVE_CONFIDENCE;
+
     const evidence = await this.createEvidence({
       contractId: contract.id,
       paymentId: nextPayment?.id,
       lineUserId: params.lineUserId,
       imageUrl,
       amount: slipAmount,
-      note: this.buildExtractedNote(extracted),
+      note: this.buildExtractedNote(extracted, canAutoApprove),
+      autoApprove: canAutoApprove,
     });
 
     // 7. Reply
@@ -217,8 +234,9 @@ export class SlipProcessingService {
 
   // ─── helpers ─────────────────────────────────────────────
 
-  private buildExtractedNote(s: SlipExtraction): string {
+  private buildExtractedNote(s: SlipExtraction, autoApproved = false): string {
     const parts: string[] = ['[chatbot-finance]'];
+    if (autoApproved) parts.push('auto-approved');
     if (s.bankName) parts.push(`bank=${s.bankName}`);
     if (s.date) parts.push(`date=${s.date}`);
     if (s.time) parts.push(`time=${s.time}`);
@@ -234,6 +252,7 @@ export class SlipProcessingService {
     imageUrl: string;
     amount?: number;
     note: string;
+    autoApprove?: boolean;
   }) {
     return this.prisma.paymentEvidence.create({
       data: {
@@ -242,7 +261,9 @@ export class SlipProcessingService {
         lineUserId: params.lineUserId,
         imageUrl: params.imageUrl,
         amount: params.amount,
-        status: 'PENDING_REVIEW',
+        status: params.autoApprove ? 'APPROVED' : 'PENDING_REVIEW',
+        reviewedById: params.autoApprove ? null : undefined,
+        reviewedAt: params.autoApprove ? new Date() : undefined,
         reviewNote: params.note,
       },
     });

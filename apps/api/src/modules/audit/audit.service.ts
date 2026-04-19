@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { createHash, randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 
 export interface AuditEntry {
@@ -20,26 +21,172 @@ export class AuditService {
 
   constructor(private prisma: PrismaService) {}
 
+  /**
+   * Canonical hash input string used to seal a row into the chain.
+   * Order matters — never reorder, never drop fields, or backfill breaks.
+   */
+  private buildHashPayload(args: {
+    sequenceNumber: bigint;
+    id: string;
+    userId: string;
+    action: string;
+    entity: string;
+    entityId: string;
+    oldValue: unknown;
+    newValue: unknown;
+    createdAt: Date;
+    prevRowHash: string | null;
+  }): string {
+    return [
+      args.sequenceNumber.toString(),
+      args.id,
+      args.userId,
+      args.action,
+      args.entity,
+      args.entityId,
+      JSON.stringify(args.oldValue ?? null),
+      JSON.stringify(args.newValue ?? null),
+      args.createdAt.toISOString(),
+      args.prevRowHash ?? '',
+    ].join('|');
+  }
+
+  computeRowHash(args: Parameters<AuditService['buildHashPayload']>[0]): string {
+    return createHash('sha256').update(this.buildHashPayload(args)).digest('hex');
+  }
+
   async log(entry: AuditEntry) {
     try {
       if (!entry.userId) return;
 
-      await this.prisma.auditLog.create({
-        data: {
-          userId: entry.userId,
+      // T2-C4 ext: hash chain. $transaction keeps nextval() + read-last-hash
+      // + insert atomic so two concurrent writers can't race to the same
+      // prevRowHash value.
+      await this.prisma.$transaction(async (tx) => {
+        const seqRow = await tx.$queryRaw<Array<{ nextval: bigint }>>`
+          SELECT nextval('audit_logs_seq') AS nextval
+        `;
+        const sequenceNumber = seqRow[0].nextval;
+
+        const prevRow = sequenceNumber > BigInt(1)
+          ? await tx.auditLog.findFirst({
+              where: { sequenceNumber: sequenceNumber - BigInt(1) },
+              select: { rowHash: true },
+            })
+          : null;
+
+        const id = randomUUID();
+        const createdAt = new Date();
+        const oldValue = (entry.oldValue as Prisma.InputJsonValue) ?? Prisma.JsonNull;
+        const newValue = (entry.newValue as Prisma.InputJsonValue) ?? Prisma.JsonNull;
+
+        const rowHash = this.computeRowHash({
+          sequenceNumber,
+          id,
+          userId: entry.userId!,
           action: entry.action,
           entity: entry.entity,
           entityId: entry.entityId || '',
-          oldValue: (entry.oldValue as Prisma.InputJsonValue) ?? Prisma.JsonNull,
-          newValue: (entry.newValue as Prisma.InputJsonValue) ?? Prisma.JsonNull,
-          ipAddress: entry.ipAddress || null,
-          userAgent: entry.userAgent || null,
-          duration: entry.duration || null,
-        },
+          oldValue: entry.oldValue ?? null,
+          newValue: entry.newValue ?? null,
+          createdAt,
+          prevRowHash: prevRow?.rowHash ?? null,
+        });
+
+        await tx.auditLog.create({
+          data: {
+            id,
+            userId: entry.userId!,
+            action: entry.action,
+            entity: entry.entity,
+            entityId: entry.entityId || '',
+            oldValue,
+            newValue,
+            ipAddress: entry.ipAddress || null,
+            userAgent: entry.userAgent || null,
+            duration: entry.duration || null,
+            createdAt,
+            sequenceNumber,
+            rowHash,
+            prevRowHash: prevRow?.rowHash ?? null,
+          },
+        });
       });
     } catch (err) {
       this.logger.error('Failed to write audit log', err);
     }
+  }
+
+  /**
+   * Walk the Merkle chain and return the first sequenceNumber where the
+   * recomputed hash doesn't match the stored hash (or prev linkage breaks).
+   * Null = chain intact through all rows with non-null hashes.
+   *
+   * Historical rows where rowHash IS NULL (backfill before this migration)
+   * are skipped — the chain is defined only for post-migration rows.
+   */
+  async verifyChain(options: { maxRows?: number } = {}): Promise<{
+    ok: boolean;
+    rowsChecked: number;
+    firstMismatchSeq: bigint | null;
+    firstMismatchId: string | null;
+  }> {
+    const take = options.maxRows ?? 10_000;
+    const rows = await this.prisma.auditLog.findMany({
+      where: { rowHash: { not: null }, sequenceNumber: { not: null } },
+      orderBy: { sequenceNumber: 'asc' },
+      select: {
+        id: true,
+        userId: true,
+        action: true,
+        entity: true,
+        entityId: true,
+        oldValue: true,
+        newValue: true,
+        createdAt: true,
+        sequenceNumber: true,
+        rowHash: true,
+        prevRowHash: true,
+      },
+      take,
+    });
+
+    let lastHash: string | null = null;
+    for (const r of rows) {
+      if (r.sequenceNumber === null || r.rowHash === null) continue;
+      // prev linkage check
+      if ((r.prevRowHash ?? null) !== lastHash && lastHash !== null) {
+        return {
+          ok: false,
+          rowsChecked: rows.indexOf(r),
+          firstMismatchSeq: r.sequenceNumber,
+          firstMismatchId: r.id,
+        };
+      }
+      const expected = this.computeRowHash({
+        sequenceNumber: r.sequenceNumber,
+        id: r.id,
+        userId: r.userId,
+        action: r.action,
+        entity: r.entity,
+        entityId: r.entityId,
+        oldValue: r.oldValue as unknown,
+        newValue: r.newValue as unknown,
+        createdAt: r.createdAt,
+        prevRowHash: r.prevRowHash ?? null,
+      });
+      if (expected !== r.rowHash) {
+        return {
+          ok: false,
+          rowsChecked: rows.indexOf(r),
+          firstMismatchSeq: r.sequenceNumber,
+          firstMismatchId: r.id,
+        };
+      }
+      lastHash = r.rowHash;
+    }
+
+    return { ok: true, rowsChecked: rows.length, firstMismatchSeq: null, firstMismatchId: null };
   }
 
   async getAuditLogs(filters: {

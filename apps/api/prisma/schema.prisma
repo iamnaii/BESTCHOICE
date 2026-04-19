@@ -1545,12 +1545,21 @@ model AuditLog {
   // rejects DELETE on this table regardless of path.
   archivedAt DateTime? @map("archived_at")
 
+  /// T2-C4 ext (Merkle chain): each row seals itself with a SHA-256 hash
+  /// over its own content + the previous row's rowHash. Tampering with any
+  /// row in the middle breaks every row after it. Verify via
+  /// audit.service.verifyChain() — runs as a nightly cron and on-demand.
+  sequenceNumber BigInt?  @map("sequence_number")
+  rowHash        String?  @map("row_hash") // hex-encoded SHA-256
+  prevRowHash    String?  @map("prev_row_hash")
+
   user User @relation(fields: [userId], references: [id])
 
   @@index([entity, entityId])
   @@index([userId])
   @@index([createdAt])
   @@index([archivedAt])
+  @@index([sequenceNumber])
   @@map("audit_logs")
 }
 

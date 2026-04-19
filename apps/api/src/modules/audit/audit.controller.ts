@@ -57,4 +57,20 @@ export class AuditController {
   getStats() {
     return this.auditService.getAuditStats();
   }
+
+  /**
+   * T2-C4 ext: walk the Merkle hash chain over AuditLog and return
+   * ok/first-mismatch. OWNER only — information leak potential.
+   */
+  @Get('verify-chain')
+  @Roles('OWNER')
+  async verifyChain() {
+    const result = await this.auditService.verifyChain({ maxRows: 50_000 });
+    return {
+      ok: result.ok,
+      rowsChecked: result.rowsChecked,
+      firstMismatchSeq: result.firstMismatchSeq?.toString() ?? null,
+      firstMismatchId: result.firstMismatchId,
+    };
+  }
 }

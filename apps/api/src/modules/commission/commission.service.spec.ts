@@ -28,6 +28,11 @@ describe('CommissionService', () => {
         findFirst: jest.fn(),
         update: jest.fn(),
       },
+      // Simple pass-through — callers supply their own tx mock via closure
+      // in describe blocks that need it. Default echoes the parent prisma so
+      // tests that don't inspect tx work unchanged.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      $transaction: jest.fn(async (cb: (tx: unknown) => Promise<unknown>) => cb(prisma)),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -381,6 +386,158 @@ describe('CommissionService', () => {
       await expect(
         service.approvePayout('payout-1', 'manager-1', {}),
       ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  // Prevent the master commission rate from drifting mid-cycle. If a rate
+  // change were allowed while PENDING commissions exist in the current
+  // period, the per-commission snapshot on SalesCommission would be fine
+  // for already-created rows, but the PENDING queue would become ambiguous
+  // to auditors about which rate was in force when.
+  describe('updateRule — period lock on rate changes', () => {
+    it('rejects rate change while PENDING commissions exist in current period', async () => {
+      prisma.commissionRule.findFirst.mockResolvedValue({
+        id: 'rule-1',
+        rate: new Prisma.Decimal('0.03'),
+      });
+      prisma.salesCommission.count.mockResolvedValue(4);
+
+      await expect(
+        service.updateRule('rule-1', { rate: 0.05 }),
+      ).rejects.toThrow(/มี commission ที่รอดำเนินการ/);
+      expect(prisma.commissionRule.update).not.toHaveBeenCalled();
+    });
+
+    it('allows rate change when no PENDING commissions exist in the current period', async () => {
+      prisma.commissionRule.findFirst.mockResolvedValue({
+        id: 'rule-1',
+        rate: new Prisma.Decimal('0.03'),
+      });
+      prisma.salesCommission.count.mockResolvedValue(0);
+      prisma.commissionRule.update.mockResolvedValue({ id: 'rule-1' });
+
+      await expect(service.updateRule('rule-1', { rate: 0.05 })).resolves.toBeDefined();
+      expect(prisma.commissionRule.update).toHaveBeenCalled();
+    });
+
+    it('allows non-rate updates even when PENDING commissions exist', async () => {
+      prisma.commissionRule.findFirst.mockResolvedValue({
+        id: 'rule-1',
+        rate: new Prisma.Decimal('0.03'),
+      });
+      prisma.salesCommission.count.mockResolvedValue(10);
+      prisma.commissionRule.update.mockResolvedValue({ id: 'rule-1' });
+
+      await expect(service.updateRule('rule-1', { name: 'renamed' })).resolves.toBeDefined();
+      expect(prisma.commissionRule.update).toHaveBeenCalled();
+    });
+
+    it('allows rate update that equals existing rate (no-op)', async () => {
+      prisma.commissionRule.findFirst.mockResolvedValue({
+        id: 'rule-1',
+        rate: new Prisma.Decimal('0.03'),
+      });
+      prisma.commissionRule.update.mockResolvedValue({ id: 'rule-1' });
+      // count should not be queried when the rate value is unchanged
+      prisma.salesCommission.count.mockResolvedValue(999);
+
+      await expect(service.updateRule('rule-1', { rate: 0.03 })).resolves.toBeDefined();
+    });
+  });
+
+  // T2-C6 — clawback policy on defaulted contracts. The schedule encodes
+  // risk appetite: the earlier a contract defaults, the more of the
+  // commission should be reversed.
+  describe('applyClawbackForContract — tiered clawback', () => {
+    const mkCommission = (overrides = {}) => ({
+      id: 'sc-1',
+      contractId: 'contract-1',
+      salespersonId: 'sp-1',
+      commissionAmount: new Prisma.Decimal('500'),
+      status: 'PAID',
+      clawbackAt: null,
+      deletedAt: null,
+      ...overrides,
+    });
+
+    it('claws back 100% on first-payment default (monthsPaid = 0 or 1)', async () => {
+      prisma.salesCommission.findMany.mockResolvedValue([mkCommission()]);
+
+      const res = await service.applyClawbackForContract('contract-1', 0, 'FPD');
+
+      expect(res.percent).toBe(100);
+      expect(res.clawedBackCount).toBe(1);
+      expect(res.totalAmount).toBe('500');
+      expect(prisma.salesCommission.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: 'CLAWED_BACK',
+            clawbackAmount: expect.any(Prisma.Decimal),
+            clawbackPercent: 100,
+            monthsPaidBeforeDefault: 0,
+          }),
+        }),
+      );
+    });
+
+    it('claws back 75% at 2-3 months paid', async () => {
+      prisma.salesCommission.findMany.mockResolvedValue([mkCommission()]);
+      const res = await service.applyClawbackForContract('contract-1', 3, 'early default');
+
+      expect(res.percent).toBe(75);
+      expect(res.totalAmount).toBe('375');
+      expect(prisma.salesCommission.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: 'PARTIALLY_CLAWED_BACK',
+            clawbackPercent: 75,
+          }),
+        }),
+      );
+    });
+
+    it('claws back 50% at 4-6 months paid', async () => {
+      prisma.salesCommission.findMany.mockResolvedValue([mkCommission()]);
+      const res = await service.applyClawbackForContract('contract-1', 5, 'mid default');
+      expect(res.percent).toBe(50);
+      expect(res.totalAmount).toBe('250');
+    });
+
+    it('claws back 25% at 7-12 months paid', async () => {
+      prisma.salesCommission.findMany.mockResolvedValue([mkCommission()]);
+      const res = await service.applyClawbackForContract('contract-1', 10, 'late default');
+      expect(res.percent).toBe(25);
+      expect(res.totalAmount).toBe('125');
+    });
+
+    it('does nothing (0%) when the contract paid >12 months', async () => {
+      prisma.salesCommission.findMany.mockResolvedValue([mkCommission()]);
+      const res = await service.applyClawbackForContract('contract-1', 18, 'very late');
+      expect(res.percent).toBe(0);
+      expect(res.clawedBackCount).toBe(0);
+      expect(prisma.salesCommission.findMany).not.toHaveBeenCalled();
+      expect(prisma.salesCommission.update).not.toHaveBeenCalled();
+    });
+
+    it('is idempotent: already-clawed rows are filtered out via clawbackAt IS NULL', async () => {
+      prisma.salesCommission.findMany.mockResolvedValue([]); // no rows match the where clause
+      const res = await service.applyClawbackForContract('contract-1', 0, 'retry');
+      expect(res.clawedBackCount).toBe(0);
+      expect(prisma.salesCommission.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            contractId: 'contract-1',
+            clawbackAt: null,
+            status: { in: ['APPROVED', 'PAID'] },
+          }),
+        }),
+      );
+      expect(prisma.salesCommission.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects negative or non-finite monthsPaid', async () => {
+      await expect(service.applyClawbackForContract('c', -1, 'bad')).rejects.toThrow(BadRequestException);
+      await expect(service.applyClawbackForContract('c', Number.NaN, 'bad')).rejects.toThrow(BadRequestException);
     });
   });
 });

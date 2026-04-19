@@ -197,6 +197,83 @@ export class CommissionService {
   }
 
   /**
+   * Clawback policy: how much of a commission to reverse based on how many
+   * months were paid on the contract before it defaulted. First-payment
+   * default is worst (sale never took); the further the contract
+   * progressed, the less we claw back.
+   */
+  private clawbackPercentForMonthsPaid(monthsPaid: number): number {
+    if (monthsPaid <= 1) return 100;
+    if (monthsPaid <= 3) return 75;
+    if (monthsPaid <= 6) return 50;
+    if (monthsPaid <= 12) return 25;
+    return 0;
+  }
+
+  /**
+   * Reverse commissions tied to a contract that has defaulted / been
+   * written off. Called by the contract or bad-debt flow; idempotent —
+   * rows already clawed back are skipped via clawbackAt IS NULL.
+   */
+  async applyClawbackForContract(
+    contractId: string,
+    monthsPaid: number,
+    reason: string,
+  ): Promise<{ clawedBackCount: number; totalAmount: string; percent: number }> {
+    if (!Number.isFinite(monthsPaid) || monthsPaid < 0) {
+      throw new BadRequestException('monthsPaid ต้องเป็นจำนวนเต็มไม่ติดลบ');
+    }
+
+    const percent = this.clawbackPercentForMonthsPaid(monthsPaid);
+    if (percent === 0) {
+      return { clawedBackCount: 0, totalAmount: '0', percent };
+    }
+
+    const commissions = await this.prisma.salesCommission.findMany({
+      where: {
+        contractId,
+        deletedAt: null,
+        status: { in: ['APPROVED', 'PAID'] },
+        clawbackAt: null,
+      },
+    });
+    if (commissions.length === 0) {
+      return { clawedBackCount: 0, totalAmount: '0', percent };
+    }
+
+    const now = new Date();
+    const factor = new Prisma.Decimal(percent).div(100);
+    let total = new Prisma.Decimal(0);
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const c of commissions) {
+        const amount = new Prisma.Decimal(c.commissionAmount)
+          .mul(factor)
+          .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+        total = total.add(amount);
+
+        await tx.salesCommission.update({
+          where: { id: c.id },
+          data: {
+            status: percent === 100 ? 'CLAWED_BACK' : 'PARTIALLY_CLAWED_BACK',
+            clawbackAmount: amount,
+            clawbackPercent: percent,
+            clawbackAt: now,
+            clawbackReason: reason,
+            monthsPaidBeforeDefault: monthsPaid,
+          },
+        });
+      }
+    });
+
+    return {
+      clawedBackCount: commissions.length,
+      totalAmount: total.toString(),
+      percent,
+    };
+  }
+
+  /**
    * List active commission rules
    */
   async findAllRules() {
@@ -231,6 +308,29 @@ export class CommissionService {
       where: { id, deletedAt: null },
     });
     if (!rule) throw new NotFoundException('ไม่พบกฎค่าคอมมิชชัน');
+
+    // Block rate changes while PENDING commissions exist for the current
+    // period. Letting the rate move mid-cycle creates ambiguity about which
+    // rate was in effect when each commission row was created — the whole
+    // point of snapshotting the rate per SalesCommission record is defeated
+    // if the master rate can drift during an open period.
+    if (dto.rate !== undefined && !rule.rate.equals(new Prisma.Decimal(dto.rate))) {
+      const now = new Date();
+      const currentPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const pending = await this.prisma.salesCommission.count({
+        where: {
+          commissionRuleId: id,
+          period: currentPeriod,
+          status: 'PENDING',
+          deletedAt: null,
+        },
+      });
+      if (pending > 0) {
+        throw new ConflictException(
+          `เปลี่ยนอัตราไม่ได้ — มี commission ที่รอดำเนินการ ${pending} รายการใน period ${currentPeriod} ปิด period ก่อนหรือรอเดือนหน้า`,
+        );
+      }
+    }
 
     return this.prisma.commissionRule.update({
       where: { id },

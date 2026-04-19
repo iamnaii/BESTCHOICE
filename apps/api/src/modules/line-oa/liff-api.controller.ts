@@ -23,6 +23,8 @@ import { DocumentsService } from '../contracts/documents.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
 import { LiffTokenGuard, LiffRequest } from './guards/liff-token.guard';
+import { LiffChannel } from './guards/liff-channel.decorator';
+import { LineChannelType } from '@prisma/client';
 import { Throttle } from '@nestjs/throttler';
 import {
   LiffRegisterLookupDto,
@@ -42,6 +44,7 @@ interface LiffPaymentLinkResult { url: string; token: string; totalPayoff?: numb
 @Controller('line-oa')
 @SkipCsrf()
 @UseGuards(LiffTokenGuard)
+@LiffChannel(LineChannelType.SHOP)
 export class LiffApiController {
   private readonly logger = new Logger(LiffApiController.name);
 

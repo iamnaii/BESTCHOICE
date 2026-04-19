@@ -16,4 +16,14 @@ export class CloseMonthDto {
   @IsString()
   @IsOptional()
   notes?: string;
+
+  /**
+   * T2-C10 — Required only when reopening a CLOSED period that is older than
+   * 90 days. Pass the ID / reference number of the board resolution that
+   * authorises the retroactive reopen. Ignored for fresh (< 90 days) reopens
+   * and for OPEN/REVIEW transitions.
+   */
+  @IsString()
+  @IsOptional()
+  boardResolutionId?: string;
 }

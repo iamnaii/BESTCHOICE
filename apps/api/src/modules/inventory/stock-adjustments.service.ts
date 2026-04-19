@@ -8,6 +8,11 @@ import { Prisma, StockAdjustmentReason } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateStockAdjustmentDto } from './dto/create-stock-adjustment.dto';
 
+// T2-C11 — stock adjustments whose product cost exceeds this threshold must
+// be approved by an OWNER. Managers (BRANCH_MANAGER / FINANCE_MANAGER) cannot
+// rubber-stamp a write-off of a flagship-tier device.
+const OWNER_ONLY_ADJUSTMENT_THRESHOLD_THB = 500_000;
+
 @Injectable()
 export class StockAdjustmentsService {
   constructor(private prisma: PrismaService) {}
@@ -34,6 +39,18 @@ export class StockAdjustmentsService {
       throw new ForbiddenException(
         `ผู้อนุมัติต้องเป็น ${approverAllowed.join(' / ')} (role ปัจจุบัน: ${approver.role})`,
       );
+    }
+
+    // T5-C14 — DAMAGED stock adjustments must carry at least one photo as
+    // evidence (paralleling the DEFECT exchange gate from T5-C10). The DTO
+    // lets `photos` be optional at the type level; enforce per-reason here.
+    if (dto.reason === 'DAMAGED') {
+      const photos = dto.photos ?? [];
+      if (!Array.isArray(photos) || photos.length === 0) {
+        throw new BadRequestException(
+          'การปรับสต๊อคเหตุผล DAMAGED ต้องแนบรูปภาพอย่างน้อย 1 รูปเป็นหลักฐาน',
+        );
+      }
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -77,6 +94,18 @@ export class StockAdjustmentsService {
         }
       }
 
+      // T2-C11 — high-value adjustments (> 500K THB cost) require OWNER.
+      // BRANCH_MANAGER / FINANCE_MANAGER approval is insufficient for flagship
+      // devices because the write-off blast-radius is too large for a mid-tier
+      // sign-off. Comparison uses Prisma.Decimal to avoid float drift.
+      const adjustmentValue = new Prisma.Decimal(product?.costPrice ?? 0);
+      const threshold = new Prisma.Decimal(OWNER_ONLY_ADJUSTMENT_THRESHOLD_THB);
+      if (adjustmentValue.greaterThan(threshold) && approver.role !== 'OWNER') {
+        throw new ForbiddenException(
+          'การปรับสต็อกเกิน 500,000 บาท ต้องได้รับอนุมัติจาก OWNER เท่านั้น',
+        );
+      }
+
       // Create adjustment record (with 4-eyes approver captured)
       const adjustment = await tx.stockAdjustment.create({
         data: {
@@ -85,7 +114,12 @@ export class StockAdjustmentsService {
           reason: dto.reason as StockAdjustmentReason,
           previousStatus: product.status,
           notes: dto.notes,
-          photos: dto.photos || [],
+          // T5-C14 — photos are write-once: captured at create time from the
+          // validated DTO and never mutated afterwards (no update route
+          // exists for stock adjustments; service deliberately has no
+          // update() method). Cloning the array prevents caller-side
+          // aliasing from altering the stored evidence set.
+          photos: [...(dto.photos ?? [])],
           adjustedById: userId,
           approvedById: dto.approverId,
           approvedAt: new Date(),

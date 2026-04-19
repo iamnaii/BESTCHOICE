@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsArray, IsIn, IsNotEmpty } from 'class-validator';
+import { IsString, IsOptional, IsArray, IsIn, IsNotEmpty, ArrayMinSize } from 'class-validator';
 
 export class CreateStockAdjustmentDto {
   @IsString()
@@ -12,9 +12,13 @@ export class CreateStockAdjustmentDto {
   @IsOptional()
   notes?: string;
 
+  // T5-C14 — DAMAGED requires at least one photo as evidence. Enforced in the
+  // service layer (after reason is known); DTO-level validator keeps the type
+  // `string[]` when present so empty arrays are still shaped correctly.
   @IsArray()
   @IsString({ each: true })
   @IsOptional()
+  @ArrayMinSize(0)
   photos?: string[];
 
   // T5-C3 — every stock adjustment requires a second-person approver.

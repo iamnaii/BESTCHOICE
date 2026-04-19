@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { AccountingPeriodStatus, Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -242,11 +242,19 @@ export class MonthlyCloseService {
   /**
    * Reopen a period — resets to OPEN.
    * Cannot reopen a SYNCED period (data already exported to PEAK).
+   *
+   * T2-C10 — 90-day lock:
+   *   A CLOSED period older than 90 days (measured from `closedAt`) may only
+   *   be reopened with an explicit `boardResolutionId` string. Without it the
+   *   operation throws ForbiddenException — requires Board approval because
+   *   a stale reopen can rewrite reported P&L / tax filings after the fact.
+   *   OWNER-only is already enforced at the controller level.
    */
   async reopenPeriod(
     companyId: string,
     year: number,
     month: number,
+    boardResolutionId?: string,
   ): Promise<PeriodStatusResult> {
     const existing = await this.prisma.accountingPeriod.findUnique({
       where: { companyId_year_month: { companyId, year, month } },
@@ -263,6 +271,19 @@ export class MonthlyCloseService {
       );
     }
 
+    // T2-C10 — 90-day lock on stale CLOSED periods
+    if (existing.status === 'CLOSED' && existing.closedAt) {
+      const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+      const isStale = existing.closedAt < ninetyDaysAgo;
+      const hasBoardResolution =
+        typeof boardResolutionId === 'string' && boardResolutionId.trim().length > 0;
+      if (isStale && !hasBoardResolution) {
+        throw new ForbiddenException(
+          'งวดนี้ถูกปิดเกิน 90 วัน จึงล็อกอัตโนมัติ ต้องใช้มติบอร์ด (boardResolutionId) เพื่อเปิดงวดใหม่',
+        );
+      }
+    }
+
     const period = await this.prisma.accountingPeriod.update({
       where: { companyId_year_month: { companyId, year, month } },
       data: {
@@ -276,7 +297,12 @@ export class MonthlyCloseService {
       },
     });
 
-    this.logger.log(`Period ${year}/${month} (company ${companyId}) reopened to OPEN.`);
+    const logSuffix = boardResolutionId
+      ? ` (boardResolutionId=${boardResolutionId})`
+      : '';
+    this.logger.log(
+      `Period ${year}/${month} (company ${companyId}) reopened to OPEN.${logSuffix}`,
+    );
 
     return period as PeriodStatusResult;
   }

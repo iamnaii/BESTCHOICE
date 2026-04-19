@@ -187,7 +187,12 @@ describe('StockAdjustmentsService.create — T5-C3 4-eyes', () => {
         deletedAt: null,
       });
       await service.create(
-        { ...baseDto, reason: 'DAMAGED', approverId: 'approver-bm' },
+        {
+          ...baseDto,
+          reason: 'DAMAGED',
+          approverId: 'approver-bm',
+          photos: ['s3://photos/evidence.jpg'],
+        },
         'user-1',
       );
       expect(prisma.product.update).toHaveBeenCalledWith(
@@ -195,6 +200,97 @@ describe('StockAdjustmentsService.create — T5-C3 4-eyes', () => {
           data: expect.objectContaining({
             status: 'DAMAGED',
             wasPreviouslyDamaged: true,
+          }),
+        }),
+      );
+    });
+  });
+
+  // T2-C11 — > 500K THB requires OWNER approver
+  describe('T2-C11: high-value adjustments require OWNER', () => {
+    it('allows BRANCH_MANAGER approver for adjustment ≤ 500K THB', async () => {
+      prisma.product.findUnique.mockResolvedValue({
+        id: 'p1',
+        status: 'IN_STOCK',
+        branchId: 'branch-1',
+        deletedAt: null,
+        costPrice: '450000.00',
+      });
+      await expect(
+        service.create({ ...baseDto, approverId: 'approver-bm' }, 'user-1'),
+      ).resolves.toBeDefined();
+      expect(prisma.stockAdjustment.create).toHaveBeenCalled();
+    });
+
+    it('rejects BRANCH_MANAGER approver when value > 500K THB', async () => {
+      prisma.product.findUnique.mockResolvedValue({
+        id: 'p1',
+        status: 'IN_STOCK',
+        branchId: 'branch-1',
+        deletedAt: null,
+        costPrice: '650000.00',
+      });
+      await expect(
+        service.create({ ...baseDto, approverId: 'approver-bm' }, 'user-1'),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prisma.stockAdjustment.create).not.toHaveBeenCalled();
+    });
+
+    it('allows OWNER approver when value > 500K THB', async () => {
+      prisma.product.findUnique.mockResolvedValue({
+        id: 'p1',
+        status: 'IN_STOCK',
+        branchId: 'branch-1',
+        deletedAt: null,
+        costPrice: '650000.00',
+      });
+      await expect(
+        service.create({ ...baseDto, approverId: 'approver-owner' }, 'user-1'),
+      ).resolves.toBeDefined();
+      expect(prisma.stockAdjustment.create).toHaveBeenCalled();
+    });
+  });
+
+  // T5-C14 — DAMAGED requires photos
+  describe('T5-C14: DAMAGED photo gate', () => {
+    const damagedBase = {
+      productId: 'p1',
+      reason: 'DAMAGED' as const,
+      approverId: 'approver-bm',
+      notes: 'screen cracked',
+    };
+
+    it('rejects DAMAGED without photos', async () => {
+      prisma.product.findUnique.mockResolvedValue({
+        id: 'p1',
+        status: 'IN_STOCK',
+        branchId: 'branch-1',
+        deletedAt: null,
+        costPrice: '10000.00',
+      });
+      await expect(service.create(damagedBase, 'user-1')).rejects.toThrow(BadRequestException);
+      expect(prisma.stockAdjustment.create).not.toHaveBeenCalled();
+    });
+
+    it('accepts DAMAGED with non-empty photos array', async () => {
+      prisma.product.findUnique.mockResolvedValue({
+        id: 'p1',
+        status: 'IN_STOCK',
+        branchId: 'branch-1',
+        deletedAt: null,
+        costPrice: '10000.00',
+      });
+      await expect(
+        service.create(
+          { ...damagedBase, photos: ['s3://photos/damage-1.jpg'] },
+          'user-1',
+        ),
+      ).resolves.toBeDefined();
+      expect(prisma.stockAdjustment.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            reason: 'DAMAGED',
+            photos: ['s3://photos/damage-1.jpg'],
           }),
         }),
       );

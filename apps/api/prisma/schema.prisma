@@ -495,6 +495,24 @@ model Customer {
   workplace          String?
   addressWork        String?   @map("address_work") // ที่อยู่ที่ทำงาน
   references         Json? // บุคคลอ้างอิง [{prefix, firstName, lastName, phone, relationship}]
+
+  // === PII encryption (Phase 6.5) — nullable during migration window ===
+  // All new columns are populated by dual-write in Phase 3 + backfilled.
+  // Phase 6 drops the legacy plaintext columns above.
+  nationalIdEncrypted         String? @map("national_id_encrypted")
+  nationalIdHash              String? @unique @map("national_id_hash")
+  phoneEncrypted              String? @map("phone_encrypted")
+  phoneHash                   String? @map("phone_hash")
+  phoneSecondaryEncrypted     String? @map("phone_secondary_encrypted")
+  emailEncrypted              String? @map("email_encrypted")
+  addressIdCardEncrypted      String? @map("address_id_card_encrypted")
+  addressCurrentEncrypted     String? @map("address_current_encrypted")
+  addressWorkEncrypted        String? @map("address_work_encrypted")
+  guardianNationalIdEncrypted String? @map("guardian_national_id_encrypted")
+  guardianPhoneEncrypted      String? @map("guardian_phone_encrypted")
+  guardianAddressEncrypted    String? @map("guardian_address_encrypted")
+  referencesEncrypted         Json?   @map("references_encrypted")
+
   documents          String[]  @default([]) // array of file URLs
 
   // Guardian (ผู้ปกครอง) — สำหรับลูกค้าอายุ 17-19
@@ -555,6 +573,7 @@ model Customer {
   @@index([createdAt])
   @@index([deletedAt])
   @@index([referredById])
+  @@index([phoneHash])
   @@map("customers")
 }
 
@@ -2987,6 +3006,10 @@ model TradeIn {
   transferBankName      String? @map("transfer_bank_name")
   transferAccountNumber String? @map("transfer_account_number")
   transferAccountName   String? @map("transfer_account_name")
+
+  // === PII encryption (Phase 6.5) ===
+  transferAccountNumberEncrypted String? @map("transfer_account_number_encrypted")
+  transferAccountNameEncrypted   String? @map("transfer_account_name_encrypted")
 
   // ─── ใบสำคัญจ่ายเงิน ───────────────────────────────────────────────
   voucherNumber String?   @unique @map("voucher_number") // EXP-YYYYMMNNNNN

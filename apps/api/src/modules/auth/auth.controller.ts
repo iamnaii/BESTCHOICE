@@ -59,8 +59,13 @@ export class AuthController {
   @Post('login')
   @Throttle({ short: { ttl: 60000, limit: 10 } })
   @ApiOperation({ summary: 'เข้าสู่ระบบ (email + password)' })
-  async login(@Body() loginDto: LoginDto, @Res({ passthrough: true }) res: Response) {
-    const result = await this.authService.login(loginDto);
+  async login(
+    @Body() loginDto: LoginDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const meta = { ipAddress: req.ip, userAgent: req.headers['user-agent'] as string | undefined };
+    const result = await this.authService.login(loginDto, meta);
 
     // If user has 2FA enabled, require verification before issuing tokens
     if (result.user && await this.twoFactorService.isTwoFactorEnabled(result.user.id)) {
@@ -82,9 +87,19 @@ export class AuthController {
   @Post('login/2fa')
   @Throttle({ short: { ttl: 60000, limit: 5 } })
   @ApiOperation({ summary: 'เข้าสู่ระบบด้วย 2FA (email + password + OTP)' })
-  async loginWith2FA(@Body() body: { email: string; password: string; code: string }, @Res({ passthrough: true }) res: Response) {
-    // Re-authenticate + verify 2FA code in one step
-    const result = await this.authService.loginWith2FA(body.email, body.password, body.code, this.twoFactorService);
+  async loginWith2FA(
+    @Body() body: { email: string; password: string; code: string },
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const meta = { ipAddress: req.ip, userAgent: req.headers['user-agent'] as string | undefined };
+    const result = await this.authService.loginWith2FA(
+      body.email,
+      body.password,
+      body.code,
+      this.twoFactorService,
+      meta,
+    );
     setRefreshCookie(res, result.refreshToken);
     return { accessToken: result.accessToken, user: result.user };
   }

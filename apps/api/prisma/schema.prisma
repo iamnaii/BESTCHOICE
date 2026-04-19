@@ -451,6 +451,7 @@ model User {
   refundsRequested       Refund[]             @relation("RefundRequestedBy")
   refundsApproved        Refund[]             @relation("RefundApprovedBy")
   refundsRejected        Refund[]             @relation("RefundRejectedBy")
+  loginAudits            LoginAuditLog[]      @relation("LoginAudits")
 
   @@index([branchId])
   @@map("users")
@@ -3762,6 +3763,34 @@ model AiAutoReplyLog {
   @@index([roomId])
   @@index([autoSent, createdAt])
   @@map("ai_auto_reply_logs")
+}
+
+/// Append-only log of every authentication attempt (success + failure). Used
+/// by SOC + fraud analytics to spot credential stuffing, brute force, and
+/// credential-sharing patterns. Retention is 90 days via dedicated cron —
+/// any longer is a PDPA burden with little incident-response value.
+///
+/// Immutable audit log — updatedAt/deletedAt intentionally omitted
+model LoginAuditLog {
+  id          String   @id @default(uuid())
+  userId      String?  @map("user_id") // null when attempt matched no account
+  emailTried  String   @map("email_tried")
+  success     Boolean
+  /// failure reason when success=false: 'wrong_password' | 'user_not_found' |
+  /// 'account_locked' | 'account_disabled' | '2fa_invalid' | 'other'
+  failureKind String?  @map("failure_kind")
+  ipAddress   String?  @map("ip_address")
+  userAgent   String?  @map("user_agent") @db.Text
+  twoFactorUsed Boolean @default(false) @map("two_factor_used")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user User? @relation("LoginAudits", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([emailTried, createdAt])
+  @@index([success, createdAt])
+  @@index([createdAt])
+  @@map("login_audit_logs")
 }
 
 /// Append-only log of Claude API calls: one row per request. Used by the

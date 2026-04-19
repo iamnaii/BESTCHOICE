@@ -12,10 +12,16 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto, ResetPasswordDto } from './dto/password-reset.dto';
 import { EmailService } from '../email/email.service';
+import { LoginAuditService, LoginFailureKind } from './login-audit.service';
 
 // Account lockout configuration. Tunable via env if needed later.
 const LOCKOUT_THRESHOLD = 5; // failures before lock
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
+
+export interface AuthMeta {
+  ipAddress?: string;
+  userAgent?: string;
+}
 
 @Injectable()
 export class AuthService {
@@ -26,7 +32,27 @@ export class AuthService {
     private jwtService: JwtService,
     private configService: ConfigService,
     private emailService: EmailService,
+    private loginAudit: LoginAuditService,
   ) {}
+
+  private async auditLogin(
+    emailTried: string,
+    success: boolean,
+    meta: AuthMeta | undefined,
+    userId?: string | null,
+    failureKind?: LoginFailureKind,
+    twoFactorUsed = false,
+  ): Promise<void> {
+    void this.loginAudit.record({
+      emailTried,
+      success,
+      userId,
+      failureKind,
+      ipAddress: meta?.ipAddress,
+      userAgent: meta?.userAgent,
+      twoFactorUsed,
+    });
+  }
 
   /**
    * Hash a raw refresh token using SHA-256 for secure DB storage.
@@ -37,13 +63,18 @@ export class AuthService {
     return crypto.createHash('sha256').update(rawToken).digest('hex');
   }
 
-  async login(loginDto: LoginDto) {
+  async login(loginDto: LoginDto, meta?: AuthMeta) {
     const user = await this.prisma.user.findUnique({
       where: { email: loginDto.email },
       include: { branch: true },
     });
 
-    if (!user || user.deletedAt || !user.isActive) {
+    if (!user) {
+      await this.auditLogin(loginDto.email, false, meta, null, 'user_not_found');
+      throw new UnauthorizedException('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
+    }
+    if (user.deletedAt || !user.isActive) {
+      await this.auditLogin(loginDto.email, false, meta, user.id, 'account_disabled');
       throw new UnauthorizedException('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
     }
 
@@ -51,6 +82,7 @@ export class AuthService {
     // distinguish "wrong password" from "locked" — both surface the same error.
     if (user.lockedUntil && user.lockedUntil > new Date()) {
       this.logger.warn(`Login attempt on locked account ${user.id}`);
+      await this.auditLogin(loginDto.email, false, meta, user.id, 'account_locked');
       throw new UnauthorizedException(
         'บัญชีถูกล็อคชั่วคราว กรุณาลองใหม่ในอีกสักครู่',
       );
@@ -77,6 +109,7 @@ export class AuthService {
           `Account ${user.id} locked after ${nextAttempts} failed attempts`,
         );
       }
+      await this.auditLogin(loginDto.email, false, meta, user.id, 'wrong_password');
       throw new UnauthorizedException('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
     }
 
@@ -89,6 +122,8 @@ export class AuthService {
         lastLoginAt: new Date(),
       },
     });
+
+    await this.auditLogin(loginDto.email, true, meta, user.id);
 
     const payload = {
       sub: user.id,
@@ -121,8 +156,17 @@ export class AuthService {
   /**
    * Login with 2FA verification (re-authenticates credentials + verifies TOTP).
    */
-  async loginWith2FA(email: string, password: string, code: string, twoFactorService: { verifyCode: (s: string, b: string | null, c: string) => boolean; consumeRecoveryCode: (id: string, c: string) => Promise<void> }) {
-    const result = await this.login({ email, password });
+  async loginWith2FA(
+    email: string,
+    password: string,
+    code: string,
+    twoFactorService: {
+      verifyCode: (s: string, b: string | null, c: string) => boolean;
+      consumeRecoveryCode: (id: string, c: string) => Promise<void>;
+    },
+    meta?: AuthMeta,
+  ) {
+    const result = await this.login({ email, password }, meta);
 
     const user = await this.prisma.user.findUnique({
       where: { id: result.user.id },
@@ -132,12 +176,14 @@ export class AuthService {
     if (user?.twoFactorEnabled && user.twoFactorSecret) {
       const isValid = twoFactorService.verifyCode(user.twoFactorSecret, user.twoFactorBackup, code);
       if (!isValid) {
+        await this.auditLogin(email, false, meta, result.user.id, '2fa_invalid', true);
         throw new UnauthorizedException('รหัส OTP ไม่ถูกต้อง');
       }
       // Consume recovery code if used (8-char hex)
       if (code.length === 8) {
         await twoFactorService.consumeRecoveryCode(result.user.id, code);
       }
+      await this.auditLogin(email, true, meta, result.user.id, undefined, true);
     }
 
     return result;

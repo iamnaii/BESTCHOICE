@@ -14,13 +14,37 @@ export class DashboardService {
     @Inject(CACHE_MANAGER) private cache: Cache,
   ) {}
 
-  /** Cache helper: get from cache or compute and store */
+  /**
+   * Cache helper: get from cache or compute and store.
+   *
+   * Cache is a nice-to-have here, never the source of truth. If Redis is
+   * offline or wedged, compute directly and skip the write — the dashboard
+   * should always render rather than 500. Log the failure once per call so
+   * observability still sees the degraded state.
+   */
   private async cached<T>(key: string, ttl: number, compute: () => Promise<T>): Promise<T> {
-    const cached = await this.cache.get<T>(key);
+    let cached: T | null | undefined;
+    try {
+      cached = await this.cache.get<T>(key);
+    } catch (err) {
+      this.structuredLogger.warn('dashboard.cache.get_failed', {
+        key,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
     if (cached !== undefined && cached !== null) return cached;
+
     const start = Date.now();
     const result = await compute();
-    await this.cache.set(key, result, ttl);
+
+    try {
+      await this.cache.set(key, result, ttl);
+    } catch (err) {
+      this.structuredLogger.warn('dashboard.cache.set_failed', {
+        key,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
     this.structuredLogger.debug('dashboard.cache.miss', { key, computeMs: Date.now() - start });
     return result;
   }

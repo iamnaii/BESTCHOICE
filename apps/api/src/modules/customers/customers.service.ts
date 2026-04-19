@@ -261,10 +261,22 @@ export class CustomersService {
     }));
   }
 
+  /**
+   * Normalize NID/passport for dedup. Strips spaces, dashes, then uppercases.
+   * "1-1234-56789-00-1" → "1123456789001". Without this, the @unique constraint
+   * is only effective when callers happen to pass already-clean strings —
+   * which isn't guaranteed across LIFF, POS, chatbot, and legacy import paths.
+   */
+  private normalizeNationalId(raw: string): string {
+    return raw.replace(/[\s-]/g, '').toUpperCase();
+  }
+
   async create(dto: CreateCustomerDto) {
-    // Check duplicate national ID
+    const normalizedNid = this.normalizeNationalId(dto.nationalId);
+
+    // Check duplicate national ID (normalized — so format variations still collide)
     const existing = await this.prisma.customer.findUnique({
-      where: { nationalId: dto.nationalId },
+      where: { nationalId: normalizedNid },
     });
     if (existing && !existing.deletedAt) {
       throw new ConflictException({
@@ -274,12 +286,13 @@ export class CustomersService {
     }
 
     // Validate Thai national ID checksum (skip for foreigners)
-    if (!dto.isForeigner && !this.validateNationalId(dto.nationalId)) {
+    if (!dto.isForeigner && !this.validateNationalId(normalizedNid)) {
       throw new ConflictException('เลขบัตรประชาชนไม่ถูกต้อง');
     }
 
     const data: Prisma.CustomerCreateInput = {
       ...dto,
+      nationalId: normalizedNid,
       references: dto.references !== undefined
         ? (dto.references as Prisma.InputJsonValue)
         : undefined,
@@ -289,6 +302,9 @@ export class CustomersService {
 
   async update(id: string, dto: UpdateCustomerDto) {
     await this.findOne(id);
+    // NID is intentionally not in UpdateCustomerDto — customers can't change
+    // their ID through this endpoint. If NID needs correction, create a
+    // dedicated admin-only flow that writes to an audit log.
     const data: Prisma.CustomerUpdateInput = {
       ...dto,
       references: dto.references !== undefined

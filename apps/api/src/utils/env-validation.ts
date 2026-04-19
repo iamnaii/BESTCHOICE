@@ -1,6 +1,6 @@
 /**
  * Validates required environment variables at application startup
- * Fails fast with clear error messages if critical vars are missing
+ * Fails fast with clear error messages if critical vars are missing or malformed
  */
 
 interface EnvVar {
@@ -35,5 +35,34 @@ export function validateEnv(): void {
       'Please set these in your .env file or environment.',
     ].join('\n');
     throw new Error(message);
+  }
+
+  // Production-only PII encryption requirements (Phase 6.5)
+  if (process.env.NODE_ENV === 'production') {
+    validatePiiEncryptionEnv();
+  }
+}
+
+function validatePiiEncryptionEnv(): void {
+  const piiKey = process.env.PII_ENCRYPTION_KEY;
+  if (!piiKey) {
+    throw new Error(
+      'PII_ENCRYPTION_KEY required in production. Generate via: openssl rand -hex 32'
+    );
+  }
+  if (piiKey.length !== 64 || !/^[0-9a-f]+$/i.test(piiKey)) {
+    throw new Error(
+      'PII_ENCRYPTION_KEY must be 64 hex chars (32 bytes for AES-256)'
+    );
+  }
+
+  const piiSalt = process.env.PII_HASH_SALT;
+  if (!piiSalt) {
+    throw new Error(
+      'PII_HASH_SALT required in production. Generate via: openssl rand -hex 32'
+    );
+  }
+  if (piiSalt.length < 32) {
+    throw new Error('PII_HASH_SALT must be >= 32 chars');
   }
 }

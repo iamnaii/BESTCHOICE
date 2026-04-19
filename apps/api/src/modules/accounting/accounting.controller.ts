@@ -268,6 +268,11 @@ export class AccountingController {
   @Post('periods/reopen')
   @Roles('OWNER')
   reopenPeriod(@Body() dto: CloseMonthDto) {
-    return this.monthlyCloseService.reopenPeriod(dto.companyId, dto.year, dto.month);
+    return this.monthlyCloseService.reopenPeriod(
+      dto.companyId,
+      dto.year,
+      dto.month,
+      dto.boardResolutionId,
+    );
   }
 }

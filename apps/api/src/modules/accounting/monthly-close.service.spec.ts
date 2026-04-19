@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { MonthlyCloseService } from './monthly-close.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
@@ -262,6 +262,87 @@ describe('MonthlyCloseService', () => {
 
       await expect(service.syncToPeak('company-1', 2025, 3)).rejects.toThrow(BadRequestException);
       expect(peakService.exportJournalEntries).not.toHaveBeenCalled();
+    });
+  });
+
+  // T2-C10 — reopenPeriod 90-day lock
+  describe('reopenPeriod — T2-C10 90-day lock', () => {
+    const base = {
+      id: 'period-reopen-1',
+      companyId: 'company-1',
+      year: 2025,
+      month: 2,
+      reviewStartedAt: null,
+      reviewStartedById: null,
+      peakSyncedAt: null,
+      peakSyncResult: null,
+      reportSnapshot: null,
+      auditIssues: null,
+      notes: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    it('allows reopen of a fresh CLOSED period (closedAt < 90 days ago)', async () => {
+      const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
+      prisma.accountingPeriod.findUnique.mockResolvedValue({
+        ...base,
+        status: 'CLOSED',
+        closedAt: tenDaysAgo,
+        closedById: 'user-1',
+      });
+      prisma.accountingPeriod.update.mockResolvedValue({
+        ...base,
+        status: 'OPEN',
+        closedAt: null,
+        closedById: null,
+      });
+
+      const result = await service.reopenPeriod('company-1', 2025, 2);
+
+      expect(result.status).toBe('OPEN');
+      expect(prisma.accountingPeriod.update).toHaveBeenCalled();
+    });
+
+    it('blocks reopen of a stale CLOSED period (closedAt > 90 days ago) without boardResolutionId', async () => {
+      const hundredDaysAgo = new Date(Date.now() - 100 * 24 * 60 * 60 * 1000);
+      prisma.accountingPeriod.findUnique.mockResolvedValue({
+        ...base,
+        status: 'CLOSED',
+        closedAt: hundredDaysAgo,
+        closedById: 'user-1',
+      });
+
+      await expect(service.reopenPeriod('company-1', 2025, 2)).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(prisma.accountingPeriod.update).not.toHaveBeenCalled();
+    });
+
+    it('allows reopen of a stale CLOSED period when boardResolutionId is supplied', async () => {
+      const hundredDaysAgo = new Date(Date.now() - 100 * 24 * 60 * 60 * 1000);
+      prisma.accountingPeriod.findUnique.mockResolvedValue({
+        ...base,
+        status: 'CLOSED',
+        closedAt: hundredDaysAgo,
+        closedById: 'user-1',
+      });
+      prisma.accountingPeriod.update.mockResolvedValue({
+        ...base,
+        status: 'OPEN',
+        closedAt: null,
+        closedById: null,
+      });
+
+      const result = await service.reopenPeriod(
+        'company-1',
+        2025,
+        2,
+        'BOARD-RES-2026-04-19',
+      );
+
+      expect(result.status).toBe('OPEN');
+      expect(prisma.accountingPeriod.update).toHaveBeenCalled();
     });
   });
 

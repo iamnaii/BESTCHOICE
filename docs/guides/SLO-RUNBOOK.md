@@ -12,9 +12,23 @@ Headers:
 ```
 
 - **Env required**: `METRICS_SCRAPE_TOKEN` (long random string, stored in Secret Manager)
-- Without env → 503 (fails closed)
+- **Env optional**: `METRICS_SCRAPE_TOKEN_PREVIOUS` — used during zero-downtime rotation (T7-C9)
+- Without `METRICS_SCRAPE_TOKEN` → 503 (fails closed)
 - Wrong token → 403
+- Token compare uses `timingSafeEqual` (constant-time, resistant to timing attacks)
 - SkipThrottle (Prometheus scrape every 15s doesn't trip global rate limit)
+
+### Zero-downtime token rotation (T7-C9)
+
+```
+1. Generate new token N. Set METRICS_SCRAPE_TOKEN_PREVIOUS = current_token.
+2. Set METRICS_SCRAPE_TOKEN = N. Deploy.
+   Both old and new tokens are now accepted; requests matching PREVIOUS
+   emit a WARN log ("rotate the caller to the new token…").
+3. Update scrapers (Prometheus / Grafana Cloud / uptime check) to send N.
+4. Watch logs for 24h. Once WARN stops firing, unset
+   METRICS_SCRAPE_TOKEN_PREVIOUS and redeploy.
+```
 
 ## Target SLOs
 

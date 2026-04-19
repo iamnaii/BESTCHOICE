@@ -106,12 +106,15 @@ export class AuthController {
 
   @Post('refresh')
   @Throttle({ short: { ttl: 60000, limit: 10 } }) // 10 refresh attempts per minute
-  @ApiOperation({ summary: 'Refresh access token' })
-  async refresh(@Req() req: Request, @Body() body: { refreshToken?: string }, @Res({ passthrough: true }) res: Response) {
-    // Read from cookie first, fall back to body for backward compatibility
-    const token = req.cookies?.[REFRESH_COOKIE] || body.refreshToken;
+  @ApiOperation({ summary: 'Refresh access token (cookie-only)' })
+  async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    // T7-C5: Cookie-only — body `refreshToken` no longer accepted.
+    // httpOnly cookie is not readable from JS and travels automatically; accepting
+    // the token in the body was a CSRF exfiltration risk if SameSite ever dropped.
+    // Web client already uses cookie (apps/web/src/lib/api.ts posts empty body).
+    const token = req.cookies?.[REFRESH_COOKIE];
     if (!token) {
-      return res.status(401).json({ message: 'Refresh token ไม่ถูกต้องหรือหมดอายุ' });
+      throw new UnauthorizedException('Refresh token ไม่ถูกต้องหรือหมดอายุ');
     }
     const result = await this.authService.refreshToken(token);
     setRefreshCookie(res, result.refreshToken);

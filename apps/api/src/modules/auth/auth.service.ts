@@ -18,6 +18,17 @@ import { LoginAuditService, LoginFailureKind } from './login-audit.service';
 const LOCKOUT_THRESHOLD = 5; // failures before lock
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
 
+// Password reset per-email rate limit (T7-C2).
+// Prevents an attacker from spamming 1000s of reset emails to a target inbox
+// and also reduces email-enumeration signal via bounce timing.
+// Kept lightweight (in-memory Map) because:
+//   - throttler is per-IP, not per-email
+//   - DB-backed counter = extra write on a public endpoint
+// Process-local is acceptable: attacker would still hit the per-IP throttle
+// on the controller, and bypassing both would need many IPs AND many replicas.
+const PASSWORD_RESET_MAX_PER_WINDOW = 3;
+const PASSWORD_RESET_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+
 export interface AuthMeta {
   ipAddress?: string;
   userAgent?: string;
@@ -27,6 +38,13 @@ export interface AuthMeta {
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
 
+  /**
+   * Per-email password reset request timestamps (T7-C2).
+   * Map<lowercased email, number[] of request timestamps in ms>.
+   * Cleaned up lazily inside `isPasswordResetRateLimited`.
+   */
+  private readonly passwordResetAttempts = new Map<string, number[]>();
+
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
@@ -34,6 +52,37 @@ export class AuthService {
     private emailService: EmailService,
     private loginAudit: LoginAuditService,
   ) {}
+
+  /**
+   * T7-C2: Returns true if this email has exceeded the allowed number of
+   * password reset requests within the rolling window.
+   *
+   * Side-effect: records the new timestamp when under the limit. This means
+   * a single call both checks and increments — callers should invoke it
+   * exactly once per forgotPassword request.
+   *
+   * Intentionally silent (no exception). Caller returns the generic
+   * "if this email exists…" message to preserve enumeration resistance —
+   * an attacker must not be able to distinguish "rate-limited" from
+   * "email not on file" via response shape or status code.
+   */
+  private isPasswordResetRateLimited(email: string): boolean {
+    const key = email.toLowerCase();
+    const now = Date.now();
+    const cutoff = now - PASSWORD_RESET_WINDOW_MS;
+    const existing = this.passwordResetAttempts.get(key) ?? [];
+    const recent = existing.filter((t) => t > cutoff);
+
+    if (recent.length >= PASSWORD_RESET_MAX_PER_WINDOW) {
+      // Keep the trimmed list so stale entries don't grow unbounded.
+      this.passwordResetAttempts.set(key, recent);
+      return true;
+    }
+
+    recent.push(now);
+    this.passwordResetAttempts.set(key, recent);
+    return false;
+  }
 
   private async auditLogin(
     emailTried: string,
@@ -296,13 +345,23 @@ export class AuthService {
    * Always returns success to prevent email enumeration.
    */
   async forgotPassword(dto: ForgotPasswordDto): Promise<{ message: string }> {
+    // Always return success to prevent email enumeration attacks
+    const successMessage = 'หากอีเมลนี้มีอยู่ในระบบ คุณจะได้รับลิงก์รีเซ็ตรหัสผ่าน';
+
+    // T7-C2: Per-email rate limit (max 3 / hour). Silently suppress email send
+    // when exceeded — still return the generic success message so an attacker
+    // can't distinguish "rate-limited" from "no such account" via response.
+    if (this.isPasswordResetRateLimited(dto.email)) {
+      this.logger.warn(
+        `Password reset rate limit hit for email (hashed): ${this.hashToken(dto.email.toLowerCase()).slice(0, 12)}`,
+      );
+      return { message: successMessage };
+    }
+
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
       select: { id: true, name: true, email: true, isActive: true, deletedAt: true },
     });
-
-    // Always return success to prevent email enumeration attacks
-    const successMessage = 'หากอีเมลนี้มีอยู่ในระบบ คุณจะได้รับลิงก์รีเซ็ตรหัสผ่าน';
 
     if (!user || user.deletedAt || !user.isActive) {
       return { message: successMessage };

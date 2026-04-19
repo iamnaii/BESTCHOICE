@@ -1,4 +1,10 @@
-import { Injectable, NotFoundException, Logger, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  Logger,
+  BadRequestException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCallLogDto } from './dto/create-call-log.dto';
 import { Prisma, DunningStage } from '@prisma/client';
@@ -470,6 +476,36 @@ export class OverdueService {
       const targetIdx = stageOrder.indexOf(targetStage);
 
       if (targetIdx > currentIdx) {
+        // T4-C2: FINAL_WARNING and LEGAL_ACTION messages carry legal +
+        // PDPA risk if fired auto on a disputed debt. Park them as pending
+        // and wait for a human OWNER/FM to approve.
+        const requiresApproval =
+          targetStage === 'FINAL_WARNING' || targetStage === 'LEGAL_ACTION';
+
+        if (requiresApproval) {
+          await this.prisma.contract.update({
+            where: { id: contract.id },
+            data: {
+              pendingDunningStage: targetStage,
+              pendingDunningSince: now,
+            },
+          });
+          if (systemUser) {
+            await this.prisma.auditLog.create({
+              data: {
+                userId: systemUser.id,
+                action: 'DUNNING_ESCALATION_PENDING',
+                entity: 'contract',
+                entityId: contract.id,
+                oldValue: { dunningStage: contract.dunningStage },
+                newValue: { pendingDunningStage: targetStage, daysOverdue },
+                ipAddress: 'system-cron',
+              },
+            });
+          }
+          continue; // no stage flip, no customer notification this round
+        }
+
         await this.prisma.contract.update({
           where: { id: contract.id },
           data: {
@@ -479,7 +515,6 @@ export class OverdueService {
           },
         });
 
-        // Audit log
         if (systemUser) {
           await this.prisma.auditLog.create({
             data: {
@@ -506,6 +541,126 @@ export class OverdueService {
 
     this.logger.log(`Dunning escalation: ${escalated.length} contracts escalated`);
     return { escalated, timestamp: now };
+  }
+
+  /**
+   * T4-C2: approve the auto-escalator's proposal to flip a contract into
+   * FINAL_WARNING or LEGAL_ACTION. Restricted to OWNER/FINANCE_MANAGER since
+   * the downstream message is legally sensitive. Returns the updated contract
+   * so the caller can dispatch the actual notification.
+   */
+  async approveDunningEscalation(contractId: string, userId: string, userRole: string) {
+    const allowed = ['OWNER', 'FINANCE_MANAGER'];
+    if (!allowed.includes(userRole)) {
+      throw new ForbiddenException(
+        `สิทธิ์อนุมัติ dunning escalation เฉพาะ ${allowed.join(' / ')}`,
+      );
+    }
+
+    const contract = await this.prisma.contract.findFirst({
+      where: { id: contractId, deletedAt: null },
+      select: {
+        id: true,
+        contractNumber: true,
+        dunningStage: true,
+        pendingDunningStage: true,
+      },
+    });
+    if (!contract) throw new NotFoundException('ไม่พบสัญญา');
+    if (!contract.pendingDunningStage) {
+      throw new BadRequestException('สัญญานี้ไม่มี dunning escalation รออนุมัติ');
+    }
+
+    const now = new Date();
+    const target = contract.pendingDunningStage;
+
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.contract.update({
+        where: { id: contractId },
+        data: {
+          dunningStage: target,
+          dunningEscalatedAt: now,
+          dunningLastActionAt: now,
+          pendingDunningStage: null,
+          pendingDunningSince: null,
+        },
+      }),
+      this.prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'DUNNING_ESCALATION_APPROVED',
+          entity: 'contract',
+          entityId: contractId,
+          oldValue: { dunningStage: contract.dunningStage, pendingDunningStage: target },
+          newValue: { dunningStage: target },
+        },
+      }),
+    ]);
+
+    return updated;
+  }
+
+  async rejectDunningEscalation(
+    contractId: string,
+    userId: string,
+    userRole: string,
+    reason: string,
+  ) {
+    const allowed = ['OWNER', 'FINANCE_MANAGER'];
+    if (!allowed.includes(userRole)) {
+      throw new ForbiddenException(
+        `สิทธิ์ปฏิเสธ dunning escalation เฉพาะ ${allowed.join(' / ')}`,
+      );
+    }
+    if (!reason || reason.trim().length < 5) {
+      throw new BadRequestException('ต้องระบุเหตุผลการปฏิเสธ (≥ 5 ตัวอักษร)');
+    }
+
+    const contract = await this.prisma.contract.findFirst({
+      where: { id: contractId, deletedAt: null },
+      select: { id: true, pendingDunningStage: true, dunningStage: true },
+    });
+    if (!contract) throw new NotFoundException('ไม่พบสัญญา');
+    if (!contract.pendingDunningStage) {
+      throw new BadRequestException('สัญญานี้ไม่มี dunning escalation รออนุมัติ');
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.contract.update({
+        where: { id: contractId },
+        data: { pendingDunningStage: null, pendingDunningSince: null },
+      }),
+      this.prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'DUNNING_ESCALATION_REJECTED',
+          entity: 'contract',
+          entityId: contractId,
+          oldValue: { pendingDunningStage: contract.pendingDunningStage },
+          newValue: { rejectedReason: reason.trim() },
+        },
+      }),
+    ]);
+    return { success: true };
+  }
+
+  async getPendingEscalations() {
+    return this.prisma.contract.findMany({
+      where: {
+        pendingDunningStage: { not: null },
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        contractNumber: true,
+        dunningStage: true,
+        pendingDunningStage: true,
+        pendingDunningSince: true,
+        customer: { select: { id: true, name: true, phone: true } },
+      },
+      orderBy: { pendingDunningSince: 'asc' },
+      take: 200,
+    });
   }
 
   /**

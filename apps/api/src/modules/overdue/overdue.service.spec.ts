@@ -83,3 +83,80 @@ describe('OverdueService.recordSettlement', () => {
     ).rejects.toThrow(BadRequestException);
   });
 });
+
+describe('OverdueService.approveDunningEscalation (T4-C2)', () => {
+  let service: OverdueService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let prisma: any;
+
+  const contractWithPending = (pending: string | null) => ({
+    id: 'c-1',
+    contractNumber: 'BC-001',
+    dunningStage: 'NOTICE',
+    pendingDunningStage: pending,
+  });
+
+  beforeEach(async () => {
+    prisma = {
+      contract: {
+        findFirst: jest.fn().mockResolvedValue(contractWithPending('FINAL_WARNING')),
+        update: jest.fn().mockResolvedValue({}),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
+      $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
+    };
+    const mod = await Test.createTestingModule({
+      providers: [OverdueService, { provide: PrismaService, useValue: prisma }],
+    }).compile();
+    service = mod.get(OverdueService);
+  });
+
+  it('rejects non-OWNER/FM roles', async () => {
+    const { ForbiddenException } = await import('@nestjs/common');
+    await expect(
+      service.approveDunningEscalation('c-1', 'u-1', 'BRANCH_MANAGER'),
+    ).rejects.toThrow(ForbiddenException);
+  });
+
+  it('rejects when no pending escalation', async () => {
+    prisma.contract.findFirst.mockResolvedValue(contractWithPending(null));
+    await expect(
+      service.approveDunningEscalation('c-1', 'u-owner', 'OWNER'),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('flips dunningStage to pending target + clears pending + writes audit', async () => {
+    await service.approveDunningEscalation('c-1', 'u-fm', 'FINANCE_MANAGER');
+    const updateArgs = prisma.contract.update.mock.calls[0][0];
+    expect(updateArgs.data.dunningStage).toBe('FINAL_WARNING');
+    expect(updateArgs.data.pendingDunningStage).toBeNull();
+    expect(prisma.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ action: 'DUNNING_ESCALATION_APPROVED' }),
+      }),
+    );
+  });
+
+  it('rejectDunningEscalation requires reason ≥ 5 chars', async () => {
+    await expect(
+      service.rejectDunningEscalation('c-1', 'u-owner', 'OWNER', 'no'),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('rejectDunningEscalation clears pending + audit log', async () => {
+    await service.rejectDunningEscalation(
+      'c-1',
+      'u-owner',
+      'OWNER',
+      'customer disputing — pause',
+    );
+    const updateArgs = prisma.contract.update.mock.calls[0][0];
+    expect(updateArgs.data.pendingDunningStage).toBeNull();
+    expect(prisma.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ action: 'DUNNING_ESCALATION_REJECTED' }),
+      }),
+    );
+  });
+});

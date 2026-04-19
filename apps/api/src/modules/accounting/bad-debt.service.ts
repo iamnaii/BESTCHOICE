@@ -345,6 +345,23 @@ export class BadDebtService {
         createdById: approvedById,
       });
 
+      // T1-C7: Immutable audit log inside the same transaction. Captures
+      // both parties' roles at write-off time (role can change later, the
+      // snapshot cannot). Insertion failure = whole write-off rolls back.
+      await tx.badDebtWriteOffAuditLog.create({
+        data: {
+          contractId: contract.id,
+          contractNumber: contract.contractNumber,
+          outstandingAmount,
+          provisionAmount: existingProvisionAmount,
+          writtenOffById,
+          writtenOffByRole: writer.role,
+          approvedById,
+          approvedByRole: approver.role,
+          notes,
+        },
+      });
+
       return { contractId, status: 'CLOSED_BAD_DEBT', writtenOffAt: new Date() };
     });
   }

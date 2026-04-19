@@ -455,6 +455,8 @@ model User {
   loginAudits            LoginAuditLog[]      @relation("LoginAudits")
   dataAuditAcknowledgements DataAuditLog[]    @relation("DataAuditAcknowledgedBy")
   warrantyAudits         WarrantyAuditLog[]   @relation("WarrantyAuditUser")
+  badDebtWriteOffsWritten  BadDebtWriteOffAuditLog[] @relation("BadDebtWriteOffWriter")
+  badDebtWriteOffsApproved BadDebtWriteOffAuditLog[] @relation("BadDebtWriteOffApprover")
   crmLeadAssignFromHistory CrmLeadAssignment[] @relation("CrmLeadAssignFrom")
   crmLeadAssignToHistory   CrmLeadAssignment[] @relation("CrmLeadAssignTo")
   crmLeadAssignChangedBy   CrmLeadAssignment[] @relation("CrmLeadAssignChangedBy")
@@ -682,6 +684,7 @@ model Contract {
   deviceReceivedAt DateTime? @map("device_received_at")
 
   warrantyAudits WarrantyAuditLog[] @relation("WarrantyAuditContract")
+  badDebtWriteOffAudits BadDebtWriteOffAuditLog[] @relation("BadDebtWriteOffContract")
 
   @@index([customerId])
   @@index([branchId])
@@ -3941,6 +3944,44 @@ model LoginAuditLog {
   @@index([success, createdAt])
   @@index([createdAt])
   @@map("login_audit_logs")
+}
+
+/// Immutable audit trail for every bad-debt write-off (T1-C7). The global
+/// AuditInterceptor already logs mutating requests, but that log rotates on a
+/// 180-day retention cron (T2-C13 — pending); by law (Thai Revenue Code)
+/// write-offs must be traceable for 7+ years. This dedicated table is
+/// append-only, trigger-protected against DELETE, and outlives interceptor
+/// rotation.
+///
+/// Written synchronously inside the writeOffBadDebt transaction so it can't
+/// be skipped by accident.
+///
+/// Immutable — updatedAt/deletedAt intentionally omitted (no row will ever
+/// be edited; delete blocked by BEFORE DELETE trigger — see migration).
+model BadDebtWriteOffAuditLog {
+  id                String   @id @default(uuid())
+  contractId        String   @map("contract_id")
+  contractNumber    String   @map("contract_number")
+  /// Total outstanding principal + unpaid late fees at write-off time
+  outstandingAmount Decimal  @map("outstanding_amount") @db.Decimal(12, 2)
+  /// Sum of ACTIVE BadDebtProvision rows already reserved before write-off
+  provisionAmount   Decimal  @map("provision_amount") @db.Decimal(12, 2)
+  writtenOffById    String   @map("written_off_by_id")
+  writtenOffByRole  String   @map("written_off_by_role")
+  approvedById      String   @map("approved_by_id")
+  approvedByRole    String   @map("approved_by_role")
+  notes             String?
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  contract     Contract @relation("BadDebtWriteOffContract", fields: [contractId], references: [id], onDelete: Restrict)
+  writtenOffBy User     @relation("BadDebtWriteOffWriter", fields: [writtenOffById], references: [id], onDelete: Restrict)
+  approvedBy   User     @relation("BadDebtWriteOffApprover", fields: [approvedById], references: [id], onDelete: Restrict)
+
+  @@index([contractId])
+  @@index([writtenOffById, createdAt])
+  @@index([approvedById, createdAt])
+  @@index([createdAt])
+  @@map("bad_debt_write_off_audit_logs")
 }
 
 /// Append-only log of Claude API calls: one row per request. Used by the

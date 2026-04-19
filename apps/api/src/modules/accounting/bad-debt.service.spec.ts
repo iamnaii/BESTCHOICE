@@ -40,6 +40,9 @@ describe('BadDebtService', () => {
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
         createMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
+      badDebtWriteOffAuditLog: {
+        create: jest.fn().mockResolvedValue({ id: 'wo-audit-1' }),
+      },
       user: {
         findUnique: jest.fn().mockImplementation(({ where: { id } }) =>
           Promise.resolve({
@@ -467,6 +470,78 @@ describe('BadDebtService', () => {
       await expect(
         service.writeOffBadDebt('c1', 'bm-1', 'fm-1'),
       ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    // ── T1-C7: immutable write-off audit log ─────────────────────────────
+    describe('T1-C7: BadDebtWriteOffAuditLog', () => {
+      beforeEach(() => {
+        prisma.contract.findFirst.mockResolvedValue({
+          id: 'c1',
+          contractNumber: 'HP-001',
+          status: 'OVERDUE',
+        });
+        prisma.contract.update.mockResolvedValue({});
+        prisma.badDebtProvision.updateMany.mockResolvedValue({ count: 1 });
+        prisma.badDebtProvision.findMany.mockResolvedValue([]);
+        prisma.payment.findMany.mockResolvedValue(mkUnpaid(15_000));
+      });
+
+      it('writes an audit log row inside the same transaction as the write-off', async () => {
+        await service.writeOffBadDebt('c1', 'bm-1', 'fm-1', 'court order');
+        expect(prisma.badDebtWriteOffAuditLog.create).toHaveBeenCalledTimes(1);
+      });
+
+      it('snapshots contractNumber + writer/approver IDs + roles at write-off time', async () => {
+        await service.writeOffBadDebt('c1', 'bm-1', 'fm-1', 'court order');
+        const data = prisma.badDebtWriteOffAuditLog.create.mock.calls[0][0].data;
+        expect(data).toMatchObject({
+          contractId: 'c1',
+          contractNumber: 'HP-001',
+          writtenOffById: 'bm-1',
+          writtenOffByRole: 'BRANCH_MANAGER',
+          approvedById: 'fm-1',
+          approvedByRole: 'FINANCE_MANAGER',
+          notes: 'court order',
+        });
+      });
+
+      it('records outstandingAmount computed from unpaid payments', async () => {
+        prisma.payment.findMany.mockResolvedValue(mkUnpaid(25_000));
+        await service.writeOffBadDebt('c1', 'bm-1', 'fm-1');
+        const data = prisma.badDebtWriteOffAuditLog.create.mock.calls[0][0].data;
+        expect(Number(data.outstandingAmount)).toBe(25_000);
+      });
+
+      it('records provisionAmount from existing ACTIVE provisions', async () => {
+        prisma.badDebtProvision.findMany.mockResolvedValue([
+          { provisionAmount: new Prisma.Decimal(1_000) },
+          { provisionAmount: new Prisma.Decimal(500) },
+        ]);
+        await service.writeOffBadDebt('c1', 'bm-1', 'fm-1');
+        const data = prisma.badDebtWriteOffAuditLog.create.mock.calls[0][0].data;
+        expect(Number(data.provisionAmount)).toBe(1_500);
+      });
+
+      it('does not write audit log if tier rule rejects the write-off', async () => {
+        // 25k outstanding with BM-only approver → tier rule fails (needs FM+)
+        prisma.payment.findMany.mockResolvedValue(mkUnpaid(25_000));
+        await expect(
+          service.writeOffBadDebt('c1', 'bm-1', 'bm-2'),
+        ).rejects.toBeDefined();
+        expect(prisma.badDebtWriteOffAuditLog.create).not.toHaveBeenCalled();
+      });
+
+      it('does not write audit log if contract is already CLOSED_BAD_DEBT', async () => {
+        prisma.contract.findFirst.mockResolvedValue({
+          id: 'c1',
+          contractNumber: 'HP-001',
+          status: 'CLOSED_BAD_DEBT',
+        });
+        await expect(
+          service.writeOffBadDebt('c1', 'bm-1', 'fm-1'),
+        ).rejects.toBeDefined();
+        expect(prisma.badDebtWriteOffAuditLog.create).not.toHaveBeenCalled();
+      });
     });
   });
 

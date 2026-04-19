@@ -164,3 +164,126 @@ describe('JournalService.post — SoD enforcement', () => {
     await expect(service.post('je-1', 'u-reviewer')).rejects.toThrow(BadRequestException);
   });
 });
+
+/**
+ * T2-C9: Voiding a POSTED journal entry must auto-create a reversal entry
+ * (flipped debit/credit) in the same transaction. Previously status=VOIDED
+ * silently removed the entry from trial balance with no forensic trail.
+ */
+describe('JournalService.void — auto-reversal (T2-C9)', () => {
+  let service: JournalService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let prisma: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let tx: any;
+
+  const postedEntry = () => ({
+    id: 'je-original',
+    entryNumber: 'JE-202604-0001',
+    companyId: 'company-1',
+    entryDate: new Date('2026-04-10'),
+    description: 'Expense',
+    status: 'POSTED',
+    lines: [
+      { accountCode: '5100', description: 'debit side', debit: 100, credit: 0 },
+      { accountCode: '1100', description: 'credit side', debit: 0, credit: 100 },
+    ],
+  });
+
+  beforeEach(async () => {
+    tx = {
+      journalEntry: {
+        update: jest.fn().mockResolvedValue({ ...postedEntry(), status: 'VOIDED' }),
+        count: jest.fn().mockResolvedValue(5), // 5 existing entries this month → reversal = 0006
+        create: jest.fn().mockResolvedValue({ id: 'je-reversal', entryNumber: 'JE-202604-0006' }),
+      },
+    };
+    prisma = {
+      journalEntry: {
+        findFirst: jest.fn().mockResolvedValue(postedEntry()),
+      },
+      $transaction: jest.fn(async (cb: (t: unknown) => Promise<unknown>) => cb(tx)),
+    };
+    const mod: TestingModule = await Test.createTestingModule({
+      providers: [JournalService, { provide: PrismaService, useValue: prisma }],
+    }).compile();
+    service = mod.get(JournalService);
+  });
+
+  it('rejects void when entry is not POSTED', async () => {
+    prisma.journalEntry.findFirst.mockResolvedValue({ ...postedEntry(), status: 'DRAFT' });
+    await expect(service.void('je-original', 'u-owner')).rejects.toThrow(BadRequestException);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('marks original entry as VOIDED', async () => {
+    await service.void('je-original', 'u-owner');
+    expect(tx.journalEntry.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'je-original' },
+        data: { status: 'VOIDED' },
+      }),
+    );
+  });
+
+  it('creates a reversal entry with flipped debit/credit lines', async () => {
+    await service.void('je-original', 'u-owner');
+    const data = tx.journalEntry.create.mock.calls[0][0].data;
+    expect(data.lines.create).toEqual([
+      { accountCode: '5100', description: 'debit side', debit: 0, credit: 100 },
+      { accountCode: '1100', description: 'credit side', debit: 100, credit: 0 },
+    ]);
+  });
+
+  it('reversal entry is POSTED immediately (createdById=postedById=voider, no SoD since not DRAFT)', async () => {
+    await service.void('je-original', 'u-owner');
+    const data = tx.journalEntry.create.mock.calls[0][0].data;
+    expect(data.status).toBe('POSTED');
+    expect(data.createdById).toBe('u-owner');
+    expect(data.postedById).toBe('u-owner');
+    expect(data.postedAt).toBeInstanceOf(Date);
+  });
+
+  it('reversal entry references the original via referenceType=REVERSAL + referenceId', async () => {
+    await service.void('je-original', 'u-owner');
+    const data = tx.journalEntry.create.mock.calls[0][0].data;
+    expect(data.referenceType).toBe('REVERSAL');
+    expect(data.referenceId).toBe('je-original');
+  });
+
+  it('reversal entryDate = today (never back-dated into closed periods)', async () => {
+    const before = Date.now();
+    await service.void('je-original', 'u-owner');
+    const after = Date.now();
+    const data = tx.journalEntry.create.mock.calls[0][0].data;
+    expect(data.entryDate).toBeInstanceOf(Date);
+    expect((data.entryDate as Date).getTime()).toBeGreaterThanOrEqual(before);
+    expect((data.entryDate as Date).getTime()).toBeLessThanOrEqual(after);
+  });
+
+  it('reversal description references the original entry number + text', async () => {
+    await service.void('je-original', 'u-owner');
+    const data = tx.journalEntry.create.mock.calls[0][0].data;
+    expect(data.description).toBe('Reversal of JE-202604-0001: Expense');
+  });
+
+  it('reversal copies companyId from the original', async () => {
+    await service.void('je-original', 'u-owner');
+    const data = tx.journalEntry.create.mock.calls[0][0].data;
+    expect(data.companyId).toBe('company-1');
+  });
+
+  it('both void + reversal happen in the same $transaction', async () => {
+    await service.void('je-original', 'u-owner');
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(tx.journalEntry.update).toHaveBeenCalled();
+    expect(tx.journalEntry.create).toHaveBeenCalled();
+  });
+
+  it('reversal entryNumber increments monthly sequence (count+1)', async () => {
+    await service.void('je-original', 'u-owner');
+    const data = tx.journalEntry.create.mock.calls[0][0].data;
+    // count=5 → sequence 0006, prefix uses current YYYYMM
+    expect(data.entryNumber).toMatch(/^JE-\d{6}-0006$/);
+  });
+});

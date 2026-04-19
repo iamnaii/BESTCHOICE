@@ -239,17 +239,81 @@ export class JournalService {
     });
   }
 
-  async void(id: string) {
+  /**
+   * Void a posted journal entry AND auto-create a reversal entry (T2-C9).
+   *
+   * Before: marking status=VOIDED silently removed the entry from the trial
+   * balance — a user could void an expense journal after the fact without
+   * any trace of WHAT was reversed. The reversal entry restores the
+   * debit/credit discipline: every POSTED entry has either a matching
+   * reversal or none at all.
+   *
+   * Policy:
+   * - Reversal is dated `today` (never back-dated; prevents closed-period
+   *   shenanigans via void)
+   * - companyId copied from the original
+   * - debit/credit flipped per line; other fields cloned
+   * - referenceType='REVERSAL', referenceId=originalEntry.id
+   * - status=POSTED immediately, createdById=null (system-generated),
+   *   postedById=userId (the voider is on the hook for the reversal)
+   *
+   * The whole operation runs in a single $transaction so either both
+   * happen or neither does.
+   */
+  async void(id: string, userId: string) {
     const entry = await this.findOne(id);
 
     if (entry.status !== 'POSTED') {
       throw new BadRequestException('สถานะไม่ถูกต้อง');
     }
 
-    return this.prisma.journalEntry.update({
-      where: { id },
-      data: { status: 'VOIDED' },
-      include: { lines: true },
+    return this.prisma.$transaction(async (tx) => {
+      const voided = await tx.journalEntry.update({
+        where: { id },
+        data: { status: 'VOIDED' },
+        include: { lines: true },
+      });
+
+      // Build reversal entry number — reuse the monthly sequence logic but
+      // keyed on today (not the original's month) so reversals land in the
+      // open period.
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const prefix = `JE-${year}${month}`;
+      const count = await tx.journalEntry.count({
+        where: { entryNumber: { startsWith: prefix } },
+      });
+      const reversalNumber = `${prefix}-${String(count + 1).padStart(4, '0')}`;
+
+      // Both createdById and postedById = voider. SoD's drafter≠poster rule
+      // lives in post(); this reversal is created directly in POSTED state
+      // (auto-posted on void) so the guard does not apply. The reversal is
+      // discoverable via referenceType=REVERSAL; the audit trail is honest.
+      await tx.journalEntry.create({
+        data: {
+          entryNumber: reversalNumber,
+          companyId: entry.companyId,
+          entryDate: now,
+          description: `Reversal of ${entry.entryNumber}: ${entry.description}`,
+          referenceType: 'REVERSAL',
+          referenceId: entry.id,
+          createdById: userId,
+          postedById: userId,
+          postedAt: now,
+          status: 'POSTED',
+          lines: {
+            create: entry.lines.map((line) => ({
+              accountCode: line.accountCode,
+              description: line.description,
+              debit: line.credit,
+              credit: line.debit,
+            })),
+          },
+        },
+      });
+
+      return voided;
     });
   }
 }

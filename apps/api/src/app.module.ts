@@ -29,6 +29,7 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { MigrationModule } from './modules/migration/migration.module';
 import { AuditModule } from './modules/audit/audit.module';
+import { WebhookSecurityModule } from './modules/webhook-security/webhook-security.module';
 import { UsersModule } from './modules/users/users.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
@@ -138,6 +139,7 @@ import { AppCacheModule } from './cache/cache.module';
     // MASTER: Polish
     MigrationModule,
     AuditModule,
+    WebhookSecurityModule,
     // Legal Compliance & PDPA
     PDPAModule,
     KycModule,

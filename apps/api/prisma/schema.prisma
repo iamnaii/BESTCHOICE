@@ -345,6 +345,7 @@ model Branch {
   fixedAssets              FixedAsset[]
   tradeIns                 TradeIn[]
   crmLeads                 CrmLead[]
+  receivableReconLogs      ReceivableReconLog[] @relation("ReceivableReconBranch")
 
   @@index([companyId])
   @@map("branches")
@@ -3763,6 +3764,31 @@ model AiAutoReplyLog {
   @@index([roomId])
   @@index([autoSent, createdAt])
   @@map("ai_auto_reply_logs")
+}
+
+/// Per-branch daily snapshot of HP receivable balance vs aggregated payment
+/// outstanding. Feeds T1-C4 alert cron (>1000฿ gap = Sentry warning) and the
+/// data-audit dashboard. 90-day retention via cron.
+///
+/// Immutable — updatedAt/deletedAt intentionally omitted
+model ReceivableReconLog {
+  id                   String   @id @default(uuid())
+  runDate              DateTime @map("run_date") @db.Date // one row per branch per day
+  branchId             String?  @map("branch_id") // null = company-wide row
+  journalBalance       Decimal  @map("journal_balance") @db.Decimal(14, 2)
+  contractOutstanding  Decimal  @map("contract_outstanding") @db.Decimal(14, 2)
+  gap                  Decimal  @db.Decimal(14, 2) // signed: journal - outstanding
+  threshold            Decimal  @db.Decimal(14, 2)
+  breached             Boolean // |gap| > threshold
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  branch Branch? @relation("ReceivableReconBranch", fields: [branchId], references: [id], onDelete: SetNull)
+
+  @@unique([runDate, branchId])
+  @@index([runDate])
+  @@index([branchId, runDate])
+  @@index([breached, runDate])
+  @@map("receivable_recon_logs")
 }
 
 /// Append-only log of every authentication attempt (success + failure). Used

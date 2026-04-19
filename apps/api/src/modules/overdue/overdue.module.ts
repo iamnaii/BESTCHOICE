@@ -4,6 +4,7 @@ import { OverdueService } from './overdue.service';
 import { OverdueChatService } from './overdue-chat.service';
 import { DunningRuleService } from './dunning-rule.service';
 import { DunningEngineService } from './dunning-engine.service';
+import { BrokenPromiseCron } from './crons/broken-promise.cron';
 import { ChatEngineModule } from '../chat-engine/chat-engine.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { LineOaModule } from '../line-oa/line-oa.module';
@@ -11,7 +12,13 @@ import { LineOaModule } from '../line-oa/line-oa.module';
 @Module({
   imports: [ChatEngineModule, NotificationsModule, LineOaModule],
   controllers: [OverdueController],
-  providers: [OverdueService, OverdueChatService, DunningRuleService, DunningEngineService],
+  providers: [
+    OverdueService,
+    OverdueChatService,
+    DunningRuleService,
+    DunningEngineService,
+    BrokenPromiseCron,
+  ],
   exports: [OverdueService, DunningRuleService, DunningEngineService],
 })
 export class OverdueModule {}

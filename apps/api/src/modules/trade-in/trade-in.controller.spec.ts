@@ -2,6 +2,9 @@ import { Test } from '@nestjs/testing';
 import { TradeInController } from './trade-in.controller';
 import { TradeInService } from './trade-in.service';
 import { PiiAuditService } from '../pii/pii-audit.service';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { BranchGuard } from '../auth/guards/branch.guard';
 
 describe('TradeInController PII (Phase 5)', () => {
   let controller: TradeInController;
@@ -23,14 +26,11 @@ describe('TradeInController PII (Phase 5)', () => {
         { provide: PiiAuditService, useValue: piiAudit },
       ],
     })
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      .overrideGuard(require('../auth/guards/jwt-auth.guard').JwtAuthGuard)
+      .overrideGuard(JwtAuthGuard)
       .useValue({ canActivate: () => true })
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      .overrideGuard(require('../auth/guards/roles.guard').RolesGuard)
+      .overrideGuard(RolesGuard)
       .useValue({ canActivate: () => true })
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      .overrideGuard(require('../auth/guards/branch.guard').BranchGuard)
+      .overrideGuard(BranchGuard)
       .useValue({ canActivate: () => true })
       .compile();
 

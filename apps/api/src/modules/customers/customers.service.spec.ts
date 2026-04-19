@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConflictException } from '@nestjs/common';
 import { CustomersService } from './customers.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { encryptPII } from '../../utils/crypto.util';
 
 /**
  * T3-C8: NID dedup — the @unique constraint on nationalId only catches byte-
@@ -281,7 +282,6 @@ describe('PII read decryption (Phase 5)', () => {
   });
 
   it('decrypts PII columns when returning single customer', async () => {
-    const { encryptPII } = require('../../utils/crypto.util');
     const key = 'a'.repeat(64);
     (prisma.customer.findUnique as jest.Mock).mockResolvedValue({
       id: 'c1',

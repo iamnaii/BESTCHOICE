@@ -2,6 +2,9 @@ import { Test } from '@nestjs/testing';
 import { CustomersController } from './customers.controller';
 import { CustomersService } from './customers.service';
 import { PiiAuditService } from '../pii/pii-audit.service';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { BranchGuard } from '../auth/guards/branch.guard';
 
 describe('CustomersController PII (Phase 5)', () => {
   let controller: CustomersController;
@@ -23,11 +26,11 @@ describe('CustomersController PII (Phase 5)', () => {
         { provide: PiiAuditService, useValue: piiAudit },
       ],
     })
-      .overrideGuard(require('../auth/guards/jwt-auth.guard').JwtAuthGuard)
+      .overrideGuard(JwtAuthGuard)
       .useValue({ canActivate: () => true })
-      .overrideGuard(require('../auth/guards/roles.guard').RolesGuard)
+      .overrideGuard(RolesGuard)
       .useValue({ canActivate: () => true })
-      .overrideGuard(require('../auth/guards/branch.guard').BranchGuard)
+      .overrideGuard(BranchGuard)
       .useValue({ canActivate: () => true })
       .compile();
 

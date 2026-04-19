@@ -4,6 +4,7 @@ import { TradeInService } from './trade-in.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { TradeInVoucherService } from './services/voucher.service';
+import { encryptPII } from '../../utils/crypto.util';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -640,7 +641,6 @@ describe('TradeInService', () => {
     });
 
     it('decrypts transferAccountNumber and transferAccountName when returning trade-in', async () => {
-      const { encryptPII } = require('../../utils/crypto.util');
       const key = 'a'.repeat(64);
       prisma.tradeIn.findUnique.mockResolvedValue({
         ...makeTradeIn(),

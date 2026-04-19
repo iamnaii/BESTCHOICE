@@ -1904,6 +1904,14 @@ model InviteToken {
   invitedBy String    @map("invited_by")
   expiresAt DateTime  @map("expires_at")
   usedAt    DateTime? @map("used_at")
+  /// T7-C6: bcrypt hash of a 6-digit OTP sent through a second channel (SMS
+  /// to the invited user's phone). Email carries the link only — if the
+  /// email is forwarded or the mailbox is compromised, the attacker still
+  /// can't complete signup without the OTP from phone.
+  otpHash   String?   @map("otp_hash")
+  otpExpiresAt DateTime? @map("otp_expires_at")
+  otpAttempts  Int      @default(0) @map("otp_attempts")
+  phone     String? // invitee phone for SMS delivery
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
 

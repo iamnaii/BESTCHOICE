@@ -1,4 +1,4 @@
-import { IsString, MinLength, IsOptional } from 'class-validator';
+import { IsString, MinLength, IsOptional, Length } from 'class-validator';
 
 export class RegisterInviteDto {
   @IsString()
@@ -18,4 +18,12 @@ export class RegisterInviteDto {
   @IsOptional()
   @IsString()
   nickname?: string;
+
+  /// T7-C6: 6-digit OTP from SMS. Required when the invite was issued with
+  /// a phone number. Skipped when admin created invite without phone (older
+  /// flow — backwards compatible).
+  @IsOptional()
+  @IsString()
+  @Length(6, 6, { message: 'รหัส OTP ต้องเป็นตัวเลข 6 หลัก' })
+  otp?: string;
 }

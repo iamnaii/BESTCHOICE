@@ -357,7 +357,7 @@ export class CustomersService {
    */
   private normalizePhone(raw: string | null | undefined): string | null {
     if (!raw) return null;
-    const trimmed = raw.replace(/[\s()\-]/g, '');
+    const trimmed = raw.replace(/[\s()-]/g, '');
     if (trimmed.startsWith('+66')) return '0' + trimmed.slice(3);
     if (trimmed.startsWith('66') && trimmed.length === 11) return '0' + trimmed.slice(2);
     return trimmed;

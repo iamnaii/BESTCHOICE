@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException, InternalServerErrorException, Logger } from '@nestjs/common';
 import { formatDateShort, formatDateTime } from '../../utils/thai-date.util';
 import { maskPhone } from '../../utils/mask.util';
+import { isSmsPaymentReminderDisabled } from '../../utils/sms-payment-reminder.util';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SendNotificationDto, CreateNotificationTemplateDto, UpdateNotificationTemplateDto } from './dto/create-notification.dto';
@@ -880,18 +881,22 @@ export class NotificationsService {
             recipient: customer.lineId,
             message,
             relatedId: payment.id,
-            fallbackPhone: customer.phone || undefined,
+            fallbackPhone: isSmsPaymentReminderDisabled() ? undefined : (customer.phone || undefined),
           });
           sent++;
         }
       } else if (customer.phone) {
-        await this.send({
-          channel: 'SMS',
-          recipient: customer.phone,
-          message,
-          relatedId: payment.id,
-        });
-        sent++;
+        if (isSmsPaymentReminderDisabled()) {
+          this.logger.warn(`[SMS-REMINDER-OFF] Skipping payment reminder SMS for payment ${payment.id}`);
+        } else {
+          await this.send({
+            channel: 'SMS',
+            recipient: customer.phone,
+            message,
+            relatedId: payment.id,
+          });
+          sent++;
+        }
       }
     }
 
@@ -1005,18 +1010,22 @@ export class NotificationsService {
             recipient: customer.lineId,
             message,
             relatedId: payment.id,
-            fallbackPhone: customer.phone || undefined,
+            fallbackPhone: isSmsPaymentReminderDisabled() ? undefined : (customer.phone || undefined),
           });
           sent++;
         }
       } else if (customer.phone) {
-        await this.send({
-          channel: 'SMS',
-          recipient: customer.phone,
-          message,
-          relatedId: payment.id,
-        });
-        sent++;
+        if (isSmsPaymentReminderDisabled()) {
+          this.logger.warn(`[SMS-REMINDER-OFF] Skipping overdue notice SMS for payment ${payment.id}`);
+        } else {
+          await this.send({
+            channel: 'SMS',
+            recipient: customer.phone,
+            message,
+            relatedId: payment.id,
+          });
+          sent++;
+        }
       }
     }
 

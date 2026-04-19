@@ -215,13 +215,37 @@ export class SalesService {
   }
 
   async create(dto: CreateSaleDto, salespersonId: string, userRole = 'SALES') {
-    const discount = dto.discount || 0;
+    const baseDiscount = dto.discount || 0;
+
+    // T6-C1: loyalty redeem at POS — validate customer balance and fold the
+    // redeemed value into discount (1 pt = 1 ฿). The redemption itself is
+    // applied after the sale is created so we have saleId/contractId to
+    // reference. If the downstream redemption ever fails after the sale is
+    // persisted, follow-up reconciliation is manual — but pre-validation
+    // makes that corner case very unlikely.
+    const loyaltyPoints = dto.loyaltyPointsRedeemed ?? 0;
+    if (loyaltyPoints > 0) {
+      const customer = await this.prisma.customer.findUnique({
+        where: { id: dto.customerId },
+        select: { loyaltyBalance: true, deletedAt: true },
+      });
+      if (!customer || customer.deletedAt) throw new NotFoundException('ไม่พบลูกค้า');
+      if (customer.loyaltyBalance < loyaltyPoints) {
+        throw new BadRequestException(
+          `แต้มไม่เพียงพอ — มี ${customer.loyaltyBalance} แต้ม ต้องการ ${loyaltyPoints} แต้ม`,
+        );
+      }
+      if (loyaltyPoints > dto.sellingPrice - baseDiscount) {
+        throw new BadRequestException(
+          'จำนวนแต้มที่แลกเกินยอดสุทธิ — ลดจำนวนแต้มให้ไม่เกินยอดคงเหลือ',
+        );
+      }
+    }
+
+    const discount = baseDiscount + loyaltyPoints;
     const netAmount = dto.sellingPrice - discount;
 
     // Look up product cost so the service can enforce a cost floor.
-    // We resolve it up-front so we don't duplicate the query inside each
-    // saleType-specific helper. Missing product is handled later in the
-    // per-type verifyProductInStock flow.
     let costPrice: number | null = null;
     if (dto.productId) {
       const product = await this.prisma.product.findUnique({
@@ -241,16 +265,48 @@ export class SalesService {
       dto.secondApproverId,
     );
 
+    let sale: { id: string; contractId?: string | null };
     switch (dto.saleType) {
       case 'CASH':
-        return this.createCashSale(dto, salespersonId, netAmount, discount);
+        sale = await this.createCashSale(dto, salespersonId, netAmount, discount);
+        break;
       case 'INSTALLMENT':
-        return this.createInstallmentSale(dto, salespersonId, netAmount, discount);
+        sale = await this.createInstallmentSale(dto, salespersonId, netAmount, discount);
+        break;
       case 'EXTERNAL_FINANCE':
-        return this.createExternalFinanceSale(dto, salespersonId, netAmount, discount);
+        sale = await this.createExternalFinanceSale(dto, salespersonId, netAmount, discount);
+        break;
       default:
         throw new BadRequestException('ประเภทการขายไม่ถูกต้อง');
     }
+
+    // Apply loyalty redemption after sale is confirmed. Wrap in try/catch so a
+    // redemption failure doesn't hide the sale response — the sale already
+    // posted, support flow will reconcile if the point deduction fell through.
+    if (loyaltyPoints > 0) {
+      try {
+        await this.prisma.$transaction(async (tx) => {
+          await tx.loyaltyRedemption.create({
+            data: {
+              customerId: dto.customerId,
+              points: loyaltyPoints,
+              reason: `Sale ${sale.id}`,
+              discountAmount: new Prisma.Decimal(loyaltyPoints),
+              contractId: sale.contractId ?? null,
+            },
+          });
+          await tx.customer.update({
+            where: { id: dto.customerId },
+            data: { loyaltyBalance: { decrement: loyaltyPoints } },
+          });
+        });
+      } catch (err) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (sale as any)._loyaltyRedemptionFailed = err instanceof Error ? err.message : String(err);
+      }
+    }
+
+    return sale;
   }
 
   /** Check product availability inside transaction to prevent race conditions */

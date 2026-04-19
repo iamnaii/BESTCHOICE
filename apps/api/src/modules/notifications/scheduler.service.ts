@@ -16,6 +16,7 @@ import { buildDailyReportFlex } from '../line-oa/flex-messages/daily-report.flex
 import { DashboardService } from '../dashboard/dashboard.service';
 import { PDPAService } from '../pdpa/pdpa.service';
 import { DunningEngineService } from '../overdue/dunning-engine.service';
+import { isSmsPaymentReminderDisabled } from '../../utils/sms-payment-reminder.util';
 
 @Injectable()
 export class SchedulerService {
@@ -255,7 +256,7 @@ export class SchedulerService {
               subject: `Dunning: ${esc.to}`,
               message,
               relatedId: esc.contractId,
-              fallbackPhone: contract.customer.phone || undefined,
+              fallbackPhone: isSmsPaymentReminderDisabled() ? undefined : (contract.customer.phone || undefined),
             });
             notified++;
           }

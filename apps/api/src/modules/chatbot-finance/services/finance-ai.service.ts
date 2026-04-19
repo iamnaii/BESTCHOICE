@@ -8,6 +8,7 @@ import { FinanceToolExecutor } from '../tools/tool-executor';
 import { FinanceConfigService } from './finance-config.service';
 import { FINANCE_BOT_SYSTEM_PROMPT } from '../prompts/system-prompt';
 import { IntegrationConfigService } from '../../integrations/integration-config.service';
+import { AiUsageService } from '../../ai-usage/ai-usage.service';
 
 export interface AiReply {
   text: string;
@@ -46,6 +47,7 @@ export class FinanceAiService {
     private toolExecutor: FinanceToolExecutor,
     private financeConfig: FinanceConfigService,
     private integrationConfig: IntegrationConfigService,
+    private aiUsage: AiUsageService,
   ) {}
 
   private async getAnthropicClient(): Promise<Anthropic | null> {
@@ -111,8 +113,25 @@ export class FinanceAiService {
           const text = textBlock && textBlock.type === 'text' ? textBlock.text : '';
           if (!text) {
             this.logger.warn('[FinanceAI] Empty text response');
+            void this.aiUsage.record({
+              service: 'finance-ai',
+              method: 'generateReply',
+              model: activeModel,
+              inputTokens: totalInput,
+              outputTokens: totalOutput,
+              status: 'error',
+              errorKind: 'empty_response',
+            });
             return null;
           }
+          void this.aiUsage.record({
+            service: 'finance-ai',
+            method: 'generateReply',
+            model: activeModel,
+            inputTokens: totalInput,
+            outputTokens: totalOutput,
+            status: 'success',
+          });
           return {
             text,
             model: activeModel,

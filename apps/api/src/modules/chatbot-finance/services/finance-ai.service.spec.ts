@@ -4,6 +4,7 @@ import { FinanceAiService } from './finance-ai.service';
 import { FinanceToolExecutor } from '../tools/tool-executor';
 import { FinanceConfigService } from './finance-config.service';
 import { IntegrationConfigService } from '../../integrations/integration-config.service';
+import { AiUsageService } from '../../ai-usage/ai-usage.service';
 
 describe('FinanceAiService', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -40,6 +41,10 @@ describe('FinanceAiService', () => {
               saveConfig: jest.fn().mockResolvedValue(undefined),
               isConfigured: jest.fn().mockResolvedValue(false),
             },
+          },
+          {
+            provide: AiUsageService,
+            useValue: { record: jest.fn().mockResolvedValue(undefined) },
           },
         ],
       }).compile();
@@ -80,6 +85,10 @@ describe('FinanceAiService', () => {
               saveConfig: jest.fn().mockResolvedValue(undefined),
               isConfigured: jest.fn().mockResolvedValue(true),
             },
+          },
+          {
+            provide: AiUsageService,
+            useValue: { record: jest.fn().mockResolvedValue(undefined) },
           },
         ],
       }).compile();

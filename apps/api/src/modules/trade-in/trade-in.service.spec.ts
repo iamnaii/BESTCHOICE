@@ -69,6 +69,10 @@ describe('TradeInService', () => {
         update: jest.fn(),
         count: jest.fn().mockResolvedValue(0),
       },
+      tradeInValuation: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
       customer: {
         findUnique: jest.fn(),
       },
@@ -220,6 +224,70 @@ describe('TradeInService', () => {
         }),
       );
       expect(result.status).toBe('APPRAISED');
+    });
+
+    describe('price ceiling guard (±15% vs TradeInValuation)', () => {
+      beforeEach(() => {
+        prisma.tradeIn.findUnique.mockResolvedValue(makeTradeIn({ status: 'PENDING_APPRAISAL' }));
+        prisma.tradeIn.update.mockImplementation((args: { data: unknown }) =>
+          Promise.resolve({ ...makeTradeIn({ status: 'APPRAISED' }), ...(args.data as object) }),
+        );
+      });
+
+      it('allows price exactly within ceiling (basePrice × 1.15)', async () => {
+        prisma.tradeInValuation.findFirst.mockResolvedValue({ basePrice: 10000 });
+        await service.appraise(
+          'ti-1',
+          { offeredPrice: 11500, deviceCondition: 'B' },
+          'user-1',
+        );
+        expect(prisma.tradeIn.update).toHaveBeenCalled();
+      });
+
+      it('rejects price above ceiling', async () => {
+        prisma.tradeInValuation.findFirst.mockResolvedValue({ basePrice: 10000 });
+        await expect(
+          service.appraise(
+            'ti-1',
+            { offeredPrice: 11501, deviceCondition: 'B' },
+            'user-1',
+          ),
+        ).rejects.toThrow(BadRequestException);
+      });
+
+      it('rejects price below floor (basePrice × 0.85)', async () => {
+        prisma.tradeInValuation.findFirst.mockResolvedValue({ basePrice: 10000 });
+        await expect(
+          service.appraise(
+            'ti-1',
+            { offeredPrice: 8499, deviceCondition: 'B' },
+            'user-1',
+          ),
+        ).rejects.toThrow(BadRequestException);
+      });
+
+      it('snapshots basePriceAtAppraisal when valuation found', async () => {
+        prisma.tradeInValuation.findFirst.mockResolvedValue({ basePrice: 10000 });
+        await service.appraise(
+          'ti-1',
+          { offeredPrice: 10500, deviceCondition: 'B' },
+          'user-1',
+        );
+        const data = prisma.tradeIn.update.mock.calls[0][0].data;
+        expect(data.basePriceAtAppraisal).toBe(10000);
+      });
+
+      it('bypasses ceiling when no valuation row exists (unknown spec)', async () => {
+        prisma.tradeInValuation.findFirst.mockResolvedValue(null);
+        await service.appraise(
+          'ti-1',
+          { offeredPrice: 99999, deviceCondition: 'B' },
+          'user-1',
+        );
+        // No throw; base price not snapshotted
+        const data = prisma.tradeIn.update.mock.calls[0][0].data;
+        expect(data.basePriceAtAppraisal).toBeUndefined();
+      });
     });
   });
 

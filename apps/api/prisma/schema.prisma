@@ -2705,6 +2705,9 @@ model TradeIn {
   imei            String?
   estimatedValue  Decimal?      @map("estimated_value") @db.Decimal(12, 2) // ราคาประเมินเบื้องต้น
   offeredPrice    Decimal?      @map("offered_price") @db.Decimal(12, 2) // ราคาที่เสนอ
+  /// Snapshot ของ TradeInValuation.basePrice ตอน appraise — ใช้คำนวณ deviation
+  /// ย้อนหลังและเป็น guardrail กันการเสนอราคาเกิน ±15% จากตารางกลาง
+  basePriceAtAppraisal Decimal? @map("base_price_at_appraisal") @db.Decimal(12, 2)
   agreedPrice     Decimal?      @map("agreed_price") @db.Decimal(12, 2) // ราคาที่ตกลง
   status          TradeInStatus @default(PENDING_APPRAISAL)
   appraisedById   String?       @map("appraised_by_id")

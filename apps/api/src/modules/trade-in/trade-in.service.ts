@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
@@ -258,9 +259,76 @@ export class TradeInService {
   static readonly PRICE_CEILING_RATIO = 1.15;
   static readonly PRICE_FLOOR_RATIO = 0.85;
 
-  async appraise(id: string, dto: AppraiseTradeInDto, userId: string) {
+  /**
+   * T5-C17: appraise() is now idempotent per price.
+   * - First call sets offeredPrice and locks it (appraisalLocked=true,
+   *   firstAppraisedAt=now).
+   * - Subsequent calls with the SAME offeredPrice are no-ops (return current).
+   * - Subsequent calls with a DIFFERENT offeredPrice are rejected unless
+   *   userRole === 'OWNER' AND dto.force === true AND dto.forceReason supplied.
+   *   In that case an AuditLog entry is written.
+   *
+   * Why: prevents price drift (staff re-appraising downward until the seller
+   * agrees). The lock is authoritative; the existing ±15% ceiling guard
+   * stays for the first-appraise path.
+   */
+  async appraise(
+    id: string,
+    dto: AppraiseTradeInDto,
+    userId: string,
+    userRole?: string,
+  ) {
     const tradeIn = await this.findOne(id);
-    if (tradeIn.status !== 'PENDING_APPRAISAL') {
+
+    // T5-C17: If already locked, enforce immutability unless OWNER-forced.
+    const previousPrice =
+      tradeIn.offeredPrice !== null && tradeIn.offeredPrice !== undefined
+        ? Number(tradeIn.offeredPrice)
+        : null;
+
+    if (tradeIn.appraisalLocked) {
+      const sameRequest = previousPrice !== null && previousPrice === dto.offeredPrice;
+      if (sameRequest) {
+        // Idempotent no-op: caller asked to set the same price again.
+        return tradeIn;
+      }
+      // Different price requested — OWNER override gate
+      if (!dto.force) {
+        throw new ForbiddenException(
+          `รายการนี้ถูกตีราคาไปแล้ว (${previousPrice?.toLocaleString()} บาท) — ` +
+            `ไม่สามารถแก้ราคาซ้ำโดยไม่ผ่านการอนุมัติจากเจ้าของร้าน`,
+        );
+      }
+      if (userRole !== 'OWNER') {
+        throw new ForbiddenException(
+          'เฉพาะเจ้าของร้าน (OWNER) เท่านั้นที่สามารถบังคับแก้ราคาที่ตีไปแล้ว',
+        );
+      }
+      if (!dto.forceReason || dto.forceReason.trim().length < 3) {
+        throw new BadRequestException(
+          'ต้องระบุเหตุผลในการแก้ราคาที่ตีไปแล้ว (forceReason) อย่างน้อย 3 ตัวอักษร',
+        );
+      }
+
+      // Write audit trail before mutating — so even if update fails, we see the attempt
+      await this.prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'TRADE_IN_APPRAISAL_FORCE_OVERRIDE',
+          entity: 'trade_in',
+          entityId: id,
+          oldValue: { offeredPrice: previousPrice, firstAppraisedAt: tradeIn.firstAppraisedAt },
+          newValue: {
+            offeredPrice: dto.offeredPrice,
+            deviceCondition: dto.deviceCondition,
+            forceReason: dto.forceReason,
+          },
+        },
+      });
+    } else if (tradeIn.status !== 'PENDING_APPRAISAL') {
+      // Only enforce the "must be PENDING_APPRAISAL" rule for first-time
+      // appraisals. Re-appraisal under OWNER force-override bypasses the
+      // status check (auditLog above captures the move).
       throw new BadRequestException('รายการนี้ไม่อยู่ในสถานะรอประเมิน');
     }
 
@@ -300,6 +368,9 @@ export class TradeInService {
         appraisedById: userId,
         status: 'APPRAISED',
         basePriceAtAppraisal: basePriceAtAppraisal ?? undefined,
+        // T5-C17: Lock the price on first appraise (don't overwrite firstAppraisedAt on re-appraise)
+        appraisalLocked: true,
+        firstAppraisedAt: tradeIn.firstAppraisedAt ?? new Date(),
       },
       include: {
         customer: { select: { id: true, name: true, phone: true } },

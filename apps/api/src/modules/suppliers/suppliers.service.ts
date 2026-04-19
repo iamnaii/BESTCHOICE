@@ -1,8 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { paginatedResponse } from '../../common/helpers/pagination.helper';
 import { CreateSupplierDto } from './dto/create-supplier.dto';
-import { UpdateSupplierDto } from './dto/update-supplier.dto';
+import { UpdateSupplierDto, PaymentMethodUpdateDto } from './dto/update-supplier.dto';
 
 @Injectable()
 export class SuppliersService {
@@ -102,6 +102,41 @@ export class SuppliersService {
   async update(id: string, dto: UpdateSupplierDto) {
     await this.findOne(id);
     const { paymentMethods, ...supplierData } = dto;
+
+    // T5-C18: Block bank-field edits when a non-CANCELLED PurchaseOrder
+    // still points at this supplier. The PO carries bankAccountSnapshot +
+    // bankNameSnapshot from its create-time, so historical POs are safe,
+    // but live POs that still need paying must keep the same bank target
+    // that was agreed with the supplier when the PO was issued.
+    if (paymentMethods !== undefined) {
+      const openPo = await this.prisma.purchaseOrder.count({
+        where: {
+          supplierId: id,
+          deletedAt: null,
+          status: { not: 'CANCELLED' },
+        },
+      });
+
+      if (openPo > 0) {
+        const existing = await this.prisma.supplierPaymentMethod.findMany({
+          where: { supplierId: id, deletedAt: null },
+          select: { bankName: true, bankAccountNumber: true },
+        });
+        const oldBanks = existing
+          .map((pm) => `${pm.bankName ?? ''}|${pm.bankAccountNumber ?? ''}`)
+          .sort()
+          .join(';');
+        const newBanks = (paymentMethods as PaymentMethodUpdateDto[])
+          .map((pm) => `${pm.bankName ?? ''}|${pm.bankAccountNumber ?? ''}`)
+          .sort()
+          .join(';');
+        if (oldBanks !== newBanks) {
+          throw new BadRequestException(
+            `ไม่สามารถแก้บัญชีธนาคารของผู้จัดจำหน่ายนี้ได้ เพราะยังมีใบสั่งซื้อ (PO) ที่ยังไม่ยกเลิกอยู่ ${openPo} ใบ — กรุณายกเลิก PO ที่เปิดอยู่ก่อนแก้ไขข้อมูลธนาคาร`,
+          );
+        }
+      }
+    }
 
     return this.prisma.$transaction(async (tx) => {
       // Update supplier fields

@@ -48,7 +48,9 @@ export class LoyaltyController {
       customerId,
       dto.amount,
       dto.description,
+      dto.posTransactionId,
       dto.contractId,
+      dto.approverId,
     );
   }
 

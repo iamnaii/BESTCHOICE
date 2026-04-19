@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -14,6 +15,20 @@ const POINTS_PER_BAHT = 0.01;
 const REFERRAL_POINTS = 500;
 /** Points expire after 1 year (ms) */
 const POINTS_EXPIRY_DAYS = 365;
+
+/**
+ * T3-C3: Per-customer daily redemption cap. Prevents a compromised account
+ * or a colluding staff member from draining a loyalty balance in one go.
+ * 5,000 points = 5,000 baht discount, which is ~1 full-month installment.
+ */
+const REDEMPTION_DAILY_CAP = 5000;
+
+/**
+ * T3-C3: High-value redemption threshold. Any single call above this requires
+ * an OWNER to co-sign via `approverId`. 10,000 points = 10,000 baht — well
+ * above a normal goodwill discount, so a manager override is appropriate.
+ */
+const REDEMPTION_OWNER_OVERRIDE_THRESHOLD = 10000;
 
 @Injectable()
 export class LoyaltyService {
@@ -144,11 +159,25 @@ export class LoyaltyService {
 
   // ─── Redeem points ────────────────────────────────────────────────────────
 
+  /**
+   * T3-C3: Redeem points with anti-fraud guards.
+   *
+   * Guards:
+   *   (1) `posTransactionId` is required — every redemption must point to a
+   *       concrete POS/sale/contract event for audit.
+   *   (2) Cumulative redemptions for a customer in the current day cannot
+   *       exceed REDEMPTION_DAILY_CAP (5,000 pts). Protects against
+   *       drain-in-one-go attacks.
+   *   (3) A single call above REDEMPTION_OWNER_OVERRIDE_THRESHOLD (10,000
+   *       pts) requires an `approverId` that belongs to an OWNER.
+   */
   async redeemPoints(
     customerId: string,
     amount: number,
     description: string,
+    posTransactionId: string,
     contractId?: string,
+    approverId?: string,
   ): Promise<{
     redeemedPoints: number;
     discountAmount: number;
@@ -156,6 +185,32 @@ export class LoyaltyService {
   }> {
     if (amount <= 0) {
       throw new BadRequestException('จำนวนแต้มที่แลกต้องมากกว่า 0');
+    }
+    // (1) posTransactionId is mandatory — validated at DTO level too, but
+    // defense-in-depth for internal callers bypassing the controller.
+    if (!posTransactionId || !posTransactionId.trim()) {
+      throw new BadRequestException('กรุณาระบุเลขที่ธุรกรรม POS');
+    }
+
+    // (3) OWNER override for high-value redemptions.
+    if (amount > REDEMPTION_OWNER_OVERRIDE_THRESHOLD) {
+      if (!approverId) {
+        throw new ForbiddenException(
+          `การแลกแต้มเกิน ${REDEMPTION_OWNER_OVERRIDE_THRESHOLD.toLocaleString()} แต้ม ต้องมีผู้อนุมัติระดับ OWNER`,
+        );
+      }
+      const approver = await this.prisma.user.findUnique({
+        where: { id: approverId },
+        select: { id: true, role: true, isActive: true, deletedAt: true },
+      });
+      if (!approver || !approver.isActive || approver.deletedAt) {
+        throw new NotFoundException('ไม่พบผู้อนุมัติ หรือผู้อนุมัติถูกปิดการใช้งาน');
+      }
+      if (approver.role !== 'OWNER') {
+        throw new ForbiddenException(
+          `ผู้อนุมัติต้องมีสิทธิ์ OWNER (role ปัจจุบัน: ${approver.role})`,
+        );
+      }
     }
 
     const customer = await this.prisma.customer.findUnique({
@@ -171,15 +226,41 @@ export class LoyaltyService {
       );
     }
 
+    // (2) Daily cap — sum redemptions since start-of-day (local server time).
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const dayAgg = await this.prisma.loyaltyRedemption.aggregate({
+      where: {
+        customerId,
+        deletedAt: null,
+        createdAt: { gte: startOfDay },
+      },
+      _sum: { points: true },
+    });
+    const alreadyRedeemedToday = dayAgg._sum.points ?? 0;
+    if (alreadyRedeemedToday + amount > REDEMPTION_DAILY_CAP) {
+      throw new BadRequestException(
+        `เกินโควต้าแลกแต้มต่อวัน (ใช้ไปแล้ว ${alreadyRedeemedToday.toLocaleString()} แต้ม, ` +
+          `สูงสุด ${REDEMPTION_DAILY_CAP.toLocaleString()} แต้ม/วัน)`,
+      );
+    }
+
     // 1 point = 1 baht discount
     const discountAmount = new Prisma.Decimal(amount);
+
+    // Persist posTransactionId + approver (when present) in `reason` for
+    // audit without touching the schema. Format is easy to grep for and
+    // compatible with existing dashboards.
+    const reasonParts = [description, `pos:${posTransactionId}`];
+    if (approverId) reasonParts.push(`approver:${approverId}`);
+    const reasonWithRefs = reasonParts.join(' | ');
 
     const result = await this.prisma.$transaction(async (tx) => {
       await tx.loyaltyRedemption.create({
         data: {
           customerId,
           points: amount,
-          reason: description,
+          reason: reasonWithRefs,
           discountAmount,
           contractId: contractId ?? null,
         },
@@ -192,7 +273,10 @@ export class LoyaltyService {
       return updated;
     });
 
-    this.logger.log(`redeemPoints: -${amount} pts for customer ${customerId}`);
+    this.logger.log(
+      `redeemPoints: -${amount} pts for customer ${customerId} ` +
+        `pos=${posTransactionId}${approverId ? ` approver=${approverId}` : ''}`,
+    );
     return {
       redeemedPoints: amount,
       discountAmount: Number(discountAmount),

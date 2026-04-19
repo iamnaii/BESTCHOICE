@@ -271,8 +271,90 @@ export class CustomersService {
     return raw.replace(/[\s-]/g, '').toUpperCase();
   }
 
+  /**
+   * T3-C9: Normalize a Thai mobile phone for application-level dedup. We do
+   * NOT add a DB `@unique` constraint because existing data contains legacy
+   * duplicates we can't auto-resolve; instead we block NEW writes from
+   * creating more. Strips spaces, dashes, parentheses, and optional +66
+   * country prefix, always returning a leading zero. Examples:
+   *   "081-234 5678"   → "0812345678"
+   *   "+66812345678"   → "0812345678"
+   *   "(081) 234 5678" → "0812345678"
+   */
+  private normalizePhone(raw: string | null | undefined): string | null {
+    if (!raw) return null;
+    const trimmed = raw.replace(/[\s()\-]/g, '');
+    if (trimmed.startsWith('+66')) return '0' + trimmed.slice(3);
+    if (trimmed.startsWith('66') && trimmed.length === 11) return '0' + trimmed.slice(2);
+    return trimmed;
+  }
+
+  /**
+   * T3-C9: Normalize email for case-insensitive dedup. Lowercases and trims
+   * outer whitespace. We keep it simple — no local-part sub-address parsing
+   * (foo+bar@...) because owners sometimes legitimately share a single
+   * family inbox with sub-addresses.
+   */
+  private normalizeEmail(raw: string | null | undefined): string | null {
+    if (!raw) return null;
+    return raw.trim().toLowerCase();
+  }
+
+  /**
+   * T3-C9: application-level dedup for phone + email. Throws ConflictException
+   * on collision with a non-soft-deleted record. `ignoreCustomerId` excludes
+   * the customer being updated from the search (so update-in-place doesn't
+   * collide with itself).
+   */
+  private async assertContactNotDuplicate(
+    phone: string | null,
+    email: string | null,
+    ignoreCustomerId?: string,
+  ): Promise<void> {
+    if (phone) {
+      const dupPhone = await this.prisma.customer.findFirst({
+        where: {
+          phone,
+          deletedAt: null,
+          ...(ignoreCustomerId ? { NOT: { id: ignoreCustomerId } } : {}),
+        },
+        select: { id: true, name: true },
+      });
+      if (dupPhone) {
+        throw new ConflictException({
+          message: 'ลูกค้าที่มีเบอร์โทรนี้มีอยู่แล้ว',
+          existingCustomer: dupPhone,
+        });
+      }
+    }
+    if (email) {
+      // Postgres default collation is case-sensitive, so a literal `where:
+      // { email }` wouldn't catch "Foo@x.com" vs "foo@x.com". We rely on
+      // normalization at write-time; the dedup lookup uses Prisma's
+      // `mode: 'insensitive'` too, for belt-and-braces against any legacy
+      // row that slipped through un-normalized.
+      const dupEmail = await this.prisma.customer.findFirst({
+        where: {
+          email: { equals: email, mode: 'insensitive' },
+          deletedAt: null,
+          ...(ignoreCustomerId ? { NOT: { id: ignoreCustomerId } } : {}),
+        },
+        select: { id: true, name: true },
+      });
+      if (dupEmail) {
+        throw new ConflictException({
+          message: 'ลูกค้าที่มีอีเมลนี้มีอยู่แล้ว',
+          existingCustomer: dupEmail,
+        });
+      }
+    }
+  }
+
   async create(dto: CreateCustomerDto) {
     const normalizedNid = this.normalizeNationalId(dto.nationalId);
+    const normalizedPhone = this.normalizePhone(dto.phone);
+    const normalizedPhoneSecondary = this.normalizePhone(dto.phoneSecondary);
+    const normalizedEmail = this.normalizeEmail(dto.email);
 
     // Check duplicate national ID (normalized — so format variations still collide)
     const existing = await this.prisma.customer.findUnique({
@@ -290,9 +372,15 @@ export class CustomersService {
       throw new ConflictException('เลขบัตรประชาชนไม่ถูกต้อง');
     }
 
+    // T3-C9: reject duplicate phone / email at application level.
+    await this.assertContactNotDuplicate(normalizedPhone, normalizedEmail);
+
     const data: Prisma.CustomerCreateInput = {
       ...dto,
       nationalId: normalizedNid,
+      phone: normalizedPhone ?? dto.phone,
+      phoneSecondary: normalizedPhoneSecondary ?? dto.phoneSecondary ?? null,
+      email: normalizedEmail ?? dto.email ?? null,
       references: dto.references !== undefined
         ? (dto.references as Prisma.InputJsonValue)
         : undefined,
@@ -305,8 +393,26 @@ export class CustomersService {
     // NID is intentionally not in UpdateCustomerDto — customers can't change
     // their ID through this endpoint. If NID needs correction, create a
     // dedicated admin-only flow that writes to an audit log.
+
+    // T3-C9: normalize + dedup phone/email when either is being changed.
+    const normalizedPhone = dto.phone !== undefined ? this.normalizePhone(dto.phone) : undefined;
+    const normalizedPhoneSecondary =
+      dto.phoneSecondary !== undefined ? this.normalizePhone(dto.phoneSecondary) : undefined;
+    const normalizedEmail = dto.email !== undefined ? this.normalizeEmail(dto.email) : undefined;
+
+    await this.assertContactNotDuplicate(
+      normalizedPhone ?? null,
+      normalizedEmail ?? null,
+      id,
+    );
+
     const data: Prisma.CustomerUpdateInput = {
       ...dto,
+      ...(normalizedPhone !== undefined ? { phone: normalizedPhone ?? dto.phone } : {}),
+      ...(normalizedPhoneSecondary !== undefined
+        ? { phoneSecondary: normalizedPhoneSecondary }
+        : {}),
+      ...(normalizedEmail !== undefined ? { email: normalizedEmail } : {}),
       references: dto.references !== undefined
         ? (dto.references as Prisma.InputJsonValue)
         : undefined,

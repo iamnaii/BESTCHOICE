@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards, Req } from '@nestjs/common';
+import type { Request } from 'express';
 import { ApiTags, ApiBearerAuth , ApiOperation} from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { PaymentsService } from './payments.service';
@@ -166,8 +167,28 @@ export class PaymentsController {
     @Param('paymentId') paymentId: string,
     @Body() dto: WaiveLateFeeDto,
     @CurrentUser() user: { id: string },
+    @Req() req: Request,
   ) {
-    return this.paymentsService.waiveLateFee(paymentId, dto.reason, user.id, dto.approverId);
+    // T3-C4: capture IP + UA of the APPROVER for the immutable audit row.
+    // Trust proxy forwarding is already configured at the app bootstrap
+    // level (req.ip honours X-Forwarded-For); user-agent comes straight
+    // from the browser. Both are optional — null is acceptable if unset.
+    const forwarded = req.headers['x-forwarded-for'];
+    const ipAddress =
+      (typeof forwarded === 'string' ? forwarded.split(',')[0].trim() : undefined) ||
+      req.ip ||
+      null;
+    const userAgentHeader = req.headers['user-agent'];
+    const userAgent =
+      typeof userAgentHeader === 'string' ? userAgentHeader : null;
+
+    return this.paymentsService.waiveLateFee(
+      paymentId,
+      dto.reason,
+      user.id,
+      dto.approverId,
+      { ipAddress, userAgent },
+    );
   }
 
   /** Force branch filtering for non-global roles */

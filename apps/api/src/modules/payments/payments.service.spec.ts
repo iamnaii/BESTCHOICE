@@ -63,6 +63,10 @@ describe('PaymentsService', () => {
       systemConfig: {
         findUnique: jest.fn().mockResolvedValue(null), // CR-7: period lock check
       },
+      // T3-C4: immutable approval audit row written alongside the waiver
+      feeWaiverApproval: {
+        create: jest.fn().mockResolvedValue({ id: 'waiver-approval-1' }),
+      },
       $transaction: jest.fn((cb) => cb(mockPrisma)),
     };
 
@@ -401,6 +405,69 @@ describe('PaymentsService', () => {
       );
       expect(res.lateFeeWaived).toBe(true);
       expect(prisma.payment.update).toHaveBeenCalled();
+    });
+
+    // T3-C4: FeeWaiverApproval immutable row MUST be written for every
+    // approved waiver, so auditors have a log independent of the mutable
+    // Payment.waived* columns. IP + UA are passed through from the
+    // controller @Req() so we can detect anomalies later.
+    it('writes a FeeWaiverApproval audit row with ip + userAgent', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'approver-1',
+        role: 'FINANCE_MANAGER',
+        isActive: true,
+        deletedAt: null,
+      });
+      prisma.payment.update.mockResolvedValue({
+        ...payableWithFee,
+        lateFee: 0,
+        lateFeeWaived: true,
+      });
+
+      await service.waiveLateFee(
+        'payment-1',
+        'customer hardship',
+        'user-1',
+        'approver-1',
+        { ipAddress: '10.0.0.42', userAgent: 'Mozilla/5.0 Test' },
+      );
+
+      expect(prisma.feeWaiverApproval.create).toHaveBeenCalledWith({
+        data: {
+          waiverPaymentId: 'payment-1',
+          approverId: 'approver-1',
+          ipAddress: '10.0.0.42',
+          userAgent: 'Mozilla/5.0 Test',
+        },
+      });
+    });
+
+    it('does NOT write the approval row when the waiver is rejected upstream', async () => {
+      // Self-approval — rejection happens before the tx even starts.
+      await expect(
+        service.waiveLateFee('payment-1', 'reason', 'user-1', 'user-1'),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prisma.feeWaiverApproval.create).not.toHaveBeenCalled();
+    });
+  });
+
+  // T3-C5: Preventive rule — no direct mutation of Payment.amountPaid and
+  // friends. The method exists specifically to raise on any future caller
+  // that tries to hot-patch a financial field instead of writing a reversal.
+  describe('updatePayment — T3-C5 immutability guard', () => {
+    it('rejects direct mutation of amountPaid with a clear Thai reversal hint', async () => {
+      await expect(
+        service.updatePayment('payment-1', { amountPaid: 9999 }),
+      ).rejects.toThrow(ForbiddenException);
+
+      try {
+        await service.updatePayment('payment-1', { amountPaid: 9999 });
+      } catch (err) {
+        // Message must reference reversePayment so the offending dev knows
+        // the correct remediation path.
+        expect((err as Error).message).toContain('reversePayment');
+        expect((err as Error).message).toContain('amountPaid');
+      }
     });
   });
 });

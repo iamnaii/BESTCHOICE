@@ -768,6 +768,7 @@ export class PaymentsService {
     reason: string,
     userId: string,
     approverId: string,
+    context?: { ipAddress?: string | null; userAgent?: string | null },
   ) {
     // T1-C2 — 4-eyes (Segregation of Duties): requester ≠ approver, and
     // approver must be a manager-tier user. Waiver bypass previously let a
@@ -824,6 +825,20 @@ export class PaymentsService {
         },
       });
 
+      // T3-C4: immutable approval evidence. Columns on Payment (waivedApprovedById,
+      // waivedAt) are convenient for queries, but we ALSO persist a separate
+      // FeeWaiverApproval row so that any future mutation of the Payment
+      // columns leaves the approval audit trail intact. IP + UA help detect
+      // "someone else logged in as the manager" attacks.
+      await tx.feeWaiverApproval.create({
+        data: {
+          waiverPaymentId: paymentId,
+          approverId,
+          ipAddress: context?.ipAddress ?? null,
+          userAgent: context?.userAgent ?? null,
+        },
+      });
+
       // Check contract completion inside transaction
       if (isNowFullyPaid && payment.status !== 'PAID') {
         await this.checkContractCompletion(payment.contractId, tx);
@@ -861,6 +876,56 @@ export class PaymentsService {
     });
 
     return { ...result.updated, originalLateFee: result.originalLateFee };
+  }
+
+  // ─── T3-C5: Preventive immutability guard ───────────────
+  /**
+   * T3-C5: PREVENTIVE RULE.
+   *
+   * `Payment.amountPaid` is a financial fact — once money has been recorded
+   * against an installment, the correct remediation for an error is to
+   * REVERSE the bad entry (create a negative/offsetting record) and book a
+   * NEW payment with the correct amount. Silently mutating `amountPaid`
+   * would erase the audit trail used by accountants to reconcile bank
+   * statements against Payment rows.
+   *
+   * Today no endpoint calls this method — it exists specifically to trap
+   * future code that tries to patch Payment fields directly. If you find
+   * yourself wanting to bypass it, stop and write a reversal instead.
+   *
+   * Forbidden fields (will throw):
+   *   - amountPaid
+   *   - amountDue
+   *   - status (use recordPayment / waiveLateFee / reversePayment instead)
+   *   - paidDate
+   *   - monthlyPrincipal / monthlyInterest / monthlyCommission / vatAmount
+   *
+   * Safe fields (`notes`, `evidenceUrl`) are routed through dedicated
+   * helpers elsewhere — this method does NOT write them.
+   */
+  async updatePayment(
+    _paymentId: string,
+    patch: Record<string, unknown>,
+  ): Promise<never> {
+    const FORBIDDEN_FIELDS = new Set([
+      'amountPaid',
+      'amountDue',
+      'status',
+      'paidDate',
+      'monthlyPrincipal',
+      'monthlyInterest',
+      'monthlyCommission',
+      'vatAmount',
+      'lateFee',
+    ]);
+    const violated = Object.keys(patch).filter((k) => FORBIDDEN_FIELDS.has(k));
+    const violationMsg =
+      violated.length > 0
+        ? `ห้ามแก้ไข field การเงินของ Payment โดยตรง (${violated.join(', ')}) ` +
+          'กรุณาใช้ reversePayment() + บันทึกรายการชำระใหม่แทน'
+        : 'ห้ามแก้ไข Payment ผ่าน updatePayment() — กรุณาใช้ recordPayment() / ' +
+          'waiveLateFee() / reversePayment() ตามกรณี';
+    throw new ForbiddenException(violationMsg);
   }
 
   // ─── Award loyalty points for on-time payment ──────────

@@ -3697,6 +3697,26 @@ model AiAutoReplyLog {
   @@map("ai_auto_reply_logs")
 }
 
+/// Append-only log of suspicious webhook events: HMAC signature mismatches,
+/// missing-secret attempts, merchantid mismatches. Used by the observation
+/// cron to detect spikes that may signal credential-stuffing or a rotated
+/// secret that didn't propagate to prod.
+///
+/// Immutable audit log — updatedAt/deletedAt intentionally omitted
+model WebhookAnomaly {
+  id         String   @id @default(uuid())
+  provider   String // 'line-finance' | 'line-shop' | 'paysolutions' | 'sms' | 'facebook'
+  reason     String // 'invalid_signature' | 'missing_signature' | 'missing_secret' | 'merchant_mismatch' | 'other'
+  ipAddress  String?  @map("ip_address")
+  userAgent  String?  @map("user_agent") @db.Text
+  meta       Json? // provider-specific payload fragment (no PII)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([provider, createdAt])
+  @@index([createdAt])
+  @@map("webhook_anomalies")
+}
+
 model BroadcastMessage {
   id            String    @id @default(uuid())
   messages      Json      // array: [{ type, content }] — supports up to 5 messages

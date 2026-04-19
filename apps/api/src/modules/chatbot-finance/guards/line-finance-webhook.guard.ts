@@ -9,6 +9,7 @@ import { createHmac, timingSafeEqual } from 'crypto';
 import { Request } from 'express';
 import { RawBodyRequest } from '../../../common/types/raw-body-request';
 import { IntegrationConfigService } from '../../integrations/integration-config.service';
+import { WebhookAnomalyService } from '../../webhook-security/webhook-anomaly.service';
 
 /**
  * Verify LINE webhook signature สำหรับ Finance OA
@@ -18,13 +19,18 @@ import { IntegrationConfigService } from '../../integrations/integration-config.
 export class LineFinanceWebhookGuard implements CanActivate {
   private readonly logger = new Logger(LineFinanceWebhookGuard.name);
 
-  constructor(private readonly integrationConfig: IntegrationConfigService) {}
+  constructor(
+    private readonly integrationConfig: IntegrationConfigService,
+    private readonly anomaly: WebhookAnomalyService,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const channelSecret =
       (await this.integrationConfig.getValue('line-finance', 'channelSecret')) || undefined;
 
     const request = context.switchToHttp().getRequest<Request>();
+    const ipAddress = request.ip;
+    const userAgent = request.headers['user-agent'] as string | undefined;
 
     if (!channelSecret) {
       // SECURITY: dev-only bypass. In production, missing secret = hard
@@ -36,12 +42,24 @@ export class LineFinanceWebhookGuard implements CanActivate {
         return true;
       }
       this.logger.error('LINE Finance channel secret missing in production — refusing webhook');
+      void this.anomaly.record({
+        provider: 'line-finance',
+        reason: 'missing_secret',
+        ipAddress,
+        userAgent,
+      });
       throw new UnauthorizedException('Webhook signature verification not configured');
     }
 
     const signature = request.headers['x-line-signature'] as string | undefined;
     if (!signature) {
       this.logger.warn('Missing x-line-signature header');
+      void this.anomaly.record({
+        provider: 'line-finance',
+        reason: 'missing_signature',
+        ipAddress,
+        userAgent,
+      });
       throw new UnauthorizedException('Missing LINE signature');
     }
 
@@ -62,6 +80,12 @@ export class LineFinanceWebhookGuard implements CanActivate {
     const expBuf = Buffer.from(expected, 'base64');
     if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) {
       this.logger.warn('Invalid LINE Finance webhook signature');
+      void this.anomaly.record({
+        provider: 'line-finance',
+        reason: 'invalid_signature',
+        ipAddress,
+        userAgent,
+      });
       throw new UnauthorizedException('Invalid LINE signature');
     }
     return true;

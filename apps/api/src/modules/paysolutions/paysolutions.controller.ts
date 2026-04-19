@@ -8,14 +8,17 @@ import {
   Logger,
   BadRequestException,
   ParseUUIDPipe,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import { Request } from 'express';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
 import { PaySolutionsService } from './paysolutions.service';
 import { CreatePaymentIntentDto } from './dto';
 import { LiffTokenGuard } from '../line-oa/guards/liff-token.guard';
+import { WebhookAnomalyService } from '../webhook-security/webhook-anomaly.service';
 
 /**
  * PaySolutions Payment Gateway Controller
@@ -29,7 +32,10 @@ import { LiffTokenGuard } from '../line-oa/guards/liff-token.guard';
 export class PaySolutionsController {
   private readonly logger = new Logger(PaySolutionsController.name);
 
-  constructor(private readonly paySolutionsService: PaySolutionsService) {}
+  constructor(
+    private readonly paySolutionsService: PaySolutionsService,
+    private readonly anomaly: WebhookAnomalyService,
+  ) {}
 
   /**
    * POST /api/paysolutions/create-intent
@@ -73,7 +79,7 @@ export class PaySolutionsController {
   @Post('webhook')
   @SkipCsrf()
   @HttpCode(200)
-  async handleWebhook(@Body() body: Record<string, string>) {
+  async handleWebhook(@Body() body: Record<string, string>, @Req() req: Request) {
     // PII-safe log: only fields needed to trace a webhook in support
     // tickets. Customer email/phone/name are NOT in the v2 webhook
     // payload but we still want a positive allow-list to prevent
@@ -95,6 +101,13 @@ export class PaySolutionsController {
     const isValid = await this.paySolutionsService.verifyWebhookMerchant(body.merchantid || '');
     if (!isValid) {
       this.logger.warn('Invalid webhook merchantid');
+      void this.anomaly.record({
+        provider: 'paysolutions',
+        reason: 'merchant_mismatch',
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'] as string | undefined,
+        meta: { refno: body.refno, order_no: body.order_no },
+      });
       return { received: true, processed: false };
     }
 

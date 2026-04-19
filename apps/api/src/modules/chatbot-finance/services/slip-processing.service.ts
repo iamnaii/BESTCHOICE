@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import * as crypto from 'crypto';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { StorageService } from '../../storage/storage.service';
@@ -8,6 +9,15 @@ import { StaffNotificationService } from './staff-notification.service';
 import { FinanceConfigService } from './finance-config.service';
 
 const AMOUNT_TOLERANCE = 0.5; // ±0.50 บาท
+
+/**
+ * T3-C2: Look back this many days when checking whether a slip hash has
+ * already been used on a DIFFERENT contract. 30 days is long enough to catch
+ * "forward a friend's slip"-style reuse, short enough to survive legitimate
+ * re-uploads (e.g. customer uploads same slip to the chatbot twice after
+ * losing the success message).
+ */
+const SLIP_REUSE_LOOKBACK_DAYS = 30;
 
 /**
  * OCR confidence threshold for auto-approving a slip.
@@ -98,6 +108,35 @@ export class SlipProcessingService {
       };
     }
 
+    // 3.5 T3-C2: cross-contract slip reuse guard. Reject if the SAME slip
+    // (same OCR refNo+amount+bank+date, or same image URL when OCR can't
+    // identify it) has been used on a DIFFERENT contract within the last
+    // 30 days. Same-contract re-upload is still allowed (customers commonly
+    // resubmit when they don't see the ack reply).
+    const slipHash = this.computeSlipHash(extracted, imageUrl);
+    const reusedOn = await this.findRecentSlipReuse(slipHash, contract.id);
+    if (reusedOn) {
+      this.logger.warn(
+        `[Slip] Reuse detected: hash=${slipHash.slice(0, 12)}… prev contract=${reusedOn.contractId} current=${contract.id}`,
+      );
+      Sentry.captureMessage('slip_reuse_detected', {
+        level: 'warning',
+        tags: { module: 'chatbot-finance', action: 'slip_reuse' },
+        extra: {
+          hashPrefix: slipHash.slice(0, 12),
+          currentContractId: contract.id,
+          previousContractId: reusedOn.contractId,
+          previousSeenAt: reusedOn.createdAt,
+        },
+      });
+      return {
+        ok: false,
+        reply:
+          'สลิปนี้ถูกใช้กับสัญญาอื่นแล้วค่ะ 🙏\n' +
+          'กรุณาส่งสลิปใหม่ของงวดนี้ หรือติดต่อแอดมิน 063-134-6356 นะคะ',
+      };
+    }
+
     // 4. Match บัญชี (exact digits-only match against current SystemConfig)
     const wrongAccount =
       extracted.toAccount && !this.financeConfig.isCompanyBankAccount(extracted.toAccount);
@@ -108,6 +147,7 @@ export class SlipProcessingService {
         imageUrl,
         amount: extracted.amount,
         note: `โอนผิดบัญชี: ${extracted.toAccount}`,
+        slipHash,
       });
       // Notify staff (fire-and-forget with error capture)
       this.staffNotify.notifySlipReview({
@@ -171,6 +211,7 @@ export class SlipProcessingService {
       amount: slipAmount,
       note: this.buildExtractedNote(extracted, canAutoApprove),
       autoApprove: canAutoApprove,
+      slipHash,
     });
 
     // 7. Reply
@@ -253,19 +294,85 @@ export class SlipProcessingService {
     amount?: number;
     note: string;
     autoApprove?: boolean;
+    slipHash?: string;
   }) {
-    return this.prisma.paymentEvidence.create({
-      data: {
-        contractId: params.contractId,
-        paymentId: params.paymentId,
-        lineUserId: params.lineUserId,
-        imageUrl: params.imageUrl,
-        amount: params.amount,
-        status: params.autoApprove ? 'APPROVED' : 'PENDING_REVIEW',
-        reviewedById: params.autoApprove ? null : undefined,
-        reviewedAt: params.autoApprove ? new Date() : undefined,
-        reviewNote: params.note,
-      },
+    // Write PaymentEvidence + SlipFingerprint atomically. The fingerprint
+    // insert uses `createMany({ skipDuplicates: true })` so a same-contract
+    // re-upload (which we explicitly allow) doesn't blow up the unique hash
+    // constraint — it just no-ops the second fingerprint write.
+    return this.prisma.$transaction(async (tx) => {
+      const evidence = await tx.paymentEvidence.create({
+        data: {
+          contractId: params.contractId,
+          paymentId: params.paymentId,
+          lineUserId: params.lineUserId,
+          imageUrl: params.imageUrl,
+          amount: params.amount,
+          status: params.autoApprove ? 'APPROVED' : 'PENDING_REVIEW',
+          reviewedById: params.autoApprove ? null : undefined,
+          reviewedAt: params.autoApprove ? new Date() : undefined,
+          reviewNote: params.note,
+        },
+      });
+
+      if (params.slipHash) {
+        await tx.slipFingerprint.createMany({
+          data: [
+            {
+              hash: params.slipHash,
+              contractId: params.contractId,
+              paymentId: params.paymentId ?? null,
+            },
+          ],
+          skipDuplicates: true,
+        });
+      }
+
+      return evidence;
     });
+  }
+
+  /**
+   * T3-C2: Compute a stable fingerprint for a slip.
+   * Prefer OCR-derived fields (refNo + amount + bankName + date) since the
+   * same transfer from two phones produces two different image URLs but the
+   * same ref number. Fallback to hashing the image URL when OCR can't
+   * extract a ref — better than no fingerprint at all.
+   */
+  private computeSlipHash(extracted: SlipExtraction, imageUrl: string): string {
+    const hasher = crypto.createHash('sha256');
+    if (extracted.refNo) {
+      hasher.update(
+        [
+          extracted.refNo.trim(),
+          extracted.amount?.toFixed(2) ?? '',
+          (extracted.bankName ?? '').trim().toUpperCase(),
+          (extracted.date ?? '').trim(),
+        ].join('|'),
+      );
+    } else {
+      hasher.update(`url:${imageUrl}`);
+    }
+    return hasher.digest('hex');
+  }
+
+  /**
+   * T3-C2: Returns the previous fingerprint row if the same hash has been
+   * used on a DIFFERENT contract within the lookback window. Same-contract
+   * re-uploads are allowed (null returned). `null` also for "first seen".
+   */
+  private async findRecentSlipReuse(
+    hash: string,
+    currentContractId: string,
+  ): Promise<{ contractId: string; createdAt: Date } | null> {
+    const cutoff = new Date(Date.now() - SLIP_REUSE_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
+    const existing = await this.prisma.slipFingerprint.findUnique({
+      where: { hash },
+      select: { contractId: true, createdAt: true },
+    });
+    if (!existing) return null;
+    if (existing.contractId === currentContractId) return null; // same-contract re-upload — OK
+    if (existing.createdAt < cutoff) return null; // stale fingerprint, ignore
+    return existing;
   }
 }

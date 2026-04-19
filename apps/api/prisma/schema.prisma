@@ -2331,6 +2331,45 @@ model PaymentEvidence {
   @@map("payment_evidences")
 }
 
+/// T3-C2: Slip fingerprint for cross-contract reuse detection.
+/// Immutable by design — updatedAt/deletedAt intentionally omitted because
+/// a fingerprint is a hash-based evidence of a specific slip upload event.
+/// Rows are append-only: once a slip hash is recorded, it must NOT be
+/// mutated or soft-deleted (doing so would let a fraudster erase evidence
+/// that the same slip was already used on another contract). Retention of
+/// older rows is handled by a dedicated cron if needed.
+model SlipFingerprint {
+  id         String   @id @default(uuid())
+  hash       String   @unique // sha256(refNo|amount|bank|date) OR sha256(imageUrl)
+  contractId String   @map("contract_id")
+  paymentId  String?  @map("payment_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([contractId])
+  @@index([createdAt])
+  @@map("slip_fingerprints")
+}
+
+/// T3-C4: Late fee waiver approval evidence.
+/// Immutable by design — updatedAt/deletedAt intentionally omitted because
+/// each row represents the *act* of approving a waiver at a specific moment.
+/// Deleting or mutating this record would destroy the audit trail proving
+/// who clicked "approve" and from which IP/user-agent. Retention handled by
+/// the existing AuditLog retention cron if ever needed.
+model FeeWaiverApproval {
+  id               String   @id @default(uuid())
+  waiverPaymentId  String   @map("waiver_payment_id")
+  approverId       String   @map("approver_id")
+  approvedAt       DateTime @default(now()) @map("approved_at")
+  ipAddress        String?  @map("ip_address")
+  userAgent        String?  @map("user_agent") @db.Text
+
+  @@index([waiverPaymentId])
+  @@index([approverId])
+  @@index([approvedAt])
+  @@map("fee_waiver_approvals")
+}
+
 // ============================================================
 // FINANCE RECEIVABLE (เงินรับจากไฟแนนซ์)
 // ============================================================

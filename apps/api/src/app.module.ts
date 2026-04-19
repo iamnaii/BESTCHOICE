@@ -6,6 +6,7 @@ import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { resolve } from 'path';
 import { AppController } from './app.controller';
 import { PrismaModule } from './prisma/prisma.module';
+import { PiiModule } from './modules/pii/pii.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BranchesModule } from './modules/branches/branches.module';
 // Supplier Management (Phase 2 step-by-step modules)
@@ -111,6 +112,7 @@ import { AppCacheModule } from './cache/cache.module';
     AppCacheModule,
     StorageModule,
     PrismaModule,
+    PiiModule,
     AuthModule,
     BranchesModule,
     // Supplier Management (Phase 2 step-by-step modules)

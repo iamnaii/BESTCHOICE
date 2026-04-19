@@ -963,7 +963,14 @@ model Product {
   model              String
   color              String?
   storage            String?
-  imeiSerial         String?         @unique @map("imei_serial")
+  // T5-C12: uniqueness is enforced by a partial UNIQUE INDEX at the DB
+  // level (migration 20260525200000), not by Prisma `@unique`. Prisma
+  // cannot express `WHERE deleted_at IS NULL`, and keeping `@unique`
+  // here would make `prisma migrate dev` try to recreate a plain UNIQUE
+  // and clash with the partial index. The service layer in
+  // trade-in.service.ts `accept()` filters `deletedAt: null` when
+  // checking for collisions.
+  imeiSerial         String?         @map("imei_serial")
   serialNumber       String?         @map("serial_number")
   category           ProductCategory
   costPrice          Decimal         @map("cost_price") @db.Decimal(12, 2)

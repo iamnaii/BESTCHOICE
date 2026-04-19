@@ -359,6 +359,56 @@ describe('TradeInService', () => {
         ),
       ).rejects.toThrow(BadRequestException);
     });
+
+    // ─── T5-C12: IMEI uniqueness ignores soft-deleted products ─────────────
+    describe('T5-C12 IMEI uniqueness — partial unique (deletedAt: null)', () => {
+      it('filters `deletedAt: null` in the uniqueness check (query shape)', async () => {
+        prisma.tradeIn.findUnique.mockResolvedValue(
+          makeTradeIn({ status: 'APPRAISED', imei: '123456789012345', offeredPrice: 5000 }),
+        );
+        prisma.product.findFirst.mockResolvedValue(null);
+        prisma.tradeIn.update.mockResolvedValue(makeTradeIn({ status: 'ACCEPTED' }));
+
+        await service.accept('ti-1', baseAcceptDto, 'user-1');
+
+        expect(prisma.product.findFirst).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: expect.objectContaining({
+              imeiSerial: '123456789012345',
+              deletedAt: null,
+            }),
+          }),
+        );
+      });
+
+      it('rejects only when an ACTIVE product owns the IMEI', async () => {
+        prisma.tradeIn.findUnique.mockResolvedValue(
+          makeTradeIn({ status: 'APPRAISED', imei: '123456789012345', offeredPrice: 5000 }),
+        );
+        prisma.product.findFirst.mockResolvedValue({
+          id: 'prod-active',
+          name: 'iPhone 15 Pro',
+        });
+
+        await expect(
+          service.accept('ti-1', baseAcceptDto, 'user-1'),
+        ).rejects.toThrow(BadRequestException);
+      });
+
+      it('accepts when the only existing product owning the IMEI is soft-deleted (findFirst returns null)', async () => {
+        prisma.tradeIn.findUnique.mockResolvedValue(
+          makeTradeIn({ status: 'APPRAISED', imei: '123456789012345', offeredPrice: 5000 }),
+        );
+        // deletedAt: null filter means the soft-deleted row is invisible
+        prisma.product.findFirst.mockResolvedValue(null);
+        prisma.tradeIn.update.mockResolvedValue(makeTradeIn({ status: 'ACCEPTED' }));
+
+        await expect(
+          service.accept('ti-1', baseAcceptDto, 'user-1'),
+        ).resolves.toBeDefined();
+        expect(prisma.product.create).toHaveBeenCalled();
+      });
+    });
   });
 
   // ──────────────────────────────────────────────────────────────────────────

@@ -132,15 +132,19 @@ export class WarrantyService {
   }
 
   /**
-   * Manual shop-warranty adjustment (T5-C6). The ONLY path allowed to mutate
-   * `shopWarrantyEndDate` after initial activation. Every call writes an
-   * immutable audit row.
+   * Manual shop-warranty adjustment (T5-C6 + T5-C13). The ONLY path allowed
+   * to mutate `shopWarrantyEndDate` after initial activation. Every call
+   * writes an immutable audit row in the SAME transaction as the update so
+   * an audit-write failure rolls back the mutation (T5-C13 atomicity).
    *
    * Policy:
    *   - reason is required (≥ 10 chars)
    *   - BACKWARD adjustment (newEnd < oldEnd) → OWNER only. This is the fraud
    *     vector: MANAGER shortens warranty so customer can't claim, then staff
    *     resells the faulty device.
+   *   - BACKWARD > 7 days → requires a SECOND approver (different user) —
+   *     two-person integrity check for material shortening of customer
+   *     coverage (T5-C13). Pass `secondApproverId` in the options arg.
    *   - FORWARD adjustment → OWNER / FINANCE_MANAGER / BRANCH_MANAGER
    */
   async adjustShopWarranty(
@@ -149,6 +153,7 @@ export class WarrantyService {
     reason: string,
     userId: string,
     userRole: string,
+    options?: { secondApproverId?: string },
   ): Promise<void> {
     if (!reason || reason.trim().length < 10) {
       throw new BadRequestException('ต้องระบุเหตุผลอย่างน้อย 10 ตัวอักษร');
@@ -180,6 +185,28 @@ export class WarrantyService {
       );
     }
 
+    // T5-C13: BACKWARD > 7 days needs a second approver (different user).
+    let secondApproverId: string | null = null;
+    if (isBackward && oldEnd) {
+      const daysShortened = Math.ceil(
+        (oldEnd.getTime() - newEndDate.getTime()) / (1000 * 60 * 60 * 24),
+      );
+      if (daysShortened > 7) {
+        const approver = options?.secondApproverId?.trim();
+        if (!approver) {
+          throw new BadRequestException(
+            'การย่นวันสิ้นสุดประกันเกิน 7 วัน ต้องระบุผู้อนุมัติร่วม (second approver)',
+          );
+        }
+        if (approver === userId) {
+          throw new BadRequestException(
+            'ผู้อนุมัติร่วมต้องไม่ใช่ผู้ทำรายการคนเดียวกัน',
+          );
+        }
+        secondApproverId = approver;
+      }
+    }
+
     await this.prisma.$transaction([
       this.prisma.contract.update({
         where: { id: contractId },
@@ -195,10 +222,30 @@ export class WarrantyService {
           reason: reason.trim(),
         },
       }),
+      // T5-C13: second-approver trace on material shortening
+      ...(secondApproverId
+        ? [
+            this.prisma.auditLog.create({
+              data: {
+                userId: secondApproverId,
+                action: 'WARRANTY_BACKWARD_SECOND_APPROVAL',
+                entity: 'contract',
+                entityId: contractId,
+                oldValue: { shopWarrantyEndDate: oldEnd },
+                newValue: {
+                  shopWarrantyEndDate: newEndDate,
+                  reason: reason.trim(),
+                  primaryUserId: userId,
+                },
+              },
+            }),
+          ]
+        : []),
     ]);
 
     this.logger.log(
-      `Shop warranty adjusted for ${contractId}: ${direction} by ${userId}`,
+      `Shop warranty adjusted for ${contractId}: ${direction} by ${userId}` +
+        (secondApproverId ? ` (co-approved by ${secondApproverId})` : ''),
     );
   }
 

@@ -349,17 +349,17 @@ export class TradeInService {
         signatureBase64 = dto.sellerSignatureBase64;
       }
 
-      // IMEI uniqueness check — Product.imeiSerial เป็น @unique, ต้องไม่ชนกับสินค้าที่มีอยู่
-      // (รวม soft-deleted เพราะ DB constraint ไม่สนใจ deletedAt)
+      // T5-C12: IMEI uniqueness check — เฉพาะ active products (soft-deleted
+      // ถือว่าคืน IMEI กลับเข้า pool ได้) ตรงกับ partial unique index ใน DB
+      // (migration 20260525200000_product_imei_partial_unique).
       if (tradeIn.imei) {
         const existing = await tx.product.findFirst({
-          where: { imeiSerial: tradeIn.imei },
-          select: { id: true, name: true, deletedAt: true },
+          where: { imeiSerial: tradeIn.imei, deletedAt: null },
+          select: { id: true, name: true },
         });
         if (existing) {
-          const suffix = existing.deletedAt ? ' [ตัดจำหน่ายแล้ว]' : '';
           throw new BadRequestException(
-            `IMEI ${tradeIn.imei} มีอยู่ในระบบแล้ว: ${existing.name}${suffix}`,
+            `IMEI ${tradeIn.imei} มีอยู่ในระบบแล้ว: ${existing.name}`,
           );
         }
       }

@@ -126,6 +126,12 @@ export class UsersService {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) throw new NotFoundException('ไม่พบผู้ใช้งาน');
 
+    // T7-C7 — if this update deactivates the user (true → false transition
+    // OR fresh deactivation request), revoke all of their refresh tokens so
+    // their sessions don't live on for up to 7 days past the deactivation.
+    const isNowBeingDeactivated =
+      dto.isActive === false && user.isActive === true;
+
     const data: Prisma.UserUncheckedUpdateInput = {};
     if (dto.name !== undefined) data.name = dto.name;
     if (dto.role !== undefined) data.role = dto.role as UserRole;
@@ -142,7 +148,7 @@ export class UsersService {
     if (dto.nationalId !== undefined) data.nationalId = dto.nationalId || null;
     if (dto.birthDate !== undefined) data.birthDate = dto.birthDate ? new Date(dto.birthDate) : null;
 
-    return this.prisma.user.update({
+    const updated = await this.prisma.user.update({
       where: { id },
       data,
       select: {
@@ -164,5 +170,22 @@ export class UsersService {
         branch: { select: { id: true, name: true } },
       },
     });
+
+    if (isNowBeingDeactivated) {
+      // Revoke every live refresh token so the just-deactivated user cannot
+      // continue to mint new access tokens from cookies already issued to
+      // their browser. Best-effort: never block the user update itself.
+      try {
+        await this.prisma.refreshToken.updateMany({
+          where: { userId: id, revokedAt: null },
+          data: { revokedAt: new Date() },
+        });
+      } catch {
+        // Intentionally swallowed — tokens will also be rejected by the
+        // isActive check in the auth guard, so this is defence-in-depth.
+      }
+    }
+
+    return updated;
   }
 }

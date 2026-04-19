@@ -1,5 +1,17 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth , ApiOperation} from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Param,
+  Body,
+  Query,
+  UseGuards,
+  Req,
+} from '@nestjs/common';
+import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import type { Request } from 'express';
 import { CustomersService } from './customers.service';
 import { CreateCustomerDto, UpdateCustomerDto } from './dto/customer.dto';
 import { UploadDocumentDto, DeleteDocumentDto } from './dto/document.dto';
@@ -8,17 +20,53 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { PiiAuditService } from '../pii/pii-audit.service';
+import { maskNationalId } from '../../utils/pii.util';
+
+type AuthRequest = Request & { user?: { id: string; role: string } };
 
 @ApiTags('Customers')
 @ApiBearerAuth('JWT')
 @Controller('customers')
 @UseGuards(JwtAuthGuard, RolesGuard, BranchGuard)
 export class CustomersController {
-  constructor(private customersService: CustomersService) {}
+  constructor(
+    private customersService: CustomersService,
+    private piiAudit: PiiAuditService,
+  ) {}
+
+  // ---------------------------------------------------------------------------
+  // Role-based PII masking helpers
+  // ---------------------------------------------------------------------------
+
+  private applyRoleMask<T extends { nationalId?: string | null }>(
+    customer: T | null,
+    userRole: string,
+  ): T | null {
+    if (!customer) return customer;
+    if (userRole === 'SALES') {
+      return {
+        ...customer,
+        nationalId: customer.nationalId ? maskNationalId(customer.nationalId) : customer.nationalId,
+      };
+    }
+    return customer;
+  }
+
+  private applyRoleMaskList<T extends { nationalId?: string | null }>(
+    customers: T[],
+    userRole: string,
+  ): T[] {
+    return customers.map((c) => this.applyRoleMask(c, userRole) as T);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Endpoints
+  // ---------------------------------------------------------------------------
 
   @Get()
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
-  findAll(
+  async findAll(
     @Query() pagination: PaginationDto,
     @Query('search') search?: string,
     @Query('contractStatus') contractStatus?: string,
@@ -27,8 +75,9 @@ export class CustomersController {
     @Query('branchId') branchId?: string,
     @Query('sortBy') sortBy?: string,
     @Query('sortOrder') sortOrder?: string,
+    @Req() req?: AuthRequest,
   ) {
-    return this.customersService.findAll(
+    const result = await this.customersService.findAll(
       search,
       pagination.page,
       pagination.limit,
@@ -39,6 +88,23 @@ export class CustomersController {
       sortBy,
       sortOrder,
     );
+
+    const role = req?.user?.role || 'UNKNOWN';
+
+    void this.piiAudit.logDecryption({
+      userId: req?.user?.id || 'system',
+      customerId: `BATCH:${result.data?.length ?? 0}`,
+      fields: ['nationalId', 'phone'],
+      role,
+      masked: role === 'SALES',
+      ipAddress: req?.ip,
+      userAgent: req?.headers['user-agent'] as string | undefined,
+    });
+
+    return {
+      ...result,
+      data: this.applyRoleMaskList(result.data as Array<{ nationalId?: string | null }>, role),
+    };
   }
 
   @Get('referral-stats')
@@ -70,14 +136,49 @@ export class CustomersController {
 
   @Get('search')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
-  search(@Query('q') q: string) {
-    return this.customersService.search(q || '');
+  async search(@Query('q') q: string, @Req() req: AuthRequest) {
+    const results = await this.customersService.search(q || '');
+    const role = req.user?.role || 'UNKNOWN';
+
+    if (Array.isArray(results) && results.length > 0) {
+      void this.piiAudit.logDecryption({
+        userId: req.user?.id || 'system',
+        customerId: `SEARCH:${results.length}`,
+        fields: ['nationalId', 'phone'],
+        role,
+        masked: role === 'SALES',
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'] as string | undefined,
+      });
+      return this.applyRoleMaskList(
+        results as Array<{ nationalId?: string | null }>,
+        role,
+      );
+    }
+    return results;
   }
 
   @Get(':id')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
-  findOne(@Param('id') id: string) {
-    return this.customersService.findOne(id);
+  async findOne(@Param('id') id: string, @Req() req: AuthRequest) {
+    const customer = await this.customersService.findOne(id);
+    if (!customer) return customer;
+
+    const role = req.user?.role || 'UNKNOWN';
+    const isMasked = role === 'SALES';
+
+    // Fire-and-forget: never let audit log block the response
+    void this.piiAudit.logDecryption({
+      userId: req.user?.id || 'system',
+      customerId: id,
+      fields: ['nationalId', 'phone', 'address'],
+      role,
+      masked: isMasked,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'] as string | undefined,
+    });
+
+    return this.applyRoleMask(customer as { nationalId?: string | null }, role);
   }
 
   @Get(':id/contracts')

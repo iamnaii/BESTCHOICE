@@ -22,12 +22,17 @@ import {
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { AuditService } from '../audit/audit.service';
 
 @Controller('mdm')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
 export class MdmController {
-  constructor(private mdmService: MdmService) {}
+  constructor(
+    private mdmService: MdmService,
+    private audit: AuditService,
+  ) {}
 
   // ─── Status & Config ────────────────────────────────────
 
@@ -121,14 +126,36 @@ export class MdmController {
 
   @Post('lock')
   @Roles('OWNER', 'FINANCE_MANAGER')
-  lockDevice(@Body() dto: LockDeviceDto) {
-    return this.mdmService.lockDeviceByImei(dto.imei, dto.reason);
+  async lockDevice(
+    @Body() dto: LockDeviceDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    const result = await this.mdmService.lockDeviceByImei(dto.imei, dto.reason);
+    await this.audit.log({
+      userId: user.id,
+      action: 'MDM_LOCK',
+      entity: 'MDM',
+      entityId: dto.imei,
+      newValue: { imei: dto.imei, reason: dto.reason },
+    });
+    return result;
   }
 
   @Post('unlock')
   @Roles('OWNER', 'FINANCE_MANAGER')
-  unlockDevice(@Body() dto: UnlockDeviceDto) {
-    return this.mdmService.unlockDeviceByImei(dto.imei);
+  async unlockDevice(
+    @Body() dto: UnlockDeviceDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    const result = await this.mdmService.unlockDeviceByImei(dto.imei);
+    await this.audit.log({
+      userId: user.id,
+      action: 'MDM_UNLOCK',
+      entity: 'MDM',
+      entityId: dto.imei,
+      newValue: { imei: dto.imei, reason: dto.reason, note: dto.note ?? null },
+    });
+    return result;
   }
 
   // ─── Policies ───────────────────────────────────────────

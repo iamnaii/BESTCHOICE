@@ -37,6 +37,14 @@ export class UnlockDeviceDto {
   @MaxLength(20, { message: 'หมายเลข IMEI ต้องไม่เกิน 20 ตัวอักษร' })
   imei: string;
 
+  /// T6-C6: reason required — prevents "quiet unlock" kickback. Callers
+  /// must describe why the phone is being released (paid in full, settlement
+  /// agreement, legal dispute, etc.)
+  @IsString()
+  @IsNotEmpty({ message: 'กรุณาระบุเหตุผลในการปลดล็อค' })
+  @MaxLength(500, { message: 'เหตุผลต้องไม่เกิน 500 ตัวอักษร' })
+  reason!: string;
+
   @IsString()
   @IsOptional()
   @MaxLength(255)

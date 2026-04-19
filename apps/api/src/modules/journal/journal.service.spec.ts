@@ -104,3 +104,63 @@ describe('JournalService.create — period lock enforcement', () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * T2-C2: SoD — the accountant who drafted a journal entry can't also be
+ * the one who posts it. System-generated entries (createdById=null) are
+ * exempt.
+ */
+describe('JournalService.post — SoD enforcement', () => {
+  let service: JournalService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let prisma: any;
+
+  const balancedEntry = (createdById: string | null) => ({
+    id: 'je-1',
+    status: 'DRAFT',
+    createdById,
+    lines: [
+      { id: 'jl-1', debit: 100, credit: 0 },
+      { id: 'jl-2', debit: 0, credit: 100 },
+    ],
+  });
+
+  beforeEach(async () => {
+    prisma = {
+      journalEntry: {
+        findFirst: jest.fn().mockResolvedValue(balancedEntry('u-author')),
+        update: jest.fn((args) => Promise.resolve({ ...balancedEntry('u-author'), ...args.data })),
+      },
+    };
+    const mod: TestingModule = await Test.createTestingModule({
+      providers: [JournalService, { provide: PrismaService, useValue: prisma }],
+    }).compile();
+    service = mod.get(JournalService);
+  });
+
+  it('rejects self-post (drafter = poster)', async () => {
+    await expect(service.post('je-1', 'u-author')).rejects.toThrow(BadRequestException);
+    expect(prisma.journalEntry.update).not.toHaveBeenCalled();
+  });
+
+  it('allows post when poster differs from drafter', async () => {
+    await service.post('je-1', 'u-reviewer');
+    expect(prisma.journalEntry.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'POSTED' }) }),
+    );
+  });
+
+  it('allows system-generated entries (createdById=null) to be posted by anyone', async () => {
+    prisma.journalEntry.findFirst.mockResolvedValue(balancedEntry(null));
+    await service.post('je-1', 'u-anyone');
+    expect(prisma.journalEntry.update).toHaveBeenCalled();
+  });
+
+  it('rejects posting an already-POSTED entry', async () => {
+    prisma.journalEntry.findFirst.mockResolvedValue({
+      ...balancedEntry('u-author'),
+      status: 'POSTED',
+    });
+    await expect(service.post('je-1', 'u-reviewer')).rejects.toThrow(BadRequestException);
+  });
+});

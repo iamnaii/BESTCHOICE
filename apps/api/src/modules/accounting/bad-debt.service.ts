@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
@@ -211,8 +212,46 @@ export class BadDebtService {
 
   /**
    * Write off a bad debt (ตัดหนี้สูญ)
-   * Requires OWNER approval — writer and approver must be different persons
+   *
+   * T3-C6 — amount-based approval tiers (phone-shop pricing reality):
+   *   0-10,000฿:  writer BM/ACCT/FM/OWNER,  approver must be BM/FM/OWNER
+   *   10,000-30,000฿: approver must be FM or OWNER
+   *   30,000฿+:  approver must be OWNER, writer must be FM or OWNER
+   *
+   * Writer and approver must always be different people (Segregation of Duties
+   * — pre-existing rule).
    */
+  private assertWriteOffTierPermitted(
+    outstandingAmount: number,
+    writerRole: string,
+    approverRole: string,
+  ): void {
+    const approverAllowedByTier =
+      outstandingAmount <= 10_000
+        ? ['BRANCH_MANAGER', 'FINANCE_MANAGER', 'OWNER']
+        : outstandingAmount <= 30_000
+          ? ['FINANCE_MANAGER', 'OWNER']
+          : ['OWNER'];
+
+    if (!approverAllowedByTier.includes(approverRole)) {
+      throw new ForbiddenException(
+        `ตัดหนี้สูญ ${outstandingAmount.toLocaleString()} บาท ต้องอนุมัติโดย ${approverAllowedByTier.join(' หรือ ')} (ปัจจุบัน: ${approverRole})`,
+      );
+    }
+
+    // Top tier (>30k) also constrains who can _originate_ the request so the
+    // OWNER isn't paired with a low-privilege writer who might not
+    // understand what they are signing off on.
+    if (outstandingAmount > 30_000) {
+      const writerAllowed = ['FINANCE_MANAGER', 'OWNER'];
+      if (!writerAllowed.includes(writerRole)) {
+        throw new ForbiddenException(
+          `ตัดหนี้สูญ > 30,000 บาท ผู้ขอต้องเป็น FINANCE_MANAGER หรือ OWNER (ปัจจุบัน: ${writerRole})`,
+        );
+      }
+    }
+  }
+
   async writeOffBadDebt(
     contractId: string,
     writtenOffById: string,
@@ -221,6 +260,25 @@ export class BadDebtService {
   ) {
     if (writtenOffById === approvedById) {
       throw new BadRequestException('ผู้ตัดหนี้สูญต้องไม่ใช่ผู้อนุมัติ');
+    }
+
+    // Resolve both users' roles up front so we can apply the T3-C6 tier
+    // rules before any write.
+    const [writer, approver] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: writtenOffById },
+        select: { id: true, role: true, isActive: true, deletedAt: true },
+      }),
+      this.prisma.user.findUnique({
+        where: { id: approvedById },
+        select: { id: true, role: true, isActive: true, deletedAt: true },
+      }),
+    ]);
+    if (!writer || !writer.isActive || writer.deletedAt) {
+      throw new NotFoundException('ไม่พบผู้ขอตัดหนี้สูญ หรือถูกปิดการใช้งาน');
+    }
+    if (!approver || !approver.isActive || approver.deletedAt) {
+      throw new NotFoundException('ไม่พบผู้อนุมัติ หรือถูกปิดการใช้งาน');
     }
 
     const contract = await this.prisma.contract.findFirst({
@@ -245,6 +303,9 @@ export class BadDebtService {
         const unpaidLateFee = !p.lateFeeWaived ? Number(p.lateFee) : 0;
         return sum + Number(p.amountDue) - Number(p.amountPaid) + unpaidLateFee;
       }, 0);
+
+      // T3-C6 — enforce amount-tier approval rule before any write.
+      this.assertWriteOffTierPermitted(outstandingAmount, writer.role, approver.role);
 
       // Capture total active provision amount before updating status
       const activeProvisions = await tx.badDebtProvision.findMany({

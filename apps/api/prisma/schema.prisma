@@ -401,6 +401,7 @@ model User {
   transfersConfirmed     StockTransfer[]      @relation("TransferConfirmedBy")
   transfersDispatched    StockTransfer[]      @relation("TransferDispatchedBy")
   stockAdjustments       StockAdjustment[]    @relation("StockAdjustedBy")
+  stockAdjustmentsApproved StockAdjustment[] @relation("StockAdjustmentApprovedBy")
   documentsUploaded      ContractDocument[]   @relation("DocumentUploadedBy")
   creditChecks           CreditCheck[]        @relation("CreditCheckedBy")
   branchReceivings       BranchReceiving[]    @relation("BranchReceivedBy")
@@ -1067,6 +1068,13 @@ model StockAdjustment {
   notes          String?
   photos         String[]              @default([])
   adjustedById   String                @map("adjusted_by_id")
+  // T5-C3 — every stock adjustment is 4-eyes: the adjuster records the
+  // change, a different manager-tier user signs off as approver. These
+  // fields are required in the service layer (DTO-validated). Existing
+  // rows created before T5-C3 have NULL here — back-filled by migration
+  // with adjustedById to preserve referential integrity.
+  approvedById   String                @map("approved_by_id")
+  approvedAt     DateTime              @default(now()) @map("approved_at")
   createdAt      DateTime              @default(now()) @map("created_at")
   updatedAt      DateTime              @updatedAt @map("updated_at")
   deletedAt      DateTime?             @map("deleted_at")
@@ -1074,6 +1082,7 @@ model StockAdjustment {
   product    Product @relation(fields: [productId], references: [id])
   branch     Branch  @relation(fields: [branchId], references: [id])
   adjustedBy User    @relation("StockAdjustedBy", fields: [adjustedById], references: [id])
+  approvedBy User    @relation("StockAdjustmentApprovedBy", fields: [approvedById], references: [id])
 
   @@index([productId])
   @@index([branchId])

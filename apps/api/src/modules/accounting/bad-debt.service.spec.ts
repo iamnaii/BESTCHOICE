@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { BadDebtService } from './bad-debt.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -39,6 +39,20 @@ describe('BadDebtService', () => {
         findMany: jest.fn().mockResolvedValue([]),
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
         createMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      user: {
+        findUnique: jest.fn().mockImplementation(({ where: { id } }) =>
+          Promise.resolve({
+            id,
+            role: id.startsWith('owner') ? 'OWNER'
+              : id.startsWith('fm') ? 'FINANCE_MANAGER'
+              : id.startsWith('acct') ? 'ACCOUNTANT'
+              : id.startsWith('bm') ? 'BRANCH_MANAGER'
+              : 'SALES',
+            isActive: true,
+            deletedAt: null,
+          }),
+        ),
       },
       $transaction: jest.fn().mockImplementation(async (fn) => {
         if (typeof fn === 'function') {
@@ -331,24 +345,24 @@ describe('BadDebtService', () => {
     });
   });
 
-  describe('writeOffBadDebt — segregation of duties', () => {
+  describe('writeOffBadDebt — segregation of duties + T3-C6 tiers', () => {
     it('refuses when writer and approver are the same person', async () => {
       await expect(
-        service.writeOffBadDebt('c1', 'user-1', 'user-1', 'reason'),
+        service.writeOffBadDebt('c1', 'bm-1', 'bm-1', 'reason'),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
     it('throws NotFoundException when contract is missing', async () => {
       prisma.contract.findFirst.mockResolvedValue(null);
       await expect(
-        service.writeOffBadDebt('missing', 'writer', 'approver'),
+        service.writeOffBadDebt('missing', 'bm-1', 'fm-1'),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
     it('refuses to write off an already CLOSED_BAD_DEBT contract', async () => {
       prisma.contract.findFirst.mockResolvedValue({ id: 'c1', status: 'CLOSED_BAD_DEBT' });
       await expect(
-        service.writeOffBadDebt('c1', 'writer', 'approver'),
+        service.writeOffBadDebt('c1', 'bm-1', 'fm-1'),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
@@ -357,7 +371,7 @@ describe('BadDebtService', () => {
       prisma.contract.update.mockResolvedValue({});
       prisma.badDebtProvision.updateMany.mockResolvedValue({ count: 1 });
 
-      const result = await service.writeOffBadDebt('c1', 'writer', 'approver', 'court order');
+      const result = await service.writeOffBadDebt('c1', 'bm-1', 'fm-1', 'court order');
 
       expect(prisma.contract.update).toHaveBeenCalledWith({
         where: { id: 'c1' },
@@ -367,12 +381,92 @@ describe('BadDebtService', () => {
         where: { contractId: 'c1', status: 'ACTIVE', deletedAt: null },
         data: expect.objectContaining({
           status: 'WRITTEN_OFF',
-          writtenOffById: 'writer',
-          approvedById: 'approver',
+          writtenOffById: 'bm-1',
+          approvedById: 'fm-1',
           notes: 'court order',
         }),
       });
       expect(result.status).toBe('CLOSED_BAD_DEBT');
+    });
+
+    // T3-C6 tier tests. The outstandingAmount is driven by what
+    // prisma.payment.findMany returns inside the transaction.
+    const mkUnpaid = (amountDue: number) => [{
+      id: 'p1',
+      contractId: 'c1',
+      installmentNo: 1,
+      amountDue: new Prisma.Decimal(amountDue),
+      amountPaid: new Prisma.Decimal(0),
+      lateFee: new Prisma.Decimal(0),
+      lateFeeWaived: false,
+    }];
+
+    it('tier 1 (≤10k): BM writer + ACCT approver is rejected (ACCT not in BM/FM/OWNER allowed list)', async () => {
+      prisma.contract.findFirst.mockResolvedValue({ id: 'c1', status: 'OVERDUE' });
+      prisma.payment.findMany.mockResolvedValue(mkUnpaid(5000));
+
+      await expect(
+        service.writeOffBadDebt('c1', 'bm-1', 'acct-1'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('tier 2 (10-30k): BM approver rejected — must be FM or OWNER', async () => {
+      prisma.contract.findFirst.mockResolvedValue({ id: 'c1', status: 'OVERDUE' });
+      prisma.payment.findMany.mockResolvedValue(mkUnpaid(20000));
+
+      await expect(
+        service.writeOffBadDebt('c1', 'bm-1', 'bm-2'),
+      ).rejects.toThrow(/FINANCE_MANAGER|OWNER/);
+    });
+
+    it('tier 2 (10-30k): FM approver accepted', async () => {
+      prisma.contract.findFirst.mockResolvedValue({ id: 'c1', status: 'OVERDUE' });
+      prisma.payment.findMany.mockResolvedValue(mkUnpaid(20000));
+      prisma.contract.update.mockResolvedValue({});
+
+      const result = await service.writeOffBadDebt('c1', 'bm-1', 'fm-1');
+      expect(result.status).toBe('CLOSED_BAD_DEBT');
+    });
+
+    it('tier 3 (>30k): non-OWNER approver rejected', async () => {
+      prisma.contract.findFirst.mockResolvedValue({ id: 'c1', status: 'OVERDUE' });
+      prisma.payment.findMany.mockResolvedValue(mkUnpaid(50000));
+
+      await expect(
+        service.writeOffBadDebt('c1', 'fm-1', 'fm-2'),
+      ).rejects.toThrow(/OWNER/);
+    });
+
+    it('tier 3 (>30k): BM writer rejected (must be FM or OWNER)', async () => {
+      prisma.contract.findFirst.mockResolvedValue({ id: 'c1', status: 'OVERDUE' });
+      prisma.payment.findMany.mockResolvedValue(mkUnpaid(50000));
+
+      await expect(
+        service.writeOffBadDebt('c1', 'bm-1', 'owner-1'),
+      ).rejects.toThrow(/FINANCE_MANAGER/);
+    });
+
+    it('tier 3 (>30k): FM writer + OWNER approver accepted', async () => {
+      prisma.contract.findFirst.mockResolvedValue({ id: 'c1', status: 'OVERDUE' });
+      prisma.payment.findMany.mockResolvedValue(mkUnpaid(50000));
+      prisma.contract.update.mockResolvedValue({});
+
+      const result = await service.writeOffBadDebt('c1', 'fm-1', 'owner-1');
+      expect(result.status).toBe('CLOSED_BAD_DEBT');
+    });
+
+    it('rejects when approver account is deactivated', async () => {
+      prisma.user.findUnique.mockImplementation(({ where: { id } }: { where: { id: string } }) =>
+        Promise.resolve({
+          id,
+          role: id.startsWith('fm') ? 'FINANCE_MANAGER' : 'BRANCH_MANAGER',
+          isActive: id !== 'fm-1', // fm-1 is deactivated
+          deletedAt: null,
+        }),
+      );
+      await expect(
+        service.writeOffBadDebt('c1', 'bm-1', 'fm-1'),
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 

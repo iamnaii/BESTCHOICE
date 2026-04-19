@@ -113,13 +113,13 @@ export class CreditCheckController {
   }
 
   @Post('override')
-  @Roles('OWNER', 'BRANCH_MANAGER')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER')
   override(
     @Param('contractId') contractId: string,
     @Body() dto: OverrideCreditCheckDto,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: { id: string; role: string },
   ) {
-    return this.service.override(contractId, dto, user.id);
+    return this.service.override(contractId, dto, user.id, user.role);
   }
 }
 
@@ -158,12 +158,12 @@ export class CustomerCreditCheckController {
   }
 
   @Post(':creditCheckId/override')
-  @Roles('OWNER', 'BRANCH_MANAGER')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER')
   override(
     @Param('creditCheckId') creditCheckId: string,
     @Body() dto: OverrideCreditCheckDto,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: { id: string; role: string },
   ) {
-    return this.service.overrideById(creditCheckId, dto, user.id);
+    return this.service.overrideById(creditCheckId, dto, user.id, user.role);
   }
 }

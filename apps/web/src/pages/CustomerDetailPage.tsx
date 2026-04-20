@@ -1,4 +1,7 @@
-import { useParams, useNavigate, Link } from 'react-router';
+import { useParams, useNavigate, Link, useSearchParams } from 'react-router';
+import CreditCheckCreateDialog from '@/components/credit-check/CreditCheckCreateDialog';
+import CreditCheckCard from '@/components/credit-check/CreditCheckCard';
+import CreditCheckOverrideDialog from '@/components/credit-check/CreditCheckOverrideDialog';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import api, { getErrorMessage } from '@/lib/api';
@@ -20,7 +23,7 @@ import { DetailPageSkeleton } from '@/components/ui/page-skeletons';
 import { maskNationalId, formatNationalId } from '@/utils/mask.util';
 import { THAI_NAME_PREFIXES, RELATIONSHIP_OPTIONS } from '@/lib/constants';
 import { Badge } from '@/components/ui/badge';
-import { getStatusBadgeProps, contractStatusMap, creditCheckStatusMap } from '@/lib/status-badges';
+import { getStatusBadgeProps, contractStatusMap } from '@/lib/status-badges';
 
 interface ReferenceData {
   prefix?: string;
@@ -120,10 +123,27 @@ export default function CustomerDetailPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
 
-  const creditFileRef = useRef<HTMLInputElement>(null);
   const docFileRef = useRef<HTMLInputElement>(null);
-  const [creditBankName, setCreditBankName] = useState('');
-  const [activeTab, setActiveTab] = useState('info');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialTab = searchParams.get('tab') || 'info';
+  const [activeTab, setActiveTab] = useState(initialTab);
+  const [showCreditDialog, setShowCreditDialog] = useState(false);
+  const [overrideId, setOverrideId] = useState<string | null>(null);
+  const [overrideStatus, setOverrideStatus] = useState('');
+  const [overrideNotes, setOverrideNotes] = useState('');
+
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab && tab !== activeTab) setActiveTab(tab);
+  }, [searchParams]);
+
+  const handleTabChange = (value: string) => {
+    setActiveTab(value);
+    const next = new URLSearchParams(searchParams);
+    if (value === 'info') next.delete('tab');
+    else next.set('tab', value);
+    setSearchParams(next, { replace: true });
+  };
 
   // Edit customer state
   const [showEditModal, setShowEditModal] = useState(false);
@@ -165,34 +185,6 @@ export default function CustomerDetailPage() {
   const { data: creditChecks = [] } = useQuery<CreditCheckItem[]>({
     queryKey: ['customer-credit-checks', id],
     queryFn: async () => { const { data } = await api.get(`/customers/${id}/credit-check`); return data; },
-  });
-
-  const uploadCreditMutation = useMutation({
-    mutationFn: async (files: FileList) => {
-      const fileUrls: string[] = [];
-      for (const file of Array.from(files)) {
-        const reader = new FileReader();
-        const url = await new Promise<string>((resolve, reject) => {
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = () => reject(new Error('ไม่สามารถอ่านไฟล์ได้'));
-          reader.readAsDataURL(file);
-        });
-        fileUrls.push(url);
-      }
-      const { data } = await api.post(`/customers/${id}/credit-check`, {
-        bankName: creditBankName || undefined,
-        statementFiles: fileUrls,
-        statementMonths: 3,
-      });
-      return data;
-    },
-    onSuccess: () => {
-      toast.success('อัปโหลด Statement สำเร็จ');
-      queryClient.invalidateQueries({ queryKey: ['customer-credit-checks', id] });
-      if (creditFileRef.current) creditFileRef.current.value = '';
-      setCreditBankName('');
-    },
-    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   const startEdit = () => {
@@ -288,6 +280,25 @@ export default function CustomerDetailPage() {
     onSuccess: () => {
       toast.success('วิเคราะห์เครดิตเสร็จสิ้น');
       queryClient.invalidateQueries({ queryKey: ['customer-credit-checks', id] });
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  const overrideCreditMutation = useMutation({
+    mutationFn: async () => {
+      if (!overrideId) return;
+      const { data } = await api.post(`/customers/${id}/credit-check/${overrideId}/override`, {
+        status: overrideStatus,
+        reviewNotes: overrideNotes || undefined,
+      });
+      return data;
+    },
+    onSuccess: () => {
+      toast.success('อัปเดตสถานะเครดิตเช็คแล้ว');
+      queryClient.invalidateQueries({ queryKey: ['customer-credit-checks', id] });
+      setOverrideId(null);
+      setOverrideStatus('');
+      setOverrideNotes('');
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
@@ -475,7 +486,7 @@ export default function CustomerDetailPage() {
                 {customer?.contracts?.length > 0 && (
                   <button
                     type="button"
-                    onClick={() => setActiveTab('contracts')}
+                    onClick={() => handleTabChange('contracts')}
                     className="rounded-full px-2.5 py-0.5 text-xs font-semibold bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer"
                   >
                     {customer.contracts.length} สัญญา
@@ -541,7 +552,7 @@ export default function CustomerDetailPage() {
       })()}
 
       {/* Customer Info — Tabbed Layout */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-6">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="mb-6">
         <TabsList variant="line" className="mb-5">
           <TabsTrigger value="info">ข้อมูลส่วนตัว</TabsTrigger>
           <TabsTrigger value="contact">ติดต่อ & ที่อยู่</TabsTrigger>
@@ -734,63 +745,34 @@ export default function CustomerDetailPage() {
         <TabsContent value="credit">
       {/* Credit Check */}
       <Card className="mb-6">
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>ตรวจสอบเครดิต</CardTitle>
+          {canEdit && (
+            <Button variant="primary" size="sm" onClick={() => setShowCreditDialog(true)}>
+              + ตรวจเครดิตใหม่
+            </Button>
+          )}
         </CardHeader>
         <CardContent>
-
-        {/* Upload new credit check */}
-        <div className="bg-muted/60 rounded-xl p-4 mb-4 space-y-3 border border-border/40">
-          <p className="text-xs text-muted-foreground">อัปโหลด Statement ธนาคารย้อนหลัง 3 เดือน เพื่อเช็คเครดิตก่อนทำสัญญา</p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-foreground mb-1.5">ธนาคาร</label>
-              <input type="text" value={creditBankName} onChange={(e) => setCreditBankName(e.target.value)} placeholder="เช่น กสิกร, กรุงไทย..." className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-foreground mb-1.5">Statement (ภาพ/PDF)</label>
-              <input ref={creditFileRef} type="file" accept="image/*,.pdf" multiple onChange={(e) => e.target.files && uploadCreditMutation.mutate(e.target.files)} disabled={uploadCreditMutation.isPending} className="w-full text-sm text-muted-foreground file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary/10 file:text-primary" />
-            </div>
-          </div>
-          {uploadCreditMutation.isPending && <div className="text-sm text-primary">กำลังอัปโหลด...</div>}
-        </div>
 
         {/* Credit check history */}
         {creditChecks.length > 0 ? (
           <div className="space-y-3">
-            {creditChecks.map((cc) => {
-              const csCfg = getStatusBadgeProps(cc.status, creditCheckStatusMap);
-              return (
-                <div key={cc.id} className="border border-border/60 rounded-xl p-4 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <Badge variant={csCfg.variant} appearance={csCfg.appearance} size="sm">{csCfg.label}</Badge>
-                      {cc.bankName && <span className="text-xs text-muted-foreground">ธนาคาร: {cc.bankName}</span>}
-                      <span className="text-xs text-muted-foreground">{formatDateShort(cc.createdAt)}</span>
-                      {cc.contract && <span className="text-xs text-primary">สัญญา: {cc.contract.contractNumber}</span>}
-                    </div>
-                    {cc.status === 'PENDING' && (
-                      <button onClick={() => analyzeCreditMutation.mutate(cc.id)} disabled={analyzeCreditMutation.isPending} className="px-3 py-1 text-xs bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50">
-                        {analyzeCreditMutation.isPending ? 'กำลังวิเคราะห์...' : 'AI วิเคราะห์'}
-                      </button>
-                    )}
-                  </div>
-                  {cc.aiScore !== null && (
-                    <div className="flex items-center gap-4">
-                      <div className={`text-2xl font-bold ${cc.aiScore >= 70 ? 'text-success' : cc.aiScore >= 50 ? 'text-warning' : 'text-destructive'}`}>{cc.aiScore}</div>
-                      <div className="flex-1">
-                        <div className="w-full bg-border rounded-full h-2">
-                          <div className={`h-2 rounded-full ${cc.aiScore >= 70 ? 'bg-success' : cc.aiScore >= 50 ? 'bg-warning' : 'bg-destructive'}`} style={{ width: `${cc.aiScore}%` }} />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  {cc.aiSummary && <div className="text-xs text-muted-foreground">{cc.aiSummary}</div>}
-                  {cc.aiRecommendation && <div className={`text-xs font-medium p-2 rounded ${cc.aiScore && cc.aiScore >= 70 ? 'bg-success/5 dark:bg-success/10 text-success' : cc.aiScore && cc.aiScore >= 50 ? 'bg-warning/10 text-warning' : 'bg-destructive/5 dark:bg-destructive/10 text-destructive'}`}>{cc.aiRecommendation}</div>}
-                  {cc.checkedBy && <div className="text-xs text-primary">ตรวจสอบโดย: {cc.checkedBy.name}{cc.reviewNotes ? ` - ${cc.reviewNotes}` : ''}</div>}
-                </div>
-              );
-            })}
+            {creditChecks.map((cc) => (
+              <CreditCheckCard
+                key={cc.id}
+                cc={cc}
+                canOverride={!!canEdit}
+                isAnalyzing={analyzeCreditMutation.isPending}
+                onAnalyze={(ccId) => analyzeCreditMutation.mutate(ccId)}
+                onOverride={(ccId) => {
+                  setOverrideId(ccId);
+                  setOverrideStatus('');
+                  setOverrideNotes('');
+                }}
+                onViewStatement={(url) => window.open(url, '_blank', 'noopener,noreferrer')}
+              />
+            ))}
           </div>
         ) : (
           <div className="text-center py-6 text-sm text-muted-foreground">ยังไม่มีประวัติการตรวจเครดิต</div>
@@ -1250,6 +1232,32 @@ export default function CustomerDetailPage() {
         </div>
       </div>
       )}
+
+      <CreditCheckCreateDialog
+        open={showCreditDialog}
+        onClose={() => setShowCreditDialog(false)}
+        preselectedCustomer={customer ? {
+          id: customer.id,
+          name: customer.name,
+          phone: customer.phone,
+          nationalId: customer.nationalId,
+          salary: customer.salary,
+          occupation: customer.occupation,
+          addressCurrentType: null,
+          salaryPayDay: null,
+        } : null}
+      />
+
+      <CreditCheckOverrideDialog
+        open={!!overrideId}
+        onClose={() => setOverrideId(null)}
+        status={overrideStatus}
+        onStatusChange={setOverrideStatus}
+        notes={overrideNotes}
+        onNotesChange={setOverrideNotes}
+        isPending={overrideCreditMutation.isPending}
+        onConfirm={() => overrideCreditMutation.mutate()}
+      />
     </div>
   );
 }

@@ -279,14 +279,16 @@ POST /customers/pre-check
 - Remove old customer creation modal in `/customers` list (replace with wizard link)
 - E2E tests: walk-in → pre-check → full → contract
 
-## 13. Open Questions / Decisions Needed
+## 13. Decisions (resolved 2026-04-20)
 
-1. **Pre-check AI threshold** — ค่าเริ่มต้น score ≥ 50 (tunable ที่ settings)?
-2. **Statement เดือนล่าสุด วันที่อะไร** — อนุญาต statement เก่าสุดกี่วัน? (แนะนำ 60 วัน)
-3. **Tier thresholds** — ควรให้เจ้าของปรับได้ใน settings หรือ hardcode?
-4. **Manager review queue** — แยก page ใหม่ หรือรวมใน `/customers` ด้วย filter?
-5. **เส้นแบ่ง Tier GOOD → NEW** — ปัจจุบันใช้ closedContracts ≥ 1. ถ้าลูกค้ามี active contract ยังไม่ปิดแต่จ่ายตรงเวลา เอามานับไหม?
-6. **Pre-check retry cost** — ถ้า sales พยายาม pre-check ซ้ำกับลูกค้าคนเดิมภายใน 1 ชั่วโมง จะเก็บผลเดิมหรือรันใหม่? (แนะนำ cache 1 ชั่วโมง)
+| # | Question | Decision |
+|---|---|---|
+| 1 | Pre-check AI threshold | **score ≥ 50 PASS** / 40-49 REVIEW / < 40 FAIL. Hardcoded v1, configurable in v2. |
+| 2 | Statement max age | **60 วัน** จากเดือนล่าสุดใน statement |
+| 3 | Tier thresholds | **Hardcoded v1** in service file. Move to settings page in v2 if owner wants to tune. |
+| 4 | Manager review queue | **Filter in `/customers`** — add `tier=RISKY` + `creditCheckStatus=UNDER_REVIEW` filter chips. No new page. |
+| 5 | Tier GOOD eligibility | **Count active contract** with 100% on-time + ≥ 3 payments as qualifying (equivalent to a partial "closed" record). Keeps returning-but-still-paying customers in GOOD tier. |
+| 6 | Pre-check cache duration | **1 ชั่วโมง** for same customer + same statement file hash. Re-run if new statement uploaded. |
 
 ## 14. Risks
 

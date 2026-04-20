@@ -14,7 +14,9 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { CustomersService } from './customers.service';
 import { CustomerTierService } from './customer-tier.service';
+import { CustomerPreCheckService } from './customer-precheck.service';
 import type { CustomerTierResponse } from './dto/tier.dto';
+import { CustomerPreCheckDto, CustomerPreCheckResponse } from './dto/precheck.dto';
 import { CreateCustomerDto, UpdateCustomerDto } from './dto/customer.dto';
 import { UploadDocumentDto, DeleteDocumentDto } from './dto/document.dto';
 import { PaginationDto } from '../../common/dto/pagination.dto';
@@ -36,6 +38,7 @@ export class CustomersController {
     private customersService: CustomersService,
     private piiAudit: PiiAuditService,
     private readonly tierService: CustomerTierService,
+    private readonly preCheckService: CustomerPreCheckService,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -215,6 +218,12 @@ export class CustomersController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   async getTier(@Param('id') id: string): Promise<CustomerTierResponse> {
     return this.tierService.getCustomerTier(id);
+  }
+
+  @Post('pre-check')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  async preCheck(@Body() body: CustomerPreCheckDto): Promise<CustomerPreCheckResponse> {
+    return this.preCheckService.runPreCheck(body);
   }
 
   @Post()

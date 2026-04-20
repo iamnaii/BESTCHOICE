@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import { CustomersController } from './customers.controller';
 import { CustomersService } from './customers.service';
 import { CustomerTierService } from './customer-tier.service';
+import { CustomerPreCheckService } from './customer-precheck.service';
 import { PiiAuditService } from '../pii/pii-audit.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -12,6 +13,7 @@ describe('CustomersController PII (Phase 5)', () => {
   let service: { findOne: jest.Mock; findAll: jest.Mock; search: jest.Mock };
   let piiAudit: { logDecryption: jest.Mock };
   let tierService: CustomerTierService;
+  let preCheckService: CustomerPreCheckService;
 
   beforeEach(async () => {
     service = {
@@ -27,6 +29,7 @@ describe('CustomersController PII (Phase 5)', () => {
         { provide: CustomersService, useValue: service },
         { provide: PiiAuditService, useValue: piiAudit },
         { provide: CustomerTierService, useValue: { getCustomerTier: jest.fn() } },
+        { provide: CustomerPreCheckService, useValue: { runPreCheck: jest.fn() } },
       ],
     })
       .overrideGuard(JwtAuthGuard)
@@ -39,6 +42,7 @@ describe('CustomersController PII (Phase 5)', () => {
 
     controller = module.get(CustomersController);
     tierService = module.get(CustomerTierService);
+    preCheckService = module.get(CustomerPreCheckService);
   });
 
   const reqOf = (role: string) =>
@@ -129,6 +133,23 @@ describe('CustomersController PII (Phase 5)', () => {
       const result = await controller.getTier('cust-1');
       expect(tierSpy).toHaveBeenCalledWith('cust-1');
       expect(result.tier).toBe('GOLD');
+    });
+  });
+
+  describe('POST /customers/pre-check', () => {
+    it('delegates to service with body', async () => {
+      const mockResp = {
+        customerId: 'cust-1',
+        isNewCustomer: true,
+        tier: 'NEW' as const,
+        decision: 'REVIEW' as const,
+        reasons: [],
+      };
+      const spy = jest.spyOn(preCheckService, 'runPreCheck').mockResolvedValue(mockResp);
+      const body = { nationalId: '1234567890123', phone: '0812345678' };
+      const result = await controller.preCheck(body);
+      expect(spy).toHaveBeenCalledWith(body);
+      expect(result.decision).toBe('REVIEW');
     });
   });
 });

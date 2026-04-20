@@ -1,0 +1,172 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { createHash } from 'node:crypto';
+import { PrismaService } from '../../prisma/prisma.service';
+import { CustomerTierService } from './customer-tier.service';
+import type { CustomerTier } from './dto/tier.dto';
+import type { CustomerPreCheckResponse, PreCheckDecision } from './dto/precheck.dto';
+
+const PASS_THRESHOLD = 50;
+const REVIEW_THRESHOLD = 40;
+const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+interface CacheEntry {
+  result: CustomerPreCheckResponse;
+  expires: number;
+}
+
+@Injectable()
+export class CustomerPreCheckService {
+  private readonly logger = new Logger(CustomerPreCheckService.name);
+  private readonly cache = new Map<string, CacheEntry>();
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly tierService: CustomerTierService,
+  ) {}
+
+  decideOutcome(
+    tier: CustomerTier,
+    aiScore: number | undefined,
+  ): { decision: PreCheckDecision; reasons: { code: string; message: string }[] } {
+    const reasons: { code: string; message: string }[] = [];
+
+    if (tier === 'BLACKLIST') {
+      reasons.push({ code: 'BLACKLIST', message: 'ลูกค้าอยู่ในรายชื่อห้ามทำสัญญา' });
+      return { decision: 'FAIL', reasons };
+    }
+    if (tier === 'RISKY') {
+      reasons.push({ code: 'RISKY_TIER', message: 'มีประวัติค้างชำระ — ต้องให้ผู้จัดการตรวจเพิ่ม' });
+      return { decision: 'REVIEW', reasons };
+    }
+    if (tier === 'GOLD') {
+      reasons.push({ code: 'GOLD_TIER', message: 'ลูกค้า VIP — ผ่านเกณฑ์อัตโนมัติ' });
+      return { decision: 'PASS', reasons };
+    }
+    if (tier === 'GOOD') {
+      if (aiScore === undefined) {
+        reasons.push({ code: 'GOOD_HISTORY', message: 'ประวัติดี — ผ่านเกณฑ์' });
+        return { decision: 'PASS', reasons };
+      }
+      if (aiScore >= PASS_THRESHOLD) {
+        reasons.push({ code: 'GOOD_HISTORY_AI_PASS', message: `ประวัติดี + AI ${aiScore}` });
+        return { decision: 'PASS', reasons };
+      }
+      if (aiScore >= REVIEW_THRESHOLD) {
+        reasons.push({
+          code: 'GOOD_HISTORY_AI_BORDERLINE',
+          message: `ประวัติดี แต่ AI ${aiScore} ก้ำกึ่ง`,
+        });
+        return { decision: 'REVIEW', reasons };
+      }
+      reasons.push({ code: 'AI_FAIL_OVERRIDE', message: `ประวัติดี แต่ AI ${aiScore} ต่ำเกิน` });
+      return { decision: 'FAIL', reasons };
+    }
+    // NEW
+    if (aiScore === undefined) {
+      reasons.push({
+        code: 'NEW_NO_DATA',
+        message: 'ลูกค้าใหม่ยังไม่มี statement — ต้องตรวจเพิ่ม',
+      });
+      return { decision: 'REVIEW', reasons };
+    }
+    if (aiScore >= PASS_THRESHOLD) {
+      reasons.push({ code: 'NEW_AI_PASS', message: `ลูกค้าใหม่ AI ${aiScore} ผ่าน` });
+      return { decision: 'PASS', reasons };
+    }
+    if (aiScore >= REVIEW_THRESHOLD) {
+      reasons.push({ code: 'NEW_AI_BORDERLINE', message: `ลูกค้าใหม่ AI ${aiScore} ก้ำกึ่ง` });
+      return { decision: 'REVIEW', reasons };
+    }
+    reasons.push({ code: 'NEW_AI_FAIL', message: `ลูกค้าใหม่ AI ${aiScore} ต่ำ` });
+    return { decision: 'FAIL', reasons };
+  }
+
+  private cacheKey(nationalId: string, statementHash?: string) {
+    return `${nationalId}:${statementHash ?? 'none'}`;
+  }
+
+  private hashStatement(files?: string[]): string | undefined {
+    if (!files || files.length === 0) return undefined;
+    return createHash('sha256').update(files.join('|')).digest('hex').slice(0, 16);
+  }
+
+  async runPreCheck(input: {
+    nationalId: string;
+    phone: string;
+    bankName?: string;
+    statementFiles?: string[];
+  }): Promise<CustomerPreCheckResponse> {
+    const stmtHash = this.hashStatement(input.statementFiles);
+    const key = this.cacheKey(input.nationalId, stmtHash);
+    const cached = this.cache.get(key);
+    if (cached && cached.expires > Date.now()) {
+      this.logger.debug(`pre-check cache hit for ${input.nationalId}`);
+      return cached.result;
+    }
+
+    let customer = await this.prisma.customer.findFirst({
+      where: { nationalId: input.nationalId, deletedAt: null },
+      select: { id: true },
+    });
+    let isNewCustomer = false;
+    if (!customer) {
+      customer = await this.prisma.customer.create({
+        data: {
+          nationalId: input.nationalId,
+          name: 'ลูกค้าใหม่ (Pre-check)',
+          phone: input.phone,
+          creditCheckStatus: 'UNDER_REVIEW',
+        },
+        select: { id: true },
+      });
+      isNewCustomer = true;
+    }
+
+    const tierResp = await this.tierService.getCustomerTier(customer.id);
+
+    let creditCheckId: string | undefined;
+    const aiScore: number | undefined = undefined;
+
+    if (input.statementFiles && input.statementFiles.length > 0 && tierResp.tier !== 'BLACKLIST') {
+      const cc = await this.prisma.creditCheck.create({
+        data: {
+          customerId: customer.id,
+          bankName: input.bankName || null,
+          statementFiles: input.statementFiles,
+          statementMonths: 3,
+          checkType: 'PRE',
+          status: 'PENDING',
+        },
+        select: { id: true, aiScore: true },
+      });
+      creditCheckId = cc.id;
+    }
+
+    const outcome = this.decideOutcome(tierResp.tier, aiScore);
+
+    const nextStatus =
+      outcome.decision === 'PASS'
+        ? 'PRE_CHECK_PASSED'
+        : outcome.decision === 'FAIL'
+          ? 'REJECTED'
+          : 'UNDER_REVIEW';
+    await this.prisma.customer.update({
+      where: { id: customer.id },
+      data: { creditCheckStatus: nextStatus },
+    });
+
+    const reasons = [...tierResp.reasons, ...outcome.reasons];
+    const result: CustomerPreCheckResponse = {
+      customerId: customer.id,
+      isNewCustomer,
+      tier: tierResp.tier,
+      decision: outcome.decision,
+      reasons,
+      aiScore,
+      creditCheckId,
+    };
+
+    this.cache.set(key, { result, expires: Date.now() + CACHE_TTL_MS });
+    return result;
+  }
+}

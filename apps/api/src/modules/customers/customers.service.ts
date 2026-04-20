@@ -5,10 +5,14 @@ import { paginatedResponse } from '../../common/helpers/pagination.helper';
 import { CreateCustomerDto, UpdateCustomerDto } from './dto/customer.dto';
 import { encryptPII, decryptPII, isEncrypted } from '../../utils/crypto.util';
 import { hashPII, encryptReferencesJson, decryptReferencesJson } from '../../utils/pii.util';
+import { CustomerTierService } from './customer-tier.service';
 
 @Injectable()
 export class CustomersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly tierService: CustomerTierService,
+  ) {}
 
   async findAll(
     search?: string,
@@ -20,6 +24,7 @@ export class CustomersService {
     branchId?: string,
     sortBy?: string,
     sortOrder?: string,
+    tier?: string,
   ) {
     const where: Record<string, unknown> = { deletedAt: null };
 
@@ -136,6 +141,21 @@ export class CustomersService {
       });
     }
 
+    // Compute tier for each customer in parallel (bounded by page limit)
+    const withTier = await Promise.all(
+      enriched.map(async (c) => {
+        try {
+          const t = await this.tierService.getCustomerTier(c.id);
+          return { ...c, tier: t.tier };
+        } catch {
+          return { ...c, tier: 'NEW' as const };
+        }
+      }),
+    );
+
+    // Apply tier filter after compute (in-memory — valid for small shops)
+    const filtered = tier ? withTier.filter((c) => c.tier === tier) : withTier;
+
     const totalCustomers = await this.prisma.customer.count({ where: { deletedAt: null } });
 
     const summary = {
@@ -145,7 +165,7 @@ export class CustomersService {
       newThisMonth,
     };
 
-    return { ...paginatedResponse(enriched, total, page, limit), summary };
+    return { ...paginatedResponse(filtered, total, page, limit), summary };
   }
 
   async findOne(id: string) {

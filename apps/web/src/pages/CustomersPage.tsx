@@ -35,6 +35,8 @@ import {
 import type { OcrResult } from '@/types/ocr';
 import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, creditCheckStatusMap } from '@/lib/status-badges';
+import CustomerTierBadge from '@/components/customer/CustomerTierBadge';
+import type { CustomerTier } from '@/types/customer-tier';
 
 
 interface Customer {
@@ -52,6 +54,7 @@ interface Customer {
   overdueContracts: number;
   latestCreditStatus: string | null;
   latestCreditScore: number | null;
+  tier?: CustomerTier;
 }
 
 interface CustomerSummary {
@@ -149,6 +152,7 @@ export default function CustomersPage() {
   const [hasOverdueFilter, setHasOverdueFilter] = useState(false);
   const [creditStatusFilter, setCreditStatusFilter] = useState('');
   const [branchFilter, setBranchFilter] = useState('');
+  const [tierFilter, setTierFilter] = useState('');
   const [sortBy, setSortBy] = useState('');
   const [sortOrder, setSortOrder] = useState('asc');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -171,7 +175,7 @@ export default function CustomersPage() {
   // Smart Card reader state
   const [cardReaderLoading, setCardReaderLoading] = useState(false);
 
-  useEffect(() => { setPage(1); }, [debouncedSearch, contractStatusFilter, hasOverdueFilter, creditStatusFilter, branchFilter, sortBy, sortOrder]);
+  useEffect(() => { setPage(1); }, [debouncedSearch, contractStatusFilter, hasOverdueFilter, creditStatusFilter, branchFilter, tierFilter, sortBy, sortOrder]);
 
   // Sync current address when "same as ID card" is checked
   useEffect(() => {
@@ -181,7 +185,7 @@ export default function CustomersPage() {
   }, [sameAddress, addressIdCard]);
 
   const { data: result, isLoading, isError, error, refetch } = useQuery<CustomersResponse>({
-    queryKey: ['customers', debouncedSearch, page, contractStatusFilter, hasOverdueFilter, creditStatusFilter, branchFilter, sortBy, sortOrder],
+    queryKey: ['customers', debouncedSearch, page, contractStatusFilter, hasOverdueFilter, creditStatusFilter, branchFilter, tierFilter, sortBy, sortOrder],
     queryFn: async () => {
       const params: Record<string, string> = {};
       if (debouncedSearch) params.search = debouncedSearch;
@@ -189,6 +193,7 @@ export default function CustomersPage() {
       if (hasOverdueFilter) params.hasOverdue = 'true';
       if (creditStatusFilter) params.creditStatus = creditStatusFilter;
       if (branchFilter) params.branchId = branchFilter;
+      if (tierFilter) params.tier = tierFilter;
       if (sortBy) params.sortBy = sortBy;
       if (sortBy) params.sortOrder = sortOrder;
       params.page = String(page);
@@ -607,6 +612,13 @@ export default function CustomersPage() {
       },
     },
     {
+      key: 'tier',
+      label: 'ระดับ',
+      hideable: true,
+      render: (c: Customer) =>
+        c.tier ? <CustomerTierBadge tier={c.tier} /> : null,
+    },
+    {
       key: 'createdAt',
       label: 'วันที่เพิ่ม',
       hideable: true,
@@ -724,6 +736,22 @@ export default function CustomersPage() {
               <SelectItem value="REJECTED">ไม่ผ่าน</SelectItem>
               <SelectItem value="PENDING">รอตรวจ</SelectItem>
               <SelectItem value="MANUAL_REVIEW">รอตรวจสอบด้วยตนเอง</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select
+            value={tierFilter || 'ALL'}
+            onValueChange={(v) => setTierFilter(v === 'ALL' ? '' : v)}
+          >
+            <SelectTrigger className="h-10">
+              <SelectValue placeholder="ทุกระดับลูกค้า" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">ทุกระดับลูกค้า</SelectItem>
+              <SelectItem value="GOLD">VIP (Gold)</SelectItem>
+              <SelectItem value="GOOD">ลูกค้าดี</SelectItem>
+              <SelectItem value="NEW">ลูกค้าใหม่</SelectItem>
+              <SelectItem value="RISKY">ต้องระวัง</SelectItem>
+              <SelectItem value="BLACKLIST">ห้ามทำสัญญา</SelectItem>
             </SelectContent>
           </Select>
         </div>

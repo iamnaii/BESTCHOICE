@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
-import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -57,7 +56,7 @@ const methodLabels: Record<string, string> = {
   QR_EWALLET: 'QR/E-Wallet',
 };
 
-function ReceiptsPage() {
+export default function ReceiptsTab() {
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const debouncedSearch = useDebounce(searchTerm, 400);
@@ -219,11 +218,6 @@ function ReceiptsPage() {
 
   return (
     <div className="animate-fade-in">
-      <PageHeader
-        title="ใบเสร็จรับเงิน (e-Receipt)"
-        subtitle="ค้นหาและจัดการใบเสร็จรับเงินอิเล็กทรอนิกส์"
-      />
-
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6">
         <Card className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
@@ -332,5 +326,3 @@ function ReceiptsPage() {
     </div>
   );
 }
-
-export default ReceiptsPage;

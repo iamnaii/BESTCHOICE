@@ -1,10 +1,11 @@
-import { useState, useMemo, useCallback, useRef } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useSearchParams } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import SlipReviewTab from '@/components/payment/SlipReviewTab';
+import ReceiptsTab from './components/ReceiptsTab';
 import { compressImageForOcr } from '@/lib/compressImage';
 import { useDebounce } from '@/hooks/useDebounce';
 import PageHeader from '@/components/ui/PageHeader';
@@ -26,9 +27,16 @@ export default function PaymentsPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const isOwner = user?.role === 'OWNER';
+  const canSeeReceipts = user && ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'].includes(user.role);
   const [searchParams, setSearchParams] = useSearchParams();
-  const tab = (searchParams.get('tab') || 'pending') as 'pending' | 'summary' | 'slip-review';
-  const setTab = (value: 'pending' | 'summary' | 'slip-review') => setSearchParams({ tab: value });
+  const tab = (searchParams.get('tab') || 'pending') as 'pending' | 'summary' | 'slip-review' | 'receipts';
+  const setTab = (value: 'pending' | 'summary' | 'slip-review' | 'receipts') => setSearchParams({ tab: value });
+
+  // Redirect SALES users away from receipts tab (no permission)
+  useEffect(() => {
+    if (tab === 'receipts' && !canSeeReceipts) setTab('pending');
+  }, [tab, canSeeReceipts]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const [statusFilter, setStatusFilter] = useState('');
   const [branchFilter, setBranchFilter] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
@@ -453,6 +461,14 @@ export default function PaymentsPage() {
         >
           ตรวจสอบสลิป
         </button>
+        {canSeeReceipts && (
+          <button
+            onClick={() => setTab('receipts')}
+            className={`px-5 py-3 text-sm font-medium border-b-2 -mb-px transition-all ${tab === 'receipts' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          >
+            ใบเสร็จ
+          </button>
+        )}
       </div>
 
       {/* Pending Tab */}
@@ -564,6 +580,9 @@ export default function PaymentsPage() {
 
       {/* Slip Review Tab */}
       {tab === 'slip-review' && <SlipReviewTab />}
+
+      {/* Receipts Tab */}
+      {tab === 'receipts' && canSeeReceipts && <ReceiptsTab />}
 
       {/* Payment History Sheet */}
       <PaymentHistorySheet

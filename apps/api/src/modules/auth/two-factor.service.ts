@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { authenticator } from '@otplib/preset-default';
 import * as QRCode from 'qrcode';
 import * as crypto from 'crypto';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
 // Configure TOTP window (allow 1 step before/after for clock drift)
@@ -88,16 +89,17 @@ export class TwoFactorService {
       throw new BadRequestException('รหัส OTP ไม่ถูกต้อง กรุณาลองใหม่');
     }
 
-    // Generate 8 recovery codes
+    // Generate 8 recovery codes (stored as plain JSON array — codes are single-use)
     const recoveryCodes = Array.from({ length: 8 }, () =>
-      crypto.randomBytes(4).toString('hex'),
+      crypto.randomBytes(4).toString('hex').toUpperCase(),
     );
 
     await this.prisma.user.update({
       where: { id: userId },
       data: {
         twoFactorEnabled: true,
-        twoFactorBackup: this.encrypt(JSON.stringify(recoveryCodes)),
+        twoFactorEnabledAt: new Date(),
+        twoFactorBackupCodes: recoveryCodes,
       },
     });
 
@@ -111,13 +113,14 @@ export class TwoFactorService {
   async disableTwoFactor(userId: string, code: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { twoFactorSecret: true, twoFactorEnabled: true, twoFactorBackup: true },
+      select: { twoFactorSecret: true, twoFactorEnabled: true, twoFactorBackupCodes: true },
     });
     if (!user || !user.twoFactorEnabled) {
       throw new BadRequestException('ยังไม่ได้เปิดใช้ 2FA');
     }
 
-    const isValid = this.verifyCode(user.twoFactorSecret!, user.twoFactorBackup, code);
+    const backupCodes = user.twoFactorBackupCodes as string[] | null;
+    const isValid = this.verifyCode(user.twoFactorSecret!, backupCodes, code);
     if (!isValid) {
       throw new UnauthorizedException('รหัส OTP หรือ recovery code ไม่ถูกต้อง');
     }
@@ -127,7 +130,8 @@ export class TwoFactorService {
       data: {
         twoFactorEnabled: false,
         twoFactorSecret: null,
-        twoFactorBackup: null,
+        twoFactorBackupCodes: Prisma.JsonNull,
+        twoFactorEnabledAt: null,
       },
     });
 
@@ -138,7 +142,7 @@ export class TwoFactorService {
   /**
    * Verify TOTP code or recovery code during login.
    */
-  verifyCode(encryptedSecret: string, encryptedBackup: string | null, code: string): boolean {
+  verifyCode(encryptedSecret: string, backupCodes: string[] | null, code: string): boolean {
     const secret = this.decrypt(encryptedSecret);
 
     // Try TOTP first
@@ -146,19 +150,13 @@ export class TwoFactorService {
       return true;
     }
 
-    // Try recovery codes (8-char hex)
-    if (encryptedBackup && code.length === 8) {
-      try {
-        const codes: string[] = JSON.parse(this.decrypt(encryptedBackup));
-        const idx = codes.indexOf(code);
-        if (idx !== -1) {
-          // Remove used recovery code
-          codes.splice(idx, 1);
-          // Note: caller should save the updated backup codes
-          return true;
-        }
-      } catch {
-        // Invalid backup format
+    // Try recovery codes (8-char hex uppercase)
+    if (backupCodes && code.length === 8) {
+      const upperCode = code.toUpperCase();
+      const idx = backupCodes.indexOf(upperCode);
+      if (idx !== -1) {
+        // Note: caller should consume the used code via consumeRecoveryCode
+        return true;
       }
     }
 
@@ -171,22 +169,19 @@ export class TwoFactorService {
   async consumeRecoveryCode(userId: string, code: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { twoFactorBackup: true },
+      select: { twoFactorBackupCodes: true },
     });
-    if (!user?.twoFactorBackup) return;
+    if (!user?.twoFactorBackupCodes) return;
 
-    try {
-      const codes: string[] = JSON.parse(this.decrypt(user.twoFactorBackup));
-      const idx = codes.indexOf(code);
-      if (idx !== -1) {
-        codes.splice(idx, 1);
-        await this.prisma.user.update({
-          where: { id: userId },
-          data: { twoFactorBackup: this.encrypt(JSON.stringify(codes)) },
-        });
-      }
-    } catch {
-      // Invalid format — skip
+    const codes = user.twoFactorBackupCodes as string[];
+    const upperCode = code.toUpperCase();
+    const idx = codes.indexOf(upperCode);
+    if (idx !== -1) {
+      codes.splice(idx, 1);
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: { twoFactorBackupCodes: codes },
+      });
     }
   }
 
@@ -197,5 +192,37 @@ export class TwoFactorService {
       select: { twoFactorEnabled: true },
     });
     return user?.twoFactorEnabled ?? false;
+  }
+
+  /**
+   * Verify OTP during the 2-step login flow (called after temp token is validated).
+   * Tries TOTP first, then backup codes (single-use, consumed on success).
+   */
+  async verifyLogin(
+    userId: string,
+    token: string,
+  ): Promise<{ method: 'TOTP' | 'BACKUP_CODE' }> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { twoFactorSecret: true, twoFactorEnabled: true, twoFactorBackupCodes: true },
+    });
+
+    if (!user || !user.twoFactorEnabled || !user.twoFactorSecret) {
+      throw new BadRequestException('ผู้ใช้ยังไม่ได้เปิดใช้ 2FA');
+    }
+
+    const backupCodes = user.twoFactorBackupCodes as string[] | null;
+
+    // Try TOTP
+    if (this.verifyCode(user.twoFactorSecret, backupCodes, token)) {
+      // Check if it was TOTP (6 chars) or backup (8 chars)
+      if (token.length === 8) {
+        await this.consumeRecoveryCode(userId, token);
+        return { method: 'BACKUP_CODE' };
+      }
+      return { method: 'TOTP' };
+    }
+
+    throw new UnauthorizedException('รหัส OTP หรือ backup code ไม่ถูกต้อง');
   }
 }

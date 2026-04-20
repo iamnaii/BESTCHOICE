@@ -369,10 +369,13 @@ model User {
   startDate        DateTime? @map("start_date")
   nationalId       String?   @map("national_id")
   birthDate        DateTime? @map("birth_date")
-  // Two-Factor Authentication (TOTP)
-  twoFactorEnabled Boolean   @default(false) @map("two_factor_enabled")
-  twoFactorSecret  String?   @map("two_factor_secret") // encrypted TOTP secret
-  twoFactorBackup  String?   @map("two_factor_backup") // encrypted recovery codes (JSON)
+  // === Batch C2: 2FA ===
+  twoFactorSecret           String?    @map("two_factor_secret") @db.Text
+  twoFactorEnabled          Boolean    @default(false) @map("two_factor_enabled")
+  twoFactorEnabledAt        DateTime?  @map("two_factor_enabled_at")
+  twoFactorBackupCodes      Json?      @map("two_factor_backup_codes")
+  twoFactorRequiredAfter    DateTime?  @map("two_factor_required_after")
+  twoFactorOtpRequests      TwoFactorOtpRequest[]
 
   // Brute-force protection: incremented on failed login, reset on success.
   // When failedLoginAttempts >= LOCKOUT_THRESHOLD the account is locked
@@ -4278,6 +4281,23 @@ model BroadcastApproval {
   @@index([broadcastId])
   @@index([approverId])
   @@map("broadcast_approvals")
+}
+
+/// One-time OTP requests for 2FA operations (SETUP, BACKUP_CODE_USE, LOGIN_OTP_FALLBACK).
+/// Use-once + TTL cleanup — updatedAt/deletedAt intentionally omitted.
+model TwoFactorOtpRequest {
+  id           String    @id @default(uuid())
+  userId       String    @map("user_id")
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose      String                                                       // SETUP, BACKUP_CODE_USE, LOGIN_OTP_FALLBACK
+  codeHash     String    @map("code_hash")
+  expiresAt    DateTime  @map("expires_at")
+  consumedAt   DateTime? @map("consumed_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("two_factor_otp_requests")
 }
 
 // ============================================================

@@ -89,6 +89,7 @@ import { ShopAuthSocialModule } from './modules/shop-auth-social/shop-auth-socia
 import { ShopLineChatModule } from './modules/shop-line-chat/shop-line-chat.module';
 import { DataAuditModule } from './modules/data-audit/data-audit.module';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
+import { TwoFactorModule } from './modules/two-factor/two-factor.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { SecurityMiddleware } from './modules/audit/security.middleware';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
@@ -241,6 +242,8 @@ import { AppCacheModule } from './cache/cache.module';
     AnalyticsModule,
     // Data Audit — automated DB health checks (OWNER only)
     DataAuditModule,
+    // Two-Factor Authentication management (enroll, confirm, disable, backup codes)
+    TwoFactorModule,
   ],
   controllers: [AppController],
   providers: [

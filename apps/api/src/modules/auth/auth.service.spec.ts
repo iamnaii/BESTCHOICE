@@ -24,6 +24,9 @@ describe('AuthService', () => {
     isActive: true,
     failedLoginAttempts: 0,
     lockedUntil: null,
+    deletedAt: null,
+    twoFactorEnabled: false,
+    twoFactorRequiredAfter: null,
     branch: { id: 'branch-1', name: 'สาขาทดสอบ' },
   };
 
@@ -99,7 +102,7 @@ describe('AuthService', () => {
   });
 
   describe('login', () => {
-    it('should return tokens on successful login', async () => {
+    it('should return AUTHENTICATED state with tokens on successful login', async () => {
       (prisma.user.findUnique as jest.Mock).mockResolvedValue(mockUser);
 
       const result = await service.login({
@@ -107,10 +110,13 @@ describe('AuthService', () => {
         password: 'password123',
       });
 
+      expect(result.state).toBe('AUTHENTICATED');
       expect(result).toHaveProperty('accessToken');
       expect(result).toHaveProperty('refreshToken');
-      expect(result.user.email).toBe('test@test.com');
-      expect(result.user.role).toBe('SALES');
+      if (result.state === 'AUTHENTICATED') {
+        expect((result.user as { email: string }).email).toBe('test@test.com');
+        expect((result.user as { role: string }).role).toBe('SALES');
+      }
       expect(prisma.refreshToken.create).toHaveBeenCalled();
     });
 
@@ -268,6 +274,95 @@ describe('AuthService', () => {
         where: { userId: 'user-123', isRevoked: false },
         data: { isRevoked: true, revokedAt: expect.any(Date) },
       });
+    });
+  });
+
+  // ─── 2-step login state machine (Task 4) ─────────────────────────────────
+
+  describe('login — 2FA state machine', () => {
+    it('returns state AUTHENTICATED when user has no 2FA and no setup deadline', async () => {
+      (prisma.user.findUnique as jest.Mock).mockResolvedValue({
+        ...mockUser,
+        twoFactorEnabled: false,
+        twoFactorRequiredAfter: null,
+      });
+
+      const result = await service.login({ email: 'test@test.com', password: 'password123' });
+      expect(result.state).toBe('AUTHENTICATED');
+      if (result.state === 'AUTHENTICATED') {
+        expect(result).toHaveProperty('accessToken');
+        expect(result).toHaveProperty('refreshToken');
+      }
+    });
+
+    it('returns state OTP_REQUIRED + tempToken when user has 2FA enabled', async () => {
+      (prisma.user.findUnique as jest.Mock).mockResolvedValue({
+        ...mockUser,
+        twoFactorEnabled: true,
+        twoFactorRequiredAfter: null,
+      });
+
+      const result = await service.login({ email: 'test@test.com', password: 'password123' });
+      expect(result.state).toBe('OTP_REQUIRED');
+      if (result.state === 'OTP_REQUIRED') {
+        expect(typeof result.tempToken).toBe('string');
+        expect(result.tempToken.length).toBeGreaterThan(10);
+      }
+      // Full tokens must NOT be returned
+      expect((result as Record<string, unknown>)).not.toHaveProperty('accessToken');
+    });
+
+    it('returns state 2FA_SETUP_REQUIRED when enrollment deadline has passed', async () => {
+      (prisma.user.findUnique as jest.Mock).mockResolvedValue({
+        ...mockUser,
+        twoFactorEnabled: false,
+        twoFactorRequiredAfter: new Date(Date.now() - 1000), // deadline was 1 second ago
+      });
+
+      const result = await service.login({ email: 'test@test.com', password: 'password123' });
+      expect(result.state).toBe('2FA_SETUP_REQUIRED');
+      if (result.state === '2FA_SETUP_REQUIRED') {
+        expect(typeof result.tempToken).toBe('string');
+      }
+    });
+
+    it('loginWithTempToken returns full JWT after valid OTP verification', async () => {
+      // Mock the user lookup inside loginWithTempToken
+      (prisma.user.findUnique as jest.Mock).mockResolvedValue({
+        ...mockUser,
+        twoFactorEnabled: true,
+        branch: { id: 'branch-1', name: 'สาขาทดสอบ' },
+      });
+
+      // Generate a tempToken via internal sign (simulate OTP_REQUIRED state)
+      const mockTwoFactorSvc = {
+        verifyLogin: jest.fn().mockResolvedValue({ method: 'TOTP' }),
+      };
+
+      // We need a real JWT for tempToken — use JwtService mock to return signed value
+      // The mock JwtService.sign returns 'mock-access-token'
+      // and JwtService.verify is not mocked — so let's create a valid temp token via sign
+      // Since JwtService is mocked, we instead test that the service calls verifyTempToken
+      // and on valid result proceeds to issue full tokens.
+      // Use a real jwtService for this specific test would be better, so instead verify behavior:
+      const mockVerifyResult = { sub: 'user-1', scope: '2fa_login' };
+
+      // Monkey-patch verifyTempToken (private) by calling loginWithTempToken with a stub
+      // that bypasses the real verify — since jwtService.verify is not set up to return correct
+      // audience-verified payload in the mock, we test the downstream behavior instead.
+      // The approach: spy on the service's private method via (service as any).
+      jest.spyOn(service as unknown as Record<string, unknown>, 'verifyTempToken' as never)
+        .mockReturnValue(mockVerifyResult as never);
+
+      const result = await service.loginWithTempToken(
+        'mock-temp-token',
+        '123456',
+        mockTwoFactorSvc,
+      );
+
+      expect(result).toHaveProperty('accessToken');
+      expect(result).toHaveProperty('refreshToken');
+      expect(mockTwoFactorSvc.verifyLogin).toHaveBeenCalledWith('user-1', '123456');
     });
   });
 

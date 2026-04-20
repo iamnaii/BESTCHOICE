@@ -531,6 +531,8 @@ model Customer {
   // award twice. NULL = not yet awarded.
   referralAwardedAt DateTime?  @map("referral_awarded_at")
 
+  creditCheckStatus   CustomerCreditCheckStatus @default(NONE) @map("credit_check_status")
+
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
@@ -1731,6 +1733,7 @@ model CreditCheck {
   contractId       String?           @unique @map("contract_id")
   customerId       String            @map("customer_id")
   status           CreditCheckStatus @default(PENDING)
+  checkType        CreditCheckType   @default(FULL) @map("check_type")
   bankName         String?           @map("bank_name")
   statementFiles   String[]          @default([]) @map("statement_files")
   statementMonths  Int               @default(3) @map("statement_months")
@@ -2321,6 +2324,19 @@ enum EvidenceStatus {
   PENDING_REVIEW
   APPROVED
   REJECTED
+}
+
+enum CustomerCreditCheckStatus {
+  NONE
+  PRE_CHECK_PASSED
+  FULL_CHECK_PASSED
+  REJECTED
+  UNDER_REVIEW
+}
+
+enum CreditCheckType {
+  PRE
+  FULL
 }
 
 model PaymentLink {

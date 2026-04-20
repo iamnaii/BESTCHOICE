@@ -6,6 +6,7 @@ import { CheckCircle2 } from 'lucide-react';
 import { useCustomerIntake } from './hooks/useCustomerIntake';
 import IntakeStepIndicator from './components/IntakeStepIndicator';
 import QuickIntakeStep from './components/QuickIntakeStep';
+import PreCheckUploadStep from './components/PreCheckUploadStep';
 import PreCheckResultStep from './components/PreCheckResultStep';
 import FullIntakeStep from './components/FullIntakeStep';
 
@@ -35,7 +36,16 @@ export default function CustomerIntakePage() {
         <QuickIntakeStep
           form={intake.state.quickForm}
           onChange={intake.updateQuick}
+          onNext={() => intake.goTo('precheck')}
+        />
+      )}
+
+      {intake.state.step === 'precheck' && !intake.state.preCheckResult && (
+        <PreCheckUploadStep
+          form={intake.state.quickForm}
+          onChange={intake.updateQuick}
           onSubmit={intake.runPreCheck}
+          onBack={() => intake.goTo('quick')}
           isSubmitting={intake.isPreChecking}
         />
       )}
@@ -44,7 +54,7 @@ export default function CustomerIntakePage() {
         <PreCheckResultStep
           result={intake.state.preCheckResult}
           onProceed={intake.proceedToFull}
-          onCancel={() => intake.goTo('quick')}
+          onCancel={intake.resetPreCheck}
         />
       )}
 

@@ -45,7 +45,6 @@ const OWNER_PAGES: HealthRoute[] = [
   { url: '/pos', name: 'POS' },
   { url: '/sales', name: 'ประวัติการขาย' },
   { url: '/customers', name: 'รายชื่อลูกค้า' },
-  { url: '/credit-checks', name: 'ตรวจเครดิต' },
   { url: '/contracts', name: 'รายการสัญญา' },
   { url: '/contract-templates', name: 'เทมเพลตสัญญา' },
   { url: '/payments', name: 'การชำระเงิน' },

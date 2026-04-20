@@ -193,4 +193,36 @@ export class TwoFactorService {
     });
     return user?.twoFactorEnabled ?? false;
   }
+
+  /**
+   * Verify OTP during the 2-step login flow (called after temp token is validated).
+   * Tries TOTP first, then backup codes (single-use, consumed on success).
+   */
+  async verifyLogin(
+    userId: string,
+    token: string,
+  ): Promise<{ method: 'TOTP' | 'BACKUP_CODE' }> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { twoFactorSecret: true, twoFactorEnabled: true, twoFactorBackupCodes: true },
+    });
+
+    if (!user || !user.twoFactorEnabled || !user.twoFactorSecret) {
+      throw new BadRequestException('ผู้ใช้ยังไม่ได้เปิดใช้ 2FA');
+    }
+
+    const backupCodes = user.twoFactorBackupCodes as string[] | null;
+
+    // Try TOTP
+    if (this.verifyCode(user.twoFactorSecret, backupCodes, token)) {
+      // Check if it was TOTP (6 chars) or backup (8 chars)
+      if (token.length === 8) {
+        await this.consumeRecoveryCode(userId, token);
+        return { method: 'BACKUP_CODE' };
+      }
+      return { method: 'TOTP' };
+    }
+
+    throw new UnauthorizedException('รหัส OTP หรือ backup code ไม่ถูกต้อง');
+  }
 }

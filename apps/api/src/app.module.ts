@@ -82,6 +82,7 @@ import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { LoyaltyModule } from './modules/loyalty/loyalty.module';
 import { ShopTrackingModule } from './modules/shop-tracking/shop-tracking.module';
+import { ShopBotDefenseModule } from './modules/shop-bot-defense/shop-bot-defense.module';
 import { DataAuditModule } from './modules/data-audit/data-audit.module';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
@@ -219,6 +220,8 @@ import { AppCacheModule } from './cache/cache.module';
     LoyaltyModule,
     // Online Shop — visitor analytics
     ShopTrackingModule,
+    // Online Shop — bot defense + rate limiting
+    ShopBotDefenseModule,
     // MASTER: Management
     UsersModule,
     SettingsModule,

@@ -58,27 +58,41 @@ export class AuthController {
 
   @Post('login')
   @Throttle({ short: { ttl: 60000, limit: 10 } })
-  @ApiOperation({ summary: 'เข้าสู่ระบบ (email + password)' })
+  @ApiOperation({ summary: 'เข้าสู่ระบบ (email + password) — returns state machine' })
   async login(
     @Body() loginDto: LoginDto,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const meta = { ipAddress: req.ip, userAgent: req.headers['user-agent'] as string | undefined };
+    const meta = {
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'] as string | undefined,
+      acceptLanguage: req.headers['accept-language'] as string | undefined,
+    };
     const result = await this.authService.login(loginDto, meta);
 
-    // If user has 2FA enabled, require verification before issuing tokens
-    if (result.user && await this.twoFactorService.isTwoFactorEnabled(result.user.id)) {
-      // Don't return tokens yet — return a challenge
+    if (result.state === 'OTP_REQUIRED') {
+      // Credentials OK, 2FA enabled — client must call POST /auth/login/2fa
       return {
-        requiresTwoFactor: true,
-        userId: result.user.id,
+        state: 'OTP_REQUIRED',
+        tempToken: result.tempToken,
         message: 'กรุณากรอกรหัส OTP จาก Authenticator App',
       };
     }
 
+    if (result.state === '2FA_SETUP_REQUIRED') {
+      // Credentials OK, 2FA enrollment mandatory — client must set up 2FA
+      return {
+        state: '2FA_SETUP_REQUIRED',
+        tempToken: result.tempToken,
+        message: 'กรุณาตั้งค่า 2FA ก่อนเข้าใช้งานระบบ',
+      };
+    }
+
+    // AUTHENTICATED — full JWT issued
     setRefreshCookie(res, result.refreshToken);
     return {
+      state: 'AUTHENTICATED',
       accessToken: result.accessToken,
       user: result.user,
     };
@@ -86,22 +100,34 @@ export class AuthController {
 
   @Post('login/2fa')
   @Throttle({ short: { ttl: 60000, limit: 5 } })
-  @ApiOperation({ summary: 'เข้าสู่ระบบด้วย 2FA (email + password + OTP)' })
+  @ApiOperation({ summary: 'เข้าสู่ระบบด้วย 2FA โดยใช้ tempToken + OTP' })
   async loginWith2FA(
-    @Body() body: { email: string; password: string; code: string },
+    @Body() body: { tempToken: string; otp: string },
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const meta = { ipAddress: req.ip, userAgent: req.headers['user-agent'] as string | undefined };
-    const result = await this.authService.loginWith2FA(
-      body.email,
-      body.password,
-      body.code,
+    const meta = {
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'] as string | undefined,
+      acceptLanguage: req.headers['accept-language'] as string | undefined,
+    };
+
+    if (!body.tempToken || !body.otp) {
+      throw new UnauthorizedException('กรุณาระบุ tempToken และ otp');
+    }
+
+    const result = await this.authService.loginWithTempToken(
+      body.tempToken,
+      body.otp,
       this.twoFactorService,
       meta,
     );
-    setRefreshCookie(res, result.refreshToken);
-    return { accessToken: result.accessToken, user: result.user };
+    setRefreshCookie(res, result.refreshToken as string);
+    return {
+      state: 'AUTHENTICATED',
+      accessToken: result.accessToken,
+      user: result.user,
+    };
   }
 
   @Post('refresh')

@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { JwtModule, JwtSignOptions } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { ConfigService } from '@nestjs/config';
@@ -11,6 +11,7 @@ import { LoginAuditRetentionCron } from './login-audit-retention.cron';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { JwtAudienceGuard } from './guards/jwt-audience.guard';
 import { EmailModule } from '../email/email.module';
+import { LineOaModule } from '../line-oa/line-oa.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { EmailModule } from '../email/email.module';
       inject: [ConfigService],
     }),
     EmailModule,
+    forwardRef(() => LineOaModule),
   ],
   controllers: [AuthController],
   providers: [

@@ -32,6 +32,7 @@ const PASSWORD_RESET_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 export interface AuthMeta {
   ipAddress?: string;
   userAgent?: string;
+  acceptLanguage?: string;
 }
 
 @Injectable()
@@ -99,6 +100,7 @@ export class AuthService {
       failureKind,
       ipAddress: meta?.ipAddress,
       userAgent: meta?.userAgent,
+      acceptLanguage: meta?.acceptLanguage,
       twoFactorUsed,
     });
   }
@@ -112,7 +114,41 @@ export class AuthService {
     return crypto.createHash('sha256').update(rawToken).digest('hex');
   }
 
-  async login(loginDto: LoginDto, meta?: AuthMeta) {
+  /**
+   * Sign a short-lived temp JWT for the 2-step login flow.
+   * Uses `aud` claim to namespace so it cannot be used as a full access token.
+   */
+  private signTempToken(userId: string, scope: '2fa_login' | '2fa_setup'): string {
+    return this.jwtService.sign(
+      { sub: userId, scope },
+      {
+        secret: this.configService.get<string>('JWT_SECRET')!,
+        expiresIn: '5m',
+        audience: scope,
+      },
+    );
+  }
+
+  /**
+   * Verify a temp JWT and return its payload.
+   * Throws UnauthorizedException if invalid, expired, or wrong audience.
+   */
+  private verifyTempToken(tempToken: string, expectedScope: '2fa_login' | '2fa_setup') {
+    try {
+      return this.jwtService.verify<{ sub: string; scope: string }>(tempToken, {
+        secret: this.configService.get<string>('JWT_SECRET')!,
+        audience: expectedScope,
+      });
+    } catch {
+      throw new UnauthorizedException('Token ไม่ถูกต้องหรือหมดอายุ กรุณาเข้าสู่ระบบใหม่');
+    }
+  }
+
+  async login(loginDto: LoginDto, meta?: AuthMeta): Promise<
+    | { state: 'AUTHENTICATED'; accessToken: string; refreshToken: string; user: object }
+    | { state: 'OTP_REQUIRED'; tempToken: string }
+    | { state: '2FA_SETUP_REQUIRED'; tempToken: string }
+  > {
     const user = await this.prisma.user.findUnique({
       where: { email: loginDto.email },
       include: { branch: true },
@@ -140,8 +176,6 @@ export class AuthService {
     const isPasswordValid = await bcrypt.compare(loginDto.password, user.password);
     if (!isPasswordValid) {
       // Increment counter; lock if threshold reached.
-      // We use updateMany so the result tells us how many rows changed but
-      // doesn't throw if the row was concurrently deleted.
       const nextAttempts = user.failedLoginAttempts + 1;
       const shouldLock = nextAttempts >= LOCKOUT_THRESHOLD;
       await this.prisma.user.update({
@@ -162,7 +196,7 @@ export class AuthService {
       throw new UnauthorizedException('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
     }
 
-    // Successful login → reset counters + stamp lastLoginAt.
+    // Successful credential check → reset counters + stamp lastLoginAt.
     await this.prisma.user.update({
       where: { id: user.id },
       data: {
@@ -172,6 +206,22 @@ export class AuthService {
       },
     });
 
+    // ── 2-step login state machine ──────────────────────────────────────
+    // State 1: 2FA is enabled → require OTP before issuing full JWT
+    if (user.twoFactorEnabled) {
+      const tempToken = this.signTempToken(user.id, '2fa_login');
+      await this.auditLogin(loginDto.email, false, meta, user.id, 'other');
+      return { state: 'OTP_REQUIRED', tempToken };
+    }
+
+    // State 2: 2FA enrollment is mandatory (deadline has passed) but not yet set up
+    if (user.twoFactorRequiredAfter && user.twoFactorRequiredAfter < new Date()) {
+      const tempToken = this.signTempToken(user.id, '2fa_setup');
+      await this.auditLogin(loginDto.email, false, meta, user.id, 'other');
+      return { state: '2FA_SETUP_REQUIRED', tempToken };
+    }
+
+    // State 3: Fully authenticated
     await this.auditLogin(loginDto.email, true, meta, user.id);
 
     const payload = {
@@ -193,6 +243,7 @@ export class AuthService {
     const refreshToken = await this.createRefreshToken(user.id);
 
     return {
+      state: 'AUTHENTICATED',
       accessToken,
       refreshToken,
       user: {
@@ -207,39 +258,136 @@ export class AuthService {
   }
 
   /**
-   * Login with 2FA verification (re-authenticates credentials + verifies TOTP).
+   * Complete login after 2FA verification.
+   * Verifies the temp token (scope: 2fa_login), then validates OTP via TwoFactorService.
+   * Returns full JWT on success.
+   */
+  async loginWithTempToken(
+    tempToken: string,
+    otp: string,
+    twoFactorService: {
+      verifyLogin: (userId: string, token: string) => Promise<{ method: 'TOTP' | 'BACKUP_CODE' }>;
+    },
+    meta?: AuthMeta,
+  ): Promise<{ accessToken: string; refreshToken: string; user: object }> {
+    const payload = this.verifyTempToken(tempToken, '2fa_login');
+    const userId = payload.sub;
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { branch: true },
+    });
+
+    if (!user || user.deletedAt || !user.isActive) {
+      throw new UnauthorizedException('ผู้ใช้งานไม่ถูกต้อง');
+    }
+
+    let twoFactorMethod: 'TOTP' | 'BACKUP_CODE';
+    try {
+      const result = await twoFactorService.verifyLogin(userId, otp);
+      twoFactorMethod = result.method;
+    } catch {
+      await this.auditLogin(user.email, false, meta, userId, '2fa_invalid', true);
+      throw new UnauthorizedException('รหัส OTP ไม่ถูกต้อง');
+    }
+
+    this.logger.log(`2FA login via ${twoFactorMethod} for user ${userId}`);
+    await this.auditLogin(user.email, true, meta, userId, undefined, true);
+
+    const jwtPayload = {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+      branchId: user.branchId,
+    };
+
+    const accessToken = this.jwtService.sign(jwtPayload, {
+      secret: this.configService.get<string>('JWT_SECRET')!,
+      expiresIn: this.configService.get<string>('JWT_EXPIRATION', '15m') as JwtSignOptions['expiresIn'],
+    });
+
+    const refreshToken = await this.createRefreshToken(user.id);
+
+    return {
+      accessToken,
+      refreshToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        branchId: user.branchId,
+        branchName: user.branch?.name || null,
+      },
+    };
+  }
+
+  /**
+   * Legacy: Login with 2FA (re-authenticates credentials + verifies TOTP).
+   * Kept for backward compatibility with old controller.
+   * @deprecated Use login() + loginWithTempToken() instead.
    */
   async loginWith2FA(
     email: string,
     password: string,
     code: string,
     twoFactorService: {
-      verifyCode: (s: string, b: string | null, c: string) => boolean;
+      verifyCode: (s: string, b: string[] | null, c: string) => boolean;
       consumeRecoveryCode: (id: string, c: string) => Promise<void>;
     },
     meta?: AuthMeta,
   ) {
-    const result = await this.login({ email, password }, meta);
+    const loginResult = await this.login({ email, password }, meta);
 
-    const user = await this.prisma.user.findUnique({
-      where: { id: result.user.id },
-      select: { twoFactorSecret: true, twoFactorBackup: true, twoFactorEnabled: true },
-    });
+    // Only proceed if fully authenticated (no 2FA redirect states)
+    if (loginResult.state !== 'AUTHENTICATED') {
+      // Re-fetch user data for 2FA verification
+      const user = await this.prisma.user.findUnique({
+        where: { email },
+        select: {
+          id: true,
+          email: true,
+          twoFactorSecret: true,
+          twoFactorBackupCodes: true,
+          twoFactorEnabled: true,
+        },
+      });
 
-    if (user?.twoFactorEnabled && user.twoFactorSecret) {
-      const isValid = twoFactorService.verifyCode(user.twoFactorSecret, user.twoFactorBackup, code);
-      if (!isValid) {
-        await this.auditLogin(email, false, meta, result.user.id, '2fa_invalid', true);
-        throw new UnauthorizedException('รหัส OTP ไม่ถูกต้อง');
+      if (user?.twoFactorEnabled && user.twoFactorSecret) {
+        const backupCodes = user.twoFactorBackupCodes as string[] | null;
+        const isValid = twoFactorService.verifyCode(user.twoFactorSecret, backupCodes, code);
+        if (!isValid) {
+          await this.auditLogin(email, false, meta, user.id, '2fa_invalid', true);
+          throw new UnauthorizedException('รหัส OTP ไม่ถูกต้อง');
+        }
+        if (code.length === 8) {
+          await twoFactorService.consumeRecoveryCode(user.id, code);
+        }
+        await this.auditLogin(email, true, meta, user.id, undefined, true);
+
+        // Sign full token after OTP verification
+        const jwtPayload = {
+          sub: user.id,
+          email: user.email,
+          role: (user as { role?: string }).role,
+          branchId: (user as { branchId?: string | null }).branchId,
+        };
+
+        const accessToken = this.jwtService.sign(jwtPayload, {
+          secret: this.configService.get<string>('JWT_SECRET')!,
+          expiresIn: this.configService.get<string>('JWT_EXPIRATION', '15m') as JwtSignOptions['expiresIn'],
+        });
+
+        const refreshToken = await this.createRefreshToken(user.id);
+        return { accessToken, refreshToken, user: { id: user.id, email: user.email } };
       }
-      // Consume recovery code if used (8-char hex)
-      if (code.length === 8) {
-        await twoFactorService.consumeRecoveryCode(result.user.id, code);
-      }
-      await this.auditLogin(email, true, meta, result.user.id, undefined, true);
     }
 
-    return result;
+    if (loginResult.state === 'AUTHENTICATED') {
+      return loginResult;
+    }
+
+    throw new UnauthorizedException('ไม่สามารถเข้าสู่ระบบได้');
   }
 
   async refreshToken(token: string) {

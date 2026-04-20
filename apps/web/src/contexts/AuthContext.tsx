@@ -11,6 +11,14 @@ interface User {
   branchName?: string | null;
 }
 
+/** State after password phase — waiting for OTP or 2FA setup */
+export type TwoFaPhase = 'OTP_REQUIRED' | '2FA_SETUP_REQUIRED';
+
+export interface PendingTwoFa {
+  phase: TwoFaPhase;
+  tempToken: string;
+}
+
 /**
  * Tag Sentry events with the logged-in user so we know WHO hit an error.
  * We only pass id + role + branchId — no PII (email/name) per our
@@ -32,7 +40,14 @@ interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  /** Result of password-phase login — null when fully authenticated */
+  pendingTwoFa: PendingTwoFa | null;
+  /** Submit email+password. Returns AUTHENTICATED immediately or sets pendingTwoFa. */
+  login: (email: string, password: string) => Promise<{ state: string }>;
+  /** Complete OTP phase — call after user enters 6-digit TOTP. */
+  completeOtpPhase: (token: string) => void;
+  /** Clear pendingTwoFa (e.g. user cancels back to login). */
+  clearTempToken: () => void;
   logout: () => void;
 }
 
@@ -41,6 +56,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [pendingTwoFa, setPendingTwoFa] = useState<PendingTwoFa | null>(null);
 
   const logout = useCallback(async () => {
     try {
@@ -50,6 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setAccessToken(null);
     setUser(null);
+    setPendingTwoFa(null);
     setSentryUser(null);
   }, []);
 
@@ -89,7 +106,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const path = window.location.pathname;
     const search = window.location.search;
     const isLiffRedirect = search.includes('liff.state');
-    const isPublicPage = isCustomerSubdomain || isLiffRedirect || path.startsWith('/liff/') || path.startsWith('/pay/') || path.startsWith('/customer-access/') || path.startsWith('/verify/');
+    const isPublicPage =
+      isCustomerSubdomain ||
+      isLiffRedirect ||
+      path.startsWith('/liff/') ||
+      path.startsWith('/pay/') ||
+      path.startsWith('/customer-access/') ||
+      path.startsWith('/verify/');
     if (isPublicPage) {
       setIsLoading(false);
       return;
@@ -99,10 +122,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     fetchMe().finally(() => {
       if (cancelled) return;
     });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
+  /**
+   * Submit email+password.
+   * - 'AUTHENTICATED' → sets token + user immediately.
+   * - 'OTP_REQUIRED' / '2FA_SETUP_REQUIRED' → sets pendingTwoFa, caller handles next step.
+   */
+  const login = useCallback(async (email: string, password: string): Promise<{ state: string }> => {
     const doLogin = () => api.post('/auth/login', { email, password }, { timeout: 30000 });
     let res;
     try {
@@ -117,33 +147,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
     const { data } = res;
-    setAccessToken(data.accessToken);
-    // refresh token is stored in httpOnly cookie by the server
-    const nextUser: User = {
-      id: data.user.id,
-      email: data.user.email,
-      name: data.user.name,
-      role: data.user.role,
-      branchId: data.user.branchId,
-      branchName: data.user.branchName ?? data.user.branch?.name ?? null,
-    };
-    setUser(nextUser);
-    setSentryUser(nextUser);
+
+    if (data.state === 'AUTHENTICATED') {
+      setAccessToken(data.accessToken);
+      // refresh token is stored in httpOnly cookie by the server
+      const nextUser: User = {
+        id: data.user.id,
+        email: data.user.email,
+        name: data.user.name,
+        role: data.user.role,
+        branchId: data.user.branchId,
+        branchName: data.user.branchName ?? data.user.branch?.name ?? null,
+      };
+      setUser(nextUser);
+      setSentryUser(nextUser);
+    } else if (data.state === 'OTP_REQUIRED' || data.state === '2FA_SETUP_REQUIRED') {
+      setPendingTwoFa({ phase: data.state as TwoFaPhase, tempToken: data.tempToken });
+    }
+
+    return { state: data.state };
   }, []);
 
-  const value = useMemo(() => ({
-    user,
-    isLoading,
-    isAuthenticated: !!user,
-    login,
-    logout,
-  }), [user, isLoading, login, logout]);
+  /** Called after successful /auth/login/2fa — receives full access token. */
+  const completeOtpPhase = useCallback((token: string) => {
+    setAccessToken(token);
+    setPendingTwoFa(null);
+    // Fetch user profile now that we have a full token
+    fetchMe();
+  }, [fetchMe]);
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
+  const clearTempToken = useCallback(() => {
+    setPendingTwoFa(null);
+  }, []);
+
+  const value = useMemo(
+    () => ({
+      user,
+      isLoading,
+      isAuthenticated: !!user,
+      pendingTwoFa,
+      login,
+      completeOtpPhase,
+      clearTempToken,
+      logout,
+    }),
+    [user, isLoading, pendingTwoFa, login, completeOtpPhase, clearTempToken, logout],
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {

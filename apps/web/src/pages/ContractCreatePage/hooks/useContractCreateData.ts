@@ -1,10 +1,10 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import { serializeAddress, AddressData, emptyAddress } from '@/components/ui/AddressForm';
 import { toast } from 'sonner';
-import type { Product, Customer, InterestConfig, CustReferenceData, PendingDoc } from '../types';
+import type { Product, Customer, InterestConfig, CustReferenceData } from '../types';
 import { emptyCustForm, emptyCustReference } from '../constants';
 import { useDraftStorage } from '@/hooks/useDraftStorage';
 
@@ -25,8 +25,6 @@ export function useContractCreateData() {
   const [notes, setNotes] = useState('');
   const [paymentDueDay, setPaymentDueDay] = useState<number>(1);
   const [overrideActiveContractCheck, setOverrideActiveContractCheck] = useState(false);
-
-  const submitForReviewRef = useRef(false);
 
   // Manual customer creation modal state (Step 2)
   const [showCustomerModal, setShowCustomerModal] = useState(false);
@@ -235,44 +233,13 @@ export function useContractCreateData() {
   });
 
   const createMutation = useMutation({
-    mutationFn: async (body: { contractBody: Record<string, unknown>; pendingDocs: PendingDoc[] }) => {
-      const { data } = await api.post('/contracts', body.contractBody);
+    mutationFn: async (contractBody: Record<string, unknown>) => {
+      const { data } = await api.post('/contracts', contractBody);
       return data;
     },
-    onSuccess: async (data, variables) => {
-      // Upload pending documents
-      for (const doc of variables.pendingDocs) {
-        try {
-          const reader = new FileReader();
-          const fileUrl = await new Promise<string>((resolve, reject) => {
-            reader.onload = () => resolve(reader.result as string);
-            reader.onerror = () => reject(new Error('ไม่สามารถอ่านไฟล์ได้'));
-            reader.readAsDataURL(doc.file);
-          });
-          await api.post(`/contracts/${data.id}/documents`, {
-            documentType: doc.type,
-            fileName: doc.file.name,
-            fileUrl,
-            fileSize: doc.file.size,
-          });
-        } catch {
-          toast.error(`อัปโหลดเอกสาร ${doc.file.name} ไม่สำเร็จ`);
-        }
-      }
-
-      // Clear draft on successful submission
+    onSuccess: (data) => {
       draft.clear();
-
-      if (submitForReviewRef.current) {
-        try {
-          await api.post(`/contracts/${data.id}/submit-review`);
-          toast.success('สร้างสัญญาและส่งตรวจสอบสำเร็จ');
-        } catch {
-          toast.success('สร้างสัญญาสำเร็จ (ส่งตรวจสอบไม่สำเร็จ กรุณาส่งอีกครั้ง)');
-        }
-      } else {
-        toast.success('สร้างสัญญาสำเร็จ');
-      }
+      toast.success('สร้างสัญญาสำเร็จ — อัปโหลดเอกสารที่หน้ารายละเอียดสัญญา');
       navigate(`/contracts/${data.id}`);
     },
     onError: (err: unknown) => {
@@ -316,23 +283,19 @@ export function useContractCreateData() {
 
   const customerCreditApproved = latestCreditCheck?.status === 'APPROVED';
 
-  const handleSubmit = (submitForReview: boolean, pendingDocs: PendingDoc[], sellingPrice: number) => {
+  const handleSubmit = (sellingPrice: number) => {
     if (!selectedProduct || !selectedCustomer) return;
-    submitForReviewRef.current = submitForReview;
     createMutation.mutate({
-      contractBody: {
-        customerId: selectedCustomer.id,
-        productId: selectedProduct.id,
-        branchId: selectedProduct.branchId,
-        planType,
-        sellingPrice,
-        downPayment,
-        totalMonths,
-        notes: notes || undefined,
-        paymentDueDay,
-        ...(overrideActiveContractCheck ? { overrideActiveContractCheck: true } : {}),
-      },
-      pendingDocs,
+      customerId: selectedCustomer.id,
+      productId: selectedProduct.id,
+      branchId: selectedProduct.branchId,
+      planType,
+      sellingPrice,
+      downPayment,
+      totalMonths,
+      notes: notes || undefined,
+      paymentDueDay,
+      ...(overrideActiveContractCheck ? { overrideActiveContractCheck: true } : {}),
     });
   };
 
@@ -375,7 +338,6 @@ export function useContractCreateData() {
     setPaymentDueDay,
     overrideActiveContractCheck,
     setOverrideActiveContractCheck,
-    submitForReviewRef,
 
     // Queries
     products,

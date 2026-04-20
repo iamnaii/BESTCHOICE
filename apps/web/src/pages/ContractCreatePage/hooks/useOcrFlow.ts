@@ -4,21 +4,19 @@ import { compressImageForOcr } from '@/lib/compressImage';
 import { checkCardReaderStatus, readSmartCard } from '@/lib/cardReader';
 import { AddressData } from '@/components/ui/AddressForm';
 import { toast } from 'sonner';
-import type { Customer, OcrResult, PendingDoc } from '../types';
+import type { Customer, OcrResult } from '../types';
 import type { emptyCustForm } from '../constants';
 
 type CustFormData = typeof emptyCustForm;
 
 interface UseOcrFlowParams {
   setSelectedCustomer: (c: Customer | null) => void;
-  setPendingDocs: (updater: PendingDoc[] | ((prev: PendingDoc[]) => PendingDoc[])) => void;
   setCustForm: (updater: CustFormData | ((prev: CustFormData) => CustFormData)) => void;
   setCustAddrIdCard: (updater: AddressData | ((prev: AddressData) => AddressData)) => void;
 }
 
 export function useOcrFlow({
   setSelectedCustomer,
-  setPendingDocs,
   setCustForm,
   setCustAddrIdCard,
 }: UseOcrFlowParams) {
@@ -30,7 +28,6 @@ export function useOcrFlow({
   const [showCreateCustomer, setShowCreateCustomer] = useState(false);
   const [newCustomerPhone, setNewCustomerPhone] = useState('');
   const [creatingCustomer, setCreatingCustomer] = useState(false);
-  const [ocrScannedFile, setOcrScannedFile] = useState<File | null>(null);
 
   // Helper: build structured address JSON from OCR result
   const buildOcrAddressJson = (ocrData: OcrResult): string | undefined => {
@@ -211,7 +208,6 @@ export function useOcrFlow({
     setShowOcrPanel(false);
     setShowCreateCustomer(false);
     setSelectedCustomer(null);
-    setOcrScannedFile(file);
 
     try {
       const imageBase64 = await compressImageForOcr(file);
@@ -291,11 +287,6 @@ export function useOcrFlow({
       setShowOcrPanel(false);
       setNewCustomerPhone('');
       toast.success(`สร้างลูกค้าใหม่สำเร็จ: ${data.name}`);
-
-      if (ocrScannedFile) {
-        const preview = URL.createObjectURL(ocrScannedFile);
-        setPendingDocs((prev) => [...prev, { id: crypto.randomUUID(), type: 'ID_CARD_COPY', file: ocrScannedFile, preview }]);
-      }
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { existingCustomer?: { id: string; name: string } }; status?: number } };
       const existing = axiosErr.response?.data?.existingCustomer;
@@ -307,10 +298,6 @@ export function useOcrFlow({
           setShowOcrPanel(false);
           setNewCustomerPhone('');
           toast.success(`ลูกค้ามีอยู่แล้ว: ${existing.name} - เลือกให้อัตโนมัติ`);
-          if (ocrScannedFile) {
-            const preview = URL.createObjectURL(ocrScannedFile);
-            setPendingDocs((prev) => [...prev, { id: crypto.randomUUID(), type: 'ID_CARD_COPY', file: ocrScannedFile, preview }]);
-          }
         } catch {
           toast.error('ลูกค้ามีอยู่แล้วแต่โหลดข้อมูลไม่สำเร็จ กรุณาค้นหาด้วยตนเอง');
         }
@@ -342,15 +329,7 @@ export function useOcrFlow({
     }
   };
 
-  // When selecting existing customer from OCR results, also auto-add ID card to pending docs
   const selectCustomerFromOcr = () => {
-    if (ocrScannedFile) {
-      setPendingDocs((prev) => {
-        if (prev.some((d) => d.type === 'ID_CARD_COPY' && d.file.name === ocrScannedFile.name)) return prev;
-        const preview = URL.createObjectURL(ocrScannedFile);
-        return [...prev, { id: crypto.randomUUID(), type: 'ID_CARD_COPY', file: ocrScannedFile, preview }];
-      });
-    }
     setShowOcrPanel(false);
     setShowCreateCustomer(false);
     setNewCustomerPhone('');
@@ -370,8 +349,6 @@ export function useOcrFlow({
     newCustomerPhone,
     setNewCustomerPhone,
     creatingCustomer,
-    ocrScannedFile,
-    setOcrScannedFile,
     handleSmartCardRead,
     handleSmartCardForModal,
     handleOcrScan,

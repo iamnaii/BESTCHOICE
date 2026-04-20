@@ -103,6 +103,8 @@ describe('CustomersController PII (Phase 5)', () => {
       undefined,
       undefined,
       undefined,
+      undefined,
+      undefined,
       reqOf('SALES'),
     );
     expect((result.data[0] as any).nationalId).toBe('12345-XXXXX-XX-3');

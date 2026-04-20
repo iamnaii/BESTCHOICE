@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConflictException } from '@nestjs/common';
 import { CustomersService } from './customers.service';
+import { CustomerTierService } from './customer-tier.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { encryptPII } from '../../utils/crypto.util';
 
@@ -25,7 +26,11 @@ describe('CustomersService.create — NID normalization', () => {
       },
     };
     const mod: TestingModule = await Test.createTestingModule({
-      providers: [CustomersService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        CustomersService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: CustomerTierService, useValue: { getCustomerTier: jest.fn() } },
+      ],
     }).compile();
     service = mod.get(CustomersService);
   });
@@ -113,7 +118,11 @@ describe('CustomersService.create — T3-C9 phone + email dedup', () => {
       },
     };
     const mod: TestingModule = await Test.createTestingModule({
-      providers: [CustomersService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        CustomersService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: CustomerTierService, useValue: { getCustomerTier: jest.fn() } },
+      ],
     }).compile();
     service = mod.get(CustomersService);
   });
@@ -195,7 +204,11 @@ describe('PII dual-write (Phase 3)', () => {
       },
     };
     const mod: TestingModule = await Test.createTestingModule({
-      providers: [CustomersService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        CustomersService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: CustomerTierService, useValue: { getCustomerTier: jest.fn() } },
+      ],
     }).compile();
     service = mod.get(CustomersService);
 
@@ -271,7 +284,11 @@ describe('PII read decryption (Phase 5)', () => {
       },
     };
     const mod: TestingModule = await Test.createTestingModule({
-      providers: [CustomersService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        CustomersService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: CustomerTierService, useValue: { getCustomerTier: jest.fn() } },
+      ],
     }).compile();
     service = mod.get(CustomersService);
   });

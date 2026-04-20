@@ -88,6 +88,7 @@ import { SecurityMiddleware } from './modules/audit/security.middleware';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
 import { AdminPrefixMiddleware } from './common/middleware/admin-prefix.middleware';
 import { CsrfGuard } from './guards/csrf.guard';
+import { JwtAudienceGuard } from './modules/auth/guards/jwt-audience.guard';
 import { AppCacheModule } from './cache/cache.module';
 
 @Module({
@@ -234,6 +235,13 @@ import { AppCacheModule } from './cache/cache.module';
     {
       provide: APP_GUARD,
       useClass: CsrfGuard,
+    },
+    // JwtAudienceGuard runs globally after per-controller JwtAuthGuard sets req.user.
+    // When req.user is not yet set (public/unauthenticated paths), the guard defers
+    // and lets JwtAuthGuard handle the 401 response.
+    {
+      provide: APP_GUARD,
+      useClass: JwtAudienceGuard,
     },
     {
       provide: APP_INTERCEPTOR,

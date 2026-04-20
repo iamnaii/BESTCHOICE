@@ -9,6 +9,7 @@ import { AuthTokenCleanupService } from './auth-token-cleanup.service';
 import { LoginAuditService } from './login-audit.service';
 import { LoginAuditRetentionCron } from './login-audit-retention.cron';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { JwtAudienceGuard } from './guards/jwt-audience.guard';
 import { EmailModule } from '../email/email.module';
 
 @Module({
@@ -36,7 +37,8 @@ import { EmailModule } from '../email/email.module';
     LoginAuditService,
     LoginAuditRetentionCron,
     JwtStrategy,
+    JwtAudienceGuard,
   ],
-  exports: [AuthService, TwoFactorService, LoginAuditService, JwtStrategy, PassportModule],
+  exports: [AuthService, TwoFactorService, LoginAuditService, JwtStrategy, PassportModule, JwtAudienceGuard],
 })
 export class AuthModule {}

@@ -42,7 +42,6 @@ const POSPage = lazy(() => import('@/pages/POSPage'));
 const SalesHistoryPage = lazy(() => import('@/pages/SalesHistoryPage'));
 const InterestConfigPage = lazy(() => import('@/pages/InterestConfigPage'));
 const PricingTemplatesPage = lazy(() => import('@/pages/PricingTemplatesPage'));
-const CreditChecksPage = lazy(() => import('@/pages/CreditChecksPage'));
 const SuppliersPage = lazy(() => import('@/pages/SuppliersPage'));
 const StockPage = lazy(() => import('@/pages/StockPage'));
 const PurchaseOrdersPage = lazy(() => import('@/pages/PurchaseOrdersPage'));
@@ -319,7 +318,6 @@ function App() {
           <Route path="/chatbot-finance/learning" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER']}><ChatbotFinanceLearningPage /></ProtectedRoute>} />
           <Route path="/customers" element={<CustomersPage />} />
           <Route path="/customers/:id" element={<CustomerDetailPage />} />
-          <Route path="/credit-checks" element={<CreditChecksPage />} />
           <Route path="/contracts" element={<ContractsPage />} />
           <Route
             path="/contracts/create"

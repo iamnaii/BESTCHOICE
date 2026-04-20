@@ -55,7 +55,6 @@ const OWNER_PAGES: SmokeRoute[] = [
   { url: '/pos', name: 'POS ขายสินค้า' },
   { url: '/sales', name: 'ประวัติการขาย' },
   { url: '/customers', name: 'รายชื่อลูกค้า' },
-  { url: '/credit-checks', name: 'ตรวจเครดิต' },
   { url: '/contracts', name: 'รายการสัญญา' },
   { url: '/contract-templates', name: 'เทมเพลตสัญญา' },
   { url: '/payments', name: 'การชำระเงิน' },

@@ -2,7 +2,6 @@ import type { LucideIcon } from 'lucide-react';
 import {
   ShoppingCart,
   Users,
-  UserSearch,
   Smartphone,
   FileCheck,
   HandCoins,
@@ -82,7 +81,6 @@ const SALES_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
         { label: 'ลูกค้า', path: '/customers', icon: Users },
-        { label: 'ตรวจเครดิต', path: '/credit-checks', icon: UserSearch },
         { label: 'รับซื้อมือสอง', path: '/trade-in', icon: Smartphone },
       ],
     },
@@ -296,7 +294,6 @@ const OWNER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
         { label: 'ลูกค้า', path: '/customers', icon: Users },
-        { label: 'ตรวจเครดิต', path: '/credit-checks', icon: UserSearch },
         { label: 'รับซื้อมือสอง', path: '/trade-in', icon: Smartphone },
       ],
     },

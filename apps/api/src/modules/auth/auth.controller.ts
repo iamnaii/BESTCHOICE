@@ -64,7 +64,11 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const meta = { ipAddress: req.ip, userAgent: req.headers['user-agent'] as string | undefined };
+    const meta = {
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'] as string | undefined,
+      acceptLanguage: req.headers['accept-language'] as string | undefined,
+    };
     const result = await this.authService.login(loginDto, meta);
 
     // If user has 2FA enabled, require verification before issuing tokens
@@ -92,7 +96,11 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const meta = { ipAddress: req.ip, userAgent: req.headers['user-agent'] as string | undefined };
+    const meta = {
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'] as string | undefined,
+      acceptLanguage: req.headers['accept-language'] as string | undefined,
+    };
     const result = await this.authService.loginWith2FA(
       body.email,
       body.password,

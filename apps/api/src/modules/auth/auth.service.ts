@@ -210,7 +210,7 @@ export class AuthService {
     password: string,
     code: string,
     twoFactorService: {
-      verifyCode: (s: string, b: string | null, c: string) => boolean;
+      verifyCode: (s: string, b: string[] | null, c: string) => boolean;
       consumeRecoveryCode: (id: string, c: string) => Promise<void>;
     },
     meta?: AuthMeta,
@@ -219,11 +219,12 @@ export class AuthService {
 
     const user = await this.prisma.user.findUnique({
       where: { id: result.user.id },
-      select: { twoFactorSecret: true, twoFactorBackup: true, twoFactorEnabled: true },
+      select: { twoFactorSecret: true, twoFactorBackupCodes: true, twoFactorEnabled: true },
     });
 
     if (user?.twoFactorEnabled && user.twoFactorSecret) {
-      const isValid = twoFactorService.verifyCode(user.twoFactorSecret, user.twoFactorBackup, code);
+      const backupCodes = user.twoFactorBackupCodes as string[] | null;
+      const isValid = twoFactorService.verifyCode(user.twoFactorSecret, backupCodes, code);
       if (!isValid) {
         await this.auditLogin(email, false, meta, result.user.id, '2fa_invalid', true);
         throw new UnauthorizedException('รหัส OTP ไม่ถูกต้อง');

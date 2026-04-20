@@ -25,6 +25,7 @@ export class CustomersService {
     sortBy?: string,
     sortOrder?: string,
     tier?: string,
+    creditCheckStatus?: string,
   ) {
     const where: Record<string, unknown> = { deletedAt: null };
 
@@ -45,9 +46,14 @@ export class CustomersService {
       where.contracts = { some: { branchId, deletedAt: null } };
     }
 
-    // Credit status filter
+    // Credit status filter (on CreditCheck relation)
     if (creditStatus) {
       where.creditChecks = { some: { status: creditStatus } };
+    }
+
+    // Phase 3 credit check status filter (on Customer.creditCheckStatus field)
+    if (creditCheckStatus) {
+      where.creditCheckStatus = creditCheckStatus;
     }
 
     // Determine sort order

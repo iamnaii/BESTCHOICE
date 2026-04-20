@@ -82,6 +82,7 @@ export class CustomersController {
     @Query('sortBy') sortBy?: string,
     @Query('sortOrder') sortOrder?: string,
     @Query('tier') tier?: string,
+    @Query('creditCheckStatus') creditCheckStatus?: string,
     @Req() req?: AuthRequest,
   ) {
     const result = await this.customersService.findAll(
@@ -95,6 +96,7 @@ export class CustomersController {
       sortBy,
       sortOrder,
       tier,
+      creditCheckStatus,
     );
 
     const role = req?.user?.role || 'UNKNOWN';

@@ -86,6 +86,7 @@ import { ShopBotDefenseModule } from './modules/shop-bot-defense/shop-bot-defens
 import { ShopReservationModule } from './modules/shop-reservation/shop-reservation.module';
 import { ShopCatalogModule } from './modules/shop-catalog/shop-catalog.module';
 import { ShopAuthSocialModule } from './modules/shop-auth-social/shop-auth-social.module';
+import { ShopLineChatModule } from './modules/shop-line-chat/shop-line-chat.module';
 import { DataAuditModule } from './modules/data-audit/data-audit.module';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
@@ -231,6 +232,8 @@ import { AppCacheModule } from './cache/cache.module';
     ShopCatalogModule,
     // Online Shop — LINE + Facebook OAuth login + phone binding
     ShopAuthSocialModule,
+    // Online Shop — contact form → LINE OA staff notification
+    ShopLineChatModule,
     // MASTER: Management
     UsersModule,
     SettingsModule,

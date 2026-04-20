@@ -49,6 +49,14 @@ async function bootstrap() {
   if (!allowedOrigins.includes('https://bestchoicephone.app')) {
     allowedOrigins.push('https://bestchoicephone.app');
   }
+  // Online Shop subdomain
+  if (!allowedOrigins.includes('https://shop.bestchoicephone.app')) {
+    allowedOrigins.push('https://shop.bestchoicephone.app');
+  }
+  // Online Shop local dev (port 5174)
+  if (!allowedOrigins.includes('http://localhost:5174')) {
+    allowedOrigins.push('http://localhost:5174');
+  }
 
   app.enableCors({
     origin: (origin, callback) => {

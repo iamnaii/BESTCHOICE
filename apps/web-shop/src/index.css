@@ -1,0 +1,11 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: "IBM Plex Sans Thai", Inter, sans-serif;
+    line-height: 1.375; /* snug */
+  }
+  * {
+    line-height: 1.375; /* snug — Thai text safe */
+  }
+}

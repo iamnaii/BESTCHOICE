@@ -569,6 +569,13 @@ model Customer {
   crmLeads         CrmLead[]
   customerScore    CustomerScore?
 
+  // === Online shop addition (Phase 1) ===
+  facebookUserId    String?              @map("facebook_user_id")
+  shippingAddresses Json[]               @default([]) @map("shipping_addresses")
+  reservations      ProductReservation[]
+  websiteVisits     WebsiteVisit[]
+  websiteSessions   WebsiteSession[]
+
   @@index([phone])
   @@index([name])
   @@index([createdAt])
@@ -1072,6 +1079,14 @@ model Product {
   productPhotos        ProductPhoto?
   tradeIns             TradeIn[]
 
+  // === Online shop additions (Phase 1) ===
+  conditionGrade    String?              @map("condition_grade")    // A, B, C for used phones
+  gallery           String[]             @default([])               // catalog photo URLs
+  gallery360        String[]             @default([])               // 360° frame URLs (24-36 frames)
+  isOnlineVisible   Boolean              @default(true) @map("is_online_visible")
+  onlineDescription String?              @map("online_description") @db.Text
+  reservations      ProductReservation[]
+
   @@index([branchId])
   @@index([status])
   @@index([category])
@@ -1081,6 +1096,7 @@ model Product {
   @@index([createdAt])
   @@index([branchId, status])
   @@index([ownedByCompanyId])
+  @@index([isOnlineVisible])
   @@map("products")
 }
 
@@ -4263,6 +4279,147 @@ model BroadcastApproval {
   @@index([approverId])
   @@map("broadcast_approvals")
 }
+
+// ============================================================
+// Online Shop — Phase 1
+// ============================================================
+
+model ProductReservation {
+  id           String            @id @default(uuid())
+  productId    String            @map("product_id")
+  product      Product           @relation(fields: [productId], references: [id])
+  customerId   String?           @map("customer_id")
+  customer     Customer?         @relation(fields: [customerId], references: [id])
+  sessionId    String            @map("session_id")
+  reservedAt   DateTime          @default(now()) @map("reserved_at")
+  expiresAt    DateTime          @map("expires_at")
+  status       ReservationStatus @default(ACTIVE)
+  consumedById String?           @map("consumed_by_id")
+  createdAt    DateTime          @default(now()) @map("created_at")
+  updatedAt    DateTime          @updatedAt @map("updated_at")
+
+  @@index([productId, status])
+  @@index([customerId])
+  @@index([expiresAt])
+  @@map("product_reservations")
+}
+
+enum ReservationStatus {
+  ACTIVE
+  EXPIRED
+  CONSUMED
+  CANCELLED
+  PREEMPTED
+}
+
+model WebsiteVisit {
+  id          String    @id @default(uuid())
+  sessionId   String    @map("session_id")
+  customerId  String?   @map("customer_id")
+  customer    Customer? @relation(fields: [customerId], references: [id])
+  ipHash      String    @map("ip_hash")
+  ipCountry   String?   @map("ip_country")
+  ipProvince  String?   @map("ip_province")
+  userAgent   String?   @map("user_agent") @db.Text
+  device      String?
+  browser     String?
+  os          String?
+  pagePath    String    @map("page_path")
+  referrer    String?
+  utmSource   String?   @map("utm_source")
+  utmMedium   String?   @map("utm_medium")
+  utmCampaign String?   @map("utm_campaign")
+  visitedAt   DateTime  @default(now()) @map("visited_at")
+  durationSec Int?      @map("duration_sec")
+
+  @@index([sessionId])
+  @@index([customerId])
+  @@index([visitedAt])
+  @@index([ipHash, visitedAt])
+  @@index([pagePath, visitedAt])
+  @@map("website_visits")
+}
+
+model WebsiteSession {
+  id              String    @id @default(uuid())
+  sessionId       String    @unique @map("session_id")
+  customerId      String?   @map("customer_id")
+  customer        Customer? @relation(fields: [customerId], references: [id])
+  ipHash          String    @map("ip_hash")
+  device          String?
+  browser         String?
+  startedAt       DateTime  @map("started_at")
+  endedAt         DateTime? @map("ended_at")
+  pageCount       Int       @default(0) @map("page_count")
+  durationSec     Int?      @map("duration_sec")
+  reachedCart     Boolean   @default(false) @map("reached_cart")
+  reachedCheckout Boolean   @default(false) @map("reached_checkout")
+  completedOrder  Boolean   @default(false) @map("completed_order")
+  orderId         String?   @map("order_id")
+  entryPage       String    @map("entry_page")
+  exitPage        String?   @map("exit_page")
+  referrer        String?
+  utmSource       String?   @map("utm_source")
+  utmCampaign     String?   @map("utm_campaign")
+
+  @@index([customerId])
+  @@index([startedAt])
+  @@index([ipHash, startedAt])
+  @@map("website_sessions")
+}
+
+model BotDetectionLog {
+  /// Immutable audit log — updatedAt/deletedAt intentionally omitted
+  id           String    @id @default(uuid())
+  ipHash       String    @map("ip_hash")
+  userAgent    String    @map("user_agent") @db.Text
+  detectedType BotType   @map("detected_type")
+  signals      Json
+  pagePath     String    @map("page_path")
+  action       BotAction
+  detectedAt   DateTime  @default(now()) @map("detected_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  @@index([ipHash, detectedAt])
+  @@index([detectedType, detectedAt])
+  @@map("bot_detection_logs")
+}
+
+enum BotType {
+  AI_CRAWLER
+  GENERIC_BOT
+  SCRAPER
+  HEADLESS_BROWSER
+  RATE_ABUSE
+  PRICE_MONITOR
+  KNOWN_GOOD
+}
+
+enum BotAction {
+  LOGGED
+  RATE_LIMITED
+  CAPTCHA_REQUIRED
+  BLOCKED
+  CLOAKED
+}
+
+model IpRateLimit {
+  ipHash             String    @id @map("ip_hash")
+  windowStart        DateTime  @map("window_start")
+  requestCount       Int       @default(0) @map("request_count")
+  blockedUntil       DateTime? @map("blocked_until")
+  blockReason        String?   @map("block_reason")
+  pagesVisited       Int       @default(0) @map("pages_visited")
+  uniquePagesVisited Int       @default(0) @map("unique_pages_visited")
+  lastUserAgent      String?   @map("last_user_agent") @db.Text
+
+  @@index([blockedUntil])
+  @@map("ip_rate_limits")
+}
+
+// ============================================================
+// Admin Hardening C1 — Trusted Device Registry
+// ============================================================
 
 /// Trusted-device registry for admin users. A fingerprint is added here on
 /// first successful login from a new device (after any 2FA challenge). On

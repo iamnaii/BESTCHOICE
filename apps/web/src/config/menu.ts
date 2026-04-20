@@ -286,17 +286,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'Dashboard', path: '/', icon: Home },
         { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
         { label: 'CRM Pipeline', path: '/crm', icon: Kanban },
-      ],
-    },
-    {
-      key: 'owner-sales',
-      label: 'ขาย',
-      icon: ShoppingCart,
-      items: [
-        { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
-        { label: 'ลูกค้า', path: '/customers', icon: Users },
-        { label: 'เช็คเครดิตลูกค้าใหม่', path: '/customer-intake', icon: UserSearch },
-        { label: 'รับซื้อมือสอง', path: '/trade-in', icon: Smartphone },
+        { label: 'Finance Overview', path: '/finance-portfolio', icon: CircleDollarSign },
       ],
     },
     {
@@ -304,20 +294,20 @@ const OWNER_CONFIG: RoleMenuConfig = {
       label: 'คลัง & จัดซื้อ',
       icon: Warehouse,
       items: [
-        { label: 'สต็อกสินค้า', path: '/stock', icon: Warehouse },
-        { label: 'สั่งซื้อ (PO)', path: '/purchase-orders', icon: ClipboardList },
         { label: 'ผู้ขาย', path: '/suppliers', icon: Building2 },
+        { label: 'สั่งซื้อ (PO)', path: '/purchase-orders', icon: ClipboardList },
+        { label: 'รับซื้อมือสอง', path: '/trade-in', icon: Smartphone },
+        { label: 'สต็อกสินค้า', path: '/stock', icon: Warehouse },
       ],
     },
     {
-      key: 'owner-contracts',
-      label: 'สัญญา & ชำระ',
-      icon: FileCheck,
+      key: 'owner-sales',
+      label: 'ขาย',
+      icon: ShoppingCart,
       items: [
+        { label: 'ลูกค้า', path: '/customers', icon: Users },
+        { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
-        { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
-        { label: 'Finance Overview', path: '/finance-portfolio', icon: CircleDollarSign },
-        { label: 'จัดการอุปกรณ์', path: '/mdm', icon: Smartphone },
       ],
     },
     {
@@ -329,6 +319,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'เปลี่ยนเครื่อง', path: '/exchange', icon: RefreshCw },
         { label: 'เปลี่ยนเครื่องเสีย (7 วัน)', path: '/defect-exchange', icon: Wrench },
         { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
+        { label: 'จัดการอุปกรณ์', path: '/mdm', icon: Smartphone },
       ],
     },
     {
@@ -336,9 +327,10 @@ const OWNER_CONFIG: RoleMenuConfig = {
       label: 'บัญชี & รายงาน',
       icon: Calculator,
       items: [
+        { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
+        { label: 'รายจ่าย', path: '/expenses', icon: Receipt },
         { label: 'รายงาน', path: '/reports', icon: BarChart3 },
         { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
-        { label: 'รายจ่าย', path: '/expenses', icon: Receipt },
         { label: 'ภาษี', path: '/tax-reports', icon: Calculator },
         { label: 'ปิดบัญชีรายเดือน', path: '/monthly-close', icon: CalendarDays },
       ],

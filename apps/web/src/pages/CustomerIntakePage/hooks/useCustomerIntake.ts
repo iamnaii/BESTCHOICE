@@ -60,7 +60,7 @@ export function useCustomerIntake() {
       });
     },
     onSuccess: (result) => {
-      setState((prev) => ({ ...prev, preCheckResult: result, step: 'precheck' }));
+      setState((prev) => ({ ...prev, preCheckResult: result }));
       if (result.decision === 'PASS') {
         toast.success('ผ่านการตรวจเครดิตเบื้องต้น');
       } else if (result.decision === 'FAIL') {
@@ -73,6 +73,10 @@ export function useCustomerIntake() {
       toast.error(getErrorMessage(err));
     },
   });
+
+  const resetPreCheck = useCallback(() => {
+    setState((prev) => ({ ...prev, preCheckResult: null, step: 'quick' }));
+  }, []);
 
   const proceedToFull = useCallback(() => {
     if (!state.preCheckResult) return;
@@ -112,6 +116,7 @@ export function useCustomerIntake() {
     updateQuick,
     runPreCheck: () => preCheckMutation.mutate(),
     isPreChecking: preCheckMutation.isPending,
+    resetPreCheck,
     proceedToFull,
     reset,
   };

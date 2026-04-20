@@ -93,7 +93,6 @@ import { TwoFactorModule } from './modules/two-factor/two-factor.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { SecurityMiddleware } from './modules/audit/security.middleware';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
-import { AdminPrefixMiddleware } from './common/middleware/admin-prefix.middleware';
 import { CsrfGuard } from './guards/csrf.guard';
 import { JwtAudienceGuard } from './modules/auth/guards/jwt-audience.guard';
 import { AppCacheModule } from './cache/cache.module';
@@ -272,9 +271,9 @@ import { AppCacheModule } from './cache/cache.module';
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    // AdminPrefixMiddleware runs first: strip /api/admin/* prefix before any other middleware
-    // so that RequestIdMiddleware and SecurityMiddleware see the rewritten URL.
-    consumer.apply(AdminPrefixMiddleware).forRoutes('*');
+    // NOTE: AdminPrefixMiddleware is applied at Express level in main.ts
+    // (not here) because forRoutes('*') doesn't reliably run before the
+    // NestJS routing layer rejects unknown /api/admin/* paths with 404.
     // RequestIdMiddleware must run before SecurityMiddleware so Sentry scope is tagged first.
     consumer.apply(RequestIdMiddleware).forRoutes('*');
     consumer.apply(SecurityMiddleware).forRoutes('*');

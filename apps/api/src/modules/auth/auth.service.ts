@@ -229,6 +229,10 @@ export class AuthService {
       email: user.email,
       role: user.role,
       branchId: user.branchId,
+      // Audience claim: distinguishes admin-app JWTs from shop/customer JWTs (C3).
+      // JwtAudienceGuard enforces this at endpoint level via @RequireAudience('admin').
+      aud: 'admin',
+      scope: 'admin:full',
     };
 
     const accessToken = this.jwtService.sign(payload, {
@@ -431,6 +435,8 @@ export class AuthService {
       email: user.email,
       role: user.role,
       branchId: user.branchId,
+      aud: 'admin',
+      scope: 'admin:full',
     };
 
     const accessToken = this.jwtService.sign(payload, {
@@ -663,6 +669,8 @@ export class AuthService {
         email: user.email,
         role: user.role,
         branchId: user.branchId,
+        aud: 'admin',
+        scope: 'admin:full',
       };
 
       const accessToken = this.jwtService.sign(newPayload, {

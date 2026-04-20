@@ -454,6 +454,7 @@ model User {
   refundsApproved        Refund[]             @relation("RefundApprovedBy")
   refundsRejected        Refund[]             @relation("RefundRejectedBy")
   loginAudits            LoginAuditLog[]      @relation("LoginAudits")
+  knownDevices           KnownDevice[]        @relation("UserKnownDevices")
   dataAuditAcknowledgements DataAuditLog[]    @relation("DataAuditAcknowledgedBy")
   warrantyAudits         WarrantyAuditLog[]   @relation("WarrantyAuditUser")
   badDebtWriteOffsWritten  BadDebtWriteOffAuditLog[] @relation("BadDebtWriteOffWriter")
@@ -4097,8 +4098,14 @@ model LoginAuditLog {
   failureKind String?  @map("failure_kind")
   ipAddress   String?  @map("ip_address")
   userAgent   String?  @map("user_agent") @db.Text
-  twoFactorUsed Boolean @default(false) @map("two_factor_used")
-  createdAt   DateTime @default(now()) @map("created_at")
+  twoFactorUsed       Boolean  @default(false) @map("two_factor_used")
+  /// SHA-256 of (User-Agent + Accept-Language + screen-dims + platform) — no PII
+  deviceFingerprint   String?  @map("device_fingerprint")
+  /// true when fingerprint was not seen in KnownDevice for this user
+  isNewDevice         Boolean  @default(false) @map("is_new_device")
+  /// 2FA method used: 'totp' | 'sms_otp' | null (no 2FA)
+  twoFactorMethod     String?  @map("two_factor_method")
+  createdAt           DateTime @default(now()) @map("created_at")
 
   user User? @relation("LoginAudits", fields: [userId], references: [id], onDelete: SetNull)
 
@@ -4106,6 +4113,7 @@ model LoginAuditLog {
   @@index([emailTried, createdAt])
   @@index([success, createdAt])
   @@index([createdAt])
+  @@index([deviceFingerprint, createdAt])
   @@map("login_audit_logs")
 }
 
@@ -4254,4 +4262,33 @@ model BroadcastApproval {
   @@index([broadcastId])
   @@index([approverId])
   @@map("broadcast_approvals")
+}
+
+/// Trusted-device registry for admin users. A fingerprint is added here on
+/// first successful login from a new device (after any 2FA challenge). On
+/// subsequent logins the fingerprint is matched to suppress new-device alerts
+/// and skip the 2FA friction tier. Retention: 90 days from lastSeenAt via
+/// dedicated cron. Immutable per-row except lastSeenAt + loginCount.
+///
+/// No PII: fingerprint is SHA-256(User-Agent + Accept-Language + platform).
+model KnownDevice {
+  id                String   @id @default(uuid())
+  userId            String   @map("user_id")
+  /// SHA-256(User-Agent + Accept-Language + screenDims + platform) — deterministic, no PII
+  fingerprint       String
+  /// Human-readable label derived from User-Agent (e.g. "Chrome 124 / macOS")
+  deviceLabel       String?  @map("device_label")
+  ipAddress         String?  @map("ip_address")
+  firstSeenAt       DateTime @default(now()) @map("first_seen_at")
+  lastSeenAt        DateTime @default(now()) @updatedAt @map("last_seen_at")
+  loginCount        Int      @default(1) @map("login_count")
+  /// Set when admin explicitly revokes this device via Trusted Devices UI
+  revokedAt         DateTime? @map("revoked_at")
+
+  user User @relation("UserKnownDevices", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, fingerprint])
+  @@index([userId, lastSeenAt])
+  @@index([fingerprint])
+  @@map("known_devices")
 }

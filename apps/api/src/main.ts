@@ -17,6 +17,7 @@ import { AppModule } from './app.module';
 import { SentryExceptionFilter } from './filters/sentry-exception.filter';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 import { validateEnv } from './utils/env-validation';
+import { AdminPrefixMiddleware } from './common/middleware/admin-prefix.middleware';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -25,6 +26,15 @@ async function bootstrap() {
   validateEnv();
 
   const app = await NestFactory.create(AppModule);
+
+  // AdminPrefixMiddleware MUST run at Express level (not via MiddlewareConsumer)
+  // so it executes before NestJS routing layer. Rewrites /api/admin/* → /api/*
+  // so existing controllers (mounted at /api/X via setGlobalPrefix) handle the
+  // request transparently. NestJS module-level middleware via forRoutes('*')
+  // is unreliable here because path-to-regexp matching can interact poorly
+  // with the global prefix; raw app.use() guarantees execution on every request.
+  const adminPrefix = new AdminPrefixMiddleware();
+  app.use((req, res, next) => adminPrefix.use(req, res, next));
 
   // Increase body size limit for base64 image uploads
   // `verify` callback captures raw body bytes for LINE webhook HMAC verification

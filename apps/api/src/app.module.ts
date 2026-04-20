@@ -85,6 +85,7 @@ import { ShopTrackingModule } from './modules/shop-tracking/shop-tracking.module
 import { ShopBotDefenseModule } from './modules/shop-bot-defense/shop-bot-defense.module';
 import { ShopReservationModule } from './modules/shop-reservation/shop-reservation.module';
 import { ShopCatalogModule } from './modules/shop-catalog/shop-catalog.module';
+import { ShopAuthSocialModule } from './modules/shop-auth-social/shop-auth-social.module';
 import { DataAuditModule } from './modules/data-audit/data-audit.module';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
@@ -228,6 +229,8 @@ import { AppCacheModule } from './cache/cache.module';
     ShopReservationModule,
     // Online Shop — read-only product catalog (grouped listing + detail)
     ShopCatalogModule,
+    // Online Shop — LINE + Facebook OAuth login + phone binding
+    ShopAuthSocialModule,
     // MASTER: Management
     UsersModule,
     SettingsModule,

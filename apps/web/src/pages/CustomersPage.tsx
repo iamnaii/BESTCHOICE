@@ -191,7 +191,7 @@ export default function CustomersPage() {
       if (debouncedSearch) params.search = debouncedSearch;
       if (contractStatusFilter) params.contractStatus = contractStatusFilter;
       if (hasOverdueFilter) params.hasOverdue = 'true';
-      if (creditStatusFilter) params.creditStatus = creditStatusFilter;
+      if (creditStatusFilter) params.creditCheckStatus = creditStatusFilter;
       if (branchFilter) params.branchId = branchFilter;
       if (tierFilter) params.tier = tierFilter;
       if (sortBy) params.sortBy = sortBy;
@@ -446,7 +446,7 @@ export default function CustomersPage() {
       if (debouncedSearch) params.search = debouncedSearch;
       if (contractStatusFilter) params.contractStatus = contractStatusFilter;
       if (hasOverdueFilter) params.hasOverdue = 'true';
-      if (creditStatusFilter) params.creditStatus = creditStatusFilter;
+      if (creditStatusFilter) params.creditCheckStatus = creditStatusFilter;
       if (branchFilter) params.branchId = branchFilter;
       params.limit = '10000';
       const { data: allData } = await api.get<CustomersResponse>('/customers', { params });
@@ -647,8 +647,8 @@ export default function CustomersPage() {
               <Download className="w-4 h-4" />
               ส่งออก Excel
             </button>
-            <button onClick={() => { resetForm(); setIsModalOpen(true); }} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90">
-              + เพิ่มลูกค้า
+            <button onClick={() => navigate('/customer-intake')} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90">
+              + เพิ่มลูกค้าใหม่
             </button>
           </div>
         }
@@ -732,6 +732,9 @@ export default function CustomersPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">ทุกสถานะเครดิต</SelectItem>
+              <SelectItem value="UNDER_REVIEW">รอผู้จัดการตรวจ</SelectItem>
+              <SelectItem value="PRE_CHECK_PASSED">ผ่าน pre-check</SelectItem>
+              <SelectItem value="FULL_CHECK_PASSED">ผ่านเต็ม</SelectItem>
               <SelectItem value="APPROVED">ผ่าน</SelectItem>
               <SelectItem value="REJECTED">ไม่ผ่าน</SelectItem>
               <SelectItem value="PENDING">รอตรวจ</SelectItem>

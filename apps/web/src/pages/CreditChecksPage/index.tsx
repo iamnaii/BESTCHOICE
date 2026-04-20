@@ -1,8 +1,8 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { exportToExcel, type ExcelColumn } from '@/utils/excel.util';
 import api, { getErrorMessage } from '@/lib/api';
-import { compressImageForOcr } from '@/lib/compressImage';
 import { useDebounce } from '@/hooks/useDebounce';
 import { formatDateShort } from '@/utils/formatters';
 import PageHeader from '@/components/ui/PageHeader';
@@ -10,12 +10,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
 import {
-  type Customer,
-  type CustomerHistory,
-  type OcrBookBankResult,
-  type OcrSalarySlipResult,
-  type OcrBankStatementResult,
-  type RiskScoreResult,
   type Branch,
   type CreditChecksResponse,
   type CreditCheckItem,
@@ -24,16 +18,15 @@ import {
 } from './types';
 import CreditCheckFilters from './CreditCheckFilters';
 import CreditCheckTable from './CreditCheckTable';
-import CreditCheckCreateModal from './CreditCheckCreateModal';
 import CreditCheckOverrideModal from './CreditCheckOverrideModal';
 
 export default function CreditChecksPage() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const isOwner = user?.role === 'OWNER';
   const isOwnerOrManager = ['OWNER', 'BRANCH_MANAGER'].includes(user?.role ?? '');
 
-  // ── Filters ──────────────────────────────────────────────────────────────
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [startDate, setStartDate] = useState('');
@@ -42,57 +35,16 @@ export default function CreditChecksPage() {
   const [page, setPage] = useState(1);
   const debouncedSearch = useDebounce(search);
 
-  // Expand row
-  const [expandedRow, setExpandedRow] = useState<string | null>(null);
-
-  // ── Create overlay state ─────────────────────────────────────────────────
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [customerSearch, setCustomerSearch] = useState('');
-  const debouncedCustomerSearch = useDebounce(customerSearch);
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
-  const [bankName, setBankName] = useState('');
-  const fileRef = useRef<HTMLInputElement>(null);
-  const bookBankFileRef = useRef<HTMLInputElement>(null);
-  const [bookBankLoading, setBookBankLoading] = useState(false);
-  const [bookBankResult, setBookBankResult] = useState<OcrBookBankResult | null>(null);
-
-  // Salary slip OCR
-  const salarySlipFileRef = useRef<HTMLInputElement>(null);
-  const [salarySlipFiles, setSalarySlipFiles] = useState<File[]>([]);
-  const [salarySlipLoading, setSalarySlipLoading] = useState(false);
-  const [salarySlipResult, setSalarySlipResult] = useState<OcrSalarySlipResult | null>(null);
-  const [salarySlipEditable, setSalarySlipEditable] = useState({
-    netSalary: '',
-    employerName: '',
-    payDay: '',
-    bankName: '',
-  });
-
-  // Bank statement OCR
-  const [statementBankName, setStatementBankName] = useState('');
-  const statementFileRef = useRef<HTMLInputElement>(null);
-  const [statementFiles, setStatementFiles] = useState<File[]>([]);
-  const [statementLoading, setStatementLoading] = useState(false);
-  const [statementResult, setStatementResult] = useState<OcrBankStatementResult | null>(null);
-
-  // Customer history / risk
-  const [riskScore, setRiskScore] = useState<RiskScoreResult | null>(null);
-  const [riskLoading, setRiskLoading] = useState(false);
-  const [reviewNotesDraft, setReviewNotesDraft] = useState('');
-
-  // Override
   const canOverride = user && ['OWNER', 'BRANCH_MANAGER'].includes(user.role);
   const [overrideId, setOverrideId] = useState<string | null>(null);
   const [overrideCustomerId, setOverrideCustomerId] = useState<string | null>(null);
   const [overrideStatus, setOverrideStatus] = useState('');
   const [overrideNotes, setOverrideNotes] = useState('');
 
-  // ── Reset page on filter change ──────────────────────────────────────────
   useEffect(() => {
     setPage(1);
   }, [debouncedSearch, statusFilter, startDate, endDate, branchFilter]);
 
-  // ── Date range shortcuts ─────────────────────────────────────────────────
   const setDateRange = (type: 'today' | 'week' | 'month') => {
     const now = new Date();
     const fmt = (d: Date) => d.toISOString().slice(0, 10);
@@ -111,7 +63,6 @@ export default function CreditChecksPage() {
     }
   };
 
-  // ── Queries ──────────────────────────────────────────────────────────────
   const buildParams = (overrideLimit?: number) => {
     const params = new URLSearchParams();
     if (debouncedSearch) params.set('search', debouncedSearch);
@@ -150,199 +101,6 @@ export default function CreditChecksPage() {
     enabled: !!isOwner,
   });
 
-  const { data: customers = [] } = useQuery<Customer[]>({
-    queryKey: ['customers-search-cc', debouncedCustomerSearch],
-    queryFn: async () => {
-      const params = new URLSearchParams();
-      if (debouncedCustomerSearch) params.set('search', debouncedCustomerSearch);
-      const { data } = await api.get(`/customers?${params}`);
-      return data.data || [];
-    },
-    enabled: showCreateModal,
-  });
-
-  // Reset dependent state when customer cleared
-  useEffect(() => {
-    if (!selectedCustomer) {
-      setRiskScore(null);
-      setSalarySlipResult(null);
-      setSalarySlipFiles([]);
-      setStatementResult(null);
-      setStatementFiles([]);
-      setStatementBankName('');
-      setReviewNotesDraft('');
-      setSalarySlipEditable({ netSalary: '', employerName: '', payDay: '', bankName: '' });
-    }
-  }, [selectedCustomer?.id, selectedCustomer]);
-
-  // Load customer history when customer selected
-  const { data: customerHistory = null } = useQuery<CustomerHistory | null>({
-    queryKey: ['credit-check-customer-history', selectedCustomer?.id],
-    queryFn: async () => {
-      try {
-        const { data } = await api.get(
-          `/credit-checks/customer-history/${selectedCustomer!.id}`,
-        );
-        return data;
-      } catch {
-        return null;
-      }
-    },
-    enabled: !!selectedCustomer,
-  });
-
-  // ── OCR Handlers ─────────────────────────────────────────────────────────
-  const handleSalarySlipOcr = async () => {
-    if (salarySlipFiles.length === 0) {
-      toast.error('กรุณาเลือกรูปสลิปเงินเดือน');
-      return;
-    }
-    setSalarySlipLoading(true);
-    try {
-      const imageBase64 = await compressImageForOcr(salarySlipFiles[0]);
-      const { data } = await api.post<OcrSalarySlipResult>(
-        '/ocr/salary-slip',
-        { imageBase64 },
-        { timeout: 90000 },
-      );
-      setSalarySlipResult(data);
-      setSalarySlipEditable({
-        netSalary: data.netSalary?.toString() || '',
-        employerName: data.employerName || '',
-        payDay: data.payDay?.toString() || '',
-        bankName: data.bankName || '',
-      });
-      toast.success(`วิเคราะห์สลิปเงินเดือนสำเร็จ (ความมั่นใจ ${(data.confidence * 100).toFixed(0)}%)`);
-    } catch (err) {
-      toast.error(getErrorMessage(err));
-    } finally {
-      setSalarySlipLoading(false);
-    }
-  };
-
-  const handleStatementOcr = async () => {
-    if (statementFiles.length === 0) {
-      toast.error('กรุณาเลือกรูป Statement');
-      return;
-    }
-    setStatementLoading(true);
-    try {
-      const imageBase64 = await compressImageForOcr(statementFiles[0]);
-      const { data } = await api.post<OcrBankStatementResult>(
-        '/ocr/bank-statement',
-        { imageBase64 },
-        { timeout: 90000 },
-      );
-      setStatementResult(data);
-      toast.success(`วิเคราะห์ Statement สำเร็จ (ความมั่นใจ ${(data.confidence * 100).toFixed(0)}%)`);
-    } catch (err) {
-      toast.error(getErrorMessage(err));
-    } finally {
-      setStatementLoading(false);
-    }
-  };
-
-  const handleCalculateRisk = async (creditCheckId: string) => {
-    setRiskLoading(true);
-    try {
-      const { data } = await api.post<RiskScoreResult>(
-        `/credit-checks/${creditCheckId}/calculate-risk`,
-      );
-      setRiskScore(data);
-      toast.success('คำนวณ Risk Score สำเร็จ');
-    } catch (err) {
-      toast.error(getErrorMessage(err));
-    } finally {
-      setRiskLoading(false);
-    }
-  };
-
-  const handleBookBankScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (bookBankFileRef.current) bookBankFileRef.current.value = '';
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error('ไฟล์ต้องมีขนาดไม่เกิน 10MB');
-      return;
-    }
-    if (!file.type.startsWith('image/')) {
-      toast.error('กรุณาเลือกไฟล์รูปภาพ');
-      return;
-    }
-    setBookBankLoading(true);
-    try {
-      const imageBase64 = await compressImageForOcr(file);
-      const { data } = await api.post<OcrBookBankResult>(
-        '/ocr/book-bank',
-        { imageBase64 },
-        { timeout: 90000 },
-      );
-      setBookBankResult(data);
-      if (data.bankName) setBankName(data.bankName);
-      const pct = (data.confidence * 100).toFixed(0);
-      if (data.confidence < 0.7) {
-        toast.warning(`อ่านสมุดบัญชีสำเร็จ ความมั่นใจ ${pct}%`);
-      } else {
-        toast.success(`อ่านสมุดบัญชีสำเร็จ (ความมั่นใจ ${pct}%)`);
-      }
-    } catch (err: unknown) {
-      const axiosErr = err as { code?: string; response?: unknown };
-      if (axiosErr.code === 'ECONNABORTED' || !axiosErr.response) {
-        toast.error('ไม่สามารถเชื่อมต่อ OCR ได้ กรุณาลองใหม่');
-      } else {
-        toast.error(getErrorMessage(err));
-      }
-    } finally {
-      setBookBankLoading(false);
-    }
-  };
-
-  // ── Mutations ────────────────────────────────────────────────────────────
-  const resetCreateForm = () => {
-    setShowCreateModal(false);
-    setSelectedCustomer(null);
-    setBankName('');
-    setCustomerSearch('');
-    setBookBankResult(null);
-    setSalarySlipResult(null);
-    setSalarySlipFiles([]);
-    setStatementResult(null);
-    setStatementFiles([]);
-    setStatementBankName('');
-    setReviewNotesDraft('');
-    setRiskScore(null);
-    setSalarySlipEditable({ netSalary: '', employerName: '', payDay: '', bankName: '' });
-    if (fileRef.current) fileRef.current.value = '';
-  };
-
-  const uploadMutation = useMutation({
-    mutationFn: async (files: FileList) => {
-      if (!selectedCustomer) throw new Error('เลือกลูกค้าก่อน');
-      const fileUrls: string[] = [];
-      for (const file of Array.from(files)) {
-        const reader = new FileReader();
-        const url = await new Promise<string>((resolve, reject) => {
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = () => reject(new Error('ไม่สามารถอ่านไฟล์ได้'));
-          reader.readAsDataURL(file);
-        });
-        fileUrls.push(url);
-      }
-      const { data } = await api.post(`/customers/${selectedCustomer.id}/credit-check`, {
-        bankName: bankName || undefined,
-        statementFiles: fileUrls,
-        statementMonths: 3,
-      });
-      return data;
-    },
-    onSuccess: () => {
-      toast.success('สร้างรายการตรวจเครดิตสำเร็จ');
-      queryClient.invalidateQueries({ queryKey: ['credit-checks'] });
-      resetCreateForm();
-    },
-    onError: (err: unknown) => toast.error(getErrorMessage(err)),
-  });
-
   const analyzeMutation = useMutation({
     mutationFn: async ({ customerId, creditCheckId }: { customerId: string; creditCheckId: string }) => {
       const { data } = await api.post(
@@ -377,65 +135,6 @@ export default function CreditChecksPage() {
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
-  // ── Create modal save/approve/reject handlers ────────────────────────────
-  const saveCreditCheckMutation = useMutation({
-    mutationFn: async ({
-      customerId,
-      status,
-    }: {
-      customerId: string;
-      status?: 'APPROVED' | 'REJECTED';
-    }) => {
-      const { data } = await api.post(`/customers/${customerId}/credit-check`, {
-        bankName: statementBankName || bankName || undefined,
-        statementFiles: [],
-        statementMonths: 3,
-        reviewNotes: reviewNotesDraft || undefined,
-        ...(status ? { status } : {}),
-      });
-      return { data, status };
-    },
-    onSuccess: ({ status }) => {
-      if (status === 'APPROVED') {
-        toast.success('อนุมัติเครดิตสำเร็จ');
-      } else if (status === 'REJECTED') {
-        toast.success('ปฏิเสธเครดิตแล้ว');
-      } else {
-        toast.success('บันทึกร่างตรวจเครดิตสำเร็จ');
-      }
-      queryClient.invalidateQueries({ queryKey: ['credit-checks'] });
-      resetCreateForm();
-    },
-    onError: (err: unknown) => toast.error(getErrorMessage(err)),
-  });
-
-  const handleSave = () => {
-    if (!selectedCustomer) return;
-    const files = fileRef.current?.files;
-    if (files && files.length > 0) {
-      uploadMutation.mutate(files);
-    } else {
-      saveCreditCheckMutation.mutate({ customerId: selectedCustomer.id });
-    }
-  };
-
-  const handleApprove = () => {
-    if (!selectedCustomer) return;
-    saveCreditCheckMutation.mutate({
-      customerId: selectedCustomer.id,
-      status: 'APPROVED',
-    });
-  };
-
-  const handleReject = () => {
-    if (!selectedCustomer) return;
-    saveCreditCheckMutation.mutate({
-      customerId: selectedCustomer.id,
-      status: 'REJECTED',
-    });
-  };
-
-  // ── Excel export ─────────────────────────────────────────────────────────
   const exportExcel = async () => {
     try {
       toast.loading('กำลังสร้างไฟล์ Excel...', { id: 'excel-export' });
@@ -525,27 +224,18 @@ export default function CreditChecksPage() {
     }
   };
 
-  // ── Render ───────────────────────────────────────────────────────────────
   return (
     <div>
       <PageHeader
         title="ตรวจเครดิต"
-        subtitle="ตรวจสอบเครดิตลูกค้าก่อนทำสัญญา"
+        subtitle="ภาพรวมการตรวจเครดิตทั้งระบบ — คลิกแถวเพื่อเปิดหน้าลูกค้า"
         action={
-          <div className="flex gap-2">
-            <button
-              onClick={exportExcel}
-              className="px-4 py-2 text-sm border border-input rounded-lg hover:bg-muted"
-            >
-              ส่งออก Excel
-            </button>
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
-            >
-              + ตรวจเครดิตใหม่
-            </button>
-          </div>
+          <button
+            onClick={exportExcel}
+            className="px-4 py-2 text-sm border border-input rounded-lg hover:bg-muted"
+          >
+            ส่งออก Excel
+          </button>
         }
       />
 
@@ -574,9 +264,7 @@ export default function CreditChecksPage() {
         isError={isError}
         error={error}
         onRetry={refetch}
-        expandedRow={expandedRow}
-        onRowClick={(cc) => setExpandedRow(expandedRow === cc.id ? null : cc.id)}
-        onExpandedClose={() => setExpandedRow(null)}
+        onRowClick={(cc) => navigate(`/customers/${cc.customer.id}?tab=credit`)}
         onPageChange={setPage}
         canOverride={!!canOverride}
         isAnalyzePending={analyzeMutation.isPending}
@@ -589,56 +277,6 @@ export default function CreditChecksPage() {
         }}
       />
 
-      {/* Create Full-Screen Overlay */}
-      {showCreateModal && (
-        <CreditCheckCreateModal
-          onClose={() => {
-            setShowCreateModal(false);
-            setSelectedCustomer(null);
-            setBankName('');
-            setCustomerSearch('');
-          }}
-          customerSearch={customerSearch}
-          onCustomerSearchChange={setCustomerSearch}
-          customers={customers}
-          selectedCustomer={selectedCustomer}
-          onSelectCustomer={setSelectedCustomer}
-          onClearCustomer={() => setSelectedCustomer(null)}
-          customerHistory={customerHistory}
-          bookBankLoading={bookBankLoading}
-          bookBankFileRef={bookBankFileRef}
-          onBookBankScan={handleBookBankScan}
-          salarySlipFileRef={salarySlipFileRef}
-          salarySlipFiles={salarySlipFiles}
-          onSalarySlipFilesChange={setSalarySlipFiles}
-          salarySlipLoading={salarySlipLoading}
-          onSalarySlipOcr={handleSalarySlipOcr}
-          salarySlipResult={salarySlipResult}
-          salarySlipEditable={salarySlipEditable}
-          onSalarySlipEditableChange={setSalarySlipEditable}
-          statementBankName={statementBankName}
-          onStatementBankNameChange={setStatementBankName}
-          statementFileRef={statementFileRef}
-          statementFiles={statementFiles}
-          onStatementFilesChange={setStatementFiles}
-          statementLoading={statementLoading}
-          onStatementOcr={handleStatementOcr}
-          statementResult={statementResult}
-          riskScore={riskScore}
-          riskLoading={riskLoading}
-          onCalculateRisk={handleCalculateRisk}
-          reviewNotesDraft={reviewNotesDraft}
-          onReviewNotesDraftChange={setReviewNotesDraft}
-          bankName={bankName}
-          fileRef={fileRef}
-          isUploadPending={uploadMutation.isPending}
-          onSave={handleSave}
-          onApprove={handleApprove}
-          onReject={handleReject}
-        />
-      )}
-
-      {/* Override Modal */}
       {overrideId && (
         <CreditCheckOverrideModal
           overrideStatus={overrideStatus}

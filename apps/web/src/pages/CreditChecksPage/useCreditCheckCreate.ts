@@ -1,0 +1,318 @@
+import { useState, useRef, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import api, { getErrorMessage } from '@/lib/api';
+import { compressImageForOcr } from '@/lib/compressImage';
+import { useDebounce } from '@/hooks/useDebounce';
+import {
+  type Customer,
+  type CustomerHistory,
+  type OcrBookBankResult,
+  type OcrSalarySlipResult,
+  type OcrBankStatementResult,
+  type RiskScoreResult,
+} from './types';
+
+interface UseCreditCheckCreateParams {
+  open: boolean;
+  preselectedCustomer?: Customer | null;
+  onSuccess?: () => void;
+}
+
+export function useCreditCheckCreate({ open, preselectedCustomer, onSuccess }: UseCreditCheckCreateParams) {
+  const queryClient = useQueryClient();
+
+  const [customerSearch, setCustomerSearch] = useState('');
+  const debouncedCustomerSearch = useDebounce(customerSearch);
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(preselectedCustomer ?? null);
+
+  useEffect(() => {
+    if (preselectedCustomer !== undefined) setSelectedCustomer(preselectedCustomer);
+  }, [preselectedCustomer?.id]);
+  const [bankName, setBankName] = useState('');
+  const fileRef = useRef<HTMLInputElement>(null);
+  const bookBankFileRef = useRef<HTMLInputElement>(null);
+  const [bookBankLoading, setBookBankLoading] = useState(false);
+  const [bookBankResult, setBookBankResult] = useState<OcrBookBankResult | null>(null);
+
+  const salarySlipFileRef = useRef<HTMLInputElement>(null);
+  const [salarySlipFiles, setSalarySlipFiles] = useState<File[]>([]);
+  const [salarySlipLoading, setSalarySlipLoading] = useState(false);
+  const [salarySlipResult, setSalarySlipResult] = useState<OcrSalarySlipResult | null>(null);
+  const [salarySlipEditable, setSalarySlipEditable] = useState({
+    netSalary: '',
+    employerName: '',
+    payDay: '',
+    bankName: '',
+  });
+
+  const [statementBankName, setStatementBankName] = useState('');
+  const statementFileRef = useRef<HTMLInputElement>(null);
+  const [statementFiles, setStatementFiles] = useState<File[]>([]);
+  const [statementLoading, setStatementLoading] = useState(false);
+  const [statementResult, setStatementResult] = useState<OcrBankStatementResult | null>(null);
+
+  const [riskScore, setRiskScore] = useState<RiskScoreResult | null>(null);
+  const [riskLoading, setRiskLoading] = useState(false);
+  const [reviewNotesDraft, setReviewNotesDraft] = useState('');
+
+  const reset = () => {
+    setSelectedCustomer(preselectedCustomer ?? null);
+    setBankName('');
+    setCustomerSearch('');
+    setBookBankResult(null);
+    setSalarySlipResult(null);
+    setSalarySlipFiles([]);
+    setStatementResult(null);
+    setStatementFiles([]);
+    setStatementBankName('');
+    setReviewNotesDraft('');
+    setRiskScore(null);
+    setSalarySlipEditable({ netSalary: '', employerName: '', payDay: '', bankName: '' });
+    if (fileRef.current) fileRef.current.value = '';
+  };
+
+  const { data: customers = [] } = useQuery<Customer[]>({
+    queryKey: ['customers-search-cc', debouncedCustomerSearch],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (debouncedCustomerSearch) params.set('search', debouncedCustomerSearch);
+      const { data } = await api.get(`/customers?${params}`);
+      return data.data || [];
+    },
+    enabled: open && !preselectedCustomer,
+  });
+
+  useEffect(() => {
+    if (!selectedCustomer) {
+      setRiskScore(null);
+      setSalarySlipResult(null);
+      setSalarySlipFiles([]);
+      setStatementResult(null);
+      setStatementFiles([]);
+      setStatementBankName('');
+      setReviewNotesDraft('');
+      setSalarySlipEditable({ netSalary: '', employerName: '', payDay: '', bankName: '' });
+    }
+  }, [selectedCustomer?.id, selectedCustomer]);
+
+  const { data: customerHistory = null } = useQuery<CustomerHistory | null>({
+    queryKey: ['credit-check-customer-history', selectedCustomer?.id],
+    queryFn: async () => {
+      try {
+        const { data } = await api.get(`/credit-checks/customer-history/${selectedCustomer!.id}`);
+        return data;
+      } catch {
+        return null;
+      }
+    },
+    enabled: !!selectedCustomer && open,
+  });
+
+  const handleBookBankScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (bookBankFileRef.current) bookBankFileRef.current.value = '';
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('ไฟล์ต้องมีขนาดไม่เกิน 10MB');
+      return;
+    }
+    if (!file.type.startsWith('image/')) {
+      toast.error('กรุณาเลือกไฟล์รูปภาพ');
+      return;
+    }
+    setBookBankLoading(true);
+    try {
+      const imageBase64 = await compressImageForOcr(file);
+      const { data } = await api.post<OcrBookBankResult>('/ocr/book-bank', { imageBase64 }, { timeout: 90000 });
+      setBookBankResult(data);
+      if (data.bankName) setBankName(data.bankName);
+      const pct = (data.confidence * 100).toFixed(0);
+      if (data.confidence < 0.7) toast.warning(`อ่านสมุดบัญชีสำเร็จ ความมั่นใจ ${pct}%`);
+      else toast.success(`อ่านสมุดบัญชีสำเร็จ (ความมั่นใจ ${pct}%)`);
+    } catch (err: unknown) {
+      const axiosErr = err as { code?: string; response?: unknown };
+      if (axiosErr.code === 'ECONNABORTED' || !axiosErr.response) {
+        toast.error('ไม่สามารถเชื่อมต่อ OCR ได้ กรุณาลองใหม่');
+      } else {
+        toast.error(getErrorMessage(err));
+      }
+    } finally {
+      setBookBankLoading(false);
+    }
+  };
+
+  const handleSalarySlipOcr = async () => {
+    if (salarySlipFiles.length === 0) {
+      toast.error('กรุณาเลือกรูปสลิปเงินเดือน');
+      return;
+    }
+    setSalarySlipLoading(true);
+    try {
+      const imageBase64 = await compressImageForOcr(salarySlipFiles[0]);
+      const { data } = await api.post<OcrSalarySlipResult>('/ocr/salary-slip', { imageBase64 }, { timeout: 90000 });
+      setSalarySlipResult(data);
+      setSalarySlipEditable({
+        netSalary: data.netSalary?.toString() || '',
+        employerName: data.employerName || '',
+        payDay: data.payDay?.toString() || '',
+        bankName: data.bankName || '',
+      });
+      toast.success(`วิเคราะห์สลิปเงินเดือนสำเร็จ (ความมั่นใจ ${(data.confidence * 100).toFixed(0)}%)`);
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setSalarySlipLoading(false);
+    }
+  };
+
+  const handleStatementOcr = async () => {
+    if (statementFiles.length === 0) {
+      toast.error('กรุณาเลือกรูป Statement');
+      return;
+    }
+    setStatementLoading(true);
+    try {
+      const imageBase64 = await compressImageForOcr(statementFiles[0]);
+      const { data } = await api.post<OcrBankStatementResult>('/ocr/bank-statement', { imageBase64 }, { timeout: 90000 });
+      setStatementResult(data);
+      toast.success(`วิเคราะห์ Statement สำเร็จ (ความมั่นใจ ${(data.confidence * 100).toFixed(0)}%)`);
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setStatementLoading(false);
+    }
+  };
+
+  const handleCalculateRisk = async (creditCheckId: string) => {
+    setRiskLoading(true);
+    try {
+      const { data } = await api.post<RiskScoreResult>(`/credit-checks/${creditCheckId}/calculate-risk`);
+      setRiskScore(data);
+      toast.success('คำนวณ Risk Score สำเร็จ');
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setRiskLoading(false);
+    }
+  };
+
+  const uploadMutation = useMutation({
+    mutationFn: async (files: FileList) => {
+      if (!selectedCustomer) throw new Error('เลือกลูกค้าก่อน');
+      const fileUrls: string[] = [];
+      for (const file of Array.from(files)) {
+        const reader = new FileReader();
+        const url = await new Promise<string>((resolve, reject) => {
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = () => reject(new Error('ไม่สามารถอ่านไฟล์ได้'));
+          reader.readAsDataURL(file);
+        });
+        fileUrls.push(url);
+      }
+      const { data } = await api.post(`/customers/${selectedCustomer.id}/credit-check`, {
+        bankName: bankName || undefined,
+        statementFiles: fileUrls,
+        statementMonths: 3,
+      });
+      return data;
+    },
+    onSuccess: () => {
+      toast.success('สร้างรายการตรวจเครดิตสำเร็จ');
+      queryClient.invalidateQueries({ queryKey: ['credit-checks'] });
+      queryClient.invalidateQueries({ queryKey: ['customer-credit-checks'] });
+      reset();
+      onSuccess?.();
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  const saveCreditCheckMutation = useMutation({
+    mutationFn: async ({ customerId, status }: { customerId: string; status?: 'APPROVED' | 'REJECTED' }) => {
+      const { data } = await api.post(`/customers/${customerId}/credit-check`, {
+        bankName: statementBankName || bankName || undefined,
+        statementFiles: [],
+        statementMonths: 3,
+        reviewNotes: reviewNotesDraft || undefined,
+        ...(status ? { status } : {}),
+      });
+      return { data, status };
+    },
+    onSuccess: ({ status }) => {
+      if (status === 'APPROVED') toast.success('อนุมัติเครดิตสำเร็จ');
+      else if (status === 'REJECTED') toast.success('ปฏิเสธเครดิตแล้ว');
+      else toast.success('บันทึกร่างตรวจเครดิตสำเร็จ');
+      queryClient.invalidateQueries({ queryKey: ['credit-checks'] });
+      queryClient.invalidateQueries({ queryKey: ['customer-credit-checks'] });
+      reset();
+      onSuccess?.();
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  const handleSave = () => {
+    if (!selectedCustomer) return;
+    const files = fileRef.current?.files;
+    if (files && files.length > 0) uploadMutation.mutate(files);
+    else saveCreditCheckMutation.mutate({ customerId: selectedCustomer.id });
+  };
+
+  const handleApprove = () => {
+    if (!selectedCustomer) return;
+    saveCreditCheckMutation.mutate({ customerId: selectedCustomer.id, status: 'APPROVED' });
+  };
+
+  const handleReject = () => {
+    if (!selectedCustomer) return;
+    saveCreditCheckMutation.mutate({ customerId: selectedCustomer.id, status: 'REJECTED' });
+  };
+
+  return {
+    reset,
+
+    modalProps: {
+      onClose: reset,
+      customerSearch,
+      onCustomerSearchChange: setCustomerSearch,
+      customers,
+      selectedCustomer,
+      onSelectCustomer: setSelectedCustomer,
+      onClearCustomer: () => {
+        if (!preselectedCustomer) setSelectedCustomer(null);
+      },
+      customerHistory,
+      bookBankLoading,
+      bookBankFileRef,
+      onBookBankScan: handleBookBankScan,
+      salarySlipFileRef,
+      salarySlipFiles,
+      onSalarySlipFilesChange: setSalarySlipFiles,
+      salarySlipLoading,
+      onSalarySlipOcr: handleSalarySlipOcr,
+      salarySlipResult,
+      salarySlipEditable,
+      onSalarySlipEditableChange: setSalarySlipEditable,
+      statementBankName,
+      onStatementBankNameChange: setStatementBankName,
+      statementFileRef,
+      statementFiles,
+      onStatementFilesChange: setStatementFiles,
+      statementLoading,
+      onStatementOcr: handleStatementOcr,
+      statementResult,
+      riskScore,
+      riskLoading,
+      onCalculateRisk: handleCalculateRisk,
+      reviewNotesDraft,
+      onReviewNotesDraftChange: setReviewNotesDraft,
+      bankName,
+      fileRef,
+      isUploadPending: uploadMutation.isPending,
+      onSave: handleSave,
+      onApprove: handleApprove,
+      onReject: handleReject,
+    },
+
+    bookBankResult,
+  };
+}

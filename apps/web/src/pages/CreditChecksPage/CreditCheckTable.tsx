@@ -13,7 +13,6 @@ import {
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import { formatDateShort, formatDateTime } from '@/utils/formatters';
 import { type CreditCheckItem, type CreditChecksResponse, statusLabels, getRiskBadge } from './types';
-import CreditCheckDetail from './CreditCheckDetail';
 
 interface CreditCheckTableProps {
   creditChecks: CreditCheckItem[];
@@ -22,9 +21,7 @@ interface CreditCheckTableProps {
   isError: boolean;
   error: unknown;
   onRetry: () => void;
-  expandedRow: string | null;
   onRowClick: (cc: CreditCheckItem) => void;
-  onExpandedClose: () => void;
   onPageChange: (page: number) => void;
   canOverride: boolean;
   isAnalyzePending: boolean;
@@ -49,9 +46,7 @@ export default function CreditCheckTable({
   isError,
   error,
   onRetry,
-  expandedRow,
   onRowClick,
-  onExpandedClose,
   onPageChange,
   canOverride,
   isAnalyzePending,
@@ -248,33 +243,23 @@ export default function CreditCheckTable({
       onRetry={onRetry}
       errorTitle="ไม่สามารถโหลดรายการตรวจเครดิตได้"
     >
-      <>
-        <DataTable
-          columns={columns}
-          data={creditChecks}
-          emptyMessage="ยังไม่มีรายการตรวจเครดิต"
-          columnToggle
-          onRowClick={(cc: CreditCheckItem) => onRowClick(cc)}
-          pagination={
-            creditChecksData
-              ? {
-                  page: creditChecksData.page,
-                  totalPages: creditChecksData.totalPages,
-                  total: creditChecksData.total,
-                  onPageChange,
-                }
-              : undefined
-          }
-        />
-
-        {/* Expanded AI detail */}
-        {expandedRow && creditChecks.find((cc) => cc.id === expandedRow) && (
-          <CreditCheckDetail
-            creditCheck={creditChecks.find((c) => c.id === expandedRow)!}
-            onClose={onExpandedClose}
-          />
-        )}
-      </>
+      <DataTable
+        columns={columns}
+        data={creditChecks}
+        emptyMessage="ยังไม่มีรายการตรวจเครดิต"
+        columnToggle
+        onRowClick={(cc: CreditCheckItem) => onRowClick(cc)}
+        pagination={
+          creditChecksData
+            ? {
+                page: creditChecksData.page,
+                totalPages: creditChecksData.totalPages,
+                total: creditChecksData.total,
+                onPageChange,
+              }
+            : undefined
+        }
+      />
     </QueryBoundary>
   );
 }

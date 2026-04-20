@@ -1,4 +1,5 @@
-import { useParams, useNavigate, Link } from 'react-router';
+import { useParams, useNavigate, Link, useSearchParams } from 'react-router';
+import CreditCheckCreateDialog from './CreditChecksPage/CreditCheckCreateDialog';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import api, { getErrorMessage } from '@/lib/api';
@@ -120,10 +121,24 @@ export default function CustomerDetailPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
 
-  const creditFileRef = useRef<HTMLInputElement>(null);
   const docFileRef = useRef<HTMLInputElement>(null);
-  const [creditBankName, setCreditBankName] = useState('');
-  const [activeTab, setActiveTab] = useState('info');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialTab = searchParams.get('tab') || 'info';
+  const [activeTab, setActiveTab] = useState(initialTab);
+  const [showCreditDialog, setShowCreditDialog] = useState(false);
+
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab && tab !== activeTab) setActiveTab(tab);
+  }, [searchParams]);
+
+  const handleTabChange = (value: string) => {
+    setActiveTab(value);
+    const next = new URLSearchParams(searchParams);
+    if (value === 'info') next.delete('tab');
+    else next.set('tab', value);
+    setSearchParams(next, { replace: true });
+  };
 
   // Edit customer state
   const [showEditModal, setShowEditModal] = useState(false);
@@ -165,34 +180,6 @@ export default function CustomerDetailPage() {
   const { data: creditChecks = [] } = useQuery<CreditCheckItem[]>({
     queryKey: ['customer-credit-checks', id],
     queryFn: async () => { const { data } = await api.get(`/customers/${id}/credit-check`); return data; },
-  });
-
-  const uploadCreditMutation = useMutation({
-    mutationFn: async (files: FileList) => {
-      const fileUrls: string[] = [];
-      for (const file of Array.from(files)) {
-        const reader = new FileReader();
-        const url = await new Promise<string>((resolve, reject) => {
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = () => reject(new Error('ไม่สามารถอ่านไฟล์ได้'));
-          reader.readAsDataURL(file);
-        });
-        fileUrls.push(url);
-      }
-      const { data } = await api.post(`/customers/${id}/credit-check`, {
-        bankName: creditBankName || undefined,
-        statementFiles: fileUrls,
-        statementMonths: 3,
-      });
-      return data;
-    },
-    onSuccess: () => {
-      toast.success('อัปโหลด Statement สำเร็จ');
-      queryClient.invalidateQueries({ queryKey: ['customer-credit-checks', id] });
-      if (creditFileRef.current) creditFileRef.current.value = '';
-      setCreditBankName('');
-    },
-    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   const startEdit = () => {
@@ -475,7 +462,7 @@ export default function CustomerDetailPage() {
                 {customer?.contracts?.length > 0 && (
                   <button
                     type="button"
-                    onClick={() => setActiveTab('contracts')}
+                    onClick={() => handleTabChange('contracts')}
                     className="rounded-full px-2.5 py-0.5 text-xs font-semibold bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer"
                   >
                     {customer.contracts.length} สัญญา
@@ -541,7 +528,7 @@ export default function CustomerDetailPage() {
       })()}
 
       {/* Customer Info — Tabbed Layout */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-6">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="mb-6">
         <TabsList variant="line" className="mb-5">
           <TabsTrigger value="info">ข้อมูลส่วนตัว</TabsTrigger>
           <TabsTrigger value="contact">ติดต่อ & ที่อยู่</TabsTrigger>
@@ -734,26 +721,15 @@ export default function CustomerDetailPage() {
         <TabsContent value="credit">
       {/* Credit Check */}
       <Card className="mb-6">
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>ตรวจสอบเครดิต</CardTitle>
+          {canEdit && (
+            <Button variant="primary" size="sm" onClick={() => setShowCreditDialog(true)}>
+              + ตรวจเครดิตใหม่
+            </Button>
+          )}
         </CardHeader>
         <CardContent>
-
-        {/* Upload new credit check */}
-        <div className="bg-muted/60 rounded-xl p-4 mb-4 space-y-3 border border-border/40">
-          <p className="text-xs text-muted-foreground">อัปโหลด Statement ธนาคารย้อนหลัง 3 เดือน เพื่อเช็คเครดิตก่อนทำสัญญา</p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-foreground mb-1.5">ธนาคาร</label>
-              <input type="text" value={creditBankName} onChange={(e) => setCreditBankName(e.target.value)} placeholder="เช่น กสิกร, กรุงไทย..." className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-foreground mb-1.5">Statement (ภาพ/PDF)</label>
-              <input ref={creditFileRef} type="file" accept="image/*,.pdf" multiple onChange={(e) => e.target.files && uploadCreditMutation.mutate(e.target.files)} disabled={uploadCreditMutation.isPending} className="w-full text-sm text-muted-foreground file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary/10 file:text-primary" />
-            </div>
-          </div>
-          {uploadCreditMutation.isPending && <div className="text-sm text-primary">กำลังอัปโหลด...</div>}
-        </div>
 
         {/* Credit check history */}
         {creditChecks.length > 0 ? (
@@ -1250,6 +1226,21 @@ export default function CustomerDetailPage() {
         </div>
       </div>
       )}
+
+      <CreditCheckCreateDialog
+        open={showCreditDialog}
+        onClose={() => setShowCreditDialog(false)}
+        preselectedCustomer={customer ? {
+          id: customer.id,
+          name: customer.name,
+          phone: customer.phone,
+          nationalId: customer.nationalId,
+          salary: customer.salary,
+          occupation: customer.occupation,
+          addressCurrentType: null,
+          salaryPayDay: null,
+        } : null}
+      />
     </div>
   );
 }

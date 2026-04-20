@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import type {
   CustomerTier,
@@ -54,7 +55,7 @@ export class CustomerTierService {
     const totalPayments = history.onTimePayments + history.latePayments;
     const onTimePct = totalPayments > 0 ? (history.onTimePayments / totalPayments) * 100 : 0;
 
-    if (history.closedContracts >= 2 && onTimePct === 100) {
+    if (history.closedContracts >= 2 && history.latePayments === 0 && history.onTimePayments > 0) {
       reasons.push({
         code: 'GOLD',
         message: `ปิดสัญญา ${history.closedContracts} ครั้ง จ่ายตรงเวลา 100%`,
@@ -127,7 +128,7 @@ export class CustomerTierService {
     let onTimePayments = 0;
     let latePayments = 0;
     let maxOverdueDays = 0;
-    let currentOutstanding = 0;
+    let currentOutstanding = new Prisma.Decimal(0);
     let activeContractsPaidCount = 0;
     let activeAllOnTime = activeContracts > 0;
 
@@ -152,7 +153,9 @@ export class CustomerTierService {
       if (isActive) {
         const paidCount = contract.payments.filter((p) => p.status === 'PAID').length;
         const remaining = contract.totalMonths - paidCount;
-        currentOutstanding += remaining * Number(contract.monthlyPayment);
+        currentOutstanding = currentOutstanding.add(
+          new Prisma.Decimal(remaining).mul(contract.monthlyPayment),
+        );
         if (contractActiveLate > 0) activeAllOnTime = false;
       }
     }
@@ -168,7 +171,7 @@ export class CustomerTierService {
       onTimePayments,
       latePayments,
       maxOverdueDays,
-      currentOutstanding,
+      currentOutstanding: currentOutstanding.toDecimalPlaces(2).toNumber(),
       hasBadDebt,
       hasRepossession,
       activeContractsAllOnTime: activeAllOnTime,
@@ -187,7 +190,7 @@ export class CustomerTierService {
         onTimePayments,
         latePayments,
         maxOverdueDays,
-        currentOutstanding: Math.round(currentOutstanding * 100) / 100,
+        currentOutstanding: currentOutstanding.toDecimalPlaces(2).toNumber(),
         hasBadDebt,
         hasRepossession,
       },

@@ -64,7 +64,11 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const meta = { ipAddress: req.ip, userAgent: req.headers['user-agent'] as string | undefined };
+    const meta = {
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'] as string | undefined,
+      acceptLanguage: req.headers['accept-language'] as string | undefined,
+    };
     const result = await this.authService.login(loginDto, meta);
 
     if (result.state === 'OTP_REQUIRED') {
@@ -102,7 +106,11 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const meta = { ipAddress: req.ip, userAgent: req.headers['user-agent'] as string | undefined };
+    const meta = {
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'] as string | undefined,
+      acceptLanguage: req.headers['accept-language'] as string | undefined,
+    };
 
     if (!body.tempToken || !body.otp) {
       throw new UnauthorizedException('กรุณาระบุ tempToken และ otp');

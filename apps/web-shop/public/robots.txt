@@ -1,0 +1,44 @@
+# BESTCHOICE Online Shop — robots.txt
+# Hybrid AI strategy: allow AI crawlers for marketing/SEO, block /api/* and aggressive scrapers
+
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /apply
+Disallow: /checkout
+Disallow: /orders
+Disallow: /account
+
+# AI crawlers — allow with crawl delay (drives discovery)
+User-agent: GPTBot
+Allow: /
+Crawl-delay: 10
+Disallow: /api/
+Disallow: /apply
+
+User-agent: ClaudeBot
+Allow: /
+Crawl-delay: 10
+Disallow: /api/
+
+User-agent: Anthropic-AI
+Allow: /
+Crawl-delay: 10
+Disallow: /api/
+
+User-agent: PerplexityBot
+Allow: /
+Disallow: /api/
+
+User-agent: Google-Extended
+Allow: /
+Disallow: /api/
+
+# Aggressive scrapers — BLOCK
+User-agent: Bytespider
+Disallow: /
+
+User-agent: CCBot
+Disallow: /
+
+Sitemap: https://shop.bestchoicephone.app/sitemap.xml

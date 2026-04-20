@@ -32,6 +32,7 @@ const PASSWORD_RESET_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 export interface AuthMeta {
   ipAddress?: string;
   userAgent?: string;
+  acceptLanguage?: string;
 }
 
 @Injectable()
@@ -99,6 +100,7 @@ export class AuthService {
       failureKind,
       ipAddress: meta?.ipAddress,
       userAgent: meta?.userAgent,
+      acceptLanguage: meta?.acceptLanguage,
       twoFactorUsed,
     });
   }

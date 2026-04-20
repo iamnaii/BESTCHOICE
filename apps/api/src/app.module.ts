@@ -81,6 +81,12 @@ import { MdmModule } from './modules/mdm/mdm.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { LoyaltyModule } from './modules/loyalty/loyalty.module';
+import { ShopTrackingModule } from './modules/shop-tracking/shop-tracking.module';
+import { ShopBotDefenseModule } from './modules/shop-bot-defense/shop-bot-defense.module';
+import { ShopReservationModule } from './modules/shop-reservation/shop-reservation.module';
+import { ShopCatalogModule } from './modules/shop-catalog/shop-catalog.module';
+import { ShopAuthSocialModule } from './modules/shop-auth-social/shop-auth-social.module';
+import { ShopLineChatModule } from './modules/shop-line-chat/shop-line-chat.module';
 import { DataAuditModule } from './modules/data-audit/data-audit.module';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { TwoFactorModule } from './modules/two-factor/two-factor.module';
@@ -217,6 +223,18 @@ import { AppCacheModule } from './cache/cache.module';
     IntegrationsModule,
     // Loyalty Program (สะสมแต้ม + referral)
     LoyaltyModule,
+    // Online Shop — visitor analytics
+    ShopTrackingModule,
+    // Online Shop — bot defense + rate limiting
+    ShopBotDefenseModule,
+    // Online Shop — 15-min product reservation for online buyers
+    ShopReservationModule,
+    // Online Shop — read-only product catalog (grouped listing + detail)
+    ShopCatalogModule,
+    // Online Shop — LINE + Facebook OAuth login + phone binding
+    ShopAuthSocialModule,
+    // Online Shop — contact form → LINE OA staff notification
+    ShopLineChatModule,
     // MASTER: Management
     UsersModule,
     SettingsModule,

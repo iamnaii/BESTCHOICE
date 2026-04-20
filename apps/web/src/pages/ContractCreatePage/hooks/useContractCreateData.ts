@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import { serializeAddress, AddressData, emptyAddress } from '@/components/ui/AddressForm';
@@ -11,6 +11,8 @@ import { useDraftStorage } from '@/hooks/useDraftStorage';
 export function useContractCreateData() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
+  const preselectedCustomerId = searchParams.get('customerId');
   const [step, setStep] = useState(0);
   const draft = useDraftStorage();
 
@@ -159,6 +161,18 @@ export function useContractCreateData() {
       return data.data || [];
     },
     enabled: step >= 1,
+  });
+
+  // Pre-select customer from URL param ?customerId= (Phase 4 integration)
+  useQuery<Customer | null>({
+    queryKey: ['preselect-customer', preselectedCustomerId],
+    queryFn: async () => {
+      if (!preselectedCustomerId) return null;
+      const { data } = await api.get(`/customers/${preselectedCustomerId}`);
+      if (data) setSelectedCustomer(data);
+      return data;
+    },
+    enabled: !!preselectedCustomerId && !selectedCustomer,
   });
 
   const { data: latestCreditCheck } = useQuery<{ id: string; status: string; aiScore: number | null } | null>({

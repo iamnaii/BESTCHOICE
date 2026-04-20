@@ -34,8 +34,10 @@ export default function PaymentsPage() {
 
   // Redirect SALES users away from receipts tab (no permission)
   useEffect(() => {
-    if (tab === 'receipts' && !canSeeReceipts) setTab('pending');
-  }, [tab, canSeeReceipts]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (tab === 'receipts' && !canSeeReceipts) {
+      setSearchParams({ tab: 'pending' });
+    }
+  }, [tab, canSeeReceipts, setSearchParams]);
 
   const [statusFilter, setStatusFilter] = useState('');
   const [branchFilter, setBranchFilter] = useState('');

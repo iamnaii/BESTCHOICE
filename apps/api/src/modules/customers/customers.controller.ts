@@ -13,6 +13,8 @@ import {
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { CustomersService } from './customers.service';
+import { CustomerTierService } from './customer-tier.service';
+import type { CustomerTierResponse } from './dto/tier.dto';
 import { CreateCustomerDto, UpdateCustomerDto } from './dto/customer.dto';
 import { UploadDocumentDto, DeleteDocumentDto } from './dto/document.dto';
 import { PaginationDto } from '../../common/dto/pagination.dto';
@@ -33,6 +35,7 @@ export class CustomersController {
   constructor(
     private customersService: CustomersService,
     private piiAudit: PiiAuditService,
+    private readonly tierService: CustomerTierService,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -75,6 +78,7 @@ export class CustomersController {
     @Query('branchId') branchId?: string,
     @Query('sortBy') sortBy?: string,
     @Query('sortOrder') sortOrder?: string,
+    @Query('tier') tier?: string,
     @Req() req?: AuthRequest,
   ) {
     const result = await this.customersService.findAll(
@@ -87,6 +91,7 @@ export class CustomersController {
       branchId,
       sortBy,
       sortOrder,
+      tier,
     );
 
     const role = req?.user?.role || 'UNKNOWN';
@@ -204,6 +209,12 @@ export class CustomersController {
   @ApiOperation({ summary: 'ลูกค้าที่ถูกแนะนำมาโดยลูกค้านี้' })
   getReferrals(@Param('id') id: string) {
     return this.customersService.getReferrals(id);
+  }
+
+  @Get(':id/tier')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  async getTier(@Param('id') id: string): Promise<CustomerTierResponse> {
+    return this.tierService.getCustomerTier(id);
   }
 
   @Post()

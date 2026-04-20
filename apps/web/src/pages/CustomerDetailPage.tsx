@@ -24,6 +24,8 @@ import { maskNationalId, formatNationalId } from '@/utils/mask.util';
 import { THAI_NAME_PREFIXES, RELATIONSHIP_OPTIONS } from '@/lib/constants';
 import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, contractStatusMap } from '@/lib/status-badges';
+import CustomerTierBadge from '@/components/customer/CustomerTierBadge';
+import type { CustomerTierResponse } from '@/types/customer-tier';
 
 interface ReferenceData {
   prefix?: string;
@@ -185,6 +187,16 @@ export default function CustomerDetailPage() {
   const { data: creditChecks = [] } = useQuery<CreditCheckItem[]>({
     queryKey: ['customer-credit-checks', id],
     queryFn: async () => { const { data } = await api.get(`/customers/${id}/credit-check`); return data; },
+  });
+
+  const { data: tierData } = useQuery<CustomerTierResponse>({
+    queryKey: ['customer-tier', id],
+    queryFn: async () => {
+      const { data } = await api.get(`/customers/${id}/tier`);
+      return data;
+    },
+    enabled: !!id,
+    staleTime: 5 * 60 * 1000, // 5 min cache per spec
   });
 
   const startEdit = () => {
@@ -449,7 +461,7 @@ export default function CustomerDetailPage() {
 
   return (
     <div>
-      <PageHeader title={displayName} subtitle="รายละเอียดลูกค้า" breadcrumb={
+      <PageHeader title={displayName} subtitle="รายละเอียดลูกค้า" badge={tierData ? <CustomerTierBadge tier={tierData.tier} size="md" /> : undefined} breadcrumb={
         <Breadcrumb>
           <BreadcrumbList>
             <BreadcrumbItem><BreadcrumbLink asChild><Link to="/customers">ลูกค้า</Link></BreadcrumbLink></BreadcrumbItem>

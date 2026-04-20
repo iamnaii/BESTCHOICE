@@ -1,6 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { CustomersController } from './customers.controller';
 import { CustomersService } from './customers.service';
+import { CustomerTierService } from './customer-tier.service';
 import { PiiAuditService } from '../pii/pii-audit.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -10,6 +11,7 @@ describe('CustomersController PII (Phase 5)', () => {
   let controller: CustomersController;
   let service: { findOne: jest.Mock; findAll: jest.Mock; search: jest.Mock };
   let piiAudit: { logDecryption: jest.Mock };
+  let tierService: CustomerTierService;
 
   beforeEach(async () => {
     service = {
@@ -24,6 +26,7 @@ describe('CustomersController PII (Phase 5)', () => {
       providers: [
         { provide: CustomersService, useValue: service },
         { provide: PiiAuditService, useValue: piiAudit },
+        { provide: CustomerTierService, useValue: { getCustomerTier: jest.fn() } },
       ],
     })
       .overrideGuard(JwtAuthGuard)
@@ -35,6 +38,7 @@ describe('CustomersController PII (Phase 5)', () => {
       .compile();
 
     controller = module.get(CustomersController);
+    tierService = module.get(CustomerTierService);
   });
 
   const reqOf = (role: string) =>
@@ -106,5 +110,25 @@ describe('CustomersController PII (Phase 5)', () => {
     service.findOne.mockResolvedValue(null);
     const result = await controller.findOne('nope', reqOf('SALES'));
     expect(result).toBeNull();
+  });
+
+  describe('GET /customers/:id/tier', () => {
+    it('returns tier response from service', async () => {
+      const mockResp = {
+        customerId: 'cust-1',
+        tier: 'GOLD' as const,
+        reasons: [{ code: 'GOLD', message: 'x' }],
+        history: {
+          totalContracts: 3, closedContracts: 3, activeContracts: 0,
+          onTimePaymentPct: 100, onTimePayments: 36, latePayments: 0,
+          maxOverdueDays: 0, currentOutstanding: 0,
+          hasBadDebt: false, hasRepossession: false,
+        },
+      };
+      const tierSpy = jest.spyOn(tierService, 'getCustomerTier').mockResolvedValue(mockResp);
+      const result = await controller.getTier('cust-1');
+      expect(tierSpy).toHaveBeenCalledWith('cust-1');
+      expect(result.tier).toBe('GOLD');
+    });
   });
 });

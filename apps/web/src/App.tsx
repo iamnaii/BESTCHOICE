@@ -109,6 +109,7 @@ const MdmDashboardPage = lazy(() => import('@/pages/MdmDashboardPage'));
 const BroadcastPage = lazy(() => import('@/pages/BroadcastPage'));
 const RichMenuPage = lazy(() => import('@/pages/RichMenuPage'));
 const LineGreetingPage = lazy(() => import('@/pages/LineGreetingPage'));
+const SetupTwoFactorPage = lazy(() => import('@/pages/SetupTwoFactorPage'));
 
 const PageLoader = () => (
   <div className="flex items-center justify-center py-20">
@@ -169,6 +170,16 @@ function App() {
           <p>href: {window.location.href}</p>
           <p>time: {new Date().toISOString()}</p>
         </div>} />
+
+        {/* 2FA Setup — authenticated, no main layout */}
+        <Route
+          path="/setup-2fa"
+          element={
+            <ProtectedRoute>
+              <SetupTwoFactorPage />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Protected Admin Routes */}
         <Route

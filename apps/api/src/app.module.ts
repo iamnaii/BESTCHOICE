@@ -81,6 +81,7 @@ import { MdmModule } from './modules/mdm/mdm.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { LoyaltyModule } from './modules/loyalty/loyalty.module';
+import { ShopTrackingModule } from './modules/shop-tracking/shop-tracking.module';
 import { DataAuditModule } from './modules/data-audit/data-audit.module';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
@@ -216,6 +217,8 @@ import { AppCacheModule } from './cache/cache.module';
     IntegrationsModule,
     // Loyalty Program (สะสมแต้ม + referral)
     LoyaltyModule,
+    // Online Shop — visitor analytics
+    ShopTrackingModule,
     // MASTER: Management
     UsersModule,
     SettingsModule,

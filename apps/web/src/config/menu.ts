@@ -194,7 +194,6 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
-        { label: 'ใบเสร็จ', path: '/receipts', icon: FileText },
         { label: 'จัดการอุปกรณ์', path: '/mdm', icon: Smartphone },
       ],
     },
@@ -239,7 +238,6 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
       icon: HandCoins,
       items: [
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
-        { label: 'ใบเสร็จ', path: '/receipts', icon: FileText },
         { label: 'บันทึกรายจ่าย', path: '/expenses', icon: Receipt },
         { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
       ],
@@ -269,7 +267,7 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
   ],
   bottomNav: [
     { label: 'ชำระ', path: '/payments', icon: HandCoins },
-    { label: 'ใบเสร็จ', path: '/receipts', icon: FileText },
+    { label: 'ใบเสร็จ', path: '/payments?tab=receipts', icon: FileText },
     { label: 'รายจ่าย', path: '/expenses', icon: Receipt },
     { label: 'แชท', path: '/inbox', icon: MessageSquareMore, badgeKey: 'chat-unread' },
     { label: 'เพิ่มเติม', path: '#more', icon: MoreHorizontal, action: 'sidebar' },
@@ -319,7 +317,6 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
         { label: 'Finance Overview', path: '/finance-portfolio', icon: CircleDollarSign },
-        { label: 'ใบเสร็จ', path: '/receipts', icon: FileText },
         { label: 'จัดการอุปกรณ์', path: '/mdm', icon: Smartphone },
       ],
     },

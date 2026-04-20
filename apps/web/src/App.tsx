@@ -110,6 +110,7 @@ const BroadcastPage = lazy(() => import('@/pages/BroadcastPage'));
 const RichMenuPage = lazy(() => import('@/pages/RichMenuPage'));
 const LineGreetingPage = lazy(() => import('@/pages/LineGreetingPage'));
 const SetupTwoFactorPage = lazy(() => import('@/pages/SetupTwoFactorPage'));
+const CustomerIntakePage = lazy(() => import('@/pages/CustomerIntakePage'));
 
 const PageLoader = () => (
   <div className="flex items-center justify-center py-20">
@@ -329,6 +330,7 @@ function App() {
           <Route path="/chatbot-finance/learning" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER']}><ChatbotFinanceLearningPage /></ProtectedRoute>} />
           <Route path="/customers" element={<CustomersPage />} />
           <Route path="/customers/:id" element={<CustomerDetailPage />} />
+          <Route path="/customer-intake" element={<CustomerIntakePage />} />
           <Route path="/contracts" element={<ContractsPage />} />
           <Route
             path="/contracts/create"

@@ -1,64 +1,95 @@
 # Merge Guard Report — feat/customer-tier-phase1
 
-**Date:** 2026-04-21  
-**Branch:** `feat/customer-tier-phase1`  
-**Author:** iamnaii (akenarin.ak@gmail.com)  
-**Diff size:** 17 files changed, 2021 insertions(+), 7 deletions(-)  
-**Recommendation:** ✅ APPROVE (with warnings)
+**Date**: 2026-04-21
+**Branch**: `feat/customer-tier-phase1`
+**Author**: Akenarin Kongdach
+**Last commit**: 2026-04-20 — `test(customer): add E2E smoke for tier badge rendering`
 
 ---
 
 ## File Changes Summary
 
-| Area | Files | Notes |
-|------|-------|-------|
-| Backend | `customer-tier.service.ts`, `customer-tier.service.spec.ts` | New pure-function tier engine + 8 unit tests |
-| Backend | `customers.controller.ts`, `customers.controller.spec.ts` | New `GET /customers/:id/tier` endpoint + test |
-| Frontend | `apps/web/src/pages/CustomersPage.tsx` | Tier badge display |
-| Frontend | `apps/web/src/types/customer-tier.ts` | TypeScript types |
-| Docs | `plans/2026-04-20-customer-tier-phase1.md` + design doc | Planning artifacts |
+| File | Change |
+|------|--------|
+| `apps/api/prisma/schema.prisma` | +16 — add `CustomerCreditCheckStatus` enum, `CreditCheckType` enum, new fields on `Customer` and `CreditCheck` |
+| `apps/api/prisma/migrations/20260529000000_add_customer_tier_status/migration.sql` | +11 (new) |
+| `apps/api/src/modules/customers/customer-tier.service.ts` | +199 (new) |
+| `apps/api/src/modules/customers/customer-tier.service.spec.ts` | +85 (new, 8 unit tests) |
+| `apps/api/src/modules/customers/customers.controller.ts` | +11 — add `GET :id/tier` endpoint |
+| `apps/api/src/modules/customers/customers.controller.spec.ts` | +24 — add tier endpoint test |
+| `apps/api/src/modules/customers/customers.module.ts` | +5/-1 — register `CustomerTierService` |
+| `apps/api/src/modules/customers/customers.service.ts` | +24/-3 — add tier computation to `findAll` |
+| `apps/api/src/modules/customers/dto/tier.dto.ts` | +24 (new) |
+| `apps/web/src/components/customer/CustomerTierBadge.tsx` | +45 (new) |
+| `apps/web/src/components/customer/CustomerTierBadge.test.tsx` | +36 (new, 6 component tests) |
+| `apps/web/src/pages/CustomersPage.tsx` | +32/-3 — tier column + filter |
+| `apps/web/src/pages/CustomerDetailPage.tsx` | +14/-1 — tier badge in header |
+| `apps/web/src/types/customer-tier.ts` | +32 (new) |
+| `apps/web/e2e/customer-tier.spec.ts` | +31 (new E2E smoke) |
+
+**17 files changed, 2021 insertions(+), 7 deletions(-)**
+_(Note: ~1439 lines are in doc/plan markdown files, not production code)_
 
 ---
 
 ## Issues by Severity
 
-### 🔴 Critical — None
+### Critical
+_None found._
 
-No critical issues found. Guards are correctly inherited:
-- `GET /customers/:id/tier` is added to the existing `CustomersController` which already has class-level `@UseGuards(JwtAuthGuard, RolesGuard, BranchGuard)`.
-- The new `@Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')` on `getTier` is correct.
-- All DB queries include `deletedAt: null`.
-- No raw SQL, no hardcoded secrets.
+### Warning
 
-### 🟡 Warning
+**W-1 · N+1 query pattern in `findAll` — tier computed per customer**
+- File: `apps/api/src/modules/customers/customers.service.ts:146-158`
+- `getCustomerTier()` is called in parallel for every customer returned by the page query (`Promise.all(enriched.map(...))`). Each `getCustomerTier` call issues at least 3 DB queries (customer existence check, `contract.findMany` with nested payments, `repossession.count`).
+- For a default page of 50 customers, this is **50 × 3 = 150+ DB round-trips** per list load, on top of the 5 existing count queries.
+- The code comment says `(in-memory — valid for small shops)` but for a shop with 200+ customers this will produce noticeable latency.
+- **Recommendation**: Store computed tier in a `cachedTier` column on `Customer` (update via background job or on payment events), or compute tier from aggregated data already loaded in `findAll` rather than re-querying.
 
-**W-1: `Decimal.toNumber()` in service response (lines 271, 290 of `customer-tier.service.ts`)**
+**W-2 · Tier filter applied in-memory after pagination — pagination counts are wrong when tier filter is active**
+- File: `apps/api/src/modules/customers/customers.service.ts:157-168`
+- `filtered = tier ? withTier.filter(...)` reduces the array after the DB page is fetched, but `total` (used for `paginatedResponse`) is the unfiltered DB count. The frontend will show an incorrect total (e.g., "showing 3 of 450") and the page count will be misleading.
+- Also, filtering in-memory on a paginated result means tier filter only applies within the current page — a page with no GOLD customers will return 0 rows even if there are GOLD customers on page 2.
+- **Recommendation**: Either store tier in the DB (allows proper SQL filtering + accurate counts) or document clearly that tier filter is approximate and limited to the current page.
 
-```typescript
-// customer-tier.service.ts:271
-currentOutstanding: currentOutstanding.toDecimalPlaces(2).toNumber(),
-```
+**W-3 · `CustomerTierBadge` uses hardcoded Tailwind color utility `bg-amber-500/15`**
+- File: `apps/web/src/components/customer/CustomerTierBadge.tsx:13`
+- The project's frontend rules prohibit non-semantic color classes: `bg-gray-*`, `text-gray-*`, etc. `bg-amber-*` is similarly a hardcoded palette color without semantic meaning.
+- `warning` and `success` semantic tokens are used for RISKY/GOOD, which is correct. GOLD should use a CSS variable like `--color-gold` or map to the warning token.
+- **Recommendation**: Either define `--color-gold` in `index.css` or use `bg-warning/15 text-warning border-warning/30` (slightly wrong semantics but consistent) pending a proper token.
 
-`currentOutstanding` is accumulated using `Prisma.Decimal` arithmetic (correct), but is converted to `Number` before being included in the response DTO. For a display-only field this is lower risk, but the project convention is to avoid `Number()` conversions on money fields. Precision loss is bounded (toDecimalPlaces(2) is called first), so this is unlikely to cause user-visible bugs.
+**W-4 · `CustomerTierService` is injected into `CustomersService` but also registered as a controller dependency — circular-risk if modules are restructured**
+- File: `apps/api/src/modules/customers/customers.service.ts:8-14`
+- `CustomersService` now depends on `CustomerTierService`, and `CustomersController` also directly injects `CustomerTierService`. Both share the same `CustomersModule`, so no circular module dependency exists today. However, if `CustomerTierService` is extracted to its own module in the future and imports `CustomersModule` for any reason, it would create a circular dependency.
+- Not a bug now, but worth noting the coupling.
 
-**Recommendation:** Change the `CustomerTierResponse` type to use `Decimal | number` or `string` for `currentOutstanding`, and return the Decimal directly, serialized via JSON (Prisma Decimal serializes as string automatically).
+### Info
 
-**W-2: `tier` query filter forwarded to `findAll()` but service implementation unverified**
+**I-1 · Missing `contract: { deletedAt: null }` filter on repossession count query**
+- File: `apps/api/src/modules/customers/customer-tier.service.ts:208-212`
+- ```typescript
+  const repossessionCount = await this.prisma.repossession.count({
+    where: { contract: { customerId }, deletedAt: null },
+  });
+  ```
+- The nested `contract` relation filter only checks `customerId`, not `deletedAt: null` for the contract itself. Repossessions on soft-deleted contracts would still be counted toward `hasRepossession`.
+- Low risk since contracts are soft-deleted only on deletion cascades which are restricted, but worth aligning with the codebase convention.
 
-`GET /customers?tier=GOLD` is accepted in the controller and forwarded to `customersService.findAll()`. The diff doesn't show the service implementation of this filter. Confirm the `CustomersService.findAll()` correctly uses `tier` as a filter, otherwise the query param silently does nothing.
+**I-2 · `CustomerCreditCheckStatus` enum and `creditCheckStatus` field on `Customer` are added in the migration but `customer-tier.service.ts` does not reference them**
+- File: `apps/api/prisma/migrations/20260529000000_add_customer_tier_status/migration.sql`
+- The migration adds `CustomerCreditCheckStatus` (NONE/PRE_CHECK_PASSED/FULL_CHECK_PASSED/REJECTED/UNDER_REVIEW) and `CreditCheckType` (PRE/FULL) — these appear to be Phase 1 schema prep for a credit-check redesign, not used by the tier service itself.
+- This is intentional (schema-first approach) but reviewers should confirm these fields won't remain unused at merge time.
 
-### 🔵 Info
-
-**I-1: Plan docs are very large (1132 + 307 lines)**
-
-Planning markdown files added in the diff are not user-facing. Consider adding them to `.gitignore` or a `docs/plans/` directory that is excluded from code review noise.
-
-**I-2: 8 unit tests cover key tier computation paths**
-
-Tests correctly cover BLACKLIST (bad debt + repossession), RISKY (overdue >30 days), GOLD (2 closed + 100% on-time), GOOD (closed ≥1, ≥90%), GOOD (active + ≥3 on-time), and NEW cases.
+**I-3 · `CustomerTierResponse` type is duplicated between `apps/api/src/modules/customers/dto/tier.dto.ts` and `apps/web/src/types/customer-tier.ts`**
+- Consider sharing via `packages/shared/` in a follow-up.
 
 ---
 
-## Verdict
+## Recommendation: **REVIEW**
 
-**✅ APPROVE** — No blocking issues. W-1 and W-2 should be addressed in a follow-up but are not merge blockers. The core logic is well-tested, guards are correct, and data integrity rules are respected.
+The tier computation logic is clean and well-tested (8 unit tests with pure function). The API endpoint and frontend badge are correct. However, **W-1** (N+1 queries on every customer list load) and **W-2** (broken pagination when tier filter is active) should be addressed before merging to main, or explicitly accepted with a documented performance SLA for shop size.
+
+Suggested minimal fix path:
+1. Remove tier computation from `findAll` — serve `tier: null` in the list response.
+2. Keep `GET /customers/:id/tier` for the detail page (already implemented).
+3. Add a `cachedTier` DB column updated by a background job or on contract/payment events.

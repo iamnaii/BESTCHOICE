@@ -1,76 +1,64 @@
 # Merge Guard Report — feat/admin-hardening-c3
 
-**Date:** 2026-04-21  
-**Branch:** `feat/admin-hardening-c3`  
-**Author:** iamnaii (akenarin.ak@gmail.com)  
-**Diff size:** 8 files changed, 373 insertions(+), 4 deletions(-)  
-**Recommendation:** ✅ APPROVE
+**Date**: 2026-04-21
+**Branch**: `feat/admin-hardening-c3`
+**Author**: Akenarin Kongdach
+**Last commit**: 2026-04-20 — `Merge remote-tracking branch 'origin/main' into feat/admin-hardening-c3`
 
 ---
 
 ## File Changes Summary
 
-| Area | Files | Notes |
-|------|-------|-------|
-| Backend guard | `jwt-audience.guard.ts` | New global guard enforcing JWT `aud` claim |
-| Backend guard | `jwt-audience.guard.spec.ts` | 135 test cases |
-| Backend middleware | `admin-prefix.middleware.ts` | Strips `/api/admin/` → `/api/` prefix |
-| Backend middleware | `admin-prefix.middleware.spec.ts` | 4 test cases |
-| Backend | `auth.service.ts` | Adds `aud: 'admin'` + `scope: 'admin:full'` to all 3 JWT signing paths |
-| Backend | `auth.module.ts` | Exports `JwtAudienceGuard` |
-| Backend | `app.module.ts` | Registers `JwtAudienceGuard` as global `APP_GUARD` + `AdminPrefixMiddleware` |
-| Frontend | `apps/web/src/lib/env.ts` | Default API base URL changed from `/api` to `/api/admin` |
+| File | Change |
+|------|--------|
+| `apps/api/src/app.module.ts` | +14/-3 — register `AdminPrefixMiddleware` + `JwtAudienceGuard` as global |
+| `apps/api/src/common/middleware/admin-prefix.middleware.ts` | +32 (new) |
+| `apps/api/src/common/middleware/admin-prefix.middleware.spec.ts` | +45 (new, 4 tests) |
+| `apps/api/src/modules/auth/auth.module.ts` | +4/-1 — export `JwtAudienceGuard` |
+| `apps/api/src/modules/auth/auth.service.ts` | +8 — add `aud: 'admin'` + `scope: 'admin:full'` to JWT payloads |
+| `apps/api/src/modules/auth/guards/jwt-audience.guard.ts` | +130 (new) |
+| `apps/api/src/modules/auth/guards/jwt-audience.guard.spec.ts` | +135 (new, 19 tests) |
+| `apps/web/src/lib/env.ts` | +5/-4 — change default API base from `/api` to `/api/admin` |
+
+**8 files changed, 373 insertions(+), 4 deletions(-)**
 
 ---
 
 ## Issues by Severity
 
-### 🔴 Critical — None
+### Critical
+_None found._
 
-No critical security issues. This branch *adds* security surface:
-- `JwtAudienceGuard` validates `aud` claim on every authenticated request.
-- `AdminPrefixMiddleware` provides a clean namespace separation between admin and shop frontends.
-- All 3 JWT signing paths in `auth.service.ts` now include `aud: 'admin'`.
+### Warning
 
-### 🟡 Warning
+**W-1 · `env.ts` change affects all environments including E2E/CI**
+- File: `apps/web/src/lib/env.ts`
+- The `resolveApiUrl()` default changes from `/api` to `/api/admin` in both dev and production.
+- **Risk**: Any test environment, CI pipeline, or deployment that has `VITE_API_URL` unset will now route all frontend API calls through `/api/admin/*`. If `AdminPrefixMiddleware` is not present in that environment (e.g., a staging build before this branch is deployed), all calls will 404.
+- **Mitigation needed**: Verify the middleware is deployed atomically with this frontend change. Consider whether a feature flag or environment variable is safer for the cutover.
 
-**W-1: `env.ts` — default API base URL changed to `/api/admin`**
+**W-2 · Path-based audience enforcement is brittle**
+- File: `apps/api/src/modules/auth/guards/jwt-audience.guard.ts`
+- The guard relies on path patterns (`/api/shop/`, `/api/2fa/`, etc.) to determine required audience — no `@RequireAudience` decorator is used on existing controllers.
+- **Risk**: If a new route is added that doesn't match the hard-coded patterns (e.g., `/api/shop-assistant/`), it will silently fall through to the default `aud='admin'` requirement without any compile-time signal.
+- **Recommendation**: Use `@RequireAudience('admin')` explicitly on controller classes instead of relying on path inference. Or document the path convention clearly in `CLAUDE.md`.
 
-```typescript
-// Before:
-const configured = import.meta.env.VITE_API_URL || '/api';
-// After:
-const configured = import.meta.env.VITE_API_URL || '/api/admin';
-```
+### Info
 
-This change means the admin frontend (`apps/web`) will now prefix all API calls with `/api/admin/`, which are then stripped by `AdminPrefixMiddleware`. While intentional, this is a **breaking change** if:
-- Any code in `apps/web` constructs API URLs as plain strings (e.g., `'/api/customers'`) instead of using `api.get('/customers')` from `@/lib/api`.
-- Any existing Playwright E2E test intercepts `/api/` routes directly.
+**I-1 · Shop-audience JWT issuance not implemented**
+- File: `apps/api/src/modules/auth/auth.service.ts`
+- `aud: 'admin'` is added to all three JWT-issuing code paths (login, refresh, MFA). There is no corresponding `aud: 'shop'` issuance path.
+- The `SHOP_PATH` pattern in `jwt-audience.guard.ts` (`/api/shop/`) is therefore dead code until a shop-customer authentication flow is added.
+- Not a bug, but worth tracking: future `/api/shop/*` routes will need a separate token issuance path.
 
-Verify with `grep -r "'/api/" apps/web/src` that no raw `/api/` URLs are used outside of `api.ts`.
-
-**W-2: `JwtAudienceGuard` must merge before `feat/shop-phase1-foundation`**
-
-`JwtAudienceGuard` path rules expect shop JWTs to carry `aud: 'shop'`. The shop auth service (`feat/shop-phase1-foundation`) currently issues tokens without `aud: 'shop'`. If the hardening branch merges first, shop login will still work (tokens are issued before the guard runs), but shop API calls will fail until `feat/shop-phase1-foundation` is fixed.
-
-Merge order recommendation: `admin-hardening-c3` → fix `shop-phase1-foundation` → merge shop.
-
-### 🔵 Info
-
-**I-1: 2FA path rules are well-considered**
-
-`/api/2fa/*` accepts `aud='admin'` OR `aud='2fa_login'` OR `aud='2fa_setup'` — correctly handles the flow where a temp 2FA token is issued before the full admin JWT.
-
-**I-2: Public paths include all documented intentionally-public endpoints**
-
-Chatbot LIFF, SMS webhook, PaySolutions, address static data, and health endpoint are all correctly exempted. This matches the security rules whitelist in `.claude/rules/security.md`.
-
-**I-3: 135 test cases**
-
-Full coverage of decorator mode (3 tests) and path-based mode (12+ scenarios). Tests are well-organized and verify both allow and deny paths.
+**I-2 · `auth.service.ts` has three near-identical JWT payload construction sites**
+- Lines ~229, ~435, ~669 each add `aud` and `scope` independently.
+- A helper function (e.g., `buildAdminPayload()`) would reduce duplication, but this is out of scope for a hardening PR.
 
 ---
 
-## Verdict
+## Recommendation: **APPROVE**
 
-**✅ APPROVE** — Clean security hardening with no critical issues. Address W-1 by auditing raw URL usage in `apps/web/src`, and plan merge order carefully relative to `feat/shop-phase1-foundation`.
+The PR introduces a well-designed JWT audience enforcement layer with solid test coverage (23 tests across guard + middleware). The `JwtAudienceGuard` correctly defers to `JwtAuthGuard` when `req.user` is unset, and the public-path allow-list matches the documented intentional public endpoints. The `AdminPrefixMiddleware` is transparent and testable.
+
+**Prerequisite before merging**: Confirm W-1 — that the backend middleware is deployed in the same release as the frontend `env.ts` change, or that CI/E2E environments have `VITE_API_URL` explicitly set.

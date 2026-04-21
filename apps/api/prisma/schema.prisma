@@ -215,6 +215,33 @@ enum SaleType {
   EXTERNAL_FINANCE
 }
 
+enum OnlineOrderStatus {
+  DRAFT
+  PENDING_PAYMENT
+  PENDING_BANK_REVIEW
+  PAID
+  PACKING
+  SHIPPED
+  DELIVERED
+  COMPLETED
+  CANCELLED
+  REFUNDED
+}
+
+enum OnlinePaymentChannel {
+  PROMPTPAY_QR
+  CREDIT_DEBIT_CARD
+  BANK_TRANSFER
+}
+
+enum OnlineShippingMethod {
+  BRANCH_PICKUP
+  KERRY
+  FLASH
+  JT_EXPRESS
+  THAILAND_POST
+}
+
 enum InterCompanyTransactionType {
   FINANCE_PURCHASE // Finance ซื้อลูกหนี้จาก Shop (principal + commission)
   COMMISSION_PAYMENT // Finance จ่าย commission ให้ Shop
@@ -580,6 +607,7 @@ model Customer {
   reservations      ProductReservation[]
   websiteVisits     WebsiteVisit[]
   websiteSessions   WebsiteSession[]
+  onlineOrders      OnlineOrder[]
 
   @@index([phone])
   @@index([name])
@@ -1091,6 +1119,7 @@ model Product {
   isOnlineVisible   Boolean              @default(true) @map("is_online_visible")
   onlineDescription String?              @map("online_description") @db.Text
   reservations      ProductReservation[]
+  onlineOrders      OnlineOrder[]
 
   @@index([branchId])
   @@index([status])
@@ -1671,6 +1700,8 @@ model Sale {
   downPaymentAmount Decimal?       @map("down_payment_amount") @db.Decimal(12, 2)
   bundleProductIds  String[]       @default([]) @map("bundle_product_ids")
   notes             String?
+  saleSource        String?        @default("OFFLINE") @map("sale_source")
+  onlineOrderId     String?        @unique @map("online_order_id")
   createdAt         DateTime       @default(now()) @map("created_at")
   updatedAt         DateTime       @updatedAt @map("updated_at")
   deletedAt         DateTime?      @map("deleted_at")
@@ -1684,6 +1715,7 @@ model Sale {
   interCompanyTransactions InterCompanyTransaction[]
   commissions              SalesCommission[]
   promotionUsages          PromotionUsage[]
+  onlineOrder              OnlineOrder?
 
   @@index([saleType])
   @@index([branchId])
@@ -1693,6 +1725,56 @@ model Sale {
   @@index([productId])
   @@index([deletedAt])
   @@map("sales")
+}
+
+model OnlineOrder {
+  id                 String                @id @default(uuid())
+  orderNumber        String                @unique @map("order_number")
+  customerId         String                @map("customer_id")
+  customer           Customer              @relation(fields: [customerId], references: [id])
+  productId          String                @map("product_id")
+  product            Product               @relation(fields: [productId], references: [id])
+  reservationId      String                @unique @map("reservation_id")
+  reservation        ProductReservation    @relation(fields: [reservationId], references: [id])
+
+  productPrice       Decimal               @map("product_price") @db.Decimal(12, 2)
+  shippingFee        Decimal               @default(0) @map("shipping_fee") @db.Decimal(12, 2)
+  promoCode          String?               @map("promo_code")
+  promoDiscount      Decimal               @default(0) @map("promo_discount") @db.Decimal(12, 2)
+  promotionUsageId   String?               @map("promotion_usage_id")
+  loyaltyPointsUsed  Int                   @default(0) @map("loyalty_points_used")
+  loyaltyDiscount    Decimal               @default(0) @map("loyalty_discount") @db.Decimal(12, 2)
+  totalAmount        Decimal               @map("total_amount") @db.Decimal(12, 2)
+
+  shippingMethod     OnlineShippingMethod  @map("shipping_method")
+  shippingAddress    Json?                 @map("shipping_address")
+  trackingNumber     String?               @map("tracking_number")
+  shippedAt          DateTime?             @map("shipped_at")
+  deliveredAt        DateTime?             @map("delivered_at")
+
+  paymentChannel     OnlinePaymentChannel  @map("payment_channel")
+  paymentLinkId      String?               @map("payment_link_id")
+  paymentRef         String?               @map("payment_ref")
+  paidAt             DateTime?             @map("paid_at")
+  bankSlipUrl        String?               @map("bank_slip_url")
+  bankConfirmedById  String?               @map("bank_confirmed_by_id")
+
+  status             OnlineOrderStatus     @default(DRAFT)
+  cancelReason       String?               @map("cancel_reason")
+  cancelledAt        DateTime?             @map("cancelled_at")
+
+  saleId             String?               @unique @map("sale_id")
+  sale               Sale?                 @relation(fields: [saleId], references: [id])
+
+  createdAt          DateTime              @default(now()) @map("created_at")
+  updatedAt          DateTime              @updatedAt @map("updated_at")
+  deletedAt          DateTime?             @map("deleted_at")
+
+  @@index([customerId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([orderNumber])
+  @@map("online_orders")
 }
 
 // ============================================================
@@ -4333,6 +4415,8 @@ model ProductReservation {
   consumedById String?           @map("consumed_by_id")
   createdAt    DateTime          @default(now()) @map("created_at")
   updatedAt    DateTime          @updatedAt @map("updated_at")
+
+  onlineOrder  OnlineOrder?
 
   @@index([productId, status])
   @@index([customerId])

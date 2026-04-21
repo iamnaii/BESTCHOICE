@@ -43,21 +43,35 @@ export default function CreditCheckOverrideDialog({
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-foreground mb-1.5">หมายเหตุ</label>
+            <label className="block text-xs font-medium text-foreground mb-1.5">
+              เหตุผล <span className="text-destructive">*</span>
+            </label>
             <textarea
               value={notes}
               onChange={(e) => onNotesChange(e.target.value)}
-              rows={3}
-              placeholder="เหตุผลที่ปรับแก้..."
+              rows={4}
+              placeholder="เหตุผลที่ปรับแก้ (อย่างน้อย 20 ตัวอักษร)"
               className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
             />
+            <div className="flex justify-between text-[11px] mt-1">
+              <span className={notes.trim().length < 20 ? 'text-destructive' : 'text-muted-foreground'}>
+                {notes.trim().length < 20
+                  ? `ต้องมีอย่างน้อย 20 ตัวอักษร (ตอนนี้ ${notes.trim().length})`
+                  : 'พอดีแล้ว'}
+              </span>
+              <span className="text-muted-foreground">{notes.length}/2000</span>
+            </div>
           </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
             ยกเลิก
           </Button>
-          <Button variant="primary" onClick={onConfirm} disabled={!status || isPending}>
+          <Button
+            variant="primary"
+            onClick={onConfirm}
+            disabled={!status || notes.trim().length < 20 || notes.length > 2000 || isPending}
+          >
             {isPending ? 'กำลังบันทึก...' : 'ยืนยัน'}
           </Button>
         </DialogFooter>

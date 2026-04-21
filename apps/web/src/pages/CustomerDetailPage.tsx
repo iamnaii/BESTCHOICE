@@ -301,7 +301,7 @@ export default function CustomerDetailPage() {
       if (!overrideId) return;
       const { data } = await api.post(`/customers/${id}/credit-check/${overrideId}/override`, {
         status: overrideStatus,
-        reviewNotes: overrideNotes || undefined,
+        overrideReason: overrideNotes,
       });
       return data;
     },

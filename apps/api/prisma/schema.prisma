@@ -1753,7 +1753,8 @@ model OnlineOrder {
   deliveredAt        DateTime?             @map("delivered_at")
 
   paymentChannel     OnlinePaymentChannel  @map("payment_channel")
-  paymentLinkId      String?               @map("payment_link_id")
+  paymentLinkId      String?               @unique @map("payment_link_id")
+  paymentLink        PaymentLink?          @relation(fields: [paymentLinkId], references: [id])
   paymentRef         String?               @map("payment_ref")
   paidAt             DateTime?             @map("paid_at")
   bankSlipUrl        String?               @map("bank_slip_url")
@@ -2444,7 +2445,7 @@ enum CreditCheckType {
 model PaymentLink {
   id         String            @id @default(uuid())
   token      String            @unique
-  contractId String            @map("contract_id")
+  contractId String?           @map("contract_id")
   paymentId  String?           @map("payment_id")
   amount     Decimal           @db.Decimal(12, 2)
   status     PaymentLinkStatus @default(ACTIVE)
@@ -2453,8 +2454,9 @@ model PaymentLink {
   createdAt  DateTime          @default(now()) @map("created_at")
   deletedAt  DateTime?         @map("deleted_at")
 
-  contract Contract @relation(fields: [contractId], references: [id])
-  payment  Payment? @relation(fields: [paymentId], references: [id])
+  contract    Contract?    @relation(fields: [contractId], references: [id])
+  payment     Payment?     @relation(fields: [paymentId], references: [id])
+  onlineOrder OnlineOrder?
 
   @@index([token])
   @@index([contractId])

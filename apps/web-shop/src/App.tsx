@@ -14,6 +14,8 @@ import ContactPage from './pages/ContactPage';
 import OrderSuccessPage from './pages/OrderSuccessPage';
 import OrdersPage from './pages/OrdersPage';
 import OrderDetailPage from './pages/OrderDetailPage';
+import AccountPage from './pages/account/AccountPage';
+import AddressBookPage from './pages/account/AddressBookPage';
 
 function RouteTracker() {
   const location = useLocation();
@@ -41,6 +43,8 @@ export default function App() {
         <Route path="/checkout/success/:orderNumber" element={<OrderSuccessPage />} />
         <Route path="/orders" element={<OrdersPage />} />
         <Route path="/orders/:orderNumber" element={<OrderDetailPage />} />
+        <Route path="/account" element={<AccountPage />} />
+        <Route path="/account/addresses" element={<AddressBookPage />} />
       </Routes>
     </>
   );

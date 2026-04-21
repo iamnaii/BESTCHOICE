@@ -1286,7 +1286,10 @@ export default function CustomerDetailPage() {
         status={overrideStatus}
         onStatusChange={setOverrideStatus}
         reasonCategory={overrideReasonCategory}
-        onReasonCategoryChange={setOverrideReasonCategory}
+        onReasonCategoryChange={(v) => {
+          setOverrideReasonCategory(v);
+          setOverrideNotes(''); // clear stale detail when switching category
+        }}
         notes={overrideNotes}
         onNotesChange={setOverrideNotes}
         isPending={overrideCreditMutation.isPending}

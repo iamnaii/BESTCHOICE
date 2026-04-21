@@ -18,6 +18,14 @@ interface Props {
   onConfirm: () => void;
 }
 
+const DOWN_TIERS = [
+  { value: '50-59', label: 'ดาวน์ 50-59%' },
+  { value: '60-69', label: 'ดาวน์ 60-69%' },
+  { value: '70-79', label: 'ดาวน์ 70-79%' },
+  { value: '80+', label: 'ดาวน์ 80%+' },
+  { value: '100', label: 'จ่ายเงินสด 100%' },
+];
+
 interface ReasonOption {
   value: string;
   label: string;
@@ -52,7 +60,9 @@ const REASON_OPTIONS: ReasonOption[] = [
   {
     value: 'HIGH_DOWN',
     label: 'ดาวน์/จ่ายสด ≥ 50%',
-    requiresDetail: false,
+    requiresDetail: true,
+    detailLabel: '% ดาวน์',
+    detailPlaceholder: '',
   },
   {
     value: 'CASH_INCOME',
@@ -89,6 +99,10 @@ function compileReason(categoryValue: string, detail: string): string {
   const trimmed = detail.trim();
   if (!opt) return trimmed;
   if (opt.value === 'OTHER') return trimmed;
+  if (opt.value === 'HIGH_DOWN') {
+    const tier = DOWN_TIERS.find((t) => t.value === trimmed);
+    return tier ? `${opt.label} (${tier.label})` : opt.label;
+  }
   return trimmed ? `${opt.label}: ${trimmed}` : opt.label;
 }
 
@@ -119,11 +133,14 @@ export default function CreditCheckOverrideDialog({
 
   // Validation — only when disagreeing with AI
   const needsReason = !!status && status !== aiDecision;
+  const isHighDown = reasonCategory === 'HIGH_DOWN';
+  const highDownTierValid = isHighDown && DOWN_TIERS.some((t) => t.value === notes.trim());
+  const detailValid = isHighDown
+    ? highDownTierValid
+    : !currentOption?.requiresDetail || notes.trim().length >= 10;
   const reasonValid = agreesWithAi
     ? true
-    : !!reasonCategory &&
-      (!currentOption?.requiresDetail || notes.trim().length >= 10) &&
-      compiled.length <= 2000;
+    : !!reasonCategory && detailValid && compiled.length <= 2000;
   const disabled = !status || !reasonValid || isPending;
 
   return (
@@ -200,7 +217,25 @@ export default function CreditCheckOverrideDialog({
                 </select>
               </div>
 
-              {currentOption?.requiresDetail && (
+              {isHighDown && (
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1.5">
+                    % ดาวน์ <span className="text-destructive">*</span>
+                  </label>
+                  <select
+                    value={notes}
+                    onChange={(e) => onNotesChange(e.target.value)}
+                    className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm"
+                  >
+                    <option value="">-- เลือก % ดาวน์ --</option>
+                    {DOWN_TIERS.map((t) => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {currentOption?.requiresDetail && !isHighDown && (
                 <div>
                   <label className="block text-xs font-medium text-foreground mb-1.5">
                     {currentOption.detailLabel} <span className="text-destructive">*</span>

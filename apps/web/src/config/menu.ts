@@ -18,7 +18,6 @@ import {
   CircleDollarSign,
   Banknote,
   FileText,
-  RefreshCw,
   Wrench,
   Lock,
   Receipt,
@@ -203,7 +202,6 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
       icon: AlertTriangle,
       items: [
         { label: 'ติดตามหนี้', path: '/overdue', icon: AlertTriangle },
-        { label: 'เปลี่ยนเครื่อง', path: '/exchange', icon: RefreshCw },
         { label: 'เปลี่ยนเครื่องเสีย (7 วัน)', path: '/defect-exchange', icon: Wrench },
         { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
       ],
@@ -316,7 +314,6 @@ const OWNER_CONFIG: RoleMenuConfig = {
       icon: AlertTriangle,
       items: [
         { label: 'ติดตามหนี้', path: '/overdue', icon: AlertTriangle },
-        { label: 'เปลี่ยนเครื่อง', path: '/exchange', icon: RefreshCw },
         { label: 'เปลี่ยนเครื่องเสีย (7 วัน)', path: '/defect-exchange', icon: Wrench },
         { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
         { label: 'จัดการอุปกรณ์', path: '/mdm', icon: Smartphone },

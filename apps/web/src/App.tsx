@@ -33,7 +33,6 @@ const ReportsPage = lazy(() => import('@/pages/ReportsPage'));
 const MigrationPage = lazy(() => import('@/pages/MigrationPage'));
 const UsersPage = lazy(() => import('@/pages/UsersPage'));
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
-const ExchangePage = lazy(() => import('@/pages/ExchangePage'));
 const DefectExchangePage = lazy(() => import('@/pages/DefectExchangePage'));
 const AuditLogsPage = lazy(() => import('@/pages/AuditLogsPage'));
 const FinancialAuditPage = lazy(() => import('@/pages/FinancialAuditPage'));
@@ -414,14 +413,6 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER']}>
                 <CollectionDashboardPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/exchange"
-            element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER']}>
-                <ExchangePage />
               </ProtectedRoute>
             }
           />

@@ -81,6 +81,11 @@ export class ShopAuthSocialService {
   }
 
   private async signToken(customerId: string): Promise<string> {
-    return this.jwt.signAsync({ sub: customerId, role: 'CUSTOMER' }, { expiresIn: '7d' });
+    // audience: 'shop' is required — global JwtAudienceGuard blocks /api/shop/*
+    // when the JWT aud claim is anything other than 'shop'.
+    return this.jwt.signAsync(
+      { sub: customerId, role: 'CUSTOMER' },
+      { expiresIn: '7d', audience: 'shop' },
+    );
   }
 }

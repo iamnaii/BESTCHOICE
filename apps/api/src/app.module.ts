@@ -89,6 +89,7 @@ import { ShopAuthSocialModule } from './modules/shop-auth-social/shop-auth-socia
 import { ShopLineChatModule } from './modules/shop-line-chat/shop-line-chat.module';
 import { ShopShippingModule } from './modules/shop-shipping/shop-shipping.module';
 import { ShopCartModule } from './modules/shop-cart/shop-cart.module';
+import { ShopCheckoutModule } from './modules/shop-checkout/shop-checkout.module';
 import { DataAuditModule } from './modules/data-audit/data-audit.module';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { TwoFactorModule } from './modules/two-factor/two-factor.module';
@@ -242,6 +243,8 @@ import { AppCacheModule } from './cache/cache.module';
     ShopShippingModule,
     // Online Shop — session-based cart from active reservations (Phase 2)
     ShopCartModule,
+    // Online Shop — checkout (validate promo/loyalty, place order) (Phase 2)
+    ShopCheckoutModule,
     // MASTER: Management
     UsersModule,
     SettingsModule,

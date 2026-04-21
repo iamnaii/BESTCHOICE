@@ -6,9 +6,10 @@ import { PrismaService } from '../../../prisma/prisma.service';
 
 export interface JwtPayload {
   sub: string;
-  email: string;
+  email?: string;
   role: string;
-  branchId: string | null;
+  branchId?: string | null;
+  aud?: string;
 }
 
 interface CachedUser {
@@ -44,14 +45,33 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: JwtPayload) {
-    // Check cache first to avoid DB query on every request
+    // Shop/customer tokens (aud='shop') carry sub=customerId — look up Customer
+    // instead of User. JwtAudienceGuard enforces the aud claim at route level.
+    if (payload.aud === 'shop') {
+      const customer = await this.prisma.customer.findFirst({
+        where: { id: payload.sub, deletedAt: null },
+        select: { id: true, name: true },
+      });
+      if (!customer) {
+        throw new UnauthorizedException('ลูกค้าไม่ถูกต้องหรือถูกปิดการใช้งาน');
+      }
+      return {
+        sub: customer.id,
+        id: customer.id,
+        name: customer.name,
+        role: 'CUSTOMER',
+        aud: 'shop',
+      };
+    }
+
+    // Admin path — backed by User table. Check cache first to avoid DB query on every request.
     const cached = this.userCache.get(payload.sub);
     if (cached && Date.now() - cached.cachedAt < USER_CACHE_TTL_MS) {
       if (!cached.isActive) {
         throw new UnauthorizedException('ผู้ใช้งานไม่ถูกต้องหรือถูกปิดการใช้งาน');
       }
       const { cachedAt, ...user } = cached;
-      return user;
+      return { ...user, aud: payload.aud };
     }
 
     // Cache miss or expired — query database
@@ -78,8 +98,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // Store in cache — always use DB values (role/branchId may have changed since JWT was issued)
     this.userCache.set(payload.sub, { ...user, cachedAt: Date.now() });
 
-    // Return DB values, not JWT claims, so role changes take effect within cache TTL
-    return user;
+    // Return DB values + JWT aud so JwtAudienceGuard can enforce audience claim
+    return { ...user, aud: payload.aud };
   }
 
   private cleanExpiredCache() {

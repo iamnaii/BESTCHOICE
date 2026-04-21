@@ -126,8 +126,19 @@ export class CustomerPreCheckService {
 
     let creditCheckId: string | undefined;
     const aiScore: number | undefined = undefined;
+    const outcome = this.decideOutcome(tierResp.tier, aiScore);
 
     if (input.statementFiles && input.statementFiles.length > 0 && tierResp.tier !== 'BLACKLIST') {
+      // Map decision → CreditCheckStatus so contract creation can proceed:
+      //   PASS    → APPROVED      (auto-approved, can create contract immediately)
+      //   REVIEW  → MANUAL_REVIEW (manager must review before contract)
+      //   FAIL    → REJECTED      (no contract allowed)
+      const ccStatus =
+        outcome.decision === 'PASS'
+          ? 'APPROVED'
+          : outcome.decision === 'FAIL'
+            ? 'REJECTED'
+            : 'MANUAL_REVIEW';
       const cc = await this.prisma.creditCheck.create({
         data: {
           customerId: customer.id,
@@ -135,14 +146,12 @@ export class CustomerPreCheckService {
           statementFiles: input.statementFiles,
           statementMonths: 3,
           checkType: 'PRE',
-          status: 'PENDING',
+          status: ccStatus,
         },
         select: { id: true, aiScore: true },
       });
       creditCheckId = cc.id;
     }
-
-    const outcome = this.decideOutcome(tierResp.tier, aiScore);
 
     const nextStatus =
       outcome.decision === 'PASS'

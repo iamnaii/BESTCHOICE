@@ -1,7 +1,7 @@
 import { useParams, useNavigate, Link, useSearchParams } from 'react-router';
 import CreditCheckCreateDialog from '@/components/credit-check/CreditCheckCreateDialog';
 import CreditCheckCard from '@/components/credit-check/CreditCheckCard';
-import CreditCheckOverrideDialog from '@/components/credit-check/CreditCheckOverrideDialog';
+import CreditCheckOverrideDialog, { compileReason } from '@/components/credit-check/CreditCheckOverrideDialog';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import api, { getErrorMessage } from '@/lib/api';
@@ -132,6 +132,7 @@ export default function CustomerDetailPage() {
   const [showCreditDialog, setShowCreditDialog] = useState(false);
   const [overrideId, setOverrideId] = useState<string | null>(null);
   const [overrideStatus, setOverrideStatus] = useState('');
+  const [overrideReasonCategory, setOverrideReasonCategory] = useState('');
   const [overrideNotes, setOverrideNotes] = useState('');
 
   useEffect(() => {
@@ -301,7 +302,7 @@ export default function CustomerDetailPage() {
       if (!overrideId) return;
       const { data } = await api.post(`/customers/${id}/credit-check/${overrideId}/override`, {
         status: overrideStatus,
-        overrideReason: overrideNotes,
+        overrideReason: compileReason(overrideReasonCategory, overrideNotes),
       });
       return data;
     },
@@ -310,6 +311,7 @@ export default function CustomerDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['customer-credit-checks', id] });
       setOverrideId(null);
       setOverrideStatus('');
+      setOverrideReasonCategory('');
       setOverrideNotes('');
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
@@ -1262,9 +1264,16 @@ export default function CustomerDetailPage() {
 
       <CreditCheckOverrideDialog
         open={!!overrideId}
-        onClose={() => setOverrideId(null)}
+        onClose={() => {
+          setOverrideId(null);
+          setOverrideStatus('');
+          setOverrideReasonCategory('');
+          setOverrideNotes('');
+        }}
         status={overrideStatus}
         onStatusChange={setOverrideStatus}
+        reasonCategory={overrideReasonCategory}
+        onReasonCategoryChange={setOverrideReasonCategory}
         notes={overrideNotes}
         onNotesChange={setOverrideNotes}
         isPending={overrideCreditMutation.isPending}

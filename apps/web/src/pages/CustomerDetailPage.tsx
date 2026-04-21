@@ -131,6 +131,8 @@ export default function CustomerDetailPage() {
   const [activeTab, setActiveTab] = useState(initialTab);
   const [showCreditDialog, setShowCreditDialog] = useState(false);
   const [overrideId, setOverrideId] = useState<string | null>(null);
+  const [overrideAiDecision, setOverrideAiDecision] = useState<string>('');
+  const [overrideAiSummary, setOverrideAiSummary] = useState<string | null>(null);
   const [overrideStatus, setOverrideStatus] = useState('');
   const [overrideReasonCategory, setOverrideReasonCategory] = useState('');
   const [overrideNotes, setOverrideNotes] = useState('');
@@ -300,9 +302,15 @@ export default function CustomerDetailPage() {
   const overrideCreditMutation = useMutation({
     mutationFn: async () => {
       if (!overrideId) return;
+      // ถ้า staff เห็นด้วยกับ AI (status === AI decision) → ส่ง default reason
+      // ไม่ต้องบังคับให้พนักงานกรอก (เห็นด้วยไม่ใช่ override จริง)
+      const reason =
+        overrideStatus === overrideAiDecision
+          ? 'ยืนยันผล AI (staff เห็นด้วยกับคำแนะนำของระบบ)'
+          : compileReason(overrideReasonCategory, overrideNotes);
       const { data } = await api.post(`/customers/${id}/credit-check/${overrideId}/override`, {
         status: overrideStatus,
-        overrideReason: compileReason(overrideReasonCategory, overrideNotes),
+        overrideReason: reason,
       });
       return data;
     },
@@ -781,7 +789,10 @@ export default function CustomerDetailPage() {
                 onAnalyze={(ccId) => analyzeCreditMutation.mutate(ccId)}
                 onOverride={(ccId) => {
                   setOverrideId(ccId);
+                  setOverrideAiDecision(cc.status);
+                  setOverrideAiSummary(cc.aiSummary);
                   setOverrideStatus('');
+                  setOverrideReasonCategory('');
                   setOverrideNotes('');
                 }}
                 onViewStatement={(url) => window.open(url, '_blank', 'noopener,noreferrer')}
@@ -1270,6 +1281,8 @@ export default function CustomerDetailPage() {
           setOverrideReasonCategory('');
           setOverrideNotes('');
         }}
+        aiDecision={overrideAiDecision}
+        aiSummary={overrideAiSummary}
         status={overrideStatus}
         onStatusChange={setOverrideStatus}
         reasonCategory={overrideReasonCategory}

@@ -1,13 +1,16 @@
 import {
+  Inject,
   Injectable,
   Logger,
   BadRequestException,
   NotFoundException,
   InternalServerErrorException,
+  forwardRef,
 } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
 import { formatDateLong } from '../../utils/thai-date.util';
 import { d, dAdd, dSub, dClose } from '../../utils/decimal.util';
+import { OnlineOrderSaleAdapter } from '../shop-orders/online-order-sale.adapter';
 
 // Pay Solutions external API timeout. Their published SLA is "instant"
 // but real-world we've seen 5-10s on busy hours. 15s leaves headroom
@@ -48,6 +51,8 @@ export class PaySolutionsService {
     private config: ConfigService,
     private lineOaService: LineOaService,
     private integrationConfig: IntegrationConfigService,
+    @Inject(forwardRef(() => OnlineOrderSaleAdapter))
+    private saleAdapter: OnlineOrderSaleAdapter,
   ) {
     this.returnUrl = this.config.get<string>('PAYSOLUTIONS_RETURN_URL', '');
     this.apiBaseUrl = this.config.get<string>(
@@ -725,11 +730,22 @@ export class PaySolutionsService {
       });
     });
 
-    // STUB: OnlineOrderSaleAdapter injected in Task 9 will replace this
-    // (creates Sale, moves product to SOLD_CASH, awards loyalty points)
-    this.logger.log(
-      `Online order PAID: ${order.orderNumber} (Sale creation deferred to Task 9 adapter)`,
-    );
+    // Create a Sale record for the paid online order. Adapter moves product to
+    // SOLD_CASH, applies loyalty redemption, and transitions the OnlineOrder to
+    // PACKING. Failures are logged (not re-thrown) — webhook must still return
+    // 200 so PaySolutions doesn't retry, and admin can reconcile manually.
+    try {
+      await this.saleAdapter.createForOnlineOrder(order.id);
+    } catch (err) {
+      this.logger.error(
+        `Failed to create Sale for online order ${order.orderNumber}: ${err}`,
+      );
+      Sentry.captureException(err, {
+        level: 'error',
+        tags: { critical: 'online-order-sale-failed', orderNumber: order.orderNumber },
+      });
+      // Don't re-throw — Sale can be created manually by admin if needed
+    }
 
     if (order.customer.lineId) {
       try {

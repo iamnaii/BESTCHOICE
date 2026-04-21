@@ -90,6 +90,7 @@ import { ShopLineChatModule } from './modules/shop-line-chat/shop-line-chat.modu
 import { ShopShippingModule } from './modules/shop-shipping/shop-shipping.module';
 import { ShopCartModule } from './modules/shop-cart/shop-cart.module';
 import { ShopCheckoutModule } from './modules/shop-checkout/shop-checkout.module';
+import { ShopOrdersModule } from './modules/shop-orders/shop-orders.module';
 import { DataAuditModule } from './modules/data-audit/data-audit.module';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { TwoFactorModule } from './modules/two-factor/two-factor.module';
@@ -245,6 +246,8 @@ import { AppCacheModule } from './cache/cache.module';
     ShopCartModule,
     // Online Shop — checkout (validate promo/loyalty, place order) (Phase 2)
     ShopCheckoutModule,
+    // Online Shop — OnlineOrder CRUD + OnlineOrderSaleAdapter (Phase 2)
+    ShopOrdersModule,
     // MASTER: Management
     UsersModule,
     SettingsModule,

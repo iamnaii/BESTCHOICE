@@ -91,6 +91,7 @@ import { ShopShippingModule } from './modules/shop-shipping/shop-shipping.module
 import { ShopCartModule } from './modules/shop-cart/shop-cart.module';
 import { ShopCheckoutModule } from './modules/shop-checkout/shop-checkout.module';
 import { ShopOrdersModule } from './modules/shop-orders/shop-orders.module';
+import { ShopMeModule } from './modules/shop-me/shop-me.module';
 import { DataAuditModule } from './modules/data-audit/data-audit.module';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { TwoFactorModule } from './modules/two-factor/two-factor.module';
@@ -248,6 +249,8 @@ import { AppCacheModule } from './cache/cache.module';
     ShopCheckoutModule,
     // Online Shop — OnlineOrder CRUD + OnlineOrderSaleAdapter (Phase 2)
     ShopOrdersModule,
+    // Online Shop — customer address book (/api/shop/me/addresses) (Phase 2)
+    ShopMeModule,
     // MASTER: Management
     UsersModule,
     SettingsModule,

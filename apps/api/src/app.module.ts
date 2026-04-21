@@ -87,6 +87,7 @@ import { ShopReservationModule } from './modules/shop-reservation/shop-reservati
 import { ShopCatalogModule } from './modules/shop-catalog/shop-catalog.module';
 import { ShopAuthSocialModule } from './modules/shop-auth-social/shop-auth-social.module';
 import { ShopLineChatModule } from './modules/shop-line-chat/shop-line-chat.module';
+import { ShopShippingModule } from './modules/shop-shipping/shop-shipping.module';
 import { DataAuditModule } from './modules/data-audit/data-audit.module';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { TwoFactorModule } from './modules/two-factor/two-factor.module';
@@ -236,6 +237,8 @@ import { AppCacheModule } from './cache/cache.module';
     ShopAuthSocialModule,
     // Online Shop — contact form → LINE OA staff notification
     ShopLineChatModule,
+    // Online Shop — static shipping rate table (Phase 2)
+    ShopShippingModule,
     // MASTER: Management
     UsersModule,
     SettingsModule,

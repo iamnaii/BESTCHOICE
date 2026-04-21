@@ -42,13 +42,6 @@ export interface CustReferenceData {
   relationship: string;
 }
 
-export interface PendingDoc {
-  id: string;
-  type: string;
-  file: File;
-  preview: string;
-}
-
 export interface OcrAddressStructured {
   houseNo: string;
   moo: string;

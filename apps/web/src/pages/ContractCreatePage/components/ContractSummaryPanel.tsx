@@ -1,4 +1,4 @@
-import type { Product, Customer, InterestConfig, PendingDoc } from '../types';
+import type { Product, Customer, InterestConfig } from '../types';
 
 export interface ContractSummaryPanelProps {
   selectedProduct: Product;
@@ -9,7 +9,6 @@ export interface ContractSummaryPanelProps {
   monthlyPayment: number;
   interestRate: number;
   interestConfig: InterestConfig | null | undefined;
-  pendingDocs: PendingDoc[];
 }
 
 export function ContractSummaryPanel({
@@ -21,7 +20,6 @@ export function ContractSummaryPanel({
   monthlyPayment,
   interestRate,
   interestConfig,
-  pendingDocs,
 }: ContractSummaryPanelProps) {
   return (
     <details className="mt-4">
@@ -34,8 +32,7 @@ export function ContractSummaryPanel({
           <div><span className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">เงินดาวน์</span><div className="font-medium tabular-nums font-mono mt-0.5">{downPayment.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</div></div>
           <div><span className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">จำนวนงวด</span><div className="font-medium mt-0.5">{totalMonths} เดือน</div></div>
           <div><span className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">ค่างวด/เดือน</span><div className="font-bold text-primary tabular-nums font-mono mt-0.5">{monthlyPayment.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</div></div>
-          <div><span className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">ดอกเบี้ย</span><div className="font-medium mt-0.5">{(interestRate * 100).toFixed(2)}%{interestConfig ? ` (${interestConfig.name})` : ''}</div></div>
-          <div><span className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">เอกสารแนบ</span><div className="font-medium mt-0.5">{pendingDocs.length} ไฟล์</div></div>
+          <div className="col-span-2"><span className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">ดอกเบี้ย</span><div className="font-medium mt-0.5">{(interestRate * 100).toFixed(2)}%{interestConfig ? ` (${interestConfig.name})` : ''}</div></div>
         </div>
       </div>
     </details>

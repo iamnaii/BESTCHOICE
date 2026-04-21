@@ -41,6 +41,7 @@ backups/
 # Claude Code runtime
 .claude/scheduled_tasks.lock
 .claude/worktrees/
+.worktrees/
 
 # UI audit tool outputs (generated artifacts)
 scripts/ui-audit/

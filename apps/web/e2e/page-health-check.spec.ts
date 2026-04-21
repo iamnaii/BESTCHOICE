@@ -70,7 +70,6 @@ const OWNER_PAGES: HealthRoute[] = [
   { url: '/tax-reports', name: 'ภาษี' },
   { url: '/trade-in', name: 'รับซื้อมือสอง' },
   { url: '/promotions', name: 'โปรโมชัน' },
-  { url: '/exchange', name: 'เปลี่ยนเครื่อง' },
   { url: '/repossessions', name: 'ยึดคืน' },
   { url: '/inspections', name: 'ตรวจสภาพ' },
   { url: '/branches', name: 'สาขา' },
@@ -120,7 +119,6 @@ const BRANCH_MANAGER_PAGES: HealthRoute[] = [
   { url: '/receipts', name: 'ใบเสร็จ' },
   { url: '/reports', name: 'รายงาน' },
   { url: '/finance-receivable', name: 'เงินรับไฟแนนซ์' },
-  { url: '/exchange', name: 'เปลี่ยนเครื่อง' },
   { url: '/repossessions', name: 'ยึดคืน' },
 ];
 

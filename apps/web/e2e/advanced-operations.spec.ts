@@ -24,22 +24,6 @@ test.describe('Advanced Operations', () => {
     expect(page.url()).toContain('/inspections');
   });
 
-  // ─── Exchange ─────────────────────────────────────────────────────
-  test('OWNER can access exchange page', async ({ page }) => {
-    await loginAsRole(page, 'OWNER');
-    await gotoWithRetry(page, '/exchange');
-    await page.waitForTimeout(2000);
-    const pageContent = await page.textContent('body');
-    expect(pageContent).toMatch(/เปลี่ยนเครื่อง|exchange/i);
-  });
-
-  test('FINANCE_MANAGER can access exchange page', async ({ page }) => {
-    await loginAsRole(page, 'FINANCE_MANAGER');
-    await gotoWithRetry(page, '/exchange');
-    await page.waitForTimeout(2000);
-    expect(page.url()).toContain('/exchange');
-  });
-
   // ─── Repossession ─────────────────────────────────────────────────
   test('OWNER can access repossessions page', async ({ page }) => {
     await loginAsRole(page, 'OWNER');

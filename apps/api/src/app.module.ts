@@ -88,6 +88,7 @@ import { ShopCatalogModule } from './modules/shop-catalog/shop-catalog.module';
 import { ShopAuthSocialModule } from './modules/shop-auth-social/shop-auth-social.module';
 import { ShopLineChatModule } from './modules/shop-line-chat/shop-line-chat.module';
 import { ShopShippingModule } from './modules/shop-shipping/shop-shipping.module';
+import { ShopCartModule } from './modules/shop-cart/shop-cart.module';
 import { DataAuditModule } from './modules/data-audit/data-audit.module';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { TwoFactorModule } from './modules/two-factor/two-factor.module';
@@ -239,6 +240,8 @@ import { AppCacheModule } from './cache/cache.module';
     ShopLineChatModule,
     // Online Shop — static shipping rate table (Phase 2)
     ShopShippingModule,
+    // Online Shop — session-based cart from active reservations (Phase 2)
+    ShopCartModule,
     // MASTER: Management
     UsersModule,
     SettingsModule,

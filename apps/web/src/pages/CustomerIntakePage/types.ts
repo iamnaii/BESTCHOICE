@@ -27,6 +27,12 @@ export interface FullIntakeForm {
   lineId?: string;
   facebookLink?: string;
   facebookName?: string;
+  // Address (structured, serialized to JSON on save)
+  addressIdCard?: string;
+  addressCurrent?: string;
+  addressCurrentType?: string; // OWN | RELATIVE | RENT
+  googleMapLink?: string;
+  addressWork?: string;
   // Work
   occupation?: string;
   salary?: string;

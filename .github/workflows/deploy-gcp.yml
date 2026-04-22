@@ -321,9 +321,9 @@ jobs:
             --non-interactive
 
       - name: Deploy shop hosting (shop.bestchoicephone.app)
-        # Will fail cleanly if the `bestchoice-shop` Firebase Hosting site
-        # hasn't been created yet — admin deploy above still succeeded, so
-        # this isolation prevents admin regressions during the shop rollout.
+        # Will fail cleanly if the `bestchoicephone-shop` Firebase Hosting
+        # site hasn't been created yet — admin deploy above still succeeded,
+        # so this isolation prevents admin regressions during the shop rollout.
         continue-on-error: true
         run: |
           firebase deploy \

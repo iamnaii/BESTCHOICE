@@ -21,6 +21,22 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Response interceptor: unwrap API envelope { success, data, timestamp }
+// (matches apps/web/src/lib/api.ts so component code sees the payload
+// directly — otherwise `response.data` is the envelope and components
+// hit "data.map is not a function" on arrays).
+api.interceptors.response.use((response) => {
+  if (
+    response.data &&
+    typeof response.data === 'object' &&
+    'success' in response.data &&
+    'data' in response.data
+  ) {
+    response.data = response.data.data;
+  }
+  return response;
+});
+
 api.interceptors.response.use(
   (res) => res,
   (err) => {

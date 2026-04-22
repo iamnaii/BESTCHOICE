@@ -6,6 +6,7 @@ import { getSessionId } from '../lib/session';
 import { useCartStore } from '../stores/cartStore';
 import ShopLayout from '../components/layout/ShopLayout';
 import { Button } from '../components/ui/button';
+import ReviewsSection from '../components/reviews/ReviewsSection';
 
 interface ProductUnit {
   id: string;
@@ -142,6 +143,9 @@ export default function ProductDetailPage() {
             ผ่อนเริ่ม ฿{monthlyEst.toLocaleString()} / เดือน
           </Button>
         </div>
+      </div>
+      <div className="container mx-auto px-4 pb-8">
+        <ReviewsSection productId={id!} />
       </div>
     </ShopLayout>
   );

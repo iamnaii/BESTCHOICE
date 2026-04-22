@@ -44,7 +44,10 @@ interface LiffPaymentLinkResult { url: string; token: string; totalPayoff?: numb
 @Controller('line-oa')
 @SkipCsrf()
 @UseGuards(LiffTokenGuard)
-@LiffChannel(LineChannelType.SHOP)
+// Installment customer LIFF — ทุก endpoint ใน controller นี้ (contracts,
+// history, profile, early-payoff, receipts, ฯลฯ) เป็น customer-facing
+// ของสาย FINANCE ไม่ใช่ SHOP online shop
+@LiffChannel(LineChannelType.FINANCE)
 export class LiffApiController {
   private readonly logger = new Logger(LiffApiController.name);
 

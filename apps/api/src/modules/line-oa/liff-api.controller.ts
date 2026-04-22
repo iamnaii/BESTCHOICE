@@ -223,8 +223,18 @@ export class LiffApiController {
     }
 
     const quote = await this.contractPaymentService.getEarlyPayoffQuote(contractId);
+    // Map service field names → LiffEarlyPayoffQuote (shared/liff-types.ts).
+    // The admin endpoint (/contracts/:id/early-payoff-quote) keeps the raw service
+    // shape; LIFF wants the customer-facing breakdown (principal / interest /
+    // discount / credit) without exposing internal cost/profit terminology.
     return {
-      ...quote,
+      remainingMonths: quote.remainingMonths,
+      remainingPrincipal: quote.remainingCost,
+      remainingInterest: Math.max(0, quote.grossProfit),
+      discount: quote.discountAmount,
+      partiallyPaidCredit: quote.advancePayment,
+      unpaidLateFees: quote.unpaidLateFees,
+      totalPayoff: quote.totalPayoff,
       contractNumber: contract.contractNumber,
       customerName: customer.name,
     };

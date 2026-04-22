@@ -56,7 +56,11 @@ export class LiffTokenGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
-    const idToken = request.headers['x-liff-id-token'] as string | undefined;
+    // Accept token from header (XHR) OR ?idToken= query param
+    // (browser navigation / <a href> — PDF downloads, file links).
+    const idToken =
+      (request.headers['x-liff-id-token'] as string | undefined) ||
+      (request.query?.idToken as string | undefined);
 
     if (!idToken) {
       throw new UnauthorizedException('กรุณาเปิดผ่าน LINE');

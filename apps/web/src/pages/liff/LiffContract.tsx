@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useLiffInit } from '@/hooks/useLiffInit';
-import { liffApi } from '@/lib/api';
+import { liffApi, withLiffToken } from '@/lib/api';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -565,7 +565,7 @@ export default function LiffContract() {
         {/* Action row: PDF + early payoff */}
         <section className="relative z-[1] mt-3 px-5 grid grid-cols-[1fr_1.2fr] gap-2.5">
           <a
-            href={`/api/line-oa/liff/contracts/${contract.id}/document`}
+            href={withLiffToken(`/api/line-oa/liff/contracts/${contract.id}/document`)}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center justify-center gap-2 rounded-2xl border border-border/50 bg-card px-3 py-3.5 text-[13px] font-medium text-foreground active:scale-[0.98] transition-transform shadow-sm leading-snug"

@@ -153,6 +153,20 @@ let liffIdToken: string | null = null;
 export function setLiffIdToken(token: string | null) {
   liffIdToken = token;
 }
+/** Read the current LIFF id_token — used to build document/file download
+ * links that can't attach the X-Liff-Id-Token header (plain <a href>). */
+export function getLiffIdToken(): string | null {
+  return liffIdToken;
+}
+/** Append idToken query param to a download URL so LiffTokenGuard can
+ * authenticate browser-navigation requests (new tab / target=_blank),
+ * which don't carry the X-Liff-Id-Token header. */
+export function withLiffToken(url: string): string {
+  const token = liffIdToken;
+  if (!token) return url;
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}idToken=${encodeURIComponent(token)}`;
+}
 
 // Attach X-Liff-Id-Token header on all liffApi requests
 liffApi.interceptors.request.use((config) => {

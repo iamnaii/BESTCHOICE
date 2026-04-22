@@ -1,5 +1,5 @@
 import { useLiffInit } from '@/hooks/useLiffInit';
-import { liffApi } from '@/lib/api';
+import { liffApi, withLiffToken } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
 import { formatDateMedium } from '@/utils/formatters';
 import { FileText, Download } from 'lucide-react';
@@ -132,7 +132,7 @@ export default function LiffReceipts() {
                       asChild
                     >
                       <a
-                        href={`/api/line-oa/liff/receipts/${r.id}/download`}
+                        href={withLiffToken(`/api/line-oa/liff/receipts/${r.id}/download`)}
                         target="_blank"
                         rel="noopener noreferrer"
                       >

@@ -70,6 +70,7 @@ import { ChatAdaptersModule } from './modules/chat-adapters/chat-adapters.module
 import { FacebookDomainModule } from './modules/facebook-domain/facebook-domain.module';
 import { StaffChatModule } from './modules/staff-chat/staff-chat.module';
 import { ChatAnalyticsModule } from './modules/chat-analytics/chat-analytics.module';
+import { ChatHistoryExtractorModule } from './modules/chat-history-extractor/chat-history-extractor.module';
 import { CsatModule } from './modules/csat/csat.module';
 import { AdsTrackingModule } from './modules/ads-tracking/ads-tracking.module';
 import { CrmModule } from './modules/crm/crm.module';
@@ -216,6 +217,8 @@ import { AppCacheModule } from './cache/cache.module';
     StaffChatModule,
     // Chat Analytics — response time, resolution rate, channel volume
     ChatAnalyticsModule,
+    // Chat History Extractor — pull past LINE/FB conversations → AiTrainingPair (OWNER only)
+    ChatHistoryExtractorModule,
     // CSAT — customer satisfaction survey after chat resolution
     CsatModule,
     // Ads Attribution — campaign tracking + ROI

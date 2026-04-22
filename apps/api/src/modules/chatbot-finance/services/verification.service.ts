@@ -318,6 +318,14 @@ export class VerificationService {
           verificationAttempts: 0,
         },
       });
+
+      // Sync canonical customer.lineId — LIFF pages (LiffContract etc.)
+      // lookup customer ด้วย field นี้ตรงๆ ถ้าไม่ update จะ "ไม่มีสัญญา"
+      // ทั้งที่ chatbot/CustomerLineLink link เรียบร้อยแล้ว
+      await tx.customer.update({
+        where: { id: customerId },
+        data: { lineId: lineUserId },
+      });
     });
     this.logger.log(`[Verify] Bound ${lineUserId.slice(0, 8)}... → customer ${customerId.slice(0, 8)}...`);
   }

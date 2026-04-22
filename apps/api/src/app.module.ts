@@ -91,6 +91,8 @@ import { ShopCartModule } from './modules/shop-cart/shop-cart.module';
 import { ShopCheckoutModule } from './modules/shop-checkout/shop-checkout.module';
 import { ShopOrdersModule } from './modules/shop-orders/shop-orders.module';
 import { ShopMeModule } from './modules/shop-me/shop-me.module';
+import { ShopCsModule } from './modules/shop-cs/shop-cs.module';
+import { ShopReviewsModule } from './modules/shop-reviews/shop-reviews.module';
 import { DataAuditModule } from './modules/data-audit/data-audit.module';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { TwoFactorModule } from './modules/two-factor/two-factor.module';
@@ -249,6 +251,10 @@ import { AppCacheModule } from './cache/cache.module';
     ShopOrdersModule,
     // Online Shop — customer address book (/api/shop/me/addresses) (Phase 2)
     ShopMeModule,
+    // Online Shop — customer service (cancel + refund request) (Phase 3)
+    ShopCsModule,
+    // Online Shop — product reviews (verified purchase + moderation) (Phase 3)
+    ShopReviewsModule,
     // MASTER: Management
     UsersModule,
     SettingsModule,

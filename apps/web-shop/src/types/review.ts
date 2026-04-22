@@ -6,6 +6,7 @@ export interface Review {
   verified: boolean;
   createdAt: string;
   customer: { name: string };
+  photoUrl?: string | null;
 }
 
 export interface ReviewSummary {

@@ -5,7 +5,28 @@ import { Button } from '@/components/ui/button';
 import { Loader2, Save } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
 import { toast } from 'sonner';
+import { THAI_NAME_PREFIXES, RELATIONSHIP_OPTIONS } from '@/lib/constants';
 import type { FullIntakeForm } from '../types';
+
+const OCCUPATION_OPTIONS = [
+  'พนักงานบริษัท',
+  'รับจ้างทั่วไป',
+  'ค้าขาย/ธุรกิจส่วนตัว',
+  'พนักงานโรงงาน',
+  'เกษตรกร',
+  'ข้าราชการ/รัฐวิสาหกิจ',
+  'ขับรถ/ส่งของ',
+  'ช่างซ่อม/ช่างเทคนิค',
+  'ก่อสร้าง',
+  'ร้านอาหาร/บริการ',
+  'Freelance/อิสระ',
+  'นักศึกษา',
+  'แม่บ้าน/ไม่ได้ทำงาน',
+  'อื่นๆ',
+];
+
+const selectClass =
+  'flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring';
 
 interface Props {
   customerId: string;
@@ -84,7 +105,16 @@ export default function FullIntakeStep({ customerId, initial, onDone }: Props) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
             <label className="block text-xs font-medium text-foreground mb-1">อาชีพ</label>
-            <Input value={form.occupation || ''} onChange={(e) => patch({ occupation: e.target.value })} />
+            <select
+              value={form.occupation || ''}
+              onChange={(e) => patch({ occupation: e.target.value })}
+              className={selectClass}
+            >
+              <option value="">-- เลือก --</option>
+              {OCCUPATION_OPTIONS.map((o) => (
+                <option key={o} value={o}>{o}</option>
+              ))}
+            </select>
           </div>
           <div>
             <label className="block text-xs font-medium text-foreground mb-1">เงินเดือน (บาท)</label>
@@ -100,11 +130,32 @@ export default function FullIntakeStep({ customerId, initial, onDone }: Props) {
       <div className="rounded-xl border border-border bg-card p-5 shadow-sm space-y-4">
         <h3 className="text-sm font-semibold text-foreground">ผู้อ้างอิง (4 คน)</h3>
         {form.references.map((ref, i) => (
-          <div key={i} className="grid grid-cols-1 md:grid-cols-4 gap-2 pb-3 border-b border-border last:border-0">
+          <div key={i} className="grid grid-cols-2 md:grid-cols-6 gap-2 pb-3 border-b border-border last:border-0">
+            <select
+              value={ref.prefix || ''}
+              onChange={(e) => patchRef(i, { prefix: e.target.value })}
+              className={selectClass}
+              aria-label="คำนำหน้า"
+            >
+              <option value="">คำนำหน้า</option>
+              {THAI_NAME_PREFIXES.map((p) => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
             <Input placeholder="ชื่อ" value={ref.firstName} onChange={(e) => patchRef(i, { firstName: e.target.value })} />
             <Input placeholder="นามสกุล" value={ref.lastName} onChange={(e) => patchRef(i, { lastName: e.target.value })} />
             <Input placeholder="เบอร์" value={ref.phone} onChange={(e) => patchRef(i, { phone: e.target.value.replace(/\D/g, '').slice(0, 10) })} />
-            <Input placeholder="ความสัมพันธ์" value={ref.relationship} onChange={(e) => patchRef(i, { relationship: e.target.value })} />
+            <select
+              value={ref.relationship}
+              onChange={(e) => patchRef(i, { relationship: e.target.value })}
+              className={`${selectClass} col-span-2`}
+              aria-label="ความสัมพันธ์"
+            >
+              <option value="">ความสัมพันธ์</option>
+              {RELATIONSHIP_OPTIONS.map((r) => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
           </div>
         ))}
       </div>

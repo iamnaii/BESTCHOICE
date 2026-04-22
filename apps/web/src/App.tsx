@@ -162,6 +162,11 @@ function App() {
             Guards against Endpoint URL mis-configs and catch-all "*→/" hijacking
             LIFF traffic into ProtectedRoute. */}
         <Route path="/liff" element={<Navigate to="/liff/contract" replace />} />
+        {/* Shorthand aliases for rich-menu LIFF URIs (https://liff.line.me/<id>/contract).
+            LINE rewrites them via liff.state so the landing pathname is the bare sub-path. */}
+        <Route path="/contract" element={<Navigate to="/liff/contract" replace />} />
+        <Route path="/history" element={<Navigate to="/liff/history" replace />} />
+        <Route path="/early-payoff" element={<Navigate to="/liff/early-payoff" replace />} />
         <Route path="/liff/contract" element={<LiffContract />} />
         <Route path="/liff/register" element={<LiffRegister />} />
         <Route path="/liff/history" element={<LiffHistory />} />

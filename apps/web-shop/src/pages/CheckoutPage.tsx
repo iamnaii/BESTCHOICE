@@ -45,7 +45,7 @@ export default function CheckoutPage() {
   return (
     <ShopLayout>
       <div className="container mx-auto px-4 py-4">
-        <CheckoutStepper step={step} />
+        <CheckoutStepper current={step} />
         {step === 1 && (
           <AddressStep
             onNext={(a) => {

@@ -19,7 +19,6 @@ import { ContractsModule } from './modules/contracts/contracts.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 // MASTER-only modules
 import { OverdueModule } from './modules/overdue/overdue.module';
-import { ExchangeModule } from './modules/exchange/exchange.module';
 import { DefectExchangeModule } from './modules/defect-exchange/defect-exchange.module';
 import { RepossessionsModule } from './modules/repossessions/repossessions.module';
 import { PurchaseOrdersModule } from './modules/purchase-orders/purchase-orders.module';
@@ -143,7 +142,6 @@ import { AppCacheModule } from './cache/cache.module';
     PaymentsModule,
     // MASTER: Operations
     OverdueModule,
-    ExchangeModule,
     DefectExchangeModule,
     RepossessionsModule,
     PurchaseOrdersModule,

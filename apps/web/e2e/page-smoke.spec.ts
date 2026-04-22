@@ -82,7 +82,6 @@ const OWNER_PAGES: SmokeRoute[] = [
   { url: '/finance-receivable', name: 'เงินรับจากไฟแนนซ์' },
 
   // Collections & Risk
-  { url: '/exchange', name: 'เปลี่ยนเครื่อง' },
   { url: '/repossessions', name: 'ยึดคืน' },
   { url: '/inspections', name: 'ตรวจสภาพ' },
 
@@ -121,7 +120,6 @@ const BRANCH_MANAGER_PAGES: SmokeRoute[] = [
   { url: '/receipts', name: 'ใบเสร็จ' },
   { url: '/reports', name: 'รายงาน' },
   { url: '/finance-receivable', name: 'เงินรับจากไฟแนนซ์' },
-  { url: '/exchange', name: 'เปลี่ยนเครื่อง' },
   { url: '/repossessions', name: 'ยึดคืน' },
   { url: '/document-dashboard', name: 'สถานะเอกสาร' },
   { url: '/pdpa', name: 'PDPA' },

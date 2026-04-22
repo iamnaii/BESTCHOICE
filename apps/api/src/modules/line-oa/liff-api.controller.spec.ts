@@ -232,19 +232,45 @@ describe('LiffApiController', () => {
   // ─── getLiffEarlyPayoffQuote ─────────────────────────
 
   describe('getLiffEarlyPayoffQuote', () => {
-    it('returns quote for active contract', async () => {
+    it('returns quote for active contract with mapped fields', async () => {
       liffService.findCustomerByLineId.mockResolvedValue({ id: 'cust1', name: 'สมชาย' });
       liffService.findContractForCustomer.mockResolvedValue({
         id: 'con1', contractNumber: 'BC-001', status: 'ACTIVE',
       });
       contractPaymentService.getEarlyPayoffQuote.mockResolvedValue({
-        totalPayoff: 8500, remainingMonths: 4,
+        totalPayoff: 8500,
+        remainingMonths: 4,
+        remainingCost: 6000,
+        grossProfit: 2000,
+        discountAmount: 1000,
+        advancePayment: 500,
+        unpaidLateFees: 100,
       });
 
       const result = await controller.getLiffEarlyPayoffQuote(mockReq('U_line'), 'con1');
       expect(result.totalPayoff).toBe(8500);
       expect(result.contractNumber).toBe('BC-001');
       expect(result.customerName).toBe('สมชาย');
+      expect(result.remainingPrincipal).toBe(6000);
+      expect(result.remainingInterest).toBe(2000);
+      expect(result.discount).toBe(1000);
+      expect(result.partiallyPaidCredit).toBe(500);
+      expect(result.unpaidLateFees).toBe(100);
+    });
+
+    it('clamps negative grossProfit to 0 for remainingInterest (loss case)', async () => {
+      liffService.findCustomerByLineId.mockResolvedValue({ id: 'cust1', name: 'สมชาย' });
+      liffService.findContractForCustomer.mockResolvedValue({
+        id: 'con1', contractNumber: 'BC-001', status: 'ACTIVE',
+      });
+      contractPaymentService.getEarlyPayoffQuote.mockResolvedValue({
+        totalPayoff: 5000, remainingMonths: 2,
+        remainingCost: 4000, grossProfit: -500,
+        discountAmount: 0, advancePayment: 0, unpaidLateFees: 0,
+      });
+
+      const result = await controller.getLiffEarlyPayoffQuote(mockReq('U_line'), 'con1');
+      expect(result.remainingInterest).toBe(0);
     });
 
     it('throws BadRequestException if no contractId', async () => {

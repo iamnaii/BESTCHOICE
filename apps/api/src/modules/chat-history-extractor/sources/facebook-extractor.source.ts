@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { IntegrationConfigService } from '../../integrations/integration-config.service';
 import type { ExtractedMessage } from './line-extractor.source';
 
 interface FbMessage {
@@ -18,24 +18,34 @@ interface FbConversationsPage {
   paging?: { next?: string };
 }
 
+/**
+ * FacebookExtractorSource — pulls conversations from a FB Page via Graph API.
+ *
+ * Credentials read from Integration Hub ("facebook" integration):
+ * - pageAccessToken (long-lived Page Access Token)
+ * - pageId
+ *
+ * Managed at /integrations in the admin UI — no redeploy needed to rotate.
+ * Env var fallback is handled by IntegrationConfigService for dev/testing.
+ */
 @Injectable()
 export class FacebookExtractorSource {
   private readonly logger = new Logger(FacebookExtractorSource.name);
-  private readonly token: string;
-  private readonly pageId: string;
 
-  constructor(config: ConfigService) {
-    this.token = config.get<string>('FACEBOOK_PAGE_ACCESS_TOKEN') ?? '';
-    this.pageId = config.get<string>('FACEBOOK_PAGE_ID') ?? '';
-  }
+  constructor(private readonly integrationConfig: IntegrationConfigService) {}
 
   async extract(opts: { since: Date }): Promise<ExtractedMessage[]> {
-    if (!this.token || !this.pageId) {
-      this.logger.warn('Facebook extractor skipped — no token/pageId');
+    const cfg = await this.integrationConfig.getConfig('facebook');
+    const token = cfg.pageAccessToken || '';
+    const pageId = cfg.pageId || '';
+
+    if (!token || !pageId) {
+      this.logger.warn('Facebook extractor skipped — no pageAccessToken/pageId in Integration Hub');
       return [];
     }
+
     const out: ExtractedMessage[] = [];
-    let url: string | null = `https://graph.facebook.com/v19.0/${this.pageId}/conversations?fields=participants,messages{message,from,created_time}&limit=100&access_token=${this.token}`;
+    let url: string | null = `https://graph.facebook.com/v19.0/${pageId}/conversations?fields=participants,messages{message,from,created_time}&limit=100&access_token=${token}`;
     while (url) {
       const res: Response = await fetch(url);
       if (!res.ok) throw new Error(`FB Graph ${res.status}: ${await res.text()}`);
@@ -48,7 +58,7 @@ export class FacebookExtractorSource {
           out.push({
             roomId: `fb:${conv.id}`,
             channel: 'FACEBOOK',
-            role: m.from.id === this.pageId ? 'STAFF' : 'CUSTOMER',
+            role: m.from.id === pageId ? 'STAFF' : 'CUSTOMER',
             text: m.message,
             createdAt: created,
             externalMessageId: m.id,

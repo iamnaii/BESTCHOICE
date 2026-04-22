@@ -1,22 +1,20 @@
 import { Test } from '@nestjs/testing';
-import { ConfigService } from '@nestjs/config';
 import { FacebookExtractorSource } from './facebook-extractor.source';
+import { IntegrationConfigService } from '../../integrations/integration-config.service';
 
 describe('FacebookExtractorSource', () => {
   let source: FacebookExtractorSource;
   let fetchMock: jest.SpyInstance;
+  let integrationConfig: { getConfig: jest.Mock };
 
   beforeEach(async () => {
+    integrationConfig = {
+      getConfig: jest.fn().mockResolvedValue({ pageAccessToken: 'tok', pageId: 'page123' }),
+    };
     const mod = await Test.createTestingModule({
       providers: [
         FacebookExtractorSource,
-        {
-          provide: ConfigService,
-          useValue: {
-            get: (k: string) =>
-              ({ FACEBOOK_PAGE_ACCESS_TOKEN: 'tok', FACEBOOK_PAGE_ID: 'page123' }[k]),
-          },
-        },
+        { provide: IntegrationConfigService, useValue: integrationConfig },
       ],
     }).compile();
     source = mod.get(FacebookExtractorSource);
@@ -25,7 +23,7 @@ describe('FacebookExtractorSource', () => {
 
   afterEach(() => fetchMock.mockRestore());
 
-  it('extracts messages from paginated conversations', async () => {
+  it('extracts messages from paginated conversations using Integration Hub credentials', async () => {
     fetchMock.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
@@ -45,9 +43,17 @@ describe('FacebookExtractorSource', () => {
       }),
     } as any);
     const result = await source.extract({ since: new Date('2025-04-22') });
+    expect(integrationConfig.getConfig).toHaveBeenCalledWith('facebook');
     expect(result).toHaveLength(2);
     expect(result[0].role).toBe('CUSTOMER');
     expect(result[1].role).toBe('STAFF');
     expect(result[0].roomId).toBe('fb:conv1');
+  });
+
+  it('skips gracefully when credentials are missing in Integration Hub', async () => {
+    integrationConfig.getConfig.mockResolvedValue({});
+    const result = await source.extract({ since: new Date('2025-04-22') });
+    expect(result).toEqual([]);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

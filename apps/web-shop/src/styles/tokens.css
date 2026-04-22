@@ -1,0 +1,77 @@
+/*
+ * Shop v2 design tokens — Tailwind v4 @theme declarations.
+ * Registers new utility classes (bg-emerald-500, text-zinc-700, etc.)
+ * on top of the existing primary/background/foreground/muted tokens
+ * already defined in tailwind.config.ts.
+ */
+
+@theme {
+  /* Emerald scale (brand primary) */
+  --color-emerald-50:  #ECFDF5;
+  --color-emerald-100: #D1FAE5;
+  --color-emerald-200: #A7F3D0;
+  --color-emerald-300: #6EE7B7;
+  --color-emerald-400: #34D399;
+  --color-emerald-500: #1DB446;
+  --color-emerald-600: #158C36;
+  --color-emerald-700: #0E6B29;
+  --color-emerald-800: #0A5423;
+  --color-emerald-900: #064E3B;
+
+  /* Zinc neutrals */
+  --color-zinc-50:  #FAFAFA;
+  --color-zinc-100: #F4F4F5;
+  --color-zinc-200: #E4E4E7;
+  --color-zinc-300: #D4D4D8;
+  --color-zinc-400: #A1A1AA;
+  --color-zinc-500: #71717A;
+  --color-zinc-600: #52525B;
+  --color-zinc-700: #3F3F46;
+  --color-zinc-800: #27272A;
+  --color-zinc-900: #18181B;
+
+  /* Sand — warm accent for local-shop sections */
+  --color-sand-50:  #FDF9F3;
+  --color-sand-100: #FAF0E1;
+  --color-sand-500: #C9A876;
+  --color-sand-900: #5C4A2F;
+
+  /* Amber (warning) — used by condition-b */
+  --color-amber-100: #FEF3C7;
+  --color-amber-500: #F59E0B;
+  --color-amber-900: #78350F;
+
+  /* Orange (condition-c) */
+  --color-orange-100: #FFEDD5;
+  --color-orange-500: #F97316;
+
+  /* Red (destructive) */
+  --color-red-100: #FEE2E2;
+  --color-red-900: #7F1D1D;
+
+  /* Semantic: condition badges (used-iPhone grading) */
+  --color-condition-a: var(--color-emerald-500);
+  --color-condition-b: var(--color-amber-500);
+  --color-condition-c: var(--color-orange-500);
+
+  /* Destructive (align with Tailwind expectation) */
+  --color-destructive: #DD2C00;
+  --color-destructive-foreground: #FFFFFF;
+
+  /* Emerald-tinted shadow levels */
+  --shadow-sm:  0 1px 2px 0 rgb(29 180 70 / 0.04), 0 1px 2px -1px rgb(29 180 70 / 0.04);
+  --shadow-md:  0 2px 6px 0 rgb(29 180 70 / 0.06), 0 2px 4px -2px rgb(29 180 70 / 0.04);
+  --shadow-lg:  0 6px 16px 0 rgb(29 180 70 / 0.08), 0 4px 6px -4px rgb(29 180 70 / 0.04);
+  --shadow-xl:  0 12px 32px 0 rgb(29 180 70 / 0.10), 0 8px 16px -8px rgb(29 180 70 / 0.06);
+  --shadow-2xl: 0 24px 64px 0 rgb(29 180 70 / 0.14);
+
+  /* Motion durations */
+  --duration-fast:   150ms;
+  --duration-base:   200ms;
+  --duration-medium: 300ms;
+  --duration-slow:   500ms;
+
+  /* Easing */
+  --ease-out-quad:     cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --ease-in-out-quint: cubic-bezier(0.86, 0, 0.07, 1);
+}

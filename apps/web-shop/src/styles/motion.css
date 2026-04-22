@@ -1,0 +1,41 @@
+/*
+ * Motion — CSS-only (no framer-motion). Uses duration + easing tokens.
+ */
+
+@keyframes shop-reveal-up {
+  from { opacity: 0; transform: translate3d(0, 12px, 0); }
+  to   { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+@keyframes shop-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* IntersectionObserver-driven reveal base */
+.reveal {
+  opacity: 0;
+  transform: translate3d(0, 12px, 0);
+  transition: opacity var(--duration-slow) var(--ease-out-quad),
+              transform var(--duration-slow) var(--ease-out-quad);
+}
+.reveal.in-view {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+/* StaggerChildren — children get escalating transition-delay */
+.stagger > * {
+  transition-delay: calc(50ms * var(--stagger-index, 0));
+}
+
+/* Respect prefers-reduced-motion — kill all transitions + animations globally. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .reveal { opacity: 1 !important; transform: none !important; }
+}

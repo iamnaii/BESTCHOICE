@@ -515,6 +515,12 @@ export class LineOaPaymentController {
       return { error: 'ลิงก์ชำระเงินหมดอายุหรือถูกใช้แล้ว', valid: false, status: link.status };
     }
 
+    // This LIFF endpoint only handles contract-based payment links.
+    // Online-order PaymentLinks (contract === null) are paid via PaySolutions hosted page.
+    if (!link.contract) {
+      return { error: 'ลิงก์ชำระเงินไม่ถูกต้อง', valid: false };
+    }
+
     const payment = link.payment!;
     const contract = link.contract;
     const amount = sumOutstanding(payment);
@@ -587,6 +593,11 @@ export class LineOaPaymentController {
     if (!link || link.status !== 'ACTIVE') {
       throw new BadRequestException('ลิงก์ชำระเงินไม่ถูกต้องหรือหมดอายุ');
     }
+    // Slip upload is only supported for contract-based payment links.
+    if (!link.contract) {
+      throw new BadRequestException('ลิงก์ชำระเงินไม่ถูกต้อง');
+    }
+    const linkContract = link.contract;
 
     // Determine safe file extension from MIME type
     const extMap: Record<string, string> = {
@@ -614,9 +625,9 @@ export class LineOaPaymentController {
       // Create PaymentEvidence
       const ev = await tx.paymentEvidence.create({
         data: {
-          contractId: link.contract.id,
+          contractId: linkContract.id,
           paymentId: link.payment!.id,
-          lineUserId: link.contract.customer.lineId || null,
+          lineUserId: linkContract.customer.lineId || null,
           imageUrl,
           amount: body.amount ? new Prisma.Decimal(body.amount) : null,
           status: 'PENDING_REVIEW',
@@ -628,8 +639,8 @@ export class LineOaPaymentController {
         data: {
           channel: 'IN_APP',
           recipient: 'STAFF',
-          subject: `สลิปใหม่จาก ${link.contract.customer.name} (LIFF)`,
-          message: `ลูกค้า ${link.contract.customer.name} ส่งสลิปผ่านลิงก์ชำระเงิน สัญญา ${link.contract.contractNumber}`,
+          subject: `สลิปใหม่จาก ${linkContract.customer.name} (LIFF)`,
+          message: `ลูกค้า ${linkContract.customer.name} ส่งสลิปผ่านลิงก์ชำระเงิน สัญญา ${linkContract.contractNumber}`,
           status: 'SENT',
           relatedId: ev.id,
           sentAt: new Date(),
@@ -646,19 +657,19 @@ export class LineOaPaymentController {
     });
 
     // Send LINE confirmation message to customer
-    const customerLineId = link.contract.customer.lineId;
+    const customerLineId = linkContract.customer.lineId;
     if (customerLineId) {
       try {
         const payment = link.payment!;
         const paidCount = await this.prisma.payment.count({
-          where: { contractId: link.contract.id, status: 'PAID' },
+          where: { contractId: linkContract.id, status: 'PAID' },
         });
-        const totalInstallments = link.contract.totalMonths;
+        const totalInstallments = linkContract.totalMonths;
         const amount = body.amount ? d(body.amount) : sumOutstanding(payment);
 
         const flex = this.lineOaService.buildPaymentSuccess({
-          customerName: link.contract.customer.name,
-          contractNumber: link.contract.contractNumber,
+          customerName: linkContract.customer.name,
+          contractNumber: linkContract.contractNumber,
           installmentNo: payment.installmentNo,
           totalInstallments,
           amountPaid: amount,
@@ -672,7 +683,7 @@ export class LineOaPaymentController {
       }
     }
 
-    this.logger.log(`[LIFF] Slip uploaded for contract ${link.contract.contractNumber}`);
+    this.logger.log(`[LIFF] Slip uploaded for contract ${linkContract.contractNumber}`);
 
     return { success: true, message: 'อัพโหลดสลิปเรียบร้อย กำลังตรวจสอบ' };
   }

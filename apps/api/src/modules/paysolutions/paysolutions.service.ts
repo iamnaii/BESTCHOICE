@@ -1,13 +1,16 @@
 import {
+  Inject,
   Injectable,
   Logger,
   BadRequestException,
   NotFoundException,
   InternalServerErrorException,
+  forwardRef,
 } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
 import { formatDateLong } from '../../utils/thai-date.util';
 import { d, dAdd, dSub, dClose } from '../../utils/decimal.util';
+import { OnlineOrderSaleAdapter } from '../shop-orders/online-order-sale.adapter';
 
 // Pay Solutions external API timeout. Their published SLA is "instant"
 // but real-world we've seen 5-10s on busy hours. 15s leaves headroom
@@ -18,6 +21,7 @@ import { Prisma, PaymentMethod } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LineOaService } from '../line-oa/line-oa.service';
 import { buildPaymentSuccessFlex } from '../line-oa/flex-messages/payment-success.flex';
+import { FlexMessagePayload } from '../line-oa/flex-messages/base-template';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
 
 export interface PaymentIntentResult {
@@ -47,6 +51,8 @@ export class PaySolutionsService {
     private config: ConfigService,
     private lineOaService: LineOaService,
     private integrationConfig: IntegrationConfigService,
+    @Inject(forwardRef(() => OnlineOrderSaleAdapter))
+    private saleAdapter: OnlineOrderSaleAdapter,
   ) {
     this.returnUrl = this.config.get<string>('PAYSOLUTIONS_RETURN_URL', '');
     this.apiBaseUrl = this.config.get<string>(
@@ -288,6 +294,129 @@ export class PaySolutionsService {
   }
 
   /**
+   * สร้าง payment intent สำหรับ online order (ร้านค้าออนไลน์)
+   * — เรียก Pay Solutions API สร้างลิงก์ชำระเงิน
+   * — บันทึก PaymentLink ที่ contractId=null + link กลับมาหา OnlineOrder
+   * — Retry safe: ถ้ามี PaymentLink ACTIVE อยู่แล้วจะ reuse ไม่สร้างใหม่
+   */
+  async createOnlineOrderIntent(input: {
+    onlineOrderId: string;
+    amount: number;
+    description: string;
+    channel: 'PROMPTPAY_QR' | 'CREDIT_DEBIT_CARD';
+  }): Promise<{ paymentLinkId: string; paymentUrl: string; qrCodeUrl?: string }> {
+    const order = await this.prisma.onlineOrder.findUnique({
+      where: { id: input.onlineOrderId },
+      include: { customer: { select: { email: true, name: true } } },
+    });
+    if (!order) throw new NotFoundException('ไม่พบคำสั่งซื้อ');
+    if (order.paymentLinkId) {
+      const existing = await this.prisma.paymentLink.findUnique({
+        where: { id: order.paymentLinkId },
+      });
+      if (existing && existing.status === 'ACTIVE') {
+        // Reuse — avoid creating a new gateway intent on retry
+        return { paymentLinkId: existing.id, paymentUrl: '' };
+      }
+    }
+
+    const orderRef = `ON${Date.now().toString(36).toUpperCase()}`.slice(0, 12);
+    const returnUrlBase =
+      this.returnUrl || `${this.config.get('FRONTEND_URL', 'http://localhost:5174')}/orders`;
+    const returnUrl = `${returnUrlBase}/${order.orderNumber}`;
+
+    const paymentPayload: Record<string, unknown> = {
+      merchantId: await this.getMerchantId(),
+      customerEmail: order.customer.email || 'noreply@bestchoice.com',
+      referenceNo: orderRef,
+      description: input.description,
+      amount: input.amount,
+      paymentChannel: input.channel === 'PROMPTPAY_QR' ? 'Qrcode' : 'CreditDebit',
+      paymentGateway: input.channel === 'PROMPTPAY_QR' ? 'Promptpay' : undefined,
+      currencyCode: '00',
+      lang: 'TH',
+      returnUrl,
+      postbackUrl: `${this.apiBaseUrl}/api/paysolutions/webhook`,
+      terminalId: await this.getTerminalId(),
+      keyVersion: 1,
+    };
+
+    const abortController = new AbortController();
+    const timeoutHandle = setTimeout(() => abortController.abort(), PAYSOLUTIONS_TIMEOUT_MS);
+    let gatewayResponse: Record<string, unknown>;
+    let paymentUrl: string;
+
+    try {
+      const response = await fetch(
+        `${await this.getApiUrl()}/payment/gateway/v2/ui-payments`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json; charset=utf-8',
+            apiKey: await this.getApiKey(),
+            secretKey: await this.getSecretKey(),
+          },
+          body: JSON.stringify(paymentPayload),
+          signal: abortController.signal,
+        },
+      );
+      gatewayResponse = (await response.json()) as Record<string, unknown>;
+      if (!response.ok) {
+        const status = gatewayResponse.status as Record<string, string> | undefined;
+        throw new InternalServerErrorException(
+          `ไม่สามารถสร้างรายการชำระเงินได้: ${status?.message || 'กรุณาลองใหม่'}`,
+        );
+      }
+      paymentUrl = (gatewayResponse.redirectUrl as string) || '';
+      if (!paymentUrl) {
+        throw new InternalServerErrorException('ไม่ได้รับลิงก์ชำระเงินจากระบบ');
+      }
+    } catch (error) {
+      if (error instanceof InternalServerErrorException) throw error;
+      const isTimeout = error instanceof Error && error.name === 'AbortError';
+      if (isTimeout) {
+        Sentry.captureMessage('paysolutions-online-timeout', {
+          level: 'warning',
+          tags: { critical: 'paysolutions-online-timeout', orderRef },
+          extra: { onlineOrderId: input.onlineOrderId, amount: input.amount },
+        });
+        throw new InternalServerErrorException(
+          'ระบบชำระเงินใช้เวลานานเกินไป กรุณาลองใหม่',
+        );
+      }
+      throw new InternalServerErrorException('ไม่สามารถเชื่อมต่อระบบชำระเงินได้');
+    } finally {
+      clearTimeout(timeoutHandle);
+    }
+
+    try {
+      const paymentLink = await this.prisma.paymentLink.create({
+        data: {
+          token: orderRef,
+          amount: input.amount,
+          status: 'ACTIVE',
+          expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+        },
+      });
+      await this.prisma.onlineOrder.update({
+        where: { id: input.onlineOrderId },
+        data: { paymentLinkId: paymentLink.id },
+      });
+      this.logger.log(
+        `Online order payment intent: ${orderRef} for order ${input.onlineOrderId}`,
+      );
+      return { paymentLinkId: paymentLink.id, paymentUrl };
+    } catch (dbError) {
+      Sentry.captureException(dbError, {
+        level: 'fatal',
+        tags: { critical: 'paysolutions-online-orphan', orderRef },
+        extra: { onlineOrderId: input.onlineOrderId },
+      });
+      throw new InternalServerErrorException('ระบบบันทึกข้อมูลชำระเงินไม่สำเร็จ');
+    }
+  }
+
+  /**
    * ตรวจสอบ webhook callback จาก Pay Solutions
    * Pay Solutions ส่ง form POST กลับมาพร้อม merchantid — ตรวจว่าตรงกับ config
    */
@@ -365,6 +494,37 @@ export class PaySolutionsService {
       this.logger.warn(
         `Webhook for EXPIRED link refno=${refno} result_code=${result_code} — ignoring`,
       );
+      return;
+    }
+
+    // Online-order path: PaymentLink without contractId belongs to an OnlineOrder.
+    // Route to separate flow — does not touch Contract/Payment tables.
+    if (!paymentLink.contractId) {
+      const order = await this.prisma.onlineOrder.findFirst({
+        where: { paymentLinkId: paymentLink.id },
+      });
+      if (!order) {
+        this.logger.warn(
+          `Webhook refno=${refno}: paymentLink has no contractId and no matching OnlineOrder — orphan?`,
+        );
+        return;
+      }
+      const isSuccessOnline = result_code === '00';
+      if (isSuccessOnline) {
+        await this.confirmOnlineOrderPayment(order.id, webhookData);
+        await this.prisma.paymentLink.update({
+          where: { id: paymentLink.id },
+          data: { status: 'USED', usedAt: new Date() },
+        });
+      } else {
+        await this.prisma.paymentLink.update({
+          where: { id: paymentLink.id },
+          data: { status: 'EXPIRED' },
+        });
+        this.logger.log(
+          `Online order payment FAILED: refno=${refno}, result_code=${result_code}`,
+        );
+      }
       return;
     }
 
@@ -522,6 +682,129 @@ export class PaySolutionsService {
       paymentId: link.id,
       status: 'PENDING',
       amount: Number(link.amount),
+    };
+  }
+
+  /**
+   * ยืนยันชำระเงินสำเร็จของ online order
+   * — อัปเดต OnlineOrder.status → PAID
+   * — อัปเดต ProductReservation.status → CONSUMED
+   * — ส่ง LINE flex message แจ้งลูกค้า (ถ้ามี lineId)
+   * — STUB: Task 9 จะเพิ่ม OnlineOrderSaleAdapter เพื่อสร้าง Sale + move product + award loyalty
+   */
+  async confirmOnlineOrderPayment(
+    onlineOrderId: string,
+    webhookData: Record<string, string>,
+  ): Promise<void> {
+    const order = await this.prisma.onlineOrder.findUnique({
+      where: { id: onlineOrderId },
+      include: { customer: true, product: true, reservation: true },
+    });
+    if (!order) {
+      this.logger.warn(`confirmOnlineOrderPayment: order ${onlineOrderId} not found`);
+      return;
+    }
+    if (
+      order.status === 'PAID' ||
+      order.status === 'PACKING' ||
+      order.status === 'SHIPPED'
+    ) {
+      this.logger.log(
+        `Order ${order.orderNumber} already confirmed — idempotent skip`,
+      );
+      return;
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.onlineOrder.update({
+        where: { id: onlineOrderId },
+        data: {
+          status: 'PAID',
+          paidAt: new Date(),
+          paymentRef: webhookData.transaction_id || webhookData.refno || null,
+        },
+      });
+      await tx.productReservation.update({
+        where: { id: order.reservationId },
+        data: { status: 'CONSUMED', consumedById: order.id },
+      });
+    });
+
+    // Create a Sale record for the paid online order. Adapter moves product to
+    // SOLD_CASH, applies loyalty redemption, and transitions the OnlineOrder to
+    // PACKING. Failures are logged (not re-thrown) — webhook must still return
+    // 200 so PaySolutions doesn't retry, and admin can reconcile manually.
+    try {
+      await this.saleAdapter.createForOnlineOrder(order.id);
+    } catch (err) {
+      this.logger.error(
+        `Failed to create Sale for online order ${order.orderNumber}: ${err}`,
+      );
+      Sentry.captureException(err, {
+        level: 'error',
+        tags: { critical: 'online-order-sale-failed', orderNumber: order.orderNumber },
+      });
+      // Don't re-throw — Sale can be created manually by admin if needed
+    }
+
+    if (order.customer.lineId) {
+      try {
+        await this.lineOaService.sendFlexMessage(
+          order.customer.lineId,
+          this.buildOrderPaidFlex(order),
+        );
+      } catch (err) {
+        this.logger.warn(
+          `Failed to send LINE notification for order ${order.orderNumber}: ${err}`,
+        );
+      }
+    }
+  }
+
+  /**
+   * สร้าง flex message แจ้งยืนยันชำระเงิน online order สำเร็จ
+   */
+  private buildOrderPaidFlex(order: {
+    orderNumber: string;
+    totalAmount: Prisma.Decimal;
+    product: { name: string };
+  }): FlexMessagePayload {
+    return {
+      type: 'flex',
+      altText: `ชำระเงินคำสั่งซื้อ ${order.orderNumber} สำเร็จ`,
+      contents: {
+        type: 'bubble',
+        body: {
+          type: 'box',
+          layout: 'vertical',
+          contents: [
+            { type: 'text', text: 'ชำระเงินสำเร็จ', weight: 'bold', size: 'lg' },
+            {
+              type: 'text',
+              text: `คำสั่งซื้อ ${order.orderNumber}`,
+              size: 'md',
+              margin: 'md',
+            },
+            { type: 'text', text: order.product.name, size: 'sm', color: '#666666' },
+            { type: 'separator', margin: 'md' },
+            {
+              type: 'text',
+              text: `ยอดรวม ฿${Number(order.totalAmount).toLocaleString()}`,
+              size: 'md',
+              margin: 'md',
+              weight: 'bold',
+            },
+            {
+              type: 'text',
+              text: 'ทางร้านจะจัดส่งภายใน 1 วันทำการ',
+              size: 'xs',
+              color: '#888888',
+              margin: 'md',
+              wrap: true,
+            },
+          ],
+        },
+      },
     };
   }
 }

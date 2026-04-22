@@ -4,8 +4,10 @@ import { ChatHistoryExtractorController } from './chat-history-extractor.control
 import { LineExtractorSource } from './sources/line-extractor.source';
 import { FacebookExtractorSource } from './sources/facebook-extractor.source';
 import { KnowledgeExtractorService } from './knowledge-extractor.service';
+import { IntegrationsModule } from '../integrations/integrations.module';
 
 @Module({
+  imports: [IntegrationsModule],
   controllers: [ChatHistoryExtractorController],
   providers: [
     ChatHistoryExtractorService,

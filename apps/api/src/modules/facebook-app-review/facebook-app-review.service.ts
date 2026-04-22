@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import * as Sentry from '@sentry/nestjs';
+import { IntegrationConfigService } from '../integrations/integration-config.service';
 import {
   CreateAdCampaignDto,
   CreateLiveVideoDto,
@@ -23,44 +23,42 @@ export type FbJson = Record<string, unknown> & FbError;
  * BESTCHOICE's Facebook App Review submission. Each public method wraps a
  * single REST call so reviewers (and our own CI) can trigger them one-by-one.
  *
- * Required env:
- * - FB_PAGE_ACCESS_TOKEN — Page token (messaging + page management permissions)
- * - FB_PAGE_ID — Page ID
- * - FB_USER_ACCESS_TOKEN — User access token (for /me/accounts — pages_show_list)
- * - FB_AD_ACCOUNT_ID — e.g. "act_123456789" (for Marketing API)
- * - FB_SYSTEM_USER_TOKEN — optional, fallback for ads API
+ * Credentials are read DB-first via IntegrationConfigService (which falls back
+ * to env vars), so the owner can manage them from Integration Hub UI without
+ * redeploying.
+ *
+ * Required FB integration fields (Integration Hub → Facebook Messenger):
+ * - pageAccessToken / FB_PAGE_ACCESS_TOKEN
+ * - pageId / FB_PAGE_ID
+ * - userAccessToken / FB_USER_ACCESS_TOKEN     (for /me/accounts)
+ * - adAccountId / FB_AD_ACCOUNT_ID             (for Marketing API)
+ * - systemUserToken / FB_SYSTEM_USER_TOKEN     (optional fallback for ads)
  */
 @Injectable()
 export class FacebookAppReviewService {
   private readonly logger = new Logger(FacebookAppReviewService.name);
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(private readonly integrationConfig: IntegrationConfigService) {}
 
-  private get pageToken(): string | undefined {
-    return this.config.get<string>('FB_PAGE_ACCESS_TOKEN');
+  private async getCreds(): Promise<{
+    pageToken?: string;
+    pageId?: string;
+    userToken?: string;
+    systemUserToken?: string;
+    adAccountId?: string;
+  }> {
+    const cfg = await this.integrationConfig.getConfig('facebook');
+    return {
+      pageToken: cfg.pageAccessToken || undefined,
+      pageId: cfg.pageId || undefined,
+      userToken: cfg.userAccessToken || cfg.systemUserToken || undefined,
+      systemUserToken: cfg.systemUserToken || undefined,
+      adAccountId: cfg.adAccountId || undefined,
+    };
   }
 
-  private get pageId(): string | undefined {
-    return this.config.get<string>('FB_PAGE_ID');
-  }
-
-  private get userToken(): string | undefined {
-    return (
-      this.config.get<string>('FB_USER_ACCESS_TOKEN') ??
-      this.config.get<string>('FB_SYSTEM_USER_TOKEN')
-    );
-  }
-
-  private get adAccountId(): string | undefined {
-    return this.config.get<string>('FB_AD_ACCOUNT_ID');
-  }
-
-  private get adsToken(): string | undefined {
-    return (
-      this.config.get<string>('FB_SYSTEM_USER_TOKEN') ??
-      this.config.get<string>('FB_USER_ACCESS_TOKEN') ??
-      this.config.get<string>('FB_PAGE_ACCESS_TOKEN')
-    );
+  private adsToken(c: Awaited<ReturnType<FacebookAppReviewService['getCreds']>>): string | undefined {
+    return c.systemUserToken ?? c.userToken ?? c.pageToken;
   }
 
   // ─── pages_show_list ──────────────────────────────────────────────────────
@@ -69,7 +67,8 @@ export class FacebookAppReviewService {
    * Permission: pages_show_list
    */
   async listManagedPages(): Promise<FbJson> {
-    const token = this.userToken ?? this.pageToken;
+    const c = await this.getCreds();
+    const token = c.userToken ?? c.pageToken;
     if (!token) {
       throw new BadRequestException('ยังไม่ได้ตั้งค่า FB access token');
     }
@@ -87,11 +86,12 @@ export class FacebookAppReviewService {
    * Permissions: pages_messaging, pages_utility_messaging
    */
   async sendUtilityMessage(dto: SendUtilityMessageDto): Promise<FbJson> {
-    if (!this.pageToken || !this.pageId) {
+    const c = await this.getCreds();
+    if (!c.pageToken || !c.pageId) {
       throw new BadRequestException('ยังไม่ได้ตั้งค่า FB page token/id');
     }
 
-    const url = `${GRAPH_BASE}/${this.pageId}/messages?access_token=${this.pageToken}`;
+    const url = `${GRAPH_BASE}/${c.pageId}/messages?access_token=${c.pageToken}`;
     const body = {
       messaging_type: 'MESSAGE_TAG',
       tag: dto.tag ?? 'ACCOUNT_UPDATE',
@@ -108,12 +108,13 @@ export class FacebookAppReviewService {
    * Permissions: pages_manage_ads, pages_read_engagement
    */
   async listPromotablePosts(): Promise<FbJson> {
-    if (!this.pageToken || !this.pageId) {
+    const c = await this.getCreds();
+    if (!c.pageToken || !c.pageId) {
       throw new BadRequestException('ยังไม่ได้ตั้งค่า FB page token/id');
     }
 
     const fields = ['id', 'message', 'created_time', 'is_eligible_for_promotion'].join(',');
-    const url = `${GRAPH_BASE}/${this.pageId}/promotable_posts?fields=${fields}&access_token=${this.pageToken}`;
+    const url = `${GRAPH_BASE}/${c.pageId}/promotable_posts?fields=${fields}&access_token=${c.pageToken}`;
     return this.call('GET', url, undefined, 'list_promotable_posts');
   }
 
@@ -123,17 +124,19 @@ export class FacebookAppReviewService {
    * Permissions: ads_management, Ads Management Standard Access, business_management
    */
   async createAdCampaign(dto: CreateAdCampaignDto): Promise<FbJson> {
-    if (!this.adAccountId || !this.adsToken) {
-      throw new BadRequestException('ยังไม่ได้ตั้งค่า FB_AD_ACCOUNT_ID หรือ access token');
+    const c = await this.getCreds();
+    const token = this.adsToken(c);
+    if (!c.adAccountId || !token) {
+      throw new BadRequestException('ยังไม่ได้ตั้งค่า FB Ad Account ID หรือ access token');
     }
 
-    const url = `${GRAPH_BASE}/${this.adAccountId}/campaigns`;
+    const url = `${GRAPH_BASE}/${c.adAccountId}/campaigns`;
     const body: Record<string, unknown> = {
       name: dto.name,
       objective: dto.objective ?? 'OUTCOME_TRAFFIC',
       status: 'PAUSED',
       special_ad_categories: [],
-      access_token: this.adsToken,
+      access_token: token,
     };
 
     if (dto.dailyBudget) {
@@ -151,12 +154,14 @@ export class FacebookAppReviewService {
     campaignId: string,
     dto: UpdateCampaignStatusDto,
   ): Promise<FbJson> {
-    if (!this.adsToken) {
+    const c = await this.getCreds();
+    const token = this.adsToken(c);
+    if (!token) {
       throw new BadRequestException('ยังไม่ได้ตั้งค่า FB access token');
     }
 
     const url = `${GRAPH_BASE}/${campaignId}`;
-    const body = { status: dto.status, access_token: this.adsToken };
+    const body = { status: dto.status, access_token: token };
     return this.call('POST', url, body, 'update_campaign_status');
   }
 
@@ -166,11 +171,12 @@ export class FacebookAppReviewService {
    * Permissions: leads_retrieval, pages_manage_ads, pages_show_list
    */
   async fetchLeadsForForm(formId: string): Promise<FbJson> {
-    if (!this.pageToken) {
+    const c = await this.getCreds();
+    if (!c.pageToken) {
       throw new BadRequestException('ยังไม่ได้ตั้งค่า FB page token');
     }
 
-    const url = `${GRAPH_BASE}/${formId}/leads?access_token=${this.pageToken}`;
+    const url = `${GRAPH_BASE}/${formId}/leads?access_token=${c.pageToken}`;
     return this.call('GET', url, undefined, 'fetch_leads');
   }
 
@@ -180,11 +186,12 @@ export class FacebookAppReviewService {
    * Permissions: leads_retrieval, pages_show_list
    */
   async listLeadForms(): Promise<FbJson> {
-    if (!this.pageToken || !this.pageId) {
+    const c = await this.getCreds();
+    if (!c.pageToken || !c.pageId) {
       throw new BadRequestException('ยังไม่ได้ตั้งค่า FB page token/id');
     }
 
-    const url = `${GRAPH_BASE}/${this.pageId}/leadgen_forms?access_token=${this.pageToken}`;
+    const url = `${GRAPH_BASE}/${c.pageId}/leadgen_forms?access_token=${c.pageToken}`;
     return this.call('GET', url, undefined, 'list_lead_forms');
   }
 
@@ -195,11 +202,12 @@ export class FacebookAppReviewService {
    * Permissions: Live Video API, pages_read_engagement
    */
   async createLiveVideo(dto: CreateLiveVideoDto): Promise<FbJson> {
-    if (!this.pageToken || !this.pageId) {
+    const c = await this.getCreds();
+    if (!c.pageToken || !c.pageId) {
       throw new BadRequestException('ยังไม่ได้ตั้งค่า FB page token/id');
     }
 
-    const url = `${GRAPH_BASE}/${this.pageId}/live_videos?access_token=${this.pageToken}`;
+    const url = `${GRAPH_BASE}/${c.pageId}/live_videos?access_token=${c.pageToken}`;
     const body: Record<string, unknown> = {
       title: dto.title,
       description: dto.description ?? '',
@@ -219,11 +227,12 @@ export class FacebookAppReviewService {
    * Permissions: publish_video, pages_read_engagement
    */
   async publishVideo(dto: PublishVideoDto): Promise<FbJson> {
-    if (!this.pageToken || !this.pageId) {
+    const c = await this.getCreds();
+    if (!c.pageToken || !c.pageId) {
       throw new BadRequestException('ยังไม่ได้ตั้งค่า FB page token/id');
     }
 
-    const url = `${GRAPH_BASE}/${this.pageId}/videos?access_token=${this.pageToken}`;
+    const url = `${GRAPH_BASE}/${c.pageId}/videos?access_token=${c.pageToken}`;
     const body: Record<string, unknown> = {
       file_url: dto.fileUrl,
       title: dto.title ?? 'BESTCHOICE product video',

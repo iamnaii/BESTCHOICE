@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { FacebookAppReviewController } from './facebook-app-review.controller';
 import { FacebookAppReviewService } from './facebook-app-review.service';
+import { IntegrationsModule } from '../integrations/integrations.module';
 
 /**
  * FacebookAppReviewModule — admin-only endpoints that exercise every Graph
@@ -10,6 +11,7 @@ import { FacebookAppReviewService } from './facebook-app-review.service';
  * "at least 1 API call per permission" requirement.
  */
 @Module({
+  imports: [IntegrationsModule],
   controllers: [FacebookAppReviewController],
   providers: [FacebookAppReviewService],
   exports: [FacebookAppReviewService],

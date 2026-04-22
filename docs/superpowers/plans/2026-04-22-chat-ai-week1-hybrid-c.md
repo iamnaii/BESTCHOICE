@@ -260,7 +260,7 @@ export class LineExtractorSource {
       .map((r) => ({
         roomId: r.roomId,
         channel: 'LINE_FINANCE',
-        role: r.role === 'STAFF' || r.role === 'AI' ? 'STAFF' : 'CUSTOMER',
+        role: r.role === 'STAFF' || r.role === 'BOT' ? 'STAFF' : 'CUSTOMER',
         text: r.text,
         createdAt: r.createdAt,
         externalMessageId: r.externalMessageId ?? undefined,
@@ -1557,7 +1557,7 @@ private async loadHistory(roomId: string, maxMessages = 10): Promise<{ role: 'us
     .reverse()
     .filter((r): r is typeof r & { text: string } => r.text !== null)
     .map((r) => ({
-      role: r.role === 'STAFF' || r.role === 'AI' ? ('assistant' as const) : ('user' as const),
+      role: r.role === 'STAFF' || r.role === 'BOT' ? ('assistant' as const) : ('user' as const),
       content: r.text,
     }));
   // Truncate oldest if combined content too large
@@ -1623,7 +1623,7 @@ git commit -m "feat(chatbot-finance): inject full conversation history into Clau
 - Create: `apps/api/src/modules/chat-ai-draft/dto/approve-draft.dto.ts`
 - Modify: `apps/api/src/app.module.ts`
 
-**Context:** On every inbound `ChatMessage` with role=CUSTOMER, orchestrator runs router → bot, then writes a `ChatMessage` row with `role='AI'` and a `status` indicating DRAFT (we piggyback on `deliveredAt`=null + a new metadata flag in `toolsUsed` or use a lightweight approach: mark drafts with intent prefix `"DRAFT:"`. Simpler — add a `status` enum field later; for Week 1 we use `intent` field to flag `'DRAFT:<original-intent>'` and filter on it). Staff approves → we update the same message (strip DRAFT prefix, set deliveredAt, send to LINE/FB).
+**Context:** On every inbound `ChatMessage` with role=CUSTOMER, orchestrator runs router → bot, then writes a `ChatMessage` row with `role='BOT'` and a `status` indicating DRAFT (we piggyback on `deliveredAt`=null + a new metadata flag in `toolsUsed` or use a lightweight approach: mark drafts with intent prefix `"DRAFT:"`. Simpler — add a `status` enum field later; for Week 1 we use `intent` field to flag `'DRAFT:<original-intent>'` and filter on it). Staff approves → we update the same message (strip DRAFT prefix, set deliveredAt, send to LINE/FB).
 
 For Week 1, we keep it simple — the orchestrator does NOT actually send the draft yet. It just creates the draft row. Sending happens in Task 11 (Hybrid C approve-and-send endpoint).
 
@@ -1735,7 +1735,7 @@ export class ChatAiDraftService {
     const draft = await this.prisma.chatMessage.create({
       data: {
         roomId: inbound.roomId,
-        role: 'AI',
+        role: 'BOT',
         type: 'TEXT',
         text: reply,
         intent: `DRAFT:${routed.intent}`,
@@ -1808,7 +1808,7 @@ export class ChatAiDraftService {
       select: { role: true, text: true },
     });
     return rows.reverse().map((r) => ({
-      role: r.role === 'STAFF' || r.role === 'AI' ? ('STAFF' as const) : ('CUSTOMER' as const),
+      role: r.role === 'STAFF' || r.role === 'BOT' ? ('STAFF' as const) : ('CUSTOMER' as const),
       text: r.text ?? '',
     }));
   }
@@ -1946,7 +1946,7 @@ describe('ChatAiDraftService', () => {
     expect(result.draftMessageId).toBe('d1');
     expect(prisma.chatMessage.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ role: 'AI', intent: 'DRAFT:sales' }),
+        data: expect.objectContaining({ role: 'BOT', intent: 'DRAFT:sales' }),
       }),
     );
   });
@@ -2022,7 +2022,7 @@ Same pattern inside Facebook webhook handler after persisting inbound message.
 ./tools/check-types.sh api
 cd apps/api && npm run start:dev
 # In another terminal, simulate a LINE webhook POST or use existing seed script to trigger inbound.
-# Then check DB: SELECT id, intent FROM chat_messages WHERE role = 'AI' ORDER BY created_at DESC LIMIT 5;
+# Then check DB: SELECT id, intent FROM chat_messages WHERE role = 'BOT' ORDER BY created_at DESC LIMIT 5;
 ```
 Expected: new AI draft rows appear with `intent LIKE 'DRAFT:%'`.
 
@@ -2353,7 +2353,7 @@ import { Badge } from '@/components/ui/badge';
 
 export interface Message {
   id: string;
-  role: 'CUSTOMER' | 'STAFF' | 'AI';
+  role: 'CUSTOMER' | 'STAFF' | 'BOT';
   text: string;
   createdAt: string;
   intent?: string | null;
@@ -2374,7 +2374,7 @@ export function MessageBubble({ message }: { message: Message }) {
         )}
       >
         {message.text}
-        {message.role === 'AI' && (
+        {message.role === 'BOT' && (
           <div className="mt-1 flex items-center gap-1 text-[10px] opacity-70">
             <span>AI</span>
             {isDraft && <Badge variant="outline" className="h-4 text-[9px]">Draft</Badge>}
@@ -2526,7 +2526,7 @@ export function useLatestDraft(roomId: string | null) {
       const messages = (await fetchMessages(roomId)) as Message[];
       const latest = [...messages]
         .reverse()
-        .find((m) => m.role === 'AI' && m.intent?.startsWith('DRAFT:'));
+        .find((m) => m.role === 'BOT' && m.intent?.startsWith('DRAFT:'));
       return latest ?? null;
     },
     enabled: !!roomId,

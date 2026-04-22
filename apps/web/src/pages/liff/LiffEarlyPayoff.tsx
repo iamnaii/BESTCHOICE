@@ -12,11 +12,36 @@ import type {
   LiffContractResponse,
 } from '@installment/shared';
 
+const PAYOFF_ELIGIBLE_STATUSES = ['ACTIVE', 'OVERDUE', 'DEFAULT'];
+
 export default function LiffEarlyPayoff() {
   const { lineId, loading, error } = useLiffInit();
 
   const params = new URLSearchParams(window.location.search);
-  const contractId = params.get('contractId') || '';
+  const urlContractId = params.get('contractId') || '';
+
+  // Shares the cache key with LiffContract — if user came from there, this
+  // hits the cache immediately without an extra network round-trip.
+  const { data: contractList, isLoading: listLoading } = useQuery<LiffContractResponse>({
+    queryKey: ['liff-contracts', lineId],
+    queryFn: async () => {
+      const { data: result } = await liffApi.get(
+        `/line-oa/liff/contracts?lineId=${encodeURIComponent(lineId!)}`,
+      );
+      return result;
+    },
+    enabled: !!lineId,
+    staleTime: 60_000,
+  });
+
+  const eligibleContracts = (contractList?.contracts ?? []).filter(
+    (c) => PAYOFF_ELIGIBLE_STATUSES.includes(c.status) && c.totalOutstanding > 0,
+  );
+  // Rich-menu entry doesn't include contractId — auto-pick when exactly one
+  // eligible contract exists; otherwise render a picker (see below).
+  const contractId =
+    urlContractId || (eligibleContracts.length === 1 ? eligibleContracts[0].id : '');
+  const hasMultipleContracts = (contractList?.contracts?.length ?? 0) > 1;
 
   const {
     data: quote,
@@ -31,23 +56,8 @@ export default function LiffEarlyPayoff() {
       );
       return result;
     },
-    enabled: !!lineId,
+    enabled: !!lineId && !!contractId,
   });
-
-  // Shares the cache key with LiffContract — if user came from there, this
-  // hits the cache immediately without an extra network round-trip.
-  const { data: contractList } = useQuery<LiffContractResponse>({
-    queryKey: ['liff-contracts', lineId],
-    queryFn: async () => {
-      const { data: result } = await liffApi.get(
-        `/line-oa/liff/contracts?lineId=${encodeURIComponent(lineId!)}`,
-      );
-      return result;
-    },
-    enabled: !!lineId,
-    staleTime: 60_000,
-  });
-  const hasMultipleContracts = (contractList?.contracts?.length ?? 0) > 1;
 
   const payoffMutation = useMutation({
     mutationFn: async () => {
@@ -63,12 +73,68 @@ export default function LiffEarlyPayoff() {
   });
 
   // Loading
-  if (loading || quoteLoading) {
+  if (loading || listLoading || (contractId && quoteLoading)) {
     return (
       <div className="min-h-screen bg-background p-4 space-y-4">
         <Skeleton className="h-28 w-full rounded-xl" />
         <Skeleton className="h-64 w-full rounded-xl" />
         <Skeleton className="h-12 w-full rounded-xl" />
+      </div>
+    );
+  }
+
+  // No contractId + multiple eligible contracts → picker
+  if (!contractId && eligibleContracts.length > 1) {
+    return (
+      <div className="min-h-screen bg-background p-4 pb-8">
+        <div className="bg-primary rounded-xl p-5 text-white shadow-md mb-4">
+          <p className="text-xs opacity-80">BEST CHOICE</p>
+          <h1 className="text-base font-bold mt-1">เลือกสัญญาที่ต้องการปิดยอด</h1>
+          <p className="text-xs opacity-80 mt-1">ส่วนลดดอกเบี้ย 50%</p>
+        </div>
+        <div className="space-y-2">
+          {eligibleContracts.map((c) => (
+            <a
+              key={c.id}
+              href={`/liff/early-payoff?contractId=${encodeURIComponent(c.id)}${lineId ? `&lineId=${encodeURIComponent(lineId)}` : ''}`}
+              className="block"
+            >
+              <Card className="active:scale-[0.99] transition-transform">
+                <CardContent className="py-4 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium">{c.product}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      สัญญา {c.contractNumber} · คงเหลือ {c.totalOutstanding.toLocaleString()} บาท
+                    </p>
+                  </div>
+                  <span className="text-primary text-lg">›</span>
+                </CardContent>
+              </Card>
+            </a>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // No contractId + 0 eligible contracts → friendly message
+  if (!contractId && eligibleContracts.length === 0) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <Card className="max-w-md w-full">
+          <CardContent className="text-center py-10">
+            <div className="text-muted-foreground text-5xl mb-4">✓</div>
+            <h2 className="text-lg font-bold mb-2">ยังไม่มีสัญญาที่ปิดยอดได้</h2>
+            <p className="text-muted-foreground text-sm mb-6">
+              ไม่มีสัญญาที่ค้างชำระอยู่ในขณะนี้
+            </p>
+            <Button variant="outline" asChild>
+              <a href={`/liff/contract${lineId ? `?lineId=${encodeURIComponent(lineId)}` : ''}`}>
+                ดูสัญญาทั้งหมด
+              </a>
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }

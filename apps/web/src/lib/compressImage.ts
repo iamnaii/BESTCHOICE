@@ -70,6 +70,35 @@ function applyOrientation(ctx: CanvasRenderingContext2D, orientation: number, w:
   }
 }
 
+/**
+ * Read a file as a base64 data URL (no transformation).
+ * Use for PDFs or files that shouldn't be re-encoded.
+ */
+export function fileToBase64DataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error('ไม่สามารถอ่านไฟล์ได้'));
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
+ * Convert a File to a base64 data URL suitable for OCR.
+ * - Images: compressed to 1600px JPEG quality 0.8
+ * - PDFs: read as-is (backend handles them as document content blocks)
+ * - Other types: throws
+ */
+export async function fileToOcrBase64(file: File): Promise<string> {
+  if (file.type.startsWith('image/')) {
+    return compressImageForOcr(file);
+  }
+  if (file.type === 'application/pdf') {
+    return fileToBase64DataUrl(file);
+  }
+  throw new Error(`ไฟล์ประเภท ${file.type || 'ไม่รู้จัก'} ไม่รองรับ — กรุณาใช้รูปภาพหรือ PDF`);
+}
+
 export async function compressImageForOcr(
   file: File,
   maxWidth = 1600,

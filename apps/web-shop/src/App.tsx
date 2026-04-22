@@ -21,6 +21,10 @@ import ApplySuccessPage from './pages/apply/ApplySuccessPage';
 import TradeInLandingPage from './pages/trade-in/TradeInLandingPage';
 import TradeInSubmitPage from './pages/trade-in/TradeInSubmitPage';
 import TradeInStatusPage from './pages/trade-in/TradeInStatusPage';
+import BuybackLandingPage from './pages/buyback/BuybackLandingPage';
+import BuybackQuickQuotePage from './pages/buyback/BuybackQuickQuotePage';
+import BuybackSubmitPage from './pages/buyback/BuybackSubmitPage';
+import BuybackStatusPage from './pages/buyback/BuybackStatusPage';
 import SavingPlanLandingPage from './pages/saving-plan/SavingPlanLandingPage';
 import SavingPlanCreatePage from './pages/saving-plan/SavingPlanCreatePage';
 import SavingPlanDetailPage from './pages/saving-plan/SavingPlanDetailPage';
@@ -59,6 +63,10 @@ export default function App() {
         <Route path="/trade-in" element={<TradeInLandingPage />} />
         <Route path="/trade-in/submit" element={<TradeInSubmitPage />} />
         <Route path="/trade-in/:id" element={<TradeInStatusPage />} />
+        <Route path="/buyback" element={<BuybackLandingPage />} />
+        <Route path="/buyback/quote" element={<BuybackQuickQuotePage />} />
+        <Route path="/buyback/submit" element={<BuybackSubmitPage />} />
+        <Route path="/buyback/:id" element={<BuybackStatusPage />} />
         <Route path="/saving-plan" element={<SavingPlanLandingPage />} />
         <Route path="/saving-plan/create" element={<SavingPlanCreatePage />} />
         <Route path="/saving-plan/:id" element={<SavingPlanDetailPage />} />

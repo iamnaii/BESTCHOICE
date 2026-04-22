@@ -2,13 +2,12 @@ import {
   Controller,
   Get,
   Query,
-  Req,
   Res,
   Logger,
   BadRequestException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import * as Sentry from '@sentry/nestjs';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
 
@@ -130,8 +129,12 @@ export class LineLoginController {
 
       this.logger.log(`[LineLogin] Success: ${profile.displayName} (${profile.userId})`);
 
-      // Redirect back to frontend with LINE data as query params
-      // Frontend will pick these up and store in memory
+      // Pass ID token via URL fragment (hash), not cookie:
+      // - WebKit ITP + LINE WKWebView block cross-subdomain cookies แม้ว่า
+      //   sameSite=none + secure + domain ตรง (confirmed 401 ใน Cloud Run logs)
+      // - URL fragment (#) ไม่ถูกส่งไปที่ server (client-only) — ไม่ leak
+      //   ใน referrer header หรือ server access logs
+      // - Frontend อ่าน location.hash → clear hash ทันที → keep ใน memory
       const redirectUrl = new URL(`${this.frontendBaseUrl}${returnPath}`);
       redirectUrl.searchParams.set('line_login', 'true');
       redirectUrl.searchParams.set('line_user_id', profile.userId);
@@ -139,24 +142,7 @@ export class LineLoginController {
       if (profile.pictureUrl) {
         redirectUrl.searchParams.set('line_picture', profile.pictureUrl);
       }
-      // Set ID token in httpOnly cookie instead of URL (prevents leaking in browser history/Referrer)
-      // COOKIE_DOMAIN (e.g. '.bestchoicephone.app') makes the cookie readable from
-      // the root domain frontend, not only the api.* subdomain that served this callback.
-      //
-      // sameSite: 'none' (ไม่ใช่ 'lax') เพราะ frontend เรียก /id-token ผ่าน XHR
-      // ข้าม subdomain (bestchoicephone.app → api.bestchoicephone.app) — WebKit
-      // (Safari/LINE in-app WKWebView) ไม่ส่ง cookie sameSite=lax ใน XHR cross-
-      // origin แม้ว่าจะ same-site เดียวกันก็ตาม. maxAge ขยายจาก 60s → 300s
-      // เผื่อ network ช้าใน LINE WebView
-      const cookieDomain = process.env.COOKIE_DOMAIN || undefined;
-      res.cookie('line_id_token', tokenData.id_token, {
-        httpOnly: true,
-        secure: true, // required for sameSite: 'none'
-        sameSite: 'none',
-        maxAge: 300_000, // 5 minutes — one-time use, buffer for slow networks
-        path: '/',
-        ...(cookieDomain ? { domain: cookieDomain } : {}),
-      });
+      redirectUrl.hash = `id_token=${encodeURIComponent(tokenData.id_token)}`;
 
       res.redirect(redirectUrl.toString());
     } catch (err) {
@@ -173,22 +159,4 @@ export class LineLoginController {
     }
   }
 
-  /**
-   * One-shot endpoint — returns id_token from httpOnly cookie then clears it.
-   * Frontend calls this right after the /callback redirect to pick up the token
-   * the callback stored. Token is then kept in JS memory for LIFF API headers.
-   */
-  @Get('id-token')
-  getIdToken(@Req() req: Request, @Res() res: Response) {
-    const token = (req.cookies as Record<string, string> | undefined)?.line_id_token;
-    const cookieDomain = process.env.COOKIE_DOMAIN || undefined;
-    res.clearCookie('line_id_token', {
-      path: '/',
-      ...(cookieDomain ? { domain: cookieDomain } : {}),
-    });
-    if (!token) {
-      return res.status(401).json({ error: 'No id_token cookie' });
-    }
-    return res.json({ token });
-  }
 }

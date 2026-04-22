@@ -75,7 +75,7 @@ export class ContractDocumentService {
       orderBy: { createdAt: 'desc' },
     });
 
-    const REQUIRED_DOCS = ['ID_CARD_COPY', 'KYC_SELFIE', 'DEVICE_PHOTO', 'DEVICE_IMEI_PHOTO', 'DOWN_PAYMENT_RECEIPT', 'PDPA_CONSENT'];
+    const REQUIRED_DOCS = ['ID_CARD_COPY', 'KYC_SELFIE', 'DEVICE_PHOTO', 'DEVICE_IMEI_PHOTO'];
     const REQUIRED_SIGS = ['CUSTOMER', 'COMPANY', 'WITNESS_1', 'WITNESS_2'];
 
     let fullyDocumented = 0;

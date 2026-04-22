@@ -204,13 +204,16 @@ export function checkRequiredDocuments(
   documents: { documentType: string }[],
   requiresGuardian: boolean,
 ): { complete: boolean; checklist: { type: string; label: string; present: boolean }[] } {
+  // DOWN_PAYMENT_RECEIPT + PDPA_CONSENT เอาออกจาก required:
+  // - PDPA_CONSENT ระบบ auto-generate หลังเซ็น e-signature ครบ
+  //   (documents.service.ts:generateSignedDocuments)
+  // - DOWN_PAYMENT_RECEIPT ไม่ต้อง upload — เจ้าของบันทึกยอดดาวน์
+  //   ผ่าน POS/ระบบอื่นแทน
   const required = [
     { type: 'SIGNED_CONTRACT', label: 'สัญญาผ่อนชำระ PDF' },
     { type: 'ID_CARD_COPY', label: 'สำเนาบัตรประชาชน (หน้า)' },
     { type: 'KYC_SELFIE', label: 'รูปถ่ายลูกค้าถือบัตรประชาชน' },
     { type: 'DEVICE_PHOTO', label: 'รูปถ่ายสินค้า + IMEI' },
-    { type: 'DOWN_PAYMENT_RECEIPT', label: 'หลักฐานการชำระเงินดาวน์' },
-    { type: 'PDPA_CONSENT', label: 'เอกสาร Consent PDPA' },
   ];
 
   if (requiresGuardian) {

@@ -92,11 +92,12 @@ const queryClient = new QueryClient({
   },
 });
 
-// LIFF consent redirect: LINE redirects to /?liff.state={encodedPath}
-// Must handle BEFORE React renders to prevent ProtectedRoute catching "/"
+// LIFF consent redirect: LINE redirects to {endpoint}?liff.state={encodedPath}
+// Must handle BEFORE React renders — works for ANY endpoint URL (/, /liff, /liff/contract, etc.)
+// so the rich-menu URIs (https://liff.line.me/<id>/<path>) route correctly regardless of
+// which Endpoint URL the admin set in LINE Developers Console.
 const liffState = new URLSearchParams(window.location.search).get('liff.state');
-if (liffState && window.location.pathname === '/') {
-  // Replace URL to the actual LIFF path so React Router matches correctly
+if (liffState) {
   window.history.replaceState(null, '', liffState + window.location.search);
 }
 

@@ -41,6 +41,7 @@ import {
   CheckSquare,
   UserSearch,
   ShoppingBag,
+  ClipboardCheck,
 } from 'lucide-react';
 
 /* ── Types ─────────────────────────────────────────── */
@@ -169,6 +170,7 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
       icon: ShoppingBag,
       items: [
         { label: 'คำสั่งซื้อออนไลน์', path: '/online-orders', icon: ShoppingBag },
+        { label: 'คำขอผ่อนชำระ', path: '/installment-applications', icon: ClipboardCheck },
       ],
     },
   ],
@@ -231,6 +233,7 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
       icon: ShoppingBag,
       items: [
         { label: 'คำสั่งซื้อออนไลน์', path: '/online-orders', icon: ShoppingBag },
+        { label: 'คำขอผ่อนชำระ', path: '/installment-applications', icon: ClipboardCheck },
       ],
     },
   ],
@@ -355,6 +358,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
       icon: ShoppingBag,
       items: [
         { label: 'คำสั่งซื้อออนไลน์', path: '/online-orders', icon: ShoppingBag },
+        { label: 'คำขอผ่อนชำระ', path: '/installment-applications', icon: ClipboardCheck },
       ],
     },
     {

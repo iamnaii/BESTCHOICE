@@ -110,6 +110,7 @@ const LineGreetingPage = lazy(() => import('@/pages/LineGreetingPage'));
 const SetupTwoFactorPage = lazy(() => import('@/pages/SetupTwoFactorPage'));
 const CustomerIntakePage = lazy(() => import('@/pages/CustomerIntakePage'));
 const OnlineOrdersPage = lazy(() => import('@/pages/OnlineOrdersPage'));
+const InstallmentApplicationsPage = lazy(() => import('@/pages/InstallmentApplicationsPage'));
 
 const PageLoader = () => (
   <div className="flex items-center justify-center py-20">
@@ -583,6 +584,14 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER']}>
                 <OnlineOrdersPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/installment-applications"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER']}>
+                <InstallmentApplicationsPage />
               </ProtectedRoute>
             }
           />

@@ -3,6 +3,7 @@ import * as Sentry from '@sentry/nestjs';
 import Anthropic from '@anthropic-ai/sdk';
 import type { MessageParam, ToolUseBlock } from '@anthropic-ai/sdk/resources/messages';
 import { ChatMessage, MessageRole } from '@prisma/client';
+import { PrismaService } from '../../../prisma/prisma.service';
 import { FINANCE_TOOLS } from '../tools/tool-definitions';
 import { FinanceToolExecutor } from '../tools/tool-executor';
 import { FinanceConfigService } from './finance-config.service';
@@ -25,19 +26,24 @@ const MAX_TOOL_ITERATIONS = 5;
  * Wrapper รอบ Claude API สำหรับ Finance Bot
  *
  * Phase B: รองรับ tool use loop
- *   - Sonnet 4.5 สำหรับ tool use (แม่นกว่า)
+ *   - Sonnet 4.6 สำหรับ customer-facing replies (Task 8 — quality > cost)
  *   - Loop จนกว่า Claude จะตอบเป็น text (stop_reason !== 'tool_use')
  *   - Max 5 iterations กัน infinite loop
+ *   - Task 8: เพิ่ม full conversation history window จาก DB (10 msgs, 20k char budget)
  */
 @Injectable()
 export class FinanceAiService {
   private readonly logger = new Logger(FinanceAiService.name);
   private anthropic: Anthropic | null = null;
 
-  // Sonnet for tool use — accurate for multi-step conversations
-  private readonly modelSonnet = 'claude-sonnet-4-5-20250514';
+  // Sonnet 4.6 for customer-facing replies — quality matters (Task 8, Week 1 Hybrid C plan)
+  private readonly modelSonnet = 'claude-sonnet-4-6';
   private readonly maxTokens = 1024;
   private readonly historyLimit = 20;
+  /** DB-backed history window (Task 8): 10 most recent messages, oldest-first */
+  private static readonly HISTORY_FETCH_LIMIT = 10;
+  /** Char budget for history window — drop oldest until under limit (~30k input tokens headroom) */
+  private static readonly HISTORY_CHAR_BUDGET = 20_000;
 
   /** Cached system prompt from DB — TTL 5 minutes */
   private promptCache: { text: string; fetchedAt: number } | null = null;
@@ -48,6 +54,7 @@ export class FinanceAiService {
     private financeConfig: FinanceConfigService,
     private integrationConfig: IntegrationConfigService,
     private aiUsage: AiUsageService,
+    private prisma: PrismaService,
   ) {}
 
   private async getAnthropicClient(): Promise<Anthropic | null> {
@@ -55,7 +62,7 @@ export class FinanceAiService {
     if (!apiKey) return null;
     if (!this.anthropic) {
       this.anthropic = new Anthropic({ apiKey });
-      this.logger.log('[FinanceAI] Initialized (Sonnet + tools)');
+      this.logger.log('[FinanceAI] Initialized (Sonnet 4.6 + tools)');
     }
     return this.anthropic;
   }
@@ -80,7 +87,10 @@ export class FinanceAiService {
 
     try {
       const systemPrompt = await this.buildSystemPrompt(params.customerName);
-      const messages = this.buildMessages(params.history, params.userMessage);
+      // Task 8: load full conversation history from DB (last 10 messages, oldest-first)
+      // so Claude has full context across turns.
+      const dbHistory = await this.loadHistory(params.roomId);
+      const messages = this.buildMessagesFromHistory(dbHistory, params.userMessage);
 
       let totalInput = 0;
       let totalOutput = 0;
@@ -223,6 +233,69 @@ export class FinanceAiService {
     const basePrompt = await this.getSystemPromptText();
     if (!customerName) return basePrompt;
     return `${basePrompt}\n\n# ลูกค้าปัจจุบัน\nชื่อ: คุณ${customerName} (verify แล้ว)\nคุณสามารถใช้ tools เพื่อดึงข้อมูลของลูกค้าคนนี้ได้เลย — ไม่ต้องถามเลขสัญญา`;
+  }
+
+  /**
+   * Load last N messages from ChatMessage (oldest-first) for the given room
+   * and map to Anthropic's {role, content} shape. Drops oldest entries if
+   * total text exceeds HISTORY_CHAR_BUDGET to stay within input-token headroom.
+   */
+  private async loadHistory(
+    roomId: string,
+    maxMessages: number = FinanceAiService.HISTORY_FETCH_LIMIT,
+  ): Promise<{ role: 'user' | 'assistant'; content: string }[]> {
+    const rows = await this.prisma.chatMessage.findMany({
+      where: { roomId, text: { not: null } },
+      orderBy: { createdAt: 'desc' },
+      take: maxMessages,
+      select: { role: true, text: true },
+    });
+    const mapped = rows
+      .reverse()
+      .filter((r): r is typeof r & { text: string } => r.text !== null)
+      .map((r) => ({
+        role:
+          r.role === MessageRole.STAFF || r.role === MessageRole.BOT
+            ? ('assistant' as const)
+            : ('user' as const),
+        content: r.text,
+      }));
+    let totalLen = mapped.reduce((s, m) => s + m.content.length, 0);
+    while (totalLen > FinanceAiService.HISTORY_CHAR_BUDGET && mapped.length > 1) {
+      const dropped = mapped.shift();
+      if (dropped) totalLen -= dropped.content.length;
+    }
+    return mapped;
+  }
+
+  /**
+   * Build Anthropic messages array from DB-loaded history (oldest-first)
+   * and the current user message. Merges adjacent same-role turns and
+   * ensures the sequence starts with a user turn.
+   */
+  private buildMessagesFromHistory(
+    history: { role: 'user' | 'assistant'; content: string }[],
+    currentUserMessage: string,
+  ): MessageParam[] {
+    const messages: MessageParam[] = [];
+    for (const msg of history) {
+      const last = messages[messages.length - 1];
+      if (last && last.role === msg.role && typeof last.content === 'string') {
+        last.content += '\n' + msg.content;
+      } else {
+        messages.push({ role: msg.role, content: msg.content });
+      }
+    }
+    const last = messages[messages.length - 1];
+    if (last && last.role === 'user' && typeof last.content === 'string') {
+      last.content += '\n' + currentUserMessage;
+    } else {
+      messages.push({ role: 'user', content: currentUserMessage });
+    }
+    while (messages.length > 0 && messages[0].role !== 'user') {
+      messages.shift();
+    }
+    return messages;
   }
 
   private buildMessages(history: ChatMessage[], currentUserMessage: string): MessageParam[] {

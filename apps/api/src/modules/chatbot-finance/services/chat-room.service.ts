@@ -3,6 +3,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { ChatChannel, ChatRoom, MessageRole, MessageType, Prisma } from '@prisma/client';
 import { StaffChatGateway } from '../../staff-chat/staff-chat.gateway';
 import { LineFinanceClientService } from './line-finance-client.service';
+import { ChatAiDraftService } from '../../chat-ai-draft/chat-ai-draft.service';
 
 /**
  * จัดการ ChatRoom + ChatMessage สำหรับ Finance Bot
@@ -17,6 +18,8 @@ export class ChatRoomService {
     private lineClient: LineFinanceClientService,
     @Optional() @Inject(forwardRef(() => StaffChatGateway))
     private staffChatGateway?: StaffChatGateway,
+    @Optional() @Inject(forwardRef(() => ChatAiDraftService))
+    private chatAiDraftService?: ChatAiDraftService,
   ) {}
 
   /** หา room เดิม หรือสร้างใหม่ */
@@ -120,6 +123,17 @@ export class ChatRoomService {
       });
     } catch {
       // WS not available — ignore
+    }
+
+    // Fire-and-forget AI draft generation for inbound customer messages.
+    // ChatAiDraftService internally respects room.aiPaused and AiSettings mode.
+    // Never block webhook ACK on draft generation.
+    if (params.role === MessageRole.CUSTOMER && this.chatAiDraftService) {
+      this.chatAiDraftService.generateDraft(msg.id).catch((err) => {
+        this.logger.error(
+          `[ChatAiDraft] draft generation failed for ${msg.id}: ${err instanceof Error ? err.message : err}`,
+        );
+      });
     }
 
     return msg;

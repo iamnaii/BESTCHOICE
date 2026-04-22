@@ -73,6 +73,8 @@ import { StaffChatModule } from './modules/staff-chat/staff-chat.module';
 import { ChatAnalyticsModule } from './modules/chat-analytics/chat-analytics.module';
 import { ChatHistoryExtractorModule } from './modules/chat-history-extractor/chat-history-extractor.module';
 import { ChatIntentRouterModule } from './modules/chat-intent-router/chat-intent-router.module';
+import { SalesBotModule } from './modules/sales-bot/sales-bot.module';
+import { ChatAiDraftModule } from './modules/chat-ai-draft/chat-ai-draft.module';
 import { CsatModule } from './modules/csat/csat.module';
 import { AdsTrackingModule } from './modules/ads-tracking/ads-tracking.module';
 import { CrmModule } from './modules/crm/crm.module';
@@ -226,6 +228,10 @@ import { AppCacheModule } from './cache/cache.module';
     ChatHistoryExtractorModule,
     // Chat Intent Router — classify inbound message to sales/service/handoff via Claude Haiku
     ChatIntentRouterModule,
+    // Sales Bot — Claude Sonnet tool-use loop (search products, calculate installment, promotions, handoff)
+    SalesBotModule,
+    // Chat AI Draft orchestrator — router → bot → draft ChatMessage (Week 1 Hybrid C: staff approval required)
+    ChatAiDraftModule,
     // CSAT — customer satisfaction survey after chat resolution
     CsatModule,
     // Ads Attribution — campaign tracking + ROI

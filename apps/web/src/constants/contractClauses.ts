@@ -123,8 +123,7 @@ export function createDefaultContractBlocks(): Block[] {
       clauseNumber: 26, clauseTitle: 'การรับรองข้อมูล',
     }),
 
-    // Attachments + Signatures + Photos
-    b('attachment-list', 'เอกสารแนบท้ายสัญญา\n1) เอกสารรูปภาพรับ/มอบโทรศัพท์ จำนวน 1 รูป\n2) เอกสารรูปภาพโทรศัพท์ จำนวน 6 รูป'),
+    // Signatures + Photos
     b('paragraph', 'คู่สัญญาทั้งสองฝ่ายได้อ่านและเข้าใจข้อความในสัญญาฉบับนี้โดยตลอดแล้ว จึงลงลายมือชื่อไว้เป็นหลักฐานต่อหน้าพยาน'),
     b('signature-block', '@sign_company\n@sign_customer\n@sign_witness1\n@sign_witness2'),
     b('photo-attachment', 'รูปถ่ายโทรศัพท์แนบท้ายสัญญา'),

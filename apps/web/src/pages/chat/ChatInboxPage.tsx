@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { RoomList } from './components/RoomList';
+import { ConversationPanel } from './components/ConversationPanel';
 
 export default function ChatInboxPage() {
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
@@ -14,11 +15,7 @@ export default function ChatInboxPage() {
       </header>
       <div className="grid flex-1 grid-cols-[320px_1fr_360px] overflow-hidden">
         <RoomList activeRoomId={activeRoomId} onSelect={setActiveRoomId} />
-        <div className="flex items-center justify-center bg-background p-4">
-          <p className="text-sm leading-snug text-muted-foreground">
-            เลือกห้องจากด้านซ้ายเพื่อดูการสนทนา
-          </p>
-        </div>
+        <ConversationPanel roomId={activeRoomId} />
         <aside className="border-l border-border bg-card p-4" aria-label="แผงรายละเอียด" />
       </div>
     </div>

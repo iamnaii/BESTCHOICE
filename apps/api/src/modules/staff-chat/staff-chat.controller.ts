@@ -103,6 +103,24 @@ export class StaffChatController {
     return this.roomManager.getRecentMessages(id, limit ? parseInt(limit, 10) : 50);
   }
 
+  @Post('rooms/:id/messages')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  async sendRoomMessage(
+    @Param('id') id: string,
+    @Body() body: { text: string },
+    @Req() req: { user: { id: string } },
+  ) {
+    const text = (body?.text ?? '').trim();
+    if (!text) {
+      return { success: false, error: 'กรุณาพิมพ์ข้อความก่อนส่ง' };
+    }
+    return this.messageRouter.sendStaffMessage({
+      roomId: id,
+      staffId: req.user.id,
+      text,
+    });
+  }
+
   // ─── Unread + Search ────────────────────────────────────
 
   @Get('unread-count')

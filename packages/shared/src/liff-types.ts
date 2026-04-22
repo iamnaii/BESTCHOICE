@@ -44,6 +44,10 @@ export interface LiffHistoryPayment {
   paidDate: string | null;
   paymentMethod: string | null;
   lateFee: number;
+  /** Receipt ID if an issued, non-voided receipt exists for this payment —
+   * used by the LIFF history UI to surface an inline PDF download link.
+   * Null when no receipt has been generated yet. */
+  receiptId: string | null;
 }
 
 /** Response for GET /line-oa/liff/history */

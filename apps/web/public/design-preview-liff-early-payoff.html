@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>ปิดยอดก่อนกำหนด · BESTCHOICE</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    * { font-family: 'IBM Plex Sans Thai', 'IBM Plex Sans', sans-serif; -webkit-font-smoothing: antialiased; }
+    .font-mono { font-family: 'IBM Plex Mono', monospace; }
+    body { background: #f3efe5; margin: 0; padding: 16px 0; }
+    @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
+    @keyframes bounceX { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(4px); } }
+    .animate-float { animation: float 3.5s ease-in-out infinite; }
+    .animate-float-delay { animation: float 3.5s ease-in-out infinite 1s; }
+    .animate-bounce-x { animation: bounceX 2.4s ease-in-out infinite; }
+
+    .frame {
+      max-width: 430px;
+      margin: 0 auto 32px;
+      background: #fafaf7;
+      position: relative;
+      overflow: hidden;
+      border-radius: 32px;
+      box-shadow: 0 40px 80px -30px rgb(0 0 0 / 0.25), 0 8px 20px -10px rgb(0 0 0 / 0.12);
+    }
+    .frame-label {
+      max-width: 430px;
+      margin: 0 auto 8px;
+      text-align: center;
+      font-family: 'IBM Plex Mono', monospace;
+      text-transform: uppercase;
+      letter-spacing: 0.2em;
+      font-size: 10px;
+      color: rgb(107 107 107);
+    }
+    .bg-mesh-payoff {
+      position: absolute; inset: 0; pointer-events: none; z-index: 0;
+      background:
+        radial-gradient(600px 400px at 10% -5%, rgb(251 191 36 / 0.10), transparent 60%),
+        radial-gradient(500px 380px at 100% 20%, rgb(16 185 129 / 0.07), transparent 65%),
+        radial-gradient(400px 320px at 50% 100%, rgb(99 102 241 / 0.05), transparent 60%);
+    }
+  </style>
+</head>
+<body>
+
+<div class="frame-label">◦ LiffEarlyPayoff — Quote View (hero)</div>
+<div class="frame">
+  <div class="bg-mesh-payoff"></div>
+
+  <!-- Top bar -->
+  <header class="sticky top-0 z-20 flex items-center justify-between px-5 py-[14px] backdrop-blur-xl border-b border-zinc-200/70" style="background-color: rgb(250 250 247 / 0.85); position: relative;">
+    <button class="grid h-9 w-9 place-items-center rounded-full text-zinc-900 -ml-1.5">
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="m15 18-6-6 6-6"/></svg>
+    </button>
+    <div class="text-[13px] font-medium text-zinc-900 tracking-tight">ปิดยอดก่อนกำหนด</div>
+    <div class="relative -mr-1.5">
+      <div class="grid h-9 w-9 place-items-center rounded-full text-[12px] font-semibold text-white shadow-lg" style="background: linear-gradient(135deg, rgb(251 191 36) 0%, rgb(245 158 11) 60%, rgb(217 119 6) 100%); box-shadow: 0 10px 20px -6px rgb(245 158 11 / 0.4);">ส</div>
+    </div>
+  </header>
+
+  <!-- Greeting -->
+  <section class="relative z-[1] px-5 pt-6">
+    <div class="text-xs text-zinc-500">สวัสดี</div>
+    <div class="text-[17px] font-medium text-zinc-900 tracking-tight">คุณสมชาย ใจดี</div>
+  </section>
+
+  <!-- Hero -->
+  <section class="relative z-[1] px-5 pt-7">
+    <div class="absolute pointer-events-none animate-float" style="top: 10px; left: -40px; width: 220px; height: 220px; border-radius: 50%; filter: blur(60px); opacity: 0.55; background: radial-gradient(circle, rgb(251 191 36), transparent 70%);"></div>
+    <div class="absolute pointer-events-none animate-float-delay" style="top: 50px; right: -30px; width: 180px; height: 180px; border-radius: 50%; filter: blur(60px); opacity: 0.45; background: radial-gradient(circle, rgb(16 185 129), transparent 70%);"></div>
+
+    <div class="relative">
+      <div class="flex items-center gap-2">
+        <span class="text-[10.5px] font-semibold uppercase text-amber-800" style="letter-spacing: 0.18em;">ยอดปิดสัญญา · ส่วนลด 50%</span>
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgb(217 119 6)" stroke-width="2"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/></svg>
+      </div>
+
+      <div class="mt-3 flex items-baseline gap-1.5">
+        <span class="font-mono text-[26px] text-amber-700 font-light leading-none">฿</span>
+        <span class="font-mono font-light tabular-nums text-zinc-900" style="font-size: 72px; line-height: 0.95; letter-spacing: -0.035em;">18,450</span>
+        <span class="ml-2 font-mono text-xs text-zinc-500">บาท</span>
+      </div>
+
+      <div class="mt-3 inline-flex items-center gap-2 rounded-full bg-emerald-50 border border-emerald-200 px-3 py-1.5 text-xs">
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgb(5 150 105)" stroke-width="2"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></svg>
+        <span class="text-emerald-800">ประหยัด <span class="font-semibold">฿3,580</span> จากยอดเต็ม <span class="line-through text-emerald-600/70 font-mono">฿22,030</span></span>
+      </div>
+
+      <button class="relative mt-6 w-full overflow-hidden rounded-[20px] px-5 py-[18px] text-white" style="background: linear-gradient(135deg, rgb(245 158 11) 0%, rgb(217 119 6) 45%, rgb(180 83 9) 100%); box-shadow: 0 18px 40px -12px rgb(217 119 6 / 0.55);">
+        <span class="relative z-[1] flex items-center justify-between">
+          <span class="flex items-center gap-2.5">
+            <span class="grid h-8 w-8 place-items-center rounded-xl bg-white/20 backdrop-blur-sm">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>
+            </span>
+            <span class="text-[15.5px] font-semibold tracking-tight">ชำระเพื่อปิดสัญญาทันที</span>
+          </span>
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="animate-bounce-x"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+        </span>
+      </button>
+    </div>
+  </section>
+
+  <!-- Section divider -->
+  <div class="relative z-[1] mt-8 flex items-center gap-3 px-5">
+    <span class="text-[10.5px] font-semibold uppercase text-zinc-500" style="letter-spacing: 0.18em;">รายละเอียดยอดปิด</span>
+    <div class="h-px flex-1" style="background: linear-gradient(to right, rgb(228 228 231), transparent);"></div>
+  </div>
+
+  <!-- Breakdown — hide interest, lead with full price + discount -->
+  <section class="relative z-[1] mt-4 px-5">
+    <div class="rounded-[22px] border border-zinc-200/50 bg-white p-5 shadow-sm space-y-3">
+      <div class="flex items-baseline justify-between">
+        <span class="text-[12.5px] text-zinc-500">งวดคงเหลือ</span>
+        <span class="font-mono text-[13.5px] font-medium tabular-nums text-zinc-900">6 งวด</span>
+      </div>
+      <div class="flex items-baseline justify-between">
+        <span class="text-[12.5px] text-zinc-500">ยอดเต็มก่อนหักส่วนลด</span>
+        <span class="flex items-baseline gap-1">
+          <span class="font-mono text-[13.5px] font-medium tabular-nums text-zinc-500/70 line-through">21,410</span>
+          <span class="text-[11px] text-zinc-500">บาท</span>
+        </span>
+      </div>
+      <div class="h-px bg-zinc-200/60"></div>
+      <div class="flex items-baseline justify-between">
+        <span class="text-[12.5px] font-semibold text-emerald-700">ส่วนลดพิเศษ 50%</span>
+        <span class="flex items-baseline gap-1">
+          <span class="font-mono text-[15px] font-semibold tabular-nums text-emerald-700">−3,580</span>
+          <span class="text-[11px] text-zinc-500">บาท</span>
+        </span>
+      </div>
+      <div class="flex items-baseline justify-between">
+        <span class="text-[12.5px] text-zinc-500">ค่าปรับค้างชำระ</span>
+        <span class="flex items-baseline gap-1">
+          <span class="font-mono text-[13.5px] font-medium tabular-nums text-red-600">+620</span>
+          <span class="text-[11px] text-zinc-500">บาท</span>
+        </span>
+      </div>
+      <div class="h-px bg-zinc-200/60"></div>
+      <div class="flex items-baseline justify-between">
+        <span class="text-[13px] font-semibold text-zinc-900">ยอดที่ต้องชำระ</span>
+        <span class="flex items-baseline gap-1">
+          <span class="font-mono text-[22px] font-semibold tabular-nums tracking-tight text-amber-700">฿18,450</span>
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Contract meta -->
+  <section class="relative z-[1] mt-3 px-5">
+    <div class="rounded-[22px] border border-zinc-200/50 bg-white/80 p-4 shadow-sm flex items-center gap-3" style="backdrop-filter: blur(8px);">
+      <div class="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-white" style="background: linear-gradient(135deg, rgb(99 102 241) 0%, rgb(59 130 246) 60%, rgb(6 182 212) 100%); box-shadow: 0 8px 16px -4px rgb(99 102 241 / 0.3);">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+      </div>
+      <div class="min-w-0 flex-1">
+        <div class="font-mono text-[10.5px] text-zinc-500 tracking-wide uppercase">สัญญาที่ปิด</div>
+        <div class="mt-0.5 font-mono text-[13px] font-medium text-zinc-900">BC-2024-001847</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Info note -->
+  <section class="relative z-[1] mt-3 px-5 pb-6">
+    <div class="rounded-[22px] border border-amber-200/60 bg-amber-50/60 p-4 flex items-start gap-3">
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgb(180 83 9)" stroke-width="1.75" class="shrink-0 mt-0.5"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>
+      <p class="text-[12px] text-amber-900/90 leading-relaxed">ส่วนลดพิเศษ 50% เป็นสิทธิ์สำหรับลูกค้าที่ปิดสัญญาก่อนกำหนด ยอดจะปิดสัญญาและย้ายกรรมสิทธิ์เครื่องทันทีหลังชำระสำเร็จ</p>
+    </div>
+  </section>
+
+  <!-- Back -->
+  <div class="relative z-[1] px-5 pb-10">
+    <a class="flex items-center justify-center gap-1.5 text-[12.5px] text-zinc-500 py-3">
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+      กลับไปดูสัญญา
+    </a>
+    <p class="text-center text-[10px] text-zinc-400 uppercase mt-4" style="letter-spacing: 0.15em;">Best Choice · ระบบผ่อนชำระ</p>
+  </div>
+</div>
+
+<div class="frame-label">◦ LiffEarlyPayoff — Picker (multi-contract from rich menu)</div>
+<div class="frame">
+  <div class="bg-mesh-payoff"></div>
+
+  <header class="sticky top-0 z-20 flex items-center justify-between px-5 py-[14px] backdrop-blur-xl border-b border-zinc-200/70" style="background-color: rgb(250 250 247 / 0.85); position: relative;">
+    <button class="grid h-9 w-9 place-items-center rounded-full text-zinc-900 -ml-1.5">
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="m15 18-6-6 6-6"/></svg>
+    </button>
+    <div class="text-[13px] font-medium text-zinc-900 tracking-tight">เลือกสัญญาปิดยอด</div>
+    <div class="relative -mr-1.5">
+      <div class="grid h-9 w-9 place-items-center rounded-full text-[12px] font-semibold text-white" style="background: linear-gradient(135deg, rgb(251 191 36) 0%, rgb(245 158 11) 60%, rgb(217 119 6) 100%); box-shadow: 0 10px 20px -6px rgb(245 158 11 / 0.4);">ส</div>
+    </div>
+  </header>
+
+  <section class="relative z-[1] px-5 pt-6">
+    <div class="text-xs text-zinc-500">สวัสดี</div>
+    <div class="text-[17px] font-medium text-zinc-900 tracking-tight">คุณสมชาย ใจดี</div>
+  </section>
+
+  <section class="relative z-[1] px-5 pt-6">
+    <div class="flex items-center gap-2">
+      <span class="text-[10.5px] font-semibold uppercase text-amber-800" style="letter-spacing: 0.18em;">ส่วนลดพิเศษ 50%</span>
+      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgb(217 119 6)" stroke-width="2"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></svg>
+    </div>
+    <h1 class="mt-2 text-[22px] font-semibold tracking-tight text-zinc-900 leading-tight">เลือกสัญญาที่ต้องการปิดยอดก่อนกำหนด</h1>
+    <p class="mt-2 text-[13px] text-zinc-500">ได้รับส่วนลดดอกเบี้ย 50% ทันทีเมื่อปิดยอดก่อนครบสัญญา</p>
+  </section>
+
+  <div class="relative z-[1] mt-6 flex items-center gap-3 px-5">
+    <span class="text-[10.5px] font-semibold uppercase text-zinc-500" style="letter-spacing: 0.18em;">สัญญาของคุณ · 3 สัญญา</span>
+    <div class="h-px flex-1" style="background: linear-gradient(to right, rgb(228 228 231), transparent);"></div>
+  </div>
+
+  <section class="relative z-[1] px-5 mt-4 space-y-2.5 pb-10">
+    <!-- contract card 1 -->
+    <a class="block rounded-[22px] border border-zinc-200/50 bg-white p-4 shadow-sm">
+      <div class="flex items-start gap-3.5">
+        <div class="relative grid h-12 w-12 shrink-0 place-items-center rounded-2xl text-white" style="background: linear-gradient(135deg, rgb(251 191 36) 0%, rgb(245 158 11) 60%, rgb(217 119 6) 100%); box-shadow: 0 8px 16px -4px rgb(245 158 11 / 0.25);">
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+        </div>
+        <div class="min-w-0 flex-1">
+          <div class="font-semibold text-[14.5px] tracking-tight text-zinc-900 truncate">iPhone 15 Pro 256GB · Natural Titanium</div>
+          <div class="mt-1 font-mono text-[11px] text-zinc-500 tracking-wide">BC-2024-001847</div>
+          <div class="mt-2 flex items-baseline gap-1 flex-wrap">
+            <span class="text-[10.5px] text-zinc-500">คงเหลือ</span>
+            <span class="font-mono text-[13.5px] font-semibold text-zinc-900 tabular-nums tracking-tight">฿22,030</span>
+          </div>
+        </div>
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgb(113 113 122)" stroke-width="2" class="shrink-0 mt-2"><path d="m9 18 6-6-6-6"/></svg>
+      </div>
+    </a>
+
+    <!-- contract card 2 -->
+    <a class="block rounded-[22px] border border-zinc-200/50 bg-white p-4 shadow-sm">
+      <div class="flex items-start gap-3.5">
+        <div class="relative grid h-12 w-12 shrink-0 place-items-center rounded-2xl text-white" style="background: linear-gradient(135deg, rgb(251 191 36) 0%, rgb(245 158 11) 60%, rgb(217 119 6) 100%); box-shadow: 0 8px 16px -4px rgb(245 158 11 / 0.25);">
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+        </div>
+        <div class="min-w-0 flex-1">
+          <div class="font-semibold text-[14.5px] tracking-tight text-zinc-900 truncate">Samsung Galaxy S24 Ultra 512GB</div>
+          <div class="mt-1 font-mono text-[11px] text-zinc-500 tracking-wide">BC-2024-001623</div>
+          <div class="mt-2 flex items-baseline gap-1 flex-wrap">
+            <span class="text-[10.5px] text-zinc-500">คงเหลือ</span>
+            <span class="font-mono text-[13.5px] font-semibold text-zinc-900 tabular-nums tracking-tight">฿15,890</span>
+          </div>
+        </div>
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgb(113 113 122)" stroke-width="2" class="shrink-0 mt-2"><path d="m9 18 6-6-6-6"/></svg>
+      </div>
+    </a>
+
+    <!-- contract card 3 -->
+    <a class="block rounded-[22px] border border-zinc-200/50 bg-white p-4 shadow-sm">
+      <div class="flex items-start gap-3.5">
+        <div class="relative grid h-12 w-12 shrink-0 place-items-center rounded-2xl text-white" style="background: linear-gradient(135deg, rgb(251 191 36) 0%, rgb(245 158 11) 60%, rgb(217 119 6) 100%); box-shadow: 0 8px 16px -4px rgb(245 158 11 / 0.25);">
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+        </div>
+        <div class="min-w-0 flex-1">
+          <div class="font-semibold text-[14.5px] tracking-tight text-zinc-900 truncate">iPad Air 11" M2 Wi-Fi 128GB</div>
+          <div class="mt-1 font-mono text-[11px] text-zinc-500 tracking-wide">BC-2024-001099</div>
+          <div class="mt-2 flex items-baseline gap-1 flex-wrap">
+            <span class="text-[10.5px] text-zinc-500">คงเหลือ</span>
+            <span class="font-mono text-[13.5px] font-semibold text-zinc-900 tabular-nums tracking-tight">฿8,420</span>
+          </div>
+        </div>
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgb(113 113 122)" stroke-width="2" class="shrink-0 mt-2"><path d="m9 18 6-6-6-6"/></svg>
+      </div>
+    </a>
+  </section>
+</div>
+
+<div class="frame-label">◦ LiffEarlyPayoff — Empty State (all paid)</div>
+<div class="frame">
+  <div class="bg-mesh-payoff"></div>
+
+  <header class="sticky top-0 z-20 flex items-center justify-between px-5 py-[14px] backdrop-blur-xl border-b border-zinc-200/70" style="background-color: rgb(250 250 247 / 0.85); position: relative;">
+    <button class="grid h-9 w-9 place-items-center rounded-full text-zinc-900 -ml-1.5">
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="m15 18-6-6 6-6"/></svg>
+    </button>
+    <div class="text-[13px] font-medium text-zinc-900 tracking-tight">ปิดยอดก่อนกำหนด</div>
+    <div class="relative -mr-1.5">
+      <div class="grid h-9 w-9 place-items-center rounded-full text-[12px] font-semibold text-white" style="background: linear-gradient(135deg, rgb(251 191 36) 0%, rgb(245 158 11) 60%, rgb(217 119 6) 100%); box-shadow: 0 10px 20px -6px rgb(245 158 11 / 0.4);">ส</div>
+    </div>
+  </header>
+
+  <section class="relative z-[1] px-5 pt-16 pb-16 flex flex-col items-center text-center">
+    <div class="grid h-20 w-20 place-items-center rounded-full bg-emerald-50 border border-emerald-200 mb-5">
+      <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="rgb(5 150 105)" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
+    </div>
+    <h2 class="text-[18px] font-semibold text-zinc-900 tracking-tight">ทุกสัญญาชำระครบแล้ว</h2>
+    <p class="mt-2 text-[13px] text-zinc-500 max-w-[280px]">ขณะนี้ไม่มีสัญญาค้างชำระที่สามารถปิดยอดก่อนกำหนดได้</p>
+    <button class="mt-8 w-full max-w-xs rounded-[14px] border border-zinc-300 bg-white px-4 py-3 text-sm font-medium text-zinc-900">ดูสัญญาทั้งหมด</button>
+  </section>
+</div>
+
+</body>
+</html>

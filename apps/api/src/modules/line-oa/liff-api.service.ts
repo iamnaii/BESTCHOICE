@@ -210,6 +210,7 @@ export class LiffApiService {
               where: { status: 'PAID' },
               orderBy: { paidDate: 'desc' },
               select: {
+                id: true,
                 installmentNo: true,
                 amountPaid: true,
                 paidDate: true,
@@ -224,6 +225,25 @@ export class LiffApiService {
 
     if (!customer) return null;
 
+    // Collect paymentIds to look up receipts in one follow-up query.
+    // Receipt has a scalar paymentId (no Prisma back-relation on Payment),
+    // so we can't `include` it from the payment tree above.
+    const paymentIds = customer.contracts.flatMap((c) => c.payments.map((p) => p.id));
+    const receipts = paymentIds.length
+      ? await this.prisma.receipt.findMany({
+          where: {
+            paymentId: { in: paymentIds },
+            isVoided: false,
+            deletedAt: null,
+          },
+          select: { id: true, paymentId: true },
+        })
+      : [];
+    const receiptByPaymentId = new Map<string, string>();
+    for (const r of receipts) {
+      if (r.paymentId) receiptByPaymentId.set(r.paymentId, r.id);
+    }
+
     const payments = customer.contracts.flatMap((c) =>
       c.payments.map((p) => ({
         contractNumber: c.contractNumber,
@@ -232,6 +252,7 @@ export class LiffApiService {
         paidDate: p.paidDate ? p.paidDate.toISOString() : null,
         paymentMethod: p.paymentMethod,
         lateFee: toNum(p.lateFee),
+        receiptId: receiptByPaymentId.get(p.id) ?? null,
       })),
     );
 

@@ -93,6 +93,7 @@ import { ShopOrdersModule } from './modules/shop-orders/shop-orders.module';
 import { ShopMeModule } from './modules/shop-me/shop-me.module';
 import { ShopCsModule } from './modules/shop-cs/shop-cs.module';
 import { ShopReviewsModule } from './modules/shop-reviews/shop-reviews.module';
+import { ShopTradeInModule } from './modules/shop-trade-in/shop-trade-in.module';
 import { DataAuditModule } from './modules/data-audit/data-audit.module';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { TwoFactorModule } from './modules/two-factor/two-factor.module';
@@ -255,6 +256,8 @@ import { AppCacheModule } from './cache/cache.module';
     ShopCsModule,
     // Online Shop — product reviews (verified purchase + moderation) (Phase 3)
     ShopReviewsModule,
+    // Online Shop — customer online trade-in submission (exchange flow) (Phase 3)
+    ShopTradeInModule,
     // MASTER: Management
     UsersModule,
     SettingsModule,

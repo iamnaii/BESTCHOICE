@@ -36,6 +36,7 @@ describe('VerificationService', () => {
         const tx = {
           customerLineLink: { upsert: jest.fn().mockResolvedValue({}) },
           chatRoom: { updateMany: jest.fn().mockResolvedValue({}) },
+          customer: { update: jest.fn().mockResolvedValue({}) },
         };
         return cb(tx);
       }),

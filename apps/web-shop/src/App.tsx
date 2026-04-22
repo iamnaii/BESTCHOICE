@@ -16,6 +16,8 @@ import OrdersPage from './pages/OrdersPage';
 import OrderDetailPage from './pages/OrderDetailPage';
 import AccountPage from './pages/account/AccountPage';
 import AddressBookPage from './pages/account/AddressBookPage';
+import InstallmentApplyPage from './pages/apply/InstallmentApplyPage';
+import ApplySuccessPage from './pages/apply/ApplySuccessPage';
 
 function RouteTracker() {
   const location = useLocation();
@@ -45,6 +47,8 @@ export default function App() {
         <Route path="/orders/:orderNumber" element={<OrderDetailPage />} />
         <Route path="/account" element={<AccountPage />} />
         <Route path="/account/addresses" element={<AddressBookPage />} />
+        <Route path="/apply/:productId" element={<InstallmentApplyPage />} />
+        <Route path="/apply/success/:applicationNumber" element={<ApplySuccessPage />} />
       </Routes>
     </>
   );

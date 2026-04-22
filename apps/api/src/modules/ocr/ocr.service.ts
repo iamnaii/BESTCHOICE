@@ -969,11 +969,18 @@ ${basePrompt}`;
       };
     } catch (error) {
       if (error instanceof BadRequestException) throw error;
+      const err = error as Error & { status?: number };
       if (error instanceof SyntaxError) {
-        this.logger.error('Failed to parse bank statement OCR response as JSON');
+        this.logger.error(
+          `Failed to parse bank statement OCR response as JSON: ${err.message}`,
+          err.stack,
+        );
         throw new BadRequestException('ไม่สามารถอ่านข้อมูลจาก Statement ธนาคารได้ กรุณาลองใช้รูปที่ชัดเจนกว่านี้');
       }
-      this.logger.error('OCR bank statement extraction failed');
+      this.logger.error(
+        `OCR bank statement extraction failed (status=${err.status ?? 'n/a'}): ${err.message}`,
+        err.stack,
+      );
       throw new InternalServerErrorException('ระบบ OCR ขัดข้อง กรุณาลองใหม่อีกครั้ง');
     }
   }

@@ -7,7 +7,7 @@ import { maskThaiName } from '../../utils/mask-name.util';
 interface LiffPaymentItem { installmentNo: number; dueDate: string; amountDue: number; amountPaid: number; lateFee: number; status: string; paidDate: string | null; paymentMethod: string | null; }
 interface LiffContractItem { id: string; contractNumber: string; status: string; dunningStage: string; daysOverdue: number; product: string; sellingPrice: number; downPayment: number; monthlyPayment: number; totalMonths: number; paidInstallments: number; totalOutstanding: number; createdAt: string; payments: LiffPaymentItem[]; }
 interface LiffContractResponse { customer: { name: string }; contracts: LiffContractItem[]; }
-interface LiffHistoryPayment { contractNumber: string; installmentNo: number; amountPaid: number; paidDate: string | null; paymentMethod: string | null; lateFee: number; }
+interface LiffHistoryPayment { contractNumber: string; installmentNo: number; amountPaid: number; paidDate: string | null; paymentMethod: string | null; lateFee: number; receiptId: string | null; }
 interface LiffHistoryResponse { customer: { name: string }; payments: LiffHistoryPayment[]; }
 interface LiffProfileResponse { name: string; phone: string; lineDisplayName: string; contractCount: number; totalPoints: number; }
 interface LiffRegisterLookupResponse { customerId: string; maskedName: string; }

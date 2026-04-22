@@ -1,5 +1,5 @@
-/* ── Google Fonts: Inter + IBM Plex Sans Thai ───────────── */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&display=swap')
+/* ── Google Fonts: Inter + IBM Plex Sans Thai + IBM Plex Mono ───────────── */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap')
 layer(base);
 
 @import 'tailwindcss';
@@ -11,6 +11,7 @@ layer(base);
 @theme {
   --font-sans: 'Inter', 'IBM Plex Sans Thai', system-ui, -apple-system, sans-serif;
   --font-sarabun: 'IBM Plex Sans Thai', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
   --text-2xs: 0.6875rem;
   --text-2xs--line-height: 1.2;

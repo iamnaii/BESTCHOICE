@@ -7,8 +7,12 @@ export function setAccessToken(token: string | null) {
   accessToken = token;
 }
 
+// Same-origin in both dev and prod.
+// Dev: Vite proxy rewrites /api → http://localhost:3000 (see vite.config).
+// Prod: Firebase Hosting on shop.bestchoicephone.app rewrites /api/** to the
+// bestchoice-api Cloud Run service (see root firebase.json `shop` target).
 export const api = axios.create({
-  baseURL: import.meta.env.PROD ? 'https://bestchoicephone.app' : '',
+  baseURL: '',
   withCredentials: true,
 });
 

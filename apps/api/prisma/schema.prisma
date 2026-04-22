@@ -242,6 +242,45 @@ enum OnlineShippingMethod {
   THAILAND_POST
 }
 
+// ============================================================
+// PHASE 3 — APPLY + SAVING + REVIEW + TRADE-IN FLOW FLAGS
+// ============================================================
+
+enum ApplicationStatus {
+  SUBMITTED
+  SCHEDULED
+  IN_REVIEW
+  APPROVED
+  CONTRACT_SIGNED
+  REJECTED
+  NO_SHOW
+  EXPIRED
+  CANCELLED
+}
+
+enum SavingPlanStatus {
+  ACTIVE
+  COMPLETED
+  APPLIED
+  CANCELLED
+}
+
+enum TradeInSubmissionSource {
+  OFFLINE
+  ONLINE
+}
+
+enum TradeInFlow {
+  EXCHANGE
+  BUYBACK
+}
+
+enum ReviewStatus {
+  PUBLISHED
+  HIDDEN
+  FLAGGED
+}
+
 enum InterCompanyTransactionType {
   FINANCE_PURCHASE // Finance ซื้อลูกหนี้จาก Shop (principal + commission)
   COMMISSION_PAYMENT // Finance จ่าย commission ให้ Shop
@@ -372,37 +411,37 @@ model Branch {
   fixedAssets              FixedAsset[]
   tradeIns                 TradeIn[]
   crmLeads                 CrmLead[]
-  receivableReconLogs      ReceivableReconLog[] @relation("ReceivableReconBranch")
+  receivableReconLogs      ReceivableReconLog[]      @relation("ReceivableReconBranch")
 
   @@index([companyId])
   @@map("branches")
 }
 
 model User {
-  id               String    @id @default(uuid())
-  email            String    @unique
-  password         String
-  name             String
-  role             UserRole  @default(SALES)
-  branchId         String?   @map("branch_id")
-  isActive         Boolean   @default(true) @map("is_active")
-  savedSignature   String?   @map("saved_signature") @db.Text
-  employeeId       String?   @unique @map("employee_id")
-  nickname         String?   @map("nickname")
-  phone            String?   @map("phone")
-  lineId           String?   @map("line_id")
-  address          String?   @map("address") @db.Text
-  avatarUrl        String?   @map("avatar_url") @db.Text
-  startDate        DateTime? @map("start_date")
-  nationalId       String?   @map("national_id")
-  birthDate        DateTime? @map("birth_date")
+  id                     String                @id @default(uuid())
+  email                  String                @unique
+  password               String
+  name                   String
+  role                   UserRole              @default(SALES)
+  branchId               String?               @map("branch_id")
+  isActive               Boolean               @default(true) @map("is_active")
+  savedSignature         String?               @map("saved_signature") @db.Text
+  employeeId             String?               @unique @map("employee_id")
+  nickname               String?               @map("nickname")
+  phone                  String?               @map("phone")
+  lineId                 String?               @map("line_id")
+  address                String?               @map("address") @db.Text
+  avatarUrl              String?               @map("avatar_url") @db.Text
+  startDate              DateTime?             @map("start_date")
+  nationalId             String?               @map("national_id")
+  birthDate              DateTime?             @map("birth_date")
   // === Batch C2: 2FA ===
-  twoFactorSecret           String?    @map("two_factor_secret") @db.Text
-  twoFactorEnabled          Boolean    @default(false) @map("two_factor_enabled")
-  twoFactorEnabledAt        DateTime?  @map("two_factor_enabled_at")
-  twoFactorBackupCodes      Json?      @map("two_factor_backup_codes")
-  twoFactorRequiredAfter    DateTime?  @map("two_factor_required_after")
-  twoFactorOtpRequests      TwoFactorOtpRequest[]
+  twoFactorSecret        String?               @map("two_factor_secret") @db.Text
+  twoFactorEnabled       Boolean               @default(false) @map("two_factor_enabled")
+  twoFactorEnabledAt     DateTime?             @map("two_factor_enabled_at")
+  twoFactorBackupCodes   Json?                 @map("two_factor_backup_codes")
+  twoFactorRequiredAfter DateTime?             @map("two_factor_required_after")
+  twoFactorOtpRequests   TwoFactorOtpRequest[]
 
   // Brute-force protection: incremented on failed login, reset on success.
   // When failedLoginAttempts >= LOCKOUT_THRESHOLD the account is locked
@@ -418,83 +457,83 @@ model User {
 
   branch Branch? @relation(fields: [branchId], references: [id])
 
-  contractsAsSalesperson Contract[]           @relation("Salesperson")
-  contractsReviewed      Contract[]           @relation("ContractReviewer")
-  salesAsSalesperson     Sale[]               @relation("SalesSalesperson")
-  paymentsRecorded       Payment[]            @relation("RecordedBy")
-  inspections            Inspection[]
-  callLogs               CallLog[]
-  auditLogs              AuditLog[]
-  purchaseOrdersCreated  PurchaseOrder[]      @relation("POCreatedBy")
-  purchaseOrdersApproved PurchaseOrder[]      @relation("POApprovedBy")
-  repossessionsAppraised Repossession[]       @relation("AppraisedBy")
-  goodsReceivings        GoodsReceiving[]     @relation("GoodsReceivedBy")
-  transfersConfirmed     StockTransfer[]      @relation("TransferConfirmedBy")
-  transfersDispatched    StockTransfer[]      @relation("TransferDispatchedBy")
-  stockAdjustments       StockAdjustment[]    @relation("StockAdjustedBy")
-  stockAdjustmentsApproved StockAdjustment[] @relation("StockAdjustmentApprovedBy")
-  documentsUploaded      ContractDocument[]   @relation("DocumentUploadedBy")
-  creditChecks           CreditCheck[]        @relation("CreditCheckedBy")
-  creditOverrides        CreditCheck[]        @relation("CreditOverriddenBy")
-  branchReceivings       BranchReceiving[]    @relation("BranchReceivedBy")
-  stockCounts            StockCount[]         @relation("StockCountedBy")
-  productPhotosUploaded  ProductPhoto[]       @relation("ProductPhotoUploadedBy")
-  refreshTokens          RefreshToken[]
-  passwordResetTokens    PasswordResetToken[]
-  reviewedEvidences      PaymentEvidence[]    @relation("EvidenceReviewedBy")
-  inviteTokens           InviteToken[]
-  financeRecorded        FinanceReceivable[]  @relation("FinanceRecordedBy")
-  expensesCreated        Expense[]            @relation("ExpenseCreatedBy")
-  expensesApproved       Expense[]            @relation("ExpenseApprovedBy")
-  expensesVoided         Expense[]            @relation("ExpenseVoidedBy")
-  journalEntriesCreated  JournalEntry[]       @relation("JournalCreatedBy")
-  journalEntriesPosted   JournalEntry[]       @relation("JournalPostedBy")
-  taxReportsFiled        TaxReport[]          @relation("TaxReportFiledBy")
-  commissionsEarned      SalesCommission[]    @relation("CommissionSalesperson")
-  commissionsApproved    SalesCommission[]    @relation("CommissionApprovedBy")
-  contractsAssigned      Contract[]           @relation("ContractAssignedTo")
-  payoutsEarned          CommissionPayout[]   @relation("PayoutSalesperson")
-  payoutsApproved        CommissionPayout[]   @relation("PayoutApprovedBy")
-  payoutsPaid            CommissionPayout[]   @relation("PayoutPaidBy")
-  tradeInsAppraised      TradeIn[]            @relation("TradeInAppraisedBy")
-  tradeInsIdVerified     TradeIn[]            @relation("TradeInIdCardVerifiedBy")
-  assetsCreated          FixedAsset[]         @relation("AssetCreatedBy")
-  todosCreated           Todo[]               @relation("TodoCreatedBy")
-  todosAssigned          Todo[]               @relation("TodoAssignedTo")
-  todoComments           TodoComment[]        @relation("TodoCommentUser")
-  handoffRooms           ChatRoom[]           @relation("ChatHandoffStaff")
-  assignedRooms          ChatRoom[]           @relation("ChatAssignedStaff")
-  chatMessages           ChatMessage[]        @relation("ChatMessageStaff")
-  staffChatActivities    StaffChatActivity[]  @relation("StaffChatActivityUser")
-  chatNotes              ChatNote[]           @relation("ChatNoteStaff")
-  kbSuggestionsReviewed  ChatKbSuggestion[]   @relation("KbSuggestionReviewer")
-  webhookSubscriptions   WebhookSubscription[]
-  crmLeadsAssigned       CrmLead[]            @relation("CrmLeadAssignedTo")
-  crmNotes               CrmNote[]            @relation("CrmNoteStaff")
-  chatSnoozes            ChatSnooze[]         @relation("ChatSnoozeStaff")
-  chatSideMessages       ChatSideMessage[]    @relation("ChatSideMessageStaff")
-  dunningActionsExecuted DunningAction[]      @relation("DunningActionExecutor")
-  periodsReviewStarted   AccountingPeriod[]   @relation("PeriodReviewStartedBy")
-  periodsClosed          AccountingPeriod[]   @relation("PeriodClosedBy")
-  broadcastMessages      BroadcastMessage[]   @relation("BroadcastCreatedBy")
-  broadcastsApproved     BroadcastMessage[]   @relation("BroadcastApprovedBy")
-  broadcastsRejected     BroadcastMessage[]   @relation("BroadcastRejectedBy")
-  broadcastApprovals     BroadcastApproval[]  @relation("BroadcastApprovalBy")
-  refundsRequested       Refund[]             @relation("RefundRequestedBy")
-  refundsApproved        Refund[]             @relation("RefundApprovedBy")
-  refundsRejected        Refund[]             @relation("RefundRejectedBy")
-  loginAudits            LoginAuditLog[]      @relation("LoginAudits")
-  knownDevices           KnownDevice[]        @relation("UserKnownDevices")
-  dataAuditAcknowledgements DataAuditLog[]    @relation("DataAuditAcknowledgedBy")
-  warrantyAudits         WarrantyAuditLog[]   @relation("WarrantyAuditUser")
-  badDebtWriteOffsWritten  BadDebtWriteOffAuditLog[] @relation("BadDebtWriteOffWriter")
-  badDebtWriteOffsApproved BadDebtWriteOffAuditLog[] @relation("BadDebtWriteOffApprover")
-  crmLeadAssignFromHistory CrmLeadAssignment[] @relation("CrmLeadAssignFrom")
-  crmLeadAssignToHistory   CrmLeadAssignment[] @relation("CrmLeadAssignTo")
-  crmLeadAssignChangedBy   CrmLeadAssignment[] @relation("CrmLeadAssignChangedBy")
-  crmLeadStageHistoryStagedBy CrmLeadStageHistory[] @relation("CrmLeadStageHistoryStagedBy")
-  paymentsWaived           Payment[]            @relation("PaymentWaivedBy")
-  paymentsWaivedApproved   Payment[]            @relation("PaymentWaivedApprovedBy")
+  contractsAsSalesperson      Contract[]                @relation("Salesperson")
+  contractsReviewed           Contract[]                @relation("ContractReviewer")
+  salesAsSalesperson          Sale[]                    @relation("SalesSalesperson")
+  paymentsRecorded            Payment[]                 @relation("RecordedBy")
+  inspections                 Inspection[]
+  callLogs                    CallLog[]
+  auditLogs                   AuditLog[]
+  purchaseOrdersCreated       PurchaseOrder[]           @relation("POCreatedBy")
+  purchaseOrdersApproved      PurchaseOrder[]           @relation("POApprovedBy")
+  repossessionsAppraised      Repossession[]            @relation("AppraisedBy")
+  goodsReceivings             GoodsReceiving[]          @relation("GoodsReceivedBy")
+  transfersConfirmed          StockTransfer[]           @relation("TransferConfirmedBy")
+  transfersDispatched         StockTransfer[]           @relation("TransferDispatchedBy")
+  stockAdjustments            StockAdjustment[]         @relation("StockAdjustedBy")
+  stockAdjustmentsApproved    StockAdjustment[]         @relation("StockAdjustmentApprovedBy")
+  documentsUploaded           ContractDocument[]        @relation("DocumentUploadedBy")
+  creditChecks                CreditCheck[]             @relation("CreditCheckedBy")
+  creditOverrides             CreditCheck[]             @relation("CreditOverriddenBy")
+  branchReceivings            BranchReceiving[]         @relation("BranchReceivedBy")
+  stockCounts                 StockCount[]              @relation("StockCountedBy")
+  productPhotosUploaded       ProductPhoto[]            @relation("ProductPhotoUploadedBy")
+  refreshTokens               RefreshToken[]
+  passwordResetTokens         PasswordResetToken[]
+  reviewedEvidences           PaymentEvidence[]         @relation("EvidenceReviewedBy")
+  inviteTokens                InviteToken[]
+  financeRecorded             FinanceReceivable[]       @relation("FinanceRecordedBy")
+  expensesCreated             Expense[]                 @relation("ExpenseCreatedBy")
+  expensesApproved            Expense[]                 @relation("ExpenseApprovedBy")
+  expensesVoided              Expense[]                 @relation("ExpenseVoidedBy")
+  journalEntriesCreated       JournalEntry[]            @relation("JournalCreatedBy")
+  journalEntriesPosted        JournalEntry[]            @relation("JournalPostedBy")
+  taxReportsFiled             TaxReport[]               @relation("TaxReportFiledBy")
+  commissionsEarned           SalesCommission[]         @relation("CommissionSalesperson")
+  commissionsApproved         SalesCommission[]         @relation("CommissionApprovedBy")
+  contractsAssigned           Contract[]                @relation("ContractAssignedTo")
+  payoutsEarned               CommissionPayout[]        @relation("PayoutSalesperson")
+  payoutsApproved             CommissionPayout[]        @relation("PayoutApprovedBy")
+  payoutsPaid                 CommissionPayout[]        @relation("PayoutPaidBy")
+  tradeInsAppraised           TradeIn[]                 @relation("TradeInAppraisedBy")
+  tradeInsIdVerified          TradeIn[]                 @relation("TradeInIdCardVerifiedBy")
+  assetsCreated               FixedAsset[]              @relation("AssetCreatedBy")
+  todosCreated                Todo[]                    @relation("TodoCreatedBy")
+  todosAssigned               Todo[]                    @relation("TodoAssignedTo")
+  todoComments                TodoComment[]             @relation("TodoCommentUser")
+  handoffRooms                ChatRoom[]                @relation("ChatHandoffStaff")
+  assignedRooms               ChatRoom[]                @relation("ChatAssignedStaff")
+  chatMessages                ChatMessage[]             @relation("ChatMessageStaff")
+  staffChatActivities         StaffChatActivity[]       @relation("StaffChatActivityUser")
+  chatNotes                   ChatNote[]                @relation("ChatNoteStaff")
+  kbSuggestionsReviewed       ChatKbSuggestion[]        @relation("KbSuggestionReviewer")
+  webhookSubscriptions        WebhookSubscription[]
+  crmLeadsAssigned            CrmLead[]                 @relation("CrmLeadAssignedTo")
+  crmNotes                    CrmNote[]                 @relation("CrmNoteStaff")
+  chatSnoozes                 ChatSnooze[]              @relation("ChatSnoozeStaff")
+  chatSideMessages            ChatSideMessage[]         @relation("ChatSideMessageStaff")
+  dunningActionsExecuted      DunningAction[]           @relation("DunningActionExecutor")
+  periodsReviewStarted        AccountingPeriod[]        @relation("PeriodReviewStartedBy")
+  periodsClosed               AccountingPeriod[]        @relation("PeriodClosedBy")
+  broadcastMessages           BroadcastMessage[]        @relation("BroadcastCreatedBy")
+  broadcastsApproved          BroadcastMessage[]        @relation("BroadcastApprovedBy")
+  broadcastsRejected          BroadcastMessage[]        @relation("BroadcastRejectedBy")
+  broadcastApprovals          BroadcastApproval[]       @relation("BroadcastApprovalBy")
+  refundsRequested            Refund[]                  @relation("RefundRequestedBy")
+  refundsApproved             Refund[]                  @relation("RefundApprovedBy")
+  refundsRejected             Refund[]                  @relation("RefundRejectedBy")
+  loginAudits                 LoginAuditLog[]           @relation("LoginAudits")
+  knownDevices                KnownDevice[]             @relation("UserKnownDevices")
+  dataAuditAcknowledgements   DataAuditLog[]            @relation("DataAuditAcknowledgedBy")
+  warrantyAudits              WarrantyAuditLog[]        @relation("WarrantyAuditUser")
+  badDebtWriteOffsWritten     BadDebtWriteOffAuditLog[] @relation("BadDebtWriteOffWriter")
+  badDebtWriteOffsApproved    BadDebtWriteOffAuditLog[] @relation("BadDebtWriteOffApprover")
+  crmLeadAssignFromHistory    CrmLeadAssignment[]       @relation("CrmLeadAssignFrom")
+  crmLeadAssignToHistory      CrmLeadAssignment[]       @relation("CrmLeadAssignTo")
+  crmLeadAssignChangedBy      CrmLeadAssignment[]       @relation("CrmLeadAssignChangedBy")
+  crmLeadStageHistoryStagedBy CrmLeadStageHistory[]     @relation("CrmLeadStageHistoryStagedBy")
+  paymentsWaived              Payment[]                 @relation("PaymentWaivedBy")
+  paymentsWaivedApproved      Payment[]                 @relation("PaymentWaivedApprovedBy")
 
   @@index([branchId])
   @@map("users")
@@ -544,7 +583,7 @@ model Customer {
   guardianAddressEncrypted    String? @map("guardian_address_encrypted")
   referencesEncrypted         Json?   @map("references_encrypted")
 
-  documents          String[]  @default([]) // array of file URLs
+  documents String[] @default([]) // array of file URLs
 
   // Guardian (ผู้ปกครอง) — สำหรับลูกค้าอายุ 17-19
   guardianName       String? @map("guardian_name")
@@ -562,7 +601,7 @@ model Customer {
   // award twice. NULL = not yet awarded.
   referralAwardedAt DateTime?  @map("referral_awarded_at")
 
-  creditCheckStatus   CustomerCreditCheckStatus @default(NONE) @map("credit_check_status")
+  creditCheckStatus CustomerCreditCheckStatus @default(NONE) @map("credit_check_status")
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
@@ -597,9 +636,9 @@ model Customer {
   notifReceipt         Boolean @default(true) @map("notif_receipt")
 
   // Ads + CRM
-  adsAttributions  AdsAttribution[]
-  crmLeads         CrmLead[]
-  customerScore    CustomerScore?
+  adsAttributions AdsAttribution[]
+  crmLeads        CrmLead[]
+  customerScore   CustomerScore?
 
   // === Online shop addition (Phase 1) ===
   facebookUserId    String?              @map("facebook_user_id")
@@ -608,6 +647,11 @@ model Customer {
   websiteVisits     WebsiteVisit[]
   websiteSessions   WebsiteSession[]
   onlineOrders      OnlineOrder[]
+
+  // === Online shop addition (Phase 3) ===
+  savingPlans        SavingPlan[]
+  reviews            Review[]
+  onlineApplications OnlineInstallmentApplication[]
 
   @@index([phone])
   @@index([name])
@@ -684,23 +728,23 @@ model Contract {
   creditBalance Decimal @default(0) @map("credit_balance") @db.Decimal(12, 2)
 
   // Dunning workflow: ระดับการติดตามหนี้
-  dunningStage        DunningStage @default(NONE) @map("dunning_stage")
-  dunningEscalatedAt  DateTime?    @map("dunning_escalated_at")
-  dunningLastActionAt DateTime?    @map("dunning_last_action_at")
+  dunningStage        DunningStage  @default(NONE) @map("dunning_stage")
+  dunningEscalatedAt  DateTime?     @map("dunning_escalated_at")
+  dunningLastActionAt DateTime?     @map("dunning_last_action_at")
   /// T4-C2: auto-escalation can advance up to NOTICE only. FINAL_WARNING and
   /// LEGAL_ACTION require human approval — the cron parks the proposed stage
   /// here and waits. An OWNER/FINANCE_MANAGER approves via
   /// overdue.approveDunningEscalation() which flips dunningStage and clears
   /// these fields.
   pendingDunningStage DunningStage? @map("pending_dunning_stage")
-  pendingDunningSince DateTime?    @map("pending_dunning_since")
+  pendingDunningSince DateTime?     @map("pending_dunning_since")
 
   /// T3-C11: Manual hold on auto-escalation. When set to a future timestamp,
   /// the cron (overdue.updateContractStatuses / escalateDunningStages) skips
   /// this contract. Used when a BM/FM wants to give the customer more time
   /// without tripping the escalator mid-conversation. Default hold duration
   /// is 48h — long enough to resolve a promise-to-pay cycle.
-  blockAutoEscalation  DateTime? @map("block_auto_escalation")
+  blockAutoEscalation DateTime? @map("block_auto_escalation")
 
   // Retention policy
   retentionStatus DocumentRetentionStatus @default(ACTIVE) @map("retention_status")
@@ -718,7 +762,7 @@ model Contract {
   sale                     Sale?
   contractDocuments        ContractDocument[]
   creditCheck              CreditCheck?
-  pdpaConsent              PDPAConsent?              @relation(fields: [pdpaConsentId], references: [id])
+  pdpaConsent              PDPAConsent?                  @relation(fields: [pdpaConsentId], references: [id])
   receipts                 Receipt[]
   paymentLinks             PaymentLink[]
   paymentEvidences         PaymentEvidence[]
@@ -728,21 +772,22 @@ model Contract {
   provisions               BadDebtProvision[]
   commissions              SalesCommission[]
   loyaltyRedemptions       LoyaltyRedemption[]
-  assignedToId             String?                   @map("assigned_to_id") // collections agent assignment
-  assignedTo               User?                     @relation("ContractAssignedTo", fields: [assignedToId], references: [id])
+  onlineApplication        OnlineInstallmentApplication?
+  assignedToId             String?                       @map("assigned_to_id") // collections agent assignment
+  assignedTo               User?                         @relation("ContractAssignedTo", fields: [assignedToId], references: [id])
 
   // Collections tracking fields (Phase 5)
-  collectionNotes  String?   @map("collection_notes") // internal notes from collector
-  lastContactDate  DateTime? @map("last_contact_date") // last time customer was contacted
+  collectionNotes String?   @map("collection_notes") // internal notes from collector
+  lastContactDate DateTime? @map("last_contact_date") // last time customer was contacted
 
   // MDM (Mobile Device Management) lock tracking
-  mdmLockedAt      DateTime? @map("mdm_locked_at")
+  mdmLockedAt DateTime? @map("mdm_locked_at")
 
   // Ads + CRM
   adsAttributions AdsAttribution[]
   crmLeads        CrmLead[]        @relation("CrmLeadContract")
 
-  dunningActions   DunningAction[]
+  dunningActions DunningAction[]
 
   // Shop warranty tracking
   shopWarrantyStartDate DateTime? @map("shop_warranty_start_date")
@@ -752,7 +797,7 @@ model Contract {
   // Defaults to activatedAt/createdAt if not set
   deviceReceivedAt DateTime? @map("device_received_at")
 
-  warrantyAudits WarrantyAuditLog[] @relation("WarrantyAuditContract")
+  warrantyAudits        WarrantyAuditLog[]        @relation("WarrantyAuditContract")
   badDebtWriteOffAudits BadDebtWriteOffAuditLog[] @relation("BadDebtWriteOffContract")
 
   @@index([customerId])
@@ -857,45 +902,45 @@ enum RefundStatus {
 }
 
 model Refund {
-  id             String       @id @default(uuid())
-  paymentId      String       @map("payment_id")
-  contractId     String       @map("contract_id")
-  amount         Decimal      @db.Decimal(12, 2)
-  reason         String // staff-entered justification
-  status         RefundStatus @default(REQUESTED)
+  id         String       @id @default(uuid())
+  paymentId  String       @map("payment_id")
+  contractId String       @map("contract_id")
+  amount     Decimal      @db.Decimal(12, 2)
+  reason     String // staff-entered justification
+  status     RefundStatus @default(REQUESTED)
 
-  requestedById  String       @map("requested_by_id")
-  requestedAt    DateTime     @default(now()) @map("requested_at")
+  requestedById String   @map("requested_by_id")
+  requestedAt   DateTime @default(now()) @map("requested_at")
 
   /// 2-person SoD: must differ from requestedById. Enforced in service layer.
-  approvedById   String?      @map("approved_by_id")
-  approvedAt     DateTime?    @map("approved_at")
+  approvedById String?   @map("approved_by_id")
+  approvedAt   DateTime? @map("approved_at")
 
-  rejectedById   String?      @map("rejected_by_id")
-  rejectedAt     DateTime?    @map("rejected_at")
-  rejectedReason String?      @map("rejected_reason")
+  rejectedById   String?   @map("rejected_by_id")
+  rejectedAt     DateTime? @map("rejected_at")
+  rejectedReason String?   @map("rejected_reason")
 
   /// Set after the bank confirms the reversal. bankReversalRef is whatever
   /// reference number the bank's call centre gives (keep as string — formats
   /// vary by provider and by channel).
-  bankReversalRef String?     @map("bank_reversal_ref")
-  bankReversalAt  DateTime?   @map("bank_reversal_at")
-  bankReversalNotes String?   @map("bank_reversal_notes")
+  bankReversalRef      String?   @map("bank_reversal_ref")
+  bankReversalAt       DateTime? @map("bank_reversal_at")
+  bankReversalNotes    String?   @map("bank_reversal_notes")
   /// T1-C8: once bankReversalRef is first written, this row is frozen.
   /// Any subsequent attempt to mutate bankReversalRef / bankReversalAt is
   /// rejected in the service layer. Prevents staff from silently editing
   /// the bank evidence after the fact (reg auditors care about this).
   bankReversalLockedAt DateTime? @map("bank_reversal_locked_at")
-  failureReason   String?     @map("failure_reason")
+  failureReason        String?   @map("failure_reason")
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  payment     Payment  @relation(fields: [paymentId], references: [id], onDelete: Restrict)
-  requestedBy User     @relation("RefundRequestedBy", fields: [requestedById], references: [id])
-  approvedBy  User?    @relation("RefundApprovedBy", fields: [approvedById], references: [id])
-  rejectedBy  User?    @relation("RefundRejectedBy", fields: [rejectedById], references: [id])
+  payment     Payment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  requestedBy User    @relation("RefundRequestedBy", fields: [requestedById], references: [id])
+  approvedBy  User?   @relation("RefundApprovedBy", fields: [approvedById], references: [id])
+  rejectedBy  User?   @relation("RefundRejectedBy", fields: [rejectedById], references: [id])
 
   @@index([paymentId])
   @@index([contractId])
@@ -911,29 +956,29 @@ model Refund {
 // ============================================================
 
 model Supplier {
-  id             String       @id @default(uuid())
+  id              String       @id @default(uuid())
   /// Entity type: JURISTIC = บริษัท/นิติบุคคล, INDIVIDUAL = บุคคลธรรมดา
-  type           SupplierType @default(JURISTIC)
-  name           String
-  contactName    String?      @map("contact_name")
-  contactPhone   String?      @map("contact_phone")
-  contactPosition String?     @map("contact_position")
-  nickname       String?
+  type            SupplierType @default(JURISTIC)
+  name            String
+  contactName     String?      @map("contact_name")
+  contactPhone    String?      @map("contact_phone")
+  contactPosition String?      @map("contact_position")
+  nickname        String?
   /// Salutation for INDIVIDUAL type (นาย/นาง/นางสาว/คุณ)
-  titleName      String?      @map("title_name")
+  titleName       String?      @map("title_name")
   /// 5-digit branch code for JURISTIC type. "00000" = สำนักงานใหญ่. Required on tax invoices for VAT registrants.
-  branchCode     String?      @map("branch_code")
-  phone          String
-  phoneSecondary String?      @map("phone_secondary")
-  lineId         String?      @map("line_id")
-  address        String?
-  taxId          String?      @map("tax_id")
-  hasVat         Boolean      @default(false) @map("has_vat")
-  notes          String?
-  isActive       Boolean      @default(true) @map("is_active")
-  createdAt      DateTime  @default(now()) @map("created_at")
-  updatedAt      DateTime  @updatedAt @map("updated_at")
-  deletedAt      DateTime? @map("deleted_at")
+  branchCode      String?      @map("branch_code")
+  phone           String
+  phoneSecondary  String?      @map("phone_secondary")
+  lineId          String?      @map("line_id")
+  address         String?
+  taxId           String?      @map("tax_id")
+  hasVat          Boolean      @default(false) @map("has_vat")
+  notes           String?
+  isActive        Boolean      @default(true) @map("is_active")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+  deletedAt       DateTime?    @map("deleted_at")
 
   products       Product[]
   purchaseOrders PurchaseOrder[]
@@ -963,38 +1008,38 @@ model SupplierPaymentMethod {
 }
 
 model PurchaseOrder {
-  id            String          @id @default(uuid())
-  poNumber      String          @unique @map("po_number")
-  supplierId    String          @map("supplier_id")
-  orderDate     DateTime        @map("order_date")
-  expectedDate  DateTime?       @map("expected_date")
-  dueDate       DateTime?       @map("due_date")
-  status        POStatus        @default(DRAFT)
-  totalAmount      Decimal         @map("total_amount") @db.Decimal(12, 2)
-  discount         Decimal         @default(0) @db.Decimal(12, 2) // ส่วนลดก่อน VAT
-  discountAfterVat Decimal         @default(0) @map("discount_after_vat") @db.Decimal(12, 2)
-  vatAmount        Decimal         @default(0) @map("vat_amount") @db.Decimal(12, 2)
-  netAmount        Decimal         @default(0) @map("net_amount") @db.Decimal(12, 2)
-  paymentStatus POPaymentStatus @default(UNPAID) @map("payment_status")
-  paymentMethod String?         @map("payment_method")
-  paidAmount    Decimal         @default(0) @map("paid_amount") @db.Decimal(12, 2)
-  paymentNotes  String?         @map("payment_notes")
-  attachments   String[]        @default([])
-  notes         String?
-  stockCheckRef String?         @map("stock_check_ref") // Reference to stock alert that triggered this PO
-  rejectReason  String?         @map("reject_reason") // Reason for rejection by Owner
+  id                  String          @id @default(uuid())
+  poNumber            String          @unique @map("po_number")
+  supplierId          String          @map("supplier_id")
+  orderDate           DateTime        @map("order_date")
+  expectedDate        DateTime?       @map("expected_date")
+  dueDate             DateTime?       @map("due_date")
+  status              POStatus        @default(DRAFT)
+  totalAmount         Decimal         @map("total_amount") @db.Decimal(12, 2)
+  discount            Decimal         @default(0) @db.Decimal(12, 2) // ส่วนลดก่อน VAT
+  discountAfterVat    Decimal         @default(0) @map("discount_after_vat") @db.Decimal(12, 2)
+  vatAmount           Decimal         @default(0) @map("vat_amount") @db.Decimal(12, 2)
+  netAmount           Decimal         @default(0) @map("net_amount") @db.Decimal(12, 2)
+  paymentStatus       POPaymentStatus @default(UNPAID) @map("payment_status")
+  paymentMethod       String?         @map("payment_method")
+  paidAmount          Decimal         @default(0) @map("paid_amount") @db.Decimal(12, 2)
+  paymentNotes        String?         @map("payment_notes")
+  attachments         String[]        @default([])
+  notes               String?
+  stockCheckRef       String?         @map("stock_check_ref") // Reference to stock alert that triggered this PO
+  rejectReason        String?         @map("reject_reason") // Reason for rejection by Owner
   /// T5-C18: Snapshot of supplier's primary bank at the time this PO was
   /// created. Supplier.update() is blocked from rewriting bank details while
   /// any non-CANCELLED PO still points at this supplier, so these columns
   /// are the single source of truth for "where the money was supposed to go"
   /// on historical POs even if the supplier record is later edited.
-  bankAccountSnapshot String?   @map("bank_account_snapshot")
-  bankNameSnapshot    String?   @map("bank_name_snapshot")
-  createdById   String          @map("created_by_id")
-  approvedById  String?         @map("approved_by_id")
-  createdAt     DateTime        @default(now()) @map("created_at")
-  updatedAt     DateTime        @updatedAt @map("updated_at")
-  deletedAt     DateTime?       @map("deleted_at")
+  bankAccountSnapshot String?         @map("bank_account_snapshot")
+  bankNameSnapshot    String?         @map("bank_name_snapshot")
+  createdById         String          @map("created_by_id")
+  approvedById        String?         @map("approved_by_id")
+  createdAt           DateTime        @default(now()) @map("created_at")
+  updatedAt           DateTime        @updatedAt @map("updated_at")
+  deletedAt           DateTime?       @map("deleted_at")
 
   supplier   Supplier @relation(fields: [supplierId], references: [id])
   createdBy  User     @relation("POCreatedBy", fields: [createdById], references: [id])
@@ -1013,17 +1058,17 @@ model PurchaseOrder {
 }
 
 model POItem {
-  id             String   @id @default(uuid())
-  poId           String   @map("po_id")
+  id             String    @id @default(uuid())
+  poId           String    @map("po_id")
   brand          String?
   model          String?
   color          String?
   storage        String?
   category       String?
-  accessoryType  String?  @map("accessory_type")
-  accessoryBrand String?  @map("accessory_brand")
+  accessoryType  String?   @map("accessory_type")
+  accessoryBrand String?   @map("accessory_brand")
   quantity       Int
-  unitPrice      Decimal  @map("unit_price") @db.Decimal(12, 2)
+  unitPrice      Decimal   @map("unit_price") @db.Decimal(12, 2)
   receivedQty    Int       @default(0) @map("received_qty")
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
@@ -1081,7 +1126,7 @@ model Product {
   /// sales logic uses it to force OWNER approval + customer disclosure
   /// before the phone can be resold, even though the current `status` is
   /// IN_STOCK again.
-  wasPreviouslyDamaged Boolean   @default(false) @map("was_previously_damaged")
+  wasPreviouslyDamaged   Boolean   @default(false) @map("was_previously_damaged")
   /// Timestamp of the last FOUND restoration from a terminal damage status.
   /// Used by audit + Sentry to flag resale attempts within the suspicious
   /// "damaged-then-resurrected" window.
@@ -1113,13 +1158,18 @@ model Product {
   tradeIns             TradeIn[]
 
   // === Online shop additions (Phase 1) ===
-  conditionGrade    String?              @map("condition_grade")    // A, B, C for used phones
-  gallery           String[]             @default([])               // catalog photo URLs
-  gallery360        String[]             @default([])               // 360° frame URLs (24-36 frames)
+  conditionGrade    String?              @map("condition_grade") // A, B, C for used phones
+  gallery           String[]             @default([]) // catalog photo URLs
+  gallery360        String[]             @default([]) // 360° frame URLs (24-36 frames)
   isOnlineVisible   Boolean              @default(true) @map("is_online_visible")
   onlineDescription String?              @map("online_description") @db.Text
   reservations      ProductReservation[]
   onlineOrders      OnlineOrder[]
+
+  // === Online shop additions (Phase 3) ===
+  savingPlansTargetingThis SavingPlan[]                   @relation("SavingPlanTarget")
+  reviews                  Review[]
+  onlineApplications       OnlineInstallmentApplication[]
 
   @@index([branchId])
   @@index([status])
@@ -1594,7 +1644,7 @@ model DunningRule {
   updatedAt          DateTime       @updatedAt @map("updated_at")
   deletedAt          DateTime?      @map("deleted_at")
 
-  actions            DunningAction[]
+  actions DunningAction[]
 
   @@index([triggerDay])
   @@index([isActive])
@@ -1602,24 +1652,24 @@ model DunningRule {
 }
 
 model DunningAction {
-  id               String              @id @default(uuid())
-  dunningRuleId    String              @map("dunning_rule_id")
-  dunningRule      DunningRule         @relation(fields: [dunningRuleId], references: [id], onDelete: Restrict)
-  contractId       String              @map("contract_id")
-  contract         Contract            @relation(fields: [contractId], references: [id], onDelete: Restrict)
-  paymentId        String?             @map("payment_id")
-  payment          Payment?            @relation(fields: [paymentId], references: [id], onDelete: Restrict)
-  channel          DunningChannel
-  status           DunningActionStatus @default(PENDING)
-  messageContent   String?             @map("message_content")
-  result           String?
-  paymentLinkUrl   String?             @map("payment_link_url")
-  executedAt       DateTime?           @map("executed_at")
-  executedById     String?             @map("executed_by_id")
-  executedBy       User?               @relation("DunningActionExecutor", fields: [executedById], references: [id])
-  createdAt        DateTime            @default(now()) @map("created_at")
-  updatedAt        DateTime            @updatedAt @map("updated_at")
-  deletedAt        DateTime?           @map("deleted_at")
+  id             String              @id @default(uuid())
+  dunningRuleId  String              @map("dunning_rule_id")
+  dunningRule    DunningRule         @relation(fields: [dunningRuleId], references: [id], onDelete: Restrict)
+  contractId     String              @map("contract_id")
+  contract       Contract            @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  paymentId      String?             @map("payment_id")
+  payment        Payment?            @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  channel        DunningChannel
+  status         DunningActionStatus @default(PENDING)
+  messageContent String?             @map("message_content")
+  result         String?
+  paymentLinkUrl String?             @map("payment_link_url")
+  executedAt     DateTime?           @map("executed_at")
+  executedById   String?             @map("executed_by_id")
+  executedBy     User?               @relation("DunningActionExecutor", fields: [executedById], references: [id])
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
+  deletedAt      DateTime?           @map("deleted_at")
 
   @@unique([dunningRuleId, contractId, paymentId])
   @@index([contractId])
@@ -1629,17 +1679,17 @@ model DunningAction {
 }
 
 model AuditLog {
-  id        String   @id @default(uuid())
-  userId    String   @map("user_id")
-  action    String // CREATE, UPDATE, DELETE, EXCHANGE, REPOSSESSION, etc.
-  entity    String // e.g. contract, payment, product
-  entityId  String   @map("entity_id")
-  oldValue  Json?    @map("old_value")
-  newValue  Json?    @map("new_value")
-  ipAddress String?  @map("ip_address")
-  userAgent String?  @map("user_agent")
-  duration  Int? // request duration in ms
-  createdAt DateTime @default(now()) @map("created_at")
+  id         String    @id @default(uuid())
+  userId     String    @map("user_id")
+  action     String // CREATE, UPDATE, DELETE, EXCHANGE, REPOSSESSION, etc.
+  entity     String // e.g. contract, payment, product
+  entityId   String    @map("entity_id")
+  oldValue   Json?     @map("old_value")
+  newValue   Json?     @map("new_value")
+  ipAddress  String?   @map("ip_address")
+  userAgent  String?   @map("user_agent")
+  duration   Int? // request duration in ms
+  createdAt  DateTime  @default(now()) @map("created_at")
   // T2-C4 — soft archive instead of hard delete so the row remains
   // queryable for forensics until the 7-year legal retention is actually
   // hit. A Postgres trigger (installed by migration 20260520300000)
@@ -1650,9 +1700,9 @@ model AuditLog {
   /// over its own content + the previous row's rowHash. Tampering with any
   /// row in the middle breaks every row after it. Verify via
   /// audit.service.verifyChain() — runs as a nightly cron and on-demand.
-  sequenceNumber BigInt?  @map("sequence_number")
-  rowHash        String?  @map("row_hash") // hex-encoded SHA-256
-  prevRowHash    String?  @map("prev_row_hash")
+  sequenceNumber BigInt? @map("sequence_number")
+  rowHash        String? @map("row_hash") // hex-encoded SHA-256
+  prevRowHash    String? @map("prev_row_hash")
 
   user User @relation(fields: [userId], references: [id])
 
@@ -1728,54 +1778,185 @@ model Sale {
 }
 
 model OnlineOrder {
-  id                 String                @id @default(uuid())
-  orderNumber        String                @unique @map("order_number")
-  customerId         String                @map("customer_id")
-  customer           Customer              @relation(fields: [customerId], references: [id])
-  productId          String                @map("product_id")
-  product            Product               @relation(fields: [productId], references: [id])
-  reservationId      String                @unique @map("reservation_id")
-  reservation        ProductReservation    @relation(fields: [reservationId], references: [id])
+  id            String             @id @default(uuid())
+  orderNumber   String             @unique @map("order_number")
+  customerId    String             @map("customer_id")
+  customer      Customer           @relation(fields: [customerId], references: [id])
+  productId     String             @map("product_id")
+  product       Product            @relation(fields: [productId], references: [id])
+  reservationId String             @unique @map("reservation_id")
+  reservation   ProductReservation @relation(fields: [reservationId], references: [id])
 
-  productPrice       Decimal               @map("product_price") @db.Decimal(12, 2)
-  shippingFee        Decimal               @default(0) @map("shipping_fee") @db.Decimal(12, 2)
-  promoCode          String?               @map("promo_code")
-  promoDiscount      Decimal               @default(0) @map("promo_discount") @db.Decimal(12, 2)
-  promotionUsageId   String?               @map("promotion_usage_id")
-  loyaltyPointsUsed  Int                   @default(0) @map("loyalty_points_used")
-  loyaltyDiscount    Decimal               @default(0) @map("loyalty_discount") @db.Decimal(12, 2)
-  totalAmount        Decimal               @map("total_amount") @db.Decimal(12, 2)
+  productPrice      Decimal @map("product_price") @db.Decimal(12, 2)
+  shippingFee       Decimal @default(0) @map("shipping_fee") @db.Decimal(12, 2)
+  promoCode         String? @map("promo_code")
+  promoDiscount     Decimal @default(0) @map("promo_discount") @db.Decimal(12, 2)
+  promotionUsageId  String? @map("promotion_usage_id")
+  loyaltyPointsUsed Int     @default(0) @map("loyalty_points_used")
+  loyaltyDiscount   Decimal @default(0) @map("loyalty_discount") @db.Decimal(12, 2)
+  totalAmount       Decimal @map("total_amount") @db.Decimal(12, 2)
 
-  shippingMethod     OnlineShippingMethod  @map("shipping_method")
-  shippingAddress    Json?                 @map("shipping_address")
-  trackingNumber     String?               @map("tracking_number")
-  shippedAt          DateTime?             @map("shipped_at")
-  deliveredAt        DateTime?             @map("delivered_at")
+  shippingMethod  OnlineShippingMethod @map("shipping_method")
+  shippingAddress Json?                @map("shipping_address")
+  trackingNumber  String?              @map("tracking_number")
+  shippedAt       DateTime?            @map("shipped_at")
+  deliveredAt     DateTime?            @map("delivered_at")
 
-  paymentChannel     OnlinePaymentChannel  @map("payment_channel")
-  paymentLinkId      String?               @unique @map("payment_link_id")
-  paymentLink        PaymentLink?          @relation(fields: [paymentLinkId], references: [id])
-  paymentRef         String?               @map("payment_ref")
-  paidAt             DateTime?             @map("paid_at")
-  bankSlipUrl        String?               @map("bank_slip_url")
-  bankConfirmedById  String?               @map("bank_confirmed_by_id")
+  paymentChannel    OnlinePaymentChannel @map("payment_channel")
+  paymentLinkId     String?              @unique @map("payment_link_id")
+  paymentLink       PaymentLink?         @relation(fields: [paymentLinkId], references: [id])
+  paymentRef        String?              @map("payment_ref")
+  paidAt            DateTime?            @map("paid_at")
+  bankSlipUrl       String?              @map("bank_slip_url")
+  bankConfirmedById String?              @map("bank_confirmed_by_id")
 
-  status             OnlineOrderStatus     @default(DRAFT)
-  cancelReason       String?               @map("cancel_reason")
-  cancelledAt        DateTime?             @map("cancelled_at")
+  status       OnlineOrderStatus @default(DRAFT)
+  cancelReason String?           @map("cancel_reason")
+  cancelledAt  DateTime?         @map("cancelled_at")
 
-  saleId             String?               @unique @map("sale_id")
-  sale               Sale?                 @relation(fields: [saleId], references: [id])
+  saleId String? @unique @map("sale_id")
+  sale   Sale?   @relation(fields: [saleId], references: [id])
 
-  createdAt          DateTime              @default(now()) @map("created_at")
-  updatedAt          DateTime              @updatedAt @map("updated_at")
-  deletedAt          DateTime?             @map("deleted_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
 
   @@index([customerId])
   @@index([status])
   @@index([createdAt])
   @@index([orderNumber])
   @@map("online_orders")
+}
+
+// ============================================================
+// PHASE 3 — ONLINE INSTALLMENT APPLICATION
+// ============================================================
+
+model OnlineInstallmentApplication {
+  id                String              @id @default(uuid())
+  applicationNumber String              @unique @map("application_number")
+  customerId        String?             @map("customer_id")
+  customer          Customer?           @relation(fields: [customerId], references: [id])
+  productId         String              @map("product_id")
+  product           Product             @relation(fields: [productId], references: [id])
+  reservationId     String?             @unique @map("reservation_id")
+  reservation       ProductReservation? @relation("ApplicationReservation", fields: [reservationId], references: [id])
+
+  fullName   String @map("full_name")
+  phone      String
+  nationalId String @map("national_id")
+
+  proposedDownPayment    Decimal @map("proposed_down_payment") @db.Decimal(12, 2)
+  proposedTotalMonths    Int     @map("proposed_total_months")
+  proposedMonthlyPayment Decimal @map("proposed_monthly_payment") @db.Decimal(12, 2)
+
+  lineUserId String? @map("line_user_id")
+  notes      String? @db.Text
+
+  status       ApplicationStatus @default(SUBMITTED)
+  scheduledAt  DateTime?         @map("scheduled_at")
+  reviewedAt   DateTime?         @map("reviewed_at")
+  reviewedById String?           @map("reviewed_by_id")
+  rejectReason String?           @map("reject_reason")
+  contractId   String?           @unique @map("contract_id")
+  contract     Contract?         @relation(fields: [contractId], references: [id])
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@index([phone])
+  @@index([status])
+  @@index([customerId])
+  @@index([createdAt])
+  @@map("online_installment_applications")
+}
+
+// ============================================================
+// PHASE 3 — SAVING PLAN (ออมดาวน์)
+// ============================================================
+
+model SavingPlan {
+  id         String   @id @default(uuid())
+  planNumber String   @unique @map("plan_number")
+  customerId String   @map("customer_id")
+  customer   Customer @relation(fields: [customerId], references: [id])
+
+  targetProductModel String?  @map("target_product_model")
+  targetProductId    String?  @map("target_product_id")
+  targetProduct      Product? @relation("SavingPlanTarget", fields: [targetProductId], references: [id])
+  targetAmount       Decimal  @map("target_amount") @db.Decimal(12, 2)
+
+  monthlyAmount  Decimal @map("monthly_amount") @db.Decimal(12, 2)
+  durationMonths Int     @map("duration_months")
+  totalSaved     Decimal @default(0) @map("total_saved") @db.Decimal(12, 2)
+
+  status              SavingPlanStatus @default(ACTIVE)
+  startedAt           DateTime         @map("started_at")
+  nextPaymentDueAt    DateTime?        @map("next_payment_due_at")
+  completedAt         DateTime?        @map("completed_at")
+  cancelledAt         DateTime?        @map("cancelled_at")
+  appliedToContractId String?          @map("applied_to_contract_id")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  payments     SavingPlanPayment[]
+  paymentLinks PaymentLink[]
+
+  @@index([customerId])
+  @@index([status])
+  @@index([nextPaymentDueAt])
+  @@map("saving_plans")
+}
+
+model SavingPlanPayment {
+  id            String     @id @default(uuid())
+  savingPlanId  String     @map("saving_plan_id")
+  savingPlan    SavingPlan @relation(fields: [savingPlanId], references: [id])
+  amount        Decimal    @db.Decimal(12, 2)
+  paidAt        DateTime   @map("paid_at")
+  paymentMethod String     @map("payment_method")
+  paymentRef    String?    @map("payment_ref")
+  paymentLinkId String?    @unique @map("payment_link_id")
+  createdAt     DateTime   @default(now()) @map("created_at")
+
+  @@index([savingPlanId])
+  @@index([paidAt])
+  @@map("saving_plan_payments")
+}
+
+// ============================================================
+// PHASE 3 — PRODUCT REVIEW (verified purchase)
+// ============================================================
+
+model Review {
+  id         String   @id @default(uuid())
+  productId  String   @map("product_id")
+  product    Product  @relation(fields: [productId], references: [id])
+  customerId String   @map("customer_id")
+  customer   Customer @relation(fields: [customerId], references: [id])
+
+  rating         Int
+  title          String?
+  comment        String? @db.Text
+  verified       Boolean @default(false)
+  verifiedSource String? @map("verified_source")
+
+  status        ReviewStatus @default(PUBLISHED)
+  hiddenReason  String?      @map("hidden_reason")
+  moderatedById String?      @map("moderated_by_id")
+  moderatedAt   DateTime?    @map("moderated_at")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@unique([productId, customerId])
+  @@index([productId, status])
+  @@index([customerId])
+  @@map("reviews")
 }
 
 // ============================================================
@@ -1874,9 +2055,9 @@ model CreditCheck {
   overriddenById String?            @map("overridden_by_id")
   overrideReason String?            @map("override_reason")
 
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
-  deletedAt   DateTime? @map("deleted_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
 
   contract     Contract? @relation(fields: [contractId], references: [id])
   customer     Customer  @relation(fields: [customerId], references: [id])
@@ -2073,24 +2254,24 @@ model PasswordResetToken {
 }
 
 model InviteToken {
-  id        String    @id @default(uuid())
-  token     String    @unique // SHA-256 hash of raw token
-  email     String
-  role      UserRole
-  branchId  String?   @map("branch_id")
-  invitedBy String    @map("invited_by")
-  expiresAt DateTime  @map("expires_at")
-  usedAt    DateTime? @map("used_at")
+  id           String    @id @default(uuid())
+  token        String    @unique // SHA-256 hash of raw token
+  email        String
+  role         UserRole
+  branchId     String?   @map("branch_id")
+  invitedBy    String    @map("invited_by")
+  expiresAt    DateTime  @map("expires_at")
+  usedAt       DateTime? @map("used_at")
   /// T7-C6: bcrypt hash of a 6-digit OTP sent through a second channel (SMS
   /// to the invited user's phone). Email carries the link only — if the
   /// email is forwarded or the mailbox is compromised, the attacker still
   /// can't complete signup without the OTP from phone.
-  otpHash   String?   @map("otp_hash")
+  otpHash      String?   @map("otp_hash")
   otpExpiresAt DateTime? @map("otp_expires_at")
-  otpAttempts  Int      @default(0) @map("otp_attempts")
-  phone     String? // invitee phone for SMS delivery
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
+  otpAttempts  Int       @default(0) @map("otp_attempts")
+  phone        String? // invitee phone for SMS delivery
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
 
   branch  Branch? @relation(fields: [branchId], references: [id])
   inviter User    @relation(fields: [invitedBy], references: [id])
@@ -2443,23 +2624,26 @@ enum CreditCheckType {
 }
 
 model PaymentLink {
-  id         String            @id @default(uuid())
-  token      String            @unique
-  contractId String?           @map("contract_id")
-  paymentId  String?           @map("payment_id")
-  amount     Decimal           @db.Decimal(12, 2)
-  status     PaymentLinkStatus @default(ACTIVE)
-  expiresAt  DateTime          @map("expires_at")
-  usedAt     DateTime?         @map("used_at")
-  createdAt  DateTime          @default(now()) @map("created_at")
-  deletedAt  DateTime?         @map("deleted_at")
+  id           String            @id @default(uuid())
+  token        String            @unique
+  contractId   String?           @map("contract_id")
+  paymentId    String?           @map("payment_id")
+  savingPlanId String?           @map("saving_plan_id")
+  amount       Decimal           @db.Decimal(12, 2)
+  status       PaymentLinkStatus @default(ACTIVE)
+  expiresAt    DateTime          @map("expires_at")
+  usedAt       DateTime?         @map("used_at")
+  createdAt    DateTime          @default(now()) @map("created_at")
+  deletedAt    DateTime?         @map("deleted_at")
 
   contract    Contract?    @relation(fields: [contractId], references: [id])
   payment     Payment?     @relation(fields: [paymentId], references: [id])
+  savingPlan  SavingPlan?  @relation(fields: [savingPlanId], references: [id])
   onlineOrder OnlineOrder?
 
   @@index([token])
   @@index([contractId])
+  @@index([savingPlanId])
   @@index([status])
   @@index([deletedAt])
   @@map("payment_links")
@@ -2517,12 +2701,12 @@ model SlipFingerprint {
 /// who clicked "approve" and from which IP/user-agent. Retention handled by
 /// the existing AuditLog retention cron if ever needed.
 model FeeWaiverApproval {
-  id               String   @id @default(uuid())
-  waiverPaymentId  String   @map("waiver_payment_id")
-  approverId       String   @map("approver_id")
-  approvedAt       DateTime @default(now()) @map("approved_at")
-  ipAddress        String?  @map("ip_address")
-  userAgent        String?  @map("user_agent") @db.Text
+  id              String   @id @default(uuid())
+  waiverPaymentId String   @map("waiver_payment_id")
+  approverId      String   @map("approver_id")
+  approvedAt      DateTime @default(now()) @map("approved_at")
+  ipAddress       String?  @map("ip_address")
+  userAgent       String?  @map("user_agent") @db.Text
 
   @@index([waiverPaymentId])
   @@index([approverId])
@@ -2607,11 +2791,11 @@ model ChartOfAccount {
 
   // ── การ sync กับ PEAK (ระบบบัญชีภายนอก) ──
   peakAccountCode String? @map("peak_account_code") // รหัสบัญชีฝั่ง PEAK (สำหรับ export journal)
-  peakAccountId   String? @map("peak_account_id")   // ID บัญชีบน PEAK API
+  peakAccountId   String? @map("peak_account_id") // ID บัญชีบน PEAK API
 
-  createdAt    DateTime     @default(now()) @map("created_at")
-  updatedAt    DateTime     @updatedAt @map("updated_at")
-  deletedAt    DateTime?    @map("deleted_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
 
   @@index([accountGroup])
   @@index([code])
@@ -2645,11 +2829,13 @@ model JournalEntry {
   deletedAt     DateTime?          @map("deleted_at")
   peakSyncedAt  DateTime?          @map("peak_synced_at") // When synced to PEAK accounting
 
-  company   CompanyInfo   @relation(fields: [companyId], references: [id])
-  lines     JournalLine[]
-  createdBy User          @relation("JournalCreatedBy", fields: [createdById], references: [id])
-  postedBy  User?         @relation("JournalPostedBy", fields: [postedById], references: [id])
+  company       CompanyInfo           @relation(fields: [companyId], references: [id])
+  lines         JournalLine[]
+  createdBy     User                  @relation("JournalCreatedBy", fields: [createdById], references: [id])
+  postedBy      User?                 @relation("JournalPostedBy", fields: [postedById], references: [id])
   postAuditLogs JournalPostAuditLog[]
+  // Partial unique index enforced via migration (CREATE UNIQUE INDEX ... WHERE reference_type IS NOT NULL)
+  // Prisma cannot express partial @@unique; see migration 20260428010000_journal_entries_ref_unique
 
   @@index([companyId])
   @@index([entryDate])
@@ -2657,8 +2843,6 @@ model JournalEntry {
   @@index([referenceType, referenceId])
   @@index([deletedAt])
   @@map("journal_entries")
-  // Partial unique index enforced via migration (CREATE UNIQUE INDEX ... WHERE reference_type IS NOT NULL)
-  // Prisma cannot express partial @@unique; see migration 20260428010000_journal_entries_ref_unique
 }
 
 /// T2-C14: Immutable audit log of every DRAFT→POSTED transition on
@@ -2850,14 +3034,14 @@ model InterCompanyTransaction {
   status     InterCompanyTransactionStatus @default(PENDING)
 
   // Entity identification (legacy string fields — deprecated, use company FKs)
-  fromEntity    String  @map("from_entity") // e.g. "BESTCHOICE FINANCE"
-  toEntity      String  @map("to_entity") // e.g. "BESTCHOICE SHOP"
+  fromEntity    String @map("from_entity") // e.g. "BESTCHOICE FINANCE"
+  toEntity      String @map("to_entity") // e.g. "BESTCHOICE SHOP"
   /// T5-C21: NOT NULL — the creating service resolves these from companyCode
   /// and throws ExplicitThaiError if either company record is missing. The
   /// SHOP and FINANCE CompanyInfo rows are seeded during migration so that
   /// fresh environments never hit the "company not found" path.
-  fromCompanyId String  @map("from_company_id")
-  toCompanyId   String  @map("to_company_id")
+  fromCompanyId String @map("from_company_id")
+  toCompanyId   String @map("to_company_id")
 
   // Financial fields
   principal     Decimal @db.Decimal(12, 2) // ยอดจัดไฟแนนซ์ (sellingPrice - downPayment)
@@ -2881,9 +3065,9 @@ model InterCompanyTransaction {
   updatedAt    DateTime  @updatedAt @map("updated_at")
   deletedAt    DateTime? @map("deleted_at")
 
-  sale        Sale         @relation(fields: [saleId], references: [id])
-  contract    Contract?    @relation(fields: [contractId], references: [id])
-  branch      Branch       @relation(fields: [branchId], references: [id])
+  sale        Sale        @relation(fields: [saleId], references: [id])
+  contract    Contract?   @relation(fields: [contractId], references: [id])
+  branch      Branch      @relation(fields: [branchId], references: [id])
   fromCompany CompanyInfo @relation("ICFromCompany", fields: [fromCompanyId], references: [id])
   toCompany   CompanyInfo @relation("ICToCompany", fields: [toCompanyId], references: [id])
 
@@ -2939,45 +3123,45 @@ model CommissionRule {
 }
 
 model SalesCommission {
-  id               String           @id @default(uuid())
-  salespersonId    String           @map("salesperson_id")
+  id                      String           @id @default(uuid())
+  salespersonId           String           @map("salesperson_id")
   /// T4-C10: Snapshot of contract.salespersonId at the moment the commission
   /// was created. If the contract is reassigned later via contracts admin,
   /// the commission stays tied to whoever actually closed the deal. Read this
   /// field (not salespersonId) when producing commission reports for payouts.
   /// Nullable for legacy rows pre-migration — backfill to salespersonId in
   /// that case.
-  snapshotSalespersonId String?     @map("snapshot_salesperson_id")
-  contractId       String?          @map("contract_id")
-  saleId           String?          @map("sale_id")
-  commissionRuleId String?          @map("commission_rule_id")
-  period           String // "YYYY-MM" for monthly grouping
-  saleAmount       Decimal          @map("sale_amount") @db.Decimal(12, 2)
-  commissionRate   Decimal          @map("commission_rate") @db.Decimal(5, 4)
-  commissionAmount Decimal          @map("commission_amount") @db.Decimal(12, 2)
-  status           CommissionStatus @default(PENDING)
-  approvedById     String?          @map("approved_by_id")
-  approvedAt       DateTime?        @map("approved_at")
-  paidAt           DateTime?        @map("paid_at")
-  paidAmount       Decimal?         @map("paid_amount") @db.Decimal(12, 2)
+  snapshotSalespersonId   String?          @map("snapshot_salesperson_id")
+  contractId              String?          @map("contract_id")
+  saleId                  String?          @map("sale_id")
+  commissionRuleId        String?          @map("commission_rule_id")
+  period                  String // "YYYY-MM" for monthly grouping
+  saleAmount              Decimal          @map("sale_amount") @db.Decimal(12, 2)
+  commissionRate          Decimal          @map("commission_rate") @db.Decimal(5, 4)
+  commissionAmount        Decimal          @map("commission_amount") @db.Decimal(12, 2)
+  status                  CommissionStatus @default(PENDING)
+  approvedById            String?          @map("approved_by_id")
+  approvedAt              DateTime?        @map("approved_at")
+  paidAt                  DateTime?        @map("paid_at")
+  paidAmount              Decimal?         @map("paid_amount") @db.Decimal(12, 2)
   // Clawback on contract default. percent is 0-100 and amount = commission_amount × percent/100.
   // Set when the referenced contract enters DEFAULTED / WRITTEN_OFF / CLOSED_BAD_DEBT.
-  clawbackAmount         Decimal?  @map("clawback_amount") @db.Decimal(12, 2)
-  clawbackPercent        Int?      @map("clawback_percent")
-  clawbackAt             DateTime? @map("clawback_at")
-  clawbackReason         String?   @map("clawback_reason")
-  monthsPaidBeforeDefault Int?     @map("months_paid_before_default")
-  notes            String?
-  createdAt        DateTime         @default(now()) @map("created_at")
-  updatedAt        DateTime         @updatedAt @map("updated_at")
-  deletedAt        DateTime?        @map("deleted_at")
+  clawbackAmount          Decimal?         @map("clawback_amount") @db.Decimal(12, 2)
+  clawbackPercent         Int?             @map("clawback_percent")
+  clawbackAt              DateTime?        @map("clawback_at")
+  clawbackReason          String?          @map("clawback_reason")
+  monthsPaidBeforeDefault Int?             @map("months_paid_before_default")
+  notes                   String?
+  createdAt               DateTime         @default(now()) @map("created_at")
+  updatedAt               DateTime         @updatedAt @map("updated_at")
+  deletedAt               DateTime?        @map("deleted_at")
 
   // T5-C19: stable version reference to the CommissionRule as it was at creation
   // time. Stored as a string (ISO timestamp of rule.updatedAt or uuid) so a
   // later rule edit doesn't silently change what this commission was based on.
   // At approve() we compare the rule's current rate to the snapshotted
   // commissionRate and reject if they diverge.
-  ruleVersionId  String?   @map("rule_version_id")
+  ruleVersionId String? @map("rule_version_id")
 
   salesperson    User            @relation("CommissionSalesperson", fields: [salespersonId], references: [id])
   contract       Contract?       @relation(fields: [contractId], references: [id])
@@ -3001,26 +3185,26 @@ model SalesCommission {
 // ============================================================
 
 enum PayoutStatus {
-  DRAFT     // สร้างแล้ว รอตรวจสอบ
-  APPROVED  // อนุมัติแล้ว รอจ่าย
-  PAID      // จ่ายแล้ว
+  DRAFT // สร้างแล้ว รอตรวจสอบ
+  APPROVED // อนุมัติแล้ว รอจ่าย
+  PAID // จ่ายแล้ว
   CANCELLED // ยกเลิก
 }
 
 model CommissionPayout {
-  id             String       @id @default(uuid())
-  salespersonId  String       @map("salesperson_id")
-  period         String       // "YYYY-MM" เดือนที่จ่าย
-  totalSales     Decimal      @map("total_sales") @db.Decimal(12, 2)
-  totalCommission Decimal     @map("total_commission") @db.Decimal(12, 2)
-  commissionCount Int         @default(0) @map("commission_count")
-  status         PayoutStatus @default(DRAFT)
-  notes          String?
+  id              String       @id @default(uuid())
+  salespersonId   String       @map("salesperson_id")
+  period          String // "YYYY-MM" เดือนที่จ่าย
+  totalSales      Decimal      @map("total_sales") @db.Decimal(12, 2)
+  totalCommission Decimal      @map("total_commission") @db.Decimal(12, 2)
+  commissionCount Int          @default(0) @map("commission_count")
+  status          PayoutStatus @default(DRAFT)
+  notes           String?
 
-  approvedById   String?   @map("approved_by_id")
-  approvedAt     DateTime? @map("approved_at")
-  paidById       String?   @map("paid_by_id")
-  paidAt         DateTime? @map("paid_at")
+  approvedById String?   @map("approved_by_id")
+  approvedAt   DateTime? @map("approved_at")
+  paidById     String?   @map("paid_by_id")
+  paidAt       DateTime? @map("paid_at")
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
@@ -3073,32 +3257,41 @@ enum TradeInStatus {
 }
 
 model TradeIn {
-  id              String        @id @default(uuid())
-  customerId      String?       @map("customer_id") // optional — walk-in seller may not be a customer
-  productId       String?       @map("product_id") // new product being purchased (optional)
-  branchId        String?       @map("branch_id") // สาขาที่รับซื้อ
-  deviceBrand     String        @map("device_brand")
-  deviceModel     String        @map("device_model")
-  deviceStorage   String?       @map("device_storage")
-  deviceColor     String?       @map("device_color")
-  deviceCondition String?       @map("device_condition") // A/B/C/D
-  imei            String?
-  estimatedValue  Decimal?      @map("estimated_value") @db.Decimal(12, 2) // ราคาประเมินเบื้องต้น
-  offeredPrice    Decimal?      @map("offered_price") @db.Decimal(12, 2) // ราคาที่เสนอ
+  id                   String                  @id @default(uuid())
+  /// Phase 3: ONLINE submissions come from bestchoicephone.app customer wizard;
+  /// OFFLINE is the existing branch walk-in flow.
+  submissionSource     TradeInSubmissionSource @default(OFFLINE) @map("submission_source")
+  /// EXCHANGE = trade-in toward a new phone. BUYBACK = pure cash-out.
+  flow                 TradeInFlow             @default(EXCHANGE) @map("flow")
+  customerNotes        String?                 @map("customer_notes") @db.Text
+  customerLineId       String?                 @map("customer_line_id")
+  photoUrls            String[]                @default([]) @map("photo_urls")
+  batteryHealth        Int?                    @map("battery_health")
+  customerId           String?                 @map("customer_id") // optional — walk-in seller may not be a customer
+  productId            String?                 @map("product_id") // new product being purchased (optional)
+  branchId             String?                 @map("branch_id") // สาขาที่รับซื้อ
+  deviceBrand          String                  @map("device_brand")
+  deviceModel          String                  @map("device_model")
+  deviceStorage        String?                 @map("device_storage")
+  deviceColor          String?                 @map("device_color")
+  deviceCondition      String?                 @map("device_condition") // A/B/C/D
+  imei                 String?
+  estimatedValue       Decimal?                @map("estimated_value") @db.Decimal(12, 2) // ราคาประเมินเบื้องต้น
+  offeredPrice         Decimal?                @map("offered_price") @db.Decimal(12, 2) // ราคาที่เสนอ
   /// Snapshot ของ TradeInValuation.basePrice ตอน appraise — ใช้คำนวณ deviation
   /// ย้อนหลังและเป็น guardrail กันการเสนอราคาเกิน ±15% จากตารางกลาง
-  basePriceAtAppraisal Decimal? @map("base_price_at_appraisal") @db.Decimal(12, 2)
+  basePriceAtAppraisal Decimal?                @map("base_price_at_appraisal") @db.Decimal(12, 2)
   /// T5-C17: Timestamp of the FIRST appraise() call that set offeredPrice.
   /// Subsequent appraise() calls with a different price are rejected unless
   /// OWNER explicitly overrides via `force: true` (audited). Protects against
   /// price drift (staff re-appraising until the customer accepts).
-  firstAppraisedAt DateTime? @map("first_appraised_at")
+  firstAppraisedAt     DateTime?               @map("first_appraised_at")
   /// T5-C17: Once true, offeredPrice is immutable except via OWNER force override.
-  appraisalLocked  Boolean   @default(false) @map("appraisal_locked")
-  agreedPrice     Decimal?      @map("agreed_price") @db.Decimal(12, 2) // ราคาที่ตกลง
-  status          TradeInStatus @default(PENDING_APPRAISAL)
-  appraisedById   String?       @map("appraised_by_id")
-  notes           String?
+  appraisalLocked      Boolean                 @default(false) @map("appraisal_locked")
+  agreedPrice          Decimal?                @map("agreed_price") @db.Decimal(12, 2) // ราคาที่ตกลง
+  status               TradeInStatus           @default(PENDING_APPRAISAL)
+  appraisedById        String?                 @map("appraised_by_id")
+  notes                String?
 
   // ─── ข้อมูลผู้ขาย (กรณี walk-in หรือ override จาก customer) ────────
   sellerName         String? @map("seller_name")
@@ -3151,6 +3344,8 @@ model TradeIn {
   @@index([createdAt])
   @@index([imei])
   @@index([branchId])
+  @@index([submissionSource, status])
+  @@index([flow])
   // FK indexes for "appraisals by staff" and "id card verifications by staff" reports
   @@index([appraisedById])
   @@index([idCardVerifiedById])
@@ -3162,13 +3357,13 @@ model TradeIn {
 // ============================================================
 
 model TradeInValuation {
-  id        String   @id @default(uuid())
-  brand     String   // ยี่ห้อ เช่น Apple, Samsung
-  model     String   // รุ่น เช่น iPhone 15 Pro
-  storage   String   // ความจุ เช่น 128GB, 256GB
-  condition String   // A, B, C, D
-  basePrice Decimal  @map("base_price") @db.Decimal(12, 2) // ราคารับซื้ออ้างอิง
-  note      String?  // หมายเหตุพิเศษ
+  id        String  @id @default(uuid())
+  brand     String // ยี่ห้อ เช่น Apple, Samsung
+  model     String // รุ่น เช่น iPhone 15 Pro
+  storage   String // ความจุ เช่น 128GB, 256GB
+  condition String // A, B, C, D
+  basePrice Decimal @map("base_price") @db.Decimal(12, 2) // ราคารับซื้ออ้างอิง
+  note      String? // หมายเหตุพิเศษ
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
@@ -3302,8 +3497,8 @@ model Todo {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  createdBy User  @relation("TodoCreatedBy", fields: [createdById], references: [id])
-  assignee  User? @relation("TodoAssignedTo", fields: [assigneeId], references: [id])
+  createdBy User          @relation("TodoCreatedBy", fields: [createdById], references: [id])
+  assignee  User?         @relation("TodoAssignedTo", fields: [assigneeId], references: [id])
   comments  TodoComment[]
 
   @@index([assigneeId])
@@ -3426,9 +3621,9 @@ model ChatRoom {
   customerId     String?   @map("customer_id")
   customer       Customer? @relation(fields: [customerId], references: [id])
 
-  channel  ChatChannel   @default(LINE_FINANCE)
+  channel  ChatChannel    @default(LINE_FINANCE)
   status   ChatRoomStatus @default(ACTIVE)
-  priority ChatPriority  @default(NORMAL)
+  priority ChatPriority   @default(NORMAL)
 
   // Platform profile (fetched from LINE/FB on first contact — not always available for TikTok)
   displayName String? @map("display_name")
@@ -3454,10 +3649,10 @@ model ChatRoom {
   handoffStaff    User?     @relation("ChatHandoffStaff", fields: [handoffStaffId], references: [id])
 
   // Lead scoring & attribution
-  leadScore         Int?              @map("lead_score")
-  leadTemperature   String?           @map("lead_temperature")
-  attributionId     String?           @map("attribution_id")
-  attribution       AdsAttribution?   @relation(fields: [attributionId], references: [id])
+  leadScore       Int?            @map("lead_score")
+  leadTemperature String?         @map("lead_temperature")
+  attributionId   String?         @map("attribution_id")
+  attribution     AdsAttribution? @relation(fields: [attributionId], references: [id])
 
   // SLA tracking
   firstResponseAt DateTime? @map("first_response_at")
@@ -3622,7 +3817,7 @@ model ChatFeedback {
   roomId       String   @map("room_id")
   room         ChatRoom @relation(fields: [roomId], references: [id])
   messageId    String?  @map("message_id")
-  rating       Int      // 0=👎, 1=👍
+  rating       Int // 0=👎, 1=👍
   feedbackText String?  @map("feedback_text") @db.Text
 
   createdAt DateTime  @default(now()) @map("created_at")
@@ -3636,22 +3831,22 @@ model ChatFeedback {
 
 /// KB improvement suggestions from handoff/feedback/auto-analysis
 model ChatKbSuggestion {
-  id                String   @id @default(uuid())
-  roomId            String   @map("room_id")
-  customerQuestion  String   @map("customer_question") @db.Text
-  staffAnswer       String?  @map("staff_answer") @db.Text
-  suggestedIntent   String   @map("suggested_intent")
-  suggestedKeywords String[] @default([]) @map("suggested_keywords")
-  suggestedTemplate String?  @map("suggested_template") @db.Text
-  source            String   // 'handoff' | 'low_rating' | 'auto_analysis'
-  status            String   @default("PENDING") // PENDING | APPROVED | REJECTED
-  reviewedById      String?  @map("reviewed_by_id")
-  reviewedBy        User?    @relation("KbSuggestionReviewer", fields: [reviewedById], references: [id])
+  id                String    @id @default(uuid())
+  roomId            String    @map("room_id")
+  customerQuestion  String    @map("customer_question") @db.Text
+  staffAnswer       String?   @map("staff_answer") @db.Text
+  suggestedIntent   String    @map("suggested_intent")
+  suggestedKeywords String[]  @default([]) @map("suggested_keywords")
+  suggestedTemplate String?   @map("suggested_template") @db.Text
+  source            String // 'handoff' | 'low_rating' | 'auto_analysis'
+  status            String    @default("PENDING") // PENDING | APPROVED | REJECTED
+  reviewedById      String?   @map("reviewed_by_id")
+  reviewedBy        User?     @relation("KbSuggestionReviewer", fields: [reviewedById], references: [id])
   reviewedAt        DateTime? @map("reviewed_at")
-  kbEntryId         String?  @map("kb_entry_id")
+  kbEntryId         String?   @map("kb_entry_id")
 
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([status])
   @@index([source])
@@ -3661,15 +3856,15 @@ model ChatKbSuggestion {
 
 /// Outbound webhook subscriptions for external partners
 model WebhookSubscription {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   name        String
   url         String
   secret      String
   events      String[]
-  isActive    Boolean  @default(true) @map("is_active")
-  createdById String   @map("created_by_id")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  isActive    Boolean   @default(true) @map("is_active")
+  createdById String    @map("created_by_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
   deletedAt   DateTime? @map("deleted_at")
 
   createdBy User @relation(fields: [createdById], references: [id])
@@ -3682,16 +3877,16 @@ model WebhookSubscription {
 
 /// Log of each webhook delivery attempt
 model WebhookDelivery {
-  id             String   @id @default(uuid())
-  subscriptionId String   @map("subscription_id")
-  eventType      String   @map("event_type")
+  id             String    @id @default(uuid())
+  subscriptionId String    @map("subscription_id")
+  eventType      String    @map("event_type")
   payload        Json
-  statusCode     Int?     @map("status_code")
-  success        Boolean  @default(false)
-  errorMessage   String?  @map("error_message") @db.Text
-  attemptCount   Int      @default(1) @map("attempt_count")
+  statusCode     Int?      @map("status_code")
+  success        Boolean   @default(false)
+  errorMessage   String?   @map("error_message") @db.Text
+  attemptCount   Int       @default(1) @map("attempt_count")
   deliveredAt    DateTime? @map("delivered_at")
-  createdAt      DateTime @default(now()) @map("created_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
 
   subscription WebhookSubscription @relation(fields: [subscriptionId], references: [id])
 
@@ -3720,7 +3915,7 @@ model ConversationTag {
   id        String   @id @default(uuid())
   roomId    String   @map("room_id")
   room      ChatRoom @relation(fields: [roomId], references: [id])
-  tag       String   // free-form tag string
+  tag       String // free-form tag string
   createdAt DateTime @default(now()) @map("created_at")
 
   @@unique([roomId, tag])
@@ -3730,15 +3925,15 @@ model ConversationTag {
 
 /// Pre-defined quick replies for staff ("/ขอบคุณ", "/ส่งสลิป" etc.)
 model CannedResponse {
-  id        String  @id @default(uuid())
-  shortcut  String  @unique // "/thanks", "/slip" — searchable command
-  title     String  // "ขอบคุณค่ะ" — display label
+  id           String  @id @default(uuid())
+  shortcut     String  @unique // "/thanks", "/slip" — searchable command
+  title        String // "ขอบคุณค่ะ" — display label
   content      String  @db.Text // full response text (may include placeholders)
   mediaUrl     String? @map("media_url") // optional image/file URL
   responseType String  @default("text") @map("response_type") // "text", "image", "flex"
   category     String? // "greeting", "payment", "general"
-  sortOrder Int     @default(0) @map("sort_order")
-  isActive  Boolean @default(true) @map("is_active")
+  sortOrder    Int     @default(0) @map("sort_order")
+  isActive     Boolean @default(true) @map("is_active")
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
@@ -3751,11 +3946,11 @@ model CannedResponse {
 
 /// Tracks staff online/offline + activity inside the chat system
 model StaffChatActivity {
-  id       String   @id @default(uuid())
-  staffId  String   @map("staff_id")
-  staff    User     @relation("StaffChatActivityUser", fields: [staffId], references: [id])
-  action   String   // "online", "offline", "join_session", "leave_session", "reply"
-  metadata Json?    // { sessionId, channel } etc.
+  id       String @id @default(uuid())
+  staffId  String @map("staff_id")
+  staff    User   @relation("StaffChatActivityUser", fields: [staffId], references: [id])
+  action   String // "online", "offline", "join_session", "leave_session", "reply"
+  metadata Json? // { sessionId, channel } etc.
 
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -3785,13 +3980,13 @@ model ChatNote {
 
 /// Snooze / follow-up reminder on a chat room
 model ChatSnooze {
-  id       String   @id @default(uuid())
-  roomId   String   @map("room_id")
-  room     ChatRoom @relation(fields: [roomId], references: [id])
-  staffId  String   @map("staff_id")
-  staff    User     @relation("ChatSnoozeStaff", fields: [staffId], references: [id])
-  remindAt DateTime @map("remind_at")
-  note     String?  @db.Text
+  id        String   @id @default(uuid())
+  roomId    String   @map("room_id")
+  room      ChatRoom @relation(fields: [roomId], references: [id])
+  staffId   String   @map("staff_id")
+  staff     User     @relation("ChatSnoozeStaff", fields: [staffId], references: [id])
+  remindAt  DateTime @map("remind_at")
+  note      String?  @db.Text
   completed Boolean  @default(false)
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -3802,13 +3997,13 @@ model ChatSnooze {
 
 /// Internal staff-only side conversation on a chat room
 model ChatSideMessage {
-  id        String   @id @default(uuid())
-  roomId    String   @map("room_id")
-  room      ChatRoom @relation(fields: [roomId], references: [id])
-  staffId   String   @map("staff_id")
-  staff     User     @relation("ChatSideMessageStaff", fields: [staffId], references: [id])
-  text      String   @db.Text
-  createdAt DateTime @default(now()) @map("created_at")
+  id        String    @id @default(uuid())
+  roomId    String    @map("room_id")
+  room      ChatRoom  @relation(fields: [roomId], references: [id])
+  staffId   String    @map("staff_id")
+  staff     User      @relation("ChatSideMessageStaff", fields: [staffId], references: [id])
+  text      String    @db.Text
+  createdAt DateTime  @default(now()) @map("created_at")
   deletedAt DateTime? @map("deleted_at")
 
   @@index([roomId])
@@ -3850,31 +4045,31 @@ model AdsCampaign {
 }
 
 model AdsAttribution {
-  id           String       @id @default(uuid())
-  campaignId   String       @map("campaign_id")
-  campaign     AdsCampaign  @relation(fields: [campaignId], references: [id])
-  customerId   String?      @map("customer_id")
-  customer     Customer?    @relation(fields: [customerId], references: [id])
-  contractId   String?      @map("contract_id")
-  contract     Contract?    @relation(fields: [contractId], references: [id])
+  id         String      @id @default(uuid())
+  campaignId String      @map("campaign_id")
+  campaign   AdsCampaign @relation(fields: [campaignId], references: [id])
+  customerId String?     @map("customer_id")
+  customer   Customer?   @relation(fields: [customerId], references: [id])
+  contractId String?     @map("contract_id")
+  contract   Contract?   @relation(fields: [contractId], references: [id])
 
   // Tracking data
-  utmSource    String?      @map("utm_source")
-  utmMedium    String?      @map("utm_medium")
-  utmCampaign  String?      @map("utm_campaign")
-  utmContent   String?      @map("utm_content")
-  referrerUrl  String?      @map("referrer_url")
+  utmSource   String? @map("utm_source")
+  utmMedium   String? @map("utm_medium")
+  utmCampaign String? @map("utm_campaign")
+  utmContent  String? @map("utm_content")
+  referrerUrl String? @map("referrer_url")
 
   // Attribution events
-  firstTouch   DateTime     @map("first_touch")
-  lastTouch    DateTime?    @map("last_touch")
-  convertedAt  DateTime?    @map("converted_at")
+  firstTouch  DateTime  @map("first_touch")
+  lastTouch   DateTime? @map("last_touch")
+  convertedAt DateTime? @map("converted_at")
 
   // Revenue (from contract)
-  revenue      Decimal?     @db.Decimal(12, 2)
-  createdAt    DateTime     @default(now()) @map("created_at")
+  revenue   Decimal? @db.Decimal(12, 2)
+  createdAt DateTime @default(now()) @map("created_at")
 
-  chatRooms  ChatRoom[]
+  chatRooms ChatRoom[]
 
   @@index([campaignId])
   @@index([customerId])
@@ -3911,40 +4106,40 @@ enum CustomerTier {
 }
 
 model CrmLead {
-  id              String       @id @default(uuid())
-  customerId      String?      @map("customer_id")
-  customer        Customer?    @relation(fields: [customerId], references: [id])
-  contractId      String?      @map("contract_id")
-  contract        Contract?    @relation("CrmLeadContract", fields: [contractId], references: [id])
+  id         String    @id @default(uuid())
+  customerId String?   @map("customer_id")
+  customer   Customer? @relation(fields: [customerId], references: [id])
+  contractId String?   @map("contract_id")
+  contract   Contract? @relation("CrmLeadContract", fields: [contractId], references: [id])
 
-  stage           LeadStage    @default(NEW_LEAD)
-  source          LeadSource
-  channel         String?      // ChatChannel value if from chat
+  stage   LeadStage  @default(NEW_LEAD)
+  source  LeadSource
+  channel String? // ChatChannel value if from chat
 
   // Assignment
-  assignedToId    String?      @map("assigned_to_id")
-  assignedTo      User?        @relation("CrmLeadAssignedTo", fields: [assignedToId], references: [id])
-  branchId        String?      @map("branch_id")
-  branch          Branch?      @relation(fields: [branchId], references: [id])
+  assignedToId String? @map("assigned_to_id")
+  assignedTo   User?   @relation("CrmLeadAssignedTo", fields: [assignedToId], references: [id])
+  branchId     String? @map("branch_id")
+  branch       Branch? @relation(fields: [branchId], references: [id])
 
   // Product interest
-  interestedProduct String?    @map("interested_product")
-  estimatedValue    Decimal?   @db.Decimal(12, 2) @map("estimated_value")
+  interestedProduct String?  @map("interested_product")
+  estimatedValue    Decimal? @map("estimated_value") @db.Decimal(12, 2)
 
   // Outcome
-  lostReason   String?         @map("lost_reason")
-  wonAt        DateTime?       @map("won_at")
-  lostAt       DateTime?       @map("lost_at")
+  lostReason String?   @map("lost_reason")
+  wonAt      DateTime? @map("won_at")
+  lostAt     DateTime? @map("lost_at")
 
   // Follow-up
-  nextFollowUp DateTime?       @map("next_follow_up")
+  nextFollowUp DateTime? @map("next_follow_up")
   notes        CrmNote[]
 
-  createdAt    DateTime         @default(now()) @map("created_at")
-  updatedAt    DateTime         @updatedAt @map("updated_at")
-  deletedAt    DateTime?        @map("deleted_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
 
-  assignmentHistory CrmLeadAssignment[] @relation("CrmLeadHistory")
+  assignmentHistory CrmLeadAssignment[]   @relation("CrmLeadHistory")
   stageHistory      CrmLeadStageHistory[] @relation("CrmLeadStageHistory")
 
   @@index([stage, assignedToId])
@@ -3961,13 +4156,13 @@ model CrmLead {
 ///
 /// Immutable audit — updatedAt/deletedAt intentionally omitted
 model CrmLeadAssignment {
-  id            String   @id @default(uuid())
-  leadId        String   @map("lead_id")
-  fromUserId    String?  @map("from_user_id") // null = first assignment
-  toUserId      String   @map("to_user_id")
-  changedById   String   @map("changed_by_id") // the manager/user who made the change
-  reason        String?
-  createdAt     DateTime @default(now()) @map("created_at")
+  id          String   @id @default(uuid())
+  leadId      String   @map("lead_id")
+  fromUserId  String?  @map("from_user_id") // null = first assignment
+  toUserId    String   @map("to_user_id")
+  changedById String   @map("changed_by_id") // the manager/user who made the change
+  reason      String?
+  createdAt   DateTime @default(now()) @map("created_at")
 
   lead      CrmLead @relation("CrmLeadHistory", fields: [leadId], references: [id], onDelete: Restrict)
   fromUser  User?   @relation("CrmLeadAssignFrom", fields: [fromUserId], references: [id], onDelete: SetNull)
@@ -3987,16 +4182,16 @@ model CrmLeadAssignment {
 ///
 /// Immutable audit — updatedAt/deletedAt intentionally omitted
 model CrmLeadStageHistory {
-  id          String    @id @default(uuid())
-  leadId      String    @map("lead_id")
-  oldStage    LeadStage? @map("old_stage")
-  newStage    LeadStage @map("new_stage")
-  stagedById  String    @map("staged_by_id")
-  reason      String?
-  stagedAt    DateTime  @default(now()) @map("staged_at")
+  id         String     @id @default(uuid())
+  leadId     String     @map("lead_id")
+  oldStage   LeadStage? @map("old_stage")
+  newStage   LeadStage  @map("new_stage")
+  stagedById String     @map("staged_by_id")
+  reason     String?
+  stagedAt   DateTime   @default(now()) @map("staged_at")
 
-  lead      CrmLead @relation("CrmLeadStageHistory", fields: [leadId], references: [id], onDelete: Restrict)
-  stagedBy  User    @relation("CrmLeadStageHistoryStagedBy", fields: [stagedById], references: [id])
+  lead     CrmLead @relation("CrmLeadStageHistory", fields: [leadId], references: [id], onDelete: Restrict)
+  stagedBy User    @relation("CrmLeadStageHistoryStagedBy", fields: [stagedById], references: [id])
 
   @@index([leadId, stagedAt])
   @@index([newStage, stagedAt])
@@ -4018,22 +4213,22 @@ model CrmNote {
 }
 
 model CustomerScore {
-  id              String       @id @default(uuid())
-  customerId      String       @unique @map("customer_id")
-  customer        Customer     @relation(fields: [customerId], references: [id])
+  id         String   @id @default(uuid())
+  customerId String   @unique @map("customer_id")
+  customer   Customer @relation(fields: [customerId], references: [id])
 
   // Score components (0-100 each)
-  paymentScore    Int          @default(50) @map("payment_score")
-  engagementScore Int          @default(50) @map("engagement_score")
-  valueScore      Int          @default(50) @map("value_score")
-  riskScore       Int          @default(50) @map("risk_score")
+  paymentScore    Int @default(50) @map("payment_score")
+  engagementScore Int @default(50) @map("engagement_score")
+  valueScore      Int @default(50) @map("value_score")
+  riskScore       Int @default(50) @map("risk_score")
 
-  totalScore   Int             @default(50) @map("total_score")
-  tier         CustomerTier    @default(STANDARD)
+  totalScore Int          @default(50) @map("total_score")
+  tier       CustomerTier @default(STANDARD)
 
-  lastCalculatedAt DateTime    @default(now()) @map("last_calculated_at")
-  createdAt        DateTime    @default(now()) @map("created_at")
-  updatedAt        DateTime    @updatedAt @map("updated_at")
+  lastCalculatedAt DateTime @default(now()) @map("last_calculated_at")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
 
   @@map("customer_scores")
 }
@@ -4048,8 +4243,8 @@ model DataAuditLog {
   id         String   @id @default(uuid())
   runId      String   @map("run_id")
   checkName  String   @map("check_name")
-  severity   String   // CRITICAL, HIGH, MEDIUM
-  status     String   // PASS, FAIL, WARN
+  severity   String // CRITICAL, HIGH, MEDIUM
+  status     String // PASS, FAIL, WARN
   count      Int      @default(0)
   details    Json?
   executedAt DateTime @default(now()) @map("executed_at")
@@ -4057,11 +4252,11 @@ model DataAuditLog {
   /// T2-C7: FAIL results need human acknowledgement. SLA is 24h for
   /// CRITICAL/HIGH — past that, an escalation cron fires a Sentry alert
   /// so the finance team is forced to engage.
-  acknowledgedAt    DateTime? @map("acknowledged_at")
-  acknowledgedById  String?   @map("acknowledged_by_id")
-  acknowledgeNotes  String?   @map("acknowledge_notes")
+  acknowledgedAt   DateTime? @map("acknowledged_at")
+  acknowledgedById String?   @map("acknowledged_by_id")
+  acknowledgeNotes String?   @map("acknowledge_notes")
 
-  createdAt  DateTime @default(now()) @map("created_at")
+  createdAt DateTime @default(now()) @map("created_at")
 
   acknowledgedBy User? @relation("DataAuditAcknowledgedBy", fields: [acknowledgedById], references: [id], onDelete: SetNull)
 
@@ -4080,9 +4275,9 @@ model DataAuditLog {
 /// Status flows: OPEN → REVIEW → CLOSED → SYNCED
 /// Once CLOSED, journals for that period are locked.
 model AccountingPeriod {
-  id        String  @id @default(uuid())
-  companyId String  @map("company_id")
-  company   CompanyInfo @relation(fields: [companyId], references: [id])
+  id        String                 @id @default(uuid())
+  companyId String                 @map("company_id")
+  company   CompanyInfo            @relation(fields: [companyId], references: [id])
   year      Int
   month     Int
   status    AccountingPeriodStatus @default(OPEN)
@@ -4115,17 +4310,17 @@ model AccountingPeriod {
 /// Stores accepted/edited/rejected AI reply pairs for model fine-tuning
 model AiTrainingPair {
   id              String    @id @default(uuid())
-  type            String    // ACCEPT, EDIT, REJECT
-  source          String    // SUGGEST_FEEDBACK, CHATCONE_IMPORT, SYSTEM_EXTRACT
+  type            String // ACCEPT, EDIT, REJECT
+  source          String // SUGGEST_FEEDBACK, CHATCONE_IMPORT, SYSTEM_EXTRACT
   roomId          String?   @map("room_id")
   room            ChatRoom? @relation(fields: [roomId], references: [id])
-  customerMessage String       @map("customer_message") @db.Text
-  aiDraft         String?      @map("ai_draft") @db.Text
-  humanEdit       String?      @map("human_edit") @db.Text
+  customerMessage String    @map("customer_message") @db.Text
+  aiDraft         String?   @map("ai_draft") @db.Text
+  humanEdit       String?   @map("human_edit") @db.Text
   intent          String?
   quality         Float?
-  usedInPrompt    Boolean      @default(false) @map("used_in_prompt")
-  createdAt       DateTime     @default(now()) @map("created_at")
+  usedInPrompt    Boolean   @default(false) @map("used_in_prompt")
+  createdAt       DateTime  @default(now()) @map("created_at")
 
   @@index([intent, quality])
   @@index([source])
@@ -4158,14 +4353,14 @@ model AiAutoReplyLog {
 ///
 /// Immutable — updatedAt/deletedAt intentionally omitted
 model WarrantyAuditLog {
-  id         String   @id @default(uuid())
-  contractId String   @map("contract_id")
-  userId     String   @map("user_id")
+  id         String    @id @default(uuid())
+  contractId String    @map("contract_id")
+  userId     String    @map("user_id")
   oldEndDate DateTime? @map("old_end_date")
   newEndDate DateTime  @map("new_end_date")
   direction  String // 'FORWARD' | 'BACKWARD' | 'INITIAL'
   reason     String
-  createdAt  DateTime @default(now()) @map("created_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
 
   user     User     @relation("WarrantyAuditUser", fields: [userId], references: [id])
   contract Contract @relation("WarrantyAuditContract", fields: [contractId], references: [id], onDelete: Restrict)
@@ -4182,15 +4377,15 @@ model WarrantyAuditLog {
 ///
 /// Immutable — updatedAt/deletedAt intentionally omitted
 model ReceivableReconLog {
-  id                   String   @id @default(uuid())
-  runDate              DateTime @map("run_date") @db.Date // one row per branch per day
-  branchId             String?  @map("branch_id") // null = company-wide row
-  journalBalance       Decimal  @map("journal_balance") @db.Decimal(14, 2)
-  contractOutstanding  Decimal  @map("contract_outstanding") @db.Decimal(14, 2)
-  gap                  Decimal  @db.Decimal(14, 2) // signed: journal - outstanding
-  threshold            Decimal  @db.Decimal(14, 2)
-  breached             Boolean // |gap| > threshold
-  createdAt            DateTime @default(now()) @map("created_at")
+  id                  String   @id @default(uuid())
+  runDate             DateTime @map("run_date") @db.Date // one row per branch per day
+  branchId            String?  @map("branch_id") // null = company-wide row
+  journalBalance      Decimal  @map("journal_balance") @db.Decimal(14, 2)
+  contractOutstanding Decimal  @map("contract_outstanding") @db.Decimal(14, 2)
+  gap                 Decimal  @db.Decimal(14, 2) // signed: journal - outstanding
+  threshold           Decimal  @db.Decimal(14, 2)
+  breached            Boolean // |gap| > threshold
+  createdAt           DateTime @default(now()) @map("created_at")
 
   branch Branch? @relation("ReceivableReconBranch", fields: [branchId], references: [id], onDelete: SetNull)
 
@@ -4208,23 +4403,23 @@ model ReceivableReconLog {
 ///
 /// Immutable audit log — updatedAt/deletedAt intentionally omitted
 model LoginAuditLog {
-  id          String   @id @default(uuid())
-  userId      String?  @map("user_id") // null when attempt matched no account
-  emailTried  String   @map("email_tried")
-  success     Boolean
+  id                String   @id @default(uuid())
+  userId            String?  @map("user_id") // null when attempt matched no account
+  emailTried        String   @map("email_tried")
+  success           Boolean
   /// failure reason when success=false: 'wrong_password' | 'user_not_found' |
   /// 'account_locked' | 'account_disabled' | '2fa_invalid' | 'other'
-  failureKind String?  @map("failure_kind")
-  ipAddress   String?  @map("ip_address")
-  userAgent   String?  @map("user_agent") @db.Text
-  twoFactorUsed       Boolean  @default(false) @map("two_factor_used")
+  failureKind       String?  @map("failure_kind")
+  ipAddress         String?  @map("ip_address")
+  userAgent         String?  @map("user_agent") @db.Text
+  twoFactorUsed     Boolean  @default(false) @map("two_factor_used")
   /// SHA-256 of (User-Agent + Accept-Language + screen-dims + platform) — no PII
-  deviceFingerprint   String?  @map("device_fingerprint")
+  deviceFingerprint String?  @map("device_fingerprint")
   /// true when fingerprint was not seen in KnownDevice for this user
-  isNewDevice         Boolean  @default(false) @map("is_new_device")
+  isNewDevice       Boolean  @default(false) @map("is_new_device")
   /// 2FA method used: 'totp' | 'sms_otp' | null (no 2FA)
-  twoFactorMethod     String?  @map("two_factor_method")
-  createdAt           DateTime @default(now()) @map("created_at")
+  twoFactorMethod   String?  @map("two_factor_method")
+  createdAt         DateTime @default(now()) @map("created_at")
 
   user User? @relation("LoginAudits", fields: [userId], references: [id], onDelete: SetNull)
 
@@ -4308,13 +4503,13 @@ model AiUsageLog {
 ///
 /// Immutable audit log — updatedAt/deletedAt intentionally omitted
 model WebhookAnomaly {
-  id         String   @id @default(uuid())
-  provider   String // 'line-finance' | 'line-shop' | 'paysolutions' | 'sms' | 'facebook'
-  reason     String // 'invalid_signature' | 'missing_signature' | 'missing_secret' | 'merchant_mismatch' | 'other'
-  ipAddress  String?  @map("ip_address")
-  userAgent  String?  @map("user_agent") @db.Text
-  meta       Json? // provider-specific payload fragment (no PII)
-  createdAt  DateTime @default(now()) @map("created_at")
+  id        String   @id @default(uuid())
+  provider  String // 'line-finance' | 'line-shop' | 'paysolutions' | 'sms' | 'facebook'
+  reason    String // 'invalid_signature' | 'missing_signature' | 'missing_secret' | 'merchant_mismatch' | 'other'
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent") @db.Text
+  meta      Json? // provider-specific payload fragment (no PII)
+  createdAt DateTime @default(now()) @map("created_at")
 
   @@index([provider, createdAt])
   @@index([createdAt])
@@ -4323,8 +4518,8 @@ model WebhookAnomaly {
 
 model BroadcastMessage {
   id            String    @id @default(uuid())
-  messages      Json      // array: [{ type, content }] — supports up to 5 messages
-  audience      String    // ALL, EXISTING, OVERDUE, NEW
+  messages      Json // array: [{ type, content }] — supports up to 5 messages
+  audience      String // ALL, EXISTING, OVERDUE, NEW
   audienceCount Int       @map("audience_count")
   /// PENDING_APPROVAL (default — creator submits for review)
   /// APPROVED       (approver cleared; sent immediately or queued if scheduledAt in future)
@@ -4347,7 +4542,7 @@ model BroadcastMessage {
   rejectedAt     DateTime? @map("rejected_at")
   rejectedReason String?   @map("rejected_reason")
 
-  approvals     BroadcastApproval[]
+  approvals BroadcastApproval[]
 
   @@index([status, scheduledAt])
   @@index([createdAt])
@@ -4365,17 +4560,17 @@ model BroadcastMessage {
 ///
 /// Immutable append-only audit — updatedAt/deletedAt intentionally omitted.
 model BroadcastApproval {
-  id              String           @id @default(uuid())
-  broadcastId     String           @map("broadcast_id")
-  broadcast       BroadcastMessage @relation(fields: [broadcastId], references: [id], onDelete: Cascade)
-  approverId      String           @map("approver_id")
-  approver        User             @relation("BroadcastApprovalBy", fields: [approverId], references: [id])
+  id             String           @id @default(uuid())
+  broadcastId    String           @map("broadcast_id")
+  broadcast      BroadcastMessage @relation(fields: [broadcastId], references: [id], onDelete: Cascade)
+  approverId     String           @map("approver_id")
+  approver       User             @relation("BroadcastApprovalBy", fields: [approverId], references: [id])
   /// Why the second approval was required (AUDIENCE_SIZE | TRIGGER_WORD).
-  reason          String
+  reason         String
   /// Matched trigger word (if reason = TRIGGER_WORD) — null otherwise.
-  triggerMatched  String?          @map("trigger_matched")
-  audienceSize    Int              @map("audience_size")
-  approvedAt      DateTime         @default(now()) @map("approved_at")
+  triggerMatched String?          @map("trigger_matched")
+  audienceSize   Int              @map("audience_size")
+  approvedAt     DateTime         @default(now()) @map("approved_at")
 
   @@unique([broadcastId, approverId])
   @@index([broadcastId])
@@ -4386,14 +4581,14 @@ model BroadcastApproval {
 /// One-time OTP requests for 2FA operations (SETUP, BACKUP_CODE_USE, LOGIN_OTP_FALLBACK).
 /// Use-once + TTL cleanup — updatedAt/deletedAt intentionally omitted.
 model TwoFactorOtpRequest {
-  id           String    @id @default(uuid())
-  userId       String    @map("user_id")
-  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  purpose      String                                                       // SETUP, BACKUP_CODE_USE, LOGIN_OTP_FALLBACK
-  codeHash     String    @map("code_hash")
-  expiresAt    DateTime  @map("expires_at")
-  consumedAt   DateTime? @map("consumed_at")
-  createdAt    DateTime  @default(now()) @map("created_at")
+  id         String    @id @default(uuid())
+  userId     String    @map("user_id")
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose    String // SETUP, BACKUP_CODE_USE, LOGIN_OTP_FALLBACK
+  codeHash   String    @map("code_hash")
+  expiresAt  DateTime  @map("expires_at")
+  consumedAt DateTime? @map("consumed_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
 
   @@index([userId])
   @@index([expiresAt])
@@ -4418,7 +4613,8 @@ model ProductReservation {
   createdAt    DateTime          @default(now()) @map("created_at")
   updatedAt    DateTime          @updatedAt @map("updated_at")
 
-  onlineOrder  OnlineOrder?
+  onlineOrder       OnlineOrder?
+  onlineApplication OnlineInstallmentApplication? @relation("ApplicationReservation")
 
   @@index([productId, status])
   @@index([customerId])
@@ -4551,18 +4747,18 @@ model IpRateLimit {
 ///
 /// No PII: fingerprint is SHA-256(User-Agent + Accept-Language + platform).
 model KnownDevice {
-  id                String   @id @default(uuid())
-  userId            String   @map("user_id")
+  id          String    @id @default(uuid())
+  userId      String    @map("user_id")
   /// SHA-256(User-Agent + Accept-Language + screenDims + platform) — deterministic, no PII
-  fingerprint       String
+  fingerprint String
   /// Human-readable label derived from User-Agent (e.g. "Chrome 124 / macOS")
-  deviceLabel       String?  @map("device_label")
-  ipAddress         String?  @map("ip_address")
-  firstSeenAt       DateTime @default(now()) @map("first_seen_at")
-  lastSeenAt        DateTime @default(now()) @updatedAt @map("last_seen_at")
-  loginCount        Int      @default(1) @map("login_count")
+  deviceLabel String?   @map("device_label")
+  ipAddress   String?   @map("ip_address")
+  firstSeenAt DateTime  @default(now()) @map("first_seen_at")
+  lastSeenAt  DateTime  @default(now()) @updatedAt @map("last_seen_at")
+  loginCount  Int       @default(1) @map("login_count")
   /// Set when admin explicitly revokes this device via Trusted Devices UI
-  revokedAt         DateTime? @map("revoked_at")
+  revokedAt   DateTime? @map("revoked_at")
 
   user User @relation("UserKnownDevices", fields: [userId], references: [id], onDelete: Cascade)
 

@@ -68,6 +68,7 @@ import { ChatbotFinanceModule } from './modules/chatbot-finance/chatbot-finance.
 import { ChatEngineModule } from './modules/chat-engine/chat-engine.module';
 import { ChatAdaptersModule } from './modules/chat-adapters/chat-adapters.module';
 import { FacebookDomainModule } from './modules/facebook-domain/facebook-domain.module';
+import { FacebookAppReviewModule } from './modules/facebook-app-review/facebook-app-review.module';
 import { StaffChatModule } from './modules/staff-chat/staff-chat.module';
 import { ChatAnalyticsModule } from './modules/chat-analytics/chat-analytics.module';
 import { ChatHistoryExtractorModule } from './modules/chat-history-extractor/chat-history-extractor.module';
@@ -215,6 +216,8 @@ import { AppCacheModule } from './cache/cache.module';
     ChatAdaptersModule,
     // Facebook Domain — IDomainHandler for Facebook Messenger business logic
     FacebookDomainModule,
+    // Facebook App Review — OWNER-only endpoints to exercise Graph API permissions
+    FacebookAppReviewModule,
     // Staff Chat — WebSocket gateway + REST controller for unified inbox
     StaffChatModule,
     // Chat Analytics — response time, resolution rate, channel volume

@@ -5,22 +5,23 @@ One-time owner setup to bring the customer-facing web-shop online on its own sub
 ## What exists after this PR merges
 
 - `firebase.json` has two hosting targets: `admin` (`apps/web`) and `shop` (`apps/web-shop`)
-- `.firebaserc` maps targets to site IDs: `admin → bestchoice-prod`, `shop → bestchoice-shop`
+- `.firebaserc` maps targets to site IDs: `admin → bestchoice-prod`, `shop → bestchoicephone-shop`
 - `.github/workflows/deploy-gcp.yml` builds both apps and deploys admin first, then shop (shop step has `continue-on-error: true` so an unconfigured shop site won't break admin deploys)
 
 ## What the owner must do (once)
 
-### 1. Create the Firebase Hosting site `bestchoice-shop`
+### 1. ~~Create the Firebase Hosting site `bestchoicephone-shop`~~ — already done
 
+Site was provisioned via the Firebase Hosting REST API on 2026-04-22 using the owner's gcloud-authed credentials. Default URL live at https://bestchoicephone-shop.web.app. No action required.
+
+If the site ever needs to be recreated from scratch:
 ```bash
-firebase hosting:sites:create bestchoice-shop --project bestchoice-prod
+firebase hosting:sites:create bestchoicephone-shop --project bestchoice-prod
 ```
-
-Or via console: Firebase Console → `bestchoice-prod` project → Hosting → **Add another site** → site ID `bestchoice-shop`.
 
 ### 2. Connect the custom domain
 
-In Firebase Console → Hosting → the `bestchoice-shop` site → **Add custom domain** → `shop.bestchoicephone.app`. Firebase will give two records to add at the domain registrar (Cloudflare / whoever manages `bestchoicephone.app`):
+In Firebase Console → Hosting → the `bestchoicephone-shop` site → **Add custom domain** → `shop.bestchoicephone.app`. Firebase will give two records to add at the domain registrar (Cloudflare / whoever manages `bestchoicephone.app`):
 
 - a TXT record for domain verification, and
 - an A record (or two) pointing to Firebase Hosting IPs

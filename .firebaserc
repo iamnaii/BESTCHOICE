@@ -6,7 +6,7 @@
     "bestchoice-prod": {
       "hosting": {
         "admin": ["bestchoice-prod"],
-        "shop": ["bestchoice-shop"]
+        "shop": ["bestchoicephone-shop"]
       }
     }
   }

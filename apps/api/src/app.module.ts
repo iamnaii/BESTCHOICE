@@ -68,10 +68,12 @@ import { ChatbotFinanceModule } from './modules/chatbot-finance/chatbot-finance.
 import { ChatEngineModule } from './modules/chat-engine/chat-engine.module';
 import { ChatAdaptersModule } from './modules/chat-adapters/chat-adapters.module';
 import { FacebookDomainModule } from './modules/facebook-domain/facebook-domain.module';
+import { FacebookAppReviewModule } from './modules/facebook-app-review/facebook-app-review.module';
 import { StaffChatModule } from './modules/staff-chat/staff-chat.module';
 import { ChatAnalyticsModule } from './modules/chat-analytics/chat-analytics.module';
 import { ChatHistoryExtractorModule } from './modules/chat-history-extractor/chat-history-extractor.module';
 import { ChatIntentRouterModule } from './modules/chat-intent-router/chat-intent-router.module';
+import { SalesBotModule } from './modules/sales-bot/sales-bot.module';
 import { CsatModule } from './modules/csat/csat.module';
 import { AdsTrackingModule } from './modules/ads-tracking/ads-tracking.module';
 import { CrmModule } from './modules/crm/crm.module';
@@ -214,6 +216,7 @@ import { AppCacheModule } from './cache/cache.module';
     ChatAdaptersModule,
     // Facebook Domain — IDomainHandler for Facebook Messenger business logic
     FacebookDomainModule,
+    FacebookAppReviewModule,
     // Staff Chat — WebSocket gateway + REST controller for unified inbox
     StaffChatModule,
     // Chat Analytics — response time, resolution rate, channel volume
@@ -222,6 +225,8 @@ import { AppCacheModule } from './cache/cache.module';
     ChatHistoryExtractorModule,
     // Chat Intent Router — classify inbound message to sales/service/handoff via Claude Haiku
     ChatIntentRouterModule,
+    // Sales Bot — Claude Sonnet tool-use loop (search products, calculate installment, promotions, handoff)
+    SalesBotModule,
     // CSAT — customer satisfaction survey after chat resolution
     CsatModule,
     // Ads Attribution — campaign tracking + ROI

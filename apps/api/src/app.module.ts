@@ -71,6 +71,7 @@ import { FacebookDomainModule } from './modules/facebook-domain/facebook-domain.
 import { StaffChatModule } from './modules/staff-chat/staff-chat.module';
 import { ChatAnalyticsModule } from './modules/chat-analytics/chat-analytics.module';
 import { ChatHistoryExtractorModule } from './modules/chat-history-extractor/chat-history-extractor.module';
+import { ChatIntentRouterModule } from './modules/chat-intent-router/chat-intent-router.module';
 import { CsatModule } from './modules/csat/csat.module';
 import { AdsTrackingModule } from './modules/ads-tracking/ads-tracking.module';
 import { CrmModule } from './modules/crm/crm.module';
@@ -219,6 +220,8 @@ import { AppCacheModule } from './cache/cache.module';
     ChatAnalyticsModule,
     // Chat History Extractor — pull past LINE/FB conversations → AiTrainingPair (OWNER only)
     ChatHistoryExtractorModule,
+    // Chat Intent Router — classify inbound message to sales/service/handoff via Claude Haiku
+    ChatIntentRouterModule,
     // CSAT — customer satisfaction survey after chat resolution
     CsatModule,
     // Ads Attribution — campaign tracking + ROI

@@ -193,6 +193,27 @@ export const INTEGRATIONS: IntegrationDef[] = [
         required: true,
         envVar: 'FB_VERIFY_TOKEN',
       },
+      {
+        key: 'userAccessToken',
+        label: 'User Access Token (App Review)',
+        sensitive: true,
+        required: false,
+        envVar: 'FB_USER_ACCESS_TOKEN',
+      },
+      {
+        key: 'systemUserToken',
+        label: 'System User Token (Marketing API)',
+        sensitive: true,
+        required: false,
+        envVar: 'FB_SYSTEM_USER_TOKEN',
+      },
+      {
+        key: 'adAccountId',
+        label: 'Ad Account ID (เช่น act_123456789)',
+        sensitive: false,
+        required: false,
+        envVar: 'FB_AD_ACCOUNT_ID',
+      },
     ],
   },
   {

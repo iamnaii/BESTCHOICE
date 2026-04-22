@@ -10,15 +10,20 @@
 3. ต้องยิงจาก **Live Mode** เท่านั้น — Dev Mode ไม่นับ
 4. ทุก endpoint เป็น `OWNER`-only และอยู่ใต้ `/api/facebook/app-review/*`
 
-## Environment variables ที่ต้องตั้ง
+## ตั้งค่า Credentials
 
-| ENV | ใช้ทำอะไร |
-|---|---|
-| `FB_PAGE_ACCESS_TOKEN` | Page token (messaging + page management) |
-| `FB_PAGE_ID` | Facebook Page ID |
-| `FB_USER_ACCESS_TOKEN` | User token (จำเป็นสำหรับ `GET /me/accounts`) |
-| `FB_AD_ACCOUNT_ID` | รูปแบบ `act_123456789` |
-| `FB_SYSTEM_USER_TOKEN` | (optional) fallback สำหรับ Marketing API |
+ตั้งจาก **Integration Hub → Facebook Messenger** (เก็บลง DB, encrypted)
+หรือใช้ env var (fallback)
+
+| Field ใน UI | Env var fallback | ใช้ทำอะไร |
+|---|---|---|
+| Page Access Token | `FB_PAGE_ACCESS_TOKEN` | Page token (messaging + page management) |
+| Page ID | `FB_PAGE_ID` | Facebook Page ID |
+| User Access Token (App Review) | `FB_USER_ACCESS_TOKEN` | จำเป็นสำหรับ `GET /me/accounts` |
+| System User Token (Marketing API) | `FB_SYSTEM_USER_TOKEN` | (optional) fallback สำหรับ Marketing API |
+| Ad Account ID | `FB_AD_ACCOUNT_ID` | รูปแบบ `act_123456789` |
+
+DB จะถูกอ่านก่อน — ถ้าไม่มี ค่อย fallback ไป env. แก้ใน UI ไม่ต้อง redeploy
 
 ## Permission → Endpoint mapping
 

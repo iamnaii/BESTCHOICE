@@ -1,7 +1,21 @@
 import { useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
+import { MessageCircle, Phone } from 'lucide-react';
 import { api } from '@/lib/api';
+import { copy } from '@/lib/copy';
 import ShopLayout from '@/components/layout/ShopLayout';
+import {
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  CategoryHero,
+  Container,
+  ErrorState,
+  LoadingState,
+  Stack,
+  Stepper,
+} from '@/components';
 import type { TradeIn, TradeInStatus } from '@/types/trade-in';
 
 const STATUS_LABEL: Record<TradeInStatus, string> = {
@@ -11,6 +25,32 @@ const STATUS_LABEL: Record<TradeInStatus, string> = {
   COMPLETED: 'ดำเนินการเสร็จสิ้น',
   REJECTED: 'ไม่รับซื้อ',
 };
+
+const STATUS_BADGE: Record<
+  TradeInStatus,
+  'default' | 'primary' | 'warning' | 'success' | 'danger'
+> = {
+  PENDING_APPRAISAL: 'warning',
+  APPRAISED: 'primary',
+  ACCEPTED: 'primary',
+  COMPLETED: 'success',
+  REJECTED: 'danger',
+};
+
+function statusToStep(status: TradeInStatus): number {
+  switch (status) {
+    case 'PENDING_APPRAISAL':
+      return 1;
+    case 'APPRAISED':
+      return 2;
+    case 'ACCEPTED':
+    case 'COMPLETED':
+    case 'REJECTED':
+      return 3;
+    default:
+      return 1;
+  }
+}
 
 function priceValue(v: number | string | null | undefined): number | null {
   if (v === null || v === undefined || v === '') return null;
@@ -30,9 +70,9 @@ export default function TradeInStatusPage() {
   if (isLoading) {
     return (
       <ShopLayout>
-        <div className="container mx-auto px-4 py-8 text-muted-foreground leading-snug">
-          กำลังโหลด...
-        </div>
+        <Container narrow className="py-10">
+          <LoadingState />
+        </Container>
       </ShopLayout>
     );
   }
@@ -40,73 +80,138 @@ export default function TradeInStatusPage() {
   if (isError || !data) {
     return (
       <ShopLayout>
-        <div className="container mx-auto px-4 py-8 text-destructive leading-snug">
-          ไม่พบข้อมูลเรื่องเก่าแลกใหม่
-        </div>
+        <Container narrow className="py-10">
+          <ErrorState title={copy.tradeIn.statusNotFound} />
+        </Container>
       </ShopLayout>
     );
   }
 
   const offered = priceValue(data.offeredPrice);
   const agreed = priceValue(data.agreedPrice);
+  const showOfferActions = data.status === 'APPRAISED' && offered !== null;
 
   return (
     <ShopLayout>
-      <div className="container mx-auto px-4 py-6 max-w-xl space-y-4 leading-snug">
-        <header className="space-y-1">
-          <h1 className="text-2xl font-bold">เก่าแลกใหม่</h1>
-          <p className="text-sm text-muted-foreground">เลขที่เรื่อง: {data.id.slice(0, 8)}</p>
-        </header>
+      <CategoryHero
+        title={`${copy.tradeIn.statusTitle} ${data.id.slice(0, 8)}`}
+        breadcrumbs={[
+          { label: copy.tradeIn.pageTitle, to: '/trade-in' },
+          { label: 'สถานะ' },
+        ]}
+      />
 
-        <div className="rounded-xl border border-border p-4 space-y-2">
-          <div className="font-semibold">
-            {data.deviceBrand} {data.deviceModel} {data.deviceStorage}
+      <Container narrow className="py-6 md:py-10">
+        <Stack gap={4} className="leading-snug">
+          <Stepper
+            steps={[
+              { label: 'รอประเมิน' },
+              { label: 'เสนอราคา' },
+              { label: 'สรุป' },
+            ]}
+            current={statusToStep(data.status)}
+          />
+
+          <div className="flex items-center gap-2 leading-snug">
+            <span className="text-sm text-muted-foreground">สถานะ</span>
+            <Badge variant={STATUS_BADGE[data.status] ?? 'default'} size="lg">
+              {STATUS_LABEL[data.status] ?? data.status}
+            </Badge>
           </div>
-          <div className="text-sm text-muted-foreground">
-            เกรด {data.deviceCondition} · แบตเตอรี่ {data.batteryHealth}%
-          </div>
-          <div className="text-sm">
-            สถานะ: <b>{STATUS_LABEL[data.status] ?? data.status}</b>
-          </div>
+
           {offered !== null && (
-            <div className="text-xl font-bold text-primary">
-              ราคาที่เสนอ ฿{offered.toLocaleString()}
-            </div>
-          )}
-          {agreed !== null && (
-            <div className="text-sm">
-              ราคาที่ตกลง: <b>฿{agreed.toLocaleString()}</b>
-            </div>
-          )}
-          {data.notes && (
-            <div className="text-sm text-muted-foreground">หมายเหตุ: {data.notes}</div>
-          )}
-        </div>
-
-        {data.photoUrls.length > 0 && (
-          <section className="space-y-2">
-            <h2 className="font-semibold text-sm">รูปเครื่อง</h2>
-            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-              {data.photoUrls.map((url, i) => (
-                <div
-                  key={i}
-                  className="relative aspect-square rounded-xl overflow-hidden bg-muted"
-                >
-                  <img
-                    src={url}
-                    alt={`รูปที่ ${i + 1}`}
-                    className="h-full w-full object-cover"
-                  />
+            <Card variant="elevated" className="bg-emerald-50 border-emerald-200">
+              <CardBody className="space-y-1 leading-snug">
+                <div className="text-sm font-medium text-emerald-800 leading-snug">
+                  ราคาที่ทีมงานเสนอ
                 </div>
-              ))}
-            </div>
-          </section>
-        )}
+                <div className="text-4xl font-bold text-emerald-600 leading-snug">
+                  ฿{offered.toLocaleString()}
+                </div>
+                {agreed !== null && (
+                  <div className="text-sm text-emerald-800 leading-snug">
+                    ราคาที่ตกลง: ฿{agreed.toLocaleString()}
+                  </div>
+                )}
+              </CardBody>
+            </Card>
+          )}
 
-        <p className="text-xs text-muted-foreground">
-          ทีมงานจะติดต่อกลับทาง LINE/โทรศัพท์ภายใน 24 ชั่วโมง
-        </p>
-      </div>
+          <Card variant="outlined">
+            <CardBody className="space-y-3 leading-snug">
+              <div className="font-semibold text-foreground leading-snug">
+                {data.deviceBrand} {data.deviceModel} {data.deviceStorage}
+              </div>
+              <div className="text-sm text-muted-foreground leading-snug">
+                เกรด {data.deviceCondition} · แบตเตอรี่ {data.batteryHealth}%
+              </div>
+              {data.notes && (
+                <div className="text-sm text-muted-foreground leading-snug">
+                  หมายเหตุ: {data.notes}
+                </div>
+              )}
+              {data.photoUrls.length > 0 && (
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 pt-2">
+                  {data.photoUrls.map((url, i) => (
+                    <div
+                      key={i}
+                      className="relative aspect-square rounded-xl overflow-hidden bg-muted"
+                    >
+                      <img
+                        src={url}
+                        alt={`รูปที่ ${i + 1}`}
+                        className="h-full w-full object-cover"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardBody>
+          </Card>
+
+          {showOfferActions && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Button
+                asChild
+                variant="primary"
+                size="lg"
+                fullWidth
+                data-testid="trade-in-accept"
+              >
+                <a
+                  href="https://line.me/R/ti/p/@bestchoice"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <MessageCircle className="size-4" aria-hidden="true" />
+                  {copy.tradeIn.acceptPrice}
+                </a>
+              </Button>
+              <Button
+                asChild
+                variant="outline"
+                size="lg"
+                fullWidth
+                className="text-destructive hover:text-destructive border-destructive/40"
+                data-testid="trade-in-reject"
+              >
+                <a
+                  href="https://line.me/R/ti/p/@bestchoice"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <Phone className="size-4" aria-hidden="true" />
+                  {copy.tradeIn.rejectPrice}
+                </a>
+              </Button>
+            </div>
+          )}
+
+          <p className="text-xs text-muted-foreground leading-snug">
+            {copy.tradeIn.followUp}
+          </p>
+        </Stack>
+      </Container>
     </ShopLayout>
   );
 }

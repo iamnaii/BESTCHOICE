@@ -1,137 +1,74 @@
-'use client';
-
 import * as React from 'react';
 import { cn } from '@/lib/utils';
-import { cva, type VariantProps } from 'class-variance-authority';
 
-type CardContextType = {
-  variant: 'default' | 'accent';
+type CardVariant = 'plain' | 'elevated' | 'outlined' | 'interactive';
+
+interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
+  variant?: CardVariant;
+}
+
+const variantClass: Record<CardVariant, string> = {
+  plain: 'bg-card',
+  elevated: 'bg-card shadow-md',
+  outlined: 'bg-card border border-zinc-200',
+  interactive:
+    'bg-card border border-zinc-200 hover:shadow-lg hover:border-emerald-200 transition-all duration-base cursor-pointer',
 };
 
-const CardContext = React.createContext<CardContextType>({
-  variant: 'default',
-});
-
-const useCardContext = () => {
-  const context = React.useContext(CardContext);
-  if (!context) {
-    throw new Error('useCardContext must be used within a Card component');
-  }
-  return context;
-};
-
-const cardVariants = cva('flex flex-col items-stretch text-card-foreground rounded-xl', {
-  variants: {
-    variant: {
-      default: 'bg-card shadow-sm shadow-black/5 dark:border dark:border-border',
-      accent: 'bg-muted shadow-sm shadow-black/5 dark:border dark:border-border p-1',
-    },
-  },
-  defaultVariants: {
-    variant: 'default',
-  },
-});
-
-const cardHeaderVariants = cva('flex items-center justify-between flex-wrap px-5 min-h-14 gap-2.5', {
-  variants: {
-    variant: {
-      default: 'border-b border-border',
-      accent: '',
-    },
-  },
-  defaultVariants: {
-    variant: 'default',
-  },
-});
-
-const cardContentVariants = cva('grow p-5', {
-  variants: {
-    variant: {
-      default: '',
-      accent: 'bg-card rounded-t-xl last:rounded-b-xl',
-    },
-  },
-  defaultVariants: {
-    variant: 'default',
-  },
-});
-
-const cardTableVariants = cva('grid grow', {
-  variants: {
-    variant: {
-      default: '',
-      accent: 'bg-card rounded-xl',
-    },
-  },
-  defaultVariants: {
-    variant: 'default',
-  },
-});
-
-const cardFooterVariants = cva('flex items-center px-5 min-h-14', {
-  variants: {
-    variant: {
-      default: 'border-t border-border',
-      accent: 'bg-card rounded-b-xl mt-[2px]',
-    },
-  },
-  defaultVariants: {
-    variant: 'default',
-  },
-});
-
-function Card({
-  className,
-  variant = 'default',
-  ...props
-}: React.HTMLAttributes<HTMLDivElement> & VariantProps<typeof cardVariants>) {
+export function Card({ variant = 'outlined', className, ...props }: CardProps) {
   return (
-    <CardContext.Provider value={{ variant: variant || 'default' }}>
-      <div data-slot="card" className={cn(cardVariants({ variant }), className)} {...props} />
-    </CardContext.Provider>
-  );
-}
-
-function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  const { variant } = useCardContext();
-  return <div data-slot="card-header" className={cn(cardHeaderVariants({ variant }), className)} {...props} />;
-}
-
-function CardContent({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  const { variant } = useCardContext();
-  return <div data-slot="card-content" className={cn(cardContentVariants({ variant }), className)} {...props} />;
-}
-
-function CardTable({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  const { variant } = useCardContext();
-  return <div data-slot="card-table" className={cn(cardTableVariants({ variant }), className)} {...props} />;
-}
-
-function CardFooter({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  const { variant } = useCardContext();
-  return <div data-slot="card-footer" className={cn(cardFooterVariants({ variant }), className)} {...props} />;
-}
-
-function CardHeading({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div data-slot="card-heading" className={cn('space-y-1', className)} {...props} />;
-}
-
-function CardToolbar({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div data-slot="card-toolbar" className={cn('flex items-center gap-2.5', className)} {...props} />;
-}
-
-function CardTitle({ className, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
-  return (
-    <h3
-      data-slot="card-title"
-      className={cn('text-base font-semibold leading-snug tracking-tight', className)}
+    <div
+      className={cn('rounded-2xl overflow-hidden', variantClass[variant], className)}
+      data-slot="card"
       {...props}
     />
   );
 }
 
-function CardDescription({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div data-slot="card-description" className={cn('text-sm text-muted-foreground', className)} {...props} />;
+export function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+  return <div className={cn('p-4 md:p-6 border-b border-zinc-200', className)} {...props} />;
 }
 
-export { Card, CardContent, CardDescription, CardFooter, CardHeader, CardHeading, CardTable, CardTitle, CardToolbar };
+export function CardBody({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+  return <div className={cn('p-4 md:p-6', className)} {...props} />;
+}
+
+export function CardFooter({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn('p-4 md:p-6 border-t border-zinc-200 bg-zinc-50', className)}
+      {...props}
+    />
+  );
+}
+
+export function CardTitle({ className, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
+  return <h3 className={cn('text-xl font-semibold leading-snug', className)} {...props} />;
+}
+
+// Backward-compat aliases for any existing callers that imported the
+// Metronic-style slot names (CardContent/CardDescription/etc.). None
+// exist in apps/web-shop today, but exports are preserved to keep the
+// public API additive.
+export const CardContent = CardBody;
+
+export function CardDescription({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn('text-sm text-muted-foreground leading-snug', className)}
+      {...props}
+    />
+  );
+}
+
+export function CardHeading({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+  return <div className={cn('space-y-1', className)} {...props} />;
+}
+
+export function CardToolbar({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+  return <div className={cn('flex items-center gap-2.5', className)} {...props} />;
+}
+
+export function CardTable({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+  return <div className={cn('grid grow', className)} {...props} />;
+}

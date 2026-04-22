@@ -1,23 +1,105 @@
+import { ShieldCheck, RotateCcw, MessageCircle, Phone } from 'lucide-react';
+import {
+  CategoryHero,
+  Container,
+  Stack,
+  Section,
+  Card,
+  CardBody,
+  Button,
+  TrustStrip,
+} from '@/components';
 import ShopLayout from '@/components/layout/ShopLayout';
+import { copy } from '@/lib/copy';
 
 export default function ReturnsPage() {
   return (
     <ShopLayout>
-      <article className="container mx-auto px-4 py-8 max-w-3xl prose">
-        <h1>นโยบายการคืนสินค้า</h1>
-        <h2>คืนได้ภายใน 7 วัน</h2>
-        <p>หากลูกค้าไม่พอใจสินค้า สามารถส่งคืนได้ภายใน 7 วันนับจากวันรับสินค้า โดยมีเงื่อนไข:</p>
-        <ul>
-          <li>เครื่องอยู่ในสภาพเดิม ไม่มีรอยหรือความเสียหายเพิ่มเติม</li>
-          <li>มีอุปกรณ์ครบตามที่ระบุไว้ในรายละเอียดสินค้า</li>
-          <li>ลูกค้าเป็นผู้ออกค่าจัดส่งในการส่งคืน</li>
-        </ul>
-        <h2>การคืนเงิน</h2>
-        <p>เมื่อร้านได้รับเครื่องและตรวจสภาพแล้ว จะคืนเงินภายใน 3-5 วันทำการ ผ่านช่องทางเดิมที่ลูกค้าจ่าย</p>
-        <h2>การรับประกัน 30 วัน</h2>
-        <p>หากเครื่องเสียจากความผิดปกติของอุปกรณ์ภายใน 30 วัน ทางร้านจะเปลี่ยนเครื่องใหม่ (รุ่นเดียวกัน) ฟรี</p>
-        <p>ติดต่อแจ้งคืน/รับประกันผ่าน LINE @bestchoice</p>
-      </article>
+      <CategoryHero
+        title={copy.returns.pageTitle}
+        description={copy.returns.intro}
+        breadcrumbs={[
+          { label: 'หน้าแรก', to: '/' },
+          { label: copy.returns.pageTitle },
+        ]}
+      />
+      <Container>
+        <Stack gap={6} className="py-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card variant="outlined" className="bg-emerald-50 border-emerald-200">
+              <CardBody>
+                <Stack gap={3} className="leading-snug">
+                  <span className="inline-flex size-11 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+                    <ShieldCheck className="size-6" aria-hidden="true" />
+                  </span>
+                  <h3 className="text-lg font-semibold leading-snug">
+                    {copy.returns.warrantyTitle}
+                  </h3>
+                  <p className="text-sm text-muted-foreground leading-snug">
+                    {copy.returns.warrantyBody}
+                  </p>
+                </Stack>
+              </CardBody>
+            </Card>
+
+            <Card variant="outlined">
+              <CardBody>
+                <Stack gap={3} className="leading-snug">
+                  <span className="inline-flex size-11 items-center justify-center rounded-full bg-muted text-foreground">
+                    <RotateCcw className="size-6" aria-hidden="true" />
+                  </span>
+                  <h3 className="text-lg font-semibold leading-snug">
+                    {copy.returns.refundTitle}
+                  </h3>
+                  <p className="text-sm text-muted-foreground leading-snug">
+                    {copy.returns.refundBody}
+                  </p>
+                </Stack>
+              </CardBody>
+            </Card>
+
+            <Card variant="outlined" className="bg-emerald-50 border-emerald-200">
+              <CardBody>
+                <Stack gap={3} className="leading-snug">
+                  <span className="inline-flex size-11 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+                    <MessageCircle className="size-6" aria-hidden="true" />
+                  </span>
+                  <h3 className="text-lg font-semibold leading-snug">
+                    {copy.returns.contactTitle}
+                  </h3>
+                  <p className="text-sm text-muted-foreground leading-snug">
+                    {copy.returns.contactBody}
+                  </p>
+                  <Stack gap={2}>
+                    <Button asChild variant="primary" size="md" fullWidth>
+                      <a
+                        href="https://line.me/R/ti/p/@bestchoice"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <MessageCircle className="size-4" aria-hidden="true" />
+                        {copy.returns.lineCta}
+                      </a>
+                    </Button>
+                    <Button asChild variant="outline" size="md" fullWidth>
+                      <a href="tel:036-XXX-XXX">
+                        <Phone className="size-4" aria-hidden="true" />
+                        {copy.returns.phoneCta}
+                      </a>
+                    </Button>
+                  </Stack>
+                </Stack>
+              </CardBody>
+            </Card>
+          </div>
+        </Stack>
+      </Container>
+
+      <Section tone="muted" padding="md">
+        <Container>
+          <TrustStrip />
+        </Container>
+      </Section>
     </ShopLayout>
   );
 }

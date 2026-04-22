@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { cva, type VariantProps } from 'class-variance-authority';
-import { ChevronDown, LucideIcon } from 'lucide-react';
+import { ChevronDown, Loader2, LucideIcon } from 'lucide-react';
 import { Slot } from '@radix-ui/react-slot';
 import { cn } from '@/lib/utils';
 
@@ -36,8 +36,8 @@ const buttonVariants = cva(
         dashed: '',
       },
       size: {
-        lg: 'h-10 rounded-md px-4 text-sm gap-1.5 [&_svg:not([class*=size-])]:size-4',
-        md: 'h-8.5 rounded-md px-3 gap-1.5 text-[0.8125rem] leading-(--text-sm--line-height) [&_svg:not([class*=size-])]:size-4',
+        lg: 'h-10 rounded-xl px-4 text-sm gap-1.5 [&_svg:not([class*=size-])]:size-4',
+        md: 'h-8.5 rounded-xl px-3 gap-1.5 text-[0.8125rem] leading-(--text-sm--line-height) [&_svg:not([class*=size-])]:size-4',
         sm: 'h-7 rounded-md px-2.5 gap-[5px] text-xs [&_svg:not([class*=size-])]:size-3.5',
         icon: 'size-8.5 rounded-md [&_svg:not([class*=size-])]:size-4 shrink-0',
       },
@@ -64,6 +64,14 @@ const buttonVariants = cva(
       },
       placeholder: {
         true: 'text-muted-foreground',
+        false: '',
+      },
+      loading: {
+        true: 'pointer-events-none',
+        false: '',
+      },
+      fullWidth: {
+        true: 'w-full',
         false: '',
       },
     },
@@ -334,6 +342,8 @@ const buttonVariants = cva(
       size: 'md',
       shape: 'default',
       appearance: 'default',
+      loading: false,
+      fullWidth: false,
     },
   },
 );
@@ -351,11 +361,16 @@ function Button({
   underline,
   asChild = false,
   placeholder = false,
+  loading = false,
+  fullWidth = false,
+  children,
   ...props
 }: React.ComponentProps<'button'> &
   VariantProps<typeof buttonVariants> & {
     selected?: boolean;
     asChild?: boolean;
+    loading?: boolean;
+    fullWidth?: boolean;
   }) {
   const Comp = asChild ? Slot : 'button';
   return (
@@ -372,13 +387,24 @@ function Button({
           placeholder,
           underlined,
           underline,
+          loading,
+          fullWidth,
           className,
         }),
         asChild && props.disabled && 'pointer-events-none opacity-50',
       )}
       {...(selected && { 'data-state': 'open' })}
       {...props}
-    />
+    >
+      {loading ? (
+        <>
+          <Loader2 className="animate-spin mr-2 size-4" aria-hidden="true" />
+          {children}
+        </>
+      ) : (
+        children
+      )}
+    </Comp>
   );
 }
 

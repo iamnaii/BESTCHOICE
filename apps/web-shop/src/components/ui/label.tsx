@@ -1,31 +1,31 @@
-'use client';
-
 import * as React from 'react';
 import { cn } from '@/lib/utils';
-import { cva, type VariantProps } from 'class-variance-authority';
-import * as LabelPrimitive from '@radix-ui/react-label';
 
-const labelVariants = cva(
-  'text-sm leading-snug text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-50',
-  {
-    variants: {
-      variant: {
-        primary: 'font-medium',
-        secondary: 'font-normal',
-      },
-    },
-    defaultVariants: {
-      variant: 'primary',
-    },
-  },
-);
-
-function Label({
-  className,
-  variant,
-  ...props
-}: React.ComponentProps<typeof LabelPrimitive.Root> & VariantProps<typeof labelVariants>) {
-  return <LabelPrimitive.Root data-slot="label" className={cn(labelVariants({ variant }), className)} {...props} />;
+export interface LabelProps extends React.LabelHTMLAttributes<HTMLLabelElement> {
+  required?: boolean;
+  help?: React.ReactNode;
+  error?: React.ReactNode;
 }
 
-export { Label };
+export function Label({ className, required, help, error, children, ...props }: LabelProps) {
+  return (
+    <div className="space-y-1">
+      <label
+        className={cn(
+          'text-sm font-medium text-foreground leading-snug inline-flex items-center gap-1',
+          className,
+        )}
+        {...props}
+      >
+        {children}
+        {required && <span className="text-destructive" aria-hidden="true">*</span>}
+      </label>
+      {help && !error && (
+        <p className="text-xs text-muted-foreground leading-snug">{help}</p>
+      )}
+      {error && (
+        <p className="text-xs text-destructive leading-snug" role="alert">{error}</p>
+      )}
+    </div>
+  );
+}

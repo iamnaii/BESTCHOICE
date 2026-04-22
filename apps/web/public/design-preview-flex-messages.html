@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Flex Messages · BESTCHOICE</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    * { font-family: 'IBM Plex Sans Thai', 'IBM Plex Sans', -apple-system, sans-serif; -webkit-font-smoothing: antialiased; }
+    /* LINE chat background */
+    body {
+      background: #93a5b5;
+      min-height: 100vh;
+      padding: 32px 16px 60px;
+      margin: 0;
+    }
+    .chat-column {
+      max-width: 420px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+    }
+    .bubble-group { display: flex; flex-direction: column; gap: 8px; }
+    .caption {
+      font-family: 'IBM Plex Sans', sans-serif;
+      text-transform: uppercase;
+      letter-spacing: 0.2em;
+      font-size: 10px;
+      color: rgb(230 236 242 / 0.8);
+      padding-left: 4px;
+    }
+    .bubble {
+      width: 100%;
+      max-width: 380px;
+      background: #fafaf7;
+      border-radius: 18px;
+      overflow: hidden;
+      box-shadow: 0 6px 16px -6px rgba(0,0,0,0.2), 0 2px 6px -2px rgba(0,0,0,0.1);
+    }
+
+    /* Header gradient variants */
+    .hero-emerald { background: linear-gradient(135deg, #10b981 0%, #059669 60%, #0d9488 100%); }
+    .hero-amber   { background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 55%, #d97706 100%); }
+    .hero-rose    { background: linear-gradient(135deg, #fb7185 0%, #e11d48 55%, #be123c 100%); }
+    .hero-indigo  { background: linear-gradient(135deg, #818cf8 0%, #6366f1 60%, #4f46e5 100%); }
+    .hero-teal    { background: linear-gradient(135deg, #5eead4 0%, #14b8a6 55%, #0d9488 100%); }
+    .hero-sky     { background: linear-gradient(135deg, #7dd3fc 0%, #38bdf8 55%, #0284c7 100%); }
+
+    .tag {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 2px 10px; border-radius: 9999px;
+      font-size: 10px; font-weight: 600;
+      letter-spacing: 0.08em;
+    }
+    .mono { font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+    .divider { height: 1px; background: #e5e7eb; margin: 14px 0; }
+    .row { display: flex; justify-content: space-between; align-items: baseline; font-size: 12.5px; padding: 4px 0; }
+    .row-label { color: #6b7280; }
+    .row-value { color: #0f172a; font-weight: 600; }
+
+    .btn-primary {
+      display: block;
+      padding: 13px 0;
+      text-align: center;
+      border-radius: 14px;
+      font-weight: 600;
+      font-size: 14px;
+      color: white;
+    }
+    .btn-ghost {
+      display: block;
+      padding: 12px 0;
+      text-align: center;
+      border-radius: 14px;
+      font-weight: 500;
+      font-size: 13px;
+      border: 1px solid #e5e7eb;
+      background: white;
+      color: #0f172a;
+    }
+
+    /* Aurora glow decoration on header */
+    .hero-glow {
+      position: absolute; border-radius: 50%; filter: blur(32px);
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+<div class="chat-column">
+
+  <!-- ════════ BUBBLE 1: ผูกสัญญา (new user / no link yet) ════════ -->
+  <div class="bubble-group">
+    <div class="caption">◦ 1. Link Contract · ส่งตอน user ใหม่ add friend LINE OA</div>
+    <div class="bubble">
+      <!-- Header -->
+      <div class="hero-emerald" style="padding: 22px 20px 20px; position: relative; overflow: hidden;">
+        <div class="hero-glow" style="top: -20px; right: -30px; width: 120px; height: 120px; background: rgba(255,255,255,0.35);"></div>
+        <div class="hero-glow" style="bottom: -30px; left: -20px; width: 100px; height: 100px; background: rgba(255,255,255,0.2);"></div>
+        <div style="position: relative;">
+          <span class="tag" style="background: rgba(255,255,255,0.2); color: white; backdrop-filter: blur(4px);">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></svg>
+            BESTCHOICE FINANCE
+          </span>
+          <div style="margin-top: 16px; color: white; font-size: 22px; font-weight: 700; line-height: 1.25; letter-spacing: -0.01em;">
+            ยินดีต้อนรับเข้าสู่ระบบ<br>จัดการสัญญาผ่อน
+          </div>
+          <div style="margin-top: 6px; color: rgba(255,255,255,0.85); font-size: 13px; line-height: 1.45;">
+            เชื่อมต่อ LINE กับสัญญาผ่อนของคุณเพื่อดูข้อมูลได้ทุกที่
+          </div>
+        </div>
+      </div>
+
+      <!-- Body -->
+      <div style="padding: 20px;">
+        <div style="display: flex; flex-direction: column; gap: 14px;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div style="width: 36px; height: 36px; border-radius: 12px; background: #ecfdf5; display: grid; place-items: center; flex-shrink: 0;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#047857" stroke-width="1.75"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14,2 14,8 20,8"/></svg>
+            </div>
+            <div>
+              <div style="font-size: 13.5px; font-weight: 600; color: #0f172a;">ดูสัญญาของคุณ</div>
+              <div style="font-size: 11.5px; color: #6b7280; margin-top: 1px;">งวดถัดไป · ยอดคงเหลือ · ประวัติ</div>
+            </div>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div style="width: 36px; height: 36px; border-radius: 12px; background: #fffbeb; display: grid; place-items: center; flex-shrink: 0;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#b45309" stroke-width="1.75"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>
+            </div>
+            <div>
+              <div style="font-size: 13.5px; font-weight: 600; color: #0f172a;">ปิดก่อนกำหนด ลด 50%</div>
+              <div style="font-size: 11.5px; color: #6b7280; margin-top: 1px;">ปิดยอดเร็ว ประหยัดดอกเบี้ย</div>
+            </div>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div style="width: 36px; height: 36px; border-radius: 12px; background: #eef2ff; display: grid; place-items: center; flex-shrink: 0;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4338ca" stroke-width="1.75"><rect x="2" y="4" width="20" height="5" rx="2"/><rect x="2" y="13" width="20" height="7" rx="2"/></svg>
+            </div>
+            <div>
+              <div style="font-size: 13.5px; font-weight: 600; color: #0f172a;">จ่ายค่างวดใน LINE</div>
+              <div style="font-size: 11.5px; color: #6b7280; margin-top: 1px;">QR พร้อมเพย์ · สะดวก 24/7</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div style="padding: 0 20px 20px; display: flex; flex-direction: column; gap: 8px;">
+        <a class="btn-primary" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); box-shadow: 0 8px 20px -8px rgba(5,150,105,0.5);">ผูกสัญญาของฉัน →</a>
+        <a class="btn-ghost">สมัครเป็นลูกค้าใหม่</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════ BUBBLE 2: แจ้งงวดครบ (payment reminder) ════════ -->
+  <div class="bubble-group">
+    <div class="caption">◦ 2. Payment Reminder · ส่งก่อนครบกำหนด 3 วัน + 1 วัน + วันครบ</div>
+    <div class="bubble">
+      <!-- Header -->
+      <div class="hero-emerald" style="padding: 20px 20px 18px; position: relative; overflow: hidden;">
+        <div class="hero-glow" style="top: -24px; right: -30px; width: 120px; height: 120px; background: rgba(255,255,255,0.3);"></div>
+        <div style="position: relative; display: flex; justify-content: space-between; align-items: flex-start;">
+          <div>
+            <div style="color: rgba(255,255,255,0.8); font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; font-weight: 600;">งวดถัดไป</div>
+            <div style="color: white; font-size: 15px; font-weight: 600; margin-top: 6px;">ใกล้ครบกำหนดชำระแล้ว</div>
+          </div>
+          <span class="tag" style="background: rgba(255,255,255,0.25); color: white; backdrop-filter: blur(4px);">อีก 3 วัน</span>
+        </div>
+      </div>
+
+      <!-- Body -->
+      <div style="padding: 20px;">
+        <div style="color: #6b7280; font-size: 11px; letter-spacing: 0.15em; text-transform: uppercase; font-weight: 600;">ยอดที่ต้องชำระ</div>
+        <div style="margin-top: 6px; display: flex; align-items: baseline; gap: 4px;">
+          <span class="mono" style="color: #047857; font-size: 22px; font-weight: 300;">฿</span>
+          <span class="mono" style="font-size: 40px; font-weight: 300; color: #0f172a; line-height: 0.95;">4,500</span>
+          <span style="color: #9ca3af; font-size: 12px; margin-left: 6px;">บาท</span>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="row"><span class="row-label">สัญญา</span><span class="row-value mono">BC-2024-001847</span></div>
+        <div class="row"><span class="row-label">งวดที่</span><span class="row-value mono">3 / 12</span></div>
+        <div class="row"><span class="row-label">ครบกำหนด</span><span class="row-value">15 เม.ย. 2568</span></div>
+
+        <!-- Progress -->
+        <div style="margin-top: 14px;">
+          <div style="display: flex; justify-content: space-between; font-size: 10.5px; color: #6b7280; margin-bottom: 6px;">
+            <span>ผ่อนแล้ว 2 งวด</span>
+            <span class="mono">17%</span>
+          </div>
+          <div style="height: 6px; border-radius: 3px; background: #e5e7eb; overflow: hidden;">
+            <div style="height: 100%; width: 17%; background: linear-gradient(90deg, #10b981, #14b8a6);"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div style="padding: 0 20px 18px; display: flex; flex-direction: column; gap: 8px;">
+        <a class="btn-primary" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); box-shadow: 0 8px 20px -8px rgba(5,150,105,0.5);">จ่ายค่างวดตอนนี้ →</a>
+        <a class="btn-ghost">ดูรายละเอียดสัญญา</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════ BUBBLE 3: ใบเสร็จ (receipt / payment success) ════════ -->
+  <div class="bubble-group">
+    <div class="caption">◦ 3. Receipt · ส่งทันทีหลังชำระสำเร็จ</div>
+    <div class="bubble">
+      <!-- Header -->
+      <div class="hero-teal" style="padding: 22px 20px 20px; position: relative; overflow: hidden;">
+        <div class="hero-glow" style="top: -30px; right: -30px; width: 130px; height: 130px; background: rgba(255,255,255,0.3);"></div>
+        <div style="position: relative;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div style="width: 36px; height: 36px; border-radius: 12px; background: rgba(255,255,255,0.22); display: grid; place-items: center; backdrop-filter: blur(4px);">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M18 6 7 17l-5-5"/><path d="m22 10-7.5 7.5L13 16"/></svg>
+            </div>
+            <div>
+              <div style="color: rgba(255,255,255,0.85); font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; font-weight: 600;">ชำระสำเร็จ</div>
+              <div style="color: white; font-size: 15px; font-weight: 600; margin-top: 2px;">ได้รับชำระเงินแล้ว</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Body -->
+      <div style="padding: 20px;">
+        <div style="color: #6b7280; font-size: 11px; letter-spacing: 0.15em; text-transform: uppercase; font-weight: 600;">ยอดที่ชำระ</div>
+        <div style="margin-top: 6px; display: flex; align-items: baseline; gap: 4px;">
+          <span class="mono" style="color: #0d9488; font-size: 22px; font-weight: 300;">฿</span>
+          <span class="mono" style="font-size: 40px; font-weight: 300; color: #0f172a; line-height: 0.95;">4,500</span>
+          <span style="color: #9ca3af; font-size: 12px; margin-left: 6px;">บาท</span>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="row"><span class="row-label">เลขที่ใบเสร็จ</span><span class="row-value mono">RC-2568-04-00123</span></div>
+        <div class="row"><span class="row-label">สัญญา · งวด</span><span class="row-value">BC-001847 · 3/12</span></div>
+        <div class="row"><span class="row-label">วิธีชำระ</span><span class="row-value">พร้อมเพย์</span></div>
+        <div class="row"><span class="row-label">วันที่</span><span class="row-value">15 เม.ย. 2568 · 14:32</span></div>
+      </div>
+
+      <!-- Footer -->
+      <div style="padding: 0 20px 18px; display: flex; flex-direction: column; gap: 8px;">
+        <a class="btn-primary" style="background: linear-gradient(135deg, #14b8a6 0%, #0d9488 100%); box-shadow: 0 8px 20px -8px rgba(13,148,136,0.5);">↓ ดาวน์โหลดใบเสร็จ PDF</a>
+        <a class="btn-ghost">ดูประวัติชำระทั้งหมด</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════ BUBBLE 4: แจ้งค้างชำระ (overdue) ════════ -->
+  <div class="bubble-group">
+    <div class="caption">◦ 4. Overdue Alert · ส่งเมื่อเลยกำหนด 1 / 3 / 7 / 15 วัน</div>
+    <div class="bubble">
+      <!-- Header -->
+      <div class="hero-rose" style="padding: 20px 20px 18px; position: relative; overflow: hidden;">
+        <div class="hero-glow" style="top: -24px; right: -30px; width: 120px; height: 120px; background: rgba(255,255,255,0.3);"></div>
+        <div style="position: relative; display: flex; justify-content: space-between; align-items: flex-start;">
+          <div>
+            <div style="color: rgba(255,255,255,0.85); font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; font-weight: 600;">ค้างชำระ</div>
+            <div style="color: white; font-size: 15px; font-weight: 600; margin-top: 6px;">กรุณาชำระโดยเร็ว</div>
+          </div>
+          <span class="tag" style="background: rgba(255,255,255,0.25); color: white; backdrop-filter: blur(4px);">เลย 5 วัน</span>
+        </div>
+      </div>
+
+      <!-- Body -->
+      <div style="padding: 20px;">
+        <div style="color: #6b7280; font-size: 11px; letter-spacing: 0.15em; text-transform: uppercase; font-weight: 600;">ยอดค้างรวมค่าปรับ</div>
+        <div style="margin-top: 6px; display: flex; align-items: baseline; gap: 4px;">
+          <span class="mono" style="color: #be123c; font-size: 22px; font-weight: 300;">฿</span>
+          <span class="mono" style="font-size: 40px; font-weight: 300; color: #0f172a; line-height: 0.95;">4,700</span>
+          <span style="color: #9ca3af; font-size: 12px; margin-left: 6px;">บาท</span>
+        </div>
+
+        <div style="margin-top: 10px; display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 9999px; background: #fff1f2; border: 1px solid #fecaca; font-size: 11px; color: #be123c;">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <span>รวมค่าปรับ ฿200</span>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="row"><span class="row-label">สัญญา</span><span class="row-value mono">BC-2024-001847</span></div>
+        <div class="row"><span class="row-label">งวดที่</span><span class="row-value mono">3 / 12</span></div>
+        <div class="row"><span class="row-label">ครบกำหนด</span><span class="row-value">10 เม.ย. 2568</span></div>
+        <div class="row"><span class="row-label">เลยกำหนด</span><span class="row-value" style="color: #be123c;">5 วัน</span></div>
+      </div>
+
+      <!-- Footer -->
+      <div style="padding: 0 20px 18px; display: flex; flex-direction: column; gap: 8px;">
+        <a class="btn-primary" style="background: linear-gradient(135deg, #f43f5e 0%, #e11d48 100%); box-shadow: 0 8px 20px -8px rgba(225,29,72,0.5);">ชำระทันที →</a>
+        <a class="btn-ghost">ติดต่อเจ้าหน้าที่</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════ BUBBLE 5: ปิดสัญญาครบ (contract completed) ════════ -->
+  <div class="bubble-group">
+    <div class="caption">◦ 5. Contract Completed · ส่งเมื่อชำระครบทุกงวด</div>
+    <div class="bubble">
+      <!-- Header -->
+      <div class="hero-indigo" style="padding: 22px 20px 20px; position: relative; overflow: hidden;">
+        <div class="hero-glow" style="top: -30px; right: -30px; width: 140px; height: 140px; background: rgba(255,255,255,0.3);"></div>
+        <div class="hero-glow" style="bottom: -20px; left: -20px; width: 100px; height: 100px; background: rgba(251,191,36,0.3);"></div>
+        <div style="position: relative;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div style="width: 36px; height: 36px; border-radius: 12px; background: rgba(255,255,255,0.22); display: grid; place-items: center; backdrop-filter: blur(4px);">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="8" r="7"/><polyline points="8.21,13.89 7,23 12,20 17,23 15.79,13.88"/></svg>
+            </div>
+            <div>
+              <div style="color: rgba(255,255,255,0.85); font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; font-weight: 600;">ปิดสัญญาครบ</div>
+              <div style="color: white; font-size: 15px; font-weight: 600; margin-top: 2px;">ยินดีด้วย! ผ่อนครบแล้ว</div>
+            </div>
+          </div>
+          <div style="margin-top: 12px; color: rgba(255,255,255,0.9); font-size: 12px; line-height: 1.5;">
+            กรรมสิทธิ์เครื่องเป็นของคุณเรียบร้อย ขอบคุณที่ไว้วางใจเรา
+          </div>
+        </div>
+      </div>
+
+      <!-- Body -->
+      <div style="padding: 20px;">
+        <div style="border-radius: 14px; background: #eef2ff; padding: 14px 16px; margin-bottom: 14px;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div style="width: 42px; height: 42px; border-radius: 12px; background: linear-gradient(135deg, #6366f1, #3b82f6); display: grid; place-items: center;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+            </div>
+            <div style="flex: 1; min-width: 0;">
+              <div style="font-size: 13.5px; font-weight: 600; color: #0f172a;">iPhone 15 Pro 256GB</div>
+              <div class="mono" style="font-size: 10.5px; color: #6b7280; margin-top: 2px;">BC-2024-001847</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row"><span class="row-label">ยอดรวมที่ชำระ</span><span class="row-value mono">฿54,000</span></div>
+        <div class="row"><span class="row-label">จำนวนงวด</span><span class="row-value mono">12 / 12</span></div>
+        <div class="row"><span class="row-label">ระยะเวลาผ่อน</span><span class="row-value">ก.พ. 2567 – ก.พ. 2568</span></div>
+
+        <div class="divider"></div>
+
+        <div style="display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 14px; background: linear-gradient(135deg, #fef3c7, #fde68a); border: 1px solid #fbbf2466;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#92400e" stroke-width="2"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></svg>
+          <div style="flex: 1;">
+            <div style="font-size: 12px; font-weight: 600; color: #78350f;">รับ 540 แต้มสะสม</div>
+            <div style="font-size: 10.5px; color: #92400e; margin-top: 1px;">ใช้ส่วนลดดาวน์เครื่องใหม่ได้</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div style="padding: 0 20px 18px; display: flex; flex-direction: column; gap: 8px;">
+        <a class="btn-primary" style="background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); box-shadow: 0 8px 20px -8px rgba(79,70,229,0.5);">ดูเครื่องใหม่ ผ่อน 0% →</a>
+        <a class="btn-ghost">ดูประวัติสัญญาที่ปิดแล้ว</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════ BUBBLE 6: ปิดยอดก่อนกำหนดสำเร็จ (early payoff success) ════════ -->
+  <div class="bubble-group">
+    <div class="caption">◦ 6. Early Payoff Success · ส่งเมื่อลูกค้าปิดยอดลด 50%</div>
+    <div class="bubble">
+      <!-- Header -->
+      <div class="hero-amber" style="padding: 22px 20px 20px; position: relative; overflow: hidden;">
+        <div class="hero-glow" style="top: -30px; right: -30px; width: 130px; height: 130px; background: rgba(255,255,255,0.35);"></div>
+        <div class="hero-glow" style="bottom: -30px; left: -20px; width: 110px; height: 110px; background: rgba(180,83,9,0.3);"></div>
+        <div style="position: relative;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div style="width: 36px; height: 36px; border-radius: 12px; background: rgba(120,53,15,0.2); display: grid; place-items: center; backdrop-filter: blur(4px);">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>
+            </div>
+            <div>
+              <div style="color: rgba(120,53,15,0.9); font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; font-weight: 700;">ปิดยอดสำเร็จ</div>
+              <div style="color: #78350f; font-size: 15px; font-weight: 700; margin-top: 2px;">ประหยัดดอกเบี้ย 50%</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Body -->
+      <div style="padding: 20px;">
+        <div style="color: #6b7280; font-size: 11px; letter-spacing: 0.15em; text-transform: uppercase; font-weight: 600;">ประหยัดไปทั้งหมด</div>
+        <div style="margin-top: 6px; display: flex; align-items: baseline; gap: 4px;">
+          <span class="mono" style="color: #047857; font-size: 22px; font-weight: 300;">฿</span>
+          <span class="mono" style="font-size: 40px; font-weight: 300; color: #047857; line-height: 0.95;">3,580</span>
+          <span style="color: #9ca3af; font-size: 12px; margin-left: 6px;">บาท</span>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="row"><span class="row-label">ยอดที่ชำระ</span><span class="row-value mono">฿18,450</span></div>
+        <div class="row"><span class="row-label">ยอดเต็มเดิม</span><span class="row-value mono" style="text-decoration: line-through; color: #9ca3af;">฿22,030</span></div>
+        <div class="row"><span class="row-label">สัญญา</span><span class="row-value mono">BC-2024-001847</span></div>
+        <div class="row"><span class="row-label">ปิดเมื่อ</span><span class="row-value">15 เม.ย. 2568</span></div>
+      </div>
+
+      <!-- Footer -->
+      <div style="padding: 0 20px 18px; display: flex; flex-direction: column; gap: 8px;">
+        <a class="btn-primary" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); box-shadow: 0 8px 20px -8px rgba(217,119,6,0.5);">↓ ใบเสร็จปิดยอด</a>
+        <a class="btn-ghost">รับเครื่องที่สาขา</a>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

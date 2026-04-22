@@ -8,5 +8,8 @@ export * from './contract-signed.flex';
 export * from './campaign.flex';
 export * from './welcome.flex';
 export * from './verify-success.flex';
+export * from './link-contract.flex';
+export * from './contract-completed.flex';
+export * from './early-payoff-success.flex';
 export * from './icons';
 export * from './style-c';

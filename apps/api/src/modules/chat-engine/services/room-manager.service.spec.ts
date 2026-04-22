@@ -2,10 +2,12 @@ import { Test } from '@nestjs/testing';
 import { RoomManagerService } from './room-manager.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ChatChannel, ChatRoomStatus, ChatPriority, MessageRole } from '@prisma/client';
+import { ChatAiDraftService } from '../../chat-ai-draft/chat-ai-draft.service';
 
 describe('RoomManagerService', () => {
   let service: RoomManagerService;
   let prisma: any;
+  let chatAiDraftService: { generateDraft: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -26,11 +28,13 @@ describe('RoomManagerService', () => {
       },
       $transaction: jest.fn((fns: any[]) => Promise.all(fns)),
     };
+    chatAiDraftService = { generateDraft: jest.fn().mockResolvedValue({ draftMessageId: 'd1' }) };
 
     const module = await Test.createTestingModule({
       providers: [
         RoomManagerService,
         { provide: PrismaService, useValue: prisma },
+        { provide: ChatAiDraftService, useValue: chatAiDraftService },
       ],
     }).compile();
 
@@ -164,6 +168,57 @@ describe('RoomManagerService', () => {
           firstResponseAt: expect.any(Date),
         }),
       });
+    });
+
+    it('should trigger ChatAiDraftService.generateDraft fire-and-forget for CUSTOMER messages', async () => {
+      const msg = { id: 'inbound-1', createdAt: new Date() };
+      prisma.chatMessage.create.mockResolvedValue(msg);
+      prisma.chatRoom.update.mockResolvedValue({});
+
+      await service.saveMessage({
+        roomId: 'room-1',
+        role: MessageRole.CUSTOMER,
+        text: 'hello',
+      });
+
+      // Allow microtasks to drain so the fire-and-forget promise is observed
+      await new Promise((r) => setImmediate(r));
+
+      expect(chatAiDraftService.generateDraft).toHaveBeenCalledWith('inbound-1');
+    });
+
+    it('should NOT trigger ChatAiDraftService.generateDraft for BOT messages', async () => {
+      prisma.chatMessage.create.mockResolvedValue({ id: 'msg-2', createdAt: new Date() });
+      prisma.chatRoom.findUnique.mockResolvedValue({ firstResponseAt: null });
+      prisma.chatRoom.update.mockResolvedValue({});
+
+      await service.saveMessage({
+        roomId: 'room-1',
+        role: MessageRole.BOT,
+        text: 'bot reply',
+      });
+
+      await new Promise((r) => setImmediate(r));
+
+      expect(chatAiDraftService.generateDraft).not.toHaveBeenCalled();
+    });
+
+    it('should swallow draft generation errors (fire-and-forget)', async () => {
+      prisma.chatMessage.create.mockResolvedValue({ id: 'inbound-2', createdAt: new Date() });
+      prisma.chatRoom.update.mockResolvedValue({});
+      chatAiDraftService.generateDraft.mockRejectedValueOnce(new Error('boom'));
+
+      // Should not throw even though draft generation fails
+      await expect(
+        service.saveMessage({
+          roomId: 'room-1',
+          role: MessageRole.CUSTOMER,
+          text: 'hello',
+        }),
+      ).resolves.toBeDefined();
+
+      await new Promise((r) => setImmediate(r));
+      expect(chatAiDraftService.generateDraft).toHaveBeenCalledWith('inbound-2');
     });
   });
 

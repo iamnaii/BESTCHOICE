@@ -212,27 +212,66 @@ export class IntegrationsService {
 
   private async testPaysolutions(): Promise<TestConnectionResult> {
     try {
-      const config = await this.configService.getConfig('paysolutions');
-      const merchantId =
-        (config as Record<string, string> | null)?.merchantId ||
-        process.env.PAYSOLUTIONS_MERCHANT_ID;
-      const secretKey =
-        (config as Record<string, string> | null)?.secretKey ||
-        process.env.PAYSOLUTIONS_SECRET_KEY;
-      const apiKey =
-        (config as Record<string, string> | null)?.apiKey || process.env.PAYSOLUTIONS_API_KEY;
+      const config = (await this.configService.getConfig('paysolutions')) as Record<
+        string,
+        string
+      > | null;
+      const merchantId = config?.merchantId || process.env.PAYSOLUTIONS_MERCHANT_ID;
+      const secretKey = config?.secretKey || process.env.PAYSOLUTIONS_SECRET_KEY;
+      const apiKey = config?.apiKey || process.env.PAYSOLUTIONS_API_KEY;
+      const apiUrl =
+        config?.apiUrl || process.env.PAYSOLUTIONS_API_URL || 'https://apis.paysolutions.asia';
 
       if (!merchantId || !secretKey || !apiKey) {
-        return { success: false, message: 'ยังไม่ได้ตั้งค่า PaySolutions ให้ครบ (Merchant ID, Secret Key, API Key)' };
+        return {
+          success: false,
+          message: 'ยังไม่ได้ตั้งค่า PaySolutions ให้ครบ (Merchant ID, Secret Key, API Key)',
+        };
       }
 
+      // Call Get Channel API — lightweight auth check (no transaction side effects).
+      // See Web_API_Guideline v1.2.2 section 6. Accepts any amount ≥ 1.
+      const res = await fetch(`${apiUrl}/payment/gateway/v2/payment/channels`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+          apiKey,
+          secretKey,
+        },
+        body: JSON.stringify({ merchantID: merchantId, amount: 1 }),
+        signal: AbortSignal.timeout(10000),
+      });
+
+      const body = (await res.json().catch(() => ({}))) as {
+        status?: { statusCode?: string; message?: string };
+        message?: string;
+        paymentChannels?: unknown[];
+      };
+
+      if (!res.ok) {
+        const code = body.status?.statusCode ?? String(res.status);
+        const msg = body.status?.message ?? body.message ?? `HTTP ${res.status}`;
+        return {
+          success: false,
+          message: `PaySolutions ปฏิเสธ: [${code}] ${msg}`,
+          details: { merchantId, apiUrl },
+        };
+      }
+
+      const channelCount = body.paymentChannels?.length ?? 0;
       return {
         success: true,
-        message: `ตั้งค่าครบถ้วน — Merchant ID: ${merchantId}`,
-        details: { merchantId },
+        message: `เชื่อมต่อ PaySolutions สำเร็จ — Merchant ${merchantId} มี ${channelCount} payment channel`,
+        details: { merchantId, apiUrl, channelCount },
       };
     } catch (err: unknown) {
-      return { success: false, message: (err as Error).message };
+      const isTimeout = err instanceof Error && err.name === 'TimeoutError';
+      return {
+        success: false,
+        message: isTimeout
+          ? 'PaySolutions ไม่ตอบสนองภายใน 10 วินาที'
+          : (err as Error).message,
+      };
     }
   }
 

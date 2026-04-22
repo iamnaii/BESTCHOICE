@@ -6,7 +6,11 @@
 
 **Architecture:** Add one intent router (Claude Haiku) in front of two persona bots — new `sales-bot` module and enhanced existing `chatbot-finance` ("น้องเบส"). Reuse existing `staff-chat/` backend for room/message storage. Build new `/chat` React page with 3-column layout consuming staff-chat APIs plus a new `/api/chat-ai/draft` endpoint. One-off batch extracts 12 months of historical LINE + Facebook conversations into `AiTrainingPair` and seeds `ChatKnowledgeBase`.
 
-**Tech Stack:** NestJS 11 + Prisma 6 (existing), Claude Haiku 4.5 via `@anthropic-ai/sdk` (existing in `chatbot-finance`), React 18 + Vite 6 + shadcn/ui + @tanstack/react-query (existing), Zustand (existing), Facebook Graph API v19 (new dependency `fb` or direct fetch).
+**Tech Stack:** NestJS 11 + Prisma 6 (existing), Claude **Sonnet 4.6** for all customer-facing replies (sales bot + น้องเบส) via `@anthropic-ai/sdk`, Claude **Haiku 4.5** kept for internal-only routing/classification/extraction (intent router, knowledge batch extractor), React 18 + Vite 6 + shadcn/ui + @tanstack/react-query (existing), Zustand (existing), Facebook Graph API v19.
+
+**Model policy:**
+- `claude-sonnet-4-6` → Sales Bot, น้องเบส reply generation (customer reads the output)
+- `claude-haiku-4-5-20251001` → Intent Router (fast classify), Knowledge Extractor (batch job, no customer)
 
 **Spec:** `docs/superpowers/specs/2026-04-22-chat-ai-unified-inbox-design.md`
 **Predecessors:** Existing `chatbot-finance/` + `staff-chat/` modules, `ChatRoom` + `ChatMessage` + `ChatKnowledgeBase` + `AiTrainingPair` + `AiAutoReplyLog` tables.
@@ -1363,7 +1367,7 @@ export class SalesBotService {
 
     for (let hop = 0; hop < 3; hop++) {
       const resp = await this.client.messages.create({
-        model: 'claude-haiku-4-5-20251001',
+        model: 'claude-sonnet-4-6', // Customer-facing = Sonnet for quality
         max_tokens: 1024,
         system: SALES_BOT_SYSTEM_PROMPT,
         tools: tools as Anthropic.Tool[],
@@ -1517,20 +1521,25 @@ git commit -m "feat(sales-bot): module scaffold + 4 tools + system prompt + tool
 
 ---
 
-## Task 8: น้องเบส service — add full conversation history window
+## Task 8: น้องเบส service — upgrade to Sonnet + full conversation history window
 
 **Files:**
 - Modify: `apps/api/src/modules/chatbot-finance/services/finance-ai.service.ts`
 - Modify: `apps/api/src/modules/chatbot-finance/services/finance-ai.service.spec.ts`
 
-**Context:** Currently `finance-ai.service.ts` builds its Claude prompt with only the current message + customer snapshot. We add the last 10 `ChatMessage` rows from the same room (oldest-first) mapped to `{ role: 'user'|'assistant', content: text }` and prepend before the current message. Stay within 30k input tokens — truncate oldest if total text > 20k chars.
+**Context:** Two changes in one task because they're in the same file and ship together:
+1. **Model upgrade**: change `claude-haiku-4-5-20251001` → `claude-sonnet-4-6` for the reply-generation call. Customer reads this output → quality matters. Keep Haiku only if there's a separate classifier/preprocessor call (those can stay Haiku).
+2. **Full conversation history window**: add the last 10 `ChatMessage` rows from the same room (oldest-first) mapped to `{ role: 'user'|'assistant', content: text }` prepended before the current message. Stay within 30k input tokens — truncate oldest if total text > 20k chars.
 
-- [ ] **Step 1: Read existing finance-ai.service.ts to find where messages are built**
+After this, check cost projections — Sonnet is ~3x Haiku. Current finance-ai volume per month: confirm with `AiAutoReplyLog` query before merging (informational, not blocking).
+
+- [ ] **Step 1: Read existing finance-ai.service.ts and upgrade model**
 
 ```bash
-grep -n "messages:" apps/api/src/modules/chatbot-finance/services/finance-ai.service.ts | head -20
+grep -n "messages:\|claude-haiku\|claude-sonnet\|model:" apps/api/src/modules/chatbot-finance/services/finance-ai.service.ts | head -20
 ```
-Note the method that builds the Anthropic messages array.
+
+Find every `model: 'claude-haiku-4-5-20251001'` used for reply generation and change to `model: 'claude-sonnet-4-6'`. Leave Haiku alone if it's used for a non-customer-facing internal classifier inside the same file (if unclear, err on the side of Sonnet for safety — customer quality > cost).
 
 - [ ] **Step 2: Add helper to load history**
 
@@ -1681,7 +1690,7 @@ export class ChatAiDraftService {
     let reply = '';
     let confidence = routed.confidence;
     let toolsUsed: string[] = [];
-    let modelUsed = 'claude-haiku-4-5-20251001';
+    let modelUsed = 'claude-sonnet-4-6';
     let inputTokens = 0;
     let outputTokens = 0;
 

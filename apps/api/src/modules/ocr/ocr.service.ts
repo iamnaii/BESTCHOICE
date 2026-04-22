@@ -27,7 +27,7 @@ export class OcrService {
     'ถ้าตัวอักษรไม่ชัด ให้ใช้บริบทรอบข้างช่วยในการตีความ เช่น รูปแบบเลขบัตรประชาชน 13 หลัก หรือชื่อธนาคารที่คุ้นเคย ' +
     'ตอบเป็น JSON เท่านั้น ห้ามมี markdown code block หรือข้อความอื่นใดนอกเหนือจาก JSON';
 
-  private static readonly OCR_MODEL = 'claude-sonnet-4-5-20250514';
+  private static readonly OCR_MODEL = 'claude-sonnet-4-6';
   private static readonly LOW_CONFIDENCE_THRESHOLD = 0.7;
   private static readonly MAX_RETRIES = 2;
 

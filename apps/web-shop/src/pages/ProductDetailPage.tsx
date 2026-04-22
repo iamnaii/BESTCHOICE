@@ -1,14 +1,26 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { api } from '../lib/api';
-import { getSessionId } from '../lib/session';
-import { useCartStore } from '../stores/cartStore';
-import { useTrackEvent } from '../hooks/useTrackEvent';
-import ShopLayout from '../components/layout/ShopLayout';
-import { Button } from '../components/ui/button';
-import ReviewsSection from '../components/reviews/ReviewsSection';
+import { api } from '@/lib/api';
+import { getSessionId } from '@/lib/session';
+import { copy } from '@/lib/copy';
+import { media } from '@/lib/media-placeholders';
+import { useCartStore } from '@/stores/cartStore';
+import { useTrackEvent } from '@/hooks/useTrackEvent';
+import ShopLayout from '@/components/layout/ShopLayout';
+import ReviewsSection from '@/components/reviews/ReviewsSection';
+import {
+  Container,
+  Section,
+  Stack,
+  Button,
+  Badge,
+  TrustStrip,
+  Skeleton,
+  StickyBottomBar,
+  StickyBottomBarSpacer,
+} from '@/components';
 
 interface ProductUnit {
   id: string;
@@ -42,11 +54,24 @@ function lowestPrice(tiers: ProductDetail['tiers']): number {
   return prices.length ? Math.min(...prices) : 0;
 }
 
+function conditionVariant(g: string): 'condition-a' | 'condition-b' | 'condition-c' {
+  return g === 'A' ? 'condition-a' : g === 'B' ? 'condition-b' : 'condition-c';
+}
+
+function conditionDescription(g: string): string {
+  return g === 'A'
+    ? copy.product.conditionAFull
+    : g === 'B'
+      ? copy.product.conditionBFull
+      : copy.product.conditionCFull;
+}
+
 export default function ProductDetailPage() {
   const { id } = useParams<{ id: string }>();
   const nav = useNavigate();
   const cart = useCartStore();
   const track = useTrackEvent();
+  const [activeImage, setActiveImage] = useState(0);
 
   const { data, isLoading } = useQuery({
     queryKey: ['shop-product', id],
@@ -86,7 +111,17 @@ export default function ProductDetailPage() {
   if (isLoading || !data) {
     return (
       <ShopLayout>
-        <div className="p-8 text-muted-foreground leading-snug">กำลังโหลด...</div>
+        <Container className="py-8">
+          <div className="grid md:grid-cols-2 gap-8 leading-snug">
+            <Skeleton className="aspect-square w-full rounded-2xl" />
+            <div className="space-y-4">
+              <Skeleton className="h-8 w-3/4" />
+              <Skeleton className="h-6 w-1/2" />
+              <Skeleton className="h-10 w-1/3" />
+              <Skeleton className="h-20 w-full" />
+            </div>
+          </div>
+        </Container>
       </ShopLayout>
     );
   }
@@ -97,72 +132,130 @@ export default function ProductDetailPage() {
   const price = lowestPrice(data.tiers);
   const monthlyEst = Math.floor(price * 0.093);
   const gradeKeys = Object.keys(data.tiers);
+  const gallery = data.gallery && data.gallery.length > 0 ? data.gallery : [media('product.placeholder')];
+  const mainImage = gallery[activeImage] ?? gallery[0];
 
   return (
     <ShopLayout>
-      <div className="container mx-auto px-4 py-6 grid md:grid-cols-2 gap-8">
-        <div>
-          {data.gallery?.[0] && (
-            <img
-              src={data.gallery[0]}
-              alt={displayName}
-              className="w-full rounded-2xl bg-muted"
-            />
-          )}
-          {data.gallery && data.gallery.length > 1 && (
-            <div className="grid grid-cols-4 gap-2 mt-2">
-              {data.gallery.slice(1, 5).map((src, i) => (
-                <img
-                  key={i}
-                  src={src}
-                  alt={`${displayName} ${i + 2}`}
-                  className="w-full rounded-lg bg-muted"
-                />
-              ))}
+      <Container className="py-6 md:py-8">
+        <div className="grid md:grid-cols-2 gap-8 leading-snug">
+          {/* Gallery */}
+          <div className="space-y-3">
+            <div className="aspect-square w-full rounded-2xl bg-zinc-50 overflow-hidden flex items-center justify-center">
+              <img
+                src={mainImage}
+                alt={displayName}
+                className="max-h-full max-w-full object-contain"
+                loading="eager"
+              />
             </div>
-          )}
-        </div>
-        <div className="space-y-4">
-          <h1 className="text-2xl font-bold leading-snug">{displayName}</h1>
-          {gradeKeys.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {gradeKeys.map((g) => (
-                <span
-                  key={g}
-                  className="inline-block rounded-full bg-primary/10 text-primary px-3 py-1 text-sm leading-snug"
-                >
-                  เกรด {g}
-                </span>
-              ))}
-            </div>
-          )}
-          {data.description && (
-            <p className="text-muted-foreground leading-snug">{data.description}</p>
-          )}
-          <div className="text-3xl font-bold text-primary leading-snug">
-            ฿{price.toLocaleString()}
+            {gallery.length > 1 && (
+              <div className="grid grid-cols-5 gap-2">
+                {gallery.slice(0, 5).map((src, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setActiveImage(i)}
+                    aria-label={`รูปที่ ${i + 1}`}
+                    className={`aspect-square rounded-xl bg-zinc-50 overflow-hidden flex items-center justify-center border transition-all ${
+                      i === activeImage
+                        ? 'border-emerald-500 ring-2 ring-emerald-200'
+                        : 'border-zinc-200 hover:border-emerald-200'
+                    }`}
+                  >
+                    <img
+                      src={src}
+                      alt={`${displayName} ${i + 1}`}
+                      className="max-h-full max-w-full object-contain"
+                      loading="lazy"
+                    />
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
-          <Button
-            size="lg"
-            className="w-full"
-            onClick={() => reserveMut.mutate()}
-            disabled={reserveMut.isPending}
-          >
-            {reserveMut.isPending ? 'กำลังจอง...' : 'ซื้อเลย (จอง 15 นาที)'}
-          </Button>
-          <Button
-            variant="outline"
-            size="lg"
-            className="w-full"
-            onClick={() => nav('/apply')}
-          >
-            ผ่อนเริ่ม ฿{monthlyEst.toLocaleString()} / เดือน
-          </Button>
+
+          {/* Details */}
+          <Stack gap={4}>
+            <h1 className="text-2xl md:text-3xl font-bold leading-snug">{displayName}</h1>
+
+            {gradeKeys.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {gradeKeys.map((g) => (
+                  <Badge key={g} variant={conditionVariant(g)} size="md">
+                    เกรด {g}
+                  </Badge>
+                ))}
+              </div>
+            )}
+
+            <div className="space-y-1">
+              <div className="text-3xl md:text-4xl font-bold text-emerald-600 leading-snug">
+                ฿{price.toLocaleString()}
+              </div>
+              <div className="text-sm text-muted-foreground leading-snug">
+                ผ่อนเริ่ม ฿{monthlyEst.toLocaleString()}/เดือน
+              </div>
+            </div>
+
+            {gradeKeys.length > 0 && (
+              <ul className="space-y-1 text-sm text-muted-foreground leading-snug">
+                {gradeKeys.map((g) => (
+                  <li key={g}>{conditionDescription(g)}</li>
+                ))}
+              </ul>
+            )}
+
+            {data.description && (
+              <p className="text-sm md:text-base text-muted-foreground leading-snug">
+                {data.description}
+              </p>
+            )}
+
+            {/* Desktop primary CTA (mobile uses StickyBottomBar) */}
+            <div className="hidden md:flex flex-col gap-3 pt-2">
+              <Button
+                size="lg"
+                fullWidth
+                onClick={() => reserveMut.mutate()}
+                disabled={reserveMut.isPending}
+                loading={reserveMut.isPending}
+              >
+                {copy.product.reserveCta}
+              </Button>
+              <Button variant="outline" size="lg" fullWidth onClick={() => nav('/apply')}>
+                สมัครผ่อนทันที
+              </Button>
+            </div>
+          </Stack>
         </div>
-      </div>
-      <div className="container mx-auto px-4 pb-8">
-        <ReviewsSection productId={id!} />
-      </div>
+      </Container>
+
+      <Section tone="muted" padding="sm">
+        <Container>
+          <TrustStrip />
+        </Container>
+      </Section>
+
+      <Section padding="md">
+        <Container>
+          <ReviewsSection productId={id!} />
+        </Container>
+      </Section>
+
+      {/* Mobile sticky CTA */}
+      <StickyBottomBar>
+        <Button
+          size="lg"
+          fullWidth
+          onClick={() => reserveMut.mutate()}
+          disabled={reserveMut.isPending}
+          loading={reserveMut.isPending}
+        >
+          {copy.product.reserveCta}
+        </Button>
+      </StickyBottomBar>
+      <StickyBottomBarSpacer />
     </ShopLayout>
   );
 }

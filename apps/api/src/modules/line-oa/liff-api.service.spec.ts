@@ -24,6 +24,9 @@ describe('LiffApiService', () => {
       contract: {
         findFirst: jest.fn(),
       },
+      receipt: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -267,18 +270,23 @@ describe('LiffApiService', () => {
           {
             contractNumber: 'BC-001',
             payments: [
-              { installmentNo: 1, amountPaid: new Prisma.Decimal('2000'), paidDate: new Date('2026-02-01'), paymentMethod: 'CASH', lateFee: new Prisma.Decimal('0') },
-              { installmentNo: 2, amountPaid: new Prisma.Decimal('2000'), paidDate: new Date('2026-03-01'), paymentMethod: 'BANK_TRANSFER', lateFee: new Prisma.Decimal('50') },
+              { id: 'pay-1', installmentNo: 1, amountPaid: new Prisma.Decimal('2000'), paidDate: new Date('2026-02-01'), paymentMethod: 'CASH', lateFee: new Prisma.Decimal('0') },
+              { id: 'pay-2', installmentNo: 2, amountPaid: new Prisma.Decimal('2000'), paidDate: new Date('2026-03-01'), paymentMethod: 'BANK_TRANSFER', lateFee: new Prisma.Decimal('50') },
             ],
           },
           {
             contractNumber: 'BC-002',
             payments: [
-              { installmentNo: 1, amountPaid: new Prisma.Decimal('1500'), paidDate: new Date('2026-02-15'), paymentMethod: 'PROMPTPAY', lateFee: new Prisma.Decimal('0') },
+              { id: 'pay-3', installmentNo: 1, amountPaid: new Prisma.Decimal('1500'), paidDate: new Date('2026-02-15'), paymentMethod: 'PROMPTPAY', lateFee: new Prisma.Decimal('0') },
             ],
           },
         ],
       });
+      // Receipts issued for pay-1 and pay-3 only
+      prisma.receipt.findMany.mockResolvedValue([
+        { id: 'rc-a', paymentId: 'pay-1' },
+        { id: 'rc-c', paymentId: 'pay-3' },
+      ]);
 
       const result = await service.findCustomerPaymentHistory('U_line');
       expect(result).not.toBeNull();
@@ -291,6 +299,10 @@ describe('LiffApiService', () => {
       // Decimal → number conversion
       expect(result!.payments[2].amountPaid).toBe(2000);
       expect(result!.payments[0].lateFee).toBe(50);
+      // Receipt IDs joined: pay-1 → rc-a, pay-3 → rc-c, pay-2 → null (no receipt)
+      expect(result!.payments[0].receiptId).toBeNull(); // pay-2 (Mar 1)
+      expect(result!.payments[1].receiptId).toBe('rc-c'); // pay-3 (Feb 15)
+      expect(result!.payments[2].receiptId).toBe('rc-a'); // pay-1 (Feb 1)
     });
   });
 

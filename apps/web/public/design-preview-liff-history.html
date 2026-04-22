@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>ประวัติชำระเงิน · BESTCHOICE</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    * { font-family: 'IBM Plex Sans Thai', 'IBM Plex Sans', sans-serif; -webkit-font-smoothing: antialiased; }
+    .font-mono { font-family: 'IBM Plex Mono', monospace; }
+    body { background: #f3efe5; margin: 0; padding: 16px 0; }
+    @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
+    .animate-float { animation: float 3.5s ease-in-out infinite; }
+    .animate-float-delay { animation: float 3.5s ease-in-out infinite 1.2s; }
+
+    .frame {
+      max-width: 430px;
+      margin: 0 auto 32px;
+      background: #fafaf7;
+      position: relative;
+      overflow: hidden;
+      border-radius: 32px;
+      box-shadow: 0 40px 80px -30px rgb(0 0 0 / 0.25), 0 8px 20px -10px rgb(0 0 0 / 0.12);
+    }
+    .frame-label {
+      max-width: 430px;
+      margin: 0 auto 8px;
+      text-align: center;
+      font-family: 'IBM Plex Mono', monospace;
+      text-transform: uppercase;
+      letter-spacing: 0.2em;
+      font-size: 10px;
+      color: rgb(107 107 107);
+    }
+    .bg-mesh-history {
+      position: absolute; inset: 0; pointer-events: none; z-index: 0;
+      background:
+        radial-gradient(600px 400px at 10% -5%, rgb(16 185 129 / 0.09), transparent 60%),
+        radial-gradient(500px 380px at 100% 20%, rgb(59 130 246 / 0.08), transparent 65%),
+        radial-gradient(400px 320px at 50% 100%, rgb(99 102 241 / 0.05), transparent 60%);
+    }
+  </style>
+</head>
+<body>
+
+<div class="frame-label">◦ LiffHistory — Main (grouped by month)</div>
+<div class="frame">
+  <div class="bg-mesh-history"></div>
+
+  <!-- Top bar -->
+  <header class="sticky top-0 z-20 flex items-center justify-between px-5 py-[14px] backdrop-blur-xl border-b border-zinc-200/70" style="background-color: rgb(250 250 247 / 0.85); position: relative;">
+    <button class="grid h-9 w-9 place-items-center rounded-full text-zinc-900 -ml-1.5">
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="m15 18-6-6 6-6"/></svg>
+    </button>
+    <div class="text-[13px] font-medium text-zinc-900 tracking-tight">ประวัติชำระเงิน</div>
+    <div class="relative -mr-1.5">
+      <div class="grid h-9 w-9 place-items-center rounded-full text-[12px] font-semibold text-white" style="background: linear-gradient(135deg, rgb(16 185 129) 0%, rgb(5 150 105) 60%, rgb(13 148 136) 100%); box-shadow: 0 10px 20px -6px rgb(16 185 129 / 0.4);">ส</div>
+    </div>
+  </header>
+
+  <!-- Greeting -->
+  <section class="relative z-[1] px-5 pt-6">
+    <div class="text-xs text-zinc-500">สวัสดี</div>
+    <div class="text-[17px] font-medium text-zinc-900 tracking-tight">คุณสมชาย ใจดี</div>
+  </section>
+
+  <!-- Hero -->
+  <section class="relative z-[1] px-5 pt-7">
+    <div class="absolute pointer-events-none animate-float" style="top: 10px; left: -40px; width: 220px; height: 220px; border-radius: 50%; filter: blur(60px); opacity: 0.55; background: radial-gradient(circle, rgb(16 185 129), transparent 70%);"></div>
+    <div class="absolute pointer-events-none animate-float-delay" style="top: 50px; right: -30px; width: 180px; height: 180px; border-radius: 50%; filter: blur(60px); opacity: 0.45; background: radial-gradient(circle, rgb(59 130 246), transparent 70%);"></div>
+
+    <div class="relative">
+      <div class="flex items-center gap-2">
+        <span class="text-[10.5px] font-semibold uppercase text-emerald-700" style="letter-spacing: 0.18em;">ชำระแล้วทั้งหมด</span>
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgb(5 150 105)" stroke-width="2.5"><path d="M18 6 7 17l-5-5"/><path d="m22 10-7.5 7.5L13 16"/></svg>
+      </div>
+
+      <div class="mt-3 flex items-baseline gap-1.5">
+        <span class="font-mono text-[26px] text-emerald-700 font-light leading-none">฿</span>
+        <span class="font-mono font-light tabular-nums text-zinc-900" style="font-size: 60px; line-height: 0.95; letter-spacing: -0.035em;">27,000</span>
+        <span class="ml-2 font-mono text-xs text-zinc-500">บาท</span>
+      </div>
+
+      <!-- Stat chips -->
+      <div class="mt-4 grid grid-cols-3 gap-2">
+        <div class="rounded-2xl border border-zinc-200/50 bg-white/70 p-3 shadow-sm" style="backdrop-filter: blur(8px);">
+          <div class="text-[9.5px] font-semibold uppercase text-zinc-500" style="letter-spacing: 0.15em;">งวดที่ชำระ</div>
+          <div class="mt-1.5 flex items-baseline gap-1">
+            <span class="font-mono text-[18px] font-medium tabular-nums text-zinc-900">6</span>
+            <span class="text-[10px] text-zinc-500">งวด</span>
+          </div>
+        </div>
+        <div class="rounded-2xl border border-zinc-200/50 bg-white/70 p-3 shadow-sm" style="backdrop-filter: blur(8px);">
+          <div class="text-[9.5px] font-semibold uppercase text-zinc-500" style="letter-spacing: 0.15em;">ตรงเวลา</div>
+          <div class="mt-1.5 flex items-baseline gap-1">
+            <span class="font-mono text-[18px] font-medium tabular-nums text-emerald-700">83</span>
+            <span class="text-[10px] text-zinc-500">%</span>
+          </div>
+        </div>
+        <div class="rounded-2xl border border-zinc-200/50 bg-white/70 p-3 shadow-sm" style="backdrop-filter: blur(8px);">
+          <div class="text-[9.5px] font-semibold uppercase text-zinc-500" style="letter-spacing: 0.15em;">ค่าปรับรวม</div>
+          <div class="mt-1.5 flex items-baseline gap-1">
+            <span class="font-mono text-[18px] font-medium tabular-nums text-red-600">120</span>
+            <span class="text-[10px] text-zinc-500">บาท</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Group: เมษายน 2568 -->
+  <div class="relative z-[1] mt-8">
+    <div class="flex items-center gap-3 px-5">
+      <span class="text-[10.5px] font-semibold uppercase text-zinc-500" style="letter-spacing: 0.18em;">เมษายน 2568</span>
+      <div class="h-px flex-1" style="background: linear-gradient(to right, rgb(228 228 231), transparent);"></div>
+      <span class="font-mono text-[10px] tabular-nums text-zinc-500">2</span>
+    </div>
+
+    <div class="mt-3 px-5 space-y-2">
+      <!-- On-time payment -->
+      <div class="relative flex items-start gap-3 rounded-[18px] border border-zinc-200/50 bg-white px-4 py-3.5 shadow-sm">
+        <div class="shrink-0 pt-1">
+          <div class="relative grid h-7 w-7 place-items-center rounded-full bg-emerald-50 border border-emerald-200">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgb(4 120 87)" stroke-width="2.5"><path d="M18 6 7 17l-5-5"/><path d="m22 10-7.5 7.5L13 16"/></svg>
+          </div>
+        </div>
+        <div class="min-w-0 flex-1">
+          <div class="flex items-baseline justify-between gap-2">
+            <div class="min-w-0 flex-1">
+              <div class="flex items-baseline gap-2 flex-wrap">
+                <span class="text-[13.5px] font-semibold text-zinc-900 tracking-tight">งวดที่ 6</span>
+                <span class="font-mono text-[10.5px] text-zinc-500 tracking-wide">BC-2024-001847</span>
+              </div>
+              <div class="mt-1 flex items-center gap-1.5 text-[11.5px] text-zinc-500 flex-wrap">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 10h18"/></svg>
+                <span>15 เม.ย. · พร้อมเพย์</span>
+              </div>
+            </div>
+            <div class="text-right shrink-0">
+              <div class="font-mono text-[15px] font-semibold tabular-nums text-zinc-900 leading-none">฿4,500</div>
+              <a class="mt-2 inline-flex items-center gap-1 rounded-full bg-emerald-50/70 border border-emerald-200 px-2 py-1 text-[10px] font-medium text-emerald-700 leading-none cursor-pointer">
+                <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                ใบเสร็จ
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Late payment -->
+      <div class="relative flex items-start gap-3 rounded-[18px] border border-zinc-200/50 bg-white px-4 py-3.5 shadow-sm">
+        <div class="shrink-0 pt-1">
+          <div class="relative grid h-7 w-7 place-items-center rounded-full bg-amber-50 border border-amber-200">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgb(180 83 9)" stroke-width="2.5"><path d="M18 6 7 17l-5-5"/><path d="m22 10-7.5 7.5L13 16"/></svg>
+          </div>
+        </div>
+        <div class="min-w-0 flex-1">
+          <div class="flex items-baseline justify-between gap-2">
+            <div class="min-w-0 flex-1">
+              <div class="flex items-baseline gap-2 flex-wrap">
+                <span class="text-[13.5px] font-semibold text-zinc-900 tracking-tight">งวดที่ 5</span>
+                <span class="font-mono text-[10.5px] text-zinc-500 tracking-wide">BC-2024-001847</span>
+              </div>
+              <div class="mt-1 flex items-center gap-1.5 text-[11.5px] text-zinc-500 flex-wrap">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M3 22V8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14"/><path d="M10 10V4a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v6"/><path d="M3 22h18"/></svg>
+                <span>8 เม.ย. · โอนเงิน</span>
+              </div>
+            </div>
+            <div class="text-right shrink-0">
+              <div class="font-mono text-[15px] font-semibold tabular-nums text-zinc-900 leading-none">฿4,500</div>
+              <div class="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[9.5px] font-medium text-amber-800 leading-none">
+                <span>ค่าปรับ</span>
+                <span class="font-mono tabular-nums">฿50</span>
+              </div>
+              <a class="mt-1.5 inline-flex items-center gap-1 rounded-full bg-emerald-50/70 border border-emerald-200 px-2 py-1 text-[10px] font-medium text-emerald-700 leading-none cursor-pointer">
+                <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                ใบเสร็จ
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Group: มีนาคม 2568 -->
+  <div class="relative z-[1] mt-6">
+    <div class="flex items-center gap-3 px-5">
+      <span class="text-[10.5px] font-semibold uppercase text-zinc-500" style="letter-spacing: 0.18em;">มีนาคม 2568</span>
+      <div class="h-px flex-1" style="background: linear-gradient(to right, rgb(228 228 231), transparent);"></div>
+      <span class="font-mono text-[10px] tabular-nums text-zinc-500">2</span>
+    </div>
+
+    <div class="mt-3 px-5 space-y-2">
+      <div class="relative flex items-start gap-3 rounded-[18px] border border-zinc-200/50 bg-white px-4 py-3.5 shadow-sm">
+        <div class="shrink-0 pt-1">
+          <div class="relative grid h-7 w-7 place-items-center rounded-full bg-emerald-50 border border-emerald-200">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgb(4 120 87)" stroke-width="2.5"><path d="M18 6 7 17l-5-5"/><path d="m22 10-7.5 7.5L13 16"/></svg>
+          </div>
+        </div>
+        <div class="min-w-0 flex-1">
+          <div class="flex items-baseline justify-between gap-2">
+            <div class="min-w-0 flex-1">
+              <div class="flex items-baseline gap-2 flex-wrap">
+                <span class="text-[13.5px] font-semibold text-zinc-900 tracking-tight">งวดที่ 4</span>
+                <span class="font-mono text-[10.5px] text-zinc-500 tracking-wide">BC-2024-001847</span>
+              </div>
+              <div class="mt-1 flex items-center gap-1.5 text-[11.5px] text-zinc-500 flex-wrap">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 10h18"/></svg>
+                <span>15 มี.ค. · พร้อมเพย์</span>
+              </div>
+            </div>
+            <div class="text-right shrink-0">
+              <div class="font-mono text-[15px] font-semibold tabular-nums text-zinc-900 leading-none">฿4,500</div>
+              <a class="mt-2 inline-flex items-center gap-1 rounded-full bg-emerald-50/70 border border-emerald-200 px-2 py-1 text-[10px] font-medium text-emerald-700 leading-none cursor-pointer">
+                <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                ใบเสร็จ
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="relative flex items-start gap-3 rounded-[18px] border border-zinc-200/50 bg-white px-4 py-3.5 shadow-sm">
+        <div class="shrink-0 pt-1">
+          <div class="relative grid h-7 w-7 place-items-center rounded-full bg-amber-50 border border-amber-200">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgb(180 83 9)" stroke-width="2.5"><path d="M18 6 7 17l-5-5"/><path d="m22 10-7.5 7.5L13 16"/></svg>
+          </div>
+        </div>
+        <div class="min-w-0 flex-1">
+          <div class="flex items-baseline justify-between gap-2">
+            <div class="min-w-0 flex-1">
+              <div class="flex items-baseline gap-2 flex-wrap">
+                <span class="text-[13.5px] font-semibold text-zinc-900 tracking-tight">งวดที่ 3</span>
+                <span class="font-mono text-[10.5px] text-zinc-500 tracking-wide">BC-2024-001847</span>
+              </div>
+              <div class="mt-1 flex items-center gap-1.5 text-[11.5px] text-zinc-500 flex-wrap">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01"/><path d="M18 12h.01"/></svg>
+                <span>10 มี.ค. · เงินสด</span>
+              </div>
+            </div>
+            <div class="text-right shrink-0">
+              <div class="font-mono text-[15px] font-semibold tabular-nums text-zinc-900 leading-none">฿4,500</div>
+              <div class="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[9.5px] font-medium text-amber-800 leading-none">
+                <span>ค่าปรับ</span>
+                <span class="font-mono tabular-nums">฿70</span>
+              </div>
+              <a class="mt-1.5 inline-flex items-center gap-1 rounded-full bg-emerald-50/70 border border-emerald-200 px-2 py-1 text-[10px] font-medium text-emerald-700 leading-none cursor-pointer">
+                <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                ใบเสร็จ
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Group: กุมภาพันธ์ 2568 -->
+  <div class="relative z-[1] mt-6">
+    <div class="flex items-center gap-3 px-5">
+      <span class="text-[10.5px] font-semibold uppercase text-zinc-500" style="letter-spacing: 0.18em;">กุมภาพันธ์ 2568</span>
+      <div class="h-px flex-1" style="background: linear-gradient(to right, rgb(228 228 231), transparent);"></div>
+      <span class="font-mono text-[10px] tabular-nums text-zinc-500">2</span>
+    </div>
+
+    <div class="mt-3 px-5 space-y-2">
+      <div class="relative flex items-start gap-3 rounded-[18px] border border-zinc-200/50 bg-white px-4 py-3.5 shadow-sm">
+        <div class="shrink-0 pt-1">
+          <div class="relative grid h-7 w-7 place-items-center rounded-full bg-emerald-50 border border-emerald-200">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgb(4 120 87)" stroke-width="2.5"><path d="M18 6 7 17l-5-5"/><path d="m22 10-7.5 7.5L13 16"/></svg>
+          </div>
+        </div>
+        <div class="min-w-0 flex-1">
+          <div class="flex items-baseline justify-between gap-2">
+            <div class="min-w-0 flex-1">
+              <div class="flex items-baseline gap-2 flex-wrap">
+                <span class="text-[13.5px] font-semibold text-zinc-900 tracking-tight">งวดที่ 2</span>
+                <span class="font-mono text-[10.5px] text-zinc-500 tracking-wide">BC-2024-001847</span>
+              </div>
+              <div class="mt-1 flex items-center gap-1.5 text-[11.5px] text-zinc-500 flex-wrap">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 10h18"/></svg>
+                <span>15 ก.พ. · พร้อมเพย์</span>
+              </div>
+            </div>
+            <div class="text-right shrink-0">
+              <div class="font-mono text-[15px] font-semibold tabular-nums text-zinc-900 leading-none">฿4,500</div>
+              <a class="mt-2 inline-flex items-center gap-1 rounded-full bg-emerald-50/70 border border-emerald-200 px-2 py-1 text-[10px] font-medium text-emerald-700 leading-none cursor-pointer">
+                <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                ใบเสร็จ
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="relative flex items-start gap-3 rounded-[18px] border border-zinc-200/50 bg-white px-4 py-3.5 shadow-sm">
+        <div class="shrink-0 pt-1">
+          <div class="relative grid h-7 w-7 place-items-center rounded-full bg-emerald-50 border border-emerald-200">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgb(4 120 87)" stroke-width="2.5"><path d="M18 6 7 17l-5-5"/><path d="m22 10-7.5 7.5L13 16"/></svg>
+          </div>
+        </div>
+        <div class="min-w-0 flex-1">
+          <div class="flex items-baseline justify-between gap-2">
+            <div class="min-w-0 flex-1">
+              <div class="flex items-baseline gap-2 flex-wrap">
+                <span class="text-[13.5px] font-semibold text-zinc-900 tracking-tight">งวดที่ 1</span>
+                <span class="font-mono text-[10.5px] text-zinc-500 tracking-wide">BC-2024-001847</span>
+              </div>
+              <div class="mt-1 flex items-center gap-1.5 text-[11.5px] text-zinc-500 flex-wrap">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M3 22V8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14"/><path d="M10 10V4a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v6"/><path d="M3 22h18"/></svg>
+                <span>15 ก.พ. · โอนเงิน</span>
+              </div>
+            </div>
+            <div class="text-right shrink-0">
+              <div class="font-mono text-[15px] font-semibold tabular-nums text-zinc-900 leading-none">฿4,500</div>
+              <a class="mt-2 inline-flex items-center gap-1 rounded-full bg-emerald-50/70 border border-emerald-200 px-2 py-1 text-[10px] font-medium text-emerald-700 leading-none cursor-pointer">
+                <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                ใบเสร็จ
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Back -->
+  <div class="relative z-[1] mt-8 px-5 pb-10">
+    <a class="flex items-center justify-center gap-1.5 text-[12.5px] text-zinc-500 py-3">
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+      กลับไปดูสัญญา
+    </a>
+    <p class="text-center text-[10px] text-zinc-400 uppercase mt-4" style="letter-spacing: 0.15em;">Best Choice · ระบบผ่อนชำระ</p>
+  </div>
+</div>
+
+<div class="frame-label">◦ LiffHistory — Empty State</div>
+<div class="frame">
+  <div class="bg-mesh-history"></div>
+
+  <header class="sticky top-0 z-20 flex items-center justify-between px-5 py-[14px] backdrop-blur-xl border-b border-zinc-200/70" style="background-color: rgb(250 250 247 / 0.85); position: relative;">
+    <button class="grid h-9 w-9 place-items-center rounded-full text-zinc-900 -ml-1.5">
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="m15 18-6-6 6-6"/></svg>
+    </button>
+    <div class="text-[13px] font-medium text-zinc-900 tracking-tight">ประวัติชำระเงิน</div>
+    <div class="relative -mr-1.5">
+      <div class="grid h-9 w-9 place-items-center rounded-full text-[12px] font-semibold text-white" style="background: linear-gradient(135deg, rgb(16 185 129) 0%, rgb(5 150 105) 60%, rgb(13 148 136) 100%); box-shadow: 0 10px 20px -6px rgb(16 185 129 / 0.4);">ส</div>
+    </div>
+  </header>
+
+  <section class="relative z-[1] px-5 pt-16 pb-16 flex flex-col items-center text-center">
+    <div class="grid h-20 w-20 place-items-center rounded-full bg-zinc-100 border border-zinc-200 mb-5">
+      <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="rgb(113 113 122)" stroke-width="1.5"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 8h-6"/><path d="M16 12h-6"/><path d="M16 16h-6"/></svg>
+    </div>
+    <h2 class="text-[18px] font-semibold text-zinc-900 tracking-tight">ยังไม่มีประวัติชำระ</h2>
+    <p class="mt-2 text-[13px] text-zinc-500 max-w-[280px]">เมื่อคุณชำระงวดแรก รายการจะปรากฏที่นี่พร้อมวันที่และวิธีชำระ</p>
+    <button class="mt-8 w-full max-w-xs rounded-[14px] border border-zinc-300 bg-white px-4 py-3 text-sm font-medium text-zinc-900">กลับไปดูสัญญา</button>
+  </section>
+</div>
+
+</body>
+</html>

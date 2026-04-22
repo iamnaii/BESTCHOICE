@@ -360,20 +360,25 @@ export default function LiffEarlyPayoff() {
         <div className="h-px flex-1 bg-gradient-to-r from-border to-transparent" />
       </div>
 
-      {/* Breakdown */}
+      {/* Breakdown — hide interest line, lead with full price + discount */}
       <section className="relative z-[1] mt-4 px-5">
         <div className="rounded-[22px] border border-border/50 bg-card p-5 shadow-sm space-y-3">
           <Row label="งวดคงเหลือ" value={`${quote.remainingMonths} งวด`} />
-          <Row label="เงินต้นคงเหลือ" value={formatNumber(quote.remainingPrincipal)} unit="บาท" />
-          <Row label="ดอกเบี้ยคงเหลือ" value={formatNumber(quote.remainingInterest)} unit="บาท" />
+          <Row
+            label="ยอดเต็มก่อนหักส่วนลด"
+            value={formatNumber(baseBeforeDiscount)}
+            unit="บาท"
+            strikethrough
+          />
 
           <div className="h-px bg-border/60" />
 
           <Row
-            label="ส่วนลดดอกเบี้ย 50%"
+            label="ส่วนลดพิเศษ 50%"
             value={`−${formatNumber(quote.discount)}`}
             unit="บาท"
             tone="emerald"
+            emphasize
           />
           {quote.partiallyPaidCredit > 0 && (
             <Row
@@ -435,7 +440,7 @@ export default function LiffEarlyPayoff() {
         <div className="rounded-[22px] border border-amber-200/60 bg-amber-50/60 p-4 flex items-start gap-3">
           <ShieldCheck className="size-[18px] text-amber-700 shrink-0 mt-0.5" strokeWidth={1.75} />
           <p className="text-[12px] text-amber-900/90 leading-relaxed">
-            ส่วนลด 50% คำนวณจากดอกเบี้ยคงเหลือของงวดที่ยังไม่ชำระ ยอดจะปิดสัญญาและย้ายกรรมสิทธิ์เครื่องทันทีหลังชำระสำเร็จ
+            ส่วนลดพิเศษ 50% เป็นสิทธิ์สำหรับลูกค้าที่ปิดสัญญาก่อนกำหนด ยอดจะปิดสัญญาและย้ายกรรมสิทธิ์เครื่องทันทีหลังชำระสำเร็จ
           </p>
         </div>
       </section>
@@ -501,23 +506,34 @@ function Row({
   value,
   unit,
   tone = 'default',
+  strikethrough,
+  emphasize,
 }: {
   label: string;
   value: string;
   unit?: string;
   tone?: 'default' | 'emerald' | 'destructive';
+  strikethrough?: boolean;
+  emphasize?: boolean;
 }) {
   const valueColor =
     tone === 'emerald'
       ? 'text-emerald-700'
       : tone === 'destructive'
         ? 'text-destructive'
-        : 'text-foreground';
+        : strikethrough
+          ? 'text-muted-foreground/70'
+          : 'text-foreground';
+  const valueSize = emphasize ? 'text-[15px] font-semibold' : 'text-[13.5px] font-medium';
   return (
     <div className="flex items-baseline justify-between">
-      <span className="text-[12.5px] text-muted-foreground leading-snug">{label}</span>
+      <span className={`text-[12.5px] leading-snug ${emphasize ? 'text-emerald-700 font-semibold' : 'text-muted-foreground'}`}>
+        {label}
+      </span>
       <span className="flex items-baseline gap-1">
-        <span className={`font-mono text-[13.5px] font-medium tabular-nums tracking-tight ${valueColor}`}>
+        <span
+          className={`font-mono tabular-nums tracking-tight ${valueSize} ${valueColor} ${strikethrough ? 'line-through' : ''}`}
+        >
           {value}
         </span>
         {unit && <span className="text-[11px] text-muted-foreground leading-snug">{unit}</span>}

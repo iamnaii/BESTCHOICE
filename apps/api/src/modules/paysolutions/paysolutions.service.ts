@@ -417,6 +417,113 @@ export class PaySolutionsService {
   }
 
   /**
+   * สร้าง payment intent สำหรับ saving plan (ออมดาวน์)
+   * — เรียก PaySolutions API สร้าง PromptPay QR
+   * — บันทึก PaymentLink พร้อม savingPlanId
+   * — Webhook จะ confirmSavingPlanPayment เมื่อชำระสำเร็จ
+   */
+  async createSavingPlanIntent(input: {
+    savingPlanId: string;
+    amount: number;
+    description: string;
+  }): Promise<{ paymentLinkId: string; paymentUrl: string }> {
+    const plan = await this.prisma.savingPlan.findUnique({
+      where: { id: input.savingPlanId },
+      include: { customer: { select: { email: true, name: true } } },
+    });
+    if (!plan) throw new NotFoundException('ไม่พบแผนออม');
+
+    const orderRef = `SP${Date.now().toString(36).toUpperCase()}`.slice(0, 12);
+    const returnUrlBase =
+      this.returnUrl || `${this.config.get('FRONTEND_URL', 'http://localhost:5174')}/saving-plan`;
+    const returnUrl = `${returnUrlBase}/${plan.id}`;
+
+    const paymentPayload: Record<string, unknown> = {
+      merchantId: await this.getMerchantId(),
+      customerEmail: plan.customer.email || 'noreply@bestchoice.com',
+      referenceNo: orderRef,
+      description: input.description,
+      amount: input.amount,
+      paymentChannel: 'Qrcode',
+      paymentGateway: 'Promptpay',
+      currencyCode: '00',
+      lang: 'TH',
+      returnUrl,
+      postbackUrl: `${this.apiBaseUrl}/api/paysolutions/webhook`,
+      terminalId: await this.getTerminalId(),
+      keyVersion: 1,
+    };
+
+    const abortController = new AbortController();
+    const timeoutHandle = setTimeout(() => abortController.abort(), PAYSOLUTIONS_TIMEOUT_MS);
+    let paymentUrl: string;
+
+    try {
+      const response = await fetch(
+        `${await this.getApiUrl()}/payment/gateway/v2/ui-payments`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json; charset=utf-8',
+            apiKey: await this.getApiKey(),
+            secretKey: await this.getSecretKey(),
+          },
+          body: JSON.stringify(paymentPayload),
+          signal: abortController.signal,
+        },
+      );
+      const gatewayResponse = (await response.json()) as Record<string, unknown>;
+      if (!response.ok) {
+        const status = gatewayResponse.status as Record<string, string> | undefined;
+        throw new InternalServerErrorException(
+          `ไม่สามารถสร้างรายการชำระเงินได้: ${status?.message || 'กรุณาลองใหม่'}`,
+        );
+      }
+      paymentUrl = (gatewayResponse.redirectUrl as string) || '';
+      if (!paymentUrl) {
+        throw new InternalServerErrorException('ไม่ได้รับลิงก์ชำระเงินจากระบบ');
+      }
+    } catch (error) {
+      if (error instanceof InternalServerErrorException) throw error;
+      const isTimeout = error instanceof Error && error.name === 'AbortError';
+      if (isTimeout) {
+        Sentry.captureMessage('paysolutions-saving-plan-timeout', {
+          level: 'warning',
+          tags: { critical: 'paysolutions-saving-plan-timeout', orderRef },
+          extra: { savingPlanId: input.savingPlanId, amount: input.amount },
+        });
+        throw new InternalServerErrorException('ระบบชำระเงินใช้เวลานานเกินไป กรุณาลองใหม่');
+      }
+      throw new InternalServerErrorException('ไม่สามารถเชื่อมต่อระบบชำระเงินได้');
+    } finally {
+      clearTimeout(timeoutHandle);
+    }
+
+    try {
+      const paymentLink = await this.prisma.paymentLink.create({
+        data: {
+          token: orderRef,
+          amount: input.amount,
+          status: 'ACTIVE',
+          expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+          savingPlanId: input.savingPlanId,
+        },
+      });
+      this.logger.log(
+        `Saving-plan payment intent: ${orderRef} for plan ${input.savingPlanId}`,
+      );
+      return { paymentLinkId: paymentLink.id, paymentUrl };
+    } catch (dbError) {
+      Sentry.captureException(dbError, {
+        level: 'fatal',
+        tags: { critical: 'paysolutions-saving-plan-orphan', orderRef },
+        extra: { savingPlanId: input.savingPlanId },
+      });
+      throw new InternalServerErrorException('ระบบบันทึกข้อมูลชำระเงินไม่สำเร็จ');
+    }
+  }
+
+  /**
    * ตรวจสอบ webhook callback จาก Pay Solutions
    * Pay Solutions ส่ง form POST กลับมาพร้อม merchantid — ตรวจว่าตรงกับ config
    */
@@ -494,6 +601,27 @@ export class PaySolutionsService {
       this.logger.warn(
         `Webhook for EXPIRED link refno=${refno} result_code=${result_code} — ignoring`,
       );
+      return;
+    }
+
+    // Saving-plan path (Phase 3): PaymentLink.savingPlanId set — route to saving plan flow.
+    if (paymentLink.savingPlanId) {
+      const isSuccessSaving = result_code === '00';
+      if (isSuccessSaving) {
+        await this.confirmSavingPlanPayment(paymentLink.savingPlanId, paymentLink.id, webhookData);
+        await this.prisma.paymentLink.update({
+          where: { id: paymentLink.id },
+          data: { status: 'USED', usedAt: new Date() },
+        });
+      } else {
+        await this.prisma.paymentLink.update({
+          where: { id: paymentLink.id },
+          data: { status: 'EXPIRED' },
+        });
+        this.logger.log(
+          `Saving-plan payment FAILED: refno=${refno}, result_code=${result_code}`,
+        );
+      }
       return;
     }
 
@@ -806,5 +934,97 @@ export class PaySolutionsService {
         },
       },
     };
+  }
+
+  /**
+   * ยืนยันชำระเงินงวดออมดาวน์ — idempotent
+   * — สร้าง SavingPlanPayment record
+   * — อัปเดต totalSaved + nextPaymentDueAt + status (COMPLETED ถ้าครบเป้า)
+   * — ส่ง LINE notification
+   */
+  async confirmSavingPlanPayment(
+    savingPlanId: string,
+    paymentLinkId: string,
+    webhookData: Record<string, string>,
+  ): Promise<void> {
+    const plan = await this.prisma.savingPlan.findUnique({
+      where: { id: savingPlanId },
+      include: { customer: true, payments: true },
+    });
+    if (!plan) {
+      this.logger.warn(`confirmSavingPlanPayment: plan ${savingPlanId} not found`);
+      return;
+    }
+    const existing = await this.prisma.savingPlanPayment.findFirst({
+      where: { paymentLinkId },
+    });
+    if (existing) {
+      this.logger.log(
+        `Saving-plan payment already recorded for paymentLinkId=${paymentLinkId} — idempotent skip`,
+      );
+      return;
+    }
+
+    const totalRaw = webhookData.total;
+    const amount =
+      totalRaw && !isNaN(Number(totalRaw)) ? new Prisma.Decimal(totalRaw) : new Prisma.Decimal(0);
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.savingPlanPayment.create({
+        data: {
+          savingPlanId,
+          amount,
+          paidAt: new Date(),
+          paymentMethod: 'PROMPTPAY',
+          paymentRef: webhookData.transaction_id || webhookData.refno || null,
+          paymentLinkId,
+        },
+      });
+      const newTotal = new Prisma.Decimal(plan.totalSaved).plus(amount);
+      const completed = newTotal.gte(plan.targetAmount);
+      const next = plan.nextPaymentDueAt ? new Date(plan.nextPaymentDueAt) : new Date();
+      next.setMonth(next.getMonth() + 1);
+      await tx.savingPlan.update({
+        where: { id: savingPlanId },
+        data: {
+          totalSaved: newTotal,
+          nextPaymentDueAt: completed ? null : next,
+          status: completed ? 'COMPLETED' : 'ACTIVE',
+          completedAt: completed ? new Date() : null,
+        },
+      });
+    });
+
+    if (plan.customer.lineId) {
+      try {
+        const newTotal = new Prisma.Decimal(plan.totalSaved).plus(amount);
+        await this.lineOaService.sendFlexMessage(plan.customer.lineId, {
+          type: 'flex',
+          altText: 'ชำระออมดาวน์สำเร็จ',
+          contents: {
+            type: 'bubble',
+            body: {
+              type: 'box',
+              layout: 'vertical',
+              contents: [
+                { type: 'text', text: 'ชำระออมดาวน์สำเร็จ', weight: 'bold', size: 'lg' },
+                { type: 'text', text: plan.planNumber, margin: 'md' },
+                {
+                  type: 'text',
+                  text: `ยอดสะสม ฿${Number(newTotal).toLocaleString()}`,
+                  weight: 'bold',
+                  margin: 'md',
+                  color: '#1DB446',
+                },
+              ],
+            },
+          },
+        });
+      } catch (err) {
+        this.logger.warn(
+          `Failed to send LINE notification for saving plan ${plan.planNumber}: ${err}`,
+        );
+      }
+    }
   }
 }

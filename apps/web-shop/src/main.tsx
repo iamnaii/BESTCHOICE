@@ -5,11 +5,14 @@ import { BrowserRouter } from 'react-router';
 import { Toaster } from 'sonner';
 import App from './App';
 import { AuthProvider } from './contexts/AuthContext';
+import { initAnalytics } from './lib/analytics';
 import './index.css';
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 60_000, refetchOnWindowFocus: false } },
 });
+
+initAnalytics();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

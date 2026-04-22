@@ -12,8 +12,17 @@ import QuickBuyModal from '@/components/trade-in/QuickBuyModal';
 import TradeInTable from './components/TradeInTable';
 import AppraisalModal from './components/AppraisalModal';
 import AcceptModal from './components/AcceptModal';
-import type { TradeIn, TradeInsResponse, AcceptFormState } from './types';
+import type {
+  TradeIn,
+  TradeInsResponse,
+  AcceptFormState,
+  TradeInSubmissionSource,
+  TradeInFlow,
+} from './types';
 import { EMPTY_ACCEPT_FORM } from './types';
+
+type SourceFilter = 'ALL' | TradeInSubmissionSource;
+type FlowFilter = 'ALL' | TradeInFlow;
 
 export default function TradeInPage() {
   useDocumentTitle('รับซื้อเครื่อง');
@@ -23,6 +32,8 @@ export default function TradeInPage() {
 
   const [page, setPage] = useState(1);
   const [showQuickBuy, setShowQuickBuy] = useState(false);
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>('ALL');
+  const [flowFilter, setFlowFilter] = useState<FlowFilter>('ALL');
 
   // Appraise modal state
   const [appraiseModal, setAppraiseModal] = useState<TradeIn | null>(null);
@@ -36,9 +47,12 @@ export default function TradeInPage() {
   /* ─── Query ─── */
 
   const { data, isLoading, isError, error, refetch } = useQuery<TradeInsResponse>({
-    queryKey: ['trade-ins', page],
+    queryKey: ['trade-ins', page, sourceFilter, flowFilter],
     queryFn: async () => {
-      const res = await api.get('/trade-ins', { params: { page, limit: 50 } });
+      const params: Record<string, string | number> = { page, limit: 50 };
+      if (sourceFilter !== 'ALL') params.submissionSource = sourceFilter;
+      if (flowFilter !== 'ALL') params.flow = flowFilter;
+      const res = await api.get('/trade-ins', { params });
       return res.data;
     },
   });
@@ -168,6 +182,47 @@ export default function TradeInPage() {
           openVoucherPdf(id);
         }}
       />
+
+      <div className="flex flex-wrap items-center gap-4 mb-4">
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-muted-foreground leading-snug">ที่มา:</span>
+          {(['ALL', 'ONLINE', 'OFFLINE'] as const).map((opt) => (
+            <button
+              key={opt}
+              onClick={() => {
+                setSourceFilter(opt);
+                setPage(1);
+              }}
+              className={`px-2.5 py-1 rounded-md text-xs leading-snug transition-colors ${
+                sourceFilter === opt
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted text-muted-foreground hover:bg-accent'
+              }`}
+            >
+              {opt === 'ALL' ? 'ทั้งหมด' : opt === 'ONLINE' ? 'ออนไลน์' : 'หน้าร้าน'}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-muted-foreground leading-snug">ประเภท:</span>
+          {(['ALL', 'EXCHANGE', 'BUYBACK'] as const).map((opt) => (
+            <button
+              key={opt}
+              onClick={() => {
+                setFlowFilter(opt);
+                setPage(1);
+              }}
+              className={`px-2.5 py-1 rounded-md text-xs leading-snug transition-colors ${
+                flowFilter === opt
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted text-muted-foreground hover:bg-accent'
+              }`}
+            >
+              {opt === 'ALL' ? 'ทั้งหมด' : opt === 'EXCHANGE' ? 'เทิร์นเครื่อง' : 'รับซื้อ'}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <TradeInTable
         data={data?.data}

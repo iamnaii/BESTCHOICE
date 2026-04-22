@@ -40,6 +40,10 @@ import {
   LayoutGrid,
   CheckSquare,
   UserSearch,
+  ShoppingBag,
+  ClipboardCheck,
+  PiggyBank,
+  Star,
 } from 'lucide-react';
 
 /* ── Types ─────────────────────────────────────────── */
@@ -162,6 +166,17 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'รายงาน', path: '/reports', icon: BarChart3 },
       ],
     },
+    {
+      key: 'bm-online-shop',
+      label: 'ร้านค้าออนไลน์',
+      icon: ShoppingBag,
+      items: [
+        { label: 'คำสั่งซื้อออนไลน์', path: '/online-orders', icon: ShoppingBag },
+        { label: 'คำขอผ่อนชำระ', path: '/installment-applications', icon: ClipboardCheck },
+        { label: 'แผนออม', path: '/saving-plans', icon: PiggyBank },
+        { label: 'รีวิวลูกค้า', path: '/reviews', icon: Star },
+      ],
+    },
   ],
   bottomNav: [
     { label: 'Dashboard', path: '/', icon: Home },
@@ -214,6 +229,16 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
         { label: 'รายจ่าย', path: '/expenses', icon: Receipt },
         { label: 'กำไร-ขาดทุน', path: '/profit-loss', icon: PieChart },
+      ],
+    },
+    {
+      key: 'fm-online-shop',
+      label: 'ร้านค้าออนไลน์',
+      icon: ShoppingBag,
+      items: [
+        { label: 'คำสั่งซื้อออนไลน์', path: '/online-orders', icon: ShoppingBag },
+        { label: 'คำขอผ่อนชำระ', path: '/installment-applications', icon: ClipboardCheck },
+        { label: 'แผนออม', path: '/saving-plans', icon: PiggyBank },
       ],
     },
   ],
@@ -330,6 +355,17 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
         { label: 'ภาษี', path: '/tax-reports', icon: Calculator },
         { label: 'ปิดบัญชีรายเดือน', path: '/monthly-close', icon: CalendarDays },
+      ],
+    },
+    {
+      key: 'owner-online-shop',
+      label: 'ร้านค้าออนไลน์',
+      icon: ShoppingBag,
+      items: [
+        { label: 'คำสั่งซื้อออนไลน์', path: '/online-orders', icon: ShoppingBag },
+        { label: 'คำขอผ่อนชำระ', path: '/installment-applications', icon: ClipboardCheck },
+        { label: 'แผนออม', path: '/saving-plans', icon: PiggyBank },
+        { label: 'รีวิวลูกค้า', path: '/reviews', icon: Star },
       ],
     },
     {

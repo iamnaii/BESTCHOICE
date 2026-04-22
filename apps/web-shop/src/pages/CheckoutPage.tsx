@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useCart } from '../hooks/useCart';
 import { useAuth } from '../hooks/useAuth';
+import { useTrackEvent } from '../hooks/useTrackEvent';
 import ShopLayout from '../components/layout/ShopLayout';
 import CheckoutStepper from '../components/checkout/CheckoutStepper';
 import AddressStep from '../components/checkout/AddressStep';
@@ -13,6 +14,11 @@ export default function CheckoutPage() {
   const nav = useNavigate();
   const { customer, hydrating } = useAuth();
   const { data: cart } = useCart();
+  const track = useTrackEvent();
+
+  useEffect(() => {
+    track('InitiateCheckout');
+  }, [track]);
 
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [address, setAddress] = useState<ShippingAddress | null>(null);

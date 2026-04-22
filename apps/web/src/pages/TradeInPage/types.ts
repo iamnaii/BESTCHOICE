@@ -1,3 +1,6 @@
+export type TradeInSubmissionSource = 'OFFLINE' | 'ONLINE';
+export type TradeInFlow = 'EXCHANGE' | 'BUYBACK';
+
 export interface TradeIn {
   id: string;
   status: string;
@@ -17,6 +20,8 @@ export interface TradeIn {
   createdAt: string;
   idCardVerifiedAt?: string | null;
   paymentMethod?: 'CASH' | 'TRANSFER' | null;
+  submissionSource?: TradeInSubmissionSource;
+  flow?: TradeInFlow;
   customer: { id: string; name: string } | null;
   branch?: { id: string; name: string } | null;
   appraisedBy?: { id: string; name: string } | null;

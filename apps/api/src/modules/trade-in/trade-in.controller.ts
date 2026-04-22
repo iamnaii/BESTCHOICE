@@ -85,6 +85,8 @@ export class TradeInController {
     @Query('branchId') branchId?: string,
     @Query('status') status?: string,
     @Query('search') search?: string,
+    @Query('submissionSource') submissionSource?: string,
+    @Query('flow') flow?: string,
     @Req() req?: AuthRequest,
   ) {
     const result = await this.tradeInService.findAll({
@@ -92,6 +94,8 @@ export class TradeInController {
       branchId,
       status,
       search,
+      submissionSource,
+      flow,
       page: pagination.page,
       limit: pagination.limit,
     });

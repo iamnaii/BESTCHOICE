@@ -132,4 +132,40 @@ export class StorageService {
       return;
     }
   }
+
+  async getSignedUploadUrl(
+    key: string,
+    contentType: string,
+    expiresSec = 600,
+  ): Promise<{ url: string; method: 'PUT' }> {
+    if (this.backend === 'gcs' && this.gcs) {
+      const file = this.gcs.bucket(this.bucket).file(key);
+      const [url] = await file.getSignedUrl({
+        action: 'write',
+        version: 'v4',
+        expires: Date.now() + expiresSec * 1000,
+        contentType,
+      });
+      return { url, method: 'PUT' };
+    }
+
+    if (this.backend === 's3' && this.s3) {
+      const cmd = new PutObjectCommand({ Bucket: this.bucket, Key: key, ContentType: contentType });
+      const url = await getSignedUrl(this.s3, cmd, { expiresIn: expiresSec });
+      return { url, method: 'PUT' };
+    }
+
+    throw new BadRequestException('Storage not configured');
+  }
+
+  getPublicUrl(key: string): string {
+    if (this.backend === 'gcs') {
+      return `https://storage.googleapis.com/${this.bucket}/${key}`;
+    }
+    if (this.backend === 's3') {
+      const endpoint = this.configService.get<string>('S3_ENDPOINT') || '';
+      return `${endpoint.replace(/\/$/, '')}/${this.bucket}/${key}`;
+    }
+    return key;
+  }
 }

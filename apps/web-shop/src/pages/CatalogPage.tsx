@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import ShopLayout from '@/components/layout/ShopLayout';
 import { ProductCard, type ProductGroup } from '@/components/catalog/ProductCard';
 import { FilterSidebar, type CatalogFilters } from '@/components/catalog/FilterSidebar';
 import { SortDropdown } from '@/components/catalog/SortDropdown';
 import { api } from '@/lib/api';
+import { useTrackEvent } from '@/hooks/useTrackEvent';
 
 interface CatalogResponse {
   data: ProductGroup[];
@@ -16,6 +17,11 @@ interface CatalogResponse {
 export default function CatalogPage() {
   const [filters, setFilters] = useState<CatalogFilters>({});
   const [sort, setSort] = useState<string>('popular');
+  const track = useTrackEvent();
+
+  useEffect(() => {
+    track('ViewContent', { content_type: 'catalog' });
+  }, [track]);
 
   const { data, isLoading } = useQuery<CatalogResponse>({
     queryKey: ['shop', 'catalog', filters, sort],

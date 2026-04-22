@@ -49,17 +49,16 @@ export function useLiffInit(): UseLiffInitResult {
           const userId = params.get('line_user_id');
           const displayName = params.get('line_display_name');
           const pictureUrl = params.get('line_picture');
-
-          // Read id_token from URL fragment (backend puts it there to avoid
-          // WebKit ITP cross-subdomain cookie blocking). Fragment is not sent
-          // to server in any HTTP request = no leak in access logs/referrer.
-          const hashParams = new URLSearchParams(window.location.hash.slice(1));
-          const lineIdToken = hashParams.get('id_token');
+          // Read id_token from query param. Fallback to hash for backward
+          // compat if an older backend revision happens to still put it there.
+          const lineIdToken =
+            params.get('id_token') ||
+            new URLSearchParams(window.location.hash.slice(1)).get('id_token');
 
           if (userId && displayName) {
             // Clean URL — remove login query params AND fragment
             const cleanUrl = new URL(window.location.href);
-            ['line_login', 'line_user_id', 'line_display_name', 'line_picture'].forEach(
+            ['line_login', 'line_user_id', 'line_display_name', 'line_picture', 'id_token'].forEach(
               (k) => cleanUrl.searchParams.delete(k),
             );
             cleanUrl.hash = '';
@@ -67,7 +66,7 @@ export function useLiffInit(): UseLiffInitResult {
 
             if (!lineIdToken) {
               if (!cancelled)
-                setError('ไม่สามารถรับ ID Token จาก LINE กรุณาปิดหน้านี้แล้วเปิดใหม่จาก LINE OA');
+                setError('เชื่อม LINE ไม่สำเร็จ (ไม่ได้ ID Token) — กรุณาปิดและเปิดใหม่จาก LINE OA');
               return;
             }
 

@@ -129,12 +129,14 @@ export class LineLoginController {
 
       this.logger.log(`[LineLogin] Success: ${profile.displayName} (${profile.userId})`);
 
-      // Pass ID token via URL fragment (hash), not cookie:
-      // - WebKit ITP + LINE WKWebView block cross-subdomain cookies แม้ว่า
-      //   sameSite=none + secure + domain ตรง (confirmed 401 ใน Cloud Run logs)
-      // - URL fragment (#) ไม่ถูกส่งไปที่ server (client-only) — ไม่ leak
-      //   ใน referrer header หรือ server access logs
-      // - Frontend อ่าน location.hash → clear hash ทันที → keep ใน memory
+      // Pass ID token via URL query param (not cookie, not hash):
+      // - Cookie: WebKit ITP + LINE WKWebView block cross-subdomain cookies
+      //   แม้ sameSite=none (confirmed 401 ใน Cloud Run logs)
+      // - Fragment: LINE WKWebView บางกรณี strip hash ระหว่าง 302 redirect
+      //   cross-origin ทำให้ frontend ไม่เห็น token
+      // - Query param: reliable 100% แต่ leak ใน access logs/referrer —
+      //   acceptable สำหรับ one-shot 5-min token (frontend clear URL
+      //   ทันทีหลังอ่าน + token keep in-memory ตามเดิม)
       const redirectUrl = new URL(`${this.frontendBaseUrl}${returnPath}`);
       redirectUrl.searchParams.set('line_login', 'true');
       redirectUrl.searchParams.set('line_user_id', profile.userId);
@@ -142,7 +144,7 @@ export class LineLoginController {
       if (profile.pictureUrl) {
         redirectUrl.searchParams.set('line_picture', profile.pictureUrl);
       }
-      redirectUrl.hash = `id_token=${encodeURIComponent(tokenData.id_token)}`;
+      redirectUrl.searchParams.set('id_token', tokenData.id_token);
 
       res.redirect(redirectUrl.toString());
     } catch (err) {

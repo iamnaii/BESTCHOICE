@@ -142,12 +142,18 @@ export class LineLoginController {
       // Set ID token in httpOnly cookie instead of URL (prevents leaking in browser history/Referrer)
       // COOKIE_DOMAIN (e.g. '.bestchoicephone.app') makes the cookie readable from
       // the root domain frontend, not only the api.* subdomain that served this callback.
+      //
+      // sameSite: 'none' (ไม่ใช่ 'lax') เพราะ frontend เรียก /id-token ผ่าน XHR
+      // ข้าม subdomain (bestchoicephone.app → api.bestchoicephone.app) — WebKit
+      // (Safari/LINE in-app WKWebView) ไม่ส่ง cookie sameSite=lax ใน XHR cross-
+      // origin แม้ว่าจะ same-site เดียวกันก็ตาม. maxAge ขยายจาก 60s → 300s
+      // เผื่อ network ช้าใน LINE WebView
       const cookieDomain = process.env.COOKIE_DOMAIN || undefined;
       res.cookie('line_id_token', tokenData.id_token, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production' || !!cookieDomain,
-        sameSite: 'lax',
-        maxAge: 60000, // 60 seconds — one-time use
+        secure: true, // required for sameSite: 'none'
+        sameSite: 'none',
+        maxAge: 300_000, // 5 minutes — one-time use, buffer for slow networks
         path: '/',
         ...(cookieDomain ? { domain: cookieDomain } : {}),
       });

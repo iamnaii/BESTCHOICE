@@ -34,7 +34,7 @@ function setRefreshCookie(res: Response, token: string) {
     secure: isProduction || !!cookieDomain,
     sameSite: 'lax',
     maxAge: COOKIE_MAX_AGE,
-    path: '/api/auth',
+    path: '/api/admin/auth',
     ...(cookieDomain ? { domain: cookieDomain } : {}),
   });
 }
@@ -42,7 +42,7 @@ function setRefreshCookie(res: Response, token: string) {
 function clearRefreshCookie(res: Response) {
   const cookieDomain = process.env.COOKIE_DOMAIN || undefined;
   res.clearCookie(REFRESH_COOKIE, {
-    path: '/api/auth',
+    path: '/api/admin/auth',
     ...(cookieDomain ? { domain: cookieDomain } : {}),
   });
 }

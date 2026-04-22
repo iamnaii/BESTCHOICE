@@ -73,13 +73,15 @@ export class ContractDocumentsService {
         })()
       : false;
 
+    // DOWN_PAYMENT_RECEIPT + PDPA_CONSENT เอาออกจาก required:
+    // - PDPA_CONSENT ระบบ auto-generate หลังเซ็น e-signature ครบ
+    // - DOWN_PAYMENT_RECEIPT ไม่ต้อง upload — เจ้าของบันทึกยอดดาวน์
+    //   ผ่าน POS/ระบบอื่นแทน
     const required = [
       { type: 'SIGNED_CONTRACT', label: 'สัญญาผ่อนชำระ PDF (e-Signature ครบ)', autoGenerate: true },
       { type: 'ID_CARD_COPY', label: 'สำเนาบัตรประชาชน (หน้า)', autoGenerate: false },
       { type: 'KYC_SELFIE', label: 'รูปถ่ายลูกค้าถือบัตรประชาชน (Selfie KYC)', autoGenerate: false },
       { type: 'DEVICE_PHOTO', label: 'รูปถ่ายสินค้า + หน้าจอแสดง IMEI', autoGenerate: false },
-      { type: 'DOWN_PAYMENT_RECEIPT', label: 'หลักฐานการชำระเงินดาวน์', autoGenerate: false },
-      { type: 'PDPA_CONSENT', label: 'Consent PDPA ที่ลูกค้ายินยอม', autoGenerate: true },
     ];
 
     if (requiresGuardian) {

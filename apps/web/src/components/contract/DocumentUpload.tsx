@@ -43,7 +43,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
   const [ocrResult, setOcrResult] = useState<OcrResult | null>(null);
   const [ocrLoading, setOcrLoading] = useState(false);
   const [showOcrPanel, setShowOcrPanel] = useState(false);
-  const [viewingDoc, setViewingDoc] = useState<ContractDocument | null>(null);
+  const [viewingFile, setViewingFile] = useState<{ url: string; name: string; label?: string } | null>(null);
   const [dragOverType, setDragOverType] = useState<string | null>(null);
   const [uploadingType, setUploadingType] = useState<string | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
@@ -226,31 +226,8 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
 
   const openDocument = (doc: ContractDocument) => {
     if (!doc.fileUrl) return;
-    if (doc.fileUrl.startsWith('data:')) {
-      const isImage = doc.fileUrl.startsWith('data:image/');
-      if (isImage) { setViewingDoc(doc); return; }
-      try {
-        const commaIdx = doc.fileUrl.indexOf(',');
-        if (commaIdx === -1) { setViewingDoc(doc); return; }
-        const header = doc.fileUrl.substring(0, commaIdx);
-        const base64 = doc.fileUrl.substring(commaIdx + 1);
-        const mimeMatch = header.match(/data:([^;]+)/);
-        const mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
-        const binary = atob(base64);
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-        const blob = new Blob([bytes], { type: mime });
-        const url = URL.createObjectURL(blob);
-        const win = window.open(url, '_blank');
-        if (!win) { URL.revokeObjectURL(url); setViewingDoc(doc); return; }
-        win.addEventListener('load', () => setTimeout(() => URL.revokeObjectURL(url), 5000));
-      } catch {
-        setViewingDoc(doc);
-      }
-    } else {
-      const win = window.open(doc.fileUrl, '_blank');
-      if (!win) toast.error('เบราว์เซอร์บล็อก popup กรุณาอนุญาต popup สำหรับเว็บนี้');
-    }
+    const label = DOCUMENT_TYPES.find((t) => t.value === doc.documentType)?.label || doc.documentType;
+    setViewingFile({ url: doc.fileUrl, name: doc.fileName, label });
   };
 
   const hasTypeFiles = (dt: typeof DOCUMENT_TYPES[number]) => {
@@ -295,15 +272,14 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
                       </div>
                     )}
                     <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
-                      <a
-                        href={url}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <button
+                        type="button"
+                        onClick={() => setViewingFile({ url, name: `Statement ${idx + 1}`, label: 'Statement ธนาคาร' })}
                         className="p-1.5 bg-background/90 rounded text-foreground hover:bg-background"
                         aria-label="ดูเอกสาร"
                       >
                         <Eye className="w-3.5 h-3.5" />
-                      </a>
+                      </button>
                     </div>
                   </div>
                 );
@@ -564,22 +540,61 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
         </div>
       )}
 
-      {viewingDoc && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={() => setViewingDoc(null)} onKeyDown={(e) => { if (e.key === 'Escape') setViewingDoc(null); }} role="dialog" aria-modal="true" aria-label={`ดูเอกสาร ${viewingDoc.fileName}`} tabIndex={-1} ref={(el) => el?.focus()}>
-          <div className="relative max-w-4xl max-h-[90vh] w-full" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between bg-card rounded-t-lg px-4 py-2">
-              <div className="text-sm font-medium text-foreground">
-                {DOCUMENT_TYPES.find((t) => t.value === viewingDoc.documentType)?.label || viewingDoc.documentType} - {viewingDoc.fileName}
+      {viewingFile && (
+        <div
+          className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4"
+          onClick={() => setViewingFile(null)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setViewingFile(null);
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-label={`ดูเอกสาร ${viewingFile.name}`}
+          tabIndex={-1}
+          ref={(el) => el?.focus()}
+        >
+          <div
+            className="relative max-w-5xl max-h-[92vh] w-full flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between bg-card rounded-t-lg px-4 py-2 gap-3">
+              <div className="text-sm font-medium text-foreground truncate">
+                {viewingFile.label ? `${viewingFile.label} — ` : ''}
+                {viewingFile.name}
               </div>
-              <button onClick={() => setViewingDoc(null)} className="text-muted-foreground hover:text-foreground text-lg font-bold px-2">
-                &times;
-              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                <a
+                  href={viewingFile.url}
+                  download={viewingFile.name}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs px-2 py-1 rounded border border-border hover:bg-accent transition-colors"
+                >
+                  ดาวน์โหลด
+                </a>
+                <button
+                  onClick={() => setViewingFile(null)}
+                  className="text-muted-foreground hover:text-foreground text-xl font-bold px-2"
+                  aria-label="ปิด"
+                >
+                  &times;
+                </button>
+              </div>
             </div>
-            <div className="bg-muted rounded-b-lg overflow-auto max-h-[calc(90vh-48px)] flex items-center justify-center">
-              {viewingDoc.fileUrl.startsWith('data:image/') ? (
-                <img src={viewingDoc.fileUrl} alt={viewingDoc.fileName} className="max-w-full max-h-[calc(90vh-48px)] object-contain" />
+            <div className="bg-muted rounded-b-lg overflow-auto flex-1 flex items-center justify-center min-h-[60vh]">
+              {viewingFile.url.startsWith('data:image/') ||
+              /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(viewingFile.url) ? (
+                <img
+                  src={viewingFile.url}
+                  alt={viewingFile.name}
+                  className="max-w-full max-h-[calc(92vh-48px)] object-contain"
+                />
               ) : (
-                <iframe src={viewingDoc.fileUrl} title={viewingDoc.fileName} className="w-full h-[80vh] border-0" />
+                <iframe
+                  src={viewingFile.url}
+                  title={viewingFile.name}
+                  className="w-full h-[85vh] border-0"
+                />
               )}
             </div>
           </div>

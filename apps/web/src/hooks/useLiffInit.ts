@@ -107,13 +107,32 @@ export function useLiffInit(): UseLiffInitResult {
           const p = await liff.getProfile();
           const token = liff.getIDToken();
 
-          // No ID token = LIFF channel missing 'openid' scope OR token expired.
-          // Without ID token, server can't verify identity — surface a clear error
-          // instead of silently letting downstream API calls 401.
+          // No ID token = LIFF channel missing 'openid' scope OR cached token
+          // from a prior login without openid. Try ONCE to force fresh login
+          // (clears cached token) — use sessionStorage flag to prevent loop.
           if (!token) {
-            if (!cancelled) setError('ไม่สามารถรับ ID Token จาก LINE กรุณาปิดหน้านี้แล้วเปิดใหม่จาก LINE OA');
+            const RETRY_KEY = 'liff_idtoken_retry';
+            const alreadyRetried = sessionStorage.getItem(RETRY_KEY) === '1';
+            if (!alreadyRetried && liff.isInClient()) {
+              sessionStorage.setItem(RETRY_KEY, '1');
+              try {
+                liff.logout();
+              } catch {
+                // ignore logout errors
+              }
+              liff.login({ redirectUri: window.location.href });
+              return;
+            }
+            sessionStorage.removeItem(RETRY_KEY);
+            if (!cancelled)
+              setError(
+                'ไม่สามารถรับ ID Token จาก LINE — LIFF channel อาจยังไม่เปิด openid scope กรุณาแจ้งแอดมินเพื่อตรวจสอบ LINE Developers Console',
+              );
             return;
           }
+
+          // Success — clear retry flag
+          sessionStorage.removeItem('liff_idtoken_retry');
 
           if (!cancelled) {
             setLineId(p.userId);

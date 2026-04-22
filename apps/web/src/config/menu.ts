@@ -42,6 +42,8 @@ import {
   UserSearch,
   ShoppingBag,
   ClipboardCheck,
+  PiggyBank,
+  Star,
 } from 'lucide-react';
 
 /* ── Types ─────────────────────────────────────────── */
@@ -171,6 +173,8 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'คำสั่งซื้อออนไลน์', path: '/online-orders', icon: ShoppingBag },
         { label: 'คำขอผ่อนชำระ', path: '/installment-applications', icon: ClipboardCheck },
+        { label: 'แผนออม', path: '/saving-plans', icon: PiggyBank },
+        { label: 'รีวิวลูกค้า', path: '/reviews', icon: Star },
       ],
     },
   ],
@@ -234,6 +238,7 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'คำสั่งซื้อออนไลน์', path: '/online-orders', icon: ShoppingBag },
         { label: 'คำขอผ่อนชำระ', path: '/installment-applications', icon: ClipboardCheck },
+        { label: 'แผนออม', path: '/saving-plans', icon: PiggyBank },
       ],
     },
   ],
@@ -359,6 +364,8 @@ const OWNER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'คำสั่งซื้อออนไลน์', path: '/online-orders', icon: ShoppingBag },
         { label: 'คำขอผ่อนชำระ', path: '/installment-applications', icon: ClipboardCheck },
+        { label: 'แผนออม', path: '/saving-plans', icon: PiggyBank },
+        { label: 'รีวิวลูกค้า', path: '/reviews', icon: Star },
       ],
     },
     {

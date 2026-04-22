@@ -120,6 +120,8 @@ describe('TradeInController PII (Phase 5)', () => {
       undefined,
       undefined,
       undefined,
+      undefined,
+      undefined,
       reqOf('SALES'),
     );
     const data = (result as { data: Array<{ transferAccountNumber?: string }> }).data;
@@ -136,6 +138,8 @@ describe('TradeInController PII (Phase 5)', () => {
     });
     const result = await controller.findAll(
       { page: 1, limit: 50 } as never,
+      undefined,
+      undefined,
       undefined,
       undefined,
       undefined,

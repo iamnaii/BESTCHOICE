@@ -203,6 +203,15 @@ export class CustomersController {
     return this.customersService.getChatSummary(id);
   }
 
+  @Get(':id/summary')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  @ApiOperation({
+    summary: 'Compact summary for chat inbox sidebar (name, phone, active contracts, outstanding)',
+  })
+  getSummary(@Param('id') id: string) {
+    return this.customersService.getSummary(id);
+  }
+
   @Get(':id/risk-flag')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   getRiskFlag(@Param('id') id: string) {

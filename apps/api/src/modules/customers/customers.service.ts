@@ -971,6 +971,56 @@ export class CustomersService {
     };
   }
 
+  /**
+   * Compact summary for chat inbox assistant sidebar.
+   * Returns name, phone, and lightweight counts (active contracts,
+   * overdue installments, total outstanding). Cheaper than
+   * `getChatSummary`, which pulls full payment/call/chat history.
+   */
+  async getSummary(customerId: string) {
+    const customer = await this.prisma.customer.findFirst({
+      where: { id: customerId, deletedAt: null },
+      select: { id: true, name: true, phone: true },
+    });
+    if (!customer) {
+      throw new NotFoundException('ไม่พบข้อมูลลูกค้า');
+    }
+
+    const activeContracts = await this.prisma.contract.count({
+      where: {
+        customerId,
+        deletedAt: null,
+        status: { in: ['ACTIVE', 'OVERDUE', 'DEFAULT'] },
+      },
+    });
+
+    const overdueCount = await this.prisma.payment.count({
+      where: {
+        contract: { customerId, deletedAt: null },
+        deletedAt: null,
+        status: 'OVERDUE',
+      },
+    });
+
+    const outstanding = await this.prisma.payment.aggregate({
+      where: {
+        contract: { customerId, deletedAt: null },
+        deletedAt: null,
+        status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] },
+      },
+      _sum: { amountDue: true },
+    });
+
+    return {
+      id: customer.id,
+      name: customer.name,
+      phone: customer.phone ?? null,
+      activeContracts,
+      overdueCount,
+      totalOutstandingThb: Number(outstanding._sum.amountDue ?? 0),
+    };
+  }
+
   private validateNationalId(id: string): boolean {
     if (!/^\d{13}$/.test(id)) return false;
     let sum = 0;

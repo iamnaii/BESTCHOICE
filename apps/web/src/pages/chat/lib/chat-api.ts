@@ -77,3 +77,41 @@ export async function takeOver(roomId: string) {
 export async function sendStaffMessage(roomId: string, text: string) {
   return api.post(`/staff-chat/rooms/${roomId}/messages`, { text });
 }
+
+/**
+ * ChatRoomDetail — shape returned by `GET /staff-chat/rooms/:id`
+ * (`RoomManagerService.findById`). Includes full room flags
+ * (`aiPaused`, `handoffMode`, `customerId`) needed by the assistant
+ * sidebar's Take-Over button + customer card.
+ */
+export interface ChatRoomDetail {
+  id: string;
+  customerId: string | null;
+  channel: ChatChannelValue;
+  status: 'ACTIVE' | 'IDLE';
+  aiPaused: boolean;
+  handoffMode: boolean;
+  handoffReason: string | null;
+  displayName: string | null;
+  pictureUrl: string | null;
+  customer: { id: string; name: string | null; phone: string | null } | null;
+}
+
+export async function fetchRoom(roomId: string): Promise<ChatRoomDetail> {
+  const res = await api.get<ChatRoomDetail>(`/staff-chat/rooms/${roomId}`);
+  return res.data;
+}
+
+export interface CustomerSummary {
+  id: string;
+  name: string;
+  phone: string | null;
+  activeContracts: number;
+  overdueCount: number;
+  totalOutstandingThb: number;
+}
+
+export async function fetchCustomerSummary(customerId: string): Promise<CustomerSummary> {
+  const res = await api.get<CustomerSummary>(`/customers/${customerId}/summary`);
+  return res.data;
+}

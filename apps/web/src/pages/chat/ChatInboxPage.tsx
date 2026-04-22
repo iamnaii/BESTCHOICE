@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { RoomList } from './components/RoomList';
+import { AssistantSidebar } from './components/AssistantSidebar';
 import { ConversationPanel } from './components/ConversationPanel';
+import { RoomList } from './components/RoomList';
 
 export default function ChatInboxPage() {
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
@@ -16,7 +17,7 @@ export default function ChatInboxPage() {
       <div className="grid flex-1 grid-cols-[320px_1fr_360px] overflow-hidden">
         <RoomList activeRoomId={activeRoomId} onSelect={setActiveRoomId} />
         <ConversationPanel roomId={activeRoomId} />
-        <aside className="border-l border-border bg-card p-4" aria-label="แผงรายละเอียด" />
+        <AssistantSidebar roomId={activeRoomId} />
       </div>
     </div>
   );

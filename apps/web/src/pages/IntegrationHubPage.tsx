@@ -33,6 +33,7 @@ import {
   Smartphone,
   Settings2,
 } from 'lucide-react';
+import { FacebookAppReviewPanel } from '@/components/FacebookAppReviewPanel';
 
 /* ── Types ───────────────────────────────────────────── */
 
@@ -435,6 +436,9 @@ function ConfigDrawer({
                   <span>{testResult.message}</span>
                 </div>
               )}
+
+              {/* Facebook App Review panel — only shown when Facebook is selected */}
+              {integrationKey === 'facebook' && <FacebookAppReviewPanel />}
             </form>
           )}
         </DialogBody>

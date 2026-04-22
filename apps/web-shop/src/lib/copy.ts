@@ -58,10 +58,51 @@ export const copy = {
   },
 
   checkout: {
+    pageTitle: 'สั่งซื้อ',
     stepAddress: 'ที่อยู่',
     stepShipping: 'จัดส่ง',
     stepPayment: 'ชำระเงิน',
     placeOrderCta: 'ยืนยันสั่งซื้อ',
+    summaryTitle: 'สรุปคำสั่งซื้อ',
+    toggleSummary: 'ดูรายละเอียดยอดรวม',
+    nextCta: 'ดำเนินการต่อ',
+    backCta: 'ย้อนกลับ',
+  },
+
+  orderSuccess: {
+    pageTitle: 'สั่งซื้อสำเร็จ',
+    thankYou: 'ขอบคุณสำหรับการสั่งซื้อ',
+    orderNumberLabel: 'เลขที่คำสั่งซื้อ',
+    totalLabel: 'ยอดรวมทั้งสิ้น',
+    paymentChannelLabel: 'ช่องทางชำระ',
+    nextStepsTitle: 'ขั้นตอนถัดไป',
+    nextStep1: 'ทางร้านตรวจสอบคำสั่งซื้อของคุณ',
+    nextStep2: 'แพ็คสินค้าและจัดส่งภายใน 1 วันทำการ',
+    nextStep3: 'รับสินค้าและรีวิวประสบการณ์ของคุณ',
+    pendingPaymentNote: 'รอชำระเงิน...',
+    paidNote: 'ทางร้านจะจัดส่งภายใน 1 วันทำการ',
+    viewOrderCta: 'ดูคำสั่งซื้อ',
+    continueShoppingCta: 'กลับไปซื้อเพิ่ม',
+  },
+
+  orders: {
+    pageTitle: 'คำสั่งซื้อของฉัน',
+    emptyTitle: 'ยังไม่มีคำสั่งซื้อ',
+    emptyDescription: 'ลองดูสินค้าและสั่งซื้อดูครับ',
+  },
+
+  orderDetail: {
+    breadcrumbList: 'คำสั่งซื้อของฉัน',
+    productTitle: 'สินค้า',
+    shippingAddressTitle: 'ที่อยู่จัดส่ง',
+    paymentInfoTitle: 'ข้อมูลการชำระเงิน',
+    paymentChannelLabel: 'ช่องทางชำระ',
+    paidAtLabel: 'ชำระเมื่อ',
+    trackingTitle: 'หมายเลขพัสดุ',
+    cancelCta: 'ยกเลิก',
+    refundCta: 'ขอคืนเงิน',
+    confirmCancel: 'ยืนยันการยกเลิกคำสั่งซื้อ?',
+    confirmRefund: 'ยืนยันขอคืนเงินสำหรับคำสั่งซื้อนี้?',
   },
 
   apply: {

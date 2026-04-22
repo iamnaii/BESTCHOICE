@@ -1,16 +1,44 @@
 import { useMemo } from 'react';
 
+// Mirrors the rows in prisma/seeds/trade-in-valuations.ts — keep in sync when
+// new models are added to the valuation table, or replace with an API lookup.
 const CATALOG: Record<string, Record<string, string[]>> = {
   Apple: {
-    'iPhone 11': ['64GB', '128GB', '256GB'],
-    'iPhone 12': ['64GB', '128GB', '256GB'],
-    'iPhone 13': ['128GB', '256GB', '512GB'],
-    'iPhone 14': ['128GB', '256GB', '512GB'],
-    'iPhone 15': ['128GB', '256GB', '512GB'],
+    'iPhone 13': ['128GB'],
+    'iPhone 13 Pro': ['128GB'],
+    'iPhone 13 Pro Max': ['256GB'],
+    'iPhone 14': ['128GB'],
+    'iPhone 14 Pro': ['128GB'],
+    'iPhone 14 Pro Max': ['256GB'],
+    'iPhone 15': ['128GB', '256GB'],
+    'iPhone 15 Pro': ['256GB'],
+    'iPhone 15 Pro Max': ['256GB'],
+    'iPhone 16': ['128GB', '256GB'],
+    'iPhone 16 Plus': ['128GB'],
+    'iPhone 16 Pro': ['256GB', '512GB'],
+    'iPhone 16 Pro Max': ['256GB', '512GB'],
   },
   Samsung: {
-    'Galaxy S23': ['128GB', '256GB'],
+    'Galaxy A35': ['128GB'],
+    'Galaxy A55': ['128GB'],
+    'Galaxy S23': ['128GB'],
+    'Galaxy S23+': ['256GB'],
+    'Galaxy S23 Ultra': ['256GB'],
     'Galaxy S24': ['128GB', '256GB'],
+    'Galaxy S24+': ['256GB'],
+    'Galaxy S24 Ultra': ['256GB', '512GB'],
+  },
+  OPPO: {
+    'Find X8 Pro': ['256GB'],
+    'Reno12 Pro': ['256GB'],
+  },
+  vivo: {
+    'V30 Pro': ['256GB'],
+    'X100 Pro': ['256GB'],
+  },
+  Xiaomi: {
+    'POCO X6 Pro': ['256GB'],
+    'Redmi Note 13 Pro': ['256GB'],
   },
 };
 

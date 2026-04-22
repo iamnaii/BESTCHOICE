@@ -2,14 +2,24 @@ import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router';
 import { toast } from 'sonner';
+import { ArrowRight } from 'lucide-react';
 import { api } from '@/lib/api';
+import { copy } from '@/lib/copy';
 import ShopLayout from '@/components/layout/ShopLayout';
 import DeviceSelector, {
   type DeviceSelectorValue,
 } from '@/components/device-submit/DeviceSelector';
 import ValuationDisplay from '@/components/device-submit/ValuationDisplay';
-import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
+import {
+  Button,
+  Card,
+  CardBody,
+  CategoryHero,
+  Container,
+  Label,
+  StickyBottomBar,
+  StickyBottomBarSpacer,
+} from '@/components';
 import type { BuybackEstimate } from '@/types/buyback';
 
 const CONDITIONS: Array<{ v: 'A' | 'B' | 'C'; label: string; desc: string }> = [
@@ -42,7 +52,7 @@ export default function BuybackQuickQuotePage() {
         .then((r) => r.data),
     onSuccess: (data) => setQuote(data),
     onError: (e: { response?: { data?: { message?: string } } }) =>
-      toast.error(e.response?.data?.message ?? 'ประเมินราคาไม่สำเร็จ'),
+      toast.error(e.response?.data?.message ?? copy.buyback.quoteError),
   });
 
   const goSubmit = () => {
@@ -55,66 +65,114 @@ export default function BuybackQuickQuotePage() {
     nav(`/buyback/submit?${qs}`);
   };
 
+  const quoteLabel = quickQuote.isPending ? 'กำลังประเมิน...' : copy.buyback.quoteCta;
+
   return (
     <ShopLayout>
-      <div className="container mx-auto px-4 py-6 max-w-xl space-y-6 leading-snug">
-        <header className="space-y-1">
-          <h1 className="text-2xl font-bold">เช็คราคารับซื้อ</h1>
-          <p className="text-sm text-muted-foreground">
-            เลือกรุ่น + ความจุ + สภาพ เพื่อรับช่วงราคาประเมินทันที
-          </p>
-        </header>
+      <CategoryHero
+        title="ตีราคาเบื้องต้น"
+        breadcrumbs={[
+          { label: copy.buyback.pageTitle, to: '/buyback' },
+          { label: 'ตีราคา' },
+        ]}
+      />
 
-        <section className="space-y-3">
-          <h2 className="font-semibold">1. เลือกเครื่อง</h2>
-          <DeviceSelector value={device} onChange={setDevice} />
-        </section>
+      <Container narrow className="py-6 md:py-10 space-y-6 leading-snug">
+        <Card variant="elevated">
+          <CardBody className="space-y-6 leading-snug">
+            <section className="space-y-3">
+              <h2 className="font-semibold leading-snug">1. เลือกเครื่อง</h2>
+              <DeviceSelector value={device} onChange={setDevice} />
+            </section>
 
-        <section className="space-y-3">
-          <h2 className="font-semibold">2. สภาพเครื่อง</h2>
-          <div className="grid sm:grid-cols-3 gap-2" role="radiogroup" aria-label="สภาพเครื่อง">
-            {CONDITIONS.map((c) => (
-              <button
-                key={c.v}
-                type="button"
-                role="radio"
-                aria-checked={condition === c.v}
-                onClick={() => setCondition(c.v)}
-                className={`rounded-xl border p-3 text-left ${
-                  condition === c.v
-                    ? 'border-primary bg-primary/10'
-                    : 'border-border hover:bg-accent'
-                }`}
+            <section className="space-y-3">
+              <Label>2. สภาพเครื่อง</Label>
+              <div
+                className="grid sm:grid-cols-3 gap-2"
+                role="radiogroup"
+                aria-label="สภาพเครื่อง"
               >
-                <div className="font-semibold">{c.label}</div>
-                <div className="text-xs text-muted-foreground">{c.desc}</div>
-              </button>
-            ))}
-          </div>
-        </section>
+                {CONDITIONS.map((c) => {
+                  const selected = condition === c.v;
+                  return (
+                    <button
+                      key={c.v}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      onClick={() => setCondition(c.v)}
+                      className={`rounded-xl border p-3 text-left leading-snug transition-colors ${
+                        selected
+                          ? 'border-emerald-500 bg-emerald-50'
+                          : 'border-zinc-200 hover:bg-accent'
+                      }`}
+                    >
+                      <div className="font-semibold leading-snug">{c.label}</div>
+                      <div className="text-xs text-muted-foreground leading-snug">
+                        {c.desc}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
 
+            <div className="hidden md:block">
+              <Button
+                onClick={() => quickQuote.mutate()}
+                disabled={!deviceReady || quickQuote.isPending}
+                loading={quickQuote.isPending}
+                variant="primary"
+                size="lg"
+                fullWidth
+              >
+                {quoteLabel}
+              </Button>
+            </div>
+          </CardBody>
+        </Card>
+
+        {quote && (
+          <Card variant="outlined">
+            <CardBody className="space-y-4 leading-snug">
+              <Label>ผลประเมินเบื้องต้น</Label>
+              <ValuationDisplay
+                min={quote.min}
+                max={quote.max}
+                available={quote.available}
+              />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Button
+                  onClick={goSubmit}
+                  variant="primary"
+                  size="lg"
+                  fullWidth
+                >
+                  {copy.buyback.realPriceCta}
+                  <ArrowRight className="size-4" aria-hidden="true" />
+                </Button>
+                <Button asChild variant="outline" size="lg" fullWidth>
+                  <Link to="/buyback">กลับ</Link>
+                </Button>
+              </div>
+            </CardBody>
+          </Card>
+        )}
+      </Container>
+
+      <StickyBottomBar>
         <Button
           onClick={() => quickQuote.mutate()}
           disabled={!deviceReady || quickQuote.isPending}
+          loading={quickQuote.isPending}
+          variant="primary"
           size="lg"
-          className="w-full"
+          fullWidth
         >
-          {quickQuote.isPending ? 'กำลังประเมิน...' : 'รับราคาประเมิน'}
+          {quoteLabel}
         </Button>
-
-        {quote && (
-          <div className="space-y-3">
-            <Label>ผลประเมิน</Label>
-            <ValuationDisplay min={quote.min} max={quote.max} available={quote.available} />
-            <Button onClick={goSubmit} size="lg" className="w-full">
-              ดำเนินการต่อ — ส่งรูปเพื่อรับราคาจริง
-            </Button>
-            <Button asChild variant="outline" className="w-full">
-              <Link to="/buyback">กลับ</Link>
-            </Button>
-          </div>
-        )}
-      </div>
+      </StickyBottomBar>
+      <StickyBottomBarSpacer />
     </ShopLayout>
   );
 }

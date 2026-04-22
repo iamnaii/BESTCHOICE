@@ -115,8 +115,12 @@ export class PaySolutionsService {
       throw new BadRequestException('สัญญานี้ไม่ตรงกับบัญชี LINE ของคุณ');
     }
 
-    // สร้าง unique reference (max 12 chars ตาม API spec)
-    const orderRef = `BC${Date.now().toString(36).toUpperCase()}`.slice(0, 12);
+    // PaySolutions referenceNo: max 12 chars, must be unique.
+    // PDF sample uses all-digits ("123456789012") and the payment UI
+    // at payments.paysolutions.asia rejected alphanumeric refs with
+    // "Invalid data, please check the referenceNo" — so stick to digits.
+    // Date.now() is 13 digits; last 12 gives us a unique ref per ms.
+    const orderRef = String(Date.now()).slice(-12);
 
     // หา payment record ที่ต้องชำระ (ถ้าระบุ installmentNo)
     let paymentRecord: Awaited<ReturnType<typeof this.prisma.payment.findUnique>> = null;
@@ -187,12 +191,19 @@ export class PaySolutionsService {
       gatewayResponse = (await response.json()) as Record<string, unknown>;
 
       if (!response.ok) {
+        // PaySolutions returns error in two shapes:
+        //   - Auth fail (401):  { message: "Invalid authentication credentials" }
+        //   - Business error:   { status: { statusCode: "4A001", message: "..." } }
+        // Read both so logs + user message are useful in either case.
         const status = gatewayResponse.status as Record<string, string> | undefined;
+        const flatMessage = gatewayResponse.message as string | undefined;
+        const statusCode = status?.statusCode ?? String(response.status);
+        const message = status?.message ?? flatMessage ?? 'กรุณาลองใหม่';
         this.logger.error(
-          `Pay Solutions API error: ${status?.statusCode} ${status?.message} — ${JSON.stringify(gatewayResponse)}`,
+          `Pay Solutions API error: HTTP ${response.status} statusCode=${statusCode} message="${message}" — ${JSON.stringify(gatewayResponse)}`,
         );
         throw new InternalServerErrorException(
-          `ไม่สามารถสร้างรายการชำระเงินได้: ${status?.message || 'กรุณาลองใหม่'}`,
+          `ไม่สามารถสร้างรายการชำระเงินได้: ${message}`,
         );
       }
 
@@ -320,7 +331,8 @@ export class PaySolutionsService {
       }
     }
 
-    const orderRef = `ON${Date.now().toString(36).toUpperCase()}`.slice(0, 12);
+    // Numeric-only ref (see createPaymentIntent for rationale).
+    const orderRef = String(Date.now()).slice(-12);
     const returnUrlBase =
       this.returnUrl || `${this.config.get('FRONTEND_URL', 'http://localhost:5174')}/orders`;
     const returnUrl = `${returnUrlBase}/${order.orderNumber}`;
@@ -363,8 +375,14 @@ export class PaySolutionsService {
       gatewayResponse = (await response.json()) as Record<string, unknown>;
       if (!response.ok) {
         const status = gatewayResponse.status as Record<string, string> | undefined;
+        const flatMessage = gatewayResponse.message as string | undefined;
+        const statusCode = status?.statusCode ?? String(response.status);
+        const message = status?.message ?? flatMessage ?? 'กรุณาลองใหม่';
+        this.logger.error(
+          `Pay Solutions online-order API error: HTTP ${response.status} statusCode=${statusCode} message="${message}" — ${JSON.stringify(gatewayResponse)}`,
+        );
         throw new InternalServerErrorException(
-          `ไม่สามารถสร้างรายการชำระเงินได้: ${status?.message || 'กรุณาลองใหม่'}`,
+          `ไม่สามารถสร้างรายการชำระเงินได้: ${message}`,
         );
       }
       paymentUrl = (gatewayResponse.redirectUrl as string) || '';
@@ -433,7 +451,8 @@ export class PaySolutionsService {
     });
     if (!plan) throw new NotFoundException('ไม่พบแผนออม');
 
-    const orderRef = `SP${Date.now().toString(36).toUpperCase()}`.slice(0, 12);
+    // Numeric-only ref (see createPaymentIntent for rationale).
+    const orderRef = String(Date.now()).slice(-12);
     const returnUrlBase =
       this.returnUrl || `${this.config.get('FRONTEND_URL', 'http://localhost:5174')}/saving-plan`;
     const returnUrl = `${returnUrlBase}/${plan.id}`;
@@ -475,8 +494,14 @@ export class PaySolutionsService {
       const gatewayResponse = (await response.json()) as Record<string, unknown>;
       if (!response.ok) {
         const status = gatewayResponse.status as Record<string, string> | undefined;
+        const flatMessage = gatewayResponse.message as string | undefined;
+        const statusCode = status?.statusCode ?? String(response.status);
+        const message = status?.message ?? flatMessage ?? 'กรุณาลองใหม่';
+        this.logger.error(
+          `Pay Solutions saving-plan API error: HTTP ${response.status} statusCode=${statusCode} message="${message}" — ${JSON.stringify(gatewayResponse)}`,
+        );
         throw new InternalServerErrorException(
-          `ไม่สามารถสร้างรายการชำระเงินได้: ${status?.message || 'กรุณาลองใหม่'}`,
+          `ไม่สามารถสร้างรายการชำระเงินได้: ${message}`,
         );
       }
       paymentUrl = (gatewayResponse.redirectUrl as string) || '';

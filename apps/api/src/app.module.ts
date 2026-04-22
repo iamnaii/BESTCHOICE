@@ -97,6 +97,7 @@ import { ShopTradeInModule } from './modules/shop-trade-in/shop-trade-in.module'
 import { ShopBuybackModule } from './modules/shop-buyback/shop-buyback.module';
 import { ShopInstallmentApplyModule } from './modules/shop-installment-apply/shop-installment-apply.module';
 import { ShopSavingPlanModule } from './modules/shop-saving-plan/shop-saving-plan.module';
+import { ShopPublicConfigModule } from './modules/shop-public-config/shop-public-config.module';
 import { DataAuditModule } from './modules/data-audit/data-audit.module';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { TwoFactorModule } from './modules/two-factor/two-factor.module';
@@ -267,6 +268,8 @@ import { AppCacheModule } from './cache/cache.module';
     ShopInstallmentApplyModule,
     // Online Shop — ออมดาวน์ (saving plan) + reminder cron (Phase 3)
     ShopSavingPlanModule,
+    // Online Shop — public runtime config (GA4 / FB Pixel IDs) (Phase 3 follow-up)
+    ShopPublicConfigModule,
     // MASTER: Management
     UsersModule,
     SettingsModule,

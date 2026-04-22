@@ -368,6 +368,36 @@ export const INTEGRATIONS: IntegrationDef[] = [
       },
     ],
   },
+  {
+    key: 'ga4',
+    name: 'Google Analytics 4',
+    description: 'วัดพฤติกรรมผู้ใช้ในหน้าร้านออนไลน์ (bestchoicephone.app)',
+    icon: 'line-chart',
+    fields: [
+      {
+        key: 'measurementId',
+        label: 'Measurement ID',
+        sensitive: false,
+        required: false,
+        envVar: 'VITE_GA4_ID',
+      },
+    ],
+  },
+  {
+    key: 'facebook-pixel',
+    name: 'Facebook Pixel',
+    description: 'ส่ง conversion events (ViewContent / AddToCart / Purchase) ให้ Meta Ads',
+    icon: 'facebook',
+    fields: [
+      {
+        key: 'pixelId',
+        label: 'Pixel ID',
+        sensitive: false,
+        required: false,
+        envVar: 'VITE_FB_PIXEL_ID',
+      },
+    ],
+  },
 ];
 
 /**

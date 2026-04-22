@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Upload, Loader2, ArrowLeft, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '@/lib/api';
-import { compressImageForOcr } from '@/lib/compressImage';
+import { fileToOcrBase64 } from '@/lib/compressImage';
 import type { QuickIntakeForm } from '../types';
 
 interface Props {
@@ -18,22 +18,31 @@ interface Props {
 export default function PreCheckUploadStep({ form, onChange, onSubmit, onBack, isSubmitting }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [ocrLoading, setOcrLoading] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
 
   const canSubmit = form.statementFiles.length > 0 && !!form.bankName && !ocrLoading;
 
   const handleFiles = async (files: File[]) => {
-    onChange({ statementFiles: files });
+    onChange({ statementFiles: files, bankName: undefined });
 
-    const firstImage = files.find((f) => f.type.startsWith('image/'));
-    if (!firstImage) return;
+    const supported = files.filter(
+      (f) => f.type.startsWith('image/') || f.type === 'application/pdf',
+    );
+    if (supported.length === 0) {
+      toast.error('กรุณาเลือกรูปภาพหรือ PDF');
+      return;
+    }
+    if (supported.length !== files.length) {
+      toast.warning('บางไฟล์ไม่รองรับ — ใช้เฉพาะรูปภาพและ PDF');
+    }
 
     setOcrLoading(true);
     try {
-      const imageBase64 = await compressImageForOcr(firstImage);
+      const filesBase64 = await Promise.all(supported.map(fileToOcrBase64));
       const { data } = await api.post(
         '/ocr/bank-statement',
-        { imageBase64 },
-        { timeout: 90000 },
+        { filesBase64 },
+        { timeout: 120000 },
       );
       if (data?.bankName) {
         onChange({ bankName: data.bankName });
@@ -43,7 +52,6 @@ export default function PreCheckUploadStep({ form, onChange, onSubmit, onBack, i
       }
     } catch (err) {
       toast.error('อ่าน statement ไม่สำเร็จ — กรุณากรอกธนาคารเอง');
-      // Silent: OCR is best-effort. User can still type bank name manually.
       void err;
     } finally {
       setOcrLoading(false);
@@ -72,20 +80,55 @@ export default function PreCheckUploadStep({ form, onChange, onSubmit, onBack, i
             }}
             className="hidden"
           />
-          <button
-            type="button"
-            onClick={() => fileRef.current?.click()}
-            disabled={ocrLoading}
-            className="w-full border-2 border-dashed border-border hover:border-primary/50 rounded-lg p-6 flex flex-col items-center gap-1 transition disabled:opacity-50"
+          <div
+            role="button"
+            tabIndex={ocrLoading ? -1 : 0}
+            aria-disabled={ocrLoading}
+            onClick={() => !ocrLoading && fileRef.current?.click()}
+            onKeyDown={(e) => {
+              if (ocrLoading) return;
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                fileRef.current?.click();
+              }
+            }}
+            onDragOver={(e) => {
+              if (ocrLoading) return;
+              e.preventDefault();
+              e.stopPropagation();
+              setIsDragging(true);
+            }}
+            onDragLeave={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (!e.currentTarget.contains(e.relatedTarget as Node)) setIsDragging(false);
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsDragging(false);
+              if (ocrLoading) return;
+              const dropped = e.dataTransfer.files ? Array.from(e.dataTransfer.files) : [];
+              if (dropped.length > 0) void handleFiles(dropped);
+            }}
+            className={`w-full border-2 border-dashed rounded-lg p-6 flex flex-col items-center gap-1 transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${
+              ocrLoading
+                ? 'opacity-50 cursor-not-allowed border-border'
+                : isDragging
+                  ? 'border-primary bg-primary/5'
+                  : 'border-border hover:border-primary/50'
+            }`}
           >
-            <Upload className="size-6 text-muted-foreground" />
+            <Upload className={`size-6 ${isDragging ? 'text-primary' : 'text-muted-foreground'}`} />
             <span className="text-sm text-foreground">
-              {form.statementFiles.length > 0
-                ? `เลือกแล้ว ${form.statementFiles.length} ไฟล์`
-                : 'ลากไฟล์หรือคลิกเลือก'}
+              {isDragging
+                ? 'วางไฟล์ที่นี่'
+                : form.statementFiles.length > 0
+                  ? `เลือกแล้ว ${form.statementFiles.length} ไฟล์`
+                  : 'ลากไฟล์มาวางหรือคลิกเลือก'}
             </span>
             <span className="text-xs text-muted-foreground">รูปภาพหรือ PDF หลายไฟล์ได้</span>
-          </button>
+          </div>
         </div>
 
         <div>
@@ -106,15 +149,15 @@ export default function PreCheckUploadStep({ form, onChange, onSubmit, onBack, i
           </label>
           <Input
             value={form.bankName || ''}
-            readOnly
+            onChange={(e) => onChange({ bankName: e.target.value })}
+            disabled={ocrLoading}
             placeholder={
               ocrLoading
                 ? 'กำลังอ่าน...'
                 : form.statementFiles.length === 0
                   ? 'จะแสดงหลัง upload statement'
-                  : 'ไม่สามารถอ่านได้ — กรุณา upload ใหม่'
+                  : 'อ่านไม่ได้ — พิมพ์ชื่อธนาคารเอง'
             }
-            className="bg-muted/50 cursor-not-allowed"
           />
         </div>
       </div>

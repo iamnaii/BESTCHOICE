@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, MaxLength } from 'class-validator';
+import { IsString, IsNotEmpty, MaxLength, IsArray, ArrayMinSize, ArrayMaxSize } from 'class-validator';
 
 export class OcrIdCardDto {
   @IsString()
@@ -36,10 +36,12 @@ export class OcrSalarySlipDto {
 }
 
 export class OcrBankStatementDto {
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(5_000_000)
-  imageBase64: string; // base64 data URL of the bank statement image
+  @IsArray({ message: 'ต้องส่งไฟล์เป็น array' })
+  @ArrayMinSize(1, { message: 'ต้องมีไฟล์อย่างน้อย 1 ไฟล์' })
+  @ArrayMaxSize(10, { message: 'อัปโหลดได้สูงสุด 10 ไฟล์' })
+  @IsString({ each: true })
+  @MaxLength(15_000_000, { each: true, message: 'ไฟล์ใหญ่เกินไป (เกิน 10MB)' })
+  filesBase64: string[]; // base64 data URLs of bank statement images or PDFs
 }
 
 export class OcrGenerateTemplateDto {

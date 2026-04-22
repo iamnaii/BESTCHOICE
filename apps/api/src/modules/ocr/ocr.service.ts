@@ -308,6 +308,80 @@ export class OcrService {
     return bestResult;
   }
 
+  private async callClaudeOcrMultiFile(
+    files: Array<{ mediaType: string; base64Data: string; isDocument: boolean }>,
+    prompt: string,
+  ): Promise<Record<string, unknown>> {
+    const client = await this.ensureAnthropicReady();
+
+    const fileBlocks = files.map((f) =>
+      f.isDocument
+        ? {
+            type: 'document' as const,
+            source: {
+              type: 'base64' as const,
+              media_type: 'application/pdf' as const,
+              data: f.base64Data,
+            },
+          }
+        : {
+            type: 'image' as const,
+            source: {
+              type: 'base64' as const,
+              media_type: f.mediaType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+              data: f.base64Data,
+            },
+          },
+    );
+
+    const response = await client.messages.create({
+      model: OcrService.OCR_MODEL,
+      max_tokens: 2048,
+      temperature: 0,
+      system: OcrService.OCR_SYSTEM_PROMPT,
+      messages: [
+        {
+          role: 'user',
+          content: [...fileBlocks, { type: 'text', text: prompt }],
+        },
+      ],
+    });
+
+    const textContent = response.content.find((c) => c.type === 'text');
+    if (!textContent || textContent.type !== 'text') {
+      throw new InternalServerErrorException('No text response from Claude');
+    }
+
+    return this.parseJsonResponse(textContent.text) as Record<string, unknown>;
+  }
+
+  private async callClaudeOcrMultiFileWithRetry(
+    files: Array<{ mediaType: string; base64Data: string; isDocument: boolean }>,
+    prompt: string,
+    retryPrompt: string,
+  ): Promise<Record<string, unknown>> {
+    let bestResult = await this.callClaudeOcrMultiFile(files, prompt);
+    const confidence = Number(bestResult.confidence) || 0;
+
+    if (confidence < OcrService.LOW_CONFIDENCE_THRESHOLD) {
+      this.logger.warn(`Low confidence (${confidence.toFixed(2)}), retrying with enhanced prompt`);
+      for (let attempt = 0; attempt < OcrService.MAX_RETRIES; attempt++) {
+        try {
+          const retryResult = await this.callClaudeOcrMultiFile(files, retryPrompt);
+          const retryConfidence = Number(retryResult.confidence) || 0;
+          if (retryConfidence > confidence) {
+            bestResult = retryResult;
+            break;
+          }
+        } catch {
+          this.logger.warn(`Retry attempt ${attempt + 1} failed`);
+        }
+      }
+    }
+
+    return bestResult;
+  }
+
   // ─── 0. Generate Template HTML from File ───────────────
 
   private static readonly TEMPLATE_GENERATION_PROMPT = `คุณเป็นผู้เชี่ยวชาญด้านการสร้างเทมเพลต HTML สำหรับสัญญาผ่อนชำระสินค้า (ร้านขายมือถือในประเทศไทย)
@@ -862,14 +936,18 @@ ${basePrompt}`;
     'ดูรูปอีกครั้งอย่างละเอียด โดยเฉพาะยอดเงินเข้า เงินออก ยอดคงเหลือ และช่วงวันที่\n' +
     'ตอบเป็น JSON: { accountName, bankName, totalIncome, totalExpense, balance, transactionCount, dateRange, confidence }';
 
-  async analyzeBankStatement(imageBase64: string): Promise<OcrBankStatementResult> {
+  async analyzeBankStatement(filesBase64: string[]): Promise<OcrBankStatementResult> {
     await this.ensureAnthropicReady();
-    const { mediaType, base64Data } = this.validateImageBase64(imageBase64);
+
+    if (!Array.isArray(filesBase64) || filesBase64.length === 0) {
+      throw new BadRequestException('กรุณาส่งไฟล์อย่างน้อย 1 ไฟล์');
+    }
+
+    const validatedFiles = filesBase64.map((b64) => this.validateFileBase64(b64));
 
     try {
-      const result = await this.callClaudeOcrWithRetry(
-        mediaType,
-        base64Data,
+      const result = await this.callClaudeOcrMultiFileWithRetry(
+        validatedFiles,
         OcrService.BANK_STATEMENT_PROMPT,
         OcrService.BANK_STATEMENT_RETRY_PROMPT,
       );

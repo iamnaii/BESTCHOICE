@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
-import { compressImageForOcr } from '@/lib/compressImage';
+import { compressImageForOcr, fileToOcrBase64 } from '@/lib/compressImage';
 import { useDebounce } from '@/hooks/useDebounce';
 import {
   type Customer,
@@ -168,13 +168,24 @@ export function useCreditCheckCreate({ open, preselectedCustomer, onSuccess }: U
 
   const handleStatementOcr = async () => {
     if (statementFiles.length === 0) {
-      toast.error('กรุณาเลือกรูป Statement');
+      toast.error('กรุณาเลือกไฟล์ Statement');
+      return;
+    }
+    const supported = statementFiles.filter(
+      (f) => f.type.startsWith('image/') || f.type === 'application/pdf',
+    );
+    if (supported.length === 0) {
+      toast.error('กรุณาเลือกรูปภาพหรือ PDF');
       return;
     }
     setStatementLoading(true);
     try {
-      const imageBase64 = await compressImageForOcr(statementFiles[0]);
-      const { data } = await api.post<OcrBankStatementResult>('/ocr/bank-statement', { imageBase64 }, { timeout: 90000 });
+      const filesBase64 = await Promise.all(supported.map(fileToOcrBase64));
+      const { data } = await api.post<OcrBankStatementResult>(
+        '/ocr/bank-statement',
+        { filesBase64 },
+        { timeout: 120000 },
+      );
       setStatementResult(data);
       toast.success(`วิเคราะห์ Statement สำเร็จ (ความมั่นใจ ${(data.confidence * 100).toFixed(0)}%)`);
     } catch (err) {

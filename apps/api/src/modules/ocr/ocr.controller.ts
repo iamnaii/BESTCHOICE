@@ -60,6 +60,6 @@ export class OcrController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   @Throttle({ short: { limit: 5, ttl: 60000 } })
   analyzeBankStatement(@Body() dto: OcrBankStatementDto) {
-    return this.ocrService.analyzeBankStatement(dto.imageBase64);
+    return this.ocrService.analyzeBankStatement(dto.filesBase64);
   }
 }

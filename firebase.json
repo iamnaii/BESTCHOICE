@@ -1,43 +1,88 @@
 {
-  "hosting": {
-    "public": "apps/web/dist",
-    "ignore": ["firebase.json", "**/node_modules/**"],
-    "rewrites": [
-      {
-        "source": "/api/**",
-        "run": {
-          "serviceId": "bestchoice-api",
-          "region": "asia-southeast1"
+  "hosting": [
+    {
+      "target": "admin",
+      "public": "apps/web/dist",
+      "ignore": ["firebase.json", "**/node_modules/**"],
+      "rewrites": [
+        {
+          "source": "/api/**",
+          "run": {
+            "serviceId": "bestchoice-api",
+            "region": "asia-southeast1"
+          }
+        },
+        {
+          "source": "**",
+          "destination": "/index.html"
         }
-      },
-      {
-        "source": "**",
-        "destination": "/index.html"
-      }
-    ],
-    "headers": [
-      {
-        "source": "**/*.@(js|css)",
-        "headers": [
-          { "key": "Cache-Control", "value": "public, max-age=2592000, immutable" }
-        ]
-      },
-      {
-        "source": "**/*.@(svg|png|jpg|jpeg|gif|ico|woff2)",
-        "headers": [
-          { "key": "Cache-Control", "value": "public, max-age=2592000, immutable" }
-        ]
-      },
-      {
-        "source": "**",
-        "headers": [
-          { "key": "X-Frame-Options", "value": "DENY" },
-          { "key": "X-Content-Type-Options", "value": "nosniff" },
-          { "key": "X-XSS-Protection", "value": "1; mode=block" },
-          { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
-          { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=()" }
-        ]
-      }
-    ]
-  }
+      ],
+      "headers": [
+        {
+          "source": "**/*.@(js|css)",
+          "headers": [
+            { "key": "Cache-Control", "value": "public, max-age=2592000, immutable" }
+          ]
+        },
+        {
+          "source": "**/*.@(svg|png|jpg|jpeg|gif|ico|woff2)",
+          "headers": [
+            { "key": "Cache-Control", "value": "public, max-age=2592000, immutable" }
+          ]
+        },
+        {
+          "source": "**",
+          "headers": [
+            { "key": "X-Frame-Options", "value": "DENY" },
+            { "key": "X-Content-Type-Options", "value": "nosniff" },
+            { "key": "X-XSS-Protection", "value": "1; mode=block" },
+            { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+            { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=()" }
+          ]
+        }
+      ]
+    },
+    {
+      "target": "shop",
+      "public": "apps/web-shop/dist",
+      "ignore": ["firebase.json", "**/node_modules/**"],
+      "rewrites": [
+        {
+          "source": "/api/**",
+          "run": {
+            "serviceId": "bestchoice-api",
+            "region": "asia-southeast1"
+          }
+        },
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ],
+      "headers": [
+        {
+          "source": "**/*.@(js|css)",
+          "headers": [
+            { "key": "Cache-Control", "value": "public, max-age=2592000, immutable" }
+          ]
+        },
+        {
+          "source": "**/*.@(svg|png|jpg|jpeg|gif|ico|woff2)",
+          "headers": [
+            { "key": "Cache-Control", "value": "public, max-age=2592000, immutable" }
+          ]
+        },
+        {
+          "source": "**",
+          "headers": [
+            { "key": "X-Frame-Options", "value": "DENY" },
+            { "key": "X-Content-Type-Options", "value": "nosniff" },
+            { "key": "X-XSS-Protection", "value": "1; mode=block" },
+            { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+            { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=()" }
+          ]
+        }
+      ]
+    }
+  ]
 }

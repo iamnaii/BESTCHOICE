@@ -1,9 +1,11 @@
+import { useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { api } from '../lib/api';
 import { getSessionId } from '../lib/session';
 import { useCartStore } from '../stores/cartStore';
+import { useTrackEvent } from '../hooks/useTrackEvent';
 import ShopLayout from '../components/layout/ShopLayout';
 import { Button } from '../components/ui/button';
 import ReviewsSection from '../components/reviews/ReviewsSection';
@@ -44,6 +46,7 @@ export default function ProductDetailPage() {
   const { id } = useParams<{ id: string }>();
   const nav = useNavigate();
   const cart = useCartStore();
+  const track = useTrackEvent();
 
   const { data, isLoading } = useQuery({
     queryKey: ['shop-product', id],
@@ -52,6 +55,12 @@ export default function ProductDetailPage() {
     enabled: !!id,
   });
 
+  useEffect(() => {
+    if (data && id) {
+      track('ViewContent', { content_type: 'product', content_ids: [id] });
+    }
+  }, [data, id, track]);
+
   const reserveMut = useMutation({
     mutationFn: () =>
       api
@@ -59,6 +68,13 @@ export default function ProductDetailPage() {
         .then((r) => r.data as { id: string; expiresAt: string }),
     onSuccess: (res) => {
       cart.setItem(res.id, id!);
+      if (id) {
+        track('AddToCart', {
+          content_ids: [id],
+          value: lowestPrice(data?.tiers ?? {}),
+          currency: 'THB',
+        });
+      }
       toast.success('จองเครื่องนี้ไว้ 15 นาทีแล้ว');
       nav('/cart');
     },

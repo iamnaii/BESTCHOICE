@@ -1,14 +1,17 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import ShopLayout from '../components/layout/ShopLayout';
 import OrderStatusBadge from '../components/orders/OrderStatusBadge';
 import { useCartStore } from '../stores/cartStore';
+import { useTrackEvent } from '../hooks/useTrackEvent';
 
 export default function OrderSuccessPage() {
   const { orderNumber } = useParams<{ orderNumber: string }>();
   const cart = useCartStore();
+  const track = useTrackEvent();
+  const firedRef = useRef(false);
 
   const { data } = useQuery({
     queryKey: ['order', orderNumber],
@@ -20,7 +23,11 @@ export default function OrderSuccessPage() {
 
   useEffect(() => {
     if (data?.status === 'PAID') cart.clear();
-  }, [data?.status, cart]);
+    if (data?.status === 'PAID' && !firedRef.current) {
+      track('Purchase', { value: Number(data.totalAmount ?? 0), currency: 'THB' });
+      firedRef.current = true;
+    }
+  }, [data?.status, data?.totalAmount, cart, track]);
 
   if (!data) {
     return (

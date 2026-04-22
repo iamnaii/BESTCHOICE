@@ -96,6 +96,7 @@ import { ShopReviewsModule } from './modules/shop-reviews/shop-reviews.module';
 import { ShopTradeInModule } from './modules/shop-trade-in/shop-trade-in.module';
 import { ShopBuybackModule } from './modules/shop-buyback/shop-buyback.module';
 import { ShopInstallmentApplyModule } from './modules/shop-installment-apply/shop-installment-apply.module';
+import { ShopSavingPlanModule } from './modules/shop-saving-plan/shop-saving-plan.module';
 import { DataAuditModule } from './modules/data-audit/data-audit.module';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { TwoFactorModule } from './modules/two-factor/two-factor.module';

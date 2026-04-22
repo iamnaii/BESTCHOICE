@@ -82,6 +82,7 @@ const AssetManagementPage = lazy(() => import('@/pages/AssetManagementPage'));
 const ChartOfAccountsPage = lazy(() => import('@/pages/ChartOfAccountsPage'));
 const TodosPage = lazy(() => import('@/pages/TodosPage'));
 const UnifiedInboxPage = lazy(() => import('@/pages/UnifiedInboxPage'));
+const ChatInboxPage = lazy(() => import('@/pages/chat/ChatInboxPage'));
 const CrmPipelinePage = lazy(() => import('@/pages/CrmPipelinePage'));
 const AdsTrackingPage = lazy(() => import('@/pages/AdsTrackingPage'));
 const ChannelSettingsPage = lazy(() => import('@/pages/ChannelSettingsPage'));
@@ -323,6 +324,7 @@ function App() {
           <Route path="/sales" element={<SalesHistoryPage />} />
           <Route path="/todos" element={<TodosPage />} />
           <Route path="/inbox" element={<ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES']}><UnifiedInboxPage /></ProtectedRoute>} />
+          <Route path="/chat" element={<ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES']}><ChatInboxPage /></ProtectedRoute>} />
           <Route path="/crm" element={<ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES']}><CrmPipelinePage /></ProtectedRoute>} />
           <Route path="/ads" element={<ProtectedRoute roles={['OWNER']}><AdsTrackingPage /></ProtectedRoute>} />
           <Route path="/settings/channels" element={<ProtectedRoute roles={['OWNER']}><ChannelSettingsPage /></ProtectedRoute>} />

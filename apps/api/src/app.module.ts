@@ -75,6 +75,7 @@ import { ChatHistoryExtractorModule } from './modules/chat-history-extractor/cha
 import { ChatIntentRouterModule } from './modules/chat-intent-router/chat-intent-router.module';
 import { SalesBotModule } from './modules/sales-bot/sales-bot.module';
 import { ChatAiDraftModule } from './modules/chat-ai-draft/chat-ai-draft.module';
+import { AiSettingsModule } from './modules/ai-settings/ai-settings.module';
 import { CsatModule } from './modules/csat/csat.module';
 import { AdsTrackingModule } from './modules/ads-tracking/ads-tracking.module';
 import { CrmModule } from './modules/crm/crm.module';
@@ -232,6 +233,8 @@ import { AppCacheModule } from './cache/cache.module';
     SalesBotModule,
     // Chat AI Draft orchestrator — router → bot → draft ChatMessage (Week 1 Hybrid C: staff approval required)
     ChatAiDraftModule,
+    // AI Settings — per-bot mode (OFF/HYBRID/FULL) + confidence thresholds (singleton row)
+    AiSettingsModule,
     // CSAT — customer satisfaction survey after chat resolution
     CsatModule,
     // Ads Attribution — campaign tracking + ROI

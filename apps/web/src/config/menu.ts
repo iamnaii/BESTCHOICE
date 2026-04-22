@@ -106,6 +106,7 @@ const SALES_CONFIG: RoleMenuConfig = {
         { label: 'สต็อกสินค้า', path: '/stock', icon: Warehouse },
         { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
         { label: 'CRM Pipeline', path: '/crm', icon: Kanban },
+        { label: 'รวมแชท', path: '/chat', icon: MessageSquareMore },
         { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
       ],
     },
@@ -163,6 +164,7 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'ค้างชำระ', path: '/overdue', icon: AlertTriangle },
         { label: 'CRM Pipeline', path: '/crm', icon: Kanban },
+        { label: 'รวมแชท', path: '/chat', icon: MessageSquareMore },
         { label: 'รายงาน', path: '/reports', icon: BarChart3 },
       ],
     },
@@ -219,6 +221,7 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'ติดตามหนี้', path: '/overdue', icon: AlertTriangle },
         { label: 'เปลี่ยนเครื่องเสีย (7 วัน)', path: '/defect-exchange', icon: Wrench },
         { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
+        { label: 'รวมแชท', path: '/chat', icon: MessageSquareMore },
       ],
     },
     {
@@ -399,6 +402,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'AI Admin', path: '/settings/ai-admin', icon: Sparkles },
         { label: 'AI Assistant', path: '/settings/ai-chat', icon: Sparkles },
+        { label: 'รวมแชท', path: '/chat', icon: MessageSquareMore },
         { label: 'การเชื่อมต่อ', path: '/settings/integrations', icon: Plug },
         { label: 'LINE OA', path: '/settings/rich-menu', icon: MessageSquareMore },
         { label: 'Dunning', path: '/settings/dunning', icon: Bell },

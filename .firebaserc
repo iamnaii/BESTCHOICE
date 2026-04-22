@@ -1,5 +1,13 @@
 {
   "projects": {
     "default": "bestchoice-prod"
+  },
+  "targets": {
+    "bestchoice-prod": {
+      "hosting": {
+        "admin": ["bestchoice-prod"],
+        "shop": ["bestchoice-shop"]
+      }
+    }
   }
 }

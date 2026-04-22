@@ -253,14 +253,27 @@ export class TradeInService {
     branchId?: string;
     status?: string;
     search?: string;
+    submissionSource?: string;
+    flow?: string;
     page?: number;
     limit?: number;
   }) {
-    const { customerId, branchId, status, search, page = 1, limit = 50 } = filters;
+    const {
+      customerId,
+      branchId,
+      status,
+      search,
+      submissionSource,
+      flow,
+      page = 1,
+      limit = 50,
+    } = filters;
     const where: Record<string, unknown> = { deletedAt: null };
     if (customerId) where.customerId = customerId;
     if (branchId) where.branchId = branchId;
     if (status) where.status = status;
+    if (submissionSource) where.submissionSource = submissionSource;
+    if (flow) where.flow = flow;
     // Search by device, IMEI, seller name/phone, voucher number, customer name
     if (search && search.trim()) {
       const q = search.trim();

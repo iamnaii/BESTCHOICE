@@ -18,6 +18,13 @@ import AccountPage from './pages/account/AccountPage';
 import AddressBookPage from './pages/account/AddressBookPage';
 import InstallmentApplyPage from './pages/apply/InstallmentApplyPage';
 import ApplySuccessPage from './pages/apply/ApplySuccessPage';
+import TradeInLandingPage from './pages/trade-in/TradeInLandingPage';
+import TradeInSubmitPage from './pages/trade-in/TradeInSubmitPage';
+import TradeInStatusPage from './pages/trade-in/TradeInStatusPage';
+import SavingPlanLandingPage from './pages/saving-plan/SavingPlanLandingPage';
+import SavingPlanCreatePage from './pages/saving-plan/SavingPlanCreatePage';
+import SavingPlanDetailPage from './pages/saving-plan/SavingPlanDetailPage';
+import SavingPlansPage from './pages/account/SavingPlansPage';
 
 function RouteTracker() {
   const location = useLocation();
@@ -49,6 +56,13 @@ export default function App() {
         <Route path="/account/addresses" element={<AddressBookPage />} />
         <Route path="/apply/:productId" element={<InstallmentApplyPage />} />
         <Route path="/apply/success/:applicationNumber" element={<ApplySuccessPage />} />
+        <Route path="/trade-in" element={<TradeInLandingPage />} />
+        <Route path="/trade-in/submit" element={<TradeInSubmitPage />} />
+        <Route path="/trade-in/:id" element={<TradeInStatusPage />} />
+        <Route path="/saving-plan" element={<SavingPlanLandingPage />} />
+        <Route path="/saving-plan/create" element={<SavingPlanCreatePage />} />
+        <Route path="/saving-plan/:id" element={<SavingPlanDetailPage />} />
+        <Route path="/account/saving-plans" element={<SavingPlansPage />} />
       </Routes>
     </>
   );

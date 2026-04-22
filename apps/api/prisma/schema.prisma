@@ -534,6 +534,8 @@ model User {
   crmLeadStageHistoryStagedBy CrmLeadStageHistory[]     @relation("CrmLeadStageHistoryStagedBy")
   paymentsWaived              Payment[]                 @relation("PaymentWaivedBy")
   paymentsWaivedApproved      Payment[]                 @relation("PaymentWaivedApprovedBy")
+  aiPausedRooms               ChatRoom[]                @relation("ChatRoomAiPausedBy")
+  aiSettingsUpdates           AiSettings[]              @relation("AiSettingsUpdatedBy")
 
   @@index([branchId])
   @@map("users")
@@ -3663,6 +3665,12 @@ model ChatRoom {
   totalMessages Int      @default(0) @map("total_messages")
   lastMessageAt DateTime @default(now()) @map("last_message_at")
 
+  // AI pause state (Hybrid C take-over)
+  aiPaused     Boolean   @default(false) @map("ai_paused")
+  aiPausedAt   DateTime? @map("ai_paused_at")
+  aiPausedById String?   @map("ai_paused_by_id")
+  aiPausedBy   User?     @relation("ChatRoomAiPausedBy", fields: [aiPausedById], references: [id])
+
   messages      ChatMessage[]
   feedbacks     ChatFeedback[]
   tags          ConversationTag[]
@@ -4766,4 +4774,20 @@ model KnownDevice {
   @@index([userId, lastSeenAt])
   @@index([fingerprint])
   @@map("known_devices")
+}
+
+/// Single-row settings for AI behavior (id = 'singleton').
+/// Controls per-bot mode (OFF | HYBRID | FULL) and confidence thresholds
+/// used by the draft orchestrator for Chat AI Hybrid C.
+model AiSettings {
+  id                            String   @id @default("singleton")
+  salesBotMode                  String   @default("HYBRID") @map("sales_bot_mode") // OFF | HYBRID | FULL
+  serviceBotMode                String   @default("HYBRID") @map("service_bot_mode") // OFF | HYBRID | FULL
+  salesBotConfidenceThreshold   Float    @default(0.70) @map("sales_bot_confidence_threshold")
+  serviceBotConfidenceThreshold Float    @default(0.75) @map("service_bot_confidence_threshold")
+  updatedAt                     DateTime @updatedAt @map("updated_at")
+  updatedById                   String?  @map("updated_by_id")
+  updatedBy                     User?    @relation("AiSettingsUpdatedBy", fields: [updatedById], references: [id])
+
+  @@map("ai_settings")
 }

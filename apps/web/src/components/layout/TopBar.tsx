@@ -30,6 +30,9 @@ import {
 import { useCommandPalette } from '@/components/CommandPalette';
 import { ChatUnreadBadge } from './Sidebar';
 import { isChatVisibleForRole } from '@/config/menu';
+import { useUnreadNotifications } from '@/hooks/useUnreadNotifications';
+
+const NOTIFICATION_ROLES = ['OWNER', 'BRANCH_MANAGER'];
 
 /* ── Role display metadata ─────────────────────── */
 const roleLabels: Record<string, string> = {
@@ -141,6 +144,8 @@ export default function TopBar() {
   const { theme, setTheme } = useTheme();
   const { open: openCommandPalette } = useCommandPalette();
   const { pathname } = useLocation();
+  const unreadNotifications = useUnreadNotifications();
+  const canSeeNotifications = !!user && NOTIFICATION_ROLES.includes(user.role);
 
   const pageTitle = useMemo(() => {
     const map: Record<string, string> = {
@@ -224,19 +229,31 @@ export default function TopBar() {
         )}
 
         {/* Notifications bell */}
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="การแจ้งเตือน"
-          className="size-9 rounded-xl relative text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors duration-150"
-        >
-          <Bell className="size-[17px]" strokeWidth={1.75} />
-          {/* Active indicator dot */}
-          <span
-            className="absolute top-[9px] right-[9px] size-[7px] rounded-full bg-success ring-[1.5px] ring-background"
-            aria-hidden="true"
-          />
-        </Button>
+        {canSeeNotifications && (
+          <Button
+            variant="ghost"
+            size="icon"
+            asChild
+            className="size-9 rounded-xl relative text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors duration-150"
+          >
+            <Link
+              to="/notifications"
+              aria-label={
+                unreadNotifications > 0
+                  ? `การแจ้งเตือน (${unreadNotifications} รายการใหม่)`
+                  : 'การแจ้งเตือน'
+              }
+            >
+              <Bell className="size-[17px]" strokeWidth={1.75} />
+              {unreadNotifications > 0 && (
+                <span
+                  className="absolute top-[9px] right-[9px] size-[7px] rounded-full bg-destructive ring-[1.5px] ring-background"
+                  aria-hidden="true"
+                />
+              )}
+            </Link>
+          </Button>
+        )}
 
         {/* Dark/light mode toggle */}
         <Button

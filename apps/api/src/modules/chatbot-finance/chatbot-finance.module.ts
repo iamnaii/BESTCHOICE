@@ -76,6 +76,6 @@ import { IntegrationsModule } from '../integrations/integrations.module';
     FinanceDomainHandler,
     SlipSlaCron,
   ],
-  exports: [LineFinanceClientService, ChatRoomService, VerificationService, WebhookDedupService, FinanceDomainHandler],
+  exports: [LineFinanceClientService, ChatRoomService, VerificationService, WebhookDedupService, FinanceDomainHandler, FinanceAiService],
 })
 export class ChatbotFinanceModule {}

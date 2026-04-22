@@ -158,6 +158,10 @@ function App() {
 
         {/* LIFF Pages (public, opened from LINE) */}
         <Route path="/pay/:token" element={<LiffPayment />} />
+        {/* Bare /liff and unknown /liff/* → redirect to primary LIFF page.
+            Guards against Endpoint URL mis-configs and catch-all "*→/" hijacking
+            LIFF traffic into ProtectedRoute. */}
+        <Route path="/liff" element={<Navigate to="/liff/contract" replace />} />
         <Route path="/liff/contract" element={<LiffContract />} />
         <Route path="/liff/register" element={<LiffRegister />} />
         <Route path="/liff/history" element={<LiffHistory />} />
@@ -174,6 +178,8 @@ function App() {
           <p>href: {window.location.href}</p>
           <p>time: {new Date().toISOString()}</p>
         </div>} />
+        {/* Unknown /liff/* sub-paths fall back to primary LIFF page (not catch-all "*→/"). */}
+        <Route path="/liff/*" element={<Navigate to="/liff/contract" replace />} />
 
         {/* 2FA Setup — authenticated, no main layout */}
         <Route

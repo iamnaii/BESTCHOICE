@@ -50,31 +50,24 @@ export function useLiffInit(): UseLiffInitResult {
           const displayName = params.get('line_display_name');
           const pictureUrl = params.get('line_picture');
 
+          // Read id_token from URL fragment (backend puts it there to avoid
+          // WebKit ITP cross-subdomain cookie blocking). Fragment is not sent
+          // to server in any HTTP request = no leak in access logs/referrer.
+          const hashParams = new URLSearchParams(window.location.hash.slice(1));
+          const lineIdToken = hashParams.get('id_token');
+
           if (userId && displayName) {
-            // Clean URL — remove login params
+            // Clean URL — remove login query params AND fragment
             const cleanUrl = new URL(window.location.href);
             ['line_login', 'line_user_id', 'line_display_name', 'line_picture'].forEach(
               (k) => cleanUrl.searchParams.delete(k),
             );
+            cleanUrl.hash = '';
             window.history.replaceState({}, '', cleanUrl.toString());
 
-            // Fetch id_token from one-shot cookie endpoint (httpOnly, not readable from JS)
-            let lineIdToken: string | null = null;
-            try {
-              const base = API_URL.startsWith('http') ? API_URL : `${window.location.origin}${API_URL}`;
-              const tokenRes = await fetch(`${base}/line-oa/line-login/id-token`, {
-                credentials: 'include',
-              });
-              if (tokenRes.ok) {
-                const body = (await tokenRes.json()) as { token?: string };
-                lineIdToken = body.token ?? null;
-              }
-            } catch {
-              // Cookie missing or network error
-            }
-
             if (!lineIdToken) {
-              if (!cancelled) setError('ไม่สามารถรับ ID Token จาก LINE กรุณาปิดหน้านี้แล้วเปิดใหม่จาก LINE OA');
+              if (!cancelled)
+                setError('ไม่สามารถรับ ID Token จาก LINE กรุณาปิดหน้านี้แล้วเปิดใหม่จาก LINE OA');
               return;
             }
 

@@ -1,10 +1,24 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Search, SlidersHorizontal } from 'lucide-react';
 import ShopLayout from '@/components/layout/ShopLayout';
-import { ProductCard, type ProductGroup } from '@/components/catalog/ProductCard';
 import { FilterSidebar, type CatalogFilters } from '@/components/catalog/FilterSidebar';
 import { SortDropdown } from '@/components/catalog/SortDropdown';
+import {
+  Container,
+  CategoryHero,
+  StatefulList,
+  ProductCard,
+  Button,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  type ProductGroup,
+} from '@/components';
 import { api } from '@/lib/api';
+import { copy } from '@/lib/copy';
 import { useTrackEvent } from '@/hooks/useTrackEvent';
 
 interface CatalogResponse {
@@ -23,7 +37,7 @@ export default function CatalogPage() {
     track('ViewContent', { content_type: 'catalog' });
   }, [track]);
 
-  const { data, isLoading } = useQuery<CatalogResponse>({
+  const { data, isLoading, isError, refetch } = useQuery<CatalogResponse>({
     queryKey: ['shop', 'catalog', filters, sort],
     queryFn: () => {
       const params = new URLSearchParams();
@@ -38,25 +52,60 @@ export default function CatalogPage() {
 
   return (
     <ShopLayout>
-      <div className="container mx-auto px-4 py-8">
-        <h1 className="text-3xl font-bold mb-6">สินค้าทั้งหมด</h1>
-        <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-6">
-          <FilterSidebar filters={filters} onChange={setFilters} />
-          <div>
-            <div className="flex justify-between items-center mb-4">
+      <CategoryHero
+        title={copy.catalog.pageTitle}
+        breadcrumbs={[{ label: 'หน้าแรก', to: '/' }, { label: copy.catalog.pageTitle }]}
+      />
+
+      <Container className="py-6 md:py-8">
+        <div className="grid grid-cols-1 md:grid-cols-[240px_1fr] gap-6">
+          <aside className="hidden md:block">
+            <FilterSidebar filters={filters} onChange={setFilters} />
+          </aside>
+
+          <div className="space-y-4 leading-snug">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-sm text-muted-foreground">
-                {isLoading ? 'กำลังโหลด...' : `${data?.total ?? 0} รุ่น`}
+                {isLoading ? copy.common.loading : `${data?.total ?? 0} รุ่น`}
               </p>
-              <SortDropdown value={sort} onChange={setSort} />
+              <div className="flex items-center gap-2">
+                <div className="md:hidden">
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <Button variant="outline" size="md">
+                        <SlidersHorizontal className="size-4" />
+                        ตัวกรอง
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>ตัวกรอง</DialogTitle>
+                      </DialogHeader>
+                      <FilterSidebar filters={filters} onChange={setFilters} />
+                    </DialogContent>
+                  </Dialog>
+                </div>
+                <SortDropdown value={sort} onChange={setSort} />
+              </div>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {data?.data.map((p) => (
-                <ProductCard key={`${p.brand}-${p.model}`} product={p} />
-              ))}
-            </div>
+
+            <StatefulList<ProductGroup>
+              isLoading={isLoading}
+              isError={isError}
+              data={data?.data}
+              loadingVariant="card-grid"
+              onRetry={() => refetch()}
+              emptyState={{
+                icon: <Search className="size-12" />,
+                title: copy.catalog.emptyTitle,
+                description: copy.catalog.emptyDescription,
+              }}
+              wrapperClassName="grid grid-cols-2 md:grid-cols-3 gap-4"
+              renderItem={(p) => <ProductCard key={`${p.brand}-${p.model}`} product={p} />}
+            />
           </div>
         </div>
-      </div>
+      </Container>
     </ShopLayout>
   );
 }

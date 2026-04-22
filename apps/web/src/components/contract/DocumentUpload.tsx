@@ -19,12 +19,13 @@ interface ContractDocument {
   uploadedBy: { id: string; name: string };
 }
 
+// SIGNED_CONTRACT + PDPA_CONSENT ไม่รวมในรายการนี้ — backend สร้าง
+// auto หลังเซ็น e-Signature (contract-documents.service.ts:77,82)
 const DOCUMENT_TYPES = [
   { value: 'ID_CARD_COPY', label: 'สำเนาบัตรประชาชน (หน้า)', required: true },
   { value: 'KYC_SELFIE', label: 'รูปถ่ายลูกค้าถือบัตรประชาชน', required: true },
   { value: 'DEVICE_PHOTO', label: 'รูปถ่ายสินค้า', required: true },
   { value: 'DEVICE_IMEI_PHOTO', label: 'รูปถ่าย IMEI สินค้า', required: true },
-  { value: 'SIGNED_CONTRACT', label: 'PDF สัญญาที่เซ็นแล้ว (อัตโนมัติจากระบบ)', required: true },
   { value: 'FACEBOOK_PROFILE', label: 'Profile Facebook', required: true },
   { value: 'FACEBOOK_POST', label: 'Post Facebook ล่าสุด (ไม่เกิน 1 เดือน)', required: true },
   { value: 'LINE_PROFILE', label: 'Profile LINE', required: true },

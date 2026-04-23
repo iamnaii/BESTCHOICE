@@ -1,0 +1,35 @@
+{
+  "size": {
+    "width": 2500,
+    "height": 843
+  },
+  "selected": true,
+  "name": "BESTCHOICE Finance - Chromatic Shrine 1x3",
+  "chatBarText": "เมนู",
+  "areas": [
+    {
+      "bounds": { "x": 0, "y": 0, "width": 833, "height": 843 },
+      "action": {
+        "type": "message",
+        "label": "ชวนเพื่อน",
+        "text": "ขอลิงก์ชวนเพื่อน"
+      }
+    },
+    {
+      "bounds": { "x": 833, "y": 0, "width": 834, "height": 843 },
+      "action": {
+        "type": "uri",
+        "label": "ชำระค่างวด",
+        "uri": "https://liff.line.me/REPLACE_LIFF_ID/liff/contract"
+      }
+    },
+    {
+      "bounds": { "x": 1667, "y": 0, "width": 833, "height": 843 },
+      "action": {
+        "type": "message",
+        "label": "ติดต่อเรา",
+        "text": "สวัสดีค่ะ อยากสอบถามเกี่ยวกับสัญญาผ่อนชำระ"
+      }
+    }
+  ]
+}

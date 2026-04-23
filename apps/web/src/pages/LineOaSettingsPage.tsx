@@ -19,10 +19,24 @@ interface LineStats {
 }
 
 const TEST_MESSAGE_TYPES = [
-  { value: 'payment_reminder', label: 'แจ้งเตือนค่างวด (ก่อนครบกำหนด)' },
-  { value: 'overdue_notice', label: 'แจ้งเตือนค้างชำระ' },
+  { value: 'link_contract', label: 'ผูกสัญญา (Link Contract)' },
+  { value: 'welcome_finance', label: 'ยินดีต้อนรับ — FINANCE' },
+  { value: 'welcome_shop', label: 'ยินดีต้อนรับ — SHOP' },
+  { value: 'contract_signed', label: 'เซ็นสัญญาสำเร็จ' },
+  { value: 'verify_success', label: 'ยืนยันตัวตนสำเร็จ' },
+  { value: 'payment_reminder', label: 'แจ้งเตือนค่างวด' },
+  { value: 'promptpay_qr', label: 'QR พร้อมเพย์' },
   { value: 'payment_success', label: 'แจ้งชำระเงินสำเร็จ' },
+  { value: 'overdue_notice', label: 'แจ้งเตือนค้างชำระ' },
   { value: 'balance_summary', label: 'สรุปยอดคงเหลือ' },
+  { value: 'contract_selector', label: 'เลือกสัญญา' },
+  { value: 'receipt_history', label: 'ประวัติใบเสร็จ' },
+  { value: 'contract_completed', label: 'ปิดสัญญาครบ' },
+  { value: 'early_payoff_success', label: 'ปิดยอดสำเร็จ (ลด 50%)' },
+  { value: 'promotion', label: 'แคมเปญ — โปรโมชัน' },
+  { value: 'thank_you', label: 'แคมเปญ — ขอบคุณ' },
+  { value: 'new_product', label: 'แคมเปญ — สินค้าใหม่' },
+  { value: 'daily_report', label: 'รายงานประจำวัน' },
 ];
 
 export default function LineOaSettingsPage() {
@@ -109,6 +123,37 @@ export default function LineOaSettingsPage() {
         toast.success(result.message || 'ส่งสำเร็จ');
       } else {
         toast.error(result.error || 'ส่งไม่สำเร็จ');
+      }
+    },
+    onError: (err) => {
+      setTestSendResult({ success: false, error: getErrorMessage(err) });
+      toast.error(getErrorMessage(err));
+    },
+  });
+
+  const testSendAllMutation = useMutation({
+    mutationFn: async () => {
+      const res = await api.post('/line-oa/test-send-all', {
+        lineUserId: form.owner_line_id || undefined,
+      });
+      return res.data as {
+        success: boolean;
+        total: number;
+        sent: number;
+        failed: number;
+        error?: string;
+      };
+    },
+    onSuccess: (result) => {
+      if (result.success) {
+        toast.success(`ส่งแล้ว ${result.sent}/${result.total} แบบ`);
+        setTestSendResult({
+          success: true,
+          message: `ส่งทุกแบบ ${result.sent}/${result.total} (ล้มเหลว ${result.failed})`,
+        });
+      } else {
+        toast.error(result.error || 'ส่งทุกแบบไม่สำเร็จ');
+        setTestSendResult({ success: false, error: result.error || 'ส่งไม่สำเร็จ' });
       }
     },
     onError: (err) => {
@@ -506,14 +551,22 @@ export default function LineOaSettingsPage() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
                 <button
                   type="button"
                   onClick={() => testSendMutation.mutate()}
-                  disabled={testSendMutation.isPending || !form.owner_line_id}
+                  disabled={testSendMutation.isPending || testSendAllMutation.isPending || !form.owner_line_id}
                   className="px-6 py-2.5 bg-warning text-warning-foreground rounded-xl font-semibold hover:bg-warning/90 disabled:bg-muted disabled:cursor-not-allowed text-sm shadow-card"
                 >
                   {testSendMutation.isPending ? 'กำลังส่ง...' : 'ส่งทดสอบ'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => testSendAllMutation.mutate()}
+                  disabled={testSendMutation.isPending || testSendAllMutation.isPending || !form.owner_line_id}
+                  className="px-6 py-2.5 bg-primary text-primary-foreground rounded-xl font-semibold hover:bg-primary/90 disabled:bg-muted disabled:cursor-not-allowed text-sm shadow-card"
+                >
+                  {testSendAllMutation.isPending ? 'กำลังส่งทุกแบบ...' : `ส่งทุกแบบ (${TEST_MESSAGE_TYPES.length})`}
                 </button>
                 {testSendResult && (
                   <span className={`text-sm ${testSendResult.success ? 'text-success' : 'text-destructive'}`}>

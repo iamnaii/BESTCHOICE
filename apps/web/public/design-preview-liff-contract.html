@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>สัญญาของฉัน · BESTCHOICE</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ink: #0a0d12;
+      --ink-700: #2a2f39;
+      --ink-500: #5b6475;
+      --ink-400: #8e95a3;
+      --ink-300: #c1c6d0;
+      --ink-200: #e2e5eb;
+      --paper: #fafaf7;
+      --paper-warm: #f5f1e8;
+      --emerald: #059669;
+      --emerald-deep: #04764f;
+      --emerald-glow: #10b981;
+      --teal: #0d9488;
+      --cobalt: #1e40af;
+      --cobalt-glow: #3b82f6;
+      --gold: #d97706;
+      --gold-glow: #f59e0b;
+      --rose: #e11d48;
+    }
+
+    * {
+      font-family: 'IBM Plex Sans Thai', 'IBM Plex Sans', sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body {
+      background: var(--paper);
+      color: var(--ink);
+      line-height: 1.5;
+    }
+
+    /* Background mesh gradient */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      background:
+        radial-gradient(600px 400px at 10% -5%, rgba(16, 185, 129, 0.09), transparent 60%),
+        radial-gradient(500px 380px at 100% 20%, rgba(59, 130, 246, 0.08), transparent 65%),
+        radial-gradient(400px 320px at 50% 100%, rgba(245, 158, 11, 0.06), transparent 60%);
+      pointer-events: none;
+    }
+
+    .font-mono {
+      font-family: 'IBM Plex Mono', ui-monospace, monospace;
+      font-variant-numeric: tabular-nums;
+      font-feature-settings: "zero" on;
+    }
+
+    .overline {
+      font-size: 10.5px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      font-weight: 600;
+      color: var(--ink-500);
+    }
+
+    .display-xl {
+      font-family: 'IBM Plex Mono', monospace;
+      font-weight: 300;
+      letter-spacing: -0.035em;
+      font-variant-numeric: tabular-nums;
+      line-height: 0.95;
+    }
+
+    /* Stagger reveal */
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(14px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .rise { animation: rise 0.8s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+    @keyframes numberIn {
+      from { opacity: 0; transform: scale(0.92); filter: blur(6px); }
+      to   { opacity: 1; transform: scale(1); filter: blur(0); }
+    }
+    .number-in { animation: numberIn 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both; }
+
+    @keyframes drawRing {
+      from { stroke-dashoffset: 283; }
+      to   { stroke-dashoffset: var(--offset, 283); }
+    }
+    .ring-progress {
+      stroke-dasharray: 283;
+      animation: drawRing 1.6s cubic-bezier(0.16, 1, 0.3, 1) 0.55s both;
+    }
+
+    @keyframes nudge {
+      0%, 100% { transform: translateX(0); }
+      50% { transform: translateX(4px); }
+    }
+    .nudge-arrow { animation: nudge 2.4s ease-in-out infinite; }
+
+    @keyframes breathe {
+      0%, 100% { transform: scale(1); opacity: 0.9; }
+      50% { transform: scale(1.08); opacity: 1; }
+    }
+    .breathe { animation: breathe 3.5s ease-in-out infinite; }
+
+    @keyframes pulseRing {
+      0% { transform: scale(1); opacity: 0.6; }
+      100% { transform: scale(2.2); opacity: 0; }
+    }
+    .pulse-ring::before {
+      content: '';
+      position: absolute;
+      inset: -2px;
+      border-radius: 50%;
+      border: 2px solid var(--emerald-glow);
+      animation: pulseRing 2s ease-out infinite;
+    }
+
+    /* Aurora glow behind hero */
+    .aurora {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(60px);
+      opacity: 0.55;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Timeline dots */
+    .dot {
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      border: 2px solid var(--ink-200);
+      background: white;
+      z-index: 1; position: relative;
+    }
+    .dot.current {
+      border-color: var(--emerald);
+      background: white;
+      box-shadow: 0 0 0 5px rgba(16, 185, 129, 0.15);
+    }
+    .dot.paid {
+      border-color: var(--emerald);
+      background: var(--emerald);
+    }
+
+    /* Noise texture */
+    .grain::after {
+      content: '';
+      position: absolute; inset: 0;
+      background-image: url("data:image/svg+xml;utf8,<svg viewBox='0 0 120 120' xmlns='http://www.w3.org/2000/svg'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='1.4' numOctaves='2'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.14 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+      opacity: 0.8;
+      mix-blend-mode: overlay;
+      pointer-events: none;
+      border-radius: inherit;
+    }
+
+    @keyframes shimmer {
+      0% { background-position: -150% 0; }
+      100% { background-position: 250% 0; }
+    }
+    .shimmer {
+      background: linear-gradient(110deg, transparent 30%, rgba(255,255,255,0.5) 50%, transparent 70%);
+      background-size: 200% 100%;
+      background-repeat: no-repeat;
+      animation: shimmer 2.8s ease-in-out infinite;
+    }
+
+    @keyframes sparkle {
+      0%, 100% { opacity: 0; transform: scale(0); }
+      50% { opacity: 1; transform: scale(1); }
+    }
+    .sparkle {
+      animation: sparkle 2s ease-in-out infinite;
+    }
+    .sparkle:nth-of-type(2) { animation-delay: 0.5s; }
+    .sparkle:nth-of-type(3) { animation-delay: 1s; }
+
+    ::-webkit-scrollbar { display: none; }
+  </style>
+</head>
+<body>
+
+<div class="relative mx-auto max-w-[390px] min-h-screen pb-20">
+
+  <!-- Top bar -->
+  <header class="sticky top-0 z-20 flex items-center justify-between px-5 py-3.5 bg-[#fafaf7]/85 backdrop-blur-xl border-b border-black/5">
+    <button aria-label="ย้อนกลับ" class="grid h-9 w-9 place-items-center rounded-full text-ink-700 hover:bg-black/5 -ml-1.5">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="m15 18-6-6 6-6"/></svg>
+    </button>
+    <div class="text-[13px] font-medium text-ink-700 tracking-tight">สัญญาของฉัน</div>
+    <div class="relative">
+      <div class="grid h-9 w-9 place-items-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 text-[12px] font-semibold text-white -mr-1.5 shadow-lg shadow-emerald-500/30">อ</div>
+      <span class="absolute -bottom-0.5 -right-2.5 h-2 w-2 rounded-full bg-emerald-500 ring-2 ring-[#fafaf7]"></span>
+    </div>
+  </header>
+
+  <!-- Greeting -->
+  <section class="relative z-[1] px-5 pt-6 rise" style="animation-delay: 0.02s">
+    <div class="text-[13px] text-ink-500 flex items-center gap-1.5">
+      สวัสดี
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+    </div>
+    <div class="text-[17px] font-medium text-ink tracking-tight">คุณเอกนรินทร์ คงเดช</div>
+  </section>
+
+  <!-- Hero: Next payment with aurora -->
+  <section class="relative z-[1] px-5 pt-7 rise" style="animation-delay: 0.08s">
+    <!-- Aurora glows -->
+    <div class="aurora breathe" style="top: 10px; left: -40px; width: 220px; height: 220px; background: radial-gradient(circle, #10b981, transparent 70%);"></div>
+    <div class="aurora breathe" style="top: 50px; right: -30px; width: 180px; height: 180px; background: radial-gradient(circle, #3b82f6, transparent 70%); animation-delay: 1s;"></div>
+
+    <div class="relative">
+      <div class="flex items-center gap-2">
+        <span class="overline text-emerald-700">งวดถัดไป</span>
+        <span class="h-1 w-1 rounded-full bg-emerald-500"></span>
+        <span class="text-[11px] font-semibold text-emerald-700 tracking-wide flex items-center gap-1">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>
+          อีก 33 วัน
+        </span>
+      </div>
+
+      <div class="mt-3 flex items-baseline gap-1.5 number-in">
+        <span class="font-mono text-[26px] text-emerald-600 font-light">฿</span>
+        <span class="display-xl text-[74px] bg-gradient-to-br from-ink via-ink to-emerald-900 bg-clip-text text-transparent">2,729</span>
+        <span class="ml-2 font-mono text-[12px] text-ink-500">บาท</span>
+      </div>
+
+      <div class="mt-3 inline-flex items-center gap-2 rounded-full bg-white/70 backdrop-blur-sm border border-black/5 px-3 py-1.5 text-[12.5px] text-ink-700 shadow-sm">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+        <span>งวดที่ <span class="font-semibold">1</span> จาก 12 · <span class="font-medium">25 พ.ค. 2569</span></span>
+      </div>
+
+      <!-- CTA -->
+      <button class="grain relative mt-6 w-full overflow-hidden rounded-[20px] px-5 py-[18px] text-white active:scale-[0.985] transition-transform shadow-[0_18px_40px_-12px_rgba(5,150,105,0.55)]"
+        style="background: linear-gradient(135deg, #059669 0%, #047857 40%, #0d9488 100%);">
+        <!-- sparkles -->
+        <svg class="sparkle absolute top-2 right-8" width="10" height="10" viewBox="0 0 24 24" fill="white"><path d="M12 2L13 10L21 12L13 14L12 22L11 14L3 12L11 10Z"/></svg>
+        <svg class="sparkle absolute top-7 right-16" width="7" height="7" viewBox="0 0 24 24" fill="white"><path d="M12 2L13 10L21 12L13 14L12 22L11 14L3 12L11 10Z"/></svg>
+        <svg class="sparkle absolute top-3 left-10" width="6" height="6" viewBox="0 0 24 24" fill="white"><path d="M12 2L13 10L21 12L13 14L12 22L11 14L3 12L11 10Z"/></svg>
+
+        <span class="relative z-[1] flex items-center justify-between">
+          <span class="flex items-center gap-2.5">
+            <span class="grid h-8 w-8 place-items-center rounded-xl bg-white/20 backdrop-blur-sm">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/><path d="M21 21v.01"/><path d="M12 7v3a2 2 0 0 1-2 2H7"/><path d="M3 12h.01"/><path d="M12 3h.01"/><path d="M12 16v.01"/><path d="M16 12h1"/><path d="M21 12v.01"/><path d="M12 21v-1"/></svg>
+            </span>
+            <span class="text-[15.5px] font-semibold tracking-tight">ชำระค่างวดตอนนี้</span>
+          </span>
+          <span class="nudge-arrow">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          </span>
+        </span>
+      </button>
+    </div>
+  </section>
+
+  <!-- Progress + Balance card -->
+  <section class="relative z-[1] mt-7 mx-5 rise" style="animation-delay: 0.18s">
+    <div class="rounded-[22px] border border-black/5 bg-white/80 backdrop-blur-sm p-5 shadow-sm grid grid-cols-[112px_1fr] gap-5 items-center">
+      <!-- Progress ring with gradient -->
+      <div class="relative h-[112px] w-[112px]">
+        <svg viewBox="0 0 112 112" class="h-full w-full -rotate-90">
+          <defs>
+            <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#10b981"/>
+              <stop offset="50%" stop-color="#0d9488"/>
+              <stop offset="100%" stop-color="#3b82f6"/>
+            </linearGradient>
+          </defs>
+          <circle cx="56" cy="56" r="45" fill="none" stroke="#e2e5eb" stroke-width="6" />
+          <circle cx="56" cy="56" r="45" fill="none" stroke="url(#ringGrad)" stroke-width="6" stroke-linecap="round"
+            class="ring-progress" style="--offset: 283;" />
+        </svg>
+        <div class="absolute inset-0 grid place-items-center">
+          <div class="text-center">
+            <div class="font-mono text-[24px] font-medium leading-none text-ink">
+              0<span class="text-ink-400 font-light">/12</span>
+            </div>
+            <div class="mt-1 text-[9px] text-ink-500 tracking-[0.18em] uppercase font-semibold">ผ่อนแล้ว</div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="overline">ยอดคงเหลือ</div>
+        <div class="mt-1.5 font-mono text-[24px] font-semibold text-ink leading-none tracking-tight">฿32,741.63</div>
+        <div class="mt-2.5 flex items-center gap-2">
+          <span class="relative inline-flex">
+            <span class="pulse-ring relative h-2 w-2 rounded-full bg-emerald-500"></span>
+          </span>
+          <span class="text-[11.5px] font-medium text-emerald-700">สัญญาปกติ</span>
+          <span class="text-ink-300">·</span>
+          <span class="text-[11.5px] text-ink-500">รวม VAT</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section divider -->
+  <div class="relative z-[1] mt-8 flex items-center gap-3 px-5 rise" style="animation-delay: 0.22s">
+    <span class="overline">เกี่ยวกับสัญญา</span>
+    <div class="h-px flex-1 bg-gradient-to-r from-black/10 to-transparent"></div>
+  </div>
+
+  <!-- Contract detail card (colorful phone icon) -->
+  <section class="relative z-[1] mt-4 px-5 rise" style="animation-delay: 0.26s">
+    <div class="rounded-[22px] border border-black/5 bg-white p-5 shadow-sm">
+      <div class="flex items-start gap-4">
+        <div class="relative grid h-[56px] w-[56px] shrink-0 place-items-center rounded-2xl text-white shadow-lg shadow-indigo-500/20"
+          style="background: linear-gradient(135deg, #6366f1 0%, #3b82f6 60%, #06b6d4 100%);">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="20" x="5" y="2" rx="2.5" ry="2.5"/><path d="M12 18h.01"/></svg>
+          <span class="absolute -top-1 -right-1 grid h-5 w-5 place-items-center rounded-full bg-emerald-500 shadow ring-2 ring-white">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          </span>
+        </div>
+        <div class="min-w-0 flex-1">
+          <div class="font-semibold text-[16px] leading-tight tracking-tight text-ink">Apple iPhone 15</div>
+          <div class="mt-1 font-mono text-[11.5px] text-ink-500 tracking-wide">BCP2604-00471</div>
+          <div class="mt-2.5 flex items-center gap-1.5">
+            <span class="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[10px] font-semibold text-emerald-800 tracking-wide">
+              <span class="h-1 w-1 rounded-full bg-emerald-600"></span>
+              ปกติ
+            </span>
+            <span class="inline-flex items-center gap-1 rounded-full bg-indigo-50 border border-indigo-200 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 tracking-wide">
+              12 งวด
+            </span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Action row: PDF + discount promo -->
+  <section class="relative z-[1] mt-3 px-5 grid grid-cols-[1fr_1.2fr] gap-2.5 rise" style="animation-delay: 0.3s">
+    <button class="flex items-center justify-center gap-2 rounded-2xl border border-black/5 bg-white px-3 py-3.5 text-[13px] font-medium text-ink-700 active:scale-[0.98] transition-transform shadow-sm">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#1e40af" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+      สัญญาผ่อน
+    </button>
+
+    <button class="grain relative overflow-hidden flex items-center justify-center gap-2 rounded-2xl px-3 py-3.5 text-[13px] font-semibold text-amber-950 active:scale-[0.98] transition-transform shadow-lg shadow-amber-500/25"
+      style="background: linear-gradient(135deg, #fde68a 0%, #fbbf24 50%, #f59e0b 100%);">
+      <span class="shimmer absolute inset-0 pointer-events-none"></span>
+      <span class="relative z-[1] grid h-[22px] w-[22px] place-items-center rounded-md bg-amber-900 text-white text-[11px] font-black">%</span>
+      <span class="relative z-[1]">ปิดยอด · ลดดอกเบี้ย 50%</span>
+    </button>
+  </section>
+
+  <!-- Schedule section -->
+  <div class="relative z-[1] mt-9 flex items-center gap-3 px-5 rise" style="animation-delay: 0.34s">
+    <span class="overline">ตารางชำระเงิน</span>
+    <div class="h-px flex-1 bg-gradient-to-r from-black/10 to-transparent"></div>
+    <span class="text-[11px] font-mono font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">0 / 12</span>
+  </div>
+
+  <section class="relative z-[1] mt-4 mx-5 rise" style="animation-delay: 0.38s">
+    <div class="rounded-[22px] border border-black/5 bg-white p-4 shadow-sm">
+      <ol class="relative">
+        <div class="absolute left-[5.5px] top-3 bottom-3 w-px bg-gradient-to-b from-emerald-300 via-ink-200 to-ink-200" aria-hidden="true"></div>
+
+        <!-- current -->
+        <li class="relative pl-7 py-2.5 flex items-center justify-between">
+          <span class="absolute left-0 top-1/2 -translate-y-1/2 dot current"></span>
+          <div class="flex items-center gap-2">
+            <span class="text-[13px] font-semibold text-ink">งวดที่ 1</span>
+            <span class="text-[11px] text-ink-500">25 พ.ค.</span>
+            <span class="rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 text-white px-2 py-0.5 text-[9.5px] font-semibold tracking-wide shadow-sm">ถึงกำหนด</span>
+          </div>
+          <span class="font-mono text-[13px] font-semibold text-ink">฿2,729</span>
+        </li>
+
+        <li class="relative pl-7 py-2.5 flex items-center justify-between">
+          <span class="absolute left-0 top-1/2 -translate-y-1/2 dot"></span>
+          <div class="flex items-baseline gap-2">
+            <span class="text-[13px] text-ink-700">งวดที่ 2</span>
+            <span class="text-[11px] text-ink-400">25 มิ.ย.</span>
+          </div>
+          <span class="font-mono text-[13px] text-ink-500">฿2,729</span>
+        </li>
+        <li class="relative pl-7 py-2.5 flex items-center justify-between">
+          <span class="absolute left-0 top-1/2 -translate-y-1/2 dot"></span>
+          <div class="flex items-baseline gap-2">
+            <span class="text-[13px] text-ink-700">งวดที่ 3</span>
+            <span class="text-[11px] text-ink-400">25 ก.ค.</span>
+          </div>
+          <span class="font-mono text-[13px] text-ink-500">฿2,729</span>
+        </li>
+        <li class="relative pl-7 py-2.5 flex items-center justify-between">
+          <span class="absolute left-0 top-1/2 -translate-y-1/2 dot"></span>
+          <div class="flex items-baseline gap-2">
+            <span class="text-[13px] text-ink-700">งวดที่ 4</span>
+            <span class="text-[11px] text-ink-400">25 ส.ค.</span>
+          </div>
+          <span class="font-mono text-[13px] text-ink-500">฿2,729</span>
+        </li>
+        <li class="relative pl-7 py-2.5 flex items-center justify-between">
+          <span class="absolute left-0 top-1/2 -translate-y-1/2 dot"></span>
+          <div class="flex items-baseline gap-2">
+            <span class="text-[13px] text-ink-700">งวดที่ 5</span>
+            <span class="text-[11px] text-ink-400">25 ก.ย.</span>
+          </div>
+          <span class="font-mono text-[13px] text-ink-500">฿2,729</span>
+        </li>
+        <li class="relative pl-7 py-2.5 flex items-center justify-between">
+          <span class="absolute left-0 top-1/2 -translate-y-1/2 dot"></span>
+          <div class="flex items-baseline gap-2">
+            <span class="text-[13px] text-ink-700">งวดที่ 6</span>
+            <span class="text-[11px] text-ink-400">25 ต.ค.</span>
+          </div>
+          <span class="font-mono text-[13px] text-ink-500">฿2,729</span>
+        </li>
+
+        <li class="relative pl-7 pt-3">
+          <button class="inline-flex items-center gap-1 text-[12px] font-medium text-indigo-600 hover:text-indigo-700">
+            แสดงอีก 6 งวด
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- Trust footer -->
+  <footer class="relative z-[1] mt-10 px-5 rise" style="animation-delay: 0.44s">
+    <div class="rounded-2xl bg-gradient-to-br from-ink via-ink-700 to-ink px-4 py-3.5 flex items-center justify-between">
+      <div class="flex items-center gap-2.5 text-white/80">
+        <span class="grid h-7 w-7 place-items-center rounded-lg bg-emerald-500/20 text-emerald-400">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        </span>
+        <div>
+          <div class="text-[11px] font-semibold text-white tracking-wide">เข้ารหัส SSL</div>
+          <div class="text-[9.5px] text-white/50 tracking-wider uppercase">ปลอดภัย 100%</div>
+        </div>
+      </div>
+      <div class="text-right">
+        <div class="text-[9px] text-white/40 tracking-[0.2em] uppercase font-semibold">Best Choice</div>
+        <div class="text-[9px] text-white/30 tracking-wider">v2026.04</div>
+      </div>
+    </div>
+  </footer>
+
+</div>
+
+</body>
+</html>

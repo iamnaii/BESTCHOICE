@@ -246,27 +246,28 @@ def draw_specimen(col: int, p: dict):
     draw.rectangle([x0, y0, x1, y1], fill=p["wash"])
     inset = 16
 
-    # ─── Icon — distinctive chamber glyph (friends / qr / bubble) ──
-    # Positioned so the icon's visual centre sits cleanly above the
-    # hairline with comfortable breathing room below.
+    # ─── Content block — vertically centred within the tile ────
+    # The icon / hairline / name column is treated as one composition
+    # balanced around the tile's vertical midline. 180px icon + 40px
+    # breath + 50px to the name baseline leaves equal 126px margins
+    # above (below the plate-number corner) and below (above the
+    # marginalia row), so the eye settles on the centre without the
+    # familiar AI tell of everything floating in the top third.
     icon_cx = x0 + TILE_W // 2
-    icon_cy = y0 + 160
+    icon_cy = y0 + 216
     accent = p["accent"]
     draw_icon(p["icon"], icon_cx, icon_cy, accent, p["wash"])
 
-    # ─── Hairline between icon and name ──────────────────
-    sep_y = y0 + 300
+    sep_y = y0 + 356
     draw.line(
         [(x0 + 160, sep_y), (x1 - 160, sep_y)],
         fill=HAIRLINE,
         width=1,
     )
 
-    # ─── Thai chamber name (center) ──────────────────────
-    name_y = y0 + 380
+    name_y = y0 + 436
     text_centered((icon_cx, name_y), p["thai"], F_THAI_PLATE, INK)
 
-    # Hero gold underline for the central specimen
     if p.get("hero"):
         name_w = text_width(p["thai"], F_THAI_PLATE)
         underline_y = name_y + 58

@@ -2,14 +2,13 @@
 Chromatic Shrine (1×3) — BESTCHOICE Finance LINE Rich Menu
 Canvas: 2500x843 (half-height LINE Rich Menu)
 
-Three chambers only — simpler rich menu for the core customer journey:
-  สัญญาของฉัน  ·  ชำระค่างวด (hero)  ·  ติดต่อเรา
+Three chambers only — simpler rich menu:
+  ชวนเพื่อน  ·  ชำระค่างวด (hero)  ·  ติดต่อเรา
 
 Same pigment/icon system as generate.py but single-row.
 """
 from __future__ import annotations
 
-import math
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -27,7 +26,7 @@ HAIRLINE = (204, 196, 178)
 
 # Three pigments — one per chamber
 PIGMENTS = {
-    "sand":    ((234, 220, 188), (166, 118,  45)),
+    "indigo":  ((204, 207, 226), ( 63,  60, 140)),
     "emerald": ((196, 224, 200), (  4, 120,  87)),
     "teal":    ((192, 217, 220), ( 23,  96, 111)),
 }
@@ -68,17 +67,23 @@ def disc(cx, cy, r, fill):
     draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=fill)
 
 
-def icon_contract(cx, cy, color, wash):
+def icon_friends(cx, cy, color, wash):
+    """Two figures standing shoulder to shoulder — 'refer a friend'."""
     del wash
-    w_outer, h_outer = 280, 360
-    draw.rounded_rectangle(
-        [cx - w_outer // 2, cy - h_outer // 2, cx + w_outer // 2, cy + h_outer // 2],
-        radius=14, outline=color, width=STROKE,
-    )
-    rules_y = [cy - 115, cy - 30, cy + 45, cy + 115]
-    rules_w = [180, 220, 220, 140]
-    for ry, rw in zip(rules_y, rules_w):
-        draw.line([(cx - rw // 2, ry), (cx + rw // 2, ry)], fill=color, width=STROKE - 3)
+    head_r = 74
+    head_cy = cy - 115
+    spacing = 170
+    lx = cx - spacing // 2
+    rx = cx + spacing // 2
+    ring(lx, head_cy, head_r, STROKE, color)
+    ring(rx, head_cy, head_r, STROKE, color)
+    arc_w = 280
+    arc_h_full = 340
+    arc_top = cy
+    draw.arc([lx - arc_w // 2, arc_top, lx + arc_w // 2, arc_top + arc_h_full],
+             start=180, end=360, fill=color, width=STROKE)
+    draw.arc([rx - arc_w // 2, arc_top, rx + arc_w // 2, arc_top + arc_h_full],
+             start=180, end=360, fill=color, width=STROKE)
 
 
 def icon_qr(cx, cy, color, wash):
@@ -121,9 +126,9 @@ def icon_bubble(cx, cy, color, wash):
 
 # Three chambers — left to right
 CHAMBERS = [
-    {"icon": icon_contract, "thai": "สัญญาของฉัน",  "pig": "sand"},
-    {"icon": icon_qr,       "thai": "ชำระค่างวด",   "pig": "emerald", "hero": True},
-    {"icon": icon_bubble,   "thai": "ติดต่อเรา",    "pig": "teal"},
+    {"icon": icon_friends, "thai": "ชวนเพื่อน",    "pig": "indigo"},
+    {"icon": icon_qr,      "thai": "ชำระค่างวด",  "pig": "emerald", "hero": True},
+    {"icon": icon_bubble,  "thai": "ติดต่อเรา",   "pig": "teal"},
 ]
 
 

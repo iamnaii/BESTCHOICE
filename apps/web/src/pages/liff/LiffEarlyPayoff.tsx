@@ -249,7 +249,13 @@ export default function LiffEarlyPayoff() {
   if (!quote) return null;
 
   // ─── Quote view ───────────────────────────────────────
-  const baseBeforeDiscount = quote.remainingPrincipal + quote.remainingInterest;
+  // "ยอดเต็มก่อนหักส่วนลด" must reconcile with totalPayoff + discount so
+  // the breakdown's subtraction matches the hero number. Backend's totalPayoff
+  // is VAT-inclusive while remainingPrincipal+remainingInterest are ex-VAT —
+  // mixing them makes (ยอดเต็ม − ส่วนลด) ≠ ยอดชำระ by the VAT delta.
+  // Derive base from the same VAT-inclusive bucket as totalPayoff instead.
+  const baseBeforeDiscount =
+    quote.totalPayoff + quote.discount - quote.unpaidLateFees + quote.partiallyPaidCredit;
   const savings = quote.discount + quote.partiallyPaidCredit;
 
   return (
@@ -301,10 +307,15 @@ export default function LiffEarlyPayoff() {
           </div>
 
           <div className="mt-3 flex items-baseline gap-1.5">
-            <span className="font-mono text-[26px] text-amber-700 font-light leading-none">฿</span>
+            <span className="font-mono text-[22px] text-amber-700 font-light leading-none">฿</span>
             <span
               className="font-mono font-light tabular-nums tracking-[-0.035em] text-foreground"
-              style={{ fontSize: '72px', lineHeight: '0.95' }}
+              style={{
+                // Responsive: fits 8-digit + decimal (e.g. "127,961.19") on
+                // 360px screens without overflow, scales up on wider devices.
+                fontSize: 'clamp(38px, 13vw, 60px)',
+                lineHeight: '0.95',
+              }}
             >
               {formatNumber(quote.totalPayoff)}
             </span>

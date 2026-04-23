@@ -23,6 +23,7 @@ describe('CustomersService.create — NID normalization', () => {
         findUnique: jest.fn().mockResolvedValue(null),
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn((args) => Promise.resolve({ id: 'cust-new', ...args.data })),
+        update: jest.fn((args) => Promise.resolve({ id: args.where.id, ...args.data })),
       },
     };
     const mod: TestingModule = await Test.createTestingModule({
@@ -84,14 +85,24 @@ describe('CustomersService.create — NID normalization', () => {
     expect(createArgs.data.nationalId).toBe('1123456789001');
   });
 
-  it('ignores soft-deleted customer with same NID', async () => {
+  it('revives soft-deleted customer with same NID instead of P2002', async () => {
     prisma.customer.findUnique.mockResolvedValue({
       id: 'cust-old',
       name: 'Deleted',
       deletedAt: new Date(),
     });
-    // Should not throw — soft-deleted doesn't block new create
-    await expect(service.create(baseDto('1123456789001'))).resolves.toBeDefined();
+
+    await service.create(baseDto('1123456789001'));
+
+    // Must NOT call create() — nationalId is @unique, create would throw P2002
+    expect(prisma.customer.create).not.toHaveBeenCalled();
+    // Must update the ghost row with deletedAt: null and the new form data
+    expect(prisma.customer.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'cust-old' },
+        data: expect.objectContaining({ deletedAt: null }),
+      }),
+    );
   });
 });
 

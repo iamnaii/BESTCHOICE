@@ -302,15 +302,12 @@ export default function CustomerDetailPage() {
   const overrideCreditMutation = useMutation({
     mutationFn: async () => {
       if (!overrideId) return;
-      // ถ้า staff เห็นด้วยกับ AI (status === AI decision) → ส่ง default reason
-      // ไม่ต้องบังคับให้พนักงานกรอก (เห็นด้วยไม่ใช่ override จริง)
-      const reason =
-        overrideStatus === overrideAiDecision
-          ? 'ยืนยันผล AI (staff เห็นด้วยกับคำแนะนำของระบบ)'
-          : compileReason(overrideReasonCategory, overrideNotes);
+      // Dialog blocks same-status selection (backend rejects no-ops), so by
+      // the time we reach here overrideStatus !== current, and a reason
+      // category + detail are required.
       const { data } = await api.post(`/customers/${id}/credit-check/${overrideId}/override`, {
         status: overrideStatus,
-        overrideReason: reason,
+        overrideReason: compileReason(overrideReasonCategory, overrideNotes),
       });
       return data;
     },

@@ -140,6 +140,27 @@ export class CreditCheckService {
     const customer = await this.prisma.customer.findUnique({ where: { id: customerId } });
     if (!customer || customer.deletedAt) throw new NotFoundException('ไม่พบลูกค้า');
 
+    // Idempotency: if an identical submission just landed (double-click, retry
+    // after slow network, two tabs), return the existing record instead of
+    // creating a duplicate. Window is short (30s) so legitimate re-checks on
+    // the same day are still allowed.
+    const recentCutoff = new Date(Date.now() - 30_000);
+    const recentDuplicate = await this.prisma.creditCheck.findFirst({
+      where: {
+        customerId,
+        deletedAt: null,
+        createdAt: { gte: recentCutoff },
+        bankName: dto.bankName ?? null,
+        statementMonths: dto.statementMonths ?? 3,
+      },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        customer: { select: { id: true, name: true, phone: true, salary: true, occupation: true } },
+        checkedBy: { select: { id: true, name: true } },
+      },
+    });
+    if (recentDuplicate) return recentDuplicate;
+
     const creditCheck = await this.prisma.creditCheck.create({
       data: {
         customerId,

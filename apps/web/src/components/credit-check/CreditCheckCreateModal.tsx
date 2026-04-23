@@ -64,7 +64,7 @@ interface CreditCheckCreateModalProps {
   // Footer actions
   bankName: string;
   fileRef: React.RefObject<HTMLInputElement | null>;
-  isUploadPending: boolean;
+  isSaving: boolean;
   onSave: () => void;
   onApprove: () => void;
   onReject: () => void;
@@ -103,7 +103,7 @@ export default function CreditCheckCreateModal({
   onCalculateRisk,
   reviewNotesDraft,
   onReviewNotesDraftChange,
-  isUploadPending,
+  isSaving,
   onSave,
   onApprove,
   onReject,
@@ -614,20 +614,22 @@ export default function CreditCheckCreateModal({
             <div className="flex gap-2">
               <button
                 onClick={onSave}
-                disabled={isUploadPending}
-                className="px-4 py-2 text-sm border border-input rounded-lg hover:bg-muted"
+                disabled={isSaving}
+                className="px-4 py-2 text-sm border border-input rounded-lg hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                บันทึก
+                {isSaving ? 'กำลังบันทึก...' : 'บันทึก'}
               </button>
               <button
                 onClick={onApprove}
-                className="px-4 py-2 text-sm bg-success text-success-foreground rounded-lg hover:bg-success/90"
+                disabled={isSaving}
+                className="px-4 py-2 text-sm bg-success text-success-foreground rounded-lg hover:bg-success/90 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 อนุมัติ
               </button>
               <button
                 onClick={onReject}
-                className="px-4 py-2 text-sm bg-destructive text-destructive-foreground rounded-lg hover:bg-destructive/90"
+                disabled={isSaving}
+                className="px-4 py-2 text-sm bg-destructive text-destructive-foreground rounded-lg hover:bg-destructive/90 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 ไม่อนุมัติ
               </button>

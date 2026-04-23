@@ -206,6 +206,10 @@ describe('ContractsService', () => {
       creditCheck: {
         findFirst: jest.fn().mockResolvedValue({ id: 'cc-1', status: 'APPROVED', contractId: null }),
         update: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      kycVerification: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
       customer: {
         findUnique: jest.fn().mockResolvedValue(mockCustomer),
@@ -740,6 +744,46 @@ describe('ContractsService', () => {
 
       expect(result.message).not.toContain('ลายเซ็น');
       expect(prisma.signature.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('cascade-nulls CreditCheck.contractId so an approved check can be reused on a new contract', async () => {
+      prisma.contract.findUnique.mockResolvedValue({
+        ...mockContract,
+        status: 'DRAFT',
+        workflowStatus: 'REJECTED',
+        signatures: [],
+      });
+      prisma.$transaction.mockImplementation(async (opsOrFn: unknown) => {
+        if (typeof opsOrFn === 'function') return (opsOrFn as (tx: unknown) => Promise<unknown>)(prisma);
+        return Promise.all(opsOrFn as Promise<unknown>[]);
+      });
+
+      await service.softDelete('contract-1', 'user-1');
+
+      expect(prisma.creditCheck.updateMany).toHaveBeenCalledWith({
+        where: { contractId: 'contract-1' },
+        data: { contractId: null },
+      });
+    });
+
+    it('cascade soft-deletes KycVerification records tied to the deleted contract', async () => {
+      prisma.contract.findUnique.mockResolvedValue({
+        ...mockContract,
+        status: 'DRAFT',
+        workflowStatus: 'REJECTED',
+        signatures: [],
+      });
+      prisma.$transaction.mockImplementation(async (opsOrFn: unknown) => {
+        if (typeof opsOrFn === 'function') return (opsOrFn as (tx: unknown) => Promise<unknown>)(prisma);
+        return Promise.all(opsOrFn as Promise<unknown>[]);
+      });
+
+      await service.softDelete('contract-1', 'user-1');
+
+      expect(prisma.kycVerification.updateMany).toHaveBeenCalledWith({
+        where: { contractId: 'contract-1', deletedAt: null },
+        data: { deletedAt: expect.any(Date) },
+      });
     });
 
     it('soft-deletes the contract and releases the product back to IN_STOCK', async () => {

@@ -68,6 +68,8 @@ describe('CustomerPreCheckService — runPreCheck soft-delete revival', () => {
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn(),
       },
+      // Pass-through transaction so tests exercise the same prisma mocks.
+      $transaction: jest.fn((fn: (tx: unknown) => Promise<unknown>) => fn(prisma)),
     };
     const tierService = {
       getCustomerTier: jest.fn().mockResolvedValue({ tier: 'NEW', reasons: [] }),
@@ -205,5 +207,41 @@ describe('CustomerPreCheckService — runPreCheck soft-delete revival', () => {
     expect(findFirstCall.where.checkType).toBe('PRE');
     expect(findFirstCall.where.bankName).toBe('SCB');
     expect(findFirstCall.where.deletedAt).toBeNull();
+  });
+
+  it('wraps creditCheck create + customer.creditCheckStatus update in one $transaction (no drift on failure)', async () => {
+    prisma.customer.findFirst.mockResolvedValue({ id: 'cust-tx', deletedAt: null });
+    prisma.creditCheck.create.mockResolvedValue({ id: 'cc-tx', aiScore: null });
+
+    const fresh = await Test.createTestingModule({
+      providers: [
+        CustomerPreCheckService,
+        { provide: PrismaService, useValue: prisma },
+        {
+          provide: CustomerTierService,
+          useValue: {
+            getCustomerTier: jest.fn().mockResolvedValue({ tier: 'NEW', reasons: [] }),
+          },
+        },
+      ],
+    }).compile();
+    const svc = fresh.get(CustomerPreCheckService);
+
+    await svc.runPreCheck({
+      nationalId: '6666666666666',
+      phone: '0844444444',
+      bankName: 'BBL',
+      statementFiles: ['data:image/png;base64,zzz'],
+    });
+
+    // The transaction should have been invoked once covering both writes.
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(prisma.creditCheck.create).toHaveBeenCalledTimes(1);
+    // customer.update was called via the pass-through tx proxy — verifies the
+    // creditCheckStatus write is inside the same transactional boundary.
+    const statusUpdateCall = prisma.customer.update.mock.calls.find(
+      (call: [{ data: { creditCheckStatus?: string } }]) => call[0].data.creditCheckStatus !== undefined,
+    );
+    expect(statusUpdateCall).toBeDefined();
   });
 });

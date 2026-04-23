@@ -682,6 +682,21 @@ export class ContractsService {
             }),
           ]
         : []),
+      // Release the credit check back to the customer — unlinking from this
+      // (now-deleted) contract lets them reuse the APPROVED decision for a
+      // future contract. The gate at contracts.service.ts:332 filters on
+      // `contractId: null`, so a stale link would trap the approval.
+      this.prisma.creditCheck.updateMany({
+        where: { contractId: id },
+        data: { contractId: null },
+      }),
+      // KYC records captured for this contract (OTP + ID card photo) become
+      // orphans otherwise. Soft-delete keeps the row for audit but marks it
+      // as no-longer-tied-to-an-active-contract.
+      this.prisma.kycVerification.updateMany({
+        where: { contractId: id, deletedAt: null },
+        data: { deletedAt: now },
+      }),
       // Release reserved product back to IN_STOCK
       this.prisma.product.updateMany({
         where: { id: contract.productId, status: 'RESERVED' },

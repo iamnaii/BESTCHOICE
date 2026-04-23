@@ -148,60 +148,66 @@ export class CustomerPreCheckService {
     const aiScore: number | undefined = undefined;
     const outcome = this.decideOutcome(tierResp.tier, aiScore);
 
-    if (input.statementFiles && input.statementFiles.length > 0 && tierResp.tier !== 'BLACKLIST') {
-      // Map decision → CreditCheckStatus so contract creation can proceed:
-      //   PASS    → APPROVED      (auto-approved, can create contract immediately)
-      //   REVIEW  → MANUAL_REVIEW (manager must review before contract)
-      //   FAIL    → REJECTED      (no contract allowed)
-      const ccStatus =
-        outcome.decision === 'PASS'
-          ? 'APPROVED'
-          : outcome.decision === 'FAIL'
-            ? 'REJECTED'
-            : 'MANUAL_REVIEW';
-
-      // Idempotency guard: the in-memory cache above only covers this
-      // instance. Across Cloud Run replicas or restarts, concurrent
-      // pre-check calls can race past the cache. Query DB for a recent
-      // PRE check (30s window) and reuse it instead of creating a duplicate.
-      const recentCutoff = new Date(Date.now() - 30_000);
-      const recentDuplicate = await this.prisma.creditCheck.findFirst({
-        where: {
-          customerId: customer.id,
-          checkType: 'PRE',
-          deletedAt: null,
-          createdAt: { gte: recentCutoff },
-          bankName: input.bankName || null,
-        },
-        orderBy: { createdAt: 'desc' },
-        select: { id: true, aiScore: true },
-      });
-
-      const cc =
-        recentDuplicate ??
-        (await this.prisma.creditCheck.create({
-          data: {
-            customerId: customer.id,
-            bankName: input.bankName || null,
-            statementFiles: input.statementFiles,
-            statementMonths: 3,
-            checkType: 'PRE',
-            status: ccStatus,
-          },
-          select: { id: true, aiScore: true },
-        }));
-      creditCheckId = cc.id;
-    }
-
     const nextStatus =
       outcome.decision === 'PASS'
         ? 'PRE_CHECK_PASSED'
         : outcome.decision === 'FAIL'
           ? 'REJECTED'
           : 'UNDER_REVIEW';
-    await this.prisma.customer.update({
-      where: { id: customer.id },
-      data: { creditCheckStatus: nextStatus },
+
+    // Wrap credit-check create + customer.creditCheckStatus update in one
+    // transaction so the Customer row and the CreditCheck row never drift
+    // (e.g. creditCheck persisted but customer status update crashed).
+    await this.prisma.$transaction(async (tx) => {
+      if (input.statementFiles && input.statementFiles.length > 0 && tierResp.tier !== 'BLACKLIST') {
+        // Map decision → CreditCheckStatus so contract creation can proceed:
+        //   PASS    → APPROVED      (auto-approved, can create contract immediately)
+        //   REVIEW  → MANUAL_REVIEW (manager must review before contract)
+        //   FAIL    → REJECTED      (no contract allowed)
+        const ccStatus =
+          outcome.decision === 'PASS'
+            ? 'APPROVED'
+            : outcome.decision === 'FAIL'
+              ? 'REJECTED'
+              : 'MANUAL_REVIEW';
+
+        // Idempotency guard: the in-memory cache above only covers this
+        // instance. Across Cloud Run replicas or restarts, concurrent
+        // pre-check calls can race past the cache. Query DB for a recent
+        // PRE check (30s window) and reuse it instead of creating a duplicate.
+        const recentCutoff = new Date(Date.now() - 30_000);
+        const recentDuplicate = await tx.creditCheck.findFirst({
+          where: {
+            customerId: customer.id,
+            checkType: 'PRE',
+            deletedAt: null,
+            createdAt: { gte: recentCutoff },
+            bankName: input.bankName || null,
+          },
+          orderBy: { createdAt: 'desc' },
+          select: { id: true, aiScore: true },
+        });
+
+        const cc =
+          recentDuplicate ??
+          (await tx.creditCheck.create({
+            data: {
+              customerId: customer.id,
+              bankName: input.bankName || null,
+              statementFiles: input.statementFiles,
+              statementMonths: 3,
+              checkType: 'PRE',
+              status: ccStatus,
+            },
+            select: { id: true, aiScore: true },
+          }));
+        creditCheckId = cc.id;
+      }
+
+      await tx.customer.update({
+        where: { id: customer.id },
+        data: { creditCheckStatus: nextStatus },
+      });
     });
 
     const reasons = [...tierResp.reasons, ...outcome.reasons];

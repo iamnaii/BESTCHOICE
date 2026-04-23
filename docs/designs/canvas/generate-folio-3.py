@@ -7,7 +7,6 @@ Canvas: 2400 × 1400 (landscape folio).
 """
 from __future__ import annotations
 
-import math
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -23,12 +22,21 @@ INK = (28, 36, 28)            # monastic ink
 WHISPER = (140, 130, 110)     # marginalia grey
 GOLD = (168, 118, 39)         # ceremonial hairline
 
-# Three pigments — matching the 1×3 rich-menu chambers
+# Three pigments — matching the 1×3 rich-menu chambers.
+# Each pigment also declares which distinctive icon to draw — the same
+# glyph family the customer will see on the rich menu itself, scaled for
+# the folio and stroke-thickened so it reads cleanly at magazine size.
 PIGMENTS = [
-    {"wash": (204, 207, 226), "accent": ( 63,  60, 140), "thai": "ชวนเพื่อน",   "code": "MONASTIC INDIGO",   "rgb": "204·207·226"},
-    {"wash": (196, 224, 200), "accent": (  4, 120,  87), "thai": "ชำระค่างวด",  "code": "CEREMONIAL JADE",   "rgb": "196·224·200", "hero": True},
-    {"wash": (192, 217, 220), "accent": ( 23,  96, 111), "thai": "ติดต่อเรา",   "code": "SUKHOTHAI CELADON", "rgb": "192·217·220"},
+    {"wash": (204, 207, 226), "accent": ( 63,  60, 140), "thai": "ชวนเพื่อน",   "code": "MONASTIC INDIGO",   "rgb": "204·207·226", "icon": "friends"},
+    {"wash": (196, 224, 200), "accent": (  4, 120,  87), "thai": "ชำระค่างวด",  "code": "CEREMONIAL JADE",   "rgb": "196·224·200", "icon": "qr",      "hero": True},
+    {"wash": (192, 217, 220), "accent": ( 23,  96, 111), "thai": "ติดต่อเรา",   "code": "SUKHOTHAI CELADON", "rgb": "192·217·220", "icon": "bubble"},
 ]
+
+# Uniform stroke weight across every icon — the unyielding discipline of
+# the Chromatic Shrine. 8px reads as confident at the folio scale without
+# feeling chunky; stays consistent with the rich-menu STROKE=11 aesthetic
+# after scaling.
+ICON_STROKE = 8
 
 # ─── Fonts ──────────────────────────────────────────────
 SKILL_FONTS = Path(".claude/skills/canvas-design/canvas-fonts").resolve()
@@ -55,6 +63,97 @@ def text_centered(xy, text, font, fill):
 def text_width(text, font):
     bbox = draw.textbbox((0, 0), text, font=font)
     return bbox[2] - bbox[0]
+
+
+# ─── Icon glyph library ────────────────────────────────
+# Three distinctive marks, drawn in pure outline with one uniform stroke.
+# Ported from the rich-menu generator and rescaled for the folio.
+
+def icon_friends(cx: int, cy: int, color):
+    """Two figures standing shoulder to shoulder."""
+    head_r = 48
+    head_cy = cy - 70
+    spacing = 130
+    lx = cx - spacing // 2
+    rx = cx + spacing // 2
+    draw.ellipse(
+        [lx - head_r, head_cy - head_r, lx + head_r, head_cy + head_r],
+        outline=color, width=ICON_STROKE,
+    )
+    draw.ellipse(
+        [rx - head_r, head_cy - head_r, rx + head_r, head_cy + head_r],
+        outline=color, width=ICON_STROKE,
+    )
+    arc_w = 200
+    arc_h = 240
+    arc_top = cy + 10
+    draw.arc(
+        [lx - arc_w // 2, arc_top, lx + arc_w // 2, arc_top + arc_h],
+        start=180, end=360, fill=color, width=ICON_STROKE,
+    )
+    draw.arc(
+        [rx - arc_w // 2, arc_top, rx + arc_w // 2, arc_top + arc_h],
+        start=180, end=360, fill=color, width=ICON_STROKE,
+    )
+
+
+def icon_qr(cx: int, cy: int, color):
+    """Three registration corners + centre modules — a QR in repose."""
+    corner = 96
+    inner = 36
+    off = 138
+    positions = [
+        (cx - off, cy - off),
+        (cx + off - corner, cy - off),
+        (cx - off, cy + off - corner),
+    ]
+    for x, y in positions:
+        draw.rectangle([x, y, x + corner, y + corner],
+                       outline=color, width=ICON_STROKE)
+        ci = (corner - inner) // 2
+        draw.rectangle([x + ci, y + ci, x + ci + inner, y + ci + inner],
+                       fill=color)
+    m = 22
+    gap = 12
+    for dx in (-m - gap, gap):
+        for dy in (-m - gap, gap):
+            draw.rectangle([cx + dx, cy + dy, cx + dx + m, cy + dy + m],
+                           fill=color)
+
+
+def icon_bubble(cx: int, cy: int, color, wash):
+    """Speech chamber with three measured beads — hollow outline."""
+    w, h = 290, 200
+    top = cy - h // 2 - 16
+    bottom = cy + h // 2 - 16
+    left = cx - w // 2
+    right = cx + w // 2
+    draw.rounded_rectangle(
+        [left, top, right, bottom],
+        radius=26, outline=color, width=ICON_STROKE,
+    )
+    tail_a = (cx - 32, bottom)
+    tail_b = (cx - 60, bottom + 60)
+    tail_c = (cx + 22, bottom)
+    draw.polygon([tail_a, tail_b, tail_c], fill=wash)
+    draw.line([tail_a, tail_b], fill=color, width=ICON_STROKE)
+    draw.line([tail_b, tail_c], fill=color, width=ICON_STROKE)
+    bead_r = 11
+    for dx in (-56, 0, 56):
+        draw.ellipse(
+            [cx + dx - bead_r, cy - 34 - bead_r,
+             cx + dx + bead_r, cy - 34 + bead_r],
+            fill=color,
+        )
+
+
+def draw_icon(kind: str, cx: int, cy: int, color, wash):
+    if kind == "friends":
+        icon_friends(cx, cy, color)
+    elif kind == "qr":
+        icon_qr(cx, cy, color)
+    elif kind == "bubble":
+        icon_bubble(cx, cy, color, wash)
 
 
 # ═════════════════════════════════════════════════════════
@@ -128,29 +227,11 @@ def draw_specimen(col: int, p: dict):
     draw.rectangle([x0, y0, x1, y1], fill=p["wash"])
     inset = 16
 
-    # ─── Icon — 12-tick radial wheel (installment cadence) ─
+    # ─── Icon — distinctive chamber glyph (friends / qr / bubble)
     icon_cx = x0 + TILE_W // 2
-    icon_cy = y0 + 160
+    icon_cy = y0 + 180
     accent = p["accent"]
-    r = 62
-    draw.ellipse(
-        [icon_cx - r, icon_cy - r, icon_cx + r, icon_cy + r],
-        outline=accent,
-        width=3,
-    )
-    for i in range(12):
-        ang = math.radians(i * 30 - 90)
-        inner = r + 12
-        outer = r + 26 if i % 3 == 0 else r + 20
-        x_a = icon_cx + inner * math.cos(ang)
-        y_a = icon_cy + inner * math.sin(ang)
-        x_b = icon_cx + outer * math.cos(ang)
-        y_b = icon_cy + outer * math.sin(ang)
-        draw.line([(x_a, y_a), (x_b, y_b)], fill=accent, width=2)
-    draw.ellipse(
-        [icon_cx - 4, icon_cy - 4, icon_cx + 4, icon_cy + 4],
-        fill=accent,
-    )
+    draw_icon(p["icon"], icon_cx, icon_cy, accent, p["wash"])
 
     # ─── Hairline between icon and name ──────────────────
     sep_y = y0 + 300

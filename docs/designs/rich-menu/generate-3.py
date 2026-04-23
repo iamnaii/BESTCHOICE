@@ -31,11 +31,9 @@ PIGMENTS = {
     "teal":    ((192, 217, 220), ( 23,  96, 111)),
 }
 
-# Fonts
+# Fonts — only the Thai chamber label is drawn on the customer-facing menu.
 ROOT = Path(__file__).parent
 F_THAI_LABEL = ImageFont.truetype(str(ROOT / "IBMPlexSansThai-SemiBold.ttf"), 84)
-CANVAS_FONTS = Path(".claude/skills/canvas-design/canvas-fonts").resolve()
-F_MONO_MARK = ImageFont.truetype(str(CANVAS_FONTS / "IBMPlexMono-Regular.ttf"), 22)
 
 img = Image.new("RGB", (W, H), FIELD)
 draw = ImageDraw.Draw(img, "RGBA")
@@ -172,16 +170,9 @@ for idx, ch in enumerate(CHAMBERS):
     render_chamber(idx, ch)
 
 
-# Marginalia
-draw.line([(48, H - 36), (114, H - 36)], fill=GOLD, width=2)
-draw.text((130, H - 50), "BESTCHOICE  FINANCE", fill=INK, font=F_MONO_MARK)
-
-sig_text = "ed. 01 / 01 · 1×3"
-sbbox = draw.textbbox((0, 0), sig_text, font=F_MONO_MARK)
-sw = sbbox[2] - sbbox[0]
-draw.text((W - 48 - sw, H - 50), sig_text, fill=INK, font=F_MONO_MARK)
-rule_right = W - 48 - sw - 14
-draw.line([(rule_right - 28, H - 36), (rule_right, H - 36)], fill=GOLD, width=2)
+# Marginalia removed — the customer-facing rich menu needs only the three
+# chamber labels. Brand + edition hallmarks stayed as folio-flavoured
+# decoration; at LINE chatbar scale they were reading as visual noise.
 
 
 out = ROOT / "bestchoice-finance-rich-menu-3.png"

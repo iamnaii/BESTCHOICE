@@ -1585,17 +1585,28 @@ ${(() => {
     if (!doc) throw new NotFoundException('ไม่พบเอกสาร');
 
     const isPdf = doc.fileUrl.endsWith('.pdf');
+    const isHtml = doc.fileUrl.endsWith('.html') || doc.fileUrl.endsWith('.htm');
     const filename = doc.fileUrl.split('/').pop() || `${doc.documentType}_${doc.id}.${isPdf ? 'pdf' : 'html'}`;
 
-    if (isPdf && this.storageService.configured) {
+    // Storage-backed: fileUrl is a bucket key pointing at the real asset.
+    // Stream it regardless of type — previously the HTML branch emitted
+    // the PATH string as the response body (visible to the customer as a
+    // blank page showing only the filename), which is the bug this fixes.
+    if (this.storageService.configured && (isPdf || isHtml)) {
       const stream = await this.storageService.getStream(doc.fileUrl);
-      return { stream, filename, contentType: 'application/pdf' };
+      const contentType = isPdf ? 'application/pdf' : 'text/html; charset=utf-8';
+      return { stream, filename, contentType };
     }
 
-    // Fallback: return HTML content as stream
-    const { Readable } = await import('stream');
-    const htmlStream = Readable.from([doc.fileUrl]);
-    return { stream: htmlStream, filename, contentType: 'text/html' };
+    // Legacy inline HTML: fileUrl field actually contains the HTML markup
+    // itself (no storage backend). Emit it directly.
+    if (!this.storageService.configured && doc.fileUrl.trim().startsWith('<')) {
+      const { Readable } = await import('stream');
+      const htmlStream = Readable.from([doc.fileUrl]);
+      return { stream: htmlStream, filename, contentType: 'text/html; charset=utf-8' };
+    }
+
+    throw new BadRequestException('เอกสารนี้ไม่สามารถดาวน์โหลดได้ กรุณาติดต่อพนักงาน');
   }
 
   async getDocumentSignedUrl(id: string): Promise<{ url: string; expiresIn: number }> {

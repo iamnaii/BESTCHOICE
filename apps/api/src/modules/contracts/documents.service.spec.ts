@@ -305,12 +305,17 @@ describe('DocumentsService', () => {
       expect(storage.getStream).toHaveBeenCalledWith(mockEDocument.fileUrl);
     });
 
-    it('should return HTML stream as fallback for non-PDF files', async () => {
+    it('should fetch HTML file from storage (not emit the path as body)', async () => {
       prisma.eDocument.findUnique.mockResolvedValueOnce(mockHtmlDocument);
 
       const result = await service.getDocumentStream('doc-2');
 
-      expect(result.contentType).toBe('text/html');
+      // Bug the earlier implementation caused: response body = fileUrl path
+      // string, rendered as a blank page with just the filename visible.
+      // Fix: call storage.getStream for HTML just like for PDF.
+      expect(storage.getStream).toHaveBeenCalledWith(mockHtmlDocument.fileUrl);
+      expect(result.contentType).toBe('text/html; charset=utf-8');
+      expect(result.filename).toContain('.html');
     });
 
     it('should throw NotFoundException when document not found', async () => {

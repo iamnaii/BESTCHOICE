@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { paginatedResponse } from '../../common/helpers/pagination.helper';
@@ -614,6 +614,20 @@ export class CustomersService {
 
   async remove(id: string) {
     await this.findOne(id);
+
+    const activeContracts = await this.prisma.contract.count({
+      where: {
+        customerId: id,
+        deletedAt: null,
+        status: { in: ['ACTIVE', 'OVERDUE', 'DEFAULT'] },
+      },
+    });
+    if (activeContracts > 0) {
+      throw new BadRequestException(
+        `ไม่สามารถลบลูกค้าได้: มีสัญญาที่ยังเปิดอยู่ ${activeContracts} สัญญา`,
+      );
+    }
+
     return this.prisma.customer.update({
       where: { id },
       data: { deletedAt: new Date() },

@@ -250,7 +250,7 @@ export class CustomersController {
   }
 
   @Delete(':id')
-  @Roles('OWNER', 'BRANCH_MANAGER')
+  @Roles('OWNER')
   remove(@Param('id') id: string) {
     return this.customersService.remove(id);
   }

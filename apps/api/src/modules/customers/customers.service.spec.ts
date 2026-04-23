@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { CustomersService } from './customers.service';
 import { CustomerTierService } from './customer-tier.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -350,5 +350,52 @@ describe('PII read decryption (Phase 5)', () => {
     expect(
       (dedupCall![0] as { where: { nationalIdHash: string } }).where.nationalIdHash,
     ).toMatch(/^[0-9a-f]{64}$/);
+  });
+});
+
+describe('CustomersService.remove — block if open contracts', () => {
+  let service: CustomersService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let prisma: any;
+
+  beforeEach(async () => {
+    process.env.PII_HASH_SALT = 'b'.repeat(32);
+    prisma = {
+      customer: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'c1', deletedAt: null, references: null }),
+        update: jest.fn((args) => Promise.resolve({ id: 'c1', ...args.data })),
+      },
+      contract: { count: jest.fn() },
+    };
+    const mod: TestingModule = await Test.createTestingModule({
+      providers: [
+        CustomersService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: CustomerTierService, useValue: { getCustomerTier: jest.fn() } },
+      ],
+    }).compile();
+    service = mod.get(CustomersService);
+  });
+
+  afterEach(() => {
+    delete process.env.PII_HASH_SALT;
+  });
+
+  it('soft-deletes customer with no open contracts', async () => {
+    prisma.contract.count.mockResolvedValue(0);
+    await service.remove('c1');
+    const countArgs = prisma.contract.count.mock.calls[0][0];
+    expect(countArgs.where.customerId).toBe('c1');
+    expect(countArgs.where.status.in).toEqual(['ACTIVE', 'OVERDUE', 'DEFAULT']);
+    expect(prisma.customer.update).toHaveBeenCalledWith({
+      where: { id: 'c1' },
+      data: { deletedAt: expect.any(Date) },
+    });
+  });
+
+  it('throws BadRequestException if customer has open contracts', async () => {
+    prisma.contract.count.mockResolvedValue(2);
+    await expect(service.remove('c1')).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.customer.update).not.toHaveBeenCalled();
   });
 });

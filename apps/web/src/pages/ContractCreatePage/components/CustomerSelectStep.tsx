@@ -123,31 +123,71 @@ export function CustomerSelectStep({
       )}
 
       {/* Credit check status for selected customer */}
-      {selectedCustomer && (
-        <div className={`mt-4 rounded-xl border p-4 ${customerCreditApproved ? 'bg-success/5 dark:bg-success/10 border-success/20' : 'bg-destructive/5 dark:bg-destructive/10 border-destructive/20'}`}>
-          <div className="flex items-center justify-between">
-            <div>
-              <div className={`text-sm font-semibold ${customerCreditApproved ? 'text-success' : 'text-destructive'}`}>
-                สถานะเครดิต: {customerCreditApproved ? 'ผ่าน' : latestCreditCheck ? (latestCreditCheck.status === 'PENDING' ? 'รอวิเคราะห์' : latestCreditCheck.status === 'REJECTED' ? 'ไม่ผ่าน' : 'ต้องตรวจเพิ่ม') : 'ยังไม่ได้ตรวจ'}
+      {selectedCustomer && (() => {
+        const status = latestCreditCheck?.status;
+        const isPending = status === 'PENDING';
+        const isReview = status === 'MANUAL_REVIEW';
+        const isRejected = status === 'REJECTED';
+        const hasNoCheck = !latestCreditCheck;
+
+        // Status-specific copy + action so user knows exactly what's blocking
+        // and where to go next. Previously the button always said "ไปตรวจเครดิต"
+        // even when the real action was "อนุมัติใน manual review".
+        const label = customerCreditApproved
+          ? 'ผ่าน'
+          : isPending
+            ? 'รอวิเคราะห์'
+            : isRejected
+              ? 'ไม่ผ่าน'
+              : isReview
+                ? 'ต้องตรวจเพิ่ม'
+                : 'ยังไม่ได้ตรวจ';
+        const detail = customerCreditApproved
+          ? null
+          : isPending
+            ? 'ระบบกำลังวิเคราะห์ Statement — กรุณารอสักครู่แล้ว refresh'
+            : isReview
+              ? 'ผู้จัดการต้องตรวจสอบและอนุมัติก่อนสร้างสัญญาได้'
+              : isRejected
+                ? 'เครดิตไม่ผ่าน — ต้องยื่นตรวจใหม่พร้อมเอกสารเพิ่มเติม'
+                : 'ลูกค้าต้องผ่านการตรวจเครดิตก่อนถึงจะสร้างสัญญาได้';
+        const buttonLabel = hasNoCheck
+          ? 'ไปตรวจเครดิต'
+          : isReview
+            ? 'ไปอนุมัติ'
+            : isRejected
+              ? 'ยื่นตรวจใหม่'
+              : 'ดูรายละเอียด';
+        const buttonHref = hasNoCheck
+          ? '/credit-checks'
+          : `/customers/${selectedCustomer.id}?tab=credit`;
+
+        return (
+          <div className={`mt-4 rounded-xl border p-4 ${customerCreditApproved ? 'bg-success/5 dark:bg-success/10 border-success/20' : 'bg-destructive/5 dark:bg-destructive/10 border-destructive/20'}`}>
+            <div className="flex items-center justify-between">
+              <div>
+                <div className={`text-sm font-semibold ${customerCreditApproved ? 'text-success' : 'text-destructive'}`}>
+                  สถานะเครดิต: {label}
+                </div>
+                {latestCreditCheck?.aiScore != null && (
+                  <div className="text-xs mt-1">คะแนน: {latestCreditCheck.aiScore}/100</div>
+                )}
+                {detail && (
+                  <div className="text-xs text-destructive mt-1">{detail}</div>
+                )}
               </div>
-              {latestCreditCheck?.aiScore != null && (
-                <div className="text-xs mt-1">คะแนน: {latestCreditCheck.aiScore}/100</div>
-              )}
               {!customerCreditApproved && (
-                <div className="text-xs text-destructive mt-1">ลูกค้าต้องผ่านการตรวจเครดิตก่อนถึงจะสร้างสัญญาได้</div>
+                <button
+                  onClick={() => navigate(buttonHref)}
+                  className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 whitespace-nowrap"
+                >
+                  {buttonLabel}
+                </button>
               )}
             </div>
-            {!customerCreditApproved && (
-              <button
-                onClick={() => navigate('/credit-checks')}
-                className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
-              >
-                ไปตรวจเครดิต
-              </button>
-            )}
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import {
+  ArrayMaxSize,
   ArrayMinSize,
   IsArray,
   IsNotEmpty,
@@ -10,13 +11,23 @@ import {
   MinLength,
 } from 'class-validator';
 
+// Per-file size cap. A 5MB raw image → ~6.7MB base64 (33% overhead).
+// Cap at 8MB base64 per file so owners can upload full-resolution phone
+// photos without needing pre-compression, while bounding memory usage.
+const MAX_FILE_BASE64_BYTES = 8 * 1024 * 1024;
+
 export class CreateCreditCheckDto {
   @IsString()
   @IsOptional()
   bankName?: string;
 
   @IsArray()
+  @ArrayMaxSize(5, { message: 'อัปโหลดได้สูงสุด 5 ไฟล์' })
   @IsString({ each: true })
+  @MaxLength(MAX_FILE_BASE64_BYTES, {
+    each: true,
+    message: 'ไฟล์มีขนาดใหญ่เกินไป (สูงสุด ~6MB ต่อไฟล์)',
+  })
   statementFiles: string[]; // base64 encoded file URLs
 
   @IsNumber()

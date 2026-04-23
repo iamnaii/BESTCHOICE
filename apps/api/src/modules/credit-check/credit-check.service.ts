@@ -126,13 +126,29 @@ export class CreditCheckService {
   }
 
   async findLatestByCustomer(customerId: string) {
+    const include = {
+      customer: { select: { id: true, name: true, phone: true, salary: true, occupation: true } },
+      checkedBy: { select: { id: true, name: true } },
+    };
+
+    // Prefer the latest FULL check (real credit assessment: statement + AI
+    // analysis + explicit manager decision) over PRE checks (preliminary
+    // tier-based intake decisions). PRE checks are noise for contract gating —
+    // a customer intake PRE=MANUAL_REVIEW shouldn't override an earlier
+    // FULL=APPROVED that a manager signed off on.
+    const latestFull = await this.prisma.creditCheck.findFirst({
+      where: { customerId, deletedAt: null, checkType: 'FULL' },
+      orderBy: { createdAt: 'desc' },
+      include,
+    });
+    if (latestFull) return latestFull;
+
+    // No FULL check yet — fall back to latest PRE (covers GOLD-tier
+    // auto-approve via pre-check flow).
     return this.prisma.creditCheck.findFirst({
       where: { customerId, deletedAt: null },
       orderBy: { createdAt: 'desc' },
-      include: {
-        customer: { select: { id: true, name: true, phone: true, salary: true, occupation: true } },
-        checkedBy: { select: { id: true, name: true } },
-      },
+      include,
     });
   }
 

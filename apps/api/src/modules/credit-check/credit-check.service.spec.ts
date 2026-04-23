@@ -189,6 +189,51 @@ describe('CreditCheckService override audit', () => {
     });
   });
 
+  // ─── findLatestByCustomer: FULL preferred over PRE ────────────────────────
+  describe('findLatestByCustomer — FULL preferred over PRE', () => {
+    it('returns the latest FULL check even if a newer PRE exists', async () => {
+      const fullApproved = { id: 'cc-full', checkType: 'FULL', status: 'APPROVED' };
+      prisma.creditCheck.findFirst
+        // First call: filtered to FULL — returns the approved one
+        .mockResolvedValueOnce(fullApproved)
+        // Second call would be the fallback (any type) — should not be hit
+        .mockResolvedValueOnce({ id: 'cc-pre', checkType: 'PRE', status: 'MANUAL_REVIEW' });
+
+      const result = await service.findLatestByCustomer('cust-1');
+
+      expect(result).toBe(fullApproved);
+      const firstCallWhere = prisma.creditCheck.findFirst.mock.calls[0][0].where;
+      expect(firstCallWhere.checkType).toBe('FULL');
+      expect(firstCallWhere.deletedAt).toBeNull();
+      expect(prisma.creditCheck.findFirst).toHaveBeenCalledTimes(1);
+    });
+
+    it('falls back to any-type check when no FULL exists (covers GOLD-tier PRE auto-approve)', async () => {
+      const preApproved = { id: 'cc-pre', checkType: 'PRE', status: 'APPROVED' };
+      prisma.creditCheck.findFirst
+        .mockResolvedValueOnce(null) // no FULL
+        .mockResolvedValueOnce(preApproved); // fallback hits PRE
+
+      const result = await service.findLatestByCustomer('cust-2');
+
+      expect(result).toBe(preApproved);
+      expect(prisma.creditCheck.findFirst).toHaveBeenCalledTimes(2);
+      // Second call should not filter by checkType
+      const secondCallWhere = prisma.creditCheck.findFirst.mock.calls[1][0].where;
+      expect(secondCallWhere.checkType).toBeUndefined();
+    });
+
+    it('returns null when customer has no credit checks', async () => {
+      prisma.creditCheck.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null);
+
+      const result = await service.findLatestByCustomer('cust-none');
+
+      expect(result).toBeNull();
+    });
+  });
+
   // ─── T4-C4: evidence gate on overrideById() ──────────────────────────────
   describe('T4-C4 overrideById — evidence gate', () => {
     const shortReason = 'too short'; // 9 chars

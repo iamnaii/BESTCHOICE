@@ -17,11 +17,14 @@ export class KycService {
   ) {}
 
   /**
-   * Send OTP to customer's phone or LINE
+   * Send KYC OTP to customer's phone via SMS.
+   *
+   * Historically supported LINE as a second channel, but LINE was removed on
+   * 2026-04-23: OTP-via-LINE doesn't prove phone ownership (same device/session
+   * that's already identified), which defeats the verification. SMS only.
    */
   async sendOtp(
     contractId: string,
-    channel: string,
     req: { ip?: string; userAgent?: string },
   ) {
     const contract = await this.prisma.contract.findUnique({
@@ -33,14 +36,8 @@ export class KycService {
     const customer = contract.customer;
     if (!customer) throw new NotFoundException('ไม่พบข้อมูลลูกค้า');
 
-    // Determine recipient
-    const recipient = channel === 'LINE' ? customer.lineId : customer.phone;
-    if (!recipient) {
-      throw new BadRequestException(
-        channel === 'LINE'
-          ? 'ลูกค้ายังไม่ได้เชื่อมต่อ LINE'
-          : 'ไม่พบเบอร์โทรลูกค้า',
-      );
+    if (!customer.phone) {
+      throw new BadRequestException('ไม่พบเบอร์โทรลูกค้า');
     }
 
     // Rate limit: max sends per hour per contract
@@ -65,11 +62,10 @@ export class KycService {
     const message = `[BESTCHOICE] รหัส OTP: ${otp} (Ref: ${refCode}) หมดอายุใน ${OTP_EXPIRY_MINUTES} นาที`;
     try {
       const result = await this.notificationsService.send({
-        channel: channel as 'SMS' | 'LINE',
-        recipient,
+        channel: 'SMS',
+        recipient: customer.phone,
         message,
         relatedId: contractId,
-        fallbackPhone: channel === 'LINE' ? customer.phone : undefined,
         noRetry: true, // OTP expires in 10 min — retry queue would only spam
       });
       if (result.status === 'FAILED') {
@@ -80,7 +76,7 @@ export class KycService {
     } catch (err) {
       const errMessage = err instanceof Error ? err.message : String(err);
       this.logger.error(
-        `Failed to send OTP for contract ${contractId} via ${channel}: ${errMessage}`,
+        `Failed to send OTP for contract ${contractId} via SMS: ${errMessage}`,
       );
 
       let userMessage = 'ไม่สามารถส่ง OTP ได้ กรุณาลองใหม่';
@@ -111,7 +107,7 @@ export class KycService {
         customerId: customer.id,
         otpHash,
         otpPhone: customer.phone,
-        otpChannel: channel,
+        otpChannel: 'SMS',
         otpSentCount: 1,
         otpRefCode: refCode,
         ipAddress: req.ip || null,
@@ -122,12 +118,12 @@ export class KycService {
 
     return {
       id: kyc.id,
-      channel,
+      channel: 'SMS',
       phone: this.maskPhone(customer.phone),
       refCode,
       expiresAt,
       expiryMinutes: OTP_EXPIRY_MINUTES,
-      message: `ส่ง OTP ไปยัง ${channel === 'LINE' ? 'LINE' : this.maskPhone(customer.phone)} แล้ว`,
+      message: `ส่ง OTP ไปยัง ${this.maskPhone(customer.phone)} แล้ว`,
     };
   }
 

@@ -36,7 +36,6 @@ export default function StepKycVerification({ contractId, customerName, customer
   const [otpVerified, setOtpVerified] = useState(false);
   const [idCardDone, setIdCardDone] = useState(false);
   const [otpRef, setOtpRef] = useState('');
-  const [lastChannel, setLastChannel] = useState('');
   const [countdown, setCountdown] = useState(0);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -68,14 +67,13 @@ export default function StepKycVerification({ contractId, customerName, customer
     return () => { if (countdownRef.current) clearInterval(countdownRef.current); };
   }, [otpSent, otpVerified]); // countdown intentionally omitted — interval manages its own decrement
 
-  const handleSendOtp = useCallback((channel: string) => {
-    setLastChannel(channel);
-    sendOtpMutation.mutate(channel);
+  const handleSendOtp = useCallback(() => {
+    sendOtpMutation.mutate();
   }, []); // sendOtpMutation intentionally omitted — declared below, stable reference
 
   const sendOtpMutation = useMutation({
-    mutationFn: async (channel: string) => {
-      const { data } = await api.post(`/contracts/${contractId}/kyc/send-otp`, { channel });
+    mutationFn: async () => {
+      const { data } = await api.post(`/contracts/${contractId}/kyc/send-otp`, {});
       return data as SendOtpResponse;
     },
     onSuccess: (data) => {
@@ -159,24 +157,17 @@ export default function StepKycVerification({ contractId, customerName, customer
           <h3 className="text-sm font-semibold text-foreground">ขั้นตอนที่ 1: ยืนยัน OTP</h3>
 
           {!otpSent ? (
-            <div className="flex gap-3">
-              <button
-                onClick={() => handleSendOtp('SMS')}
-                disabled={sendOtpMutation.isPending}
-                className="flex-1 px-4 py-4 text-sm border-2 border-primary/30 rounded-xl hover:bg-primary/5 flex flex-col items-center gap-2 disabled:opacity-50"
-              >
-                <span className="text-2xl">💬</span>
-                <span className="font-medium">ส่ง OTP ผ่าน SMS</span>
-              </button>
-              <button
-                onClick={() => handleSendOtp('LINE')}
-                disabled={sendOtpMutation.isPending}
-                className="flex-1 px-4 py-4 text-sm border-2 border-success/30 rounded-xl hover:bg-success/10 flex flex-col items-center gap-2 disabled:opacity-50"
-              >
-                <span className="text-2xl">💚</span>
-                <span className="font-medium">ส่ง OTP ผ่าน LINE</span>
-              </button>
-            </div>
+            <button
+              onClick={handleSendOtp}
+              disabled={sendOtpMutation.isPending}
+              className="w-full px-4 py-4 text-sm bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              <span className="font-medium">
+                {sendOtpMutation.isPending
+                  ? 'กำลังส่ง OTP...'
+                  : `ส่ง OTP ผ่าน SMS ไปที่ ${maskedPhone}`}
+              </span>
+            </button>
           ) : (
             <div className="space-y-4">
               <p className="text-sm text-muted-foreground text-center">กรอกรหัส OTP 6 หลักที่ส่งไปยัง {maskedPhone}</p>
@@ -215,7 +206,7 @@ export default function StepKycVerification({ contractId, customerName, customer
                 ) : null}
 
                 <button
-                  onClick={() => { setOtp(''); handleSendOtp(lastChannel); }}
+                  onClick={() => { setOtp(''); handleSendOtp(); }}
                   disabled={sendOtpMutation.isPending}
                   className="text-sm text-primary hover:underline disabled:opacity-50"
                 >

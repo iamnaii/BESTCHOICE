@@ -93,7 +93,7 @@ describe('KycService', () => {
     const req = { ip: '127.0.0.1', userAgent: 'test-agent' };
 
     it('should send OTP via SMS successfully', async () => {
-      const result = await service.sendOtp('contract-1', 'SMS', req);
+      const result = await service.sendOtp('contract-1', req);
 
       expect(result).toBeDefined();
       expect(result.channel).toBe('SMS');
@@ -107,20 +107,15 @@ describe('KycService', () => {
       );
     });
 
-    it('should send OTP via LINE successfully', async () => {
-      const result = await service.sendOtp('contract-1', 'LINE', req);
+    it('should always persist otpChannel as SMS (LINE channel removed 2026-04-23)', async () => {
+      await service.sendOtp('contract-1', req);
 
-      expect(result.channel).toBe('LINE');
-      expect(notifications.send).toHaveBeenCalledWith(
-        expect.objectContaining({
-          channel: 'LINE',
-          recipient: 'U1234567890',
-        }),
-      );
+      const createArgs = prisma.kycVerification.create.mock.calls[0][0];
+      expect(createArgs.data.otpChannel).toBe('SMS');
     });
 
     it('should expire existing pending verifications', async () => {
-      await service.sendOtp('contract-1', 'SMS', req);
+      await service.sendOtp('contract-1', req);
 
       expect(prisma.kycVerification.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -133,29 +128,29 @@ describe('KycService', () => {
     it('should throw NotFoundException when contract not found', async () => {
       prisma.contract.findUnique.mockResolvedValueOnce(null);
 
-      await expect(service.sendOtp('nonexistent', 'SMS', req)).rejects.toThrow(NotFoundException);
+      await expect(service.sendOtp('nonexistent', req)).rejects.toThrow(NotFoundException);
     });
 
     it('should reject when rate limit exceeded (3 sends/hour)', async () => {
       prisma.kycVerification.count.mockResolvedValue(3);
 
-      await expect(service.sendOtp('contract-1', 'SMS', req)).rejects.toThrow(BadRequestException);
-      await expect(service.sendOtp('contract-1', 'SMS', req)).rejects.toThrow(/เกินจำนวน/);
+      await expect(service.sendOtp('contract-1', req)).rejects.toThrow(BadRequestException);
+      await expect(service.sendOtp('contract-1', req)).rejects.toThrow(/เกินจำนวน/);
     });
 
-    it('should throw BadRequestException when LINE not connected', async () => {
+    it('should throw BadRequestException when customer has no phone', async () => {
       prisma.contract.findUnique.mockResolvedValueOnce({
         ...mockContract,
-        customer: { ...mockContract.customer, lineId: null },
+        customer: { ...mockContract.customer, phone: null },
       });
 
-      await expect(service.sendOtp('contract-1', 'LINE', req)).rejects.toThrow(BadRequestException);
+      await expect(service.sendOtp('contract-1', req)).rejects.toThrow(BadRequestException);
     });
 
     it('should throw BadRequestException when notification service fails', async () => {
       notifications.send.mockRejectedValueOnce(new Error('Send failed'));
 
-      await expect(service.sendOtp('contract-1', 'SMS', req)).rejects.toThrow(BadRequestException);
+      await expect(service.sendOtp('contract-1', req)).rejects.toThrow(BadRequestException);
       // No DB record should be created when send fails
       expect(prisma.kycVerification.create).not.toHaveBeenCalled();
       expect(prisma.kycVerification.updateMany).not.toHaveBeenCalled();
@@ -164,7 +159,7 @@ describe('KycService', () => {
     it('should not create KYC record when notification returns FAILED status', async () => {
       notifications.send.mockResolvedValueOnce({ id: 'notif-1', status: 'FAILED' });
 
-      await expect(service.sendOtp('contract-1', 'SMS', req)).rejects.toThrow(BadRequestException);
+      await expect(service.sendOtp('contract-1', req)).rejects.toThrow(BadRequestException);
       expect(prisma.kycVerification.create).not.toHaveBeenCalled();
       expect(prisma.kycVerification.updateMany).not.toHaveBeenCalled();
     });

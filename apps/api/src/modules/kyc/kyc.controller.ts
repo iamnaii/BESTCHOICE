@@ -3,7 +3,7 @@ import { Request } from 'express';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { KycService } from './kyc.service';
-import { SendOtpDto, VerifyOtpDto, UploadIdCardDto } from './dto/kyc.dto';
+import { VerifyOtpDto, UploadIdCardDto } from './dto/kyc.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -20,10 +20,12 @@ export class KycController {
   @Throttle({ short: { limit: 5, ttl: 60000 } })
   sendOtp(
     @Param('id') id: string,
-    @Body() dto: SendOtpDto,
     @Req() req: Request,
   ) {
-    return this.kycService.sendOtp(id, dto.channel, {
+    // Body intentionally ignored — SendOtpDto is empty since LINE option was
+    // removed 2026-04-23. Any stale `channel` from old clients is stripped
+    // by ValidationPipe(whitelist:true).
+    return this.kycService.sendOtp(id, {
       ip: req.ip,
       userAgent: req.headers?.['user-agent'],
     });

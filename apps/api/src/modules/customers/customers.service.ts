@@ -524,6 +524,11 @@ export class CustomersService {
         existingCustomer: { id: existing.id, name: existing.name },
       });
     }
+    // Soft-deleted ghost with the same nationalIdHash would otherwise break
+    // the create() below with a P2002 on the unique column. Treat it as the
+    // same person being re-registered: revive + update with the new form data
+    // instead of crashing.
+    const reviveGhostId: string | null = existing?.deletedAt ? existing.id : null;
 
     // Validate Thai national ID checksum (skip for foreigners)
     if (!dto.isForeigner && !this.validateNationalId(normalizedNid)) {
@@ -557,6 +562,16 @@ export class CustomersService {
         ? (dto.references as Prisma.InputJsonValue)
         : undefined,
     };
+    if (reviveGhostId) {
+      // Revive path: clear deletedAt and overwrite the row with the new
+      // form submission. The admin is creating a customer whose nationalId
+      // matches a soft-deleted ghost — Prisma.CustomerCreateInput shares
+      // enough fields with UpdateInput to be compatible here.
+      return this.prisma.customer.update({
+        where: { id: reviveGhostId },
+        data: { ...(data as Prisma.CustomerUpdateInput), deletedAt: null },
+      });
+    }
     return this.prisma.customer.create({ data });
   }
 

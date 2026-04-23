@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Sparkles, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Sparkles, AlertTriangle } from 'lucide-react';
 
 interface Props {
   open: boolean;
@@ -127,21 +127,24 @@ export default function CreditCheckOverrideDialog({
   isPending,
   onConfirm,
 }: Props) {
-  const agreesWithAi = !!status && status === aiDecision;
+  // `aiDecision` is actually the record's CURRENT status (possibly already
+  // overridden). The backend rejects same-status "overrides" as no-ops via
+  // enforceOverridePolicy, so selecting the same status here is never valid
+  // no matter what we label it in UI.
+  const isNoOp = !!status && status === aiDecision;
   const currentOption = REASON_OPTIONS.find((o) => o.value === reasonCategory);
   const compiled = useMemo(() => compileReason(reasonCategory, notes), [reasonCategory, notes]);
 
-  // Validation — only when disagreeing with AI
+  // Validation — override requires a reason (different-status is the only
+  // legit case; same-status is disallowed).
   const needsReason = !!status && status !== aiDecision;
   const isHighDown = reasonCategory === 'HIGH_DOWN';
   const highDownTierValid = isHighDown && DOWN_TIERS.some((t) => t.value === notes.trim());
   const detailValid = isHighDown
     ? highDownTierValid
     : !currentOption?.requiresDetail || notes.trim().length >= 10;
-  const reasonValid = agreesWithAi
-    ? true
-    : !!reasonCategory && detailValid && compiled.length <= 2000;
-  const disabled = !status || !reasonValid || isPending;
+  const reasonValid = !!reasonCategory && detailValid && compiled.length <= 2000;
+  const disabled = !status || isNoOp || !reasonValid || isPending;
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -150,12 +153,12 @@ export default function CreditCheckOverrideDialog({
           <DialogTitle>ปรับแก้สถานะเครดิตเช็ค</DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
-          {/* AI context — read before deciding */}
+          {/* Current status context — read before deciding */}
           {aiDecision && (
             <div className="rounded-lg border border-border/60 bg-muted/30 p-3 space-y-1">
               <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
                 <Sparkles className="size-3.5 text-primary" />
-                ผลจาก AI: <span className="text-primary">{decisionLabel(aiDecision)}</span>
+                สถานะปัจจุบัน: <span className="text-primary">{decisionLabel(aiDecision)}</span>
               </div>
               {aiSummary && (
                 <div className="text-xs text-muted-foreground leading-snug">{aiSummary}</div>
@@ -179,17 +182,17 @@ export default function CreditCheckOverrideDialog({
             </select>
           </div>
 
-          {/* Agrees with AI → no reason needed */}
-          {agreesWithAi && (
-            <div className="rounded-lg border border-success/30 bg-success/5 p-3 flex items-start gap-2">
-              <CheckCircle2 className="size-4 text-success shrink-0 mt-0.5" />
+          {/* Same status selected → block (no-op) */}
+          {isNoOp && (
+            <div className="rounded-lg border border-warning/30 bg-warning/5 p-3 flex items-start gap-2">
+              <AlertTriangle className="size-4 text-warning shrink-0 mt-0.5" />
               <div className="text-xs text-foreground leading-snug">
-                เห็นด้วยกับ AI — ไม่ต้องใส่เหตุผลเพิ่ม กดยืนยันได้เลย
+                สถานะนี้เหมือนสถานะปัจจุบัน — ถ้าไม่ต้องการเปลี่ยนให้กด "ยกเลิก"
               </div>
             </div>
           )}
 
-          {/* Disagrees with AI → require reason */}
+          {/* Different status → require reason */}
           {needsReason && (
             <>
               <div className="rounded-lg border border-warning/30 bg-warning/5 p-3 flex items-start gap-2">

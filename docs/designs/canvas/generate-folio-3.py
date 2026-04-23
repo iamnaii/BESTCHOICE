@@ -17,9 +17,9 @@ W, H = 2400, 1400
 # ─── Palette ────────────────────────────────────────────
 FIELD = (250, 246, 234)       # warm ivory paper
 RULE = (236, 228, 210)        # ledger rule — breathier
-HAIRLINE = (194, 180, 148)    # plate border — aged bone
+HAIRLINE = (180, 164, 128)    # plate border — aged bone (slightly darker)
 INK = (28, 36, 28)            # monastic ink
-WHISPER = (140, 130, 110)     # marginalia grey
+WHISPER = (104, 92, 70)       # marginalia — darker for legibility
 GOLD = (168, 118, 39)         # ceremonial hairline
 
 # Three pigments — matching the 1×3 rich-menu chambers.
@@ -42,11 +42,11 @@ ICON_STROKE = 8
 SKILL_FONTS = Path(".claude/skills/canvas-design/canvas-fonts").resolve()
 RICH_MENU_FONTS = Path(__file__).parent.parent / "rich-menu"
 
-F_TITLE = ImageFont.truetype(str(RICH_MENU_FONTS / "IBMPlexSansThai-SemiBold.ttf"), 64)
-F_THAI_PLATE = ImageFont.truetype(str(RICH_MENU_FONTS / "IBMPlexSansThai-Medium.ttf"), 42)
-F_MONO_S = ImageFont.truetype(str(SKILL_FONTS / "IBMPlexMono-Regular.ttf"), 18)
-F_MONO_XS = ImageFont.truetype(str(SKILL_FONTS / "IBMPlexMono-Regular.ttf"), 14)
-F_MONO_MD = ImageFont.truetype(str(SKILL_FONTS / "IBMPlexMono-Regular.ttf"), 22)
+F_TITLE = ImageFont.truetype(str(RICH_MENU_FONTS / "IBMPlexSansThai-SemiBold.ttf"), 68)
+F_THAI_PLATE = ImageFont.truetype(str(RICH_MENU_FONTS / "IBMPlexSansThai-SemiBold.ttf"), 54)
+F_MONO_S = ImageFont.truetype(str(SKILL_FONTS / "IBMPlexMono-Regular.ttf"), 20)
+F_MONO_XS = ImageFont.truetype(str(SKILL_FONTS / "IBMPlexMono-Regular.ttf"), 17)
+F_MONO_MD = ImageFont.truetype(str(SKILL_FONTS / "IBMPlexMono-Regular.ttf"), 24)
 
 # ─── Canvas init ────────────────────────────────────────
 img = Image.new("RGB", (W, H), FIELD)

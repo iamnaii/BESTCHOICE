@@ -23,7 +23,8 @@ import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import AddressForm, { AddressData, emptyAddress, serializeAddress } from '@/components/ui/AddressForm';
-import { Download, ChevronUp, ChevronDown, CreditCard, Camera, User, MapPin, Phone, Briefcase, Users, Copy } from 'lucide-react';
+import { Download, ChevronUp, ChevronDown, CreditCard, Camera, User, MapPin, Phone, Briefcase, Users, Copy, Trash2 } from 'lucide-react';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import {
   Select,
@@ -254,6 +255,20 @@ export default function CustomersPage() {
       toast.success('เพิ่มลูกค้าสำเร็จ');
       setIsModalOpen(false);
       navigate(`/customers/${res.data.id}`);
+    },
+    onError: (err: unknown) => {
+      toast.error(getErrorMessage(err));
+    },
+  });
+
+  const [deleteTarget, setDeleteTarget] = useState<Customer | null>(null);
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => api.delete(`/customers/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+      toast.success('ลบลูกค้าสำเร็จ');
+      setDeleteTarget(null);
     },
     onError: (err: unknown) => {
       toast.error(getErrorMessage(err));
@@ -626,7 +641,22 @@ export default function CustomersPage() {
         <span className="text-xs text-muted-foreground whitespace-nowrap">{formatRelativeDate(c.createdAt)}</span>
       ),
     },
-  ], [canViewSalary, isOwnerOrManager, copyValue]);
+    ...(isOwner ? [{
+      key: 'actions',
+      label: '',
+      render: (c: Customer) => (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setDeleteTarget(c); }}
+          className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded transition-colors"
+          aria-label={`ลบลูกค้า ${c.name}`}
+          title="ลบลูกค้า"
+        >
+          <Trash2 className="size-4" strokeWidth={1.5} />
+        </button>
+      ),
+    }] : []),
+  ], [canViewSalary, isOwner, isOwnerOrManager, copyValue]);
 
   const inputClass = 'w-full px-3 py-2 border border-input rounded-lg text-sm outline-hidden focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background';
   const selectClass = `${inputClass}`;
@@ -1342,6 +1372,17 @@ export default function CustomersPage() {
         </div>
       </div>
       )}
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        title="ลบลูกค้า"
+        description={deleteTarget ? `ต้องการลบลูกค้า "${deleteTarget.name}" ใช่หรือไม่? การลบจะไม่สามารถกู้คืนได้จากหน้าจอ หากลูกค้ามีสัญญาที่ยังเปิดอยู่จะไม่สามารถลบได้` : ''}
+        confirmLabel="ลบ"
+        variant="destructive"
+        loading={deleteMutation.isPending}
+        onConfirm={() => { if (deleteTarget) deleteMutation.mutate(deleteTarget.id); }}
+      />
     </div>
   );
 }

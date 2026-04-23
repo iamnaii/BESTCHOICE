@@ -211,6 +211,20 @@ export function useCreditCheckCreate({ open, preselectedCustomer, onSuccess }: U
   const uploadMutation = useMutation({
     mutationFn: async (files: FileList) => {
       if (!selectedCustomer) throw new Error('เลือกลูกค้าก่อน');
+      // Reject oversize files BEFORE encoding — base64 adds 33% overhead, so a
+      // 6MB raw file becomes ~8MB wire payload. Backend DTO caps at 8MB base64
+      // per file; align the client check so we fail fast with a clear message
+      // instead of a generic 413.
+      const MAX_FILE_RAW_BYTES = 6 * 1024 * 1024; // ~8MB base64
+      const MAX_FILES = 5;
+      if (files.length > MAX_FILES) {
+        throw new Error(`อัปโหลดได้สูงสุด ${MAX_FILES} ไฟล์`);
+      }
+      for (const file of Array.from(files)) {
+        if (file.size > MAX_FILE_RAW_BYTES) {
+          throw new Error(`ไฟล์ "${file.name}" มีขนาดใหญ่เกิน 6MB — กรุณาลดขนาดก่อน`);
+        }
+      }
       const fileUrls: string[] = [];
       for (const file of Array.from(files)) {
         const reader = new FileReader();

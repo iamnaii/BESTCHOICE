@@ -571,7 +571,7 @@ export default function LiffContract() {
             className="flex items-center justify-center gap-2 rounded-2xl border border-border/50 bg-card px-3 py-3.5 text-[13px] font-medium text-foreground active:scale-[0.98] transition-transform shadow-sm leading-snug"
           >
             <Download className="size-[15px] text-indigo-700" strokeWidth={1.75} />
-            สัญญา PDF
+            สัญญาผ่อน
           </a>
 
           {['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status) && contract.totalOutstanding > 0 ? (

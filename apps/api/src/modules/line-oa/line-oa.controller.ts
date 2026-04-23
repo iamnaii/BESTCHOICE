@@ -18,6 +18,40 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { Request } from 'express';
 import { LineOaService } from './line-oa.service';
+import { buildWelcomeFlex } from './flex-messages/welcome.flex';
+import { buildContractSignedFlex } from './flex-messages/contract-signed.flex';
+import { buildVerifySuccessFlex } from './flex-messages/verify-success.flex';
+import { buildLinkContractFlex } from './flex-messages/link-contract.flex';
+import { buildContractCompletedFlex } from './flex-messages/contract-completed.flex';
+import { buildEarlyPayoffSuccessFlex } from './flex-messages/early-payoff-success.flex';
+import {
+  buildPromotionFlex,
+  buildThankYouFlex,
+  buildNewProductFlex,
+} from './flex-messages/campaign.flex';
+import { buildDailyReportFlex } from './flex-messages/daily-report.flex';
+
+/** All Flex templates exposed to the owner test-send endpoints. */
+const TEST_FLEX_TYPES: ReadonlyArray<{ value: string; label: string }> = [
+  { value: 'link_contract', label: 'ผูกสัญญา (Link Contract)' },
+  { value: 'welcome_finance', label: 'ยินดีต้อนรับ — FINANCE' },
+  { value: 'welcome_shop', label: 'ยินดีต้อนรับ — SHOP' },
+  { value: 'contract_signed', label: 'เซ็นสัญญาสำเร็จ' },
+  { value: 'verify_success', label: 'ยืนยันตัวตนสำเร็จ' },
+  { value: 'payment_reminder', label: 'แจ้งเตือนค่างวด (ก่อนครบกำหนด)' },
+  { value: 'promptpay_qr', label: 'QR พร้อมเพย์' },
+  { value: 'payment_success', label: 'แจ้งชำระเงินสำเร็จ' },
+  { value: 'overdue_notice', label: 'แจ้งเตือนค้างชำระ' },
+  { value: 'balance_summary', label: 'สรุปยอดคงเหลือ' },
+  { value: 'contract_selector', label: 'เลือกสัญญา (หลายสัญญา)' },
+  { value: 'receipt_history', label: 'ประวัติใบเสร็จ' },
+  { value: 'contract_completed', label: 'ปิดสัญญาครบ' },
+  { value: 'early_payoff_success', label: 'ปิดยอดสำเร็จ (ลด 50%)' },
+  { value: 'promotion', label: 'แคมเปญ — โปรโมชัน' },
+  { value: 'thank_you', label: 'แคมเปญ — ขอบคุณ' },
+  { value: 'new_product', label: 'แคมเปญ — สินค้าใหม่' },
+  { value: 'daily_report', label: 'รายงานประจำวัน (owner)' },
+] as const;
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -153,44 +187,256 @@ export class LineOaController {
 
   // ─── Test Send (Owner Preview) ──────────────────────
 
+  @Get('test-flex-types')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER')
+  getTestFlexTypes() {
+    return { types: TEST_FLEX_TYPES };
+  }
+
   @Post('test-send')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('OWNER')
   async testSendMessage(@Body() body: { lineUserId?: string; messageType: string }) {
-    let targetLineId = body.lineUserId;
-    if (!targetLineId) {
-      const config = await this.prisma.systemConfig.findUnique({ where: { key: 'owner_line_id' } });
-      targetLineId = config?.value;
-    }
+    const targetLineId = await this.resolveOwnerLineId(body.lineUserId);
     if (!targetLineId) {
       return { success: false, error: 'กรุณาใส่ LINE User ID หรือบันทึก owner_line_id ในการตั้งค่า' };
     }
 
-    const sampleData = { customerName: 'ทดสอบ สมมุติ', contractNumber: 'BC-2026-0001', installmentNo: 3, totalInstallments: 12 };
-
     try {
-      let flex;
-      switch (body.messageType) {
-        case 'payment_reminder':
-          flex = this.lineOaService.buildPaymentReminder({ ...sampleData, amountDue: 3500, dueDate: '20/03/2026', daysUntilDue: 3 });
-          break;
-        case 'overdue_notice':
-          flex = this.lineOaService.buildOverdueNotice({ ...sampleData, amountDue: 3500, lateFee: 150, totalOutstanding: 3650, dueDate: '10/03/2026', daysOverdue: 3 });
-          break;
-        case 'payment_success':
-          flex = this.lineOaService.buildPaymentSuccess({ ...sampleData, amountPaid: 3500, paymentMethod: 'BANK_TRANSFER', paidDate: '13/03/2026', remainingInstallments: 9 });
-          break;
-        case 'balance_summary':
-          flex = this.lineOaService.buildBalanceSummary({ customerName: sampleData.customerName, contracts: [{ contractNumber: sampleData.contractNumber, totalInstallments: 12, paidInstallments: 2, status: 'ACTIVE', totalOutstanding: 31500, nextDueDate: '20/04/2026', nextAmountDue: 3500 }] });
-          break;
-        default:
-          return { success: false, error: `ไม่รู้จักประเภทข้อความ: ${body.messageType}` };
+      const flex = this.buildTestFlexSample(body.messageType);
+      if (!flex) {
+        return { success: false, error: `ไม่รู้จักประเภทข้อความ: ${body.messageType}` };
       }
       await this.lineOaService.sendFlexMessage(targetLineId, flex);
       this.logger.log(`[LINE] Test message '${body.messageType}' sent to ${targetLineId}`);
       return { success: true, message: `ส่งข้อความทดสอบ "${body.messageType}" สำเร็จ` };
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : 'ส่งข้อความล้มเหลว' };
+    }
+  }
+
+  /**
+   * Send one sample of every Flex template in sequence (throttled ~250ms apart
+   * to avoid LINE push-message burst limits). Owner-only preview tool.
+   */
+  @Post('test-send-all')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER')
+  async testSendAllMessages(@Body() body: { lineUserId?: string }) {
+    const targetLineId = await this.resolveOwnerLineId(body.lineUserId);
+    if (!targetLineId) {
+      return { success: false, error: 'กรุณาใส่ LINE User ID หรือบันทึก owner_line_id ในการตั้งค่า' };
+    }
+
+    const types = TEST_FLEX_TYPES.map((t) => t.value);
+    const results: Array<{ type: string; ok: boolean; error?: string }> = [];
+
+    for (const type of types) {
+      try {
+        const flex = this.buildTestFlexSample(type);
+        if (!flex) {
+          results.push({ type, ok: false, error: 'unknown type' });
+          continue;
+        }
+        await this.lineOaService.sendFlexMessage(targetLineId, flex);
+        results.push({ type, ok: true });
+        // Small throttle between messages — LINE push limit burst protection.
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      } catch (err) {
+        results.push({
+          type,
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    const sent = results.filter((r) => r.ok).length;
+    this.logger.log(`[LINE] test-send-all → ${sent}/${results.length} sent to ${targetLineId}`);
+    return {
+      success: sent > 0,
+      total: results.length,
+      sent,
+      failed: results.length - sent,
+      results,
+    };
+  }
+
+  private async resolveOwnerLineId(lineUserId?: string): Promise<string | null> {
+    if (lineUserId) return lineUserId;
+    const config = await this.prisma.systemConfig.findUnique({
+      where: { key: 'owner_line_id' },
+    });
+    return config?.value ?? null;
+  }
+
+  /** Build a sample Flex payload for a given test type (owner preview only). */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private buildTestFlexSample(type: string): any {
+    const sample = {
+      customerName: 'ทดสอบ สมมุติ',
+      contractNumber: 'BC-2026-0001',
+      installmentNo: 3,
+      totalInstallments: 12,
+    };
+    const longUri = 'https://liff.line.me/2000000000-xxxx/liff/contract';
+
+    switch (type) {
+      case 'payment_reminder':
+        return this.lineOaService.buildPaymentReminder({
+          ...sample,
+          amountDue: 4500,
+          dueDate: '15 เม.ย. 2568',
+          daysUntilDue: 3,
+        });
+      case 'overdue_notice':
+        return this.lineOaService.buildOverdueNotice({
+          ...sample,
+          amountDue: 4500,
+          lateFee: 200,
+          totalOutstanding: 4700,
+          dueDate: '10 เม.ย. 2568',
+          daysOverdue: 5,
+        });
+      case 'payment_success':
+        return this.lineOaService.buildPaymentSuccess({
+          ...sample,
+          amountPaid: 4500,
+          paymentMethod: 'BANK_TRANSFER',
+          paidDate: '15 เม.ย. 2568',
+          remainingInstallments: 9,
+        });
+      case 'balance_summary':
+        return this.lineOaService.buildBalanceSummary({
+          customerName: sample.customerName,
+          contracts: [
+            {
+              contractNumber: sample.contractNumber,
+              totalInstallments: 12,
+              paidInstallments: 5,
+              status: 'ACTIVE',
+              totalOutstanding: 31500,
+              nextDueDate: '20 เม.ย. 2568',
+              nextAmountDue: 4500,
+            },
+          ],
+        });
+      case 'promptpay_qr':
+        return this.lineOaService.buildPromptPayQr({
+          ...sample,
+          amount: 4500,
+          qrImageUrl: 'https://storage.googleapis.com/bestchoice-assets/sample-qr.png',
+          accountName: 'บจก. เบสท์ ชอยส์ ไฟแนนซ์',
+          maskedPromptPayId: 'xxx-xxx-7890',
+        });
+      case 'receipt_history':
+        return this.lineOaService.buildReceiptHistory({
+          customerName: sample.customerName,
+          contracts: [
+            {
+              contractNumber: sample.contractNumber,
+              payments: [
+                { installmentNo: 3, amountPaid: 4500, paidDate: '15 เม.ย. 2568' },
+                { installmentNo: 2, amountPaid: 4500, paidDate: '15 มี.ค. 2568' },
+                { installmentNo: 1, amountPaid: 4500, paidDate: '15 ก.พ. 2568' },
+              ],
+              remainingCount: 9,
+            },
+          ],
+        });
+      case 'contract_selector':
+        return this.lineOaService.buildContractSelector(
+          sample.customerName,
+          [
+            { contractNumber: 'BC-2024-001847', status: 'ACTIVE', totalOutstanding: 22030 },
+            { contractNumber: 'BC-2024-001623', status: 'ACTIVE', totalOutstanding: 15890 },
+            { contractNumber: 'BC-2024-001099', status: 'OVERDUE', totalOutstanding: 8420 },
+          ],
+          'check_installments',
+        );
+      case 'welcome_finance':
+        return buildWelcomeFlex({ oaType: 'finance', liffRegisterUrl: longUri });
+      case 'welcome_shop':
+        return buildWelcomeFlex({ oaType: 'shop', liffRegisterUrl: longUri });
+      case 'contract_signed':
+        return buildContractSignedFlex({
+          customerName: sample.customerName,
+          contractNumber: sample.contractNumber,
+          productName: 'iPhone 15 Pro 256GB',
+          totalMonths: 12,
+          monthlyPayment: 4500,
+          signedAt: '15 เม.ย. 2568',
+          downloadUrl: longUri,
+        });
+      case 'verify_success':
+        return buildVerifySuccessFlex({
+          customerName: sample.customerName,
+          contractNumber: sample.contractNumber,
+          totalInstallments: 12,
+          monthlyAmount: 4500,
+        });
+      case 'link_contract':
+        return buildLinkContractFlex({
+          liffLinkUrl: longUri,
+          liffRegisterUrl: longUri,
+        });
+      case 'contract_completed':
+        return buildContractCompletedFlex({
+          customerName: sample.customerName,
+          contractNumber: sample.contractNumber,
+          productName: 'iPhone 15 Pro 256GB',
+          totalPaid: 54000,
+          totalInstallments: 12,
+          startDate: 'ก.พ. 2567',
+          endDate: 'ก.พ. 2568',
+          loyaltyPointsEarned: 540,
+          shopUrl: 'https://bestchoicephone.app',
+          liffHistoryUrl: longUri,
+        });
+      case 'early_payoff_success':
+        return buildEarlyPayoffSuccessFlex({
+          customerName: sample.customerName,
+          contractNumber: sample.contractNumber,
+          amountPaid: 18450,
+          originalAmount: 22030,
+          savings: 3580,
+          payoffDate: '15 เม.ย. 2568',
+          receiptUrl: longUri,
+          branchPickupHint: 'รับเครื่องได้ที่สาขาใกล้บ้าน — เปิดทุกวัน 10:00–20:00',
+        });
+      case 'promotion':
+        return buildPromotionFlex({
+          title: 'ปิดสัญญาก่อนกำหนด ลดดอกเบี้ย 50%',
+          subtitle: 'ประหยัดดอกเบี้ยได้ทันทีเมื่อปิดยอดก่อนครบสัญญา',
+          ctaUrl: longUri,
+          ctaLabel: 'รับสิทธิ์พิเศษ',
+        });
+      case 'thank_you':
+        return buildThankYouFlex({
+          customerName: sample.customerName,
+          message: 'ขอบคุณที่ชำระตรงเวลา 6 งวดติดต่อกัน · รับโบนัส 60 แต้ม',
+        });
+      case 'new_product':
+        return buildNewProductFlex({
+          productName: 'iPhone 16 Pro Max',
+          price: '฿49,900',
+          downPayment: 'ดาวน์เริ่มต้น ฿5,000',
+          ctaUrl: 'https://bestchoicephone.app',
+        });
+      case 'daily_report':
+        return buildDailyReportFlex({
+          date: '15 เม.ย. 2568',
+          todayPaymentCount: 12,
+          todayPaymentAmount: 54500,
+          overdueCount: 5,
+          overdueAmount: 18200,
+          defaultCount: 2,
+          newContractsToday: 3,
+          pendingApprovals: 1,
+        });
+      default:
+        return null;
     }
   }
 

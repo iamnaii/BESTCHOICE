@@ -3,6 +3,10 @@ name: Build Card Reader
 on:
   push:
     branches: [main]
+    paths:
+      - 'apps/card-reader/**'
+      - '.github/workflows/build-card-reader.yml'
+      - 'package-lock.json'
     tags:
       - 'card-reader-v*'
   workflow_dispatch:

@@ -95,28 +95,38 @@ GRID_TOP = 510
 GRID_LEFT = 140
 GRID_RIGHT = W - 140
 GRID_WIDTH = GRID_RIGHT - GRID_LEFT      # 2120
-COL_GAP = 80
 COLS = 3
-TILE_W = (GRID_WIDTH - COL_GAP * (COLS - 1)) // COLS  # 653
+# Tiles share edges — no inter-column gap; widths parcelled so they sum
+# exactly to GRID_WIDTH (middle column takes any remainder).
+BASE_W = GRID_WIDTH // COLS              # 706
+MID_EXTRA = GRID_WIDTH - BASE_W * COLS   # 2
 TILE_H = 620
 
 
+def tile_x0(col: int) -> int:
+    # col 0: 0, col 1: BASE_W, col 2: BASE_W*2 + MID_EXTRA
+    if col == 0:
+        return GRID_LEFT
+    if col == 1:
+        return GRID_LEFT + BASE_W
+    return GRID_LEFT + BASE_W * 2 + MID_EXTRA
+
+
+def tile_width(col: int) -> int:
+    return BASE_W + MID_EXTRA if col == 1 else BASE_W
+
+
 def draw_specimen(col: int, p: dict):
-    x0 = GRID_LEFT + col * (TILE_W + COL_GAP)
+    x0 = tile_x0(col)
+    TILE_W = tile_width(col)
     y0 = GRID_TOP
     x1 = x0 + TILE_W
     y1 = y0 + TILE_H
 
-    # Wash fill
+    # Pigment wash — edge to edge, no inner border. Tiles touch, hairline
+    # between columns drawn once after all tiles (outside this function).
     draw.rectangle([x0, y0, x1, y1], fill=p["wash"])
-
-    # Inner hairline border
     inset = 16
-    draw.rectangle(
-        [x0 + inset, y0 + inset, x1 - inset, y1 - inset],
-        outline=HAIRLINE,
-        width=1,
-    )
 
     # ─── Icon — 12-tick radial wheel (installment cadence) ─
     icon_cx = x0 + TILE_W // 2
@@ -201,6 +211,18 @@ def draw_specimen(col: int, p: dict):
 
 for i, pigment in enumerate(PIGMENTS):
     draw_specimen(i, pigment)
+
+# Vertical hairline dividers between adjacent tiles (triptych walls)
+for c in range(1, COLS):
+    x = tile_x0(c)
+    draw.line([(x, GRID_TOP), (x, GRID_TOP + TILE_H)], fill=HAIRLINE, width=2)
+
+# Outer frame — single aged-bone hairline around the whole triptych
+draw.rectangle(
+    [GRID_LEFT, GRID_TOP, GRID_LEFT + GRID_WIDTH, GRID_TOP + TILE_H],
+    outline=HAIRLINE,
+    width=1,
+)
 
 
 # ═════════════════════════════════════════════════════════

@@ -1,82 +1,82 @@
-# Merge Guard Report — fix/line-login-token-via-hash
+# Merge Guard Report: fix/line-login-token-via-hash
 
 **Date**: 2026-04-23  
 **Branch**: `fix/line-login-token-via-hash`  
-**Author**: Akenarin Kongdach  
-**Commits**: `85a2cefb`, `7c96ecbb`  
-**Recommendation**: ⚠️ REVIEW
+**Author**: Akenarin Kongdach <iamnaii@MacBook-Pro-khxng-Akenarin.local>  
+**Last Commit**: 2026-04-22 20:20:31 +0700  
+**Reviewed By**: Pre-Merge Guard Agent  
 
 ---
 
 ## File Changes Summary
 
-| File | Changes |
-|------|---------|
-| `apps/api/src/modules/line-oa/line-login.controller.ts` | +14 / -47 |
-| `apps/web/src/hooks/useLiffInit.ts` | +6 / -22 |
+| File | +/- | Description |
+|------|-----|-------------|
+| `apps/api/src/modules/line-oa/line-login.controller.ts` | +14 / -31 | Remove cookie approach; pass `id_token` as URL query param; remove `/id-token` one-shot endpoint |
+| `apps/web/src/hooks/useLiffInit.ts` | +11 / -21 | Read `id_token` from URL query param (with hash fallback); remove `fetch` call to `/id-token` endpoint |
 
-**Total**: 2 files, 20 insertions, 58 deletions (net -38 lines)
+**Total**: 2 files changed, 20 insertions, 58 deletions (net simplification)
 
 ---
 
-## What Changed
+## Change Description
 
-Replaces the three-step cookie-based id_token handoff (callback → set httpOnly cookie → frontend calls `/id-token` endpoint) with a simpler one-step approach: callback appends `id_token` as a URL query parameter in the `302` redirect to the frontend. The frontend reads it directly from `window.location.search`, stores in memory, and immediately cleans the URL via `window.history.replaceState`.
+The previous implementation stored the LINE `id_token` in an `httpOnly` cookie (`line_id_token`) after the OAuth callback, then the frontend fetched it via a dedicated `/id-token` one-shot endpoint. This 3-step cookie approach failed on production because:
 
-Motivation (documented in code comments): WebKit ITP + LINE WKWebView block cross-subdomain `sameSite=none` cookies, and `sameSite=lax` cookies fail in XHR cross-origin within the same site. Fragment (`#`) also got stripped by LINE WKWebView on cross-origin redirects. URL query param is the only reliable channel in this environment.
+- **WebKit ITP** (Safari / LINE in-app WKWebView) blocks cross-subdomain cookies even with `sameSite=none` — confirmed by 401 errors in Cloud Run logs
+- Branch `fix/line-login-cookie-samesite` attempted to fix this with `sameSite: 'none'` but the root cause is ITP, not `sameSite`
 
-The `/id-token` one-shot endpoint is removed entirely, reducing the API surface.
+This branch replaces the cookie flow with a **direct query param approach**: the OAuth callback appends `id_token=<jwt>` to the redirect URL; the frontend reads it immediately, clears it from the URL, and keeps it in-memory.
 
 ---
 
 ## Issues Found
 
 ### Critical
-_None._
+_None_
 
 ### Warning
 
-**W-1 — LINE `id_token` exposed in URL query parameter**  
-`apps/api/src/modules/line-oa/line-login.controller.ts` (line ~148)
+**W-001: LINE `id_token` exposed in URL query parameter**  
+- **File**: `apps/api/src/modules/line-oa/line-login.controller.ts:148`  
+- **Detail**: The LINE ID token (a JWT) is appended to the redirect URL as `?id_token=<jwt>`. This means the token appears briefly in:
+  - Server access logs (Cloud Run request logs)
+  - Browser history (for the ~milliseconds before `replaceState` clears it)
+  - HTTP Referrer header if the LIFF page fires any sub-resource request before the React hook runs
+- **Mitigations already in place**:
+  - Token is a one-shot LINE OAuth `id_token` (10-min expiry) — not an app JWT
+  - Frontend clears the URL immediately via `window.history.replaceState` after reading
+  - Token is then kept only in-memory (not localStorage)
+  - Code comment explicitly acknowledges the trade-off
+- **Assessment**: Acceptable given the WebKit ITP constraint. This matches LINE's own documented recommendation for WKWebView environments. Risk is low; token is short-lived and profile-scoped only (userId, displayName, pictureUrl).
+- **Action**: No code change required. Recommend confirming Cloud Run log retention and access controls are tight (restrict who can read raw HTTP logs).
 
-```typescript
-redirectUrl.searchParams.set('id_token', tokenData.id_token);
-```
-
-The LINE ID token now appears in:
-- Server access logs (Cloud Run / nginx) for the `302` redirect URL
-- Browser history entry (before `replaceState` executes)
-- `Referer` header if the user navigates away before React mounts
-
-Mitigating factors (explicitly acknowledged in code comment):
-- Token is a LINE-issued JWT, valid for ~5 minutes (maxAge comment says 300s)
-- Frontend calls `window.history.replaceState` immediately on mount, before any navigation
-- Token is kept in-memory after reading — not persisted
-
-**Action required**: Confirm with the team that server access-log exposure of short-lived LINE tokens is acceptable, and consider adding an access-log filter/mask for the `id_token` parameter on Cloud Run if sensitivity requires it.
-
-**W-2 — `LineLoginController` not listed in documented intentionally-public exceptions**  
-`apps/api/src/modules/line-oa/line-login.controller.ts` (class level)
-
-The controller has no `@UseGuards(JwtAuthGuard)` and is not present in `.claude/rules/security.md`'s `## Intentionally Public Endpoints` list. This is a pre-existing condition (the controller was already unguarded before this PR), but the rule states:
-
-> ถ้าพบ controller ที่ไม่มี guard ที่ไม่อยู่ในรายการนี้ → ถือว่าเป็น security bug
-
-LINE OAuth callbacks (`/authorize`, `/callback`) **must** be public by design — JWT authentication is impossible at this step since the user has not yet authenticated. The fix for this warning is a one-line documentation update in `security.md`, not a code change.
-
-**Action required**: Add `line-oa/line-login` to the intentionally-public exceptions list in `.claude/rules/security.md` with a note explaining it is the LINE OAuth 2.0 callback handler.
+**W-002: `LineLoginController` not listed in security rules "Intentionally Public Endpoints"**  
+- **File**: `apps/api/src/modules/line-oa/line-login.controller.ts`  
+- **Detail**: The controller has no `@UseGuards(JwtAuthGuard)` and is not in the `Intentionally Public Endpoints` list in `.claude/rules/security.md`. Per the security rule: "ถ้าพบ controller ที่ไม่มี guard ที่ไม่อยู่ในรายการนี้ → ถือว่าเป็น security bug".
+- **Clarification**: This is a **pre-existing condition** — the controller was not added by this branch. It is also functionally correct to be public: it is a LINE OAuth callback receiver and MUST be accessible without a JWT (LINE's servers redirect here). Adding `JwtAuthGuard` would break the OAuth flow.
+- **Action**: Update `.claude/rules/security.md` to add `line-oa/line-login` to the intentionally public list with justification. This PR does not introduce the issue but it's a good time to document it.
 
 ### Info
 
-**I-1 — Raw `fetch()` removed (positive)**  
-The old `useLiffInit.ts` contained a raw `fetch()` call to the `/id-token` endpoint (violating the frontend rule "ห้ามใช้ raw fetch()"). This PR removes that call entirely. Net improvement.
+**I-001: Backward-compatibility fallback reads `id_token` from URL fragment**  
+- **File**: `apps/web/src/hooks/useLiffInit.ts:52-54`  
+- **Detail**: Frontend falls back to reading `id_token` from `window.location.hash` if it's not in query params. This was never a shipped approach (branch `fix/line-login-token-via-hash` itself rejected the hash approach). The fallback is dead code on first deploy.
+- **Action**: Safe to keep as defensive fallback; can be removed in a follow-up cleanup.
 
 ---
 
-## Notes
+## Relationship to fix/line-login-cookie-samesite
 
-- No financial fields touched; no Decimal/Number concerns.
-- No new Prisma queries; no `deletedAt` concern.
-- No new DTOs introduced.
-- Net line count is negative (code simplified).
-- Both warnings are documentation/process gaps, not logic bugs. W-2 in particular is pre-existing and unrelated to the fix itself.
+This branch **supersedes** `fix/line-login-cookie-samesite` (committed 40 min earlier). That branch changed `sameSite: lax → none` as an intermediate fix; this branch removes the cookie mechanism entirely. **Do not merge both.** If this branch merges first, `fix/line-login-cookie-samesite` should be closed as superseded.
+
+---
+
+## Recommendation: 🔶 REVIEW
+
+Merge after:
+1. Confirming Cloud Run log access is restricted to ops team (W-001 mitigation)
+2. Adding `line-oa/line-login` to the intentionally public endpoints list in `.claude/rules/security.md` (W-002)
+3. Closing `fix/line-login-cookie-samesite` as superseded
+
+No code changes required in this branch itself.

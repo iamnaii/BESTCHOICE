@@ -167,6 +167,7 @@ export class CreditCheckService {
         bankName: dto.bankName,
         statementFiles: dto.statementFiles,
         statementMonths: dto.statementMonths ?? 3,
+        reviewNotes: dto.reviewNotes,
       },
       include: {
         customer: { select: { id: true, name: true, phone: true, salary: true, occupation: true } },

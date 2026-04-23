@@ -22,6 +22,11 @@ export class CreateCreditCheckDto {
   @IsNumber()
   @IsOptional()
   statementMonths?: number;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(2000, { message: 'หมายเหตุต้องไม่เกิน 2000 ตัวอักษร' })
+  reviewNotes?: string;
 }
 
 export class OverrideCreditCheckDto {

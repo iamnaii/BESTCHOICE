@@ -64,7 +64,10 @@ describe('CustomerPreCheckService — runPreCheck soft-delete revival', () => {
         create: jest.fn(),
         update: jest.fn().mockResolvedValue({}),
       },
-      creditCheck: { create: jest.fn() },
+      creditCheck: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn(),
+      },
     };
     const tierService = {
       getCustomerTier: jest.fn().mockResolvedValue({ tier: 'NEW', reasons: [] }),
@@ -137,5 +140,70 @@ describe('CustomerPreCheckService — runPreCheck soft-delete revival', () => {
     ).toBe(true);
     expect(result.customerId).toBe('cust-live');
     expect(result.isNewCustomer).toBe(false);
+  });
+
+  // ─── PRE-check idempotency (covers cross-instance / cache-miss races) ────
+  it('reuses a recent PRE credit check instead of creating a duplicate', async () => {
+    prisma.customer.findFirst.mockResolvedValue({ id: 'cust-x', deletedAt: null });
+    prisma.creditCheck.findFirst.mockResolvedValue({ id: 'cc-recent', aiScore: null });
+
+    // Fresh instance so the in-memory cache is empty — forces DB check path.
+    const fresh = await Test.createTestingModule({
+      providers: [
+        CustomerPreCheckService,
+        { provide: PrismaService, useValue: prisma },
+        {
+          provide: CustomerTierService,
+          useValue: {
+            getCustomerTier: jest.fn().mockResolvedValue({ tier: 'NEW', reasons: [] }),
+          },
+        },
+      ],
+    }).compile();
+    const svc = fresh.get(CustomerPreCheckService);
+
+    const result = await svc.runPreCheck({
+      nationalId: '4444444444444',
+      phone: '0820000000',
+      bankName: 'KBANK',
+      statementFiles: ['data:image/png;base64,xxx'],
+    });
+
+    expect(prisma.creditCheck.create).not.toHaveBeenCalled();
+    expect(result.creditCheckId).toBe('cc-recent');
+  });
+
+  it('creates a new PRE credit check when no recent duplicate exists', async () => {
+    prisma.customer.findFirst.mockResolvedValue({ id: 'cust-y', deletedAt: null });
+    prisma.creditCheck.findFirst.mockResolvedValue(null);
+    prisma.creditCheck.create.mockResolvedValue({ id: 'cc-new', aiScore: null });
+
+    const fresh = await Test.createTestingModule({
+      providers: [
+        CustomerPreCheckService,
+        { provide: PrismaService, useValue: prisma },
+        {
+          provide: CustomerTierService,
+          useValue: {
+            getCustomerTier: jest.fn().mockResolvedValue({ tier: 'NEW', reasons: [] }),
+          },
+        },
+      ],
+    }).compile();
+    const svc = fresh.get(CustomerPreCheckService);
+
+    const result = await svc.runPreCheck({
+      nationalId: '5555555555555',
+      phone: '0833333333',
+      bankName: 'SCB',
+      statementFiles: ['data:image/png;base64,yyy'],
+    });
+
+    expect(prisma.creditCheck.create).toHaveBeenCalledTimes(1);
+    expect(result.creditCheckId).toBe('cc-new');
+    const findFirstCall = prisma.creditCheck.findFirst.mock.calls[0][0];
+    expect(findFirstCall.where.checkType).toBe('PRE');
+    expect(findFirstCall.where.bankName).toBe('SCB');
+    expect(findFirstCall.where.deletedAt).toBeNull();
   });
 });

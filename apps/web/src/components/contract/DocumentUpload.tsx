@@ -56,7 +56,12 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
     },
   });
 
-  const { data: creditCheck } = useQuery<{ statementFiles: string[] } | null>({
+  // Pull statement files the customer/staff already uploaded at the credit-check
+  // step — same document, no need to upload again. Prefer the credit check
+  // linked to THIS contract; if none (or it has no files — e.g. the linked
+  // check was an override-only record), fall back to the customer's latest
+  // FULL credit check that does have files.
+  const { data: contractCreditCheck } = useQuery<{ statementFiles: string[] } | null>({
     queryKey: ['contract-credit-check-statement', contractId],
     queryFn: async () => {
       try {
@@ -67,7 +72,22 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
       }
     },
   });
-  const statementFiles = creditCheck?.statementFiles ?? [];
+  const { data: customerCreditCheck } = useQuery<{ statementFiles: string[] } | null>({
+    queryKey: ['customer-credit-check-latest-statement', customerId],
+    queryFn: async () => {
+      if (!customerId) return null;
+      try {
+        const { data } = await api.get(`/customers/${customerId}/credit-check/latest`);
+        return data;
+      } catch {
+        return null;
+      }
+    },
+    enabled: !!customerId,
+  });
+  const contractFiles = contractCreditCheck?.statementFiles ?? [];
+  const customerFiles = customerCreditCheck?.statementFiles ?? [];
+  const statementFiles = contractFiles.length > 0 ? contractFiles : customerFiles;
 
   const uploadMutation = useMutation({
     mutationFn: async ({ file, documentType }: { file: File; documentType: string }) => {

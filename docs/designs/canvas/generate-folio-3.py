@@ -70,23 +70,21 @@ def text_width(text, font):
 # Ported from the rich-menu generator and rescaled for the folio.
 
 def icon_friends(cx: int, cy: int, color):
-    """Two figures standing shoulder to shoulder."""
-    head_r = 48
-    head_cy = cy - 70
+    """Two figures standing shoulder to shoulder — centred on (cx, cy).
+
+    Head atop, inverted-U shoulder arc below (PIL 180→360 draws the
+    TOP half of the ellipse box). Geometry: head spans [cy−90, cy−10],
+    arc peaks at the neck (cy−10) and ends at the shoulder hem (cy+90).
+    """
+    head_r = 40
     spacing = 130
+    arc_w = 200
+    arc_h = 200  # ellipse box; visible (top-half) arc is arc_h/2 = 100 tall
+    head_cy = cy - 50             # head centre; head_top = cy-90, bottom = cy-10
+    arc_top = cy - 10             # arc peak sits on the neck
     lx = cx - spacing // 2
     rx = cx + spacing // 2
-    draw.ellipse(
-        [lx - head_r, head_cy - head_r, lx + head_r, head_cy + head_r],
-        outline=color, width=ICON_STROKE,
-    )
-    draw.ellipse(
-        [rx - head_r, head_cy - head_r, rx + head_r, head_cy + head_r],
-        outline=color, width=ICON_STROKE,
-    )
-    arc_w = 200
-    arc_h = 240
-    arc_top = cy + 10
+    # Heads drawn AFTER the arcs so the outline stays crisp at the neck.
     draw.arc(
         [lx - arc_w // 2, arc_top, lx + arc_w // 2, arc_top + arc_h],
         start=180, end=360, fill=color, width=ICON_STROKE,
@@ -95,17 +93,31 @@ def icon_friends(cx: int, cy: int, color):
         [rx - arc_w // 2, arc_top, rx + arc_w // 2, arc_top + arc_h],
         start=180, end=360, fill=color, width=ICON_STROKE,
     )
+    draw.ellipse(
+        [lx - head_r, head_cy - head_r, lx + head_r, head_cy + head_r],
+        outline=color, width=ICON_STROKE,
+    )
+    draw.ellipse(
+        [rx - head_r, head_cy - head_r, rx + head_r, head_cy + head_r],
+        outline=color, width=ICON_STROKE,
+    )
 
 
 def icon_qr(cx: int, cy: int, color):
-    """Three registration corners + centre modules — a QR in repose."""
-    corner = 96
-    inner = 36
-    off = 138
+    """Three registration corners + centre modules — centred on (cx, cy).
+
+    Bounding box is [-off, +off] square in both axes (symmetric). The
+    L-shaped corner arrangement biases perceived weight toward the
+    top-left, so an optical +14/+14 shift is applied to counter it.
+    """
+    ox, oy = cx + 14, cy + 14
+    corner = 72
+    inner = 28
+    off = 100
     positions = [
-        (cx - off, cy - off),
-        (cx + off - corner, cy - off),
-        (cx - off, cy + off - corner),
+        (ox - off, oy - off),
+        (ox + off - corner, oy - off),
+        (ox - off, oy + off - corner),
     ]
     for x, y in positions:
         draw.rectangle([x, y, x + corner, y + corner],
@@ -113,36 +125,43 @@ def icon_qr(cx: int, cy: int, color):
         ci = (corner - inner) // 2
         draw.rectangle([x + ci, y + ci, x + ci + inner, y + ci + inner],
                        fill=color)
-    m = 22
-    gap = 12
+    m = 18
+    gap = 10
     for dx in (-m - gap, gap):
         for dy in (-m - gap, gap):
-            draw.rectangle([cx + dx, cy + dy, cx + dx + m, cy + dy + m],
+            draw.rectangle([ox + dx, oy + dy, ox + dx + m, oy + dy + m],
                            fill=color)
 
 
 def icon_bubble(cx: int, cy: int, color, wash):
-    """Speech chamber with three measured beads — hollow outline."""
-    w, h = 290, 200
-    top = cy - h // 2 - 16
-    bottom = cy + h // 2 - 16
-    left = cx - w // 2
-    right = cx + w // 2
+    """Speech chamber + three beads + down-left tail, centred on (cx, cy).
+
+    The tail pulls visual mass down and slightly to the left, so the
+    rectangle rides up 30px above the midline and the whole glyph is
+    nudged 10px right to balance.
+    """
+    ox = cx + 10
+    w, h = 260, 170
+    top = cy - h // 2 - 30
+    bottom = cy + h // 2 - 30
+    left = ox - w // 2
+    right = ox + w // 2
     draw.rounded_rectangle(
         [left, top, right, bottom],
-        radius=26, outline=color, width=ICON_STROKE,
+        radius=24, outline=color, width=ICON_STROKE,
     )
-    tail_a = (cx - 32, bottom)
-    tail_b = (cx - 60, bottom + 60)
-    tail_c = (cx + 22, bottom)
+    tail_a = (ox - 28, bottom)
+    tail_b = (ox - 52, bottom + 52)
+    tail_c = (ox + 20, bottom)
     draw.polygon([tail_a, tail_b, tail_c], fill=wash)
     draw.line([tail_a, tail_b], fill=color, width=ICON_STROKE)
     draw.line([tail_b, tail_c], fill=color, width=ICON_STROKE)
-    bead_r = 11
-    for dx in (-56, 0, 56):
+    bead_r = 10
+    beads_cy = (top + bottom) // 2
+    for dx in (-50, 0, 50):
         draw.ellipse(
-            [cx + dx - bead_r, cy - 34 - bead_r,
-             cx + dx + bead_r, cy - 34 + bead_r],
+            [ox + dx - bead_r, beads_cy - bead_r,
+             ox + dx + bead_r, beads_cy + bead_r],
             fill=color,
         )
 
@@ -227,9 +246,11 @@ def draw_specimen(col: int, p: dict):
     draw.rectangle([x0, y0, x1, y1], fill=p["wash"])
     inset = 16
 
-    # ─── Icon — distinctive chamber glyph (friends / qr / bubble)
+    # ─── Icon — distinctive chamber glyph (friends / qr / bubble) ──
+    # Positioned so the icon's visual centre sits cleanly above the
+    # hairline with comfortable breathing room below.
     icon_cx = x0 + TILE_W // 2
-    icon_cy = y0 + 180
+    icon_cy = y0 + 160
     accent = p["accent"]
     draw_icon(p["icon"], icon_cx, icon_cy, accent, p["wash"])
 

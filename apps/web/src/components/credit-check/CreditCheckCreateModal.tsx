@@ -66,8 +66,6 @@ interface CreditCheckCreateModalProps {
   fileRef: React.RefObject<HTMLInputElement | null>;
   isSaving: boolean;
   onSave: () => void;
-  onApprove: () => void;
-  onReject: () => void;
 }
 
 export default function CreditCheckCreateModal({
@@ -105,8 +103,6 @@ export default function CreditCheckCreateModal({
   onReviewNotesDraftChange,
   isSaving,
   onSave,
-  onApprove,
-  onReject,
 }: CreditCheckCreateModalProps) {
   // Keep a local ref for the hidden book-bank input (passed via prop)
   const _bookBankRef = bookBankFileRef;
@@ -611,29 +607,13 @@ export default function CreditCheckCreateModal({
             >
               ยกเลิก
             </button>
-            <div className="flex gap-2">
-              <button
-                onClick={onSave}
-                disabled={isSaving}
-                className="px-4 py-2 text-sm border border-input rounded-lg hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isSaving ? 'กำลังบันทึก...' : 'บันทึก'}
-              </button>
-              <button
-                onClick={onApprove}
-                disabled={isSaving}
-                className="px-4 py-2 text-sm bg-success text-success-foreground rounded-lg hover:bg-success/90 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                อนุมัติ
-              </button>
-              <button
-                onClick={onReject}
-                disabled={isSaving}
-                className="px-4 py-2 text-sm bg-destructive text-destructive-foreground rounded-lg hover:bg-destructive/90 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                ไม่อนุมัติ
-              </button>
-            </div>
+            <button
+              onClick={onSave}
+              disabled={isSaving}
+              className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isSaving ? 'กำลังบันทึก...' : 'บันทึกและเริ่มตรวจเครดิต'}
+            </button>
           </div>
         )}
       </div>

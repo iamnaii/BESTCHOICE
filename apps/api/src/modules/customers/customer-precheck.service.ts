@@ -159,17 +159,37 @@ export class CustomerPreCheckService {
           : outcome.decision === 'FAIL'
             ? 'REJECTED'
             : 'MANUAL_REVIEW';
-      const cc = await this.prisma.creditCheck.create({
-        data: {
+
+      // Idempotency guard: the in-memory cache above only covers this
+      // instance. Across Cloud Run replicas or restarts, concurrent
+      // pre-check calls can race past the cache. Query DB for a recent
+      // PRE check (30s window) and reuse it instead of creating a duplicate.
+      const recentCutoff = new Date(Date.now() - 30_000);
+      const recentDuplicate = await this.prisma.creditCheck.findFirst({
+        where: {
           customerId: customer.id,
-          bankName: input.bankName || null,
-          statementFiles: input.statementFiles,
-          statementMonths: 3,
           checkType: 'PRE',
-          status: ccStatus,
+          deletedAt: null,
+          createdAt: { gte: recentCutoff },
+          bankName: input.bankName || null,
         },
+        orderBy: { createdAt: 'desc' },
         select: { id: true, aiScore: true },
       });
+
+      const cc =
+        recentDuplicate ??
+        (await this.prisma.creditCheck.create({
+          data: {
+            customerId: customer.id,
+            bankName: input.bankName || null,
+            statementFiles: input.statementFiles,
+            statementMonths: 3,
+            checkType: 'PRE',
+            status: ccStatus,
+          },
+          select: { id: true, aiScore: true },
+        }));
       creditCheckId = cc.id;
     }
 

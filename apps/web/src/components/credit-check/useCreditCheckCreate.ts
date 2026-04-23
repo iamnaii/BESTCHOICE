@@ -222,9 +222,10 @@ export function useCreditCheckCreate({ open, preselectedCustomer, onSuccess }: U
         fileUrls.push(url);
       }
       const { data } = await api.post(`/customers/${selectedCustomer.id}/credit-check`, {
-        bankName: bankName || undefined,
+        bankName: statementBankName || bankName || undefined,
         statementFiles: fileUrls,
         statementMonths: 3,
+        reviewNotes: reviewNotesDraft || undefined,
       });
       return data;
     },
@@ -239,20 +240,20 @@ export function useCreditCheckCreate({ open, preselectedCustomer, onSuccess }: U
   });
 
   const saveCreditCheckMutation = useMutation({
-    mutationFn: async ({ customerId, status }: { customerId: string; status?: 'APPROVED' | 'REJECTED' }) => {
+    mutationFn: async ({ customerId }: { customerId: string }) => {
       const { data } = await api.post(`/customers/${customerId}/credit-check`, {
         bankName: statementBankName || bankName || undefined,
         statementFiles: [],
         statementMonths: 3,
         reviewNotes: reviewNotesDraft || undefined,
-        ...(status ? { status } : {}),
       });
-      return { data, status };
+      return data;
     },
-    onSuccess: ({ status }) => {
-      if (status === 'APPROVED') toast.success('อนุมัติเครดิตสำเร็จ');
-      else if (status === 'REJECTED') toast.success('ปฏิเสธเครดิตแล้ว');
-      else toast.success('บันทึกร่างตรวจเครดิตสำเร็จ');
+    onSuccess: () => {
+      // New record starts as PENDING; auto-score runs in background. Final
+      // APPROVED/REJECTED must go through the override dialog (enforces
+      // ≥20-char reason + audit log + role check) — not a one-click action.
+      toast.success('บันทึกตรวจเครดิตสำเร็จ — รอผลวิเคราะห์');
       queryClient.invalidateQueries({ queryKey: ['credit-checks'] });
       queryClient.invalidateQueries({ queryKey: ['customer-credit-checks'] });
       reset();
@@ -266,16 +267,6 @@ export function useCreditCheckCreate({ open, preselectedCustomer, onSuccess }: U
     const files = fileRef.current?.files;
     if (files && files.length > 0) uploadMutation.mutate(files);
     else saveCreditCheckMutation.mutate({ customerId: selectedCustomer.id });
-  };
-
-  const handleApprove = () => {
-    if (!selectedCustomer) return;
-    saveCreditCheckMutation.mutate({ customerId: selectedCustomer.id, status: 'APPROVED' });
-  };
-
-  const handleReject = () => {
-    if (!selectedCustomer) return;
-    saveCreditCheckMutation.mutate({ customerId: selectedCustomer.id, status: 'REJECTED' });
   };
 
   return {
@@ -320,8 +311,6 @@ export function useCreditCheckCreate({ open, preselectedCustomer, onSuccess }: U
       fileRef,
       isSaving: uploadMutation.isPending || saveCreditCheckMutation.isPending,
       onSave: handleSave,
-      onApprove: handleApprove,
-      onReject: handleReject,
     },
 
     bookBankResult,

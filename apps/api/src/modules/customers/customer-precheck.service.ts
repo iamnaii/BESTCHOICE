@@ -104,12 +104,32 @@ export class CustomerPreCheckService {
       return cached.result;
     }
 
-    let customer = await this.prisma.customer.findFirst({
-      where: { nationalId: input.nationalId, deletedAt: null },
-      select: { id: true },
+    // Look up INCLUDING soft-deleted rows. `nationalId` has a @unique
+    // constraint (encrypted AES-256), so a soft-deleted ghost will block
+    // any create() with the same nationalId (P2002). Revive instead of
+    // crashing — the person behind the national ID is the same person.
+    const existing = await this.prisma.customer.findFirst({
+      where: { nationalId: input.nationalId },
+      select: { id: true, deletedAt: true },
     });
+
+    let customer: { id: string };
     let isNewCustomer = false;
-    if (!customer) {
+
+    if (existing?.deletedAt) {
+      await this.prisma.customer.update({
+        where: { id: existing.id },
+        data: {
+          deletedAt: null,
+          phone: input.phone,
+          creditCheckStatus: 'UNDER_REVIEW',
+        },
+      });
+      customer = { id: existing.id };
+      this.logger.log(`[pre-check] revived soft-deleted customer ${existing.id}`);
+    } else if (existing) {
+      customer = { id: existing.id };
+    } else {
       customer = await this.prisma.customer.create({
         data: {
           nationalId: input.nationalId,

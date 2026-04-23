@@ -318,7 +318,7 @@ export function useCreditCheckCreate({ open, preselectedCustomer, onSuccess }: U
       onReviewNotesDraftChange: setReviewNotesDraft,
       bankName,
       fileRef,
-      isUploadPending: uploadMutation.isPending,
+      isSaving: uploadMutation.isPending || saveCreditCheckMutation.isPending,
       onSave: handleSave,
       onApprove: handleApprove,
       onReject: handleReject,

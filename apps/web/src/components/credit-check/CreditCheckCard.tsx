@@ -50,6 +50,11 @@ export default function CreditCheckCard({
   const csCfg = getStatusBadgeProps(cc.status, creditCheckStatusMap);
   const ai = cc.aiAnalysis as AiAnalysisData | null;
   const risk = riskFromScore(cc.aiScore);
+  // Only show AI risk badge when it adds info beyond the status badge:
+  // - status=PENDING + score present: status says "รอวิเคราะห์" but AI already has an opinion
+  // Otherwise the status badge alone is authoritative, and the numeric score
+  // bar below still shows AI's view (avoids redundant/contradictory badges).
+  const showRiskBadge = cc.status === 'PENDING' && cc.aiScore !== null;
   const scoreColor =
     cc.aiScore === null
       ? 'text-muted-foreground'
@@ -74,13 +79,15 @@ export default function CreditCheckCard({
           <Badge variant={csCfg.variant} appearance={csCfg.appearance} size="sm">
             {csCfg.label}
           </Badge>
-          <Badge
-            variant={risk.tone === 'muted' ? 'secondary' : risk.tone}
-            appearance="light"
-            size="sm"
-          >
-            {risk.label}
-          </Badge>
+          {showRiskBadge && (
+            <Badge
+              variant={risk.tone === 'muted' ? 'secondary' : risk.tone}
+              appearance="light"
+              size="sm"
+            >
+              {risk.label}
+            </Badge>
+          )}
           {cc.bankName && <span className="text-xs text-muted-foreground">ธนาคาร: {cc.bankName}</span>}
           <span className="text-xs text-muted-foreground">{formatDateShort(cc.createdAt)}</span>
           {cc.statementMonths > 0 && (

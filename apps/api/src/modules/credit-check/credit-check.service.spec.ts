@@ -23,8 +23,13 @@ describe('CreditCheckService override audit', () => {
 
   beforeEach(async () => {
     prisma = {
+      customer: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'cust-1', deletedAt: null }),
+      },
       creditCheck: {
         findUnique: jest.fn().mockResolvedValue(baseCheck),
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn((args) => Promise.resolve({ id: 'cc-new', ...args.data })),
         update: jest.fn((args) => Promise.resolve({ id: 'cc-1', ...args.data })),
       },
       auditLog: {
@@ -129,6 +134,59 @@ describe('CreditCheckService override audit', () => {
     // Still REJECTED / 35 — we don't lose the AI's original verdict
     expect(data.originalStatus).toBe('REJECTED');
     expect(data.originalScore).toBe(35);
+  });
+
+  // ─── createForCustomer idempotency (double-click / retry protection) ──────
+  describe('createForCustomer — idempotency', () => {
+    it('returns existing record if an identical submission landed within 30s', async () => {
+      const existing = {
+        id: 'cc-existing',
+        customerId: 'cust-1',
+        bankName: 'ธนาคารกรุงไทย',
+        statementMonths: 3,
+        createdAt: new Date(Date.now() - 5_000),
+        deletedAt: null,
+      };
+      prisma.creditCheck.findFirst.mockResolvedValue(existing);
+
+      const result = await service.createForCustomer(
+        'cust-1',
+        { bankName: 'ธนาคารกรุงไทย', statementFiles: [], statementMonths: 3 },
+        'u-1',
+      );
+
+      expect(result).toBe(existing);
+      expect(prisma.creditCheck.create).not.toHaveBeenCalled();
+    });
+
+    it('creates new record when no recent duplicate exists', async () => {
+      prisma.creditCheck.findFirst.mockResolvedValue(null);
+
+      await service.createForCustomer(
+        'cust-1',
+        { bankName: 'ธนาคารกรุงไทย', statementFiles: [], statementMonths: 3 },
+        'u-1',
+      );
+
+      expect(prisma.creditCheck.create).toHaveBeenCalledTimes(1);
+      const findFirstArgs = prisma.creditCheck.findFirst.mock.calls[0][0];
+      expect(findFirstArgs.where.customerId).toBe('cust-1');
+      expect(findFirstArgs.where.bankName).toBe('ธนาคารกรุงไทย');
+      expect(findFirstArgs.where.statementMonths).toBe(3);
+      expect(findFirstArgs.where.deletedAt).toBeNull();
+    });
+
+    it('throws NotFound when customer missing', async () => {
+      prisma.customer.findUnique.mockResolvedValue(null);
+      await expect(
+        service.createForCustomer(
+          'missing',
+          { bankName: null as unknown as string, statementFiles: [] },
+          'u-1',
+        ),
+      ).rejects.toThrow(NotFoundException);
+      expect(prisma.creditCheck.create).not.toHaveBeenCalled();
+    });
   });
 
   // ─── T4-C4: evidence gate on overrideById() ──────────────────────────────

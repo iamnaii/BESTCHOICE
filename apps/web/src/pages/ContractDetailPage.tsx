@@ -339,7 +339,20 @@ const deleteMutation = useMutation({
             )}
             {canDelete && (
               <button
-                onClick={() => setConfirmDialog({ open: true, title: 'ลบสัญญา', message: 'ยืนยันลบสัญญานี้?', variant: 'destructive', action: () => deleteMutation.mutate() })}
+                onClick={() => {
+                  const sigCount = contract.signatures?.length ?? 0;
+                  const message =
+                    sigCount > 0
+                      ? `สัญญานี้มีลายเซ็น ${sigCount} รายการที่เก็บไว้ก่อนถูกปฏิเสธ — การลบจะลบลายเซ็นด้วย (soft delete, กู้คืนได้) ยืนยันหรือไม่?`
+                      : 'ยืนยันลบสัญญานี้?';
+                  setConfirmDialog({
+                    open: true,
+                    title: 'ลบสัญญา',
+                    message,
+                    variant: 'destructive',
+                    action: () => deleteMutation.mutate(),
+                  });
+                }}
                 disabled={deleteMutation.isPending}
                 className="px-4 py-2 text-sm bg-destructive text-destructive-foreground rounded-lg hover:bg-destructive/90 disabled:opacity-50"
               >

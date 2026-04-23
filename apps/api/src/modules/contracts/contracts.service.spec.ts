@@ -216,6 +216,12 @@ describe('ContractsService', () => {
       systemConfig: {
         findMany: jest.fn().mockResolvedValue([]),
       },
+      signature: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      auditLog: {
+        create: jest.fn().mockResolvedValue({}),
+      },
       $transaction: makeTxMock(),
     };
 
@@ -672,7 +678,7 @@ describe('ContractsService', () => {
       await expect(service.softDelete('contract-1', 'user-1')).rejects.toBeInstanceOf(BadRequestException);
     });
 
-    it('throws BadRequestException when the contract already has signatures', async () => {
+    it('throws BadRequestException when a CREATING contract already has signatures', async () => {
       prisma.contract.findUnique.mockResolvedValue({
         ...mockContract,
         status: 'DRAFT',
@@ -681,6 +687,59 @@ describe('ContractsService', () => {
       });
 
       await expect(service.softDelete('contract-1', 'user-1')).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('allows delete of a REJECTED contract that has signatures — cascade soft-deletes them', async () => {
+      prisma.contract.findUnique.mockResolvedValue({
+        ...mockContract,
+        status: 'DRAFT',
+        workflowStatus: 'REJECTED',
+        signatures: [
+          { id: 'sig-1', signerType: 'CUSTOMER', signerName: 'สมชาย' },
+          { id: 'sig-2', signerType: 'STAFF', signerName: 'พนง.' },
+        ],
+        productId: 'product-1',
+      });
+      prisma.$transaction.mockImplementation(async (opsOrFn: unknown) => {
+        if (typeof opsOrFn === 'function') return (opsOrFn as (tx: unknown) => Promise<unknown>)(prisma);
+        return Promise.all(opsOrFn as Promise<unknown>[]);
+      });
+
+      const result = await service.softDelete('contract-1', 'user-1');
+
+      expect(result.message).toContain('ลายเซ็น 2');
+      expect(prisma.signature.updateMany).toHaveBeenCalledWith({
+        where: { contractId: 'contract-1', deletedAt: null },
+        data: { deletedAt: expect.any(Date) },
+      });
+      expect(prisma.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            action: 'CONTRACT_DELETE',
+            entity: 'contract',
+            entityId: 'contract-1',
+            newValue: { cascadedSignatures: 2 },
+          }),
+        }),
+      );
+    });
+
+    it('deletes a REJECTED contract without signatures — no signature cascade, no cascade message', async () => {
+      prisma.contract.findUnique.mockResolvedValue({
+        ...mockContract,
+        status: 'DRAFT',
+        workflowStatus: 'REJECTED',
+        signatures: [],
+      });
+      prisma.$transaction.mockImplementation(async (opsOrFn: unknown) => {
+        if (typeof opsOrFn === 'function') return (opsOrFn as (tx: unknown) => Promise<unknown>)(prisma);
+        return Promise.all(opsOrFn as Promise<unknown>[]);
+      });
+
+      const result = await service.softDelete('contract-1', 'user-1');
+
+      expect(result.message).not.toContain('ลายเซ็น');
+      expect(prisma.signature.updateMany).not.toHaveBeenCalled();
     });
 
     it('soft-deletes the contract and releases the product back to IN_STOCK', async () => {

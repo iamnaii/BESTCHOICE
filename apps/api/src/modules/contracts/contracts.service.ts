@@ -655,21 +655,62 @@ export class ContractsService {
       );
     }
 
-    // ถ้ามีลายเซ็นแล้ว ห้ามลบเด็ดขาด
-    if (contract.signatures && contract.signatures.length > 0) {
-      throw new BadRequestException('ไม่สามารถลบสัญญาที่มีลายเซ็นแล้ว');
+    // Signatures on an ACTIVE/signed-but-pending contract are eIDAS evidence —
+    // cannot be erased. BUT a REJECTED workflow means manager voided the
+    // contract before activation; any signatures collected beforehand have no
+    // legal force. Cascade soft-delete them (row retained for audit).
+    const hasSignatures = contract.signatures && contract.signatures.length > 0;
+    if (hasSignatures && contract.workflowStatus !== 'REJECTED') {
+      throw new BadRequestException(
+        'ไม่สามารถลบสัญญาที่มีลายเซ็นแล้ว — ' +
+          'อนุญาตเฉพาะสัญญาที่ถูกปฏิเสธ (workflowStatus = REJECTED) เท่านั้น',
+      );
     }
 
+    const now = new Date();
+    const cascadedSignatures = hasSignatures ? contract.signatures.length : 0;
+
     await this.prisma.$transaction([
-      this.prisma.contract.update({ where: { id }, data: { deletedAt: new Date() } }),
+      this.prisma.contract.update({ where: { id }, data: { deletedAt: now } }),
+      // Cascade soft-delete signatures only when the contract is REJECTED.
+      // No-op when there are no signatures (unsigned drafts).
+      ...(cascadedSignatures > 0
+        ? [
+            this.prisma.signature.updateMany({
+              where: { contractId: id, deletedAt: null },
+              data: { deletedAt: now },
+            }),
+          ]
+        : []),
       // Release reserved product back to IN_STOCK
       this.prisma.product.updateMany({
         where: { id: contract.productId, status: 'RESERVED' },
         data: { status: 'IN_STOCK' },
       }),
+      this.prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'CONTRACT_DELETE',
+          entity: 'contract',
+          entityId: id,
+          oldValue: {
+            contractNumber: contract.contractNumber,
+            status: contract.status,
+            workflowStatus: contract.workflowStatus,
+          },
+          newValue: {
+            cascadedSignatures,
+          },
+        },
+      }),
     ]);
 
-    return { message: 'ลบสัญญาเรียบร้อย (soft delete)' };
+    return {
+      message:
+        cascadedSignatures > 0
+          ? `ลบสัญญาเรียบร้อย (soft delete) พร้อมลายเซ็น ${cascadedSignatures} รายการ`
+          : 'ลบสัญญาเรียบร้อย (soft delete)',
+    };
   }
 
   /**

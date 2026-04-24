@@ -523,7 +523,11 @@ export class LineOaPaymentController {
 
     const payment = link.payment!;
     const contract = link.contract;
-    const amount = sumOutstanding(payment);
+    // Use link.amount (authoritative) — createPaymentLink honors the
+    // overrideAmount for early-payoff links. Recomputing from the linked
+    // installment would return the single-installment total, not the full
+    // payoff amount.
+    const amount = d(link.amount);
 
     // Generate PromptPay QR as data URL for the LIFF page
     let qrDataUrl: string | null = null;

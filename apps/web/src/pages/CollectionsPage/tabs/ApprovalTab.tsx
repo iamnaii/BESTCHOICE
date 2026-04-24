@@ -10,6 +10,7 @@ import {
 } from '../hooks/useApprovalQueues';
 import { EscalationRow, MdmRow } from '../components/ApprovalPendingRow';
 import LetterQueueSection from '../components/LetterQueueSection';
+import LineRetryQueueSection from '../components/LineRetryQueueSection';
 
 function RowSkeleton() {
   return <div className="bg-muted animate-pulse h-20 rounded-lg" />;
@@ -112,6 +113,9 @@ export default function ApprovalTab() {
 
       {/* Letter queue — generate PDF → dispatch → track delivery */}
       <LetterQueueSection />
+
+      {/* LINE/SMS retry queue — failed DunningActions */}
+      <LineRetryQueueSection />
     </div>
   );
 }

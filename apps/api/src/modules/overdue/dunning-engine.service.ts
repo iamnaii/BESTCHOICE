@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
+import { DunningEventTrigger } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DunningRuleService } from './dunning-rule.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -260,6 +261,134 @@ export class DunningEngineService {
             },
           },
         },
+      },
+    });
+  }
+
+  /**
+   * Execute a single event-triggered dunning rule. Fired from call-log events,
+   * MDM approval, letter dispatch, etc. Not called by the scheduled cron.
+   *
+   * Dedup window: 4h per (rule, contract, payment). Prevents accidental spam
+   * if the same event fires twice quickly.
+   *
+   * Failure is non-fatal — the caller's business action (call log, MDM flip,
+   * letter dispatch) should not roll back because LINE send failed. Errors are
+   * captured to Sentry and logged.
+   */
+  async executeEventTrigger(
+    eventKey: DunningEventTrigger,
+    contractId: string,
+    paymentId: string | null,
+    callLogId: string | null,
+    extraVars: Partial<TemplateVars> = {},
+  ): Promise<void> {
+    const rule = await this.prisma.dunningRule.findFirst({
+      where: { eventTrigger: eventKey, isActive: true, deletedAt: null },
+    });
+    if (!rule) return; // no configured rule = no-op
+
+    const fourHoursAgo = new Date(Date.now() - 4 * 60 * 60 * 1000);
+    const recent = await this.prisma.dunningAction.findFirst({
+      where: {
+        dunningRuleId: rule.id,
+        contractId,
+        paymentId: paymentId ?? undefined,
+        createdAt: { gte: fourHoursAgo },
+        deletedAt: null,
+      },
+    });
+    if (recent) return;
+
+    const contract = await this.prisma.contract.findUnique({
+      where: { id: contractId },
+      include: { customer: { select: { name: true, lineId: true, phone: true } } },
+    });
+    if (!contract) return;
+
+    const payment = paymentId
+      ? await this.prisma.payment.findUnique({ where: { id: paymentId } })
+      : null;
+
+    const vars: TemplateVars = {
+      customerName: contract.customer.name,
+      contractNumber: contract.contractNumber,
+      amount: payment ? payment.amountDue.toNumber().toLocaleString('th-TH') : '',
+      dueDate: payment ? formatDateShort(payment.dueDate) : '',
+      daysOverdue: '',
+      installmentNo: payment ? String(payment.installmentNo) : '',
+      ...extraVars,
+    };
+
+    const messageContent = this.renderTemplate(rule.messageTemplate, vars);
+
+    let paymentLinkUrl: string | undefined;
+    if (rule.includePaymentLink && payment && contract.customer.lineId) {
+      try {
+        const link = await this.paymentLinkService.createPaymentLink(
+          contractId,
+          payment.installmentNo,
+        );
+        paymentLinkUrl = link.url;
+      } catch (err) {
+        Sentry.captureException(err, {
+          tags: {
+            service: 'DunningEngineService',
+            method: 'executeEventTrigger.paymentLink',
+          },
+          extra: { eventKey, contractId, paymentId },
+        });
+      }
+    }
+
+    let status: 'SENT' | 'FAILED' | 'SKIPPED' = 'SKIPPED';
+    let result: string | null = null;
+
+    if (rule.autoExecute && (rule.channel === 'LINE' || rule.channel === 'SMS')) {
+      const recipient =
+        rule.channel === 'LINE' ? contract.customer.lineId : contract.customer.phone;
+      if (recipient) {
+        const finalMessage = paymentLinkUrl
+          ? `${messageContent}\n\nชำระเงินออนไลน์: ${paymentLinkUrl}`
+          : messageContent;
+        try {
+          const sendResult = await this.notificationsService.send({
+            channel: rule.channel as 'LINE' | 'SMS',
+            recipient,
+            message: finalMessage,
+            relatedId: contractId,
+            fallbackPhone:
+              rule.channel === 'LINE' ? contract.customer.phone : undefined,
+          });
+          status = sendResult.status === 'SENT' ? 'SENT' : 'FAILED';
+          result = `notificationId:${sendResult.id}`;
+        } catch (err) {
+          status = 'FAILED';
+          result = err instanceof Error ? err.message : 'send error';
+          Sentry.captureException(err, {
+            tags: {
+              service: 'DunningEngineService',
+              method: 'executeEventTrigger.send',
+            },
+            extra: { eventKey, contractId, paymentId },
+          });
+        }
+      } else {
+        result = 'no recipient';
+      }
+    }
+
+    await this.prisma.dunningAction.create({
+      data: {
+        dunningRuleId: rule.id,
+        contractId,
+        paymentId: paymentId ?? undefined,
+        channel: rule.channel as any,
+        status: status as any,
+        messageContent,
+        result,
+        paymentLinkUrl: paymentLinkUrl ?? null,
+        executedAt: status === 'SENT' ? new Date() : null,
       },
     });
   }

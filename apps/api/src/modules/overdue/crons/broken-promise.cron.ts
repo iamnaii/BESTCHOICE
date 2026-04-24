@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { DunningEngineService } from '../dunning-engine.service';
 
 /**
  * Broken-promise cron — flags promise-to-pay entries (CallLog.result='PROMISED')
@@ -19,7 +20,10 @@ import { PrismaService } from '../../../prisma/prisma.service';
 export class BrokenPromiseCron {
   private readonly logger = new Logger(BrokenPromiseCron.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly dunningEngine: DunningEngineService,
+  ) {}
 
   @Cron('0 * * * *', { timeZone: 'Asia/Bangkok' })
   async flagBrokenPromises(): Promise<{ flagged: number }> {
@@ -51,7 +55,23 @@ export class BrokenPromiseCron {
         data: { brokenAt: now },
       });
 
-      this.logger.warn(`Flagged ${candidates.length} broken promise(s)`);
+      // Fire BROKEN_PROMISE event per unique contract — customer gets a LINE nudge.
+      // Dedup window in executeEventTrigger (4h) prevents spam when multiple
+      // call logs for the same contract break at once. Non-fatal — flag stands
+      // even if LINE send fails.
+      const uniqueContractIds = Array.from(new Set(candidates.map((c) => c.contractId)));
+      for (const contractId of uniqueContractIds) {
+        try {
+          await this.dunningEngine.executeEventTrigger('BROKEN_PROMISE', contractId, null, null);
+        } catch (evErr) {
+          Sentry.captureException(evErr, {
+            tags: { cron: 'broken-promise', step: 'executeEventTrigger' },
+            extra: { contractId },
+          });
+        }
+      }
+
+      this.logger.warn(`Flagged ${candidates.length} broken promise(s) across ${uniqueContractIds.length} contract(s)`);
 
       Sentry.captureMessage(
         `Broken-promise cron flagged ${candidates.length} entries`,

@@ -137,16 +137,12 @@ function getEventStyle(event: TimelineEvent): EventStyle {
 
 // ─── sub-components ──────────────────────────────────────────────────────────
 
-function EventCard({ event, isFirst }: { event: TimelineEvent; isFirst: boolean }) {
+function EventCard({ event }: { event: TimelineEvent }) {
   const { Icon, iconBg, iconText, typeLabel } = getEventStyle(event);
   const label = timeLabel(event.timestamp);
 
   return (
-    <div
-      className={`flex gap-3 px-1 py-2.5 rounded-lg hover:bg-muted/40 transition-colors ${
-        isFirst ? '' : ''
-      }`}
-    >
+    <div className="flex gap-3 px-1 py-2.5 rounded-lg hover:bg-muted/40 transition-colors">
       {/* Icon circle */}
       <div
         className={`shrink-0 mt-0.5 size-8 rounded-full flex items-center justify-center ${iconBg}`}
@@ -205,8 +201,8 @@ export default function Customer360Timeline({ events }: Props) {
 
           {/* Events */}
           <div>
-            {group.items.map((event, idx) => (
-              <EventCard key={event.id} event={event} isFirst={idx === 0} />
+            {group.items.map((event) => (
+              <EventCard key={event.id} event={event} />
             ))}
           </div>
         </div>

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { OverdueController } from './overdue.controller';
 import { OverdueService } from './overdue.service';
 import { OverdueChatService } from './overdue-chat.service';
+import { ContractLetterService } from './contract-letter.service';
 import { DunningRuleService } from './dunning-rule.service';
 import { DunningEngineService } from './dunning-engine.service';
 import { BrokenPromiseCron } from './crons/broken-promise.cron';
@@ -15,10 +16,11 @@ import { LineOaModule } from '../line-oa/line-oa.module';
   providers: [
     OverdueService,
     OverdueChatService,
+    ContractLetterService,
     DunningRuleService,
     DunningEngineService,
     BrokenPromiseCron,
   ],
-  exports: [OverdueService, DunningRuleService, DunningEngineService],
+  exports: [OverdueService, ContractLetterService, DunningRuleService, DunningEngineService],
 })
 export class OverdueModule {}

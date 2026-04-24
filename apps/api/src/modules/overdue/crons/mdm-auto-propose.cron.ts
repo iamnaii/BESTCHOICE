@@ -1,0 +1,127 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
+import * as Sentry from '@sentry/nestjs';
+import { PrismaService } from '../../../prisma/prisma.service';
+import { MdmLockService } from '../mdm-lock.service';
+
+@Injectable()
+export class MdmAutoProposeCron {
+  private readonly logger = new Logger(MdmAutoProposeCron.name);
+
+  constructor(
+    private prisma: PrismaService,
+    private mdmLockService: MdmLockService,
+  ) {}
+
+  @Cron(CronExpression.EVERY_DAY_AT_9AM)
+  async run(): Promise<{ uncontactable: number; noPromise: number }> {
+    try {
+      const enabledCfg = await this.prisma.systemConfig.findUnique({
+        where: { key: 'mdm_auto_propose_enabled' },
+      });
+      if (enabledCfg?.value !== 'true') {
+        this.logger.log('mdm_auto_propose_enabled=false — skipping');
+        return { uncontactable: 0, noPromise: 0 };
+      }
+
+      const uncontactableHours = Number(
+        (
+          await this.prisma.systemConfig.findUnique({
+            where: { key: 'mdm_uncontactable_threshold_hours' },
+          })
+        )?.value ?? 72,
+      );
+      const noPromiseDays = Number(
+        (
+          await this.prisma.systemConfig.findUnique({
+            where: { key: 'mdm_no_promise_threshold_days' },
+          })
+        )?.value ?? 3,
+      );
+
+      const now = new Date();
+      const hoursAgo = new Date(now.getTime() - uncontactableHours * 60 * 60 * 1000);
+      const daysAgo = new Date(now.getTime() - noPromiseDays * 24 * 60 * 60 * 1000);
+
+      // UNCONTACTABLE_3D — >=3 NO_ANSWER in window, no ANSWERED/PROMISED interleaved
+      const uncontactable = await this.prisma.$queryRaw<{ contract_id: string }[]>`
+        SELECT "contract_id"
+        FROM "call_logs"
+        WHERE "called_at" >= ${hoursAgo}
+          AND "result" = 'NO_ANSWER'
+        GROUP BY "contract_id"
+        HAVING COUNT(*) >= 3
+          AND NOT EXISTS (
+            SELECT 1 FROM "call_logs" c2
+            WHERE c2."contract_id" = "call_logs"."contract_id"
+              AND c2."called_at" >= ${hoursAgo}
+              AND c2."result" IN ('ANSWERED','PROMISED')
+          )
+      `;
+
+      for (const { contract_id } of uncontactable) {
+        try {
+          await this.mdmLockService.proposeAuto(
+            contract_id,
+            'UNCONTACTABLE_3D',
+            `ติดต่อไม่ได้ ${uncontactableHours}h ที่ผ่านมา (NO_ANSWER ≥ 3 ครั้ง)`,
+          );
+        } catch (err) {
+          Sentry.captureException(err, {
+            tags: { cron: 'mdm-auto-propose', trigger: 'UNCONTACTABLE_3D' },
+            extra: { contractId: contract_id },
+          });
+        }
+      }
+
+      // NO_PROMISE_3D — OVERDUE >= N days, no future settlement, no recent payment
+      const flaggedSet = new Set(uncontactable.map((r) => r.contract_id));
+      const noPromiseContracts = await this.prisma.contract.findMany({
+        where: {
+          status: 'OVERDUE',
+          deletedAt: null,
+          payments: {
+            some: {
+              dueDate: { lt: daysAgo },
+              status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] },
+            },
+          },
+          callLogs: {
+            none: {
+              result: 'PROMISED',
+              settlementDate: { gte: now },
+            },
+          },
+        },
+        select: { id: true },
+      });
+
+      let noPromiseCount = 0;
+      for (const { id } of noPromiseContracts) {
+        if (flaggedSet.has(id)) continue; // already handled by UNCONTACTABLE branch
+        try {
+          await this.mdmLockService.proposeAuto(
+            id,
+            'NO_PROMISE_3D',
+            `ค้าง ≥ ${noPromiseDays} วัน ไม่มีนัดชำระและไม่จ่าย`,
+          );
+          noPromiseCount++;
+        } catch (err) {
+          Sentry.captureException(err, {
+            tags: { cron: 'mdm-auto-propose', trigger: 'NO_PROMISE_3D' },
+            extra: { contractId: id },
+          });
+        }
+      }
+
+      this.logger.log(
+        `MDM auto-propose: uncontactable=${uncontactable.length}, no_promise=${noPromiseCount}`,
+      );
+      return { uncontactable: uncontactable.length, noPromise: noPromiseCount };
+    } catch (err) {
+      Sentry.captureException(err, { tags: { cron: 'mdm-auto-propose' } });
+      this.logger.error(`mdm-auto-propose failed: ${err instanceof Error ? err.message : err}`);
+      return { uncontactable: 0, noPromise: 0 };
+    }
+  }
+}

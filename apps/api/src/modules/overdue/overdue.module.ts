@@ -7,6 +7,7 @@ import { DunningRuleService } from './dunning-rule.service';
 import { DunningEngineService } from './dunning-engine.service';
 import { MdmLockService } from './mdm-lock.service';
 import { BrokenPromiseCron } from './crons/broken-promise.cron';
+import { MdmAutoProposeCron } from './crons/mdm-auto-propose.cron';
 import { ChatEngineModule } from '../chat-engine/chat-engine.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { LineOaModule } from '../line-oa/line-oa.module';
@@ -22,6 +23,7 @@ import { LineOaModule } from '../line-oa/line-oa.module';
     DunningEngineService,
     MdmLockService,
     BrokenPromiseCron,
+    MdmAutoProposeCron,
   ],
   exports: [
     OverdueService,

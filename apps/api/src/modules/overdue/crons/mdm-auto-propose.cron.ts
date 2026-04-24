@@ -3,6 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { MdmLockService } from '../mdm-lock.service';
+import { OwnerAlertHelper } from '../owner-alert.helper';
 
 @Injectable()
 export class MdmAutoProposeCron {
@@ -11,6 +12,7 @@ export class MdmAutoProposeCron {
   constructor(
     private prisma: PrismaService,
     private mdmLockService: MdmLockService,
+    private ownerAlertHelper: OwnerAlertHelper,
   ) {}
 
   @Cron(CronExpression.EVERY_DAY_AT_9AM)
@@ -128,6 +130,18 @@ export class MdmAutoProposeCron {
       this.logger.log(
         `MDM auto-propose: uncontactable=${uncontactable.length}, no_promise=${noPromiseCount}`,
       );
+
+      // Alert OWNER if anything new was proposed
+      const totalProposed = uncontactable.length + noPromiseCount;
+      if (totalProposed > 0) {
+        try {
+          const msg = `[ติดตามหนี้] มีคำขอล็อคเครื่องใหม่ ${totalProposed} รายการรออนุมัติ (ติดต่อไม่ได้ ${uncontactable.length} / ไม่มีนัด ${noPromiseCount}) เปิด /collections แท็บ "อนุมัติ" เพื่อตรวจ`;
+          await this.ownerAlertHelper.sendToAllOwners(msg, 'mdm-auto-propose');
+        } catch (err) {
+          Sentry.captureException(err, { tags: { cron: 'mdm-auto-propose', step: 'owner-alert' } });
+        }
+      }
+
       return { uncontactable: uncontactable.length, noPromise: noPromiseCount };
     } catch (err) {
       Sentry.captureException(err, { tags: { cron: 'mdm-auto-propose' } });

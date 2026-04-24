@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ContractLetterService } from '../contract-letter.service';
+import { OwnerAlertHelper } from '../owner-alert.helper';
 import { LetterAutoGenerateCron } from './letter-auto-generate.cron';
 
 const mockPrisma = {
@@ -12,16 +13,22 @@ const mockLetterService = {
   createIfNotExists: jest.fn(),
 };
 
+const mockOwnerAlert = {
+  sendToAllOwners: jest.fn().mockResolvedValue({ sent: 1, failed: 0 }),
+};
+
 describe('LetterAutoGenerateCron', () => {
   let cron: LetterAutoGenerateCron;
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    mockOwnerAlert.sendToAllOwners.mockResolvedValue({ sent: 1, failed: 0 });
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         LetterAutoGenerateCron,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: ContractLetterService, useValue: mockLetterService },
+        { provide: OwnerAlertHelper, useValue: mockOwnerAlert },
       ],
     }).compile();
     cron = module.get(LetterAutoGenerateCron);
@@ -113,5 +120,33 @@ describe('LetterAutoGenerateCron', () => {
 
     const result = await cron.run();
     expect(result).toEqual({ returnDevice: 0, termination: 0 });
+  });
+
+  it('sends OWNER alert when new letters were created', async () => {
+    mockPrisma.contract.findMany
+      .mockResolvedValueOnce([{ id: 'c1' }]) // returnCandidates
+      .mockResolvedValueOnce([{ id: 'c2' }, { id: 'c3' }]); // terminationCandidates
+
+    await cron.run();
+
+    expect(mockOwnerAlert.sendToAllOwners).toHaveBeenCalledWith(
+      expect.stringContaining('หนังสือทวงถาม'),
+      'letter-auto-generate',
+    );
+  });
+
+  it('skips OWNER alert when no letters were created', async () => {
+    // Both findMany return empty (defaults already set in beforeEach)
+    await cron.run();
+    expect(mockOwnerAlert.sendToAllOwners).not.toHaveBeenCalled();
+  });
+
+  it('does not fail the cron when OWNER alert throws', async () => {
+    mockPrisma.contract.findMany
+      .mockResolvedValueOnce([{ id: 'c1' }])
+      .mockResolvedValueOnce([]);
+    mockOwnerAlert.sendToAllOwners.mockRejectedValueOnce(new Error('LINE down'));
+
+    await expect(cron.run()).resolves.toBeTruthy();
   });
 });

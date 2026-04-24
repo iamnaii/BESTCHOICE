@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ContractLetterService } from '../contract-letter.service';
+import { OwnerAlertHelper } from '../owner-alert.helper';
 
 @Injectable()
 export class LetterAutoGenerateCron {
@@ -11,6 +12,7 @@ export class LetterAutoGenerateCron {
   constructor(
     private prisma: PrismaService,
     private letterService: ContractLetterService,
+    private ownerAlertHelper: OwnerAlertHelper,
   ) {}
 
   @Cron('15 9 * * *')
@@ -106,6 +108,20 @@ export class LetterAutoGenerateCron {
       this.logger.log(
         `Letter auto-generate: return_device=${returnDevice}, termination=${termination}`,
       );
+
+      // Alert OWNER when new letters were created
+      const totalCreated = returnDevice + termination;
+      if (totalCreated > 0) {
+        try {
+          const msg = `[ติดตามหนี้] มีหนังสือทวงถามใหม่ ${totalCreated} ใบรอสร้าง PDF (45 วัน ${returnDevice} / 60 วัน ${termination}) เปิด /collections แท็บ "อนุมัติ" เพื่อดำเนินการ`;
+          await this.ownerAlertHelper.sendToAllOwners(msg, 'letter-auto-generate');
+        } catch (err) {
+          Sentry.captureException(err, {
+            tags: { cron: 'letter-auto-generate', step: 'owner-alert' },
+          });
+        }
+      }
+
       return { returnDevice, termination };
     } catch (err) {
       Sentry.captureException(err, { tags: { cron: 'letter-auto-generate' } });

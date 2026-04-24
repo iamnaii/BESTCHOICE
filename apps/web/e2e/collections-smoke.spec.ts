@@ -70,3 +70,71 @@ test.describe('/overdue backward compat', () => {
     await expect(page.getByText(/ค้างชำระ|ค่าปรับ/).first()).toBeVisible({ timeout: 15000 });
   });
 });
+
+/* ================================================================
+   Plan 3 Power Features — Customer 360 / Bulk / Ad-hoc LINE
+   ================================================================ */
+test.describe('/collections power features', () => {
+  test.beforeEach(async ({ page }) => {
+    await loginViaAPI(page);
+    await gotoWithRetry(page, '/collections');
+  });
+
+  test('no crash on tab switching through all 5 tabs', async ({ page }) => {
+    if (await hasErrorBoundary(page)) return;
+    for (const label of ['ตามต่อ', 'นัดชำระ', 'อนุมัติ', 'ทั้งหมด', 'คิววันนี้']) {
+      await page.getByRole('button', { name: new RegExp(label) }).first().click();
+      await expect(page.locator('body')).not.toContainText(/เกิดข้อผิดพลาด/);
+    }
+  });
+
+  test('Customer 360 panel opens + closes without error', async ({ page }) => {
+    if (await hasErrorBoundary(page)) return;
+
+    // Look for the 360 button (ChevronRight) on any contract card. Skip if none.
+    const openBtn = page.locator('[title="เปิด Customer 360"]').first();
+    if (!(await openBtn.isVisible({ timeout: 3000 }).catch(() => false))) {
+      return; // No contracts to test with — environment has no data
+    }
+
+    await openBtn.click();
+    await expect(page.getByRole('dialog', { name: /ข้อมูลลูกค้า 360/ })).toBeVisible({ timeout: 5000 });
+
+    // Close via close button
+    await page.getByRole('button', { name: /ปิด/ }).click();
+    await expect(page.getByRole('dialog', { name: /ข้อมูลลูกค้า 360/ })).not.toBeVisible({ timeout: 3000 });
+  });
+
+  test('BulkActionBar appears when row selected', async ({ page }) => {
+    if (await hasErrorBoundary(page)) return;
+
+    const checkbox = page.locator('input[type="checkbox"]').first();
+    if (!(await checkbox.isVisible({ timeout: 3000 }).catch(() => false))) {
+      return; // No contracts
+    }
+
+    await checkbox.check();
+    await expect(page.getByText(/เลือก\s*\d+\s*รายการ/)).toBeVisible({ timeout: 3000 });
+    await expect(page.getByRole('button', { name: /มอบหมาย/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /ส่ง LINE/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /เสนอล็อค/ })).toBeVisible();
+  });
+
+  test('ad-hoc LINE dialog opens from contract card', async ({ page }) => {
+    if (await hasErrorBoundary(page)) return;
+
+    // Find an enabled LINE send button (not the disabled ones for customers without lineId)
+    const sendBtn = page.locator('[title="ส่ง LINE"]').first();
+    if (!(await sendBtn.isVisible({ timeout: 3000 }).catch(() => false))) {
+      return;
+    }
+
+    const disabled = await sendBtn.isDisabled().catch(() => true);
+    if (disabled) return;
+
+    await sendBtn.click();
+    await expect(page.getByText(/ส่ง LINE ถึง/)).toBeVisible({ timeout: 3000 });
+    // Close
+    await page.getByRole('button', { name: /ยกเลิก/ }).first().click();
+  });
+});

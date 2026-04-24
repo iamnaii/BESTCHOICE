@@ -156,6 +156,13 @@ export class ContractLetterService {
     ];
 
     if (letter.letterType === 'CONTRACT_TERMINATION_60D') {
+      // Read the actual current status so audit log reflects reality (contract
+      // may be OVERDUE, DEFAULT, etc. — not always DEFAULT).
+      const currentContract = await this.prisma.contract.findUnique({
+        where: { id: letter.contractId },
+        select: { status: true },
+      });
+      const fromStatus = currentContract?.status ?? 'UNKNOWN';
       transactionOps.push(
         this.prisma.contract.update({
           where: { id: letter.contractId },
@@ -170,7 +177,7 @@ export class ContractLetterService {
             entity: 'contract',
             entityId: letter.contractId,
             newValue: {
-              from: 'DEFAULT',
+              from: fromStatus,
               to: 'LEGAL',
               reason: `60d termination letter dispatched: ${letter.letterNumber}`,
             },

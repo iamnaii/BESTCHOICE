@@ -119,8 +119,7 @@ export class OverdueKpiService {
 
     const avgCollectorWorkload =
       workloadBuckets.length > 0
-        ? workloadBuckets.reduce((s: number, b: any) => s + b._count._all, 0) /
-          workloadBuckets.length
+        ? workloadBuckets.reduce((s, b) => s + b._count._all, 0) / workloadBuckets.length
         : 0;
 
     // Per-collector breakdown — only computed for OWNER to avoid over-fetching
@@ -130,7 +129,7 @@ export class OverdueKpiService {
             where: {
               id: {
                 in: workloadBuckets
-                  .map((b: any) => b.assignedToId as string | null)
+                  .map((b) => b.assignedToId)
                   .filter((id): id is string => id !== null),
               },
               deletedAt: null,
@@ -142,14 +141,13 @@ export class OverdueKpiService {
     const collectorWorkload: Array<{ userId: string; name: string; count: number }> =
       params.userRole === 'OWNER'
         ? workloadBuckets
-            .filter((b: any) => b.assignedToId !== null)
-            .map((b: any) => ({
-              userId: b.assignedToId as string,
-              name:
-                workloadWithNames.find((u) => u.id === b.assignedToId)?.name ?? '(unknown)',
+            .filter((b): b is typeof b & { assignedToId: string } => b.assignedToId !== null)
+            .map((b) => ({
+              userId: b.assignedToId,
+              name: workloadWithNames.find((u) => u.id === b.assignedToId)?.name ?? '(unknown)',
               count: b._count._all,
             }))
-            .sort((a: { count: number }, b: { count: number }) => b.count - a.count)
+            .sort((a, b) => b.count - a.count)
         : [];
 
     const amountDue = new Prisma.Decimal(outstanding._sum.amountDue ?? 0);

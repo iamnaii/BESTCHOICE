@@ -13,6 +13,7 @@ const mockPrisma = {
   },
   contract: {
     update: jest.fn(),
+    findUnique: jest.fn(),
   },
   auditLog: {
     create: jest.fn(),
@@ -202,6 +203,7 @@ describe('ContractLetterService', () => {
         ...pdfGeneratedLetter,
         letterType: 'CONTRACT_TERMINATION_60D',
       });
+      mockPrisma.contract.findUnique.mockResolvedValueOnce({ status: 'DEFAULT' });
       const dispatched = { id: 'l3', status: 'DISPATCHED' };
       mockPrisma.$transaction.mockResolvedValueOnce([dispatched, {}]);
       mockDunningEngine.executeEventTrigger.mockResolvedValue(undefined);
@@ -236,6 +238,8 @@ describe('ContractLetterService', () => {
         letterType: 'CONTRACT_TERMINATION_60D',
         letterNumber: 'ST-2026-00001',
       });
+      // New: service now reads current contract status for audit `from` field
+      mockPrisma.contract.findUnique.mockResolvedValueOnce({ status: 'OVERDUE' });
       mockPrisma.$transaction.mockResolvedValueOnce([
         { id: 'letter-t', status: 'DISPATCHED' },
         {},
@@ -249,6 +253,38 @@ describe('ContractLetterService', () => {
       const txOps = mockPrisma.$transaction.mock.calls[0][0];
       expect(Array.isArray(txOps)).toBe(true);
       // 2 base ops + 2 legal-escalation ops for 60d letters
+      expect(txOps.length).toBe(4);
+    });
+
+    it('markDispatched audit log uses actual current contract status in `from` field', async () => {
+      mockPrisma.contractLetter.findUnique.mockResolvedValueOnce({
+        id: 'letter-t2',
+        status: 'PDF_GENERATED',
+        contractId: 'c-audit',
+        letterType: 'CONTRACT_TERMINATION_60D',
+        letterNumber: 'ST-2026-00007',
+      });
+      mockPrisma.contract.findUnique.mockResolvedValueOnce({ status: 'OVERDUE' });
+      // Capture auditLog.create calls to assert `from`
+      mockPrisma.auditLog.create.mockImplementation((args: any) => args);
+      mockPrisma.$transaction.mockResolvedValueOnce([
+        { id: 'letter-t2', status: 'DISPATCHED' },
+        {},
+        {},
+        {},
+      ]);
+      mockDunningEngine.executeEventTrigger.mockResolvedValue(undefined);
+
+      await service.markDispatched('letter-t2', 'u1', { trackingNumber: 'EX987654' });
+
+      // Find the CONTRACT_STATUS_LEGAL audit op inside the transaction payload
+      const txOps = mockPrisma.$transaction.mock.calls[0][0];
+      const legalAuditCall = mockPrisma.auditLog.create.mock.calls.find(
+        (call: any[]) => call[0]?.data?.action === 'CONTRACT_STATUS_LEGAL',
+      );
+      expect(legalAuditCall).toBeDefined();
+      expect(legalAuditCall?.[0]?.data?.newValue?.from).toBe('OVERDUE');
+      expect(legalAuditCall?.[0]?.data?.newValue?.to).toBe('LEGAL');
       expect(txOps.length).toBe(4);
     });
 

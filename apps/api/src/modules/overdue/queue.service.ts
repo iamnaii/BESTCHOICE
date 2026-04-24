@@ -35,7 +35,11 @@ export class OverdueQueueService {
     // computed expression across payments + callLogs + counters). Acceptable
     // tradeoff: the overdue set is bounded by branch scope and status filter
     // to ~thousands at most in practice.
-    const [contracts, total] = await Promise.all([
+    // TODO: persist priorityScore to support >500 overdue cases (Wave 3 schema
+    // change). Until then we cap the fetch AND the reported total so that
+    // pagination doesn't hand out page numbers we can't serve.
+    const FETCH_CAP = 500;
+    const [contracts, dbCount] = await Promise.all([
       this.prisma.contract.findMany({
         where,
         include: {
@@ -58,7 +62,7 @@ export class OverdueQueueService {
             },
           },
         },
-        take: 500, // cap the fetch — priority sort + pagination happens in memory
+        take: FETCH_CAP, // cap the fetch — priority sort + pagination happens in memory
       }),
       this.prisma.contract.count({ where }),
     ]);
@@ -69,7 +73,13 @@ export class OverdueQueueService {
 
     const paged = rows.slice(skip, skip + limit).map(({ __priorityScore, ...rest }) => rest);
 
-    return { data: paged, total, page, limit };
+    // Cap the reported total so pagination never advertises pages we can't
+    // serve from our in-memory FETCH_CAP slice. Include a warning flag when
+    // the true DB count exceeds the cap so callers can surface it.
+    const total = Math.min(dbCount, FETCH_CAP);
+    const truncated = dbCount > FETCH_CAP;
+
+    return { data: paged, total, page, limit, truncated };
   }
 
   /**

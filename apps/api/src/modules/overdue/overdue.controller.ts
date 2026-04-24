@@ -307,4 +307,34 @@ export class OverdueController {
       body.reason,
     );
   }
+
+  // --- MDM lock/unlock approvals (OWNER/FM only) ---
+
+  @Post('mdm-requests/:id/approve')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  approveMdmLock(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string; role: string },
+  ) {
+    return this.mdmLockService.approve(id, user.id, user.role);
+  }
+
+  @Post('mdm-requests/:id/reject')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  rejectMdmLock(
+    @Param('id') id: string,
+    @Body() body: { reason: string },
+    @CurrentUser() user: { id: string; role: string },
+  ) {
+    return this.mdmLockService.reject(id, user.id, body.reason, user.role);
+  }
+
+  @Post('mdm-requests/:id/unlock')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  unlockMdm(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string; role: string },
+  ) {
+    return this.mdmLockService.unlock(id, user.id, user.role);
+  }
 }

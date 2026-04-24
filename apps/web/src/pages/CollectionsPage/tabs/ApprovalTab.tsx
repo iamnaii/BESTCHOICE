@@ -9,6 +9,7 @@ import {
   useRejectMdm,
 } from '../hooks/useApprovalQueues';
 import { EscalationRow, MdmRow } from '../components/ApprovalPendingRow';
+import LetterQueueSection from '../components/LetterQueueSection';
 
 function RowSkeleton() {
   return <div className="bg-muted animate-pulse h-20 rounded-lg" />;
@@ -108,6 +109,9 @@ export default function ApprovalTab() {
           )}
         </CardContent>
       </Card>
+
+      {/* Letter queue — generate PDF → dispatch → track delivery */}
+      <LetterQueueSection />
     </div>
   );
 }

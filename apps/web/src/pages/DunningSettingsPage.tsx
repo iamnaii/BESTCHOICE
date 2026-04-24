@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -12,6 +12,9 @@ import {
   Link2,
   ToggleLeft,
   ToggleRight,
+  FileSignature,
+  Upload,
+  Image as ImageIcon,
 } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
@@ -19,6 +22,7 @@ import Modal from '@/components/ui/Modal';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
 import { getStatusBadgeProps, dunningChannelMap } from '@/lib/status-badges';
 
 interface DunningRule {
@@ -87,6 +91,98 @@ function getTriggerBadgeCls(day: number): string {
   if (day <= 7) return 'bg-warning/30 text-warning border border-warning/40';
   if (day <= 30) return 'bg-destructive/20 text-destructive border border-destructive/30';
   return 'bg-destructive/30 text-destructive border border-destructive/40';
+}
+
+interface ConfigItem {
+  key: string;
+  value: string;
+}
+
+function LetterAssetField({
+  label,
+  hint,
+  currentUrl,
+  uploadKind,
+  onSaved,
+}: {
+  label: string;
+  hint: string;
+  currentUrl: string;
+  uploadKind: 'LETTER_SIGNATURE' | 'LETTER_LETTERHEAD';
+  onSaved: (url: string) => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleChange = async (file: File) => {
+    setUploading(true);
+    try {
+      const { data: presigned } = await api.post('/shop/upload/signed-url', {
+        kind: uploadKind,
+        contentType: file.type,
+      });
+      const up = await fetch(presigned.uploadUrl, {
+        method: presigned.method ?? 'PUT',
+        body: file,
+        headers: { 'Content-Type': file.type },
+      });
+      if (!up.ok) throw new Error('Upload failed');
+      onSaved(presigned.publicUrl);
+      toast.success('อัปโหลดสำเร็จ');
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div>
+      <div className="text-xs font-medium mb-1">{label}</div>
+      <div className="text-xs text-muted-foreground mb-2">{hint}</div>
+      <div className="flex items-center gap-3">
+        {currentUrl ? (
+          <div className="shrink-0 size-16 rounded-lg border border-border bg-muted/30 p-1 flex items-center justify-center overflow-hidden">
+            <img src={currentUrl} alt={label} className="max-w-full max-h-full object-contain" />
+          </div>
+        ) : (
+          <div className="shrink-0 size-16 rounded-lg border border-dashed border-border bg-muted/20 flex items-center justify-center">
+            <ImageIcon className="size-5 text-muted-foreground" />
+          </div>
+        )}
+        <div className="flex-1 min-w-0">
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/png,image/jpeg"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) handleChange(f);
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            disabled={uploading}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-input hover:bg-muted disabled:opacity-50"
+          >
+            <Upload className="size-3.5" />{' '}
+            {uploading ? 'กำลังอัปโหลด...' : currentUrl ? 'เปลี่ยนรูป' : 'อัปโหลด'}
+          </button>
+          {currentUrl && (
+            <button
+              type="button"
+              onClick={() => onSaved('')}
+              className="ml-2 text-xs text-muted-foreground hover:text-destructive"
+            >
+              ลบ
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function DunningSettingsPage() {
@@ -164,6 +260,23 @@ export default function DunningSettingsPage() {
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
+  const { data: configs = [] } = useQuery<ConfigItem[]>({
+    queryKey: ['settings'],
+    queryFn: async () => (await api.get('/settings')).data,
+  });
+
+  const signatureUrl = configs.find((s) => s.key === 'letter_signature_url')?.value ?? '';
+  const letterheadUrl = configs.find((s) => s.key === 'letter_letterhead_url')?.value ?? '';
+
+  const configMutation = useMutation({
+    mutationFn: async (items: Array<{ key: string; value: string }>) =>
+      (await api.patch('/settings', { items })).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['settings'] }),
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  const saveConfig = (key: string, value: string) => configMutation.mutate([{ key, value }]);
+
   const openCreate = () => {
     setEditId(null);
     setForm(defaultForm);
@@ -235,6 +348,43 @@ export default function DunningSettingsPage() {
           </button>
         }
       />
+
+      {/* Letter Settings Card */}
+      <Card className="rounded-xl border border-border/50 bg-card shadow-sm mb-6">
+        <CardContent className="p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <FileSignature className="size-4 text-primary" />
+            <div className="text-sm font-semibold">ตั้งค่าหนังสือทวงถาม</div>
+          </div>
+          <p className="text-xs text-muted-foreground mb-4 leading-snug">
+            ตั้งค่าลายเซ็นและหัวกระดาษสำหรับหนังสือ 45 วัน และ 60 วัน —
+            PDF จะถูกสร้างโดยใช้ข้อมูลนี้
+          </p>
+
+          <div className="space-y-4">
+            <LetterAssetField
+              label="ลายเซ็นต์ผู้มีอำนาจ *"
+              hint="PNG 200×80px พื้นหลังโปร่งใส"
+              currentUrl={signatureUrl}
+              uploadKind="LETTER_SIGNATURE"
+              onSaved={(url) => saveConfig('letter_signature_url', url)}
+            />
+            <LetterAssetField
+              label="หัวกระดาษ (ไม่บังคับ)"
+              hint="PNG 600×100px แนวนอน"
+              currentUrl={letterheadUrl}
+              uploadKind="LETTER_LETTERHEAD"
+              onSaved={(url) => saveConfig('letter_letterhead_url', url)}
+            />
+          </div>
+
+          {!signatureUrl && (
+            <div className="mt-4 rounded-lg bg-warning/5 border border-warning/20 p-3 text-xs text-warning leading-snug">
+              ยังไม่ได้อัปโหลดลายเซ็น — PDF ที่สร้างจะไม่มีลายเซ็น โปรดอัปโหลดก่อนใช้งานจริง
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Event-triggered rules — read-only (Plan 2+ will add editing) */}
       {eventRules.length > 0 && (

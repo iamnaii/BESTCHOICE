@@ -12,6 +12,7 @@ import { OverdueTimelineService } from './timeline.service';
 import { OverdueBulkService } from './bulk.service';
 import { BrokenPromiseCron } from './crons/broken-promise.cron';
 import { MdmAutoProposeCron } from './crons/mdm-auto-propose.cron';
+import { LetterAutoGenerateCron } from './crons/letter-auto-generate.cron';
 import { ChatEngineModule } from '../chat-engine/chat-engine.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { LineOaModule } from '../line-oa/line-oa.module';
@@ -32,6 +33,7 @@ import { LineOaModule } from '../line-oa/line-oa.module';
     OverdueBulkService,
     BrokenPromiseCron,
     MdmAutoProposeCron,
+    LetterAutoGenerateCron,
   ],
   exports: [
     OverdueService,

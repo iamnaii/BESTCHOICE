@@ -15,6 +15,9 @@ const mockPrisma = {
     count: jest.fn(),
     findMany: jest.fn(),
   },
+  user: {
+    findMany: jest.fn().mockResolvedValue([]),
+  },
 };
 
 function setupDefaultMocks() {
@@ -163,6 +166,10 @@ describe('OverdueKpiService', () => {
         { assignedToId: 'user-1', _count: { _all: 10 } },
         { assignedToId: 'user-2', _count: { _all: 20 } },
       ]);
+      mockPrisma.user.findMany.mockResolvedValueOnce([
+        { id: 'user-1', name: 'แนน' },
+        { id: 'user-2', name: 'กวาง' },
+      ]);
 
       const result = await service.getKpi({
         range: '7d',
@@ -171,6 +178,10 @@ describe('OverdueKpiService', () => {
       });
 
       expect(result.avgCollectorWorkload).toBe(15); // (10 + 20) / 2
+      expect(result.collectorWorkload).toEqual([
+        { userId: 'user-2', name: 'กวาง', count: 20 },
+        { userId: 'user-1', name: 'แนน', count: 10 },
+      ]);
     });
 
     it('promiseKeptRate7d is 0 when there are no promises in last 7d', async () => {

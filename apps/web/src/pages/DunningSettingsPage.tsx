@@ -24,7 +24,8 @@ import { getStatusBadgeProps, dunningChannelMap } from '@/lib/status-badges';
 interface DunningRule {
   id: string;
   name: string;
-  triggerDay: number;
+  triggerDay: number | null;
+  eventTrigger: string | null;
   channel: 'LINE' | 'SMS' | 'CALL_TASK' | 'INTERNAL_ALERT';
   messageTemplate: string;
   includePaymentLink: boolean;
@@ -113,8 +114,11 @@ export default function DunningSettingsPage() {
     },
   });
 
-  const sortedRules = [...rules].sort(
-    (a, b) => a.triggerDay - b.triggerDay || a.sortOrder - b.sortOrder,
+  const timeBasedRules = rules.filter((r) => r.triggerDay !== null);
+  const eventRules = rules.filter((r) => r.eventTrigger !== null);
+
+  const sortedRules = [...timeBasedRules].sort(
+    (a, b) => (a.triggerDay ?? 0) - (b.triggerDay ?? 0) || a.sortOrder - b.sortOrder,
   );
 
   const saveMutation = useMutation({
@@ -170,7 +174,7 @@ export default function DunningSettingsPage() {
     setEditId(rule.id);
     setForm({
       name: rule.name,
-      triggerDay: rule.triggerDay,
+      triggerDay: rule.triggerDay ?? 0,
       channel: rule.channel,
       messageTemplate: rule.messageTemplate,
       includePaymentLink: rule.includePaymentLink,
@@ -232,6 +236,50 @@ export default function DunningSettingsPage() {
         }
       />
 
+      {/* Event-triggered rules — read-only (Plan 2+ will add editing) */}
+      {eventRules.length > 0 && (
+        <div className="rounded-xl border border-border/50 bg-card shadow-sm p-5 mb-2">
+          <div className="flex items-center gap-2 mb-3">
+            <Bell className="size-4 text-primary" />
+            <div className="text-sm font-semibold">Event-triggered rules</div>
+            <Badge variant="secondary" appearance="outline" size="sm">read-only</Badge>
+          </div>
+          <p className="text-xs text-muted-foreground mb-4">
+            Rules ที่ยิงตามเหตุการณ์ (ไม่ใช่ตามวัน) เช่น collector บันทึก NO_ANSWER → ส่ง LINE อัตโนมัติ
+          </p>
+          <div className="space-y-2">
+            {eventRules.map((r) => {
+              const channelCfg = getStatusBadgeProps(r.channel, dunningChannelMap);
+              return (
+                <div
+                  key={r.id}
+                  className="border border-border/50 rounded-lg p-3 flex items-center justify-between gap-3"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium truncate">{r.name}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      trigger: <span className="font-mono">{r.eventTrigger}</span>
+                      {' · '}
+                      <Badge variant={channelCfg.variant} appearance={channelCfg.appearance} size="sm">
+                        {channelCfg.label}
+                      </Badge>
+                    </div>
+                    {r.messageTemplate && (
+                      <div className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                        {r.messageTemplate}
+                      </div>
+                    )}
+                  </div>
+                  <Badge variant={r.isActive ? 'success' : 'secondary'} appearance="outline" size="sm">
+                    {r.isActive ? 'เปิด' : 'ปิด'}
+                  </Badge>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <QueryBoundary
         isLoading={isLoading && rules.length === 0}
         isError={isError}
@@ -284,13 +332,15 @@ export default function DunningSettingsPage() {
                         <div className="flex items-start justify-between gap-2 flex-wrap">
                           <div className="flex items-center gap-2 flex-wrap">
                             {/* Trigger day badge */}
-                            <span
-                              className={`text-xs font-mono px-2 py-0.5 rounded-full font-semibold ${getTriggerBadgeCls(rule.triggerDay)}`}
-                            >
-                              {rule.triggerDay >= 0
-                                ? `D+${rule.triggerDay}`
-                                : `D${rule.triggerDay}`}
-                            </span>
+                            {rule.triggerDay !== null && (
+                              <span
+                                className={`text-xs font-mono px-2 py-0.5 rounded-full font-semibold ${getTriggerBadgeCls(rule.triggerDay)}`}
+                              >
+                                {rule.triggerDay >= 0
+                                  ? `D+${rule.triggerDay}`
+                                  : `D${rule.triggerDay}`}
+                              </span>
+                            )}
                             {/* Channel badge */}
                             {(() => {
                               const cfg = getStatusBadgeProps(rule.channel, dunningChannelMap);

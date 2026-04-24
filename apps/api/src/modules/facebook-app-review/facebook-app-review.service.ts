@@ -5,7 +5,9 @@ import {
   CreateAdCampaignDto,
   CreateLiveVideoDto,
   PublishVideoDto,
+  SendStandardMessageDto,
   SendUtilityMessageDto,
+  SubscribePageWebhooksDto,
   UpdateCampaignStatusDto,
 } from './dto/facebook-app-review.dto';
 
@@ -234,6 +236,68 @@ export class FacebookAppReviewService {
     }
 
     return this.call('POST', url, body, 'create_live_video');
+  }
+
+  // ─── ads_read ────────────────────────────────────────────────────────────
+  /**
+   * GET /act_{AD_ACCOUNT_ID}/insights — read campaign performance metrics.
+   * Permissions: ads_read, Ads Management Standard Access
+   */
+  async getCampaignInsights(): Promise<FbJson> {
+    const c = await this.getCreds();
+    const token = this.adsToken(c);
+    if (!c.adAccountId || !token) {
+      throw new BadRequestException('ยังไม่ได้ตั้งค่า FB Ad Account ID หรือ access token');
+    }
+
+    const accountId = c.adAccountId.startsWith('act_') ? c.adAccountId : `act_${c.adAccountId}`;
+    const fields = ['spend', 'impressions', 'clicks', 'reach', 'cpc', 'ctr'].join(',');
+    const url = `${GRAPH_BASE}/${accountId}/insights?fields=${fields}&date_preset=last_30d&access_token=${token}`;
+    return this.call('GET', url, undefined, 'get_insights');
+  }
+
+  // ─── pages_messaging ─────────────────────────────────────────────────────
+  /**
+   * POST /{PAGE_ID}/messages — send a normal Messenger reply within the
+   * 24-hour customer-initiated conversation window. No tag, just a regular
+   * response (messaging_type=RESPONSE).
+   *
+   * Permissions: pages_messaging
+   */
+  async sendStandardMessage(dto: SendStandardMessageDto): Promise<FbJson> {
+    const c = await this.getCreds();
+    if (!c.pageToken || !c.pageId) {
+      throw new BadRequestException('ยังไม่ได้ตั้งค่า FB page token/id');
+    }
+
+    const url = `${GRAPH_BASE}/${c.pageId}/messages?access_token=${c.pageToken}`;
+    const body = {
+      messaging_type: 'RESPONSE',
+      recipient: { id: dto.recipientPsid },
+      message: { text: dto.text },
+    };
+
+    return this.call('POST', url, body, 'send_standard_message');
+  }
+
+  // ─── pages_manage_metadata ───────────────────────────────────────────────
+  /**
+   * POST /{PAGE_ID}/subscribed_apps — subscribe the app to Page webhook
+   * events (messages, messaging_postbacks, etc.). Required to receive
+   * Messenger webhook callbacks.
+   *
+   * Permissions: pages_manage_metadata
+   */
+  async subscribePageWebhooks(dto: SubscribePageWebhooksDto): Promise<FbJson> {
+    const c = await this.getCreds();
+    if (!c.pageToken || !c.pageId) {
+      throw new BadRequestException('ยังไม่ได้ตั้งค่า FB page token/id');
+    }
+
+    const fields = dto.fields ?? 'messages,messaging_postbacks,message_deliveries,message_reads';
+    const url = `${GRAPH_BASE}/${c.pageId}/subscribed_apps?access_token=${c.pageToken}`;
+    const body = { subscribed_fields: fields };
+    return this.call('POST', url, body, 'subscribe_page_webhooks');
   }
 
   // ─── publish_video ───────────────────────────────────────────────────────

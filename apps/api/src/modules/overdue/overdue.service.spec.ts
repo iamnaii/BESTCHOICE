@@ -422,6 +422,45 @@ describe('OverdueService (C2: throw if no SYSTEM user)', () => {
 });
 
 // ─────────────────────────────────────────────────────────────
+// getCollectionsFlag: feature flag reader
+// ─────────────────────────────────────────────────────────────
+describe('OverdueService.getCollectionsFlag', () => {
+  let service: OverdueService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let prisma: any;
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    prisma = {
+      systemConfig: { findUnique: jest.fn() },
+    };
+    const mod = await Test.createTestingModule({
+      providers: [
+        OverdueService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: DunningEngineService, useValue: mockDunningEngine },
+      ],
+    }).compile();
+    service = mod.get(OverdueService);
+  });
+
+  it('returns true when flag value is "true"', async () => {
+    prisma.systemConfig.findUnique.mockResolvedValue({ key: 'collections_v2_enabled', value: 'true' });
+    await expect(service.getCollectionsFlag()).resolves.toBe(true);
+  });
+
+  it('returns false when flag value is "false"', async () => {
+    prisma.systemConfig.findUnique.mockResolvedValue({ key: 'collections_v2_enabled', value: 'false' });
+    await expect(service.getCollectionsFlag()).resolves.toBe(false);
+  });
+
+  it('returns false when flag key does not exist (null)', async () => {
+    prisma.systemConfig.findUnique.mockResolvedValue(null);
+    await expect(service.getCollectionsFlag()).resolves.toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
 // logContact: event trigger wiring + noAnswerCount maintenance
 // ─────────────────────────────────────────────────────────────
 describe('OverdueService.logContact with event trigger wiring', () => {

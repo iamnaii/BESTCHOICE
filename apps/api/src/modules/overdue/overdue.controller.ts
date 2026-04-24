@@ -70,6 +70,12 @@ export class OverdueController {
     return this.mdmLockService.getPendingByRole(user.role, user.branchId ?? undefined);
   }
 
+  @Get('collections-flag')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  async getCollectionsFlag() {
+    return { enabled: await this.overdueService.getCollectionsFlag() };
+  }
+
   @Get()
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'FINANCE_MANAGER', 'ACCOUNTANT')
   findOverdue(

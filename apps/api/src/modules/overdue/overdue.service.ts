@@ -861,6 +861,17 @@ export class OverdueService {
   }
 
   /**
+   * Read the collections_v2_enabled feature flag from SystemConfig.
+   * Returns false when the key is absent or set to anything other than 'true'.
+   */
+  async getCollectionsFlag(): Promise<boolean> {
+    const cfg = await this.prisma.systemConfig.findUnique({
+      where: { key: 'collections_v2_enabled' },
+    });
+    return cfg?.value === 'true';
+  }
+
+  /**
    * Reset dunning stage when a contract is no longer overdue
    * (e.g., after a payment brings it back to ACTIVE)
    */

@@ -95,6 +95,7 @@ const WebhooksPage = lazy(() => import('@/pages/WebhooksPage'));
 const ChatAnalyticsPage = lazy(() => import('@/pages/ChatAnalyticsPage'));
 const CannedResponseAdminPage = lazy(() => import('@/pages/CannedResponseAdminPage'));
 const CollectionDashboardPage = lazy(() => import('@/pages/CollectionDashboardPage'));
+const CollectionsPage = lazy(() => import('@/pages/CollectionsPage'));
 const DunningSettingsPage = lazy(() => import('@/pages/DunningSettingsPage'));
 const MonthlyClosePage = lazy(() => import('@/pages/MonthlyClosePage'));
 const PeakSyncPage = lazy(() => import('@/pages/PeakSyncPage'));
@@ -425,6 +426,7 @@ function App() {
           <Route path="/receipts" element={<Navigate to="/payments?tab=receipts" replace />} />
           <Route path="/verify/:receiptNumber" element={<ReceiptVerifyPage />} />
           <Route path="/overdue" element={<OverduePage />} />
+          <Route path="/collections" element={<CollectionsPage />} />
           <Route
             path="/collection-dashboard"
             element={

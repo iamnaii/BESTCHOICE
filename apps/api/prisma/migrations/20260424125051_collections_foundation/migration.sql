@@ -125,6 +125,12 @@ ALTER TABLE "contract_letters"
   FOREIGN KEY ("dispatched_by_id") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- Enforce exactly one of trigger_day / event_trigger is set on dunning_rules
+-- Note: this CHECK is not expressed in schema.prisma — do NOT regenerate the
+-- migration via `prisma migrate dev` or the constraint will be dropped.
 ALTER TABLE "dunning_rules"
   ADD CONSTRAINT "dunning_rules_trigger_exclusive_chk"
   CHECK ((trigger_day IS NOT NULL)::int + (event_trigger IS NOT NULL)::int = 1);
+
+-- H2: FollowUpTab filters on contracts.no_answer_count gte 1 lt 3 — without
+-- this index the predicate becomes a seq scan at scale (thousands of rows).
+CREATE INDEX "contracts_no_answer_count_idx" ON "contracts"("no_answer_count");

@@ -4,6 +4,7 @@ import {
   Logger,
   BadRequestException,
   ForbiddenException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCallLogDto } from './dto/create-call-log.dto';
@@ -26,7 +27,11 @@ export class OverdueService {
       select: { id: true },
     });
     if (!user) {
-      throw new Error('SYSTEM user not found — seed collections-foundation must run first');
+      // H1: ServiceUnavailableException → 503 not 500, so ops alerting
+      // correctly identifies this as a config/seed issue rather than a crash.
+      throw new ServiceUnavailableException(
+        'SYSTEM user not found — seed collections-foundation must run first',
+      );
     }
     return user.id;
   }
@@ -336,26 +341,37 @@ export class OverdueService {
       select: { id: true },
     });
 
-    const flipResult = await this.prisma.contract.updateMany({
-      where: flipWhere,
-      data: { status: 'OVERDUE' },
-    });
+    // C3 fix: wrap updateMany + auditLog.createMany in a single $transaction so
+    // the status flip and its audit trail land atomically. If the audit insert
+    // fails (DB pressure etc), the status flip rolls back — no silent drift
+    // between contract state and audit record.
+    const txOps: Prisma.PrismaPromise<unknown>[] = [
+      this.prisma.contract.updateMany({
+        where: flipWhere,
+        data: { status: 'OVERDUE' },
+      }),
+    ];
+    if (toFlip.length > 0) {
+      txOps.push(
+        this.prisma.auditLog.createMany({
+          data: toFlip.map((c) => ({
+            userId: systemUserId,
+            action: 'STATUS_CHANGE',
+            entity: 'contract',
+            entityId: c.id,
+            newValue: { from: 'ACTIVE', to: 'OVERDUE', reason: `Payment overdue > ${overdueDays} days` },
+            ipAddress: 'system-cron',
+          })),
+        }),
+      );
+    }
+    const [flipResult] = await this.prisma.$transaction(txOps) as [
+      Prisma.BatchPayload,
+      ...unknown[],
+    ];
 
     const overdueUpdated = flipResult.count;
     const activeIds = toFlip.map((c) => c.id);
-
-    if (toFlip.length > 0) {
-      await this.prisma.auditLog.createMany({
-        data: toFlip.map((c) => ({
-          userId: systemUserId,
-          action: 'STATUS_CHANGE',
-          entity: 'contract',
-          entityId: c.id,
-          newValue: { from: 'ACTIVE', to: 'OVERDUE', reason: `Payment overdue > ${overdueDays} days` },
-          ipAddress: 'system-cron',
-        })),
-      });
-    }
 
     // Step 2: OVERDUE → DEFAULT (2+ consecutive missed payments)
     // Use raw SQL to find contracts with consecutive missed payments

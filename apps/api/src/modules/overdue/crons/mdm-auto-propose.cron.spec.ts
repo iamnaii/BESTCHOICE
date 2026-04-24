@@ -6,6 +6,7 @@ import { MdmAutoProposeCron } from './mdm-auto-propose.cron';
 const mockPrisma = {
   systemConfig: { findUnique: jest.fn() },
   contract: { findMany: jest.fn() },
+  user: { findFirst: jest.fn() },
   $queryRaw: jest.fn(),
 };
 const mockMdmService = { proposeAuto: jest.fn() };
@@ -35,6 +36,7 @@ describe('MdmAutoProposeCron', () => {
     );
     mockPrisma.$queryRaw.mockResolvedValue([]);
     mockPrisma.contract.findMany.mockResolvedValue([]);
+    mockPrisma.user.findFirst.mockResolvedValue({ id: 'system-user-id' }); // M2 cache
   });
 
   it('skips when mdm_auto_propose_enabled=false', async () => {
@@ -57,6 +59,7 @@ describe('MdmAutoProposeCron', () => {
       'c1',
       'UNCONTACTABLE_3D',
       expect.any(String),
+      'system-user-id', // M2: cron passes pre-resolved systemUserId
     );
   });
 
@@ -67,6 +70,7 @@ describe('MdmAutoProposeCron', () => {
       'c3',
       'NO_PROMISE_3D',
       expect.any(String),
+      'system-user-id', // M2 pre-resolved
     );
   });
 

@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { MdmLockStatus, MdmLockTrigger } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -21,8 +22,17 @@ export class MdmLockService {
    * Auto-propose from a cron. No user — uses the SYSTEM user as proposer. Idempotent:
    * skips if the contract already has a PENDING or APPROVED request pending.
    */
-  async proposeAuto(contractId: string, trigger: MdmLockTrigger, reason: string) {
-    return this.createIfNoneActive(contractId, null, trigger, reason, true);
+  /**
+   * @param systemUserId — optional; cron can pre-resolve SYSTEM user once per run
+   * and pass here to avoid N+1 user lookups across many contracts (M2 fix).
+   */
+  async proposeAuto(
+    contractId: string,
+    trigger: MdmLockTrigger,
+    reason: string,
+    systemUserId?: string,
+  ) {
+    return this.createIfNoneActive(contractId, systemUserId ?? null, trigger, reason, true);
   }
 
   /**
@@ -237,7 +247,13 @@ export class MdmLockService {
       where: { isSystemUser: true },
       select: { id: true },
     });
-    if (!u) throw new Error('SYSTEM user not found — seed collections-foundation must run first');
+    if (!u) {
+      // H1: ServiceUnavailableException → 503 so ops alerting correctly
+      // categorizes this as a config/seed gap rather than a crash.
+      throw new ServiceUnavailableException(
+        'SYSTEM user not found — seed collections-foundation must run first',
+      );
+    }
     return u.id;
   }
 }

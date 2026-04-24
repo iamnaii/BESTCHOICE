@@ -43,6 +43,15 @@ export class MdmAutoProposeCron {
       const hoursAgo = new Date(now.getTime() - uncontactableHours * 60 * 60 * 1000);
       const daysAgo = new Date(now.getTime() - noPromiseDays * 24 * 60 * 60 * 1000);
 
+      // M2: resolve SYSTEM user once per run — was being refetched per contract
+      // in MdmLockService.proposeAuto (N+1 query). Runs of 100+ contracts now
+      // save 99+ pointless user lookups.
+      const systemUser = await this.prisma.user.findFirst({
+        where: { isSystemUser: true },
+        select: { id: true },
+      });
+      const systemUserId = systemUser?.id;
+
       // UNCONTACTABLE_3D — >=3 NO_ANSWER in window, no ANSWERED/PROMISED interleaved
       const uncontactable = await this.prisma.$queryRaw<{ contract_id: string }[]>`
         SELECT "contract_id"
@@ -65,6 +74,7 @@ export class MdmAutoProposeCron {
             contract_id,
             'UNCONTACTABLE_3D',
             `ติดต่อไม่ได้ ${uncontactableHours}h ที่ผ่านมา (NO_ANSWER ≥ 3 ครั้ง)`,
+            systemUserId,
           );
         } catch (err) {
           Sentry.captureException(err, {
@@ -104,6 +114,7 @@ export class MdmAutoProposeCron {
             id,
             'NO_PROMISE_3D',
             `ค้าง ≥ ${noPromiseDays} วัน ไม่มีนัดชำระและไม่จ่าย`,
+            systemUserId,
           );
           noPromiseCount++;
         } catch (err) {

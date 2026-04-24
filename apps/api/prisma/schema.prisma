@@ -872,6 +872,7 @@ model Contract {
   @@index([workflowStatus])
   @@index([parentContractId])
   @@index([retentionStatus])
+  @@index([noAnswerCount]) // H2: FollowUpTab filters on gte 1 lt 3 — index keeps it sub-ms at scale
   @@map("contracts")
 }
 

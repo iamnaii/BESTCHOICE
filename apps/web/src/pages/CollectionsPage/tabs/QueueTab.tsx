@@ -41,19 +41,10 @@ export default function QueueTab({ search, branchId, onLogContact }: Props) {
   });
 
   const total = q.data?.total ?? 0;
-  const rows = q.data?.data ?? [];
-
-  // Client-side search filter
-  const filtered = debouncedSearch
-    ? rows.filter((r) => {
-        const term = debouncedSearch.toLowerCase();
-        return (
-          r.customer.name.toLowerCase().includes(term) ||
-          r.contractNumber.toLowerCase().includes(term) ||
-          r.customer.phone.toLowerCase().includes(term)
-        );
-      })
-    : rows;
+  // C1 fix: search is now server-side via useCollectionsQueue → /overdue/queue
+  // so the returned page is already filtered. No client-side narrowing needed;
+  // previously the filter only matched the current page, missing hits past it.
+  const filtered = q.data?.data ?? [];
 
   return (
     <QueryBoundary

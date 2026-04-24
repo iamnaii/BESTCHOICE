@@ -44,6 +44,7 @@ export class OverdueController {
     return this.queueService.getQueue({
       tab: dto.tab,
       branchId: dto.branchId,
+      search: dto.search,
       page: dto.page,
       limit: dto.limit,
       userRole: user.role,

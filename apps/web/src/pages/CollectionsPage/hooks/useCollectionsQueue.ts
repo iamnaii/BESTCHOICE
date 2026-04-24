@@ -25,6 +25,8 @@ export function useCollectionsQueue(params: {
     queryFn: async () => {
       const q = new URLSearchParams({ tab, page: String(page), limit: String(limit) });
       if (branchId) q.set('branchId', branchId);
+      // C1 fix: push search to server so matches outside the first page are visible
+      if (search.trim()) q.set('search', search.trim());
       const { data } = await api.get(`/overdue/queue?${q}`);
       return data;
     },

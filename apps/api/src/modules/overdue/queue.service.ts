@@ -13,6 +13,7 @@ export class OverdueQueueService {
     userRole: string;
     userBranchId: string | null;
     branchId?: string;
+    search?: string;
     page?: number;
     limit?: number;
   }) {
@@ -28,7 +29,26 @@ export class OverdueQueueService {
         ? { branchId: params.branchId }
         : {};
 
-    const where = this.buildWhere(params.tab, now, branchScope);
+    const baseWhere = this.buildWhere(params.tab, now, branchScope);
+
+    // C1 fix: server-side search across contractNumber / customer name / phone.
+    // Previously the filter was applied client-side on the current page only, so
+    // matches outside the first N rows were invisible to the collector.
+    const search = params.search?.trim();
+    const where: Prisma.ContractWhereInput = search
+      ? {
+          AND: [
+            baseWhere,
+            {
+              OR: [
+                { contractNumber: { contains: search, mode: 'insensitive' } },
+                { customer: { name: { contains: search, mode: 'insensitive' } } },
+                { customer: { phone: { contains: search } } },
+              ],
+            },
+          ],
+        }
+      : baseWhere;
 
     const [contracts, total] = await Promise.all([
       this.prisma.contract.findMany({
@@ -95,6 +115,9 @@ export class OverdueQueueService {
     }
 
     // promise
+    // H4 fix: scope to PROMISED-only with an explicit settlementDate window.
+    // Previously ANSWERED was also matched, which leaked answered-but-not-promised
+    // calls into the promise tab if their row happened to have a stray settlementDate.
     const todayMinus3 = new Date(now.getTime() - 3 * 86400000);
     const todayPlus30 = new Date(now.getTime() + 30 * 86400000);
     return {
@@ -102,8 +125,9 @@ export class OverdueQueueService {
       deletedAt: null,
       callLogs: {
         some: {
-          result: { in: ['PROMISED', 'ANSWERED'] },
+          result: 'PROMISED',
           settlementDate: { gte: todayMinus3, lte: todayPlus30 },
+          brokenAt: null, // un-broken promises — broken ones belong elsewhere
         },
       },
     };

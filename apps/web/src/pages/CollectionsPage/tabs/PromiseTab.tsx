@@ -99,19 +99,8 @@ export default function PromiseTab({ search, branchId, onLogContact }: Props) {
   });
 
   const total = q.data?.total ?? 0;
-  const rows = q.data?.data ?? [];
-
-  // Client-side search filter
-  const filtered = debouncedSearch
-    ? rows.filter((r) => {
-        const term = debouncedSearch.toLowerCase();
-        return (
-          r.customer.name.toLowerCase().includes(term) ||
-          r.contractNumber.toLowerCase().includes(term) ||
-          r.customer.phone.toLowerCase().includes(term)
-        );
-      })
-    : rows;
+  // C1 fix: search is now server-side via useCollectionsQueue → /overdue/queue
+  const filtered = q.data?.data ?? [];
 
   const groups = groupRows(filtered);
   const isEmpty = filtered.length === 0;

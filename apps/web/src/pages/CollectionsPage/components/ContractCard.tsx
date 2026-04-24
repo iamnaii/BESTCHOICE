@@ -34,12 +34,20 @@ export default function ContractCard({ contract, onLogContact, onOpen360 }: Prop
         {/* Top row: contract# + name + branch | days-overdue hero */}
         <div className="flex items-start justify-between gap-3 mb-2 min-w-0">
           <div className="min-w-0">
-            <div
-              className="font-mono text-xs text-primary font-medium cursor-pointer hover:underline"
-              onClick={() => onOpen360?.(contract)}
-            >
-              {contract.contractNumber}
-            </div>
+            {onOpen360 ? (
+              <button
+                type="button"
+                onClick={() => onOpen360(contract)}
+                className="font-mono text-xs text-primary font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30 rounded text-left"
+                aria-label={`เปิด Customer 360 ของสัญญา ${contract.contractNumber}`}
+              >
+                {contract.contractNumber}
+              </button>
+            ) : (
+              <div className="font-mono text-xs text-primary font-medium">
+                {contract.contractNumber}
+              </div>
+            )}
             <div className="text-sm font-semibold leading-snug truncate">
               {contract.customer.name}
             </div>

@@ -3,10 +3,15 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { OverdueService } from './overdue.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DunningEngineService } from './dunning-engine.service';
+import { OverdueKpiService } from './kpi.service';
 
 // Shared no-op mock for DunningEngineService — tests that care can spy on it
 const mockDunningEngine = {
   executeEventTrigger: jest.fn().mockResolvedValue(undefined),
+};
+// Shared no-op KpiService mock — only its invalidate() is called from OverdueService
+const mockKpiService = {
+  invalidate: jest.fn(),
 };
 
 describe('OverdueService.recordSettlement', () => {
@@ -33,6 +38,7 @@ describe('OverdueService.recordSettlement', () => {
         OverdueService,
         { provide: PrismaService, useValue: prisma },
         { provide: DunningEngineService, useValue: mockDunningEngine },
+        { provide: OverdueKpiService, useValue: mockKpiService },
       ],
     }).compile();
     service = mod.get(OverdueService);
@@ -120,6 +126,7 @@ describe('OverdueService.approveDunningEscalation (T4-C2)', () => {
         OverdueService,
         { provide: PrismaService, useValue: prisma },
         { provide: DunningEngineService, useValue: mockDunningEngine },
+        { provide: OverdueKpiService, useValue: mockKpiService },
       ],
     }).compile();
     service = mod.get(OverdueService);
@@ -188,6 +195,7 @@ describe('OverdueService.updateContractStatuses (T3-C11 hold guard)', () => {
         OverdueService,
         { provide: PrismaService, useValue: prisma },
         { provide: DunningEngineService, useValue: mockDunningEngine },
+        { provide: OverdueKpiService, useValue: mockKpiService },
       ],
     }).compile();
     service = mod.get(OverdueService);
@@ -286,6 +294,7 @@ describe('OverdueService.holdAutoEscalation (T3-C11)', () => {
         OverdueService,
         { provide: PrismaService, useValue: prisma },
         { provide: DunningEngineService, useValue: mockDunningEngine },
+        { provide: OverdueKpiService, useValue: mockKpiService },
       ],
     }).compile();
     service = mod.get(OverdueService);
@@ -340,6 +349,7 @@ describe('OverdueService.updateContractStatuses (C3: atomic flip)', () => {
         OverdueService,
         { provide: PrismaService, useValue: prisma },
         { provide: DunningEngineService, useValue: mockDunningEngine },
+        { provide: OverdueKpiService, useValue: mockKpiService },
       ],
     }).compile();
     service = mod.get(OverdueService);
@@ -404,6 +414,7 @@ describe('OverdueService (C2: throw if no SYSTEM user)', () => {
         OverdueService,
         { provide: PrismaService, useValue: prisma },
         { provide: DunningEngineService, useValue: mockDunningEngine },
+        { provide: OverdueKpiService, useValue: mockKpiService },
       ],
     }).compile();
     service = mod.get(OverdueService);
@@ -439,6 +450,7 @@ describe('OverdueService.getCollectionsFlag', () => {
         OverdueService,
         { provide: PrismaService, useValue: prisma },
         { provide: DunningEngineService, useValue: mockDunningEngine },
+        { provide: OverdueKpiService, useValue: mockKpiService },
       ],
     }).compile();
     service = mod.get(OverdueService);
@@ -504,6 +516,7 @@ describe('OverdueService.logContact with event trigger wiring', () => {
         OverdueService,
         { provide: PrismaService, useValue: prisma },
         { provide: DunningEngineService, useValue: dunningEngineMock },
+        { provide: OverdueKpiService, useValue: mockKpiService },
       ],
     }).compile();
     service = mod.get(OverdueService);

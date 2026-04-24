@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import PageHeader from '@/components/ui/PageHeader';
+import CollectionsKpiStrip from './components/CollectionsKpiStrip';
 
 export type CollectionsTabKey = 'today' | 'followup' | 'promise' | 'approval' | 'all';
 
@@ -24,10 +25,7 @@ export default function CollectionsPage() {
     <div>
       <PageHeader title="ติดตามหนี้" subtitle="คิวงานของผู้ติดตามหนี้รายวัน" />
 
-      {/* KPI strip placeholder — Task 6 replaces with CollectionsKpiStrip */}
-      <div className="mb-6 rounded-xl border border-border/50 bg-muted/30 p-5 text-sm text-muted-foreground">
-        KPI strip จะอยู่ที่นี่ (Task 6)
-      </div>
+      <CollectionsKpiStrip />
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-border mb-4 overflow-x-auto">

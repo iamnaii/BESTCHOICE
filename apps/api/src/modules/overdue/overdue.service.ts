@@ -9,12 +9,16 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCallLogDto } from './dto/create-call-log.dto';
 import { Prisma, DunningStage } from '@prisma/client';
 import { BUSINESS_RULES } from '../../utils/config.util';
+import { DunningEngineService } from './dunning-engine.service';
 
 @Injectable()
 export class OverdueService {
   private readonly logger = new Logger(OverdueService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private dunningEngine: DunningEngineService,
+  ) {}
 
   private async getSystemUserIdOrThrow(): Promise<string> {
     const user = await this.prisma.user.findFirst({
@@ -858,11 +862,27 @@ export class OverdueService {
   /**
    * Log a contact attempt — creates a CallLog and updates lastContactDate
    * on the Contract. Optionally updates collectionNotes.
+   *
+   * Per-result side effects:
+   *  - NO_ANSWER     → increment noAnswerCount, fire CALL_NO_ANSWER event trigger
+   *  - ANSWERED      → reset noAnswerCount
+   *  - PROMISED      → reset noAnswerCount, fire CALL_ANSWERED_PROMISE event trigger
+   *  - REFUSED       → reset noAnswerCount, fire CALL_REFUSED event trigger
+   *  - WRONG_NUMBER  → set needsSkipTracing=true
+   *  - OTHER         → no side effects
+   *
+   * Event trigger fires AFTER the DB transaction commits — failure is non-fatal.
    */
   async logContact(
     contractId: string,
     callerId: string,
-    dto: { result: string; notes?: string; collectionNotes?: string },
+    dto: {
+      result: string;
+      notes?: string;
+      collectionNotes?: string;
+      settlementDate?: string;
+      settlementNotes?: string;
+    },
   ) {
     const contract = await this.prisma.contract.findFirst({
       where: { id: contractId, deletedAt: null },
@@ -871,7 +891,24 @@ export class OverdueService {
 
     const now = new Date();
 
-    // Create call log entry and update lastContactDate in a transaction
+    // Per-result side effects + event-trigger key
+    const resultMap: Record<
+      string,
+      {
+        noAnswerDelta: 'inc' | 'reset' | 'keep';
+        needsSkipTracing?: boolean;
+        eventKey?: import('@prisma/client').DunningEventTrigger;
+      }
+    > = {
+      NO_ANSWER:    { noAnswerDelta: 'inc',   eventKey: 'CALL_NO_ANSWER' },
+      ANSWERED:     { noAnswerDelta: 'reset' },
+      PROMISED:     { noAnswerDelta: 'reset', eventKey: 'CALL_ANSWERED_PROMISE' },
+      REFUSED:      { noAnswerDelta: 'reset', eventKey: 'CALL_REFUSED' },
+      WRONG_NUMBER: { noAnswerDelta: 'keep',  needsSkipTracing: true },
+      OTHER:        { noAnswerDelta: 'keep' },
+    };
+    const plan = resultMap[dto.result] ?? { noAnswerDelta: 'keep' };
+
     const [callLog] = await this.prisma.$transaction([
       this.prisma.callLog.create({
         data: {
@@ -879,11 +916,11 @@ export class OverdueService {
           callerId,
           calledAt: now,
           result: dto.result,
-          notes: dto.notes || null,
+          notes: dto.notes ?? null,
+          settlementDate: dto.settlementDate ? new Date(dto.settlementDate) : null,
+          settlementNotes: dto.settlementNotes ?? null,
         },
-        include: {
-          caller: { select: { id: true, name: true } },
-        },
+        include: { caller: { select: { id: true, name: true } } },
       }),
       this.prisma.contract.update({
         where: { id: contractId },
@@ -891,9 +928,25 @@ export class OverdueService {
           lastContactDate: now,
           dunningLastActionAt: now,
           ...(dto.collectionNotes !== undefined && { collectionNotes: dto.collectionNotes }),
+          ...(plan.needsSkipTracing !== undefined && { needsSkipTracing: plan.needsSkipTracing }),
+          ...(plan.noAnswerDelta === 'inc' && { noAnswerCount: { increment: 1 } }),
+          ...(plan.noAnswerDelta === 'reset' && { noAnswerCount: 0 }),
         },
       }),
     ]);
+
+    // Fire event trigger AFTER commit — failures non-fatal
+    if (plan.eventKey) {
+      try {
+        await this.dunningEngine.executeEventTrigger(plan.eventKey, contractId, null, callLog.id);
+      } catch (err) {
+        this.logger.warn(
+          `executeEventTrigger failed for ${plan.eventKey} on contract ${contractId}: ${
+            err instanceof Error ? err.message : err
+          }`,
+        );
+      }
+    }
 
     return callLog;
   }

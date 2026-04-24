@@ -2,6 +2,12 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { OverdueService } from './overdue.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { DunningEngineService } from './dunning-engine.service';
+
+// Shared no-op mock for DunningEngineService — tests that care can spy on it
+const mockDunningEngine = {
+  executeEventTrigger: jest.fn().mockResolvedValue(undefined),
+};
 
 describe('OverdueService.recordSettlement', () => {
   let service: OverdueService;
@@ -12,6 +18,7 @@ describe('OverdueService.recordSettlement', () => {
     new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
 
   beforeEach(async () => {
+    jest.clearAllMocks();
     prisma = {
       contract: {
         findFirst: jest.fn().mockResolvedValue({ id: 'c-1' }),
@@ -25,6 +32,7 @@ describe('OverdueService.recordSettlement', () => {
       providers: [
         OverdueService,
         { provide: PrismaService, useValue: prisma },
+        { provide: DunningEngineService, useValue: mockDunningEngine },
       ],
     }).compile();
     service = mod.get(OverdueService);
@@ -97,6 +105,7 @@ describe('OverdueService.approveDunningEscalation (T4-C2)', () => {
   });
 
   beforeEach(async () => {
+    jest.clearAllMocks();
     prisma = {
       contract: {
         findFirst: jest.fn().mockResolvedValue(contractWithPending('FINAL_WARNING')),
@@ -107,7 +116,11 @@ describe('OverdueService.approveDunningEscalation (T4-C2)', () => {
       $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
     };
     const mod = await Test.createTestingModule({
-      providers: [OverdueService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        OverdueService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: DunningEngineService, useValue: mockDunningEngine },
+      ],
     }).compile();
     service = mod.get(OverdueService);
   });
@@ -171,12 +184,17 @@ describe('OverdueService.updateContractStatuses (T3-C11 hold guard)', () => {
 
   const setupService = async () => {
     const mod = await Test.createTestingModule({
-      providers: [OverdueService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        OverdueService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: DunningEngineService, useValue: mockDunningEngine },
+      ],
     }).compile();
     service = mod.get(OverdueService);
   };
 
   beforeEach(async () => {
+    jest.clearAllMocks();
     prisma = {
       contract: {
         findMany: jest.fn(),
@@ -250,6 +268,7 @@ describe('OverdueService.holdAutoEscalation (T3-C11)', () => {
   let prisma: any;
 
   beforeEach(async () => {
+    jest.clearAllMocks();
     prisma = {
       contract: {
         findFirst: jest.fn().mockResolvedValue({
@@ -263,7 +282,11 @@ describe('OverdueService.holdAutoEscalation (T3-C11)', () => {
       $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
     };
     const mod = await Test.createTestingModule({
-      providers: [OverdueService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        OverdueService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: DunningEngineService, useValue: mockDunningEngine },
+      ],
     }).compile();
     service = mod.get(OverdueService);
   });
@@ -299,6 +322,7 @@ describe('OverdueService.updateContractStatuses (C3: atomic flip)', () => {
   let prisma: any;
 
   beforeEach(async () => {
+    jest.clearAllMocks();
     prisma = {
       contract: {
         findMany: jest.fn().mockResolvedValue([]),
@@ -312,7 +336,11 @@ describe('OverdueService.updateContractStatuses (C3: atomic flip)', () => {
       $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
     };
     const mod = await Test.createTestingModule({
-      providers: [OverdueService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        OverdueService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: DunningEngineService, useValue: mockDunningEngine },
+      ],
     }).compile();
     service = mod.get(OverdueService);
   });
@@ -357,6 +385,7 @@ describe('OverdueService (C2: throw if no SYSTEM user)', () => {
   let prisma: any;
 
   beforeEach(async () => {
+    jest.clearAllMocks();
     prisma = {
       contract: {
         findMany: jest.fn().mockResolvedValue([]),
@@ -371,7 +400,11 @@ describe('OverdueService (C2: throw if no SYSTEM user)', () => {
       $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
     };
     const mod = await Test.createTestingModule({
-      providers: [OverdueService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        OverdueService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: DunningEngineService, useValue: mockDunningEngine },
+      ],
     }).compile();
     service = mod.get(OverdueService);
   });
@@ -385,5 +418,116 @@ describe('OverdueService (C2: throw if no SYSTEM user)', () => {
     // We need contract.findMany to return an entry so the loop iterates and hits the throw
     prisma.contract.findMany.mockResolvedValue([]);
     await expect(service.escalateDunningStages()).rejects.toThrow(/SYSTEM user/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// logContact: event trigger wiring + noAnswerCount maintenance
+// ─────────────────────────────────────────────────────────────
+describe('OverdueService.logContact with event trigger wiring', () => {
+  let service: OverdueService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let prisma: any;
+  let engineSpy: jest.SpyInstance;
+  // Shared mock instance for this describe block
+  const dunningEngineMock = { executeEventTrigger: jest.fn().mockResolvedValue(undefined) };
+
+  const makeCallLogResult = (id: string) => ({
+    id,
+    contractId: 'c-1',
+    callerId: 'u-1',
+    calledAt: new Date(),
+    result: 'NO_ANSWER',
+    notes: null,
+    settlementDate: null,
+    settlementNotes: null,
+    caller: { id: 'u-1', name: 'collector' },
+  });
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    prisma = {
+      contract: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'c-1', contractNumber: 'BC-001' }),
+        update: jest.fn().mockResolvedValue({ id: 'c-1', noAnswerCount: 1, needsSkipTracing: false }),
+      },
+      callLog: {
+        create: jest.fn().mockResolvedValue(makeCallLogResult('cl-1')),
+      },
+      $transaction: jest.fn(async (ops: (() => Promise<unknown>)[]) => {
+        // Execute all promises in parallel and return results array
+        return Promise.all(ops.map((op) => (typeof op === 'function' ? op() : op)));
+      }),
+    };
+
+    const mod = await Test.createTestingModule({
+      providers: [
+        OverdueService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: DunningEngineService, useValue: dunningEngineMock },
+      ],
+    }).compile();
+    service = mod.get(OverdueService);
+    engineSpy = jest.spyOn(dunningEngineMock, 'executeEventTrigger');
+  });
+
+  afterEach(() => {
+    engineSpy.mockRestore();
+  });
+
+  it('dispatches CALL_NO_ANSWER on NO_ANSWER result and increments noAnswerCount', async () => {
+    await service.logContact('c-1', 'u-1', { result: 'NO_ANSWER' });
+
+    expect(engineSpy).toHaveBeenCalledWith('CALL_NO_ANSWER', 'c-1', null, 'cl-1');
+
+    const updateCall = prisma.contract.update.mock.calls[0][0];
+    expect(updateCall.data.noAnswerCount).toEqual({ increment: 1 });
+  });
+
+  it('resets noAnswerCount on ANSWERED and does not dispatch event', async () => {
+    prisma.callLog.create.mockResolvedValue(makeCallLogResult('cl-2'));
+
+    await service.logContact('c-1', 'u-1', { result: 'ANSWERED' });
+
+    expect(engineSpy).not.toHaveBeenCalled();
+
+    const updateCall = prisma.contract.update.mock.calls[0][0];
+    expect(updateCall.data.noAnswerCount).toBe(0);
+  });
+
+  it('dispatches CALL_ANSWERED_PROMISE on PROMISED result', async () => {
+    prisma.callLog.create.mockResolvedValue({ ...makeCallLogResult('cl-3'), result: 'PROMISED' });
+
+    await service.logContact('c-1', 'u-1', { result: 'PROMISED' });
+
+    expect(engineSpy).toHaveBeenCalledWith('CALL_ANSWERED_PROMISE', 'c-1', null, 'cl-3');
+  });
+
+  it('sets needsSkipTracing on WRONG_NUMBER and fires no event', async () => {
+    prisma.callLog.create.mockResolvedValue({ ...makeCallLogResult('cl-4'), result: 'WRONG_NUMBER' });
+
+    await service.logContact('c-1', 'u-1', { result: 'WRONG_NUMBER' });
+
+    expect(engineSpy).not.toHaveBeenCalled();
+
+    const updateCall = prisma.contract.update.mock.calls[0][0];
+    expect(updateCall.data.needsSkipTracing).toBe(true);
+  });
+
+  it('does not throw when executeEventTrigger rejects (non-fatal)', async () => {
+    engineSpy.mockRejectedValueOnce(new Error('LINE API down'));
+
+    await expect(
+      service.logContact('c-1', 'u-1', { result: 'NO_ANSWER' }),
+    ).resolves.toBeDefined();
+  });
+
+  it('throws NotFoundException when contract is missing', async () => {
+    prisma.contract.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.logContact('c-missing', 'u-1', { result: 'NO_ANSWER' }),
+    ).rejects.toThrow(NotFoundException);
+    expect(engineSpy).not.toHaveBeenCalled();
   });
 });

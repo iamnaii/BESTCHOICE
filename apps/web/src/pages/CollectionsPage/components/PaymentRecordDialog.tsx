@@ -3,6 +3,7 @@ import { Banknote, Landmark, QrCode, ImageUp, CircleCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import Modal from '@/components/ui/Modal';
 import api, { getErrorMessage } from '@/lib/api';
+import { formatNumber } from '@/utils/formatters';
 import { useRecordPayment } from '../hooks/useRecordPayment';
 import type { PaymentMethod } from '../hooks/useRecordPayment';
 import type { ContractRow } from '../types';
@@ -259,7 +260,7 @@ export default function PaymentRecordDialog({ open, contract, onClose }: Props) 
               ? 'กำลังบันทึก...'
               : uploadingSlip
                 ? 'กำลังอัปโหลดสลิป...'
-                : `บันทึกชำระ${validAmount ? ` ${amountNum.toLocaleString()} ฿` : ''}`}
+                : `บันทึกชำระ${validAmount ? ` ${formatNumber(amountNum)} ฿` : ''}`}
           </button>
         </div>
       </div>

@@ -1,12 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Download, FileText, Loader2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import Modal from '@/components/ui/Modal';
+import { Checkbox } from '@/components/ui/checkbox';
 import { renderLetterPdf, type LetterTemplateData } from '../utils/letterPdfRenderer';
 import { useLetterActions } from '../hooks/useLetterActions';
 import type { LetterRow } from '../hooks/useLetterQueue';
+import { EvidenceThumbnailGrid } from './EvidenceThumbnailGrid';
 
 interface Props {
   open: boolean;
@@ -293,8 +295,29 @@ interface DispatchSectionProps {
 function DispatchSection({ letter, onClose }: DispatchSectionProps) {
   const [tracking, setTracking] = useState('');
   const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
+  const [evidenceVerified, setEvidenceVerified] = useState(false);
   const [busy, setBusy] = useState(false);
   const { dispatch } = useLetterActions();
+
+  // Create a local preview URL for the selected evidence file
+  const evidencePreviewUrl = useMemo(
+    () => (evidenceFile ? URL.createObjectURL(evidenceFile) : null),
+    [evidenceFile],
+  );
+
+  // Revoke object URL when file changes or component unmounts
+  useEffect(() => {
+    return () => {
+      if (evidencePreviewUrl) URL.revokeObjectURL(evidencePreviewUrl);
+    };
+  }, [evidencePreviewUrl]);
+
+  // Reset verification whenever file changes — user must re-verify
+  useEffect(() => {
+    setEvidenceVerified(false);
+  }, [evidenceFile]);
+
+  const evidenceUrls = evidencePreviewUrl ? [evidencePreviewUrl] : [];
 
   const handleSubmit = async () => {
     if (tracking.trim().length < 5) {
@@ -386,11 +409,17 @@ function DispatchSection({ letter, onClose }: DispatchSectionProps) {
         )}
       </div>
 
-      {/* Evidence photo upload */}
-      <div>
-        <label className="text-xs font-medium text-muted-foreground mb-1.5 block leading-snug">
+      {/* Evidence photo upload + preview */}
+      <div className="space-y-2">
+        <label className="text-xs font-medium text-muted-foreground block leading-snug">
           รูปใบรับส่งไปรษณีย์ (ไม่บังคับ)
         </label>
+
+        <EvidenceThumbnailGrid
+          urls={evidenceUrls}
+          onRemove={() => setEvidenceFile(null)}
+        />
+
         <input
           type="file"
           accept="image/*"
@@ -398,10 +427,19 @@ function DispatchSection({ letter, onClose }: DispatchSectionProps) {
           className="text-sm text-muted-foreground file:mr-3 file:rounded-lg file:border file:border-input file:bg-muted file:px-3 file:py-1 file:text-xs file:font-medium file:text-foreground hover:file:bg-accent cursor-pointer"
         />
         {evidenceFile && (
-          <p className="mt-1 text-[10px] text-muted-foreground leading-snug">
+          <p className="text-[10px] text-muted-foreground leading-snug">
             {evidenceFile.name} ({(evidenceFile.size / 1024).toFixed(0)} KB)
           </p>
         )}
+
+        <label className="flex items-start gap-2 text-sm pt-1 cursor-pointer">
+          <Checkbox
+            checked={evidenceVerified}
+            onCheckedChange={(v) => setEvidenceVerified(v === true)}
+            className="mt-0.5"
+          />
+          <span className="leading-snug text-foreground">ตรวจสอบหลักฐานการส่งถูกต้องแล้ว</span>
+        </label>
       </div>
 
       {/* Actions */}
@@ -416,7 +454,7 @@ function DispatchSection({ letter, onClose }: DispatchSectionProps) {
         <button
           type="button"
           onClick={handleSubmit}
-          disabled={busy || !trackingValid}
+          disabled={busy || !trackingValid || !evidenceVerified}
           className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
         >
           {busy ? (
@@ -427,7 +465,7 @@ function DispatchSection({ letter, onClose }: DispatchSectionProps) {
           ) : (
             <>
               <Upload className="size-4" />
-              บันทึกส่งแล้ว
+              ยืนยันส่ง
             </>
           )}
         </button>

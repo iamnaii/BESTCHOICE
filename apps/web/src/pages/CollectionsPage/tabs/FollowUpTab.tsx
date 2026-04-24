@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Search } from 'lucide-react';
 import { useDebounce } from '@/hooks/useDebounce';
 import QueryBoundary from '@/components/QueryBoundary';
 import ContractCard from '../components/ContractCard';
@@ -33,6 +34,7 @@ interface Props {
 
 export default function FollowUpTab({ search, branchId, onLogContact, onOpen360, onSendLine }: Props) {
   const [page, setPage] = useState(1);
+  const [showSkipTracing, setShowSkipTracing] = useState(false);
   const sel = useBulkSelection();
   const debouncedSearch = useDebounce(search, 300);
 
@@ -49,7 +51,7 @@ export default function FollowUpTab({ search, branchId, onLogContact, onOpen360,
   const rows = q.data?.data ?? [];
 
   // Client-side search filter
-  const filtered = debouncedSearch
+  const searchFiltered = debouncedSearch
     ? rows.filter((r) => {
         const term = debouncedSearch.toLowerCase();
         return (
@@ -59,6 +61,11 @@ export default function FollowUpTab({ search, branchId, onLogContact, onOpen360,
         );
       })
     : rows;
+
+  // Skip-tracing filter applied on top of search filter
+  const filtered = showSkipTracing
+    ? searchFiltered.filter((c) => c.needsSkipTracing)
+    : searchFiltered;
 
   return (
     <QueryBoundary
@@ -74,24 +81,54 @@ export default function FollowUpTab({ search, branchId, onLogContact, onOpen360,
         </div>
       }
     >
+      {/* Skip-tracing toggle */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex-1" />
+        <button
+          onClick={() => setShowSkipTracing((v) => !v)}
+          className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border transition-colors ${
+            showSkipTracing
+              ? 'border-destructive/30 bg-destructive/5 text-destructive'
+              : 'border-input hover:bg-muted text-muted-foreground'
+          }`}
+        >
+          <Search className="size-3.5" />
+          {showSkipTracing
+            ? `ต้องหาเบอร์ใหม่ (${filtered.length})`
+            : 'กรองที่ต้องหาเบอร์ใหม่'}
+        </button>
+      </div>
+
       {filtered.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-primary/30 bg-primary/5 p-10 text-center">
-          <div className="text-4xl mb-3">✅</div>
-          <div className="text-sm font-medium text-primary leading-snug">
-            ไม่มีใครที่ต้องตามต่อ
+        showSkipTracing ? (
+          <div className="rounded-xl border border-dashed border-border p-10 text-center">
+            <div className="text-sm font-medium text-muted-foreground leading-snug">
+              ไม่มีใครต้องหาเบอร์ใหม่
+            </div>
+            <div className="text-xs text-muted-foreground mt-1 leading-snug">
+              ทุกคนมีเบอร์ติดต่อที่ถูกต้องแล้ว
+            </div>
           </div>
-          <div className="text-xs text-muted-foreground mt-1 leading-snug">
-            ทุกคนติดต่อได้หมดแล้ว
+        ) : (
+          <div className="rounded-xl border border-dashed border-primary/30 bg-primary/5 p-10 text-center">
+            <div className="text-sm font-medium text-primary leading-snug">
+              ไม่มีใครที่ต้องตามต่อ
+            </div>
+            <div className="text-xs text-muted-foreground mt-1 leading-snug">
+              ทุกคนติดต่อได้หมดแล้ว
+            </div>
           </div>
-        </div>
+        )
       ) : (
         <>
           {/* Context banner */}
+          {!showSkipTracing && (
           <div className="mb-4 rounded-lg bg-warning/5 border border-warning/20 p-3 text-xs text-warning leading-snug">
             <strong>ตามต่อ:</strong>{' '}
             ลูกค้าที่เคยโทรไปแล้วแต่ไม่รับ — ถ้าไม่รับครั้งต่อไปครบ 3 ครั้ง
             ระบบจะเสนอล็อคเครื่องอัตโนมัติ
           </div>
+          )}
 
           <div className="space-y-2">
             {filtered.map((row) =>

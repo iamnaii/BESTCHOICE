@@ -255,9 +255,14 @@ export function MdmRow({ item, onApprove, onReject, approvePending, rejectPendin
   const [includeWallpaper, setIncludeWallpaper] = useState<boolean>(item.includeWallpaper);
 
   const { user } = useAuth();
-  const isOwner = user?.role === 'OWNER';
-  const isLocked = item.status === 'EXECUTED_MANUAL' || item.status === 'EXECUTED_API' || item.status === 'LOCKED';
-  const canUnlock = isOwner && isLocked;
+  // MDM is considered "locked on device" when the request has been executed
+  // (either manually or via API). Matches backend policy in mdm-lock.service.ts
+  // (`unlock()` requires status ∈ {EXECUTED_MANUAL, EXECUTED_API}).
+  const isLocked =
+    item.status === 'EXECUTED_MANUAL' || item.status === 'EXECUTED_API';
+  // Unlock endpoint is `@Roles('OWNER', 'FINANCE_MANAGER')` — mirror that here.
+  const canUnlock =
+    (user?.role === 'OWNER' || user?.role === 'FINANCE_MANAGER') && isLocked;
   const unlock = useUnlockMdm();
 
   const wallpaperUrl = useWallpaperUrl(showApproveDialog);

@@ -40,7 +40,7 @@ export default function FollowUpTab({ search, branchId, onLogContact, onOpen360,
   const [filterOpen, setFilterOpen] = useState(false);
   const sel = useBulkSelection();
   const debouncedSearch = useDebounce(search, 300);
-  const [filter, setFilter, resetFilter] = useQueueFilter();
+  const [filter, setFilter, resetFilter] = useQueueFilter('follow-up');
 
   const q = useCollectionsQueue({
     tab: 'followup',

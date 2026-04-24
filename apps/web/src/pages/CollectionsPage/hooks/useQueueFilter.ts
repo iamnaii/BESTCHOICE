@@ -24,6 +24,21 @@ export interface QueueFilterState {
   slipReviewPending?: boolean;
 }
 
+/**
+ * Tab identifier — used to namespace URL query params so that filter state on
+ * one tab doesn't leak to another when the user switches tabs. Each tab's
+ * filter params are prefixed with a unique 2-char key so the 4 tabs can
+ * coexist in the same URL without collision.
+ */
+export type QueueFilterTab = 'queue' | 'follow-up' | 'promise' | 'all';
+
+const TAB_PREFIX: Record<QueueFilterTab, string> = {
+  queue: 'q_',
+  'follow-up': 'f_',
+  promise: 'p_',
+  all: 'a_',
+};
+
 const boolParam = (v: string | null): boolean | undefined => {
   if (v === 'true') return true;
   if (v === 'false') return false;
@@ -36,33 +51,8 @@ const numParam = (v: string | null): number | undefined => {
   return Number.isFinite(n) ? n : undefined;
 };
 
-function serialize(state: QueueFilterState, baseParams: URLSearchParams): URLSearchParams {
-  const out = new URLSearchParams();
-  // preserve non-filter params (e.g. ?view=incoming)
-  baseParams.forEach((value: string, key: string) => {
-    if (!FILTER_KEYS.has(key)) out.set(key, value);
-  });
-  if (state.assigned) out.set('assigned', state.assigned);
-  if (state.branchId) out.set('branchId', state.branchId);
-  if (state.overdueBuckets?.length) out.set('buckets', state.overdueBuckets.join(','));
-  if (state.minOutstanding !== undefined) out.set('minOutstanding', String(state.minOutstanding));
-  if (state.maxOutstanding !== undefined) out.set('maxOutstanding', String(state.maxOutstanding));
-  if (state.contractStatuses?.length) out.set('statuses', state.contractStatuses.join(','));
-  if (state.productTypes?.length) out.set('products', state.productTypes.join(','));
-  if (state.minLetterCount !== undefined) out.set('minLetterCount', String(state.minLetterCount));
-  if (state.lastContacted) out.set('lastContacted', state.lastContacted);
-  if (state.lineResponse) out.set('lineResponse', state.lineResponse);
-  if (state.minBrokenPromise !== undefined)
-    out.set('minBrokenPromise', String(state.minBrokenPromise));
-  if (state.hasActivePromise !== undefined)
-    out.set('hasActivePromise', String(state.hasActivePromise));
-  if (state.mdmState) out.set('mdmState', state.mdmState);
-  if (state.showSkipTracing) out.set('showSkipTracing', 'true');
-  if (state.slipReviewPending) out.set('slipReviewPending', 'true');
-  return out;
-}
-
-const FILTER_KEYS = new Set([
+// Canonical filter key names (suffix — real URL key is `<prefix><name>`).
+const FILTER_NAMES = [
   'assigned',
   'branchId',
   'buckets',
@@ -78,40 +68,90 @@ const FILTER_KEYS = new Set([
   'mdmState',
   'showSkipTracing',
   'slipReviewPending',
-]);
+] as const;
 
-export function useQueueFilter(): [
-  QueueFilterState,
-  (patch: Partial<QueueFilterState>) => void,
-  () => void,
-] {
+function namespacedKeys(prefix: string): Set<string> {
+  return new Set(FILTER_NAMES.map((n) => `${prefix}${n}`));
+}
+
+function serialize(
+  state: QueueFilterState,
+  baseParams: URLSearchParams,
+  prefix: string,
+): URLSearchParams {
+  const out = new URLSearchParams();
+  const ownKeys = namespacedKeys(prefix);
+  // preserve params that don't belong to this tab (other tabs' namespaced
+  // filter state + non-filter params like ?view=incoming or other tabs' URLs)
+  baseParams.forEach((value: string, key: string) => {
+    if (!ownKeys.has(key)) out.set(key, value);
+  });
+  if (state.assigned) out.set(`${prefix}assigned`, state.assigned);
+  if (state.branchId) out.set(`${prefix}branchId`, state.branchId);
+  if (state.overdueBuckets?.length) out.set(`${prefix}buckets`, state.overdueBuckets.join(','));
+  if (state.minOutstanding !== undefined)
+    out.set(`${prefix}minOutstanding`, String(state.minOutstanding));
+  if (state.maxOutstanding !== undefined)
+    out.set(`${prefix}maxOutstanding`, String(state.maxOutstanding));
+  if (state.contractStatuses?.length)
+    out.set(`${prefix}statuses`, state.contractStatuses.join(','));
+  if (state.productTypes?.length) out.set(`${prefix}products`, state.productTypes.join(','));
+  if (state.minLetterCount !== undefined)
+    out.set(`${prefix}minLetterCount`, String(state.minLetterCount));
+  if (state.lastContacted) out.set(`${prefix}lastContacted`, state.lastContacted);
+  if (state.lineResponse) out.set(`${prefix}lineResponse`, state.lineResponse);
+  if (state.minBrokenPromise !== undefined)
+    out.set(`${prefix}minBrokenPromise`, String(state.minBrokenPromise));
+  if (state.hasActivePromise !== undefined)
+    out.set(`${prefix}hasActivePromise`, String(state.hasActivePromise));
+  if (state.mdmState) out.set(`${prefix}mdmState`, state.mdmState);
+  if (state.showSkipTracing) out.set(`${prefix}showSkipTracing`, 'true');
+  if (state.slipReviewPending) out.set(`${prefix}slipReviewPending`, 'true');
+  return out;
+}
+
+/**
+ * Per-tab filter state hook. Each tab (queue/follow-up/promise/all) holds its
+ * own filter state in URL params, namespaced with a 2-char prefix so switching
+ * tabs doesn't leak filter state between them.
+ *
+ * Backward-compatible: calling without a tab arg defaults to 'queue' to keep
+ * existing consumers working during the refactor.
+ */
+export function useQueueFilter(
+  tab: QueueFilterTab = 'queue',
+): [QueueFilterState, (patch: Partial<QueueFilterState>) => void, () => void] {
   const [params, setParams] = useSearchParams();
+  const prefix = TAB_PREFIX[tab];
 
   const state: QueueFilterState = useMemo(() => {
-    const assignedRaw = params.get('assigned');
-    const minOut = numParam(params.get('minOutstanding'));
-    const maxOut = numParam(params.get('maxOutstanding'));
-    const minLetter = numParam(params.get('minLetterCount'));
-    const minBroken = numParam(params.get('minBrokenPromise'));
+    const assignedRaw = params.get(`${prefix}assigned`);
+    const minOut = numParam(params.get(`${prefix}minOutstanding`));
+    const maxOut = numParam(params.get(`${prefix}maxOutstanding`));
+    const minLetter = numParam(params.get(`${prefix}minLetterCount`));
+    const minBroken = numParam(params.get(`${prefix}minBrokenPromise`));
     return {
       assigned: assignedRaw ?? undefined,
-      branchId: params.get('branchId') ?? undefined,
-      overdueBuckets: (params.get('buckets')?.split(',').filter(Boolean) as OverdueBucketOption[]) ??
+      branchId: params.get(`${prefix}branchId`) ?? undefined,
+      overdueBuckets:
+        (params.get(`${prefix}buckets`)?.split(',').filter(Boolean) as OverdueBucketOption[]) ??
         undefined,
       minOutstanding: minOut,
       maxOutstanding: maxOut,
-      contractStatuses: params.get('statuses')?.split(',').filter(Boolean),
-      productTypes: params.get('products')?.split(',').filter(Boolean),
+      contractStatuses: params.get(`${prefix}statuses`)?.split(',').filter(Boolean),
+      productTypes: params.get(`${prefix}products`)?.split(',').filter(Boolean),
       minLetterCount: minLetter,
-      lastContacted: (params.get('lastContacted') as LastContactedOption | null) ?? undefined,
-      lineResponse: (params.get('lineResponse') as LineResponseOption | null) ?? undefined,
+      lastContacted:
+        (params.get(`${prefix}lastContacted`) as LastContactedOption | null) ?? undefined,
+      lineResponse:
+        (params.get(`${prefix}lineResponse`) as LineResponseOption | null) ?? undefined,
       minBrokenPromise: minBroken,
-      hasActivePromise: boolParam(params.get('hasActivePromise')),
-      mdmState: (params.get('mdmState') as MdmStateOption | null) ?? undefined,
-      showSkipTracing: params.get('showSkipTracing') === 'true' || undefined,
-      slipReviewPending: params.get('slipReviewPending') === 'true' || undefined,
+      hasActivePromise: boolParam(params.get(`${prefix}hasActivePromise`)),
+      mdmState: (params.get(`${prefix}mdmState`) as MdmStateOption | null) ?? undefined,
+      showSkipTracing: params.get(`${prefix}showSkipTracing`) === 'true' || undefined,
+      slipReviewPending: params.get(`${prefix}slipReviewPending`) === 'true' || undefined,
     };
-  }, [params]);
+  }, [params, prefix]);
 
   const setFilter = useCallback(
     (patch: Partial<QueueFilterState>) => {
@@ -123,18 +163,19 @@ export function useQueueFilter(): [
           delete next[k];
         }
       });
-      setParams(serialize(next, params), { replace: true });
+      setParams(serialize(next, params, prefix), { replace: true });
     },
-    [state, params, setParams],
+    [state, params, setParams, prefix],
   );
 
   const reset = useCallback(() => {
     const next = new URLSearchParams();
+    const ownKeys = namespacedKeys(prefix);
     params.forEach((value: string, key: string) => {
-      if (!FILTER_KEYS.has(key)) next.set(key, value);
+      if (!ownKeys.has(key)) next.set(key, value);
     });
     setParams(next, { replace: true });
-  }, [params, setParams]);
+  }, [params, setParams, prefix]);
 
   return [state, setFilter, reset];
 }

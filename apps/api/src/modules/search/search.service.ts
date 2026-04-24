@@ -91,6 +91,15 @@ export class SearchService {
       this.prisma.customer.findMany({
         where: {
           deletedAt: null,
+          // SALES scope: Customer has no direct branchId, so scope via any
+          // contract owned by the user's branch. Mirrors CustomersService.findAll
+          // which scopes SALES-visible customers by `contracts.some.branchId`
+          // (see customers.service.ts:45 — `where.contracts = { some: { branchId, deletedAt: null } }`).
+          // OWNER / BRANCH_MANAGER / FINANCE_MANAGER / ACCOUNTANT keep
+          // cross-branch visibility in union search.
+          ...(isSales && branchId
+            ? { contracts: { some: { branchId, deletedAt: null } } }
+            : {}),
           OR: [
             { name: { contains: query, mode: 'insensitive' } },
             { phone: { contains: phoneNormalized } },

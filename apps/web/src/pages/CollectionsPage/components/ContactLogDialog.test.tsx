@@ -33,6 +33,8 @@ const contract: ContractRow = {
   mdmState: 'NONE',
   relatedContractsCount: 0,
   lastChannel: null,
+  letterCount: 0,
+  slipReviewPending: false,
 };
 
 describe('<ContactLogDialog />', () => {

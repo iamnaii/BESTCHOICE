@@ -18,7 +18,7 @@ export interface PendingMdmRequest {
    * approval row renders an Unlock button (OWNER only). Absent for raw
    * PENDING requests (which is the common case in the approval queue).
    */
-  status?: 'PENDING' | 'EXECUTED_MANUAL' | 'EXECUTED_API' | 'REJECTED' | 'UNLOCKED' | 'LOCKED';
+  status?: 'PENDING' | 'APPROVED' | 'EXECUTED_MANUAL' | 'EXECUTED_API' | 'FAILED' | 'REJECTED' | 'UNLOCKED';
   contract: {
     id: string;
     contractNumber: string;
@@ -50,6 +50,8 @@ export interface ContractRow {
   mdmState: 'NONE' | 'PENDING' | 'LOCKED' | 'UNLOCKED';
   relatedContractsCount: number;
   lastChannel: 'LINE' | 'SMS' | 'CALL' | 'LETTER' | null;
+  letterCount: number;
+  slipReviewPending: boolean;
 }
 
 export type CallResult =

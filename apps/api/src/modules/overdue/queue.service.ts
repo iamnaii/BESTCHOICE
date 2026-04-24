@@ -114,7 +114,8 @@ export class OverdueQueueService {
       params.minBrokenPromise !== undefined ||
       params.hasActivePromise !== undefined ||
       params.mdmState !== undefined ||
-      params.slipReviewPending !== undefined;
+      params.slipReviewPending !== undefined ||
+      params.minLetterCount !== undefined;
 
     const effectiveTotal = hasPostFilter ? afterPostFilter.length : total;
 
@@ -196,6 +197,8 @@ export class OverdueQueueService {
       mdmState: MdmState;
       settlementDate: Date | string | null;
       customer: { lineId: string | null };
+      letterCount: number;
+      slipReviewPending: boolean;
     },
   >(rows: T[], f: QueueFilterInput, now: Date): T[] {
     let filtered = rows;
@@ -281,6 +284,19 @@ export class OverdueQueueService {
       });
     }
 
+    // Minimum letter count — count of ContractLetter rows per contract.
+    if (f.minLetterCount !== undefined) {
+      filtered = filtered.filter((r) => r.letterCount >= (f.minLetterCount as number));
+    }
+
+    // Slip review pending — rows with at least one PaymentEvidence in
+    // PENDING_REVIEW. Useful for finance to clear pending-slip backlog.
+    if (f.slipReviewPending !== undefined) {
+      filtered = filtered.filter((r) =>
+        f.slipReviewPending ? r.slipReviewPending : !r.slipReviewPending,
+      );
+    }
+
     // LINE response (heuristic based on lastCallResult + customer.lineId).
     // Server-side data doesn't include LINE delivery state yet — BLOCKED is
     // inferred only from explicit flag when available; NO_LINE from missing
@@ -316,6 +332,8 @@ export class OverdueQueueService {
       latestMdms,
       customerContractCounts,
       lastChannels,
+      letterCounts,
+      pendingSlipEvidences,
     ] = await Promise.all([
       this.prisma.callLog.groupBy({
         by: ['contractId'],
@@ -365,6 +383,24 @@ export class OverdueQueueService {
         distinct: ['contractId'],
         select: { contractId: true, channel: true },
       }),
+      // Letters dispatched per contract — used by minLetterCount filter.
+      this.prisma.contractLetter.groupBy({
+        by: ['contractId'],
+        where: { contractId: { in: contractIds }, deletedAt: null },
+        _count: { _all: true },
+      }),
+      // Pending slip evidence per contract — used by slipReviewPending filter.
+      // PaymentEvidence.status='PENDING_REVIEW' is the source of truth for
+      // slips awaiting finance review (see slip-review module).
+      this.prisma.paymentEvidence.groupBy({
+        by: ['contractId'],
+        where: {
+          contractId: { in: contractIds },
+          deletedAt: null,
+          status: 'PENDING_REVIEW',
+        },
+        _count: { _all: true },
+      }),
     ]);
 
     const callMap = new Map<string, Date | null>(
@@ -385,6 +421,12 @@ export class OverdueQueueService {
     const channelMap = new Map<string, string>(
       lastChannels.map((r) => [r.contractId, r.channel]),
     );
+    const letterCountMap = new Map<string, number>(
+      letterCounts.map((r) => [r.contractId, r._count._all]),
+    );
+    const slipPendingSet = new Set<string>(
+      pendingSlipEvidences.filter((r) => r._count._all > 0).map((r) => r.contractId),
+    );
 
     return contracts.map((c) => {
       const base = this.toRow(c, now);
@@ -400,6 +442,8 @@ export class OverdueQueueService {
         mdmState: this.toMdmState(mdmMap.get(c.id)),
         relatedContractsCount: Math.max(0, (customerCountMap.get(c.customerId) ?? 1) - 1),
         lastChannel: this.toLastChannel(channelMap.get(c.id)),
+        letterCount: letterCountMap.get(c.id) ?? 0,
+        slipReviewPending: slipPendingSet.has(c.id),
       };
     });
   }

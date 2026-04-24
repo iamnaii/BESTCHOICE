@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { PartyPopper } from 'lucide-react';
 import { useDebounce } from '@/hooks/useDebounce';
 import QueryBoundary from '@/components/QueryBoundary';
 import ContractCard from '../components/ContractCard';
@@ -40,7 +41,7 @@ export default function QueueTab({ search, branchId, onLogContact, onOpen360, on
   const [filterOpen, setFilterOpen] = useState(false);
   const sel = useBulkSelection();
   const debouncedSearch = useDebounce(search, 300);
-  const [filter, setFilter, resetFilter] = useQueueFilter();
+  const [filter, setFilter, resetFilter] = useQueueFilter('queue');
 
   const q = useCollectionsQueue({
     tab: 'today',
@@ -83,7 +84,7 @@ export default function QueueTab({ search, branchId, onLogContact, onOpen360, on
       {truncated && <TruncatedBanner onOpenFilter={openFilter} />}
       {rows.length === 0 ? (
         <div className="rounded-xl border border-dashed border-success/30 bg-success/5 p-10 text-center">
-          <div className="text-4xl mb-3">🎉</div>
+          <PartyPopper className="mx-auto mb-3 size-10 text-success" />
           <div className="text-sm font-medium text-success leading-snug">
             ไม่มีคิวติดตามวันนี้
           </div>

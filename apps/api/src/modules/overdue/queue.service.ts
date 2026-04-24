@@ -4,6 +4,9 @@ import { PrismaService } from '../../prisma/prisma.service';
 
 export type QueueTab = 'today' | 'followup' | 'promise';
 
+export type MdmState = 'NONE' | 'PENDING' | 'LOCKED' | 'UNLOCKED';
+export type LastChannel = 'LINE' | 'SMS' | 'CALL' | 'LETTER' | null;
+
 @Injectable()
 export class OverdueQueueService {
   constructor(private prisma: PrismaService) {}
@@ -63,13 +66,153 @@ export class OverdueQueueService {
       this.prisma.contract.count({ where }),
     ]);
 
-    const rows = contracts
-      .map((c) => this.toRow(c, now))
-      .sort((a, b) => b.__priorityScore - a.__priorityScore);
+    const enriched = await this.enrichRows(contracts, now);
+
+    const rows = enriched.sort((a, b) => b.__priorityScore - a.__priorityScore);
 
     const paged = rows.slice(skip, skip + limit).map(({ __priorityScore, ...rest }) => rest);
 
     return { data: paged, total, page, limit };
+  }
+
+  /**
+   * Enrich contracts with card indicator fields:
+   * - lastContactedAt: max(CallLog.createdAt, DunningAction.executedAt)
+   * - brokenPromiseCount: count of BROKEN_PROMISE audit events
+   * - mdmState: NONE | PENDING | LOCKED | UNLOCKED (latest MdmLockRequest)
+   * - relatedContractsCount: other active contracts for same customer
+   * - lastChannel: channel of most recent DunningAction
+   *
+   * Uses batched groupBy + findMany(distinct) to avoid N+1 — one query per
+   * aggregate regardless of how many contracts were fetched.
+   */
+  private async enrichRows(contracts: any[], now: Date) {
+    if (contracts.length === 0) return [];
+
+    const contractIds = contracts.map((c) => c.id);
+    const customerIds = [...new Set(contracts.map((c) => c.customerId))];
+
+    const [
+      lastCalls,
+      lastActions,
+      brokenPromises,
+      latestMdms,
+      customerContractCounts,
+      lastChannels,
+    ] = await Promise.all([
+      this.prisma.callLog.groupBy({
+        by: ['contractId'],
+        where: { contractId: { in: contractIds }, deletedAt: null },
+        _max: { createdAt: true },
+      }),
+      this.prisma.dunningAction.groupBy({
+        by: ['contractId'],
+        where: {
+          contractId: { in: contractIds },
+          deletedAt: null,
+          executedAt: { not: null },
+        },
+        _max: { executedAt: true },
+      }),
+      this.prisma.auditLog.groupBy({
+        by: ['entityId'],
+        where: {
+          entityId: { in: contractIds },
+          entity: 'Contract',
+          action: 'BROKEN_PROMISE',
+        },
+        _count: { _all: true },
+      }),
+      this.prisma.mdmLockRequest.findMany({
+        where: { contractId: { in: contractIds }, deletedAt: null },
+        orderBy: { createdAt: 'desc' },
+        distinct: ['contractId'],
+        select: { contractId: true, status: true },
+      }),
+      this.prisma.contract.groupBy({
+        by: ['customerId'],
+        where: {
+          customerId: { in: customerIds },
+          status: { in: ['ACTIVE', 'OVERDUE', 'DEFAULT', 'LEGAL'] },
+          deletedAt: null,
+        },
+        _count: { _all: true },
+      }),
+      this.prisma.dunningAction.findMany({
+        where: {
+          contractId: { in: contractIds },
+          deletedAt: null,
+          executedAt: { not: null },
+        },
+        orderBy: { executedAt: 'desc' },
+        distinct: ['contractId'],
+        select: { contractId: true, channel: true },
+      }),
+    ]);
+
+    const callMap = new Map<string, Date | null>(
+      lastCalls.map((r) => [r.contractId, r._max.createdAt ?? null]),
+    );
+    const actionMap = new Map<string, Date | null>(
+      lastActions.map((r) => [r.contractId, r._max.executedAt ?? null]),
+    );
+    const brokenMap = new Map<string, number>(
+      brokenPromises.map((r) => [r.entityId, r._count._all]),
+    );
+    const mdmMap = new Map<string, string>(
+      latestMdms.map((r) => [r.contractId, r.status]),
+    );
+    const customerCountMap = new Map<string, number>(
+      customerContractCounts.map((r) => [r.customerId, r._count._all]),
+    );
+    const channelMap = new Map<string, string>(
+      lastChannels.map((r) => [r.contractId, r.channel]),
+    );
+
+    return contracts.map((c) => {
+      const base = this.toRow(c, now);
+      const call = callMap.get(c.id) ?? null;
+      const action = actionMap.get(c.id) ?? null;
+      const lastContactedAt =
+        call && action ? (call > action ? call : action) : call ?? action ?? null;
+
+      return {
+        ...base,
+        lastContactedAt,
+        brokenPromiseCount: brokenMap.get(c.id) ?? 0,
+        mdmState: this.toMdmState(mdmMap.get(c.id)),
+        relatedContractsCount: Math.max(0, (customerCountMap.get(c.customerId) ?? 1) - 1),
+        lastChannel: this.toLastChannel(channelMap.get(c.id)),
+      };
+    });
+  }
+
+  private toMdmState(status: string | undefined): MdmState {
+    if (!status) return 'NONE';
+    if (status === 'PENDING') return 'PENDING';
+    if (status === 'UNLOCKED') return 'UNLOCKED';
+    if (
+      status === 'APPROVED' ||
+      status === 'EXECUTED_MANUAL' ||
+      status === 'EXECUTED_API'
+    ) {
+      return 'LOCKED';
+    }
+    // REJECTED / FAILED → treat as no active lock
+    return 'NONE';
+  }
+
+  private toLastChannel(channel: string | undefined): LastChannel {
+    switch (channel) {
+      case 'LINE':
+        return 'LINE';
+      case 'SMS':
+        return 'SMS';
+      case 'CALL_TASK':
+        return 'CALL';
+      default:
+        return null;
+    }
   }
 
   /**

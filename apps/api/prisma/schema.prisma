@@ -581,8 +581,8 @@ model User {
   aiPausedRooms               ChatRoom[]                @relation("ChatRoomAiPausedBy")
   aiSettingsUpdates           AiSettings[]              @relation("AiSettingsUpdatedBy")
 
-  // mdmProposed      MdmLockRequest[] @relation("MdmProposed")    // wired in Task 3
-  // mdmApproved      MdmLockRequest[] @relation("MdmApproved")    // wired in Task 3
+  mdmProposed MdmLockRequest[] @relation("MdmProposed")
+  mdmApproved MdmLockRequest[] @relation("MdmApproved")
   // letterDispatched ContractLetter[] @relation("LetterDispatched") // wired in Task 4
 
   @@index([branchId])
@@ -858,7 +858,7 @@ model Contract {
   warrantyAudits        WarrantyAuditLog[]        @relation("WarrantyAuditContract")
   badDebtWriteOffAudits BadDebtWriteOffAuditLog[] @relation("BadDebtWriteOffContract")
 
-  // mdmLockRequests MdmLockRequest[]  // wired in Task 3
+  mdmLockRequests MdmLockRequest[]
   // contractLetters ContractLetter[]  // wired in Task 4
 
   @@index([customerId])
@@ -1739,6 +1739,33 @@ model DunningAction {
   @@index([status])
   @@index([createdAt])
   @@map("dunning_actions")
+}
+
+model MdmLockRequest {
+  id               String         @id @default(uuid())
+  contractId       String         @map("contract_id")
+  contract         Contract       @relation(fields: [contractId], references: [id])
+  status           MdmLockStatus  @default(PENDING)
+  trigger          MdmLockTrigger
+  includeWallpaper Boolean        @default(true) @map("include_wallpaper")
+  proposedById     String         @map("proposed_by_id")
+  proposedBy       User           @relation("MdmProposed", fields: [proposedById], references: [id])
+  proposedAt       DateTime       @default(now()) @map("proposed_at")
+  approvedById     String?        @map("approved_by_id")
+  approvedBy       User?          @relation("MdmApproved", fields: [approvedById], references: [id])
+  approvedAt       DateTime?      @map("approved_at")
+  rejectedById     String?        @map("rejected_by_id")
+  rejectedReason   String?        @map("rejected_reason")
+  reason           String
+  externalRef      String?        @map("external_ref")
+  wallpaperUrlUsed String?        @map("wallpaper_url_used")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+  deletedAt        DateTime?      @map("deleted_at")
+
+  @@index([contractId, status])
+  @@index([status, proposedAt])
+  @@map("mdm_lock_requests")
 }
 
 model AuditLog {

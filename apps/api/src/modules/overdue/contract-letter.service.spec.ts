@@ -228,6 +228,47 @@ describe('ContractLetterService', () => {
       expect(terminatedCall).toBeUndefined();
     });
 
+    it('markDispatched sets contract.status=LEGAL for 60d termination letter (4 tx ops)', async () => {
+      mockPrisma.contractLetter.findUnique.mockResolvedValueOnce({
+        id: 'letter-t',
+        status: 'PDF_GENERATED',
+        contractId: 'c1',
+        letterType: 'CONTRACT_TERMINATION_60D',
+        letterNumber: 'ST-2026-00001',
+      });
+      mockPrisma.$transaction.mockResolvedValueOnce([
+        { id: 'letter-t', status: 'DISPATCHED' },
+        {},
+        {},
+        {},
+      ]);
+      mockDunningEngine.executeEventTrigger.mockResolvedValue(undefined);
+
+      await service.markDispatched('letter-t', 'u1', { trackingNumber: 'EX123456' });
+
+      const txOps = mockPrisma.$transaction.mock.calls[0][0];
+      expect(Array.isArray(txOps)).toBe(true);
+      // 2 base ops + 2 legal-escalation ops for 60d letters
+      expect(txOps.length).toBe(4);
+    });
+
+    it('markDispatched does NOT set LEGAL for 45d return-device letter (2 tx ops)', async () => {
+      mockPrisma.contractLetter.findUnique.mockResolvedValueOnce({
+        id: 'letter-r',
+        status: 'PDF_GENERATED',
+        contractId: 'c1',
+        letterType: 'RETURN_DEVICE_45D',
+        letterNumber: 'ST-2026-00002',
+      });
+      mockPrisma.$transaction.mockResolvedValueOnce([{ id: 'letter-r', status: 'DISPATCHED' }, {}]);
+      mockDunningEngine.executeEventTrigger.mockResolvedValue(undefined);
+
+      await service.markDispatched('letter-r', 'u1', { trackingNumber: 'EX777AB' });
+
+      const txOps = mockPrisma.$transaction.mock.calls[0][0];
+      expect(txOps.length).toBe(2); // only 2 base ops
+    });
+
     it('throws BadRequest when status is not PDF_GENERATED', async () => {
       mockPrisma.contractLetter.findUnique.mockResolvedValueOnce({
         id: 'l4',

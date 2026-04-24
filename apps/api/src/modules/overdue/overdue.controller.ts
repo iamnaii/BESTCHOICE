@@ -21,6 +21,7 @@ import { QueueQueryDto } from './dto/queue-query.dto';
 import { KpiQueryDto } from './dto/kpi-query.dto';
 import { BulkAssignDto, BulkProposeLockDto, BulkSendLineDto } from './dto/bulk.dto';
 import { SendLineAdHocDto } from './dto/send-line-adhoc.dto';
+import { ApproveMdmDto } from './dto/approve-mdm.dto';
 import { UpdateLetterEvidenceDto } from './dto/update-letter-evidence.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -351,9 +352,12 @@ export class OverdueController {
   @Roles('OWNER', 'FINANCE_MANAGER')
   approveMdmLock(
     @Param('id') id: string,
+    @Body() body: ApproveMdmDto,
     @CurrentUser() user: { id: string; role: string },
   ) {
-    return this.mdmLockService.approve(id, user.id, user.role);
+    return this.mdmLockService.approve(id, user.id, user.role, {
+      includeWallpaper: body.includeWallpaper,
+    });
   }
 
   @Post('mdm-requests/:id/reject')

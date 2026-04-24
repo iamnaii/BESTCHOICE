@@ -55,11 +55,26 @@ export function useRejectEscalation() {
   });
 }
 
+/**
+ * Approve a pending MDM lock request.
+ *
+ * Accepts either a plain requestId string (back-compat) or an object with
+ * an explicit `includeWallpaper` override. The object form lets the approve
+ * dialog surface a wallpaper preview + checkbox so the OWNER decides at
+ * approve-time whether the wallpaper is shipped.
+ */
 export function useApproveMdm() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (requestId: string) => {
-      const { data } = await api.post(`/overdue/mdm-requests/${requestId}/approve`);
+    mutationFn: async (
+      arg: string | { id: string; includeWallpaper?: boolean },
+    ) => {
+      const id = typeof arg === 'string' ? arg : arg.id;
+      const body =
+        typeof arg === 'string' || arg.includeWallpaper === undefined
+          ? undefined
+          : { includeWallpaper: arg.includeWallpaper };
+      const { data } = await api.post(`/overdue/mdm-requests/${id}/approve`, body);
       return data;
     },
     onSuccess: () => {

@@ -1,8 +1,11 @@
 import { useState } from 'react';
 import { CheckCircle, XCircle, Unlock } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
+import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUnlockMdm } from '../hooks/useApprovalQueues';
+import { WallpaperPreview } from './WallpaperPreview';
 import type { PendingEscalation, PendingMdmRequest } from '../types';
 
 /* ── helpers ─────────────────────────────────────────────────── */
@@ -216,21 +219,48 @@ function UnlockDialog({
 
 interface MdmRowProps {
   item: PendingMdmRequest;
-  onApprove: (requestId: string) => void;
+  /**
+   * Approver action. `opts.includeWallpaper` (optional) overrides the
+   * proposer's choice. When omitted backend falls back to proposer's value.
+   */
+  onApprove: (requestId: string, opts?: { includeWallpaper?: boolean }) => void;
   onReject: (requestId: string, reason: string) => void;
   approvePending: boolean;
   rejectPending: boolean;
 }
 
+/**
+ * Fetches the MDM wallpaper URL from SystemConfig for the approve dialog
+ * preview. Returns null when the setting is not yet configured. Cached for
+ * 5 minutes — the URL changes rarely.
+ *
+ * Uses the shared `/settings` endpoint (same source DunningSettingsPage writes
+ * to) so preview matches what the OWNER configured.
+ */
+function useWallpaperUrl(enabled: boolean): string | null {
+  const { data } = useQuery<Array<{ key: string; value: string | null }>>({
+    queryKey: ['settings'],
+    queryFn: async () => (await api.get('/settings')).data ?? [],
+    enabled,
+    staleTime: 5 * 60 * 1000,
+  });
+  const entry = data?.find((s) => s.key === 'mdm_lock_wallpaper_url');
+  return entry?.value && entry.value.length > 0 ? entry.value : null;
+}
+
 export function MdmRow({ item, onApprove, onReject, approvePending, rejectPending }: MdmRowProps) {
   const [showReject, setShowReject] = useState(false);
   const [showUnlockConfirm, setShowUnlockConfirm] = useState(false);
+  const [showApproveDialog, setShowApproveDialog] = useState(false);
+  const [includeWallpaper, setIncludeWallpaper] = useState<boolean>(item.includeWallpaper);
 
   const { user } = useAuth();
   const isOwner = user?.role === 'OWNER';
   const isLocked = item.status === 'EXECUTED_MANUAL' || item.status === 'EXECUTED_API' || item.status === 'LOCKED';
   const canUnlock = isOwner && isLocked;
   const unlock = useUnlockMdm();
+
+  const wallpaperUrl = useWallpaperUrl(showApproveDialog);
 
   const actionLabel =
     'เสนอล็อคเครื่อง' + (item.includeWallpaper ? ' + wallpaper' : '');
@@ -281,7 +311,10 @@ export function MdmRow({ item, onApprove, onReject, approvePending, rejectPendin
                   <XCircle className="size-3.5" /> ปฏิเสธ
                 </button>
                 <button
-                  onClick={() => onApprove(item.id)}
+                  onClick={() => {
+                    setIncludeWallpaper(item.includeWallpaper);
+                    setShowApproveDialog(true);
+                  }}
                   disabled={approvePending}
                   className="inline-flex items-center gap-1.5 rounded-lg bg-destructive px-3 py-1.5 text-xs font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50 transition-colors"
                 >
@@ -324,6 +357,46 @@ export function MdmRow({ item, onApprove, onReject, approvePending, rejectPendin
           setShowUnlockConfirm(false);
         }}
       />
+
+      {showApproveDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-xl border border-border bg-card shadow-xl p-6 mx-4">
+            <h3 className="text-sm font-semibold mb-1 leading-snug">อนุมัติล็อคเครื่อง</h3>
+            <p className="text-xs text-muted-foreground leading-snug mb-4">
+              สัญญา {item.contract.contractNumber} • ลูกค้า{' '}
+              <span className="text-foreground">{item.contract.customer.name}</span>
+            </p>
+
+            <div className="mb-4">
+              <WallpaperPreview
+                wallpaperUrl={wallpaperUrl}
+                checked={includeWallpaper && !!wallpaperUrl}
+                onChange={setIncludeWallpaper}
+              />
+            </div>
+
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setShowApproveDialog(false)}
+                className="rounded-lg border border-input px-4 py-1.5 text-sm hover:bg-muted transition-colors"
+              >
+                ยกเลิก
+              </button>
+              <button
+                disabled={approvePending}
+                onClick={() => {
+                  const effective = includeWallpaper && !!wallpaperUrl;
+                  onApprove(item.id, { includeWallpaper: effective });
+                  setShowApproveDialog(false);
+                }}
+                className="rounded-lg bg-destructive px-4 py-1.5 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50 transition-colors"
+              >
+                {approvePending ? 'กำลังอนุมัติ...' : 'ยืนยันอนุมัติ'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

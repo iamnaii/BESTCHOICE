@@ -80,7 +80,22 @@ export class MdmLockService {
     });
   }
 
-  async approve(requestId: string, approverId: string, approverRole?: string) {
+  /**
+   * Approve a pending MDM lock request and execute it.
+   *
+   * @param options.includeWallpaper — Optional approver override. When
+   *   provided, this takes precedence over the proposer's `includeWallpaper`
+   *   field on the request. When omitted, falls back to the proposer's
+   *   choice. This lets OWNER/FINANCE_MANAGER decide at approve-time whether
+   *   the wallpaper ships, instead of being locked into the proposer's
+   *   decision (D2 UX).
+   */
+  async approve(
+    requestId: string,
+    approverId: string,
+    approverRole?: string,
+    options: { includeWallpaper?: boolean } = {},
+  ) {
     const role = await this.resolveRole(approverId, approverRole);
     if (!(APPROVE_ROLES as readonly string[]).includes(role)) {
       throw new ForbiddenException(`สิทธิ์อนุมัติล็อคเครื่องเฉพาะ ${APPROVE_ROLES.join(' / ')}`);
@@ -92,7 +107,11 @@ export class MdmLockService {
       throw new BadRequestException('คำขอนี้ไม่อยู่ในสถานะรออนุมัติ');
     }
 
-    const wallpaperUrl = req.includeWallpaper
+    // Approver override takes precedence; otherwise use proposer's choice.
+    const effectiveIncludeWallpaper =
+      options.includeWallpaper !== undefined ? options.includeWallpaper : req.includeWallpaper;
+
+    const wallpaperUrl = effectiveIncludeWallpaper
       ? (
           await this.prisma.systemConfig.findUnique({ where: { key: 'mdm_lock_wallpaper_url' } })
         )?.value ?? null
@@ -114,8 +133,8 @@ export class MdmLockService {
         data: {
           deviceLocked: true,
           deviceLockedAt: now,
-          wallpaperChanged: req.includeWallpaper,
-          wallpaperChangedAt: req.includeWallpaper ? now : null,
+          wallpaperChanged: effectiveIncludeWallpaper,
+          wallpaperChangedAt: effectiveIncludeWallpaper ? now : null,
         },
       }),
       this.prisma.auditLog.create({
@@ -124,7 +143,11 @@ export class MdmLockService {
           action: 'MDM_LOCK_APPROVED',
           entity: 'mdm_lock_request',
           entityId: requestId,
-          newValue: { trigger: req.trigger, includeWallpaper: req.includeWallpaper },
+          newValue: {
+            trigger: req.trigger,
+            includeWallpaper: effectiveIncludeWallpaper,
+            proposerIncludeWallpaper: req.includeWallpaper,
+          },
         },
       }),
     ]);

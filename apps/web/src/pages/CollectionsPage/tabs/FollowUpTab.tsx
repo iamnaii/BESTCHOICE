@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
 import QueryBoundary from '@/components/QueryBoundary';
 import ContractCard from '../components/ContractCard';
+import BulkActionBar from '../components/BulkActionBar';
 import { useCollectionsQueue } from '../hooks/useCollectionsQueue';
+import { useBulkSelection } from '../hooks/useBulkSelection';
 import type { ContractRow } from '../types';
 
 const LIMIT = 50;
@@ -26,10 +28,12 @@ interface Props {
   branchId: string;
   onLogContact: (c: ContractRow) => void;
   onOpen360?: (c: ContractRow) => void;
+  onSendLine?: (c: ContractRow) => void;
 }
 
-export default function FollowUpTab({ search, branchId, onLogContact, onOpen360 }: Props) {
+export default function FollowUpTab({ search, branchId, onLogContact, onOpen360, onSendLine }: Props) {
   const [page, setPage] = useState(1);
+  const sel = useBulkSelection();
   const debouncedSearch = useDebounce(search, 300);
 
   const q = useCollectionsQueue({
@@ -93,7 +97,14 @@ export default function FollowUpTab({ search, branchId, onLogContact, onOpen360 
             {filtered.map((row) =>
               row.noAnswerCount === 2 ? (
                 <div key={row.id} className="ring-2 ring-destructive/40 rounded-xl">
-                  <ContractCard contract={row} onLogContact={onLogContact} onOpen360={onOpen360} />
+                  <ContractCard
+                    contract={row}
+                    onLogContact={onLogContact}
+                    onOpen360={onOpen360}
+                    onSendLine={onSendLine}
+                    selected={sel.isSelected(row.id)}
+                    onToggleSelect={sel.toggle}
+                  />
                 </div>
               ) : (
                 <ContractCard
@@ -101,6 +112,9 @@ export default function FollowUpTab({ search, branchId, onLogContact, onOpen360 
                   contract={row}
                   onLogContact={onLogContact}
                   onOpen360={onOpen360}
+                  onSendLine={onSendLine}
+                  selected={sel.isSelected(row.id)}
+                  onToggleSelect={sel.toggle}
                 />
               ),
             )}
@@ -131,6 +145,7 @@ export default function FollowUpTab({ search, branchId, onLogContact, onOpen360 
           )}
         </>
       )}
+      <BulkActionBar selectedIds={sel.selectedIds} onClear={sel.clear} />
     </QueryBoundary>
   );
 }

@@ -2,6 +2,7 @@ import {
   Phone,
   PhoneMissed,
   MessageCircle,
+  MessageSquare,
   Lock,
   Search,
   CalendarCheck,
@@ -23,11 +24,35 @@ interface Props {
   contract: ContractRow;
   onLogContact: (c: ContractRow) => void;
   onOpen360?: (c: ContractRow) => void;
+  onSendLine?: (c: ContractRow) => void;
+  selected?: boolean;
+  onToggleSelect?: (id: string) => void;
 }
 
-export default function ContractCard({ contract, onLogContact, onOpen360 }: Props) {
+export default function ContractCard({
+  contract,
+  onLogContact,
+  onOpen360,
+  onSendLine,
+  selected,
+  onToggleSelect,
+}: Props) {
   return (
     <div className="group relative flex rounded-xl border border-border/50 bg-card shadow-sm hover:shadow-card-hover transition-shadow overflow-hidden">
+      {/* Checkbox column — only rendered when bulk-select is active */}
+      {onToggleSelect && (
+        <label className="flex items-start pt-5 pl-3 shrink-0 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={!!selected}
+            onChange={() => onToggleSelect(contract.id)}
+            onClick={(e) => e.stopPropagation()}
+            className="size-4 rounded border-input accent-primary focus:ring-2 focus:ring-ring/30"
+            aria-label={`เลือกสัญญา ${contract.contractNumber}`}
+          />
+        </label>
+      )}
+
       {/* Priority heat strip */}
       <div className={`w-1 shrink-0 ${priorityColor(contract.daysOverdue)}`} />
 
@@ -127,6 +152,15 @@ export default function ContractCard({ contract, onLogContact, onOpen360 }: Prop
               aria-label="บันทึกผลการโทร"
             >
               <NotebookPen className="size-3.5" />
+            </button>
+            <button
+              onClick={() => onSendLine?.(contract)}
+              disabled={!contract.customer.lineId}
+              className="rounded-lg border border-input p-1.5 hover:bg-accent text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
+              title={contract.customer.lineId ? 'ส่ง LINE' : 'ลูกค้าไม่มี LINE ID'}
+              aria-label="ส่ง LINE"
+            >
+              <MessageSquare className="size-3.5" />
             </button>
             {onOpen360 && (
               <button

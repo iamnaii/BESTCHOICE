@@ -13,6 +13,7 @@ import { LogContactDto } from './dto/log-contact.dto';
 import { CreateDunningRuleDto, UpdateDunningRuleDto } from './dto/dunning-rule.dto';
 import { QueueQueryDto } from './dto/queue-query.dto';
 import { KpiQueryDto } from './dto/kpi-query.dto';
+import { RejectMdmDto } from './dto/reject-mdm.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
@@ -324,7 +325,7 @@ export class OverdueController {
   @Roles('OWNER', 'FINANCE_MANAGER')
   rejectMdmLock(
     @Param('id') id: string,
-    @Body() body: { reason: string },
+    @Body() body: RejectMdmDto,
     @CurrentUser() user: { id: string; role: string },
   ) {
     return this.mdmLockService.reject(id, user.id, body.reason, user.role);

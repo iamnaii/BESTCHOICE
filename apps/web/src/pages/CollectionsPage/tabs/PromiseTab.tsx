@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Calendar } from 'lucide-react';
 import { useDebounce } from '@/hooks/useDebounce';
 import QueryBoundary from '@/components/QueryBoundary';
 import ContractCard from '../components/ContractCard';
@@ -100,10 +100,10 @@ export default function PromiseTab({ search, branchId, onLogContact }: Props) {
 
   const total = q.data?.total ?? 0;
   // C1 fix: search is now server-side via useCollectionsQueue → /overdue/queue
-  const filtered = q.data?.data ?? [];
+  const rows = q.data?.data ?? [];
 
-  const groups = groupRows(filtered);
-  const isEmpty = filtered.length === 0;
+  const groups = groupRows(rows);
+  const isEmpty = rows.length === 0;
 
   return (
     <QueryBoundary
@@ -121,7 +121,7 @@ export default function PromiseTab({ search, branchId, onLogContact }: Props) {
     >
       {isEmpty ? (
         <div className="rounded-xl border border-dashed border-border p-10 text-center">
-          <div className="text-4xl mb-3">📅</div>
+          <Calendar className="size-10 mx-auto mb-3 text-muted-foreground" />
           <div className="text-sm font-medium text-foreground leading-snug">
             ไม่มีนัดชำระในช่วงนี้
           </div>

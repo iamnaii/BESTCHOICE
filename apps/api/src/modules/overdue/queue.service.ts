@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { bangkokStartOfDay } from '../../utils/date.util';
 
 export type QueueTab = 'today' | 'followup' | 'promise';
 
@@ -84,8 +85,9 @@ export class OverdueQueueService {
     now: Date,
     branchScope: Prisma.ContractWhereInput,
   ): Prisma.ContractWhereInput {
-    const startOfDay = new Date(now);
-    startOfDay.setHours(0, 0, 0, 0);
+    // Bangkok-local midnight — server TZ on Cloud Run is UTC, so naive
+    // setHours(0,0,0,0) would shift the "today" boundary by 7 hours.
+    const startOfDay = bangkokStartOfDay(now);
 
     if (tab === 'today') {
       return {

@@ -8,7 +8,7 @@ import {
   UserCircle,
   NotebookPen,
 } from 'lucide-react';
-import { formatDateShort } from '@/utils/formatters';
+import { formatDateShort, formatNumber } from '@/utils/formatters';
 import type { ContractRow } from '../types';
 
 function priorityColor(daysOverdue: number): string {
@@ -71,7 +71,7 @@ export default function ContractCard({ contract, onLogContact, onOpen360 }: Prop
         <div className="text-sm font-medium tabular-nums mb-3 leading-snug">
           ค้าง{' '}
           <span className="text-destructive">
-            {contract.outstanding.toLocaleString()}
+            {formatNumber(contract.outstanding)}
           </span>{' '}
           ฿
         </div>

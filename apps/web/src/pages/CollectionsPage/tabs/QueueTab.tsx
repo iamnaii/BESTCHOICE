@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { CheckCircle2 } from 'lucide-react';
 import { useDebounce } from '@/hooks/useDebounce';
 import QueryBoundary from '@/components/QueryBoundary';
 import ContractCard from '../components/ContractCard';
@@ -62,7 +63,7 @@ export default function QueueTab({ search, branchId, onLogContact }: Props) {
     >
       {filtered.length === 0 ? (
         <div className="rounded-xl border border-dashed border-success/30 bg-success/5 p-10 text-center">
-          <div className="text-4xl mb-3">🎉</div>
+          <CheckCircle2 className="size-10 mx-auto mb-3 text-success" />
           <div className="text-sm font-medium text-success leading-snug">
             ไม่มีคิวติดตามวันนี้
           </div>

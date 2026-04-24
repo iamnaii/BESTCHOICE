@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { bangkokStartOfDay } from '../../utils/date.util';
 
 export interface KpiResult {
   totalOutstanding: number;
@@ -61,8 +62,10 @@ export class OverdueKpiService {
   }) {
     const nowDate = new Date();
     const sevenDaysAgo = new Date(nowDate.getTime() - 7 * 86400000);
-    const today = new Date(nowDate);
-    today.setHours(0, 0, 0, 0);
+    // Use Bangkok-local midnight, not server-TZ midnight. On Cloud Run (UTC),
+    // setHours(0,0,0,0) flips the "today" boundary at 07:00 ICT — collectors
+    // would see yesterday's queue all morning.
+    const today = bangkokStartOfDay(nowDate);
 
     const branchScope: Prisma.ContractWhereInput =
       params.userRole === 'SALES' || params.userRole === 'BRANCH_MANAGER'
@@ -170,8 +173,10 @@ export class OverdueKpiService {
 
     const avgCollectorWorkload =
       workloadBuckets.length > 0
-        ? workloadBuckets.reduce((s: number, b: any) => s + b._count._all, 0) /
-          workloadBuckets.length
+        ? workloadBuckets.reduce(
+            (s: number, b: { _count: { _all: number } }) => s + b._count._all,
+            0,
+          ) / workloadBuckets.length
         : 0;
 
     const amountDue = new Prisma.Decimal(outstanding._sum.amountDue ?? 0);

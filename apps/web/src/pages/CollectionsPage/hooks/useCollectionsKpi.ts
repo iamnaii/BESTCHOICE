@@ -9,6 +9,7 @@ export interface CollectionsKpi {
   promisedCount: number;
   promiseKeptRate7d: number;
   avgCollectorWorkload: number;
+  collectorWorkload?: Array<{ userId: string; name: string; count: number }>;
 }
 
 export function useCollectionsKpi(range: '7d' | '30d' = '7d') {

@@ -169,7 +169,11 @@ export default function LiffPayment() {
         amount: Number(data.amount),
         description: `ชำระค่างวด สัญญา ${data.contract.contractNumber}`,
         lineId: queryLineId || undefined,
-        installmentNo: data.payment?.installmentNo,
+        // Only pass installmentNo for single-installment payments. Early-payoff
+        // links cover multiple installments — backend validates amount against
+        // the single linked installment's outstanding when installmentNo is
+        // present and would reject the full payoff as "ยอดไม่ตรง".
+        installmentNo: isMultiInstallment ? undefined : data.payment?.installmentNo,
       };
       const { data: result } = await liffApi.post<PaymentIntentResult>(
         '/paysolutions/create-intent',

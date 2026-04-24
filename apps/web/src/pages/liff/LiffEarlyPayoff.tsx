@@ -67,11 +67,27 @@ export default function LiffEarlyPayoff() {
 
   const payoffMutation = useMutation({
     mutationFn: async () => {
-      const { data: result } = await liffApi.post('/line-oa/liff/early-payoff', { lineId, contractId });
-      return result as { url: string; token: string; totalPayoff: number };
+      if (!quote) throw new Error('ไม่พบข้อมูลยอดปิดสัญญา');
+      // Skip the intermediate /pay/{token} landing page and the old
+      // /line-oa/liff/early-payoff hop (which only minted a PaymentLink
+      // shell). Call PaySolutions directly — the hosted QR is the real
+      // terminal step anyway. installmentNo is intentionally omitted so
+      // backend skips per-installment amount validation (the payoff
+      // amount intentionally exceeds any single installment).
+      const { data: intent } = await liffApi.post('/paysolutions/create-intent', {
+        contractId,
+        amount: Number(quote.totalPayoff),
+        description: `ปิดยอดก่อนกำหนด สัญญา ${quote.contractNumber}`,
+        lineId,
+      });
+      return intent as { success: boolean; paymentId: string; paymentUrl: string; gatewayRef: string };
     },
     onSuccess: (result) => {
-      window.location.href = result.url;
+      if (result.paymentUrl) {
+        window.location.href = result.paymentUrl;
+      } else {
+        toast.error('ไม่สามารถสร้างลิงก์ชำระเงินได้ กรุณาลองใหม่');
+      }
     },
     onError: (err: Error) => {
       toast.error(err.message);

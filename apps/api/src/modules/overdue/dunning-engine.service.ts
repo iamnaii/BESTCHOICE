@@ -78,6 +78,7 @@ export class DunningEngineService {
 
     for (const rule of rules) {
       try {
+        if (rule.triggerDay === null) continue; // event-triggered rules fire via executeEventTrigger, not this scheduled loop
         const payments = await this.findPaymentsForRule(rule.triggerDay, today);
 
         for (const payment of payments) {

@@ -127,6 +127,7 @@ export class PaymentsController {
       dto.paymentMethod,
       user.id,
       dto.notes,
+      dto.evidenceUrl,
     );
   }
 

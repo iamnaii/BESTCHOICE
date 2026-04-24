@@ -295,6 +295,26 @@ describe('PaymentsService', () => {
       expect(result.totalAllocated).toBe(5000);
       expect(result.overpayment).toBe(0);
     });
+
+    it('should attach evidenceUrl to the first payment only', async () => {
+      const payments = [
+        { ...mockPayment, id: 'p-1', installmentNo: 1, amountDue: 3000, amountPaid: 0, lateFee: 0, status: 'PENDING' },
+        { ...mockPayment, id: 'p-2', installmentNo: 2, amountDue: 3000, amountPaid: 0, lateFee: 0, status: 'PENDING' },
+      ];
+      prisma.contract.findUnique.mockResolvedValue({ ...mockContract, payments });
+      prisma.payment.update
+        .mockResolvedValueOnce({ ...payments[0], amountPaid: 3000, status: 'PAID', paidDate: new Date() })
+        .mockResolvedValueOnce({ ...payments[1], amountPaid: 2000, status: 'PARTIALLY_PAID', paidDate: null });
+
+      await service.autoAllocatePayment(
+        'contract-1', 5000, 'BANK_TRANSFER', 'user-1', undefined, 'https://slip.example.com/transfer.jpg',
+      );
+
+      const firstCall = prisma.payment.update.mock.calls[0][0];
+      const secondCall = prisma.payment.update.mock.calls[1][0];
+      expect(firstCall.data.evidenceUrl).toBe('https://slip.example.com/transfer.jpg');
+      expect(secondCall.data.evidenceUrl).toBeUndefined();
+    });
   });
 
   describe('getContractPayments', () => {

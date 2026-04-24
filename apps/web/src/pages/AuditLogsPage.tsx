@@ -67,6 +67,58 @@ const entityLabels: Record<string, string> = {
   notifications: 'แจ้งเตือน',
 };
 
+// ── Collections quick-filter presets ────────────────────────────────────────
+const COLLECTION_PRESET_ACTIONS: Record<string, string[]> = {
+  all: [
+    'STATUS_CHANGE',
+    'DUNNING_ESCALATION_PENDING',
+    'DUNNING_ESCALATION_APPROVED',
+    'DUNNING_ESCALATION_REJECTED',
+    'MDM_LOCK_APPROVED',
+    'MDM_UNLOCK',
+    'HOLD_AUTO_ESCALATION',
+    'LETTER_PDF_GENERATED',
+    'LETTER_DISPATCHED',
+    'LETTER_DELIVERED',
+    'LETTER_UNDELIVERABLE',
+    'LETTER_EVIDENCE_UPDATED',
+    'CONTRACT_STATUS_LEGAL',
+    'BULK_ASSIGN',
+    'CREATE_CALL_LOG',
+  ],
+  mdm: ['MDM_LOCK_APPROVED', 'MDM_UNLOCK', 'HOLD_AUTO_ESCALATION'],
+  letters: [
+    'LETTER_PDF_GENERATED',
+    'LETTER_DISPATCHED',
+    'LETTER_DELIVERED',
+    'LETTER_UNDELIVERABLE',
+    'LETTER_EVIDENCE_UPDATED',
+    'CONTRACT_STATUS_LEGAL',
+  ],
+  dunning: [
+    'DUNNING_ESCALATION_PENDING',
+    'DUNNING_ESCALATION_APPROVED',
+    'DUNNING_ESCALATION_REJECTED',
+  ],
+};
+
+type CollectionPreset = keyof typeof COLLECTION_PRESET_ACTIONS | null;
+
+const PRESET_LABELS: Record<string, string> = {
+  all: 'ทั้งหมด (Collections)',
+  mdm: 'MDM',
+  letters: 'หนังสือ',
+  dunning: 'Dunning escalation',
+};
+
+function presetBtnClass(active: boolean) {
+  return `px-2.5 py-1 text-[10px] font-medium rounded-full border transition-colors ${
+    active
+      ? 'bg-primary/10 border-primary/40 text-primary'
+      : 'border-input text-muted-foreground hover:text-foreground hover:bg-muted'
+  }`;
+}
+
 export default function AuditLogsPage() {
   useDocumentTitle('ประวัติการใช้งาน');
   const [entity, setEntity] = useState('');
@@ -75,6 +127,9 @@ export default function AuditLogsPage() {
   const [dateTo, setDateTo] = useState('');
   const [page, setPage] = useState(1);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [collectionPreset, setCollectionPreset] = useState<CollectionPreset>(null);
+  // Client-side filter for preset actions (multi-action filter)
+  const [presetActions, setPresetActions] = useState<string[]>([]);
   const limit = 25;
 
   const debouncedEntity = useDebounce(entity, 300);
@@ -104,8 +159,29 @@ export default function AuditLogsPage() {
     },
   });
 
-  const logs = result?.data || [];
+  // When a preset is active, filter the fetched page client-side by preset actions.
+  // The server filters by a single `action` param; for multi-action presets we
+  // fetch without an action filter and filter in-memory.
+  const rawLogs = result?.data || [];
+  const logs =
+    presetActions.length > 0
+      ? rawLogs.filter((l) => presetActions.includes(l.action))
+      : rawLogs;
   const totalPages = result?.totalPages || 1;
+
+  function applyPreset(key: string) {
+    setCollectionPreset(key as CollectionPreset);
+    setPresetActions(COLLECTION_PRESET_ACTIONS[key] ?? []);
+    // Clear the manual action select so server doesn't double-filter
+    setAction('');
+    setPage(1);
+  }
+
+  function clearPreset() {
+    setCollectionPreset(null);
+    setPresetActions([]);
+    setPage(1);
+  }
 
   return (
     <div>
@@ -180,6 +256,28 @@ export default function AuditLogsPage() {
           </div>
         </div>
       )}
+
+      {/* Collections quick-filter presets */}
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
+        <span className="text-[10px] font-medium text-muted-foreground">Collections:</span>
+        {Object.keys(COLLECTION_PRESET_ACTIONS).map((key) => (
+          <button
+            key={key}
+            onClick={() => applyPreset(key)}
+            className={presetBtnClass(collectionPreset === key)}
+          >
+            {PRESET_LABELS[key] ?? key}
+          </button>
+        ))}
+        {collectionPreset && (
+          <button
+            onClick={clearPreset}
+            className="text-[10px] text-muted-foreground underline hover:text-foreground transition-colors"
+          >
+            เคลียร์
+          </button>
+        )}
+      </div>
 
       {/* Filters */}
       <div className="rounded-xl border border-border/50 bg-card shadow-sm p-5 mb-6">

@@ -13,6 +13,7 @@ export enum UploadKind {
   LETTER_EVIDENCE = 'LETTER_EVIDENCE',
   LETTER_SIGNATURE = 'LETTER_SIGNATURE',
   LETTER_LETTERHEAD = 'LETTER_LETTERHEAD',
+  MDM_WALLPAPER = 'MDM_WALLPAPER',
 }
 
 export class PresignedUploadDto {
@@ -39,7 +40,8 @@ export class ShopUploadController {
           : 'jpg';
     const date = new Date().toISOString().slice(0, 10);
     const isLetterKind = dto.kind.startsWith('LETTER_');
-    const basePath = isLetterKind ? 'letters' : 'shop';
+    const isMdmKind = dto.kind.startsWith('MDM_');
+    const basePath = isLetterKind ? 'letters' : isMdmKind ? 'mdm-assets' : 'shop';
     const key = `${basePath}/${dto.kind.toLowerCase()}/${date}/${randomUUID()}.${ext}`;
     const signed = await this.storage.getSignedUploadUrl(key, dto.contentType);
     return {

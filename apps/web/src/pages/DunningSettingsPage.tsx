@@ -12,9 +12,10 @@ import {
   Link2,
   ToggleLeft,
   ToggleRight,
-  FileSignature,
+  Settings,
   Upload,
   Image as ImageIcon,
+  AlertTriangle,
 } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
@@ -108,7 +109,7 @@ function LetterAssetField({
   label: string;
   hint: string;
   currentUrl: string;
-  uploadKind: 'LETTER_SIGNATURE' | 'LETTER_LETTERHEAD';
+  uploadKind: 'LETTER_SIGNATURE' | 'LETTER_LETTERHEAD' | 'MDM_WALLPAPER';
   onSaved: (url: string) => void;
 }) {
   const [uploading, setUploading] = useState(false);
@@ -267,6 +268,12 @@ export default function DunningSettingsPage() {
 
   const signatureUrl = configs.find((s) => s.key === 'letter_signature_url')?.value ?? '';
   const letterheadUrl = configs.find((s) => s.key === 'letter_letterhead_url')?.value ?? '';
+  const wallpaperUrl = configs.find((s) => s.key === 'mdm_lock_wallpaper_url')?.value ?? '';
+
+  // Detect if auto-propose MDM is enabled (mdm_auto_propose_enabled = '1' or 'true')
+  const mdmAutoPropose =
+    (configs.find((s) => s.key === 'mdm_auto_propose_enabled')?.value ?? '') === '1' ||
+    (configs.find((s) => s.key === 'mdm_auto_propose_enabled')?.value ?? '') === 'true';
 
   const configMutation = useMutation({
     mutationFn: async (items: Array<{ key: string; value: string }>) =>
@@ -349,16 +356,15 @@ export default function DunningSettingsPage() {
         }
       />
 
-      {/* Letter Settings Card */}
+      {/* Document & MDM Assets Card */}
       <Card className="rounded-xl border border-border/50 bg-card shadow-sm mb-6">
         <CardContent className="p-5">
           <div className="flex items-center gap-2 mb-3">
-            <FileSignature className="size-4 text-primary" />
-            <div className="text-sm font-semibold">ตั้งค่าหนังสือทวงถาม</div>
+            <Settings className="size-4 text-primary" />
+            <div className="text-sm font-semibold">เอกสารและอุปกรณ์ติดตาม</div>
           </div>
           <p className="text-xs text-muted-foreground mb-4 leading-snug">
-            ตั้งค่าลายเซ็นและหัวกระดาษสำหรับหนังสือ 45 วัน และ 60 วัน —
-            PDF จะถูกสร้างโดยใช้ข้อมูลนี้
+            ลายเซ็นและหัวกระดาษสำหรับหนังสือทวงถาม · wallpaper เตือนบนเครื่องลูกค้าเมื่อถูกล็อค MDM
           </p>
 
           <div className="space-y-4">
@@ -376,11 +382,24 @@ export default function DunningSettingsPage() {
               uploadKind="LETTER_LETTERHEAD"
               onSaved={(url) => saveConfig('letter_letterhead_url', url)}
             />
+            <LetterAssetField
+              label="Wallpaper เตือนบนเครื่องลูกค้า"
+              hint="PNG 1080×1920px แนวตั้ง · แสดงบน lock screen เมื่อ MDM ล็อคเครื่อง"
+              currentUrl={wallpaperUrl}
+              uploadKind="MDM_WALLPAPER"
+              onSaved={(url) => saveConfig('mdm_lock_wallpaper_url', url)}
+            />
           </div>
 
           {!signatureUrl && (
             <div className="mt-4 rounded-lg bg-warning/5 border border-warning/20 p-3 text-xs text-warning leading-snug">
               ยังไม่ได้อัปโหลดลายเซ็น — PDF ที่สร้างจะไม่มีลายเซ็น โปรดอัปโหลดก่อนใช้งานจริง
+            </div>
+          )}
+          {!wallpaperUrl && mdmAutoPropose && (
+            <div className="mt-3 rounded-lg bg-destructive/5 border border-destructive/20 p-3 flex items-start gap-2 text-xs text-destructive leading-snug">
+              <AlertTriangle className="size-3.5 shrink-0 mt-0.5" />
+              <span>Wallpaper ยังไม่ตั้งค่า — MDM จะล็อคเครื่องโดยไม่เปลี่ยนรูป</span>
             </div>
           )}
         </CardContent>

@@ -215,7 +215,7 @@ describe('OverdueQueueService', () => {
   });
 
   describe('pagination', () => {
-    it('caps limit at 100 when input exceeds 100', async () => {
+    it('caps response limit at 100 when input exceeds 100', async () => {
       mockPrisma.contract.findMany.mockResolvedValueOnce([]);
       mockPrisma.contract.count.mockResolvedValueOnce(0);
 
@@ -227,8 +227,10 @@ describe('OverdueQueueService', () => {
       });
 
       expect(result.limit).toBe(100);
+      // Prisma fetch caps at 500 (then sorts in memory by priority + paginates).
+      // Response `limit` field is still user-visible 100.
       const callArg = mockPrisma.contract.findMany.mock.calls[0][0];
-      expect(callArg.take).toBe(100);
+      expect(callArg.take).toBe(500);
     });
 
     it('uses default limit of 50 when not specified', async () => {
@@ -242,6 +244,58 @@ describe('OverdueQueueService', () => {
       });
 
       expect(result.limit).toBe(50);
+    });
+  });
+
+  describe('priority score sort', () => {
+    const mkContract = (overrides: Record<string, unknown>) => ({
+      id: 'c-' + Math.random().toString(36).slice(2, 8),
+      contractNumber: 'CN-x',
+      status: 'OVERDUE',
+      dunningStage: 'NONE',
+      customer: { id: 'cu', name: 'x', phone: '0', lineId: null },
+      branch: { id: 'b', name: 'b' },
+      assignedTo: null,
+      noAnswerCount: 0,
+      needsSkipTracing: false,
+      deviceLocked: false,
+      payments: [
+        {
+          amountDue: '1000',
+          amountPaid: '0',
+          lateFee: '0',
+          dueDate: new Date(Date.now() - 10 * 86400000).toISOString(), // 10 days overdue
+        },
+      ],
+      callLogs: [],
+      _count: { callLogs: 0 },
+      ...overrides,
+    });
+
+    it('sorts by priority score desc so biggest+oldest+no-answer surfaces first', async () => {
+      const low = mkContract({
+        id: 'low',
+        payments: [{ amountDue: '500', amountPaid: '0', lateFee: '0', dueDate: new Date(Date.now() - 5 * 86400000).toISOString() }],
+      }); // 500 * 5 * 1 * 1 = 2500
+      const mid = mkContract({
+        id: 'mid',
+        payments: [{ amountDue: '2000', amountPaid: '0', lateFee: '0', dueDate: new Date(Date.now() - 20 * 86400000).toISOString() }],
+      }); // 2000 * 20 * 1 * 1 = 40000
+      const high = mkContract({
+        id: 'high',
+        noAnswerCount: 2,
+        _count: { callLogs: 3 }, // 3 broken promises
+        payments: [{ amountDue: '3000', amountPaid: '0', lateFee: '0', dueDate: new Date(Date.now() - 30 * 86400000).toISOString() }],
+      }); // 3000 * 30 * 3 * 7 = 1,890,000
+
+      mockPrisma.contract.findMany.mockResolvedValueOnce([low, mid, high]);
+      mockPrisma.contract.count.mockResolvedValueOnce(3);
+
+      const result = await service.getQueue({ tab: 'today', userRole: 'OWNER', userBranchId: null });
+
+      expect(result.data.map((r) => r.id)).toEqual(['high', 'mid', 'low']);
+      // __priorityScore should be stripped from response
+      expect((result.data[0] as any).__priorityScore).toBeUndefined();
     });
   });
 });

@@ -11,6 +11,8 @@
  */
 
 import { jsPDF } from 'jspdf';
+import { formatThaiDateLong } from '@/lib/date';
+import { formatNumberDecimal } from '@/utils/formatters';
 
 // ── Page geometry (A4 portrait, mm) ───────────────────────────────────────────
 const PAGE_W = 210;
@@ -106,21 +108,19 @@ async function loadImageAsDataUrl(url: string): Promise<string | null> {
   }
 }
 
-// ── Date formatter ────────────────────────────────────────────────────────────
+// ── Date & money formatters ───────────────────────────────────────────────────
+//
+// Legal letters are court-submitted documents — dates MUST render in พ.ศ.
+// (Thai Buddhist Era) consistently. We use the shared `formatThaiDateLong`
+// helper from `@/lib/date` (e.g. "8 เมษายน 2569") instead of
+// `toLocaleDateString('th-TH', ...)` whose output varies by browser/ICU
+// version (some environments render ค.ศ. or drop the พ.ศ. offset entirely).
+//
+// Money is formatted via the shared `formatNumberDecimal` (th-TH locale,
+// 2 decimal places) — keeps PDF output identical to on-screen displays.
 
-function formatThaiDate(d: Date): string {
-  return d.toLocaleDateString('th-TH', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
-}
-
-// ── Number formatter ──────────────────────────────────────────────────────────
-
-function formatMoney(n: number): string {
-  return n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
+const formatThaiDate = (d: Date): string => formatThaiDateLong(d);
+const formatMoney = (n: number): string => formatNumberDecimal(n, 2);
 
 // ── Section renderers ─────────────────────────────────────────────────────────
 

@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Download, FileText, Loader2, Upload } from 'lucide-react';
+import { AlertTriangle, Download, FileText, Loader2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
+import Decimal from 'decimal.js';
 import api, { getErrorMessage } from '@/lib/api';
 import Modal from '@/components/ui/Modal';
 import { renderLetterPdf, type LetterTemplateData } from '../utils/letterPdfRenderer';
@@ -48,6 +49,10 @@ interface GenerateSectionProps {
 
 function GenerateSection({ letter, onGenerated, onClose }: GenerateSectionProps) {
   const [busy, setBusy] = useState(false);
+  // When signature is missing, user must explicitly acknowledge before
+  // the PDF can be generated. `proceedWithoutSignature` flips to true only
+  // after the "สร้างต่อโดยไม่มีลายเซ็น" button is clicked.
+  const [proceedWithoutSignature, setProceedWithoutSignature] = useState(false);
   const { markPdfGenerated } = useLetterActions();
 
   // Prefetch company info (OWNER role required — if request fails we catch gracefully)
@@ -81,10 +86,25 @@ function GenerateSection({ letter, onGenerated, onClose }: GenerateSectionProps)
     retry: 1,
   });
 
+  // Compute config synchronously from already-loaded queries so the
+  // "missing signature" warning can render inline (no `window.confirm`).
+  const settings = settingsQuery.data ?? [];
+  const findConfig = (key: string): string | null =>
+    settings.find((s) => s.key === key)?.value ?? null;
+  const signatureUrl = findConfig('letter_signature_url');
+  const letterheadUrl = findConfig('letter_letterhead_url');
+
+  const hasSignature = !!signatureUrl;
+  const isLoadingDeps = companiesQuery.isLoading || settingsQuery.isLoading;
+
+  // The generate button is blocked when signature is missing AND user has
+  // not explicitly acknowledged via the "สร้างต่อโดยไม่มีลายเซ็น" button.
+  const signatureCheckBlocked = !isLoadingDeps && !hasSignature && !proceedWithoutSignature;
+
   const handleGenerate = async () => {
     setBusy(true);
     try {
-      // 1. Gather company, contract data, and settings
+      // 1. Gather company + contract data
       const [contractRes] = await Promise.all([
         api.get(`/contracts/${letter.contractId}`).then((r) => r.data),
       ]);
@@ -98,25 +118,8 @@ function GenerateSection({ letter, onGenerated, onClose }: GenerateSectionProps)
         throw new Error('ไม่พบข้อมูลบริษัท (FINANCE) — โปรดตั้งค่า CompanyInfo ก่อน');
       }
 
-      // Settings: letter_signature_url + letter_letterhead_url
-      const settings = settingsQuery.data ?? [];
-      const findConfig = (key: string): string | null =>
-        settings.find((s) => s.key === key)?.value ?? null;
-
-      const signatureUrl = findConfig('letter_signature_url');
-      const letterheadUrl = findConfig('letter_letterhead_url');
-
-      if (!signatureUrl) {
-        const proceed = window.confirm(
-          'ยังไม่มีลายเซ็นในระบบ — สร้าง PDF ต่อโดยไม่มีลายเซ็น?',
-        );
-        if (!proceed) {
-          setBusy(false);
-          return;
-        }
-      }
-
-      // Compute outstanding + days overdue from payments
+      // Compute outstanding using Decimal (money arithmetic MUST NOT use
+      // parseFloat — this balance appears on a court-submitted letter).
       const payments: Array<{
         status: string;
         amountDue: string;
@@ -127,12 +130,16 @@ function GenerateSection({ letter, onGenerated, onClose }: GenerateSectionProps)
         ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'].includes(p.status),
       );
 
-      const outstanding = payments.reduce((sum, p) => {
-        return (
-          sum +
-          (parseFloat(p.amountDue) - parseFloat(p.amountPaid) + parseFloat(p.lateFee ?? '0'))
-        );
-      }, 0);
+      const outstandingDec = payments.reduce(
+        (sum, p) =>
+          sum
+            .plus(new Decimal(p.amountDue ?? '0'))
+            .minus(new Decimal(p.amountPaid ?? '0'))
+            .plus(new Decimal(p.lateFee ?? '0')),
+        new Decimal(0),
+      );
+      // renderLetterPdf expects a number — convert only at the very edge.
+      const outstanding = outstandingDec.toNumber();
 
       const now = new Date();
       const oldest = payments
@@ -202,8 +209,6 @@ function GenerateSection({ letter, onGenerated, onClose }: GenerateSectionProps)
     }
   };
 
-  const isLoadingDeps = companiesQuery.isLoading || settingsQuery.isLoading;
-
   return (
     <div className="space-y-4 p-1">
       {/* Letter summary block */}
@@ -252,6 +257,37 @@ function GenerateSection({ letter, onGenerated, onClose }: GenerateSectionProps)
         </div>
       )}
 
+      {/* Inline warning — replaces window.confirm so the missing-signature
+          decision is explicit, keyboard-accessible, and visible in the dialog */}
+      {!isLoadingDeps && !hasSignature && (
+        <div
+          role="alert"
+          className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs space-y-2"
+        >
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="size-4 text-warning shrink-0 mt-0.5" />
+            <div className="leading-snug">
+              <div className="font-semibold text-warning">ยังไม่มีลายเซ็นในระบบ</div>
+              <div className="text-muted-foreground mt-0.5">
+                PDF ที่สร้างจะไม่มีลายเซ็น — แนะนำให้อัปโหลดลายเซ็นในการตั้งค่าก่อน
+                หรือกดปุ่มด้านล่างเพื่อสร้างต่อโดยไม่มีลายเซ็น
+              </div>
+            </div>
+          </div>
+          {!proceedWithoutSignature && (
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setProceedWithoutSignature(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-warning/50 bg-background px-3 py-1.5 text-xs font-medium text-warning hover:bg-warning/10 transition-colors"
+              >
+                สร้างต่อโดยไม่มีลายเซ็น
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="flex gap-2 justify-end pt-2">
         <button
           type="button"
@@ -263,7 +299,7 @@ function GenerateSection({ letter, onGenerated, onClose }: GenerateSectionProps)
         <button
           type="button"
           onClick={handleGenerate}
-          disabled={busy || isLoadingDeps}
+          disabled={busy || isLoadingDeps || signatureCheckBlocked}
           className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
         >
           {busy ? (

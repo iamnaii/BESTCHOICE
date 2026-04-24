@@ -10,6 +10,7 @@ import QueueTab from './tabs/QueueTab';
 import FollowUpTab from './tabs/FollowUpTab';
 import PromiseTab from './tabs/PromiseTab';
 import AllTab from './tabs/AllTab';
+import ApprovalTab from './tabs/ApprovalTab';
 import type { ContractRow } from './types';
 
 export type CollectionsTabKey = 'today' | 'followup' | 'promise' | 'approval' | 'all';
@@ -67,12 +68,7 @@ export default function CollectionsPage() {
         <PromiseTab search={search} branchId={branchId} onLogContact={openContactDialog} />
       )}
 
-      {activeTab === 'approval' && (
-        <div className="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
-          <div className="mb-2 font-medium text-foreground">อนุมัติ</div>
-          <div>Tab content จะถูกเพิ่มใน Task 12-13</div>
-        </div>
-      )}
+      {activeTab === 'approval' && canSeeApproval && <ApprovalTab />}
 
       {activeTab === 'all' && <AllTab />}
 

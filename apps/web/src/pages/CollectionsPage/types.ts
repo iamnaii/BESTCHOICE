@@ -1,3 +1,27 @@
+export interface PendingEscalation {
+  id: string;
+  contractNumber: string;
+  dunningStage: string;
+  pendingDunningStage: string;
+  pendingDunningSince: string;
+  customer: { id: string; name: string; phone: string };
+}
+
+export interface PendingMdmRequest {
+  id: string;
+  trigger: string;
+  includeWallpaper: boolean;
+  reason: string;
+  proposedAt: string;
+  contract: {
+    id: string;
+    contractNumber: string;
+    customer: { id: string; name: string; phone: string };
+    branch: { id: string; name: string };
+  };
+  proposedBy: { id: string; name: string };
+}
+
 export interface ContractRow {
   id: string;
   contractNumber: string;

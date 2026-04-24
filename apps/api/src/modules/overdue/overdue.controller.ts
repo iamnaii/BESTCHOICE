@@ -6,6 +6,8 @@ import { DunningEngineService } from './dunning-engine.service';
 import { OverdueQueueService } from './queue.service';
 import { OverdueKpiService } from './kpi.service';
 import { MdmLockService } from './mdm-lock.service';
+import { OverdueTimelineService } from './timeline.service';
+import { OverdueBulkService } from './bulk.service';
 import { CreateCallLogDto } from './dto/create-call-log.dto';
 import { AssignCollectorDto } from './dto/assign-collector.dto';
 import { RecordSettlementDto } from './dto/record-settlement.dto';
@@ -13,6 +15,8 @@ import { LogContactDto } from './dto/log-contact.dto';
 import { CreateDunningRuleDto, UpdateDunningRuleDto } from './dto/dunning-rule.dto';
 import { QueueQueryDto } from './dto/queue-query.dto';
 import { KpiQueryDto } from './dto/kpi-query.dto';
+import { BulkAssignDto, BulkProposeLockDto, BulkSendLineDto } from './dto/bulk.dto';
+import { SendLineAdHocDto } from './dto/send-line-adhoc.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
@@ -31,6 +35,8 @@ export class OverdueController {
     private queueService: OverdueQueueService,
     private kpiService: OverdueKpiService,
     private mdmLockService: MdmLockService,
+    private timelineService: OverdueTimelineService,
+    private bulkService: OverdueBulkService,
   ) {}
 
   // --- Collections Workflow Hub endpoints (Plan 2) ---
@@ -113,6 +119,12 @@ export class OverdueController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'FINANCE_MANAGER', 'ACCOUNTANT')
   getTimeline(@Param('id') id: string) {
     return this.overdueService.getContractTimeline(id);
+  }
+
+  @Get('contracts/:id/full-timeline')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getFullTimeline(@Param('id') contractId: string) {
+    return this.timelineService.getFullTimeline(contractId);
   }
 
   @Get('contracts/:id/call-logs')
@@ -336,5 +348,44 @@ export class OverdueController {
     @CurrentUser() user: { id: string; role: string },
   ) {
     return this.mdmLockService.unlock(id, user.id, user.role);
+  }
+
+  // --- Bulk actions ---
+
+  @Post('bulk/assign')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER')
+  bulkAssign(@Body() dto: BulkAssignDto, @CurrentUser() user: { id: string }) {
+    return this.bulkService.bulkAssign(dto, user.id);
+  }
+
+  @Post('bulk/propose-lock')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  bulkProposeLock(@Body() dto: BulkProposeLockDto, @CurrentUser() user: { id: string }) {
+    return this.bulkService.bulkProposeLock(dto, user.id);
+  }
+
+  @Post('bulk/send-line')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  bulkSendLine(@Body() dto: BulkSendLineDto, @CurrentUser() user: { id: string }) {
+    return this.bulkService.bulkSendLine(dto, user.id);
+  }
+
+  // --- Ad-hoc single contract LINE send ---
+
+  @Post(':contractId/send-line-adhoc')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  async sendLineAdhoc(
+    @Param('contractId') contractId: string,
+    @Body() dto: SendLineAdHocDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.bulkService.bulkSendLine(
+      {
+        contractIds: [contractId],
+        templateId: dto.templateId,
+        customMessage: dto.customMessage,
+      },
+      user.id,
+    );
   }
 }

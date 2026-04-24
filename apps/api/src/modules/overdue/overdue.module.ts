@@ -8,6 +8,8 @@ import { DunningEngineService } from './dunning-engine.service';
 import { MdmLockService } from './mdm-lock.service';
 import { OverdueQueueService } from './queue.service';
 import { OverdueKpiService } from './kpi.service';
+import { OverdueTimelineService } from './timeline.service';
+import { OverdueBulkService } from './bulk.service';
 import { BrokenPromiseCron } from './crons/broken-promise.cron';
 import { MdmAutoProposeCron } from './crons/mdm-auto-propose.cron';
 import { ChatEngineModule } from '../chat-engine/chat-engine.module';
@@ -26,6 +28,8 @@ import { LineOaModule } from '../line-oa/line-oa.module';
     MdmLockService,
     OverdueQueueService,
     OverdueKpiService,
+    OverdueTimelineService,
+    OverdueBulkService,
     BrokenPromiseCron,
     MdmAutoProposeCron,
   ],
@@ -37,6 +41,8 @@ import { LineOaModule } from '../line-oa/line-oa.module';
     MdmLockService,
     OverdueQueueService,
     OverdueKpiService,
+    OverdueTimelineService,
+    OverdueBulkService,
   ],
 })
 export class OverdueModule {}

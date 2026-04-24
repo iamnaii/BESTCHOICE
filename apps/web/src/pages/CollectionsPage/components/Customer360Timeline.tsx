@@ -7,6 +7,7 @@ import {
   FileText,
   type LucideIcon,
 } from 'lucide-react';
+import { formatThaiDateShort, formatThaiTime } from '@/lib/date';
 import type { TimelineEvent } from '../hooks/useCustomer360';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -27,11 +28,7 @@ function groupByDate(events: TimelineEvent[]): Array<{ label: string; items: Tim
     } else if (d.getTime() === yesterday.getTime()) {
       label = 'เมื่อวาน';
     } else {
-      label = d.toLocaleDateString('th-TH', {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-      });
+      label = formatThaiDateShort(d);
     }
 
     if (!groups.has(label)) {
@@ -52,11 +49,7 @@ function timeLabel(iso: string): string {
   if (mins < 60) return `${mins} นาทีที่แล้ว`;
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs} ชม.ที่แล้ว`;
-  return new Date(iso).toLocaleTimeString('th-TH', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  });
+  return formatThaiTime(iso);
 }
 
 // ─── icon/color config ───────────────────────────────────────────────────────

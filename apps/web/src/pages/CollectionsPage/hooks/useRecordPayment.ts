@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
+import { formatNumber } from '@/utils/formatters';
 
 export type PaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'QR_EWALLET';
 
@@ -27,7 +28,7 @@ export function useRecordPayment() {
       return data;
     },
     onSuccess: (_, vars) => {
-      toast.success(`บันทึกชำระ ${vars.amount.toLocaleString()} ฿ สำเร็จ`);
+      toast.success(`บันทึกชำระ ${formatNumber(vars.amount)} ฿ สำเร็จ`);
       qc.invalidateQueries({ queryKey: ['collections-queue'] });
       qc.invalidateQueries({ queryKey: ['collections-kpi'] });
       qc.invalidateQueries({ queryKey: ['customer-360', vars.contractId] });

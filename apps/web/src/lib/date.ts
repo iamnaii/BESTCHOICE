@@ -86,6 +86,15 @@ export function formatThaiDateTime(input: DateInput): string {
 }
 
 /**
+ * HH:mm (24-hour) — e.g. "14:30"
+ */
+export function formatThaiTime(input: DateInput): string {
+  const d = toDate(input);
+  if (!d) return '-';
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/**
  * Convert a พ.ศ. year to ค.ศ. (for parsing user input).
  */
 export function beToAd(yearBE: number): number {

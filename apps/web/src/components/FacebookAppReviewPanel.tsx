@@ -302,29 +302,75 @@ function TestRow({ test }: { test: TestCase }) {
             )}
           </Button>
 
-          {result && (
-            <div
-              className={cn(
-                'flex items-start gap-2 p-2 rounded-md text-xs',
-                result.success
-                  ? 'bg-success/10 text-success border border-success/20'
-                  : 'bg-destructive/10 text-destructive border border-destructive/20',
-              )}
+          {result && <ResultBlock result={result} />}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ResultBlock({ result }: { result: TestResult }) {
+  const [showData, setShowData] = useState(false);
+  const hasData = result.data !== undefined && result.data !== null;
+  const json = hasData ? JSON.stringify(result.data, null, 2) : '';
+
+  const copyJson = async () => {
+    if (!json) return;
+    try {
+      await navigator.clipboard.writeText(json);
+    } catch {
+      /* ignore — older browsers */
+    }
+  };
+
+  return (
+    <div
+      className={cn(
+        'rounded-md text-xs border',
+        result.success
+          ? 'bg-success/10 text-success border-success/20'
+          : 'bg-destructive/10 text-destructive border-destructive/20',
+      )}
+    >
+      <div className="flex items-start gap-2 p-2">
+        {result.success ? (
+          <CheckCircle2 className="size-3 shrink-0 mt-0.5" />
+        ) : (
+          <XCircle className="size-3 shrink-0 mt-0.5" />
+        )}
+        <div className="min-w-0 flex-1">
+          <p className="leading-snug break-words">{result.message}</p>
+          <p className="text-2xs text-muted-foreground mt-1">
+            {result.at.toLocaleTimeString('th-TH')}
+          </p>
+        </div>
+      </div>
+
+      {hasData && (
+        <div className="border-t border-current/10 px-2 py-1.5 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowData((v) => !v)}
+            className="text-2xs underline hover:no-underline"
+          >
+            {showData ? 'ซ่อนข้อมูล' : 'ดูข้อมูล (JSON)'}
+          </button>
+          {showData && (
+            <button
+              type="button"
+              onClick={copyJson}
+              className="text-2xs underline hover:no-underline ml-auto"
             >
-              {result.success ? (
-                <CheckCircle2 className="size-3 shrink-0 mt-0.5" />
-              ) : (
-                <XCircle className="size-3 shrink-0 mt-0.5" />
-              )}
-              <div className="min-w-0 flex-1">
-                <p className="leading-snug break-words">{result.message}</p>
-                <p className="text-2xs text-muted-foreground mt-1">
-                  {result.at.toLocaleTimeString('th-TH')}
-                </p>
-              </div>
-            </div>
+              คัดลอก
+            </button>
           )}
         </div>
+      )}
+
+      {showData && hasData && (
+        <pre className="text-2xs font-mono px-2 pb-2 max-h-64 overflow-auto whitespace-pre-wrap break-words text-foreground/80">
+          {json}
+        </pre>
       )}
     </div>
   );

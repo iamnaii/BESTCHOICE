@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { X, Phone, MessageCircle, MapPin, Loader2 } from 'lucide-react';
+import type { PaymentScheduleItem } from '../hooks/useCustomer360';
 import { useCustomer360 } from '../hooks/useCustomer360';
 import Customer360Timeline from './Customer360Timeline';
 import Customer360Actions from './Customer360Actions';
@@ -141,6 +142,45 @@ export default function Customer360Panel({ contract, onClose, onRequestSendLine 
                     </div>
                   </div>
                 </div>
+
+                {/* Installment progress bar */}
+                {data?.detail.payments && data.detail.payments.length > 0 && (() => {
+                  const payments = data.detail.payments as PaymentScheduleItem[];
+                  const paid = payments.filter((p) => p.status === 'PAID' || p.status === 'WAIVED').length;
+                  const total = payments.length;
+                  const percent = total > 0 ? Math.round((paid / total) * 100) : 0;
+                  const nextDue = payments.find((p) =>
+                    ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'].includes(p.status),
+                  );
+                  return (
+                    <div className="mt-4 space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground leading-snug">ความคืบหน้าการผ่อน</span>
+                        <span className="tabular-nums font-medium">
+                          {paid} / {total} งวด ({percent}%)
+                        </span>
+                      </div>
+                      <div className="h-2 bg-muted rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-primary transition-all duration-500"
+                          style={{ width: `${percent}%` }}
+                        />
+                      </div>
+                      {nextDue && (
+                        <div className="text-xs text-muted-foreground leading-snug">
+                          งวดถัดไป: งวด{' '}
+                          <span className="tabular-nums font-medium">{nextDue.installmentNo}</span>{' '}
+                          ครบกำหนด{' '}
+                          {new Date(nextDue.dueDate).toLocaleDateString('th-TH', {
+                            day: 'numeric',
+                            month: 'short',
+                            year: 'numeric',
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </section>
 
               {/* Timeline */}

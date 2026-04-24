@@ -10,6 +10,15 @@ export interface TimelineEvent {
   metadata?: Record<string, unknown>;
 }
 
+export interface PaymentScheduleItem {
+  id: string;
+  installmentNo: number;
+  dueDate: string;
+  status: 'PENDING' | 'PAID' | 'OVERDUE' | 'PARTIALLY_PAID' | 'WAIVED';
+  amountDue: number;
+  amountPaid: number;
+}
+
 export interface ContractDetail {
   id: string;
   contractNumber: string;
@@ -26,6 +35,7 @@ export interface ContractDetail {
   paidInstallments?: number;
   outstanding?: number;
   nextDueDate?: string | null;
+  payments?: PaymentScheduleItem[];
 }
 
 export function useCustomer360(contractId: string | null) {

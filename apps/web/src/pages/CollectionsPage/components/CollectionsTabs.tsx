@@ -1,4 +1,4 @@
-import { Phone, Clock, Calendar, ClipboardCheck, List } from 'lucide-react';
+import { Phone, Clock, Calendar, ClipboardCheck, List, BarChart3 } from 'lucide-react';
 import type { CollectionsTabKey } from '../index';
 
 interface Props {
@@ -18,11 +18,12 @@ const TAB_CONFIG: Array<{
   { key: 'promise', label: 'นัดชำระ', Icon: Calendar },
   { key: 'approval', label: 'อนุมัติ', Icon: ClipboardCheck },
   { key: 'all', label: 'ทั้งหมด', Icon: List },
+  { key: 'analytics', label: 'วิเคราะห์', Icon: BarChart3 },
 ];
 
 export default function CollectionsTabs({ active, onChange, canSeeApproval, counts }: Props) {
   const visibleTabs = TAB_CONFIG.filter(
-    (t) => t.key !== 'approval' || canSeeApproval,
+    (t) => (t.key !== 'approval' && t.key !== 'analytics') || canSeeApproval,
   );
 
   return (

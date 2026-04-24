@@ -117,7 +117,7 @@ export default function PaymentRecordDialog({ open, contract, onClose }: Props) 
             <div className="text-right">
               <div className="text-xs text-muted-foreground leading-snug">ค้างชำระ</div>
               <div className="text-lg font-bold tabular-nums text-destructive">
-                {contract.outstanding.toLocaleString()} ฿
+                {formatNumber(contract.outstanding)} ฿
               </div>
             </div>
           </div>
@@ -145,7 +145,7 @@ export default function PaymentRecordDialog({ open, contract, onClose }: Props) 
                 onClick={() => setAmount(contract.outstanding.toString())}
                 className="hover:text-foreground underline transition-colors"
               >
-                ใช้ยอดค้าง {contract.outstanding.toLocaleString()} ฿
+                ใช้ยอดค้าง {formatNumber(contract.outstanding)} ฿
               </button>
             )}
           </div>

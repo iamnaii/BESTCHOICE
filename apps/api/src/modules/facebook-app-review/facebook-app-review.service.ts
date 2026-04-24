@@ -13,7 +13,15 @@ const GRAPH_BASE = 'https://graph.facebook.com/v25.0';
 const TIMEOUT_MS = 15_000;
 
 export interface FbError {
-  error?: { message?: string; code?: number; error_subcode?: number; type?: string };
+  error?: {
+    message?: string;
+    code?: number;
+    error_subcode?: number;
+    type?: string;
+    error_user_title?: string;
+    error_user_msg?: string;
+    fbtrace_id?: string;
+  };
 }
 
 export type FbJson = Record<string, unknown> & FbError;
@@ -130,7 +138,11 @@ export class FacebookAppReviewService {
       throw new BadRequestException('ยังไม่ได้ตั้งค่า FB Ad Account ID หรือ access token');
     }
 
-    const url = `${GRAPH_BASE}/${c.adAccountId}/campaigns`;
+    // Marketing API requires the `act_` prefix; tolerate operators who paste
+    // just the numeric ID into Integration Hub.
+    const accountId = c.adAccountId.startsWith('act_') ? c.adAccountId : `act_${c.adAccountId}`;
+
+    const url = `${GRAPH_BASE}/${accountId}/campaigns`;
     const body: Record<string, unknown> = {
       name: dto.name,
       objective: dto.objective ?? 'OUTCOME_TRAFFIC',
@@ -140,7 +152,10 @@ export class FacebookAppReviewService {
     };
 
     if (dto.dailyBudget) {
+      // Campaign-level daily_budget requires a bid_strategy (Campaign Budget
+      // Optimization). Without it FB returns a bare "Invalid parameter".
       body.daily_budget = Math.round(dto.dailyBudget * 100);
+      body.bid_strategy = 'LOWEST_COST_WITHOUT_CAP';
     }
 
     return this.call('POST', url, body, 'create_campaign');
@@ -263,7 +278,12 @@ export class FacebookAppReviewService {
       const json = (await res.json().catch(() => ({}))) as FbJson;
 
       if (!res.ok || json.error) {
-        const msg = json.error?.message ?? `HTTP ${res.status}`;
+        const e = json.error ?? {};
+        const parts = [e.message ?? `HTTP ${res.status}`];
+        if (e.error_user_msg && e.error_user_msg !== e.message) parts.push(e.error_user_msg);
+        if (e.error_subcode) parts.push(`subcode ${e.error_subcode}`);
+        if (e.fbtrace_id) parts.push(`trace ${e.fbtrace_id}`);
+        const msg = parts.join(' | ');
         this.logger.error(`[FB App Review] ${action} failed: ${msg}`);
         Sentry.captureMessage(`FB App Review ${action} failed: ${msg}`, 'warning');
         throw new BadRequestException(`Facebook API error: ${msg}`);

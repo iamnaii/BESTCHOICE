@@ -468,6 +468,7 @@ model User {
   role                   UserRole              @default(SALES)
   branchId               String?               @map("branch_id")
   isActive               Boolean               @default(true) @map("is_active")
+  isSystemUser           Boolean               @default(false) @map("is_system_user")
   savedSignature         String?               @map("saved_signature") @db.Text
   employeeId             String?               @unique @map("employee_id")
   nickname               String?               @map("nickname")
@@ -579,6 +580,10 @@ model User {
   paymentsWaivedApproved      Payment[]                 @relation("PaymentWaivedApprovedBy")
   aiPausedRooms               ChatRoom[]                @relation("ChatRoomAiPausedBy")
   aiSettingsUpdates           AiSettings[]              @relation("AiSettingsUpdatedBy")
+
+  // mdmProposed      MdmLockRequest[] @relation("MdmProposed")    // wired in Task 3
+  // mdmApproved      MdmLockRequest[] @relation("MdmApproved")    // wired in Task 3
+  // letterDispatched ContractLetter[] @relation("LetterDispatched") // wired in Task 4
 
   @@index([branchId])
   @@map("users")
@@ -791,6 +796,14 @@ model Contract {
   /// is 48h — long enough to resolve a promise-to-pay cycle.
   blockAutoEscalation DateTime? @map("block_auto_escalation")
 
+  // Collections v2: no-answer tracking, skip tracing, MDM lock, wallpaper
+  noAnswerCount      Int       @default(0) @map("no_answer_count")
+  needsSkipTracing   Boolean   @default(false) @map("needs_skip_tracing")
+  deviceLocked       Boolean   @default(false) @map("device_locked")
+  deviceLockedAt     DateTime? @map("device_locked_at")
+  wallpaperChanged   Boolean   @default(false) @map("wallpaper_changed")
+  wallpaperChangedAt DateTime? @map("wallpaper_changed_at")
+
   // Retention policy
   retentionStatus DocumentRetentionStatus @default(ACTIVE) @map("retention_status")
   retentionExpiry DateTime?               @map("retention_expiry")
@@ -844,6 +857,9 @@ model Contract {
 
   warrantyAudits        WarrantyAuditLog[]        @relation("WarrantyAuditContract")
   badDebtWriteOffAudits BadDebtWriteOffAuditLog[] @relation("BadDebtWriteOffContract")
+
+  // mdmLockRequests MdmLockRequest[]  // wired in Task 3
+  // contractLetters ContractLetter[]  // wired in Task 4
 
   @@index([customerId])
   @@index([branchId])
@@ -1675,23 +1691,25 @@ model CallLog {
 }
 
 model DunningRule {
-  id                 String         @id @default(uuid())
+  id                 String               @id @default(uuid())
   name               String
-  triggerDay         Int            @map("trigger_day")
+  triggerDay         Int?                 @map("trigger_day")
+  eventTrigger       DunningEventTrigger? @map("event_trigger")
   channel            DunningChannel
-  messageTemplate    String         @map("message_template")
-  includePaymentLink Boolean        @default(false) @map("include_payment_link")
-  autoExecute        Boolean        @default(true) @map("auto_execute")
-  escalateTo         UserRole?      @map("escalate_to")
-  isActive           Boolean        @default(true) @map("is_active")
-  sortOrder          Int            @default(0) @map("sort_order")
-  createdAt          DateTime       @default(now()) @map("created_at")
-  updatedAt          DateTime       @updatedAt @map("updated_at")
-  deletedAt          DateTime?      @map("deleted_at")
+  messageTemplate    String               @map("message_template")
+  includePaymentLink Boolean              @default(false) @map("include_payment_link")
+  autoExecute        Boolean              @default(true) @map("auto_execute")
+  escalateTo         UserRole?            @map("escalate_to")
+  isActive           Boolean              @default(true) @map("is_active")
+  sortOrder          Int                  @default(0) @map("sort_order")
+  createdAt          DateTime             @default(now()) @map("created_at")
+  updatedAt          DateTime             @updatedAt @map("updated_at")
+  deletedAt          DateTime?            @map("deleted_at")
 
   actions DunningAction[]
 
   @@index([triggerDay])
+  @@index([eventTrigger])
   @@index([isActive])
   @@map("dunning_rules")
 }

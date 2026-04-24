@@ -1,27 +1,58 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { ContractStatus, Prisma, ProductCategory } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  LastContactedBucket,
+  LineResponseState,
+  MdmStateFilter,
+  OverdueBucket,
+} from './dto/queue-query.dto';
 
 export type QueueTab = 'today' | 'followup' | 'promise';
 
 export type MdmState = 'NONE' | 'PENDING' | 'LOCKED' | 'UNLOCKED';
 export type LastChannel = 'LINE' | 'SMS' | 'CALL' | 'LETTER' | null;
 
+const FETCH_CAP = 500;
+
+export interface QueueFilterInput {
+  // Pre-SQL filters
+  search?: string;
+  assignedToId?: string; // 'self' | 'unassigned' | UUID
+  showSkipTracing?: boolean;
+  overdueBuckets?: OverdueBucket[];
+  minOutstanding?: number;
+  maxOutstanding?: number;
+  contractStatuses?: ContractStatus[];
+  productTypes?: ProductCategory[];
+  minLetterCount?: number;
+
+  // Post-enrichment filters (apply to computed fields after fetch)
+  lastContacted?: LastContactedBucket;
+  lineResponse?: LineResponseState;
+  minBrokenPromise?: number;
+  hasActivePromise?: boolean;
+  mdmState?: MdmStateFilter;
+  slipReviewPending?: boolean;
+}
+
 @Injectable()
 export class OverdueQueueService {
   constructor(private prisma: PrismaService) {}
 
-  async getQueue(params: {
-    tab: QueueTab;
-    userRole: string;
-    userBranchId: string | null;
-    branchId?: string;
-    page?: number;
-    limit?: number;
-  }) {
+  async getQueue(
+    params: {
+      tab: QueueTab;
+      userRole: string;
+      userBranchId: string | null;
+      userId?: string;
+      branchId?: string;
+      page?: number;
+      limit?: number;
+    } & QueueFilterInput,
+  ) {
     const page = params.page ?? 1;
     const limit = Math.min(params.limit ?? 50, 100);
-    const skip = (page - 1) * limit;
     const now = new Date();
 
     const branchScope: Prisma.ContractWhereInput =
@@ -32,6 +63,7 @@ export class OverdueQueueService {
         : {};
 
     const where = this.buildWhere(params.tab, now, branchScope);
+    this.applyFilterWhere(where, params, params.userId);
 
     // Fetch all matching then sort by priority score in memory, then paginate.
     // We can't express the priority formula as a Prisma orderBy (it involves a
@@ -61,18 +93,203 @@ export class OverdueQueueService {
             },
           },
         },
-        take: 500, // cap the fetch — priority sort + pagination happens in memory
+        take: FETCH_CAP, // cap the fetch — priority sort + pagination happens in memory
       }),
       this.prisma.contract.count({ where }),
     ]);
 
     const enriched = await this.enrichRows(contracts, now);
 
-    const rows = enriched.sort((a, b) => b.__priorityScore - a.__priorityScore);
+    // Post-enrichment filters — computed fields can't go into Prisma where.
+    const afterPostFilter = this.applyPostFilters(enriched, params, now);
 
+    const rows = afterPostFilter.sort((a, b) => b.__priorityScore - a.__priorityScore);
+
+    // If any post-filter fired, `total` must reflect filtered count so UI
+    // pagination doesn't read "500 results" while showing 12. When no post-
+    // filter active, fall back to the raw SQL count (authoritative for large sets).
+    const hasPostFilter =
+      params.lastContacted !== undefined ||
+      params.lineResponse !== undefined ||
+      params.minBrokenPromise !== undefined ||
+      params.hasActivePromise !== undefined ||
+      params.mdmState !== undefined ||
+      params.slipReviewPending !== undefined;
+
+    const effectiveTotal = hasPostFilter ? afterPostFilter.length : total;
+
+    const skip = (page - 1) * limit;
     const paged = rows.slice(skip, skip + limit).map(({ __priorityScore, ...rest }) => rest);
 
-    return { data: paged, total, page, limit };
+    const truncated = contracts.length >= FETCH_CAP;
+
+    return { data: paged, total: effectiveTotal, page, limit, truncated };
+  }
+
+  /**
+   * Mutate `where` to apply SQL-level filter constraints (branch overrides,
+   * assignee, overdue buckets, outstanding range, contract/product type, skip
+   * tracing, search). Callers pass the already-built tab-specific where.
+   */
+  private applyFilterWhere(
+    where: Prisma.ContractWhereInput,
+    f: QueueFilterInput,
+    userId?: string,
+  ): void {
+    // Assignee override
+    if (f.assignedToId === 'self') {
+      where.assignedToId = userId ?? undefined;
+    } else if (f.assignedToId === 'unassigned') {
+      where.assignedToId = null;
+    } else if (f.assignedToId) {
+      where.assignedToId = f.assignedToId;
+    }
+
+    // Skip tracing
+    if (f.showSkipTracing) {
+      where.needsSkipTracing = true;
+    }
+
+    // Contract statuses — if provided, overrides any tab-defined status filter
+    if (f.contractStatuses?.length) {
+      where.status = { in: f.contractStatuses };
+    }
+
+    // Product types (via join)
+    if (f.productTypes?.length) {
+      where.product = { category: { in: f.productTypes } };
+    }
+
+    // Outstanding range — applied as a nested payment filter. We can't filter
+    // directly on (amountDue - amountPaid + lateFee), so approximate with
+    // amountDue; post-filter will tighten exact range on computed outstanding.
+    // (Outstanding post-filter below handles exact bounds.)
+    // No-op at SQL level — handled in applyPostFilters.
+
+    // Search: customer name, contract#, phone
+    if (f.search) {
+      const q = f.search.trim();
+      if (q) {
+        const searchOr: Prisma.ContractWhereInput[] = [
+          { contractNumber: { contains: q, mode: 'insensitive' } },
+          { customer: { name: { contains: q, mode: 'insensitive' } } },
+          { customer: { phone: { contains: q.replace(/\D/g, '') } } },
+        ];
+        where.AND = [
+          ...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []),
+          { OR: searchOr },
+        ];
+      }
+    }
+  }
+
+  /**
+   * Apply filters that depend on enriched/computed fields. Runs after fetch,
+   * so `rows` is bounded by FETCH_CAP.
+   */
+  private applyPostFilters<
+    T extends {
+      daysOverdue: number;
+      outstanding: number;
+      lastContactedAt: Date | null;
+      brokenPromiseCount: number;
+      mdmState: MdmState;
+      settlementDate: Date | string | null;
+      customer: { lineId: string | null };
+    },
+  >(rows: T[], f: QueueFilterInput, now: Date): T[] {
+    let filtered = rows;
+
+    // Overdue buckets (computed on `daysOverdue`)
+    if (f.overdueBuckets?.length) {
+      const matchesBucket = (days: number, bucket: OverdueBucket) => {
+        switch (bucket) {
+          case OverdueBucket.B_1_7:
+            return days >= 1 && days <= 7;
+          case OverdueBucket.B_8_30:
+            return days >= 8 && days <= 30;
+          case OverdueBucket.B_31_60:
+            return days >= 31 && days <= 60;
+          case OverdueBucket.B_61_90:
+            return days >= 61 && days <= 90;
+          case OverdueBucket.B_90_PLUS:
+            return days >= 91;
+        }
+      };
+      filtered = filtered.filter((r) =>
+        (f.overdueBuckets as OverdueBucket[]).some((b) => matchesBucket(r.daysOverdue, b)),
+      );
+    }
+
+    // Outstanding range (exact)
+    if (f.minOutstanding !== undefined) {
+      filtered = filtered.filter((r) => r.outstanding >= (f.minOutstanding as number));
+    }
+    if (f.maxOutstanding !== undefined) {
+      filtered = filtered.filter((r) => r.outstanding <= (f.maxOutstanding as number));
+    }
+
+    // Last contacted bucket
+    if (f.lastContacted) {
+      const nowMs = now.getTime();
+      filtered = filtered.filter((r) => {
+        const last = r.lastContactedAt ? new Date(r.lastContactedAt).getTime() : null;
+        switch (f.lastContacted) {
+          case LastContactedBucket.TODAY:
+            return last !== null && nowMs - last < 86400000;
+          case LastContactedBucket.THIS_WEEK:
+            return last !== null && nowMs - last < 7 * 86400000;
+          case LastContactedBucket.NEVER:
+            return last === null;
+          case LastContactedBucket.OVER_7_DAYS:
+            return last === null || nowMs - last > 7 * 86400000;
+          default:
+            return true;
+        }
+      });
+    }
+
+    // Minimum broken-promise count
+    if (f.minBrokenPromise !== undefined) {
+      filtered = filtered.filter((r) => r.brokenPromiseCount >= (f.minBrokenPromise as number));
+    }
+
+    // MDM state
+    if (f.mdmState) {
+      filtered = filtered.filter((r) => {
+        switch (f.mdmState) {
+          case MdmStateFilter.NOT_LOCKED:
+            return r.mdmState === 'NONE' || r.mdmState === 'UNLOCKED';
+          case MdmStateFilter.LOCKED:
+            return r.mdmState === 'LOCKED';
+          case MdmStateFilter.PENDING:
+            return r.mdmState === 'PENDING';
+          default:
+            return true;
+        }
+      });
+    }
+
+    // Has active promise — defined as settlementDate present and in the future
+    // or within the last 3 days (aligns with promise-tab window).
+    if (f.hasActivePromise !== undefined) {
+      filtered = filtered.filter((r) => {
+        if (!r.settlementDate) return !f.hasActivePromise;
+        const sms = new Date(r.settlementDate).getTime();
+        const active = sms >= now.getTime() - 3 * 86400000;
+        return f.hasActivePromise ? active : !active;
+      });
+    }
+
+    // LINE response (heuristic based on lastCallResult + customer.lineId).
+    // Server-side data doesn't include LINE delivery state yet — BLOCKED is
+    // inferred only from explicit flag when available; NO_LINE from missing
+    // customer.lineId. RESPONDED/IGNORED deferred (W-011 — ต้อง schema change).
+    if (f.lineResponse === LineResponseState.NO_LINE) {
+      filtered = filtered.filter((r) => !r.customer.lineId);
+    }
+
+    return filtered;
   }
 
   /**

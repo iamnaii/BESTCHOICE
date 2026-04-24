@@ -53,15 +53,32 @@ export class OverdueController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'FINANCE_MANAGER', 'ACCOUNTANT')
   getQueue(
     @Query() dto: QueueQueryDto,
-    @CurrentUser() user: { role: string; branchId: string | null },
+    @CurrentUser() user: { id: string; role: string; branchId: string | null },
   ) {
     return this.queueService.getQueue({
       tab: dto.tab,
       branchId: dto.branchId,
       page: dto.page,
       limit: dto.limit,
+      userId: user.id,
       userRole: user.role,
       userBranchId: user.branchId,
+      // Filter fields
+      search: dto.search,
+      assignedToId: dto.assignedToId,
+      showSkipTracing: dto.showSkipTracing,
+      overdueBuckets: dto.overdueBuckets,
+      minOutstanding: dto.minOutstanding,
+      maxOutstanding: dto.maxOutstanding,
+      contractStatuses: dto.contractStatuses,
+      productTypes: dto.productTypes,
+      minLetterCount: dto.minLetterCount,
+      lastContacted: dto.lastContacted,
+      lineResponse: dto.lineResponse,
+      minBrokenPromise: dto.minBrokenPromise,
+      hasActivePromise: dto.hasActivePromise,
+      mdmState: dto.mdmState,
+      slipReviewPending: dto.slipReviewPending,
     });
   }
 

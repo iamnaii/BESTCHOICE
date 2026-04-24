@@ -5,6 +5,7 @@ import * as path from 'path';
 import { seedChartOfAccounts } from './seeds/chart-of-accounts';
 import { seedTradeInValuations } from './seeds/trade-in-valuations';
 import { seedKnowledgeBase } from './seeds/knowledge-base';
+import { seedCollectionsFoundation } from './seeds/collections-foundation.seed';
 
 const prisma = new PrismaClient();
 
@@ -1530,6 +1531,11 @@ async function main() {
   // KNOWLEDGE BASE (FAQ สำหรับ Finance Bot)
   // ============================================================
   const kbResult = await seedKnowledgeBase(prisma);
+
+  // ============================================================
+  // COLLECTIONS FOUNDATION (system user, event rules, MDM/letter configs)
+  // ============================================================
+  await seedCollectionsFoundation(prisma);
 
   console.log('=== SEED COMPLETED SUCCESSFULLY ===');
   console.log('========================================');

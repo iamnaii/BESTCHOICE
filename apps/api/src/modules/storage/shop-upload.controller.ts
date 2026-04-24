@@ -9,6 +9,10 @@ export enum UploadKind {
   BUYBACK_PHOTO = 'BUYBACK_PHOTO',
   BANK_SLIP = 'BANK_SLIP',
   REVIEW_PHOTO = 'REVIEW_PHOTO',
+  LETTER_PDF = 'LETTER_PDF',
+  LETTER_EVIDENCE = 'LETTER_EVIDENCE',
+  LETTER_SIGNATURE = 'LETTER_SIGNATURE',
+  LETTER_LETTERHEAD = 'LETTER_LETTERHEAD',
 }
 
 export class PresignedUploadDto {
@@ -27,9 +31,16 @@ export class ShopUploadController {
 
   @Post('signed-url')
   async presign(@Body() dto: PresignedUploadDto) {
-    const ext = dto.contentType === 'image/png' ? 'png' : 'jpg';
+    const ext =
+      dto.contentType === 'application/pdf'
+        ? 'pdf'
+        : dto.contentType === 'image/png'
+          ? 'png'
+          : 'jpg';
     const date = new Date().toISOString().slice(0, 10);
-    const key = `shop/${dto.kind.toLowerCase()}/${date}/${randomUUID()}.${ext}`;
+    const isLetterKind = dto.kind.startsWith('LETTER_');
+    const basePath = isLetterKind ? 'letters' : 'shop';
+    const key = `${basePath}/${dto.kind.toLowerCase()}/${date}/${randomUUID()}.${ext}`;
     const signed = await this.storage.getSignedUploadUrl(key, dto.contentType);
     return {
       uploadUrl: signed.url,

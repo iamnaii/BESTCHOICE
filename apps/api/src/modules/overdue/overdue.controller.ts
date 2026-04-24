@@ -9,6 +9,7 @@ import { MdmLockService } from './mdm-lock.service';
 import { OverdueTimelineService } from './timeline.service';
 import { OverdueBulkService } from './bulk.service';
 import { ContractLetterService } from './contract-letter.service';
+import { DunningRetryService } from './dunning-retry.service';
 import { CreateCallLogDto } from './dto/create-call-log.dto';
 import { AssignCollectorDto } from './dto/assign-collector.dto';
 import { RecordSettlementDto } from './dto/record-settlement.dto';
@@ -39,6 +40,7 @@ export class OverdueController {
     private timelineService: OverdueTimelineService,
     private bulkService: OverdueBulkService,
     private contractLetterService: ContractLetterService,
+    private dunningRetryService: DunningRetryService,
   ) {}
 
   // --- Collections Workflow Hub endpoints (Plan 2) ---
@@ -454,5 +456,19 @@ export class OverdueController {
     @CurrentUser() user: { id: string },
   ) {
     return this.contractLetterService.cancel(id, user.id, body.reason);
+  }
+
+  // --- LINE retry endpoints ---
+
+  @Get('line-retries')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER')
+  listFailed(@Query('limit') limit?: string) {
+    return this.dunningRetryService.listFailed(limit ? parseInt(limit, 10) : 100);
+  }
+
+  @Post('line-retries/:id/retry')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  retryLine(@Param('id') id: string, @CurrentUser() user: { id: string }) {
+    return this.dunningRetryService.retry(id, user.id);
   }
 }

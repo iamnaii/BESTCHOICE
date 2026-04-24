@@ -81,18 +81,28 @@ export function useLiffInit(): UseLiffInitResult {
           }
         }
 
-        // ─── Try LIFF SDK init ───
-        if (LIFF_ID) {
+        // ─── Try LIFF SDK init (only works when URL is under LIFF endpoint) ───
+        // LIFF endpoint URL in LINE Developers Console is /liff/contract —
+        // LIFF SDK returns null ID tokens and rejects liff.login() with
+        // "redirectUri not under endpoint URL" for any other path. We detect
+        // non-endpoint URLs up-front and skip LIFF entirely so the user sees
+        // the LINE Login OAuth fallback (same channel 2009442540, same
+        // id_token contract) instead of LINE's generic "cannot open page".
+        const LIFF_ENDPOINT_PATH = '/liff/contract';
+        const isUnderLiffEndpoint =
+          window.location.pathname === LIFF_ENDPOINT_PATH ||
+          window.location.pathname.startsWith(`${LIFF_ENDPOINT_PATH}/`);
+
+        if (LIFF_ID && isUnderLiffEndpoint) {
           await liff.init({ liffId: LIFF_ID });
 
           if (!liff.isLoggedIn()) {
-            // Check if we're inside LINE app
+            // liff.login() requires redirectUri to be under the LIFF endpoint
+            // URL — we're already under it here so this call is safe.
             if (liff.isInClient()) {
               liff.login({ redirectUri: window.location.href });
               return;
             }
-
-            // Outside LINE — redirect to LINE Login OAuth as fallback
             redirectToLineLogin();
             return;
           }
@@ -100,32 +110,14 @@ export function useLiffInit(): UseLiffInitResult {
           const p = await liff.getProfile();
           const token = liff.getIDToken();
 
-          // No ID token = LIFF channel missing 'openid' scope OR cached token
-          // from a prior login without openid. Try ONCE to force fresh login
-          // (clears cached token) — use sessionStorage flag to prevent loop.
           if (!token) {
-            const RETRY_KEY = 'liff_idtoken_retry';
-            const alreadyRetried = sessionStorage.getItem(RETRY_KEY) === '1';
-            if (!alreadyRetried && liff.isInClient()) {
-              sessionStorage.setItem(RETRY_KEY, '1');
-              try {
-                liff.logout();
-              } catch {
-                // ignore logout errors
-              }
-              liff.login({ redirectUri: window.location.href });
-              return;
-            }
-            sessionStorage.removeItem(RETRY_KEY);
-            if (!cancelled)
-              setError(
-                'ไม่สามารถรับ ID Token จาก LINE — LIFF channel อาจยังไม่เปิด openid scope กรุณาแจ้งแอดมินเพื่อตรวจสอบ LINE Developers Console',
-              );
+            // LIFF channel missing openid scope or token cached without openid.
+            // OAuth flow uses the same LINE channel (2009442540) and yields
+            // the same verifiable id_token, so skip the fragile liff.login
+            // retry and go straight to OAuth.
+            redirectToLineLogin();
             return;
           }
-
-          // Success — clear retry flag
-          sessionStorage.removeItem('liff_idtoken_retry');
 
           if (!cancelled) {
             setLineId(p.userId);
@@ -134,7 +126,9 @@ export function useLiffInit(): UseLiffInitResult {
             setProfile({ userId: p.userId, displayName: p.displayName, pictureUrl: p.pictureUrl });
           }
         } else {
-          // No LIFF_ID configured — try LINE Login OAuth directly
+          // Either LIFF_ID not configured, or current URL is not under the
+          // LIFF endpoint — use LINE Login OAuth (works for any path, same
+          // id_token contract as LIFF channel 2009442540).
           redirectToLineLogin();
         }
       } catch {

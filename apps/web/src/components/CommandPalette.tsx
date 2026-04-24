@@ -28,9 +28,15 @@ import {
   FileText,
   Search,
   Plus,
+  User as UserIcon,
+  Mail,
+  Smartphone,
+  Clock,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useDebounce } from '@/hooks/useDebounce';
+import { useUnionSearch } from '@/pages/CollectionsPage/hooks/useUnionSearch';
 
 /* ─── Navigation Items ─── */
 
@@ -71,12 +77,46 @@ const quickActions: NavEntry[] = [
   { label: 'บันทึกชำระเงิน', path: '/payments', icon: DollarSign, keywords: 'record payment บันทึก ชำระ' },
 ];
 
+/* ─── Recent Searches (localStorage) ─── */
+
+const RECENT_KEY = 'cmdk-recent-searches';
+const RECENT_MAX = 10;
+
+function loadRecent(): string[] {
+  try {
+    const raw = localStorage.getItem(RECENT_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((x) => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveRecent(q: string) {
+  const trimmed = q.trim();
+  if (trimmed.length < 2) return;
+  try {
+    const list = loadRecent().filter((x) => x !== trimmed);
+    list.unshift(trimmed);
+    localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, RECENT_MAX)));
+  } catch {
+    /* ignore quota errors */
+  }
+}
+
 /* ─── Component ─── */
 
 export default function CommandPalette() {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const debouncedQuery = useDebounce(query, 200);
   const navigate = useNavigate();
   const { user } = useAuth();
+  const [recent, setRecent] = useState<string[]>(() => loadRecent());
+
+  const { data: searchData, isLoading: isSearching } =
+    useUnionSearch(debouncedQuery);
 
   // Ctrl+K / Cmd+K to open
   useEffect(() => {
@@ -90,12 +130,25 @@ export default function CommandPalette() {
     return () => document.removeEventListener('keydown', onKeyDown);
   }, []);
 
+  // Refresh recent when opening
+  useEffect(() => {
+    if (open) {
+      setRecent(loadRecent());
+    } else {
+      // Clear query when closing to reset state next open
+      setQuery('');
+    }
+  }, [open]);
+
   const handleSelect = useCallback(
-    (path: string) => {
+    (path: string, persistQuery = true) => {
+      if (persistQuery && debouncedQuery) {
+        saveRecent(debouncedQuery);
+      }
       setOpen(false);
       navigate(path);
     },
-    [navigate],
+    [navigate, debouncedQuery],
   );
 
   const filterByRole = useCallback(
@@ -105,6 +158,9 @@ export default function CommandPalette() {
   );
 
   if (!open) return null;
+
+  const hasQuery = debouncedQuery.trim().length >= 2;
+  const showRecent = !query && recent.length > 0;
 
   return (
     <div className="fixed inset-0 z-50">
@@ -119,15 +175,133 @@ export default function CommandPalette() {
         <Command
           className="rounded-xl border border-border bg-popover shadow-2xl"
           loop
+          // cmdk's built-in filter hides non-matching items. We want server
+          // search results to always show, so disable client-side filtering
+          // whenever the user has typed a query.
+          shouldFilter={!hasQuery}
         >
-          <CommandInput placeholder="ค้นหาหน้า, สัญญา, ลูกค้า..." />
+          <CommandInput
+            placeholder="ค้นหาหน้า, contract#, ชื่อ, เบอร์, IMEI, tracking#..."
+            value={query}
+            onValueChange={setQuery}
+          />
           <CommandList>
             <CommandEmpty>
               <div className="flex flex-col items-center gap-2">
                 <Search className="size-8 text-muted-foreground/40" />
-                <span>ไม่พบผลลัพธ์</span>
+                <span>
+                  {isSearching ? 'กำลังค้นหา...' : 'ไม่พบผลลัพธ์'}
+                </span>
               </div>
             </CommandEmpty>
+
+            {/* Recent searches (shown only when input is empty) */}
+            {showRecent && (
+              <>
+                <CommandGroup heading="ค้นล่าสุด">
+                  {recent.map((q) => (
+                    <CommandItem
+                      key={q}
+                      value={`recent-${q}`}
+                      onSelect={() => setQuery(q)}
+                    >
+                      <Clock />
+                      <span>{q}</span>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+                <CommandSeparator />
+              </>
+            )}
+
+            {/* Server search results (when user typed ≥2 chars) */}
+            {hasQuery && searchData && (
+              <>
+                {searchData.contracts.length > 0 && (
+                  <CommandGroup heading={`สัญญา (${searchData.contracts.length})`}>
+                    {searchData.contracts.map((c) => (
+                      <CommandItem
+                        key={`contract-${c.id}`}
+                        value={`contract-${c.id}`}
+                        onSelect={() => handleSelect(`/contracts/${c.id}`)}
+                      >
+                        <FileCheck />
+                        <div className="flex flex-col">
+                          <span className="leading-snug">
+                            {c.contractNumber} — {c.customerName}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {c.status}
+                          </span>
+                        </div>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                )}
+
+                {searchData.customers.length > 0 && (
+                  <CommandGroup heading={`ลูกค้า (${searchData.customers.length})`}>
+                    {searchData.customers.map((c) => (
+                      <CommandItem
+                        key={`customer-${c.id}`}
+                        value={`customer-${c.id}`}
+                        onSelect={() => handleSelect(`/customers/${c.id}`)}
+                      >
+                        <UserIcon />
+                        <span>
+                          {c.name}
+                          {c.phone ? ` · ${c.phone}` : ''}
+                        </span>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                )}
+
+                {searchData.imeis.length > 0 && (
+                  <CommandGroup heading={`IMEI (${searchData.imeis.length})`}>
+                    {searchData.imeis.map((im) => (
+                      <CommandItem
+                        key={`imei-${im.contractId}-${im.imei}`}
+                        value={`imei-${im.contractId}-${im.imei}`}
+                        onSelect={() => handleSelect(`/contracts/${im.contractId}`)}
+                      >
+                        <Smartphone />
+                        <div className="flex flex-col">
+                          <span className="leading-snug font-mono text-xs">
+                            {im.imei}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {im.contractNumber} — {im.customerName}
+                          </span>
+                        </div>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                )}
+
+                {searchData.letterTrackings.length > 0 && (
+                  <CommandGroup heading={`Tracking (${searchData.letterTrackings.length})`}>
+                    {searchData.letterTrackings.map((l) => (
+                      <CommandItem
+                        key={`letter-${l.letterId}`}
+                        value={`letter-${l.letterId}`}
+                        onSelect={() => handleSelect(`/contracts/${l.contractId}`)}
+                      >
+                        <Mail />
+                        <span>
+                          {l.trackingNumber} → {l.contractNumber}
+                        </span>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                )}
+
+                {(searchData.contracts.length > 0 ||
+                  searchData.customers.length > 0 ||
+                  searchData.imeis.length > 0 ||
+                  searchData.letterTrackings.length > 0) && <CommandSeparator />}
+              </>
+            )}
 
             {/* Quick Actions */}
             <CommandGroup heading="ดำเนินการด่วน">
@@ -135,7 +309,7 @@ export default function CommandPalette() {
                 <CommandItem
                   key={item.path}
                   value={`${item.label} ${item.keywords || ''}`}
-                  onSelect={() => handleSelect(item.path)}
+                  onSelect={() => handleSelect(item.path, false)}
                 >
                   <item.icon />
                   <span>{item.label}</span>
@@ -151,7 +325,7 @@ export default function CommandPalette() {
                 <CommandItem
                   key={item.path}
                   value={`${item.label} ${item.keywords || ''}`}
-                  onSelect={() => handleSelect(item.path)}
+                  onSelect={() => handleSelect(item.path, false)}
                 >
                   <item.icon />
                   <span>{item.label}</span>

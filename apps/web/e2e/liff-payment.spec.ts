@@ -33,11 +33,11 @@ test.describe('LIFF Payment Flow', () => {
     ]);
 
     await page.goto('/pay/test-pay-token');
-    await expect(page.getByText('ชำระเงินค่างวด')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('ชำระเงิน', { exact: true })).toBeVisible({ timeout: 10000 });
     await expect(page.getByText('BC-2026-0001')).toBeVisible();
     await expect(page.getByText('2,600')).toBeVisible();
     // Expiry countdown should be visible
-    await expect(page.getByText('หมดอายุใน')).toBeVisible();
+    await expect(page.getByText(/หมดอายุใน/)).toBeVisible();
   });
 
   test('shows error for expired token', async ({ page }) => {
@@ -60,29 +60,19 @@ test.describe('LIFF Payment Flow', () => {
     await expect(page.getByText('ลิงก์นี้ถูกใช้งานแล้ว')).toBeVisible({ timeout: 10000 });
   });
 
-  test('shows payment method tabs (gateway + transfer)', async ({ page }) => {
+  test('shows scan-to-pay CTA with Pay Solutions trust badge', async ({ page }) => {
     await mockLiffSdk(page);
     await mockLiffApi(page, [
       { method: 'GET', path: '/line-oa/pay/test-pay-token', body: MOCK_PAYMENT_LINK },
     ]);
 
     await page.goto('/pay/test-pay-token');
-    await expect(page.getByText('ชำระออนไลน์')).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText('โอนเอง')).toBeVisible();
-  });
-
-  test('shows slip upload in transfer tab', async ({ page }) => {
-    await mockLiffSdk(page);
-    await mockLiffApi(page, [
-      { method: 'GET', path: '/line-oa/pay/test-pay-token', body: MOCK_PAYMENT_LINK },
-    ]);
-
-    await page.goto('/pay/test-pay-token');
-    await expect(page.getByText('ชำระเงินค่างวด')).toBeVisible({ timeout: 10000 });
-
-    // Click "โอนเอง" tab
-    await page.getByText('โอนเอง').click();
-    await expect(page.getByText('แตะเพื่อเลือกรูปสลิป')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(/ชำระผ่าน Pay Solutions/)).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('button', { name: /สแกนจ่าย.*2,600/ })).toBeVisible();
+    // Slip-upload + "โอนเอง" tab are intentionally removed — customers
+    // pay via gateway only.
+    await expect(page.getByText('โอนเอง')).not.toBeVisible();
+    await expect(page.getByText('แตะเพื่อเลือกรูปสลิป')).not.toBeVisible();
   });
 
   test('shows success after gateway payment', async ({ page }) => {
@@ -98,10 +88,10 @@ test.describe('LIFF Payment Flow', () => {
     ]);
 
     await page.goto('/pay/test-pay-token');
-    await expect(page.getByText('ชำระเงินค่างวด')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('button', { name: /สแกนจ่าย.*2,600/ })).toBeVisible({ timeout: 10000 });
 
-    // Click pay button
-    await page.getByRole('button', { name: /ชำระเงิน.*2,600/ }).click();
+    // Click scan-to-pay button
+    await page.getByRole('button', { name: /สแกนจ่าย.*2,600/ }).click();
 
     // Should show pending then success
     await expect(page.getByText('ชำระเงินสำเร็จ')).toBeVisible({ timeout: 15000 });

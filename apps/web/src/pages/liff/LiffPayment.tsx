@@ -1,25 +1,25 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router';
 import { formatDateShort, formatDateTime } from '@/utils/formatters';
+import { formatNumber } from '@/utils/formatters';
 import {
-  CreditCard,
-  QrCode,
-  Building2,
+  ChevronLeft,
   CheckCircle2,
   AlertCircle,
-  Upload,
   Loader2,
   RefreshCw,
+  ShieldCheck,
+  QrCode,
+  Smartphone,
+  ArrowRight,
 } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { liffApi } from '@/lib/api';
-import { LIFF_ERRORS, validateSlipFile } from '@/constants/liff-errors';
+import { LIFF_ERRORS } from '@/constants/liff-errors';
+import { useLiffInit } from '@/hooks/useLiffInit';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 
 import type { LiffPaymentLinkData as PaymentLinkData } from '@installment/shared';
@@ -41,37 +41,30 @@ interface PaymentStatusResult {
   paidAt?: string;
 }
 
-type View =
-  | 'loading'
-  | 'select-method'
-  | 'gateway-pending'
-  | 'success'
-  | 'failed'
-  | 'slip-uploaded'
-  | 'error';
+type View = 'loading' | 'ready' | 'gateway-pending' | 'success' | 'failed' | 'error';
 
 export default function LiffPayment() {
   const { token } = useParams<{ token: string }>();
+  // useLiffInit restores liffIdToken from the session cache populated by a
+  // prior LIFF page in the same tab. Without it, create-intent hits 401
+  // because LiffTokenGuard has no X-Liff-Id-Token header to verify.
+  const { lineId: hookLineId, loading: authLoading } = useLiffInit();
+  const queryLineId =
+    new URLSearchParams(window.location.search).get('lineId') || hookLineId || '';
+
   const [view, setView] = useState<View>('loading');
   const [errorMessage, setErrorMessage] = useState('');
-  const [slipFile, setSlipFile] = useState<File | null>(null);
-  const [qrUrl, setQrUrl] = useState<string | null>(null);
   const [activePaymentId, setActivePaymentId] = useState<string | null>(null);
   const [gatewayRef, setGatewayRef] = useState<string | null>(null);
   const [pollCount, setPollCount] = useState(0);
   const [expirySeconds, setExpirySeconds] = useState<number | null>(null);
 
-  const queryLineId = new URLSearchParams(window.location.search).get('lineId') || '';
-
-  // ─── Fetch payment link data ───
-  // Check expiresAt BEFORE mutating state so we never flash stale payment
-  // details to the user when the link has already lapsed on the clock.
+  // ─── Fetch payment link data (waits for auth to avoid 401) ───
   const { data } = useQuery<PaymentLinkData | null>({
     queryKey: ['liff-payment', token],
     queryFn: async () => {
       const { data: result } = await liffApi.get(`/line-oa/pay/${token}`);
 
-      // Early expiry check — before any other branch decides what to render
       if (result?.expiresAt) {
         const expiresMs = new Date(result.expiresAt).getTime();
         if (Number.isFinite(expiresMs) && expiresMs <= Date.now()) {
@@ -85,28 +78,26 @@ export default function LiffPayment() {
         setErrorMessage(LIFF_ERRORS.LINK_EXPIRED);
         setView('error');
         return null;
-      } else if (result.status === 'USED') {
+      }
+      if (result.status === 'USED') {
         setErrorMessage(LIFF_ERRORS.LINK_USED);
         setView('error');
         return null;
-      } else if (result.valid) {
-        if (result.promptPay?.qrDataUrl) {
-          setQrUrl(result.promptPay.qrDataUrl);
-        }
-        setView('select-method');
-        return result;
-      } else {
-        setErrorMessage(LIFF_ERRORS.LINK_INVALID);
-        setView('error');
-        return null;
       }
+      if (result.valid) {
+        setView('ready');
+        return result;
+      }
+      setErrorMessage(LIFF_ERRORS.LINK_INVALID);
+      setView('error');
+      return null;
     },
-    enabled: !!token,
+    enabled: !!token && !authLoading,
   });
 
   // ─── QR/Payment link expiry countdown ───
   useEffect(() => {
-    if (!data?.expiresAt || view !== 'select-method') {
+    if (!data?.expiresAt || view !== 'ready') {
       setExpirySeconds(null);
       return;
     }
@@ -125,7 +116,6 @@ export default function LiffPayment() {
   }, [data?.expiresAt, view]);
 
   // ─── Poll payment status with exponential backoff ───
-  // Backoff: 3s (0-9) → 5s (10-29) → 10s (30-59) → stop at 60 attempts (~5 min)
   const MAX_POLL_ATTEMPTS = 60;
   const pollInterval = pollCount < 10 ? 3000 : pollCount < 30 ? 5000 : 10000;
   const isPolling = !!activePaymentId && view === 'gateway-pending' && pollCount < MAX_POLL_ATTEMPTS;
@@ -134,9 +124,7 @@ export default function LiffPayment() {
     queryKey: ['payment-status', activePaymentId],
     queryFn: async () => {
       setPollCount((c) => c + 1);
-      const { data: result } = await liffApi.get(
-        `/paysolutions/status/${activePaymentId}`,
-      );
+      const { data: result } = await liffApi.get(`/paysolutions/status/${activePaymentId}`);
       return result;
     },
     enabled: isPolling,
@@ -159,7 +147,6 @@ export default function LiffPayment() {
     }
   }, [online]);
 
-  // Watch payment status changes
   useEffect(() => {
     if (!paymentStatus) return;
     if (paymentStatus.status === 'PAID') {
@@ -170,8 +157,8 @@ export default function LiffPayment() {
     }
   }, [paymentStatus]);
 
-  // Polling timeout — stop and show timeout UI
-  const pollTimedOut = !!activePaymentId && view === 'gateway-pending' && pollCount >= MAX_POLL_ATTEMPTS;
+  const pollTimedOut =
+    !!activePaymentId && view === 'gateway-pending' && pollCount >= MAX_POLL_ATTEMPTS;
 
   // ─── Create payment intent mutation ───
   const createIntentMutation = useMutation({
@@ -193,9 +180,7 @@ export default function LiffPayment() {
     onSuccess: (result) => {
       setActivePaymentId(result.paymentId);
       setGatewayRef(result.gatewayRef);
-
       if (result.paymentUrl) {
-        // Redirect to Pay Solutions payment page
         setView('gateway-pending');
         window.location.href = result.paymentUrl;
       } else {
@@ -207,74 +192,6 @@ export default function LiffPayment() {
     },
   });
 
-  // ─── Slip upload mutation (manual transfer) ───
-  // 30s client timeout — mobile LINE browsers sometimes hang indefinitely on
-  // bad networks; we want a deterministic "network timeout" message instead.
-  const SLIP_UPLOAD_TIMEOUT_MS = 30_000;
-  const slipMutation = useMutation({
-    mutationFn: async (file: File) => {
-      if (!data) throw new Error(LIFF_ERRORS.PAYMENT_DATA_NOT_FOUND);
-
-      // Pre-validate locally so we surface specific messages before the upload
-      const validationError = validateSlipFile(file);
-      if (validationError) throw new Error(validationError);
-
-      const formData = new FormData();
-      formData.append('slip', file);
-      formData.append('contractId', data.contract.contractNumber);
-      formData.append('token', data.token);
-
-      try {
-        const { data: result } = await liffApi.post('/line-oa/slip-upload', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-          timeout: SLIP_UPLOAD_TIMEOUT_MS,
-        });
-        return result;
-      } catch (err: unknown) {
-        // Classify failure modes so the user sees the *actual* cause
-        const axiosErr = err as {
-          code?: string;
-          message?: string;
-          response?: { status?: number; data?: { error?: string; message?: string } };
-        };
-
-        // Network timeout / aborted request
-        if (
-          axiosErr.code === 'ECONNABORTED' ||
-          /timeout/i.test(axiosErr.message || '')
-        ) {
-          throw new Error(LIFF_ERRORS.SLIP_UPLOAD_TIMEOUT);
-        }
-
-        // No response at all — offline / DNS / CORS
-        if (!axiosErr.response) {
-          throw new Error(LIFF_ERRORS.SLIP_UPLOAD_TIMEOUT);
-        }
-
-        const status = axiosErr.response.status;
-        const serverMsg =
-          axiosErr.response.data?.error || axiosErr.response.data?.message;
-
-        // 413 — file too large (Cloudflare/ingress may rewrite this before NestJS)
-        if (status === 413) {
-          throw new Error(LIFF_ERRORS.SLIP_TOO_LARGE);
-        }
-        // 400 — backend validators (size/type) or link no longer active
-        if (status === 400 && serverMsg) {
-          throw new Error(serverMsg);
-        }
-        throw new Error(serverMsg || LIFF_ERRORS.SLIP_UPLOAD_FAILED);
-      }
-    },
-    onSuccess: () => {
-      setView('slip-uploaded');
-    },
-    onError: (err: Error) => {
-      toast.error(err.message);
-    },
-  });
-
-  // No token
   useEffect(() => {
     if (!token) {
       setErrorMessage(LIFF_ERRORS.LINK_INVALID);
@@ -284,528 +201,463 @@ export default function LiffPayment() {
 
   const amount = data ? Number(data.amount) : 0;
   const payment = data?.payment;
-  const lateFee = payment ? Number(payment.lateFee) : 0;
   const dueDate = payment ? formatDateShort(payment.dueDate) : '-';
+  // Early-payoff heuristic: link amount exceeds the linked installment's
+  // outstanding by more than one installment's worth → multi-installment
+  // close. Lets the UI hide the "งวดที่ 1" line that would otherwise
+  // mislead a customer paying the full payoff.
+  const isMultiInstallment =
+    !!payment &&
+    amount > Number(payment.amountDue) + Number(payment.lateFee ?? 0) + 0.5;
+  const customerName = data?.contract.customer.name ?? '';
+  const customerInitial = customerName.charAt(0) || '?';
 
-  // ─── Handlers ───
-  const handleGatewayPay = () => {
-    createIntentMutation.mutate();
-  };
-
-  const handleSlipUpload = () => {
-    if (!slipFile) return;
-    slipMutation.mutate(slipFile);
-  };
-
+  const handleGatewayPay = () => createIntentMutation.mutate();
   const handleRetry = () => {
     setActivePaymentId(null);
     setGatewayRef(null);
     setPollCount(0);
-    setView('select-method');
+    setView('ready');
   };
 
-  // =============================================
-  // VIEWS
-  // =============================================
-
-  // --- Loading ---
-  if (view === 'loading') {
+  // ── Loading ──────────────────────────────────────────
+  if (view === 'loading' || authLoading) {
     return (
-      <div className="min-h-screen bg-background p-4 space-y-4">
-        <Skeleton className="h-28 w-full rounded-xl" />
-        <Skeleton className="h-40 w-full rounded-xl" />
-        <Skeleton className="h-64 w-full rounded-xl" />
-      </div>
+      <Shell>
+        <div className="px-5 pt-6 space-y-4">
+          <Skeleton className="h-24 w-full rounded-[22px]" />
+          <Skeleton className="h-48 w-full rounded-[22px]" />
+          <Skeleton className="h-14 w-full rounded-[20px]" />
+        </div>
+      </Shell>
     );
   }
 
-  // --- Error ---
+  // ── Error ────────────────────────────────────────────
   if (view === 'error') {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <Card className="max-w-md w-full">
-          <CardContent className="text-center py-10">
-            <AlertCircle className="size-16 text-destructive mx-auto mb-4" />
-            <h2 className="text-lg font-bold mb-2">ไม่สามารถดำเนินการได้</h2>
-            <p className="text-muted-foreground text-sm mb-4">{errorMessage}</p>
-            <div className="bg-muted rounded-lg p-4 text-left text-xs text-muted-foreground space-y-1.5">
-              <p className="font-semibold text-foreground">สิ่งที่คุณทำได้:</p>
-              <p>1. ปิดหน้านี้แล้วเปิดลิงก์ใหม่อีกครั้ง</p>
-              <p>2. ตรวจสอบว่า LINE ของคุณผูกกับบัญชีลูกค้าแล้ว</p>
-              <p>3. หากยังไม่ได้ ติดต่อร้านค้าผ่าน LINE OA</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  // --- Slip uploaded ---
-  if (view === 'slip-uploaded') {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <Card className="max-w-md w-full">
-          <CardContent className="text-center py-10">
-            <CheckCircle2 className="size-16 text-success mx-auto mb-4" />
-            <h2 className="text-lg font-bold mb-2">รับสลิปเรียบร้อย</h2>
-            <p className="text-muted-foreground text-sm mb-6">
-              กำลังตรวจสอบ จะแจ้งผลให้ทราบผ่าน LINE
-            </p>
-            <p className="text-xs text-muted-foreground">สามารถปิดหน้านี้ได้เลย</p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  // --- Payment Failed ---
-  if (view === 'failed') {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <Card className="max-w-md w-full">
-          <CardContent className="text-center py-10">
-            <AlertCircle className="size-16 text-destructive mx-auto mb-4" />
-            <h2 className="text-lg font-bold mb-2">การชำระเงินไม่สำเร็จ</h2>
-            <p className="text-muted-foreground text-sm mb-3">
-              ระบบไม่สามารถดำเนินการชำระเงินได้
-            </p>
-            <div className="bg-warning/10 border border-warning/20 rounded-lg p-3 text-left text-xs text-warning mb-4 space-y-1">
-              <p className="font-semibold">สาเหตุที่เป็นไปได้:</p>
-              <p>- ยอดเงินในบัญชีไม่เพียงพอ</p>
-              <p>- QR Code หมดอายุ (ใช้ได้ 30 นาที)</p>
-              <p>- การเชื่อมต่อขัดข้อง ลองอีกครั้ง</p>
-            </div>
-            {gatewayRef && (
-              <p className="text-xs text-muted-foreground mb-4">
-                เลขอ้างอิง: <span className="font-mono">{gatewayRef}</span>
-              </p>
-            )}
-            <div className="space-y-2">
-              <Button variant="primary" size="lg" className="w-full" onClick={handleRetry}>
-                <RefreshCw className="size-4 mr-2" />
-                ลองอีกครั้ง
-              </Button>
-              <Button variant="ghost" size="lg" className="w-full text-muted-foreground" asChild>
-                <a
-                  href={`/liff/contract${queryLineId ? `?lineId=${encodeURIComponent(queryLineId)}` : ''}`}
-                >
-                  กลับหน้าสัญญา
-                </a>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  // --- Success ---
-  if (view === 'success') {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <Card className="max-w-md w-full">
-          <CardContent className="text-center py-10">
-            <div className="size-20 rounded-full bg-success/10 flex items-center justify-center mx-auto mb-4">
-              <CheckCircle2 className="size-12 text-success" />
-            </div>
-            <h2 className="text-xl font-bold mb-1">ชำระเงินสำเร็จ!</h2>
-            <p className="text-muted-foreground text-sm mb-6">
-              ระบบบันทึกการชำระเรียบร้อยแล้ว
-            </p>
-
-            <div className="bg-muted/50 rounded-lg p-4 text-left space-y-2 mb-6">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">สัญญา</span>
-                <span className="font-medium">{data?.contract.contractNumber}</span>
-              </div>
-              {payment && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">งวดที่</span>
-                  <span className="font-medium">{payment.installmentNo}</span>
-                </div>
-              )}
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">ยอดชำระ</span>
-                <span className="font-semibold text-success">
-                  {amount.toLocaleString()} บาท
-                </span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">วิธีชำระ</span>
-                <span className="font-medium">ชำระออนไลน์ (Pay Solutions)</span>
-              </div>
-              {gatewayRef && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">เลขอ้างอิง</span>
-                  <span className="font-mono text-xs">{gatewayRef}</span>
-                </div>
-              )}
-              {paymentStatus?.paidAt && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">เวลา</span>
-                  <span className="font-medium">
-                    {formatDateTime(paymentStatus.paidAt)}
-                  </span>
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Button variant="outline" size="lg" className="w-full" asChild>
-                <a
-                  href={`/liff/contract${queryLineId ? `?lineId=${encodeURIComponent(queryLineId)}` : ''}`}
-                >
-                  ดูสัญญาของฉัน
-                </a>
-              </Button>
-              <Button variant="ghost" size="lg" className="w-full text-muted-foreground">
-                ปิดหน้านี้
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  // --- Gateway Pending (waiting for Pay Solutions callback) ---
-  if (view === 'gateway-pending') {
-    return (
-      <div className="min-h-screen bg-background p-4">
-        {/* Header */}
-        <div className="bg-primary rounded-xl p-5 text-white shadow-md mb-4">
-          <p className="text-xs opacity-80">BEST CHOICE</p>
-          <h1 className="text-base font-bold mt-1">รอการชำระเงิน</h1>
-        </div>
-
-        <Card className="mb-4">
-          <CardContent className="text-center py-8">
-            <Loader2 className="size-12 text-primary animate-spin mx-auto mb-4" />
-
-            <h2 className="text-lg font-bold mb-2">กำลังรอการชำระเงิน...</h2>
-            <p className="text-sm text-muted-foreground mb-1">
-              ยอดชำระ{' '}
-              <span className="text-primary font-bold">{amount.toLocaleString()} บาท</span>
-            </p>
-
-            <p className="text-xs text-muted-foreground mt-4">
-              หากชำระเงินแล้ว กรุณารอสักครู่ ระบบกำลังตรวจสอบ
-            </p>
-
-            {gatewayRef && (
-              <p className="text-xs text-muted-foreground mt-2">
-                เลขอ้างอิง: <span className="font-mono">{gatewayRef}</span>
-              </p>
-            )}
-
-            {/* Connection recovery banner: offline or poll error while still polling */}
-            {isPolling && (!online || pollErrored) && (
-              <div className="mt-4 bg-muted/70 border border-border rounded-lg p-3 text-sm text-muted-foreground flex items-center gap-2 justify-center">
-                <Loader2 className="size-4 animate-spin" />
-                <span>
-                  {!online
-                    ? 'ไม่ได้เชื่อมต่ออินเทอร์เน็ต — กำลังรอสัญญาณ...'
-                    : 'เชื่อมต่อไม่เสถียร กำลังลองใหม่...'}
-                </span>
-              </div>
-            )}
-
-            {/* Polling indicator */}
-            {!pollTimedOut ? (
-              <div className="flex items-center justify-center gap-2 text-muted-foreground text-sm mt-4">
-                <div className="size-2 rounded-full bg-primary animate-pulse" />
-                <span>กำลังตรวจสอบสถานะอัตโนมัติ...</span>
-              </div>
-            ) : (
-              <div className="mt-4 bg-warning/10 border border-warning/20 rounded-lg p-3 text-sm text-warning">
-                <p className="font-medium mb-1">หมดเวลาตรวจสอบอัตโนมัติ</p>
-                <p className="text-xs mb-2">
-                  หากชำระเงินแล้ว ระบบจะยืนยันให้ภายใน 5 นาทีผ่าน LINE
-                </p>
-                <p className="text-xs">
-                  หากยังไม่ได้รับการยืนยัน ติดต่อ 063-134-6356
-                </p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <div className="text-center space-y-2 flex flex-col items-center">
-          {pollTimedOut && (
-            <Button
-              variant="outline"
-              className="w-full max-w-xs"
-              onClick={() => setPollCount(0)}
-            >
-              <RefreshCw className="size-4 mr-2" />
-              ตรวจสอบอีกครั้ง
-            </Button>
-          )}
-          <Button
-            variant="ghost"
-            className="text-muted-foreground"
-            onClick={handleRetry}
-          >
-            ยกเลิกและเลือกวิธีอื่น
-          </Button>
-          <Button
-            variant="ghost"
-            className="text-muted-foreground"
-            asChild
-          >
+      <Shell>
+        <TopBar title="ชำระเงิน" initial={customerInitial} />
+        <section className="relative z-[1] px-5 pt-10 pb-8 flex flex-col items-center text-center">
+          <div className="grid h-20 w-20 place-items-center rounded-full bg-destructive/10 border border-destructive/30 mb-5">
+            <AlertCircle className="size-10 text-destructive" strokeWidth={1.5} />
+          </div>
+          <h2 className="text-[18px] font-semibold text-foreground tracking-tight leading-snug">
+            ไม่สามารถดำเนินการได้
+          </h2>
+          <p className="mt-2 text-[13px] text-muted-foreground leading-snug max-w-[280px]">
+            {errorMessage}
+          </p>
+          <Button variant="outline" size="lg" className="mt-8 w-full max-w-xs" asChild>
             <a
               href={`/liff/contract${queryLineId ? `?lineId=${encodeURIComponent(queryLineId)}` : ''}`}
             >
-              กลับไปหน้าสัญญา
+              กลับไปดูสัญญา
             </a>
           </Button>
-        </div>
-      </div>
+        </section>
+      </Shell>
     );
   }
 
-  // =============================================
-  // MAIN VIEW: Select Payment Method
-  // =============================================
+  // ── Payment Failed ───────────────────────────────────
+  if (view === 'failed') {
+    return (
+      <Shell>
+        <TopBar title="ชำระเงิน" initial={customerInitial} />
+        <section className="relative z-[1] px-5 pt-10 pb-8 flex flex-col items-center text-center">
+          <div className="grid h-20 w-20 place-items-center rounded-full bg-destructive/10 border border-destructive/30 mb-5">
+            <AlertCircle className="size-10 text-destructive" strokeWidth={1.5} />
+          </div>
+          <h2 className="text-[18px] font-semibold text-foreground tracking-tight leading-snug">
+            การชำระเงินไม่สำเร็จ
+          </h2>
+          <div className="mt-4 w-full max-w-xs rounded-[18px] border border-amber-200 bg-amber-50 p-4 text-left text-[12px] text-amber-800 leading-snug space-y-1">
+            <p className="font-semibold">สาเหตุที่เป็นไปได้:</p>
+            <p>· ยอดเงินในบัญชีไม่เพียงพอ</p>
+            <p>· QR Code หมดอายุ (ใช้ได้ 30 นาที)</p>
+            <p>· การเชื่อมต่อขัดข้อง ลองใหม่อีกครั้ง</p>
+          </div>
+          {gatewayRef && (
+            <p className="mt-3 text-[11px] text-muted-foreground leading-snug">
+              เลขอ้างอิง: <span className="font-mono">{gatewayRef}</span>
+            </p>
+          )}
+          <div className="mt-8 w-full max-w-xs space-y-2">
+            <Button variant="primary" size="lg" className="w-full" onClick={handleRetry}>
+              <RefreshCw className="size-4 mr-2" strokeWidth={2} />
+              ลองอีกครั้ง
+            </Button>
+            <Button variant="ghost" size="lg" className="w-full text-muted-foreground" asChild>
+              <a
+                href={`/liff/contract${queryLineId ? `?lineId=${encodeURIComponent(queryLineId)}` : ''}`}
+              >
+                กลับไปดูสัญญา
+              </a>
+            </Button>
+          </div>
+        </section>
+      </Shell>
+    );
+  }
+
+  // ── Success ──────────────────────────────────────────
+  if (view === 'success') {
+    return (
+      <Shell>
+        <TopBar title="ชำระเงิน" initial={customerInitial} />
+        <section className="relative z-[1] px-5 pt-10 pb-8 flex flex-col items-center text-center">
+          <div
+            className="relative grid h-24 w-24 place-items-center rounded-full mb-5"
+            style={{
+              background:
+                'radial-gradient(circle, rgb(16 185 129 / 0.18) 0%, rgb(16 185 129 / 0.04) 70%)',
+            }}
+          >
+            <div className="grid h-16 w-16 place-items-center rounded-full bg-emerald-500 text-white shadow-lg shadow-emerald-500/30">
+              <CheckCircle2 className="size-9" strokeWidth={2} />
+            </div>
+          </div>
+          <h2 className="text-[20px] font-semibold text-foreground tracking-tight leading-snug">
+            ชำระเงินสำเร็จ
+          </h2>
+          <p className="mt-2 text-[13px] text-muted-foreground leading-snug">
+            ระบบบันทึกการชำระเรียบร้อยแล้ว
+          </p>
+
+          <div className="mt-6 w-full max-w-xs rounded-[22px] border border-border/50 bg-card p-5 shadow-sm space-y-3 text-left">
+            <Row label="สัญญา" value={data?.contract.contractNumber ?? '-'} mono />
+            {payment && !isMultiInstallment && (
+              <Row label="งวดที่" value={`${payment.installmentNo}`} />
+            )}
+            <Row label="ยอดที่ชำระ" value={`฿${formatNumber(amount)}`} emphasize />
+            {gatewayRef && <Row label="เลขอ้างอิง" value={gatewayRef} mono />}
+            {paymentStatus?.paidAt && (
+              <Row label="เวลา" value={formatDateTime(paymentStatus.paidAt)} />
+            )}
+          </div>
+
+          <div className="mt-6 w-full max-w-xs space-y-2">
+            <Button variant="outline" size="lg" className="w-full" asChild>
+              <a
+                href={`/liff/contract${queryLineId ? `?lineId=${encodeURIComponent(queryLineId)}` : ''}`}
+              >
+                ดูสัญญาของฉัน
+              </a>
+            </Button>
+          </div>
+        </section>
+      </Shell>
+    );
+  }
+
+  // ── Gateway Pending ──────────────────────────────────
+  if (view === 'gateway-pending') {
+    return (
+      <Shell>
+        <TopBar title="รอการชำระเงิน" initial={customerInitial} />
+        <section className="relative z-[1] px-5 pt-10 pb-8 flex flex-col items-center text-center">
+          <Loader2 className="size-12 text-emerald-600 animate-spin mb-4" strokeWidth={1.75} />
+          <h2 className="text-[18px] font-semibold text-foreground tracking-tight leading-snug">
+            กำลังรอการชำระเงิน
+          </h2>
+          <p className="mt-2 text-[13px] text-muted-foreground leading-snug">
+            ยอดชำระ{' '}
+            <span className="font-mono font-semibold text-emerald-700 tabular-nums">
+              ฿{formatNumber(amount)}
+            </span>
+          </p>
+          <p className="mt-2 text-[11.5px] text-muted-foreground/80 leading-snug max-w-[280px]">
+            หากชำระเงินแล้ว กรุณารอสักครู่ ระบบกำลังตรวจสอบอัตโนมัติ
+          </p>
+          {gatewayRef && (
+            <p className="mt-3 text-[11px] text-muted-foreground leading-snug">
+              เลขอ้างอิง: <span className="font-mono">{gatewayRef}</span>
+            </p>
+          )}
+
+          {isPolling && (!online || pollErrored) && (
+            <div className="mt-4 flex items-center gap-2 rounded-[14px] border border-border/50 bg-muted/60 px-3 py-2 text-[12px] text-muted-foreground">
+              <Loader2 className="size-3.5 animate-spin" strokeWidth={2} />
+              <span>
+                {!online ? 'ไม่มีอินเทอร์เน็ต — กำลังรอสัญญาณ' : 'เชื่อมต่อไม่เสถียร กำลังลองใหม่'}
+              </span>
+            </div>
+          )}
+
+          {pollTimedOut && (
+            <div className="mt-5 w-full max-w-xs rounded-[18px] border border-amber-200 bg-amber-50 p-4 text-left text-[12px] text-amber-800 leading-snug">
+              <p className="font-semibold mb-1">หมดเวลาตรวจสอบอัตโนมัติ</p>
+              <p className="mb-2">หากชำระแล้ว ระบบจะยืนยันให้ภายใน 5 นาทีผ่าน LINE</p>
+              <p>หากยังไม่ได้รับการยืนยัน ติดต่อ 063-134-6356</p>
+            </div>
+          )}
+
+          <div className="mt-6 w-full max-w-xs space-y-2">
+            {pollTimedOut && (
+              <Button variant="outline" size="lg" className="w-full" onClick={() => setPollCount(0)}>
+                <RefreshCw className="size-4 mr-2" strokeWidth={2} />
+                ตรวจสอบอีกครั้ง
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="lg"
+              className="w-full text-muted-foreground"
+              onClick={handleRetry}
+            >
+              ยกเลิกและทำรายการใหม่
+            </Button>
+            <Button variant="ghost" size="lg" className="w-full text-muted-foreground" asChild>
+              <a
+                href={`/liff/contract${queryLineId ? `?lineId=${encodeURIComponent(queryLineId)}` : ''}`}
+              >
+                กลับไปดูสัญญา
+              </a>
+            </Button>
+          </div>
+        </section>
+      </Shell>
+    );
+  }
+
+  // ── Ready (main view) ────────────────────────────────
   if (!data) return null;
 
   return (
-    <div className="min-h-screen bg-background p-4 pb-8">
-      {/* Header */}
-      <div className="bg-primary rounded-xl p-5 text-white shadow-md mb-4">
-        <div className="flex justify-between items-start">
-          <div>
-            <p className="text-xs opacity-80">BEST CHOICE</p>
-            <h1 className="text-base font-bold mt-1">ชำระเงินค่างวด</h1>
-            <p className="text-xs opacity-80 mt-1">สัญญา {data.contract.contractNumber}</p>
-          </div>
-          {expirySeconds !== null && expirySeconds > 0 && (
-            <div className="text-right">
-              <p className="text-[10px] opacity-70">หมดอายุใน</p>
-              <p className={`text-sm font-mono font-bold ${expirySeconds < 300 ? 'text-warning-foreground' : ''}`}>
-                {Math.floor(expirySeconds / 60).toString().padStart(2, '0')}:
-                {(expirySeconds % 60).toString().padStart(2, '0')}
-              </p>
-            </div>
-          )}
+    <Shell>
+      <TopBar title="ชำระเงิน" initial={customerInitial} />
+
+      <section className="relative z-[1] px-5 pt-6">
+        <div className="text-xs text-muted-foreground leading-snug">สวัสดี</div>
+        <div className="text-[17px] font-medium text-foreground tracking-tight leading-snug">
+          คุณ{customerName}
         </div>
+      </section>
+
+      {/* Hero — emerald chamber, mirrors LiffEarlyPayoff's hero with a
+          payment-confirm framing (green vs the discount-amber elsewhere) */}
+      <section className="relative z-[1] px-5 pt-7">
+        <div
+          className="absolute pointer-events-none animate-[float_3.5s_ease-in-out_infinite]"
+          style={{
+            top: '10px',
+            left: '-40px',
+            width: '220px',
+            height: '220px',
+            borderRadius: '50%',
+            filter: 'blur(60px)',
+            opacity: 0.5,
+            background: 'radial-gradient(circle, rgb(16 185 129), transparent 70%)',
+          }}
+        />
+        <div
+          className="absolute pointer-events-none animate-[float_3.5s_ease-in-out_infinite_1s]"
+          style={{
+            top: '60px',
+            right: '-40px',
+            width: '180px',
+            height: '180px',
+            borderRadius: '50%',
+            filter: 'blur(60px)',
+            opacity: 0.4,
+            background: 'radial-gradient(circle, rgb(52 211 153), transparent 70%)',
+          }}
+        />
+
+        <div className="relative">
+          <div className="flex items-center justify-between">
+            <span className="text-[10.5px] font-semibold uppercase tracking-[0.18em] text-emerald-800">
+              {isMultiInstallment ? 'ยอดปิดสัญญา' : 'ยอดที่ต้องชำระ'}
+            </span>
+            {expirySeconds !== null && expirySeconds > 0 && (
+              <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
+                หมดอายุใน {Math.floor(expirySeconds / 60).toString().padStart(2, '0')}:
+                {(expirySeconds % 60).toString().padStart(2, '0')}
+              </span>
+            )}
+          </div>
+
+          <div className="mt-3 flex items-baseline gap-1.5">
+            <span className="font-mono text-[22px] text-emerald-700 font-light leading-none">฿</span>
+            <span
+              className="font-mono font-light tabular-nums tracking-[-0.035em] text-foreground"
+              style={{
+                fontSize: 'clamp(38px, 13vw, 60px)',
+                lineHeight: '0.95',
+              }}
+            >
+              {formatNumber(amount)}
+            </span>
+            <span className="ml-2 font-mono text-xs text-muted-foreground leading-snug">บาท</span>
+          </div>
+
+          <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-emerald-50 border border-emerald-200 px-3 py-1.5 text-[11.5px] leading-snug text-emerald-800">
+            <ShieldCheck className="size-3.5 text-emerald-600" strokeWidth={2} />
+            ชำระผ่าน Pay Solutions · ปลอดภัย
+          </div>
+
+          <button
+            type="button"
+            className="relative mt-6 w-full overflow-hidden rounded-[20px] px-5 py-[18px] text-white active:scale-[0.985] transition-transform disabled:opacity-60"
+            style={{
+              background:
+                'linear-gradient(135deg, rgb(16 185 129) 0%, rgb(5 150 105) 45%, rgb(6 95 70) 100%)',
+              boxShadow: '0 18px 40px -12px rgb(5 150 105 / 0.55)',
+            }}
+            onClick={handleGatewayPay}
+            disabled={createIntentMutation.isPending}
+          >
+            <span className="relative z-[1] flex items-center justify-between">
+              <span className="flex items-center gap-2.5">
+                <span className="grid h-8 w-8 place-items-center rounded-xl bg-white/20 backdrop-blur-sm">
+                  {createIntentMutation.isPending ? (
+                    <Loader2 className="size-[16px] animate-spin" strokeWidth={2} />
+                  ) : (
+                    <QrCode className="size-[16px]" strokeWidth={2} />
+                  )}
+                </span>
+                <span className="text-[15.5px] font-semibold tracking-tight leading-snug">
+                  {createIntentMutation.isPending
+                    ? 'กำลังสร้างรายการ...'
+                    : `สแกนจ่าย ฿${formatNumber(amount)}`}
+                </span>
+              </span>
+              {!createIntentMutation.isPending && (
+                <ArrowRight
+                  className="size-5 animate-[bounce_2.4s_ease-in-out_infinite]"
+                  strokeWidth={2}
+                />
+              )}
+            </span>
+          </button>
+        </div>
+      </section>
+
+      {/* Section divider */}
+      <div className="relative z-[1] mt-8 flex items-center gap-3 px-5">
+        <span className="text-[10.5px] font-semibold uppercase tracking-[0.18em] text-muted-foreground leading-snug">
+          รายละเอียด
+        </span>
+        <div className="h-px flex-1 bg-gradient-to-r from-border to-transparent" />
       </div>
 
-      {/* Payment Details Card */}
-      <Card className="mb-4">
-        <CardContent>
-          <h2 className="text-xs text-muted-foreground font-medium mb-3">รายละเอียด</h2>
-          <div className="space-y-2.5">
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">ลูกค้า</span>
-              <span className="font-medium">{data.contract.customer.name}</span>
-            </div>
-            {payment && (
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">งวดที่</span>
-                <span className="font-medium">{payment.installmentNo}</span>
-              </div>
-            )}
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">ครบกำหนด</span>
-              <span className="font-medium">{dueDate}</span>
-            </div>
+      <section className="relative z-[1] mt-4 px-5">
+        <div className="rounded-[22px] border border-border/50 bg-card p-5 shadow-sm space-y-3">
+          <Row label="ลูกค้า" value={customerName} />
+          <Row label="สัญญา" value={data.contract.contractNumber} mono />
+          {payment && !isMultiInstallment && (
+            <>
+              <Row label="งวดที่" value={`${payment.installmentNo}`} />
+              <Row label="ครบกำหนด" value={dueDate} />
+            </>
+          )}
+        </div>
 
-            <div className="border-t border-border pt-3 flex justify-between items-center">
-              <span className="text-muted-foreground text-sm">ยอดชำระ</span>
-              <div className="text-right">
-                <span className="text-2xl font-bold text-primary">
-                  {amount.toLocaleString()}
-                </span>
-                <span className="text-sm text-muted-foreground ml-1">บาท</span>
-              </div>
-            </div>
-            {lateFee > 0 && (
-              <div className="flex justify-end">
-                <Badge variant="destructive" appearance="light" size="sm">
-                  รวมค่าปรับ {lateFee.toLocaleString()} บาท
-                </Badge>
-              </div>
-            )}
+        <div className="mt-5 flex items-start gap-2.5 rounded-[18px] border border-border/40 bg-muted/40 px-4 py-3">
+          <div className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-emerald-50 text-emerald-600">
+            <Smartphone className="size-3.5" strokeWidth={2} />
           </div>
-        </CardContent>
-      </Card>
+          <div className="text-[11.5px] text-muted-foreground leading-snug">
+            รองรับ PromptPay, บัตรเครดิต/เดบิต, Mobile Banking ·{' '}
+            <span className="text-foreground font-medium">ระบบยืนยันการชำระอัตโนมัติ</span>
+          </div>
+        </div>
+      </section>
 
-      {/* Payment Method Tabs */}
-      <Card>
-        <CardContent>
-          <h2 className="text-xs text-muted-foreground font-medium mb-3">
-            เลือกวิธีชำระเงิน
-          </h2>
+      <div className="relative z-[1] mt-6 px-5">
+        <a
+          href={`/liff/contract${queryLineId ? `?lineId=${encodeURIComponent(queryLineId)}` : ''}`}
+          className="flex items-center justify-center gap-1.5 text-[12.5px] text-muted-foreground hover:text-foreground transition-colors py-3 leading-snug"
+        >
+          <ChevronLeft className="size-3.5" strokeWidth={2} />
+          กลับไปดูสัญญา
+        </a>
+        <p className="text-center text-[10px] text-muted-foreground/70 tracking-[0.15em] uppercase mt-4 leading-snug">
+          Best Choice · ระบบผ่อนชำระ
+        </p>
+      </div>
+    </Shell>
+  );
+}
 
-          <Tabs defaultValue="gateway">
-            <TabsList variant="default" className="w-full mb-4" size="sm">
-              <TabsTrigger value="gateway" className="flex-1 gap-1.5">
-                <CreditCard className="size-3.5" />
-                ชำระออนไลน์
-              </TabsTrigger>
-              <TabsTrigger value="transfer" className="flex-1 gap-1.5">
-                <Building2 className="size-3.5" />
-                โอนเอง
-              </TabsTrigger>
-            </TabsList>
+// ─── UI primitives (shared DNA with LiffEarlyPayoff) ───────────────────
 
-            {/* -- Tab: Pay Solutions Gateway -- */}
-            <TabsContent value="gateway">
-              <div className="text-center py-2">
-                <div className="bg-muted/50 rounded-lg p-6 mb-4">
-                  <QrCode className="size-16 text-muted-foreground/30 mx-auto mb-3" />
-                  <p className="text-sm text-muted-foreground mb-1">
-                    ชำระผ่าน Pay Solutions
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    รองรับ PromptPay, บัตรเครดิต/เดบิต, Mobile Banking
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    ระบบจะยืนยันการชำระอัตโนมัติ ไม่ต้องส่งสลิป
-                  </p>
-                </div>
-                <Button
-                  variant="primary"
-                  size="lg"
-                  className="w-full"
-                  onClick={handleGatewayPay}
-                  disabled={createIntentMutation.isPending}
-                >
-                  {createIntentMutation.isPending ? (
-                    <>
-                      <Loader2 className="size-4 animate-spin" />
-                      กำลังสร้างรายการ...
-                    </>
-                  ) : (
-                    `ชำระเงิน ${amount.toLocaleString()} บาท`
-                  )}
-                </Button>
-              </div>
-            </TabsContent>
+function Shell({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      className="relative min-h-screen overflow-x-hidden"
+      style={{ backgroundColor: '#fafaf7' }}
+    >
+      <div
+        className="fixed inset-0 pointer-events-none z-0"
+        style={{
+          background:
+            'radial-gradient(600px 400px at 10% -5%, rgb(16 185 129 / 0.10), transparent 60%),' +
+            'radial-gradient(500px 380px at 100% 20%, rgb(52 211 153 / 0.07), transparent 65%),' +
+            'radial-gradient(400px 320px at 50% 100%, rgb(99 102 241 / 0.05), transparent 60%)',
+        }}
+      />
+      <div className="relative mx-auto max-w-[430px] pb-16">{children}</div>
+    </div>
+  );
+}
 
-            {/* -- Tab: Manual Transfer + Slip -- */}
-            <TabsContent value="transfer">
-              <div className="py-2">
-                {/* Expiry warning */}
-                {expirySeconds !== null && expirySeconds > 0 && expirySeconds < 300 && (
-                  <div className="bg-warning/10 border border-warning/20 rounded-lg p-2 mb-3 text-center text-xs text-warning">
-                    QR หมดอายุใน {Math.floor(expirySeconds / 60)}:{(expirySeconds % 60).toString().padStart(2, '0')} นาที
-                  </div>
-                )}
-                {/* PromptPay QR + Account Info */}
-                {qrUrl && (
-                  <div className="text-center mb-4">
-                    <img
-                      src={qrUrl}
-                      alt="PromptPay QR Code"
-                      className="mx-auto w-48 h-48 rounded-lg border"
-                      onError={() => setQrUrl(null)}
-                    />
-                    <p className="text-sm font-medium mt-3">
-                      สแกน QR แล้วโอนเงิน{' '}
-                      <span className="text-primary font-bold">
-                        {amount.toLocaleString()} บาท
-                      </span>
-                    </p>
-                  </div>
-                )}
-                {data?.promptPay && (
-                  <div className="bg-muted/50 rounded-lg p-3 mb-4 text-sm space-y-1">
-                    {data.promptPay.accountName && (
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">ชื่อบัญชี</span>
-                        <span className="font-medium">{data.promptPay.accountName}</span>
-                      </div>
-                    )}
-                    {data.promptPay.maskedId && (
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">PromptPay</span>
-                        <span className="font-medium">{data.promptPay.maskedId}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">ยอดโอน</span>
-                      <span className="font-bold text-primary">
-                        {amount.toLocaleString()} บาท
-                      </span>
-                    </div>
-                  </div>
-                )}
+function TopBar({ title, initial }: { title: string; initial: string }) {
+  return (
+    <header
+      className="sticky top-0 z-20 flex items-center justify-between px-5 py-3.5 backdrop-blur-xl border-b border-border/50"
+      style={{ backgroundColor: 'rgb(250 250 247 / 0.85)' }}
+    >
+      <button
+        type="button"
+        aria-label="ย้อนกลับ"
+        className="grid h-9 w-9 place-items-center rounded-full text-foreground hover:bg-accent -ml-1.5"
+        onClick={() => window.history.back()}
+      >
+        <ChevronLeft className="size-5" strokeWidth={1.75} />
+      </button>
+      <div className="text-[13px] font-medium text-foreground tracking-tight leading-snug">
+        {title}
+      </div>
+      <div className="relative -mr-1.5">
+        <div
+          className="grid h-9 w-9 place-items-center rounded-full text-[12px] font-semibold text-white shadow-lg shadow-emerald-500/30"
+          style={{
+            background:
+              'linear-gradient(135deg, rgb(52 211 153) 0%, rgb(16 185 129) 60%, rgb(5 150 105) 100%)',
+          }}
+        >
+          {initial}
+        </div>
+      </div>
+    </header>
+  );
+}
 
-                {/* Slip Upload */}
-                <div className="border-t border-border pt-4">
-                  <p className="text-xs text-muted-foreground mb-3">
-                    โอนเงินเสร็จแล้ว? แนบรูปสลิปเพื่อแจ้งชำระ
-                  </p>
-
-                  <label className="block w-full border-2 border-dashed border-border rounded-lg p-5 text-center cursor-pointer hover:border-primary/40 transition-colors">
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
-                      className="hidden"
-                      onChange={(e) => {
-                        const f = e.target.files?.[0] || null;
-                        if (f) {
-                          // Pre-flight check so the user sees the specific problem
-                          // before tapping "แจ้งชำระเงิน"
-                          const err = validateSlipFile(f);
-                          if (err) {
-                            toast.error(err);
-                            e.target.value = '';
-                            setSlipFile(null);
-                            return;
-                          }
-                        }
-                        setSlipFile(f);
-                      }}
-                    />
-                    {slipFile ? (
-                      <div className="flex items-center justify-center gap-2">
-                        <CheckCircle2 className="size-5 text-success" />
-                        <div>
-                          <p className="text-sm font-medium text-success">เลือกไฟล์แล้ว</p>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            {slipFile.name}
-                          </p>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col items-center gap-1.5">
-                        <Upload className="size-8 text-muted-foreground/40" />
-                        <p className="text-sm text-muted-foreground">แตะเพื่อเลือกรูปสลิป</p>
-                        <p className="text-xs text-muted-foreground/60">รองรับ JPG, PNG</p>
-                      </div>
-                    )}
-                  </label>
-
-                  <Button
-                    variant="primary"
-                    size="lg"
-                    className="w-full mt-3"
-                    onClick={handleSlipUpload}
-                    disabled={!slipFile || slipMutation.isPending}
-                  >
-                    {slipMutation.isPending ? (
-                      <>
-                        <Loader2 className="size-4 animate-spin" />
-                        กำลังส่ง...
-                      </>
-                    ) : (
-                      'แจ้งชำระเงิน'
-                    )}
-                  </Button>
-                </div>
-              </div>
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
-
-      {/* Footer */}
-      <p className="text-center text-xs text-muted-foreground mt-6">
-        BEST CHOICE - ระบบผ่อนชำระมือถือ
-      </p>
+function Row({
+  label,
+  value,
+  mono,
+  emphasize,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+  emphasize?: boolean;
+}) {
+  return (
+    <div className="flex items-baseline justify-between">
+      <span className="text-[12.5px] text-muted-foreground leading-snug">{label}</span>
+      <span
+        className={`tabular-nums tracking-tight leading-snug ${mono ? 'font-mono' : ''} ${
+          emphasize
+            ? 'text-[15px] font-semibold text-emerald-700'
+            : 'text-[13.5px] font-medium text-foreground'
+        }`}
+      >
+        {value}
+      </span>
     </div>
   );
 }

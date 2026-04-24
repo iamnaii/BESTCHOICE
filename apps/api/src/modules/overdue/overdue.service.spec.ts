@@ -286,3 +286,43 @@ describe('OverdueService.holdAutoEscalation (T3-C11)', () => {
     ).rejects.toThrow(BadRequestException);
   });
 });
+
+// ─────────────────────────────────────────────────────────────
+// C2: audit must not silently skip when no SYSTEM user
+// ─────────────────────────────────────────────────────────────
+describe('OverdueService (C2: throw if no SYSTEM user)', () => {
+  let service: OverdueService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let prisma: any;
+
+  beforeEach(async () => {
+    prisma = {
+      contract: {
+        findMany: jest.fn().mockResolvedValue([]),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      callLog: { findMany: jest.fn().mockResolvedValue([]) },
+      // SYSTEM user does not exist
+      user: { findFirst: jest.fn().mockResolvedValue(null) },
+      systemConfig: { findUnique: jest.fn().mockResolvedValue({ value: '7' }) },
+      auditLog: { createMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
+    };
+    const mod = await Test.createTestingModule({
+      providers: [OverdueService, { provide: PrismaService, useValue: prisma }],
+    }).compile();
+    service = mod.get(OverdueService);
+  });
+
+  it('throws if no SYSTEM user exists during updateContractStatuses', async () => {
+    await expect(service.updateContractStatuses()).rejects.toThrow(/SYSTEM user/);
+  });
+
+  it('throws if no SYSTEM user exists during escalateDunningStages', async () => {
+    // escalateDunningStages fetches contracts first then calls getSystemUserIdOrThrow
+    // We need contract.findMany to return an entry so the loop iterates and hits the throw
+    prisma.contract.findMany.mockResolvedValue([]);
+    await expect(service.escalateDunningStages()).rejects.toThrow(/SYSTEM user/);
+  });
+});

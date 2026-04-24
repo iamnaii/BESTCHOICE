@@ -16,6 +16,17 @@ export class OverdueService {
 
   constructor(private prisma: PrismaService) {}
 
+  private async getSystemUserIdOrThrow(): Promise<string> {
+    const user = await this.prisma.user.findFirst({
+      where: { isSystemUser: true },
+      select: { id: true },
+    });
+    if (!user) {
+      throw new Error('SYSTEM user not found — seed collections-foundation must run first');
+    }
+    return user.id;
+  }
+
   /**
    * Get all overdue/default contracts with filters and pagination
    */
@@ -270,11 +281,7 @@ export class OverdueService {
   async updateContractStatuses() {
     const now = new Date();
 
-    // Get system user for audit logs (first OWNER)
-    const systemUser = await this.prisma.user.findFirst({
-      where: { role: 'OWNER', isActive: true },
-      select: { id: true },
-    });
+    const systemUserId = await this.getSystemUserIdOrThrow();
 
     // Read overdue threshold from config
     const overdueConfig = await this.prisma.systemConfig.findUnique({
@@ -324,22 +331,17 @@ export class OverdueService {
           where: { id: { in: activeIds } },
           data: { status: 'OVERDUE' },
         }),
+        this.prisma.auditLog.createMany({
+          data: activeIds.map((id) => ({
+            userId: systemUserId,
+            action: 'STATUS_CHANGE',
+            entity: 'contract',
+            entityId: id,
+            newValue: { from: 'ACTIVE', to: 'OVERDUE', reason: `Payment overdue > ${overdueDays} days` },
+            ipAddress: 'system-cron',
+          })),
+        }),
       ];
-      // Only create audit logs if system user exists (avoid FK violation)
-      if (systemUser) {
-        txOps.push(
-          this.prisma.auditLog.createMany({
-            data: activeIds.map((id) => ({
-              userId: systemUser.id,
-              action: 'STATUS_CHANGE',
-              entity: 'contract',
-              entityId: id,
-              newValue: { from: 'ACTIVE', to: 'OVERDUE', reason: `Payment overdue > ${overdueDays} days` },
-              ipAddress: 'system-cron',
-            })),
-          }),
-        );
-      }
       await this.prisma.$transaction(txOps);
       overdueUpdated = activeIds.length;
     }
@@ -387,21 +389,17 @@ export class OverdueService {
           where: { id: { in: defaultIds } },
           data: { status: 'DEFAULT' },
         }),
+        this.prisma.auditLog.createMany({
+          data: defaultCandidates.map((c) => ({
+            userId: systemUserId,
+            action: 'STATUS_CHANGE',
+            entity: 'contract',
+            entityId: c.id,
+            newValue: { from: 'OVERDUE', to: 'DEFAULT', reason: `${c.consecutive} consecutive missed payments` },
+            ipAddress: 'system-cron',
+          })),
+        }),
       ];
-      if (systemUser) {
-        txOps.push(
-          this.prisma.auditLog.createMany({
-            data: defaultCandidates.map((c) => ({
-              userId: systemUser.id,
-              action: 'STATUS_CHANGE',
-              entity: 'contract',
-              entityId: c.id,
-              newValue: { from: 'OVERDUE', to: 'DEFAULT', reason: `${c.consecutive} consecutive missed payments` },
-              ipAddress: 'system-cron',
-            })),
-          }),
-        );
-      }
       await this.prisma.$transaction(txOps);
       defaultUpdated = defaultIds.length;
     }
@@ -466,11 +464,7 @@ export class OverdueService {
 
     const escalated: { contractId: string; contractNumber: string; from: DunningStage; to: DunningStage; daysOverdue: number }[] = [];
 
-    // Get system user for audit
-    const systemUser = await this.prisma.user.findFirst({
-      where: { role: 'OWNER', isActive: true },
-      select: { id: true },
-    });
+    const systemUserId = await this.getSystemUserIdOrThrow();
 
     for (const contract of contracts) {
       if (contract.payments.length === 0) continue;
@@ -507,19 +501,17 @@ export class OverdueService {
               pendingDunningSince: now,
             },
           });
-          if (systemUser) {
-            await this.prisma.auditLog.create({
-              data: {
-                userId: systemUser.id,
-                action: 'DUNNING_ESCALATION_PENDING',
-                entity: 'contract',
-                entityId: contract.id,
-                oldValue: { dunningStage: contract.dunningStage },
-                newValue: { pendingDunningStage: targetStage, daysOverdue },
-                ipAddress: 'system-cron',
-              },
-            });
-          }
+          await this.prisma.auditLog.create({
+            data: {
+              userId: systemUserId,
+              action: 'DUNNING_ESCALATION_PENDING',
+              entity: 'contract',
+              entityId: contract.id,
+              oldValue: { dunningStage: contract.dunningStage },
+              newValue: { pendingDunningStage: targetStage, daysOverdue },
+              ipAddress: 'system-cron',
+            },
+          });
           continue; // no stage flip, no customer notification this round
         }
 
@@ -532,19 +524,17 @@ export class OverdueService {
           },
         });
 
-        if (systemUser) {
-          await this.prisma.auditLog.create({
-            data: {
-              userId: systemUser.id,
-              action: 'DUNNING_ESCALATION',
-              entity: 'contract',
-              entityId: contract.id,
-              oldValue: { dunningStage: contract.dunningStage },
-              newValue: { dunningStage: targetStage, daysOverdue },
-              ipAddress: 'system-cron',
-            },
-          });
-        }
+        await this.prisma.auditLog.create({
+          data: {
+            userId: systemUserId,
+            action: 'DUNNING_ESCALATION',
+            entity: 'contract',
+            entityId: contract.id,
+            oldValue: { dunningStage: contract.dunningStage },
+            newValue: { dunningStage: targetStage, daysOverdue },
+            ipAddress: 'system-cron',
+          },
+        });
 
         escalated.push({
           contractId: contract.id,

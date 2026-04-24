@@ -28,6 +28,11 @@ const contract: ContractRow = {
   settlementDate: null,
   needsSkipTracing: false,
   deviceLocked: false,
+  lastContactedAt: null,
+  brokenPromiseCount: 0,
+  mdmState: 'NONE',
+  relatedContractsCount: 0,
+  lastChannel: null,
 };
 
 describe('<ContactLogDialog />', () => {

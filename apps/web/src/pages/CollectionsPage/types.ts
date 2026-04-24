@@ -38,6 +38,12 @@ export interface ContractRow {
   settlementDate: string | null;
   needsSkipTracing: boolean;
   deviceLocked: boolean;
+  // Card indicator fields (enriched server-side)
+  lastContactedAt: string | null;
+  brokenPromiseCount: number;
+  mdmState: 'NONE' | 'PENDING' | 'LOCKED' | 'UNLOCKED';
+  relatedContractsCount: number;
+  lastChannel: 'LINE' | 'SMS' | 'CALL' | 'LETTER' | null;
 }
 
 export type CallResult =

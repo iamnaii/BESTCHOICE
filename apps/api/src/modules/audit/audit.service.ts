@@ -193,6 +193,7 @@ export class AuditService {
     userId?: string;
     entity?: string;
     action?: string;
+    actions?: string[];
     from?: string;
     to?: string;
     page?: number;
@@ -206,7 +207,12 @@ export class AuditService {
     const where: Prisma.AuditLogWhereInput = {};
     if (filters.userId) where.userId = filters.userId;
     if (filters.entity) where.entity = { contains: filters.entity, mode: 'insensitive' };
-    if (filters.action) where.action = { contains: filters.action, mode: 'insensitive' };
+    // `actions` (array of exact matches) takes precedence over `action` (substring match)
+    if (filters.actions && filters.actions.length > 0) {
+      where.action = { in: filters.actions };
+    } else if (filters.action) {
+      where.action = { contains: filters.action, mode: 'insensitive' };
+    }
     if (filters.entityId) where.entityId = filters.entityId;
     if (filters.from || filters.to) {
       where.createdAt = {

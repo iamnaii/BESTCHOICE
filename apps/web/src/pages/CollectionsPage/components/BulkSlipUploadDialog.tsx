@@ -14,12 +14,14 @@ interface Props {
 
 export default function BulkSlipUploadDialog({ open, letters, onClose }: Props) {
   const [files, setFiles] = useState<Record<string, File | null>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const qc = useQueryClient();
 
   function handleClose() {
     if (busy) return;
     setFiles({});
+    setErrors({});
     onClose();
   }
 
@@ -34,6 +36,8 @@ export default function BulkSlipUploadDialog({ open, letters, onClose }: Props) 
     }
 
     setBusy(true);
+    setErrors({});
+    const rowErrors: Record<string, string> = {};
     let ok = 0;
     let fail = 0;
     for (const { letter, file } of pairs) {
@@ -47,7 +51,7 @@ export default function BulkSlipUploadDialog({ open, letters, onClose }: Props) 
           body: file,
           headers: { 'Content-Type': file.type },
         });
-        if (!up.ok) throw new Error('Upload failed');
+        if (!up.ok) throw new Error('อัปโหลดไฟล์ไปยัง storage ไม่สำเร็จ');
 
         await api.patch(`/overdue/letters/${letter.id}/evidence`, {
           evidencePhotoUrl: presigned.publicUrl,
@@ -55,17 +59,21 @@ export default function BulkSlipUploadDialog({ open, letters, onClose }: Props) 
         ok++;
       } catch (err) {
         fail++;
-        console.error(`Letter ${letter.letterNumber}:`, err);
+        rowErrors[letter.id] = getErrorMessage(err);
       }
     }
 
+    setErrors(rowErrors);
     qc.invalidateQueries({ queryKey: ['letter-queue'] });
-    toast.success(
-      `อัปโหลดสำเร็จ ${ok}/${pairs.length}${fail ? ` (ล้มเหลว ${fail})` : ''}`,
-    );
+    if (fail === 0) {
+      toast.success(`อัปโหลดสำเร็จ ${ok}/${pairs.length}`);
+      setBusy(false);
+      setFiles({});
+      onClose();
+      return;
+    }
+    toast.error(`อัปโหลดสำเร็จ ${ok}/${pairs.length} (ล้มเหลว ${fail})`);
     setBusy(false);
-    setFiles({});
-    onClose();
   };
 
   const selectedCount = Object.values(files).filter(Boolean).length;
@@ -80,6 +88,7 @@ export default function BulkSlipUploadDialog({ open, letters, onClose }: Props) 
         <div className="max-h-96 overflow-y-auto space-y-px border border-border/50 rounded-lg divide-y divide-border/30">
           {letters.map((l) => {
             const f = files[l.id];
+            const rowError = errors[l.id];
             return (
               <div key={l.id} className="flex items-center gap-3 px-3 py-2.5 bg-background">
                 <div className="flex-1 min-w-0">
@@ -98,6 +107,11 @@ export default function BulkSlipUploadDialog({ open, letters, onClose }: Props) 
                   {f && (
                     <div className="text-[10px] text-success leading-snug mt-0.5 truncate">
                       {f.name} ({(f.size / 1024).toFixed(0)} KB)
+                    </div>
+                  )}
+                  {rowError && (
+                    <div className="text-[10px] text-destructive leading-snug mt-0.5">
+                      {rowError}
                     </div>
                   )}
                 </div>

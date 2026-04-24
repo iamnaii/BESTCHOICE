@@ -128,7 +128,7 @@ export default function AuditLogsPage() {
   const [page, setPage] = useState(1);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [collectionPreset, setCollectionPreset] = useState<CollectionPreset>(null);
-  // Client-side filter for preset actions (multi-action filter)
+  // Server-side filter for preset actions (multi-action filter, sent as `actions` query param)
   const [presetActions, setPresetActions] = useState<string[]>([]);
   const limit = 25;
 
@@ -139,34 +139,34 @@ export default function AuditLogsPage() {
     queryFn: async () => (await api.get('/audit/stats')).data,
   });
 
+  const presetActionsKey = presetActions.join(',');
+
   const { data: result, isLoading, isError, error, refetch } = useQuery<{
     data: AuditLog[];
     total: number;
     page: number;
     totalPages: number;
   }>({
-    queryKey: ['audit-logs', debouncedEntity, action, dateFrom, dateTo, page],
+    queryKey: ['audit-logs', debouncedEntity, action, dateFrom, dateTo, page, presetActionsKey],
     queryFn: async () => {
-      const params: Record<string, string> = {
+      const params: Record<string, string | string[]> = {
         page: String(page),
         limit: String(limit),
       };
       if (debouncedEntity) params.entity = debouncedEntity;
-      if (action) params.action = action;
+      // `actions` (multi) takes precedence over `action` (single) — matches backend
+      if (presetActions.length > 0) {
+        params.actions = presetActions;
+      } else if (action) {
+        params.action = action;
+      }
       if (dateFrom) params.from = dateFrom;
       if (dateTo) params.to = dateTo;
       return (await api.get('/audit/logs', { params })).data;
     },
   });
 
-  // When a preset is active, filter the fetched page client-side by preset actions.
-  // The server filters by a single `action` param; for multi-action presets we
-  // fetch without an action filter and filter in-memory.
-  const rawLogs = result?.data || [];
-  const logs =
-    presetActions.length > 0
-      ? rawLogs.filter((l) => presetActions.includes(l.action))
-      : rawLogs;
+  const logs = result?.data || [];
   const totalPages = result?.totalPages || 1;
 
   function applyPreset(key: string) {

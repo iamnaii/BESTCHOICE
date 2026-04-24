@@ -34,49 +34,52 @@ export default function LineRetryQueueSection() {
           </div>
         ) : (
           <div className="space-y-2">
-            {actions.map((a) => (
-              <div
-                key={a.id}
-                className="flex items-start gap-3 rounded-lg border border-border/50 p-3 bg-background"
-              >
-                <div className="shrink-0 size-8 rounded-full bg-destructive/10 text-destructive flex items-center justify-center">
-                  <AlertTriangle className="size-4" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex flex-wrap items-baseline gap-2 mb-0.5">
-                    <span className="text-sm font-semibold leading-snug truncate">
-                      {a.contract.customer.name}
-                    </span>
-                    <span className="font-mono text-[10px] text-primary">
-                      {a.contract.contractNumber}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground">
-                      · {a.dunningRule.name}
-                    </span>
-                  </div>
-                  <div className="text-[10px] text-muted-foreground leading-snug line-clamp-2">
-                    {a.messageContent?.substring(0, 120)}
-                    {(a.messageContent?.length ?? 0) > 120 ? '…' : ''}
-                  </div>
-                  {a.result && (
-                    <div className="text-[10px] text-destructive mt-1 leading-snug">
-                      Error: {a.result}
-                    </div>
-                  )}
-                  <div className="text-[10px] text-muted-foreground mt-1 tabular-nums">
-                    ครั้งแรก: {formatDateShort(new Date(a.createdAt))}
-                  </div>
-                </div>
-                <button
-                  onClick={() => retry.mutate(a.id)}
-                  disabled={retry.isPending}
-                  className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+            {actions.map((a) => {
+              const isThisRetrying = retry.isPending && retry.variables === a.id;
+              return (
+                <div
+                  key={a.id}
+                  className="flex items-start gap-3 rounded-lg border border-border/50 p-3 bg-background"
                 >
-                  <RefreshCw className={`size-3.5 ${retry.isPending ? 'animate-spin' : ''}`} />
-                  ลองอีกครั้ง
-                </button>
-              </div>
-            ))}
+                  <div className="shrink-0 size-8 rounded-full bg-destructive/10 text-destructive flex items-center justify-center">
+                    <AlertTriangle className="size-4" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-baseline gap-2 mb-0.5">
+                      <span className="text-sm font-semibold leading-snug truncate">
+                        {a.contract.customer.name}
+                      </span>
+                      <span className="font-mono text-[10px] text-primary">
+                        {a.contract.contractNumber}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground">
+                        · {a.dunningRule.name}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-muted-foreground leading-snug line-clamp-2">
+                      {a.messageContent?.substring(0, 120)}
+                      {(a.messageContent?.length ?? 0) > 120 ? '…' : ''}
+                    </div>
+                    {a.result && (
+                      <div className="text-[10px] text-destructive mt-1 leading-snug">
+                        Error: {a.result}
+                      </div>
+                    )}
+                    <div className="text-[10px] text-muted-foreground mt-1 tabular-nums">
+                      ครั้งแรก: {formatDateShort(new Date(a.createdAt))}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => retry.mutate(a.id)}
+                    disabled={isThisRetrying}
+                    className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                  >
+                    <RefreshCw className={`size-3.5 ${isThisRetrying ? 'animate-spin' : ''}`} />
+                    ลองอีกครั้ง
+                  </button>
+                </div>
+              );
+            })}
           </div>
         )}
       </CardContent>

@@ -32,6 +32,7 @@ export class AuditController {
     @Query('userId') userId?: string,
     @Query('entity') entity?: string,
     @Query('action') action?: string,
+    @Query('actions') actions?: string | string[],
     @Query('from') from?: string,
     @Query('to') to?: string,
     @Query('page') page?: string,
@@ -39,10 +40,18 @@ export class AuditController {
     @Query('search') search?: string,
     @Query('entityId') entityId?: string,
   ) {
+    // Accept ?actions=A&actions=B (array) or ?actions=A,B (CSV)
+    let actionsList: string[] | undefined;
+    if (Array.isArray(actions)) {
+      actionsList = actions.filter((a) => typeof a === 'string' && a.length > 0);
+    } else if (typeof actions === 'string' && actions.length > 0) {
+      actionsList = actions.split(',').map((s) => s.trim()).filter(Boolean);
+    }
     return this.auditService.getAuditLogs({
       userId,
       entity,
       action,
+      actions: actionsList && actionsList.length > 0 ? actionsList : undefined,
       from,
       to,
       page: page ? parseInt(page) : undefined,

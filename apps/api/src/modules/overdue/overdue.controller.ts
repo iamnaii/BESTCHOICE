@@ -21,6 +21,7 @@ import { QueueQueryDto } from './dto/queue-query.dto';
 import { KpiQueryDto } from './dto/kpi-query.dto';
 import { BulkAssignDto, BulkProposeLockDto, BulkSendLineDto } from './dto/bulk.dto';
 import { SendLineAdHocDto } from './dto/send-line-adhoc.dto';
+import { UpdateLetterEvidenceDto } from './dto/update-letter-evidence.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
@@ -445,10 +446,10 @@ export class OverdueController {
   @Roles('OWNER', 'FINANCE_MANAGER')
   updateLetterEvidence(
     @Param('id') id: string,
-    @Body() body: { evidencePhotoUrl: string },
+    @Body() dto: UpdateLetterEvidenceDto,
     @CurrentUser() user: { id: string },
   ) {
-    return this.contractLetterService.updateEvidence(id, body.evidencePhotoUrl, user.id);
+    return this.contractLetterService.updateEvidence(id, dto.evidencePhotoUrl, user.id);
   }
 
   @Post('letters/:id/undeliverable')
@@ -484,7 +485,11 @@ export class OverdueController {
   @Get('line-retries')
   @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER')
   listFailed(@Query('limit') limit?: string) {
-    return this.dunningRetryService.listFailed(limit ? parseInt(limit, 10) : 100);
+    const parsedLimit = Math.min(
+      Math.max(parseInt(limit ?? '', 10) || 100, 1),
+      500,
+    );
+    return this.dunningRetryService.listFailed(parsedLimit);
   }
 
   @Post('line-retries/:id/retry')

@@ -36,9 +36,29 @@ export class OverdueAnalyticsService {
     return value;
   }
 
+  /**
+   * Return the UTC Date representing midnight of the current day in
+   * Asia/Bangkok (UTC+7, no DST), minus N days. This keeps day-boundary
+   * buckets aligned with the local business day rather than UTC midnight.
+   */
+  private bangkokMidnightDaysAgo(days: number): Date {
+    const BKK_OFFSET_MS = 7 * 60 * 60 * 1000;
+    // Convert "now" into Bangkok-local clock, floor to start-of-day there,
+    // then convert back to UTC by subtracting the offset.
+    const nowUtc = Date.now();
+    const bkkNow = new Date(nowUtc + BKK_OFFSET_MS);
+    const bkkMidnightUtc = Date.UTC(
+      bkkNow.getUTCFullYear(),
+      bkkNow.getUTCMonth(),
+      bkkNow.getUTCDate(),
+    );
+    const sinceUtcMs = bkkMidnightUtc - BKK_OFFSET_MS - days * 24 * 60 * 60 * 1000;
+    return new Date(sinceUtcMs);
+  }
+
   private async compute(range: '30d' | '90d'): Promise<AnalyticsResult> {
     const days = range === '30d' ? 30 : 90;
-    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const since = this.bangkokMidnightDaysAgo(days);
 
     const [
       weeklyCollectionRate,

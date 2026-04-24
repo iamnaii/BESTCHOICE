@@ -3,6 +3,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import PageHeader from '@/components/ui/PageHeader';
 import CollectionsKpiStrip from './components/CollectionsKpiStrip';
+import CollectionsTabs from './components/CollectionsTabs';
+import CollectionsFilters from './components/CollectionsFilters';
 
 export type CollectionsTabKey = 'today' | 'followup' | 'promise' | 'approval' | 'all';
 
@@ -10,16 +12,13 @@ export default function CollectionsPage() {
   useDocumentTitle('ติดตามหนี้');
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<CollectionsTabKey>('today');
+  const [search, setSearch] = useState('');
+  const [branchId, setBranchId] = useState('');
 
   const canSeeApproval = user?.role === 'OWNER' || user?.role === 'FINANCE_MANAGER';
+  const showBranchFilter = user?.role === 'OWNER' || user?.role === 'FINANCE_MANAGER';
 
-  const tabs: Array<{ key: CollectionsTabKey; label: string; visible: boolean }> = [
-    { key: 'today', label: 'คิววันนี้', visible: true },
-    { key: 'followup', label: 'ตามต่อ', visible: true },
-    { key: 'promise', label: 'นัดชำระ', visible: true },
-    { key: 'approval', label: 'อนุมัติ', visible: canSeeApproval },
-    { key: 'all', label: 'ทั้งหมด', visible: true },
-  ];
+  const showFilters = activeTab === 'today' || activeTab === 'followup' || activeTab === 'promise';
 
   return (
     <div>
@@ -27,29 +26,34 @@ export default function CollectionsPage() {
 
       <CollectionsKpiStrip />
 
-      {/* Tabs */}
-      <div className="flex gap-1 border-b border-border mb-4 overflow-x-auto">
-        {tabs
-          .filter((t) => t.visible)
-          .map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setActiveTab(t.key)}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                activeTab === t.key
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-      </div>
+      <CollectionsTabs
+        active={activeTab}
+        onChange={(key) => {
+          setActiveTab(key);
+          setSearch('');
+          setBranchId('');
+        }}
+        canSeeApproval={canSeeApproval}
+      />
+
+      {showFilters && (
+        <CollectionsFilters
+          search={search}
+          onSearchChange={setSearch}
+          branchId={branchId}
+          onBranchChange={setBranchId}
+          showBranchFilter={showBranchFilter}
+        />
+      )}
 
       {/* Tab content placeholder — later tasks replace */}
       <div className="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
         <div className="mb-2 font-medium text-foreground">
-          {tabs.find((t) => t.key === activeTab)?.label}
+          {activeTab === 'today' && 'คิววันนี้'}
+          {activeTab === 'followup' && 'ตามต่อ'}
+          {activeTab === 'promise' && 'นัดชำระ'}
+          {activeTab === 'approval' && 'อนุมัติ'}
+          {activeTab === 'all' && 'ทั้งหมด'}
         </div>
         <div>Tab content จะถูกเพิ่มใน Task 9-14</div>
       </div>

@@ -11,6 +11,7 @@ import { OverdueKpiService } from './kpi.service';
 import { OverdueTimelineService } from './timeline.service';
 import { OverdueBulkService } from './bulk.service';
 import { DunningRetryService } from './dunning-retry.service';
+import { OverdueAnalyticsService } from './analytics.service';
 import { OwnerAlertHelper } from './owner-alert.helper';
 import { BrokenPromiseCron } from './crons/broken-promise.cron';
 import { MdmAutoProposeCron } from './crons/mdm-auto-propose.cron';
@@ -34,6 +35,7 @@ import { LineOaModule } from '../line-oa/line-oa.module';
     OverdueTimelineService,
     OverdueBulkService,
     DunningRetryService,
+    OverdueAnalyticsService,
     OwnerAlertHelper,
     BrokenPromiseCron,
     MdmAutoProposeCron,

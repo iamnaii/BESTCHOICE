@@ -10,6 +10,8 @@ import { OverdueTimelineService } from './timeline.service';
 import { OverdueBulkService } from './bulk.service';
 import { ContractLetterService } from './contract-letter.service';
 import { DunningRetryService } from './dunning-retry.service';
+import { OverdueAnalyticsService } from './analytics.service';
+import { AnalyticsQueryDto } from './dto/analytics-query.dto';
 import { CreateCallLogDto } from './dto/create-call-log.dto';
 import { AssignCollectorDto } from './dto/assign-collector.dto';
 import { RecordSettlementDto } from './dto/record-settlement.dto';
@@ -41,6 +43,7 @@ export class OverdueController {
     private bulkService: OverdueBulkService,
     private contractLetterService: ContractLetterService,
     private dunningRetryService: DunningRetryService,
+    private analyticsService: OverdueAnalyticsService,
   ) {}
 
   // --- Collections Workflow Hub endpoints (Plan 2) ---
@@ -466,6 +469,14 @@ export class OverdueController {
     @CurrentUser() user: { id: string },
   ) {
     return this.contractLetterService.cancel(id, user.id, body.reason);
+  }
+
+  // --- Collections analytics ---
+
+  @Get('analytics')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  getAnalytics(@Query() dto: AnalyticsQueryDto) {
+    return this.analyticsService.getAnalytics({ range: dto.range ?? '30d' });
   }
 
   // --- LINE retry endpoints ---

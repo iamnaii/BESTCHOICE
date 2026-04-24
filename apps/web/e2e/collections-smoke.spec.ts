@@ -137,4 +137,10 @@ test.describe('/collections power features', () => {
     // Close
     await page.getByRole('button', { name: /ยกเลิก/ }).first().click();
   });
+
+  test('OWNER: approval tab shows Letter queue section header', async ({ page }) => {
+    if (await hasErrorBoundary(page)) return;
+    await page.getByRole('button', { name: /อนุมัติ/ }).first().click();
+    await expect(page.getByText(/หนังสือทวงถาม/).first()).toBeVisible({ timeout: 5000 });
+  });
 });

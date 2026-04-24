@@ -62,6 +62,17 @@ enum DunningStage {
   LEGAL_ACTION // ดำเนินคดี/ยึดคืน (>60 วัน)
 }
 
+enum DunningEventTrigger {
+  CALL_NO_ANSWER
+  CALL_ANSWERED_PROMISE
+  CALL_REFUSED
+  DEVICE_LOCKED
+  DEVICE_UNLOCKED
+  BROKEN_PROMISE
+  LETTER_DISPATCHED
+  CONTRACT_TERMINATED
+}
+
 enum PlanType {
   STORE_DIRECT
   CREDIT_CARD
@@ -374,6 +385,38 @@ enum DunningActionStatus {
   DELIVERED
   FAILED
   SKIPPED
+}
+
+enum MdmLockTrigger {
+  UNCONTACTABLE_3D
+  NO_PROMISE_3D
+  MANUAL_COLLECTOR
+  MANUAL_OWNER
+  BROKEN_PROMISE
+}
+
+enum MdmLockStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXECUTED_MANUAL
+  EXECUTED_API
+  FAILED
+  UNLOCKED
+}
+
+enum LetterType {
+  RETURN_DEVICE_45D
+  CONTRACT_TERMINATION_60D
+}
+
+enum LetterStatus {
+  PENDING_DISPATCH
+  PDF_GENERATED
+  DISPATCHED
+  DELIVERED
+  UNDELIVERABLE
+  CANCELLED
 }
 
 // ============================================================

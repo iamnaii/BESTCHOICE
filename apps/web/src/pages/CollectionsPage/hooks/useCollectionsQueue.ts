@@ -7,6 +7,11 @@ export interface QueueResponse {
   total: number;
   page: number;
   limit: number;
+  /**
+   * True when backend hit the hard row cap (500) — filter should be narrowed.
+   * Backend omits this when under cap, so we default to false in `select`.
+   */
+  truncated: boolean;
 }
 
 export type QueueTab = 'today' | 'followup' | 'promise';
@@ -20,7 +25,7 @@ export function useCollectionsQueue(params: {
   enabled: boolean;
 }) {
   const { tab, search, branchId, page, limit, enabled } = params;
-  return useQuery<QueueResponse>({
+  return useQuery<QueueResponse, Error, QueueResponse>({
     queryKey: ['collections-queue', tab, search, branchId, page, limit],
     queryFn: async () => {
       const q = new URLSearchParams({ tab, page: String(page), limit: String(limit) });
@@ -30,5 +35,6 @@ export function useCollectionsQueue(params: {
     },
     enabled,
     placeholderData: (prev) => prev,
+    select: (res) => ({ ...res, truncated: res.truncated ?? false }),
   });
 }

@@ -3,6 +3,7 @@ import { useDebounce } from '@/hooks/useDebounce';
 import QueryBoundary from '@/components/QueryBoundary';
 import ContractCard from '../components/ContractCard';
 import BulkActionBar from '../components/BulkActionBar';
+import TruncatedBanner from '../components/TruncatedBanner';
 import { useCollectionsQueue } from '../hooks/useCollectionsQueue';
 import { useBulkSelection } from '../hooks/useBulkSelection';
 import type { ContractRow } from '../types';
@@ -47,6 +48,10 @@ export default function QueueTab({ search, branchId, onLogContact, onOpen360, on
 
   const total = q.data?.total ?? 0;
   const rows = q.data?.data ?? [];
+  const truncated = q.data?.truncated ?? false;
+
+  // Task 10 will wire this to a real filter drawer; stub for now.
+  const openFilter = () => {};
 
   // Client-side search filter
   const filtered = debouncedSearch
@@ -74,6 +79,7 @@ export default function QueueTab({ search, branchId, onLogContact, onOpen360, on
         </div>
       }
     >
+      {truncated && <TruncatedBanner onOpenFilter={openFilter} />}
       {filtered.length === 0 ? (
         <div className="rounded-xl border border-dashed border-success/30 bg-success/5 p-10 text-center">
           <div className="text-4xl mb-3">🎉</div>

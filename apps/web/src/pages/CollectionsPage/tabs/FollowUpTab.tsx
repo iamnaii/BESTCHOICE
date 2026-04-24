@@ -4,6 +4,7 @@ import { useDebounce } from '@/hooks/useDebounce';
 import QueryBoundary from '@/components/QueryBoundary';
 import ContractCard from '../components/ContractCard';
 import BulkActionBar from '../components/BulkActionBar';
+import TruncatedBanner from '../components/TruncatedBanner';
 import { useCollectionsQueue } from '../hooks/useCollectionsQueue';
 import { useBulkSelection } from '../hooks/useBulkSelection';
 import type { ContractRow } from '../types';
@@ -49,6 +50,10 @@ export default function FollowUpTab({ search, branchId, onLogContact, onOpen360,
 
   const total = q.data?.total ?? 0;
   const rows = q.data?.data ?? [];
+  const truncated = q.data?.truncated ?? false;
+
+  // Task 10 will wire this to a real filter drawer; stub for now.
+  const openFilter = () => {};
 
   // Client-side search filter
   const searchFiltered = debouncedSearch
@@ -81,6 +86,7 @@ export default function FollowUpTab({ search, branchId, onLogContact, onOpen360,
         </div>
       }
     >
+      {truncated && <TruncatedBanner onOpenFilter={openFilter} />}
       {/* Skip-tracing toggle */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex-1" />

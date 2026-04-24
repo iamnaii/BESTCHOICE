@@ -76,8 +76,11 @@ function GenerateSection({ letter, onGenerated, onClose }: GenerateSectionProps)
     retry: 1,
   });
 
+  // Must share queryKey with DunningSettingsPage so that when OWNER uploads
+  // a signature, this dialog sees fresh data. `['settings']` is the source-of-
+  // truth key used by DunningSettingsPage / InterestConfigPage / SettingsPage.
   const settingsQuery = useQuery({
-    queryKey: ['settings-for-letter'],
+    queryKey: ['settings'],
     queryFn: async () => {
       const { data } = await api.get('/settings');
       return data as Array<{ key: string; value: string | null }>;

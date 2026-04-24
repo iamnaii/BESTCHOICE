@@ -6,6 +6,7 @@ import CollectionsKpiStrip from './components/CollectionsKpiStrip';
 import CollectionsTabs from './components/CollectionsTabs';
 import CollectionsFilters from './components/CollectionsFilters';
 import ContactLogDialog from './components/ContactLogDialog';
+import Customer360Panel from './components/Customer360Panel';
 import QueueTab from './tabs/QueueTab';
 import FollowUpTab from './tabs/FollowUpTab';
 import PromiseTab from './tabs/PromiseTab';
@@ -22,6 +23,7 @@ export default function CollectionsPage() {
   const [search, setSearch] = useState('');
   const [branchId, setBranchId] = useState('');
   const [dialogContract, setDialogContract] = useState<ContractRow | null>(null);
+  const [panelContract, setPanelContract] = useState<ContractRow | null>(null);
 
   const canSeeApproval = user?.role === 'OWNER' || user?.role === 'FINANCE_MANAGER';
   const showBranchFilter = user?.role === 'OWNER' || user?.role === 'FINANCE_MANAGER';
@@ -29,6 +31,8 @@ export default function CollectionsPage() {
   const showFilters = activeTab === 'today' || activeTab === 'followup' || activeTab === 'promise';
 
   const openContactDialog = (c: ContractRow) => setDialogContract(c);
+  const openPanel = (c: ContractRow) => setPanelContract(c);
+  const closePanel = () => setPanelContract(null);
 
   return (
     <div>
@@ -57,15 +61,30 @@ export default function CollectionsPage() {
       )}
 
       {activeTab === 'today' && (
-        <QueueTab search={search} branchId={branchId} onLogContact={openContactDialog} />
+        <QueueTab
+          search={search}
+          branchId={branchId}
+          onLogContact={openContactDialog}
+          onOpen360={openPanel}
+        />
       )}
 
       {activeTab === 'followup' && (
-        <FollowUpTab search={search} branchId={branchId} onLogContact={openContactDialog} />
+        <FollowUpTab
+          search={search}
+          branchId={branchId}
+          onLogContact={openContactDialog}
+          onOpen360={openPanel}
+        />
       )}
 
       {activeTab === 'promise' && (
-        <PromiseTab search={search} branchId={branchId} onLogContact={openContactDialog} />
+        <PromiseTab
+          search={search}
+          branchId={branchId}
+          onLogContact={openContactDialog}
+          onOpen360={openPanel}
+        />
       )}
 
       {activeTab === 'approval' && canSeeApproval && <ApprovalTab />}
@@ -77,6 +96,8 @@ export default function CollectionsPage() {
         contract={dialogContract}
         onClose={() => setDialogContract(null)}
       />
+
+      <Customer360Panel contract={panelContract} onClose={closePanel} />
     </div>
   );
 }

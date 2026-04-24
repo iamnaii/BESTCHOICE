@@ -7,6 +7,7 @@ import {
   CalendarCheck,
   UserCircle,
   NotebookPen,
+  ChevronRight,
 } from 'lucide-react';
 import { formatDateShort } from '@/utils/formatters';
 import type { ContractRow } from '../types';
@@ -127,6 +128,16 @@ export default function ContractCard({ contract, onLogContact, onOpen360 }: Prop
             >
               <NotebookPen className="size-3.5" />
             </button>
+            {onOpen360 && (
+              <button
+                onClick={() => onOpen360(contract)}
+                className="rounded-lg border border-input p-1.5 hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+                title="เปิด Customer 360"
+                aria-label="เปิด Customer 360"
+              >
+                <ChevronRight className="size-3.5" />
+              </button>
+            )}
           </div>
         </div>
       </div>

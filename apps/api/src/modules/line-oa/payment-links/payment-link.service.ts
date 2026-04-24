@@ -14,7 +14,13 @@ export class PaymentLinkService {
     private configService: ConfigService,
     private prisma: PrismaService,
   ) {
-    this.baseUrl = this.configService.get<string>('PAYMENT_LINK_BASE_URL') || 'https://bestchoice.example.com';
+    // Fall back to FRONTEND_URL (always set in prod) before the placeholder —
+    // missing PAYMENT_LINK_BASE_URL previously produced bestchoice.example.com
+    // links that LINE's in-app browser failed to resolve.
+    this.baseUrl =
+      this.configService.get<string>('PAYMENT_LINK_BASE_URL') ||
+      this.configService.get<string>('FRONTEND_URL') ||
+      'http://localhost:5173';
     this.expiryHours = 24; // Payment links expire in 24 hours
   }
 

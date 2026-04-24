@@ -1,6 +1,23 @@
 import { PrismaClient } from '@prisma/client';
 
-export async function seedCollectionsFoundation(prisma: PrismaClient): Promise<void> {
+export interface CollectionsFoundationSeedOptions {
+  /**
+   * Whether newly-created event-triggered DunningRules should be active.
+   * - Dev: true (so collectors can test the flow end-to-end)
+   * - Production first-deploy: false (schema ready, LINE auto-send stays off
+   *   until OWNER reviews templates + activates via /settings/dunning)
+   *
+   * Does NOT overwrite existing rules' isActive — use upsert.update to preserve
+   * manual OWNER toggles across seed re-runs.
+   */
+  eventRulesActive?: boolean;
+}
+
+export async function seedCollectionsFoundation(
+  prisma: PrismaClient,
+  options: CollectionsFoundationSeedOptions = {},
+): Promise<void> {
+  const { eventRulesActive = true } = options;
   // System user — never logs in, used as actor for system-generated audit logs
   await prisma.user.upsert({
     where: { email: 'system@bestchoice.internal' },
@@ -144,7 +161,7 @@ export async function seedCollectionsFoundation(prisma: PrismaClient): Promise<v
         messageTemplate: rule.messageTemplate,
         includePaymentLink: rule.includePaymentLink,
         autoExecute: rule.autoExecute,
-        isActive: true,
+        isActive: eventRulesActive,
         sortOrder: rule.sortOrder,
       },
     });

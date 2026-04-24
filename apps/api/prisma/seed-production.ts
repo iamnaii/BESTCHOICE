@@ -7,19 +7,24 @@
  *   3. Chart of Accounts
  *   4. Trade-in valuation tables
  *   5. Knowledge base (chatbot FAQ)
+ *   6. Collections foundation (SYSTEM user, event-triggered dunning rules, MDM/letter configs)
+ *      — event rules are created with isActive=false on first deploy so LINE
+ *        auto-send stays off until OWNER toggles them on via /settings/dunning
  *
- * Does NOT create: branches, users, customers, suppliers, products, contracts, payments
- * Branches and users should be created via the app UI by the owner.
+ * Does NOT create: branches, users (except SYSTEM), customers, suppliers, products, contracts, payments
+ * Branches and staff users should be created via the app UI by the owner.
  *
  * Usage:
  *   npx tsx apps/api/prisma/seed-production.ts
  *
  * Safe to re-run — all operations are upsert/createMany with skipDuplicates.
+ * Re-running does NOT overwrite OWNER's manual isActive toggles on event rules.
  */
 import { PrismaClient } from '@prisma/client';
 import { seedChartOfAccounts } from './seeds/chart-of-accounts';
 import { seedTradeInValuations } from './seeds/trade-in-valuations';
 import { seedKnowledgeBase } from './seeds/knowledge-base';
+import { seedCollectionsFoundation } from './seeds/collections-foundation.seed';
 
 const prisma = new PrismaClient();
 
@@ -150,23 +155,30 @@ async function main() {
   // ============================================================
   // STEP 3: Chart of Accounts (upsert by code — idempotent)
   // ============================================================
-  console.log('[3/5] Chart of Accounts...');
+  console.log('[3/6] Chart of Accounts...');
   await seedChartOfAccounts(prisma);
   console.log('  ✅ Chart of Accounts seeded');
 
   // ============================================================
   // STEP 4: Trade-in Valuations (upsert — idempotent)
   // ============================================================
-  console.log('[4/5] Trade-in Valuations...');
+  console.log('[4/6] Trade-in Valuations...');
   await seedTradeInValuations(prisma);
   console.log('  ✅ Trade-in Valuations seeded');
 
   // ============================================================
   // STEP 5: Knowledge Base (upsert — idempotent)
   // ============================================================
-  console.log('[5/5] Knowledge Base...');
+  console.log('[5/6] Knowledge Base...');
   await seedKnowledgeBase(prisma);
   console.log('  ✅ Knowledge Base seeded');
+
+  // ============================================================
+  // STEP 6: Collections foundation (SYSTEM user + event rules OFF by default + configs)
+  // ============================================================
+  console.log('[6/6] Collections foundation...');
+  await seedCollectionsFoundation(prisma, { eventRulesActive: false });
+  console.log('  ✅ Collections foundation seeded (event rules inactive — toggle via /settings/dunning)');
 
   // ============================================================
   console.log('\n=== Production Seed COMPLETED ===');

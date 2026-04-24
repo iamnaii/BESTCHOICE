@@ -17,13 +17,73 @@ interface UseLiffInitResult {
   error: string | null;
 }
 
+// Session cache — survives SPA navigation within the same tab so navigating
+// between LIFF pages (e.g. /liff/contract → /liff/early-payoff) does not
+// re-trigger LIFF SDK init or an OAuth round-trip. Cleared when the tab is
+// closed; also cleared by the axios 401 handler if the server rejects the
+// cached id_token (see lib/api.ts).
+//
+// A cachedAt timestamp bounds staleness on the client too — LIFF/OAuth
+// id_tokens are valid for ~1 hour so we treat entries older than 50 minutes
+// as expired and fall through to a fresh login.
+const SESSION_CACHE_KEY = 'bcp_liff_session_v1';
+const SESSION_CACHE_TTL_MS = 50 * 60 * 1000;
+
+interface SessionCache {
+  lineId: string;
+  idToken: string;
+  profile: LiffProfile;
+  cachedAt: number;
+}
+
+function readSessionCache(): SessionCache | null {
+  try {
+    const raw = sessionStorage.getItem(SESSION_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as SessionCache;
+    if (!parsed.lineId || !parsed.idToken || !parsed.profile || !parsed.cachedAt) return null;
+    if (Date.now() - parsed.cachedAt > SESSION_CACHE_TTL_MS) {
+      sessionStorage.removeItem(SESSION_CACHE_KEY);
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeSessionCache(cache: Omit<SessionCache, 'cachedAt'>): void {
+  try {
+    sessionStorage.setItem(
+      SESSION_CACHE_KEY,
+      JSON.stringify({ ...cache, cachedAt: Date.now() }),
+    );
+  } catch {
+    // sessionStorage unavailable — fall through; next page will just re-auth
+  }
+}
+
+/**
+ * Invalidate the LIFF session cache. Call from lib/api.ts on 401 so a stale
+ * id_token triggers a fresh OAuth round-trip on the next page mount instead
+ * of looping through failed API calls, and from future logout UI.
+ */
+export function clearLiffSessionCache(): void {
+  try {
+    sessionStorage.removeItem(SESSION_CACHE_KEY);
+  } catch {
+    // ignore
+  }
+}
+
 /**
  * Initialize LINE identity — works in both LIFF (LINE app) and regular browsers.
  *
  * Priority:
- * 1. LINE Login callback params (line_login=true in URL) — browser fallback
- * 2. LIFF SDK init — inside LINE app
- * 3. Redirect to LINE Login OAuth — browser fallback when LIFF fails
+ * 1. Session cache — reuse identity set by a prior page in the same tab
+ * 2. LINE Login callback params (line_login=true in URL) — browser fallback
+ * 3. LIFF SDK init — inside LINE app
+ * 4. Redirect to LINE Login OAuth — browser fallback when LIFF fails
  */
 export function useLiffInit(): UseLiffInitResult {
   const [lineId, setLineId] = useState('');
@@ -37,7 +97,19 @@ export function useLiffInit(): UseLiffInitResult {
 
     async function init() {
       try {
-        // ─── Check LINE Login callback params first ───
+        // ─── Session cache first — avoids re-auth when navigating between LIFF pages ───
+        const cached = readSessionCache();
+        if (cached) {
+          if (!cancelled) {
+            setLineId(cached.lineId);
+            setIdToken(cached.idToken);
+            setLiffIdToken(cached.idToken);
+            setProfile(cached.profile);
+          }
+          return;
+        }
+
+        // ─── Check LINE Login callback params ───
         const params = new URLSearchParams(window.location.search);
 
         if (params.get('login_error') === 'true') {
@@ -71,11 +143,18 @@ export function useLiffInit(): UseLiffInitResult {
               return;
             }
 
+            const profileValue: LiffProfile = {
+              userId,
+              displayName,
+              pictureUrl: pictureUrl || undefined,
+            };
+            writeSessionCache({ lineId: userId, idToken: lineIdToken, profile: profileValue });
+
             if (!cancelled) {
               setLineId(userId);
               setIdToken(lineIdToken);
               setLiffIdToken(lineIdToken);
-              setProfile({ userId, displayName, pictureUrl: pictureUrl || undefined });
+              setProfile(profileValue);
             }
             return;
           }
@@ -119,11 +198,18 @@ export function useLiffInit(): UseLiffInitResult {
             return;
           }
 
+          const profileValue: LiffProfile = {
+            userId: p.userId,
+            displayName: p.displayName,
+            pictureUrl: p.pictureUrl,
+          };
+          writeSessionCache({ lineId: p.userId, idToken: token, profile: profileValue });
+
           if (!cancelled) {
             setLineId(p.userId);
             setIdToken(token);
             setLiffIdToken(token);
-            setProfile({ userId: p.userId, displayName: p.displayName, pictureUrl: p.pictureUrl });
+            setProfile(profileValue);
           }
         } else {
           // Either LIFF_ID not configured, or current URL is not under the

@@ -186,6 +186,16 @@ liffApi.interceptors.response.use(
   },
   (error) => {
     const status = error?.response?.status;
+    // 401 from a LIFF endpoint means the cached id_token was rejected (expired
+    // or revoked). Clear the session cache so the next page mount bounces
+    // through a fresh OAuth instead of serving stale credentials forever.
+    if (status === 401) {
+      liffIdToken = null;
+      // Dynamic import avoids circular dependency with useLiffInit.
+      import('@/hooks/useLiffInit')
+        .then(({ clearLiffSessionCache }) => clearLiffSessionCache())
+        .catch(() => { /* module unavailable during dev HMR — ignore */ });
+    }
     if (status && status >= 500) {
       // Dynamically import Sentry to avoid bundling it if not configured
       import('@sentry/react').then((Sentry) => {

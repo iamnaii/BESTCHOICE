@@ -21,8 +21,10 @@ import { Prisma, PaymentMethod } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LineOaService } from '../line-oa/line-oa.service';
 import { buildPaymentSuccessFlex } from '../line-oa/flex-messages/payment-success.flex';
+import { buildEarlyPayoffSuccessFlex } from '../line-oa/flex-messages/early-payoff-success.flex';
 import { FlexMessagePayload } from '../line-oa/flex-messages/base-template';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
+import { ProductsService } from '../products/products.service';
 
 export interface PaymentIntentResult {
   paymentId: string;
@@ -53,6 +55,7 @@ export class PaySolutionsService {
     private integrationConfig: IntegrationConfigService,
     @Inject(forwardRef(() => OnlineOrderSaleAdapter))
     private saleAdapter: OnlineOrderSaleAdapter,
+    private productsService: ProductsService,
   ) {
     this.returnUrl = this.config.get<string>('PAYSOLUTIONS_RETURN_URL', '');
     this.apiBaseUrl = this.config.get<string>(
@@ -684,37 +687,159 @@ export class PaySolutionsService {
     const isSuccess = result_code === '00';
 
     if (isSuccess) {
-      // ชำระสำเร็จ
-      await this.prisma.$transaction(async (tx) => {
-        // อัปเดต PaymentLink
-        await tx.paymentLink.update({
-          where: { id: paymentLink.id },
-          data: { status: 'USED', usedAt: new Date() },
-        });
+      // Safely parse the webhook `total`. Falls back to the link's stored
+      // amount (authoritative for early-payoff links) when the wire value
+      // is malformed or absent.
+      let paidAmount: Prisma.Decimal;
+      try {
+        paidAmount =
+          total && !isNaN(Number(total)) && Number.isFinite(Number(total))
+            ? new Prisma.Decimal(total)
+            : paymentLink.amount;
+      } catch {
+        paidAmount = paymentLink.amount;
+      }
 
-        // อัปเดต Payment record ถ้ามี
-        if (paymentLink.paymentId) {
-          await tx.payment.update({
-            where: { id: paymentLink.paymentId },
-            data: {
-              status: 'PAID',
-              amountPaid: total && !isNaN(Number(total)) ? new Prisma.Decimal(total) : paymentLink.amount,
-              paidDate: new Date(),
-              paidAt: new Date(),
-              paymentMethod: PaymentMethod.ONLINE_GATEWAY,
-              gatewayRef: refno,
-              gatewayStatus: 'SUCCESS',
-              gatewayResponse: webhookData as object,
-              notes: `ชำระผ่าน Pay Solutions (${transaction_id || refno})`,
+      // ชำระสำเร็จ — distribute paid amount FIFO across unpaid installments.
+      // Early-payoff links carry amount = full payoff (with discount) and
+      // must close every pending installment, not just paymentLink.paymentId.
+      // Single-installment payments behave identically: one installment ends
+      // up fully paid, subsequent iterations stop at remaining <= 0.
+      //
+      // Serializable isolation matches contract-payment.earlyPayoff so two
+      // concurrent webhook retries cannot read stale amountPaid and
+      // double-credit an installment. The updateMany gate on `status: ACTIVE`
+      // is the belt-and-suspenders claim — only one transaction wins.
+      const result = await this.prisma.$transaction(
+        async (tx) => {
+          const claim = await tx.paymentLink.updateMany({
+            where: { id: paymentLink.id, status: 'ACTIVE' },
+            data: { status: 'USED', usedAt: new Date() },
+          });
+          if (claim.count === 0) {
+            return { alreadyClaimed: true as const };
+          }
+
+          const unpaidPayments = await tx.payment.findMany({
+            where: {
+              contractId: paymentLink.contractId!,
+              status: { not: 'PAID' },
+              deletedAt: null,
+            },
+            orderBy: { installmentNo: 'asc' },
+          });
+
+          let remaining = paidAmount;
+          const now = new Date();
+          let fullyPaidCount = 0;
+          for (const payment of unpaidPayments) {
+            if (remaining.lte(0)) break;
+            // lateFeeWaived=true sets lateFee=0 elsewhere, so reading lateFee
+            // directly is equivalent — we keep the guard explicit to be
+            // defensive against future model changes.
+            const lateFee = payment.lateFeeWaived
+              ? new Prisma.Decimal(0)
+              : payment.lateFee;
+            const owed = payment.amountDue.add(lateFee).sub(payment.amountPaid);
+            if (owed.lte(0)) continue;
+
+            const payThis = Prisma.Decimal.min(remaining, owed);
+            remaining = remaining.sub(payThis);
+            const newAmountPaid = payment.amountPaid.add(payThis).toDecimalPlaces(2);
+            const fullyPaid = newAmountPaid.gte(payment.amountDue.add(lateFee));
+
+            await tx.payment.update({
+              where: { id: payment.id },
+              data: {
+                amountPaid: newAmountPaid,
+                status: fullyPaid ? 'PAID' : 'PARTIALLY_PAID',
+                ...(fullyPaid ? { paidDate: now, paidAt: now } : {}),
+                paymentMethod: PaymentMethod.ONLINE_GATEWAY,
+                gatewayRef: refno,
+                gatewayStatus: 'SUCCESS',
+                gatewayResponse: webhookData as object,
+                notes: `ชำระผ่าน Pay Solutions (${transaction_id || refno})${
+                  unpaidPayments.length > 1 && fullyPaid ? ' [ปิดก่อนกำหนด]' : ''
+                }`,
+              },
+            });
+            if (fullyPaid) fullyPaidCount++;
+          }
+
+          // Close the contract when no installments remain. EARLY_PAYOFF
+          // only when a single webhook closed >1 installments at once (the
+          // discount-bearing LIFF flow). A normal last-installment payment
+          // that happens to zero the ledger gets COMPLETED instead — matches
+          // payments.service.checkContractCompletion semantics so dashboard
+          // queries (COMPLETED vs EARLY_PAYOFF) stay consistent.
+          const stillUnpaid = await tx.payment.count({
+            where: {
+              contractId: paymentLink.contractId!,
+              status: { not: 'PAID' },
+              deletedAt: null,
             },
           });
-        }
-      });
 
-      this.logger.log(`Payment SUCCESS: refno=${refno}, contractId=${paymentLink.contractId}`);
+          let contractStatus: 'EARLY_PAYOFF' | 'COMPLETED' | null = null;
+          if (stillUnpaid === 0) {
+            contractStatus = fullyPaidCount > 1 ? 'EARLY_PAYOFF' : 'COMPLETED';
+            const updated = await tx.contract.update({
+              where: { id: paymentLink.contractId! },
+              data: {
+                status: contractStatus,
+                ...(contractStatus === 'EARLY_PAYOFF' ? { creditBalance: 0 } : {}),
+              },
+              select: { productId: true },
+            });
+            if (updated.productId) {
+              try {
+                await this.productsService.transferOwnership(
+                  updated.productId,
+                  null,
+                  tx,
+                );
+              } catch (err) {
+                this.logger.error(
+                  `Failed to release product ownership for contract ${paymentLink.contractId}: ${err instanceof Error ? err.message : err}`,
+                );
+              }
+            }
+          }
 
-      // ส่ง LINE notification แจ้งลูกค้า
-      await this.sendPaymentSuccessNotification(paymentLink.contractId, paymentLink.paymentId);
+          return {
+            alreadyClaimed: false as const,
+            contractStatus,
+            fullyPaidCount,
+            totalUnpaidAtStart: unpaidPayments.length,
+          };
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+
+      if (result.alreadyClaimed) {
+        this.logger.log(
+          `Payment webhook refno=${refno}: link already claimed by prior retry — idempotent skip`,
+        );
+        return;
+      }
+
+      this.logger.log(
+        `Payment SUCCESS: refno=${refno}, contractId=${paymentLink.contractId}, contractStatus=${result.contractStatus ?? 'ACTIVE'}, fullyPaid=${result.fullyPaidCount}/${result.totalUnpaidAtStart}`,
+      );
+
+      // Route notification: multi-installment close = early-payoff flex;
+      // everything else uses the existing single-installment flex.
+      if (result.contractStatus === 'EARLY_PAYOFF') {
+        await this.sendEarlyPayoffSuccessNotification(
+          paymentLink.contractId,
+          paidAmount,
+        );
+      } else {
+        await this.sendPaymentSuccessNotification(
+          paymentLink.contractId,
+          paymentLink.paymentId,
+        );
+      }
     } else {
       // ชำระไม่สำเร็จ
       if (paymentLink.paymentId) {
@@ -779,6 +904,51 @@ export class PaySolutionsService {
     } catch (err) {
       // ไม่ให้ notification error ทำให้ webhook fail
       this.logger.error(`Failed to send LINE notification: ${err}`);
+    }
+  }
+
+  /**
+   * ส่ง LINE flex message แจ้งลูกค้าว่าปิดยอดก่อนกำหนดสำเร็จ
+   * Used when a single PaySolutions payment closed multiple installments
+   * (via the 50%-discount LIFF early-payoff flow).
+   */
+  private async sendEarlyPayoffSuccessNotification(
+    contractId: string,
+    paidAmount: Prisma.Decimal,
+  ): Promise<void> {
+    try {
+      const contract = await this.prisma.contract.findUnique({
+        where: { id: contractId },
+        include: {
+          customer: { select: { name: true, lineId: true } },
+          payments: { where: { deletedAt: null } },
+        },
+      });
+      if (!contract?.customer.lineId) return;
+
+      // "Original amount" — what the customer would have paid without the
+      // early-payoff discount (sum of all installment totals incl. lateFee).
+      const originalAmount = contract.payments.reduce((acc, p) => {
+        const lateFee = p.lateFeeWaived ? new Prisma.Decimal(0) : p.lateFee;
+        return acc.add(p.amountDue).add(lateFee);
+      }, new Prisma.Decimal(0));
+      const savings = Prisma.Decimal.max(originalAmount.sub(paidAmount), new Prisma.Decimal(0));
+
+      const flex = buildEarlyPayoffSuccessFlex({
+        customerName: contract.customer.name,
+        contractNumber: contract.contractNumber,
+        amountPaid: Number(paidAmount),
+        originalAmount: Number(originalAmount),
+        savings: Number(savings),
+        payoffDate: formatDateLong(new Date()),
+      });
+
+      await this.lineOaService.sendFlexMessage(contract.customer.lineId, flex);
+      this.logger.log(
+        `Early-payoff notification sent for contract ${contract.contractNumber}`,
+      );
+    } catch (err) {
+      this.logger.error(`Failed to send early-payoff notification: ${err}`);
     }
   }
 

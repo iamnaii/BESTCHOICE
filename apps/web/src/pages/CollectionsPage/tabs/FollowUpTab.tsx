@@ -1,12 +1,14 @@
 import { useState } from 'react';
-import { Search } from 'lucide-react';
 import { useDebounce } from '@/hooks/useDebounce';
 import QueryBoundary from '@/components/QueryBoundary';
 import ContractCard from '../components/ContractCard';
 import BulkActionBar from '../components/BulkActionBar';
 import TruncatedBanner from '../components/TruncatedBanner';
+import FilterChipsBar from '../components/FilterChipsBar';
+import FilterDrawer from '../components/FilterDrawer';
 import { useCollectionsQueue } from '../hooks/useCollectionsQueue';
 import { useBulkSelection } from '../hooks/useBulkSelection';
+import { useQueueFilter } from '../hooks/useQueueFilter';
 import type { ContractRow } from '../types';
 
 const LIMIT = 50;
@@ -35,9 +37,10 @@ interface Props {
 
 export default function FollowUpTab({ search, branchId, onLogContact, onOpen360, onSendLine }: Props) {
   const [page, setPage] = useState(1);
-  const [showSkipTracing, setShowSkipTracing] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(false);
   const sel = useBulkSelection();
   const debouncedSearch = useDebounce(search, 300);
+  const [filter, setFilter, resetFilter] = useQueueFilter();
 
   const q = useCollectionsQueue({
     tab: 'followup',
@@ -46,31 +49,15 @@ export default function FollowUpTab({ search, branchId, onLogContact, onOpen360,
     page,
     limit: LIMIT,
     enabled: true,
+    filter,
   });
 
   const total = q.data?.total ?? 0;
   const rows = q.data?.data ?? [];
   const truncated = q.data?.truncated ?? false;
 
-  // Task 10 will wire this to a real filter drawer; stub for now.
-  const openFilter = () => {};
-
-  // Client-side search filter
-  const searchFiltered = debouncedSearch
-    ? rows.filter((r) => {
-        const term = debouncedSearch.toLowerCase();
-        return (
-          r.customer.name.toLowerCase().includes(term) ||
-          r.contractNumber.toLowerCase().includes(term) ||
-          r.customer.phone.toLowerCase().includes(term)
-        );
-      })
-    : rows;
-
-  // Skip-tracing filter applied on top of search filter
-  const filtered = showSkipTracing
-    ? searchFiltered.filter((c) => c.needsSkipTracing)
-    : searchFiltered;
+  const openFilter = () => setFilterOpen(true);
+  const filtered = rows;
 
   return (
     <QueryBoundary
@@ -86,27 +73,18 @@ export default function FollowUpTab({ search, branchId, onLogContact, onOpen360,
         </div>
       }
     >
+      <FilterChipsBar
+        filter={filter}
+        setFilter={setFilter}
+        reset={resetFilter}
+        onOpenFilter={openFilter}
+        resultCount={rows.length}
+        totalCount={total}
+      />
       {truncated && <TruncatedBanner onOpenFilter={openFilter} />}
-      {/* Skip-tracing toggle */}
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex-1" />
-        <button
-          onClick={() => setShowSkipTracing((v) => !v)}
-          className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border transition-colors ${
-            showSkipTracing
-              ? 'border-destructive/30 bg-destructive/5 text-destructive'
-              : 'border-input hover:bg-muted text-muted-foreground'
-          }`}
-        >
-          <Search className="size-3.5" />
-          {showSkipTracing
-            ? `ต้องหาเบอร์ใหม่ (${filtered.length})`
-            : 'กรองที่ต้องหาเบอร์ใหม่'}
-        </button>
-      </div>
 
       {filtered.length === 0 ? (
-        showSkipTracing ? (
+        filter.showSkipTracing ? (
           <div className="rounded-xl border border-dashed border-border p-10 text-center">
             <div className="text-sm font-medium text-muted-foreground leading-snug">
               ไม่มีใครต้องหาเบอร์ใหม่
@@ -128,7 +106,7 @@ export default function FollowUpTab({ search, branchId, onLogContact, onOpen360,
       ) : (
         <>
           {/* Context banner */}
-          {!showSkipTracing && (
+          {!filter.showSkipTracing && (
           <div className="mb-4 rounded-lg bg-warning/5 border border-warning/20 p-3 text-xs text-warning leading-snug">
             <strong>ตามต่อ:</strong>{' '}
             ลูกค้าที่เคยโทรไปแล้วแต่ไม่รับ — ถ้าไม่รับครั้งต่อไปครบ 3 ครั้ง
@@ -189,6 +167,20 @@ export default function FollowUpTab({ search, branchId, onLogContact, onOpen360,
         </>
       )}
       <BulkActionBar selectedIds={sel.selectedIds} onClear={sel.clear} />
+      <FilterDrawer
+        open={filterOpen}
+        onOpenChange={setFilterOpen}
+        filter={filter}
+        onApply={(next) => {
+          setFilter(next);
+          setPage(1);
+        }}
+        onReset={() => {
+          resetFilter();
+          setPage(1);
+        }}
+        liveCount={total}
+      />
     </QueryBoundary>
   );
 }

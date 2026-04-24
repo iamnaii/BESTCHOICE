@@ -4,8 +4,11 @@ import QueryBoundary from '@/components/QueryBoundary';
 import ContractCard from '../components/ContractCard';
 import BulkActionBar from '../components/BulkActionBar';
 import TruncatedBanner from '../components/TruncatedBanner';
+import FilterChipsBar from '../components/FilterChipsBar';
+import FilterDrawer from '../components/FilterDrawer';
 import { useCollectionsQueue } from '../hooks/useCollectionsQueue';
 import { useBulkSelection } from '../hooks/useBulkSelection';
+import { useQueueFilter } from '../hooks/useQueueFilter';
 import type { ContractRow } from '../types';
 
 const LIMIT = 50;
@@ -34,8 +37,10 @@ interface Props {
 
 export default function QueueTab({ search, branchId, onLogContact, onOpen360, onSendLine }: Props) {
   const [page, setPage] = useState(1);
+  const [filterOpen, setFilterOpen] = useState(false);
   const sel = useBulkSelection();
   const debouncedSearch = useDebounce(search, 300);
+  const [filter, setFilter, resetFilter] = useQueueFilter();
 
   const q = useCollectionsQueue({
     tab: 'today',
@@ -44,26 +49,14 @@ export default function QueueTab({ search, branchId, onLogContact, onOpen360, on
     page,
     limit: LIMIT,
     enabled: true,
+    filter,
   });
 
   const total = q.data?.total ?? 0;
   const rows = q.data?.data ?? [];
   const truncated = q.data?.truncated ?? false;
 
-  // Task 10 will wire this to a real filter drawer; stub for now.
-  const openFilter = () => {};
-
-  // Client-side search filter
-  const filtered = debouncedSearch
-    ? rows.filter((r) => {
-        const term = debouncedSearch.toLowerCase();
-        return (
-          r.customer.name.toLowerCase().includes(term) ||
-          r.contractNumber.toLowerCase().includes(term) ||
-          r.customer.phone.toLowerCase().includes(term)
-        );
-      })
-    : rows;
+  const openFilter = () => setFilterOpen(true);
 
   return (
     <QueryBoundary
@@ -79,8 +72,16 @@ export default function QueueTab({ search, branchId, onLogContact, onOpen360, on
         </div>
       }
     >
+      <FilterChipsBar
+        filter={filter}
+        setFilter={setFilter}
+        reset={resetFilter}
+        onOpenFilter={openFilter}
+        resultCount={rows.length}
+        totalCount={total}
+      />
       {truncated && <TruncatedBanner onOpenFilter={openFilter} />}
-      {filtered.length === 0 ? (
+      {rows.length === 0 ? (
         <div className="rounded-xl border border-dashed border-success/30 bg-success/5 p-10 text-center">
           <div className="text-4xl mb-3">🎉</div>
           <div className="text-sm font-medium text-success leading-snug">
@@ -93,7 +94,7 @@ export default function QueueTab({ search, branchId, onLogContact, onOpen360, on
       ) : (
         <>
           <div className="space-y-2">
-            {filtered.map((row) => (
+            {rows.map((row) => (
               <ContractCard
                 key={row.id}
                 contract={row}
@@ -132,6 +133,20 @@ export default function QueueTab({ search, branchId, onLogContact, onOpen360, on
         </>
       )}
       <BulkActionBar selectedIds={sel.selectedIds} onClear={sel.clear} />
+      <FilterDrawer
+        open={filterOpen}
+        onOpenChange={setFilterOpen}
+        filter={filter}
+        onApply={(next) => {
+          setFilter(next);
+          setPage(1);
+        }}
+        onReset={() => {
+          resetFilter();
+          setPage(1);
+        }}
+        liveCount={total}
+      />
     </QueryBoundary>
   );
 }

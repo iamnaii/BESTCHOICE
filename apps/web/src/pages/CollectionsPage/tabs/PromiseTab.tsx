@@ -5,8 +5,11 @@ import QueryBoundary from '@/components/QueryBoundary';
 import ContractCard from '../components/ContractCard';
 import BulkActionBar from '../components/BulkActionBar';
 import TruncatedBanner from '../components/TruncatedBanner';
+import FilterChipsBar from '../components/FilterChipsBar';
+import FilterDrawer from '../components/FilterDrawer';
 import { useCollectionsQueue } from '../hooks/useCollectionsQueue';
 import { useBulkSelection } from '../hooks/useBulkSelection';
+import { useQueueFilter } from '../hooks/useQueueFilter';
 import type { ContractRow } from '../types';
 
 const LIMIT = 50;
@@ -92,8 +95,10 @@ interface Props {
 
 export default function PromiseTab({ search, branchId, onLogContact, onOpen360, onSendLine }: Props) {
   const [page, setPage] = useState(1);
+  const [filterOpen, setFilterOpen] = useState(false);
   const sel = useBulkSelection();
   const debouncedSearch = useDebounce(search, 300);
+  const [filter, setFilter, resetFilter] = useQueueFilter();
 
   const q = useCollectionsQueue({
     tab: 'promise',
@@ -102,29 +107,17 @@ export default function PromiseTab({ search, branchId, onLogContact, onOpen360, 
     page,
     limit: LIMIT,
     enabled: true,
+    filter,
   });
 
   const total = q.data?.total ?? 0;
   const rows = q.data?.data ?? [];
   const truncated = q.data?.truncated ?? false;
 
-  // Task 10 will wire this to a real filter drawer; stub for now.
-  const openFilter = () => {};
+  const openFilter = () => setFilterOpen(true);
 
-  // Client-side search filter
-  const filtered = debouncedSearch
-    ? rows.filter((r) => {
-        const term = debouncedSearch.toLowerCase();
-        return (
-          r.customer.name.toLowerCase().includes(term) ||
-          r.contractNumber.toLowerCase().includes(term) ||
-          r.customer.phone.toLowerCase().includes(term)
-        );
-      })
-    : rows;
-
-  const groups = groupRows(filtered);
-  const isEmpty = filtered.length === 0;
+  const groups = groupRows(rows);
+  const isEmpty = rows.length === 0;
 
   return (
     <QueryBoundary
@@ -140,6 +133,14 @@ export default function PromiseTab({ search, branchId, onLogContact, onOpen360, 
         </div>
       }
     >
+      <FilterChipsBar
+        filter={filter}
+        setFilter={setFilter}
+        reset={resetFilter}
+        onOpenFilter={openFilter}
+        resultCount={rows.length}
+        totalCount={total}
+      />
       {truncated && <TruncatedBanner onOpenFilter={openFilter} />}
       {isEmpty ? (
         <div className="rounded-xl border border-dashed border-border p-10 text-center">
@@ -249,6 +250,20 @@ export default function PromiseTab({ search, branchId, onLogContact, onOpen360, 
         </>
       )}
       <BulkActionBar selectedIds={sel.selectedIds} onClear={sel.clear} />
+      <FilterDrawer
+        open={filterOpen}
+        onOpenChange={setFilterOpen}
+        filter={filter}
+        onApply={(next) => {
+          setFilter(next);
+          setPage(1);
+        }}
+        onReset={() => {
+          resetFilter();
+          setPage(1);
+        }}
+        liveCount={total}
+      />
     </QueryBoundary>
   );
 }

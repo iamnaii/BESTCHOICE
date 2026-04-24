@@ -2,14 +2,16 @@ import { useEffect } from 'react';
 import { X, Phone, MessageCircle, MapPin, Loader2 } from 'lucide-react';
 import { useCustomer360 } from '../hooks/useCustomer360';
 import Customer360Timeline from './Customer360Timeline';
+import Customer360Actions from './Customer360Actions';
 import type { ContractRow } from '../types';
 
 interface Props {
   contract: ContractRow | null;
   onClose: () => void;
+  onRequestSendLine?: (c: ContractRow) => void; // Task 8 wires this
 }
 
-export default function Customer360Panel({ contract, onClose }: Props) {
+export default function Customer360Panel({ contract, onClose, onRequestSendLine }: Props) {
   const { data, isLoading, isError } = useCustomer360(contract?.id ?? null);
 
   // Close on Escape
@@ -149,14 +151,17 @@ export default function Customer360Panel({ contract, onClose }: Props) {
                 <Customer360Timeline events={data?.timeline ?? []} />
               </section>
 
-              {/* Actions placeholder — Task 6 replaces */}
+              {/* Actions */}
               <section className="p-5">
                 <div className="text-xs uppercase tracking-wider text-muted-foreground mb-3">
                   การดำเนินการ
                 </div>
-                <div className="text-xs text-muted-foreground italic leading-snug">
-                  Quick actions (Task 6)
-                </div>
+                <Customer360Actions
+                  contract={contract}
+                  onSendLine={
+                    onRequestSendLine ? () => onRequestSendLine(contract) : undefined
+                  }
+                />
               </section>
             </>
           )}

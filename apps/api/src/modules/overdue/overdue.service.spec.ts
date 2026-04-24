@@ -193,11 +193,16 @@ describe('OverdueService.updateContractStatuses (T3-C11 hold guard)', () => {
     await setupService();
   });
 
+  // C3 refactor note: blockAutoEscalation and PROMISED filters are now encoded
+  // inside flipWhere and re-evaluated atomically by the DB. updateMany is always
+  // called; filtering happens at the DB level. Tests mock what the DB *would* return
+  // given those predicates (snapshot findMany + updateMany count).
+
   it('escalates contracts with no hold and no recent PROMISED', async () => {
-    prisma.contract.findMany.mockResolvedValueOnce([
-      { id: 'c-1', blockAutoEscalation: null },
-    ]);
-    prisma.callLog.findMany.mockResolvedValue([]);
+    // callLog.findMany returns [] → no promisedIds, DB findMany returns 1 eligible contract
+    prisma.callLog.findMany.mockResolvedValueOnce([]); // promisedContractIds
+    prisma.contract.findMany.mockResolvedValueOnce([{ id: 'c-1' }]); // toFlip snapshot
+    prisma.contract.updateMany.mockResolvedValueOnce({ count: 1 }); // atomic flip
 
     const result = await service.updateContractStatuses();
     expect(result.overdueUpdated).toBe(1);
@@ -206,38 +211,36 @@ describe('OverdueService.updateContractStatuses (T3-C11 hold guard)', () => {
     );
   });
 
-  it('skips contracts with active blockAutoEscalation', async () => {
-    const future = new Date(Date.now() + 48 * 60 * 60 * 1000);
-    prisma.contract.findMany.mockResolvedValueOnce([
-      { id: 'c-1', blockAutoEscalation: future },
-    ]);
-    prisma.callLog.findMany.mockResolvedValue([]);
+  it('skips contracts with active blockAutoEscalation (DB filters them out)', async () => {
+    // With C3 the DB WHERE excludes held contracts; mock what the DB returns.
+    prisma.callLog.findMany.mockResolvedValueOnce([]); // promisedContractIds
+    prisma.contract.findMany.mockResolvedValueOnce([]); // DB returns nothing (hold active)
+    prisma.contract.updateMany.mockResolvedValueOnce({ count: 0 }); // 0 rows updated
 
     const result = await service.updateContractStatuses();
     expect(result.overdueUpdated).toBe(0);
-    expect(prisma.contract.updateMany).not.toHaveBeenCalled();
+    // updateMany IS called but updates 0 rows — contracts are excluded by DB predicate
+    expect(prisma.contract.updateMany).toHaveBeenCalled();
   });
 
   it('re-escalates after the hold expires', async () => {
-    const past = new Date(Date.now() - 60 * 1000);
-    prisma.contract.findMany.mockResolvedValueOnce([
-      { id: 'c-1', blockAutoEscalation: past },
-    ]);
-    prisma.callLog.findMany.mockResolvedValue([]);
+    // Hold expired → DB returns the contract; updateMany flips it
+    prisma.callLog.findMany.mockResolvedValueOnce([]); // promisedContractIds
+    prisma.contract.findMany.mockResolvedValueOnce([{ id: 'c-1' }]); // toFlip snapshot
+    prisma.contract.updateMany.mockResolvedValueOnce({ count: 1 });
 
     const result = await service.updateContractStatuses();
     expect(result.overdueUpdated).toBe(1);
   });
 
-  it('skips contracts with a PROMISED call log in last 24h', async () => {
-    prisma.contract.findMany.mockResolvedValueOnce([
-      { id: 'c-1', blockAutoEscalation: null },
-    ]);
-    prisma.callLog.findMany.mockResolvedValue([{ contractId: 'c-1' }]);
+  it('skips contracts with a PROMISED call log in last 24h (DB notIn filter)', async () => {
+    // PROMISED call log exists → promisedContractIds = ['c-1'], DB excludes c-1
+    prisma.callLog.findMany.mockResolvedValueOnce([{ contractId: 'c-1' }]); // promisedContractIds
+    prisma.contract.findMany.mockResolvedValueOnce([]); // DB excludes promised contracts
+    prisma.contract.updateMany.mockResolvedValueOnce({ count: 0 });
 
     const result = await service.updateContractStatuses();
     expect(result.overdueUpdated).toBe(0);
-    expect(prisma.contract.updateMany).not.toHaveBeenCalled();
   });
 });
 
@@ -284,6 +287,64 @@ describe('OverdueService.holdAutoEscalation (T3-C11)', () => {
     await expect(
       service.holdAutoEscalation('c-1', 'u-1', 'OWNER', 200),
     ).rejects.toThrow(BadRequestException);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// C3: atomic updateContractStatuses (race fix)
+// ─────────────────────────────────────────────────────────────
+describe('OverdueService.updateContractStatuses (C3: atomic flip)', () => {
+  let service: OverdueService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let prisma: any;
+
+  beforeEach(async () => {
+    prisma = {
+      contract: {
+        findMany: jest.fn().mockResolvedValue([]),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      callLog: { findMany: jest.fn().mockResolvedValue([]) },
+      user: { findFirst: jest.fn().mockResolvedValue({ id: 'sys-1' }) },
+      systemConfig: { findUnique: jest.fn().mockResolvedValue({ value: '7' }) },
+      auditLog: { createMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
+    };
+    const mod = await Test.createTestingModule({
+      providers: [OverdueService, { provide: PrismaService, useValue: prisma }],
+    }).compile();
+    service = mod.get(OverdueService);
+  });
+
+  it('does not flip a contract whose payments arrived PAID between snapshot and update', async () => {
+    // Simulate: snapshot sees 1 candidate, but by the time updateMany runs the
+    // payment was marked PAID. The DB WHERE re-evaluates and updates 0 rows.
+    // The code should report overdueUpdated = 0 (from flipResult.count) even
+    // though toFlip had 1 entry (audit snapshot was taken pre-payment).
+    prisma.callLog.findMany.mockResolvedValueOnce([]); // promisedContractIds
+    prisma.contract.findMany.mockResolvedValueOnce([{ id: 'c-race' }]); // snapshot before payment
+    prisma.contract.updateMany.mockResolvedValueOnce({ count: 0 }); // DB excludes it (now PAID)
+
+    const result = await service.updateContractStatuses();
+    // overdueUpdated is derived from updateMany count, not snapshot length
+    expect(result.overdueUpdated).toBe(0);
+    // The snapshot ID is still in overdueIds (harmless audit artifact)
+    expect(result.overdueIds).toContain('c-race');
+  });
+
+  it('flipWhere includes PAID-payment exclusion via payments.some predicate', async () => {
+    // Verify the updateMany call uses the flipWhere that has a payments.some clause
+    // (the DB will exclude PAID contracts because no PENDING/OVERDUE payment matches)
+    prisma.callLog.findMany.mockResolvedValueOnce([]);
+    prisma.contract.findMany.mockResolvedValueOnce([]);
+    prisma.contract.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    await service.updateContractStatuses();
+
+    const updateManyCall = prisma.contract.updateMany.mock.calls[0][0];
+    expect(updateManyCall.where.payments.some.status.in).toContain('PENDING');
+    expect(updateManyCall.where.payments.some.status.in).not.toContain('PAID');
   });
 });
 

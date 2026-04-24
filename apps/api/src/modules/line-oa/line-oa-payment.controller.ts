@@ -669,7 +669,11 @@ export class LineOaPaymentController {
           where: { contractId: linkContract.id, status: 'PAID' },
         });
         const totalInstallments = linkContract.totalMonths;
-        const amount = body.amount ? d(body.amount) : sumOutstanding(payment);
+        // Prefer body.amount from the LIFF form → fall back to link.amount
+        // (authoritative; honors early-payoff override). Avoid sumOutstanding
+        // on the linked installment because that returns the per-installment
+        // total for early-payoff links.
+        const amount = body.amount ? d(body.amount) : d(link.amount);
 
         const flex = this.lineOaService.buildPaymentSuccess({
           customerName: linkContract.customer.name,

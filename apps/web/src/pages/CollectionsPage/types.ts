@@ -13,6 +13,12 @@ export interface PendingMdmRequest {
   includeWallpaper: boolean;
   reason: string;
   proposedAt: string;
+  /**
+   * Optional — when present and set to EXECUTED_MANUAL / EXECUTED_API, the
+   * approval row renders an Unlock button (OWNER only). Absent for raw
+   * PENDING requests (which is the common case in the approval queue).
+   */
+  status?: 'PENDING' | 'EXECUTED_MANUAL' | 'EXECUTED_API' | 'REJECTED' | 'UNLOCKED' | 'LOCKED';
   contract: {
     id: string;
     contractNumber: string;

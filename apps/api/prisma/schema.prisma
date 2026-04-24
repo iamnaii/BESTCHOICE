@@ -581,9 +581,9 @@ model User {
   aiPausedRooms               ChatRoom[]                @relation("ChatRoomAiPausedBy")
   aiSettingsUpdates           AiSettings[]              @relation("AiSettingsUpdatedBy")
 
-  mdmProposed MdmLockRequest[] @relation("MdmProposed")
-  mdmApproved MdmLockRequest[] @relation("MdmApproved")
-  // letterDispatched ContractLetter[] @relation("LetterDispatched") // wired in Task 4
+  mdmProposed      MdmLockRequest[] @relation("MdmProposed")
+  mdmApproved      MdmLockRequest[] @relation("MdmApproved")
+  letterDispatched ContractLetter[] @relation("LetterDispatched")
 
   @@index([branchId])
   @@map("users")
@@ -859,7 +859,7 @@ model Contract {
   badDebtWriteOffAudits BadDebtWriteOffAuditLog[] @relation("BadDebtWriteOffContract")
 
   mdmLockRequests MdmLockRequest[]
-  // contractLetters ContractLetter[]  // wired in Task 4
+  contractLetters ContractLetter[]
 
   @@index([customerId])
   @@index([branchId])
@@ -1766,6 +1766,34 @@ model MdmLockRequest {
   @@index([contractId, status])
   @@index([status, proposedAt])
   @@map("mdm_lock_requests")
+}
+
+model ContractLetter {
+  id               String       @id @default(uuid())
+  contractId       String       @map("contract_id")
+  contract         Contract     @relation(fields: [contractId], references: [id])
+  letterType       LetterType   @map("letter_type")
+  letterNumber     String       @unique @map("letter_number")
+  status           LetterStatus @default(PENDING_DISPATCH)
+  triggeredAt      DateTime     @default(now()) @map("triggered_at")
+  pdfUrl           String?      @map("pdf_url")
+  pdfGeneratedAt   DateTime?    @map("pdf_generated_at")
+  dispatchedAt     DateTime?    @map("dispatched_at")
+  dispatchedById   String?      @map("dispatched_by_id")
+  dispatchedBy     User?        @relation("LetterDispatched", fields: [dispatchedById], references: [id])
+  trackingNumber   String?      @map("tracking_number")
+  evidencePhotoUrl String?      @map("evidence_photo_url")
+  deliveredAt      DateTime?    @map("delivered_at")
+  cancelledAt      DateTime?    @map("cancelled_at")
+  cancelReason     String?      @map("cancel_reason")
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+  deletedAt        DateTime?    @map("deleted_at")
+
+  @@unique([contractId, letterType])
+  @@index([status, triggeredAt])
+  @@index([dispatchedAt])
+  @@map("contract_letters")
 }
 
 model AuditLog {

@@ -267,6 +267,37 @@ export class ContractLetterService {
       .then(([l]) => l);
   }
 
+  /**
+   * Update the evidence photo URL for a letter that has already been dispatched or delivered.
+   * Creates an audit trail entry alongside the update.
+   */
+  async updateEvidence(letterId: string, evidencePhotoUrl: string, userId: string) {
+    const letter = await this.prisma.contractLetter.findUnique({ where: { id: letterId } });
+    if (!letter) throw new NotFoundException('ไม่พบหนังสือ');
+    if (!['DISPATCHED', 'DELIVERED'].includes(letter.status)) {
+      throw new BadRequestException('สามารถเพิ่มสลิปได้เฉพาะหนังสือที่ส่งแล้ว');
+    }
+    if (!evidencePhotoUrl || !evidencePhotoUrl.trim()) {
+      throw new BadRequestException('กรุณาอัปโหลดสลิป');
+    }
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.contractLetter.update({
+        where: { id: letterId },
+        data: { evidencePhotoUrl: evidencePhotoUrl.trim() },
+      }),
+      this.prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'LETTER_EVIDENCE_UPDATED',
+          entity: 'contract_letter',
+          entityId: letterId,
+          newValue: { evidencePhotoUrl },
+        },
+      }),
+    ]);
+    return updated;
+  }
+
   private async nextSequence(year: number): Promise<number> {
     const count = await this.prisma.contractLetter.count({
       where: { letterNumber: { startsWith: `ST-${year}-` } },

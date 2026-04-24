@@ -347,4 +347,53 @@ describe('ContractLetterService', () => {
       ).rejects.toThrow(/สถานะ/);
     });
   });
+
+  describe('updateEvidence', () => {
+    it('updates evidencePhotoUrl and creates audit log for DISPATCHED letter', async () => {
+      mockPrisma.contractLetter.findUnique.mockResolvedValueOnce({
+        id: 'l9',
+        status: 'DISPATCHED',
+        contractId: 'c9',
+      });
+      const updatedLetter = { id: 'l9', status: 'DISPATCHED', evidencePhotoUrl: 'https://s3.example.com/slip.jpg' };
+      mockPrisma.$transaction.mockResolvedValueOnce([updatedLetter, {}]);
+
+      const result = await service.updateEvidence('l9', 'https://s3.example.com/slip.jpg', 'u1');
+      expect(result).toBe(updatedLetter);
+    });
+
+    it('updates evidencePhotoUrl for DELIVERED letter', async () => {
+      mockPrisma.contractLetter.findUnique.mockResolvedValueOnce({
+        id: 'l10',
+        status: 'DELIVERED',
+        contractId: 'c10',
+      });
+      const updatedLetter = { id: 'l10', status: 'DELIVERED', evidencePhotoUrl: 'https://s3.example.com/slip2.jpg' };
+      mockPrisma.$transaction.mockResolvedValueOnce([updatedLetter, {}]);
+
+      const result = await service.updateEvidence('l10', 'https://s3.example.com/slip2.jpg', 'u1');
+      expect(result).toBe(updatedLetter);
+    });
+
+    it('throws NotFound when letter missing', async () => {
+      mockPrisma.contractLetter.findUnique.mockResolvedValueOnce(null);
+      await expect(service.updateEvidence('nope', 'https://example.com/a.jpg', 'u1')).rejects.toThrow(/ไม่พบหนังสือ/);
+    });
+
+    it('throws BadRequest when status is PENDING_DISPATCH (not yet dispatched)', async () => {
+      mockPrisma.contractLetter.findUnique.mockResolvedValueOnce({
+        id: 'l11',
+        status: 'PENDING_DISPATCH',
+      });
+      await expect(service.updateEvidence('l11', 'https://example.com/a.jpg', 'u1')).rejects.toThrow(/ส่งแล้ว/);
+    });
+
+    it('throws BadRequest when evidencePhotoUrl is empty string', async () => {
+      mockPrisma.contractLetter.findUnique.mockResolvedValueOnce({
+        id: 'l12',
+        status: 'DISPATCHED',
+      });
+      await expect(service.updateEvidence('l12', '   ', 'u1')).rejects.toThrow(/อัปโหลด/);
+    });
+  });
 });

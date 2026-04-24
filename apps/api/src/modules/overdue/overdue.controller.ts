@@ -438,6 +438,16 @@ export class OverdueController {
     return this.contractLetterService.markDelivered(id, user.id);
   }
 
+  @Patch('letters/:id/evidence')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  updateLetterEvidence(
+    @Param('id') id: string,
+    @Body() body: { evidencePhotoUrl: string },
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.contractLetterService.updateEvidence(id, body.evidencePhotoUrl, user.id);
+  }
+
   @Post('letters/:id/undeliverable')
   @Roles('OWNER', 'FINANCE_MANAGER')
   markLetterUndeliverable(

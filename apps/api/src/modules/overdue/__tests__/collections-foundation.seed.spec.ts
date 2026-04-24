@@ -21,10 +21,16 @@ describe('seedCollectionsFoundation', () => {
       where: { eventTrigger: { not: null } },
     });
     const configs1 = await prisma.systemConfig.count({
-      where: { OR: [{ key: { startsWith: 'mdm_' } }, { key: { startsWith: 'letter_' } }] },
+      where: {
+        OR: [
+          { key: 'collections_v2_enabled' },
+          { key: { startsWith: 'mdm_' } },
+          { key: { startsWith: 'letter_' } },
+        ],
+      },
     });
     expect(rules1).toBe(8);
-    expect(configs1).toBe(9);
+    expect(configs1).toBe(10);
 
     // Run seed a second time — counts must not change
     await seedCollectionsFoundation(prisma);
@@ -33,9 +39,15 @@ describe('seedCollectionsFoundation', () => {
       where: { eventTrigger: { not: null } },
     });
     const configs2 = await prisma.systemConfig.count({
-      where: { OR: [{ key: { startsWith: 'mdm_' } }, { key: { startsWith: 'letter_' } }] },
+      where: {
+        OR: [
+          { key: 'collections_v2_enabled' },
+          { key: { startsWith: 'mdm_' } },
+          { key: { startsWith: 'letter_' } },
+        ],
+      },
     });
     expect(rules2).toBe(8);
-    expect(configs2).toBe(9);
+    expect(configs2).toBe(10);
   });
 });

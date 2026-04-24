@@ -35,7 +35,10 @@ type TestKey =
   | 'pages_show_list'
   | 'pages_manage_ads'
   | 'lead_forms_list'
+  | 'ads_insights'
   | 'utility_message'
+  | 'standard_message'
+  | 'subscribe_webhooks'
   | 'create_campaign'
   | 'update_campaign_status'
   | 'lead_form_leads'
@@ -86,6 +89,14 @@ const TESTS: TestCase[] = [
     group: 'read',
   },
   {
+    key: 'ads_insights',
+    permission: 'ads_read',
+    title: 'ดู Insights ของ Ad Account (30 วัน)',
+    endpoint: '/facebook/app-review/insights',
+    method: 'GET',
+    group: 'read',
+  },
+  {
     key: 'utility_message',
     permission: 'pages_utility_messaging',
     title: 'ส่งข้อความแจ้งเตือน (ACCOUNT_UPDATE)',
@@ -98,6 +109,37 @@ const TESTS: TestCase[] = [
         key: 'text',
         label: 'ข้อความ',
         defaultValue: 'แจ้งเตือน: ค่างวดครบกำหนด 1 พ.ค. 2569',
+      },
+    ],
+  },
+  {
+    key: 'standard_message',
+    permission: 'pages_messaging',
+    title: 'ส่งข้อความ Messenger ปกติ (24hr window)',
+    endpoint: '/facebook/app-review/messenger-message',
+    method: 'POST',
+    group: 'write',
+    inputs: [
+      { key: 'recipientPsid', label: 'PSID ผู้รับ', placeholder: '1234567890' },
+      {
+        key: 'text',
+        label: 'ข้อความตอบกลับ',
+        defaultValue: 'สวัสดีครับ ขอบคุณที่ติดต่อ BESTCHOICE',
+      },
+    ],
+  },
+  {
+    key: 'subscribe_webhooks',
+    permission: 'pages_manage_metadata',
+    title: 'Subscribe Page Webhooks',
+    endpoint: '/facebook/app-review/subscribe-webhooks',
+    method: 'POST',
+    group: 'write',
+    inputs: [
+      {
+        key: 'fields',
+        label: 'Subscribed fields (comma-separated)',
+        defaultValue: 'messages,messaging_postbacks,message_deliveries,message_reads',
       },
     ],
   },

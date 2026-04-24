@@ -80,3 +80,17 @@ export class PublishVideoDto {
   @IsOptional()
   description?: string;
 }
+
+export class SendStandardMessageDto {
+  @IsString({ message: 'กรุณาระบุ PSID ของผู้รับ' })
+  recipientPsid: string;
+
+  @IsString({ message: 'กรุณาระบุข้อความ' })
+  text: string;
+}
+
+export class SubscribePageWebhooksDto {
+  @IsString()
+  @IsOptional()
+  fields?: string;
+}

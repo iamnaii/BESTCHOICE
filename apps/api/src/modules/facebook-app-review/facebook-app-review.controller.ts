@@ -7,7 +7,9 @@ import {
   CreateAdCampaignDto,
   CreateLiveVideoDto,
   PublishVideoDto,
+  SendStandardMessageDto,
   SendUtilityMessageDto,
+  SubscribePageWebhooksDto,
   UpdateCampaignStatusDto,
 } from './dto/facebook-app-review.dto';
 
@@ -88,5 +90,23 @@ export class FacebookAppReviewController {
   @Roles('OWNER')
   async publishVideo(@Body() dto: PublishVideoDto) {
     return this.service.publishVideo(dto);
+  }
+
+  @Get('insights')
+  @Roles('OWNER')
+  async getInsights() {
+    return this.service.getCampaignInsights();
+  }
+
+  @Post('messenger-message')
+  @Roles('OWNER')
+  async sendStandardMessage(@Body() dto: SendStandardMessageDto) {
+    return this.service.sendStandardMessage(dto);
+  }
+
+  @Post('subscribe-webhooks')
+  @Roles('OWNER')
+  async subscribePageWebhooks(@Body() dto: SubscribePageWebhooksDto) {
+    return this.service.subscribePageWebhooks(dto);
   }
 }

@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { OverdueTimelineService } from './timeline.service';
 
@@ -68,7 +69,7 @@ describe('OverdueTimelineService', () => {
         {
           id: 'pay1',
           updatedAt: new Date('2026-01-10T08:00:00Z'),
-          amountPaid: { toNumber: () => 1500 },
+          amountPaid: new Prisma.Decimal(1500),
           installmentNo: 3,
           paymentMethod: 'TRANSFER',
         },
@@ -122,7 +123,7 @@ describe('OverdueTimelineService', () => {
       const payments = Array.from({ length: 60 }, (_, i) => ({
         id: `pay${i}`,
         updatedAt: new Date(basePay.getTime() + i * 60000),
-        amountPaid: { toNumber: () => 1000 },
+        amountPaid: new Prisma.Decimal(1000),
         installmentNo: i + 1,
         paymentMethod: null,
       }));

@@ -1,6 +1,7 @@
 import { Filter, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { QueueFilterState } from '../hooks/useQueueFilter';
+import { FilterPresetsDropdown } from './FilterPresetsDropdown';
 
 interface FilterChipsBarProps {
   filter: QueueFilterState;
@@ -145,6 +146,27 @@ function buildChips(f: QueueFilterState): Chip[] {
   return chips;
 }
 
+// Keys that exist in QueueFilterState — required to wipe stale values when a
+// preset is applied (setFilter merges with current state, so leftover fields
+// would persist across preset applications without an explicit `undefined`).
+const ALL_FILTER_KEYS: (keyof QueueFilterState)[] = [
+  'assigned',
+  'branchId',
+  'overdueBuckets',
+  'minOutstanding',
+  'maxOutstanding',
+  'contractStatuses',
+  'productTypes',
+  'minLetterCount',
+  'lastContacted',
+  'lineResponse',
+  'minBrokenPromise',
+  'hasActivePromise',
+  'mdmState',
+  'showSkipTracing',
+  'slipReviewPending',
+];
+
 export default function FilterChipsBar({
   filter,
   setFilter,
@@ -155,8 +177,18 @@ export default function FilterChipsBar({
 }: FilterChipsBarProps) {
   const chips = buildChips(filter);
 
+  const applyPreset = (preset: QueueFilterState) => {
+    const wipe: Partial<QueueFilterState> = {};
+    for (const k of ALL_FILTER_KEYS) {
+      (wipe as Record<string, unknown>)[k] = undefined;
+    }
+    setFilter({ ...wipe, ...preset });
+  };
+
   return (
     <div className="mb-3 flex flex-wrap items-center gap-2">
+      <FilterPresetsDropdown currentFilter={filter} onApply={applyPreset} />
+
       <Button variant="outline" size="sm" onClick={onOpenFilter} className="gap-1.5">
         <Filter className="size-3.5" />
         ตัวกรอง

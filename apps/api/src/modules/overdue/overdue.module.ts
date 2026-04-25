@@ -14,6 +14,7 @@ import { DunningRetryService } from './dunning-retry.service';
 import { OverdueAnalyticsService } from './analytics.service';
 import { AnalyticsAgingService } from './analytics-aging.service';
 import { AnalyticsLeaderboardService } from './analytics-leaderboard.service';
+import { StuckContractsService } from './stuck-contracts.service';
 import { OwnerAlertHelper } from './owner-alert.helper';
 import { BrokenPromiseCron } from './crons/broken-promise.cron';
 import { MdmAutoProposeCron } from './crons/mdm-auto-propose.cron';
@@ -43,6 +44,7 @@ import { LineOaModule } from '../line-oa/line-oa.module';
     OverdueAnalyticsService,
     AnalyticsAgingService,
     AnalyticsLeaderboardService,
+    StuckContractsService,
     OwnerAlertHelper,
     BrokenPromiseCron,
     MdmAutoProposeCron,

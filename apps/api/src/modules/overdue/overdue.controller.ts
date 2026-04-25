@@ -13,6 +13,7 @@ import { DunningRetryService } from './dunning-retry.service';
 import { OverdueAnalyticsService } from './analytics.service';
 import { AnalyticsAgingService } from './analytics-aging.service';
 import { AnalyticsLeaderboardService } from './analytics-leaderboard.service';
+import { StuckContractsService } from './stuck-contracts.service';
 import { ContractSnoozeService } from './snooze.service';
 import { CreateSnoozeDto } from './dto/snooze.dto';
 import { AnalyticsQueryDto } from './dto/analytics-query.dto';
@@ -52,6 +53,7 @@ export class OverdueController {
     private analyticsService: OverdueAnalyticsService,
     private analyticsAgingService: AnalyticsAgingService,
     private analyticsLeaderboardService: AnalyticsLeaderboardService,
+    private stuckContractsService: StuckContractsService,
     private snoozeService: ContractSnoozeService,
   ) {}
 
@@ -87,6 +89,7 @@ export class OverdueController {
       hasActivePromise: dto.hasActivePromise,
       mdmState: dto.mdmState,
       slipReviewPending: dto.slipReviewPending,
+      sortBy: dto.sortBy,
     });
   }
 
@@ -555,6 +558,14 @@ export class OverdueController {
   @Roles('OWNER')
   getAnalyticsLeaderboard() {
     return this.analyticsLeaderboardService.getLeaderboard();
+  }
+
+  @Get('analytics/stuck')
+  @Roles('OWNER')
+  getStuckContracts(@Query('days') daysRaw?: string) {
+    const parsed = daysRaw ? parseInt(daysRaw, 10) : 14;
+    const days = Number.isFinite(parsed) && parsed > 0 ? parsed : 14;
+    return this.stuckContractsService.getStuckContracts({ days });
   }
 
   // --- LINE retry endpoints ---

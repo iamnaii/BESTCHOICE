@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import Modal from '@/components/ui/Modal';
+import { formatNumber } from '@/utils/formatters';
 import { useContactLog } from '../hooks/useContactLog';
 import CallResultChips, {
   type CallResultTag,
@@ -98,7 +99,7 @@ export default function ContactLogDialog({ open, contract, onClose }: Props) {
             <span className="font-mono text-primary font-medium">{contract.contractNumber}</span>
             {' · '}ค้าง{' '}
             <span className="tabular-nums font-medium text-destructive">
-              {contract.outstanding.toLocaleString()}
+              {formatNumber(contract.outstanding)}
             </span>{' '}
             ฿ · {contract.daysOverdue} วัน
           </div>

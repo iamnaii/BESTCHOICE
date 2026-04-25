@@ -47,6 +47,9 @@ export class OwnerAlertHelper {
           channel: 'LINE',
           recipient: owner.lineId!,
           message,
+          // relatedId is informational only (indexed but not unique) — it's
+          // stored on NotificationLog for filtering/forensics and is NOT used
+          // as a dedup key. Safe for repeat cron runs to reuse the same value.
           relatedId: relatedId ?? 'collections-alert',
           fallbackPhone: owner.phone ?? undefined,
         });

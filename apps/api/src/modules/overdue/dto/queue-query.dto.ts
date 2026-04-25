@@ -7,6 +7,7 @@ import {
   IsOptional,
   IsString,
   Max,
+  MaxLength,
   Min,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
@@ -84,6 +85,12 @@ export class QueueQueryDto {
   @IsString()
   branchId?: string;
 
+  /** C1: server-side search by customer name / contractNumber / phone */
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  search?: string;
+
   @IsOptional()
   @Type(() => Number)
   @IsInt()
@@ -98,10 +105,6 @@ export class QueueQueryDto {
   limit?: number;
 
   // --- New filter fields ---
-
-  @IsOptional()
-  @IsString()
-  search?: string;
 
   @IsOptional()
   @IsString()

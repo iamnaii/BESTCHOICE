@@ -429,7 +429,16 @@ function App() {
               working. MigrationBanner on /collections nudges users to update. */}
           <Route path="/overdue" element={<Navigate to="/collections" replace />} />
           <Route path="/overdue/*" element={<Navigate to="/collections" replace />} />
-          <Route path="/collections" element={<CollectionsPage />} />
+          <Route
+            path="/collections"
+            element={
+              <ProtectedRoute
+                roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES']}
+              >
+                <CollectionsPage />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/collection-dashboard"
             element={

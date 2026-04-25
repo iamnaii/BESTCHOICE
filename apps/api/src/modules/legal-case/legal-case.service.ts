@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -128,12 +129,18 @@ export class LegalCaseService {
 
     const ext = mimeToExt(dto.contentType);
     const key = `legal-cases/${found.id}/${dto.kind}/${randomUUID()}.${ext}`;
-    const signed = await this.storage.getSignedUploadUrl(key, dto.contentType);
+    const signed = await this.storage.getSignedUploadUrl(
+      key,
+      dto.contentType,
+      undefined,
+      dto.contentLength,
+    );
     return {
       uploadUrl: signed.url,
       method: signed.method,
       key,
       publicUrl: this.storage.getPublicUrl(key),
+      maxContentLength: dto.contentLength,
     };
   }
 
@@ -149,6 +156,16 @@ export class LegalCaseService {
     if (!found) {
       throw new NotFoundException('ไม่พบคดีของสัญญานี้');
     }
+
+    // SECURITY: Reject any s3Key that does not live under this case's prefix.
+    // Without this, an authenticated user could register a row pointing at any
+    // bucket object (e.g. another case's docs, trade-in receipts, etc.) and
+    // exfiltrate it via the served public URL.
+    const expectedPrefix = `legal-cases/${found.id}/`;
+    if (!dto.s3Key.startsWith(expectedPrefix)) {
+      throw new BadRequestException('s3Key path ไม่ถูกต้อง');
+    }
+
     return this.prisma.legalCaseDocument.create({
       data: {
         legalCaseId: found.id,

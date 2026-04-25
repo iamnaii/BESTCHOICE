@@ -1,4 +1,7 @@
-import { IsIn, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsIn, IsInt, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
+
+/** Max upload size for a legal-case document — 10MB. Mirrored on FE. */
+export const LEGAL_DOC_MAX_BYTES = 10 * 1024 * 1024;
 
 export const ALLOWED_LEGAL_DOC_MIME = ['application/pdf', 'image/jpeg', 'image/png'] as const;
 export type AllowedLegalDocMime = (typeof ALLOWED_LEGAL_DOC_MIME)[number];
@@ -32,6 +35,16 @@ export class PresignLegalDocumentDto {
   @MinLength(1, { message: 'กรุณาระบุชื่อไฟล์' })
   @MaxLength(255, { message: 'ชื่อไฟล์ยาวเกินไป' })
   filename!: string;
+
+  /**
+   * Declared upload size in bytes. Enforced both as DTO bound and (where the
+   * storage backend supports it) as a `content-length-range` condition on the
+   * presigned URL itself.
+   */
+  @IsInt({ message: 'ขนาดไฟล์ไม่ถูกต้อง' })
+  @Min(1, { message: 'ขนาดไฟล์ไม่ถูกต้อง' })
+  @Max(LEGAL_DOC_MAX_BYTES, { message: 'ไฟล์ใหญ่เกิน 10MB' })
+  contentLength!: number;
 }
 
 /**

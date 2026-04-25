@@ -20,6 +20,7 @@ import AgingBucketChart from '../components/AgingBucketChart';
 import LeaderboardTable from '../components/LeaderboardTable';
 import StuckContractsSection from '../components/StuckContractsSection';
 import RecoveryByChannelChart from './AnalyticsTab/RecoveryByChannelChart';
+import WorkloadGrid from '../components/WorkloadGrid';
 import { useAuth } from '@/contexts/AuthContext';
 
 // Chart colors: pragmatic hex approximations of the theme palette.
@@ -306,6 +307,9 @@ export default function AnalyticsTab() {
 
             {/* P2 Task 8 — Recovery rate by dunning channel */}
             <RecoveryByChannelChart from={dateRange.from} to={dateRange.to} />
+
+            {/* P2 Task 9 — Workload redistribution drag-drop (OWNER only) */}
+            {isOwner && <WorkloadGrid />}
           </div>
         )}
       </QueryBoundary>

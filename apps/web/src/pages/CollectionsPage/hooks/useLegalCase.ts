@@ -80,7 +80,11 @@ interface PresignResp {
   method: 'PUT';
   key: string;
   publicUrl: string;
+  maxContentLength?: number;
 }
+
+/** 10MB — must match LEGAL_DOC_MAX_BYTES in the API DTO. */
+export const LEGAL_DOC_MAX_BYTES = 10 * 1024 * 1024;
 
 /**
  * Two-step doc upload: presign → PUT file to signed URL → register.
@@ -90,16 +94,29 @@ export function useUploadLegalDocument(contractId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (args: { file: File; kind: LegalDocKind }) => {
+      if (args.file.size > LEGAL_DOC_MAX_BYTES) {
+        throw new Error('ไฟล์ใหญ่เกิน 10MB');
+      }
       const presign = await api.post(`/legal-cases/${contractId}/documents/presign`, {
         contentType: args.file.type,
         kind: args.kind,
         filename: args.file.name,
+        contentLength: args.file.size,
       });
-      const { uploadUrl, method, key } = presign.data as PresignResp;
+      const { uploadUrl, method, key, maxContentLength } =
+        presign.data as PresignResp;
+      const putHeaders: Record<string, string> = {
+        'Content-Type': args.file.type,
+      };
+      // GCS V4 presigned URLs sign the x-goog-content-length-range header;
+      // the PUT must echo it byte-for-byte or GCS rejects with 403.
+      if (typeof maxContentLength === 'number' && uploadUrl.includes('storage.googleapis.com')) {
+        putHeaders['x-goog-content-length-range'] = `0,${maxContentLength}`;
+      }
       const putRes = await fetch(uploadUrl, {
         method,
         body: args.file,
-        headers: { 'Content-Type': args.file.type },
+        headers: putHeaders,
       });
       if (!putRes.ok) {
         throw new Error('อัปโหลดไฟล์ไม่สำเร็จ');

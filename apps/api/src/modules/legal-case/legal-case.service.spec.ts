@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { LegalCaseService } from './legal-case.service';
@@ -152,6 +152,7 @@ describe('LegalCaseService', () => {
           contentType: 'application/pdf',
           kind: 'complaint',
           filename: 'a.pdf',
+          contentLength: 1024,
         }),
       ).rejects.toThrow(NotFoundException);
     });
@@ -162,10 +163,19 @@ describe('LegalCaseService', () => {
         contentType: 'application/pdf',
         kind: 'complaint',
         filename: 'complaint.pdf',
+        contentLength: 2048,
       });
       expect(out.uploadUrl).toBe('https://signed/upload');
       expect(out.key).toMatch(/^legal-cases\/lc-1\//);
       expect(out.key).toMatch(/\.pdf$/);
+      // The 10MB cap must be forwarded to the storage layer so that
+      // backends that support content-length-range can enforce it.
+      expect(mockStorage.getSignedUploadUrl).toHaveBeenCalledWith(
+        expect.stringMatching(/^legal-cases\/lc-1\//),
+        'application/pdf',
+        undefined,
+        2048,
+      );
     });
 
     it('uses jpg extension for image/jpeg', async () => {
@@ -174,6 +184,7 @@ describe('LegalCaseService', () => {
         contentType: 'image/jpeg',
         kind: 'summons',
         filename: 'summons.jpg',
+        contentLength: 4096,
       });
       expect(out.key).toMatch(/\.jpg$/);
     });
@@ -191,18 +202,45 @@ describe('LegalCaseService', () => {
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('creates document row with uploader', async () => {
+    it('rejects s3Key outside the case prefix (path hijack)', async () => {
+      // Attacker passes a key under another module's prefix; without
+      // validation this would let them register a doc pointing at an
+      // arbitrary bucket object.
+      mockPrisma.legalCase.findFirst.mockResolvedValueOnce({ id: 'lc-1' });
+      await expect(
+        service.registerDocument('c-1', 'user-1', {
+          kind: 'complaint',
+          filename: 'evil.pdf',
+          s3Key: 'shop/trade-in/some-customer/file.pdf',
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockPrisma.legalCaseDocument.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects s3Key for a different legal case (cross-tenant hijack)', async () => {
+      mockPrisma.legalCase.findFirst.mockResolvedValueOnce({ id: 'lc-1' });
+      await expect(
+        service.registerDocument('c-1', 'user-1', {
+          kind: 'complaint',
+          filename: 'other-case.pdf',
+          s3Key: 'legal-cases/lc-OTHER/complaint/abc.pdf',
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockPrisma.legalCaseDocument.create).not.toHaveBeenCalled();
+    });
+
+    it('creates document row with uploader for valid prefix', async () => {
       mockPrisma.legalCase.findFirst.mockResolvedValueOnce({ id: 'lc-1' });
       await service.registerDocument('c-1', 'user-9', {
         kind: 'judgment',
         filename: 'judgment.pdf',
-        s3Key: 'legal-cases/lc-1/judgment.pdf',
+        s3Key: 'legal-cases/lc-1/judgment/uuid.pdf',
       });
       const args = mockPrisma.legalCaseDocument.create.mock.calls[0][0];
       expect(args.data.legalCaseId).toBe('lc-1');
       expect(args.data.uploadedByUserId).toBe('user-9');
       expect(args.data.kind).toBe('judgment');
-      expect(args.data.s3Url).toBe('https://public/legal-cases/lc-1/judgment.pdf');
+      expect(args.data.s3Url).toBe('https://public/legal-cases/lc-1/judgment/uuid.pdf');
     });
   });
 });

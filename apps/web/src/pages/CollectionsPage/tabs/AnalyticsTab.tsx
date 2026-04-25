@@ -20,6 +20,7 @@ import AgingBucketChart from '../components/AgingBucketChart';
 import LeaderboardTable from '../components/LeaderboardTable';
 import StuckContractsSection from '../components/StuckContractsSection';
 import RecoveryByChannelChart from './AnalyticsTab/RecoveryByChannelChart';
+import ComplianceDashboardSection from './AnalyticsTab/ComplianceDashboardSection';
 import WorkloadGrid from '../components/WorkloadGrid';
 import PdfExportButton from '../components/PdfExportButton';
 import { useAuth } from '@/contexts/AuthContext';
@@ -312,6 +313,9 @@ export default function AnalyticsTab() {
 
             {/* P2 Task 9 — Workload redistribution drag-drop (OWNER only) */}
             {isOwner && <WorkloadGrid />}
+
+            {/* P3 D2 — Compliance dashboard (OWNER + FINANCE_MANAGER) */}
+            {(isOwner || user?.role === 'FINANCE_MANAGER') && <ComplianceDashboardSection />}
           </div>
         )}
       </QueryBoundary>

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search } from 'lucide-react';
+import { Search, CheckCircle2 } from 'lucide-react';
 import { useDebounce } from '@/hooks/useDebounce';
 import QueryBoundary from '@/components/QueryBoundary';
 import ContractCard from '../components/ContractCard';
@@ -48,24 +48,13 @@ export default function FollowUpTab({ search, branchId, onLogContact, onOpen360,
   });
 
   const total = q.data?.total ?? 0;
-  const rows = q.data?.data ?? [];
+  // C1 fix: search is now server-side via useCollectionsQueue → /overdue/queue
+  const serverRows = q.data?.data ?? [];
 
-  // Client-side search filter
-  const searchFiltered = debouncedSearch
-    ? rows.filter((r) => {
-        const term = debouncedSearch.toLowerCase();
-        return (
-          r.customer.name.toLowerCase().includes(term) ||
-          r.contractNumber.toLowerCase().includes(term) ||
-          r.customer.phone.toLowerCase().includes(term)
-        );
-      })
-    : rows;
-
-  // Skip-tracing filter applied on top of search filter
+  // Skip-tracing filter applied on top of server-side search results
   const filtered = showSkipTracing
-    ? searchFiltered.filter((c) => c.needsSkipTracing)
-    : searchFiltered;
+    ? serverRows.filter((c) => c.needsSkipTracing)
+    : serverRows;
 
   return (
     <QueryBoundary
@@ -111,6 +100,7 @@ export default function FollowUpTab({ search, branchId, onLogContact, onOpen360,
           </div>
         ) : (
           <div className="rounded-xl border border-dashed border-primary/30 bg-primary/5 p-10 text-center">
+            <CheckCircle2 className="size-10 mx-auto mb-3 text-primary" />
             <div className="text-sm font-medium text-primary leading-snug">
               ไม่มีใครที่ต้องตามต่อ
             </div>

@@ -18,28 +18,27 @@ export class LetterAutoGenerateCron {
   @Cron('15 9 * * *')
   async run(): Promise<{ returnDevice: number; termination: number }> {
     try {
-      const enabled = await this.prisma.systemConfig.findUnique({
-        where: { key: 'letter_auto_generate_enabled' },
+      // Batch-fetch all 3 config keys in a single query (was 3 sequential findUnique calls).
+      const configs = await this.prisma.systemConfig.findMany({
+        where: {
+          key: {
+            in: [
+              'letter_auto_generate_enabled',
+              'letter_return_device_days',
+              'letter_termination_days',
+            ],
+          },
+        },
       });
-      if (enabled?.value !== 'true') {
+      const configMap = new Map(configs.map((c) => [c.key, c.value]));
+
+      if (configMap.get('letter_auto_generate_enabled') !== 'true') {
         this.logger.log('letter_auto_generate_enabled=false — skipping');
         return { returnDevice: 0, termination: 0 };
       }
 
-      const returnDays = Number(
-        (
-          await this.prisma.systemConfig.findUnique({
-            where: { key: 'letter_return_device_days' },
-          })
-        )?.value ?? 45,
-      );
-      const terminationDays = Number(
-        (
-          await this.prisma.systemConfig.findUnique({
-            where: { key: 'letter_termination_days' },
-          })
-        )?.value ?? 60,
-      );
+      const returnDays = Number(configMap.get('letter_return_device_days') ?? 45);
+      const terminationDays = Number(configMap.get('letter_termination_days') ?? 60);
 
       const now = new Date();
       const returnThreshold = new Date(now.getTime() - returnDays * 86400000);

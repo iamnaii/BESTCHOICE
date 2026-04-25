@@ -6,6 +6,7 @@ import { ContractLetterService } from './contract-letter.service';
 const mockPrisma = {
   contractLetter: {
     findUnique: jest.fn(),
+    findFirst: jest.fn(),
     findMany: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
@@ -66,20 +67,34 @@ describe('ContractLetterService', () => {
 
   describe('cancel', () => {
     it('cancels when in PENDING_DISPATCH', async () => {
-      mockPrisma.contractLetter.findUnique.mockResolvedValueOnce({
+      mockPrisma.contractLetter.findFirst.mockResolvedValueOnce({
         id: 'letter-3',
         status: 'PENDING_DISPATCH',
       });
-      mockPrisma.contractLetter.update.mockResolvedValueOnce({ id: 'letter-3', status: 'CANCELLED' });
+      const cancelled = { id: 'letter-3', status: 'CANCELLED', cancelReason: 'ลูกค้าชำระครบแล้ว' };
+      mockPrisma.$transaction.mockResolvedValueOnce([cancelled, {}]);
 
       const result = await service.cancel('letter-3', 'u1', 'ลูกค้าชำระครบแล้ว');
-      expect(result.status).toBe('CANCELLED');
-      const updateArg = mockPrisma.contractLetter.update.mock.calls[0][0];
-      expect(updateArg.data.cancelReason).toBe('ลูกค้าชำระครบแล้ว');
+      expect(result).toBe(cancelled);
+      // Ensure soft-delete guard present
+      const findArg = mockPrisma.contractLetter.findFirst.mock.calls[0][0];
+      expect(findArg.where.deletedAt).toBeNull();
+    });
+
+    it('creates audit log with CANCEL_LETTER action', async () => {
+      mockPrisma.contractLetter.findFirst.mockResolvedValueOnce({
+        id: 'letter-3b',
+        status: 'PENDING_DISPATCH',
+      });
+      mockPrisma.$transaction.mockResolvedValueOnce([{ id: 'letter-3b' }, {}]);
+      await service.cancel('letter-3b', 'user-42', 'เหตุผลยกเลิก');
+      const txArg = mockPrisma.$transaction.mock.calls[0][0];
+      expect(Array.isArray(txArg)).toBe(true);
+      expect(txArg).toHaveLength(2);
     });
 
     it('throws when letter is DISPATCHED', async () => {
-      mockPrisma.contractLetter.findUnique.mockResolvedValueOnce({
+      mockPrisma.contractLetter.findFirst.mockResolvedValueOnce({
         id: 'letter-4',
         status: 'DISPATCHED',
       });
@@ -87,7 +102,7 @@ describe('ContractLetterService', () => {
     });
 
     it('requires reason length ≥ 5', async () => {
-      mockPrisma.contractLetter.findUnique.mockResolvedValueOnce({
+      mockPrisma.contractLetter.findFirst.mockResolvedValueOnce({
         id: 'letter-5',
         status: 'PENDING_DISPATCH',
       });
@@ -95,7 +110,7 @@ describe('ContractLetterService', () => {
     });
 
     it('throws NotFound when letter missing', async () => {
-      mockPrisma.contractLetter.findUnique.mockResolvedValueOnce(null);
+      mockPrisma.contractLetter.findFirst.mockResolvedValueOnce(null);
       await expect(service.cancel('nope', 'u1', 'abcde')).rejects.toThrow(/ไม่พบหนังสือ/);
     });
   });
@@ -140,7 +155,7 @@ describe('ContractLetterService', () => {
 
   describe('markPdfGenerated', () => {
     it('transitions PENDING_DISPATCH -> PDF_GENERATED and records URL', async () => {
-      mockPrisma.contractLetter.findUnique.mockResolvedValueOnce({
+      mockPrisma.contractLetter.findFirst.mockResolvedValueOnce({
         id: 'l1',
         status: 'PENDING_DISPATCH',
         contractId: 'c1',
@@ -153,7 +168,7 @@ describe('ContractLetterService', () => {
     });
 
     it('throws BadRequest when status is not PENDING_DISPATCH', async () => {
-      mockPrisma.contractLetter.findUnique.mockResolvedValueOnce({
+      mockPrisma.contractLetter.findFirst.mockResolvedValueOnce({
         id: 'l2',
         status: 'PDF_GENERATED',
       });
@@ -161,7 +176,7 @@ describe('ContractLetterService', () => {
     });
 
     it('throws NotFound for unknown letter', async () => {
-      mockPrisma.contractLetter.findUnique.mockResolvedValueOnce(null);
+      mockPrisma.contractLetter.findFirst.mockResolvedValueOnce(null);
       await expect(service.markPdfGenerated('nope', 'url', 'u1')).rejects.toThrow(/ไม่พบหนังสือ/);
     });
   });
@@ -175,14 +190,14 @@ describe('ContractLetterService', () => {
     };
 
     it('validates tracking number length ≥ 5', async () => {
-      mockPrisma.contractLetter.findUnique.mockResolvedValueOnce(pdfGeneratedLetter);
+      mockPrisma.contractLetter.findFirst.mockResolvedValueOnce(pdfGeneratedLetter);
       await expect(
         service.markDispatched('l3', 'u1', { trackingNumber: 'AB1' }),
       ).rejects.toThrow(/tracking/);
     });
 
     it('transitions PDF_GENERATED -> DISPATCHED and fires LETTER_DISPATCHED event', async () => {
-      mockPrisma.contractLetter.findUnique.mockResolvedValueOnce(pdfGeneratedLetter);
+      mockPrisma.contractLetter.findFirst.mockResolvedValueOnce(pdfGeneratedLetter);
       const dispatched = { id: 'l3', status: 'DISPATCHED', trackingNumber: 'EMS12345' };
       mockPrisma.$transaction.mockResolvedValueOnce([dispatched, {}]);
       mockDunningEngine.executeEventTrigger.mockResolvedValue(undefined);
@@ -199,7 +214,7 @@ describe('ContractLetterService', () => {
     });
 
     it('fires CONTRACT_TERMINATED event for CONTRACT_TERMINATION_60D letter type', async () => {
-      mockPrisma.contractLetter.findUnique.mockResolvedValueOnce({
+      mockPrisma.contractLetter.findFirst.mockResolvedValueOnce({
         ...pdfGeneratedLetter,
         letterType: 'CONTRACT_TERMINATION_60D',
       });
@@ -219,7 +234,7 @@ describe('ContractLetterService', () => {
     });
 
     it('does not fire CONTRACT_TERMINATED for RETURN_DEVICE_45D letter type', async () => {
-      mockPrisma.contractLetter.findUnique.mockResolvedValueOnce(pdfGeneratedLetter);
+      mockPrisma.contractLetter.findFirst.mockResolvedValueOnce(pdfGeneratedLetter);
       mockPrisma.$transaction.mockResolvedValueOnce([{ id: 'l3', status: 'DISPATCHED' }, {}]);
       mockDunningEngine.executeEventTrigger.mockResolvedValue(undefined);
 
@@ -306,7 +321,7 @@ describe('ContractLetterService', () => {
     });
 
     it('throws BadRequest when status is not PDF_GENERATED', async () => {
-      mockPrisma.contractLetter.findUnique.mockResolvedValueOnce({
+      mockPrisma.contractLetter.findFirst.mockResolvedValueOnce({
         id: 'l4',
         status: 'PENDING_DISPATCH',
         contractId: 'c4',
@@ -320,7 +335,7 @@ describe('ContractLetterService', () => {
 
   describe('markDelivered', () => {
     it('transitions DISPATCHED -> DELIVERED', async () => {
-      mockPrisma.contractLetter.findUnique.mockResolvedValueOnce({
+      mockPrisma.contractLetter.findFirst.mockResolvedValueOnce({
         id: 'l5',
         status: 'DISPATCHED',
         contractId: 'c5',
@@ -333,7 +348,7 @@ describe('ContractLetterService', () => {
     });
 
     it('throws BadRequest when status is not DISPATCHED', async () => {
-      mockPrisma.contractLetter.findUnique.mockResolvedValueOnce({
+      mockPrisma.contractLetter.findFirst.mockResolvedValueOnce({
         id: 'l6',
         status: 'PDF_GENERATED',
       });
@@ -341,7 +356,7 @@ describe('ContractLetterService', () => {
     });
 
     it('throws NotFound when letter missing', async () => {
-      mockPrisma.contractLetter.findUnique.mockResolvedValueOnce(null);
+      mockPrisma.contractLetter.findFirst.mockResolvedValueOnce(null);
       await expect(service.markDelivered('nope', 'u1')).rejects.toThrow(/ไม่พบหนังสือ/);
     });
   });
@@ -360,7 +375,7 @@ describe('ContractLetterService', () => {
     });
 
     it('flips contract.needsSkipTracing = true and marks UNDELIVERABLE', async () => {
-      mockPrisma.contractLetter.findUnique.mockResolvedValueOnce(dispatchedLetter);
+      mockPrisma.contractLetter.findFirst.mockResolvedValueOnce(dispatchedLetter);
       const undeliverable = { id: 'l7', status: 'UNDELIVERABLE' };
       mockPrisma.$transaction.mockResolvedValueOnce([undeliverable, {}, {}]);
 
@@ -374,7 +389,7 @@ describe('ContractLetterService', () => {
     });
 
     it('throws BadRequest when status is not DISPATCHED', async () => {
-      mockPrisma.contractLetter.findUnique.mockResolvedValueOnce({
+      mockPrisma.contractLetter.findFirst.mockResolvedValueOnce({
         id: 'l8',
         status: 'DELIVERED',
       });

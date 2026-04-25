@@ -120,6 +120,7 @@ export default function PromiseTab({
   });
 
   const total = q.data?.total ?? 0;
+  // C1 fix: search is now server-side via useCollectionsQueue → /overdue/queue
   const rows = q.data?.data ?? [];
   const truncated = q.data?.truncated ?? false;
 
@@ -154,7 +155,7 @@ export default function PromiseTab({
       {truncated && <TruncatedBanner onOpenFilter={openFilter} />}
       {isEmpty ? (
         <div className="rounded-xl border border-dashed border-border p-10 text-center">
-          <Calendar className="mx-auto mb-3 size-10 text-muted-foreground" />
+          <Calendar className="size-10 mx-auto mb-3 text-muted-foreground" />
           <div className="text-sm font-medium text-foreground leading-snug">
             ไม่มีนัดชำระในช่วงนี้
           </div>

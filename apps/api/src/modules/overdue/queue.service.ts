@@ -9,6 +9,7 @@ import {
   QueueSortBy,
 } from './dto/queue-query.dto';
 import { seededShuffle } from '../../utils/shuffle.util';
+import { bangkokStartOfDay } from '../../utils/date.util';
 
 export type QueueTab = 'today' | 'followup' | 'promise';
 
@@ -76,7 +77,10 @@ export class OverdueQueueService {
     // computed expression across payments + callLogs + counters). Acceptable
     // tradeoff: the overdue set is bounded by branch scope and status filter
     // to ~thousands at most in practice.
-    const [contracts, total] = await Promise.all([
+    // TODO: persist priorityScore to support >500 overdue cases (Wave 3 schema
+    // change). Until then we cap the fetch AND the reported total so that
+    // pagination doesn't hand out page numbers we can't serve.
+    const [contracts, dbCount] = await Promise.all([
       this.prisma.contract.findMany({
         where,
         include: {
@@ -123,12 +127,14 @@ export class OverdueQueueService {
       params.slipReviewPending !== undefined ||
       params.minLetterCount !== undefined;
 
-    const effectiveTotal = hasPostFilter ? afterPostFilter.length : total;
+    // Cap total to FETCH_CAP since we can't serve pages beyond that — see comment above.
+    const cappedTotal = Math.min(dbCount, FETCH_CAP);
+    const effectiveTotal = hasPostFilter ? afterPostFilter.length : cappedTotal;
 
     const skip = (page - 1) * limit;
     const paged = rows.slice(skip, skip + limit).map(({ __priorityScore, ...rest }) => rest);
 
-    const truncated = contracts.length >= FETCH_CAP;
+    const truncated = dbCount > FETCH_CAP;
 
     return { data: paged, total: effectiveTotal, page, limit, truncated };
   }
@@ -671,8 +677,9 @@ export class OverdueQueueService {
     now: Date,
     branchScope: Prisma.ContractWhereInput,
   ): Prisma.ContractWhereInput {
-    const startOfDay = new Date(now);
-    startOfDay.setHours(0, 0, 0, 0);
+    // Bangkok-local midnight — server TZ on Cloud Run is UTC, so naive
+    // setHours(0,0,0,0) would shift the "today" boundary by 7 hours.
+    const startOfDay = bangkokStartOfDay(now);
 
     if (tab === 'today') {
       return {
@@ -702,6 +709,9 @@ export class OverdueQueueService {
     }
 
     // promise
+    // H4 fix: scope to PROMISED-only with an explicit settlementDate window.
+    // Previously ANSWERED was also matched, which leaked answered-but-not-promised
+    // calls into the promise tab if their row happened to have a stray settlementDate.
     const todayMinus3 = new Date(now.getTime() - 3 * 86400000);
     const todayPlus30 = new Date(now.getTime() + 30 * 86400000);
     return {
@@ -709,8 +719,9 @@ export class OverdueQueueService {
       deletedAt: null,
       callLogs: {
         some: {
-          result: { in: ['PROMISED', 'ANSWERED'] },
+          result: 'PROMISED',
           settlementDate: { gte: todayMinus3, lte: todayPlus30 },
+          brokenAt: null, // un-broken promises — broken ones belong elsewhere
         },
       },
     };

@@ -60,6 +60,20 @@ export class PresignedUploadDto {
   contentType!: string;
 }
 
+// Per-kind MIME whitelists. Client's `contentType` is untrusted — server must
+// verify against the allowed set for the requested upload kind. A mismatch is
+// a 400 BadRequest (Thai message) rather than a signed URL handed to the client.
+const ALLOWED_MIME_BY_KIND: Record<UploadKind, readonly string[]> = {
+  [UploadKind.TRADE_IN_PHOTO]: ['image/jpeg', 'image/png', 'image/webp'],
+  [UploadKind.BUYBACK_PHOTO]: ['image/jpeg', 'image/png', 'image/webp'],
+  [UploadKind.BANK_SLIP]: ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'],
+  [UploadKind.REVIEW_PHOTO]: ['image/jpeg', 'image/png', 'image/webp'],
+  [UploadKind.LETTER_PDF]: ['application/pdf'],
+  [UploadKind.LETTER_EVIDENCE]: ['image/jpeg', 'image/png', 'application/pdf'],
+  [UploadKind.LETTER_SIGNATURE]: ['image/png', 'image/jpeg'],
+  [UploadKind.LETTER_LETTERHEAD]: ['image/png', 'image/jpeg'],
+};
+
 @Controller('shop/upload')
 @UseGuards(JwtAuthGuard)
 export class ShopUploadController {

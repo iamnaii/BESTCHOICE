@@ -96,6 +96,23 @@ export function useRejectMdm() {
     onSuccess: () => {
       toast.success('ปฏิเสธคำขอ');
       qc.invalidateQueries({ queryKey: ['pending-mdm'] });
+      qc.invalidateQueries({ queryKey: ['collections-queue'] });
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+}
+
+export function useUnlockMdm() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (requestId: string) => {
+      const { data } = await api.post(`/overdue/mdm-requests/${requestId}/unlock`);
+      return data;
+    },
+    onSuccess: () => {
+      toast.success('ปลดล็อคเครื่องสำเร็จ');
+      qc.invalidateQueries({ queryKey: ['pending-mdm'] });
+      qc.invalidateQueries({ queryKey: ['collections-queue'] });
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });

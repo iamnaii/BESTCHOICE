@@ -25,19 +25,15 @@ export function calculateAgeInYears(birthDate: Date | string, now: Date = new Da
 }
 
 /**
- * Returns the UTC Date that corresponds to 00:00:00 in Asia/Bangkok (UTC+7,
- * no DST) for the same wall-clock day as `now`. Used by KPI / "today" queries
- * so day boundaries match the human operator's calendar regardless of where
- * the server runs.
- *
- * Example: at 2026-04-25 03:00 UTC (which is 2026-04-25 10:00 Bangkok), this
- * returns the UTC Date for 2026-04-24 17:00 UTC (= 2026-04-25 00:00 Bangkok).
+ * Bangkok timezone is fixed UTC+7 (Thailand has no DST).
+ * Returns the UTC instant that corresponds to 00:00 Bangkok-local on the day
+ * that contains `now` in Bangkok. Use this anywhere business-day boundaries
+ * matter (queue "today" filters, KPI snapshots, etc.) — server TZ on Cloud Run
+ * is UTC, so naive `setHours(0,0,0,0)` rolls over 7 hours early.
  */
+const BANGKOK_OFFSET_MS = 7 * 60 * 60 * 1000;
 export function bangkokStartOfDay(now: Date = new Date()): Date {
-  const bangkokNow = new Date(now.getTime() + 7 * 60 * 60 * 1000);
-  const y = bangkokNow.getUTCFullYear();
-  const m = bangkokNow.getUTCMonth();
-  const d = bangkokNow.getUTCDate();
-  // 00:00 Bangkok of that wall-clock day = 17:00 UTC of the previous day
-  return new Date(Date.UTC(y, m, d, 0, 0, 0, 0) - 7 * 60 * 60 * 1000);
+  const bangkokNowMs = now.getTime() + BANGKOK_OFFSET_MS;
+  const bangkokMidnightMs = Math.floor(bangkokNowMs / 86_400_000) * 86_400_000;
+  return new Date(bangkokMidnightMs - BANGKOK_OFFSET_MS);
 }

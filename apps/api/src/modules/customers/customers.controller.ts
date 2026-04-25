@@ -256,6 +256,16 @@ export class CustomersController {
     return this.preCheckService.runPreCheck(body);
   }
 
+  @Post('pre-check/:customerId/abandon')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  @ApiOperation({
+    summary:
+      'Abandon a pre-check session — soft-delete the placeholder customer so a half-finished intake does not leave garbage rows. No-op if the row already has real data.',
+  })
+  abandonPreCheck(@Param('customerId') customerId: string) {
+    return this.preCheckService.abandonPreCheck(customerId);
+  }
+
   @Post()
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
   create(@Body() dto: CreateCustomerDto) {

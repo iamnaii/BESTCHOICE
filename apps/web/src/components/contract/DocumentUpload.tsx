@@ -89,6 +89,17 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
   const customerFiles = customerCreditCheck?.statementFiles ?? [];
   const statementFiles = contractFiles.length > 0 ? contractFiles : customerFiles;
 
+  // ContractDetailPage's stepper reads `contract.contractDocuments.length`
+  // from the ['contract', id] query — invalidating only ['contract-documents']
+  // updates this list but leaves the parent stepper stale until a manual
+  // page refresh. Refresh both keys so the step-2 → step-3 transition lights
+  // up immediately on upload/delete.
+  const refetchDocLists = () => {
+    queryClient.invalidateQueries({ queryKey: ['contract-documents', contractId] });
+    queryClient.invalidateQueries({ queryKey: ['contract', contractId] });
+    queryClient.invalidateQueries({ queryKey: ['contract-doc-checklist', contractId] });
+  };
+
   const uploadMutation = useMutation({
     mutationFn: async ({ file, documentType }: { file: File; documentType: string }) => {
       const reader = new FileReader();
@@ -108,7 +119,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
     },
     onSuccess: () => {
       toast.success('อัปโหลดเอกสารสำเร็จ');
-      queryClient.invalidateQueries({ queryKey: ['contract-documents', contractId] });
+      refetchDocLists();
     },
     onError: (err: unknown) => {
       toast.error(getErrorMessage(err));
@@ -124,7 +135,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
     },
     onSuccess: () => {
       toast.success('ลบเอกสารแล้ว');
-      queryClient.invalidateQueries({ queryKey: ['contract-documents', contractId] });
+      refetchDocLists();
     },
     onError: (err: unknown) => {
       toast.error(getErrorMessage(err));

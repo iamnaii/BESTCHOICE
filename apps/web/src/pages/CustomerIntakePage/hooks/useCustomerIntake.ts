@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { getErrorMessage } from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import { postPreCheck, type PreCheckResponse } from '@/lib/api/customer-precheck';
 import type { IntakeStep, QuickIntakeForm, WizardState } from '../types';
 
@@ -60,22 +60,36 @@ export function useCustomerIntake() {
       });
     },
     onSuccess: (result) => {
+      // Result is shown by PreCheckResultStep — no toast (it duplicates the banner).
       setState((prev) => ({ ...prev, preCheckResult: result }));
-      if (result.decision === 'PASS') {
-        toast.success('ผ่านการตรวจเครดิตเบื้องต้น');
-      } else if (result.decision === 'FAIL') {
-        toast.error('ไม่ผ่านการตรวจเครดิต');
-      } else {
-        toast.warning('ต้องให้ผู้จัดการตรวจเพิ่ม');
-      }
     },
     onError: (err) => {
       toast.error(getErrorMessage(err));
     },
   });
 
+  // If pre-check just minted a placeholder customer and the user backs out
+  // before filling the full form, ask the API to soft-delete it so the DB
+  // doesn't accumulate "ลูกค้าใหม่ (Pre-check)" rows. Fire-and-forget — the
+  // endpoint is idempotent and refuses to delete anything that has grown
+  // into a real customer (contracts, name changed, etc).
+  const abandonPlaceholder = (result: PreCheckResponse | null) => {
+    if (!result?.isNewCustomer || !result.customerId) return;
+    void api.post(`/customers/pre-check/${result.customerId}/abandon`).catch(() => {});
+  };
+
   const resetPreCheck = useCallback(() => {
-    setState((prev) => ({ ...prev, preCheckResult: null, step: 'quick' }));
+    setState((prev) => {
+      abandonPlaceholder(prev.preCheckResult);
+      return { ...prev, preCheckResult: null, step: 'quick' };
+    });
+  }, []);
+
+  const cancelIntake = useCallback(() => {
+    setState((prev) => {
+      abandonPlaceholder(prev.preCheckResult);
+      return prev;
+    });
   }, []);
 
   const proceedToFull = useCallback(() => {
@@ -117,6 +131,7 @@ export function useCustomerIntake() {
     runPreCheck: () => preCheckMutation.mutate(),
     isPreChecking: preCheckMutation.isPending,
     resetPreCheck,
+    cancelIntake,
     proceedToFull,
     reset,
   };

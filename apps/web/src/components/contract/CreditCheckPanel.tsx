@@ -43,6 +43,26 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
     },
   });
 
+  // The statement file list also feeds the documents-tab "Statement" card via
+  // the DocumentUpload component, which keeps its own queries
+  // (['contract-credit-check-statement'] / ['customer-credit-check-latest-statement'])
+  // and is read by ContractCreatePage as ['customer-latest-credit'].
+  // Invalidate all of them after any credit-check mutation so every consumer
+  // refetches without needing a page refresh. The parent contract row carries
+  // the stepper state (`contractDocuments.length`) so refresh it too.
+  const customerId = creditCheck?.customer.id;
+  const refetchCreditCheckEverywhere = () => {
+    queryClient.invalidateQueries({ queryKey: ['credit-check', contractId] });
+    queryClient.invalidateQueries({ queryKey: ['contract-credit-check-statement', contractId] });
+    queryClient.invalidateQueries({ queryKey: ['contract', contractId] });
+    if (customerId) {
+      queryClient.invalidateQueries({ queryKey: ['customer-latest-credit', customerId] });
+      queryClient.invalidateQueries({
+        queryKey: ['customer-credit-check-latest-statement', customerId],
+      });
+    }
+  };
+
   const uploadMutation = useMutation({
     mutationFn: async (files: FileList) => {
       const fileUrls: string[] = [];
@@ -65,7 +85,7 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
     },
     onSuccess: () => {
       toast.success('อัปโหลด Statement สำเร็จ');
-      queryClient.invalidateQueries({ queryKey: ['credit-check', contractId] });
+      refetchCreditCheckEverywhere();
       if (fileInputRef.current) fileInputRef.current.value = '';
     },
     onError: (err: unknown) => {
@@ -80,7 +100,7 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
     },
     onSuccess: () => {
       toast.success('วิเคราะห์เครดิตเสร็จสิ้น');
-      queryClient.invalidateQueries({ queryKey: ['credit-check', contractId] });
+      refetchCreditCheckEverywhere();
     },
     onError: (err: unknown) => {
       toast.error(getErrorMessage(err));
@@ -97,7 +117,7 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
     },
     onSuccess: () => {
       toast.success('อัปเดตสถานะเครดิตเช็คแล้ว');
-      queryClient.invalidateQueries({ queryKey: ['credit-check', contractId] });
+      refetchCreditCheckEverywhere();
       setOverrideStatus('');
       setOverrideNotes('');
     },

@@ -27,6 +27,7 @@ export class CustomerPreCheckService {
   decideOutcome(
     tier: CustomerTier,
     aiScore: number | undefined,
+    hasStatement = false,
   ): { decision: PreCheckDecision; reasons: { code: string; message: string }[] } {
     const reasons: { code: string; message: string }[] = [];
 
@@ -61,12 +62,22 @@ export class CustomerPreCheckService {
       reasons.push({ code: 'AI_FAIL_OVERRIDE', message: `ประวัติดี แต่ AI ${aiScore} ต่ำเกิน` });
       return { decision: 'FAIL', reasons };
     }
-    // NEW
+    // NEW — no scoring engine yet, so the only path that produces a verdict
+    // for new customers is "manager review". Differentiate the message by
+    // whether the user actually attached a statement, so the result step
+    // doesn't lie to a user who just uploaded one.
     if (aiScore === undefined) {
-      reasons.push({
-        code: 'NEW_NO_DATA',
-        message: 'ลูกค้าใหม่ยังไม่มี statement — ต้องตรวจเพิ่ม',
-      });
+      if (hasStatement) {
+        reasons.push({
+          code: 'NEW_PENDING_REVIEW',
+          message: 'แนบ statement แล้ว — รอผู้จัดการพิจารณา',
+        });
+      } else {
+        reasons.push({
+          code: 'NEW_NO_DATA',
+          message: 'ลูกค้าใหม่ยังไม่มี statement — ต้องตรวจเพิ่ม',
+        });
+      }
       return { decision: 'REVIEW', reasons };
     }
     if (aiScore >= PASS_THRESHOLD) {
@@ -146,7 +157,8 @@ export class CustomerPreCheckService {
 
     let creditCheckId: string | undefined;
     const aiScore: number | undefined = undefined;
-    const outcome = this.decideOutcome(tierResp.tier, aiScore);
+    const hasStatement = !!input.statementFiles && input.statementFiles.length > 0;
+    const outcome = this.decideOutcome(tierResp.tier, aiScore, hasStatement);
 
     const nextStatus =
       outcome.decision === 'PASS'
@@ -223,5 +235,49 @@ export class CustomerPreCheckService {
 
     this.cache.set(key, { result, expires: Date.now() + CACHE_TTL_MS });
     return result;
+  }
+
+  /**
+   * Abandon a pre-check session and soft-delete the placeholder customer that
+   * `runPreCheck` created on first contact.
+   *
+   * Safety guards (refuse to delete if any are violated):
+   *   - customer must still be on the placeholder name `ลูกค้าใหม่ (Pre-check)`
+   *     (sentinel proving the user never advanced to FullIntakeStep — the
+   *     full-intake form rewrites `name` from firstName+lastName)
+   *   - must have no contracts (active or historical)
+   *   - must still be in UNDER_REVIEW status
+   *
+   * Any of those failing means the row is real customer data — never delete.
+   */
+  async abandonPreCheck(customerId: string): Promise<{ deleted: boolean }> {
+    const customer = await this.prisma.customer.findFirst({
+      where: { id: customerId, deletedAt: null },
+      select: {
+        id: true,
+        name: true,
+        creditCheckStatus: true,
+        _count: { select: { contracts: true } },
+      },
+    });
+    if (!customer) return { deleted: false };
+
+    const isPlaceholder = customer.name === 'ลูกค้าใหม่ (Pre-check)';
+    const hasNoContracts = customer._count.contracts === 0;
+    const isUnderReview = customer.creditCheckStatus === 'UNDER_REVIEW';
+
+    if (!isPlaceholder || !hasNoContracts || !isUnderReview) {
+      this.logger.warn(
+        `[pre-check] refuse abandon ${customerId}: placeholder=${isPlaceholder} noContracts=${hasNoContracts} underReview=${isUnderReview}`,
+      );
+      return { deleted: false };
+    }
+
+    await this.prisma.customer.update({
+      where: { id: customerId },
+      data: { deletedAt: new Date() },
+    });
+    this.logger.log(`[pre-check] abandoned placeholder customer ${customerId}`);
+    return { deleted: true };
   }
 }

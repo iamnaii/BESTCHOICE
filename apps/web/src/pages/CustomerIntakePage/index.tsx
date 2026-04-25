@@ -22,7 +22,10 @@ export default function CustomerIntakePage() {
         subtitle="scan บัตร → อัพ statement → เช็คเครดิต → กรอกข้อมูลเต็ม"
         action={
           <button
-            onClick={() => navigate('/customers')}
+            onClick={() => {
+              intake.cancelIntake();
+              navigate('/customers');
+            }}
             className="px-4 py-2 text-sm text-muted-foreground border border-input rounded-lg"
           >
             ยกเลิก

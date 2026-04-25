@@ -243,10 +243,21 @@ export function useCreditCheckCreate({ open, preselectedCustomer, onSuccess }: U
       });
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (_data, _vars, _ctx) => {
       toast.success('สร้างรายการตรวจเครดิตสำเร็จ');
+      // ContractCreatePage + DocumentUpload's statement card both read the
+      // customer's latest credit check via separate query keys — invalidate
+      // them so a freshly uploaded statement appears without page refresh.
       queryClient.invalidateQueries({ queryKey: ['credit-checks'] });
       queryClient.invalidateQueries({ queryKey: ['customer-credit-checks'] });
+      if (selectedCustomer) {
+        queryClient.invalidateQueries({
+          queryKey: ['customer-latest-credit', selectedCustomer.id],
+        });
+        queryClient.invalidateQueries({
+          queryKey: ['customer-credit-check-latest-statement', selectedCustomer.id],
+        });
+      }
       reset();
       onSuccess?.();
     },
@@ -263,13 +274,19 @@ export function useCreditCheckCreate({ open, preselectedCustomer, onSuccess }: U
       });
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       // New record starts as PENDING; auto-score runs in background. Final
       // APPROVED/REJECTED must go through the override dialog (enforces
       // ≥20-char reason + audit log + role check) — not a one-click action.
       toast.success('บันทึกตรวจเครดิตสำเร็จ — รอผลวิเคราะห์');
       queryClient.invalidateQueries({ queryKey: ['credit-checks'] });
       queryClient.invalidateQueries({ queryKey: ['customer-credit-checks'] });
+      queryClient.invalidateQueries({
+        queryKey: ['customer-latest-credit', vars.customerId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ['customer-credit-check-latest-statement', vars.customerId],
+      });
       reset();
       onSuccess?.();
     },

@@ -7,6 +7,8 @@ import Customer360Timeline from './Customer360Timeline';
 import Customer360Actions from './Customer360Actions';
 import SmartCustomerPanel from './SmartCustomerPanel';
 import RelatedContractsTab from './RelatedContractsTab';
+import LegalCaseBanner from './LegalCaseBanner';
+import LegalCaseDialog from './LegalCaseDialog';
 import type { ContractRow } from '../types';
 
 interface Props {
@@ -29,9 +31,11 @@ export default function Customer360Panel({
   const { data: insights } = useCustomerInsights(customerId);
 
   const [tab, setTab] = useState<Tab>('overview');
+  const [legalCaseOpen, setLegalCaseOpen] = useState(false);
 
   useEffect(() => {
     setTab('overview');
+    setLegalCaseOpen(false);
   }, [contract?.id]);
 
   // Close on Escape
@@ -164,6 +168,14 @@ export default function Customer360Panel({
                 </section>
               ) : (
                 <>
+              <section className="px-5 pt-3">
+                <LegalCaseBanner
+                  contractId={contract.id}
+                  contractStatus={data?.detail.status ?? contract.status}
+                  onOpen={() => setLegalCaseOpen(true)}
+                />
+              </section>
+
               {/* Contract summary */}
               <section className="p-5 border-b border-border">
                 <div className="text-xs uppercase tracking-wider text-muted-foreground mb-3">
@@ -250,6 +262,12 @@ export default function Customer360Panel({
             </>
           )}
         </div>
+
+        <LegalCaseDialog
+          open={legalCaseOpen}
+          onClose={() => setLegalCaseOpen(false)}
+          contractId={contract?.id ?? null}
+        />
       </aside>
     </>
   );

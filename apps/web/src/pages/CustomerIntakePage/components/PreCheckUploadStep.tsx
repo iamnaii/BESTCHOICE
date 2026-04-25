@@ -64,7 +64,7 @@ export default function PreCheckUploadStep({ form, onChange, onSubmit, onBack, i
         <div>
           <h3 className="text-sm font-semibold text-foreground">Statement ธนาคาร 3 เดือน *</h3>
           <p className="text-xs text-muted-foreground mt-0.5">
-            จำเป็นสำหรับการวิเคราะห์เครดิตด้วย AI
+            จำเป็นสำหรับการพิจารณาเครดิตของผู้จัดการ
           </p>
         </div>
 
@@ -171,7 +171,7 @@ export default function PreCheckUploadStep({ form, onChange, onSubmit, onBack, i
           {isSubmitting ? (
             <>
               <Loader2 className="size-4 animate-spin" />
-              กำลังวิเคราะห์...
+              กำลังประมวลผล...
             </>
           ) : (
             'เริ่มเช็คเครดิต'

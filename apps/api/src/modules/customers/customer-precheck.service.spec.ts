@@ -50,6 +50,20 @@ describe('CustomerPreCheckService — decideOutcome (pure)', () => {
   it('NEW without AI REVIEW', () => {
     expect(service.decideOutcome('NEW', undefined).decision).toBe('REVIEW');
   });
+  it('NEW without AI + no statement → "ยังไม่มี statement" reason', () => {
+    const result = service.decideOutcome('NEW', undefined, false);
+    expect(result.decision).toBe('REVIEW');
+    expect(result.reasons[0].code).toBe('NEW_NO_DATA');
+    expect(result.reasons[0].message).toContain('ยังไม่มี statement');
+  });
+  it('NEW without AI + has statement → "แนบ statement แล้ว" reason (no contradiction)', () => {
+    const result = service.decideOutcome('NEW', undefined, true);
+    expect(result.decision).toBe('REVIEW');
+    expect(result.reasons[0].code).toBe('NEW_PENDING_REVIEW');
+    expect(result.reasons[0].message).toContain('แนบ statement แล้ว');
+    // Must NOT claim "no statement" when one was uploaded.
+    expect(result.reasons[0].message).not.toContain('ยังไม่มี statement');
+  });
 });
 
 describe('CustomerPreCheckService — runPreCheck soft-delete revival', () => {
@@ -207,6 +221,77 @@ describe('CustomerPreCheckService — runPreCheck soft-delete revival', () => {
     expect(findFirstCall.where.checkType).toBe('PRE');
     expect(findFirstCall.where.bankName).toBe('SCB');
     expect(findFirstCall.where.deletedAt).toBeNull();
+  });
+
+  // ─── abandonPreCheck — refuse to delete real customer rows ──────────────
+  it('abandons a placeholder customer with no contracts', async () => {
+    prisma.customer.findFirst.mockResolvedValue({
+      id: 'cust-placeholder',
+      name: 'ลูกค้าใหม่ (Pre-check)',
+      creditCheckStatus: 'UNDER_REVIEW',
+      _count: { contracts: 0 },
+    });
+
+    const result = await service.abandonPreCheck('cust-placeholder');
+
+    expect(result.deleted).toBe(true);
+    expect(prisma.customer.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'cust-placeholder' },
+        data: expect.objectContaining({ deletedAt: expect.any(Date) }),
+      }),
+    );
+  });
+
+  it('refuses to abandon if name was changed (full intake completed)', async () => {
+    prisma.customer.findFirst.mockResolvedValue({
+      id: 'cust-real',
+      name: 'สมชาย ใจดี',
+      creditCheckStatus: 'UNDER_REVIEW',
+      _count: { contracts: 0 },
+    });
+
+    const result = await service.abandonPreCheck('cust-real');
+
+    expect(result.deleted).toBe(false);
+    expect(prisma.customer.update).not.toHaveBeenCalled();
+  });
+
+  it('refuses to abandon if any contracts exist', async () => {
+    prisma.customer.findFirst.mockResolvedValue({
+      id: 'cust-with-contract',
+      name: 'ลูกค้าใหม่ (Pre-check)',
+      creditCheckStatus: 'UNDER_REVIEW',
+      _count: { contracts: 1 },
+    });
+
+    const result = await service.abandonPreCheck('cust-with-contract');
+
+    expect(result.deleted).toBe(false);
+    expect(prisma.customer.update).not.toHaveBeenCalled();
+  });
+
+  it('refuses to abandon if creditCheckStatus is no longer UNDER_REVIEW', async () => {
+    prisma.customer.findFirst.mockResolvedValue({
+      id: 'cust-approved',
+      name: 'ลูกค้าใหม่ (Pre-check)',
+      creditCheckStatus: 'APPROVED',
+      _count: { contracts: 0 },
+    });
+
+    const result = await service.abandonPreCheck('cust-approved');
+
+    expect(result.deleted).toBe(false);
+    expect(prisma.customer.update).not.toHaveBeenCalled();
+  });
+
+  it('returns {deleted:false} silently if customer does not exist (already removed)', async () => {
+    prisma.customer.findFirst.mockResolvedValue(null);
+
+    const result = await service.abandonPreCheck('cust-gone');
+
+    expect(result.deleted).toBe(false);
+    expect(prisma.customer.update).not.toHaveBeenCalled();
   });
 
   it('wraps creditCheck create + customer.creditCheckStatus update in one $transaction (no drift on failure)', async () => {

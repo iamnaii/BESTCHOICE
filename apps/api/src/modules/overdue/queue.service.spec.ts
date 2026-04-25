@@ -864,4 +864,147 @@ describe('OverdueQueueService', () => {
       expect(result.data.map((r) => r.id).sort()).toEqual(['a', 'b']);
     });
   });
+
+  describe('sortBy', () => {
+    function makeQueueRows() {
+      // 3 contracts with distinct outstanding/daysOverdue/name to disambiguate sort
+      return [
+        makeContract({
+          id: 'c1',
+          contractNumber: 'BC-1',
+          customer: { id: 'cu1', name: 'ก สมชาย', phone: '0811111111', lineId: null },
+          payments: [
+            {
+              amountDue: '1000.00',
+              amountPaid: '0.00',
+              lateFee: '0.00',
+              dueDate: new Date(Date.now() - 5 * 86400000),
+              status: 'OVERDUE',
+            },
+          ],
+        }),
+        makeContract({
+          id: 'c2',
+          contractNumber: 'BC-2',
+          customer: { id: 'cu2', name: 'ค สมหญิง', phone: '0822222222', lineId: null },
+          payments: [
+            {
+              amountDue: '5000.00',
+              amountPaid: '0.00',
+              lateFee: '0.00',
+              dueDate: new Date(Date.now() - 30 * 86400000),
+              status: 'OVERDUE',
+            },
+          ],
+        }),
+        makeContract({
+          id: 'c3',
+          contractNumber: 'BC-3',
+          customer: { id: 'cu3', name: 'ข สมพร', phone: '0833333333', lineId: null },
+          payments: [
+            {
+              amountDue: '3000.00',
+              amountPaid: '0.00',
+              lateFee: '0.00',
+              dueDate: new Date(Date.now() - 15 * 86400000),
+              status: 'OVERDUE',
+            },
+          ],
+        }),
+      ];
+    }
+
+    it('outstanding_desc returns highest-outstanding first', async () => {
+      mockPrisma.contract.findMany.mockResolvedValueOnce(makeQueueRows());
+      mockPrisma.contract.count.mockResolvedValueOnce(3);
+
+      const r = await service.getQueue({
+        tab: 'today',
+        userRole: 'BRANCH_MANAGER',
+        userBranchId: 'branch-1',
+        sortBy: 'outstanding_desc' as any,
+      });
+      expect(r.data.map((row) => row.id)).toEqual(['c2', 'c3', 'c1']);
+    });
+
+    it('outstanding_asc returns lowest-outstanding first', async () => {
+      mockPrisma.contract.findMany.mockResolvedValueOnce(makeQueueRows());
+      mockPrisma.contract.count.mockResolvedValueOnce(3);
+
+      const r = await service.getQueue({
+        tab: 'today',
+        userRole: 'BRANCH_MANAGER',
+        userBranchId: 'branch-1',
+        sortBy: 'outstanding_asc' as any,
+      });
+      expect(r.data.map((row) => row.id)).toEqual(['c1', 'c3', 'c2']);
+    });
+
+    it('days_overdue_desc returns oldest-overdue first', async () => {
+      mockPrisma.contract.findMany.mockResolvedValueOnce(makeQueueRows());
+      mockPrisma.contract.count.mockResolvedValueOnce(3);
+
+      const r = await service.getQueue({
+        tab: 'today',
+        userRole: 'BRANCH_MANAGER',
+        userBranchId: 'branch-1',
+        sortBy: 'days_overdue_desc' as any,
+      });
+      expect(r.data.map((row) => row.id)).toEqual(['c2', 'c3', 'c1']);
+    });
+
+    it('name_asc sorts by Thai customer name', async () => {
+      mockPrisma.contract.findMany.mockResolvedValueOnce(makeQueueRows());
+      mockPrisma.contract.count.mockResolvedValueOnce(3);
+
+      const r = await service.getQueue({
+        tab: 'today',
+        userRole: 'BRANCH_MANAGER',
+        userBranchId: 'branch-1',
+        sortBy: 'name_asc' as any,
+      });
+      // ก < ข < ค in Thai locale collation
+      expect(r.data.map((row) => row.id)).toEqual(['c1', 'c3', 'c2']);
+    });
+
+    it('random produces deterministic order for same userId+today', async () => {
+      mockPrisma.contract.findMany.mockResolvedValueOnce(makeQueueRows());
+      mockPrisma.contract.count.mockResolvedValueOnce(3);
+
+      const a = await service.getQueue({
+        tab: 'today',
+        userRole: 'BRANCH_MANAGER',
+        userBranchId: 'branch-1',
+        userId: 'user-X',
+        sortBy: 'random' as any,
+      });
+
+      mockPrisma.contract.findMany.mockResolvedValueOnce(makeQueueRows());
+      mockPrisma.contract.count.mockResolvedValueOnce(3);
+      const b = await service.getQueue({
+        tab: 'today',
+        userRole: 'BRANCH_MANAGER',
+        userBranchId: 'branch-1',
+        userId: 'user-X',
+        sortBy: 'random' as any,
+      });
+
+      expect(a.data.map((r) => r.id)).toEqual(b.data.map((r) => r.id));
+      // result is a permutation of inputs
+      expect([...a.data.map((r) => r.id)].sort()).toEqual(['c1', 'c2', 'c3']);
+    });
+
+    it('default (priority) preserves legacy behavior', async () => {
+      mockPrisma.contract.findMany.mockResolvedValueOnce(makeQueueRows());
+      mockPrisma.contract.count.mockResolvedValueOnce(3);
+
+      const r = await service.getQueue({
+        tab: 'today',
+        userRole: 'BRANCH_MANAGER',
+        userBranchId: 'branch-1',
+      });
+      // c2 has highest outstanding × daysOverdue → priority leader
+      expect(r.data[0].id).toBe('c2');
+    });
+  });
 });

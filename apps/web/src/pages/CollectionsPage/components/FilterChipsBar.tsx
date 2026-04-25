@@ -1,7 +1,8 @@
 import { Filter, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import type { QueueFilterState } from '../hooks/useQueueFilter';
+import type { QueueFilterState, QueueSortOption } from '../hooks/useQueueFilter';
 import { FilterPresetsDropdown } from './FilterPresetsDropdown';
+import { SortDropdown } from './SortDropdown';
 
 interface FilterChipsBarProps {
   filter: QueueFilterState;
@@ -165,6 +166,7 @@ const ALL_FILTER_KEYS: (keyof QueueFilterState)[] = [
   'mdmState',
   'showSkipTracing',
   'slipReviewPending',
+  'sortBy',
 ];
 
 export default function FilterChipsBar({
@@ -188,6 +190,11 @@ export default function FilterChipsBar({
   return (
     <div className="mb-3 flex flex-wrap items-center gap-2">
       <FilterPresetsDropdown currentFilter={filter} onApply={applyPreset} />
+
+      <SortDropdown
+        value={filter.sortBy}
+        onChange={(v: QueueSortOption) => setFilter({ sortBy: v })}
+      />
 
       <Button variant="outline" size="sm" onClick={onOpenFilter} className="gap-1.5">
         <Filter className="size-3.5" />

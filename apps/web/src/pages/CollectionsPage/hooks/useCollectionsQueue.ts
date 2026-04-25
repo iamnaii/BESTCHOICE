@@ -59,6 +59,7 @@ export function useCollectionsQueue(params: {
         if (filter.mdmState) q.set('mdmState', filter.mdmState);
         if (filter.showSkipTracing) q.set('showSkipTracing', 'true');
         if (filter.slipReviewPending) q.set('slipReviewPending', 'true');
+        if (filter.sortBy) q.set('sortBy', filter.sortBy);
       }
       const { data } = await api.get(`/overdue/queue?${q}`);
       return data;

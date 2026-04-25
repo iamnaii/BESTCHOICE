@@ -6,7 +6,9 @@ import {
   LineResponseState,
   MdmStateFilter,
   OverdueBucket,
+  QueueSortBy,
 } from './dto/queue-query.dto';
+import { seededShuffle } from '../../utils/shuffle.util';
 
 export type QueueTab = 'today' | 'followup' | 'promise';
 
@@ -34,6 +36,9 @@ export interface QueueFilterInput {
   hasActivePromise?: boolean;
   mdmState?: MdmStateFilter;
   slipReviewPending?: boolean;
+
+  // Sort (post-enrichment)
+  sortBy?: QueueSortBy;
 }
 
 @Injectable()
@@ -104,7 +109,7 @@ export class OverdueQueueService {
     // Post-enrichment filters — computed fields can't go into Prisma where.
     const afterPostFilter = this.applyPostFilters(enriched, params, now);
 
-    const rows = afterPostFilter.sort((a, b) => b.__priorityScore - a.__priorityScore);
+    const rows = this.applySort(afterPostFilter, params.sortBy, params.userId, now);
 
     // If any post-filter fired, `total` must reflect filtered count so UI
     // pagination doesn't read "500 results" while showing 12. When no post-
@@ -218,6 +223,54 @@ export class OverdueQueueService {
       ...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []),
       exclusion,
     ];
+  }
+
+  /**
+   * Apply sort to enriched rows. Default (PRIORITY) uses the legacy in-memory
+   * priority score (outstanding × daysOverdue × broken-promise multiplier).
+   * Other sorts read directly from enriched fields. RANDOM uses a deterministic
+   * Mulberry32 shuffle seeded by `${userId}-${YYYY-MM-DD}` so each collector
+   * sees a stable order within a single day, but a different order than peers
+   * — fair rotation without losing reload stability.
+   */
+  private applySort<
+    T extends {
+      outstanding: number;
+      daysOverdue: number;
+      lastContactedAt: Date | null;
+      customer: { name: string };
+      __priorityScore: number;
+      id: string;
+    },
+  >(rows: T[], sortBy: QueueSortBy | undefined, userId: string | undefined, now: Date): T[] {
+    const arr = rows.slice();
+    switch (sortBy) {
+      case QueueSortBy.OUTSTANDING_DESC:
+        return arr.sort((a, b) => b.outstanding - a.outstanding);
+      case QueueSortBy.OUTSTANDING_ASC:
+        return arr.sort((a, b) => a.outstanding - b.outstanding);
+      case QueueSortBy.DAYS_OVERDUE_DESC:
+        return arr.sort((a, b) => b.daysOverdue - a.daysOverdue);
+      case QueueSortBy.LAST_CONTACTED_ASC:
+        // Never-contacted (null) ranks first — they're the most stale.
+        return arr.sort((a, b) => {
+          const at = a.lastContactedAt ? new Date(a.lastContactedAt).getTime() : -Infinity;
+          const bt = b.lastContactedAt ? new Date(b.lastContactedAt).getTime() : -Infinity;
+          return at - bt;
+        });
+      case QueueSortBy.NAME_ASC:
+        return arr.sort((a, b) =>
+          (a.customer.name ?? '').localeCompare(b.customer.name ?? '', 'th'),
+        );
+      case QueueSortBy.RANDOM: {
+        const today = now.toISOString().slice(0, 10);
+        const seed = `${userId ?? 'anon'}-${today}`;
+        return seededShuffle(arr, seed);
+      }
+      case QueueSortBy.PRIORITY:
+      default:
+        return arr.sort((a, b) => b.__priorityScore - a.__priorityScore);
+    }
   }
 
   /**

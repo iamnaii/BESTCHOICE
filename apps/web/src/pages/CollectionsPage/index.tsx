@@ -7,6 +7,7 @@ import CollectionsTabs from './components/CollectionsTabs';
 import CollectionsFilters from './components/CollectionsFilters';
 import ContactLogDialog from './components/ContactLogDialog';
 import Customer360Panel from './components/Customer360Panel';
+import MigrationBanner from './components/MigrationBanner';
 import SendLineAdHocDialog from './components/SendLineAdHocDialog';
 import QueueTab from './tabs/QueueTab';
 import FollowUpTab from './tabs/FollowUpTab';
@@ -65,6 +66,8 @@ export default function CollectionsPage() {
   return (
     <div>
       <PageHeader title="ติดตามหนี้" subtitle="คิวงานของผู้ติดตามหนี้รายวัน" />
+
+      <MigrationBanner />
 
       <CollectionsKpiStrip />
 

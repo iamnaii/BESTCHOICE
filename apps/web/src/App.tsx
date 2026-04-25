@@ -26,7 +26,6 @@ const ContractDetailPage = lazy(() => import('@/pages/ContractDetailPage'));
 const ContractSignPage = lazy(() => import('@/pages/ContractSignPage'));
 const ContractTemplatesPage = lazy(() => import('@/pages/ContractTemplatesPage'));
 const PaymentsPage = lazy(() => import('@/pages/PaymentsPage'));
-const OverduePage = lazy(() => import('@/pages/OverduePage'));
 const RepossessionsPage = lazy(() => import('@/pages/RepossessionsPage'));
 const NotificationsPage = lazy(() => import('@/pages/NotificationsPage'));
 const ReportsPage = lazy(() => import('@/pages/ReportsPage'));
@@ -425,7 +424,11 @@ function App() {
           />
           <Route path="/receipts" element={<Navigate to="/payments?tab=receipts" replace />} />
           <Route path="/verify/:receiptNumber" element={<ReceiptVerifyPage />} />
-          <Route path="/overdue" element={<OverduePage />} />
+          {/* /overdue → /collections (Task 18 of 2026-04-25-collections-ui-p1).
+              Old route kept as a redirect so external bookmarks/LINE links keep
+              working. MigrationBanner on /collections nudges users to update. */}
+          <Route path="/overdue" element={<Navigate to="/collections" replace />} />
+          <Route path="/overdue/*" element={<Navigate to="/collections" replace />} />
           <Route path="/collections" element={<CollectionsPage />} />
           <Route
             path="/collection-dashboard"

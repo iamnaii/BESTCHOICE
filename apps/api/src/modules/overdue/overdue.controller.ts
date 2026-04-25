@@ -371,10 +371,34 @@ export class OverdueController {
     );
   }
 
-  // --- MDM lock/unlock approvals (OWNER/FM only) ---
+  // --- Z8: MDM lock request live-check + undo (used by useUndoMutation) ---
+
+  @Get('mdm-requests/:id')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  getMdmRequest(@Param('id') id: string) {
+    return this.mdmLockService.getById(id);
+  }
+
+  /**
+   * Z8: Soft-delete a PENDING MdmLockRequest. Used by the PROPOSE_LOCK undo
+   * snackbar — only the original proposer (or OWNER) may undo, and only while
+   * status === PENDING.
+   */
+  @Delete('mdm-requests/:id')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  deleteMdmRequest(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string; role: string },
+  ) {
+    return this.mdmLockService.deleteIfPending(id, user.id, user.role);
+  }
+
+  // --- MDM lock/unlock approvals (OWNER/FM/BM — Z3) ---
+  // BRANCH_MANAGER granted approval rights for parity with Approval tab
+  // visibility and consistency with late-fee-waiver / legal-case approvals.
 
   @Post('mdm-requests/:id/approve')
-  @Roles('OWNER', 'FINANCE_MANAGER')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER')
   approveMdmLock(
     @Param('id') id: string,
     @Body() body: ApproveMdmDto,
@@ -386,7 +410,7 @@ export class OverdueController {
   }
 
   @Post('mdm-requests/:id/reject')
-  @Roles('OWNER', 'FINANCE_MANAGER')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER')
   rejectMdmLock(
     @Param('id') id: string,
     @Body() body: { reason: string },
@@ -396,7 +420,7 @@ export class OverdueController {
   }
 
   @Post('mdm-requests/:id/unlock')
-  @Roles('OWNER', 'FINANCE_MANAGER')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER')
   unlockMdm(
     @Param('id') id: string,
     @CurrentUser() user: { id: string; role: string },
@@ -519,6 +543,20 @@ export class OverdueController {
     @CurrentUser() user: { id: string },
   ) {
     return this.contractLetterService.markUndeliverable(id, user.id, body.reason);
+  }
+
+  /**
+   * Z9: Revert a letter from UNDELIVERABLE back to DISPATCHED. Used by the
+   * MARK_UNDELIVERABLE undo snackbar — only the original dispatcher (or
+   * OWNER) may revert, and only while status === UNDELIVERABLE.
+   */
+  @Post('letters/:id/revert-undeliverable')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER')
+  revertLetterUndeliverable(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string; role: string },
+  ) {
+    return this.contractLetterService.revertUndeliverable(id, user.id, user.role);
   }
 
   @Post('letters/:id/cancel')

@@ -27,6 +27,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { PiiAuditService } from '../pii/pii-audit.service';
 import { maskNationalId } from '../../utils/pii.util';
 
@@ -208,8 +209,11 @@ export class CustomersController {
     summary:
       'Smart Customer Data — preferred contact time/channel, response rates, last LINE seen',
   })
-  getInsights(@Param('id') id: string) {
-    return this.insightsService.getInsights(id);
+  getInsights(
+    @Param('id') id: string,
+    @CurrentUser() user: { role: string; branchId: string | null },
+  ) {
+    return this.insightsService.getInsights(id, { role: user.role, branchId: user.branchId });
   }
 
   @Get(':id/chat-summary')

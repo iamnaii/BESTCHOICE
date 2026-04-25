@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
 export type ContactTimeBucket = 'MORNING' | 'AFTERNOON' | 'EVENING';
@@ -41,13 +41,33 @@ export interface CustomerInsights {
 export class CustomerInsightsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getInsights(customerId: string): Promise<CustomerInsights> {
+  async getInsights(
+    customerId: string,
+    requester?: { role?: string; branchId?: string | null },
+  ): Promise<CustomerInsights> {
     const customer = await this.prisma.customer.findFirst({
       where: { id: customerId, deletedAt: null },
       select: { id: true },
     });
     if (!customer) {
       throw new NotFoundException('ไม่พบลูกค้านี้');
+    }
+
+    // Z6: SALES users may only see insights for customers with at least one
+    // contract in their branch. Cross-branch roles (OWNER/FM/Acct/BM) bypass
+    // — BRANCH_MANAGER is naturally branch-scoped at higher layers.
+    if (requester?.role === 'SALES' && requester.branchId) {
+      const sameBranch = await this.prisma.contract.findFirst({
+        where: {
+          customerId,
+          branchId: requester.branchId,
+          deletedAt: null,
+        },
+        select: { id: true },
+      });
+      if (!sameBranch) {
+        throw new ForbiddenException('ลูกค้านี้ไม่ได้อยู่ในสาขาของคุณ');
+      }
     }
 
     // Pull CallLogs via the customer's contracts. Only ANSWERED calls

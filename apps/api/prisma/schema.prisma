@@ -3780,6 +3780,24 @@ enum MessageType {
   TEMPLATE
 }
 
+/// Z10: outbound LINE message delivery state, populated from
+/// `events[].deliveryContext` on the LINE webhook + custom replies. Used by
+/// queue.service `lineResponse` post-filter to surface RESPONDED/IGNORED/
+/// BLOCKED contracts in the collections workflow.
+enum ChatMessageDeliveryStatus {
+  /// Message reached the user's device but no reply observed.
+  DELIVERED
+  /// User opened the chat (LINE read receipt).
+  READ
+  /// User responded — populated when an inbound message arrives shortly after
+  /// our outbound send (within the response-window heuristic).
+  RESPONDED
+  /// Delivered but no engagement after the timeout window expired.
+  IGNORED
+  /// LINE rejected the send (e.g. user blocked the OA, or provider error).
+  BLOCKED
+}
+
 enum AutoTriggerType {
   REMINDER_T_MINUS_5
   REMINDER_T_MINUS_3
@@ -3920,6 +3938,10 @@ model ChatMessage {
   // Delivery tracking
   deliveredAt DateTime? @map("delivered_at")
   readAt      DateTime? @map("read_at")
+  // Z10: outbound delivery state populated from LINE webhook
+  // `events[].deliveryContext`. NULL for inbound (customer→us) messages and
+  // for outbound messages we sent before this column existed.
+  deliveryStatus ChatMessageDeliveryStatus? @map("delivery_status")
 
   // AI metadata
   intent       String?

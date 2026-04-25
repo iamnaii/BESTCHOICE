@@ -74,7 +74,14 @@ describe('OverdueBulkService', () => {
         'actor-1',
       );
 
-      expect(result).toEqual({ proposed: 2, failed: 1, requested: 3 });
+      expect(result).toEqual({
+        proposed: 2,
+        failed: 1,
+        requested: 3,
+        // Z8: created MdmLockRequest ids surfaced for FE undo (DELETE one as
+        // representative reverse — the FE picks the first to undo).
+        requestIds: ['r1', 'r3'],
+      });
     });
 
     it('returns all proposed when all calls succeed', async () => {
@@ -85,7 +92,14 @@ describe('OverdueBulkService', () => {
         'actor-1',
       );
 
-      expect(result).toEqual({ proposed: 2, failed: 0, requested: 2 });
+      expect(result).toEqual({
+        proposed: 2,
+        failed: 0,
+        requested: 2,
+        // Same id appears twice because the mock returns the same value on
+        // every call — production proposeManual returns distinct ids.
+        requestIds: ['r1', 'r1'],
+      });
     });
   });
 

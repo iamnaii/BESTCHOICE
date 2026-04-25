@@ -36,7 +36,19 @@ export class OverdueBulkService {
       dto.contractIds.map((id) => this.mdmLockService.proposeManual(id, actorId, dto.reason)),
     );
     const proposed = results.filter((r) => r.status === 'fulfilled').length;
-    return { proposed, failed: results.length - proposed, requested: dto.contractIds.length };
+    // Z8: surface created request ids so the FE undo can DELETE one of them
+    // as a representative reverse (full bulk undo intentionally not supported).
+    const requestIds = results.flatMap((r) =>
+      r.status === 'fulfilled' && r.value && typeof (r.value as { id?: unknown }).id === 'string'
+        ? [(r.value as { id: string }).id]
+        : [],
+    );
+    return {
+      proposed,
+      failed: results.length - proposed,
+      requested: dto.contractIds.length,
+      requestIds,
+    };
   }
 
   async bulkSendLine(dto: BulkSendLineDto, _actorId: string) {

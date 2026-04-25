@@ -6,6 +6,7 @@ import { ContractLetterService } from './contract-letter.service';
 import { DunningRuleService } from './dunning-rule.service';
 import { DunningEngineService } from './dunning-engine.service';
 import { DunningRuleResolverService } from './dunning-rule-resolver.service';
+import { NextBestActionService } from './next-best-action.service';
 import { MdmLockService } from './mdm-lock.service';
 import { OverdueQueueService } from './queue.service';
 import { OverdueKpiService } from './kpi.service';
@@ -41,6 +42,7 @@ import { LineOaModule } from '../line-oa/line-oa.module';
     DunningRuleService,
     DunningEngineService,
     DunningRuleResolverService,
+    NextBestActionService,
     MdmLockService,
     OverdueQueueService,
     OverdueKpiService,

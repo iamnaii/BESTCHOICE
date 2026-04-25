@@ -17,6 +17,30 @@ export type LastChannel = 'LINE' | 'SMS' | 'CALL' | 'LETTER' | null;
 
 const FETCH_CAP = 500;
 
+// Z2: shape of the contract include used by getQueue → enrichRows. Kept as a
+// const so we can derive a precise Prisma payload type instead of `any`.
+const queueContractInclude = {
+  customer: { select: { id: true, name: true, phone: true, lineId: true } },
+  branch: { select: { id: true, name: true } },
+  assignedTo: { select: { id: true, name: true } },
+  payments: {
+    where: { status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] } },
+    orderBy: { dueDate: 'asc' },
+    take: 1,
+  },
+  callLogs: {
+    orderBy: { calledAt: 'desc' },
+    take: 1,
+  },
+  _count: {
+    select: {
+      callLogs: { where: { result: 'PROMISED', brokenAt: { not: null } } },
+    },
+  },
+} satisfies Prisma.ContractInclude;
+
+type QueueContract = Prisma.ContractGetPayload<{ include: typeof queueContractInclude }>;
+
 export interface QueueFilterInput {
   // Pre-SQL filters
   search?: string;
@@ -79,26 +103,7 @@ export class OverdueQueueService {
     const [contracts, total] = await Promise.all([
       this.prisma.contract.findMany({
         where,
-        include: {
-          customer: { select: { id: true, name: true, phone: true, lineId: true } },
-          branch: { select: { id: true, name: true } },
-          assignedTo: { select: { id: true, name: true } },
-          payments: {
-            where: { status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] } },
-            orderBy: { dueDate: 'asc' },
-            take: 1,
-          },
-          callLogs: {
-            orderBy: { calledAt: 'desc' },
-            take: 1,
-          },
-          // For broken-promise multiplier in priority score
-          _count: {
-            select: {
-              callLogs: { where: { result: 'PROMISED', brokenAt: { not: null } } },
-            },
-          },
-        },
+        include: queueContractInclude,
         take: FETCH_CAP, // cap the fetch — priority sort + pagination happens in memory
       }),
       this.prisma.contract.count({ where }),
@@ -288,6 +293,7 @@ export class OverdueQueueService {
       customer: { lineId: string | null };
       letterCount: number;
       slipReviewPending: boolean;
+      latestLineDeliveryStatus?: string | null;
     },
   >(rows: T[], f: QueueFilterInput, now: Date): T[] {
     let filtered = rows;
@@ -386,12 +392,22 @@ export class OverdueQueueService {
       );
     }
 
-    // LINE response (heuristic based on lastCallResult + customer.lineId).
-    // Server-side data doesn't include LINE delivery state yet — BLOCKED is
-    // inferred only from explicit flag when available; NO_LINE from missing
-    // customer.lineId. RESPONDED/IGNORED deferred (W-011 — ต้อง schema change).
+    // LINE response (Z10): now backed by `ChatMessage.deliveryStatus`. The
+    // enrichment populates `latestLineDeliveryStatus` from the most recent
+    // outbound LINE message per contract's customer. NO_LINE remains a
+    // customer-attribute filter; the other three read the new column.
+    //
+    // Backfill caveat: outbound messages sent before the migration land with
+    // NULL status — those rows fall through all status filters and remain
+    // visible regardless of which filter is active.
     if (f.lineResponse === LineResponseState.NO_LINE) {
       filtered = filtered.filter((r) => !r.customer.lineId);
+    } else if (f.lineResponse === LineResponseState.RESPONDED) {
+      filtered = filtered.filter((r) => r.latestLineDeliveryStatus === 'RESPONDED');
+    } else if (f.lineResponse === LineResponseState.IGNORED) {
+      filtered = filtered.filter((r) => r.latestLineDeliveryStatus === 'IGNORED');
+    } else if (f.lineResponse === LineResponseState.BLOCKED) {
+      filtered = filtered.filter((r) => r.latestLineDeliveryStatus === 'BLOCKED');
     }
 
     return filtered;
@@ -409,7 +425,7 @@ export class OverdueQueueService {
    * aggregate regardless of how many contracts were fetched.
    */
   private async enrichRows(
-    contracts: any[],
+    contracts: QueueContract[],
     now: Date,
     currentUserId: string | undefined,
   ) {
@@ -442,6 +458,7 @@ export class OverdueQueueService {
       pendingSlipEvidences,
       sevenDayAgoSnapshots,
       activeSnoozes,
+      latestLineMessages,
     ] = await Promise.all([
       this.prisma.callLog.groupBy({
         by: ['contractId'],
@@ -538,6 +555,25 @@ export class OverdueQueueService {
             select: { contractId: true, snoozedUntil: true },
           })
         : Promise.resolve([] as { contractId: string; snoozedUntil: Date }[]),
+      // Z10: latest outbound LINE message per customer with deliveryStatus.
+      // Used by lineResponse post-filter (RESPONDED / IGNORED / BLOCKED).
+      // Only BOT/STAFF/AUTO_TRIGGER roles count as "our outbound" — inbound
+      // CUSTOMER messages are excluded. distinct on roomId then mapped to
+      // customerId via the join.
+      this.prisma.chatMessage.findMany({
+        where: {
+          deletedAt: null,
+          role: { in: ['BOT', 'STAFF', 'AUTO_TRIGGER'] },
+          deliveryStatus: { not: null },
+          room: { customerId: { in: customerIds }, deletedAt: null },
+        },
+        orderBy: { createdAt: 'desc' },
+        distinct: ['roomId'],
+        select: {
+          deliveryStatus: true,
+          room: { select: { customerId: true } },
+        },
+      }),
     ]);
 
     const callMap = new Map<string, Date | null>(
@@ -570,6 +606,14 @@ export class OverdueQueueService {
     const snoozeMap = new Map<string, Date>(
       activeSnoozes.map((r) => [r.contractId, r.snoozedUntil]),
     );
+    // Z10: customerId → latest outbound LINE deliveryStatus.
+    const lineStatusByCustomer = new Map<string, string>();
+    for (const m of latestLineMessages) {
+      const cid = m.room?.customerId;
+      if (cid && m.deliveryStatus && !lineStatusByCustomer.has(cid)) {
+        lineStatusByCustomer.set(cid, m.deliveryStatus);
+      }
+    }
 
     return contracts.map((c) => {
       const base = this.toRow(c, now);
@@ -595,6 +639,9 @@ export class OverdueQueueService {
         slipReviewPending: slipPendingSet.has(c.id),
         trendingArrow,
         snoozedUntil,
+        // Z10: latest outbound LINE delivery status (RESPONDED/IGNORED/BLOCKED
+        // /DELIVERED/READ) for the lineResponse post-filter.
+        latestLineDeliveryStatus: lineStatusByCustomer.get(c.customerId) ?? null,
       };
     });
   }
@@ -716,7 +763,7 @@ export class OverdueQueueService {
     };
   }
 
-  private toRow(c: any, now: Date) {
+  private toRow(c: QueueContract, now: Date) {
     const payment = c.payments[0];
     const callLog = c.callLogs[0];
     const outstanding = payment

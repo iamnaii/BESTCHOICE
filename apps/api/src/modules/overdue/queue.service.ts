@@ -104,7 +104,7 @@ export class OverdueQueueService {
       this.prisma.contract.count({ where }),
     ]);
 
-    const enriched = await this.enrichRows(contracts, now);
+    const enriched = await this.enrichRows(contracts, now, params.userId);
 
     // Post-enrichment filters — computed fields can't go into Prisma where.
     const afterPostFilter = this.applyPostFilters(enriched, params, now);
@@ -408,11 +408,28 @@ export class OverdueQueueService {
    * Uses batched groupBy + findMany(distinct) to avoid N+1 — one query per
    * aggregate regardless of how many contracts were fetched.
    */
-  private async enrichRows(contracts: any[], now: Date) {
+  private async enrichRows(
+    contracts: any[],
+    now: Date,
+    currentUserId: string | undefined,
+  ) {
     if (contracts.length === 0) return [];
 
     const contractIds = contracts.map((c) => c.id);
     const customerIds = [...new Set(contracts.map((c) => c.customerId))];
+
+    // For trending arrow: pull the snapshot closest to "7 days ago" within a
+    // ±1 day window so we still get a comparison even when the cron skipped
+    // a day (DB outage, deploy, etc.). `findMany({ distinct: contractId,
+    // orderBy: date desc })` collapses to one row per contract — the most
+    // recent snapshot in the window — which we then compare to today.
+    const sevenDaysAgo = new Date(now);
+    sevenDaysAgo.setHours(0, 0, 0, 0);
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const sevenDaysAgoLow = new Date(sevenDaysAgo);
+    sevenDaysAgoLow.setDate(sevenDaysAgoLow.getDate() - 1);
+    const sevenDaysAgoHigh = new Date(sevenDaysAgo);
+    sevenDaysAgoHigh.setDate(sevenDaysAgoHigh.getDate() + 1);
 
     const [
       lastCalls,
@@ -423,6 +440,8 @@ export class OverdueQueueService {
       lastChannels,
       letterCounts,
       pendingSlipEvidences,
+      sevenDayAgoSnapshots,
+      activeSnoozes,
     ] = await Promise.all([
       this.prisma.callLog.groupBy({
         by: ['contractId'],
@@ -490,6 +509,35 @@ export class OverdueQueueService {
         },
         _count: { _all: true },
       }),
+      // Trending arrow source — most recent snapshot within ±1d of 7 days
+      // ago, one row per contract (Task 10).
+      this.prisma.contractDailySnapshot.findMany({
+        where: {
+          contractId: { in: contractIds },
+          date: { gte: sevenDaysAgoLow, lte: sevenDaysAgoHigh },
+        },
+        orderBy: { date: 'desc' },
+        distinct: ['contractId'],
+        select: { contractId: true, daysOverdue: true },
+      }),
+      // Active per-user snoozes for the rows we fetched. OWNER sees the
+      // queue with snoozed cards retained (the SQL exclusion is bypassed for
+      // OWNER) — surface the snoozedUntil so the UI can render the badge.
+      // For non-OWNER callers this list is empty (their snoozed cards were
+      // already filtered out at the SQL level).
+      currentUserId
+        ? this.prisma.contractSnooze.findMany({
+            where: {
+              contractId: { in: contractIds },
+              userId: currentUserId,
+              snoozedUntil: { gt: now },
+              deletedAt: null,
+            },
+            orderBy: { snoozedUntil: 'desc' },
+            distinct: ['contractId'],
+            select: { contractId: true, snoozedUntil: true },
+          })
+        : Promise.resolve([] as { contractId: string; snoozedUntil: Date }[]),
     ]);
 
     const callMap = new Map<string, Date | null>(
@@ -516,6 +564,12 @@ export class OverdueQueueService {
     const slipPendingSet = new Set<string>(
       pendingSlipEvidences.filter((r) => r._count._all > 0).map((r) => r.contractId),
     );
+    const sevenDayMap = new Map<string, number>(
+      sevenDayAgoSnapshots.map((r) => [r.contractId, r.daysOverdue]),
+    );
+    const snoozeMap = new Map<string, Date>(
+      activeSnoozes.map((r) => [r.contractId, r.snoozedUntil]),
+    );
 
     return contracts.map((c) => {
       const base = this.toRow(c, now);
@@ -523,6 +577,12 @@ export class OverdueQueueService {
       const action = actionMap.get(c.id) ?? null;
       const lastContactedAt =
         call && action ? (call > action ? call : action) : call ?? action ?? null;
+
+      const trendingArrow = this.computeTrendingArrow(
+        base.daysOverdue,
+        sevenDayMap.get(c.id),
+      );
+      const snoozedUntil = snoozeMap.get(c.id) ?? null;
 
       return {
         ...base,
@@ -533,8 +593,34 @@ export class OverdueQueueService {
         lastChannel: this.toLastChannel(channelMap.get(c.id)),
         letterCount: letterCountMap.get(c.id) ?? 0,
         slipReviewPending: slipPendingSet.has(c.id),
+        trendingArrow,
+        snoozedUntil,
       };
     });
+  }
+
+  /**
+   * Compare today's daysOverdue with the same contract's daysOverdue ~7
+   * days ago. Returns:
+   *  - 'UP'   delta > 0 → getting worse (overdue accumulating)
+   *  - 'DOWN' delta < 0 → improving (customer paid down balance)
+   *  - null   no historical snapshot OR delta === 0
+   *
+   * Important: zero-delta and missing-data both render as "no arrow" in
+   * the UI. They are semantically different (no info vs no change) but
+   * surfacing two distinct null states would clutter the badge — the UI
+   * already shows the absolute daysOverdue prominently, so the trend chip
+   * is purely additive.
+   */
+  private computeTrendingArrow(
+    todayDays: number,
+    sevenDayDays: number | undefined,
+  ): 'UP' | 'DOWN' | null {
+    if (sevenDayDays === undefined) return null;
+    const delta = todayDays - sevenDayDays;
+    if (delta > 0) return 'UP';
+    if (delta < 0) return 'DOWN';
+    return null;
   }
 
   private toMdmState(status: string | undefined): MdmState {

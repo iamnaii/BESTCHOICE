@@ -27,6 +27,12 @@ const mockPrisma = {
   paymentEvidence: {
     groupBy: jest.fn(),
   },
+  contractDailySnapshot: {
+    findMany: jest.fn(),
+  },
+  contractSnooze: {
+    findMany: jest.fn(),
+  },
 };
 
 function resetEnrichmentMocks() {
@@ -38,6 +44,8 @@ function resetEnrichmentMocks() {
   mockPrisma.dunningAction.findMany.mockResolvedValue([]);
   mockPrisma.contractLetter.groupBy.mockResolvedValue([]);
   mockPrisma.paymentEvidence.groupBy.mockResolvedValue([]);
+  mockPrisma.contractDailySnapshot.findMany.mockResolvedValue([]);
+  mockPrisma.contractSnooze.findMany.mockResolvedValue([]);
 }
 
 describe('OverdueQueueService', () => {
@@ -493,12 +501,17 @@ describe('OverdueQueueService', () => {
       expect(result.data[0].lastChannel).toBeNull();
     });
 
-    it('batch-loads enrichment via 8 aggregate queries (no N+1)', async () => {
+    it('batch-loads enrichment via 10 aggregate queries (no N+1)', async () => {
       const contracts = [makeContract(), makeContract({ id: 'c2', customerId: 'cust-2' })];
       mockPrisma.contract.findMany.mockResolvedValueOnce(contracts);
       mockPrisma.contract.count.mockResolvedValueOnce(2);
 
-      await service.getQueue({ tab: 'today', userRole: 'OWNER', userBranchId: null });
+      await service.getQueue({
+        tab: 'today',
+        userRole: 'OWNER',
+        userBranchId: null,
+        userId: 'enricher-user',
+      });
 
       // One call per aggregate regardless of row count — no N+1
       expect(mockPrisma.callLog.groupBy).toHaveBeenCalledTimes(1);
@@ -511,6 +524,9 @@ describe('OverdueQueueService', () => {
       // New in v-P0-final: letterCount + slipReviewPending enrichment
       expect(mockPrisma.contractLetter.groupBy).toHaveBeenCalledTimes(1);
       expect(mockPrisma.paymentEvidence.groupBy).toHaveBeenCalledTimes(1);
+      // Task 10: trending arrow + per-user snooze badge enrichment
+      expect(mockPrisma.contractDailySnapshot.findMany).toHaveBeenCalledTimes(1);
+      expect(mockPrisma.contractSnooze.findMany).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -1005,6 +1021,145 @@ describe('OverdueQueueService', () => {
       });
       // c2 has highest outstanding × daysOverdue → priority leader
       expect(r.data[0].id).toBe('c2');
+    });
+  });
+
+  describe('trendingArrow (Task 10)', () => {
+    function makeContractWithDaysOverdue(id: string, days: number): any {
+      return {
+        id,
+        contractNumber: `BC-${id}`,
+        status: 'OVERDUE',
+        dunningStage: 'NONE',
+        customerId: `cu-${id}`,
+        noAnswerCount: 0,
+        needsSkipTracing: false,
+        deviceLocked: false,
+        customer: { id: `cu-${id}`, name: id, phone: '0', lineId: null },
+        branch: { id: 'b', name: 'b' },
+        assignedTo: null,
+        payments: [
+          {
+            amountDue: '5000',
+            amountPaid: '0',
+            lateFee: '0',
+            dueDate: new Date(Date.now() - days * 86400000),
+            status: 'OVERDUE',
+          },
+        ],
+        callLogs: [],
+        _count: { callLogs: 0 },
+      };
+    }
+
+    it("renders 'UP' when today's daysOverdue exceeds the 7-day-ago snapshot", async () => {
+      const c = makeContractWithDaysOverdue('worse', 15); // today: ~15 days
+      mockPrisma.contract.findMany.mockResolvedValueOnce([c]);
+      mockPrisma.contract.count.mockResolvedValueOnce(1);
+      mockPrisma.contractDailySnapshot.findMany.mockResolvedValueOnce([
+        { contractId: 'worse', daysOverdue: 8 }, // 7 days ago they were behind 8
+      ]);
+
+      const r = await service.getQueue({
+        tab: 'today',
+        userRole: 'OWNER',
+        userBranchId: null,
+      });
+
+      expect(r.data[0].trendingArrow).toBe('UP');
+    });
+
+    it("renders 'DOWN' when today's daysOverdue is less than the snapshot", async () => {
+      const c = makeContractWithDaysOverdue('better', 5);
+      mockPrisma.contract.findMany.mockResolvedValueOnce([c]);
+      mockPrisma.contract.count.mockResolvedValueOnce(1);
+      mockPrisma.contractDailySnapshot.findMany.mockResolvedValueOnce([
+        { contractId: 'better', daysOverdue: 12 },
+      ]);
+
+      const r = await service.getQueue({
+        tab: 'today',
+        userRole: 'OWNER',
+        userBranchId: null,
+      });
+
+      expect(r.data[0].trendingArrow).toBe('DOWN');
+    });
+
+    it('renders null when delta is exactly zero (no change)', async () => {
+      const c = makeContractWithDaysOverdue('same', 10);
+      mockPrisma.contract.findMany.mockResolvedValueOnce([c]);
+      mockPrisma.contract.count.mockResolvedValueOnce(1);
+      mockPrisma.contractDailySnapshot.findMany.mockResolvedValueOnce([
+        { contractId: 'same', daysOverdue: 10 },
+      ]);
+
+      const r = await service.getQueue({
+        tab: 'today',
+        userRole: 'OWNER',
+        userBranchId: null,
+      });
+
+      expect(r.data[0].trendingArrow).toBeNull();
+    });
+
+    it('renders null when no historical snapshot exists for this contract', async () => {
+      const c = makeContractWithDaysOverdue('new', 10);
+      mockPrisma.contract.findMany.mockResolvedValueOnce([c]);
+      mockPrisma.contract.count.mockResolvedValueOnce(1);
+      mockPrisma.contractDailySnapshot.findMany.mockResolvedValueOnce([]); // no row
+
+      const r = await service.getQueue({
+        tab: 'today',
+        userRole: 'OWNER',
+        userBranchId: null,
+      });
+
+      expect(r.data[0].trendingArrow).toBeNull();
+    });
+
+    it('queries snapshots in a ±1 day window around 7-days-ago (cron-skip tolerance)', async () => {
+      mockPrisma.contract.findMany.mockResolvedValueOnce([
+        makeContractWithDaysOverdue('a', 5),
+      ]);
+      mockPrisma.contract.count.mockResolvedValueOnce(1);
+
+      await service.getQueue({
+        tab: 'today',
+        userRole: 'OWNER',
+        userBranchId: null,
+      });
+
+      const snapCall = mockPrisma.contractDailySnapshot.findMany.mock.calls[0][0];
+      expect(snapCall.distinct).toEqual(['contractId']);
+      const lo = snapCall.where.date.gte as Date;
+      const hi = snapCall.where.date.lte as Date;
+      // Window spans (7+1)d ago → (7-1)d ago = 8d → 6d ago
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const expectedLo = today.getTime() - 8 * 86400000;
+      const expectedHi = today.getTime() - 6 * 86400000;
+      expect(Math.abs(lo.getTime() - expectedLo)).toBeLessThan(86400000);
+      expect(Math.abs(hi.getTime() - expectedHi)).toBeLessThan(86400000);
+    });
+
+    it('OWNER receives snoozedUntil for contracts they have an active snooze on', async () => {
+      const c = makeContractWithDaysOverdue('snzd', 10);
+      const future = new Date(Date.now() + 3600 * 1000);
+      mockPrisma.contract.findMany.mockResolvedValueOnce([c]);
+      mockPrisma.contract.count.mockResolvedValueOnce(1);
+      mockPrisma.contractSnooze.findMany.mockResolvedValueOnce([
+        { contractId: 'snzd', snoozedUntil: future },
+      ]);
+
+      const r = await service.getQueue({
+        tab: 'today',
+        userRole: 'OWNER',
+        userBranchId: null,
+        userId: 'owner-1',
+      });
+
+      expect(r.data[0].snoozedUntil).toEqual(future);
     });
   });
 });

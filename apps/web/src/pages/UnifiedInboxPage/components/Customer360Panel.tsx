@@ -14,18 +14,23 @@ import {
   Phone,
   MessageSquare,
   Smartphone,
-  ExternalLink,
   Link2,
   QrCode,
   Zap,
   Send,
   Shield,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import QRCodeSVG from 'react-qr-code';
 import { format, isPast, differenceInDays } from 'date-fns';
 import { th } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+
+type DialogView = null | 'contracts' | 'payments' | 'customer' | 'send-link' | 'send-qr';
 
 interface ContractSummaryItem {
   id: string;
@@ -75,7 +80,7 @@ interface InternalNoteItem {
   id: string;
   content: string;
   createdAt: string;
-  author?: { name: string };
+  staff?: { name: string };
 }
 
 interface StaffItem {
@@ -123,6 +128,11 @@ const sessionStatusLabel: Record<string, string> = {
 };
 
 export default function Customer360Panel({ customerId, activeRoomId, onSelectRoom }: Customer360PanelProps) {
+  const [dialogView, setDialogView] = useState<DialogView>(null);
+  const [selectedContractId, setSelectedContractId] = useState<string | null>(null);
+  const [paymentLinkUrl, setPaymentLinkUrl] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
   // ─── Customer basic info ──────────────────────────────
   const { data: customer, isLoading } = useQuery({
     queryKey: ['customer-360', customerId],
@@ -158,6 +168,52 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
     queryFn: () => api.get(`/staff-chat/rooms/${activeRoomId}/cross-channel`).then((r) => r.data?.data ?? r.data),
     enabled: !!activeRoomId,
   });
+
+  // ─── Payment link creation ────────────────────────────
+  const createPaymentLink = useMutation({
+    mutationFn: (contractId: string) =>
+      api.post('/line-oa/payment-link', { contractId }).then((r) => r.data),
+    onSuccess: (data) => {
+      setPaymentLinkUrl(data.url ?? data.data?.url ?? null);
+    },
+    onError: () => toast.error('ไม่สามารถสร้างลิงก์ชำระได้'),
+  });
+
+  // ─── Send message to customer LINE ───────────────────
+  const sendLineMessage = useMutation({
+    mutationFn: (text: string) =>
+      api.post(`/staff-chat/customer/${customerId}/messages`, { text }).then((r) => r.data),
+    onSuccess: () => {
+      toast.success('ส่งลิงก์ทาง LINE แล้ว');
+      closeDialog();
+    },
+    onError: (err: { response?: { data?: { error?: string } } }) => {
+      toast.error(err?.response?.data?.error ?? 'ไม่สามารถส่งได้');
+    },
+  });
+
+  const closeDialog = () => {
+    setDialogView(null);
+    setSelectedContractId(null);
+    setPaymentLinkUrl(null);
+    setCopied(false);
+  };
+
+  const handleSelectContract = (contractId: string, view: 'send-link' | 'send-qr') => {
+    setSelectedContractId(contractId);
+    setPaymentLinkUrl(null);
+    createPaymentLink.mutate(contractId);
+    // view stays as-is (send-link or send-qr) — just update selected contract
+    void view;
+  };
+
+  const handleCopyLink = () => {
+    if (!paymentLinkUrl) return;
+    navigator.clipboard.writeText(paymentLinkUrl).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
 
   if (!customerId) {
     return (
@@ -528,27 +584,27 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
                 <QuickActionBtn
                   icon={<Link2 className="w-3.5 h-3.5 flex-shrink-0" />}
                   label="ส่งลิงก์ชำระ"
-                  onClick={() => toast.info('เลือกสัญญาก่อนส่งลิงก์')}
+                  onClick={() => setDialogView('send-link')}
                 />
                 <QuickActionBtn
                   icon={<QrCode className="w-3.5 h-3.5 flex-shrink-0" />}
                   label="ส่ง QR ชำระ"
-                  onClick={() => toast.info('เลือกสัญญาก่อนส่ง QR')}
+                  onClick={() => setDialogView('send-qr')}
                 />
                 <QuickActionBtn
                   icon={<FileText className="w-3.5 h-3.5 flex-shrink-0" />}
                   label="ดูสัญญา"
-                  onClick={() => window.open(`/contracts?customerId=${customerId}`, '_blank')}
+                  onClick={() => setDialogView('contracts')}
                 />
                 <QuickActionBtn
                   icon={<Clock className="w-3.5 h-3.5 flex-shrink-0" />}
                   label="ประวัติชำระ"
-                  onClick={() => window.open(`/payments?search=${customer?.phone}`, '_blank')}
+                  onClick={() => setDialogView('payments')}
                 />
                 <QuickActionBtn
-                  icon={<ExternalLink className="w-3.5 h-3.5 flex-shrink-0" />}
+                  icon={<User className="w-3.5 h-3.5 flex-shrink-0" />}
                   label="ดูข้อมูลลูกค้า"
-                  onClick={() => window.open(`/customers/${customerId}`, '_blank')}
+                  onClick={() => setDialogView('customer')}
                   className="col-span-2"
                 />
               </div>
@@ -557,6 +613,155 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
         </div>
       </div>
       </div>{/* end scrollable */}
+
+      {/* ─── Quick Action Dialogs ──────────────────────── */}
+
+      {/* Contracts */}
+      <Dialog open={dialogView === 'contracts'} onOpenChange={(o) => !o && closeDialog()}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="w-4 h-4" /> สัญญาที่ใช้งาน
+            </DialogTitle>
+          </DialogHeader>
+          {summary?.activeContracts?.length > 0 ? (
+            <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+              {(summary.activeContracts as ContractSummaryItem[]).map((c) => {
+                const sCfg = getStatusBadgeProps(c.status, contractStatusMap);
+                const productName = c.product?.name ?? (`${c.product?.brand ?? ''} ${c.product?.model ?? ''}`.trim() || 'สินค้า');
+                return (
+                  <div key={c.id} className="p-3 bg-muted rounded-lg text-sm">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-semibold text-foreground">{c.contractNumber}</span>
+                      <Badge variant={sCfg.variant} appearance={sCfg.appearance} className="text-[10px]">
+                        {localContractStatusMap[c.status] ?? sCfg.label}
+                      </Badge>
+                    </div>
+                    <p className="text-muted-foreground text-xs mb-2">{productName}</p>
+                    <div className="flex justify-between text-xs text-muted-foreground mb-1">
+                      <span>ชำระแล้ว {c.paidInstallments}/{c.totalInstallments} งวด</span>
+                      <span>{Number(c.monthlyPayment).toLocaleString()} บ./งวด</span>
+                    </div>
+                    <div className="w-full bg-border rounded-full h-1.5">
+                      <div className="bg-primary h-1.5 rounded-full" style={{ width: `${(c.paidInstallments / c.totalInstallments) * 100}%` }} />
+                    </div>
+                    {c.nextDueDate && (
+                      <p className="text-xs text-muted-foreground mt-1">ถัดไป: {format(new Date(c.nextDueDate), 'dd/MM/yyyy')}</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground py-4 text-center">ไม่มีสัญญาที่ใช้งาน</p>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Payment History */}
+      <Dialog open={dialogView === 'payments'} onOpenChange={(o) => !o && closeDialog()}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CreditCard className="w-4 h-4" /> ประวัติการชำระ
+            </DialogTitle>
+          </DialogHeader>
+          {summary?.recentPayments?.length > 0 ? (
+            <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+              {(summary.recentPayments as PaymentSummaryItem[]).map((p) => (
+                <div key={p.id} className="flex items-center justify-between py-2 border-b border-border last:border-0 text-sm">
+                  <div>
+                    <p className="font-medium text-foreground">{p.contract?.contractNumber ?? '—'}</p>
+                    <p className="text-xs text-muted-foreground">งวดที่ {p.installmentNo}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-semibold text-success">{Number(p.amountPaid).toLocaleString()} บ.</p>
+                    {p.paidDate && (
+                      <p className="text-xs text-muted-foreground">{format(new Date(p.paidDate), 'dd MMM yyyy', { locale: th })}</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground py-4 text-center">ยังไม่มีประวัติการชำระ</p>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Customer Info */}
+      <Dialog open={dialogView === 'customer'} onOpenChange={(o) => !o && closeDialog()}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <User className="w-4 h-4" /> ข้อมูลลูกค้า
+            </DialogTitle>
+          </DialogHeader>
+          {customer && (
+            <div className="space-y-3 text-sm max-h-[60vh] overflow-y-auto pr-1">
+              <InfoRow label="ชื่อ" value={customer.name} />
+              <InfoRow label="โทรศัพท์" value={customer.phone} />
+              {customer.email && <InfoRow label="อีเมล" value={customer.email} />}
+              {customer.idCard && <InfoRow label="เลขบัตร" value={customer.idCard} />}
+              {customer.occupation && <InfoRow label="อาชีพ" value={customer.occupation} />}
+              {customer.address && <InfoRow label="ที่อยู่" value={customer.address} />}
+              {summary?.overduePayments > 0 && (
+                <div className="flex items-center gap-2 p-2 bg-destructive/10 rounded-lg text-destructive text-xs">
+                  <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span>ค้างชำระ {summary.overduePayments} งวด · ยอดรวม {Number(summary.totalOutstanding ?? 0).toLocaleString()} บ.</span>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Send Payment Link */}
+      <Dialog open={dialogView === 'send-link'} onOpenChange={(o) => !o && closeDialog()}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Link2 className="w-4 h-4" /> ส่งลิงก์ชำระเงิน
+            </DialogTitle>
+          </DialogHeader>
+          <PaymentActionDialogBody
+            contracts={summary?.activeContracts ?? []}
+            selectedContractId={selectedContractId}
+            paymentLinkUrl={paymentLinkUrl}
+            loading={createPaymentLink.isPending}
+            copied={copied}
+            onSelectContract={(id: string) => handleSelectContract(id, 'send-link')}
+            onCopy={handleCopyLink}
+            onSendLine={() => paymentLinkUrl && sendLineMessage.mutate(paymentLinkUrl)}
+            sendingLine={sendLineMessage.isPending}
+            mode="link"
+          />
+        </DialogContent>
+      </Dialog>
+
+      {/* Send QR */}
+      <Dialog open={dialogView === 'send-qr'} onOpenChange={(o) => !o && closeDialog()}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <QrCode className="w-4 h-4" /> ส่ง QR ชำระเงิน
+            </DialogTitle>
+          </DialogHeader>
+          <PaymentActionDialogBody
+            contracts={summary?.activeContracts ?? []}
+            selectedContractId={selectedContractId}
+            paymentLinkUrl={paymentLinkUrl}
+            loading={createPaymentLink.isPending}
+            copied={copied}
+            onSelectContract={(id: string) => handleSelectContract(id, 'send-qr')}
+            onCopy={handleCopyLink}
+            onSendLine={() => paymentLinkUrl && sendLineMessage.mutate(paymentLinkUrl)}
+            sendingLine={sendLineMessage.isPending}
+            mode="qr"
+          />
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }
@@ -641,8 +846,9 @@ function InternalNotesSection({ roomId, notes }: { roomId: string; notes: Intern
     if (e.key === 'Escape') {
       setShowMentionDropdown(false);
     }
-    if (e.key === 'Enter' && e.ctrlKey) {
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
+      if (showMentionDropdown) return;
       if (noteText.trim()) addNote.mutate(noteText.trim());
     }
   };
@@ -658,7 +864,7 @@ function InternalNotesSection({ roomId, notes }: { roomId: string; notes: Intern
             <div key={note.id} className="p-2 bg-warning/10 rounded text-xs border border-warning/20">
               <p className="text-foreground/80 whitespace-pre-wrap">{note.content}</p>
               <p className="text-[10px] text-muted-foreground mt-0.5">
-                {note.author?.name} · {format(new Date(note.createdAt), 'dd/MM HH:mm')}
+                {note.staff?.name} · {format(new Date(note.createdAt), 'dd/MM HH:mm')}
               </p>
             </div>
           ))}
@@ -672,7 +878,7 @@ function InternalNotesSection({ roomId, notes }: { roomId: string; notes: Intern
           value={noteText}
           onChange={handleInput}
           onKeyDown={handleKeyDown}
-          placeholder="เพิ่มโน้ต... (พิมพ์ @ เพื่อแท็กสมาชิก, Ctrl+Enter บันทึก)"
+          placeholder="เพิ่มโน้ต... (@ แท็กสมาชิก · Shift+Enter ขึ้นบรรทัด)"
           rows={2}
           className="w-full text-xs rounded-lg border border-border px-2.5 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-primary/30 placeholder:text-muted-foreground/50"
         />
@@ -745,6 +951,119 @@ function QuickActionBtn({
       {icon}
       {label}
     </button>
+  );
+}
+
+function InfoRow({ label, value }: { label: string; value?: string | null }) {
+  if (!value) return null;
+  return (
+    <div className="flex gap-2">
+      <span className="text-muted-foreground w-20 flex-shrink-0">{label}</span>
+      <span className="text-foreground">{value}</span>
+    </div>
+  );
+}
+
+function PaymentActionDialogBody({
+  contracts,
+  selectedContractId,
+  paymentLinkUrl,
+  loading,
+  copied,
+  onSelectContract,
+  onCopy,
+  onSendLine,
+  sendingLine,
+  mode,
+}: {
+  contracts: ContractSummaryItem[];
+  selectedContractId: string | null;
+  paymentLinkUrl: string | null;
+  loading: boolean;
+  copied: boolean;
+  onSelectContract: (id: string) => void;
+  onCopy: () => void;
+  onSendLine: () => void;
+  sendingLine: boolean;
+  mode: 'link' | 'qr';
+}) {
+  return (
+    <div className="space-y-4">
+      {/* Contract picker */}
+      <div className="space-y-2">
+        <p className="text-sm text-muted-foreground">เลือกสัญญา:</p>
+        {contracts.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-4">ไม่มีสัญญาที่ใช้งาน</p>
+        ) : (
+          contracts.map((c) => {
+            const productName = c.product?.name ?? (`${c.product?.brand ?? ''} ${c.product?.model ?? ''}`.trim() || 'สินค้า');
+            const isSelected = c.id === selectedContractId;
+            return (
+              <button
+                key={c.id}
+                onClick={() => onSelectContract(c.id)}
+                className={cn(
+                  'w-full text-left p-2.5 rounded-lg border text-sm transition-colors',
+                  isSelected
+                    ? 'border-primary bg-primary/5 text-foreground'
+                    : 'border-border hover:bg-accent text-muted-foreground',
+                )}
+              >
+                <span className="font-medium">{c.contractNumber}</span>
+                <span className="ml-2 text-xs">{productName}</span>
+              </button>
+            );
+          })
+        )}
+      </div>
+
+      {/* Result: loading */}
+      {loading && (
+        <p className="text-sm text-muted-foreground text-center py-2">กำลังสร้างลิงก์...</p>
+      )}
+
+      {/* Result: link mode */}
+      {!loading && paymentLinkUrl && mode === 'link' && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 p-2 bg-muted rounded-lg text-xs break-all">
+            <span className="flex-1 text-foreground">{paymentLinkUrl}</span>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={onCopy}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2 text-sm border border-border rounded-lg hover:bg-accent transition-colors"
+            >
+              {copied ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" />}
+              {copied ? 'คัดลอกแล้ว' : 'คัดลอกลิงก์'}
+            </button>
+            <button
+              onClick={onSendLine}
+              disabled={sendingLine}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors"
+            >
+              <Send className="w-3.5 h-3.5" />
+              {sendingLine ? 'กำลังส่ง...' : 'ส่งผ่าน LINE'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Result: QR mode */}
+      {!loading && paymentLinkUrl && mode === 'qr' && (
+        <div className="space-y-3 flex flex-col items-center">
+          <div className="p-4 bg-white rounded-xl border border-border inline-block">
+            <QRCodeSVG value={paymentLinkUrl} size={180} level="M" />
+          </div>
+          <button
+            onClick={onCopy}
+            className="flex items-center gap-1.5 px-4 py-2 text-sm border border-border rounded-lg hover:bg-accent transition-colors"
+          >
+            {copied ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" />}
+            {copied ? 'คัดลอกแล้ว' : 'คัดลอกลิงก์'}
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 

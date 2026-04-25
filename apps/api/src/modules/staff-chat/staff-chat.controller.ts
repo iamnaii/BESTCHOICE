@@ -44,6 +44,8 @@ import { SessionQueryDto } from '../chat-engine/dto/session-query.dto';
 import { ChatRoomStatus, ChatChannel, ChatPriority, MessageRole, MessageType } from '@prisma/client';
 import { StorageService } from '../storage/storage.service';
 import { MessageRouterService } from '../chat-engine/services/message-router.service';
+import { StaffChatGateway } from './staff-chat.gateway';
+import { CHAT_EVENTS, CHAT_ROOMS } from '../chat-engine/constants/chat-events';
 
 @Controller('staff-chat')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -69,6 +71,7 @@ export class StaffChatController {
     private aiMetrics: AiMetricsService,
     private config: ConfigService,
     private trainingExtractCron: TrainingExtractCron,
+    private staffChatGateway: StaffChatGateway,
   ) {}
 
   // ─── Rooms ────────────────────────────────────────────
@@ -539,11 +542,22 @@ export class StaffChatController {
       };
     }
 
-    return this.messageRouter.sendStaffMessage({
+    const result = await this.messageRouter.sendStaffMessage({
       roomId: room.id,
       staffId: req.user.id,
       text,
     });
+
+    // Broadcast to staff viewing this room so the message appears in real-time
+    this.staffChatGateway.emitNewMessage(room.id, {
+      roomId: room.id,
+      role: 'STAFF',
+      staffId: req.user.id,
+      text,
+      createdAt: new Date().toISOString(),
+    });
+
+    return result;
   }
 
   // ─── Cross-Channel Rooms ──────────────────────────────

@@ -132,18 +132,20 @@ export class MessageRouterService {
       mediaType: message.mediaType,
     });
 
-    // 3. Check handoff mode — if staff is handling, don't run AI
+    // 3. Notify staff inbox of every inbound customer message (real-time room list refresh)
+    this.gateway?.emitNewMessage(room.id, {
+      role: 'CUSTOMER',
+      text: message.text,
+      type: message.type,
+      channel: message.channel,
+      roomId: room.id,
+    });
+
+    // 3b. Check handoff mode — if staff is handling, don't run AI
     if (room.handoffMode) {
       this.logger.debug(
         `Room ${room.id} in handoff mode — skipping AI processing`,
       );
-      this.gateway?.emitNewMessage(room.id, {
-        role: 'CUSTOMER',
-        text: message.text,
-        type: message.type,
-        channel: message.channel,
-        roomId: room.id,
-      });
       return;
     }
 

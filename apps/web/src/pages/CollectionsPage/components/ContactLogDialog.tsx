@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Loader2 } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
 import { formatNumber } from '@/utils/formatters';
 import { useContactLog } from '../hooks/useContactLog';
@@ -9,10 +10,25 @@ import CallResultChips, {
 import VoiceMemoRecorder from './VoiceMemoRecorder';
 import type { ContractRow, CallResult } from '../types';
 
+/** CallLog item enriched with Yeastar recording fields — used in view mode. */
+interface CallLogItem {
+  id: string;
+  result: string;
+  notes?: string | null;
+  createdAt: string;
+  recordingUrl?: string | null;
+  recordingStorageTier?: string | null;
+  yeastarRecordingPath?: string | null;
+  autoLogged?: boolean;
+  callDirection?: 'INBOUND' | 'OUTBOUND' | null;
+}
+
 interface Props {
   open: boolean;
   contract: ContractRow | null;
   onClose: () => void;
+  /** Optional recent auto-logged call logs from Yeastar (shown in view mode above the form). */
+  recentLogs?: CallLogItem[];
 }
 
 const CALL_RESULT_LABELS: Record<CallResult, string> = {
@@ -46,7 +62,7 @@ function getTomorrow(): string {
   return d.toISOString().split('T')[0];
 }
 
-export default function ContactLogDialog({ open, contract, onClose }: Props) {
+export default function ContactLogDialog({ open, contract, onClose, recentLogs }: Props) {
   const [form, setForm] = useState(defaultForm);
   const mutation = useContactLog();
 
@@ -108,6 +124,63 @@ export default function ContactLogDialog({ open, contract, onClose }: Props) {
               {formatNumber(contract.outstanding)}
             </span>{' '}
             ฿ · {contract.daysOverdue} วัน
+          </div>
+        )}
+
+        {/* Auto-logged Yeastar calls — view mode */}
+        {recentLogs && recentLogs.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-muted-foreground leading-snug">
+              บันทึกสายล่าสุด (Yeastar)
+            </p>
+            {recentLogs.map((log) => (
+              <div
+                key={log.id}
+                className="rounded-lg border border-border/50 bg-muted/30 px-3 py-2 text-sm leading-snug"
+              >
+                <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground mb-0.5">
+                  <span>
+                    {log.callDirection === 'INBOUND' ? 'โทรเข้า' : log.callDirection === 'OUTBOUND' ? 'โทรออก' : 'สาย'}
+                    {log.autoLogged && (
+                      <span className="ml-1.5 text-[10px] uppercase tracking-wider bg-primary/10 text-primary px-1 rounded">
+                        auto
+                      </span>
+                    )}
+                  </span>
+                  <span className="tabular-nums">{new Date(log.createdAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+                {log.notes && (
+                  <p className="text-xs text-foreground leading-snug">{log.notes}</p>
+                )}
+
+                {/* Recording Player — auto-logged from Yeastar */}
+                {log.recordingUrl && (
+                  <div className="mt-2">
+                    <p className="text-xs text-muted-foreground leading-snug mb-1">เสียงบันทึกสาย</p>
+                    {log.recordingStorageTier === 'COLDLINE' ? (
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        <span>กำลัง restore... รอสักครู่</span>
+                      </div>
+                    ) : (
+                      <audio
+                        controls
+                        src={log.recordingUrl}
+                        className="w-full h-8"
+                        preload="none"
+                      >
+                        เบราว์เซอร์ไม่รองรับ audio player
+                      </audio>
+                    )}
+                  </div>
+                )}
+                {log.yeastarRecordingPath && !log.recordingUrl && (
+                  <p className="mt-1 text-xs text-muted-foreground leading-snug">
+                    กำลังดาวน์โหลดเสียงจาก PBX...
+                  </p>
+                )}
+              </div>
+            ))}
           </div>
         )}
 

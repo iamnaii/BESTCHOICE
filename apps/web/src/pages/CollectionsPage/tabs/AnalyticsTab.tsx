@@ -16,6 +16,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import QueryBoundary from '@/components/QueryBoundary';
 import { DateRangePicker, type DateRangeValue } from '@/components/ui/DateRangePicker';
 import { useCollectionsAnalytics } from '../hooks/useCollectionsAnalytics';
+import AgingBucketChart from '../components/AgingBucketChart';
 
 // Chart colors: pragmatic hex approximations of the theme palette.
 // recharts requires explicit color values; these match emerald/red/amber tokens.
@@ -85,6 +86,8 @@ export default function AnalyticsTab() {
       >
         {data && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            {/* Aging buckets — span full width above 5 trend cards */}
+            <AgingBucketChart />
             {/* Card 1 — weekly collection rate */}
             <Card>
               <CardContent className="p-5">

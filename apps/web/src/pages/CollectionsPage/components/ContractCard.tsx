@@ -14,8 +14,18 @@ import {
   AlertTriangle,
   Users,
   FileText,
+  MoreHorizontal,
+  Moon,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
 import { formatDateShort } from '@/utils/formatters';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '@/components/ui/dropdown-menu';
 import type { ContractRow } from '../types';
 import { agingBucket, agingColor, formatRelativeTime } from '../utils/cardIndicators';
 
@@ -55,18 +65,56 @@ const CHANNEL_META: Record<
   LETTER: { icon: FileText, label: 'จดหมาย' },
 };
 
+function formatSnoozeUntil(iso: string): string {
+  const d = new Date(iso);
+  const today = new Date();
+  const sameDay =
+    d.getFullYear() === today.getFullYear() &&
+    d.getMonth() === today.getMonth() &&
+    d.getDate() === today.getDate();
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  if (sameDay) return `${hh}:${mm}`;
+  return `${formatDateShort(d)} ${hh}:${mm}`;
+}
+
 function IndicatorChips({ contract }: { contract: ContractRow }) {
   const bucket = agingBucket(contract.daysOverdue);
   const channelMeta = contract.lastChannel ? CHANNEL_META[contract.lastChannel] : null;
   const ChannelIcon = channelMeta?.icon ?? null;
+  const arrow = contract.trendingArrow;
 
   return (
     <div className="mb-3 flex flex-wrap items-center gap-1.5">
       <span
-        className={`inline-flex items-center rounded-full border px-2 py-0.5 text-2xs font-medium leading-snug ${agingColor(bucket)}`}
+        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-2xs font-medium leading-snug ${agingColor(bucket)}`}
       >
         เลย {contract.daysOverdue} วัน
+        {arrow === 'UP' && (
+          <ArrowUp
+            className="size-3"
+            aria-label="แย่ลงเทียบ 7 วันก่อน"
+            data-testid="trending-up"
+          />
+        )}
+        {arrow === 'DOWN' && (
+          <ArrowDown
+            className="size-3"
+            aria-label="ดีขึ้นเทียบ 7 วันก่อน"
+            data-testid="trending-down"
+          />
+        )}
       </span>
+
+      {contract.snoozedUntil && (
+        <span
+          className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 text-primary text-2xs font-medium px-2 py-0.5 leading-snug"
+          title={`Snooze ถึง ${new Date(contract.snoozedUntil).toLocaleString('th-TH')}`}
+        >
+          <Moon className="size-3" />
+          ถึง {formatSnoozeUntil(contract.snoozedUntil)}
+        </span>
+      )}
 
       <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted text-muted-foreground text-2xs font-medium px-2 py-0.5 leading-snug">
         <Clock className="size-3" />
@@ -126,6 +174,10 @@ interface Props {
   onPreview?: (contract: ContractRow, anchor: PreviewAnchor) => void;
   /** Cancel a pending preview (called when caller closes the panel). */
   onPreviewCancel?: () => void;
+  /** Open the SnoozeDialog (Task 7). Hides the ⋯ menu entry when undefined. */
+  onSnooze?: (c: ContractRow) => void;
+  /** Lift active snooze immediately. Hides the ⋯ menu entry when undefined. */
+  onUnsnooze?: (c: ContractRow) => void;
 }
 
 export default function ContractCard({
@@ -138,7 +190,11 @@ export default function ContractCard({
   focused,
   onPreview,
   onPreviewCancel,
+  onSnooze,
+  onUnsnooze,
 }: Props) {
+  const isSnoozed =
+    !!contract.snoozedUntil && new Date(contract.snoozedUntil).getTime() > Date.now();
   const focusRing = focused ? 'ring-2 ring-primary ring-offset-1 ring-offset-background' : '';
   const wrapperRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<number | null>(null);
@@ -313,6 +369,32 @@ export default function ContractCard({
               >
                 <ChevronRight className="size-3.5" />
               </button>
+            )}
+            {(onSnooze || onUnsnooze) && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    className="rounded-lg border border-input p-1.5 hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+                    title="เพิ่มเติม"
+                    aria-label="เพิ่มเติม"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <MoreHorizontal className="size-3.5" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-44">
+                  {onSnooze && !isSnoozed && (
+                    <DropdownMenuItem onSelect={() => onSnooze(contract)}>
+                      <Moon className="size-4" /> Snooze จน...
+                    </DropdownMenuItem>
+                  )}
+                  {onUnsnooze && isSnoozed && (
+                    <DropdownMenuItem onSelect={() => onUnsnooze(contract)}>
+                      <Moon className="size-4" /> ยกเลิก snooze
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
           </div>
         </div>

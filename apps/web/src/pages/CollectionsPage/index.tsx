@@ -96,6 +96,7 @@ export default function CollectionsPage() {
           onLogContact={openContactDialog}
           onOpen360={openPanel}
           onSendLine={setLineDialogContract}
+          onSwitchTab={(tab) => setActiveTab(tab as CollectionsTabKey)}
         />
       )}
 

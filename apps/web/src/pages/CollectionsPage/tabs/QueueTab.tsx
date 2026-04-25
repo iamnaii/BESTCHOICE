@@ -10,9 +10,11 @@ import TruncatedBanner from '../components/TruncatedBanner';
 import FilterChipsBar from '../components/FilterChipsBar';
 import FilterDrawer from '../components/FilterDrawer';
 import KeyboardShortcutsOverlay from '../components/KeyboardShortcutsOverlay';
+import SnoozeDialog from '../components/SnoozeDialog';
 import { useCollectionsQueue } from '../hooks/useCollectionsQueue';
 import { useBulkSelection } from '../hooks/useBulkSelection';
 import { useQueueFilter } from '../hooks/useQueueFilter';
+import { useUnsnoozeContract } from '../hooks/useSnooze';
 import type { ContractRow } from '../types';
 
 const LIMIT = 50;
@@ -59,6 +61,8 @@ export default function QueueTab({
   const sel = useBulkSelection();
   const debouncedSearch = useDebounce(search, 300);
   const [filter, setFilter, resetFilter] = useQueueFilter('queue');
+  const [snoozeTarget, setSnoozeTarget] = useState<ContractRow | null>(null);
+  const unsnooze = useUnsnoozeContract();
 
   const q = useCollectionsQueue({
     tab: 'today',

@@ -8,6 +8,7 @@ import { OverdueKpiService } from './kpi.service';
 import { MdmLockService } from './mdm-lock.service';
 import { OverdueTimelineService } from './timeline.service';
 import { OverdueBulkService } from './bulk.service';
+import { ContractLetterService } from './contract-letter.service';
 import { CreateCallLogDto } from './dto/create-call-log.dto';
 import { AssignCollectorDto } from './dto/assign-collector.dto';
 import { RecordSettlementDto } from './dto/record-settlement.dto';
@@ -38,6 +39,7 @@ export class OverdueController {
     private mdmLockService: MdmLockService,
     private timelineService: OverdueTimelineService,
     private bulkService: OverdueBulkService,
+    private contractLetterService: ContractLetterService,
   ) {}
 
   // --- Collections Workflow Hub endpoints (Plan 2) ---
@@ -389,5 +391,70 @@ export class OverdueController {
       },
       user.id,
     );
+  }
+
+  // --- Contract letters ---
+
+  @Get('letters')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER')
+  listLetters(
+    @Query('status') status?: string,
+    @Query('letterType') letterType?: string,
+    @CurrentUser() user?: { role: string; branchId: string | null },
+  ) {
+    return this.contractLetterService.list({
+      status: status as any,
+      letterType: letterType as any,
+      branchId: user?.role === 'BRANCH_MANAGER' ? user.branchId ?? undefined : undefined,
+    });
+  }
+
+  @Post('letters/:id/pdf-generated')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  markPdfGenerated(
+    @Param('id') id: string,
+    @Body() body: { pdfUrl: string },
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.contractLetterService.markPdfGenerated(id, body.pdfUrl, user.id);
+  }
+
+  @Post('letters/:id/dispatch')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  dispatchLetter(
+    @Param('id') id: string,
+    @Body() body: { trackingNumber: string; evidencePhotoUrl?: string },
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.contractLetterService.markDispatched(id, user.id, body);
+  }
+
+  @Post('letters/:id/delivered')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  markLetterDelivered(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.contractLetterService.markDelivered(id, user.id);
+  }
+
+  @Post('letters/:id/undeliverable')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  markLetterUndeliverable(
+    @Param('id') id: string,
+    @Body() body: { reason: string },
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.contractLetterService.markUndeliverable(id, user.id, body.reason);
+  }
+
+  @Post('letters/:id/cancel')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  cancelLetter(
+    @Param('id') id: string,
+    @Body() body: { reason: string },
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.contractLetterService.cancel(id, user.id, body.reason);
   }
 }

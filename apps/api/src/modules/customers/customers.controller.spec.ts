@@ -3,6 +3,8 @@ import { CustomersController } from './customers.controller';
 import { CustomersService } from './customers.service';
 import { CustomerTierService } from './customer-tier.service';
 import { CustomerPreCheckService } from './customer-precheck.service';
+import { SkipTracingService } from './skip-tracing.service';
+import { CustomerInsightsService } from '../overdue/customer-insights.service';
 import { PiiAuditService } from '../pii/pii-audit.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -30,6 +32,8 @@ describe('CustomersController PII (Phase 5)', () => {
         { provide: PiiAuditService, useValue: piiAudit },
         { provide: CustomerTierService, useValue: { getCustomerTier: jest.fn() } },
         { provide: CustomerPreCheckService, useValue: { runPreCheck: jest.fn() } },
+        { provide: SkipTracingService, useValue: {} },
+        { provide: CustomerInsightsService, useValue: {} },
       ],
     })
       .overrideGuard(JwtAuthGuard)

@@ -5,9 +5,19 @@ import { OwnerAlertHelper } from '../owner-alert.helper';
 import { LetterAutoGenerateCron } from './letter-auto-generate.cron';
 
 const mockPrisma = {
-  systemConfig: { findUnique: jest.fn() },
+  systemConfig: { findUnique: jest.fn(), findMany: jest.fn() },
   contract: { findMany: jest.fn() },
 };
+
+// Helper: build the batch findMany result the cron expects
+function buildConfigsResult(overrides: Partial<Record<string, string>> = {}) {
+  const defaults: Record<string, string> = {
+    letter_auto_generate_enabled: 'true',
+    letter_return_device_days: '45',
+    letter_termination_days: '60',
+  };
+  return Object.entries({ ...defaults, ...overrides }).map(([key, value]) => ({ key, value }));
+}
 
 const mockLetterService = {
   createIfNotExists: jest.fn(),
@@ -33,22 +43,15 @@ describe('LetterAutoGenerateCron', () => {
     }).compile();
     cron = module.get(LetterAutoGenerateCron);
 
-    // Default: enabled + default thresholds
-    mockPrisma.systemConfig.findUnique.mockImplementation(
-      ({ where: { key } }: { where: { key: string } }) => {
-        if (key === 'letter_auto_generate_enabled') return Promise.resolve({ value: 'true' });
-        if (key === 'letter_return_device_days') return Promise.resolve({ value: '45' });
-        if (key === 'letter_termination_days') return Promise.resolve({ value: '60' });
-        return Promise.resolve(null);
-      },
-    );
+    // Default: enabled + default thresholds (single batched findMany)
+    mockPrisma.systemConfig.findMany.mockResolvedValue(buildConfigsResult());
     mockPrisma.contract.findMany.mockResolvedValue([]);
     mockLetterService.createIfNotExists.mockResolvedValue({ id: 'letter-new' });
   });
 
   it('skips all processing when letter_auto_generate_enabled=false', async () => {
-    mockPrisma.systemConfig.findUnique.mockImplementationOnce(() =>
-      Promise.resolve({ value: 'false' }),
+    mockPrisma.systemConfig.findMany.mockResolvedValueOnce(
+      buildConfigsResult({ letter_auto_generate_enabled: 'false' }),
     );
     const result = await cron.run();
     expect(result).toEqual({ returnDevice: 0, termination: 0 });
@@ -97,13 +100,11 @@ describe('LetterAutoGenerateCron', () => {
   });
 
   it('respects custom threshold config values when querying candidates', async () => {
-    mockPrisma.systemConfig.findUnique.mockImplementation(
-      ({ where: { key } }: { where: { key: string } }) => {
-        if (key === 'letter_auto_generate_enabled') return Promise.resolve({ value: 'true' });
-        if (key === 'letter_return_device_days') return Promise.resolve({ value: '30' });
-        if (key === 'letter_termination_days') return Promise.resolve({ value: '45' });
-        return Promise.resolve(null);
-      },
+    mockPrisma.systemConfig.findMany.mockResolvedValueOnce(
+      buildConfigsResult({
+        letter_return_device_days: '30',
+        letter_termination_days: '45',
+      }),
     );
     mockPrisma.contract.findMany.mockResolvedValue([]);
 
@@ -114,9 +115,7 @@ describe('LetterAutoGenerateCron', () => {
   });
 
   it('handles outer catch block and returns zeros on catastrophic error', async () => {
-    mockPrisma.systemConfig.findUnique
-      .mockResolvedValueOnce({ value: 'true' }) // enabled check passes
-      .mockRejectedValueOnce(new Error('config read failed')); // subsequent read fails
+    mockPrisma.systemConfig.findMany.mockRejectedValueOnce(new Error('config read failed'));
 
     const result = await cron.run();
     expect(result).toEqual({ returnDevice: 0, termination: 0 });

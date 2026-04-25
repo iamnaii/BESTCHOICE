@@ -112,7 +112,7 @@ describe('ShopUploadController', () => {
           kind: UploadKind.LETTER_EVIDENCE,
           contentType: 'video/mp4',
         }),
-      ).rejects.toThrow(/ประเภทไฟล์ไม่ถูกต้อง/);
+      ).rejects.toThrow(/ไม่รองรับสำหรับประเภท/);
     });
 
     it('accepts LETTER_EVIDENCE with application/pdf', async () => {

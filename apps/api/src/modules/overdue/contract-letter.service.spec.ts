@@ -246,7 +246,7 @@ describe('ContractLetterService', () => {
     });
 
     it('markDispatched sets contract.status=LEGAL for 60d termination letter (4 tx ops)', async () => {
-      mockPrisma.contractLetter.findUnique.mockResolvedValueOnce({
+      mockPrisma.contractLetter.findFirst.mockResolvedValueOnce({
         id: 'letter-t',
         status: 'PDF_GENERATED',
         contractId: 'c1',
@@ -272,7 +272,7 @@ describe('ContractLetterService', () => {
     });
 
     it('markDispatched audit log uses actual current contract status in `from` field', async () => {
-      mockPrisma.contractLetter.findUnique.mockResolvedValueOnce({
+      mockPrisma.contractLetter.findFirst.mockResolvedValueOnce({
         id: 'letter-t2',
         status: 'PDF_GENERATED',
         contractId: 'c-audit',
@@ -304,7 +304,7 @@ describe('ContractLetterService', () => {
     });
 
     it('markDispatched does NOT set LEGAL for 45d return-device letter (2 tx ops)', async () => {
-      mockPrisma.contractLetter.findUnique.mockResolvedValueOnce({
+      mockPrisma.contractLetter.findFirst.mockResolvedValueOnce({
         id: 'letter-r',
         status: 'PDF_GENERATED',
         contractId: 'c1',

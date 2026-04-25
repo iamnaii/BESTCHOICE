@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MdmLockService } from './mdm-lock.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -13,20 +14,21 @@ export class OverdueBulkService {
   ) {}
 
   async bulkAssign(dto: BulkAssignDto, actorId: string) {
-    const result = await this.prisma.contract.updateMany({
-      where: { id: { in: dto.contractIds }, deletedAt: null },
-      data: { assignedToId: dto.assignedToId, assignedAt: new Date() },
-    });
-
-    await this.prisma.auditLog.createMany({
-      data: dto.contractIds.map((id) => ({
-        userId: actorId,
-        action: 'BULK_ASSIGN',
-        entity: 'contract',
-        entityId: id,
-        newValue: { assignedToId: dto.assignedToId },
-      })),
-    });
+    const [result] = await this.prisma.$transaction([
+      this.prisma.contract.updateMany({
+        where: { id: { in: dto.contractIds }, deletedAt: null },
+        data: { assignedToId: dto.assignedToId, assignedAt: new Date() },
+      }),
+      this.prisma.auditLog.createMany({
+        data: dto.contractIds.map((id) => ({
+          userId: actorId,
+          action: 'BULK_ASSIGN',
+          entity: 'contract',
+          entityId: id,
+          newValue: { assignedToId: dto.assignedToId },
+        })),
+      }),
+    ]);
 
     return { updated: result.count, requested: dto.contractIds.length };
   }
@@ -51,7 +53,7 @@ export class OverdueBulkService {
     };
   }
 
-  async bulkSendLine(dto: BulkSendLineDto, _actorId: string) {
+  async bulkSendLine(dto: BulkSendLineDto, actorId: string) {
     if (!dto.templateId && !dto.customMessage) {
       throw new BadRequestException('ต้องระบุ templateId หรือ customMessage');
     }
@@ -78,6 +80,7 @@ export class OverdueBulkService {
 
     let sent = 0;
     let failed = 0;
+    const auditEntries: Prisma.AuditLogCreateManyInput[] = [];
     for (const c of contracts) {
       if (!c.customer.lineId) {
         failed++;
@@ -103,9 +106,23 @@ export class OverdueBulkService {
           fallbackPhone: c.customer.phone ?? undefined,
         });
         sent++;
+        auditEntries.push({
+          userId: actorId,
+          action: 'BULK_SEND_LINE',
+          entity: 'contract',
+          entityId: c.id,
+          newValue: {
+            templateId: dto.templateId ?? null,
+            hasCustomMessage: Boolean(dto.customMessage),
+          },
+        });
       } catch {
         failed++;
       }
+    }
+
+    if (auditEntries.length > 0) {
+      await this.prisma.auditLog.createMany({ data: auditEntries });
     }
 
     return { sent, failed, total: contracts.length };

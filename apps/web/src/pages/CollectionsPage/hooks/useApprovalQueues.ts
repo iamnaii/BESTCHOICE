@@ -96,6 +96,7 @@ export function useRejectMdm() {
     onSuccess: () => {
       toast.success('ปฏิเสธคำขอ');
       qc.invalidateQueries({ queryKey: ['pending-mdm'] });
+      qc.invalidateQueries({ queryKey: ['collections-queue'] });
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });

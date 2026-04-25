@@ -8,6 +8,16 @@ import { useRecordPayment } from '../hooks/useRecordPayment';
 import type { PaymentMethod } from '../hooks/useRecordPayment';
 import type { ContractRow } from '../types';
 
+// Money string validator: non-empty, digits with optional single decimal (up to 2 places), > 0.
+// Avoids parseFloat() precision issues on money input — works purely on the raw string.
+const MONEY_PATTERN = /^\d+(\.\d{1,2})?$/;
+function isValidMoneyString(s: string): boolean {
+  const trimmed = s.trim();
+  if (!MONEY_PATTERN.test(trimmed)) return false;
+  // Reject "0" and "0.00" etc without relying on parseFloat
+  return /[1-9]/.test(trimmed);
+}
+
 interface Props {
   open: boolean;
   contract: ContractRow | null;
@@ -78,16 +88,17 @@ export default function PaymentRecordDialog({ open, contract, onClose }: Props) 
     }
   };
 
-  const amountNum = parseFloat(amount);
-  const validAmount = !isNaN(amountNum) && amountNum > 0;
-  const canSubmit = validAmount && !mutation.isPending && !uploadingSlip && (!requiresSlip || !!slipUrl);
+  const validAmount = isValidMoneyString(amount);
+  const canSubmit =
+    validAmount && !mutation.isPending && !uploadingSlip && (!requiresSlip || !!slipUrl);
 
   function handleSubmit() {
     if (!contract || !canSubmit) return;
+    // Conversion happens once at submit boundary — backend is the authoritative validator.
     mutation.mutate(
       {
         contractId: contract.id,
-        amount: amountNum,
+        amount: Number(amount.trim()),
         paymentMethod: method,
         notes: notes || undefined,
         evidenceUrl: slipUrl || undefined,
@@ -260,7 +271,7 @@ export default function PaymentRecordDialog({ open, contract, onClose }: Props) 
               ? 'กำลังบันทึก...'
               : uploadingSlip
                 ? 'กำลังอัปโหลดสลิป...'
-                : `บันทึกชำระ${validAmount ? ` ${formatNumber(amountNum)} ฿` : ''}`}
+                : `บันทึกชำระ${validAmount ? ` ${formatNumber(amount.trim())} ฿` : ''}`}
           </button>
         </div>
       </div>

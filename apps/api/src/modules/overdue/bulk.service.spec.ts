@@ -12,6 +12,7 @@ const mockPrisma = {
   },
   auditLog: { createMany: jest.fn() },
   dunningRule: { findUnique: jest.fn() },
+  $transaction: jest.fn(),
 };
 
 const mockMdmLock = {
@@ -36,13 +37,18 @@ describe('OverdueBulkService', () => {
       ],
     }).compile();
     service = module.get(OverdueBulkService);
+
+    // Default: auditLog.createMany resolves to a benign value so bulkSendLine
+    // audit-trail writes don't blow up in tests that don't assert on them.
+    mockPrisma.auditLog.createMany.mockResolvedValue({ count: 0 });
   });
 
   describe('bulkAssign', () => {
-    it('updates contracts and creates audit logs for each contractId', async () => {
+    it('updates contracts and creates audit logs atomically via $transaction', async () => {
       const contractIds = ['c1', 'c2', 'c3'];
-      mockPrisma.contract.updateMany.mockResolvedValueOnce({ count: 3 });
-      mockPrisma.auditLog.createMany.mockResolvedValueOnce({ count: 3 });
+      mockPrisma.contract.updateMany.mockReturnValueOnce({ count: 3 });
+      mockPrisma.auditLog.createMany.mockReturnValueOnce({ count: 3 });
+      mockPrisma.$transaction.mockResolvedValueOnce([{ count: 3 }, { count: 3 }]);
 
       const result = await service.bulkAssign(
         { contractIds, assignedToId: 'user-99' },
@@ -50,6 +56,7 @@ describe('OverdueBulkService', () => {
       );
 
       expect(result).toEqual({ updated: 3, requested: 3 });
+      expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
 
       const updateArg = mockPrisma.contract.updateMany.mock.calls[0][0];
       expect(updateArg.where.id.in).toEqual(contractIds);

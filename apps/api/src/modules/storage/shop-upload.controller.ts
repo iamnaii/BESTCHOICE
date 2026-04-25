@@ -19,20 +19,6 @@ export enum UploadKind {
 }
 
 /**
- * MIME allow-list per kind. When set, presign rejects unknown contentTypes.
- * Kinds NOT in this map fall back to the legacy `application/pdf | image/png |
- * image/jpeg` heuristic — preserved to avoid regressing existing flows.
- */
-const ALLOWED_MIME_BY_KIND: Partial<Record<UploadKind, readonly string[]>> = {
-  [UploadKind.VOICE_MEMO]: [
-    'audio/webm',
-    'audio/mp4',
-    'audio/ogg',
-    'audio/mpeg',
-  ],
-};
-
-/**
  * Z7: codec allow-list per kind. When set, the codec parameter inside a
  * `contentType` string (e.g. `audio/webm;codecs=opus`) is matched against
  * this list and unknown codecs are rejected. Stops crafted `;codecs=evil`
@@ -90,6 +76,22 @@ export class PresignedUploadDto {
   @IsNotEmpty({ message: 'กรุณาระบุ contentType' })
   contentType!: string;
 }
+
+// Per-kind MIME whitelists. Client's `contentType` is untrusted — server must
+// verify against the allowed set for the requested upload kind. A mismatch is
+// a 400 BadRequest (Thai message) rather than a signed URL handed to the client.
+const ALLOWED_MIME_BY_KIND: Record<UploadKind, readonly string[]> = {
+  [UploadKind.TRADE_IN_PHOTO]: ['image/jpeg', 'image/png', 'image/webp'],
+  [UploadKind.BUYBACK_PHOTO]: ['image/jpeg', 'image/png', 'image/webp'],
+  [UploadKind.BANK_SLIP]: ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'],
+  [UploadKind.REVIEW_PHOTO]: ['image/jpeg', 'image/png', 'image/webp'],
+  [UploadKind.LETTER_PDF]: ['application/pdf'],
+  [UploadKind.LETTER_EVIDENCE]: ['image/jpeg', 'image/png', 'application/pdf'],
+  [UploadKind.LETTER_SIGNATURE]: ['image/png', 'image/jpeg'],
+  [UploadKind.LETTER_LETTERHEAD]: ['image/png', 'image/jpeg'],
+  [UploadKind.MDM_WALLPAPER]: ['image/jpeg', 'image/png', 'image/webp'],
+  [UploadKind.VOICE_MEMO]: ['audio/webm', 'audio/mp4', 'audio/ogg', 'audio/mpeg'],
+};
 
 @Controller('shop/upload')
 @UseGuards(JwtAuthGuard)

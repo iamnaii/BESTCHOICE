@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { FileText, Download, CheckCircle, RotateCcw, Loader2, Upload, Eye } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
+import Modal from '@/components/ui/Modal';
 import { cn } from '@/lib/utils';
 import { useLetterQueue, type LetterRow, type LetterType, type LetterStatus } from '../hooks/useLetterQueue';
 import { useLetterActions } from '../hooks/useLetterActions';
@@ -223,6 +224,12 @@ export default function LetterQueueSection() {
   const [bulkSlipOpen, setBulkSlipOpen] = useState(false);
   const [previewLetter, setPreviewLetter] = useState<LetterRow | null>(null);
 
+  // Undeliverable reason dialog — replaces window.prompt
+  const [undeliverableLetter, setUndeliverableLetter] = useState<LetterRow | null>(null);
+  const [undeliverableReason, setUndeliverableReason] = useState<string>(
+    'ย้ายที่อยู่ไม่ทราบที่อยู่ใหม่',
+  );
+
   const openGenerate = (l: LetterRow) => {
     setDispatchLetter(l);
     setDispatchMode('generate');
@@ -234,13 +241,23 @@ export default function LetterQueueSection() {
   };
 
   const handleUndeliverable = (letter: LetterRow) => {
-    const reason = window.prompt(
-      'เหตุผลที่ส่งไม่ถึง (≥ 5 ตัวอักษร):',
-      'ย้ายที่อยู่ไม่ทราบที่อยู่ใหม่',
-    );
-    if (!reason || reason.length < 5) return;
-    markUndeliverable.mutate({ letterId: letter.id, reason });
+    setUndeliverableLetter(letter);
+    setUndeliverableReason('ย้ายที่อยู่ไม่ทราบที่อยู่ใหม่');
   };
+
+  const closeUndeliverable = () => setUndeliverableLetter(null);
+
+  const submitUndeliverable = () => {
+    if (!undeliverableLetter) return;
+    const trimmed = undeliverableReason.trim();
+    if (trimmed.length < 5) return;
+    markUndeliverable.mutate(
+      { letterId: undeliverableLetter.id, reason: trimmed },
+      { onSettled: () => closeUndeliverable() },
+    );
+  };
+
+  const undeliverableValid = undeliverableReason.trim().length >= 5;
 
   const count = data?.length ?? 0;
   const dispatchedMissingEvidence = (data ?? []).filter(
@@ -332,6 +349,79 @@ export default function LetterQueueSection() {
           subtitle={`${previewLetter.contract.customer.name} · ${previewLetter.contract.contractNumber}`}
         />
       )}
+
+      {/* Undeliverable reason — replaces window.prompt */}
+      <Modal
+        isOpen={!!undeliverableLetter}
+        onClose={closeUndeliverable}
+        title="บันทึกเหตุผลที่ส่งไม่ถึง"
+      >
+        {undeliverableLetter && (
+          <div className="space-y-4 p-1">
+            <div className="rounded-lg bg-muted/40 border border-border p-3 text-xs space-y-1">
+              <div className="flex justify-between gap-4">
+                <span className="text-muted-foreground leading-snug">ลูกค้า</span>
+                <span className="font-semibold leading-snug text-right">
+                  {undeliverableLetter.contract.customer.name}
+                </span>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="text-muted-foreground leading-snug">สัญญา</span>
+                <span className="font-mono text-primary tabular-nums">
+                  {undeliverableLetter.contract.contractNumber}
+                </span>
+              </div>
+            </div>
+
+            <div>
+              <label
+                htmlFor="undeliverable-reason"
+                className="text-xs font-medium text-muted-foreground mb-1.5 block leading-snug"
+              >
+                เหตุผลที่ส่งไม่ถึง (≥ 5 ตัวอักษร) *
+              </label>
+              <textarea
+                id="undeliverable-reason"
+                value={undeliverableReason}
+                onChange={(e) => setUndeliverableReason(e.target.value)}
+                rows={3}
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-ring leading-snug"
+                autoFocus
+              />
+              {undeliverableReason.length > 0 && !undeliverableValid && (
+                <p className="text-[10px] text-destructive mt-1 leading-snug">
+                  ต้องกรอกอย่างน้อย 5 ตัวอักษร
+                </p>
+              )}
+            </div>
+
+            <div className="flex gap-2 justify-end pt-2">
+              <button
+                type="button"
+                onClick={closeUndeliverable}
+                className="px-4 py-2 text-sm rounded-lg border border-input hover:bg-muted transition-colors"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                onClick={submitUndeliverable}
+                disabled={!undeliverableValid || markUndeliverable.isPending}
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+              >
+                {markUndeliverable.isPending ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" />
+                    กำลังบันทึก...
+                  </>
+                ) : (
+                  'บันทึก'
+                )}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </>
   );
 }

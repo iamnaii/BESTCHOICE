@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { CheckCircle2 } from 'lucide-react';
 import { useDebounce } from '@/hooks/useDebounce';
 import QueryBoundary from '@/components/QueryBoundary';
 import ContractCard from '../components/ContractCard';
@@ -65,6 +66,7 @@ export default function FollowUpTab({
   const truncated = q.data?.truncated ?? false;
 
   const openFilter = () => setFilterOpen(true);
+  // Skip-tracing filter is server-side now (via filter.showSkipTracing → DTO)
   const filtered = rows;
 
   return (
@@ -103,6 +105,7 @@ export default function FollowUpTab({
           </div>
         ) : (
           <div className="rounded-xl border border-dashed border-primary/30 bg-primary/5 p-10 text-center">
+            <CheckCircle2 className="size-10 mx-auto mb-3 text-primary" />
             <div className="text-sm font-medium text-primary leading-snug">
               ไม่มีใครที่ต้องตามต่อ
             </div>

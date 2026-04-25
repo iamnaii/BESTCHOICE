@@ -15,6 +15,7 @@ export interface TemplateVars {
   dueDate: string;
   daysOverdue: string;
   installmentNo: string;
+  trackingNumber?: string;
 }
 
 @Injectable()

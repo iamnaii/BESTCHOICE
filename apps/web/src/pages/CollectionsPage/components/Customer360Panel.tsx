@@ -28,6 +28,7 @@ import LateFeeWaiverDialog from './LateFeeWaiverDialog';
 import CustomerTagChips from './CustomerTagChips';
 import CustomerTagDialog from './CustomerTagDialog';
 import type { ContractRow } from '../types';
+import { formatThaiDateShort } from '@/lib/date';
 
 interface Props {
   contract: ContractRow | null;
@@ -301,12 +302,7 @@ export default function Customer360Panel({
                         <div className="text-xs text-muted-foreground leading-snug">
                           งวดถัดไป: งวด{' '}
                           <span className="tabular-nums font-medium">{nextDue.installmentNo}</span>{' '}
-                          ครบกำหนด{' '}
-                          {new Date(nextDue.dueDate).toLocaleDateString('th-TH', {
-                            day: 'numeric',
-                            month: 'short',
-                            year: 'numeric',
-                          })}
+                          ครบกำหนด {formatThaiDateShort(nextDue.dueDate)}
                         </div>
                       )}
                     </div>

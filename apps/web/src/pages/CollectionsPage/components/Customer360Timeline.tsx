@@ -8,6 +8,7 @@ import {
   FileText,
   type LucideIcon,
 } from 'lucide-react';
+import { formatThaiDateShort, formatThaiTime } from '@/lib/date';
 import type { TimelineEvent } from '../hooks/useCustomer360';
 import TimelineFilterChips, {
   type TimelineFilterValue,
@@ -33,11 +34,7 @@ function groupByDate(events: TimelineEvent[]): Array<{ label: string; items: Tim
     } else if (d.getTime() === yesterday.getTime()) {
       label = 'เมื่อวาน';
     } else {
-      label = d.toLocaleDateString('th-TH', {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-      });
+      label = formatThaiDateShort(d);
     }
 
     if (!groups.has(label)) {
@@ -58,11 +55,7 @@ function timeLabel(iso: string): string {
   if (mins < 60) return `${mins} นาทีที่แล้ว`;
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs} ชม.ที่แล้ว`;
-  return new Date(iso).toLocaleTimeString('th-TH', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  });
+  return formatThaiTime(iso);
 }
 
 // ─── icon/color config ───────────────────────────────────────────────────────
@@ -150,7 +143,7 @@ function getEventStyle(event: TimelineEvent): EventStyle {
 
 // ─── sub-components ──────────────────────────────────────────────────────────
 
-function EventCard({ event, isFirst }: { event: TimelineEvent; isFirst: boolean }) {
+function EventCard({ event }: { event: TimelineEvent }) {
   const { Icon, iconBg, iconText, typeLabel } = getEventStyle(event);
   const label = timeLabel(event.timestamp);
 
@@ -163,11 +156,7 @@ function EventCard({ event, isFirst }: { event: TimelineEvent; isFirst: boolean 
     event.type === 'CALL' ? (event.metadata?.callLogId as string | undefined) : undefined;
 
   return (
-    <div
-      className={`flex gap-3 px-1 py-2.5 rounded-lg hover:bg-muted/40 transition-colors ${
-        isFirst ? '' : ''
-      }`}
-    >
+    <div className="flex gap-3 px-1 py-2.5 rounded-lg hover:bg-muted/40 transition-colors">
       {/* Icon circle */}
       <div
         className={`shrink-0 mt-0.5 size-8 rounded-full flex items-center justify-center ${iconBg}`}
@@ -272,8 +261,8 @@ export default function Customer360Timeline({ events }: Props) {
 
               {/* Events */}
               <div>
-                {group.items.map((event, idx) => (
-                  <EventCard key={event.id} event={event} isFirst={idx === 0} />
+                {group.items.map((event) => (
+                  <EventCard key={event.id} event={event} />
                 ))}
               </div>
             </div>

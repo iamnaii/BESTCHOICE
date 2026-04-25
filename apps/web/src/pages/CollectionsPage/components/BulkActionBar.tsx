@@ -1,12 +1,21 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { X, UserPlus, MessageSquare, Lock } from 'lucide-react';
+import { X, UserPlus, MessageSquare, Lock, Copy } from 'lucide-react';
+import { toast } from 'sonner';
 import api from '@/lib/api';
 import { useBulkActions } from '../hooks/useBulkActions';
+import type { ContractRow } from '../types';
 
 interface Props {
   selectedIds: Set<string>;
   onClear: () => void;
+  /**
+   * The currently-rendered contract rows. Used to resolve selected IDs to
+   * their phone numbers for the "Copy เบอร์" action. Optional so callers
+   * that don't yet pass it (or rely on the default) keep compiling — the
+   * copy button auto-disables when there's nothing to copy.
+   */
+  contracts?: ContractRow[];
 }
 
 interface StaffUser {
@@ -15,7 +24,7 @@ interface StaffUser {
   role: string;
 }
 
-export default function BulkActionBar({ selectedIds, onClear }: Props) {
+export default function BulkActionBar({ selectedIds, onClear, contracts }: Props) {
   const [assignOpen, setAssignOpen] = useState(false);
   const [lineMessage, setLineMessage] = useState('');
   const [lineOpen, setLineOpen] = useState(false);
@@ -36,6 +45,30 @@ export default function BulkActionBar({ selectedIds, onClear }: Props) {
 
   const ids = Array.from(selectedIds);
   const show = ids.length > 0;
+
+  // Phones are derived from the rendered rows (`contracts`) intersected with
+  // the selected IDs. We can't ship a no-op when phones list is empty
+  // because the rows might be paginated out — but the button stays disabled
+  // when contracts wasn't passed at all (older callers).
+  const phones = contracts
+    ? contracts
+        .filter((c) => selectedIds.has(c.id))
+        .map((c) => c.customer?.phone)
+        .filter((p): p is string => !!p && p.trim().length > 0)
+    : [];
+
+  const handleCopyPhones = async () => {
+    if (phones.length === 0) {
+      toast.error('ไม่พบเบอร์โทรในรายการที่เลือก');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(phones.join(', '));
+      toast.success(`คัดลอก ${phones.length} เบอร์แล้ว`);
+    } catch {
+      toast.error('ไม่สามารถคัดลอกได้ — เบราว์เซอร์ไม่รองรับ clipboard');
+    }
+  };
 
   return (
     <>
@@ -71,6 +104,15 @@ export default function BulkActionBar({ selectedIds, onClear }: Props) {
             >
               <Lock className="size-3.5" />
               เสนอล็อค
+            </button>
+            <button
+              onClick={handleCopyPhones}
+              disabled={!contracts}
+              title={!contracts ? 'ไม่มีข้อมูลเบอร์ในมุมนี้' : undefined}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-input hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+            >
+              <Copy className="size-3.5" />
+              Copy เบอร์
             </button>
             <button
               onClick={onClear}

@@ -33,9 +33,17 @@ interface Props {
   onLogContact: (c: ContractRow) => void;
   onOpen360?: (c: ContractRow) => void;
   onSendLine?: (c: ContractRow) => void;
+  onSkipTrace?: (c: ContractRow) => void;
 }
 
-export default function FollowUpTab({ search, branchId, onLogContact, onOpen360, onSendLine }: Props) {
+export default function FollowUpTab({
+  search,
+  branchId,
+  onLogContact,
+  onOpen360,
+  onSendLine,
+  onSkipTrace,
+}: Props) {
   const [page, setPage] = useState(1);
   const [filterOpen, setFilterOpen] = useState(false);
   const sel = useBulkSelection();
@@ -166,7 +174,7 @@ export default function FollowUpTab({ search, branchId, onLogContact, onOpen360,
           )}
         </>
       )}
-      <BulkActionBar selectedIds={sel.selectedIds} onClear={sel.clear} />
+      <BulkActionBar selectedIds={sel.selectedIds} onClear={sel.clear} contracts={rows} />
       <FilterDrawer
         open={filterOpen}
         onOpenChange={setFilterOpen}

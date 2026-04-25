@@ -251,7 +251,7 @@ export default function PromiseTab({ search, branchId, onLogContact, onOpen360, 
           )}
         </>
       )}
-      <BulkActionBar selectedIds={sel.selectedIds} onClear={sel.clear} />
+      <BulkActionBar selectedIds={sel.selectedIds} onClear={sel.clear} contracts={rows} />
       <FilterDrawer
         open={filterOpen}
         onOpenChange={setFilterOpen}

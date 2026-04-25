@@ -18,9 +18,9 @@ export class CreateCompanyDto {
   @IsString({ message: 'ชื่อบริษัท (อังกฤษ) ต้องเป็นข้อความ' })
   nameEn?: string;
 
+  @IsOptional()
   @IsString({ message: 'เลขประจำตัวผู้เสียภาษีต้องเป็นข้อความ' })
-  @IsNotEmpty({ message: 'กรุณาระบุเลขประจำตัวผู้เสียภาษี' })
-  taxId!: string;
+  taxId?: string;
 
   // companyCode is set once at creation and becomes the system identifier.
   // Only OWNER can assign it, and it's immutable afterward.

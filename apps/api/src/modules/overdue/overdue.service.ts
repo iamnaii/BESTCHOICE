@@ -909,6 +909,20 @@ export class OverdueService {
       collectionNotes?: string;
       settlementDate?: string;
       settlementNotes?: string;
+      // P1 Task 12 quick-tag enums (optional, back-compat).
+      callResult?:
+        | 'ANSWERED'
+        | 'NO_ANSWER'
+        | 'BUSY'
+        | 'DEVICE_OFF'
+        | 'UNREACHABLE';
+      negotiationResult?:
+        | 'REQUESTED_EXTENSION'
+        | 'WILL_PAY'
+        | 'REFUSED'
+        | 'REQUESTED_RETURN'
+        | 'NEGOTIATING'
+        | 'NOT_APPLICABLE';
     },
   ) {
     const contract = await this.prisma.contract.findFirst({
@@ -946,6 +960,11 @@ export class OverdueService {
           notes: dto.notes ?? null,
           settlementDate: dto.settlementDate ? new Date(dto.settlementDate) : null,
           settlementNotes: dto.settlementNotes ?? null,
+          // P1 Task 12 — quick-tag enums. Stored alongside the legacy `result`
+          // free-string for back-compat. Analytics dashboards prefer these
+          // structured columns going forward.
+          callResult: dto.callResult ?? null,
+          negotiationResult: dto.negotiationResult ?? null,
         },
         include: { caller: { select: { id: true, name: true } } },
       }),

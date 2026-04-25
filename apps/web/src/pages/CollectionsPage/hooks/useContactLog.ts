@@ -9,6 +9,20 @@ export interface LogContactPayload {
   collectionNotes?: string;
   settlementDate?: string;
   settlementNotes?: string;
+  // P1 Task 12 — quick-tag enums
+  callResult?:
+    | 'ANSWERED'
+    | 'NO_ANSWER'
+    | 'BUSY'
+    | 'DEVICE_OFF'
+    | 'UNREACHABLE';
+  negotiationResult?:
+    | 'REQUESTED_EXTENSION'
+    | 'WILL_PAY'
+    | 'REFUSED'
+    | 'REQUESTED_RETURN'
+    | 'NEGOTIATING'
+    | 'NOT_APPLICABLE';
 }
 
 export function useContactLog() {

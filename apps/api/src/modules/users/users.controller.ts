@@ -51,6 +51,15 @@ export class UsersController {
     return this.usersService.create(dto);
   }
 
+  @Patch('me/extension')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  updateExtension(
+    @CurrentUser('id') userId: string,
+    @Body('extension') extension: string,
+  ) {
+    return this.usersService.updateExtension(userId, extension);
+  }
+
   @Patch(':id')
   @Roles('OWNER')
   update(@Param('id') id: string, @Body() dto: UpdateUserDto) {

@@ -188,4 +188,11 @@ export class UsersService {
 
     return updated;
   }
+
+  async updateExtension(userId: string, extension: string | null): Promise<void> {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { yeastarExtension: extension || null },
+    });
+  }
 }

@@ -13,6 +13,7 @@ import TimelineFilterChips, {
   type TimelineFilterValue,
 } from './TimelineFilterChips';
 import { DateRangePicker, type DateRangeValue } from '@/components/ui/DateRangePicker';
+import VoiceMemoPlayback from './VoiceMemoPlayback';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -153,6 +154,14 @@ function EventCard({ event, isFirst }: { event: TimelineEvent; isFirst: boolean 
   const { Icon, iconBg, iconText, typeLabel } = getEventStyle(event);
   const label = timeLabel(event.timestamp);
 
+  // P2 Task 4 — voice memo playback inline (CALL events only)
+  const voiceMemoUrl =
+    event.type === 'CALL' ? (event.metadata?.voiceMemoUrl as string | undefined) : undefined;
+  const voiceMemoTier =
+    event.type === 'CALL' ? (event.metadata?.voiceMemoTier as string | undefined) : undefined;
+  const callLogId =
+    event.type === 'CALL' ? (event.metadata?.callLogId as string | undefined) : undefined;
+
   return (
     <div
       className={`flex gap-3 px-1 py-2.5 rounded-lg hover:bg-muted/40 transition-colors ${
@@ -178,6 +187,15 @@ function EventCard({ event, isFirst }: { event: TimelineEvent; isFirst: boolean 
         {event.subtitle && (
           <div className="text-xs text-muted-foreground mt-0.5 truncate leading-snug">
             {event.subtitle}
+          </div>
+        )}
+        {voiceMemoUrl && (
+          <div className="mt-1.5">
+            <VoiceMemoPlayback
+              voiceMemoUrl={voiceMemoUrl}
+              tier={voiceMemoTier}
+              callLogId={callLogId}
+            />
           </div>
         )}
       </div>

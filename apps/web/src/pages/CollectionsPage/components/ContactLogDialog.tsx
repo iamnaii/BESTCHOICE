@@ -5,6 +5,7 @@ import CallResultChips, {
   type CallResultTag,
   type NegotiationResultTag,
 } from './CallResultChips';
+import VoiceMemoRecorder from './VoiceMemoRecorder';
 import type { ContractRow, CallResult } from '../types';
 
 interface Props {
@@ -33,6 +34,8 @@ const defaultForm = {
   // P1 Task 12 — quick-tag chip selections
   callResult: null as CallResultTag | null,
   negotiationResult: null as NegotiationResultTag | null,
+  // P2 Task 4 — voice memo S3 URL (set after upload completes)
+  voiceMemoUrl: null as string | null,
 };
 
 // Derive tomorrow's date for min= on settlement date input
@@ -73,6 +76,9 @@ export default function ContactLogDialog({ open, contract, onClose }: Props) {
       // remains the legacy source of truth.
       callResult: form.callResult ?? undefined,
       negotiationResult: form.negotiationResult ?? undefined,
+      // Voice memo URL (Task 4) — uploaded to S3 ahead of submit; null/undefined
+      // when no recording was made.
+      voiceMemoUrl: form.voiceMemoUrl ?? undefined,
     };
     mutation.mutate(payload, {
       onSuccess: () => {
@@ -175,6 +181,20 @@ export default function ContactLogDialog({ open, contract, onClose }: Props) {
             placeholder="รายละเอียดการสนทนา..."
             rows={2}
             className="w-full px-3 py-2 border border-input rounded-lg text-sm resize-none leading-snug"
+          />
+        </div>
+
+        {/* Voice memo recorder (Task 4) — optional evidence; URL persisted on
+            CallLog.voiceMemoUrl alongside the notes above. */}
+        <div>
+          <label className="text-xs font-medium text-muted-foreground mb-1 block leading-snug">
+            เสียงบันทึก (ทางเลือก)
+          </label>
+          <VoiceMemoRecorder
+            disabled={mutation.isPending}
+            uploadedUrl={form.voiceMemoUrl}
+            onUploaded={(url) => setForm((prev) => ({ ...prev, voiceMemoUrl: url }))}
+            onCleared={() => setForm((prev) => ({ ...prev, voiceMemoUrl: null }))}
           />
         </div>
 

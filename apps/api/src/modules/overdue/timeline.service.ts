@@ -93,6 +93,10 @@ export class OverdueTimelineService {
           result: c.result,
           notes: c.notes ?? undefined,
           settlementDate: c.settlementDate ?? undefined,
+          // P2 Task 4 — voice memo surfaced inline on Customer 360 timeline.
+          callLogId: c.id,
+          voiceMemoUrl: c.voiceMemoUrl ?? undefined,
+          voiceMemoTier: c.voiceMemoTier ?? undefined,
         },
       });
     }

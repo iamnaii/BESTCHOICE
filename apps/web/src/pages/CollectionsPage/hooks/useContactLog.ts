@@ -23,6 +23,8 @@ export interface LogContactPayload {
     | 'REQUESTED_RETURN'
     | 'NEGOTIATING'
     | 'NOT_APPLICABLE';
+  // P2 Task 4 — voice memo evidence (S3 URL stored on CallLog).
+  voiceMemoUrl?: string;
 }
 
 export function useContactLog() {

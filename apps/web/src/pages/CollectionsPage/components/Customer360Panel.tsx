@@ -1,19 +1,38 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { X, Phone, MessageCircle, MapPin, Loader2 } from 'lucide-react';
 import type { PaymentScheduleItem } from '../hooks/useCustomer360';
 import { useCustomer360 } from '../hooks/useCustomer360';
+import { useCustomerInsights } from '../hooks/useCustomerInsights';
 import Customer360Timeline from './Customer360Timeline';
 import Customer360Actions from './Customer360Actions';
+import SmartCustomerPanel from './SmartCustomerPanel';
+import RelatedContractsTab from './RelatedContractsTab';
 import type { ContractRow } from '../types';
 
 interface Props {
   contract: ContractRow | null;
   onClose: () => void;
   onRequestSendLine?: (c: ContractRow) => void; // Task 8 wires this
+  onSelectContract?: (contractId: string) => void;
 }
 
-export default function Customer360Panel({ contract, onClose, onRequestSendLine }: Props) {
+type Tab = 'overview' | 'related';
+
+export default function Customer360Panel({
+  contract,
+  onClose,
+  onRequestSendLine,
+  onSelectContract,
+}: Props) {
   const { data, isLoading, isError } = useCustomer360(contract?.id ?? null);
+  const customerId = data?.detail.customer.id ?? contract?.customer.id ?? null;
+  const { data: insights } = useCustomerInsights(customerId);
+
+  const [tab, setTab] = useState<Tab>('overview');
+
+  useEffect(() => {
+    setTab('overview');
+  }, [contract?.id]);
 
   // Close on Escape
   useEffect(() => {
@@ -117,11 +136,34 @@ export default function Customer360Panel({ contract, onClose, onRequestSendLine 
                     </span>
                   )}
                 </div>
+                <SmartCustomerPanel insights={insights} />
                 <div className="mt-2 text-xs text-muted-foreground leading-snug">
                   สาขา {contract.branch.name}
                 </div>
               </section>
 
+              {/* Tabs */}
+              <div className="flex border-b border-border bg-card sticky top-[73px] z-10">
+                <TabButton active={tab === 'overview'} onClick={() => setTab('overview')}>
+                  ภาพรวม
+                </TabButton>
+                <TabButton active={tab === 'related'} onClick={() => setTab('related')}>
+                  สัญญาทั้งหมด
+                </TabButton>
+              </div>
+
+              {tab === 'related' ? (
+                <section className="p-5">
+                  <RelatedContractsTab
+                    customerId={customerId}
+                    currentContractId={contract.id}
+                    onSelectContract={(id) => {
+                      if (onSelectContract) onSelectContract(id);
+                    }}
+                  />
+                </section>
+              ) : (
+                <>
               {/* Contract summary */}
               <section className="p-5 border-b border-border">
                 <div className="text-xs uppercase tracking-wider text-muted-foreground mb-3">
@@ -203,10 +245,35 @@ export default function Customer360Panel({ contract, onClose, onRequestSendLine 
                   }
                 />
               </section>
+                </>
+              )}
             </>
           )}
         </div>
       </aside>
     </>
+  );
+}
+
+interface TabButtonProps {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}
+
+function TabButton({ active, onClick, children }: TabButtonProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex-1 px-4 py-2 text-sm leading-snug border-b-2 transition-colors ${
+        active
+          ? 'border-primary text-foreground'
+          : 'border-transparent text-muted-foreground hover:text-foreground'
+      }`}
+      aria-pressed={active}
+    >
+      {children}
+    </button>
   );
 }

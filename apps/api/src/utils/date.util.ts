@@ -23,3 +23,21 @@ export function calculateAgeInYears(birthDate: Date | string, now: Date = new Da
   const birth = typeof birthDate === 'string' ? new Date(birthDate) : birthDate;
   return Math.floor((now.getTime() - birth.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
 }
+
+/**
+ * Returns the UTC Date that corresponds to 00:00:00 in Asia/Bangkok (UTC+7,
+ * no DST) for the same wall-clock day as `now`. Used by KPI / "today" queries
+ * so day boundaries match the human operator's calendar regardless of where
+ * the server runs.
+ *
+ * Example: at 2026-04-25 03:00 UTC (which is 2026-04-25 10:00 Bangkok), this
+ * returns the UTC Date for 2026-04-24 17:00 UTC (= 2026-04-25 00:00 Bangkok).
+ */
+export function bangkokStartOfDay(now: Date = new Date()): Date {
+  const bangkokNow = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+  const y = bangkokNow.getUTCFullYear();
+  const m = bangkokNow.getUTCMonth();
+  const d = bangkokNow.getUTCDate();
+  // 00:00 Bangkok of that wall-clock day = 17:00 UTC of the previous day
+  return new Date(Date.UTC(y, m, d, 0, 0, 0, 0) - 7 * 60 * 60 * 1000);
+}

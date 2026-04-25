@@ -8,12 +8,14 @@ import { DunningEngineService } from './dunning-engine.service';
 import { MdmLockService } from './mdm-lock.service';
 import { OverdueQueueService } from './queue.service';
 import { OverdueKpiService } from './kpi.service';
+import { MyTodayKpiService } from './my-today-kpi.service';
 import { OverdueTimelineService } from './timeline.service';
 import { OverdueBulkService } from './bulk.service';
 import { DunningRetryService } from './dunning-retry.service';
 import { OverdueAnalyticsService } from './analytics.service';
 import { AnalyticsAgingService } from './analytics-aging.service';
 import { AnalyticsLeaderboardService } from './analytics-leaderboard.service';
+import { AnalyticsRecoveryService } from './analytics-recovery.service';
 import { StuckContractsService } from './stuck-contracts.service';
 import { OwnerAlertHelper } from './owner-alert.helper';
 import { BrokenPromiseCron } from './crons/broken-promise.cron';
@@ -22,6 +24,7 @@ import { LetterAutoGenerateCron } from './crons/letter-auto-generate.cron';
 import { ContractSnapshotCron } from './contract-snapshot.cron';
 import { BrokenPromiseReminderCron } from './broken-promise-reminder.cron';
 import { ContractSnoozeService } from './snooze.service';
+import { CustomerInsightsService } from './customer-insights.service';
 import { ChatEngineModule } from '../chat-engine/chat-engine.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { LineOaModule } from '../line-oa/line-oa.module';
@@ -38,12 +41,14 @@ import { LineOaModule } from '../line-oa/line-oa.module';
     MdmLockService,
     OverdueQueueService,
     OverdueKpiService,
+    MyTodayKpiService,
     OverdueTimelineService,
     OverdueBulkService,
     DunningRetryService,
     OverdueAnalyticsService,
     AnalyticsAgingService,
     AnalyticsLeaderboardService,
+    AnalyticsRecoveryService,
     StuckContractsService,
     OwnerAlertHelper,
     BrokenPromiseCron,
@@ -52,8 +57,10 @@ import { LineOaModule } from '../line-oa/line-oa.module';
     ContractSnapshotCron,
     BrokenPromiseReminderCron,
     ContractSnoozeService,
+    CustomerInsightsService,
   ],
   exports: [
+    CustomerInsightsService,
     OverdueService,
     ContractLetterService,
     DunningRuleService,

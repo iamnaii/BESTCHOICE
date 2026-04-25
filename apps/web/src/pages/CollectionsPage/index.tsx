@@ -3,6 +3,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import PageHeader from '@/components/ui/PageHeader';
 import CollectionsKpiStrip from './components/CollectionsKpiStrip';
+import DailyProgressStrip from './components/DailyProgressStrip';
 import CollectionsTabs from './components/CollectionsTabs';
 import CollectionsFilters from './components/CollectionsFilters';
 import ContactLogDialog from './components/ContactLogDialog';
@@ -68,6 +69,8 @@ export default function CollectionsPage() {
       <PageHeader title="ติดตามหนี้" subtitle="คิวงานของผู้ติดตามหนี้รายวัน" />
 
       <MigrationBanner />
+
+      <DailyProgressStrip onSwitchToToday={() => setActiveTab('today')} />
 
       <CollectionsKpiStrip />
 

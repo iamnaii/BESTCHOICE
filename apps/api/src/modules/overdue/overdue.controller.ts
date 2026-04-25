@@ -5,6 +5,7 @@ import { DunningRuleService } from './dunning-rule.service';
 import { DunningEngineService } from './dunning-engine.service';
 import { OverdueQueueService } from './queue.service';
 import { OverdueKpiService } from './kpi.service';
+import { MyTodayKpiService } from './my-today-kpi.service';
 import { MdmLockService } from './mdm-lock.service';
 import { OverdueTimelineService } from './timeline.service';
 import { OverdueBulkService } from './bulk.service';
@@ -13,6 +14,7 @@ import { DunningRetryService } from './dunning-retry.service';
 import { OverdueAnalyticsService } from './analytics.service';
 import { AnalyticsAgingService } from './analytics-aging.service';
 import { AnalyticsLeaderboardService } from './analytics-leaderboard.service';
+import { AnalyticsRecoveryService } from './analytics-recovery.service';
 import { StuckContractsService } from './stuck-contracts.service';
 import { ContractSnoozeService } from './snooze.service';
 import { CreateSnoozeDto } from './dto/snooze.dto';
@@ -45,6 +47,7 @@ export class OverdueController {
     private dunningEngineService: DunningEngineService,
     private queueService: OverdueQueueService,
     private kpiService: OverdueKpiService,
+    private myTodayKpiService: MyTodayKpiService,
     private mdmLockService: MdmLockService,
     private timelineService: OverdueTimelineService,
     private bulkService: OverdueBulkService,
@@ -53,6 +56,7 @@ export class OverdueController {
     private analyticsService: OverdueAnalyticsService,
     private analyticsAgingService: AnalyticsAgingService,
     private analyticsLeaderboardService: AnalyticsLeaderboardService,
+    private analyticsRecoveryService: AnalyticsRecoveryService,
     private stuckContractsService: StuckContractsService,
     private snoozeService: ContractSnoozeService,
   ) {}
@@ -104,6 +108,15 @@ export class OverdueController {
       userRole: user.role,
       userBranchId: user.branchId,
     });
+  }
+
+  // P2 Task 1: per-user "what have I done today?" mini-KPI strip on the
+  // Collections page header. Scoped to the current user so the chips match
+  // the operator's own activity, not a branch/global aggregate.
+  @Get('kpi/my-today')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getMyTodayKpi(@CurrentUser() user: { id: string }) {
+    return this.myTodayKpiService.getMyToday(user.id);
   }
 
   @Get('mdm-pending')
@@ -558,6 +571,24 @@ export class OverdueController {
   @Roles('OWNER')
   getAnalyticsLeaderboard() {
     return this.analyticsLeaderboardService.getLeaderboard();
+  }
+
+  // P2 Task 8 / E3 — recovery rate by dunning channel.
+  // `from` and `to` are ISO date strings; defaults to last 30 days when missing.
+  @Get('analytics/recovery')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  getAnalyticsRecovery(
+    @Query('from') fromRaw?: string,
+    @Query('to') toRaw?: string,
+  ) {
+    const now = new Date();
+    const defaultFrom = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const from = fromRaw ? new Date(fromRaw) : defaultFrom;
+    const to = toRaw ? new Date(toRaw) : now;
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+      throw new BadRequestException('รูปแบบวันที่ไม่ถูกต้อง (from/to ต้องเป็น ISO date)');
+    }
+    return this.analyticsRecoveryService.getRecoveryByChannel({ from, to });
   }
 
   @Get('analytics/stuck')

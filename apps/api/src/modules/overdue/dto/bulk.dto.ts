@@ -19,30 +19,30 @@ export class BulkAssignDto {
 }
 
 export class BulkSendLineDto {
-  @IsArray()
-  @ArrayMinSize(1)
-  @ArrayMaxSize(100)
-  @IsString({ each: true })
+  @IsArray({ message: 'contractIds ต้องเป็น array' })
+  @ArrayMinSize(1, { message: 'ต้องเลือกอย่างน้อย 1 รายการ' })
+  @ArrayMaxSize(100, { message: 'เลือกได้สูงสุด 100 รายการต่อครั้ง' })
+  @IsString({ each: true, message: 'contractId ต้องเป็น string' })
   contractIds!: string[];
 
   @IsOptional()
-  @IsString()
+  @IsString({ message: 'templateId ต้องเป็น string' })
   templateId?: string;
 
   @IsOptional()
-  @IsString()
+  @IsString({ message: 'customMessage ต้องเป็น string' })
   @MinLength(10, { message: 'ข้อความต้อง ≥ 10 ตัวอักษร' })
   customMessage?: string;
 }
 
 export class BulkProposeLockDto {
-  @IsArray()
-  @ArrayMinSize(1)
-  @ArrayMaxSize(100)
-  @IsString({ each: true })
+  @IsArray({ message: 'contractIds ต้องเป็น array' })
+  @ArrayMinSize(1, { message: 'ต้องเลือกอย่างน้อย 1 รายการ' })
+  @ArrayMaxSize(100, { message: 'เลือกได้สูงสุด 100 รายการต่อครั้ง' })
+  @IsString({ each: true, message: 'contractId ต้องเป็น string' })
   contractIds!: string[];
 
-  @IsString()
+  @IsString({ message: 'ต้องระบุเหตุผล' })
   @MinLength(5, { message: 'เหตุผล ≥ 5 ตัวอักษร' })
   reason!: string;
 }

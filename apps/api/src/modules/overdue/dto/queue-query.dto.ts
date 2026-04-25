@@ -1,4 +1,4 @@
-import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class QueueQueryDto {
@@ -8,6 +8,12 @@ export class QueueQueryDto {
   @IsOptional()
   @IsString()
   branchId?: string;
+
+  /** C1: server-side search by customer name / contractNumber / phone */
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  search?: string;
 
   @IsOptional()
   @Type(() => Number)

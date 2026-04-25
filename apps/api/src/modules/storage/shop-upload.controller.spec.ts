@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ShopUploadController, UploadKind } from './shop-upload.controller';
 import { StorageService } from './storage.service';
@@ -92,6 +93,43 @@ describe('ShopUploadController', () => {
         contentType: 'image/png',
       });
       expect(result.key).toMatch(/^shop\/trade_in_photo\/.+\.png$/);
+    });
+  });
+
+  describe('MIME whitelist enforcement', () => {
+    it('rejects LETTER_PDF with non-PDF content type', async () => {
+      await expect(
+        controller.presign({
+          kind: UploadKind.LETTER_PDF,
+          contentType: 'image/jpeg',
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects LETTER_EVIDENCE with video/mp4', async () => {
+      await expect(
+        controller.presign({
+          kind: UploadKind.LETTER_EVIDENCE,
+          contentType: 'video/mp4',
+        }),
+      ).rejects.toThrow(/ประเภทไฟล์ไม่ถูกต้อง/);
+    });
+
+    it('accepts LETTER_EVIDENCE with application/pdf', async () => {
+      const result = await controller.presign({
+        kind: UploadKind.LETTER_EVIDENCE,
+        contentType: 'application/pdf',
+      });
+      expect(result.key).toMatch(/^letters\/letter_evidence\/.+\.pdf$/);
+    });
+
+    it('rejects LETTER_SIGNATURE with application/pdf', async () => {
+      await expect(
+        controller.presign({
+          kind: UploadKind.LETTER_SIGNATURE,
+          contentType: 'application/pdf',
+        }),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 });

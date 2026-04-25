@@ -426,7 +426,16 @@ function App() {
           <Route path="/receipts" element={<Navigate to="/payments?tab=receipts" replace />} />
           <Route path="/verify/:receiptNumber" element={<ReceiptVerifyPage />} />
           <Route path="/overdue" element={<OverduePage />} />
-          <Route path="/collections" element={<CollectionsPage />} />
+          <Route
+            path="/collections"
+            element={
+              <ProtectedRoute
+                roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES']}
+              >
+                <CollectionsPage />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/collection-dashboard"
             element={

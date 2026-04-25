@@ -137,21 +137,44 @@ export class StorageService {
     key: string,
     contentType: string,
     expiresSec = 600,
+    maxContentLength?: number,
   ): Promise<{ url: string; method: 'PUT' }> {
     if (this.backend === 'gcs' && this.gcs) {
       const file = this.gcs.bucket(this.bucket).file(key);
+      // GCS V4 signed URLs support a `x-goog-content-length-range: min,max`
+      // extension header which the storage server enforces — uploads exceeding
+      // the cap are rejected even if the client lies about Content-Length.
+      const extensionHeaders: Record<string, string> | undefined =
+        typeof maxContentLength === 'number' && maxContentLength > 0
+          ? { 'x-goog-content-length-range': `0,${maxContentLength}` }
+          : undefined;
       const [url] = await file.getSignedUrl({
         action: 'write',
         version: 'v4',
         expires: Date.now() + expiresSec * 1000,
         contentType,
+        ...(extensionHeaders ? { extensionHeaders } : {}),
       });
+      if (maxContentLength) {
+        this.logger.log(
+          `GCS presigned upload ${key} (max ${maxContentLength}B enforced via x-goog-content-length-range)`,
+        );
+      }
       return { url, method: 'PUT' };
     }
 
     if (this.backend === 's3' && this.s3) {
+      // S3 PUT presigned URLs cannot enforce content-length-range
+      // (that constraint only applies to POST policy presigns). The DTO bound
+      // is the authoritative cap; we audit the requested size here so any
+      // mismatch surfaces in logs / Sentry breadcrumbs.
       const cmd = new PutObjectCommand({ Bucket: this.bucket, Key: key, ContentType: contentType });
       const url = await getSignedUrl(this.s3, cmd, { expiresIn: expiresSec });
+      if (maxContentLength) {
+        this.logger.log(
+          `S3 presigned upload ${key} (max ${maxContentLength}B — DTO-enforced, S3 PUT cannot pin)`,
+        );
+      }
       return { url, method: 'PUT' };
     }
 

@@ -1,4 +1,4 @@
-import { IsIn, IsOptional, IsString, IsDateString, MaxLength } from 'class-validator';
+import { IsIn, IsOptional, IsString, IsDateString, IsUrl, MaxLength } from 'class-validator';
 
 // P1 Task 12 — quick-tag enums captured from ContactLogDialog chips.
 // Keep values 1:1 with prisma `CallResult` and `NegotiationResult` enums.
@@ -54,4 +54,10 @@ export class LogContactDto {
   @IsOptional()
   @IsIn(NEGOTIATION_RESULT_VALUES, { message: 'negotiationResult ไม่ถูกต้อง' })
   negotiationResult?: NegotiationResultTag;
+
+  // P2 Task 4 — voice memo evidence (S3 URL). Tier defaults to HOT in schema.
+  @IsOptional()
+  @IsUrl({ require_tld: false }, { message: 'voiceMemoUrl ต้องเป็น URL' })
+  @MaxLength(2048)
+  voiceMemoUrl?: string;
 }

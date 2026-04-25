@@ -623,6 +623,9 @@ model User {
   snoozes       ContractSnooze[]
   filterPresets FilterPreset[]
 
+  // P2 Collections UI — legal case document uploads (append-only)
+  uploadedLegalDocs LegalCaseDocument[] @relation("LegalCaseDocumentUploadedBy")
+
   @@index([branchId])
   @@map("users")
 }
@@ -690,6 +693,9 @@ model Customer {
   referralAwardedAt DateTime?  @map("referral_awarded_at")
 
   creditCheckStatus CustomerCreditCheckStatus @default(NONE) @map("credit_check_status")
+
+  // P2 Collections — lifecycle status (LOST = skip-tracing target)
+  status CustomerStatus @default(ACTIVE)
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
@@ -902,6 +908,9 @@ model Contract {
   // P1 Collections UI — per-user snooze + daily snapshot rollups
   snoozes        ContractSnooze[]
   dailySnapshots ContractDailySnapshot[]
+
+  // P2 Collections UI — legal case (1:1, optional)
+  legalCase LegalCase?
 
   @@index([customerId])
   @@index([branchId])
@@ -1706,26 +1715,32 @@ model NotificationLog {
 }
 
 model CallLog {
-  id              String    @id @default(uuid())
-  contractId      String    @map("contract_id")
-  callerId        String    @map("caller_id")
-  calledAt        DateTime  @map("called_at")
-  result          String // e.g. ANSWERED, NO_ANSWER, PROMISED, REFUSED
-  notes           String?
-  settlementDate  DateTime? @map("settlement_date") // วันที่นัดชำระ (กรณี PROMISED)
-  settlementNotes String?   @map("settlement_notes") // รายละเอียดการนัดชำระ
+  id                               String             @id @default(uuid())
+  contractId                       String             @map("contract_id")
+  callerId                         String             @map("caller_id")
+  calledAt                         DateTime           @map("called_at")
+  result                           String // e.g. ANSWERED, NO_ANSWER, PROMISED, REFUSED
+  notes                            String?
+  settlementDate                   DateTime?          @map("settlement_date") // วันที่นัดชำระ (กรณี PROMISED)
+  settlementNotes                  String?            @map("settlement_notes") // รายละเอียดการนัดชำระ
   /// Timestamp เมื่อ cron พบว่าลูกค้าผิดคำสัญญาชำระ (settlementDate ผ่านแล้วแต่ยังไม่ชำระ).
   /// ใช้ร่วมกับ result='PROMISED' เพื่อนับ broken-promise count → ป้อนเข้า dunning
   /// escalation และ credit-check ถัดไป
-  brokenAt        DateTime? @map("broken_at")
+  brokenAt                         DateTime?          @map("broken_at")
   // P1 Collections — quick-tag enums captured from ContactLogDialog (Task 12).
   // `result` (free-string above) remains the legacy field for back-compat;
   // these add structured analytics dimensions.
-  callResult        CallResult?        @map("call_result")
-  negotiationResult NegotiationResult? @map("negotiation_result")
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
-  deletedAt       DateTime? @map("deleted_at")
+  callResult                       CallResult?        @map("call_result")
+  negotiationResult                NegotiationResult? @map("negotiation_result")
+  // P2 Collections — voice memo evidence (S3 URL + tier).
+  // Tier 'HOT' = standard S3 (immediate playback). 'GLACIER' = archived
+  // after retention threshold; restore expires at glacierRestoreExpiresAt.
+  voiceMemoUrl                     String?            @map("voice_memo_url")
+  voiceMemoTier                    String?            @default("HOT") @map("voice_memo_tier")
+  voiceMemoGlacierRestoreExpiresAt DateTime?          @map("voice_memo_glacier_restore_expires_at")
+  createdAt                        DateTime           @default(now()) @map("created_at")
+  updatedAt                        DateTime           @updatedAt @map("updated_at")
+  deletedAt                        DateTime?          @map("deleted_at")
 
   // Restrict: collections call history (promises, refusals) is the
   // primary evidence trail for the dunning workflow.
@@ -2774,6 +2789,12 @@ enum EvidenceStatus {
   PENDING_REVIEW
   APPROVED
   REJECTED
+}
+
+enum CustomerStatus {
+  ACTIVE
+  INACTIVE
+  LOST // P2 Collections — skip-tracing target (no contact for N days, broken promises, etc.)
 }
 
 enum CustomerCreditCheckStatus {
@@ -5020,4 +5041,49 @@ model FilterPreset {
   @@index([ownerUserId, page])
   @@index([scope, branchId])
   @@map("filter_presets")
+}
+
+// ============================================================
+// P2 Collections UI — Legal Case Tracking (Task 7)
+// ============================================================
+
+/// Legal case file for a contract that has escalated to litigation.
+/// 1:1 with Contract (a contract has at most one active legal case).
+/// Documents (complaint/summons/judgment/etc.) are append-only evidence.
+model LegalCase {
+  id          String              @id @default(uuid())
+  contractId  String              @unique @map("contract_id")
+  contract    Contract            @relation(fields: [contractId], references: [id])
+  caseNumber  String              @map("case_number")
+  court       String
+  hearingDate DateTime?           @map("hearing_date")
+  lawyerName  String?             @map("lawyer_name")
+  lawyerPhone String?             @map("lawyer_phone")
+  notes       String?
+  documents   LegalCaseDocument[]
+  createdAt   DateTime            @default(now()) @map("created_at")
+  updatedAt   DateTime            @updatedAt @map("updated_at")
+  deletedAt   DateTime?           @map("deleted_at")
+
+  @@index([contractId])
+  @@map("legal_cases")
+}
+
+/// Append-only legal evidence: complaint, summons, judgment, settlement, etc.
+/// Immutable once uploaded — no updatedAt/deletedAt because legal evidence
+/// must be preserved (eIDAS-equivalent for Thai civil litigation).
+model LegalCaseDocument {
+  id               String    @id @default(uuid())
+  legalCaseId      String    @map("legal_case_id")
+  legalCase        LegalCase @relation(fields: [legalCaseId], references: [id])
+  kind             String // complaint | summons | judgment | settlement | other
+  filename         String
+  s3Url            String    @map("s3_url")
+  uploadedAt       DateTime  @default(now()) @map("uploaded_at")
+  uploadedByUserId String    @map("uploaded_by_user_id")
+  uploadedBy       User      @relation("LegalCaseDocumentUploadedBy", fields: [uploadedByUserId], references: [id])
+
+  @@index([legalCaseId])
+  @@index([uploadedByUserId])
+  @@map("legal_case_documents")
 }

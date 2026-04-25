@@ -19,6 +19,7 @@ import { ContractsModule } from './modules/contracts/contracts.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 // MASTER-only modules
 import { OverdueModule } from './modules/overdue/overdue.module';
+import { LegalCaseModule } from './modules/legal-case/legal-case.module';
 import { FilterPresetsModule } from './modules/filter-presets/filter-presets.module';
 import { DefectExchangeModule } from './modules/defect-exchange/defect-exchange.module';
 import { RepossessionsModule } from './modules/repossessions/repossessions.module';
@@ -157,6 +158,7 @@ import { AppCacheModule } from './cache/cache.module';
     PaymentsModule,
     // MASTER: Operations
     OverdueModule,
+    LegalCaseModule,
     FilterPresetsModule,
     DefectExchangeModule,
     RepossessionsModule,

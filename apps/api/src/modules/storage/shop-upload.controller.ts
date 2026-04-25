@@ -14,6 +14,41 @@ export enum UploadKind {
   LETTER_SIGNATURE = 'LETTER_SIGNATURE',
   LETTER_LETTERHEAD = 'LETTER_LETTERHEAD',
   MDM_WALLPAPER = 'MDM_WALLPAPER',
+  // P2 Task 4 — voice memo evidence captured in ContactLogDialog.
+  VOICE_MEMO = 'VOICE_MEMO',
+}
+
+/**
+ * MIME allow-list per kind. When set, presign rejects unknown contentTypes.
+ * Kinds NOT in this map fall back to the legacy `application/pdf | image/png |
+ * image/jpeg` heuristic — preserved to avoid regressing existing flows.
+ */
+const ALLOWED_MIME_BY_KIND: Partial<Record<UploadKind, readonly string[]>> = {
+  [UploadKind.VOICE_MEMO]: [
+    'audio/webm',
+    'audio/mp4',
+    'audio/ogg',
+    'audio/mpeg',
+  ],
+};
+
+function pickExtension(kind: UploadKind, contentType: string): string {
+  if (kind === UploadKind.VOICE_MEMO) {
+    if (contentType.includes('mp4')) return 'm4a';
+    if (contentType.includes('ogg')) return 'ogg';
+    if (contentType.includes('mpeg')) return 'mp3';
+    return 'webm';
+  }
+  if (contentType === 'application/pdf') return 'pdf';
+  if (contentType === 'image/png') return 'png';
+  return 'jpg';
+}
+
+function pickBasePath(kind: UploadKind): string {
+  if (kind === UploadKind.VOICE_MEMO) return 'voice-memos';
+  if (kind.startsWith('LETTER_')) return 'letters';
+  if (kind.startsWith('MDM_')) return 'mdm-assets';
+  return 'shop';
 }
 
 export class PresignedUploadDto {
@@ -47,22 +82,20 @@ export class ShopUploadController {
   @Post('signed-url')
   async presign(@Body() dto: PresignedUploadDto) {
     const allowed = ALLOWED_MIME_BY_KIND[dto.kind];
-    if (!allowed || !allowed.includes(dto.contentType)) {
-      throw new BadRequestException('ประเภทไฟล์ไม่ถูกต้อง');
+    if (allowed) {
+      // contentType may include codecs (e.g. `audio/webm;codecs=opus`) — match
+      // on the leading mediatype.
+      const baseType = dto.contentType.split(';')[0].trim();
+      if (!allowed.includes(baseType)) {
+        throw new BadRequestException(
+          `contentType "${dto.contentType}" ไม่รองรับสำหรับประเภท ${dto.kind}`,
+        );
+      }
     }
 
-    const ext =
-      dto.contentType === 'application/pdf'
-        ? 'pdf'
-        : dto.contentType === 'image/png'
-          ? 'png'
-          : dto.contentType === 'image/webp'
-            ? 'webp'
-            : 'jpg';
+    const ext = pickExtension(dto.kind, dto.contentType);
     const date = new Date().toISOString().slice(0, 10);
-    const isLetterKind = dto.kind.startsWith('LETTER_');
-    const isMdmKind = dto.kind.startsWith('MDM_');
-    const basePath = isLetterKind ? 'letters' : isMdmKind ? 'mdm-assets' : 'shop';
+    const basePath = pickBasePath(dto.kind);
     const key = `${basePath}/${dto.kind.toLowerCase()}/${date}/${randomUUID()}.${ext}`;
     const signed = await this.storage.getSignedUploadUrl(key, dto.contentType);
     return {

@@ -925,6 +925,8 @@ export class OverdueService {
         | 'REQUESTED_RETURN'
         | 'NEGOTIATING'
         | 'NOT_APPLICABLE';
+      // P2 Task 4 — voice memo evidence (S3 URL). Stored on CallLog.
+      voiceMemoUrl?: string;
     },
   ) {
     const contract = await this.prisma.contract.findFirst({
@@ -967,6 +969,10 @@ export class OverdueService {
           // structured columns going forward.
           callResult: dto.callResult ?? null,
           negotiationResult: dto.negotiationResult ?? null,
+          // P2 Task 4 — voice memo (HOT tier by schema default until S3
+          // lifecycle moves the object to GLACIER and a backfill cron flips
+          // voiceMemoTier).
+          voiceMemoUrl: dto.voiceMemoUrl ?? null,
         },
         include: { caller: { select: { id: true, name: true } } },
       }),

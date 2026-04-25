@@ -39,6 +39,7 @@ interface Props {
   onLogContact: (c: ContractRow) => void;
   onOpen360?: (c: ContractRow) => void;
   onSendLine?: (c: ContractRow) => void;
+  onSkipTrace?: (c: ContractRow) => void;
   onSwitchTab?: (tab: 'today' | 'followup' | 'promise' | 'approval' | 'analytics' | 'all') => void;
 }
 
@@ -48,6 +49,7 @@ export default function QueueTab({
   onLogContact,
   onOpen360,
   onSendLine,
+  onSkipTrace,
   onSwitchTab,
 }: Props) {
   const [page, setPage] = useState(1);
@@ -166,6 +168,7 @@ export default function QueueTab({
                 onPreviewCancel={() => setPreviewState(null)}
                 onSnooze={(c) => setSnoozeTarget(c)}
                 onUnsnooze={(c) => unsnooze.mutate(c.id)}
+                onSkipTrace={onSkipTrace}
               />
             ))}
           </div>
@@ -195,7 +198,7 @@ export default function QueueTab({
           )}
         </>
       )}
-      <BulkActionBar selectedIds={sel.selectedIds} onClear={sel.clear} />
+      <BulkActionBar selectedIds={sel.selectedIds} onClear={sel.clear} contracts={rows} />
       {waitingForGSecond && (
         <div
           className="fixed bottom-4 right-4 z-50 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-mono shadow-lg"

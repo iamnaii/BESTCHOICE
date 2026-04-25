@@ -131,6 +131,7 @@ export default function FollowUpTab({
                     onLogContact={onLogContact}
                     onOpen360={onOpen360}
                     onSendLine={onSendLine}
+                    onSkipTrace={onSkipTrace}
                     selected={sel.isSelected(row.id)}
                     onToggleSelect={sel.toggle}
                   />
@@ -142,6 +143,7 @@ export default function FollowUpTab({
                   onLogContact={onLogContact}
                   onOpen360={onOpen360}
                   onSendLine={onSendLine}
+                  onSkipTrace={onSkipTrace}
                   selected={sel.isSelected(row.id)}
                   onToggleSelect={sel.toggle}
                 />

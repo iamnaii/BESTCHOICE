@@ -15,9 +15,12 @@ import type { Request } from 'express';
 import { CustomersService } from './customers.service';
 import { CustomerTierService } from './customer-tier.service';
 import { CustomerPreCheckService } from './customer-precheck.service';
+import { SkipTracingService } from './skip-tracing.service';
+import { CustomerInsightsService } from '../overdue/customer-insights.service';
 import type { CustomerTierResponse } from './dto/tier.dto';
 import { CustomerPreCheckDto, CustomerPreCheckResponse } from './dto/precheck.dto';
 import { CreateCustomerDto, UpdateCustomerDto } from './dto/customer.dto';
+import { UpdateCustomerContactDto } from './dto/skip-tracing.dto';
 import { UploadDocumentDto, DeleteDocumentDto } from './dto/document.dto';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -39,6 +42,8 @@ export class CustomersController {
     private piiAudit: PiiAuditService,
     private readonly tierService: CustomerTierService,
     private readonly preCheckService: CustomerPreCheckService,
+    private readonly skipTracingService: SkipTracingService,
+    private readonly insightsService: CustomerInsightsService,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -197,6 +202,16 @@ export class CustomersController {
     return this.customersService.getContracts(id);
   }
 
+  @Get(':id/insights')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  @ApiOperation({
+    summary:
+      'Smart Customer Data — preferred contact time/channel, response rates, last LINE seen',
+  })
+  getInsights(@Param('id') id: string) {
+    return this.insightsService.getInsights(id);
+  }
+
   @Get(':id/chat-summary')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   getChatSummary(@Param('id') id: string) {
@@ -253,6 +268,23 @@ export class CustomersController {
   @Roles('OWNER')
   remove(@Param('id') id: string) {
     return this.customersService.remove(id);
+  }
+
+  @Post(':id/update-contact')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  @ApiOperation({
+    summary: 'Skip-tracing — แก้เบอร์/LINE หรือทำเครื่องหมาย "สูญหาย" (P2 Collections D6)',
+  })
+  updateContact(
+    @Param('id') id: string,
+    @Body() dto: UpdateCustomerContactDto,
+    @Req() req: AuthRequest,
+  ) {
+    return this.skipTracingService.updateContact(id, dto, {
+      userId: req.user?.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'] as string | undefined,
+    });
   }
 
   @Post(':id/documents')

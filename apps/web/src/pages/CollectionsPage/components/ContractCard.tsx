@@ -178,6 +178,12 @@ interface Props {
   onSnooze?: (c: ContractRow) => void;
   /** Lift active snooze immediately. Hides the ⋯ menu entry when undefined. */
   onUnsnooze?: (c: ContractRow) => void;
+  /**
+   * Open SkipTracingWizard (Task 6 / D6). Wired only when
+   * `contract.needsSkipTracing` is true — the chip becomes a clickable button
+   * that launches the 4-step wizard.
+   */
+  onSkipTrace?: (c: ContractRow) => void;
 }
 
 export default function ContractCard({
@@ -192,6 +198,7 @@ export default function ContractCard({
   onPreviewCancel,
   onSnooze,
   onUnsnooze,
+  onSkipTrace,
 }: Props) {
   const isSnoozed =
     !!contract.snoozedUntil && new Date(contract.snoozedUntil).getTime() > Date.now();
@@ -310,11 +317,21 @@ export default function ContractCard({
               <Lock className="size-3" /> ล็อคแล้ว
             </span>
           )}
-          {contract.needsSkipTracing && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-muted text-muted-foreground text-2xs font-medium px-2 py-0.5 leading-snug">
-              <Search className="size-3" /> หาเบอร์ใหม่
-            </span>
-          )}
+          {contract.needsSkipTracing &&
+            (onSkipTrace ? (
+              <button
+                onClick={() => onSkipTrace(contract)}
+                className="inline-flex items-center gap-1 rounded-full bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary text-2xs font-medium px-2 py-0.5 leading-snug transition-colors"
+                title="เปิดวิซาร์ดหาเบอร์ใหม่"
+                aria-label="หาเบอร์ใหม่"
+              >
+                <Search className="size-3" /> หาเบอร์ใหม่
+              </button>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted text-muted-foreground text-2xs font-medium px-2 py-0.5 leading-snug">
+                <Search className="size-3" /> หาเบอร์ใหม่
+              </span>
+            ))}
           {contract.settlementDate && (
             <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary text-2xs font-medium px-2 py-0.5 leading-snug">
               <CalendarCheck className="size-3" /> นัด{' '}

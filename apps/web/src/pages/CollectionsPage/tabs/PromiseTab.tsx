@@ -92,9 +92,17 @@ interface Props {
   onLogContact: (c: ContractRow) => void;
   onOpen360?: (c: ContractRow) => void;
   onSendLine?: (c: ContractRow) => void;
+  onSkipTrace?: (c: ContractRow) => void;
 }
 
-export default function PromiseTab({ search, branchId, onLogContact, onOpen360, onSendLine }: Props) {
+export default function PromiseTab({
+  search,
+  branchId,
+  onLogContact,
+  onOpen360,
+  onSendLine,
+  onSkipTrace,
+}: Props) {
   const [page, setPage] = useState(1);
   const [filterOpen, setFilterOpen] = useState(false);
   const sel = useBulkSelection();
@@ -172,6 +180,7 @@ export default function PromiseTab({ search, branchId, onLogContact, onOpen360, 
                         onLogContact={onLogContact}
                         onOpen360={onOpen360}
                         onSendLine={onSendLine}
+                        onSkipTrace={onSkipTrace}
                         selected={sel.isSelected(row.id)}
                         onToggleSelect={sel.toggle}
                       />
@@ -195,6 +204,7 @@ export default function PromiseTab({ search, branchId, onLogContact, onOpen360, 
                       onLogContact={onLogContact}
                       onOpen360={onOpen360}
                       onSendLine={onSendLine}
+                      onSkipTrace={onSkipTrace}
                       selected={sel.isSelected(row.id)}
                       onToggleSelect={sel.toggle}
                     />
@@ -217,6 +227,7 @@ export default function PromiseTab({ search, branchId, onLogContact, onOpen360, 
                       onLogContact={onLogContact}
                       onOpen360={onOpen360}
                       onSendLine={onSendLine}
+                      onSkipTrace={onSkipTrace}
                       selected={sel.isSelected(row.id)}
                       onToggleSelect={sel.toggle}
                     />

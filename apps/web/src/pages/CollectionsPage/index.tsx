@@ -10,6 +10,7 @@ import ContactLogDialog from './components/ContactLogDialog';
 import Customer360Panel from './components/Customer360Panel';
 import MigrationBanner from './components/MigrationBanner';
 import SendLineAdHocDialog from './components/SendLineAdHocDialog';
+import SkipTracingWizard from './components/SkipTracingWizard';
 import QueueTab from './tabs/QueueTab';
 import FollowUpTab from './tabs/FollowUpTab';
 import PromiseTab from './tabs/PromiseTab';
@@ -49,6 +50,7 @@ export default function CollectionsPage() {
   const [dialogContract, setDialogContract] = useState<ContractRow | null>(null);
   const [panelContract, setPanelContract] = useState<ContractRow | null>(null);
   const [lineDialogContract, setLineDialogContract] = useState<ContractRow | null>(null);
+  const [skipTraceContract, setSkipTraceContract] = useState<ContractRow | null>(null);
 
   const canSeeApproval = canAccessTab('approval', user?.role);
   const canSeeAnalytics = canAccessTab('analytics', user?.role);
@@ -102,6 +104,7 @@ export default function CollectionsPage() {
           onLogContact={openContactDialog}
           onOpen360={openPanel}
           onSendLine={setLineDialogContract}
+          onSkipTrace={setSkipTraceContract}
           onSwitchTab={(tab) => setActiveTab(tab as CollectionsTabKey)}
         />
       )}
@@ -113,6 +116,7 @@ export default function CollectionsPage() {
           onLogContact={openContactDialog}
           onOpen360={openPanel}
           onSendLine={setLineDialogContract}
+          onSkipTrace={setSkipTraceContract}
         />
       )}
 
@@ -123,6 +127,7 @@ export default function CollectionsPage() {
           onLogContact={openContactDialog}
           onOpen360={openPanel}
           onSendLine={setLineDialogContract}
+          onSkipTrace={setSkipTraceContract}
         />
       )}
 
@@ -148,6 +153,12 @@ export default function CollectionsPage() {
         contract={panelContract}
         onClose={closePanel}
         onRequestSendLine={setLineDialogContract}
+      />
+
+      <SkipTracingWizard
+        open={!!skipTraceContract}
+        contract={skipTraceContract}
+        onClose={() => setSkipTraceContract(null)}
       />
     </div>
   );

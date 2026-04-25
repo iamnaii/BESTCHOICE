@@ -195,4 +195,20 @@ describe('MdmLockService', () => {
       );
     });
   });
+
+  describe('getPendingByRole', () => {
+    it('filters by branch for BRANCH_MANAGER', async () => {
+      mockPrisma.mdmLockRequest.findMany.mockResolvedValueOnce([]);
+      await service.getPendingByRole('BRANCH_MANAGER', 'branch-1');
+      const arg = mockPrisma.mdmLockRequest.findMany.mock.calls[0][0];
+      expect(arg.where.contract).toEqual({ branchId: 'branch-1' });
+    });
+
+    it('does not filter by branch for OWNER', async () => {
+      mockPrisma.mdmLockRequest.findMany.mockResolvedValueOnce([]);
+      await service.getPendingByRole('OWNER');
+      const arg = mockPrisma.mdmLockRequest.findMany.mock.calls[0][0];
+      expect(arg.where.contract).toBeUndefined();
+    });
+  });
 });

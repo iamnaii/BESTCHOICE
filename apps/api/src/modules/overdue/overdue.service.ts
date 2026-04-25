@@ -11,6 +11,7 @@ import { CreateCallLogDto } from './dto/create-call-log.dto';
 import { Prisma, DunningStage } from '@prisma/client';
 import { BUSINESS_RULES } from '../../utils/config.util';
 import { DunningEngineService } from './dunning-engine.service';
+import { OverdueKpiService } from './kpi.service';
 
 @Injectable()
 export class OverdueService {
@@ -19,6 +20,7 @@ export class OverdueService {
   constructor(
     private prisma: PrismaService,
     private dunningEngine: DunningEngineService,
+    private kpiService: OverdueKpiService,
   ) {}
 
   private async getSystemUserIdOrThrow(): Promise<string> {
@@ -861,6 +863,17 @@ export class OverdueService {
   }
 
   /**
+   * Read the collections_v2_enabled feature flag from SystemConfig.
+   * Returns false when the key is absent or set to anything other than 'true'.
+   */
+  async getCollectionsFlag(): Promise<boolean> {
+    const cfg = await this.prisma.systemConfig.findUnique({
+      where: { key: 'collections_v2_enabled' },
+    });
+    return cfg?.value === 'true';
+  }
+
+  /**
    * Reset dunning stage when a contract is no longer overdue
    * (e.g., after a payment brings it back to ACTIVE)
    */
@@ -963,6 +976,10 @@ export class OverdueService {
         );
       }
     }
+
+    // H2: drop stale KPI snapshots — logContact mutates counters that feed
+    // queueToday, noAnswerCount-based filters, and promise-kept calcs.
+    this.kpiService.invalidate();
 
     return callLog;
   }

@@ -3,11 +3,17 @@ import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { OverdueService } from './overdue.service';
 import { DunningRuleService } from './dunning-rule.service';
 import { DunningEngineService } from './dunning-engine.service';
+import { OverdueQueueService } from './queue.service';
+import { OverdueKpiService } from './kpi.service';
+import { MdmLockService } from './mdm-lock.service';
 import { CreateCallLogDto } from './dto/create-call-log.dto';
 import { AssignCollectorDto } from './dto/assign-collector.dto';
 import { RecordSettlementDto } from './dto/record-settlement.dto';
 import { LogContactDto } from './dto/log-contact.dto';
 import { CreateDunningRuleDto, UpdateDunningRuleDto } from './dto/dunning-rule.dto';
+import { QueueQueryDto } from './dto/queue-query.dto';
+import { KpiQueryDto } from './dto/kpi-query.dto';
+import { RejectMdmDto } from './dto/reject-mdm.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
@@ -23,7 +29,54 @@ export class OverdueController {
     private overdueService: OverdueService,
     private dunningRuleService: DunningRuleService,
     private dunningEngineService: DunningEngineService,
+    private queueService: OverdueQueueService,
+    private kpiService: OverdueKpiService,
+    private mdmLockService: MdmLockService,
   ) {}
+
+  // --- Collections Workflow Hub endpoints (Plan 2) ---
+
+  @Get('queue')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getQueue(
+    @Query() dto: QueueQueryDto,
+    @CurrentUser() user: { role: string; branchId: string | null },
+  ) {
+    return this.queueService.getQueue({
+      tab: dto.tab,
+      branchId: dto.branchId,
+      search: dto.search,
+      page: dto.page,
+      limit: dto.limit,
+      userRole: user.role,
+      userBranchId: user.branchId,
+    });
+  }
+
+  @Get('kpi')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getKpi(
+    @Query() dto: KpiQueryDto,
+    @CurrentUser() user: { role: string; branchId: string | null },
+  ) {
+    return this.kpiService.getKpi({
+      range: dto.range ?? '7d',
+      userRole: user.role,
+      userBranchId: user.branchId,
+    });
+  }
+
+  @Get('mdm-pending')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER')
+  getMdmPending(@CurrentUser() user: { role: string; branchId: string | null }) {
+    return this.mdmLockService.getPendingByRole(user.role, user.branchId ?? undefined);
+  }
+
+  @Get('collections-flag')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  async getCollectionsFlag() {
+    return { enabled: await this.overdueService.getCollectionsFlag() };
+  }
 
   @Get()
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'FINANCE_MANAGER', 'ACCOUNTANT')
@@ -255,5 +308,35 @@ export class OverdueController {
       user.role,
       body.reason,
     );
+  }
+
+  // --- MDM lock/unlock approvals (OWNER/FM only) ---
+
+  @Post('mdm-requests/:id/approve')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  approveMdmLock(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string; role: string },
+  ) {
+    return this.mdmLockService.approve(id, user.id, user.role);
+  }
+
+  @Post('mdm-requests/:id/reject')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  rejectMdmLock(
+    @Param('id') id: string,
+    @Body() body: RejectMdmDto,
+    @CurrentUser() user: { id: string; role: string },
+  ) {
+    return this.mdmLockService.reject(id, user.id, body.reason, user.role);
+  }
+
+  @Post('mdm-requests/:id/unlock')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  unlockMdm(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string; role: string },
+  ) {
+    return this.mdmLockService.unlock(id, user.id, user.role);
   }
 }

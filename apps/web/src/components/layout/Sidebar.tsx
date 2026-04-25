@@ -33,6 +33,7 @@ import {
 import { useLayout } from './LayoutContext';
 import { getMenuConfig } from '@/config/menu';
 import type { MenuSection } from '@/config/menu';
+import { useCollectionsFlag } from '@/pages/CollectionsPage/hooks/useCollectionsFlag';
 
 /* ── Role label map ─────────────────────────────── */
 const roleBadgeMap: Record<string, { label: string; cls: string }> = {
@@ -69,7 +70,18 @@ const expandedMenuClassNames: AccordionMenuClassNames = {
 
 /* ─── useRoleMenu ───────────────────────────────── */
 function useRoleMenu(role: string): MenuSection[] {
-  return useMemo(() => getMenuConfig(role).sidebar, [role]);
+  const { enabled: collectionsEnabled } = useCollectionsFlag();
+  return useMemo(() => {
+    const sections = getMenuConfig(role).sidebar;
+    if (!collectionsEnabled) return sections;
+    // Swap /overdue → /collections when the flag is on
+    return sections.map((section) => ({
+      ...section,
+      items: section.items.map((item) =>
+        item.path === '/overdue' ? { ...item, path: '/collections' } : item,
+      ),
+    }));
+  }, [role, collectionsEnabled]);
 }
 
 /* ─── Collapsed Icon Rail (70px wide) ────────────── */

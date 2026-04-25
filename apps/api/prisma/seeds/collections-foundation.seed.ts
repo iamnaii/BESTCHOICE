@@ -167,8 +167,13 @@ export async function seedCollectionsFoundation(
     });
   }
 
-  // 9 SystemConfig keys for MDM + letter settings
+  // 10 SystemConfig keys: collections flag + MDM + letter settings
   const mdmLetterConfigs: Array<{ key: string; value: string; label: string }> = [
+    {
+      key: 'collections_v2_enabled',
+      value: 'false',
+      label: 'เปิดใช้งานหน้า /collections (Workflow Hub ใหม่) — Plan 2',
+    },
     {
       key: 'mdm_auto_propose_enabled',
       value: 'true',

@@ -6,16 +6,21 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useUnreadChat } from '@/hooks/useUnreadChat';
 import { getMenuConfig } from '@/config/menu';
 import type { BottomNavItem } from '@/config/menu';
+import { useCollectionsFlag } from '@/pages/CollectionsPage/hooks/useCollectionsFlag';
 
 function MobileBottomNav() {
   const { pathname } = useLocation();
   const { setMobileSidebarOpen } = useLayout();
   const { user } = useAuth();
 
-  const tabs = useMemo(
-    () => getMenuConfig(user?.role ?? '').bottomNav,
-    [user?.role],
-  );
+  const { enabled: collectionsEnabled } = useCollectionsFlag();
+  const tabs = useMemo<BottomNavItem[]>(() => {
+    const rawTabs = getMenuConfig(user?.role ?? '').bottomNav;
+    if (!collectionsEnabled) return rawTabs;
+    return rawTabs.map((tab) =>
+      tab.path === '/overdue' ? { ...tab, path: '/collections' } : tab,
+    );
+  }, [user?.role, collectionsEnabled]);
 
   const isActive = (path: string) => {
     if (path === '/') return pathname === '/';

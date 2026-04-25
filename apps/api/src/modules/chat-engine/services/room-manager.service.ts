@@ -237,7 +237,10 @@ export class RoomManagerService {
       lastMessageAt: new Date(),
     };
 
-    if (params.role === MessageRole.STAFF || params.role === MessageRole.BOT) {
+    if (params.role === MessageRole.CUSTOMER) {
+      // Inbound message — increment unread until staff opens the room (markAsRead resets it).
+      updateData.unreadCount = { increment: 1 };
+    } else if (params.role === MessageRole.STAFF || params.role === MessageRole.BOT) {
       // Set firstResponseAt if not already set (SLA metric)
       const room = await this.prisma.chatRoom.findUnique({
         where: { id: params.roomId },

@@ -109,6 +109,9 @@ export class ChatRoomService {
       data: {
         totalMessages: { increment: 1 },
         lastMessageAt: new Date(),
+        ...(params.role === MessageRole.CUSTOMER
+          ? { unreadCount: { increment: 1 } }
+          : {}),
       },
     });
 

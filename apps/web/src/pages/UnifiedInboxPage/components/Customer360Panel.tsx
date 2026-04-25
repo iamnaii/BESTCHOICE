@@ -16,9 +16,12 @@ import {
   Smartphone,
   ExternalLink,
   Link2,
+  QrCode,
+  Zap,
   Send,
   Shield,
 } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { format, isPast, differenceInDays } from 'date-fns';
 import { th } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -506,28 +509,51 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
 
       {/* ─── 7. Quick Actions ────────────────────────────── */}
       <div className="p-4">
-        <SectionHeader icon={Send} label="ดำเนินการ" />
-        <div className="grid grid-cols-2 gap-2">
-          <QuickActionBtn
-            icon={<Link2 className="w-3.5 h-3.5" />}
-            label="ส่งลิงก์ชำระ"
-            onClick={() => toast.info('เลือกสัญญาก่อนส่งลิงก์')}
-          />
-          <QuickActionBtn
-            icon={<FileText className="w-3.5 h-3.5" />}
-            label="สร้างสัญญา"
-            onClick={() => window.open(`/contracts/create`, '_blank')}
-          />
-          <QuickActionBtn
-            icon={<ExternalLink className="w-3.5 h-3.5" />}
-            label="ดูข้อมูลลูกค้า"
-            onClick={() => window.open(`/customers/${customerId}`, '_blank')}
-          />
-          <QuickActionBtn
-            icon={<Clock className="w-3.5 h-3.5" />}
-            label="ประวัติชำระ"
-            onClick={() => window.open(`/payments?search=${customer?.phone}`, '_blank')}
-          />
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-1.5">
+            <Send className="w-3.5 h-3.5 text-muted-foreground" />
+            <h4 className="text-[11px] font-semibold text-foreground/70 uppercase tracking-wide">ดำเนินการ</h4>
+          </div>
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                className="w-6 h-6 rounded-full bg-primary flex items-center justify-center text-primary-foreground hover:bg-primary/90 transition-colors"
+                title="ดำเนินการ"
+              >
+                <Zap className="w-3.5 h-3.5" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" side="top" className="w-56 p-2">
+              <div className="grid grid-cols-2 gap-1.5">
+                <QuickActionBtn
+                  icon={<Link2 className="w-3.5 h-3.5 flex-shrink-0" />}
+                  label="ส่งลิงก์ชำระ"
+                  onClick={() => toast.info('เลือกสัญญาก่อนส่งลิงก์')}
+                />
+                <QuickActionBtn
+                  icon={<QrCode className="w-3.5 h-3.5 flex-shrink-0" />}
+                  label="ส่ง QR ชำระ"
+                  onClick={() => toast.info('เลือกสัญญาก่อนส่ง QR')}
+                />
+                <QuickActionBtn
+                  icon={<FileText className="w-3.5 h-3.5 flex-shrink-0" />}
+                  label="ดูสัญญา"
+                  onClick={() => window.open(`/contracts?customerId=${customerId}`, '_blank')}
+                />
+                <QuickActionBtn
+                  icon={<Clock className="w-3.5 h-3.5 flex-shrink-0" />}
+                  label="ประวัติชำระ"
+                  onClick={() => window.open(`/payments?search=${customer?.phone}`, '_blank')}
+                />
+                <QuickActionBtn
+                  icon={<ExternalLink className="w-3.5 h-3.5 flex-shrink-0" />}
+                  label="ดูข้อมูลลูกค้า"
+                  onClick={() => window.open(`/customers/${customerId}`, '_blank')}
+                  className="col-span-2"
+                />
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
       </div>
       </div>{/* end scrollable */}
@@ -701,15 +727,20 @@ function QuickActionBtn({
   icon,
   label,
   onClick,
+  className,
 }: {
   icon: ReactNode;
   label: string;
   onClick: () => void;
+  className?: string;
 }) {
   return (
     <button
       onClick={onClick}
-      className="flex items-center gap-1.5 px-2 py-2 text-[11px] bg-muted hover:bg-accent rounded-lg text-foreground/70 transition-colors"
+      className={cn(
+        'flex items-center gap-1.5 px-2 py-2 text-[11px] bg-muted hover:bg-accent rounded-lg text-foreground/70 transition-colors',
+        className,
+      )}
     >
       {icon}
       {label}

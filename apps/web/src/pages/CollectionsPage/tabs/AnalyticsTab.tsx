@@ -21,6 +21,7 @@ import LeaderboardTable from '../components/LeaderboardTable';
 import StuckContractsSection from '../components/StuckContractsSection';
 import RecoveryByChannelChart from './AnalyticsTab/RecoveryByChannelChart';
 import WorkloadGrid from '../components/WorkloadGrid';
+import PdfExportButton from '../components/PdfExportButton';
 import { useAuth } from '@/contexts/AuthContext';
 
 // Chart colors: pragmatic hex approximations of the theme palette.
@@ -79,8 +80,9 @@ export default function AnalyticsTab() {
 
   return (
     <div>
-      {/* Date range picker */}
-      <div className="flex justify-end mb-4">
+      {/* Date range picker + PDF export */}
+      <div className="flex justify-end items-center gap-2 mb-4">
+        {isOwner && <PdfExportButton />}
         <DateRangePicker value={dateRange} onChange={setDateRange} />
       </div>
 

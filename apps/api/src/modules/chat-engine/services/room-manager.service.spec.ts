@@ -151,6 +151,31 @@ describe('RoomManagerService', () => {
       });
     });
 
+    it('should increment unreadCount on inbound CUSTOMER messages', async () => {
+      prisma.chatMessage.create.mockResolvedValue({ id: 'm', createdAt: new Date() });
+      prisma.chatRoom.update.mockResolvedValue({});
+
+      await service.saveMessage({ roomId: 'room-1', role: MessageRole.CUSTOMER, text: 'hi' });
+
+      expect(prisma.chatRoom.update).toHaveBeenCalledWith({
+        where: { id: 'room-1' },
+        data: expect.objectContaining({ unreadCount: { increment: 1 } }),
+      });
+    });
+
+    it('should NOT increment unreadCount on STAFF or BOT messages', async () => {
+      prisma.chatMessage.create.mockResolvedValue({ id: 'm', createdAt: new Date() });
+      prisma.chatRoom.findUnique.mockResolvedValue({ firstResponseAt: null });
+      prisma.chatRoom.update.mockResolvedValue({});
+
+      await service.saveMessage({ roomId: 'room-1', role: MessageRole.STAFF, text: 'reply' });
+
+      expect(prisma.chatRoom.update).toHaveBeenCalledWith({
+        where: { id: 'room-1' },
+        data: expect.not.objectContaining({ unreadCount: expect.anything() }),
+      });
+    });
+
     it('should set firstResponseAt for first BOT reply', async () => {
       prisma.chatMessage.create.mockResolvedValue({ id: 'msg-2', createdAt: new Date() });
       prisma.chatRoom.findUnique.mockResolvedValue({ firstResponseAt: null });

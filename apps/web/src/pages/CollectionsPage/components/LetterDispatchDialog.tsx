@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, Download, FileText, Loader2, Upload } from 'lucide-react';
+import { AlertTriangle, Download, Eye, FileText, Loader2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import Decimal from 'decimal.js';
 import api, { getErrorMessage } from '@/lib/api';
@@ -10,6 +10,7 @@ import { renderLetterPdf, type LetterTemplateData } from '../utils/letterPdfRend
 import { useLetterActions } from '../hooks/useLetterActions';
 import type { LetterRow } from '../hooks/useLetterQueue';
 import { EvidenceThumbnailGrid } from './EvidenceThumbnailGrid';
+import LetterPdfPreviewDialog from './LetterPdfPreviewDialog';
 
 interface Props {
   open: boolean;
@@ -336,6 +337,7 @@ function DispatchSection({ letter, onClose }: DispatchSectionProps) {
   const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
   const [evidenceVerified, setEvidenceVerified] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const { dispatch } = useLetterActions();
 
   // Create a local preview URL for the selected evidence file
@@ -399,17 +401,27 @@ function DispatchSection({ letter, onClose }: DispatchSectionProps) {
 
   return (
     <div className="space-y-4 p-1">
-      {/* PDF download link */}
+      {/* PDF preview + download */}
       {letter.pdfUrl && (
-        <a
-          href={letter.pdfUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 text-sm text-primary hover:underline"
-        >
-          <Download className="size-4" />
-          ดาวน์โหลด PDF ({letter.letterNumber})
-        </a>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setPreviewOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-input hover:bg-muted text-foreground transition-colors"
+          >
+            <Eye className="size-3.5" />
+            ดู PDF
+          </button>
+          <a
+            href={letter.pdfUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg text-primary hover:underline"
+          >
+            <Download className="size-3.5" />
+            ดาวน์โหลด ({letter.letterNumber})
+          </a>
+        </div>
       )}
 
       {/* Letter info block */}
@@ -509,6 +521,15 @@ function DispatchSection({ letter, onClose }: DispatchSectionProps) {
           )}
         </button>
       </div>
+
+      {/* PDF preview popup — pre-dispatch sanity check */}
+      <LetterPdfPreviewDialog
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        pdfUrl={letter.pdfUrl}
+        title={`PDF — ${letter.letterNumber}`}
+        subtitle={`${letter.contract.customer.name} · ${letter.contract.contractNumber}`}
+      />
     </div>
   );
 }

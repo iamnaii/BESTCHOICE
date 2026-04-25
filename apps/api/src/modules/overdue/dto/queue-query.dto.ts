@@ -45,6 +45,20 @@ export enum MdmStateFilter {
   PENDING = 'pending',
 }
 
+// Sort options for the queue list. PRIORITY is the legacy default
+// (computed score from outstanding × daysOverdue × broken-promise multiplier).
+// RANDOM is a fair-rotation shuffle seeded by `userId-todayDate` so multiple
+// collectors don't all start from the same top contract.
+export enum QueueSortBy {
+  PRIORITY = 'priority',
+  OUTSTANDING_DESC = 'outstanding_desc',
+  OUTSTANDING_ASC = 'outstanding_asc',
+  DAYS_OVERDUE_DESC = 'days_overdue_desc',
+  LAST_CONTACTED_ASC = 'last_contacted_asc',
+  NAME_ASC = 'name_asc',
+  RANDOM = 'random',
+}
+
 // CSV or array → string[] (express parses repeated keys differently based on
 // query-parser; we accept both shapes).
 function splitCsv(value: unknown): string[] {
@@ -164,4 +178,8 @@ export class QueueQueryDto {
   @Transform(({ value }) => toBool(value))
   @IsBoolean()
   slipReviewPending?: boolean;
+
+  @IsOptional()
+  @IsEnum(QueueSortBy, { message: 'sortBy ไม่ถูกต้อง' })
+  sortBy?: QueueSortBy;
 }

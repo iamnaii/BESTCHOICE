@@ -582,4 +582,25 @@ describe('OverdueService.logContact with event trigger wiring', () => {
     ).rejects.toThrow(NotFoundException);
     expect(engineSpy).not.toHaveBeenCalled();
   });
+
+  // P1 Task 12 — quick-tag enums.
+  it('persists callResult + negotiationResult quick-tag enums when supplied', async () => {
+    await service.logContact('c-1', 'u-1', {
+      result: 'ANSWERED',
+      callResult: 'ANSWERED',
+      negotiationResult: 'WILL_PAY',
+    });
+
+    const createArgs = prisma.callLog.create.mock.calls[0][0];
+    expect(createArgs.data.callResult).toBe('ANSWERED');
+    expect(createArgs.data.negotiationResult).toBe('WILL_PAY');
+  });
+
+  it('writes null for quick-tag enums when omitted (back-compat)', async () => {
+    await service.logContact('c-1', 'u-1', { result: 'NO_ANSWER' });
+
+    const createArgs = prisma.callLog.create.mock.calls[0][0];
+    expect(createArgs.data.callResult).toBeNull();
+    expect(createArgs.data.negotiationResult).toBeNull();
+  });
 });

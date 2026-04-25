@@ -2,6 +2,10 @@ import { useState, useEffect } from 'react';
 import Modal from '@/components/ui/Modal';
 import { formatNumber } from '@/utils/formatters';
 import { useContactLog } from '../hooks/useContactLog';
+import CallResultChips, {
+  type CallResultTag,
+  type NegotiationResultTag,
+} from './CallResultChips';
 import type { ContractRow, CallResult } from '../types';
 
 interface Props {
@@ -27,6 +31,9 @@ const defaultForm = {
   collectionNotes: '',
   settlementDate: '',
   settlementNotes: '',
+  // P1 Task 12 — quick-tag chip selections
+  callResult: null as CallResultTag | null,
+  negotiationResult: null as NegotiationResultTag | null,
 };
 
 // Derive tomorrow's date for min= on settlement date input
@@ -62,6 +69,11 @@ export default function ContactLogDialog({ open, contract, onClose }: Props) {
       settlementDate: form.result === 'PROMISED' ? form.settlementDate || undefined : undefined,
       settlementNotes:
         form.result === 'PROMISED' ? form.settlementNotes || undefined : undefined,
+      // Auto-save the quick-tag enum selections (Task 12). null → omit
+      // so the back-end stores null and the existing free-string `result`
+      // remains the legacy source of truth.
+      callResult: form.callResult ?? undefined,
+      negotiationResult: form.negotiationResult ?? undefined,
     };
     mutation.mutate(payload, {
       onSuccess: () => {
@@ -140,6 +152,18 @@ export default function ContactLogDialog({ open, contract, onClose }: Props) {
             </div>
           </div>
         )}
+
+        {/* Quick-tag chips (Task 12) — captured into CallLog.callResult +
+            CallLog.negotiationResult for analytics. Independent from the
+            legacy free-string `result` select above. */}
+        <CallResultChips
+          callResult={form.callResult}
+          negotiationResult={form.negotiationResult}
+          onCallResultChange={(v) => setForm({ ...form, callResult: v })}
+          onNegotiationResultChange={(v) =>
+            setForm({ ...form, negotiationResult: v })
+          }
+        />
 
         {/* Notes */}
         <div>

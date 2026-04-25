@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FileText, Download, CheckCircle, RotateCcw, Loader2, Upload } from 'lucide-react';
+import { FileText, Download, CheckCircle, RotateCcw, Loader2, Upload, Eye } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import Modal from '@/components/ui/Modal';
 import { cn } from '@/lib/utils';
@@ -7,6 +7,7 @@ import { useLetterQueue, type LetterRow, type LetterType, type LetterStatus } fr
 import { useLetterActions } from '../hooks/useLetterActions';
 import LetterDispatchDialog from './LetterDispatchDialog';
 import BulkSlipUploadDialog from './BulkSlipUploadDialog';
+import LetterPdfPreviewDialog from './LetterPdfPreviewDialog';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -68,6 +69,7 @@ interface LetterRowCardProps {
   letter: LetterRow;
   onOpenGenerate: (l: LetterRow) => void;
   onOpenDispatch: (l: LetterRow) => void;
+  onPreviewPdf: (l: LetterRow) => void;
   onDelivered: (l: LetterRow) => void;
   onUndeliverable: (l: LetterRow) => void;
   deliveredPending: boolean;
@@ -78,6 +80,7 @@ function LetterRowCard({
   letter,
   onOpenGenerate,
   onOpenDispatch,
+  onPreviewPdf,
   onDelivered,
   onUndeliverable,
   deliveredPending,
@@ -130,7 +133,19 @@ function LetterRowCard({
         </div>
 
         {/* CTAs per status */}
-        <div className="flex items-center justify-end gap-2">
+        <div className="flex items-center justify-end gap-2 flex-wrap">
+          {/* Preview PDF — visible whenever a PDF exists */}
+          {letter.pdfUrl && (
+            <button
+              type="button"
+              onClick={() => onPreviewPdf(letter)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-input px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            >
+              <Eye className="size-3.5" />
+              ดู PDF
+            </button>
+          )}
+
           {letter.status === 'PENDING_DISPATCH' && (
             <button
               type="button"
@@ -207,6 +222,7 @@ export default function LetterQueueSection() {
   const [dispatchLetter, setDispatchLetter] = useState<LetterRow | null>(null);
   const [dispatchMode, setDispatchMode] = useState<'generate' | 'dispatch'>('generate');
   const [bulkSlipOpen, setBulkSlipOpen] = useState(false);
+  const [previewLetter, setPreviewLetter] = useState<LetterRow | null>(null);
 
   // Undeliverable reason dialog — replaces window.prompt
   const [undeliverableLetter, setUndeliverableLetter] = useState<LetterRow | null>(null);
@@ -294,6 +310,7 @@ export default function LetterQueueSection() {
                     letter={letter}
                     onOpenGenerate={openGenerate}
                     onOpenDispatch={openDispatch}
+                    onPreviewPdf={setPreviewLetter}
                     onDelivered={(l) => markDelivered.mutate(l.id)}
                     onUndeliverable={handleUndeliverable}
                     deliveredPending={markDelivered.isPending}
@@ -320,6 +337,16 @@ export default function LetterQueueSection() {
           open={bulkSlipOpen}
           letters={dispatchedMissingEvidence}
           onClose={() => setBulkSlipOpen(false)}
+        />
+      )}
+
+      {previewLetter && (
+        <LetterPdfPreviewDialog
+          open={!!previewLetter}
+          onClose={() => setPreviewLetter(null)}
+          pdfUrl={previewLetter.pdfUrl}
+          title={`PDF — ${previewLetter.letterNumber}`}
+          subtitle={`${previewLetter.contract.customer.name} · ${previewLetter.contract.contractNumber}`}
         />
       )}
 

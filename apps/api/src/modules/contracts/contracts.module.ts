@@ -4,6 +4,7 @@ import { ContractsService } from './contracts.service';
 import { ContractWorkflowService } from './contract-workflow.service';
 import { ContractPaymentService } from './contract-payment.service';
 import { ContractDocumentService } from './contract-document.service';
+import { ContractSnapshotService } from './contract-snapshot.service';
 import { ContractDocumentsController } from './contract-documents.controller';
 import { ContractDocumentsService } from './contract-documents.service';
 import { DocumentsController } from './documents.controller';
@@ -19,7 +20,7 @@ import { WarrantyModule } from '../warranty/warranty.module';
 @Module({
   imports: [NotificationsModule, OcrModule, SettingsModule, JournalModule, ProductsModule, WarrantyModule],
   controllers: [ContractsController, ContractDocumentsController, DocumentsController],
-  providers: [ContractsService, ContractWorkflowService, ContractPaymentService, ContractDocumentService, ContractDocumentsService, DocumentsService, GhostSaleCron],
-  exports: [ContractsService, ContractWorkflowService, ContractPaymentService, ContractDocumentService, ContractDocumentsService, DocumentsService],
+  providers: [ContractsService, ContractWorkflowService, ContractPaymentService, ContractDocumentService, ContractSnapshotService, ContractDocumentsService, DocumentsService, GhostSaleCron],
+  exports: [ContractsService, ContractWorkflowService, ContractPaymentService, ContractDocumentService, ContractSnapshotService, ContractDocumentsService, DocumentsService],
 })
 export class ContractsModule {}

@@ -52,6 +52,19 @@ export interface ContractRow {
   lastChannel: 'LINE' | 'SMS' | 'CALL' | 'LETTER' | null;
   letterCount: number;
   slipReviewPending: boolean;
+  /**
+   * ISO timestamp when the current user's snooze on this card expires.
+   * Null when no active snooze (the row would be hidden from the queue
+   * anyway except for OWNER, who sees everyone's parked work).
+   */
+  snoozedUntil?: string | null;
+  /**
+   * 7-day daysOverdue trend vs the same contract one week ago.
+   *  - 'UP'   getting worse  (delta > 0)
+   *  - 'DOWN' improving      (delta < 0)
+   *  - null   no historical snapshot to compare with, OR delta === 0
+   */
+  trendingArrow?: 'UP' | 'DOWN' | null;
 }
 
 export type CallResult =

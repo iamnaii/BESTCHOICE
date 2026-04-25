@@ -5,6 +5,14 @@ export type OverdueBucketOption = '1-7' | '8-30' | '31-60' | '61-90' | '90+';
 export type LastContactedOption = 'today' | 'this_week' | 'never' | 'over_7_days';
 export type LineResponseOption = 'responded' | 'ignored' | 'blocked' | 'no_line';
 export type MdmStateOption = 'not_locked' | 'locked' | 'pending';
+export type QueueSortOption =
+  | 'priority'
+  | 'outstanding_desc'
+  | 'outstanding_asc'
+  | 'days_overdue_desc'
+  | 'last_contacted_asc'
+  | 'name_asc'
+  | 'random';
 
 export interface QueueFilterState {
   assigned?: 'self' | 'unassigned' | string;
@@ -22,6 +30,7 @@ export interface QueueFilterState {
   mdmState?: MdmStateOption;
   showSkipTracing?: boolean;
   slipReviewPending?: boolean;
+  sortBy?: QueueSortOption;
 }
 
 /**
@@ -68,6 +77,7 @@ const FILTER_NAMES = [
   'mdmState',
   'showSkipTracing',
   'slipReviewPending',
+  'sortBy',
 ] as const;
 
 function namespacedKeys(prefix: string): Set<string> {
@@ -107,6 +117,7 @@ function serialize(
   if (state.mdmState) out.set(`${prefix}mdmState`, state.mdmState);
   if (state.showSkipTracing) out.set(`${prefix}showSkipTracing`, 'true');
   if (state.slipReviewPending) out.set(`${prefix}slipReviewPending`, 'true');
+  if (state.sortBy) out.set(`${prefix}sortBy`, state.sortBy);
   return out;
 }
 
@@ -150,6 +161,7 @@ export function useQueueFilter(
       mdmState: (params.get(`${prefix}mdmState`) as MdmStateOption | null) ?? undefined,
       showSkipTracing: params.get(`${prefix}showSkipTracing`) === 'true' || undefined,
       slipReviewPending: params.get(`${prefix}slipReviewPending`) === 'true' || undefined,
+      sortBy: (params.get(`${prefix}sortBy`) as QueueSortOption | null) ?? undefined,
     };
   }, [params, prefix]);
 

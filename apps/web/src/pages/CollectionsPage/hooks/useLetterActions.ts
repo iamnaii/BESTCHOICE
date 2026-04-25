@@ -1,9 +1,11 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
+import { useUndoMutation } from './useUndoMutation';
 
 export function useLetterActions() {
   const qc = useQueryClient();
+  const { showUndo } = useUndoMutation();
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['letter-queue'] });
 
@@ -57,10 +59,19 @@ export function useLetterActions() {
   const markUndeliverable = useMutation({
     mutationFn: async ({ letterId, reason }: { letterId: string; reason: string }) => {
       const { data } = await api.post(`/overdue/letters/${letterId}/undeliverable`, { reason });
-      return data;
+      return { data, letterId };
     },
     onSuccess: () => {
-      toast.success('บันทึกส่งไม่ถึงแล้ว');
+      // Per Task 8 (collections-ui-p1): MARK_UNDELIVERABLE has a 30s undo
+      // window; reverse = revert letter status back to DISPATCHED. The reverse
+      // endpoint (POST /overdue/letters/:id/revert-undeliverable) is not yet
+      // shipped — wired structurally so undo degrades to a plain success toast
+      // until the endpoint exists. Plug `reverse:` here when ready.
+      showUndo({
+        kind: 'MARK_UNDELIVERABLE',
+        message: 'บันทึกส่งไม่ถึงแล้ว',
+        invalidateKeys: [['letter-queue']],
+      });
       invalidate();
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),

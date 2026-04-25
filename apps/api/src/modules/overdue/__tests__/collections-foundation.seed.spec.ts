@@ -29,7 +29,7 @@ describe('seedCollectionsFoundation', () => {
         ],
       },
     });
-    expect(rules1).toBe(8);
+    expect(rules1).toBe(9);
     expect(configs1).toBe(10);
 
     // Run seed a second time — counts must not change
@@ -47,7 +47,7 @@ describe('seedCollectionsFoundation', () => {
         ],
       },
     });
-    expect(rules2).toBe(8);
+    expect(rules2).toBe(9);
     expect(configs2).toBe(10);
   });
 });

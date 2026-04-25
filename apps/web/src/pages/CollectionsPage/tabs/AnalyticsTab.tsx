@@ -16,6 +16,10 @@ import { Card, CardContent } from '@/components/ui/card';
 import QueryBoundary from '@/components/QueryBoundary';
 import { DateRangePicker, type DateRangeValue } from '@/components/ui/DateRangePicker';
 import { useCollectionsAnalytics } from '../hooks/useCollectionsAnalytics';
+import AgingBucketChart from '../components/AgingBucketChart';
+import LeaderboardTable from '../components/LeaderboardTable';
+import StuckContractsSection from '../components/StuckContractsSection';
+import { useAuth } from '@/contexts/AuthContext';
 
 // Chart colors: pragmatic hex approximations of the theme palette.
 // recharts requires explicit color values; these match emerald/red/amber tokens.
@@ -65,6 +69,8 @@ function defaultRange(): DateRangeValue {
 }
 
 export default function AnalyticsTab() {
+  const { user } = useAuth();
+  const isOwner = user?.role === 'OWNER';
   const [dateRange, setDateRange] = useState<DateRangeValue>(defaultRange);
   const range = useMemo(() => mapRangeToEnum(dateRange), [dateRange]);
   const { data, isLoading, isError, error, refetch } = useCollectionsAnalytics(range);
@@ -85,6 +91,12 @@ export default function AnalyticsTab() {
       >
         {data && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            {/* Aging buckets — span full width above 5 trend cards */}
+            <AgingBucketChart />
+
+            {/* OWNER-only sections */}
+            {isOwner && <LeaderboardTable />}
+            {isOwner && <StuckContractsSection />}
             {/* Card 1 — weekly collection rate */}
             <Card>
               <CardContent className="p-5">

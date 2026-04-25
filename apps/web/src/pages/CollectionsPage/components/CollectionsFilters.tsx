@@ -32,7 +32,7 @@ export default function CollectionsFilters({
   });
 
   return (
-    <div className="bg-card border border-border/50 shadow-sm rounded-xl p-4 mb-5">
+    <div data-collections-search className="bg-card border border-border/50 shadow-sm rounded-xl p-4 mb-5">
       <div className="flex gap-3 flex-wrap">
         <input
           type="text"

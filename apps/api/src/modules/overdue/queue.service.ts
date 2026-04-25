@@ -6,7 +6,9 @@ import {
   LineResponseState,
   MdmStateFilter,
   OverdueBucket,
+  QueueSortBy,
 } from './dto/queue-query.dto';
+import { seededShuffle } from '../../utils/shuffle.util';
 import { bangkokStartOfDay } from '../../utils/date.util';
 
 export type QueueTab = 'today' | 'followup' | 'promise';
@@ -35,6 +37,9 @@ export interface QueueFilterInput {
   hasActivePromise?: boolean;
   mdmState?: MdmStateFilter;
   slipReviewPending?: boolean;
+
+  // Sort (post-enrichment)
+  sortBy?: QueueSortBy;
 }
 
 @Injectable()
@@ -65,6 +70,7 @@ export class OverdueQueueService {
 
     const where = this.buildWhere(params.tab, now, branchScope);
     this.applyFilterWhere(where, params, params.userId);
+    this.applySnoozeExclusion(where, params.userRole, params.userId, now);
 
     // Fetch all matching then sort by priority score in memory, then paginate.
     // We can't express the priority formula as a Prisma orderBy (it involves a
@@ -102,12 +108,12 @@ export class OverdueQueueService {
       this.prisma.contract.count({ where }),
     ]);
 
-    const enriched = await this.enrichRows(contracts, now);
+    const enriched = await this.enrichRows(contracts, now, params.userId);
 
     // Post-enrichment filters — computed fields can't go into Prisma where.
     const afterPostFilter = this.applyPostFilters(enriched, params, now);
 
-    const rows = afterPostFilter.sort((a, b) => b.__priorityScore - a.__priorityScore);
+    const rows = this.applySort(afterPostFilter, params.sortBy, params.userId, now);
 
     // If any post-filter fired, `total` must reflect filtered count so UI
     // pagination doesn't read "500 results" while showing 12. When no post-
@@ -187,6 +193,89 @@ export class OverdueQueueService {
           { OR: searchOr },
         ];
       }
+    }
+  }
+
+  /**
+   * Hide contracts the current user has snoozed (active ContractSnooze rows
+   * with `snoozedUntil > now`). OWNER bypasses the exclusion entirely so
+   * they can audit what their team has parked. Anonymous calls (no userId)
+   * also pass through unfiltered — there is nobody to exclude for.
+   *
+   * Implemented as a Prisma `NOT { snoozes: { some: { ... } } }` so the
+   * filter happens in SQL (no in-memory gymnastics on large queues).
+   */
+  private applySnoozeExclusion(
+    where: Prisma.ContractWhereInput,
+    userRole: string,
+    userId: string | undefined,
+    now: Date,
+  ): void {
+    if (!userId) return;
+    if (userRole === 'OWNER') return;
+
+    const exclusion: Prisma.ContractWhereInput = {
+      NOT: {
+        snoozes: {
+          some: {
+            userId,
+            snoozedUntil: { gt: now },
+            deletedAt: null,
+          },
+        },
+      },
+    };
+    where.AND = [
+      ...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []),
+      exclusion,
+    ];
+  }
+
+  /**
+   * Apply sort to enriched rows. Default (PRIORITY) uses the legacy in-memory
+   * priority score (outstanding × daysOverdue × broken-promise multiplier).
+   * Other sorts read directly from enriched fields. RANDOM uses a deterministic
+   * Mulberry32 shuffle seeded by `${userId}-${YYYY-MM-DD}` so each collector
+   * sees a stable order within a single day, but a different order than peers
+   * — fair rotation without losing reload stability.
+   */
+  private applySort<
+    T extends {
+      outstanding: number;
+      daysOverdue: number;
+      lastContactedAt: Date | null;
+      customer: { name: string };
+      __priorityScore: number;
+      id: string;
+    },
+  >(rows: T[], sortBy: QueueSortBy | undefined, userId: string | undefined, now: Date): T[] {
+    const arr = rows.slice();
+    switch (sortBy) {
+      case QueueSortBy.OUTSTANDING_DESC:
+        return arr.sort((a, b) => b.outstanding - a.outstanding);
+      case QueueSortBy.OUTSTANDING_ASC:
+        return arr.sort((a, b) => a.outstanding - b.outstanding);
+      case QueueSortBy.DAYS_OVERDUE_DESC:
+        return arr.sort((a, b) => b.daysOverdue - a.daysOverdue);
+      case QueueSortBy.LAST_CONTACTED_ASC:
+        // Never-contacted (null) ranks first — they're the most stale.
+        return arr.sort((a, b) => {
+          const at = a.lastContactedAt ? new Date(a.lastContactedAt).getTime() : -Infinity;
+          const bt = b.lastContactedAt ? new Date(b.lastContactedAt).getTime() : -Infinity;
+          return at - bt;
+        });
+      case QueueSortBy.NAME_ASC:
+        return arr.sort((a, b) =>
+          (a.customer.name ?? '').localeCompare(b.customer.name ?? '', 'th'),
+        );
+      case QueueSortBy.RANDOM: {
+        const today = now.toISOString().slice(0, 10);
+        const seed = `${userId ?? 'anon'}-${today}`;
+        return seededShuffle(arr, seed);
+      }
+      case QueueSortBy.PRIORITY:
+      default:
+        return arr.sort((a, b) => b.__priorityScore - a.__priorityScore);
     }
   }
 
@@ -325,11 +414,28 @@ export class OverdueQueueService {
    * Uses batched groupBy + findMany(distinct) to avoid N+1 — one query per
    * aggregate regardless of how many contracts were fetched.
    */
-  private async enrichRows(contracts: any[], now: Date) {
+  private async enrichRows(
+    contracts: any[],
+    now: Date,
+    currentUserId: string | undefined,
+  ) {
     if (contracts.length === 0) return [];
 
     const contractIds = contracts.map((c) => c.id);
     const customerIds = [...new Set(contracts.map((c) => c.customerId))];
+
+    // For trending arrow: pull the snapshot closest to "7 days ago" within a
+    // ±1 day window so we still get a comparison even when the cron skipped
+    // a day (DB outage, deploy, etc.). `findMany({ distinct: contractId,
+    // orderBy: date desc })` collapses to one row per contract — the most
+    // recent snapshot in the window — which we then compare to today.
+    const sevenDaysAgo = new Date(now);
+    sevenDaysAgo.setHours(0, 0, 0, 0);
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const sevenDaysAgoLow = new Date(sevenDaysAgo);
+    sevenDaysAgoLow.setDate(sevenDaysAgoLow.getDate() - 1);
+    const sevenDaysAgoHigh = new Date(sevenDaysAgo);
+    sevenDaysAgoHigh.setDate(sevenDaysAgoHigh.getDate() + 1);
 
     const [
       lastCalls,
@@ -340,6 +446,8 @@ export class OverdueQueueService {
       lastChannels,
       letterCounts,
       pendingSlipEvidences,
+      sevenDayAgoSnapshots,
+      activeSnoozes,
     ] = await Promise.all([
       this.prisma.callLog.groupBy({
         by: ['contractId'],
@@ -407,6 +515,35 @@ export class OverdueQueueService {
         },
         _count: { _all: true },
       }),
+      // Trending arrow source — most recent snapshot within ±1d of 7 days
+      // ago, one row per contract (Task 10).
+      this.prisma.contractDailySnapshot.findMany({
+        where: {
+          contractId: { in: contractIds },
+          date: { gte: sevenDaysAgoLow, lte: sevenDaysAgoHigh },
+        },
+        orderBy: { date: 'desc' },
+        distinct: ['contractId'],
+        select: { contractId: true, daysOverdue: true },
+      }),
+      // Active per-user snoozes for the rows we fetched. OWNER sees the
+      // queue with snoozed cards retained (the SQL exclusion is bypassed for
+      // OWNER) — surface the snoozedUntil so the UI can render the badge.
+      // For non-OWNER callers this list is empty (their snoozed cards were
+      // already filtered out at the SQL level).
+      currentUserId
+        ? this.prisma.contractSnooze.findMany({
+            where: {
+              contractId: { in: contractIds },
+              userId: currentUserId,
+              snoozedUntil: { gt: now },
+              deletedAt: null,
+            },
+            orderBy: { snoozedUntil: 'desc' },
+            distinct: ['contractId'],
+            select: { contractId: true, snoozedUntil: true },
+          })
+        : Promise.resolve([] as { contractId: string; snoozedUntil: Date }[]),
     ]);
 
     const callMap = new Map<string, Date | null>(
@@ -433,6 +570,12 @@ export class OverdueQueueService {
     const slipPendingSet = new Set<string>(
       pendingSlipEvidences.filter((r) => r._count._all > 0).map((r) => r.contractId),
     );
+    const sevenDayMap = new Map<string, number>(
+      sevenDayAgoSnapshots.map((r) => [r.contractId, r.daysOverdue]),
+    );
+    const snoozeMap = new Map<string, Date>(
+      activeSnoozes.map((r) => [r.contractId, r.snoozedUntil]),
+    );
 
     return contracts.map((c) => {
       const base = this.toRow(c, now);
@@ -440,6 +583,12 @@ export class OverdueQueueService {
       const action = actionMap.get(c.id) ?? null;
       const lastContactedAt =
         call && action ? (call > action ? call : action) : call ?? action ?? null;
+
+      const trendingArrow = this.computeTrendingArrow(
+        base.daysOverdue,
+        sevenDayMap.get(c.id),
+      );
+      const snoozedUntil = snoozeMap.get(c.id) ?? null;
 
       return {
         ...base,
@@ -450,8 +599,34 @@ export class OverdueQueueService {
         lastChannel: this.toLastChannel(channelMap.get(c.id)),
         letterCount: letterCountMap.get(c.id) ?? 0,
         slipReviewPending: slipPendingSet.has(c.id),
+        trendingArrow,
+        snoozedUntil,
       };
     });
+  }
+
+  /**
+   * Compare today's daysOverdue with the same contract's daysOverdue ~7
+   * days ago. Returns:
+   *  - 'UP'   delta > 0 → getting worse (overdue accumulating)
+   *  - 'DOWN' delta < 0 → improving (customer paid down balance)
+   *  - null   no historical snapshot OR delta === 0
+   *
+   * Important: zero-delta and missing-data both render as "no arrow" in
+   * the UI. They are semantically different (no info vs no change) but
+   * surfacing two distinct null states would clutter the badge — the UI
+   * already shows the absolute daysOverdue prominently, so the trend chip
+   * is purely additive.
+   */
+  private computeTrendingArrow(
+    todayDays: number,
+    sevenDayDays: number | undefined,
+  ): 'UP' | 'DOWN' | null {
+    if (sevenDayDays === undefined) return null;
+    const delta = todayDays - sevenDayDays;
+    if (delta > 0) return 'UP';
+    if (delta < 0) return 'DOWN';
+    return null;
   }
 
   private toMdmState(status: string | undefined): MdmState {

@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import {
   Phone,
   PhoneMissed,
@@ -13,10 +14,39 @@ import {
   AlertTriangle,
   Users,
   FileText,
+  MoreHorizontal,
+  Moon,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
 import { formatDateShort, formatNumber } from '@/utils/formatters';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '@/components/ui/dropdown-menu';
 import type { ContractRow } from '../types';
 import { agingBucket, agingColor, formatRelativeTime } from '../utils/cardIndicators';
+
+/**
+ * Customer 360 snapshot preview is a deliberate intent gesture (Task 11):
+ * - Desktop: 500ms hover dwell → opens floating panel
+ * - Mobile: 500ms long-press (touchstart-touchend with no scroll) → bottom sheet
+ *
+ * 500ms strikes the balance between "pops on accidental drag-by" (too fast)
+ * and "feels broken / unresponsive" (too slow). Material/macOS tooltip
+ * defaults are 400-700ms; we picked 500ms so a quick triple-glance through
+ * the list does NOT spawn a panel for every card.
+ */
+const PREVIEW_DELAY_MS = 500;
+
+export interface PreviewAnchor {
+  top: number;
+  left: number;
+  right: number;
+  bottom: number;
+}
 
 function priorityColor(daysOverdue: number): string {
   if (daysOverdue >= 30) return 'bg-destructive';
@@ -35,18 +65,56 @@ const CHANNEL_META: Record<
   LETTER: { icon: FileText, label: 'จดหมาย' },
 };
 
+function formatSnoozeUntil(iso: string): string {
+  const d = new Date(iso);
+  const today = new Date();
+  const sameDay =
+    d.getFullYear() === today.getFullYear() &&
+    d.getMonth() === today.getMonth() &&
+    d.getDate() === today.getDate();
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  if (sameDay) return `${hh}:${mm}`;
+  return `${formatDateShort(d)} ${hh}:${mm}`;
+}
+
 function IndicatorChips({ contract }: { contract: ContractRow }) {
   const bucket = agingBucket(contract.daysOverdue);
   const channelMeta = contract.lastChannel ? CHANNEL_META[contract.lastChannel] : null;
   const ChannelIcon = channelMeta?.icon ?? null;
+  const arrow = contract.trendingArrow;
 
   return (
     <div className="mb-3 flex flex-wrap items-center gap-1.5">
       <span
-        className={`inline-flex items-center rounded-full border px-2 py-0.5 text-2xs font-medium leading-snug ${agingColor(bucket)}`}
+        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-2xs font-medium leading-snug ${agingColor(bucket)}`}
       >
         เลย {contract.daysOverdue} วัน
+        {arrow === 'UP' && (
+          <ArrowUp
+            className="size-3"
+            aria-label="แย่ลงเทียบ 7 วันก่อน"
+            data-testid="trending-up"
+          />
+        )}
+        {arrow === 'DOWN' && (
+          <ArrowDown
+            className="size-3"
+            aria-label="ดีขึ้นเทียบ 7 วันก่อน"
+            data-testid="trending-down"
+          />
+        )}
       </span>
+
+      {contract.snoozedUntil && (
+        <span
+          className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 text-primary text-2xs font-medium px-2 py-0.5 leading-snug"
+          title={`Snooze ถึง ${new Date(contract.snoozedUntil).toLocaleString('th-TH')}`}
+        >
+          <Moon className="size-3" />
+          ถึง {formatSnoozeUntil(contract.snoozedUntil)}
+        </span>
+      )}
 
       <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted text-muted-foreground text-2xs font-medium px-2 py-0.5 leading-snug">
         <Clock className="size-3" />
@@ -97,6 +165,19 @@ interface Props {
   onSendLine?: (c: ContractRow) => void;
   selected?: boolean;
   onToggleSelect?: (id: string) => void;
+  /** Highlight as keyboard-focused card (J/K navigation) */
+  focused?: boolean;
+  /**
+   * Fired after a 500ms hover dwell (desktop) or long-press (mobile).
+   * Caller renders the floating Customer360SnapshotCard at `anchor`.
+   */
+  onPreview?: (contract: ContractRow, anchor: PreviewAnchor) => void;
+  /** Cancel a pending preview (called when caller closes the panel). */
+  onPreviewCancel?: () => void;
+  /** Open the SnoozeDialog (Task 7). Hides the ⋯ menu entry when undefined. */
+  onSnooze?: (c: ContractRow) => void;
+  /** Lift active snooze immediately. Hides the ⋯ menu entry when undefined. */
+  onUnsnooze?: (c: ContractRow) => void;
 }
 
 export default function ContractCard({
@@ -106,9 +187,53 @@ export default function ContractCard({
   onSendLine,
   selected,
   onToggleSelect,
+  focused,
+  onPreview,
+  onPreviewCancel,
+  onSnooze,
+  onUnsnooze,
 }: Props) {
+  const isSnoozed =
+    !!contract.snoozedUntil && new Date(contract.snoozedUntil).getTime() > Date.now();
+  const focusRing = focused ? 'ring-2 ring-primary ring-offset-1 ring-offset-background' : '';
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const timerRef = useRef<number | null>(null);
+
+  function clearTimer() {
+    if (timerRef.current) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  }
+
+  function schedulePreview() {
+    if (!onPreview || !wrapperRef.current) return;
+    clearTimer();
+    const el = wrapperRef.current;
+    timerRef.current = window.setTimeout(() => {
+      const r = el.getBoundingClientRect();
+      onPreview(contract, { top: r.top, left: r.left, right: r.right, bottom: r.bottom });
+    }, PREVIEW_DELAY_MS);
+  }
+
+  function cancelPreview() {
+    clearTimer();
+  }
+
   return (
-    <div className="group relative flex rounded-xl border border-border/50 bg-card shadow-sm hover:shadow-card-hover transition-shadow overflow-hidden">
+    <div
+      ref={wrapperRef}
+      data-collections-card-id={contract.id}
+      onMouseEnter={schedulePreview}
+      onMouseLeave={cancelPreview}
+      onTouchStart={schedulePreview}
+      onTouchEnd={() => {
+        clearTimer();
+        onPreviewCancel?.();
+      }}
+      onTouchMove={cancelPreview}
+      className={`group relative flex rounded-xl border border-border/50 bg-card shadow-sm hover:shadow-card-hover transition-shadow overflow-hidden ${focusRing}`}
+    >
       {/* Checkbox column — only rendered when bulk-select is active */}
       {onToggleSelect && (
         <label className="flex items-start pt-5 pl-3 shrink-0 cursor-pointer">
@@ -252,6 +377,32 @@ export default function ContractCard({
               >
                 <ChevronRight className="size-3.5" />
               </button>
+            )}
+            {(onSnooze || onUnsnooze) && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    className="rounded-lg border border-input p-1.5 hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+                    title="เพิ่มเติม"
+                    aria-label="เพิ่มเติม"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <MoreHorizontal className="size-3.5" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-44">
+                  {onSnooze && !isSnoozed && (
+                    <DropdownMenuItem onSelect={() => onSnooze(contract)}>
+                      <Moon className="size-4" /> Snooze จน...
+                    </DropdownMenuItem>
+                  )}
+                  {onUnsnooze && isSnoozed && (
+                    <DropdownMenuItem onSelect={() => onUnsnooze(contract)}>
+                      <Moon className="size-4" /> ยกเลิก snooze
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
           </div>
         </div>

@@ -11,6 +11,11 @@ import { OverdueBulkService } from './bulk.service';
 import { ContractLetterService } from './contract-letter.service';
 import { DunningRetryService } from './dunning-retry.service';
 import { OverdueAnalyticsService } from './analytics.service';
+import { AnalyticsAgingService } from './analytics-aging.service';
+import { AnalyticsLeaderboardService } from './analytics-leaderboard.service';
+import { StuckContractsService } from './stuck-contracts.service';
+import { ContractSnoozeService } from './snooze.service';
+import { CreateSnoozeDto } from './dto/snooze.dto';
 import { AnalyticsQueryDto } from './dto/analytics-query.dto';
 import { CreateCallLogDto } from './dto/create-call-log.dto';
 import { AssignCollectorDto } from './dto/assign-collector.dto';
@@ -47,6 +52,10 @@ export class OverdueController {
     private contractLetterService: ContractLetterService,
     private dunningRetryService: DunningRetryService,
     private analyticsService: OverdueAnalyticsService,
+    private analyticsAgingService: AnalyticsAgingService,
+    private analyticsLeaderboardService: AnalyticsLeaderboardService,
+    private stuckContractsService: StuckContractsService,
+    private snoozeService: ContractSnoozeService,
   ) {}
 
   // --- Collections Workflow Hub endpoints (Plan 2) ---
@@ -82,6 +91,7 @@ export class OverdueController {
       hasActivePromise: dto.hasActivePromise,
       mdmState: dto.mdmState,
       slipReviewPending: dto.slipReviewPending,
+      sortBy: dto.sortBy,
     });
   }
 
@@ -381,6 +391,19 @@ export class OverdueController {
     return this.mdmLockService.unlock(id, user.id, user.role);
   }
 
+  // --- Promise-due reminders (P1 Task 14) ---
+
+  @Get('promise-due-reminders')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  listPromiseDueReminders(
+    @CurrentUser() user: { id: string; role: string; branchId: string | null },
+  ) {
+    // Cross-branch roles see all branches; branch-scoped roles see their own.
+    const CROSS_BRANCH_ROLES = ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'];
+    const branchId = CROSS_BRANCH_ROLES.includes(user.role) ? null : user.branchId;
+    return this.overdueService.listPromiseDueRemindersToday(branchId);
+  }
+
   // --- Bulk actions ---
 
   @Post('bulk/assign')
@@ -495,12 +518,56 @@ export class OverdueController {
     return this.contractLetterService.cancel(id, user.id, body.reason);
   }
 
+  // --- Per-user snooze (B2 backend) ---
+
+  @Post('contracts/:id/snooze')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES', 'ACCOUNTANT')
+  snoozeContract(
+    @Param('id') id: string,
+    @Body() dto: CreateSnoozeDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.snoozeService.snooze(id, user.id, dto);
+  }
+
+  @Delete('contracts/:id/snooze')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES', 'ACCOUNTANT')
+  unsnoozeContract(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.snoozeService.unsnooze(id, user.id);
+  }
+
   // --- Collections analytics ---
 
   @Get('analytics')
   @Roles('OWNER', 'FINANCE_MANAGER')
   getAnalytics(@Query() dto: AnalyticsQueryDto) {
     return this.analyticsService.getAnalytics({ range: dto.range ?? '30d' });
+  }
+
+  @Get('analytics/aging')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER')
+  getAnalyticsAging(@CurrentUser() user: { role: string; branchId: string | null }) {
+    return this.analyticsAgingService.getAgingBuckets({
+      userRole: user.role,
+      userBranchId: user.branchId,
+    });
+  }
+
+  @Get('analytics/leaderboard')
+  @Roles('OWNER')
+  getAnalyticsLeaderboard() {
+    return this.analyticsLeaderboardService.getLeaderboard();
+  }
+
+  @Get('analytics/stuck')
+  @Roles('OWNER')
+  getStuckContracts(@Query('days') daysRaw?: string) {
+    const parsed = daysRaw ? parseInt(daysRaw, 10) : 14;
+    const days = Number.isFinite(parsed) && parsed > 0 ? parsed : 14;
+    return this.stuckContractsService.getStuckContracts({ days });
   }
 
   // --- LINE retry endpoints ---

@@ -65,4 +65,35 @@ describe('<ContractCard />', () => {
     render(<ContractCard contract={base} onLogContact={vi.fn()} />);
     expect(screen.queryByText('ล็อคแล้ว')).not.toBeInTheDocument();
   });
+
+  it('renders snooze badge when snoozedUntil is in the future', () => {
+    const future = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const c: ContractRow = { ...base, snoozedUntil: future };
+    render(<ContractCard contract={c} onLogContact={vi.fn()} />);
+    expect(screen.getByText(/^ถึง/)).toBeInTheDocument();
+  });
+
+  it('omits snooze badge when snoozedUntil is null', () => {
+    render(<ContractCard contract={base} onLogContact={vi.fn()} />);
+    expect(screen.queryByText(/^ถึง/)).not.toBeInTheDocument();
+  });
+
+  it('renders trending-up arrow when trendingArrow=UP', () => {
+    const c: ContractRow = { ...base, trendingArrow: 'UP' };
+    render(<ContractCard contract={c} onLogContact={vi.fn()} />);
+    expect(screen.getByTestId('trending-up')).toBeInTheDocument();
+    expect(screen.queryByTestId('trending-down')).not.toBeInTheDocument();
+  });
+
+  it('renders trending-down arrow when trendingArrow=DOWN', () => {
+    const c: ContractRow = { ...base, trendingArrow: 'DOWN' };
+    render(<ContractCard contract={c} onLogContact={vi.fn()} />);
+    expect(screen.getByTestId('trending-down')).toBeInTheDocument();
+  });
+
+  it('renders no arrow when trendingArrow is null (no historical data)', () => {
+    render(<ContractCard contract={base} onLogContact={vi.fn()} />);
+    expect(screen.queryByTestId('trending-up')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('trending-down')).not.toBeInTheDocument();
+  });
 });

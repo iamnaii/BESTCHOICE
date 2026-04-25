@@ -5,6 +5,7 @@ import { useCustomer360 } from '../hooks/useCustomer360';
 import Customer360Timeline from './Customer360Timeline';
 import Customer360Actions from './Customer360Actions';
 import type { ContractRow } from '../types';
+import { formatThaiDateShort } from '@/lib/date';
 
 interface Props {
   contract: ContractRow | null;
@@ -170,12 +171,7 @@ export default function Customer360Panel({ contract, onClose, onRequestSendLine 
                         <div className="text-xs text-muted-foreground leading-snug">
                           งวดถัดไป: งวด{' '}
                           <span className="tabular-nums font-medium">{nextDue.installmentNo}</span>{' '}
-                          ครบกำหนด{' '}
-                          {new Date(nextDue.dueDate).toLocaleDateString('th-TH', {
-                            day: 'numeric',
-                            month: 'short',
-                            year: 'numeric',
-                          })}
+                          ครบกำหนด {formatThaiDateShort(nextDue.dueDate)}
                         </div>
                       )}
                     </div>

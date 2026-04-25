@@ -54,6 +54,7 @@ export default function QueueTab({ search, branchId, onLogContact, onOpen360, on
   });
 
   const total = q.data?.total ?? 0;
+  // C1 fix: search is now server-side via useCollectionsQueue → /overdue/queue
   const rows = q.data?.data ?? [];
   const truncated = q.data?.truncated ?? false;
 
@@ -84,7 +85,7 @@ export default function QueueTab({ search, branchId, onLogContact, onOpen360, on
       {truncated && <TruncatedBanner onOpenFilter={openFilter} />}
       {rows.length === 0 ? (
         <div className="rounded-xl border border-dashed border-success/30 bg-success/5 p-10 text-center">
-          <PartyPopper className="mx-auto mb-3 size-10 text-success" />
+          <PartyPopper className="size-10 mx-auto mb-3 text-success" />
           <div className="text-sm font-medium text-success leading-snug">
             ไม่มีคิวติดตามวันนี้
           </div>

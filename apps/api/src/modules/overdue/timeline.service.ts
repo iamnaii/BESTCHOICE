@@ -102,8 +102,8 @@ export class OverdueTimelineService {
         id: `payment-${p.id}`,
         type: 'PAYMENT',
         timestamp: p.updatedAt.toISOString(),
-        title: `ชำระ ${p.amountPaid.toNumber().toLocaleString('th-TH')} ฿ (งวด ${p.installmentNo})`,
-        metadata: { amount: p.amountPaid.toNumber(), method: p.paymentMethod ?? undefined },
+        title: `ชำระ ${Number(p.amountPaid.toFixed(2)).toLocaleString('th-TH')} ฿ (งวด ${p.installmentNo})`,
+        metadata: { amount: p.amountPaid.toString(), method: p.paymentMethod ?? undefined },
       });
     }
 

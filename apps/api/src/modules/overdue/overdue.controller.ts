@@ -23,6 +23,7 @@ import { BulkAssignDto, BulkProposeLockDto, BulkSendLineDto } from './dto/bulk.d
 import { SendLineAdHocDto } from './dto/send-line-adhoc.dto';
 import { ApproveMdmDto } from './dto/approve-mdm.dto';
 import { UpdateLetterEvidenceDto } from './dto/update-letter-evidence.dto';
+import { RejectMdmDto } from './dto/reject-mdm.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
@@ -59,6 +60,7 @@ export class OverdueController {
     return this.queueService.getQueue({
       tab: dto.tab,
       branchId: dto.branchId,
+      search: dto.search,
       page: dto.page,
       limit: dto.limit,
       userId: user.id,
@@ -364,7 +366,7 @@ export class OverdueController {
   @Roles('OWNER', 'FINANCE_MANAGER')
   rejectMdmLock(
     @Param('id') id: string,
-    @Body() body: { reason: string },
+    @Body() body: RejectMdmDto,
     @CurrentUser() user: { id: string; role: string },
   ) {
     return this.mdmLockService.reject(id, user.id, body.reason, user.role);

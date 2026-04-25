@@ -37,8 +37,10 @@ export class ContractLetterService {
    * the paper trail is legally load-bearing and cancellation is not allowed —
    * the proper action is to issue a follow-up or mark UNDELIVERABLE post-hoc.
    */
-  async cancel(letterId: string, _userId: string, reason: string) {
-    const letter = await this.prisma.contractLetter.findUnique({ where: { id: letterId } });
+  async cancel(letterId: string, userId: string, reason: string) {
+    const letter = await this.prisma.contractLetter.findFirst({
+      where: { id: letterId, deletedAt: null },
+    });
     if (!letter) throw new NotFoundException('ไม่พบหนังสือ');
     if (!['PENDING_DISPATCH', 'PDF_GENERATED'].includes(letter.status)) {
       throw new BadRequestException('ไม่สามารถยกเลิกหนังสือที่ส่งไปแล้ว');
@@ -47,14 +49,26 @@ export class ContractLetterService {
       throw new BadRequestException('ต้องระบุเหตุผลการยกเลิก (≥ 5 ตัวอักษร)');
     }
 
-    return this.prisma.contractLetter.update({
-      where: { id: letterId },
-      data: {
-        status: 'CANCELLED',
-        cancelledAt: new Date(),
-        cancelReason: reason.trim(),
-      },
-    });
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.contractLetter.update({
+        where: { id: letterId },
+        data: {
+          status: 'CANCELLED',
+          cancelledAt: new Date(),
+          cancelReason: reason.trim(),
+        },
+      }),
+      this.prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'CANCEL_LETTER',
+          entity: 'contract_letter',
+          entityId: letterId,
+          newValue: { reason: reason.trim() },
+        },
+      }),
+    ]);
+    return updated;
   }
 
   /**
@@ -92,7 +106,9 @@ export class ContractLetterService {
 
   /** After client generates PDF and uploads to S3, backend records the URL. */
   async markPdfGenerated(letterId: string, pdfUrl: string, userId: string) {
-    const letter = await this.prisma.contractLetter.findUnique({ where: { id: letterId } });
+    const letter = await this.prisma.contractLetter.findFirst({
+      where: { id: letterId, deletedAt: null },
+    });
     if (!letter) throw new NotFoundException('ไม่พบหนังสือ');
     if (letter.status !== 'PENDING_DISPATCH') {
       throw new BadRequestException('สถานะไม่ถูกต้อง — ต้องอยู่ในสถานะ PENDING_DISPATCH');
@@ -121,7 +137,9 @@ export class ContractLetterService {
     userId: string,
     params: { trackingNumber: string; evidencePhotoUrl?: string },
   ) {
-    const letter = await this.prisma.contractLetter.findUnique({ where: { id: letterId } });
+    const letter = await this.prisma.contractLetter.findFirst({
+      where: { id: letterId, deletedAt: null },
+    });
     if (!letter) throw new NotFoundException('ไม่พบหนังสือ');
     if (letter.status !== 'PDF_GENERATED') {
       throw new BadRequestException('สถานะไม่ถูกต้อง — ต้องอยู่ในสถานะ PDF_GENERATED');
@@ -156,6 +174,13 @@ export class ContractLetterService {
     ];
 
     if (letter.letterType === 'CONTRACT_TERMINATION_60D') {
+      // Read the actual current status so audit log reflects reality (contract
+      // may be OVERDUE, DEFAULT, etc. — not always DEFAULT).
+      const currentContract = await this.prisma.contract.findUnique({
+        where: { id: letter.contractId },
+        select: { status: true },
+      });
+      const fromStatus = currentContract?.status ?? 'UNKNOWN';
       transactionOps.push(
         this.prisma.contract.update({
           where: { id: letter.contractId },
@@ -170,7 +195,7 @@ export class ContractLetterService {
             entity: 'contract',
             entityId: letter.contractId,
             newValue: {
-              from: 'DEFAULT',
+              from: fromStatus,
               to: 'LEGAL',
               reason: `60d termination letter dispatched: ${letter.letterNumber}`,
             },
@@ -188,7 +213,7 @@ export class ContractLetterService {
         letter.contractId,
         null,
         null,
-        { trackingNumber: params.trackingNumber } as any,
+        { trackingNumber: params.trackingNumber },
       );
     } catch {
       // already logged by engine
@@ -212,7 +237,9 @@ export class ContractLetterService {
   }
 
   async markDelivered(letterId: string, userId: string) {
-    const letter = await this.prisma.contractLetter.findUnique({ where: { id: letterId } });
+    const letter = await this.prisma.contractLetter.findFirst({
+      where: { id: letterId, deletedAt: null },
+    });
     if (!letter) throw new NotFoundException('ไม่พบหนังสือ');
     if (letter.status !== 'DISPATCHED') {
       throw new BadRequestException('สถานะไม่ถูกต้อง — ต้องอยู่ในสถานะ DISPATCHED');
@@ -239,7 +266,9 @@ export class ContractLetterService {
     if (!reason || reason.trim().length < 5) {
       throw new BadRequestException('เหตุผลต้อง ≥ 5 ตัวอักษร');
     }
-    const letter = await this.prisma.contractLetter.findUnique({ where: { id: letterId } });
+    const letter = await this.prisma.contractLetter.findFirst({
+      where: { id: letterId, deletedAt: null },
+    });
     if (!letter) throw new NotFoundException('ไม่พบหนังสือ');
     if (letter.status !== 'DISPATCHED') {
       throw new BadRequestException('สถานะไม่ถูกต้อง');

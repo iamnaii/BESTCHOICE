@@ -6,6 +6,8 @@ const mockPrisma = {
   payment: {
     aggregate: jest.fn(),
     findFirst: jest.fn(),
+    // C3 fix: batched promise-kept lookup uses findMany instead of N+1 findFirst
+    findMany: jest.fn().mockResolvedValue([]),
   },
   contract: {
     count: jest.fn(),
@@ -213,17 +215,17 @@ describe('OverdueKpiService', () => {
       mockPrisma.callLog.count
         .mockResolvedValueOnce(0)
         .mockResolvedValueOnce(3); // 3 total promises
-      // 1 candidate (keptCandidates)
+      // 3 candidates (keptCandidates)
       mockPrisma.callLog.findMany.mockResolvedValue([
         { contractId: 'c1', settlementDate: candidateDate },
         { contractId: 'c2', settlementDate: candidateDate },
         { contractId: 'c3', settlementDate: candidateDate },
       ]);
-      // 1 of 3 paid
-      mockPrisma.payment.findFirst
-        .mockResolvedValueOnce({ id: 'p1', status: 'PAID' }) // c1 paid
-        .mockResolvedValueOnce(null) // c2 not paid
-        .mockResolvedValueOnce(null); // c3 not paid
+      // C3 fix: single findMany returns paid payments for all 3 contracts.
+      // Only c1 has a payment paid on/after settlementDate (kept); c2/c3 absent → broken.
+      mockPrisma.payment.findMany.mockResolvedValueOnce([
+        { contractId: 'c1', updatedAt: new Date(candidateDate.getTime() + 86400000) },
+      ]);
       mockPrisma.contract.groupBy.mockResolvedValue([]);
 
       const result = await service.getKpi({

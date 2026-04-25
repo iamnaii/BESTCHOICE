@@ -37,7 +37,8 @@ export function useCollectionsQueue(params: {
     queryFn: async () => {
       const q = new URLSearchParams({ tab, page: String(page), limit: String(limit) });
       if (branchId) q.set('branchId', branchId);
-      if (search) q.set('search', search);
+      // C1 fix: push search to server so matches outside the first page are visible
+      if (search.trim()) q.set('search', search.trim());
       if (filter) {
         if (filter.assigned) q.set('assignedToId', filter.assigned);
         if (filter.overdueBuckets?.length) q.set('overdueBuckets', filter.overdueBuckets.join(','));

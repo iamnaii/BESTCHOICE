@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { bangkokStartOfDay } from '../../utils/date.util';
 
 export type QueueTab = 'today' | 'followup' | 'promise';
 
@@ -13,6 +14,7 @@ export class OverdueQueueService {
     userRole: string;
     userBranchId: string | null;
     branchId?: string;
+    search?: string;
     page?: number;
     limit?: number;
   }) {
@@ -28,7 +30,26 @@ export class OverdueQueueService {
         ? { branchId: params.branchId }
         : {};
 
-    const where = this.buildWhere(params.tab, now, branchScope);
+    const baseWhere = this.buildWhere(params.tab, now, branchScope);
+
+    // C1 fix: server-side search across contractNumber / customer name / phone.
+    // Previously the filter was applied client-side on the current page only, so
+    // matches outside the first N rows were invisible to the collector.
+    const search = params.search?.trim();
+    const where: Prisma.ContractWhereInput = search
+      ? {
+          AND: [
+            baseWhere,
+            {
+              OR: [
+                { contractNumber: { contains: search, mode: 'insensitive' } },
+                { customer: { name: { contains: search, mode: 'insensitive' } } },
+                { customer: { phone: { contains: search } } },
+              ],
+            },
+          ],
+        }
+      : baseWhere;
 
     const [contracts, total] = await Promise.all([
       this.prisma.contract.findMany({
@@ -64,8 +85,9 @@ export class OverdueQueueService {
     now: Date,
     branchScope: Prisma.ContractWhereInput,
   ): Prisma.ContractWhereInput {
-    const startOfDay = new Date(now);
-    startOfDay.setHours(0, 0, 0, 0);
+    // Bangkok-local midnight — server TZ on Cloud Run is UTC, so naive
+    // setHours(0,0,0,0) would shift the "today" boundary by 7 hours.
+    const startOfDay = bangkokStartOfDay(now);
 
     if (tab === 'today') {
       return {
@@ -95,6 +117,9 @@ export class OverdueQueueService {
     }
 
     // promise
+    // H4 fix: scope to PROMISED-only with an explicit settlementDate window.
+    // Previously ANSWERED was also matched, which leaked answered-but-not-promised
+    // calls into the promise tab if their row happened to have a stray settlementDate.
     const todayMinus3 = new Date(now.getTime() - 3 * 86400000);
     const todayPlus30 = new Date(now.getTime() + 30 * 86400000);
     return {
@@ -102,8 +127,9 @@ export class OverdueQueueService {
       deletedAt: null,
       callLogs: {
         some: {
-          result: { in: ['PROMISED', 'ANSWERED'] },
+          result: 'PROMISED',
           settlementDate: { gte: todayMinus3, lte: todayPlus30 },
+          brokenAt: null, // un-broken promises — broken ones belong elsewhere
         },
       },
     };

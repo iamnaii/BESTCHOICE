@@ -1,19 +1,54 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { bangkokStartOfDay } from '../../utils/date.util';
+
+export interface KpiResult {
+  totalOutstanding: number;
+  totalLateFees: number;
+  queueToday: number;
+  queueTodayTrend: number;
+  promisedCount: number;
+  promiseKeptRate7d: number;
+  avgCollectorWorkload: number;
+}
 
 @Injectable()
 export class OverdueKpiService {
-  private cache = new Map<string, { value: any; expiresAt: number }>();
-  private CACHE_TTL_MS = 60_000;
+  // H2 fix: bounded TTL cache with capacity cap + explicit invalidate().
+  // Previously the Map grew unbounded and had no write-side invalidation — a
+  // freshly-recorded payment didn't show up for 60s. Now callers (payment
+  // recording, log-contact) can invalidate when state changes, and the cache
+  // self-bounds to avoid memory creep.
+  private cache = new Map<string, { value: KpiResult; expiresAt: number }>();
+  private readonly CACHE_TTL_MS = 60_000;
+  private readonly CACHE_MAX_ENTRIES = 200;
 
   constructor(private prisma: PrismaService) {}
 
-  async getKpi(params: { range: '7d' | '30d'; userRole: string; userBranchId: string | null }) {
+  /**
+   * Call from services that mutate collection-visible state (payment recorded,
+   * contact logged, MDM approved, etc.) to drop stale KPI snapshots.
+   */
+  invalidate(): void {
+    this.cache.clear();
+  }
+
+  async getKpi(params: {
+    range: '7d' | '30d';
+    userRole: string;
+    userBranchId: string | null;
+  }): Promise<KpiResult> {
     const cacheKey = `${params.userRole}:${params.userBranchId ?? 'any'}:${params.range}`;
     const now = Date.now();
     const cached = this.cache.get(cacheKey);
     if (cached && cached.expiresAt > now) return cached.value;
+
+    // Cap memory — evict oldest if we hit the ceiling before adding.
+    if (this.cache.size >= this.CACHE_MAX_ENTRIES) {
+      const oldestKey = this.cache.keys().next().value;
+      if (oldestKey) this.cache.delete(oldestKey);
+    }
 
     const value = await this.compute(params);
     this.cache.set(cacheKey, { value, expiresAt: now + this.CACHE_TTL_MS });
@@ -27,8 +62,10 @@ export class OverdueKpiService {
   }) {
     const nowDate = new Date();
     const sevenDaysAgo = new Date(nowDate.getTime() - 7 * 86400000);
-    const today = new Date(nowDate);
-    today.setHours(0, 0, 0, 0);
+    // Use Bangkok-local midnight, not server-TZ midnight. On Cloud Run (UTC),
+    // setHours(0,0,0,0) flips the "today" boundary at 07:00 ICT — collectors
+    // would see yesterday's queue all morning.
+    const today = bangkokStartOfDay(nowDate);
 
     const branchScope: Prisma.ContractWhereInput =
       params.userRole === 'SALES' || params.userRole === 'BRANCH_MANAGER'
@@ -103,24 +140,43 @@ export class OverdueKpiService {
           : Promise.resolve([] as Array<{ assignedToId: string | null; _count: { _all: number } }>),
       ]);
 
-    // Promise-kept resolution: check if a payment was made on or after the settlementDate
+    // C3 fix: promise-kept resolution in ONE query instead of N+1.
+    // Previously: for each candidate, findFirst(paid after settlementDate).
+    // Now: pull all PAID payments for these contracts since the earliest
+    // settlementDate, match in-memory. O(N+M) instead of O(N×M) roundtrips.
     let keptCount = 0;
-    for (const c of keptCandidates) {
-      const paid = await this.prisma.payment.findFirst({
+    if (keptCandidates.length > 0) {
+      const earliest = keptCandidates.reduce(
+        (min, c) => ((c.settlementDate as Date) < min ? (c.settlementDate as Date) : min),
+        keptCandidates[0].settlementDate as Date,
+      );
+      const paidPayments = await this.prisma.payment.findMany({
         where: {
-          contractId: c.contractId,
+          contractId: { in: keptCandidates.map((c) => c.contractId) },
           status: 'PAID',
-          updatedAt: { gte: c.settlementDate as Date },
+          updatedAt: { gte: earliest },
         },
+        select: { contractId: true, updatedAt: true },
       });
-      if (paid) keptCount++;
+      const paidByContract = new Map<string, Date[]>();
+      for (const p of paidPayments) {
+        const list = paidByContract.get(p.contractId) ?? [];
+        list.push(p.updatedAt);
+        paidByContract.set(p.contractId, list);
+      }
+      for (const c of keptCandidates) {
+        const dates = paidByContract.get(c.contractId) ?? [];
+        if (dates.some((d) => d >= (c.settlementDate as Date))) keptCount++;
+      }
     }
     const promiseKeptRate7d = totalPromised > 0 ? keptCount / totalPromised : 0;
 
     const avgCollectorWorkload =
       workloadBuckets.length > 0
-        ? workloadBuckets.reduce((s: number, b: any) => s + b._count._all, 0) /
-          workloadBuckets.length
+        ? workloadBuckets.reduce(
+            (s: number, b: { _count: { _all: number } }) => s + b._count._all,
+            0,
+          ) / workloadBuckets.length
         : 0;
 
     const amountDue = new Prisma.Decimal(outstanding._sum.amountDue ?? 0);

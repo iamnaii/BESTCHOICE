@@ -1,4 +1,5 @@
 import { Card, CardContent } from '@/components/ui/card';
+import { formatNumber } from '@/utils/formatters';
 import { useCollectionsKpi } from '../hooks/useCollectionsKpi';
 
 interface KpiCardProps {
@@ -70,7 +71,7 @@ export default function CollectionsKpiStrip() {
         loading={isLoading}
         value={
           <span>
-            {data?.totalOutstanding.toLocaleString() ?? '-'}{' '}
+            {data ? formatNumber(data.totalOutstanding) : '-'}{' '}
             <span className="text-base font-medium">฿</span>
           </span>
         }
@@ -79,7 +80,7 @@ export default function CollectionsKpiStrip() {
             <span>
               + ค่าปรับ{' '}
               <span className="tabular-nums text-destructive font-medium">
-                {data.totalLateFees.toLocaleString()}
+                {formatNumber(data.totalLateFees)}
               </span>{' '}
               ฿
             </span>

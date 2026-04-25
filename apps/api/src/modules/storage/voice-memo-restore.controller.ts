@@ -1,64 +1,33 @@
-import {
-  BadRequestException,
-  Controller,
-  Logger,
-  NotFoundException,
-  Param,
-  Post,
-  UseGuards,
-} from '@nestjs/common';
+import { Controller, Param, Post, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
-import { PrismaService } from '../../prisma/prisma.service';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { VoiceMemoRestoreService } from './voice-memo-restore.service';
 
 /**
- * VoiceMemoRestoreController (P2 Task 4 — stub).
+ * VoiceMemoRestoreController (P3 Task 3 — real Glacier wired).
  *
  * Mounted under `/upload/restore-voice-memo/:callLogId`. The frontend
  * `VoiceMemoPlayback` component calls this when a memo is in GLACIER tier.
+ * Heavy lifting lives in {@link VoiceMemoRestoreService} so the cron can
+ * reuse the polling logic.
  *
- * TODO: Wire up real S3 Glacier restore (`RestoreObjectCommand`) once the
- *   lifecycle policy is provisioned (Task 3 / P2 Cluster β prerequisite).
- *   For now this endpoint:
- *     - validates the CallLog exists + has a HOT/GLACIER memo URL,
- *     - logs the request for the operations team,
- *     - flips voiceMemoTier back to HOT optimistically with a 24h restore
- *       expiry once the real Glacier job completes (left as TODO).
+ * TODO: prod ready when lifecycle deploy — verify Glacier transition
+ *   policy is applied to the voice-memos prefix before declaring this
+ *   end-to-end functional in production.
  */
 @Controller('upload')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class VoiceMemoRestoreController {
-  private readonly logger = new Logger(VoiceMemoRestoreController.name);
-
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly restoreService: VoiceMemoRestoreService) {}
 
   @Post('restore-voice-memo/:callLogId')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
-  async requestRestore(@Param('callLogId') callLogId: string) {
-    const callLog = await this.prisma.callLog.findFirst({
-      where: { id: callLogId, deletedAt: null },
-      select: { id: true, voiceMemoUrl: true, voiceMemoTier: true },
-    });
-    if (!callLog) throw new NotFoundException('ไม่พบบันทึกการโทร');
-    if (!callLog.voiceMemoUrl) {
-      throw new BadRequestException('บันทึกการโทรนี้ไม่มีไฟล์เสียง');
-    }
-
-    // TODO(P2 follow-up): submit S3 RestoreObjectCommand with `Days: 7` +
-    //   `GlacierJobParameters.Tier: 'Standard'` (~3-5h ETA), then update
-    //   voiceMemoTier='HOT' + voiceMemoGlacierRestoreExpiresAt = now+7d when
-    //   the restore notification fires.
-    this.logger.log(
-      `[stub] Glacier restore requested for CallLog ${callLogId} (tier=${callLog.voiceMemoTier ?? 'HOT'})`,
-    );
-
-    return {
-      ok: true,
-      callLogId,
-      status: 'REQUESTED',
-      etaHours: 4,
-      message: 'ส่งคำขอดึงไฟล์เรียบร้อย ระบบจะแจ้งเตือนเมื่อพร้อม',
-    };
+  async requestRestore(
+    @Param('callLogId') callLogId: string,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.restoreService.requestRestore(callLogId, user.id);
   }
 }

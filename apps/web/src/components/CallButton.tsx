@@ -11,8 +11,8 @@ interface CallButtonProps {
   contractId: string;
   phone?: string;
   className?: string;
-  variant?: 'default' | 'ghost' | 'outline';
-  size?: 'default' | 'sm' | 'icon';
+  variant?: 'ghost' | 'outline' | 'primary' | 'secondary';
+  size?: 'md' | 'sm' | 'icon';
 }
 
 export function CallButton({

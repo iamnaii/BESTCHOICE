@@ -631,6 +631,10 @@ model User {
   lateFeeWaiverRequests  LateFeeWaiverRequest[] @relation("LateFeeWaiverRequester")
   approvedLateFeeWaivers LateFeeWaiverRequest[] @relation("LateFeeWaiverApprover")
 
+  // Yeastar PBX — maps this staff account to a PBX extension (e.g. "1001")
+  // Used by click-to-call (originate from) and inbound screen pop (identify agent)
+  yeastarExtension String? @map("yeastar_extension")
+
   @@index([branchId])
   @@map("users")
 }

@@ -10,6 +10,7 @@ import { OverdueQueueService } from './queue.service';
 import { OverdueKpiService } from './kpi.service';
 import { OverdueTimelineService } from './timeline.service';
 import { OverdueBulkService } from './bulk.service';
+import { OwnerAlertHelper } from './owner-alert.helper';
 import { BrokenPromiseCron } from './crons/broken-promise.cron';
 import { MdmAutoProposeCron } from './crons/mdm-auto-propose.cron';
 import { LetterAutoGenerateCron } from './crons/letter-auto-generate.cron';
@@ -31,6 +32,7 @@ import { LineOaModule } from '../line-oa/line-oa.module';
     OverdueKpiService,
     OverdueTimelineService,
     OverdueBulkService,
+    OwnerAlertHelper,
     BrokenPromiseCron,
     MdmAutoProposeCron,
     LetterAutoGenerateCron,

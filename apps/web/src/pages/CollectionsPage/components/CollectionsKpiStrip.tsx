@@ -1,4 +1,6 @@
+import { Users } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
+import { useAuth } from '@/contexts/AuthContext';
 import { formatNumber } from '@/utils/formatters';
 import { useCollectionsKpi } from '../hooks/useCollectionsKpi';
 
@@ -37,7 +39,9 @@ function KpiCard({ label, value, subtitle, strip, loading }: KpiCardProps) {
 }
 
 export default function CollectionsKpiStrip() {
+  const { user } = useAuth();
   const { data, isLoading, isError, refetch } = useCollectionsKpi('7d');
+  const isOwner = user?.role === 'OWNER';
 
   if (isError) {
     return (
@@ -64,58 +68,84 @@ export default function CollectionsKpiStrip() {
     );
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-6">
-      <KpiCard
-        label="ค้างรวม"
-        strip="bg-destructive"
-        loading={isLoading}
-        value={
-          <span>
-            {data ? formatNumber(data.totalOutstanding) : '-'}{' '}
-            <span className="text-base font-medium">฿</span>
-          </span>
-        }
-        subtitle={
-          data ? (
+    <div className="mb-6 space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+        <KpiCard
+          label="ค้างรวม"
+          strip="bg-destructive"
+          loading={isLoading}
+          value={
             <span>
-              + ค่าปรับ{' '}
-              <span className="tabular-nums text-destructive font-medium">
-                {formatNumber(data.totalLateFees)}
-              </span>{' '}
-              ฿
+              {data ? formatNumber(data.totalOutstanding) : '-'}{' '}
+              <span className="text-base font-medium">฿</span>
             </span>
-          ) : undefined
-        }
-      />
-      <KpiCard
-        label="คิววันนี้"
-        strip="bg-primary"
-        loading={isLoading}
-        value={<span className="text-primary">{data?.queueToday ?? '-'}</span>}
-        subtitle={trendEl}
-      />
-      <KpiCard
-        label="นัดชำระ"
-        strip="bg-warning"
-        loading={isLoading}
-        value={<span>{data?.promisedCount ?? '-'}</span>}
-        subtitle="รอชำระตามนัด"
-      />
-      <KpiCard
-        label="Promise-kept 7d"
-        strip="bg-success"
-        loading={isLoading}
-        value={
-          data ? (
-            <span className="text-success">
-              {(data.promiseKeptRate7d * 100).toFixed(0)}%
+          }
+          subtitle={
+            data ? (
+              <span>
+                + ค่าปรับ{' '}
+                <span className="tabular-nums text-destructive font-medium">
+                  {formatNumber(data.totalLateFees)}
+                </span>{' '}
+                ฿
+              </span>
+            ) : undefined
+          }
+        />
+        <KpiCard
+          label="คิววันนี้"
+          strip="bg-primary"
+          loading={isLoading}
+          value={<span className="text-primary">{data?.queueToday ?? '-'}</span>}
+          subtitle={trendEl}
+        />
+        <KpiCard
+          label="นัดชำระ"
+          strip="bg-warning"
+          loading={isLoading}
+          value={<span>{data?.promisedCount ?? '-'}</span>}
+          subtitle="รอชำระตามนัด"
+        />
+        <KpiCard
+          label="Promise-kept 7d"
+          strip="bg-success"
+          loading={isLoading}
+          value={
+            data ? (
+              <span className="text-success">
+                {(data.promiseKeptRate7d * 100).toFixed(0)}%
+              </span>
+            ) : (
+              '-'
+            )
+          }
+          subtitle="ช่วง 7 วันล่าสุด"
+        />
+      </div>
+
+      {/* Collector workload breakdown — OWNER only */}
+      {isOwner && data?.collectorWorkload && data.collectorWorkload.length > 0 && (
+        <div className="rounded-xl border border-border/50 bg-card shadow-sm p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <Users className="size-4 text-primary" />
+            <div className="text-sm font-semibold">ผู้ติดตามหนี้</div>
+            <span className="text-xs text-muted-foreground leading-snug">
+              (ลูกค้าที่มอบหมาย ยังไม่ปิด)
             </span>
-          ) : (
-            '-'
-          )
-        }
-        subtitle="ช่วง 7 วันล่าสุด"
-      />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {data.collectorWorkload.map((w) => (
+              <div
+                key={w.userId}
+                className="inline-flex items-center gap-2 rounded-lg border border-border/50 bg-muted/30 px-3 py-1.5 text-xs"
+              >
+                <span className="font-medium">{w.name}</span>
+                <span className="tabular-nums text-muted-foreground">{w.count} ราย</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

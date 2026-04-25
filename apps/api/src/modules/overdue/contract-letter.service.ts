@@ -148,7 +148,7 @@ export class ContractLetterService {
       throw new BadRequestException('เลข tracking EMS ต้อง ≥ 5 ตัวอักษร');
     }
 
-    const [updated] = await this.prisma.$transaction([
+    const transactionOps: Prisma.PrismaPromise<unknown>[] = [
       this.prisma.contractLetter.update({
         where: { id: letterId },
         data: {
@@ -171,7 +171,40 @@ export class ContractLetterService {
           },
         },
       }),
-    ]);
+    ];
+
+    if (letter.letterType === 'CONTRACT_TERMINATION_60D') {
+      // Read the actual current status so audit log reflects reality (contract
+      // may be OVERDUE, DEFAULT, etc. — not always DEFAULT).
+      const currentContract = await this.prisma.contract.findUnique({
+        where: { id: letter.contractId },
+        select: { status: true },
+      });
+      const fromStatus = currentContract?.status ?? 'UNKNOWN';
+      transactionOps.push(
+        this.prisma.contract.update({
+          where: { id: letter.contractId },
+          data: { status: 'LEGAL' },
+        }),
+      );
+      transactionOps.push(
+        this.prisma.auditLog.create({
+          data: {
+            userId,
+            action: 'CONTRACT_STATUS_LEGAL',
+            entity: 'contract',
+            entityId: letter.contractId,
+            newValue: {
+              from: fromStatus,
+              to: 'LEGAL',
+              reason: `60d termination letter dispatched: ${letter.letterNumber}`,
+            },
+          },
+        }),
+      );
+    }
+
+    const [updated] = await this.prisma.$transaction(transactionOps);
 
     // Fire LINE event — non-fatal
     try {

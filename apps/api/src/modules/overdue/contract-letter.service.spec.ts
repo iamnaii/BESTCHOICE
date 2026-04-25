@@ -14,6 +14,7 @@ const mockPrisma = {
   },
   contract: {
     update: jest.fn(),
+    findUnique: jest.fn(),
   },
   auditLog: {
     create: jest.fn(),
@@ -217,6 +218,7 @@ describe('ContractLetterService', () => {
         ...pdfGeneratedLetter,
         letterType: 'CONTRACT_TERMINATION_60D',
       });
+      mockPrisma.contract.findUnique.mockResolvedValueOnce({ status: 'DEFAULT' });
       const dispatched = { id: 'l3', status: 'DISPATCHED' };
       mockPrisma.$transaction.mockResolvedValueOnce([dispatched, {}]);
       mockDunningEngine.executeEventTrigger.mockResolvedValue(undefined);
@@ -241,6 +243,81 @@ describe('ContractLetterService', () => {
       const calls = mockDunningEngine.executeEventTrigger.mock.calls;
       const terminatedCall = calls.find((c: string[]) => c[0] === 'CONTRACT_TERMINATED');
       expect(terminatedCall).toBeUndefined();
+    });
+
+    it('markDispatched sets contract.status=LEGAL for 60d termination letter (4 tx ops)', async () => {
+      mockPrisma.contractLetter.findUnique.mockResolvedValueOnce({
+        id: 'letter-t',
+        status: 'PDF_GENERATED',
+        contractId: 'c1',
+        letterType: 'CONTRACT_TERMINATION_60D',
+        letterNumber: 'ST-2026-00001',
+      });
+      // New: service now reads current contract status for audit `from` field
+      mockPrisma.contract.findUnique.mockResolvedValueOnce({ status: 'OVERDUE' });
+      mockPrisma.$transaction.mockResolvedValueOnce([
+        { id: 'letter-t', status: 'DISPATCHED' },
+        {},
+        {},
+        {},
+      ]);
+      mockDunningEngine.executeEventTrigger.mockResolvedValue(undefined);
+
+      await service.markDispatched('letter-t', 'u1', { trackingNumber: 'EX123456' });
+
+      const txOps = mockPrisma.$transaction.mock.calls[0][0];
+      expect(Array.isArray(txOps)).toBe(true);
+      // 2 base ops + 2 legal-escalation ops for 60d letters
+      expect(txOps.length).toBe(4);
+    });
+
+    it('markDispatched audit log uses actual current contract status in `from` field', async () => {
+      mockPrisma.contractLetter.findUnique.mockResolvedValueOnce({
+        id: 'letter-t2',
+        status: 'PDF_GENERATED',
+        contractId: 'c-audit',
+        letterType: 'CONTRACT_TERMINATION_60D',
+        letterNumber: 'ST-2026-00007',
+      });
+      mockPrisma.contract.findUnique.mockResolvedValueOnce({ status: 'OVERDUE' });
+      // Capture auditLog.create calls to assert `from`
+      mockPrisma.auditLog.create.mockImplementation((args: any) => args);
+      mockPrisma.$transaction.mockResolvedValueOnce([
+        { id: 'letter-t2', status: 'DISPATCHED' },
+        {},
+        {},
+        {},
+      ]);
+      mockDunningEngine.executeEventTrigger.mockResolvedValue(undefined);
+
+      await service.markDispatched('letter-t2', 'u1', { trackingNumber: 'EX987654' });
+
+      // Find the CONTRACT_STATUS_LEGAL audit op inside the transaction payload
+      const txOps = mockPrisma.$transaction.mock.calls[0][0];
+      const legalAuditCall = mockPrisma.auditLog.create.mock.calls.find(
+        (call: any[]) => call[0]?.data?.action === 'CONTRACT_STATUS_LEGAL',
+      );
+      expect(legalAuditCall).toBeDefined();
+      expect(legalAuditCall?.[0]?.data?.newValue?.from).toBe('OVERDUE');
+      expect(legalAuditCall?.[0]?.data?.newValue?.to).toBe('LEGAL');
+      expect(txOps.length).toBe(4);
+    });
+
+    it('markDispatched does NOT set LEGAL for 45d return-device letter (2 tx ops)', async () => {
+      mockPrisma.contractLetter.findUnique.mockResolvedValueOnce({
+        id: 'letter-r',
+        status: 'PDF_GENERATED',
+        contractId: 'c1',
+        letterType: 'RETURN_DEVICE_45D',
+        letterNumber: 'ST-2026-00002',
+      });
+      mockPrisma.$transaction.mockResolvedValueOnce([{ id: 'letter-r', status: 'DISPATCHED' }, {}]);
+      mockDunningEngine.executeEventTrigger.mockResolvedValue(undefined);
+
+      await service.markDispatched('letter-r', 'u1', { trackingNumber: 'EX777AB' });
+
+      const txOps = mockPrisma.$transaction.mock.calls[0][0];
+      expect(txOps.length).toBe(2); // only 2 base ops
     });
 
     it('throws BadRequest when status is not PDF_GENERATED', async () => {

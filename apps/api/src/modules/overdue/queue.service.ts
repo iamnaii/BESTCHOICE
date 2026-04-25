@@ -51,7 +51,16 @@ export class OverdueQueueService {
         }
       : baseWhere;
 
-    const [contracts, total] = await Promise.all([
+    // Fetch all matching then sort by priority score in memory, then paginate.
+    // We can't express the priority formula as a Prisma orderBy (it involves a
+    // computed expression across payments + callLogs + counters). Acceptable
+    // tradeoff: the overdue set is bounded by branch scope and status filter
+    // to ~thousands at most in practice.
+    // TODO: persist priorityScore to support >500 overdue cases (Wave 3 schema
+    // change). Until then we cap the fetch AND the reported total so that
+    // pagination doesn't hand out page numbers we can't serve.
+    const FETCH_CAP = 500;
+    const [contracts, dbCount] = await Promise.all([
       this.prisma.contract.findMany({
         where,
         include: {
@@ -67,17 +76,46 @@ export class OverdueQueueService {
             orderBy: { calledAt: 'desc' },
             take: 1,
           },
+          // For broken-promise multiplier in priority score
+          _count: {
+            select: {
+              callLogs: { where: { result: 'PROMISED', brokenAt: { not: null } } },
+            },
+          },
         },
-        orderBy: { updatedAt: 'desc' },
-        skip,
-        take: limit,
+        take: FETCH_CAP, // cap the fetch — priority sort + pagination happens in memory
       }),
       this.prisma.contract.count({ where }),
     ]);
 
-    const data = contracts.map((c) => this.toRow(c, now));
+    const rows = contracts
+      .map((c) => this.toRow(c, now))
+      .sort((a, b) => b.__priorityScore - a.__priorityScore);
 
-    return { data, total, page, limit };
+    const paged = rows.slice(skip, skip + limit).map(({ __priorityScore, ...rest }) => rest);
+
+    // Cap the reported total so pagination never advertises pages we can't
+    // serve from our in-memory FETCH_CAP slice. Include a warning flag when
+    // the true DB count exceeds the cap so callers can surface it.
+    const total = Math.min(dbCount, FETCH_CAP);
+    const truncated = dbCount > FETCH_CAP;
+
+    return { data: paged, total, page, limit, truncated };
+  }
+
+  /**
+   * Priority = outstanding × daysOverdue × (noAnswerCount+1) × brokenPromiseMultiplier.
+   * Larger score = higher urgency. Broken promises weigh 2× per occurrence to
+   * surface serial promise-breakers first.
+   */
+  private priorityScore(
+    outstanding: number,
+    daysOverdue: number,
+    noAnswerCount: number,
+    brokenPromiseCount: number,
+  ): number {
+    const brokenMul = 1 + brokenPromiseCount * 2;
+    return Math.max(0, outstanding) * Math.max(0, daysOverdue) * (noAnswerCount + 1) * brokenMul;
   }
 
   private buildWhere(
@@ -147,6 +185,8 @@ export class OverdueQueueService {
     const daysOverdue = payment
       ? Math.max(0, Math.floor((now.getTime() - new Date(payment.dueDate).getTime()) / 86400000))
       : 0;
+    const brokenPromiseCount = c._count?.callLogs ?? 0;
+    const __priorityScore = this.priorityScore(outstanding, daysOverdue, c.noAnswerCount ?? 0, brokenPromiseCount);
     return {
       id: c.id,
       contractNumber: c.contractNumber,
@@ -163,6 +203,7 @@ export class OverdueQueueService {
       settlementDate: callLog?.settlementDate ?? null,
       needsSkipTracing: c.needsSkipTracing,
       deviceLocked: c.deviceLocked,
+      __priorityScore,
     };
   }
 }

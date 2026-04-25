@@ -41,6 +41,31 @@ enum ContractStatus {
   CLOSED_BAD_DEBT
 }
 
+// P1 Collections UI — Saved Filter Presets (Task 3)
+enum FilterPresetScope {
+  PRIVATE
+  SHARED_BRANCH
+  SHARED_ALL
+}
+
+// P1 Collections UI — Call Result Quick-Tags (Task 12)
+enum CallResult {
+  ANSWERED
+  NO_ANSWER
+  BUSY
+  DEVICE_OFF
+  UNREACHABLE
+}
+
+enum NegotiationResult {
+  REQUESTED_EXTENSION
+  WILL_PAY
+  REFUSED
+  REQUESTED_RETURN
+  NEGOTIATING
+  NOT_APPLICABLE
+}
+
 // Dunning escalation stages for overdue debt collection
 enum TodoStatus {
   TODO
@@ -457,6 +482,9 @@ model Branch {
   crmLeads                 CrmLead[]
   receivableReconLogs      ReceivableReconLog[]      @relation("ReceivableReconBranch")
 
+  // P1 Collections UI — branch-scoped saved filter presets
+  filterPresets FilterPreset[]
+
   @@index([companyId])
   @@map("branches")
 }
@@ -585,6 +613,10 @@ model User {
   mdmProposed      MdmLockRequest[] @relation("MdmProposed")
   mdmApproved      MdmLockRequest[] @relation("MdmApproved")
   letterDispatched ContractLetter[] @relation("LetterDispatched")
+
+  // P1 Collections UI — per-user contract snoozes + saved filter presets
+  snoozes       ContractSnooze[]
+  filterPresets FilterPreset[]
 
   @@index([branchId])
   @@map("users")
@@ -861,6 +893,10 @@ model Contract {
 
   mdmLockRequests MdmLockRequest[]
   contractLetters ContractLetter[]
+
+  // P1 Collections UI — per-user snooze + daily snapshot rollups
+  snoozes        ContractSnooze[]
+  dailySnapshots ContractDailySnapshot[]
 
   @@index([customerId])
   @@index([branchId])
@@ -1677,6 +1713,11 @@ model CallLog {
   /// ใช้ร่วมกับ result='PROMISED' เพื่อนับ broken-promise count → ป้อนเข้า dunning
   /// escalation และ credit-check ถัดไป
   brokenAt        DateTime? @map("broken_at")
+  // P1 Collections — quick-tag enums captured from ContactLogDialog (Task 12).
+  // `result` (free-string above) remains the legacy field for back-compat;
+  // these add structured analytics dimensions.
+  callResult        CallResult?        @map("call_result")
+  negotiationResult NegotiationResult? @map("negotiation_result")
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
   deletedAt       DateTime? @map("deleted_at")
@@ -4908,4 +4949,70 @@ model AiSettings {
   updatedBy                     User?    @relation("AiSettingsUpdatedBy", fields: [updatedById], references: [id])
 
   @@map("ai_settings")
+}
+
+// ============================================================
+// P1 Collections UI Enhancements (2026-04-25)
+// ============================================================
+
+/// Per-user snooze for contract cards in the Collections queue.
+/// Soft-deleted on un-snooze (so we can audit "who snoozed how often").
+/// Active snooze = `deletedAt is null AND snoozedUntil > now()`.
+model ContractSnooze {
+  id           String    @id @default(uuid())
+  contractId   String    @map("contract_id")
+  contract     Contract  @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  userId       String    @map("user_id")
+  user         User      @relation(fields: [userId], references: [id])
+  snoozedUntil DateTime  @map("snoozed_until")
+  reason       String?
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
+
+  @@index([userId, snoozedUntil])
+  @@index([contractId, deletedAt])
+  @@map("contract_snoozes")
+}
+
+/// Immutable daily snapshot of overdue contract state for trending arrows
+/// (B1 follow-up) and historical analytics. Pruned to 30 days by daily cron.
+/// updatedAt/deletedAt intentionally omitted — append-only by design.
+model ContractDailySnapshot {
+  id          String         @id @default(uuid())
+  contractId  String         @map("contract_id")
+  contract    Contract       @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  date        DateTime       @db.Date
+  daysOverdue Int            @map("days_overdue")
+  outstanding Decimal        @db.Decimal(12, 2)
+  status      ContractStatus
+  createdAt   DateTime       @default(now()) @map("created_at")
+
+  @@unique([contractId, date])
+  @@index([date])
+  @@index([contractId, date(sort: Desc)])
+  @@map("contract_daily_snapshots")
+}
+
+/// User-saved filter UI preset for Collections-style queue pages.
+/// `scope` gates visibility (PRIVATE = owner-only, SHARED_BRANCH = same branch,
+/// SHARED_ALL = OWNER-only org-wide). `filterJson` holds the opaque page-shape
+/// filter state — semantics owned by the consuming page (`page` discriminator).
+model FilterPreset {
+  id          String            @id @default(uuid())
+  name        String
+  ownerUserId String            @map("owner_user_id")
+  owner       User              @relation(fields: [ownerUserId], references: [id])
+  scope       FilterPresetScope @default(PRIVATE)
+  branchId    String?           @map("branch_id")
+  branch      Branch?           @relation(fields: [branchId], references: [id])
+  page        String
+  filterJson  Json              @map("filter_json")
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+  deletedAt   DateTime?         @map("deleted_at")
+
+  @@index([ownerUserId, page])
+  @@index([scope, branchId])
+  @@map("filter_presets")
 }

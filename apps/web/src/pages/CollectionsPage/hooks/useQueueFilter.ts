@@ -5,6 +5,8 @@ export type OverdueBucketOption = '1-7' | '8-30' | '31-60' | '61-90' | '90+';
 export type LastContactedOption = 'today' | 'this_week' | 'never' | 'over_7_days';
 export type LineResponseOption = 'responded' | 'ignored' | 'blocked' | 'no_line';
 export type MdmStateOption = 'not_locked' | 'locked' | 'pending';
+export type CustomerTagOption = 'VIP' | 'HIGH_RISK' | 'NEW' | 'LOYAL' | 'BLACKLIST';
+export type TagFilterMode = 'include' | 'exclude';
 export type QueueSortOption =
   | 'priority'
   | 'outstanding_desc'
@@ -30,6 +32,13 @@ export interface QueueFilterState {
   mdmState?: MdmStateOption;
   showSkipTracing?: boolean;
   slipReviewPending?: boolean;
+  /**
+   * Customer-tag multi-select filter (P3 Task 8 — C1 frontend).
+   * Combined with `tagFilterMode` to either keep only contracts whose customer
+   * has any of these tags ('include') or hide them ('exclude').
+   */
+  customerTags?: CustomerTagOption[];
+  tagFilterMode?: TagFilterMode;
   sortBy?: QueueSortOption;
 }
 
@@ -77,6 +86,8 @@ const FILTER_NAMES = [
   'mdmState',
   'showSkipTracing',
   'slipReviewPending',
+  'customerTags',
+  'tagFilterMode',
   'sortBy',
 ] as const;
 
@@ -117,6 +128,9 @@ function serialize(
   if (state.mdmState) out.set(`${prefix}mdmState`, state.mdmState);
   if (state.showSkipTracing) out.set(`${prefix}showSkipTracing`, 'true');
   if (state.slipReviewPending) out.set(`${prefix}slipReviewPending`, 'true');
+  if (state.customerTags?.length)
+    out.set(`${prefix}customerTags`, state.customerTags.join(','));
+  if (state.tagFilterMode) out.set(`${prefix}tagFilterMode`, state.tagFilterMode);
   if (state.sortBy) out.set(`${prefix}sortBy`, state.sortBy);
   return out;
 }
@@ -161,6 +175,12 @@ export function useQueueFilter(
       mdmState: (params.get(`${prefix}mdmState`) as MdmStateOption | null) ?? undefined,
       showSkipTracing: params.get(`${prefix}showSkipTracing`) === 'true' || undefined,
       slipReviewPending: params.get(`${prefix}slipReviewPending`) === 'true' || undefined,
+      customerTags:
+        (params.get(`${prefix}customerTags`)?.split(',').filter(Boolean) as
+          | CustomerTagOption[]
+          | undefined) ?? undefined,
+      tagFilterMode:
+        (params.get(`${prefix}tagFilterMode`) as TagFilterMode | null) ?? undefined,
       sortBy: (params.get(`${prefix}sortBy`) as QueueSortOption | null) ?? undefined,
     };
   }, [params, prefix]);
@@ -208,5 +228,6 @@ export function countActiveFilters(f: QueueFilterState): number {
   if (f.mdmState) n++;
   if (f.showSkipTracing) n++;
   if (f.slipReviewPending) n++;
+  if (f.customerTags?.length) n++;
   return n;
 }

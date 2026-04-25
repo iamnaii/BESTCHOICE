@@ -100,7 +100,14 @@ export default function FilterDrawer({
     const next = current.includes(value)
       ? current.filter((x) => x !== value)
       : [...current, value];
-    setDraft({ ...draft, [key]: next.length ? (next as any) : undefined });
+    // `key` constrains the value type, but TS can't narrow `string[]` back to
+    // the specific union (e.g. OverdueBucket[]) without per-key branching. Cast
+    // through `unknown` is intentional — the source values come from typed
+    // option lists upstream so the runtime shape matches the field union.
+    setDraft({
+      ...draft,
+      [key]: next.length ? (next as unknown as QueueFilterState[K]) : undefined,
+    });
   };
 
   const minOut = draft.minOutstanding ?? OUTSTANDING_MIN;
@@ -438,6 +445,72 @@ export default function FilterDrawer({
                     </Label>
                   </div>
                 </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            {/* Section 4: CUSTOMER TAGS (P3 Task 8 — C1 frontend) */}
+            <AccordionItem value="tags">
+              <AccordionTrigger>tags ลูกค้า</AccordionTrigger>
+              <AccordionContent className="space-y-4 pb-4">
+                <div>
+                  <Label>เลือก tags</Label>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {(['VIP', 'HIGH_RISK', 'NEW', 'LOYAL', 'BLACKLIST'] as const).map(
+                      (t) => {
+                        const active = draft.customerTags?.includes(t) ?? false;
+                        return (
+                          <button
+                            key={t}
+                            type="button"
+                            onClick={() => toggleArrayValue('customerTags', t)}
+                            className={`rounded-full border px-3 py-1 text-xs transition-colors ${
+                              active
+                                ? 'border-primary bg-primary text-primary-foreground'
+                                : 'border-border bg-muted text-muted-foreground hover:bg-accent'
+                            }`}
+                          >
+                            {t === 'HIGH_RISK'
+                              ? 'เสี่ยงสูง'
+                              : t === 'NEW'
+                              ? 'ลูกค้าใหม่'
+                              : t === 'LOYAL'
+                              ? 'ลูกค้าประจำ'
+                              : t}
+                          </button>
+                        );
+                      },
+                    )}
+                  </div>
+                </div>
+
+                {draft.customerTags?.length ? (
+                  <div>
+                    <Label>โหมดการกรอง</Label>
+                    <RadioGroup
+                      className="mt-2 space-y-1.5"
+                      value={draft.tagFilterMode ?? 'include'}
+                      onValueChange={(v) =>
+                        setDraft({
+                          ...draft,
+                          tagFilterMode: v as 'include' | 'exclude',
+                        })
+                      }
+                    >
+                      <div className="flex items-center gap-2">
+                        <RadioGroupItem value="include" id="tag-mode-include" />
+                        <Label htmlFor="tag-mode-include" className="cursor-pointer">
+                          เฉพาะลูกค้าที่มี tags ที่เลือก
+                        </Label>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <RadioGroupItem value="exclude" id="tag-mode-exclude" />
+                        <Label htmlFor="tag-mode-exclude" className="cursor-pointer">
+                          ซ่อนลูกค้าที่มี tags ที่เลือก
+                        </Label>
+                      </div>
+                    </RadioGroup>
+                  </div>
+                ) : null}
               </AccordionContent>
             </AccordionItem>
           </Accordion>

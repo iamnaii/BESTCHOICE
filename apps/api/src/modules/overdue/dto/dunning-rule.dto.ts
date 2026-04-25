@@ -26,6 +26,13 @@ export class CreateDunningRuleDto {
   @MaxLength(2000, { message: 'template ข้อความต้องไม่เกิน 2000 ตัวอักษร' })
   messageTemplate: string;
 
+  // P3 E2: optional reference to SmsTemplate by name. When set the engine
+  // prefers the SmsTemplate body; otherwise falls back to messageTemplate.
+  @IsString({ message: 'templateName ต้องเป็น string' })
+  @MaxLength(100, { message: 'templateName ยาวเกิน 100 ตัวอักษร' })
+  @IsOptional()
+  templateName?: string | null;
+
   @IsBoolean({ message: 'includePaymentLink ต้องเป็น true หรือ false' })
   @IsOptional()
   includePaymentLink?: boolean;
@@ -67,6 +74,11 @@ export class UpdateDunningRuleDto {
   @MaxLength(2000, { message: 'template ข้อความต้องไม่เกิน 2000 ตัวอักษร' })
   @IsOptional()
   messageTemplate?: string;
+
+  @IsString({ message: 'templateName ต้องเป็น string' })
+  @MaxLength(100, { message: 'templateName ยาวเกิน 100 ตัวอักษร' })
+  @IsOptional()
+  templateName?: string | null;
 
   @IsBoolean({ message: 'includePaymentLink ต้องเป็น true หรือ false' })
   @IsOptional()

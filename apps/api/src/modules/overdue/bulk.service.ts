@@ -15,7 +15,7 @@ export class OverdueBulkService {
   async bulkAssign(dto: BulkAssignDto, actorId: string) {
     const result = await this.prisma.contract.updateMany({
       where: { id: { in: dto.contractIds }, deletedAt: null },
-      data: { assignedToId: dto.assignedToId },
+      data: { assignedToId: dto.assignedToId, assignedAt: new Date() },
     });
 
     await this.prisma.auditLog.createMany({

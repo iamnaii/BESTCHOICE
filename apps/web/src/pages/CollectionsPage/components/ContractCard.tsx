@@ -28,6 +28,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import type { ContractRow } from '../types';
 import { agingBucket, agingColor, formatRelativeTime } from '../utils/cardIndicators';
+import CustomerTagChips from './CustomerTagChips';
+import NextBestActionChip, { type NextBestActionType } from './NextBestActionChip';
 
 /**
  * Customer 360 snapshot preview is a deliberate intent gesture (Task 11):
@@ -78,7 +80,13 @@ function formatSnoozeUntil(iso: string): string {
   return `${formatDateShort(d)} ${hh}:${mm}`;
 }
 
-function IndicatorChips({ contract }: { contract: ContractRow }) {
+function IndicatorChips({
+  contract,
+  onNbaClick,
+}: {
+  contract: ContractRow;
+  onNbaClick?: (type: NextBestActionType) => void;
+}) {
   const bucket = agingBucket(contract.daysOverdue);
   const channelMeta = contract.lastChannel ? CHANNEL_META[contract.lastChannel] : null;
   const ChannelIcon = channelMeta?.icon ?? null;
@@ -154,6 +162,12 @@ function IndicatorChips({ contract }: { contract: ContractRow }) {
           +{contract.relatedContractsCount} สัญญา
         </span>
       )}
+
+      {/* Customer segmentation tags (P3 Task 8 — C1 frontend) */}
+      <CustomerTagChips tags={contract.customerTags} compact />
+
+      {/* Next-Best-Action recommendation (P3 Task 9 — C2). Hidden on NOOP. */}
+      <NextBestActionChip action={contract.nextBestAction} onClick={onNbaClick} />
     </div>
   );
 }
@@ -184,6 +198,11 @@ interface Props {
    * that launches the 4-step wizard.
    */
   onSkipTrace?: (c: ContractRow) => void;
+  /**
+   * Click handler for the Next-Best-Action chip (P3 Task 9). Receives the
+   * action type so the parent can route to the correct dialog.
+   */
+  onNextBestAction?: (c: ContractRow, type: NextBestActionType) => void;
 }
 
 export default function ContractCard({
@@ -199,6 +218,7 @@ export default function ContractCard({
   onSnooze,
   onUnsnooze,
   onSkipTrace,
+  onNextBestAction,
 }: Props) {
   const isSnoozed =
     !!contract.snoozedUntil && new Date(contract.snoozedUntil).getTime() > Date.now();
@@ -296,8 +316,13 @@ export default function ContractCard({
           ฿
         </div>
 
-        {/* Enrichment indicator chips: aging / last contacted / broken promise / channel / MDM / related */}
-        <IndicatorChips contract={contract} />
+        {/* Enrichment indicator chips: aging / last contacted / broken promise / channel / MDM / related / customer-tags / next-best-action */}
+        <IndicatorChips
+          contract={contract}
+          onNbaClick={
+            onNextBestAction ? (type) => onNextBestAction(contract, type) : undefined
+          }
+        />
 
         {/* Status chip cluster */}
         <div className="flex flex-wrap gap-1.5 mb-3">

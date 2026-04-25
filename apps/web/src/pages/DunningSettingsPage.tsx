@@ -33,6 +33,8 @@ interface DunningRule {
   eventTrigger: string | null;
   channel: 'LINE' | 'SMS' | 'CALL_TASK' | 'INTERNAL_ALERT';
   messageTemplate: string;
+  /** P3 E2: optional reference to SmsTemplate by name. Engine prefers this when set. */
+  templateName?: string | null;
   includePaymentLink: boolean;
   autoExecute: boolean;
   escalateTo: string | null;
@@ -72,6 +74,8 @@ const defaultForm = {
   triggerDay: 0,
   channel: 'LINE' as DunningChannel,
   messageTemplate: '',
+  // P3 E2: empty string means "use inline messageTemplate" (back-compat default)
+  templateName: '',
   includePaymentLink: false,
   autoExecute: true,
   escalateTo: '',
@@ -223,6 +227,8 @@ export default function DunningSettingsPage() {
       const payload = {
         ...form,
         escalateTo: form.escalateTo?.trim() || null,
+        // P3 E2: empty string → null so backend treats as "use inline body"
+        templateName: form.templateName?.trim() || null,
       };
       if (editId) {
         const { data } = await api.patch(`/overdue/dunning-rules/${editId}`, payload);
@@ -266,6 +272,17 @@ export default function DunningSettingsPage() {
     queryFn: async () => (await api.get('/settings')).data,
   });
 
+  // P3 E2: load active SmsTemplate names so dunning rules can reference them
+  // by name. Only LINE/SMS channels get a template ref — CALL_TASK and
+  // INTERNAL_ALERT remain inline-only.
+  const { data: smsTemplates = [] } = useQuery<
+    Array<{ id: string; name: string; channel: string; active: boolean }>
+  >({
+    queryKey: ['sms-templates', 'all'],
+    queryFn: async () => (await api.get('/sms-templates')).data,
+    staleTime: 60_000,
+  });
+
   const signatureUrl = configs.find((s) => s.key === 'letter_signature_url')?.value ?? '';
   const letterheadUrl = configs.find((s) => s.key === 'letter_letterhead_url')?.value ?? '';
   const wallpaperUrl = configs.find((s) => s.key === 'mdm_lock_wallpaper_url')?.value ?? '';
@@ -297,6 +314,7 @@ export default function DunningSettingsPage() {
       triggerDay: rule.triggerDay ?? 0,
       channel: rule.channel,
       messageTemplate: rule.messageTemplate,
+      templateName: rule.templateName ?? '',
       includePaymentLink: rule.includePaymentLink,
       autoExecute: rule.autoExecute,
       escalateTo: rule.escalateTo ?? '',
@@ -346,13 +364,21 @@ export default function DunningSettingsPage() {
         title="ตั้งค่าระบบทวงหนี้อัตโนมัติ"
         subtitle="กำหนด Rule การแจ้งเตือนและทวงหนี้ลูกค้าตามจำนวนวันที่ค้างชำระ"
         action={
-          <button
-            onClick={openCreate}
-            className="flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm hover:bg-primary/90 transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            เพิ่ม Rule
-          </button>
+          <div className="flex items-center gap-2">
+            <a
+              href="/settings/sms-templates"
+              className="text-xs px-3 py-2 rounded-md border border-border hover:bg-accent text-foreground"
+            >
+              จัดการ SMS Template
+            </a>
+            <button
+              onClick={openCreate}
+              className="flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm hover:bg-primary/90 transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              เพิ่ม Rule
+            </button>
+          </div>
         }
       />
 
@@ -649,10 +675,39 @@ export default function DunningSettingsPage() {
             </div>
           </div>
 
+          {/* P3 E2: Optional SmsTemplate reference */}
+          {(form.channel === 'LINE' || form.channel === 'SMS') && (
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">
+                ใช้ Template จาก SMS Template Library{' '}
+                <span className="text-muted-foreground text-xs">(ไม่บังคับ)</span>
+              </label>
+              <select
+                value={form.templateName}
+                onChange={(e) => handleFormChange('templateName', e.target.value)}
+                className="w-full px-3 py-2 rounded-md border border-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value="">— ใช้ข้อความ inline ด้านล่าง —</option>
+                {smsTemplates
+                  .filter((t) => t.active && t.channel === form.channel)
+                  .map((t) => (
+                    <option key={t.id} value={t.name}>
+                      {t.name}
+                    </option>
+                  ))}
+              </select>
+              <p className="text-xs text-muted-foreground mt-1 leading-snug">
+                เมื่อตั้งค่าแล้ว ระบบจะใช้ body จาก template นี้แทนข้อความ inline ด้านล่าง — หาก template ถูกลบจะ fallback กลับมาที่ข้อความ inline อัตโนมัติ
+              </p>
+            </div>
+          )}
+
           {/* Message Template */}
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">
-              เทมเพลตข้อความ
+              เทมเพลตข้อความ {form.templateName && (
+                <span className="text-xs text-muted-foreground">(สำรองเมื่อ template หาย)</span>
+              )}
             </label>
             <div className="flex flex-wrap gap-1 mb-2">
               {TEMPLATE_VARS.map((v) => (

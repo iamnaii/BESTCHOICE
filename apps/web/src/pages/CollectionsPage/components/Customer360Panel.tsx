@@ -1,8 +1,22 @@
 import { useEffect, useState } from 'react';
-import { X, Phone, MessageCircle, MapPin, Loader2 } from 'lucide-react';
+import {
+  X,
+  Phone,
+  MessageCircle,
+  MapPin,
+  Loader2,
+  Receipt,
+  RefreshCw,
+  Tag,
+} from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
 import type { PaymentScheduleItem } from '../hooks/useCustomer360';
 import { useCustomer360 } from '../hooks/useCustomer360';
 import { useCustomerInsights } from '../hooks/useCustomerInsights';
+import {
+  useCustomerTags,
+  useRecomputeCustomerTags,
+} from '../hooks/useCustomerTags';
 import Customer360Timeline from './Customer360Timeline';
 import Customer360Actions from './Customer360Actions';
 import SmartCustomerPanel from './SmartCustomerPanel';
@@ -10,6 +24,9 @@ import RelatedContractsTab from './RelatedContractsTab';
 import LegalCaseBanner from './LegalCaseBanner';
 import LegalCaseDialog from './LegalCaseDialog';
 import LineChatPanel from './LineChatPanel';
+import LateFeeWaiverDialog from './LateFeeWaiverDialog';
+import CustomerTagChips from './CustomerTagChips';
+import CustomerTagDialog from './CustomerTagDialog';
 import type { ContractRow } from '../types';
 
 interface Props {
@@ -27,12 +44,18 @@ export default function Customer360Panel({
   onRequestSendLine,
   onSelectContract,
 }: Props) {
+  const { user } = useAuth();
   const { data, isLoading, isError } = useCustomer360(contract?.id ?? null);
   const customerId = data?.detail.customer.id ?? contract?.customer.id ?? null;
   const { data: insights } = useCustomerInsights(customerId);
+  const { data: tags = [] } = useCustomerTags(customerId);
+  const recompute = useRecomputeCustomerTags();
+  const canManageTags = user?.role === 'OWNER';
 
   const [tab, setTab] = useState<Tab>('overview');
   const [legalCaseOpen, setLegalCaseOpen] = useState(false);
+  const [waiverOpen, setWaiverOpen] = useState(false);
+  const [tagDialogOpen, setTagDialogOpen] = useState(false);
 
   // LINE tab is only meaningful when the customer has a LINE ID. If they
   // don't, hide the tab entirely and snap back to overview if the user was
@@ -42,6 +65,8 @@ export default function Customer360Panel({
   useEffect(() => {
     setTab('overview');
     setLegalCaseOpen(false);
+    setWaiverOpen(false);
+    setTagDialogOpen(false);
   }, [contract?.id]);
 
   useEffect(() => {
@@ -151,6 +176,41 @@ export default function Customer360Panel({
                   )}
                 </div>
                 <SmartCustomerPanel insights={insights} />
+
+                {/* Customer tags (P3 Task 8 — C1 frontend). Chip row + a
+                  per-customer "Recompute" button that triggers the auto-tag
+                  rules immediately, plus a "จัดการ Tags" dialog opener gated
+                  to OWNER (manual create/delete are OWNER + FINANCE_MANAGER
+                  on the backend; we surface the UI only to OWNER per spec). */}
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <CustomerTagChips
+                    tags={tags.length > 0 ? tags : undefined}
+                    emptyLabel="ยังไม่มี tag"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => customerId && recompute.mutate(customerId)}
+                    disabled={!customerId || recompute.isPending}
+                    className="inline-flex items-center gap-1 text-2xs text-muted-foreground hover:text-foreground transition-colors leading-snug"
+                    title="คำนวณ auto tag ใหม่"
+                  >
+                    <RefreshCw
+                      className={`size-3 ${recompute.isPending ? 'animate-spin' : ''}`}
+                    />
+                    Recompute tags
+                  </button>
+                  {canManageTags && (
+                    <button
+                      type="button"
+                      onClick={() => setTagDialogOpen(true)}
+                      className="inline-flex items-center gap-1 text-2xs text-primary hover:underline leading-snug"
+                    >
+                      <Tag className="size-3" />
+                      จัดการ Tags
+                    </button>
+                  )}
+                </div>
+
                 <div className="mt-2 text-xs text-muted-foreground leading-snug">
                   สาขา {contract.branch.name}
                 </div>
@@ -273,6 +333,19 @@ export default function Customer360Panel({
                     onRequestSendLine ? () => onRequestSendLine(contract) : undefined
                   }
                 />
+
+                {/* Late fee waiver entry — only meaningful when there's
+                    something owed. The dialog itself filters to payments
+                    with a non-zero late fee, so the button can stay enabled
+                    even when no individual installment is overdue yet. */}
+                <button
+                  type="button"
+                  onClick={() => setWaiverOpen(true)}
+                  className="mt-3 w-full inline-flex items-center justify-center gap-2 rounded-lg border border-input px-3 py-2 text-sm font-medium hover:bg-accent transition-colors"
+                >
+                  <Receipt className="size-4" />
+                  ขอ waive ค่าปรับ
+                </button>
               </section>
                 </>
               )}
@@ -284,6 +357,27 @@ export default function Customer360Panel({
           open={legalCaseOpen}
           onClose={() => setLegalCaseOpen(false)}
           contractId={contract?.id ?? null}
+        />
+
+        <LateFeeWaiverDialog
+          open={waiverOpen}
+          onClose={() => setWaiverOpen(false)}
+          contract={
+            contract
+              ? {
+                  id: contract.id,
+                  contractNumber: contract.contractNumber,
+                  customer: { name: contract.customer.name },
+                }
+              : null
+          }
+          payments={data?.detail.payments}
+        />
+
+        <CustomerTagDialog
+          open={tagDialogOpen}
+          onClose={() => setTagDialogOpen(false)}
+          customerId={customerId}
         />
       </aside>
     </>

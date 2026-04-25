@@ -22,6 +22,7 @@ import { OverdueModule } from './modules/overdue/overdue.module';
 import { LegalCaseModule } from './modules/legal-case/legal-case.module';
 import { LateFeeWaiverModule } from './modules/late-fee-waiver/late-fee-waiver.module';
 import { CustomerTagsModule } from './modules/customer-tags/customer-tags.module';
+import { SmsTemplatesModule } from './modules/sms-templates/sms-templates.module';
 import { FilterPresetsModule } from './modules/filter-presets/filter-presets.module';
 import { DefectExchangeModule } from './modules/defect-exchange/defect-exchange.module';
 import { RepossessionsModule } from './modules/repossessions/repossessions.module';
@@ -164,6 +165,7 @@ import { AppCacheModule } from './cache/cache.module';
     LegalCaseModule,
     LateFeeWaiverModule,
     CustomerTagsModule,
+    SmsTemplatesModule,
     FilterPresetsModule,
     DefectExchangeModule,
     RepossessionsModule,

@@ -12,6 +12,7 @@ import { ContractLetterService } from './contract-letter.service';
 import { DunningRetryService } from './dunning-retry.service';
 import { OverdueAnalyticsService } from './analytics.service';
 import { AnalyticsAgingService } from './analytics-aging.service';
+import { AnalyticsLeaderboardService } from './analytics-leaderboard.service';
 import { ContractSnoozeService } from './snooze.service';
 import { CreateSnoozeDto } from './dto/snooze.dto';
 import { AnalyticsQueryDto } from './dto/analytics-query.dto';
@@ -382,6 +383,19 @@ export class OverdueController {
     @CurrentUser() user: { id: string; role: string },
   ) {
     return this.mdmLockService.unlock(id, user.id, user.role);
+  }
+
+  // --- Promise-due reminders (P1 Task 14) ---
+
+  @Get('promise-due-reminders')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  listPromiseDueReminders(
+    @CurrentUser() user: { id: string; role: string; branchId: string | null },
+  ) {
+    // Cross-branch roles see all branches; branch-scoped roles see their own.
+    const CROSS_BRANCH_ROLES = ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'];
+    const branchId = CROSS_BRANCH_ROLES.includes(user.role) ? null : user.branchId;
+    return this.overdueService.listPromiseDueRemindersToday(branchId);
   }
 
   // --- Bulk actions ---

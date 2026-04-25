@@ -13,11 +13,13 @@ import { OverdueBulkService } from './bulk.service';
 import { DunningRetryService } from './dunning-retry.service';
 import { OverdueAnalyticsService } from './analytics.service';
 import { AnalyticsAgingService } from './analytics-aging.service';
+import { AnalyticsLeaderboardService } from './analytics-leaderboard.service';
 import { OwnerAlertHelper } from './owner-alert.helper';
 import { BrokenPromiseCron } from './crons/broken-promise.cron';
 import { MdmAutoProposeCron } from './crons/mdm-auto-propose.cron';
 import { LetterAutoGenerateCron } from './crons/letter-auto-generate.cron';
 import { ContractSnapshotCron } from './contract-snapshot.cron';
+import { BrokenPromiseReminderCron } from './broken-promise-reminder.cron';
 import { ContractSnoozeService } from './snooze.service';
 import { ChatEngineModule } from '../chat-engine/chat-engine.module';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -40,11 +42,13 @@ import { LineOaModule } from '../line-oa/line-oa.module';
     DunningRetryService,
     OverdueAnalyticsService,
     AnalyticsAgingService,
+    AnalyticsLeaderboardService,
     OwnerAlertHelper,
     BrokenPromiseCron,
     MdmAutoProposeCron,
     LetterAutoGenerateCron,
     ContractSnapshotCron,
+    BrokenPromiseReminderCron,
     ContractSnoozeService,
   ],
   exports: [

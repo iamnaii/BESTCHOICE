@@ -792,6 +792,59 @@ describe('OverdueQueueService', () => {
       expect(result.data[0].slipReviewPending).toBe(false);
     });
 
+    it('excludes contracts snoozed by current non-OWNER user (NOT { snoozes: { some } })', async () => {
+      mockPrisma.contract.findMany.mockResolvedValueOnce([]);
+      mockPrisma.contract.count.mockResolvedValueOnce(0);
+
+      await service.getQueue({
+        tab: 'today',
+        userRole: 'BRANCH_MANAGER',
+        userBranchId: 'branch-1',
+        userId: 'me-1',
+      });
+
+      const callArg = mockPrisma.contract.findMany.mock.calls[0][0];
+      const ands = (callArg.where.AND ?? []) as any[];
+      const snoozeClause = ands.find((c) => c?.NOT?.snoozes);
+      expect(snoozeClause).toBeDefined();
+      expect(snoozeClause.NOT.snoozes.some.userId).toBe('me-1');
+      expect(snoozeClause.NOT.snoozes.some.deletedAt).toBeNull();
+      expect(snoozeClause.NOT.snoozes.some.snoozedUntil.gt).toBeInstanceOf(Date);
+    });
+
+    it('OWNER role bypasses snooze exclusion (sees everything)', async () => {
+      mockPrisma.contract.findMany.mockResolvedValueOnce([]);
+      mockPrisma.contract.count.mockResolvedValueOnce(0);
+
+      await service.getQueue({
+        tab: 'today',
+        userRole: 'OWNER',
+        userBranchId: null,
+        userId: 'owner-1',
+      });
+
+      const callArg = mockPrisma.contract.findMany.mock.calls[0][0];
+      const ands = (callArg.where.AND ?? []) as any[];
+      const snoozeClause = ands.find((c) => c?.NOT?.snoozes);
+      expect(snoozeClause).toBeUndefined();
+    });
+
+    it('does not apply snooze exclusion when userId missing (e.g., system queries)', async () => {
+      mockPrisma.contract.findMany.mockResolvedValueOnce([]);
+      mockPrisma.contract.count.mockResolvedValueOnce(0);
+
+      await service.getQueue({
+        tab: 'today',
+        userRole: 'SALES',
+        userBranchId: 'branch-1',
+      });
+
+      const callArg = mockPrisma.contract.findMany.mock.calls[0][0];
+      const ands = (callArg.where.AND ?? []) as any[];
+      const snoozeClause = ands.find((c) => c?.NOT?.snoozes);
+      expect(snoozeClause).toBeUndefined();
+    });
+
     it('minLetterCount=0 includes all contracts (no letters filter)', async () => {
       const a = makeContractWithDays('a', 10);
       const b = makeContractWithDays('b', 10);

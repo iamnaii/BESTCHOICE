@@ -64,6 +64,7 @@ export class OverdueQueueService {
 
     const where = this.buildWhere(params.tab, now, branchScope);
     this.applyFilterWhere(where, params, params.userId);
+    this.applySnoozeExclusion(where, params.userRole, params.userId, now);
 
     // Fetch all matching then sort by priority score in memory, then paginate.
     // We can't express the priority formula as a Prisma orderBy (it involves a
@@ -182,6 +183,41 @@ export class OverdueQueueService {
         ];
       }
     }
+  }
+
+  /**
+   * Hide contracts the current user has snoozed (active ContractSnooze rows
+   * with `snoozedUntil > now`). OWNER bypasses the exclusion entirely so
+   * they can audit what their team has parked. Anonymous calls (no userId)
+   * also pass through unfiltered — there is nobody to exclude for.
+   *
+   * Implemented as a Prisma `NOT { snoozes: { some: { ... } } }` so the
+   * filter happens in SQL (no in-memory gymnastics on large queues).
+   */
+  private applySnoozeExclusion(
+    where: Prisma.ContractWhereInput,
+    userRole: string,
+    userId: string | undefined,
+    now: Date,
+  ): void {
+    if (!userId) return;
+    if (userRole === 'OWNER') return;
+
+    const exclusion: Prisma.ContractWhereInput = {
+      NOT: {
+        snoozes: {
+          some: {
+            userId,
+            snoozedUntil: { gt: now },
+            deletedAt: null,
+          },
+        },
+      },
+    };
+    where.AND = [
+      ...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []),
+      exclusion,
+    ];
   }
 
   /**

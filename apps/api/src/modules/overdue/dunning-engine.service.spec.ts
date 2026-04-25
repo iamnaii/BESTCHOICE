@@ -11,13 +11,15 @@ jest.mock('@sentry/nestjs', () => ({
 }));
 
 const mockPrisma = {
-  payment: { findMany: jest.fn() },
+  payment: { findMany: jest.fn(), findUnique: jest.fn() },
   dunningAction: {
     findFirst: jest.fn(),
     create: jest.fn(),
     findMany: jest.fn(),
     count: jest.fn(),
   },
+  dunningRule: { findFirst: jest.fn() },
+  contract: { findUnique: jest.fn() },
 };
 
 const mockRuleService = {
@@ -198,6 +200,129 @@ describe('DunningEngineService', () => {
       expect(result.failed).toBe(0);
       expect(mockNotificationsService.send).not.toHaveBeenCalled();
       expect(mockPrisma.dunningAction.create).not.toHaveBeenCalled();
+    });
+  });
+
+  // --- executeEventTrigger tests ---
+
+  describe('executeEventTrigger', () => {
+    const eventRule = {
+      id: 'rule-event-1',
+      name: 'ไม่รับสาย — ส่ง LINE',
+      triggerDay: null,
+      eventTrigger: 'CALL_NO_ANSWER',
+      channel: 'LINE',
+      messageTemplate: 'สวัสดีคุณ{{customerName}} เราพยายามติดต่อแต่ไม่ได้รับสาย',
+      includePaymentLink: false,
+      autoExecute: true,
+      sortOrder: 0,
+      isActive: true,
+    };
+
+    const sampleContract = {
+      id: 'c-1',
+      contractNumber: 'BC-001',
+      customer: {
+        name: 'สมชาย',
+        lineId: 'U123',
+        phone: '0812345678',
+      },
+    };
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      mockPrisma.dunningRule.findFirst.mockResolvedValue(eventRule);
+      mockPrisma.dunningAction.findFirst.mockResolvedValue(null); // no recent dedup
+      mockPrisma.contract.findUnique.mockResolvedValue(sampleContract);
+      mockPrisma.payment.findUnique.mockResolvedValue(null);
+      mockPrisma.dunningAction.create.mockResolvedValue({ id: 'action-evt-1' });
+      mockNotificationsService.send.mockResolvedValue({ id: 'notif-test', status: 'SENT' });
+    });
+
+    it('creates a DunningAction with SENT status when a matching event rule + recipient exist', async () => {
+      await service.executeEventTrigger('CALL_NO_ANSWER', 'c-1', null, 'cl-1');
+
+      expect(mockPrisma.dunningAction.create).toHaveBeenCalledTimes(1);
+      expect(mockPrisma.dunningAction.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            dunningRuleId: 'rule-event-1',
+            contractId: 'c-1',
+            channel: 'LINE',
+            status: 'SENT',
+          }),
+        }),
+      );
+      expect(mockNotificationsService.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          channel: 'LINE',
+          recipient: 'U123',
+          relatedId: 'c-1',
+        }),
+      );
+    });
+
+    it('dedups within 4h window — second call skipped', async () => {
+      // First call: no recent action
+      mockPrisma.dunningAction.findFirst.mockResolvedValueOnce(null);
+      await service.executeEventTrigger('CALL_NO_ANSWER', 'c-1', null, 'cl-1');
+
+      // Second call: recent action exists (dedup)
+      mockPrisma.dunningAction.findFirst.mockResolvedValueOnce({ id: 'action-evt-1' });
+      await service.executeEventTrigger('CALL_NO_ANSWER', 'c-1', null, 'cl-2');
+
+      // create should only have been called once
+      expect(mockPrisma.dunningAction.create).toHaveBeenCalledTimes(1);
+      expect(mockNotificationsService.send).toHaveBeenCalledTimes(1);
+    });
+
+    it('no-op when no matching active rule', async () => {
+      mockPrisma.dunningRule.findFirst.mockResolvedValueOnce(null);
+
+      await service.executeEventTrigger('BROKEN_PROMISE', 'c-1', null, null);
+
+      expect(mockPrisma.dunningAction.create).not.toHaveBeenCalled();
+      expect(mockNotificationsService.send).not.toHaveBeenCalled();
+    });
+
+    it('no-op when contract not found', async () => {
+      mockPrisma.contract.findUnique.mockResolvedValueOnce(null);
+
+      await service.executeEventTrigger('CALL_NO_ANSWER', 'c-missing', null, null);
+
+      expect(mockPrisma.dunningAction.create).not.toHaveBeenCalled();
+    });
+
+    it('creates action with SKIPPED status when customer has no lineId', async () => {
+      mockPrisma.contract.findUnique.mockResolvedValueOnce({
+        ...sampleContract,
+        customer: { ...sampleContract.customer, lineId: null },
+      });
+
+      await service.executeEventTrigger('CALL_NO_ANSWER', 'c-1', null, null);
+
+      expect(mockPrisma.dunningAction.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: 'SKIPPED' }),
+        }),
+      );
+      expect(mockNotificationsService.send).not.toHaveBeenCalled();
+    });
+
+    it('creates action with FAILED status and captures to Sentry when send throws', async () => {
+      const sendError = new Error('LINE API timeout');
+      mockNotificationsService.send.mockRejectedValueOnce(sendError);
+
+      await service.executeEventTrigger('CALL_NO_ANSWER', 'c-1', null, 'cl-1');
+
+      expect(mockPrisma.dunningAction.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: 'FAILED',
+            result: 'LINE API timeout',
+          }),
+        }),
+      );
     });
   });
 });

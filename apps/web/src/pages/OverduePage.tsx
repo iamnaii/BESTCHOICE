@@ -194,7 +194,7 @@ export default function OverduePage() {
   // Assign collector mutation
   const assignCollectorMutation = useMutation({
     mutationFn: async ({ contractId, userId }: { contractId: string; userId: string }) => {
-      const { data } = await api.post(`/overdue/${contractId}/assign`, { userId });
+      const { data } = await api.post(`/overdue/${contractId}/assign`, { assignedToId: userId });
       return data;
     },
     onSuccess: () => {

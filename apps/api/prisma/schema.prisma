@@ -62,6 +62,17 @@ enum DunningStage {
   LEGAL_ACTION // ดำเนินคดี/ยึดคืน (>60 วัน)
 }
 
+enum DunningEventTrigger {
+  CALL_NO_ANSWER
+  CALL_ANSWERED_PROMISE
+  CALL_REFUSED
+  DEVICE_LOCKED
+  DEVICE_UNLOCKED
+  BROKEN_PROMISE
+  LETTER_DISPATCHED
+  CONTRACT_TERMINATED
+}
+
 enum PlanType {
   STORE_DIRECT
   CREDIT_CARD
@@ -376,6 +387,38 @@ enum DunningActionStatus {
   SKIPPED
 }
 
+enum MdmLockTrigger {
+  UNCONTACTABLE_3D
+  NO_PROMISE_3D
+  MANUAL_COLLECTOR
+  MANUAL_OWNER
+  BROKEN_PROMISE
+}
+
+enum MdmLockStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXECUTED_MANUAL
+  EXECUTED_API
+  FAILED
+  UNLOCKED
+}
+
+enum LetterType {
+  RETURN_DEVICE_45D
+  CONTRACT_TERMINATION_60D
+}
+
+enum LetterStatus {
+  PENDING_DISPATCH
+  PDF_GENERATED
+  DISPATCHED
+  DELIVERED
+  UNDELIVERABLE
+  CANCELLED
+}
+
 // ============================================================
 // CORE ENTITIES
 // ============================================================
@@ -425,6 +468,7 @@ model User {
   role                   UserRole              @default(SALES)
   branchId               String?               @map("branch_id")
   isActive               Boolean               @default(true) @map("is_active")
+  isSystemUser           Boolean               @default(false) @map("is_system_user")
   savedSignature         String?               @map("saved_signature") @db.Text
   employeeId             String?               @unique @map("employee_id")
   nickname               String?               @map("nickname")
@@ -536,6 +580,10 @@ model User {
   paymentsWaivedApproved      Payment[]                 @relation("PaymentWaivedApprovedBy")
   aiPausedRooms               ChatRoom[]                @relation("ChatRoomAiPausedBy")
   aiSettingsUpdates           AiSettings[]              @relation("AiSettingsUpdatedBy")
+
+  mdmProposed      MdmLockRequest[] @relation("MdmProposed")
+  mdmApproved      MdmLockRequest[] @relation("MdmApproved")
+  letterDispatched ContractLetter[] @relation("LetterDispatched")
 
   @@index([branchId])
   @@map("users")
@@ -748,6 +796,14 @@ model Contract {
   /// is 48h — long enough to resolve a promise-to-pay cycle.
   blockAutoEscalation DateTime? @map("block_auto_escalation")
 
+  // Collections v2: no-answer tracking, skip tracing, MDM lock, wallpaper
+  noAnswerCount      Int       @default(0) @map("no_answer_count")
+  needsSkipTracing   Boolean   @default(false) @map("needs_skip_tracing")
+  deviceLocked       Boolean   @default(false) @map("device_locked")
+  deviceLockedAt     DateTime? @map("device_locked_at")
+  wallpaperChanged   Boolean   @default(false) @map("wallpaper_changed")
+  wallpaperChangedAt DateTime? @map("wallpaper_changed_at")
+
   // Retention policy
   retentionStatus DocumentRetentionStatus @default(ACTIVE) @map("retention_status")
   retentionExpiry DateTime?               @map("retention_expiry")
@@ -802,6 +858,9 @@ model Contract {
   warrantyAudits        WarrantyAuditLog[]        @relation("WarrantyAuditContract")
   badDebtWriteOffAudits BadDebtWriteOffAuditLog[] @relation("BadDebtWriteOffContract")
 
+  mdmLockRequests MdmLockRequest[]
+  contractLetters ContractLetter[]
+
   @@index([customerId])
   @@index([branchId])
   @@index([assignedToId])
@@ -813,6 +872,7 @@ model Contract {
   @@index([workflowStatus])
   @@index([parentContractId])
   @@index([retentionStatus])
+  @@index([noAnswerCount]) // H2: FollowUpTab filters on gte 1 lt 3 — index keeps it sub-ms at scale
   @@map("contracts")
 }
 
@@ -1632,23 +1692,25 @@ model CallLog {
 }
 
 model DunningRule {
-  id                 String         @id @default(uuid())
+  id                 String               @id @default(uuid())
   name               String
-  triggerDay         Int            @map("trigger_day")
+  triggerDay         Int?                 @map("trigger_day")
+  eventTrigger       DunningEventTrigger? @map("event_trigger")
   channel            DunningChannel
-  messageTemplate    String         @map("message_template")
-  includePaymentLink Boolean        @default(false) @map("include_payment_link")
-  autoExecute        Boolean        @default(true) @map("auto_execute")
-  escalateTo         UserRole?      @map("escalate_to")
-  isActive           Boolean        @default(true) @map("is_active")
-  sortOrder          Int            @default(0) @map("sort_order")
-  createdAt          DateTime       @default(now()) @map("created_at")
-  updatedAt          DateTime       @updatedAt @map("updated_at")
-  deletedAt          DateTime?      @map("deleted_at")
+  messageTemplate    String               @map("message_template")
+  includePaymentLink Boolean              @default(false) @map("include_payment_link")
+  autoExecute        Boolean              @default(true) @map("auto_execute")
+  escalateTo         UserRole?            @map("escalate_to")
+  isActive           Boolean              @default(true) @map("is_active")
+  sortOrder          Int                  @default(0) @map("sort_order")
+  createdAt          DateTime             @default(now()) @map("created_at")
+  updatedAt          DateTime             @updatedAt @map("updated_at")
+  deletedAt          DateTime?            @map("deleted_at")
 
   actions DunningAction[]
 
   @@index([triggerDay])
+  @@index([eventTrigger])
   @@index([isActive])
   @@map("dunning_rules")
 }
@@ -1678,6 +1740,61 @@ model DunningAction {
   @@index([status])
   @@index([createdAt])
   @@map("dunning_actions")
+}
+
+model MdmLockRequest {
+  id               String         @id @default(uuid())
+  contractId       String         @map("contract_id")
+  contract         Contract       @relation(fields: [contractId], references: [id])
+  status           MdmLockStatus  @default(PENDING)
+  trigger          MdmLockTrigger
+  includeWallpaper Boolean        @default(true) @map("include_wallpaper")
+  proposedById     String         @map("proposed_by_id")
+  proposedBy       User           @relation("MdmProposed", fields: [proposedById], references: [id])
+  proposedAt       DateTime       @default(now()) @map("proposed_at")
+  approvedById     String?        @map("approved_by_id")
+  approvedBy       User?          @relation("MdmApproved", fields: [approvedById], references: [id])
+  approvedAt       DateTime?      @map("approved_at")
+  rejectedById     String?        @map("rejected_by_id")
+  rejectedReason   String?        @map("rejected_reason")
+  reason           String
+  externalRef      String?        @map("external_ref")
+  wallpaperUrlUsed String?        @map("wallpaper_url_used")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+  deletedAt        DateTime?      @map("deleted_at")
+
+  @@index([contractId, status])
+  @@index([status, proposedAt])
+  @@map("mdm_lock_requests")
+}
+
+model ContractLetter {
+  id               String       @id @default(uuid())
+  contractId       String       @map("contract_id")
+  contract         Contract     @relation(fields: [contractId], references: [id])
+  letterType       LetterType   @map("letter_type")
+  letterNumber     String       @unique @map("letter_number")
+  status           LetterStatus @default(PENDING_DISPATCH)
+  triggeredAt      DateTime     @default(now()) @map("triggered_at")
+  pdfUrl           String?      @map("pdf_url")
+  pdfGeneratedAt   DateTime?    @map("pdf_generated_at")
+  dispatchedAt     DateTime?    @map("dispatched_at")
+  dispatchedById   String?      @map("dispatched_by_id")
+  dispatchedBy     User?        @relation("LetterDispatched", fields: [dispatchedById], references: [id])
+  trackingNumber   String?      @map("tracking_number")
+  evidencePhotoUrl String?      @map("evidence_photo_url")
+  deliveredAt      DateTime?    @map("delivered_at")
+  cancelledAt      DateTime?    @map("cancelled_at")
+  cancelReason     String?      @map("cancel_reason")
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+  deletedAt        DateTime?    @map("deleted_at")
+
+  @@unique([contractId, letterType])
+  @@index([status, triggeredAt])
+  @@index([dispatchedAt])
+  @@map("contract_letters")
 }
 
 model AuditLog {

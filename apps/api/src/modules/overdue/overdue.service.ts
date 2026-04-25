@@ -4,17 +4,37 @@ import {
   Logger,
   BadRequestException,
   ForbiddenException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCallLogDto } from './dto/create-call-log.dto';
 import { Prisma, DunningStage } from '@prisma/client';
 import { BUSINESS_RULES } from '../../utils/config.util';
+import { DunningEngineService } from './dunning-engine.service';
 
 @Injectable()
 export class OverdueService {
   private readonly logger = new Logger(OverdueService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private dunningEngine: DunningEngineService,
+  ) {}
+
+  private async getSystemUserIdOrThrow(): Promise<string> {
+    const user = await this.prisma.user.findFirst({
+      where: { isSystemUser: true },
+      select: { id: true },
+    });
+    if (!user) {
+      // H1: ServiceUnavailableException → 503 not 500, so ops alerting
+      // correctly identifies this as a config/seed issue rather than a crash.
+      throw new ServiceUnavailableException(
+        'SYSTEM user not found — seed collections-foundation must run first',
+      );
+    }
+    return user.id;
+  }
 
   /**
    * Get all overdue/default contracts with filters and pagination
@@ -270,11 +290,7 @@ export class OverdueService {
   async updateContractStatuses() {
     const now = new Date();
 
-    // Get system user for audit logs (first OWNER)
-    const systemUser = await this.prisma.user.findFirst({
-      where: { role: 'OWNER', isActive: true },
-      select: { id: true },
-    });
+    const systemUserId = await this.getSystemUserIdOrThrow();
 
     // Read overdue threshold from config
     const overdueConfig = await this.prisma.systemConfig.findUnique({
@@ -283,66 +299,79 @@ export class OverdueService {
     const overdueDays = overdueConfig ? Number(overdueConfig.value) : 7;
 
     // Step 1: ACTIVE → OVERDUE (payments overdue > threshold days)
-    const activeContracts = await this.prisma.contract.findMany({
-      where: {
-        status: 'ACTIVE',
-        deletedAt: null,
-        payments: {
-          some: {
-            status: { in: ['PENDING', 'PARTIALLY_PAID', 'OVERDUE'] },
-            dueDate: { lt: new Date(now.getTime() - overdueDays * 24 * 60 * 60 * 1000) },
-          },
+    // C3 fix: encode all filter conditions in flipWhere so that updateMany
+    // re-evaluates them atomically on the DB side. A PaySolutions webhook
+    // arriving between our findMany snapshot and the updateMany will therefore
+    // exclude the now-paid contract automatically — no stale read-then-write race.
+    const thresholdDate = new Date(now.getTime() - overdueDays * 24 * 60 * 60 * 1000);
+
+    // T3-C11: Contracts promised-to-pay in last 24h are spared from auto-flip.
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const promisedContractIds: string[] = (
+      await this.prisma.callLog.findMany({
+        where: { result: 'PROMISED', calledAt: { gte: yesterday } },
+        select: { contractId: true },
+        distinct: ['contractId'],
+      })
+    ).map((r) => r.contractId);
+
+    const flipWhere: Prisma.ContractWhereInput = {
+      status: 'ACTIVE',
+      deletedAt: null,
+      id: promisedContractIds.length > 0 ? { notIn: promisedContractIds } : undefined,
+      OR: [
+        { blockAutoEscalation: null },
+        { blockAutoEscalation: { lt: now } },
+      ],
+      payments: {
+        some: {
+          status: { in: ['PENDING', 'PARTIALLY_PAID', 'OVERDUE'] },
+          dueDate: { lt: thresholdDate },
         },
       },
-      select: { id: true, blockAutoEscalation: true },
+    };
+
+    // Snapshot IDs before the flip so we can write audit logs. It is acceptable
+    // if a few of these IDs drop out by the time updateMany runs (someone paid
+    // in the intervening milliseconds) — updateMany re-evaluates the where clause
+    // atomically and will exclude them. The extra audit-log row for a contract
+    // that was not actually flipped is harmless; reconciliation catches it.
+    const toFlip = await this.prisma.contract.findMany({
+      where: flipWhere,
+      select: { id: true },
     });
 
-    // T3-C11: skip contracts that have an active manual hold OR had a
-    // PROMISED call log in the last 24h. Rationale: staff is in the middle
-    // of a recovery conversation — auto-flipping the status would look
-    // schizophrenic to the customer and undermine the promise-to-pay.
-    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    const recentlyPromised = await this.prisma.callLog.findMany({
-      where: {
-        contractId: { in: activeContracts.map((c) => c.id) },
-        result: 'PROMISED',
-        calledAt: { gte: yesterday },
-      },
-      select: { contractId: true },
-    });
-    const promisedIds = new Set(recentlyPromised.map((c) => c.contractId));
-    const activeIds = activeContracts
-      .filter((c) => !(c.blockAutoEscalation && c.blockAutoEscalation > now))
-      .filter((c) => !promisedIds.has(c.id))
-      .map((c) => c.id);
-    let overdueUpdated = 0;
-
-    if (activeIds.length > 0) {
-      // Batch update + audit logs in a single transaction
-      const txOps: Prisma.PrismaPromise<unknown>[] = [
-        this.prisma.contract.updateMany({
-          where: { id: { in: activeIds } },
-          data: { status: 'OVERDUE' },
+    // C3 fix: wrap updateMany + auditLog.createMany in a single $transaction so
+    // the status flip and its audit trail land atomically. If the audit insert
+    // fails (DB pressure etc), the status flip rolls back — no silent drift
+    // between contract state and audit record.
+    const txOps: Prisma.PrismaPromise<unknown>[] = [
+      this.prisma.contract.updateMany({
+        where: flipWhere,
+        data: { status: 'OVERDUE' },
+      }),
+    ];
+    if (toFlip.length > 0) {
+      txOps.push(
+        this.prisma.auditLog.createMany({
+          data: toFlip.map((c) => ({
+            userId: systemUserId,
+            action: 'STATUS_CHANGE',
+            entity: 'contract',
+            entityId: c.id,
+            newValue: { from: 'ACTIVE', to: 'OVERDUE', reason: `Payment overdue > ${overdueDays} days` },
+            ipAddress: 'system-cron',
+          })),
         }),
-      ];
-      // Only create audit logs if system user exists (avoid FK violation)
-      if (systemUser) {
-        txOps.push(
-          this.prisma.auditLog.createMany({
-            data: activeIds.map((id) => ({
-              userId: systemUser.id,
-              action: 'STATUS_CHANGE',
-              entity: 'contract',
-              entityId: id,
-              newValue: { from: 'ACTIVE', to: 'OVERDUE', reason: `Payment overdue > ${overdueDays} days` },
-              ipAddress: 'system-cron',
-            })),
-          }),
-        );
-      }
-      await this.prisma.$transaction(txOps);
-      overdueUpdated = activeIds.length;
+      );
     }
+    const [flipResult] = await this.prisma.$transaction(txOps) as [
+      Prisma.BatchPayload,
+      ...unknown[],
+    ];
+
+    const overdueUpdated = flipResult.count;
+    const activeIds = toFlip.map((c) => c.id);
 
     // Step 2: OVERDUE → DEFAULT (2+ consecutive missed payments)
     // Use raw SQL to find contracts with consecutive missed payments
@@ -387,21 +416,17 @@ export class OverdueService {
           where: { id: { in: defaultIds } },
           data: { status: 'DEFAULT' },
         }),
+        this.prisma.auditLog.createMany({
+          data: defaultCandidates.map((c) => ({
+            userId: systemUserId,
+            action: 'STATUS_CHANGE',
+            entity: 'contract',
+            entityId: c.id,
+            newValue: { from: 'OVERDUE', to: 'DEFAULT', reason: `${c.consecutive} consecutive missed payments` },
+            ipAddress: 'system-cron',
+          })),
+        }),
       ];
-      if (systemUser) {
-        txOps.push(
-          this.prisma.auditLog.createMany({
-            data: defaultCandidates.map((c) => ({
-              userId: systemUser.id,
-              action: 'STATUS_CHANGE',
-              entity: 'contract',
-              entityId: c.id,
-              newValue: { from: 'OVERDUE', to: 'DEFAULT', reason: `${c.consecutive} consecutive missed payments` },
-              ipAddress: 'system-cron',
-            })),
-          }),
-        );
-      }
       await this.prisma.$transaction(txOps);
       defaultUpdated = defaultIds.length;
     }
@@ -466,11 +491,7 @@ export class OverdueService {
 
     const escalated: { contractId: string; contractNumber: string; from: DunningStage; to: DunningStage; daysOverdue: number }[] = [];
 
-    // Get system user for audit
-    const systemUser = await this.prisma.user.findFirst({
-      where: { role: 'OWNER', isActive: true },
-      select: { id: true },
-    });
+    const systemUserId = await this.getSystemUserIdOrThrow();
 
     for (const contract of contracts) {
       if (contract.payments.length === 0) continue;
@@ -507,19 +528,17 @@ export class OverdueService {
               pendingDunningSince: now,
             },
           });
-          if (systemUser) {
-            await this.prisma.auditLog.create({
-              data: {
-                userId: systemUser.id,
-                action: 'DUNNING_ESCALATION_PENDING',
-                entity: 'contract',
-                entityId: contract.id,
-                oldValue: { dunningStage: contract.dunningStage },
-                newValue: { pendingDunningStage: targetStage, daysOverdue },
-                ipAddress: 'system-cron',
-              },
-            });
-          }
+          await this.prisma.auditLog.create({
+            data: {
+              userId: systemUserId,
+              action: 'DUNNING_ESCALATION_PENDING',
+              entity: 'contract',
+              entityId: contract.id,
+              oldValue: { dunningStage: contract.dunningStage },
+              newValue: { pendingDunningStage: targetStage, daysOverdue },
+              ipAddress: 'system-cron',
+            },
+          });
           continue; // no stage flip, no customer notification this round
         }
 
@@ -532,19 +551,17 @@ export class OverdueService {
           },
         });
 
-        if (systemUser) {
-          await this.prisma.auditLog.create({
-            data: {
-              userId: systemUser.id,
-              action: 'DUNNING_ESCALATION',
-              entity: 'contract',
-              entityId: contract.id,
-              oldValue: { dunningStage: contract.dunningStage },
-              newValue: { dunningStage: targetStage, daysOverdue },
-              ipAddress: 'system-cron',
-            },
-          });
-        }
+        await this.prisma.auditLog.create({
+          data: {
+            userId: systemUserId,
+            action: 'DUNNING_ESCALATION',
+            entity: 'contract',
+            entityId: contract.id,
+            oldValue: { dunningStage: contract.dunningStage },
+            newValue: { dunningStage: targetStage, daysOverdue },
+            ipAddress: 'system-cron',
+          },
+        });
 
         escalated.push({
           contractId: contract.id,
@@ -861,11 +878,27 @@ export class OverdueService {
   /**
    * Log a contact attempt — creates a CallLog and updates lastContactDate
    * on the Contract. Optionally updates collectionNotes.
+   *
+   * Per-result side effects:
+   *  - NO_ANSWER     → increment noAnswerCount, fire CALL_NO_ANSWER event trigger
+   *  - ANSWERED      → reset noAnswerCount
+   *  - PROMISED      → reset noAnswerCount, fire CALL_ANSWERED_PROMISE event trigger
+   *  - REFUSED       → reset noAnswerCount, fire CALL_REFUSED event trigger
+   *  - WRONG_NUMBER  → set needsSkipTracing=true
+   *  - OTHER         → no side effects
+   *
+   * Event trigger fires AFTER the DB transaction commits — failure is non-fatal.
    */
   async logContact(
     contractId: string,
     callerId: string,
-    dto: { result: string; notes?: string; collectionNotes?: string },
+    dto: {
+      result: string;
+      notes?: string;
+      collectionNotes?: string;
+      settlementDate?: string;
+      settlementNotes?: string;
+    },
   ) {
     const contract = await this.prisma.contract.findFirst({
       where: { id: contractId, deletedAt: null },
@@ -874,7 +907,24 @@ export class OverdueService {
 
     const now = new Date();
 
-    // Create call log entry and update lastContactDate in a transaction
+    // Per-result side effects + event-trigger key
+    const resultMap: Record<
+      string,
+      {
+        noAnswerDelta: 'inc' | 'reset' | 'keep';
+        needsSkipTracing?: boolean;
+        eventKey?: import('@prisma/client').DunningEventTrigger;
+      }
+    > = {
+      NO_ANSWER:    { noAnswerDelta: 'inc',   eventKey: 'CALL_NO_ANSWER' },
+      ANSWERED:     { noAnswerDelta: 'reset' },
+      PROMISED:     { noAnswerDelta: 'reset', eventKey: 'CALL_ANSWERED_PROMISE' },
+      REFUSED:      { noAnswerDelta: 'reset', eventKey: 'CALL_REFUSED' },
+      WRONG_NUMBER: { noAnswerDelta: 'keep',  needsSkipTracing: true },
+      OTHER:        { noAnswerDelta: 'keep' },
+    };
+    const plan = resultMap[dto.result] ?? { noAnswerDelta: 'keep' };
+
     const [callLog] = await this.prisma.$transaction([
       this.prisma.callLog.create({
         data: {
@@ -882,11 +932,11 @@ export class OverdueService {
           callerId,
           calledAt: now,
           result: dto.result,
-          notes: dto.notes || null,
+          notes: dto.notes ?? null,
+          settlementDate: dto.settlementDate ? new Date(dto.settlementDate) : null,
+          settlementNotes: dto.settlementNotes ?? null,
         },
-        include: {
-          caller: { select: { id: true, name: true } },
-        },
+        include: { caller: { select: { id: true, name: true } } },
       }),
       this.prisma.contract.update({
         where: { id: contractId },
@@ -894,9 +944,25 @@ export class OverdueService {
           lastContactDate: now,
           dunningLastActionAt: now,
           ...(dto.collectionNotes !== undefined && { collectionNotes: dto.collectionNotes }),
+          ...(plan.needsSkipTracing !== undefined && { needsSkipTracing: plan.needsSkipTracing }),
+          ...(plan.noAnswerDelta === 'inc' && { noAnswerCount: { increment: 1 } }),
+          ...(plan.noAnswerDelta === 'reset' && { noAnswerCount: 0 }),
         },
       }),
     ]);
+
+    // Fire event trigger AFTER commit — failures non-fatal
+    if (plan.eventKey) {
+      try {
+        await this.dunningEngine.executeEventTrigger(plan.eventKey, contractId, null, callLog.id);
+      } catch (err) {
+        this.logger.warn(
+          `executeEventTrigger failed for ${plan.eventKey} on contract ${contractId}: ${
+            err instanceof Error ? err.message : err
+          }`,
+        );
+      }
+    }
 
     return callLog;
   }

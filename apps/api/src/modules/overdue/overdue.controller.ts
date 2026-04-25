@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { OverdueService } from './overdue.service';
 import { DunningRuleService } from './dunning-rule.service';
@@ -95,7 +95,11 @@ export class OverdueController {
     @Param('contractId') contractId: string,
     @Body() dto: AssignCollectorDto,
   ) {
-    return this.overdueService.assignCollector(contractId, dto.assignedToId);
+    const targetId = dto.assignedToId ?? dto.userId;
+    if (!targetId) {
+      throw new BadRequestException('ต้องระบุ assignedToId หรือ userId');
+    }
+    return this.overdueService.assignCollector(contractId, targetId);
   }
 
   // T3-C11: Manual hold on auto-escalation cron. Path mirrors task spec

@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { LetterType, LetterStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DunningEngineService } from './dunning-engine.service';
@@ -290,6 +295,47 @@ export class ContractLetterService {
             entity: 'contract_letter',
             entityId: letterId,
             newValue: { reason },
+          },
+        }),
+      ])
+      .then(([l]) => l);
+  }
+
+  /**
+   * Z9: Revert a letter from UNDELIVERABLE back to DISPATCHED. Used by the
+   * MARK_UNDELIVERABLE undo snackbar. Authorisation:
+   *   - OWNER may revert any UNDELIVERABLE letter
+   *   - The original dispatcher (`dispatchedById`) may revert their own
+   * Anything else → ForbiddenException. Letters not in UNDELIVERABLE state
+   * → BadRequestException (defence-in-depth; FE flow should not allow this).
+   * Side effect: clears `cancelReason` + `cancelledAt`. Does NOT clear the
+   * contract's `needsSkipTracing` flag — once flagged for skip-tracing the
+   * customer's outreach gap stands until manually resolved.
+   */
+  async revertUndeliverable(letterId: string, userId: string, userRole: string) {
+    const letter = await this.prisma.contractLetter.findUnique({ where: { id: letterId } });
+    if (!letter) throw new NotFoundException('ไม่พบหนังสือ');
+    if (letter.status !== 'UNDELIVERABLE') {
+      throw new BadRequestException('สามารถ revert เฉพาะหนังสือที่ส่งไม่ถึงเท่านั้น');
+    }
+    const isOwner = userRole === 'OWNER';
+    const isDispatcher = !!letter.dispatchedById && letter.dispatchedById === userId;
+    if (!isOwner && !isDispatcher) {
+      throw new ForbiddenException('revert ได้เฉพาะ OWNER หรือผู้ส่งหนังสือเท่านั้น');
+    }
+
+    return this.prisma
+      .$transaction([
+        this.prisma.contractLetter.update({
+          where: { id: letterId },
+          data: { status: 'DISPATCHED', cancelReason: null, cancelledAt: null },
+        }),
+        this.prisma.auditLog.create({
+          data: {
+            userId,
+            action: 'LETTER_UNDELIVERABLE_REVERTED',
+            entity: 'contract_letter',
+            entityId: letterId,
           },
         }),
       ])

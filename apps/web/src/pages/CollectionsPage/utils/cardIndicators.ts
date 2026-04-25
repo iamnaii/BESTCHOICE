@@ -11,15 +11,16 @@ export function agingBucket(daysOverdue: number): AgingBucket {
 export function agingColor(bucket: AgingBucket): string {
   switch (bucket) {
     case '1-7':
-      return 'bg-emerald-500/15 text-emerald-700 border-emerald-500/30';
+      return 'bg-success/15 text-success border-success/30';
     case '8-30':
-      return 'bg-amber-500/15 text-amber-700 border-amber-500/30';
+      return 'bg-warning/15 text-warning border-warning/30';
     case '31-60':
-      return 'bg-orange-500/15 text-orange-700 border-orange-500/30';
+      // No semantic "orange" token — reuse warning with stronger emphasis
+      return 'bg-warning/25 text-warning border-warning/40';
     case '61-90':
-      return 'bg-red-500/15 text-red-700 border-red-500/30';
+      return 'bg-destructive/15 text-destructive border-destructive/30';
     case '90+':
-      return 'bg-purple-500/15 text-purple-700 border-purple-500/30';
+      return 'bg-info/15 text-info border-info/30';
   }
 }
 

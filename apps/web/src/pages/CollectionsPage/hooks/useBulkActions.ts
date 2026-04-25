@@ -111,14 +111,25 @@ export function useBulkActions(clearSelection: () => void) {
       };
     },
     onSuccess: (data) => {
-      // Bulk propose-lock creates N MdmLockRequests; per-request reverse is
-      // currently unavailable (no DELETE endpoint). Show toast with the
-      // PROPOSE_LOCK timing so the UX timing is consistent for QA, but no
-      // reverse handler is wired yet — degrades to a plain toast.
+      // Z8: Bulk propose-lock creates N MdmLockRequests. The PROPOSE_LOCK
+      // undo flow live-checks ONE request id (via the hook's `mdmRequestId`)
+      // and reverses it via DELETE /overdue/mdm-requests/:id. For bulk
+      // proposals we surface a single undo on the FIRST created request as
+      // a representative — undoing the whole bulk would require N round-trips
+      // and ambiguous semantics if some succeeded and others didn't. The
+      // remaining requests can still be cancelled individually from the
+      // approval tab.
+      const firstId = data.requestIds?.[0];
+      const reverse = firstId
+        ? async () => {
+            await api.delete(`/overdue/mdm-requests/${firstId}`);
+          }
+        : undefined;
       showUndo({
         kind: 'PROPOSE_LOCK',
         message: `เสนอล็อค ${data.proposed}/${data.requested} รายการ รออนุมัติ`,
-        // reverse + mdmRequestId intentionally omitted until DELETE endpoint exists.
+        ...(firstId && reverse ? { mdmRequestId: firstId, reverse } : {}),
+        invalidateKeys: [['collections-queue'], ['pending-mdm']],
       });
       clearSelection();
       invalidate();

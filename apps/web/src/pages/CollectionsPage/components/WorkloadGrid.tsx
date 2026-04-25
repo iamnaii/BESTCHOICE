@@ -19,7 +19,11 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import QueryBoundary from '@/components/QueryBoundary';
-import { useWorkloadGrid, type WorkloadContract } from '../hooks/useWorkloadGrid';
+import {
+  useWorkloadGrid,
+  type AutoBalancePreview,
+  type WorkloadContract,
+} from '../hooks/useWorkloadGrid';
 
 const UNASSIGNED_ID = '__unassigned__';
 
@@ -50,7 +54,8 @@ export default function WorkloadGrid() {
     error,
     refetch,
     reassignMany,
-    autoBalance,
+    previewAutoBalance,
+    executeAutoBalance,
   } = useWorkloadGrid();
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -59,6 +64,22 @@ export default function WorkloadGrid() {
   );
   const [busy, setBusy] = useState(false);
   const [autoBalanceConfirmOpen, setAutoBalanceConfirmOpen] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [preview, setPreview] = useState<AutoBalancePreview | null>(null);
+
+  const openAutoBalanceConfirm = async () => {
+    setAutoBalanceConfirmOpen(true);
+    setPreview(null);
+    setPreviewLoading(true);
+    try {
+      const p = await previewAutoBalance();
+      setPreview(p);
+    } catch {
+      // Fallback: dialog will show generic copy without exclusion counts.
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
 
   const columns: ColumnData[] = useMemo(() => {
     const byId = new Map<string, ColumnData>();
@@ -157,7 +178,7 @@ export default function WorkloadGrid() {
   const runAutoBalance = async () => {
     setBusy(true);
     try {
-      await autoBalance();
+      await executeAutoBalance();
     } finally {
       setBusy(false);
     }
@@ -180,7 +201,9 @@ export default function WorkloadGrid() {
             variant="outline"
             size="sm"
             disabled={busy || contracts.length === 0 || collectors.length === 0}
-            onClick={() => setAutoBalanceConfirmOpen(true)}
+            onClick={() => {
+              void openAutoBalanceConfirm();
+            }}
           >
             {busy ? (
               <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
@@ -269,15 +292,65 @@ export default function WorkloadGrid() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>ยืนยันการกระจายงานอัตโนมัติ</AlertDialogTitle>
-            <AlertDialogDescription>
-              ระบบจะกระจาย {contracts.length} สัญญา ให้พนักงาน{' '}
-              {collectors.length} คน เท่าๆ กัน
-              และจะเขียนทับการมอบหมายเดิมทั้งหมด ดำเนินการต่อหรือไม่?
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm leading-snug">
+                {previewLoading ? (
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    กำลังคำนวณ…
+                  </div>
+                ) : preview ? (
+                  <>
+                    <div>
+                      ระบบจะกระจาย{' '}
+                      <span className="font-semibold tabular-nums">
+                        {preview.eligibleCount}
+                      </span>{' '}
+                      สัญญา ให้พนักงาน{' '}
+                      <span className="font-semibold tabular-nums">
+                        {preview.collectorCount}
+                      </span>{' '}
+                      คน เท่าๆ กัน และจะเขียนทับการมอบหมายเดิม
+                    </div>
+                    {preview.excludedLegal +
+                      preview.excludedSnooze +
+                      preview.excludedRecentlyAssigned >
+                    0 ? (
+                      <div className="text-muted-foreground">
+                        ยกเว้น{' '}
+                        <span className="tabular-nums">
+                          {preview.excludedSnooze}
+                        </span>{' '}
+                        snooze ·{' '}
+                        <span className="tabular-nums">
+                          {preview.excludedLegal}
+                        </span>{' '}
+                        LEGAL ·{' '}
+                        <span className="tabular-nums">
+                          {preview.excludedRecentlyAssigned}
+                        </span>{' '}
+                        เพิ่งย้าย (24 ชม.)
+                      </div>
+                    ) : (
+                      <div className="text-muted-foreground">
+                        ไม่มีสัญญาที่ถูกยกเว้น
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div>
+                    ระบบจะกระจาย {contracts.length} สัญญา ให้พนักงาน{' '}
+                    {collectors.length} คน เท่าๆ กัน
+                    และจะเขียนทับการมอบหมายเดิมทั้งหมด
+                  </div>
+                )}
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
             <AlertDialogAction
+              disabled={previewLoading || preview?.eligibleCount === 0}
               onClick={() => {
                 void runAutoBalance();
               }}

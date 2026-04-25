@@ -261,8 +261,8 @@ export default function Customer360Timeline({ events }: Props) {
 
               {/* Events */}
               <div>
-                {group.items.map((event, idx) => (
-                  <EventCard key={event.id} event={event} isFirst={idx === 0} />
+                {group.items.map((event) => (
+                  <EventCard key={event.id} event={event} />
                 ))}
               </div>
             </div>

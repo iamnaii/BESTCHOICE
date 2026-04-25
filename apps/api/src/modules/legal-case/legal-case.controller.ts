@@ -34,7 +34,7 @@ import {
 @ApiBearerAuth('JWT')
 @Controller('legal-cases')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('OWNER', 'FINANCE_MANAGER')
+@Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER')
 export class LegalCaseController {
   constructor(private readonly service: LegalCaseService) {}
 

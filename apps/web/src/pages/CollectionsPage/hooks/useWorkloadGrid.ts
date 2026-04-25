@@ -111,17 +111,41 @@ export function useWorkloadGrid() {
     reassign: (contractId: string, assignedToId: string) =>
       reassignMany([{ contractId, assignedToId }]),
     reassignMany,
-    autoBalance: async () => {
-      // Round-robin across collectors over ALL contracts (assigned + unassigned)
-      if (collectors.length === 0) {
-        toast.error('ไม่พบพนักงานสำหรับกระจายงาน');
-        return;
+    /**
+     * P3 Task 2 — fetch a server-side preview of what auto-balance would
+     * actually do (and what it would skip) before the OWNER confirms.
+     */
+    previewAutoBalance: async (): Promise<AutoBalancePreview> =>
+      (await api.get('/overdue/auto-balance/preview')).data,
+    /**
+     * P3 Task 2 — execute server-side round-robin with exclusion rules.
+     * Returns the same counts as preview plus `assigned`.
+     */
+    executeAutoBalance: async (): Promise<AutoBalanceResult> => {
+      const res = (await api.post('/overdue/auto-balance/execute'))
+        .data as AutoBalanceResult;
+      await queryClient.invalidateQueries({
+        queryKey: ['collections-workload-contracts'],
+      });
+      if (res.assigned === 0) {
+        toast.success('ไม่มีสัญญาที่ต้องกระจายใหม่');
+      } else {
+        toast.success(`กระจายงานสำเร็จ ${res.assigned} สัญญา`);
       }
-      const pairs = contracts.map((c, idx) => ({
-        contractId: c.id,
-        assignedToId: collectors[idx % collectors.length].id,
-      }));
-      await reassignMany(pairs);
+      return res;
     },
   };
+}
+
+export interface AutoBalancePreview {
+  totalContracts: number;
+  eligibleCount: number;
+  excludedLegal: number;
+  excludedSnooze: number;
+  excludedRecentlyAssigned: number;
+  collectorCount: number;
+}
+
+export interface AutoBalanceResult extends AutoBalancePreview {
+  assigned: number;
 }

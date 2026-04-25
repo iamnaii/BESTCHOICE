@@ -3,6 +3,7 @@ import * as Sentry from '@sentry/nestjs';
 import { DunningEventTrigger } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DunningRuleService } from './dunning-rule.service';
+import { DunningRuleResolverService } from './dunning-rule-resolver.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PaymentLinkService } from '../line-oa/payment-links/payment-link.service';
 import { formatDateShort } from '../../utils/thai-date.util';
@@ -26,6 +27,7 @@ export class DunningEngineService {
     private readonly ruleService: DunningRuleService,
     private readonly notificationsService: NotificationsService,
     private readonly paymentLinkService: PaymentLinkService,
+    private readonly resolver: DunningRuleResolverService,
   ) {}
 
   /**
@@ -37,6 +39,24 @@ export class DunningEngineService {
       const value = (vars as unknown as Record<string, string>)[key];
       return value !== undefined ? value : match;
     });
+  }
+
+  /**
+   * P3 E2: when a DunningRule has `templateName` set, look up the SmsTemplate
+   * by name and use its body. Falls back to the inline `messageTemplate` if
+   * the reference is missing/inactive — keeps dunning resilient to template
+   * deletions and supports the backward-compatible default.
+   */
+  async resolveTemplateBody(rule: {
+    messageTemplate: string;
+    templateName?: string | null;
+  }): Promise<string> {
+    if (!rule.templateName) return rule.messageTemplate;
+    const tpl = await this.prisma.smsTemplate.findFirst({
+      where: { name: rule.templateName, deletedAt: null, active: true },
+      select: { body: true },
+    });
+    return tpl?.body ?? rule.messageTemplate;
   }
 
   /**
@@ -99,6 +119,31 @@ export class DunningEngineService {
               continue;
             }
 
+            // Resolve customer-tag conditions (P3 Task 7). The resolver may
+            // tell us to skip this rule entirely (e.g. tagConditions.skipForTags
+            // matches), defer the send by N days (VIP +3 default), or jump
+            // straight to firm tone (HIGH_RISK / BLACKLIST skipSoft).
+            const customerTags = await this.resolver.fetchTagsForCustomer(
+              payment.contract.customer.id,
+            );
+            const resolution = this.resolver.resolve(rule, customerTags);
+            if (resolution.action === 'skip') {
+              this.logger.debug(
+                `Tag-condition skip: rule=${rule.id} contract=${payment.contractId} reason=${resolution.reason}`,
+              );
+              skipped++;
+              continue;
+            }
+            if (resolution.delayDays > 0) {
+              // Defer: re-check on the day the delay expires. Today's run
+              // simply skips so the dedup guard doesn't lock the rule out.
+              this.logger.debug(
+                `Tag-condition delay: rule=${rule.id} contract=${payment.contractId} +${resolution.delayDays}d`,
+              );
+              skipped++;
+              continue;
+            }
+
             const daysOverdue =
               rule.triggerDay > 0
                 ? rule.triggerDay
@@ -113,7 +158,11 @@ export class DunningEngineService {
               installmentNo: String(payment.installmentNo),
             };
 
-            const messageContent = this.renderTemplate(rule.messageTemplate, vars);
+            // P3 E2: prefer body from referenced SmsTemplate (when set + active)
+            // over the inline messageTemplate. Falls back silently if the
+            // template was deleted/deactivated so dunning never breaks.
+            const templateBody = await this.resolveTemplateBody(rule);
+            const messageContent = this.renderTemplate(templateBody, vars);
 
             let paymentLinkUrl: string | undefined;
 
@@ -303,9 +352,29 @@ export class DunningEngineService {
 
     const contract = await this.prisma.contract.findUnique({
       where: { id: contractId },
-      include: { customer: { select: { name: true, lineId: true, phone: true } } },
+      include: { customer: { select: { id: true, name: true, lineId: true, phone: true } } },
     });
     if (!contract) return;
+
+    // Tag-condition resolution (P3 Task 7) — skip / delay also applies to
+    // event-triggered rules so the policy holds across both scheduled and
+    // ad-hoc dispatches.
+    const eventTags = await this.resolver.fetchTagsForCustomer(contract.customer.id);
+    const eventResolution = this.resolver.resolve(rule, eventTags);
+    if (eventResolution.action === 'skip') {
+      this.logger.debug(
+        `Tag-condition skip (event): rule=${rule.id} contract=${contractId} reason=${eventResolution.reason}`,
+      );
+      return;
+    }
+    if (eventResolution.delayDays > 0) {
+      // Event-triggered rules are inherently "now"; if a delay is requested
+      // we suppress this dispatch and let the periodic engine pick it up.
+      this.logger.debug(
+        `Tag-condition delay (event): rule=${rule.id} contract=${contractId} +${eventResolution.delayDays}d — suppressed`,
+      );
+      return;
+    }
 
     const payment = paymentId
       ? await this.prisma.payment.findUnique({ where: { id: paymentId } })
@@ -321,7 +390,8 @@ export class DunningEngineService {
       ...extraVars,
     };
 
-    const messageContent = this.renderTemplate(rule.messageTemplate, vars);
+    const templateBody = await this.resolveTemplateBody(rule);
+    const messageContent = this.renderTemplate(templateBody, vars);
 
     let paymentLinkUrl: string | undefined;
     if (rule.includePaymentLink && payment && contract.customer.lineId) {

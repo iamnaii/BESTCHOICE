@@ -17,6 +17,7 @@ import { AnalyticsLeaderboardService } from './analytics-leaderboard.service';
 import { AnalyticsRecoveryService } from './analytics-recovery.service';
 import { StuckContractsService } from './stuck-contracts.service';
 import { ContractSnoozeService } from './snooze.service';
+import { AutoBalanceService } from './auto-balance.service';
 import { CreateSnoozeDto } from './dto/snooze.dto';
 import { AnalyticsQueryDto } from './dto/analytics-query.dto';
 import { CreateCallLogDto } from './dto/create-call-log.dto';
@@ -60,6 +61,7 @@ export class OverdueController {
     private analyticsRecoveryService: AnalyticsRecoveryService,
     private stuckContractsService: StuckContractsService,
     private snoozeService: ContractSnoozeService,
+    private autoBalanceService: AutoBalanceService,
   ) {}
 
   // --- Collections Workflow Hub endpoints (Plan 2) ---
@@ -73,7 +75,6 @@ export class OverdueController {
     return this.queueService.getQueue({
       tab: dto.tab,
       branchId: dto.branchId,
-      search: dto.search,
       page: dto.page,
       limit: dto.limit,
       userId: user.id,
@@ -371,10 +372,34 @@ export class OverdueController {
     );
   }
 
-  // --- MDM lock/unlock approvals (OWNER/FM only) ---
+  // --- Z8: MDM lock request live-check + undo (used by useUndoMutation) ---
+
+  @Get('mdm-requests/:id')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  getMdmRequest(@Param('id') id: string) {
+    return this.mdmLockService.getById(id);
+  }
+
+  /**
+   * Z8: Soft-delete a PENDING MdmLockRequest. Used by the PROPOSE_LOCK undo
+   * snackbar — only the original proposer (or OWNER) may undo, and only while
+   * status === PENDING.
+   */
+  @Delete('mdm-requests/:id')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  deleteMdmRequest(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string; role: string },
+  ) {
+    return this.mdmLockService.deleteIfPending(id, user.id, user.role);
+  }
+
+  // --- MDM lock/unlock approvals (OWNER/FM/BM — Z3) ---
+  // BRANCH_MANAGER granted approval rights for parity with Approval tab
+  // visibility and consistency with late-fee-waiver / legal-case approvals.
 
   @Post('mdm-requests/:id/approve')
-  @Roles('OWNER', 'FINANCE_MANAGER')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER')
   approveMdmLock(
     @Param('id') id: string,
     @Body() body: ApproveMdmDto,
@@ -386,7 +411,7 @@ export class OverdueController {
   }
 
   @Post('mdm-requests/:id/reject')
-  @Roles('OWNER', 'FINANCE_MANAGER')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER')
   rejectMdmLock(
     @Param('id') id: string,
     @Body() body: RejectMdmDto,
@@ -396,7 +421,7 @@ export class OverdueController {
   }
 
   @Post('mdm-requests/:id/unlock')
-  @Roles('OWNER', 'FINANCE_MANAGER')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER')
   unlockMdm(
     @Param('id') id: string,
     @CurrentUser() user: { id: string; role: string },
@@ -521,6 +546,20 @@ export class OverdueController {
     return this.contractLetterService.markUndeliverable(id, user.id, body.reason);
   }
 
+  /**
+   * Z9: Revert a letter from UNDELIVERABLE back to DISPATCHED. Used by the
+   * MARK_UNDELIVERABLE undo snackbar — only the original dispatcher (or
+   * OWNER) may revert, and only while status === UNDELIVERABLE.
+   */
+  @Post('letters/:id/revert-undeliverable')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER')
+  revertLetterUndeliverable(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string; role: string },
+  ) {
+    return this.contractLetterService.revertUndeliverable(id, user.id, user.role);
+  }
+
   @Post('letters/:id/cancel')
   @Roles('OWNER', 'FINANCE_MANAGER')
   cancelLetter(
@@ -529,6 +568,20 @@ export class OverdueController {
     @CurrentUser() user: { id: string },
   ) {
     return this.contractLetterService.cancel(id, user.id, body.reason);
+  }
+
+  // --- P3 Task 2 — Auto-balance with exclusions (OWNER only) ---
+
+  @Get('auto-balance/preview')
+  @Roles('OWNER')
+  previewAutoBalance() {
+    return this.autoBalanceService.preview();
+  }
+
+  @Post('auto-balance/execute')
+  @Roles('OWNER')
+  executeAutoBalance(@CurrentUser() user: { id: string }) {
+    return this.autoBalanceService.execute(user.id);
   }
 
   // --- Per-user snooze (B2 backend) ---

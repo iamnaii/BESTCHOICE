@@ -42,6 +42,43 @@ export class EmailService {
   }
 
   /**
+   * Generic mailer used by reporting/notification flows that need to send
+   * arbitrary subject/body (and optional attachments). Returns true when
+   * SMTP delivered, false when SMTP is not configured (caller can decide
+   * whether to fall back to log-only).
+   */
+  async sendMail(params: {
+    to: string | string[];
+    subject: string;
+    html: string;
+    attachments?: Array<{ filename: string; content: Buffer; contentType?: string }>;
+  }): Promise<boolean> {
+    const transporter = await this.getTransporter();
+    const recipients = Array.isArray(params.to) ? params.to.join(',') : params.to;
+    if (!transporter) {
+      this.logger.warn(
+        `=== EMAIL NOT SENT (SMTP not configured) === to=${recipients} subject=${params.subject}`,
+      );
+      return false;
+    }
+    const from = await this.getFrom();
+    try {
+      await transporter.sendMail({
+        from,
+        to: recipients,
+        subject: params.subject,
+        html: params.html,
+        attachments: params.attachments,
+      });
+      this.logger.log(`Email sent (subject=${params.subject})`);
+      return true;
+    } catch (err) {
+      this.logger.error(`Failed to send email (subject=${params.subject}): ${err}`);
+      return false;
+    }
+  }
+
+  /**
    * Send a password reset email with a Thai-language HTML template.
    */
   async sendPasswordResetEmail(to: string, resetToken: string, userName: string): Promise<void> {

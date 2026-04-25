@@ -5,6 +5,8 @@ import {
   PutObjectCommand,
   GetObjectCommand,
   DeleteObjectCommand,
+  RestoreObjectCommand,
+  HeadObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Storage as GcsStorage } from '@google-cloud/storage';
@@ -133,6 +135,23 @@ export class StorageService {
     }
   }
 
+  /**
+   * Presigned PUT upload URL. The optional `maxContentLength` is a HARD cap
+   * on GCS (enforced via `x-goog-content-length-range`) but only an ADVISORY
+   * cap on S3 (Z5). S3 PUT presigned URLs cannot embed content-length
+   * conditions — only S3 POST *policy* presigns can. We accept this asymmetry
+   * because:
+   *   1. The DTO that produces `key`/`maxContentLength` already validates the
+   *      client-declared size and rejects out-of-bound requests at the API
+   *      layer before issuing the presign.
+   *   2. Production runs on GCS; the S3 path is only used for self-hosted
+   *      MinIO dev environments where attackers are not in the threat model.
+   *   3. Switching legal-doc upload to POST policy presign would require a
+   *      different client form-encoded multipart flow — non-trivial refactor
+   *      for a dev-only path.
+   * If/when an S3-backed production deployment is needed, migrate to POST
+   * policy presign with `Conditions: [['content-length-range', 0, max]]`.
+   */
   async getSignedUploadUrl(
     key: string,
     contentType: string,
@@ -179,6 +198,78 @@ export class StorageService {
     }
 
     throw new BadRequestException('Storage not configured');
+  }
+
+  /**
+   * P3 Task 3 — request a Glacier restore for the given key (S3 only).
+   * `days` controls how long the restored copy stays available before
+   * relapsing back into Glacier.
+   *
+   * No-op + warning when the backend is not S3 (GCS uses a different,
+   * synchronous mechanism — see {@link restoreToStandardClass}).
+   */
+  async requestGlacierRestore(key: string, days: number): Promise<void> {
+    if (this.backend !== 's3' || !this.s3) {
+      this.logger.warn(
+        `requestGlacierRestore called on non-S3 backend (${this.backend}); skipping ${key}`,
+      );
+      return;
+    }
+    await this.s3.send(
+      new RestoreObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        RestoreRequest: {
+          Days: days,
+          GlacierJobParameters: { Tier: 'Standard' },
+        },
+      }),
+    );
+    this.logger.log(`S3 Glacier restore requested: ${key} (Days=${days})`);
+  }
+
+  /**
+   * P3 Task 3 — poll Glacier restore status (S3 only). Inspects
+   * x-amz-restore header on HeadObject; ongoing-request="false" means
+   * the restored copy is now available.
+   */
+  async isRestoreComplete(key: string): Promise<boolean> {
+    if (this.backend !== 's3' || !this.s3) {
+      // GCS setStorageClass is synchronous — by the time it returns we
+      // are already restored. So treat as complete.
+      return true;
+    }
+    try {
+      const head = await this.s3.send(
+        new HeadObjectCommand({ Bucket: this.bucket, Key: key }),
+      );
+      const restore = head.Restore || '';
+      // Format examples (per AWS docs):
+      //   ongoing-request="true"
+      //   ongoing-request="false", expiry-date="Wed, 07 Nov 2026 00:00:00 GMT"
+      if (!restore) return true; // not in Glacier — already standard
+      return /ongoing-request="false"/.test(restore);
+    } catch (err) {
+      this.logger.warn(
+        `HeadObject failed for ${key}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return false;
+    }
+  }
+
+  /**
+   * P3 Task 3 — GCS path. setStorageClass to STANDARD is synchronous
+   * (it rewrites the object). Throws when called on a non-GCS backend.
+   */
+  async restoreToStandardClass(key: string): Promise<void> {
+    if (this.backend !== 'gcs' || !this.gcs) {
+      this.logger.warn(
+        `restoreToStandardClass called on non-GCS backend (${this.backend}); skipping ${key}`,
+      );
+      return;
+    }
+    await this.gcs.bucket(this.bucket).file(key).setStorageClass('STANDARD');
+    this.logger.log(`GCS storage class restored to STANDARD: ${key}`);
   }
 
   getPublicUrl(key: string): string {

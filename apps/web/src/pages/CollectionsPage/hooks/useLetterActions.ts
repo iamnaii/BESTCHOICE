@@ -61,15 +61,15 @@ export function useLetterActions() {
       const { data } = await api.post(`/overdue/letters/${letterId}/undeliverable`, { reason });
       return { data, letterId };
     },
-    onSuccess: () => {
-      // Per Task 8 (collections-ui-p1): MARK_UNDELIVERABLE has a 30s undo
-      // window; reverse = revert letter status back to DISPATCHED. The reverse
-      // endpoint (POST /overdue/letters/:id/revert-undeliverable) is not yet
-      // shipped — wired structurally so undo degrades to a plain success toast
-      // until the endpoint exists. Plug `reverse:` here when ready.
+    onSuccess: ({ letterId }) => {
+      // Z9: 30s undo window — reverse hits POST /overdue/letters/:id/revert-undeliverable
+      // which restores status=DISPATCHED for OWNER or the original dispatcher.
       showUndo({
         kind: 'MARK_UNDELIVERABLE',
         message: 'บันทึกส่งไม่ถึงแล้ว',
+        reverse: async () => {
+          await api.post(`/overdue/letters/${letterId}/revert-undeliverable`);
+        },
         invalidateKeys: [['letter-queue']],
       });
       invalidate();

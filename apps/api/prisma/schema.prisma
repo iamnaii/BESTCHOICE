@@ -626,6 +626,11 @@ model User {
   // P2 Collections UI — legal case document uploads (append-only)
   uploadedLegalDocs LegalCaseDocument[] @relation("LegalCaseDocumentUploadedBy")
 
+  // P3 Collections UI — customer tag attribution + late fee waiver workflow
+  appliedTags            CustomerTag[]          @relation("CustomerTagAppliedBy")
+  lateFeeWaiverRequests  LateFeeWaiverRequest[] @relation("LateFeeWaiverRequester")
+  approvedLateFeeWaivers LateFeeWaiverRequest[] @relation("LateFeeWaiverApprover")
+
   @@index([branchId])
   @@map("users")
 }
@@ -746,6 +751,9 @@ model Customer {
   savingPlans        SavingPlan[]
   reviews            Review[]
   onlineApplications OnlineInstallmentApplication[]
+
+  // P3 Collections UI — segmentation tags (auto + manual)
+  tags CustomerTag[]
 
   @@index([phone])
   @@index([name])
@@ -877,6 +885,8 @@ model Contract {
   onlineApplication        OnlineInstallmentApplication?
   assignedToId             String?                       @map("assigned_to_id") // collections agent assignment
   assignedTo               User?                         @relation("ContractAssignedTo", fields: [assignedToId], references: [id])
+  /// P3 Task 2 — set whenever assignedToId changes; used by auto-balance to skip recently re-assigned contracts (24h cool-down).
+  assignedAt               DateTime?                     @map("assigned_at")
 
   // Collections tracking fields (Phase 5)
   collectionNotes String?   @map("collection_notes") // internal notes from collector
@@ -911,6 +921,9 @@ model Contract {
 
   // P2 Collections UI — legal case (1:1, optional)
   legalCase LegalCase?
+
+  // P3 Collections UI — late fee waiver requests (collector → OWNER approval)
+  lateFeeWaiverRequests LateFeeWaiverRequest[]
 
   @@index([customerId])
   @@index([branchId])
@@ -1760,11 +1773,19 @@ model DunningRule {
   eventTrigger       DunningEventTrigger? @map("event_trigger")
   channel            DunningChannel
   messageTemplate    String               @map("message_template")
+  // P3 E2: optional reference to SmsTemplate by name. When set, the dunning
+  // engine prefers the template body from SmsTemplate over `messageTemplate`.
+  // Backward compatible — `messageTemplate` remains the source of truth when
+  // `templateName` is null or the referenced template is missing/inactive.
+  templateName       String?              @map("template_name")
   includePaymentLink Boolean              @default(false) @map("include_payment_link")
   autoExecute        Boolean              @default(true) @map("auto_execute")
   escalateTo         UserRole?            @map("escalate_to")
   isActive           Boolean              @default(true) @map("is_active")
   sortOrder          Int                  @default(0) @map("sort_order")
+  // P3 Collections UI — per-tag overrides (skip / delay / immediate / skip-soft)
+  // Shape: { skipForTags: ['VIP'], delayDaysForTags: { VIP: 3 }, immediateForTags: ['BLACKLIST'], skipSoftForTags: ['HIGH_RISK'] }
+  tagConditions      Json?                @map("tag_conditions")
   createdAt          DateTime             @default(now()) @map("created_at")
   updatedAt          DateTime             @updatedAt @map("updated_at")
   deletedAt          DateTime?            @map("deleted_at")
@@ -3759,6 +3780,24 @@ enum MessageType {
   TEMPLATE
 }
 
+/// Z10: outbound LINE message delivery state, populated from
+/// `events[].deliveryContext` on the LINE webhook + custom replies. Used by
+/// queue.service `lineResponse` post-filter to surface RESPONDED/IGNORED/
+/// BLOCKED contracts in the collections workflow.
+enum ChatMessageDeliveryStatus {
+  /// Message reached the user's device but no reply observed.
+  DELIVERED
+  /// User opened the chat (LINE read receipt).
+  READ
+  /// User responded — populated when an inbound message arrives shortly after
+  /// our outbound send (within the response-window heuristic).
+  RESPONDED
+  /// Delivered but no engagement after the timeout window expired.
+  IGNORED
+  /// LINE rejected the send (e.g. user blocked the OA, or provider error).
+  BLOCKED
+}
+
 enum AutoTriggerType {
   REMINDER_T_MINUS_5
   REMINDER_T_MINUS_3
@@ -3899,6 +3938,10 @@ model ChatMessage {
   // Delivery tracking
   deliveredAt DateTime? @map("delivered_at")
   readAt      DateTime? @map("read_at")
+  // Z10: outbound delivery state populated from LINE webhook
+  // `events[].deliveryContext`. NULL for inbound (customer→us) messages and
+  // for outbound messages we sent before this column existed.
+  deliveryStatus ChatMessageDeliveryStatus? @map("delivery_status")
 
   // AI metadata
   intent       String?
@@ -5086,4 +5129,95 @@ model LegalCaseDocument {
   @@index([legalCaseId])
   @@index([uploadedByUserId])
   @@map("legal_case_documents")
+}
+
+// ============================================================
+// P3 Collections UI — Customer Tags / Late Fee Waiver / SMS Templates
+// ============================================================
+
+enum CustomerTagType {
+  VIP
+  HIGH_RISK
+  NEW
+  LOYAL
+  BLACKLIST
+}
+
+enum CustomerTagSource {
+  AUTO
+  MANUAL
+}
+
+enum LateFeeWaiverStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+/// Customer segmentation tag.
+/// Source = AUTO (applied by daily recompute cron based on rules) or MANUAL (OWNER override).
+/// Soft-delete supported so the unique constraint is per (customer, tag, deletedAt).
+model CustomerTag {
+  id              String            @id @default(uuid())
+  customerId      String            @map("customer_id")
+  customer        Customer          @relation(fields: [customerId], references: [id])
+  tag             CustomerTagType
+  source          CustomerTagSource
+  reason          String?
+  appliedByUserId String?           @map("applied_by_user_id")
+  appliedBy       User?             @relation("CustomerTagAppliedBy", fields: [appliedByUserId], references: [id])
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+  deletedAt       DateTime?         @map("deleted_at")
+
+  @@unique([customerId, tag, deletedAt])
+  @@index([tag])
+  @@index([customerId])
+  @@map("customer_tags")
+}
+
+/// Collector → OWNER approval flow for waiving late fees on specific payments.
+/// paymentIds is a Postgres text[] of Payment.id values whose lateFee should be zeroed on approval.
+model LateFeeWaiverRequest {
+  id               String              @id @default(uuid())
+  contractId       String              @map("contract_id")
+  contract         Contract            @relation(fields: [contractId], references: [id])
+  paymentIds       String[]            @map("payment_ids")
+  reason           String
+  totalWaiveAmount Decimal             @map("total_waive_amount") @db.Decimal(12, 2)
+  status           LateFeeWaiverStatus @default(PENDING)
+  requesterUserId  String              @map("requester_user_id")
+  requester        User                @relation("LateFeeWaiverRequester", fields: [requesterUserId], references: [id])
+  approverUserId   String?             @map("approver_user_id")
+  approver         User?               @relation("LateFeeWaiverApprover", fields: [approverUserId], references: [id])
+  approvedAt       DateTime?           @map("approved_at")
+  rejectedReason   String?             @map("rejected_reason")
+  createdAt        DateTime            @default(now()) @map("created_at")
+  updatedAt        DateTime            @updatedAt @map("updated_at")
+  deletedAt        DateTime?           @map("deleted_at")
+
+  @@index([status, createdAt])
+  @@index([contractId])
+  @@map("late_fee_waiver_requests")
+}
+
+/// Configurable LINE/SMS message template with `{{variable}}` placeholders.
+/// Supports A/B testing via `variantOf` self-relation (parent ↔ variants).
+model SmsTemplate {
+  id        String        @id @default(uuid())
+  name      String        @unique
+  channel   String // 'SMS' | 'LINE'
+  subject   String?
+  body      String // with {{variable}} placeholders
+  variables Json // [{ name: 'customerName', label: 'ชื่อลูกค้า' }, ...]
+  active    Boolean       @default(true)
+  variantOf String?       @map("variant_of")
+  parent    SmsTemplate?  @relation("SmsTemplateVariants", fields: [variantOf], references: [id])
+  variants  SmsTemplate[] @relation("SmsTemplateVariants")
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+  deletedAt DateTime?     @map("deleted_at")
+
+  @@index([channel, active])
+  @@map("sms_templates")
 }

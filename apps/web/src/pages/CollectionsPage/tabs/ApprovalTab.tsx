@@ -11,6 +11,7 @@ import {
 import { EscalationRow, MdmRow } from '../components/ApprovalPendingRow';
 import LetterQueueSection from '../components/LetterQueueSection';
 import LineRetryQueueSection from '../components/LineRetryQueueSection';
+import LateFeeWaiverApprovalSection from '../components/LateFeeWaiverApprovalRow';
 
 function RowSkeleton() {
   return <div className="bg-muted animate-pulse h-20 rounded-lg" />;
@@ -112,6 +113,9 @@ export default function ApprovalTab() {
           )}
         </CardContent>
       </Card>
+
+      {/* Late fee waiver requests — collector → OWNER 4-eyes flow */}
+      <LateFeeWaiverApprovalSection />
 
       {/* Letter queue — generate PDF → dispatch → track delivery */}
       <LetterQueueSection />

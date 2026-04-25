@@ -20,7 +20,9 @@ import AgingBucketChart from '../components/AgingBucketChart';
 import LeaderboardTable from '../components/LeaderboardTable';
 import StuckContractsSection from '../components/StuckContractsSection';
 import RecoveryByChannelChart from './AnalyticsTab/RecoveryByChannelChart';
+import ComplianceDashboardSection from './AnalyticsTab/ComplianceDashboardSection';
 import WorkloadGrid from '../components/WorkloadGrid';
+import PdfExportButton from '../components/PdfExportButton';
 import { useAuth } from '@/contexts/AuthContext';
 
 // Chart colors: pragmatic hex approximations of the theme palette.
@@ -79,8 +81,9 @@ export default function AnalyticsTab() {
 
   return (
     <div>
-      {/* Date range picker */}
-      <div className="flex justify-end mb-4">
+      {/* Date range picker + PDF export */}
+      <div className="flex justify-end items-center gap-2 mb-4">
+        {isOwner && <PdfExportButton />}
         <DateRangePicker value={dateRange} onChange={setDateRange} />
       </div>
 
@@ -310,6 +313,9 @@ export default function AnalyticsTab() {
 
             {/* P2 Task 9 — Workload redistribution drag-drop (OWNER only) */}
             {isOwner && <WorkloadGrid />}
+
+            {/* P3 D2 — Compliance dashboard (OWNER + FINANCE_MANAGER) */}
+            {(isOwner || user?.role === 'FINANCE_MANAGER') && <ComplianceDashboardSection />}
           </div>
         )}
       </QueryBoundary>

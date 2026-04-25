@@ -19,18 +19,35 @@ export enum UploadKind {
 }
 
 /**
- * MIME allow-list per kind. When set, presign rejects unknown contentTypes.
- * Kinds NOT in this map fall back to the legacy `application/pdf | image/png |
- * image/jpeg` heuristic — preserved to avoid regressing existing flows.
+ * Z7: codec allow-list per kind. When set, the codec parameter inside a
+ * `contentType` string (e.g. `audio/webm;codecs=opus`) is matched against
+ * this list and unknown codecs are rejected. Stops crafted `;codecs=evil`
+ * params from sneaking past the base-MIME check.
  */
-const ALLOWED_MIME_BY_KIND: Partial<Record<UploadKind, readonly string[]>> = {
-  [UploadKind.VOICE_MEMO]: [
-    'audio/webm',
-    'audio/mp4',
-    'audio/ogg',
-    'audio/mpeg',
-  ],
+const ALLOWED_CODECS_BY_KIND: Partial<Record<UploadKind, readonly string[]>> = {
+  // Browsers' MediaRecorder produces these on Chrome/Safari/Firefox; AAC/MP3
+  // covered for clients that re-encode before upload.
+  [UploadKind.VOICE_MEMO]: ['opus', 'vorbis', 'aac', 'mp3', 'mp4a.40.2'],
 };
+
+/**
+ * Parse a Content-Type header into base type + codec list. Codec values
+ * inside `codecs="..."` may be space- or comma-separated per RFC 6381.
+ */
+function parseContentType(value: string): { baseType: string; codecs: string[] } {
+  const parts = value.split(';').map((p) => p.trim());
+  const baseType = parts[0]?.toLowerCase() ?? '';
+  const codecParam = parts.slice(1).find((p) => p.toLowerCase().startsWith('codecs'));
+  if (!codecParam) return { baseType, codecs: [] };
+  const eq = codecParam.indexOf('=');
+  if (eq < 0) return { baseType, codecs: [] };
+  const raw = codecParam.slice(eq + 1).trim().replace(/^"|"$/g, '');
+  const codecs = raw
+    .split(/[\s,]+/)
+    .map((c) => c.trim().toLowerCase())
+    .filter(Boolean);
+  return { baseType, codecs };
+}
 
 function pickExtension(kind: UploadKind, contentType: string): string {
   if (kind === UploadKind.VOICE_MEMO) {
@@ -72,6 +89,8 @@ const ALLOWED_MIME_BY_KIND: Record<UploadKind, readonly string[]> = {
   [UploadKind.LETTER_EVIDENCE]: ['image/jpeg', 'image/png', 'application/pdf'],
   [UploadKind.LETTER_SIGNATURE]: ['image/png', 'image/jpeg'],
   [UploadKind.LETTER_LETTERHEAD]: ['image/png', 'image/jpeg'],
+  [UploadKind.MDM_WALLPAPER]: ['image/jpeg', 'image/png', 'image/webp'],
+  [UploadKind.VOICE_MEMO]: ['audio/webm', 'audio/mp4', 'audio/ogg', 'audio/mpeg'],
 };
 
 @Controller('shop/upload')
@@ -84,12 +103,23 @@ export class ShopUploadController {
     const allowed = ALLOWED_MIME_BY_KIND[dto.kind];
     if (allowed) {
       // contentType may include codecs (e.g. `audio/webm;codecs=opus`) — match
-      // on the leading mediatype.
-      const baseType = dto.contentType.split(';')[0].trim();
+      // on the leading mediatype, then validate codec params against the
+      // per-kind allow-list (Z7).
+      const { baseType, codecs } = parseContentType(dto.contentType);
       if (!allowed.includes(baseType)) {
         throw new BadRequestException(
           `contentType "${dto.contentType}" ไม่รองรับสำหรับประเภท ${dto.kind}`,
         );
+      }
+
+      const allowedCodecs = ALLOWED_CODECS_BY_KIND[dto.kind];
+      if (allowedCodecs && codecs.length > 0) {
+        const bad = codecs.filter((c) => !allowedCodecs.includes(c));
+        if (bad.length > 0) {
+          throw new BadRequestException(
+            `codec "${bad.join(', ')}" ไม่รองรับสำหรับประเภท ${dto.kind}`,
+          );
+        }
       }
     }
 

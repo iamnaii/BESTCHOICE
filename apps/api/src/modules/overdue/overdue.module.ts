@@ -5,6 +5,8 @@ import { OverdueChatService } from './overdue-chat.service';
 import { ContractLetterService } from './contract-letter.service';
 import { DunningRuleService } from './dunning-rule.service';
 import { DunningEngineService } from './dunning-engine.service';
+import { DunningRuleResolverService } from './dunning-rule-resolver.service';
+import { NextBestActionService } from './next-best-action.service';
 import { MdmLockService } from './mdm-lock.service';
 import { OverdueQueueService } from './queue.service';
 import { OverdueKpiService } from './kpi.service';
@@ -25,6 +27,7 @@ import { ContractSnapshotCron } from './contract-snapshot.cron';
 import { BrokenPromiseReminderCron } from './broken-promise-reminder.cron';
 import { ContractSnoozeService } from './snooze.service';
 import { CustomerInsightsService } from './customer-insights.service';
+import { AutoBalanceService } from './auto-balance.service';
 import { ChatEngineModule } from '../chat-engine/chat-engine.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { LineOaModule } from '../line-oa/line-oa.module';
@@ -38,6 +41,8 @@ import { LineOaModule } from '../line-oa/line-oa.module';
     ContractLetterService,
     DunningRuleService,
     DunningEngineService,
+    DunningRuleResolverService,
+    NextBestActionService,
     MdmLockService,
     OverdueQueueService,
     OverdueKpiService,
@@ -58,6 +63,7 @@ import { LineOaModule } from '../line-oa/line-oa.module';
     BrokenPromiseReminderCron,
     ContractSnoozeService,
     CustomerInsightsService,
+    AutoBalanceService,
   ],
   exports: [
     CustomerInsightsService,
@@ -70,6 +76,11 @@ import { LineOaModule } from '../line-oa/line-oa.module';
     OverdueKpiService,
     OverdueTimelineService,
     OverdueBulkService,
+    OverdueAnalyticsService,
+    AnalyticsAgingService,
+    AnalyticsLeaderboardService,
+    AnalyticsRecoveryService,
+    StuckContractsService,
   ],
 })
 export class OverdueModule {}

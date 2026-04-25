@@ -9,7 +9,9 @@ import { MdmLockStatus, MdmLockTrigger } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DunningEngineService } from './dunning-engine.service';
 
-const APPROVE_ROLES = ['OWNER', 'FINANCE_MANAGER'] as const;
+// Z3: BRANCH_MANAGER added — branch-level approval authority for parity with
+// Approval-tab visibility, late-fee-waiver, and legal-case approvals.
+const APPROVE_ROLES = ['OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER'] as const;
 
 @Injectable()
 export class MdmLockService {
@@ -165,7 +167,7 @@ export class MdmLockService {
   async reject(requestId: string, rejectorId: string, reason: string, rejectorRole?: string) {
     const role = await this.resolveRole(rejectorId, rejectorRole);
     if (!(APPROVE_ROLES as readonly string[]).includes(role)) {
-      throw new ForbiddenException('สิทธิ์ปฏิเสธคำขอเฉพาะ OWNER / FINANCE_MANAGER');
+      throw new ForbiddenException(`สิทธิ์ปฏิเสธคำขอเฉพาะ ${APPROVE_ROLES.join(' / ')}`);
     }
     if (!reason || reason.trim().length < 5) {
       throw new BadRequestException('ต้องระบุเหตุผลการปฏิเสธ (≥ 5 ตัวอักษร)');
@@ -190,7 +192,7 @@ export class MdmLockService {
   async unlock(requestId: string, unlockerId: string, unlockerRole?: string) {
     const role = await this.resolveRole(unlockerId, unlockerRole);
     if (!(APPROVE_ROLES as readonly string[]).includes(role)) {
-      throw new ForbiddenException('สิทธิ์ปลดล็อคเฉพาะ OWNER / FINANCE_MANAGER');
+      throw new ForbiddenException(`สิทธิ์ปลดล็อคเฉพาะ ${APPROVE_ROLES.join(' / ')}`);
     }
 
     const req = await this.prisma.mdmLockRequest.findUnique({ where: { id: requestId } });
@@ -224,6 +226,63 @@ export class MdmLockService {
       // non-fatal
     }
 
+    return updated;
+  }
+
+  /**
+   * Z8: Fetch a single MdmLockRequest by id for the undo live-check. Returns
+   * the row including contract context so the FE can decide whether to
+   * proceed with reverse — only PENDING is undoable.
+   */
+  async getById(requestId: string) {
+    const req = await this.prisma.mdmLockRequest.findFirst({
+      where: { id: requestId, deletedAt: null },
+      include: {
+        contract: { select: { id: true, contractNumber: true, branchId: true } },
+        proposedBy: { select: { id: true, name: true } },
+      },
+    });
+    if (!req) throw new NotFoundException('ไม่พบคำขอ');
+    return req;
+  }
+
+  /**
+   * Z8: Soft-delete a PENDING MdmLockRequest. Authorization:
+   *   - OWNER may delete any pending request
+   *   - The original proposer may delete their own pending request
+   * Anything else → ForbiddenException. Non-PENDING → BadRequestException
+   * (the FE live-check should have prevented this; defence-in-depth).
+   */
+  async deleteIfPending(requestId: string, userId: string, userRole: string) {
+    const req = await this.prisma.mdmLockRequest.findFirst({
+      where: { id: requestId, deletedAt: null },
+    });
+    if (!req) throw new NotFoundException('ไม่พบคำขอ');
+    if (req.status !== MdmLockStatus.PENDING) {
+      throw new BadRequestException('คำขอไม่อยู่ในสถานะรออนุมัติแล้ว');
+    }
+    const isOwner = userRole === 'OWNER';
+    const isOriginator = req.proposedById === userId;
+    if (!isOwner && !isOriginator) {
+      throw new ForbiddenException('ยกเลิกได้เฉพาะ OWNER หรือผู้เสนอเท่านั้น');
+    }
+
+    const now = new Date();
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.mdmLockRequest.update({
+        where: { id: requestId },
+        data: { deletedAt: now },
+      }),
+      this.prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'MDM_LOCK_PROPOSAL_CANCELLED',
+          entity: 'mdm_lock_request',
+          entityId: requestId,
+          newValue: { reason: 'undo' },
+        },
+      }),
+    ]);
     return updated;
   }
 

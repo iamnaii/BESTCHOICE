@@ -20,6 +20,9 @@ import { PaymentsModule } from './modules/payments/payments.module';
 // MASTER-only modules
 import { OverdueModule } from './modules/overdue/overdue.module';
 import { LegalCaseModule } from './modules/legal-case/legal-case.module';
+import { LateFeeWaiverModule } from './modules/late-fee-waiver/late-fee-waiver.module';
+import { CustomerTagsModule } from './modules/customer-tags/customer-tags.module';
+import { SmsTemplatesModule } from './modules/sms-templates/sms-templates.module';
 import { FilterPresetsModule } from './modules/filter-presets/filter-presets.module';
 import { DefectExchangeModule } from './modules/defect-exchange/defect-exchange.module';
 import { RepossessionsModule } from './modules/repossessions/repossessions.module';
@@ -110,6 +113,7 @@ import { ShopPublicConfigModule } from './modules/shop-public-config/shop-public
 import { DataAuditModule } from './modules/data-audit/data-audit.module';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { TwoFactorModule } from './modules/two-factor/two-factor.module';
+import { ReportingModule } from './modules/reporting/reporting.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { SecurityMiddleware } from './modules/audit/security.middleware';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
@@ -159,6 +163,9 @@ import { AppCacheModule } from './cache/cache.module';
     // MASTER: Operations
     OverdueModule,
     LegalCaseModule,
+    LateFeeWaiverModule,
+    CustomerTagsModule,
+    SmsTemplatesModule,
     FilterPresetsModule,
     DefectExchangeModule,
     RepossessionsModule,
@@ -303,6 +310,8 @@ import { AppCacheModule } from './cache/cache.module';
     DataAuditModule,
     // Two-Factor Authentication management (enroll, confirm, disable, backup codes)
     TwoFactorModule,
+    // Reporting — weekly PDF analytics report + compliance dashboard (P3 D1+D2)
+    ReportingModule,
   ],
   controllers: [AppController],
   providers: [

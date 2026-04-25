@@ -414,6 +414,138 @@ export class StaffChatController {
     });
   }
 
+  // ─── Customer-scoped messages (LineChatPanel — Customer 360) ──
+
+  /**
+   * Last N messages across the customer's LINE rooms (LINE_FINANCE preferred).
+   * Used by the Customer 360 LineChatPanel — collectors don't need to leave
+   * the collections workspace to see what was said in chat.
+   *
+   * Returns messages in reverse-chronological order (newest first) so
+   * `before=<oldest.id>` paging walks backward through history. The frontend
+   * reverses for display.
+   */
+  @Get('customer/:customerId/messages')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES', 'ACCOUNTANT')
+  async getCustomerMessages(
+    @Param('customerId') customerId: string,
+    @Query('limit') limit?: string,
+    @Query('before') before?: string,
+  ) {
+    const take = Math.min(Math.max(parseInt(limit ?? '30', 10) || 30, 1), 100);
+
+    // Find the customer's LINE Finance room (preferred) or fall back to any
+    // LINE room. Collections is a finance-only workflow — no point pulling
+    // shop-side LINE chat here.
+    const room = await this.prisma.chatRoom.findFirst({
+      where: {
+        customerId,
+        deletedAt: null,
+        channel: { in: [ChatChannel.LINE_FINANCE, ChatChannel.LINE_SHOP] },
+      },
+      orderBy: [
+        // Prefer LINE_FINANCE if both exist (alphabetical "LINE_FINANCE" <
+        // "LINE_SHOP" so an explicit ordering by lastMessageAt is the
+        // tiebreaker that matters).
+        { lastMessageAt: 'desc' },
+      ],
+      select: {
+        id: true,
+        channel: true,
+        lineUserId: true,
+        lastMessageAt: true,
+        unreadCount: true,
+      },
+    });
+
+    if (!room) {
+      return { roomId: null, channel: null, messages: [], hasMore: false };
+    }
+
+    let cursorWhere: { createdAt?: { lt: Date } } = {};
+    if (before) {
+      const cursor = await this.prisma.chatMessage.findUnique({
+        where: { id: before },
+        select: { createdAt: true },
+      });
+      if (cursor) cursorWhere = { createdAt: { lt: cursor.createdAt } };
+    }
+
+    const messages = await this.prisma.chatMessage.findMany({
+      where: { roomId: room.id, deletedAt: null, ...cursorWhere },
+      orderBy: { createdAt: 'desc' },
+      take: take + 1, // overfetch by 1 to detect hasMore
+      select: {
+        id: true,
+        role: true,
+        type: true,
+        text: true,
+        mediaUrl: true,
+        mediaType: true,
+        createdAt: true,
+        readAt: true,
+        deliveredAt: true,
+        staff: { select: { id: true, name: true } },
+      },
+    });
+
+    const hasMore = messages.length > take;
+    const sliced = hasMore ? messages.slice(0, take) : messages;
+
+    return {
+      roomId: room.id,
+      channel: room.channel,
+      messages: sliced,
+      hasMore,
+    };
+  }
+
+  /**
+   * Inline send from Customer 360 LineChatPanel. Resolves the customer's
+   * LINE Finance room and forwards through `MessageRouterService` so
+   * delivery and adapter selection match the rest of staff-chat.
+   *
+   * Returns 404 when the customer has no LINE room — the FE only renders
+   * the panel when `customer.lineId` is set, but that's a customer-record
+   * field; the room is created lazily on first inbound message. Until then
+   * outbound is impossible (no LINE userId to push to).
+   */
+  @Post('customer/:customerId/messages')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES', 'ACCOUNTANT')
+  async sendCustomerMessage(
+    @Param('customerId') customerId: string,
+    @Body() body: { text: string },
+    @Req() req: { user: { id: string } },
+  ) {
+    const text = (body?.text ?? '').trim();
+    if (!text) {
+      return { success: false, error: 'กรุณาพิมพ์ข้อความก่อนส่ง' };
+    }
+
+    const room = await this.prisma.chatRoom.findFirst({
+      where: {
+        customerId,
+        deletedAt: null,
+        channel: { in: [ChatChannel.LINE_FINANCE, ChatChannel.LINE_SHOP] },
+      },
+      orderBy: { lastMessageAt: 'desc' },
+      select: { id: true },
+    });
+
+    if (!room) {
+      return {
+        success: false,
+        error: 'ลูกค้ายังไม่เคยทักเข้ามาในแชท LINE — รอลูกค้าทักก่อน',
+      };
+    }
+
+    return this.messageRouter.sendStaffMessage({
+      roomId: room.id,
+      staffId: req.user.id,
+      text,
+    });
+  }
+
   // ─── Cross-Channel Rooms ──────────────────────────────
 
   @Get('rooms/:id/cross-channel')

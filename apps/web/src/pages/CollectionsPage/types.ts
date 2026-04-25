@@ -65,6 +65,22 @@ export interface ContractRow {
    *  - null   no historical snapshot to compare with, OR delta === 0
    */
   trendingArrow?: 'UP' | 'DOWN' | null;
+  /**
+   * Customer segmentation tags surfaced for chip rendering on the card.
+   * Empty array when the customer has no active tags (read-only field —
+   * mutations go through the CustomerTagDialog hooks).
+   */
+  customerTags?: { tag: 'VIP' | 'HIGH_RISK' | 'NEW' | 'LOYAL' | 'BLACKLIST' }[];
+  /**
+   * Next-Best-Action recommendation computed by the backend rule engine
+   * (P3 Task 9). Null when no rule fires (NOOP) — UI hides the chip in
+   * that case.
+   */
+  nextBestAction?: {
+    type: 'CALL' | 'SEND_LINE' | 'SEND_LETTER' | 'PROPOSE_LOCK' | 'NOOP';
+    label: string;
+    reason: string;
+  } | null;
 }
 
 export type CallResult =

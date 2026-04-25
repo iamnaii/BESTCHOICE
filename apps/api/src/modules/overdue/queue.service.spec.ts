@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaService } from '../../prisma/prisma.service';
 import { OverdueQueueService } from './queue.service';
+import { NextBestActionService } from './next-best-action.service';
 
 const mockPrisma = {
   contract: {
@@ -33,6 +34,10 @@ const mockPrisma = {
   contractSnooze: {
     findMany: jest.fn(),
   },
+  // Z10: latestLineDeliveryStatus enrichment
+  chatMessage: {
+    findMany: jest.fn(),
+  },
 };
 
 function resetEnrichmentMocks() {
@@ -46,6 +51,7 @@ function resetEnrichmentMocks() {
   mockPrisma.paymentEvidence.groupBy.mockResolvedValue([]);
   mockPrisma.contractDailySnapshot.findMany.mockResolvedValue([]);
   mockPrisma.contractSnooze.findMany.mockResolvedValue([]);
+  mockPrisma.chatMessage.findMany.mockResolvedValue([]);
 }
 
 describe('OverdueQueueService', () => {
@@ -57,6 +63,7 @@ describe('OverdueQueueService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OverdueQueueService,
+        NextBestActionService,
         { provide: PrismaService, useValue: mockPrisma },
       ],
     }).compile();

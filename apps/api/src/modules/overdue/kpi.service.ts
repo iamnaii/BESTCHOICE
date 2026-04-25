@@ -11,6 +11,7 @@ export interface KpiResult {
   promisedCount: number;
   promiseKeptRate7d: number;
   avgCollectorWorkload: number;
+  collectorWorkload?: Array<{ userId: string; name: string; count: number }>;
 }
 
 @Injectable()

@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { DunningEngineService } from './dunning-engine.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DunningRuleService } from './dunning-rule.service';
+import { DunningRuleResolverService } from './dunning-rule-resolver.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PaymentLinkService } from '../line-oa/payment-links/payment-link.service';
 
@@ -32,6 +33,18 @@ const mockNotificationsService = {
 
 const mockPaymentLinkService = {
   createPaymentLink: jest.fn(),
+};
+
+// Default resolver behaviour: no tags, no overrides — every send proceeds.
+// Individual tests can re-mock for tag-condition coverage.
+const mockResolver = {
+  fetchTagsForCustomer: jest.fn().mockResolvedValue([]),
+  resolve: jest.fn().mockReturnValue({
+    action: 'send',
+    delayDays: 0,
+    skipSoft: false,
+    reason: 'no tag override',
+  }),
 };
 
 // Sample payment fixture
@@ -85,8 +98,19 @@ describe('DunningEngineService', () => {
         { provide: DunningRuleService, useValue: mockRuleService },
         { provide: NotificationsService, useValue: mockNotificationsService },
         { provide: PaymentLinkService, useValue: mockPaymentLinkService },
+        { provide: DunningRuleResolverService, useValue: mockResolver },
       ],
     }).compile();
+
+    // Reset resolver to default (send-passthrough) on every test so tag-
+    // condition cases that re-mock it don't bleed into the next describe.
+    mockResolver.fetchTagsForCustomer.mockResolvedValue([]);
+    mockResolver.resolve.mockReturnValue({
+      action: 'send',
+      delayDays: 0,
+      skipSoft: false,
+      reason: 'no tag override',
+    });
 
     service = module.get<DunningEngineService>(DunningEngineService);
   });

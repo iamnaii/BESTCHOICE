@@ -809,7 +809,7 @@ export class OverdueService {
 
     return this.prisma.contract.update({
       where: { id: contractId },
-      data: { assignedToId },
+      data: { assignedToId, assignedAt: new Date() },
     });
   }
 

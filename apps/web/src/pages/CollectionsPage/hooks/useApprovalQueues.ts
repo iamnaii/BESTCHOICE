@@ -102,22 +102,6 @@ export function useRejectMdm() {
   });
 }
 
-export function useUnlockMdm() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (requestId: string) => {
-      const { data } = await api.post(`/overdue/mdm-requests/${requestId}/unlock`);
-      return data;
-    },
-    onSuccess: () => {
-      toast.success('ปลดล็อคเครื่องสำเร็จ');
-      qc.invalidateQueries({ queryKey: ['pending-mdm'] });
-      qc.invalidateQueries({ queryKey: ['collections-queue'] });
-    },
-    onError: (err: unknown) => toast.error(getErrorMessage(err)),
-  });
-}
-
 /**
  * Unlock an already-executed MDM lock. Backend restricts to OWNER/FINANCE_MANAGER.
  * Invalidates the approval queue + contract queue so UI reflects deviceLocked=false.

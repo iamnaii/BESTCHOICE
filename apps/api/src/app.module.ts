@@ -85,6 +85,7 @@ import { PeakModule } from './modules/peak/peak.module';
 import { MdmModule } from './modules/mdm/mdm.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { SearchModule } from './modules/search/search.module';
 import { LoyaltyModule } from './modules/loyalty/loyalty.module';
 import { ShopTrackingModule } from './modules/shop-tracking/shop-tracking.module';
 import { ShopBotDefenseModule } from './modules/shop-bot-defense/shop-bot-defense.module';
@@ -293,6 +294,7 @@ import { AppCacheModule } from './cache/cache.module';
     SettingsModule,
     WebhooksModule,
     AnalyticsModule,
+    SearchModule,
     // Data Audit — automated DB health checks (OWNER only)
     DataAuditModule,
     // Two-Factor Authentication management (enroll, confirm, disable, backup codes)

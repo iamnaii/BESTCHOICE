@@ -5,6 +5,7 @@ interface Props {
   active: CollectionsTabKey;
   onChange: (key: CollectionsTabKey) => void;
   canSeeApproval: boolean;
+  canSeeAnalytics?: boolean;
   counts?: Partial<Record<CollectionsTabKey, number>>;
 }
 
@@ -21,10 +22,18 @@ const TAB_CONFIG: Array<{
   { key: 'analytics', label: 'วิเคราะห์', Icon: BarChart3 },
 ];
 
-export default function CollectionsTabs({ active, onChange, canSeeApproval, counts }: Props) {
-  const visibleTabs = TAB_CONFIG.filter(
-    (t) => (t.key !== 'approval' && t.key !== 'analytics') || canSeeApproval,
-  );
+export default function CollectionsTabs({
+  active,
+  onChange,
+  canSeeApproval,
+  canSeeAnalytics = canSeeApproval,
+  counts,
+}: Props) {
+  const visibleTabs = TAB_CONFIG.filter((t) => {
+    if (t.key === 'approval') return canSeeApproval;
+    if (t.key === 'analytics') return canSeeAnalytics;
+    return true;
+  });
 
   return (
     <div className="flex gap-0 border-b border-border mb-4 overflow-x-auto">

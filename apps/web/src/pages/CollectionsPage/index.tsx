@@ -18,6 +18,26 @@ import type { ContractRow } from './types';
 
 export type CollectionsTabKey = 'today' | 'followup' | 'promise' | 'approval' | 'all' | 'analytics';
 
+/**
+ * Role-based access for tabs. Empty array = all authenticated roles.
+ * Previously SALES/ACCOUNTANT could click Approval/Analytics and get silent
+ * 403s — now gated at the tab bar so the tab never renders.
+ */
+const TAB_ROLE_ACCESS: Record<CollectionsTabKey, string[]> = {
+  today: [],
+  followup: [],
+  promise: [],
+  all: [],
+  approval: ['OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER'],
+  analytics: ['OWNER', 'FINANCE_MANAGER'],
+};
+
+function canAccessTab(key: CollectionsTabKey, role: string | undefined): boolean {
+  const allowed = TAB_ROLE_ACCESS[key];
+  if (!allowed || allowed.length === 0) return true;
+  return !!role && allowed.includes(role);
+}
+
 export default function CollectionsPage() {
   useDocumentTitle('ติดตามหนี้');
   const { user } = useAuth();
@@ -28,10 +48,15 @@ export default function CollectionsPage() {
   const [panelContract, setPanelContract] = useState<ContractRow | null>(null);
   const [lineDialogContract, setLineDialogContract] = useState<ContractRow | null>(null);
 
-  const canSeeApproval = user?.role === 'OWNER' || user?.role === 'FINANCE_MANAGER';
+  const canSeeApproval = canAccessTab('approval', user?.role);
+  const canSeeAnalytics = canAccessTab('analytics', user?.role);
   const showBranchFilter = user?.role === 'OWNER' || user?.role === 'FINANCE_MANAGER';
 
-  const showFilters = activeTab === 'today' || activeTab === 'followup' || activeTab === 'promise';
+  // Safety net: if the active tab is role-gated and user lost access mid-session,
+  // fall back to the default tab instead of rendering nothing.
+  const effectiveTab: CollectionsTabKey = canAccessTab(activeTab, user?.role) ? activeTab : 'today';
+
+  const showFilters = effectiveTab === 'today' || effectiveTab === 'followup' || effectiveTab === 'promise';
 
   const openContactDialog = (c: ContractRow) => setDialogContract(c);
   const openPanel = (c: ContractRow) => setPanelContract(c);
@@ -44,13 +69,14 @@ export default function CollectionsPage() {
       <CollectionsKpiStrip />
 
       <CollectionsTabs
-        active={activeTab}
+        active={effectiveTab}
         onChange={(key) => {
           setActiveTab(key);
           setSearch('');
           setBranchId('');
         }}
         canSeeApproval={canSeeApproval}
+        canSeeAnalytics={canSeeAnalytics}
       />
 
       {showFilters && (
@@ -63,7 +89,7 @@ export default function CollectionsPage() {
         />
       )}
 
-      {activeTab === 'today' && (
+      {effectiveTab === 'today' && (
         <QueueTab
           search={search}
           branchId={branchId}
@@ -73,7 +99,7 @@ export default function CollectionsPage() {
         />
       )}
 
-      {activeTab === 'followup' && (
+      {effectiveTab === 'followup' && (
         <FollowUpTab
           search={search}
           branchId={branchId}
@@ -83,7 +109,7 @@ export default function CollectionsPage() {
         />
       )}
 
-      {activeTab === 'promise' && (
+      {effectiveTab === 'promise' && (
         <PromiseTab
           search={search}
           branchId={branchId}
@@ -93,11 +119,11 @@ export default function CollectionsPage() {
         />
       )}
 
-      {activeTab === 'approval' && canSeeApproval && <ApprovalTab />}
+      {effectiveTab === 'approval' && canSeeApproval && <ApprovalTab />}
 
-      {activeTab === 'all' && <AllTab />}
+      {effectiveTab === 'all' && <AllTab />}
 
-      {activeTab === 'analytics' && canSeeApproval && <AnalyticsTab />}
+      {effectiveTab === 'analytics' && canSeeAnalytics && <AnalyticsTab />}
 
       <ContactLogDialog
         open={!!dialogContract}

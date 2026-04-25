@@ -1,11 +1,15 @@
 import { useState } from 'react';
-import { CheckCircle2 } from 'lucide-react';
+import { PartyPopper } from 'lucide-react';
 import { useDebounce } from '@/hooks/useDebounce';
 import QueryBoundary from '@/components/QueryBoundary';
 import ContractCard from '../components/ContractCard';
 import BulkActionBar from '../components/BulkActionBar';
+import TruncatedBanner from '../components/TruncatedBanner';
+import FilterChipsBar from '../components/FilterChipsBar';
+import FilterDrawer from '../components/FilterDrawer';
 import { useCollectionsQueue } from '../hooks/useCollectionsQueue';
 import { useBulkSelection } from '../hooks/useBulkSelection';
+import { useQueueFilter } from '../hooks/useQueueFilter';
 import type { ContractRow } from '../types';
 
 const LIMIT = 50;
@@ -34,8 +38,10 @@ interface Props {
 
 export default function QueueTab({ search, branchId, onLogContact, onOpen360, onSendLine }: Props) {
   const [page, setPage] = useState(1);
+  const [filterOpen, setFilterOpen] = useState(false);
   const sel = useBulkSelection();
   const debouncedSearch = useDebounce(search, 300);
+  const [filter, setFilter, resetFilter] = useQueueFilter('queue');
 
   const q = useCollectionsQueue({
     tab: 'today',
@@ -44,13 +50,15 @@ export default function QueueTab({ search, branchId, onLogContact, onOpen360, on
     page,
     limit: LIMIT,
     enabled: true,
+    filter,
   });
 
   const total = q.data?.total ?? 0;
   // C1 fix: search is now server-side via useCollectionsQueue → /overdue/queue
-  // so the returned page is already filtered. No client-side narrowing needed;
-  // previously the filter only matched the current page, missing hits past it.
-  const filtered = q.data?.data ?? [];
+  const rows = q.data?.data ?? [];
+  const truncated = q.data?.truncated ?? false;
+
+  const openFilter = () => setFilterOpen(true);
 
   return (
     <QueryBoundary
@@ -66,9 +74,18 @@ export default function QueueTab({ search, branchId, onLogContact, onOpen360, on
         </div>
       }
     >
-      {filtered.length === 0 ? (
+      <FilterChipsBar
+        filter={filter}
+        setFilter={setFilter}
+        reset={resetFilter}
+        onOpenFilter={openFilter}
+        resultCount={rows.length}
+        totalCount={total}
+      />
+      {truncated && <TruncatedBanner onOpenFilter={openFilter} />}
+      {rows.length === 0 ? (
         <div className="rounded-xl border border-dashed border-success/30 bg-success/5 p-10 text-center">
-          <CheckCircle2 className="size-10 mx-auto mb-3 text-success" />
+          <PartyPopper className="size-10 mx-auto mb-3 text-success" />
           <div className="text-sm font-medium text-success leading-snug">
             ไม่มีคิวติดตามวันนี้
           </div>
@@ -79,7 +96,7 @@ export default function QueueTab({ search, branchId, onLogContact, onOpen360, on
       ) : (
         <>
           <div className="space-y-2">
-            {filtered.map((row) => (
+            {rows.map((row) => (
               <ContractCard
                 key={row.id}
                 contract={row}
@@ -118,6 +135,20 @@ export default function QueueTab({ search, branchId, onLogContact, onOpen360, on
         </>
       )}
       <BulkActionBar selectedIds={sel.selectedIds} onClear={sel.clear} />
+      <FilterDrawer
+        open={filterOpen}
+        onOpenChange={setFilterOpen}
+        filter={filter}
+        onApply={(next) => {
+          setFilter(next);
+          setPage(1);
+        }}
+        onReset={() => {
+          resetFilter();
+          setPage(1);
+        }}
+        liveCount={total}
+      />
     </QueryBoundary>
   );
 }

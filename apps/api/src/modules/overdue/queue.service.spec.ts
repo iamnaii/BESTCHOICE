@@ -6,14 +6,46 @@ const mockPrisma = {
   contract: {
     findMany: jest.fn(),
     count: jest.fn(),
+    groupBy: jest.fn(),
+  },
+  callLog: {
+    groupBy: jest.fn(),
+  },
+  dunningAction: {
+    groupBy: jest.fn(),
+    findMany: jest.fn(),
+  },
+  auditLog: {
+    groupBy: jest.fn(),
+  },
+  mdmLockRequest: {
+    findMany: jest.fn(),
+  },
+  contractLetter: {
+    groupBy: jest.fn(),
+  },
+  paymentEvidence: {
+    groupBy: jest.fn(),
   },
 };
+
+function resetEnrichmentMocks() {
+  mockPrisma.callLog.groupBy.mockResolvedValue([]);
+  mockPrisma.dunningAction.groupBy.mockResolvedValue([]);
+  mockPrisma.auditLog.groupBy.mockResolvedValue([]);
+  mockPrisma.mdmLockRequest.findMany.mockResolvedValue([]);
+  mockPrisma.contract.groupBy.mockResolvedValue([]);
+  mockPrisma.dunningAction.findMany.mockResolvedValue([]);
+  mockPrisma.contractLetter.groupBy.mockResolvedValue([]);
+  mockPrisma.paymentEvidence.groupBy.mockResolvedValue([]);
+}
 
 describe('OverdueQueueService', () => {
   let service: OverdueQueueService;
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    resetEnrichmentMocks();
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OverdueQueueService,
@@ -29,6 +61,7 @@ describe('OverdueQueueService', () => {
       contractNumber: 'BC-2024-001',
       status: 'OVERDUE',
       dunningStage: 'STAGE_1',
+      customerId: 'cust-1',
       noAnswerCount: 0,
       needsSkipTracing: false,
       deviceLocked: false,
@@ -82,6 +115,12 @@ describe('OverdueQueueService', () => {
       expect(row).toHaveProperty('settlementDate');
       expect(row).toHaveProperty('needsSkipTracing');
       expect(row).toHaveProperty('deviceLocked');
+      // New enrichment fields
+      expect(row).toHaveProperty('lastContactedAt');
+      expect(row).toHaveProperty('brokenPromiseCount');
+      expect(row).toHaveProperty('mdmState');
+      expect(row).toHaveProperty('relatedContractsCount');
+      expect(row).toHaveProperty('lastChannel');
 
       // Verify computed fields
       expect(row.outstanding).toBe(5150); // 5000 - 0 + 150
@@ -253,6 +292,7 @@ describe('OverdueQueueService', () => {
       contractNumber: 'CN-x',
       status: 'OVERDUE',
       dunningStage: 'NONE',
+      customerId: 'cu',
       customer: { id: 'cu', name: 'x', phone: '0', lineId: null },
       branch: { id: 'b', name: 'b' },
       assignedTo: null,
@@ -296,6 +336,479 @@ describe('OverdueQueueService', () => {
       expect(result.data.map((r) => r.id)).toEqual(['high', 'mid', 'low']);
       // __priorityScore should be stripped from response
       expect((result.data[0] as any).__priorityScore).toBeUndefined();
+    });
+  });
+
+  describe('card indicators enrichment', () => {
+    it('computes lastContactedAt as max of CallLog.createdAt and DunningAction.executedAt', async () => {
+      const contract = makeContract();
+      const callTs = new Date(Date.now() - 3 * 3600 * 1000); // 3h ago
+      const actionTs = new Date(Date.now() - 1 * 3600 * 1000); // 1h ago (more recent)
+
+      mockPrisma.contract.findMany.mockResolvedValueOnce([contract]);
+      mockPrisma.contract.count.mockResolvedValueOnce(1);
+      mockPrisma.callLog.groupBy.mockResolvedValueOnce([
+        { contractId: 'contract-1', _max: { createdAt: callTs } },
+      ]);
+      mockPrisma.dunningAction.groupBy.mockResolvedValueOnce([
+        { contractId: 'contract-1', _max: { executedAt: actionTs } },
+      ]);
+
+      const result = await service.getQueue({
+        tab: 'today',
+        userRole: 'OWNER',
+        userBranchId: null,
+      });
+
+      expect(result.data[0].lastContactedAt).toEqual(actionTs);
+    });
+
+    it('falls back to CallLog.createdAt if no DunningAction', async () => {
+      const contract = makeContract();
+      const callTs = new Date(Date.now() - 3600 * 1000);
+
+      mockPrisma.contract.findMany.mockResolvedValueOnce([contract]);
+      mockPrisma.contract.count.mockResolvedValueOnce(1);
+      mockPrisma.callLog.groupBy.mockResolvedValueOnce([
+        { contractId: 'contract-1', _max: { createdAt: callTs } },
+      ]);
+
+      const result = await service.getQueue({
+        tab: 'today',
+        userRole: 'OWNER',
+        userBranchId: null,
+      });
+
+      expect(result.data[0].lastContactedAt).toEqual(callTs);
+    });
+
+    it('returns null lastContactedAt when no contacts exist', async () => {
+      const contract = makeContract();
+      mockPrisma.contract.findMany.mockResolvedValueOnce([contract]);
+      mockPrisma.contract.count.mockResolvedValueOnce(1);
+
+      const result = await service.getQueue({
+        tab: 'today',
+        userRole: 'OWNER',
+        userBranchId: null,
+      });
+
+      expect(result.data[0].lastContactedAt).toBeNull();
+    });
+
+    it('includes brokenPromiseCount from BROKEN_PROMISE audit events', async () => {
+      const contract = makeContract();
+      mockPrisma.contract.findMany.mockResolvedValueOnce([contract]);
+      mockPrisma.contract.count.mockResolvedValueOnce(1);
+      mockPrisma.auditLog.groupBy.mockResolvedValueOnce([
+        { entityId: 'contract-1', _count: { _all: 2 } },
+      ]);
+
+      const result = await service.getQueue({
+        tab: 'today',
+        userRole: 'OWNER',
+        userBranchId: null,
+      });
+
+      expect(result.data[0].brokenPromiseCount).toBe(2);
+    });
+
+    it('maps MdmLockRequest status to mdmState — PENDING/LOCKED/UNLOCKED/NONE', async () => {
+      const contract = makeContract();
+      mockPrisma.contract.findMany.mockResolvedValueOnce([contract]);
+      mockPrisma.contract.count.mockResolvedValueOnce(1);
+      mockPrisma.mdmLockRequest.findMany.mockResolvedValueOnce([
+        { contractId: 'contract-1', status: 'EXECUTED_API' },
+      ]);
+
+      const result = await service.getQueue({
+        tab: 'today',
+        userRole: 'OWNER',
+        userBranchId: null,
+      });
+
+      expect(result.data[0].mdmState).toBe('LOCKED');
+    });
+
+    it('returns NONE mdmState when no MdmLockRequest exists', async () => {
+      const contract = makeContract();
+      mockPrisma.contract.findMany.mockResolvedValueOnce([contract]);
+      mockPrisma.contract.count.mockResolvedValueOnce(1);
+
+      const result = await service.getQueue({
+        tab: 'today',
+        userRole: 'OWNER',
+        userBranchId: null,
+      });
+
+      expect(result.data[0].mdmState).toBe('NONE');
+    });
+
+    it('computes relatedContractsCount as other active contracts for customer', async () => {
+      const contract = makeContract();
+      mockPrisma.contract.findMany.mockResolvedValueOnce([contract]);
+      mockPrisma.contract.count.mockResolvedValueOnce(1);
+      mockPrisma.contract.groupBy.mockResolvedValueOnce([
+        { customerId: 'cust-1', _count: { _all: 3 } },
+      ]);
+
+      const result = await service.getQueue({
+        tab: 'today',
+        userRole: 'OWNER',
+        userBranchId: null,
+      });
+
+      // 3 total active → 2 others
+      expect(result.data[0].relatedContractsCount).toBe(2);
+    });
+
+    it('maps latest DunningAction channel to lastChannel (LINE/SMS/CALL)', async () => {
+      const contract = makeContract();
+      mockPrisma.contract.findMany.mockResolvedValueOnce([contract]);
+      mockPrisma.contract.count.mockResolvedValueOnce(1);
+      mockPrisma.dunningAction.findMany.mockResolvedValueOnce([
+        { contractId: 'contract-1', channel: 'LINE' },
+      ]);
+
+      const result = await service.getQueue({
+        tab: 'today',
+        userRole: 'OWNER',
+        userBranchId: null,
+      });
+
+      expect(result.data[0].lastChannel).toBe('LINE');
+    });
+
+    it('returns null lastChannel when no DunningAction exists', async () => {
+      const contract = makeContract();
+      mockPrisma.contract.findMany.mockResolvedValueOnce([contract]);
+      mockPrisma.contract.count.mockResolvedValueOnce(1);
+
+      const result = await service.getQueue({
+        tab: 'today',
+        userRole: 'OWNER',
+        userBranchId: null,
+      });
+
+      expect(result.data[0].lastChannel).toBeNull();
+    });
+
+    it('batch-loads enrichment via 8 aggregate queries (no N+1)', async () => {
+      const contracts = [makeContract(), makeContract({ id: 'c2', customerId: 'cust-2' })];
+      mockPrisma.contract.findMany.mockResolvedValueOnce(contracts);
+      mockPrisma.contract.count.mockResolvedValueOnce(2);
+
+      await service.getQueue({ tab: 'today', userRole: 'OWNER', userBranchId: null });
+
+      // One call per aggregate regardless of row count — no N+1
+      expect(mockPrisma.callLog.groupBy).toHaveBeenCalledTimes(1);
+      expect(mockPrisma.dunningAction.groupBy).toHaveBeenCalledTimes(1);
+      expect(mockPrisma.auditLog.groupBy).toHaveBeenCalledTimes(1);
+      expect(mockPrisma.mdmLockRequest.findMany).toHaveBeenCalledTimes(1);
+      expect(mockPrisma.contract.groupBy).toHaveBeenCalledTimes(1);
+      // 2 dunningAction.findMany calls total allowed (one for lastChannel)
+      expect(mockPrisma.dunningAction.findMany).toHaveBeenCalledTimes(1);
+      // New in v-P0-final: letterCount + slipReviewPending enrichment
+      expect(mockPrisma.contractLetter.groupBy).toHaveBeenCalledTimes(1);
+      expect(mockPrisma.paymentEvidence.groupBy).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('filters', () => {
+    function makeContractWithDays(id: string, days: number): any {
+      return {
+        id,
+        contractNumber: `BC-${id}`,
+        status: 'OVERDUE',
+        dunningStage: 'NONE',
+        customerId: `cust-${id}`,
+        noAnswerCount: 0,
+        needsSkipTracing: false,
+        deviceLocked: false,
+        customer: { id: `cust-${id}`, name: `ลูกค้า ${id}`, phone: '0800000000', lineId: null },
+        branch: { id: 'branch-1', name: 'สาขา 1' },
+        assignedTo: null,
+        payments: [
+          {
+            amountDue: '5000.00',
+            amountPaid: '0.00',
+            lateFee: '0',
+            dueDate: new Date(Date.now() - days * 86400000),
+            status: 'OVERDUE',
+          },
+        ],
+        callLogs: [],
+        _count: { callLogs: 0 },
+      };
+    }
+
+    it('filters by overdueBuckets (8-30 and 31-60 range)', async () => {
+      const contracts = [
+        makeContractWithDays('a', 3), // 1-7
+        makeContractWithDays('b', 15), // 8-30
+        makeContractWithDays('c', 45), // 31-60
+        makeContractWithDays('d', 75), // 61-90
+        makeContractWithDays('e', 120), // 90+
+      ];
+      mockPrisma.contract.findMany.mockResolvedValueOnce(contracts);
+      mockPrisma.contract.count.mockResolvedValueOnce(5);
+
+      const result = await service.getQueue({
+        tab: 'today',
+        userRole: 'OWNER',
+        userBranchId: null,
+        overdueBuckets: ['8-30', '31-60'] as any,
+      });
+
+      const ids = result.data.map((r) => r.id).sort();
+      expect(ids).toEqual(['b', 'c']);
+    });
+
+    it('filters by outstanding range (min/max)', async () => {
+      const small = { ...makeContractWithDays('small', 10) };
+      small.payments = [
+        { amountDue: '1000', amountPaid: '0', lateFee: '0', dueDate: new Date(Date.now() - 10 * 86400000) },
+      ];
+      const mid = { ...makeContractWithDays('mid', 10) };
+      mid.payments = [
+        { amountDue: '10000', amountPaid: '0', lateFee: '0', dueDate: new Date(Date.now() - 10 * 86400000) },
+      ];
+      const large = { ...makeContractWithDays('large', 10) };
+      large.payments = [
+        { amountDue: '50000', amountPaid: '0', lateFee: '0', dueDate: new Date(Date.now() - 10 * 86400000) },
+      ];
+      mockPrisma.contract.findMany.mockResolvedValueOnce([small, mid, large]);
+      mockPrisma.contract.count.mockResolvedValueOnce(3);
+
+      const result = await service.getQueue({
+        tab: 'today',
+        userRole: 'OWNER',
+        userBranchId: null,
+        minOutstanding: 5000,
+        maxOutstanding: 20000,
+      });
+
+      expect(result.data.map((r) => r.id)).toEqual(['mid']);
+    });
+
+    it('filters by minBrokenPromise using enriched count', async () => {
+      const a = makeContractWithDays('a', 10);
+      const b = makeContractWithDays('b', 10);
+      mockPrisma.contract.findMany.mockResolvedValueOnce([a, b]);
+      mockPrisma.contract.count.mockResolvedValueOnce(2);
+      mockPrisma.auditLog.groupBy.mockResolvedValueOnce([
+        { entityId: 'a', _count: { _all: 2 } },
+      ]);
+
+      const result = await service.getQueue({
+        tab: 'today',
+        userRole: 'OWNER',
+        userBranchId: null,
+        minBrokenPromise: 1,
+      });
+
+      expect(result.data.map((r) => r.id)).toEqual(['a']);
+      expect(result.data[0].brokenPromiseCount).toBeGreaterThanOrEqual(1);
+    });
+
+    it('filters by lastContacted=never (rows with no call or dunning action)', async () => {
+      const a = makeContractWithDays('a', 10);
+      const b = makeContractWithDays('b', 10);
+      mockPrisma.contract.findMany.mockResolvedValueOnce([a, b]);
+      mockPrisma.contract.count.mockResolvedValueOnce(2);
+      mockPrisma.callLog.groupBy.mockResolvedValueOnce([
+        { contractId: 'a', _max: { createdAt: new Date() } },
+      ]);
+
+      const result = await service.getQueue({
+        tab: 'today',
+        userRole: 'OWNER',
+        userBranchId: null,
+        lastContacted: 'never' as any,
+      });
+
+      expect(result.data.map((r) => r.id)).toEqual(['b']);
+      expect(result.data[0].lastContactedAt).toBeNull();
+    });
+
+    it('filters by mdmState=not_locked (excludes LOCKED/PENDING)', async () => {
+      const a = makeContractWithDays('a', 10);
+      const b = makeContractWithDays('b', 10);
+      const c = makeContractWithDays('c', 10);
+      mockPrisma.contract.findMany.mockResolvedValueOnce([a, b, c]);
+      mockPrisma.contract.count.mockResolvedValueOnce(3);
+      mockPrisma.mdmLockRequest.findMany.mockResolvedValueOnce([
+        { contractId: 'a', status: 'EXECUTED_API' }, // LOCKED
+        { contractId: 'b', status: 'PENDING' }, // PENDING
+      ]);
+
+      const result = await service.getQueue({
+        tab: 'today',
+        userRole: 'OWNER',
+        userBranchId: null,
+        mdmState: 'not_locked' as any,
+      });
+
+      expect(result.data.map((r) => r.id)).toEqual(['c']);
+    });
+
+    it('applies assignedToId=self via user id on where clause', async () => {
+      mockPrisma.contract.findMany.mockResolvedValueOnce([]);
+      mockPrisma.contract.count.mockResolvedValueOnce(0);
+
+      await service.getQueue({
+        tab: 'today',
+        userRole: 'OWNER',
+        userBranchId: null,
+        userId: 'me-user-123',
+        assignedToId: 'self',
+      });
+
+      const callArg = mockPrisma.contract.findMany.mock.calls[0][0];
+      expect(callArg.where.assignedToId).toBe('me-user-123');
+    });
+
+    it('applies contractStatuses filter in Prisma where', async () => {
+      mockPrisma.contract.findMany.mockResolvedValueOnce([]);
+      mockPrisma.contract.count.mockResolvedValueOnce(0);
+
+      await service.getQueue({
+        tab: 'today',
+        userRole: 'OWNER',
+        userBranchId: null,
+        contractStatuses: ['DEFAULT', 'LEGAL'] as any,
+      });
+
+      const callArg = mockPrisma.contract.findMany.mock.calls[0][0];
+      expect(callArg.where.status).toEqual({ in: ['DEFAULT', 'LEGAL'] });
+    });
+
+    it('applies productTypes filter via Product relation', async () => {
+      mockPrisma.contract.findMany.mockResolvedValueOnce([]);
+      mockPrisma.contract.count.mockResolvedValueOnce(0);
+
+      await service.getQueue({
+        tab: 'today',
+        userRole: 'OWNER',
+        userBranchId: null,
+        productTypes: ['PHONE_USED'] as any,
+      });
+
+      const callArg = mockPrisma.contract.findMany.mock.calls[0][0];
+      expect(callArg.where.product).toEqual({ category: { in: ['PHONE_USED'] } });
+    });
+
+    it('returns truncated=true when fetch hits FETCH_CAP', async () => {
+      const many = Array.from({ length: 500 }, (_, i) => makeContractWithDays(`c${i}`, 10));
+      mockPrisma.contract.findMany.mockResolvedValueOnce(many);
+      mockPrisma.contract.count.mockResolvedValueOnce(1200);
+
+      const result = await service.getQueue({
+        tab: 'today',
+        userRole: 'OWNER',
+        userBranchId: null,
+      });
+
+      expect(result.truncated).toBe(true);
+    });
+
+    it('returns truncated=false when fetch under FETCH_CAP', async () => {
+      const few = [makeContractWithDays('only', 10)];
+      mockPrisma.contract.findMany.mockResolvedValueOnce(few);
+      mockPrisma.contract.count.mockResolvedValueOnce(1);
+
+      const result = await service.getQueue({
+        tab: 'today',
+        userRole: 'OWNER',
+        userBranchId: null,
+      });
+
+      expect(result.truncated).toBe(false);
+    });
+
+    it('filters by minLetterCount using ContractLetter groupBy count', async () => {
+      const a = makeContractWithDays('a', 10);
+      const b = makeContractWithDays('b', 10);
+      const c = makeContractWithDays('c', 10);
+      mockPrisma.contract.findMany.mockResolvedValueOnce([a, b, c]);
+      mockPrisma.contract.count.mockResolvedValueOnce(3);
+      mockPrisma.contractLetter.groupBy.mockResolvedValueOnce([
+        { contractId: 'a', _count: { _all: 3 } },
+        { contractId: 'b', _count: { _all: 1 } },
+        // c has no letters → 0 from the default
+      ]);
+
+      const result = await service.getQueue({
+        tab: 'today',
+        userRole: 'OWNER',
+        userBranchId: null,
+        minLetterCount: 2,
+      });
+
+      expect(result.data.map((r) => r.id)).toEqual(['a']);
+      expect(result.data[0].letterCount).toBe(3);
+      // total reflects post-filter count, not raw SQL count
+      expect(result.total).toBe(1);
+    });
+
+    it('filters by slipReviewPending=true (only rows with pending PaymentEvidence)', async () => {
+      const a = makeContractWithDays('a', 10);
+      const b = makeContractWithDays('b', 10);
+      mockPrisma.contract.findMany.mockResolvedValueOnce([a, b]);
+      mockPrisma.contract.count.mockResolvedValueOnce(2);
+      mockPrisma.paymentEvidence.groupBy.mockResolvedValueOnce([
+        { contractId: 'a', _count: { _all: 2 } },
+        // b has none
+      ]);
+
+      const result = await service.getQueue({
+        tab: 'today',
+        userRole: 'OWNER',
+        userBranchId: null,
+        slipReviewPending: true,
+      });
+
+      expect(result.data.map((r) => r.id)).toEqual(['a']);
+      expect(result.data[0].slipReviewPending).toBe(true);
+    });
+
+    it('slipReviewPending=false excludes contracts with pending slips', async () => {
+      const a = makeContractWithDays('a', 10);
+      const b = makeContractWithDays('b', 10);
+      mockPrisma.contract.findMany.mockResolvedValueOnce([a, b]);
+      mockPrisma.contract.count.mockResolvedValueOnce(2);
+      mockPrisma.paymentEvidence.groupBy.mockResolvedValueOnce([
+        { contractId: 'a', _count: { _all: 1 } },
+      ]);
+
+      const result = await service.getQueue({
+        tab: 'today',
+        userRole: 'OWNER',
+        userBranchId: null,
+        slipReviewPending: false,
+      });
+
+      expect(result.data.map((r) => r.id)).toEqual(['b']);
+      expect(result.data[0].slipReviewPending).toBe(false);
+    });
+
+    it('minLetterCount=0 includes all contracts (no letters filter)', async () => {
+      const a = makeContractWithDays('a', 10);
+      const b = makeContractWithDays('b', 10);
+      mockPrisma.contract.findMany.mockResolvedValueOnce([a, b]);
+      mockPrisma.contract.count.mockResolvedValueOnce(2);
+      mockPrisma.contractLetter.groupBy.mockResolvedValueOnce([
+        { contractId: 'a', _count: { _all: 0 } },
+      ]);
+
+      const result = await service.getQueue({
+        tab: 'today',
+        userRole: 'OWNER',
+        userBranchId: null,
+        minLetterCount: 0,
+      });
+
+      expect(result.data.map((r) => r.id).sort()).toEqual(['a', 'b']);
     });
   });
 });

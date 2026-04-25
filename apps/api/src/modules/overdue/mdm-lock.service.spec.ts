@@ -151,6 +151,79 @@ describe('MdmLockService', () => {
       const result = await service.approve('r1', 'owner1');
       expect(result.status).toBe('EXECUTED_MANUAL');
     });
+
+    it('approver can override wallpaper to TRUE even if proposer said false', async () => {
+      mockPrisma.user.findUnique.mockResolvedValueOnce({ role: 'OWNER' });
+      mockPrisma.mdmLockRequest.findUnique.mockResolvedValueOnce({
+        id: 'r1',
+        status: 'PENDING',
+        contractId: 'c1',
+        includeWallpaper: false,
+        trigger: 'MANUAL_COLLECTOR',
+      });
+      mockPrisma.systemConfig.findUnique.mockResolvedValueOnce({ value: 'https://s3/wall.png' });
+      mockPrisma.$transaction.mockResolvedValueOnce([{ id: 'r1', status: 'EXECUTED_MANUAL' }, {}, {}]);
+
+      await service.approve('r1', 'owner1', 'OWNER', { includeWallpaper: true });
+
+      // Request update payload includes the wallpaperUrlUsed when override=true
+      const reqUpdateArg = mockPrisma.mdmLockRequest.update.mock.calls.at(-1)![0];
+      expect(reqUpdateArg.data).toMatchObject({
+        status: 'EXECUTED_MANUAL',
+        wallpaperUrlUsed: 'https://s3/wall.png',
+      });
+      // Contract update marks wallpaperChanged=true
+      const contractUpdateArg = mockPrisma.contract.update.mock.calls.at(-1)![0];
+      expect(contractUpdateArg.data).toMatchObject({
+        deviceLocked: true,
+        wallpaperChanged: true,
+      });
+    });
+
+    it('approver can override wallpaper to FALSE even if proposer said true', async () => {
+      mockPrisma.user.findUnique.mockResolvedValueOnce({ role: 'OWNER' });
+      mockPrisma.mdmLockRequest.findUnique.mockResolvedValueOnce({
+        id: 'r1',
+        status: 'PENDING',
+        contractId: 'c1',
+        includeWallpaper: true,
+        trigger: 'MANUAL_COLLECTOR',
+      });
+      mockPrisma.$transaction.mockResolvedValueOnce([{ id: 'r1', status: 'EXECUTED_MANUAL' }, {}, {}]);
+
+      await service.approve('r1', 'owner1', 'OWNER', { includeWallpaper: false });
+
+      // systemConfig lookup should be skipped when override=false
+      expect(mockPrisma.systemConfig.findUnique).not.toHaveBeenCalled();
+
+      const reqUpdateArg = mockPrisma.mdmLockRequest.update.mock.calls.at(-1)![0];
+      expect(reqUpdateArg.data).toMatchObject({ wallpaperUrlUsed: null });
+      const contractUpdateArg = mockPrisma.contract.update.mock.calls.at(-1)![0];
+      expect(contractUpdateArg.data).toMatchObject({
+        deviceLocked: true,
+        wallpaperChanged: false,
+      });
+    });
+
+    it('falls back to proposer choice when approver does not supply override', async () => {
+      mockPrisma.user.findUnique.mockResolvedValueOnce({ role: 'OWNER' });
+      mockPrisma.mdmLockRequest.findUnique.mockResolvedValueOnce({
+        id: 'r1',
+        status: 'PENDING',
+        contractId: 'c1',
+        includeWallpaper: true,
+        trigger: 'MANUAL_COLLECTOR',
+      });
+      mockPrisma.systemConfig.findUnique.mockResolvedValueOnce({ value: 'https://s3/wall.png' });
+      mockPrisma.$transaction.mockResolvedValueOnce([{ id: 'r1', status: 'EXECUTED_MANUAL' }, {}, {}]);
+
+      await service.approve('r1', 'owner1');
+
+      const reqUpdateArg = mockPrisma.mdmLockRequest.update.mock.calls.at(-1)![0];
+      expect(reqUpdateArg.data).toMatchObject({
+        wallpaperUrlUsed: 'https://s3/wall.png',
+      });
+    });
   });
 
   describe('reject', () => {

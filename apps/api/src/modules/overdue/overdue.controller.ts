@@ -21,6 +21,7 @@ import { QueueQueryDto } from './dto/queue-query.dto';
 import { KpiQueryDto } from './dto/kpi-query.dto';
 import { BulkAssignDto, BulkProposeLockDto, BulkSendLineDto } from './dto/bulk.dto';
 import { SendLineAdHocDto } from './dto/send-line-adhoc.dto';
+import { ApproveMdmDto } from './dto/approve-mdm.dto';
 import { UpdateLetterEvidenceDto } from './dto/update-letter-evidence.dto';
 import { RejectMdmDto } from './dto/reject-mdm.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -54,7 +55,7 @@ export class OverdueController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'FINANCE_MANAGER', 'ACCOUNTANT')
   getQueue(
     @Query() dto: QueueQueryDto,
-    @CurrentUser() user: { role: string; branchId: string | null },
+    @CurrentUser() user: { id: string; role: string; branchId: string | null },
   ) {
     return this.queueService.getQueue({
       tab: dto.tab,
@@ -62,8 +63,25 @@ export class OverdueController {
       search: dto.search,
       page: dto.page,
       limit: dto.limit,
+      userId: user.id,
       userRole: user.role,
       userBranchId: user.branchId,
+      // Filter fields
+      search: dto.search,
+      assignedToId: dto.assignedToId,
+      showSkipTracing: dto.showSkipTracing,
+      overdueBuckets: dto.overdueBuckets,
+      minOutstanding: dto.minOutstanding,
+      maxOutstanding: dto.maxOutstanding,
+      contractStatuses: dto.contractStatuses,
+      productTypes: dto.productTypes,
+      minLetterCount: dto.minLetterCount,
+      lastContacted: dto.lastContacted,
+      lineResponse: dto.lineResponse,
+      minBrokenPromise: dto.minBrokenPromise,
+      hasActivePromise: dto.hasActivePromise,
+      mdmState: dto.mdmState,
+      slipReviewPending: dto.slipReviewPending,
     });
   }
 
@@ -336,9 +354,12 @@ export class OverdueController {
   @Roles('OWNER', 'FINANCE_MANAGER')
   approveMdmLock(
     @Param('id') id: string,
+    @Body() body: ApproveMdmDto,
     @CurrentUser() user: { id: string; role: string },
   ) {
-    return this.mdmLockService.approve(id, user.id, user.role);
+    return this.mdmLockService.approve(id, user.id, user.role, {
+      includeWallpaper: body.includeWallpaper,
+    });
   }
 
   @Post('mdm-requests/:id/reject')

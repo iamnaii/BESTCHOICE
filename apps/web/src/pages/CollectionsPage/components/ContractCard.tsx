@@ -9,15 +9,85 @@ import {
   UserCircle,
   NotebookPen,
   ChevronRight,
+  Clock,
+  AlertTriangle,
+  Users,
+  FileText,
 } from 'lucide-react';
 import { formatDateShort, formatNumber } from '@/utils/formatters';
 import type { ContractRow } from '../types';
+import { agingBucket, agingColor, formatRelativeTime } from '../utils/cardIndicators';
 
 function priorityColor(daysOverdue: number): string {
   if (daysOverdue >= 30) return 'bg-destructive';
   if (daysOverdue >= 8) return 'bg-warning';
   if (daysOverdue >= 1) return 'bg-primary';
   return 'bg-muted';
+}
+
+const CHANNEL_META: Record<
+  NonNullable<ContractRow['lastChannel']>,
+  { icon: typeof Phone; label: string }
+> = {
+  LINE: { icon: MessageCircle, label: 'LINE' },
+  SMS: { icon: MessageCircle, label: 'SMS' },
+  CALL: { icon: Phone, label: 'โทร' },
+  LETTER: { icon: FileText, label: 'จดหมาย' },
+};
+
+function IndicatorChips({ contract }: { contract: ContractRow }) {
+  const bucket = agingBucket(contract.daysOverdue);
+  const channelMeta = contract.lastChannel ? CHANNEL_META[contract.lastChannel] : null;
+  const ChannelIcon = channelMeta?.icon ?? null;
+
+  return (
+    <div className="mb-3 flex flex-wrap items-center gap-1.5">
+      <span
+        className={`inline-flex items-center rounded-full border px-2 py-0.5 text-2xs font-medium leading-snug ${agingColor(bucket)}`}
+      >
+        เลย {contract.daysOverdue} วัน
+      </span>
+
+      <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted text-muted-foreground text-2xs font-medium px-2 py-0.5 leading-snug">
+        <Clock className="size-3" />
+        {formatRelativeTime(contract.lastContactedAt)}
+      </span>
+
+      {contract.brokenPromiseCount > 0 && (
+        <span className="inline-flex items-center gap-1 rounded-full border border-destructive/30 bg-destructive/10 text-destructive text-2xs font-medium px-2 py-0.5 leading-snug">
+          <AlertTriangle className="size-3" />
+          นัดผิด {contract.brokenPromiseCount} ครั้ง
+        </span>
+      )}
+
+      {ChannelIcon && channelMeta && (
+        <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted text-muted-foreground text-2xs font-medium px-2 py-0.5 leading-snug">
+          <ChannelIcon className="size-3" />
+          {channelMeta.label}
+        </span>
+      )}
+
+      {contract.mdmState === 'PENDING' && (
+        <span className="inline-flex items-center gap-1 rounded-full border border-warning/30 bg-warning/10 text-warning text-2xs font-medium px-2 py-0.5 leading-snug">
+          <Lock className="size-3" />
+          รอ OWNER อนุมัติ
+        </span>
+      )}
+      {contract.mdmState === 'LOCKED' && (
+        <span className="inline-flex items-center gap-1 rounded-full border border-destructive/30 bg-destructive/10 text-destructive text-2xs font-medium px-2 py-0.5 leading-snug">
+          <Lock className="size-3" />
+          ล็อคแล้ว
+        </span>
+      )}
+
+      {contract.relatedContractsCount > 0 && (
+        <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted text-muted-foreground text-2xs font-medium px-2 py-0.5 leading-snug">
+          <Users className="size-3" />
+          +{contract.relatedContractsCount} สัญญา
+        </span>
+      )}
+    </div>
+  );
 }
 
 interface Props {
@@ -101,6 +171,9 @@ export default function ContractCard({
           </span>{' '}
           ฿
         </div>
+
+        {/* Enrichment indicator chips: aging / last contacted / broken promise / channel / MDM / related */}
+        <IndicatorChips contract={contract} />
 
         {/* Status chip cluster */}
         <div className="flex flex-wrap gap-1.5 mb-3">

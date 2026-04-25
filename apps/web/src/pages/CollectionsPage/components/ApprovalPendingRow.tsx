@@ -1,6 +1,11 @@
 import { useState } from 'react';
-import { CheckCircle, XCircle } from 'lucide-react';
+import { CheckCircle, XCircle, Unlock } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
+import api from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
+import { useUnlockMdm } from '../hooks/useApprovalQueues';
+import { WallpaperPreview } from './WallpaperPreview';
 import type { PendingEscalation, PendingMdmRequest } from '../types';
 
 /* ── helpers ─────────────────────────────────────────────────── */
@@ -162,18 +167,105 @@ export function EscalationRow({
   );
 }
 
+/* ── Unlock confirm dialog ───────────────────────────────────── */
+
+interface UnlockDialogProps {
+  open: boolean;
+  customerName: string;
+  contractNumber: string;
+  pending: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+function UnlockDialog({
+  open,
+  customerName,
+  contractNumber,
+  pending,
+  onConfirm,
+  onCancel,
+}: UnlockDialogProps) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div className="w-full max-w-sm rounded-xl border border-border bg-card shadow-xl p-6 mx-4">
+        <h3 className="text-sm font-semibold mb-2 leading-snug">ยืนยันปลดล็อคเครื่อง?</h3>
+        <p className="text-xs text-muted-foreground leading-snug mb-4">
+          ลูกค้า <span className="text-foreground font-medium">{customerName}</span>{' '}
+          (สัญญา {contractNumber}) จะใช้เครื่องได้ทันที
+        </p>
+        <div className="flex gap-2 justify-end">
+          <button
+            onClick={onCancel}
+            className="rounded-lg border border-input px-4 py-1.5 text-sm hover:bg-muted transition-colors"
+          >
+            ยกเลิก
+          </button>
+          <button
+            disabled={pending}
+            onClick={onConfirm}
+            className="rounded-lg bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+          >
+            {pending ? 'กำลังปลดล็อค...' : 'ยืนยันปลดล็อค'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── MDM Row ─────────────────────────────────────────────────── */
 
 interface MdmRowProps {
   item: PendingMdmRequest;
-  onApprove: (requestId: string) => void;
+  /**
+   * Approver action. `opts.includeWallpaper` (optional) overrides the
+   * proposer's choice. When omitted backend falls back to proposer's value.
+   */
+  onApprove: (requestId: string, opts?: { includeWallpaper?: boolean }) => void;
   onReject: (requestId: string, reason: string) => void;
   approvePending: boolean;
   rejectPending: boolean;
 }
 
+/**
+ * Fetches the MDM wallpaper URL from SystemConfig for the approve dialog
+ * preview. Returns null when the setting is not yet configured. Cached for
+ * 5 minutes — the URL changes rarely.
+ *
+ * Uses the shared `/settings` endpoint (same source DunningSettingsPage writes
+ * to) so preview matches what the OWNER configured.
+ */
+function useWallpaperUrl(enabled: boolean): string | null {
+  const { data } = useQuery<Array<{ key: string; value: string | null }>>({
+    queryKey: ['settings'],
+    queryFn: async () => (await api.get('/settings')).data ?? [],
+    enabled,
+    staleTime: 5 * 60 * 1000,
+  });
+  const entry = data?.find((s) => s.key === 'mdm_lock_wallpaper_url');
+  return entry?.value && entry.value.length > 0 ? entry.value : null;
+}
+
 export function MdmRow({ item, onApprove, onReject, approvePending, rejectPending }: MdmRowProps) {
   const [showReject, setShowReject] = useState(false);
+  const [showUnlockConfirm, setShowUnlockConfirm] = useState(false);
+  const [showApproveDialog, setShowApproveDialog] = useState(false);
+  const [includeWallpaper, setIncludeWallpaper] = useState<boolean>(item.includeWallpaper);
+
+  const { user } = useAuth();
+  // MDM is considered "locked on device" when the request has been executed
+  // (either manually or via API). Matches backend policy in mdm-lock.service.ts
+  // (`unlock()` requires status ∈ {EXECUTED_MANUAL, EXECUTED_API}).
+  const isLocked =
+    item.status === 'EXECUTED_MANUAL' || item.status === 'EXECUTED_API';
+  // Unlock endpoint is `@Roles('OWNER', 'FINANCE_MANAGER')` — mirror that here.
+  const canUnlock =
+    (user?.role === 'OWNER' || user?.role === 'FINANCE_MANAGER') && isLocked;
+  const unlock = useUnlockMdm();
+
+  const wallpaperUrl = useWallpaperUrl(showApproveDialog);
 
   const actionLabel =
     'เสนอล็อคเครื่อง' + (item.includeWallpaper ? ' + wallpaper' : '');
@@ -214,20 +306,37 @@ export function MdmRow({ item, onApprove, onReject, approvePending, rejectPendin
 
           {/* Actions */}
           <div className="flex items-center justify-end gap-2">
-            <button
-              onClick={() => setShowReject(true)}
-              disabled={rejectPending}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-input px-3 py-1.5 text-xs font-medium hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors"
-            >
-              <XCircle className="size-3.5" /> ปฏิเสธ
-            </button>
-            <button
-              onClick={() => onApprove(item.id)}
-              disabled={approvePending}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-destructive px-3 py-1.5 text-xs font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50 transition-colors"
-            >
-              <CheckCircle className="size-3.5" /> อนุมัติล็อค
-            </button>
+            {!isLocked && (
+              <>
+                <button
+                  onClick={() => setShowReject(true)}
+                  disabled={rejectPending}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-input px-3 py-1.5 text-xs font-medium hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors"
+                >
+                  <XCircle className="size-3.5" /> ปฏิเสธ
+                </button>
+                <button
+                  onClick={() => {
+                    setIncludeWallpaper(item.includeWallpaper);
+                    setShowApproveDialog(true);
+                  }}
+                  disabled={approvePending}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-destructive px-3 py-1.5 text-xs font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50 transition-colors"
+                >
+                  <CheckCircle className="size-3.5" /> อนุมัติล็อค
+                </button>
+              </>
+            )}
+            {canUnlock && (
+              <button
+                onClick={() => setShowUnlockConfirm(true)}
+                disabled={unlock.isPending}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-input px-3 py-1.5 text-xs font-medium hover:bg-muted text-foreground disabled:opacity-50 transition-colors"
+              >
+                <Unlock className="size-3.5" />
+                {unlock.isPending ? 'กำลังปลดล็อค...' : 'ปลดล็อค'}
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -241,6 +350,58 @@ export function MdmRow({ item, onApprove, onReject, approvePending, rejectPendin
           setShowReject(false);
         }}
       />
+
+      <UnlockDialog
+        open={showUnlockConfirm}
+        customerName={item.contract.customer.name}
+        contractNumber={item.contract.contractNumber}
+        pending={unlock.isPending}
+        onCancel={() => setShowUnlockConfirm(false)}
+        onConfirm={() => {
+          unlock.mutate(item.id);
+          setShowUnlockConfirm(false);
+        }}
+      />
+
+      {showApproveDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-xl border border-border bg-card shadow-xl p-6 mx-4">
+            <h3 className="text-sm font-semibold mb-1 leading-snug">อนุมัติล็อคเครื่อง</h3>
+            <p className="text-xs text-muted-foreground leading-snug mb-4">
+              สัญญา {item.contract.contractNumber} • ลูกค้า{' '}
+              <span className="text-foreground">{item.contract.customer.name}</span>
+            </p>
+
+            <div className="mb-4">
+              <WallpaperPreview
+                wallpaperUrl={wallpaperUrl}
+                checked={includeWallpaper && !!wallpaperUrl}
+                onChange={setIncludeWallpaper}
+              />
+            </div>
+
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setShowApproveDialog(false)}
+                className="rounded-lg border border-input px-4 py-1.5 text-sm hover:bg-muted transition-colors"
+              >
+                ยกเลิก
+              </button>
+              <button
+                disabled={approvePending}
+                onClick={() => {
+                  const effective = includeWallpaper && !!wallpaperUrl;
+                  onApprove(item.id, { includeWallpaper: effective });
+                  setShowApproveDialog(false);
+                }}
+                className="rounded-lg bg-destructive px-4 py-1.5 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50 transition-colors"
+              >
+                {approvePending ? 'กำลังอนุมัติ...' : 'ยืนยันอนุมัติ'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

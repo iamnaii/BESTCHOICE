@@ -100,7 +100,9 @@ export default function ApprovalTab() {
                 <MdmRow
                   key={item.id}
                   item={item}
-                  onApprove={(requestId) => approveMdm.mutate(requestId)}
+                  onApprove={(requestId, opts) =>
+                    approveMdm.mutate({ id: requestId, includeWallpaper: opts?.includeWallpaper })
+                  }
                   onReject={(requestId, reason) => rejectMdm.mutate({ requestId, reason })}
                   approvePending={approveMdm.isPending}
                   rejectPending={rejectMdm.isPending}

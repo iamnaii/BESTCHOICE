@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   BarChart,
   Bar,
@@ -11,8 +11,10 @@ import {
   CartesianGrid,
   Legend,
 } from 'recharts';
+import { subDays, startOfDay, endOfDay } from 'date-fns';
 import { Card, CardContent } from '@/components/ui/card';
 import QueryBoundary from '@/components/QueryBoundary';
+import { DateRangePicker, type DateRangeValue } from '@/components/ui/DateRangePicker';
 import { useCollectionsAnalytics } from '../hooks/useCollectionsAnalytics';
 
 // Chart colors: pragmatic hex approximations of the theme palette.
@@ -49,29 +51,29 @@ function pivotLetters(
   });
 }
 
+// Map custom date range -> backend range enum (P0: avoid backend change).
+// Rule: diff days ≤ 45 → '30d', otherwise → '90d'.
+function mapRangeToEnum(value: DateRangeValue): '30d' | '90d' {
+  if (!value.from || !value.to) return '30d';
+  const days = Math.round((value.to.getTime() - value.from.getTime()) / 86400000);
+  return days <= 45 ? '30d' : '90d';
+}
+
+function defaultRange(): DateRangeValue {
+  const now = new Date();
+  return { from: startOfDay(subDays(now, 29)), to: endOfDay(now) };
+}
+
 export default function AnalyticsTab() {
-  const [range, setRange] = useState<'30d' | '90d'>('30d');
+  const [dateRange, setDateRange] = useState<DateRangeValue>(defaultRange);
+  const range = useMemo(() => mapRangeToEnum(dateRange), [dateRange]);
   const { data, isLoading, isError, error, refetch } = useCollectionsAnalytics(range);
 
   return (
     <div>
-      {/* Range toggle */}
+      {/* Date range picker */}
       <div className="flex justify-end mb-4">
-        <div className="inline-flex rounded-lg border border-input overflow-hidden">
-          {(['30d', '90d'] as const).map((r) => (
-            <button
-              key={r}
-              onClick={() => setRange(r)}
-              className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-                range === r
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-background text-muted-foreground hover:bg-muted'
-              }`}
-            >
-              {r === '30d' ? '30 วัน' : '90 วัน'}
-            </button>
-          ))}
-        </div>
+        <DateRangePicker value={dateRange} onChange={setDateRange} />
       </div>
 
       <QueryBoundary

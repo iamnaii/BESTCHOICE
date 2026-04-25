@@ -24,6 +24,13 @@ const base: ContractRow = {
   settlementDate: null,
   needsSkipTracing: false,
   deviceLocked: false,
+  lastContactedAt: null,
+  brokenPromiseCount: 0,
+  mdmState: 'NONE',
+  relatedContractsCount: 0,
+  lastChannel: null,
+  letterCount: 0,
+  slipReviewPending: false,
 };
 
 describe('<ContractCard />', () => {

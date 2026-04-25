@@ -13,6 +13,12 @@ export interface PendingMdmRequest {
   includeWallpaper: boolean;
   reason: string;
   proposedAt: string;
+  /**
+   * Optional — when present and set to EXECUTED_MANUAL / EXECUTED_API, the
+   * approval row renders an Unlock button (OWNER only). Absent for raw
+   * PENDING requests (which is the common case in the approval queue).
+   */
+  status?: 'PENDING' | 'APPROVED' | 'EXECUTED_MANUAL' | 'EXECUTED_API' | 'FAILED' | 'REJECTED' | 'UNLOCKED';
   contract: {
     id: string;
     contractNumber: string;
@@ -38,6 +44,14 @@ export interface ContractRow {
   settlementDate: string | null;
   needsSkipTracing: boolean;
   deviceLocked: boolean;
+  // Card indicator fields (enriched server-side)
+  lastContactedAt: string | null;
+  brokenPromiseCount: number;
+  mdmState: 'NONE' | 'PENDING' | 'LOCKED' | 'UNLOCKED';
+  relatedContractsCount: number;
+  lastChannel: 'LINE' | 'SMS' | 'CALL' | 'LETTER' | null;
+  letterCount: number;
+  slipReviewPending: boolean;
 }
 
 export type CallResult =

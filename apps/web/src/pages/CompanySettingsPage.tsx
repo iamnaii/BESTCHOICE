@@ -453,13 +453,18 @@ function AddCompanyDialog({
             <div>
               <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
                 เลขทะเบียนภาษี
+                {!form.vatRegistered && (
+                  <span className="ml-1 text-muted-foreground/70 normal-case tracking-normal">
+                    (ไม่จำเป็น หากไม่จด VAT)
+                  </span>
+                )}
               </label>
               <input
                 className={inputClass}
                 value={form.taxId}
                 onChange={(e) => set('taxId', formatTaxId(e.target.value))}
                 placeholder="0-0000-00000-00-0"
-                required
+                required={form.vatRegistered}
               />
             </div>
             <div>

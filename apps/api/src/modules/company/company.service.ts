@@ -51,7 +51,7 @@ export class CompanyService {
     }
 
     return this.prisma.companyInfo.create({
-      data: dto,
+      data: { ...dto, taxId: dto.taxId ?? '' },
       include: { branches: { where: { deletedAt: null } } },
     });
   }

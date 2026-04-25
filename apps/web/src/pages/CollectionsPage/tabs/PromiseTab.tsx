@@ -3,7 +3,9 @@ import { AlertTriangle, Calendar } from 'lucide-react';
 import { useDebounce } from '@/hooks/useDebounce';
 import QueryBoundary from '@/components/QueryBoundary';
 import ContractCard from '../components/ContractCard';
+import BulkActionBar from '../components/BulkActionBar';
 import { useCollectionsQueue } from '../hooks/useCollectionsQueue';
+import { useBulkSelection } from '../hooks/useBulkSelection';
 import type { ContractRow } from '../types';
 
 const LIMIT = 50;
@@ -83,10 +85,13 @@ interface Props {
   search: string;
   branchId: string;
   onLogContact: (c: ContractRow) => void;
+  onOpen360?: (c: ContractRow) => void;
+  onSendLine?: (c: ContractRow) => void;
 }
 
-export default function PromiseTab({ search, branchId, onLogContact }: Props) {
+export default function PromiseTab({ search, branchId, onLogContact, onOpen360, onSendLine }: Props) {
   const [page, setPage] = useState(1);
+  const sel = useBulkSelection();
   const debouncedSearch = useDebounce(search, 300);
 
   const q = useCollectionsQueue({
@@ -142,7 +147,14 @@ export default function PromiseTab({ search, branchId, onLogContact }: Props) {
                 <div className="space-y-2">
                   {groups.broken.map((row) => (
                     <div key={row.id} className="ring-2 ring-destructive/50 rounded-xl">
-                      <ContractCard contract={row} onLogContact={onLogContact} />
+                      <ContractCard
+                        contract={row}
+                        onLogContact={onLogContact}
+                        onOpen360={onOpen360}
+                        onSendLine={onSendLine}
+                        selected={sel.isSelected(row.id)}
+                        onToggleSelect={sel.toggle}
+                      />
                     </div>
                   ))}
                 </div>
@@ -157,7 +169,15 @@ export default function PromiseTab({ search, branchId, onLogContact }: Props) {
                 </h3>
                 <div className="space-y-2">
                   {groups.today.map((row) => (
-                    <ContractCard key={row.id} contract={row} onLogContact={onLogContact} />
+                    <ContractCard
+                      key={row.id}
+                      contract={row}
+                      onLogContact={onLogContact}
+                      onOpen360={onOpen360}
+                      onSendLine={onSendLine}
+                      selected={sel.isSelected(row.id)}
+                      onToggleSelect={sel.toggle}
+                    />
                   ))}
                 </div>
               </section>
@@ -171,7 +191,15 @@ export default function PromiseTab({ search, branchId, onLogContact }: Props) {
                 </h3>
                 <div className="space-y-2">
                   {groups.upcoming.map((row) => (
-                    <ContractCard key={row.id} contract={row} onLogContact={onLogContact} />
+                    <ContractCard
+                      key={row.id}
+                      contract={row}
+                      onLogContact={onLogContact}
+                      onOpen360={onOpen360}
+                      onSendLine={onSendLine}
+                      selected={sel.isSelected(row.id)}
+                      onToggleSelect={sel.toggle}
+                    />
                   ))}
                 </div>
               </section>
@@ -203,6 +231,7 @@ export default function PromiseTab({ search, branchId, onLogContact }: Props) {
           )}
         </>
       )}
+      <BulkActionBar selectedIds={sel.selectedIds} onClear={sel.clear} />
     </QueryBoundary>
   );
 }

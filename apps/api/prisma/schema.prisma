@@ -1764,7 +1764,7 @@ model CallLog {
   // Separate from voiceMemo* which are agent-recorded voice notes.
   yeastarCallId                    String?            @unique @map("yeastar_call_id")
   callDirection                    CallDirection?     @map("call_direction")
-  duration                         Int?
+  duration                         Int?   // วินาที (seconds) — จาก CDR
   recordingUrl                     String?            @map("recording_url")
   recordingStorageTier             String?            @default("STANDARD") @map("recording_storage_tier")
   recordingDownloadedAt            DateTime?          @map("recording_downloaded_at")

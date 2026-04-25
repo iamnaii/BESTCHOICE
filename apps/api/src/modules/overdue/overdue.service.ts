@@ -1059,4 +1059,64 @@ export class OverdueService {
       totalContracts: contracts.length,
     };
   }
+
+  /**
+   * P1 Task 14 — Read today's "promise-due-reminder" suggestions written by
+   * BrokenPromiseReminderCron. Used by `BrokenPromiseBanner.tsx` in PromiseTab
+   * to surface "วันนี้มีนัดครบกำหนด N ราย" + bulk-LINE prompt.
+   *
+   * Window is the same Bangkok-local "today" the cron uses, so a reminder
+   * created at 09:00 BKK is visible here until 00:00 BKK tomorrow regardless
+   * of where the API host clock is.
+   */
+  async listPromiseDueRemindersToday(branchId: string | null) {
+    const RULE_ID = 'dunning-event-PROMISE_DUE_REMINDER';
+    const now = new Date();
+    const bkkNow = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+    const startOfDayBkk = new Date(
+      Date.UTC(bkkNow.getUTCFullYear(), bkkNow.getUTCMonth(), bkkNow.getUTCDate(), 0, 0, 0, 0),
+    );
+    const startOfDayUtc = new Date(startOfDayBkk.getTime() - 7 * 60 * 60 * 1000);
+    const endOfDayUtc = new Date(startOfDayUtc.getTime() + 24 * 60 * 60 * 1000);
+
+    const rows = await this.prisma.dunningAction.findMany({
+      where: {
+        deletedAt: null,
+        dunningRuleId: RULE_ID,
+        createdAt: { gte: startOfDayUtc, lt: endOfDayUtc },
+        contract: {
+          deletedAt: null,
+          ...(branchId ? { branchId } : {}),
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        contractId: true,
+        createdAt: true,
+        contract: {
+          select: {
+            id: true,
+            contractNumber: true,
+            branchId: true,
+            customer: { select: { id: true, name: true, lineId: true, phone: true } },
+          },
+        },
+      },
+    });
+
+    return {
+      total: rows.length,
+      withLine: rows.filter((r) => !!r.contract.customer.lineId).length,
+      contractIds: rows.map((r) => r.contractId),
+      data: rows.map((r) => ({
+        id: r.id,
+        contractId: r.contractId,
+        contractNumber: r.contract.contractNumber,
+        customerName: r.contract.customer.name,
+        hasLine: !!r.contract.customer.lineId,
+        createdAt: r.createdAt,
+      })),
+    };
+  }
 }

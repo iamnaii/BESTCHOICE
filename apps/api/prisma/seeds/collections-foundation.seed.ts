@@ -32,7 +32,7 @@ export async function seedCollectionsFoundation(
     },
   });
 
-  // 8 event-triggered dunning rules (upsert by deterministic id for idempotency)
+  // 9 event-triggered dunning rules (upsert by deterministic id for idempotency)
   const eventRules: Array<{
     id: string;
     name: string;
@@ -44,8 +44,9 @@ export async function seedCollectionsFoundation(
       | 'DEVICE_UNLOCKED'
       | 'BROKEN_PROMISE'
       | 'LETTER_DISPATCHED'
-      | 'CONTRACT_TERMINATED';
-    channel: 'LINE' | 'SMS';
+      | 'CONTRACT_TERMINATED'
+      | 'PROMISE_DUE_REMINDER';
+    channel: 'LINE' | 'SMS' | 'INTERNAL_ALERT';
     messageTemplate: string;
     includePaymentLink: boolean;
     autoExecute: boolean;
@@ -137,6 +138,21 @@ export async function seedCollectionsFoundation(
       includePaymentLink: false,
       autoExecute: true,
       sortOrder: 107,
+    },
+    {
+      // P1 Task 14: stamped daily by BrokenPromiseReminderCron at 09:00 BKK
+      // for every CallLog promise due TODAY. INTERNAL_ALERT channel +
+      // autoExecute=false → no message is sent automatically; the
+      // BrokenPromiseBanner reads these and prompts the collector to bulk-send.
+      id: 'dunning-event-PROMISE_DUE_REMINDER',
+      name: 'dunning_promise_due_reminder',
+      eventTrigger: 'PROMISE_DUE_REMINDER',
+      channel: 'INTERNAL_ALERT',
+      messageTemplate:
+        'เรียนคุณ {{customerName}}, วันนี้ครบกำหนดนัดชำระงวด {{installmentNo}} ยอด {{amount}} ฿ — กรุณาชำระภายในวันนี้',
+      includePaymentLink: true,
+      autoExecute: false,
+      sortOrder: 108,
     },
   ];
 

@@ -5,6 +5,7 @@ import { ContractsService } from './contracts.service';
 import { ContractWorkflowService } from './contract-workflow.service';
 import { ContractPaymentService } from './contract-payment.service';
 import { ContractDocumentService } from './contract-document.service';
+import { ContractSnapshotService } from './contract-snapshot.service';
 import { CreateContractDto, UpdateContractDto, EarlyPayoffDto, ReviewContractDto, RejectContractDto } from './dto/contract.dto';
 import { PdpaConsentDto } from './dto/pdpa-consent.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -24,6 +25,7 @@ export class ContractsController {
     private workflowService: ContractWorkflowService,
     private paymentService: ContractPaymentService,
     private documentService: ContractDocumentService,
+    private snapshotService: ContractSnapshotService,
   ) {}
 
   @Get()
@@ -69,6 +71,24 @@ export class ContractsController {
     @CurrentUser() user?: { id: string; role: string; branchId: string | null },
   ) {
     return this.contractsService.findOne(id, user);
+  }
+
+  /**
+   * Lightweight snapshot for the Customer 360 hover/long-press preview.
+   * Designed for sub-100ms latency — does NOT include the full timeline,
+   * full payment schedule, or contract documents.
+   *
+   * Returns: name+phone, contract#+status+product, totals/outstanding/
+   * remaining-installments, last promise+result, last LINE timestamp+read,
+   * last collector comment (truncated 100 chars).
+   */
+  @Get(':id/snapshot')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  getSnapshot(
+    @Param('id') id: string,
+    @CurrentUser() user?: { id: string; role: string; branchId: string | null },
+  ) {
+    return this.snapshotService.getSnapshot(id, user);
   }
 
   @Get(':id/schedule')

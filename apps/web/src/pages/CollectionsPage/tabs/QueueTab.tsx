@@ -101,7 +101,7 @@ export default function QueueTab({
     onCallFocused: () => focusedRow && onLogContact(focusedRow),
     // Payment / snooze / assign actions are wired in their own follow-up tasks.
     onPaymentFocused: () => focusedRow && onOpen360?.(focusedRow),
-    onSnoozeFocused: () => focusedRow && onOpen360?.(focusedRow),
+    onSnoozeFocused: () => focusedRow && setSnoozeTarget(focusedRow),
     onAssignFocused: () => focusedRow && onOpen360?.(focusedRow),
   });
 
@@ -163,6 +163,8 @@ export default function QueueTab({
                   setPreviewState({ contractId: c.id, anchor, variant });
                 }}
                 onPreviewCancel={() => setPreviewState(null)}
+                onSnooze={(c) => setSnoozeTarget(c)}
+                onUnsnooze={(c) => unsnooze.mutate(c.id)}
               />
             ))}
           </div>
@@ -222,6 +224,19 @@ export default function QueueTab({
           setPage(1);
         }}
         liveCount={total}
+      />
+      <SnoozeDialog
+        open={!!snoozeTarget}
+        onClose={() => setSnoozeTarget(null)}
+        contract={
+          snoozeTarget
+            ? {
+                id: snoozeTarget.id,
+                contractNumber: snoozeTarget.contractNumber,
+                customer: { name: snoozeTarget.customer.name },
+              }
+            : null
+        }
       />
     </QueryBoundary>
   );

@@ -97,6 +97,11 @@ enum DunningEventTrigger {
   BROKEN_PROMISE
   LETTER_DISPATCHED
   CONTRACT_TERMINATED
+  /// P1 Task 14: daily auto-suggest for promises due TODAY (not yet broken).
+  /// Cron creates DunningAction with this trigger via a system rule (channel
+  /// INTERNAL_ALERT, autoExecute=false) — banner reads them to prompt the
+  /// collector to bulk-send a LINE reminder.
+  PROMISE_DUE_REMINDER
 }
 
 enum PlanType {

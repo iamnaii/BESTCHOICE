@@ -113,11 +113,12 @@ export default function AgingBucketChart() {
                   />
                   <YAxis dataKey="bucket" type="category" {...AXIS_STYLE} width={56} />
                   <Tooltip
-                    formatter={(v: number) =>
-                      mode === 'outstanding'
-                        ? [`${formatBaht(v)} บาท`, 'ยอดค้าง']
-                        : [`${v} สัญญา`, 'จำนวน']
-                    }
+                    formatter={(v) => {
+                      const n = typeof v === 'number' ? v : Number(v);
+                      return mode === 'outstanding'
+                        ? [`${formatBaht(n)} บาท`, 'ยอดค้าง']
+                        : [`${n} สัญญา`, 'จำนวน'];
+                    }}
                     labelFormatter={(l) => `${l} วัน`}
                   />
                   <Bar

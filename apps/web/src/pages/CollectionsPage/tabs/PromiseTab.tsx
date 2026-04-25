@@ -7,6 +7,7 @@ import BulkActionBar from '../components/BulkActionBar';
 import TruncatedBanner from '../components/TruncatedBanner';
 import FilterChipsBar from '../components/FilterChipsBar';
 import FilterDrawer from '../components/FilterDrawer';
+import BrokenPromiseBanner from '../components/BrokenPromiseBanner';
 import { useCollectionsQueue } from '../hooks/useCollectionsQueue';
 import { useBulkSelection } from '../hooks/useBulkSelection';
 import { useQueueFilter } from '../hooks/useQueueFilter';
@@ -141,6 +142,7 @@ export default function PromiseTab({ search, branchId, onLogContact, onOpen360, 
         resultCount={rows.length}
         totalCount={total}
       />
+      <BrokenPromiseBanner />
       {truncated && <TruncatedBanner onOpenFilter={openFilter} />}
       {isEmpty ? (
         <div className="rounded-xl border border-dashed border-border p-10 text-center">

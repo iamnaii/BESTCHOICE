@@ -15,7 +15,13 @@ import {
   DialogBody,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { Building2, Pencil, MapPin } from 'lucide-react';
+import { Building2, Pencil, MapPin, Plus } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import AddressForm, {
+  type AddressData,
+  emptyAddress,
+  composeAddress,
+} from '@/components/ui/AddressForm';
 
 interface Branch {
   id: string;
@@ -45,6 +51,37 @@ type EditableFields = Omit<Company, 'id' | 'branches'>;
 
 const inputClass =
   'w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden text-sm';
+
+// Thai tax ID: 13 digits → 0-0000-00000-00-0
+function formatTaxId(raw: string): string {
+  const d = raw.replace(/\D/g, '').slice(0, 13);
+  const parts = [d.slice(0, 1), d.slice(1, 5), d.slice(5, 10), d.slice(10, 12), d.slice(12, 13)];
+  return parts.filter(Boolean).join('-');
+}
+
+// Thai phone: Bangkok 02 → 02-XXX-XXXX (9 digits), mobile/provincial 0XX → 0XX-XXX-XXXX (10 digits)
+function formatPhone(raw: string): string {
+  const d = raw.replace(/\D/g, '').slice(0, 10);
+  // Bangkok landline (02-XXX-XXXX, 9 digits)
+  if (d.startsWith('02')) {
+    if (d.length <= 2) return d;
+    if (d.length <= 5) return `${d.slice(0, 2)}-${d.slice(2)}`;
+    return `${d.slice(0, 2)}-${d.slice(2, 5)}-${d.slice(5, 9)}`;
+  }
+  // Mobile/provincial (0XX-XXX-XXXX, 10 digits)
+  if (d.length <= 3) return d;
+  if (d.length <= 6) return `${d.slice(0, 3)}-${d.slice(3)}`;
+  return `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}`;
+}
+
+// Bank account: 10–12 digits → XXX-X-XXXXX-X (most Thai banks use 10-digit 3-1-5-1)
+function formatBankAccount(raw: string): string {
+  const d = raw.replace(/\D/g, '').slice(0, 12);
+  if (d.length <= 3) return d;
+  if (d.length <= 4) return `${d.slice(0, 3)}-${d.slice(3)}`;
+  if (d.length <= 9) return `${d.slice(0, 3)}-${d.slice(3, 4)}-${d.slice(4)}`;
+  return `${d.slice(0, 3)}-${d.slice(3, 4)}-${d.slice(4, 9)}-${d.slice(9)}`;
+}
 
 function InfoRow({ label, value }: { label: string; value: string | number | null | undefined }) {
   return (
@@ -140,7 +177,11 @@ function EditCompanyDialog({
               <input
                 className={inputClass}
                 value={form.taxId || ''}
-                onChange={(e) => set('taxId', e.target.value || null)}
+                onChange={(e) => {
+                  const v = formatTaxId(e.target.value);
+                  set('taxId', v || null);
+                }}
+                placeholder="0-0000-00000-00-0"
               />
             </div>
             <div>
@@ -172,7 +213,11 @@ function EditCompanyDialog({
               <input
                 className={inputClass}
                 value={form.phone || ''}
-                onChange={(e) => set('phone', e.target.value || null)}
+                onChange={(e) => {
+                  const v = formatPhone(e.target.value);
+                  set('phone', v || null);
+                }}
+                placeholder="02-100-0000"
               />
             </div>
             <div className="flex items-center gap-4">
@@ -198,8 +243,17 @@ function EditCompanyDialog({
                   className={inputClass}
                   type="number"
                   step="0.01"
-                  value={form.vatRate ?? ''}
-                  onChange={(e) => set('vatRate', e.target.value ? parseFloat(e.target.value) : null)}
+                  min="0"
+                  max="100"
+                  value={
+                    form.vatRate != null
+                      ? Number((Number(form.vatRate) * 100).toFixed(4))
+                      : ''
+                  }
+                  onChange={(e) =>
+                    set('vatRate', e.target.value ? parseFloat(e.target.value) / 100 : null)
+                  }
+                  placeholder="7"
                 />
               </div>
             </div>
@@ -230,7 +284,11 @@ function EditCompanyDialog({
               <input
                 className={inputClass}
                 value={form.bankAccountNumber || ''}
-                onChange={(e) => set('bankAccountNumber', e.target.value || null)}
+                onChange={(e) => {
+                  const v = formatBankAccount(e.target.value);
+                  set('bankAccountNumber', v || null);
+                }}
+                placeholder="012-3-45678-9"
               />
             </div>
             <div>
@@ -274,6 +332,279 @@ function EditCompanyDialog({
   );
 }
 
+interface CreateForm {
+  nameTh: string;
+  nameEn: string;
+  taxId: string;
+  companyCode: '' | 'SHOP' | 'FINANCE';
+  phone: string;
+  vatRegistered: boolean;
+  vatRate: string;
+  bankName: string;
+  bankAccountName: string;
+  bankAccountNumber: string;
+  directorName: string;
+  directorPosition: string;
+}
+
+const emptyCreateForm: CreateForm = {
+  nameTh: '',
+  nameEn: '',
+  taxId: '',
+  companyCode: '',
+  phone: '',
+  vatRegistered: false,
+  vatRate: '',
+  bankName: '',
+  bankAccountName: '',
+  bankAccountNumber: '',
+  directorName: '',
+  directorPosition: '',
+};
+
+function AddCompanyDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
+  const queryClient = useQueryClient();
+  const [form, setForm] = useState<CreateForm>(emptyCreateForm);
+  const [address, setAddress] = useState<AddressData>(emptyAddress);
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const composedAddress = composeAddress(address);
+      if (!composedAddress) {
+        throw new Error('กรุณาระบุที่อยู่บริษัท');
+      }
+      const payload: Record<string, unknown> = {
+        nameTh: form.nameTh,
+        taxId: form.taxId,
+        address: composedAddress,
+        directorName: form.directorName,
+        vatRegistered: form.vatRegistered,
+      };
+      if (form.nameEn) payload.nameEn = form.nameEn;
+      if (form.companyCode) payload.companyCode = form.companyCode;
+      if (form.phone) payload.phone = form.phone;
+      if (form.directorPosition) payload.directorPosition = form.directorPosition;
+      if (form.vatRate) payload.vatRate = parseFloat(form.vatRate) / 100;
+      if (form.bankName) payload.bankName = form.bankName;
+      if (form.bankAccountName) payload.bankAccountName = form.bankAccountName;
+      if (form.bankAccountNumber) payload.bankAccountNumber = form.bankAccountNumber;
+      return (await api.post('/companies', payload)).data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['companies'] });
+      toast.success('เพิ่มนิติบุคคลสำเร็จ');
+      setForm(emptyCreateForm);
+      setAddress(emptyAddress);
+      onOpenChange(false);
+    },
+    onError: (err) => {
+      toast.error(getErrorMessage(err));
+    },
+  });
+
+  const set = <K extends keyof CreateForm>(field: K, value: CreateForm[K]) => {
+    setForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    mutation.mutate();
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>เพิ่มนิติบุคคลใหม่</DialogTitle>
+        </DialogHeader>
+        <DialogBody>
+          <form
+            id="add-company-form"
+            onSubmit={handleSubmit}
+            className="grid grid-cols-1 sm:grid-cols-2 gap-4"
+          >
+            <div>
+              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+                ชื่อบริษัท (ไทย)
+              </label>
+              <input
+                className={inputClass}
+                value={form.nameTh}
+                onChange={(e) => set('nameTh', e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+                ชื่อบริษัท (อังกฤษ)
+              </label>
+              <input
+                className={inputClass}
+                value={form.nameEn}
+                onChange={(e) => set('nameEn', e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+                เลขทะเบียนภาษี
+              </label>
+              <input
+                className={inputClass}
+                value={form.taxId}
+                onChange={(e) => set('taxId', formatTaxId(e.target.value))}
+                placeholder="0-0000-00000-00-0"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+                รหัสบริษัท (ระบบ)
+              </label>
+              <select
+                className={inputClass}
+                value={form.companyCode}
+                onChange={(e) => set('companyCode', e.target.value as CreateForm['companyCode'])}
+              >
+                <option value="">— ไม่กำหนด —</option>
+                <option value="SHOP">SHOP (ไม่จด VAT)</option>
+                <option value="FINANCE">FINANCE (จด VAT)</option>
+              </select>
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+                ที่อยู่
+              </label>
+              <AddressForm value={address} onChange={setAddress} />
+            </div>
+            <div>
+              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+                โทรศัพท์
+              </label>
+              <input
+                className={inputClass}
+                value={form.phone}
+                onChange={(e) => set('phone', formatPhone(e.target.value))}
+                placeholder="02-100-0000"
+              />
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="flex-1">
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+                  สถานะ VAT
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={form.vatRegistered}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setForm((prev) => ({
+                        ...prev,
+                        vatRegistered: checked,
+                        vatRate: checked ? prev.vatRate || '7' : '',
+                      }));
+                    }}
+                    className="rounded border-input"
+                  />
+                  <span className="text-sm">จดทะเบียน VAT</span>
+                </label>
+              </div>
+              <div className="flex-1">
+                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+                  อัตรา VAT (%)
+                </label>
+                <input
+                  className={inputClass}
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max="100"
+                  value={form.vatRate}
+                  onChange={(e) => set('vatRate', e.target.value)}
+                  placeholder="7"
+                  disabled={!form.vatRegistered}
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+                ธนาคาร
+              </label>
+              <input
+                className={inputClass}
+                value={form.bankName}
+                onChange={(e) => set('bankName', e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+                ชื่อบัญชี
+              </label>
+              <input
+                className={inputClass}
+                value={form.bankAccountName}
+                onChange={(e) => set('bankAccountName', e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+                เลขบัญชี
+              </label>
+              <input
+                className={inputClass}
+                value={form.bankAccountNumber}
+                onChange={(e) => set('bankAccountNumber', formatBankAccount(e.target.value))}
+                placeholder="012-3-45678-9"
+              />
+            </div>
+            <div>
+              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+                ผู้มีอำนาจลงนาม
+              </label>
+              <input
+                className={inputClass}
+                value={form.directorName}
+                onChange={(e) => set('directorName', e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+                ตำแหน่ง
+              </label>
+              <input
+                className={inputClass}
+                value={form.directorPosition}
+                onChange={(e) => set('directorPosition', e.target.value)}
+              />
+            </div>
+          </form>
+        </DialogBody>
+        <DialogFooter>
+          <Button variant="outline" size="md" onClick={() => onOpenChange(false)}>
+            ยกเลิก
+          </Button>
+          <Button
+            variant="primary"
+            size="md"
+            type="submit"
+            form="add-company-form"
+            disabled={mutation.isPending}
+          >
+            {mutation.isPending ? 'กำลังบันทึก...' : 'เพิ่มนิติบุคคล'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function CompanyCard({ company }: { company: Company }) {
   const [editOpen, setEditOpen] = useState(false);
 
@@ -309,7 +640,14 @@ function CompanyCard({ company }: { company: Company }) {
             <InfoRow label="รหัสบริษัท" value={company.companyCode} />
             <InfoRow label="ที่อยู่" value={company.address} />
             <InfoRow label="โทรศัพท์" value={company.phone} />
-            <InfoRow label="อัตรา VAT" value={company.vatRate != null ? `${company.vatRate}%` : null} />
+            <InfoRow
+              label="อัตรา VAT"
+              value={
+                company.vatRate != null
+                  ? `${(Number(company.vatRate) * 100).toFixed(2).replace(/\.?0+$/, '')}%`
+                  : null
+              }
+            />
             <InfoRow label="ธนาคาร" value={company.bankName} />
             <InfoRow label="ชื่อบัญชี" value={company.bankAccountName} />
             <InfoRow label="เลขบัญชี" value={company.bankAccountNumber} />
@@ -350,6 +688,8 @@ function CompanyCard({ company }: { company: Company }) {
 }
 
 export default function CompanySettingsPage() {
+  const { user } = useAuth();
+  const [addOpen, setAddOpen] = useState(false);
   const { data: companies = [], isLoading, isError, error, refetch } = useQuery<Company[]>({
     queryKey: ['companies'],
     queryFn: async () => (await api.get('/companies')).data,
@@ -361,7 +701,17 @@ export default function CompanySettingsPage() {
         title="จัดการนิติบุคคล"
         subtitle="ข้อมูลนิติบุคคล (หน้าร้าน / ไฟแนนซ์) สำหรับใช้ในสัญญา ใบเสร็จ และรายงาน"
         icon={<Building2 className="size-6" />}
+        action={
+          user?.role === 'OWNER' ? (
+            <Button variant="primary" size="md" onClick={() => setAddOpen(true)}>
+              <Plus className="size-4" />
+              เพิ่มนิติบุคคล
+            </Button>
+          ) : undefined
+        }
       />
+
+      {addOpen && <AddCompanyDialog open={addOpen} onOpenChange={setAddOpen} />}
 
       <QueryBoundary
         isLoading={isLoading && companies.length === 0}

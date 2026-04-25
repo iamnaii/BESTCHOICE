@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { FileText, Download, CheckCircle, RotateCcw, Loader2 } from 'lucide-react';
+import { FileText, Download, CheckCircle, RotateCcw, Loader2, Upload } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import Modal from '@/components/ui/Modal';
 import { cn } from '@/lib/utils';
 import { useLetterQueue, type LetterRow, type LetterType, type LetterStatus } from '../hooks/useLetterQueue';
 import { useLetterActions } from '../hooks/useLetterActions';
 import LetterDispatchDialog from './LetterDispatchDialog';
+import BulkSlipUploadDialog from './BulkSlipUploadDialog';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -205,6 +206,7 @@ export default function LetterQueueSection() {
 
   const [dispatchLetter, setDispatchLetter] = useState<LetterRow | null>(null);
   const [dispatchMode, setDispatchMode] = useState<'generate' | 'dispatch'>('generate');
+  const [bulkSlipOpen, setBulkSlipOpen] = useState(false);
 
   // Undeliverable reason dialog — replaces window.prompt
   const [undeliverableLetter, setUndeliverableLetter] = useState<LetterRow | null>(null);
@@ -242,6 +244,9 @@ export default function LetterQueueSection() {
   const undeliverableValid = undeliverableReason.trim().length >= 5;
 
   const count = data?.length ?? 0;
+  const dispatchedMissingEvidence = (data ?? []).filter(
+    (l) => l.status === 'DISPATCHED' && !l.evidencePhotoUrl,
+  );
 
   return (
     <>
@@ -269,20 +274,34 @@ export default function LetterQueueSection() {
               </div>
             </div>
           ) : (
-            <div className="space-y-2">
-              {data!.map((letter) => (
-                <LetterRowCard
-                  key={letter.id}
-                  letter={letter}
-                  onOpenGenerate={openGenerate}
-                  onOpenDispatch={openDispatch}
-                  onDelivered={(l) => markDelivered.mutate(l.id)}
-                  onUndeliverable={handleUndeliverable}
-                  deliveredPending={markDelivered.isPending}
-                  undeliverablePending={markUndeliverable.isPending}
-                />
-              ))}
-            </div>
+            <>
+              {/* Bulk slip upload trigger — show when 2+ dispatched letters missing evidence */}
+              {dispatchedMissingEvidence.length >= 2 && (
+                <div className="mb-3 flex justify-end">
+                  <button
+                    onClick={() => setBulkSlipOpen(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-input hover:bg-muted text-muted-foreground transition-colors"
+                  >
+                    <Upload className="size-3.5" />
+                    อัปโหลดสลิปชุด ({dispatchedMissingEvidence.length})
+                  </button>
+                </div>
+              )}
+              <div className="space-y-2">
+                {data!.map((letter) => (
+                  <LetterRowCard
+                    key={letter.id}
+                    letter={letter}
+                    onOpenGenerate={openGenerate}
+                    onOpenDispatch={openDispatch}
+                    onDelivered={(l) => markDelivered.mutate(l.id)}
+                    onUndeliverable={handleUndeliverable}
+                    deliveredPending={markDelivered.isPending}
+                    undeliverablePending={markUndeliverable.isPending}
+                  />
+                ))}
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -293,6 +312,14 @@ export default function LetterQueueSection() {
           letter={dispatchLetter}
           initialMode={dispatchMode}
           onClose={() => setDispatchLetter(null)}
+        />
+      )}
+
+      {bulkSlipOpen && (
+        <BulkSlipUploadDialog
+          open={bulkSlipOpen}
+          letters={dispatchedMissingEvidence}
+          onClose={() => setBulkSlipOpen(false)}
         />
       )}
 

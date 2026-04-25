@@ -13,9 +13,10 @@ import FollowUpTab from './tabs/FollowUpTab';
 import PromiseTab from './tabs/PromiseTab';
 import AllTab from './tabs/AllTab';
 import ApprovalTab from './tabs/ApprovalTab';
+import AnalyticsTab from './tabs/AnalyticsTab';
 import type { ContractRow } from './types';
 
-export type CollectionsTabKey = 'today' | 'followup' | 'promise' | 'approval' | 'all';
+export type CollectionsTabKey = 'today' | 'followup' | 'promise' | 'approval' | 'all' | 'analytics';
 
 export default function CollectionsPage() {
   useDocumentTitle('ติดตามหนี้');
@@ -95,6 +96,8 @@ export default function CollectionsPage() {
       {activeTab === 'approval' && canSeeApproval && <ApprovalTab />}
 
       {activeTab === 'all' && <AllTab />}
+
+      {activeTab === 'analytics' && canSeeApproval && <AnalyticsTab />}
 
       <ContactLogDialog
         open={!!dialogContract}

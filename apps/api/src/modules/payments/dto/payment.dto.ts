@@ -45,6 +45,12 @@ export class BulkRecordPaymentDto {
 
   @IsString()
   @IsOptional()
+  @MaxLength(2048)
+  @Matches(/^https:\/\/.+/, { message: 'evidenceUrl ต้องเป็น HTTPS URL' })
+  evidenceUrl?: string; // สลิปโอนเงิน / หลักฐานการชำระ (ติดไว้กับงวดแรกที่สร้าง)
+
+  @IsString()
+  @IsOptional()
   notes?: string;
 }
 

@@ -10,6 +10,7 @@ export interface RecordPaymentPayload {
   amount: number;
   paymentMethod: PaymentMethod;
   notes?: string;
+  evidenceUrl?: string;
 }
 
 /**
@@ -17,8 +18,8 @@ export interface RecordPaymentPayload {
  * allocates across next-due installments. Collector doesn't need to pick
  * installmentNo; just enter the amount customer paid.
  *
- * Out of scope (MVP): slip upload / evidenceUrl enforcement. Backend accepts
- * evidenceUrl but auto-allocate doesn't require it.
+ * Slip upload is enforced client-side for BANK_TRANSFER and QR_EWALLET methods.
+ * evidenceUrl is passed through to backend when provided.
  */
 export function useRecordPayment() {
   const qc = useQueryClient();

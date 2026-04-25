@@ -9,6 +9,9 @@ import { MdmLockService } from './mdm-lock.service';
 import { OverdueTimelineService } from './timeline.service';
 import { OverdueBulkService } from './bulk.service';
 import { ContractLetterService } from './contract-letter.service';
+import { DunningRetryService } from './dunning-retry.service';
+import { OverdueAnalyticsService } from './analytics.service';
+import { AnalyticsQueryDto } from './dto/analytics-query.dto';
 import { CreateCallLogDto } from './dto/create-call-log.dto';
 import { AssignCollectorDto } from './dto/assign-collector.dto';
 import { RecordSettlementDto } from './dto/record-settlement.dto';
@@ -18,6 +21,7 @@ import { QueueQueryDto } from './dto/queue-query.dto';
 import { KpiQueryDto } from './dto/kpi-query.dto';
 import { BulkAssignDto, BulkProposeLockDto, BulkSendLineDto } from './dto/bulk.dto';
 import { SendLineAdHocDto } from './dto/send-line-adhoc.dto';
+import { UpdateLetterEvidenceDto } from './dto/update-letter-evidence.dto';
 import { RejectMdmDto } from './dto/reject-mdm.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -40,6 +44,8 @@ export class OverdueController {
     private timelineService: OverdueTimelineService,
     private bulkService: OverdueBulkService,
     private contractLetterService: ContractLetterService,
+    private dunningRetryService: DunningRetryService,
+    private analyticsService: OverdueAnalyticsService,
   ) {}
 
   // --- Collections Workflow Hub endpoints (Plan 2) ---
@@ -438,6 +444,16 @@ export class OverdueController {
     return this.contractLetterService.markDelivered(id, user.id);
   }
 
+  @Patch('letters/:id/evidence')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  updateLetterEvidence(
+    @Param('id') id: string,
+    @Body() dto: UpdateLetterEvidenceDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.contractLetterService.updateEvidence(id, dto.evidencePhotoUrl, user.id);
+  }
+
   @Post('letters/:id/undeliverable')
   @Roles('OWNER', 'FINANCE_MANAGER')
   markLetterUndeliverable(
@@ -456,5 +472,31 @@ export class OverdueController {
     @CurrentUser() user: { id: string },
   ) {
     return this.contractLetterService.cancel(id, user.id, body.reason);
+  }
+
+  // --- Collections analytics ---
+
+  @Get('analytics')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  getAnalytics(@Query() dto: AnalyticsQueryDto) {
+    return this.analyticsService.getAnalytics({ range: dto.range ?? '30d' });
+  }
+
+  // --- LINE retry endpoints ---
+
+  @Get('line-retries')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER')
+  listFailed(@Query('limit') limit?: string) {
+    const parsedLimit = Math.min(
+      Math.max(parseInt(limit ?? '', 10) || 100, 1),
+      500,
+    );
+    return this.dunningRetryService.listFailed(parsedLimit);
+  }
+
+  @Post('line-retries/:id/retry')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  retryLine(@Param('id') id: string, @CurrentUser() user: { id: string }) {
+    return this.dunningRetryService.retry(id, user.id);
   }
 }

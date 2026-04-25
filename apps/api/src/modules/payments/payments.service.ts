@@ -282,6 +282,7 @@ export class PaymentsService {
     paymentMethod: string,
     recordedById: string,
     notes?: string,
+    evidenceUrl?: string,
   ) {
     if (!amount || amount <= 0) {
       throw new BadRequestException('จำนวนเงินต้องมากกว่า 0');
@@ -305,13 +306,16 @@ export class PaymentsService {
       const unpaid = contract.payments.filter((p) => p.status !== 'PAID');
       if (unpaid.length === 0) throw new BadRequestException('ไม่มีงวดค้างชำระ');
 
-      for (const payment of unpaid) {
+      for (const [idx, payment] of unpaid.entries()) {
         if (remaining.lte(0)) break;
 
         const amountDue = dRound(dSub(dAdd(payment.amountDue, payment.lateFee), payment.amountPaid));
         const payAmount = dRound(Prisma.Decimal.min(remaining, amountDue));
         const totalPaid = dRound(dAdd(payment.amountPaid, payAmount));
         const isPaidInFull = dGte(totalPaid, dRound(dAdd(payment.amountDue, payment.lateFee)));
+
+        // Attach evidenceUrl to the FIRST payment only (represents the transfer slip)
+        const isFirstPayment = idx === 0;
 
         const updated = await tx.payment.update({
           where: { id: payment.id },
@@ -322,6 +326,7 @@ export class PaymentsService {
             status: isPaidInFull ? 'PAID' : 'PARTIALLY_PAID',
             recordedById,
             notes: notes || payment.notes,
+            ...(isFirstPayment && evidenceUrl ? { evidenceUrl } : {}),
           },
         });
 

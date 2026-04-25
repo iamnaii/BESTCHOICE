@@ -154,31 +154,32 @@ export default function ContactLogDialog({ open, contract, onClose, recentLogs }
                 )}
 
                 {/* Recording Player — auto-logged from Yeastar */}
-                {log.recordingUrl && (
+                {log.recordingStorageTier === 'COLDLINE' && !log.recordingUrl ? (
                   <div className="mt-2">
                     <p className="text-xs text-muted-foreground leading-snug mb-1">เสียงบันทึกสาย</p>
-                    {log.recordingStorageTier === 'COLDLINE' ? (
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                        <span>กำลัง restore... รอสักครู่</span>
-                      </div>
-                    ) : (
-                      <audio
-                        controls
-                        src={log.recordingUrl}
-                        className="w-full h-8"
-                        preload="none"
-                      >
-                        เบราว์เซอร์ไม่รองรับ audio player
-                      </audio>
-                    )}
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      <span>กำลัง restore... รอสักครู่</span>
+                    </div>
                   </div>
-                )}
-                {log.yeastarRecordingPath && !log.recordingUrl && (
+                ) : log.recordingUrl ? (
+                  <div className="mt-2">
+                    <p className="text-xs text-muted-foreground leading-snug mb-1">เสียงบันทึกสาย</p>
+                    <audio
+                      controls
+                      src={log.recordingUrl}
+                      className="w-full h-8"
+                      preload="none"
+                      aria-label="เสียงบันทึกสาย"
+                    >
+                      เบราว์เซอร์ไม่รองรับ audio player
+                    </audio>
+                  </div>
+                ) : log.yeastarRecordingPath ? (
                   <p className="mt-1 text-xs text-muted-foreground leading-snug">
                     กำลังดาวน์โหลดเสียงจาก PBX...
                   </p>
-                )}
+                ) : null}
               </div>
             ))}
           </div>

@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react';
 import {
   PhoneCall,
   Banknote,
@@ -8,6 +9,10 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import type { TimelineEvent } from '../hooks/useCustomer360';
+import TimelineFilterChips, {
+  type TimelineFilterValue,
+} from './TimelineFilterChips';
+import { DateRangePicker, type DateRangeValue } from '@/components/ui/DateRangePicker';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -187,42 +192,81 @@ interface Props {
 }
 
 export default function Customer360Timeline({ events }: Props) {
-  if (events.length === 0) {
-    return (
-      <div className="text-center py-8 text-sm text-muted-foreground leading-snug">
-        ยังไม่มีกิจกรรม
-      </div>
-    );
-  }
+  const [filterType, setFilterType] = useState<TimelineFilterValue>('ALL');
+  const [dateRange, setDateRange] = useState<DateRangeValue>({ from: null, to: null });
 
-  const groups = groupByDate(events);
+  // Counts per type — computed from full event set so chips show stable totals
+  const counts = useMemo(() => {
+    const c: Partial<Record<TimelineFilterValue, number>> = { ALL: events.length };
+    for (const e of events) {
+      c[e.type] = (c[e.type] ?? 0) + 1;
+    }
+    return c;
+  }, [events]);
+
+  // Apply in-memory filter (timeline capped at 100 events backend-side)
+  const filteredEvents = useMemo(() => {
+    const fromMs = dateRange.from ? dateRange.from.getTime() : null;
+    const toMs = dateRange.to ? dateRange.to.getTime() : null;
+    return events.filter((e) => {
+      if (filterType !== 'ALL' && e.type !== filterType) return false;
+      if (fromMs !== null || toMs !== null) {
+        const t = new Date(e.timestamp).getTime();
+        if (fromMs !== null && t < fromMs) return false;
+        if (toMs !== null && t > toMs) return false;
+      }
+      return true;
+    });
+  }, [events, filterType, dateRange]);
+
+  const hasDateFilter = dateRange.from !== null || dateRange.to !== null;
+  const hasAnyFilter = filterType !== 'ALL' || hasDateFilter;
 
   return (
-    <div className="space-y-1">
-      {groups.map((group, groupIdx) => (
-        <div key={group.label}>
-          {/* Section header */}
-          <div
-            className={`text-xs uppercase tracking-wider text-muted-foreground mb-1 leading-snug ${
-              groupIdx === 0 ? '' : 'mt-4'
-            }`}
-          >
-            {group.label}
-          </div>
+    <div className="space-y-3">
+      {/* Filter controls */}
+      <div className="space-y-2">
+        <TimelineFilterChips value={filterType} onChange={setFilterType} counts={counts} />
+        <DateRangePicker value={dateRange} onChange={setDateRange} />
+      </div>
 
-          {/* Events */}
-          <div>
-            {group.items.map((event, idx) => (
-              <EventCard key={event.id} event={event} isFirst={idx === 0} />
-            ))}
-          </div>
+      {/* Empty states */}
+      {events.length === 0 ? (
+        <div className="text-center py-8 text-sm text-muted-foreground leading-snug">
+          ยังไม่มีกิจกรรม
         </div>
-      ))}
+      ) : filteredEvents.length === 0 ? (
+        <div className="text-center py-8 text-sm text-muted-foreground leading-snug">
+          ไม่พบกิจกรรมตามตัวกรอง
+        </div>
+      ) : (
+        <div className="space-y-1">
+          {groupByDate(filteredEvents).map((group, groupIdx) => (
+            <div key={group.label}>
+              {/* Section header */}
+              <div
+                className={`text-xs uppercase tracking-wider text-muted-foreground mb-1 leading-snug ${
+                  groupIdx === 0 ? '' : 'mt-4'
+                }`}
+              >
+                {group.label}
+              </div>
 
-      {/* Cap notice */}
-      {events.length >= 100 && (
-        <div className="pt-3 text-center text-xs text-muted-foreground leading-snug">
-          แสดง 100 รายการล่าสุด
+              {/* Events */}
+              <div>
+                {group.items.map((event, idx) => (
+                  <EventCard key={event.id} event={event} isFirst={idx === 0} />
+                ))}
+              </div>
+            </div>
+          ))}
+
+          {/* Cap notice — only when not filtering (full result hits cap) */}
+          {!hasAnyFilter && events.length >= 100 && (
+            <div className="pt-3 text-center text-xs text-muted-foreground leading-snug">
+              แสดง 100 รายการล่าสุด
+            </div>
+          )}
         </div>
       )}
     </div>

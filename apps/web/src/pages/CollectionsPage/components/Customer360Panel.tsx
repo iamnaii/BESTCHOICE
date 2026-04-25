@@ -9,6 +9,7 @@ import SmartCustomerPanel from './SmartCustomerPanel';
 import RelatedContractsTab from './RelatedContractsTab';
 import LegalCaseBanner from './LegalCaseBanner';
 import LegalCaseDialog from './LegalCaseDialog';
+import LineChatPanel from './LineChatPanel';
 import type { ContractRow } from '../types';
 
 interface Props {
@@ -18,7 +19,7 @@ interface Props {
   onSelectContract?: (contractId: string) => void;
 }
 
-type Tab = 'overview' | 'related';
+type Tab = 'overview' | 'related' | 'line';
 
 export default function Customer360Panel({
   contract,
@@ -33,10 +34,19 @@ export default function Customer360Panel({
   const [tab, setTab] = useState<Tab>('overview');
   const [legalCaseOpen, setLegalCaseOpen] = useState(false);
 
+  // LINE tab is only meaningful when the customer has a LINE ID. If they
+  // don't, hide the tab entirely and snap back to overview if the user was
+  // on LINE for a previously selected customer.
+  const hasLineId = !!(data?.detail.customer.lineId ?? contract?.customer.lineId);
+
   useEffect(() => {
     setTab('overview');
     setLegalCaseOpen(false);
   }, [contract?.id]);
+
+  useEffect(() => {
+    if (tab === 'line' && !hasLineId) setTab('overview');
+  }, [tab, hasLineId]);
 
   // Close on Escape
   useEffect(() => {
@@ -154,6 +164,11 @@ export default function Customer360Panel({
                 <TabButton active={tab === 'related'} onClick={() => setTab('related')}>
                   สัญญาทั้งหมด
                 </TabButton>
+                {hasLineId && (
+                  <TabButton active={tab === 'line'} onClick={() => setTab('line')}>
+                    LINE chat
+                  </TabButton>
+                )}
               </div>
 
               {tab === 'related' ? (
@@ -166,6 +181,8 @@ export default function Customer360Panel({
                     }}
                   />
                 </section>
+              ) : tab === 'line' ? (
+                <LineChatPanel customerId={customerId} />
               ) : (
                 <>
               <section className="px-5 pt-3">

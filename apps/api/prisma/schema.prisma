@@ -885,6 +885,8 @@ model Contract {
   onlineApplication        OnlineInstallmentApplication?
   assignedToId             String?                       @map("assigned_to_id") // collections agent assignment
   assignedTo               User?                         @relation("ContractAssignedTo", fields: [assignedToId], references: [id])
+  /// P3 Task 2 — set whenever assignedToId changes; used by auto-balance to skip recently re-assigned contracts (24h cool-down).
+  assignedAt               DateTime?                     @map("assigned_at")
 
   // Collections tracking fields (Phase 5)
   collectionNotes String?   @map("collection_notes") // internal notes from collector

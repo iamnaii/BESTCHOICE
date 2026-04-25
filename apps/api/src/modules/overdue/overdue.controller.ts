@@ -17,6 +17,7 @@ import { AnalyticsLeaderboardService } from './analytics-leaderboard.service';
 import { AnalyticsRecoveryService } from './analytics-recovery.service';
 import { StuckContractsService } from './stuck-contracts.service';
 import { ContractSnoozeService } from './snooze.service';
+import { AutoBalanceService } from './auto-balance.service';
 import { CreateSnoozeDto } from './dto/snooze.dto';
 import { AnalyticsQueryDto } from './dto/analytics-query.dto';
 import { CreateCallLogDto } from './dto/create-call-log.dto';
@@ -59,6 +60,7 @@ export class OverdueController {
     private analyticsRecoveryService: AnalyticsRecoveryService,
     private stuckContractsService: StuckContractsService,
     private snoozeService: ContractSnoozeService,
+    private autoBalanceService: AutoBalanceService,
   ) {}
 
   // --- Collections Workflow Hub endpoints (Plan 2) ---
@@ -527,6 +529,20 @@ export class OverdueController {
     @CurrentUser() user: { id: string },
   ) {
     return this.contractLetterService.cancel(id, user.id, body.reason);
+  }
+
+  // --- P3 Task 2 — Auto-balance with exclusions (OWNER only) ---
+
+  @Get('auto-balance/preview')
+  @Roles('OWNER')
+  previewAutoBalance() {
+    return this.autoBalanceService.preview();
+  }
+
+  @Post('auto-balance/execute')
+  @Roles('OWNER')
+  executeAutoBalance(@CurrentUser() user: { id: string }) {
+    return this.autoBalanceService.execute(user.id);
   }
 
   // --- Per-user snooze (B2 backend) ---

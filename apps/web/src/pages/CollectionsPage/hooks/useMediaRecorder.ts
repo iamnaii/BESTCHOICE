@@ -84,7 +84,6 @@ export function useMediaRecorder(): UseMediaRecorderReturn {
   }, []);
 
   // Final cleanup on unmount only (intentional empty deps)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => () => cleanup(), []);
 
   const stopRecording = useCallback(() => {

@@ -51,6 +51,7 @@ export class OverdueController {
     private dunningRetryService: DunningRetryService,
     private analyticsService: OverdueAnalyticsService,
     private analyticsAgingService: AnalyticsAgingService,
+    private analyticsLeaderboardService: AnalyticsLeaderboardService,
     private snoozeService: ContractSnoozeService,
   ) {}
 
@@ -548,6 +549,12 @@ export class OverdueController {
       userRole: user.role,
       userBranchId: user.branchId,
     });
+  }
+
+  @Get('analytics/leaderboard')
+  @Roles('OWNER')
+  getAnalyticsLeaderboard() {
+    return this.analyticsLeaderboardService.getLeaderboard();
   }
 
   // --- LINE retry endpoints ---

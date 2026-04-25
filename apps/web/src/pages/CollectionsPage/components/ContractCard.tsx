@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import {
   Phone,
   PhoneMissed,
@@ -17,6 +18,25 @@ import {
 import { formatDateShort } from '@/utils/formatters';
 import type { ContractRow } from '../types';
 import { agingBucket, agingColor, formatRelativeTime } from '../utils/cardIndicators';
+
+/**
+ * Customer 360 snapshot preview is a deliberate intent gesture (Task 11):
+ * - Desktop: 500ms hover dwell → opens floating panel
+ * - Mobile: 500ms long-press (touchstart-touchend with no scroll) → bottom sheet
+ *
+ * 500ms strikes the balance between "pops on accidental drag-by" (too fast)
+ * and "feels broken / unresponsive" (too slow). Material/macOS tooltip
+ * defaults are 400-700ms; we picked 500ms so a quick triple-glance through
+ * the list does NOT spawn a panel for every card.
+ */
+const PREVIEW_DELAY_MS = 500;
+
+export interface PreviewAnchor {
+  top: number;
+  left: number;
+  right: number;
+  bottom: number;
+}
 
 function priorityColor(daysOverdue: number): string {
   if (daysOverdue >= 30) return 'bg-destructive';
@@ -97,6 +117,15 @@ interface Props {
   onSendLine?: (c: ContractRow) => void;
   selected?: boolean;
   onToggleSelect?: (id: string) => void;
+  /** Highlight as keyboard-focused card (J/K navigation) */
+  focused?: boolean;
+  /**
+   * Fired after a 500ms hover dwell (desktop) or long-press (mobile).
+   * Caller renders the floating Customer360SnapshotCard at `anchor`.
+   */
+  onPreview?: (contract: ContractRow, anchor: PreviewAnchor) => void;
+  /** Cancel a pending preview (called when caller closes the panel). */
+  onPreviewCancel?: () => void;
 }
 
 export default function ContractCard({
@@ -106,9 +135,49 @@ export default function ContractCard({
   onSendLine,
   selected,
   onToggleSelect,
+  focused,
+  onPreview,
+  onPreviewCancel,
 }: Props) {
+  const focusRing = focused ? 'ring-2 ring-primary ring-offset-1 ring-offset-background' : '';
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const timerRef = useRef<number | null>(null);
+
+  function clearTimer() {
+    if (timerRef.current) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  }
+
+  function schedulePreview() {
+    if (!onPreview || !wrapperRef.current) return;
+    clearTimer();
+    const el = wrapperRef.current;
+    timerRef.current = window.setTimeout(() => {
+      const r = el.getBoundingClientRect();
+      onPreview(contract, { top: r.top, left: r.left, right: r.right, bottom: r.bottom });
+    }, PREVIEW_DELAY_MS);
+  }
+
+  function cancelPreview() {
+    clearTimer();
+  }
+
   return (
-    <div className="group relative flex rounded-xl border border-border/50 bg-card shadow-sm hover:shadow-card-hover transition-shadow overflow-hidden">
+    <div
+      ref={wrapperRef}
+      data-collections-card-id={contract.id}
+      onMouseEnter={schedulePreview}
+      onMouseLeave={cancelPreview}
+      onTouchStart={schedulePreview}
+      onTouchEnd={() => {
+        clearTimer();
+        onPreviewCancel?.();
+      }}
+      onTouchMove={cancelPreview}
+      className={`group relative flex rounded-xl border border-border/50 bg-card shadow-sm hover:shadow-card-hover transition-shadow overflow-hidden ${focusRing}`}
+    >
       {/* Checkbox column — only rendered when bulk-select is active */}
       {onToggleSelect && (
         <label className="flex items-start pt-5 pl-3 shrink-0 cursor-pointer">

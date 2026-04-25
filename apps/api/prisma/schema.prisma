@@ -1773,6 +1773,11 @@ model DunningRule {
   eventTrigger       DunningEventTrigger? @map("event_trigger")
   channel            DunningChannel
   messageTemplate    String               @map("message_template")
+  // P3 E2: optional reference to SmsTemplate by name. When set, the dunning
+  // engine prefers the template body from SmsTemplate over `messageTemplate`.
+  // Backward compatible — `messageTemplate` remains the source of truth when
+  // `templateName` is null or the referenced template is missing/inactive.
+  templateName       String?              @map("template_name")
   includePaymentLink Boolean              @default(false) @map("include_payment_link")
   autoExecute        Boolean              @default(true) @map("auto_execute")
   escalateTo         UserRole?            @map("escalate_to")

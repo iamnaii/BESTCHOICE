@@ -3,6 +3,7 @@ import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { UpdateExtensionDto } from './dto/update-extension.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -55,9 +56,9 @@ export class UsersController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   updateExtension(
     @CurrentUser('id') userId: string,
-    @Body('extension') extension: string,
+    @Body() dto: UpdateExtensionDto,
   ) {
-    return this.usersService.updateExtension(userId, extension);
+    return this.usersService.updateExtension(userId, dto.extension);
   }
 
   @Patch(':id')

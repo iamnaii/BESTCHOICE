@@ -52,7 +52,7 @@ export function CallButton({
       {isPending || status === 'calling' ? (
         <Loader2 className="h-4 w-4 animate-spin" />
       ) : (
-        <Phone className={cn('h-4 w-4', status === 'connected' && 'text-emerald-500')} />
+        <Phone className={cn('h-4 w-4', status === 'connected' && 'text-primary')} />
       )}
       {size !== 'icon' && (phone ?? 'โทร')}
     </Button>

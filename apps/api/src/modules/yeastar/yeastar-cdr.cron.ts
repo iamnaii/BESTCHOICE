@@ -30,8 +30,12 @@ export class YeastarCdrCron {
       let processed = 0;
 
       for (const cdr of records) {
-        const saved = await this.processCdr(cdr);
-        if (saved) processed++;
+        try {
+          const saved = await this.processCdr(cdr);
+          if (saved) processed++;
+        } catch (e) {
+          Sentry.captureException(e, { extra: { cdrId: cdr.id } });
+        }
       }
 
       if (processed > 0) {
@@ -87,7 +91,7 @@ export class YeastarCdrCron {
       where: { yeastarCallId: cdr.id },
       create: {
         contractId: contract.id,
-        callerId: agentUser?.id ?? 'system',
+        callerId: agentUser?.id,
         calledAt: new Date(cdr.startTime),
         result: 'AUTO_LOGGED',
         yeastarCallId: cdr.id,
@@ -98,7 +102,7 @@ export class YeastarCdrCron {
       },
       update: {
         duration: cdr.talkDuration ?? cdr.duration ?? 0,
-        yeastarRecordingPath: cdr.recordingFile ?? null,
+        ...(cdr.recordingFile ? { yeastarRecordingPath: cdr.recordingFile } : {}),
       },
     });
 

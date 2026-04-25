@@ -52,7 +52,14 @@ export class YeastarWebhookController {
     const config = await this.configService.getConfig('yeastar');
     const secret = config.webhookSecret;
 
-    if (!secret) return; // dev mode — skip if not configured
+    if (!secret) {
+      if (process.env.NODE_ENV === 'production') {
+        this.logger.warn('Yeastar webhook secret not configured — rejecting request in production');
+        throw new UnauthorizedException('Webhook secret not configured');
+      }
+      // dev mode: skip signature check
+      return;
+    }
 
     if (!token) throw new UnauthorizedException('Missing webhook token');
 
@@ -149,7 +156,7 @@ export class YeastarWebhookController {
       where: { yeastarCallId: cdrId },
       create: {
         contractId: contract.id,
-        callerId: agentUser?.id ?? 'system',
+        callerId: agentUser?.id,
         calledAt: startTime,
         result: 'AUTO_LOGGED',
         yeastarCallId: cdrId,
@@ -160,7 +167,7 @@ export class YeastarWebhookController {
       },
       update: {
         duration,
-        yeastarRecordingPath: recordingFile ?? null,
+        ...(recordingFile ? { yeastarRecordingPath: recordingFile } : {}),
       },
     });
 

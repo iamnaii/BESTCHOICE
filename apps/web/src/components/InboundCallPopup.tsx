@@ -30,12 +30,12 @@ export function InboundCallPopup() {
 
   return (
     <div className="fixed top-4 right-4 z-50 w-80 animate-in slide-in-from-right-4">
-      <Card className={cn('border-emerald-200 shadow-lg')}>
+      <Card className={cn('border-primary/20 shadow-lg')}>
         <CardContent className="p-4">
           <div className="flex items-start justify-between gap-2">
             <div className="flex items-center gap-2">
-              <div className="rounded-full bg-emerald-100 p-2">
-                <Phone className="h-4 w-4 text-emerald-600 animate-pulse" />
+              <div className="rounded-full bg-primary/10 p-2">
+                <Phone className="h-4 w-4 text-primary animate-pulse" />
               </div>
               <div>
                 <p className="text-sm font-semibold leading-snug">สายเข้า</p>

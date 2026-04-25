@@ -641,6 +641,7 @@ model User {
   yeastarExtension String? @map("yeastar_extension")
 
   @@index([branchId])
+  @@index([yeastarExtension])
   @@map("users")
 }
 
@@ -1739,7 +1740,7 @@ model NotificationLog {
 model CallLog {
   id                               String             @id @default(uuid())
   contractId                       String             @map("contract_id")
-  callerId                         String             @map("caller_id")
+  callerId                         String?            @map("caller_id")
   calledAt                         DateTime           @map("called_at")
   result                           String // e.g. ANSWERED, NO_ANSWER, PROMISED, REFUSED
   notes                            String?
@@ -1777,7 +1778,7 @@ model CallLog {
   // Restrict: collections call history (promises, refusals) is the
   // primary evidence trail for the dunning workflow.
   contract Contract @relation(fields: [contractId], references: [id], onDelete: Restrict)
-  caller   User     @relation(fields: [callerId], references: [id])
+  caller   User?    @relation(fields: [callerId], references: [id])
 
   @@index([contractId])
   @@index([callerId])

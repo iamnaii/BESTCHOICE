@@ -5,6 +5,7 @@ import {
   Query,
   UnauthorizedException,
   Logger,
+  Optional,
 } from '@nestjs/common';
 import { timingSafeEqual } from 'crypto';
 import * as Sentry from '@sentry/nestjs';
@@ -24,7 +25,7 @@ export class YeastarWebhookController {
   constructor(
     private readonly configService: IntegrationConfigService,
     private readonly prisma: PrismaService,
-    private readonly gateway: EventsGateway,
+    @Optional() private readonly gateway: EventsGateway | null,
   ) {}
 
   @Post()
@@ -103,7 +104,7 @@ export class YeastarWebhookController {
         })
       : null;
 
-    if (agentUser) {
+    if (agentUser && this.gateway) {
       this.gateway.emitToUser(agentUser.id, 'yeastar:inbound', {
         callId,
         callerNumber,

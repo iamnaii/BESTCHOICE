@@ -1,83 +1,133 @@
 import { useState, useEffect } from 'react';
-import { Loader2 } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { Phone, PhoneIncoming, PhoneOutgoing, Clock } from 'lucide-react';
+import api from '@/lib/api';
 import Modal from '@/components/ui/Modal';
 import { formatNumber } from '@/utils/formatters';
 import { useContactLog } from '../hooks/useContactLog';
-import CallResultChips, {
-  type CallResultTag,
-  type NegotiationResultTag,
-} from './CallResultChips';
-import VoiceMemoRecorder from './VoiceMemoRecorder';
-import type { ContractRow, CallResult } from '../types';
+import type { ContractRow } from '../types';
 
-/** CallLog item enriched with Yeastar recording fields — used in view mode. */
+/** CallLog item — what the GET /overdue/contracts/:id/call-logs?limit=1 returns. */
 interface CallLogItem {
   id: string;
   result: string;
   notes?: string | null;
   createdAt: string;
+  calledAt?: string | null;
   recordingUrl?: string | null;
   recordingStorageTier?: string | null;
   yeastarRecordingPath?: string | null;
-  autoLogged?: boolean;
+  yeastarCallId?: string | null;
   callDirection?: 'INBOUND' | 'OUTBOUND' | null;
+  callDurationSec?: number | null;
 }
 
 interface Props {
   open: boolean;
   contract: ContractRow | null;
   onClose: () => void;
-  /** Optional recent auto-logged call logs from Yeastar (shown in view mode above the form). */
-  recentLogs?: CallLogItem[];
   /**
-   * Optional callback fired right after a successful save, BEFORE the dialog
-   * closes. Used by FocusMode to record an AssignmentAction + auto-advance
-   * to the next contract. Existing call sites can omit this prop safely.
+   * Fired right after a successful save, BEFORE the dialog closes. Used by
+   * FocusMode to record an AssignmentAction + auto-advance.
    */
   onSaved?: (result: { outcome?: string; notes?: string }) => void;
 }
 
-const CALL_RESULT_LABELS: Record<CallResult, string> = {
-  NO_ANSWER: 'ไม่รับสาย',
-  ANSWERED: 'รับสาย',
-  PROMISED: 'นัดชำระ',
-  REFUSED: 'ปฏิเสธ',
-  WRONG_NUMBER: 'เบอร์ผิด',
-  OTHER: 'อื่น ๆ',
-};
+/**
+ * 6 outcomes that the collector picks. Yeastar already knows whether the
+ * customer answered — we don't ask the collector for that. We ask what the
+ * customer SAID, which is what Yeastar can't see.
+ */
+type Outcome =
+  | 'REQUESTED_EXTENSION' // ขอผ่อน
+  | 'WILL_PAY' // จะจ่าย → settlement fields show
+  | 'REFUSED' // ปฏิเสธ
+  | 'REQUESTED_RETURN' // ขอคืนเครื่อง
+  | 'NEGOTIATING' // กำลังเจรจา
+  | 'NOT_APPLICABLE'; // ไม่ได้คุย
 
-const LINE_NOTIFY_RESULTS: CallResult[] = ['NO_ANSWER', 'PROMISED', 'REFUSED'];
+const OUTCOMES: Array<{ value: Outcome; label: string; tone: string }> = [
+  { value: 'REQUESTED_EXTENSION', label: 'ขอผ่อน', tone: 'border-warning/40 hover:bg-warning/10' },
+  { value: 'WILL_PAY', label: 'จะจ่าย', tone: 'border-success/40 hover:bg-success/10' },
+  { value: 'NEGOTIATING', label: 'กำลังเจรจา', tone: 'border-primary/40 hover:bg-primary/10' },
+  { value: 'REQUESTED_RETURN', label: 'ขอคืนเครื่อง', tone: 'border-warning/40 hover:bg-warning/10' },
+  { value: 'REFUSED', label: 'ปฏิเสธ', tone: 'border-destructive/40 hover:bg-destructive/10' },
+  { value: 'NOT_APPLICABLE', label: 'ไม่ได้คุย', tone: 'border-border hover:bg-muted' },
+];
 
-const defaultForm = {
-  result: 'NO_ANSWER' as CallResult,
-  notes: '',
-  collectionNotes: '',
-  settlementDate: '',
-  settlementNotes: '',
-  // P1 Task 12 — quick-tag chip selections
-  callResult: null as CallResultTag | null,
-  negotiationResult: null as NegotiationResultTag | null,
-  // P2 Task 4 — voice memo S3 URL (set after upload completes)
-  voiceMemoUrl: null as string | null,
-};
+/** Map UI outcome → legacy `result` enum (CallResult-ish free string). */
+function outcomeToResult(o: Outcome): string {
+  switch (o) {
+    case 'WILL_PAY':
+      return 'PROMISED';
+    case 'REFUSED':
+      return 'REFUSED';
+    case 'NOT_APPLICABLE':
+      return 'NO_ANSWER';
+    default:
+      return 'ANSWERED';
+  }
+}
 
-// Derive tomorrow's date for min= on settlement date input
 function getTomorrow(): string {
   const d = new Date();
   d.setDate(d.getDate() + 1);
   return d.toISOString().split('T')[0];
 }
 
-export default function ContactLogDialog({ open, contract, onClose, recentLogs, onSaved }: Props) {
-  const [form, setForm] = useState(defaultForm);
+function formatDuration(sec: number): string {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${String(s).padStart(2, '0')} นาที`;
+}
+
+const RECENT_WINDOW_MS = 30 * 60 * 1000; // 30 minutes
+
+export default function ContactLogDialog({ open, contract, onClose, onSaved }: Props) {
+  const [outcome, setOutcome] = useState<Outcome | null>(null);
+  const [notes, setNotes] = useState('');
+  const [settlementDate, setSettlementDate] = useState('');
+  const [settlementNotes, setSettlementNotes] = useState('');
+
   const mutation = useContactLog();
 
-  // Reset form whenever dialog opens for a new contract
+  // Auto-fetch the latest CallLog when dialog opens — used to render the
+  // Yeastar info card so the collector doesn't have to manually re-tell the
+  // system whether the call was answered.
+  const recentCallQuery = useQuery<{ data: CallLogItem[] } | CallLogItem[]>({
+    queryKey: ['contract-call-log-latest', contract?.id],
+    queryFn: async () => {
+      const { data } = await api.get(`/overdue/contracts/${contract!.id}/call-logs?limit=1`);
+      return data;
+    },
+    enabled: open && !!contract,
+    refetchOnWindowFocus: false,
+    staleTime: 30 * 1000,
+  });
+
+  // Reset form on open / contract change
   useEffect(() => {
     if (open) {
-      setForm(defaultForm);
+      setOutcome(null);
+      setNotes('');
+      setSettlementDate('');
+      setSettlementNotes('');
     }
   }, [open, contract?.id]);
+
+  const recentList: CallLogItem[] = Array.isArray(recentCallQuery.data)
+    ? (recentCallQuery.data as CallLogItem[])
+    : ((recentCallQuery.data as { data: CallLogItem[] } | undefined)?.data ?? []);
+  const latestCall = recentList[0];
+  const isRecent =
+    latestCall &&
+    Date.now() -
+      new Date(latestCall.calledAt ?? latestCall.createdAt).getTime() <
+      RECENT_WINDOW_MS;
+
+  const showSettlement = outcome === 'WILL_PAY';
+  const canSave =
+    outcome !== null && (!showSettlement || settlementDate) && !mutation.isPending;
 
   function handleClose() {
     if (mutation.isPending) return;
@@ -85,246 +135,200 @@ export default function ContactLogDialog({ open, contract, onClose, recentLogs, 
   }
 
   function handleSubmit() {
-    if (!contract) return;
-    const payload = {
-      contractId: contract.id,
-      result: form.result,
-      notes: form.notes || undefined,
-      collectionNotes: form.collectionNotes || undefined,
-      settlementDate: form.result === 'PROMISED' ? form.settlementDate || undefined : undefined,
-      settlementNotes:
-        form.result === 'PROMISED' ? form.settlementNotes || undefined : undefined,
-      // Auto-save the quick-tag enum selections (Task 12). null → omit
-      // so the back-end stores null and the existing free-string `result`
-      // remains the legacy source of truth.
-      callResult: form.callResult ?? undefined,
-      negotiationResult: form.negotiationResult ?? undefined,
-      // Voice memo URL (Task 4) — uploaded to S3 ahead of submit; null/undefined
-      // when no recording was made.
-      voiceMemoUrl: form.voiceMemoUrl ?? undefined,
-    };
-    mutation.mutate(payload, {
-      onSuccess: () => {
-        // Notify parent (e.g. FocusMode) so it can record the assignment
-        // action + advance. We pass the form's `result` (free-string CallResult)
-        // as `outcome` since callers map their own enums; `notes` is the
-        // free-text notes field. callResult chip is also passed via outcome
-        // when present so callers can prefer the structured tag.
-        onSaved?.({
-          outcome: form.callResult ?? form.result,
-          notes: form.notes || undefined,
-        });
-        handleClose();
+    if (!contract || !outcome) return;
+    const result = outcomeToResult(outcome);
+    mutation.mutate(
+      {
+        contractId: contract.id,
+        result: result as any,
+        notes: notes || undefined,
+        negotiationResult: outcome as any,
+        settlementDate: showSettlement ? settlementDate || undefined : undefined,
+        settlementNotes: showSettlement ? settlementNotes || undefined : undefined,
       },
-    });
+      {
+        onSuccess: () => {
+          onSaved?.({ outcome, notes: notes || undefined });
+          handleClose();
+        },
+      },
+    );
   }
-
-  const showLineNotify = LINE_NOTIFY_RESULTS.includes(form.result as CallResult);
-  const showSettlement = form.result === 'PROMISED';
 
   return (
     <Modal
       isOpen={open}
       onClose={handleClose}
-      title={`บันทึกการติดต่อ — ${contract?.customer.name ?? ''}`}
+      title={`บันทึกผล — ${contract?.customer.name ?? ''}`}
       size="md"
     >
-      <div className="space-y-4">
+      <div className="space-y-5">
         {/* Contract summary */}
         {contract && (
-          <div className="rounded-lg bg-muted/40 px-3 py-2 text-xs text-muted-foreground leading-snug">
-            <span className="font-mono text-primary font-medium">{contract.contractNumber}</span>
-            {' · '}ค้าง{' '}
-            <span className="tabular-nums font-medium text-destructive">
-              {formatNumber(contract.outstanding)}
-            </span>{' '}
-            ฿ · {contract.daysOverdue} วัน
+          <div className="rounded-xl bg-muted/40 px-4 py-3 flex items-baseline justify-between gap-3">
+            <span className="font-mono text-sm text-primary font-medium leading-snug">
+              {contract.contractNumber}
+            </span>
+            <span className="text-sm leading-snug">
+              ค้าง{' '}
+              <span className="text-lg font-bold tabular-nums text-destructive">
+                {formatNumber(contract.outstanding)}
+              </span>{' '}
+              ฿ ·{' '}
+              <span className="font-medium">{contract.daysOverdue} วัน</span>
+            </span>
           </div>
         )}
 
-        {/* Auto-logged Yeastar calls — view mode */}
-        {recentLogs && recentLogs.length > 0 && (
-          <div className="space-y-2">
-            <p className="text-xs font-medium text-muted-foreground leading-snug">
-              บันทึกสายล่าสุด (Yeastar)
-            </p>
-            {recentLogs.map((log) => (
-              <div
-                key={log.id}
-                className="rounded-lg border border-border/50 bg-muted/30 px-3 py-2 text-sm leading-snug"
-              >
-                <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground mb-0.5">
-                  <span>
-                    {log.callDirection === 'INBOUND' ? 'โทรเข้า' : log.callDirection === 'OUTBOUND' ? 'โทรออก' : 'สาย'}
-                    {log.autoLogged && (
-                      <span className="ml-1.5 text-[10px] uppercase tracking-wider bg-primary/10 text-primary px-1 rounded">
-                        auto
-                      </span>
-                    )}
+        {/* Yeastar info card / no-recent fallback */}
+        {recentCallQuery.isLoading ? (
+          <div className="rounded-xl border border-border/50 bg-card px-4 py-3 text-sm text-muted-foreground leading-relaxed">
+            กำลังโหลดข้อมูลการโทร...
+          </div>
+        ) : isRecent && latestCall ? (
+          <div className="rounded-xl border border-success/30 bg-success/5 px-4 py-3">
+            <div className="flex items-center gap-2 text-sm font-semibold text-success leading-snug mb-2">
+              {latestCall.callDirection === 'INBOUND' ? (
+                <PhoneIncoming className="size-4" />
+              ) : (
+                <PhoneOutgoing className="size-4" />
+              )}
+              ระบบบันทึกการโทรอัตโนมัติ
+            </div>
+            <div className="flex items-center gap-3 text-sm text-foreground leading-snug">
+              <span className="inline-flex items-center gap-1.5">
+                <Clock className="size-3.5 text-muted-foreground" />
+                <span className="tabular-nums">
+                  {new Date(latestCall.calledAt ?? latestCall.createdAt).toLocaleTimeString('th-TH', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </span>
+              </span>
+              {latestCall.callDurationSec != null && latestCall.callDurationSec > 0 && (
+                <>
+                  <span className="text-muted-foreground">·</span>
+                  <span className="tabular-nums font-medium">
+                    {formatDuration(latestCall.callDurationSec)}
                   </span>
-                  <span className="tabular-nums">{new Date(log.createdAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</span>
-                </div>
-                {log.notes && (
-                  <p className="text-xs text-foreground leading-snug">{log.notes}</p>
-                )}
-
-                {/* Recording Player — auto-logged from Yeastar */}
-                {log.recordingStorageTier === 'COLDLINE' && !log.recordingUrl ? (
-                  <div className="mt-2">
-                    <p className="text-xs text-muted-foreground leading-snug mb-1">เสียงบันทึกสาย</p>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                      <span>กำลัง restore... รอสักครู่</span>
-                    </div>
-                  </div>
-                ) : log.recordingUrl ? (
-                  <div className="mt-2">
-                    <p className="text-xs text-muted-foreground leading-snug mb-1">เสียงบันทึกสาย</p>
-                    <audio
-                      controls
-                      src={log.recordingUrl}
-                      className="w-full h-8"
-                      preload="none"
-                      aria-label="เสียงบันทึกสาย"
-                    >
-                      เบราว์เซอร์ไม่รองรับ audio player
-                    </audio>
-                  </div>
-                ) : log.yeastarRecordingPath ? (
-                  <p className="mt-1 text-xs text-muted-foreground leading-snug">
-                    กำลังดาวน์โหลดเสียงจาก PBX...
-                  </p>
-                ) : null}
-              </div>
-            ))}
+                </>
+              )}
+              <span className="text-muted-foreground">·</span>
+              <span className="font-medium">
+                {latestCall.callDurationSec && latestCall.callDurationSec > 0
+                  ? 'รับสาย'
+                  : 'ไม่รับสาย'}
+              </span>
+            </div>
+            {latestCall.recordingUrl && (
+              <audio
+                controls
+                src={latestCall.recordingUrl}
+                preload="none"
+                className="w-full h-8 mt-3"
+                aria-label="ฟังเสียงโทร"
+              >
+                เบราว์เซอร์ไม่รองรับ audio player
+              </audio>
+            )}
+          </div>
+        ) : (
+          <div className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground leading-relaxed flex items-center gap-2">
+            <Phone className="size-4" />
+            ไม่พบบันทึกการโทรจากระบบ — ใช้กรณีโทรผ่านมือถือส่วนตัว / LINE / พบหน้า
           </div>
         )}
 
-        {/* Result select */}
+        {/* ผลการคุย — single chip group */}
         <div>
-          <label className="text-xs font-medium text-muted-foreground mb-1 block leading-snug">
-            ผลการติดต่อ <span className="text-destructive">*</span>
+          <label className="text-sm font-semibold text-foreground mb-2 block leading-snug">
+            ผลการคุย <span className="text-destructive">*</span>
           </label>
-          <select
-            value={form.result}
-            onChange={(e) => setForm({ ...form, result: e.target.value as CallResult })}
-            className="w-full px-3 py-2 border border-input rounded-lg text-sm leading-snug"
-          >
-            {(Object.keys(CALL_RESULT_LABELS) as CallResult[]).map((k) => (
-              <option key={k} value={k}>
-                {CALL_RESULT_LABELS[k]}
-              </option>
-            ))}
-          </select>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {OUTCOMES.map((o) => {
+              const selected = outcome === o.value;
+              return (
+                <button
+                  key={o.value}
+                  type="button"
+                  onClick={() => setOutcome(o.value)}
+                  className={`px-3 py-2.5 rounded-lg border text-sm font-medium leading-snug transition-colors ${
+                    selected
+                      ? 'border-primary bg-primary/10 text-primary'
+                      : `${o.tone} border bg-card text-foreground`
+                  }`}
+                >
+                  {o.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
-        {/* Settlement fields (shown only for PROMISED) */}
+        {/* Settlement fields — appear only when WILL_PAY */}
         {showSettlement && (
-          <div className="space-y-3 rounded-lg border border-border/50 bg-card p-3">
+          <div className="space-y-3 rounded-xl border border-success/30 bg-success/5 p-4">
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block leading-snug">
+              <label className="text-sm font-semibold text-foreground mb-1.5 block leading-snug">
                 วันที่นัดชำระ <span className="text-destructive">*</span>
               </label>
               <input
                 type="date"
                 min={getTomorrow()}
-                value={form.settlementDate}
-                onChange={(e) => setForm({ ...form, settlementDate: e.target.value })}
-                className="w-full px-3 py-2 border border-input rounded-lg text-sm leading-snug"
+                value={settlementDate}
+                onChange={(e) => setSettlementDate(e.target.value)}
+                className="w-full px-3 py-2.5 border border-input rounded-lg text-base leading-snug font-mono"
               />
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block leading-snug">
+              <label className="text-sm font-semibold text-foreground mb-1.5 block leading-snug">
                 รายละเอียดการนัด
               </label>
               <textarea
-                value={form.settlementNotes}
-                onChange={(e) => setForm({ ...form, settlementNotes: e.target.value })}
+                value={settlementNotes}
+                onChange={(e) => setSettlementNotes(e.target.value)}
                 placeholder="ระบุจำนวนเงินที่นัดจ่าย, ช่องทางการชำระ..."
                 rows={2}
-                className="w-full px-3 py-2 border border-input rounded-lg text-sm resize-none leading-snug"
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm resize-none leading-relaxed"
               />
             </div>
           </div>
         )}
 
-        {/* Quick-tag chips (Task 12) — captured into CallLog.callResult +
-            CallLog.negotiationResult for analytics. Independent from the
-            legacy free-string `result` select above. */}
-        <CallResultChips
-          callResult={form.callResult}
-          negotiationResult={form.negotiationResult}
-          onCallResultChange={(v) => setForm({ ...form, callResult: v })}
-          onNegotiationResultChange={(v) =>
-            setForm({ ...form, negotiationResult: v })
-          }
-        />
-
         {/* Notes */}
         <div>
-          <label className="text-xs font-medium text-muted-foreground mb-1 block leading-snug">
-            หมายเหตุการโทร
+          <label className="text-sm font-semibold text-foreground mb-1.5 block leading-snug">
+            บันทึก
           </label>
           <textarea
-            value={form.notes}
-            onChange={(e) => setForm({ ...form, notes: e.target.value })}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
             placeholder="รายละเอียดการสนทนา..."
-            rows={2}
-            className="w-full px-3 py-2 border border-input rounded-lg text-sm resize-none leading-snug"
+            rows={3}
+            className="w-full px-3 py-2.5 border border-input rounded-lg text-sm resize-none leading-relaxed"
           />
         </div>
 
-        {/* Voice memo recorder (Task 4) — optional evidence; URL persisted on
-            CallLog.voiceMemoUrl alongside the notes above. */}
-        <div>
-          <label className="text-xs font-medium text-muted-foreground mb-1 block leading-snug">
-            เสียงบันทึก (ทางเลือก)
-          </label>
-          <VoiceMemoRecorder
-            disabled={mutation.isPending}
-            uploadedUrl={form.voiceMemoUrl}
-            onUploaded={(url) => setForm((prev) => ({ ...prev, voiceMemoUrl: url }))}
-            onCleared={() => setForm((prev) => ({ ...prev, voiceMemoUrl: null }))}
-          />
-        </div>
-
-        {/* Collection notes */}
-        <div>
-          <label className="text-xs font-medium text-muted-foreground mb-1 block leading-snug">
-            บันทึกผู้ติดตาม (อัปเดตบนสัญญา)
-          </label>
-          <textarea
-            value={form.collectionNotes}
-            onChange={(e) => setForm({ ...form, collectionNotes: e.target.value })}
-            placeholder="บันทึกสถานะการติดตาม..."
-            rows={2}
-            className="w-full px-3 py-2 border border-input rounded-lg text-sm resize-none leading-snug"
-          />
-        </div>
-
-        {/* LINE notify banner */}
-        {showLineNotify && (
-          <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-primary leading-snug">
-            แจ้งเตือน: ระบบจะส่ง LINE ทันทีหลังบันทึก
+        {/* LINE notify hint */}
+        {(outcome === 'WILL_PAY' || outcome === 'REFUSED' || outcome === 'NOT_APPLICABLE') && (
+          <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-primary leading-snug">
+            ระบบจะส่ง LINE แจ้งเตือนลูกค้าทันทีหลังบันทึก
           </div>
         )}
 
         {/* Actions */}
-        <div className="flex gap-2 justify-end pt-1">
+        <div className="flex gap-2 justify-end pt-2 border-t border-border/40">
           <button
             onClick={handleClose}
             disabled={mutation.isPending}
-            className="px-4 py-2 text-sm border border-input rounded-lg hover:bg-muted transition-colors disabled:opacity-50"
+            className="px-5 py-2.5 text-base border border-input rounded-lg hover:bg-muted transition-colors disabled:opacity-50"
           >
             ยกเลิก
           </button>
           <button
             onClick={handleSubmit}
-            disabled={
-              mutation.isPending ||
-              (showSettlement && !form.settlementDate)
-            }
-            className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
+            disabled={!canSave}
+            className="px-5 py-2.5 text-base bg-primary text-primary-foreground rounded-lg font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50"
           >
             {mutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
           </button>

@@ -2,12 +2,14 @@ import {
   Injectable,
   UnauthorizedException,
   BadRequestException,
+  NotFoundException,
   Logger,
 } from '@nestjs/common';
 import { JwtService, JwtSignOptions } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto, ResetPasswordDto } from './dto/password-reset.dto';
@@ -492,6 +494,24 @@ export class AuthService {
     }
 
     return user;
+  }
+
+  /**
+   * Merge incoming preference patch into User.preferences (Json field).
+   * Used by the frontend (Collections view toggle, etc.) to persist
+   * per-user UI choices. Existing keys are preserved; only the keys
+   * present in `prefs` are overwritten.
+   */
+  async updatePreferences(userId: string, prefs: Record<string, unknown>) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('ไม่พบผู้ใช้');
+    const current = (user.preferences as Record<string, unknown> | null) ?? {};
+    const merged = { ...current, ...prefs };
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: { preferences: merged as Prisma.InputJsonValue },
+      select: { id: true, preferences: true },
+    });
   }
 
   /**

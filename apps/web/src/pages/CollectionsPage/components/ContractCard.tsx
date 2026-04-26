@@ -159,10 +159,13 @@ export default function ContractCard({
           </div>
 
           <div className="text-right shrink-0">
-            <div className="text-lg font-bold tabular-nums text-destructive leading-snug">
-              {formatNumber(contract.outstanding)} ฿
+            <div className="flex items-baseline gap-1 justify-end leading-none">
+              <span className="text-2xl sm:text-3xl font-bold tabular-nums text-destructive tracking-tight">
+                {formatNumber(contract.outstanding)}
+              </span>
+              <span className="text-base font-semibold text-destructive">฿</span>
             </div>
-            <div className="text-xs text-muted-foreground leading-snug mt-0.5">ค้างชำระ</div>
+            <div className="text-xs text-muted-foreground leading-snug mt-1">ค้างชำระ</div>
           </div>
         </div>
 

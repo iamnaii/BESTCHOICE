@@ -7,7 +7,6 @@ import { formatNumber } from '@/utils/formatters';
 import { useContactLog } from '../hooks/useContactLog';
 import type { ContractRow } from '../types';
 
-/** CallLog item — what the GET /overdue/contracts/:id/call-logs?limit=1 returns. */
 interface CallLogItem {
   id: string;
   result: string;
@@ -26,53 +25,69 @@ interface Props {
   open: boolean;
   contract: ContractRow | null;
   onClose: () => void;
-  /**
-   * Fired right after a successful save, BEFORE the dialog closes. Used by
-   * FocusMode to record an AssignmentAction + auto-advance.
-   */
   onSaved?: (result: { outcome?: string; notes?: string }) => void;
 }
 
 /**
- * 6 outcomes that the collector picks. Yeastar already knows whether the
- * customer answered — we don't ask the collector for that. We ask what the
- * customer SAID, which is what Yeastar can't see.
+ * 3 outcomes — covers what collectors actually need to log:
+ * - WILL_PAY: customer agreed to pay (with date)
+ * - NO_ANSWER: phone rang, customer didn't pick up
+ * - UNREACHABLE: couldn't connect at all (phone off, wrong number, disconnected)
  */
-type Outcome =
-  | 'REQUESTED_EXTENSION' // ขอผ่อน
-  | 'WILL_PAY' // จะจ่าย → settlement fields show
-  | 'REFUSED' // ปฏิเสธ
-  | 'REQUESTED_RETURN' // ขอคืนเครื่อง
-  | 'NEGOTIATING' // กำลังเจรจา
-  | 'NOT_APPLICABLE'; // ไม่ได้คุย
+type Outcome = 'WILL_PAY' | 'NO_ANSWER' | 'UNREACHABLE';
 
-const OUTCOMES: Array<{ value: Outcome; label: string; tone: string }> = [
-  { value: 'REQUESTED_EXTENSION', label: 'ขอผ่อน', tone: 'border-warning/40 hover:bg-warning/10' },
-  { value: 'WILL_PAY', label: 'จะจ่าย', tone: 'border-success/40 hover:bg-success/10' },
-  { value: 'NEGOTIATING', label: 'กำลังเจรจา', tone: 'border-primary/40 hover:bg-primary/10' },
-  { value: 'REQUESTED_RETURN', label: 'ขอคืนเครื่อง', tone: 'border-warning/40 hover:bg-warning/10' },
-  { value: 'REFUSED', label: 'ปฏิเสธ', tone: 'border-destructive/40 hover:bg-destructive/10' },
-  { value: 'NOT_APPLICABLE', label: 'ไม่ได้คุย', tone: 'border-border hover:bg-muted' },
+const OUTCOMES: Array<{
+  value: Outcome;
+  label: string;
+  tone: string;
+  description: string;
+}> = [
+  {
+    value: 'WILL_PAY',
+    label: 'นัดชำระ',
+    tone: 'border-success/40 hover:bg-success/10',
+    description: 'ลูกค้ารับสาย + ตกลงวันจะจ่าย',
+  },
+  {
+    value: 'NO_ANSWER',
+    label: 'ไม่รับสาย',
+    tone: 'border-warning/40 hover:bg-warning/10',
+    description: 'โทรไปแล้วไม่รับ',
+  },
+  {
+    value: 'UNREACHABLE',
+    label: 'ติดต่อไม่ได้',
+    tone: 'border-destructive/40 hover:bg-destructive/10',
+    description: 'ปิดเครื่อง / เบอร์ผิด / ตัดสาย',
+  },
 ];
 
-/** Map UI outcome → legacy `result` enum (CallResult-ish free string). */
-function outcomeToResult(o: Outcome): string {
-  switch (o) {
-    case 'WILL_PAY':
-      return 'PROMISED';
-    case 'REFUSED':
-      return 'REFUSED';
-    case 'NOT_APPLICABLE':
-      return 'NO_ANSWER';
-    default:
-      return 'ANSWERED';
-  }
+const QUICK_DATE_OPTIONS: Array<{
+  label: string;
+  offsetDays?: number;
+  endOfMonth?: boolean;
+}> = [
+  { label: 'พรุ่งนี้', offsetDays: 1 },
+  { label: 'อีก 3 วัน', offsetDays: 3 },
+  { label: 'อีก 7 วัน', offsetDays: 7 },
+  { label: 'อีก 15 วัน', offsetDays: 15 },
+  { label: 'สิ้นเดือน', endOfMonth: true },
+];
+
+function dateOffset(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().split('T')[0];
+}
+
+function endOfThisMonth(): string {
+  const d = new Date();
+  const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+  return last.toISOString().split('T')[0];
 }
 
 function getTomorrow(): string {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  return d.toISOString().split('T')[0];
+  return dateOffset(1);
 }
 
 function formatDuration(sec: number): string {
@@ -81,7 +96,7 @@ function formatDuration(sec: number): string {
   return `${m}:${String(s).padStart(2, '0')} นาที`;
 }
 
-const RECENT_WINDOW_MS = 30 * 60 * 1000; // 30 minutes
+const RECENT_WINDOW_MS = 30 * 60 * 1000;
 
 export default function ContactLogDialog({ open, contract, onClose, onSaved }: Props) {
   const [outcome, setOutcome] = useState<Outcome | null>(null);
@@ -91,9 +106,6 @@ export default function ContactLogDialog({ open, contract, onClose, onSaved }: P
 
   const mutation = useContactLog();
 
-  // Auto-fetch the latest CallLog when dialog opens — used to render the
-  // Yeastar info card so the collector doesn't have to manually re-tell the
-  // system whether the call was answered.
   const recentCallQuery = useQuery<{ data: CallLogItem[] } | CallLogItem[]>({
     queryKey: ['contract-call-log-latest', contract?.id],
     queryFn: async () => {
@@ -105,7 +117,6 @@ export default function ContactLogDialog({ open, contract, onClose, onSaved }: P
     staleTime: 30 * 1000,
   });
 
-  // Reset form on open / contract change
   useEffect(() => {
     if (open) {
       setOutcome(null);
@@ -121,9 +132,7 @@ export default function ContactLogDialog({ open, contract, onClose, onSaved }: P
   const latestCall = recentList[0];
   const isRecent =
     latestCall &&
-    Date.now() -
-      new Date(latestCall.calledAt ?? latestCall.createdAt).getTime() <
-      RECENT_WINDOW_MS;
+    Date.now() - new Date(latestCall.calledAt ?? latestCall.createdAt).getTime() < RECENT_WINDOW_MS;
 
   const showSettlement = outcome === 'WILL_PAY';
   const canSave =
@@ -134,15 +143,32 @@ export default function ContactLogDialog({ open, contract, onClose, onSaved }: P
     onClose();
   }
 
+  function pickQuickDate(opt: (typeof QUICK_DATE_OPTIONS)[number]) {
+    if (opt.endOfMonth) setSettlementDate(endOfThisMonth());
+    else if (opt.offsetDays != null) setSettlementDate(dateOffset(opt.offsetDays));
+  }
+
   function handleSubmit() {
     if (!contract || !outcome) return;
-    const result = outcomeToResult(outcome);
+    const result =
+      outcome === 'WILL_PAY'
+        ? 'PROMISED'
+        : outcome === 'NO_ANSWER'
+          ? 'NO_ANSWER'
+          : 'NO_ANSWER'; // UNREACHABLE → legacy result NO_ANSWER (Yeastar covers fine-grained reason via callResult)
+
+    const callResult =
+      outcome === 'WILL_PAY' ? 'ANSWERED' : outcome === 'NO_ANSWER' ? 'NO_ANSWER' : 'UNREACHABLE';
+
+    const negotiationResult = outcome === 'WILL_PAY' ? 'WILL_PAY' : 'NOT_APPLICABLE';
+
     mutation.mutate(
       {
         contractId: contract.id,
         result: result as any,
         notes: notes || undefined,
-        negotiationResult: outcome as any,
+        callResult: callResult as any,
+        negotiationResult: negotiationResult as any,
         settlementDate: showSettlement ? settlementDate || undefined : undefined,
         settlementNotes: showSettlement ? settlementNotes || undefined : undefined,
       },
@@ -174,8 +200,7 @@ export default function ContactLogDialog({ open, contract, onClose, onSaved }: P
               <span className="text-lg font-bold tabular-nums text-destructive">
                 {formatNumber(contract.outstanding)}
               </span>{' '}
-              ฿ ·{' '}
-              <span className="font-medium">{contract.daysOverdue} วัน</span>
+              ฿ · <span className="font-medium">{contract.daysOverdue} วัน</span>
             </span>
           </div>
         )}
@@ -239,12 +264,12 @@ export default function ContactLogDialog({ open, contract, onClose, onSaved }: P
           </div>
         )}
 
-        {/* ผลการคุย — single chip group */}
+        {/* ผลการคุย — 3 chips */}
         <div>
           <label className="text-sm font-semibold text-foreground mb-2 block leading-snug">
             ผลการคุย <span className="text-destructive">*</span>
           </label>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             {OUTCOMES.map((o) => {
               const selected = outcome === o.value;
               return (
@@ -252,26 +277,60 @@ export default function ContactLogDialog({ open, contract, onClose, onSaved }: P
                   key={o.value}
                   type="button"
                   onClick={() => setOutcome(o.value)}
-                  className={`px-3 py-2.5 rounded-lg border text-sm font-medium leading-snug transition-colors ${
+                  className={`px-4 py-3.5 rounded-xl border text-left transition-colors ${
                     selected
                       ? 'border-primary bg-primary/10 text-primary'
                       : `${o.tone} border bg-card text-foreground`
                   }`}
                 >
-                  {o.label}
+                  <div className="text-base font-semibold leading-snug">{o.label}</div>
+                  <div
+                    className={`text-xs leading-snug mt-1 ${
+                      selected ? 'text-primary/80' : 'text-muted-foreground'
+                    }`}
+                  >
+                    {o.description}
+                  </div>
                 </button>
               );
             })}
           </div>
         </div>
 
-        {/* Settlement fields — appear only when WILL_PAY */}
+        {/* Settlement card — appears only for "นัดชำระ" */}
         {showSettlement && (
           <div className="space-y-3 rounded-xl border border-success/30 bg-success/5 p-4">
             <div>
-              <label className="text-sm font-semibold text-foreground mb-1.5 block leading-snug">
-                วันที่นัดชำระ <span className="text-destructive">*</span>
+              <label className="text-sm font-semibold text-foreground mb-2 block leading-snug">
+                วันที่นัดจ่าย <span className="text-destructive">*</span>
               </label>
+
+              {/* Quick date pills */}
+              <div className="flex flex-wrap gap-1.5 mb-2.5">
+                {QUICK_DATE_OPTIONS.map((opt) => {
+                  const computed = opt.endOfMonth
+                    ? endOfThisMonth()
+                    : opt.offsetDays != null
+                      ? dateOffset(opt.offsetDays)
+                      : '';
+                  const active = settlementDate === computed;
+                  return (
+                    <button
+                      key={opt.label}
+                      type="button"
+                      onClick={() => pickQuickDate(opt)}
+                      className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+                        active
+                          ? 'bg-primary text-primary-foreground border-primary'
+                          : 'bg-card border-input hover:bg-muted'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+
               <input
                 type="date"
                 min={getTomorrow()}
@@ -280,6 +339,7 @@ export default function ContactLogDialog({ open, contract, onClose, onSaved }: P
                 className="w-full px-3 py-2.5 border border-input rounded-lg text-base leading-snug font-mono"
               />
             </div>
+
             <div>
               <label className="text-sm font-semibold text-foreground mb-1.5 block leading-snug">
                 รายละเอียดการนัด
@@ -287,7 +347,7 @@ export default function ContactLogDialog({ open, contract, onClose, onSaved }: P
               <textarea
                 value={settlementNotes}
                 onChange={(e) => setSettlementNotes(e.target.value)}
-                placeholder="ระบุจำนวนเงินที่นัดจ่าย, ช่องทางการชำระ..."
+                placeholder="จำนวนเงินที่นัดจ่าย, ช่องทางการชำระ..."
                 rows={2}
                 className="w-full px-3 py-2 border border-input rounded-lg text-sm resize-none leading-relaxed"
               />
@@ -309,8 +369,8 @@ export default function ContactLogDialog({ open, contract, onClose, onSaved }: P
           />
         </div>
 
-        {/* LINE notify hint */}
-        {(outcome === 'WILL_PAY' || outcome === 'REFUSED' || outcome === 'NOT_APPLICABLE') && (
+        {/* LINE notify hint — fires for outcomes that should reach customer */}
+        {outcome && (
           <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-primary leading-snug">
             ระบบจะส่ง LINE แจ้งเตือนลูกค้าทันทีหลังบันทึก
           </div>

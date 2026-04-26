@@ -1,6 +1,7 @@
 import { ConflictException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
+import { bangkokStartOfDay } from '../../utils/date.util';
 
 @Injectable()
 export class PoolService {
@@ -10,7 +11,7 @@ export class PoolService {
   ) {}
 
   async list(branchId?: string) {
-    const today = startOfDay(new Date());
+    const today = bangkokStartOfDay(new Date());
     return this.prisma.dailyAssignment.findMany({
       where: {
         date: today,
@@ -64,8 +65,3 @@ export class PoolService {
   }
 }
 
-function startOfDay(d: Date): Date {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}

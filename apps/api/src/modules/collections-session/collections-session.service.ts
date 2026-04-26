@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ActionDto } from './dto/action.dto';
 import { SkipDto } from './dto/skip.dto';
+import { bangkokStartOfDay } from '../../utils/date.util';
 
 const ETA_PER_CONTRACT_MIN = 5;
 
@@ -10,7 +11,7 @@ export class CollectionsSessionService {
   constructor(private prisma: PrismaService) {}
 
   async getMySession(userId: string) {
-    const today = startOfDay(new Date());
+    const today = bangkokStartOfDay(new Date());
 
     const assignments = await this.prisma.dailyAssignment.findMany({
       where: {
@@ -100,7 +101,7 @@ export class CollectionsSessionService {
   }
 
   async startSession(userId: string) {
-    const today = startOfDay(new Date());
+    const today = bangkokStartOfDay(new Date());
     await this.prisma.dailyAssignment.updateMany({
       where: { date: today, collectorId: userId, status: 'PENDING', startedAt: null },
       data: { startedAt: new Date() },
@@ -209,8 +210,3 @@ export class CollectionsSessionService {
   }
 }
 
-function startOfDay(d: Date): Date {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}

@@ -4,6 +4,7 @@ import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AutoAssignService } from './auto-assign.service';
 import { CollectionsSummaryService } from './collections-summary.service';
+import { bangkokStartOfDay } from '../../utils/date.util';
 
 @Injectable()
 export class CollectionsSessionCron {
@@ -35,7 +36,7 @@ export class CollectionsSessionCron {
   async runAutoLock(): Promise<void> {
     this.logger.log('Starting collections auto-lock');
     try {
-      const today = startOfDay(new Date());
+      const today = bangkokStartOfDay(new Date());
       const result = await this.prisma.dailyAssignment.updateMany({
         where: { date: today, lockedAt: null, status: 'PENDING' },
         data: { lockedAt: new Date() },
@@ -89,8 +90,3 @@ export class CollectionsSessionCron {
   }
 }
 
-function startOfDay(d: Date): Date {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}

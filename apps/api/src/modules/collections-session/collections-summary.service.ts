@@ -2,6 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LineOaService } from '../line-oa/line-oa.service';
 import { LineMessagePayload } from '../line-oa/dto/webhook-event.dto';
+import { UserRole } from '@prisma/client';
+import { bangkokStartOfDay } from '../../utils/date.util';
 
 interface CollectorSummary {
   name: string;
@@ -21,11 +23,11 @@ export class CollectionsSummaryService {
   ) {}
 
   async sendDailySummary(date: Date): Promise<{ recipients: number; sent: number }> {
-    const dateOnly = startOfDay(date);
+    const dateOnly = bangkokStartOfDay(date);
 
     const collectors = await this.prisma.user.findMany({
       where: {
-        role: 'SALES' as any,
+        role: UserRole.SALES,
         deletedAt: null,
       },
       select: { id: true, name: true },
@@ -69,22 +71,24 @@ export class CollectionsSummaryService {
 
     const owners = await this.prisma.user.findMany({
       where: {
-        role: 'OWNER' as any,
+        role: UserRole.OWNER,
         deletedAt: null,
         lineId: { not: null },
       },
       select: { id: true, lineId: true, name: true },
     });
 
-    let sent = 0;
-    for (const owner of owners) {
-      try {
-        const payload: LineMessagePayload = { type: 'text', text: message };
-        await this.line.pushMessage(owner.lineId!, [payload]);
-        sent++;
-      } catch (err) {
-        this.logger.warn(`Failed to push summary to OWNER ${owner.id}: ${err}`);
-      }
+    const results = await Promise.allSettled(
+      owners.map((owner) =>
+        this.line.pushMessage(owner.lineId!, [
+          { type: 'text', text: message } as LineMessagePayload,
+        ]),
+      ),
+    );
+    const sent = results.filter((r) => r.status === 'fulfilled').length;
+    const failed = results.length - sent;
+    if (failed > 0) {
+      this.logger.warn(`Daily summary: ${failed} OWNERs failed to receive`);
     }
 
     this.logger.log(`Daily summary: ${sent}/${owners.length} OWNERs notified`);
@@ -126,8 +130,3 @@ export class CollectionsSummaryService {
   }
 }
 
-function startOfDay(d: Date): Date {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}

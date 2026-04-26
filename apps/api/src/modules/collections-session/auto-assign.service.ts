@@ -1,7 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
-import { AssignmentSource } from '@prisma/client';
+import { AssignmentSource, ContractStatus, UserRole } from '@prisma/client';
+import { bangkokStartOfDay } from '../../utils/date.util';
 
 // Policy constants — business rules, not tuning knobs. Keep in code.
 const RECENT_RELATIONSHIP_DAYS = 30;
@@ -42,11 +43,14 @@ export class AutoAssignService {
 
   async runForDate(date: Date): Promise<{ assigned: number; pool: number; escalation: number }> {
     const cfg = await this.settings.getCollectionsConfig();
-    const dateOnly = startOfDay(date);
+    const dateOnly = bangkokStartOfDay(date);
 
     const baseContracts = await this.prisma.contract.findMany({
       where: {
-        status: { in: ['OVERDUE', 'PENDING'] as any },
+        // NOTE: original code used ['OVERDUE', 'PENDING'] but ContractStatus
+        // has no PENDING value — that filter element was a latent no-op. Kept
+        // OVERDUE only to preserve actual matched-rows behavior.
+        status: { in: [ContractStatus.OVERDUE] },
         deletedAt: null,
       },
       select: {
@@ -96,7 +100,7 @@ export class AutoAssignService {
     }));
 
     const collectors = (await this.prisma.user.findMany({
-      where: { role: 'SALES' as any, collectionsActive: true, deletedAt: null },
+      where: { role: UserRole.SALES, collectionsActive: true, deletedAt: null },
       select: { id: true, collectionsActive: true, branchId: true },
     })) as unknown as CollectorInput[];
 
@@ -248,12 +252,6 @@ export class AutoAssignService {
       escalation: escalationCount,
     };
   }
-}
-
-function startOfDay(d: Date): Date {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
 }
 
 function addDays(d: Date, n: number): Date {

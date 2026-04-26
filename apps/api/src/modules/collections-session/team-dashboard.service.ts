@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { UserRole } from '@prisma/client';
+import { bangkokStartOfDay } from '../../utils/date.util';
 
 const IDLE_HOURS_THRESHOLD = 2;
 
@@ -38,13 +40,13 @@ export class TeamDashboardService {
   constructor(private prisma: PrismaService) {}
 
   async getDashboard(branchScope?: string[]): Promise<TeamDashboardResponse> {
-    const startOfToday = startOfDay(new Date());
+    const startOfToday = bangkokStartOfDay(new Date());
     const endOfToday = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000);
 
     // Active SALES collectors (scoped if BRANCH_MANAGER)
     const collectors = await this.prisma.user.findMany({
       where: {
-        role: 'SALES' as any,
+        role: UserRole.SALES,
         deletedAt: null,
         ...(branchScope ? { branchId: { in: branchScope } } : {}),
       },
@@ -53,76 +55,87 @@ export class TeamDashboardService {
 
     const collectorIds = collectors.map((c) => c.id);
 
-    // Today's CallLogs (per collector)
-    const todayCalls = collectorIds.length
-      ? await this.prisma.callLog.groupBy({
-          by: ['callerId'],
+    // Run independent queries in parallel — endpoint is polled every 30s.
+    const [todayCalls, todayPayments, todayAssignments, promisesAgg, brokenAdded] =
+      await Promise.all([
+        // Today's CallLogs (per collector)
+        collectorIds.length
+          ? this.prisma.callLog.groupBy({
+              by: ['callerId'],
+              where: {
+                callerId: { in: collectorIds },
+                calledAt: { gte: startOfToday, lt: endOfToday },
+                deletedAt: null,
+              },
+              _count: { _all: true },
+              _max: { calledAt: true },
+            })
+          : Promise.resolve([] as Array<{
+              callerId: string | null;
+              _count: { _all: number };
+              _max: { calledAt: Date | null };
+            }>),
+        // Today's payments collected (link via Payment.recordedById, sum amountPaid)
+        collectorIds.length
+          ? this.prisma.payment.groupBy({
+              by: ['recordedById'],
+              where: {
+                recordedById: { in: collectorIds },
+                paidAt: { gte: startOfToday, lt: endOfToday },
+                deletedAt: null,
+              },
+              _sum: { amountPaid: true },
+            })
+          : Promise.resolve([] as Array<{
+              recordedById: string | null;
+              _sum: { amountPaid: any };
+            }>),
+        // Today's DailyAssignment count per collector (the workload)
+        collectorIds.length
+          ? this.prisma.dailyAssignment.groupBy({
+              by: ['collectorId'],
+              where: {
+                collectorId: { in: collectorIds },
+                date: startOfToday,
+                deletedAt: null,
+              },
+              _count: { _all: true },
+            })
+          : Promise.resolve([] as Array<{
+              collectorId: string | null;
+              _count: { _all: number };
+            }>),
+        // Today's promises (CallLog with PROMISED today)
+        this.prisma.callLog.count({
           where: {
-            callerId: { in: collectorIds },
+            result: 'PROMISED',
             calledAt: { gte: startOfToday, lt: endOfToday },
             deletedAt: null,
+            ...(collectorIds.length ? { callerId: { in: collectorIds } } : {}),
           },
-          _count: { _all: true },
-          _max: { calledAt: true },
-        })
-      : [];
+        }),
+        // Broken promises set today
+        this.prisma.callLog.count({
+          where: {
+            brokenAt: { gte: startOfToday, lt: endOfToday },
+            deletedAt: null,
+            ...(collectorIds.length ? { callerId: { in: collectorIds } } : {}),
+          },
+        }),
+      ]);
+
     const callsByCollector = new Map(
       todayCalls.map((c) => [
         c.callerId!,
         { count: c._count._all, lastAt: c._max.calledAt },
       ]),
     );
-
-    // Today's payments collected (link via Payment.recordedById, sum amountPaid)
-    const todayPayments = collectorIds.length
-      ? await this.prisma.payment.groupBy({
-          by: ['recordedById'],
-          where: {
-            recordedById: { in: collectorIds },
-            paidAt: { gte: startOfToday, lt: endOfToday },
-            deletedAt: null,
-          },
-          _sum: { amountPaid: true },
-        })
-      : [];
     const collectedByCollector = new Map(
       todayPayments.map((p) => [p.recordedById!, Number(p._sum.amountPaid ?? 0)]),
     );
-
-    // Today's DailyAssignment count per collector (the workload)
-    const todayAssignments = collectorIds.length
-      ? await this.prisma.dailyAssignment.groupBy({
-          by: ['collectorId'],
-          where: {
-            collectorId: { in: collectorIds },
-            date: startOfToday,
-            deletedAt: null,
-          },
-          _count: { _all: true },
-        })
-      : [];
     const assignmentsByCollector = new Map(
       todayAssignments.map((a) => [a.collectorId!, a._count._all]),
     );
-
-    // Today's promises (CallLog with PROMISED today)
-    const promisesAgg = await this.prisma.callLog.count({
-      where: {
-        result: 'PROMISED',
-        calledAt: { gte: startOfToday, lt: endOfToday },
-        deletedAt: null,
-        ...(collectorIds.length ? { callerId: { in: collectorIds } } : {}),
-      },
-    });
-
-    // Broken promises set today
-    const brokenAdded = await this.prisma.callLog.count({
-      where: {
-        brokenAt: { gte: startOfToday, lt: endOfToday },
-        deletedAt: null,
-        ...(collectorIds.length ? { callerId: { in: collectorIds } } : {}),
-      },
-    });
 
     // Build per-collector status
     const now = Date.now();
@@ -197,8 +210,3 @@ export class TeamDashboardService {
   }
 }
 
-function startOfDay(d: Date): Date {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}

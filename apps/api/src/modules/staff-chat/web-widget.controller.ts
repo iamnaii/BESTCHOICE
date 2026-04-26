@@ -7,10 +7,19 @@ import {
   Query,
   NotFoundException,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
+import { IsOptional, IsString, MaxLength } from 'class-validator';
 import { ChatChannel } from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
 import { RoomManagerService } from '../chat-engine/services/room-manager.service';
+
+class InitWidgetDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  visitorId?: string;
+}
 
 /**
  * WebWidgetController — REST endpoints for the web chat widget.
@@ -29,8 +38,9 @@ export class WebWidgetController {
    */
   @Post('init')
   @SkipCsrf()
+  @Throttle({ short: { limit: 30, ttl: 60_000 } })
   async initRoom(
-    @Body() body: { visitorId?: string },
+    @Body() body: InitWidgetDto,
   ): Promise<{ roomId: string; visitorId: string }> {
     const visitorId = body.visitorId || uuidv4();
 
@@ -51,6 +61,7 @@ export class WebWidgetController {
    */
   @Get('messages/:roomId')
   @SkipCsrf()
+  @Throttle({ short: { limit: 60, ttl: 60_000 } })
   async getMessages(
     @Param('roomId') roomId: string,
     @Query('limit') limit?: string,

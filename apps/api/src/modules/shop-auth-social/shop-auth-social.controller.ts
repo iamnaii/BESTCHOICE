@@ -1,12 +1,16 @@
-import { Body, Controller, HttpException, HttpStatus, Post } from '@nestjs/common';
+import { Body, Controller, HttpException, HttpStatus, Post, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { ShopAuthSocialService } from './shop-auth-social.service';
 import { LineLoginCallbackDto, FacebookLoginCallbackDto, BindPhoneDto } from './dto/social-login.dto';
+import { ShopBotDefenseGuard } from '../shop-bot-defense/shop-bot-defense.guard';
 
 @Controller('shop/auth')
+@UseGuards(ShopBotDefenseGuard)
 export class ShopAuthSocialController {
   constructor(private authService: ShopAuthSocialService) {}
 
   @Post('line/callback')
+  @Throttle({ short: { limit: 5, ttl: 60_000 } })
   async lineCallback(@Body() dto: LineLoginCallbackDto) {
     // Exchange code for LINE profile
     const profile = await this.exchangeLineCode(dto.code);
@@ -14,12 +18,14 @@ export class ShopAuthSocialController {
   }
 
   @Post('facebook/callback')
+  @Throttle({ short: { limit: 5, ttl: 60_000 } })
   async facebookCallback(@Body() dto: FacebookLoginCallbackDto) {
     const profile = await this.exchangeFacebookToken(dto.accessToken);
     return this.authService.handleFacebookLogin(profile);
   }
 
   @Post('bind-phone')
+  @Throttle({ short: { limit: 5, ttl: 60_000 } })
   async bindPhone(@Body() dto: BindPhoneDto) {
     return this.authService.bindPhoneToSocial(dto);
   }
@@ -35,12 +41,14 @@ export class ShopAuthSocialController {
         client_id: process.env.LINE_LOGIN_CHANNEL_ID || '',
         client_secret: process.env.LINE_LOGIN_CHANNEL_SECRET || '',
       }),
+      signal: AbortSignal.timeout(10_000),
     });
     if (!tokenRes.ok) throw new HttpException('LINE token exchange failed', HttpStatus.UNAUTHORIZED);
     const tokens = (await tokenRes.json()) as { access_token: string; id_token?: string };
 
     const profileRes = await fetch('https://api.line.me/v2/profile', {
       headers: { Authorization: `Bearer ${tokens.access_token}` },
+      signal: AbortSignal.timeout(10_000),
     });
     if (!profileRes.ok) throw new HttpException('LINE profile fetch failed', HttpStatus.UNAUTHORIZED);
     const profile = (await profileRes.json()) as {
@@ -59,6 +67,7 @@ export class ShopAuthSocialController {
   private async exchangeFacebookToken(accessToken: string) {
     const res = await fetch(
       `https://graph.facebook.com/me?fields=id,name,email&access_token=${encodeURIComponent(accessToken)}`,
+      { signal: AbortSignal.timeout(10_000) },
     );
     if (!res.ok) throw new HttpException('Facebook token verify failed', HttpStatus.UNAUTHORIZED);
     const data = (await res.json()) as { id: string; name: string; email?: string };

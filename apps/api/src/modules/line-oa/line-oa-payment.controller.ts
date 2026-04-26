@@ -44,6 +44,12 @@ import {
 @ApiTags('LINE OA - Payments')
 @ApiBearerAuth('JWT')
 @Controller('line-oa')
+// TODO(refactor): this controller calls PrismaService directly in 7 evidence
+// endpoints — violates backend.md "controller → service → PrismaService"
+// rule. Extract to PaymentEvidenceService in a follow-up PR; deferred from
+// the post-ultrareview cleanup branch because the change would touch ~250
+// lines, has no spec coverage, and the slip-upload transaction needs to
+// remain controller-orchestrated (storage + DB + notifications).
 export class LineOaPaymentController {
   private readonly logger = new Logger(LineOaPaymentController.name);
 

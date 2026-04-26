@@ -32,9 +32,17 @@ export class CollectionsSummaryService {
     });
     const collectorMap = new Map(collectors.map((c) => [c.id, c.name]));
 
+    // Exclude CANCELLED — those are emergency mid-day "ปิด session" rows that
+    // got pushed back to pool. Counting them in any total would inflate the
+    // collector's day artificially.
     const buckets = await this.prisma.dailyAssignment.groupBy({
       by: ['collectorId', 'status'],
-      where: { date: dateOnly, collectorId: { not: null }, deletedAt: null },
+      where: {
+        date: dateOnly,
+        collectorId: { not: null },
+        deletedAt: null,
+        status: { not: 'CANCELLED' },
+      },
       _count: { _all: true },
     });
 

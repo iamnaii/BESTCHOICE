@@ -147,28 +147,34 @@ describe('AuthService', () => {
       ).rejects.toThrow(UnauthorizedException);
     });
 
-    it('increments failedLoginAttempts on wrong password', async () => {
+    it('atomically increments failedLoginAttempts on wrong password (no lock)', async () => {
       (prisma.user.findUnique as jest.Mock).mockResolvedValue({ ...mockUser, failedLoginAttempts: 2 });
+      (prisma.user.update as jest.Mock).mockResolvedValue({ failedLoginAttempts: 3 });
 
       await expect(
         service.login({ email: 'test@test.com', password: 'wrong' }),
       ).rejects.toThrow(UnauthorizedException);
 
-      const updateCall = (prisma.user.update as jest.Mock).mock.calls[0][0];
-      expect(updateCall.data.failedLoginAttempts).toBe(3);
-      expect(updateCall.data.lockedUntil).toBeNull();
+      // First update call: atomic increment
+      const firstUpdate = (prisma.user.update as jest.Mock).mock.calls[0][0];
+      expect(firstUpdate.data.failedLoginAttempts).toEqual({ increment: 1 });
+      // Below threshold → only the increment update should happen (no lock update)
+      expect((prisma.user.update as jest.Mock).mock.calls.length).toBe(1);
     });
 
     it('locks account when failedLoginAttempts reaches threshold (5)', async () => {
       (prisma.user.findUnique as jest.Mock).mockResolvedValue({ ...mockUser, failedLoginAttempts: 4 });
+      (prisma.user.update as jest.Mock).mockResolvedValue({ failedLoginAttempts: 5 });
 
       await expect(
         service.login({ email: 'test@test.com', password: 'wrong' }),
       ).rejects.toThrow(UnauthorizedException);
 
-      const updateCall = (prisma.user.update as jest.Mock).mock.calls[0][0];
-      expect(updateCall.data.failedLoginAttempts).toBe(5);
-      expect(updateCall.data.lockedUntil).toBeInstanceOf(Date);
+      const calls = (prisma.user.update as jest.Mock).mock.calls;
+      // First call: atomic increment
+      expect(calls[0][0].data.failedLoginAttempts).toEqual({ increment: 1 });
+      // Second call: set lockedUntil (because increment hit threshold)
+      expect(calls[1][0].data.lockedUntil).toBeInstanceOf(Date);
     });
 
     it('rejects login while account is locked, even with the correct password', async () => {

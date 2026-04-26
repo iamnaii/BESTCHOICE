@@ -177,21 +177,22 @@ export class AuthService {
 
     const isPasswordValid = await bcrypt.compare(loginDto.password, user.password);
     if (!isPasswordValid) {
-      // Increment counter; lock if threshold reached.
-      const nextAttempts = user.failedLoginAttempts + 1;
-      const shouldLock = nextAttempts >= LOCKOUT_THRESHOLD;
-      await this.prisma.user.update({
+      // Atomic increment to avoid the read-modify-write race where two
+      // concurrent wrong-password requests both observe the same
+      // failedLoginAttempts and write the same value, allowing a few
+      // attempts to slip past the lockout threshold. (Audit finding P1.)
+      const updated = await this.prisma.user.update({
         where: { id: user.id },
-        data: {
-          failedLoginAttempts: nextAttempts,
-          lockedUntil: shouldLock
-            ? new Date(Date.now() + LOCKOUT_DURATION_MS)
-            : null,
-        },
+        data: { failedLoginAttempts: { increment: 1 } },
+        select: { failedLoginAttempts: true },
       });
-      if (shouldLock) {
+      if (updated.failedLoginAttempts >= LOCKOUT_THRESHOLD) {
+        await this.prisma.user.update({
+          where: { id: user.id },
+          data: { lockedUntil: new Date(Date.now() + LOCKOUT_DURATION_MS) },
+        });
         this.logger.warn(
-          `Account ${user.id} locked after ${nextAttempts} failed attempts`,
+          `Account ${user.id} locked after ${updated.failedLoginAttempts} failed attempts`,
         );
       }
       await this.auditLogin(loginDto.email, false, meta, user.id, 'wrong_password');

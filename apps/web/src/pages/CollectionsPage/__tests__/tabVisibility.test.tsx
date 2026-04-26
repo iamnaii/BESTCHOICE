@@ -58,38 +58,42 @@ function getTabLabels(): string[] {
 }
 
 describe('CollectionsPage tab visibility by role', () => {
-  it('OWNER sees 4 tabs including วิเคราะห์', () => {
+  it('OWNER sees 5 tabs including ภาพรวมทีม + วิเคราะห์', () => {
     renderWith('OWNER');
     const labels = getTabLabels();
     expect(labels).toEqual(
-      expect.arrayContaining(['คิววันนี้', 'นัดชำระ', 'ทั้งหมด', 'วิเคราะห์']),
+      expect.arrayContaining(['คิววันนี้', 'นัดชำระ', 'ทั้งหมด', 'ภาพรวมทีม', 'วิเคราะห์']),
     );
-    expect(labels).toHaveLength(4);
+    expect(labels).toHaveLength(5);
   });
 
-  it('FINANCE_MANAGER sees วิเคราะห์', () => {
+  it('FINANCE_MANAGER sees ภาพรวมทีม + วิเคราะห์', () => {
     renderWith('FINANCE_MANAGER');
     const labels = getTabLabels();
     expect(labels).toContain('วิเคราะห์');
+    expect(labels).toContain('ภาพรวมทีม');
   });
 
-  it('BRANCH_MANAGER does NOT see วิเคราะห์', () => {
+  it('BRANCH_MANAGER does NOT see วิเคราะห์ or ภาพรวมทีม', () => {
     renderWith('BRANCH_MANAGER');
     const labels = getTabLabels();
     expect(labels).not.toContain('วิเคราะห์');
+    expect(labels).not.toContain('ภาพรวมทีม');
   });
 
-  it('SALES sees 3 tabs (no analytics)', () => {
+  it('SALES sees 3 tabs (no analytics, no ภาพรวมทีม)', () => {
     renderWith('SALES');
     const labels = getTabLabels();
     expect(labels).toEqual(['คิววันนี้', 'นัดชำระ', 'ทั้งหมด']);
     expect(labels).not.toContain('วิเคราะห์');
+    expect(labels).not.toContain('ภาพรวมทีม');
   });
 
-  it('ACCOUNTANT sees 3 tabs (no analytics)', () => {
+  it('ACCOUNTANT sees 3 tabs (no analytics, no ภาพรวมทีม)', () => {
     renderWith('ACCOUNTANT');
     const labels = getTabLabels();
     expect(labels).toHaveLength(3);
     expect(labels).not.toContain('วิเคราะห์');
+    expect(labels).not.toContain('ภาพรวมทีม');
   });
 });

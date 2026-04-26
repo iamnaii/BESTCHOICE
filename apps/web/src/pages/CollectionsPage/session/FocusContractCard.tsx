@@ -5,6 +5,7 @@ import {
   ChevronDown,
   AlertTriangle,
   PhoneMissed,
+  NotebookPen,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatNumber } from '@/utils/formatters';
@@ -20,6 +21,12 @@ interface Props {
    * advance the session. Reserved here for future wiring.
    */
   onCallEnded: () => void;
+  /**
+   * Fired when the user clicks the "บันทึก" button to log call result.
+   * Opens ContactLogDialog. CallButton itself has no completion signal,
+   * so we rely on this explicit user action to close the call loop.
+   */
+  onLogContact: () => void;
   onSendLine: () => void;
   onSkip: () => void;
   onOpen360: () => void;
@@ -40,6 +47,7 @@ function severityPanel(daysOverdue: number): { bg: string; fg: string; label: st
 export default function FocusContractCard({
   assignment,
   onCallEnded: _onCallEnded,
+  onLogContact,
   onSendLine,
   onSkip,
   onOpen360,
@@ -114,7 +122,7 @@ export default function FocusContractCard({
           )}
         </div>
 
-        <div className="grid grid-cols-3 gap-2 mt-6">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-6">
           <CallButton
             customerId={c.customer.id}
             contractId={c.id}
@@ -123,6 +131,15 @@ export default function FocusContractCard({
             size="md"
             className="h-14 text-base w-full justify-center"
           />
+          <Button
+            variant="outline"
+            size="lg"
+            className="h-14 text-base flex-col gap-0.5"
+            onClick={onLogContact}
+          >
+            <NotebookPen className="size-5" />
+            <span className="text-xs leading-none">บันทึก</span>
+          </Button>
           <Button
             variant="outline"
             size="lg"

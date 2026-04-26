@@ -29,6 +29,12 @@ interface Props {
   onClose: () => void;
   /** Optional recent auto-logged call logs from Yeastar (shown in view mode above the form). */
   recentLogs?: CallLogItem[];
+  /**
+   * Optional callback fired right after a successful save, BEFORE the dialog
+   * closes. Used by FocusMode to record an AssignmentAction + auto-advance
+   * to the next contract. Existing call sites can omit this prop safely.
+   */
+  onSaved?: (result: { outcome?: string; notes?: string }) => void;
 }
 
 const CALL_RESULT_LABELS: Record<CallResult, string> = {
@@ -62,7 +68,7 @@ function getTomorrow(): string {
   return d.toISOString().split('T')[0];
 }
 
-export default function ContactLogDialog({ open, contract, onClose, recentLogs }: Props) {
+export default function ContactLogDialog({ open, contract, onClose, recentLogs, onSaved }: Props) {
   const [form, setForm] = useState(defaultForm);
   const mutation = useContactLog();
 
@@ -99,6 +105,15 @@ export default function ContactLogDialog({ open, contract, onClose, recentLogs }
     };
     mutation.mutate(payload, {
       onSuccess: () => {
+        // Notify parent (e.g. FocusMode) so it can record the assignment
+        // action + advance. We pass the form's `result` (free-string CallResult)
+        // as `outcome` since callers map their own enums; `notes` is the
+        // free-text notes field. callResult chip is also passed via outcome
+        // when present so callers can prefer the structured tag.
+        onSaved?.({
+          outcome: form.callResult ?? form.result,
+          notes: form.notes || undefined,
+        });
         handleClose();
       },
     });

@@ -1,5 +1,4 @@
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import PageHeader from '@/components/ui/PageHeader';
@@ -47,20 +46,7 @@ function canAccessTab(key: CollectionsTabKey, role: string | undefined): boolean
 export default function CollectionsPage() {
   useDocumentTitle('ติดตามหนี้');
   const { user } = useAuth();
-  const navigate = useNavigate();
   const { view, setView } = useViewToggle();
-
-  // Default OWNER/MANAGER to /collections/manage unless they've explicitly
-  // chosen a view via the toggle (preferences.collectionsDefaultView).
-  useEffect(() => {
-    const isManager =
-      user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER' || user?.role === 'FINANCE_MANAGER';
-    const explicitChoice = (user?.preferences as { collectionsDefaultView?: string } | undefined)
-      ?.collectionsDefaultView;
-    if (isManager && !explicitChoice) {
-      navigate('/collections/manage', { replace: true });
-    }
-  }, [user, navigate]);
 
   const [activeTab, setActiveTab] = useState<CollectionsTabKey>('today');
   const [search, setSearch] = useState('');

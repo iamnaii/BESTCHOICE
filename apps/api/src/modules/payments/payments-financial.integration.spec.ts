@@ -71,6 +71,9 @@ describe('PaymentsService — Financial Integration', () => {
       systemConfig: {
         findUnique: jest.fn().mockReturnValue(null), // no late fee config needed (future dates)
       },
+      callLog: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
     };
 
     const module: TestingModule = await Test.createTestingModule({

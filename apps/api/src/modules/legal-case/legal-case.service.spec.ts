@@ -18,6 +18,9 @@ const mockPrisma = {
   legalCaseDocument: {
     create: jest.fn(),
   },
+  callLog: {
+    updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+  },
 };
 
 const mockStorage = {

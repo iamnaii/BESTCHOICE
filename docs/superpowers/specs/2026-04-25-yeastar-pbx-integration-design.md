@@ -56,6 +56,8 @@ GCS (Cloud Storage)
 - Access Token: หมดอายุ 30 นาที → refresh อัตโนมัติด้วย `YeastarTokenService`
 - Refresh Token: หมดอายุ 24 ชั่วโมง → re-authenticate ด้วย credentials
 - Token cache ใน memory (ไม่เก็บ DB) — reset เมื่อ server restart
+- **Cloud Run rolling-deploy note**: rolling-deploy ทำให้ instance ใหม่ขึ้นก่อน drain instance เก่า → instances แต่ละตัวจะเรียก `get_token` แยกกัน (burst auth requests ในวินาทีแรกของ deploy). Behavior นี้ปลอดภัย (Yeastar OAuth ไม่ block multi-token issuance) แต่ throughput ตอน boot สูงเล็กน้อย. ถ้าต้องการลดให้ migrate cache → Redis (deferred จนกว่า cron+web จะ scale ออกหลายตัว)
+- **OAuth token transport**: ใช้ `Authorization: Bearer <token>` header เท่านั้น (ไม่ใช้ `?access_token=` query param ที่จะ leak ใน access logs)
 
 ---
 
@@ -123,7 +125,10 @@ queryCdr(startTime, endTime)
 ### YeastarWebhookController
 **Endpoint:** `POST /api/yeastar/webhook` (public — ไม่มี JwtAuthGuard)
 
-**Signature verification:** HMAC-SHA256 จาก secret ใน IntegrationConfig (เหมือน LINE webhook)
+**Signature verification (auto-detected):**
+- หากมี header `X-Yeastar-Signature: <hex>` (หรือ `sha256=<hex>`) → ตรวจ HMAC-SHA256 ของ raw body (เหมือน PaySolutions/LINE)
+- ถ้าไม่มี header → fallback เป็น query param `?token=<webhookSecret>` (Yeastar P-Series รุ่นเก่ายังใช้แบบนี้อยู่)
+- Secret อ่านจาก `IntegrationConfig.webhookSecret` (encrypted at rest)
 
 **Events handled:**
 | Event | Action |

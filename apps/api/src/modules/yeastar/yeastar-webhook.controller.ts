@@ -3,21 +3,32 @@ import {
   Post,
   Body,
   Query,
+  Headers,
+  Req,
   UnauthorizedException,
   Logger,
   Optional,
   Inject,
 } from '@nestjs/common';
-import { timingSafeEqual } from 'crypto';
+import { createHmac, timingSafeEqual } from 'crypto';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
 import { EventsGateway } from '../notifications/events.gateway';
 import { CallDirection, CallResult } from '@prisma/client';
+import { RawBodyRequest } from '../../common/types/raw-body-request';
+import type { Request } from 'express';
 
 /**
  * รับ events จาก Yeastar PBX — intentionally public (ไม่มี JwtAuthGuard)
- * ตรวจสอบด้วย query param ?token=<webhookSecret> ที่ตั้งไว้ใน IntegrationConfig
+ *
+ * ตรวจสอบ 2 รูปแบบ (auto-detected ตามสิ่งที่ Yeastar ส่งมา):
+ *   1. HMAC-SHA256 — header `X-Yeastar-Signature: <hex>` หรือ `sha256=<hex>`
+ *      ของ raw body (ใช้ webhookSecret เป็น key) — Yeastar P-Series Cloud
+ *      OpenAPI 2.0+ ใช้แบบนี้
+ *   2. Shared-secret token — query param `?token=<webhookSecret>` (เก่ากว่า)
+ *
+ * ถ้ามี header signature → ยึด HMAC. ไม่มี → ตก fallback ไป token check.
  */
 @Controller('yeastar/webhook')
 export class YeastarWebhookController {
@@ -30,8 +41,13 @@ export class YeastarWebhookController {
   ) {}
 
   @Post()
-  async handleEvent(@Body() body: Record<string, unknown>, @Query('token') token: string) {
-    await this.verifyToken(token);
+  async handleEvent(
+    @Body() body: Record<string, unknown>,
+    @Query('token') token: string,
+    @Headers('x-yeastar-signature') signature: string | undefined,
+    @Req() req: Request,
+  ) {
+    await this.verifyRequest(token, signature, req);
 
     const event = body.event as string;
     this.logger.debug(`[Yeastar Webhook] event: ${event}`);
@@ -56,7 +72,11 @@ export class YeastarWebhookController {
     return { ok: true };
   }
 
-  private async verifyToken(token: string) {
+  private async verifyRequest(
+    token: string,
+    signature: string | undefined,
+    req: Request,
+  ) {
     const config = await this.configService.getConfig('yeastar');
     const secret = config.webhookSecret;
 
@@ -69,6 +89,17 @@ export class YeastarWebhookController {
       return;
     }
 
+    // Prefer HMAC if signature header present
+    if (signature) {
+      const rawBody = (req as unknown as RawBodyRequest).rawBody;
+      if (!this.verifyHmac(rawBody, signature, secret)) {
+        Sentry.captureMessage('[Yeastar] Invalid webhook HMAC — possible spoofing', 'warning');
+        throw new UnauthorizedException('Invalid webhook signature');
+      }
+      return;
+    }
+
+    // Fallback: shared-secret token in query
     if (!token) throw new UnauthorizedException('Missing webhook token');
 
     const a = Buffer.from(token);
@@ -76,6 +107,20 @@ export class YeastarWebhookController {
     if (a.length !== b.length || !timingSafeEqual(a, b)) {
       Sentry.captureMessage('[Yeastar] Invalid webhook token — possible spoofing', 'warning');
       throw new UnauthorizedException('Invalid webhook token');
+    }
+  }
+
+  private verifyHmac(rawBody: Buffer | undefined, signature: string, secret: string): boolean {
+    if (!rawBody) return false;
+    const expected = createHmac('sha256', secret).update(rawBody).digest('hex');
+    const received = signature.startsWith('sha256=') ? signature.slice(7) : signature;
+    try {
+      const a = Buffer.from(expected, 'hex');
+      const b = Buffer.from(received, 'hex');
+      if (a.length !== b.length) return false;
+      return timingSafeEqual(a, b);
+    } catch {
+      return false;
     }
   }
 

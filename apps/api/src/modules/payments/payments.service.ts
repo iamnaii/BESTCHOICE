@@ -597,6 +597,19 @@ export class PaymentsService {
       select: { productId: true },
     });
 
+    // Recording lifecycle: STANDARD → CLOSED so storage cron / GCS lifecycle
+    // can transition recordings to a cheaper tier. Only bump rows still on
+    // STANDARD to avoid clobbering LEGAL_HOLD set by an open legal case.
+    await db.callLog.updateMany({
+      where: {
+        contractId,
+        recordingStorageTier: 'STANDARD',
+        recordingUrl: { not: null },
+        deletedAt: null,
+      },
+      data: { recordingStorageTier: 'CLOSED' },
+    });
+
     // Ownership release: FINANCE → null (customer now owns the device).
     // Uses the same tx so the ownership flip cannot diverge from the
     // COMPLETED status. `tx` is a proper Prisma.TransactionClient when

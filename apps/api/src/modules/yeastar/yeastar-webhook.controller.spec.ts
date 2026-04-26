@@ -1,9 +1,12 @@
 import { Test } from '@nestjs/testing';
 import { UnauthorizedException } from '@nestjs/common';
+import { createHmac } from 'crypto';
 import { YeastarWebhookController } from './yeastar-webhook.controller';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EventsGateway } from '../notifications/events.gateway';
+
+const fakeReq = (rawBody?: Buffer) => ({ rawBody, headers: {}, ip: '127.0.0.1' }) as never;
 
 const mockConfigService = {
   getConfig: jest.fn().mockResolvedValue({ webhookSecret: 'secret123' }),
@@ -40,7 +43,29 @@ describe('YeastarWebhookController', () => {
 
   it('rejects request with wrong token', async () => {
     await expect(
-      controller.handleEvent({ event: 'ExtensionCallStatus' }, 'wrong-token'),
+      controller.handleEvent({ event: 'ExtensionCallStatus' }, 'wrong-token', undefined, fakeReq()),
+    ).rejects.toThrow(UnauthorizedException);
+  });
+
+  it('accepts request with valid HMAC signature', async () => {
+    const body = { event: 'ExtensionCallStatus', callStatus: 'RINGING', callerNumber: '0812345678' };
+    const rawBody = Buffer.from(JSON.stringify(body));
+    const signature = createHmac('sha256', 'secret123').update(rawBody).digest('hex');
+
+    (mockPrisma.customer.findFirst as jest.Mock).mockResolvedValue(null);
+
+    await expect(
+      controller.handleEvent(body, '', signature, fakeReq(rawBody)),
+    ).resolves.toEqual({ ok: true });
+  });
+
+  it('rejects request with invalid HMAC signature', async () => {
+    const body = { event: 'ExtensionCallStatus' };
+    const rawBody = Buffer.from(JSON.stringify(body));
+    const wrongSig = createHmac('sha256', 'wrong-secret').update(rawBody).digest('hex');
+
+    await expect(
+      controller.handleEvent(body, '', wrongSig, fakeReq(rawBody)),
     ).rejects.toThrow(UnauthorizedException);
   });
 
@@ -65,6 +90,8 @@ describe('YeastarWebhookController', () => {
         answeredBy: '1001',
       },
       'secret123',
+      undefined,
+      fakeReq(),
     );
 
     expect(mockGateway.emitToUser).toHaveBeenCalledWith(
@@ -105,6 +132,8 @@ describe('YeastarWebhookController', () => {
           answeredBy: '1001',
         },
         'secret123',
+        undefined,
+        fakeReq(),
       ),
     ).resolves.toEqual({ ok: true });
   });
@@ -123,6 +152,8 @@ describe('YeastarWebhookController', () => {
         callType: 'Inbound',
       },
       'secret123',
+      undefined,
+      fakeReq(),
     );
 
     expect(mockPrisma.callLog.upsert).not.toHaveBeenCalled();

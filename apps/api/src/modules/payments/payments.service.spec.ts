@@ -78,6 +78,10 @@ describe('PaymentsService', () => {
       feeWaiverApproval: {
         create: jest.fn().mockResolvedValue({ id: 'waiver-approval-1' }),
       },
+      // Yeastar W3: recording lifecycle bumped on contract completion
+      callLog: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
       $transaction: jest.fn((cb) => cb(mockPrisma)),
     };
 

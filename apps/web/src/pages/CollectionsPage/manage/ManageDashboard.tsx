@@ -7,14 +7,16 @@ import PageHeader from '@/components/ui/PageHeader';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import CollectorColumn from './CollectorColumn';
 import PoolColumn from './PoolColumn';
+import TransferDialog from './TransferDialog';
+import CloseSessionDialog from './CloseSessionDialog';
 import { useManagerBoard, useManageActions } from '../hooks/useManagerBoard';
 
 export default function ManageDashboard() {
   useDocumentTitle('แบ่งคิวงาน');
   const { data, isLoading } = useManagerBoard();
   const { assign, lock, autoBalance } = useManageActions();
-  const [, setTransferFrom] = useState<string | null>(null);
-  const [, setCloseFor] = useState<string | null>(null);
+  const [transferFrom, setTransferFrom] = useState<string | null>(null);
+  const [closeFor, setCloseFor] = useState<string | null>(null);
 
   const handleDragEnd = (e: DragEndEvent) => {
     if (!e.over) return;
@@ -101,7 +103,12 @@ export default function ManageDashboard() {
         </div>
       </DndContext>
 
-      {/* TODO Task 15: TransferDialog + CloseSessionDialog */}
+      <TransferDialog
+        fromCollectorId={transferFrom}
+        collectors={data.collectors}
+        onClose={() => setTransferFrom(null)}
+      />
+      <CloseSessionDialog collectorId={closeFor} onClose={() => setCloseFor(null)} />
     </div>
   );
 }

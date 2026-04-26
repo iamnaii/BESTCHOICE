@@ -18,6 +18,7 @@ const DEFAULT_TARGET_MINUTES = 150;
 interface Props {
   session: MySession;
   startedAt: Date;
+  pausedMs?: number;
   onPause: () => void;
 }
 
@@ -47,7 +48,7 @@ function mapOutcomeFromCallResult(callResult?: string): Outcome {
   }
 }
 
-export default function FocusMode({ session, startedAt, onPause }: Props) {
+export default function FocusMode({ session, startedAt, pausedMs = 0, onPause }: Props) {
   const pending = useMemo(() => session.contracts, [session.contracts]);
   const total = pending.length + (session.summary?.total ?? 0);
   const currentIdx = session.summary?.total ?? 0;
@@ -138,7 +139,11 @@ export default function FocusMode({ session, startedAt, onPause }: Props) {
       <div className="flex items-center justify-between gap-3 px-1">
         <SessionProgress current={currentIdx} total={total} />
         <div className="flex items-center gap-3">
-          <SessionTimer startedAt={startedAt} targetMinutes={DEFAULT_TARGET_MINUTES} />
+          <SessionTimer
+            startedAt={startedAt}
+            targetMinutes={DEFAULT_TARGET_MINUTES}
+            pausedMs={pausedMs}
+          />
           <Button variant="ghost" size="sm" onClick={onPause}>
             <Pause className="size-4 mr-1.5" /> หยุดพัก
           </Button>

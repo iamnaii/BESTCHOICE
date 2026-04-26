@@ -8,6 +8,8 @@ import PoolBrowser from './PoolBrowser';
 
 const TARGET_MINUTES = 150;
 const STORAGE_KEY = 'collections.session.startedAt';
+const STORAGE_KEY_PAUSED = 'collections.session.pausedMs';
+const STORAGE_KEY_PAUSED_AT = 'collections.session.pausedAt';
 
 type Phase = 'PRE' | 'FOCUS' | 'PAUSE' | 'SUMMARY' | 'POOL';
 
@@ -16,14 +18,28 @@ export default function SessionView() {
   const { start } = useSessionActions();
   const [phase, setPhase] = useState<Phase>('PRE');
   const [startedAt, setStartedAt] = useState<Date | null>(null);
+  const [pausedMs, setPausedMs] = useState<number>(0);
+  const [pausedAt, setPausedAt] = useState<Date | null>(null);
 
-  // Restore session start from localStorage on mount
+  // Restore session start (and pause state) from localStorage on mount
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
       const d = new Date(stored);
       if (!isNaN(d.getTime())) {
         setStartedAt(d);
+        const storedPaused = localStorage.getItem(STORAGE_KEY_PAUSED);
+        const storedPausedAt = localStorage.getItem(STORAGE_KEY_PAUSED_AT);
+        const pmsRaw = storedPaused ? Number(storedPaused) : 0;
+        setPausedMs(Number.isFinite(pmsRaw) ? pmsRaw : 0);
+        if (storedPausedAt) {
+          const p = new Date(storedPausedAt);
+          if (!isNaN(p.getTime())) {
+            setPausedAt(p);
+            setPhase('PAUSE');
+            return;
+          }
+        }
         setPhase('FOCUS');
       }
     }
@@ -43,17 +59,40 @@ export default function SessionView() {
       onSuccess: () => {
         const now = new Date();
         localStorage.setItem(STORAGE_KEY, now.toISOString());
+        localStorage.removeItem(STORAGE_KEY_PAUSED);
+        localStorage.removeItem(STORAGE_KEY_PAUSED_AT);
         setStartedAt(now);
+        setPausedMs(0);
+        setPausedAt(null);
         setPhase('FOCUS');
       },
     });
   };
 
-  const handlePause = () => setPhase('PAUSE');
-  const handleResume = () => setPhase('FOCUS');
+  const handlePause = () => {
+    const now = new Date();
+    setPausedAt(now);
+    localStorage.setItem(STORAGE_KEY_PAUSED_AT, now.toISOString());
+    setPhase('PAUSE');
+  };
+  const handleResume = () => {
+    if (pausedAt) {
+      const elapsedPause = Date.now() - pausedAt.getTime();
+      const newPausedMs = pausedMs + elapsedPause;
+      setPausedMs(newPausedMs);
+      setPausedAt(null);
+      localStorage.setItem(STORAGE_KEY_PAUSED, String(newPausedMs));
+      localStorage.removeItem(STORAGE_KEY_PAUSED_AT);
+    }
+    setPhase('FOCUS');
+  };
   const handleBackToHome = () => {
     localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(STORAGE_KEY_PAUSED);
+    localStorage.removeItem(STORAGE_KEY_PAUSED_AT);
     setStartedAt(null);
+    setPausedMs(0);
+    setPausedAt(null);
     setPhase('PRE');
   };
 
@@ -90,7 +129,7 @@ export default function SessionView() {
         </div>
       );
     }
-    return <FocusMode session={data} startedAt={startedAt} onPause={handlePause} />;
+    return <FocusMode session={data} startedAt={startedAt} pausedMs={pausedMs} onPause={handlePause} />;
   }
 
   return (

@@ -22,8 +22,11 @@ export function useViewToggle() {
 
   useEffect(() => {
     if (stored && stored !== view) setView(stored);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stored]);
+    // Intentional: only re-sync when the persisted preference changes,
+    // not when local `view` updates (that path is handled by setAndPersist).
+    // eslint-plugin-react-hooks is not configured in this project so the
+    // exhaustive-deps disable directive cannot be used here.
+  }, [stored]); // eslint-disable-line
 
   const persist = useMutation({
     mutationFn: (next: CollectionsView) =>

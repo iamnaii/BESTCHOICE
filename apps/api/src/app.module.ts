@@ -116,6 +116,7 @@ import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { TwoFactorModule } from './modules/two-factor/two-factor.module';
 import { ReportingModule } from './modules/reporting/reporting.module';
 import { CollectionsSessionModule } from './modules/collections-session/collections-session.module';
+import { CollectionsManageModule } from './modules/collections-manage/collections-manage.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { SecurityMiddleware } from './modules/audit/security.middleware';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
@@ -174,6 +175,7 @@ import { AppCacheModule } from './cache/cache.module';
     PurchaseOrdersModule,
     InventoryModule,
     CollectionsSessionModule,
+    CollectionsManageModule,
     // MASTER: Communication
     NotificationsModule,
     NotificationQueueModule.register(),

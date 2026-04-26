@@ -299,21 +299,40 @@ export class BroadcastService {
 
   /** Called by cron — process all due SCHEDULED messages */
   async sendScheduledMessages(): Promise<{ sent: number; failed: number }> {
-    // Cap per-run batch size so a single cron tick cannot run longer than its 1-min interval
-    // and to keep memory bounded when backlog is large
-    const due = await this.prisma.broadcastMessage.findMany({
+    // (Audit finding P1) Multi-instance safe: claim each candidate via a
+    // conditional updateMany(SCHEDULED → SENDING). Two Cloud Run instances
+    // racing on the same row will both try to flip the status; only one
+    // wins (count=1), the other gets count=0 and skips. Without this
+    // claim, a 1-min cron + 2 instances meant duplicate LINE messages
+    // were being sent to customers on every horizontal scale event.
+    const candidates = await this.prisma.broadcastMessage.findMany({
       where: {
         status: 'SCHEDULED',
         scheduledAt: { lte: new Date() },
       },
       orderBy: { scheduledAt: 'asc' },
       take: 200,
+      select: { id: true },
     });
 
     let sent = 0;
     let failed = 0;
 
-    for (const msg of due) {
+    for (const candidate of candidates) {
+      // Atomic claim: flip SCHEDULED → SENDING. count=0 means another
+      // instance already claimed this row — skip silently.
+      const claim = await this.prisma.broadcastMessage.updateMany({
+        where: { id: candidate.id, status: 'SCHEDULED' },
+        data: { status: 'SENDING' },
+      });
+      if (claim.count !== 1) continue;
+
+      // Re-read with full payload now that we own the row
+      const msg = await this.prisma.broadcastMessage.findUnique({
+        where: { id: candidate.id },
+      });
+      if (!msg) continue;
+
       try {
         const msgItems = (msg.messages as unknown as BroadcastMessageItem[]) ?? [];
         const lineMessages = msgItems

@@ -11,6 +11,7 @@ import { json, urlencoded } from 'express';
 import { IncomingMessage } from 'http';
 import { RawBodyRequest } from './common/types/raw-body-request';
 import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
 import { HttpAdapterHost } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
@@ -50,6 +51,22 @@ async function bootstrap() {
   );
   app.use(urlencoded({ extended: true, limit: '20mb' }));
   app.use(cookieParser());
+
+  // (Audit finding P1) Add Helmet to set sane security headers:
+  //   X-Content-Type-Options: nosniff
+  //   X-Frame-Options: SAMEORIGIN
+  //   Strict-Transport-Security
+  //   Cross-Origin-Resource-Policy: same-origin
+  //   Referrer-Policy: no-referrer
+  // CSP is disabled because the API serves no HTML and the strict default
+  // would block Swagger's inline CSS in dev. CORS is handled separately
+  // below by NestJS, so we keep helmet's CORS-related headers off.
+  app.use(
+    helmet({
+      contentSecurityPolicy: false,
+      crossOriginEmbedderPolicy: false,
+    }),
+  );
 
   // CORS configuration
   const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173')

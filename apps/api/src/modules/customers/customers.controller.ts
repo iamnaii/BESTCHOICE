@@ -127,7 +127,9 @@ export class CustomersController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   @ApiOperation({ summary: 'Top referrers: ลูกค้าที่แนะนำมากที่สุด' })
   getReferralStats(@Query('limit') limit?: string) {
-    return this.customersService.getReferralStats(limit ? parseInt(limit) : 10);
+    return this.customersService.getReferralStats(
+      limit ? Math.min(parseInt(limit) || 10, 100) : 10,
+    );
   }
 
   @Get('watch-list')
@@ -137,7 +139,10 @@ export class CustomersController {
     @Query('branchId') branchId?: string,
     @Query('limit') limit?: string,
   ) {
-    return this.customersService.getWatchList(branchId, limit ? parseInt(limit) : 30);
+    return this.customersService.getWatchList(
+      branchId,
+      limit ? Math.min(parseInt(limit) || 30, 100) : 30,
+    );
   }
 
   @Get('upsell-candidates')
@@ -147,7 +152,10 @@ export class CustomersController {
     @Query('branchId') branchId?: string,
     @Query('limit') limit?: string,
   ) {
-    return this.customersService.getUpsellCandidates(branchId, limit ? parseInt(limit) : 20);
+    return this.customersService.getUpsellCandidates(
+      branchId,
+      limit ? Math.min(parseInt(limit) || 20, 100) : 20,
+    );
   }
 
   @Get('search')

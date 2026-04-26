@@ -13,6 +13,9 @@ import {
   BadRequestException,
   UseInterceptors,
   UploadedFile,
+  ParseFilePipe,
+  MaxFileSizeValidator,
+  FileTypeValidator,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
@@ -551,7 +554,15 @@ export class LineOaController {
   @UseInterceptors(FileInterceptor('image'))
   async uploadRichMenuImage(
     @Param('id') id: string,
-    @UploadedFile() file: Express.Multer.File,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 1 * 1024 * 1024, message: 'ไฟล์มีขนาดเกิน 1MB' }),
+          new FileTypeValidator({ fileType: /^image\/(jpeg|png)$/ }),
+        ],
+      }),
+    )
+    file: Express.Multer.File,
     @Query('channel') channel?: string,
   ) {
     if (!file) throw new BadRequestException('กรุณาอัปโหลดรูปภาพ');
@@ -565,7 +576,16 @@ export class LineOaController {
   @Roles('OWNER')
   @UseInterceptors(FileInterceptor('image'))
   async createWithImage(
-    @UploadedFile() file: Express.Multer.File,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 1 * 1024 * 1024, message: 'ไฟล์มีขนาดเกิน 1MB' }),
+          new FileTypeValidator({ fileType: /^image\/(jpeg|png)$/ }),
+        ],
+        fileIsRequired: false,
+      }),
+    )
+    file: Express.Multer.File,
     @Body() body: any,
     @CurrentUser() user: { id: string },
   ) {

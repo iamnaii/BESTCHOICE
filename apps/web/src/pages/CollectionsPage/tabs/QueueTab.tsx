@@ -3,8 +3,7 @@ import { PartyPopper } from 'lucide-react';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useCollectionsKeyboard } from '@/hooks/useCollectionsKeyboard';
 import QueryBoundary from '@/components/QueryBoundary';
-import ContractCard, { type PreviewAnchor } from '../components/ContractCard';
-import Customer360SnapshotCard from '../components/Customer360SnapshotCard';
+import ContractCard from '../components/ContractCard';
 import BulkActionBar from '../components/BulkActionBar';
 import TruncatedBanner from '../components/TruncatedBanner';
 import FilterChipsBar from '../components/FilterChipsBar';
@@ -55,11 +54,6 @@ export default function QueueTab({
   const [page, setPage] = useState(1);
   const [filterOpen, setFilterOpen] = useState(false);
   const [focusedIndex, setFocusedIndex] = useState(0);
-  const [previewState, setPreviewState] = useState<{
-    contractId: string;
-    anchor: PreviewAnchor;
-    variant: 'floating' | 'sheet';
-  } | null>(null);
   const sel = useBulkSelection();
   const debouncedSearch = useDebounce(search, 300);
   const [filter, setFilter, resetFilter] = useQueueFilter('queue');
@@ -156,16 +150,6 @@ export default function QueueTab({
                 selected={sel.isSelected(row.id)}
                 onToggleSelect={sel.toggle}
                 focused={idx === focusedIndex}
-                onPreview={(c, anchor) => {
-                  // Detect coarse pointer (touch) → bottom sheet, else floating
-                  const variant: 'floating' | 'sheet' =
-                    typeof window !== 'undefined' &&
-                    window.matchMedia?.('(pointer: coarse)').matches
-                      ? 'sheet'
-                      : 'floating';
-                  setPreviewState({ contractId: c.id, anchor, variant });
-                }}
-                onPreviewCancel={() => setPreviewState(null)}
                 onSnooze={(c) => setSnoozeTarget(c)}
                 onUnsnooze={(c) => unsnooze.mutate(c.id)}
                 onSkipTrace={onSkipTrace}
@@ -208,13 +192,6 @@ export default function QueueTab({
         </div>
       )}
       <KeyboardShortcutsOverlay open={helpOpen} onOpenChange={setHelpOpen} />
-      <Customer360SnapshotCard
-        open={!!previewState}
-        contractId={previewState?.contractId ?? null}
-        anchor={previewState?.anchor ?? null}
-        variant={previewState?.variant ?? 'floating'}
-        onClose={() => setPreviewState(null)}
-      />
       <FilterDrawer
         open={filterOpen}
         onOpenChange={setFilterOpen}

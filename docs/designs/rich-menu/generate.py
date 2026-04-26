@@ -4,10 +4,16 @@ Canvas: 2500x1686 (LINE Rich Menu full size)
 
 Optimised for mobile readability and aligned with the project's
 admin UI which expects fixed 2×3 / 1×3 / 2×2 layouts.
+
+The discount-percent label is read from EARLY_PAYOFF_DISCOUNT (env var,
+default 50). Must be regenerated and re-uploaded if the
+`contract_early_discount` system config changes — the label is baked
+into the PNG, not fetched at runtime.
 """
 from __future__ import annotations
 
 import math
+import os
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -16,6 +22,9 @@ from PIL import Image, ImageDraw, ImageFont
 W, H = 2500, 1686
 COLS, ROWS = 3, 2
 CELL_W, CELL_H = W // COLS, H // ROWS
+
+# Business config (must match `contract_early_discount` in admin → /settings)
+DISCOUNT_PCT = os.environ.get("EARLY_PAYOFF_DISCOUNT", "50")
 
 # Base palette
 FIELD    = (250, 247, 240)
@@ -201,7 +210,7 @@ CHAMBERS: list[dict] = [
     {"icon": icon_qr,       "thai": "ชำระค่างวด",   "pig": "emerald", "hero": True},
     {"icon": icon_history,  "thai": "ประวัติชำระ",  "pig": "coral"},
     # Bottom row
-    {"icon": icon_percent,  "thai": "ปิดยอดลด 50%", "pig": "ruby"},
+    {"icon": icon_percent,  "thai": f"ปิดยอดลด {DISCOUNT_PCT}%", "pig": "ruby"},
     {"icon": icon_friends,  "thai": "ชวนเพื่อน",    "pig": "indigo"},
     {"icon": icon_bubble,   "thai": "ติดต่อเรา",    "pig": "teal"},
 ]

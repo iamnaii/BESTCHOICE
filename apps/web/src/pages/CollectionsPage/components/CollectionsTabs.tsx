@@ -1,10 +1,11 @@
-import { Phone, Calendar, List, BarChart3 } from 'lucide-react';
+import { Phone, Calendar, List, BarChart3, Users } from 'lucide-react';
 import type { CollectionsTabKey } from '../types';
 
 interface Props {
   active: CollectionsTabKey;
   onChange: (key: CollectionsTabKey) => void;
   canSeeAnalytics?: boolean;
+  canSeeTeam?: boolean;
   counts?: Partial<Record<CollectionsTabKey, number>>;
 }
 
@@ -16,6 +17,7 @@ const TAB_CONFIG: Array<{
   { key: 'today', label: 'คิววันนี้', Icon: Phone },
   { key: 'promise', label: 'นัดชำระ', Icon: Calendar },
   { key: 'all', label: 'ทั้งหมด', Icon: List },
+  { key: 'team', label: 'ภาพรวมทีม', Icon: Users },
   { key: 'analytics', label: 'วิเคราะห์', Icon: BarChart3 },
 ];
 
@@ -23,10 +25,12 @@ export default function CollectionsTabs({
   active,
   onChange,
   canSeeAnalytics = false,
+  canSeeTeam = false,
   counts,
 }: Props) {
   const visibleTabs = TAB_CONFIG.filter((t) => {
     if (t.key === 'analytics') return canSeeAnalytics;
+    if (t.key === 'team') return canSeeTeam;
     return true;
   });
 

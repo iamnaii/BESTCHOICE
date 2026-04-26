@@ -15,6 +15,7 @@ import QueueTab from './tabs/QueueTab';
 import PromiseTab from './tabs/PromiseTab';
 import AllTab from './tabs/AllTab';
 import AnalyticsTab from './tabs/AnalyticsTab';
+import TeamOverviewTab from './tabs/TeamOverviewTab';
 import SessionView from './session/SessionView';
 import { useViewToggle } from './hooks/useViewToggle';
 import type { ContractRow, CollectionsTabKey } from './types';
@@ -30,6 +31,7 @@ const TAB_ROLE_ACCESS: Record<CollectionsTabKey, string[]> = {
   today: [],
   promise: [],
   all: [],
+  team: ['OWNER', 'FINANCE_MANAGER'],
   analytics: ['OWNER', 'FINANCE_MANAGER'],
 };
 
@@ -54,6 +56,7 @@ export default function CollectionsPage() {
   const [skipTraceContract, setSkipTraceContract] = useState<ContractRow | null>(null);
 
   const canSeeAnalytics = canAccessTab('analytics', user?.role);
+  const canSeeTeam = canAccessTab('team', user?.role);
   const showBranchFilter = user?.role === 'OWNER' || user?.role === 'FINANCE_MANAGER';
 
   // Safety net: if the active tab is role-gated and user lost access mid-session,
@@ -112,6 +115,7 @@ export default function CollectionsPage() {
               setHideContactedToday(false);
             }}
             canSeeAnalytics={canSeeAnalytics}
+            canSeeTeam={canSeeTeam}
           />
 
           {showFilters && (
@@ -152,6 +156,8 @@ export default function CollectionsPage() {
           )}
 
           {effectiveTab === 'all' && <AllTab />}
+
+          {effectiveTab === 'team' && canSeeTeam && <TeamOverviewTab />}
 
           {effectiveTab === 'analytics' && canSeeAnalytics && <AnalyticsTab />}
         </>

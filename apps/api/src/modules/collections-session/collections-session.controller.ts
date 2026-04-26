@@ -5,6 +5,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { CollectionsSessionService } from './collections-session.service';
 import { PoolService } from './pool.service';
+import { TeamDashboardService } from './team-dashboard.service';
 import { ActionDto } from './dto/action.dto';
 import { SkipDto } from './dto/skip.dto';
 
@@ -14,6 +15,7 @@ export class CollectionsSessionController {
   constructor(
     private session: CollectionsSessionService,
     private pool: PoolService,
+    private teamDashboard: TeamDashboardService,
   ) {}
 
   @Roles('SALES', 'OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER')
@@ -50,5 +52,13 @@ export class CollectionsSessionController {
   @Post('pool/:id/claim')
   claim(@Param('id') id: string, @CurrentUser() user: any) {
     return this.pool.claim(id, user.id);
+  }
+
+  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER')
+  @Get('team-dashboard')
+  teamDashboardGet(@CurrentUser() user: any) {
+    const scope =
+      user.role === 'BRANCH_MANAGER' && user.branchId ? [user.branchId] : undefined;
+    return this.teamDashboard.getDashboard(scope);
   }
 }

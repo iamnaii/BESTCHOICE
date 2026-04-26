@@ -8,6 +8,7 @@ import { AutoAssignService } from './auto-assign.service';
 import { PoolService } from './pool.service';
 import { CollectionsSessionCron } from './collections-session.cron';
 import { CollectionsSummaryService } from './collections-summary.service';
+import { TeamDashboardService } from './team-dashboard.service';
 
 @Module({
   imports: [PrismaModule, SettingsModule, LineOaModule],
@@ -18,6 +19,7 @@ import { CollectionsSummaryService } from './collections-summary.service';
     PoolService,
     CollectionsSessionCron,
     CollectionsSummaryService,
+    TeamDashboardService,
   ],
   exports: [CollectionsSessionService, AutoAssignService],
 })

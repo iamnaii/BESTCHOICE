@@ -9,6 +9,7 @@ interface User {
   role: string;
   branchId: string | null;
   branchName?: string | null;
+  preferences?: Record<string, unknown> | null;
 }
 
 /** State after password phase — waiting for OTP or 2FA setup */
@@ -49,6 +50,8 @@ interface AuthContextType {
   /** Clear pendingTwoFa (e.g. user cancels back to login). */
   clearTempToken: () => void;
   logout: () => void;
+  /** Re-fetch /auth/me — used by hooks that mutate user-scoped data (e.g. preferences). */
+  refresh: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -84,6 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         role: data.role,
         branchId: data.branchId,
         branchName: data.branch?.name || null,
+        preferences: data.preferences ?? null,
       };
       setUser(nextUser);
       setSentryUser(nextUser);
@@ -190,8 +194,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       completeOtpPhase,
       clearTempToken,
       logout,
+      refresh: fetchMe,
     }),
-    [user, isLoading, pendingTwoFa, login, completeOtpPhase, clearTempToken, logout],
+    [user, isLoading, pendingTwoFa, login, completeOtpPhase, clearTempToken, logout, fetchMe],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

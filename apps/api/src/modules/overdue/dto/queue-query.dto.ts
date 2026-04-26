@@ -77,8 +77,8 @@ function toBool(value: unknown): boolean | undefined {
 }
 
 export class QueueQueryDto {
-  @IsEnum(['today', 'followup', 'promise'], { message: 'tab ต้องเป็น today, followup, หรือ promise' })
-  tab!: 'today' | 'followup' | 'promise';
+  @IsEnum(['today', 'promise'], { message: 'tab ต้องเป็น today หรือ promise' })
+  tab!: 'today' | 'promise';
 
   // Existing
   @IsOptional()

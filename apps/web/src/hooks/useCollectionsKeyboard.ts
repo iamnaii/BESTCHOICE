@@ -19,8 +19,8 @@ import { useHotkeys } from 'react-hotkeys-hook';
  * existing `useKeyboardShortcuts` (template-page hook) is left untouched.
  */
 export interface CollectionsKeyboardCallbacks {
-  /** Tab navigation: queue / followup / promise / approval / aNalytics / aLl */
-  onSwitchTab?: (tab: 'today' | 'followup' | 'promise' | 'approval' | 'analytics' | 'all') => void;
+  /** Tab navigation: queue / promise / approval / aNalytics / aLl */
+  onSwitchTab?: (tab: 'today' | 'promise' | 'approval' | 'analytics' | 'all') => void;
   /** Move focus inside the active queue (J/K or arrow keys) */
   onMoveFocus?: (direction: 1 | -1) => void;
   /** Enter — open Customer 360 for currently focused card */
@@ -108,17 +108,6 @@ export function useCollectionsKeyboard(callbacks: CollectionsKeyboardCallbacks) 
       if (!waitingForGSecond) return;
       consumeGPrefix();
       callbacks.onSwitchTab?.('today');
-    },
-    { enabled: waitingForGSecond },
-    [waitingForGSecond, callbacks.onSwitchTab],
-  );
-
-  useHotkeys(
-    'f',
-    () => {
-      if (!waitingForGSecond) return;
-      consumeGPrefix();
-      callbacks.onSwitchTab?.('followup');
     },
     { enabled: waitingForGSecond },
     [waitingForGSecond, callbacks.onSwitchTab],

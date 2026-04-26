@@ -62,6 +62,45 @@ export class SettingsService {
     return updated;
   }
 
+  /**
+   * Read a single SystemConfig value by key. Returns null when key missing.
+   * Used by typed accessors below; not exposed through the controller.
+   */
+  async getKey(key: string): Promise<string | null> {
+    const row = await this.prisma.systemConfig.findFirst({
+      where: { key, deletedAt: null },
+      select: { value: true },
+    });
+    return row?.value ?? null;
+  }
+
+  private async readNumber(key: string, fallback: number): Promise<number> {
+    const raw = await this.getKey(key);
+    if (raw == null) return fallback;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : fallback;
+  }
+
+  /**
+   * Typed bundle of collections-session tuning knobs. Defaults match the
+   * pre-Phase-2 hardcoded constants so first-boot behaviour is unchanged
+   * even if the SystemConfig rows haven't been seeded yet.
+   */
+  async getCollectionsConfig(): Promise<{
+    dailyCap: number;
+    workloadFloor: number;
+    etaPerContractMin: number;
+    sessionTargetMin: number;
+    selfClaimLockHours: number;
+  }> {
+    const dailyCap = await this.readNumber('collections.dailyCap', 30);
+    const workloadFloor = await this.readNumber('collections.workloadFloor', 10);
+    const etaPerContractMin = await this.readNumber('collections.etaPerContractMin', 5);
+    const sessionTargetMin = await this.readNumber('collections.sessionTargetMin', 150);
+    const selfClaimLockHours = await this.readNumber('collections.selfClaimLockHours', 2);
+    return { dailyCap, workloadFloor, etaPerContractMin, sessionTargetMin, selfClaimLockHours };
+  }
+
   async bulkUpdate(items: { key: string; value: string }[], userId?: string) {
     // Fetch "before" snapshot in one query so the transaction stays bounded.
     const keys = items.map((i) => i.key);

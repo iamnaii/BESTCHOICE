@@ -179,38 +179,6 @@ describe('OverdueQueueService', () => {
     });
   });
 
-  describe('followup tab', () => {
-    it('query filter uses noAnswerCount gte 1 lt 3 (excludes >= 3)', async () => {
-      mockPrisma.contract.findMany.mockResolvedValueOnce([]);
-      mockPrisma.contract.count.mockResolvedValueOnce(0);
-
-      await service.getQueue({
-        tab: 'followup',
-        userRole: 'OWNER',
-        userBranchId: null,
-      });
-
-      const callArg = mockPrisma.contract.findMany.mock.calls[0][0];
-      expect(callArg.where.noAnswerCount).toEqual({ gte: 1, lt: 3 });
-    });
-
-    it('followup returns only contracts with noAnswerCount 1-2 from mock', async () => {
-      const c1 = makeContract({ noAnswerCount: 1, status: 'OVERDUE' });
-      const c2 = makeContract({ id: 'contract-2', noAnswerCount: 2, status: 'DEFAULT' });
-      mockPrisma.contract.findMany.mockResolvedValueOnce([c1, c2]);
-      mockPrisma.contract.count.mockResolvedValueOnce(2);
-
-      const result = await service.getQueue({
-        tab: 'followup',
-        userRole: 'OWNER',
-        userBranchId: null,
-      });
-
-      expect(result.data).toHaveLength(2);
-      expect(result.total).toBe(2);
-    });
-  });
-
   describe('promise tab', () => {
     it('promise tab query includes settlementDate window (today-3 to today+30)', async () => {
       mockPrisma.contract.findMany.mockResolvedValueOnce([]);

@@ -158,6 +158,44 @@ export class MdmController {
     return result;
   }
 
+  // ─── Contract-based Lost Mode (action-first flow from Customer360Panel) ──
+
+  @Post('contracts/:contractId/lock')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'SALES')
+  async lockByContract(
+    @Param('contractId') contractId: string,
+    @Body() body: { reason?: string },
+    @CurrentUser() user: { id: string },
+  ) {
+    const reason = (body?.reason ?? '').trim() || 'ค้างชำระ';
+    const result = await this.mdmService.lockContract(contractId, reason, user.id);
+    await this.audit.log({
+      userId: user.id,
+      action: 'MDM_LOCK',
+      entity: 'Contract',
+      entityId: contractId,
+      newValue: { reason, success: result.success, message: result.message },
+    });
+    return result;
+  }
+
+  @Post('contracts/:contractId/unlock')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'SALES')
+  async unlockByContract(
+    @Param('contractId') contractId: string,
+    @CurrentUser() user: { id: string },
+  ) {
+    const result = await this.mdmService.unlockContract(contractId, user.id);
+    await this.audit.log({
+      userId: user.id,
+      action: 'MDM_UNLOCK',
+      entity: 'Contract',
+      entityId: contractId,
+      newValue: { success: result.success, message: result.message },
+    });
+    return result;
+  }
+
   // ─── Policies ───────────────────────────────────────────
 
   @Post('devices/lock-screen')

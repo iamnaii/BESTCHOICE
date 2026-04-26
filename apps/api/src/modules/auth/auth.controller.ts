@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Req, Res, UseGuards, UnauthorizedException } from '@nestjs/common';
+import { Controller, Post, Get, Patch, Body, Req, Res, UseGuards, UnauthorizedException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth , ApiOperation} from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
@@ -7,6 +7,7 @@ import { TwoFactorService } from './two-factor.service';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto, ResetPasswordDto } from './dto/password-reset.dto';
 import { VerifyTwoFactorDto } from './dto/two-factor.dto';
+import { UpdatePreferencesDto } from './dto/update-preferences.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
 
@@ -183,6 +184,16 @@ export class AuthController {
   @ApiOperation({ summary: 'ข้อมูลผู้ใช้ปัจจุบัน' })
   async getMe(@CurrentUser('id') userId: string) {
     return this.authService.getMe(userId);
+  }
+
+  @Patch('me/preferences')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'อัปเดต UI preferences ของผู้ใช้ปัจจุบัน (merge JSON)' })
+  async updatePreferences(
+    @CurrentUser('id') userId: string,
+    @Body() dto: UpdatePreferencesDto,
+  ) {
+    return this.authService.updatePreferences(userId, { ...dto });
   }
 
   // ─── Two-Factor Authentication ───────────────────────

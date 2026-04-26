@@ -10,6 +10,7 @@ import CommandPalette from '@/components/CommandPalette';
 import ShortcutsHelpOverlay from '@/components/ShortcutsHelpOverlay';
 import MobileBottomNav from './MobileBottomNav';
 import { SkipLink } from './SkipLink';
+import { InboundCallPopup } from '@/components/InboundCallPopup';
 
 /* ── Sidebar widths — keep in sync with Sidebar.tsx ── */
 const SIDEBAR_EXPANDED_W = 264;  // px
@@ -95,6 +96,9 @@ function MainContent() {
 
       {/* Mobile bottom tab bar */}
       {isMobile && <MobileBottomNav />}
+
+      {/* Inbound call popup (Yeastar PBX) */}
+      <InboundCallPopup />
 
       {/* Global Command Palette (Ctrl+K) */}
       <CommandPalette />

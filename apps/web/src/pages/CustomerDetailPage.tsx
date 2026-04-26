@@ -26,6 +26,7 @@ import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, contractStatusMap } from '@/lib/status-badges';
 import CustomerTierBadge from '@/components/customer/CustomerTierBadge';
 import type { CustomerTierResponse } from '@/types/customer-tier';
+import { CallButton } from '@/components/CallButton';
 
 interface ReferenceData {
   prefix?: string;
@@ -459,6 +460,10 @@ export default function CustomerDetailPage() {
     { key: 'branch', label: 'สาขา', render: (c: CustomerDetail['contracts'][0]) => <span className="text-xs">{c.branch.name}</span> },
   ];
 
+  const callableContract = customer.contracts?.find((c) =>
+    ['OVERDUE', 'DEFAULT', 'ACTIVE'].includes(c.status),
+  );
+
   const displayName = [customer.prefix, customer.name].filter(Boolean).join('');
   const refs = Array.isArray(customer.references)
     ? (customer.references.filter(
@@ -652,6 +657,17 @@ export default function CustomerDetailPage() {
             <Info label="ชื่อ Facebook" value={customer.facebookName} />
             <Info label="จำนวนเพื่อน Facebook" value={customer.facebookFriends} />
           </div>
+          {callableContract && (
+            <div className="mt-3">
+              <CallButton
+                customerId={customer.id}
+                contractId={callableContract.id}
+                phone={customer.phone}
+                size="sm"
+                variant="outline"
+              />
+            </div>
+          )}
         </CardContent>
       </Card>
         </TabsContent>

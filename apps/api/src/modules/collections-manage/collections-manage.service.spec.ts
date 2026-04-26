@@ -2,10 +2,12 @@ import { Test } from '@nestjs/testing';
 import { CollectionsManageService } from './collections-manage.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AutoAssignService } from '../collections-session/auto-assign.service';
+import { LineOaService } from '../line-oa/line-oa.service';
 
 describe('CollectionsManageService', () => {
   let service: CollectionsManageService;
   let prisma: any;
+  let line: any;
 
   beforeEach(async () => {
     const prismaMock: any = {
@@ -14,19 +16,23 @@ describe('CollectionsManageService', () => {
         updateMany: jest.fn(),
         update: jest.fn(),
         findUnique: jest.fn(),
+        findFirst: jest.fn().mockResolvedValue(null),
       },
-      user: { findMany: jest.fn() },
+      user: { findMany: jest.fn(), findUnique: jest.fn() },
       contractDailySnapshot: { findMany: jest.fn().mockResolvedValue([]) },
     };
+    const lineMock = { pushMessage: jest.fn().mockResolvedValue(undefined) };
     const moduleRef = await Test.createTestingModule({
       providers: [
         CollectionsManageService,
         { provide: PrismaService, useValue: prismaMock },
         { provide: AutoAssignService, useValue: { runForDate: jest.fn() } },
+        { provide: LineOaService, useValue: lineMock },
       ],
     }).compile();
     service = moduleRef.get(CollectionsManageService);
     prisma = moduleRef.get(PrismaService);
+    line = moduleRef.get(LineOaService);
   });
 
   it('transfers N pending contracts oldest-first', async () => {
@@ -70,5 +76,38 @@ describe('CollectionsManageService', () => {
   it('assignContract throws NotFound when assignment missing', async () => {
     prisma.dailyAssignment.findUnique.mockResolvedValue(null);
     await expect(service.assignContract('missing', 'u1')).rejects.toThrow();
+  });
+
+  it('transfer notifies both collectors when there is a lock today', async () => {
+    prisma.dailyAssignment.findFirst.mockResolvedValue({ id: 'lock-row' });
+    prisma.dailyAssignment.findMany.mockResolvedValue([{ id: 'a1' }, { id: 'a2' }]);
+    prisma.dailyAssignment.updateMany.mockResolvedValue({ count: 2 });
+    prisma.user.findUnique
+      .mockResolvedValueOnce({ lineId: 'L_FROM' })
+      .mockResolvedValueOnce({ lineId: 'L_TO' });
+
+    await service.transfer({
+      fromCollectorId: 'u1',
+      toCollectorId: 'u2',
+      count: 2,
+    });
+
+    expect(line.pushMessage).toHaveBeenCalledTimes(2);
+    expect(line.pushMessage).toHaveBeenCalledWith('L_FROM', expect.any(Array));
+    expect(line.pushMessage).toHaveBeenCalledWith('L_TO', expect.any(Array));
+  });
+
+  it('transfer does NOT notify when no lock today (still in planning window)', async () => {
+    prisma.dailyAssignment.findFirst.mockResolvedValue(null);
+    prisma.dailyAssignment.findMany.mockResolvedValue([{ id: 'a1' }]);
+    prisma.dailyAssignment.updateMany.mockResolvedValue({ count: 1 });
+
+    await service.transfer({
+      fromCollectorId: 'u1',
+      toCollectorId: 'u2',
+      count: 1,
+    });
+
+    expect(line.pushMessage).not.toHaveBeenCalled();
   });
 });

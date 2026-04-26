@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AutoAssignService } from '../collections-session/auto-assign.service';
+import { LineOaService } from '../line-oa/line-oa.service';
 import { TransferDto } from './dto/transfer.dto';
 
 @Injectable()
@@ -8,6 +9,7 @@ export class CollectionsManageService {
   constructor(
     private prisma: PrismaService,
     private autoAssign: AutoAssignService,
+    private line: LineOaService,
   ) {}
 
   async getBoard(branchScope?: string[]) {
@@ -103,13 +105,26 @@ export class CollectionsManageService {
     const row = await this.prisma.dailyAssignment.findUnique({ where: { id: assignmentId } });
     if (!row) throw new NotFoundException('ไม่พบรายการ');
 
-    return this.prisma.dailyAssignment.update({
+    const updated = await this.prisma.dailyAssignment.update({
       where: { id: assignmentId },
       data: {
         collectorId: toCollectorId,
         source: 'MANAGER_OVERRIDE',
       },
     });
+
+    // Notify both old + new collector (best effort, dedupe nulls)
+    const affected = new Set<string>();
+    if (row.collectorId) affected.add(row.collectorId);
+    if (toCollectorId) affected.add(toCollectorId);
+    for (const cid of affected) {
+      await this.notifyAffectedCollector(
+        cid,
+        `คิวงานของคุณมีการปรับ — กรุณาเปิดหน้า Collections ใหม่`,
+      );
+    }
+
+    return updated;
   }
 
   async lock() {
@@ -137,19 +152,69 @@ export class CollectionsManageService {
       where: { id: { in: items.map((i) => i.id) } },
       data: { collectorId: dto.toCollectorId, source: 'MANAGER_OVERRIDE' },
     });
+
+    await this.notifyAffectedCollector(
+      dto.fromCollectorId,
+      `คิวของคุณถูกโอนไปให้พนักงานท่านอื่น ${items.length} ราย`,
+    );
+    await this.notifyAffectedCollector(
+      dto.toCollectorId,
+      `ได้รับคิวเพิ่ม ${items.length} ราย — กรุณาเปิดหน้า Collections ใหม่`,
+    );
+
     return { moved: items.length };
   }
 
   async closeSession(collectorId: string) {
     const today = startOfDay(new Date());
-    return this.prisma.dailyAssignment.updateMany({
+    const result = await this.prisma.dailyAssignment.updateMany({
       where: { date: today, collectorId, status: 'PENDING' },
       data: { collectorId: null, source: 'MANAGER_OVERRIDE' },
     });
+
+    if (result.count > 0) {
+      await this.notifyAffectedCollector(
+        collectorId,
+        `Session ของคุณถูกปิด — คิวที่ยังไม่ทำถูกย้ายไปที่ pool กลาง (${result.count} ราย)`,
+      );
+    }
+
+    return result;
   }
 
   async autoBalance() {
     return this.autoAssign.runForDate(new Date());
+  }
+
+  /**
+   * Push a LINE message to a collector if their queue was changed after today's
+   * lock. No-op if there's no lock yet today (still in the 06:00-09:00 planning
+   * window) or the collector has no lineId.
+   */
+  private async notifyAffectedCollector(
+    collectorId: string,
+    message: string,
+  ): Promise<void> {
+    const today = startOfDay(new Date());
+    const hasLock = await this.prisma.dailyAssignment.findFirst({
+      where: { date: today, lockedAt: { not: null } },
+      select: { id: true },
+    });
+    if (!hasLock) return;
+
+    const collector = await this.prisma.user.findUnique({
+      where: { id: collectorId },
+      select: { lineId: true },
+    });
+    if (!collector?.lineId) return;
+
+    try {
+      await this.line.pushMessage(collector.lineId, [
+        { type: 'text', text: message } as any,
+      ]);
+    } catch {
+      // Tolerate per-recipient failure — manager-side mutation must succeed regardless.
+    }
   }
 }
 

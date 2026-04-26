@@ -66,12 +66,12 @@ describe('<ContractCard />', () => {
   it('shows "ล็อคเครื่อง" chip when deviceLocked is true', () => {
     const c: ContractRow = { ...base, deviceLocked: true };
     render(<ContractCard contract={c} onLogContact={vi.fn()} />);
-    expect(screen.getByText('ล็อคเครื่อง')).toBeInTheDocument();
+    expect(screen.getByText('ล็อคเครื่องอยู่')).toBeInTheDocument();
   });
 
   it('does not show "ล็อคเครื่อง" chip when deviceLocked is false', () => {
     render(<ContractCard contract={base} onLogContact={vi.fn()} />);
-    expect(screen.queryByText('ล็อคเครื่อง')).not.toBeInTheDocument();
+    expect(screen.queryByText('ล็อคเครื่องอยู่')).not.toBeInTheDocument();
   });
 
   it('renders snooze badge when snoozedUntil is in the future', () => {

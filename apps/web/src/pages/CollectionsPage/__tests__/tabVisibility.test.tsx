@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { MemoryRouter } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -7,6 +7,12 @@ import CollectionsPage from '../index';
 // Mock auth context
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: vi.fn(),
+}));
+
+// Mock view toggle so the page renders Library mode (the tabbed view) for the
+// test, regardless of role default. The toggle's persistence is tested elsewhere.
+vi.mock('../hooks/useViewToggle', () => ({
+  useViewToggle: () => ({ view: 'LIBRARY', setView: vi.fn() }),
 }));
 
 // Mock hooks that fire network requests so the page renders without errors
@@ -22,26 +28,6 @@ vi.mock('../hooks/useCollectionsQueue', () => ({
     error: null,
     refetch: vi.fn(),
   }),
-}));
-
-vi.mock('../hooks/useApprovalQueues', () => ({
-  useApprovalQueues: () => ({ data: null, isLoading: false }),
-  usePendingMdm: () => ({ data: [], isLoading: false }),
-  usePendingLetters: () => ({ data: [], isLoading: false }),
-  usePendingExchanges: () => ({ data: [], isLoading: false }),
-  usePendingRepossessions: () => ({ data: [], isLoading: false }),
-  usePendingWriteOffs: () => ({ data: [], isLoading: false }),
-  useApproveMdm: () => ({ mutate: vi.fn(), isPending: false }),
-  useRejectMdm: () => ({ mutate: vi.fn(), isPending: false }),
-  useUnlockMdm: () => ({ mutate: vi.fn(), isPending: false }),
-  useApproveLetter: () => ({ mutate: vi.fn(), isPending: false }),
-  useRejectLetter: () => ({ mutate: vi.fn(), isPending: false }),
-  useApproveExchange: () => ({ mutate: vi.fn(), isPending: false }),
-  useRejectExchange: () => ({ mutate: vi.fn(), isPending: false }),
-  useApproveRepossession: () => ({ mutate: vi.fn(), isPending: false }),
-  useRejectRepossession: () => ({ mutate: vi.fn(), isPending: false }),
-  useApproveWriteOff: () => ({ mutate: vi.fn(), isPending: false }),
-  useRejectWriteOff: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 vi.mock('../hooks/useCollectionsAnalytics', () => ({
@@ -72,43 +58,38 @@ function getTabLabels(): string[] {
 }
 
 describe('CollectionsPage tab visibility by role', () => {
-  it('OWNER sees all 6 tabs including อนุมัติ + วิเคราะห์', () => {
+  it('OWNER sees 5 tabs including วิเคราะห์', () => {
     renderWith('OWNER');
     const labels = getTabLabels();
     expect(labels).toEqual(
-      expect.arrayContaining(['คิววันนี้', 'ตามต่อ', 'นัดชำระ', 'อนุมัติ', 'ทั้งหมด', 'วิเคราะห์']),
+      expect.arrayContaining(['คิววันนี้', 'ตามต่อ', 'นัดชำระ', 'ทั้งหมด', 'วิเคราะห์']),
     );
-    expect(labels).toHaveLength(6);
+    expect(labels).toHaveLength(5);
   });
 
-  it('FINANCE_MANAGER sees approval and analytics', () => {
+  it('FINANCE_MANAGER sees วิเคราะห์', () => {
     renderWith('FINANCE_MANAGER');
     const labels = getTabLabels();
-    expect(labels).toEqual(
-      expect.arrayContaining(['อนุมัติ', 'วิเคราะห์']),
-    );
+    expect(labels).toContain('วิเคราะห์');
   });
 
-  it('BRANCH_MANAGER sees approval but NOT analytics', () => {
+  it('BRANCH_MANAGER does NOT see วิเคราะห์', () => {
     renderWith('BRANCH_MANAGER');
     const labels = getTabLabels();
-    expect(labels).toContain('อนุมัติ');
     expect(labels).not.toContain('วิเคราะห์');
   });
 
-  it('SALES sees 4 tabs (no approval, no analytics)', () => {
+  it('SALES sees 4 tabs (no analytics)', () => {
     renderWith('SALES');
     const labels = getTabLabels();
     expect(labels).toEqual(['คิววันนี้', 'ตามต่อ', 'นัดชำระ', 'ทั้งหมด']);
-    expect(labels).not.toContain('อนุมัติ');
     expect(labels).not.toContain('วิเคราะห์');
   });
 
-  it('ACCOUNTANT sees 4 tabs (no approval, no analytics)', () => {
+  it('ACCOUNTANT sees 4 tabs (no analytics)', () => {
     renderWith('ACCOUNTANT');
     const labels = getTabLabels();
-    expect(labels).not.toContain('อนุมัติ');
-    expect(labels).not.toContain('วิเคราะห์');
     expect(labels).toHaveLength(4);
+    expect(labels).not.toContain('วิเคราะห์');
   });
 });

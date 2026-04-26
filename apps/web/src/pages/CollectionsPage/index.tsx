@@ -15,7 +15,6 @@ import QueueTab from './tabs/QueueTab';
 import FollowUpTab from './tabs/FollowUpTab';
 import PromiseTab from './tabs/PromiseTab';
 import AllTab from './tabs/AllTab';
-import ApprovalTab from './tabs/ApprovalTab';
 import AnalyticsTab from './tabs/AnalyticsTab';
 import SessionView from './session/SessionView';
 import { useViewToggle } from './hooks/useViewToggle';
@@ -25,15 +24,14 @@ export type { CollectionsTabKey };
 
 /**
  * Role-based access for tabs. Empty array = all authenticated roles.
- * Previously SALES/ACCOUNTANT could click Approval/Analytics and get silent
- * 403s — now gated at the tab bar so the tab never renders.
+ * Previously SALES/ACCOUNTANT could click Analytics and get silent 403s —
+ * now gated at the tab bar so the tab never renders.
  */
 const TAB_ROLE_ACCESS: Record<CollectionsTabKey, string[]> = {
   today: [],
   followup: [],
   promise: [],
   all: [],
-  approval: ['OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER'],
   analytics: ['OWNER', 'FINANCE_MANAGER'],
 };
 
@@ -56,7 +54,6 @@ export default function CollectionsPage() {
   const [lineDialogContract, setLineDialogContract] = useState<ContractRow | null>(null);
   const [skipTraceContract, setSkipTraceContract] = useState<ContractRow | null>(null);
 
-  const canSeeApproval = canAccessTab('approval', user?.role);
   const canSeeAnalytics = canAccessTab('analytics', user?.role);
   const showBranchFilter = user?.role === 'OWNER' || user?.role === 'FINANCE_MANAGER';
 
@@ -114,7 +111,6 @@ export default function CollectionsPage() {
               setSearch('');
               setBranchId('');
             }}
-            canSeeApproval={canSeeApproval}
             canSeeAnalytics={canSeeAnalytics}
           />
 
@@ -161,8 +157,6 @@ export default function CollectionsPage() {
               onSkipTrace={setSkipTraceContract}
             />
           )}
-
-          {effectiveTab === 'approval' && canSeeApproval && <ApprovalTab />}
 
           {effectiveTab === 'all' && <AllTab />}
 

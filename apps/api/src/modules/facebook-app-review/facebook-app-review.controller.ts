@@ -8,7 +8,6 @@ import {
   CreateLiveVideoDto,
   PublishVideoDto,
   SendStandardMessageDto,
-  SendUtilityMessageDto,
   SubscribePageWebhooksDto,
   UpdateCampaignStatusDto,
 } from './dto/facebook-app-review.dto';
@@ -22,13 +21,17 @@ import {
  * Permission → endpoint map:
  * - pages_show_list               → GET    /facebook/app-review/pages
  * - pages_manage_ads              → GET    /facebook/app-review/promotable-posts
- * - pages_utility_messaging       → POST   /facebook/app-review/utility-message
+ * - pages_messaging (RESPONSE)    → POST   /facebook/app-review/messenger-message
  * - ads_management                → POST   /facebook/app-review/campaigns
  *                                 → PATCH  /facebook/app-review/campaigns/:id/status
  * - leads_retrieval               → GET    /facebook/app-review/lead-forms
  *                                 → GET    /facebook/app-review/lead-forms/:id/leads
  * - Live Video API                → POST   /facebook/app-review/live-videos
  * - publish_video                 → POST   /facebook/app-review/videos
+ *
+ * Removed 2026-04-26: utility-message + ACCOUNT_UPDATE message tag
+ * (deprecated by Meta 2026-04-27). Auto-reminders go via LINE/SMS;
+ * Messenger is reserved for customer-initiated 24-hr response window.
  */
 @Controller('facebook/app-review')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -39,12 +42,6 @@ export class FacebookAppReviewController {
   @Roles('OWNER')
   async listPages() {
     return this.service.listManagedPages();
-  }
-
-  @Post('utility-message')
-  @Roles('OWNER')
-  async sendUtilityMessage(@Body() dto: SendUtilityMessageDto) {
-    return this.service.sendUtilityMessage(dto);
   }
 
   @Get('promotable-posts')

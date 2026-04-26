@@ -1,20 +1,5 @@
 import { IsString, IsOptional, IsNumber, Min, IsIn } from 'class-validator';
 
-export class SendUtilityMessageDto {
-  @IsString({ message: 'กรุณาระบุ PSID ของผู้รับ' })
-  recipientPsid: string;
-
-  @IsString({ message: 'กรุณาระบุข้อความ' })
-  text: string;
-
-  @IsOptional()
-  @IsString()
-  @IsIn(['ACCOUNT_UPDATE', 'POST_PURCHASE_UPDATE', 'CONFIRMED_EVENT_UPDATE'], {
-    message: 'message tag ไม่ถูกต้อง',
-  })
-  tag?: string;
-}
-
 export class CreateAdCampaignDto {
   @IsString({ message: 'กรุณาระบุชื่อ campaign' })
   name: string;

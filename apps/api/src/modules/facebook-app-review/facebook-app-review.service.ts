@@ -6,7 +6,6 @@ import {
   CreateLiveVideoDto,
   PublishVideoDto,
   SendStandardMessageDto,
-  SendUtilityMessageDto,
   SubscribePageWebhooksDto,
   UpdateCampaignStatusDto,
 } from './dto/facebook-app-review.dto';
@@ -85,31 +84,6 @@ export class FacebookAppReviewService {
 
     const url = `${GRAPH_BASE}/me/accounts?fields=id,name,category,tasks&access_token=${token}`;
     return this.call('GET', url, undefined, 'list_pages');
-  }
-
-  // ─── pages_utility_messaging ─────────────────────────────────────────────
-  /**
-   * POST /{PAGE_ID}/messages with messaging_type=MESSAGE_TAG + tag=ACCOUNT_UPDATE.
-   * Used to send non-promotional updates (e.g. installment due reminders)
-   * outside the 24-hour messaging window.
-   *
-   * Permissions: pages_messaging, pages_utility_messaging
-   */
-  async sendUtilityMessage(dto: SendUtilityMessageDto): Promise<FbJson> {
-    const c = await this.getCreds();
-    if (!c.pageToken || !c.pageId) {
-      throw new BadRequestException('ยังไม่ได้ตั้งค่า FB page token/id');
-    }
-
-    const url = `${GRAPH_BASE}/${c.pageId}/messages?access_token=${c.pageToken}`;
-    const body = {
-      messaging_type: 'MESSAGE_TAG',
-      tag: dto.tag ?? 'ACCOUNT_UPDATE',
-      recipient: { id: dto.recipientPsid },
-      message: { text: dto.text },
-    };
-
-    return this.call('POST', url, body, 'send_utility_message');
   }
 
   // ─── pages_manage_ads + pages_read_engagement ────────────────────────────

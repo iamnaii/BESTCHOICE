@@ -455,6 +455,41 @@ enum LetterStatus {
   CANCELLED
 }
 
+enum AssignmentSource {
+  AUTO_RELATIONSHIP
+  AUTO_RECENT
+  AUTO_BRANCH
+  AUTO_ROUNDROBIN
+  MANAGER_OVERRIDE
+  SELF_CLAIMED
+}
+
+enum AssignmentStatus {
+  PENDING
+  IN_PROGRESS
+  DONE
+  SKIPPED
+  CANCELLED
+}
+
+enum AssignmentOutcome {
+  CALL_CONNECTED
+  CALL_NO_ANSWER
+  LINE_SENT
+  SMS_SENT
+  PAYMENT_RECEIVED
+  PROMISE_MADE
+  REFUSED
+  SKIPPED
+}
+
+enum SkipReason {
+  BUSY
+  WRONG_QUEUE
+  PERSONAL_CONFLICT
+  OTHER
+}
+
 // ============================================================
 // CORE ENTITIES
 // ============================================================
@@ -508,6 +543,8 @@ model User {
   branchId               String?               @map("branch_id")
   isActive               Boolean               @default(true) @map("is_active")
   isSystemUser           Boolean               @default(false) @map("is_system_user")
+  collectionsActive      Boolean               @default(true) @map("collections_active")
+  preferences            Json?                 @map("preferences")
   savedSignature         String?               @map("saved_signature") @db.Text
   employeeId             String?               @unique @map("employee_id")
   nickname               String?               @map("nickname")
@@ -635,6 +672,9 @@ model User {
   appliedTags            CustomerTag[]          @relation("CustomerTagAppliedBy")
   lateFeeWaiverRequests  LateFeeWaiverRequest[] @relation("LateFeeWaiverRequester")
   approvedLateFeeWaivers LateFeeWaiverRequest[] @relation("LateFeeWaiverApprover")
+
+  // Collections Guided Session — daily collector assignments
+  collectorAssignments DailyAssignment[] @relation("CollectorAssignments")
 
   // Yeastar PBX — maps this staff account to a PBX extension (e.g. "1001")
   // Used by click-to-call (originate from) and inbound screen pop (identify agent)
@@ -935,6 +975,9 @@ model Contract {
   // P3 Collections UI — late fee waiver requests (collector → OWNER approval)
   lateFeeWaiverRequests LateFeeWaiverRequest[]
 
+  // Collections Guided Session — daily assignment back-relation
+  dailyAssignments DailyAssignment[]
+
   @@index([customerId])
   @@index([branchId])
   @@index([assignedToId])
@@ -948,6 +991,39 @@ model Contract {
   @@index([retentionStatus])
   @@index([noAnswerCount]) // H2: FollowUpTab filters on gte 1 lt 3 — index keeps it sub-ms at scale
   @@map("contracts")
+}
+
+model DailyAssignment {
+  id             String             @id @default(uuid())
+  date           DateTime           @db.Date
+  collectorId    String?
+  contractId     String
+  assignedAt     DateTime           @default(now())
+  source         AssignmentSource
+  status         AssignmentStatus   @default(PENDING)
+  startedAt      DateTime?
+  completedAt    DateTime?
+  outcome        AssignmentOutcome?
+  skipReason     SkipReason?
+  skipNote       String?
+  lockedAt       DateTime?
+  lockExpiresAt  DateTime?
+  escalationFlag Boolean            @default(false)
+  notes          String?
+  paymentId      String?
+  lineMessageId  String?
+  position       Int                @default(0)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  deletedAt      DateTime?
+
+  collector User?    @relation("CollectorAssignments", fields: [collectorId], references: [id])
+  contract  Contract @relation(fields: [contractId], references: [id])
+
+  @@unique([date, contractId])
+  @@index([collectorId, date])
+  @@index([date, status])
+  @@index([escalationFlag, date])
 }
 
 model Payment {

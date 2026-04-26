@@ -88,6 +88,7 @@ import { BroadcastModule } from './modules/broadcast/broadcast.module';
 import { HealthModule } from './modules/health/health.module';
 import { PeakModule } from './modules/peak/peak.module';
 import { MdmModule } from './modules/mdm/mdm.module';
+import { YeastarModule } from './modules/yeastar/yeastar.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { SearchModule } from './modules/search/search.module';
@@ -260,6 +261,8 @@ import { AppCacheModule } from './cache/cache.module';
     // External integrations (scaffold — activate when credentials are available)
     PeakModule,
     MdmModule,
+    // Yeastar PBX — CDR logging, click-to-call, extension management
+    YeastarModule,
     // Integrations — manage external service credentials (OWNER only)
     IntegrationsModule,
     // Loyalty Program (สะสมแต้ม + referral)

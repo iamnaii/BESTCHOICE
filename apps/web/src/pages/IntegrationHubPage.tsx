@@ -32,6 +32,7 @@ import {
   BarChart3,
   Smartphone,
   Settings2,
+  Phone,
 } from 'lucide-react';
 import { FacebookAppReviewPanel } from '@/components/FacebookAppReviewPanel';
 
@@ -83,6 +84,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   line: Zap,
   sms: Smartphone,
   analytics: BarChart3,
+  yeastar: Phone,
   default: Settings2,
 };
 

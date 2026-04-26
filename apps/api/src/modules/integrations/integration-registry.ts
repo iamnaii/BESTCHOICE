@@ -419,6 +419,48 @@ export const INTEGRATIONS: IntegrationDef[] = [
       },
     ],
   },
+  {
+    key: 'yeastar',
+    name: 'Yeastar PBX',
+    description: 'ระบบโทรศัพท์ — click-to-call, screen pop, บันทึกเสียง',
+    icon: 'phone',
+    webhookUrl: `${BASE}/api/yeastar/webhook`,
+    webhookNote: 'ตั้งค่า Webhook URL นี้ที่ Yeastar PBX → Integrations → API → Webhook',
+    fields: [
+      {
+        key: 'pbxUrl',
+        label: 'PBX URL',
+        sensitive: false,
+        required: true,
+        defaultValue: '',
+        envVar: 'YEASTAR_PBX_URL',
+      },
+      {
+        key: 'clientId',
+        label: 'Client ID',
+        sensitive: false,
+        required: true,
+        defaultValue: '',
+        envVar: 'YEASTAR_CLIENT_ID',
+      },
+      {
+        key: 'clientSecret',
+        label: 'Client Secret',
+        sensitive: true,
+        required: true,
+        defaultValue: '',
+        envVar: 'YEASTAR_CLIENT_SECRET',
+      },
+      {
+        key: 'webhookSecret',
+        label: 'Webhook Secret Token',
+        sensitive: true,
+        required: false,
+        defaultValue: '',
+        envVar: 'YEASTAR_WEBHOOK_SECRET',
+      },
+    ],
+  },
 ];
 
 /**

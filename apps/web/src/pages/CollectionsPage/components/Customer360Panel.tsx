@@ -28,6 +28,7 @@ import LateFeeWaiverDialog from './LateFeeWaiverDialog';
 import CustomerTagChips from './CustomerTagChips';
 import CustomerTagDialog from './CustomerTagDialog';
 import type { ContractRow } from '../types';
+import { CallButton } from '@/components/CallButton';
 import { formatThaiDateShort } from '@/lib/date';
 
 interface Props {
@@ -155,13 +156,22 @@ export default function Customer360Panel({
                 </div>
                 <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
                   {contract.customer.phone && (
-                    <a
-                      href={`tel:${contract.customer.phone}`}
-                      className="inline-flex items-center gap-1 font-mono tabular-nums text-primary hover:underline"
-                    >
-                      <Phone className="size-3" />
-                      {contract.customer.phone}
-                    </a>
+                    <>
+                      <a
+                        href={`tel:${contract.customer.phone}`}
+                        className="inline-flex items-center gap-1 font-mono tabular-nums text-primary hover:underline"
+                      >
+                        <Phone className="size-3" />
+                        {contract.customer.phone}
+                      </a>
+                      <CallButton
+                        customerId={contract.customer.id}
+                        contractId={contract.id}
+                        phone={contract.customer.phone}
+                        size="icon"
+                        variant="ghost"
+                      />
+                    </>
                   )}
                   {(data?.detail.customer.lineId ?? contract.customer.lineId) && (
                     <span className="inline-flex items-center gap-1 rounded-full bg-success/10 text-success px-2 py-0.5">

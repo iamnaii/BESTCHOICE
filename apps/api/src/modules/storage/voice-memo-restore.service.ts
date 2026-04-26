@@ -163,17 +163,19 @@ export class VoiceMemoRestoreService {
             ),
           },
         });
-        await this.prisma.notificationLog.create({
-          data: {
-            channel: 'IN_APP',
-            recipient: cl.callerId,
-            subject: 'voice-memo-restore-complete',
-            message: `ไฟล์เสียงพร้อมเล่นแล้ว (CallLog ${cl.id})`,
-            status: 'SENT',
-            sentAt: new Date(),
-            relatedId: cl.id,
-          },
-        });
+        if (cl.callerId) {
+          await this.prisma.notificationLog.create({
+            data: {
+              channel: 'IN_APP',
+              recipient: cl.callerId,
+              subject: 'voice-memo-restore-complete',
+              message: `ไฟล์เสียงพร้อมเล่นแล้ว (CallLog ${cl.id})`,
+              status: 'SENT',
+              sentAt: new Date(),
+              relatedId: cl.id,
+            },
+          });
+        }
         completed += 1;
       } catch (err) {
         this.logger.warn(

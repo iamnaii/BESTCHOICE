@@ -30,6 +30,7 @@ import type { ContractRow } from '../types';
 import { agingBucket, agingColor, formatRelativeTime } from '../utils/cardIndicators';
 import CustomerTagChips from './CustomerTagChips';
 import NextBestActionChip, { type NextBestActionType } from './NextBestActionChip';
+import { CallButton } from '@/components/CallButton';
 
 /**
  * Customer 360 snapshot preview is a deliberate intent gesture (Task 11):
@@ -393,6 +394,13 @@ export default function ContractCard({
             >
               <Phone className="size-3.5" /> {contract.customer.phone}
             </a>
+            <CallButton
+              customerId={contract.customer.id}
+              contractId={contract.id}
+              phone={contract.customer.phone}
+              size="sm"
+              variant="ghost"
+            />
             <button
               onClick={() => onLogContact(contract)}
               className="rounded-lg border border-input p-1.5 hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"

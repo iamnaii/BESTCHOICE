@@ -23,6 +23,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { DetailPageSkeleton } from '@/components/ui/page-skeletons';
 import { formatNumber, formatDateMedium } from '@/utils/formatters';
 import MdmDeviceWidget from '@/components/mdm/MdmDeviceWidget';
+import { CallButton } from '@/components/CallButton';
 
 interface Payment {
   id: string;
@@ -788,6 +789,15 @@ const deleteMutation = useMutation({
               <Info label="ชื่อ" value={contract.customerSnapshot?.prefix ? `${contract.customerSnapshot.prefix}${contract.customerSnapshot?.name || contract.customer.name}` : (contract.customerSnapshot?.name || contract.customer.name)} />
               <Info label="ชื่อเล่น" value={contract.customerSnapshot?.nickname || '-'} />
               <Info label="เบอร์โทร" value={contract.customerSnapshot?.phone || contract.customer.phone} />
+              <div className="col-span-full mt-1">
+                <CallButton
+                  customerId={contract.customer.id}
+                  contractId={contract.id}
+                  phone={contract.customerSnapshot?.phone || contract.customer.phone}
+                  size="sm"
+                  variant="outline"
+                />
+              </div>
               <Info label="อาชีพ" value={contract.customerSnapshot?.occupation || '-'} />
               {contract.customerSnapshot?.salary && <Info label="รายได้" value={`${formatNumber(contract.customerSnapshot.salary)} บาท`} />}
             </div>

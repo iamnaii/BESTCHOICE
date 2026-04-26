@@ -57,6 +57,11 @@ enum CallResult {
   UNREACHABLE
 }
 
+enum CallDirection {
+  INBOUND
+  OUTBOUND
+}
+
 enum NegotiationResult {
   REQUESTED_EXTENSION
   WILL_PAY
@@ -631,7 +636,12 @@ model User {
   lateFeeWaiverRequests  LateFeeWaiverRequest[] @relation("LateFeeWaiverRequester")
   approvedLateFeeWaivers LateFeeWaiverRequest[] @relation("LateFeeWaiverApprover")
 
+  // Yeastar PBX — maps this staff account to a PBX extension (e.g. "1001")
+  // Used by click-to-call (originate from) and inbound screen pop (identify agent)
+  yeastarExtension String? @map("yeastar_extension")
+
   @@index([branchId])
+  @@index([yeastarExtension])
   @@map("users")
 }
 
@@ -1730,7 +1740,7 @@ model NotificationLog {
 model CallLog {
   id                               String             @id @default(uuid())
   contractId                       String             @map("contract_id")
-  callerId                         String             @map("caller_id")
+  callerId                         String?            @map("caller_id")
   calledAt                         DateTime           @map("called_at")
   result                           String // e.g. ANSWERED, NO_ANSWER, PROMISED, REFUSED
   notes                            String?
@@ -1751,6 +1761,16 @@ model CallLog {
   voiceMemoUrl                     String?            @map("voice_memo_url")
   voiceMemoTier                    String?            @default("HOT") @map("voice_memo_tier")
   voiceMemoGlacierRestoreExpiresAt DateTime?          @map("voice_memo_glacier_restore_expires_at")
+  // Yeastar PBX CDR fields — auto-populated from CDR webhook (autoLogged=true).
+  // Separate from voiceMemo* which are agent-recorded voice notes.
+  yeastarCallId                    String?            @unique @map("yeastar_call_id")
+  callDirection                    CallDirection?     @map("call_direction")
+  duration                         Int?   // วินาที (seconds) — จาก CDR
+  recordingUrl                     String?            @map("recording_url")
+  recordingStorageTier             String?            @default("STANDARD") @map("recording_storage_tier")
+  recordingDownloadedAt            DateTime?          @map("recording_downloaded_at")
+  yeastarRecordingPath             String?            @map("yeastar_recording_path")
+  autoLogged                       Boolean            @default(false) @map("auto_logged")
   createdAt                        DateTime           @default(now()) @map("created_at")
   updatedAt                        DateTime           @updatedAt @map("updated_at")
   deletedAt                        DateTime?          @map("deleted_at")
@@ -1758,7 +1778,7 @@ model CallLog {
   // Restrict: collections call history (promises, refusals) is the
   // primary evidence trail for the dunning workflow.
   contract Contract @relation(fields: [contractId], references: [id], onDelete: Restrict)
-  caller   User     @relation(fields: [callerId], references: [id])
+  caller   User?    @relation(fields: [callerId], references: [id])
 
   @@index([contractId])
   @@index([callerId])

@@ -16,6 +16,7 @@ import {
   Settings,
   ChevronDown,
   MessageSquareMore,
+  UserCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -114,6 +115,12 @@ function UserDropdown() {
         <DropdownMenuSeparator />
 
         <DropdownMenuGroup>
+          <DropdownMenuItem asChild>
+            <Link to="/profile" className="flex items-center gap-2.5 cursor-pointer">
+              <UserCircle className="size-4 text-muted-foreground" strokeWidth={1.75} />
+              <span>โปรไฟล์ของฉัน</span>
+            </Link>
+          </DropdownMenuItem>
           <DropdownMenuItem asChild>
             <Link to="/settings" className="flex items-center gap-2.5 cursor-pointer">
               <Settings className="size-4 text-muted-foreground" strokeWidth={1.75} />

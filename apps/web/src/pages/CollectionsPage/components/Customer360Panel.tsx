@@ -8,8 +8,12 @@ import {
   Receipt,
   RefreshCw,
   Tag,
+  Lock,
+  LockOpen,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
+import { getErrorMessage } from '@/lib/api';
 import type { PaymentScheduleItem } from '../hooks/useCustomer360';
 import { useCustomer360 } from '../hooks/useCustomer360';
 import { useCustomerInsights } from '../hooks/useCustomerInsights';
@@ -17,6 +21,7 @@ import {
   useCustomerTags,
   useRecomputeCustomerTags,
 } from '../hooks/useCustomerTags';
+import { useUnlockContract } from '../hooks/useMdmLock';
 import Customer360Timeline from './Customer360Timeline';
 import Customer360Actions from './Customer360Actions';
 import SmartCustomerPanel from './SmartCustomerPanel';
@@ -25,8 +30,10 @@ import LegalCaseBanner from './LegalCaseBanner';
 import LegalCaseDialog from './LegalCaseDialog';
 import LineChatPanel from './LineChatPanel';
 import LateFeeWaiverDialog from './LateFeeWaiverDialog';
+import LockDeviceDialog from './LockDeviceDialog';
 import CustomerTagChips from './CustomerTagChips';
 import CustomerTagDialog from './CustomerTagDialog';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import type { ContractRow } from '../types';
 import { CallButton } from '@/components/CallButton';
 import { formatThaiDateShort } from '@/lib/date';
@@ -72,6 +79,25 @@ export default function Customer360Panel({
   const [legalCaseOpen, setLegalCaseOpen] = useState(false);
   const [waiverOpen, setWaiverOpen] = useState(false);
   const [tagDialogOpen, setTagDialogOpen] = useState(false);
+  const [lockDialogOpen, setLockDialogOpen] = useState(false);
+  const [unlockConfirmOpen, setUnlockConfirmOpen] = useState(false);
+
+  const unlock = useUnlockContract();
+  const handleUnlock = () => {
+    if (!contract) return;
+    unlock.mutate(contract.id, {
+      onSuccess: (data) => {
+        if (data && data.success === false) {
+          toast.error(data.message ?? 'ปลดล็อคไม่สำเร็จ');
+          return;
+        }
+        toast.success('ปลดล็อคเครื่องแล้ว');
+      },
+      onError: (err) => toast.error(getErrorMessage(err)),
+    });
+  };
+
+  const isLocked = contract?.mdmState === 'LOCKED' || contract?.deviceLocked === true;
 
   // LINE tab is only meaningful when the customer has a LINE ID. If they
   // don't, hide the tab entirely and snap back to overview if the user was
@@ -83,6 +109,8 @@ export default function Customer360Panel({
     setLegalCaseOpen(false);
     setWaiverOpen(false);
     setTagDialogOpen(false);
+    setLockDialogOpen(false);
+    setUnlockConfirmOpen(false);
   }, [contract?.id]);
 
   useEffect(() => {
@@ -380,6 +408,31 @@ export default function Customer360Panel({
                   <Receipt className="size-4" />
                   ขอ waive ค่าปรับ
                 </button>
+
+                {/* Manual MDM lock/unlock — action-first flow (replaces the
+                    deleted approval queue). Open to all collector roles
+                    (OWNER + FINANCE_MANAGER + BRANCH_MANAGER + SALES) on
+                    the backend; LINE notify is the safety net. */}
+                {isLocked ? (
+                  <button
+                    type="button"
+                    onClick={() => setUnlockConfirmOpen(true)}
+                    disabled={unlock.isPending}
+                    className="mt-2 w-full inline-flex items-center justify-center gap-2 rounded-lg border border-input px-3 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <LockOpen className="size-4" />
+                    {unlock.isPending ? 'กำลังปลดล็อค...' : 'ปลดล็อคเครื่อง'}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setLockDialogOpen(true)}
+                    className="mt-2 w-full inline-flex items-center justify-center gap-2 rounded-lg bg-destructive text-destructive-foreground px-3 py-2 text-sm font-medium hover:bg-destructive/90 transition-colors"
+                  >
+                    <Lock className="size-4" />
+                    ล็อคเครื่อง
+                  </button>
+                )}
               </section>
                 </>
               )}
@@ -412,6 +465,31 @@ export default function Customer360Panel({
           open={tagDialogOpen}
           onClose={() => setTagDialogOpen(false)}
           customerId={customerId}
+        />
+
+        {contract && (
+          <LockDeviceDialog
+            open={lockDialogOpen}
+            onOpenChange={setLockDialogOpen}
+            contractId={contract.id}
+            customerName={contract.customer.name}
+            daysOverdue={contract.daysOverdue}
+          />
+        )}
+
+        <ConfirmDialog
+          open={unlockConfirmOpen}
+          onOpenChange={setUnlockConfirmOpen}
+          title="ปลดล็อคเครื่อง"
+          description={
+            contract
+              ? `ปลดล็อคเครื่องของ ${contract.customer.name}? ลูกค้าจะใช้โทรศัพท์ได้ตามปกติ`
+              : ''
+          }
+          confirmLabel="ปลดล็อคเครื่อง"
+          cancelLabel="ยกเลิก"
+          loading={unlock.isPending}
+          onConfirm={handleUnlock}
         />
       </aside>
     </>

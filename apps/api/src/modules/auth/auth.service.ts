@@ -485,6 +485,7 @@ export class AuthService {
         role: true,
         branchId: true,
         deletedAt: true,
+        preferences: true,
         branch: { select: { id: true, name: true } },
       },
     });

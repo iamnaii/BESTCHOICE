@@ -14,12 +14,9 @@ const ROLE_DEFAULTS: Record<string, CollectionsView> = {
 };
 
 export function useViewToggle() {
-  const auth = useAuth();
-  const user = auth.user;
-  const stored = (
-    (user as unknown as { preferences?: { collectionsDefaultView?: CollectionsView } } | null)
-      ?.preferences
-  )?.collectionsDefaultView;
+  const { user, refresh } = useAuth();
+  const stored = (user?.preferences as { collectionsDefaultView?: CollectionsView } | null)
+    ?.collectionsDefaultView;
   const initial: CollectionsView = stored ?? ROLE_DEFAULTS[user?.role ?? ''] ?? 'LIBRARY';
   const [view, setView] = useState<CollectionsView>(initial);
 
@@ -31,11 +28,7 @@ export function useViewToggle() {
   const persist = useMutation({
     mutationFn: (next: CollectionsView) =>
       api.patch('/auth/me/preferences', { collectionsDefaultView: next }),
-    onSuccess: () => {
-      // Best-effort refresh user — auth.refresh may or may not exist.
-      const maybeRefresh = (auth as any).refresh;
-      if (typeof maybeRefresh === 'function') maybeRefresh();
-    },
+    onSuccess: () => refresh(),
   });
 
   const setAndPersist = (next: CollectionsView) => {

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ChatChannel } from '@prisma/client';
+import * as Sentry from '@sentry/nestjs';
 import {
   IChannelAdapter,
   OutboundMessage,
@@ -56,7 +57,16 @@ export class TiktokAdapter implements IChannelAdapter {
     // Expected: POST https://business-api.tiktok.com/open_api/v1.3/business/message/send/
     // Headers: Access-Token: {token}
     // Body: { business_id, user_id, message_type, content }
-    this.logger.warn('[TikTok] sendMessage called but endpoint not yet implemented');
+    //
+    // (Audit finding P1) Capture to Sentry too — a `success: false` return
+    // from a configured-but-unimplemented adapter is a real prod gap, not
+    // expected behavior. Without this the chat engine can silently drop
+    // messages destined for TikTok with no observability.
+    this.logger.error('[TikTok] sendMessage called but endpoint not yet implemented');
+    Sentry.captureMessage('[TikTok] sendMessage called on unimplemented adapter', {
+      level: 'error',
+      tags: { module: 'chat-adapter-tiktok' },
+    });
     return { success: false, error: 'TikTok messaging endpoint not yet implemented — awaiting partner docs' };
   }
 

@@ -38,7 +38,21 @@ export class LineFinanceAdapter implements IChannelAdapter {
           await this.lineClient.pushText(message.externalUserId, message.text);
         }
       }
-      // TODO: support Flex messages via templatePayload
+
+      // (Audit finding P1) Surface Flex / template payloads instead of
+      // silently dropping them. The LINE Finance client doesn't expose a
+      // pushFlex helper yet; until it does, return success:false so the
+      // chat engine + caller can react rather than silently lose the
+      // message.
+      if (message.templatePayload && !message.text) {
+        this.logger.warn(
+          '[LineFinanceAdapter] templatePayload received but Flex/template send is not implemented; message dropped',
+        );
+        return {
+          success: false,
+          error: 'LINE Finance Flex/template send not implemented in adapter',
+        };
+      }
 
       return { success: true };
     } catch (err) {

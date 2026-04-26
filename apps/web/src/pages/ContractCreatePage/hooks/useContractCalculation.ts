@@ -1,5 +1,14 @@
 import { useState, useEffect } from 'react';
+import Decimal from 'decimal.js';
 import type { Product, InterestConfig } from '../types';
+
+// (Audit finding P0) The backend stores all money values as Prisma.Decimal(12,2).
+// Doing the contract preview in JS float caused 0.01 baht drift per multiplication
+// step, accumulated across `principal × interestRate × months × vat` and divided
+// out to `monthlyPayment`. The user saw `1499.999...` while the server stored
+// `1500.00`, and the final installment occasionally diverged by a few satang.
+// All arithmetic now goes through decimal.js with explicit toDecimalPlaces(2)
+// at each step; only the final hand-off to React state uses .toNumber().
 
 interface UseContractCalculationParams {
   selectedProduct: Product | null;
@@ -57,12 +66,19 @@ export function useContractCalculation({
     });
   }, [minMonths, maxMonths]);
 
-  const principal = Math.max(sellingPrice - downPayment, 0);
-  const storeCommission = principal * storeCommPct;
-  const interestTotal = principal * interestRate * totalMonths;
-  const vatAmount = (principal + storeCommission + interestTotal) * vatPct;
-  const financedAmount = principal + storeCommission + interestTotal + vatAmount;
-  const monthlyPayment = totalMonths > 0 ? Math.round((financedAmount / totalMonths) * 100) / 100 : 0;
+  const dPrincipal = Decimal.max(new Decimal(sellingPrice).sub(downPayment), 0);
+  const dStoreCommission = dPrincipal.mul(storeCommPct).toDecimalPlaces(2);
+  const dInterestTotal = dPrincipal.mul(interestRate).mul(totalMonths).toDecimalPlaces(2);
+  const dVatAmount = dPrincipal.add(dStoreCommission).add(dInterestTotal).mul(vatPct).toDecimalPlaces(2);
+  const dFinancedAmount = dPrincipal.add(dStoreCommission).add(dInterestTotal).add(dVatAmount).toDecimalPlaces(2);
+  const dMonthlyPayment = totalMonths > 0 ? dFinancedAmount.div(totalMonths).toDecimalPlaces(2) : new Decimal(0);
+
+  const principal = dPrincipal.toNumber();
+  const storeCommission = dStoreCommission.toNumber();
+  const interestTotal = dInterestTotal.toNumber();
+  const vatAmount = dVatAmount.toNumber();
+  const financedAmount = dFinancedAmount.toNumber();
+  const monthlyPayment = dMonthlyPayment.toNumber();
 
   const monthOptions: number[] = [];
   for (let m = minMonths; m <= maxMonths; m++) {

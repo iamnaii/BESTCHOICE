@@ -2,6 +2,7 @@ import { useLiffInit } from '@/hooks/useLiffInit';
 import { liffApi } from '@/lib/api';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import Decimal from 'decimal.js';
 import {
   ChevronLeft,
   ChevronRight,
@@ -74,9 +75,15 @@ export default function LiffEarlyPayoff() {
       // terminal step anyway. installmentNo is intentionally omitted so
       // backend skips per-installment amount validation (the payoff
       // amount intentionally exceeds any single installment).
+      // (Audit finding P0) Send the payoff amount as a Decimal-safe number with
+      // explicit 2dp rounding so PaySolutions does not see 127961.13999... from
+      // a JS float intermediate. quote.totalPayoff arrives as a Decimal-string;
+      // `new Decimal(...)` parses it without precision loss and `.toNumber()`
+      // after rounding produces a clean cents-aligned number.
+      const payoffAmount = new Decimal(quote.totalPayoff).toDecimalPlaces(2).toNumber();
       const { data: intent } = await liffApi.post('/paysolutions/create-intent', {
         contractId,
-        amount: Number(quote.totalPayoff),
+        amount: payoffAmount,
         description: `ปิดยอดก่อนกำหนด สัญญา ${quote.contractNumber}`,
         lineId,
       });

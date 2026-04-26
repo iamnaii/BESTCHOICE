@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import Decimal from 'decimal.js';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useSearchParams } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -179,10 +180,22 @@ export default function PaymentsPage() {
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
-  // Pending summary totals
+  // Pending summary totals — Decimal arithmetic, single number convert at end
+  // (audit finding P0). Otherwise per-row parseFloat drift accumulates across
+  // hundreds of rows.
   const pendingSummary = useMemo(() => ({
     count: pendingPayments.length,
-    totalDue: pendingPayments.reduce((sum, p) => sum + parseFloat(p.amountDue) + parseFloat(p.lateFee) - parseFloat(p.amountPaid), 0),
+    totalDue: pendingPayments
+      .reduce(
+        (sum, p) =>
+          sum
+            .add(p.amountDue)
+            .add(p.lateFee)
+            .sub(p.amountPaid),
+        new Decimal(0),
+      )
+      .toDecimalPlaces(2)
+      .toNumber(),
   }), [pendingPayments]);
 
   // Excel export handler
@@ -241,7 +254,17 @@ export default function PaymentsPage() {
   [pendingPayments, selectedIds]);
 
   const batchTotal = useMemo(() =>
-    batchSelectedPayments.reduce((sum, p) => sum + parseFloat(p.amountDue) + parseFloat(p.lateFee) - parseFloat(p.amountPaid), 0),
+    batchSelectedPayments
+      .reduce(
+        (sum, p) =>
+          sum
+            .add(p.amountDue)
+            .add(p.lateFee)
+            .sub(p.amountPaid),
+        new Decimal(0),
+      )
+      .toDecimalPlaces(2)
+      .toNumber(),
   [batchSelectedPayments]);
 
   const handleBatchPay = () => {

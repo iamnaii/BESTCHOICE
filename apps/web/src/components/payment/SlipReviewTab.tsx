@@ -699,7 +699,14 @@ export default function SlipReviewTab() {
                     <button
                       type="button"
                       onClick={() => approveMutation.mutate(selectedEvidence.id)}
-                      disabled={!approveAmount || approveMutation.isPending}
+                      // (Audit finding P0) `Number("")` is 0; without the
+                      // explicit > 0 check the button could enable on an empty
+                      // input that the user then cleared, approving a ฿0 slip.
+                      disabled={
+                        !approveAmount ||
+                        Number(approveAmount) <= 0 ||
+                        approveMutation.isPending
+                      }
                       className="px-6 py-2.5 text-sm bg-success text-success-foreground rounded-lg hover:bg-success/90 disabled:opacity-50 font-semibold transition-colors shadow-sm"
                     >
                       {approveMutation.isPending ? 'กำลังบันทึก...' : 'อนุมัติ'}

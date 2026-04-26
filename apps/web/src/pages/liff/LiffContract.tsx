@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useLiffInit } from '@/hooks/useLiffInit';
 import { liffApi, withLiffToken } from '@/lib/api';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   QrCode,
@@ -84,6 +84,7 @@ export default function LiffContract() {
   const { lineId, loading, error } = useLiffInit();
   const [selectedContract, setSelectedContract] = useState(0);
   const [showAllPayments, setShowAllPayments] = useState(false);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -100,6 +101,11 @@ export default function LiffContract() {
         if (status.status === 'PAID') {
           clearInterval(pollId);
           toast.success('ชำระเงินสำเร็จ!');
+          // (Audit finding C1) Without this, the contract list query stays
+          // stale and the UI still shows the installment as unpaid even after
+          // the gateway confirmed PAID — customer thinks the payment failed
+          // and re-pays.
+          queryClient.invalidateQueries({ queryKey: ['liff-contracts', lineId] });
         } else if (status.status === 'FAILED' || attempts >= maxAttempts) {
           clearInterval(pollId);
           if (status.status === 'FAILED') {
@@ -112,7 +118,7 @@ export default function LiffContract() {
     }, 3000);
 
     return () => clearInterval(pollId);
-  }, []);
+  }, [lineId, queryClient]);
 
   const [showConsent, setShowConsent] = useState(false);
 

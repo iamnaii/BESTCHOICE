@@ -1,4 +1,5 @@
 import Modal from '@/components/ui/Modal';
+import Decimal from 'decimal.js';
 import { toast } from 'sonner';
 import { formatThaiDate } from '@/lib/date';
 import type { PendingPayment, OcrPaymentSlipResult } from '../types';
@@ -101,22 +102,41 @@ export function RecordPaymentModal({
 }: RecordPaymentModalProps) {
   if (!show || !payment) return null;
 
-  const amountDue = parseFloat(payment.amountDue);
-  const amountPaid = parseFloat(payment.amountPaid);
-  const lateFee = parseFloat(payment.lateFee);
-  const outstanding = amountDue + lateFee - amountPaid;
+  // (Audit finding P0) Outstanding pre-fills the cashier's input field. JS float
+  // arithmetic on Decimal-string fields could leave 1499.999... where the
+  // backend stores 1500.00, causing the cashier to submit the wrong amount.
+  // Compute via decimal.js then expose as numbers for the existing JSX.
+  const amountDueD = new Decimal(payment.amountDue);
+  const amountPaidD = new Decimal(payment.amountPaid);
+  const lateFeeD = new Decimal(payment.lateFee);
+  const outstandingD = amountDueD.add(lateFeeD).sub(amountPaidD).toDecimalPlaces(2);
+
+  const amountDue = amountDueD.toNumber();
+  const amountPaid = amountPaidD.toNumber();
+  const lateFee = lateFeeD.toNumber();
+  const outstanding = outstandingD.toNumber();
 
   // Breakdown
-  const principal = payment.monthlyPrincipal ? parseFloat(payment.monthlyPrincipal) : null;
-  const interest = payment.monthlyInterest ? parseFloat(payment.monthlyInterest) : null;
-  const commission = payment.monthlyCommission ? parseFloat(payment.monthlyCommission) : null;
-  const vat = payment.vatAmount ? parseFloat(payment.vatAmount) : null;
-  const hasBreakdown = principal !== null;
-  const subtotal = hasBreakdown ? (principal + (interest || 0) + (commission || 0)) : null;
+  const principalD = payment.monthlyPrincipal ? new Decimal(payment.monthlyPrincipal) : null;
+  const interestD = payment.monthlyInterest ? new Decimal(payment.monthlyInterest) : null;
+  const commissionD = payment.monthlyCommission ? new Decimal(payment.monthlyCommission) : null;
+  const vatD = payment.vatAmount ? new Decimal(payment.vatAmount) : null;
+  const hasBreakdown = principalD !== null;
+  const subtotalD = hasBreakdown
+    ? principalD!
+        .add(interestD ?? 0)
+        .add(commissionD ?? 0)
+        .toDecimalPlaces(2)
+    : null;
+  const principal = principalD?.toNumber() ?? null;
+  const interest = interestD?.toNumber() ?? null;
+  const commission = commissionD?.toNumber() ?? null;
+  const vat = vatD?.toNumber() ?? null;
+  const subtotal = subtotalD?.toNumber() ?? null;
 
   // Summary
   const received = payForm.amount;
-  const change = received - outstanding;
+  const change = new Decimal(received).sub(outstandingD).toDecimalPlaces(2).toNumber();
 
   const inputClass = 'w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden';
 

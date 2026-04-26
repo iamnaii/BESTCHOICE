@@ -64,7 +64,7 @@ export class JournalController {
       endDate,
       search,
       page: page ? parseInt(page) : undefined,
-      limit: limit ? parseInt(limit) : undefined,
+      limit: limit ? Math.min(parseInt(limit) || 50, 100) : undefined,
     });
   }
 

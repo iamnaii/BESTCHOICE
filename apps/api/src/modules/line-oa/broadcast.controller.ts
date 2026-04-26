@@ -11,6 +11,9 @@ import {
   UploadedFile,
   ParseIntPipe,
   DefaultValuePipe,
+  ParseFilePipe,
+  MaxFileSizeValidator,
+  FileTypeValidator,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
@@ -95,7 +98,17 @@ export class BroadcastController {
   @Roles('OWNER')
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file'))
-  async uploadImage(@UploadedFile() file: Express.Multer.File) {
+  async uploadImage(
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 10 * 1024 * 1024, message: 'ไฟล์มีขนาดเกิน 10MB' }),
+          new FileTypeValidator({ fileType: /^image\/(jpeg|png|gif|webp)$/ }),
+        ],
+      }),
+    )
+    file: Express.Multer.File,
+  ) {
     return this.broadcastService.uploadImage(file.buffer, file.originalname);
   }
 

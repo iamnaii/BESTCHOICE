@@ -36,21 +36,30 @@ export class PoolService {
     const now = new Date();
     const expiresAt = new Date(now.getTime() + cfg.selfClaimLockHours * 60 * 60 * 1000);
 
-    const row = await this.prisma.dailyAssignment.findFirst({
-      where: { id: assignmentId, collectorId: null, status: 'PENDING', deletedAt: null },
-    });
-    if (!row) {
-      throw new ConflictException('สัญญานี้ถูกหยิบไปแล้วหรือไม่อยู่ใน pool');
-    }
-
-    return this.prisma.dailyAssignment.update({
-      where: { id: assignmentId },
+    // Atomic claim: only updates if still unclaimed.
+    // Two concurrent claims for the same id: one will hit count=1, the other count=0.
+    const result = await this.prisma.dailyAssignment.updateMany({
+      where: {
+        id: assignmentId,
+        collectorId: null,
+        status: 'PENDING',
+        deletedAt: null,
+      },
       data: {
         collectorId: userId,
         source: 'SELF_CLAIMED',
         lockedAt: now,
         lockExpiresAt: expiresAt,
       },
+    });
+
+    if (result.count === 0) {
+      throw new ConflictException('สัญญานี้ถูกหยิบไปแล้วหรือไม่อยู่ใน pool');
+    }
+
+    // Re-read to return the updated row (consumer may want full data).
+    return this.prisma.dailyAssignment.findUnique({
+      where: { id: assignmentId },
     });
   }
 }

@@ -11,9 +11,9 @@ describe('PoolService', () => {
   beforeEach(async () => {
     const prismaMock: any = {
       dailyAssignment: {
-        findFirst: jest.fn(),
-        update: jest.fn(),
         findMany: jest.fn(),
+        updateMany: jest.fn(),
+        findUnique: jest.fn(),
       },
     };
     const settingsMock = {
@@ -37,18 +37,21 @@ describe('PoolService', () => {
   });
 
   it('claims an unassigned contract from pool', async () => {
-    prisma.dailyAssignment.findFirst.mockResolvedValue({
+    prisma.dailyAssignment.updateMany.mockResolvedValue({ count: 1 });
+    prisma.dailyAssignment.findUnique.mockResolvedValue({
       id: 'a1',
-      collectorId: null,
-      contractId: 'c1',
-      status: 'PENDING',
+      collectorId: 'u1',
+      source: 'SELF_CLAIMED',
     });
-    prisma.dailyAssignment.update.mockResolvedValue({});
 
     await service.claim('a1', 'u1');
 
-    expect(prisma.dailyAssignment.update).toHaveBeenCalledWith({
-      where: { id: 'a1' },
+    expect(prisma.dailyAssignment.updateMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        id: 'a1',
+        collectorId: null,
+        status: 'PENDING',
+      }),
       data: expect.objectContaining({
         collectorId: 'u1',
         source: 'SELF_CLAIMED',
@@ -59,8 +62,19 @@ describe('PoolService', () => {
   });
 
   it('throws ConflictException when contract already claimed', async () => {
-    prisma.dailyAssignment.findFirst.mockResolvedValue(null);
+    prisma.dailyAssignment.updateMany.mockResolvedValue({ count: 0 });
     await expect(service.claim('a1', 'u1')).rejects.toThrow(ConflictException);
+  });
+
+  it('claim is idempotent — concurrent second claim sees count=0', async () => {
+    // First call: succeeds (count=1)
+    prisma.dailyAssignment.updateMany.mockResolvedValueOnce({ count: 1 });
+    prisma.dailyAssignment.findUnique.mockResolvedValueOnce({ id: 'a1' });
+    await expect(service.claim('a1', 'u1')).resolves.toBeDefined();
+
+    // Second call: race lost (count=0)
+    prisma.dailyAssignment.updateMany.mockResolvedValueOnce({ count: 0 });
+    await expect(service.claim('a1', 'u2')).rejects.toThrow(ConflictException);
   });
 
   it('list filters by branch when branchId provided', async () => {

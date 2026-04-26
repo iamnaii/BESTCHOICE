@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AutoAssignService } from './auto-assign.service';
+import { CollectionsSummaryService } from './collections-summary.service';
 
 @Injectable()
 export class CollectionsSessionCron {
@@ -11,6 +12,7 @@ export class CollectionsSessionCron {
   constructor(
     private autoAssign: AutoAssignService,
     private prisma: PrismaService,
+    private summary: CollectionsSummaryService,
   ) {}
 
   @Cron('0 6 * * *', { timeZone: 'Asia/Bangkok' })
@@ -72,15 +74,12 @@ export class CollectionsSessionCron {
 
   @Cron('0 18 * * *', { timeZone: 'Asia/Bangkok' })
   async runDailySummary(): Promise<void> {
-    this.logger.log('Computing collections daily summary');
+    this.logger.log('Sending collections daily summary');
     try {
-      const today = startOfDay(new Date());
-      const summaries = await this.prisma.dailyAssignment.groupBy({
-        by: ['collectorId', 'status'],
-        where: { date: today, collectorId: { not: null } },
-        _count: true,
-      });
-      this.logger.log(`Daily summary computed: ${summaries.length} (collector,status) buckets`);
+      const result = await this.summary.sendDailySummary(new Date());
+      this.logger.log(
+        `Daily summary: ${result.sent}/${result.recipients} OWNERs notified`,
+      );
     } catch (error) {
       this.logger.error('Daily summary failed', error);
       Sentry.captureException(error, {

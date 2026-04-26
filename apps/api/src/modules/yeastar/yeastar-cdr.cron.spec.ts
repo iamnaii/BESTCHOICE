@@ -2,6 +2,7 @@ import { YeastarCdrCron } from './yeastar-cdr.cron';
 import { YeastarService } from './yeastar.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
+import { StorageService } from '../storage/storage.service';
 
 const mockYeastarService = {
   queryCdr: jest.fn(),
@@ -23,11 +24,16 @@ const mockConfigService = {
   isConfigured: jest.fn().mockResolvedValue(true),
 } as unknown as IntegrationConfigService;
 
+const mockStorage = {
+  upload: jest.fn().mockResolvedValue('key'),
+  configured: true,
+} as unknown as StorageService;
+
 describe('YeastarCdrCron', () => {
   let cron: YeastarCdrCron;
 
   beforeEach(() => {
-    cron = new YeastarCdrCron(mockYeastarService, mockPrisma, mockConfigService);
+    cron = new YeastarCdrCron(mockYeastarService, mockPrisma, mockConfigService, mockStorage);
     jest.clearAllMocks();
   });
 

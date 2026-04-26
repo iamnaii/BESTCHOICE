@@ -14,6 +14,7 @@ const mockPrisma = {
   contract: { findFirst: jest.fn() },
   callLog: { upsert: jest.fn() },
   user: { findFirst: jest.fn() },
+  payment: { count: jest.fn().mockResolvedValue(0) },
 } as unknown as PrismaService;
 
 const mockGateway = {
@@ -43,7 +44,7 @@ describe('YeastarWebhookController', () => {
     ).rejects.toThrow(UnauthorizedException);
   });
 
-  it('handles ExtensionCallStatus RINGING — emits socket to agent', async () => {
+  it('handles ExtensionCallStatus RINGING — emits socket to agent with overdueCount', async () => {
     (mockPrisma.customer.findFirst as jest.Mock).mockResolvedValue({
       id: 'cust-1',
       name: 'สมชาย',
@@ -53,6 +54,7 @@ describe('YeastarWebhookController', () => {
       contractNumber: 'BC-001',
     });
     (mockPrisma.user.findFirst as jest.Mock).mockResolvedValue({ id: 'user-1' });
+    (mockPrisma.payment.count as jest.Mock).mockResolvedValue(3);
 
     await controller.handleEvent(
       {
@@ -68,8 +70,43 @@ describe('YeastarWebhookController', () => {
     expect(mockGateway.emitToUser).toHaveBeenCalledWith(
       'user-1',
       'yeastar:inbound',
-      expect.objectContaining({ callerNumber: '0812345678' }),
+      expect.objectContaining({ callerNumber: '0812345678', overdueCount: 3 }),
     );
+  });
+
+  it('does not throw when EventsGateway is null (ENABLE_WEBSOCKET=false)', async () => {
+    const module = await Test.createTestingModule({
+      controllers: [YeastarWebhookController],
+      providers: [
+        { provide: IntegrationConfigService, useValue: mockConfigService },
+        { provide: PrismaService, useValue: mockPrisma },
+        { provide: EventsGateway, useValue: null },
+      ],
+    }).compile();
+    const c = module.get(YeastarWebhookController);
+
+    (mockPrisma.customer.findFirst as jest.Mock).mockResolvedValue({
+      id: 'cust-1',
+      name: 'สมชาย',
+    });
+    (mockPrisma.contract.findFirst as jest.Mock).mockResolvedValue({
+      id: 'con-1',
+      contractNumber: 'BC-001',
+    });
+    (mockPrisma.user.findFirst as jest.Mock).mockResolvedValue({ id: 'user-1' });
+
+    await expect(
+      c.handleEvent(
+        {
+          event: 'ExtensionCallStatus',
+          callId: 'call-abc',
+          callStatus: 'RINGING',
+          callerNumber: '0812345678',
+          answeredBy: '1001',
+        },
+        'secret123',
+      ),
+    ).resolves.toEqual({ ok: true });
   });
 
   it('skips NewCdr when no matching customer', async () => {

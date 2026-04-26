@@ -54,13 +54,20 @@ export function InboundCallPopup() {
           </div>
 
           {popup.customer ? (
-            <div className="mt-3 space-y-1">
+            <div className="mt-3 space-y-1.5">
               <p className="text-sm font-medium leading-snug">{popup.customer.name}</p>
-              {popup.contract && (
-                <Badge variant="secondary" className="text-xs">
-                  {popup.contract.contractNumber}
-                </Badge>
-              )}
+              <div className="flex flex-wrap items-center gap-1.5">
+                {popup.contract && (
+                  <Badge variant="secondary" className="text-xs">
+                    {popup.contract.contractNumber}
+                  </Badge>
+                )}
+                {popup.overdueCount > 0 && (
+                  <Badge variant="destructive" className="text-xs">
+                    งวดค้าง {popup.overdueCount} งวด
+                  </Badge>
+                )}
+              </div>
             </div>
           ) : (
             <p className="mt-3 text-xs text-muted-foreground leading-snug">ไม่พบข้อมูลลูกค้า</p>

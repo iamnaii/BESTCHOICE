@@ -13,7 +13,7 @@ import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
 import { EventsGateway } from '../notifications/events.gateway';
-import { CallDirection } from '@prisma/client';
+import { CallDirection, CallResult } from '@prisma/client';
 
 /**
  * รับ events จาก Yeastar PBX — intentionally public (ไม่มี JwtAuthGuard)
@@ -43,7 +43,13 @@ export class YeastarWebhookController {
         await this.handleNewCdr(body);
       }
     } catch (err) {
-      Sentry.captureException(err, { extra: { event, body } });
+      Sentry.captureException(err, {
+        extra: {
+          event,
+          callId: typeof body.callId === 'string' ? body.callId : undefined,
+          cdrId: typeof body.id === 'string' ? body.id : undefined,
+        },
+      });
       this.logger.error(`[Yeastar Webhook] error handling ${event}`, err);
     }
 
@@ -98,6 +104,18 @@ export class YeastarWebhookController {
         })
       : null;
 
+    // นับงวดค้าง: payments overdue/partially-paid ที่ยังไม่จ่ายครบ
+    let overdueCount = 0;
+    if (contract) {
+      overdueCount = await this.prisma.payment.count({
+        where: {
+          contractId: contract.id,
+          status: { in: ['OVERDUE', 'PARTIALLY_PAID'] },
+          deletedAt: null,
+        },
+      });
+    }
+
     const agentUser = answeredBy
       ? await this.prisma.user.findFirst({
           where: { yeastarExtension: answeredBy, deletedAt: null },
@@ -111,6 +129,7 @@ export class YeastarWebhookController {
         callerNumber,
         customer: customer ? { id: customer.id, name: customer.name } : null,
         contract: contract ? { id: contract.id, contractNumber: contract.contractNumber } : null,
+        overdueCount,
       });
     }
   }
@@ -154,13 +173,16 @@ export class YeastarWebhookController {
       select: { id: true },
     });
 
+    const callResult: CallResult = duration > 0 ? CallResult.ANSWERED : CallResult.NO_ANSWER;
+
     await this.prisma.callLog.upsert({
       where: { yeastarCallId: cdrId },
       create: {
         contractId: contract.id,
         callerId: agentUser?.id,
         calledAt: startTime,
-        result: 'AUTO_LOGGED',
+        result: callResult,
+        callResult,
         yeastarCallId: cdrId,
         callDirection: direction,
         duration,

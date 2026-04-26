@@ -3,6 +3,7 @@ import {
   IsNumber,
   IsOptional,
   IsArray,
+  IsBoolean,
   ArrayNotEmpty,
   IsNotEmpty,
   Matches,
@@ -33,6 +34,16 @@ export class ApproveEvidenceDto {
   @IsOptional()
   @IsString()
   reviewNote?: string;
+
+  /**
+   * Explicit override flag — required when slip amount differs from
+   * expected installment amount by more than the tolerance window.
+   * Without this flag the controller now rejects the approval rather
+   * than silently approving on a mismatch.
+   */
+  @IsOptional()
+  @IsBoolean()
+  acceptMismatch?: boolean;
 }
 
 export class BatchApproveEvidenceDto {

@@ -9,6 +9,7 @@ export interface InboundCallEvent {
   callerNumber: string;
   customer: { id: string; name: string } | null;
   contract: { id: string; contractNumber: string } | null;
+  overdueCount: number;
 }
 
 // Resolve WebSocket base URL — mirrors the pattern in useChatSocket

@@ -78,9 +78,10 @@ export class FacebookAdsSyncService {
       'insights{spend,impressions,clicks,reach}',
     ].join(',');
 
-    const url = `https://graph.facebook.com/v25.0/${this.adAccountId}/campaigns?fields=${fields}&access_token=${this.accessToken}`;
+    const url = `https://graph.facebook.com/v25.0/${this.adAccountId}/campaigns?fields=${fields}`;
 
     const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${this.accessToken}` },
       signal: AbortSignal.timeout(30_000),
     });
 

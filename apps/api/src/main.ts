@@ -11,6 +11,7 @@ import { json, urlencoded } from 'express';
 import { IncomingMessage } from 'http';
 import { RawBodyRequest } from './common/types/raw-body-request';
 import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
 import { HttpAdapterHost } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
@@ -51,6 +52,29 @@ async function bootstrap() {
   app.use(urlencoded({ extended: true, limit: '20mb' }));
   app.use(cookieParser());
 
+  // (Audit finding P1) Add Helmet to set sane security headers:
+  //   X-Content-Type-Options: nosniff
+  //   X-Frame-Options: SAMEORIGIN
+  //   Strict-Transport-Security
+  //   Referrer-Policy: no-referrer
+  //
+  // Disabled options:
+  // - contentSecurityPolicy: API serves no HTML; default CSP would only
+  //   break Swagger's inline CSS in dev.
+  // - crossOriginEmbedderPolicy: not needed for a JSON API.
+  // - crossOriginResourcePolicy: must be 'cross-origin' (not the default
+  //   'same-origin') because the web app and the API are on different
+  //   origins (admin.bestchoicephone.app ↔ api.bestchoicephone.app, plus
+  //   localhost:5173 ↔ localhost:3000 in dev/E2E). NestJS CORS already
+  //   handles the credentialed origin allow-list below.
+  app.use(
+    helmet({
+      contentSecurityPolicy: false,
+      crossOriginEmbedderPolicy: false,
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+    }),
+  );
+
   // CORS configuration
   const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173')
     .split(',')
@@ -63,9 +87,14 @@ async function bootstrap() {
   if (!allowedOrigins.includes('https://shop.bestchoicephone.app')) {
     allowedOrigins.push('https://shop.bestchoicephone.app');
   }
-  // Online Shop local dev (port 5174)
-  if (!allowedOrigins.includes('http://localhost:5174')) {
-    allowedOrigins.push('http://localhost:5174');
+  // Online Shop local dev (port 5174) — DEV ONLY.
+  // (Audit finding P0-#8) Without this guard, any page served from
+  // localhost:5174 in prod can make credentialed cross-origin requests
+  // and receive the httpOnly refresh-token cookie.
+  if (process.env.NODE_ENV !== 'production') {
+    if (!allowedOrigins.includes('http://localhost:5174')) {
+      allowedOrigins.push('http://localhost:5174');
+    }
   }
 
   app.enableCors({

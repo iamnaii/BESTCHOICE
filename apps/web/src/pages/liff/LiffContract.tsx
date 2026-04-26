@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useLiffInit } from '@/hooks/useLiffInit';
 import { liffApi, withLiffToken } from '@/lib/api';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   QrCode,
@@ -72,11 +72,23 @@ const dunningLabel: Record<string, string | null> = {
   LEGAL_ACTION: 'เข้าสู่ขั้นตอนทางกฎหมาย',
 };
 
+// (Audit finding P2) Compute days remaining in Asia/Bangkok regardless of the
+// customer's device timezone. Previously `setHours(0,...)` snapped to device
+// local time, so a customer in UTC saw "ครบกำหนดพรุ่งนี้" when it was actually
+// today in Bangkok (or vice versa). Use the en-CA YYYY-MM-DD locale trick to
+// extract the calendar date in Asia/Bangkok, then diff in whole days.
 function daysUntil(dateStr: string | Date): number {
-  const due = new Date(dateStr);
-  const now = new Date();
-  due.setHours(0, 0, 0, 0);
-  now.setHours(0, 0, 0, 0);
+  const tz = 'Asia/Bangkok';
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const dueParts = fmt.format(new Date(dateStr));
+  const nowParts = fmt.format(new Date());
+  const due = new Date(`${dueParts}T00:00:00+07:00`);
+  const now = new Date(`${nowParts}T00:00:00+07:00`);
   return Math.round((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 }
 
@@ -84,6 +96,7 @@ export default function LiffContract() {
   const { lineId, loading, error } = useLiffInit();
   const [selectedContract, setSelectedContract] = useState(0);
   const [showAllPayments, setShowAllPayments] = useState(false);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -100,6 +113,11 @@ export default function LiffContract() {
         if (status.status === 'PAID') {
           clearInterval(pollId);
           toast.success('ชำระเงินสำเร็จ!');
+          // (Audit finding C1) Without this, the contract list query stays
+          // stale and the UI still shows the installment as unpaid even after
+          // the gateway confirmed PAID — customer thinks the payment failed
+          // and re-pays.
+          queryClient.invalidateQueries({ queryKey: ['liff-contracts', lineId] });
         } else if (status.status === 'FAILED' || attempts >= maxAttempts) {
           clearInterval(pollId);
           if (status.status === 'FAILED') {
@@ -112,7 +130,7 @@ export default function LiffContract() {
     }, 3000);
 
     return () => clearInterval(pollId);
-  }, []);
+  }, [lineId, queryClient]);
 
   const [showConsent, setShowConsent] = useState(false);
 

@@ -103,7 +103,18 @@ export class StorageService {
     throw new BadRequestException('Storage not configured');
   }
 
-  async getSignedDownloadUrl(key: string, expiresIn = 3600): Promise<string> {
+  /**
+   * Generate a signed download URL.
+   *
+   * (Audit finding P1) Default lowered from 3600s (1 hour) to 900s (15 min).
+   * Slip images, KYC docs, and contract PDFs are PII; an URL emailed or
+   * pasted to a chat is effectively a public link for the lifetime of the
+   * signature. 15 minutes is enough for a click-through workflow but
+   * tightens the recovery window if the URL leaks. Callers that need a
+   * longer window (e.g. an admin "share link" feature) must pass `expiresIn`
+   * explicitly so the trade-off is local and visible.
+   */
+  async getSignedDownloadUrl(key: string, expiresIn = 900): Promise<string> {
     if (this.backend === 'gcs' && this.gcs) {
       const file = this.gcs.bucket(this.bucket).file(key);
       const [url] = await file.getSignedUrl({

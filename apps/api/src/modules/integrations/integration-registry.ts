@@ -11,6 +11,16 @@ export interface IntegrationField {
   sensitive: boolean;
   required: boolean;
   defaultValue?: string;
+  /**
+   * Environment variable used as a **fallback** if the user has not set
+   * this field in Integration Hub. Resolution order at runtime:
+   *   1. `IntegrationConfig` row (DB, encrypted) — set via UI
+   *   2. `process.env[envVar]` — only if (1) is empty
+   *
+   * The string is informational metadata only — it is **never** sent to
+   * the frontend in API responses. The UI shows the human-readable
+   * `label` instead.
+   */
   envVar: string;
 }
 

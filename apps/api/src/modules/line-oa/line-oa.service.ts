@@ -552,14 +552,27 @@ export class LineOaService {
         }),
       );
 
+      let rateLimitedSeconds = 0;
       for (const r of results) {
         if (r.status === 'fulfilled' && r.value === 'sent') totalSent++;
         else totalFailed++;
+        // (Audit finding W6) Detect 429 Retry-After surfaced by callLineApi.
+        // If any item in the batch was rate-limited, sleep at least the
+        // requested interval before the next batch instead of barrelling
+        // through with the fixed 1s gap.
+        if (r.status === 'rejected' && r.reason instanceof Error) {
+          const m = r.reason.message?.match(/429.*retry after (\d+)s/i);
+          if (m) {
+            const sec = Number.parseInt(m[1], 10);
+            if (sec > rateLimitedSeconds) rateLimitedSeconds = sec;
+          }
+        }
       }
 
-      // Wait 1 second between batches (LINE rate limit)
+      // Wait between batches — honour LINE Retry-After if seen, else 1s default.
       if (i + batchSize < customers.length) {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        const waitMs = Math.max(rateLimitedSeconds * 1000, 1000);
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
       }
     }
 
@@ -736,6 +749,19 @@ export class LineOaService {
       });
 
       if (!response.ok) {
+        // (Audit finding W6) LINE returns 429 Too Many Requests with a
+        // Retry-After header (seconds) when the per-recipient burst limit
+        // is hit. Surface that to callers so the campaign batch loop can
+        // sleep the requested interval instead of slamming the next
+        // batch one second later — without this, every retry inside the
+        // throttled window also fails.
+        if (response.status === 429) {
+          const retryAfterRaw = response.headers.get('retry-after');
+          const retryAfter = retryAfterRaw ? Number.parseInt(retryAfterRaw, 10) : 0;
+          throw new InternalServerErrorException(
+            `LINE API 429 rate limit; retry after ${retryAfter || 60}s`,
+          );
+        }
         const errorBody = await response.text();
         throw new InternalServerErrorException(`LINE API error ${response.status}: ${errorBody}`);
       }

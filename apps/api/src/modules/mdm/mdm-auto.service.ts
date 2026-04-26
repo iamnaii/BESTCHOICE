@@ -126,25 +126,28 @@ export class MdmAutoService {
 
         const reason = `ค้างชำระ ${daysOverdue} วัน (สัญญา ${contract.contractNumber})`;
 
-        // Write mdmLockedAt optimistically; rollback if MDM call fails
-        await this.prisma.contract.update({
-          where: { id: contract.id },
-          data: { mdmLockedAt: new Date() },
-        });
-
+        // (Audit finding P1) Call the MDM API FIRST, then write the DB.
+        // The previous order wrote `mdmLockedAt` optimistically and rolled
+        // back on failure — but a process kill / OOM between the two await
+        // calls left the DB marked locked while the device was unlocked,
+        // a phantom-lock state with no reconciliation path. Rollback only
+        // covered explicit error returns, not abrupt termination.
         let result: { success: boolean; message?: string };
         try {
           result = await this.mdmService.lockDeviceByImei(imei, reason);
         } catch (err) {
-          // Rollback optimistic update
-          await this.prisma.contract.update({
-            where: { id: contract.id },
-            data: { mdmLockedAt: null },
-          });
+          this.logger.error(
+            `MDM auto-lock: API error for contract ${contract.contractNumber}: ${err instanceof Error ? err.message : err}`,
+          );
           throw err;
         }
 
         if (result.success) {
+          await this.prisma.contract.update({
+            where: { id: contract.id },
+            data: { mdmLockedAt: new Date() },
+          });
+
           this.logger.log(
             `MDM auto-lock: locked ${imei} for contract ${contract.contractNumber} (${daysOverdue} days overdue)`,
           );
@@ -155,11 +158,6 @@ export class MdmAutoService {
 
           locked++;
         } else {
-          // MDM returned failure — rollback optimistic update
-          await this.prisma.contract.update({
-            where: { id: contract.id },
-            data: { mdmLockedAt: null },
-          });
           this.logger.warn(
             `MDM auto-lock: failed to lock ${imei} for contract ${contract.contractNumber} — ${result.message}`,
           );

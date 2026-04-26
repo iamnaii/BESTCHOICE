@@ -59,9 +59,19 @@ export class SmsWebhookController {
   private isIpAllowed(req: Request): boolean {
     const allowed = this.getAllowedIps();
     if (allowed.length === 0) {
+      // (Audit finding I1) In production, an empty allow-list means any
+      // attacker who finds the webhook URL can submit fake delivery
+      // reports. Refuse rather than fall through. Dev keeps the
+      // permissive behaviour so local testing without env config works.
+      if (process.env.NODE_ENV === 'production') {
+        this.logger.error(
+          '[SMS-Webhook] SMS_WEBHOOK_ALLOWED_IPS is empty in production — rejecting webhook',
+        );
+        return false;
+      }
       if (!this.loggedMissingAllowList) {
         this.logger.warn(
-          '[SMS-Webhook] SMS_WEBHOOK_ALLOWED_IPS is empty — allowing all IPs. Set this in production.',
+          '[SMS-Webhook] SMS_WEBHOOK_ALLOWED_IPS is empty — allowing all IPs (dev only).',
         );
         this.loggedMissingAllowList = true;
       }

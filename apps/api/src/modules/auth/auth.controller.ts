@@ -6,7 +6,7 @@ import { AuthService } from './auth.service';
 import { TwoFactorService } from './two-factor.service';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto, ResetPasswordDto } from './dto/password-reset.dto';
-import { VerifyTwoFactorDto } from './dto/two-factor.dto';
+import { VerifyTwoFactorDto, LoginTempTokenDto } from './dto/two-factor.dto';
 import { UpdatePreferencesDto } from './dto/update-preferences.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
@@ -103,19 +103,17 @@ export class AuthController {
   @Throttle({ short: { ttl: 60000, limit: 5 } })
   @ApiOperation({ summary: 'เข้าสู่ระบบด้วย 2FA โดยใช้ tempToken + OTP' })
   async loginWith2FA(
-    @Body() body: { tempToken: string; otp: string },
+    @Body() body: LoginTempTokenDto,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
+    // (Audit finding P0-#9) Body validated by LoginTempTokenDto via the
+    // global ValidationPipe — tempToken capped at 512 chars, otp at 6-8.
     const meta = {
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'] as string | undefined,
       acceptLanguage: req.headers['accept-language'] as string | undefined,
     };
-
-    if (!body.tempToken || !body.otp) {
-      throw new UnauthorizedException('กรุณาระบุ tempToken และ otp');
-    }
 
     const result = await this.authService.loginWithTempToken(
       body.tempToken,

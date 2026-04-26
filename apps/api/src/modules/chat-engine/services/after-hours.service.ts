@@ -75,21 +75,27 @@ export class AfterHoursService {
     }
 
     try {
-      const response = await this.anthropic.messages.create({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 300,
-        system: `คุณเป็นผู้ช่วยร้าน BESTCHOICE (ร้านมือถือ) ตอนนี้อยู่นอกเวลาทำการ (10:00-20:00)
+      // (Audit finding P1) Cap at 25s so the LINE 30s reply-token window
+      // is not blown if Anthropic is slow. SDK default is 600s (10 min)
+      // which would silently fail every reply on a slow request.
+      const response = await this.anthropic.messages.create(
+        {
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 300,
+          system: `คุณเป็นผู้ช่วยร้าน BESTCHOICE (ร้านมือถือ) ตอนนี้อยู่นอกเวลาทำการ (10:00-20:00)
 ตอบลูกค้าสั้นๆ สุภาพ แจ้งว่าจะมีเจ้าหน้าที่ติดต่อกลับในเวลาทำการ
 ถ้าลูกค้าถามเรื่องทั่วไป (ราคา, ผ่อน, สาขา) ตอบได้เลย
 ห้ามสร้างข้อมูลเท็จ ถ้าไม่แน่ใจให้บอกว่าจะให้เจ้าหน้าที่ตอบ
 ตอบเป็นภาษาไทย ใช้คำลงท้ายว่า "ค่ะ" หรือ "นะคะ"`,
-        messages: [
-          {
-            role: 'user',
-            content: customerMessage || '(ส่งข้อความ)',
-          },
-        ],
-      });
+          messages: [
+            {
+              role: 'user',
+              content: customerMessage || '(ส่งข้อความ)',
+            },
+          ],
+        },
+        { timeout: 25_000 },
+      );
 
       const textBlock = response.content.find((b) => b.type === 'text');
       if (textBlock && textBlock.type === 'text') {

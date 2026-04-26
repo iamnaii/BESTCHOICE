@@ -76,10 +76,13 @@ export class FacebookPersistentMenuService {
 
     try {
       const res = await fetch(
-        `https://graph.facebook.com/v25.0/${this.pageId}/messenger_profile?access_token=${this.pageAccessToken}`,
+        `https://graph.facebook.com/v25.0/${this.pageId}/messenger_profile`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${this.pageAccessToken}`,
+          },
           body: JSON.stringify(menu),
           signal: AbortSignal.timeout(10_000),
         },
@@ -110,10 +113,13 @@ export class FacebookPersistentMenuService {
 
     try {
       const res = await fetch(
-        `https://graph.facebook.com/v25.0/${this.pageId}/messenger_profile?access_token=${this.pageAccessToken}`,
+        `https://graph.facebook.com/v25.0/${this.pageId}/messenger_profile`,
         {
           method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${this.pageAccessToken}`,
+          },
           body: JSON.stringify({ fields: ['persistent_menu'] }),
           signal: AbortSignal.timeout(10_000),
         },

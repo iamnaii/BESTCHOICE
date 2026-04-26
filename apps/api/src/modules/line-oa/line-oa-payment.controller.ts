@@ -44,6 +44,12 @@ import {
 @ApiTags('LINE OA - Payments')
 @ApiBearerAuth('JWT')
 @Controller('line-oa')
+// TODO(refactor): this controller calls PrismaService directly in 7 evidence
+// endpoints — violates backend.md "controller → service → PrismaService"
+// rule. Extract to PaymentEvidenceService in a follow-up PR; deferred from
+// the post-ultrareview cleanup branch because the change would touch ~250
+// lines, has no spec coverage, and the slip-upload transaction needs to
+// remain controller-orchestrated (storage + DB + notifications).
 export class LineOaPaymentController {
   private readonly logger = new Logger(LineOaPaymentController.name);
 
@@ -310,15 +316,28 @@ export class LineOaPaymentController {
       return { error: 'หลักฐานนี้ได้รับการตรวจสอบแล้ว' };
     }
 
-    // Validate amount against actual payment due (±100 baht tolerance for rounding)
+    // Validate amount against actual payment due (±100 baht tolerance for rounding).
+    // (Audit finding) Previously logged a warning and approved anyway —
+    // a fraud vector. Reject unless the reviewer sets `acceptMismatch=true`
+    // in the body, which forces the override to be a deliberate, audited
+    // decision.
     const targetPayment = evidence.contract.payments.find(
       (p) => p.installmentNo === body.installmentNo,
     );
     if (targetPayment) {
       const expectedAmount = sumOutstanding(targetPayment);
-      if (Math.abs(body.amount - expectedAmount) > 100) {
+      const diff = Math.abs(body.amount - expectedAmount);
+      if (diff > 100 && !body.acceptMismatch) {
         this.logger.warn(
-          `[SlipReview] Amount mismatch: approved=${body.amount}, expected=${expectedAmount} for evidence ${id}`,
+          `[SlipReview] Amount mismatch rejected: approved=${body.amount}, expected=${expectedAmount} for evidence ${id} (diff ${diff.toFixed(2)} > 100)`,
+        );
+        throw new BadRequestException(
+          `จำนวนเงินสลิป (${body.amount.toLocaleString()}) ต่างจากยอดที่ต้องชำระ (${expectedAmount.toLocaleString()}) เกิน 100 บาท — กรุณาตรวจสอบหรือเลือก "ยืนยันแม้ยอดไม่ตรง"`,
+        );
+      }
+      if (diff > 100 && body.acceptMismatch) {
+        this.logger.warn(
+          `[SlipReview] Amount mismatch APPROVED via override: approved=${body.amount}, expected=${expectedAmount}, evidence=${id}, reviewer=${userId}`,
         );
       }
     }

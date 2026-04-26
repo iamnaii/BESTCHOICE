@@ -111,9 +111,24 @@ export class PaySolutionsController {
     };
     this.logger.log(`Webhook received: ${JSON.stringify(safeFields)}`);
 
-    // 1. HMAC-SHA256 verification (if secret configured)
+    // 1. HMAC-SHA256 verification.
+    // (Audit finding P0-#7) In production the secret is mandatory — without
+    // it the merchantId-only fallback below allows anyone who can guess the
+    // public merchantId to forge a webhook and credit a payment. Reject
+    // outright in prod when the env is missing rather than skipping the
+    // check.
     const webhookSecret = process.env.PAYSOLUTIONS_WEBHOOK_SECRET;
-    if (webhookSecret) {
+    if (!webhookSecret) {
+      if (process.env.NODE_ENV === 'production') {
+        this.logger.error(
+          '[PaySolutions] PAYSOLUTIONS_WEBHOOK_SECRET not set in production — rejecting webhook',
+        );
+        return { received: true, processed: false };
+      }
+      this.logger.warn(
+        '[PaySolutions] PAYSOLUTIONS_WEBHOOK_SECRET not set — skipping HMAC verification (dev only)',
+      );
+    } else {
       const rawBody = (req as unknown as RawBodyRequest).rawBody;
       if (!this.verifyPaySolutionsSignature(rawBody, signature, webhookSecret)) {
         this.logger.warn('[PaySolutions] HMAC signature mismatch — rejecting webhook');
@@ -126,10 +141,6 @@ export class PaySolutionsController {
         });
         return { received: true, processed: false };
       }
-    } else {
-      this.logger.warn(
-        '[PaySolutions] PAYSOLUTIONS_WEBHOOK_SECRET not set — skipping HMAC verification (backward compat)',
-      );
     }
 
     // 2. Verify merchantid ตรงกับ config

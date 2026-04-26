@@ -55,6 +55,35 @@ export class BrokenPromiseCron {
         data: { brokenAt: now },
       });
 
+      // Write AuditLog rows so downstream consumers (auto-assign,
+      // queue.service, dunning escalation) can count broken promises per
+      // contract via groupBy(action='BROKEN_PROMISE'). Without these rows
+      // brokenPromiseCount is silently always 0 → escalation flag never
+      // trips → HIGH_RISK customer tag never assigned.
+      const systemUser = await this.prisma.user.findFirst({
+        where: { isSystemUser: true },
+        select: { id: true },
+      });
+      if (systemUser) {
+        await this.prisma.auditLog.createMany({
+          data: candidates.map((c) => ({
+            userId: systemUser.id,
+            entity: 'Contract',
+            entityId: c.contractId,
+            action: 'BROKEN_PROMISE',
+            newValue: { callLogId: c.id, settlementDate: c.settlementDate },
+            ipAddress: '',
+          })),
+        });
+      } else {
+        // Defer (not throw) — flagging the call log is the primary effect;
+        // missing SYSTEM user is a seed-config gap that ops should fix.
+        Sentry.captureMessage(
+          'BROKEN_PROMISE audit not written: SYSTEM user missing',
+          { level: 'error', tags: { cron: 'broken-promise' } },
+        );
+      }
+
       // Fire BROKEN_PROMISE event per unique contract — customer gets a LINE nudge.
       // Dedup window in executeEventTrigger (4h) prevents spam when multiple
       // call logs for the same contract break at once. Non-fatal — flag stands

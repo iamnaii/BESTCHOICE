@@ -1,7 +1,13 @@
-import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
 import { YeastarTokenService } from './yeastar-token.service';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
+import { PrismaService } from '../../prisma/prisma.service';
 
 export interface YeastarExtension {
   number: string;
@@ -28,7 +34,32 @@ export class YeastarService {
   constructor(
     private readonly tokenService: YeastarTokenService,
     private readonly configService: IntegrationConfigService,
+    private readonly prisma: PrismaService,
   ) {}
+
+  /** ค้นหา agent extension + customer phone แล้วสั่ง originate */
+  async originateForUser(
+    userId: string,
+    customerId: string,
+  ): Promise<{ callId: string }> {
+    const agent = await this.prisma.user.findFirst({
+      where: { id: userId, deletedAt: null },
+      select: { yeastarExtension: true },
+    });
+    if (!agent?.yeastarExtension) {
+      throw new BadRequestException('กรุณาตั้ง Extension Yeastar ใน Profile ก่อนโทรออก');
+    }
+
+    const customer = await this.prisma.customer.findFirst({
+      where: { id: customerId, deletedAt: null },
+      select: { phone: true },
+    });
+    if (!customer?.phone) {
+      throw new BadRequestException('ไม่พบเบอร์โทรของลูกค้า');
+    }
+
+    return this.originateCall(agent.yeastarExtension, customer.phone);
+  }
 
   private async pbxUrl(): Promise<string> {
     const config = await this.configService.getConfig('yeastar');
@@ -37,25 +68,40 @@ export class YeastarService {
 
   private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const [base, token] = await Promise.all([this.pbxUrl(), this.tokenService.getToken()]);
-    const url = `${base}/openapi/v1.0${path}?access_token=${token}`;
+    const url = `${base}/openapi/v1.0${path}`;
 
-    const res = await fetch(url, {
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        'User-Agent': 'BESTCHOICE/1.0',
-        ...(options.headers ?? {}),
-      },
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
 
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      this.logger.error(`[Yeastar] ${path} → ${res.status}: ${text}`);
-      Sentry.captureMessage(`[Yeastar] API error ${path}: ${res.status}`, 'error');
-      throw new ServiceUnavailableException(`Yeastar API error: ${res.status}`);
+    try {
+      const res = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'BESTCHOICE/1.0',
+          Authorization: `Bearer ${token}`,
+          ...(options.headers ?? {}),
+        },
+      });
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        this.logger.error(`[Yeastar] ${path} → ${res.status}: ${text}`);
+        Sentry.captureMessage(`[Yeastar] API error ${path}: ${res.status}`, 'error');
+        throw new ServiceUnavailableException(`Yeastar API error: ${res.status}`);
+      }
+
+      return res.json() as Promise<T>;
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        Sentry.captureMessage(`[Yeastar] timeout ${path}`, 'warning');
+        throw new ServiceUnavailableException('Yeastar API timeout');
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeout);
     }
-
-    return res.json() as Promise<T>;
   }
 
   /** สั่งโทรออก: PBX โทรหา extension ก่อน แล้วค่อยต่อไปหา callee */
@@ -91,8 +137,12 @@ export class YeastarService {
 
   /** ดึง CDR ตาม time range (epoch seconds) */
   async queryCdr(startTime: number, endTime: number): Promise<YeastarCdrRecord[]> {
+    const qs = new URLSearchParams({
+      start_time: String(startTime),
+      end_time: String(endTime),
+    });
     const data = await this.request<{ cdr_list?: YeastarCdrRecord[] }>(
-      `/cdr/search?start_time=${startTime}&end_time=${endTime}`,
+      `/cdr/search?${qs.toString()}`,
     );
     return data.cdr_list ?? [];
   }
@@ -100,16 +150,28 @@ export class YeastarService {
   /** ดาวน์โหลด recording file จาก Yeastar → return Buffer */
   async downloadRecording(recordingPath: string): Promise<Buffer> {
     const [base, token] = await Promise.all([this.pbxUrl(), this.tokenService.getToken()]);
-    const url = `${base}/openapi/v1.0/recording/download?access_token=${token}&recording_file=${encodeURIComponent(recordingPath)}`;
+    const qs = new URLSearchParams({ recording_file: recordingPath });
+    const url = `${base}/openapi/v1.0/recording/download?${qs.toString()}`;
 
-    const res = await fetch(url, {
-      headers: { 'User-Agent': 'BESTCHOICE/1.0' },
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30_000);
 
-    if (!res.ok) {
-      throw new Error(`[Yeastar] recording download failed: ${res.status}`);
+    try {
+      const res = await fetch(url, {
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'BESTCHOICE/1.0',
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!res.ok) {
+        throw new Error(`[Yeastar] recording download failed: ${res.status}`);
+      }
+
+      return Buffer.from(await res.arrayBuffer());
+    } finally {
+      clearTimeout(timeout);
     }
-
-    return Buffer.from(await res.arrayBuffer());
   }
 }

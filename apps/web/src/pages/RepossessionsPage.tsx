@@ -60,13 +60,17 @@ export default function RepossessionsPage() {
     notes: '',
   });
 
-  // Fetch contracts that can be repossessed (OVERDUE or DEFAULT)
+  // Fetch contracts that can be repossessed (OVERDUE or DEFAULT).
+  // (Audit finding P2) Bounded at 200 each so a branch with hundreds of
+  // overdue contracts doesn't pull an unbounded payload into the
+  // create-repossession dropdown — that response would either time out or
+  // make the dropdown unusable.
   const { data: overdueContracts = [] } = useQuery<{ id: string; contractNumber: string; customer: { name: string }; product: { name: string } }[]>({
     queryKey: ['contracts-for-repo'],
     queryFn: async () => {
       const [overdue, defaulted] = await Promise.all([
-        api.get('/contracts?status=OVERDUE'),
-        api.get('/contracts?status=DEFAULT'),
+        api.get('/contracts?status=OVERDUE&limit=200'),
+        api.get('/contracts?status=DEFAULT&limit=200'),
       ]);
       return [...(overdue.data.data || []), ...(defaulted.data.data || [])];
     },

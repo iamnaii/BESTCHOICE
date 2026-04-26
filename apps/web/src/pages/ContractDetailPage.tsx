@@ -1,5 +1,6 @@
 import { useParams, useNavigate, Link } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import Decimal from 'decimal.js';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import api, { getErrorMessage } from '@/lib/api';
 import { Card, CardContent } from '@/components/ui/card';
@@ -689,24 +690,24 @@ const deleteMutation = useMutation({
                 <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">หมายเหตุ</label>
                 <textarea value={editForm.notes} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} rows={2} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
               </div>
-              {/* Preview calculation */}
+              {/* Preview calculation — Decimal arithmetic to match the backend */}
               {editForm.sellingPrice > 0 && editForm.downPayment >= 0 && editForm.totalMonths > 0 && editForm.downPayment < editForm.sellingPrice && (() => {
-                const p = editForm.sellingPrice - editForm.downPayment;
                 const commPct = contract.interestConfig ? parseFloat(contract.interestConfig.storeCommissionPct || '0.10') : 0.10;
                 const vPct = contract.interestConfig ? parseFloat(contract.interestConfig.vatPct || '0.07') : 0.07;
-                const comm = p * commPct;
-                const interest = p * editForm.interestRate * editForm.totalMonths;
-                const vat = (p + comm + interest) * vPct;
-                const total = p + comm + interest + vat;
-                const monthly = Math.round((total / editForm.totalMonths) * 100) / 100;
-                const fmt2 = (v: number) => v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                const dP = new Decimal(editForm.sellingPrice).sub(editForm.downPayment);
+                const dComm = dP.mul(commPct).toDecimalPlaces(2);
+                const dInterest = dP.mul(editForm.interestRate).mul(editForm.totalMonths).toDecimalPlaces(2);
+                const dVat = dP.add(dComm).add(dInterest).mul(vPct).toDecimalPlaces(2);
+                const dTotal = dP.add(dComm).add(dInterest).add(dVat).toDecimalPlaces(2);
+                const dMonthly = dTotal.div(editForm.totalMonths).toDecimalPlaces(2);
+                const fmt2 = (d: Decimal) => d.toNumber().toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                 return (
                   <div className="bg-muted rounded-lg p-3 text-xs space-y-1">
-                    <div>ยอดปล่อย: {fmt2(p)} บาท</div>
-                    <div>ค่าคอมหน้าร้าน ({(commPct * 100).toFixed(0)}%): {fmt2(comm)} บาท</div>
-                    <div>ดอกเบี้ยรวม: {fmt2(interest)} บาท</div>
-                    <div>VAT ({(vPct * 100).toFixed(0)}%): {fmt2(vat)} บาท</div>
-                    <div className="font-semibold">ค่างวด/เดือน: {fmt2(monthly)} บาท</div>
+                    <div>ยอดปล่อย: {fmt2(dP)} บาท</div>
+                    <div>ค่าคอมหน้าร้าน ({(commPct * 100).toFixed(0)}%): {fmt2(dComm)} บาท</div>
+                    <div>ดอกเบี้ยรวม: {fmt2(dInterest)} บาท</div>
+                    <div>VAT ({(vPct * 100).toFixed(0)}%): {fmt2(dVat)} บาท</div>
+                    <div className="font-semibold">ค่างวด/เดือน: {fmt2(dMonthly)} บาท</div>
                   </div>
                 );
               })()}

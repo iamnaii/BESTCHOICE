@@ -6,7 +6,6 @@ import {
   CreateLiveVideoDto,
   PublishVideoDto,
   SendStandardMessageDto,
-  SendUtilityMessageDto,
   SubscribePageWebhooksDto,
   UpdateCampaignStatusDto,
 } from './dto/facebook-app-review.dto';
@@ -83,33 +82,8 @@ export class FacebookAppReviewService {
       throw new BadRequestException('ยังไม่ได้ตั้งค่า FB access token');
     }
 
-    const url = `${GRAPH_BASE}/me/accounts?fields=id,name,category,tasks&access_token=${token}`;
-    return this.call('GET', url, undefined, 'list_pages');
-  }
-
-  // ─── pages_utility_messaging ─────────────────────────────────────────────
-  /**
-   * POST /{PAGE_ID}/messages with messaging_type=MESSAGE_TAG + tag=ACCOUNT_UPDATE.
-   * Used to send non-promotional updates (e.g. installment due reminders)
-   * outside the 24-hour messaging window.
-   *
-   * Permissions: pages_messaging, pages_utility_messaging
-   */
-  async sendUtilityMessage(dto: SendUtilityMessageDto): Promise<FbJson> {
-    const c = await this.getCreds();
-    if (!c.pageToken || !c.pageId) {
-      throw new BadRequestException('ยังไม่ได้ตั้งค่า FB page token/id');
-    }
-
-    const url = `${GRAPH_BASE}/${c.pageId}/messages?access_token=${c.pageToken}`;
-    const body = {
-      messaging_type: 'MESSAGE_TAG',
-      tag: dto.tag ?? 'ACCOUNT_UPDATE',
-      recipient: { id: dto.recipientPsid },
-      message: { text: dto.text },
-    };
-
-    return this.call('POST', url, body, 'send_utility_message');
+    const url = `${GRAPH_BASE}/me/accounts?fields=id,name,category,tasks`;
+    return this.call('GET', url, undefined, 'list_pages', token);
   }
 
   // ─── pages_manage_ads + pages_read_engagement ────────────────────────────
@@ -124,8 +98,8 @@ export class FacebookAppReviewService {
     }
 
     const fields = ['id', 'message', 'created_time', 'is_eligible_for_promotion'].join(',');
-    const url = `${GRAPH_BASE}/${c.pageId}/promotable_posts?fields=${fields}&access_token=${c.pageToken}`;
-    return this.call('GET', url, undefined, 'list_promotable_posts');
+    const url = `${GRAPH_BASE}/${c.pageId}/promotable_posts?fields=${fields}`;
+    return this.call('GET', url, undefined, 'list_promotable_posts', c.pageToken);
   }
 
   // ─── ads_management + Ads Management Standard Access ─────────────────────
@@ -150,7 +124,6 @@ export class FacebookAppReviewService {
       objective: dto.objective ?? 'OUTCOME_TRAFFIC',
       status: 'PAUSED',
       special_ad_categories: [],
-      access_token: token,
     };
 
     if (dto.dailyBudget) {
@@ -160,7 +133,7 @@ export class FacebookAppReviewService {
       body.bid_strategy = 'LOWEST_COST_WITHOUT_CAP';
     }
 
-    return this.call('POST', url, body, 'create_campaign');
+    return this.call('POST', url, body, 'create_campaign', token);
   }
 
   /**
@@ -178,8 +151,8 @@ export class FacebookAppReviewService {
     }
 
     const url = `${GRAPH_BASE}/${campaignId}`;
-    const body = { status: dto.status, access_token: token };
-    return this.call('POST', url, body, 'update_campaign_status');
+    const body = { status: dto.status };
+    return this.call('POST', url, body, 'update_campaign_status', token);
   }
 
   // ─── leads_retrieval ──────────────────────────────────────────────────────
@@ -193,8 +166,8 @@ export class FacebookAppReviewService {
       throw new BadRequestException('ยังไม่ได้ตั้งค่า FB page token');
     }
 
-    const url = `${GRAPH_BASE}/${formId}/leads?access_token=${c.pageToken}`;
-    return this.call('GET', url, undefined, 'fetch_leads');
+    const url = `${GRAPH_BASE}/${formId}/leads`;
+    return this.call('GET', url, undefined, 'fetch_leads', c.pageToken);
   }
 
   /**
@@ -208,8 +181,8 @@ export class FacebookAppReviewService {
       throw new BadRequestException('ยังไม่ได้ตั้งค่า FB page token/id');
     }
 
-    const url = `${GRAPH_BASE}/${c.pageId}/leadgen_forms?access_token=${c.pageToken}`;
-    return this.call('GET', url, undefined, 'list_lead_forms');
+    const url = `${GRAPH_BASE}/${c.pageId}/leadgen_forms`;
+    return this.call('GET', url, undefined, 'list_lead_forms', c.pageToken);
   }
 
   // ─── Live Video API ──────────────────────────────────────────────────────
@@ -224,7 +197,7 @@ export class FacebookAppReviewService {
       throw new BadRequestException('ยังไม่ได้ตั้งค่า FB page token/id');
     }
 
-    const url = `${GRAPH_BASE}/${c.pageId}/live_videos?access_token=${c.pageToken}`;
+    const url = `${GRAPH_BASE}/${c.pageId}/live_videos`;
     const body: Record<string, unknown> = {
       title: dto.title,
       description: dto.description ?? '',
@@ -235,7 +208,7 @@ export class FacebookAppReviewService {
       body.planned_start_time = dto.plannedStartTime;
     }
 
-    return this.call('POST', url, body, 'create_live_video');
+    return this.call('POST', url, body, 'create_live_video', c.pageToken);
   }
 
   // ─── ads_read ────────────────────────────────────────────────────────────
@@ -252,8 +225,8 @@ export class FacebookAppReviewService {
 
     const accountId = c.adAccountId.startsWith('act_') ? c.adAccountId : `act_${c.adAccountId}`;
     const fields = ['spend', 'impressions', 'clicks', 'reach', 'cpc', 'ctr'].join(',');
-    const url = `${GRAPH_BASE}/${accountId}/insights?fields=${fields}&date_preset=last_30d&access_token=${token}`;
-    return this.call('GET', url, undefined, 'get_insights');
+    const url = `${GRAPH_BASE}/${accountId}/insights?fields=${fields}&date_preset=last_30d`;
+    return this.call('GET', url, undefined, 'get_insights', token);
   }
 
   // ─── pages_messaging ─────────────────────────────────────────────────────
@@ -270,14 +243,14 @@ export class FacebookAppReviewService {
       throw new BadRequestException('ยังไม่ได้ตั้งค่า FB page token/id');
     }
 
-    const url = `${GRAPH_BASE}/${c.pageId}/messages?access_token=${c.pageToken}`;
+    const url = `${GRAPH_BASE}/${c.pageId}/messages`;
     const body = {
       messaging_type: 'RESPONSE',
       recipient: { id: dto.recipientPsid },
       message: { text: dto.text },
     };
 
-    return this.call('POST', url, body, 'send_standard_message');
+    return this.call('POST', url, body, 'send_standard_message', c.pageToken);
   }
 
   // ─── pages_manage_metadata ───────────────────────────────────────────────
@@ -295,9 +268,9 @@ export class FacebookAppReviewService {
     }
 
     const fields = dto.fields ?? 'messages,messaging_postbacks,message_deliveries,message_reads';
-    const url = `${GRAPH_BASE}/${c.pageId}/subscribed_apps?access_token=${c.pageToken}`;
+    const url = `${GRAPH_BASE}/${c.pageId}/subscribed_apps`;
     const body = { subscribed_fields: fields };
-    return this.call('POST', url, body, 'subscribe_page_webhooks');
+    return this.call('POST', url, body, 'subscribe_page_webhooks', c.pageToken);
   }
 
   // ─── publish_video ───────────────────────────────────────────────────────
@@ -311,14 +284,14 @@ export class FacebookAppReviewService {
       throw new BadRequestException('ยังไม่ได้ตั้งค่า FB page token/id');
     }
 
-    const url = `${GRAPH_BASE}/${c.pageId}/videos?access_token=${c.pageToken}`;
+    const url = `${GRAPH_BASE}/${c.pageId}/videos`;
     const body: Record<string, unknown> = {
       file_url: dto.fileUrl,
       title: dto.title ?? 'BESTCHOICE product video',
       description: dto.description ?? '',
     };
 
-    return this.call('POST', url, body, 'publish_video');
+    return this.call('POST', url, body, 'publish_video', c.pageToken);
   }
 
   // ─── shared HTTP helper ──────────────────────────────────────────────────
@@ -327,14 +300,21 @@ export class FacebookAppReviewService {
     url: string,
     body: unknown,
     action: string,
+    token: string,
   ): Promise<FbJson> {
-    const redacted = url.replace(/access_token=[^&]+/g, 'access_token=***');
-    this.logger.log(`[FB App Review] ${action} ${method} ${redacted}`);
+    // Token is sent via Authorization: Bearer header so it does not appear
+    // in URL query strings (CDN logs / browser history / proxy logs).
+    this.logger.log(`[FB App Review] ${action} ${method} ${url}`);
+
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${token}`,
+    };
+    if (body) headers['Content-Type'] = 'application/json';
 
     try {
       const res = await fetch(url, {
         method,
-        headers: body ? { 'Content-Type': 'application/json' } : undefined,
+        headers,
         body: body ? JSON.stringify(body) : undefined,
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });

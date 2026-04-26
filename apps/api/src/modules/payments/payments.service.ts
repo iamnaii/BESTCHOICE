@@ -173,32 +173,26 @@ export class PaymentsService {
         await this.checkContractCompletion(contractId, tx);
       }
 
-      // Auto journal entry — only on full payment to avoid partial double-entries
+      // Auto journal entry — only on full payment to avoid partial double-entries.
+      // No try/catch: a journal failure must roll back the payment update so the
+      // ledger and cash never diverge. (Audit finding J5.)
       if (isPaidInFull) {
-        try {
-          await this.journalAutoService.createPaymentJournal(tx, {
-            payment: {
-              id: result.id,
-              installmentNo: result.installmentNo,
-              amountPaid: result.amountPaid,
-              monthlyPrincipal: result.monthlyPrincipal,
-              monthlyInterest: result.monthlyInterest,
-              monthlyCommission: result.monthlyCommission,
-              vatAmount: result.vatAmount,
-              lateFee: result.lateFee,
-              lateFeeWaived: result.lateFeeWaived,
-              paidDate: result.paidDate,
-            },
-            contract: { contractNumber: contract.contractNumber, branchId: contract.branchId },
-            userId: recordedById,
-          });
-        } catch (err) {
-          this.logger.error(`Auto-journal failed for payment ${result.id}: ${err}`);
-          Sentry.captureException(err, {
-            tags: { module: 'payments', action: 'auto-journal' },
-            extra: { paymentId: result.id, contractId },
-          });
-        }
+        await this.journalAutoService.createPaymentJournal(tx, {
+          payment: {
+            id: result.id,
+            installmentNo: result.installmentNo,
+            amountPaid: result.amountPaid,
+            monthlyPrincipal: result.monthlyPrincipal,
+            monthlyInterest: result.monthlyInterest,
+            monthlyCommission: result.monthlyCommission,
+            vatAmount: result.vatAmount,
+            lateFee: result.lateFee,
+            lateFeeWaived: result.lateFeeWaived,
+            paidDate: result.paidDate,
+          },
+          contract: { contractNumber: contract.contractNumber, branchId: contract.branchId },
+          userId: recordedById,
+        });
       }
 
       return result;
@@ -336,6 +330,27 @@ export class PaymentsService {
         // Check contract completion after each full payment
         if (isPaidInFull) {
           await this.checkContractCompletion(contractId, tx);
+
+          // Auto journal entry per fully-paid installment — same pattern as
+          // recordPayment(). Errors propagate so the whole tx rolls back.
+          // (Audit finding J1: closes the journal coverage gap on the
+          // multi-installment auto-allocate path.)
+          await this.journalAutoService.createPaymentJournal(tx, {
+            payment: {
+              id: updated.id,
+              installmentNo: updated.installmentNo,
+              amountPaid: updated.amountPaid,
+              monthlyPrincipal: updated.monthlyPrincipal,
+              monthlyInterest: updated.monthlyInterest,
+              monthlyCommission: updated.monthlyCommission,
+              vatAmount: updated.vatAmount,
+              lateFee: updated.lateFee,
+              lateFeeWaived: updated.lateFeeWaived,
+              paidDate: updated.paidDate,
+            },
+            contract: { contractNumber: contract.contractNumber, branchId: contract.branchId },
+            userId: recordedById,
+          });
         }
       }
 
@@ -597,6 +612,19 @@ export class PaymentsService {
       select: { productId: true },
     });
 
+    // Recording lifecycle: STANDARD → CLOSED so storage cron / GCS lifecycle
+    // can transition recordings to a cheaper tier. Only bump rows still on
+    // STANDARD to avoid clobbering LEGAL_HOLD set by an open legal case.
+    await db.callLog.updateMany({
+      where: {
+        contractId,
+        recordingStorageTier: 'STANDARD',
+        recordingUrl: { not: null },
+        deletedAt: null,
+      },
+      data: { recordingStorageTier: 'CLOSED' },
+    });
+
     // Ownership release: FINANCE → null (customer now owns the device).
     // Uses the same tx so the ownership flip cannot diverge from the
     // COMPLETED status. `tx` is a proper Prisma.TransactionClient when
@@ -665,6 +693,26 @@ export class PaymentsService {
 
         if (isPaidInFull) {
           await this.checkContractCompletion(contractId, tx);
+
+          // Auto journal entry per fully-paid installment.
+          // (Audit finding J2: closes the journal coverage gap on the
+          // credit-balance allocation path.)
+          await this.journalAutoService.createPaymentJournal(tx, {
+            payment: {
+              id: updated.id,
+              installmentNo: updated.installmentNo,
+              amountPaid: updated.amountPaid,
+              monthlyPrincipal: updated.monthlyPrincipal,
+              monthlyInterest: updated.monthlyInterest,
+              monthlyCommission: updated.monthlyCommission,
+              vatAmount: updated.vatAmount,
+              lateFee: updated.lateFee,
+              lateFeeWaived: updated.lateFeeWaived,
+              paidDate: updated.paidDate,
+            },
+            contract: { contractNumber: contract.contractNumber, branchId: contract.branchId },
+            userId: recordedById,
+          });
         }
       }
 

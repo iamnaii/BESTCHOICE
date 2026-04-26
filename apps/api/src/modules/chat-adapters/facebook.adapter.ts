@@ -77,9 +77,12 @@ export class FacebookAdapter implements IChannelAdapter {
         message: fbMessage,
       };
 
-      const res = await fetch(`${this.graphApiUrl}?access_token=${this.pageAccessToken}`, {
+      const res = await fetch(this.graphApiUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.pageAccessToken}`,
+        },
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(10000),
       });
@@ -108,9 +111,12 @@ export class FacebookAdapter implements IChannelAdapter {
   async sendTypingIndicator(externalUserId: string): Promise<void> {
     if (!this.isConfigured) return;
     try {
-      await fetch(`${this.graphApiUrl}?access_token=${this.pageAccessToken}`, {
+      await fetch(this.graphApiUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.pageAccessToken}`,
+        },
         body: JSON.stringify({
           recipient: { id: externalUserId },
           sender_action: 'typing_on',
@@ -126,8 +132,11 @@ export class FacebookAdapter implements IChannelAdapter {
     if (!this.pageAccessToken) return null;
     try {
       const res = await fetch(
-        `https://graph.facebook.com/v25.0/${externalUserId}?fields=first_name,last_name,profile_pic&access_token=${this.pageAccessToken}`,
-        { signal: AbortSignal.timeout(10000) },
+        `https://graph.facebook.com/v25.0/${externalUserId}?fields=first_name,last_name,profile_pic`,
+        {
+          headers: { Authorization: `Bearer ${this.pageAccessToken}` },
+          signal: AbortSignal.timeout(10000),
+        },
       );
       if (!res.ok) return null;
       const data = (await res.json()) as {

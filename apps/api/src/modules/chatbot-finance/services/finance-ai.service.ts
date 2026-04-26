@@ -100,19 +100,25 @@ export class FinanceAiService {
 
       // Tool use loop
       for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
-        const response = await client.messages.create({
-          model: activeModel,
-          max_tokens: this.maxTokens,
-          system: [
-            {
-              type: 'text',
-              text: systemPrompt,
-              cache_control: { type: 'ephemeral' },
-            },
-          ],
-          tools: FINANCE_TOOLS,
-          messages,
-        });
+        // (Audit finding P1) Cap each iteration at 30s. With MAX_TOOL_ITERATIONS
+        // the budget is bounded; the SDK's 600s default would let a single
+        // slow iteration starve every other concurrent webhook.
+        const response = await client.messages.create(
+          {
+            model: activeModel,
+            max_tokens: this.maxTokens,
+            system: [
+              {
+                type: 'text',
+                text: systemPrompt,
+                cache_control: { type: 'ephemeral' },
+              },
+            ],
+            tools: FINANCE_TOOLS,
+            messages,
+          },
+          { timeout: 30_000 },
+        );
 
         totalInput += response.usage.input_tokens;
         totalOutput += response.usage.output_tokens;

@@ -36,7 +36,6 @@ type TestKey =
   | 'pages_manage_ads'
   | 'lead_forms_list'
   | 'ads_insights'
-  | 'utility_message'
   | 'standard_message'
   | 'subscribe_webhooks'
   | 'create_campaign'
@@ -95,22 +94,6 @@ const TESTS: TestCase[] = [
     endpoint: '/facebook/app-review/insights',
     method: 'GET',
     group: 'read',
-  },
-  {
-    key: 'utility_message',
-    permission: 'pages_utility_messaging',
-    title: 'ส่งข้อความแจ้งเตือน (ACCOUNT_UPDATE)',
-    endpoint: '/facebook/app-review/utility-message',
-    method: 'POST',
-    group: 'write',
-    inputs: [
-      { key: 'recipientPsid', label: 'PSID ผู้รับ', placeholder: '1234567890' },
-      {
-        key: 'text',
-        label: 'ข้อความ',
-        defaultValue: 'แจ้งเตือน: ค่างวดครบกำหนด 1 พ.ค. 2569',
-      },
-    ],
   },
   {
     key: 'standard_message',

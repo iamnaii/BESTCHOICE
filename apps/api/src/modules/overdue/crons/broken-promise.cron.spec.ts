@@ -25,6 +25,12 @@ describe('BrokenPromiseCron.flagBrokenPromises', () => {
         findMany: jest.fn().mockResolvedValue([]),
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
+      user: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'sys-user' }),
+      },
+      auditLog: {
+        createMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
     };
     dunningEngine = { executeEventTrigger: jest.fn().mockResolvedValue(undefined) };
 

@@ -44,7 +44,7 @@ export class ChatCronService {
       }
     } catch (error) {
       this.logger.error('Failed to check SLA breaches', error);
-      Sentry.captureException(error);
+      Sentry.captureException(error, { tags: { cron: 'chat-sla-check' } });
     }
   }
 
@@ -80,7 +80,7 @@ export class ChatCronService {
       }
     } catch (error) {
       this.logger.error('Failed to mark idle rooms', error);
-      Sentry.captureException(error);
+      Sentry.captureException(error, { tags: { cron: 'chat-mark-idle' } });
     }
   }
 }

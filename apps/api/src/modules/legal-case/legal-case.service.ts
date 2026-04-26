@@ -48,7 +48,7 @@ export class LegalCaseService {
       throw new ConflictException('สัญญานี้มีคดีอยู่แล้ว');
     }
 
-    return this.prisma.legalCase.create({
+    const created = await this.prisma.legalCase.create({
       data: {
         contractId,
         caseNumber: dto.caseNumber,
@@ -62,6 +62,20 @@ export class LegalCaseService {
         documents: { orderBy: { uploadedAt: 'desc' } },
       },
     });
+
+    // Recording lifecycle: ทันทีที่เปิดคดี → LEGAL_HOLD (override CLOSED/STANDARD)
+    // ป้องกัน GCS lifecycle cron ย้าย recording ไป tier ถูกกว่า — ระหว่างคดี
+    // ต้องเก็บไว้เป็นหลักฐานในรูปแบบ instant-access
+    await this.prisma.callLog.updateMany({
+      where: {
+        contractId,
+        recordingUrl: { not: null },
+        deletedAt: null,
+      },
+      data: { recordingStorageTier: 'LEGAL_HOLD' },
+    });
+
+    return created;
   }
 
   async findByContract(contractId: string) {

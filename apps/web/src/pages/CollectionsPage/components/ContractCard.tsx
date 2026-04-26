@@ -17,8 +17,10 @@ import {
   Moon,
   ArrowUp,
   ArrowDown,
+  CheckCircle2,
 } from 'lucide-react';
 import { formatDateShort, formatNumber } from '@/utils/formatters';
+import { isToday, formatHHMM } from '../utils/today';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -171,6 +173,15 @@ export default function ContractCard({
 
         {/* Unified chip row — text-xs (was 2xs), size-3.5 icons (was size-3) */}
         <div className="mb-3 flex flex-wrap items-center gap-1.5">
+          {/* Called-today chip — most prominent indicator so collectors
+              instantly know this row was already worked today. */}
+          {isToday(contract.lastCallAt) && contract.lastCallAt && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-success/40 bg-success/10 text-success text-xs font-medium px-2.5 py-1 leading-snug">
+              <CheckCircle2 className="size-3.5" />
+              โทรแล้ววันนี้ {formatHHMM(contract.lastCallAt)}
+            </span>
+          )}
+
           {/* Trend arrow chip — only shown when there's a movement signal.
               Plain "เลย X วัน" is redundant with the giant left-panel number. */}
           {arrow && (

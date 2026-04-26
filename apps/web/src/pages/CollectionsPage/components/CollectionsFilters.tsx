@@ -12,6 +12,8 @@ interface Props {
   branchId: string;
   onBranchChange: (v: string) => void;
   showBranchFilter: boolean;
+  hideContactedToday: boolean;
+  onHideContactedTodayChange: (v: boolean) => void;
 }
 
 export default function CollectionsFilters({
@@ -20,6 +22,8 @@ export default function CollectionsFilters({
   branchId,
   onBranchChange,
   showBranchFilter,
+  hideContactedToday,
+  onHideContactedTodayChange,
 }: Props) {
   const { data: branches = [] } = useQuery<Branch[]>({
     queryKey: ['branches'],
@@ -54,6 +58,15 @@ export default function CollectionsFilters({
           ))}
         </select>
       )}
+      <label className="inline-flex items-center gap-2 text-sm leading-snug cursor-pointer select-none">
+        <input
+          type="checkbox"
+          checked={hideContactedToday}
+          onChange={(e) => onHideContactedTodayChange(e.target.checked)}
+          className="size-4 rounded border-input"
+        />
+        <span>ซ่อนที่ทำแล้ววันนี้</span>
+      </label>
     </div>
   );
 }

@@ -47,6 +47,7 @@ export default function CollectionsPage() {
   const [activeTab, setActiveTab] = useState<CollectionsTabKey>('today');
   const [search, setSearch] = useState('');
   const [branchId, setBranchId] = useState('');
+  const [hideContactedToday, setHideContactedToday] = useState(false);
   const [dialogContract, setDialogContract] = useState<ContractRow | null>(null);
   const [panelContract, setPanelContract] = useState<ContractRow | null>(null);
   const [lineDialogContract, setLineDialogContract] = useState<ContractRow | null>(null);
@@ -108,6 +109,7 @@ export default function CollectionsPage() {
               setActiveTab(key);
               setSearch('');
               setBranchId('');
+              setHideContactedToday(false);
             }}
             canSeeAnalytics={canSeeAnalytics}
           />
@@ -119,6 +121,8 @@ export default function CollectionsPage() {
               branchId={branchId}
               onBranchChange={setBranchId}
               showBranchFilter={showBranchFilter}
+              hideContactedToday={hideContactedToday}
+              onHideContactedTodayChange={setHideContactedToday}
             />
           )}
 
@@ -126,6 +130,7 @@ export default function CollectionsPage() {
             <QueueTab
               search={search}
               branchId={branchId}
+              hideContactedToday={hideContactedToday}
               onLogContact={openContactDialog}
               onOpen360={openPanel}
               onSendLine={setLineDialogContract}
@@ -138,6 +143,7 @@ export default function CollectionsPage() {
             <PromiseTab
               search={search}
               branchId={branchId}
+              hideContactedToday={hideContactedToday}
               onLogContact={openContactDialog}
               onOpen360={openPanel}
               onSendLine={setLineDialogContract}

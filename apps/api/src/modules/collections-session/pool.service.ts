@@ -1,11 +1,13 @@
 import { ConflictException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-
-const SELF_CLAIM_LOCK_HOURS = 2;
+import { SettingsService } from '../settings/settings.service';
 
 @Injectable()
 export class PoolService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private settings: SettingsService,
+  ) {}
 
   async list(branchId?: string) {
     const today = startOfDay(new Date());
@@ -30,8 +32,9 @@ export class PoolService {
   }
 
   async claim(assignmentId: string, userId: string) {
+    const cfg = await this.settings.getCollectionsConfig();
     const now = new Date();
-    const expiresAt = new Date(now.getTime() + SELF_CLAIM_LOCK_HOURS * 60 * 60 * 1000);
+    const expiresAt = new Date(now.getTime() + cfg.selfClaimLockHours * 60 * 60 * 1000);
 
     const row = await this.prisma.dailyAssignment.findFirst({
       where: { id: assignmentId, collectorId: null, status: 'PENDING', deletedAt: null },

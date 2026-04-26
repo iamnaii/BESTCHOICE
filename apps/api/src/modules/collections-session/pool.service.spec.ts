@@ -1,6 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { PoolService } from './pool.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { SettingsService } from '../settings/settings.service';
 import { ConflictException } from '@nestjs/common';
 
 describe('PoolService', () => {
@@ -15,8 +16,21 @@ describe('PoolService', () => {
         findMany: jest.fn(),
       },
     };
+    const settingsMock = {
+      getCollectionsConfig: jest.fn().mockResolvedValue({
+        dailyCap: 30,
+        workloadFloor: 10,
+        etaPerContractMin: 5,
+        sessionTargetMin: 150,
+        selfClaimLockHours: 2,
+      }),
+    };
     const moduleRef = await Test.createTestingModule({
-      providers: [PoolService, { provide: PrismaService, useValue: prismaMock }],
+      providers: [
+        PoolService,
+        { provide: PrismaService, useValue: prismaMock },
+        { provide: SettingsService, useValue: settingsMock },
+      ],
     }).compile();
     service = moduleRef.get(PoolService);
     prisma = moduleRef.get(PrismaService);

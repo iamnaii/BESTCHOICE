@@ -1,10 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { AutoAssignService } from './auto-assign.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { SettingsService } from '../settings/settings.service';
 
 describe('AutoAssignService', () => {
   let service: AutoAssignService;
   let prisma: any;
+  let settings: any;
 
   beforeEach(async () => {
     const prismaMock: any = {
@@ -20,14 +22,26 @@ describe('AutoAssignService', () => {
     };
     prismaMock.$transaction = jest.fn().mockImplementation((cb: any) => cb(prismaMock));
 
+    const settingsMock = {
+      getCollectionsConfig: jest.fn().mockResolvedValue({
+        dailyCap: 30,
+        workloadFloor: 10,
+        etaPerContractMin: 5,
+        sessionTargetMin: 150,
+        selfClaimLockHours: 2,
+      }),
+    };
+
     const moduleRef: TestingModule = await Test.createTestingModule({
       providers: [
         AutoAssignService,
         { provide: PrismaService, useValue: prismaMock },
+        { provide: SettingsService, useValue: settingsMock },
       ],
     }).compile();
     service = moduleRef.get(AutoAssignService);
     prisma = moduleRef.get(PrismaService);
+    settings = moduleRef.get(SettingsService);
   });
 
   // Helper: stub snapshot + audit data sourced from inline contract objects
@@ -156,6 +170,35 @@ describe('AutoAssignService', () => {
     const poolCount = created.filter((r: any) => r.collectorId === null).length;
     expect(u1Count).toBe(30);
     expect(poolCount).toBe(5);
+  });
+
+  it('cap respects dailyCap from settings', async () => {
+    settings.getCollectionsConfig.mockResolvedValueOnce({
+      dailyCap: 5,
+      workloadFloor: 2,
+      etaPerContractMin: 5,
+      sessionTargetMin: 150,
+      selfClaimLockHours: 2,
+    });
+    const contracts = Array.from({ length: 8 }, (_, i) => ({
+      id: `c${i}`,
+      assignedToId: 'u1',
+      branchId: 'br1',
+    }));
+    prisma.contract.findMany.mockResolvedValue(contracts as any);
+    seedDerived(contracts.map((c) => ({ id: c.id, daysOverdue: 5 })));
+    prisma.user.findMany.mockResolvedValue([
+      { id: 'u1', collectionsActive: true, branchId: 'br1' } as any,
+    ]);
+    prisma.dailyAssignment.findMany.mockResolvedValue([]);
+
+    await service.runForDate(new Date('2026-04-26'));
+
+    const created = (prisma.dailyAssignment.createMany.mock.calls[0][0] as any).data;
+    const u1Count = created.filter((r: any) => r.collectorId === 'u1').length;
+    const poolCount = created.filter((r: any) => r.collectorId === null).length;
+    expect(u1Count).toBe(5);
+    expect(poolCount).toBe(3);
   });
 
   it('skips collectors that are not collectionsActive', async () => {

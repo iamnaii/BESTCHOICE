@@ -1,9 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { SettingsService } from '../settings/settings.service';
 import { AssignmentSource } from '@prisma/client';
 
-const DEFAULT_DAILY_CAP = 30;
-const DEFAULT_FLOOR = 10;
+// Policy constants — business rules, not tuning knobs. Keep in code.
 const RECENT_RELATIONSHIP_DAYS = 30;
 const ESCALATION_DAYS = 90;
 const ESCALATION_BROKEN_PROMISES = 2;
@@ -35,9 +35,13 @@ interface AssignmentRow {
 export class AutoAssignService {
   private readonly logger = new Logger(AutoAssignService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private settings: SettingsService,
+  ) {}
 
   async runForDate(date: Date): Promise<{ assigned: number; pool: number; escalation: number }> {
+    const cfg = await this.settings.getCollectionsConfig();
     const dateOnly = startOfDay(date);
 
     const baseContracts = await this.prisma.contract.findMany({
@@ -185,8 +189,8 @@ export class AutoAssignService {
 
     // Cap enforcement: push overflow to pool
     for (const [cid, count] of workload.entries()) {
-      if (count > DEFAULT_DAILY_CAP) {
-        const overflow = count - DEFAULT_DAILY_CAP;
+      if (count > cfg.dailyCap) {
+        const overflow = count - cfg.dailyCap;
         let pushed = 0;
         for (let i = rows.length - 1; i >= 0 && pushed < overflow; i--) {
           if (rows[i].collectorId === cid && !rows[i].escalationFlag) {
@@ -195,7 +199,7 @@ export class AutoAssignService {
             pushed++;
           }
         }
-        workload.set(cid, DEFAULT_DAILY_CAP);
+        workload.set(cid, cfg.dailyCap);
       }
     }
 
@@ -203,8 +207,8 @@ export class AutoAssignService {
     const pool = rows.filter((r) => r.collectorId === null && !r.escalationFlag);
     for (const cid of collectorIds) {
       const have = workload.get(cid) ?? 0;
-      if (have < DEFAULT_FLOOR && pool.length > 0) {
-        const need = DEFAULT_FLOOR - have;
+      if (have < cfg.workloadFloor && pool.length > 0) {
+        const need = cfg.workloadFloor - have;
         for (let i = 0; i < pool.length && i < need; i++) {
           pool[i].collectorId = cid;
           pool[i].source = AssignmentSource.AUTO_ROUNDROBIN;

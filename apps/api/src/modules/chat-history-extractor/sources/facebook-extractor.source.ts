@@ -45,9 +45,11 @@ export class FacebookExtractorSource {
     }
 
     const out: ExtractedMessage[] = [];
-    let url: string | null = `https://graph.facebook.com/v19.0/${pageId}/conversations?fields=participants,messages{message,from,created_time}&limit=100&access_token=${token}`;
+    let url: string | null = `https://graph.facebook.com/v19.0/${pageId}/conversations?fields=participants,messages{message,from,created_time}&limit=100`;
     while (url) {
-      const res: Response = await fetch(url);
+      const res: Response = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       if (!res.ok) throw new Error(`FB Graph ${res.status}: ${await res.text()}`);
       const page = (await res.json()) as FbConversationsPage;
       for (const conv of page.data) {

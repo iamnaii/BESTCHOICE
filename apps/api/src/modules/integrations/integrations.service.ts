@@ -186,8 +186,11 @@ export class IntegrationsService {
         return { success: false, message: 'ยังไม่ได้ตั้งค่า Facebook Page Access Token' };
       }
 
-      const url = `https://graph.facebook.com/v25.0/me?fields=name,id&access_token=${token}`;
-      const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+      const url = `https://graph.facebook.com/v25.0/me?fields=name,id`;
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(10000),
+      });
 
       if (!res.ok) {
         return { success: false, message: `Facebook API ตอบกลับ HTTP ${res.status}` };

@@ -66,8 +66,11 @@ export class ShopAuthSocialController {
 
   private async exchangeFacebookToken(accessToken: string) {
     const res = await fetch(
-      `https://graph.facebook.com/me?fields=id,name,email&access_token=${encodeURIComponent(accessToken)}`,
-      { signal: AbortSignal.timeout(10_000) },
+      `https://graph.facebook.com/me?fields=id,name,email`,
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        signal: AbortSignal.timeout(10_000),
+      },
     );
     if (!res.ok) throw new HttpException('Facebook token verify failed', HttpStatus.UNAUTHORIZED);
     const data = (await res.json()) as { id: string; name: string; email?: string };

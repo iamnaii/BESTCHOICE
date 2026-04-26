@@ -32,6 +32,13 @@ const MAX_DELETE_LIMIT = 25;
 const COMMIT = process.argv.includes('--commit');
 const prisma = new PrismaClient();
 
+/** Disconnect Prisma then exit with code 1. Ensures connection is closed on early-exit. */
+async function bail(msg: string): Promise<never> {
+  console.error(msg);
+  await prisma.$disconnect();
+  process.exit(1);
+}
+
 async function main() {
   console.log(`\n=== Cleanup Collections Test Data ===`);
   console.log(`Mode: ${COMMIT ? '🔥 COMMIT (soft-delete)' : '🧪 DRY-RUN'}`);
@@ -57,8 +64,7 @@ async function main() {
     console.log(`⚠️  ${contracts.length - safeContracts.length} contracts skipped — customer doesn't match TEST pattern`);
   }
   if (safeContracts.length > MAX_DELETE_LIMIT) {
-    console.error(`❌ Too many matches (${safeContracts.length} > ${MAX_DELETE_LIMIT}) — aborting`);
-    process.exit(1);
+    await bail(`❌ Too many matches (${safeContracts.length} > ${MAX_DELETE_LIMIT}) — aborting`);
   }
 
   // 2. Find marker-tagged customers (active only)
@@ -83,8 +89,7 @@ async function main() {
     );
   }
   if (safeCustomers.length > MAX_DELETE_LIMIT) {
-    console.error(`❌ Too many customer matches (${safeCustomers.length} > ${MAX_DELETE_LIMIT}) — aborting`);
-    process.exit(1);
+    await bail(`❌ Too many customer matches (${safeCustomers.length} > ${MAX_DELETE_LIMIT}) — aborting`);
   }
 
   if (safeContracts.length > 0) {
@@ -157,6 +162,6 @@ async function main() {
 main()
   .catch((err) => {
     console.error('\n❌ Failed:', err);
-    process.exit(1);
+    process.exitCode = 1; // set exit code without skipping .finally()
   })
   .finally(() => prisma.$disconnect());

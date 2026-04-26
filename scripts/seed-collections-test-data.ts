@@ -25,6 +25,8 @@
  *   - ~240 Payments (12 งวด × 20) — กระจายอายุหนี้ 5 buckets
  *
  * ⚠️ One-off — ห้ามรันซ้ำ. มี idempotency guard เช็ค marker ก่อน
+ * ⚠️ ทดสอบ end-to-end ได้บน prod เท่านั้น — dev DB อาจขาด migration บางตัว
+ *    ให้รัน dry-run บน dev เพื่อตรวจ lookups แล้วรัน --commit บน prod
  */
 import { PrismaClient, Prisma, type ContractStatus, type PaymentStatus } from '@prisma/client';
 import { encryptPII } from '../apps/api/src/utils/crypto.util';
@@ -40,6 +42,13 @@ const SALT = process.env.PII_HASH_SALT || '';
 const COMMIT = process.argv.includes('--commit');
 
 const prisma = new PrismaClient();
+
+/** Disconnect Prisma then exit with code 1. Ensures connection is closed on early-exit. */
+async function bail(msg: string): Promise<never> {
+  console.error(msg);
+  await prisma.$disconnect();
+  process.exit(1);
+}
 
 const FAKE_PEOPLE: Array<{ prefix: string; first: string; last: string; nickname: string; salary: number; occupation: string }> = [
   { prefix: 'นาย', first: 'ทดสอบหนึ่ง', last: 'นามสมมติ', nickname: 'หนึ่ง', salary: 18000, occupation: 'พนักงานบริษัท' },
@@ -72,10 +81,10 @@ interface OverdueBucket {
 }
 
 const OVERDUE_BUCKETS: OverdueBucket[] = [
-  { label: 'current', daysOverdue: 0, paidInstallments: 3, contractStatus: 'ACTIVE' },
-  { label: '1-30',    daysOverdue: 15, paidInstallments: 2, contractStatus: 'OVERDUE' },
-  { label: '31-60',   daysOverdue: 45, paidInstallments: 2, contractStatus: 'OVERDUE' },
-  { label: '61-90',   daysOverdue: 75, paidInstallments: 1, contractStatus: 'OVERDUE' },
+  { label: 'current', daysOverdue: 0,   paidInstallments: 3, contractStatus: 'ACTIVE' },
+  { label: '1-30',    daysOverdue: 15,  paidInstallments: 2, contractStatus: 'OVERDUE' },
+  { label: '31-60',   daysOverdue: 45,  paidInstallments: 2, contractStatus: 'OVERDUE' },
+  { label: '61-90',   daysOverdue: 75,  paidInstallments: 1, contractStatus: 'OVERDUE' },
   { label: '90+',     daysOverdue: 120, paidInstallments: 1, contractStatus: 'OVERDUE' },
 ];
 
@@ -84,7 +93,7 @@ const fakePhone = (idx: number) => `${PHONE_PREFIX}${String(idx).padStart(5, '0'
 function generateContractNumber(idx: number): string {
   const now = new Date();
   const yymm = `${String(now.getFullYear() + 543).slice(2)}${String(now.getMonth() + 1).padStart(2, '0')}`;
-  return `BCP-TEST-${yymm}-${String(idx).padStart(5, '0')}`;
+  return `BC-TEST-${yymm}-${String(idx).padStart(5, '0')}`;
 }
 
 async function main() {
@@ -97,8 +106,7 @@ async function main() {
   const hasEncryption = !!KEY && KEY.length >= 32 && !!SALT && SALT.length >= 32;
   if (COMMIT) {
     if (!hasEncryption && (KEY || SALT)) {
-      console.error('❌ PII_ENCRYPTION_KEY และ PII_HASH_SALT ต้องตั้งทั้งคู่ และยาว ≥32 ตัวอักษร');
-      process.exit(1);
+      await bail('❌ PII_ENCRYPTION_KEY และ PII_HASH_SALT ต้องตั้งทั้งคู่ และยาว ≥32 ตัวอักษร');
     }
     if (!hasEncryption) {
       console.log('⚠️  ไม่มี PII keys — จะ seed แบบ dev (ไม่ encrypt) — อย่ารันแบบนี้บน prod');
@@ -114,8 +122,7 @@ async function main() {
         orderBy: { createdAt: 'asc' },
       });
   if (!branch) {
-    console.error('❌ ไม่พบ branch — ระบุ BRANCH_ID หรือเช็คว่ามี non-warehouse branch ใน DB');
-    process.exit(1);
+    await bail('❌ ไม่พบ branch — ระบุ BRANCH_ID หรือเช็คว่ามี non-warehouse branch ใน DB');
   }
   console.log(`📍 Branch: ${branch.id} — ${branch.name}`);
 
@@ -125,19 +132,18 @@ async function main() {
     (await prisma.user.findFirst({ where: { role: 'SALES', deletedAt: null } })) ||
     (await prisma.user.findFirst({ where: { role: 'OWNER' } }));
   if (!salesperson) {
-    console.error('❌ ไม่พบ user สำหรับเป็น salesperson');
-    process.exit(1);
+    await bail('❌ ไม่พบ user สำหรับเป็น salesperson');
   }
   console.log(`👤 Salesperson: ${salesperson.id} — ${salesperson.name} (${salesperson.role})`);
 
-  // 3. Pick existing product (don't create — keep cleanup simple)
-  const product = await prisma.product.findFirst({
-    where: { branchId: branch.id, deletedAt: null },
-    orderBy: { createdAt: 'asc' },
-  }) || await prisma.product.findFirst({ where: { deletedAt: null }, orderBy: { createdAt: 'asc' } });
+  // 3. Pick existing product (don't create — keep cleanup simple).
+  //    Script reuses the same product for all 20 contracts to avoid SKU pollution.
+  //    If this product is later deleted, contracts remain valid (FK is to productId which allows soft-deleted products).
+  const product =
+    (await prisma.product.findFirst({ where: { branchId: branch.id, deletedAt: null }, orderBy: { createdAt: 'asc' } })) ||
+    (await prisma.product.findFirst({ where: { deletedAt: null }, orderBy: { createdAt: 'asc' } }));
   if (!product) {
-    console.error('❌ ไม่พบ Product ใน DB — ต้องมี product อย่างน้อย 1 ตัว');
-    process.exit(1);
+    await bail('❌ ไม่พบ Product ใน DB — ต้องมี product อย่างน้อย 1 ตัว');
   }
   console.log(`📦 Product: ${product.id} — ${product.brand} ${product.model}`);
 
@@ -146,9 +152,10 @@ async function main() {
     where: { legacyMemberCode: { startsWith: MARKER }, deletedAt: null },
   });
   if (existing > 0) {
-    console.error(`\n❌ พบ ${existing} customer ที่มี marker เดียวกันแล้ว — รัน cleanup ก่อน:`);
-    console.error(`   npx tsx scripts/cleanup-collections-test-data.ts --commit`);
-    process.exit(1);
+    await bail(
+      `\n❌ พบ ${existing} customer ที่มี marker เดียวกันแล้ว — รัน cleanup ก่อน:\n` +
+      `   npx tsx scripts/cleanup-collections-test-data.ts --commit`,
+    );
   }
 
   console.log(`\n📋 Plan: 20 customers + 20 contracts + 240 payments (12 งวด × 20 สัญญา)`);
@@ -159,7 +166,8 @@ async function main() {
     return;
   }
 
-  // 5. Create
+  // 5. Create — each customer+contract+payments in a single transaction so a mid-loop
+  //    crash doesn't leave orphan contracts without payments.
   let cIdx = 0;
   for (let bucketIdx = 0; bucketIdx < OVERDUE_BUCKETS.length; bucketIdx++) {
     const bucket = OVERDUE_BUCKETS[bucketIdx];
@@ -170,89 +178,93 @@ async function main() {
       const phone = fakePhone(cIdx);
       const fullName = `${NAME_PREFIX}${person.first} ${person.last}`;
 
-      const customer = await prisma.customer.create({
-        data: {
-          nationalId: nid,
-          nationalIdEncrypted: hasEncryption ? encryptPII(nid, KEY) : null,
-          nationalIdHash: hasEncryption ? hashPII(nid, SALT) : null,
-          phone,
-          phoneEncrypted: hasEncryption ? encryptPII(phone, KEY) : null,
-          phoneHash: hasEncryption ? hashPII(phone, SALT) : null,
-          prefix: person.prefix,
-          name: fullName,
-          nickname: person.nickname,
-          occupation: person.occupation,
-          salary: new Prisma.Decimal(person.salary),
-          creditCheckStatus: 'FULL_CHECK_PASSED',
-          status: 'ACTIVE',
-          legacyMemberCode: `${MARKER}-${cIdx}`, // marker ผ่าน unique field
-        },
-      });
-
-      // Contract — 12-month plan, 8% flat interest
+      // Contract financials — 12-month plan, 8% flat interest
       const sellingPrice = new Prisma.Decimal(15000);
       const downPayment = new Prisma.Decimal(3000);
       const financedAmount = new Prisma.Decimal(12000);
       const interestRate = new Prisma.Decimal('0.0800');
       const totalMonths = 12;
       const interestTotal = financedAmount.mul(interestRate); // 960
-      const totalDue = financedAmount.add(interestTotal); // 12960
+      const totalDue = financedAmount.add(interestTotal);    // 12960
       const monthlyPayment = totalDue.div(totalMonths).toDecimalPlaces(2); // 1080
 
-      // Backdate contract creation to land payments in the right aging bucket
+      // Backdate contract creation so payments land in the right aging bucket.
+      // Uses 30-day months — close enough for test data.
       const monthsBack = bucket.paidInstallments + (bucket.daysOverdue > 0 ? 1 : 0);
       const contractCreatedAt = new Date(Date.now() - (monthsBack * 30 + bucket.daysOverdue) * 86400000);
 
-      const contract = await prisma.contract.create({
-        data: {
-          contractNumber: generateContractNumber(cIdx),
-          customerId: customer.id,
-          productId: product.id,
-          branchId: branch.id,
-          salespersonId: salesperson.id,
-          planType: 'STORE_WITH_INTEREST',
-          sellingPrice,
-          downPayment,
-          interestRate,
-          totalMonths,
-          interestTotal,
-          financedAmount,
-          monthlyPayment,
-          status: bucket.contractStatus,
-          paymentDueDay: 5,
-          workflowStatus: 'APPROVED',
-          createdAt: contractCreatedAt,
-          notes: MARKER,
-        },
-      });
-
-      // Payments — 12 งวด
-      const payments: Prisma.PaymentCreateManyInput[] = [];
-      for (let i = 1; i <= totalMonths; i++) {
-        const dueDate = new Date(contractCreatedAt.getTime() + i * 30 * 86400000);
-        let status: PaymentStatus = 'PENDING';
-        let amountPaid = new Prisma.Decimal(0);
-        let paidAt: Date | null = null;
-
-        if (i <= bucket.paidInstallments) {
-          status = 'PAID';
-          amountPaid = monthlyPayment;
-          paidAt = new Date(dueDate.getTime() - 2 * 86400000);
-        } else if (i === bucket.paidInstallments + 1 && bucket.daysOverdue > 0) {
-          status = 'OVERDUE';
-        }
-
-        payments.push({
-          contractId: contract.id,
-          installmentNo: i,
-          dueDate,
-          amountDue: monthlyPayment,
-          amountPaid,
-          paidAt,
-          status,
+      const { customer, contract } = await prisma.$transaction(async (tx) => {
+        const customer = await tx.customer.create({
+          data: {
+            nationalId: nid,
+            nationalIdEncrypted: hasEncryption ? encryptPII(nid, KEY) : null,
+            nationalIdHash: hasEncryption ? hashPII(nid, SALT) : null,
+            phone,
+            phoneEncrypted: hasEncryption ? encryptPII(phone, KEY) : null,
+            phoneHash: hasEncryption ? hashPII(phone, SALT) : null,
+            prefix: person.prefix,
+            name: fullName,
+            nickname: person.nickname,
+            occupation: person.occupation,
+            salary: new Prisma.Decimal(person.salary),
+            creditCheckStatus: 'FULL_CHECK_PASSED',
+            status: 'ACTIVE',
+            legacyMemberCode: `${MARKER}-${cIdx}`, // marker ผ่าน unique field
+          },
         });
-      }
-      await prisma.payment.createMany({ data: payments });
+
+        const contract = await tx.contract.create({
+          data: {
+            contractNumber: generateContractNumber(cIdx),
+            customerId: customer.id,
+            productId: product.id,
+            branchId: branch.id,
+            salespersonId: salesperson.id,
+            planType: 'STORE_WITH_INTEREST',
+            sellingPrice,
+            downPayment,
+            interestRate,
+            totalMonths,
+            interestTotal,
+            financedAmount,
+            monthlyPayment,
+            status: bucket.contractStatus,
+            paymentDueDay: 5,
+            workflowStatus: 'APPROVED',
+            createdAt: contractCreatedAt,
+            notes: MARKER,
+          },
+        });
+
+        const payments: Prisma.PaymentCreateManyInput[] = [];
+        for (let i = 1; i <= totalMonths; i++) {
+          const dueDate = new Date(contractCreatedAt.getTime() + i * 30 * 86400000);
+          let status: PaymentStatus = 'PENDING';
+          let amountPaid = new Prisma.Decimal(0);
+          let paidAt: Date | null = null;
+
+          if (i <= bucket.paidInstallments) {
+            status = 'PAID';
+            amountPaid = monthlyPayment;
+            paidAt = new Date(dueDate.getTime() - 2 * 86400000);
+          } else if (i === bucket.paidInstallments + 1 && bucket.daysOverdue > 0) {
+            status = 'OVERDUE';
+          }
+
+          payments.push({
+            contractId: contract.id,
+            installmentNo: i,
+            dueDate,
+            amountDue: monthlyPayment,
+            amountPaid,
+            paidAt,
+            status,
+          });
+        }
+        await tx.payment.createMany({ data: payments });
+
+        return { customer, contract };
+      });
 
       console.log(
         `  [${bucket.label.padEnd(7)}] ${customer.id.slice(0, 8)}.. ${fullName.padEnd(40)} ${contract.contractNumber} → ${bucket.paidInstallments}/${totalMonths} paid${bucket.daysOverdue > 0 ? `, ${bucket.daysOverdue}d overdue` : ''}`,
@@ -268,6 +280,6 @@ async function main() {
 main()
   .catch((err) => {
     console.error('\n❌ Failed:', err);
-    process.exit(1);
+    process.exitCode = 1; // set exit code without skipping .finally()
   })
   .finally(() => prisma.$disconnect());

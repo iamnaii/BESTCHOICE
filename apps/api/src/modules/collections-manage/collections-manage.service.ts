@@ -186,6 +186,79 @@ export class CollectionsManageService {
     return this.autoAssign.runForDate(new Date());
   }
 
+  async getOverview(branchScope?: string[]) {
+    const today = startOfDay(new Date());
+
+    // Total active overdue contracts (the universe of work)
+    const totalOverdue = await this.prisma.contract.count({
+      where: {
+        status: { in: ['OVERDUE', 'PENDING'] as any },
+        deletedAt: null,
+        ...(branchScope ? { branchId: { in: branchScope } } : {}),
+      },
+    });
+
+    // Escalation: 90+ days + 2+ broken promises (per the auto-assign policy)
+    // Approximation via existing data sources — same as auto-assign uses.
+    const recentSnapshots = await this.prisma.contractDailySnapshot.findMany({
+      where: { daysOverdue: { gte: 90 } },
+      orderBy: { date: 'desc' },
+      distinct: ['contractId'],
+      select: { contractId: true, daysOverdue: true },
+    });
+
+    let escalationCount = 0;
+    if (recentSnapshots.length > 0) {
+      const ids = recentSnapshots.map((s) => s.contractId);
+      const broken = await this.prisma.auditLog.groupBy({
+        by: ['entityId'],
+        where: {
+          entityId: { in: ids },
+          entity: 'Contract',
+          action: 'BROKEN_PROMISE',
+        },
+        _count: { _all: true },
+      });
+      const brokenMap = new Map(broken.map((r) => [r.entityId, r._count._all]));
+      escalationCount = recentSnapshots.filter((s) => (brokenMap.get(s.contractId) ?? 0) >= 2).length;
+    }
+
+    // Active collectors
+    const activeCollectors = await this.prisma.user.count({
+      where: {
+        role: 'SALES' as any,
+        collectionsActive: true,
+        deletedAt: null,
+        ...(branchScope ? { branchId: { in: branchScope } } : {}),
+      },
+    });
+
+    // Today's assignment summary
+    const [todayAssignmentCount, lockedRow] = await Promise.all([
+      this.prisma.dailyAssignment.count({
+        where: { date: today, deletedAt: null },
+      }),
+      this.prisma.dailyAssignment.findFirst({
+        where: { date: today, lockedAt: { not: null } },
+        select: { lockedAt: true },
+        orderBy: { lockedAt: 'asc' },
+      }),
+    ]);
+
+    // Suggested workload per collector (rough — UI hint)
+    const suggestedPerCollector =
+      activeCollectors > 0 ? Math.ceil(totalOverdue / activeCollectors) : 0;
+
+    return {
+      totalOverdue,
+      escalationCount,
+      activeCollectors,
+      todayAssignmentCount,
+      lockedAt: lockedRow?.lockedAt ?? null,
+      suggestedPerCollector,
+    };
+  }
+
   /**
    * Push a LINE message to a collector if their queue was changed after today's
    * lock. No-op if there's no lock yet today (still in the 06:00-09:00 planning

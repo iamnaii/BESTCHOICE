@@ -48,4 +48,11 @@ export class CollectionsManageController {
   autoBalance() {
     return this.manage.autoBalance();
   }
+
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER')
+  @Get('overview')
+  overview(@CurrentUser() user: any) {
+    const scope = user.role === 'BRANCH_MANAGER' && user.branchId ? [user.branchId] : undefined;
+    return this.manage.getOverview(scope);
+  }
 }

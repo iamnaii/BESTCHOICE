@@ -17,9 +17,12 @@ describe('CollectionsManageService', () => {
         update: jest.fn(),
         findUnique: jest.fn(),
         findFirst: jest.fn().mockResolvedValue(null),
+        count: jest.fn(),
       },
-      user: { findMany: jest.fn(), findUnique: jest.fn() },
+      user: { findMany: jest.fn(), findUnique: jest.fn(), count: jest.fn() },
       contractDailySnapshot: { findMany: jest.fn().mockResolvedValue([]) },
+      contract: { count: jest.fn() },
+      auditLog: { groupBy: jest.fn() },
     };
     const lineMock = { pushMessage: jest.fn().mockResolvedValue(undefined) };
     const moduleRef = await Test.createTestingModule({
@@ -109,5 +112,31 @@ describe('CollectionsManageService', () => {
     });
 
     expect(line.pushMessage).not.toHaveBeenCalled();
+  });
+
+  it('getOverview returns counts + suggestedPerCollector', async () => {
+    prisma.contract.count.mockResolvedValue(124);
+    prisma.contractDailySnapshot.findMany.mockResolvedValue([
+      { contractId: 'c1', daysOverdue: 95 },
+      { contractId: 'c2', daysOverdue: 100 },
+    ]);
+    prisma.auditLog.groupBy.mockResolvedValue([
+      { entityId: 'c1', _count: { _all: 3 } },
+      { entityId: 'c2', _count: { _all: 1 } },
+    ]);
+    prisma.user.count.mockResolvedValue(3);
+    prisma.dailyAssignment.count.mockResolvedValue(0);
+    prisma.dailyAssignment.findFirst.mockResolvedValue(null);
+
+    const result = await service.getOverview();
+
+    expect(result).toMatchObject({
+      totalOverdue: 124,
+      escalationCount: 1, // c1 only (c2 has 1 broken promise, < 2)
+      activeCollectors: 3,
+      todayAssignmentCount: 0,
+      lockedAt: null,
+      suggestedPerCollector: 42, // ceil(124/3)
+    });
   });
 });

@@ -12,6 +12,17 @@ export function useManagerBoard() {
   });
 }
 
+export function useManagerOverview() {
+  return useQuery({
+    queryKey: ['collections-manage', 'overview'],
+    queryFn: async () => {
+      const { data } = await api.get('/collections/manage/overview');
+      return data;
+    },
+    refetchInterval: 60_000,
+  });
+}
+
 export function useManageActions() {
   const qc = useQueryClient();
 

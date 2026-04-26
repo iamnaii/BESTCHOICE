@@ -63,9 +63,14 @@ async function bootstrap() {
   if (!allowedOrigins.includes('https://shop.bestchoicephone.app')) {
     allowedOrigins.push('https://shop.bestchoicephone.app');
   }
-  // Online Shop local dev (port 5174)
-  if (!allowedOrigins.includes('http://localhost:5174')) {
-    allowedOrigins.push('http://localhost:5174');
+  // Online Shop local dev (port 5174) — DEV ONLY.
+  // (Audit finding P0-#8) Without this guard, any page served from
+  // localhost:5174 in prod can make credentialed cross-origin requests
+  // and receive the httpOnly refresh-token cookie.
+  if (process.env.NODE_ENV !== 'production') {
+    if (!allowedOrigins.includes('http://localhost:5174')) {
+      allowedOrigins.push('http://localhost:5174');
+    }
   }
 
   app.enableCors({

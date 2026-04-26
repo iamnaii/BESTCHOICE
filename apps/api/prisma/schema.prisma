@@ -1024,6 +1024,7 @@ model DailyAssignment {
   @@index([collectorId, date])
   @@index([date, status])
   @@index([escalationFlag, date])
+  @@map("daily_assignments")
 }
 
 model Payment {

@@ -95,6 +95,7 @@ const ChatAnalyticsPage = lazy(() => import('@/pages/ChatAnalyticsPage'));
 const CannedResponseAdminPage = lazy(() => import('@/pages/CannedResponseAdminPage'));
 const CollectionDashboardPage = lazy(() => import('@/pages/CollectionDashboardPage'));
 const CollectionsPage = lazy(() => import('@/pages/CollectionsPage'));
+const ManageDashboard = lazy(() => import('@/pages/CollectionsPage/manage/ManageDashboard'));
 const DunningSettingsPage = lazy(() => import('@/pages/DunningSettingsPage'));
 const SmsTemplatesPage = lazy(() => import('@/pages/SmsTemplatesPage'));
 const MonthlyClosePage = lazy(() => import('@/pages/MonthlyClosePage'));
@@ -438,6 +439,14 @@ function App() {
                 roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES']}
               >
                 <CollectionsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/collections/manage"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER']}>
+                <ManageDashboard />
               </ProtectedRoute>
             }
           />

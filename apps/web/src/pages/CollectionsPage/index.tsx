@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import PageHeader from '@/components/ui/PageHeader';
+import { Button } from '@/components/ui/button';
 import CollectionsHeader from './components/CollectionsHeader';
 import CollectionsTabs from './components/CollectionsTabs';
 import CollectionsFilters from './components/CollectionsFilters';
@@ -16,6 +18,8 @@ import PromiseTab from './tabs/PromiseTab';
 import AllTab from './tabs/AllTab';
 import ApprovalTab from './tabs/ApprovalTab';
 import AnalyticsTab from './tabs/AnalyticsTab';
+import SessionView from './session/SessionView';
+import { useViewToggle } from './hooks/useViewToggle';
 import type { ContractRow, CollectionsTabKey } from './types';
 
 export type { CollectionsTabKey };
@@ -43,6 +47,21 @@ function canAccessTab(key: CollectionsTabKey, role: string | undefined): boolean
 export default function CollectionsPage() {
   useDocumentTitle('ติดตามหนี้');
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const { view, setView } = useViewToggle();
+
+  // Default OWNER/MANAGER to /collections/manage unless they've explicitly
+  // chosen a view via the toggle (preferences.collectionsDefaultView).
+  useEffect(() => {
+    const isManager =
+      user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER' || user?.role === 'FINANCE_MANAGER';
+    const explicitChoice = (user?.preferences as { collectionsDefaultView?: string } | undefined)
+      ?.collectionsDefaultView;
+    if (isManager && !explicitChoice) {
+      navigate('/collections/manage', { replace: true });
+    }
+  }, [user, navigate]);
+
   const [activeTab, setActiveTab] = useState<CollectionsTabKey>('today');
   const [search, setSearch] = useState('');
   const [branchId, setBranchId] = useState('');
@@ -67,73 +86,105 @@ export default function CollectionsPage() {
 
   return (
     <div>
-      <PageHeader title="ติดตามหนี้" subtitle="คิวงานของผู้ติดตามหนี้รายวัน" />
+      <PageHeader
+        title="ติดตามหนี้"
+        subtitle={view === 'SESSION' ? 'คิวงานวันนี้ของคุณ' : 'รายการสัญญาทั้งหมด'}
+        action={
+          <div className="inline-flex items-center rounded-lg border border-border/50 bg-card p-0.5">
+            <Button
+              type="button"
+              size="sm"
+              variant={view === 'SESSION' ? 'primary' : 'ghost'}
+              className="h-7 px-3 text-xs"
+              onClick={() => setView('SESSION')}
+            >
+              Session
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={view === 'LIBRARY' ? 'primary' : 'ghost'}
+              className="h-7 px-3 text-xs"
+              onClick={() => setView('LIBRARY')}
+            >
+              Library
+            </Button>
+          </div>
+        }
+      />
 
       <MigrationBanner />
 
-      <CollectionsHeader onSwitchToToday={() => setActiveTab('today')} />
+      {view === 'SESSION' ? (
+        <SessionView />
+      ) : (
+        <>
+          <CollectionsHeader onSwitchToToday={() => setActiveTab('today')} />
 
-      <CollectionsTabs
-        active={effectiveTab}
-        onChange={(key) => {
-          setActiveTab(key);
-          setSearch('');
-          setBranchId('');
-        }}
-        canSeeApproval={canSeeApproval}
-        canSeeAnalytics={canSeeAnalytics}
-      />
+          <CollectionsTabs
+            active={effectiveTab}
+            onChange={(key) => {
+              setActiveTab(key);
+              setSearch('');
+              setBranchId('');
+            }}
+            canSeeApproval={canSeeApproval}
+            canSeeAnalytics={canSeeAnalytics}
+          />
 
-      {showFilters && (
-        <CollectionsFilters
-          search={search}
-          onSearchChange={setSearch}
-          branchId={branchId}
-          onBranchChange={setBranchId}
-          showBranchFilter={showBranchFilter}
-        />
+          {showFilters && (
+            <CollectionsFilters
+              search={search}
+              onSearchChange={setSearch}
+              branchId={branchId}
+              onBranchChange={setBranchId}
+              showBranchFilter={showBranchFilter}
+            />
+          )}
+
+          {effectiveTab === 'today' && (
+            <QueueTab
+              search={search}
+              branchId={branchId}
+              onLogContact={openContactDialog}
+              onOpen360={openPanel}
+              onSendLine={setLineDialogContract}
+              onSkipTrace={setSkipTraceContract}
+              onSwitchTab={(tab) => setActiveTab(tab as CollectionsTabKey)}
+            />
+          )}
+
+          {effectiveTab === 'followup' && (
+            <FollowUpTab
+              search={search}
+              branchId={branchId}
+              onLogContact={openContactDialog}
+              onOpen360={openPanel}
+              onSendLine={setLineDialogContract}
+              onSkipTrace={setSkipTraceContract}
+            />
+          )}
+
+          {effectiveTab === 'promise' && (
+            <PromiseTab
+              search={search}
+              branchId={branchId}
+              onLogContact={openContactDialog}
+              onOpen360={openPanel}
+              onSendLine={setLineDialogContract}
+              onSkipTrace={setSkipTraceContract}
+            />
+          )}
+
+          {effectiveTab === 'approval' && canSeeApproval && <ApprovalTab />}
+
+          {effectiveTab === 'all' && <AllTab />}
+
+          {effectiveTab === 'analytics' && canSeeAnalytics && <AnalyticsTab />}
+        </>
       )}
 
-      {effectiveTab === 'today' && (
-        <QueueTab
-          search={search}
-          branchId={branchId}
-          onLogContact={openContactDialog}
-          onOpen360={openPanel}
-          onSendLine={setLineDialogContract}
-          onSkipTrace={setSkipTraceContract}
-          onSwitchTab={(tab) => setActiveTab(tab as CollectionsTabKey)}
-        />
-      )}
-
-      {effectiveTab === 'followup' && (
-        <FollowUpTab
-          search={search}
-          branchId={branchId}
-          onLogContact={openContactDialog}
-          onOpen360={openPanel}
-          onSendLine={setLineDialogContract}
-          onSkipTrace={setSkipTraceContract}
-        />
-      )}
-
-      {effectiveTab === 'promise' && (
-        <PromiseTab
-          search={search}
-          branchId={branchId}
-          onLogContact={openContactDialog}
-          onOpen360={openPanel}
-          onSendLine={setLineDialogContract}
-          onSkipTrace={setSkipTraceContract}
-        />
-      )}
-
-      {effectiveTab === 'approval' && canSeeApproval && <ApprovalTab />}
-
-      {effectiveTab === 'all' && <AllTab />}
-
-      {effectiveTab === 'analytics' && canSeeAnalytics && <AnalyticsTab />}
-
+      {/* Dialogs stay outside conditional — they may be opened from either mode */}
       <ContactLogDialog
         open={!!dialogContract}
         contract={dialogContract}

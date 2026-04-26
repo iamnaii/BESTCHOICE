@@ -56,15 +56,22 @@ async function bootstrap() {
   //   X-Content-Type-Options: nosniff
   //   X-Frame-Options: SAMEORIGIN
   //   Strict-Transport-Security
-  //   Cross-Origin-Resource-Policy: same-origin
   //   Referrer-Policy: no-referrer
-  // CSP is disabled because the API serves no HTML and the strict default
-  // would block Swagger's inline CSS in dev. CORS is handled separately
-  // below by NestJS, so we keep helmet's CORS-related headers off.
+  //
+  // Disabled options:
+  // - contentSecurityPolicy: API serves no HTML; default CSP would only
+  //   break Swagger's inline CSS in dev.
+  // - crossOriginEmbedderPolicy: not needed for a JSON API.
+  // - crossOriginResourcePolicy: must be 'cross-origin' (not the default
+  //   'same-origin') because the web app and the API are on different
+  //   origins (admin.bestchoicephone.app ↔ api.bestchoicephone.app, plus
+  //   localhost:5173 ↔ localhost:3000 in dev/E2E). NestJS CORS already
+  //   handles the credentialed origin allow-list below.
   app.use(
     helmet({
       contentSecurityPolicy: false,
       crossOriginEmbedderPolicy: false,
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
     }),
   );
 

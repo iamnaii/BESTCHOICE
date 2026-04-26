@@ -72,11 +72,23 @@ const dunningLabel: Record<string, string | null> = {
   LEGAL_ACTION: 'เข้าสู่ขั้นตอนทางกฎหมาย',
 };
 
+// (Audit finding P2) Compute days remaining in Asia/Bangkok regardless of the
+// customer's device timezone. Previously `setHours(0,...)` snapped to device
+// local time, so a customer in UTC saw "ครบกำหนดพรุ่งนี้" when it was actually
+// today in Bangkok (or vice versa). Use the en-CA YYYY-MM-DD locale trick to
+// extract the calendar date in Asia/Bangkok, then diff in whole days.
 function daysUntil(dateStr: string | Date): number {
-  const due = new Date(dateStr);
-  const now = new Date();
-  due.setHours(0, 0, 0, 0);
-  now.setHours(0, 0, 0, 0);
+  const tz = 'Asia/Bangkok';
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const dueParts = fmt.format(new Date(dateStr));
+  const nowParts = fmt.format(new Date());
+  const due = new Date(`${dueParts}T00:00:00+07:00`);
+  const now = new Date(`${nowParts}T00:00:00+07:00`);
   return Math.round((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 }
 

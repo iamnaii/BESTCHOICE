@@ -1,15 +1,14 @@
-import { useState } from 'react';
-import { AlertTriangle, Calendar } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { AlertTriangle, Calendar, CheckCircle2, Phone } from 'lucide-react';
 import { useDebounce } from '@/hooks/useDebounce';
+import { isToday } from '../utils/today';
 import QueryBoundary from '@/components/QueryBoundary';
 import ContractCard from '../components/ContractCard';
-import BulkActionBar from '../components/BulkActionBar';
 import TruncatedBanner from '../components/TruncatedBanner';
 import FilterChipsBar from '../components/FilterChipsBar';
 import FilterDrawer from '../components/FilterDrawer';
 import BrokenPromiseBanner from '../components/BrokenPromiseBanner';
 import { useCollectionsQueue } from '../hooks/useCollectionsQueue';
-import { useBulkSelection } from '../hooks/useBulkSelection';
 import { useQueueFilter } from '../hooks/useQueueFilter';
 import type { ContractRow } from '../types';
 
@@ -89,6 +88,7 @@ function groupRows(rows: ContractRow[]): GroupedRows {
 interface Props {
   search: string;
   branchId: string;
+  hideContactedToday?: boolean;
   onLogContact: (c: ContractRow) => void;
   onOpen360?: (c: ContractRow) => void;
   onSendLine?: (c: ContractRow) => void;
@@ -98,6 +98,7 @@ interface Props {
 export default function PromiseTab({
   search,
   branchId,
+  hideContactedToday = false,
   onLogContact,
   onOpen360,
   onSendLine,
@@ -105,7 +106,6 @@ export default function PromiseTab({
 }: Props) {
   const [page, setPage] = useState(1);
   const [filterOpen, setFilterOpen] = useState(false);
-  const sel = useBulkSelection();
   const debouncedSearch = useDebounce(search, 300);
   const [filter, setFilter, resetFilter] = useQueueFilter('promise');
 
@@ -121,7 +121,19 @@ export default function PromiseTab({
 
   const total = q.data?.total ?? 0;
   // C1 fix: search is now server-side via useCollectionsQueue → /overdue/queue
-  const rows = q.data?.data ?? [];
+  const rawRows = q.data?.data ?? [];
+  // Apply client-side "hide contacted today" filter on top of the server result.
+  // NOTE: counts below operate on the current page only — backend pagination is
+  // unchanged, so for page 2+ the strip reflects "in this view" not the entire queue.
+  const rows = useMemo(
+    () => (hideContactedToday ? rawRows.filter((r) => !isToday(r.lastCallAt)) : rawRows),
+    [rawRows, hideContactedToday],
+  );
+  const contactedTodayCount = useMemo(
+    () => rawRows.filter((r) => isToday(r.lastCallAt)).length,
+    [rawRows],
+  );
+  const remainingCount = rawRows.length - contactedTodayCount;
   const truncated = q.data?.truncated ?? false;
 
   const openFilter = () => setFilterOpen(true);
@@ -151,6 +163,21 @@ export default function PromiseTab({
         resultCount={rows.length}
         totalCount={total}
       />
+      {rawRows.length > 0 && (
+        <div className="mb-3 flex items-center gap-3 text-sm leading-snug">
+          <span className="inline-flex items-center gap-1.5">
+            <CheckCircle2 className="size-4 text-success" />
+            <span className="font-semibold tabular-nums">{contactedTodayCount}</span>
+            <span className="text-muted-foreground">โทรแล้ววันนี้</span>
+          </span>
+          <span className="text-border">·</span>
+          <span className="inline-flex items-center gap-1.5">
+            <Phone className="size-4 text-muted-foreground" />
+            <span className="font-semibold tabular-nums">{remainingCount}</span>
+            <span className="text-muted-foreground">เหลือ</span>
+          </span>
+        </div>
+      )}
       <BrokenPromiseBanner />
       {truncated && <TruncatedBanner onOpenFilter={openFilter} />}
       {isEmpty ? (
@@ -182,8 +209,6 @@ export default function PromiseTab({
                         onOpen360={onOpen360}
                         onSendLine={onSendLine}
                         onSkipTrace={onSkipTrace}
-                        selected={sel.isSelected(row.id)}
-                        onToggleSelect={sel.toggle}
                       />
                     </div>
                   ))}
@@ -206,8 +231,6 @@ export default function PromiseTab({
                       onOpen360={onOpen360}
                       onSendLine={onSendLine}
                       onSkipTrace={onSkipTrace}
-                      selected={sel.isSelected(row.id)}
-                      onToggleSelect={sel.toggle}
                     />
                   ))}
                 </div>
@@ -229,8 +252,6 @@ export default function PromiseTab({
                       onOpen360={onOpen360}
                       onSendLine={onSendLine}
                       onSkipTrace={onSkipTrace}
-                      selected={sel.isSelected(row.id)}
-                      onToggleSelect={sel.toggle}
                     />
                   ))}
                 </div>
@@ -263,7 +284,6 @@ export default function PromiseTab({
           )}
         </>
       )}
-      <BulkActionBar selectedIds={sel.selectedIds} onClear={sel.clear} contracts={rows} />
       <FilterDrawer
         open={filterOpen}
         onOpenChange={setFilterOpen}

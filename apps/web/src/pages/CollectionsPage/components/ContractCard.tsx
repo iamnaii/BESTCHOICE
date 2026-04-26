@@ -17,8 +17,10 @@ import {
   Moon,
   ArrowUp,
   ArrowDown,
+  CheckCircle2,
 } from 'lucide-react';
 import { formatDateShort, formatNumber } from '@/utils/formatters';
+import { isToday, formatHHMM } from '../utils/today';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -31,14 +33,6 @@ import CustomerTagChips from './CustomerTagChips';
 import NextBestActionChip, { type NextBestActionType } from './NextBestActionChip';
 import { CallButton } from '@/components/CallButton';
 
-
-function priorityColor(daysOverdue: number): string {
-  if (daysOverdue >= 30) return 'bg-destructive';
-  if (daysOverdue >= 8) return 'bg-warning';
-  if (daysOverdue >= 1) return 'bg-primary';
-  return 'bg-muted';
-}
-
 const CHANNEL_META: Record<
   NonNullable<ContractRow['lastChannel']>,
   { icon: typeof Phone; label: string }
@@ -48,6 +42,13 @@ const CHANNEL_META: Record<
   CALL: { icon: Phone, label: 'โทร' },
   LETTER: { icon: FileText, label: 'จดหมาย' },
 };
+
+function severityPanel(daysOverdue: number): { bg: string; fg: string } {
+  if (daysOverdue >= 30) return { bg: 'bg-destructive', fg: 'text-destructive-foreground' };
+  if (daysOverdue >= 8) return { bg: 'bg-warning', fg: 'text-warning-foreground' };
+  if (daysOverdue >= 1) return { bg: 'bg-primary', fg: 'text-primary-foreground' };
+  return { bg: 'bg-muted', fg: 'text-muted-foreground' };
+}
 
 function formatSnoozeUntil(iso: string): string {
   const d = new Date(iso);
@@ -62,121 +63,15 @@ function formatSnoozeUntil(iso: string): string {
   return `${formatDateShort(d)} ${hh}:${mm}`;
 }
 
-function IndicatorChips({
-  contract,
-  onNbaClick,
-}: {
-  contract: ContractRow;
-  onNbaClick?: (type: NextBestActionType) => void;
-}) {
-  const bucket = agingBucket(contract.daysOverdue);
-  const channelMeta = contract.lastChannel ? CHANNEL_META[contract.lastChannel] : null;
-  const ChannelIcon = channelMeta?.icon ?? null;
-  const arrow = contract.trendingArrow;
-
-  return (
-    <div className="mb-3 flex flex-wrap items-center gap-1.5">
-      <span
-        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-2xs font-medium leading-snug ${agingColor(bucket)}`}
-      >
-        เลย {contract.daysOverdue} วัน
-        {arrow === 'UP' && (
-          <ArrowUp
-            className="size-3"
-            aria-label="แย่ลงเทียบ 7 วันก่อน"
-            data-testid="trending-up"
-          />
-        )}
-        {arrow === 'DOWN' && (
-          <ArrowDown
-            className="size-3"
-            aria-label="ดีขึ้นเทียบ 7 วันก่อน"
-            data-testid="trending-down"
-          />
-        )}
-      </span>
-
-      {contract.snoozedUntil && (
-        <span
-          className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 text-primary text-2xs font-medium px-2 py-0.5 leading-snug"
-          title={`Snooze ถึง ${new Date(contract.snoozedUntil).toLocaleString('th-TH')}`}
-        >
-          <Moon className="size-3" />
-          ถึง {formatSnoozeUntil(contract.snoozedUntil)}
-        </span>
-      )}
-
-      <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted text-muted-foreground text-2xs font-medium px-2 py-0.5 leading-snug">
-        <Clock className="size-3" />
-        {formatRelativeTime(contract.lastContactedAt)}
-      </span>
-
-      {contract.brokenPromiseCount > 0 && (
-        <span className="inline-flex items-center gap-1 rounded-full border border-destructive/30 bg-destructive/10 text-destructive text-2xs font-medium px-2 py-0.5 leading-snug">
-          <AlertTriangle className="size-3" />
-          นัดผิด {contract.brokenPromiseCount} ครั้ง
-        </span>
-      )}
-
-      {ChannelIcon && channelMeta && (
-        <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted text-muted-foreground text-2xs font-medium px-2 py-0.5 leading-snug">
-          <ChannelIcon className="size-3" />
-          {channelMeta.label}
-        </span>
-      )}
-
-      {contract.mdmState === 'PENDING' && (
-        <span className="inline-flex items-center gap-1 rounded-full border border-warning/30 bg-warning/10 text-warning text-2xs font-medium px-2 py-0.5 leading-snug">
-          <Lock className="size-3" />
-          รอ OWNER อนุมัติ
-        </span>
-      )}
-      {contract.mdmState === 'LOCKED' && (
-        <span className="inline-flex items-center gap-1 rounded-full border border-destructive/30 bg-destructive/10 text-destructive text-2xs font-medium px-2 py-0.5 leading-snug">
-          <Lock className="size-3" />
-          ล็อคแล้ว
-        </span>
-      )}
-
-      {contract.relatedContractsCount > 0 && (
-        <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted text-muted-foreground text-2xs font-medium px-2 py-0.5 leading-snug">
-          <Users className="size-3" />
-          +{contract.relatedContractsCount} สัญญา
-        </span>
-      )}
-
-      {/* Customer segmentation tags (P3 Task 8 — C1 frontend) */}
-      <CustomerTagChips tags={contract.customerTags} compact />
-
-      {/* Next-Best-Action recommendation (P3 Task 9 — C2). Hidden on NOOP. */}
-      <NextBestActionChip action={contract.nextBestAction} onClick={onNbaClick} />
-    </div>
-  );
-}
-
 interface Props {
   contract: ContractRow;
   onLogContact: (c: ContractRow) => void;
   onOpen360?: (c: ContractRow) => void;
   onSendLine?: (c: ContractRow) => void;
-  selected?: boolean;
-  onToggleSelect?: (id: string) => void;
-  /** Highlight as keyboard-focused card (J/K navigation) */
   focused?: boolean;
-  /** Open the SnoozeDialog (Task 7). Hides the ⋯ menu entry when undefined. */
   onSnooze?: (c: ContractRow) => void;
-  /** Lift active snooze immediately. Hides the ⋯ menu entry when undefined. */
   onUnsnooze?: (c: ContractRow) => void;
-  /**
-   * Open SkipTracingWizard (Task 6 / D6). Wired only when
-   * `contract.needsSkipTracing` is true — the chip becomes a clickable button
-   * that launches the 4-step wizard.
-   */
   onSkipTrace?: (c: ContractRow) => void;
-  /**
-   * Click handler for the Next-Best-Action chip (P3 Task 9). Receives the
-   * action type so the parent can route to the correct dialog.
-   */
   onNextBestAction?: (c: ContractRow, type: NextBestActionType) => void;
 }
 
@@ -185,8 +80,6 @@ export default function ContractCard({
   onLogContact,
   onOpen360,
   onSendLine,
-  selected,
-  onToggleSelect,
   focused,
   onSnooze,
   onUnsnooze,
@@ -197,187 +90,265 @@ export default function ContractCard({
     !!contract.snoozedUntil && new Date(contract.snoozedUntil).getTime() > Date.now();
   const focusRing = focused ? 'ring-2 ring-primary ring-offset-1 ring-offset-background' : '';
 
+  const { bg: panelBg, fg: panelFg } = severityPanel(contract.daysOverdue);
+  const bucket = agingBucket(contract.daysOverdue);
+  const channelMeta = contract.lastChannel ? CHANNEL_META[contract.lastChannel] : null;
+  const ChannelIcon = channelMeta?.icon ?? null;
+  const arrow = contract.trendingArrow;
+
   return (
     <div
       data-collections-card-id={contract.id}
       className={`group relative flex rounded-xl border border-border/50 bg-card shadow-sm hover:shadow-card-hover transition-shadow overflow-hidden ${focusRing}`}
     >
-      {/* Checkbox column — only rendered when bulk-select is active */}
-      {onToggleSelect && (
-        <label className="flex items-start pt-5 pl-3 shrink-0 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={!!selected}
-            onChange={() => onToggleSelect(contract.id)}
-            onClick={(e) => e.stopPropagation()}
-            className="size-4 rounded border-input accent-primary focus:ring-2 focus:ring-ring/30"
-            aria-label={`เลือกสัญญา ${contract.contractNumber}`}
-          />
-        </label>
-      )}
+      {/* Severity panel — full-height colored block with day count */}
+      <div className={`w-16 shrink-0 flex flex-col ${panelBg} ${panelFg}`}>
+        <div className="flex-1 flex flex-col items-center justify-center gap-0.5 py-4">
+          <div className="text-3xl font-bold tabular-nums leading-none">
+            {contract.daysOverdue}
+          </div>
+          <div className="text-xs font-medium leading-snug" style={{ opacity: 0.85 }}>
+            วัน
+          </div>
+        </div>
+      </div>
 
-      {/* Priority heat strip */}
-      <div className={`w-1 shrink-0 ${priorityColor(contract.daysOverdue)}`} />
-
+      {/* Main content */}
       <div className="flex-1 p-4 min-w-0">
-        {/* Top row: contract# + name + branch | days-overdue hero */}
-        <div className="flex items-start justify-between gap-3 mb-2 min-w-0">
+        {/* Top row: contract info | outstanding */}
+        <div className="flex items-start justify-between gap-3 mb-3 min-w-0">
           <div className="min-w-0">
             {onOpen360 ? (
               <button
                 type="button"
                 onClick={() => onOpen360(contract)}
-                className="font-mono text-xs text-primary font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30 rounded text-left"
+                className="font-mono text-sm text-primary font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30 rounded text-left leading-snug"
                 aria-label={`เปิด Customer 360 ของสัญญา ${contract.contractNumber}`}
               >
                 {contract.contractNumber}
               </button>
             ) : (
-              <div className="font-mono text-xs text-primary font-medium">
+              <div className="font-mono text-sm text-primary font-medium leading-snug">
                 {contract.contractNumber}
               </div>
             )}
-            <div className="text-sm font-semibold leading-snug truncate">
+            <div className="text-base font-bold leading-snug truncate mt-1">
               {contract.customer.name}
             </div>
-            <div className="text-2xs text-muted-foreground leading-snug">
+            <div className="text-sm text-muted-foreground leading-snug mt-0.5">
               {contract.branch.name}
             </div>
           </div>
 
-          {/* Days-overdue hero */}
           <div className="text-right shrink-0">
-            <div className="text-3xl font-bold tabular-nums leading-none">
-              {contract.daysOverdue}
+            <div className="flex items-baseline gap-1 justify-end leading-none">
+              <span className="text-2xl sm:text-3xl font-bold tabular-nums text-destructive tracking-tight">
+                {formatNumber(contract.outstanding)}
+              </span>
+              <span className="text-base font-semibold text-destructive">฿</span>
             </div>
-            <div className="text-2xs text-muted-foreground uppercase tracking-wide leading-snug">
-              วัน
-            </div>
+            <div className="text-xs text-muted-foreground leading-snug mt-1">ค้างชำระ</div>
           </div>
         </div>
 
-        {/* Outstanding amount (secondary) */}
-        <div className="text-sm font-medium tabular-nums mb-3 leading-snug">
-          ค้าง{' '}
-          <span className="text-destructive">
-            {formatNumber(contract.outstanding)}
-          </span>{' '}
-          ฿
-        </div>
+        {/* Unified chip row — text-xs (was 2xs), size-3.5 icons (was size-3) */}
+        <div className="mb-3 flex flex-wrap items-center gap-1.5">
+          {/* Called-today chip — most prominent indicator so collectors
+              instantly know this row was already worked today. */}
+          {isToday(contract.lastCallAt) && contract.lastCallAt && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-success/40 bg-success/10 text-success text-xs font-medium px-2.5 py-1 leading-snug">
+              <CheckCircle2 className="size-3.5" />
+              โทรแล้ววันนี้ {formatHHMM(contract.lastCallAt)}
+            </span>
+          )}
 
-        {/* Enrichment indicator chips: aging / last contacted / broken promise / channel / MDM / related / customer-tags / next-best-action */}
-        <IndicatorChips
-          contract={contract}
-          onNbaClick={
-            onNextBestAction ? (type) => onNextBestAction(contract, type) : undefined
-          }
-        />
+          {/* Trend arrow chip — only shown when there's a movement signal.
+              Plain "เลย X วัน" is redundant with the giant left-panel number. */}
+          {arrow && (
+            <span
+              className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium leading-snug ${agingColor(bucket)}`}
+            >
+              {arrow === 'UP' ? (
+                <>
+                  <ArrowUp className="size-3.5" data-testid="trending-up" />
+                  แย่ลง
+                </>
+              ) : (
+                <>
+                  <ArrowDown className="size-3.5" data-testid="trending-down" />
+                  ดีขึ้น
+                </>
+              )}
+            </span>
+          )}
 
-        {/* Status chip cluster */}
-        <div className="flex flex-wrap gap-1.5 mb-3">
+          {/* Settlement / นัดชำระ */}
+          {contract.settlementDate && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary border border-primary/20 text-xs font-medium px-2.5 py-1 leading-snug">
+              <CalendarCheck className="size-3.5" />
+              นัดชำระ {formatDateShort(new Date(contract.settlementDate))}
+            </span>
+          )}
+
+          {/* Broken promise */}
+          {contract.brokenPromiseCount > 0 && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-destructive/30 bg-destructive/10 text-destructive text-xs font-medium px-2.5 py-1 leading-snug">
+              <AlertTriangle className="size-3.5" />
+              ผิดนัด {contract.brokenPromiseCount} ครั้ง
+            </span>
+          )}
+
+          {/* No-answer count */}
           {contract.noAnswerCount > 0 && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-warning/10 text-warning text-2xs font-medium px-2 py-0.5 leading-snug">
-              <PhoneMissed className="size-3" />
-              ไม่รับ {contract.noAnswerCount} ครั้ง
+            <span className="inline-flex items-center gap-1 rounded-full bg-warning/10 text-warning border border-warning/20 text-xs font-medium px-2.5 py-1 leading-snug">
+              <PhoneMissed className="size-3.5" />
+              ไม่รับสาย {contract.noAnswerCount} ครั้ง
             </span>
           )}
-          {contract.customer.lineId && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-success/10 text-success text-2xs font-medium px-2 py-0.5 leading-snug">
-              <MessageCircle className="size-3" /> LINE
+
+          {/* Snooze */}
+          {contract.snoozedUntil && (
+            <span
+              className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 text-primary text-xs font-medium px-2.5 py-1 leading-snug"
+              title={`Snooze ถึง ${new Date(contract.snoozedUntil).toLocaleString('th-TH')}`}
+            >
+              <Moon className="size-3.5" />
+              ถึง {formatSnoozeUntil(contract.snoozedUntil)}
             </span>
           )}
-          {contract.deviceLocked && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 text-destructive text-2xs font-medium px-2 py-0.5 leading-snug">
-              <Lock className="size-3" /> ล็อคแล้ว
+
+          {/* Last contacted — clearer text */}
+          <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted text-muted-foreground text-xs font-medium px-2.5 py-1 leading-snug">
+            <Clock className="size-3.5" />
+            ติดต่อล่าสุด {formatRelativeTime(contract.lastContactedAt)}
+          </span>
+
+          {/* Channel */}
+          {ChannelIcon && channelMeta && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted text-muted-foreground text-xs font-medium px-2.5 py-1 leading-snug">
+              <ChannelIcon className="size-3.5" />
+              ผ่าน {channelMeta.label}
             </span>
           )}
+
+          {/* MDM */}
+          {contract.mdmState === 'PENDING' && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-warning/30 bg-warning/10 text-warning text-xs font-medium px-2.5 py-1 leading-snug">
+              <Lock className="size-3.5" /> รออนุมัติล็อคเครื่อง
+            </span>
+          )}
+          {contract.mdmState === 'LOCKED' && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-destructive/30 bg-destructive/10 text-destructive text-xs font-medium px-2.5 py-1 leading-snug">
+              <Lock className="size-3.5" /> ล็อคเครื่องอยู่
+            </span>
+          )}
+
+          {/* Device locked */}
+          {contract.deviceLocked && contract.mdmState !== 'LOCKED' && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 text-destructive border border-destructive/20 text-xs font-medium px-2.5 py-1 leading-snug">
+              <Lock className="size-3.5" /> ล็อคเครื่องอยู่
+            </span>
+          )}
+
+          {/* Skip tracing */}
           {contract.needsSkipTracing &&
             (onSkipTrace ? (
               <button
                 onClick={() => onSkipTrace(contract)}
-                className="inline-flex items-center gap-1 rounded-full bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary text-2xs font-medium px-2 py-0.5 leading-snug transition-colors"
+                className="inline-flex items-center gap-1 rounded-full bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary border border-border text-xs font-medium px-2.5 py-1 leading-snug transition-colors"
                 title="เปิดวิซาร์ดหาเบอร์ใหม่"
                 aria-label="หาเบอร์ใหม่"
               >
-                <Search className="size-3" /> หาเบอร์ใหม่
+                <Search className="size-3.5" /> หาเบอร์ใหม่
               </button>
             ) : (
-              <span className="inline-flex items-center gap-1 rounded-full bg-muted text-muted-foreground text-2xs font-medium px-2 py-0.5 leading-snug">
-                <Search className="size-3" /> หาเบอร์ใหม่
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted text-muted-foreground border border-border text-xs font-medium px-2.5 py-1 leading-snug">
+                <Search className="size-3.5" /> หาเบอร์ใหม่
               </span>
             ))}
-          {contract.settlementDate && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary text-2xs font-medium px-2 py-0.5 leading-snug">
-              <CalendarCheck className="size-3" /> นัด{' '}
-              {formatDateShort(new Date(contract.settlementDate))}
+
+          {/* Related contracts */}
+          {contract.relatedContractsCount > 0 && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted text-muted-foreground text-xs font-medium px-2.5 py-1 leading-snug">
+              <Users className="size-3.5" />
+              ผ่อนอีก {contract.relatedContractsCount} สัญญา
             </span>
           )}
+
+          <CustomerTagChips tags={contract.customerTags} compact />
+
+          <NextBestActionChip
+            action={contract.nextBestAction}
+            onClick={onNextBestAction ? (type) => onNextBestAction(contract, type) : undefined}
+          />
         </div>
 
-        {/* Bottom row: assignee + CTAs */}
+        {/* Bottom row: assignee · phone | CTAs — bigger, more legible */}
         <div className="flex items-center justify-between gap-3">
-          <div className="text-2xs text-muted-foreground truncate leading-snug">
+          <div className="min-w-0 flex items-center gap-2 text-sm text-foreground truncate leading-snug">
             {contract.assignedTo ? (
-              <span className="inline-flex items-center gap-1">
-                <UserCircle className="size-3" />
+              <span className="inline-flex items-center gap-1 shrink-0 text-muted-foreground">
+                <UserCircle className="size-3.5" />
                 {contract.assignedTo.name}
               </span>
             ) : (
-              <span className="italic">ยังไม่มอบหมาย</span>
+              <span className="text-muted-foreground italic shrink-0">ยังไม่มอบหมาย</span>
+            )}
+            {contract.customer.phone && (
+              <>
+                <span className="text-border select-none">·</span>
+                <span className="font-mono tabular-nums truncate font-medium">
+                  {contract.customer.phone}
+                </span>
+              </>
             )}
           </div>
 
-          <div className="flex items-center gap-1.5">
-            <a
-              href={`tel:${contract.customer.phone}`}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 tabular-nums transition-colors"
-            >
-              <Phone className="size-3.5" /> {contract.customer.phone}
-            </a>
+          <div className="flex items-center gap-1.5 shrink-0">
             <CallButton
               customerId={contract.customer.id}
               contractId={contract.id}
               phone={contract.customer.phone}
-              size="sm"
-              variant="ghost"
+              size="icon"
+              variant="outline"
             />
             <button
               onClick={() => onLogContact(contract)}
-              className="rounded-lg border border-input p-1.5 hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+              className="rounded-lg border border-input p-2 hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
               title="บันทึกผลการโทร"
               aria-label="บันทึกผลการโทร"
             >
-              <NotebookPen className="size-3.5" />
+              <NotebookPen className="size-4" />
             </button>
             <button
               onClick={() => onSendLine?.(contract)}
               disabled={!contract.customer.lineId}
-              className="rounded-lg border border-input p-1.5 hover:bg-accent text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
+              className="rounded-lg border border-input p-2 hover:bg-accent text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
               title={contract.customer.lineId ? 'ส่ง LINE' : 'ลูกค้าไม่มี LINE ID'}
               aria-label="ส่ง LINE"
             >
-              <MessageSquare className="size-3.5" />
+              <MessageSquare className="size-4" />
             </button>
             {onOpen360 && (
               <button
                 onClick={() => onOpen360(contract)}
-                className="rounded-lg border border-input p-1.5 hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+                className="rounded-lg border border-input p-2 hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
                 title="เปิด Customer 360"
                 aria-label="เปิด Customer 360"
               >
-                <ChevronRight className="size-3.5" />
+                <ChevronRight className="size-4" />
               </button>
             )}
             {(onSnooze || onUnsnooze) && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
-                    className="rounded-lg border border-input p-1.5 hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+                    className="rounded-lg border border-input p-2 hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
                     title="เพิ่มเติม"
                     aria-label="เพิ่มเติม"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <MoreHorizontal className="size-3.5" />
+                    <MoreHorizontal className="size-4" />
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-44">

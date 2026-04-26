@@ -1,7 +1,8 @@
-import { Controller, Get, Patch, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Patch, Put, Body, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { SettingsService } from './settings.service';
 import { BulkUpdateSettingsDto } from './dto/update-settings.dto';
+import { CollectionsConfigDto } from './dto/collections-config.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -23,5 +24,30 @@ export class SettingsController {
   @Patch()
   bulkUpdate(@Body() dto: BulkUpdateSettingsDto, @CurrentUser() user: { id: string }) {
     return this.settingsService.bulkUpdate(dto.items, user.id);
+  }
+
+  @Get('collections')
+  getCollectionsConfig() {
+    return this.settingsService.getCollectionsConfig();
+  }
+
+  @Put('collections')
+  async updateCollectionsConfig(
+    @Body() dto: CollectionsConfigDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    // Reuse existing bulkUpdate plumbing so audit log + cache invalidation
+    // continue to flow through the same path as the generic Patch endpoint.
+    await this.settingsService.bulkUpdate(
+      [
+        { key: 'collections.dailyCap', value: String(dto.dailyCap) },
+        { key: 'collections.workloadFloor', value: String(dto.workloadFloor) },
+        { key: 'collections.etaPerContractMin', value: String(dto.etaPerContractMin) },
+        { key: 'collections.sessionTargetMin', value: String(dto.sessionTargetMin) },
+        { key: 'collections.selfClaimLockHours', value: String(dto.selfClaimLockHours) },
+      ],
+      user.id,
+    );
+    return this.settingsService.getCollectionsConfig();
   }
 }

@@ -1,17 +1,16 @@
-import { useEffect, useState } from 'react';
-import { PartyPopper } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { CheckCircle2, PartyPopper, Phone } from 'lucide-react';
 import { useDebounce } from '@/hooks/useDebounce';
+import { isToday } from '../utils/today';
 import { useCollectionsKeyboard } from '@/hooks/useCollectionsKeyboard';
 import QueryBoundary from '@/components/QueryBoundary';
 import ContractCard from '../components/ContractCard';
-import BulkActionBar from '../components/BulkActionBar';
 import TruncatedBanner from '../components/TruncatedBanner';
 import FilterChipsBar from '../components/FilterChipsBar';
 import FilterDrawer from '../components/FilterDrawer';
 import KeyboardShortcutsOverlay from '../components/KeyboardShortcutsOverlay';
 import SnoozeDialog from '../components/SnoozeDialog';
 import { useCollectionsQueue } from '../hooks/useCollectionsQueue';
-import { useBulkSelection } from '../hooks/useBulkSelection';
 import { useQueueFilter } from '../hooks/useQueueFilter';
 import { useUnsnoozeContract } from '../hooks/useSnooze';
 import type { ContractRow } from '../types';
@@ -35,16 +34,18 @@ function CardSkeleton() {
 interface Props {
   search: string;
   branchId: string;
+  hideContactedToday?: boolean;
   onLogContact: (c: ContractRow) => void;
   onOpen360?: (c: ContractRow) => void;
   onSendLine?: (c: ContractRow) => void;
   onSkipTrace?: (c: ContractRow) => void;
-  onSwitchTab?: (tab: 'today' | 'followup' | 'promise' | 'approval' | 'analytics' | 'all') => void;
+  onSwitchTab?: (tab: 'today' | 'promise' | 'approval' | 'analytics' | 'all') => void;
 }
 
 export default function QueueTab({
   search,
   branchId,
+  hideContactedToday = false,
   onLogContact,
   onOpen360,
   onSendLine,
@@ -54,7 +55,6 @@ export default function QueueTab({
   const [page, setPage] = useState(1);
   const [filterOpen, setFilterOpen] = useState(false);
   const [focusedIndex, setFocusedIndex] = useState(0);
-  const sel = useBulkSelection();
   const debouncedSearch = useDebounce(search, 300);
   const [filter, setFilter, resetFilter] = useQueueFilter('queue');
   const [snoozeTarget, setSnoozeTarget] = useState<ContractRow | null>(null);
@@ -72,7 +72,19 @@ export default function QueueTab({
 
   const total = q.data?.total ?? 0;
   // C1 fix: search is now server-side via useCollectionsQueue → /overdue/queue
-  const rows = q.data?.data ?? [];
+  const rawRows = q.data?.data ?? [];
+  // Apply client-side "hide contacted today" filter on top of the server result.
+  // NOTE: counts below operate on the current page only — backend pagination is
+  // unchanged, so for page 2+ the strip reflects "in this view" not the entire queue.
+  const rows = useMemo(
+    () => (hideContactedToday ? rawRows.filter((r) => !isToday(r.lastCallAt)) : rawRows),
+    [rawRows, hideContactedToday],
+  );
+  const contactedTodayCount = useMemo(
+    () => rawRows.filter((r) => isToday(r.lastCallAt)).length,
+    [rawRows],
+  );
+  const remainingCount = rawRows.length - contactedTodayCount;
   const truncated = q.data?.truncated ?? false;
 
   // Keep focus index within bounds when rows change.
@@ -126,6 +138,21 @@ export default function QueueTab({
         resultCount={rows.length}
         totalCount={total}
       />
+      {rawRows.length > 0 && (
+        <div className="mb-3 flex items-center gap-3 text-sm leading-snug">
+          <span className="inline-flex items-center gap-1.5">
+            <CheckCircle2 className="size-4 text-success" />
+            <span className="font-semibold tabular-nums">{contactedTodayCount}</span>
+            <span className="text-muted-foreground">โทรแล้ววันนี้</span>
+          </span>
+          <span className="text-border">·</span>
+          <span className="inline-flex items-center gap-1.5">
+            <Phone className="size-4 text-muted-foreground" />
+            <span className="font-semibold tabular-nums">{remainingCount}</span>
+            <span className="text-muted-foreground">เหลือ</span>
+          </span>
+        </div>
+      )}
       {truncated && <TruncatedBanner onOpenFilter={openFilter} />}
       {rows.length === 0 ? (
         <div className="rounded-xl border border-dashed border-success/30 bg-success/5 p-10 text-center">
@@ -147,8 +174,6 @@ export default function QueueTab({
                 onLogContact={onLogContact}
                 onOpen360={onOpen360}
                 onSendLine={onSendLine}
-                selected={sel.isSelected(row.id)}
-                onToggleSelect={sel.toggle}
                 focused={idx === focusedIndex}
                 onSnooze={(c) => setSnoozeTarget(c)}
                 onUnsnooze={(c) => unsnooze.mutate(c.id)}
@@ -182,7 +207,6 @@ export default function QueueTab({
           )}
         </>
       )}
-      <BulkActionBar selectedIds={sel.selectedIds} onClear={sel.clear} contracts={rows} />
       {waitingForGSecond && (
         <div
           className="fixed bottom-4 right-4 z-50 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-mono shadow-lg"

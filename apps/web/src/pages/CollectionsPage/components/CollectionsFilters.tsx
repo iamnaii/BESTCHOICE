@@ -12,6 +12,8 @@ interface Props {
   branchId: string;
   onBranchChange: (v: string) => void;
   showBranchFilter: boolean;
+  hideContactedToday: boolean;
+  onHideContactedTodayChange: (v: boolean) => void;
 }
 
 export default function CollectionsFilters({
@@ -20,6 +22,8 @@ export default function CollectionsFilters({
   branchId,
   onBranchChange,
   showBranchFilter,
+  hideContactedToday,
+  onHideContactedTodayChange,
 }: Props) {
   const { data: branches = [] } = useQuery<Branch[]>({
     queryKey: ['branches'],
@@ -32,30 +36,37 @@ export default function CollectionsFilters({
   });
 
   return (
-    <div data-collections-search className="bg-card border border-border/50 shadow-sm rounded-xl p-4 mb-5">
-      <div className="flex gap-3 flex-wrap">
+    <div data-collections-search className="flex gap-3 flex-wrap mb-4">
+      <input
+        type="text"
+        placeholder="ค้นหาเลขสัญญา, ชื่อลูกค้า, เบอร์โทร..."
+        value={search}
+        onChange={(e) => onSearchChange(e.target.value)}
+        className="px-3 py-2 border border-input bg-card rounded-lg text-sm min-w-[260px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[2px] focus-visible:ring-offset-background focus-visible:border-transparent leading-snug"
+      />
+      {showBranchFilter && (
+        <select
+          value={branchId}
+          onChange={(e) => onBranchChange(e.target.value)}
+          className="px-3 py-2 border border-input bg-card rounded-lg text-sm min-w-[160px] leading-snug focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+        >
+          <option value="">ทุกสาขา</option>
+          {branches.map((b) => (
+            <option key={b.id} value={b.id}>
+              {b.name}
+            </option>
+          ))}
+        </select>
+      )}
+      <label className="inline-flex items-center gap-2 text-sm leading-snug cursor-pointer select-none">
         <input
-          type="text"
-          placeholder="ค้นหาเลขสัญญา, ชื่อลูกค้า, เบอร์โทร..."
-          value={search}
-          onChange={(e) => onSearchChange(e.target.value)}
-          className="px-3 py-2 border border-input rounded-lg text-sm min-w-[260px] focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background focus:border-transparent leading-snug"
+          type="checkbox"
+          checked={hideContactedToday}
+          onChange={(e) => onHideContactedTodayChange(e.target.checked)}
+          className="size-4 rounded border-input"
         />
-        {showBranchFilter && (
-          <select
-            value={branchId}
-            onChange={(e) => onBranchChange(e.target.value)}
-            className="px-3 py-2 border border-input rounded-lg text-sm min-w-[160px] leading-snug"
-          >
-            <option value="">ทุกสาขา</option>
-            {branches.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-        )}
-      </div>
+        <span>ซ่อนที่ทำแล้ววันนี้</span>
+      </label>
     </div>
   );
 }

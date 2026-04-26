@@ -9,6 +9,13 @@ interface Props {
   open: boolean;
   contract: ContractRow | null;
   onClose: () => void;
+  /**
+   * Optional callback fired right after a successful send. The underlying
+   * adhoc-LINE mutation returns `{ sent, failed, total }` (no message id),
+   * so we always invoke this with no args. Existing call sites are
+   * unaffected.
+   */
+  onSent?: (messageId?: string) => void;
 }
 
 interface DunningRule {
@@ -40,7 +47,7 @@ function substituteTemplate(template: string, contract: ContractRow): string {
     .replace(/\{\{(\w+)\}\}/g, '···');
 }
 
-export default function SendLineAdHocDialog({ open, contract, onClose }: Props) {
+export default function SendLineAdHocDialog({ open, contract, onClose, onSent }: Props) {
   const [mode, setMode] = useState<Mode>('template');
   const [templateId, setTemplateId] = useState('');
   const [customMessage, setCustomMessage] = useState('');
@@ -83,6 +90,10 @@ export default function SendLineAdHocDialog({ open, contract, onClose }: Props) 
       },
       {
         onSuccess: () => {
+          // Notify parent (e.g. FocusMode) so it can record a LINE_SENT
+          // assignment action + advance. The mutation response has no
+          // message id surfaced — invoke with no arg.
+          onSent?.();
           onClose();
         },
       },

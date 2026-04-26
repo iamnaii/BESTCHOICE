@@ -1,4 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -432,6 +437,122 @@ export class MdmService {
       message: result?.msg || (success ? 'ปลดล็อคเครื่องสำเร็จ' : 'ปลดล็อคไม่สำเร็จ'),
       deviceId: device.id,
     };
+  }
+
+  /**
+   * Lock by contractId — manual collector flow from Customer360Panel.
+   * Looks up the IMEI from contract.product.imeiSerial, calls
+   * lockDeviceByImei, then writes mdmLockedAt + deviceLocked + an audit
+   * MdmLockRequest row (best-effort).
+   */
+  async lockContract(
+    contractId: string,
+    reason: string,
+    userId: string,
+  ): Promise<MdmActionResult> {
+    const contract = await this.prisma.contract.findUnique({
+      where: { id: contractId },
+      include: { product: { select: { imeiSerial: true } } },
+    });
+    if (!contract || contract.deletedAt) {
+      throw new NotFoundException('ไม่พบสัญญา');
+    }
+
+    const imei = contract.product?.imeiSerial ?? null;
+    if (!imei) {
+      throw new BadRequestException('ไม่พบ IMEI ของเครื่องในสัญญานี้');
+    }
+
+    const result = await this.lockDeviceByImei(imei, reason);
+
+    if (result.success) {
+      await this.prisma.contract.update({
+        where: { id: contractId },
+        data: {
+          deviceLocked: true,
+          deviceLockedAt: new Date(),
+          mdmLockedAt: new Date(),
+        },
+      });
+
+      // Best-effort audit row in MdmLockRequest. If schema enums diverge from
+      // expected values, swallow the error — the AuditLog already captures it.
+      try {
+        await this.prisma.mdmLockRequest.create({
+          data: {
+            contractId,
+            reason,
+            trigger: 'MANUAL_COLLECTOR',
+            status: 'EXECUTED_API',
+            proposedById: userId,
+            proposedAt: new Date(),
+            approvedById: userId,
+            approvedAt: new Date(),
+            externalRef: result.deviceId ? String(result.deviceId) : null,
+          },
+        });
+      } catch (err) {
+        this.logger.warn(
+          `MDM: failed to record MdmLockRequest for ${contractId} — ${(err as Error).message}`,
+        );
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Unlock by contractId — manual collector flow from Customer360Panel.
+   * Reverse of lockContract. Clears deviceLocked + mdmLockedAt and writes
+   * an UNLOCKED MdmLockRequest row.
+   */
+  async unlockContract(contractId: string, userId: string): Promise<MdmActionResult> {
+    const contract = await this.prisma.contract.findUnique({
+      where: { id: contractId },
+      include: { product: { select: { imeiSerial: true } } },
+    });
+    if (!contract || contract.deletedAt) {
+      throw new NotFoundException('ไม่พบสัญญา');
+    }
+
+    const imei = contract.product?.imeiSerial ?? null;
+    if (!imei) {
+      throw new BadRequestException('ไม่พบ IMEI ของเครื่องในสัญญานี้');
+    }
+
+    const result = await this.unlockDeviceByImei(imei);
+
+    if (result.success) {
+      await this.prisma.contract.update({
+        where: { id: contractId },
+        data: {
+          deviceLocked: false,
+          mdmLockedAt: null,
+        },
+      });
+
+      try {
+        await this.prisma.mdmLockRequest.create({
+          data: {
+            contractId,
+            reason: 'ปลดล็อคโดยพนักงาน',
+            trigger: 'MANUAL_COLLECTOR',
+            status: 'UNLOCKED',
+            proposedById: userId,
+            proposedAt: new Date(),
+            approvedById: userId,
+            approvedAt: new Date(),
+            externalRef: result.deviceId ? String(result.deviceId) : null,
+          },
+        });
+      } catch (err) {
+        this.logger.warn(
+          `MDM: failed to record unlock MdmLockRequest for ${contractId} — ${(err as Error).message}`,
+        );
+      }
+    }
+
+    return result;
   }
 
   /** Get device status by IMEI — used by controller + contract detail */

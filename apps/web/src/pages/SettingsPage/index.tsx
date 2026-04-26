@@ -8,6 +8,7 @@ import QueryBoundary from '@/components/QueryBoundary';
 import SystemSettings from './components/SystemSettings';
 import CompanySettings from './components/CompanySettings';
 import GeneralSettings from './components/GeneralSettings';
+import CollectionsConfigCard from './components/CollectionsConfigCard';
 import type { ConfigItem } from './components/shared';
 
 export default function SettingsPage() {
@@ -124,6 +125,9 @@ export default function SettingsPage() {
           onCancel={handleCancel}
           isSaving={saveMutation.isPending}
         />
+
+        {/* Collections — Phase 2 tuning knobs (auto-assign + pool + session) */}
+        <CollectionsConfigCard />
       </div>
       </QueryBoundary>
     </div>

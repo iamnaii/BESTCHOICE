@@ -29,7 +29,6 @@ const GROUPS: ShortcutGroup[] = [
     title: 'สลับแท็บ (กด G แล้วตามด้วย…)',
     rows: [
       { keys: ['G', 'Q'], label: 'คิววันนี้' },
-      { keys: ['G', 'F'], label: 'ติดตามต่อเนื่อง' },
       { keys: ['G', 'P'], label: 'นัดชำระ' },
       { keys: ['G', 'A'], label: 'รออนุมัติ' },
       { keys: ['G', 'N'], label: 'วิเคราะห์ (Analytics)' },

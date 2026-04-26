@@ -15,6 +15,8 @@ describe('AutoAssignService', () => {
         createMany: jest.fn(),
         deleteMany: jest.fn(),
       },
+      contractDailySnapshot: { findMany: jest.fn().mockResolvedValue([]) },
+      auditLog: { groupBy: jest.fn().mockResolvedValue([]) },
     };
     prismaMock.$transaction = jest.fn().mockImplementation((cb: any) => cb(prismaMock));
 
@@ -28,10 +30,25 @@ describe('AutoAssignService', () => {
     prisma = moduleRef.get(PrismaService);
   });
 
+  // Helper: stub snapshot + audit data sourced from inline contract objects
+  // so existing test cases keep their declarative shape without each test
+  // having to mock 2 extra queries.
+  function seedDerived(rows: Array<{ id: string; daysOverdue?: number; brokenPromiseCount?: number }>) {
+    prisma.contractDailySnapshot.findMany.mockResolvedValue(
+      rows.map((r) => ({ contractId: r.id, daysOverdue: r.daysOverdue ?? 0 })),
+    );
+    prisma.auditLog.groupBy.mockResolvedValue(
+      rows
+        .filter((r) => (r.brokenPromiseCount ?? 0) > 0)
+        .map((r) => ({ entityId: r.id, _count: { _all: r.brokenPromiseCount! } })),
+    );
+  }
+
   it('keeps relationship when contract.assignedTo points to active collector', async () => {
     prisma.contract.findMany.mockResolvedValue([
-      { id: 'c1', assignedToId: 'u1', branchId: 'br1', daysOverdue: 10, brokenPromiseCount: 0 } as any,
+      { id: 'c1', assignedToId: 'u1', branchId: 'br1' } as any,
     ]);
+    seedDerived([{ id: 'c1', daysOverdue: 10 }]);
     prisma.user.findMany.mockResolvedValue([
       { id: 'u1', collectionsActive: true, branchId: 'br1' } as any,
     ]);
@@ -52,9 +69,14 @@ describe('AutoAssignService', () => {
 
   it('falls back to branch lowest-workload when no prior relationship', async () => {
     prisma.contract.findMany.mockResolvedValue([
-      { id: 'c1', assignedToId: null, branchId: 'br1', daysOverdue: 5, brokenPromiseCount: 0 } as any,
-      { id: 'c2', assignedToId: null, branchId: 'br1', daysOverdue: 5, brokenPromiseCount: 0 } as any,
-      { id: 'c3', assignedToId: null, branchId: 'br1', daysOverdue: 5, brokenPromiseCount: 0 } as any,
+      { id: 'c1', assignedToId: null, branchId: 'br1' } as any,
+      { id: 'c2', assignedToId: null, branchId: 'br1' } as any,
+      { id: 'c3', assignedToId: null, branchId: 'br1' } as any,
+    ]);
+    seedDerived([
+      { id: 'c1', daysOverdue: 5 },
+      { id: 'c2', daysOverdue: 5 },
+      { id: 'c3', daysOverdue: 5 },
     ]);
     prisma.user.findMany.mockResolvedValue([
       { id: 'u1', collectionsActive: true, branchId: 'br1' } as any,
@@ -73,8 +95,12 @@ describe('AutoAssignService', () => {
 
   it('round-robins when no same-branch collector exists', async () => {
     prisma.contract.findMany.mockResolvedValue([
-      { id: 'c1', assignedToId: null, branchId: 'br_unknown', daysOverdue: 5, brokenPromiseCount: 0 } as any,
-      { id: 'c2', assignedToId: null, branchId: 'br_unknown', daysOverdue: 5, brokenPromiseCount: 0 } as any,
+      { id: 'c1', assignedToId: null, branchId: 'br_unknown' } as any,
+      { id: 'c2', assignedToId: null, branchId: 'br_unknown' } as any,
+    ]);
+    seedDerived([
+      { id: 'c1', daysOverdue: 5 },
+      { id: 'c2', daysOverdue: 5 },
     ]);
     prisma.user.findMany.mockResolvedValue([
       { id: 'u1', collectionsActive: true, branchId: 'br_other' } as any,
@@ -92,8 +118,9 @@ describe('AutoAssignService', () => {
 
   it('marks 90+ days with broken promises as escalation (no collector)', async () => {
     prisma.contract.findMany.mockResolvedValue([
-      { id: 'c1', assignedToId: 'u1', branchId: 'br1', daysOverdue: 95, brokenPromiseCount: 3 } as any,
+      { id: 'c1', assignedToId: 'u1', branchId: 'br1' } as any,
     ]);
+    seedDerived([{ id: 'c1', daysOverdue: 95, brokenPromiseCount: 3 }]);
     prisma.user.findMany.mockResolvedValue([
       { id: 'u1', collectionsActive: true, branchId: 'br1' } as any,
     ]);
@@ -114,10 +141,9 @@ describe('AutoAssignService', () => {
       id: `c${i}`,
       assignedToId: 'u1',
       branchId: 'br1',
-      daysOverdue: 5,
-      brokenPromiseCount: 0,
     }));
     prisma.contract.findMany.mockResolvedValue(contracts as any);
+    seedDerived(contracts.map((c) => ({ id: c.id, daysOverdue: 5 })));
     prisma.user.findMany.mockResolvedValue([
       { id: 'u1', collectionsActive: true, branchId: 'br1' } as any,
     ]);
@@ -134,8 +160,9 @@ describe('AutoAssignService', () => {
 
   it('skips collectors that are not collectionsActive', async () => {
     prisma.contract.findMany.mockResolvedValue([
-      { id: 'c1', assignedToId: 'u1', branchId: 'br1', daysOverdue: 5, brokenPromiseCount: 0 } as any,
+      { id: 'c1', assignedToId: 'u1', branchId: 'br1' } as any,
     ]);
+    seedDerived([{ id: 'c1', daysOverdue: 5 }]);
     prisma.user.findMany.mockResolvedValue([
       { id: 'u2', collectionsActive: true, branchId: 'br1' } as any,
     ]);

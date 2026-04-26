@@ -40,7 +40,7 @@ export class AutoAssignService {
   async runForDate(date: Date): Promise<{ assigned: number; pool: number; escalation: number }> {
     const dateOnly = startOfDay(date);
 
-    const contracts = (await this.prisma.contract.findMany({
+    const baseContracts = await this.prisma.contract.findMany({
       where: {
         status: { in: ['OVERDUE', 'PENDING'] as any },
         deletedAt: null,
@@ -50,7 +50,46 @@ export class AutoAssignService {
         assignedToId: true,
         branchId: true,
       },
-    })) as unknown as ContractInput[];
+    });
+
+    const contractIds = baseContracts.map((c) => c.id);
+
+    // daysOverdue: latest ContractDailySnapshot per contract (snapshot cron
+    // runs 17:10 daily, so at 06:00 we use yesterday's snapshot — close
+    // enough for escalation/branch/round-robin decisions).
+    const snapshots =
+      contractIds.length > 0
+        ? await this.prisma.contractDailySnapshot.findMany({
+            where: { contractId: { in: contractIds } },
+            orderBy: { date: 'desc' },
+            distinct: ['contractId'],
+            select: { contractId: true, daysOverdue: true },
+          })
+        : [];
+    const daysOverdueMap = new Map(snapshots.map((s) => [s.contractId, s.daysOverdue]));
+
+    // brokenPromiseCount: AuditLog count of BROKEN_PROMISE actions per contract.
+    const brokenAgg =
+      contractIds.length > 0
+        ? await this.prisma.auditLog.groupBy({
+            by: ['entityId'],
+            where: {
+              entityId: { in: contractIds },
+              entity: 'Contract',
+              action: 'BROKEN_PROMISE',
+            },
+            _count: { _all: true },
+          })
+        : [];
+    const brokenMap = new Map(brokenAgg.map((r) => [r.entityId, r._count._all]));
+
+    const contracts: ContractInput[] = baseContracts.map((c) => ({
+      id: c.id,
+      assignedToId: c.assignedToId,
+      branchId: c.branchId,
+      daysOverdue: daysOverdueMap.get(c.id) ?? 0,
+      brokenPromiseCount: brokenMap.get(c.id) ?? 0,
+    }));
 
     const collectors = (await this.prisma.user.findMany({
       where: { role: 'SALES' as any, collectionsActive: true, deletedAt: null },

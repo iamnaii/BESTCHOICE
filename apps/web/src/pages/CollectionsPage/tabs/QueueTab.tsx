@@ -5,14 +5,12 @@ import { isToday } from '../utils/today';
 import { useCollectionsKeyboard } from '@/hooks/useCollectionsKeyboard';
 import QueryBoundary from '@/components/QueryBoundary';
 import ContractCard from '../components/ContractCard';
-import BulkActionBar from '../components/BulkActionBar';
 import TruncatedBanner from '../components/TruncatedBanner';
 import FilterChipsBar from '../components/FilterChipsBar';
 import FilterDrawer from '../components/FilterDrawer';
 import KeyboardShortcutsOverlay from '../components/KeyboardShortcutsOverlay';
 import SnoozeDialog from '../components/SnoozeDialog';
 import { useCollectionsQueue } from '../hooks/useCollectionsQueue';
-import { useBulkSelection } from '../hooks/useBulkSelection';
 import { useQueueFilter } from '../hooks/useQueueFilter';
 import { useUnsnoozeContract } from '../hooks/useSnooze';
 import type { ContractRow } from '../types';
@@ -57,7 +55,6 @@ export default function QueueTab({
   const [page, setPage] = useState(1);
   const [filterOpen, setFilterOpen] = useState(false);
   const [focusedIndex, setFocusedIndex] = useState(0);
-  const sel = useBulkSelection();
   const debouncedSearch = useDebounce(search, 300);
   const [filter, setFilter, resetFilter] = useQueueFilter('queue');
   const [snoozeTarget, setSnoozeTarget] = useState<ContractRow | null>(null);
@@ -177,8 +174,6 @@ export default function QueueTab({
                 onLogContact={onLogContact}
                 onOpen360={onOpen360}
                 onSendLine={onSendLine}
-                selected={sel.isSelected(row.id)}
-                onToggleSelect={sel.toggle}
                 focused={idx === focusedIndex}
                 onSnooze={(c) => setSnoozeTarget(c)}
                 onUnsnooze={(c) => unsnooze.mutate(c.id)}
@@ -212,7 +207,6 @@ export default function QueueTab({
           )}
         </>
       )}
-      <BulkActionBar selectedIds={sel.selectedIds} onClear={sel.clear} contracts={rows} />
       {waitingForGSecond && (
         <div
           className="fixed bottom-4 right-4 z-50 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-mono shadow-lg"

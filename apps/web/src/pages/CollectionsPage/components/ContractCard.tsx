@@ -68,8 +68,6 @@ interface Props {
   onLogContact: (c: ContractRow) => void;
   onOpen360?: (c: ContractRow) => void;
   onSendLine?: (c: ContractRow) => void;
-  selected?: boolean;
-  onToggleSelect?: (id: string) => void;
   focused?: boolean;
   onSnooze?: (c: ContractRow) => void;
   onUnsnooze?: (c: ContractRow) => void;
@@ -82,8 +80,6 @@ export default function ContractCard({
   onLogContact,
   onOpen360,
   onSendLine,
-  selected,
-  onToggleSelect,
   focused,
   onSnooze,
   onUnsnooze,
@@ -107,22 +103,6 @@ export default function ContractCard({
     >
       {/* Severity panel — full-height colored block with day count */}
       <div className={`w-16 shrink-0 flex flex-col ${panelBg} ${panelFg}`}>
-        {onToggleSelect && (
-          <label
-            className="flex justify-center pt-2.5 shrink-0 cursor-pointer"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <input
-              type="checkbox"
-              checked={!!selected}
-              onChange={() => onToggleSelect(contract.id)}
-              onClick={(e) => e.stopPropagation()}
-              className="size-4 rounded border-current"
-              style={{ accentColor: 'white' }}
-              aria-label={`เลือกสัญญา ${contract.contractNumber}`}
-            />
-          </label>
-        )}
         <div className="flex-1 flex flex-col items-center justify-center gap-0.5 py-4">
           <div className="text-3xl font-bold tabular-nums leading-none">
             {contract.daysOverdue}

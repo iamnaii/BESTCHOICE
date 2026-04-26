@@ -4,13 +4,11 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { isToday } from '../utils/today';
 import QueryBoundary from '@/components/QueryBoundary';
 import ContractCard from '../components/ContractCard';
-import BulkActionBar from '../components/BulkActionBar';
 import TruncatedBanner from '../components/TruncatedBanner';
 import FilterChipsBar from '../components/FilterChipsBar';
 import FilterDrawer from '../components/FilterDrawer';
 import BrokenPromiseBanner from '../components/BrokenPromiseBanner';
 import { useCollectionsQueue } from '../hooks/useCollectionsQueue';
-import { useBulkSelection } from '../hooks/useBulkSelection';
 import { useQueueFilter } from '../hooks/useQueueFilter';
 import type { ContractRow } from '../types';
 
@@ -108,7 +106,6 @@ export default function PromiseTab({
 }: Props) {
   const [page, setPage] = useState(1);
   const [filterOpen, setFilterOpen] = useState(false);
-  const sel = useBulkSelection();
   const debouncedSearch = useDebounce(search, 300);
   const [filter, setFilter, resetFilter] = useQueueFilter('promise');
 
@@ -212,8 +209,6 @@ export default function PromiseTab({
                         onOpen360={onOpen360}
                         onSendLine={onSendLine}
                         onSkipTrace={onSkipTrace}
-                        selected={sel.isSelected(row.id)}
-                        onToggleSelect={sel.toggle}
                       />
                     </div>
                   ))}
@@ -236,8 +231,6 @@ export default function PromiseTab({
                       onOpen360={onOpen360}
                       onSendLine={onSendLine}
                       onSkipTrace={onSkipTrace}
-                      selected={sel.isSelected(row.id)}
-                      onToggleSelect={sel.toggle}
                     />
                   ))}
                 </div>
@@ -259,8 +252,6 @@ export default function PromiseTab({
                       onOpen360={onOpen360}
                       onSendLine={onSendLine}
                       onSkipTrace={onSkipTrace}
-                      selected={sel.isSelected(row.id)}
-                      onToggleSelect={sel.toggle}
                     />
                   ))}
                 </div>
@@ -293,7 +284,6 @@ export default function PromiseTab({
           )}
         </>
       )}
-      <BulkActionBar selectedIds={sel.selectedIds} onClear={sel.clear} contracts={rows} />
       <FilterDrawer
         open={filterOpen}
         onOpenChange={setFilterOpen}

@@ -625,40 +625,101 @@ export class DashboardService {
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const branchFilter = branchId ? { branchId } : {};
 
-    // Sales metrics: contracts this month grouped by salesperson
-    const contracts = await this.prisma.contract.findMany({
-      where: { createdAt: { gte: monthStart, lt: monthEnd }, deletedAt: null, ...branchFilter },
-      include: {
-        salesperson: { select: { id: true, name: true } },
-        branch: { select: { name: true } },
-      },
-    });
+    // Sales metrics: contracts this month grouped by salesperson via Postgres groupBy
+    // (replaces former findMany + JS reduce — old path loaded full monthly contract
+    // set with deep includes; new path returns ~N rows where N = salesperson count).
+    const baseWhere = {
+      createdAt: { gte: monthStart, lt: monthEnd },
+      deletedAt: null,
+      ...branchFilter,
+    } as const;
 
-    const staffMap = new Map<string, {
-      name: string; branch: string; totalContracts: number;
-      totalSales: number; overdueCount: number;
-    }>();
+    const [aggregates, overdueAgg] = await Promise.all([
+      this.prisma.contract.groupBy({
+        by: ['salespersonId', 'branchId'],
+        where: baseWhere,
+        _count: { _all: true },
+        _sum: { sellingPrice: true },
+      }),
+      this.prisma.contract.groupBy({
+        by: ['salespersonId'],
+        where: { ...baseWhere, status: { in: ['OVERDUE', 'DEFAULT'] } },
+        _count: { _all: true },
+      }),
+    ]);
 
-    for (const c of contracts) {
-      const key = c.salespersonId;
-      const existing = staffMap.get(key) || {
-        name: c.salesperson.name, branch: c.branch.name,
-        totalContracts: 0, totalSales: 0, overdueCount: 0,
-      };
-      existing.totalContracts++;
-      existing.totalSales = new Prisma.Decimal(existing.totalSales)
-        .add(new Prisma.Decimal(c.sellingPrice ?? 0)).toNumber();
-      if (['OVERDUE', 'DEFAULT'].includes(c.status)) existing.overdueCount++;
-      staffMap.set(key, existing);
+    // Enrich names + branch names in two batched queries (vs N+1 in old loop).
+    const salespersonIds = Array.from(
+      new Set(aggregates.map((a) => a.salespersonId).filter((id): id is string => !!id)),
+    );
+    const branchIds = Array.from(
+      new Set(aggregates.map((a) => a.branchId).filter((id): id is string => !!id)),
+    );
+
+    const [users, branches] = await Promise.all([
+      salespersonIds.length
+        ? this.prisma.user.findMany({
+            where: { id: { in: salespersonIds } },
+            select: { id: true, name: true },
+          })
+        : Promise.resolve([] as { id: string; name: string }[]),
+      branchIds.length
+        ? this.prisma.branch.findMany({
+            where: { id: { in: branchIds } },
+            select: { id: true, name: true },
+          })
+        : Promise.resolve([] as { id: string; name: string }[]),
+    ]);
+
+    const userNameMap = new Map(users.map((u) => [u.id, u.name]));
+    const branchNameMap = new Map(branches.map((b) => [b.id, b.name]));
+    const overdueMap = new Map(
+      overdueAgg
+        .filter((o) => !!o.salespersonId)
+        .map((o) => [o.salespersonId as string, o._count._all]),
+    );
+
+    // Collapse [salespersonId, branchId] rows → one row per salesperson.
+    // Matches old semantics: first contract's branch wins for the salesperson.
+    type Bucket = {
+      name: string;
+      branch: string;
+      totalContracts: number;
+      totalSales: number;
+      overdueCount: number;
+    };
+    const staffMap = new Map<string, Bucket>();
+    for (const a of aggregates) {
+      if (!a.salespersonId) continue;
+      const key = a.salespersonId;
+      const existing = staffMap.get(key);
+      const sellingSum = new Prisma.Decimal(a._sum.sellingPrice ?? 0).toNumber();
+      if (existing) {
+        existing.totalContracts += a._count._all;
+        existing.totalSales = new Prisma.Decimal(existing.totalSales)
+          .add(new Prisma.Decimal(a._sum.sellingPrice ?? 0))
+          .toNumber();
+      } else {
+        staffMap.set(key, {
+          name: userNameMap.get(key) ?? '-',
+          branch: branchNameMap.get(a.branchId) ?? '-',
+          totalContracts: a._count._all,
+          totalSales: sellingSum,
+          overdueCount: overdueMap.get(key) ?? 0,
+        });
+      }
     }
 
-    const salesMetrics = Array.from(staffMap.entries()).map(([id, data]) => ({
-      salespersonId: id,
-      ...data,
-      overdueRate: data.totalContracts > 0
-        ? Number(((data.overdueCount / data.totalContracts) * 100).toFixed(1))
-        : 0,
-    })).sort((a, b) => b.totalSales - a.totalSales);
+    const salesMetrics = Array.from(staffMap.entries())
+      .map(([id, data]) => ({
+        salespersonId: id,
+        ...data,
+        overdueRate:
+          data.totalContracts > 0
+            ? Number(((data.overdueCount / data.totalContracts) * 100).toFixed(1))
+            : 0,
+      }))
+      .sort((a, b) => b.totalSales - a.totalSales);
 
     // Recent activity: contracts created + payments recorded in last 7 days
     const [recentContracts, recentPayments] = await Promise.all([

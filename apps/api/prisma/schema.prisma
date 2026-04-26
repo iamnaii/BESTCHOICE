@@ -987,6 +987,8 @@ model Contract {
   @@index([deletedAt])
   @@index([status, deletedAt, branchId])
   @@index([workflowStatus])
+  // Speeds up the */5min SLA cron scan (workflowStatus IN (...) AND updatedAt < threshold)
+  @@index([workflowStatus, updatedAt])
   @@index([parentContractId])
   @@index([retentionStatus])
   @@index([noAnswerCount]) // H2: FollowUpTab filters on gte 1 lt 3 — index keeps it sub-ms at scale
@@ -1811,6 +1813,9 @@ model NotificationLog {
   @@index([status, channel])
   @@index([status, nextRetryAt])
   @@index([externalId])
+  // Speeds up the per-payment dedup probe in notifications.service.ts
+  // (queries by relatedId + subject + sentAt to skip already-sent reminders)
+  @@index([relatedId, subject, sentAt])
   @@map("notification_logs")
 }
 
@@ -4011,6 +4016,8 @@ model ChatRoom {
   @@index([status, priority])
   @@index([handoffMode, status])
   @@index([leadScore])
+  // Speeds up the */5min first-response SLA cron in chat-engine/chat-cron.service.ts
+  @@index([status, firstResponseAt, createdAt])
   @@map("chat_rooms")
 }
 

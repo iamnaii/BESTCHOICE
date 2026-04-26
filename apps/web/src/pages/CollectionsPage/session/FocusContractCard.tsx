@@ -102,7 +102,7 @@ export default function FocusContractCard({
               <div className="text-2xs uppercase tracking-wider text-muted-foreground/80 leading-snug">
                 ค้างชำระ
               </div>
-              <div className="font-mono text-2xl font-bold tabular-nums text-destructive tracking-tight leading-snug mt-0.5">
+              <div className="font-mono text-xl sm:text-2xl font-bold tabular-nums text-destructive tracking-tight leading-snug mt-0.5">
                 {formatNumber(c.outstanding)} <span className="text-base font-medium">฿</span>
               </div>
             </div>
@@ -123,19 +123,22 @@ export default function FocusContractCard({
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-6">
-          <CallButton
-            customerId={c.customer.id}
-            contractId={c.id}
-            phone={c.customer.phone ?? undefined}
-            variant="primary"
-            size="md"
-            className="h-14 text-base w-full justify-center"
-          />
+          <div data-call-button className="contents">
+            <CallButton
+              customerId={c.customer.id}
+              contractId={c.id}
+              phone={c.customer.phone ?? undefined}
+              variant="primary"
+              size="md"
+              className="h-14 text-base w-full justify-center"
+            />
+          </div>
           <Button
             variant="outline"
             size="lg"
             className="h-14 text-base flex-col gap-0.5"
             onClick={onLogContact}
+            data-log-button
           >
             <NotebookPen className="size-5" />
             <span className="text-xs leading-none">บันทึก</span>
@@ -146,6 +149,7 @@ export default function FocusContractCard({
             className="h-14 text-base flex-col gap-0.5"
             disabled={!c.customer.lineId}
             onClick={onSendLine}
+            data-line-button
           >
             <MessageSquare className="size-5" />
             <span className="text-xs leading-none">LINE</span>
@@ -155,6 +159,7 @@ export default function FocusContractCard({
             size="lg"
             className="h-14 text-base flex-col gap-0.5"
             onClick={onSkip}
+            data-skip-button
           >
             <SkipForward className="size-5" />
             <span className="text-xs leading-none">ข้าม</span>

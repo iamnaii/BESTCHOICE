@@ -60,16 +60,48 @@ export default function FocusMode({ session, startedAt, onPause }: Props) {
 
   const { action, skip } = useSessionActions();
 
-  // Keyboard shortcuts: '3' opens skip dialog, Escape pauses.
-  // Phone (1) and LINE (2) require deliberate clicks since they kick off
-  // real comms with the customer.
+  // Keyboard shortcuts: 1=โทร, 2=LINE, 3=ข้าม, 4=บันทึก, Esc=หยุดพัก.
+  // We dispatch click() against rendered buttons (data-* anchors) instead
+  // of duplicating handlers — keeps a single source of truth for behavior
+  // (e.g. CallButton owns its disabled / loading / phone-missing logic).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)
-        return;
+      // Don't intercept while user is typing in any text field
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      // Don't intercept while a Radix dialog/select is open (heuristic)
+      if (document.querySelector('[role="dialog"][data-state="open"]')) return;
       if (!current) return;
-      if (e.key === '3') setShowSkip(true);
-      if (e.key === 'Escape') onPause();
+
+      switch (e.key) {
+        case '1': {
+          const btn = document.querySelector<HTMLElement>(
+            '[data-call-button] button, [data-call-button]',
+          );
+          btn?.click();
+          e.preventDefault();
+          break;
+        }
+        case '2': {
+          const btn = document.querySelector<HTMLButtonElement>('[data-line-button]');
+          if (btn && !btn.disabled) btn.click();
+          e.preventDefault();
+          break;
+        }
+        case '3':
+          setShowSkip(true);
+          e.preventDefault();
+          break;
+        case '4': {
+          const btn = document.querySelector<HTMLElement>('[data-log-button]');
+          btn?.click();
+          e.preventDefault();
+          break;
+        }
+        case 'Escape':
+          onPause();
+          e.preventDefault();
+          break;
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -167,6 +199,39 @@ export default function FocusMode({ session, startedAt, onPause }: Props) {
         onClose={() => setPanelContract(null)}
         onRequestSendLine={(c) => setLineDialogContract(c as ContractRow)}
       />
+
+      <div className="hidden sm:flex items-center justify-center gap-3 text-2xs text-muted-foreground/60 leading-snug pt-2">
+        <span className="inline-flex items-center gap-1">
+          <kbd className="px-1.5 py-0.5 rounded border border-border/60 font-mono text-[10px]">
+            1
+          </kbd>{' '}
+          โทร
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <kbd className="px-1.5 py-0.5 rounded border border-border/60 font-mono text-[10px]">
+            2
+          </kbd>{' '}
+          LINE
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <kbd className="px-1.5 py-0.5 rounded border border-border/60 font-mono text-[10px]">
+            3
+          </kbd>{' '}
+          ข้าม
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <kbd className="px-1.5 py-0.5 rounded border border-border/60 font-mono text-[10px]">
+            4
+          </kbd>{' '}
+          บันทึก
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <kbd className="px-1.5 py-0.5 rounded border border-border/60 font-mono text-[10px]">
+            Esc
+          </kbd>{' '}
+          หยุดพัก
+        </span>
+      </div>
     </div>
   );
 }

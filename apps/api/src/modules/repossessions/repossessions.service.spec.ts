@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { RepossessionsService } from './repossessions.service';
+import { JournalAutoService } from '../journal/journal-auto.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
 // ---------------------------------------------------------------------------
@@ -146,6 +147,10 @@ describe('RepossessionsService', () => {
       providers: [
         RepossessionsService,
         { provide: PrismaService, useValue: prisma },
+        {
+          provide: JournalAutoService,
+          useValue: { createBadDebtWriteOffJournal: jest.fn().mockResolvedValue('je-bd-1') },
+        },
       ],
     }).compile();
 

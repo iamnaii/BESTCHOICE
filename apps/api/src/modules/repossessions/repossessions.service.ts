@@ -4,6 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreateRepossessionDto, UpdateRepossessionDto } from './dto/create-repossession.dto';
 import { ConditionGrade, RepossessionStatus, ProductStatus } from '@prisma/client';
 import { d, dAdd, dSub } from '../../utils/decimal.util';
+import { JournalAutoService } from '../journal/journal-auto.service';
 
 // VAT rate used to back out principal from VAT-inclusive amounts
 const VAT_RATE = new Prisma.Decimal('1.07');
@@ -20,7 +21,10 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
 export class RepossessionsService {
   private readonly logger = new Logger(RepossessionsService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private journalAutoService: JournalAutoService,
+  ) {}
 
   async findAll(filters: { status?: string; branchId?: string; page?: number; limit?: number }) {
     const where: Record<string, unknown> = { deletedAt: null };
@@ -256,6 +260,19 @@ export class RepossessionsService {
         where: { id: dto.contractId },
         data: { status: 'CLOSED_BAD_DEBT' },
       });
+
+      // Auto bad-debt write-off journal: ตัด HP Receivable ที่เหลือออกจากบัญชี.
+      // (Audit finding J4: closes the silent accounting gap where
+      // repossessions left outstanding receivable on the books with no
+      // balancing entry. Errors propagate so the whole tx rolls back.)
+      if (outstandingBalance.greaterThan(0)) {
+        await this.journalAutoService.createBadDebtWriteOffJournal(tx, {
+          contractId: dto.contractId,
+          contractNumber: contract.contractNumber,
+          writeOffAmount: outstandingBalance,
+          createdById: userId,
+        });
+      }
 
       // Update product status
       await tx.product.update({

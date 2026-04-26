@@ -102,7 +102,7 @@ describe('PaymentsService', () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: ReceiptsService, useValue: mockReceiptsService },
         { provide: AuditService, useValue: mockAuditService },
-        { provide: JournalAutoService, useValue: { recordPayment: jest.fn(), recordExpense: jest.fn(), recordContractActivation: jest.fn() } },
+        { provide: JournalAutoService, useValue: { createPaymentJournal: jest.fn().mockResolvedValue('je-1'), createExpenseJournal: jest.fn(), createContractActivationJournal: jest.fn(), createBadDebtWriteOffJournal: jest.fn() } },
         { provide: ProductsService, useValue: { transferOwnership: jest.fn() } },
         { provide: LineOaService, useValue: { buildPaymentSuccess: jest.fn().mockReturnValue({}), sendFlexMessage: jest.fn() } },
         {

@@ -2,6 +2,8 @@ import { Injectable, Logger, NotFoundException, BadRequestException } from '@nes
 import { PaymentMethod, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ProductsService } from '../products/products.service';
+import { JournalAutoService } from '../journal/journal-auto.service';
+import { validatePeriodOpen } from '../../utils/period-lock.util';
 import { EarlyPayoffDto } from './dto/contract.dto';
 import { d, dAdd, dSub, dMul, dDiv, dRound, dSum, dGte } from '../../utils/decimal.util';
 
@@ -11,6 +13,7 @@ export class ContractPaymentService {
   constructor(
     private prisma: PrismaService,
     private productsService: ProductsService,
+    private journalAutoService: JournalAutoService,
   ) {}
 
   async getSchedule(id: string) {
@@ -123,11 +126,15 @@ export class ContractPaymentService {
       throw new BadRequestException('กรุณาระบุเลขที่อ้างอิงหรือแนบสลิปสำหรับการชำระแบบโอน/QR');
     }
 
+    // Period-lock guard (audit finding J3): cannot back-date an early payoff
+    // into a closed accounting period.
+    await validatePeriodOpen(this.prisma, paidDate);
+
     await this.prisma.$transaction(
       async (tx) => {
         const freshContract = await tx.contract.findUnique({
           where: { id },
-          select: { status: true },
+          select: { status: true, contractNumber: true, branchId: true },
         });
         if (!freshContract || !['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(freshContract.status)) {
           throw new BadRequestException('สถานะสัญญาไม่อนุญาตให้ปิดก่อนกำหนด');
@@ -151,7 +158,7 @@ export class ContractPaymentService {
           const payAmount = d(payAmountNum);
           remainingPayoff = dSub(remainingPayoff, payAmount);
 
-          await tx.payment.update({
+          const updatedPayment = await tx.payment.update({
             where: { id: payment.id },
             data: {
               status: 'PAID',
@@ -165,6 +172,29 @@ export class ContractPaymentService {
                 ? `[ปิดก่อนกำหนด] ${dto.notes}`
                 : '[ปิดก่อนกำหนด]',
             },
+          });
+
+          // Auto journal entry for each installment closed by the payoff.
+          // (Audit finding J3: closes the journal coverage gap on early
+          // payoff. Errors propagate so the whole tx rolls back.)
+          await this.journalAutoService.createPaymentJournal(tx, {
+            payment: {
+              id: updatedPayment.id,
+              installmentNo: updatedPayment.installmentNo,
+              amountPaid: updatedPayment.amountPaid,
+              monthlyPrincipal: updatedPayment.monthlyPrincipal,
+              monthlyInterest: updatedPayment.monthlyInterest,
+              monthlyCommission: updatedPayment.monthlyCommission,
+              vatAmount: updatedPayment.vatAmount,
+              lateFee: updatedPayment.lateFee,
+              lateFeeWaived: updatedPayment.lateFeeWaived,
+              paidDate: updatedPayment.paidDate,
+            },
+            contract: {
+              contractNumber: freshContract.contractNumber,
+              branchId: freshContract.branchId,
+            },
+            userId,
           });
         }
 

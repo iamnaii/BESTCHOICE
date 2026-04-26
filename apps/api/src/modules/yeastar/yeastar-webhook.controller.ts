@@ -6,6 +6,7 @@ import {
   UnauthorizedException,
   Logger,
   Optional,
+  Inject,
 } from '@nestjs/common';
 import { timingSafeEqual } from 'crypto';
 import * as Sentry from '@sentry/nestjs';
@@ -25,7 +26,7 @@ export class YeastarWebhookController {
   constructor(
     private readonly configService: IntegrationConfigService,
     private readonly prisma: PrismaService,
-    @Optional() private readonly gateway: EventsGateway | null,
+    @Optional() @Inject(EventsGateway) private readonly gateway: EventsGateway | null,
   ) {}
 
   @Post()

@@ -39,7 +39,7 @@ interface Props {
   onOpen360?: (c: ContractRow) => void;
   onSendLine?: (c: ContractRow) => void;
   onSkipTrace?: (c: ContractRow) => void;
-  onSwitchTab?: (tab: 'today' | 'followup' | 'promise' | 'approval' | 'analytics' | 'all') => void;
+  onSwitchTab?: (tab: 'today' | 'promise' | 'approval' | 'analytics' | 'all') => void;
 }
 
 export default function QueueTab({

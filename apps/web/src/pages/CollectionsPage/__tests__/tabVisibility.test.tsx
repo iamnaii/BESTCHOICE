@@ -58,13 +58,13 @@ function getTabLabels(): string[] {
 }
 
 describe('CollectionsPage tab visibility by role', () => {
-  it('OWNER sees 5 tabs including วิเคราะห์', () => {
+  it('OWNER sees 4 tabs including วิเคราะห์', () => {
     renderWith('OWNER');
     const labels = getTabLabels();
     expect(labels).toEqual(
-      expect.arrayContaining(['คิววันนี้', 'ตามต่อ', 'นัดชำระ', 'ทั้งหมด', 'วิเคราะห์']),
+      expect.arrayContaining(['คิววันนี้', 'นัดชำระ', 'ทั้งหมด', 'วิเคราะห์']),
     );
-    expect(labels).toHaveLength(5);
+    expect(labels).toHaveLength(4);
   });
 
   it('FINANCE_MANAGER sees วิเคราะห์', () => {
@@ -79,17 +79,17 @@ describe('CollectionsPage tab visibility by role', () => {
     expect(labels).not.toContain('วิเคราะห์');
   });
 
-  it('SALES sees 4 tabs (no analytics)', () => {
+  it('SALES sees 3 tabs (no analytics)', () => {
     renderWith('SALES');
     const labels = getTabLabels();
-    expect(labels).toEqual(['คิววันนี้', 'ตามต่อ', 'นัดชำระ', 'ทั้งหมด']);
+    expect(labels).toEqual(['คิววันนี้', 'นัดชำระ', 'ทั้งหมด']);
     expect(labels).not.toContain('วิเคราะห์');
   });
 
-  it('ACCOUNTANT sees 4 tabs (no analytics)', () => {
+  it('ACCOUNTANT sees 3 tabs (no analytics)', () => {
     renderWith('ACCOUNTANT');
     const labels = getTabLabels();
-    expect(labels).toHaveLength(4);
+    expect(labels).toHaveLength(3);
     expect(labels).not.toContain('วิเคราะห์');
   });
 });

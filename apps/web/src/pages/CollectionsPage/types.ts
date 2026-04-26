@@ -1,4 +1,4 @@
-export type CollectionsTabKey = 'today' | 'followup' | 'promise' | 'all' | 'analytics';
+export type CollectionsTabKey = 'today' | 'promise' | 'all' | 'analytics';
 
 export interface PendingEscalation {
   id: string;

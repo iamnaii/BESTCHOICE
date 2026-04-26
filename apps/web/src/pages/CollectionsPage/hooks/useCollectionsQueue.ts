@@ -15,7 +15,7 @@ export interface QueueResponse {
   truncated: boolean;
 }
 
-export type QueueTab = 'today' | 'followup' | 'promise';
+export type QueueTab = 'today' | 'promise';
 
 export function useCollectionsQueue(params: {
   tab: QueueTab;

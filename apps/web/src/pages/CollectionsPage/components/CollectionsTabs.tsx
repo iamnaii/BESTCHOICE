@@ -1,4 +1,4 @@
-import { Phone, Clock, Calendar, List, BarChart3 } from 'lucide-react';
+import { Phone, Calendar, List, BarChart3 } from 'lucide-react';
 import type { CollectionsTabKey } from '../types';
 
 interface Props {
@@ -14,7 +14,6 @@ const TAB_CONFIG: Array<{
   Icon: React.ElementType;
 }> = [
   { key: 'today', label: 'คิววันนี้', Icon: Phone },
-  { key: 'followup', label: 'ตามต่อ', Icon: Clock },
   { key: 'promise', label: 'นัดชำระ', Icon: Calendar },
   { key: 'all', label: 'ทั้งหมด', Icon: List },
   { key: 'analytics', label: 'วิเคราะห์', Icon: BarChart3 },

@@ -11,7 +11,7 @@ import {
 import { seededShuffle } from '../../utils/shuffle.util';
 import { bangkokStartOfDay } from '../../utils/date.util';
 
-export type QueueTab = 'today' | 'followup' | 'promise';
+export type QueueTab = 'today' | 'promise';
 
 export type MdmState = 'NONE' | 'PENDING' | 'LOCKED' | 'UNLOCKED';
 export type LastChannel = 'LINE' | 'SMS' | 'CALL' | 'LETTER' | null;
@@ -743,15 +743,6 @@ export class OverdueQueueService {
         callLogs: {
           none: { calledAt: { gte: startOfDay } },
         },
-      };
-    }
-
-    if (tab === 'followup') {
-      return {
-        ...branchScope,
-        status: { in: ['OVERDUE', 'DEFAULT'] },
-        deletedAt: null,
-        noAnswerCount: { gte: 1, lt: 3 },
       };
     }
 

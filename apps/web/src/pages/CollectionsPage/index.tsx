@@ -12,7 +12,6 @@ import MigrationBanner from './components/MigrationBanner';
 import SendLineAdHocDialog from './components/SendLineAdHocDialog';
 import SkipTracingWizard from './components/SkipTracingWizard';
 import QueueTab from './tabs/QueueTab';
-import FollowUpTab from './tabs/FollowUpTab';
 import PromiseTab from './tabs/PromiseTab';
 import AllTab from './tabs/AllTab';
 import AnalyticsTab from './tabs/AnalyticsTab';
@@ -29,7 +28,6 @@ export type { CollectionsTabKey };
  */
 const TAB_ROLE_ACCESS: Record<CollectionsTabKey, string[]> = {
   today: [],
-  followup: [],
   promise: [],
   all: [],
   analytics: ['OWNER', 'FINANCE_MANAGER'],
@@ -61,7 +59,7 @@ export default function CollectionsPage() {
   // fall back to the default tab instead of rendering nothing.
   const effectiveTab: CollectionsTabKey = canAccessTab(activeTab, user?.role) ? activeTab : 'today';
 
-  const showFilters = effectiveTab === 'today' || effectiveTab === 'followup' || effectiveTab === 'promise';
+  const showFilters = effectiveTab === 'today' || effectiveTab === 'promise';
 
   const openContactDialog = (c: ContractRow) => setDialogContract(c);
   const openPanel = (c: ContractRow) => setPanelContract(c);
@@ -133,17 +131,6 @@ export default function CollectionsPage() {
               onSendLine={setLineDialogContract}
               onSkipTrace={setSkipTraceContract}
               onSwitchTab={(tab) => setActiveTab(tab as CollectionsTabKey)}
-            />
-          )}
-
-          {effectiveTab === 'followup' && (
-            <FollowUpTab
-              search={search}
-              branchId={branchId}
-              onLogContact={openContactDialog}
-              onOpen360={openPanel}
-              onSendLine={setLineDialogContract}
-              onSkipTrace={setSkipTraceContract}
             />
           )}
 

@@ -1,3 +1,5 @@
+export type CollectionsTabKey = 'today' | 'followup' | 'promise' | 'approval' | 'all' | 'analytics';
+
 export interface PendingEscalation {
   id: string;
   contractNumber: string;

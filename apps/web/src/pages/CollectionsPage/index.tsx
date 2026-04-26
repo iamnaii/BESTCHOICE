@@ -2,8 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import PageHeader from '@/components/ui/PageHeader';
-import CollectionsKpiStrip from './components/CollectionsKpiStrip';
-import DailyProgressStrip from './components/DailyProgressStrip';
+import CollectionsHeader from './components/CollectionsHeader';
 import CollectionsTabs from './components/CollectionsTabs';
 import CollectionsFilters from './components/CollectionsFilters';
 import ContactLogDialog from './components/ContactLogDialog';
@@ -17,9 +16,9 @@ import PromiseTab from './tabs/PromiseTab';
 import AllTab from './tabs/AllTab';
 import ApprovalTab from './tabs/ApprovalTab';
 import AnalyticsTab from './tabs/AnalyticsTab';
-import type { ContractRow } from './types';
+import type { ContractRow, CollectionsTabKey } from './types';
 
-export type CollectionsTabKey = 'today' | 'followup' | 'promise' | 'approval' | 'all' | 'analytics';
+export type { CollectionsTabKey };
 
 /**
  * Role-based access for tabs. Empty array = all authenticated roles.
@@ -72,9 +71,7 @@ export default function CollectionsPage() {
 
       <MigrationBanner />
 
-      <DailyProgressStrip onSwitchToToday={() => setActiveTab('today')} />
-
-      <CollectionsKpiStrip />
+      <CollectionsHeader onSwitchToToday={() => setActiveTab('today')} />
 
       <CollectionsTabs
         active={effectiveTab}

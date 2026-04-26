@@ -31,6 +31,20 @@ import type { ContractRow } from '../types';
 import { CallButton } from '@/components/CallButton';
 import { formatThaiDateShort } from '@/lib/date';
 
+function severityAccent(daysOverdue: number): string {
+  if (daysOverdue >= 30) return 'bg-destructive';
+  if (daysOverdue >= 8) return 'bg-warning';
+  if (daysOverdue >= 1) return 'bg-primary';
+  return 'bg-muted';
+}
+
+function daysOverdueStat(daysOverdue: number): { bg: string; fg: string } {
+  if (daysOverdue >= 30) return { bg: 'bg-destructive/10', fg: 'text-destructive' };
+  if (daysOverdue >= 8) return { bg: 'bg-warning/10', fg: 'text-warning' };
+  if (daysOverdue >= 1) return { bg: 'bg-primary/10', fg: 'text-primary' };
+  return { bg: 'bg-muted', fg: 'text-foreground' };
+}
+
 interface Props {
   contract: ContractRow | null;
   onClose: () => void;
@@ -118,22 +132,26 @@ export default function Customer360Panel({
         }`}
       >
         {/* Header */}
-        <div className="sticky top-0 flex items-center justify-between px-5 py-4 border-b border-border bg-card z-10">
-          <div>
-            <div className="text-xs uppercase tracking-wider text-muted-foreground">
-              Customer 360
+        <div className="sticky top-0 flex flex-col border-b border-border bg-card z-10">
+          {/* Severity accent — matches ContractCard severity panel color */}
+          <div className={`h-1 shrink-0 transition-colors ${contract ? severityAccent(contract.daysOverdue) : 'bg-muted'}`} />
+          <div className="flex items-center justify-between px-5 py-3">
+            <div>
+              <div className="text-2xs uppercase tracking-wider text-muted-foreground">
+                Customer 360
+              </div>
+              <div className="text-sm font-mono tabular-nums text-primary font-medium">
+                {contract?.contractNumber}
+              </div>
             </div>
-            <div className="text-sm font-mono tabular-nums text-primary">
-              {contract?.contractNumber}
-            </div>
+            <button
+              onClick={onClose}
+              className="rounded-lg p-2 hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+              aria-label="ปิด"
+            >
+              <X className="size-5" />
+            </button>
           </div>
-          <button
-            onClick={onClose}
-            className="rounded-lg p-2 hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
-            aria-label="ปิด"
-          >
-            <X className="size-5" />
-          </button>
         </div>
 
         {/* Body (scrollable) */}
@@ -151,7 +169,7 @@ export default function Customer360Panel({
             <>
               {/* Customer header */}
               <section className="p-5 border-b border-border">
-                <div className="text-lg font-semibold leading-snug mb-1">
+                <div className="text-xl font-bold leading-snug mb-1.5">
                   {data?.detail.customer.name ?? contract.customer.name}
                 </div>
                 <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
@@ -266,23 +284,31 @@ export default function Customer360Panel({
 
               {/* Contract summary */}
               <section className="p-5 border-b border-border">
-                <div className="text-xs uppercase tracking-wider text-muted-foreground mb-3">
-                  สัญญา
-                </div>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <div className="text-xs text-muted-foreground mb-1 leading-snug">ค้างชำระ</div>
-                    <div className="text-xl font-bold tabular-nums text-destructive">
-                      {contract.outstanding.toLocaleString()} ฿
+                {/* Stat blocks — severity-colored to match ContractCard */}
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  <div className="rounded-xl bg-destructive/10 px-4 py-3">
+                    <div className="text-2xs text-muted-foreground uppercase tracking-wider mb-1.5 leading-snug">
+                      ค้างชำระ
+                    </div>
+                    <div className="text-xl font-bold tabular-nums text-destructive leading-none">
+                      {contract.outstanding.toLocaleString()}
+                      <span className="text-sm font-medium ml-1">฿</span>
                     </div>
                   </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground mb-1 leading-snug">เลยกำหนด</div>
-                    <div className="text-xl font-bold tabular-nums">
-                      {contract.daysOverdue}{' '}
-                      <span className="text-xs text-muted-foreground font-normal">วัน</span>
-                    </div>
-                  </div>
+                  {(() => {
+                    const { bg, fg } = daysOverdueStat(contract.daysOverdue);
+                    return (
+                      <div className={`rounded-xl px-4 py-3 ${bg}`}>
+                        <div className="text-2xs text-muted-foreground uppercase tracking-wider mb-1.5 leading-snug">
+                          เลยกำหนด
+                        </div>
+                        <div className={`text-xl font-bold tabular-nums leading-none ${fg}`}>
+                          {contract.daysOverdue}
+                          <span className="text-sm font-medium ml-1">วัน</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Installment progress bar */}
@@ -295,16 +321,16 @@ export default function Customer360Panel({
                     ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'].includes(p.status),
                   );
                   return (
-                    <div className="mt-4 space-y-2">
+                    <div className="space-y-2">
                       <div className="flex items-center justify-between text-xs">
                         <span className="text-muted-foreground leading-snug">ความคืบหน้าการผ่อน</span>
                         <span className="tabular-nums font-medium">
                           {paid} / {total} งวด ({percent}%)
                         </span>
                       </div>
-                      <div className="h-2 bg-muted rounded-full overflow-hidden">
+                      <div className="h-2.5 bg-muted rounded-full overflow-hidden">
                         <div
-                          className="h-full bg-primary transition-all duration-500"
+                          className="h-full bg-primary rounded-full transition-all duration-500"
                           style={{ width: `${percent}%` }}
                         />
                       </div>
@@ -322,16 +348,18 @@ export default function Customer360Panel({
 
               {/* Timeline */}
               <section className="p-5 border-b border-border">
-                <div className="text-xs uppercase tracking-wider text-muted-foreground mb-3">
-                  กิจกรรม
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-xs font-semibold text-foreground leading-snug">กิจกรรม</span>
+                  <div className="flex-1 h-px bg-border" />
                 </div>
                 <Customer360Timeline events={data?.timeline ?? []} />
               </section>
 
               {/* Actions */}
               <section className="p-5">
-                <div className="text-xs uppercase tracking-wider text-muted-foreground mb-3">
-                  การดำเนินการ
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-xs font-semibold text-foreground leading-snug">การดำเนินการ</span>
+                  <div className="flex-1 h-px bg-border" />
                 </div>
                 <Customer360Actions
                   contract={contract}

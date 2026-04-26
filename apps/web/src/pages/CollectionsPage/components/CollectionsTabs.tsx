@@ -1,5 +1,5 @@
 import { Phone, Clock, Calendar, ClipboardCheck, List, BarChart3 } from 'lucide-react';
-import type { CollectionsTabKey } from '../index';
+import type { CollectionsTabKey } from '../types';
 
 interface Props {
   active: CollectionsTabKey;
@@ -47,13 +47,19 @@ export default function CollectionsTabs({
             className={`inline-flex items-center gap-1.5 px-4 py-2.5 text-sm border-b-2 transition-colors whitespace-nowrap ${
               isActive
                 ? 'border-primary text-primary font-medium'
-                : 'border-transparent text-muted-foreground hover:text-foreground'
+                : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
             }`}
           >
-            <Icon className="size-4 shrink-0" />
+            <Icon className={`size-4 shrink-0 ${isActive ? 'text-primary' : ''}`} />
             {label}
             {count != null && count > 0 && (
-              <span className="bg-muted text-muted-foreground rounded-full px-1.5 py-0.5 text-2xs tabular-nums leading-none">
+              <span
+                className={`rounded-full px-1.5 py-0.5 text-2xs tabular-nums leading-none ${
+                  isActive
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-muted text-muted-foreground'
+                }`}
+              >
                 {count}
               </span>
             )}

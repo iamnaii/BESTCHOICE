@@ -6,6 +6,14 @@ import type { ContractRow } from '../types';
 // formatDateShort calls Intl under the hood — mock it so JSDOM doesn't vary
 vi.mock('@/utils/formatters', () => ({
   formatDateShort: (d: Date) => d.toISOString().split('T')[0],
+  formatNumber: (n: number) => n.toLocaleString(),
+}));
+
+// CallButton uses useMutation — mock to avoid QueryClientProvider requirement
+vi.mock('@/components/CallButton', () => ({
+  CallButton: ({ phone }: { phone?: string }) => (
+    <button data-testid="call-button">{phone ?? 'โทร'}</button>
+  ),
 }));
 
 const base: ContractRow = {
@@ -55,15 +63,15 @@ describe('<ContractCard />', () => {
     expect(screen.getByText('นางสาวแนน')).toBeInTheDocument();
   });
 
-  it('shows "ล็อคแล้ว" chip when deviceLocked is true', () => {
+  it('shows "ล็อคเครื่อง" chip when deviceLocked is true', () => {
     const c: ContractRow = { ...base, deviceLocked: true };
     render(<ContractCard contract={c} onLogContact={vi.fn()} />);
-    expect(screen.getByText('ล็อคแล้ว')).toBeInTheDocument();
+    expect(screen.getByText('ล็อคเครื่อง')).toBeInTheDocument();
   });
 
-  it('does not show "ล็อคแล้ว" chip when deviceLocked is false', () => {
+  it('does not show "ล็อคเครื่อง" chip when deviceLocked is false', () => {
     render(<ContractCard contract={base} onLogContact={vi.fn()} />);
-    expect(screen.queryByText('ล็อคแล้ว')).not.toBeInTheDocument();
+    expect(screen.queryByText('ล็อคเครื่อง')).not.toBeInTheDocument();
   });
 
   it('renders snooze badge when snoozedUntil is in the future', () => {

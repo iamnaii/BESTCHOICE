@@ -20,7 +20,7 @@ export function agingColor(bucket: AgingBucket): string {
     case '61-90':
       return 'bg-destructive/15 text-destructive border-destructive/30';
     case '90+':
-      return 'bg-info/15 text-info border-info/30';
+      return 'bg-destructive/30 text-destructive border-destructive/50';
   }
 }
 

@@ -1,4 +1,29 @@
-import { IsIn, IsOptional, IsString, IsDateString, IsUrl, MaxLength } from 'class-validator';
+import {
+  IsIn,
+  IsOptional,
+  IsString,
+  IsDateString,
+  IsUrl,
+  MaxLength,
+  IsArray,
+  IsNumber,
+  IsUUID,
+  ValidateNested,
+  ArrayMinSize,
+} from 'class-validator';
+import { Type } from 'class-transformer';
+
+export class PromiseSlotDto {
+  @IsDateString({}, { message: 'วันที่นัดต้องเป็นวันที่ที่ถูกต้อง' })
+  settlementDate!: string;
+
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'ยอดต้องเป็นตัวเลข' })
+  settlementAmount!: number;
+
+  @IsOptional()
+  @IsString()
+  notes?: string;
+}
 
 // P1 Task 12 — quick-tag enums captured from ContactLogDialog chips.
 // Keep values 1:1 with prisma `CallResult` and `NegotiationResult` enums.
@@ -60,4 +85,18 @@ export class LogContactDto {
   @IsUrl({ require_tld: false }, { message: 'voiceMemoUrl ต้องเป็น URL' })
   @MaxLength(2048)
   voiceMemoUrl?: string;
+
+  // P2 Task 10 — structured promise slots (replaces legacy single/dual settlement fields).
+  // Optional for back-compat — older clients can still send settlementDate/Amount directly.
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PromiseSlotDto)
+  @ArrayMinSize(1, { message: 'ต้องมีอย่างน้อย 1 ที่' })
+  slots?: PromiseSlotDto[];
+
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true, message: 'targetInstallmentIds ต้องเป็น UUID' })
+  targetInstallmentIds?: string[];
 }

@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<title>P2P ContactLogDialog Mockup — 2026-04-27</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        background: 'hsl(0 0% 100%)',
+        foreground: 'hsl(240 10% 3.9%)',
+        card: 'hsl(0 0% 100%)',
+        muted: 'hsl(240 4.8% 95.9%)',
+        'muted-foreground': 'hsl(240 3.8% 46.1%)',
+        border: 'hsl(240 5.9% 90%)',
+        input: 'hsl(240 5.9% 90%)',
+        primary: 'hsl(160 84% 39%)',
+        'primary-foreground': 'hsl(0 0% 100%)',
+        success: 'hsl(160 84% 39%)',
+        'success-foreground': 'hsl(0 0% 100%)',
+        warning: 'hsl(38 92% 50%)',
+        destructive: 'hsl(0 72% 51%)',
+        'destructive-foreground': 'hsl(0 0% 100%)',
+        accent: 'hsl(240 4.8% 95.9%)',
+      },
+      fontFamily: {
+        sans: ['Inter', 'IBM Plex Sans Thai', 'system-ui', 'sans-serif'],
+      },
+    },
+  },
+};
+</script>
+<style>
+  body {
+    background: hsl(240 6% 97%);
+    font-family: 'Inter', 'IBM Plex Sans Thai', system-ui, sans-serif;
+  }
+  .label-pill {
+    background: hsl(240 5% 88%);
+    color: hsl(240 5% 26%);
+    padding: 4px 10px;
+    border-radius: 9999px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  .modal-shadow {
+    box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.15), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  }
+  .new-tag {
+    background: hsl(160 84% 39%);
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    letter-spacing: 0.04em;
+  }
+  .changed-tag {
+    background: hsl(38 92% 50%);
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    letter-spacing: 0.04em;
+  }
+</style>
+</head>
+<body class="text-foreground">
+
+<div class="max-w-5xl mx-auto py-12 px-4 space-y-16">
+
+<header class="text-center space-y-2">
+  <h1 class="text-2xl font-bold leading-snug">Promise-to-Pay UI Mockup</h1>
+  <p class="text-sm text-muted-foreground leading-snug">ContactLogDialog redesign — 4 states</p>
+  <div class="inline-flex gap-2 items-center text-xs text-muted-foreground">
+    <span class="new-tag">NEW</span> = component ใหม่
+    <span class="changed-tag">CHANGED</span> = ส่วนที่แก้
+  </div>
+</header>
+
+<!-- STATE 1: Default 1 slot (looks like existing non-split mode) -->
+<section class="space-y-3">
+  <div class="flex items-center gap-3">
+    <span class="label-pill">STATE 1</span>
+    <h2 class="text-lg font-semibold leading-snug">Default — 1 ที่ (เหมือนเดิม)</h2>
+    <span class="text-sm text-muted-foreground leading-snug">พนง.โทรลูกค้า → นัด 1 ครั้ง — ใช้งานเหมือน "non-split mode" เดิม</span>
+  </div>
+
+  <div class="bg-card border border-border rounded-2xl p-6 modal-shadow max-w-xl mx-auto">
+    <div class="flex items-center justify-between mb-5">
+      <h3 class="text-base font-semibold leading-snug">บันทึกผล — สมชาย ใจดี</h3>
+      <button class="text-muted-foreground hover:text-foreground">✕</button>
+    </div>
+
+    <div class="space-y-5">
+      <!-- Contract summary (UNCHANGED) -->
+      <div class="rounded-xl bg-muted px-4 py-3 flex items-baseline justify-between">
+        <span class="font-mono text-sm text-primary font-medium leading-snug">BC-2026-00123</span>
+        <span class="text-sm leading-snug">
+          ค้าง <span class="text-lg font-bold text-destructive">5,000</span> ฿ ·
+          <span class="font-medium">12 วัน</span>
+        </span>
+      </div>
+
+      <!-- Yeastar info (UNCHANGED) -->
+      <div class="rounded-xl border border-success/30 bg-success/5 px-4 py-3">
+        <div class="flex items-center gap-2 text-sm font-semibold text-success leading-snug mb-2">
+          <span>📞</span> ระบบบันทึกการโทรอัตโนมัติ
+        </div>
+        <div class="text-sm leading-snug">14:23 · 2:15 นาที · <span class="font-medium">รับสาย</span></div>
+      </div>
+
+      <!-- Outcome chips (UNCHANGED) -->
+      <div>
+        <label class="text-sm font-semibold leading-snug mb-2 block">ผลการคุย <span class="text-destructive">*</span></label>
+        <div class="grid grid-cols-3 gap-2">
+          <button class="px-4 py-3.5 rounded-xl border-2 border-primary bg-primary/10 text-primary text-left">
+            <div class="text-base font-semibold leading-snug">นัดชำระ</div>
+            <div class="text-xs leading-snug mt-1 text-primary/80">ลูกค้ารับสาย + ตกลงวันจะจ่าย</div>
+          </button>
+          <button class="px-4 py-3.5 rounded-xl border border-warning/40 bg-card text-left">
+            <div class="text-base font-semibold leading-snug">ไม่รับสาย</div>
+            <div class="text-xs text-muted-foreground leading-snug mt-1">โทรไปแล้วไม่รับ</div>
+          </button>
+          <button class="px-4 py-3.5 rounded-xl border border-destructive/40 bg-card text-left">
+            <div class="text-base font-semibold leading-snug">ติดต่อไม่ได้</div>
+            <div class="text-xs text-muted-foreground leading-snug mt-1">ปิดเครื่อง / เบอร์ผิด</div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Settlement card -->
+      <div class="space-y-4 rounded-xl border border-success/30 bg-success/5 p-4">
+        <!-- NEW: cycle deadline banner -->
+        <div class="rounded-lg bg-card border border-border px-3 py-2 text-sm leading-snug flex items-center gap-2">
+          <span class="new-tag">NEW</span>
+          <span>เพดานรอบนัด: <span class="font-semibold">28 เม.ย.</span> — ทุก "ที่" ต้องไม่เกินวันนี้</span>
+        </div>
+
+        <!-- Single slot card -->
+        <div class="rounded-lg border border-border bg-card p-3 space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="text-sm font-semibold leading-snug">ที่ 1</div>
+            <!-- ลบไม่ได้ตอนมีแค่ slot เดียว -->
+          </div>
+          <div>
+            <label class="text-xs font-medium text-muted-foreground mb-1.5 block leading-snug">วันที่นัด <span class="text-destructive">*</span></label>
+            <div class="flex flex-wrap gap-1.5 mb-2">
+              <button class="px-2.5 py-1 rounded-full text-xs font-medium border border-input bg-card hover:bg-muted">พรุ่งนี้</button>
+              <button class="px-2.5 py-1 rounded-full text-xs font-medium border border-primary bg-primary text-primary-foreground">อีก 3 วัน</button>
+              <button class="px-2.5 py-1 rounded-full text-xs font-medium border border-input bg-card hover:bg-muted">อีก 7 วัน</button>
+              <button class="px-2.5 py-1 rounded-full text-xs font-medium border border-input bg-card hover:bg-muted">อีก 15 วัน</button>
+              <button class="px-2.5 py-1 rounded-full text-xs font-medium border border-input bg-card hover:bg-muted">สิ้นเดือน</button>
+            </div>
+            <input type="date" value="2026-04-30" class="w-full px-3 py-2 border border-input rounded-lg text-sm font-mono">
+          </div>
+          <div>
+            <label class="text-xs font-medium text-muted-foreground mb-1.5 block leading-snug">ยอด <span class="text-destructive">*</span></label>
+            <div class="relative">
+              <input type="text" value="5,000" class="w-full px-3 py-2 pr-9 border border-input rounded-lg text-sm">
+              <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">฿</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- NEW: add slot button -->
+        <button class="w-full px-3 py-2 rounded-lg border-2 border-dashed border-border hover:bg-muted text-sm font-medium leading-snug flex items-center justify-center gap-2">
+          <span class="new-tag">CHANGED</span>
+          <span>+ เพิ่ม "ที่" (แทน toggle "นัดแบ่งจ่าย 2 งวด")</span>
+        </button>
+
+        <!-- NEW: install picker link -->
+        <div class="text-sm leading-snug">
+          <span class="changed-tag">NEW</span>
+          <span class="text-primary hover:underline cursor-pointer ml-2">ครอบงวด: อัตโนมัติ (FIFO) · ระบุงวดเอง</span>
+        </div>
+      </div>
+
+      <!-- Notes (UNCHANGED) -->
+      <div>
+        <label class="text-sm font-semibold mb-1.5 block leading-snug">บันทึก</label>
+        <textarea rows="2" class="w-full px-3 py-2.5 border border-input rounded-lg text-sm" placeholder="รายละเอียดการสนทนา..."></textarea>
+      </div>
+
+      <!-- LINE hint (UNCHANGED) -->
+      <div class="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-primary leading-snug">
+        ระบบจะส่ง LINE แจ้งเตือนลูกค้าทันทีหลังบันทึก
+      </div>
+
+      <!-- Actions (UNCHANGED) -->
+      <div class="flex gap-2 justify-end pt-2 border-t border-border">
+        <button class="px-5 py-2.5 text-base border border-input rounded-lg hover:bg-muted">ยกเลิก</button>
+        <button class="px-5 py-2.5 text-base bg-primary text-primary-foreground rounded-lg font-semibold">บันทึก</button>
+      </div>
+    </div>
+  </div>
+
+  <p class="text-sm text-muted-foreground leading-snug max-w-xl mx-auto px-4">
+    <strong>สรุป State 1:</strong> สำหรับพนง.ที่นัดลูกค้าครั้งเดียว — workflow เหมือนเดิมเป๊ะ. ความแตกต่าง = banner เพดาน + ปุ่ม "+ เพิ่ม ที่" (ปกติไม่ต้องกด) + link ครอบงวด (ปกติ default ใช้ FIFO ก็พอ).
+  </p>
+</section>
+
+<!-- STATE 2: 3 slots multi-slot mode -->
+<section class="space-y-3">
+  <div class="flex items-center gap-3">
+    <span class="label-pill">STATE 2</span>
+    <h2 class="text-lg font-semibold leading-snug">Multi-slot — ลูกค้าขอทยอยจ่าย 3 ที่</h2>
+    <span class="text-sm text-muted-foreground leading-snug">"ขอจ่าย 1,000 วันที่ 5, 1,500 วันที่ 15, 1,500 วันที่ 25"</span>
+  </div>
+
+  <div class="bg-card border border-border rounded-2xl p-6 modal-shadow max-w-xl mx-auto">
+    <div class="flex items-center justify-between mb-5">
+      <h3 class="text-base font-semibold leading-snug">บันทึกผล — สมชาย ใจดี</h3>
+      <button class="text-muted-foreground hover:text-foreground">✕</button>
+    </div>
+
+    <div class="space-y-5">
+      <!-- Settlement card with 3 slots -->
+      <div class="space-y-4 rounded-xl border border-success/30 bg-success/5 p-4">
+        <div class="rounded-lg bg-card border border-border px-3 py-2 text-sm leading-snug">
+          เพดานรอบนัด: <span class="font-semibold">28 เม.ย.</span> — ทุก "ที่" ต้องไม่เกินวันนี้
+        </div>
+
+        <!-- Slot 1 -->
+        <div class="rounded-lg border border-border bg-card p-3 space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="text-sm font-semibold leading-snug">ที่ 1</div>
+            <!-- slot 1 ลบไม่ได้ -->
+          </div>
+          <div>
+            <label class="text-xs font-medium text-muted-foreground mb-1.5 block leading-snug">วันที่นัด <span class="text-destructive">*</span></label>
+            <div class="flex flex-wrap gap-1.5 mb-2">
+              <button class="px-2.5 py-1 rounded-full text-xs font-medium border border-input bg-card">พรุ่งนี้</button>
+              <button class="px-2.5 py-1 rounded-full text-xs font-medium border border-primary bg-primary text-primary-foreground">อีก 3 วัน</button>
+              <button class="px-2.5 py-1 rounded-full text-xs font-medium border border-input bg-card">อีก 7 วัน</button>
+              <button class="px-2.5 py-1 rounded-full text-xs font-medium border border-input bg-card">อีก 15 วัน</button>
+              <button class="px-2.5 py-1 rounded-full text-xs font-medium border border-input bg-card">สิ้นเดือน</button>
+            </div>
+            <input type="date" value="2026-04-30" class="w-full px-3 py-2 border border-input rounded-lg text-sm font-mono">
+          </div>
+          <div>
+            <label class="text-xs font-medium text-muted-foreground mb-1.5 block leading-snug">ยอด <span class="text-destructive">*</span></label>
+            <div class="relative">
+              <input type="text" value="1,000" class="w-full px-3 py-2 pr-9 border border-input rounded-lg text-sm">
+              <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">฿</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Slot 2 -->
+        <div class="rounded-lg border border-border bg-card p-3 space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="text-sm font-semibold leading-snug">ที่ 2</div>
+            <button class="text-xs text-destructive hover:underline">ลบ</button>
+          </div>
+          <div>
+            <label class="text-xs font-medium text-muted-foreground mb-1.5 block leading-snug">วันที่นัด <span class="text-destructive">*</span></label>
+            <div class="flex flex-wrap gap-1.5 mb-2">
+              <button class="px-2.5 py-1 rounded-full text-xs font-medium border border-input bg-card">พรุ่งนี้</button>
+              <button class="px-2.5 py-1 rounded-full text-xs font-medium border border-input bg-card">อีก 3 วัน</button>
+              <button class="px-2.5 py-1 rounded-full text-xs font-medium border border-input bg-card">อีก 7 วัน</button>
+              <button class="px-2.5 py-1 rounded-full text-xs font-medium border border-primary bg-primary text-primary-foreground">อีก 15 วัน</button>
+              <button class="px-2.5 py-1 rounded-full text-xs font-medium border border-input bg-card">สิ้นเดือน</button>
+            </div>
+            <input type="date" value="2026-05-12" class="w-full px-3 py-2 border border-input rounded-lg text-sm font-mono">
+          </div>
+          <div>
+            <label class="text-xs font-medium text-muted-foreground mb-1.5 block leading-snug">ยอด <span class="text-destructive">*</span></label>
+            <div class="relative">
+              <input type="text" value="1,500" class="w-full px-3 py-2 pr-9 border border-input rounded-lg text-sm">
+              <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">฿</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Slot 3 -->
+        <div class="rounded-lg border border-border bg-card p-3 space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="text-sm font-semibold leading-snug">ที่ 3</div>
+            <button class="text-xs text-destructive hover:underline">ลบ</button>
+          </div>
+          <div>
+            <label class="text-xs font-medium text-muted-foreground mb-1.5 block leading-snug">วันที่นัด <span class="text-destructive">*</span></label>
+            <input type="date" value="2026-05-22" class="w-full px-3 py-2 border border-input rounded-lg text-sm font-mono">
+          </div>
+          <div>
+            <label class="text-xs font-medium text-muted-foreground mb-1.5 block leading-snug">ยอด <span class="text-destructive">*</span></label>
+            <div class="relative">
+              <input type="text" value="2,500" class="w-full px-3 py-2 pr-9 border border-input rounded-lg text-sm">
+              <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">฿</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sum indicator -->
+        <div class="rounded-lg bg-primary/5 border border-primary/20 px-3 py-2 text-sm leading-snug flex items-center justify-between">
+          <span>รวม 3 ที่</span>
+          <span class="font-semibold">5,000 ฿ <span class="text-muted-foreground text-xs">/ ค้าง 5,000 ฿</span></span>
+        </div>
+
+        <button class="w-full px-3 py-2 rounded-lg border-2 border-dashed border-border hover:bg-muted text-sm font-medium leading-snug">
+          + เพิ่ม "ที่"
+        </button>
+
+        <div class="text-sm leading-snug">
+          <span class="text-primary hover:underline cursor-pointer">ครอบงวด: อัตโนมัติ (FIFO) · ระบุงวดเอง</span>
+        </div>
+      </div>
+
+      <div class="flex gap-2 justify-end pt-2 border-t border-border">
+        <button class="px-5 py-2.5 text-base border border-input rounded-lg hover:bg-muted">ยกเลิก</button>
+        <button class="px-5 py-2.5 text-base bg-primary text-primary-foreground rounded-lg font-semibold">บันทึก</button>
+      </div>
+    </div>
+  </div>
+
+  <p class="text-sm text-muted-foreground leading-snug max-w-xl mx-auto px-4">
+    <strong>สรุป State 2:</strong> Use case ใหม่ที่ split mode 2 งวดเดิมไม่รองรับ. แต่ละ "ที่" คือ slot อิสระ — มี date pills + amount ของตัวเอง. ปุ่มลบโผล่ตั้งแต่ slot 2+. Sum indicator ช่วยให้พนง.ดูยอดรวมโดยไม่ต้องคำนวณเอง.
+  </p>
+</section>
+
+<!-- STATE 3: SupersedePromiseConfirmDialog -->
+<section class="space-y-3">
+  <div class="flex items-center gap-3">
+    <span class="label-pill">STATE 3</span>
+    <h2 class="text-lg font-semibold leading-snug">Confirm dialog เมื่อมี active promise เดิม</h2>
+    <span class="new-tag">NEW component</span>
+  </div>
+
+  <div class="grid md:grid-cols-2 gap-4 max-w-3xl mx-auto">
+    <!-- Variant A: ก่อนวันนัดถึง ครั้งที่ 1 = ไม่นับ broken -->
+    <div class="bg-card border border-border rounded-2xl p-6 modal-shadow">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-base font-semibold leading-snug">ยืนยันการเลื่อนนัด</h3>
+        <button class="text-muted-foreground hover:text-foreground">✕</button>
+      </div>
+
+      <div class="space-y-4">
+        <div class="rounded-xl bg-muted px-4 py-3">
+          <div class="text-sm text-muted-foreground leading-snug">นัดเดิม</div>
+          <div class="text-base font-semibold leading-snug">5 พ.ค. · 5,000 ฿</div>
+        </div>
+
+        <div class="rounded-xl border border-success/30 bg-success/5 p-4 text-sm leading-snug">
+          แจ้งล่วงหน้าก่อนถึงวันนัด — <span class="font-semibold text-success">ไม่นับผิดนัด</span>
+        </div>
+
+        <div class="flex gap-2 justify-end pt-2 border-t border-border">
+          <button class="px-5 py-2.5 text-sm border border-input rounded-lg hover:bg-muted">ยกเลิก</button>
+          <button class="px-5 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg font-semibold">ยืนยันเลื่อนนัด</button>
+        </div>
+      </div>
+      <p class="text-xs text-muted-foreground mt-3 leading-snug italic">
+        Variant A — เลื่อนก่อนวันนัด ครั้งที่ 1 ของรอบ
+      </p>
+    </div>
+
+    <!-- Variant B: ครั้งที่ 2+ = นับ broken -->
+    <div class="bg-card border border-border rounded-2xl p-6 modal-shadow">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-base font-semibold leading-snug">ยืนยันการเลื่อนนัด</h3>
+        <button class="text-muted-foreground hover:text-foreground">✕</button>
+      </div>
+
+      <div class="space-y-4">
+        <div class="rounded-xl bg-muted px-4 py-3">
+          <div class="text-sm text-muted-foreground leading-snug">นัดเดิม</div>
+          <div class="text-base font-semibold leading-snug">5 พ.ค. · 5,000 ฿</div>
+        </div>
+
+        <div class="rounded-xl border-2 border-destructive/40 bg-destructive/5 p-4 flex items-start gap-2">
+          <span class="text-destructive text-lg mt-0.5">⚠</span>
+          <div class="text-sm leading-snug">
+            <div class="font-semibold text-destructive">นัดนี้จะถูกนับเป็นผิดนัด 1 ครั้ง</div>
+            <div class="text-xs text-muted-foreground mt-1">เลื่อนเกิน 1 ครั้งในรอบเดียวกัน</div>
+          </div>
+        </div>
+
+        <div class="flex gap-2 justify-end pt-2 border-t border-border">
+          <button class="px-5 py-2.5 text-sm border border-input rounded-lg hover:bg-muted">ยกเลิก</button>
+          <button class="px-5 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg font-semibold">ยืนยันเลื่อนนัด</button>
+        </div>
+      </div>
+      <p class="text-xs text-muted-foreground mt-3 leading-snug italic">
+        Variant B — เลื่อน ≥ 2 ครั้ง หรือเลย due แล้ว
+      </p>
+    </div>
+  </div>
+
+  <p class="text-sm text-muted-foreground leading-snug max-w-xl mx-auto px-4">
+    <strong>สรุป State 3:</strong> เด้งระหว่างกด "บันทึก" → ถ้ามี active promise → confirm. กด "ยกเลิก" = ไม่บันทึก. กด "ยืนยันเลื่อนนัด" = supersede อันเก่า + สร้างใหม่. UI บอกชัดว่าจะนับ broken หรือไม่ ก่อนตัดสินใจ.
+  </p>
+</section>
+
+<!-- STATE 4: InstallmentPickerPopover -->
+<section class="space-y-3">
+  <div class="flex items-center gap-3">
+    <span class="label-pill">STATE 4</span>
+    <h2 class="text-lg font-semibold leading-snug">Installment picker — override FIFO</h2>
+    <span class="new-tag">NEW component</span>
+  </div>
+
+  <div class="bg-card border border-border rounded-2xl p-6 modal-shadow max-w-md mx-auto relative">
+    <div class="flex items-center justify-between mb-3">
+      <div class="text-sm font-semibold leading-snug">เลือกงวดที่นัดจ่าย</div>
+      <button class="text-muted-foreground hover:text-foreground">✕</button>
+    </div>
+
+    <div class="space-y-2 max-h-72 overflow-y-auto">
+      <button class="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg border-2 border-primary bg-primary/10 text-left">
+        <div class="flex items-center gap-2">
+          <div class="size-4 rounded border-2 border-primary bg-primary text-primary-foreground flex items-center justify-center text-xs">✓</div>
+          <div class="text-sm leading-snug">
+            <div class="font-medium">งวดที่ 3 — 28 มี.ค.</div>
+            <div class="text-xs text-muted-foreground">ค้าง 30 วัน</div>
+          </div>
+        </div>
+        <div class="text-sm font-semibold">4,000 ฿</div>
+      </button>
+
+      <button class="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-input bg-card hover:bg-muted text-left">
+        <div class="flex items-center gap-2">
+          <div class="size-4 rounded border border-input"></div>
+          <div class="text-sm leading-snug">
+            <div class="font-medium">งวดที่ 4 — 28 เม.ย.</div>
+            <div class="text-xs text-muted-foreground">ค้าง 0 วัน</div>
+          </div>
+        </div>
+        <div class="text-sm font-semibold">4,000 ฿</div>
+      </button>
+
+      <button class="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-input bg-card hover:bg-muted text-left opacity-60">
+        <div class="flex items-center gap-2">
+          <div class="size-4 rounded border border-input"></div>
+          <div class="text-sm leading-snug">
+            <div class="font-medium">งวดที่ 5 — 28 พ.ค.</div>
+            <div class="text-xs text-muted-foreground">ยังไม่ถึง</div>
+          </div>
+        </div>
+        <div class="text-sm font-semibold">4,000 ฿</div>
+      </button>
+    </div>
+
+    <div class="flex gap-2 justify-end pt-3 mt-2 border-t border-border">
+      <button class="px-3 py-1.5 text-sm border border-input rounded-lg hover:bg-muted">ยกเลิก</button>
+      <button class="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-lg font-semibold">ใช้</button>
+    </div>
+  </div>
+
+  <p class="text-sm text-muted-foreground leading-snug max-w-xl mx-auto px-4">
+    <strong>สรุป State 4:</strong> Popover เปิดจาก link "ระบุงวดเอง" — checkbox เลือกงวดที่ค้าง + แสดงยอดของแต่ละงวด. กด "ใช้" → auto-fill settlementAmount = sum ของงวดที่เลือก. ถ้าพนง.ไม่กด link นี้ ระบบ default = FIFO (งวดเก่าสุดก่อน).
+  </p>
+</section>
+
+<!-- Summary -->
+<section class="bg-card border border-border rounded-2xl p-6 max-w-3xl mx-auto">
+  <h2 class="text-lg font-semibold leading-snug mb-3">สรุปการเปลี่ยนแปลง</h2>
+  <div class="space-y-3 text-sm leading-snug">
+    <div class="grid grid-cols-2 gap-2">
+      <div class="font-semibold text-muted-foreground">เก็บไว้เหมือนเดิม</div>
+      <div class="font-semibold text-muted-foreground">ปรับใหม่</div>
+    </div>
+    <div class="grid grid-cols-2 gap-2">
+      <ul class="space-y-1 text-foreground">
+        <li>• Outcome chips 3 ตัว</li>
+        <li>• Contract summary header</li>
+        <li>• Yeastar call info card</li>
+        <li>• Escalation panel</li>
+        <li>• LINE notify hint</li>
+        <li>• Notes textarea</li>
+        <li>• Visual style (tokens, icons, fonts)</li>
+      </ul>
+      <ul class="space-y-1">
+        <li>• Settlement card → multi-slot manager</li>
+        <li>• Banner เพดานรอบนัด <span class="new-tag">NEW</span></li>
+        <li>• ปุ่ม "+ เพิ่ม ที่" แทน toggle split</li>
+        <li>• Sum indicator</li>
+        <li>• SupersedeConfirmDialog <span class="new-tag">NEW</span></li>
+        <li>• InstallmentPickerPopover <span class="new-tag">NEW</span></li>
+      </ul>
+    </div>
+    <div class="pt-3 mt-3 border-t border-border text-muted-foreground">
+      <strong>Mental model พนง.:</strong> "บันทึกผลโทรเหมือนเดิม → ถ้าลูกค้านัด ใส่ข้อมูล → กดบันทึก" — เพิ่ม 2 จุดเด่น: <strong>(1)</strong> ปุ่ม + เพิ่ม ที่ ถ้าอยากแบ่ง <strong>(2)</strong> confirm dialog ถ้าจะเลื่อนนัดเก่า. ทุกอย่างอื่น flow เดิม.
+    </div>
+  </div>
+</section>
+
+</div>
+
+</body>
+</html>

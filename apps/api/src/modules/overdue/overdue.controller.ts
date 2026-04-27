@@ -24,6 +24,8 @@ import { CreateCallLogDto } from './dto/create-call-log.dto';
 import { AssignCollectorDto } from './dto/assign-collector.dto';
 import { RecordSettlementDto } from './dto/record-settlement.dto';
 import { LogContactDto } from './dto/log-contact.dto';
+import { PartialPaymentRescheduleDto } from './dto/partial-payment-reschedule.dto';
+import { EscalateDto } from './dto/escalate.dto';
 import { CreateDunningRuleDto, UpdateDunningRuleDto } from './dto/dunning-rule.dto';
 import { QueueQueryDto } from './dto/queue-query.dto';
 import { KpiQueryDto } from './dto/kpi-query.dto';
@@ -260,6 +262,32 @@ export class OverdueController {
     @CurrentUser() user: { id: string },
   ) {
     return this.overdueService.logContact(contractId, user.id, dto);
+  }
+
+  // "รับเงินบางส่วน + นัดส่วนที่เหลือ" combo action
+  // Roles: align with /contact-log + /settlement (recording a PROMISED CallLog
+  // is a SALES/FM/BM/OWNER action — ACCOUNTANT goes through /payments).
+  @Post(':contractId/partial-payment-reschedule')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'FINANCE_MANAGER')
+  partialPaymentReschedule(
+    @Param('contractId') contractId: string,
+    @Body() dto: PartialPaymentRescheduleDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.overdueService.partialPaymentReschedule(contractId, user.id, dto);
+  }
+
+  // Escalation Guardrail: เมื่อลูกค้าผิดนัด ≥ threshold (จาก BUSINESS_RULES)
+  // ปุ่มนัดใหม่ disable → collector ต้องเลือก escalate (LETTER/MDM/LEGAL)
+  // LEGAL action is gated to OWNER/FINANCE_MANAGER inside the service (SoD).
+  @Post(':contractId/escalate')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  escalate(
+    @Param('contractId') contractId: string,
+    @Body() dto: EscalateDto,
+    @CurrentUser() user: { id: string; role: string },
+  ) {
+    return this.overdueService.escalate(contractId, user.id, user.role, dto.action, dto.reason);
   }
 
   @Post('cron/calculate-late-fees')

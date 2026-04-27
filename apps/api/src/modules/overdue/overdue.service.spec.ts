@@ -4,6 +4,10 @@ import { OverdueService } from './overdue.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DunningEngineService } from './dunning-engine.service';
 import { OverdueKpiService } from './kpi.service';
+import { PaymentsService } from '../payments/payments.service';
+import { ContractLetterService } from './contract-letter.service';
+import { MdmLockService } from './mdm-lock.service';
+import { OwnerAlertHelper } from './owner-alert.helper';
 
 // Shared no-op mock for DunningEngineService — tests that care can spy on it
 const mockDunningEngine = {
@@ -39,6 +43,10 @@ describe('OverdueService.recordSettlement', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: DunningEngineService, useValue: mockDunningEngine },
         { provide: OverdueKpiService, useValue: mockKpiService },
+        { provide: PaymentsService, useValue: { autoAllocatePayment: jest.fn() } },
+        { provide: ContractLetterService, useValue: { createIfNotExists: jest.fn() } },
+        { provide: MdmLockService, useValue: { proposeManual: jest.fn() } },
+        { provide: OwnerAlertHelper, useValue: { sendToAllOwners: jest.fn().mockResolvedValue({ sent: 0, failed: 0 }) } },
       ],
     }).compile();
     service = mod.get(OverdueService);
@@ -127,6 +135,10 @@ describe('OverdueService.approveDunningEscalation (T4-C2)', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: DunningEngineService, useValue: mockDunningEngine },
         { provide: OverdueKpiService, useValue: mockKpiService },
+        { provide: PaymentsService, useValue: { autoAllocatePayment: jest.fn() } },
+        { provide: ContractLetterService, useValue: { createIfNotExists: jest.fn() } },
+        { provide: MdmLockService, useValue: { proposeManual: jest.fn() } },
+        { provide: OwnerAlertHelper, useValue: { sendToAllOwners: jest.fn().mockResolvedValue({ sent: 0, failed: 0 }) } },
       ],
     }).compile();
     service = mod.get(OverdueService);
@@ -196,6 +208,10 @@ describe('OverdueService.updateContractStatuses (T3-C11 hold guard)', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: DunningEngineService, useValue: mockDunningEngine },
         { provide: OverdueKpiService, useValue: mockKpiService },
+        { provide: PaymentsService, useValue: { autoAllocatePayment: jest.fn() } },
+        { provide: ContractLetterService, useValue: { createIfNotExists: jest.fn() } },
+        { provide: MdmLockService, useValue: { proposeManual: jest.fn() } },
+        { provide: OwnerAlertHelper, useValue: { sendToAllOwners: jest.fn().mockResolvedValue({ sent: 0, failed: 0 }) } },
       ],
     }).compile();
     service = mod.get(OverdueService);
@@ -295,6 +311,10 @@ describe('OverdueService.holdAutoEscalation (T3-C11)', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: DunningEngineService, useValue: mockDunningEngine },
         { provide: OverdueKpiService, useValue: mockKpiService },
+        { provide: PaymentsService, useValue: { autoAllocatePayment: jest.fn() } },
+        { provide: ContractLetterService, useValue: { createIfNotExists: jest.fn() } },
+        { provide: MdmLockService, useValue: { proposeManual: jest.fn() } },
+        { provide: OwnerAlertHelper, useValue: { sendToAllOwners: jest.fn().mockResolvedValue({ sent: 0, failed: 0 }) } },
       ],
     }).compile();
     service = mod.get(OverdueService);
@@ -350,6 +370,10 @@ describe('OverdueService.updateContractStatuses (C3: atomic flip)', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: DunningEngineService, useValue: mockDunningEngine },
         { provide: OverdueKpiService, useValue: mockKpiService },
+        { provide: PaymentsService, useValue: { autoAllocatePayment: jest.fn() } },
+        { provide: ContractLetterService, useValue: { createIfNotExists: jest.fn() } },
+        { provide: MdmLockService, useValue: { proposeManual: jest.fn() } },
+        { provide: OwnerAlertHelper, useValue: { sendToAllOwners: jest.fn().mockResolvedValue({ sent: 0, failed: 0 }) } },
       ],
     }).compile();
     service = mod.get(OverdueService);
@@ -415,6 +439,10 @@ describe('OverdueService (C2: throw if no SYSTEM user)', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: DunningEngineService, useValue: mockDunningEngine },
         { provide: OverdueKpiService, useValue: mockKpiService },
+        { provide: PaymentsService, useValue: { autoAllocatePayment: jest.fn() } },
+        { provide: ContractLetterService, useValue: { createIfNotExists: jest.fn() } },
+        { provide: MdmLockService, useValue: { proposeManual: jest.fn() } },
+        { provide: OwnerAlertHelper, useValue: { sendToAllOwners: jest.fn().mockResolvedValue({ sent: 0, failed: 0 }) } },
       ],
     }).compile();
     service = mod.get(OverdueService);
@@ -451,6 +479,10 @@ describe('OverdueService.getCollectionsFlag', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: DunningEngineService, useValue: mockDunningEngine },
         { provide: OverdueKpiService, useValue: mockKpiService },
+        { provide: PaymentsService, useValue: { autoAllocatePayment: jest.fn() } },
+        { provide: ContractLetterService, useValue: { createIfNotExists: jest.fn() } },
+        { provide: MdmLockService, useValue: { proposeManual: jest.fn() } },
+        { provide: OwnerAlertHelper, useValue: { sendToAllOwners: jest.fn().mockResolvedValue({ sent: 0, failed: 0 }) } },
       ],
     }).compile();
     service = mod.get(OverdueService);
@@ -505,6 +537,9 @@ describe('OverdueService.logContact with event trigger wiring', () => {
       callLog: {
         create: jest.fn().mockResolvedValue(makeCallLogResult('cl-1')),
       },
+      // Escalation Guardrail consults this before allowing PROMISED outcome.
+      // Default = 0 broken promises so existing PROMISED tests continue to pass.
+      auditLog: { count: jest.fn().mockResolvedValue(0) },
       $transaction: jest.fn(async (ops: (() => Promise<unknown>)[]) => {
         // Execute all promises in parallel and return results array
         return Promise.all(ops.map((op) => (typeof op === 'function' ? op() : op)));
@@ -517,6 +552,10 @@ describe('OverdueService.logContact with event trigger wiring', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: DunningEngineService, useValue: dunningEngineMock },
         { provide: OverdueKpiService, useValue: mockKpiService },
+        { provide: PaymentsService, useValue: { autoAllocatePayment: jest.fn() } },
+        { provide: ContractLetterService, useValue: { createIfNotExists: jest.fn() } },
+        { provide: MdmLockService, useValue: { proposeManual: jest.fn() } },
+        { provide: OwnerAlertHelper, useValue: { sendToAllOwners: jest.fn().mockResolvedValue({ sent: 0, failed: 0 }) } },
       ],
     }).compile();
     service = mod.get(OverdueService);

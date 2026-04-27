@@ -1,4 +1,14 @@
-import { IsIn, IsOptional, IsString, IsDateString, IsUrl, MaxLength } from 'class-validator';
+import {
+  IsIn,
+  IsOptional,
+  IsString,
+  IsDateString,
+  IsUrl,
+  IsNumber,
+  Min,
+  MaxLength,
+} from 'class-validator';
+import { Type } from 'class-transformer';
 
 // P1 Task 12 — quick-tag enums captured from ContactLogDialog chips.
 // Keep values 1:1 with prisma `CallResult` and `NegotiationResult` enums.
@@ -40,6 +50,22 @@ export class LogContactDto {
   @IsOptional()
   @IsDateString({}, { message: 'settlementDate ต้องเป็นวันที่ ISO' })
   settlementDate?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'settlementAmount ต้องเป็นตัวเลข' })
+  @Min(0.01, { message: 'settlementAmount ต้องมากกว่า 0' })
+  settlementAmount?: number;
+
+  @IsOptional()
+  @IsDateString({}, { message: 'secondSettlementDate ต้องเป็นวันที่ ISO' })
+  secondSettlementDate?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'secondSettlementAmount ต้องเป็นตัวเลข' })
+  @Min(0.01, { message: 'secondSettlementAmount ต้องมากกว่า 0' })
+  secondSettlementAmount?: number;
 
   @IsOptional()
   @IsString()

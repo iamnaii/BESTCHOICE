@@ -1827,6 +1827,10 @@ model CallLog {
   result                           String // e.g. ANSWERED, NO_ANSWER, PROMISED, REFUSED
   notes                            String?
   settlementDate                   DateTime?          @map("settlement_date") // วันที่นัดชำระ (กรณี PROMISED)
+  settlementAmount                 Decimal?           @map("settlement_amount") @db.Decimal(12, 2) // ยอดที่นัดชำระ (default = outstanding ตอนสร้าง log)
+  /// นัดแบ่งจ่าย 2 งวด: ส่วนที่เหลือ (auto = outstanding − settlementAmount, lock ฝั่ง UI)
+  secondSettlementDate             DateTime?          @map("second_settlement_date")
+  secondSettlementAmount           Decimal?           @map("second_settlement_amount") @db.Decimal(12, 2)
   settlementNotes                  String?            @map("settlement_notes") // รายละเอียดการนัดชำระ
   /// Timestamp เมื่อ cron พบว่าลูกค้าผิดคำสัญญาชำระ (settlementDate ผ่านแล้วแต่ยังไม่ชำระ).
   /// ใช้ร่วมกับ result='PROMISED' เพื่อนับ broken-promise count → ป้อนเข้า dunning

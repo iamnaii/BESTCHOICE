@@ -93,6 +93,7 @@ interface Props {
   onOpen360?: (c: ContractRow) => void;
   onSendLine?: (c: ContractRow) => void;
   onSkipTrace?: (c: ContractRow) => void;
+  onPartialPaymentReschedule?: (c: ContractRow) => void;
 }
 
 export default function PromiseTab({
@@ -103,6 +104,7 @@ export default function PromiseTab({
   onOpen360,
   onSendLine,
   onSkipTrace,
+  onPartialPaymentReschedule,
 }: Props) {
   const [page, setPage] = useState(1);
   const [filterOpen, setFilterOpen] = useState(false);
@@ -209,6 +211,7 @@ export default function PromiseTab({
                         onOpen360={onOpen360}
                         onSendLine={onSendLine}
                         onSkipTrace={onSkipTrace}
+                        onPartialPaymentReschedule={onPartialPaymentReschedule}
                       />
                     </div>
                   ))}
@@ -231,6 +234,7 @@ export default function PromiseTab({
                       onOpen360={onOpen360}
                       onSendLine={onSendLine}
                       onSkipTrace={onSkipTrace}
+                      onPartialPaymentReschedule={onPartialPaymentReschedule}
                     />
                   ))}
                 </div>
@@ -252,6 +256,7 @@ export default function PromiseTab({
                       onOpen360={onOpen360}
                       onSendLine={onSendLine}
                       onSkipTrace={onSkipTrace}
+                      onPartialPaymentReschedule={onPartialPaymentReschedule}
                     />
                   ))}
                 </div>

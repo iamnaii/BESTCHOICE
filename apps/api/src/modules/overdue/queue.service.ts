@@ -465,6 +465,7 @@ export class OverdueQueueService {
       sevenDayAgoSnapshots,
       activeSnoozes,
       latestLineMessages,
+      latestPromises,
     ] = await Promise.all([
       this.prisma.callLog.groupBy({
         by: ['contractId'],
@@ -580,6 +581,29 @@ export class OverdueQueueService {
           room: { select: { customerId: true } },
         },
       }),
+      // Latest active PROMISED CallLog per contract — drives the "นัดชำระ"
+      // chip + 2-installment amounts. Reading these off the most-recent
+      // call (any result) hides the deal when the next call is a follow-up
+      // NO_ANSWER. Filter brokenAt:null so a busted promise also stops
+      // surfacing.
+      this.prisma.callLog.findMany({
+        where: {
+          contractId: { in: contractIds },
+          deletedAt: null,
+          result: 'PROMISED',
+          brokenAt: null,
+          settlementDate: { not: null },
+        },
+        orderBy: { calledAt: 'desc' },
+        distinct: ['contractId'],
+        select: {
+          contractId: true,
+          settlementDate: true,
+          settlementAmount: true,
+          secondSettlementDate: true,
+          secondSettlementAmount: true,
+        },
+      }),
     ]);
 
     const callMap = new Map<string, Date | null>(
@@ -612,6 +636,9 @@ export class OverdueQueueService {
     const snoozeMap = new Map<string, Date>(
       activeSnoozes.map((r) => [r.contractId, r.snoozedUntil]),
     );
+    const promiseMap = new Map<string, (typeof latestPromises)[number]>(
+      latestPromises.map((r) => [r.contractId, r]),
+    );
     // Z10: customerId → latest outbound LINE deliveryStatus.
     const lineStatusByCustomer = new Map<string, string>();
     for (const m of latestLineMessages) {
@@ -633,9 +660,21 @@ export class OverdueQueueService {
         sevenDayMap.get(c.id),
       );
       const snoozedUntil = snoozeMap.get(c.id) ?? null;
+      const promise = promiseMap.get(c.id);
 
       return {
         ...base,
+        // Override base.settlement* (which read from the latest call of any
+        // result) with the latest active PROMISED call so a follow-up
+        // NO_ANSWER doesn't blank out the deal.
+        settlementDate: promise?.settlementDate ?? null,
+        settlementAmount: promise?.settlementAmount
+          ? new Prisma.Decimal(promise.settlementAmount).toNumber()
+          : null,
+        secondSettlementDate: promise?.secondSettlementDate ?? null,
+        secondSettlementAmount: promise?.secondSettlementAmount
+          ? new Prisma.Decimal(promise.secondSettlementAmount).toNumber()
+          : null,
         lastContactedAt,
         brokenPromiseCount: brokenMap.get(c.id) ?? 0,
         mdmState: this.toMdmState(mdmMap.get(c.id)),
@@ -793,6 +832,15 @@ export class OverdueQueueService {
       lastCallAt: callLog?.calledAt ?? null,
       noAnswerCount: c.noAnswerCount,
       settlementDate: callLog?.settlementDate ?? null,
+      // Surface the promised amounts so collectors can see the deal
+      // they made the last time they spoke with the customer.
+      settlementAmount: callLog?.settlementAmount
+        ? new Prisma.Decimal(callLog.settlementAmount).toNumber()
+        : null,
+      secondSettlementDate: callLog?.secondSettlementDate ?? null,
+      secondSettlementAmount: callLog?.secondSettlementAmount
+        ? new Prisma.Decimal(callLog.secondSettlementAmount).toNumber()
+        : null,
       needsSkipTracing: c.needsSkipTracing,
       deviceLocked: c.deviceLocked,
       __priorityScore,

@@ -7,6 +7,7 @@ import CollectionsHeader from './components/CollectionsHeader';
 import CollectionsTabs from './components/CollectionsTabs';
 import CollectionsFilters from './components/CollectionsFilters';
 import ContactLogDialog from './components/ContactLogDialog';
+import PartialPaymentRescheduleDialog from './components/PartialPaymentRescheduleDialog';
 import Customer360Panel from './components/Customer360Panel';
 import MigrationBanner from './components/MigrationBanner';
 import SendLineAdHocDialog from './components/SendLineAdHocDialog';
@@ -54,6 +55,7 @@ export default function CollectionsPage() {
   const [panelContract, setPanelContract] = useState<ContractRow | null>(null);
   const [lineDialogContract, setLineDialogContract] = useState<ContractRow | null>(null);
   const [skipTraceContract, setSkipTraceContract] = useState<ContractRow | null>(null);
+  const [partialPayContract, setPartialPayContract] = useState<ContractRow | null>(null);
 
   const canSeeAnalytics = canAccessTab('analytics', user?.role);
   const canSeeTeam = canAccessTab('team', user?.role);
@@ -139,6 +141,7 @@ export default function CollectionsPage() {
               onOpen360={openPanel}
               onSendLine={setLineDialogContract}
               onSkipTrace={setSkipTraceContract}
+              onPartialPaymentReschedule={setPartialPayContract}
               onSwitchTab={(tab) => setActiveTab(tab as CollectionsTabKey)}
             />
           )}
@@ -152,6 +155,7 @@ export default function CollectionsPage() {
               onOpen360={openPanel}
               onSendLine={setLineDialogContract}
               onSkipTrace={setSkipTraceContract}
+              onPartialPaymentReschedule={setPartialPayContract}
             />
           )}
 
@@ -186,6 +190,12 @@ export default function CollectionsPage() {
         open={!!skipTraceContract}
         contract={skipTraceContract}
         onClose={() => setSkipTraceContract(null)}
+      />
+
+      <PartialPaymentRescheduleDialog
+        open={!!partialPayContract}
+        contract={partialPayContract}
+        onClose={() => setPartialPayContract(null)}
       />
     </div>
   );

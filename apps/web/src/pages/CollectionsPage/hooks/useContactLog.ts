@@ -8,6 +8,9 @@ export interface LogContactPayload {
   notes?: string;
   collectionNotes?: string;
   settlementDate?: string;
+  settlementAmount?: number;
+  secondSettlementDate?: string;
+  secondSettlementAmount?: number;
   settlementNotes?: string;
   // P1 Task 12 — quick-tag enums
   callResult?:

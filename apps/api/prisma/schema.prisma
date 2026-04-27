@@ -900,6 +900,7 @@ model Contract {
 
   // Collections v2: no-answer tracking, skip tracing, MDM lock, wallpaper
   noAnswerCount      Int       @default(0) @map("no_answer_count")
+  keptPromiseCount   Int       @default(0) @map("kept_promise_count")
   needsSkipTracing   Boolean   @default(false) @map("needs_skip_tracing")
   deviceLocked       Boolean   @default(false) @map("device_locked")
   deviceLockedAt     DateTime? @map("device_locked_at")

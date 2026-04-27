@@ -198,7 +198,6 @@ export default function UnifiedInboxPage() {
     (text: string) => {
       void sendRoomMessage(text);
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [activeRoomId, queryClient],
   );
 
@@ -206,7 +205,6 @@ export default function UnifiedInboxPage() {
     ({ packageId, stickerId }: { packageId: number; stickerId: number }) => {
       void sendRoomMessage(`[sticker:${packageId}:${stickerId}]`);
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [activeRoomId, queryClient],
   );
 

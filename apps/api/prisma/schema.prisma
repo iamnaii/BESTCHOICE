@@ -1820,18 +1820,46 @@ model NotificationLog {
 }
 
 model CallLog {
-  id                               String             @id @default(uuid())
-  contractId                       String             @map("contract_id")
-  callerId                         String?            @map("caller_id")
-  calledAt                         DateTime           @map("called_at")
-  result                           String // e.g. ANSWERED, NO_ANSWER, PROMISED, REFUSED
-  notes                            String?
-  settlementDate                   DateTime?          @map("settlement_date") // วันที่นัดชำระ (กรณี PROMISED)
-  settlementNotes                  String?            @map("settlement_notes") // รายละเอียดการนัดชำระ
+  id              String    @id @default(uuid())
+  contractId      String    @map("contract_id")
+  callerId        String?   @map("caller_id")
+  calledAt        DateTime  @map("called_at")
+  result          String // e.g. ANSWERED, NO_ANSWER, PROMISED, REFUSED
+  notes           String?
+  settlementDate  DateTime? @map("settlement_date") // วันที่นัดชำระ (กรณี PROMISED)
+  settlementNotes String?   @map("settlement_notes") // รายละเอียดการนัดชำระ
   /// Timestamp เมื่อ cron พบว่าลูกค้าผิดคำสัญญาชำระ (settlementDate ผ่านแล้วแต่ยังไม่ชำระ).
   /// ใช้ร่วมกับ result='PROMISED' เพื่อนับ broken-promise count → ป้อนเข้า dunning
   /// escalation และ credit-check ถัดไป
-  brokenAt                         DateTime?          @map("broken_at")
+  brokenAt        DateTime? @map("broken_at")
+
+  /// Promise lifecycle (P2P redesign 2026-04-27)
+  supersededAt          DateTime? @map("superseded_at")
+  supersededByCallLogId String?   @map("superseded_by_call_log_id")
+  rescheduleCount       Int       @default(0) @map("reschedule_count")
+  keptAt                DateTime? @map("kept_at")
+  canceledAt            DateTime? @map("canceled_at")
+  canceledReason        String?   @map("canceled_reason")
+
+  /// Promise cycle (1 รอบนัด)
+  cycleStartedAt DateTime? @map("cycle_started_at")
+  cycleDeadline  DateTime? @map("cycle_deadline")
+
+  /// Installment mapping — UUID[] of installments this promise covers
+  targetInstallmentIds String[] @default([]) @map("target_installment_ids")
+
+  /// Self-relation: supersede chain
+  supersededBy CallLog?  @relation("PromiseSupersedeChain", fields: [supersededByCallLogId], references: [id], onDelete: SetNull)
+  supersedes   CallLog[] @relation("PromiseSupersedeChain")
+
+  /// PromiseSlot relation — replaces secondSettlementDate/Amount
+  slots PromiseSlot[]
+
+  /// @deprecated 2026-04-27 — replaced by PromiseSlot. Keep for backward compat until backfill+cutover (Task 31).
+  secondSettlementDate   DateTime? @map("second_settlement_date")
+  /// @deprecated 2026-04-27 — replaced by PromiseSlot.
+  secondSettlementAmount Decimal?  @map("second_settlement_amount") @db.Decimal(12, 2)
+
   // P1 Collections — quick-tag enums captured from ContactLogDialog (Task 12).
   // `result` (free-string above) remains the legacy field for back-compat;
   // these add structured analytics dimensions.
@@ -1847,7 +1875,7 @@ model CallLog {
   // Separate from voiceMemo* which are agent-recorded voice notes.
   yeastarCallId                    String?            @unique @map("yeastar_call_id")
   callDirection                    CallDirection?     @map("call_direction")
-  duration                         Int?   // วินาที (seconds) — จาก CDR
+  duration                         Int? // วินาที (seconds) — จาก CDR
   recordingUrl                     String?            @map("recording_url")
   recordingStorageTier             String?            @default("STANDARD") @map("recording_storage_tier")
   recordingDownloadedAt            DateTime?          @map("recording_downloaded_at")
@@ -1864,8 +1892,37 @@ model CallLog {
 
   @@index([contractId])
   @@index([callerId])
-  @@index([result, settlementDate, brokenAt])
+  @@index([result, settlementDate, brokenAt, supersededAt, keptAt, canceledAt])
+  @@index([cycleStartedAt, cycleDeadline])
+  @@index([supersededByCallLogId])
   @@map("call_logs")
+}
+
+/// "ที่" (slot) ภายใน 1 รอบนัด — supports unlimited slots per CallLog promise.
+/// Replaces legacy secondSettlementDate/Amount on CallLog.
+model PromiseSlot {
+  id        String  @id @default(uuid())
+  callLogId String  @map("call_log_id")
+  callLog   CallLog @relation(fields: [callLogId], references: [id], onDelete: Cascade)
+
+  slotIndex        Int      @map("slot_index")
+  settlementDate   DateTime @map("settlement_date")
+  settlementAmount Decimal  @map("settlement_amount") @db.Decimal(12, 2)
+
+  paidAmount Decimal   @default(0) @map("paid_amount") @db.Decimal(12, 2)
+  keptAt     DateTime? @map("kept_at")
+  brokenAt   DateTime? @map("broken_at")
+  lockedAt   DateTime? @map("locked_at")
+
+  notes String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([callLogId, slotIndex])
+  @@index([callLogId, settlementDate])
+  @@index([keptAt, brokenAt])
+  @@map("promise_slots")
 }
 
 model DunningRule {
@@ -4040,8 +4097,8 @@ model ChatMessage {
   staff   User?   @relation("ChatMessageStaff", fields: [staffId], references: [id])
 
   // Delivery tracking
-  deliveredAt DateTime? @map("delivered_at")
-  readAt      DateTime? @map("read_at")
+  deliveredAt    DateTime?                  @map("delivered_at")
+  readAt         DateTime?                  @map("read_at")
   // Z10: outbound delivery state populated from LINE webhook
   // `events[].deliveryContext`. NULL for inbound (customer→us) messages and
   // for outbound messages we sent before this column existed.

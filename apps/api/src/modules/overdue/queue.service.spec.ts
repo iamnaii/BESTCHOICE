@@ -11,6 +11,7 @@ const mockPrisma = {
   },
   callLog: {
     groupBy: jest.fn(),
+    findMany: jest.fn(),
   },
   dunningAction: {
     groupBy: jest.fn(),
@@ -42,6 +43,7 @@ const mockPrisma = {
 
 function resetEnrichmentMocks() {
   mockPrisma.callLog.groupBy.mockResolvedValue([]);
+  mockPrisma.callLog.findMany.mockResolvedValue([]);
   mockPrisma.dunningAction.groupBy.mockResolvedValue([]);
   mockPrisma.auditLog.groupBy.mockResolvedValue([]);
   mockPrisma.mdmLockRequest.findMany.mockResolvedValue([]);

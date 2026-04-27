@@ -83,6 +83,20 @@ export interface ContractRow {
     label: string;
     reason: string;
   } | null;
+  /**
+   * Task 24 — active promise cycle fields for PromiseTab cycle view.
+   * Null/empty when the contract has no active promise (e.g. today-tab rows).
+   */
+  cycleDeadline?: string | null;
+  rescheduleCount?: number;
+  slots?: Array<{
+    id: string;
+    slotIndex: number;
+    settlementDate: string;
+    settlementAmount: number;
+    keptAt: string | null;
+    brokenAt: string | null;
+  }>;
 }
 
 export type CallResult =

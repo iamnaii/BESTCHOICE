@@ -1280,11 +1280,25 @@ export class OverdueService {
 
   async getCycleDeadline(contractId: string) {
     const active = await this.promiseService.findActivePromise(contractId);
-    if ((active as any)?.cycleDeadline) {
-      return { cycleDeadline: (active as any).cycleDeadline.toISOString() };
-    }
-    const deadline = await this.promiseService.calcCycleDeadline(contractId);
-    return { cycleDeadline: deadline.toISOString() };
+    const deadline = (active as any)?.cycleDeadline
+      ? (active as any).cycleDeadline
+      : await this.promiseService.calcCycleDeadline(contractId);
+
+    const activeSlots: Array<{ settlementDate: Date }> = (active as any)?.slots ?? [];
+    const slotsPastDue = activeSlots.some((s) => s.settlementDate < new Date());
+
+    return {
+      cycleDeadline: deadline.toISOString(),
+      activePromise: active
+        ? {
+            id: (active as any).id,
+            settlementDate: (active as any).settlementDate?.toISOString() ?? null,
+            settlementAmount: Number((active as any).settlementAmount ?? 0),
+            rescheduleCount: (active as any).rescheduleCount ?? 0,
+            slotsPastDue,
+          }
+        : null,
+    };
   }
 
   async getOverdueInstallments(contractId: string) {

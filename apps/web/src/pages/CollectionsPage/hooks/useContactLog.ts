@@ -7,7 +7,6 @@ export interface LogContactPayload {
   result: string;
   notes?: string;
   collectionNotes?: string;
-  settlementDate?: string;
   settlementNotes?: string;
   // P1 Task 12 — quick-tag enums
   callResult?:
@@ -25,6 +24,15 @@ export interface LogContactPayload {
     | 'NOT_APPLICABLE';
   // P2 Task 4 — voice memo evidence (S3 URL stored on CallLog).
   voiceMemoUrl?: string;
+  // P2 Tasks 21+22 — N-slot promise manager (replaces legacy single settlementDate/Amount).
+  slots?: Array<{
+    settlementDate: string;
+    settlementAmount: number;
+    notes?: string;
+  }>;
+  targetInstallmentIds?: string[];
+  // Legacy field kept optional for back-compat with callers that haven't migrated yet.
+  settlementDate?: string;
 }
 
 export function useContactLog() {

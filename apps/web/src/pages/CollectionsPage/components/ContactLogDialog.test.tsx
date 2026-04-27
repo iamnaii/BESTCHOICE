@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import ContactLogDialog from './ContactLogDialog';
 import type { ContractRow } from '../types';
 
@@ -10,6 +11,13 @@ vi.mock('../hooks/useContactLog', () => ({
     mutate: vi.fn(),
     isPending: false,
   }),
+}));
+
+// Mock api calls made by useQuery inside the dialog
+vi.mock('@/lib/api', () => ({
+  default: {
+    get: vi.fn().mockResolvedValue({ data: [] }),
+  },
 }));
 
 const contract: ContractRow = {
@@ -37,35 +45,104 @@ const contract: ContractRow = {
   slipReviewPending: false,
 };
 
+function renderWithQueryClient(ui: React.ReactElement) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+}
+
 describe('<ContactLogDialog />', () => {
-  it('renders when open', () => {
-    render(<ContactLogDialog open={true} contract={contract} onClose={vi.fn()} />);
-    expect(screen.getByText('ผลการติดต่อ')).toBeInTheDocument();
+  it('renders modal title with customer name when open', () => {
+    renderWithQueryClient(
+      <ContactLogDialog open={true} contract={contract} onClose={vi.fn()} />,
+    );
+    expect(screen.getByText(/บันทึกผล/)).toBeInTheDocument();
+    expect(screen.getByText(/สมชาย ใจดี/)).toBeInTheDocument();
   });
 
   it('does not render when closed', () => {
-    render(<ContactLogDialog open={false} contract={contract} onClose={vi.fn()} />);
-    expect(screen.queryByText('ผลการติดต่อ')).not.toBeInTheDocument();
+    renderWithQueryClient(
+      <ContactLogDialog open={false} contract={contract} onClose={vi.fn()} />,
+    );
+    expect(screen.queryByText(/บันทึกผล/)).not.toBeInTheDocument();
   });
 
-  it('reveals settlement section when result is PROMISED', async () => {
-    const user = userEvent.setup();
-    render(<ContactLogDialog open={true} contract={contract} onClose={vi.fn()} />);
-
-    const select = screen.getByRole('combobox');
-    await user.selectOptions(select, 'PROMISED');
-
-    // Settlement section label appears
-    expect(screen.getByText(/วันที่นัดชำระ/)).toBeInTheDocument();
+  it('shows outcome chips for 3 choices', () => {
+    renderWithQueryClient(
+      <ContactLogDialog open={true} contract={contract} onClose={vi.fn()} />,
+    );
+    expect(screen.getByText('นัดชำระ')).toBeInTheDocument();
+    expect(screen.getByText('ไม่รับสาย')).toBeInTheDocument();
+    expect(screen.getByText('ติดต่อไม่ได้')).toBeInTheDocument();
   });
 
-  it('hides settlement section when result is NO_ANSWER', async () => {
+  it('reveals settlement section (N-slot manager) when "นัดชำระ" is clicked', async () => {
     const user = userEvent.setup();
-    render(<ContactLogDialog open={true} contract={contract} onClose={vi.fn()} />);
+    renderWithQueryClient(
+      <ContactLogDialog open={true} contract={contract} onClose={vi.fn()} />,
+    );
 
-    const select = screen.getByRole('combobox');
-    await user.selectOptions(select, 'NO_ANSWER');
+    await user.click(screen.getByText('นัดชำระ'));
 
-    expect(screen.queryByText(/วันที่นัดชำระ/)).not.toBeInTheDocument();
+    // Settlement card should appear with slot label
+    expect(screen.getByText('ที่ 1')).toBeInTheDocument();
+    // Sum indicator
+    expect(screen.getByText(/รวม/)).toBeInTheDocument();
+    // Add-slot button
+    expect(screen.getByRole('button', { name: /เพิ่ม/i })).toBeInTheDocument();
+  });
+
+  it('hides settlement section when "ไม่รับสาย" is clicked', async () => {
+    const user = userEvent.setup();
+    renderWithQueryClient(
+      <ContactLogDialog open={true} contract={contract} onClose={vi.fn()} />,
+    );
+
+    await user.click(screen.getByText('ไม่รับสาย'));
+
+    // Settlement section should NOT appear
+    expect(screen.queryByText('ที่ 1')).not.toBeInTheDocument();
+  });
+
+  it('allows adding a second slot', async () => {
+    const user = userEvent.setup();
+    renderWithQueryClient(
+      <ContactLogDialog open={true} contract={contract} onClose={vi.fn()} />,
+    );
+
+    await user.click(screen.getByText('นัดชำระ'));
+    // Find and click the "เพิ่ม" button (add slot)
+    const addButton = screen.getByRole('button', { name: /เพิ่ม/i });
+    await user.click(addButton);
+
+    // Now there should be two slots
+    expect(screen.getByText('ที่ 1')).toBeInTheDocument();
+    expect(screen.getByText('ที่ 2')).toBeInTheDocument();
+    // Sum indicator shows 2 slots
+    expect(screen.getByText(/รวม 2 ที่/)).toBeInTheDocument();
+  });
+
+  it('shows LINE notify hint after any outcome is selected', async () => {
+    const user = userEvent.setup();
+    renderWithQueryClient(
+      <ContactLogDialog open={true} contract={contract} onClose={vi.fn()} />,
+    );
+
+    await user.click(screen.getByText('ไม่รับสาย'));
+
+    expect(
+      screen.getByText(/ระบบจะส่ง LINE แจ้งเตือนลูกค้าทันทีหลังบันทึก/),
+    ).toBeInTheDocument();
+  });
+
+  it('displays contract number and outstanding in summary', () => {
+    renderWithQueryClient(
+      <ContactLogDialog open={true} contract={contract} onClose={vi.fn()} />,
+    );
+
+    expect(screen.getByText('BC-2026-0001')).toBeInTheDocument();
+    // Outstanding 5500 formatted
+    expect(screen.getByText('12 วัน')).toBeInTheDocument();
   });
 });

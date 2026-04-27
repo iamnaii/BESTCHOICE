@@ -12,6 +12,7 @@ import { Prisma, DunningStage } from '@prisma/client';
 import { BUSINESS_RULES } from '../../utils/config.util';
 import { DunningEngineService } from './dunning-engine.service';
 import { OverdueKpiService } from './kpi.service';
+import { PromiseService } from './promise.service';
 
 @Injectable()
 export class OverdueService {
@@ -21,6 +22,7 @@ export class OverdueService {
     private prisma: PrismaService,
     private dunningEngine: DunningEngineService,
     private kpiService: OverdueKpiService,
+    private promiseService: PromiseService,
   ) {}
 
   private async getSystemUserIdOrThrow(): Promise<string> {
@@ -927,6 +929,12 @@ export class OverdueService {
         | 'NOT_APPLICABLE';
       // P2 Task 4 — voice memo evidence (S3 URL). Stored on CallLog.
       voiceMemoUrl?: string;
+      // P2 Task 10 — structured promise slots (replaces legacy single/dual settlement fields).
+      slots?: Array<{ settlementDate: string; settlementAmount: number; notes?: string }>;
+      targetInstallmentIds?: string[];
+      settlementAmount?: number | string;
+      secondSettlementDate?: string;
+      secondSettlementAmount?: number | string;
     },
   ) {
     const contract = await this.prisma.contract.findFirst({
@@ -935,6 +943,90 @@ export class OverdueService {
     if (!contract) throw new NotFoundException('ไม่พบสัญญา');
 
     const now = new Date();
+
+    // P2 Task 11 — route PROMISED results through PromiseService (creates
+    // PromiseSlot records, handles broken-promise detection, cycle deadline
+    // validation, FIFO installment targeting, and AuditLog).
+    if (dto.result === 'PROMISED') {
+      // Build slots from either new dto.slots OR legacy single/dual settlement fields.
+      const slotsInput =
+        dto.slots && dto.slots.length > 0
+          ? dto.slots.map((s) => ({
+              settlementDate: new Date(s.settlementDate),
+              settlementAmount: s.settlementAmount,
+              notes: s.notes,
+            }))
+          : [
+              ...(dto.settlementDate
+                ? [
+                    {
+                      settlementDate: new Date(dto.settlementDate),
+                      settlementAmount: Number(dto.settlementAmount ?? 0),
+                    },
+                  ]
+                : []),
+              ...(dto.secondSettlementDate
+                ? [
+                    {
+                      settlementDate: new Date(dto.secondSettlementDate),
+                      settlementAmount: Number(dto.secondSettlementAmount ?? 0),
+                    },
+                  ]
+                : []),
+            ];
+
+      if (slotsInput.length === 0) {
+        throw new BadRequestException('ต้องระบุอย่างน้อย 1 ที่');
+      }
+
+      let totalPromiseAmount = 0;
+      for (const s of slotsInput) {
+        totalPromiseAmount += Number(s.settlementAmount);
+      }
+
+      const targetIds =
+        dto.targetInstallmentIds && dto.targetInstallmentIds.length > 0
+          ? dto.targetInstallmentIds
+          : await this.computeFifoTargets(contractId, totalPromiseAmount);
+
+      // Update contract contact tracking alongside the promise creation.
+      await this.prisma.contract.update({
+        where: { id: contractId },
+        data: {
+          lastContactDate: now,
+          dunningLastActionAt: now,
+          ...(dto.collectionNotes !== undefined && { collectionNotes: dto.collectionNotes }),
+          noAnswerCount: 0,
+        },
+      });
+
+      const newPromise = await this.promiseService.createPromise({
+        contractId,
+        userId: callerId,
+        slots: slotsInput,
+        targetInstallmentIds: targetIds,
+        notes: dto.notes,
+      });
+
+      // Fire CALL_ANSWERED_PROMISE event trigger — non-fatal.
+      try {
+        await this.dunningEngine.executeEventTrigger(
+          'CALL_ANSWERED_PROMISE',
+          contractId,
+          null,
+          newPromise.id,
+        );
+      } catch (err) {
+        this.logger.warn(
+          `executeEventTrigger failed for CALL_ANSWERED_PROMISE on contract ${contractId}: ${
+            err instanceof Error ? err.message : err
+          }`,
+        );
+      }
+
+      this.kpiService.invalidate();
+      return newPromise;
+    }
 
     // Per-result side effects + event-trigger key
     const resultMap: Record<
@@ -1007,6 +1099,39 @@ export class OverdueService {
     this.kpiService.invalidate();
 
     return callLog;
+  }
+
+  /**
+   * Returns the IDs of unpaid installments that FIFO-allocate up to targetAmount.
+   * Used when the caller does not explicitly specify targetInstallmentIds.
+   */
+  private async computeFifoTargets(contractId: string, targetAmount: number): Promise<string[]> {
+    const payments = await this.prisma.payment.findMany({
+      where: {
+        contractId,
+        deletedAt: null,
+        paidAt: null,
+      },
+      select: {
+        id: true,
+        dueDate: true,
+        amountDue: true,
+        amountPaid: true,
+      },
+      orderBy: { dueDate: 'asc' },
+    });
+
+    const { Decimal } = await import('@prisma/client/runtime/library');
+    const { allocateFifo } = await import('./installment-allocator.util');
+
+    return allocateFifo(
+      payments.map((p) => ({
+        id: p.id,
+        dueDate: p.dueDate,
+        remainingAmount: (p.amountDue as any).sub(p.amountPaid as any),
+      })),
+      new Decimal(targetAmount),
+    );
   }
 
   /**

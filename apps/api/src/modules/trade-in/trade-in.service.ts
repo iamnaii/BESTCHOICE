@@ -582,11 +582,25 @@ export class TradeInService {
    *  - ถ้า fail กลางทาง → record ค้างใน intermediate state (PENDING/APPRAISED)
    *    ซึ่งสามารถกู้คืนได้ผ่าน legacy modals (appraise/accept ทีละขั้น)
    */
-  async quickBuy(dto: QuickBuyTradeInDto, userId: string) {
+  async quickBuy(
+    dto: QuickBuyTradeInDto,
+    userId: string,
+    userBranchId?: string | null,
+  ) {
+    // Resolve branch — prefer DTO (explicit pick), fall back to user's home branch.
+    // OWNER/cross-branch users have no default branch, so they must pass branchId
+    // explicitly; surface a clear error instead of letting accept() fail later.
+    const branchId = dto.branchId ?? userBranchId ?? null;
+    if (!branchId) {
+      throw new BadRequestException(
+        'กรุณาเลือกสาขาที่รับซื้อก่อน — บัญชีของคุณไม่ได้ผูกกับสาขาเริ่มต้น',
+      );
+    }
+
     // ─── Stage 1: Create (PENDING_APPRAISAL) ───
     // ใช้ create() เดิม — validation seller/IMEI dup/ID card upload เกิดที่นี่
     const created = await this.create({
-      branchId: dto.branchId,
+      branchId,
       deviceBrand: dto.deviceBrand,
       deviceModel: dto.deviceModel,
       deviceStorage: dto.deviceStorage,

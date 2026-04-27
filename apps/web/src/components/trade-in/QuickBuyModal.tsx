@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 import { readSmartCard } from '@/lib/cardReader';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -43,6 +44,7 @@ const conditionOptions = [
 ];
 
 export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModalProps) {
+  const { user } = useAuth();
   const [step, setStep] = useState(1);
   const [imeiCheckResult, setImeiCheckResult] = useState<{ result: 'clean' | 'duplicate'; count: number } | null>(null);
   const [sellerHistory, setSellerHistory] = useState<SellerHistoryResponse | null>(null);
@@ -96,6 +98,7 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
   const quickBuyMutation = useMutation({
     mutationFn: async () => {
       const payload = {
+        branchId: user?.branchId ?? undefined,
         sellerName: form.sellerName,
         sellerPhone: form.sellerPhone || undefined,
         sellerIdCardNumber: form.sellerIdCardNumber || undefined,

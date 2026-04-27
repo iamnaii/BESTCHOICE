@@ -150,6 +150,7 @@ describe('<AuthProvider />', () => {
       getAccessTokenMock.mockReturnValue(null);
       apiPostMock.mockResolvedValueOnce({
         data: {
+          state: 'AUTHENTICATED',
           accessToken: 'new-token',
           user: {
             id: 'user-2',
@@ -187,6 +188,7 @@ describe('<AuthProvider />', () => {
         .mockRejectedValueOnce({ code: 'ECONNREFUSED' })
         .mockResolvedValueOnce({
           data: {
+            state: 'AUTHENTICATED',
             accessToken: 'retry-token',
             user: {
               id: 'user-3',

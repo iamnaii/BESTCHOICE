@@ -287,6 +287,87 @@ export class MdmLockService {
   }
 
   /**
+   * Auto-lock without approval queue (P2P spec section 3.5/5.6).
+   * Triggered by promise-resolution cron + no-promise-lock cron.
+   * Idempotent: skips if contract already locked.
+   *
+   * @param systemUserId — optional; caller may pass the SYSTEM user UUID
+   *   pre-resolved to avoid an extra DB lookup per contract in bulk cron runs.
+   */
+  async autoLock(contractId: string, reason: string, systemUserId?: string): Promise<void> {
+    const contract = await this.prisma.contract.findFirst({
+      where: { id: contractId, deletedAt: null },
+      select: { id: true, deviceLocked: true },
+    });
+    if (!contract || contract.deviceLocked) return;
+
+    const actorId = systemUserId ?? (await this.getSystemUserIdOrThrow());
+    const now = new Date();
+
+    await this.prisma.$transaction([
+      this.prisma.contract.update({
+        where: { id: contractId },
+        data: { deviceLocked: true, deviceLockedAt: now },
+      }),
+      this.prisma.auditLog.create({
+        data: {
+          userId: actorId,
+          action: 'MDM_AUTO_LOCK',
+          entity: 'contract',
+          entityId: contractId,
+          newValue: { reason },
+        },
+      }),
+    ]);
+
+    // Fire LINE event — non-fatal
+    try {
+      await this.dunningEngine.executeEventTrigger('DEVICE_LOCKED', contractId, null, null);
+    } catch {
+      // engine already logs
+    }
+  }
+
+  /**
+   * Auto-unlock when the whole promise cycle is kept (P2P spec section 5.4).
+   * Idempotent: skips if contract not currently locked.
+   *
+   * @param systemUserId — optional; pre-resolved SYSTEM user UUID (same as autoLock).
+   */
+  async autoUnlock(contractId: string, reason: string, systemUserId?: string): Promise<void> {
+    const contract = await this.prisma.contract.findFirst({
+      where: { id: contractId, deletedAt: null },
+      select: { id: true, deviceLocked: true },
+    });
+    if (!contract || !contract.deviceLocked) return;
+
+    const actorId = systemUserId ?? (await this.getSystemUserIdOrThrow());
+
+    await this.prisma.$transaction([
+      this.prisma.contract.update({
+        where: { id: contractId },
+        data: { deviceLocked: false, deviceLockedAt: null, wallpaperChanged: false },
+      }),
+      this.prisma.auditLog.create({
+        data: {
+          userId: actorId,
+          action: 'MDM_AUTO_UNLOCK',
+          entity: 'contract',
+          entityId: contractId,
+          newValue: { reason },
+        },
+      }),
+    ]);
+
+    // Fire LINE event — non-fatal
+    try {
+      await this.dunningEngine.executeEventTrigger('DEVICE_UNLOCKED', contractId, null, null);
+    } catch {
+      // engine already logs
+    }
+  }
+
+  /**
    * For the approval tab: pending requests visible to the caller. OWNER/FM see all;
    * BRANCH_MANAGER sees only their branch. SALES not granted (no controller route).
    */

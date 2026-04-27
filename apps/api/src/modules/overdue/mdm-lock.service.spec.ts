@@ -269,6 +269,165 @@ describe('MdmLockService', () => {
     });
   });
 
+  describe('autoLock', () => {
+    it('skips if contract already locked', async () => {
+      mockPrisma.contract.findFirst.mockResolvedValueOnce({ id: 'c-1', deviceLocked: true });
+      await service.autoLock('c-1', 'SLOT_BROKEN');
+      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+      expect(mockEngine.executeEventTrigger).not.toHaveBeenCalled();
+    });
+
+    it('skips if contract not found', async () => {
+      mockPrisma.contract.findFirst.mockResolvedValueOnce(null);
+      await service.autoLock('c-1', 'SLOT_BROKEN');
+      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('locks + records audit log when not locked', async () => {
+      mockPrisma.contract.findFirst.mockResolvedValueOnce({ id: 'c-1', deviceLocked: false });
+      mockPrisma.user.findFirst.mockResolvedValueOnce({ id: 'system-uuid' });
+      mockPrisma.$transaction.mockResolvedValueOnce([{}, {}]);
+
+      await service.autoLock('c-1', 'SLOT_BROKEN:slot1');
+
+      const txOps = mockPrisma.$transaction.mock.calls[0][0] as unknown[];
+      expect(txOps).toHaveLength(2);
+
+      // contract.update was called as part of the transaction ops array
+      expect(mockPrisma.contract.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'c-1' },
+          data: expect.objectContaining({ deviceLocked: true }),
+        }),
+      );
+      expect(mockPrisma.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            action: 'MDM_AUTO_LOCK',
+            entity: 'contract',
+            entityId: 'c-1',
+            userId: 'system-uuid',
+            newValue: { reason: 'SLOT_BROKEN:slot1' },
+          }),
+        }),
+      );
+    });
+
+    it('accepts pre-resolved systemUserId — skips user DB lookup', async () => {
+      mockPrisma.contract.findFirst.mockResolvedValueOnce({ id: 'c-1', deviceLocked: false });
+      mockPrisma.$transaction.mockResolvedValueOnce([{}, {}]);
+
+      await service.autoLock('c-1', 'SLOT_BROKEN', 'pre-resolved-id');
+
+      expect(mockPrisma.user.findFirst).not.toHaveBeenCalled();
+      expect(mockPrisma.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ userId: 'pre-resolved-id' }),
+        }),
+      );
+    });
+
+    it('fires DEVICE_LOCKED event after transaction', async () => {
+      mockPrisma.contract.findFirst.mockResolvedValueOnce({ id: 'c-1', deviceLocked: false });
+      mockPrisma.user.findFirst.mockResolvedValueOnce({ id: 'system-uuid' });
+      mockPrisma.$transaction.mockResolvedValueOnce([{}, {}]);
+
+      await service.autoLock('c-1', 'P2P_BROKEN');
+
+      expect(mockEngine.executeEventTrigger).toHaveBeenCalledWith('DEVICE_LOCKED', 'c-1', null, null);
+    });
+
+    it('does not throw if DEVICE_LOCKED event fails (non-fatal)', async () => {
+      mockPrisma.contract.findFirst.mockResolvedValueOnce({ id: 'c-1', deviceLocked: false });
+      mockPrisma.user.findFirst.mockResolvedValueOnce({ id: 'system-uuid' });
+      mockPrisma.$transaction.mockResolvedValueOnce([{}, {}]);
+      mockEngine.executeEventTrigger.mockRejectedValueOnce(new Error('line down'));
+
+      await expect(service.autoLock('c-1', 'P2P_BROKEN')).resolves.toBeUndefined();
+    });
+
+    it('throws ServiceUnavailableException if SYSTEM user not seeded', async () => {
+      mockPrisma.contract.findFirst.mockResolvedValueOnce({ id: 'c-1', deviceLocked: false });
+      mockPrisma.user.findFirst.mockResolvedValueOnce(null);
+
+      await expect(service.autoLock('c-1', 'P2P_BROKEN')).rejects.toThrow(/SYSTEM user/);
+    });
+  });
+
+  describe('autoUnlock', () => {
+    it('skips if contract not locked', async () => {
+      mockPrisma.contract.findFirst.mockResolvedValueOnce({ id: 'c-1', deviceLocked: false });
+      await service.autoUnlock('c-1', 'CYCLE_KEPT');
+      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+      expect(mockEngine.executeEventTrigger).not.toHaveBeenCalled();
+    });
+
+    it('skips if contract not found', async () => {
+      mockPrisma.contract.findFirst.mockResolvedValueOnce(null);
+      await service.autoUnlock('c-1', 'CYCLE_KEPT');
+      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('unlocks + records audit log when locked', async () => {
+      mockPrisma.contract.findFirst.mockResolvedValueOnce({ id: 'c-1', deviceLocked: true });
+      mockPrisma.user.findFirst.mockResolvedValueOnce({ id: 'system-uuid' });
+      mockPrisma.$transaction.mockResolvedValueOnce([{}, {}]);
+
+      await service.autoUnlock('c-1', 'CYCLE_KEPT');
+
+      expect(mockPrisma.contract.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'c-1' },
+          data: expect.objectContaining({ deviceLocked: false, deviceLockedAt: null }),
+        }),
+      );
+      expect(mockPrisma.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            action: 'MDM_AUTO_UNLOCK',
+            entity: 'contract',
+            entityId: 'c-1',
+            userId: 'system-uuid',
+            newValue: { reason: 'CYCLE_KEPT' },
+          }),
+        }),
+      );
+    });
+
+    it('accepts pre-resolved systemUserId — skips user DB lookup', async () => {
+      mockPrisma.contract.findFirst.mockResolvedValueOnce({ id: 'c-1', deviceLocked: true });
+      mockPrisma.$transaction.mockResolvedValueOnce([{}, {}]);
+
+      await service.autoUnlock('c-1', 'CYCLE_KEPT', 'pre-resolved-id');
+
+      expect(mockPrisma.user.findFirst).not.toHaveBeenCalled();
+      expect(mockPrisma.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ userId: 'pre-resolved-id' }),
+        }),
+      );
+    });
+
+    it('fires DEVICE_UNLOCKED event after transaction', async () => {
+      mockPrisma.contract.findFirst.mockResolvedValueOnce({ id: 'c-1', deviceLocked: true });
+      mockPrisma.user.findFirst.mockResolvedValueOnce({ id: 'system-uuid' });
+      mockPrisma.$transaction.mockResolvedValueOnce([{}, {}]);
+
+      await service.autoUnlock('c-1', 'CYCLE_KEPT');
+
+      expect(mockEngine.executeEventTrigger).toHaveBeenCalledWith('DEVICE_UNLOCKED', 'c-1', null, null);
+    });
+
+    it('does not throw if DEVICE_UNLOCKED event fails (non-fatal)', async () => {
+      mockPrisma.contract.findFirst.mockResolvedValueOnce({ id: 'c-1', deviceLocked: true });
+      mockPrisma.user.findFirst.mockResolvedValueOnce({ id: 'system-uuid' });
+      mockPrisma.$transaction.mockResolvedValueOnce([{}, {}]);
+      mockEngine.executeEventTrigger.mockRejectedValueOnce(new Error('line down'));
+
+      await expect(service.autoUnlock('c-1', 'CYCLE_KEPT')).resolves.toBeUndefined();
+    });
+  });
+
   describe('getPendingByRole', () => {
     it('filters by branch for BRANCH_MANAGER', async () => {
       mockPrisma.mdmLockRequest.findMany.mockResolvedValueOnce([]);

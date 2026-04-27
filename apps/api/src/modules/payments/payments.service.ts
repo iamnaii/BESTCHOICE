@@ -18,6 +18,8 @@ import { FlexTemplatesService } from '../line-oa/flex-templates.service';
 import { QuickReplyService } from '../line-oa/quick-reply.service';
 import { formatDateShort } from '../../utils/thai-date.util';
 import { MdmAutoService } from '../mdm/mdm-auto.service';
+import { PromiseService } from '../overdue/promise.service';
+import { MdmLockService } from '../overdue/mdm-lock.service';
 
 @Injectable()
 export class PaymentsService {
@@ -34,6 +36,8 @@ export class PaymentsService {
     private flexTemplates: FlexTemplatesService,
     private quickReplyService: QuickReplyService,
     @Optional() private mdmAuto?: MdmAutoService,
+    @Optional() private promiseService?: PromiseService,
+    @Optional() private mdmLockService?: MdmLockService,
   ) {}
 
   /** Enforce branch-level access: SALES/BRANCH_MANAGER can only operate on their own branch */
@@ -266,6 +270,12 @@ export class PaymentsService {
       );
     }
 
+    // Promise-to-pay kept-detection — runs AFTER the payment tx commits so
+    // MDM/audit failures cannot roll back the payment row.
+    this.checkPromiseAfterPayment(contractId).catch((err) =>
+      this.logger.error('Promise-kept hook failed (non-blocking)', err),
+    );
+
     return updated;
   }
 
@@ -283,7 +293,7 @@ export class PaymentsService {
     }
 
     // Wrap entire allocation in a serializable transaction to prevent double-payment
-    return this.prisma.$transaction(async (tx) => {
+    const allocationResult = await this.prisma.$transaction(async (tx) => {
       const contract = await tx.contract.findUnique({
         where: { id: contractId },
         include: { payments: { where: { deletedAt: null }, orderBy: { installmentNo: 'asc' } } },
@@ -400,6 +410,13 @@ export class PaymentsService {
           : null,
       };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+
+    // Promise-to-pay kept-detection — runs AFTER the payment tx commits.
+    this.checkPromiseAfterPayment(contractId).catch((err) =>
+      this.logger.error('Promise-kept hook failed (non-blocking)', err),
+    );
+
+    return allocationResult;
   }
 
   // ─── Get payments for a contract ──────────────────────
@@ -1075,5 +1092,82 @@ export class PaymentsService {
     } catch (err) {
       this.logger.warn(`LINE push failed for contract ${contractId}: ${err instanceof Error ? err.message : err}`);
     }
+  }
+
+  // ─── Promise-to-pay kept-detection ────────────────────
+  // Called non-blocking after every payment tx commits. Checks whether any
+  // active promise-to-pay cycle is fully satisfied and, if so, marks it kept
+  // and auto-unlocks the MDM device.
+  private async checkPromiseAfterPayment(contractId: string): Promise<void> {
+    if (!this.promiseService || !this.mdmLockService) return;
+    const active = await this.promiseService.findActivePromise(contractId);
+    if (!active) return;
+
+    const now = new Date();
+    let allKept = true;
+
+    for (const slot of active.slots) {
+      // Already resolved — skip
+      if (slot.keptAt) continue;
+      if (slot.brokenAt) {
+        allKept = false;
+        continue;
+      }
+
+      // Allow 1-day grace window after the settlement date
+      const windowEnd = new Date(slot.settlementDate.getTime() + 1 * 86400 * 1000);
+      const sum = await this.prisma.payment.aggregate({
+        where: {
+          contractId,
+          deletedAt: null,
+          paidAt: { not: null, lte: windowEnd },
+        },
+        _sum: { amountPaid: true },
+      });
+      const paid = (sum._sum.amountPaid as Prisma.Decimal | null)?.toNumber() ?? 0;
+      const target = (slot.settlementAmount as Prisma.Decimal).toNumber();
+
+      if (paid >= target) {
+        await this.prisma.promiseSlot.update({
+          where: { id: slot.id },
+          data: { keptAt: now, paidAmount: paid as unknown as Prisma.Decimal },
+        });
+      } else {
+        allKept = false;
+      }
+    }
+
+    if (allKept) {
+      await this.prisma.callLog.update({
+        where: { id: active.id },
+        data: { keptAt: now },
+      });
+      await this.prisma.contract.update({
+        where: { id: contractId },
+        data: { keptPromiseCount: { increment: 1 } },
+      });
+
+      const systemUserId = await this.getSystemUserId();
+      await this.prisma.auditLog.create({
+        data: {
+          action: 'KEPT_PROMISE',
+          entity: 'contract',
+          entityId: contractId,
+          userId: systemUserId,
+          newValue: { callLogId: active.id, source: 'PAYMENT_HOOK' },
+        },
+      });
+
+      await this.mdmLockService!.autoUnlock(contractId, 'CYCLE_KEPT', systemUserId);
+    }
+  }
+
+  private async getSystemUserId(): Promise<string> {
+    const user = await this.prisma.user.findFirst({
+      where: { isSystemUser: true },
+      select: { id: true },
+    });
+    if (!user) throw new Error('System user not found');
+    return user.id;
   }
 }

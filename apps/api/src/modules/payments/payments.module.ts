@@ -6,9 +6,10 @@ import { JournalModule } from '../journal/journal.module';
 import { ProductsModule } from '../products/products.module';
 import { LineOaModule } from '../line-oa/line-oa.module';
 import { MdmModule } from '../mdm/mdm.module';
+import { OverdueModule } from '../overdue/overdue.module';
 
 @Module({
-  imports: [ReceiptsModule, JournalModule, ProductsModule, LineOaModule, MdmModule],
+  imports: [ReceiptsModule, JournalModule, ProductsModule, LineOaModule, MdmModule, OverdueModule],
   controllers: [PaymentsController],
   providers: [PaymentsService],
   exports: [PaymentsService],

@@ -20,6 +20,8 @@ import { LineOaService } from '../line-oa/line-oa.service';
 import { FlexTemplatesService } from '../line-oa/flex-templates.service';
 import { QuickReplyService } from '../line-oa/quick-reply.service';
 import { WarrantyService } from '../warranty/warranty.service';
+import { PromiseService } from '../overdue/promise.service';
+import { MdmLockService } from '../overdue/mdm-lock.service';
 import * as Sentry from '@sentry/node';
 
 describe('PaymentsService', () => {
@@ -121,6 +123,18 @@ describe('PaymentsService', () => {
           provide: WarrantyService,
           useValue: {
             setShopWarranty: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: PromiseService,
+          useValue: {
+            findActivePromise: jest.fn().mockResolvedValue(null),
+          },
+        },
+        {
+          provide: MdmLockService,
+          useValue: {
+            autoUnlock: jest.fn().mockResolvedValue(undefined),
           },
         },
       ],
@@ -483,6 +497,98 @@ describe('PaymentsService', () => {
         service.waiveLateFee('payment-1', 'reason', 'user-1', 'user-1'),
       ).rejects.toThrow(ForbiddenException);
       expect(prisma.feeWaiverApproval.create).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── Task 16+17: Promise-to-pay kept-detection hook ───────────────────────
+  describe('checkPromiseAfterPayment', () => {
+    let promiseService: any;
+    let mdmLockService: any;
+    const contractId = 'c-1';
+
+    beforeEach(() => {
+      promiseService = service['promiseService'];
+      mdmLockService = service['mdmLockService'];
+      // Add table mocks not present in the outer beforeEach
+      prisma.auditLog = { create: jest.fn().mockResolvedValue({}) };
+      prisma.promiseSlot = { update: jest.fn().mockResolvedValue({}) };
+      // callLog.update (outer mock only has updateMany)
+      prisma.callLog.update = jest.fn().mockResolvedValue({});
+      // user.findFirst for getSystemUserId
+      prisma.user.findFirst = jest.fn().mockResolvedValue({ id: 'sys-uid' });
+    });
+
+    it('marks all slots kept + auto-unlocks when full cycle paid', async () => {
+      (promiseService as any).findActivePromise.mockResolvedValue({
+        id: 'cl-1',
+        contractId,
+        slots: [
+          {
+            id: 's-1',
+            slotIndex: 1,
+            settlementDate: new Date(Date.now() - 86400 * 1000),
+            settlementAmount: { toNumber: () => 1000 },
+            keptAt: null,
+            brokenAt: null,
+          },
+        ],
+      });
+      prisma.payment.aggregate.mockResolvedValue({
+        _sum: { amountPaid: { toNumber: () => 1500 } },
+      });
+
+      // @ts-expect-error access private for test
+      await service.checkPromiseAfterPayment(contractId);
+
+      expect(prisma.promiseSlot.update).toHaveBeenCalled();
+      expect(prisma.callLog.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ keptAt: expect.any(Date) }) }),
+      );
+      expect(prisma.contract.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { keptPromiseCount: { increment: 1 } } }),
+      );
+      expect(prisma.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ action: 'KEPT_PROMISE' }),
+        }),
+      );
+      expect((mdmLockService as any).autoUnlock).toHaveBeenCalledWith(contractId, 'CYCLE_KEPT', 'sys-uid');
+    });
+
+    it('does NOT mark kept when slot underpaid', async () => {
+      (promiseService as any).findActivePromise.mockResolvedValue({
+        id: 'cl-1',
+        contractId,
+        slots: [
+          {
+            id: 's-1',
+            slotIndex: 1,
+            settlementDate: new Date(Date.now() - 86400 * 1000),
+            settlementAmount: { toNumber: () => 1000 },
+            keptAt: null,
+            brokenAt: null,
+          },
+        ],
+      });
+      prisma.payment.aggregate.mockResolvedValue({
+        _sum: { amountPaid: { toNumber: () => 500 } },
+      });
+
+      // @ts-expect-error access private for test
+      await service.checkPromiseAfterPayment(contractId);
+
+      expect(prisma.callLog.update).not.toHaveBeenCalled();
+      expect((mdmLockService as any).autoUnlock).not.toHaveBeenCalled();
+    });
+
+    it('skips when no active promise exists', async () => {
+      (promiseService as any).findActivePromise.mockResolvedValue(null);
+
+      // @ts-expect-error access private for test
+      await service.checkPromiseAfterPayment(contractId);
+
+      expect(prisma.promiseSlot.update).not.toHaveBeenCalled();
+      expect((mdmLockService as any).autoUnlock).not.toHaveBeenCalled();
     });
   });
 

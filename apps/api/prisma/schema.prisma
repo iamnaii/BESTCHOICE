@@ -1821,18 +1821,19 @@ model NotificationLog {
 }
 
 model CallLog {
-  id              String    @id @default(uuid())
-  contractId      String    @map("contract_id")
-  callerId        String?   @map("caller_id")
-  calledAt        DateTime  @map("called_at")
-  result          String // e.g. ANSWERED, NO_ANSWER, PROMISED, REFUSED
-  notes           String?
-  settlementDate  DateTime? @map("settlement_date") // วันที่นัดชำระ (กรณี PROMISED)
-  settlementNotes String?   @map("settlement_notes") // รายละเอียดการนัดชำระ
+  id               String    @id @default(uuid())
+  contractId       String    @map("contract_id")
+  callerId         String?   @map("caller_id")
+  calledAt         DateTime  @map("called_at")
+  result           String // e.g. ANSWERED, NO_ANSWER, PROMISED, REFUSED
+  notes            String?
+  settlementDate   DateTime? @map("settlement_date") // วันที่นัดชำระ (กรณี PROMISED)
+  settlementAmount Decimal?  @map("settlement_amount") @db.Decimal(12, 2) // ยอดที่นัดชำระ (default = outstanding ตอนสร้าง log)
+  settlementNotes  String?   @map("settlement_notes") // รายละเอียดการนัดชำระ
   /// Timestamp เมื่อ cron พบว่าลูกค้าผิดคำสัญญาชำระ (settlementDate ผ่านแล้วแต่ยังไม่ชำระ).
   /// ใช้ร่วมกับ result='PROMISED' เพื่อนับ broken-promise count → ป้อนเข้า dunning
   /// escalation และ credit-check ถัดไป
-  brokenAt        DateTime? @map("broken_at")
+  brokenAt         DateTime? @map("broken_at")
 
   /// Promise lifecycle (P2P redesign 2026-04-27)
   supersededAt          DateTime? @map("superseded_at")

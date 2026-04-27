@@ -900,6 +900,8 @@ model Contract {
 
   // Collections v2: no-answer tracking, skip tracing, MDM lock, wallpaper
   noAnswerCount      Int       @default(0) @map("no_answer_count")
+  /// DENORMALIZED counter — written by promise-resolution.cron + PaymentService.checkPromiseAfterPayment in $transaction.
+  /// Source of truth is CallLog.keptAt count (matches the derive pattern used for brokenPromiseCount via AuditLog).
   keptPromiseCount   Int       @default(0) @map("kept_promise_count")
   needsSkipTracing   Boolean   @default(false) @map("needs_skip_tracing")
   deviceLocked       Boolean   @default(false) @map("device_locked")
@@ -1902,6 +1904,9 @@ model CallLog {
 
 /// "ที่" (slot) ภายใน 1 รอบนัด — supports unlimited slots per CallLog promise.
 /// Replaces legacy secondSettlementDate/Amount on CallLog.
+///
+/// `deletedAt` intentionally omitted — slots are removed only via CASCADE from CallLog.
+/// Lifecycle is expressed via keptAt/brokenAt/lockedAt timestamps, not soft-delete.
 model PromiseSlot {
   id        String  @id @default(uuid())
   callLogId String  @map("call_log_id")

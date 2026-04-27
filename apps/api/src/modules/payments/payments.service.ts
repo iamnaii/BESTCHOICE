@@ -272,9 +272,10 @@ export class PaymentsService {
 
     // Promise-to-pay kept-detection — runs AFTER the payment tx commits so
     // MDM/audit failures cannot roll back the payment row.
-    this.checkPromiseAfterPayment(contractId).catch((err) =>
-      this.logger.error('Promise-kept hook failed (non-blocking)', err),
-    );
+    this.checkPromiseAfterPayment(contractId).catch((err) => {
+      this.logger.error('Promise-kept hook failed (non-blocking)', err);
+      Sentry.captureException(err, { tags: { hook: 'checkPromiseAfterPayment', contractId } });
+    });
 
     return updated;
   }
@@ -412,9 +413,10 @@ export class PaymentsService {
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
     // Promise-to-pay kept-detection — runs AFTER the payment tx commits.
-    this.checkPromiseAfterPayment(contractId).catch((err) =>
-      this.logger.error('Promise-kept hook failed (non-blocking)', err),
-    );
+    this.checkPromiseAfterPayment(contractId).catch((err) => {
+      this.logger.error('Promise-kept hook failed (non-blocking)', err);
+      Sentry.captureException(err, { tags: { hook: 'checkPromiseAfterPayment', contractId } });
+    });
 
     return allocationResult;
   }
@@ -1116,6 +1118,9 @@ export class PaymentsService {
 
       // Allow 1-day grace window after the settlement date
       const windowEnd = new Date(slot.settlementDate.getTime() + 1 * 86400 * 1000);
+      // W6 fix: only count payments made AFTER this promise cycle started so that
+      // payments from previous cycles months ago don't falsely satisfy the current slot.
+      const cycleStart = active.cycleStartedAt ?? active.createdAt;
       // C1 fix: filter by OR(paidAt/paidDate) so manual payments (which set paidDate,
       // not paidAt) are counted alongside PaySolutions webhook payments (which set paidAt).
       const sum = await this.prisma.payment.aggregate({
@@ -1123,8 +1128,8 @@ export class PaymentsService {
           contractId,
           deletedAt: null,
           OR: [
-            { paidAt: { not: null, lte: windowEnd } },
-            { paidDate: { not: null, lte: windowEnd } },
+            { paidAt: { not: null, gte: cycleStart, lte: windowEnd } },
+            { paidDate: { not: null, gte: cycleStart, lte: windowEnd } },
           ],
         },
         _sum: { amountPaid: true },

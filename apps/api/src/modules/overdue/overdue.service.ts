@@ -979,15 +979,15 @@ export class OverdueService {
         throw new BadRequestException('ต้องระบุอย่างน้อย 1 ที่');
       }
 
-      let totalPromiseAmount = 0;
+      let totalPromiseAmount = new Prisma.Decimal(0);
       for (const s of slotsInput) {
-        totalPromiseAmount += Number(s.settlementAmount);
+        totalPromiseAmount = totalPromiseAmount.add(new Prisma.Decimal(s.settlementAmount));
       }
 
       const targetIds =
         dto.targetInstallmentIds && dto.targetInstallmentIds.length > 0
           ? dto.targetInstallmentIds
-          : await this.computeFifoTargets(contractId, totalPromiseAmount);
+          : await this.computeFifoTargets(contractId, totalPromiseAmount.toNumber());
 
       // Update contract contact tracking alongside the promise creation.
       await this.prisma.contract.update({

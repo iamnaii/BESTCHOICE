@@ -91,7 +91,7 @@ async function main() {
       canceledAt: null,
       settlementDate: { not: null, lt: new Date() },
     },
-    select: { id: true, contractId: true, settlementDate: true, settlementAmount: true },
+    select: { id: true, contractId: true, settlementDate: true, settlementAmount: true, cycleStartedAt: true, createdAt: true },
   });
 
   console.log(`Phase 2: checking ${candidatePromises.length} promises for kept-status`);
@@ -100,14 +100,16 @@ async function main() {
   for (const p of candidatePromises) {
     if (!p.settlementDate || !p.settlementAmount) continue;
     const windowEnd = new Date(p.settlementDate.getTime() + 86400 * 1000);
+    // W6 fix: only count payments made AFTER this promise cycle started.
+    const cycleStart = p.cycleStartedAt ?? p.createdAt;
     // C1 fix: count both paidAt (PaySolutions webhook) and paidDate (manual recordPayment).
     const sum = await prisma.payment.aggregate({
       where: {
         contractId: p.contractId,
         deletedAt: null,
         OR: [
-          { paidAt: { not: null, lte: windowEnd } },
-          { paidDate: { not: null, lte: windowEnd } },
+          { paidAt: { not: null, gte: cycleStart, lte: windowEnd } },
+          { paidDate: { not: null, gte: cycleStart, lte: windowEnd } },
         ],
       },
       _sum: { amountPaid: true },

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { AlertTriangle, Calendar, CheckCircle2, Phone, Timer } from 'lucide-react';
 import { useDebounce } from '@/hooks/useDebounce';
+import { formatThaiDateShort } from '@/lib/date';
 import { isToday } from '../utils/today';
 import QueryBoundary from '@/components/QueryBoundary';
 import ContractCard from '../components/ContractCard';
@@ -100,9 +101,7 @@ function PromiseCycleView({ row }: { row: ContractRow }) {
     ? Math.max(0, Math.ceil((deadlineDate.getTime() - Date.now()) / 86400000))
     : null;
 
-  const deadlineLabel = deadlineDate
-    ? deadlineDate.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })
-    : null;
+  const deadlineLabel = deadlineDate ? formatThaiDateShort(deadlineDate) : null;
 
   return (
     <div className="rounded-b-xl border border-t-0 border-border/50 bg-muted/40 px-4 py-2.5 flex flex-col gap-2">
@@ -137,10 +136,7 @@ function PromiseCycleView({ row }: { row: ContractRow }) {
                 : status === 'broken'
                 ? 'bg-destructive/20 text-destructive border border-destructive/30'
                 : 'bg-muted text-muted-foreground border border-border';
-            const slotDate = new Date(s.settlementDate).toLocaleDateString('th-TH', {
-              day: 'numeric',
-              month: 'short',
-            });
+            const slotDate = formatThaiDateShort(s.settlementDate);
             return (
               <div
                 key={s.id}

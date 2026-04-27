@@ -22,6 +22,18 @@ import { MdmLockService } from '../mdm-lock.service';
 
 const NO_CONTACT_RESULTS = ['NO_ANSWER', 'UNREACHABLE'];
 
+// COMMENT: UI currently maps the "ติดต่อไม่ได้" (UNREACHABLE) outcome to result='NO_ANSWER'
+// for legacy compatibility (ContactLogDialog line 211). The fine-grained channel is stored in
+// callResult='UNREACHABLE'. This cron therefore checks BOTH result AND callResult so that
+// genuine UNREACHABLE attempts are caught whether the UI stored them as 'NO_ANSWER' (result)
+// or 'UNREACHABLE' (callResult). This avoids the UNREACHABLE branch being dead code for UI calls.
+function isNoContact(cl: { result: string; callResult: string | null }): boolean {
+  return (
+    NO_CONTACT_RESULTS.includes(cl.result) ||
+    (cl.callResult !== null && NO_CONTACT_RESULTS.includes(cl.callResult))
+  );
+}
+
 @Injectable()
 export class NoPromiseLockCron {
   private readonly logger = new Logger(NoPromiseLockCron.name);
@@ -68,13 +80,10 @@ export class NoPromiseLockCron {
             where: { contractId: c.id, deletedAt: null },
             orderBy: { createdAt: 'desc' },
             take: 2,
-            select: { id: true, result: true, createdAt: true },
+            select: { id: true, result: true, callResult: true, createdAt: true },
           });
 
-          if (
-            last2.length === 2 &&
-            last2.every((cl) => NO_CONTACT_RESULTS.includes(cl.result))
-          ) {
+          if (last2.length === 2 && last2.every(isNoContact)) {
             await this.mdm.autoLock(c.id, 'NO_PROMISE_2_NO_CONTACT', systemUserId);
             locked++;
           }

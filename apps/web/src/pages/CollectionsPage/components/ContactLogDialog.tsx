@@ -4,6 +4,7 @@ import { Phone, PhoneIncoming, PhoneOutgoing, Clock } from 'lucide-react';
 import api from '@/lib/api';
 import Modal from '@/components/ui/Modal';
 import { formatNumber } from '@/utils/formatters';
+import { formatThaiDateShort } from '@/lib/date';
 import { useContactLog } from '../hooks/useContactLog';
 import { usePromiseSlots } from '../hooks/usePromiseSlots';
 import SupersedePromiseConfirmDialog from './SupersedePromiseConfirmDialog';
@@ -378,10 +379,7 @@ export default function ContactLogDialog({ open, contract, onClose, onSaved }: P
                 <div className="rounded-lg bg-card border border-border px-3 py-2 text-sm leading-snug">
                   เพดานรอบนัด:{' '}
                   <span className="font-semibold tabular-nums">
-                    {new Date(cycleDeadline).toLocaleDateString('th-TH', {
-                      day: 'numeric',
-                      month: 'short',
-                    })}
+                    {formatThaiDateShort(cycleDeadline)}
                   </span>{' '}
                   — ทุก &ldquo;ที่&rdquo; ต้องไม่เกินวันนี้
                 </div>

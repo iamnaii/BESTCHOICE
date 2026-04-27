@@ -1,6 +1,7 @@
 import { AlertTriangle } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
 import { formatNumber } from '@/utils/formatters';
+import { formatThaiDateShort } from '@/lib/date';
 
 interface OldPromise {
   settlementDate: string; // ISO
@@ -25,10 +26,7 @@ export default function SupersedePromiseConfirmDialog({
 }: Props) {
   if (!oldPromise) return null;
 
-  const dateLabel = new Date(oldPromise.settlementDate).toLocaleDateString('th-TH', {
-    day: 'numeric',
-    month: 'short',
-  });
+  const dateLabel = formatThaiDateShort(oldPromise.settlementDate);
 
   return (
     <Modal isOpen={open} onClose={onCancel} title="ยืนยันการเลื่อนนัด" size="sm">

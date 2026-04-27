@@ -111,6 +111,9 @@ export class PromiseResolutionCron {
       // The "paid window" ends at settlementDate + GRACE_DAYS — this ensures we
       // count payments made up to and including the grace period end.
       const windowEnd = new Date(slot.settlementDate.getTime() + GRACE_DAYS * 86400 * 1000);
+      // W6 fix: only count payments made AFTER this promise cycle started so that
+      // payments from previous cycles months ago don't falsely satisfy the current slot.
+      const cycleStart = p.cycleStartedAt ?? p.createdAt;
 
       // C1 fix: filter by OR(paidAt/paidDate) so manual payments (which set paidDate,
       // not paidAt) are counted alongside PaySolutions webhook payments (which set paidAt).
@@ -119,8 +122,8 @@ export class PromiseResolutionCron {
           contractId: p.contractId,
           deletedAt: null,
           OR: [
-            { paidAt: { not: null, lte: windowEnd } },
-            { paidDate: { not: null, lte: windowEnd } },
+            { paidAt: { not: null, gte: cycleStart, lte: windowEnd } },
+            { paidDate: { not: null, gte: cycleStart, lte: windowEnd } },
           ],
         },
         _sum: { amountPaid: true },

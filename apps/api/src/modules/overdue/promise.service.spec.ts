@@ -149,7 +149,7 @@ describe('PromiseService.createPromise (supersede + reschedule)', () => {
       expect.objectContaining({
         data: expect.objectContaining({
           action: 'BROKEN_PROMISE',
-          entity: 'Contract',
+          entity: 'contract',
           entityId: 'c-1',
         }),
       }),

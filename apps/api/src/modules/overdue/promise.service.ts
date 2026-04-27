@@ -1,4 +1,5 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
 export interface CreatePromiseSlotInput {
@@ -55,12 +56,13 @@ export class PromiseService {
   async createPromise(input: CreatePromiseInput) {
     const now = new Date();
 
-    return this.prisma.$transaction(async (tx) => {
+    return this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       // C2 fix: use tx (not this.prisma) so concurrent calls see each other's pending writes
       // and two collectors cannot both create an active promise for the same contract.
-      const oldPromise = await (tx as any).callLog.findFirst({
+      const oldPromise = await tx.callLog.findFirst({
         where: {
           contractId: input.contractId,
+          deletedAt: null,
           result: 'PROMISED',
           brokenAt: null,
           supersededAt: null,
@@ -76,18 +78,18 @@ export class PromiseService {
       let rescheduleCount = 0;
 
       if (oldPromise) {
-        cycleStartedAt = (oldPromise as any).cycleStartedAt ?? now;
+        cycleStartedAt = oldPromise.cycleStartedAt ?? now;
         cycleDeadline =
-          (oldPromise as any).cycleDeadline ??
+          oldPromise.cycleDeadline ??
           (await this.calcCycleDeadline(input.contractId, now));
-        rescheduleCount = (oldPromise as any).rescheduleCount + 1;
+        rescheduleCount = oldPromise.rescheduleCount + 1;
 
-        const oldHasPastDueSlot = ((oldPromise as any).slots as any[]).some(
-          (s: any) => s.settlementDate.getTime() < now.getTime(),
+        const oldHasPastDueSlot = oldPromise.slots.some(
+          (s) => s.settlementDate.getTime() < now.getTime(),
         );
         const shouldCountBroken = oldHasPastDueSlot || rescheduleCount >= 2;
 
-        await (tx as any).callLog.update({
+        await tx.callLog.update({
           where: { id: oldPromise.id },
           data: {
             supersededAt: now,
@@ -96,10 +98,10 @@ export class PromiseService {
         });
 
         if (shouldCountBroken) {
-          await (tx as any).auditLog.create({
+          await tx.auditLog.create({
             data: {
               action: 'BROKEN_PROMISE',
-              entity: 'Contract',
+              entity: 'contract',
               entityId: input.contractId,
               userId: input.userId,
               newValue: {
@@ -139,7 +141,7 @@ export class PromiseService {
       // C4 fix: calledAt is non-nullable in CallLog with no DB default — must supply it.
       // C4 fix: CallLog has no `userId` field; the user attribution column is `callerId`.
       //         input.userId (the collector's user ID) maps to callerId storage.
-      const newPromise = await (tx as any).callLog.create({
+      const newPromise = await tx.callLog.create({
         data: {
           contractId: input.contractId,
           callerId: input.userId,
@@ -147,7 +149,7 @@ export class PromiseService {
           result: 'PROMISED',
           notes: input.notes,
           settlementDate: primary.settlementDate,
-          settlementAmount: primary.settlementAmount as any,
+          settlementAmount: primary.settlementAmount as never,
           rescheduleCount,
           cycleStartedAt,
           cycleDeadline,
@@ -156,18 +158,18 @@ export class PromiseService {
       });
 
       if (oldPromise) {
-        await (tx as any).callLog.update({
+        await tx.callLog.update({
           where: { id: oldPromise.id },
           data: { supersededByCallLogId: newPromise.id },
         });
       }
 
-      await (tx as any).promiseSlot.createMany({
+      await tx.promiseSlot.createMany({
         data: sortedSlots.map((s, idx) => ({
           callLogId: newPromise.id,
           slotIndex: idx + 1,
           settlementDate: s.settlementDate,
-          settlementAmount: s.settlementAmount as any,
+          settlementAmount: s.settlementAmount as never,
           notes: s.notes,
         })),
       });
@@ -185,6 +187,7 @@ export class PromiseService {
     return this.prisma.callLog.findFirst({
       where: {
         contractId,
+        deletedAt: null,
         result: 'PROMISED',
         brokenAt: null,
         supersededAt: null,

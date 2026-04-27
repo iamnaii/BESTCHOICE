@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Check, X } from 'lucide-react';
 import { formatNumber } from '@/utils/formatters';
+import { formatThaiDateShort } from '@/lib/date';
 
 export interface InstallmentOption {
   id: string;
@@ -56,10 +57,7 @@ export default function InstallmentPickerPopover({
         )}
         {installments.map((i) => {
           const selected = draft.includes(i.id);
-          const dateLabel = new Date(i.dueDate).toLocaleDateString('th-TH', {
-            day: 'numeric',
-            month: 'short',
-          });
+          const dateLabel = formatThaiDateShort(i.dueDate);
           return (
             <button
               key={i.id}

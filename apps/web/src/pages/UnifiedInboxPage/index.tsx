@@ -70,7 +70,7 @@ export default function UnifiedInboxPage() {
   }, [activeRoomId]);
 
   // WebSocket for real-time updates
-  const { joinRoom, leaveRoom, sendMessage, viewRoom, isCustomerTyping } = useChatSocket({
+  const { joinRoom, leaveRoom, viewRoom, isCustomerTyping } = useChatSocket({
     onNewMessage: (data) => {
       queryClient.invalidateQueries({ queryKey: ['chat-messages', data.roomId] });
       queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
@@ -175,27 +175,39 @@ export default function UnifiedInboxPage() {
     [activeRoomId, joinRoom, leaveRoom],
   );
 
+  // Send via HTTP — WS is unreliable behind some proxies, so HTTP is the
+  // source of truth for sending. WS is still used to receive real-time updates.
+  const sendRoomMessage = async (text: string) => {
+    if (!activeRoomId) return;
+    try {
+      const { data } = await api.post<{ success: boolean; error?: string }>(
+        `/staff-chat/rooms/${activeRoomId}/messages`,
+        { text },
+      );
+      if (data && data.success === false) {
+        toast.error(`ส่งข้อความไม่สำเร็จ${data.error ? ` — ${data.error}` : ''}`);
+      }
+    } catch (err) {
+      const e = err as { response?: { data?: { error?: string; message?: string } } };
+      toast.error(e?.response?.data?.error ?? e?.response?.data?.message ?? 'ส่งข้อความไม่สำเร็จ');
+    }
+    queryClient.invalidateQueries({ queryKey: ['chat-messages', activeRoomId] });
+  };
+
   const handleSendMessage = useCallback(
     (text: string) => {
-      if (!activeRoomId) return;
-      sendMessage(activeRoomId, text);
-      // Optimistic: invalidate messages
-      setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ['chat-messages', activeRoomId] });
-      }, 300);
+      void sendRoomMessage(text);
     },
-    [activeRoomId, sendMessage, queryClient],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [activeRoomId, queryClient],
   );
 
   const handleSendSticker = useCallback(
     ({ packageId, stickerId }: { packageId: number; stickerId: number }) => {
-      if (!activeRoomId) return;
-      sendMessage(activeRoomId, `[sticker:${packageId}:${stickerId}]`);
-      setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ['chat-messages', activeRoomId] });
-      }, 300);
+      void sendRoomMessage(`[sticker:${packageId}:${stickerId}]`);
     },
-    [activeRoomId, sendMessage, queryClient],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [activeRoomId, queryClient],
   );
 
   const uploadFileMutation = useMutation({
@@ -229,7 +241,7 @@ export default function UnifiedInboxPage() {
   const customerId = sessionQuery.data?.customerId ?? null;
 
   return (
-    <div className="h-screen flex bg-card overflow-hidden">
+    <div className="h-screen flex bg-card overflow-hidden pb-[calc(56px+env(safe-area-inset-bottom))] lg:pb-0">
       {/* Left panel: Conversation list */}
       <div className={`w-80 flex-shrink-0 min-h-0 ${activeRoomId ? 'hidden lg:flex lg:flex-col' : 'flex flex-col w-full lg:w-80'}`}>
         <QueryBoundary

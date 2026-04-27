@@ -117,11 +117,22 @@ export class StaffChatController {
     if (!text) {
       return { success: false, error: 'กรุณาพิมพ์ข้อความก่อนส่ง' };
     }
-    return this.messageRouter.sendStaffMessage({
+    const result = await this.messageRouter.sendStaffMessage({
       roomId: id,
       staffId: req.user.id,
       text,
     });
+
+    // Broadcast to staff viewing this room so the message appears in real-time
+    this.staffChatGateway.emitNewMessage(id, {
+      roomId: id,
+      role: 'STAFF',
+      staffId: req.user.id,
+      text,
+      createdAt: new Date().toISOString(),
+    });
+
+    return result;
   }
 
   // ─── Unread + Search ────────────────────────────────────

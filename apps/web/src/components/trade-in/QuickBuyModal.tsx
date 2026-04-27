@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
@@ -46,8 +46,15 @@ const conditionOptions = [
 export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModalProps) {
   const { user } = useAuth();
   const [step, setStep] = useState(1);
+  const [branchId, setBranchId] = useState<string>(user?.branchId ?? '');
   const [imeiCheckResult, setImeiCheckResult] = useState<{ result: 'clean' | 'duplicate'; count: number } | null>(null);
   const [sellerHistory, setSellerHistory] = useState<SellerHistoryResponse | null>(null);
+
+  const { data: branches = [] } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ['branches'],
+    queryFn: async () => (await api.get('/branches')).data,
+    enabled: open,
+  });
 
   const [form, setForm] = useState({
     // Step 1: seller (address ใช้ AddressForm แยก state)
@@ -77,6 +84,7 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
 
   function reset() {
     setStep(1);
+    setBranchId(user?.branchId ?? '');
     setImeiCheckResult(null);
     setSellerHistory(null);
     setAddress({ ...emptyAddress });
@@ -98,7 +106,7 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
   const quickBuyMutation = useMutation({
     mutationFn: async () => {
       const payload = {
-        branchId: user?.branchId ?? undefined,
+        branchId: branchId || undefined,
         sellerName: form.sellerName,
         sellerPhone: form.sellerPhone || undefined,
         sellerIdCardNumber: form.sellerIdCardNumber || undefined,
@@ -236,6 +244,7 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
   // ─── Step navigation ────────────────────────────────
   function next() {
     if (step === 1) {
+      if (!branchId) return toast.error('กรุณาเลือกสาขาที่รับซื้อ');
       if (!form.sellerName.trim()) return toast.error('กรุณาระบุชื่อผู้ขาย');
       if (form.sellerIdCardNumber && form.sellerIdCardNumber.length !== 13) {
         return toast.error('เลขบัตรประชาชนต้อง 13 หลัก');
@@ -326,6 +335,20 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
           {/* ─── STEP 1: SELLER ─── */}
           {step === 1 && (
             <div className="space-y-4">
+              <div>
+                <Label className="text-sm font-semibold">สาขาที่รับซื้อ *</Label>
+                <select
+                  className="mt-1 w-full h-10 rounded-lg border border-input bg-background px-3 text-sm"
+                  value={branchId}
+                  onChange={(e) => setBranchId(e.target.value)}
+                >
+                  <option value="">-- เลือกสาขา --</option>
+                  {branches.map((b) => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
+                </select>
+              </div>
+
               <div className="flex items-center justify-between">
                 <Label className="text-sm font-semibold">ข้อมูลผู้ขาย</Label>
                 <button

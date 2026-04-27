@@ -671,4 +671,18 @@ export class OverdueController {
   retryLine(@Param('id') id: string, @CurrentUser() user: { id: string }) {
     return this.dunningRetryService.retry(id, user.id);
   }
+
+  // --- P2P Lifecycle endpoints (Task 23) ---
+
+  @Get('contracts/:id/cycle-deadline')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES', 'ACCOUNTANT')
+  getCycleDeadline(@Param('id') id: string) {
+    return this.overdueService.getCycleDeadline(id);
+  }
+
+  @Get('contracts/:id/overdue-installments')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES', 'ACCOUNTANT')
+  getOverdueInstallments(@Param('id') id: string) {
+    return this.overdueService.getOverdueInstallments(id);
+  }
 }

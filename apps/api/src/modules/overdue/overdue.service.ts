@@ -1275,4 +1275,41 @@ export class OverdueService {
       })),
     };
   }
+
+  // --- P2P Lifecycle methods (Task 23) ---
+
+  async getCycleDeadline(contractId: string) {
+    const active = await this.promiseService.findActivePromise(contractId);
+    if ((active as any)?.cycleDeadline) {
+      return { cycleDeadline: (active as any).cycleDeadline.toISOString() };
+    }
+    const deadline = await this.promiseService.calcCycleDeadline(contractId);
+    return { cycleDeadline: deadline.toISOString() };
+  }
+
+  async getOverdueInstallments(contractId: string) {
+    const payments = await this.prisma.payment.findMany({
+      where: {
+        contractId,
+        deletedAt: null,
+        paidAt: null,
+      },
+      orderBy: { dueDate: 'asc' },
+      select: {
+        id: true,
+        installmentNo: true,
+        dueDate: true,
+        amountDue: true,
+        amountPaid: true,
+      },
+    });
+    const now = Date.now();
+    return payments.map((p) => ({
+      id: p.id,
+      installmentNumber: p.installmentNo,
+      dueDate: p.dueDate.toISOString(),
+      remainingAmount: Number(new Prisma.Decimal(p.amountDue as Prisma.Decimal).sub(p.amountPaid as Prisma.Decimal)),
+      daysOverdue: Math.max(0, Math.floor((now - p.dueDate.getTime()) / 86_400_000)),
+    }));
+  }
 }

@@ -15,6 +15,15 @@ describe('PromiseResolutionCron', () => {
   let mdm: any;
 
   beforeEach(async () => {
+    // C3 fix: resolvePromise now wraps all DB writes in prisma.$transaction.
+    // The tx object passed to the callback must expose the same table methods.
+    const txMock: any = {
+      callLog: { update: jest.fn().mockResolvedValue({}) },
+      promiseSlot: { update: jest.fn().mockResolvedValue({}) },
+      contract: { update: jest.fn().mockResolvedValue({}) },
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
+    };
+
     prisma = {
       callLog: { findMany: jest.fn(), update: jest.fn().mockResolvedValue({}) },
       promiseSlot: { update: jest.fn().mockResolvedValue({}) },
@@ -22,6 +31,9 @@ describe('PromiseResolutionCron', () => {
       payment: { aggregate: jest.fn().mockResolvedValue({ _sum: { amountPaid: null } }) },
       auditLog: { create: jest.fn().mockResolvedValue({}) },
       user: { findFirst: jest.fn().mockResolvedValue({ id: 'sys-uid' }) },
+      // Expose the transaction callback + forward calls to txMock so assertions still work.
+      $transaction: jest.fn(async (cb: any) => cb(txMock)),
+      __tx: txMock,
     };
     mdm = { autoLock: jest.fn().mockResolvedValue(undefined) };
 
@@ -56,7 +68,8 @@ describe('PromiseResolutionCron', () => {
 
     await cron.handleHourly();
 
-    expect(prisma.promiseSlot.update).toHaveBeenCalledWith(
+    // C3: DB writes now happen inside prisma.$transaction → assert on tx mock
+    expect(prisma.__tx.promiseSlot.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 's-1' },
         data: expect.objectContaining({ keptAt: expect.any(Date) }),
@@ -85,16 +98,17 @@ describe('PromiseResolutionCron', () => {
 
     await cron.handleHourly();
 
-    expect(prisma.promiseSlot.update).toHaveBeenCalledWith(
+    // C3: DB writes now happen inside prisma.$transaction → assert on tx mock
+    expect(prisma.__tx.promiseSlot.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ brokenAt: expect.any(Date) }) }),
     );
-    expect(prisma.callLog.update).toHaveBeenCalledWith(
+    expect(prisma.__tx.callLog.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'cl-1' },
         data: expect.objectContaining({ brokenAt: expect.any(Date) }),
       }),
     );
-    expect(prisma.auditLog.create).toHaveBeenCalledWith(
+    expect(prisma.__tx.auditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           action: 'BROKEN_PROMISE',
@@ -102,6 +116,7 @@ describe('PromiseResolutionCron', () => {
         }),
       }),
     );
+    // MDM autoLock is outside the transaction (external API call)
     expect(mdm.autoLock).toHaveBeenCalledWith(
       'c-1',
       expect.stringContaining('SLOT_BROKEN'),
@@ -138,13 +153,14 @@ describe('PromiseResolutionCron', () => {
 
     await cron.handleHourly();
 
-    expect(prisma.callLog.update).toHaveBeenCalledWith(
+    // C3: DB writes now happen inside prisma.$transaction → assert on tx mock
+    expect(prisma.__tx.callLog.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'cl-1' },
         data: expect.objectContaining({ keptAt: expect.any(Date) }),
       }),
     );
-    expect(prisma.contract.update).toHaveBeenCalledWith(
+    expect(prisma.__tx.contract.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: { keptPromiseCount: { increment: 1 } },
       }),

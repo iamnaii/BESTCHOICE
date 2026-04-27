@@ -47,6 +47,8 @@ describe('PromiseService.createPromise (supersede + reschedule)', () => {
   beforeEach(async () => {
     const tx: any = {
       callLog: {
+        // C2 fix: findFirst now uses tx inside the transaction, so mock it here.
+        findFirst: jest.fn(),
         update: jest.fn().mockResolvedValue({}),
         create: jest.fn().mockResolvedValue({ id: 'new-cl' }),
       },
@@ -56,6 +58,7 @@ describe('PromiseService.createPromise (supersede + reschedule)', () => {
     };
     prisma = {
       $transaction: jest.fn(async (cb: any) => cb(tx)),
+      // prisma.callLog.findFirst is no longer called directly (C2 fix) — only tx is.
       callLog: {
         findFirst: jest.fn(),
       },
@@ -69,7 +72,8 @@ describe('PromiseService.createPromise (supersede + reschedule)', () => {
   });
 
   it('first promise (no active) — rescheduleCount=0, no broken increment', async () => {
-    prisma.callLog.findFirst.mockResolvedValue(null);
+    // C2 fix: reads go through tx.callLog.findFirst now
+    prisma.__tx.callLog.findFirst.mockResolvedValue(null);
 
     await service.createPromise({
       contractId: 'c-1',
@@ -81,6 +85,10 @@ describe('PromiseService.createPromise (supersede + reschedule)', () => {
 
     const createCall = prisma.__tx.callLog.create.mock.calls[0][0];
     expect(createCall.data.rescheduleCount).toBe(0);
+    // C4 fix: callerId + calledAt must be present (no userId, no missing calledAt)
+    expect(createCall.data.callerId).toBe('u-1');
+    expect(createCall.data.calledAt).toBeInstanceOf(Date);
+    expect(createCall.data.userId).toBeUndefined();
     // No BROKEN_PROMISE audit log written for "first promise" path
     expect(prisma.__tx.auditLog.create).not.toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ action: 'BROKEN_PROMISE' }) }),
@@ -88,7 +96,8 @@ describe('PromiseService.createPromise (supersede + reschedule)', () => {
   });
 
   it('reschedule before due (1st time) — supersede old, no broken count', async () => {
-    prisma.callLog.findFirst.mockResolvedValue({
+    // C2 fix: reads go through tx.callLog.findFirst now
+    prisma.__tx.callLog.findFirst.mockResolvedValue({
       id: 'old-cl',
       contractId: 'c-1',
       cycleStartedAt: new Date('2026-04-01'),
@@ -115,7 +124,8 @@ describe('PromiseService.createPromise (supersede + reschedule)', () => {
   });
 
   it('reschedule before due (2nd time) — supersede + BROKEN_PROMISE audit', async () => {
-    prisma.callLog.findFirst.mockResolvedValue({
+    // C2 fix: reads go through tx.callLog.findFirst now
+    prisma.__tx.callLog.findFirst.mockResolvedValue({
       id: 'old-cl',
       contractId: 'c-1',
       cycleStartedAt: new Date('2026-04-01'),
@@ -147,7 +157,8 @@ describe('PromiseService.createPromise (supersede + reschedule)', () => {
   });
 
   it('reschedule after due (any time) — supersede + BROKEN_PROMISE audit', async () => {
-    prisma.callLog.findFirst.mockResolvedValue({
+    // C2 fix: reads go through tx.callLog.findFirst now
+    prisma.__tx.callLog.findFirst.mockResolvedValue({
       id: 'old-cl',
       contractId: 'c-1',
       cycleStartedAt: new Date('2026-04-01'),
@@ -171,7 +182,8 @@ describe('PromiseService.createPromise (supersede + reschedule)', () => {
   });
 
   it('rejects slot.settlementDate > cycleDeadline', async () => {
-    prisma.callLog.findFirst.mockResolvedValue({
+    // C2 fix: reads go through tx.callLog.findFirst now
+    prisma.__tx.callLog.findFirst.mockResolvedValue({
       id: 'old-cl',
       cycleDeadline: new Date('2026-05-31'),
       rescheduleCount: 0,

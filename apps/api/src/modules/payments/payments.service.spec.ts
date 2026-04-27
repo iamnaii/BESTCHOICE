@@ -590,6 +590,41 @@ describe('PaymentsService', () => {
       expect(prisma.promiseSlot.update).not.toHaveBeenCalled();
       expect((mdmLockService as any).autoUnlock).not.toHaveBeenCalled();
     });
+
+    it('C1: aggregate uses OR(paidAt/paidDate) so manual payments are counted', async () => {
+      // Both paidAt (PaySolutions) and paidDate (manual recordPayment) must be checked.
+      (promiseService as any).findActivePromise.mockResolvedValue({
+        id: 'cl-1',
+        contractId,
+        slots: [
+          {
+            id: 's-1',
+            slotIndex: 1,
+            settlementDate: new Date(Date.now() - 86400 * 1000),
+            settlementAmount: { toNumber: () => 1000 },
+            keptAt: null,
+            brokenAt: null,
+          },
+        ],
+      });
+      prisma.payment.aggregate.mockResolvedValue({
+        _sum: { amountPaid: { toNumber: () => 1000 } },
+      });
+
+      // @ts-expect-error access private for test
+      await service.checkPromiseAfterPayment(contractId);
+
+      const aggregateArgs = prisma.payment.aggregate.mock.calls[0][0];
+      expect(aggregateArgs.where.OR).toBeDefined();
+      expect(aggregateArgs.where.OR).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ paidAt: expect.anything() }),
+          expect.objectContaining({ paidDate: expect.anything() }),
+        ]),
+      );
+      // No bare paidAt at top level any more
+      expect(aggregateArgs.where.paidAt).toBeUndefined();
+    });
   });
 
   // T3-C5: Preventive rule — no direct mutation of Payment.amountPaid and

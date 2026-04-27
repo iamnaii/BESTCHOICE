@@ -56,7 +56,9 @@ export class PromiseService {
     const now = new Date();
 
     return this.prisma.$transaction(async (tx) => {
-      const oldPromise = await this.prisma.callLog.findFirst({
+      // C2 fix: use tx (not this.prisma) so concurrent calls see each other's pending writes
+      // and two collectors cannot both create an active promise for the same contract.
+      const oldPromise = await (tx as any).callLog.findFirst({
         where: {
           contractId: input.contractId,
           result: 'PROMISED',
@@ -134,10 +136,14 @@ export class PromiseService {
       );
       const primary = sortedSlots[0];
 
+      // C4 fix: calledAt is non-nullable in CallLog with no DB default — must supply it.
+      // C4 fix: CallLog has no `userId` field; the user attribution column is `callerId`.
+      //         input.userId (the collector's user ID) maps to callerId storage.
       const newPromise = await (tx as any).callLog.create({
         data: {
           contractId: input.contractId,
-          userId: input.userId,
+          callerId: input.userId,
+          calledAt: now,
           result: 'PROMISED',
           notes: input.notes,
           settlementDate: primary.settlementDate,

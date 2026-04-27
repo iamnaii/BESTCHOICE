@@ -100,11 +100,15 @@ async function main() {
   for (const p of candidatePromises) {
     if (!p.settlementDate || !p.settlementAmount) continue;
     const windowEnd = new Date(p.settlementDate.getTime() + 86400 * 1000);
+    // C1 fix: count both paidAt (PaySolutions webhook) and paidDate (manual recordPayment).
     const sum = await prisma.payment.aggregate({
       where: {
         contractId: p.contractId,
         deletedAt: null,
-        paidAt: { not: null, lte: windowEnd },
+        OR: [
+          { paidAt: { not: null, lte: windowEnd } },
+          { paidDate: { not: null, lte: windowEnd } },
+        ],
       },
       _sum: { amountPaid: true },
     });

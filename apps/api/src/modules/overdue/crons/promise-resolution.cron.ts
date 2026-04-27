@@ -83,8 +83,20 @@ export class PromiseResolutionCron {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private async resolvePromise(p: any, now: Date, cutoff: Date, systemUserId: string) {
+    // C3 fix: collect slot-level decisions OUTSIDE the DB transaction (payment aggregation
+    // is read-only, keeping the transaction short), then wrap all writes in a single
+    // $transaction so slot state, CallLog, Contract, and AuditLog are atomically consistent.
+    // mdm.autoLock makes external API calls and is intentionally kept OUTSIDE the transaction
+    // (same pattern as PaymentService: DB first, side effects after commit).
+
     let allSlotsResolved = true;
     let brokenSlot: any = null; // eslint-disable-line @typescript-eslint/no-explicit-any
+    // Collect per-slot decisions (paid amount, kept/broken) before opening the transaction.
+    const slotDecisions: Array<{
+      slot: any; // eslint-disable-line @typescript-eslint/no-explicit-any
+      kept: boolean;
+      paid: number;
+    }> = [];
 
     for (const slot of p.slots) {
       // Already resolved — skip
@@ -100,80 +112,98 @@ export class PromiseResolutionCron {
       // count payments made up to and including the grace period end.
       const windowEnd = new Date(slot.settlementDate.getTime() + GRACE_DAYS * 86400 * 1000);
 
+      // C1 fix: filter by OR(paidAt/paidDate) so manual payments (which set paidDate,
+      // not paidAt) are counted alongside PaySolutions webhook payments (which set paidAt).
       const sum = await this.prisma.payment.aggregate({
         where: {
           contractId: p.contractId,
           deletedAt: null,
-          paidAt: { not: null, lte: windowEnd },
+          OR: [
+            { paidAt: { not: null, lte: windowEnd } },
+            { paidDate: { not: null, lte: windowEnd } },
+          ],
         },
         _sum: { amountPaid: true },
       });
 
       const paid = sum._sum.amountPaid?.toNumber() ?? 0;
       const target = slot.settlementAmount.toNumber();
+      const kept = paid >= target;
 
-      if (paid >= target) {
-        // Slot kept
-        await this.prisma.promiseSlot.update({
-          where: { id: slot.id },
-          data: { keptAt: now, paidAmount: paid as unknown as never },
-        });
-      } else {
-        // Slot broken — stop processing further slots; the promise is broken
+      slotDecisions.push({ slot, kept, paid });
+
+      if (!kept) {
         brokenSlot = slot;
         allSlotsResolved = false;
-        await this.prisma.promiseSlot.update({
-          where: { id: slot.id },
-          data: { brokenAt: now, lockedAt: now, paidAmount: paid as unknown as never },
-        });
-        break;
+        break; // stop on first broken slot
       }
     }
 
-    if (brokenSlot) {
-      await this.prisma.callLog.update({
-        where: { id: p.id },
-        data: { brokenAt: now },
-      });
-      await this.prisma.auditLog.create({
-        data: {
-          action: 'BROKEN_PROMISE',
-          entity: 'contract',
-          entityId: p.contractId,
-          userId: systemUserId,
-          newValue: {
-            callLogId: p.id,
-            slotIndex: brokenSlot.slotIndex,
-            reason: 'SLOT_BROKEN_PAST_GRACE',
+    // C3 fix: wrap all DB writes in a single transaction for atomicity.
+    await this.prisma.$transaction(async (tx) => {
+      for (const { slot, kept, paid } of slotDecisions) {
+        if (kept) {
+          await tx.promiseSlot.update({
+            where: { id: slot.id },
+            data: { keptAt: now, paidAmount: paid as unknown as never },
+          });
+        } else {
+          await tx.promiseSlot.update({
+            where: { id: slot.id },
+            data: { brokenAt: now, lockedAt: now, paidAmount: paid as unknown as never },
+          });
+        }
+      }
+
+      if (brokenSlot) {
+        await tx.callLog.update({
+          where: { id: p.id },
+          data: { brokenAt: now },
+        });
+        await tx.auditLog.create({
+          data: {
+            action: 'BROKEN_PROMISE',
+            entity: 'contract',
+            entityId: p.contractId,
+            userId: systemUserId,
+            newValue: {
+              callLogId: p.id,
+              slotIndex: brokenSlot.slotIndex,
+              reason: 'SLOT_BROKEN_PAST_GRACE',
+            },
           },
-        },
-      });
+        });
+      } else if (allSlotsResolved && slotDecisions.length > 0) {
+        // All slots kept — mark the promise kept and credit keptPromiseCount
+        await tx.callLog.update({
+          where: { id: p.id },
+          data: { keptAt: now },
+        });
+        await tx.contract.update({
+          where: { id: p.contractId },
+          data: { keptPromiseCount: { increment: 1 } },
+        });
+        await tx.auditLog.create({
+          data: {
+            action: 'KEPT_PROMISE',
+            entity: 'contract',
+            entityId: p.contractId,
+            userId: systemUserId,
+            newValue: { callLogId: p.id },
+          },
+        });
+      }
+      // else: some slots are still future-dated — nothing to do yet
+    });
+
+    // MDM side-effect AFTER transaction commits — external API call must not hold the DB tx open.
+    if (brokenSlot) {
       await this.mdm.autoLock(
         p.contractId,
         `SLOT_BROKEN:slot${brokenSlot.slotIndex}`,
         systemUserId,
       );
-    } else if (allSlotsResolved) {
-      // All slots kept — mark the promise kept and credit keptPromiseCount
-      await this.prisma.callLog.update({
-        where: { id: p.id },
-        data: { keptAt: now },
-      });
-      await this.prisma.contract.update({
-        where: { id: p.contractId },
-        data: { keptPromiseCount: { increment: 1 } },
-      });
-      await this.prisma.auditLog.create({
-        data: {
-          action: 'KEPT_PROMISE',
-          entity: 'contract',
-          entityId: p.contractId,
-          userId: systemUserId,
-          newValue: { callLogId: p.id },
-        },
-      });
     }
-    // else: some slots are still future-dated — nothing to do yet
   }
 
   /**

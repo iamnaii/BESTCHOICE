@@ -1116,11 +1116,16 @@ export class PaymentsService {
 
       // Allow 1-day grace window after the settlement date
       const windowEnd = new Date(slot.settlementDate.getTime() + 1 * 86400 * 1000);
+      // C1 fix: filter by OR(paidAt/paidDate) so manual payments (which set paidDate,
+      // not paidAt) are counted alongside PaySolutions webhook payments (which set paidAt).
       const sum = await this.prisma.payment.aggregate({
         where: {
           contractId,
           deletedAt: null,
-          paidAt: { not: null, lte: windowEnd },
+          OR: [
+            { paidAt: { not: null, lte: windowEnd } },
+            { paidDate: { not: null, lte: windowEnd } },
+          ],
         },
         _sum: { amountPaid: true },
       });

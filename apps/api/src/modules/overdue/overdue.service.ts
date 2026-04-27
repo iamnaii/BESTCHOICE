@@ -1106,11 +1106,13 @@ export class OverdueService {
    * Used when the caller does not explicitly specify targetInstallmentIds.
    */
   private async computeFifoTargets(contractId: string, targetAmount: number): Promise<string[]> {
+    // C1 fix: use status filter (consistent with getBoardData / logContact unpaid-check)
+    // rather than paidAt: null, which misses manual payments (which set paidDate not paidAt).
     const payments = await this.prisma.payment.findMany({
       where: {
         contractId,
         deletedAt: null,
-        paidAt: null,
+        status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] },
       },
       select: {
         id: true,
@@ -1302,11 +1304,12 @@ export class OverdueService {
   }
 
   async getOverdueInstallments(contractId: string) {
+    // C1 fix: use status filter rather than paidAt: null — manual payments set paidDate not paidAt.
     const payments = await this.prisma.payment.findMany({
       where: {
         contractId,
         deletedAt: null,
-        paidAt: null,
+        status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] },
       },
       orderBy: { dueDate: 'asc' },
       select: {

@@ -419,6 +419,26 @@ scripts/                      # Existing project scripts
 - **Backup runbook** + restore drill checklist
 - **`.claude/rules/accounting.md`** — TFRS for NPAEs policy, chart of accounts, journal templates
 
+### v5 (PR #__ — Promise-to-Pay Lifecycle Redesign 2026-04-27)
+- **PromiseSlot model** — 1 promise → N "ที่" (slots). Replaces 2-slot split (legacy `secondSettlementDate/Amount` deprecated, kept for backward compat)
+- **Lifecycle fields on CallLog**: `supersededAt`, `supersededByCallLogId`, `keptAt`, `canceledAt`, `cycleStartedAt`, `cycleDeadline`, `rescheduleCount`, `targetInstallmentIds[]`. Self-relation `PromiseSupersedeChain`
+- **`Contract.keptPromiseCount`** — denormalized counter. Source of truth = `KEPT_PROMISE` AuditLog (matches existing `BROKEN_PROMISE` pattern via auto-assign.service)
+- **`PromiseService`** at `apps/api/src/modules/overdue/promise.service.ts` — `findActivePromise`, `createPromise` (supersede + reschedule penalty), `calcCycleDeadline` (next future Payment.dueDate or last-day-of-next-month fallback)
+- **`promise-resolution.cron`** (hourly) — replaces `broken-promise.cron`. Resolves PromiseSlot.keptAt/brokenAt + auto-MDM-lock on broken
+- **`no-promise-lock.cron`** (hourly) — 2 consecutive `NO_ANSWER`/`UNREACHABLE` callLogs + no active promise → MDM auto-lock
+- **`MdmLockService.autoLock` + `autoUnlock`** — no-approval lock/unlock paths (audit logs `MDM_AUTO_LOCK`/`MDM_AUTO_UNLOCK`). Idempotent
+- **PaymentService real-time hook** `checkPromiseAfterPayment` — non-blocking after Payment.create. Detects all-slots-kept → marks promise kept + auto-unlock when whole cycle paid
+- **ContactLogDialog redesign** — N-slot manager (replaces 2-slot toggle), cycle deadline banner, sum indicator, supersede confirm dialog, FIFO installment picker (override available)
+- **`SupersedePromiseConfirmDialog`** — shows broken-vs-not-broken before reschedule (≥2 reschedule or past-due slot = broken)
+- **`InstallmentPickerPopover`** — checkbox UI to override default FIFO installment allocation
+- **PromiseTab** — slot status chips (kept/broken/pending) + cycle countdown with reschedule count
+- **2 new endpoints**: `GET /overdue/contracts/:id/cycle-deadline` (also returns activePromise summary), `GET /overdue/contracts/:id/overdue-installments`
+- **Reschedule rules**: ก่อนวันนัด ครั้งที่ 1 ฟรี (no broken), ≥2 ครั้ง = นับ broken; หลังวันนัด = นับ broken เสมอ
+- **Grace 1 day** consistent across kept/broken decision (cron cutoff = `now - 1d`)
+- **Backfill script** `npm run backfill:promise-slots` (in apps/api) — migrates legacy `secondSettlementDate/Amount` to PromiseSlot rows + computes historical `keptAt`/`keptPromiseCount`
+- **`Payment` IS the installment** (not separate `Installment` model — discovered during impl, plan/spec adjusted)
+- **AuditLog conventions** confirmed: `entity` (lowercase), `userId` real UUID FK, `ipAddress` optional. New actions: `BROKEN_PROMISE`, `KEPT_PROMISE`, `MDM_AUTO_LOCK`, `MDM_AUTO_UNLOCK`
+
 ### Test counts after v4
 - API: **577 tests** (26 suites)
 - Web: **129 tests** (11 files)

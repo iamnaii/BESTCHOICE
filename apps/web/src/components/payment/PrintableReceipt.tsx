@@ -1,6 +1,6 @@
 import type { Receipt } from '@/types/receipt';
 import { formatDateMedium, formatDateTime } from '@/utils/formatters';
-import QRCodeSVG from 'react-qr-code';
+import { QRCodeSVG } from 'qrcode.react';
 
 interface PrintableReceiptProps {
   receipt: Receipt;

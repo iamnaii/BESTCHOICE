@@ -268,12 +268,14 @@ describe('PaymentsService', () => {
       );
     });
 
-    it('should not generate receipt on partial payment', async () => {
-      const updatedPayment = { ...mockPayment, amountPaid: 1000, status: 'PARTIALLY_PAID', paidDate: null };
+    it('should generate receipt on partial payment too (TFRS: receipt per cash event)', async () => {
+      const updatedPayment = { ...mockPayment, id: 'payment-1', amountPaid: 1000, status: 'PARTIALLY_PAID', paidDate: null };
       prisma.payment.update.mockResolvedValue(updatedPayment);
 
       await service.recordPayment('contract-1', 1, 1000, 'CASH', 'user-1', 'http://slip.jpg');
-      expect(receiptsService.generateReceipt).not.toHaveBeenCalled();
+      expect(receiptsService.generateReceipt).toHaveBeenCalledWith(
+        'contract-1', 'payment-1', 'INSTALLMENT', 1000, 1, 'CASH', null, 'user-1',
+      );
     });
   });
 

@@ -263,11 +263,18 @@ export class PaymentsService {
       await this.sendPaymentSuccessLine(contractId, installmentNo, amount, paymentMethod);
     }
 
-    // Auto unlock MDM if device was locked
+    // M3 fix: only run the legacy "all overdue cleared" auto-unlock when there
+    // is no active promise-to-pay cycle. When there is an active promise, the
+    // checkPromiseAfterPayment hook (below) handles the unlock via its own
+    // CYCLE_KEPT path — running both racied two unlock requests per payment.
     if (this.mdmAuto) {
-      this.mdmAuto.autoUnlockAfterPayment(contractId).catch((err) =>
-        this.logger.error('MDM auto-unlock failed', err),
-      );
+      const hasActivePromise =
+        !!this.promiseService && !!(await this.promiseService.findActivePromise(contractId));
+      if (!hasActivePromise) {
+        this.mdmAuto.autoUnlockAfterPayment(contractId).catch((err) =>
+          this.logger.error('MDM auto-unlock failed', err),
+        );
+      }
     }
 
     // Promise-to-pay kept-detection — runs AFTER the payment tx commits so
@@ -1106,68 +1113,90 @@ export class PaymentsService {
     if (!active) return;
 
     const now = new Date();
-    let allKept = true;
+    const systemUserId = await this.getSystemUserId();
 
-    for (const slot of active.slots) {
-      // Already resolved — skip
-      if (slot.keptAt) continue;
-      if (slot.brokenAt) {
-        allKept = false;
-        continue;
-      }
+    // H1 + M4 fix: wrap slot resolution + keptPromiseCount increment in a single
+    // Serializable transaction so partial failure can't leave slots updated but
+    // counter unchanged, and concurrent payments can't double-increment the counter.
+    // The callLog.updateMany guard ensures only one concurrent caller promotes the
+    // promise to "kept" — the loser's transaction sees keptAt already set and bails out.
+    const promoted = await this.prisma.$transaction(
+      async (tx) => {
+        let allKept = true;
+        // N2 fix: targets are cumulative through each slot, and each slot's
+        // paidAmount is its own contribution (settlementAmount), not the
+        // contract-wide sum. Previously we compared cumulative paid against the
+        // per-slot amount alone — slot N would get falsely satisfied as soon as
+        // the customer overpaid slot N-1.
+        let cumulativeTarget = 0;
 
-      // Allow 1-day grace window after the settlement date
-      const windowEnd = new Date(slot.settlementDate.getTime() + 1 * 86400 * 1000);
-      // W6 fix: only count payments made AFTER this promise cycle started so that
-      // payments from previous cycles months ago don't falsely satisfy the current slot.
-      const cycleStart = active.cycleStartedAt ?? active.createdAt;
-      // C1 fix: filter by OR(paidAt/paidDate) so manual payments (which set paidDate,
-      // not paidAt) are counted alongside PaySolutions webhook payments (which set paidAt).
-      const sum = await this.prisma.payment.aggregate({
-        where: {
-          contractId,
-          deletedAt: null,
-          OR: [
-            { paidAt: { not: null, gte: cycleStart, lte: windowEnd } },
-            { paidDate: { not: null, gte: cycleStart, lte: windowEnd } },
-          ],
-        },
-        _sum: { amountPaid: true },
-      });
-      const paid = (sum._sum.amountPaid as Prisma.Decimal | null)?.toNumber() ?? 0;
-      const target = (slot.settlementAmount as Prisma.Decimal).toNumber();
+        for (const slot of active.slots) {
+          const slotAmount = (slot.settlementAmount as Prisma.Decimal).toNumber();
+          cumulativeTarget += slotAmount;
 
-      if (paid >= target) {
-        await this.prisma.promiseSlot.update({
-          where: { id: slot.id },
-          data: { keptAt: now, paidAmount: paid as unknown as Prisma.Decimal },
+          if (slot.keptAt) continue;
+          if (slot.brokenAt) {
+            allKept = false;
+            continue;
+          }
+
+          const windowEnd = new Date(slot.settlementDate.getTime() + 1 * 86400 * 1000);
+          const cycleStart = active.cycleStartedAt ?? active.createdAt;
+          const sum = await tx.payment.aggregate({
+            where: {
+              contractId,
+              deletedAt: null,
+              OR: [
+                { paidAt: { not: null, gte: cycleStart, lte: windowEnd } },
+                { paidDate: { not: null, gte: cycleStart, lte: windowEnd } },
+              ],
+            },
+            _sum: { amountPaid: true },
+          });
+          const paid = (sum._sum.amountPaid as Prisma.Decimal | null)?.toNumber() ?? 0;
+
+          if (paid >= cumulativeTarget) {
+            await tx.promiseSlot.update({
+              where: { id: slot.id },
+              data: {
+                keptAt: now,
+                paidAmount: slotAmount as unknown as Prisma.Decimal,
+              },
+            });
+          } else {
+            allKept = false;
+          }
+        }
+
+        if (!allKept) return false;
+
+        // Guarded promotion: only the first caller flips keptAt.
+        const guard = await tx.callLog.updateMany({
+          where: { id: active.id, keptAt: null },
+          data: { keptAt: now },
         });
-      } else {
-        allKept = false;
-      }
-    }
+        if (guard.count === 0) return false;
 
-    if (allKept) {
-      await this.prisma.callLog.update({
-        where: { id: active.id },
-        data: { keptAt: now },
-      });
-      await this.prisma.contract.update({
-        where: { id: contractId },
-        data: { keptPromiseCount: { increment: 1 } },
-      });
+        await tx.contract.update({
+          where: { id: contractId },
+          data: { keptPromiseCount: { increment: 1 } },
+        });
+        await tx.auditLog.create({
+          data: {
+            action: 'KEPT_PROMISE',
+            entity: 'contract',
+            entityId: contractId,
+            userId: systemUserId,
+            newValue: { callLogId: active.id, source: 'PAYMENT_HOOK' },
+          },
+        });
+        return true;
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
 
-      const systemUserId = await this.getSystemUserId();
-      await this.prisma.auditLog.create({
-        data: {
-          action: 'KEPT_PROMISE',
-          entity: 'contract',
-          entityId: contractId,
-          userId: systemUserId,
-          newValue: { callLogId: active.id, source: 'PAYMENT_HOOK' },
-        },
-      });
-
+    if (promoted) {
+      // External MDM call runs only after tx commits — avoids orphan unlock on rollback.
       await this.mdmLockService!.autoUnlock(contractId, 'CYCLE_KEPT', systemUserId);
     }
   }

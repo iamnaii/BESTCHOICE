@@ -989,24 +989,34 @@ export class OverdueService {
           ? dto.targetInstallmentIds
           : await this.computeFifoTargets(contractId, totalPromiseAmount.toNumber());
 
-      // Update contract contact tracking alongside the promise creation.
-      await this.prisma.contract.update({
-        where: { id: contractId },
-        data: {
-          lastContactDate: now,
-          dunningLastActionAt: now,
-          ...(dto.collectionNotes !== undefined && { collectionNotes: dto.collectionNotes }),
-          noAnswerCount: 0,
+      // H2 fix: contract update + promise creation must commit atomically.
+      // Previously the contract.update committed first; if createPromise threw
+      // (e.g. cycleDeadline validation), the contract was left with a reset
+      // contact date but no corresponding promise record.
+      const newPromise = await this.prisma.$transaction(
+        async (tx) => {
+          await tx.contract.update({
+            where: { id: contractId },
+            data: {
+              lastContactDate: now,
+              dunningLastActionAt: now,
+              ...(dto.collectionNotes !== undefined && { collectionNotes: dto.collectionNotes }),
+              noAnswerCount: 0,
+            },
+          });
+          return this.promiseService.createPromise(
+            {
+              contractId,
+              userId: callerId,
+              slots: slotsInput,
+              targetInstallmentIds: targetIds,
+              notes: dto.notes,
+            },
+            tx,
+          );
         },
-      });
-
-      const newPromise = await this.promiseService.createPromise({
-        contractId,
-        userId: callerId,
-        slots: slotsInput,
-        targetInstallmentIds: targetIds,
-        notes: dto.notes,
-      });
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
 
       // Fire CALL_ANSWERED_PROMISE event trigger — non-fatal.
       try {

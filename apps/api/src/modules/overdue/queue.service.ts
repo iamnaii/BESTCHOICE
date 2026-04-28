@@ -485,7 +485,9 @@ export class OverdueQueueService {
         by: ['entityId'],
         where: {
           entityId: { in: contractIds },
-          entity: 'Contract',
+          // Accept both casings: new code writes 'contract' (per audit.service.ts convention),
+          // legacy broken-promise.cron wrote 'Contract'. Dual-read avoids losing historical rows.
+          entity: { in: ['contract', 'Contract'] },
           action: 'BROKEN_PROMISE',
         },
         _count: { _all: true },
@@ -588,6 +590,9 @@ export class OverdueQueueService {
       this.prisma.callLog.findMany({
         where: {
           contractId: { in: contractIds },
+          // N5 fix: respect soft-delete on CallLog so deleted promises don't
+          // resurface in the queue's active-promise lookup.
+          deletedAt: null,
           result: 'PROMISED',
           brokenAt: null,
           supersededAt: null,

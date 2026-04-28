@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Check, X } from 'lucide-react';
 import { formatNumber } from '@/utils/formatters';
 import { formatThaiDateShort } from '@/lib/date';
@@ -27,6 +27,15 @@ export default function InstallmentPickerPopover({
   onClose,
 }: Props) {
   const [draft, setDraft] = useState<string[]>(selectedIds);
+
+  // M8 fix: resync draft from props every time the popover opens or when the
+  // parent's selectedIds prop changes. The component returns null when closed
+  // rather than unmounting, so the original useState initializer only ran once
+  // and stale draft survived across reopens with different selections.
+  useEffect(() => {
+    if (open) setDraft(selectedIds);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, selectedIds.join(',')]);
 
   if (!open) return null;
 

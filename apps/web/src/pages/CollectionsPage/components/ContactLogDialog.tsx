@@ -178,7 +178,10 @@ export default function ContactLogDialog({ open, contract, onClose, onSaved }: P
       setSupersedeConfirmOpen(false);
       setPickerOpen(false);
     }
-  }, [open, contract?.id, contract?.outstanding, resetSlots]);
+    // L1 fix: do NOT depend on contract.outstanding here. Including it caused
+    // an in-flight outstanding refetch (e.g. after a payment posted) to wipe
+    // user-entered slot data mid-dialog. Reset on dialog open / contract change only.
+  }, [open, contract?.id, resetSlots]);
 
   const recentList: CallLogItem[] = Array.isArray(recentCallQuery.data)
     ? (recentCallQuery.data as CallLogItem[])

@@ -1,6 +1,7 @@
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import * as Sentry from '@sentry/nestjs';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { MdmLockService } from '../mdm-lock.service';
 
@@ -83,129 +84,131 @@ export class PromiseResolutionCron {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private async resolvePromise(p: any, now: Date, cutoff: Date, systemUserId: string) {
-    // C3 fix: collect slot-level decisions OUTSIDE the DB transaction (payment aggregation
-    // is read-only, keeping the transaction short), then wrap all writes in a single
-    // $transaction so slot state, CallLog, Contract, and AuditLog are atomically consistent.
-    // mdm.autoLock makes external API calls and is intentionally kept OUTSIDE the transaction
-    // (same pattern as PaymentService: DB first, side effects after commit).
+    // M5 fix: aggregate read + slot/CallLog/Contract/AuditLog writes all run inside one
+    //         Serializable transaction so a payment arriving between read and write
+    //         cannot race the kept/broken decision.
+    // H4 fix: when one slot breaks, cascade-mark every later unresolved slot brokenAt
+    //         too (cron filters out broken parent CallLogs, so unresolved children
+    //         would otherwise be orphaned in pending forever).
+    // N2 fix: targets are cumulative through each slot — slot N is kept iff payments
+    //         within window cover slot1+...+slotN, not just slotN alone. Per-slot
+    //         paidAmount stored is the slot's own contribution.
+    type BrokenSlot = { id: string; slotIndex: number };
 
-    let allSlotsResolved = true;
-    let brokenSlot: any = null; // eslint-disable-line @typescript-eslint/no-explicit-any
-    // Collect per-slot decisions (paid amount, kept/broken) before opening the transaction.
-    const slotDecisions: Array<{
-      slot: any; // eslint-disable-line @typescript-eslint/no-explicit-any
-      kept: boolean;
-      paid: number;
-    }> = [];
+    const brokenSlot: BrokenSlot | null = await this.prisma.$transaction(
+      async (tx): Promise<BrokenSlot | null> => {
+        let cumulativeTarget = 0;
+        let stillPending = false;
+        let broken: BrokenSlot | null = null;
 
-    for (const slot of p.slots) {
-      // Already resolved — skip
-      if (slot.keptAt || slot.brokenAt) continue;
+        for (const slot of p.slots) {
+          const slotAmount = slot.settlementAmount.toNumber();
+          cumulativeTarget += slotAmount;
 
-      // Not yet past grace — still pending, so promise overall not fully resolved
-      if (slot.settlementDate.getTime() >= cutoff.getTime()) {
-        allSlotsResolved = false;
-        continue;
-      }
+          if (slot.keptAt || slot.brokenAt) continue;
 
-      // The "paid window" ends at settlementDate + GRACE_DAYS — this ensures we
-      // count payments made up to and including the grace period end.
-      const windowEnd = new Date(slot.settlementDate.getTime() + GRACE_DAYS * 86400 * 1000);
-      // W6 fix: only count payments made AFTER this promise cycle started so that
-      // payments from previous cycles months ago don't falsely satisfy the current slot.
-      const cycleStart = p.cycleStartedAt ?? p.createdAt;
+          if (broken) {
+            // Cascade-mark remaining unresolved slots broken — parent CallLog
+            // is broken, so they would otherwise be orphaned in pending forever.
+            await tx.promiseSlot.update({
+              where: { id: slot.id },
+              data: { brokenAt: now, lockedAt: now },
+            });
+            continue;
+          }
 
-      // C1 fix: filter by OR(paidAt/paidDate) so manual payments (which set paidDate,
-      // not paidAt) are counted alongside PaySolutions webhook payments (which set paidAt).
-      const sum = await this.prisma.payment.aggregate({
-        where: {
-          contractId: p.contractId,
-          deletedAt: null,
-          OR: [
-            { paidAt: { not: null, gte: cycleStart, lte: windowEnd } },
-            { paidDate: { not: null, gte: cycleStart, lte: windowEnd } },
-          ],
-        },
-        _sum: { amountPaid: true },
-      });
+          if (slot.settlementDate.getTime() >= cutoff.getTime()) {
+            stillPending = true;
+            continue;
+          }
 
-      const paid = sum._sum.amountPaid?.toNumber() ?? 0;
-      const target = slot.settlementAmount.toNumber();
-      const kept = paid >= target;
-
-      slotDecisions.push({ slot, kept, paid });
-
-      if (!kept) {
-        brokenSlot = slot;
-        allSlotsResolved = false;
-        break; // stop on first broken slot
-      }
-    }
-
-    // C3 fix: wrap all DB writes in a single transaction for atomicity.
-    await this.prisma.$transaction(async (tx) => {
-      for (const { slot, kept, paid } of slotDecisions) {
-        if (kept) {
-          await tx.promiseSlot.update({
-            where: { id: slot.id },
-            data: { keptAt: now, paidAmount: paid as unknown as never },
+          const windowEnd = new Date(slot.settlementDate.getTime() + GRACE_DAYS * 86400 * 1000);
+          const cycleStart = p.cycleStartedAt ?? p.createdAt;
+          const sum = await tx.payment.aggregate({
+            where: {
+              contractId: p.contractId,
+              deletedAt: null,
+              OR: [
+                { paidAt: { not: null, gte: cycleStart, lte: windowEnd } },
+                { paidDate: { not: null, gte: cycleStart, lte: windowEnd } },
+              ],
+            },
+            _sum: { amountPaid: true },
           });
-        } else {
-          await tx.promiseSlot.update({
-            where: { id: slot.id },
-            data: { brokenAt: now, lockedAt: now, paidAmount: paid as unknown as never },
+          const paid = sum._sum.amountPaid?.toNumber() ?? 0;
+
+          if (paid >= cumulativeTarget) {
+            await tx.promiseSlot.update({
+              where: { id: slot.id },
+              data: { keptAt: now, paidAmount: slotAmount as unknown as never },
+            });
+          } else {
+            broken = { id: slot.id, slotIndex: slot.slotIndex };
+            await tx.promiseSlot.update({
+              where: { id: slot.id },
+              data: { brokenAt: now, lockedAt: now, paidAmount: paid as unknown as never },
+            });
+          }
+        }
+
+        if (broken) {
+          await tx.callLog.update({ where: { id: p.id }, data: { brokenAt: now } });
+          await tx.auditLog.create({
+            data: {
+              action: 'BROKEN_PROMISE',
+              entity: 'contract',
+              entityId: p.contractId,
+              userId: systemUserId,
+              newValue: {
+                callLogId: p.id,
+                slotIndex: broken.slotIndex,
+                reason: 'SLOT_BROKEN_PAST_GRACE',
+              },
+            },
+          });
+        } else if (!stillPending) {
+          await tx.callLog.update({ where: { id: p.id }, data: { keptAt: now } });
+          await tx.contract.update({
+            where: { id: p.contractId },
+            data: { keptPromiseCount: { increment: 1 } },
+          });
+          await tx.auditLog.create({
+            data: {
+              action: 'KEPT_PROMISE',
+              entity: 'contract',
+              entityId: p.contractId,
+              userId: systemUserId,
+              newValue: { callLogId: p.id },
+            },
           });
         }
-      }
 
-      if (brokenSlot) {
-        await tx.callLog.update({
-          where: { id: p.id },
-          data: { brokenAt: now },
-        });
-        await tx.auditLog.create({
-          data: {
-            action: 'BROKEN_PROMISE',
-            entity: 'contract',
-            entityId: p.contractId,
-            userId: systemUserId,
-            newValue: {
-              callLogId: p.id,
-              slotIndex: brokenSlot.slotIndex,
-              reason: 'SLOT_BROKEN_PAST_GRACE',
-            },
-          },
-        });
-      } else if (allSlotsResolved && slotDecisions.length > 0) {
-        // All slots kept — mark the promise kept and credit keptPromiseCount
-        await tx.callLog.update({
-          where: { id: p.id },
-          data: { keptAt: now },
-        });
-        await tx.contract.update({
-          where: { id: p.contractId },
-          data: { keptPromiseCount: { increment: 1 } },
-        });
-        await tx.auditLog.create({
-          data: {
-            action: 'KEPT_PROMISE',
-            entity: 'contract',
-            entityId: p.contractId,
-            userId: systemUserId,
-            newValue: { callLogId: p.id },
-          },
-        });
-      }
-      // else: some slots are still future-dated — nothing to do yet
-    });
+        return broken;
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
 
-    // MDM side-effect AFTER transaction commits — external API call must not hold the DB tx open.
     if (brokenSlot) {
-      await this.mdm.autoLock(
-        p.contractId,
-        `SLOT_BROKEN:slot${brokenSlot.slotIndex}`,
-        systemUserId,
-      );
+      try {
+        await this.mdm.autoLock(
+          p.contractId,
+          `SLOT_BROKEN:slot${brokenSlot.slotIndex}`,
+          systemUserId,
+        );
+      } catch (err) {
+        this.logger.error(
+          `MDM autoLock failed for contract ${p.contractId}: ${(err as Error).message}`,
+        );
+        Sentry.captureException(err, {
+          tags: { cron: 'promise-resolution', step: 'mdm-autolock' },
+          extra: {
+            contractId: p.contractId,
+            callLogId: p.id,
+            slotIndex: brokenSlot.slotIndex,
+          },
+        });
+        // Promise is already marked broken in DB — alert ops via Sentry to lock manually.
+      }
     }
   }
 

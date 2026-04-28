@@ -73,13 +73,14 @@ export class AutoAssignService {
     const daysOverdueMap = new Map(snapshots.map((s) => [s.contractId, s.daysOverdue]));
 
     // brokenPromiseCount: AuditLog count of BROKEN_PROMISE actions per contract.
+    // Accept both casings: new writers use 'contract', legacy broken-promise.cron used 'Contract'.
     const brokenAgg =
       contractIds.length > 0
         ? await this.prisma.auditLog.groupBy({
             by: ['entityId'],
             where: {
               entityId: { in: contractIds },
-              entity: 'Contract',
+              entity: { in: ['contract', 'Contract'] },
               action: 'BROKEN_PROMISE',
             },
             _count: { _all: true },

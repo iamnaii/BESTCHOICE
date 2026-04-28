@@ -22,6 +22,10 @@ import { MdmLockService } from '../mdm-lock.service';
 
 const NO_CONTACT_RESULTS = ['NO_ANSWER', 'UNREACHABLE'];
 
+// M6 fix: only consider call attempts within this window so contracts can't be
+// auto-locked based on stale "no contact" calls from months ago.
+const RECENT_CALL_WINDOW_DAYS = 30;
+
 // COMMENT: UI currently maps the "ติดต่อไม่ได้" (UNREACHABLE) outcome to result='NO_ANSWER'
 // for legacy compatibility (ContactLogDialog line 211). The fine-grained channel is stored in
 // callResult='UNREACHABLE'. This cron therefore checks BOTH result AND callResult so that
@@ -72,12 +76,17 @@ export class NoPromiseLockCron {
       }
 
       const systemUserId = await this.getSystemUserId();
+      const recencyCutoff = new Date(Date.now() - RECENT_CALL_WINDOW_DAYS * 86400 * 1000);
       let locked = 0;
 
       for (const c of candidates) {
         try {
           const last2 = await this.prisma.callLog.findMany({
-            where: { contractId: c.id, deletedAt: null },
+            where: {
+              contractId: c.id,
+              deletedAt: null,
+              createdAt: { gte: recencyCutoff },
+            },
             orderBy: { createdAt: 'desc' },
             take: 2,
             select: { id: true, result: true, callResult: true, createdAt: true },

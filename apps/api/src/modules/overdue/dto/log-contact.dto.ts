@@ -7,6 +7,7 @@ import {
   MaxLength,
   IsArray,
   IsNumber,
+  IsPositive,
   IsUUID,
   ValidateNested,
   ArrayMinSize,
@@ -17,7 +18,10 @@ export class PromiseSlotDto {
   @IsDateString({}, { message: 'วันที่นัดต้องเป็นวันที่ที่ถูกต้อง' })
   settlementDate!: string;
 
+  // M2 fix: enforce positive amount — class-validator rejects 0 and negatives
+  // before they reach the service so totals/FIFO can't be corrupted.
   @IsNumber({ maxDecimalPlaces: 2 }, { message: 'ยอดต้องเป็นตัวเลข' })
+  @IsPositive({ message: 'ยอดนัดชำระต้องมากกว่า 0' })
   settlementAmount!: number;
 
   @IsOptional()
@@ -65,6 +69,23 @@ export class LogContactDto {
   @IsOptional()
   @IsDateString({}, { message: 'settlementDate ต้องเป็นวันที่ ISO' })
   settlementDate?: string;
+
+  // N9 fix: explicitly declare legacy back-compat fields so the global
+  // ValidationPipe whitelist (`whitelist: true`) does not strip them off.
+  // overdue.service.logContact reads these fields when `slots` is not provided.
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'settlementAmount ต้องเป็นตัวเลข' })
+  @IsPositive({ message: 'settlementAmount ต้องมากกว่า 0' })
+  settlementAmount?: number;
+
+  @IsOptional()
+  @IsDateString({}, { message: 'secondSettlementDate ต้องเป็นวันที่ ISO' })
+  secondSettlementDate?: string;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'secondSettlementAmount ต้องเป็นตัวเลข' })
+  @IsPositive({ message: 'secondSettlementAmount ต้องมากกว่า 0' })
+  secondSettlementAmount?: number;
 
   @IsOptional()
   @IsString()

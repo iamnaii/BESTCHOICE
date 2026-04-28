@@ -22,6 +22,10 @@ describe('PromiseResolutionCron', () => {
       promiseSlot: { update: jest.fn().mockResolvedValue({}) },
       contract: { update: jest.fn().mockResolvedValue({}) },
       auditLog: { create: jest.fn().mockResolvedValue({}) },
+      // M5 fix: payment.aggregate now runs inside the transaction (was outside before).
+      payment: {
+        aggregate: jest.fn().mockResolvedValue({ _sum: { amountPaid: null } }),
+      },
     };
 
     prisma = {
@@ -64,7 +68,7 @@ describe('PromiseResolutionCron', () => {
         ],
       },
     ]);
-    prisma.payment.aggregate.mockResolvedValue({ _sum: { amountPaid: { toNumber: () => 1500 } } });
+    prisma.__tx.payment.aggregate.mockResolvedValue({ _sum: { amountPaid: { toNumber: () => 1500 } } });
 
     await cron.handleHourly();
 
@@ -94,7 +98,7 @@ describe('PromiseResolutionCron', () => {
         ],
       },
     ]);
-    prisma.payment.aggregate.mockResolvedValue({ _sum: { amountPaid: { toNumber: () => 500 } } });
+    prisma.__tx.payment.aggregate.mockResolvedValue({ _sum: { amountPaid: { toNumber: () => 500 } } });
 
     await cron.handleHourly();
 
@@ -149,7 +153,9 @@ describe('PromiseResolutionCron', () => {
         ],
       },
     ]);
-    prisma.payment.aggregate.mockResolvedValue({ _sum: { amountPaid: { toNumber: () => 600 } } });
+    // N2 fix: targets are cumulative — slot 1 (1000) + slot 2 (500) = 1500. To
+    // mark slot 2 kept, payments in window must cover the cumulative target.
+    prisma.__tx.payment.aggregate.mockResolvedValue({ _sum: { amountPaid: { toNumber: () => 1500 } } });
 
     await cron.handleHourly();
 

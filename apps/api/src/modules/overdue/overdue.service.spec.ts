@@ -523,8 +523,11 @@ describe('OverdueService.logContact with event trigger wiring', () => {
       payment: {
         findMany: jest.fn().mockResolvedValue([]),
       },
-      $transaction: jest.fn(async (ops: (() => Promise<unknown>)[]) => {
-        // Execute all promises in parallel and return results array
+      // Polymorphic mock — supports interactive ($transaction(cb)) AND batch ($transaction([promises])).
+      // logContact wraps contract.update + promiseService.createPromise in an interactive tx.
+      $transaction: jest.fn(async (arg: unknown) => {
+        if (typeof arg === 'function') return (arg as (tx: unknown) => Promise<unknown>)(prisma);
+        const ops = arg as (Promise<unknown> | (() => Promise<unknown>))[];
         return Promise.all(ops.map((op) => (typeof op === 'function' ? op() : op)));
       }),
     };

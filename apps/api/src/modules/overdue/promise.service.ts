@@ -53,12 +53,29 @@ export class PromiseService {
    *   - reschedule after any slot is past due → supersede + BROKEN_PROMISE audit
    *   - slot.settlementDate > cycleDeadline → BadRequestException
    */
-  async createPromise(input: CreatePromiseInput) {
+  async createPromise(input: CreatePromiseInput, externalTx?: Prisma.TransactionClient) {
     const now = new Date();
 
-    return this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    const run = async (tx: Prisma.TransactionClient) => {
+      // H3 fix: validate targetInstallmentIds belong to this contract before storing them.
+      if (input.targetInstallmentIds.length > 0) {
+        const ownedCount = await tx.payment.count({
+          where: {
+            id: { in: input.targetInstallmentIds },
+            contractId: input.contractId,
+            deletedAt: null,
+          },
+        });
+        if (ownedCount !== input.targetInstallmentIds.length) {
+          throw new BadRequestException('งวดที่เลือกไม่ตรงกับสัญญานี้');
+        }
+      }
+
       // C2 fix: use tx (not this.prisma) so concurrent calls see each other's pending writes
       // and two collectors cannot both create an active promise for the same contract.
+      // N3 fix: $transaction below uses Serializable isolation so the read+write phases
+      // serialize end-to-end, eliminating the race where two creators both find no
+      // oldPromise and both create new ones.
       const oldPromise = await tx.callLog.findFirst({
         where: {
           contractId: input.contractId,
@@ -120,15 +137,13 @@ export class PromiseService {
         cycleDeadline = await this.calcCycleDeadline(input.contractId, now);
       }
 
-      // Validate every slot is within cycle deadline — only enforced when rescheduling
-      // (i.e. there was an existing active promise whose cycle deadline must be respected).
-      if (oldPromise) {
-        for (const slot of input.slots) {
-          if (slot.settlementDate.getTime() > cycleDeadline.getTime()) {
-            throw new BadRequestException(
-              `วันที่นัดเกินเพดานรอบ (cycleDeadline = ${cycleDeadline.toISOString().slice(0, 10)})`,
-            );
-          }
+      // M1 fix: enforce cycleDeadline on every slot, including first-promise creation —
+      // otherwise a collector could log a slot months past the contract's grace window.
+      for (const slot of input.slots) {
+        if (slot.settlementDate.getTime() > cycleDeadline.getTime()) {
+          throw new BadRequestException(
+            `วันที่นัดเกินเพดานรอบ (cycleDeadline = ${cycleDeadline.toISOString().slice(0, 10)})`,
+          );
         }
       }
 
@@ -175,6 +190,11 @@ export class PromiseService {
       });
 
       return newPromise;
+    };
+
+    if (externalTx) return run(externalTx);
+    return this.prisma.$transaction(run, {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
     });
   }
 

@@ -55,6 +55,14 @@ describe('PromiseService.createPromise (supersede + reschedule)', () => {
       contract: { update: jest.fn().mockResolvedValue({}) },
       promiseSlot: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
       auditLog: { create: jest.fn().mockResolvedValue({}) },
+      // H3 fix: createPromise validates targetInstallmentIds belong to the contract
+      // via tx.payment.count. By default, return the same length as the in-clause
+      // so tests with valid IDs pass; tests of the validation error can override.
+      payment: {
+        count: jest.fn(({ where }: any) =>
+          Promise.resolve(Array.isArray(where?.id?.in) ? where.id.in.length : 0),
+        ),
+      },
     };
     prisma = {
       $transaction: jest.fn(async (cb: any) => cb(tx)),
@@ -75,10 +83,15 @@ describe('PromiseService.createPromise (supersede + reschedule)', () => {
     // C2 fix: reads go through tx.callLog.findFirst now
     prisma.__tx.callLog.findFirst.mockResolvedValue(null);
 
+    // M1 fix: first-promise slots are now also validated against cycleDeadline.
+    // calcCycleDeadline falls back to "last day of next month" when no future
+    // installments exist; pick a near-future date that fits inside that window.
+    const nearFuture = new Date(Date.now() + 7 * 86400 * 1000);
+
     await service.createPromise({
       contractId: 'c-1',
       userId: 'u-1',
-      slots: [{ settlementDate: new Date('2099-05-05'), settlementAmount: 1000 }],
+      slots: [{ settlementDate: nearFuture, settlementAmount: 1000 }],
       targetInstallmentIds: ['i-1'],
       notes: 'x',
     });

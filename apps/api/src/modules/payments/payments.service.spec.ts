@@ -512,8 +512,11 @@ describe('PaymentsService', () => {
       // Add table mocks not present in the outer beforeEach
       prisma.auditLog = { create: jest.fn().mockResolvedValue({}) };
       prisma.promiseSlot = { update: jest.fn().mockResolvedValue({}) };
-      // callLog.update (outer mock only has updateMany)
-      prisma.callLog.update = jest.fn().mockResolvedValue({});
+      // checkPromiseAfterPayment now uses tx.callLog.updateMany as a guarded
+      // promotion (only one concurrent caller can flip keptAt). Default to
+      // count=1 so the happy-path test promotes; the underpaid tests don't
+      // reach this call.
+      prisma.callLog.updateMany = jest.fn().mockResolvedValue({ count: 1 });
       // user.findFirst for getSystemUserId
       prisma.user.findFirst = jest.fn().mockResolvedValue({ id: 'sys-uid' });
     });
@@ -541,8 +544,11 @@ describe('PaymentsService', () => {
       await service.checkPromiseAfterPayment(contractId);
 
       expect(prisma.promiseSlot.update).toHaveBeenCalled();
-      expect(prisma.callLog.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ keptAt: expect.any(Date) }) }),
+      expect(prisma.callLog.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ id: 'cl-1', keptAt: null }),
+          data: expect.objectContaining({ keptAt: expect.any(Date) }),
+        }),
       );
       expect(prisma.contract.update).toHaveBeenCalledWith(
         expect.objectContaining({ data: { keptPromiseCount: { increment: 1 } } }),
@@ -577,7 +583,7 @@ describe('PaymentsService', () => {
       // @ts-expect-error access private for test
       await service.checkPromiseAfterPayment(contractId);
 
-      expect(prisma.callLog.update).not.toHaveBeenCalled();
+      expect(prisma.callLog.updateMany).not.toHaveBeenCalled();
       expect((mdmLockService as any).autoUnlock).not.toHaveBeenCalled();
     });
 

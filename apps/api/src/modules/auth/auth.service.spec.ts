@@ -318,7 +318,7 @@ describe('AuthService', () => {
       expect((result as Record<string, unknown>)).not.toHaveProperty('accessToken');
     });
 
-    it('returns state 2FA_SETUP_REQUIRED when enrollment deadline has passed', async () => {
+    it('skips 2FA enrollment enforcement (P1Q6 deferred) — issues full JWT even with past deadline', async () => {
       (prisma.user.findUnique as jest.Mock).mockResolvedValue({
         ...mockUser,
         twoFactorEnabled: false,
@@ -326,10 +326,7 @@ describe('AuthService', () => {
       });
 
       const result = await service.login({ email: 'test@test.com', password: 'password123' });
-      expect(result.state).toBe('2FA_SETUP_REQUIRED');
-      if (result.state === '2FA_SETUP_REQUIRED') {
-        expect(typeof result.tempToken).toBe('string');
-      }
+      expect(result.state).toBe('AUTHENTICATED');
     });
 
     it('loginWithTempToken returns full JWT after valid OTP verification', async () => {

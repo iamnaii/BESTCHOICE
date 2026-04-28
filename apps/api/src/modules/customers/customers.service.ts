@@ -884,24 +884,74 @@ export class CustomersService {
     // Verify customer exists
     await this.findOne(customerId);
 
-    // 1. Recent payments across all contracts (last 5)
-    const recentPayments = await this.prisma.payment.findMany({
+    // 1. Recent installments grouped from the last 5 distinct paymentIds with
+    //    a non-voided receipt. Returns each installment with all of its
+    //    non-voided receipts so the UI can show partial-payment breakdowns
+    //    (1 งวด → N partials).
+    const recentReceipts = await this.prisma.receipt.findMany({
       where: {
         contract: { customerId, deletedAt: null },
         deletedAt: null,
-        status: 'PAID',
+        isVoided: false,
+        paymentId: { not: null },
       },
       orderBy: { paidDate: 'desc' },
-      take: 5,
+      take: 30, // over-fetch so grouping yields up to 5 distinct installments
       select: {
         id: true,
-        installmentNo: true,
-        amountPaid: true,
+        receiptNumber: true,
+        amount: true,
         paidDate: true,
         paymentMethod: true,
+        installmentNo: true,
+        paymentId: true,
         contract: { select: { contractNumber: true } },
       },
     });
+
+    const paymentIds = Array.from(
+      new Set(recentReceipts.map((r) => r.paymentId).filter((id): id is string => !!id)),
+    ).slice(0, 5);
+
+    const payments = paymentIds.length
+      ? await this.prisma.payment.findMany({
+          where: { id: { in: paymentIds } },
+          select: {
+            id: true,
+            installmentNo: true,
+            amountDue: true,
+            amountPaid: true,
+            status: true,
+            contract: { select: { contractNumber: true } },
+          },
+        })
+      : [];
+    const paymentMap = new Map(payments.map((p) => [p.id, p]));
+
+    const recentPayments = paymentIds
+      .map((pid) => {
+        const p = paymentMap.get(pid);
+        if (!p) return null;
+        const partials = recentReceipts
+          .filter((r) => r.paymentId === pid)
+          .map((r) => ({
+            id: r.id,
+            receiptNumber: r.receiptNumber,
+            amount: r.amount,
+            paidDate: r.paidDate,
+            paymentMethod: r.paymentMethod,
+          }));
+        return {
+          id: p.id,
+          installmentNo: p.installmentNo,
+          amountDue: p.amountDue,
+          amountPaid: p.amountPaid,
+          status: p.status,
+          contract: p.contract,
+          partials,
+        };
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null);
 
     // 2. Overdue summary
     const overduePayments = await this.prisma.payment.count({

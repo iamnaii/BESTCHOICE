@@ -66,7 +66,7 @@ export default function ContractPaymentSchedule({ contractId, payments }: Contra
   const toggle = (no: number) =>
     setExpanded((prev) => {
       const next = new Set(prev);
-      next.has(no) ? next.delete(no) : next.add(no);
+      if (next.has(no)) { next.delete(no); } else { next.add(no); }
       return next;
     });
 

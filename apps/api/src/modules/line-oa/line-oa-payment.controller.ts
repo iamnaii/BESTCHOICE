@@ -798,20 +798,26 @@ export class LineOaPaymentController {
     // Create payment link
     const linkResult = await this.paymentLinkService.createPaymentLink(body.contractId);
 
-    // Build flex
+    // Build flex + capture meta for inbox preview
+    const totalInstallments = await this.prisma.payment.count({
+      where: { contractId: contract.id, deletedAt: null },
+    });
+    const lateFeeTotal = overduePayments.reduce((sum, p) => sum + d(p.lateFee), 0);
+    const firstPayment = contract.payments[0];
+
     const flex = isOverdue
       ? this.flexTemplates.overdueNotice({
           contractNumber: contract.contractNumber,
           overdueInstallments: overduePayments.length,
           totalAmount: linkResult.amount,
-          lateFee: overduePayments.reduce((sum, p) => sum + d(p.lateFee), 0),
+          lateFee: lateFeeTotal,
           paymentUrl: linkResult.url,
         })
       : this.flexTemplates.paymentReminder({
           contractNumber: contract.contractNumber,
-          installmentNo: contract.payments[0].installmentNo,
+          installmentNo: firstPayment.installmentNo,
           amount: linkResult.amount,
-          dueDate: formatDateShort(contract.payments[0].dueDate),
+          dueDate: formatDateShort(firstPayment.dueDate),
           paymentUrl: linkResult.url,
         });
 
@@ -835,12 +841,29 @@ export class LineOaPaymentController {
     });
 
     if (room) {
+      // Pipe-encoded meta so inbox can render a preview card matching the LINE Flex
+      // Format (reminder): [flex:payment-reminder|<contractNo>|<installmentNo>/<total>|<amount>|<dueDate>|<daysUntilDue>] <url>
+      // Format (overdue):  [flex:overdue-notice|<contractNo>|<overdueCount>|<amount>|<lateFee>|<oldestDueDate>] <url>
+      const metaText = isOverdue
+        ? (() => {
+            const oldest = overduePayments[0];
+            const oldestDue = oldest?.dueDate ? formatDateShort(oldest.dueDate) : '';
+            return `[flex:overdue-notice|${contract.contractNumber}|${overduePayments.length}|${linkResult.amount}|${lateFeeTotal}|${oldestDue}] ${linkResult.url}`;
+          })()
+        : (() => {
+            const dueDateStr = formatDateShort(firstPayment.dueDate);
+            const daysUntilDue = firstPayment.dueDate
+              ? Math.ceil((new Date(firstPayment.dueDate).getTime() - now.getTime()) / 86400000)
+              : 0;
+            return `[flex:payment-reminder|${contract.contractNumber}|${firstPayment.installmentNo}/${totalInstallments}|${linkResult.amount}|${dueDateStr}|${daysUntilDue}] ${linkResult.url}`;
+          })();
+
       await this.prisma.chatMessage.create({
         data: {
           roomId: room.id,
           role: MessageRole.STAFF,
           type: MessageType.TEXT,
-          text: `[${isOverdue ? 'แจ้งค้างชำระ' : 'แจ้งเตือนค่างวด'} - Flex Card] ${linkResult.url}`,
+          text: metaText,
           staffId: req.user.id,
         },
       });

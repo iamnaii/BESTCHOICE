@@ -907,7 +907,7 @@ const deleteMutation = useMutation({
       )}
 
       {activeTab === 'schedule' && (
-        <ContractPaymentSchedule payments={contract.payments} />
+        <ContractPaymentSchedule contractId={contract.id} payments={contract.payments} />
       )}
 
       {activeTab === 'documents' && (

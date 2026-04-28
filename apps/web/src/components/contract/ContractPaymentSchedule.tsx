@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronRight, Receipt } from 'lucide-react';
+import { ChevronRight, Receipt as ReceiptIcon } from 'lucide-react';
 import api from '@/lib/api';
 import PaymentProgressOverview from '@/components/contract/PaymentTimeline';
 import { formatNumber, formatDateMedium, formatDateTime } from '@/utils/formatters';
@@ -57,16 +57,13 @@ export default function ContractPaymentSchedule({ contractId, payments }: Contra
     staleTime: 30_000,
   });
 
-  // Group by installmentNo when available; fall back to paymentId matching (older receipts have installmentNo=null)
   const receiptsByPaymentId = receipts.reduce<Record<string, ReceiptRow[]>>((acc, r) => {
     if (r.paymentId) { (acc[r.paymentId] ??= []).push(r); }
     return acc;
   }, {});
 
   const receiptsByInstallment = receipts.reduce<Record<number, ReceiptRow[]>>((acc, r) => {
-    if (r.installmentNo != null) {
-      (acc[r.installmentNo] ??= []).push(r);
-    }
+    if (r.installmentNo != null) { (acc[r.installmentNo] ??= []).push(r); }
     return acc;
   }, {});
 
@@ -96,27 +93,29 @@ export default function ContractPaymentSchedule({ contractId, payments }: Contra
           </thead>
           <tbody>
             {payments.map((p) => {
-              const rows = receiptsByInstallment[p.installmentNo] ?? receiptsByPaymentId[p.id] ?? [];
+              const installmentReceipts =
+                receiptsByInstallment[p.installmentNo] ?? receiptsByPaymentId[p.id] ?? [];
               const isOpen = expanded.has(p.installmentNo);
-              const hasReceipts = rows.length > 0;
               const amountDue = parseFloat(p.amountDue) + parseFloat(p.lateFee);
               const amountPaid = parseFloat(p.amountPaid ?? '0');
               const remaining = amountDue - amountPaid;
               const ps = paymentStatusLabels[p.status] ?? { label: p.status, className: 'bg-secondary' };
               const lateFee = parseFloat(p.lateFee);
+              // Show expand button whenever there's any payment activity, even if no
+              // receipts found (partial payments don't generate receipts by design).
+              const hasActivity = amountPaid > 0;
 
               return (
-                <>
+                <Fragment key={p.id}>
                   <tr
-                    key={p.id}
-                    className={`border-b border-border transition-colors ${hasReceipts ? 'cursor-pointer hover:bg-muted/30' : ''} ${isOpen ? 'bg-muted/20' : ''}`}
-                    onClick={() => hasReceipts && toggle(p.installmentNo)}
+                    className={`border-b border-border transition-colors ${hasActivity ? 'cursor-pointer hover:bg-muted/30' : ''} ${isOpen ? 'bg-muted/20' : ''}`}
+                    onClick={() => hasActivity && toggle(p.installmentNo)}
                   >
                     <td className="px-4 py-3 font-medium">{p.installmentNo}</td>
                     <td className="px-4 py-3 text-sm">{formatDateMedium(p.dueDate)}</td>
                     <td className="px-4 py-3 text-sm">{formatNumber(p.amountDue)} บาท</td>
                     <td className="px-4 py-3">
-                      {p.amountPaid ? (
+                      {p.amountPaid && amountPaid > 0 ? (
                         p.status === 'PARTIALLY_PAID' ? (
                           <div className="flex flex-col gap-1 min-w-[120px]">
                             <span className="text-sm font-medium text-warning">
@@ -152,14 +151,15 @@ export default function ContractPaymentSchedule({ contractId, payments }: Contra
                       {p.paidDate ? formatDateMedium(p.paidDate) : '—'}
                     </td>
                     <td className="px-4 py-3">
-                      {hasReceipts && (
+                      {hasActivity && (
                         <button
                           type="button"
                           onClick={(e) => { e.stopPropagation(); toggle(p.installmentNo); }}
-                          className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:bg-primary/8 px-2 py-1 rounded transition-colors"
+                          className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:bg-primary/10 px-2 py-1 rounded transition-colors"
                         >
-                          <Receipt className="h-3 w-3" />
-                          {rows.length} รายการ
+                          <ReceiptIcon className="h-3 w-3" />
+                          ดูประวัติ
+                          {installmentReceipts.length > 0 && ` (${installmentReceipts.length})`}
                           <ChevronRight className={`h-3 w-3 transition-transform ${isOpen ? 'rotate-90' : ''}`} />
                         </button>
                       )}
@@ -167,30 +167,47 @@ export default function ContractPaymentSchedule({ contractId, payments }: Contra
                   </tr>
 
                   {isOpen && (
-                    <tr key={`${p.id}-detail`} className="border-b border-border bg-muted/10">
+                    <tr className="border-b border-border bg-muted/10">
                       <td colSpan={8} className="px-4 pb-3 pt-0">
                         <div className="ml-6 mt-2 rounded-md border border-border overflow-hidden">
-                          <div className="grid grid-cols-[1fr_1fr_90px_80px] gap-0 bg-muted/60 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          <div className="grid grid-cols-[1fr_1fr_120px_80px] gap-0 bg-muted/60 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                             <span>เลขใบเสร็จ</span>
                             <span>วันที่ชำระ</span>
                             <span className="text-right">ยอด</span>
                             <span>ช่องทาง</span>
                           </div>
-                          {rows.map((r, idx) => (
-                            <div
-                              key={r.id}
-                              className={`grid grid-cols-[1fr_1fr_90px_80px] gap-0 px-3 py-2 items-center text-xs ${idx < rows.length - 1 ? 'border-b border-border' : ''} hover:bg-muted/20 transition-colors`}
-                            >
-                              <span className="font-mono text-[11px] text-primary">{r.receiptNumber}</span>
-                              <span className="text-muted-foreground">{formatDateTime(r.paidDate)}</span>
-                              <span className="text-right font-semibold">{formatNumber(r.amount)} บาท</span>
-                              <span>
-                                <span className="inline-block bg-muted text-muted-foreground text-[10px] font-medium px-1.5 py-0.5 rounded">
-                                  {paymentMethodLabels[r.paymentMethod ?? ''] ?? r.paymentMethod ?? '—'}
+
+                          {installmentReceipts.length > 0 ? (
+                            installmentReceipts.map((r, idx) => (
+                              <div
+                                key={r.id}
+                                className={`grid grid-cols-[1fr_1fr_120px_80px] gap-0 px-3 py-2 items-center text-xs ${idx < installmentReceipts.length - 1 ? 'border-b border-border' : ''} hover:bg-muted/20 transition-colors`}
+                              >
+                                <span className="font-mono text-[11px] text-primary">{r.receiptNumber}</span>
+                                <span className="text-muted-foreground">{formatDateTime(r.paidDate)}</span>
+                                <span className="text-right font-semibold">{formatNumber(r.amount)} บาท</span>
+                                <span>
+                                  <span className="inline-block bg-muted text-muted-foreground text-[10px] font-medium px-1.5 py-0.5 rounded">
+                                    {paymentMethodLabels[r.paymentMethod ?? ''] ?? r.paymentMethod ?? '—'}
+                                  </span>
                                 </span>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="grid grid-cols-[1fr_1fr_120px_80px] gap-0 px-3 py-2 items-center text-xs">
+                              <span className="text-muted-foreground italic">— ไม่มีใบเสร็จ —</span>
+                              <span className="text-muted-foreground">{p.paidDate ? formatDateTime(p.paidDate) : '—'}</span>
+                              <span className="text-right font-semibold">{formatNumber(amountPaid)} บาท</span>
+                              <span>
+                                {p.paymentMethod && (
+                                  <span className="inline-block bg-muted text-muted-foreground text-[10px] font-medium px-1.5 py-0.5 rounded">
+                                    {paymentMethodLabels[p.paymentMethod] ?? p.paymentMethod}
+                                  </span>
+                                )}
                               </span>
                             </div>
-                          ))}
+                          )}
+
                           {p.status === 'PARTIALLY_PAID' && (
                             <div className="flex items-center justify-between px-3 py-2 bg-warning/5 border-t border-border">
                               <span className="text-xs text-warning font-medium">
@@ -202,7 +219,7 @@ export default function ContractPaymentSchedule({ contractId, payments }: Contra
                       </td>
                     </tr>
                   )}
-                </>
+                </Fragment>
               );
             })}
           </tbody>

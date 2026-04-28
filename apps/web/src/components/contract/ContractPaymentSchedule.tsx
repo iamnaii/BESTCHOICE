@@ -224,11 +224,11 @@ export default function ContractPaymentSchedule({ contractId, payments }: Contra
                     <tr className="border-b border-border bg-muted/10">
                       <td colSpan={8} className="px-4 pb-3 pt-0">
                         <div className="ml-6 mt-2 rounded-md border border-border overflow-hidden">
-                          <div className="grid grid-cols-[1fr_1fr_110px_80px_70px] gap-0 bg-muted/60 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          <div className="grid grid-cols-[1fr_1fr_100px_110px_80px] gap-x-4 bg-muted/60 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                             <span>เลขใบเสร็จ</span>
                             <span>วันที่ชำระ</span>
-                            <span className="text-right">ยอด</span>
                             <span>ช่องทาง</span>
+                            <span className="text-right">ยอด</span>
                             <span></span>
                           </div>
 
@@ -236,7 +236,7 @@ export default function ContractPaymentSchedule({ contractId, payments }: Contra
                             installmentReceipts.map((r, idx) => (
                               <div
                                 key={r.id}
-                                className={`grid grid-cols-[1fr_1fr_110px_80px_70px] gap-0 px-3 py-2 items-center text-xs ${idx < installmentReceipts.length - 1 ? 'border-b border-border' : ''} hover:bg-muted/20 transition-colors`}
+                                className={`grid grid-cols-[1fr_1fr_100px_110px_80px] gap-x-4 px-3 py-2 items-center text-xs ${idx < installmentReceipts.length - 1 ? 'border-b border-border' : ''} hover:bg-muted/20 transition-colors`}
                               >
                                 <button
                                   type="button"
@@ -246,10 +246,10 @@ export default function ContractPaymentSchedule({ contractId, payments }: Contra
                                   {r.receiptNumber}
                                 </button>
                                 <span className="text-muted-foreground">{formatDateTime(r.paidDate)}</span>
-                                <span className="text-right font-semibold">{formatNumber(r.amount)} บาท</span>
                                 <span>
                                   <PaymentMethodBadge method={r.paymentMethod} />
                                 </span>
+                                <span className="text-right font-semibold">{formatNumber(r.amount)} บาท</span>
                                 <span className="text-right">
                                   <button
                                     type="button"
@@ -264,13 +264,13 @@ export default function ContractPaymentSchedule({ contractId, payments }: Contra
                               </div>
                             ))
                           ) : (
-                            <div className="grid grid-cols-[1fr_1fr_110px_80px_70px] gap-0 px-3 py-2 items-center text-xs">
+                            <div className="grid grid-cols-[1fr_1fr_100px_110px_80px] gap-x-4 px-3 py-2 items-center text-xs">
                               <span className="text-muted-foreground italic">— ไม่มีใบเสร็จ —</span>
                               <span className="text-muted-foreground">{p.paidDate ? formatDateTime(p.paidDate) : '—'}</span>
-                              <span className="text-right font-semibold">{formatNumber(amountPaid)} บาท</span>
                               <span>
                                 <PaymentMethodBadge method={p.paymentMethod} />
                               </span>
+                              <span className="text-right font-semibold">{formatNumber(amountPaid)} บาท</span>
                               <span></span>
                             </div>
                           )}

@@ -1,6 +1,14 @@
-import { Fragment, useState } from 'react';
+import { Fragment, useState, type ComponentType } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronRight, Receipt as ReceiptIcon } from 'lucide-react';
+import {
+  ChevronRight,
+  Receipt as ReceiptIcon,
+  Banknote,
+  Landmark,
+  QrCode,
+  Wallet,
+  CreditCard,
+} from 'lucide-react';
 import api from '@/lib/api';
 import PaymentProgressOverview from '@/components/contract/PaymentTimeline';
 import { formatNumber, formatDateMedium, formatDateTime } from '@/utils/formatters';
@@ -35,13 +43,38 @@ const paymentStatusLabels: Record<string, { label: string; className: string }> 
   PARTIALLY_PAID: { label: 'ชำระบางส่วน', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
 };
 
-const paymentMethodLabels: Record<string, string> = {
-  TRANSFER: 'โอน',
-  CASH: 'เงินสด',
-  QR: 'QR',
-  CREDIT_CARD: 'บัตรเครดิต',
-  DEBIT_CARD: 'บัตรเดบิต',
+type PaymentMethodMeta = {
+  label: string;
+  icon: ComponentType<{ className?: string }>;
+  className: string;
 };
+
+const paymentMethodMeta: Record<string, PaymentMethodMeta> = {
+  CASH:           { label: 'เงินสด',  icon: Banknote,   className: 'bg-success/10 text-success' },
+  BANK_TRANSFER:  { label: 'โอน',     icon: Landmark,   className: 'bg-info/10 text-info' },
+  QR_EWALLET:     { label: 'QR',      icon: QrCode,     className: 'bg-primary/10 text-primary' },
+  CREDIT_BALANCE: { label: 'เครดิต',  icon: Wallet,     className: 'bg-warning/10 text-warning' },
+  ONLINE_GATEWAY: { label: 'ออนไลน์', icon: CreditCard, className: 'bg-accent text-accent-foreground' },
+};
+
+function PaymentMethodBadge({ method }: { method: string | null | undefined }) {
+  if (!method) return <span className="text-xs text-muted-foreground">—</span>;
+  const meta = paymentMethodMeta[method];
+  if (!meta) {
+    return (
+      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-muted text-muted-foreground">
+        {method}
+      </span>
+    );
+  }
+  const Icon = meta.icon;
+  return (
+    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${meta.className}`}>
+      <Icon className="h-3 w-3" />
+      {meta.label}
+    </span>
+  );
+}
 
 interface ContractPaymentScheduleProps {
   contractId: string;
@@ -187,9 +220,7 @@ export default function ContractPaymentSchedule({ contractId, payments }: Contra
                                 <span className="text-muted-foreground">{formatDateTime(r.paidDate)}</span>
                                 <span className="text-right font-semibold">{formatNumber(r.amount)} บาท</span>
                                 <span>
-                                  <span className="inline-block bg-muted text-muted-foreground text-[10px] font-medium px-1.5 py-0.5 rounded">
-                                    {paymentMethodLabels[r.paymentMethod ?? ''] ?? r.paymentMethod ?? '—'}
-                                  </span>
+                                  <PaymentMethodBadge method={r.paymentMethod} />
                                 </span>
                               </div>
                             ))
@@ -199,11 +230,7 @@ export default function ContractPaymentSchedule({ contractId, payments }: Contra
                               <span className="text-muted-foreground">{p.paidDate ? formatDateTime(p.paidDate) : '—'}</span>
                               <span className="text-right font-semibold">{formatNumber(amountPaid)} บาท</span>
                               <span>
-                                {p.paymentMethod && (
-                                  <span className="inline-block bg-muted text-muted-foreground text-[10px] font-medium px-1.5 py-0.5 rounded">
-                                    {paymentMethodLabels[p.paymentMethod] ?? p.paymentMethod}
-                                  </span>
-                                )}
+                                <PaymentMethodBadge method={p.paymentMethod} />
                               </span>
                             </div>
                           )}

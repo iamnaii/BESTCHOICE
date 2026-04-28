@@ -1,5 +1,6 @@
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
+import { PaymentFlexPreview, parsePaymentFlex } from './PaymentFlexPreview';
 
 interface MessageBubbleProps {
   message: {
@@ -60,6 +61,33 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
             </span>
             {isStaff && (
               <span className={cn('text-[10px] ml-1', message.readAt ? 'text-info' : 'text-muted-foreground')}>
+                {message.readAt ? '✓✓' : '✓'}
+              </span>
+            )}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  // Payment Flex Card — preview the bubble customer received in LINE
+  const paymentFlex = parsePaymentFlex(message.text);
+  if (paymentFlex) {
+    return (
+      <div className={cn('flex gap-2 mb-3', isCustomer ? 'justify-start' : 'justify-end')}>
+        <div className="flex flex-col max-w-[75%] items-end">
+          {(isBot || isStaff) && (
+            <span className="text-[10px] text-muted-foreground mb-0.5 px-1">
+              {isBot ? 'Bot' : message.staff?.name ?? 'พนักงาน'}
+            </span>
+          )}
+          <PaymentFlexPreview data={paymentFlex} />
+          <span className="flex items-center mt-0.5 px-1">
+            <span className="text-[10px] text-muted-foreground">
+              {format(new Date(message.createdAt), 'HH:mm')}
+            </span>
+            {isStaff && (
+              <span className={cn('text-[10px] ml-1', message.readAt ? 'text-primary' : 'text-muted-foreground')}>
                 {message.readAt ? '✓✓' : '✓'}
               </span>
             )}
@@ -177,7 +205,7 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
         {/* Bubble */}
         <div
           className={cn(
-            'px-3.5 py-2 rounded-2xl text-sm leading-relaxed',
+            'max-w-full min-w-0 px-3.5 py-2 rounded-2xl text-sm leading-relaxed [overflow-wrap:anywhere]',
             isCustomer
               ? 'bg-muted text-foreground rounded-bl-md'
               : isBot
@@ -196,7 +224,7 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
           )}
 
           {/* Text */}
-          {message.text && <p className="whitespace-pre-wrap break-words">{message.text}</p>}
+          {message.text && <p className="whitespace-pre-wrap">{message.text}</p>}
         </div>
 
         {/* Timestamp + Read receipt */}

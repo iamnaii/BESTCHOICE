@@ -6,6 +6,17 @@ import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, sessionPriorityMap } from '@/lib/status-badges';
 import { useState } from 'react';
 
+/** Map sentinel-prefixed message bodies to a human-friendly preview. */
+function formatMessagePreview(text: string | null | undefined): string {
+  if (!text) return '(ข้อความสื่อ)';
+  if (text.startsWith('[flex:payment-reminder')) return '📋 แจ้งเตือนค่างวด (Flex Card)';
+  if (text.startsWith('[flex:overdue-notice')) return '⚠️ แจ้งค้างชำระ (Flex Card)';
+  if (text === '[flex:verify]') return '🔐 ยืนยันตัวตน (Flex Card)';
+  if (text.startsWith('[gif:')) return '(GIF)';
+  if (text.match(/^\[sticker:\d+:\d+\]$/)) return '(สติกเกอร์)';
+  return text;
+}
+
 interface ConversationItemProps {
   session: {
     id: string;
@@ -126,7 +137,7 @@ export default function ConversationItem({ session, isActive, onClick, onPin }: 
           )}>
             {lastMessage?.role === 'STAFF' && <span className="text-primary font-medium">คุณ: </span>}
             {lastMessage?.role === 'BOT' && <span className="text-muted-foreground font-medium">Bot: </span>}
-            {lastMessage?.text ?? '(ข้อความสื่อ)'}
+            {formatMessagePreview(lastMessage?.text)}
           </p>
           {hasUnread && (
             <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold leading-snug flex-shrink-0">

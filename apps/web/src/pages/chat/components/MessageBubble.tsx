@@ -40,7 +40,7 @@ export function MessageBubble({ message }: { message: Message }) {
     <div className={cn('flex', isCustomer ? 'justify-start' : 'justify-end')}>
       <div
         className={cn(
-          'max-w-[75%] rounded-lg px-3 py-2 text-sm leading-snug whitespace-pre-wrap break-words',
+          'max-w-[75%] min-w-0 rounded-lg px-3 py-2 text-sm leading-snug whitespace-pre-wrap [overflow-wrap:anywhere]',
           isCustomer
             ? 'bg-muted text-foreground'
             : 'bg-primary text-primary-foreground',

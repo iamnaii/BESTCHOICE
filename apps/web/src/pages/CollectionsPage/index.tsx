@@ -155,7 +155,6 @@ export default function CollectionsPage() {
               onOpen360={openPanel}
               onSendLine={setLineDialogContract}
               onSkipTrace={setSkipTraceContract}
-              onPartialPaymentReschedule={setPartialPayContract}
             />
           )}
 

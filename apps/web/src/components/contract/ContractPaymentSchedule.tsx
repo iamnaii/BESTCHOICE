@@ -1,15 +1,18 @@
 import { Fragment, useState, type ComponentType } from 'react';
+import { useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import {
   ChevronRight,
   Receipt as ReceiptIcon,
+  Download,
   Banknote,
   Landmark,
   QrCode,
   Wallet,
   CreditCard,
 } from 'lucide-react';
-import api from '@/lib/api';
+import { toast } from 'sonner';
+import api, { getErrorMessage } from '@/lib/api';
 import PaymentProgressOverview from '@/components/contract/PaymentTimeline';
 import { formatNumber, formatDateMedium, formatDateTime } from '@/utils/formatters';
 
@@ -81,7 +84,25 @@ interface ContractPaymentScheduleProps {
   payments: Payment[];
 }
 
+async function downloadReceiptPdf(receiptId: string, receiptNumber: string) {
+  try {
+    const res = await api.get(`/receipts/${receiptId}/pdf`, { responseType: 'blob' });
+    const blob = new Blob([res.data], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${receiptNumber}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    toast.error(getErrorMessage(err) || 'ไม่สามารถดาวน์โหลดใบเสร็จ');
+  }
+}
+
 export default function ContractPaymentSchedule({ contractId, payments }: ContractPaymentScheduleProps) {
+  const navigate = useNavigate();
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
 
   const { data: receipts = [] } = useQuery<ReceiptRow[]>({
@@ -203,43 +224,69 @@ export default function ContractPaymentSchedule({ contractId, payments }: Contra
                     <tr className="border-b border-border bg-muted/10">
                       <td colSpan={8} className="px-4 pb-3 pt-0">
                         <div className="ml-6 mt-2 rounded-md border border-border overflow-hidden">
-                          <div className="grid grid-cols-[1fr_1fr_120px_80px] gap-0 bg-muted/60 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          <div className="grid grid-cols-[1fr_1fr_110px_80px_70px] gap-0 bg-muted/60 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                             <span>เลขใบเสร็จ</span>
                             <span>วันที่ชำระ</span>
                             <span className="text-right">ยอด</span>
                             <span>ช่องทาง</span>
+                            <span></span>
                           </div>
 
                           {installmentReceipts.length > 0 ? (
                             installmentReceipts.map((r, idx) => (
                               <div
                                 key={r.id}
-                                className={`grid grid-cols-[1fr_1fr_120px_80px] gap-0 px-3 py-2 items-center text-xs ${idx < installmentReceipts.length - 1 ? 'border-b border-border' : ''} hover:bg-muted/20 transition-colors`}
+                                className={`grid grid-cols-[1fr_1fr_110px_80px_70px] gap-0 px-3 py-2 items-center text-xs ${idx < installmentReceipts.length - 1 ? 'border-b border-border' : ''} hover:bg-muted/20 transition-colors`}
                               >
-                                <span className="font-mono text-[11px] text-primary">{r.receiptNumber}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => downloadReceiptPdf(r.id, r.receiptNumber)}
+                                  className="font-mono text-[11px] text-primary text-left hover:underline underline-offset-2 cursor-pointer"
+                                >
+                                  {r.receiptNumber}
+                                </button>
                                 <span className="text-muted-foreground">{formatDateTime(r.paidDate)}</span>
                                 <span className="text-right font-semibold">{formatNumber(r.amount)} บาท</span>
                                 <span>
                                   <PaymentMethodBadge method={r.paymentMethod} />
                                 </span>
+                                <span className="text-right">
+                                  <button
+                                    type="button"
+                                    onClick={() => downloadReceiptPdf(r.id, r.receiptNumber)}
+                                    title="ดาวน์โหลดใบเสร็จ PDF"
+                                    className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-primary hover:bg-primary/5 px-2 py-1 rounded transition-colors"
+                                  >
+                                    <Download className="h-3 w-3" />
+                                    ใบเสร็จ
+                                  </button>
+                                </span>
                               </div>
                             ))
                           ) : (
-                            <div className="grid grid-cols-[1fr_1fr_120px_80px] gap-0 px-3 py-2 items-center text-xs">
+                            <div className="grid grid-cols-[1fr_1fr_110px_80px_70px] gap-0 px-3 py-2 items-center text-xs">
                               <span className="text-muted-foreground italic">— ไม่มีใบเสร็จ —</span>
                               <span className="text-muted-foreground">{p.paidDate ? formatDateTime(p.paidDate) : '—'}</span>
                               <span className="text-right font-semibold">{formatNumber(amountPaid)} บาท</span>
                               <span>
                                 <PaymentMethodBadge method={p.paymentMethod} />
                               </span>
+                              <span></span>
                             </div>
                           )}
 
                           {p.status === 'PARTIALLY_PAID' && (
-                            <div className="flex items-center justify-between px-3 py-2 bg-warning/5 border-t border-border">
+                            <div className="flex items-center justify-between gap-3 px-3 py-2 bg-warning/5 border-t border-border">
                               <span className="text-xs text-warning font-medium">
                                 ยังขาดอีก {formatNumber(remaining)} บาท
                               </span>
+                              <button
+                                type="button"
+                                onClick={() => navigate(`/payments?contractId=${contractId}`)}
+                                className="text-xs font-medium text-primary border border-primary/40 hover:bg-primary/10 px-3 py-1 rounded transition-colors"
+                              >
+                                บันทึกชำระส่วนที่เหลือ
+                              </button>
                             </div>
                           )}
                         </div>

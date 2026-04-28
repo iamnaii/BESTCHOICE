@@ -217,14 +217,10 @@ export class AuthService {
       return { state: 'OTP_REQUIRED', tempToken };
     }
 
-    // State 2: 2FA enrollment is mandatory (deadline has passed) but not yet set up
-    if (user.twoFactorRequiredAfter && user.twoFactorRequiredAfter < new Date()) {
-      const tempToken = this.signTempToken(user.id, '2fa_setup');
-      await this.auditLogin(loginDto.email, false, meta, user.id, 'other');
-      return { state: '2FA_SETUP_REQUIRED', tempToken };
-    }
+    // 2FA enrollment enforcement is disabled by product decision (P1Q6 deferred).
+    // Voluntary 2FA via twoFactorEnabled (State 1 above) still works for users who opt in.
 
-    // State 3: Fully authenticated
+    // State 2: Fully authenticated
     await this.auditLogin(loginDto.email, true, meta, user.id);
 
     const payload = {

@@ -1,18 +1,24 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import DataTable from '@/components/ui/DataTable';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, receiptStatusMap } from '@/lib/status-badges';
-import ReceiptModal from '@/components/payment/ReceiptModal';
+import ReceiptVoidDialog from '@/components/payment/ReceiptVoidDialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { useDebounce } from '@/hooks/useDebounce';
 import { exportToExcel } from '@/utils/excel.util';
 import { toast } from 'sonner';
 import { formatDateShort } from '@/utils/formatters';
 import QueryBoundary from '@/components/QueryBoundary';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
-import { Download } from 'lucide-react';
+import { Download, MoreHorizontal, Send, XCircle } from 'lucide-react';
 
 async function downloadReceiptPdf(receiptId: string, receiptNumber: string) {
   try {
@@ -82,7 +88,16 @@ export default function ReceiptsTab() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [page, setPage] = useState(1);
-  const [selectedReceiptId, setSelectedReceiptId] = useState<string | null>(null);
+  const [voidTarget, setVoidTarget] = useState<{ id: string; receiptNumber: string } | null>(null);
+
+  const sendLineMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { data } = await api.post(`/receipts/${id}/send-line`);
+      return data;
+    },
+    onSuccess: () => toast.success('ส่งใบเสร็จทาง LINE เรียบร้อยแล้ว'),
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
 
   // Reset page on filter change
   useEffect(() => { setPage(1); }, [debouncedSearch, receiptType, dateFrom, dateTo]);
@@ -187,13 +202,35 @@ export default function ReceiptsTab() {
             <Download className="h-3 w-3" />
             ใบเสร็จ
           </button>
-          <button
-            onClick={() => setSelectedReceiptId(r.id)}
-            className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded transition-colors"
-            title="ดูรายละเอียด / ยกเลิกใบเสร็จ"
-          >
-            ⋯
-          </button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className="px-2 py-1 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded transition-colors"
+                title="เพิ่มเติม"
+                aria-label="เพิ่มเติม"
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuItem
+                onClick={() => sendLineMutation.mutate(r.id)}
+                disabled={sendLineMutation.isPending || r.isVoided}
+              >
+                <Send className="h-4 w-4 mr-2" />
+                ส่งใบเสร็จให้ลูกค้า
+              </DropdownMenuItem>
+              {!r.isVoided && r.receiptType !== 'CREDIT_NOTE' && (
+                <DropdownMenuItem
+                  variant="destructive"
+                  onClick={() => setVoidTarget({ id: r.id, receiptNumber: r.receiptNumber })}
+                >
+                  <XCircle className="h-4 w-4 mr-2" />
+                  ยกเลิกใบเสร็จ
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       ),
     },
@@ -344,13 +381,10 @@ export default function ReceiptsTab() {
         />
       </QueryBoundary>
 
-      {/* Receipt Detail Modal (with print + void) */}
-      <ReceiptModal
-        receiptId={selectedReceiptId}
-        onClose={() => {
-          setSelectedReceiptId(null);
-          queryClient.invalidateQueries({ queryKey: ['receipts'] });
-        }}
+      <ReceiptVoidDialog
+        receiptId={voidTarget?.id ?? null}
+        receiptNumber={voidTarget?.receiptNumber}
+        onClose={() => setVoidTarget(null)}
       />
     </div>
   );

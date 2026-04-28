@@ -514,6 +514,28 @@ export class ReceiptsService {
     return text;
   }
 
+  /** Manually push the receipt to the customer's LINE OA. */
+  async sendReceiptToCustomer(id: string) {
+    if (!this.lineOaService) {
+      throw new BadRequestException('LINE OA ยังไม่ได้ตั้งค่า');
+    }
+    const receipt = await this.prisma.receipt.findUnique({
+      where: { id },
+      include: { contract: { select: { customerId: true } } },
+    });
+    if (!receipt || receipt.deletedAt) throw new NotFoundException('ไม่พบใบเสร็จ');
+    if (!receipt.contract?.customerId) {
+      throw new BadRequestException('ใบเสร็จนี้ไม่มีลูกค้าที่เชื่อมโยง');
+    }
+    const sent = await this.lineOaService.sendPaymentReceipt(receipt.contract.customerId, receipt);
+    if (!sent) {
+      throw new BadRequestException(
+        'ไม่สามารถส่งได้ ลูกค้ายังไม่ได้เชื่อม LINE หรือยังไม่ได้ให้ความยินยอม PDPA',
+      );
+    }
+    return { success: true };
+  }
+
   /**
    * Generate the e-Receipt PDF using Puppeteer + the Thai tax-invoice layout.
    * The HTML template is intentionally inlined (no external assets) so the

@@ -12,7 +12,6 @@ import { useDebounce } from '@/hooks/useDebounce';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import PaymentHistorySheet from '@/components/payment/PaymentHistorySheet';
-import ReceiptModal from '@/components/payment/ReceiptModal';
 import { toast } from 'sonner';
 import { exportToExcel } from '@/utils/excel.util';
 import { Upload, Camera } from 'lucide-react';
@@ -46,9 +45,8 @@ export default function PaymentsPage() {
   const debouncedSearch = useDebounce(searchTerm, 400);
   const [summaryDate, setSummaryDate] = useState(new Date().toISOString().split('T')[0]);
 
-  // History sheet & receipt modal state
+  // History sheet state
   const [historyContractId, setHistoryContractId] = useState<string | null>(null);
-  const [receiptId, setReceiptId] = useState<string | null>(null);
   const [showPayModal, setShowPayModal] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<PendingPayment | null>(null);
   const [payForm, setPayForm] = useState({ amount: 0, paymentMethod: 'CASH', notes: '', paidDate: new Date().toISOString().split('T')[0] });
@@ -613,13 +611,6 @@ export default function PaymentsPage() {
       <PaymentHistorySheet
         contractId={historyContractId}
         onClose={() => setHistoryContractId(null)}
-        onViewReceipt={(id) => setReceiptId(id)}
-      />
-
-      {/* Receipt Modal */}
-      <ReceiptModal
-        receiptId={receiptId}
-        onClose={() => setReceiptId(null)}
       />
     </div>
   );

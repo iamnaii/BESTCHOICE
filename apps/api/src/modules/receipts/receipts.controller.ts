@@ -66,6 +66,12 @@ export class ReceiptsController {
     return this.receiptsService.voidReceipt(id, dto.reason, user.id, dto.approvedById || user.id);
   }
 
+  @Post(':id/send-line')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  sendReceiptToCustomer(@Param('id') id: string) {
+    return this.receiptsService.sendReceiptToCustomer(id);
+  }
+
   @Get(':id/pdf')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   async getReceiptPDF(@Param('id') id: string, @Res() res: Response) {

@@ -21,6 +21,7 @@ interface ReceiptRow {
   id: string;
   receiptNumber: string;
   installmentNo: number | null;
+  paymentId: string | null;
   amount: string;
   paidDate: string;
   paymentMethod: string | null;
@@ -56,6 +57,12 @@ export default function ContractPaymentSchedule({ contractId, payments }: Contra
     staleTime: 30_000,
   });
 
+  // Group by installmentNo when available; fall back to paymentId matching (older receipts have installmentNo=null)
+  const receiptsByPaymentId = receipts.reduce<Record<string, ReceiptRow[]>>((acc, r) => {
+    if (r.paymentId) { (acc[r.paymentId] ??= []).push(r); }
+    return acc;
+  }, {});
+
   const receiptsByInstallment = receipts.reduce<Record<number, ReceiptRow[]>>((acc, r) => {
     if (r.installmentNo != null) {
       (acc[r.installmentNo] ??= []).push(r);
@@ -89,7 +96,7 @@ export default function ContractPaymentSchedule({ contractId, payments }: Contra
           </thead>
           <tbody>
             {payments.map((p) => {
-              const rows = receiptsByInstallment[p.installmentNo] ?? [];
+              const rows = receiptsByInstallment[p.installmentNo] ?? receiptsByPaymentId[p.id] ?? [];
               const isOpen = expanded.has(p.installmentNo);
               const hasReceipts = rows.length > 0;
               const amountDue = parseFloat(p.amountDue) + parseFloat(p.lateFee);

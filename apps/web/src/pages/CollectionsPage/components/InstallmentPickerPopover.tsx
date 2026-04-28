@@ -34,7 +34,6 @@ export default function InstallmentPickerPopover({
   // and stale draft survived across reopens with different selections.
   useEffect(() => {
     if (open) setDraft(selectedIds);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, selectedIds.join(',')]);
 
   if (!open) return null;

@@ -19,6 +19,15 @@ export class YeastarController {
     return this.yeastar.originateForUser(user.id, body.customerId);
   }
 
+  @Post('call/originate-phone')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  async originatePhone(
+    @Body() body: { phone: string },
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.yeastar.originateForUserToPhone(user.id, body.phone);
+  }
+
   @Get('extensions')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   async listExtensions() {

@@ -145,6 +145,37 @@ export class OverdueQueueService {
   }
 
   /**
+   * Fetch a single contract in the same enriched ContractRow shape that
+   * `getQueue` returns. Used by the inbox page to open ContactLogDialog
+   * (which expects the full row) without rewriting the dialog UI.
+   *
+   * Branch scope mirrors getQueue: SALES/BRANCH_MANAGER restricted to own
+   * branch; everyone else can see any branch.
+   */
+  async getRowById(
+    contractId: string,
+    user: { userId: string; userRole: string; userBranchId: string | null },
+  ) {
+    const branchScope: Prisma.ContractWhereInput =
+      user.userRole === 'SALES' || user.userRole === 'BRANCH_MANAGER'
+        ? { branchId: user.userBranchId ?? undefined }
+        : {};
+
+    const contract = await this.prisma.contract.findFirst({
+      where: { id: contractId, deletedAt: null, ...branchScope },
+      include: queueContractInclude,
+    });
+
+    if (!contract) return null;
+
+    const enriched = await this.enrichRows([contract], new Date(), user.userId);
+    if (enriched.length === 0) return null;
+    const { __priorityScore, ...row } = enriched[0];
+    void __priorityScore;
+    return row;
+  }
+
+  /**
    * Mutate `where` to apply SQL-level filter constraints (branch overrides,
    * assignee, overdue buckets, outstanding range, contract/product type, skip
    * tracing, search). Callers pass the already-built tab-specific where.

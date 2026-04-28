@@ -33,9 +33,10 @@ import { AutoBalanceService } from './auto-balance.service';
 import { ChatEngineModule } from '../chat-engine/chat-engine.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { LineOaModule } from '../line-oa/line-oa.module';
+import { PaymentsModule } from '../payments/payments.module';
 
 @Module({
-  imports: [ChatEngineModule, NotificationsModule, LineOaModule],
+  imports: [ChatEngineModule, NotificationsModule, LineOaModule, PaymentsModule],
   controllers: [OverdueController],
   providers: [
     OverdueService,

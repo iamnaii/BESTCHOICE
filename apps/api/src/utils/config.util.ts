@@ -45,6 +45,13 @@ export const BUSINESS_RULES = {
   LATE_FEE_CAP: 200,         // max late fee per installment (baht) — actual cap = min(this, amountDue * LATE_FEE_CAP_PCT)
   LATE_FEE_CAP_PCT: 0.05,   // max 5% of installment amount per Thai law
   EARLY_PAYOFF_DISCOUNT: 0.5, // 50% discount on remaining interest
+  /**
+   * Escalation Guardrail: เมื่อลูกค้าผิดนัด ≥ N ครั้ง บนสัญญาเดียวกัน
+   * → block "นัดใหม่" (PROMISED outcome) ใน logContact
+   * → บังคับ collector ทำ escalation (LETTER / MDM / LEGAL)
+   * Count = AuditLog rows ที่ action='BROKEN_PROMISE' บน contract นั้น (lifetime, ไม่ reset)
+   */
+  ESCALATION_BROKEN_PROMISE_THRESHOLD: 2,
 } as const;
 
 /**

@@ -1,36 +1,37 @@
 import type { ReactNode } from 'react';
 import { useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router';
 import api from '@/lib/api';
+import { displayAddress } from '@/components/ui/AddressForm';
 import ProductContextCard from './ProductContextCard';
 import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, contractStatusMap, riskLevelMap } from '@/lib/status-badges';
+import ContactLogDialog from '@/pages/CollectionsPage/components/ContactLogDialog';
+import LockDeviceDialog from '@/pages/CollectionsPage/components/LockDeviceDialog';
+import type { ContractRow } from '@/pages/CollectionsPage/types';
 import {
   User,
   FileText,
   CreditCard,
   AlertTriangle,
-  Clock,
   Phone,
   MessageSquare,
   Smartphone,
   Link2,
-  QrCode,
+  Lock,
+  ExternalLink,
   Zap,
-  Send,
   Shield,
-  Copy,
-  Check,
 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import QRCodeSVG from 'react-qr-code';
 import { format, isPast, differenceInDays } from 'date-fns';
 import { th } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
-type DialogView = null | 'contracts' | 'payments' | 'customer' | 'send-link' | 'send-qr';
+type DialogView = null | 'send-link';
 
 interface ContractSummaryItem {
   id: string;
@@ -128,10 +129,50 @@ const sessionStatusLabel: Record<string, string> = {
 };
 
 export default function Customer360Panel({ customerId, activeRoomId, onSelectRoom }: Customer360PanelProps) {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [dialogView, setDialogView] = useState<DialogView>(null);
   const [selectedContractId, setSelectedContractId] = useState<string | null>(null);
-  const [paymentLinkUrl, setPaymentLinkUrl] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  // Both ContactLog + MDM lock dialogs reuse Collections components and need
+  // a full ContractRow shape — fetched on demand via /overdue/queue-row
+  const [contactLogContract, setContactLogContract] = useState<ContractRow | null>(null);
+  const [mdmLockContract, setMdmLockContract] = useState<ContractRow | null>(null);
+  // Signed contract PDF preview
+  const [pdfPreview, setPdfPreview] = useState<{ url: string; contractNumber: string } | null>(null);
+  const [customerInfoOpen, setCustomerInfoOpen] = useState(false);
+  const [callStatus, setCallStatus] = useState<'idle' | 'calling'>('idle');
+
+  const originateCall = useMutation({
+    mutationFn: ({ contractId }: { contractId: string }) =>
+      api.post('/yeastar/call/originate', { customerId, contractId }).then((r) => r.data),
+    onMutate: () => setCallStatus('calling'),
+    onSuccess: () => {
+      toast.success('กำลังโทรออก — รับสายจากโทรศัพท์ของคุณ');
+      setTimeout(() => setCallStatus('idle'), 10_000);
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) => {
+      setCallStatus('idle');
+      toast.error(err?.response?.data?.message ?? 'โทรออกไม่สำเร็จ');
+    },
+  });
+
+  const originatePhoneCall = useMutation({
+    mutationFn: (phone: string) =>
+      api.post('/yeastar/call/originate-phone', { phone }).then((r) => r.data),
+    onSuccess: () => toast.success('กำลังโทรออก — รับสายจากโทรศัพท์ของคุณ'),
+    onError: (err: { response?: { data?: { message?: string } } }) =>
+      toast.error(err?.response?.data?.message ?? 'โทรออกไม่สำเร็จ'),
+  });
+
+  const handleCall = () => {
+    const contracts = (summary?.activeContracts ?? []) as ContractSummaryItem[];
+    if (!customerId) return;
+    if (contracts.length === 0) {
+      toast.error('ไม่มีสัญญาที่ใช้งาน — โทรออกผ่าน Yeastar ต้องระบุสัญญา');
+      return;
+    }
+    originateCall.mutate({ contractId: contracts[0].id });
+  };
 
   // ─── Customer basic info ──────────────────────────────
   const { data: customer, isLoading } = useQuery({
@@ -169,50 +210,118 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
     enabled: !!activeRoomId,
   });
 
-  // ─── Payment link creation ────────────────────────────
-  const createPaymentLink = useMutation({
+  // ─── Send payment Flex card via LINE Finance ──────────
+  const sendPaymentFlex = useMutation({
     mutationFn: (contractId: string) =>
-      api.post('/line-oa/payment-link', { contractId }).then((r) => r.data),
-    onSuccess: (data) => {
-      setPaymentLinkUrl(data.url ?? data.data?.url ?? null);
-    },
-    onError: () => toast.error('ไม่สามารถสร้างลิงก์ชำระได้'),
-  });
-
-  // ─── Send message to customer LINE ───────────────────
-  const sendLineMessage = useMutation({
-    mutationFn: (text: string) =>
-      api.post(`/staff-chat/customer/${customerId}/messages`, { text }).then((r) => r.data),
-    onSuccess: () => {
-      toast.success('ส่งลิงก์ทาง LINE แล้ว');
+      api.post('/line-oa/payment-flex', { contractId }).then((r) => r.data),
+    onSuccess: (data: { type?: 'reminder' | 'overdue' }) => {
+      toast.success(
+        data?.type === 'overdue'
+          ? 'ส่ง Flex Card (แจ้งค้างชำระ) แล้ว'
+          : 'ส่ง Flex Card (เตือนค่างวด) แล้ว',
+      );
       closeDialog();
     },
-    onError: (err: { response?: { data?: { error?: string } } }) => {
-      toast.error(err?.response?.data?.error ?? 'ไม่สามารถส่งได้');
+    onError: (err: { response?: { data?: { message?: string; error?: string } } }) => {
+      toast.error(
+        err?.response?.data?.message ?? err?.response?.data?.error ?? 'ส่ง Flex Card ไม่สำเร็จ',
+      );
     },
   });
 
   const closeDialog = () => {
     setDialogView(null);
     setSelectedContractId(null);
-    setPaymentLinkUrl(null);
-    setCopied(false);
   };
 
-  const handleSelectContract = (contractId: string, view: 'send-link' | 'send-qr') => {
-    setSelectedContractId(contractId);
-    setPaymentLinkUrl(null);
-    createPaymentLink.mutate(contractId);
-    // view stays as-is (send-link or send-qr) — just update selected contract
-    void view;
+  const sendPaymentLink = () => {
+    const contracts = (summary?.activeContracts ?? []) as ContractSummaryItem[];
+    if (contracts.length === 0) {
+      toast.error('ไม่มีสัญญาที่ใช้งาน');
+      return;
+    }
+    if (contracts.length === 1) {
+      sendPaymentFlex.mutate(contracts[0].id);
+      return;
+    }
+    // Multi-contract: open lightweight picker
+    setDialogView('send-link');
   };
 
-  const handleCopyLink = () => {
-    if (!paymentLinkUrl) return;
-    navigator.clipboard.writeText(paymentLinkUrl).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
+  const fetchAndOpenContactLog = useMutation({
+    mutationFn: (contractId: string) =>
+      api.get(`/overdue/contracts/${contractId}/queue-row`).then((r) => r.data?.data ?? r.data),
+    onSuccess: (row: ContractRow | null) => {
+      if (!row) {
+        toast.error('ไม่พบข้อมูลสัญญา');
+        return;
+      }
+      setContactLogContract(row);
+    },
+    onError: () => toast.error('ไม่สามารถโหลดข้อมูลสัญญาได้'),
+  });
+
+  const openContactLog = () => {
+    const contracts = (summary?.activeContracts ?? []) as ContractSummaryItem[];
+    if (contracts.length === 0) {
+      toast.error('ไม่มีสัญญาที่ใช้งาน');
+      return;
+    }
+    if (contracts.length === 1) {
+      fetchAndOpenContactLog.mutate(contracts[0].id);
+      return;
+    }
+    // Multi: prompt user — for now, use first; could add picker later
+    fetchAndOpenContactLog.mutate(contracts[0].id);
+  };
+
+  const fetchAndOpenMdmLock = useMutation({
+    mutationFn: (contractId: string) =>
+      api.get(`/overdue/contracts/${contractId}/queue-row`).then((r) => r.data?.data ?? r.data),
+    onSuccess: (row: ContractRow | null) => {
+      if (!row) {
+        toast.error('ไม่พบข้อมูลสัญญา');
+        return;
+      }
+      setMdmLockContract(row);
+    },
+    onError: () => toast.error('ไม่สามารถโหลดข้อมูลสัญญาได้'),
+  });
+
+  const openMdmLock = () => {
+    const contracts = (summary?.activeContracts ?? []) as ContractSummaryItem[];
+    if (contracts.length === 0) {
+      toast.error('ไม่มีสัญญาที่ใช้งาน');
+      return;
+    }
+    fetchAndOpenMdmLock.mutate(contracts[0].id);
+  };
+
+  const openContractPdf = useMutation({
+    mutationFn: async (contract: ContractSummaryItem) => {
+      const { data: docs } = await api.get(`/contracts/${contract.id}/documents`);
+      const list: { id: string; documentType: string; createdAt: string }[] = docs?.data ?? docs ?? [];
+      // Pick the most recent signed contract PDF
+      const signedContract = list
+        .filter((d) => d.documentType === 'CONTRACT')
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+      if (!signedContract) {
+        throw new Error('ยังไม่มีไฟล์สัญญา PDF — สัญญานี้อาจยังไม่ได้สร้างเอกสาร');
+      }
+      const { data } = await api.get(`/documents/${signedContract.id}/signed-url`);
+      return { url: data.url as string, contractNumber: contract.contractNumber };
+    },
+    onSuccess: (result) => setPdfPreview(result),
+    onError: (err: Error) => toast.error(err.message ?? 'ไม่สามารถเปิดสัญญาได้'),
+  });
+
+  const openContractPage = () => {
+    const contracts = (summary?.activeContracts ?? []) as ContractSummaryItem[];
+    if (contracts.length === 0) {
+      toast.error('ไม่มีสัญญาที่ใช้งาน');
+      return;
+    }
+    openContractPdf.mutate(contracts[0]);
   };
 
   if (!customerId) {
@@ -274,7 +383,18 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
           </div>
           <div className="min-w-0 flex-1">
             <h3 className="font-semibold text-sm text-foreground truncate">{customer?.name}</h3>
-            <p className="text-xs text-muted-foreground">{customer?.phone}</p>
+            {customer?.phone && (
+              <button
+                type="button"
+                onClick={handleCall}
+                disabled={originateCall.isPending || callStatus === 'calling'}
+                className="text-xs text-muted-foreground hover:text-primary inline-flex items-center gap-1 transition-colors disabled:opacity-60"
+                title="คลิกเพื่อโทรออกผ่าน Yeastar"
+              >
+                <Phone className="w-3 h-3" />
+                {customer.phone}
+              </button>
+            )}
           </div>
           {(() => {
             const riskCfg = getStatusBadgeProps(riskLevel, riskLevelMap);
@@ -565,132 +685,120 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
 
       {/* ─── 7. Quick Actions ────────────────────────────── */}
       <div className="p-4">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-1.5">
-            <Send className="w-3.5 h-3.5 text-muted-foreground" />
-            <h4 className="text-[11px] font-semibold text-foreground/70 uppercase tracking-wide">ดำเนินการ</h4>
-          </div>
-          <Popover>
-            <PopoverTrigger asChild>
-              <button
-                className="w-6 h-6 rounded-full bg-primary flex items-center justify-center text-primary-foreground hover:bg-primary/90 transition-colors"
-                title="ดำเนินการ"
-              >
-                <Zap className="w-3.5 h-3.5" />
-              </button>
-            </PopoverTrigger>
-            <PopoverContent align="end" side="top" className="w-56 p-2">
-              <div className="grid grid-cols-2 gap-1.5">
+        <Popover>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+            >
+              <Zap className="w-3.5 h-3.5" />
+              <span className="text-xs font-semibold">ดำเนินการ</span>
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="end" side="top" className="w-60 p-2">
+              <div className="flex flex-col gap-1">
+                <QuickActionBtn
+                  icon={<Phone className="w-3.5 h-3.5 flex-shrink-0" />}
+                  label={
+                    originateCall.isPending || callStatus === 'calling'
+                      ? 'กำลังโทร...'
+                      : 'โทรออก (Yeastar)'
+                  }
+                  onClick={handleCall}
+                />
+                <div className="h-px bg-border my-1" />
                 <QuickActionBtn
                   icon={<Link2 className="w-3.5 h-3.5 flex-shrink-0" />}
-                  label="ส่งลิงก์ชำระ"
-                  onClick={() => setDialogView('send-link')}
+                  label={sendPaymentFlex.isPending ? 'กำลังส่ง...' : 'ส่งลิงก์ชำระ'}
+                  onClick={sendPaymentLink}
                 />
                 <QuickActionBtn
-                  icon={<QrCode className="w-3.5 h-3.5 flex-shrink-0" />}
-                  label="ส่ง QR ชำระ"
-                  onClick={() => setDialogView('send-qr')}
+                  icon={<Phone className="w-3.5 h-3.5 flex-shrink-0" />}
+                  label="บันทึกติดต่อ + นัดชำระ"
+                  onClick={openContactLog}
                 />
+                <QuickActionBtn
+                  icon={<Lock className="w-3.5 h-3.5 flex-shrink-0" />}
+                  label="ส่งคำสั่งล็อกเครื่อง (MDM)"
+                  onClick={openMdmLock}
+                />
+                <div className="h-px bg-border my-1" />
                 <QuickActionBtn
                   icon={<FileText className="w-3.5 h-3.5 flex-shrink-0" />}
-                  label="ดูสัญญา"
-                  onClick={() => setDialogView('contracts')}
-                />
-                <QuickActionBtn
-                  icon={<Clock className="w-3.5 h-3.5 flex-shrink-0" />}
-                  label="ประวัติชำระ"
-                  onClick={() => setDialogView('payments')}
+                  label={openContractPdf.isPending ? 'กำลังโหลดสัญญา...' : 'ดูสัญญา PDF'}
+                  onClick={openContractPage}
                 />
                 <QuickActionBtn
                   icon={<User className="w-3.5 h-3.5 flex-shrink-0" />}
                   label="ดูข้อมูลลูกค้า"
-                  onClick={() => setDialogView('customer')}
-                  className="col-span-2"
+                  onClick={() => setCustomerInfoOpen(true)}
                 />
               </div>
             </PopoverContent>
           </Popover>
-        </div>
       </div>
       </div>{/* end scrollable */}
 
       {/* ─── Quick Action Dialogs ──────────────────────── */}
 
-      {/* Contracts */}
-      <Dialog open={dialogView === 'contracts'} onOpenChange={(o) => !o && closeDialog()}>
+      {/* Send Payment Link — multi-contract picker (auto-sends Flex on click) */}
+      <Dialog open={dialogView === 'send-link'} onOpenChange={(o) => !o && closeDialog()}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <FileText className="w-4 h-4" /> สัญญาที่ใช้งาน
+              <Link2 className="w-4 h-4" /> เลือกสัญญาที่จะส่งลิงก์ชำระ
             </DialogTitle>
           </DialogHeader>
-          {summary?.activeContracts?.length > 0 ? (
-            <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
-              {(summary.activeContracts as ContractSummaryItem[]).map((c) => {
-                const sCfg = getStatusBadgeProps(c.status, contractStatusMap);
-                const productName = c.product?.name ?? (`${c.product?.brand ?? ''} ${c.product?.model ?? ''}`.trim() || 'สินค้า');
-                return (
-                  <div key={c.id} className="p-3 bg-muted rounded-lg text-sm">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-semibold text-foreground">{c.contractNumber}</span>
-                      <Badge variant={sCfg.variant} appearance={sCfg.appearance} className="text-[10px]">
-                        {localContractStatusMap[c.status] ?? sCfg.label}
-                      </Badge>
-                    </div>
-                    <p className="text-muted-foreground text-xs mb-2">{productName}</p>
-                    <div className="flex justify-between text-xs text-muted-foreground mb-1">
-                      <span>ชำระแล้ว {c.paidInstallments}/{c.totalInstallments} งวด</span>
-                      <span>{Number(c.monthlyPayment).toLocaleString()} บ./งวด</span>
-                    </div>
-                    <div className="w-full bg-border rounded-full h-1.5">
-                      <div className="bg-primary h-1.5 rounded-full" style={{ width: `${(c.paidInstallments / c.totalInstallments) * 100}%` }} />
-                    </div>
-                    {c.nextDueDate && (
-                      <p className="text-xs text-muted-foreground mt-1">ถัดไป: {format(new Date(c.nextDueDate), 'dd/MM/yyyy')}</p>
-                    )}
+          <div className="space-y-2">
+            {((summary?.activeContracts ?? []) as ContractSummaryItem[]).map((c) => {
+              const productName = c.product?.name ?? `${c.product?.brand ?? ''} ${c.product?.model ?? ''}`.trim() ?? 'สินค้า';
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  disabled={sendPaymentFlex.isPending}
+                  onClick={() => sendPaymentFlex.mutate(c.id)}
+                  className="w-full text-left p-3 rounded-lg border border-border hover:bg-accent text-sm transition-colors disabled:opacity-50"
+                >
+                  <div className="flex items-center justify-between mb-0.5">
+                    <span className="font-medium text-foreground">{c.contractNumber}</span>
+                    <span className="text-xs text-muted-foreground">{Number(c.monthlyPayment).toLocaleString()} บ./งวด</span>
                   </div>
-                );
-              })}
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground py-4 text-center">ไม่มีสัญญาที่ใช้งาน</p>
-          )}
+                  <p className="text-xs text-muted-foreground">{productName}</p>
+                </button>
+              );
+            })}
+            <p className="text-[11px] text-muted-foreground text-center pt-1">
+              เลือก template อัตโนมัติตามสถานะค้างชำระ
+            </p>
+          </div>
         </DialogContent>
       </Dialog>
 
-      {/* Payment History */}
-      <Dialog open={dialogView === 'payments'} onOpenChange={(o) => !o && closeDialog()}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <CreditCard className="w-4 h-4" /> ประวัติการชำระ
-            </DialogTitle>
-          </DialogHeader>
-          {summary?.recentPayments?.length > 0 ? (
-            <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
-              {(summary.recentPayments as PaymentSummaryItem[]).map((p) => (
-                <div key={p.id} className="flex items-center justify-between py-2 border-b border-border last:border-0 text-sm">
-                  <div>
-                    <p className="font-medium text-foreground">{p.contract?.contractNumber ?? '—'}</p>
-                    <p className="text-xs text-muted-foreground">งวดที่ {p.installmentNo}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-semibold text-success">{Number(p.amountPaid).toLocaleString()} บ.</p>
-                    {p.paidDate && (
-                      <p className="text-xs text-muted-foreground">{format(new Date(p.paidDate), 'dd MMM yyyy', { locale: th })}</p>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground py-4 text-center">ยังไม่มีประวัติการชำระ</p>
-          )}
-        </DialogContent>
-      </Dialog>
+      {/* Contact Log + Settlement — reuses CollectionsPage dialog for full UI parity */}
+      <ContactLogDialog
+        open={!!contactLogContract}
+        contract={contactLogContract}
+        onClose={() => setContactLogContract(null)}
+        onSaved={() => {
+          queryClient.invalidateQueries({ queryKey: ['customer-chat-summary', customerId] });
+          setContactLogContract(null);
+        }}
+      />
 
-      {/* Customer Info */}
-      <Dialog open={dialogView === 'customer'} onOpenChange={(o) => !o && closeDialog()}>
+      {/* MDM Lock — reuses CollectionsPage dialog for full UI parity */}
+      {mdmLockContract && (
+        <LockDeviceDialog
+          open={!!mdmLockContract}
+          onOpenChange={(o) => !o && setMdmLockContract(null)}
+          contractId={mdmLockContract.id}
+          customerName={mdmLockContract.customer.name}
+          daysOverdue={mdmLockContract.daysOverdue}
+        />
+      )}
+
+      {/* Customer info preview */}
+      <Dialog open={customerInfoOpen} onOpenChange={setCustomerInfoOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -698,67 +806,158 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
             </DialogTitle>
           </DialogHeader>
           {customer && (
-            <div className="space-y-3 text-sm max-h-[60vh] overflow-y-auto pr-1">
-              <InfoRow label="ชื่อ" value={customer.name} />
-              <InfoRow label="โทรศัพท์" value={customer.phone} />
-              {customer.email && <InfoRow label="อีเมล" value={customer.email} />}
-              {customer.idCard && <InfoRow label="เลขบัตร" value={customer.idCard} />}
-              {customer.occupation && <InfoRow label="อาชีพ" value={customer.occupation} />}
-              {customer.address && <InfoRow label="ที่อยู่" value={customer.address} />}
+            <div className="space-y-3 text-sm max-h-[70vh] overflow-y-auto pr-1">
+              <div className="flex items-center gap-3 pb-3 border-b border-border">
+                <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center overflow-hidden flex-shrink-0">
+                  {customer?.avatarUrl || customer?.lineAvatarUrl ? (
+                    <img
+                      src={customer.avatarUrl || customer.lineAvatarUrl}
+                      alt={customer?.name ?? ''}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-muted-foreground text-base font-bold">{(customer?.name ?? '?')[0]}</span>
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-foreground truncate">{customer.name}</p>
+                  {customer.nickname && (
+                    <p className="text-xs text-muted-foreground">ชื่อเล่น: {customer.nickname}</p>
+                  )}
+                </div>
+              </div>
+
+              {/* ─── ติดต่อ ─── */}
+              <CustomerInfoSection title="ติดต่อ">
+                <CustomerInfoRow label="โทรศัพท์" value={customer.phone} />
+                <CustomerInfoRow label="โทรสำรอง" value={customer.phoneSecondary} />
+                <CustomerInfoRow label="อีเมล" value={customer.email} />
+                <CustomerInfoRow label="LINE ID" value={customer.lineId} />
+                <CustomerInfoRow label="Facebook" value={customer.facebookName} />
+              </CustomerInfoSection>
+
+              {/* ─── ข้อมูลส่วนตัว ─── */}
+              <CustomerInfoSection title="ข้อมูลส่วนตัว">
+                <CustomerInfoRow label="เลขบัตรปชช." value={customer.idCard} />
+                <CustomerInfoRow
+                  label="วันเกิด"
+                  value={customer.birthDate ? format(new Date(customer.birthDate), 'dd MMM yyyy', { locale: th }) : null}
+                />
+                <CustomerInfoRow label="ที่อยู่ตามบัตร" value={displayAddress(customer.addressIdCard) || customer.addressIdCard} />
+                <CustomerInfoRow label="ที่อยู่ปัจจุบัน" value={displayAddress(customer.addressCurrent) || customer.addressCurrent} />
+              </CustomerInfoSection>
+
+              {/* ─── งาน ─── */}
+              <CustomerInfoSection title="ข้อมูลที่ทำงาน">
+                <CustomerInfoRow label="ที่ทำงาน" value={customer.workplace} />
+                <CustomerInfoRow label="อาชีพ" value={customer.occupation} />
+                <CustomerInfoRow label="รายละเอียดงาน" value={customer.occupationDetail} />
+                <CustomerInfoRow
+                  label="เงินเดือน"
+                  value={customer.salary ? `${Number(customer.salary).toLocaleString()} บ./เดือน` : null}
+                />
+                <CustomerInfoRow label="ที่อยู่ที่ทำงาน" value={displayAddress(customer.addressWork) || customer.addressWork} />
+              </CustomerInfoSection>
+
+              {/* ─── บุคคลอ้างอิง ─── */}
+              {(() => {
+                type Ref = { prefix?: string; firstName?: string; lastName?: string; phone?: string; relationship?: string };
+                const rawRefs: Ref[] = Array.isArray(customer.references)
+                  ? (customer.references as unknown[]).filter(
+                      (r): r is Ref => r !== null && typeof r === 'object' && !Array.isArray(r),
+                    ) as Ref[]
+                  : [];
+                // Drop empty placeholder objects (detail page pads to length 4 on save)
+                const refs = rawRefs.filter(
+                  (r) => (r.firstName || r.lastName || r.phone || r.relationship || r.prefix),
+                );
+                if (refs.length === 0) return null;
+                return (
+                  <CustomerInfoSection title={`บุคคลอ้างอิง (${refs.length})`}>
+                    <div className="space-y-2">
+                      {refs.map((ref, idx) => {
+                        const fullName = [ref.prefix, ref.firstName, ref.lastName].filter(Boolean).join(' ').trim();
+                        return (
+                          <div key={idx} className="p-2.5 bg-muted rounded-lg text-xs space-y-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-medium text-foreground">{fullName || '—'}</span>
+                              {ref.relationship && (
+                                <Badge variant="secondary" appearance="light" className="text-[10px]">{ref.relationship}</Badge>
+                              )}
+                            </div>
+                            {ref.phone && (
+                              <button
+                                type="button"
+                                onClick={() => originatePhoneCall.mutate(ref.phone!)}
+                                disabled={originatePhoneCall.isPending}
+                                className="inline-flex items-center gap-1 text-muted-foreground hover:text-primary transition-colors disabled:opacity-60"
+                                title={`โทร ${ref.phone}`}
+                              >
+                                <Phone className="w-3 h-3" />
+                                {ref.phone}
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </CustomerInfoSection>
+                );
+              })()}
+
               {summary?.overduePayments > 0 && (
-                <div className="flex items-center gap-2 p-2 bg-destructive/10 rounded-lg text-destructive text-xs">
+                <div className="flex items-center gap-2 p-2.5 bg-destructive/10 rounded-lg text-destructive text-xs">
                   <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
                   <span>ค้างชำระ {summary.overduePayments} งวด · ยอดรวม {Number(summary.totalOutstanding ?? 0).toLocaleString()} บ.</span>
                 </div>
               )}
+
+              <div className="pt-2 border-t border-border">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCustomerInfoOpen(false);
+                    navigate(`/customers/${customerId}`);
+                  }}
+                  className="w-full flex items-center justify-center gap-1.5 py-2 text-sm border border-border rounded-lg hover:bg-accent transition-colors"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  เปิดหน้าเต็ม / แก้ไขข้อมูล
+                </button>
+              </div>
             </div>
           )}
         </DialogContent>
       </Dialog>
 
-      {/* Send Payment Link */}
-      <Dialog open={dialogView === 'send-link'} onOpenChange={(o) => !o && closeDialog()}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Link2 className="w-4 h-4" /> ส่งลิงก์ชำระเงิน
+      {/* Signed contract PDF preview */}
+      <Dialog open={!!pdfPreview} onOpenChange={(o) => !o && setPdfPreview(null)}>
+        <DialogContent className="max-w-4xl h-[90vh] flex flex-col p-0 gap-0">
+          <DialogHeader className="px-4 py-3 border-b border-border shrink-0">
+            <DialogTitle className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-2">
+                <FileText className="w-4 h-4" />
+                สัญญา {pdfPreview?.contractNumber}
+              </span>
+              {pdfPreview?.url && (
+                <a
+                  href={pdfPreview.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs px-3 py-1.5 rounded-lg border border-border hover:bg-accent transition-colors mr-6"
+                >
+                  เปิดในแท็บใหม่
+                </a>
+              )}
             </DialogTitle>
           </DialogHeader>
-          <PaymentActionDialogBody
-            contracts={summary?.activeContracts ?? []}
-            selectedContractId={selectedContractId}
-            paymentLinkUrl={paymentLinkUrl}
-            loading={createPaymentLink.isPending}
-            copied={copied}
-            onSelectContract={(id: string) => handleSelectContract(id, 'send-link')}
-            onCopy={handleCopyLink}
-            onSendLine={() => paymentLinkUrl && sendLineMessage.mutate(paymentLinkUrl)}
-            sendingLine={sendLineMessage.isPending}
-            mode="link"
-          />
-        </DialogContent>
-      </Dialog>
-
-      {/* Send QR */}
-      <Dialog open={dialogView === 'send-qr'} onOpenChange={(o) => !o && closeDialog()}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <QrCode className="w-4 h-4" /> ส่ง QR ชำระเงิน
-            </DialogTitle>
-          </DialogHeader>
-          <PaymentActionDialogBody
-            contracts={summary?.activeContracts ?? []}
-            selectedContractId={selectedContractId}
-            paymentLinkUrl={paymentLinkUrl}
-            loading={createPaymentLink.isPending}
-            copied={copied}
-            onSelectContract={(id: string) => handleSelectContract(id, 'send-qr')}
-            onCopy={handleCopyLink}
-            onSendLine={() => paymentLinkUrl && sendLineMessage.mutate(paymentLinkUrl)}
-            sendingLine={sendLineMessage.isPending}
-            mode="qr"
-          />
+          {pdfPreview?.url && (
+            <iframe
+              src={pdfPreview.url}
+              title={`สัญญา ${pdfPreview.contractNumber}`}
+              className="flex-1 w-full border-0"
+            />
+          )}
         </DialogContent>
       </Dialog>
 
@@ -954,115 +1153,21 @@ function QuickActionBtn({
   );
 }
 
-function InfoRow({ label, value }: { label: string; value?: string | null }) {
+function CustomerInfoRow({ label, value }: { label: string; value?: string | null }) {
   if (!value) return null;
   return (
-    <div className="flex gap-2">
-      <span className="text-muted-foreground w-20 flex-shrink-0">{label}</span>
-      <span className="text-foreground">{value}</span>
+    <div className="flex gap-3 text-xs">
+      <span className="text-muted-foreground w-24 flex-shrink-0">{label}</span>
+      <span className="text-foreground flex-1 break-words">{value}</span>
     </div>
   );
 }
 
-function PaymentActionDialogBody({
-  contracts,
-  selectedContractId,
-  paymentLinkUrl,
-  loading,
-  copied,
-  onSelectContract,
-  onCopy,
-  onSendLine,
-  sendingLine,
-  mode,
-}: {
-  contracts: ContractSummaryItem[];
-  selectedContractId: string | null;
-  paymentLinkUrl: string | null;
-  loading: boolean;
-  copied: boolean;
-  onSelectContract: (id: string) => void;
-  onCopy: () => void;
-  onSendLine: () => void;
-  sendingLine: boolean;
-  mode: 'link' | 'qr';
-}) {
+function CustomerInfoSection({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="space-y-4">
-      {/* Contract picker */}
-      <div className="space-y-2">
-        <p className="text-sm text-muted-foreground">เลือกสัญญา:</p>
-        {contracts.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-4">ไม่มีสัญญาที่ใช้งาน</p>
-        ) : (
-          contracts.map((c) => {
-            const productName = c.product?.name ?? (`${c.product?.brand ?? ''} ${c.product?.model ?? ''}`.trim() || 'สินค้า');
-            const isSelected = c.id === selectedContractId;
-            return (
-              <button
-                key={c.id}
-                onClick={() => onSelectContract(c.id)}
-                className={cn(
-                  'w-full text-left p-2.5 rounded-lg border text-sm transition-colors',
-                  isSelected
-                    ? 'border-primary bg-primary/5 text-foreground'
-                    : 'border-border hover:bg-accent text-muted-foreground',
-                )}
-              >
-                <span className="font-medium">{c.contractNumber}</span>
-                <span className="ml-2 text-xs">{productName}</span>
-              </button>
-            );
-          })
-        )}
-      </div>
-
-      {/* Result: loading */}
-      {loading && (
-        <p className="text-sm text-muted-foreground text-center py-2">กำลังสร้างลิงก์...</p>
-      )}
-
-      {/* Result: link mode */}
-      {!loading && paymentLinkUrl && mode === 'link' && (
-        <div className="space-y-3">
-          <div className="flex items-center gap-2 p-2 bg-muted rounded-lg text-xs break-all">
-            <span className="flex-1 text-foreground">{paymentLinkUrl}</span>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={onCopy}
-              className="flex-1 flex items-center justify-center gap-1.5 py-2 text-sm border border-border rounded-lg hover:bg-accent transition-colors"
-            >
-              {copied ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" />}
-              {copied ? 'คัดลอกแล้ว' : 'คัดลอกลิงก์'}
-            </button>
-            <button
-              onClick={onSendLine}
-              disabled={sendingLine}
-              className="flex-1 flex items-center justify-center gap-1.5 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors"
-            >
-              <Send className="w-3.5 h-3.5" />
-              {sendingLine ? 'กำลังส่ง...' : 'ส่งผ่าน LINE'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Result: QR mode */}
-      {!loading && paymentLinkUrl && mode === 'qr' && (
-        <div className="space-y-3 flex flex-col items-center">
-          <div className="p-4 bg-white rounded-xl border border-border inline-block">
-            <QRCodeSVG value={paymentLinkUrl} size={180} level="M" />
-          </div>
-          <button
-            onClick={onCopy}
-            className="flex items-center gap-1.5 px-4 py-2 text-sm border border-border rounded-lg hover:bg-accent transition-colors"
-          >
-            {copied ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" />}
-            {copied ? 'คัดลอกแล้ว' : 'คัดลอกลิงก์'}
-          </button>
-        </div>
-      )}
+    <div className="space-y-1.5">
+      <p className="text-[11px] font-semibold text-foreground/70 uppercase tracking-wide">{title}</p>
+      <div className="space-y-1.5">{children}</div>
     </div>
   );
 }

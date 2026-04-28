@@ -18,6 +18,7 @@ import {
   ArrowUp,
   ArrowDown,
   CheckCircle2,
+  Coins,
 } from 'lucide-react';
 import { formatDateShort, formatNumber } from '@/utils/formatters';
 import { isToday, formatHHMM } from '../utils/today';
@@ -32,6 +33,7 @@ import { agingBucket, agingColor, formatRelativeTime } from '../utils/cardIndica
 import CustomerTagChips from './CustomerTagChips';
 import NextBestActionChip, { type NextBestActionType } from './NextBestActionChip';
 import { CallButton } from '@/components/CallButton';
+import { ESCALATION_BROKEN_PROMISE_THRESHOLD } from '../hooks/useEscalate';
 
 const CHANNEL_META: Record<
   NonNullable<ContractRow['lastChannel']>,
@@ -73,6 +75,7 @@ interface Props {
   onUnsnooze?: (c: ContractRow) => void;
   onSkipTrace?: (c: ContractRow) => void;
   onNextBestAction?: (c: ContractRow, type: NextBestActionType) => void;
+  onPartialPaymentReschedule?: (c: ContractRow) => void;
 }
 
 export default function ContractCard({
@@ -85,6 +88,7 @@ export default function ContractCard({
   onUnsnooze,
   onSkipTrace,
   onNextBestAction,
+  onPartialPaymentReschedule,
 }: Props) {
   const isSnoozed =
     !!contract.snoozedUntil && new Date(contract.snoozedUntil).getTime() > Date.now();
@@ -182,21 +186,50 @@ export default function ContractCard({
             </span>
           )}
 
-          {/* Settlement / นัดชำระ */}
+          {/* Settlement / นัดชำระ — แสดงยอดด้วยถ้ามี (พร้อมงวดที่ 2 กรณีแบ่งจ่าย) */}
           {contract.settlementDate && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary border border-primary/20 text-xs font-medium px-2.5 py-1 leading-snug">
+            <span
+              className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary border border-primary/20 text-xs font-medium px-2.5 py-1 leading-snug"
+              title={
+                contract.secondSettlementDate
+                  ? `งวด 1: ${contract.settlementAmount != null ? formatNumber(contract.settlementAmount) + ' ฿ ' : ''}${formatDateShort(new Date(contract.settlementDate))}\nงวด 2: ${contract.secondSettlementAmount != null ? formatNumber(contract.secondSettlementAmount) + ' ฿ ' : ''}${formatDateShort(new Date(contract.secondSettlementDate))}`
+                  : undefined
+              }
+            >
               <CalendarCheck className="size-3.5" />
               นัดชำระ {formatDateShort(new Date(contract.settlementDate))}
+              {contract.settlementAmount != null && (
+                <span className="font-semibold tabular-nums">
+                  {' · '}
+                  {formatNumber(contract.settlementAmount)} ฿
+                </span>
+              )}
+              {contract.secondSettlementDate && contract.secondSettlementAmount != null && (
+                <span className="text-primary/70">
+                  {' + '}
+                  {formatNumber(contract.secondSettlementAmount)} ฿{' '}
+                  {formatDateShort(new Date(contract.secondSettlementDate))}
+                </span>
+              )}
             </span>
           )}
 
-          {/* Broken promise */}
-          {contract.brokenPromiseCount > 0 && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-destructive/30 bg-destructive/10 text-destructive text-xs font-medium px-2.5 py-1 leading-snug">
-              <AlertTriangle className="size-3.5" />
-              ผิดนัด {contract.brokenPromiseCount} ครั้ง
-            </span>
-          )}
+          {/* Broken promise — เปลี่ยนเป็น solid red + เตือน "ต้อง escalate" เมื่อ ≥ threshold */}
+          {contract.brokenPromiseCount > 0 &&
+            (contract.brokenPromiseCount >= ESCALATION_BROKEN_PROMISE_THRESHOLD ? (
+              <span
+                className="inline-flex items-center gap-1 rounded-full bg-destructive text-destructive-foreground text-xs font-bold px-2.5 py-1 leading-snug"
+                title="ลูกค้าผิดนัดถึงเกณฑ์ — ห้ามนัดเพิ่ม ต้อง escalate"
+              >
+                <AlertTriangle className="size-3.5" />
+                ผิดนัด {contract.brokenPromiseCount} ครั้ง · ต้อง escalate
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-full border border-destructive/30 bg-destructive/10 text-destructive text-xs font-medium px-2.5 py-1 leading-snug">
+                <AlertTriangle className="size-3.5" />
+                ผิดนัด {contract.brokenPromiseCount} ครั้ง
+              </span>
+            ))}
 
           {/* No-answer count */}
           {contract.noAnswerCount > 0 && (
@@ -339,7 +372,7 @@ export default function ContractCard({
                 <ChevronRight className="size-4" />
               </button>
             )}
-            {(onSnooze || onUnsnooze) && (
+            {(onSnooze || onUnsnooze || onPartialPaymentReschedule) && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
@@ -351,7 +384,12 @@ export default function ContractCard({
                     <MoreHorizontal className="size-4" />
                   </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-44">
+                <DropdownMenuContent align="end" className="w-52">
+                  {onPartialPaymentReschedule && (
+                    <DropdownMenuItem onSelect={() => onPartialPaymentReschedule(contract)}>
+                      <Coins className="size-4" /> บันทึกชำระเงิน
+                    </DropdownMenuItem>
+                  )}
                   {onSnooze && !isSnoozed && (
                     <DropdownMenuItem onSelect={() => onSnooze(contract)}>
                       <Moon className="size-4" /> Snooze จน...

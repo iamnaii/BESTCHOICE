@@ -39,6 +39,7 @@ interface Props {
   onOpen360?: (c: ContractRow) => void;
   onSendLine?: (c: ContractRow) => void;
   onSkipTrace?: (c: ContractRow) => void;
+  onPartialPaymentReschedule?: (c: ContractRow) => void;
   onSwitchTab?: (tab: 'today' | 'promise' | 'approval' | 'analytics' | 'all') => void;
 }
 
@@ -50,6 +51,7 @@ export default function QueueTab({
   onOpen360,
   onSendLine,
   onSkipTrace,
+  onPartialPaymentReschedule,
   onSwitchTab,
 }: Props) {
   const [page, setPage] = useState(1);
@@ -178,6 +180,7 @@ export default function QueueTab({
                 onSnooze={(c) => setSnoozeTarget(c)}
                 onUnsnooze={(c) => unsnooze.mutate(c.id)}
                 onSkipTrace={onSkipTrace}
+                onPartialPaymentReschedule={onPartialPaymentReschedule}
               />
             ))}
           </div>

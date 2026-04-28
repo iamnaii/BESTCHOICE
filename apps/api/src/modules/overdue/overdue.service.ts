@@ -13,6 +13,18 @@ import { BUSINESS_RULES } from '../../utils/config.util';
 import { DunningEngineService } from './dunning-engine.service';
 import { OverdueKpiService } from './kpi.service';
 import { PromiseService } from './promise.service';
+import { PaymentsService } from '../payments/payments.service';
+import { ContractLetterService } from './contract-letter.service';
+import { MdmLockService } from './mdm-lock.service';
+import { OwnerAlertHelper } from './owner-alert.helper';
+
+// Max days in the future a PROMISED settlementDate can be set.
+// Hard cap shared by recordSettlement, logContact (PROMISED), and
+// partialPaymentReschedule. Reasoning:
+//  - aging buckets stay accurate (no 6-month "ghost" promises)
+//  - promise tab filter (queue.service now+30d) keeps everything visible
+//  - matches the documented anti-fraud rule on recordSettlement
+const PROMISED_MAX_DAYS = 30;
 
 @Injectable()
 export class OverdueService {
@@ -23,6 +35,10 @@ export class OverdueService {
     private dunningEngine: DunningEngineService,
     private kpiService: OverdueKpiService,
     private promiseService: PromiseService,
+    private paymentsService: PaymentsService,
+    private letterService: ContractLetterService,
+    private mdmLockService: MdmLockService,
+    private ownerAlertHelper: OwnerAlertHelper,
   ) {}
 
   private async getSystemUserIdOrThrow(): Promise<string> {
@@ -836,8 +852,7 @@ export class OverdueService {
 
     const now = new Date();
     const promised = new Date(dto.settlementDate);
-    const maxDays = 30;
-    const maxDate = new Date(now.getTime() + maxDays * 24 * 60 * 60 * 1000);
+    const maxDate = new Date(now.getTime() + PROMISED_MAX_DAYS * 24 * 60 * 60 * 1000);
 
     if (isNaN(promised.getTime())) {
       throw new BadRequestException('วันนัดชำระไม่ถูกต้อง');
@@ -847,7 +862,7 @@ export class OverdueService {
     }
     if (promised.getTime() > maxDate.getTime()) {
       throw new BadRequestException(
-        `วันนัดชำระห่างจากวันนี้เกิน ${maxDays} วัน — กรุณาติดต่อหัวหน้างาน`,
+        `วันนัดชำระห่างจากวันนี้เกิน ${PROMISED_MAX_DAYS} วัน — กรุณาติดต่อหัวหน้างาน`,
       );
     }
 
@@ -948,6 +963,35 @@ export class OverdueService {
     // PromiseSlot records, handles broken-promise detection, cycle deadline
     // validation, FIFO installment targeting, and AuditLog).
     if (dto.result === 'PROMISED') {
+      // Escalation Guardrail: ผิดนัด ≥ threshold → ห้าม PROMISED ต้อง escalate ก่อน
+      const brokenCount = await this.getBrokenPromiseCount(contractId);
+      if (brokenCount >= BUSINESS_RULES.ESCALATION_BROKEN_PROMISE_THRESHOLD) {
+        throw new BadRequestException({
+          message: `ลูกค้าผิดนัดมาแล้ว ${brokenCount} ครั้ง — ห้ามนัดเพิ่ม ต้อง escalate ก่อน`,
+          requiresEscalation: true,
+          brokenPromiseCount: brokenCount,
+          threshold: BUSINESS_RULES.ESCALATION_BROKEN_PROMISE_THRESHOLD,
+        });
+      }
+
+      // Hard 30-day cap on legacy settlementDate (mirror recordSettlement).
+      // PromiseService also enforces cycleDeadline per-slot for the new path.
+      if (dto.settlementDate) {
+        const promised = new Date(dto.settlementDate);
+        const maxDate = new Date(now.getTime() + PROMISED_MAX_DAYS * 24 * 60 * 60 * 1000);
+        if (isNaN(promised.getTime())) {
+          throw new BadRequestException('วันนัดชำระไม่ถูกต้อง');
+        }
+        if (promised.getTime() <= now.getTime()) {
+          throw new BadRequestException('วันนัดชำระต้องเป็นวันในอนาคต');
+        }
+        if (promised.getTime() > maxDate.getTime()) {
+          throw new BadRequestException(
+            `วันนัดชำระห่างจากวันนี้เกิน ${PROMISED_MAX_DAYS} วัน — กรุณาติดต่อหัวหน้างาน`,
+          );
+        }
+      }
+
       // Build slots from either new dto.slots OR legacy single/dual settlement fields.
       const slotsInput =
         dto.slots && dto.slots.length > 0
@@ -1338,5 +1382,287 @@ export class OverdueService {
       remainingAmount: Number(new Prisma.Decimal(p.amountDue as Prisma.Decimal).sub(p.amountPaid as Prisma.Decimal)),
       daysOverdue: Math.max(0, Math.floor((now - p.dueDate.getTime()) / 86_400_000)),
     }));
+  }
+
+  /**
+   * นับจำนวนครั้งที่ลูกค้าผิดนัดบนสัญญานี้ (lifetime).
+   * Source: AuditLog rows ที่ action='BROKEN_PROMISE' บน contract.
+   * (BrokenPromiseCron / promise-resolution.cron เป็นตัวสร้าง entry)
+   */
+  async getBrokenPromiseCount(contractId: string): Promise<number> {
+    return this.prisma.auditLog.count({
+      where: {
+        entity: 'Contract',
+        entityId: contractId,
+        action: 'BROKEN_PROMISE',
+      },
+    });
+  }
+
+  /**
+   * "รับเงินบางส่วน + นัดส่วนที่เหลือ" — combo action สำหรับ collector
+   *
+   * เคสจริง: ลูกค้านัดจ่าย 1,000 แต่จ่ายจริง 300 + ขอเลื่อนส่วนที่เหลือ 700 พรุ่งนี้
+   *
+   * Sequence:
+   *   1. รับเงิน amountPaid ผ่าน autoAllocatePayment (atomic, มี journal+receipt+LINE notify)
+   *   2. คำนวณ outstanding ใหม่หลังรับเงิน
+   *   3. สร้าง CallLog PROMISED ด้วย settlementAmount=outstanding-after,
+   *      settlementDate=newSettlementDate
+   *
+   * Atomicity tradeoff: payment + call log อยู่คนละ transaction เพราะ autoAllocatePayment
+   * มี $transaction ของตัวเอง. ถ้า logContact fail หลังรับเงินแล้ว, เงินยังถูกบันทึก
+   * (correct: เงินรับมาแล้วเพิกถอนไม่ได้) — แค่ collector ต้อง log นัดใหม่ manual.
+   */
+  async partialPaymentReschedule(
+    contractId: string,
+    callerId: string,
+    dto: {
+      amountPaid: number;
+      paymentMethod: string;
+      evidenceUrl?: string;
+      transactionRef?: string;
+      newSettlementDate?: string;
+      notes?: string;
+    },
+  ) {
+    // 1. Validate inputs + compute outstanding before payment.
+    // Outstanding = "ยอดที่ค้างถึงงวดวันนี้" (mirrors getOverdueSummary +
+    // queue.service): future PENDING installments must not be summed in.
+    const now = new Date();
+    const contract = await this.prisma.contract.findFirst({
+      where: { id: contractId, deletedAt: null },
+      include: {
+        payments: {
+          where: {
+            deletedAt: null,
+            status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] },
+            dueDate: { lt: now },
+          },
+          select: { amountDue: true, amountPaid: true, lateFee: true },
+        },
+      },
+    });
+    if (!contract) throw new NotFoundException('ไม่พบสัญญา');
+
+    const outstandingBefore = contract.payments.reduce((sum, p) => {
+      const remaining = new Prisma.Decimal(p.amountDue).add(p.lateFee).sub(p.amountPaid);
+      return sum.add(remaining);
+    }, new Prisma.Decimal(0));
+
+    if (outstandingBefore.lte(0)) {
+      throw new BadRequestException('สัญญานี้ไม่มียอดค้างชำระ');
+    }
+
+    const paid = new Prisma.Decimal(dto.amountPaid);
+    if (paid.gt(outstandingBefore)) {
+      throw new BadRequestException('จำนวนเงินที่จ่ายเกินยอดค้างชำระทั้งหมด');
+    }
+
+    const isFullPayment = paid.equals(outstandingBefore);
+
+    // Partial payment ต้องระบุวันนัดใหม่ + อนาคต + ไม่เกิน 30 วัน
+    if (!isFullPayment) {
+      if (!dto.newSettlementDate) {
+        throw new BadRequestException(
+          'จ่ายไม่ครบ — ต้องระบุวันที่นัดจ่ายส่วนที่เหลือ',
+        );
+      }
+      const promisedDate = new Date(dto.newSettlementDate);
+      const maxDate = new Date(now.getTime() + PROMISED_MAX_DAYS * 24 * 60 * 60 * 1000);
+      if (isNaN(promisedDate.getTime())) {
+        throw new BadRequestException('วันที่นัดจ่ายไม่ถูกต้อง');
+      }
+      if (promisedDate.getTime() <= now.getTime()) {
+        throw new BadRequestException('วันที่นัดจ่ายต้องเป็นวันในอนาคต');
+      }
+      if (promisedDate.getTime() > maxDate.getTime()) {
+        throw new BadRequestException(
+          `วันที่นัดจ่ายห่างจากวันนี้เกิน ${PROMISED_MAX_DAYS} วัน — กรุณาติดต่อหัวหน้างาน`,
+        );
+      }
+    }
+
+    // 2. รับเงินผ่าน autoAllocatePayment (atomic + journal + receipt + LINE)
+    // Fold transactionRef into notes — Payment row has no dedicated column
+    // for it today, but finance needs the bank/QR ref preserved on the row
+    // for statement reconciliation.
+    const ref = dto.transactionRef?.trim();
+    const notesWithRef = ref
+      ? dto.notes
+        ? `Ref: ${ref} — ${dto.notes}`
+        : `Ref: ${ref}`
+      : dto.notes;
+    const allocation = await this.paymentsService.autoAllocatePayment(
+      contractId,
+      dto.amountPaid,
+      dto.paymentMethod,
+      callerId,
+      notesWithRef,
+      dto.evidenceUrl,
+    );
+
+    // 3. ถ้า partial → สร้าง CallLog PROMISED นัดส่วนที่เหลือ. ถ้า full → จบ
+    const outstandingAfter = outstandingBefore.sub(paid).toNumber();
+    let callLog: Awaited<ReturnType<typeof this.logContact>> | null = null;
+
+    if (!isFullPayment) {
+      try {
+        callLog = await this.logContact(contractId, callerId, {
+          result: 'PROMISED',
+          notes: dto.notes,
+          settlementDate: dto.newSettlementDate,
+          settlementAmount: outstandingAfter,
+          callResult: 'ANSWERED',
+          negotiationResult: 'WILL_PAY',
+        });
+      } catch (err) {
+        // Payment ผ่านแล้วแต่ log นัดใหม่ fail — log warning, ไม่ rollback payment
+        // (เงินรับมาแล้วเพิกถอนไม่ได้ collector ต้อง log นัดใหม่ manual)
+        this.logger.error(
+          `partialPaymentReschedule: payment recorded but logContact failed for contract ${contractId}: ${
+            err instanceof Error ? err.message : err
+          }`,
+        );
+      }
+    }
+
+    // Drop stale KPI snapshots (collected-today, queueToday count, promise-kept)
+    this.kpiService.invalidate();
+
+    return {
+      payment: allocation,
+      callLog,
+      outstandingBefore: outstandingBefore.toNumber(),
+      amountPaid: dto.amountPaid,
+      outstandingAfter,
+      isFullPayment,
+      newSettlementDate: dto.newSettlementDate ?? null,
+    };
+  }
+
+  /**
+   * Escalation Guardrail action — ใช้เมื่อลูกค้าผิดนัด ≥ threshold:
+   *   - LETTER → สร้าง ContractLetter (CONTRACT_TERMINATION_60D)
+   *   - MDM → propose MDM lock (รอ approve)
+   *   - LEGAL → set dunningStage='LEGAL_ACTION' + AuditLog (SoD: OWNER/FINANCE_MANAGER)
+   * แจ้ง Owner ทุกครั้งที่ escalate (สำคัญเพราะเป็น decision point ของบริษัท)
+   */
+  async escalate(
+    contractId: string,
+    callerId: string,
+    callerRole: string,
+    action: 'LETTER' | 'MDM' | 'LEGAL',
+    reason: string,
+  ) {
+    // SoD: LEGAL is the legal-handover lane. Mirrors approveDunningEscalation
+    // — only OWNER/FINANCE_MANAGER can flip a contract into LEGAL_ACTION.
+    if (action === 'LEGAL' && callerRole !== 'OWNER' && callerRole !== 'FINANCE_MANAGER') {
+      throw new ForbiddenException('เฉพาะ OWNER หรือ FINANCE_MANAGER เท่านั้นที่ส่งให้ทนายได้');
+    }
+
+    const contract = await this.prisma.contract.findFirst({
+      where: { id: contractId, deletedAt: null },
+      include: { customer: { select: { name: true } } },
+    });
+    if (!contract) throw new NotFoundException('ไม่พบสัญญา');
+
+    if (!reason || reason.trim().length < 5) {
+      throw new BadRequestException('ต้องระบุเหตุผล (≥ 5 ตัวอักษร)');
+    }
+
+    const brokenCount = await this.getBrokenPromiseCount(contractId);
+    const now = new Date();
+    let resultPayload: unknown;
+
+    switch (action) {
+      case 'LETTER': {
+        const letter = await this.letterService.createIfNotExists(
+          contractId,
+          'CONTRACT_TERMINATION_60D',
+        );
+        await this.prisma.auditLog.create({
+          data: {
+            userId: callerId,
+            action: 'CONTRACT_ESCALATED_LETTER',
+            entity: 'Contract',
+            entityId: contractId,
+            newValue: { reason, brokenPromiseCount: brokenCount, letterId: letter?.id ?? null },
+          },
+        });
+        resultPayload = letter;
+        break;
+      }
+      case 'MDM': {
+        const mdm = await this.mdmLockService.proposeManual(contractId, callerId, reason);
+        await this.prisma.auditLog.create({
+          data: {
+            userId: callerId,
+            action: 'CONTRACT_ESCALATED_MDM',
+            entity: 'Contract',
+            entityId: contractId,
+            newValue: { reason, brokenPromiseCount: brokenCount, mdmRequestId: (mdm as { id?: string })?.id ?? null },
+          },
+        });
+        resultPayload = mdm;
+        break;
+      }
+      case 'LEGAL': {
+        // Atomic: contract update + audit row land together. Also clear
+        // pendingDunningStage/Since so a later approveDunningEscalation
+        // cannot downgrade LEGAL_ACTION back to a parked FINAL_WARNING.
+        const [updated] = await this.prisma.$transaction([
+          this.prisma.contract.update({
+            where: { id: contractId },
+            data: {
+              dunningStage: 'LEGAL_ACTION',
+              dunningEscalatedAt: now,
+              dunningLastActionAt: now,
+              pendingDunningStage: null,
+              pendingDunningSince: null,
+            },
+          }),
+          this.prisma.auditLog.create({
+            data: {
+              userId: callerId,
+              action: 'CONTRACT_ESCALATED_LEGAL',
+              entity: 'Contract',
+              entityId: contractId,
+              newValue: { reason, brokenPromiseCount: brokenCount },
+            },
+          }),
+        ]);
+        resultPayload = updated;
+        break;
+      }
+    }
+
+    // Owner alert (best-effort, non-blocking)
+    try {
+      const labels: Record<typeof action, string> = {
+        LETTER: 'ส่งจดหมายเตือน',
+        MDM: 'เสนอล็อคเครื่อง',
+        LEGAL: 'ส่งให้ทนาย',
+      };
+      await this.ownerAlertHelper.sendToAllOwners(
+        `Escalation: ${labels[action]} — ${contract.customer.name} (สัญญา ${contract.contractNumber}) ผิดนัด ${brokenCount} ครั้ง`,
+        contractId,
+      );
+    } catch (err) {
+      this.logger.warn(
+        `escalate: owner alert failed for contract ${contractId}: ${
+          err instanceof Error ? err.message : err
+        }`,
+      );
+    }
+
+    this.kpiService.invalidate();
+
+    return {
+      action,
+      contractId,
+      brokenPromiseCount: brokenCount,
+      result: resultPayload,
+    };
   }
 }

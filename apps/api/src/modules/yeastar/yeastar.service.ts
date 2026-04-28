@@ -61,6 +61,29 @@ export class YeastarService {
     return this.originateCall(agent.yeastarExtension, customer.phone);
   }
 
+  /**
+   * โทรไปยังเบอร์อะไรก็ได้ (เช่น บุคคลอ้างอิงในใบสมัครลูกค้า) — ไม่ผูกกับ customerId
+   * เพราะ ref ไม่ใช่ลูกค้าในระบบ. CallLog จะไม่ถูกสร้างจาก CDR webhook
+   * ถ้าเบอร์ปลายทางไม่ตรงกับลูกค้าใน DB.
+   */
+  async originateForUserToPhone(
+    userId: string,
+    rawPhone: string,
+  ): Promise<{ callId: string }> {
+    const phone = (rawPhone ?? '').replace(/[^\d+]/g, '');
+    if (!phone || phone.length < 8) {
+      throw new BadRequestException('เบอร์ปลายทางไม่ถูกต้อง');
+    }
+    const agent = await this.prisma.user.findFirst({
+      where: { id: userId, deletedAt: null },
+      select: { yeastarExtension: true },
+    });
+    if (!agent?.yeastarExtension) {
+      throw new BadRequestException('กรุณาตั้ง Extension Yeastar ใน Profile ก่อนโทรออก');
+    }
+    return this.originateCall(agent.yeastarExtension, phone);
+  }
+
   private async pbxUrl(): Promise<string> {
     const config = await this.configService.getConfig('yeastar');
     return config.pbxUrl.replace(/\/$/, '');

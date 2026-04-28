@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8" />
+<title>Yeastar Click-to-Dial Mockup — BESTCHOICE</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  body { font-family: 'IBM Plex Sans Thai', sans-serif; }
+  :root {
+    --primary: #10b981;
+    --primary-foreground: #ffffff;
+    --muted: #27272a;
+    --muted-foreground: #a1a1aa;
+    --border: #3f3f46;
+    --foreground: #fafafa;
+    --background: #18181b;
+    --card: #1f1f23;
+    --destructive: #ef4444;
+    --warning: #f59e0b;
+    --success: #10b981;
+  }
+  body { background: var(--background); color: var(--foreground); }
+  .ring-pulse { animation: ringPulse 1.4s ease-out infinite; }
+  @keyframes ringPulse {
+    0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.6); }
+    100% { box-shadow: 0 0 0 16px rgba(16, 185, 129, 0); }
+  }
+  .blink { animation: blink 1.2s ease-in-out infinite; }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  .toast {
+    animation: slideIn 0.3s ease-out;
+  }
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .arrow-down::after {
+    content: '↓';
+    position: absolute;
+    left: 50%;
+    bottom: -22px;
+    transform: translateX(-50%);
+    color: var(--muted-foreground);
+    font-size: 18px;
+  }
+</style>
+</head>
+<body class="p-8 max-w-6xl mx-auto">
+
+<header class="mb-10 pb-6 border-b border-[var(--border)]">
+  <h1 class="text-2xl font-bold mb-1">Yeastar Click-to-Dial — Flow Mockup</h1>
+  <p class="text-sm text-[var(--muted-foreground)]">BESTCHOICE Inbox / Customer360 — กด "โทรออก" แล้วเกิดอะไรบ้าง</p>
+</header>
+
+<!-- ─── Section 1: UI states ─────────────────────────────────── -->
+<section class="mb-12">
+  <h2 class="text-lg font-semibold mb-4">1. UI ในแชท: ปุ่มโทรออก 2 จุด</h2>
+  <div class="grid grid-cols-2 gap-4">
+
+    <!-- State A: Idle (in panel header) -->
+    <div class="bg-[var(--card)] rounded-xl border border-[var(--border)] p-4">
+      <p class="text-xs text-[var(--muted-foreground)] mb-3 uppercase tracking-wide">A. เบอร์โทรใน panel ลูกค้า (idle)</p>
+      <div class="flex items-center gap-3 p-3 bg-[var(--background)] rounded-lg">
+        <div class="w-11 h-11 rounded-full bg-[var(--muted)] flex items-center justify-center">
+          <span class="font-bold">ส</span>
+        </div>
+        <div class="flex-1">
+          <p class="font-semibold">สมชาย ใจดี</p>
+          <button class="text-xs text-[var(--muted-foreground)] hover:text-[var(--primary)] inline-flex items-center gap-1">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+            0812345001
+          </button>
+        </div>
+        <span class="text-[10px] px-1.5 py-0.5 bg-red-500/10 text-red-400 rounded">เสี่ยงสูง</span>
+      </div>
+      <p class="text-[11px] text-[var(--muted-foreground)] mt-3">→ Hover ที่เบอร์ → text เปลี่ยนเป็นสีเขียว, คลิกเพื่อโทร</p>
+    </div>
+
+    <!-- State B: Popover quick action -->
+    <div class="bg-[var(--card)] rounded-xl border border-[var(--border)] p-4">
+      <p class="text-xs text-[var(--muted-foreground)] mb-3 uppercase tracking-wide">B. ปุ่ม "ดำเนินการ" → popover</p>
+      <div class="bg-[var(--background)] rounded-lg p-2 w-60 ml-auto">
+        <button class="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--muted)] hover:bg-[var(--muted)]/80 text-xs">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+          โทรออก (Yeastar)
+        </button>
+        <div class="h-px bg-[var(--border)] my-1"></div>
+        <button class="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[var(--muted)] text-xs text-[var(--muted-foreground)]">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          ส่งลิงก์ชำระ
+        </button>
+        <button class="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[var(--muted)] text-xs text-[var(--muted-foreground)]">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72"/></svg>
+          บันทึกติดต่อ + นัดชำระ
+        </button>
+      </div>
+      <p class="text-[11px] text-[var(--muted-foreground)] mt-3">→ "โทรออก" ขึ้นบนสุด เห็นชัด มีเส้นแยกจากกลุ่มล่าง</p>
+    </div>
+
+  </div>
+</section>
+
+<!-- ─── Section 2: Click → Calling state ──────────────────────── -->
+<section class="mb-12">
+  <h2 class="text-lg font-semibold mb-4">2. หลังกด → State เปลี่ยนทันที</h2>
+  <div class="grid grid-cols-3 gap-4">
+
+    <div class="bg-[var(--card)] rounded-xl border border-[var(--border)] p-5 text-center">
+      <p class="text-[11px] text-[var(--muted-foreground)] mb-3 uppercase">Idle</p>
+      <button class="inline-flex items-center gap-2 px-4 py-2 bg-[var(--muted)] rounded-lg text-sm">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72"/></svg>
+        โทรออก (Yeastar)
+      </button>
+      <p class="text-[11px] text-[var(--muted-foreground)] mt-3">พร้อมรับการคลิก</p>
+    </div>
+
+    <div class="bg-[var(--card)] rounded-xl border-2 border-[var(--primary)] p-5 text-center ring-pulse">
+      <p class="text-[11px] text-[var(--primary)] mb-3 uppercase font-semibold">Calling — 1-3 วินาที</p>
+      <button class="inline-flex items-center gap-2 px-4 py-2 bg-[var(--primary)]/20 rounded-lg text-sm cursor-not-allowed" disabled>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="animate-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+        กำลังโทร...
+      </button>
+      <p class="text-[11px] text-[var(--muted-foreground)] mt-3">รอ Yeastar ตอบรับคำสั่ง</p>
+    </div>
+
+    <div class="bg-[var(--card)] rounded-xl border border-[var(--border)] p-5 text-center relative">
+      <div class="toast absolute -top-3 right-4 bg-[var(--success)]/15 border border-[var(--success)]/40 rounded-lg px-3 py-2 text-xs flex items-center gap-2">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-[var(--success)]"><polyline points="20 6 9 17 4 12"/></svg>
+        กำลังโทรออก — รับสายจากโทรศัพท์ของคุณ
+      </div>
+      <p class="text-[11px] text-[var(--muted-foreground)] mb-3 mt-4 uppercase">Connected — toast ขึ้น</p>
+      <button class="inline-flex items-center gap-2 px-4 py-2 bg-[var(--muted)] rounded-lg text-sm" disabled>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-[var(--success)]"><path d="M22 16.92v3a2 2 0 0 1-2.18 2"/></svg>
+        เชื่อมต่อแล้ว
+      </button>
+      <p class="text-[11px] text-[var(--muted-foreground)] mt-3">ปลดล็อกอัตโนมัติใน 10 วินาที</p>
+    </div>
+
+  </div>
+</section>
+
+<!-- ─── Section 3: Real-world call flow ───────────────────────── -->
+<section class="mb-12">
+  <h2 class="text-lg font-semibold mb-1">3. กลไกจริง — เกิดอะไรเบื้องหลัง</h2>
+  <p class="text-sm text-[var(--muted-foreground)] mb-6">click-to-dial ไม่ได้โทรจาก browser/web; Yeastar PBX โทรหาเบอร์ภายในของพนักงานก่อน แล้วค่อย bridge ไปลูกค้า</p>
+
+  <div class="bg-[var(--card)] rounded-xl border border-[var(--border)] p-6">
+    <div class="grid grid-cols-1 md:grid-cols-5 gap-4 items-stretch">
+
+      <div class="flex flex-col items-center text-center p-4 bg-[var(--background)] rounded-lg border border-[var(--border)]">
+        <div class="w-12 h-12 rounded-full bg-[var(--primary)]/15 flex items-center justify-center mb-2">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><line x1="12" x2="12.01" y1="18" y2="18"/></svg>
+        </div>
+        <p class="text-xs font-semibold mb-1">1. พนง. คลิก</p>
+        <p class="text-[10px] text-[var(--muted-foreground)]">"โทรออก" ในแชท</p>
+        <p class="text-[10px] text-[var(--muted-foreground)] mt-1">→ POST /yeastar/call/originate</p>
+      </div>
+
+      <div class="flex flex-col items-center text-center p-4 bg-[var(--background)] rounded-lg border border-[var(--border)]">
+        <div class="w-12 h-12 rounded-full bg-[var(--warning)]/15 flex items-center justify-center mb-2">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07"/></svg>
+        </div>
+        <p class="text-xs font-semibold mb-1">2. Yeastar PBX</p>
+        <p class="text-[10px] text-[var(--muted-foreground)]">โทรเข้าเบอร์ภายใน</p>
+        <p class="text-[10px] text-[var(--muted-foreground)] mt-1">ของพนง. (ext 101)</p>
+      </div>
+
+      <div class="flex flex-col items-center text-center p-4 bg-[var(--background)] rounded-lg border border-[var(--border)]">
+        <div class="w-12 h-12 rounded-full bg-[var(--primary)]/15 flex items-center justify-center mb-2 blink">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2"/></svg>
+        </div>
+        <p class="text-xs font-semibold mb-1">3. โทรศัพท์ดัง</p>
+        <p class="text-[10px] text-[var(--muted-foreground)]">IP phone / softphone</p>
+        <p class="text-[10px] text-[var(--muted-foreground)] mt-1">ของพนง. → รับสาย</p>
+      </div>
+
+      <div class="flex flex-col items-center text-center p-4 bg-[var(--background)] rounded-lg border border-[var(--border)]">
+        <div class="w-12 h-12 rounded-full bg-[var(--primary)]/15 flex items-center justify-center mb-2">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+        </div>
+        <p class="text-xs font-semibold mb-1">4. Bridge อัตโนมัติ</p>
+        <p class="text-[10px] text-[var(--muted-foreground)]">PBX โทรเข้าเบอร์ลูกค้า</p>
+        <p class="text-[10px] text-[var(--muted-foreground)] mt-1">081-234-5001</p>
+      </div>
+
+      <div class="flex flex-col items-center text-center p-4 bg-[var(--background)] rounded-lg border border-[var(--success)]/40">
+        <div class="w-12 h-12 rounded-full bg-[var(--success)]/15 flex items-center justify-center mb-2">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+        </div>
+        <p class="text-xs font-semibold mb-1">5. คุยกับลูกค้า</p>
+        <p class="text-[10px] text-[var(--muted-foreground)]">บันทึกเสียงอัตโนมัติ</p>
+        <p class="text-[10px] text-[var(--muted-foreground)] mt-1">→ CallLog auto-create</p>
+      </div>
+
+    </div>
+
+    <div class="mt-6 p-3 bg-[var(--muted)]/40 rounded-lg text-xs leading-relaxed text-[var(--muted-foreground)]">
+      <p class="font-semibold text-[var(--foreground)] mb-1">หลังวางสาย:</p>
+      <p>• Yeastar ส่ง CDR (call detail record) เข้า webhook <code class="text-[var(--primary)] bg-[var(--background)] px-1 py-0.5 rounded">/yeastar/webhook/cdr</code></p>
+      <p>• ระบบสร้าง <code class="text-[var(--primary)] bg-[var(--background)] px-1 py-0.5 rounded">CallLog</code> row อัตโนมัติ — direction, duration, recording URL</p>
+      <p>• ขึ้นใน "ประวัติโทร" ของลูกค้า + "การชำระล่าสุด" บน Customer 360 panel</p>
+      <p>• ถ้ารับสายไม่ทัน → noAnswerCount เพิ่ม → escalation guardrail trigger</p>
+    </div>
+  </div>
+</section>
+
+<!-- ─── Section 4: Error states ───────────────────────────────── -->
+<section class="mb-8">
+  <h2 class="text-lg font-semibold mb-4">4. กรณีโทรไม่ออก</h2>
+  <div class="grid grid-cols-3 gap-4">
+
+    <div class="bg-[var(--card)] rounded-xl border border-[var(--border)] p-4">
+      <div class="bg-[var(--destructive)]/15 border border-[var(--destructive)]/40 rounded-lg px-3 py-2 text-xs flex items-start gap-2 mb-2">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-[var(--destructive)] mt-0.5 flex-shrink-0"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+        <span>ไม่ได้ตั้งค่าเบอร์ภายใน — กรุณาผูก extension ที่ "ตั้งค่า → โปรไฟล์"</span>
+      </div>
+      <p class="text-[11px] text-[var(--muted-foreground)]">พนง. ยังไม่ได้ผูก extension</p>
+    </div>
+
+    <div class="bg-[var(--card)] rounded-xl border border-[var(--border)] p-4">
+      <div class="bg-[var(--destructive)]/15 border border-[var(--destructive)]/40 rounded-lg px-3 py-2 text-xs flex items-start gap-2 mb-2">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-[var(--destructive)] mt-0.5 flex-shrink-0"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/></svg>
+        <span>ไม่มีสัญญาที่ใช้งาน — โทรออกผ่าน Yeastar ต้องระบุสัญญา</span>
+      </div>
+      <p class="text-[11px] text-[var(--muted-foreground)]">ลูกค้าไม่มี active contract</p>
+    </div>
+
+    <div class="bg-[var(--card)] rounded-xl border border-[var(--border)] p-4">
+      <div class="bg-[var(--destructive)]/15 border border-[var(--destructive)]/40 rounded-lg px-3 py-2 text-xs flex items-start gap-2 mb-2">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-[var(--destructive)] mt-0.5 flex-shrink-0"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/></svg>
+        <span>โทรออกไม่สำเร็จ — Yeastar ตอบ 503</span>
+      </div>
+      <p class="text-[11px] text-[var(--muted-foreground)]">PBX ออฟไลน์ / ext busy</p>
+    </div>
+
+  </div>
+</section>
+
+<footer class="text-xs text-[var(--muted-foreground)] pt-6 border-t border-[var(--border)]">
+  <p>BESTCHOICE — Inbox / Customer360 click-to-dial via Yeastar PBX</p>
+  <p class="mt-1">ใช้ endpoint เดิม <code class="text-[var(--primary)]">POST /yeastar/call/originate</code> + component <code class="text-[var(--primary)]">CallButton</code> (ไม่ต้องสร้างใหม่)</p>
+</footer>
+
+</body>
+</html>

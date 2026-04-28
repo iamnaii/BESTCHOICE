@@ -173,6 +173,19 @@ export class OverdueController {
     return this.overdueService.getContractTimeline(id);
   }
 
+  @Get('contracts/:id/queue-row')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getQueueRow(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string; role: string; branchId: string | null },
+  ) {
+    return this.queueService.getRowById(id, {
+      userId: user.id,
+      userRole: user.role,
+      userBranchId: user.branchId,
+    });
+  }
+
   @Get('contracts/:id/full-timeline')
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'FINANCE_MANAGER', 'ACCOUNTANT')
   getFullTimeline(@Param('id') contractId: string) {

@@ -26,7 +26,7 @@ import { LineOaService } from './line-oa.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
-import { Prisma } from '@prisma/client';
+import { Prisma, MessageRole, MessageType, ChatChannel, LineChannelType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { toNum as d, calcOutstanding as sumOutstanding } from '../../utils/decimal.util';
 import { maskThaiName } from '../../utils/mask-name.util';
@@ -34,6 +34,8 @@ import { PromptPayQrService } from './promptpay/promptpay-qr.service';
 import { PaymentLinkService } from './payment-links/payment-link.service';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
 import { StorageService } from '../storage/storage.service';
+import { FlexTemplatesService } from './flex-templates.service';
+import { LineFinanceClientService } from '../chatbot-finance/services/line-finance-client.service';
 import {
   SlipUploadBodyDto,
   ApproveEvidenceDto,
@@ -59,6 +61,8 @@ export class LineOaPaymentController {
     private promptPayQrService: PromptPayQrService,
     private paymentLinkService: PaymentLinkService,
     private storageService: StorageService,
+    private flexTemplates: FlexTemplatesService,
+    private lineFinanceClient: LineFinanceClientService,
   ) {}
 
   // ─── Slip Review API (Staff) ──────────────────────────
@@ -731,6 +735,125 @@ export class LineOaPaymentController {
     return {
       success: true,
       ...result,
+    };
+  }
+
+  /**
+   * Send payment link as Flex Card via LINE Finance — picks
+   * `paymentReminder` (orange) or `overdueNotice` (red) based on whether
+   * the contract has past-due unpaid installments.
+   */
+  @Post('payment-flex')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  async sendPaymentFlex(
+    @Body() body: { contractId: string },
+    @Req() req: { user: { id: string } },
+  ) {
+    if (!body?.contractId) {
+      throw new BadRequestException('กรุณาระบุสัญญา');
+    }
+
+    const contract = await this.prisma.contract.findFirst({
+      where: { id: body.contractId, deletedAt: null },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            name: true,
+            lineLinks: {
+              where: { channel: LineChannelType.FINANCE, unlinkedAt: null, deletedAt: null },
+              select: { lineUserId: true },
+              take: 1,
+            },
+          },
+        },
+        payments: {
+          where: { status: { not: 'PAID' }, deletedAt: null },
+          orderBy: { installmentNo: 'asc' },
+        },
+      },
+    });
+
+    if (!contract) {
+      throw new NotFoundException('ไม่พบสัญญา');
+    }
+
+    const financeLineId = contract.customer.lineLinks[0]?.lineUserId;
+    if (!financeLineId) {
+      throw new BadRequestException('ลูกค้ายังไม่ผูก LINE การเงิน — ไม่สามารถส่ง Flex ได้');
+    }
+
+    if (contract.payments.length === 0) {
+      throw new BadRequestException('สัญญานี้ชำระครบแล้ว');
+    }
+
+    // Determine overdue
+    const now = new Date();
+    const overduePayments = contract.payments.filter(
+      (p) => p.dueDate && new Date(p.dueDate) < now,
+    );
+    const isOverdue = overduePayments.length > 0;
+
+    // Create payment link
+    const linkResult = await this.paymentLinkService.createPaymentLink(body.contractId);
+
+    // Build flex
+    const flex = isOverdue
+      ? this.flexTemplates.overdueNotice({
+          contractNumber: contract.contractNumber,
+          overdueInstallments: overduePayments.length,
+          totalAmount: linkResult.amount,
+          lateFee: overduePayments.reduce((sum, p) => sum + d(p.lateFee), 0),
+          paymentUrl: linkResult.url,
+        })
+      : this.flexTemplates.paymentReminder({
+          contractNumber: contract.contractNumber,
+          installmentNo: contract.payments[0].installmentNo,
+          amount: linkResult.amount,
+          dueDate: formatDateShort(contract.payments[0].dueDate),
+          paymentUrl: linkResult.url,
+        });
+
+    // Push via LINE Finance
+    try {
+      await this.lineFinanceClient.pushMessage(financeLineId, [flex as never]);
+    } catch (err) {
+      this.logger.error(`[payment-flex] push failed: ${err}`);
+      throw new BadRequestException('ส่ง Flex ไม่สำเร็จ — กรุณาลองใหม่');
+    }
+
+    // Save record in chat room so staff sees it in history
+    const room = await this.prisma.chatRoom.findFirst({
+      where: {
+        customerId: contract.customer.id,
+        channel: ChatChannel.LINE_FINANCE,
+        deletedAt: null,
+      },
+      orderBy: { lastMessageAt: 'desc' },
+      select: { id: true },
+    });
+
+    if (room) {
+      await this.prisma.chatMessage.create({
+        data: {
+          roomId: room.id,
+          role: MessageRole.STAFF,
+          type: MessageType.TEXT,
+          text: `[${isOverdue ? 'แจ้งค้างชำระ' : 'แจ้งเตือนค่างวด'} - Flex Card] ${linkResult.url}`,
+          staffId: req.user.id,
+        },
+      });
+      await this.prisma.chatRoom.update({
+        where: { id: room.id },
+        data: { lastMessageAt: new Date(), totalMessages: { increment: 1 } },
+      });
+    }
+
+    return {
+      success: true,
+      type: isOverdue ? 'overdue' : 'reminder',
+      url: linkResult.url,
     };
   }
 

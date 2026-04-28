@@ -15,8 +15,8 @@
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,md}\""
   },
   "devDependencies": {
-    "@nestjs/cli": "^11.0.19",
-    "prettier": "^3.8.2",
+    "@nestjs/cli": "^11.0.21",
+    "prettier": "^3.8.3",
     "prisma": "^6.19.3",
     "turbo": "^2.9.6"
   },

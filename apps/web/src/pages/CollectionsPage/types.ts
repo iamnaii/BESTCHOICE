@@ -44,6 +44,12 @@ export interface ContractRow {
   lastCallAt: string | null;
   noAnswerCount: number;
   settlementDate: string | null;
+  /** ยอดที่นัดในงวดล่าสุด — null ถ้ายังไม่เคยนัด */
+  settlementAmount: number | null;
+  /** นัดแบ่งจ่าย: วันที่ส่วนที่เหลือ (null ถ้าไม่ได้แบ่ง) */
+  secondSettlementDate: string | null;
+  /** นัดแบ่งจ่าย: ยอดส่วนที่เหลือ (null ถ้าไม่ได้แบ่ง) */
+  secondSettlementAmount: number | null;
   needsSkipTracing: boolean;
   deviceLocked: boolean;
   // Card indicator fields (enriched server-side)

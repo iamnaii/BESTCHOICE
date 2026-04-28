@@ -226,8 +226,10 @@ export class PaymentsService {
       details: { paymentMethod, transactionRef, totalPaid: d(updated.amountPaid).toNumber() },
     });
 
-    // Auto-generate e-Receipt after successful payment
-    if (updated.status === 'PAID') {
+    // Auto-generate e-Receipt for every payment event (TFRS practice:
+    // issue a receipt each time money is received, including partial payments).
+    // `amount` here is the actual delta paid in this transaction, not cumulative.
+    {
       try {
         await this.receiptsService.generateReceipt(
           contractId,
@@ -312,7 +314,7 @@ export class PaymentsService {
       }
 
       let remaining = d(amount);
-      const results: Awaited<ReturnType<typeof tx.payment.update>>[] = [];
+      const results: { updated: Awaited<ReturnType<typeof tx.payment.update>>; payAmount: Prisma.Decimal }[] = [];
 
       // Get unpaid payments in order
       const unpaid = contract.payments.filter((p) => p.status !== 'PAID');
@@ -342,7 +344,7 @@ export class PaymentsService {
           },
         });
 
-        results.push(updated);
+        results.push({ updated, payAmount });
         remaining = dSub(remaining, payAmount);
 
         // Check contract completion after each full payment
@@ -372,14 +374,18 @@ export class PaymentsService {
         }
       }
 
-      // Auto-generate e-Receipts for fully paid installments
-      for (const paid of results.filter(r => r.status === 'PAID')) {
+      // Auto-generate e-Receipts for every payment event (TFRS practice:
+      // issue a receipt each time money is received, including partial payments).
+      // Receipt amount = the delta applied to this installment in this transaction,
+      // not the cumulative amountPaid.
+      for (const { updated: paid, payAmount } of results) {
+        if (payAmount.lte(0)) continue;
         try {
           await this.receiptsService.generateReceipt(
             contractId,
             paid.id,
             'INSTALLMENT',
-            dRound(d(paid.amountPaid)).toNumber(),
+            dRound(payAmount).toNumber(),
             paid.installmentNo,
             paymentMethod,
             null,
@@ -410,7 +416,7 @@ export class PaymentsService {
       }
 
       return {
-        allocatedPayments: results,
+        allocatedPayments: results.map((r) => r.updated),
         totalAllocated: dSub(amount, remaining).toNumber(),
         overpayment: overpayment.toNumber(),
         overpaymentMessage: overpayment.gt(0)

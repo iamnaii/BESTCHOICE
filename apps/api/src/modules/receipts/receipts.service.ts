@@ -430,6 +430,31 @@ export class ReceiptsService {
     });
   }
 
+  /** Parse a JSON address blob (or plain string) and render as a single Thai line. */
+  private formatAddress(value: string | null | undefined): string {
+    if (!value) return '';
+    const trimmed = value.trim();
+    if (!trimmed.startsWith('{')) return trimmed;
+    try {
+      const addr = JSON.parse(trimmed) as Record<string, string | undefined>;
+      if (typeof addr !== 'object' || addr === null) return trimmed;
+      if (addr.raw && !addr.province) return addr.raw;
+      const parts: string[] = [];
+      if (addr.houseNo) parts.push(addr.houseNo);
+      if (addr.moo) parts.push(`หมู่ ${addr.moo}`);
+      if (addr.village) parts.push(`หมู่บ้าน ${addr.village}`);
+      if (addr.soi) parts.push(`ซอย ${addr.soi}`);
+      if (addr.road) parts.push(`ถนน ${addr.road}`);
+      if (addr.subdistrict) parts.push(addr.subdistrict);
+      if (addr.district) parts.push(addr.district);
+      if (addr.province) parts.push(addr.province);
+      if (addr.postalCode) parts.push(addr.postalCode);
+      return parts.length > 0 ? parts.join(' ') : trimmed;
+    } catch {
+      return trimmed;
+    }
+  }
+
   /** Escape HTML special characters to prevent XSS in PDF templates */
   private escapeHtml(text: string | null | undefined): string {
     if (!text) return '';
@@ -507,16 +532,19 @@ export class ReceiptsService {
     };
 
     const customer = receipt.contract?.customer;
+    // Pick the best raw address source, then format JSON-blob addresses to a flat Thai line.
+    const rawPayerAddress =
+      receipt.payerAddress ||
+      customer?.addressIdCard ||
+      customer?.addressCurrent ||
+      '';
     const safe = {
       companyName: this.escapeHtml(receipt.company?.nameTh) || 'บริษัท เบสท์ช้อยส์โฟน จำกัด',
-      companyAddress: this.escapeHtml(receipt.company?.address),
+      companyAddress: this.escapeHtml(this.formatAddress(receipt.company?.address)),
       companyPhone: this.escapeHtml(receipt.company?.phone),
       taxId: this.escapeHtml(receipt.company?.taxId),
       payerName: this.escapeHtml(receipt.payerName),
-      payerAddress:
-        this.escapeHtml(receipt.payerAddress) ||
-        this.escapeHtml(customer?.addressIdCard) ||
-        this.escapeHtml(customer?.addressCurrent),
+      payerAddress: this.escapeHtml(this.formatAddress(rawPayerAddress)),
       payerTaxId: this.escapeHtml(receipt.payerTaxId) || this.escapeHtml(customer?.nationalId),
       customerPhone: this.escapeHtml(customer?.phone),
       customerEmail: this.escapeHtml(customer?.email),
@@ -582,15 +610,15 @@ export class ReceiptsService {
     body {
       font-family: 'IBM Plex Sans Thai', sans-serif;
       color: var(--zinc-900);
-      font-size: 10pt;
-      line-height: 1.55;
-      padding: 14mm 14mm 12mm;
+      font-size: 9.5pt;
+      line-height: 1.45;
+      padding: 11mm 12mm 10mm;
     }
-    .header { display:flex; justify-content:space-between; align-items:flex-start; padding-bottom:14px; border-bottom:1.5px solid var(--zinc-300); }
-    .logo-block svg { height: 38px; width: auto; }
-    .doc-title { font-size:24pt; font-weight:700; color:var(--emerald-700); line-height:1; text-align:right; letter-spacing:-0.01em; }
+    .header { display:flex; justify-content:space-between; align-items:flex-start; padding-bottom:10px; border-bottom:1.5px solid var(--zinc-300); }
+    .logo-block svg { height: 32px; width: auto; }
+    .doc-title { font-size:20pt; font-weight:700; color:var(--emerald-700); line-height:1; text-align:right; letter-spacing:-0.01em; }
 
-    .parties { display:grid; grid-template-columns: minmax(0, 1fr) 240px; gap:18px; padding:16px 0; border-bottom:1px solid var(--zinc-200); margin-bottom:18px; }
+    .parties { display:grid; grid-template-columns: minmax(0, 1fr) 220px; gap:14px; padding:12px 0; border-bottom:1px solid var(--zinc-200); margin-bottom:12px; }
     .party-row { display:grid; grid-template-columns: 78px 1fr; gap:6px; margin-bottom:4px; align-items:start; font-size:9.5pt; }
     .party-label { color:var(--zinc-900); font-weight:700; white-space:nowrap; }
     .party-name { font-weight:600; }
@@ -604,19 +632,19 @@ export class ReceiptsService {
     .icon-line { display:grid; grid-template-columns:16px 1fr; gap:6px; align-items:start; color:var(--zinc-700); font-size:9pt; margin-top:2px; }
     .icon-line svg { width:11px; height:11px; color:var(--zinc-500); margin-top:3px; }
 
-    table.items { width:100%; border-collapse:collapse; font-size:9.5pt; }
-    table.items thead th { text-align:left; padding:8px; background:var(--emerald-50); color:var(--emerald-800); font-size:9pt; font-weight:600; border-bottom:1.5px solid var(--emerald-700); }
+    table.items { width:100%; border-collapse:collapse; font-size:9pt; }
+    table.items thead th { text-align:left; padding:6px 8px; background:var(--emerald-50); color:var(--emerald-800); font-size:8.5pt; font-weight:600; border-bottom:1.5px solid var(--emerald-700); }
     table.items thead th.right { text-align:right; }
-    table.items tbody td { padding:10px 8px; border-bottom:1px solid var(--zinc-200); vertical-align:top; font-variant-numeric:tabular-nums; }
+    table.items tbody td { padding:8px; border-bottom:1px solid var(--zinc-200); vertical-align:top; font-variant-numeric:tabular-nums; }
     table.items tbody td.right { text-align:right; }
     table.items td.no { color:var(--zinc-500); width:22px; }
     .item-name { font-weight:600; }
     .item-code { color:var(--zinc-500); font-weight:500; }
     .item-meta { color:var(--zinc-500); font-size:8.5pt; margin-top:2px; }
 
-    .partial-tag { display:block; margin:8px 0 0; color:var(--emerald-700); font-size:9pt; padding:4px 0 14px; border-bottom:1px solid var(--zinc-200); margin-bottom:18px; }
+    .partial-tag { display:block; margin:6px 0 0; color:var(--emerald-700); font-size:9pt; padding:3px 0 10px; border-bottom:1px solid var(--zinc-200); margin-bottom:12px; }
 
-    .summary { display:grid; grid-template-columns:1fr 1fr; gap:16px; padding-bottom:16px; margin-bottom:16px; border-bottom:1px solid var(--zinc-200); }
+    .summary { display:grid; grid-template-columns:1fr 1fr; gap:14px; padding-bottom:12px; margin-bottom:12px; border-bottom:1px solid var(--zinc-200); }
     .summary-section { display:grid; grid-template-columns:18px 1fr; gap:8px; align-items:start; }
     .summary-section .icon { width:16px; height:16px; color:var(--zinc-700); margin-top:2px; }
     .breakdown { display:grid; grid-template-columns:max-content 1fr auto; column-gap:18px; row-gap:4px; font-size:9.5pt; }
@@ -624,15 +652,15 @@ export class ReceiptsService {
     .breakdown .label.bold { font-weight:600; color:var(--zinc-900); }
     .breakdown .text { color:var(--zinc-600); font-style:italic; font-size:9pt; }
     .breakdown .num { text-align:right; font-variant-numeric:tabular-nums; color:var(--zinc-900); }
-    .grand-card { background:var(--emerald-50); border-radius:8px; padding:12px 16px; text-align:center; }
-    .grand-card .label { color:var(--emerald-800); font-size:9.5pt; font-weight:600; margin-bottom:4px; }
-    .grand-card .amount { color:var(--emerald-700); font-size:22pt; font-weight:700; line-height:1; font-variant-numeric:tabular-nums; }
-    .grand-card .amount-suffix { color:var(--emerald-700); font-size:12pt; font-weight:500; margin-left:4px; }
+    .grand-card { background:var(--emerald-50); border-radius:8px; padding:10px 14px; text-align:center; }
+    .grand-card .label { color:var(--emerald-800); font-size:9pt; font-weight:600; margin-bottom:3px; }
+    .grand-card .amount { color:var(--emerald-700); font-size:18pt; font-weight:700; line-height:1; font-variant-numeric:tabular-nums; }
+    .grand-card .amount-suffix { color:var(--emerald-700); font-size:11pt; font-weight:500; margin-left:4px; }
     .summary-aux { margin-top:10px; display:grid; grid-template-columns:1fr auto; row-gap:4px; column-gap:18px; font-size:9.5pt; }
     .summary-aux .label { color:var(--zinc-700); }
     .summary-aux .num { text-align:right; font-variant-numeric:tabular-nums; }
 
-    .pay-section { padding-bottom:16px; margin-bottom:16px; border-bottom:1px solid var(--zinc-200); }
+    .pay-section { padding-bottom:12px; margin-bottom:12px; border-bottom:1px solid var(--zinc-200); }
     .sec-title { display:flex; align-items:center; gap:8px; font-size:10pt; font-weight:700; color:var(--zinc-900); margin-bottom:6px; }
     .sec-title .icon-pill { width:22px; height:22px; background:var(--zinc-900); color:#fff; border-radius:6px; display:flex; align-items:center; justify-content:center; }
     .sec-title .icon-pill svg { width:13px; height:13px; }
@@ -647,21 +675,21 @@ export class ReceiptsService {
     .bank-info .holder { color:var(--zinc-500); font-size:9pt; }
     .pay-row .num { text-align:right; font-variant-numeric:tabular-nums; }
 
-    .notes-section { padding-bottom:16px; margin-bottom:18px; font-size:9.5pt; border-bottom:1px solid var(--zinc-200); }
-    .notes-section .body { color:var(--zinc-600); min-height:16px; }
+    .notes-section { padding-bottom:10px; margin-bottom:12px; font-size:9pt; border-bottom:1px solid var(--zinc-200); }
+    .notes-section .body { color:var(--zinc-600); min-height:10px; }
 
-    .approval { display:grid; grid-template-columns:100px 1fr 1fr; gap:24px; align-items:start; margin-top:4px; }
-    .approval-label { display:flex; align-items:center; gap:6px; font-size:10.5pt; font-weight:700; color:var(--zinc-900); padding-top:2px; }
+    .approval { display:grid; grid-template-columns:90px 1fr 1fr; gap:20px; align-items:start; margin-top:2px; page-break-inside:avoid; break-inside:avoid; }
+    .approval-label { display:flex; align-items:center; gap:6px; font-size:10pt; font-weight:700; color:var(--zinc-900); padding-top:2px; }
     .approval-label svg { width:14px; height:14px; color:var(--zinc-700); }
     .qr-pane { text-align:center; }
-    .qr-caption-top { font-size:9.5pt; color:var(--zinc-700); margin-bottom:6px; }
-    .qr-pane img { width:130px; height:130px; }
+    .qr-caption-top { font-size:9pt; color:var(--zinc-700); margin-bottom:5px; }
+    .qr-pane img { width:104px; height:104px; }
     .sig-block { text-align:left; }
-    .sig-role { font-size:10pt; color:var(--zinc-900); font-weight:600; margin-bottom:4px; }
-    .sig-handwriting { font-family:'Sriracha',cursive; font-size:28pt; color:var(--zinc-600); line-height:1; transform:rotate(-3deg); transform-origin:left center; display:inline-block; opacity:0.85; margin-top:6px; }
-    .sig-rule { width:220px; border-top:1px dotted var(--zinc-300); margin:22px 0 8px; }
-    .sig-name { font-size:11pt; font-weight:700; color:var(--zinc-900); }
-    .sig-date { font-size:9.5pt; color:var(--zinc-500); margin-top:2px; font-variant-numeric:tabular-nums; }
+    .sig-role { font-size:9.5pt; color:var(--zinc-900); font-weight:600; margin-bottom:2px; }
+    .sig-handwriting { font-family:'Sriracha',cursive; font-size:22pt; color:var(--zinc-600); line-height:1; transform:rotate(-3deg); transform-origin:left center; display:inline-block; opacity:0.85; margin-top:4px; }
+    .sig-rule { width:200px; border-top:1px dotted var(--zinc-300); margin:14px 0 5px; }
+    .sig-name { font-size:10pt; font-weight:700; color:var(--zinc-900); }
+    .sig-date { font-size:9pt; color:var(--zinc-500); margin-top:1px; font-variant-numeric:tabular-nums; }
 
     .void-overlay { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%) rotate(-15deg); font-size:80pt; font-weight:900; color:rgba(220,38,38,0.18); letter-spacing:0.1em; pointer-events:none; }
   </style>
@@ -742,7 +770,7 @@ export class ReceiptsService {
 
   ${isPartial && totalDue !== null && totalPaidOnInstallment !== null
     ? `<div class="partial-tag">ชำระเงินบางส่วน ยอด ${fmt(totalPaidOnInstallment)} / ${fmt(totalDue)} บาท</div>`
-    : '<div style="margin-bottom:18px; padding-bottom:14px; border-bottom:1px solid var(--zinc-200);"></div>'}
+    : '<div style="margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid var(--zinc-200);"></div>'}
 
   <!-- Summary -->
   <div class="summary">

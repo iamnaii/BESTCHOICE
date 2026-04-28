@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
 import { ReceiptsModule } from '../receipts/receipts.module';
@@ -9,7 +9,7 @@ import { MdmModule } from '../mdm/mdm.module';
 import { OverdueModule } from '../overdue/overdue.module';
 
 @Module({
-  imports: [ReceiptsModule, JournalModule, ProductsModule, LineOaModule, MdmModule, OverdueModule],
+  imports: [ReceiptsModule, JournalModule, ProductsModule, LineOaModule, MdmModule, forwardRef(() => OverdueModule)],
   controllers: [PaymentsController],
   providers: [PaymentsService],
   exports: [PaymentsService],

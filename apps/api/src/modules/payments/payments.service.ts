@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger, Optional } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger, Optional, Inject, forwardRef } from '@nestjs/common';
 import * as Sentry from '@sentry/node';
 import { StructuredLoggerService } from '../../common/logger';
 import { Prisma, PaymentMethod } from '@prisma/client';
@@ -36,7 +36,7 @@ export class PaymentsService {
     private flexTemplates: FlexTemplatesService,
     private quickReplyService: QuickReplyService,
     @Optional() private mdmAuto?: MdmAutoService,
-    @Optional() private promiseService?: PromiseService,
+    @Optional() @Inject(forwardRef(() => PromiseService)) private promiseService?: PromiseService,
     @Optional() private mdmLockService?: MdmLockService,
   ) {}
 

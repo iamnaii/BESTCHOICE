@@ -5,6 +5,8 @@ import {
   BadRequestException,
   ForbiddenException,
   ServiceUnavailableException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCallLogDto } from './dto/create-call-log.dto';
@@ -35,7 +37,7 @@ export class OverdueService {
     private dunningEngine: DunningEngineService,
     private kpiService: OverdueKpiService,
     private promiseService: PromiseService,
-    private paymentsService: PaymentsService,
+    @Inject(forwardRef(() => PaymentsService)) private paymentsService: PaymentsService,
     private letterService: ContractLetterService,
     private mdmLockService: MdmLockService,
     private ownerAlertHelper: OwnerAlertHelper,

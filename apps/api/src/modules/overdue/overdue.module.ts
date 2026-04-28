@@ -1,4 +1,3 @@
-import { Module } from '@nestjs/common';
 import { OverdueController } from './overdue.controller';
 import { OverdueService } from './overdue.service';
 import { OverdueChatService } from './overdue-chat.service';
@@ -30,13 +29,14 @@ import { BrokenPromiseReminderCron } from './broken-promise-reminder.cron';
 import { ContractSnoozeService } from './snooze.service';
 import { CustomerInsightsService } from './customer-insights.service';
 import { AutoBalanceService } from './auto-balance.service';
+import { Module, forwardRef } from '@nestjs/common';
 import { ChatEngineModule } from '../chat-engine/chat-engine.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { LineOaModule } from '../line-oa/line-oa.module';
 import { PaymentsModule } from '../payments/payments.module';
 
 @Module({
-  imports: [ChatEngineModule, NotificationsModule, LineOaModule, PaymentsModule],
+  imports: [ChatEngineModule, NotificationsModule, LineOaModule, forwardRef(() => PaymentsModule)],
   controllers: [OverdueController],
   providers: [
     OverdueService,

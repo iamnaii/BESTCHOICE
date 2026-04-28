@@ -12,6 +12,7 @@ import { Prisma, DunningStage } from '@prisma/client';
 import { BUSINESS_RULES } from '../../utils/config.util';
 import { DunningEngineService } from './dunning-engine.service';
 import { OverdueKpiService } from './kpi.service';
+import { PromiseService } from './promise.service';
 
 @Injectable()
 export class OverdueService {
@@ -21,6 +22,7 @@ export class OverdueService {
     private prisma: PrismaService,
     private dunningEngine: DunningEngineService,
     private kpiService: OverdueKpiService,
+    private promiseService: PromiseService,
   ) {}
 
   private async getSystemUserIdOrThrow(): Promise<string> {
@@ -927,6 +929,12 @@ export class OverdueService {
         | 'NOT_APPLICABLE';
       // P2 Task 4 — voice memo evidence (S3 URL). Stored on CallLog.
       voiceMemoUrl?: string;
+      // P2 Task 10 — structured promise slots (replaces legacy single/dual settlement fields).
+      slots?: Array<{ settlementDate: string; settlementAmount: number; notes?: string }>;
+      targetInstallmentIds?: string[];
+      settlementAmount?: number | string;
+      secondSettlementDate?: string;
+      secondSettlementAmount?: number | string;
     },
   ) {
     const contract = await this.prisma.contract.findFirst({
@@ -935,6 +943,100 @@ export class OverdueService {
     if (!contract) throw new NotFoundException('ไม่พบสัญญา');
 
     const now = new Date();
+
+    // P2 Task 11 — route PROMISED results through PromiseService (creates
+    // PromiseSlot records, handles broken-promise detection, cycle deadline
+    // validation, FIFO installment targeting, and AuditLog).
+    if (dto.result === 'PROMISED') {
+      // Build slots from either new dto.slots OR legacy single/dual settlement fields.
+      const slotsInput =
+        dto.slots && dto.slots.length > 0
+          ? dto.slots.map((s) => ({
+              settlementDate: new Date(s.settlementDate),
+              settlementAmount: s.settlementAmount,
+              notes: s.notes,
+            }))
+          : [
+              ...(dto.settlementDate
+                ? [
+                    {
+                      settlementDate: new Date(dto.settlementDate),
+                      settlementAmount: Number(dto.settlementAmount ?? 0),
+                    },
+                  ]
+                : []),
+              ...(dto.secondSettlementDate
+                ? [
+                    {
+                      settlementDate: new Date(dto.secondSettlementDate),
+                      settlementAmount: Number(dto.secondSettlementAmount ?? 0),
+                    },
+                  ]
+                : []),
+            ];
+
+      if (slotsInput.length === 0) {
+        throw new BadRequestException('ต้องระบุอย่างน้อย 1 ที่');
+      }
+
+      let totalPromiseAmount = new Prisma.Decimal(0);
+      for (const s of slotsInput) {
+        totalPromiseAmount = totalPromiseAmount.add(new Prisma.Decimal(s.settlementAmount));
+      }
+
+      const targetIds =
+        dto.targetInstallmentIds && dto.targetInstallmentIds.length > 0
+          ? dto.targetInstallmentIds
+          : await this.computeFifoTargets(contractId, totalPromiseAmount.toNumber());
+
+      // H2 fix: contract update + promise creation must commit atomically.
+      // Previously the contract.update committed first; if createPromise threw
+      // (e.g. cycleDeadline validation), the contract was left with a reset
+      // contact date but no corresponding promise record.
+      const newPromise = await this.prisma.$transaction(
+        async (tx) => {
+          await tx.contract.update({
+            where: { id: contractId },
+            data: {
+              lastContactDate: now,
+              dunningLastActionAt: now,
+              ...(dto.collectionNotes !== undefined && { collectionNotes: dto.collectionNotes }),
+              noAnswerCount: 0,
+            },
+          });
+          return this.promiseService.createPromise(
+            {
+              contractId,
+              userId: callerId,
+              slots: slotsInput,
+              targetInstallmentIds: targetIds,
+              notes: dto.notes,
+            },
+            tx,
+          );
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+
+      // Fire CALL_ANSWERED_PROMISE event trigger — non-fatal.
+      try {
+        await this.dunningEngine.executeEventTrigger(
+          'CALL_ANSWERED_PROMISE',
+          contractId,
+          null,
+          newPromise.id,
+        );
+      } catch (err) {
+        this.logger.warn(
+          `executeEventTrigger failed for CALL_ANSWERED_PROMISE on contract ${contractId}: ${
+            err instanceof Error ? err.message : err
+          }`,
+        );
+      }
+
+      this.kpiService.invalidate();
+      return newPromise;
+    }
 
     // Per-result side effects + event-trigger key
     const resultMap: Record<
@@ -1007,6 +1109,41 @@ export class OverdueService {
     this.kpiService.invalidate();
 
     return callLog;
+  }
+
+  /**
+   * Returns the IDs of unpaid installments that FIFO-allocate up to targetAmount.
+   * Used when the caller does not explicitly specify targetInstallmentIds.
+   */
+  private async computeFifoTargets(contractId: string, targetAmount: number): Promise<string[]> {
+    // C1 fix: use status filter (consistent with getBoardData / logContact unpaid-check)
+    // rather than paidAt: null, which misses manual payments (which set paidDate not paidAt).
+    const payments = await this.prisma.payment.findMany({
+      where: {
+        contractId,
+        deletedAt: null,
+        status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] },
+      },
+      select: {
+        id: true,
+        dueDate: true,
+        amountDue: true,
+        amountPaid: true,
+      },
+      orderBy: { dueDate: 'asc' },
+    });
+
+    const { Decimal } = await import('@prisma/client/runtime/library');
+    const { allocateFifo } = await import('./installment-allocator.util');
+
+    return allocateFifo(
+      payments.map((p) => ({
+        id: p.id,
+        dueDate: p.dueDate,
+        remainingAmount: (p.amountDue as any).sub(p.amountPaid as any),
+      })),
+      new Decimal(targetAmount),
+    );
   }
 
   /**
@@ -1149,5 +1286,57 @@ export class OverdueService {
         createdAt: r.createdAt,
       })),
     };
+  }
+
+  // --- P2P Lifecycle methods (Task 23) ---
+
+  async getCycleDeadline(contractId: string) {
+    const active = await this.promiseService.findActivePromise(contractId);
+    const deadline = (active as any)?.cycleDeadline
+      ? (active as any).cycleDeadline
+      : await this.promiseService.calcCycleDeadline(contractId);
+
+    const activeSlots: Array<{ settlementDate: Date }> = (active as any)?.slots ?? [];
+    const slotsPastDue = activeSlots.some((s) => s.settlementDate < new Date());
+
+    return {
+      cycleDeadline: deadline.toISOString(),
+      activePromise: active
+        ? {
+            id: (active as any).id,
+            settlementDate: (active as any).settlementDate?.toISOString() ?? null,
+            settlementAmount: Number((active as any).settlementAmount ?? 0),
+            rescheduleCount: (active as any).rescheduleCount ?? 0,
+            slotsPastDue,
+          }
+        : null,
+    };
+  }
+
+  async getOverdueInstallments(contractId: string) {
+    // C1 fix: use status filter rather than paidAt: null — manual payments set paidDate not paidAt.
+    const payments = await this.prisma.payment.findMany({
+      where: {
+        contractId,
+        deletedAt: null,
+        status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] },
+      },
+      orderBy: { dueDate: 'asc' },
+      select: {
+        id: true,
+        installmentNo: true,
+        dueDate: true,
+        amountDue: true,
+        amountPaid: true,
+      },
+    });
+    const now = Date.now();
+    return payments.map((p) => ({
+      id: p.id,
+      installmentNumber: p.installmentNo,
+      dueDate: p.dueDate.toISOString(),
+      remainingAmount: Number(new Prisma.Decimal(p.amountDue as Prisma.Decimal).sub(p.amountPaid as Prisma.Decimal)),
+      daysOverdue: Math.max(0, Math.floor((now - p.dueDate.getTime()) / 86_400_000)),
+    }));
   }
 }

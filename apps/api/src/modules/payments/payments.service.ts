@@ -18,6 +18,8 @@ import { FlexTemplatesService } from '../line-oa/flex-templates.service';
 import { QuickReplyService } from '../line-oa/quick-reply.service';
 import { formatDateShort } from '../../utils/thai-date.util';
 import { MdmAutoService } from '../mdm/mdm-auto.service';
+import { PromiseService } from '../overdue/promise.service';
+import { MdmLockService } from '../overdue/mdm-lock.service';
 
 @Injectable()
 export class PaymentsService {
@@ -34,6 +36,8 @@ export class PaymentsService {
     private flexTemplates: FlexTemplatesService,
     private quickReplyService: QuickReplyService,
     @Optional() private mdmAuto?: MdmAutoService,
+    @Optional() private promiseService?: PromiseService,
+    @Optional() private mdmLockService?: MdmLockService,
   ) {}
 
   /** Enforce branch-level access: SALES/BRANCH_MANAGER can only operate on their own branch */
@@ -259,12 +263,26 @@ export class PaymentsService {
       await this.sendPaymentSuccessLine(contractId, installmentNo, amount, paymentMethod);
     }
 
-    // Auto unlock MDM if device was locked
+    // M3 fix: only run the legacy "all overdue cleared" auto-unlock when there
+    // is no active promise-to-pay cycle. When there is an active promise, the
+    // checkPromiseAfterPayment hook (below) handles the unlock via its own
+    // CYCLE_KEPT path — running both racied two unlock requests per payment.
     if (this.mdmAuto) {
-      this.mdmAuto.autoUnlockAfterPayment(contractId).catch((err) =>
-        this.logger.error('MDM auto-unlock failed', err),
-      );
+      const hasActivePromise =
+        !!this.promiseService && !!(await this.promiseService.findActivePromise(contractId));
+      if (!hasActivePromise) {
+        this.mdmAuto.autoUnlockAfterPayment(contractId).catch((err) =>
+          this.logger.error('MDM auto-unlock failed', err),
+        );
+      }
     }
+
+    // Promise-to-pay kept-detection — runs AFTER the payment tx commits so
+    // MDM/audit failures cannot roll back the payment row.
+    this.checkPromiseAfterPayment(contractId).catch((err) => {
+      this.logger.error('Promise-kept hook failed (non-blocking)', err);
+      Sentry.captureException(err, { tags: { hook: 'checkPromiseAfterPayment', contractId } });
+    });
 
     return updated;
   }
@@ -283,7 +301,7 @@ export class PaymentsService {
     }
 
     // Wrap entire allocation in a serializable transaction to prevent double-payment
-    return this.prisma.$transaction(async (tx) => {
+    const allocationResult = await this.prisma.$transaction(async (tx) => {
       const contract = await tx.contract.findUnique({
         where: { id: contractId },
         include: { payments: { where: { deletedAt: null }, orderBy: { installmentNo: 'asc' } } },
@@ -400,6 +418,14 @@ export class PaymentsService {
           : null,
       };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+
+    // Promise-to-pay kept-detection — runs AFTER the payment tx commits.
+    this.checkPromiseAfterPayment(contractId).catch((err) => {
+      this.logger.error('Promise-kept hook failed (non-blocking)', err);
+      Sentry.captureException(err, { tags: { hook: 'checkPromiseAfterPayment', contractId } });
+    });
+
+    return allocationResult;
   }
 
   // ─── Get payments for a contract ──────────────────────
@@ -1075,5 +1101,112 @@ export class PaymentsService {
     } catch (err) {
       this.logger.warn(`LINE push failed for contract ${contractId}: ${err instanceof Error ? err.message : err}`);
     }
+  }
+
+  // ─── Promise-to-pay kept-detection ────────────────────
+  // Called non-blocking after every payment tx commits. Checks whether any
+  // active promise-to-pay cycle is fully satisfied and, if so, marks it kept
+  // and auto-unlocks the MDM device.
+  private async checkPromiseAfterPayment(contractId: string): Promise<void> {
+    if (!this.promiseService || !this.mdmLockService) return;
+    const active = await this.promiseService.findActivePromise(contractId);
+    if (!active) return;
+
+    const now = new Date();
+    const systemUserId = await this.getSystemUserId();
+
+    // H1 + M4 fix: wrap slot resolution + keptPromiseCount increment in a single
+    // Serializable transaction so partial failure can't leave slots updated but
+    // counter unchanged, and concurrent payments can't double-increment the counter.
+    // The callLog.updateMany guard ensures only one concurrent caller promotes the
+    // promise to "kept" — the loser's transaction sees keptAt already set and bails out.
+    const promoted = await this.prisma.$transaction(
+      async (tx) => {
+        let allKept = true;
+        // N2 fix: targets are cumulative through each slot, and each slot's
+        // paidAmount is its own contribution (settlementAmount), not the
+        // contract-wide sum. Previously we compared cumulative paid against the
+        // per-slot amount alone — slot N would get falsely satisfied as soon as
+        // the customer overpaid slot N-1.
+        let cumulativeTarget = 0;
+
+        for (const slot of active.slots) {
+          const slotAmount = (slot.settlementAmount as Prisma.Decimal).toNumber();
+          cumulativeTarget += slotAmount;
+
+          if (slot.keptAt) continue;
+          if (slot.brokenAt) {
+            allKept = false;
+            continue;
+          }
+
+          const windowEnd = new Date(slot.settlementDate.getTime() + 1 * 86400 * 1000);
+          const cycleStart = active.cycleStartedAt ?? active.createdAt;
+          const sum = await tx.payment.aggregate({
+            where: {
+              contractId,
+              deletedAt: null,
+              OR: [
+                { paidAt: { not: null, gte: cycleStart, lte: windowEnd } },
+                { paidDate: { not: null, gte: cycleStart, lte: windowEnd } },
+              ],
+            },
+            _sum: { amountPaid: true },
+          });
+          const paid = (sum._sum.amountPaid as Prisma.Decimal | null)?.toNumber() ?? 0;
+
+          if (paid >= cumulativeTarget) {
+            await tx.promiseSlot.update({
+              where: { id: slot.id },
+              data: {
+                keptAt: now,
+                paidAmount: slotAmount as unknown as Prisma.Decimal,
+              },
+            });
+          } else {
+            allKept = false;
+          }
+        }
+
+        if (!allKept) return false;
+
+        // Guarded promotion: only the first caller flips keptAt.
+        const guard = await tx.callLog.updateMany({
+          where: { id: active.id, keptAt: null },
+          data: { keptAt: now },
+        });
+        if (guard.count === 0) return false;
+
+        await tx.contract.update({
+          where: { id: contractId },
+          data: { keptPromiseCount: { increment: 1 } },
+        });
+        await tx.auditLog.create({
+          data: {
+            action: 'KEPT_PROMISE',
+            entity: 'contract',
+            entityId: contractId,
+            userId: systemUserId,
+            newValue: { callLogId: active.id, source: 'PAYMENT_HOOK' },
+          },
+        });
+        return true;
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+
+    if (promoted) {
+      // External MDM call runs only after tx commits — avoids orphan unlock on rollback.
+      await this.mdmLockService!.autoUnlock(contractId, 'CYCLE_KEPT', systemUserId);
+    }
+  }
+
+  private async getSystemUserId(): Promise<string> {
+    const user = await this.prisma.user.findFirst({
+      where: { isSystemUser: true },
+      select: { id: true },
+    });
+    if (!user) throw new Error('System user not found');
+    return user.id;
   }
 }

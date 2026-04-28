@@ -20,6 +20,8 @@ import { LineOaService } from '../line-oa/line-oa.service';
 import { FlexTemplatesService } from '../line-oa/flex-templates.service';
 import { QuickReplyService } from '../line-oa/quick-reply.service';
 import { WarrantyService } from '../warranty/warranty.service';
+import { PromiseService } from '../overdue/promise.service';
+import { MdmLockService } from '../overdue/mdm-lock.service';
 import * as Sentry from '@sentry/node';
 
 describe('PaymentsService', () => {
@@ -121,6 +123,18 @@ describe('PaymentsService', () => {
           provide: WarrantyService,
           useValue: {
             setShopWarranty: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: PromiseService,
+          useValue: {
+            findActivePromise: jest.fn().mockResolvedValue(null),
+          },
+        },
+        {
+          provide: MdmLockService,
+          useValue: {
+            autoUnlock: jest.fn().mockResolvedValue(undefined),
           },
         },
       ],
@@ -483,6 +497,139 @@ describe('PaymentsService', () => {
         service.waiveLateFee('payment-1', 'reason', 'user-1', 'user-1'),
       ).rejects.toThrow(ForbiddenException);
       expect(prisma.feeWaiverApproval.create).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── Task 16+17: Promise-to-pay kept-detection hook ───────────────────────
+  describe('checkPromiseAfterPayment', () => {
+    let promiseService: any;
+    let mdmLockService: any;
+    const contractId = 'c-1';
+
+    beforeEach(() => {
+      promiseService = service['promiseService'];
+      mdmLockService = service['mdmLockService'];
+      // Add table mocks not present in the outer beforeEach
+      prisma.auditLog = { create: jest.fn().mockResolvedValue({}) };
+      prisma.promiseSlot = { update: jest.fn().mockResolvedValue({}) };
+      // checkPromiseAfterPayment now uses tx.callLog.updateMany as a guarded
+      // promotion (only one concurrent caller can flip keptAt). Default to
+      // count=1 so the happy-path test promotes; the underpaid tests don't
+      // reach this call.
+      prisma.callLog.updateMany = jest.fn().mockResolvedValue({ count: 1 });
+      // user.findFirst for getSystemUserId
+      prisma.user.findFirst = jest.fn().mockResolvedValue({ id: 'sys-uid' });
+    });
+
+    it('marks all slots kept + auto-unlocks when full cycle paid', async () => {
+      (promiseService as any).findActivePromise.mockResolvedValue({
+        id: 'cl-1',
+        contractId,
+        slots: [
+          {
+            id: 's-1',
+            slotIndex: 1,
+            settlementDate: new Date(Date.now() - 86400 * 1000),
+            settlementAmount: { toNumber: () => 1000 },
+            keptAt: null,
+            brokenAt: null,
+          },
+        ],
+      });
+      prisma.payment.aggregate.mockResolvedValue({
+        _sum: { amountPaid: { toNumber: () => 1500 } },
+      });
+
+      // @ts-expect-error access private for test
+      await service.checkPromiseAfterPayment(contractId);
+
+      expect(prisma.promiseSlot.update).toHaveBeenCalled();
+      expect(prisma.callLog.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ id: 'cl-1', keptAt: null }),
+          data: expect.objectContaining({ keptAt: expect.any(Date) }),
+        }),
+      );
+      expect(prisma.contract.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { keptPromiseCount: { increment: 1 } } }),
+      );
+      expect(prisma.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ action: 'KEPT_PROMISE' }),
+        }),
+      );
+      expect((mdmLockService as any).autoUnlock).toHaveBeenCalledWith(contractId, 'CYCLE_KEPT', 'sys-uid');
+    });
+
+    it('does NOT mark kept when slot underpaid', async () => {
+      (promiseService as any).findActivePromise.mockResolvedValue({
+        id: 'cl-1',
+        contractId,
+        slots: [
+          {
+            id: 's-1',
+            slotIndex: 1,
+            settlementDate: new Date(Date.now() - 86400 * 1000),
+            settlementAmount: { toNumber: () => 1000 },
+            keptAt: null,
+            brokenAt: null,
+          },
+        ],
+      });
+      prisma.payment.aggregate.mockResolvedValue({
+        _sum: { amountPaid: { toNumber: () => 500 } },
+      });
+
+      // @ts-expect-error access private for test
+      await service.checkPromiseAfterPayment(contractId);
+
+      expect(prisma.callLog.updateMany).not.toHaveBeenCalled();
+      expect((mdmLockService as any).autoUnlock).not.toHaveBeenCalled();
+    });
+
+    it('skips when no active promise exists', async () => {
+      (promiseService as any).findActivePromise.mockResolvedValue(null);
+
+      // @ts-expect-error access private for test
+      await service.checkPromiseAfterPayment(contractId);
+
+      expect(prisma.promiseSlot.update).not.toHaveBeenCalled();
+      expect((mdmLockService as any).autoUnlock).not.toHaveBeenCalled();
+    });
+
+    it('C1: aggregate uses OR(paidAt/paidDate) so manual payments are counted', async () => {
+      // Both paidAt (PaySolutions) and paidDate (manual recordPayment) must be checked.
+      (promiseService as any).findActivePromise.mockResolvedValue({
+        id: 'cl-1',
+        contractId,
+        slots: [
+          {
+            id: 's-1',
+            slotIndex: 1,
+            settlementDate: new Date(Date.now() - 86400 * 1000),
+            settlementAmount: { toNumber: () => 1000 },
+            keptAt: null,
+            brokenAt: null,
+          },
+        ],
+      });
+      prisma.payment.aggregate.mockResolvedValue({
+        _sum: { amountPaid: { toNumber: () => 1000 } },
+      });
+
+      // @ts-expect-error access private for test
+      await service.checkPromiseAfterPayment(contractId);
+
+      const aggregateArgs = prisma.payment.aggregate.mock.calls[0][0];
+      expect(aggregateArgs.where.OR).toBeDefined();
+      expect(aggregateArgs.where.OR).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ paidAt: expect.anything() }),
+          expect.objectContaining({ paidDate: expect.anything() }),
+        ]),
+      );
+      // No bare paidAt at top level any more
+      expect(aggregateArgs.where.paidAt).toBeUndefined();
     });
   });
 

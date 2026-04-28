@@ -465,6 +465,7 @@ export class OverdueQueueService {
       sevenDayAgoSnapshots,
       activeSnoozes,
       latestLineMessages,
+      activePromises,
     ] = await Promise.all([
       this.prisma.callLog.groupBy({
         by: ['contractId'],
@@ -484,7 +485,9 @@ export class OverdueQueueService {
         by: ['entityId'],
         where: {
           entityId: { in: contractIds },
-          entity: 'Contract',
+          // Accept both casings: new code writes 'contract' (per audit.service.ts convention),
+          // legacy broken-promise.cron wrote 'Contract'. Dual-read avoids losing historical rows.
+          entity: { in: ['contract', 'Contract'] },
           action: 'BROKEN_PROMISE',
         },
         _count: { _all: true },
@@ -580,6 +583,41 @@ export class OverdueQueueService {
           room: { select: { customerId: true } },
         },
       }),
+      // Task 24: active promise (un-broken/un-superseded/un-kept) with slots for
+      // cycle countdown + slot grid in PromiseTab. One row per contract (distinct
+      // equivalent via findFirst per-contract is too slow at N+1 — instead fetch
+      // all active promises for the batch and deduplicate in memory).
+      this.prisma.callLog.findMany({
+        where: {
+          contractId: { in: contractIds },
+          // N5 fix: respect soft-delete on CallLog so deleted promises don't
+          // resurface in the queue's active-promise lookup.
+          deletedAt: null,
+          result: 'PROMISED',
+          brokenAt: null,
+          supersededAt: null,
+          keptAt: null,
+          canceledAt: null,
+        },
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          contractId: true,
+          cycleDeadline: true,
+          rescheduleCount: true,
+          slots: {
+            orderBy: { slotIndex: 'asc' },
+            select: {
+              id: true,
+              slotIndex: true,
+              settlementDate: true,
+              settlementAmount: true,
+              keptAt: true,
+              brokenAt: true,
+            },
+          },
+        },
+      }),
     ]);
 
     const callMap = new Map<string, Date | null>(
@@ -621,6 +659,18 @@ export class OverdueQueueService {
       }
     }
 
+    // Task 24: contractId → most-recent active promise. Dedup in memory since
+    // findMany returns all matching rows (no per-contractId distinct in Prisma).
+    // Because we ORDER BY createdAt DESC, the first match per contractId is the
+    // latest active promise.
+    type ActivePromiseRow = (typeof activePromises)[number];
+    const activePromiseMap = new Map<string, ActivePromiseRow>();
+    for (const p of activePromises) {
+      if (!activePromiseMap.has(p.contractId)) {
+        activePromiseMap.set(p.contractId, p);
+      }
+    }
+
     return contracts.map((c) => {
       const base = this.toRow(c, now);
       const call = callMap.get(c.id) ?? null;
@@ -633,6 +683,7 @@ export class OverdueQueueService {
         sevenDayMap.get(c.id),
       );
       const snoozedUntil = snoozeMap.get(c.id) ?? null;
+      const ap = activePromiseMap.get(c.id) ?? null;
 
       return {
         ...base,
@@ -648,6 +699,19 @@ export class OverdueQueueService {
         // Z10: latest outbound LINE delivery status (RESPONDED/IGNORED/BLOCKED
         // /DELIVERED/READ) for the lineResponse post-filter.
         latestLineDeliveryStatus: lineStatusByCustomer.get(c.customerId) ?? null,
+        // Task 24: active promise lifecycle fields for PromiseTab cycle view.
+        cycleDeadline: ap?.cycleDeadline ?? null,
+        rescheduleCount: ap?.rescheduleCount ?? 0,
+        slots: ap
+          ? ap.slots.map((s) => ({
+              id: s.id,
+              slotIndex: s.slotIndex,
+              settlementDate: s.settlementDate,
+              settlementAmount: Number(s.settlementAmount),
+              keptAt: s.keptAt,
+              brokenAt: s.brokenAt,
+            }))
+          : [],
       };
     });
   }

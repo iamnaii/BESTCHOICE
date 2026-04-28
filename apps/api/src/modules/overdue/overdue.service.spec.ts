@@ -4,6 +4,7 @@ import { OverdueService } from './overdue.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DunningEngineService } from './dunning-engine.service';
 import { OverdueKpiService } from './kpi.service';
+import { PromiseService } from './promise.service';
 
 // Shared no-op mock for DunningEngineService — tests that care can spy on it
 const mockDunningEngine = {
@@ -12,6 +13,12 @@ const mockDunningEngine = {
 // Shared no-op KpiService mock — only its invalidate() is called from OverdueService
 const mockKpiService = {
   invalidate: jest.fn(),
+};
+// Shared no-op PromiseService mock — P2 Task 11: logContact routes PROMISED through this
+const mockPromiseService = {
+  createPromise: jest.fn().mockResolvedValue({ id: 'promise-1' }),
+  findActivePromise: jest.fn().mockResolvedValue(null),
+  calcCycleDeadline: jest.fn().mockResolvedValue(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)),
 };
 
 describe('OverdueService.recordSettlement', () => {
@@ -39,6 +46,7 @@ describe('OverdueService.recordSettlement', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: DunningEngineService, useValue: mockDunningEngine },
         { provide: OverdueKpiService, useValue: mockKpiService },
+        { provide: PromiseService, useValue: mockPromiseService },
       ],
     }).compile();
     service = mod.get(OverdueService);
@@ -127,6 +135,7 @@ describe('OverdueService.approveDunningEscalation (T4-C2)', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: DunningEngineService, useValue: mockDunningEngine },
         { provide: OverdueKpiService, useValue: mockKpiService },
+        { provide: PromiseService, useValue: mockPromiseService },
       ],
     }).compile();
     service = mod.get(OverdueService);
@@ -196,6 +205,7 @@ describe('OverdueService.updateContractStatuses (T3-C11 hold guard)', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: DunningEngineService, useValue: mockDunningEngine },
         { provide: OverdueKpiService, useValue: mockKpiService },
+        { provide: PromiseService, useValue: mockPromiseService },
       ],
     }).compile();
     service = mod.get(OverdueService);
@@ -295,6 +305,7 @@ describe('OverdueService.holdAutoEscalation (T3-C11)', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: DunningEngineService, useValue: mockDunningEngine },
         { provide: OverdueKpiService, useValue: mockKpiService },
+        { provide: PromiseService, useValue: mockPromiseService },
       ],
     }).compile();
     service = mod.get(OverdueService);
@@ -350,6 +361,7 @@ describe('OverdueService.updateContractStatuses (C3: atomic flip)', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: DunningEngineService, useValue: mockDunningEngine },
         { provide: OverdueKpiService, useValue: mockKpiService },
+        { provide: PromiseService, useValue: mockPromiseService },
       ],
     }).compile();
     service = mod.get(OverdueService);
@@ -415,6 +427,7 @@ describe('OverdueService (C2: throw if no SYSTEM user)', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: DunningEngineService, useValue: mockDunningEngine },
         { provide: OverdueKpiService, useValue: mockKpiService },
+        { provide: PromiseService, useValue: mockPromiseService },
       ],
     }).compile();
     service = mod.get(OverdueService);
@@ -451,6 +464,7 @@ describe('OverdueService.getCollectionsFlag', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: DunningEngineService, useValue: mockDunningEngine },
         { provide: OverdueKpiService, useValue: mockKpiService },
+        { provide: PromiseService, useValue: mockPromiseService },
       ],
     }).compile();
     service = mod.get(OverdueService);
@@ -505,8 +519,15 @@ describe('OverdueService.logContact with event trigger wiring', () => {
       callLog: {
         create: jest.fn().mockResolvedValue(makeCallLogResult('cl-1')),
       },
-      $transaction: jest.fn(async (ops: (() => Promise<unknown>)[]) => {
-        // Execute all promises in parallel and return results array
+      // P2 Task 11: computeFifoTargets calls payment.findMany when no targetInstallmentIds supplied
+      payment: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      // Polymorphic mock — supports interactive ($transaction(cb)) AND batch ($transaction([promises])).
+      // logContact wraps contract.update + promiseService.createPromise in an interactive tx.
+      $transaction: jest.fn(async (arg: unknown) => {
+        if (typeof arg === 'function') return (arg as (tx: unknown) => Promise<unknown>)(prisma);
+        const ops = arg as (Promise<unknown> | (() => Promise<unknown>))[];
         return Promise.all(ops.map((op) => (typeof op === 'function' ? op() : op)));
       }),
     };
@@ -517,6 +538,7 @@ describe('OverdueService.logContact with event trigger wiring', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: DunningEngineService, useValue: dunningEngineMock },
         { provide: OverdueKpiService, useValue: mockKpiService },
+        { provide: PromiseService, useValue: mockPromiseService },
       ],
     }).compile();
     service = mod.get(OverdueService);
@@ -547,12 +569,23 @@ describe('OverdueService.logContact with event trigger wiring', () => {
     expect(updateCall.data.noAnswerCount).toBe(0);
   });
 
-  it('dispatches CALL_ANSWERED_PROMISE on PROMISED result', async () => {
-    prisma.callLog.create.mockResolvedValue({ ...makeCallLogResult('cl-3'), result: 'PROMISED' });
+  it('dispatches CALL_ANSWERED_PROMISE on PROMISED result via PromiseService', async () => {
+    // P2 Task 11: PROMISED now routes through PromiseService.createPromise.
+    // Must supply at least settlementDate so slotsInput is non-empty.
+    mockPromiseService.createPromise.mockResolvedValueOnce({ id: 'promise-p2' });
 
-    await service.logContact('c-1', 'u-1', { result: 'PROMISED' });
+    await service.logContact('c-1', 'u-1', {
+      result: 'PROMISED',
+      settlementDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      settlementAmount: 5000,
+    });
 
-    expect(engineSpy).toHaveBeenCalledWith('CALL_ANSWERED_PROMISE', 'c-1', null, 'cl-3');
+    // Event trigger receives the new promise id returned by PromiseService
+    expect(engineSpy).toHaveBeenCalledWith('CALL_ANSWERED_PROMISE', 'c-1', null, 'promise-p2');
+    // Contract update resets noAnswerCount
+    expect(prisma.contract.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ noAnswerCount: 0 }) }),
+    );
   });
 
   it('sets needsSkipTracing on WRONG_NUMBER and fires no event', async () => {

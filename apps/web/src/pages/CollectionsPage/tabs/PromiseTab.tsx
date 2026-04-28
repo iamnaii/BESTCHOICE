@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
-import { AlertTriangle, Calendar, CheckCircle2, Phone } from 'lucide-react';
+import { AlertTriangle, Calendar, CheckCircle2, Phone, Timer } from 'lucide-react';
 import { useDebounce } from '@/hooks/useDebounce';
+import { formatThaiDateShort } from '@/lib/date';
 import { isToday } from '../utils/today';
 import QueryBoundary from '@/components/QueryBoundary';
 import ContractCard from '../components/ContractCard';
@@ -83,6 +84,73 @@ function groupRows(rows: ContractRow[]): GroupedRows {
   }
 
   return { today, broken, upcoming };
+}
+
+/**
+ * Task 24 — Cycle countdown banner shown below each promise card.
+ * Displays the cycle deadline and remaining days, plus a slot grid.
+ */
+function PromiseCycleView({ row }: { row: ContractRow }) {
+  const hasSlots = (row.slots?.length ?? 0) > 0;
+  const hasCycleDeadline = !!row.cycleDeadline;
+
+  if (!hasCycleDeadline && !hasSlots) return null;
+
+  const deadlineDate = row.cycleDeadline ? new Date(row.cycleDeadline) : null;
+  const daysLeft = deadlineDate
+    ? Math.max(0, Math.ceil((deadlineDate.getTime() - Date.now()) / 86400000))
+    : null;
+
+  const deadlineLabel = deadlineDate ? formatThaiDateShort(deadlineDate) : null;
+
+  return (
+    <div className="rounded-b-xl border border-t-0 border-border/50 bg-muted/40 px-4 py-2.5 flex flex-col gap-2">
+      {/* Cycle deadline row */}
+      {hasCycleDeadline && deadlineLabel !== null && daysLeft !== null && (
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground leading-snug">
+          <Timer className="size-3.5 shrink-0" />
+          <span>
+            เพดานรอบ:{' '}
+            <span className="font-medium text-foreground">{deadlineLabel}</span>
+            {' · '}
+            <span className={daysLeft <= 3 ? 'text-destructive font-semibold' : ''}>
+              เหลือ {daysLeft} วัน
+            </span>
+            {(row.rescheduleCount ?? 0) > 0 && (
+              <span className="ml-2 text-muted-foreground">
+                · ย้ายนัดแล้ว {row.rescheduleCount} ครั้ง
+              </span>
+            )}
+          </span>
+        </div>
+      )}
+
+      {/* Slot grid */}
+      {hasSlots && (
+        <div className="flex gap-1 flex-wrap">
+          {row.slots!.map((s) => {
+            const status = s.keptAt ? 'kept' : s.brokenAt ? 'broken' : 'pending';
+            const tone =
+              status === 'kept'
+                ? 'bg-success/20 text-success border border-success/30'
+                : status === 'broken'
+                ? 'bg-destructive/20 text-destructive border border-destructive/30'
+                : 'bg-muted text-muted-foreground border border-border';
+            const slotDate = formatThaiDateShort(s.settlementDate);
+            return (
+              <div
+                key={s.id}
+                className={`px-2 py-0.5 rounded text-xs font-medium leading-snug ${tone}`}
+                title={`งวดที่ ${s.slotIndex} — ${slotDate} · ${s.settlementAmount.toLocaleString()} ฿`}
+              >
+                งวด {s.slotIndex}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 interface Props {
@@ -202,7 +270,7 @@ export default function PromiseTab({
                 </h3>
                 <div className="space-y-2">
                   {groups.broken.map((row) => (
-                    <div key={row.id} className="ring-2 ring-destructive/50 rounded-xl">
+                    <div key={row.id} className="ring-2 ring-destructive/50 rounded-xl overflow-hidden">
                       <ContractCard
                         contract={row}
                         onLogContact={onLogContact}
@@ -210,6 +278,7 @@ export default function PromiseTab({
                         onSendLine={onSendLine}
                         onSkipTrace={onSkipTrace}
                       />
+                      <PromiseCycleView row={row} />
                     </div>
                   ))}
                 </div>
@@ -224,14 +293,16 @@ export default function PromiseTab({
                 </h3>
                 <div className="space-y-2">
                   {groups.today.map((row) => (
-                    <ContractCard
-                      key={row.id}
-                      contract={row}
-                      onLogContact={onLogContact}
-                      onOpen360={onOpen360}
-                      onSendLine={onSendLine}
-                      onSkipTrace={onSkipTrace}
-                    />
+                    <div key={row.id} className="rounded-xl overflow-hidden">
+                      <ContractCard
+                        contract={row}
+                        onLogContact={onLogContact}
+                        onOpen360={onOpen360}
+                        onSendLine={onSendLine}
+                        onSkipTrace={onSkipTrace}
+                      />
+                      <PromiseCycleView row={row} />
+                    </div>
                   ))}
                 </div>
               </section>
@@ -245,14 +316,16 @@ export default function PromiseTab({
                 </h3>
                 <div className="space-y-2">
                   {groups.upcoming.map((row) => (
-                    <ContractCard
-                      key={row.id}
-                      contract={row}
-                      onLogContact={onLogContact}
-                      onOpen360={onOpen360}
-                      onSendLine={onSendLine}
-                      onSkipTrace={onSkipTrace}
-                    />
+                    <div key={row.id} className="rounded-xl overflow-hidden">
+                      <ContractCard
+                        contract={row}
+                        onLogContact={onLogContact}
+                        onOpen360={onOpen360}
+                        onSendLine={onSendLine}
+                        onSkipTrace={onSkipTrace}
+                      />
+                      <PromiseCycleView row={row} />
+                    </div>
                   ))}
                 </div>
               </section>

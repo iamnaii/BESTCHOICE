@@ -236,12 +236,14 @@ export class CustomerTagsService {
       })
     ).map((c) => c.id);
 
+    // Dual entity casing: new writers use 'contract', legacy broken-promise.cron used 'Contract'.
+    const brokenEntityFilter = { in: ['contract', 'Contract'] };
     const brokenPromiseLifetime =
       contractIds.length === 0
         ? 0
         : await this.prisma.auditLog.count({
             where: {
-              entity: 'Contract',
+              entity: brokenEntityFilter,
               entityId: { in: contractIds },
               action: 'BROKEN_PROMISE',
             },
@@ -254,7 +256,7 @@ export class CustomerTagsService {
         ? 0
         : await this.prisma.auditLog.count({
             where: {
-              entity: 'Contract',
+              entity: brokenEntityFilter,
               entityId: { in: contractIds },
               action: 'BROKEN_PROMISE',
               createdAt: { gte: twelveMonthsAgo },
@@ -269,7 +271,7 @@ export class CustomerTagsService {
         ? 0
         : await this.prisma.auditLog.count({
             where: {
-              entity: 'Contract',
+              entity: brokenEntityFilter,
               entityId: { in: contractIds },
               action: 'BROKEN_PROMISE',
               createdAt: { gte: ninetyDaysAgo },

@@ -16,7 +16,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
-    "prisma:seed": "npx tsx prisma/seed.ts"
+    "prisma:seed": "npx tsx prisma/seed.ts",
+    "backfill:promise-slots": "tsx scripts/backfill-promise-slots.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.88.0",

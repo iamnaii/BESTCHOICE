@@ -20,7 +20,9 @@ import { AnalyticsLeaderboardService } from './analytics-leaderboard.service';
 import { AnalyticsRecoveryService } from './analytics-recovery.service';
 import { StuckContractsService } from './stuck-contracts.service';
 import { OwnerAlertHelper } from './owner-alert.helper';
-import { BrokenPromiseCron } from './crons/broken-promise.cron';
+import { PromiseService } from './promise.service';
+import { PromiseResolutionCron } from './crons/promise-resolution.cron';
+import { NoPromiseLockCron } from './crons/no-promise-lock.cron';
 import { MdmAutoProposeCron } from './crons/mdm-auto-propose.cron';
 import { LetterAutoGenerateCron } from './crons/letter-auto-generate.cron';
 import { ContractSnapshotCron } from './contract-snapshot.cron';
@@ -56,7 +58,8 @@ import { LineOaModule } from '../line-oa/line-oa.module';
     AnalyticsRecoveryService,
     StuckContractsService,
     OwnerAlertHelper,
-    BrokenPromiseCron,
+    PromiseResolutionCron,
+    NoPromiseLockCron,
     MdmAutoProposeCron,
     LetterAutoGenerateCron,
     ContractSnapshotCron,
@@ -64,6 +67,7 @@ import { LineOaModule } from '../line-oa/line-oa.module';
     ContractSnoozeService,
     CustomerInsightsService,
     AutoBalanceService,
+    PromiseService,
   ],
   exports: [
     CustomerInsightsService,
@@ -81,6 +85,7 @@ import { LineOaModule } from '../line-oa/line-oa.module';
     AnalyticsLeaderboardService,
     AnalyticsRecoveryService,
     StuckContractsService,
+    PromiseService,
   ],
 })
 export class OverdueModule {}

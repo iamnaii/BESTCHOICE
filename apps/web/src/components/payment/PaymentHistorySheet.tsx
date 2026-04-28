@@ -41,10 +41,26 @@ const statusLabels: Record<string, { label: string; className: string }> = {
 interface PaymentHistorySheetProps {
   contractId: string | null;
   onClose: () => void;
-  onViewReceipt: (receiptId: string) => void;
 }
 
-export default function PaymentHistorySheet({ contractId, onClose, onViewReceipt }: PaymentHistorySheetProps) {
+async function downloadReceiptPdf(receiptId: string, receiptNumber: string) {
+  try {
+    const res = await api.get(`/receipts/${receiptId}/pdf`, { responseType: 'blob' });
+    const blob = new Blob([res.data], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${receiptNumber}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    toast.error(getErrorMessage(err) || 'ไม่สามารถดาวน์โหลดใบเสร็จ');
+  }
+}
+
+export default function PaymentHistorySheet({ contractId, onClose }: PaymentHistorySheetProps) {
   const queryClient = useQueryClient();
   const [showWaiveModal, setShowWaiveModal] = useState(false);
   const [waiveTarget, setWaiveTarget] = useState<PaymentItem | null>(null);
@@ -159,7 +175,7 @@ export default function PaymentHistorySheet({ contractId, onClose, onViewReceipt
                       <div className="flex gap-2 pt-1">
                         {receipt && (
                           <button
-                            onClick={() => onViewReceipt(receipt.id)}
+                            onClick={() => downloadReceiptPdf(receipt.id, receipt.receiptNumber)}
                             className="px-2 py-1 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90"
                           >
                             ใบเสร็จ

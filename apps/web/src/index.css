@@ -520,9 +520,7 @@ layer(base);
   height: 0;
 }
 
-/* ── Print Styles for Receipts ───────────────────────── */
-/* NOTE: @page size is NOT set here — PDF export uses html2pdf.js (unifiedReceiptPdf.ts)
-   which renders via html2canvas, so @page rules are not needed. */
+/* ── Print Styles for the public verify page ─────────── */
 @media print {
   body {
     margin: 0;
@@ -530,12 +528,6 @@ layer(base);
     background: white;
   }
 
-  /* Hide everything except receipt */
-  body > *:not(#receipt-print-area) {
-    display: none !important;
-  }
-
-  /* Hide all buttons, modals, navigation when printing */
   button,
   nav,
   .modal-backdrop,
@@ -544,47 +536,15 @@ layer(base);
     display: none !important;
   }
 
-  /* Force print colors and backgrounds */
   * {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
     color-adjust: exact !important;
   }
 
-  /* Receipt print area — font + layout */
-  #receipt-print-area {
-    font-family: 'IBM Plex Sans Thai', sans-serif;
-    font-size: 14pt;
-    line-height: 1.5;
-  }
-
-  /* Receipt containers fill the page — @page margins handle spacing */
-  .a4-receipt-container,
-  .a5-receipt-container {
-    width: 100% !important;
-    height: auto !important;
-    margin: 0;
-    padding: 0;
-  }
-
-  /* Remove shadows and borders for print */
-  .a4-receipt-container,
-  .a5-receipt-container,
   .mobile-receipt {
     box-shadow: none !important;
     border: none !important;
-  }
-
-  /* Prevent page breaks inside important sections */
-  .receipt-header,
-  .receipt-details,
-  .receipt-footer,
-  table {
-    page-break-inside: avoid;
-  }
-
-  /* Mobile receipt should convert to printable format */
-  .mobile-receipt {
     max-width: 100%;
   }
 }

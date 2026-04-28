@@ -428,15 +428,38 @@ export class ReceiptsService {
   async generatePDF(id: string): Promise<Buffer> {
     const receipt = await this.getReceipt(id);
 
+    // Payment method labels (matches Prisma PaymentMethod enum)
+    const methodLabels: Record<string, string> = {
+      CASH: 'เงินสด',
+      BANK_TRANSFER: 'โอนเงินผ่านธนาคาร',
+      QR_EWALLET: 'QR / e-Wallet',
+      CREDIT_BALANCE: 'ใช้ยอดเครดิตในสัญญา',
+      ONLINE_GATEWAY: 'ชำระออนไลน์',
+    };
+
     // Sanitize all user-provided data before HTML interpolation
     const safe = {
       companyName: this.escapeHtml(receipt.company?.nameTh) || 'BESTCHOICE',
+      companyAddress: this.escapeHtml(receipt.company?.address),
+      companyPhone: this.escapeHtml(receipt.company?.phone),
       taxId: this.escapeHtml(receipt.company?.taxId),
       payerName: this.escapeHtml(receipt.payerName),
+      payerAddress: this.escapeHtml(receipt.payerAddress),
+      payerTaxId: this.escapeHtml(receipt.payerTaxId),
       contractNumber: this.escapeHtml(receipt.contract?.contractNumber),
       productName: this.escapeHtml(receipt.contract?.product?.name),
+      imeiSerial: this.escapeHtml(receipt.contract?.product?.imeiSerial),
+      serialNumber: this.escapeHtml(receipt.contract?.product?.serialNumber),
+      branchName: this.escapeHtml(receipt.contract?.branch?.name),
+      branchPhone: this.escapeHtml(receipt.contract?.branch?.phone),
       receiptNumber: this.escapeHtml(receipt.receiptNumber),
+      paymentMethodLabel: methodLabels[receipt.paymentMethod ?? ''] ?? this.escapeHtml(receipt.paymentMethod),
+      transactionRef: this.escapeHtml(receipt.transactionRef),
     };
+
+    const amountBeforeVat = receipt.amountBeforeVat ? Number(receipt.amountBeforeVat) : null;
+    const vatAmount = receipt.vatAmount ? Number(receipt.vatAmount) : null;
+    const total = Number(receipt.amount);
 
     const browser = await puppeteer.launch({
       headless: true,
@@ -445,89 +468,309 @@ export class ReceiptsService {
 
     const page = await browser.newPage();
 
-    // HTML template (simplified version)
     const html = `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
   <style>
-    body { font-family: 'Noto Sans Thai', sans-serif; margin: 0; padding: 20px; }
-    .receipt { max-width: 600px; margin: 0 auto; }
-    .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 20px; margin-bottom: 20px; }
-    .company { font-size: 24px; font-weight: bold; }
-    .type { font-size: 18px; color: #2563eb; margin-top: 10px; }
-    .number { font-size: 14px; color: #666; }
-    .section { margin: 20px 0; }
-    .row { display: flex; justify-content: space-between; margin: 10px 0; }
-    .label { color: #666; }
-    .value { font-weight: 500; }
-    .amount { font-size: 24px; font-weight: bold; color: #16a34a; }
-    .footer { text-align: center; margin-top: 40px; padding-top: 20px; border-top: 1px solid #ccc; color: #999; font-size: 12px; }
+    @page { size: A4; margin: 0; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Noto Sans Thai', 'IBM Plex Sans Thai', 'Sarabun', sans-serif;
+      margin: 0;
+      padding: 16mm 14mm;
+      color: #18181b;
+      font-size: 11pt;
+      line-height: 1.55;
+    }
+    .receipt { max-width: 100%; }
+    .top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      padding-bottom: 14px;
+      border-bottom: 2px solid #047857;
+      margin-bottom: 18px;
+    }
+    .top-left { flex: 1; }
+    .top-right { text-align: right; }
+    .company { font-size: 16pt; font-weight: 700; color: #047857; margin-bottom: 4px; }
+    .small { font-size: 9.5pt; color: #52525b; line-height: 1.45; }
+    .doc-type {
+      display: inline-block;
+      font-size: 14pt;
+      font-weight: 700;
+      color: #047857;
+      border: 1.5px solid #047857;
+      padding: 4px 14px;
+      border-radius: 6px;
+      margin-bottom: 6px;
+    }
+    .doc-meta { font-size: 9.5pt; color: #52525b; }
+    .doc-num { font-family: 'IBM Plex Mono', monospace; font-size: 11pt; font-weight: 600; color: #18181b; }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+    .info-card {
+      background: #fafaf9;
+      border: 1px solid #e4e4e7;
+      border-radius: 6px;
+      padding: 10px 12px;
+    }
+    .info-card h4 {
+      margin: 0 0 6px 0;
+      font-size: 9.5pt;
+      font-weight: 600;
+      color: #71717a;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .info-card .name { font-weight: 600; font-size: 11pt; }
+    .info-card .line { font-size: 9.5pt; color: #52525b; line-height: 1.5; }
+
+    table.items {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 14px;
+      font-size: 10.5pt;
+    }
+    table.items th {
+      text-align: left;
+      padding: 8px 10px;
+      background: #ecfdf5;
+      color: #065f46;
+      font-weight: 600;
+      font-size: 9.5pt;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      border-bottom: 2px solid #047857;
+    }
+    table.items th.right { text-align: right; }
+    table.items td {
+      padding: 10px;
+      border-bottom: 1px solid #e4e4e7;
+      vertical-align: top;
+    }
+    table.items td.right { text-align: right; font-variant-numeric: tabular-nums; }
+    .item-name { font-weight: 600; }
+    .item-meta { font-size: 9pt; color: #71717a; margin-top: 2px; }
+
+    .totals {
+      width: 50%;
+      margin-left: auto;
+      margin-bottom: 14px;
+    }
+    .totals .row {
+      display: flex;
+      justify-content: space-between;
+      padding: 5px 12px;
+      font-size: 10.5pt;
+    }
+    .totals .row.subtle { color: #52525b; }
+    .totals .row.grand {
+      background: #ecfdf5;
+      border-radius: 6px;
+      padding: 10px 12px;
+      font-size: 12pt;
+      font-weight: 700;
+      color: #047857;
+      margin-top: 4px;
+    }
+    .totals .row.grand .amount { font-size: 14pt; }
+
+    .pay-info {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      background: #fafaf9;
+      border: 1px solid #e4e4e7;
+      border-radius: 6px;
+      padding: 10px 14px;
+      margin-bottom: 14px;
+      font-size: 10pt;
+    }
+    .pay-info .label { color: #71717a; font-size: 9pt; }
+    .pay-info .value { font-weight: 600; margin-top: 1px; }
+
+    .balance-bar {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 14px;
+      background: linear-gradient(90deg, #fff7ed 0%, #ffedd5 100%);
+      border: 1px solid #fed7aa;
+      border-radius: 6px;
+      font-size: 10pt;
+      margin-bottom: 18px;
+    }
+    .balance-bar .label { color: #9a3412; font-weight: 500; }
+    .balance-bar .value { font-weight: 700; color: #c2410c; font-variant-numeric: tabular-nums; }
+
+    .signatures {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 60px;
+      margin-top: 36px;
+      margin-bottom: 18px;
+    }
+    .sig-block { text-align: center; }
+    .sig-line {
+      border-top: 1px solid #71717a;
+      margin: 0 16px 6px 16px;
+      padding-top: 4px;
+    }
+    .sig-block .small { color: #71717a; }
+
+    .footer {
+      text-align: center;
+      padding-top: 14px;
+      border-top: 1px solid #e4e4e7;
+      color: #a1a1aa;
+      font-size: 8.5pt;
+    }
+
+    .void-overlay {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) rotate(-15deg);
+      font-size: 80pt;
+      font-weight: 900;
+      color: rgba(220, 38, 38, 0.18);
+      letter-spacing: 0.1em;
+      pointer-events: none;
+    }
   </style>
 </head>
 <body>
+  ${receipt.isVoided ? `<div class="void-overlay">VOID / ยกเลิก</div>` : ''}
+
   <div class="receipt">
-    <div class="header">
-      <div class="company">${safe.companyName}</div>
-      ${safe.taxId ? `<div>เลขประจำตัวผู้เสียภาษี: ${safe.taxId}</div>` : ''}
-      <div class="type">ใบเสร็จรับเงิน</div>
-      <div class="number">${safe.receiptNumber}</div>
-    </div>
-
-    <div class="section">
-      <div class="row">
-        <span class="label">ผู้ชำระเงิน:</span>
-        <span class="value">${safe.payerName}</span>
+    <!-- Header -->
+    <div class="top">
+      <div class="top-left">
+        <div class="company">${safe.companyName}</div>
+        ${safe.companyAddress ? `<div class="small">${safe.companyAddress}</div>` : ''}
+        <div class="small">
+          ${safe.companyPhone ? `โทร. ${safe.companyPhone}` : ''}
+          ${safe.taxId ? ` &nbsp;·&nbsp; เลขประจำตัวผู้เสียภาษี ${safe.taxId}` : ''}
+        </div>
       </div>
-      <div class="row">
-        <span class="label">เลขสัญญา:</span>
-        <span class="value">${safe.contractNumber || '-'}</span>
-      </div>
-      ${receipt.contract?.product ? `
-      <div class="row">
-        <span class="label">สินค้า:</span>
-        <span class="value">${safe.productName}</span>
-      </div>` : ''}
-      <div class="row">
-        <span class="label">วันที่ชำระ:</span>
-        <span class="value">${formatDateShort(receipt.paidDate)}</span>
+      <div class="top-right">
+        <div class="doc-type">ใบเสร็จรับเงิน</div>
+        <div class="doc-meta">
+          เลขที่: <span class="doc-num">${safe.receiptNumber}</span><br/>
+          วันที่: <span style="font-weight:600">${formatDateShort(receipt.paidDate)}</span>
+        </div>
       </div>
     </div>
 
-    <div class="section" style="text-align: center; padding: 20px; background: #f3f4f6; border-radius: 8px;">
-      <div>จำนวนเงินที่ชำระ</div>
-      <div class="amount">${Number(receipt.amount).toLocaleString()} บาท</div>
-      ${receipt.installmentNo ? `<div>งวดที่ ${receipt.installmentNo}</div>` : ''}
+    <!-- Customer + Branch info -->
+    <div class="grid-2">
+      <div class="info-card">
+        <h4>ผู้ชำระเงิน</h4>
+        <div class="name">${safe.payerName}</div>
+        ${safe.payerAddress ? `<div class="line">${safe.payerAddress}</div>` : ''}
+        ${safe.payerTaxId ? `<div class="line">เลขประจำตัวผู้เสียภาษี ${safe.payerTaxId}</div>` : ''}
+      </div>
+      <div class="info-card">
+        <h4>สาขาที่รับชำระ</h4>
+        <div class="name">${safe.branchName || '-'}</div>
+        ${safe.branchPhone ? `<div class="line">โทร. ${safe.branchPhone}</div>` : ''}
+        <div class="line">เลขสัญญา: <strong>${safe.contractNumber || '-'}</strong></div>
+      </div>
     </div>
 
-    ${receipt.remainingBalance ? `
-    <div class="section">
-      <div class="row">
-        <span class="label">ยอดคงเหลือ:</span>
-        <span class="value" style="color: #ea580c;">${Number(receipt.remainingBalance).toLocaleString()} บาท</span>
+    <!-- Items table -->
+    <table class="items">
+      <thead>
+        <tr>
+          <th>รายการ</th>
+          <th class="right">จำนวนเงิน</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <div class="item-name">
+              ${receipt.installmentNo ? `ค่างวดผ่อนชำระ งวดที่ ${receipt.installmentNo}` : 'การชำระเงิน'}
+            </div>
+            ${safe.productName ? `<div class="item-meta">สินค้า: ${safe.productName}</div>` : ''}
+            ${safe.imeiSerial ? `<div class="item-meta">IMEI: ${safe.imeiSerial}</div>` : (safe.serialNumber ? `<div class="item-meta">S/N: ${safe.serialNumber}</div>` : '')}
+          </td>
+          <td class="right">${total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Totals -->
+    <div class="totals">
+      ${amountBeforeVat !== null && vatAmount !== null ? `
+        <div class="row subtle">
+          <span>มูลค่าก่อน VAT</span>
+          <span>${amountBeforeVat.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท</span>
+        </div>
+        <div class="row subtle">
+          <span>ภาษีมูลค่าเพิ่ม 7%</span>
+          <span>${vatAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท</span>
+        </div>
+      ` : ''}
+      <div class="row grand">
+        <span>รวมเงินที่ชำระ</span>
+        <span class="amount">${total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท</span>
       </div>
-      ${receipt.remainingMonths ? `
-      <div class="row">
-        <span class="label">งวดที่เหลือ:</span>
-        <span class="value">${receipt.remainingMonths} งวด</span>
-      </div>` : ''}
+    </div>
+
+    <!-- Payment info -->
+    <div class="pay-info">
+      <div>
+        <div class="label">ช่องทางการชำระ</div>
+        <div class="value">${safe.paymentMethodLabel || '-'}</div>
+      </div>
+      <div>
+        <div class="label">เลขอ้างอิงธุรกรรม</div>
+        <div class="value" style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5pt;">${safe.transactionRef || '-'}</div>
+      </div>
+    </div>
+
+    <!-- Remaining balance -->
+    ${receipt.remainingBalance && Number(receipt.remainingBalance) > 0 ? `
+    <div class="balance-bar">
+      <span class="label">ยอดคงเหลือของสัญญา</span>
+      <span class="value">${Number(receipt.remainingBalance).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท ${receipt.remainingMonths ? `(${receipt.remainingMonths} งวด)` : ''}</span>
     </div>` : ''}
 
+    <!-- Signatures -->
+    <div class="signatures">
+      <div class="sig-block">
+        <div class="sig-line">&nbsp;</div>
+        <div class="small">ผู้รับเงิน</div>
+      </div>
+      <div class="sig-block">
+        <div class="sig-line">&nbsp;</div>
+        <div class="small">ผู้ชำระเงิน</div>
+      </div>
+    </div>
+
+    <!-- Footer -->
     <div class="footer">
-      <p>เอกสารนี้สร้างโดยระบบอัตโนมัติ</p>
-      <p>www.bestchoice.com</p>
+      เอกสารนี้สร้างโดยระบบอัตโนมัติ &nbsp;·&nbsp; ${safe.companyName}
     </div>
   </div>
 </body>
 </html>`;
 
-    await page.setContent(html);
+    await page.setContent(html, { waitUntil: 'networkidle0' });
 
     const pdf = await page.pdf({
       format: 'A4',
       printBackground: true,
-      margin: { top: '20mm', right: '20mm', bottom: '20mm', left: '20mm' },
+      margin: { top: '0', right: '0', bottom: '0', left: '0' },
     });
 
     await browser.close();

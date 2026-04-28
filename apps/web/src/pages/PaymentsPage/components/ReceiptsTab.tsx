@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import DataTable from '@/components/ui/DataTable';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -12,6 +12,24 @@ import { toast } from 'sonner';
 import { formatDateShort } from '@/utils/formatters';
 import QueryBoundary from '@/components/QueryBoundary';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
+import { Download } from 'lucide-react';
+
+async function downloadReceiptPdf(receiptId: string, receiptNumber: string) {
+  try {
+    const res = await api.get(`/receipts/${receiptId}/pdf`, { responseType: 'blob' });
+    const blob = new Blob([res.data], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${receiptNumber}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    toast.error(getErrorMessage(err) || 'ไม่สามารถดาวน์โหลดใบเสร็จ');
+  }
+}
 
 interface Receipt {
   id: string;
@@ -160,12 +178,23 @@ export default function ReceiptsTab() {
       key: 'actions',
       label: '',
       render: (r: Receipt) => (
-        <button
-          onClick={() => setSelectedReceiptId(r.id)}
-          className="px-2 py-1 text-xs text-primary hover:bg-primary/10 rounded"
-        >
-          ดูรายละเอียด
-        </button>
+        <div className="flex items-center gap-1 justify-end">
+          <button
+            onClick={() => downloadReceiptPdf(r.id, r.receiptNumber)}
+            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-primary hover:bg-primary/10 rounded transition-colors"
+            title="ดาวน์โหลดใบเสร็จ PDF"
+          >
+            <Download className="h-3 w-3" />
+            ใบเสร็จ
+          </button>
+          <button
+            onClick={() => setSelectedReceiptId(r.id)}
+            className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded transition-colors"
+            title="ดูรายละเอียด / ยกเลิกใบเสร็จ"
+          >
+            ⋯
+          </button>
+        </div>
       ),
     },
   ], []);

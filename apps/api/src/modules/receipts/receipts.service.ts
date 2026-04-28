@@ -30,11 +30,12 @@ export class ReceiptsService {
     const prefix = `RC-${year}-${month}-`;
 
     // Use raw query with FOR UPDATE to lock the row and prevent concurrent reads
-    // from getting the same sequence number
+    // from getting the same sequence number.
+    // Schema maps Receipt → "receipts" with column "receipt_number" (snake_case).
     const result = await db.$queryRaw<Array<{ receiptNumber: string }>>`
-      SELECT "receiptNumber" FROM "Receipt"
-      WHERE "receiptNumber" LIKE ${prefix + '%'}
-      ORDER BY "receiptNumber" DESC
+      SELECT receipt_number AS "receiptNumber" FROM receipts
+      WHERE receipt_number LIKE ${prefix + '%'}
+      ORDER BY receipt_number DESC
       LIMIT 1
       FOR UPDATE
     `;

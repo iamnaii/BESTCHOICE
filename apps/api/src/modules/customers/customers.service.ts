@@ -85,7 +85,8 @@ export class CustomersService {
           phoneEncrypted: true,
           occupation: true,
           salary: true,
-          lineId: true,
+          lineIdFinance: true,
+          lineIdShop: true,
           createdAt: true,
           _count: { select: { contracts: true } },
           contracts: {

@@ -132,10 +132,11 @@ export class ReceiptsService {
       // Send receipt via LINE if customer is linked
       if (this.lineOaService) {
         try {
+          // Payment receipts go through FINANCE OA (channelKey='line-finance').
           const customer = await tx.customer.findFirst({
             where: {
               contracts: { some: { id: contractId } },
-              lineId: { not: null },
+              lineIdFinance: { not: null },
               deletedAt: null
             },
             select: { id: true }

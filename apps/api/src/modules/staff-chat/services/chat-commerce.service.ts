@@ -35,14 +35,18 @@ export class ChatCommerceService {
     contractId: string;
     installmentNo?: number;
   }): Promise<{ contractId: string; contractNumber: string; installmentNo: number; amount: number; paymentId: string }> {
-    // 1. Find session to get customer lineUserId
+    // 1. Find session to get customer lineUserId. We pick the customer LINE ID
+    //    matching the chat channel (LINE_FINANCE → lineIdFinance, LINE_SHOP → lineIdShop).
     const session = await this.prisma.chatRoom.findUnique({
       where: { id: params.sessionId },
       select: {
         id: true,
         lineUserId: true,
+        channel: true,
         customerId: true,
-        customer: { select: { id: true, name: true, lineId: true } },
+        customer: {
+          select: { id: true, name: true, lineIdFinance: true, lineIdShop: true },
+        },
       },
     });
 
@@ -54,7 +58,9 @@ export class ChatCommerceService {
       throw new BadRequestException('ห้องแชทนี้ยังไม่ได้เชื่อมกับลูกค้า');
     }
 
-    const customerLineId = session.customer.lineId || session.lineUserId;
+    const customerLineIdForChannel =
+      session.channel === 'LINE_SHOP' ? session.customer.lineIdShop : session.customer.lineIdFinance;
+    const customerLineId = customerLineIdForChannel || session.lineUserId;
     if (!customerLineId) {
       throw new BadRequestException('ลูกค้าไม่มี LINE ID ไม่สามารถสร้างลิงก์ชำระเงินได้');
     }
@@ -63,7 +69,7 @@ export class ChatCommerceService {
     const contract = await this.prisma.contract.findUnique({
       where: { id: params.contractId },
       include: {
-        customer: { select: { id: true, lineId: true } },
+        customer: { select: { id: true, lineIdFinance: true, lineIdShop: true } },
         payments: {
           where: { deletedAt: null },
           orderBy: { installmentNo: 'asc' },

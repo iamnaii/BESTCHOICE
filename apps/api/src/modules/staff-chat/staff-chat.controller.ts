@@ -520,7 +520,7 @@ export class StaffChatController {
    * delivery and adapter selection match the rest of staff-chat.
    *
    * Returns 404 when the customer has no LINE room — the FE only renders
-   * the panel when `customer.lineId` is set, but that's a customer-record
+   * the panel when `customer.lineIdFinance` is set, but that's a customer-record
    * field; the room is created lazily on first inbound message. Until then
    * outbound is impossible (no LINE userId to push to).
    */

@@ -19,11 +19,12 @@ export class SavingPlanReminderCron {
     try {
       const due = await this.service.listDueReminders();
       for (const plan of due) {
-        if (!plan.customer.lineId) continue;
+        if (!plan.customer.lineIdShop) continue;
         try {
           await this.line.sendFlexMessage(
-            plan.customer.lineId,
+            plan.customer.lineIdShop,
             this.buildReminderFlex(plan.planNumber, Number(plan.monthlyAmount)),
+            'line-shop',
           );
         } catch (e) {
           this.log.warn(`Saving-plan reminder failed for ${plan.id}: ${String(e)}`);

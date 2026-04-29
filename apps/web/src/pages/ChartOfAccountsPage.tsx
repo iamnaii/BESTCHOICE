@@ -10,7 +10,11 @@ import { getStatusBadgeProps, accountGroupMap } from '@/lib/status-badges';
 
 type AccountGroup = 'ASSET' | 'LIABILITY' | 'EQUITY' | 'REVENUE' | 'EXPENSE';
 
-type CompanyCode = 'SHOP' | 'FINANCE';
+interface Company {
+  id: string;
+  companyCode: string;
+  nameTh?: string;
+}
 
 interface ChartOfAccount {
   id: string;
@@ -21,7 +25,7 @@ interface ChartOfAccount {
   parentCode?: string | null;
   level: number;
   isActive: boolean;
-  allowedCompanies: CompanyCode[];
+  companyId: string | null;
   peakAccountCode?: string | null;
   peakAccountId?: string | null;
 }
@@ -43,7 +47,7 @@ interface FormState {
   parentCode: string;
   level: number;
   isActive: boolean;
-  allowedCompanies: CompanyCode[];
+  companyId: string; // empty string = shared
   peakAccountCode: string;
   peakAccountId: string;
 }
@@ -56,7 +60,7 @@ const emptyForm: FormState = {
   parentCode: '',
   level: 3,
   isActive: true,
-  allowedCompanies: [],
+  companyId: '',
   peakAccountCode: '',
   peakAccountId: '',
 };
@@ -64,16 +68,28 @@ const emptyForm: FormState = {
 export default function ChartOfAccountsPage() {
   const queryClient = useQueryClient();
   const [groupFilter, setGroupFilter] = useState<AccountGroup | 'ALL'>('ALL');
+  const [companyFilter, setCompanyFilter] = useState<string>('ALL');
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<ChartOfAccount | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; id: string; label: string }>({ open: false, id: '', label: '' });
 
-  const { data: accounts = [], isLoading, isError, error, refetch } = useQuery<ChartOfAccount[]>({
-    queryKey: ['chart-of-accounts'],
+  const { data: companies = [] } = useQuery<Company[]>({
+    queryKey: ['companies-coa'],
     queryFn: async () => {
-      const { data } = await api.get('/chart-of-accounts');
+      const { data } = await api.get('/companies');
+      return data;
+    },
+  });
+
+  const { data: accounts = [], isLoading, isError, error, refetch } = useQuery<ChartOfAccount[]>({
+    queryKey: ['chart-of-accounts', companyFilter],
+    queryFn: async () => {
+      const params: Record<string, string> = {};
+      if (companyFilter === 'SHARED') params.companyId = 'SHARED';
+      else if (companyFilter !== 'ALL') params.companyId = companyFilter;
+      const { data } = await api.get('/chart-of-accounts', { params });
       return data;
     },
   });
@@ -108,6 +124,7 @@ export default function ChartOfAccountsPage() {
         ...form,
         nameEn: form.nameEn || undefined,
         parentCode: form.parentCode || undefined,
+        companyId: form.companyId || undefined,
         peakAccountCode: form.peakAccountCode || undefined,
         peakAccountId: form.peakAccountId || undefined,
       };
@@ -132,7 +149,7 @@ export default function ChartOfAccountsPage() {
         parentCode: form.parentCode || undefined,
         level: form.level,
         isActive: form.isActive,
-        allowedCompanies: form.allowedCompanies,
+        companyId: form.companyId || null,
         peakAccountCode: form.peakAccountCode || undefined,
         peakAccountId: form.peakAccountId || undefined,
       };
@@ -160,7 +177,10 @@ export default function ChartOfAccountsPage() {
 
   function openCreate() {
     setEditing(null);
-    setForm(emptyForm);
+    // Pre-fill companyId from current filter (UX nicety)
+    const initialCompanyId =
+      companyFilter !== 'ALL' && companyFilter !== 'SHARED' ? companyFilter : '';
+    setForm({ ...emptyForm, companyId: initialCompanyId });
     setShowForm(true);
   }
 
@@ -174,7 +194,7 @@ export default function ChartOfAccountsPage() {
       parentCode: a.parentCode || '',
       level: a.level,
       isActive: a.isActive,
-      allowedCompanies: a.allowedCompanies || [],
+      companyId: a.companyId || '',
       peakAccountCode: a.peakAccountCode || '',
       peakAccountId: a.peakAccountId || '',
     });
@@ -222,6 +242,21 @@ export default function ChartOfAccountsPage() {
           onChange={(e) => setSearch(e.target.value)}
           className={`${inputClass} max-w-xs`}
         />
+        <select
+          value={companyFilter}
+          onChange={(e) => setCompanyFilter(e.target.value)}
+          className={`${inputClass} max-w-[14rem]`}
+          aria-label="กรองตามบริษัท"
+        >
+          <option value="ALL">ทุกบริษัท (รวม shared)</option>
+          <option value="SHARED">Shared (ไม่ระบุบริษัท)</option>
+          {companies.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.companyCode}
+              {c.nameTh ? ` — ${c.nameTh}` : ''}
+            </option>
+          ))}
+        </select>
         <div className="flex gap-2 flex-wrap">
           <FilterChip active={groupFilter === 'ALL'} onClick={() => setGroupFilter('ALL')}>ทั้งหมด</FilterChip>
           {(Object.keys(GROUP_LABELS) as AccountGroup[]).map((g) => (
@@ -396,28 +431,24 @@ export default function ChartOfAccountsPage() {
                 ใช้งาน
               </label>
 
-              {/* ── การใช้งานข้ามบริษัท (Multi-Entity) ── */}
+              {/* ── บริษัทเจ้าของบัญชี (Multi-Entity) ── */}
               <div className="border-t pt-4 mt-2">
-                <label className="block text-xs font-medium mb-2">อนุญาตให้บริษัทใช้งาน</label>
-                <div className="flex gap-4">
-                  {(['SHOP', 'FINANCE'] as CompanyCode[]).map((c) => (
-                    <label key={c} className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={form.allowedCompanies.includes(c)}
-                        onChange={(e) => {
-                          const next = e.target.checked
-                            ? [...form.allowedCompanies, c]
-                            : form.allowedCompanies.filter((x) => x !== c);
-                          setForm({ ...form, allowedCompanies: next });
-                        }}
-                      />
-                      {c === 'SHOP' ? 'BESTCHOICE SHOP' : 'BESTCHOICE FINANCE'}
-                    </label>
+                <label className="block text-xs font-medium mb-1.5">บริษัทเจ้าของบัญชี</label>
+                <select
+                  value={form.companyId}
+                  onChange={(e) => setForm({ ...form, companyId: e.target.value })}
+                  className={inputClass}
+                >
+                  <option value="">Shared (ใช้ได้ทุกบริษัท)</option>
+                  {companies.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.companyCode}
+                      {c.nameTh ? ` — ${c.nameTh}` : ''}
+                    </option>
                   ))}
-                </div>
+                </select>
                 <p className="text-xs text-muted-foreground mt-1.5">
-                  ไม่เลือกเลย = ใช้ได้ทุกบริษัท
+                  เว้นว่าง (Shared) = ใช้ได้กับทุกบริษัท
                 </p>
               </div>
 

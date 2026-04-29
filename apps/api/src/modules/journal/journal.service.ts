@@ -47,7 +47,7 @@ export class JournalService {
       }
     }
 
-    // 3. Validate companyId exists and not deleted (ดึงก่อนเพื่อเอา companyCode ไปเช็ค allowedCompanies)
+    // 3. Validate companyId exists and not deleted
     const company = await this.prisma.companyInfo.findFirst({
       where: { id: dto.companyId, deletedAt: null },
     });
@@ -61,38 +61,28 @@ export class JournalService {
     // anyone backdate a journal into a closed month.
     await validatePeriodOpen(this.prisma, new Date(dto.entryDate), dto.companyId);
 
-    // 4. Validate accountCodes exist in ChartOfAccount + allowed for this company
+    // 4. Validate accountCodes exist in this company's ChartOfAccount
+    // Phase A.1a: chart is now per-company (composite key (companyId, code)),
+    // so the lookup is scoped to dto.companyId. Any code not in this company's
+    // chart is reported back; allowedCompanies array is no longer used.
     const accountCodes = dto.lines.map((line) => line.accountCode);
     const accounts = await this.prisma.chartOfAccount.findMany({
       where: {
         code: { in: accountCodes },
+        companyId: dto.companyId,
         isActive: true,
+        deletedAt: null,
       },
-      select: { code: true, allowedCompanies: true },
+      select: { code: true },
     });
 
     const foundCodes = new Set(accounts.map((a) => a.code));
     const missingCodes = accountCodes.filter((code) => !foundCodes.has(code));
 
     if (missingCodes.length > 0) {
-      throw new BadRequestException(`รหัสบัญชีไม่ถูกต้อง: ${missingCodes.join(', ')}`);
-    }
-
-    // เช็คว่าบัญชีนี้อนุญาตให้บริษัทนี้ใช้หรือไม่
-    // allowedCompanies เป็น array ว่าง = ใช้ได้ทุกบริษัท
-    if (company.companyCode) {
-      const blocked = accounts.filter(
-        (a) =>
-          a.allowedCompanies.length > 0 &&
-          !a.allowedCompanies.includes(company.companyCode as string),
+      throw new BadRequestException(
+        `รหัสบัญชีไม่ถูกต้องหรือไม่อยู่ในผังบัญชีของบริษัทนี้: ${missingCodes.join(', ')}`,
       );
-
-      if (blocked.length > 0) {
-        const codes = blocked.map((a) => a.code).join(', ');
-        throw new BadRequestException(
-          `บัญชี ${codes} ใช้กับบริษัท ${company.companyCode} ไม่ได้`,
-        );
-      }
     }
 
     // 5. Generate entry number + create in transaction to avoid race condition

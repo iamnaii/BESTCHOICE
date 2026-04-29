@@ -88,7 +88,11 @@ describe('PaySolutionsService.handlePaymentCallback — payment JE (F-1-003)', (
         update: jest.fn(),
       },
       companyInfo: {
-        findFirst: jest.fn().mockResolvedValue({ id: 'co-finance' }),
+        findFirst: jest.fn().mockImplementation((args: any) => {
+          if (args?.where?.companyCode === 'SHOP') return Promise.resolve({ id: 'co-shop' });
+          if (args?.where?.companyCode === 'FINANCE') return Promise.resolve({ id: 'co-finance' });
+          return Promise.resolve({ id: 'co-finance' });
+        }),
       },
       // F-1-003 follow-up: real OWNER user resolution for JE.createdById FK.
       user: {
@@ -159,7 +163,8 @@ describe('PaySolutionsService.handlePaymentCallback — payment JE (F-1-003)', (
     expect(journalAuto.createPaymentJournal).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        companyId: 'co-finance',
+        financeCompanyId: 'co-finance',
+        shopCompanyId: 'co-shop',
         payment: expect.objectContaining({ id: paymentId, installmentNo: 1 }),
         contract: expect.objectContaining({
           contractNumber: 'CT-2026-0001',

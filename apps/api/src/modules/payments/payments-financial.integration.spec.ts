@@ -82,7 +82,7 @@ describe('PaymentsService — Financial Integration', () => {
         { provide: PrismaService, useValue: { $transaction: jest.fn(fn => fn(tx)), systemConfig: { findUnique: jest.fn().mockResolvedValue(null) }, companyInfo: { findFirst: jest.fn().mockResolvedValue({ id: 'co-FINANCE' }) } } },
         { provide: ReceiptsService, useValue: { generateReceipt: jest.fn().mockResolvedValue({}) } },
         { provide: AuditService, useValue: { logPaymentEvent: jest.fn().mockResolvedValue(undefined) } },
-        { provide: JournalAutoService, useValue: { createPaymentJournal: jest.fn().mockResolvedValue('je-1'), createExpenseJournal: jest.fn(), createContractActivationJournal: jest.fn(), createBadDebtWriteOffJournal: jest.fn() } },
+        { provide: JournalAutoService, useValue: { createPaymentJournal: jest.fn().mockResolvedValue('je-1'), createExpenseJournal: jest.fn(), createContractActivationJournal: jest.fn(), createBadDebtWriteOffJournal: jest.fn(), createCustomerCreditOverpaymentJournal: jest.fn().mockResolvedValue('je-overpay'), createCreditAllocationJournal: jest.fn().mockResolvedValue('je-credit-alloc') } },
         { provide: ProductsService, useValue: { transferOwnership: jest.fn() } },
         { provide: LineOaService, useValue: { buildPaymentSuccess: jest.fn().mockReturnValue({}), sendFlexMessage: jest.fn() } },
         { provide: FlexTemplatesService, useValue: { paymentReceipt: jest.fn().mockReturnValue({ type: 'flex', altText: 'test', contents: {} }) } },

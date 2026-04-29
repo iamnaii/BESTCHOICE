@@ -110,7 +110,7 @@ describe('PaymentsService', () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: ReceiptsService, useValue: mockReceiptsService },
         { provide: AuditService, useValue: mockAuditService },
-        { provide: JournalAutoService, useValue: { createPaymentJournal: jest.fn().mockResolvedValue('je-1'), createExpenseJournal: jest.fn(), createContractActivationJournal: jest.fn(), createBadDebtWriteOffJournal: jest.fn() } },
+        { provide: JournalAutoService, useValue: { createPaymentJournal: jest.fn().mockResolvedValue('je-1'), createExpenseJournal: jest.fn(), createContractActivationJournal: jest.fn(), createBadDebtWriteOffJournal: jest.fn(), createCustomerCreditOverpaymentJournal: jest.fn().mockResolvedValue('je-2'), createCreditAllocationJournal: jest.fn().mockResolvedValue({ financeEntryId: 'je-3', shopEntryId: 'je-4' }) } },
         { provide: ProductsService, useValue: { transferOwnership: jest.fn() } },
         { provide: LineOaService, useValue: { buildPaymentSuccess: jest.fn().mockReturnValue({}), sendFlexMessage: jest.fn() } },
         {
@@ -291,6 +291,7 @@ describe('PaymentsService', () => {
       // the lookup ran with the right filter AND that the value flowed to the JE.
       prisma.companyInfo.findFirst.mockImplementation((args: any) => {
         if (args?.where?.companyCode === 'FINANCE') return Promise.resolve({ id: 'co-FINANCE' });
+        if (args?.where?.companyCode === 'SHOP') return Promise.resolve({ id: 'co-SHOP' });
         return Promise.resolve(null);
       });
       const updatedPayment = { ...mockPayment, id: 'payment-1', amountPaid: 3000, status: 'PAID', paidDate: new Date() };
@@ -303,9 +304,12 @@ describe('PaymentsService', () => {
       expect(prisma.companyInfo.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({ where: expect.objectContaining({ companyCode: 'FINANCE' }) }),
       );
+      expect(prisma.companyInfo.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ companyCode: 'SHOP' }) }),
+      );
       expect(journalAutoMock.createPaymentJournal).toHaveBeenCalledWith(
         expect.anything(),
-        expect.objectContaining({ companyId: 'co-FINANCE' }),
+        expect.objectContaining({ financeCompanyId: 'co-FINANCE', shopCompanyId: 'co-SHOP' }),
       );
     });
   });

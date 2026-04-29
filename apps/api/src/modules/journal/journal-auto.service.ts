@@ -3,6 +3,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
+import { generateInterCompanyId, formatInterCompanyDescription } from './inter-company-link.util';
 
 /**
  * JournalAutoService — automatically creates double-entry journal entries
@@ -61,6 +62,7 @@ export class JournalAutoService {
     DUE_TO_SHOP: '21-1102',
     BAD_DEBT_EXPENSE: '53-1701',
     COMMISSION_EXPENSE: '53-1801',
+    LOSS_ON_REPO_RESALE: '53-1804',
   } as const;
 
   constructor(private prisma: PrismaService) {}
@@ -197,21 +199,29 @@ export class JournalAutoService {
   }
 
   /**
-   * Auto journal — Payment received from customer (FINANCE side).
+   * Auto journal — Payment received from customer (split FINANCE + SHOP — Phase A.1b).
    *
-   * Dr. Cash/Bank                    [amountPaid]
-   *   Cr. Hire-Purchase Receivable   [principal + commission — see A.1a note]
-   *   Cr. Interest Income            [monthlyInterest]
-   *   Cr. VAT Output                 [vatAmount]
-   *   Cr. Late Fee Income            [lateFee — if any]
+   * FINANCE entry (always):
+   *   Dr. Cash/Bank                  [amountPaid]
+   *     Cr. HP Receivable            [principal]
+   *     Cr. Interest Income          [monthlyInterest]
+   *     Cr. Late Fee Income          [lateFee — if any, lateFeeWaived → 0]
+   *     Cr. VAT Output               [vatAmount]
+   *     Cr. Due-to-SHOP              [monthlyCommission — FINANCE owes SHOP]
    *
-   * Phase A.1a: Commission income line REMOVED. Commission is folded into
-   * the HP receivable credit temporarily; A.1b will introduce inter-company
-   * journal entries (FINANCE commission expense + SHOP commission income).
-   * Sentry alarm fires when commission > 0 to surface deferred work.
+   * SHOP entry (only when monthlyCommission > 0):
+   *   Dr. Due-from-FINANCE           [monthlyCommission]
+   *     Cr. Commission Income        [monthlyCommission]
    *
-   * Interest is recognised as a separate revenue line (cash basis).
-   * Late fees are NOT charged VAT (owner policy).
+   * Both entries linked via [IC-<uuid>] description prefix when paired.
+   *
+   * Phase A.1a fold (commission into HP_RECEIVABLE) + commission-deferred Sentry
+   * alarm REMOVED — commission now properly posted via inter-company entries.
+   *
+   * Backward compat: legacy `companyId` param accepted as alias for
+   * `financeCompanyId` (Task 5 will clean up callers).
+   *
+   * Interest is recognised on cash basis. Late fees are NOT charged VAT (owner policy).
    */
   async createPaymentJournal(
     tx: Prisma.TransactionClient,
@@ -230,14 +240,44 @@ export class JournalAutoService {
       };
       contract: { contractNumber: string; branchId?: string | null };
       userId: string;
+      /** @deprecated Phase A.1b — use `financeCompanyId` instead. Accepted as alias. */
       companyId?: string | null;
+      shopCompanyId?: string | null;
+      financeCompanyId?: string | null;
     },
   ): Promise<string | null> {
-    const companyId = await this.resolveCompanyId(tx, params.companyId);
-    if (!companyId) {
-      this.logger.warn('No active company found — skipping payment journal');
+    const FA = JournalAutoService.FINANCE_ACC;
+    const SA = JournalAutoService.SHOP_ACC;
+
+    // Resolve FINANCE company (legacy `companyId` accepted as alias)
+    const financeCompanyId =
+      params.financeCompanyId ??
+      params.companyId ??
+      (
+        await tx.companyInfo.findFirst({
+          where: { companyCode: 'FINANCE', deletedAt: null },
+          select: { id: true },
+        })
+      )?.id ??
+      // Fallback: first active company (legacy single-company setups / tests)
+      (await this.resolveCompanyId(tx, null));
+
+    if (!financeCompanyId) {
+      this.logger.warn('No FINANCE company found — skipping payment journal');
       return null;
     }
+
+    // Resolve SHOP company (only required when commission > 0)
+    const shopCompanyId =
+      params.shopCompanyId ??
+      (
+        await tx.companyInfo.findFirst({
+          where: { companyCode: 'SHOP', deletedAt: null },
+          select: { id: true },
+        })
+      )?.id ??
+      // Fallback: same as FINANCE for legacy single-company setups
+      financeCompanyId;
 
     const amountPaid = new Prisma.Decimal(params.payment.amountPaid ?? 0);
     const principal = new Prisma.Decimal(params.payment.monthlyPrincipal ?? 0);
@@ -248,45 +288,224 @@ export class JournalAutoService {
       ? new Prisma.Decimal(0)
       : new Prisma.Decimal(params.payment.lateFee ?? 0);
 
-    // Phase A.1a: HP receivable absorbs principal + commission temporarily
-    // (commission's own income line removed pending A.1b inter-company wiring).
-    // Interest, VAT, late fee remain as their own credit lines.
-    const hpSettled = principal.add(commission);
     // If breakdown is missing (legacy/manual payment), settle whole amount against receivable as fallback
-    const isZeroBreakdown = principal.isZero() && interest.isZero() && commission.isZero() && vat.isZero() && lateFee.isZero();
-    const fallbackHp = isZeroBreakdown ? amountPaid.sub(lateFee) : hpSettled;
+    const isZeroBreakdown =
+      principal.isZero() &&
+      interest.isZero() &&
+      commission.isZero() &&
+      vat.isZero() &&
+      lateFee.isZero();
+    const hpReceivableCredit = isZeroBreakdown ? amountPaid.sub(lateFee) : principal;
 
-    // Phase A.1a: payment journal posts to FINANCE side only.
-    // Commission income line REMOVED — defer inter-company JE wiring to A.1b.
-    if (commission.gt(0)) {
-      Sentry.captureMessage('Payment commission not yet posted (deferred to A.1b)', {
-        level: 'info',
-        tags: { module: 'journal', kind: 'commission-deferred' },
-        extra: {
-          paymentId: params.payment.id,
-          contractNumber: params.contract.contractNumber,
-          amount: commission.toString(),
-        },
-      });
-    }
+    const intercompanyId = commission.gt(0) ? generateInterCompanyId() : null;
+    const baseDesc = `รับชำระค่างวด งวดที่ ${params.payment.installmentNo} สัญญา ${params.contract.contractNumber}`;
 
-    const FA = JournalAutoService.FINANCE_ACC;
-    return this.createAndPost(tx, {
-      companyId,
+    // FINANCE entry (always)
+    const financeDesc = intercompanyId
+      ? formatInterCompanyDescription(intercompanyId, `${baseDesc} (FINANCE)`)
+      : baseDesc;
+    const financeEntryId = await this.createAndPost(tx, {
+      companyId: financeCompanyId,
       entryDate: params.payment.paidDate || new Date(),
-      description: `รับชำระค่างวด งวดที่ ${params.payment.installmentNo} สัญญา ${params.contract.contractNumber}`,
+      description: financeDesc,
       referenceType: 'PAYMENT',
       referenceId: params.payment.id,
       createdById: params.userId,
       lines: [
         { accountCode: FA.CASH, description: 'รับชำระเงิน', debit: amountPaid.toNumber(), credit: 0 },
-        { accountCode: FA.HP_RECEIVABLE, description: 'ตัดลูกหนี้เช่าซื้อ (รวม commission ชั่วคราวจนกว่า A.1b)', debit: 0, credit: fallbackHp.toNumber() },
+        { accountCode: FA.HP_RECEIVABLE, description: 'ตัดลูกหนี้เช่าซื้อ', debit: 0, credit: hpReceivableCredit.toNumber() },
         { accountCode: FA.INTEREST_INCOME, description: 'รายได้ดอกเบี้ยเช่าซื้อ', debit: 0, credit: interest.toNumber() },
-        // COMMISSION_INCOME line removed (Phase A.1a) — see Sentry alarm above; A.1b will post inter-company commission.
-        { accountCode: FA.VAT_OUTPUT, description: 'ภาษีขาย', debit: 0, credit: vat.toNumber() },
         { accountCode: FA.LATE_FEE_INCOME, description: 'ค่าปรับล่าช้า', debit: 0, credit: lateFee.toNumber() },
+        { accountCode: FA.VAT_OUTPUT, description: 'ภาษีขาย', debit: 0, credit: vat.toNumber() },
+        { accountCode: FA.DUE_TO_SHOP, description: 'ค่าคอมมิชชันค้างจ่าย SHOP', debit: 0, credit: commission.toNumber() },
       ],
     });
+
+    // SHOP entry — only when commission > 0
+    if (commission.gt(0) && shopCompanyId && intercompanyId) {
+      await this.createAndPost(tx, {
+        companyId: shopCompanyId,
+        entryDate: params.payment.paidDate || new Date(),
+        description: formatInterCompanyDescription(intercompanyId, `${baseDesc} (SHOP commission)`),
+        referenceType: 'PAYMENT',
+        referenceId: params.payment.id,
+        createdById: params.userId,
+        lines: [
+          { accountCode: SA.DUE_FROM_FINANCE, description: 'ค่าคอมมิชชันรับจาก FINANCE', debit: commission.toNumber(), credit: 0 },
+          { accountCode: SA.COMMISSION_INCOME, description: 'รายได้ค่าคอมมิชชัน', debit: 0, credit: commission.toNumber() },
+        ],
+      });
+    }
+
+    return financeEntryId;
+  }
+
+  /**
+   * Phase A.1b — Customer Credit overpayment.
+   *
+   * When a customer pays MORE than amount due, the excess is parked as a
+   * liability ("Customer Credit") on the FINANCE side until applied to a
+   * future installment.
+   *
+   * FINANCE entry:
+   *   Dr. Cash (FINANCE)              [overpayment]
+   *     Cr. Customer Credit (21-5101) [overpayment]
+   */
+  async createCustomerCreditOverpaymentJournal(
+    tx: Prisma.TransactionClient,
+    params: {
+      paymentId: string;
+      contractNumber: string;
+      overpaymentAmount: Decimal;
+      userId: string;
+      financeCompanyId?: string | null;
+      paidDate?: Date | null;
+    },
+  ): Promise<string | null> {
+    const FA = JournalAutoService.FINANCE_ACC;
+    const financeCompanyId =
+      params.financeCompanyId ??
+      (
+        await tx.companyInfo.findFirst({
+          where: { companyCode: 'FINANCE', deletedAt: null },
+          select: { id: true },
+        })
+      )?.id ??
+      null;
+    if (!financeCompanyId) {
+      throw new InternalServerErrorException('FINANCE company required for customer credit overpayment JE');
+    }
+
+    return this.createAndPost(tx, {
+      companyId: financeCompanyId,
+      entryDate: params.paidDate ?? new Date(),
+      description: `รับชำระเกิน — บันทึกเครดิตลูกค้า สัญญา ${params.contractNumber}`,
+      referenceType: 'CUSTOMER_CREDIT_OVERPAY',
+      referenceId: params.paymentId,
+      createdById: params.userId,
+      lines: [
+        { accountCode: FA.CASH, description: 'รับเงินชำระเกิน', debit: params.overpaymentAmount.toNumber(), credit: 0 },
+        { accountCode: FA.CUSTOMER_CREDIT, description: 'หนี้สิน — เครดิตลูกค้า', debit: 0, credit: params.overpaymentAmount.toNumber() },
+      ],
+    });
+  }
+
+  /**
+   * Phase A.1b — Customer Credit allocation to a future installment.
+   *
+   * Same structure as createPaymentJournal BUT debits Customer Credit instead
+   * of Cash on the FINANCE side. Replaces the createPaymentJournal call from
+   * applyCreditBalance (audit F-1-004 — current code Dr Cash twice when credit
+   * was applied to an installment).
+   *
+   * FINANCE entry:
+   *   Dr. Customer Credit (21-5101)   [allocated amount]
+   *     Cr. HP Receivable             [principal]
+   *     Cr. Interest Income           [interest]
+   *     Cr. VAT Output                [vat]
+   *     Cr. Late Fee Income           [lateFee]
+   *     Cr. Due-to-SHOP               [commission]
+   *
+   * SHOP entry (only if commission > 0):
+   *   Dr. Due-from-FINANCE            [commission]
+   *     Cr. Commission Income         [commission]
+   */
+  async createCreditAllocationJournal(
+    tx: Prisma.TransactionClient,
+    params: {
+      payment: {
+        id: string;
+        installmentNo: number;
+        amountPaid: Decimal | number;
+        monthlyPrincipal?: Decimal | number | null;
+        monthlyInterest?: Decimal | number | null;
+        monthlyCommission?: Decimal | number | null;
+        vatAmount?: Decimal | number | null;
+        lateFee?: Decimal | number | null;
+        lateFeeWaived?: boolean;
+        paidDate?: Date | null;
+      };
+      contract: { contractNumber: string; branchId?: string | null };
+      userId: string;
+      shopCompanyId?: string | null;
+      financeCompanyId?: string | null;
+    },
+  ): Promise<{ financeEntryId: string | null; shopEntryId: string | null }> {
+    const FA = JournalAutoService.FINANCE_ACC;
+    const SA = JournalAutoService.SHOP_ACC;
+
+    const financeCompanyId =
+      params.financeCompanyId ??
+      (
+        await tx.companyInfo.findFirst({
+          where: { companyCode: 'FINANCE', deletedAt: null },
+          select: { id: true },
+        })
+      )?.id ??
+      null;
+    if (!financeCompanyId) {
+      throw new InternalServerErrorException('FINANCE company required for credit allocation JE');
+    }
+
+    const shopCompanyId =
+      params.shopCompanyId ??
+      (
+        await tx.companyInfo.findFirst({
+          where: { companyCode: 'SHOP', deletedAt: null },
+          select: { id: true },
+        })
+      )?.id ??
+      null;
+
+    const principal = new Prisma.Decimal(params.payment.monthlyPrincipal ?? 0);
+    const interest = new Prisma.Decimal(params.payment.monthlyInterest ?? 0);
+    const commission = new Prisma.Decimal(params.payment.monthlyCommission ?? 0);
+    const vat = new Prisma.Decimal(params.payment.vatAmount ?? 0);
+    const effectiveLateFee = params.payment.lateFeeWaived
+      ? new Prisma.Decimal(0)
+      : new Prisma.Decimal(params.payment.lateFee ?? 0);
+    const amountAllocated = new Prisma.Decimal(params.payment.amountPaid);
+
+    const intercompanyId = commission.gt(0) ? generateInterCompanyId() : null;
+    const baseDesc = `ใช้เครดิตลูกค้าตัดงวด งวดที่ ${params.payment.installmentNo} สัญญา ${params.contract.contractNumber}`;
+
+    const financeDesc = intercompanyId
+      ? formatInterCompanyDescription(intercompanyId, `${baseDesc} (FINANCE)`)
+      : baseDesc;
+    const financeEntryId = await this.createAndPost(tx, {
+      companyId: financeCompanyId,
+      entryDate: params.payment.paidDate ?? new Date(),
+      description: financeDesc,
+      referenceType: 'CREDIT_ALLOCATION',
+      referenceId: params.payment.id,
+      createdById: params.userId,
+      lines: [
+        { accountCode: FA.CUSTOMER_CREDIT, description: 'ใช้เครดิตลูกค้า', debit: amountAllocated.toNumber(), credit: 0 },
+        { accountCode: FA.HP_RECEIVABLE, description: 'ตัดลูกหนี้เช่าซื้อ', debit: 0, credit: principal.toNumber() },
+        { accountCode: FA.INTEREST_INCOME, description: 'รายได้ดอกเบี้ยเช่าซื้อ', debit: 0, credit: interest.toNumber() },
+        { accountCode: FA.LATE_FEE_INCOME, description: 'ค่าปรับล่าช้า', debit: 0, credit: effectiveLateFee.toNumber() },
+        { accountCode: FA.VAT_OUTPUT, description: 'ภาษีขาย', debit: 0, credit: vat.toNumber() },
+        { accountCode: FA.DUE_TO_SHOP, description: 'ค่าคอมมิชชันค้างจ่าย SHOP', debit: 0, credit: commission.toNumber() },
+      ],
+    });
+
+    let shopEntryId: string | null = null;
+    if (commission.gt(0) && shopCompanyId && intercompanyId) {
+      shopEntryId = await this.createAndPost(tx, {
+        companyId: shopCompanyId,
+        entryDate: params.payment.paidDate ?? new Date(),
+        description: formatInterCompanyDescription(intercompanyId, `${baseDesc} (SHOP commission)`),
+        referenceType: 'CREDIT_ALLOCATION',
+        referenceId: params.payment.id,
+        createdById: params.userId,
+        lines: [
+          { accountCode: SA.DUE_FROM_FINANCE, description: 'ค่าคอมมิชชันรับจาก FINANCE', debit: commission.toNumber(), credit: 0 },
+          { accountCode: SA.COMMISSION_INCOME, description: 'รายได้ค่าคอมมิชชัน', debit: 0, credit: commission.toNumber() },
+        ],
+      });
+    }
+
+    return { financeEntryId, shopEntryId };
   }
 
   /**
@@ -380,70 +599,135 @@ export class JournalAutoService {
       };
       product: { costPrice?: Decimal | number | null; category?: string | null };
       userId: string;
+      // Phase A.1b: split into SHOP+FINANCE paired entries.
+      // shopCompanyId/financeCompanyId are explicit; if either is omitted we
+      // resolve by companyCode. Legacy single `companyId` is no longer used —
+      // both sides must be configured for activation to post correctly.
+      shopCompanyId?: string | null;
+      financeCompanyId?: string | null;
+      /** @deprecated Use shopCompanyId + financeCompanyId. Ignored. */
       companyId?: string | null;
     },
-  ): Promise<string | null> {
-    const companyId = await this.resolveCompanyId(tx, params.companyId);
-    if (!companyId) return null;
-
-    const sellingPrice = new Prisma.Decimal(params.contract.sellingPrice ?? 0);
-    const downPayment = new Prisma.Decimal(params.contract.downPayment ?? 0);
-    const financedAmount = new Prisma.Decimal(params.contract.financedAmount ?? 0);
-    const interest = new Prisma.Decimal(params.contract.interestTotal ?? 0);
-    const commission = new Prisma.Decimal(params.contract.storeCommission ?? 0);
-    const vat = new Prisma.Decimal(params.contract.vatAmount ?? 0);
-    const cost = new Prisma.Decimal(params.product.costPrice ?? 0);
-
-    // Sales revenue = sellingPrice + commission only — interest is a separate revenue line
-    const revenue = sellingPrice.add(commission);
-    // HP Receivable = financedAmount which already includes principal + commission + interest + vat
-    // (computed by installment.util.ts:56 calculateInstallment). Adding them again would
-    // double-count and unbalance the JE — see F-2-001.
-    const hpReceivable = financedAmount;
-    // Phase A.1a: contract activation posts to FINANCE side using FINANCE chart codes.
-    // SHOP-side split (sales revenue + COGS on SHOP books, FINANCE pays SHOP for goods)
-    // is deferred to A.1b inter-company JE wiring.
+  ): Promise<{ shopEntryId: string | null; financeEntryId: string | null } | null> {
+    const SA = JournalAutoService.SHOP_ACC;
     const FA = JournalAutoService.FINANCE_ACC;
-    const isUsed = (params.product.category || '').toLowerCase().includes('used') ||
-      (params.product.category || '').includes('มือสอง');
-    const revenueAcc = isUsed ? FA.REVENUE_USED : FA.REVENUE_NEW;
-    const cogsAcc = isUsed ? FA.COGS_USED : FA.COGS_NEW;
-    const inventoryAcc = isUsed ? FA.INVENTORY_USED : FA.INVENTORY_NEW;
 
-    // Sales + receivable entry
-    const salesEntryId = await this.createAndPost(tx, {
-      companyId,
-      entryDate: new Date(),
-      description: `เปิดสัญญาเช่าซื้อ ${params.contract.contractNumber}`,
-      referenceType: 'CONTRACT',
-      referenceId: params.contract.id,
-      createdById: params.userId,
-      lines: [
-        { accountCode: FA.CASH, description: 'รับเงินดาวน์', debit: downPayment.toNumber(), credit: 0 },
-        { accountCode: FA.HP_RECEIVABLE, description: 'ลูกหนี้เช่าซื้อ', debit: hpReceivable.toNumber(), credit: 0 },
-        { accountCode: revenueAcc, description: 'รายได้จากการขาย', debit: 0, credit: revenue.toNumber() },
-        { accountCode: FA.INTEREST_INCOME, description: 'รายได้ดอกเบี้ยเช่าซื้อ', debit: 0, credit: interest.toNumber() },
-        { accountCode: FA.VAT_OUTPUT, description: 'ภาษีขาย', debit: 0, credit: vat.toNumber() },
-      ],
-    });
+    const shopCompanyId =
+      params.shopCompanyId ??
+      (
+        await tx.companyInfo.findFirst({
+          where: { companyCode: 'SHOP', deletedAt: null },
+          select: { id: true },
+        })
+      )?.id ??
+      null;
+    const financeCompanyId =
+      params.financeCompanyId ??
+      (
+        await tx.companyInfo.findFirst({
+          where: { companyCode: 'FINANCE', deletedAt: null },
+          select: { id: true },
+        })
+      )?.id ??
+      null;
 
-    // COGS entry (if cost available)
-    if (cost.greaterThan(0)) {
-      await this.createAndPost(tx, {
-        companyId,
-        entryDate: new Date(),
-        description: `ต้นทุนสินค้า สัญญา ${params.contract.contractNumber}`,
-        referenceType: 'CONTRACT_COGS',
-        referenceId: params.contract.id,
-        createdById: params.userId,
-        lines: [
-          { accountCode: cogsAcc, description: 'ต้นทุนขาย', debit: cost.toNumber(), credit: 0 },
-          { accountCode: inventoryAcc, description: 'ตัดสินค้าคงเหลือ', debit: 0, credit: cost.toNumber() },
-        ],
-      });
+    // Backward-compat: when the legacy single-company test fixture returns
+    // null for findFirst (no company configured), preserve the historical
+    // "return null" behavior rather than throwing.
+    if (!shopCompanyId && !financeCompanyId) {
+      return null;
+    }
+    if (!shopCompanyId || !financeCompanyId) {
+      throw new InternalServerErrorException(
+        'SHOP and FINANCE companies must be configured for inter-company contract activation JE',
+      );
     }
 
-    return salesEntryId;
+    const c = params.contract;
+    const sellingPrice = new Prisma.Decimal(c.sellingPrice ?? 0);
+    const downPayment = new Prisma.Decimal(c.downPayment ?? 0);
+    const storeCommission = new Prisma.Decimal(c.storeCommission ?? 0);
+    const financedAmount = new Prisma.Decimal(c.financedAmount ?? 0);
+    const interestTotal = new Prisma.Decimal(c.interestTotal ?? 0);
+    const vatAmount = new Prisma.Decimal(c.vatAmount ?? 0);
+    const costPrice = new Prisma.Decimal(params.product.costPrice ?? 0);
+
+    const isUsed = (params.product.category || '').toLowerCase().includes('used') ||
+      (params.product.category || '').includes('มือสอง');
+    const shopRevenueAcc = isUsed ? SA.REVENUE_USED : SA.REVENUE_NEW;
+    const shopCogsAcc = isUsed ? SA.COGS_USED : SA.COGS_NEW;
+    const shopInventoryAcc = isUsed ? SA.INVENTORY_USED : SA.INVENTORY_NEW;
+
+    const intercompanyId = generateInterCompanyId();
+    const baseDesc = `เปิดสัญญาเช่าซื้อ ${c.contractNumber}`;
+
+    // Inter-company invariant: SHOP Due-from-FINANCE = FINANCE Due-to-SHOP.
+    // Derived from the cash-flow rule (CLAUDE.md): FINANCE pays SHOP
+    // (sellingPrice + commission - downPayment) for goods sold.
+    const dueFromFinance = sellingPrice.plus(storeCommission).minus(downPayment);
+
+    // ── SHOP entry ────────────────────────────────────────────────────────
+    // Dr Cash (downPayment) + Dr Due-from-FINANCE
+    //   Cr Revenue (sellingPrice) + Cr Commission Income (storeCommission)
+    // Dr COGS + Cr Inventory  (only when cost > 0)
+    const shopLines: Array<{ accountCode: string; description: string; debit: number; credit: number }> = [];
+    if (downPayment.greaterThan(0)) {
+      shopLines.push({ accountCode: SA.CASH, description: 'รับเงินดาวน์', debit: downPayment.toNumber(), credit: 0 });
+    }
+    if (dueFromFinance.greaterThan(0)) {
+      shopLines.push({ accountCode: SA.DUE_FROM_FINANCE, description: 'ลูกหนี้ระหว่างบริษัท (FINANCE)', debit: dueFromFinance.toNumber(), credit: 0 });
+    }
+    if (sellingPrice.greaterThan(0)) {
+      shopLines.push({ accountCode: shopRevenueAcc, description: 'รายได้จากการขาย', debit: 0, credit: sellingPrice.toNumber() });
+    }
+    if (storeCommission.greaterThan(0)) {
+      shopLines.push({ accountCode: SA.COMMISSION_INCOME, description: 'รายได้ค่าคอมมิชชัน', debit: 0, credit: storeCommission.toNumber() });
+    }
+    if (costPrice.greaterThan(0)) {
+      shopLines.push({ accountCode: shopCogsAcc, description: 'ต้นทุนขาย', debit: costPrice.toNumber(), credit: 0 });
+      shopLines.push({ accountCode: shopInventoryAcc, description: 'ตัดสินค้าคงเหลือ', debit: 0, credit: costPrice.toNumber() });
+    }
+
+    const shopEntryId = await this.createAndPost(tx, {
+      companyId: shopCompanyId,
+      entryDate: new Date(),
+      description: formatInterCompanyDescription(intercompanyId, `${baseDesc} (SHOP)`),
+      referenceType: 'CONTRACT',
+      referenceId: c.id,
+      createdById: params.userId,
+      lines: shopLines,
+    });
+
+    // ── FINANCE entry ─────────────────────────────────────────────────────
+    // Dr HP Receivable (financedAmount = principal + commission + interest + vat)
+    //   Cr Due-to-SHOP (dueFromFinance — invariant pair)
+    //   Cr Interest Income (interestTotal — upfront recognition preserved)
+    //   Cr VAT Output (vatAmount)
+    const financeLines: Array<{ accountCode: string; description: string; debit: number; credit: number }> = [];
+    if (financedAmount.greaterThan(0)) {
+      financeLines.push({ accountCode: FA.HP_RECEIVABLE, description: 'ลูกหนี้เช่าซื้อ', debit: financedAmount.toNumber(), credit: 0 });
+    }
+    if (dueFromFinance.greaterThan(0)) {
+      financeLines.push({ accountCode: FA.DUE_TO_SHOP, description: 'เจ้าหนี้ระหว่างบริษัท (SHOP)', debit: 0, credit: dueFromFinance.toNumber() });
+    }
+    if (interestTotal.greaterThan(0)) {
+      financeLines.push({ accountCode: FA.INTEREST_INCOME, description: 'รายได้ดอกเบี้ยเช่าซื้อ', debit: 0, credit: interestTotal.toNumber() });
+    }
+    if (vatAmount.greaterThan(0)) {
+      financeLines.push({ accountCode: FA.VAT_OUTPUT, description: 'ภาษีขาย', debit: 0, credit: vatAmount.toNumber() });
+    }
+
+    const financeEntryId = await this.createAndPost(tx, {
+      companyId: financeCompanyId,
+      entryDate: new Date(),
+      description: formatInterCompanyDescription(intercompanyId, `${baseDesc} (FINANCE)`),
+      referenceType: 'CONTRACT',
+      referenceId: c.id,
+      createdById: params.userId,
+      lines: financeLines,
+    });
+
+    return { shopEntryId, financeEntryId };
   }
 
   /**
@@ -552,6 +836,203 @@ export class JournalAutoService {
           credit: writeOff.toNumber(),
         },
       ],
+    });
+  }
+
+  /**
+   * Auto journal — Bad debt provision increment/recovery (Phase A.1b).
+   *
+   * Delta-based: only posts the change from the prior period's provision.
+   *
+   * Increment (delta > 0):
+   *   Dr. Bad Debt Expense (53-1701)       [delta]
+   *     Cr. Allowance for Doubtful (11-2103) [delta]
+   *
+   * Recovery (delta < 0):
+   *   Dr. Allowance for Doubtful (11-2103) [|delta|]
+   *     Cr. Bad Debt Expense (53-1701)     [|delta|]
+   *
+   * Zero delta: returns null immediately (no JE created).
+   *
+   * Closes audit finding F-1-009 (Allowance never posted).
+   */
+  async createBadDebtProvisionJournal(
+    tx: Prisma.TransactionClient,
+    params: {
+      contractId: string;
+      period: string; // YYYY-MM
+      delta: Decimal; // positive = increment, negative = recovery
+      userId: string;
+      financeCompanyId?: string | null;
+    },
+  ): Promise<string | null> {
+    if (params.delta.eq(0)) return null;
+
+    const FA = JournalAutoService.FINANCE_ACC;
+    const financeCompanyId =
+      params.financeCompanyId ??
+      (
+        await tx.companyInfo.findFirst({
+          where: { companyCode: 'FINANCE', deletedAt: null },
+          select: { id: true },
+        })
+      )?.id ??
+      null;
+
+    if (!financeCompanyId) {
+      throw new InternalServerErrorException(
+        'FINANCE company required for bad debt provision JE',
+      );
+    }
+
+    const isIncrement = params.delta.gt(0);
+    const amount = params.delta.abs().toNumber();
+
+    return this.createAndPost(tx, {
+      companyId: financeCompanyId,
+      entryDate: new Date(),
+      description: `Bad debt provision ${isIncrement ? 'increment' : 'recovery'} ${params.period}`,
+      referenceType: 'BAD_DEBT_PROVISION',
+      referenceId: `${params.contractId}:${params.period}`,
+      createdById: params.userId,
+      lines: isIncrement
+        ? [
+            {
+              accountCode: FA.BAD_DEBT_EXPENSE,
+              description: 'Bad debt expense',
+              debit: amount,
+              credit: 0,
+            },
+            {
+              accountCode: FA.ALLOWANCE_DOUBTFUL,
+              description: 'Allowance for doubtful',
+              debit: 0,
+              credit: amount,
+            },
+          ]
+        : [
+            {
+              accountCode: FA.ALLOWANCE_DOUBTFUL,
+              description: 'Allowance reversal',
+              debit: amount,
+              credit: 0,
+            },
+            {
+              accountCode: FA.BAD_DEBT_EXPENSE,
+              description: 'Bad debt recovery',
+              debit: 0,
+              credit: amount,
+            },
+          ],
+    });
+  }
+
+  /**
+   * Auto journal — Repossession resale (Phase A.1b, closes F-1-018).
+   *
+   * Gain case (resellPrice >= bookValue):
+   *   Dr. Cash/Bank FINANCE             [resellPrice]
+   *     Cr. Repossessed Inventory       [bookValue]
+   *     Cr. Repossession Income (42-2104) [gain]
+   *
+   * Loss case (resellPrice < bookValue):
+   *   Dr. Cash/Bank FINANCE             [resellPrice]
+   *   Dr. Loss on Repo Resale (53-1804) [loss]
+   *     Cr. Repossessed Inventory       [bookValue]
+   *
+   * bookValue = product.costPrice + repairCost (inventory carrying amount).
+   */
+  async createRepossessionResaleJournal(
+    tx: Prisma.TransactionClient,
+    params: {
+      repossessionId: string;
+      resellPrice: Prisma.Decimal;
+      bookValue: Prisma.Decimal;
+      userId: string;
+      financeCompanyId?: string | null;
+    },
+  ): Promise<string | null> {
+    const FA = JournalAutoService.FINANCE_ACC;
+    const financeCompanyId =
+      params.financeCompanyId ??
+      (
+        await tx.companyInfo.findFirst({
+          where: { companyCode: 'FINANCE', deletedAt: null },
+          select: { id: true },
+        })
+      )?.id ??
+      null;
+
+    if (!financeCompanyId) {
+      throw new InternalServerErrorException(
+        'FINANCE company required for repossession resale JE',
+      );
+    }
+
+    // Idempotency: a SOLD update can be retried — the JE must post once per repossession.
+    const existing = await tx.journalEntry.findFirst({
+      where: {
+        referenceType: 'REPO_RESALE',
+        referenceId: params.repossessionId,
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+    if (existing) return existing.id;
+
+    const gainOrLoss = params.resellPrice.minus(params.bookValue);
+    const isGain = gainOrLoss.gte(0);
+
+    const lines = isGain
+      ? [
+          {
+            accountCode: FA.CASH,
+            description: 'Cash from resale',
+            debit: params.resellPrice.toNumber(),
+            credit: 0,
+          },
+          {
+            accountCode: FA.REPO_INVENTORY,
+            description: 'Repossessed inventory removed',
+            debit: 0,
+            credit: params.bookValue.toNumber(),
+          },
+          {
+            accountCode: FA.REPOSSESSION_INCOME,
+            description: 'Gain on repossession resale',
+            debit: 0,
+            credit: gainOrLoss.toNumber(),
+          },
+        ]
+      : [
+          {
+            accountCode: FA.CASH,
+            description: 'Cash from resale',
+            debit: params.resellPrice.toNumber(),
+            credit: 0,
+          },
+          {
+            accountCode: FA.LOSS_ON_REPO_RESALE,
+            description: 'Loss on repossession resale',
+            debit: gainOrLoss.abs().toNumber(),
+            credit: 0,
+          },
+          {
+            accountCode: FA.REPO_INVENTORY,
+            description: 'Repossessed inventory removed',
+            debit: 0,
+            credit: params.bookValue.toNumber(),
+          },
+        ];
+
+    return this.createAndPost(tx, {
+      companyId: financeCompanyId,
+      entryDate: new Date(),
+      description: `Repossession resale ${params.repossessionId}`,
+      referenceType: 'REPO_RESALE',
+      referenceId: params.repossessionId,
+      createdById: params.userId,
+      lines,
     });
   }
 

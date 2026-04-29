@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
 import { formatDateLong } from '../../utils/thai-date.util';
-import { d, dAdd, dSub, dClose } from '../../utils/decimal.util';
+import { dAdd, dSub, dClose } from '../../utils/decimal.util';
 import { OnlineOrderSaleAdapter } from '../shop-orders/online-order-sale.adapter';
 
 // Pay Solutions external API timeout. Their published SLA is "instant"
@@ -711,6 +711,13 @@ export class PaySolutionsService {
         select: { id: true },
       });
       const financeCompanyId = financeCompany?.id ?? null;
+      // Phase A.1b: SHOP companyId for the SHOP-side commission JE leg.
+      const shopCompany = await this.prisma.companyInfo.findFirst({
+        where: { companyCode: 'SHOP', deletedAt: null },
+        select: { id: true },
+        orderBy: { createdAt: 'asc' },
+      });
+      const shopCompanyId = shopCompany?.id ?? null;
       const contractForJe = await this.prisma.contract.findUnique({
         where: { id: paymentLink.contractId! },
         select: { contractNumber: true, branchId: true },
@@ -905,7 +912,8 @@ export class PaySolutionsService {
           try {
             await this.prisma.$transaction(async (tx2) => {
               await this.journalAutoService.createPaymentJournal(tx2, {
-                companyId: financeCompanyId,
+                shopCompanyId,
+                financeCompanyId,
                 payment: {
                   id: snapshot.id,
                   installmentNo: snapshot.installmentNo,

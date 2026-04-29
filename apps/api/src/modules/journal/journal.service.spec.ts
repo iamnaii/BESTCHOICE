@@ -119,6 +119,8 @@ describe('JournalService.post — SoD enforcement', () => {
     id: 'je-1',
     status: 'DRAFT',
     createdById,
+    companyId: 'company-1',
+    entryDate: new Date('2026-04-10'),
     lines: [
       { id: 'jl-1', debit: 100, credit: 0 },
       { id: 'jl-2', debit: 0, credit: 100 },
@@ -133,6 +135,12 @@ describe('JournalService.post — SoD enforcement', () => {
       },
       journalPostAuditLog: {
         create: jest.fn().mockResolvedValue({ id: 'jpal-1' }),
+      },
+      accountingPeriod: {
+        findUnique: jest.fn().mockResolvedValue(null),
+      },
+      systemConfig: {
+        findUnique: jest.fn().mockResolvedValue(null),
       },
       // post() now wraps update + audit insert in a $transaction so a
       // failed audit row rolls the post back.
@@ -196,6 +204,24 @@ describe('JournalService.post — SoD enforcement', () => {
     prisma.journalPostAuditLog.create.mockRejectedValue(new Error('audit insert failed'));
     // Simulate transactional rollback: $transaction propagates the throw.
     await expect(service.post('je-1', 'u-reviewer')).rejects.toThrow(/audit insert failed/);
+  });
+
+  // F-6-001: post() (DRAFT→POSTED) must validate that the entry's period is
+  // open. A DRAFT entry created before period close could otherwise be
+  // posted after close, retroactively altering the closed period's TB.
+  it('blocks post() if entryDate is in CLOSED period (F-6-001)', async () => {
+    prisma.accountingPeriod.findUnique.mockResolvedValue({ status: 'CLOSED' });
+
+    await expect(service.post('je-1', 'u-reviewer')).rejects.toThrow(/CLOSED|ปิด/i);
+    expect(prisma.journalEntry.update).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('blocks post() if entryDate is in SYNCED period (F-6-001)', async () => {
+    prisma.accountingPeriod.findUnique.mockResolvedValue({ status: 'SYNCED' });
+
+    await expect(service.post('je-1', 'u-reviewer')).rejects.toThrow(BadRequestException);
+    expect(prisma.journalEntry.update).not.toHaveBeenCalled();
   });
 });
 

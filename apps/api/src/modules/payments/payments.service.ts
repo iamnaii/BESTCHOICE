@@ -461,6 +461,22 @@ export class PaymentsService {
           `Overpayment of ${overpayment.toNumber()} THB credited to contract ${contractId}. ` +
           `Customer paid ${amount} THB, ${d(amount).sub(remaining).toNumber()} THB allocated, ${overpayment.toNumber()} THB stored as credit.`,
         );
+
+        // Phase A.1b: post overpayment JE (Dr Cash / Cr Customer Credit).
+        // Reference the last allocated payment so the JE is traceable to the
+        // payment event that produced the overpayment. If no installment was
+        // allocated (full overpayment — edge case), fall back to contractId.
+        const referencePaymentId = results.length > 0
+          ? results[results.length - 1].updated.id
+          : contractId;
+        await this.journalAutoService.createCustomerCreditOverpaymentJournal(tx, {
+          paymentId: referencePaymentId,
+          contractNumber: contract.contractNumber,
+          overpaymentAmount: overpayment,
+          userId: recordedById,
+          financeCompanyId,
+          paidDate: results.length > 0 ? results[results.length - 1].updated.paidDate : new Date(),
+        });
       }
 
       return {
@@ -779,10 +795,12 @@ export class PaymentsService {
         if (isPaidInFull) {
           await this.checkContractCompletion(contractId, tx);
 
-          // Auto journal entry per fully-paid installment.
-          // (Audit finding J2: closes the journal coverage gap on the
-          // credit-balance allocation path.)
-          await this.journalAutoService.createPaymentJournal(tx, {
+          // Phase A.1b (audit F-1-004): use createCreditAllocationJournal which
+          // debits Customer Credit (21-5101) instead of Cash. Calling
+          // createPaymentJournal here would Dr Cash a second time even though
+          // no cash was received — credit was already booked when the
+          // overpayment originally came in.
+          await this.journalAutoService.createCreditAllocationJournal(tx, {
             shopCompanyId,
             financeCompanyId,
             payment: {

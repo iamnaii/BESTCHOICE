@@ -740,6 +740,247 @@ describe('JournalAutoService', () => {
   });
 
   // ──────────────────────────────────────────────────────────────────────────
+  // Phase A.1b — Customer Credit overpayment + allocation JEs
+  // ──────────────────────────────────────────────────────────────────────────
+  describe('Phase A.1b — createCustomerCreditOverpaymentJournal', () => {
+    let captured: Array<{
+      companyId: string;
+      description: string;
+      lines: Array<{ accountCode: string; debit: number; credit: number }>;
+    }>;
+
+    beforeEach(() => {
+      captured = [];
+      prisma.journalEntry.create.mockImplementation((args: any) => {
+        const data = args.data;
+        captured.push({
+          companyId: data.companyId,
+          description: data.description,
+          lines: (data.lines.create as Array<{ accountCode: string; debit: unknown; credit: unknown }>).map((l) => ({
+            accountCode: l.accountCode,
+            debit: Number(l.debit ?? 0),
+            credit: Number(l.credit ?? 0),
+          })),
+        });
+        return Promise.resolve({ id: `je-${captured.length}` });
+      });
+      prisma.companyInfo.findFirst = jest.fn().mockImplementation((args: any) => {
+        if (args?.where?.companyCode === 'FINANCE') return Promise.resolve({ id: 'co-FINANCE', companyCode: 'FINANCE' });
+        if (args?.where?.companyCode === 'SHOP') return Promise.resolve({ id: 'co-SHOP', companyCode: 'SHOP' });
+        return Promise.resolve(null);
+      });
+    });
+
+    it('creates FINANCE entry: Dr Cash / Cr Customer Credit', async () => {
+      const result = await service.createCustomerCreditOverpaymentJournal(prisma, {
+        paymentId: 'p1',
+        contractNumber: 'CT-001',
+        overpaymentAmount: new Prisma.Decimal('500'),
+        userId: 'u1',
+        financeCompanyId: 'co-FINANCE',
+        paidDate: new Date(),
+      });
+
+      expect(result).toBeTruthy();
+      expect(captured).toHaveLength(1);
+      const entry = captured[0];
+      expect(entry.companyId).toBe('co-FINANCE');
+
+      const cashLine = entry.lines.find((l) => l.accountCode === '11-1101');
+      expect(cashLine!.debit).toBeCloseTo(500, 2);
+
+      const creditLine = entry.lines.find((l) => l.accountCode === '21-5101');
+      expect(creditLine!.credit).toBeCloseTo(500, 2);
+
+      // Balanced
+      const dr = entry.lines.reduce((s, l) => s + (l.debit || 0), 0);
+      const cr = entry.lines.reduce((s, l) => s + (l.credit || 0), 0);
+      expect(Math.abs(dr - cr)).toBeLessThan(0.01);
+    });
+
+    it('resolves financeCompanyId via lookup when not provided', async () => {
+      const result = await service.createCustomerCreditOverpaymentJournal(prisma, {
+        paymentId: 'p2',
+        contractNumber: 'CT-002',
+        overpaymentAmount: new Prisma.Decimal('100'),
+        userId: 'u1',
+      });
+
+      expect(result).toBeTruthy();
+      expect(captured[0].companyId).toBe('co-FINANCE');
+    });
+
+    it('throws when no FINANCE company can be resolved', async () => {
+      prisma.companyInfo.findFirst = jest.fn().mockResolvedValue(null);
+
+      await expect(
+        service.createCustomerCreditOverpaymentJournal(prisma, {
+          paymentId: 'p3',
+          contractNumber: 'CT-003',
+          overpaymentAmount: new Prisma.Decimal('100'),
+          userId: 'u1',
+        }),
+      ).rejects.toThrow(InternalServerErrorException);
+    });
+  });
+
+  describe('Phase A.1b — createCreditAllocationJournal', () => {
+    let captured: Array<{
+      companyId: string;
+      description: string;
+      lines: Array<{ accountCode: string; debit: number; credit: number }>;
+    }>;
+
+    beforeEach(() => {
+      captured = [];
+      prisma.journalEntry.create.mockImplementation((args: any) => {
+        const data = args.data;
+        captured.push({
+          companyId: data.companyId,
+          description: data.description,
+          lines: (data.lines.create as Array<{ accountCode: string; debit: unknown; credit: unknown }>).map((l) => ({
+            accountCode: l.accountCode,
+            debit: Number(l.debit ?? 0),
+            credit: Number(l.credit ?? 0),
+          })),
+        });
+        return Promise.resolve({ id: `je-${captured.length}` });
+      });
+      prisma.companyInfo.findFirst = jest.fn().mockImplementation((args: any) => {
+        if (args?.where?.companyCode === 'SHOP') return Promise.resolve({ id: 'co-SHOP', companyCode: 'SHOP' });
+        if (args?.where?.companyCode === 'FINANCE') return Promise.resolve({ id: 'co-FINANCE', companyCode: 'FINANCE' });
+        return Promise.resolve(null);
+      });
+    });
+
+    it('creates FINANCE entry: Dr Customer Credit (NOT Cash) / Cr HP Receivable + ...', async () => {
+      await service.createCreditAllocationJournal(prisma, {
+        payment: {
+          id: 'p2',
+          installmentNo: 2,
+          amountPaid: new Prisma.Decimal('1500'),
+          monthlyPrincipal: new Prisma.Decimal('1000'),
+          monthlyInterest: new Prisma.Decimal('100'),
+          monthlyCommission: new Prisma.Decimal('300'),
+          vatAmount: new Prisma.Decimal('100'),
+          lateFee: new Prisma.Decimal('0'),
+          lateFeeWaived: false,
+          paidDate: new Date(),
+        },
+        contract: { contractNumber: 'CT-001', branchId: 'b1' },
+        userId: 'u1',
+        shopCompanyId: 'co-SHOP',
+        financeCompanyId: 'co-FINANCE',
+      });
+
+      expect(captured).toHaveLength(2);
+
+      const financeEntry = captured.find((e) => e.companyId === 'co-FINANCE');
+      expect(financeEntry).toBeTruthy();
+
+      // Customer Credit debited (NOT Cash)
+      const ccLine = financeEntry!.lines.find((l) => l.accountCode === '21-5101');
+      expect(ccLine!.debit).toBeCloseTo(1500, 2);
+
+      // No Cash line on FINANCE side
+      const cashLine = financeEntry!.lines.find((l) => l.accountCode === '11-1101');
+      expect(cashLine).toBeUndefined();
+
+      // HP Receivable credited for principal
+      const hpLine = financeEntry!.lines.find((l) => l.accountCode === '11-2102');
+      expect(hpLine!.credit).toBeCloseTo(1000, 2);
+
+      // SHOP entry created for commission
+      const shopEntry = captured.find((e) => e.companyId === 'co-SHOP');
+      expect(shopEntry).toBeTruthy();
+      const dueFromFinanceLine = shopEntry!.lines.find((l) => l.accountCode === '11-2105');
+      expect(dueFromFinanceLine!.debit).toBeCloseTo(300, 2);
+      const commissionLine = shopEntry!.lines.find((l) => l.accountCode === '42-1105');
+      expect(commissionLine!.credit).toBeCloseTo(300, 2);
+
+      // Both share IC prefix
+      expect(financeEntry!.description).toMatch(/^\[IC-/);
+      expect(shopEntry!.description).toMatch(/^\[IC-/);
+    });
+
+    it('creates only FINANCE entry when commission = 0', async () => {
+      await service.createCreditAllocationJournal(prisma, {
+        payment: {
+          id: 'p3',
+          installmentNo: 1,
+          amountPaid: new Prisma.Decimal('1100'),
+          monthlyPrincipal: new Prisma.Decimal('1000'),
+          monthlyInterest: new Prisma.Decimal('100'),
+          monthlyCommission: new Prisma.Decimal('0'),
+          vatAmount: new Prisma.Decimal('0'),
+          lateFee: new Prisma.Decimal('0'),
+          lateFeeWaived: false,
+          paidDate: new Date(),
+        },
+        contract: { contractNumber: 'CT-002', branchId: 'b1' },
+        userId: 'u1',
+        shopCompanyId: 'co-SHOP',
+        financeCompanyId: 'co-FINANCE',
+      });
+
+      expect(captured).toHaveLength(1);
+      expect(captured[0].companyId).toBe('co-FINANCE');
+      // No Due-to-SHOP line when commission=0
+      const dueToShop = captured[0].lines.find((l) => l.accountCode === '21-1102');
+      expect(dueToShop).toBeUndefined();
+    });
+
+    it('FINANCE entry balances when amountAllocated = principal + interest + vat + commission + lateFee', async () => {
+      await service.createCreditAllocationJournal(prisma, {
+        payment: {
+          id: 'p4',
+          installmentNo: 1,
+          amountPaid: new Prisma.Decimal('1500'),
+          monthlyPrincipal: new Prisma.Decimal('1000'),
+          monthlyInterest: new Prisma.Decimal('100'),
+          monthlyCommission: new Prisma.Decimal('300'),
+          vatAmount: new Prisma.Decimal('100'),
+          lateFee: new Prisma.Decimal('0'),
+          lateFeeWaived: false,
+          paidDate: new Date(),
+        },
+        contract: { contractNumber: 'CT-003', branchId: 'b1' },
+        userId: 'u1',
+        shopCompanyId: 'co-SHOP',
+        financeCompanyId: 'co-FINANCE',
+      });
+
+      const financeEntry = captured.find((e) => e.companyId === 'co-FINANCE');
+      const dr = financeEntry!.lines.reduce((s, l) => s + (l.debit || 0), 0);
+      const cr = financeEntry!.lines.reduce((s, l) => s + (l.credit || 0), 0);
+      expect(Math.abs(dr - cr)).toBeLessThan(0.01);
+    });
+
+    it('throws when no FINANCE company can be resolved', async () => {
+      prisma.companyInfo.findFirst = jest.fn().mockResolvedValue(null);
+
+      await expect(
+        service.createCreditAllocationJournal(prisma, {
+          payment: {
+            id: 'p5',
+            installmentNo: 1,
+            amountPaid: new Prisma.Decimal('100'),
+            monthlyPrincipal: new Prisma.Decimal('100'),
+            monthlyInterest: new Prisma.Decimal('0'),
+            monthlyCommission: new Prisma.Decimal('0'),
+            vatAmount: new Prisma.Decimal('0'),
+            lateFee: new Prisma.Decimal('0'),
+            lateFeeWaived: false,
+            paidDate: new Date(),
+          },
+          contract: { contractNumber: 'CT-004', branchId: 'b1' },
+          userId: 'u1',
+        }),
+      ).rejects.toThrow(InternalServerErrorException);
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
   // createBadDebtWriteOffJournal
   // ──────────────────────────────────────────────────────────────────────────
   describe('createBadDebtWriteOffJournal', () => {

@@ -340,6 +340,174 @@ export class JournalAutoService {
   }
 
   /**
+   * Phase A.1b — Customer Credit overpayment.
+   *
+   * When a customer pays MORE than amount due, the excess is parked as a
+   * liability ("Customer Credit") on the FINANCE side until applied to a
+   * future installment.
+   *
+   * FINANCE entry:
+   *   Dr. Cash (FINANCE)              [overpayment]
+   *     Cr. Customer Credit (21-5101) [overpayment]
+   */
+  async createCustomerCreditOverpaymentJournal(
+    tx: Prisma.TransactionClient,
+    params: {
+      paymentId: string;
+      contractNumber: string;
+      overpaymentAmount: Decimal;
+      userId: string;
+      financeCompanyId?: string | null;
+      paidDate?: Date | null;
+    },
+  ): Promise<string | null> {
+    const FA = JournalAutoService.FINANCE_ACC;
+    const financeCompanyId =
+      params.financeCompanyId ??
+      (
+        await tx.companyInfo.findFirst({
+          where: { companyCode: 'FINANCE', deletedAt: null },
+          select: { id: true },
+        })
+      )?.id ??
+      null;
+    if (!financeCompanyId) {
+      throw new InternalServerErrorException('FINANCE company required for customer credit overpayment JE');
+    }
+
+    return this.createAndPost(tx, {
+      companyId: financeCompanyId,
+      entryDate: params.paidDate ?? new Date(),
+      description: `รับชำระเกิน — บันทึกเครดิตลูกค้า สัญญา ${params.contractNumber}`,
+      referenceType: 'CUSTOMER_CREDIT_OVERPAY',
+      referenceId: params.paymentId,
+      createdById: params.userId,
+      lines: [
+        { accountCode: FA.CASH, description: 'รับเงินชำระเกิน', debit: params.overpaymentAmount.toNumber(), credit: 0 },
+        { accountCode: FA.CUSTOMER_CREDIT, description: 'หนี้สิน — เครดิตลูกค้า', debit: 0, credit: params.overpaymentAmount.toNumber() },
+      ],
+    });
+  }
+
+  /**
+   * Phase A.1b — Customer Credit allocation to a future installment.
+   *
+   * Same structure as createPaymentJournal BUT debits Customer Credit instead
+   * of Cash on the FINANCE side. Replaces the createPaymentJournal call from
+   * applyCreditBalance (audit F-1-004 — current code Dr Cash twice when credit
+   * was applied to an installment).
+   *
+   * FINANCE entry:
+   *   Dr. Customer Credit (21-5101)   [allocated amount]
+   *     Cr. HP Receivable             [principal]
+   *     Cr. Interest Income           [interest]
+   *     Cr. VAT Output                [vat]
+   *     Cr. Late Fee Income           [lateFee]
+   *     Cr. Due-to-SHOP               [commission]
+   *
+   * SHOP entry (only if commission > 0):
+   *   Dr. Due-from-FINANCE            [commission]
+   *     Cr. Commission Income         [commission]
+   */
+  async createCreditAllocationJournal(
+    tx: Prisma.TransactionClient,
+    params: {
+      payment: {
+        id: string;
+        installmentNo: number;
+        amountPaid: Decimal | number;
+        monthlyPrincipal?: Decimal | number | null;
+        monthlyInterest?: Decimal | number | null;
+        monthlyCommission?: Decimal | number | null;
+        vatAmount?: Decimal | number | null;
+        lateFee?: Decimal | number | null;
+        lateFeeWaived?: boolean;
+        paidDate?: Date | null;
+      };
+      contract: { contractNumber: string; branchId?: string | null };
+      userId: string;
+      shopCompanyId?: string | null;
+      financeCompanyId?: string | null;
+    },
+  ): Promise<{ financeEntryId: string | null; shopEntryId: string | null }> {
+    const FA = JournalAutoService.FINANCE_ACC;
+    const SA = JournalAutoService.SHOP_ACC;
+
+    const financeCompanyId =
+      params.financeCompanyId ??
+      (
+        await tx.companyInfo.findFirst({
+          where: { companyCode: 'FINANCE', deletedAt: null },
+          select: { id: true },
+        })
+      )?.id ??
+      null;
+    if (!financeCompanyId) {
+      throw new InternalServerErrorException('FINANCE company required for credit allocation JE');
+    }
+
+    const shopCompanyId =
+      params.shopCompanyId ??
+      (
+        await tx.companyInfo.findFirst({
+          where: { companyCode: 'SHOP', deletedAt: null },
+          select: { id: true },
+        })
+      )?.id ??
+      null;
+
+    const principal = new Prisma.Decimal(params.payment.monthlyPrincipal ?? 0);
+    const interest = new Prisma.Decimal(params.payment.monthlyInterest ?? 0);
+    const commission = new Prisma.Decimal(params.payment.monthlyCommission ?? 0);
+    const vat = new Prisma.Decimal(params.payment.vatAmount ?? 0);
+    const effectiveLateFee = params.payment.lateFeeWaived
+      ? new Prisma.Decimal(0)
+      : new Prisma.Decimal(params.payment.lateFee ?? 0);
+    const amountAllocated = new Prisma.Decimal(params.payment.amountPaid);
+
+    const intercompanyId = commission.gt(0) ? generateInterCompanyId() : null;
+    const baseDesc = `ใช้เครดิตลูกค้าตัดงวด งวดที่ ${params.payment.installmentNo} สัญญา ${params.contract.contractNumber}`;
+
+    const financeDesc = intercompanyId
+      ? formatInterCompanyDescription(intercompanyId, `${baseDesc} (FINANCE)`)
+      : baseDesc;
+    const financeEntryId = await this.createAndPost(tx, {
+      companyId: financeCompanyId,
+      entryDate: params.payment.paidDate ?? new Date(),
+      description: financeDesc,
+      referenceType: 'CREDIT_ALLOCATION',
+      referenceId: params.payment.id,
+      createdById: params.userId,
+      lines: [
+        { accountCode: FA.CUSTOMER_CREDIT, description: 'ใช้เครดิตลูกค้า', debit: amountAllocated.toNumber(), credit: 0 },
+        { accountCode: FA.HP_RECEIVABLE, description: 'ตัดลูกหนี้เช่าซื้อ', debit: 0, credit: principal.toNumber() },
+        { accountCode: FA.INTEREST_INCOME, description: 'รายได้ดอกเบี้ยเช่าซื้อ', debit: 0, credit: interest.toNumber() },
+        { accountCode: FA.LATE_FEE_INCOME, description: 'ค่าปรับล่าช้า', debit: 0, credit: effectiveLateFee.toNumber() },
+        { accountCode: FA.VAT_OUTPUT, description: 'ภาษีขาย', debit: 0, credit: vat.toNumber() },
+        { accountCode: FA.DUE_TO_SHOP, description: 'ค่าคอมมิชชันค้างจ่าย SHOP', debit: 0, credit: commission.toNumber() },
+      ],
+    });
+
+    let shopEntryId: string | null = null;
+    if (commission.gt(0) && shopCompanyId && intercompanyId) {
+      shopEntryId = await this.createAndPost(tx, {
+        companyId: shopCompanyId,
+        entryDate: params.payment.paidDate ?? new Date(),
+        description: formatInterCompanyDescription(intercompanyId, `${baseDesc} (SHOP commission)`),
+        referenceType: 'CREDIT_ALLOCATION',
+        referenceId: params.payment.id,
+        createdById: params.userId,
+        lines: [
+          { accountCode: SA.DUE_FROM_FINANCE, description: 'ค่าคอมมิชชันรับจาก FINANCE', debit: commission.toNumber(), credit: 0 },
+          { accountCode: SA.COMMISSION_INCOME, description: 'รายได้ค่าคอมมิชชัน', debit: 0, credit: commission.toNumber() },
+        ],
+      });
+    }
+
+    return { financeEntryId, shopEntryId };
+  }
+
+  /**
    * Auto journal — Expense paid.
    *
    * Dr. [Expense Account]            [amount (excl. VAT)]

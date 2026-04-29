@@ -946,4 +946,106 @@ describe('AccountingService', () => {
       expect(data.vatAmount).toBeUndefined();
     });
   });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // markExpensePaid — F-3-027 part 2/3: pass branch.companyId to JE
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  describe('markExpensePaid (F-3-027 part 2/3)', () => {
+    it('passes branch.companyId to expense JE on markPaid', async () => {
+      const approvedExpense = {
+        id: 'exp-1',
+        expenseNumber: 'EX-001',
+        status: 'APPROVED',
+        deletedAt: null,
+        createdById: 'user-1',
+        accountCode: '51-1101',
+        amount: new Prisma.Decimal(1000),
+        vatAmount: new Prisma.Decimal(70),
+        totalAmount: new Prisma.Decimal(1070),
+        description: 'rent',
+        expenseDate: new Date('2026-04-01'),
+        paymentDate: null,
+        branch: { companyId: 'co-SHOP' },
+      };
+      prisma.expense.findFirst.mockResolvedValue(approvedExpense);
+      prisma.expense.update.mockResolvedValue({
+        ...approvedExpense,
+        status: 'PAID',
+        paymentDate: new Date('2026-04-15'),
+      });
+
+      await service.markExpensePaid('exp-1', '2026-04-15');
+
+      expect(journalAutoService.createExpenseJournal).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ companyId: 'co-SHOP' }),
+      );
+    });
+
+    it('passes null companyId when branch has no companyId (legacy branch)', async () => {
+      const approvedExpense = {
+        id: 'exp-2',
+        expenseNumber: 'EX-002',
+        status: 'APPROVED',
+        deletedAt: null,
+        createdById: 'user-1',
+        accountCode: '51-1101',
+        amount: new Prisma.Decimal(500),
+        vatAmount: new Prisma.Decimal(0),
+        totalAmount: new Prisma.Decimal(500),
+        description: 'misc',
+        expenseDate: new Date('2026-04-01'),
+        paymentDate: null,
+        branch: { companyId: null },
+      };
+      prisma.expense.findFirst.mockResolvedValue(approvedExpense);
+      prisma.expense.update.mockResolvedValue({
+        ...approvedExpense,
+        status: 'PAID',
+        paymentDate: new Date('2026-04-15'),
+      });
+
+      await service.markExpensePaid('exp-2');
+
+      // null lets JournalAutoService.resolveCompanyId fall through (legacy fallback)
+      expect(journalAutoService.createExpenseJournal).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ companyId: null }),
+      );
+    });
+
+    it('rolls back expense markPaid if JE creation throws (F-1-016)', async () => {
+      const approvedExpense = {
+        id: 'exp-3',
+        expenseNumber: 'EX-003',
+        status: 'APPROVED',
+        deletedAt: null,
+        createdById: 'user-1',
+        accountCode: '51-1101',
+        amount: new Prisma.Decimal(1000),
+        vatAmount: new Prisma.Decimal(70),
+        totalAmount: new Prisma.Decimal(1070),
+        description: 'rent',
+        expenseDate: new Date('2026-04-01'),
+        paymentDate: null,
+        branch: { companyId: 'co-SHOP' },
+      };
+      prisma.expense.findFirst.mockResolvedValue(approvedExpense);
+      prisma.expense.update.mockResolvedValue({
+        ...approvedExpense,
+        status: 'PAID',
+        paymentDate: new Date('2026-04-15'),
+      });
+      journalAutoService.createExpenseJournal.mockRejectedValueOnce(new Error('JE failed'));
+
+      await expect(service.markExpensePaid('exp-3', '2026-04-15')).rejects.toThrow('JE failed');
+
+      // The expense.update was called inside the $transaction (which now rolls back),
+      // but in our mock environment the rollback isn't simulated. The contract here is:
+      // the error must propagate out so $transaction rejects atomically. Pre-fix, the
+      // try/catch swallowed it and markExpensePaid resolved successfully — leaving the
+      // ledger out of sync with the expense.status='PAID' write.
+    });
+  });
 });

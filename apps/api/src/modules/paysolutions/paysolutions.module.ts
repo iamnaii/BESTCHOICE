@@ -7,6 +7,7 @@ import { PaySolutionsService } from './paysolutions.service';
 import { LiffTokenGuard } from '../line-oa/guards/liff-token.guard';
 import { ShopOrdersModule } from '../shop-orders/shop-orders.module';
 import { ProductsModule } from '../products/products.module';
+import { JournalModule } from '../journal/journal.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { ProductsModule } from '../products/products.module';
     IntegrationsModule,
     forwardRef(() => ShopOrdersModule),
     ProductsModule,
+    JournalModule,
   ],
   controllers: [PaySolutionsController],
   providers: [PaySolutionsService, LiffTokenGuard],

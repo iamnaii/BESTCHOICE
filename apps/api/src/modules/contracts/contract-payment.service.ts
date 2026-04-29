@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { PaymentMethod, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ProductsService } from '../products/products.service';
@@ -15,6 +15,23 @@ export class ContractPaymentService {
     private productsService: ProductsService,
     private journalAutoService: JournalAutoService,
   ) {}
+
+  /**
+   * F-3-027 part 2/3 follow-up: Resolve FINANCE companyId for HP installment
+   * journal entries triggered by early payoff. Mirrors PaymentsService helper —
+   * payments on installment contracts post to FINANCE-side accounts and must
+   * pass companyId explicitly (Task 9 will validate via allowedCompanies).
+   */
+  private async resolveFinanceCompanyId(): Promise<string> {
+    const financeCompany = await this.prisma.companyInfo.findFirst({
+      where: { companyCode: 'FINANCE', deletedAt: null },
+      select: { id: true },
+    });
+    if (!financeCompany) {
+      throw new InternalServerErrorException('FINANCE company not configured');
+    }
+    return financeCompany.id;
+  }
 
   async getSchedule(id: string) {
     await this.findOne(id);
@@ -130,6 +147,11 @@ export class ContractPaymentService {
     // into a closed accounting period.
     await validatePeriodOpen(this.prisma, paidDate);
 
+    // F-3-027 part 2/3 follow-up: resolve FINANCE companyId once BEFORE the
+    // transaction (and BEFORE the per-installment loop) so the early-payoff
+    // JE callers pass companyId explicitly to JournalAutoService.
+    const financeCompanyId = await this.resolveFinanceCompanyId();
+
     await this.prisma.$transaction(
       async (tx) => {
         const freshContract = await tx.contract.findUnique({
@@ -178,6 +200,7 @@ export class ContractPaymentService {
           // (Audit finding J3: closes the journal coverage gap on early
           // payoff. Errors propagate so the whole tx rolls back.)
           await this.journalAutoService.createPaymentJournal(tx, {
+            companyId: financeCompanyId,
             payment: {
               id: updatedPayment.id,
               installmentNo: updatedPayment.installmentNo,

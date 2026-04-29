@@ -208,6 +208,12 @@ export class JournalService {
       throw new BadRequestException('สถานะไม่ถูกต้อง');
     }
 
+    // F-6-001: prevent posting a DRAFT into a CLOSED/SYNCED period.
+    // create() already validates at draft time, but a draft created while
+    // the period was open could otherwise be posted after period close,
+    // retroactively altering the closed period's trial balance.
+    await validatePeriodOpen(this.prisma, entry.entryDate, entry.companyId);
+
     // T2-C2: Segregation of Duties — the accountant who drafted a journal
     // entry must not be the same person who posts it to the ledger. System-
     // generated entries (journal-auto.service) have createdById = null and

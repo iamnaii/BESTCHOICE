@@ -84,6 +84,12 @@ describe('PaymentsService', () => {
       callLog: {
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
+      // F-3-027 part 2/3: payment paths resolve FINANCE companyId for the JE.
+      // Default mock returns a FINANCE company so existing tests pass; specific
+      // tests can override to assert the lookup happened.
+      companyInfo: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'co-FINANCE' }),
+      },
       $transaction: jest.fn((cb) => cb(mockPrisma)),
     };
 
@@ -275,6 +281,31 @@ describe('PaymentsService', () => {
       await service.recordPayment('contract-1', 1, 1000, 'CASH', 'user-1', 'http://slip.jpg');
       expect(receiptsService.generateReceipt).toHaveBeenCalledWith(
         'contract-1', 'payment-1', 'INSTALLMENT', 1000, 1, 'CASH', null, 'user-1',
+      );
+    });
+
+    it('passes FINANCE companyId to createPaymentJournal on full payment (F-3-027 part 2/3)', async () => {
+      // HP installment receipts are FINANCE-side, so the JE companyId must be
+      // resolved via companyInfo.findFirst({companyCode:'FINANCE'}) and passed
+      // explicitly (not left to resolveCompanyId fallback). Asserts both that
+      // the lookup ran with the right filter AND that the value flowed to the JE.
+      prisma.companyInfo.findFirst.mockImplementation((args: any) => {
+        if (args?.where?.companyCode === 'FINANCE') return Promise.resolve({ id: 'co-FINANCE' });
+        return Promise.resolve(null);
+      });
+      const updatedPayment = { ...mockPayment, id: 'payment-1', amountPaid: 3000, status: 'PAID', paidDate: new Date() };
+      prisma.payment.update.mockResolvedValue(updatedPayment);
+
+      const journalAutoMock = (service as unknown as { journalAutoService: { createPaymentJournal: jest.Mock } }).journalAutoService;
+
+      await service.recordPayment('contract-1', 1, 3000, 'CASH', 'user-1', 'http://slip.jpg');
+
+      expect(prisma.companyInfo.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ companyCode: 'FINANCE' }) }),
+      );
+      expect(journalAutoMock.createPaymentJournal).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ companyId: 'co-FINANCE' }),
       );
     });
   });

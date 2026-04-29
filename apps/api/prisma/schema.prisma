@@ -697,7 +697,8 @@ model Customer {
   phone              String
   phoneSecondary     String?   @map("phone_secondary")
   email              String? // อีเมล
-  lineId             String?   @map("line_id")
+  lineIdFinance      String?   @map("line_id_finance")
+  lineIdShop         String?   @map("line_id_shop")
   facebookLink       String?   @map("facebook_link") // ลิงก์ Facebook
   facebookName       String?   @map("facebook_name") // ชื่อ Facebook
   facebookFriends    String?   @map("facebook_friends") // จำนวนเพื่อน Facebook

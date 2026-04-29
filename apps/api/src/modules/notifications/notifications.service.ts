@@ -5,6 +5,7 @@ import { isSmsPaymentReminderDisabled } from '../../utils/sms-payment-reminder.u
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SendNotificationDto, CreateNotificationTemplateDto, UpdateNotificationTemplateDto } from './dto/create-notification.dto';
+import type { LineChannelKey } from './dto/create-notification.dto';
 import { NotificationChannel } from '@prisma/client';
 import { FlexMessagePayload } from '../line-oa/flex-messages/base-template';
 import { FlexTemplatesService } from '../line-oa/flex-templates.service';
@@ -23,8 +24,8 @@ export class NotificationsService {
     private integrationConfig: IntegrationConfigService,
   ) {}
 
-  private async getLineToken(): Promise<string> {
-    return (await this.integrationConfig.getValue('line-shop', 'channelToken')) || '';
+  private async getLineToken(channelKey: LineChannelKey): Promise<string> {
+    return (await this.integrationConfig.getValue(channelKey, 'channelToken')) || '';
   }
 
   private async getSmsApiKey(): Promise<string> {
@@ -51,6 +52,10 @@ export class NotificationsService {
    * Send a notification via LINE, SMS, or IN_APP with retry support
    */
   async send(dto: SendNotificationDto): Promise<{ id: string; status: string; errorMsg?: string }> {
+    // Default channelKey for LINE notifications (backward compat — to be removed
+    // after all call sites are updated explicitly in Phase 4).
+    const channelKey: LineChannelKey = dto.channelKey ?? 'line-finance';
+
     let status = 'PENDING';
     let errorMsg: string | null = null;
     let sentAt: Date | null = null;
@@ -60,7 +65,7 @@ export class NotificationsService {
 
     const attemptSend = async (): Promise<void> => {
       if (dto.channel === 'LINE') {
-        await this.sendLine(dto.recipient, dto.message);
+        await this.sendLine(dto.recipient, dto.message, channelKey);
       } else if (dto.channel === 'SMS') {
         const messageId = await this.sendSms(dto.recipient, dto.message);
         if (messageId) externalId = messageId;
@@ -136,8 +141,8 @@ export class NotificationsService {
   /**
    * Send LINE message via LINE Messaging API (Push Message)
    */
-  private async sendLine(recipient: string, message: string): Promise<void> {
-    const lineChannelAccessToken = await this.getLineToken();
+  private async sendLine(recipient: string, message: string, channelKey: LineChannelKey): Promise<void> {
+    const lineChannelAccessToken = await this.getLineToken(channelKey);
     if (!lineChannelAccessToken) {
       throw new BadRequestException('LINE channel access token not configured');
     }
@@ -169,8 +174,8 @@ export class NotificationsService {
   /**
    * Send a LINE Flex Message via LINE Messaging API (Push Message)
    */
-  private async sendLineFlexMessage(recipient: string, flexMessage: FlexMessagePayload): Promise<void> {
-    const lineChannelAccessToken = await this.getLineToken();
+  private async sendLineFlexMessage(recipient: string, flexMessage: FlexMessagePayload, channelKey: LineChannelKey): Promise<void> {
+    const lineChannelAccessToken = await this.getLineToken(channelKey);
     if (!lineChannelAccessToken) {
       throw new BadRequestException('LINE channel access token not configured');
     }
@@ -463,7 +468,7 @@ export class NotificationsService {
       try {
         const flexJson = JSON.parse(templateData.flexTemplate);
         const resolvedFlex = this.replacePlaceholdersInJson(flexJson, data) as FlexMessagePayload;
-        await this.sendLineFlexMessage(recipient, resolvedFlex);
+        await this.sendLineFlexMessage(recipient, resolvedFlex, 'line-finance');
 
         const textSummary = this.replacePlaceholders(templateData.messageTemplate || templateData.name, data);
         const log = await this.prisma.notificationLog.create({
@@ -596,7 +601,7 @@ export class NotificationsService {
     for (const notification of pendingRetries) {
       try {
         if (notification.channel === 'LINE') {
-          await this.sendLine(notification.recipient, notification.message);
+          await this.sendLine(notification.recipient, notification.message, 'line-finance');
         } else if (notification.channel === 'SMS') {
           await this.sendSms(notification.recipient, notification.message);
         }
@@ -861,7 +866,7 @@ export class NotificationsService {
           });
           // Attach Quick Reply so customer can pay quickly or see balance
           flex.quickReply = { items: this.quickReplyService.afterPayment() };
-          await this.sendLineFlexMessage(customer.lineId, flex);
+          await this.sendLineFlexMessage(customer.lineId, flex, 'line-finance');
           await this.prisma.notificationLog.create({
             data: {
               channel: 'LINE',
@@ -990,7 +995,7 @@ export class NotificationsService {
           });
           // Attach Quick Reply so customer can pay immediately or see balance
           flex.quickReply = { items: this.quickReplyService.afterPayment() };
-          await this.sendLineFlexMessage(customer.lineId, flex);
+          await this.sendLineFlexMessage(customer.lineId, flex, 'line-finance');
           await this.prisma.notificationLog.create({
             data: {
               channel: 'LINE',

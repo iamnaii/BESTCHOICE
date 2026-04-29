@@ -1,4 +1,7 @@
-import { IsString, IsOptional, IsArray, IsDateString, IsBoolean } from 'class-validator';
+import { IsString, IsOptional, IsArray, IsDateString, IsBoolean, IsEnum, ValidateIf } from 'class-validator';
+
+export type LineChannelKey = 'line-shop' | 'line-finance' | 'line-staff';
+export const LINE_CHANNEL_KEYS: LineChannelKey[] = ['line-shop', 'line-finance', 'line-staff'];
 
 export class SendNotificationDto {
   @IsString()
@@ -28,6 +31,15 @@ export class SendNotificationDto {
   @IsBoolean()
   @IsOptional()
   noRetry?: boolean;
+
+  // Routing key for LINE channel — selects which OA (and therefore which
+  // channelToken) to use. Optional for backward compat — defaults to
+  // 'line-finance' inside NotificationsService.send() until all callers
+  // have been updated explicitly (Phase 4).
+  @ValidateIf((o) => o.channel === 'LINE')
+  @IsOptional()
+  @IsEnum(LINE_CHANNEL_KEYS, { message: 'channelKey ต้องเป็น line-shop, line-finance หรือ line-staff' })
+  channelKey?: LineChannelKey;
 }
 
 export class CreateNotificationTemplateDto {

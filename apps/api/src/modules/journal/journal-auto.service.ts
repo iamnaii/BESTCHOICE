@@ -839,6 +839,94 @@ export class JournalAutoService {
   }
 
   /**
+   * Auto journal — Bad debt provision increment/recovery (Phase A.1b).
+   *
+   * Delta-based: only posts the change from the prior period's provision.
+   *
+   * Increment (delta > 0):
+   *   Dr. Bad Debt Expense (53-1701)       [delta]
+   *     Cr. Allowance for Doubtful (11-2103) [delta]
+   *
+   * Recovery (delta < 0):
+   *   Dr. Allowance for Doubtful (11-2103) [|delta|]
+   *     Cr. Bad Debt Expense (53-1701)     [|delta|]
+   *
+   * Zero delta: returns null immediately (no JE created).
+   *
+   * Closes audit finding F-1-009 (Allowance never posted).
+   */
+  async createBadDebtProvisionJournal(
+    tx: Prisma.TransactionClient,
+    params: {
+      contractId: string;
+      period: string; // YYYY-MM
+      delta: Decimal; // positive = increment, negative = recovery
+      userId: string;
+      financeCompanyId?: string | null;
+    },
+  ): Promise<string | null> {
+    if (params.delta.eq(0)) return null;
+
+    const FA = JournalAutoService.FINANCE_ACC;
+    const financeCompanyId =
+      params.financeCompanyId ??
+      (
+        await tx.companyInfo.findFirst({
+          where: { companyCode: 'FINANCE', deletedAt: null },
+          select: { id: true },
+        })
+      )?.id ??
+      null;
+
+    if (!financeCompanyId) {
+      throw new InternalServerErrorException(
+        'FINANCE company required for bad debt provision JE',
+      );
+    }
+
+    const isIncrement = params.delta.gt(0);
+    const amount = params.delta.abs().toNumber();
+
+    return this.createAndPost(tx, {
+      companyId: financeCompanyId,
+      entryDate: new Date(),
+      description: `Bad debt provision ${isIncrement ? 'increment' : 'recovery'} ${params.period}`,
+      referenceType: 'BAD_DEBT_PROVISION',
+      referenceId: `${params.contractId}:${params.period}`,
+      createdById: params.userId,
+      lines: isIncrement
+        ? [
+            {
+              accountCode: FA.BAD_DEBT_EXPENSE,
+              description: 'Bad debt expense',
+              debit: amount,
+              credit: 0,
+            },
+            {
+              accountCode: FA.ALLOWANCE_DOUBTFUL,
+              description: 'Allowance for doubtful',
+              debit: 0,
+              credit: amount,
+            },
+          ]
+        : [
+            {
+              accountCode: FA.ALLOWANCE_DOUBTFUL,
+              description: 'Allowance reversal',
+              debit: amount,
+              credit: 0,
+            },
+            {
+              accountCode: FA.BAD_DEBT_EXPENSE,
+              description: 'Bad debt recovery',
+              debit: 0,
+              credit: amount,
+            },
+          ],
+    });
+  }
+
+  /**
    * Trial Balance — sum debit/credit per account from POSTED entries.
    */
   async getTrialBalance(filters: {

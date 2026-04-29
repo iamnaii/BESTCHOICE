@@ -1,9 +1,12 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   BadRequestException,
   ForbiddenException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 
@@ -18,6 +21,8 @@ const DEFAULT_PROVISION_RATES: Record<string, number> = {
 
 @Injectable()
 export class BadDebtService {
+  private readonly logger = new Logger(BadDebtService.name);
+
   constructor(
     private prisma: PrismaService,
     private journalAutoService: JournalAutoService,
@@ -103,7 +108,19 @@ export class BadDebtService {
 
     // Reverse existing ACTIVE provisions only for contracts in scope
     const contractIdsInScope = [...contractOutstanding.keys()];
+
+    // Capture previous provision amounts BEFORE reversing, to compute delta for JE
+    const previousProvisionByContract = new Map<string, Prisma.Decimal>();
     if (contractIdsInScope.length > 0) {
+      const activeProvisions = await this.prisma.badDebtProvision.findMany({
+        where: { status: 'ACTIVE', contractId: { in: contractIdsInScope }, deletedAt: null },
+        select: { contractId: true, provisionAmount: true },
+      });
+      for (const p of activeProvisions) {
+        const prev = previousProvisionByContract.get(p.contractId) ?? new Prisma.Decimal(0);
+        previousProvisionByContract.set(p.contractId, prev.add(p.provisionAmount));
+      }
+
       await this.prisma.badDebtProvision.updateMany({
         where: { status: 'ACTIVE', contractId: { in: contractIdsInScope }, deletedAt: null },
         data: { status: 'REVERSED' },
@@ -147,6 +164,37 @@ export class BadDebtService {
 
     if (provisions.length > 0) {
       await this.prisma.badDebtProvision.createMany({ data: provisions });
+    }
+
+    // Post delta-based provision JEs (non-blocking — a single JE failure must not abort the run)
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1;
+    const period = `${year}-${String(month).padStart(2, '0')}`;
+
+    for (const p of provisions) {
+      const prev = previousProvisionByContract.get(p.contractId) ?? new Prisma.Decimal(0);
+      const newAmount = new Prisma.Decimal(p.provisionAmount);
+      const delta = newAmount.sub(prev);
+      if (delta.eq(0)) continue;
+
+      try {
+        await this.journalAutoService.createBadDebtProvisionJournal(this.prisma, {
+          contractId: p.contractId,
+          period,
+          delta,
+          userId: calculatedById,
+        });
+      } catch (err) {
+        this.logger.error(
+          `createBadDebtProvisionJournal failed for contract ${p.contractId} period ${period}`,
+          err,
+        );
+        Sentry.captureException(err, {
+          extra: { contractId: p.contractId, period, delta: delta.toNumber() },
+          tags: { service: 'BadDebtService', method: 'calculateProvisions' },
+        });
+        // Continue — one JE failure must not abort the entire provision run
+      }
     }
 
     const totalProvision = provisions.reduce((sum, p) => sum + p.provisionAmount, 0);

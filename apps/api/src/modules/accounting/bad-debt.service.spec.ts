@@ -71,7 +71,10 @@ describe('BadDebtService', () => {
         { provide: PrismaService, useValue: prisma },
         {
           provide: JournalAutoService,
-          useValue: { createBadDebtWriteOffJournal: jest.fn().mockResolvedValue('je-mock') },
+          useValue: {
+            createBadDebtWriteOffJournal: jest.fn().mockResolvedValue('je-mock'),
+            createBadDebtProvisionJournal: jest.fn().mockResolvedValue('je-provision-mock'),
+          },
         },
       ],
     }).compile();
@@ -281,6 +284,68 @@ describe('BadDebtService', () => {
       const created = prisma.badDebtProvision.createMany.mock.calls[0][0].data;
       // outstanding = 1000 - 0 + 0 (waived) = 1000
       expect(created[0].outstandingAmount).toBe(1000);
+    });
+
+    it('calls createBadDebtProvisionJournal with correct delta vs prior provision (Phase A.1b)', async () => {
+      // Prior ACTIVE provision for c1: 50 (2%)
+      prisma.badDebtProvision.findMany.mockResolvedValue([
+        { contractId: 'c1', provisionAmount: new Prisma.Decimal(50) },
+      ]);
+      prisma.payment.findMany.mockResolvedValue([
+        {
+          id: 'p1',
+          contractId: 'c1',
+          installmentNo: 1,
+          amountDue: new Prisma.Decimal(1000),
+          amountPaid: new Prisma.Decimal(0),
+          lateFee: new Prisma.Decimal(0),
+          lateFeeWaived: false,
+          status: 'PENDING',
+          // 31 days ago → 31-60 bucket → 10% → provisionAmount = 100
+          dueDate: new Date(Date.now() - 31 * 24 * 60 * 60 * 1000),
+          contract: { id: 'c1', status: 'OVERDUE' },
+        },
+      ]);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const journalAutoService = (service as any).journalAutoService;
+      await service.calculateProvisions('user-1');
+
+      expect(journalAutoService.createBadDebtProvisionJournal).toHaveBeenCalledTimes(1);
+      const callArgs = journalAutoService.createBadDebtProvisionJournal.mock.calls[0][1];
+      expect(callArgs.contractId).toBe('c1');
+      // new = 100, prev = 50, delta = 50
+      expect(Number(callArgs.delta)).toBeCloseTo(50, 4);
+      expect(callArgs.userId).toBe('user-1');
+      expect(callArgs.period).toMatch(/^\d{4}-\d{2}$/);
+    });
+
+    it('skips createBadDebtProvisionJournal when delta is zero (no change in provision)', async () => {
+      // Prior ACTIVE provision = same as new provision (1000 * 0.02 = 20)
+      prisma.badDebtProvision.findMany.mockResolvedValue([
+        { contractId: 'c1', provisionAmount: new Prisma.Decimal(20) },
+      ]);
+      prisma.payment.findMany.mockResolvedValue([
+        {
+          id: 'p1',
+          contractId: 'c1',
+          installmentNo: 1,
+          amountDue: new Prisma.Decimal(1000),
+          amountPaid: new Prisma.Decimal(0),
+          lateFee: new Prisma.Decimal(0),
+          lateFeeWaived: false,
+          status: 'PENDING',
+          // 30 days ago → 1-30 bucket → 2% → provisionAmount = 20 (same as prior)
+          dueDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+          contract: { id: 'c1', status: 'OVERDUE' },
+        },
+      ]);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const journalAutoService = (service as any).journalAutoService;
+      await service.calculateProvisions('user-1');
+
+      expect(journalAutoService.createBadDebtProvisionJournal).not.toHaveBeenCalled();
     });
   });
 

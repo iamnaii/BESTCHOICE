@@ -1099,6 +1099,68 @@ describe('JournalAutoService', () => {
   });
 
   // ──────────────────────────────────────────────────────────────────────────
+  // createBadDebtProvisionJournal (Phase A.1b)
+  // ──────────────────────────────────────────────────────────────────────────
+  describe('createBadDebtProvisionJournal (Phase A.1b)', () => {
+    it('creates FINANCE entry Dr Bad Debt Expense / Cr Allowance for positive delta', async () => {
+      prisma.companyInfo.findFirst.mockResolvedValue({ id: 'co-FINANCE', companyCode: 'FINANCE' });
+
+      await (service as any).createBadDebtProvisionJournal(prisma, {
+        contractId: 'c1',
+        period: '2026-04',
+        delta: new Prisma.Decimal('500'),
+        userId: 'u1',
+        financeCompanyId: 'co-FINANCE',
+      });
+
+      const lines = capturedLines();
+      const expLine = lines.find((l) => l.accountCode === JournalAutoService.FINANCE_ACC.BAD_DEBT_EXPENSE);
+      expect(expLine).toBeDefined();
+      expect(Number(expLine!.debit)).toBeCloseTo(500, 2);
+      const allowanceLine = lines.find((l) => l.accountCode === JournalAutoService.FINANCE_ACC.ALLOWANCE_DOUBTFUL);
+      expect(allowanceLine).toBeDefined();
+      expect(Number(allowanceLine!.credit)).toBeCloseTo(500, 2);
+    });
+
+    it('creates reversal entry Dr Allowance / Cr Bad Debt Expense for negative delta (recovery)', async () => {
+      prisma.companyInfo.findFirst.mockResolvedValue({ id: 'co-FINANCE', companyCode: 'FINANCE' });
+
+      await (service as any).createBadDebtProvisionJournal(prisma, {
+        contractId: 'c1',
+        period: '2026-04',
+        delta: new Prisma.Decimal('-200'),
+        userId: 'u1',
+        financeCompanyId: 'co-FINANCE',
+      });
+
+      const lines = capturedLines();
+      const expLine = lines.find((l) => l.accountCode === JournalAutoService.FINANCE_ACC.BAD_DEBT_EXPENSE);
+      expect(expLine).toBeDefined();
+      expect(Number(expLine!.credit)).toBeCloseTo(200, 2);
+      const allowanceLine = lines.find((l) => l.accountCode === JournalAutoService.FINANCE_ACC.ALLOWANCE_DOUBTFUL);
+      expect(allowanceLine).toBeDefined();
+      expect(Number(allowanceLine!.debit)).toBeCloseTo(200, 2);
+    });
+
+    it('skips JE creation when delta is zero', async () => {
+      prisma.companyInfo.findFirst.mockResolvedValue({ id: 'co-FINANCE', companyCode: 'FINANCE' });
+      const createSpy = prisma.journalEntry.create;
+      const callsBefore = createSpy.mock.calls.length;
+
+      const result = await (service as any).createBadDebtProvisionJournal(prisma, {
+        contractId: 'c1',
+        period: '2026-04',
+        delta: new Prisma.Decimal('0'),
+        userId: 'u1',
+        financeCompanyId: 'co-FINANCE',
+      });
+
+      expect(result).toBeNull();
+      expect(createSpy.mock.calls.length).toBe(callsBefore);
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
   // Phase 4.12 — End-to-End Trial Balance
   // Verifies: sum of ALL debit lines = sum of ALL credit lines across a full
   // set of journal entries (activation + payment + expense + bad-debt write-off)

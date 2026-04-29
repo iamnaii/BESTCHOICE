@@ -127,6 +127,13 @@ export async function seedChartOfAccounts(prisma: PrismaClient): Promise<void> {
       accountGroup: AccountGroup.LIABILITY,
       parentCode: '21-22XX',
     },
+    {
+      code: '53-1801',
+      nameTh: 'ส่วนลดให้ลูกค้า — คอมมิชชัน',
+      nameEn: 'Sales Discount on Commission',
+      accountGroup: AccountGroup.EXPENSE,
+      parentCode: '53-18XX',
+    },
   ];
 
   for (const acc of shopExtraAccounts) {

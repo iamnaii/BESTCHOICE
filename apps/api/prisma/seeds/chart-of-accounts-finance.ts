@@ -62,6 +62,7 @@ const FINANCE_ACCOUNTS: FinanceAccount[] = [
   { code: '53-1802', nameTh: 'ค่าธรรมเนียม PaySolutions', nameEn: 'PaySolutions Fees', accountGroup: AccountGroup.EXPENSE, level: 3 },
   { code: '53-1803', nameTh: 'ค่าธรรมเนียมโอนเงิน', nameEn: 'Bank Transfer Fees', accountGroup: AccountGroup.EXPENSE, level: 3 },
   { code: '53-1804', nameTh: 'ขาดทุนจากการขายสินค้ายึดคืน', nameEn: 'Loss on Repossession Resale', accountGroup: AccountGroup.EXPENSE, level: 3 },
+  { code: '53-1805', nameTh: 'ส่วนลดให้ลูกค้า — ดอกเบี้ย', nameEn: 'Sales Discount on Interest', accountGroup: AccountGroup.EXPENSE, level: 3 },
   { code: '53-1601', nameTh: 'ค่าเสื่อมราคา — อุปกรณ์ FINANCE', nameEn: 'Depreciation — FINANCE Equipment', accountGroup: AccountGroup.EXPENSE, level: 3 },
 
   // ─── 54-XXXX รายจ่ายต้องห้ามทางภาษี (2) ───

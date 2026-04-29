@@ -40,6 +40,7 @@ export class JournalAutoService {
     COMMISSION_INCOME: '42-1105',
     DUE_FROM_FINANCE: '11-2105',
     UNEARNED_COMMISSION: '21-2201', // Phase A.2 — deferred commission income
+    SALES_DISCOUNT_COMMISSION: '53-1801', // Phase W-4 — explicit discount expense (commission portion)
   } as const;
 
   // FINANCE-side accounts (in FINANCE chart)
@@ -65,6 +66,7 @@ export class JournalAutoService {
     BAD_DEBT_EXPENSE: '53-1701',
     COMMISSION_EXPENSE: '53-1801',
     LOSS_ON_REPO_RESALE: '53-1804',
+    SALES_DISCOUNT_INTEREST: '53-1805', // Phase W-4 — explicit discount expense (interest portion)
     UNEARNED_INTEREST: '21-2202', // Phase A.2 — deferred interest income
   } as const;
 
@@ -75,19 +77,21 @@ export class JournalAutoService {
     const ym = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
     const prefix = `JE-${ym}`;
 
-    // SELECT ... FOR UPDATE serialises concurrent inserts in the same month-prefix.
-    // count()-based generation race-conditions when two transactions read the same
-    // count and produce identical entry numbers — Phase A.1b doubled the surface
-    // by posting paired SHOP+FINANCE entries per business operation. Same pattern
-    // as receipts.service.generateReceiptNumber (verified working).
-    const result = await (tx as unknown as { $queryRaw: typeof PrismaService.prototype.$queryRaw }).$queryRaw<
-      Array<{ entryNumber: string }>
-    >`
+    // Phase W-2: pg_advisory_xact_lock serialises concurrent generation within
+    // the same month, even when no rows yet exist for that prefix. The previous
+    // SELECT ... FOR UPDATE only locked existing rows — first JE of a new month
+    // still race-conditioned (two callers both saw empty, both wrote -0001).
+    // Lock key = numeric YYYYMM (e.g. 202604) — small, stable, scoped per month.
+    // Auto-released at tx commit/rollback (xact_lock variant).
+    const txRaw = tx as unknown as { $queryRaw: typeof PrismaService.prototype.$queryRaw };
+    const lockKey = parseInt(ym, 10);
+    await txRaw.$queryRaw`SELECT pg_advisory_xact_lock(${lockKey}::bigint)`;
+
+    const result = await txRaw.$queryRaw<Array<{ entryNumber: string }>>`
       SELECT entry_number AS "entryNumber" FROM journal_entries
       WHERE entry_number LIKE ${prefix + '%'}
       ORDER BY entry_number DESC
       LIMIT 1
-      FOR UPDATE
     `;
 
     let seq = 1;
@@ -566,6 +570,8 @@ export class JournalAutoService {
     let sumCommissionOrig = new Prisma.Decimal(0);
     let sumVatOrig = new Prisma.Decimal(0);
     let sumLateFee = new Prisma.Decimal(0);
+    // Total remaining amountDue (used as HP Receivable drain when breakdown is zero).
+    let sumRemainingDue = new Prisma.Decimal(0);
 
     for (const inst of params.installments) {
       const amountDue = new Prisma.Decimal(inst.amountDue ?? 0);
@@ -577,10 +583,12 @@ export class JournalAutoService {
       sumInterestOrig = sumInterestOrig.add(new Prisma.Decimal(inst.monthlyInterest ?? 0).mul(ratioRemaining));
       sumCommissionOrig = sumCommissionOrig.add(new Prisma.Decimal(inst.monthlyCommission ?? 0).mul(ratioRemaining));
       sumVatOrig = sumVatOrig.add(new Prisma.Decimal(inst.vatAmount ?? 0).mul(ratioRemaining));
+      sumRemainingDue = sumRemainingDue.add(amountDue.sub(amountPaidBefore));
       if (!inst.lateFeeWaived) {
         sumLateFee = sumLateFee.add(new Prisma.Decimal(inst.lateFee ?? 0));
       }
     }
+    sumRemainingDue = sumRemainingDue.toDecimalPlaces(2);
 
     sumPrincipal = sumPrincipal.toDecimalPlaces(2);
     sumInterestOrig = sumInterestOrig.toDecimalPlaces(2);
@@ -618,36 +626,74 @@ export class JournalAutoService {
     }
 
     // Discount portions per component (forfeited income).
+    const interestDiscount = sumInterestOrig.sub(interestActual).toDecimalPlaces(2);
     const commissionDiscount = sumCommissionOrig.sub(commissionActual).toDecimalPlaces(2);
+    const vatDiscount = sumVatOrig.sub(vatActual).toDecimalPlaces(2);
 
     const intercompanyId = sumCommissionOrig.gt(0) ? generateInterCompanyId() : null;
     const baseDesc = `ปิดสัญญาก่อนกำหนด — สัญญา ${params.contractNumber}`;
     const entryDate = params.paidDate ?? new Date();
 
-    // FINANCE entry — Phase A.2:
+    // FINANCE entry — Phase W-4 (explicit discount expense):
     //   Dr Cash                       totalPayoff
     //   Dr Unearned Interest          sumInterestOrig                (drain full deferred)
     //   Dr VAT Pending                sumVatOrig                      (drain full deferred)
+    //   Dr Sales Discount Interest    interestDiscount + vatDiscount  (visible in P&L as expense)
     //   Dr Due-to-SHOP                commissionDiscount              (FINANCE owes SHOP less)
     //     Cr HP Receivable             sumOwedExclLateFee             (drain receivable)
-    //     Cr Interest Income           interestActual                  (recognize earned)
-    //     Cr VAT Output (PP.30)        vatActual                       (recognize VAT collected)
+    //     Cr Interest Income           sumInterestOrig                 (recognize FULL — discount as separate expense)
+    //     Cr VAT Output (PP.30)        sumVatOrig                      (recognize FULL — discount as separate expense)
     //     Cr Late Fee Income           sumLateFee
-    // The implicit interest/VAT discount = (Unearned drain - Income recognised).
+    // Phase W-4 makes the discount visible as an explicit P&L line item
+    // ("ส่วนลดให้ลูกค้า") instead of hidden in income asymmetry — matches CPA
     const financeDesc = intercompanyId
       ? formatInterCompanyDescription(intercompanyId, `${baseDesc} (FINANCE)`)
       : baseDesc;
+    // Phase W-4: Cr Income lines post the FULL Unearned drain (not the
+    // discounted amount). The discount is broken out as an explicit
+    // Dr Sales Discount Interest expense — visible in P&L for CPA reporting.
+    // VAT discount also flows through the same Discount Interest account.
+    //
+    // Legacy zero-breakdown fallback: when sumOtherOrig=0, there's no Unearned
+    // balance to drain so we credit Interest Income for the whole nonPrincipal
+    // and post no discount expense (no original interest to discount from).
+    const isLegacyFallback = sumOtherOrig.isZero() && interestActual.gt(0);
+    const interestIncomeCredit = isLegacyFallback ? interestActual : sumInterestOrig;
+    const vatOutputCredit = sumVatOrig; // 0 in legacy fallback
+    const interestDiscountTotal = interestDiscount.add(vatDiscount).toDecimalPlaces(2);
+
     const financeLines: Array<{ accountCode: string; description: string; debit: number; credit: number }> = [
       { accountCode: FA.CASH, description: 'รับชำระปิดก่อนกำหนด', debit: cash.toNumber(), credit: 0 },
       { accountCode: FA.UNEARNED_INTEREST, description: 'ตัดดอกเบี้ยรอตัดบัญชี', debit: sumInterestOrig.toNumber(), credit: 0 },
       { accountCode: FA.VAT_OUTPUT_PENDING, description: 'ตัดภาษีขายรอเรียกเก็บ', debit: sumVatOrig.toNumber(), credit: 0 },
       { accountCode: FA.HP_RECEIVABLE, description: 'ตัดลูกหนี้เช่าซื้อ', debit: 0, credit: sumOwedExclLateFee.toNumber() },
-      { accountCode: FA.INTEREST_INCOME, description: 'รายได้ดอกเบี้ยเช่าซื้อ', debit: 0, credit: interestActual.toNumber() },
-      { accountCode: FA.VAT_OUTPUT, description: 'ภาษีขาย', debit: 0, credit: vatActual.toNumber() },
+      { accountCode: FA.INTEREST_INCOME, description: isLegacyFallback ? 'รายได้ดอกเบี้ยเช่าซื้อ' : 'รายได้ดอกเบี้ยเช่าซื้อ (เต็ม)', debit: 0, credit: interestIncomeCredit.toNumber() },
+      { accountCode: FA.VAT_OUTPUT, description: 'ภาษีขาย', debit: 0, credit: vatOutputCredit.toNumber() },
       { accountCode: FA.LATE_FEE_INCOME, description: 'ค่าปรับล่าช้า', debit: 0, credit: sumLateFee.toNumber() },
     ];
+    // Legacy fallback case: zero breakdown means we cannot allocate cash to
+    // interest/VAT/commission portions. Settle as a flat receivable drain:
+    //   Dr Cash + Dr Discount (if cash < amountDue)
+    //     Cr HP Receivable (= sumRemainingDue, matches activation Dr)
+    // Skip Interest Income / VAT Output entirely — no breakdown to recognise.
+    if (isLegacyFallback) {
+      const hpLine = financeLines.find((l) => l.accountCode === FA.HP_RECEIVABLE)!;
+      hpLine.credit = sumRemainingDue.toNumber();
+      const interestLine = financeLines.find((l) => l.accountCode === FA.INTEREST_INCOME)!;
+      interestLine.credit = 0;
+      const vatLine = financeLines.find((l) => l.accountCode === FA.VAT_OUTPUT)!;
+      vatLine.credit = 0;
+      // Implicit discount = sumRemainingDue - cashExclLateFee. Post as expense.
+      const legacyDiscount = sumRemainingDue.sub(cashExclLateFee).toDecimalPlaces(2);
+      if (legacyDiscount.gt(0)) {
+        financeLines.push({ accountCode: FA.SALES_DISCOUNT_INTEREST, description: 'ส่วนลดให้ลูกค้า — ปิดก่อนกำหนด (legacy)', debit: legacyDiscount.toNumber(), credit: 0 });
+      }
+    }
+    // Explicit discount expense (only when discount > 0 and breakdown was provided).
+    if (interestDiscountTotal.gt(0) && !isLegacyFallback) {
+      financeLines.push({ accountCode: FA.SALES_DISCOUNT_INTEREST, description: 'ส่วนลดให้ลูกค้า — ดอกเบี้ย/VAT', debit: interestDiscountTotal.toNumber(), credit: 0 });
+    }
     // Only emit Due-to-SHOP line when there's a commission discount to reduce.
-    // Avoids posting an empty Dr=0 line that adds noise to the JE.
     if (commissionDiscount.gt(0)) {
       financeLines.push({ accountCode: FA.DUE_TO_SHOP, description: 'ลดเจ้าหนี้ระหว่างบริษัท (ส่วนลดคอมมิชชัน)', debit: commissionDiscount.toNumber(), credit: 0 });
     }
@@ -662,11 +708,20 @@ export class JournalAutoService {
       lines: financeLines,
     });
 
-    // SHOP entry — Phase A.2:
-    //   Dr Unearned Commission         sumCommissionOrig             (drain full)
-    //     Cr Commission Income          commissionActual              (recognize earned)
+    // SHOP entry — Phase W-4 (explicit discount expense):
+    //   Dr Unearned Commission         sumCommissionOrig             (drain full deferred)
+    //   Dr Sales Discount Commission   commissionDiscount            (visible in P&L)
+    //     Cr Commission Income          sumCommissionOrig             (recognize FULL — discount as separate expense)
     //     Cr Due-from-FINANCE           commissionDiscount            (mirrors FINANCE Due-to-SHOP reduction)
     if (sumCommissionOrig.gt(0) && params.shopCompanyId && intercompanyId) {
+      const shopLines: Array<{ accountCode: string; description: string; debit: number; credit: number }> = [
+        { accountCode: SA.UNEARNED_COMMISSION, description: 'ตัดค่านายหน้ารอตัดบัญชี', debit: sumCommissionOrig.toNumber(), credit: 0 },
+        { accountCode: SA.COMMISSION_INCOME, description: 'รายได้ค่านายหน้า (เต็ม)', debit: 0, credit: sumCommissionOrig.toNumber() },
+      ];
+      if (commissionDiscount.gt(0)) {
+        shopLines.push({ accountCode: SA.SALES_DISCOUNT_COMMISSION, description: 'ส่วนลดให้ลูกค้า — คอมมิชชัน', debit: commissionDiscount.toNumber(), credit: 0 });
+        shopLines.push({ accountCode: SA.DUE_FROM_FINANCE, description: 'ลดลูกหนี้ระหว่างบริษัท (ส่วนลดคอมมิชชัน)', debit: 0, credit: commissionDiscount.toNumber() });
+      }
       await this.createAndPost(tx, {
         companyId: params.shopCompanyId,
         entryDate,
@@ -674,11 +729,7 @@ export class JournalAutoService {
         referenceType: 'EARLY_PAYOFF',
         referenceId: params.contractId,
         createdById: params.userId,
-        lines: [
-          { accountCode: SA.UNEARNED_COMMISSION, description: 'ตัดค่านายหน้ารอตัดบัญชี', debit: sumCommissionOrig.toNumber(), credit: 0 },
-          { accountCode: SA.COMMISSION_INCOME, description: 'รายได้ค่านายหน้า', debit: 0, credit: commissionActual.toNumber() },
-          { accountCode: SA.DUE_FROM_FINANCE, description: 'ลดลูกหนี้ระหว่างบริษัท (ส่วนลดคอมมิชชัน)', debit: 0, credit: commissionDiscount.toNumber() },
-        ],
+        lines: shopLines,
       });
     }
 

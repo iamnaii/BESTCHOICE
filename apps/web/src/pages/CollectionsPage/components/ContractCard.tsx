@@ -355,9 +355,9 @@ export default function ContractCard({
             </button>
             <button
               onClick={() => onSendLine?.(contract)}
-              disabled={!contract.customer.lineId}
+              disabled={!contract.customer.lineIdFinance}
               className="rounded-lg border border-input p-2 hover:bg-accent text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
-              title={contract.customer.lineId ? 'ส่ง LINE' : 'ลูกค้าไม่มี LINE ID'}
+              title={contract.customer.lineIdFinance ? 'ส่ง LINE (Finance OA)' : 'ลูกค้าไม่มี LINE ID (Finance OA)'}
               aria-label="ส่ง LINE"
             >
               <MessageSquare className="size-4" />

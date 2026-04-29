@@ -47,7 +47,8 @@ interface CustomerDetail {
   phone: string;
   phoneSecondary: string | null;
   email: string | null;
-  lineId: string | null;
+  lineIdFinance: string | null;
+  lineIdShop: string | null;
   facebookLink: string | null;
   facebookName: string | null;
   facebookFriends: string | null;
@@ -155,7 +156,7 @@ export default function CustomerDetailPage() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [editForm, setEditForm] = useState({
     prefix: '', name: '', nickname: '', phone: '', phoneSecondary: '',
-    email: '', lineId: '', facebookLink: '', facebookName: '', facebookFriends: '',
+    email: '', lineIdFinance: '', lineIdShop: '', facebookLink: '', facebookName: '', facebookFriends: '',
     googleMapLink: '', occupation: '', occupationDetail: '', salary: '', workplace: '',
     birthDate: '',
   });
@@ -212,7 +213,8 @@ export default function CustomerDetailPage() {
       phone: customer.phone,
       phoneSecondary: customer.phoneSecondary || '',
       email: customer.email || '',
-      lineId: customer.lineId || '',
+      lineIdFinance: customer.lineIdFinance || '',
+      lineIdShop: customer.lineIdShop || '',
       facebookLink: customer.facebookLink || '',
       facebookName: customer.facebookName || '',
       facebookFriends: customer.facebookFriends || '',
@@ -256,7 +258,8 @@ export default function CustomerDetailPage() {
       if (editForm.phone) payload.phone = editForm.phone;
       if (editForm.phoneSecondary) payload.phoneSecondary = editForm.phoneSecondary;
       if (editForm.email) payload.email = editForm.email;
-      if (editForm.lineId) payload.lineId = editForm.lineId;
+      if (editForm.lineIdFinance) payload.lineIdFinance = editForm.lineIdFinance;
+      if (editForm.lineIdShop) payload.lineIdShop = editForm.lineIdShop;
       if (editForm.facebookLink) payload.facebookLink = editForm.facebookLink;
       if (editForm.facebookName) payload.facebookName = editForm.facebookName;
       if (editForm.facebookFriends) payload.facebookFriends = editForm.facebookFriends;
@@ -647,7 +650,8 @@ export default function CustomerDetailPage() {
             <Info label="เบอร์โทร" value={customer.phone} />
             <Info label="เบอร์สำรอง" value={customer.phoneSecondary} />
             <Info label="อีเมล" value={customer.email} />
-            <Info label="LINE ID" value={customer.lineId} />
+            <Info label="LINE ID (Finance / น้องเบส)" value={customer.lineIdFinance} />
+            <Info label="LINE ID (Shop / ร้าน)" value={customer.lineIdShop} />
             {customer.facebookLink && (
               <div>
                 <div className="text-xs text-muted-foreground mb-0.5">ลิงก์ Facebook</div>
@@ -1149,8 +1153,12 @@ export default function CustomerDetailPage() {
                 <input type="email" value={editForm.email} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-foreground mb-1.5">LINE ID</label>
-                <input type="text" value={editForm.lineId} onChange={(e) => setEditForm({ ...editForm, lineId: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" />
+                <label className="block text-xs font-medium text-foreground mb-1.5">LINE ID (Finance / น้องเบส)</label>
+                <input type="text" value={editForm.lineIdFinance} onChange={(e) => setEditForm({ ...editForm, lineIdFinance: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" placeholder="U1234567890abcdef..." />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-foreground mb-1.5">LINE ID (Shop / ร้าน)</label>
+                <input type="text" value={editForm.lineIdShop} onChange={(e) => setEditForm({ ...editForm, lineIdShop: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" placeholder="U1234567890abcdef..." />
               </div>
               <div>
                 <label className="block text-xs font-medium text-foreground mb-1.5">ลิงก์ Facebook</label>

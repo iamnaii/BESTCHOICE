@@ -102,7 +102,7 @@ export default function Customer360Panel({
   // LINE tab is only meaningful when the customer has a LINE ID. If they
   // don't, hide the tab entirely and snap back to overview if the user was
   // on LINE for a previously selected customer.
-  const hasLineId = !!(data?.detail.customer.lineId ?? contract?.customer.lineId);
+  const hasLineId = !!(data?.detail.customer.lineIdFinance ?? contract?.customer.lineIdFinance);
 
   useEffect(() => {
     setTab('overview');
@@ -219,10 +219,13 @@ export default function Customer360Panel({
                       />
                     </>
                   )}
-                  {(data?.detail.customer.lineId ?? contract.customer.lineId) && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-success/10 text-success px-2 py-0.5">
+                  {(data?.detail.customer.lineIdFinance ?? contract.customer.lineIdFinance) && (
+                    <span
+                      className="inline-flex items-center gap-1 rounded-full bg-success/10 text-success px-2 py-0.5"
+                      title="Finance OA — น้องเบส"
+                    >
                       <MessageCircle className="size-3" />
-                      LINE
+                      LINE (Finance)
                     </span>
                   )}
                   {data?.detail.customer.address && (

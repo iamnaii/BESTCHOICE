@@ -86,7 +86,8 @@ export default function FullIntakeStep({ customerId, initial, onDone }: Props) {
       if (form.birthDate) payload.birthDate = new Date(form.birthDate).toISOString();
       if (form.phoneSecondary) payload.phoneSecondary = form.phoneSecondary;
       if (form.email) payload.email = form.email;
-      if (form.lineId) payload.lineId = form.lineId;
+      if (form.lineIdFinance) payload.lineIdFinance = form.lineIdFinance;
+      if (form.lineIdShop) payload.lineIdShop = form.lineIdShop;
       if (form.facebookLink) payload.facebookLink = form.facebookLink;
       if (form.facebookName) payload.facebookName = form.facebookName;
       if (form.occupation) payload.occupation = form.occupation;
@@ -158,10 +159,19 @@ export default function FullIntakeStep({ customerId, initial, onDone }: Props) {
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-foreground mb-1">LINE ID</label>
+            <label className="block text-xs font-medium text-foreground mb-1">LINE ID (Finance / น้องเบส)</label>
             <Input
-              value={form.lineId || ''}
-              onChange={(e) => patch({ lineId: e.target.value })}
+              value={form.lineIdFinance || ''}
+              onChange={(e) => patch({ lineIdFinance: e.target.value })}
+              placeholder="U1234567890abcdef..."
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-foreground mb-1">LINE ID (Shop / ร้าน)</label>
+            <Input
+              value={form.lineIdShop || ''}
+              onChange={(e) => patch({ lineIdShop: e.target.value })}
+              placeholder="U1234567890abcdef..."
             />
           </div>
           <div>

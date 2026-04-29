@@ -46,7 +46,8 @@ interface Customer {
   name: string;
   nickname: string | null;
   phone: string;
-  lineId: string | null;
+  lineIdFinance: string | null;
+  lineIdShop: string | null;
   occupation: string | null;
   salary: number | null;
   createdAt: string;
@@ -123,7 +124,8 @@ const emptyForm: CustomerFormData & { facebookFriends: string; googleMapLink: st
   phone: '',
   phoneSecondary: '',
   email: '',
-  lineId: '',
+  lineIdFinance: '',
+  lineIdShop: '',
   facebookLink: '',
   facebookName: '',
   facebookFriends: '',
@@ -226,7 +228,8 @@ export default function CustomersPage() {
       if (data.birthDate) payload.birthDate = new Date(data.birthDate).toISOString();
       if (data.phoneSecondary) payload.phoneSecondary = data.phoneSecondary;
       if (data.email) payload.email = data.email;
-      if (data.lineId) payload.lineId = data.lineId;
+      if (data.lineIdFinance) payload.lineIdFinance = data.lineIdFinance;
+      if (data.lineIdShop) payload.lineIdShop = data.lineIdShop;
       if (data.facebookLink) payload.facebookLink = data.facebookLink;
       if (data.facebookName) payload.facebookName = data.facebookName;
       if (formExtra.facebookFriends) payload.facebookFriends = formExtra.facebookFriends;
@@ -1157,12 +1160,27 @@ export default function CustomersPage() {
                 <div>
                   <FormField
                     control={form.control}
-                    name="lineId"
+                    name="lineIdFinance"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-xs font-medium">LINE ID</FormLabel>
+                        <FormLabel className="text-xs font-medium">LINE ID (Finance / น้องเบส)</FormLabel>
                         <FormControl>
-                          <input type="text" {...field} className={inputClass} placeholder="@line-id" />
+                          <input type="text" {...field} className={inputClass} placeholder="U1234567890abcdef..." />
+                        </FormControl>
+                        <FormMessage className="text-xs" />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+                <div>
+                  <FormField
+                    control={form.control}
+                    name="lineIdShop"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs font-medium">LINE ID (Shop / ร้าน)</FormLabel>
+                        <FormControl>
+                          <input type="text" {...field} className={inputClass} placeholder="U1234567890abcdef..." />
                         </FormControl>
                         <FormMessage className="text-xs" />
                       </FormItem>

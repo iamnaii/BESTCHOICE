@@ -147,7 +147,7 @@ export default function FocusContractCard({
           <Button
             variant="outline"
             className="h-16 text-base font-semibold gap-2"
-            disabled={!c.customer.lineId}
+            disabled={!c.customer.lineIdFinance}
             onClick={onSendLine}
             data-line-button
           >

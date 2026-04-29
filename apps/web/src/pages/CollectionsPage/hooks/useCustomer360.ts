@@ -27,7 +27,8 @@ export interface ContractDetail {
     id: string;
     name: string;
     phone: string;
-    lineId?: string | null;
+    lineIdFinance?: string | null;
+    lineIdShop?: string | null;
     address?: string | null;
   };
   branch: { id: string; name: string };

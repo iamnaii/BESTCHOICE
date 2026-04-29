@@ -24,7 +24,8 @@ export interface FullIntakeForm {
   phone: string;
   phoneSecondary?: string;
   email?: string;
-  lineId?: string;
+  lineIdFinance?: string;
+  lineIdShop?: string;
   facebookLink?: string;
   facebookName?: string;
   // Address (structured, serialized to JSON on save)

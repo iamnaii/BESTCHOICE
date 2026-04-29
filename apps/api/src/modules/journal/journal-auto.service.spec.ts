@@ -93,29 +93,30 @@ describe('JournalAutoService', () => {
   }
 
   describe('createAndPost — balance validation', () => {
-    it('should throw InternalServerErrorException when Dr != Cr', async () => {
+    it('payment JE always balances by construction (Phase A.2: HP Receivable absorbs breakdown mismatch)', async () => {
+      // Phase A.2: payment JE drains HP Receivable by amountPaid - lateFee, so
+      // the JE is balanced regardless of whether breakdown components match
+      // amountPaid. Independent JE balance enforcement comes from createAndPost.
       const tx = prisma;
-
-      // amountPaid (Dr) = 9999, but Cr side = principal(5000) + interest(500) + commission(100) + vat(300) + lateFee(50) = 5950
-      // Mismatch → should throw
-      await expect(
-        service.createPaymentJournal(tx, {
-          payment: {
-            id: 'pay-1',
-            installmentNo: 1,
-            amountPaid: 9999,
-            monthlyPrincipal: 5000,
-            monthlyInterest: 500,
-            monthlyCommission: 100,
-            vatAmount: 300,
-            lateFee: 50,
-            lateFeeWaived: false,
-          },
-          contract: { contractNumber: 'BC-202601-0001', branchId: 'branch-1' },
-          userId: 'user-1',
-          companyId: 'company-1',
-        }),
-      ).rejects.toThrow(InternalServerErrorException);
+      const result = await service.createPaymentJournal(tx, {
+        payment: {
+          id: 'pay-1',
+          installmentNo: 1,
+          amountPaid: 9999,
+          monthlyPrincipal: 5000,
+          monthlyInterest: 500,
+          monthlyCommission: 100,
+          vatAmount: 300,
+          lateFee: 50,
+          lateFeeWaived: false,
+        },
+        contract: { contractNumber: 'BC-202601-0001', branchId: 'branch-1' },
+        userId: 'user-1',
+        companyId: 'company-1',
+      });
+      expect(result).toBeTruthy();
+      const lines = capturedLines();
+      expect(sumDebits(lines)).toBeCloseTo(sumCredits(lines), 2);
     });
 
     it('should return null when all lines are zero (no journal needed)', async () => {
@@ -346,7 +347,7 @@ describe('JournalAutoService', () => {
       expect(Number(hpLine?.debit)).toBeCloseTo(11600, 2);
     });
 
-    it('credits VAT_OUTPUT with vatAmount on FINANCE side', async () => {
+    it('credits VAT_OUTPUT_PENDING with vatAmount on FINANCE side (Phase A.2 deferred VAT)', async () => {
       prisma.companyInfo.findFirst = jest.fn().mockImplementation((args: any) => {
         if (args?.where?.companyCode === 'SHOP') return Promise.resolve({ id: 'co-SHOP' });
         if (args?.where?.companyCode === 'FINANCE') return Promise.resolve({ id: 'co-FINANCE' });
@@ -367,8 +368,11 @@ describe('JournalAutoService', () => {
         credit: number;
       }>;
 
-      const vatLine = lines.find((l) => l.accountCode === JournalAutoService.FINANCE_ACC.VAT_OUTPUT);
-      expect(Number(vatLine?.credit)).toBeCloseTo(1000, 2);
+      const vatPendingLine = lines.find((l) => l.accountCode === JournalAutoService.FINANCE_ACC.VAT_OUTPUT_PENDING);
+      expect(Number(vatPendingLine?.credit)).toBeCloseTo(1000, 2);
+      // VAT Output (PP.30) should NOT be credited at activation — only at payment.
+      const vatOutputLine = lines.find((l) => l.accountCode === JournalAutoService.FINANCE_ACC.VAT_OUTPUT);
+      expect(vatOutputLine).toBeUndefined();
     });
 
     it('always creates 2 paired entries (SHOP + FINANCE) regardless of cost', async () => {
@@ -536,7 +540,7 @@ describe('JournalAutoService', () => {
         expect(shopDueFrom).toBeCloseTo(10500, 2);
       });
 
-      it('SHOP entry contains revenue + commission + COGS lines', async () => {
+      it('SHOP entry contains revenue + Unearned Commission + COGS lines (Phase A.2)', async () => {
         await service.createContractActivationJournal(prisma, {
           contract: {
             id: 'c2',
@@ -560,12 +564,14 @@ describe('JournalAutoService', () => {
 
         expect(Number(lines.find((l) => l.accountCode === JournalAutoService.SHOP_ACC.CASH)?.debit)).toBeCloseTo(1000, 2);
         expect(Number(lines.find((l) => l.accountCode === JournalAutoService.SHOP_ACC.REVENUE_NEW)?.credit)).toBeCloseTo(11000, 2);
-        expect(Number(lines.find((l) => l.accountCode === JournalAutoService.SHOP_ACC.COMMISSION_INCOME)?.credit)).toBeCloseTo(500, 2);
+        // Phase A.2: commission deferred to Unearned, NOT recognised as Income at activation.
+        expect(Number(lines.find((l) => l.accountCode === JournalAutoService.SHOP_ACC.UNEARNED_COMMISSION)?.credit)).toBeCloseTo(500, 2);
+        expect(lines.find((l) => l.accountCode === JournalAutoService.SHOP_ACC.COMMISSION_INCOME)).toBeUndefined();
         expect(Number(lines.find((l) => l.accountCode === JournalAutoService.SHOP_ACC.COGS_NEW)?.debit)).toBeCloseTo(8000, 2);
         expect(Number(lines.find((l) => l.accountCode === JournalAutoService.SHOP_ACC.INVENTORY_NEW)?.credit)).toBeCloseTo(8000, 2);
       });
 
-      it('FINANCE entry contains HP receivable + interest + VAT lines (no cash, no revenue)', async () => {
+      it('FINANCE entry contains HP receivable + Unearned Interest + VAT Pending lines (Phase A.2)', async () => {
         await service.createContractActivationJournal(prisma, {
           contract: {
             id: 'c3',
@@ -588,8 +594,12 @@ describe('JournalAutoService', () => {
         const lines = financeEntry.lines.create as Array<{ accountCode: string; debit: unknown; credit: unknown }>;
 
         expect(Number(lines.find((l) => l.accountCode === JournalAutoService.FINANCE_ACC.HP_RECEIVABLE)?.debit)).toBeCloseTo(12305, 2);
-        expect(Number(lines.find((l) => l.accountCode === JournalAutoService.FINANCE_ACC.INTEREST_INCOME)?.credit)).toBeCloseTo(1000, 2);
-        expect(Number(lines.find((l) => l.accountCode === JournalAutoService.FINANCE_ACC.VAT_OUTPUT)?.credit)).toBeCloseTo(805, 2);
+        // Phase A.2: interest deferred to Unearned, NOT recognised as Income at activation.
+        expect(Number(lines.find((l) => l.accountCode === JournalAutoService.FINANCE_ACC.UNEARNED_INTEREST)?.credit)).toBeCloseTo(1000, 2);
+        expect(lines.find((l) => l.accountCode === JournalAutoService.FINANCE_ACC.INTEREST_INCOME)).toBeUndefined();
+        // Phase A.2: VAT deferred to Pending, NOT VAT Output at activation.
+        expect(Number(lines.find((l) => l.accountCode === JournalAutoService.FINANCE_ACC.VAT_OUTPUT_PENDING)?.credit)).toBeCloseTo(805, 2);
+        expect(lines.find((l) => l.accountCode === JournalAutoService.FINANCE_ACC.VAT_OUTPUT)).toBeUndefined();
         // No cash on FINANCE side
         expect(lines.find((l) => l.accountCode === JournalAutoService.FINANCE_ACC.CASH)).toBeUndefined();
       });
@@ -641,7 +651,7 @@ describe('JournalAutoService', () => {
       });
     });
 
-    it('creates FINANCE payment entry + SHOP commission entry when commission > 0', async () => {
+    it('creates FINANCE payment entry + SHOP commission entry when commission > 0 (Phase A.2)', async () => {
       await service.createPaymentJournal(prisma, {
         payment: {
           id: 'p1',
@@ -665,19 +675,32 @@ describe('JournalAutoService', () => {
 
       const financeEntry = captured.find((e) => e.companyId === 'co-FINANCE');
       expect(financeEntry).toBeTruthy();
-      // Due-to-SHOP credit for commission
-      const dueToShopLine = financeEntry!.lines.find((l) => l.accountCode === '21-1102');
-      expect(dueToShopLine!.credit).toBeCloseTo(300, 2);
-      // HP Receivable credit = principal only (no commission fold)
+      // Phase A.2: HP Receivable credit = full installment (amountPaid - lateFee)
       const hpRecvLine = financeEntry!.lines.find((l) => l.accountCode === '11-2102');
-      expect(hpRecvLine!.credit).toBeCloseTo(1000, 2);
+      expect(hpRecvLine!.credit).toBeCloseTo(1500, 2);
+      // Phase A.2: Unearned Interest debited (recognised as earned)
+      const unearnedInterestLine = financeEntry!.lines.find((l) => l.accountCode === '21-2202');
+      expect(unearnedInterestLine!.debit).toBeCloseTo(100, 2);
+      const interestIncomeLine = financeEntry!.lines.find((l) => l.accountCode === '42-2101');
+      expect(interestIncomeLine!.credit).toBeCloseTo(100, 2);
+      // Phase A.2: VAT Pending debited, VAT Output credited
+      const vatPendingLine = financeEntry!.lines.find((l) => l.accountCode === '21-2102');
+      expect(vatPendingLine!.debit).toBeCloseTo(100, 2);
+      const vatOutputLine = financeEntry!.lines.find((l) => l.accountCode === '21-2101');
+      expect(vatOutputLine!.credit).toBeCloseTo(100, 2);
+      // Phase A.2: Due-to-SHOP NOT touched at payment (already accrued at activation)
+      const dueToShopLine = financeEntry!.lines.find((l) => l.accountCode === '21-1102');
+      expect(dueToShopLine).toBeUndefined();
 
       const shopEntry = captured.find((e) => e.companyId === 'co-SHOP');
       expect(shopEntry).toBeTruthy();
-      const dueFromFinanceLine = shopEntry!.lines.find((l) => l.accountCode === '11-2105');
-      expect(dueFromFinanceLine!.debit).toBeCloseTo(300, 2);
+      // Phase A.2: SHOP recognises commission via Unearned drain (not Due-from-FINANCE)
+      const unearnedCommissionLine = shopEntry!.lines.find((l) => l.accountCode === '21-2201');
+      expect(unearnedCommissionLine!.debit).toBeCloseTo(300, 2);
       const commissionLine = shopEntry!.lines.find((l) => l.accountCode === '42-1105');
       expect(commissionLine!.credit).toBeCloseTo(300, 2);
+      const dueFromFinanceLine = shopEntry!.lines.find((l) => l.accountCode === '11-2105');
+      expect(dueFromFinanceLine).toBeUndefined();
 
       // Both share IC prefix
       expect(financeEntry!.description).toMatch(/^\[IC-/);
@@ -889,17 +912,20 @@ describe('JournalAutoService', () => {
       const cashLine = financeEntry!.lines.find((l) => l.accountCode === '11-1101');
       expect(cashLine).toBeUndefined();
 
-      // HP Receivable credited for principal
+      // Phase A.2: HP Receivable credited for full installment (amountPaid - lateFee)
       const hpLine = financeEntry!.lines.find((l) => l.accountCode === '11-2102');
-      expect(hpLine!.credit).toBeCloseTo(1000, 2);
+      expect(hpLine!.credit).toBeCloseTo(1500, 2);
 
-      // SHOP entry created for commission
+      // SHOP entry: Unearned Commission drained (Phase A.2)
       const shopEntry = captured.find((e) => e.companyId === 'co-SHOP');
       expect(shopEntry).toBeTruthy();
-      const dueFromFinanceLine = shopEntry!.lines.find((l) => l.accountCode === '11-2105');
-      expect(dueFromFinanceLine!.debit).toBeCloseTo(300, 2);
+      const unearnedCommissionLine = shopEntry!.lines.find((l) => l.accountCode === '21-2201');
+      expect(unearnedCommissionLine!.debit).toBeCloseTo(300, 2);
       const commissionLine = shopEntry!.lines.find((l) => l.accountCode === '42-1105');
       expect(commissionLine!.credit).toBeCloseTo(300, 2);
+      // Phase A.2: no Due-from-FINANCE at payment (already established at activation)
+      const dueFromFinanceLine = shopEntry!.lines.find((l) => l.accountCode === '11-2105');
+      expect(dueFromFinanceLine).toBeUndefined();
 
       // Both share IC prefix
       expect(financeEntry!.description).toMatch(/^\[IC-/);
@@ -1489,7 +1515,7 @@ describe('JournalAutoService', () => {
       };
     }
 
-    it('balances when no discount (cash = sum of all components)', async () => {
+    it('balances when no discount (cash = sum of all components) — Phase A.2', async () => {
       const insts = [makeInst(), makeInst(), makeInst()]; // 3 × 1000 = 3000 owed
       await service.createEarlyPayoffJournal(prisma, {
         contractId: 'c-1', contractNumber: 'CNT-001',
@@ -1500,12 +1526,16 @@ describe('JournalAutoService', () => {
       expect(sumDebits(lines)).toBeCloseTo(sumCredits(lines), 2);
       const cashLine = lines.find((l) => l.accountCode === '11-1101');
       expect(Number(cashLine!.debit)).toBeCloseTo(3000, 2);
+      // Phase A.2: HP Receivable drains by full owed (sumPrincipal + interest + commission + VAT)
       const hpLine = lines.find((l) => l.accountCode === '11-2102');
-      expect(Number(hpLine!.credit)).toBeCloseTo(2400, 2); // 3 × 800
+      expect(Number(hpLine!.credit)).toBeCloseTo(3000, 2);
+      // Unearned Interest drained = sumInterestOrig (3 × 100 = 300)
+      const unearnedInterestLine = lines.find((l) => l.accountCode === '21-2202');
+      expect(Number(unearnedInterestLine!.debit)).toBeCloseTo(300, 2);
     });
 
-    it('balances when discount applied — principal in full, others scaled down', async () => {
-      const insts = [makeInst(), makeInst(), makeInst()]; // owed 3000, principal 2400
+    it('balances when discount applied — principal in full, others scaled down (Phase A.2)', async () => {
+      const insts = [makeInst(), makeInst(), makeInst()]; // owed 3000, principal 2400, others 600
       // 50% discount on grossProfit: discount=300 → totalPayoff=2700
       await service.createEarlyPayoffJournal(prisma, {
         contractId: 'c-1', contractNumber: 'CNT-001',
@@ -1516,13 +1546,16 @@ describe('JournalAutoService', () => {
       expect(sumDebits(lines)).toBeCloseTo(sumCredits(lines), 2);
       const cashLine = lines.find((l) => l.accountCode === '11-1101');
       expect(Number(cashLine!.debit)).toBeCloseTo(2700, 2);
-      // Principal MUST be settled in full
+      // Phase A.2: HP Receivable drains by full owed regardless of discount
       const hpLine = lines.find((l) => l.accountCode === '11-2102');
-      expect(Number(hpLine!.credit)).toBeCloseTo(2400, 2);
-      // Other 300 split proportionally across interest(300)+commission(150)+vat(150)=600
+      expect(Number(hpLine!.credit)).toBeCloseTo(3000, 2);
+      // Other 300 cash split proportionally across interest(300)+commission(150)+vat(150)=600
       // Scale = 300/600 = 0.5 → interest 150, commission 75, vat 75
       const interestLine = lines.find((l) => l.accountCode === '42-2101');
       expect(Number(interestLine!.credit)).toBeCloseTo(150, 2);
+      // Due-to-SHOP reduces by commission discount (75) — FINANCE owes SHOP less
+      const dueToShopLine = lines.find((l) => l.accountCode === '21-1102');
+      expect(Number(dueToShopLine!.debit)).toBeCloseTo(75, 2);
     });
 
     it('includes late fees in cash + as separate credit line', async () => {
@@ -1538,7 +1571,7 @@ describe('JournalAutoService', () => {
       expect(Number(lateFeeLine!.credit)).toBeCloseTo(200, 2);
     });
 
-    it('handles partial pre-existing pay by scaling remaining breakdown', async () => {
+    it('handles partial pre-existing pay by scaling remaining breakdown (Phase A.2)', async () => {
       // amountDue=1000, amountPaidBefore=400 → 60% remaining
       // Remaining: principal=480, interest=60, commission=30, vat=30 → total=600
       const insts = [makeInst({ amountPaidBefore: 400 })];
@@ -1549,8 +1582,9 @@ describe('JournalAutoService', () => {
       });
       const lines = capturedLines();
       expect(sumDebits(lines)).toBeCloseTo(sumCredits(lines), 2);
+      // Phase A.2: HP Receivable drains by full remaining owed = 600
       const hpLine = lines.find((l) => l.accountCode === '11-2102');
-      expect(Number(hpLine!.credit)).toBeCloseTo(480, 2);
+      expect(Number(hpLine!.credit)).toBeCloseTo(600, 2);
     });
 
     it('falls back to interest-only when breakdown is zero (legacy data)', async () => {
@@ -1599,6 +1633,146 @@ describe('JournalAutoService', () => {
       const icMatch = financeCall!.description.match(/\[IC-([0-9a-f-]+)\]/);
       expect(icMatch).not.toBeNull();
       expect(shopCall!.description).toContain(icMatch![0]);
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Phase A.2 — End-to-end deferred recognition lifecycle
+  // ──────────────────────────────────────────────────────────────────────────
+  describe('Phase A.2 — Deferred recognition lifecycle invariants', () => {
+    let captured: Array<{
+      companyId: string;
+      lines: Array<{ accountCode: string; debit: number; credit: number }>;
+    }>;
+
+    beforeEach(() => {
+      captured = [];
+      prisma.journalEntry.create.mockImplementation((args: any) => {
+        const data = args.data;
+        captured.push({
+          companyId: data.companyId,
+          lines: (data.lines.create as Array<{ accountCode: string; debit: unknown; credit: unknown }>).map((l) => ({
+            accountCode: l.accountCode,
+            debit: Number(l.debit ?? 0),
+            credit: Number(l.credit ?? 0),
+          })),
+        });
+        return Promise.resolve({ id: `je-${captured.length}` });
+      });
+      prisma.companyInfo.findFirst = jest.fn().mockImplementation((args: any) => {
+        if (args?.where?.companyCode === 'SHOP') return Promise.resolve({ id: 'co-SHOP' });
+        if (args?.where?.companyCode === 'FINANCE') return Promise.resolve({ id: 'co-FINANCE' });
+        return Promise.resolve(null);
+      });
+    });
+
+    function netBalance(company: string, accountCode: string): number {
+      const lines = captured.filter((c) => c.companyId === company).flatMap((c) => c.lines);
+      return lines
+        .filter((l) => l.accountCode === accountCode)
+        .reduce((sum, l) => sum + (l.debit || 0) - (l.credit || 0), 0);
+    }
+
+    it('full contract: activation + 12 payments → all deferred accounts drain to 0', async () => {
+      const sellingPrice = 11000;
+      const downPayment = 1000;
+      const principal = sellingPrice - downPayment; // 10000
+      const interestTotal = 1200;
+      const storeCommission = 600;
+      const vatAmount = 0;
+      const financedAmount = principal + storeCommission + interestTotal + vatAmount; // 11800
+      const totalMonths = 12;
+      const monthlyPayment = financedAmount / totalMonths; // 983.33
+      const monthlyPrincipal = principal / totalMonths; // 833.33
+      const monthlyInterest = interestTotal / totalMonths; // 100
+      const monthlyCommission = storeCommission / totalMonths; // 50
+      const monthlyVat = vatAmount / totalMonths;
+
+      // Activation
+      await service.createContractActivationJournal(prisma, {
+        contract: {
+          id: 'c-lifecycle',
+          contractNumber: 'CT-LIFECYCLE',
+          sellingPrice,
+          downPayment,
+          financedAmount,
+          interestTotal,
+          storeCommission,
+          vatAmount,
+        },
+        product: { costPrice: 8000, category: 'NEW_PHONE' },
+        userId: 'u-1',
+        shopCompanyId: 'co-SHOP',
+        financeCompanyId: 'co-FINANCE',
+      });
+
+      // 12 payments
+      for (let i = 1; i <= totalMonths; i++) {
+        await service.createPaymentJournal(prisma, {
+          payment: {
+            id: `p-${i}`,
+            installmentNo: i,
+            amountPaid: monthlyPayment,
+            monthlyPrincipal,
+            monthlyInterest,
+            monthlyCommission,
+            vatAmount: monthlyVat,
+            lateFee: 0,
+            lateFeeWaived: false,
+            paidDate: new Date(),
+          },
+          contract: { contractNumber: 'CT-LIFECYCLE', branchId: 'b-1' },
+          userId: 'u-1',
+          shopCompanyId: 'co-SHOP',
+          financeCompanyId: 'co-FINANCE',
+        });
+      }
+
+      // FINANCE invariants:
+      expect(netBalance('co-FINANCE', '11-2102')).toBeCloseTo(0, 2); // HP Receivable drained
+      expect(netBalance('co-FINANCE', '21-2202')).toBeCloseTo(0, 2); // Unearned Interest drained
+      expect(netBalance('co-FINANCE', '21-2102')).toBeCloseTo(0, 2); // VAT Pending drained
+      expect(netBalance('co-FINANCE', '11-1101')).toBeCloseTo(financedAmount, 2); // Cash collected = full
+      expect(netBalance('co-FINANCE', '42-2101')).toBeCloseTo(-interestTotal, 2); // Interest Income = total (Cr is negative balance)
+
+      // Due-to-SHOP unchanged from activation (awaits W-5 settlement)
+      const expectedDueToShop = -(sellingPrice + storeCommission - downPayment); // Cr balance
+      expect(netBalance('co-FINANCE', '21-1102')).toBeCloseTo(expectedDueToShop, 2);
+
+      // SHOP invariants:
+      expect(netBalance('co-SHOP', '21-2201')).toBeCloseTo(0, 2); // Unearned Commission drained
+      expect(netBalance('co-SHOP', '42-1105')).toBeCloseTo(-storeCommission, 2); // Commission Income = total (Cr)
+
+      // Every JE must balance individually
+      for (const entry of captured) {
+        const dr = entry.lines.reduce((s, l) => s + (l.debit || 0), 0);
+        const cr = entry.lines.reduce((s, l) => s + (l.credit || 0), 0);
+        expect(Math.abs(dr - cr)).toBeLessThan(0.01);
+      }
+    });
+
+    it('inter-company invariant holds: SHOP Due-from-FINANCE == FINANCE Due-to-SHOP', async () => {
+      // Activation (SHOP debits Due-from, FINANCE credits Due-to)
+      await service.createContractActivationJournal(prisma, {
+        contract: {
+          id: 'c-ic',
+          contractNumber: 'CT-IC',
+          sellingPrice: 11000,
+          downPayment: 1000,
+          financedAmount: 11800,
+          interestTotal: 1200,
+          storeCommission: 600,
+          vatAmount: 0,
+        },
+        product: { costPrice: 8000, category: 'NEW_PHONE' },
+        userId: 'u-1',
+        shopCompanyId: 'co-SHOP',
+        financeCompanyId: 'co-FINANCE',
+      });
+
+      const shopDueFrom = netBalance('co-SHOP', '11-2105');     // Asset (Dr balance positive)
+      const financeDueTo = -netBalance('co-FINANCE', '21-1102'); // Liability (Cr balance flipped)
+      expect(Math.abs(shopDueFrom - financeDueTo)).toBeLessThan(0.01);
     });
   });
 

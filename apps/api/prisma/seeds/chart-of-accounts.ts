@@ -96,7 +96,8 @@ export async function seedChartOfAccounts(prisma: PrismaClient): Promise<void> {
 
   await seedFinanceChartOfAccounts(prisma, financeCompany.id);
 
-  // SHOP-side accounts required by Phase A.1b inter-company JEs.
+  // SHOP-side accounts required by Phase A.1b inter-company JEs +
+  // Phase A.2 unearned commission deferred recognition.
   // Owner CSV does not include these — explicit upserts ensure they exist.
   const shopExtraAccounts: Array<{
     code: string;
@@ -118,6 +119,13 @@ export async function seedChartOfAccounts(prisma: PrismaClient): Promise<void> {
       nameEn: 'Commission Income from FINANCE',
       accountGroup: AccountGroup.REVENUE,
       parentCode: '42-11XX',
+    },
+    {
+      code: '21-2201',
+      nameTh: 'รายได้ค่านายหน้ารอตัดบัญชี (Unearned Commission)',
+      nameEn: 'Unearned Commission Income',
+      accountGroup: AccountGroup.LIABILITY,
+      parentCode: '21-22XX',
     },
   ];
 

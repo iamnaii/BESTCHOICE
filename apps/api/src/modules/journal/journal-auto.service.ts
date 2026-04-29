@@ -39,6 +39,7 @@ export class JournalAutoService {
     COGS_USED: '51-1102',
     COMMISSION_INCOME: '42-1105',
     DUE_FROM_FINANCE: '11-2105',
+    UNEARNED_COMMISSION: '21-2201', // Phase A.2 — deferred commission income
   } as const;
 
   // FINANCE-side accounts (in FINANCE chart)
@@ -58,11 +59,13 @@ export class JournalAutoService {
     COGS_NEW: '51-2101',
     COGS_USED: '51-2102',
     VAT_OUTPUT: '21-2101',
+    VAT_OUTPUT_PENDING: '21-2102', // Phase A.2 — deferred output VAT (booked at activation, drained per payment)
     CUSTOMER_CREDIT: '21-5101',
     DUE_TO_SHOP: '21-1102',
     BAD_DEBT_EXPENSE: '53-1701',
     COMMISSION_EXPENSE: '53-1801',
     LOSS_ON_REPO_RESALE: '53-1804',
+    UNEARNED_INTEREST: '21-2202', // Phase A.2 — deferred interest income
   } as const;
 
   constructor(private prisma: PrismaService) {}
@@ -306,19 +309,23 @@ export class JournalAutoService {
       ? new Prisma.Decimal(0)
       : new Prisma.Decimal(params.payment.lateFee ?? 0);
 
-    // If breakdown is missing (legacy/manual payment), settle whole amount against receivable as fallback
+    // Phase A.2 model: HP Receivable was loaded with the full installment
+    // (principal + commission + interest + VAT) at activation. Each payment
+    // drains the receivable by the installment portion of cash received
+    // (= amountPaid - lateFee). Late fees are recognised as separate income.
     const isZeroBreakdown =
-      principal.isZero() &&
-      interest.isZero() &&
-      commission.isZero() &&
-      vat.isZero() &&
-      lateFee.isZero();
-    const hpReceivableCredit = isZeroBreakdown ? amountPaid.sub(lateFee) : principal;
+      principal.isZero() && interest.isZero() && commission.isZero() && vat.isZero() && lateFee.isZero();
+    const hpReceivableCredit = isZeroBreakdown ? amountPaid.sub(lateFee) : amountPaid.sub(lateFee);
 
     const intercompanyId = commission.gt(0) ? generateInterCompanyId() : null;
     const baseDesc = `รับชำระค่างวด งวดที่ ${params.payment.installmentNo} สัญญา ${params.contract.contractNumber}`;
 
-    // FINANCE entry (always)
+    // FINANCE entry (always).
+    // Phase A.2 deferred-recognition lines:
+    //   Dr Unearned Interest          → Cr Interest Income       (recognise interest as earned)
+    //   Dr Output VAT Pending         → Cr Output VAT (PP.30)    (recognise VAT as payable)
+    // Removed: Cr Due-to-SHOP (commission was already accrued in full at
+    // contract activation; per-payment Cr would double-create the liability).
     const financeDesc = intercompanyId
       ? formatInterCompanyDescription(intercompanyId, `${baseDesc} (FINANCE)`)
       : baseDesc;
@@ -331,15 +338,18 @@ export class JournalAutoService {
       createdById: params.userId,
       lines: [
         { accountCode: FA.CASH, description: 'รับชำระเงิน', debit: amountPaid.toNumber(), credit: 0 },
+        { accountCode: FA.UNEARNED_INTEREST, description: 'ตัดดอกเบี้ยรอตัดบัญชี', debit: interest.toNumber(), credit: 0 },
+        { accountCode: FA.VAT_OUTPUT_PENDING, description: 'ตัดภาษีขายรอเรียกเก็บ', debit: vat.toNumber(), credit: 0 },
         { accountCode: FA.HP_RECEIVABLE, description: 'ตัดลูกหนี้เช่าซื้อ', debit: 0, credit: hpReceivableCredit.toNumber() },
         { accountCode: FA.INTEREST_INCOME, description: 'รายได้ดอกเบี้ยเช่าซื้อ', debit: 0, credit: interest.toNumber() },
         { accountCode: FA.LATE_FEE_INCOME, description: 'ค่าปรับล่าช้า', debit: 0, credit: lateFee.toNumber() },
         { accountCode: FA.VAT_OUTPUT, description: 'ภาษีขาย', debit: 0, credit: vat.toNumber() },
-        { accountCode: FA.DUE_TO_SHOP, description: 'ค่าคอมมิชชันค้างจ่าย SHOP', debit: 0, credit: commission.toNumber() },
       ],
     });
 
-    // SHOP entry — only when commission > 0
+    // SHOP entry — only when commission > 0.
+    // Phase A.2: recognise commission as earned by draining Unearned Commission.
+    // Removed: Dr Due-from-FINANCE (receivable already established at activation).
     if (commission.gt(0) && shopCompanyId && intercompanyId) {
       await this.createAndPost(tx, {
         companyId: shopCompanyId,
@@ -349,8 +359,8 @@ export class JournalAutoService {
         referenceId: params.payment.id,
         createdById: params.userId,
         lines: [
-          { accountCode: SA.DUE_FROM_FINANCE, description: 'ค่าคอมมิชชันรับจาก FINANCE', debit: commission.toNumber(), credit: 0 },
-          { accountCode: SA.COMMISSION_INCOME, description: 'รายได้ค่าคอมมิชชัน', debit: 0, credit: commission.toNumber() },
+          { accountCode: SA.UNEARNED_COMMISSION, description: 'ตัดค่านายหน้ารอตัดบัญชี', debit: commission.toNumber(), credit: 0 },
+          { accountCode: SA.COMMISSION_INCOME, description: 'รายได้ค่านายหน้า', debit: 0, credit: commission.toNumber() },
         ],
       });
     }
@@ -446,15 +456,20 @@ export class JournalAutoService {
     }
 
     sumPrincipal = sumPrincipal.toDecimalPlaces(2);
+    sumInterestOrig = sumInterestOrig.toDecimalPlaces(2);
+    sumCommissionOrig = sumCommissionOrig.toDecimalPlaces(2);
+    sumVatOrig = sumVatOrig.toDecimalPlaces(2);
     sumLateFee = sumLateFee.toDecimalPlaces(2);
 
     const cash = new Prisma.Decimal(params.totalPayoff);
     const cashExclLateFee = cash.sub(sumLateFee);
     const sumOtherOrig = sumInterestOrig.add(sumCommissionOrig).add(sumVatOrig);
+    // Total receivable owed for the unpaid installments (= what HP Receivable
+    // must drain by — installments were loaded with full breakdown at activation).
+    const sumOwedExclLateFee = sumPrincipal.add(sumOtherOrig);
 
-    // Allocate non-principal cash proportionally (reduce interest/commission/vat
-    // by the discount). If breakdown is fully zero (legacy), assign whole non-
-    // principal to interest as fallback.
+    // Phase A.2: discount allocates proportionally across interest/commission/vat.
+    // Principal must always be settled in full (HP Receivable drain to zero).
     let interestActual = new Prisma.Decimal(0);
     let commissionActual = new Prisma.Decimal(0);
     let vatActual = new Prisma.Decimal(0);
@@ -475,10 +490,23 @@ export class JournalAutoService {
       interestActual = nonPrincipalActual.toDecimalPlaces(2);
     }
 
-    const intercompanyId = commissionActual.gt(0) ? generateInterCompanyId() : null;
+    // Discount portions per component (forfeited income).
+    const commissionDiscount = sumCommissionOrig.sub(commissionActual).toDecimalPlaces(2);
+
+    const intercompanyId = sumCommissionOrig.gt(0) ? generateInterCompanyId() : null;
     const baseDesc = `ปิดสัญญาก่อนกำหนด — สัญญา ${params.contractNumber}`;
     const entryDate = params.paidDate ?? new Date();
 
+    // FINANCE entry — Phase A.2:
+    //   Dr Cash                       totalPayoff
+    //   Dr Unearned Interest          sumInterestOrig                (drain full deferred)
+    //   Dr VAT Pending                sumVatOrig                      (drain full deferred)
+    //   Dr Due-to-SHOP                commissionDiscount              (FINANCE owes SHOP less)
+    //     Cr HP Receivable             sumOwedExclLateFee             (drain receivable)
+    //     Cr Interest Income           interestActual                  (recognize earned)
+    //     Cr VAT Output (PP.30)        vatActual                       (recognize VAT collected)
+    //     Cr Late Fee Income           sumLateFee
+    // The implicit interest/VAT discount = (Unearned drain - Income recognised).
     const financeDesc = intercompanyId
       ? formatInterCompanyDescription(intercompanyId, `${baseDesc} (FINANCE)`)
       : baseDesc;
@@ -491,15 +519,21 @@ export class JournalAutoService {
       createdById: params.userId,
       lines: [
         { accountCode: FA.CASH, description: 'รับชำระปิดก่อนกำหนด', debit: cash.toNumber(), credit: 0 },
-        { accountCode: FA.HP_RECEIVABLE, description: 'ตัดลูกหนี้เช่าซื้อ', debit: 0, credit: sumPrincipal.toNumber() },
+        { accountCode: FA.UNEARNED_INTEREST, description: 'ตัดดอกเบี้ยรอตัดบัญชี', debit: sumInterestOrig.toNumber(), credit: 0 },
+        { accountCode: FA.VAT_OUTPUT_PENDING, description: 'ตัดภาษีขายรอเรียกเก็บ', debit: sumVatOrig.toNumber(), credit: 0 },
+        { accountCode: FA.DUE_TO_SHOP, description: 'ลดเจ้าหนี้ระหว่างบริษัท (ส่วนลดคอมมิชชัน)', debit: commissionDiscount.toNumber(), credit: 0 },
+        { accountCode: FA.HP_RECEIVABLE, description: 'ตัดลูกหนี้เช่าซื้อ', debit: 0, credit: sumOwedExclLateFee.toNumber() },
         { accountCode: FA.INTEREST_INCOME, description: 'รายได้ดอกเบี้ยเช่าซื้อ', debit: 0, credit: interestActual.toNumber() },
-        { accountCode: FA.LATE_FEE_INCOME, description: 'ค่าปรับล่าช้า', debit: 0, credit: sumLateFee.toNumber() },
         { accountCode: FA.VAT_OUTPUT, description: 'ภาษีขาย', debit: 0, credit: vatActual.toNumber() },
-        { accountCode: FA.DUE_TO_SHOP, description: 'ค่าคอมมิชชันค้างจ่าย SHOP', debit: 0, credit: commissionActual.toNumber() },
+        { accountCode: FA.LATE_FEE_INCOME, description: 'ค่าปรับล่าช้า', debit: 0, credit: sumLateFee.toNumber() },
       ],
     });
 
-    if (commissionActual.gt(0) && params.shopCompanyId && intercompanyId) {
+    // SHOP entry — Phase A.2:
+    //   Dr Unearned Commission         sumCommissionOrig             (drain full)
+    //     Cr Commission Income          commissionActual              (recognize earned)
+    //     Cr Due-from-FINANCE           commissionDiscount            (mirrors FINANCE Due-to-SHOP reduction)
+    if (sumCommissionOrig.gt(0) && params.shopCompanyId && intercompanyId) {
       await this.createAndPost(tx, {
         companyId: params.shopCompanyId,
         entryDate,
@@ -508,8 +542,9 @@ export class JournalAutoService {
         referenceId: params.contractId,
         createdById: params.userId,
         lines: [
-          { accountCode: SA.DUE_FROM_FINANCE, description: 'ค่าคอมมิชชันรับจาก FINANCE', debit: commissionActual.toNumber(), credit: 0 },
-          { accountCode: SA.COMMISSION_INCOME, description: 'รายได้ค่าคอมมิชชัน', debit: 0, credit: commissionActual.toNumber() },
+          { accountCode: SA.UNEARNED_COMMISSION, description: 'ตัดค่านายหน้ารอตัดบัญชี', debit: sumCommissionOrig.toNumber(), credit: 0 },
+          { accountCode: SA.COMMISSION_INCOME, description: 'รายได้ค่านายหน้า', debit: 0, credit: commissionActual.toNumber() },
+          { accountCode: SA.DUE_FROM_FINANCE, description: 'ลดลูกหนี้ระหว่างบริษัท (ส่วนลดคอมมิชชัน)', debit: 0, credit: commissionDiscount.toNumber() },
         ],
       });
     }
@@ -646,6 +681,12 @@ export class JournalAutoService {
     const intercompanyId = commission.gt(0) ? generateInterCompanyId() : null;
     const baseDesc = `ใช้เครดิตลูกค้าตัดงวด งวดที่ ${params.payment.installmentNo} สัญญา ${params.contract.contractNumber}`;
 
+    // Phase A.2: Same model as createPaymentJournal but Customer Credit replaces
+    // Cash on the FINANCE side. HP Receivable drains by amountAllocated - lateFee
+    // (= installment portion). Interest + VAT swap from deferred to recognised.
+    // Late fee is rare for credit allocation but handled symmetrically.
+    const hpReceivableCredit = amountAllocated.sub(effectiveLateFee);
+
     const financeDesc = intercompanyId
       ? formatInterCompanyDescription(intercompanyId, `${baseDesc} (FINANCE)`)
       : baseDesc;
@@ -658,11 +699,12 @@ export class JournalAutoService {
       createdById: params.userId,
       lines: [
         { accountCode: FA.CUSTOMER_CREDIT, description: 'ใช้เครดิตลูกค้า', debit: amountAllocated.toNumber(), credit: 0 },
-        { accountCode: FA.HP_RECEIVABLE, description: 'ตัดลูกหนี้เช่าซื้อ', debit: 0, credit: principal.toNumber() },
+        { accountCode: FA.UNEARNED_INTEREST, description: 'ตัดดอกเบี้ยรอตัดบัญชี', debit: interest.toNumber(), credit: 0 },
+        { accountCode: FA.VAT_OUTPUT_PENDING, description: 'ตัดภาษีขายรอเรียกเก็บ', debit: vat.toNumber(), credit: 0 },
+        { accountCode: FA.HP_RECEIVABLE, description: 'ตัดลูกหนี้เช่าซื้อ', debit: 0, credit: hpReceivableCredit.toNumber() },
         { accountCode: FA.INTEREST_INCOME, description: 'รายได้ดอกเบี้ยเช่าซื้อ', debit: 0, credit: interest.toNumber() },
         { accountCode: FA.LATE_FEE_INCOME, description: 'ค่าปรับล่าช้า', debit: 0, credit: effectiveLateFee.toNumber() },
         { accountCode: FA.VAT_OUTPUT, description: 'ภาษีขาย', debit: 0, credit: vat.toNumber() },
-        { accountCode: FA.DUE_TO_SHOP, description: 'ค่าคอมมิชชันค้างจ่าย SHOP', debit: 0, credit: commission.toNumber() },
       ],
     });
 
@@ -676,8 +718,8 @@ export class JournalAutoService {
         referenceId: params.payment.id,
         createdById: params.userId,
         lines: [
-          { accountCode: SA.DUE_FROM_FINANCE, description: 'ค่าคอมมิชชันรับจาก FINANCE', debit: commission.toNumber(), credit: 0 },
-          { accountCode: SA.COMMISSION_INCOME, description: 'รายได้ค่าคอมมิชชัน', debit: 0, credit: commission.toNumber() },
+          { accountCode: SA.UNEARNED_COMMISSION, description: 'ตัดค่านายหน้ารอตัดบัญชี', debit: commission.toNumber(), credit: 0 },
+          { accountCode: SA.COMMISSION_INCOME, description: 'รายได้ค่านายหน้า', debit: 0, credit: commission.toNumber() },
         ],
       });
     }
@@ -858,7 +900,8 @@ export class JournalAutoService {
       shopLines.push({ accountCode: shopRevenueAcc, description: 'รายได้จากการขาย', debit: 0, credit: sellingPrice.toNumber() });
     }
     if (storeCommission.greaterThan(0)) {
-      shopLines.push({ accountCode: SA.COMMISSION_INCOME, description: 'รายได้ค่าคอมมิชชัน', debit: 0, credit: storeCommission.toNumber() });
+      // Phase A.2: defer commission income — recognised cash-basis per payment.
+      shopLines.push({ accountCode: SA.UNEARNED_COMMISSION, description: 'รายได้ค่านายหน้ารอตัดบัญชี', debit: 0, credit: storeCommission.toNumber() });
     }
     if (costPrice.greaterThan(0)) {
       shopLines.push({ accountCode: shopCogsAcc, description: 'ต้นทุนขาย', debit: costPrice.toNumber(), credit: 0 });
@@ -888,10 +931,14 @@ export class JournalAutoService {
       financeLines.push({ accountCode: FA.DUE_TO_SHOP, description: 'เจ้าหนี้ระหว่างบริษัท (SHOP)', debit: 0, credit: dueFromFinance.toNumber() });
     }
     if (interestTotal.greaterThan(0)) {
-      financeLines.push({ accountCode: FA.INTEREST_INCOME, description: 'รายได้ดอกเบี้ยเช่าซื้อ', debit: 0, credit: interestTotal.toNumber() });
+      // Phase A.2: defer interest — recognised cash-basis per payment via
+      // Dr Unearned Interest / Cr Interest Income in createPaymentJournal.
+      financeLines.push({ accountCode: FA.UNEARNED_INTEREST, description: 'รายได้ดอกเบี้ยรอตัดบัญชี', debit: 0, credit: interestTotal.toNumber() });
     }
     if (vatAmount.greaterThan(0)) {
-      financeLines.push({ accountCode: FA.VAT_OUTPUT, description: 'ภาษีขาย', debit: 0, credit: vatAmount.toNumber() });
+      // Phase A.2: defer VAT — VAT becomes payable to the revenue dept as
+      // each installment's tax invoice is issued, not at activation.
+      financeLines.push({ accountCode: FA.VAT_OUTPUT_PENDING, description: 'ภาษีขายรอเรียกเก็บ', debit: 0, credit: vatAmount.toNumber() });
     }
 
     const financeEntryId = await this.createAndPost(tx, {

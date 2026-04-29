@@ -17,11 +17,13 @@ export class ChartOfAccountsController {
     @Query('group') group?: AccountGroup,
     @Query('active') active?: string,
     @Query('q') q?: string,
+    @Query('companyId') companyId?: string,
   ) {
     return this.service.findAll({
       group,
       active: active != null ? active === 'true' : undefined,
       q,
+      companyId: companyId === 'SHARED' ? 'SHARED' : companyId,
     });
   }
 

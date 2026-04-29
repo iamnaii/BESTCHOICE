@@ -23,24 +23,44 @@ import { PrismaService } from '../../prisma/prisma.service';
 export class JournalAutoService {
   private readonly logger = new Logger(JournalAutoService.name);
 
-  // Account codes — single source of truth
-  static readonly ACC = {
+  // Phase A.1a: Account codes partitioned by company chart.
+  // SHOP and FINANCE have separate chart-of-accounts. Each side's accounts
+  // must be looked up by composite (companyId, code).
+
+  // SHOP-side accounts (in SHOP chart)
+  static readonly SHOP_ACC = {
     CASH: '11-1101',
-    HP_RECEIVABLE: '11-2102',
-    INVENTORY_NEW: '11-3101',
-    INVENTORY_USED: '11-3102',
-    VAT_INPUT: '11-4101',
-    VAT_OUTPUT: '21-2101',
-    ALLOWANCE_DOUBTFUL: '11-2103',  // ค่าเผื่อหนี้สงสัยจะสูญ (contra asset; matches chart-of-accounts seed)
-    CUSTOMER_CREDIT: '21-5101',
     REVENUE_NEW: '41-1101',
     REVENUE_USED: '41-1102',
-    INTEREST_INCOME: '42-1101',     // รายได้ดอกเบี้ยเช่าซื้อ (HP interest revenue)
-    LATE_FEE_INCOME: '42-1102',
-    COMMISSION_INCOME: '42-1105',
+    INVENTORY_NEW: '11-3101',
+    INVENTORY_USED: '11-3102',
     COGS_NEW: '51-1101',
     COGS_USED: '51-1102',
-    BAD_DEBT_EXPENSE: '53-1101',    // หนี้สูญ
+    COMMISSION_INCOME: '42-1105',
+    DUE_FROM_FINANCE: '11-2105',
+  } as const;
+
+  // FINANCE-side accounts (in FINANCE chart)
+  static readonly FINANCE_ACC = {
+    CASH: '11-1101',
+    HP_RECEIVABLE: '11-2102',
+    ALLOWANCE_DOUBTFUL: '11-2103',
+    REPO_INVENTORY: '11-3103',
+    INVENTORY_NEW: '11-3104',
+    INVENTORY_USED: '11-3105',
+    VAT_INPUT: '11-4101',
+    REVENUE_NEW: '41-2101',
+    REVENUE_USED: '41-2102',
+    INTEREST_INCOME: '42-2101',
+    LATE_FEE_INCOME: '42-2102',
+    REPOSSESSION_INCOME: '42-2104',
+    COGS_NEW: '51-2101',
+    COGS_USED: '51-2102',
+    VAT_OUTPUT: '21-2101',
+    CUSTOMER_CREDIT: '21-5101',
+    DUE_TO_SHOP: '21-1102',
+    BAD_DEBT_EXPENSE: '53-1701',
+    COMMISSION_EXPENSE: '53-1801',
   } as const;
 
   constructor(private prisma: PrismaService) {}
@@ -105,30 +125,19 @@ export class JournalAutoService {
       throw new InternalServerErrorException(msg);
     }
 
-    // F-3-027 part 3/3: validate allowedCompanies for each line's account
+    // Phase A.1a: validate accounts exist in this company's chart
+    // (composite (companyId, code) lookup — chart is now partitioned by company)
     const codes = [...new Set(lines.map((l) => l.accountCode))];
-    const [accounts, company] = await Promise.all([
-      tx.chartOfAccount.findMany({
-        where: { code: { in: codes } },
-        select: { code: true, nameTh: true, allowedCompanies: true },
-      }),
-      tx.companyInfo.findUnique({
-        where: { id: params.companyId },
-        select: { companyCode: true },
-      }),
-    ]);
-    if (!company) {
-      throw new BadRequestException(`Company ${params.companyId} not found`);
-    }
-    if (company.companyCode) {
-      const companyCode = company.companyCode;
-      for (const acc of accounts) {
-        if (acc.allowedCompanies.length > 0 && !acc.allowedCompanies.includes(companyCode)) {
-          throw new BadRequestException(
-            `Account ${acc.code} (${acc.nameTh}) ใช้ไม่ได้กับบริษัท ${companyCode}`,
-          );
-        }
-      }
+    const accounts = await tx.chartOfAccount.findMany({
+      where: { code: { in: codes }, companyId: params.companyId, deletedAt: null },
+      select: { code: true, nameTh: true },
+    });
+    const foundCodes = new Set(accounts.map((a) => a.code));
+    const missing = codes.filter((c) => !foundCodes.has(c));
+    if (missing.length > 0) {
+      throw new BadRequestException(
+        `Account(s) ${missing.join(', ')} ไม่อยู่ใน chart ของ companyId ${params.companyId}`,
+      );
     }
 
     // F-6-002: soft-block — if entryDate in CLOSED period, redirect to current
@@ -188,14 +197,18 @@ export class JournalAutoService {
   }
 
   /**
-   * Auto journal — Payment received from customer.
+   * Auto journal — Payment received from customer (FINANCE side).
    *
    * Dr. Cash/Bank                    [amountPaid]
-   *   Cr. Hire-Purchase Receivable   [monthlyPrincipal only — NOT principal+interest]
+   *   Cr. Hire-Purchase Receivable   [principal + commission — see A.1a note]
    *   Cr. Interest Income            [monthlyInterest]
-   *   Cr. Commission Income          [monthlyCommission]
    *   Cr. VAT Output                 [vatAmount]
    *   Cr. Late Fee Income            [lateFee — if any]
+   *
+   * Phase A.1a: Commission income line REMOVED. Commission is folded into
+   * the HP receivable credit temporarily; A.1b will introduce inter-company
+   * journal entries (FINANCE commission expense + SHOP commission income).
+   * Sentry alarm fires when commission > 0 to surface deferred work.
    *
    * Interest is recognised as a separate revenue line (cash basis).
    * Late fees are NOT charged VAT (owner policy).
@@ -235,12 +248,29 @@ export class JournalAutoService {
       ? new Prisma.Decimal(0)
       : new Prisma.Decimal(params.payment.lateFee ?? 0);
 
-    // HP receivable is reduced by principal only — interest is recognised as separate revenue
-    const hpSettled = principal;
+    // Phase A.1a: HP receivable absorbs principal + commission temporarily
+    // (commission's own income line removed pending A.1b inter-company wiring).
+    // Interest, VAT, late fee remain as their own credit lines.
+    const hpSettled = principal.add(commission);
     // If breakdown is missing (legacy/manual payment), settle whole amount against receivable as fallback
     const isZeroBreakdown = principal.isZero() && interest.isZero() && commission.isZero() && vat.isZero() && lateFee.isZero();
     const fallbackHp = isZeroBreakdown ? amountPaid.sub(lateFee) : hpSettled;
 
+    // Phase A.1a: payment journal posts to FINANCE side only.
+    // Commission income line REMOVED — defer inter-company JE wiring to A.1b.
+    if (commission.gt(0)) {
+      Sentry.captureMessage('Payment commission not yet posted (deferred to A.1b)', {
+        level: 'info',
+        tags: { module: 'journal', kind: 'commission-deferred' },
+        extra: {
+          paymentId: params.payment.id,
+          contractNumber: params.contract.contractNumber,
+          amount: commission.toString(),
+        },
+      });
+    }
+
+    const FA = JournalAutoService.FINANCE_ACC;
     return this.createAndPost(tx, {
       companyId,
       entryDate: params.payment.paidDate || new Date(),
@@ -249,12 +279,12 @@ export class JournalAutoService {
       referenceId: params.payment.id,
       createdById: params.userId,
       lines: [
-        { accountCode: JournalAutoService.ACC.CASH, description: 'รับชำระเงิน', debit: amountPaid.toNumber(), credit: 0 },
-        { accountCode: JournalAutoService.ACC.HP_RECEIVABLE, description: 'ตัดลูกหนี้เช่าซื้อ', debit: 0, credit: fallbackHp.toNumber() },
-        { accountCode: JournalAutoService.ACC.INTEREST_INCOME, description: 'รายได้ดอกเบี้ยเช่าซื้อ', debit: 0, credit: interest.toNumber() },
-        { accountCode: JournalAutoService.ACC.COMMISSION_INCOME, description: 'รายได้ค่าคอมมิชชัน', debit: 0, credit: commission.toNumber() },
-        { accountCode: JournalAutoService.ACC.VAT_OUTPUT, description: 'ภาษีขาย', debit: 0, credit: vat.toNumber() },
-        { accountCode: JournalAutoService.ACC.LATE_FEE_INCOME, description: 'ค่าปรับล่าช้า', debit: 0, credit: lateFee.toNumber() },
+        { accountCode: FA.CASH, description: 'รับชำระเงิน', debit: amountPaid.toNumber(), credit: 0 },
+        { accountCode: FA.HP_RECEIVABLE, description: 'ตัดลูกหนี้เช่าซื้อ (รวม commission ชั่วคราวจนกว่า A.1b)', debit: 0, credit: fallbackHp.toNumber() },
+        { accountCode: FA.INTEREST_INCOME, description: 'รายได้ดอกเบี้ยเช่าซื้อ', debit: 0, credit: interest.toNumber() },
+        // COMMISSION_INCOME line removed (Phase A.1a) — see Sentry alarm above; A.1b will post inter-company commission.
+        { accountCode: FA.VAT_OUTPUT, description: 'ภาษีขาย', debit: 0, credit: vat.toNumber() },
+        { accountCode: FA.LATE_FEE_INCOME, description: 'ค่าปรับล่าช้า', debit: 0, credit: lateFee.toNumber() },
       ],
     });
   }
@@ -295,6 +325,18 @@ export class JournalAutoService {
     const vat = new Prisma.Decimal(params.expense.vatAmount ?? 0);
     const total = new Prisma.Decimal(params.expense.totalAmount ?? 0);
 
+    // Phase A.1a: pick SHOP_ACC vs FINANCE_ACC based on owning company.
+    // SHOP is not VAT-registered, so VAT_INPUT only applies to FINANCE expenses.
+    const company = await tx.companyInfo.findUnique({
+      where: { id: companyId },
+      select: { companyCode: true },
+    });
+    const isShop = company?.companyCode === 'SHOP';
+    const SA = JournalAutoService.SHOP_ACC;
+    const FA = JournalAutoService.FINANCE_ACC;
+    const cashAcc = isShop ? SA.CASH : FA.CASH;
+    const vatInputAcc = FA.VAT_INPUT; // SHOP has no VAT chart entry; vat should be 0 for SHOP expenses
+
     return this.createAndPost(tx, {
       companyId,
       entryDate: params.expense.paymentDate || params.expense.expenseDate,
@@ -304,8 +346,8 @@ export class JournalAutoService {
       createdById: params.userId,
       lines: [
         { accountCode: params.expense.accountCode, description: params.expense.description, debit: amount.toNumber(), credit: 0 },
-        { accountCode: JournalAutoService.ACC.VAT_INPUT, description: 'ภาษีซื้อ', debit: vat.toNumber(), credit: 0 },
-        { accountCode: JournalAutoService.ACC.CASH, description: 'จ่ายเงิน', debit: 0, credit: total.toNumber() },
+        { accountCode: vatInputAcc, description: 'ภาษีซื้อ', debit: vat.toNumber(), credit: 0 },
+        { accountCode: cashAcc, description: 'จ่ายเงิน', debit: 0, credit: total.toNumber() },
       ],
     });
   }
@@ -358,11 +400,15 @@ export class JournalAutoService {
     // (computed by installment.util.ts:56 calculateInstallment). Adding them again would
     // double-count and unbalance the JE — see F-2-001.
     const hpReceivable = financedAmount;
+    // Phase A.1a: contract activation posts to FINANCE side using FINANCE chart codes.
+    // SHOP-side split (sales revenue + COGS on SHOP books, FINANCE pays SHOP for goods)
+    // is deferred to A.1b inter-company JE wiring.
+    const FA = JournalAutoService.FINANCE_ACC;
     const isUsed = (params.product.category || '').toLowerCase().includes('used') ||
       (params.product.category || '').includes('มือสอง');
-    const revenueAcc = isUsed ? JournalAutoService.ACC.REVENUE_USED : JournalAutoService.ACC.REVENUE_NEW;
-    const cogsAcc = isUsed ? JournalAutoService.ACC.COGS_USED : JournalAutoService.ACC.COGS_NEW;
-    const inventoryAcc = isUsed ? JournalAutoService.ACC.INVENTORY_USED : JournalAutoService.ACC.INVENTORY_NEW;
+    const revenueAcc = isUsed ? FA.REVENUE_USED : FA.REVENUE_NEW;
+    const cogsAcc = isUsed ? FA.COGS_USED : FA.COGS_NEW;
+    const inventoryAcc = isUsed ? FA.INVENTORY_USED : FA.INVENTORY_NEW;
 
     // Sales + receivable entry
     const salesEntryId = await this.createAndPost(tx, {
@@ -373,11 +419,11 @@ export class JournalAutoService {
       referenceId: params.contract.id,
       createdById: params.userId,
       lines: [
-        { accountCode: JournalAutoService.ACC.CASH, description: 'รับเงินดาวน์', debit: downPayment.toNumber(), credit: 0 },
-        { accountCode: JournalAutoService.ACC.HP_RECEIVABLE, description: 'ลูกหนี้เช่าซื้อ', debit: hpReceivable.toNumber(), credit: 0 },
+        { accountCode: FA.CASH, description: 'รับเงินดาวน์', debit: downPayment.toNumber(), credit: 0 },
+        { accountCode: FA.HP_RECEIVABLE, description: 'ลูกหนี้เช่าซื้อ', debit: hpReceivable.toNumber(), credit: 0 },
         { accountCode: revenueAcc, description: 'รายได้จากการขาย', debit: 0, credit: revenue.toNumber() },
-        { accountCode: JournalAutoService.ACC.INTEREST_INCOME, description: 'รายได้ดอกเบี้ยเช่าซื้อ', debit: 0, credit: interest.toNumber() },
-        { accountCode: JournalAutoService.ACC.VAT_OUTPUT, description: 'ภาษีขาย', debit: 0, credit: vat.toNumber() },
+        { accountCode: FA.INTEREST_INCOME, description: 'รายได้ดอกเบี้ยเช่าซื้อ', debit: 0, credit: interest.toNumber() },
+        { accountCode: FA.VAT_OUTPUT, description: 'ภาษีขาย', debit: 0, credit: vat.toNumber() },
       ],
     });
 
@@ -477,6 +523,8 @@ export class JournalAutoService {
       ? writeOff.sub(provision)
       : new Prisma.Decimal(0);
 
+    // Phase A.1a: bad debt write-off is FINANCE-side (HP receivable lives on FINANCE chart).
+    const FA = JournalAutoService.FINANCE_ACC;
     return this.createAndPost(tx, {
       companyId,
       entryDate: new Date(),
@@ -486,19 +534,19 @@ export class JournalAutoService {
       createdById: params.createdById,
       lines: [
         {
-          accountCode: JournalAutoService.ACC.BAD_DEBT_EXPENSE,
+          accountCode: FA.BAD_DEBT_EXPENSE,
           description: 'ค่าใช้จ่ายหนี้สูญ',
           debit: incrementalExpense.toNumber(),
           credit: 0,
         },
         {
-          accountCode: JournalAutoService.ACC.ALLOWANCE_DOUBTFUL,
+          accountCode: FA.ALLOWANCE_DOUBTFUL,
           description: 'ใช้ค่าเผื่อหนี้สงสัยจะสูญ',
           debit: provision.toNumber(),
           credit: 0,
         },
         {
-          accountCode: JournalAutoService.ACC.HP_RECEIVABLE,
+          accountCode: FA.HP_RECEIVABLE,
           description: 'ตัดลูกหนี้เช่าซื้อ',
           debit: 0,
           credit: writeOff.toNumber(),

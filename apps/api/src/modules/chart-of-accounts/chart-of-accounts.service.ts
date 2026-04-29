@@ -7,10 +7,23 @@ import { AccountGroup } from '@prisma/client';
 export class ChartOfAccountsService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll(filter?: { group?: AccountGroup; active?: boolean; q?: string }) {
+  async findAll(filter?: {
+    group?: AccountGroup;
+    active?: boolean;
+    q?: string;
+    companyId?: string | 'SHARED' | null;
+  }) {
+    const companyFilter =
+      filter?.companyId === 'SHARED'
+        ? { companyId: null }
+        : filter?.companyId
+          ? { companyId: filter.companyId }
+          : {};
+
     return this.prisma.chartOfAccount.findMany({
       where: {
         deletedAt: null,
+        ...companyFilter,
         ...(filter?.group && { accountGroup: filter.group }),
         ...(filter?.active != null && { isActive: filter.active }),
         ...(filter?.q && {
@@ -21,7 +34,7 @@ export class ChartOfAccountsService {
           ],
         }),
       },
-      orderBy: { code: 'asc' },
+      orderBy: [{ companyId: 'asc' }, { code: 'asc' }],
     });
   }
 
@@ -32,24 +45,31 @@ export class ChartOfAccountsService {
   }
 
   async create(dto: CreateChartOfAccountDto) {
-    const exists = await this.prisma.chartOfAccount.findUnique({ where: { code: dto.code } });
-    if (exists) throw new ConflictException(`รหัสบัญชี ${dto.code} มีอยู่แล้ว`);
+    const companyId = dto.companyId ?? null;
+
+    // Composite uniqueness check
+    const exists = await this.prisma.chartOfAccount.findUnique({
+      where: { companyId_code: { companyId: companyId as any, code: dto.code } },
+    });
+    if (exists) throw new ConflictException(`รหัสบัญชี ${dto.code} มีอยู่แล้วในบริษัทนี้`);
 
     if (dto.parentCode) {
-      const parent = await this.prisma.chartOfAccount.findUnique({ where: { code: dto.parentCode } });
-      if (!parent) throw new BadRequestException(`ไม่พบบัญชีแม่ ${dto.parentCode}`);
+      const parent = await this.prisma.chartOfAccount.findFirst({
+        where: { code: dto.parentCode, companyId, deletedAt: null },
+      });
+      if (!parent) throw new BadRequestException(`ไม่พบบัญชีแม่ ${dto.parentCode} ในบริษัทเดียวกัน`);
     }
 
     return this.prisma.chartOfAccount.create({
       data: {
         code: dto.code,
+        companyId,
         nameTh: dto.nameTh,
         nameEn: dto.nameEn,
         accountGroup: dto.accountGroup,
         parentCode: dto.parentCode,
         level: dto.level ?? 3,
         isActive: dto.isActive ?? true,
-        allowedCompanies: dto.allowedCompanies ?? [],
         peakAccountCode: dto.peakAccountCode ?? dto.code,
         peakAccountId: dto.peakAccountId,
       },
@@ -59,10 +79,25 @@ export class ChartOfAccountsService {
   async update(id: string, dto: UpdateChartOfAccountDto) {
     await this.findOne(id);
     if (dto.parentCode) {
-      const parent = await this.prisma.chartOfAccount.findUnique({ where: { code: dto.parentCode } });
-      if (!parent) throw new BadRequestException(`ไม่พบบัญชีแม่ ${dto.parentCode}`);
+      // For update, must verify parent exists in the same company as the existing account
+      const existing = await this.prisma.chartOfAccount.findUnique({ where: { id } });
+      const parent = await this.prisma.chartOfAccount.findFirst({
+        where: { code: dto.parentCode, companyId: existing?.companyId ?? null, deletedAt: null },
+      });
+      if (!parent) throw new BadRequestException(`ไม่พบบัญชีแม่ ${dto.parentCode} ในบริษัทเดียวกัน`);
     }
-    return this.prisma.chartOfAccount.update({ where: { id }, data: dto });
+    // Strip undefined so they don't overwrite existing
+    const data: any = {};
+    if (dto.nameTh !== undefined) data.nameTh = dto.nameTh;
+    if (dto.nameEn !== undefined) data.nameEn = dto.nameEn;
+    if (dto.accountGroup !== undefined) data.accountGroup = dto.accountGroup;
+    if (dto.parentCode !== undefined) data.parentCode = dto.parentCode;
+    if (dto.level !== undefined) data.level = dto.level;
+    if (dto.isActive !== undefined) data.isActive = dto.isActive;
+    if (dto.peakAccountCode !== undefined) data.peakAccountCode = dto.peakAccountCode;
+    if (dto.peakAccountId !== undefined) data.peakAccountId = dto.peakAccountId;
+    // Note: companyId NOT updatable — moving accounts between companies is intentional rare op (do via delete+recreate)
+    return this.prisma.chartOfAccount.update({ where: { id }, data });
   }
 
   async remove(id: string) {
@@ -76,7 +111,9 @@ export class ChartOfAccountsService {
     }
 
     // Block delete if any child accounts exist
-    const children = await this.prisma.chartOfAccount.count({ where: { parentCode: account.code } });
+    const children = await this.prisma.chartOfAccount.count({
+      where: { parentCode: account.code, companyId: account.companyId },
+    });
     if (children > 0) {
       throw new BadRequestException('มีบัญชีย่อยอยู่ ลบไม่ได้');
     }

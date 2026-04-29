@@ -13,7 +13,20 @@ interface ChartOfAccountSeed {
 }
 
 function parseOwnerCsv(): ChartOfAccountSeed[] {
-  const csvPath = path.resolve(__dirname, '../../../../docs/references/owner-chart-of-accounts.csv');
+  // Path resolution: works for both dev (tsx from prisma/seeds/) and CI (compiled to dist/prisma/seeds/).
+  // Try multiple candidates because __dirname depth varies (4 levels up in dev, 5 in CI compiled).
+  const candidates = [
+    path.resolve(__dirname, '../../../../docs/references/owner-chart-of-accounts.csv'),     // dev: prisma/seeds/ → repo root
+    path.resolve(__dirname, '../../../../../docs/references/owner-chart-of-accounts.csv'),  // CI: dist/prisma/seeds/ → repo root
+    path.resolve(process.cwd(), 'docs/references/owner-chart-of-accounts.csv'),             // fallback: relative to cwd
+  ];
+  const csvPath = candidates.find((p) => fs.existsSync(p));
+  if (!csvPath) {
+    throw new Error(
+      `Owner CoA CSV not found. Tried: ${candidates.join(', ')}. ` +
+      `__dirname=${__dirname}, cwd=${process.cwd()}`,
+    );
+  }
   const raw = fs.readFileSync(csvPath, 'utf-8');
   const lines = raw.split('\n').filter((l) => l.trim());
 

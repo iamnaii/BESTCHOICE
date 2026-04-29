@@ -360,7 +360,10 @@ export class AccountingService {
 
   async markExpensePaid(id: string, paymentDate?: string) {
     return this.prisma.$transaction(async (tx) => {
-      const expense = await tx.expense.findFirst({ where: { id, deletedAt: null } });
+      const expense = await tx.expense.findFirst({
+        where: { id, deletedAt: null },
+        include: { branch: { select: { companyId: true } } },
+      });
       if (!expense) throw new NotFoundException('ไม่พบรายจ่าย');
       if (expense.status !== 'APPROVED') {
         throw new BadRequestException('ต้องอนุมัติก่อนถึงจะบันทึกจ่ายได้');
@@ -371,8 +374,12 @@ export class AccountingService {
       });
 
       // Auto journal entry — record expense payment
+      // F-3-027 part 2/3: pass branch.companyId so SHOP expenses post under SHOP,
+      // FINANCE expenses under FINANCE — instead of falling back to non-deterministic
+      // resolveCompanyId in JournalAutoService.
       try {
         await this.journalAutoService.createExpenseJournal(tx, {
+          companyId: expense.branch?.companyId ?? null,
           expense: {
             id: updated.id,
             expenseNumber: updated.expenseNumber,

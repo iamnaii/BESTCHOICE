@@ -946,4 +946,73 @@ describe('AccountingService', () => {
       expect(data.vatAmount).toBeUndefined();
     });
   });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // markExpensePaid — F-3-027 part 2/3: pass branch.companyId to JE
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  describe('markExpensePaid (F-3-027 part 2/3)', () => {
+    it('passes branch.companyId to expense JE on markPaid', async () => {
+      const approvedExpense = {
+        id: 'exp-1',
+        expenseNumber: 'EX-001',
+        status: 'APPROVED',
+        deletedAt: null,
+        createdById: 'user-1',
+        accountCode: '51-1101',
+        amount: new Prisma.Decimal(1000),
+        vatAmount: new Prisma.Decimal(70),
+        totalAmount: new Prisma.Decimal(1070),
+        description: 'rent',
+        expenseDate: new Date('2026-04-01'),
+        paymentDate: null,
+        branch: { companyId: 'co-SHOP' },
+      };
+      prisma.expense.findFirst.mockResolvedValue(approvedExpense);
+      prisma.expense.update.mockResolvedValue({
+        ...approvedExpense,
+        status: 'PAID',
+        paymentDate: new Date('2026-04-15'),
+      });
+
+      await service.markExpensePaid('exp-1', '2026-04-15');
+
+      expect(journalAutoService.createExpenseJournal).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ companyId: 'co-SHOP' }),
+      );
+    });
+
+    it('passes null companyId when branch has no companyId (legacy branch)', async () => {
+      const approvedExpense = {
+        id: 'exp-2',
+        expenseNumber: 'EX-002',
+        status: 'APPROVED',
+        deletedAt: null,
+        createdById: 'user-1',
+        accountCode: '51-1101',
+        amount: new Prisma.Decimal(500),
+        vatAmount: new Prisma.Decimal(0),
+        totalAmount: new Prisma.Decimal(500),
+        description: 'misc',
+        expenseDate: new Date('2026-04-01'),
+        paymentDate: null,
+        branch: { companyId: null },
+      };
+      prisma.expense.findFirst.mockResolvedValue(approvedExpense);
+      prisma.expense.update.mockResolvedValue({
+        ...approvedExpense,
+        status: 'PAID',
+        paymentDate: new Date('2026-04-15'),
+      });
+
+      await service.markExpensePaid('exp-2');
+
+      // null lets JournalAutoService.resolveCompanyId fall through (legacy fallback)
+      expect(journalAutoService.createExpenseJournal).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ companyId: null }),
+      );
+    });
+  });
 });

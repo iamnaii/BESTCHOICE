@@ -6,6 +6,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { toNum } from '../../utils/decimal.util';
 import { PDPAService } from '../pdpa/pdpa.service';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
+import type { LineChannelKey } from '../notifications/dto/create-notification.dto';
 import { LineMessagePayload } from './dto/webhook-event.dto';
 import { FlexMessagePayload } from './flex-messages/base-template';
 import { buildPaymentSuccessFlex, PaymentSuccessData } from './flex-messages/payment-success.flex';
@@ -40,17 +41,24 @@ export class LineOaService {
   ) {}
 
   /**
-   * LineOaService is SHOP-only by design. FINANCE has its own client at
-   * chatbot-finance/services/line-finance-client.service.ts which reads
-   * the `line-finance` integration independently. If you need FINANCE LINE
-   * messaging, use that service — do NOT generalize this one.
+   * LineOaService is SHOP-first by design (default channelKey = 'line-shop').
+   * FINANCE has its own client at chatbot-finance/services/line-finance-client.service.ts
+   * which reads the `line-finance` integration independently.
+   *
+   * As of Phase 4 (notifications operational readiness), public sender
+   * methods accept an optional `channelKey` parameter so callers in
+   * cross-cutting modules (notifications scheduler, etc.) can pick the
+   * channel without bypassing this service. Default remains `line-shop`
+   * for backward compatibility with existing callers.
    */
-  private async getShopChannelToken(): Promise<string> {
-    return (await this.integrationConfig.getValue('line-shop', 'channelToken')) || '';
+  private async getChannelToken(channelKey: LineChannelKey = 'line-shop'): Promise<string> {
+    return (await this.integrationConfig.getValue(channelKey, 'channelToken')) || '';
   }
 
-  async testConnection(): Promise<{ displayName: string; userId: string; pictureUrl?: string }> {
-    const token = await this.getShopChannelToken();
+  async testConnection(
+    channelKey: LineChannelKey = 'line-shop',
+  ): Promise<{ displayName: string; userId: string; pictureUrl?: string }> {
+    const token = await this.getChannelToken(channelKey);
     if (!token) {
       throw new BadRequestException('LINE Channel Access Token ยังไม่ได้ตั้งค่า');
     }
@@ -73,37 +81,60 @@ export class LineOaService {
   /**
    * Send push message(s) to a user
    */
-  async pushMessage(to: string, messages: LineMessagePayload[]): Promise<void> {
-    await this.callLineApi(`${this.lineApiBaseUrl}/message/push`, {
-      to,
-      messages,
-    });
-    this.logger.log(`[LINE] Push message sent to ${to}`);
+  async pushMessage(
+    to: string,
+    messages: LineMessagePayload[],
+    channelKey: LineChannelKey = 'line-shop',
+  ): Promise<void> {
+    await this.callLineApi(
+      `${this.lineApiBaseUrl}/message/push`,
+      {
+        to,
+        messages,
+      },
+      channelKey,
+    );
+    this.logger.log(`[LINE:${channelKey}] Push message sent to ${to}`);
   }
 
   /**
    * Reply to a message using reply token
    */
-  async replyMessage(replyToken: string, messages: LineMessagePayload[]): Promise<void> {
-    await this.callLineApi(`${this.lineApiBaseUrl}/message/reply`, {
-      replyToken,
-      messages,
-    });
-    this.logger.log(`[LINE] Reply message sent`);
+  async replyMessage(
+    replyToken: string,
+    messages: LineMessagePayload[],
+    channelKey: LineChannelKey = 'line-shop',
+  ): Promise<void> {
+    await this.callLineApi(
+      `${this.lineApiBaseUrl}/message/reply`,
+      {
+        replyToken,
+        messages,
+      },
+      channelKey,
+    );
+    this.logger.log(`[LINE:${channelKey}] Reply message sent`);
   }
 
   /**
    * Send a Flex Message via push
    */
-  async sendFlexMessage(to: string, flexMessage: FlexMessagePayload): Promise<void> {
-    await this.pushMessage(to, [flexMessage as unknown as LineMessagePayload]);
+  async sendFlexMessage(
+    to: string,
+    flexMessage: FlexMessagePayload,
+    channelKey: LineChannelKey = 'line-shop',
+  ): Promise<void> {
+    await this.pushMessage(to, [flexMessage as unknown as LineMessagePayload], channelKey);
   }
 
   /**
    * Download content (image, video, etc.) from LINE
    */
-  async downloadContent(messageId: string): Promise<Buffer> {
-    const token = await this.getShopChannelToken();
+  async downloadContent(
+    messageId: string,
+    channelKey: LineChannelKey = 'line-shop',
+  ): Promise<Buffer> {
+    const token = await this.getChannelToken(channelKey);
     if (!token) {
       throw new BadRequestException('LINE channel access token not configured');
     }
@@ -127,8 +158,11 @@ export class LineOaService {
   /**
    * Get user profile
    */
-  async getUserProfile(userId: string): Promise<{ displayName: string; pictureUrl?: string; statusMessage?: string }> {
-    const token = await this.getShopChannelToken();
+  async getUserProfile(
+    userId: string,
+    channelKey: LineChannelKey = 'line-shop',
+  ): Promise<{ displayName: string; pictureUrl?: string; statusMessage?: string }> {
+    const token = await this.getChannelToken(channelKey);
     if (!token) {
       throw new BadRequestException('LINE channel access token not configured');
     }
@@ -281,10 +315,14 @@ export class LineOaService {
   /**
    * Build and send receipt Flex Message
    */
-  async sendReceipt(lineUserId: string, receiptData: ReceiptData): Promise<void> {
+  async sendReceipt(
+    lineUserId: string,
+    receiptData: ReceiptData,
+    channelKey: LineChannelKey = 'line-shop',
+  ): Promise<void> {
     const flexMessage = buildReceiptMessage(receiptData);
-    await this.sendFlexMessage(lineUserId, flexMessage);
-    this.logger.log(`[LINE] Receipt ${receiptData.receiptNumber} sent to ${lineUserId}`);
+    await this.sendFlexMessage(lineUserId, flexMessage, channelKey);
+    this.logger.log(`[LINE:${channelKey}] Receipt ${receiptData.receiptNumber} sent to ${lineUserId}`);
   }
 
   /**
@@ -731,10 +769,14 @@ export class LineOaService {
 
   // ─── Private Helpers ──────────────────────────────────
 
-  private async callLineApi(url: string, body: unknown): Promise<void> {
-    const token = await this.getShopChannelToken();
+  private async callLineApi(
+    url: string,
+    body: unknown,
+    channelKey: LineChannelKey = 'line-shop',
+  ): Promise<void> {
+    const token = await this.getChannelToken(channelKey);
     if (!token) {
-      throw new BadRequestException('LINE channel access token not configured');
+      throw new BadRequestException(`LINE ${channelKey} channelToken not configured`);
     }
 
     try {
@@ -767,9 +809,9 @@ export class LineOaService {
       }
     } catch (err) {
       if (err instanceof Error && err.name === 'TimeoutError') {
-        this.logger.error(`[LINE SHOP] API timeout after 10s: ${url}`);
+        this.logger.error(`[LINE:${channelKey}] API timeout after 10s: ${url}`);
         Sentry.captureException(err, {
-          tags: { module: 'line-shop', action: 'line_api', reason: 'timeout' },
+          tags: { module: 'line-oa', channelKey, action: 'line_api', reason: 'timeout' },
           extra: { url },
         });
         throw new InternalServerErrorException('LINE API timeout');

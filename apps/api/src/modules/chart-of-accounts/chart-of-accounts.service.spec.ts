@@ -14,6 +14,7 @@ describe('ChartOfAccountsService', () => {
       chartOfAccount: {
         findMany: jest.fn(),
         findUnique: jest.fn(),
+        findFirst: jest.fn(),
         create: jest.fn(),
         update: jest.fn(),
         count: jest.fn(),
@@ -32,12 +33,13 @@ describe('ChartOfAccountsService', () => {
   });
 
   describe('findAll', () => {
-    it('returns active accounts ordered by code with soft-delete filter', async () => {
+    it('returns active accounts ordered by companyId+code with soft-delete filter', async () => {
       prisma.chartOfAccount.findMany.mockResolvedValue([{ id: 'a1' }]);
       await service.findAll();
+      // Phase A.1a: ordered by [companyId asc, code asc] so SHARED (null) groups first.
       expect(prisma.chartOfAccount.findMany).toHaveBeenCalledWith({
         where: { deletedAt: null },
-        orderBy: { code: 'asc' },
+        orderBy: [{ companyId: 'asc' }, { code: 'asc' }],
       });
     });
 
@@ -95,9 +97,8 @@ describe('ChartOfAccountsService', () => {
     });
 
     it('rejects unknown parentCode with BadRequestException', async () => {
-      prisma.chartOfAccount.findUnique
-        .mockResolvedValueOnce(null) // duplicate check
-        .mockResolvedValueOnce(null); // parent lookup
+      prisma.chartOfAccount.findUnique.mockResolvedValueOnce(null); // duplicate check
+      prisma.chartOfAccount.findFirst.mockResolvedValueOnce(null); // parent lookup (Phase A.1a uses findFirst scoped to companyId)
       await expect(
         service.create({ ...baseDto, parentCode: '11-1000' } as any),
       ).rejects.toBeInstanceOf(BadRequestException);
@@ -126,7 +127,8 @@ describe('ChartOfAccountsService', () => {
       const call = prisma.chartOfAccount.create.mock.calls[0][0];
       expect(call.data.level).toBe(3);
       expect(call.data.isActive).toBe(true);
-      expect(call.data.allowedCompanies).toEqual([]);
+      // Phase A.1a: allowedCompanies dropped — companyId now scopes ownership.
+      expect(call.data).not.toHaveProperty('allowedCompanies');
     });
   });
 
@@ -141,7 +143,8 @@ describe('ChartOfAccountsService', () => {
     it('rejects update with unknown parentCode', async () => {
       prisma.chartOfAccount.findUnique
         .mockResolvedValueOnce({ id: 'a1', code: '11-1101' }) // findOne
-        .mockResolvedValueOnce(null); // parent lookup
+        .mockResolvedValueOnce({ id: 'a1', code: '11-1101', companyId: null }); // existing fetch for parent scope
+      prisma.chartOfAccount.findFirst.mockResolvedValueOnce(null); // parent lookup (Phase A.1a uses findFirst)
       await expect(
         service.update('a1', { parentCode: '99-9999' }),
       ).rejects.toBeInstanceOf(BadRequestException);
@@ -199,6 +202,69 @@ describe('ChartOfAccountsService', () => {
     it('throws NotFoundException when account does not exist', async () => {
       prisma.chartOfAccount.findUnique.mockResolvedValue(null);
       await expect(service.remove('missing')).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  // Phase A.1a: companyId scoping + composite (companyId, code) uniqueness.
+  describe('findAll companyId filter (Phase A.1a)', () => {
+    it('filters by SHOP companyId when provided', async () => {
+      prisma.chartOfAccount.findMany.mockResolvedValue([]);
+      await service.findAll({ companyId: 'shop-co-1' });
+      expect(prisma.chartOfAccount.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ companyId: 'shop-co-1' }),
+        }),
+      );
+    });
+
+    it('filters companyId=null when SHARED', async () => {
+      prisma.chartOfAccount.findMany.mockResolvedValue([]);
+      await service.findAll({ companyId: 'SHARED' });
+      expect(prisma.chartOfAccount.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ companyId: null }),
+        }),
+      );
+    });
+
+    it('returns all when no companyId provided (no companyId in where)', async () => {
+      prisma.chartOfAccount.findMany.mockResolvedValue([]);
+      await service.findAll({});
+      const call = prisma.chartOfAccount.findMany.mock.calls[0][0];
+      expect(call.where).not.toHaveProperty('companyId');
+    });
+  });
+
+  describe('create with composite uniqueness (Phase A.1a)', () => {
+    it('uses companyId_code in findUnique check with explicit companyId', async () => {
+      prisma.chartOfAccount.findUnique.mockResolvedValue(null);
+      prisma.chartOfAccount.create.mockResolvedValue({ id: 'new1' });
+      await service.create({
+        code: '11-1101',
+        companyId: 'finance-co-1',
+        nameTh: 'FINANCE Cash',
+        accountGroup: AccountGroup.ASSET,
+      } as any);
+      expect(prisma.chartOfAccount.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { companyId_code: { companyId: 'finance-co-1', code: '11-1101' } },
+        }),
+      );
+    });
+
+    it('treats undefined companyId as null in uniqueness check', async () => {
+      prisma.chartOfAccount.findUnique.mockResolvedValue(null);
+      prisma.chartOfAccount.create.mockResolvedValue({ id: 'new1' });
+      await service.create({
+        code: '99-9999',
+        nameTh: 'Shared',
+        accountGroup: AccountGroup.ASSET,
+      } as any);
+      expect(prisma.chartOfAccount.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { companyId_code: { companyId: null, code: '99-9999' } },
+        }),
+      );
     });
   });
 });

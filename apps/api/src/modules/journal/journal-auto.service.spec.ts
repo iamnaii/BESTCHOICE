@@ -29,7 +29,13 @@ describe('JournalAutoService', () => {
         findUnique: jest.fn().mockResolvedValue({ companyCode: 'FINANCE' }),
       },
       chartOfAccount: {
-        findMany: jest.fn().mockResolvedValue([]),
+        // Phase A.1a: createAndPost validates lookup codes against
+        // (companyId, code). Return whatever codes the call asks for so
+        // existing tests don't trip the new validation.
+        findMany: jest.fn().mockImplementation(({ where }: { where: { code?: { in?: string[] } } }) => {
+          const codes = where?.code?.in ?? [];
+          return Promise.resolve(codes.map((code: string) => ({ code, nameTh: code })));
+        }),
       },
       // F-6-002: default — no closed period
       accountingPeriod: {
@@ -212,7 +218,7 @@ describe('JournalAutoService', () => {
 
       const lines = capturedLines();
       const vatLine = lines.find(
-        (l) => l.accountCode === JournalAutoService.ACC.VAT_INPUT,
+        (l) => l.accountCode === JournalAutoService.FINANCE_ACC.VAT_INPUT,
       );
       expect(vatLine).toBeDefined();
       expect(Number(vatLine!.debit)).toBeCloseTo(70, 2);
@@ -227,7 +233,7 @@ describe('JournalAutoService', () => {
 
       const lines = capturedLines();
       const cashLine = lines.find(
-        (l) => l.accountCode === JournalAutoService.ACC.CASH,
+        (l) => l.accountCode === JournalAutoService.FINANCE_ACC.CASH,
       );
       expect(cashLine).toBeDefined();
       expect(Number(cashLine!.credit)).toBeCloseTo(1070, 2);
@@ -320,8 +326,8 @@ describe('JournalAutoService', () => {
         credit: number;
       }>;
 
-      const cashLine = lines.find((l) => l.accountCode === JournalAutoService.ACC.CASH);
-      const hpLine = lines.find((l) => l.accountCode === JournalAutoService.ACC.HP_RECEIVABLE);
+      const cashLine = lines.find((l) => l.accountCode === JournalAutoService.FINANCE_ACC.CASH);
+      const hpLine = lines.find((l) => l.accountCode === JournalAutoService.FINANCE_ACC.HP_RECEIVABLE);
 
       expect(Number(cashLine?.debit)).toBeCloseTo(3000, 2);
       // HP Receivable = financedAmount (already includes principal+commission+interest+vat)
@@ -342,7 +348,7 @@ describe('JournalAutoService', () => {
         credit: number;
       }>;
 
-      const vatLine = lines.find((l) => l.accountCode === JournalAutoService.ACC.VAT_OUTPUT);
+      const vatLine = lines.find((l) => l.accountCode === JournalAutoService.FINANCE_ACC.VAT_OUTPUT);
       expect(Number(vatLine?.credit)).toBeCloseTo(1000, 2);
     });
 
@@ -388,12 +394,12 @@ describe('JournalAutoService', () => {
       const salesLines = prisma.journalEntry.create.mock.calls[0][0].data.lines
         .create as Array<{ accountCode: string; credit: number }>;
       const revLine = salesLines.find((l) => l.credit > 0 && l.accountCode.startsWith('41'));
-      expect(revLine?.accountCode).toBe(JournalAutoService.ACC.REVENUE_USED);
+      expect(revLine?.accountCode).toBe(JournalAutoService.FINANCE_ACC.REVENUE_USED);
 
       const cogsLines = prisma.journalEntry.create.mock.calls[1][0].data.lines
         .create as Array<{ accountCode: string; debit: number }>;
       const cogsLine = cogsLines.find((l) => l.debit > 0);
-      expect(cogsLine?.accountCode).toBe(JournalAutoService.ACC.COGS_USED);
+      expect(cogsLine?.accountCode).toBe(JournalAutoService.FINANCE_ACC.COGS_USED);
     });
 
     // F-2-001 regression: financedAmount per installment.util.ts:56 already
@@ -477,7 +483,7 @@ describe('JournalAutoService', () => {
 
       const lines = capturedLines();
       const badDebtLine = lines.find(
-        (l) => l.accountCode === JournalAutoService.ACC.BAD_DEBT_EXPENSE,
+        (l) => l.accountCode === JournalAutoService.FINANCE_ACC.BAD_DEBT_EXPENSE,
       );
       expect(Number(badDebtLine?.debit)).toBeCloseTo(5000, 2);
     });
@@ -493,7 +499,7 @@ describe('JournalAutoService', () => {
 
       const lines = capturedLines();
       const hpLine = lines.find(
-        (l) => l.accountCode === JournalAutoService.ACC.HP_RECEIVABLE,
+        (l) => l.accountCode === JournalAutoService.FINANCE_ACC.HP_RECEIVABLE,
       );
       expect(Number(hpLine?.credit)).toBeCloseTo(5000, 2);
     });
@@ -511,10 +517,10 @@ describe('JournalAutoService', () => {
 
       const lines = capturedLines();
       const badDebtLine = lines.find(
-        (l) => l.accountCode === JournalAutoService.ACC.BAD_DEBT_EXPENSE,
+        (l) => l.accountCode === JournalAutoService.FINANCE_ACC.BAD_DEBT_EXPENSE,
       );
       const allowanceLine = lines.find(
-        (l) => l.accountCode === JournalAutoService.ACC.ALLOWANCE_DOUBTFUL,
+        (l) => l.accountCode === JournalAutoService.FINANCE_ACC.ALLOWANCE_DOUBTFUL,
       );
       expect(Number(badDebtLine?.debit)).toBeCloseTo(3000, 2);
       expect(Number(allowanceLine?.debit)).toBeCloseTo(2000, 2);
@@ -534,7 +540,7 @@ describe('JournalAutoService', () => {
       const lines = capturedLines();
       // zero-line filter removes it
       const badDebtLine = lines.find(
-        (l) => l.accountCode === JournalAutoService.ACC.BAD_DEBT_EXPENSE,
+        (l) => l.accountCode === JournalAutoService.FINANCE_ACC.BAD_DEBT_EXPENSE,
       );
       expect(badDebtLine).toBeUndefined();
     });
@@ -678,14 +684,14 @@ describe('JournalAutoService', () => {
 
       // Late fee should appear on LATE_FEE_INCOME as a credit
       const lateFeeIncomeLine = lines.find(
-        (l) => l.accountCode === JournalAutoService.ACC.LATE_FEE_INCOME,
+        (l) => l.accountCode === JournalAutoService.FINANCE_ACC.LATE_FEE_INCOME,
       );
       expect(lateFeeIncomeLine).toBeDefined();
       expect(Number(lateFeeIncomeLine!.credit)).toBeCloseTo(200, 2);
 
       // VAT_OUTPUT must be zero (or absent) — late fee is VAT-exempt
       const vatOutputLine = lines.find(
-        (l) => l.accountCode === JournalAutoService.ACC.VAT_OUTPUT,
+        (l) => l.accountCode === JournalAutoService.FINANCE_ACC.VAT_OUTPUT,
       );
       const vatOutputCredit = vatOutputLine ? Number(vatOutputLine.credit) : 0;
       expect(vatOutputCredit).toBe(0);
@@ -714,7 +720,7 @@ describe('JournalAutoService', () => {
       const lines = capturedLines();
 
       const lateFeeIncomeLine = lines.find(
-        (l) => l.accountCode === JournalAutoService.ACC.LATE_FEE_INCOME,
+        (l) => l.accountCode === JournalAutoService.FINANCE_ACC.LATE_FEE_INCOME,
       );
       // Should be absent (zero-line filter removes it)
       expect(lateFeeIncomeLine).toBeUndefined();
@@ -785,14 +791,16 @@ describe('JournalAutoService', () => {
     });
   });
 
-  describe('createAndPost — allowedCompanies validation', () => {
-    it('throws BadRequestException when SHOP companyId uses FINANCE-only account (F-3-027 part 3/3)', async () => {
+  // Phase A.1a: allowedCompanies removed; chart partitioned by composite (companyId, code).
+  // createAndPost now rejects codes that don't exist in the target company's chart.
+  describe('createAndPost — chart partition validation (Phase A.1a)', () => {
+    it('throws BadRequestException when account code does not exist in target company chart', async () => {
       const tx = {
         companyInfo: { findUnique: jest.fn().mockResolvedValue({ companyCode: 'SHOP' }) },
         chartOfAccount: {
+          // Only 11-1101 exists in SHOP chart. 11-2102 does not (HP_RECEIVABLE is FINANCE-only).
           findMany: jest.fn().mockResolvedValue([
-            { code: '11-2102', nameTh: 'ลูกหนี้เช่าซื้อ', allowedCompanies: ['FINANCE'] },
-            { code: '11-1101', nameTh: 'เงินสด', allowedCompanies: [] },
+            { code: '11-1101', nameTh: 'เงินสด' },
           ]),
         },
         accountingPeriod: { findFirst: jest.fn().mockResolvedValue(null) },
@@ -812,17 +820,14 @@ describe('JournalAutoService', () => {
             { accountCode: '11-1101', debit: 0, credit: 100 },
           ],
         }),
-      ).rejects.toThrow(/11-2102.*ใช้ไม่ได้กับบริษัท SHOP/);
+      ).rejects.toThrow(/11-2102.*chart.*co-SHOP/);
     });
 
-    it('allows account with empty allowedCompanies for any companyId (F-3-027 part 3/3)', async () => {
+    it('queries chartOfAccount with composite (companyId, code) filter', async () => {
+      const findMany = jest.fn().mockResolvedValue([{ code: '11-1101', nameTh: 'เงินสด' }]);
       const tx = {
         companyInfo: { findUnique: jest.fn().mockResolvedValue({ companyCode: 'SHOP' }) },
-        chartOfAccount: {
-          findMany: jest.fn().mockResolvedValue([
-            { code: '11-1101', nameTh: 'เงินสด', allowedCompanies: [] },
-          ]),
-        },
+        chartOfAccount: { findMany },
         accountingPeriod: { findFirst: jest.fn().mockResolvedValue(null) },
         journalEntry: {
           count: jest.fn().mockResolvedValue(0),
@@ -844,6 +849,14 @@ describe('JournalAutoService', () => {
           ],
         }),
       ).resolves.toBe('entry1');
+      expect(findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            companyId: 'co-SHOP',
+            code: { in: ['11-1101'] },
+          }),
+        }),
+      );
     });
   });
 
@@ -855,7 +868,12 @@ describe('JournalAutoService', () => {
       const tx = {
         accountingPeriod: { findFirst: jest.fn().mockResolvedValue({ status: 'CLOSED' }) },
         companyInfo: { findUnique: jest.fn().mockResolvedValue({ companyCode: 'FINANCE' }) },
-        chartOfAccount: { findMany: jest.fn().mockResolvedValue([]) },
+        chartOfAccount: {
+          findMany: jest.fn().mockResolvedValue([
+            { code: '11-1101', nameTh: 'เงินสด' },
+            { code: '21-2101', nameTh: 'ภาษีขาย' },
+          ]),
+        },
         journalEntry: {
           count: jest.fn().mockResolvedValue(0),
           create: jest

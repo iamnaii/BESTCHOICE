@@ -26,8 +26,9 @@ describe('PaySolutionsService.handlePaymentCallback — payment JE (F-1-003)', (
   const linkId = 'link-1';
 
   beforeEach(async () => {
-    // Reset shared Sentry mock so assertions in one test don't leak.
+    // Reset shared Sentry mocks so assertions in one test don't leak.
     (Sentry.captureException as jest.Mock).mockClear();
+    (Sentry.captureMessage as jest.Mock).mockClear();
 
     // Tx mock surface used inside the $transaction callback. It must mirror
     // the Prisma client surface used in the production path: paymentLink
@@ -89,12 +90,19 @@ describe('PaySolutionsService.handlePaymentCallback — payment JE (F-1-003)', (
       companyInfo: {
         findFirst: jest.fn().mockResolvedValue({ id: 'co-finance' }),
       },
+      // F-1-003 follow-up: real OWNER user resolution for JE.createdById FK.
+      user: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'user-system-1' }),
+      },
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           contractNumber: 'CT-2026-0001',
           branchId: 'br-1',
         }),
       },
+      // Both the main tx and the post-tx JE-only tx invoke the same callback
+      // signature — txMock works for both since JE only needs a Prisma client
+      // surface (the real JournalAutoService is mocked).
       $transaction: jest.fn().mockImplementation(async (cb: any) => cb(txMock)),
       __tx: txMock,
     };
@@ -157,8 +165,64 @@ describe('PaySolutionsService.handlePaymentCallback — payment JE (F-1-003)', (
           contractNumber: 'CT-2026-0001',
           branchId: 'br-1',
         }),
-        userId: 'paysolutions-webhook',
+        // Real OWNER user.id, not the literal 'paysolutions-webhook' string
+        // (FK-violation fix — see data-audit.service.ts:1023 reference pattern)
+        userId: 'user-system-1',
       }),
+    );
+  });
+
+  it('JE failure does not roll back payment.update — tx-poisoning prevention (F-1-003 follow-up)', async () => {
+    // The JE call lives in a SEPARATE $transaction posted AFTER the main tx
+    // commits. A JE rejection must therefore be unable to undo Payment.update
+    // to PAID — this is the whole point of the post-tx restructuring.
+    journalAuto.createPaymentJournal.mockRejectedValueOnce(
+      new Error('JE failed'),
+    );
+
+    await service.handlePaymentCallback({
+      refno: 'refno-1',
+      result_code: '00',
+      order_no: 'order-1',
+      transaction_id: 'tx-1',
+      total: '1000',
+    });
+
+    // Payment was committed to PAID despite the JE rejection.
+    expect(prisma.__tx.payment.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'PAID' }),
+      }),
+    );
+    // And there are at least two distinct $transaction invocations now —
+    // the main payment tx and one JE tx per fully-paid installment.
+    expect((prisma.$transaction as jest.Mock).mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('skips JE entirely when no OWNER user is present (FK-violation guard)', async () => {
+    (prisma.user.findFirst as jest.Mock).mockResolvedValueOnce(null);
+
+    await service.handlePaymentCallback({
+      refno: 'refno-1',
+      result_code: '00',
+      order_no: 'order-1',
+      transaction_id: 'tx-1',
+      total: '1000',
+    });
+
+    // No JE was attempted — guard prevents FK violation that would otherwise
+    // be swallowed by the inner try/catch.
+    expect(journalAuto.createPaymentJournal).not.toHaveBeenCalled();
+    // But payment was still committed (P2 — webhook MUST acknowledge).
+    expect(prisma.__tx.payment.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'PAID' }),
+      }),
+    );
+    // And Sentry was alerted via captureMessage (different from captureException).
+    expect(Sentry.captureMessage as jest.Mock).toHaveBeenCalledWith(
+      expect.stringContaining('no OWNER user'),
+      expect.objectContaining({ level: 'error' }),
     );
   });
 

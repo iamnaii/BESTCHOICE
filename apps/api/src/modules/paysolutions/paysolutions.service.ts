@@ -716,6 +716,25 @@ export class PaySolutionsService {
         select: { contractNumber: true, branchId: true },
       });
 
+      // F-1-003 follow-up: resolve a real OWNER user.id for JournalEntry.createdById.
+      // The previous fix passed the literal string 'paysolutions-webhook' which
+      // would always violate the FK to User.id in production. Pattern matches
+      // data-audit.service.ts:1023 (system user lookup for backfill operations).
+      const systemUser = await this.prisma.user.findFirst({
+        where: { role: 'OWNER', deletedAt: null },
+        select: { id: true },
+        orderBy: { createdAt: 'asc' },
+      });
+      const systemUserId = systemUser?.id ?? null;
+      if (!systemUserId) {
+        // No OWNER user found — skip JE entirely and alert. Webhook still
+        // proceeds (P2: payment must commit; JE is reconciled manually).
+        Sentry.captureMessage(
+          'PaySolutions webhook: no OWNER user found for JE creation',
+          { level: 'error', tags: { module: 'paysolutions' } },
+        );
+      }
+
       // ชำระสำเร็จ — distribute paid amount FIFO across unpaid installments.
       // Early-payoff links carry amount = full payoff (with discount) and
       // must close every pending installment, not just paymentLink.paymentId.
@@ -748,6 +767,22 @@ export class PaySolutionsService {
           let remaining = paidAmount;
           const now = new Date();
           let fullyPaidCount = 0;
+          // F-1-003 follow-up: collect snapshots of fully-paid payments for
+          // post-tx JE posting. JE must NOT run inside this $transaction —
+          // PostgreSQL Serializable would abort the tx on JE failure
+          // (tx-poisoning) and roll back the Payment.update to PAID.
+          const fullyPaidSnapshots: Array<{
+            id: string;
+            installmentNo: number;
+            amountPaid: Prisma.Decimal;
+            monthlyPrincipal: Prisma.Decimal | null;
+            monthlyInterest: Prisma.Decimal | null;
+            monthlyCommission: Prisma.Decimal | null;
+            vatAmount: Prisma.Decimal | null;
+            lateFee: Prisma.Decimal;
+            lateFeeWaived: boolean;
+            paidDate: Date | null;
+          }> = [];
           for (const payment of unpaidPayments) {
             if (remaining.lte(0)) break;
             // lateFeeWaived=true sets lateFee=0 elsewhere, so reading lateFee
@@ -781,54 +816,20 @@ export class PaySolutionsService {
             });
             if (fullyPaid) {
               fullyPaidCount++;
-
-              // F-1-003: Post payment JE — Sentry+log+continue pattern (P2).
-              // Webhook MUST NOT block payment if JE fails (customer paid via
-              // QR — gateway already moved real money). Manual reconciliation
-              // is triggered from the Sentry alert. This contrasts with sync
-              // user-initiated payment paths (PaymentsService.recordPayment)
-              // which DO rethrow because the user can retry.
-              if (contractForJe) {
-                try {
-                  await this.journalAutoService.createPaymentJournal(tx, {
-                    companyId: financeCompanyId,
-                    payment: {
-                      id: paymentUpdated.id,
-                      installmentNo: paymentUpdated.installmentNo,
-                      amountPaid: paymentUpdated.amountPaid,
-                      monthlyPrincipal: paymentUpdated.monthlyPrincipal,
-                      monthlyInterest: paymentUpdated.monthlyInterest,
-                      monthlyCommission: paymentUpdated.monthlyCommission,
-                      vatAmount: paymentUpdated.vatAmount,
-                      lateFee: paymentUpdated.lateFee,
-                      lateFeeWaived: paymentUpdated.lateFeeWaived,
-                      paidDate: paymentUpdated.paidDate,
-                    },
-                    contract: {
-                      contractNumber: contractForJe.contractNumber,
-                      branchId: contractForJe.branchId,
-                    },
-                    userId: 'paysolutions-webhook',
-                  });
-                } catch (jeErr) {
-                  Sentry.captureException(jeErr, {
-                    tags: {
-                      module: 'paysolutions',
-                      event: 'webhook-je-failure',
-                    },
-                    extra: {
-                      paymentId: paymentUpdated.id,
-                      contractId: paymentLink.contractId,
-                      refno,
-                      error: String(jeErr),
-                    },
-                  });
-                  this.logger.error(
-                    `Webhook JE failed for payment ${paymentUpdated.id}: ${jeErr instanceof Error ? jeErr.message : jeErr}`,
-                  );
-                  // DO NOT rethrow — Pattern P2 — payment must be acknowledged
-                }
-              }
+              // Capture snapshot for post-tx JE — see fullyPaidSnapshots
+              // declaration above for tx-poisoning rationale.
+              fullyPaidSnapshots.push({
+                id: paymentUpdated.id,
+                installmentNo: paymentUpdated.installmentNo,
+                amountPaid: paymentUpdated.amountPaid,
+                monthlyPrincipal: paymentUpdated.monthlyPrincipal,
+                monthlyInterest: paymentUpdated.monthlyInterest,
+                monthlyCommission: paymentUpdated.monthlyCommission,
+                vatAmount: paymentUpdated.vatAmount,
+                lateFee: paymentUpdated.lateFee,
+                lateFeeWaived: paymentUpdated.lateFeeWaived,
+                paidDate: paymentUpdated.paidDate,
+              });
             }
           }
 
@@ -877,6 +878,7 @@ export class PaySolutionsService {
             contractStatus,
             fullyPaidCount,
             totalUnpaidAtStart: unpaidPayments.length,
+            fullyPaidSnapshots,
           };
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
@@ -892,6 +894,57 @@ export class PaySolutionsService {
       this.logger.log(
         `Payment SUCCESS: refno=${refno}, contractId=${paymentLink.contractId}, contractStatus=${result.contractStatus ?? 'ACTIVE'}, fullyPaid=${result.fullyPaidCount}/${result.totalUnpaidAtStart}`,
       );
+
+      // F-1-003 follow-up: Post payment JE OUTSIDE the main $transaction.
+      // Each JE runs in its own $transaction so a failure cannot poison the
+      // already-committed Payment.update. This preserves the P2 guarantee:
+      // payment is acknowledged regardless of JE success. JE errors go to
+      // Sentry for manual reconciliation.
+      if (contractForJe && systemUserId) {
+        for (const snapshot of result.fullyPaidSnapshots) {
+          try {
+            await this.prisma.$transaction(async (tx2) => {
+              await this.journalAutoService.createPaymentJournal(tx2, {
+                companyId: financeCompanyId,
+                payment: {
+                  id: snapshot.id,
+                  installmentNo: snapshot.installmentNo,
+                  amountPaid: snapshot.amountPaid,
+                  monthlyPrincipal: snapshot.monthlyPrincipal,
+                  monthlyInterest: snapshot.monthlyInterest,
+                  monthlyCommission: snapshot.monthlyCommission,
+                  vatAmount: snapshot.vatAmount,
+                  lateFee: snapshot.lateFee,
+                  lateFeeWaived: snapshot.lateFeeWaived,
+                  paidDate: snapshot.paidDate,
+                },
+                contract: {
+                  contractNumber: contractForJe.contractNumber,
+                  branchId: contractForJe.branchId,
+                },
+                userId: systemUserId,
+              });
+            });
+          } catch (jeErr) {
+            Sentry.captureException(jeErr, {
+              tags: {
+                module: 'paysolutions',
+                event: 'webhook-je-failure',
+              },
+              extra: {
+                paymentId: snapshot.id,
+                contractId: paymentLink.contractId,
+                refno,
+                error: String(jeErr),
+              },
+            });
+            this.logger.error(
+              `Webhook JE failed for payment ${snapshot.id}: ${jeErr instanceof Error ? jeErr.message : jeErr}`,
+            );
+            // DO NOT rethrow — Pattern P2 — payment was already committed.
+          }
+        }
+      }
 
       // Route notification: multi-installment close = early-payoff flex;
       // everything else uses the existing single-installment flex.

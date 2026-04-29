@@ -59,6 +59,20 @@ export class PaymentsService {
     return financeCompany.id;
   }
 
+  /**
+   * Phase A.1b: Resolve SHOP companyId for the SHOP-side commission JE leg.
+   * Returns null when SHOP is not configured — JournalAutoService will skip
+   * the commission entry rather than fail the payment.
+   */
+  private async resolveShopCompanyId(): Promise<string | null> {
+    const shop = await this.prisma.companyInfo.findFirst({
+      where: { companyCode: 'SHOP', deletedAt: null },
+      select: { id: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    return shop?.id ?? null;
+  }
+
   /** Enforce branch-level access: SALES/BRANCH_MANAGER can only operate on their own branch */
   async validateBranchAccess(
     contractId: string,
@@ -98,10 +112,11 @@ export class PaymentsService {
     // CR-7: Validate payment date is not in a closed accounting period
     await validatePeriodOpen(this.prisma, new Date());
 
-    // F-3-027 part 2/3: resolve FINANCE companyId BEFORE the transaction so
-    // it can be passed explicitly to the payment JE (HP installment receipts
-    // are FINANCE-side activity).
+    // F-3-027 part 2/3 + Phase A.1b: resolve FINANCE + SHOP companyIds BEFORE
+    // the transaction so both can be passed explicitly to the payment JE.
+    // FINANCE = HP receivable / interest / VAT side; SHOP = commission income side.
     const financeCompanyId = await this.resolveFinanceCompanyId();
+    const shopCompanyId = await this.resolveShopCompanyId();
 
     // Capture dueDate for loyalty points check (on-time = paidDate <= dueDate)
     let capturedDueDate: Date | null = null;
@@ -206,7 +221,8 @@ export class PaymentsService {
       // ledger and cash never diverge. (Audit finding J5.)
       if (isPaidInFull) {
         await this.journalAutoService.createPaymentJournal(tx, {
-          companyId: financeCompanyId,
+          shopCompanyId,
+          financeCompanyId,
           payment: {
             id: result.id,
             installmentNo: result.installmentNo,
@@ -327,9 +343,10 @@ export class PaymentsService {
       throw new BadRequestException('จำนวนเงินต้องมากกว่า 0');
     }
 
-    // F-3-027 part 2/3: resolve FINANCE companyId once before the tx so the
-    // per-installment JE calls below use it (instead of resolveCompanyId fallback).
+    // F-3-027 part 2/3 + Phase A.1b: resolve FINANCE + SHOP companyIds once
+    // before the tx so the per-installment JE calls below use them.
     const financeCompanyId = await this.resolveFinanceCompanyId();
+    const shopCompanyId = await this.resolveShopCompanyId();
 
     // Wrap entire allocation in a serializable transaction to prevent double-payment
     const allocationResult = await this.prisma.$transaction(async (tx) => {
@@ -385,7 +402,8 @@ export class PaymentsService {
           // (Audit finding J1: closes the journal coverage gap on the
           // multi-installment auto-allocate path.)
           await this.journalAutoService.createPaymentJournal(tx, {
-            companyId: financeCompanyId,
+            shopCompanyId,
+            financeCompanyId,
             payment: {
               id: updated.id,
               installmentNo: updated.installmentNo,
@@ -709,9 +727,10 @@ export class PaymentsService {
 
   // ─── Apply credit balance to next pending installment ─
   async applyCreditBalance(contractId: string, recordedById: string) {
-    // F-3-027 part 2/3: resolve FINANCE companyId once before the tx so the
-    // per-installment JE calls below use it (instead of resolveCompanyId fallback).
+    // F-3-027 part 2/3 + Phase A.1b: resolve FINANCE + SHOP companyIds once
+    // before the tx so the per-installment JE calls below use them.
     const financeCompanyId = await this.resolveFinanceCompanyId();
+    const shopCompanyId = await this.resolveShopCompanyId();
 
     return this.prisma.$transaction(async (tx) => {
       const contract = await tx.contract.findUnique({
@@ -764,7 +783,8 @@ export class PaymentsService {
           // (Audit finding J2: closes the journal coverage gap on the
           // credit-balance allocation path.)
           await this.journalAutoService.createPaymentJournal(tx, {
-            companyId: financeCompanyId,
+            shopCompanyId,
+            financeCompanyId,
             payment: {
               id: updated.id,
               installmentNo: updated.installmentNo,

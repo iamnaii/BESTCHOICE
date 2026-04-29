@@ -711,6 +711,13 @@ export class PaySolutionsService {
         select: { id: true },
       });
       const financeCompanyId = financeCompany?.id ?? null;
+      // Phase A.1b: SHOP companyId for the SHOP-side commission JE leg.
+      const shopCompany = await this.prisma.companyInfo.findFirst({
+        where: { companyCode: 'SHOP', deletedAt: null },
+        select: { id: true },
+        orderBy: { createdAt: 'asc' },
+      });
+      const shopCompanyId = shopCompany?.id ?? null;
       const contractForJe = await this.prisma.contract.findUnique({
         where: { id: paymentLink.contractId! },
         select: { contractNumber: true, branchId: true },
@@ -905,7 +912,8 @@ export class PaySolutionsService {
           try {
             await this.prisma.$transaction(async (tx2) => {
               await this.journalAutoService.createPaymentJournal(tx2, {
-                companyId: financeCompanyId,
+                shopCompanyId,
+                financeCompanyId,
                 payment: {
                   id: snapshot.id,
                   installmentNo: snapshot.installmentNo,

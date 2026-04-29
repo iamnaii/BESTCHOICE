@@ -359,6 +359,165 @@ export class JournalAutoService {
   }
 
   /**
+   * Phase A.1c — Early payoff JE (handles discount).
+   *
+   * When a customer closes their contract early with a discount, the
+   * collected cash is LESS than the sum of remaining installments. The
+   * principal must always be settled in full (otherwise HP Receivable
+   * stays inflated and the device remains on the FINANCE balance sheet).
+   * The discount is absorbed by reducing recognised interest, commission,
+   * and VAT proportionally.
+   *
+   * FINANCE entry:
+   *   Dr. Cash (FINANCE)               [totalPayoff incl. late fees]
+   *     Cr. HP Receivable               [sum of remaining principal]
+   *     Cr. Interest Income             [scaled-down interest]
+   *     Cr. VAT Output                  [scaled-down VAT]
+   *     Cr. Late Fee Income             [unpaid late fees]
+   *     Cr. Due-to-SHOP                 [scaled-down commission, if > 0]
+   *
+   * SHOP entry (only when commission > 0):
+   *   Dr. Due-from-FINANCE              [commission]
+   *     Cr. Commission Income           [commission]
+   *
+   * Linked via [IC-<uuid>] description prefix.
+   *
+   * Caller is responsible for updating Payment rows; this method only posts
+   * the aggregated JE for the whole payoff.
+   */
+  async createEarlyPayoffJournal(
+    tx: Prisma.TransactionClient,
+    params: {
+      contractId: string;
+      contractNumber: string;
+      installments: Array<{
+        amountDue: Decimal | number | null;
+        amountPaidBefore: Decimal | number | null;
+        monthlyPrincipal: Decimal | number | null;
+        monthlyInterest: Decimal | number | null;
+        monthlyCommission: Decimal | number | null;
+        vatAmount: Decimal | number | null;
+        lateFee: Decimal | number | null;
+        lateFeeWaived: boolean;
+      }>;
+      totalPayoff: Decimal | number; // cash debit, includes late fees
+      userId: string;
+      shopCompanyId?: string | null;
+      financeCompanyId?: string | null;
+      paidDate?: Date | null;
+    },
+  ): Promise<string | null> {
+    const FA = JournalAutoService.FINANCE_ACC;
+    const SA = JournalAutoService.SHOP_ACC;
+
+    const financeCompanyId =
+      params.financeCompanyId ??
+      (
+        await tx.companyInfo.findFirst({
+          where: { companyCode: 'FINANCE', deletedAt: null },
+          select: { id: true },
+        })
+      )?.id ??
+      null;
+    if (!financeCompanyId) {
+      throw new InternalServerErrorException('FINANCE company required for early payoff JE');
+    }
+
+    // Per-installment remaining breakdown — scale by (1 - amountPaidBefore/amountDue).
+    let sumPrincipal = new Prisma.Decimal(0);
+    let sumInterestOrig = new Prisma.Decimal(0);
+    let sumCommissionOrig = new Prisma.Decimal(0);
+    let sumVatOrig = new Prisma.Decimal(0);
+    let sumLateFee = new Prisma.Decimal(0);
+
+    for (const inst of params.installments) {
+      const amountDue = new Prisma.Decimal(inst.amountDue ?? 0);
+      const amountPaidBefore = new Prisma.Decimal(inst.amountPaidBefore ?? 0);
+      const ratioRemaining = amountDue.gt(0)
+        ? Prisma.Decimal.max(0, new Prisma.Decimal(1).sub(amountPaidBefore.div(amountDue)))
+        : new Prisma.Decimal(1);
+      sumPrincipal = sumPrincipal.add(new Prisma.Decimal(inst.monthlyPrincipal ?? 0).mul(ratioRemaining));
+      sumInterestOrig = sumInterestOrig.add(new Prisma.Decimal(inst.monthlyInterest ?? 0).mul(ratioRemaining));
+      sumCommissionOrig = sumCommissionOrig.add(new Prisma.Decimal(inst.monthlyCommission ?? 0).mul(ratioRemaining));
+      sumVatOrig = sumVatOrig.add(new Prisma.Decimal(inst.vatAmount ?? 0).mul(ratioRemaining));
+      if (!inst.lateFeeWaived) {
+        sumLateFee = sumLateFee.add(new Prisma.Decimal(inst.lateFee ?? 0));
+      }
+    }
+
+    sumPrincipal = sumPrincipal.toDecimalPlaces(2);
+    sumLateFee = sumLateFee.toDecimalPlaces(2);
+
+    const cash = new Prisma.Decimal(params.totalPayoff);
+    const cashExclLateFee = cash.sub(sumLateFee);
+    const sumOtherOrig = sumInterestOrig.add(sumCommissionOrig).add(sumVatOrig);
+
+    // Allocate non-principal cash proportionally (reduce interest/commission/vat
+    // by the discount). If breakdown is fully zero (legacy), assign whole non-
+    // principal to interest as fallback.
+    let interestActual = new Prisma.Decimal(0);
+    let commissionActual = new Prisma.Decimal(0);
+    let vatActual = new Prisma.Decimal(0);
+    const nonPrincipalActual = cashExclLateFee.sub(sumPrincipal);
+
+    if (sumOtherOrig.gt(0)) {
+      const scale = nonPrincipalActual.div(sumOtherOrig);
+      interestActual = sumInterestOrig.mul(scale).toDecimalPlaces(2);
+      commissionActual = sumCommissionOrig.mul(scale).toDecimalPlaces(2);
+      vatActual = sumVatOrig.mul(scale).toDecimalPlaces(2);
+      // Absorb rounding residual into interest so the entry balances exactly.
+      const allocated = interestActual.add(commissionActual).add(vatActual);
+      const residual = nonPrincipalActual.sub(allocated);
+      if (!residual.isZero()) {
+        interestActual = interestActual.add(residual).toDecimalPlaces(2);
+      }
+    } else {
+      interestActual = nonPrincipalActual.toDecimalPlaces(2);
+    }
+
+    const intercompanyId = commissionActual.gt(0) ? generateInterCompanyId() : null;
+    const baseDesc = `ปิดสัญญาก่อนกำหนด — สัญญา ${params.contractNumber}`;
+    const entryDate = params.paidDate ?? new Date();
+
+    const financeDesc = intercompanyId
+      ? formatInterCompanyDescription(intercompanyId, `${baseDesc} (FINANCE)`)
+      : baseDesc;
+    const financeEntryId = await this.createAndPost(tx, {
+      companyId: financeCompanyId,
+      entryDate,
+      description: financeDesc,
+      referenceType: 'EARLY_PAYOFF',
+      referenceId: params.contractId,
+      createdById: params.userId,
+      lines: [
+        { accountCode: FA.CASH, description: 'รับชำระปิดก่อนกำหนด', debit: cash.toNumber(), credit: 0 },
+        { accountCode: FA.HP_RECEIVABLE, description: 'ตัดลูกหนี้เช่าซื้อ', debit: 0, credit: sumPrincipal.toNumber() },
+        { accountCode: FA.INTEREST_INCOME, description: 'รายได้ดอกเบี้ยเช่าซื้อ', debit: 0, credit: interestActual.toNumber() },
+        { accountCode: FA.LATE_FEE_INCOME, description: 'ค่าปรับล่าช้า', debit: 0, credit: sumLateFee.toNumber() },
+        { accountCode: FA.VAT_OUTPUT, description: 'ภาษีขาย', debit: 0, credit: vatActual.toNumber() },
+        { accountCode: FA.DUE_TO_SHOP, description: 'ค่าคอมมิชชันค้างจ่าย SHOP', debit: 0, credit: commissionActual.toNumber() },
+      ],
+    });
+
+    if (commissionActual.gt(0) && params.shopCompanyId && intercompanyId) {
+      await this.createAndPost(tx, {
+        companyId: params.shopCompanyId,
+        entryDate,
+        description: formatInterCompanyDescription(intercompanyId, `${baseDesc} (SHOP commission)`),
+        referenceType: 'EARLY_PAYOFF',
+        referenceId: params.contractId,
+        createdById: params.userId,
+        lines: [
+          { accountCode: SA.DUE_FROM_FINANCE, description: 'ค่าคอมมิชชันรับจาก FINANCE', debit: commissionActual.toNumber(), credit: 0 },
+          { accountCode: SA.COMMISSION_INCOME, description: 'รายได้ค่าคอมมิชชัน', debit: 0, credit: commissionActual.toNumber() },
+        ],
+      });
+    }
+
+    return financeEntryId;
+  }
+
+  /**
    * Phase A.1b — Customer Credit overpayment.
    *
    * When a customer pays MORE than amount due, the excess is parked as a

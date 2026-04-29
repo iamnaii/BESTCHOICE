@@ -1465,6 +1465,144 @@ describe('JournalAutoService', () => {
   });
 
   // ──────────────────────────────────────────────────────────────────────────
+  // createEarlyPayoffJournal (Phase A.1c — C-2 fix)
+  // ──────────────────────────────────────────────────────────────────────────
+  describe('createEarlyPayoffJournal (Phase A.1c)', () => {
+    const userId = 'u-1';
+
+    beforeEach(() => {
+      prisma.companyInfo.findFirst.mockResolvedValue({ id: 'co-FINANCE' });
+    });
+
+    function makeInst(overrides: Partial<{
+      amountDue: number; amountPaidBefore: number;
+      monthlyPrincipal: number; monthlyInterest: number;
+      monthlyCommission: number; vatAmount: number;
+      lateFee: number; lateFeeWaived: boolean;
+    }> = {}) {
+      return {
+        amountDue: 1000, amountPaidBefore: 0,
+        monthlyPrincipal: 800, monthlyInterest: 100,
+        monthlyCommission: 50, vatAmount: 50,
+        lateFee: 0, lateFeeWaived: false,
+        ...overrides,
+      };
+    }
+
+    it('balances when no discount (cash = sum of all components)', async () => {
+      const insts = [makeInst(), makeInst(), makeInst()]; // 3 × 1000 = 3000 owed
+      await service.createEarlyPayoffJournal(prisma, {
+        contractId: 'c-1', contractNumber: 'CNT-001',
+        installments: insts, totalPayoff: 3000,
+        userId, shopCompanyId: 'co-SHOP', financeCompanyId: 'co-FINANCE',
+      });
+      const lines = capturedLines();
+      expect(sumDebits(lines)).toBeCloseTo(sumCredits(lines), 2);
+      const cashLine = lines.find((l) => l.accountCode === '11-1101');
+      expect(Number(cashLine!.debit)).toBeCloseTo(3000, 2);
+      const hpLine = lines.find((l) => l.accountCode === '11-2102');
+      expect(Number(hpLine!.credit)).toBeCloseTo(2400, 2); // 3 × 800
+    });
+
+    it('balances when discount applied — principal in full, others scaled down', async () => {
+      const insts = [makeInst(), makeInst(), makeInst()]; // owed 3000, principal 2400
+      // 50% discount on grossProfit: discount=300 → totalPayoff=2700
+      await service.createEarlyPayoffJournal(prisma, {
+        contractId: 'c-1', contractNumber: 'CNT-001',
+        installments: insts, totalPayoff: 2700,
+        userId, shopCompanyId: 'co-SHOP', financeCompanyId: 'co-FINANCE',
+      });
+      const lines = capturedLines();
+      expect(sumDebits(lines)).toBeCloseTo(sumCredits(lines), 2);
+      const cashLine = lines.find((l) => l.accountCode === '11-1101');
+      expect(Number(cashLine!.debit)).toBeCloseTo(2700, 2);
+      // Principal MUST be settled in full
+      const hpLine = lines.find((l) => l.accountCode === '11-2102');
+      expect(Number(hpLine!.credit)).toBeCloseTo(2400, 2);
+      // Other 300 split proportionally across interest(300)+commission(150)+vat(150)=600
+      // Scale = 300/600 = 0.5 → interest 150, commission 75, vat 75
+      const interestLine = lines.find((l) => l.accountCode === '42-2101');
+      expect(Number(interestLine!.credit)).toBeCloseTo(150, 2);
+    });
+
+    it('includes late fees in cash + as separate credit line', async () => {
+      const insts = [makeInst({ lateFee: 200 })];
+      await service.createEarlyPayoffJournal(prisma, {
+        contractId: 'c-1', contractNumber: 'CNT-001',
+        installments: insts, totalPayoff: 1200, // 1000 owed + 200 late fee
+        userId, shopCompanyId: 'co-SHOP', financeCompanyId: 'co-FINANCE',
+      });
+      const lines = capturedLines();
+      expect(sumDebits(lines)).toBeCloseTo(sumCredits(lines), 2);
+      const lateFeeLine = lines.find((l) => l.accountCode === '42-2102');
+      expect(Number(lateFeeLine!.credit)).toBeCloseTo(200, 2);
+    });
+
+    it('handles partial pre-existing pay by scaling remaining breakdown', async () => {
+      // amountDue=1000, amountPaidBefore=400 → 60% remaining
+      // Remaining: principal=480, interest=60, commission=30, vat=30 → total=600
+      const insts = [makeInst({ amountPaidBefore: 400 })];
+      await service.createEarlyPayoffJournal(prisma, {
+        contractId: 'c-1', contractNumber: 'CNT-001',
+        installments: insts, totalPayoff: 600,
+        userId, shopCompanyId: 'co-SHOP', financeCompanyId: 'co-FINANCE',
+      });
+      const lines = capturedLines();
+      expect(sumDebits(lines)).toBeCloseTo(sumCredits(lines), 2);
+      const hpLine = lines.find((l) => l.accountCode === '11-2102');
+      expect(Number(hpLine!.credit)).toBeCloseTo(480, 2);
+    });
+
+    it('falls back to interest-only when breakdown is zero (legacy data)', async () => {
+      const insts = [makeInst({
+        monthlyPrincipal: 0, monthlyInterest: 0,
+        monthlyCommission: 0, vatAmount: 0,
+        amountDue: 1000,
+      })];
+      await service.createEarlyPayoffJournal(prisma, {
+        contractId: 'c-1', contractNumber: 'CNT-001',
+        installments: insts, totalPayoff: 1000,
+        userId, shopCompanyId: 'co-SHOP', financeCompanyId: 'co-FINANCE',
+      });
+      const lines = capturedLines();
+      expect(sumDebits(lines)).toBeCloseTo(sumCredits(lines), 2);
+      // Whole non-principal cash → interest line
+      const interestLine = lines.find((l) => l.accountCode === '42-2101');
+      expect(Number(interestLine!.credit)).toBeCloseTo(1000, 2);
+    });
+
+    it('skips SHOP entry when commission is zero', async () => {
+      const insts = [makeInst({ monthlyCommission: 0, monthlyPrincipal: 850 })];
+      await service.createEarlyPayoffJournal(prisma, {
+        contractId: 'c-1', contractNumber: 'CNT-001',
+        installments: insts, totalPayoff: 1000,
+        userId, shopCompanyId: 'co-SHOP', financeCompanyId: 'co-FINANCE',
+      });
+      // Only one entry created (FINANCE side)
+      expect(prisma.journalEntry.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('posts paired SHOP entry when commission > 0 with matching IC prefix', async () => {
+      const insts = [makeInst()]; // commission 50
+      await service.createEarlyPayoffJournal(prisma, {
+        contractId: 'c-1', contractNumber: 'CNT-001',
+        installments: insts, totalPayoff: 1000,
+        userId, shopCompanyId: 'co-SHOP', financeCompanyId: 'co-FINANCE',
+      });
+      expect(prisma.journalEntry.create).toHaveBeenCalledTimes(2);
+      const calls = prisma.journalEntry.create.mock.calls.map((c: unknown[]) => (c[0] as { data: { description: string; companyId: string } }).data);
+      const financeCall = calls.find((c) => c.companyId === 'co-FINANCE');
+      const shopCall = calls.find((c) => c.companyId === 'co-SHOP');
+      expect(financeCall).toBeDefined();
+      expect(shopCall).toBeDefined();
+      // Both descriptions carry the same [IC-<uuid>] prefix
+      const icMatch = financeCall!.description.match(/\[IC-([0-9a-f-]+)\]/);
+      expect(icMatch).not.toBeNull();
+      expect(shopCall!.description).toContain(icMatch![0]);
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
   // createRepossessionResaleJournal (Phase A.1b)
   // ──────────────────────────────────────────────────────────────────────────
   describe('createRepossessionResaleJournal (Phase A.1b)', () => {

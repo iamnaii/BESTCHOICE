@@ -1,4 +1,4 @@
-import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
@@ -103,6 +103,32 @@ export class JournalAutoService {
         },
       });
       throw new InternalServerErrorException(msg);
+    }
+
+    // F-3-027 part 3/3: validate allowedCompanies for each line's account
+    const codes = [...new Set(lines.map((l) => l.accountCode))];
+    const [accounts, company] = await Promise.all([
+      tx.chartOfAccount.findMany({
+        where: { code: { in: codes } },
+        select: { code: true, nameTh: true, allowedCompanies: true },
+      }),
+      tx.companyInfo.findUnique({
+        where: { id: params.companyId },
+        select: { companyCode: true },
+      }),
+    ]);
+    if (!company) {
+      throw new BadRequestException(`Company ${params.companyId} not found`);
+    }
+    if (company.companyCode) {
+      const companyCode = company.companyCode;
+      for (const acc of accounts) {
+        if (acc.allowedCompanies.length > 0 && !acc.allowedCompanies.includes(companyCode)) {
+          throw new BadRequestException(
+            `Account ${acc.code} (${acc.nameTh}) ใช้ไม่ได้กับบริษัท ${companyCode}`,
+          );
+        }
+      }
     }
 
     const entryNumber = await this.generateEntryNumber(tx);

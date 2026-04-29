@@ -20,6 +20,10 @@ describe('JournalAutoService', () => {
     prisma = {
       companyInfo: {
         findFirst: jest.fn().mockResolvedValue({ id: 'company-1' }),
+        findUnique: jest.fn().mockResolvedValue({ companyCode: 'FINANCE' }),
+      },
+      chartOfAccount: {
+        findMany: jest.fn().mockResolvedValue([]),
       },
       journalEntry: {
         count: jest.fn().mockResolvedValue(0),
@@ -768,6 +772,66 @@ describe('JournalAutoService', () => {
         })
       );
       expect(result).toBe('co-FINANCE');
+    });
+  });
+
+  describe('createAndPost — allowedCompanies validation', () => {
+    it('throws BadRequestException when SHOP companyId uses FINANCE-only account (F-3-027 part 3/3)', async () => {
+      const tx = {
+        companyInfo: { findUnique: jest.fn().mockResolvedValue({ companyCode: 'SHOP' }) },
+        chartOfAccount: {
+          findMany: jest.fn().mockResolvedValue([
+            { code: '11-2102', nameTh: 'ลูกหนี้เช่าซื้อ', allowedCompanies: ['FINANCE'] },
+            { code: '11-1101', nameTh: 'เงินสด', allowedCompanies: [] },
+          ]),
+        },
+        journalEntry: { count: jest.fn(), create: jest.fn() },
+      };
+      await expect(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (service as any).createAndPost(tx, {
+          companyId: 'co-SHOP',
+          entryDate: new Date(),
+          description: 'test',
+          referenceType: 'TEST',
+          referenceId: 'test',
+          createdById: 'u1',
+          lines: [
+            { accountCode: '11-2102', debit: 100, credit: 0 },
+            { accountCode: '11-1101', debit: 0, credit: 100 },
+          ],
+        }),
+      ).rejects.toThrow(/11-2102.*ใช้ไม่ได้กับบริษัท SHOP/);
+    });
+
+    it('allows account with empty allowedCompanies for any companyId (F-3-027 part 3/3)', async () => {
+      const tx = {
+        companyInfo: { findUnique: jest.fn().mockResolvedValue({ companyCode: 'SHOP' }) },
+        chartOfAccount: {
+          findMany: jest.fn().mockResolvedValue([
+            { code: '11-1101', nameTh: 'เงินสด', allowedCompanies: [] },
+          ]),
+        },
+        journalEntry: {
+          count: jest.fn().mockResolvedValue(0),
+          create: jest.fn().mockResolvedValue({ id: 'entry1' }),
+        },
+      };
+      await expect(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (service as any).createAndPost(tx, {
+          companyId: 'co-SHOP',
+          entryDate: new Date(),
+          description: 'test',
+          referenceType: 'TEST',
+          referenceId: 'test',
+          createdById: 'u1',
+          lines: [
+            { accountCode: '11-1101', debit: 100, credit: 0 },
+            { accountCode: '11-1101', debit: 0, credit: 100 },
+          ],
+        }),
+      ).resolves.toBe('entry1');
     });
   });
 });

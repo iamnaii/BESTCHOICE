@@ -1,7 +1,5 @@
-import { IsString, IsOptional, IsEnum, IsBoolean, IsInt, Matches, MaxLength, Min, Max, IsArray, IsIn } from 'class-validator';
+import { IsString, IsOptional, IsEnum, IsBoolean, IsInt, Matches, MaxLength, Min, Max, IsUUID } from 'class-validator';
 import { AccountGroup } from '@prisma/client';
-
-const ALLOWED_COMPANY_CODES = ['SHOP', 'FINANCE'] as const;
 
 export class CreateChartOfAccountDto {
   @IsString()
@@ -34,10 +32,9 @@ export class CreateChartOfAccountDto {
   @IsOptional()
   isActive?: boolean;
 
-  @IsArray()
+  @IsUUID(undefined, { message: 'companyId ต้องเป็น UUID ที่ถูกต้อง' })
   @IsOptional()
-  @IsIn(ALLOWED_COMPANY_CODES, { each: true, message: 'allowedCompanies ต้องเป็น SHOP หรือ FINANCE' })
-  allowedCompanies?: string[];
+  companyId?: string;
 
   @IsString()
   @IsOptional()
@@ -79,10 +76,11 @@ export class UpdateChartOfAccountDto {
   @IsOptional()
   isActive?: boolean;
 
-  @IsArray()
+  // companyId kept for symmetry with CreateDto, but service.update() ignores it.
+  // Moving an account between companies must be done via delete+recreate to preserve audit trail.
+  @IsUUID(undefined, { message: 'companyId ต้องเป็น UUID ที่ถูกต้อง' })
   @IsOptional()
-  @IsIn(ALLOWED_COMPANY_CODES, { each: true, message: 'allowedCompanies ต้องเป็น SHOP หรือ FINANCE' })
-  allowedCompanies?: string[];
+  companyId?: string;
 
   @IsString()
   @IsOptional()

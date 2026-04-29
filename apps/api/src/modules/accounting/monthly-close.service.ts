@@ -289,19 +289,24 @@ export class MonthlyCloseService {
    *   operation throws ForbiddenException — requires Board approval because
    *   a stale reopen can rewrite reported P&L / tax filings after the fact.
    *   OWNER-only is already enforced at the controller level.
+   *
+   * F-6-004 — Persists `reopenedAt`, `reopenedById`, `boardResolutionId`
+   * on the AccountingPeriod row and creates an AuditLog `PERIOD_REOPEN`
+   * record capturing reason + board resolution. DTO requires both
+   * `boardResolutionId` and `reason` (≥20 chars).
    */
   async reopenPeriod(
-    companyId: string,
-    year: number,
-    month: number,
-    boardResolutionId?: string,
+    dto: { companyId: string; year: number; month: number; boardResolutionId: string; reason: string },
+    userId: string,
   ): Promise<PeriodStatusResult> {
+    const { companyId, year, month, boardResolutionId, reason } = dto;
+
     const existing = await this.prisma.accountingPeriod.findUnique({
       where: { companyId_year_month: { companyId, year, month } },
     });
 
     if (!existing) {
-      // Already effectively OPEN (no record exists)
+      // Already effectively OPEN (no record exists) — nothing to reopen.
       return this.getPeriodStatus(companyId, year, month);
     }
 
@@ -311,7 +316,10 @@ export class MonthlyCloseService {
       );
     }
 
-    // T2-C10 — 90-day lock on stale CLOSED periods
+    // T2-C10 — 90-day lock on stale CLOSED periods. boardResolutionId is now
+    // always required by DTO, but we still keep the explicit check for clarity
+    // (and to surface the Forbidden message rather than a generic validation
+    // error if the DTO is bypassed by an internal caller).
     if (existing.status === 'CLOSED' && existing.closedAt) {
       const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
       const isStale = existing.closedAt < ninetyDaysAgo;
@@ -324,24 +332,44 @@ export class MonthlyCloseService {
       }
     }
 
-    const period = await this.prisma.accountingPeriod.update({
-      where: { companyId_year_month: { companyId, year, month } },
-      data: {
-        status: 'OPEN',
-        reviewStartedAt: null,
-        reviewStartedById: null,
-        closedAt: null,
-        closedById: null,
-        auditIssues: Prisma.JsonNull,
-        reportSnapshot: Prisma.JsonNull,
-      },
+    const period = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.accountingPeriod.update({
+        where: { companyId_year_month: { companyId, year, month } },
+        data: {
+          status: 'OPEN',
+          reviewStartedAt: null,
+          reviewStartedById: null,
+          closedAt: null,
+          closedById: null,
+          auditIssues: Prisma.JsonNull,
+          reportSnapshot: Prisma.JsonNull,
+          reopenedAt: new Date(),
+          reopenedById: userId,
+          boardResolutionId,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId,
+          action: 'PERIOD_REOPEN',
+          entity: 'accounting_period',
+          entityId: existing.id,
+          newValue: {
+            boardResolutionId,
+            reason,
+            period: `${existing.year}-${String(existing.month).padStart(2, '0')}`,
+            previousStatus: existing.status,
+          } as unknown as import('@prisma/client').Prisma.JsonObject,
+        },
+      });
+
+      return updated;
     });
 
-    const logSuffix = boardResolutionId
-      ? ` (boardResolutionId=${boardResolutionId})`
-      : '';
     this.logger.log(
-      `Period ${year}/${month} (company ${companyId}) reopened to OPEN.${logSuffix}`,
+      `Period ${year}/${month} (company ${companyId}) reopened to OPEN by ${userId} ` +
+        `(boardResolutionId=${boardResolutionId}).`,
     );
 
     return period as PeriodStatusResult;

@@ -15,6 +15,7 @@ import { BadDebtService } from './bad-debt.service';
 import { MonthlyCloseService } from './monthly-close.service';
 import { CreateExpenseDto, UpdateExpenseDto, RejectExpenseDto } from './dto/expense.dto';
 import { CloseMonthDto } from './dto/monthly-close.dto';
+import { ReopenPeriodDto } from './dto/reopen-period.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
@@ -268,12 +269,10 @@ export class AccountingController {
 
   @Post('periods/reopen')
   @Roles('OWNER')
-  reopenPeriod(@Body() dto: CloseMonthDto) {
-    return this.monthlyCloseService.reopenPeriod(
-      dto.companyId,
-      dto.year,
-      dto.month,
-      dto.boardResolutionId,
-    );
+  reopenPeriod(
+    @Body() dto: ReopenPeriodDto,
+    @Request() req: { user: { id: string } },
+  ) {
+    return this.monthlyCloseService.reopenPeriod(dto, req.user.id);
   }
 }

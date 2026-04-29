@@ -389,6 +389,9 @@ describe('MonthlyCloseService', () => {
       updatedAt: new Date(),
     };
 
+    const reasonText =
+      'Material misstatement found in March, restating per CPA recommendation';
+
     it('allows reopen of a fresh CLOSED period (closedAt < 90 days ago)', async () => {
       const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
       prisma.accountingPeriod.findUnique.mockResolvedValue({
@@ -404,7 +407,16 @@ describe('MonthlyCloseService', () => {
         closedById: null,
       });
 
-      const result = await service.reopenPeriod('company-1', 2025, 2);
+      const result = await service.reopenPeriod(
+        {
+          companyId: 'company-1',
+          year: 2025,
+          month: 2,
+          boardResolutionId: 'BR-FRESH-1',
+          reason: reasonText,
+        },
+        'user-OWNER-1',
+      );
 
       expect(result.status).toBe('OPEN');
       expect(prisma.accountingPeriod.update).toHaveBeenCalled();
@@ -419,9 +431,18 @@ describe('MonthlyCloseService', () => {
         closedById: 'user-1',
       });
 
-      await expect(service.reopenPeriod('company-1', 2025, 2)).rejects.toThrow(
-        ForbiddenException,
-      );
+      await expect(
+        service.reopenPeriod(
+          {
+            companyId: 'company-1',
+            year: 2025,
+            month: 2,
+            boardResolutionId: '',
+            reason: reasonText,
+          },
+          'user-OWNER-1',
+        ),
+      ).rejects.toThrow(ForbiddenException);
       expect(prisma.accountingPeriod.update).not.toHaveBeenCalled();
     });
 
@@ -441,14 +462,78 @@ describe('MonthlyCloseService', () => {
       });
 
       const result = await service.reopenPeriod(
-        'company-1',
-        2025,
-        2,
-        'BOARD-RES-2026-04-19',
+        {
+          companyId: 'company-1',
+          year: 2025,
+          month: 2,
+          boardResolutionId: 'BOARD-RES-2026-04-19',
+          reason: reasonText,
+        },
+        'user-OWNER-1',
       );
 
       expect(result.status).toBe('OPEN');
       expect(prisma.accountingPeriod.update).toHaveBeenCalled();
+    });
+
+    // F-6-004 — persists audit fields + creates AuditLog
+    it('reopenPeriod creates AuditLog with userId + persists boardResolutionId (F-6-004)', async () => {
+      const period = {
+        ...base,
+        id: 'period-f6004-1',
+        year: 2026,
+        month: 3,
+        status: 'CLOSED',
+        closedAt: new Date(),
+        closedById: 'user-CLOSER',
+      };
+      prisma.accountingPeriod.findUnique.mockResolvedValue(period);
+      prisma.accountingPeriod.update.mockResolvedValue({
+        ...period,
+        status: 'OPEN',
+        closedAt: null,
+        closedById: null,
+      });
+
+      await service.reopenPeriod(
+        {
+          companyId: 'company-1',
+          year: 2026,
+          month: 3,
+          boardResolutionId: 'BR-2026-001',
+          reason: reasonText,
+        },
+        'user-OWNER-1',
+      );
+
+      // Verify period update includes new audit fields
+      expect(prisma.accountingPeriod.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: 'OPEN',
+            reopenedAt: expect.any(Date),
+            reopenedById: 'user-OWNER-1',
+            boardResolutionId: 'BR-2026-001',
+          }),
+        }),
+      );
+
+      // Verify AuditLog created
+      expect(prisma.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            userId: 'user-OWNER-1',
+            action: 'PERIOD_REOPEN',
+            entity: 'accounting_period',
+            entityId: 'period-f6004-1',
+            newValue: expect.objectContaining({
+              boardResolutionId: 'BR-2026-001',
+              reason: reasonText,
+              period: '2026-03',
+            }),
+          }),
+        }),
+      );
     });
   });
 

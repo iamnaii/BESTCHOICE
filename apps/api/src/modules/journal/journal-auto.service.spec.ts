@@ -1661,6 +1661,98 @@ describe('JournalAutoService', () => {
   });
 
   // ──────────────────────────────────────────────────────────────────────────
+  // createInterCompanySettlementJournal (Phase A.3 W-5)
+  // ──────────────────────────────────────────────────────────────────────────
+  describe('createInterCompanySettlementJournal (Phase A.3)', () => {
+    let captured: Array<{ companyId: string; lines: Array<{ accountCode: string; debit: number; credit: number }>; description: string }>;
+
+    beforeEach(() => {
+      captured = [];
+      prisma.journalEntry.create.mockImplementation((args: any) => {
+        const data = args.data;
+        captured.push({
+          companyId: data.companyId,
+          description: data.description,
+          lines: (data.lines.create as Array<{ accountCode: string; debit: unknown; credit: unknown }>).map((l) => ({
+            accountCode: l.accountCode,
+            debit: Number(l.debit ?? 0),
+            credit: Number(l.credit ?? 0),
+          })),
+        });
+        return Promise.resolve({ id: `je-${captured.length}` });
+      });
+      prisma.companyInfo.findFirst = jest.fn().mockImplementation((args: any) => {
+        if (args?.where?.companyCode === 'SHOP') return Promise.resolve({ id: 'co-SHOP' });
+        if (args?.where?.companyCode === 'FINANCE') return Promise.resolve({ id: 'co-FINANCE' });
+        return Promise.resolve(null);
+      });
+    });
+
+    it('posts paired SHOP+FINANCE entries that reduce IC clearing accounts symmetrically', async () => {
+      await service.createInterCompanySettlementJournal(prisma, {
+        amount: 5000,
+        reference: 'TXN-2026-04',
+        userId: 'u1',
+        shopCompanyId: 'co-SHOP',
+        financeCompanyId: 'co-FINANCE',
+      });
+
+      expect(captured).toHaveLength(2);
+
+      const finance = captured.find((c) => c.companyId === 'co-FINANCE')!;
+      const dueToShopLine = finance.lines.find((l) => l.accountCode === '21-1102');
+      expect(dueToShopLine!.debit).toBeCloseTo(5000, 2);
+      const cashFinanceLine = finance.lines.find((l) => l.accountCode === '11-1101');
+      expect(cashFinanceLine!.credit).toBeCloseTo(5000, 2);
+
+      const shop = captured.find((c) => c.companyId === 'co-SHOP')!;
+      const cashShopLine = shop.lines.find((l) => l.accountCode === '11-1101');
+      expect(cashShopLine!.debit).toBeCloseTo(5000, 2);
+      const dueFromFinanceLine = shop.lines.find((l) => l.accountCode === '11-2105');
+      expect(dueFromFinanceLine!.credit).toBeCloseTo(5000, 2);
+    });
+
+    it('both entries share IC prefix', async () => {
+      await service.createInterCompanySettlementJournal(prisma, {
+        amount: 100,
+        reference: 'TXN-IC',
+        userId: 'u1',
+        shopCompanyId: 'co-SHOP',
+        financeCompanyId: 'co-FINANCE',
+      });
+
+      const finance = captured.find((c) => c.companyId === 'co-FINANCE')!;
+      const shop = captured.find((c) => c.companyId === 'co-SHOP')!;
+      const icMatch = finance.description.match(/\[IC-([0-9a-f-]+)\]/);
+      expect(icMatch).not.toBeNull();
+      expect(shop.description).toContain(icMatch![0]);
+    });
+
+    it('throws when amount is zero', async () => {
+      await expect(
+        service.createInterCompanySettlementJournal(prisma, {
+          amount: 0,
+          reference: 'TXN-ZERO',
+          userId: 'u1',
+          shopCompanyId: 'co-SHOP',
+          financeCompanyId: 'co-FINANCE',
+        }),
+      ).rejects.toThrow();
+    });
+
+    it('throws when SHOP or FINANCE missing', async () => {
+      prisma.companyInfo.findFirst = jest.fn().mockResolvedValue(null);
+      await expect(
+        service.createInterCompanySettlementJournal(prisma, {
+          amount: 100,
+          reference: 'TXN-NO-CO',
+          userId: 'u1',
+        }),
+      ).rejects.toThrow();
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
   // Phase A.2 — End-to-end deferred recognition lifecycle
   // ──────────────────────────────────────────────────────────────────────────
   describe('Phase A.2 — Deferred recognition lifecycle invariants', () => {

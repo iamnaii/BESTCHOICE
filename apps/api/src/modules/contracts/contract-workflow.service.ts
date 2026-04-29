@@ -424,25 +424,26 @@ export class ContractWorkflowService {
         },
       });
 
-      // Auto journal entry — record contract activation (sales + COGS)
-      try {
-        await this.journalAutoService.createContractActivationJournal(tx, {
-          contract: {
-            id: contract.id,
-            contractNumber: contract.contractNumber,
-            sellingPrice: contract.sellingPrice,
-            downPayment: contract.downPayment,
-            financedAmount: contract.financedAmount,
-            interestTotal: contract.interestTotal,
-            storeCommission: contract.storeCommission ?? 0,
-            vatAmount: contract.vatAmount ?? 0,
-          },
-          product: { costPrice: prod.costPrice, category: prod.category },
-          userId: contract.salespersonId,
-        });
-      } catch (err) {
-        this.logger.error(`Auto-journal failed for contract activation ${contract.id}: ${err}`);
-      }
+      // Auto journal entry — record contract activation (sales + COGS).
+      // Atomic with contract activation: if JE fails, the entire $transaction
+      // rolls back. The pre-v4 try/catch silently swallowed JE failures,
+      // leaving the contract ACTIVE without any ledger entry — defeating
+      // the v4 unbalanced-throw guard (audit findings F-1-002 / F-2-003).
+      // NestJS' global exception filter logs the propagated error.
+      await this.journalAutoService.createContractActivationJournal(tx, {
+        contract: {
+          id: contract.id,
+          contractNumber: contract.contractNumber,
+          sellingPrice: contract.sellingPrice,
+          downPayment: contract.downPayment,
+          financedAmount: contract.financedAmount,
+          interestTotal: contract.interestTotal,
+          storeCommission: contract.storeCommission ?? 0,
+          vatAmount: contract.vatAmount ?? 0,
+        },
+        product: { costPrice: prod.costPrice, category: prod.category },
+        userId: contract.salespersonId,
+      });
     });
 
     // Send LINE notification to customer (non-blocking)

@@ -1,7 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { InternalServerErrorException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import * as Sentry from '@sentry/nestjs';
 import { JournalAutoService } from './journal-auto.service';
 import { PrismaService } from '../../prisma/prisma.service';
+
+jest.mock('@sentry/nestjs', () => ({
+  captureException: jest.fn(),
+  captureMessage: jest.fn(),
+}));
 
 /**
  * JournalAutoService tests — validates the double-entry bookkeeping engine.
@@ -19,6 +26,14 @@ describe('JournalAutoService', () => {
     prisma = {
       companyInfo: {
         findFirst: jest.fn().mockResolvedValue({ id: 'company-1' }),
+        findUnique: jest.fn().mockResolvedValue({ companyCode: 'FINANCE' }),
+      },
+      chartOfAccount: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      // F-6-002: default — no closed period
+      accountingPeriod: {
+        findFirst: jest.fn().mockResolvedValue(null),
       },
       journalEntry: {
         count: jest.fn().mockResolvedValue(0),
@@ -246,15 +261,19 @@ describe('JournalAutoService', () => {
   // createContractActivationJournal
   // ──────────────────────────────────────────────────────────────────────────
   describe('createContractActivationJournal', () => {
-    // Balance rule: Dr(downPayment + financedAmount) = Cr(revenue + vatAmount)
-    // revenue = sellingPrice + interestTotal + storeCommission
-    // 3000 + 9300 = (10000 + 800 + 500) + 1000  →  12300 = 12300  ✓
+    // Production formula (installment.util.ts:56):
+    //   principal      = sellingPrice - downPayment        = 12300 - 3000 = 9300
+    //   financedAmount = principal + commission + interest + vat
+    //                  = 9300 + 500 + 800 + 1000           = 11600
+    // Activation JE balance:
+    //   Dr cash(downPayment 3000) + hpReceivable(financedAmount 11600)            = 14600
+    //   Cr revenue(sellingPrice+commission 12800) + interest(800) + vat(1000)     = 14600  ✓
     const baseContract = {
       id: 'contract-1',
       contractNumber: 'BC-202601-0001',
       sellingPrice: 12300,
       downPayment: 3000,
-      financedAmount: 9300,
+      financedAmount: 11600,
       interestTotal: 800,
       storeCommission: 500,
       vatAmount: 1000,
@@ -305,7 +324,7 @@ describe('JournalAutoService', () => {
       const hpLine = lines.find((l) => l.accountCode === JournalAutoService.ACC.HP_RECEIVABLE);
 
       expect(Number(cashLine?.debit)).toBeCloseTo(3000, 2);
-      // HP Receivable = financedAmount + interest + commission + VAT = 9300+800+500+1000
+      // HP Receivable = financedAmount (already includes principal+commission+interest+vat)
       expect(Number(hpLine?.debit)).toBeCloseTo(11600, 2);
     });
 
@@ -375,6 +394,45 @@ describe('JournalAutoService', () => {
         .create as Array<{ accountCode: string; debit: number }>;
       const cogsLine = cogsLines.find((l) => l.debit > 0);
       expect(cogsLine?.accountCode).toBe(JournalAutoService.ACC.COGS_USED);
+    });
+
+    // F-2-001 regression: financedAmount per installment.util.ts:56 already
+    // includes principal + commission + interest + vat. The previous code
+    // added them again, causing the JE to be unbalanced and createAndPost to
+    // throw on every contract activation.
+    it('produces balanced JE when financedAmount already includes interest+commission+vat', async () => {
+      const principal = new Prisma.Decimal('10000');
+      const commission = new Prisma.Decimal('500');
+      const interest = new Prisma.Decimal('1000');
+      const vat = new Prisma.Decimal('805');
+      // Production formula (installment.util.ts:56)
+      const financedAmount = principal.plus(commission).plus(interest).plus(vat); // 12305
+      // sellingPrice = principal + downPayment (per installment.util.ts:52)
+      const downPayment = new Prisma.Decimal('1000');
+      const sellingPrice = principal.plus(downPayment); // 11000
+
+      await service.createContractActivationJournal(prisma, {
+        contract: {
+          id: 'c-fixture',
+          contractNumber: 'CT-FIXTURE',
+          sellingPrice,
+          downPayment,
+          financedAmount,
+          interestTotal: interest,
+          storeCommission: commission,
+          vatAmount: vat,
+        },
+        product: { costPrice: new Prisma.Decimal('8000'), category: 'มือถือใหม่' },
+        userId: 'user-1',
+        companyId: 'company-1',
+      });
+
+      // First call = sales entry
+      const salesEntry = prisma.journalEntry.create.mock.calls[0][0];
+      const lines = salesEntry.data.lines.create as Array<{ debit: number; credit: number }>;
+      const totalDr = sumDebits(lines);
+      const totalCr = sumCredits(lines);
+      expect(Math.abs(totalDr - totalCr)).toBeLessThan(0.01);
     });
   });
 
@@ -514,17 +572,16 @@ describe('JournalAutoService', () => {
       });
 
       // ── 1. Contract Activation journal ──────────────────────────────────
-      // Dr HP Receivable (9 300) + Dr Cash/Down (3 000) / Cr Revenue (10 000) + Cr VAT (800) + Cr Commission (500)
-      // Dr COGS (8 000) / Cr Inventory (8 000)
-      // Balance: Dr = 3000+9300+8000 = 20300  |  Cr = 10000+800+500+8000+1000 = ...
-      // We use the same numbers as the existing tests so we know they balance.
+      // financedAmount = principal(9300) + commission(500) + interest(800) + vat(1000) = 11600
+      // Sales JE  : Dr cash(3000) + hpReceivable(11600) = Cr revenue(12800) + interest(800) + vat(1000) = 14600
+      // COGS JE   : Dr COGS(8000) = Cr Inventory(8000)
       await service.createContractActivationJournal(prisma, {
         contract: {
           id: 'contract-tb',
           contractNumber: 'BC-TB-0001',
           sellingPrice: 12300,
           downPayment: 3000,
-          financedAmount: 9300,
+          financedAmount: 11600,
           interestTotal: 800,
           storeCommission: 500,
           vatAmount: 1000,
@@ -686,6 +743,148 @@ describe('JournalAutoService', () => {
 
       const lines = capturedLines();
       expect(sumDebits(lines)).toBeCloseTo(sumCredits(lines), 2);
+    });
+  });
+
+  describe('createAndPost — Decimal precision (F-2-010)', () => {
+    it('balance check uses Decimal precision (no floating-point drift) (F-2-010)', async () => {
+      // Construct many lines that sum to identical totals via Decimal
+      // but might drift in JS Number addition (e.g. 0.1 + 0.1 + ... = 3.0000000000000004).
+      const tx = prisma;
+      const lines: Array<{ accountCode: string; debit: number; credit: number }> = [];
+      for (let i = 0; i < 30; i++) lines.push({ accountCode: '11-1101', debit: 0.1, credit: 0 });
+      for (let i = 0; i < 30; i++) lines.push({ accountCode: '21-2101', debit: 0, credit: 0.1 });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await expect((service as any).createAndPost(tx, {
+        companyId: 'co1',
+        entryDate: new Date(),
+        description: 'Decimal precision test',
+        referenceType: 'TEST',
+        referenceId: 'test-decimal',
+        createdById: 'u1',
+        lines,
+      })).resolves.toBeTruthy();
+    });
+  });
+
+  describe('resolveCompanyId determinism', () => {
+    it('resolveCompanyId returns deterministic company across calls (F-3-027 part 1/3)', async () => {
+      const tx = {
+        companyInfo: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'co-FINANCE' }),
+        },
+      };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result = await (service as any).resolveCompanyId(tx);
+      expect(tx.companyInfo.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderBy: { createdAt: 'asc' },
+        })
+      );
+      expect(result).toBe('co-FINANCE');
+    });
+  });
+
+  describe('createAndPost — allowedCompanies validation', () => {
+    it('throws BadRequestException when SHOP companyId uses FINANCE-only account (F-3-027 part 3/3)', async () => {
+      const tx = {
+        companyInfo: { findUnique: jest.fn().mockResolvedValue({ companyCode: 'SHOP' }) },
+        chartOfAccount: {
+          findMany: jest.fn().mockResolvedValue([
+            { code: '11-2102', nameTh: 'ลูกหนี้เช่าซื้อ', allowedCompanies: ['FINANCE'] },
+            { code: '11-1101', nameTh: 'เงินสด', allowedCompanies: [] },
+          ]),
+        },
+        accountingPeriod: { findFirst: jest.fn().mockResolvedValue(null) },
+        journalEntry: { count: jest.fn(), create: jest.fn() },
+      };
+      await expect(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (service as any).createAndPost(tx, {
+          companyId: 'co-SHOP',
+          entryDate: new Date(),
+          description: 'test',
+          referenceType: 'TEST',
+          referenceId: 'test',
+          createdById: 'u1',
+          lines: [
+            { accountCode: '11-2102', debit: 100, credit: 0 },
+            { accountCode: '11-1101', debit: 0, credit: 100 },
+          ],
+        }),
+      ).rejects.toThrow(/11-2102.*ใช้ไม่ได้กับบริษัท SHOP/);
+    });
+
+    it('allows account with empty allowedCompanies for any companyId (F-3-027 part 3/3)', async () => {
+      const tx = {
+        companyInfo: { findUnique: jest.fn().mockResolvedValue({ companyCode: 'SHOP' }) },
+        chartOfAccount: {
+          findMany: jest.fn().mockResolvedValue([
+            { code: '11-1101', nameTh: 'เงินสด', allowedCompanies: [] },
+          ]),
+        },
+        accountingPeriod: { findFirst: jest.fn().mockResolvedValue(null) },
+        journalEntry: {
+          count: jest.fn().mockResolvedValue(0),
+          create: jest.fn().mockResolvedValue({ id: 'entry1' }),
+        },
+      };
+      await expect(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (service as any).createAndPost(tx, {
+          companyId: 'co-SHOP',
+          entryDate: new Date(),
+          description: 'test',
+          referenceType: 'TEST',
+          referenceId: 'test',
+          createdById: 'u1',
+          lines: [
+            { accountCode: '11-1101', debit: 100, credit: 0 },
+            { accountCode: '11-1101', debit: 0, credit: 100 },
+          ],
+        }),
+      ).resolves.toBe('entry1');
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // F-6-002: createAndPost — soft-block CLOSED period
+  // ──────────────────────────────────────────────────────────────────────────
+  describe('createAndPost — soft-block CLOSED period (F-6-002)', () => {
+    it('redirects entryDate to current period if originally in CLOSED period (F-6-002)', async () => {
+      const tx = {
+        accountingPeriod: { findFirst: jest.fn().mockResolvedValue({ status: 'CLOSED' }) },
+        companyInfo: { findUnique: jest.fn().mockResolvedValue({ companyCode: 'FINANCE' }) },
+        chartOfAccount: { findMany: jest.fn().mockResolvedValue([]) },
+        journalEntry: {
+          count: jest.fn().mockResolvedValue(0),
+          create: jest
+            .fn()
+            .mockImplementation(({ data }) => Promise.resolve({ id: 'e1', _captured: data })),
+        },
+      };
+      (Sentry.captureMessage as jest.Mock).mockClear();
+      const originalDate = new Date('2025-03-15T00:00:00Z');
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (service as any).createAndPost(tx, {
+        companyId: 'co1',
+        entryDate: originalDate,
+        description: 'Original description',
+        referenceType: 'TEST',
+        referenceId: 'test-redirect',
+        createdById: 'u1',
+        lines: [
+          { accountCode: '11-1101', debit: 100, credit: 0 },
+          { accountCode: '21-2101', debit: 0, credit: 100 },
+        ],
+      });
+
+      // The captured create call should have a current-period entryDate (year matches now)
+      const created = tx.journalEntry.create.mock.calls[0][0].data;
+      expect(created.entryDate.getFullYear()).toBe(new Date().getFullYear());
+      expect(created.description).toMatch(/^\[Originally for 2025-03\]/);
+      expect(Sentry.captureMessage).toHaveBeenCalled();
     });
   });
 });

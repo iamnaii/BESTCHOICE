@@ -179,6 +179,9 @@ describe('Contract Signing & Workflow', () => {
         findMany: jest.fn().mockResolvedValue([]),
         findUnique: jest.fn().mockResolvedValue(null),
       },
+      companyInfo: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'co-FINANCE' }),
+      },
       $transaction: jest.fn((cb) => cb(txMock)),
     };
 

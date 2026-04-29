@@ -1,4 +1,4 @@
-import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
@@ -63,6 +63,7 @@ export class JournalAutoService {
     if (companyId) return companyId;
     const company = await tx.companyInfo.findFirst({
       where: { isActive: true, deletedAt: null },
+      orderBy: { createdAt: 'asc' },
       select: { id: true },
     });
     return company?.id || null;
@@ -88,16 +89,76 @@ export class JournalAutoService {
     const lines = params.lines.filter((l) => l.debit > 0 || l.credit > 0);
     if (lines.length === 0) return null;
 
-    const totalDebit = lines.reduce((s, l) => s + l.debit, 0);
-    const totalCredit = lines.reduce((s, l) => s + l.credit, 0);
-    if (Math.abs(totalDebit - totalCredit) > 0.001) {
+    const totalDebit = lines.reduce((s, l) => s.plus(new Decimal(l.debit)), new Decimal(0));
+    const totalCredit = lines.reduce((s, l) => s.plus(new Decimal(l.credit)), new Decimal(0));
+    if (totalDebit.minus(totalCredit).abs().gt(new Decimal('0.01'))) {
       const msg = `Journal not balanced for ${params.referenceType} ${params.referenceId}: Dr ${totalDebit} ≠ Cr ${totalCredit}`;
       this.logger.error(msg);
       Sentry.captureException(new Error(msg), {
         tags: { kind: 'journal', referenceType: params.referenceType },
-        extra: { referenceId: params.referenceId, totalDebit, totalCredit },
+        extra: {
+          referenceId: params.referenceId,
+          totalDebit: totalDebit.toString(),
+          totalCredit: totalCredit.toString(),
+        },
       });
       throw new InternalServerErrorException(msg);
+    }
+
+    // F-3-027 part 3/3: validate allowedCompanies for each line's account
+    const codes = [...new Set(lines.map((l) => l.accountCode))];
+    const [accounts, company] = await Promise.all([
+      tx.chartOfAccount.findMany({
+        where: { code: { in: codes } },
+        select: { code: true, nameTh: true, allowedCompanies: true },
+      }),
+      tx.companyInfo.findUnique({
+        where: { id: params.companyId },
+        select: { companyCode: true },
+      }),
+    ]);
+    if (!company) {
+      throw new BadRequestException(`Company ${params.companyId} not found`);
+    }
+    if (company.companyCode) {
+      const companyCode = company.companyCode;
+      for (const acc of accounts) {
+        if (acc.allowedCompanies.length > 0 && !acc.allowedCompanies.includes(companyCode)) {
+          throw new BadRequestException(
+            `Account ${acc.code} (${acc.nameTh}) ใช้ไม่ได้กับบริษัท ${companyCode}`,
+          );
+        }
+      }
+    }
+
+    // F-6-002: soft-block — if entryDate in CLOSED period, redirect to current
+    let entryDate = params.entryDate;
+    let description = params.description;
+    const period = await tx.accountingPeriod.findFirst({
+      where: {
+        companyId: params.companyId,
+        year: entryDate.getFullYear(),
+        month: entryDate.getMonth() + 1,
+        status: { in: ['CLOSED', 'SYNCED'] },
+      },
+      select: { status: true },
+    });
+    if (period) {
+      const originalYM = `${entryDate.getFullYear()}-${String(entryDate.getMonth() + 1).padStart(2, '0')}`;
+      this.logger.warn(
+        `Auto-JE redirected from ${period.status} period ${originalYM} to current period`,
+      );
+      Sentry.captureMessage(`Auto-JE redirect: ${originalYM} → current`, {
+        level: 'warning',
+        tags: { kind: 'journal', referenceType: params.referenceType },
+        extra: {
+          referenceId: params.referenceId,
+          originalYM,
+          periodStatus: period.status,
+        },
+      });
+      description = `[Originally for ${originalYM}] ${description}`;
+      entryDate = new Date();
     }
 
     const entryNumber = await this.generateEntryNumber(tx);
@@ -105,8 +166,8 @@ export class JournalAutoService {
       data: {
         entryNumber,
         companyId: params.companyId,
-        entryDate: params.entryDate,
-        description: params.description,
+        entryDate,
+        description,
         status: 'POSTED',
         postedAt: new Date(),
         postedById: params.createdById,
@@ -293,8 +354,10 @@ export class JournalAutoService {
 
     // Sales revenue = sellingPrice + commission only — interest is a separate revenue line
     const revenue = sellingPrice.add(commission);
-    // HP Receivable = total owed after down payment (principal + interest + commission + VAT)
-    const hpReceivable = financedAmount.add(interest).add(commission).add(vat);
+    // HP Receivable = financedAmount which already includes principal + commission + interest + vat
+    // (computed by installment.util.ts:56 calculateInstallment). Adding them again would
+    // double-count and unbalance the JE — see F-2-001.
+    const hpReceivable = financedAmount;
     const isUsed = (params.product.category || '').toLowerCase().includes('used') ||
       (params.product.category || '').includes('มือสอง');
     const revenueAcc = isUsed ? JournalAutoService.ACC.REVENUE_USED : JournalAutoService.ACC.REVENUE_NEW;

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger, Optional, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, InternalServerErrorException, Logger, Optional, Inject, forwardRef } from '@nestjs/common';
 import * as Sentry from '@sentry/node';
 import { StructuredLoggerService } from '../../common/logger';
 import { Prisma, PaymentMethod } from '@prisma/client';
@@ -40,6 +40,25 @@ export class PaymentsService {
     @Optional() private mdmLockService?: MdmLockService,
   ) {}
 
+  /**
+   * F-3-027 part 2/3: Resolve FINANCE companyId for HP installment journal entries.
+   * Payments on installment contracts post to FINANCE-side accounts (HP Receivable,
+   * Interest Income, VAT Output) — must be passed explicitly to JournalAutoService
+   * instead of relying on the non-deterministic resolveCompanyId fallback.
+   * Hoisted out of the per-installment loop so autoAllocate / applyCreditBalance
+   * resolve it once per call rather than once per installment.
+   */
+  private async resolveFinanceCompanyId(): Promise<string> {
+    const financeCompany = await this.prisma.companyInfo.findFirst({
+      where: { companyCode: 'FINANCE', deletedAt: null },
+      select: { id: true },
+    });
+    if (!financeCompany) {
+      throw new InternalServerErrorException('FINANCE company not configured');
+    }
+    return financeCompany.id;
+  }
+
   /** Enforce branch-level access: SALES/BRANCH_MANAGER can only operate on their own branch */
   async validateBranchAccess(
     contractId: string,
@@ -78,6 +97,11 @@ export class PaymentsService {
 
     // CR-7: Validate payment date is not in a closed accounting period
     await validatePeriodOpen(this.prisma, new Date());
+
+    // F-3-027 part 2/3: resolve FINANCE companyId BEFORE the transaction so
+    // it can be passed explicitly to the payment JE (HP installment receipts
+    // are FINANCE-side activity).
+    const financeCompanyId = await this.resolveFinanceCompanyId();
 
     // Capture dueDate for loyalty points check (on-time = paidDate <= dueDate)
     let capturedDueDate: Date | null = null;
@@ -182,6 +206,7 @@ export class PaymentsService {
       // ledger and cash never diverge. (Audit finding J5.)
       if (isPaidInFull) {
         await this.journalAutoService.createPaymentJournal(tx, {
+          companyId: financeCompanyId,
           payment: {
             id: result.id,
             installmentNo: result.installmentNo,
@@ -302,6 +327,10 @@ export class PaymentsService {
       throw new BadRequestException('จำนวนเงินต้องมากกว่า 0');
     }
 
+    // F-3-027 part 2/3: resolve FINANCE companyId once before the tx so the
+    // per-installment JE calls below use it (instead of resolveCompanyId fallback).
+    const financeCompanyId = await this.resolveFinanceCompanyId();
+
     // Wrap entire allocation in a serializable transaction to prevent double-payment
     const allocationResult = await this.prisma.$transaction(async (tx) => {
       const contract = await tx.contract.findUnique({
@@ -356,6 +385,7 @@ export class PaymentsService {
           // (Audit finding J1: closes the journal coverage gap on the
           // multi-installment auto-allocate path.)
           await this.journalAutoService.createPaymentJournal(tx, {
+            companyId: financeCompanyId,
             payment: {
               id: updated.id,
               installmentNo: updated.installmentNo,
@@ -679,6 +709,10 @@ export class PaymentsService {
 
   // ─── Apply credit balance to next pending installment ─
   async applyCreditBalance(contractId: string, recordedById: string) {
+    // F-3-027 part 2/3: resolve FINANCE companyId once before the tx so the
+    // per-installment JE calls below use it (instead of resolveCompanyId fallback).
+    const financeCompanyId = await this.resolveFinanceCompanyId();
+
     return this.prisma.$transaction(async (tx) => {
       const contract = await tx.contract.findUnique({
         where: { id: contractId },
@@ -730,6 +764,7 @@ export class PaymentsService {
           // (Audit finding J2: closes the journal coverage gap on the
           // credit-balance allocation path.)
           await this.journalAutoService.createPaymentJournal(tx, {
+            companyId: financeCompanyId,
             payment: {
               id: updated.id,
               installmentNo: updated.installmentNo,

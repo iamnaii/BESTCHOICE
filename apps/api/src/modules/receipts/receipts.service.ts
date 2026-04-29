@@ -25,7 +25,14 @@ export class ReceiptsService {
 
   /**
    * Generate receipt number: RC-YYYY-MM-NNNNN
-   * Uses SELECT FOR UPDATE to prevent race conditions with concurrent payments.
+   *
+   * Phase W-2: pg_advisory_xact_lock serialises concurrent generation within
+   * the same month, even when no rows yet exist for that prefix. The previous
+   * SELECT ... FOR UPDATE only locked existing rows — first receipt of a new
+   * month still race-conditioned (two callers both saw empty, both wrote -00001).
+   * Lock key = numeric YYYYMM with a +1 prefix (1<YYYYMM>) to namespace separate
+   * from journal entries which use the same lock space (raw YYYYMM).
+   * Auto-released at tx commit/rollback.
    */
   private async generateReceiptNumber(tx?: Prisma.TransactionClient): Promise<string> {
     const db = tx || this.prisma;
@@ -34,15 +41,14 @@ export class ReceiptsService {
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const prefix = `RC-${year}-${month}-`;
 
-    // Use raw query with FOR UPDATE to lock the row and prevent concurrent reads
-    // from getting the same sequence number.
-    // Schema maps Receipt → "receipts" with column "receipt_number" (snake_case).
+    const lockKey = parseInt(`1${year}${month}`, 10);
+    await db.$queryRaw`SELECT pg_advisory_xact_lock(${lockKey}::bigint)`;
+
     const result = await db.$queryRaw<Array<{ receiptNumber: string }>>`
       SELECT receipt_number AS "receiptNumber" FROM receipts
       WHERE receipt_number LIKE ${prefix + '%'}
       ORDER BY receipt_number DESC
       LIMIT 1
-      FOR UPDATE
     `;
 
     let seq = 1;

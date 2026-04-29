@@ -1558,8 +1558,8 @@ describe('JournalAutoService', () => {
       expect(Number(unearnedInterestLine!.debit)).toBeCloseTo(300, 2);
     });
 
-    it('balances when discount applied — principal in full, others scaled down (Phase A.2)', async () => {
-      const insts = [makeInst(), makeInst(), makeInst()]; // owed 3000, principal 2400, others 600
+    it('balances when discount applied — principal in full, others as full + explicit discount (Phase W-4)', async () => {
+      const insts = [makeInst(), makeInst(), makeInst()]; // owed 3000, principal 2400, interest 300, commission 150, vat 150
       // 50% discount on grossProfit: discount=300 → totalPayoff=2700
       await service.createEarlyPayoffJournal(prisma, {
         contractId: 'c-1', contractNumber: 'CNT-001',
@@ -1573,10 +1573,12 @@ describe('JournalAutoService', () => {
       // Phase A.2: HP Receivable drains by full owed regardless of discount
       const hpLine = lines.find((l) => l.accountCode === '11-2102');
       expect(Number(hpLine!.credit)).toBeCloseTo(3000, 2);
-      // Other 300 cash split proportionally across interest(300)+commission(150)+vat(150)=600
-      // Scale = 300/600 = 0.5 → interest 150, commission 75, vat 75
+      // Phase W-4: Interest Income credited at FULL (300), not actual (150)
       const interestLine = lines.find((l) => l.accountCode === '42-2101');
-      expect(Number(interestLine!.credit)).toBeCloseTo(150, 2);
+      expect(Number(interestLine!.credit)).toBeCloseTo(300, 2);
+      // Phase W-4: Sales Discount Interest expense visible (interest discount 150 + vat discount 75)
+      const discountLine = lines.find((l) => l.accountCode === '53-1805');
+      expect(Number(discountLine!.debit)).toBeCloseTo(225, 2);
       // Due-to-SHOP reduces by commission discount (75) — FINANCE owes SHOP less
       const dueToShopLine = lines.find((l) => l.accountCode === '21-1102');
       expect(Number(dueToShopLine!.debit)).toBeCloseTo(75, 2);
@@ -1611,7 +1613,7 @@ describe('JournalAutoService', () => {
       expect(Number(hpLine!.credit)).toBeCloseTo(600, 2);
     });
 
-    it('falls back to interest-only when breakdown is zero (legacy data)', async () => {
+    it('legacy zero-breakdown: flat HP Receivable drain, no interest/VAT recognition (Phase W-4)', async () => {
       const insts = [makeInst({
         monthlyPrincipal: 0, monthlyInterest: 0,
         monthlyCommission: 0, vatAmount: 0,
@@ -1624,9 +1626,12 @@ describe('JournalAutoService', () => {
       });
       const lines = capturedLines();
       expect(sumDebits(lines)).toBeCloseTo(sumCredits(lines), 2);
-      // Whole non-principal cash → interest line
+      // HP Receivable drains by full amountDue (matches activation Dr)
+      const hpLine = lines.find((l) => l.accountCode === '11-2102');
+      expect(Number(hpLine!.credit)).toBeCloseTo(1000, 2);
+      // No interest income recognised (no breakdown to allocate from)
       const interestLine = lines.find((l) => l.accountCode === '42-2101');
-      expect(Number(interestLine!.credit)).toBeCloseTo(1000, 2);
+      expect(interestLine === undefined || Number(interestLine.credit) === 0).toBe(true);
     });
 
     it('skips SHOP entry when commission is zero', async () => {

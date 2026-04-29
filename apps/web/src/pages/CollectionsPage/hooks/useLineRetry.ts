@@ -14,7 +14,7 @@ export interface FailedAction {
   contract: {
     id: string;
     contractNumber: string;
-    customer: { id: string; name: string; phone: string; lineId: string | null };
+    customer: { id: string; name: string; phone: string; lineIdFinance: string | null };
   };
 }
 

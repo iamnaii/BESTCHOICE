@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, InternalServerErrorException } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
@@ -1028,6 +1028,19 @@ export class DataAuditService {
       throw new NotFoundException('ไม่พบผู้ใช้ OWNER สำหรับ backfill');
     }
 
+    // F-3-027 part 2/3 follow-up: resolve FINANCE companyId once for all
+    // payment-journal backfills. HP installment receipts post to FINANCE-side
+    // accounts and must pass companyId explicitly (Task 9 will validate via
+    // allowedCompanies). Hoisted here so we don't query per payment.
+    const financeCompany = await this.prisma.companyInfo.findFirst({
+      where: { companyCode: 'FINANCE', deletedAt: null },
+      select: { id: true },
+    });
+    if (!financeCompany) {
+      throw new InternalServerErrorException('FINANCE company not configured');
+    }
+    const financeCompanyId = financeCompany.id;
+
     // 1. Find orphan contracts (any non-DRAFT status without CONTRACT journal)
     const orphanContracts = await this.prisma.$queryRaw<{ id: string }[]>`
       SELECT c.id
@@ -1143,6 +1156,7 @@ export class DataAuditService {
           try {
             await this.prisma.$transaction(async (tx) => {
               await this.journalAutoService.createPaymentJournal(tx, {
+                companyId: financeCompanyId,
                 payment: {
                   id: payment.id,
                   installmentNo: payment.installmentNo,

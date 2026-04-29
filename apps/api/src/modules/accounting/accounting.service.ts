@@ -377,25 +377,23 @@ export class AccountingService {
       // F-3-027 part 2/3: pass branch.companyId so SHOP expenses post under SHOP,
       // FINANCE expenses under FINANCE — instead of falling back to non-deterministic
       // resolveCompanyId in JournalAutoService.
-      try {
-        await this.journalAutoService.createExpenseJournal(tx, {
-          companyId: expense.branch?.companyId ?? null,
-          expense: {
-            id: updated.id,
-            expenseNumber: updated.expenseNumber,
-            accountCode: updated.accountCode,
-            amount: updated.amount,
-            vatAmount: updated.vatAmount,
-            totalAmount: updated.totalAmount,
-            description: updated.description,
-            expenseDate: updated.expenseDate,
-            paymentDate: updated.paymentDate,
-          },
-          userId: expense.createdById,
-        });
-      } catch (err) {
-        this.logger.error(`Auto-journal failed for expense ${updated.id}: ${err}`);
-      }
+      // F-1-016: atomic with expense payment — if JE fails, $transaction rolls back.
+      // Pre-v4 try/catch caused silent ledger divergence (audit F-1-016 / F-2-008).
+      await this.journalAutoService.createExpenseJournal(tx, {
+        companyId: expense.branch?.companyId ?? null,
+        expense: {
+          id: updated.id,
+          expenseNumber: updated.expenseNumber,
+          accountCode: updated.accountCode,
+          amount: updated.amount,
+          vatAmount: updated.vatAmount,
+          totalAmount: updated.totalAmount,
+          description: updated.description,
+          expenseDate: updated.expenseDate,
+          paymentDate: updated.paymentDate,
+        },
+        userId: expense.createdById,
+      });
 
       return updated;
     });

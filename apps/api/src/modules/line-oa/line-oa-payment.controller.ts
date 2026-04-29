@@ -224,7 +224,7 @@ export class LineOaPaymentController {
               paidDate: formatDateShort(new Date()),
               remainingInstallments: totalInstallments - paidCount - 1,
             });
-            await this.lineOaService.sendFlexMessage(evidence.lineUserId, flex);
+            await this.lineOaService.sendFlexMessage(evidence.lineUserId, flex, 'line-finance');
           } catch (err) {
             this.logger.error(`Failed to send batch approval notification for ${id}: ${err}`);
           }
@@ -377,7 +377,7 @@ export class LineOaPaymentController {
       });
 
       try {
-        await this.lineOaService.sendFlexMessage(evidence.lineUserId, flex);
+        await this.lineOaService.sendFlexMessage(evidence.lineUserId, flex, 'line-finance');
       } catch (err) {
         this.logger.error(`Failed to send payment success notification: ${err}`);
       }
@@ -654,7 +654,7 @@ export class LineOaPaymentController {
         data: {
           contractId: linkContract.id,
           paymentId: link.payment!.id,
-          lineUserId: linkContract.customer.lineId || null,
+          lineUserId: linkContract.customer.lineIdFinance || null,
           imageUrl,
           amount: body.amount ? new Prisma.Decimal(body.amount) : null,
           status: 'PENDING_REVIEW',
@@ -684,7 +684,7 @@ export class LineOaPaymentController {
     });
 
     // Send LINE confirmation message to customer
-    const customerLineId = linkContract.customer.lineId;
+    const customerLineId = linkContract.customer.lineIdFinance;
     if (customerLineId) {
       try {
         const payment = link.payment!;
@@ -708,7 +708,7 @@ export class LineOaPaymentController {
           paidDate: formatDateShort(new Date()),
           remainingInstallments: totalInstallments - paidCount,
         });
-        await this.lineOaService.sendFlexMessage(customerLineId, flex);
+        await this.lineOaService.sendFlexMessage(customerLineId, flex, 'line-finance');
       } catch (err) {
         this.logger.warn(`Failed to send slip confirmation: ${err}`);
       }

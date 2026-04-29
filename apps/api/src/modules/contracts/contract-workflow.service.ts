@@ -502,10 +502,11 @@ export class ContractWorkflowService {
       `ขอบคุณที่ไว้วางใจ BESTCHOICE`,
     ].join('\n');
 
-    const lineId = customer.lineId;
+    const lineId = customer.lineIdFinance;
     if (lineId) {
       await this.notificationsService.send({
         channel: 'LINE',
+        channelKey: 'line-finance',
         recipient: lineId,
         message,
         relatedId: contract.id,

@@ -104,7 +104,7 @@ export class PaySolutionsService {
     const contract = await this.prisma.contract.findUnique({
       where: { id: contractId },
       include: {
-        customer: { select: { name: true, phone: true, email: true, lineId: true } },
+        customer: { select: { name: true, phone: true, email: true, lineIdFinance: true } },
       },
     });
 
@@ -116,7 +116,7 @@ export class PaySolutionsService {
     if (!lineId) {
       throw new BadRequestException('กรุณาระบุ LINE ID เพื่อยืนยันตัวตน');
     }
-    if (contract.customer.lineId !== lineId) {
+    if (contract.customer.lineIdFinance !== lineId) {
       throw new BadRequestException('สัญญานี้ไม่ตรงกับบัญชี LINE ของคุณ');
     }
 
@@ -1001,12 +1001,12 @@ export class PaySolutionsService {
       const contract = await this.prisma.contract.findUnique({
         where: { id: contractId },
         include: {
-          customer: { select: { name: true, lineId: true } },
+          customer: { select: { name: true, lineIdFinance: true } },
           payments: { where: { deletedAt: null }, orderBy: { installmentNo: 'asc' } },
         },
       });
 
-      if (!contract?.customer.lineId) return;
+      if (!contract?.customer.lineIdFinance) return;
 
       const payment = paymentId
         ? contract.payments.find((p) => p.id === paymentId)
@@ -1027,7 +1027,7 @@ export class PaySolutionsService {
         remainingInstallments: contract.payments.length - paidCount,
       });
 
-      await this.lineOaService.sendFlexMessage(contract.customer.lineId, flex);
+      await this.lineOaService.sendFlexMessage(contract.customer.lineIdFinance, flex, 'line-finance');
       this.logger.log(`LINE notification sent for contract ${contract.contractNumber}`);
     } catch (err) {
       // ไม่ให้ notification error ทำให้ webhook fail
@@ -1048,11 +1048,11 @@ export class PaySolutionsService {
       const contract = await this.prisma.contract.findUnique({
         where: { id: contractId },
         include: {
-          customer: { select: { name: true, lineId: true } },
+          customer: { select: { name: true, lineIdFinance: true } },
           payments: { where: { deletedAt: null } },
         },
       });
-      if (!contract?.customer.lineId) return;
+      if (!contract?.customer.lineIdFinance) return;
 
       // "Original amount" — what the customer would have paid without the
       // early-payoff discount (sum of all installment totals incl. lateFee).
@@ -1071,7 +1071,7 @@ export class PaySolutionsService {
         payoffDate: formatDateLong(new Date()),
       });
 
-      await this.lineOaService.sendFlexMessage(contract.customer.lineId, flex);
+      await this.lineOaService.sendFlexMessage(contract.customer.lineIdFinance, flex, 'line-finance');
       this.logger.log(
         `Early-payoff notification sent for contract ${contract.contractNumber}`,
       );
@@ -1198,11 +1198,12 @@ export class PaySolutionsService {
       // Don't re-throw — Sale can be created manually by admin if needed
     }
 
-    if (order.customer.lineId) {
+    if (order.customer.lineIdShop) {
       try {
         await this.lineOaService.sendFlexMessage(
-          order.customer.lineId,
+          order.customer.lineIdShop,
           this.buildOrderPaidFlex(order),
+          'line-shop',
         );
       } catch (err) {
         this.logger.warn(
@@ -1318,31 +1319,35 @@ export class PaySolutionsService {
       });
     });
 
-    if (plan.customer.lineId) {
+    if (plan.customer.lineIdShop) {
       try {
         const newTotal = new Prisma.Decimal(plan.totalSaved).plus(amount);
-        await this.lineOaService.sendFlexMessage(plan.customer.lineId, {
-          type: 'flex',
-          altText: 'ชำระออมดาวน์สำเร็จ',
-          contents: {
-            type: 'bubble',
-            body: {
-              type: 'box',
-              layout: 'vertical',
-              contents: [
-                { type: 'text', text: 'ชำระออมดาวน์สำเร็จ', weight: 'bold', size: 'lg' },
-                { type: 'text', text: plan.planNumber, margin: 'md' },
-                {
-                  type: 'text',
-                  text: `ยอดสะสม ฿${Number(newTotal).toLocaleString()}`,
-                  weight: 'bold',
-                  margin: 'md',
-                  color: '#1DB446',
-                },
-              ],
+        await this.lineOaService.sendFlexMessage(
+          plan.customer.lineIdShop,
+          {
+            type: 'flex',
+            altText: 'ชำระออมดาวน์สำเร็จ',
+            contents: {
+              type: 'bubble',
+              body: {
+                type: 'box',
+                layout: 'vertical',
+                contents: [
+                  { type: 'text', text: 'ชำระออมดาวน์สำเร็จ', weight: 'bold', size: 'lg' },
+                  { type: 'text', text: plan.planNumber, margin: 'md' },
+                  {
+                    type: 'text',
+                    text: `ยอดสะสม ฿${Number(newTotal).toLocaleString()}`,
+                    weight: 'bold',
+                    margin: 'md',
+                    color: '#1DB446',
+                  },
+                ],
+              },
             },
           },
-        });
+          'line-shop',
+        );
       } catch (err) {
         this.logger.warn(
           `Failed to send LINE notification for saving plan ${plan.planNumber}: ${err}`,

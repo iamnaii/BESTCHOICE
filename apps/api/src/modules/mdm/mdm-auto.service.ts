@@ -78,7 +78,7 @@ export class MdmAutoService {
       },
       include: {
         product: { select: { id: true, imeiSerial: true } },
-        customer: { select: { id: true, name: true, lineId: true } },
+        customer: { select: { id: true, name: true, lineIdFinance: true } },
         payments: {
           where: {
             status: { in: ['OVERDUE', 'PENDING'] },
@@ -200,7 +200,7 @@ export class MdmAutoService {
         where: { id: contractId },
         include: {
           product: { select: { id: true, imeiSerial: true } },
-          customer: { select: { id: true, name: true, lineId: true } },
+          customer: { select: { id: true, name: true, lineIdFinance: true } },
         },
       });
 
@@ -273,10 +273,10 @@ export class MdmAutoService {
   // ─── LINE Notifications ─────────────────────────────────
 
   private async notifyCustomerLock(
-    contract: { contractNumber: string; customer: { name: string; lineId: string | null } | null },
+    contract: { contractNumber: string; customer: { name: string; lineIdFinance: string | null } | null },
     daysOverdue: number,
   ): Promise<void> {
-    const lineId = contract.customer?.lineId;
+    const lineId = contract.customer?.lineIdFinance;
     if (!lineId) return;
 
     try {
@@ -286,7 +286,11 @@ export class MdmAutoService {
         `เครื่องของท่านถูกระงับการใช้งานชั่วคราว เนื่องจากค้างชำระ ${daysOverdue} วัน\n` +
         `กรุณาติดต่อชำระค่างวดเพื่อปลดล็อคเครื่อง`;
 
-      await this.lineOaService.pushMessage(lineId, [{ type: 'text', text: message } as LineMessagePayload]);
+      await this.lineOaService.pushMessage(
+        lineId,
+        [{ type: 'text', text: message } as LineMessagePayload],
+        'line-finance',
+      );
       this.logger.log(`MDM lock LINE notify sent to customer (contract ${contract.contractNumber})`);
     } catch (err) {
       // Notification failure should not affect lock result
@@ -297,9 +301,9 @@ export class MdmAutoService {
   }
 
   private async notifyCustomerUnlock(
-    contract: { contractNumber: string; customer: { name: string; lineId: string | null } | null },
+    contract: { contractNumber: string; customer: { name: string; lineIdFinance: string | null } | null },
   ): Promise<void> {
-    const lineId = contract.customer?.lineId;
+    const lineId = contract.customer?.lineIdFinance;
     if (!lineId) return;
 
     try {
@@ -308,7 +312,11 @@ export class MdmAutoService {
         `สัญญาเลขที่: ${contract.contractNumber}\n` +
         `ขอบคุณสำหรับการชำระค่างวด เครื่องของท่านได้รับการปลดล็อคแล้ว`;
 
-      await this.lineOaService.pushMessage(lineId, [{ type: 'text', text: message } as LineMessagePayload]);
+      await this.lineOaService.pushMessage(
+        lineId,
+        [{ type: 'text', text: message } as LineMessagePayload],
+        'line-finance',
+      );
       this.logger.log(
         `MDM unlock LINE notify sent to customer (contract ${contract.contractNumber})`,
       );

@@ -91,7 +91,7 @@ export class PaymentLinkService {
       include: {
         contract: {
           include: {
-            customer: { select: { name: true, phone: true, lineId: true } },
+            customer: { select: { name: true, phone: true, lineIdFinance: true } },
             payments: { where: { deletedAt: null }, orderBy: { installmentNo: 'asc' } },
           },
         },

@@ -511,7 +511,7 @@ export class NotificationsService {
     // Batch load all contracts to avoid N+1 queries
     const contracts = await this.prisma.contract.findMany({
       where: { id: { in: contractIds }, deletedAt: null },
-      include: { customer: { select: { name: true, phone: true, lineId: true } } },
+      include: { customer: { select: { name: true, phone: true, lineIdFinance: true } } },
     });
     const contractMap = new Map(contracts.map((c) => [c.id, c]));
 
@@ -525,7 +525,7 @@ export class NotificationsService {
         contract_number: contract.contractNumber,
       };
 
-      const recipient = customer.lineId || customer.phone;
+      const recipient = customer.lineIdFinance || customer.phone;
       if (!recipient) {
         results.push({ contractId, status: 'SKIPPED' });
         continue;
@@ -804,7 +804,7 @@ export class NotificationsService {
       include: {
         contract: {
           include: {
-            customer: { select: { id: true, name: true, phone: true, lineId: true } },
+            customer: { select: { id: true, name: true, phone: true, lineIdFinance: true } },
             _count: { select: { payments: true } },
           },
         },
@@ -856,7 +856,7 @@ export class NotificationsService {
       const message = `สวัสดีค่ะ คุณ${customer.name}\nแจ้งเตือน: ค่างวดที่ ${payment.installmentNo} สัญญา ${payment.contract.contractNumber}\nจำนวน ${Number(payment.amountDue).toLocaleString()} บาท\nครบกำหนดชำระ${daysUntil === 0 ? 'วันนี้' : `อีก ${daysUntil} วัน`} (${formatDateShort(payment.dueDate)})\nกรุณาชำระตามกำหนด ขอบคุณค่ะ`;
 
       // Try LINE Flex Message first, fallback to text, then SMS
-      if (customer.lineId) {
+      if (customer.lineIdFinance) {
         try {
           const flex = this.flexTemplates.paymentReminder({
             contractNumber: payment.contract.contractNumber,
@@ -866,11 +866,11 @@ export class NotificationsService {
           });
           // Attach Quick Reply so customer can pay quickly or see balance
           flex.quickReply = { items: this.quickReplyService.afterPayment() };
-          await this.sendLineFlexMessage(customer.lineId, flex, 'line-finance');
+          await this.sendLineFlexMessage(customer.lineIdFinance, flex, 'line-finance');
           await this.prisma.notificationLog.create({
             data: {
               channel: 'LINE',
-              recipient: customer.lineId,
+              recipient: customer.lineIdFinance,
               subject: 'แจ้งเตือนค่างวด',
               message: `งวด ${payment.installmentNo} จำนวน ${Number(payment.amountDue).toLocaleString()} บาท อีก ${daysUntil} วัน`,
               status: 'SENT',
@@ -883,7 +883,7 @@ export class NotificationsService {
           this.logger.warn(`Flex message failed, falling back to text: ${err instanceof Error ? err.message : err}`);
           await this.send({
             channel: 'LINE',
-            recipient: customer.lineId,
+            recipient: customer.lineIdFinance,
             message,
             relatedId: payment.id,
             fallbackPhone: isSmsPaymentReminderDisabled() ? undefined : (customer.phone || undefined),
@@ -933,7 +933,7 @@ export class NotificationsService {
       include: {
         contract: {
           include: {
-            customer: { select: { id: true, name: true, phone: true, lineId: true } },
+            customer: { select: { id: true, name: true, phone: true, lineIdFinance: true } },
             _count: { select: { payments: true } },
           },
         },
@@ -985,7 +985,7 @@ export class NotificationsService {
       const message = `แจ้งเตือน: คุณ${customer.name}\nค่างวดที่ ${payment.installmentNo} สัญญา ${payment.contract.contractNumber}\nเลยกำหนดชำระ ${daysOverdue} วัน\nยอดค้างชำระ ${outstanding.toLocaleString()} บาท (รวมค่าปรับ)\nกรุณาชำระโดยเร็ว`;
 
       // Try LINE Flex Message first, fallback to text, then SMS
-      if (customer.lineId) {
+      if (customer.lineIdFinance) {
         try {
           const flex = this.flexTemplates.overdueNotice({
             contractNumber: payment.contract.contractNumber,
@@ -995,11 +995,11 @@ export class NotificationsService {
           });
           // Attach Quick Reply so customer can pay immediately or see balance
           flex.quickReply = { items: this.quickReplyService.afterPayment() };
-          await this.sendLineFlexMessage(customer.lineId, flex, 'line-finance');
+          await this.sendLineFlexMessage(customer.lineIdFinance, flex, 'line-finance');
           await this.prisma.notificationLog.create({
             data: {
               channel: 'LINE',
-              recipient: customer.lineId,
+              recipient: customer.lineIdFinance,
               subject: 'แจ้งค้างชำระ',
               message: `งวด ${payment.installmentNo} ค้าง ${outstanding.toLocaleString()} บาท เลยกำหนด ${daysOverdue} วัน`,
               status: 'SENT',
@@ -1012,7 +1012,7 @@ export class NotificationsService {
           this.logger.warn(`Flex message failed, falling back to text: ${err instanceof Error ? err.message : err}`);
           await this.send({
             channel: 'LINE',
-            recipient: customer.lineId,
+            recipient: customer.lineIdFinance,
             message,
             relatedId: payment.id,
             fallbackPhone: isSmsPaymentReminderDisabled() ? undefined : (customer.phone || undefined),

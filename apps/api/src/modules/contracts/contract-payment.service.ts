@@ -183,7 +183,23 @@ export class ContractPaymentService {
           orderBy: { installmentNo: 'asc' },
         });
 
-        // Distribute totalPayoff across unpaid installments (FIFO)
+        // Distribute totalPayoff across unpaid installments (FIFO).
+        // We update each Payment row individually but post ONE aggregated JE
+        // at the end via createEarlyPayoffJournal — per-installment JEs were
+        // unbalanced when discount > 0 (cash partial vs full breakdown).
+        // Snapshot the breakdown BEFORE any updates so the JE math reflects
+        // the as-of-payoff state, not the post-update partial payment.
+        const installmentSnapshots = unpaidPayments.map((p) => ({
+          amountDue: p.amountDue,
+          amountPaidBefore: p.amountPaid,
+          monthlyPrincipal: p.monthlyPrincipal,
+          monthlyInterest: p.monthlyInterest,
+          monthlyCommission: p.monthlyCommission,
+          vatAmount: p.vatAmount,
+          lateFee: p.lateFee,
+          lateFeeWaived: p.lateFeeWaived,
+        }));
+
         let remainingPayoff = d(quote.totalPayoff);
         for (const payment of unpaidPayments) {
           const lateFee = payment.lateFeeWaived ? d(0) : d(payment.lateFee);
@@ -196,7 +212,7 @@ export class ContractPaymentService {
           const payAmount = d(payAmountNum);
           remainingPayoff = dSub(remainingPayoff, payAmount);
 
-          const updatedPayment = await tx.payment.update({
+          await tx.payment.update({
             where: { id: payment.id },
             data: {
               status: 'PAID',
@@ -211,32 +227,21 @@ export class ContractPaymentService {
                 : '[ปิดก่อนกำหนด]',
             },
           });
-
-          // Auto journal entry for each installment closed by the payoff.
-          // (Audit finding J3: closes the journal coverage gap on early
-          // payoff. Errors propagate so the whole tx rolls back.)
-          await this.journalAutoService.createPaymentJournal(tx, {
-            shopCompanyId,
-            financeCompanyId,
-            payment: {
-              id: updatedPayment.id,
-              installmentNo: updatedPayment.installmentNo,
-              amountPaid: updatedPayment.amountPaid,
-              monthlyPrincipal: updatedPayment.monthlyPrincipal,
-              monthlyInterest: updatedPayment.monthlyInterest,
-              monthlyCommission: updatedPayment.monthlyCommission,
-              vatAmount: updatedPayment.vatAmount,
-              lateFee: updatedPayment.lateFee,
-              lateFeeWaived: updatedPayment.lateFeeWaived,
-              paidDate: updatedPayment.paidDate,
-            },
-            contract: {
-              contractNumber: freshContract.contractNumber,
-              branchId: freshContract.branchId,
-            },
-            userId,
-          });
         }
+
+        // One aggregated JE for the whole payoff. Discount is absorbed by
+        // proportionally reducing interest / commission / VAT (principal
+        // must always be settled in full so HP Receivable stays correct).
+        await this.journalAutoService.createEarlyPayoffJournal(tx, {
+          contractId: id,
+          contractNumber: freshContract.contractNumber,
+          installments: installmentSnapshots,
+          totalPayoff: quote.totalPayoff,
+          userId,
+          shopCompanyId,
+          financeCompanyId,
+          paidDate,
+        });
 
         // Reset credit balance (used up by the early payoff)
         const updated = await tx.contract.update({

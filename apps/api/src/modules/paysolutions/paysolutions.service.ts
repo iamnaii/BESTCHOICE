@@ -25,6 +25,7 @@ import { buildEarlyPayoffSuccessFlex } from '../line-oa/flex-messages/early-payo
 import { FlexMessagePayload } from '../line-oa/flex-messages/base-template';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
 import { ProductsService } from '../products/products.service';
+import { JournalAutoService } from '../journal/journal-auto.service';
 
 export interface PaymentIntentResult {
   paymentId: string;
@@ -56,6 +57,7 @@ export class PaySolutionsService {
     @Inject(forwardRef(() => OnlineOrderSaleAdapter))
     private saleAdapter: OnlineOrderSaleAdapter,
     private productsService: ProductsService,
+    private journalAutoService: JournalAutoService,
   ) {
     this.returnUrl = this.config.get<string>('PAYSOLUTIONS_RETURN_URL', '');
     this.apiBaseUrl = this.config.get<string>(
@@ -700,6 +702,20 @@ export class PaySolutionsService {
         paidAmount = paymentLink.amount;
       }
 
+      // F-1-003: Resolve FINANCE companyId + load contract metadata BEFORE the
+      // transaction so the payment JE can be posted with explicit company
+      // (HP receivable is FINANCE-side activity). Matches PaymentsService
+      // pattern (resolveFinanceCompanyId hoisted out of $transaction).
+      const financeCompany = await this.prisma.companyInfo.findFirst({
+        where: { companyCode: 'FINANCE', deletedAt: null },
+        select: { id: true },
+      });
+      const financeCompanyId = financeCompany?.id ?? null;
+      const contractForJe = await this.prisma.contract.findUnique({
+        where: { id: paymentLink.contractId! },
+        select: { contractNumber: true, branchId: true },
+      });
+
       // ชำระสำเร็จ — distribute paid amount FIFO across unpaid installments.
       // Early-payoff links carry amount = full payoff (with discount) and
       // must close every pending installment, not just paymentLink.paymentId.
@@ -748,7 +764,7 @@ export class PaySolutionsService {
             const newAmountPaid = payment.amountPaid.add(payThis).toDecimalPlaces(2);
             const fullyPaid = newAmountPaid.gte(payment.amountDue.add(lateFee));
 
-            await tx.payment.update({
+            const paymentUpdated = await tx.payment.update({
               where: { id: payment.id },
               data: {
                 amountPaid: newAmountPaid,
@@ -763,7 +779,57 @@ export class PaySolutionsService {
                 }`,
               },
             });
-            if (fullyPaid) fullyPaidCount++;
+            if (fullyPaid) {
+              fullyPaidCount++;
+
+              // F-1-003: Post payment JE — Sentry+log+continue pattern (P2).
+              // Webhook MUST NOT block payment if JE fails (customer paid via
+              // QR — gateway already moved real money). Manual reconciliation
+              // is triggered from the Sentry alert. This contrasts with sync
+              // user-initiated payment paths (PaymentsService.recordPayment)
+              // which DO rethrow because the user can retry.
+              if (contractForJe) {
+                try {
+                  await this.journalAutoService.createPaymentJournal(tx, {
+                    companyId: financeCompanyId,
+                    payment: {
+                      id: paymentUpdated.id,
+                      installmentNo: paymentUpdated.installmentNo,
+                      amountPaid: paymentUpdated.amountPaid,
+                      monthlyPrincipal: paymentUpdated.monthlyPrincipal,
+                      monthlyInterest: paymentUpdated.monthlyInterest,
+                      monthlyCommission: paymentUpdated.monthlyCommission,
+                      vatAmount: paymentUpdated.vatAmount,
+                      lateFee: paymentUpdated.lateFee,
+                      lateFeeWaived: paymentUpdated.lateFeeWaived,
+                      paidDate: paymentUpdated.paidDate,
+                    },
+                    contract: {
+                      contractNumber: contractForJe.contractNumber,
+                      branchId: contractForJe.branchId,
+                    },
+                    userId: 'paysolutions-webhook',
+                  });
+                } catch (jeErr) {
+                  Sentry.captureException(jeErr, {
+                    tags: {
+                      module: 'paysolutions',
+                      event: 'webhook-je-failure',
+                    },
+                    extra: {
+                      paymentId: paymentUpdated.id,
+                      contractId: paymentLink.contractId,
+                      refno,
+                      error: String(jeErr),
+                    },
+                  });
+                  this.logger.error(
+                    `Webhook JE failed for payment ${paymentUpdated.id}: ${jeErr instanceof Error ? jeErr.message : jeErr}`,
+                  );
+                  // DO NOT rethrow — Pattern P2 — payment must be acknowledged
+                }
+              }
+            }
           }
 
           // Close the contract when no installments remain. EARLY_PAYOFF

@@ -177,6 +177,22 @@ describe('ContractWorkflowService', () => {
       expect(journalAutoMock.createContractActivationJournal).toHaveBeenCalledTimes(1);
     });
 
+    it('passes FINANCE companyId to JournalAutoService on activation (F-3-027 part 2/3)', async () => {
+      // HP receivable + interest income are FINANCE-side, so activation must
+      // resolve FINANCE companyId explicitly (not rely on resolveCompanyId fallback).
+      prisma.companyInfo.findFirst = jest.fn().mockImplementation((args: any) => {
+        if (args?.where?.companyCode === 'FINANCE') return Promise.resolve({ id: 'co-FINANCE' });
+        return Promise.resolve(null);
+      });
+
+      await service.activate('contract-1');
+
+      expect(journalAutoMock.createContractActivationJournal).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ companyId: 'co-FINANCE' }),
+      );
+    });
+
     it('rolls back contract activation if journal creation throws (F-1-002 / F-2-003)', async () => {
       journalAutoMock.createContractActivationJournal.mockRejectedValueOnce(
         new Error('JE failed for atomic rollback test'),

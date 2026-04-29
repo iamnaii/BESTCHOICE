@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException, InternalServerErrorException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { formatDateShort } from '../../utils/thai-date.util';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -370,6 +370,18 @@ export class ContractWorkflowService {
       throw new BadRequestException('สินค้าไม่พร้อมสำหรับเปิดสัญญา (อาจถูกขายหรือลบไปแล้ว)');
     }
 
+    // F-3-027 part 2/3: HP receivable + interest income are FINANCE-side accounts.
+    // Resolve FINANCE companyId BEFORE the transaction so it can be passed
+    // explicitly to the activation JE (instead of relying on the non-deterministic
+    // resolveCompanyId fallback). Also reused below for product ownership transfer.
+    const financeCompany = await this.prisma.companyInfo.findFirst({
+      where: { companyCode: 'FINANCE', deletedAt: null },
+      select: { id: true },
+    });
+    if (!financeCompany) {
+      throw new InternalServerErrorException('FINANCE company not configured');
+    }
+
     await this.prisma.$transaction(async (tx) => {
       // Re-check product status inside transaction to prevent race condition
       const prod = await tx.product.findUnique({ where: { id: contract.productId } });
@@ -383,24 +395,14 @@ export class ContractWorkflowService {
       // Ownership transfer: SHOP → FINANCE.
       // Per CLAUDE.md business rule: "กรรมสิทธิ์สินค้าย้ายจาก SHOP → FINANCE
       // (จนลูกค้าผ่อนครบ)". Runs inside the activation transaction so
-      // ownership can never drift from contract status.
-      const financeCompany = await tx.companyInfo.findFirst({
-        where: { companyCode: 'FINANCE', deletedAt: null },
-        select: { id: true },
-      });
-      if (financeCompany) {
-        await this.productsService.transferOwnership(
-          contract.productId,
-          financeCompany.id,
-          tx,
-        );
-      } else {
-        // If FINANCE entity is missing we still activate, but the ops team
-        // needs to know — ownership will fall back to the branch's company.
-        this.logger.warn(
-          `FINANCE company not found while activating contract ${contract.contractNumber} — product ownership NOT transferred`,
-        );
-      }
+      // ownership can never drift from contract status. Reuses financeCompany
+      // resolved before the tx (F-3-027 part 2/3) — missing FINANCE entity
+      // is now a hard error rather than a silent warn-and-continue.
+      await this.productsService.transferOwnership(
+        contract.productId,
+        financeCompany.id,
+        tx,
+      );
 
       // Auto-create Sale record for this contract activation
       const saleNumber = await generateSaleNumber(tx);
@@ -431,6 +433,7 @@ export class ContractWorkflowService {
       // the v4 unbalanced-throw guard (audit findings F-1-002 / F-2-003).
       // NestJS' global exception filter logs the propagated error.
       await this.journalAutoService.createContractActivationJournal(tx, {
+        companyId: financeCompany.id,
         contract: {
           id: contract.id,
           contractNumber: contract.contractNumber,

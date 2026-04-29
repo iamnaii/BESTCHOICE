@@ -59,6 +59,20 @@ export class PaymentsService {
     return financeCompany.id;
   }
 
+  /**
+   * Phase A.1b: Resolve SHOP companyId for the SHOP-side commission JE leg.
+   * Returns null when SHOP is not configured — JournalAutoService will skip
+   * the commission entry rather than fail the payment.
+   */
+  private async resolveShopCompanyId(): Promise<string | null> {
+    const shop = await this.prisma.companyInfo.findFirst({
+      where: { companyCode: 'SHOP', deletedAt: null },
+      select: { id: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    return shop?.id ?? null;
+  }
+
   /** Enforce branch-level access: SALES/BRANCH_MANAGER can only operate on their own branch */
   async validateBranchAccess(
     contractId: string,
@@ -98,10 +112,11 @@ export class PaymentsService {
     // CR-7: Validate payment date is not in a closed accounting period
     await validatePeriodOpen(this.prisma, new Date());
 
-    // F-3-027 part 2/3: resolve FINANCE companyId BEFORE the transaction so
-    // it can be passed explicitly to the payment JE (HP installment receipts
-    // are FINANCE-side activity).
+    // F-3-027 part 2/3 + Phase A.1b: resolve FINANCE + SHOP companyIds BEFORE
+    // the transaction so both can be passed explicitly to the payment JE.
+    // FINANCE = HP receivable / interest / VAT side; SHOP = commission income side.
     const financeCompanyId = await this.resolveFinanceCompanyId();
+    const shopCompanyId = await this.resolveShopCompanyId();
 
     // Capture dueDate for loyalty points check (on-time = paidDate <= dueDate)
     let capturedDueDate: Date | null = null;
@@ -206,7 +221,8 @@ export class PaymentsService {
       // ledger and cash never diverge. (Audit finding J5.)
       if (isPaidInFull) {
         await this.journalAutoService.createPaymentJournal(tx, {
-          companyId: financeCompanyId,
+          shopCompanyId,
+          financeCompanyId,
           payment: {
             id: result.id,
             installmentNo: result.installmentNo,
@@ -327,9 +343,10 @@ export class PaymentsService {
       throw new BadRequestException('จำนวนเงินต้องมากกว่า 0');
     }
 
-    // F-3-027 part 2/3: resolve FINANCE companyId once before the tx so the
-    // per-installment JE calls below use it (instead of resolveCompanyId fallback).
+    // F-3-027 part 2/3 + Phase A.1b: resolve FINANCE + SHOP companyIds once
+    // before the tx so the per-installment JE calls below use them.
     const financeCompanyId = await this.resolveFinanceCompanyId();
+    const shopCompanyId = await this.resolveShopCompanyId();
 
     // Wrap entire allocation in a serializable transaction to prevent double-payment
     const allocationResult = await this.prisma.$transaction(async (tx) => {
@@ -385,7 +402,8 @@ export class PaymentsService {
           // (Audit finding J1: closes the journal coverage gap on the
           // multi-installment auto-allocate path.)
           await this.journalAutoService.createPaymentJournal(tx, {
-            companyId: financeCompanyId,
+            shopCompanyId,
+            financeCompanyId,
             payment: {
               id: updated.id,
               installmentNo: updated.installmentNo,
@@ -443,6 +461,22 @@ export class PaymentsService {
           `Overpayment of ${overpayment.toNumber()} THB credited to contract ${contractId}. ` +
           `Customer paid ${amount} THB, ${d(amount).sub(remaining).toNumber()} THB allocated, ${overpayment.toNumber()} THB stored as credit.`,
         );
+
+        // Phase A.1b: post overpayment JE (Dr Cash / Cr Customer Credit).
+        // Reference the last allocated payment so the JE is traceable to the
+        // payment event that produced the overpayment. If no installment was
+        // allocated (full overpayment — edge case), fall back to contractId.
+        const referencePaymentId = results.length > 0
+          ? results[results.length - 1].updated.id
+          : contractId;
+        await this.journalAutoService.createCustomerCreditOverpaymentJournal(tx, {
+          paymentId: referencePaymentId,
+          contractNumber: contract.contractNumber,
+          overpaymentAmount: overpayment,
+          userId: recordedById,
+          financeCompanyId,
+          paidDate: results.length > 0 ? results[results.length - 1].updated.paidDate : new Date(),
+        });
       }
 
       return {
@@ -709,9 +743,10 @@ export class PaymentsService {
 
   // ─── Apply credit balance to next pending installment ─
   async applyCreditBalance(contractId: string, recordedById: string) {
-    // F-3-027 part 2/3: resolve FINANCE companyId once before the tx so the
-    // per-installment JE calls below use it (instead of resolveCompanyId fallback).
+    // F-3-027 part 2/3 + Phase A.1b: resolve FINANCE + SHOP companyIds once
+    // before the tx so the per-installment JE calls below use them.
     const financeCompanyId = await this.resolveFinanceCompanyId();
+    const shopCompanyId = await this.resolveShopCompanyId();
 
     return this.prisma.$transaction(async (tx) => {
       const contract = await tx.contract.findUnique({
@@ -760,11 +795,14 @@ export class PaymentsService {
         if (isPaidInFull) {
           await this.checkContractCompletion(contractId, tx);
 
-          // Auto journal entry per fully-paid installment.
-          // (Audit finding J2: closes the journal coverage gap on the
-          // credit-balance allocation path.)
-          await this.journalAutoService.createPaymentJournal(tx, {
-            companyId: financeCompanyId,
+          // Phase A.1b (audit F-1-004): use createCreditAllocationJournal which
+          // debits Customer Credit (21-5101) instead of Cash. Calling
+          // createPaymentJournal here would Dr Cash a second time even though
+          // no cash was received — credit was already booked when the
+          // overpayment originally came in.
+          await this.journalAutoService.createCreditAllocationJournal(tx, {
+            shopCompanyId,
+            financeCompanyId,
             payment: {
               id: updated.id,
               installmentNo: updated.installmentNo,

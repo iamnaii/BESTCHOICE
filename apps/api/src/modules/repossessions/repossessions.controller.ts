@@ -78,8 +78,12 @@ export class RepossessionsController {
 
   @Patch(':id')
   @Roles('OWNER', 'BRANCH_MANAGER')
-  update(@Param('id') id: string, @Body() dto: UpdateRepossessionDto) {
-    return this.repossessionsService.update(id, dto);
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateRepossessionDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.repossessionsService.update(id, dto, user.id);
   }
 
   @Post(':id/ready-for-sale')

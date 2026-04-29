@@ -33,6 +33,20 @@ export class ContractPaymentService {
     return financeCompany.id;
   }
 
+  /**
+   * Phase A.1b: Resolve SHOP companyId for the SHOP-side commission JE leg
+   * triggered by early payoff. Returns null if SHOP not configured —
+   * JournalAutoService will skip the commission entry rather than fail.
+   */
+  private async resolveShopCompanyId(): Promise<string | null> {
+    const shop = await this.prisma.companyInfo.findFirst({
+      where: { companyCode: 'SHOP', deletedAt: null },
+      select: { id: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    return shop?.id ?? null;
+  }
+
   async getSchedule(id: string) {
     await this.findOne(id);
     return this.prisma.payment.findMany({
@@ -147,10 +161,12 @@ export class ContractPaymentService {
     // into a closed accounting period.
     await validatePeriodOpen(this.prisma, paidDate);
 
-    // F-3-027 part 2/3 follow-up: resolve FINANCE companyId once BEFORE the
-    // transaction (and BEFORE the per-installment loop) so the early-payoff
-    // JE callers pass companyId explicitly to JournalAutoService.
+    // F-3-027 part 2/3 follow-up + Phase A.1b: resolve FINANCE + SHOP
+    // companyIds once BEFORE the transaction (and BEFORE the per-installment
+    // loop) so the early-payoff JE callers pass both explicitly to
+    // JournalAutoService.
     const financeCompanyId = await this.resolveFinanceCompanyId();
+    const shopCompanyId = await this.resolveShopCompanyId();
 
     await this.prisma.$transaction(
       async (tx) => {
@@ -200,7 +216,8 @@ export class ContractPaymentService {
           // (Audit finding J3: closes the journal coverage gap on early
           // payoff. Errors propagate so the whole tx rolls back.)
           await this.journalAutoService.createPaymentJournal(tx, {
-            companyId: financeCompanyId,
+            shopCompanyId,
+            financeCompanyId,
             payment: {
               id: updatedPayment.id,
               installmentNo: updatedPayment.installmentNo,

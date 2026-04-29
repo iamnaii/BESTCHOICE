@@ -96,18 +96,48 @@ export async function seedChartOfAccounts(prisma: PrismaClient): Promise<void> {
 
   await seedFinanceChartOfAccounts(prisma, financeCompany.id);
 
-  // SHOP-side clearing account for inter-company (used in A.1b)
-  await prisma.chartOfAccount.upsert({
-    where: { companyId_code: { companyId: shopCompany.id, code: '11-2105' } },
-    update: { nameTh: 'ลูกหนี้คู่ค้า — FINANCE (Due-from-FINANCE)' },
-    create: {
-      code: '11-2105', companyId: shopCompany.id,
+  // SHOP-side accounts required by Phase A.1b inter-company JEs.
+  // Owner CSV does not include these — explicit upserts ensure they exist.
+  const shopExtraAccounts: Array<{
+    code: string;
+    nameTh: string;
+    nameEn: string;
+    accountGroup: AccountGroup;
+    parentCode: string;
+  }> = [
+    {
+      code: '11-2105',
       nameTh: 'ลูกหนี้คู่ค้า — FINANCE (Due-from-FINANCE)',
       nameEn: 'Inter-company Receivable — FINANCE',
-      accountGroup: AccountGroup.ASSET, parentCode: '11-21XX', level: 3,
-      isActive: true, peakAccountCode: '11-2105',
+      accountGroup: AccountGroup.ASSET,
+      parentCode: '11-21XX',
     },
-  });
+    {
+      code: '42-1105',
+      nameTh: 'รายได้ค่านายหน้า/คอมมิชชัน — FINANCE',
+      nameEn: 'Commission Income from FINANCE',
+      accountGroup: AccountGroup.REVENUE,
+      parentCode: '42-11XX',
+    },
+  ];
 
-  console.log(`  ✓ Chart of Accounts: ${shopAccounts.length + 1} SHOP + 41 FINANCE seeded`);
+  for (const acc of shopExtraAccounts) {
+    await prisma.chartOfAccount.upsert({
+      where: { companyId_code: { companyId: shopCompany.id, code: acc.code } },
+      update: { nameTh: acc.nameTh, nameEn: acc.nameEn, isActive: true },
+      create: {
+        code: acc.code,
+        companyId: shopCompany.id,
+        nameTh: acc.nameTh,
+        nameEn: acc.nameEn,
+        accountGroup: acc.accountGroup,
+        parentCode: acc.parentCode,
+        level: 3,
+        isActive: true,
+        peakAccountCode: acc.code,
+      },
+    });
+  }
+
+  console.log(`  ✓ Chart of Accounts: ${shopAccounts.length + shopExtraAccounts.length} SHOP + 41 FINANCE seeded`);
 }

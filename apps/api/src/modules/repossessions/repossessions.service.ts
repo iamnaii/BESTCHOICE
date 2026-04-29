@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateRepossessionDto, UpdateRepossessionDto } from './dto/create-repossession.dto';
 import { ConditionGrade, RepossessionStatus, ProductStatus } from '@prisma/client';
@@ -316,7 +317,7 @@ export class RepossessionsService {
   /**
    * Update repossession (repair cost, resell price, status) with workflow validation
    */
-  async update(id: string, dto: UpdateRepossessionDto) {
+  async update(id: string, dto: UpdateRepossessionDto, userId?: string) {
     const repo = await this.findOne(id);
 
     const data: Record<string, unknown> = {};
@@ -360,7 +361,7 @@ export class RepossessionsService {
       // Use transaction to ensure product status and repossession update are atomic
       const newProductStatus = productStatusMap[dto.status];
       if (newProductStatus) {
-        return this.prisma.$transaction(async (tx) => {
+        const updatedRepo = await this.prisma.$transaction(async (tx) => {
           const productUpdateData: Record<string, unknown> = { status: newProductStatus };
           // R-007: Adjust costPrice to appraised/fair value per TAS 2 when moving to REFURBISHED
           if (dto.status === 'READY_FOR_SALE') {
@@ -384,6 +385,39 @@ export class RepossessionsService {
             },
           });
         });
+
+        // Post resale JE after the main $transaction commits (non-blocking, no tx-poison risk).
+        // bookValue = costPrice (adjusted to appraisalPrice at READY_FOR_SALE per R-007) + repairCost
+        if (dto.status === 'SOLD' && userId) {
+          const resellPrice = new Prisma.Decimal(
+            dto.resellPrice ?? Number(repo.resellPrice ?? 0),
+          );
+          const costPrice = new Prisma.Decimal(
+            (repo.product as unknown as { costPrice?: number | Prisma.Decimal })?.costPrice ?? 0,
+          );
+          const repairCost = new Prisma.Decimal(repo.repairCost ?? 0);
+          const bookValue = costPrice.add(repairCost);
+
+          this.journalAutoService
+            .createRepossessionResaleJournal(this.prisma, {
+              repossessionId: id,
+              resellPrice,
+              bookValue,
+              userId,
+            })
+            .catch((err) => {
+              this.logger.error(
+                `Repossession resale JE failed for ${id}: ${err.message}`,
+                err.stack,
+              );
+              Sentry.captureException(err, {
+                tags: { kind: 'journal', referenceType: 'REPO_RESALE' },
+                extra: { repossessionId: id },
+              });
+            });
+        }
+
+        return updatedRepo;
       }
     }
 

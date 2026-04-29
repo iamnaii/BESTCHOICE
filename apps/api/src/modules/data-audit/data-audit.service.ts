@@ -1041,6 +1041,15 @@ export class DataAuditService {
     }
     const financeCompanyId = financeCompany.id;
 
+    // Phase A.1b: SHOP companyId for the SHOP-side commission JE leg.
+    // Optional — null is acceptable; JE will skip the commission entry.
+    const shopCompany = await this.prisma.companyInfo.findFirst({
+      where: { companyCode: 'SHOP', deletedAt: null },
+      select: { id: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    const shopCompanyId = shopCompany?.id ?? null;
+
     // 1. Find orphan contracts (any non-DRAFT status without CONTRACT journal)
     const orphanContracts = await this.prisma.$queryRaw<{ id: string }[]>`
       SELECT c.id
@@ -1156,7 +1165,8 @@ export class DataAuditService {
           try {
             await this.prisma.$transaction(async (tx) => {
               await this.journalAutoService.createPaymentJournal(tx, {
-                companyId: financeCompanyId,
+                shopCompanyId,
+                financeCompanyId,
                 payment: {
                   id: payment.id,
                   installmentNo: payment.installmentNo,

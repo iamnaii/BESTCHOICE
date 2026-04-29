@@ -177,11 +177,13 @@ describe('ContractWorkflowService', () => {
       expect(journalAutoMock.createContractActivationJournal).toHaveBeenCalledTimes(1);
     });
 
-    it('passes FINANCE companyId to JournalAutoService on activation (F-3-027 part 2/3)', async () => {
-      // HP receivable + interest income are FINANCE-side, so activation must
-      // resolve FINANCE companyId explicitly (not rely on resolveCompanyId fallback).
+    it('passes SHOP+FINANCE companyIds to JournalAutoService on activation (Phase A.1b)', async () => {
+      // Phase A.1b: contract activation posts paired SHOP+FINANCE entries.
+      // The workflow must resolve both companyIds explicitly and pass them
+      // through (no resolveCompanyId fallback for inter-company JE).
       prisma.companyInfo.findFirst = jest.fn().mockImplementation((args: any) => {
         if (args?.where?.companyCode === 'FINANCE') return Promise.resolve({ id: 'co-FINANCE' });
+        if (args?.where?.companyCode === 'SHOP') return Promise.resolve({ id: 'co-SHOP' });
         return Promise.resolve(null);
       });
 
@@ -189,7 +191,10 @@ describe('ContractWorkflowService', () => {
 
       expect(journalAutoMock.createContractActivationJournal).toHaveBeenCalledWith(
         expect.anything(),
-        expect.objectContaining({ companyId: 'co-FINANCE' }),
+        expect.objectContaining({
+          shopCompanyId: 'co-SHOP',
+          financeCompanyId: 'co-FINANCE',
+        }),
       );
     });
 

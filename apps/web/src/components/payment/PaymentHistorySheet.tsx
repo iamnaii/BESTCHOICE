@@ -69,8 +69,8 @@ export default function PaymentHistorySheet({ contractId, onClose }: PaymentHist
   const { data: payments = [], isLoading: loadingPayments } = useQuery<PaymentItem[]>({
     queryKey: ['contract-payments', contractId],
     queryFn: async () => {
-      const { data } = await api.get(`/payments/contract/${contractId}`);
-      return data;
+      const { data } = await api.get(`/payments/contract/${contractId}`, { params: { limit: 200 } });
+      return data.data;
     },
     enabled: !!contractId,
   });

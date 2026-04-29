@@ -131,13 +131,43 @@ export class JournalAutoService {
       }
     }
 
+    // F-6-002: soft-block — if entryDate in CLOSED period, redirect to current
+    let entryDate = params.entryDate;
+    let description = params.description;
+    const period = await tx.accountingPeriod.findFirst({
+      where: {
+        companyId: params.companyId,
+        year: entryDate.getFullYear(),
+        month: entryDate.getMonth() + 1,
+        status: { in: ['CLOSED', 'SYNCED'] },
+      },
+      select: { status: true },
+    });
+    if (period) {
+      const originalYM = `${entryDate.getFullYear()}-${String(entryDate.getMonth() + 1).padStart(2, '0')}`;
+      this.logger.warn(
+        `Auto-JE redirected from ${period.status} period ${originalYM} to current period`,
+      );
+      Sentry.captureMessage(`Auto-JE redirect: ${originalYM} → current`, {
+        level: 'warning',
+        tags: { kind: 'journal', referenceType: params.referenceType },
+        extra: {
+          referenceId: params.referenceId,
+          originalYM,
+          periodStatus: period.status,
+        },
+      });
+      description = `[Originally for ${originalYM}] ${description}`;
+      entryDate = new Date();
+    }
+
     const entryNumber = await this.generateEntryNumber(tx);
     const entry = await tx.journalEntry.create({
       data: {
         entryNumber,
         companyId: params.companyId,
-        entryDate: params.entryDate,
-        description: params.description,
+        entryDate,
+        description,
         status: 'POSTED',
         postedAt: new Date(),
         postedById: params.createdById,

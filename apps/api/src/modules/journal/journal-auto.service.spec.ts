@@ -1,8 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { InternalServerErrorException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import * as Sentry from '@sentry/nestjs';
 import { JournalAutoService } from './journal-auto.service';
 import { PrismaService } from '../../prisma/prisma.service';
+
+jest.mock('@sentry/nestjs', () => ({
+  captureException: jest.fn(),
+  captureMessage: jest.fn(),
+}));
 
 /**
  * JournalAutoService tests — validates the double-entry bookkeeping engine.
@@ -24,6 +30,10 @@ describe('JournalAutoService', () => {
       },
       chartOfAccount: {
         findMany: jest.fn().mockResolvedValue([]),
+      },
+      // F-6-002: default — no closed period
+      accountingPeriod: {
+        findFirst: jest.fn().mockResolvedValue(null),
       },
       journalEntry: {
         count: jest.fn().mockResolvedValue(0),
@@ -785,6 +795,7 @@ describe('JournalAutoService', () => {
             { code: '11-1101', nameTh: 'เงินสด', allowedCompanies: [] },
           ]),
         },
+        accountingPeriod: { findFirst: jest.fn().mockResolvedValue(null) },
         journalEntry: { count: jest.fn(), create: jest.fn() },
       };
       await expect(
@@ -812,6 +823,7 @@ describe('JournalAutoService', () => {
             { code: '11-1101', nameTh: 'เงินสด', allowedCompanies: [] },
           ]),
         },
+        accountingPeriod: { findFirst: jest.fn().mockResolvedValue(null) },
         journalEntry: {
           count: jest.fn().mockResolvedValue(0),
           create: jest.fn().mockResolvedValue({ id: 'entry1' }),
@@ -832,6 +844,47 @@ describe('JournalAutoService', () => {
           ],
         }),
       ).resolves.toBe('entry1');
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // F-6-002: createAndPost — soft-block CLOSED period
+  // ──────────────────────────────────────────────────────────────────────────
+  describe('createAndPost — soft-block CLOSED period (F-6-002)', () => {
+    it('redirects entryDate to current period if originally in CLOSED period (F-6-002)', async () => {
+      const tx = {
+        accountingPeriod: { findFirst: jest.fn().mockResolvedValue({ status: 'CLOSED' }) },
+        companyInfo: { findUnique: jest.fn().mockResolvedValue({ companyCode: 'FINANCE' }) },
+        chartOfAccount: { findMany: jest.fn().mockResolvedValue([]) },
+        journalEntry: {
+          count: jest.fn().mockResolvedValue(0),
+          create: jest
+            .fn()
+            .mockImplementation(({ data }) => Promise.resolve({ id: 'e1', _captured: data })),
+        },
+      };
+      (Sentry.captureMessage as jest.Mock).mockClear();
+      const originalDate = new Date('2025-03-15T00:00:00Z');
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (service as any).createAndPost(tx, {
+        companyId: 'co1',
+        entryDate: originalDate,
+        description: 'Original description',
+        referenceType: 'TEST',
+        referenceId: 'test-redirect',
+        createdById: 'u1',
+        lines: [
+          { accountCode: '11-1101', debit: 100, credit: 0 },
+          { accountCode: '21-2101', debit: 0, credit: 100 },
+        ],
+      });
+
+      // The captured create call should have a current-period entryDate (year matches now)
+      const created = tx.journalEntry.create.mock.calls[0][0].data;
+      expect(created.entryDate.getFullYear()).toBe(new Date().getFullYear());
+      expect(created.description).toMatch(/^\[Originally for 2025-03\]/);
+      expect(Sentry.captureMessage).toHaveBeenCalled();
     });
   });
 });

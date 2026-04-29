@@ -71,10 +71,28 @@ export class JournalAutoService {
     const now = new Date();
     const ym = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
     const prefix = `JE-${ym}`;
-    const count = await tx.journalEntry.count({
-      where: { entryNumber: { startsWith: prefix } },
-    });
-    return `${prefix}-${String(count + 1).padStart(4, '0')}`;
+
+    // SELECT ... FOR UPDATE serialises concurrent inserts in the same month-prefix.
+    // count()-based generation race-conditions when two transactions read the same
+    // count and produce identical entry numbers — Phase A.1b doubled the surface
+    // by posting paired SHOP+FINANCE entries per business operation. Same pattern
+    // as receipts.service.generateReceiptNumber (verified working).
+    const result = await (tx as unknown as { $queryRaw: typeof PrismaService.prototype.$queryRaw }).$queryRaw<
+      Array<{ entryNumber: string }>
+    >`
+      SELECT entry_number AS "entryNumber" FROM journal_entries
+      WHERE entry_number LIKE ${prefix + '%'}
+      ORDER BY entry_number DESC
+      LIMIT 1
+      FOR UPDATE
+    `;
+
+    let seq = 1;
+    if (result.length > 0) {
+      const lastSeq = parseInt(result[0].entryNumber.replace(`${prefix}-`, ''), 10);
+      if (!Number.isNaN(lastSeq)) seq = lastSeq + 1;
+    }
+    return `${prefix}-${String(seq).padStart(4, '0')}`;
   }
 
   /** Resolve company id (defaults to first active company if not provided) */
@@ -1069,43 +1087,41 @@ export class JournalAutoService {
       },
     };
 
-    const lines = await this.prisma.journalLine.findMany({
+    // Aggregate at the DB level — full table scan into memory was OOM-prone at scale.
+    const grouped = await this.prisma.journalLine.groupBy({
+      by: ['accountCode'],
       where,
-      select: { accountCode: true, debit: true, credit: true },
+      _sum: { debit: true, credit: true },
     });
 
-    const accountMap = new Map<string, { totalDebit: Prisma.Decimal; totalCredit: Prisma.Decimal }>();
-    for (const line of lines) {
-      const acc = accountMap.get(line.accountCode) || {
-        totalDebit: new Prisma.Decimal(0),
-        totalCredit: new Prisma.Decimal(0),
-      };
-      acc.totalDebit = acc.totalDebit.add(new Prisma.Decimal(line.debit ?? 0));
-      acc.totalCredit = acc.totalCredit.add(new Prisma.Decimal(line.credit ?? 0));
-      accountMap.set(line.accountCode, acc);
-    }
-
-    const codes = Array.from(accountMap.keys());
+    const codes = grouped.map((g) => g.accountCode);
+    // Scope chart lookup by companyId — same code (e.g. 11-1101 Cash) can exist in
+    // both SHOP and FINANCE charts with different names. Without the scope, names
+    // would be silently mislabelled when one entity's row overwrites the other's.
     const chartAccounts = codes.length > 0
       ? await this.prisma.chartOfAccount.findMany({
-          where: { code: { in: codes } },
+          where: {
+            code: { in: codes },
+            ...(filters.companyId ? { companyId: filters.companyId } : {}),
+          },
           select: { code: true, nameTh: true, accountGroup: true },
         })
       : [];
 
     const chartMap = new Map(chartAccounts.map((a) => [a.code, a]));
 
-    const accounts = codes
-      .map((code) => {
-        const sums = accountMap.get(code)!;
-        const chart = chartMap.get(code);
+    const accounts = grouped
+      .map((g) => {
+        const totalDebit = new Prisma.Decimal(g._sum.debit ?? 0);
+        const totalCredit = new Prisma.Decimal(g._sum.credit ?? 0);
+        const chart = chartMap.get(g.accountCode);
         return {
-          code,
+          code: g.accountCode,
           nameTh: chart?.nameTh || '(ไม่พบในผังบัญชี)',
           accountGroup: chart?.accountGroup || 'UNKNOWN',
-          totalDebit: sums.totalDebit.toDecimalPlaces(2).toNumber(),
-          totalCredit: sums.totalCredit.toDecimalPlaces(2).toNumber(),
-          balance: sums.totalDebit.sub(sums.totalCredit).toDecimalPlaces(2).toNumber(),
+          totalDebit: totalDebit.toDecimalPlaces(2).toNumber(),
+          totalCredit: totalCredit.toDecimalPlaces(2).toNumber(),
+          balance: totalDebit.sub(totalCredit).toDecimalPlaces(2).toNumber(),
         };
       })
       .sort((a, b) => a.code.localeCompare(b.code));

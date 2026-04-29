@@ -64,6 +64,8 @@ describe('JournalAutoService', () => {
         }
         return Promise.all(fn as Promise<unknown>[]);
       }),
+      // generateEntryNumber uses $queryRaw with FOR UPDATE for collision-free seq
+      $queryRaw: jest.fn().mockResolvedValue([]),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -1434,6 +1436,7 @@ describe('JournalAutoService', () => {
           count: jest.fn().mockResolvedValue(0),
           create: jest.fn().mockResolvedValue({ id: 'entry1' }),
         },
+        $queryRaw: jest.fn().mockResolvedValue([]),
       };
       await expect(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1592,6 +1595,7 @@ describe('JournalAutoService', () => {
             .fn()
             .mockImplementation(({ data }) => Promise.resolve({ id: 'e1', _captured: data })),
         },
+        $queryRaw: jest.fn().mockResolvedValue([]),
       };
       (Sentry.captureMessage as jest.Mock).mockClear();
       const originalDate = new Date('2025-03-15T00:00:00Z');

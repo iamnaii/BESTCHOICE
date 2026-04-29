@@ -63,6 +63,7 @@ export class JournalAutoService {
     if (companyId) return companyId;
     const company = await tx.companyInfo.findFirst({
       where: { isActive: true, deletedAt: null },
+      orderBy: { createdAt: 'asc' },
       select: { id: true },
     });
     return company?.id || null;

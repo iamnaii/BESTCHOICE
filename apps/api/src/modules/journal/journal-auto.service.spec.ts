@@ -752,4 +752,22 @@ describe('JournalAutoService', () => {
       })).resolves.toBeTruthy();
     });
   });
+
+  describe('resolveCompanyId determinism', () => {
+    it('resolveCompanyId returns deterministic company across calls (F-3-027 part 1/3)', async () => {
+      const tx = {
+        companyInfo: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'co-FINANCE' }),
+        },
+      };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result = await (service as any).resolveCompanyId(tx);
+      expect(tx.companyInfo.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderBy: { createdAt: 'asc' },
+        })
+      );
+      expect(result).toBe('co-FINANCE');
+    });
+  });
 });

@@ -198,21 +198,29 @@ export class JournalAutoService {
   }
 
   /**
-   * Auto journal — Payment received from customer (FINANCE side).
+   * Auto journal — Payment received from customer (split FINANCE + SHOP — Phase A.1b).
    *
-   * Dr. Cash/Bank                    [amountPaid]
-   *   Cr. Hire-Purchase Receivable   [principal + commission — see A.1a note]
-   *   Cr. Interest Income            [monthlyInterest]
-   *   Cr. VAT Output                 [vatAmount]
-   *   Cr. Late Fee Income            [lateFee — if any]
+   * FINANCE entry (always):
+   *   Dr. Cash/Bank                  [amountPaid]
+   *     Cr. HP Receivable            [principal]
+   *     Cr. Interest Income          [monthlyInterest]
+   *     Cr. Late Fee Income          [lateFee — if any, lateFeeWaived → 0]
+   *     Cr. VAT Output               [vatAmount]
+   *     Cr. Due-to-SHOP              [monthlyCommission — FINANCE owes SHOP]
    *
-   * Phase A.1a: Commission income line REMOVED. Commission is folded into
-   * the HP receivable credit temporarily; A.1b will introduce inter-company
-   * journal entries (FINANCE commission expense + SHOP commission income).
-   * Sentry alarm fires when commission > 0 to surface deferred work.
+   * SHOP entry (only when monthlyCommission > 0):
+   *   Dr. Due-from-FINANCE           [monthlyCommission]
+   *     Cr. Commission Income        [monthlyCommission]
    *
-   * Interest is recognised as a separate revenue line (cash basis).
-   * Late fees are NOT charged VAT (owner policy).
+   * Both entries linked via [IC-<uuid>] description prefix when paired.
+   *
+   * Phase A.1a fold (commission into HP_RECEIVABLE) + commission-deferred Sentry
+   * alarm REMOVED — commission now properly posted via inter-company entries.
+   *
+   * Backward compat: legacy `companyId` param accepted as alias for
+   * `financeCompanyId` (Task 5 will clean up callers).
+   *
+   * Interest is recognised on cash basis. Late fees are NOT charged VAT (owner policy).
    */
   async createPaymentJournal(
     tx: Prisma.TransactionClient,
@@ -231,14 +239,44 @@ export class JournalAutoService {
       };
       contract: { contractNumber: string; branchId?: string | null };
       userId: string;
+      /** @deprecated Phase A.1b — use `financeCompanyId` instead. Accepted as alias. */
       companyId?: string | null;
+      shopCompanyId?: string | null;
+      financeCompanyId?: string | null;
     },
   ): Promise<string | null> {
-    const companyId = await this.resolveCompanyId(tx, params.companyId);
-    if (!companyId) {
-      this.logger.warn('No active company found — skipping payment journal');
+    const FA = JournalAutoService.FINANCE_ACC;
+    const SA = JournalAutoService.SHOP_ACC;
+
+    // Resolve FINANCE company (legacy `companyId` accepted as alias)
+    const financeCompanyId =
+      params.financeCompanyId ??
+      params.companyId ??
+      (
+        await tx.companyInfo.findFirst({
+          where: { companyCode: 'FINANCE', deletedAt: null },
+          select: { id: true },
+        })
+      )?.id ??
+      // Fallback: first active company (legacy single-company setups / tests)
+      (await this.resolveCompanyId(tx, null));
+
+    if (!financeCompanyId) {
+      this.logger.warn('No FINANCE company found — skipping payment journal');
       return null;
     }
+
+    // Resolve SHOP company (only required when commission > 0)
+    const shopCompanyId =
+      params.shopCompanyId ??
+      (
+        await tx.companyInfo.findFirst({
+          where: { companyCode: 'SHOP', deletedAt: null },
+          select: { id: true },
+        })
+      )?.id ??
+      // Fallback: same as FINANCE for legacy single-company setups
+      financeCompanyId;
 
     const amountPaid = new Prisma.Decimal(params.payment.amountPaid ?? 0);
     const principal = new Prisma.Decimal(params.payment.monthlyPrincipal ?? 0);
@@ -249,45 +287,56 @@ export class JournalAutoService {
       ? new Prisma.Decimal(0)
       : new Prisma.Decimal(params.payment.lateFee ?? 0);
 
-    // Phase A.1a: HP receivable absorbs principal + commission temporarily
-    // (commission's own income line removed pending A.1b inter-company wiring).
-    // Interest, VAT, late fee remain as their own credit lines.
-    const hpSettled = principal.add(commission);
     // If breakdown is missing (legacy/manual payment), settle whole amount against receivable as fallback
-    const isZeroBreakdown = principal.isZero() && interest.isZero() && commission.isZero() && vat.isZero() && lateFee.isZero();
-    const fallbackHp = isZeroBreakdown ? amountPaid.sub(lateFee) : hpSettled;
+    const isZeroBreakdown =
+      principal.isZero() &&
+      interest.isZero() &&
+      commission.isZero() &&
+      vat.isZero() &&
+      lateFee.isZero();
+    const hpReceivableCredit = isZeroBreakdown ? amountPaid.sub(lateFee) : principal;
 
-    // Phase A.1a: payment journal posts to FINANCE side only.
-    // Commission income line REMOVED — defer inter-company JE wiring to A.1b.
-    if (commission.gt(0)) {
-      Sentry.captureMessage('Payment commission not yet posted (deferred to A.1b)', {
-        level: 'info',
-        tags: { module: 'journal', kind: 'commission-deferred' },
-        extra: {
-          paymentId: params.payment.id,
-          contractNumber: params.contract.contractNumber,
-          amount: commission.toString(),
-        },
-      });
-    }
+    const intercompanyId = commission.gt(0) ? generateInterCompanyId() : null;
+    const baseDesc = `รับชำระค่างวด งวดที่ ${params.payment.installmentNo} สัญญา ${params.contract.contractNumber}`;
 
-    const FA = JournalAutoService.FINANCE_ACC;
-    return this.createAndPost(tx, {
-      companyId,
+    // FINANCE entry (always)
+    const financeDesc = intercompanyId
+      ? formatInterCompanyDescription(intercompanyId, `${baseDesc} (FINANCE)`)
+      : baseDesc;
+    const financeEntryId = await this.createAndPost(tx, {
+      companyId: financeCompanyId,
       entryDate: params.payment.paidDate || new Date(),
-      description: `รับชำระค่างวด งวดที่ ${params.payment.installmentNo} สัญญา ${params.contract.contractNumber}`,
+      description: financeDesc,
       referenceType: 'PAYMENT',
       referenceId: params.payment.id,
       createdById: params.userId,
       lines: [
         { accountCode: FA.CASH, description: 'รับชำระเงิน', debit: amountPaid.toNumber(), credit: 0 },
-        { accountCode: FA.HP_RECEIVABLE, description: 'ตัดลูกหนี้เช่าซื้อ (รวม commission ชั่วคราวจนกว่า A.1b)', debit: 0, credit: fallbackHp.toNumber() },
+        { accountCode: FA.HP_RECEIVABLE, description: 'ตัดลูกหนี้เช่าซื้อ', debit: 0, credit: hpReceivableCredit.toNumber() },
         { accountCode: FA.INTEREST_INCOME, description: 'รายได้ดอกเบี้ยเช่าซื้อ', debit: 0, credit: interest.toNumber() },
-        // COMMISSION_INCOME line removed (Phase A.1a) — see Sentry alarm above; A.1b will post inter-company commission.
-        { accountCode: FA.VAT_OUTPUT, description: 'ภาษีขาย', debit: 0, credit: vat.toNumber() },
         { accountCode: FA.LATE_FEE_INCOME, description: 'ค่าปรับล่าช้า', debit: 0, credit: lateFee.toNumber() },
+        { accountCode: FA.VAT_OUTPUT, description: 'ภาษีขาย', debit: 0, credit: vat.toNumber() },
+        { accountCode: FA.DUE_TO_SHOP, description: 'ค่าคอมมิชชันค้างจ่าย SHOP', debit: 0, credit: commission.toNumber() },
       ],
     });
+
+    // SHOP entry — only when commission > 0
+    if (commission.gt(0) && shopCompanyId && intercompanyId) {
+      await this.createAndPost(tx, {
+        companyId: shopCompanyId,
+        entryDate: params.payment.paidDate || new Date(),
+        description: formatInterCompanyDescription(intercompanyId, `${baseDesc} (SHOP commission)`),
+        referenceType: 'PAYMENT',
+        referenceId: params.payment.id,
+        createdById: params.userId,
+        lines: [
+          { accountCode: SA.DUE_FROM_FINANCE, description: 'ค่าคอมมิชชันรับจาก FINANCE', debit: commission.toNumber(), credit: 0 },
+          { accountCode: SA.COMMISSION_INCOME, description: 'รายได้ค่าคอมมิชชัน', debit: 0, credit: commission.toNumber() },
+        ],
+      });
+    }
+
+    return financeEntryId;
   }
 
   /**

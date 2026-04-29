@@ -609,6 +609,137 @@ describe('JournalAutoService', () => {
   });
 
   // ──────────────────────────────────────────────────────────────────────────
+  // Phase A.1b — createPaymentJournal split (FINANCE + SHOP commission entries)
+  // ──────────────────────────────────────────────────────────────────────────
+  describe('Phase A.1b — createPaymentJournal split', () => {
+    // Capture every journalEntry.create call so we can assert per-companyId.
+    let captured: Array<{ companyId: string; description: string; lines: Array<{ accountCode: string; debit: number; credit: number }> }>;
+
+    beforeEach(() => {
+      captured = [];
+      prisma.journalEntry.create.mockImplementation((args: any) => {
+        const data = args.data;
+        captured.push({
+          companyId: data.companyId,
+          description: data.description,
+          lines: (data.lines.create as Array<{ accountCode: string; debit: unknown; credit: unknown }>).map((l) => ({
+            accountCode: l.accountCode,
+            debit: Number(l.debit ?? 0),
+            credit: Number(l.credit ?? 0),
+          })),
+        });
+        return Promise.resolve({ id: `je-${captured.length}` });
+      });
+      // Make findFirst return SHOP/FINANCE based on companyCode filter
+      prisma.companyInfo.findFirst = jest.fn().mockImplementation((args: any) => {
+        if (args?.where?.companyCode === 'SHOP') return Promise.resolve({ id: 'co-SHOP', companyCode: 'SHOP' });
+        if (args?.where?.companyCode === 'FINANCE') return Promise.resolve({ id: 'co-FINANCE', companyCode: 'FINANCE' });
+        return Promise.resolve(null);
+      });
+    });
+
+    it('creates FINANCE payment entry + SHOP commission entry when commission > 0', async () => {
+      await service.createPaymentJournal(prisma, {
+        payment: {
+          id: 'p1',
+          installmentNo: 1,
+          amountPaid: new Prisma.Decimal('1500'),
+          monthlyPrincipal: new Prisma.Decimal('1000'),
+          monthlyInterest: new Prisma.Decimal('100'),
+          monthlyCommission: new Prisma.Decimal('300'),
+          vatAmount: new Prisma.Decimal('100'),
+          lateFee: new Prisma.Decimal('0'),
+          lateFeeWaived: false,
+          paidDate: new Date(),
+        },
+        contract: { contractNumber: 'CT-001', branchId: 'b1' },
+        userId: 'u1',
+        shopCompanyId: 'co-SHOP',
+        financeCompanyId: 'co-FINANCE',
+      });
+
+      expect(captured).toHaveLength(2);
+
+      const financeEntry = captured.find((e) => e.companyId === 'co-FINANCE');
+      expect(financeEntry).toBeTruthy();
+      // Due-to-SHOP credit for commission
+      const dueToShopLine = financeEntry!.lines.find((l) => l.accountCode === '21-1102');
+      expect(dueToShopLine!.credit).toBeCloseTo(300, 2);
+      // HP Receivable credit = principal only (no commission fold)
+      const hpRecvLine = financeEntry!.lines.find((l) => l.accountCode === '11-2102');
+      expect(hpRecvLine!.credit).toBeCloseTo(1000, 2);
+
+      const shopEntry = captured.find((e) => e.companyId === 'co-SHOP');
+      expect(shopEntry).toBeTruthy();
+      const dueFromFinanceLine = shopEntry!.lines.find((l) => l.accountCode === '11-2105');
+      expect(dueFromFinanceLine!.debit).toBeCloseTo(300, 2);
+      const commissionLine = shopEntry!.lines.find((l) => l.accountCode === '42-1105');
+      expect(commissionLine!.credit).toBeCloseTo(300, 2);
+
+      // Both share IC prefix
+      expect(financeEntry!.description).toMatch(/^\[IC-/);
+      expect(shopEntry!.description).toMatch(/^\[IC-/);
+      const financeIcId = financeEntry!.description.match(/\[IC-([0-9a-f-]+)\]/i)?.[1];
+      const shopIcId = shopEntry!.description.match(/\[IC-([0-9a-f-]+)\]/i)?.[1];
+      expect(financeIcId).toBe(shopIcId);
+    });
+
+    it('creates only FINANCE entry when commission = 0', async () => {
+      await service.createPaymentJournal(prisma, {
+        payment: {
+          id: 'p2',
+          installmentNo: 1,
+          amountPaid: new Prisma.Decimal('1100'),
+          monthlyPrincipal: new Prisma.Decimal('1000'),
+          monthlyInterest: new Prisma.Decimal('100'),
+          monthlyCommission: new Prisma.Decimal('0'), // ← zero
+          vatAmount: new Prisma.Decimal('0'),
+          lateFee: new Prisma.Decimal('0'),
+          lateFeeWaived: false,
+          paidDate: new Date(),
+        },
+        contract: { contractNumber: 'CT-002', branchId: 'b1' },
+        userId: 'u1',
+        shopCompanyId: 'co-SHOP',
+        financeCompanyId: 'co-FINANCE',
+      });
+
+      // Only FINANCE entry — no SHOP entry when commission=0
+      expect(captured).toHaveLength(1);
+      expect(captured[0].companyId).toBe('co-FINANCE');
+      // FINANCE entry should NOT have Due-to-SHOP line (zero commission filtered)
+      const dueToShop = captured[0].lines.find((l) => l.accountCode === '21-1102');
+      expect(dueToShop).toBeUndefined();
+    });
+
+    it('FINANCE entry balances when amountPaid = principal + interest + vat + commission + lateFee', async () => {
+      await service.createPaymentJournal(prisma, {
+        payment: {
+          id: 'p3',
+          installmentNo: 1,
+          amountPaid: new Prisma.Decimal('1500'), // = 1000+100+300+100+0
+          monthlyPrincipal: new Prisma.Decimal('1000'),
+          monthlyInterest: new Prisma.Decimal('100'),
+          monthlyCommission: new Prisma.Decimal('300'),
+          vatAmount: new Prisma.Decimal('100'),
+          lateFee: new Prisma.Decimal('0'),
+          lateFeeWaived: false,
+          paidDate: new Date(),
+        },
+        contract: { contractNumber: 'CT-003', branchId: 'b1' },
+        userId: 'u1',
+        shopCompanyId: 'co-SHOP',
+        financeCompanyId: 'co-FINANCE',
+      });
+
+      const financeEntry = captured.find((e) => e.companyId === 'co-FINANCE');
+      const dr = financeEntry!.lines.reduce((s, l) => s + (l.debit || 0), 0);
+      const cr = financeEntry!.lines.reduce((s, l) => s + (l.credit || 0), 0);
+      expect(Math.abs(dr - cr)).toBeLessThan(0.01);
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
   // createBadDebtWriteOffJournal
   // ──────────────────────────────────────────────────────────────────────────
   describe('createBadDebtWriteOffJournal', () => {

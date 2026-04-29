@@ -57,6 +57,8 @@ describe('JournalAutoService', () => {
           storeCommission: { toNumber: () => 300 },
           vatAmount: { toNumber: () => 700 },
         }),
+        // Phase A.2 — contract.unearnedInterest/Commission decrement after each JE
+        update: jest.fn().mockResolvedValue({ id: 'contract-1' }),
       },
       $transaction: jest.fn().mockImplementation(async (fn: unknown) => {
         if (typeof fn === 'function') {
@@ -93,24 +95,46 @@ describe('JournalAutoService', () => {
   }
 
   describe('createAndPost — balance validation', () => {
-    it('payment JE always balances by construction (Phase A.2: HP Receivable absorbs breakdown mismatch)', async () => {
-      // Phase A.2: payment JE drains HP Receivable by amountPaid - lateFee, so
-      // the JE is balanced regardless of whether breakdown components match
-      // amountPaid. Independent JE balance enforcement comes from createAndPost.
+    it('throws when payment breakdown drifts from amountPaid (Phase A.2 data-integrity guard)', async () => {
+      // breakdown sums to 5950 but amountPaid is 9999. Phase A.2 added an
+      // explicit drift check + Sentry alarm so corrupt upstream data doesn't
+      // silently over-drain HP Receivable.
+      const tx = prisma;
+      await expect(
+        service.createPaymentJournal(tx, {
+          payment: {
+            id: 'pay-1',
+            installmentNo: 1,
+            amountPaid: 9999,
+            monthlyPrincipal: 5000,
+            monthlyInterest: 500,
+            monthlyCommission: 100,
+            vatAmount: 300,
+            lateFee: 50,
+            lateFeeWaived: false,
+          },
+          contract: { contractNumber: 'BC-202601-0001', branchId: 'branch-1' },
+          userId: 'user-1',
+          companyId: 'company-1',
+        }),
+      ).rejects.toThrow(InternalServerErrorException);
+    });
+
+    it('passes when breakdown sums to amountPaid (within 0.02 tolerance)', async () => {
       const tx = prisma;
       const result = await service.createPaymentJournal(tx, {
         payment: {
-          id: 'pay-1',
+          id: 'pay-2',
           installmentNo: 1,
-          amountPaid: 9999,
-          monthlyPrincipal: 5000,
-          monthlyInterest: 500,
-          monthlyCommission: 100,
-          vatAmount: 300,
-          lateFee: 50,
+          amountPaid: 1500,
+          monthlyPrincipal: 1000,
+          monthlyInterest: 100,
+          monthlyCommission: 300,
+          vatAmount: 100,
+          lateFee: 0,
           lateFeeWaived: false,
         },
-        contract: { contractNumber: 'BC-202601-0001', branchId: 'branch-1' },
+        contract: { contractNumber: 'BC-202601-0002', branchId: 'branch-1' },
         userId: 'user-1',
         companyId: 'company-1',
       });

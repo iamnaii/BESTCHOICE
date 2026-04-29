@@ -235,7 +235,7 @@ export class PaymentsService {
             lateFeeWaived: result.lateFeeWaived,
             paidDate: result.paidDate,
           },
-          contract: { contractNumber: contract.contractNumber, branchId: contract.branchId },
+          contract: { id: contract.id, contractNumber: contract.contractNumber, branchId: contract.branchId },
           userId: recordedById,
         });
       }
@@ -416,7 +416,7 @@ export class PaymentsService {
               lateFeeWaived: updated.lateFeeWaived,
               paidDate: updated.paidDate,
             },
-            contract: { contractNumber: contract.contractNumber, branchId: contract.branchId },
+            contract: { id: contract.id, contractNumber: contract.contractNumber, branchId: contract.branchId },
             userId: recordedById,
           });
         }
@@ -815,7 +815,7 @@ export class PaymentsService {
               lateFeeWaived: updated.lateFeeWaived,
               paidDate: updated.paidDate,
             },
-            contract: { contractNumber: contract.contractNumber, branchId: contract.branchId },
+            contract: { id: contract.id, contractNumber: contract.contractNumber, branchId: contract.branchId },
             userId: recordedById,
           });
         }

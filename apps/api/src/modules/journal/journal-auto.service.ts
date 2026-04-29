@@ -259,7 +259,7 @@ export class JournalAutoService {
         lateFeeWaived?: boolean;
         paidDate?: Date | null;
       };
-      contract: { contractNumber: string; branchId?: string | null };
+      contract: { id?: string; contractNumber: string; branchId?: string | null };
       userId: string;
       /** @deprecated Phase A.1b — use `financeCompanyId` instead. Accepted as alias. */
       companyId?: string | null;
@@ -313,9 +313,24 @@ export class JournalAutoService {
     // (principal + commission + interest + VAT) at activation. Each payment
     // drains the receivable by the installment portion of cash received
     // (= amountPaid - lateFee). Late fees are recognised as separate income.
-    const isZeroBreakdown =
-      principal.isZero() && interest.isZero() && commission.isZero() && vat.isZero() && lateFee.isZero();
-    const hpReceivableCredit = isZeroBreakdown ? amountPaid.sub(lateFee) : amountPaid.sub(lateFee);
+    const hpReceivableCredit = amountPaid.sub(lateFee);
+
+    // Data-integrity check: when a non-zero breakdown is supplied, it must
+    // sum to amountPaid (else upstream is corrupt — e.g. legacy import or a
+    // manual adjustment). The JE balances by construction, but we still
+    // throw + Sentry-alarm so the bad data doesn't drain HP Receivable
+    // incorrectly downstream. Tolerance 0.02 absorbs Decimal rounding.
+    const breakdownSum = principal.add(interest).add(commission).add(vat).add(lateFee);
+    const hasBreakdown = !breakdownSum.isZero();
+    if (hasBreakdown && breakdownSum.minus(amountPaid).abs().toNumber() > 0.02) {
+      const msg = `Payment breakdown drift for ${params.payment.id}: sum=${breakdownSum.toFixed(2)} ≠ amountPaid=${amountPaid.toFixed(2)}`;
+      this.logger.error(msg);
+      Sentry.captureException(new Error(msg), {
+        tags: { kind: 'payment-breakdown-drift' },
+        extra: { paymentId: params.payment.id, breakdownSum: breakdownSum.toFixed(2), amountPaid: amountPaid.toFixed(2) },
+      });
+      throw new InternalServerErrorException(msg);
+    }
 
     const intercompanyId = commission.gt(0) ? generateInterCompanyId() : null;
     const baseDesc = `รับชำระค่างวด งวดที่ ${params.payment.installmentNo} สัญญา ${params.contract.contractNumber}`;
@@ -365,35 +380,56 @@ export class JournalAutoService {
       });
     }
 
+    // Phase A.2: keep Contract.unearnedInterest / unearnedCommission in sync
+    // with the JE ledger. Caller can read these fields without a groupBy
+    // query (used by early-payoff calc + dashboard reporting).
+    if (params.contract.id && (interest.gt(0) || commission.gt(0))) {
+      await tx.contract.update({
+        where: { id: params.contract.id },
+        data: {
+          ...(interest.gt(0) ? { unearnedInterest: { decrement: interest } } : {}),
+          ...(commission.gt(0) ? { unearnedCommission: { decrement: commission } } : {}),
+        },
+      });
+    }
+
     return financeEntryId;
   }
 
   /**
-   * Phase A.1c — Early payoff JE (handles discount).
+   * Phase A.2 — Early payoff JE with deferred-recognition handling.
    *
    * When a customer closes their contract early with a discount, the
-   * collected cash is LESS than the sum of remaining installments. The
-   * principal must always be settled in full (otherwise HP Receivable
-   * stays inflated and the device remains on the FINANCE balance sheet).
-   * The discount is absorbed by reducing recognised interest, commission,
-   * and VAT proportionally.
+   * collected cash is LESS than the sum of remaining installments. HP
+   * Receivable was loaded in full at activation (principal + commission +
+   * interest + VAT) so we drain it by the full owed for the unpaid
+   * installments — irrespective of discount. The discount is absorbed by
+   * recognising LESS Interest Income / VAT Output than the full Unearned
+   * drain, plus reducing Due-to-SHOP for the commission discount portion.
    *
    * FINANCE entry:
    *   Dr. Cash (FINANCE)               [totalPayoff incl. late fees]
-   *     Cr. HP Receivable               [sum of remaining principal]
-   *     Cr. Interest Income             [scaled-down interest]
-   *     Cr. VAT Output                  [scaled-down VAT]
+   *   Dr. Unearned Interest            [sumInterestOrig — full deferred drain]
+   *   Dr. VAT Pending                  [sumVatOrig — full deferred drain]
+   *   Dr. Due-to-SHOP                  [commissionDiscount — only if > 0]
+   *     Cr. HP Receivable               [sumOwedExclLateFee — full installments]
+   *     Cr. Interest Income             [interestActual — earned portion only]
+   *     Cr. VAT Output (PP.30)          [vatActual — earned portion only]
    *     Cr. Late Fee Income             [unpaid late fees]
-   *     Cr. Due-to-SHOP                 [scaled-down commission, if > 0]
    *
-   * SHOP entry (only when commission > 0):
-   *   Dr. Due-from-FINANCE              [commission]
-   *     Cr. Commission Income           [commission]
+   * SHOP entry (only when sumCommissionOrig > 0):
+   *   Dr. Unearned Commission           [sumCommissionOrig — full deferred drain]
+   *     Cr. Commission Income            [commissionActual — earned portion]
+   *     Cr. Due-from-FINANCE             [commissionDiscount — mirrors FINANCE]
    *
-   * Linked via [IC-<uuid>] description prefix.
+   * The implicit interest discount = (Unearned drained – Income recognised) lives
+   * silently in the Cr/Dr asymmetry — no separate Discount Expense line. The
+   * commission discount flows through Due-to-SHOP / Due-from-FINANCE so the
+   * inter-company invariant remains intact after payoff.
    *
-   * Caller is responsible for updating Payment rows; this method only posts
-   * the aggregated JE for the whole payoff.
+   * Linked via [IC-<uuid>] description prefix when commission is non-zero.
+   * Caller is responsible for updating Payment rows + zeroing the contract's
+   * Unearned tracking fields; this method only posts the aggregated JE.
    */
   async createEarlyPayoffJournal(
     tx: Prisma.TransactionClient,
@@ -510,6 +546,21 @@ export class JournalAutoService {
     const financeDesc = intercompanyId
       ? formatInterCompanyDescription(intercompanyId, `${baseDesc} (FINANCE)`)
       : baseDesc;
+    const financeLines: Array<{ accountCode: string; description: string; debit: number; credit: number }> = [
+      { accountCode: FA.CASH, description: 'รับชำระปิดก่อนกำหนด', debit: cash.toNumber(), credit: 0 },
+      { accountCode: FA.UNEARNED_INTEREST, description: 'ตัดดอกเบี้ยรอตัดบัญชี', debit: sumInterestOrig.toNumber(), credit: 0 },
+      { accountCode: FA.VAT_OUTPUT_PENDING, description: 'ตัดภาษีขายรอเรียกเก็บ', debit: sumVatOrig.toNumber(), credit: 0 },
+      { accountCode: FA.HP_RECEIVABLE, description: 'ตัดลูกหนี้เช่าซื้อ', debit: 0, credit: sumOwedExclLateFee.toNumber() },
+      { accountCode: FA.INTEREST_INCOME, description: 'รายได้ดอกเบี้ยเช่าซื้อ', debit: 0, credit: interestActual.toNumber() },
+      { accountCode: FA.VAT_OUTPUT, description: 'ภาษีขาย', debit: 0, credit: vatActual.toNumber() },
+      { accountCode: FA.LATE_FEE_INCOME, description: 'ค่าปรับล่าช้า', debit: 0, credit: sumLateFee.toNumber() },
+    ];
+    // Only emit Due-to-SHOP line when there's a commission discount to reduce.
+    // Avoids posting an empty Dr=0 line that adds noise to the JE.
+    if (commissionDiscount.gt(0)) {
+      financeLines.push({ accountCode: FA.DUE_TO_SHOP, description: 'ลดเจ้าหนี้ระหว่างบริษัท (ส่วนลดคอมมิชชัน)', debit: commissionDiscount.toNumber(), credit: 0 });
+    }
+
     const financeEntryId = await this.createAndPost(tx, {
       companyId: financeCompanyId,
       entryDate,
@@ -517,16 +568,7 @@ export class JournalAutoService {
       referenceType: 'EARLY_PAYOFF',
       referenceId: params.contractId,
       createdById: params.userId,
-      lines: [
-        { accountCode: FA.CASH, description: 'รับชำระปิดก่อนกำหนด', debit: cash.toNumber(), credit: 0 },
-        { accountCode: FA.UNEARNED_INTEREST, description: 'ตัดดอกเบี้ยรอตัดบัญชี', debit: sumInterestOrig.toNumber(), credit: 0 },
-        { accountCode: FA.VAT_OUTPUT_PENDING, description: 'ตัดภาษีขายรอเรียกเก็บ', debit: sumVatOrig.toNumber(), credit: 0 },
-        { accountCode: FA.DUE_TO_SHOP, description: 'ลดเจ้าหนี้ระหว่างบริษัท (ส่วนลดคอมมิชชัน)', debit: commissionDiscount.toNumber(), credit: 0 },
-        { accountCode: FA.HP_RECEIVABLE, description: 'ตัดลูกหนี้เช่าซื้อ', debit: 0, credit: sumOwedExclLateFee.toNumber() },
-        { accountCode: FA.INTEREST_INCOME, description: 'รายได้ดอกเบี้ยเช่าซื้อ', debit: 0, credit: interestActual.toNumber() },
-        { accountCode: FA.VAT_OUTPUT, description: 'ภาษีขาย', debit: 0, credit: vatActual.toNumber() },
-        { accountCode: FA.LATE_FEE_INCOME, description: 'ค่าปรับล่าช้า', debit: 0, credit: sumLateFee.toNumber() },
-      ],
+      lines: financeLines,
     });
 
     // SHOP entry — Phase A.2:
@@ -548,6 +590,13 @@ export class JournalAutoService {
         ],
       });
     }
+
+    // Phase A.2: contract is closed — zero out remaining unearned tracking.
+    // (Equivalent to draining whatever Unearned balance was left.)
+    await tx.contract.update({
+      where: { id: params.contractId },
+      data: { unearnedInterest: 0, unearnedCommission: 0 },
+    });
 
     return financeEntryId;
   }
@@ -637,7 +686,7 @@ export class JournalAutoService {
         lateFeeWaived?: boolean;
         paidDate?: Date | null;
       };
-      contract: { contractNumber: string; branchId?: string | null };
+      contract: { id?: string; contractNumber: string; branchId?: string | null };
       userId: string;
       shopCompanyId?: string | null;
       financeCompanyId?: string | null;
@@ -721,6 +770,17 @@ export class JournalAutoService {
           { accountCode: SA.UNEARNED_COMMISSION, description: 'ตัดค่านายหน้ารอตัดบัญชี', debit: commission.toNumber(), credit: 0 },
           { accountCode: SA.COMMISSION_INCOME, description: 'รายได้ค่านายหน้า', debit: 0, credit: commission.toNumber() },
         ],
+      });
+    }
+
+    // Phase A.2: keep Contract.unearned* in sync (same model as createPaymentJournal).
+    if (params.contract.id && (interest.gt(0) || commission.gt(0))) {
+      await tx.contract.update({
+        where: { id: params.contract.id },
+        data: {
+          ...(interest.gt(0) ? { unearnedInterest: { decrement: interest } } : {}),
+          ...(commission.gt(0) ? { unearnedCommission: { decrement: commission } } : {}),
+        },
       });
     }
 

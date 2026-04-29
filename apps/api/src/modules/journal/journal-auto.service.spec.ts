@@ -44,6 +44,7 @@ describe('JournalAutoService', () => {
       journalEntry: {
         count: jest.fn().mockResolvedValue(0),
         create: jest.fn().mockResolvedValue({ id: 'je-1' }),
+        findFirst: jest.fn().mockResolvedValue(null),
       },
       contract: {
         findUnique: jest.fn().mockResolvedValue({

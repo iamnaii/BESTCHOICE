@@ -62,6 +62,7 @@ export class JournalAutoService {
     DUE_TO_SHOP: '21-1102',
     BAD_DEBT_EXPENSE: '53-1701',
     COMMISSION_EXPENSE: '53-1801',
+    LOSS_ON_REPO_RESALE: '53-1804',
   } as const;
 
   constructor(private prisma: PrismaService) {}
@@ -968,6 +969,17 @@ export class JournalAutoService {
       );
     }
 
+    // Idempotency: a SOLD update can be retried — the JE must post once per repossession.
+    const existing = await tx.journalEntry.findFirst({
+      where: {
+        referenceType: 'REPO_RESALE',
+        referenceId: params.repossessionId,
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+    if (existing) return existing.id;
+
     const gainOrLoss = params.resellPrice.minus(params.bookValue);
     const isGain = gainOrLoss.gte(0);
 
@@ -1000,7 +1012,7 @@ export class JournalAutoService {
             credit: 0,
           },
           {
-            accountCode: '53-1804',
+            accountCode: FA.LOSS_ON_REPO_RESALE,
             description: 'Loss on repossession resale',
             debit: gainOrLoss.abs().toNumber(),
             credit: 0,

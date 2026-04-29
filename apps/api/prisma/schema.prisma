@@ -2870,6 +2870,7 @@ model CompanyInfo {
   taxReports         TaxReport[]
   ownedProducts      Product[]                 @relation("ProductOwnership")
   accountingPeriods  AccountingPeriod[]
+  chartOfAccounts    ChartOfAccount[]          @relation("CompanyChartOfAccounts")
 
   @@map("company_info")
 }
@@ -3153,7 +3154,7 @@ enum AccountGroup {
 
 model ChartOfAccount {
   id           String       @id @default(uuid())
-  code         String       @unique // e.g. "1100", "4100"
+  code         String // e.g. "1100", "4100"
   nameTh       String       @map("name_th") // ชื่อบัญชีภาษาไทย
   nameEn       String?      @map("name_en") // English name (optional)
   accountGroup AccountGroup @map("account_group")
@@ -3161,8 +3162,9 @@ model ChartOfAccount {
   level        Int          @default(1) // 1=group, 2=sub-group, 3=detail
   isActive     Boolean      @default(true) @map("is_active")
 
-  // ── การใช้งานข้ามบริษัท (multi-entity) ──
-  allowedCompanies String[] @default([]) @map("allowed_companies") // [] = ใช้ได้ทุกบริษัท, ["FINANCE"] = เฉพาะ FINANCE, ["SHOP"] = เฉพาะ SHOP
+  // ── Multi-entity partition (Phase A.1a) ──
+  companyId String?      @map("company_id")
+  company   CompanyInfo? @relation("CompanyChartOfAccounts", fields: [companyId], references: [id], onDelete: SetNull)
 
   // ── การ sync กับ PEAK (ระบบบัญชีภายนอก) ──
   peakAccountCode String? @map("peak_account_code") // รหัสบัญชีฝั่ง PEAK (สำหรับ export journal)
@@ -3172,8 +3174,10 @@ model ChartOfAccount {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
+  @@unique([companyId, code])
   @@index([accountGroup])
   @@index([code])
+  @@index([companyId])
   @@map("chart_of_accounts")
 }
 

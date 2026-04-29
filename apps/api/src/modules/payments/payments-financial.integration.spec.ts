@@ -79,7 +79,7 @@ describe('PaymentsService — Financial Integration', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PaymentsService,
-        { provide: PrismaService, useValue: { $transaction: jest.fn(fn => fn(tx)), systemConfig: { findUnique: jest.fn().mockResolvedValue(null) } } },
+        { provide: PrismaService, useValue: { $transaction: jest.fn(fn => fn(tx)), systemConfig: { findUnique: jest.fn().mockResolvedValue(null) }, companyInfo: { findFirst: jest.fn().mockResolvedValue({ id: 'co-FINANCE' }) } } },
         { provide: ReceiptsService, useValue: { generateReceipt: jest.fn().mockResolvedValue({}) } },
         { provide: AuditService, useValue: { logPaymentEvent: jest.fn().mockResolvedValue(undefined) } },
         { provide: JournalAutoService, useValue: { createPaymentJournal: jest.fn().mockResolvedValue('je-1'), createExpenseJournal: jest.fn(), createContractActivationJournal: jest.fn(), createBadDebtWriteOffJournal: jest.fn() } },

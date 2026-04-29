@@ -41,22 +41,22 @@ export class LineOaService {
   ) {}
 
   /**
-   * LineOaService is SHOP-first by design (default channelKey = 'line-shop').
-   * FINANCE has its own client at chatbot-finance/services/line-finance-client.service.ts
-   * which reads the `line-finance` integration independently.
+   * LineOaService routes through three OAs (line-shop, line-finance,
+   * line-staff). FINANCE also has a dedicated client at
+   * chatbot-finance/services/line-finance-client.service.ts which reads the
+   * `line-finance` integration independently for chatbot reply flows.
    *
-   * As of Phase 4 (notifications operational readiness), public sender
-   * methods accept an optional `channelKey` parameter so callers in
-   * cross-cutting modules (notifications scheduler, etc.) can pick the
-   * channel without bypassing this service. Default remains `line-shop`
-   * for backward compatibility with existing callers.
+   * Phase 7 (2026-04-30): the previous BC default of `'line-shop'` was
+   * removed from every public sender method. Every caller MUST pass
+   * channelKey explicitly so we never silently send a finance message via
+   * the SHOP OA again. TypeScript enforces this at compile time.
    */
-  private async getChannelToken(channelKey: LineChannelKey = 'line-shop'): Promise<string> {
+  private async getChannelToken(channelKey: LineChannelKey): Promise<string> {
     return (await this.integrationConfig.getValue(channelKey, 'channelToken')) || '';
   }
 
   async testConnection(
-    channelKey: LineChannelKey = 'line-shop',
+    channelKey: LineChannelKey,
   ): Promise<{ displayName: string; userId: string; pictureUrl?: string }> {
     const token = await this.getChannelToken(channelKey);
     if (!token) {
@@ -84,7 +84,7 @@ export class LineOaService {
   async pushMessage(
     to: string,
     messages: LineMessagePayload[],
-    channelKey: LineChannelKey = 'line-shop',
+    channelKey: LineChannelKey,
   ): Promise<void> {
     await this.callLineApi(
       `${this.lineApiBaseUrl}/message/push`,
@@ -103,7 +103,7 @@ export class LineOaService {
   async replyMessage(
     replyToken: string,
     messages: LineMessagePayload[],
-    channelKey: LineChannelKey = 'line-shop',
+    channelKey: LineChannelKey,
   ): Promise<void> {
     await this.callLineApi(
       `${this.lineApiBaseUrl}/message/reply`,
@@ -122,7 +122,7 @@ export class LineOaService {
   async sendFlexMessage(
     to: string,
     flexMessage: FlexMessagePayload,
-    channelKey: LineChannelKey = 'line-shop',
+    channelKey: LineChannelKey,
   ): Promise<void> {
     await this.pushMessage(to, [flexMessage as unknown as LineMessagePayload], channelKey);
   }
@@ -132,7 +132,7 @@ export class LineOaService {
    */
   async downloadContent(
     messageId: string,
-    channelKey: LineChannelKey = 'line-shop',
+    channelKey: LineChannelKey,
   ): Promise<Buffer> {
     const token = await this.getChannelToken(channelKey);
     if (!token) {
@@ -160,7 +160,7 @@ export class LineOaService {
    */
   async getUserProfile(
     userId: string,
-    channelKey: LineChannelKey = 'line-shop',
+    channelKey: LineChannelKey,
   ): Promise<{ displayName: string; pictureUrl?: string; statusMessage?: string }> {
     const token = await this.getChannelToken(channelKey);
     if (!token) {
@@ -200,12 +200,16 @@ export class LineOaService {
 
     this.logger.log(`[LINE] New follow from ${lineUserId} - sending welcome message`);
     try {
-      await this.pushMessage(lineUserId, [
-        {
-          type: 'text',
-          text: CHATBOT_RESPONSES.welcomeFollow,
-        } as unknown as LineMessagePayload,
-      ]);
+      await this.pushMessage(
+        lineUserId,
+        [
+          {
+            type: 'text',
+            text: CHATBOT_RESPONSES.welcomeFollow,
+          } as unknown as LineMessagePayload,
+        ],
+        'line-shop',
+      );
     } catch (err) {
       this.logger.warn(`[LINE] Failed to send welcome message: ${err}`);
     }
@@ -318,7 +322,7 @@ export class LineOaService {
   async sendReceipt(
     lineUserId: string,
     receiptData: ReceiptData,
-    channelKey: LineChannelKey = 'line-shop',
+    channelKey: LineChannelKey,
   ): Promise<void> {
     const flexMessage = buildReceiptMessage(receiptData);
     await this.sendFlexMessage(lineUserId, flexMessage, channelKey);
@@ -394,8 +398,8 @@ export class LineOaService {
         verifyUrl: `${this.configService.get<string>('FRONTEND_URL') || 'https://bestchoice.com'}/verify/${receipt.receiptNumber}`
       };
 
-      // Send receipt via LINE
-      await this.sendReceipt(customer.lineIdShop, receiptData);
+      // Send receipt via LINE (SHOP receipt — sale completed at shop)
+      await this.sendReceipt(customer.lineIdShop, receiptData, 'line-shop');
 
       // Log notification
       await this.prisma.notificationLog.create({
@@ -551,9 +555,9 @@ export class LineOaService {
             const msg = buildMessage(customer.name);
 
             if (dto.messageType === CampaignMessageType.TEXT) {
-              await this.pushMessage(customer.lineId, msg as LineMessagePayload[]);
+              await this.pushMessage(customer.lineId, msg as LineMessagePayload[], 'line-shop');
             } else {
-              await this.sendFlexMessage(customer.lineId, msg as FlexMessagePayload);
+              await this.sendFlexMessage(customer.lineId, msg as FlexMessagePayload, 'line-shop');
             }
 
             // Log success
@@ -778,7 +782,7 @@ export class LineOaService {
   private async callLineApi(
     url: string,
     body: unknown,
-    channelKey: LineChannelKey = 'line-shop',
+    channelKey: LineChannelKey,
   ): Promise<void> {
     const token = await this.getChannelToken(channelKey);
     if (!token) {

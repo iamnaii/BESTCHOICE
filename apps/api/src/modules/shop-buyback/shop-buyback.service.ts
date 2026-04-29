@@ -98,7 +98,7 @@ export class ShopBuybackService {
 
     if (dto.lineUserId) {
       try {
-        await this.line.sendFlexMessage(dto.lineUserId, this.buildSubmittedFlex(tradeIn.id));
+        await this.line.sendFlexMessage(dto.lineUserId, this.buildSubmittedFlex(tradeIn.id), 'line-shop');
       } catch (err) {
         this.logger.warn(`Failed to send buyback LINE flex: ${(err as Error).message}`);
       }

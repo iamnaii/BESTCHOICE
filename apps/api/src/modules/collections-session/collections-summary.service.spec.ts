@@ -69,6 +69,7 @@ describe('CollectionsSummaryService', () => {
     expect(line.pushMessage).toHaveBeenCalledWith(
       'U_LINE_1',
       expect.arrayContaining([expect.objectContaining({ type: 'text' })]),
+      'line-staff',
     );
   });
 

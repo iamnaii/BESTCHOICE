@@ -79,15 +79,13 @@ describe('NotificationsService — integration: per-channel routing', () => {
     expect(integrationConfig.getValue).toHaveBeenCalledWith('line-shop', 'channelToken');
   });
 
-  it('LINE send without channelKey defaults to line-finance (BC)', async () => {
-    integrationConfig.getValue.mockResolvedValueOnce('finance-token-default');
-
-    await service.send({
-      channel: 'LINE',
-      recipient: 'Uxxx',
-      message: 'no channelKey',
-    });
-
-    expect(integrationConfig.getValue).toHaveBeenCalledWith('line-finance', 'channelToken');
+  it('LINE send without channelKey throws BadRequestException (Phase 7 hardening)', async () => {
+    await expect(
+      service.send({
+        channel: 'LINE',
+        recipient: 'Uxxx',
+        message: 'no channelKey',
+      }),
+    ).rejects.toThrow(/channelKey จำเป็นสำหรับ LINE/);
   });
 });

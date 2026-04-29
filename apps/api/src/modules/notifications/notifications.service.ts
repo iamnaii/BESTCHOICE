@@ -52,9 +52,16 @@ export class NotificationsService {
    * Send a notification via LINE, SMS, or IN_APP with retry support
    */
   async send(dto: SendNotificationDto): Promise<{ id: string; status: string; errorMsg?: string }> {
-    // Default channelKey for LINE notifications (backward compat — to be removed
-    // after all call sites are updated explicitly in Phase 4).
-    const channelKey: LineChannelKey = dto.channelKey ?? 'line-finance';
+    // LINE channel requires explicit channelKey — backward-compat default
+    // ('line-finance') was removed in Phase 7 once all callers were updated.
+    // DTO validator enforces this at the HTTP boundary; this guard catches
+    // direct service-to-service calls that bypass the validator.
+    if (dto.channel === 'LINE' && !dto.channelKey) {
+      throw new BadRequestException(
+        'channelKey จำเป็นสำหรับ LINE notification (line-shop, line-finance, line-staff)',
+      );
+    }
+    const channelKey = dto.channelKey as LineChannelKey;
 
     let status = 'PENDING';
     let errorMsg: string | null = null;

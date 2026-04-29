@@ -33,12 +33,12 @@ export class SendNotificationDto {
   noRetry?: boolean;
 
   // Routing key for LINE channel — selects which OA (and therefore which
-  // channelToken) to use. Optional for backward compat — defaults to
-  // 'line-finance' inside NotificationsService.send() until all callers
-  // have been updated explicitly (Phase 4).
+  // channelToken) to use. Required when channel === 'LINE' (Phase 7 hardening
+  // after every call site has been updated explicitly in Phase 4-5). Ignored
+  // for SMS / IN_APP. NotificationsService.send() also enforces this at
+  // runtime so JS callers can't bypass DTO validation.
   @ValidateIf((o) => o.channel === 'LINE')
-  @IsOptional()
-  @IsEnum(LINE_CHANNEL_KEYS, { message: 'channelKey ต้องเป็น line-shop, line-finance หรือ line-staff' })
+  @IsEnum(LINE_CHANNEL_KEYS, { message: 'channelKey จำเป็นสำหรับ LINE — ต้องเป็น line-shop, line-finance หรือ line-staff' })
   channelKey?: LineChannelKey;
 }
 

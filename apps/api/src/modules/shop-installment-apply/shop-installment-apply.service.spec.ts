@@ -102,7 +102,7 @@ describe('ShopInstallmentApplyService', () => {
     const res = await service.submit({ ...baseDto, lineUserId: 'U123' }, undefined);
 
     expect(res.applicationNumber).toBe('APP-260421-999');
-    expect(lineMock.sendFlexMessage).toHaveBeenCalledWith('U123', expect.objectContaining({ type: 'flex' }));
+    expect(lineMock.sendFlexMessage).toHaveBeenCalledWith('U123', expect.objectContaining({ type: 'flex' }), 'line-shop');
   });
 
   describe('admin actions', () => {
@@ -130,7 +130,7 @@ describe('ShopInstallmentApplyService', () => {
       const args = prismaMock.onlineInstallmentApplication.update.mock.calls[0][0];
       expect(args.data.status).toBe('REJECTED');
       expect(args.data.rejectReason).toBe('เครดิตไม่ผ่าน');
-      expect(lineMock.sendFlexMessage).toHaveBeenCalledWith('U999', expect.objectContaining({ type: 'flex' }));
+      expect(lineMock.sendFlexMessage).toHaveBeenCalledWith('U999', expect.objectContaining({ type: 'flex' }), 'line-shop');
     });
 
     it('links a contract and marks CONTRACT_SIGNED', async () => {

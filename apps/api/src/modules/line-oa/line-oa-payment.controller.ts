@@ -274,12 +274,16 @@ export class LineOaPaymentController {
         // Send LINE notification
         if (evidence.lineUserId) {
           try {
-            await this.lineOaService.pushMessage(evidence.lineUserId, [
-              {
-                type: 'text',
-                text: `ขออภัยค่ะ สลิปที่ส่งมาไม่ผ่านการตรวจสอบ${body.reviewNote ? `\nเหตุผล: ${body.reviewNote}` : ''}\n\nกรุณาส่งสลิปใหม่ หรือติดต่อสาขาค่ะ`,
-              },
-            ]);
+            await this.lineOaService.pushMessage(
+              evidence.lineUserId,
+              [
+                {
+                  type: 'text',
+                  text: `ขออภัยค่ะ สลิปที่ส่งมาไม่ผ่านการตรวจสอบ${body.reviewNote ? `\nเหตุผล: ${body.reviewNote}` : ''}\n\nกรุณาส่งสลิปใหม่ หรือติดต่อสาขาค่ะ`,
+                },
+              ],
+              'line-finance',
+            );
           } catch (err) {
             this.logger.error(`Failed to send batch rejection notification for ${id}: ${err}`);
           }
@@ -417,12 +421,16 @@ export class LineOaPaymentController {
     // Notify customer via LINE
     if (evidence.lineUserId) {
       try {
-        await this.lineOaService.pushMessage(evidence.lineUserId, [
-          {
-            type: 'text',
-            text: `ขออภัยค่ะ สลิปที่ส่งมาไม่ผ่านการตรวจสอบ${body.reviewNote ? `\nเหตุผล: ${body.reviewNote}` : ''}\n\nกรุณาส่งสลิปใหม่ หรือติดต่อสาขาค่ะ`,
-          },
-        ]);
+        await this.lineOaService.pushMessage(
+          evidence.lineUserId,
+          [
+            {
+              type: 'text',
+              text: `ขออภัยค่ะ สลิปที่ส่งมาไม่ผ่านการตรวจสอบ${body.reviewNote ? `\nเหตุผล: ${body.reviewNote}` : ''}\n\nกรุณาส่งสลิปใหม่ หรือติดต่อสาขาค่ะ`,
+            },
+          ],
+          'line-finance',
+        );
       } catch (err) {
         this.logger.error(`Failed to send rejection notification: ${err}`);
       }

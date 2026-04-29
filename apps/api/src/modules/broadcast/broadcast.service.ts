@@ -409,9 +409,11 @@ export class BroadcastService {
         break;
 
       case ChatChannel.LINE_SHOP:
-        await this.lineOaService.pushMessage(target.externalUserId, [
-          { type: 'text', text: dto.message },
-        ]);
+        await this.lineOaService.pushMessage(
+          target.externalUserId,
+          [{ type: 'text', text: dto.message }],
+          'line-shop',
+        );
         break;
 
       case ChatChannel.FACEBOOK:

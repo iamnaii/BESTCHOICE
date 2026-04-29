@@ -41,9 +41,11 @@ export class ShopLineChatService {
     }
 
     try {
-      await this.lineOaService.pushMessage(staffLineId, [
-        { type: 'text', text } as unknown as LineMessagePayload,
-      ]);
+      await this.lineOaService.pushMessage(
+        staffLineId,
+        [{ type: 'text', text } as unknown as LineMessagePayload],
+        'line-staff',
+      );
       this.logger.log(`[ShopLineChat] Inquiry notification sent to staff LINE ID ${staffLineId}`);
     } catch (err) {
       this.logger.error(`[ShopLineChat] Failed to send LINE notification: ${err}`);

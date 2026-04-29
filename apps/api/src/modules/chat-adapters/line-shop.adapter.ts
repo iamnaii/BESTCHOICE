@@ -30,7 +30,7 @@ export class LineShopAdapter implements IChannelAdapter {
         ? { type: 'sticker', packageId: sticker.packageId, stickerId: sticker.stickerId }
         : { type: 'text', text: message.text };
 
-      await this.lineOaService.pushMessage(message.externalUserId, [payload]);
+      await this.lineOaService.pushMessage(message.externalUserId, [payload], 'line-shop');
       return { success: true };
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
@@ -46,7 +46,7 @@ export class LineShopAdapter implements IChannelAdapter {
   async getUserProfile(externalUserId: string): Promise<UserProfile | null> {
     // LineOaService.getUserProfile throws on any failure — wrap so webhook never blocks
     try {
-      const profile = await this.lineOaService.getUserProfile(externalUserId);
+      const profile = await this.lineOaService.getUserProfile(externalUserId, 'line-shop');
       return {
         displayName: profile.displayName,
         avatarUrl: profile.pictureUrl,

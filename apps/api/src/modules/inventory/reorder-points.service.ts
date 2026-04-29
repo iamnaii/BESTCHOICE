@@ -204,11 +204,12 @@ export class ReorderPointsService {
             notificationsSent++;
           }
 
-          // Also try LINE notification to owners
+          // Also try LINE notification to owners (staff OA — internal alerts)
           for (const owner of owners) {
             try {
               await this.notificationsService.send({
                 channel: 'LINE',
+                channelKey: 'line-staff',
                 recipient: owner.email,
                 message,
                 relatedId: rp.id,

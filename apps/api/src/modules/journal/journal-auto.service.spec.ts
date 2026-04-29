@@ -1461,6 +1461,117 @@ describe('JournalAutoService', () => {
   });
 
   // ──────────────────────────────────────────────────────────────────────────
+  // createRepossessionResaleJournal (Phase A.1b)
+  // ──────────────────────────────────────────────────────────────────────────
+  describe('createRepossessionResaleJournal (Phase A.1b)', () => {
+    const repoId = 'repo-1';
+    const userId = 'user-1';
+    const coId = 'co-FINANCE';
+
+    beforeEach(() => {
+      prisma.companyInfo.findFirst.mockResolvedValue({ id: coId });
+    });
+
+    it('creates entry with gain when resellPrice > bookValue', async () => {
+      const resellPrice = new Prisma.Decimal('5000');
+      const bookValue = new Prisma.Decimal('3000');
+
+      await service.createRepossessionResaleJournal(prisma, {
+        repossessionId: repoId,
+        resellPrice,
+        bookValue,
+        userId,
+        financeCompanyId: coId,
+      });
+
+      const lines = capturedLines();
+      const cashLine = lines.find((l) => l.accountCode === JournalAutoService.FINANCE_ACC.CASH);
+      const inventoryLine = lines.find(
+        (l) => l.accountCode === JournalAutoService.FINANCE_ACC.REPO_INVENTORY,
+      );
+      const incomeLine = lines.find(
+        (l) => l.accountCode === JournalAutoService.FINANCE_ACC.REPOSSESSION_INCOME,
+      );
+
+      expect(cashLine).toBeDefined();
+      expect(Number(cashLine!.debit)).toBeCloseTo(5000, 2);
+
+      expect(inventoryLine).toBeDefined();
+      expect(Number(inventoryLine!.credit)).toBeCloseTo(3000, 2);
+
+      expect(incomeLine).toBeDefined();
+      expect(Number(incomeLine!.credit)).toBeCloseTo(2000, 2);
+
+      expect(sumDebits(lines)).toBeCloseTo(sumCredits(lines), 2);
+    });
+
+    it('creates entry with loss when resellPrice < bookValue', async () => {
+      const resellPrice = new Prisma.Decimal('2000');
+      const bookValue = new Prisma.Decimal('3000');
+
+      await service.createRepossessionResaleJournal(prisma, {
+        repossessionId: repoId,
+        resellPrice,
+        bookValue,
+        userId,
+        financeCompanyId: coId,
+      });
+
+      const lines = capturedLines();
+      const cashLine = lines.find((l) => l.accountCode === JournalAutoService.FINANCE_ACC.CASH);
+      const lossLine = lines.find((l) => l.accountCode === '53-1804');
+      const inventoryLine = lines.find(
+        (l) => l.accountCode === JournalAutoService.FINANCE_ACC.REPO_INVENTORY,
+      );
+
+      expect(cashLine).toBeDefined();
+      expect(Number(cashLine!.debit)).toBeCloseTo(2000, 2);
+
+      expect(lossLine).toBeDefined();
+      expect(Number(lossLine!.debit)).toBeCloseTo(1000, 2);
+
+      expect(inventoryLine).toBeDefined();
+      expect(Number(inventoryLine!.credit)).toBeCloseTo(3000, 2);
+
+      expect(sumDebits(lines)).toBeCloseTo(sumCredits(lines), 2);
+    });
+
+    it('creates gain entry with zero income when resellPrice equals bookValue', async () => {
+      const resellPrice = new Prisma.Decimal('3000');
+      const bookValue = new Prisma.Decimal('3000');
+
+      await service.createRepossessionResaleJournal(prisma, {
+        repossessionId: repoId,
+        resellPrice,
+        bookValue,
+        userId,
+        financeCompanyId: coId,
+      });
+
+      const lines = capturedLines();
+      const cashLine = lines.find((l) => l.accountCode === JournalAutoService.FINANCE_ACC.CASH);
+      const inventoryLine = lines.find(
+        (l) => l.accountCode === JournalAutoService.FINANCE_ACC.REPO_INVENTORY,
+      );
+      // gain = 0 — income line with credit 0 is dropped by createAndPost (zero-line filter)
+      const incomeLine = lines.find(
+        (l) => l.accountCode === JournalAutoService.FINANCE_ACC.REPOSSESSION_INCOME,
+      );
+
+      expect(cashLine).toBeDefined();
+      expect(Number(cashLine!.debit)).toBeCloseTo(3000, 2);
+
+      expect(inventoryLine).toBeDefined();
+      expect(Number(inventoryLine!.credit)).toBeCloseTo(3000, 2);
+
+      // income line will be dropped (zero) — entry still balances
+      expect(incomeLine).toBeUndefined();
+
+      expect(sumDebits(lines)).toBeCloseTo(sumCredits(lines), 2);
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
   // F-6-002: createAndPost — soft-block CLOSED period
   // ──────────────────────────────────────────────────────────────────────────
   describe('createAndPost — soft-block CLOSED period (F-6-002)', () => {

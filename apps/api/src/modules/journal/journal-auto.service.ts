@@ -927,6 +927,104 @@ export class JournalAutoService {
   }
 
   /**
+   * Auto journal — Repossession resale (Phase A.1b, closes F-1-018).
+   *
+   * Gain case (resellPrice >= bookValue):
+   *   Dr. Cash/Bank FINANCE             [resellPrice]
+   *     Cr. Repossessed Inventory       [bookValue]
+   *     Cr. Repossession Income (42-2104) [gain]
+   *
+   * Loss case (resellPrice < bookValue):
+   *   Dr. Cash/Bank FINANCE             [resellPrice]
+   *   Dr. Loss on Repo Resale (53-1804) [loss]
+   *     Cr. Repossessed Inventory       [bookValue]
+   *
+   * bookValue = product.costPrice + repairCost (inventory carrying amount).
+   */
+  async createRepossessionResaleJournal(
+    tx: Prisma.TransactionClient,
+    params: {
+      repossessionId: string;
+      resellPrice: Prisma.Decimal;
+      bookValue: Prisma.Decimal;
+      userId: string;
+      financeCompanyId?: string | null;
+    },
+  ): Promise<string | null> {
+    const FA = JournalAutoService.FINANCE_ACC;
+    const financeCompanyId =
+      params.financeCompanyId ??
+      (
+        await tx.companyInfo.findFirst({
+          where: { companyCode: 'FINANCE', deletedAt: null },
+          select: { id: true },
+        })
+      )?.id ??
+      null;
+
+    if (!financeCompanyId) {
+      throw new InternalServerErrorException(
+        'FINANCE company required for repossession resale JE',
+      );
+    }
+
+    const gainOrLoss = params.resellPrice.minus(params.bookValue);
+    const isGain = gainOrLoss.gte(0);
+
+    const lines = isGain
+      ? [
+          {
+            accountCode: FA.CASH,
+            description: 'Cash from resale',
+            debit: params.resellPrice.toNumber(),
+            credit: 0,
+          },
+          {
+            accountCode: FA.REPO_INVENTORY,
+            description: 'Repossessed inventory removed',
+            debit: 0,
+            credit: params.bookValue.toNumber(),
+          },
+          {
+            accountCode: FA.REPOSSESSION_INCOME,
+            description: 'Gain on repossession resale',
+            debit: 0,
+            credit: gainOrLoss.toNumber(),
+          },
+        ]
+      : [
+          {
+            accountCode: FA.CASH,
+            description: 'Cash from resale',
+            debit: params.resellPrice.toNumber(),
+            credit: 0,
+          },
+          {
+            accountCode: '53-1804',
+            description: 'Loss on repossession resale',
+            debit: gainOrLoss.abs().toNumber(),
+            credit: 0,
+          },
+          {
+            accountCode: FA.REPO_INVENTORY,
+            description: 'Repossessed inventory removed',
+            debit: 0,
+            credit: params.bookValue.toNumber(),
+          },
+        ];
+
+    return this.createAndPost(tx, {
+      companyId: financeCompanyId,
+      entryDate: new Date(),
+      description: `Repossession resale ${params.repossessionId}`,
+      referenceType: 'REPO_RESALE',
+      referenceId: params.repossessionId,
+      createdById: params.userId,
+      lines,
+    });
+  }
+
+  /**
    * Trial Balance — sum debit/credit per account from POSTED entries.
    */
   async getTrialBalance(filters: {

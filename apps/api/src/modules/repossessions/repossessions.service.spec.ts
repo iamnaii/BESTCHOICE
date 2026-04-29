@@ -149,7 +149,10 @@ describe('RepossessionsService', () => {
         { provide: PrismaService, useValue: prisma },
         {
           provide: JournalAutoService,
-          useValue: { createBadDebtWriteOffJournal: jest.fn().mockResolvedValue('je-bd-1') },
+          useValue: {
+            createBadDebtWriteOffJournal: jest.fn().mockResolvedValue('je-bd-1'),
+            createRepossessionResaleJournal: jest.fn().mockResolvedValue('je-repo-1'),
+          },
         },
       ],
     }).compile();
@@ -388,6 +391,41 @@ describe('RepossessionsService', () => {
       expect(prisma.product.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ costPrice: 7500 }),
+        }),
+      );
+    });
+
+    it('calls createRepossessionResaleJournal when status transitions to SOLD', async () => {
+      const repoWithPrice = makeRepossession({
+        status: 'READY_FOR_SALE',
+        resellPrice: decimal(7000),
+        repairCost: decimal(500),
+        product: {
+          id: 'product-1',
+          name: 'iPhone 14',
+          brand: 'Apple',
+          model: 'iPhone 14',
+          costPrice: decimal(6000),
+        },
+      });
+      prisma.repossession.findUnique.mockResolvedValue(repoWithPrice);
+      prisma.product.update.mockResolvedValue({});
+      const updatedRepo = makeRepossession({ status: 'SOLD', resellPrice: decimal(7000) });
+      prisma.repossession.update.mockResolvedValue(updatedRepo);
+
+      // Access the injected JournalAutoService mock through the module
+      const journalService = (service as unknown as { journalAutoService: { createRepossessionResaleJournal: jest.Mock } }).journalAutoService;
+
+      await service.update('repo-1', { status: 'SOLD', resellPrice: 7000 } as never, 'user-1');
+
+      // JE is fired asynchronously — wait a tick for the Promise chain to settle
+      await new Promise((r) => setImmediate(r));
+
+      expect(journalService.createRepossessionResaleJournal).toHaveBeenCalledWith(
+        expect.anything(), // prisma client
+        expect.objectContaining({
+          repossessionId: 'repo-1',
+          userId: 'user-1',
         }),
       );
     });

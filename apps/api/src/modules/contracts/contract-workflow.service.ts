@@ -381,6 +381,15 @@ export class ContractWorkflowService {
     if (!financeCompany) {
       throw new InternalServerErrorException('FINANCE company not configured');
     }
+    // Phase A.1b: contract activation now posts paired SHOP+FINANCE entries.
+    // SHOP company is also required (Dr Cash + Dr Due-from-FINANCE / Cr Revenue + COGS).
+    const shopCompany = await this.prisma.companyInfo.findFirst({
+      where: { companyCode: 'SHOP', deletedAt: null },
+      select: { id: true },
+    });
+    if (!shopCompany) {
+      throw new InternalServerErrorException('SHOP company not configured');
+    }
 
     await this.prisma.$transaction(async (tx) => {
       // Re-check product status inside transaction to prevent race condition
@@ -433,7 +442,8 @@ export class ContractWorkflowService {
       // the v4 unbalanced-throw guard (audit findings F-1-002 / F-2-003).
       // NestJS' global exception filter logs the propagated error.
       await this.journalAutoService.createContractActivationJournal(tx, {
-        companyId: financeCompany.id,
+        shopCompanyId: shopCompany.id,
+        financeCompanyId: financeCompany.id,
         contract: {
           id: contract.id,
           contractNumber: contract.contractNumber,

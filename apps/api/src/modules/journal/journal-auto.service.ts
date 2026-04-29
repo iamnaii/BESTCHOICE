@@ -3,6 +3,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
+import { generateInterCompanyId, formatInterCompanyDescription } from './inter-company-link.util';
 
 /**
  * JournalAutoService — automatically creates double-entry journal entries
@@ -380,70 +381,135 @@ export class JournalAutoService {
       };
       product: { costPrice?: Decimal | number | null; category?: string | null };
       userId: string;
+      // Phase A.1b: split into SHOP+FINANCE paired entries.
+      // shopCompanyId/financeCompanyId are explicit; if either is omitted we
+      // resolve by companyCode. Legacy single `companyId` is no longer used —
+      // both sides must be configured for activation to post correctly.
+      shopCompanyId?: string | null;
+      financeCompanyId?: string | null;
+      /** @deprecated Use shopCompanyId + financeCompanyId. Ignored. */
       companyId?: string | null;
     },
-  ): Promise<string | null> {
-    const companyId = await this.resolveCompanyId(tx, params.companyId);
-    if (!companyId) return null;
-
-    const sellingPrice = new Prisma.Decimal(params.contract.sellingPrice ?? 0);
-    const downPayment = new Prisma.Decimal(params.contract.downPayment ?? 0);
-    const financedAmount = new Prisma.Decimal(params.contract.financedAmount ?? 0);
-    const interest = new Prisma.Decimal(params.contract.interestTotal ?? 0);
-    const commission = new Prisma.Decimal(params.contract.storeCommission ?? 0);
-    const vat = new Prisma.Decimal(params.contract.vatAmount ?? 0);
-    const cost = new Prisma.Decimal(params.product.costPrice ?? 0);
-
-    // Sales revenue = sellingPrice + commission only — interest is a separate revenue line
-    const revenue = sellingPrice.add(commission);
-    // HP Receivable = financedAmount which already includes principal + commission + interest + vat
-    // (computed by installment.util.ts:56 calculateInstallment). Adding them again would
-    // double-count and unbalance the JE — see F-2-001.
-    const hpReceivable = financedAmount;
-    // Phase A.1a: contract activation posts to FINANCE side using FINANCE chart codes.
-    // SHOP-side split (sales revenue + COGS on SHOP books, FINANCE pays SHOP for goods)
-    // is deferred to A.1b inter-company JE wiring.
+  ): Promise<{ shopEntryId: string | null; financeEntryId: string | null } | null> {
+    const SA = JournalAutoService.SHOP_ACC;
     const FA = JournalAutoService.FINANCE_ACC;
-    const isUsed = (params.product.category || '').toLowerCase().includes('used') ||
-      (params.product.category || '').includes('มือสอง');
-    const revenueAcc = isUsed ? FA.REVENUE_USED : FA.REVENUE_NEW;
-    const cogsAcc = isUsed ? FA.COGS_USED : FA.COGS_NEW;
-    const inventoryAcc = isUsed ? FA.INVENTORY_USED : FA.INVENTORY_NEW;
 
-    // Sales + receivable entry
-    const salesEntryId = await this.createAndPost(tx, {
-      companyId,
-      entryDate: new Date(),
-      description: `เปิดสัญญาเช่าซื้อ ${params.contract.contractNumber}`,
-      referenceType: 'CONTRACT',
-      referenceId: params.contract.id,
-      createdById: params.userId,
-      lines: [
-        { accountCode: FA.CASH, description: 'รับเงินดาวน์', debit: downPayment.toNumber(), credit: 0 },
-        { accountCode: FA.HP_RECEIVABLE, description: 'ลูกหนี้เช่าซื้อ', debit: hpReceivable.toNumber(), credit: 0 },
-        { accountCode: revenueAcc, description: 'รายได้จากการขาย', debit: 0, credit: revenue.toNumber() },
-        { accountCode: FA.INTEREST_INCOME, description: 'รายได้ดอกเบี้ยเช่าซื้อ', debit: 0, credit: interest.toNumber() },
-        { accountCode: FA.VAT_OUTPUT, description: 'ภาษีขาย', debit: 0, credit: vat.toNumber() },
-      ],
-    });
+    const shopCompanyId =
+      params.shopCompanyId ??
+      (
+        await tx.companyInfo.findFirst({
+          where: { companyCode: 'SHOP', deletedAt: null },
+          select: { id: true },
+        })
+      )?.id ??
+      null;
+    const financeCompanyId =
+      params.financeCompanyId ??
+      (
+        await tx.companyInfo.findFirst({
+          where: { companyCode: 'FINANCE', deletedAt: null },
+          select: { id: true },
+        })
+      )?.id ??
+      null;
 
-    // COGS entry (if cost available)
-    if (cost.greaterThan(0)) {
-      await this.createAndPost(tx, {
-        companyId,
-        entryDate: new Date(),
-        description: `ต้นทุนสินค้า สัญญา ${params.contract.contractNumber}`,
-        referenceType: 'CONTRACT_COGS',
-        referenceId: params.contract.id,
-        createdById: params.userId,
-        lines: [
-          { accountCode: cogsAcc, description: 'ต้นทุนขาย', debit: cost.toNumber(), credit: 0 },
-          { accountCode: inventoryAcc, description: 'ตัดสินค้าคงเหลือ', debit: 0, credit: cost.toNumber() },
-        ],
-      });
+    // Backward-compat: when the legacy single-company test fixture returns
+    // null for findFirst (no company configured), preserve the historical
+    // "return null" behavior rather than throwing.
+    if (!shopCompanyId && !financeCompanyId) {
+      return null;
+    }
+    if (!shopCompanyId || !financeCompanyId) {
+      throw new InternalServerErrorException(
+        'SHOP and FINANCE companies must be configured for inter-company contract activation JE',
+      );
     }
 
-    return salesEntryId;
+    const c = params.contract;
+    const sellingPrice = new Prisma.Decimal(c.sellingPrice ?? 0);
+    const downPayment = new Prisma.Decimal(c.downPayment ?? 0);
+    const storeCommission = new Prisma.Decimal(c.storeCommission ?? 0);
+    const financedAmount = new Prisma.Decimal(c.financedAmount ?? 0);
+    const interestTotal = new Prisma.Decimal(c.interestTotal ?? 0);
+    const vatAmount = new Prisma.Decimal(c.vatAmount ?? 0);
+    const costPrice = new Prisma.Decimal(params.product.costPrice ?? 0);
+
+    const isUsed = (params.product.category || '').toLowerCase().includes('used') ||
+      (params.product.category || '').includes('มือสอง');
+    const shopRevenueAcc = isUsed ? SA.REVENUE_USED : SA.REVENUE_NEW;
+    const shopCogsAcc = isUsed ? SA.COGS_USED : SA.COGS_NEW;
+    const shopInventoryAcc = isUsed ? SA.INVENTORY_USED : SA.INVENTORY_NEW;
+
+    const intercompanyId = generateInterCompanyId();
+    const baseDesc = `เปิดสัญญาเช่าซื้อ ${c.contractNumber}`;
+
+    // Inter-company invariant: SHOP Due-from-FINANCE = FINANCE Due-to-SHOP.
+    // Derived from the cash-flow rule (CLAUDE.md): FINANCE pays SHOP
+    // (sellingPrice + commission - downPayment) for goods sold.
+    const dueFromFinance = sellingPrice.plus(storeCommission).minus(downPayment);
+
+    // ── SHOP entry ────────────────────────────────────────────────────────
+    // Dr Cash (downPayment) + Dr Due-from-FINANCE
+    //   Cr Revenue (sellingPrice) + Cr Commission Income (storeCommission)
+    // Dr COGS + Cr Inventory  (only when cost > 0)
+    const shopLines: Array<{ accountCode: string; description: string; debit: number; credit: number }> = [];
+    if (downPayment.greaterThan(0)) {
+      shopLines.push({ accountCode: SA.CASH, description: 'รับเงินดาวน์', debit: downPayment.toNumber(), credit: 0 });
+    }
+    if (dueFromFinance.greaterThan(0)) {
+      shopLines.push({ accountCode: SA.DUE_FROM_FINANCE, description: 'ลูกหนี้ระหว่างบริษัท (FINANCE)', debit: dueFromFinance.toNumber(), credit: 0 });
+    }
+    if (sellingPrice.greaterThan(0)) {
+      shopLines.push({ accountCode: shopRevenueAcc, description: 'รายได้จากการขาย', debit: 0, credit: sellingPrice.toNumber() });
+    }
+    if (storeCommission.greaterThan(0)) {
+      shopLines.push({ accountCode: SA.COMMISSION_INCOME, description: 'รายได้ค่าคอมมิชชัน', debit: 0, credit: storeCommission.toNumber() });
+    }
+    if (costPrice.greaterThan(0)) {
+      shopLines.push({ accountCode: shopCogsAcc, description: 'ต้นทุนขาย', debit: costPrice.toNumber(), credit: 0 });
+      shopLines.push({ accountCode: shopInventoryAcc, description: 'ตัดสินค้าคงเหลือ', debit: 0, credit: costPrice.toNumber() });
+    }
+
+    const shopEntryId = await this.createAndPost(tx, {
+      companyId: shopCompanyId,
+      entryDate: new Date(),
+      description: formatInterCompanyDescription(intercompanyId, `${baseDesc} (SHOP)`),
+      referenceType: 'CONTRACT',
+      referenceId: c.id,
+      createdById: params.userId,
+      lines: shopLines,
+    });
+
+    // ── FINANCE entry ─────────────────────────────────────────────────────
+    // Dr HP Receivable (financedAmount = principal + commission + interest + vat)
+    //   Cr Due-to-SHOP (dueFromFinance — invariant pair)
+    //   Cr Interest Income (interestTotal — upfront recognition preserved)
+    //   Cr VAT Output (vatAmount)
+    const financeLines: Array<{ accountCode: string; description: string; debit: number; credit: number }> = [];
+    if (financedAmount.greaterThan(0)) {
+      financeLines.push({ accountCode: FA.HP_RECEIVABLE, description: 'ลูกหนี้เช่าซื้อ', debit: financedAmount.toNumber(), credit: 0 });
+    }
+    if (dueFromFinance.greaterThan(0)) {
+      financeLines.push({ accountCode: FA.DUE_TO_SHOP, description: 'เจ้าหนี้ระหว่างบริษัท (SHOP)', debit: 0, credit: dueFromFinance.toNumber() });
+    }
+    if (interestTotal.greaterThan(0)) {
+      financeLines.push({ accountCode: FA.INTEREST_INCOME, description: 'รายได้ดอกเบี้ยเช่าซื้อ', debit: 0, credit: interestTotal.toNumber() });
+    }
+    if (vatAmount.greaterThan(0)) {
+      financeLines.push({ accountCode: FA.VAT_OUTPUT, description: 'ภาษีขาย', debit: 0, credit: vatAmount.toNumber() });
+    }
+
+    const financeEntryId = await this.createAndPost(tx, {
+      companyId: financeCompanyId,
+      entryDate: new Date(),
+      description: formatInterCompanyDescription(intercompanyId, `${baseDesc} (FINANCE)`),
+      referenceType: 'CONTRACT',
+      referenceId: c.id,
+      createdById: params.userId,
+      lines: financeLines,
+    });
+
+    return { shopEntryId, financeEntryId };
   }
 
   /**

@@ -298,51 +298,67 @@ describe('JournalAutoService', () => {
       expect(result).toBeNull();
     });
 
-    it('creates sales entry with balanced Dr = Cr', async () => {
+    it('creates SHOP+FINANCE paired entries each balanced (Phase A.1b)', async () => {
       await service.createContractActivationJournal(prisma, {
         contract: baseContract,
         product: baseProduct,
         userId: 'user-1',
-        companyId: 'company-1',
+        shopCompanyId: 'company-1',
+        financeCompanyId: 'company-1',
       });
 
-      // First call = sales entry
-      const salesEntry = prisma.journalEntry.create.mock.calls[0][0];
-      const lines = salesEntry.data.lines.create as Array<{ debit: number; credit: number }>;
-      expect(sumDebits(lines)).toBeCloseTo(sumCredits(lines), 2);
+      // 2 entries: SHOP + FINANCE
+      expect(prisma.journalEntry.create).toHaveBeenCalledTimes(2);
+      for (const call of prisma.journalEntry.create.mock.calls) {
+        const lines = call[0].data.lines.create as Array<{ debit: number; credit: number }>;
+        expect(sumDebits(lines)).toBeCloseTo(sumCredits(lines), 2);
+      }
     });
 
-    it('debits downPayment to CASH and financedAmount to HP_RECEIVABLE', async () => {
+    it('debits downPayment to SHOP CASH and financedAmount to FINANCE HP_RECEIVABLE', async () => {
+      // Use distinct shop/finance ids so we can route by companyId
+      prisma.companyInfo.findFirst = jest.fn().mockImplementation((args: any) => {
+        if (args?.where?.companyCode === 'SHOP') return Promise.resolve({ id: 'co-SHOP' });
+        if (args?.where?.companyCode === 'FINANCE') return Promise.resolve({ id: 'co-FINANCE' });
+        return Promise.resolve(null);
+      });
+
       await service.createContractActivationJournal(prisma, {
         contract: baseContract,
         product: baseProduct,
         userId: 'user-1',
-        companyId: 'company-1',
       });
 
-      const lines = prisma.journalEntry.create.mock.calls[0][0].data.lines.create as Array<{
-        accountCode: string;
-        debit: number;
-        credit: number;
-      }>;
+      const calls = prisma.journalEntry.create.mock.calls.map((c: any[]) => c[0].data);
+      const shopEntry = calls.find((d: any) => d.companyId === 'co-SHOP');
+      const financeEntry = calls.find((d: any) => d.companyId === 'co-FINANCE');
 
-      const cashLine = lines.find((l) => l.accountCode === JournalAutoService.FINANCE_ACC.CASH);
-      const hpLine = lines.find((l) => l.accountCode === JournalAutoService.FINANCE_ACC.HP_RECEIVABLE);
-
+      const shopLines = shopEntry.lines.create as Array<{ accountCode: string; debit: number; credit: number }>;
+      const cashLine = shopLines.find((l) => l.accountCode === JournalAutoService.SHOP_ACC.CASH);
       expect(Number(cashLine?.debit)).toBeCloseTo(3000, 2);
+
+      const financeLines = financeEntry.lines.create as Array<{ accountCode: string; debit: number; credit: number }>;
+      const hpLine = financeLines.find((l) => l.accountCode === JournalAutoService.FINANCE_ACC.HP_RECEIVABLE);
       // HP Receivable = financedAmount (already includes principal+commission+interest+vat)
       expect(Number(hpLine?.debit)).toBeCloseTo(11600, 2);
     });
 
-    it('credits VAT_OUTPUT with vatAmount', async () => {
+    it('credits VAT_OUTPUT with vatAmount on FINANCE side', async () => {
+      prisma.companyInfo.findFirst = jest.fn().mockImplementation((args: any) => {
+        if (args?.where?.companyCode === 'SHOP') return Promise.resolve({ id: 'co-SHOP' });
+        if (args?.where?.companyCode === 'FINANCE') return Promise.resolve({ id: 'co-FINANCE' });
+        return Promise.resolve(null);
+      });
+
       await service.createContractActivationJournal(prisma, {
         contract: baseContract,
         product: baseProduct,
         userId: 'user-1',
-        companyId: 'company-1',
       });
 
-      const lines = prisma.journalEntry.create.mock.calls[0][0].data.lines.create as Array<{
+      const calls = prisma.journalEntry.create.mock.calls.map((c: any[]) => c[0].data);
+      const financeEntry = calls.find((d: any) => d.companyId === 'co-FINANCE');
+      const lines = financeEntry.lines.create as Array<{
         accountCode: string;
         debit: number;
         credit: number;
@@ -352,54 +368,53 @@ describe('JournalAutoService', () => {
       expect(Number(vatLine?.credit)).toBeCloseTo(1000, 2);
     });
 
-    it('creates a second COGS journal entry when costPrice > 0', async () => {
-      prisma.journalEntry.create
-        .mockResolvedValueOnce({ id: 'je-sales' })
-        .mockResolvedValueOnce({ id: 'je-cogs' });
-
+    it('always creates 2 paired entries (SHOP + FINANCE) regardless of cost', async () => {
       await service.createContractActivationJournal(prisma, {
         contract: baseContract,
         product: baseProduct,
         userId: 'user-1',
-        companyId: 'company-1',
+        shopCompanyId: 'company-1',
+        financeCompanyId: 'company-1',
       });
 
-      // Two journal entries: sales + COGS
+      // Phase A.1b: SHOP+FINANCE = always 2 entries (COGS folded into SHOP)
       expect(prisma.journalEntry.create).toHaveBeenCalledTimes(2);
     });
 
-    it('does NOT create COGS journal entry when costPrice is 0', async () => {
+    it('still creates 2 entries when costPrice is 0 (no COGS lines on SHOP side)', async () => {
       await service.createContractActivationJournal(prisma, {
         contract: baseContract,
         product: { costPrice: 0, category: 'NEW_PHONE' },
         userId: 'user-1',
-        companyId: 'company-1',
+        shopCompanyId: 'company-1',
+        financeCompanyId: 'company-1',
       });
 
-      expect(prisma.journalEntry.create).toHaveBeenCalledTimes(1);
+      expect(prisma.journalEntry.create).toHaveBeenCalledTimes(2);
     });
 
-    it('uses REVENUE_USED and COGS_USED accounts for used-phone category', async () => {
-      prisma.journalEntry.create
-        .mockResolvedValueOnce({ id: 'je-sales' })
-        .mockResolvedValueOnce({ id: 'je-cogs' });
+    it('uses SHOP REVENUE_USED and COGS_USED accounts for used-phone category', async () => {
+      prisma.companyInfo.findFirst = jest.fn().mockImplementation((args: any) => {
+        if (args?.where?.companyCode === 'SHOP') return Promise.resolve({ id: 'co-SHOP' });
+        if (args?.where?.companyCode === 'FINANCE') return Promise.resolve({ id: 'co-FINANCE' });
+        return Promise.resolve(null);
+      });
 
       await service.createContractActivationJournal(prisma, {
         contract: baseContract,
         product: { costPrice: 6000, category: 'USED_PHONE' },
         userId: 'user-1',
-        companyId: 'company-1',
       });
 
-      const salesLines = prisma.journalEntry.create.mock.calls[0][0].data.lines
-        .create as Array<{ accountCode: string; credit: number }>;
-      const revLine = salesLines.find((l) => l.credit > 0 && l.accountCode.startsWith('41'));
-      expect(revLine?.accountCode).toBe(JournalAutoService.FINANCE_ACC.REVENUE_USED);
+      const calls = prisma.journalEntry.create.mock.calls.map((c: any[]) => c[0].data);
+      const shopEntry = calls.find((d: any) => d.companyId === 'co-SHOP');
+      const shopLines = shopEntry.lines.create as Array<{ accountCode: string; debit: number; credit: number }>;
 
-      const cogsLines = prisma.journalEntry.create.mock.calls[1][0].data.lines
-        .create as Array<{ accountCode: string; debit: number }>;
-      const cogsLine = cogsLines.find((l) => l.debit > 0);
-      expect(cogsLine?.accountCode).toBe(JournalAutoService.FINANCE_ACC.COGS_USED);
+      const revLine = shopLines.find((l) => l.credit > 0 && l.accountCode.startsWith('41'));
+      expect(revLine?.accountCode).toBe(JournalAutoService.SHOP_ACC.REVENUE_USED);
+
+      const cogsLine = shopLines.find((l) => l.debit > 0 && l.accountCode === JournalAutoService.SHOP_ACC.COGS_USED);
+      expect(cogsLine).toBeTruthy();
     });
 
     // F-2-001 regression: financedAmount per installment.util.ts:56 already
@@ -439,6 +454,157 @@ describe('JournalAutoService', () => {
       const totalDr = sumDebits(lines);
       const totalCr = sumCredits(lines);
       expect(Math.abs(totalDr - totalCr)).toBeLessThan(0.01);
+    });
+
+    // ────────────────────────────────────────────────────────────────────
+    // Phase A.1b — split SHOP+FINANCE entries (inter-company wiring)
+    // ────────────────────────────────────────────────────────────────────
+    describe('Phase A.1b — split SHOP+FINANCE entries', () => {
+      beforeEach(() => {
+        // Make findFirst return SHOP/FINANCE based on companyCode filter
+        prisma.companyInfo.findFirst = jest.fn().mockImplementation((args: any) => {
+          if (args?.where?.companyCode === 'SHOP') return Promise.resolve({ id: 'co-SHOP', companyCode: 'SHOP' });
+          if (args?.where?.companyCode === 'FINANCE') return Promise.resolve({ id: 'co-FINANCE', companyCode: 'FINANCE' });
+          return Promise.resolve(null);
+        });
+      });
+
+      it('creates 2 paired entries (SHOP + FINANCE) for contract activation', async () => {
+        const principal = new Prisma.Decimal('10000');
+        const commission = new Prisma.Decimal('500');
+        const interest = new Prisma.Decimal('1000');
+        const vat = new Prisma.Decimal('805');
+        const downPayment = new Prisma.Decimal('1000');
+        const sellingPrice = principal.plus(downPayment); // 11000
+        const financedAmount = principal.plus(commission).plus(interest).plus(vat); // 12305
+        const costPrice = new Prisma.Decimal('8000');
+
+        await service.createContractActivationJournal(prisma, {
+          contract: {
+            id: 'c1',
+            contractNumber: 'CT-001',
+            sellingPrice,
+            downPayment,
+            financedAmount,
+            interestTotal: interest,
+            storeCommission: commission,
+            vatAmount: vat,
+          },
+          product: { costPrice, category: 'มือถือใหม่' },
+          userId: 'u1',
+          shopCompanyId: 'co-SHOP',
+          financeCompanyId: 'co-FINANCE',
+        });
+
+        // 2 journalEntry.create calls — one per company entry
+        expect(prisma.journalEntry.create).toHaveBeenCalledTimes(2);
+
+        const calls = prisma.journalEntry.create.mock.calls.map((c: any[]) => c[0].data);
+        const shopEntry = calls.find((d: any) => d.companyId === 'co-SHOP');
+        const financeEntry = calls.find((d: any) => d.companyId === 'co-FINANCE');
+
+        expect(shopEntry).toBeTruthy();
+        expect(financeEntry).toBeTruthy();
+        expect(shopEntry.description).toMatch(/^\[IC-/);
+        expect(financeEntry.description).toMatch(/^\[IC-/);
+
+        // Both share same intercompany id
+        const shopIcId = shopEntry.description.match(/\[IC-([0-9a-f-]+)\]/i)?.[1];
+        const financeIcId = financeEntry.description.match(/\[IC-([0-9a-f-]+)\]/i)?.[1];
+        expect(shopIcId).toBe(financeIcId);
+
+        // SHOP entry balanced
+        const shopLines = shopEntry.lines.create as Array<{ accountCode: string; debit: unknown; credit: unknown }>;
+        const shopDr = shopLines.reduce((s, l) => s + Number(l.debit ?? 0), 0);
+        const shopCr = shopLines.reduce((s, l) => s + Number(l.credit ?? 0), 0);
+        expect(Math.abs(shopDr - shopCr)).toBeLessThan(0.01);
+
+        // FINANCE entry balanced
+        const financeLines = financeEntry.lines.create as Array<{ accountCode: string; debit: unknown; credit: unknown }>;
+        const financeDr = financeLines.reduce((s, l) => s + Number(l.debit ?? 0), 0);
+        const financeCr = financeLines.reduce((s, l) => s + Number(l.credit ?? 0), 0);
+        expect(Math.abs(financeDr - financeCr)).toBeLessThan(0.01);
+
+        // Inter-company invariant: SHOP Due-from-FINANCE (11-2105) Dr = FINANCE Due-to-SHOP (21-1102) Cr
+        const shopDueFrom = Number(shopLines.find((l) => l.accountCode === JournalAutoService.SHOP_ACC.DUE_FROM_FINANCE)?.debit ?? 0);
+        const financeDueTo = Number(financeLines.find((l) => l.accountCode === JournalAutoService.FINANCE_ACC.DUE_TO_SHOP)?.credit ?? 0);
+        expect(shopDueFrom).toBeCloseTo(financeDueTo, 2);
+        // = sellingPrice + commission - downPayment = 11000 + 500 - 1000 = 10500
+        expect(shopDueFrom).toBeCloseTo(10500, 2);
+      });
+
+      it('SHOP entry contains revenue + commission + COGS lines', async () => {
+        await service.createContractActivationJournal(prisma, {
+          contract: {
+            id: 'c2',
+            contractNumber: 'CT-002',
+            sellingPrice: 11000,
+            downPayment: 1000,
+            financedAmount: 12305,
+            interestTotal: 1000,
+            storeCommission: 500,
+            vatAmount: 805,
+          },
+          product: { costPrice: 8000, category: 'มือถือใหม่' },
+          userId: 'u1',
+          shopCompanyId: 'co-SHOP',
+          financeCompanyId: 'co-FINANCE',
+        });
+
+        const calls = prisma.journalEntry.create.mock.calls.map((c: any[]) => c[0].data);
+        const shopEntry = calls.find((d: any) => d.companyId === 'co-SHOP');
+        const lines = shopEntry.lines.create as Array<{ accountCode: string; debit: unknown; credit: unknown }>;
+
+        expect(Number(lines.find((l) => l.accountCode === JournalAutoService.SHOP_ACC.CASH)?.debit)).toBeCloseTo(1000, 2);
+        expect(Number(lines.find((l) => l.accountCode === JournalAutoService.SHOP_ACC.REVENUE_NEW)?.credit)).toBeCloseTo(11000, 2);
+        expect(Number(lines.find((l) => l.accountCode === JournalAutoService.SHOP_ACC.COMMISSION_INCOME)?.credit)).toBeCloseTo(500, 2);
+        expect(Number(lines.find((l) => l.accountCode === JournalAutoService.SHOP_ACC.COGS_NEW)?.debit)).toBeCloseTo(8000, 2);
+        expect(Number(lines.find((l) => l.accountCode === JournalAutoService.SHOP_ACC.INVENTORY_NEW)?.credit)).toBeCloseTo(8000, 2);
+      });
+
+      it('FINANCE entry contains HP receivable + interest + VAT lines (no cash, no revenue)', async () => {
+        await service.createContractActivationJournal(prisma, {
+          contract: {
+            id: 'c3',
+            contractNumber: 'CT-003',
+            sellingPrice: 11000,
+            downPayment: 1000,
+            financedAmount: 12305,
+            interestTotal: 1000,
+            storeCommission: 500,
+            vatAmount: 805,
+          },
+          product: { costPrice: 8000, category: 'มือถือใหม่' },
+          userId: 'u1',
+          shopCompanyId: 'co-SHOP',
+          financeCompanyId: 'co-FINANCE',
+        });
+
+        const calls = prisma.journalEntry.create.mock.calls.map((c: any[]) => c[0].data);
+        const financeEntry = calls.find((d: any) => d.companyId === 'co-FINANCE');
+        const lines = financeEntry.lines.create as Array<{ accountCode: string; debit: unknown; credit: unknown }>;
+
+        expect(Number(lines.find((l) => l.accountCode === JournalAutoService.FINANCE_ACC.HP_RECEIVABLE)?.debit)).toBeCloseTo(12305, 2);
+        expect(Number(lines.find((l) => l.accountCode === JournalAutoService.FINANCE_ACC.INTEREST_INCOME)?.credit)).toBeCloseTo(1000, 2);
+        expect(Number(lines.find((l) => l.accountCode === JournalAutoService.FINANCE_ACC.VAT_OUTPUT)?.credit)).toBeCloseTo(805, 2);
+        // No cash on FINANCE side
+        expect(lines.find((l) => l.accountCode === JournalAutoService.FINANCE_ACC.CASH)).toBeUndefined();
+      });
+
+      it('throws when SHOP company missing but FINANCE present', async () => {
+        prisma.companyInfo.findFirst = jest.fn().mockImplementation((args: any) => {
+          if (args?.where?.companyCode === 'FINANCE') return Promise.resolve({ id: 'co-FINANCE' });
+          return Promise.resolve(null);
+        });
+
+        await expect(
+          service.createContractActivationJournal(prisma, {
+            contract: baseContract,
+            product: baseProduct,
+            userId: 'u1',
+          }),
+        ).rejects.toThrow(InternalServerErrorException);
+      });
     });
   });
 

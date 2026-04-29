@@ -720,7 +720,7 @@ export class PaySolutionsService {
       const shopCompanyId = shopCompany?.id ?? null;
       const contractForJe = await this.prisma.contract.findUnique({
         where: { id: paymentLink.contractId! },
-        select: { contractNumber: true, branchId: true },
+        select: { id: true, contractNumber: true, branchId: true },
       });
 
       // F-1-003 follow-up: resolve a real OWNER user.id for JournalEntry.createdById.
@@ -927,6 +927,7 @@ export class PaySolutionsService {
                   paidDate: snapshot.paidDate,
                 },
                 contract: {
+                  id: contractForJe.id,
                   contractNumber: contractForJe.contractNumber,
                   branchId: contractForJe.branchId,
                 },

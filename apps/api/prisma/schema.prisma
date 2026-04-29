@@ -830,6 +830,13 @@ model Contract {
   interestTotal    Decimal        @map("interest_total") @db.Decimal(12, 2)
   financedAmount   Decimal        @map("financed_amount") @db.Decimal(12, 2)
   storeCommission  Decimal?       @map("store_commission") @db.Decimal(12, 2)
+  // Phase A.2 — Deferred income tracking. At activation: unearnedInterest =
+  // interestTotal, unearnedCommission = storeCommission. Each payment moves
+  // monthlyInterest/monthlyCommission from Unearned (Cr Unearned acct) to
+  // Earned (Cr Income acct). Recognises revenue cash-basis per TFRS for NPAEs
+  // instead of double-counting at activation + per payment.
+  unearnedInterest    Decimal @default(0) @map("unearned_interest") @db.Decimal(12, 2)
+  unearnedCommission  Decimal @default(0) @map("unearned_commission") @db.Decimal(12, 2)
   vatAmount        Decimal?       @map("vat_amount") @db.Decimal(12, 2)
   vatPct           Decimal?       @map("vat_pct") @db.Decimal(5, 4)
   monthlyPayment   Decimal        @map("monthly_payment") @db.Decimal(12, 2)

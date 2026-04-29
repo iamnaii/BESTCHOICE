@@ -397,8 +397,17 @@ export class ContractWorkflowService {
       if (!prod || (prod.status !== 'RESERVED' && prod.status !== 'IN_STOCK')) {
         throw new BadRequestException('สินค้าไม่พร้อมสำหรับเปิดสัญญา (อาจถูกขายหรือลบไปแล้ว)');
       }
-      // Step 8: สถานะเปลี่ยนเป็น ACTIVE → เริ่มนับงวด
-      await tx.contract.update({ where: { id }, data: { status: 'ACTIVE' } });
+      // Step 8: สถานะเปลี่ยนเป็น ACTIVE → เริ่มนับงวด.
+      // Phase A.2: also seed unearnedInterest + unearnedCommission so payment
+      // JEs can drain them (deferred recognition cash-basis per TFRS NPAEs).
+      await tx.contract.update({
+        where: { id },
+        data: {
+          status: 'ACTIVE',
+          unearnedInterest: contract.interestTotal,
+          unearnedCommission: contract.storeCommission ?? 0,
+        },
+      });
       await tx.product.update({ where: { id: contract.productId }, data: { status: 'SOLD_INSTALLMENT' } });
 
       // Ownership transfer: SHOP → FINANCE.

@@ -166,11 +166,11 @@ describe('ContractWorkflowService', () => {
     it('activates a fully-approved DRAFT contract and writes the activation JE', async () => {
       await service.activate('contract-1');
 
-      // Contract status flipped to ACTIVE inside the tx
+      // Contract status flipped to ACTIVE + Phase A.2 unearned fields seeded
       expect(prisma.contract.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: 'contract-1' },
-          data: { status: 'ACTIVE' },
+          data: expect.objectContaining({ status: 'ACTIVE' }),
         }),
       );
       // JE was created

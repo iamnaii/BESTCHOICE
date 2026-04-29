@@ -60,6 +60,7 @@ import { FinanceReceivableModule } from './modules/finance-receivable/finance-re
 import { AccountingModule } from './modules/accounting/accounting.module';
 import { CompanyModule } from './modules/company/company.module';
 import { InterCompanyModule } from './modules/inter-company/inter-company.module';
+import { IntercompanyModule } from './modules/intercompany/intercompany.module';
 import { JournalModule } from './modules/journal/journal.module';
 import { ChartOfAccountsModule } from './modules/chart-of-accounts/chart-of-accounts.module';
 import { TaxModule } from './modules/tax/tax.module';
@@ -210,6 +211,8 @@ import { AppCacheModule } from './cache/cache.module';
     CompanyModule,
     // Inter-Company (SHOP ↔ FINANCE)
     InterCompanyModule,
+    // Inter-company settlement (Phase A.3 W-5 — pays Due-to-SHOP)
+    IntercompanyModule,
     // Journal Entries (double-entry accounting)
     JournalModule,
     ChartOfAccountsModule,

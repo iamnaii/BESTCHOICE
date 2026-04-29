@@ -397,6 +397,97 @@ export class JournalAutoService {
   }
 
   /**
+   * Phase A.3 (W-5) — Inter-company settlement JE.
+   *
+   * FINANCE pays SHOP to settle the accumulated `Due-to-SHOP` balance from
+   * contract activations. Posts paired entries:
+   *
+   * FINANCE entry:
+   *   Dr. Due-to-SHOP (21-1102)        [settlement amount]
+   *     Cr. Cash (FINANCE)              [settlement amount]
+   *
+   * SHOP entry:
+   *   Dr. Cash (SHOP)                   [settlement amount]
+   *     Cr. Due-from-FINANCE (11-2105)  [settlement amount]
+   *
+   * Linked via [IC-<uuid>] description prefix. Each settlement reduces both
+   * sides of the inter-company clearing pair symmetrically — the IC invariant
+   * (SHOP Due-from = FINANCE Due-to) holds before and after.
+   *
+   * Caller must verify the settlement amount does not exceed the current
+   * outstanding (Due-to-SHOP balance on FINANCE).
+   */
+  async createInterCompanySettlementJournal(
+    tx: Prisma.TransactionClient,
+    params: {
+      amount: Decimal | number;
+      paidDate?: Date | null;
+      reference: string; // e.g., bank transfer ref or "MONTHLY-2026-04"
+      notes?: string;
+      userId: string;
+      shopCompanyId?: string | null;
+      financeCompanyId?: string | null;
+    },
+  ): Promise<{ financeEntryId: string | null; shopEntryId: string | null }> {
+    const FA = JournalAutoService.FINANCE_ACC;
+    const SA = JournalAutoService.SHOP_ACC;
+
+    const financeCompanyId =
+      params.financeCompanyId ??
+      (await tx.companyInfo.findFirst({ where: { companyCode: 'FINANCE', deletedAt: null }, select: { id: true } }))?.id ??
+      null;
+    const shopCompanyId =
+      params.shopCompanyId ??
+      (await tx.companyInfo.findFirst({ where: { companyCode: 'SHOP', deletedAt: null }, select: { id: true } }))?.id ??
+      null;
+
+    if (!financeCompanyId || !shopCompanyId) {
+      throw new InternalServerErrorException('SHOP and FINANCE companies must be configured for inter-company settlement JE');
+    }
+
+    const amount = new Prisma.Decimal(params.amount);
+    if (!amount.gt(0)) {
+      throw new InternalServerErrorException('Settlement amount must be positive');
+    }
+
+    const intercompanyId = generateInterCompanyId();
+    const entryDate = params.paidDate ?? new Date();
+    const baseDesc = params.notes
+      ? `ชำระเงินระหว่างบริษัท ${params.reference} — ${params.notes}`
+      : `ชำระเงินระหว่างบริษัท ${params.reference}`;
+
+    // FINANCE side: pay SHOP, reduce Due-to-SHOP liability + reduce Cash
+    const financeEntryId = await this.createAndPost(tx, {
+      companyId: financeCompanyId,
+      entryDate,
+      description: formatInterCompanyDescription(intercompanyId, `${baseDesc} (FINANCE)`),
+      referenceType: 'IC_SETTLEMENT',
+      referenceId: params.reference,
+      createdById: params.userId,
+      lines: [
+        { accountCode: FA.DUE_TO_SHOP, description: 'ชำระเจ้าหนี้ระหว่างบริษัท SHOP', debit: amount.toNumber(), credit: 0 },
+        { accountCode: FA.CASH, description: 'จ่ายเงินให้ SHOP', debit: 0, credit: amount.toNumber() },
+      ],
+    });
+
+    // SHOP side: receive cash, reduce Due-from-FINANCE asset
+    const shopEntryId = await this.createAndPost(tx, {
+      companyId: shopCompanyId,
+      entryDate,
+      description: formatInterCompanyDescription(intercompanyId, `${baseDesc} (SHOP)`),
+      referenceType: 'IC_SETTLEMENT',
+      referenceId: params.reference,
+      createdById: params.userId,
+      lines: [
+        { accountCode: SA.CASH, description: 'รับเงินจาก FINANCE', debit: amount.toNumber(), credit: 0 },
+        { accountCode: SA.DUE_FROM_FINANCE, description: 'ตัดลูกหนี้ระหว่างบริษัท FINANCE', debit: 0, credit: amount.toNumber() },
+      ],
+    });
+
+    return { financeEntryId, shopEntryId };
+  }
+
+  /**
    * Phase A.2 — Early payoff JE with deferred-recognition handling.
    *
    * When a customer closes their contract early with a discount, the

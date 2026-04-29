@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
 import { formatDateLong } from '../../utils/thai-date.util';
-import { d, dAdd, dSub, dClose } from '../../utils/decimal.util';
+import { dAdd, dSub, dClose } from '../../utils/decimal.util';
 import { OnlineOrderSaleAdapter } from '../shop-orders/online-order-sale.adapter';
 
 // Pay Solutions external API timeout. Their published SLA is "instant"

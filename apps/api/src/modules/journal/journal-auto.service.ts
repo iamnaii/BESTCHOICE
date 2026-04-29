@@ -293,8 +293,10 @@ export class JournalAutoService {
 
     // Sales revenue = sellingPrice + commission only — interest is a separate revenue line
     const revenue = sellingPrice.add(commission);
-    // HP Receivable = total owed after down payment (principal + interest + commission + VAT)
-    const hpReceivable = financedAmount.add(interest).add(commission).add(vat);
+    // HP Receivable = financedAmount which already includes principal + commission + interest + vat
+    // (computed by installment.util.ts:56 calculateInstallment). Adding them again would
+    // double-count and unbalance the JE — see F-2-001.
+    const hpReceivable = financedAmount;
     const isUsed = (params.product.category || '').toLowerCase().includes('used') ||
       (params.product.category || '').includes('มือสอง');
     const revenueAcc = isUsed ? JournalAutoService.ACC.REVENUE_USED : JournalAutoService.ACC.REVENUE_NEW;

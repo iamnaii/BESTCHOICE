@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { InternalServerErrorException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { JournalAutoService } from './journal-auto.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -246,15 +247,19 @@ describe('JournalAutoService', () => {
   // createContractActivationJournal
   // ──────────────────────────────────────────────────────────────────────────
   describe('createContractActivationJournal', () => {
-    // Balance rule: Dr(downPayment + financedAmount) = Cr(revenue + vatAmount)
-    // revenue = sellingPrice + interestTotal + storeCommission
-    // 3000 + 9300 = (10000 + 800 + 500) + 1000  →  12300 = 12300  ✓
+    // Production formula (installment.util.ts:56):
+    //   principal      = sellingPrice - downPayment        = 12300 - 3000 = 9300
+    //   financedAmount = principal + commission + interest + vat
+    //                  = 9300 + 500 + 800 + 1000           = 11600
+    // Activation JE balance:
+    //   Dr cash(downPayment 3000) + hpReceivable(financedAmount 11600)            = 14600
+    //   Cr revenue(sellingPrice+commission 12800) + interest(800) + vat(1000)     = 14600  ✓
     const baseContract = {
       id: 'contract-1',
       contractNumber: 'BC-202601-0001',
       sellingPrice: 12300,
       downPayment: 3000,
-      financedAmount: 9300,
+      financedAmount: 11600,
       interestTotal: 800,
       storeCommission: 500,
       vatAmount: 1000,
@@ -305,7 +310,7 @@ describe('JournalAutoService', () => {
       const hpLine = lines.find((l) => l.accountCode === JournalAutoService.ACC.HP_RECEIVABLE);
 
       expect(Number(cashLine?.debit)).toBeCloseTo(3000, 2);
-      // HP Receivable = financedAmount + interest + commission + VAT = 9300+800+500+1000
+      // HP Receivable = financedAmount (already includes principal+commission+interest+vat)
       expect(Number(hpLine?.debit)).toBeCloseTo(11600, 2);
     });
 
@@ -375,6 +380,45 @@ describe('JournalAutoService', () => {
         .create as Array<{ accountCode: string; debit: number }>;
       const cogsLine = cogsLines.find((l) => l.debit > 0);
       expect(cogsLine?.accountCode).toBe(JournalAutoService.ACC.COGS_USED);
+    });
+
+    // F-2-001 regression: financedAmount per installment.util.ts:56 already
+    // includes principal + commission + interest + vat. The previous code
+    // added them again, causing the JE to be unbalanced and createAndPost to
+    // throw on every contract activation.
+    it('produces balanced JE when financedAmount already includes interest+commission+vat', async () => {
+      const principal = new Prisma.Decimal('10000');
+      const commission = new Prisma.Decimal('500');
+      const interest = new Prisma.Decimal('1000');
+      const vat = new Prisma.Decimal('805');
+      // Production formula (installment.util.ts:56)
+      const financedAmount = principal.plus(commission).plus(interest).plus(vat); // 12305
+      // sellingPrice = principal + downPayment (per installment.util.ts:52)
+      const downPayment = new Prisma.Decimal('1000');
+      const sellingPrice = principal.plus(downPayment); // 11000
+
+      await service.createContractActivationJournal(prisma, {
+        contract: {
+          id: 'c-fixture',
+          contractNumber: 'CT-FIXTURE',
+          sellingPrice,
+          downPayment,
+          financedAmount,
+          interestTotal: interest,
+          storeCommission: commission,
+          vatAmount: vat,
+        },
+        product: { costPrice: new Prisma.Decimal('8000'), category: 'มือถือใหม่' },
+        userId: 'user-1',
+        companyId: 'company-1',
+      });
+
+      // First call = sales entry
+      const salesEntry = prisma.journalEntry.create.mock.calls[0][0];
+      const lines = salesEntry.data.lines.create as Array<{ debit: number; credit: number }>;
+      const totalDr = sumDebits(lines);
+      const totalCr = sumCredits(lines);
+      expect(Math.abs(totalDr - totalCr)).toBeLessThan(0.01);
     });
   });
 
@@ -514,17 +558,16 @@ describe('JournalAutoService', () => {
       });
 
       // ── 1. Contract Activation journal ──────────────────────────────────
-      // Dr HP Receivable (9 300) + Dr Cash/Down (3 000) / Cr Revenue (10 000) + Cr VAT (800) + Cr Commission (500)
-      // Dr COGS (8 000) / Cr Inventory (8 000)
-      // Balance: Dr = 3000+9300+8000 = 20300  |  Cr = 10000+800+500+8000+1000 = ...
-      // We use the same numbers as the existing tests so we know they balance.
+      // financedAmount = principal(9300) + commission(500) + interest(800) + vat(1000) = 11600
+      // Sales JE  : Dr cash(3000) + hpReceivable(11600) = Cr revenue(12800) + interest(800) + vat(1000) = 14600
+      // COGS JE   : Dr COGS(8000) = Cr Inventory(8000)
       await service.createContractActivationJournal(prisma, {
         contract: {
           id: 'contract-tb',
           contractNumber: 'BC-TB-0001',
           sellingPrice: 12300,
           downPayment: 3000,
-          financedAmount: 9300,
+          financedAmount: 11600,
           interestTotal: 800,
           storeCommission: 500,
           vatAmount: 1000,

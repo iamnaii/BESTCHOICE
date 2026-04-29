@@ -1,0 +1,51 @@
+หมวดที่ 1: สินทรัพย์ (Assets),,,
+เลขบัญชี,ชื่อบัญชี,เลขที่บัญชีในเบสท์ช้อยส์,หมายเหตุ
+11-1101,เงินสด FINANCE,,Cash on Hand FINANCE
+11-1201,ธนาคาร FINANCE — บัญชีหลัก,,Bank — FINANCE Main
+11-1202,ธนาคาร FINANCE — รับชำระค่างวด,,Bank — Installment Collection
+11-2102,ลูกหนี้เช่าซื้อ,,Hire-Purchase Receivable
+11-2103,หัก: ค่าเผื่อหนี้สงสัยจะสูญ,,Less: Allowance for Doubtful Accounts
+11-2104,ลูกหนี้ไฟแนนซ์ภายนอก,,External Finance Receivable
+11-3103,สินค้ายึดคืน/ซ่อมแล้ว,,Repossessed/Refurbished Goods
+11-3104,สินค้าคงเหลือ FINANCE — เครื่องใหม่,,Inventory FINANCE New
+11-3105,สินค้าคงเหลือ FINANCE — มือสอง,,Inventory FINANCE Used
+11-4101,ภาษีซื้อ,,Input VAT
+11-4102,ภาษีซื้อยังไม่ถึงกำหนด,,Input VAT Pending
+11-4103,ภาษีถูกหัก ณ ที่จ่าย,,Withholding Tax Receivable
+หมวดที่ 2: หนี้สิน (Liabilities),,,
+เลขบัญชี,ชื่อบัญชี,เลขที่บัญชีในเบสท์ช้อยส์,หมายเหตุ
+21-1102,เจ้าหนี้คู่ค้า — SHOP (Due-to-SHOP),,Inter-company Payable — SHOP
+21-2101,ภาษีขาย ภ.พ.30,,Output VAT (PP.30)
+21-2102,ภาษีขายรอเรียกเก็บ,,Output VAT Pending Invoice
+21-2103,ภ.พ.36 ค้างจ่าย,,PP.36 Payable (foreign VAT)
+21-2104,ภาษีขายดอกเบี้ยรอตัดบัญชี,,DEFERRED CR-001 — VAT on interest
+21-2202,รายได้ดอกเบี้ยรอตัดบัญชี,,DEFERRED W-003 — Unearned Interest
+21-3201,เจ้าหนี้สรรพากร ภ.พ.30 รอชำระ,,VAT Payable to RD
+21-3202,เจ้าหนี้สรรพากร ภ.ง.ด.53 รอชำระ,,PND.53 Payable to RD
+21-4201,เงินรับล่วงหน้า,,Advance Receipts
+21-5101,เงินเกินของลูกค้า,,Customer Credit Balance
+หมวดที่ 3: ส่วนของผู้ถือหุ้น (Equity),,,
+เลขบัญชี,ชื่อบัญชี,เลขที่บัญชีในเบสท์ช้อยส์,หมายเหตุ
+31-1101,ทุนสามัญ FINANCE,,Common Stock FINANCE
+32-1101,กำไร(ขาดทุน)สะสม FINANCE,,Retained Earnings FINANCE
+หมวดที่ 4: รายได้ (Revenues),,,
+เลขบัญชี,ชื่อบัญชี,เลขที่บัญชีในเบสท์ช้อยส์,หมายเหตุ
+41-2101,รายได้ขายเช่าซื้อ FINANCE,,HP Sales Revenue FINANCE
+41-2102,รายได้ขายเช่าซื้อมือสอง FINANCE,,HP Used Sales Revenue FINANCE
+42-2101,รายได้ดอกเบี้ยเช่าซื้อ,,Hire-Purchase Interest Income
+42-2102,ค่างวดเบี้ยปรับล่าช้า,,Late Payment Penalty Income
+42-2103,ค่ามัดจำ/เงินประกันที่ริบ,,Forfeited Deposits
+42-2104,รายได้จากการยึดเครื่อง,,Repossession Income
+42-2105,รายได้ค่าคอมมิชชันจาก SHOP,,A.1b inter-company commission
+หมวดที่ 5: ค่าใช้จ่าย (Expenses),,,
+เลขบัญชี,ชื่อบัญชี,เลขที่บัญชีในเบสท์ช้อยส์,หมายเหตุ
+51-2101,ต้นทุนขายเช่าซื้อ FINANCE — เครื่องใหม่,,COGS FINANCE New
+51-2102,ต้นทุนขายเช่าซื้อ FINANCE — มือสอง,,COGS FINANCE Used
+53-1701,หนี้สูญ,,Bad Debt Expense (was 53-1101 = Salary in owner CoA!)
+53-1702,หนี้สงสัยจะสูญ,,Doubtful Debt Expense
+53-1801,ค่านายหน้าจ่าย SHOP,,A.1b inter-company commission expense
+53-1802,ค่าธรรมเนียม PaySolutions,,PaySolutions Fees
+53-1803,ค่าธรรมเนียมโอนเงิน,,Bank Transfer Fees
+53-1601,ค่าเสื่อมราคา — อุปกรณ์ FINANCE,,Depreciation — FINANCE Equipment
+54-1101,ภงด. ทางภาษี ภ.ง.ด.3,,Tax Expense — PND.3
+54-1102,ภงด. ทางภาษี ภ.ง.ด.53,,Tax Expense — PND.53

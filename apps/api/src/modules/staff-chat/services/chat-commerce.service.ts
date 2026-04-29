@@ -58,8 +58,28 @@ export class ChatCommerceService {
       throw new BadRequestException('ห้องแชทนี้ยังไม่ได้เชื่อมกับลูกค้า');
     }
 
-    const customerLineIdForChannel =
-      session.channel === 'LINE_SHOP' ? session.customer.lineIdShop : session.customer.lineIdFinance;
+    // Resolve customer LINE ID per chat channel. Non-LINE channels (FACEBOOK,
+    // TIKTOK, WEB) have no LINE ID by definition — we still allow the staff
+    // payment-info message to be saved into the chat thread (the customer
+    // sees it on their native channel), but we don't try to look up a LINE
+    // user ID. The legacy ternary fell back to lineIdFinance for any
+    // non-LINE_SHOP channel which was incorrect for FB/TikTok/Web.
+    let customerLineIdForChannel: string | null = null;
+    switch (session.channel) {
+      case 'LINE_SHOP':
+        customerLineIdForChannel = session.customer.lineIdShop;
+        break;
+      case 'LINE_FINANCE':
+        customerLineIdForChannel = session.customer.lineIdFinance;
+        break;
+      case 'FACEBOOK':
+      case 'TIKTOK':
+      case 'WEB':
+        // No LINE ID applicable — fall through to session.lineUserId
+        // (which is also typically null for these channels)
+        customerLineIdForChannel = null;
+        break;
+    }
     const customerLineId = customerLineIdForChannel || session.lineUserId;
     if (!customerLineId) {
       throw new BadRequestException('ลูกค้าไม่มี LINE ID ไม่สามารถสร้างลิงก์ชำระเงินได้');

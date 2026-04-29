@@ -124,6 +124,7 @@ export class NotificationsService {
     const log = await this.prisma.notificationLog.create({
       data: {
         channel: dto.channel as NotificationChannel,
+        channelKey: dto.channelKey ?? null,
         recipient: dto.recipient,
         subject: dto.subject,
         message: dto.message,
@@ -455,6 +456,7 @@ export class NotificationsService {
     data: Record<string, string>,
     recipient: string,
     relatedId?: string,
+    options: { channelKey?: LineChannelKey } = {},
   ) {
     const template = await this.prisma.systemConfig.findFirst({
       where: { key: `notification_template_${templateId}`, deletedAt: null },
@@ -470,17 +472,27 @@ export class NotificationsService {
       return { id: null, status: 'SKIPPED', reason: 'Template is inactive' };
     }
 
+    // Resolve channelKey: caller override > template-declared > legacy default.
+    // Templates that don't declare a channelKey still default to line-finance
+    // (preserves legacy behavior for HP/finance reminders) but callers sending
+    // shop-side templates MUST pass options.channelKey = 'line-shop'.
+    const resolvedChannelKey: LineChannelKey =
+      options.channelKey ??
+      (templateData.channelKey as LineChannelKey | undefined) ??
+      'line-finance';
+
     // If format is 'flex' and channel is LINE, send as Flex Message
     if (templateData.format === 'flex' && templateData.channel === 'LINE' && templateData.flexTemplate) {
       try {
         const flexJson = JSON.parse(templateData.flexTemplate);
         const resolvedFlex = this.replacePlaceholdersInJson(flexJson, data) as FlexMessagePayload;
-        await this.sendLineFlexMessage(recipient, resolvedFlex, 'line-finance');
+        await this.sendLineFlexMessage(recipient, resolvedFlex, resolvedChannelKey);
 
         const textSummary = this.replacePlaceholders(templateData.messageTemplate || templateData.name, data);
         const log = await this.prisma.notificationLog.create({
           data: {
             channel: 'LINE',
+            channelKey: resolvedChannelKey,
             recipient,
             subject: templateData.subject || templateData.name,
             message: `Flex: ${textSummary}`,
@@ -502,6 +514,7 @@ export class NotificationsService {
 
     return this.send({
       channel: templateData.channel,
+      channelKey: templateData.channel === 'LINE' ? resolvedChannelKey : undefined,
       recipient,
       subject: templateData.subject,
       message,
@@ -608,7 +621,11 @@ export class NotificationsService {
     for (const notification of pendingRetries) {
       try {
         if (notification.channel === 'LINE') {
-          await this.sendLine(notification.recipient, notification.message, 'line-finance');
+          // Use the original channelKey persisted on the log so retries hit
+          // the same OA the message was meant for. Falls back to line-finance
+          // for legacy logs created before channel_key was added.
+          const channelKey = (notification.channelKey as LineChannelKey) ?? 'line-finance';
+          await this.sendLine(notification.recipient, notification.message, channelKey);
         } else if (notification.channel === 'SMS') {
           await this.sendSms(notification.recipient, notification.message);
         }
@@ -905,6 +922,7 @@ export class NotificationsService {
           await this.prisma.notificationLog.create({
             data: {
               channel: 'LINE',
+              channelKey: 'line-finance',
               recipient: customer.lineIdFinance,
               subject: 'แจ้งเตือนค่างวด',
               message: `งวด ${payment.installmentNo} จำนวน ${Number(payment.amountDue).toLocaleString()} บาท อีก ${daysUntil} วัน`,
@@ -918,6 +936,7 @@ export class NotificationsService {
           this.logger.warn(`Flex message failed, falling back to text: ${err instanceof Error ? err.message : err}`);
           await this.send({
             channel: 'LINE',
+            channelKey: 'line-finance',
             recipient: customer.lineIdFinance,
             message,
             relatedId: payment.id,
@@ -1034,6 +1053,7 @@ export class NotificationsService {
           await this.prisma.notificationLog.create({
             data: {
               channel: 'LINE',
+              channelKey: 'line-finance',
               recipient: customer.lineIdFinance,
               subject: 'แจ้งค้างชำระ',
               message: `งวด ${payment.installmentNo} ค้าง ${outstanding.toLocaleString()} บาท เลยกำหนด ${daysOverdue} วัน`,
@@ -1047,6 +1067,7 @@ export class NotificationsService {
           this.logger.warn(`Flex message failed, falling back to text: ${err instanceof Error ? err.message : err}`);
           await this.send({
             channel: 'LINE',
+            channelKey: 'line-finance',
             recipient: customer.lineIdFinance,
             message,
             relatedId: payment.id,

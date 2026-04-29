@@ -1803,6 +1803,7 @@ model Repossession {
 model NotificationLog {
   id             String              @id @default(uuid())
   channel        NotificationChannel
+  channelKey     String?             @map("channel_key") // 'line-shop' | 'line-finance' | 'line-staff' for LINE; null for SMS/IN_APP
   recipient      String // phone or LINE user ID
   subject        String?
   message        String

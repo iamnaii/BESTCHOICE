@@ -23,11 +23,17 @@ interface NotificationTemplate {
   updatedAt: string;
 }
 
-interface LogStats {
+interface PerChannelStats {
   total: number;
   sent: number;
   failed: number;
   pending: number;
+}
+
+interface LogStats {
+  line: PerChannelStats;
+  sms: PerChannelStats & { creditRemaining: number };
+  in_app: PerChannelStats;
 }
 
 const defaultTemplateForm: TemplateFormState = {
@@ -143,41 +149,35 @@ export default function NotificationsPage() {
         errorTitle="ไม่สามารถโหลดสถิติการแจ้งเตือนได้"
       >
       {stats && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-5 mb-6">
-          <div className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
-            <div className="flex h-full">
-              <div className="w-1 shrink-0 bg-foreground/40" />
-              <div className="p-4 flex-1">
-                <div className="text-sm text-muted-foreground">ทั้งหมด</div>
-                <div className="text-2xl font-bold tabular-nums">{stats.total}</div>
-              </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+            <div className="text-sm text-muted-foreground">LINE (7 วันล่าสุด)</div>
+            <div className="text-2xl font-bold tabular-nums">
+              {stats.line.sent} / {stats.line.total}
+            </div>
+            <div className="text-xs text-muted-foreground mt-1">
+              {stats.line.failed} ล้มเหลว, {stats.line.pending} รอส่ง
             </div>
           </div>
-          <div className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
-            <div className="flex h-full">
-              <div className="w-1 shrink-0 bg-success" />
-              <div className="p-4 flex-1">
-                <div className="text-sm text-muted-foreground">ส่งสำเร็จ</div>
-                <div className="text-2xl font-bold tabular-nums text-success">{stats.sent}</div>
-              </div>
+          <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+            <div className="text-sm text-muted-foreground">SMS (7 วันล่าสุด)</div>
+            <div className="text-2xl font-bold tabular-nums">
+              {stats.sms.sent} / {stats.sms.total}
+            </div>
+            <div className="text-xs text-muted-foreground mt-1">
+              เครดิต: {stats.sms.creditRemaining}
+              {stats.sms.creditRemaining > 0 && stats.sms.creditRemaining < 100 && (
+                <span className="text-destructive"> (ใกล้หมด)</span>
+              )}
             </div>
           </div>
-          <div className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
-            <div className="flex h-full">
-              <div className="w-1 shrink-0 bg-destructive" />
-              <div className="p-4 flex-1">
-                <div className="text-sm text-muted-foreground">ล้มเหลว</div>
-                <div className="text-2xl font-bold tabular-nums text-destructive">{stats.failed}</div>
-              </div>
+          <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+            <div className="text-sm text-muted-foreground">IN_APP (7 วันล่าสุด)</div>
+            <div className="text-2xl font-bold tabular-nums">
+              {stats.in_app.sent} / {stats.in_app.total}
             </div>
-          </div>
-          <div className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
-            <div className="flex h-full">
-              <div className="w-1 shrink-0 bg-warning" />
-              <div className="p-4 flex-1">
-                <div className="text-sm text-muted-foreground">รอส่ง</div>
-                <div className="text-2xl font-bold tabular-nums text-warning">{stats.pending}</div>
-              </div>
+            <div className="text-xs text-muted-foreground mt-1">
+              {stats.in_app.failed} ล้มเหลว
             </div>
           </div>
         </div>

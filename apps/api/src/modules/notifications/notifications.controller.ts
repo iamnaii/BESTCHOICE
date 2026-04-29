@@ -115,6 +115,12 @@ export class NotificationsController {
     return this.notificationsService.checkSmsCredit();
   }
 
+  @Get('sms/credit')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER')
+  getSmsCredit() {
+    return this.notificationsService.checkSmsCredit();
+  }
+
   // ============================================================
   // CRON / SCHEDULING ENDPOINTS
   // ============================================================

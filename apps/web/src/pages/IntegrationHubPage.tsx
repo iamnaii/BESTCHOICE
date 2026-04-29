@@ -539,6 +539,13 @@ function IntegrationGrid({
 }
 
 export default function IntegrationHubPage() {
+  const smsCreditQuery = useQuery<{ configured: boolean; credit?: number }>({
+    queryKey: ['sms-credit'],
+    queryFn: async () => (await api.get('/notifications/sms/credit')).data,
+    refetchInterval: 5 * 60 * 1000,
+    retry: false,
+  });
+
   const integrationsQuery = useQuery<Integration[]>({
     queryKey: ['integrations'],
     queryFn: async () => {
@@ -583,6 +590,22 @@ export default function IntegrationHubPage() {
   const isError = integrationsQuery.isError || registryQuery.isError;
   const error = integrationsQuery.error ?? registryQuery.error;
 
+  // Augment SMS integration card with live credit balance
+  const integrations = (integrationsQuery.data ?? []).map((i) => {
+    if (i.key.toLowerCase().includes('sms') && smsCreditQuery.data?.configured) {
+      const credit = smsCreditQuery.data.credit ?? 0;
+      const label = credit < 100 ? `เครดิตเหลือ (ใกล้หมด)` : 'เครดิตเหลือ';
+      return {
+        ...i,
+        details: {
+          ...(i.details ?? {}),
+          [label]: String(credit),
+        },
+      };
+    }
+    return i;
+  });
+
   return (
     <div>
       <PageHeader
@@ -599,7 +622,7 @@ export default function IntegrationHubPage() {
         }}
       >
         <IntegrationGrid
-          integrations={integrationsQuery.data ?? []}
+          integrations={integrations}
           registry={registryQuery.data ?? {}}
         />
       </QueryBoundary>

@@ -651,14 +651,42 @@ export class NotificationsService {
   }
 
   async getLogStats() {
-    const [total, sent, failed, pending] = await Promise.all([
-      this.prisma.notificationLog.count(),
-      this.prisma.notificationLog.count({ where: { status: 'SENT' } }),
-      this.prisma.notificationLog.count({ where: { status: 'FAILED' } }),
-      this.prisma.notificationLog.count({ where: { status: 'PENDING' } }),
-    ]);
+    const groups = await this.prisma.notificationLog.groupBy({
+      by: ['channel', 'status'],
+      where: { deletedAt: null, createdAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } },
+      _count: { _all: true },
+    });
 
-    return { total, sent, failed, pending };
+    const empty = () => ({ total: 0, sent: 0, failed: 0, pending: 0 });
+    const result = {
+      line: empty(),
+      sms: { ...empty(), creditRemaining: 0 },
+      in_app: empty(),
+    };
+
+    for (const g of groups) {
+      const key = (g.channel === 'IN_APP' ? 'in_app' : g.channel.toLowerCase()) as
+        | 'line'
+        | 'sms'
+        | 'in_app';
+      const bucket = result[key];
+      if (!bucket) continue;
+      const count = g._count._all;
+      bucket.total += count;
+      if (g.status === 'SENT') bucket.sent += count;
+      else if (g.status === 'FAILED') bucket.failed += count;
+      else bucket.pending += count;
+    }
+
+    // Add SMS credit (informational)
+    try {
+      const credit = await this.checkSmsCredit();
+      result.sms.creditRemaining = credit.credit ?? 0;
+    } catch {
+      // ignore — credit check is informational
+    }
+
+    return result;
   }
 
   // ============================================================

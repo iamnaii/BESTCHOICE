@@ -16,6 +16,7 @@ import { buildDailyReportFlex } from '../line-oa/flex-messages/daily-report.flex
 import { DashboardService } from '../dashboard/dashboard.service';
 import { PDPAService } from '../pdpa/pdpa.service';
 import { DunningEngineService } from '../overdue/dunning-engine.service';
+import { IntegrationConfigService } from '../integrations/integration-config.service';
 import { isSmsPaymentReminderDisabled } from '../../utils/sms-payment-reminder.util';
 
 @Injectable()
@@ -34,6 +35,7 @@ export class SchedulerService {
     private dashboardService: DashboardService,
     private pdpaService: PDPAService,
     private dunningEngineService: DunningEngineService,
+    private integrationConfig: IntegrationConfigService,
   ) {}
 
   /**
@@ -717,6 +719,36 @@ export class SchedulerService {
       this.logger.log(`Daily LINE report sent: ${sent}/${owners.length} OWNER users`);
     } catch (error) {
       this.reportCronFailure('daily-line-report', error);
+    }
+  }
+
+  /**
+   * Run daily at 09:00 ICT — alert if SMS credit is low
+   */
+  @Cron('0 2 * * *') // 09:00 ICT = 02:00 UTC
+  async handleSmsCreditAlert() {
+    this.logger.log('Checking SMS credit balance...');
+    try {
+      const credit = await this.notificationsService.checkSmsCredit();
+      if (!credit.configured) return;
+      if (credit.credit !== undefined && credit.credit < 100) {
+        const message = `[BESTCHOICE] เครดิต SMS ใกล้หมด: เหลือ ${credit.credit} เครดิต — กรุณาเติมก่อนหมด`;
+        const staffTargets = (await this.integrationConfig.getValue('line-staff', 'notifyTargets')) || '';
+        const targets = staffTargets.split(',').map((s) => s.trim()).filter(Boolean);
+        for (const target of targets) {
+          await this.notificationsService.send({
+            channelKey: 'line-staff',
+            channel: 'LINE',
+            recipient: target,
+            message,
+            relatedId: 'sms-credit-alert',
+            noRetry: true,
+          });
+        }
+        this.logger.warn(`SMS credit low (${credit.credit}) — alerted ${targets.length} staff`);
+      }
+    } catch (error) {
+      this.reportCronFailure('sms-credit-alert', error);
     }
   }
 }

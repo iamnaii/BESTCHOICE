@@ -334,6 +334,7 @@ describe('MonthlyCloseService', () => {
         'user-1',
         undefined,
         reason,
+        'OWNER',
       );
 
       expect(result.status).toBe('CLOSED');
@@ -351,6 +352,39 @@ describe('MonthlyCloseService', () => {
           }),
         }),
       );
+    });
+
+    it('blocks forceCloseReason if user role is not OWNER (F-6-003 hardening)', async () => {
+      prisma.accountingPeriod.findUnique.mockResolvedValue({
+        id: 'period-f6003-non-owner',
+        companyId: 'company-1',
+        year: 2026,
+        month: 4,
+        status: 'REVIEW',
+        auditIssues: {
+          totalJournals: 12,
+          unbalancedJournals: 2,
+          paymentsWithoutBreakdown: 0,
+          hasIssues: true,
+        },
+      });
+
+      const reason = 'a'.repeat(60); // valid length
+
+      await expect(
+        service.closePeriod(
+          'company-1',
+          2026,
+          4,
+          'user-1',
+          undefined,
+          reason,
+          'FINANCE_MANAGER',
+        ),
+      ).rejects.toThrow(/OWNER เท่านั้น/);
+
+      expect(prisma.accountingPeriod.update).not.toHaveBeenCalled();
+      expect(prisma.auditLog.create).not.toHaveBeenCalled();
     });
   });
 

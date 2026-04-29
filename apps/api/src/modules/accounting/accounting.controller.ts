@@ -249,7 +249,7 @@ export class AccountingController {
   @Roles('OWNER', 'FINANCE_MANAGER')
   closeMonthlyPeriod(
     @Body() dto: CloseMonthDto,
-    @Request() req: { user: { id: string } },
+    @Request() req: { user: { id: string; role: string } },
   ) {
     return this.monthlyCloseService.closePeriod(
       dto.companyId,
@@ -258,6 +258,7 @@ export class AccountingController {
       req.user.id,
       dto.notes,
       dto.forceCloseReason,
+      req.user.role,
     );
   }
 

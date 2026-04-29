@@ -163,6 +163,7 @@ export class MonthlyCloseService {
     userId: string,
     notes?: string,
     forceCloseReason?: string,
+    userRole?: string,
   ): Promise<PeriodStatusResult> {
     const existing = await this.prisma.accountingPeriod.findUnique({
       where: { companyId_year_month: { companyId, year, month } },
@@ -184,6 +185,15 @@ export class MonthlyCloseService {
           'พบ issue ในงวดนี้ ต้องแก้ก่อนปิด หรือใส่ forceCloseReason (≥50 ตัวอักษร) เพื่อ override (OWNER เท่านั้น)',
         issues,
       });
+    }
+
+    // F-6-003 hardening — forceCloseReason override is OWNER-only.
+    // Controller @Roles allows FINANCE_MANAGER for normal close, but the
+    // override path that bypasses auditIssues must be restricted to OWNER.
+    if (forceCloseReason && userRole !== 'OWNER') {
+      throw new ForbiddenException(
+        'เฉพาะ OWNER เท่านั้นที่ใช้ forceCloseReason override ได้',
+      );
     }
 
     // Generate report snapshots

@@ -1,0 +1,283 @@
+{
+  "draftEntriesOlderThan7d": [],
+  "elapsedMs": 717,
+  "monthlyTrialBalance": [
+    {
+      "balanced": true,
+      "companyId": "72fd440f-2a1d-4628-890a-60521a9c0fa4",
+      "diff": "0.00",
+      "entryCount": 1,
+      "month": 4,
+      "sumCredit": "6125.63",
+      "sumDebit": "6125.63",
+      "year": 2026
+    }
+  ],
+  "orphanPaidExpenses": [],
+  "orphanPayments": [
+    {
+      "amountPaid": "1080.00",
+      "contractId": "337a8a78-b7ab-4e9a-8238-02b411b6bb13",
+      "id": "f59620c2-5b2a-4c39-869c-bd3a6da0d95a",
+      "paidAt": "2026-04-23T09:13:49.505Z",
+      "status": "PAID"
+    },
+    {
+      "amountPaid": "1080.00",
+      "contractId": "89982c73-f3d6-4bc0-9a1d-be8aec6e4104",
+      "id": "836439ba-3e0b-4d24-a04e-3858389930c6",
+      "paidAt": "2026-04-23T09:13:49.321Z",
+      "status": "PAID"
+    },
+    {
+      "amountPaid": "1080.00",
+      "contractId": "20a7662c-9f7c-46f3-8f14-8c579f75c6d3",
+      "id": "8589e610-a6f9-4df8-a0cb-72d50100cc17",
+      "paidAt": "2026-04-23T09:13:49.145Z",
+      "status": "PAID"
+    },
+    {
+      "amountPaid": "1080.00",
+      "contractId": "0cb3e0be-4b82-431e-8ea9-47e730bf67b9",
+      "id": "96ddc56c-64c6-4247-b742-cfac249c2d8f",
+      "paidAt": "2026-04-23T09:13:48.886Z",
+      "status": "PAID"
+    },
+    {
+      "amountPaid": "1080.00",
+      "contractId": "337a8a78-b7ab-4e9a-8238-02b411b6bb13",
+      "id": "1192944d-4923-42c7-996a-0623f51ea30e",
+      "paidAt": "2026-03-24T09:13:49.505Z",
+      "status": "PAID"
+    },
+    {
+      "amountPaid": "1080.00",
+      "contractId": "89982c73-f3d6-4bc0-9a1d-be8aec6e4104",
+      "id": "a7e5ba07-c5ba-4178-82b2-6560775489e9",
+      "paidAt": "2026-03-24T09:13:49.321Z",
+      "status": "PAID"
+    },
+    {
+      "amountPaid": "1080.00",
+      "contractId": "20a7662c-9f7c-46f3-8f14-8c579f75c6d3",
+      "id": "6090954d-27b7-4a57-9b8e-c78a2f706d18",
+      "paidAt": "2026-03-24T09:13:49.145Z",
+      "status": "PAID"
+    },
+    {
+      "amountPaid": "1080.00",
+      "contractId": "0cb3e0be-4b82-431e-8ea9-47e730bf67b9",
+      "id": "1b947985-671c-4139-92d9-077b1649c099",
+      "paidAt": "2026-03-24T09:13:48.886Z",
+      "status": "PAID"
+    },
+    {
+      "amountPaid": "1080.00",
+      "contractId": "c4229311-c519-46e0-8371-01fdc6811709",
+      "id": "018d1ad9-40ec-434c-a2bb-72e0993e6dc4",
+      "paidAt": "2026-03-09T09:13:50.237Z",
+      "status": "PAID"
+    },
+    {
+      "amountPaid": "1080.00",
+      "contractId": "b0692669-56a0-42d8-b7fc-f05b941a6485",
+      "id": "fff75420-339e-4230-8bbf-8eeb8700896d",
+      "paidAt": "2026-03-09T09:13:50.052Z",
+      "status": "PAID"
+    },
+    {
+      "amountPaid": "1080.00",
+      "contractId": "8d62737d-a3dc-4f10-933d-d4f601c61587",
+      "id": "c8462dc7-71ea-40b3-bcaa-8cd5b482acf0",
+      "paidAt": "2026-03-09T09:13:49.867Z",
+      "status": "PAID"
+    },
+    {
+      "amountPaid": "1080.00",
+      "contractId": "c3ea72cc-8d8e-495b-99b3-32e4e7085f69",
+      "id": "a5c3bf41-d636-4834-ac2a-bc64bc12a816",
+      "paidAt": "2026-03-09T09:13:49.686Z",
+      "status": "PAID"
+    },
+    {
+      "amountPaid": "1080.00",
+      "contractId": "337a8a78-b7ab-4e9a-8238-02b411b6bb13",
+      "id": "472febcf-9f0e-497c-b17a-fa0b4758aecb",
+      "paidAt": "2026-02-22T09:13:49.505Z",
+      "status": "PAID"
+    },
+    {
+      "amountPaid": "1080.00",
+      "contractId": "89982c73-f3d6-4bc0-9a1d-be8aec6e4104",
+      "id": "7a7c0efd-6423-4731-84ce-1feb6583c485",
+      "paidAt": "2026-02-22T09:13:49.321Z",
+      "status": "PAID"
+    },
+    {
+      "amountPaid": "1080.00",
+      "contractId": "20a7662c-9f7c-46f3-8f14-8c579f75c6d3",
+      "id": "8a2ee1fe-c99e-44ff-8eb8-67114157af2b",
+      "paidAt": "2026-02-22T09:13:49.145Z",
+      "status": "PAID"
+    },
+    {
+      "amountPaid": "1080.00",
+      "contractId": "0cb3e0be-4b82-431e-8ea9-47e730bf67b9",
+      "id": "e03c4412-4e73-4f0f-ae27-63ef77810a64",
+      "paidAt": "2026-02-22T09:13:48.886Z",
+      "status": "PAID"
+    },
+    {
+      "amountPaid": "1080.00",
+      "contractId": "f708596e-e677-4be4-9d6a-c82f82349025",
+      "id": "c9bd9ced-578f-442b-9d3a-789106ddfc7f",
+      "paidAt": "2026-02-07T09:13:50.965Z",
+      "status": "PAID"
+    },
+    {
+      "amountPaid": "1080.00",
+      "contractId": "5703dfbb-2f8f-40fe-a790-4ddaa816a4e8",
+      "id": "f950d034-e0e2-456f-9d56-777512553990",
+      "paidAt": "2026-02-07T09:13:50.780Z",
+      "status": "PAID"
+    },
+    {
+      "amountPaid": "1080.00",
+      "contractId": "e001a981-71ec-4cc2-8432-ba380b09543c",
+      "id": "08edba6c-5aca-439b-bb22-97780a7292c2",
+      "paidAt": "2026-02-07T09:13:50.601Z",
+      "status": "PAID"
+    },
+    {
+      "amountPaid": "1080.00",
+      "contractId": "d6ce5d00-7a57-440b-895a-ff680230f92f",
+      "id": "517b6114-1424-4938-b8be-aaa25da773cc",
+      "paidAt": "2026-02-07T09:13:50.418Z",
+      "status": "PAID"
+    },
+    {
+      "amountPaid": "1080.00",
+      "contractId": "c4229311-c519-46e0-8371-01fdc6811709",
+      "id": "1b04ec28-a26d-4164-811e-b3aa7c95f16d",
+      "paidAt": "2026-02-07T09:13:50.237Z",
+      "status": "PAID"
+    },
+    {
+      "amountPaid": "1080.00",
+      "contractId": "b0692669-56a0-42d8-b7fc-f05b941a6485",
+      "id": "d8950521-f7c3-49e2-8459-b444d1ec78c9",
+      "paidAt": "2026-02-07T09:13:50.052Z",
+      "status": "PAID"
+    },
+    {
+      "amountPaid": "1080.00",
+      "contractId": "8d62737d-a3dc-4f10-933d-d4f601c61587",
+      "id": "a5d16116-011d-494e-a8e3-593d8264ad77",
+      "paidAt": "2026-02-07T09:13:49.867Z",
+      "status": "PAID"
+    },
+    {
+      "amountPaid": "1080.00",
+      "contractId": "c3ea72cc-8d8e-495b-99b3-32e4e7085f69",
+      "id": "839eb208-6ef7-4dc4-b83d-8b736d74c132",
+      "paidAt": "2026-02-07T09:13:49.686Z",
+      "status": "PAID"
+    },
+    {
+      "amountPaid": "1080.00",
+      "contractId": "6230d771-74a7-4317-b096-4844500b0380",
+      "id": "92c51306-99cb-426e-a438-287e88f55e51",
+      "paidAt": "2026-01-08T09:13:51.684Z",
+      "status": "PAID"
+    },
+    {
+      "amountPaid": "1080.00",
+      "contractId": "0d3b4597-aecf-4ffe-b3a1-0e870d1a23bd",
+      "id": "dcca42d6-7fdb-4937-ac40-3fc00903cdf9",
+      "paidAt": "2026-01-08T09:13:51.502Z",
+      "status": "PAID"
+    },
+    {
+      "amountPaid": "1080.00",
+      "contractId": "19feebbf-63bc-42b8-9e5a-c67ffccbcebf",
+      "id": "c57172bc-d3f6-4e3c-b43d-371317337efe",
+      "paidAt": "2026-01-08T09:13:51.323Z",
+      "status": "PAID"
+    },
+    {
+      "amountPaid": "1080.00",
+      "contractId": "090d9be3-2b84-4d61-b27b-bbe3a539226d",
+      "id": "c4e02f35-b39d-4f05-8065-19aacff2bdb5",
+      "paidAt": "2026-01-08T09:13:51.143Z",
+      "status": "PAID"
+    },
+    {
+      "amountPaid": "1080.00",
+      "contractId": "f708596e-e677-4be4-9d6a-c82f82349025",
+      "id": "178be85f-0307-46a1-9b3c-2c691dc84e74",
+      "paidAt": "2026-01-08T09:13:50.965Z",
+      "status": "PAID"
+    },
+    {
+      "amountPaid": "1080.00",
+      "contractId": "5703dfbb-2f8f-40fe-a790-4ddaa816a4e8",
+      "id": "aaca0de1-0cf2-44cb-bd7a-8e45ca141f09",
+      "paidAt": "2026-01-08T09:13:50.780Z",
+      "status": "PAID"
+    },
+    {
+      "amountPaid": "1080.00",
+      "contractId": "e001a981-71ec-4cc2-8432-ba380b09543c",
+      "id": "69648944-b664-46ba-8cc7-863616e0f593",
+      "paidAt": "2026-01-08T09:13:50.601Z",
+      "status": "PAID"
+    },
+    {
+      "amountPaid": "1080.00",
+      "contractId": "d6ce5d00-7a57-440b-895a-ff680230f92f",
+      "id": "3f2e2e12-9c40-4655-b9bf-a6f70853c7a7",
+      "paidAt": "2026-01-08T09:13:50.418Z",
+      "status": "PAID"
+    },
+    {
+      "amountPaid": "1080.00",
+      "contractId": "99aab7b3-43af-4ef0-9092-10cd3eb6ac20",
+      "id": "9728c1a8-b0da-45f3-8453-131b6df7d1fc",
+      "paidAt": "2025-11-24T09:13:52.412Z",
+      "status": "PAID"
+    },
+    {
+      "amountPaid": "1080.00",
+      "contractId": "66218aeb-767a-4a40-9524-69763d3303d2",
+      "id": "4771afb5-d23f-4058-9dc0-7ef2751e6a2e",
+      "paidAt": "2025-11-24T09:13:52.229Z",
+      "status": "PAID"
+    },
+    {
+      "amountPaid": "1080.00",
+      "contractId": "23744f71-abe8-4ae6-a874-f0f6f6a63070",
+      "id": "e27d1433-f307-45ec-9b96-7e6dddd356c9",
+      "paidAt": "2025-11-24T09:13:52.043Z",
+      "status": "PAID"
+    },
+    {
+      "amountPaid": "1080.00",
+      "contractId": "b70bf511-33db-4253-8c64-ba32e9ccc2f1",
+      "id": "43fcad0a-9ca3-405e-8d1a-81d908e1de81",
+      "paidAt": "2025-11-24T09:13:51.863Z",
+      "status": "PAID"
+    }
+  ],
+  "postedAfterClose": [],
+  "runAt": "2026-04-28T18:26:10.707Z",
+  "summary": {
+    "draftOver7d": 0,
+    "monthCount": 1,
+    "orphanExpenseCount": 0,
+    "orphanPaymentCount": 36,
+    "postedAfterCloseCount": 0,
+    "unbalancedMonthCount": 0,
+    "voidedWithoutReverse": 0
+  },
+  "voidedWithoutReverse": []
+}

@@ -1,4 +1,4 @@
-import { IsInt, Min, Max, IsOptional, IsString } from 'class-validator';
+import { IsInt, Min, Max, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class CloseMonthDto {
   @IsInt({ message: 'ปีต้องเป็นจำนวนเต็ม' })
@@ -26,4 +26,15 @@ export class CloseMonthDto {
   @IsString()
   @IsOptional()
   boardResolutionId?: string;
+
+  /**
+   * F-6-003 — OWNER override required when closing a REVIEW period whose
+   * `auditIssues.hasIssues=true`. Must be ≥50 characters explaining the
+   * acknowledged issues and rationale. Force close creates an AuditLog
+   * with action=`PERIOD_FORCE_CLOSE` for traceability.
+   */
+  @IsOptional()
+  @IsString()
+  @MinLength(50, { message: 'forceCloseReason ต้อง ≥50 ตัวอักษร' })
+  forceCloseReason?: string;
 }

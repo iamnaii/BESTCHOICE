@@ -256,6 +256,7 @@ export class AccountingController {
       dto.month,
       req.user.id,
       dto.notes,
+      dto.forceCloseReason,
     );
   }
 

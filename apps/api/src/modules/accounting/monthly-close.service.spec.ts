@@ -9,22 +9,29 @@ import { PeakService } from '../peak/peak.service';
 
 // ─── Minimal mock factories ────────────────────────────────────────────────
 
-const makePrisma = () => ({
-  accountingPeriod: {
-    findUnique: jest.fn(),
-    upsert: jest.fn(),
-    update: jest.fn(),
-    findMany: jest.fn(),
-    count: jest.fn(),
-  },
-  journalEntry: {
-    count: jest.fn(),
-    findMany: jest.fn(),
-  },
-  payment: {
-    count: jest.fn(),
-  },
-});
+const makePrisma = () => {
+  const prisma: any = {
+    accountingPeriod: {
+      findUnique: jest.fn(),
+      upsert: jest.fn(),
+      update: jest.fn(),
+      findMany: jest.fn(),
+      count: jest.fn(),
+    },
+    journalEntry: {
+      count: jest.fn(),
+      findMany: jest.fn(),
+    },
+    payment: {
+      count: jest.fn(),
+    },
+    auditLog: {
+      create: jest.fn(),
+    },
+    $transaction: jest.fn(async (cb: (tx: any) => Promise<unknown>) => cb(prisma)),
+  };
+  return prisma;
+};
 
 const makeJournalAutoService = () => ({
   getTrialBalance: jest.fn(),
@@ -244,6 +251,105 @@ describe('MonthlyCloseService', () => {
 
       await expect(service.closePeriod('company-1', 2025, 5, 'user-1')).rejects.toThrow(
         BadRequestException,
+      );
+    });
+
+    // F-6-003 — auditIssues hard-block + OWNER override via forceCloseReason
+    it('blocks closePeriod when auditIssues.hasIssues=true and no forceCloseReason (F-6-003)', async () => {
+      prisma.accountingPeriod.findUnique.mockResolvedValue({
+        id: 'period-f6003-block',
+        companyId: 'company-1',
+        year: 2026,
+        month: 4,
+        status: 'REVIEW',
+        auditIssues: {
+          totalJournals: 12,
+          unbalancedJournals: 2,
+          paymentsWithoutBreakdown: 0,
+          hasIssues: true,
+        },
+      });
+
+      await expect(
+        service.closePeriod('company-1', 2026, 4, 'user-1'),
+      ).rejects.toThrow(/issue|hasIssues/i);
+
+      expect(prisma.accountingPeriod.update).not.toHaveBeenCalled();
+      expect(prisma.auditLog.create).not.toHaveBeenCalled();
+    });
+
+    it('allows closePeriod with forceCloseReason ≥50 chars + creates AuditLog (F-6-003)', async () => {
+      prisma.accountingPeriod.findUnique.mockResolvedValue({
+        id: 'period-f6003-force',
+        companyId: 'company-1',
+        year: 2026,
+        month: 4,
+        status: 'REVIEW',
+        auditIssues: {
+          totalJournals: 12,
+          unbalancedJournals: 2,
+          paymentsWithoutBreakdown: 0,
+          hasIssues: true,
+        },
+      });
+
+      accountingService.getBranchIdsForCompany.mockResolvedValue(['branch-1']);
+      journalAutoService.getTrialBalance.mockResolvedValue({
+        asOfDate: '2026-04-30',
+        accounts: [],
+        totalDebit: 0,
+        totalCredit: 0,
+        balanced: true,
+      });
+      accountingService.getProfitLossReport.mockResolvedValue({ totalRevenue: 0 });
+      accountingService.getBalanceSheet.mockResolvedValue({ totalAssets: 0 });
+      taxService.previewPP30.mockResolvedValue({ totalVatOutput: 0, netVat: 0 });
+
+      prisma.accountingPeriod.update.mockResolvedValue({
+        id: 'period-f6003-force',
+        companyId: 'company-1',
+        year: 2026,
+        month: 4,
+        status: 'CLOSED',
+        closedAt: new Date(),
+        closedById: 'user-1',
+        reportSnapshot: { generatedAt: new Date().toISOString() },
+        reviewStartedAt: null,
+        reviewStartedById: null,
+        peakSyncedAt: null,
+        peakSyncResult: null,
+        auditIssues: { hasIssues: true, unbalancedJournals: 2 },
+        notes: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      const reason =
+        'Issues acknowledged: unbalanced JEs traced to test data, will be cleaned in next sprint, force-closing for owner sign-off';
+
+      const result = await service.closePeriod(
+        'company-1',
+        2026,
+        4,
+        'user-1',
+        undefined,
+        reason,
+      );
+
+      expect(result.status).toBe('CLOSED');
+      expect(prisma.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            action: 'PERIOD_FORCE_CLOSE',
+            entity: 'accounting_period',
+            entityId: 'period-f6003-force',
+            userId: 'user-1',
+            newValue: expect.objectContaining({
+              reason,
+              period: '2026-04',
+            }),
+          }),
+        }),
       );
     });
   });

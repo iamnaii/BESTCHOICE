@@ -150,6 +150,11 @@ export class MonthlyCloseService {
   /**
    * REVIEW → CLOSED.
    * Generates report snapshots: trial balance, P&L, balance sheet, VAT summary.
+   *
+   * F-6-003 — Hard-blocks close when `existing.auditIssues.hasIssues=true`
+   * unless OWNER supplies `forceCloseReason` (≥50 chars, validated by DTO).
+   * Force close writes an AuditLog `PERIOD_FORCE_CLOSE` capturing the
+   * reason + the issues acknowledged at the time of close.
    */
   async closePeriod(
     companyId: string,
@@ -157,6 +162,7 @@ export class MonthlyCloseService {
     month: number,
     userId: string,
     notes?: string,
+    forceCloseReason?: string,
   ): Promise<PeriodStatusResult> {
     const existing = await this.prisma.accountingPeriod.findUnique({
       where: { companyId_year_month: { companyId, year, month } },
@@ -169,21 +175,55 @@ export class MonthlyCloseService {
       );
     }
 
+    // F-6-003 — enforce auditIssues unless OWNER provides forceCloseReason
+    const issues = (existing.auditIssues as { hasIssues?: boolean } | null) ?? null;
+    const hasIssues = issues?.hasIssues === true;
+    if (hasIssues && !forceCloseReason) {
+      throw new BadRequestException({
+        message:
+          'พบ issue ในงวดนี้ ต้องแก้ก่อนปิด หรือใส่ forceCloseReason (≥50 ตัวอักษร) เพื่อ override (OWNER เท่านั้น)',
+        issues,
+      });
+    }
+
     // Generate report snapshots
     const reportSnapshot = await this.generateReportSnapshots(companyId, year, month);
 
-    const period = await this.prisma.accountingPeriod.update({
-      where: { companyId_year_month: { companyId, year, month } },
-      data: {
-        status: 'CLOSED',
-        closedAt: new Date(),
-        closedById: userId,
-        reportSnapshot: reportSnapshot as unknown as import('@prisma/client').Prisma.JsonObject,
-        ...(notes !== undefined ? { notes } : {}),
-      },
+    const period = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.accountingPeriod.update({
+        where: { companyId_year_month: { companyId, year, month } },
+        data: {
+          status: 'CLOSED',
+          closedAt: new Date(),
+          closedById: userId,
+          reportSnapshot: reportSnapshot as unknown as import('@prisma/client').Prisma.JsonObject,
+          ...(notes !== undefined ? { notes } : {}),
+        },
+      });
+
+      if (forceCloseReason) {
+        await tx.auditLog.create({
+          data: {
+            userId,
+            action: 'PERIOD_FORCE_CLOSE',
+            entity: 'accounting_period',
+            entityId: existing.id,
+            newValue: {
+              reason: forceCloseReason,
+              issues: existing.auditIssues,
+              period: `${existing.year}-${String(existing.month).padStart(2, '0')}`,
+            } as unknown as import('@prisma/client').Prisma.JsonObject,
+          },
+        });
+      }
+
+      return updated;
     });
 
-    this.logger.log(`Period ${year}/${month} (company ${companyId}) CLOSED by ${userId}.`);
+    this.logger.log(
+      `Period ${year}/${month} (company ${companyId}) CLOSED by ${userId}.` +
+        (forceCloseReason ? ' [FORCE_CLOSE]' : ''),
+    );
 
     return period as PeriodStatusResult;
   }

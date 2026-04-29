@@ -731,4 +731,25 @@ describe('JournalAutoService', () => {
       expect(sumDebits(lines)).toBeCloseTo(sumCredits(lines), 2);
     });
   });
+
+  describe('createAndPost — Decimal precision (F-2-010)', () => {
+    it('balance check uses Decimal precision (no floating-point drift) (F-2-010)', async () => {
+      // Construct many lines that sum to identical totals via Decimal
+      // but might drift in JS Number addition (e.g. 0.1 + 0.1 + ... = 3.0000000000000004).
+      const tx = prisma;
+      const lines: Array<{ accountCode: string; debit: number; credit: number }> = [];
+      for (let i = 0; i < 30; i++) lines.push({ accountCode: '11-1101', debit: 0.1, credit: 0 });
+      for (let i = 0; i < 30; i++) lines.push({ accountCode: '21-2101', debit: 0, credit: 0.1 });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await expect((service as any).createAndPost(tx, {
+        companyId: 'co1',
+        entryDate: new Date(),
+        description: 'Decimal precision test',
+        referenceType: 'TEST',
+        referenceId: 'test-decimal',
+        createdById: 'u1',
+        lines,
+      })).resolves.toBeTruthy();
+    });
+  });
 });

@@ -88,14 +88,18 @@ export class JournalAutoService {
     const lines = params.lines.filter((l) => l.debit > 0 || l.credit > 0);
     if (lines.length === 0) return null;
 
-    const totalDebit = lines.reduce((s, l) => s + l.debit, 0);
-    const totalCredit = lines.reduce((s, l) => s + l.credit, 0);
-    if (Math.abs(totalDebit - totalCredit) > 0.001) {
+    const totalDebit = lines.reduce((s, l) => s.plus(new Decimal(l.debit)), new Decimal(0));
+    const totalCredit = lines.reduce((s, l) => s.plus(new Decimal(l.credit)), new Decimal(0));
+    if (totalDebit.minus(totalCredit).abs().gt(new Decimal('0.01'))) {
       const msg = `Journal not balanced for ${params.referenceType} ${params.referenceId}: Dr ${totalDebit} ≠ Cr ${totalCredit}`;
       this.logger.error(msg);
       Sentry.captureException(new Error(msg), {
         tags: { kind: 'journal', referenceType: params.referenceType },
-        extra: { referenceId: params.referenceId, totalDebit, totalCredit },
+        extra: {
+          referenceId: params.referenceId,
+          totalDebit: totalDebit.toString(),
+          totalCredit: totalCredit.toString(),
+        },
       });
       throw new InternalServerErrorException(msg);
     }

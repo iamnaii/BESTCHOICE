@@ -1180,6 +1180,7 @@ export class DataAuditService {
                   paidDate: payment.paidDate,
                 },
                 contract: {
+                  id: contract.id,
                   contractNumber: contract.contractNumber,
                   branchId: contract.branchId,
                 },

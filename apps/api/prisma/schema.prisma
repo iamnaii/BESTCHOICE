@@ -635,6 +635,7 @@ model User {
   dunningActionsExecuted      DunningAction[]           @relation("DunningActionExecutor")
   periodsReviewStarted        AccountingPeriod[]        @relation("PeriodReviewStartedBy")
   periodsClosed               AccountingPeriod[]        @relation("PeriodClosedBy")
+  periodsReopened             AccountingPeriod[]        @relation("PeriodReopenedBy")
   broadcastMessages           BroadcastMessage[]        @relation("BroadcastCreatedBy")
   broadcastsApproved          BroadcastMessage[]        @relation("BroadcastApprovedBy")
   broadcastsRejected          BroadcastMessage[]        @relation("BroadcastRejectedBy")
@@ -4692,6 +4693,10 @@ model AccountingPeriod {
   closedAt          DateTime? @map("closed_at")
   closedById        String?   @map("closed_by_id")
   closedBy          User?     @relation("PeriodClosedBy", fields: [closedById], references: [id])
+  reopenedAt        DateTime? @map("reopened_at")
+  reopenedById      String?   @map("reopened_by_id")
+  reopenedBy        User?     @relation("PeriodReopenedBy", fields: [reopenedById], references: [id])
+  boardResolutionId String?   @map("board_resolution_id")
 
   peakSyncedAt   DateTime? @map("peak_synced_at")
   peakSyncResult Json?     @map("peak_sync_result")

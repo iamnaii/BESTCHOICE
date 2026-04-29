@@ -14,7 +14,7 @@ describe('SkipTracingService', () => {
   const existingCustomer = {
     id: 'cust-1',
     phone: '0810000000',
-    lineId: 'old-line',
+    lineIdFinance: 'old-line',
     status: 'ACTIVE',
   };
 
@@ -73,15 +73,15 @@ describe('SkipTracingService', () => {
 
     expect(prisma.customer.update).toHaveBeenCalledWith({
       where: { id: 'cust-1' },
-      data: { lineId: 'new-line-id' },
+      data: { lineIdFinance: 'new-line-id' },
       select: expect.any(Object),
     });
-    expect(result.lineId).toBe('new-line-id');
+    expect(result.lineIdFinance).toBe('new-line-id');
     expect(result.phone).toBe('0810000000');
 
     const entry = audit.log.mock.calls[0][0];
-    expect(entry.oldValue.lineId).toBe('old-line');
-    expect(entry.newValue.lineId).toBe('new-line-id');
+    expect(entry.oldValue.lineIdFinance).toBe('old-line');
+    expect(entry.newValue.lineIdFinance).toBe('new-line-id');
   });
 
   it('marks customer as LOST and writes audit', async () => {

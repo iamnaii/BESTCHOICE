@@ -44,7 +44,7 @@ export class SkipTracingService {
       select: {
         id: true,
         phone: true,
-        lineId: true,
+        lineIdFinance: true,
         status: true,
       },
     });
@@ -55,12 +55,12 @@ export class SkipTracingService {
 
     const data: {
       phone?: string;
-      lineId?: string;
+      lineIdFinance?: string;
       status?: 'LOST';
     } = {};
 
     if (dto.newPhone !== undefined) data.phone = dto.newPhone;
-    if (dto.newLineId !== undefined) data.lineId = dto.newLineId;
+    if (dto.newLineId !== undefined) data.lineIdFinance = dto.newLineId;
     if (dto.markAsLost) data.status = 'LOST';
 
     const updated = await this.prisma.customer.update({
@@ -69,7 +69,7 @@ export class SkipTracingService {
       select: {
         id: true,
         phone: true,
-        lineId: true,
+        lineIdFinance: true,
         status: true,
       },
     });
@@ -82,12 +82,12 @@ export class SkipTracingService {
       entityId: customerId,
       oldValue: {
         phone: existing.phone,
-        lineId: existing.lineId,
+        lineIdFinance: existing.lineIdFinance,
         status: existing.status,
       },
       newValue: {
         phone: updated.phone,
-        lineId: updated.lineId,
+        lineIdFinance: updated.lineIdFinance,
         status: updated.status,
         reason: dto.reason,
       },

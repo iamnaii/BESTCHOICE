@@ -188,9 +188,9 @@ export class LineOaService {
    * Link a LINE user ID to a customer (on follow event)
    */
   async linkLineId(lineUserId: string): Promise<void> {
-    // Try to find existing customer with this lineId
+    // Try to find existing customer with this lineIdShop
     const existing = await this.prisma.customer.findFirst({
-      where: { lineId: lineUserId, deletedAt: null },
+      where: { lineIdShop: lineUserId, deletedAt: null },
     });
 
     if (existing) {
@@ -217,7 +217,7 @@ export class LineOaService {
   async selfLinkByPhone(lineUserId: string, phone: string): Promise<{ success: boolean; customerName?: string }> {
     // Check if already linked
     const alreadyLinked = await this.prisma.customer.findFirst({
-      where: { lineId: lineUserId, deletedAt: null },
+      where: { lineIdShop: lineUserId, deletedAt: null },
     });
     if (alreadyLinked) {
       return { success: true, customerName: alreadyLinked.name };
@@ -225,7 +225,7 @@ export class LineOaService {
 
     // Find customer by phone
     const customer = await this.prisma.customer.findFirst({
-      where: { phone, deletedAt: null, lineId: null },
+      where: { phone, deletedAt: null, lineIdShop: null },
     });
 
     if (!customer) {
@@ -235,7 +235,7 @@ export class LineOaService {
     // Link
     await this.prisma.customer.update({
       where: { id: customer.id },
-      data: { lineId: lineUserId },
+      data: { lineIdShop: lineUserId },
     });
 
     this.logger.log(`[LINE] Self-linked ${lineUserId} to customer ${customer.name} via phone ${phone}`);
@@ -247,8 +247,8 @@ export class LineOaService {
    */
   async unlinkLineId(lineUserId: string): Promise<void> {
     await this.prisma.customer.updateMany({
-      where: { lineId: lineUserId, deletedAt: null },
-      data: { lineId: null },
+      where: { lineIdShop: lineUserId, deletedAt: null },
+      data: { lineIdShop: null },
     });
     this.logger.log(`[LINE] Unlinked LINE ID ${lineUserId}`);
   }
@@ -258,7 +258,7 @@ export class LineOaService {
    */
   async findCustomerByLineId(lineUserId: string) {
     return this.prisma.customer.findFirst({
-      where: { lineId: lineUserId, deletedAt: null },
+      where: { lineIdShop: lineUserId, deletedAt: null },
       include: {
         contracts: {
           where: {
@@ -346,16 +346,16 @@ export class LineOaService {
       const customer = await this.prisma.customer.findFirst({
         where: {
           id: customerId,
-          lineId: { not: null },
+          lineIdShop: { not: null },
           deletedAt: null
         },
         select: {
-          lineId: true,
+          lineIdShop: true,
           name: true
         }
       });
 
-      if (!customer?.lineId) {
+      if (!customer?.lineIdShop) {
         this.logger.log('[LINE] Customer not linked to LINE, skipping receipt send');
         return false;
       }
@@ -395,13 +395,13 @@ export class LineOaService {
       };
 
       // Send receipt via LINE
-      await this.sendReceipt(customer.lineId, receiptData);
+      await this.sendReceipt(customer.lineIdShop, receiptData);
 
       // Log notification
       await this.prisma.notificationLog.create({
         data: {
           channel: 'LINE',
-          recipient: customer.lineId,
+          recipient: customer.lineIdShop,
           message: `ใบเสร็จ #${receipt.receiptNumber}`,
           status: 'SENT',
           sentAt: new Date(),
@@ -420,7 +420,7 @@ export class LineOaService {
 
   async findBranchForCustomer(lineUserId: string) {
     const customer = await this.prisma.customer.findFirst({
-      where: { lineId: lineUserId, deletedAt: null },
+      where: { lineIdShop: lineUserId, deletedAt: null },
       include: {
         contracts: {
           where: { deletedAt: null },
@@ -449,7 +449,7 @@ export class LineOaService {
     today.setHours(0, 0, 0, 0);
 
     const [linkedCustomers, pendingSlips, todayNotifications] = await Promise.all([
-      this.prisma.customer.count({ where: { lineId: { not: null }, deletedAt: null } }),
+      this.prisma.customer.count({ where: { lineIdShop: { not: null }, deletedAt: null } }),
       this.prisma.paymentEvidence.count({ where: { status: 'PENDING_REVIEW' } }),
       this.prisma.notificationLog.count({ where: { channel: 'LINE', sentAt: { gte: today } } }),
     ]);
@@ -628,47 +628,53 @@ export class LineOaService {
     switch (targetGroup) {
       case CampaignTargetGroup.ALL: {
         const customers = await this.prisma.customer.findMany({
-          where: { lineId: { not: null }, deletedAt: null, pdpaConsents: { some: { status: 'GRANTED', deletedAt: null } } },
-          select: { lineId: true, name: true },
+          where: { lineIdShop: { not: null }, deletedAt: null, pdpaConsents: { some: { status: 'GRANTED', deletedAt: null } } },
+          select: { lineIdShop: true, name: true },
         });
-        return customers.filter((c): c is { lineId: string; name: string } => c.lineId !== null);
+        return customers
+          .filter((c): c is { lineIdShop: string; name: string } => c.lineIdShop !== null)
+          .map((c) => ({ lineId: c.lineIdShop, name: c.name }));
       }
 
       case CampaignTargetGroup.ACTIVE: {
         const customers = await this.prisma.customer.findMany({
           where: {
-            lineId: { not: null },
+            lineIdShop: { not: null },
             deletedAt: null,
             pdpaConsents: { some: { status: 'GRANTED', deletedAt: null } },
             contracts: {
               some: { status: 'ACTIVE', deletedAt: null },
             },
           },
-          select: { lineId: true, name: true },
+          select: { lineIdShop: true, name: true },
         });
-        return customers.filter((c): c is { lineId: string; name: string } => c.lineId !== null);
+        return customers
+          .filter((c): c is { lineIdShop: string; name: string } => c.lineIdShop !== null)
+          .map((c) => ({ lineId: c.lineIdShop, name: c.name }));
       }
 
       case CampaignTargetGroup.OVERDUE: {
         const customers = await this.prisma.customer.findMany({
           where: {
-            lineId: { not: null },
+            lineIdShop: { not: null },
             deletedAt: null,
             pdpaConsents: { some: { status: 'GRANTED', deletedAt: null } },
             contracts: {
               some: { status: { in: ['OVERDUE', 'DEFAULT'] }, deletedAt: null },
             },
           },
-          select: { lineId: true, name: true },
+          select: { lineIdShop: true, name: true },
         });
-        return customers.filter((c): c is { lineId: string; name: string } => c.lineId !== null);
+        return customers
+          .filter((c): c is { lineIdShop: string; name: string } => c.lineIdShop !== null)
+          .map((c) => ({ lineId: c.lineIdShop, name: c.name }));
       }
 
       case CampaignTargetGroup.COMPLETED: {
         // Customers who have all contracts completed (loyalty group)
         const customers = await this.prisma.customer.findMany({
           where: {
-            lineId: { not: null },
+            lineIdShop: { not: null },
             deletedAt: null,
             pdpaConsents: { some: { status: 'GRANTED', deletedAt: null } },
             contracts: {
@@ -676,7 +682,7 @@ export class LineOaService {
             },
           },
           select: {
-            lineId: true,
+            lineIdShop: true,
             name: true,
             contracts: {
               where: { deletedAt: null },
@@ -689,14 +695,14 @@ export class LineOaService {
           .filter((c) => {
             // All contracts must be COMPLETED or EARLY_PAYOFF
             return (
-              c.lineId !== null &&
+              c.lineIdShop !== null &&
               c.contracts.length > 0 &&
               c.contracts.every((con) =>
                 ['COMPLETED', 'EARLY_PAYOFF'].includes(con.status),
               )
             );
           })
-          .map((c) => ({ lineId: c.lineId!, name: c.name }));
+          .map((c) => ({ lineId: c.lineIdShop!, name: c.name }));
       }
 
       default:

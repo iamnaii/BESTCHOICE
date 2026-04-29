@@ -67,7 +67,7 @@ const samplePayment = {
     customer: {
       id: 'cust-1',
       name: 'สมชาย',
-      lineId: 'U123',
+      lineIdFinance: 'U123',
       phone: '0812345678',
     },
   },
@@ -248,7 +248,7 @@ describe('DunningEngineService', () => {
       contractNumber: 'BC-001',
       customer: {
         name: 'สมชาย',
-        lineId: 'U123',
+        lineIdFinance: 'U123',
         phone: '0812345678',
       },
     };
@@ -320,7 +320,7 @@ describe('DunningEngineService', () => {
     it('creates action with SKIPPED status when customer has no lineId', async () => {
       mockPrisma.contract.findUnique.mockResolvedValueOnce({
         ...sampleContract,
-        customer: { ...sampleContract.customer, lineId: null },
+        customer: { ...sampleContract.customer, lineIdFinance: null },
       });
 
       await service.executeEventTrigger('CALL_NO_ANSWER', 'c-1', null, null);

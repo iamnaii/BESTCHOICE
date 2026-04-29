@@ -46,7 +46,7 @@ describe('DocumentsService', () => {
       lastName: 'ใจดี',
       nationalId: '1234567890123',
       phone: '0891234567',
-      lineId: 'U1234567890',
+      lineIdFinance: 'U1234567890',
       addressIdCard: 'กรุงเทพ',
       addressCurrent: 'กรุงเทพ',
       birthDate: null,

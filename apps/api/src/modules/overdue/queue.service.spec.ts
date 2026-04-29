@@ -82,7 +82,7 @@ describe('OverdueQueueService', () => {
       noAnswerCount: 0,
       needsSkipTracing: false,
       deviceLocked: false,
-      customer: { id: 'cust-1', name: 'สมชาย ใจดี', phone: '0812345678', lineId: 'line123' },
+      customer: { id: 'cust-1', name: 'สมชาย ใจดี', phone: '0812345678', lineIdFinance: 'line123' },
       branch: { id: 'branch-1', name: 'สาขาลาดพร้าว' },
       assignedTo: { id: 'user-1', name: 'นักติดตาม 1' },
       payments: [
@@ -278,7 +278,7 @@ describe('OverdueQueueService', () => {
       status: 'OVERDUE',
       dunningStage: 'NONE',
       customerId: 'cu',
-      customer: { id: 'cu', name: 'x', phone: '0', lineId: null },
+      customer: { id: 'cu', name: 'x', phone: '0', lineIdFinance: null },
       branch: { id: 'b', name: 'b' },
       assignedTo: null,
       noAnswerCount: 0,
@@ -518,7 +518,7 @@ describe('OverdueQueueService', () => {
         noAnswerCount: 0,
         needsSkipTracing: false,
         deviceLocked: false,
-        customer: { id: `cust-${id}`, name: `ลูกค้า ${id}`, phone: '0800000000', lineId: null },
+        customer: { id: `cust-${id}`, name: `ลูกค้า ${id}`, phone: '0800000000', lineIdFinance: null },
         branch: { id: 'branch-1', name: 'สาขา 1' },
         assignedTo: null,
         payments: [
@@ -865,7 +865,7 @@ describe('OverdueQueueService', () => {
         makeContract({
           id: 'c1',
           contractNumber: 'BC-1',
-          customer: { id: 'cu1', name: 'ก สมชาย', phone: '0811111111', lineId: null },
+          customer: { id: 'cu1', name: 'ก สมชาย', phone: '0811111111', lineIdFinance: null },
           payments: [
             {
               amountDue: '1000.00',
@@ -879,7 +879,7 @@ describe('OverdueQueueService', () => {
         makeContract({
           id: 'c2',
           contractNumber: 'BC-2',
-          customer: { id: 'cu2', name: 'ค สมหญิง', phone: '0822222222', lineId: null },
+          customer: { id: 'cu2', name: 'ค สมหญิง', phone: '0822222222', lineIdFinance: null },
           payments: [
             {
               amountDue: '5000.00',
@@ -893,7 +893,7 @@ describe('OverdueQueueService', () => {
         makeContract({
           id: 'c3',
           contractNumber: 'BC-3',
-          customer: { id: 'cu3', name: 'ข สมพร', phone: '0833333333', lineId: null },
+          customer: { id: 'cu3', name: 'ข สมพร', phone: '0833333333', lineIdFinance: null },
           payments: [
             {
               amountDue: '3000.00',
@@ -1012,7 +1012,7 @@ describe('OverdueQueueService', () => {
         noAnswerCount: 0,
         needsSkipTracing: false,
         deviceLocked: false,
-        customer: { id: `cu-${id}`, name: id, phone: '0', lineId: null },
+        customer: { id: `cu-${id}`, name: id, phone: '0', lineIdFinance: null },
         branch: { id: 'b', name: 'b' },
         assignedTo: null,
         payments: [

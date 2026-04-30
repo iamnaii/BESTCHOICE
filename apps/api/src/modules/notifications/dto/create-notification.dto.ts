@@ -1,4 +1,5 @@
-import { IsString, IsOptional, IsArray, IsDateString, IsBoolean, IsEnum, ValidateIf } from 'class-validator';
+import { IsString, IsOptional, IsArray, IsDateString, IsBoolean, IsEnum, IsUUID, ValidateIf } from 'class-validator';
+import { NotificationCategory } from '../notification-category.enum';
 
 export type LineChannelKey = 'line-shop' | 'line-finance' | 'line-staff';
 export const LINE_CHANNEL_KEYS: LineChannelKey[] = ['line-shop', 'line-finance', 'line-staff'];
@@ -40,6 +41,18 @@ export class SendNotificationDto {
   @ValidateIf((o) => o.channel === 'LINE')
   @IsEnum(LINE_CHANNEL_KEYS, { message: 'channelKey จำเป็นสำหรับ LINE — ต้องเป็น line-shop, line-finance หรือ line-staff' })
   channelKey?: LineChannelKey;
+
+  @IsUUID()
+  @IsOptional()
+  customerId?: string;
+
+  @IsEnum(NotificationCategory)
+  @IsOptional()
+  category?: NotificationCategory;
+
+  @IsBoolean()
+  @IsOptional()
+  bypassCompliance?: boolean;
 }
 
 export class CreateNotificationTemplateDto {

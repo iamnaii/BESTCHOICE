@@ -11,6 +11,8 @@ import { FlexMessagePayload } from '../line-oa/flex-messages/base-template';
 import { FlexTemplatesService } from '../line-oa/flex-templates.service';
 import { QuickReplyService } from '../line-oa/quick-reply.service';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
+import { ComplianceService } from './compliance.service';
+import { NotificationCategory } from './notification-category.enum';
 
 @Injectable()
 export class NotificationsService {
@@ -22,6 +24,7 @@ export class NotificationsService {
     private flexTemplates: FlexTemplatesService,
     private quickReplyService: QuickReplyService,
     private integrationConfig: IntegrationConfigService,
+    private compliance: ComplianceService,
   ) {}
 
   private async getLineToken(channelKey: LineChannelKey): Promise<string> {
@@ -51,7 +54,7 @@ export class NotificationsService {
   /**
    * Send a notification via LINE, SMS, or IN_APP with retry support
    */
-  async send(dto: SendNotificationDto): Promise<{ id: string; status: string; errorMsg?: string }> {
+  async send(dto: SendNotificationDto): Promise<{ id: string; status: string; errorMsg?: string; blockReason?: string }> {
     // LINE channel requires explicit channelKey — backward-compat default
     // ('line-finance') was removed in Phase 7 once all callers were updated.
     // DTO validator enforces this at the HTTP boundary; this guard catches
@@ -62,6 +65,44 @@ export class NotificationsService {
       );
     }
     const channelKey = dto.channelKey as LineChannelKey;
+
+    // ===== P2 Compliance gate =====
+    // Only enforce when category provided AND channel is LINE/SMS
+    // (IN_APP doesn't go to customer — staff-only context).
+    if (dto.category && (dto.channel === 'LINE' || dto.channel === 'SMS')) {
+      const result = await this.compliance.canSend({
+        channel: dto.channel as NotificationChannel,
+        customerId: dto.customerId,
+        contractId: dto.relatedId,
+        category: dto.category,
+        bypassCompliance: dto.bypassCompliance,
+      });
+
+      if (!result.allowed) {
+        // OUTSIDE_HOURS → DELAYED (will retry); other reasons → BLOCKED (final)
+        const blockedStatus = result.reason === 'OUTSIDE_HOURS' ? 'DELAYED' : 'BLOCKED';
+        const log = await this.prisma.notificationLog.create({
+          data: {
+            channel: dto.channel as NotificationChannel,
+            channelKey: dto.channelKey ?? null,
+            recipient: dto.recipient,
+            subject: dto.subject,
+            message: dto.message,
+            status: blockedStatus,
+            relatedId: dto.relatedId,
+            customerId: dto.customerId ?? null,
+            category: dto.category ?? null,
+            blockReason: result.reason ?? null,
+            errorMsg: blockedStatus === 'BLOCKED' ? `Compliance block: ${result.reason}` : null,
+            sentAt: null,
+            externalId: null,
+            nextRetryAt: result.retryAfter ?? null,
+          },
+        });
+        return { id: log.id, status: blockedStatus, blockReason: result.reason };
+      }
+    }
+    // ===== End compliance gate =====
 
     let status = 'PENDING';
     let errorMsg: string | null = null;
@@ -130,6 +171,9 @@ export class NotificationsService {
         message: dto.message,
         status,
         relatedId: dto.relatedId,
+        customerId: dto.customerId ?? null,
+        category: dto.category ?? null,
+        blockReason: null,
         errorMsg,
         sentAt,
         externalId,
@@ -607,7 +651,7 @@ export class NotificationsService {
 
     const pendingRetries = await this.prisma.notificationLog.findMany({
       where: {
-        status: 'RETRY_PENDING',
+        status: { in: ['RETRY_PENDING', 'DELAYED'] },
         nextRetryAt: { lte: now },
         createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
       },
@@ -619,6 +663,38 @@ export class NotificationsService {
     let failed = 0;
 
     for (const notification of pendingRetries) {
+      // Re-check compliance for DELAYED items (was blocked due to time window).
+      // If still outside hours, re-schedule; if now blocked for a different
+      // reason (e.g. consent revoked), mark BLOCKED and stop retrying.
+      if (notification.status === 'DELAYED' && notification.category) {
+        const result = await this.compliance.canSend({
+          channel: notification.channel,
+          customerId: notification.customerId ?? undefined,
+          contractId: notification.relatedId ?? undefined,
+          category: notification.category as NotificationCategory,
+        });
+        if (!result.allowed) {
+          if (result.reason === 'OUTSIDE_HOURS') {
+            await this.prisma.notificationLog.update({
+              where: { id: notification.id },
+              data: {
+                nextRetryAt: result.retryAfter ?? new Date(Date.now() + 60 * 60 * 1000),
+              },
+            });
+          } else {
+            await this.prisma.notificationLog.update({
+              where: { id: notification.id },
+              data: {
+                status: 'BLOCKED',
+                blockReason: result.reason ?? null,
+                errorMsg: `Compliance block on retry: ${result.reason}`,
+              },
+            });
+          }
+          continue;
+        }
+      }
+
       try {
         if (notification.channel === 'LINE') {
           // Use the original channelKey persisted on the log so retries hit

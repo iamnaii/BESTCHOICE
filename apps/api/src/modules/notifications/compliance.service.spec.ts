@@ -1,0 +1,147 @@
+import { Test } from '@nestjs/testing';
+import { ComplianceService } from './compliance.service';
+import { HolidayService } from './holiday.service';
+import { PrismaService } from '../../prisma/prisma.service';
+import { PDPAService } from '../pdpa/pdpa.service';
+import { NotificationCategory } from './notification-category.enum';
+
+describe('ComplianceService', () => {
+  let service: ComplianceService;
+  let prisma: { notificationLog: { count: jest.Mock } };
+  let pdpa: { hasActiveConsent: jest.Mock };
+  let holiday: { isHoliday: jest.Mock };
+
+  beforeEach(async () => {
+    prisma = { notificationLog: { count: jest.fn().mockResolvedValue(0) } };
+    pdpa = { hasActiveConsent: jest.fn().mockResolvedValue(true) };
+    holiday = { isHoliday: jest.fn().mockReturnValue(false) };
+
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        ComplianceService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: PDPAService, useValue: pdpa },
+        { provide: HolidayService, useValue: holiday },
+      ],
+    }).compile();
+
+    service = moduleRef.get(ComplianceService);
+  });
+
+  afterEach(() => jest.useRealTimers());
+
+  it('time-window: blocks weekday 23:00 ICT with OUTSIDE_HOURS', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-05-04T16:00:00Z'));
+    const result = await service.canSend({
+      channel: 'LINE',
+      customerId: 'c1',
+      contractId: 'k1',
+      category: NotificationCategory.DUNNING,
+    });
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toBe('OUTSIDE_HOURS');
+    expect(result.retryAfter).toBeDefined();
+  });
+
+  it('time-window: allows weekday 14:00 ICT', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-05-04T07:00:00Z'));
+    const result = await service.canSend({
+      channel: 'LINE',
+      customerId: 'c1',
+      contractId: 'k1',
+      category: NotificationCategory.DUNNING,
+    });
+    expect(result.allowed).toBe(true);
+  });
+
+  it('time-window: blocks weekend 19:00 ICT (after 18:00 weekend cutoff)', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-05-09T12:00:00Z'));
+    const result = await service.canSend({
+      channel: 'LINE',
+      customerId: 'c1',
+      contractId: 'k1',
+      category: NotificationCategory.DUNNING,
+    });
+    expect(result.allowed).toBe(false);
+  });
+
+  it('time-window: blocks holiday at 19:00 ICT (treated as weekend window)', async () => {
+    holiday.isHoliday.mockReturnValueOnce(true);
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-13T12:00:00Z'));
+    const result = await service.canSend({
+      channel: 'LINE',
+      customerId: 'c1',
+      contractId: 'k1',
+      category: NotificationCategory.DUNNING,
+    });
+    expect(result.allowed).toBe(false);
+  });
+
+  it('frequency-cap: blocks 2nd dunning to same (customer + contract) same day', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-05-04T07:00:00Z'));
+    prisma.notificationLog.count.mockResolvedValueOnce(1);
+    const result = await service.canSend({
+      channel: 'LINE',
+      customerId: 'c1',
+      contractId: 'k1',
+      category: NotificationCategory.DUNNING,
+    });
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toBe('FREQUENCY_CAP');
+  });
+
+  it('frequency-cap: does not apply to REMINDER', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-05-04T07:00:00Z'));
+    prisma.notificationLog.count.mockResolvedValueOnce(5);
+    const result = await service.canSend({
+      channel: 'LINE',
+      customerId: 'c1',
+      contractId: 'k1',
+      category: NotificationCategory.REMINDER,
+    });
+    expect(result.allowed).toBe(true);
+  });
+
+  it('PDPA: blocks DUNNING when no consent', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-05-04T07:00:00Z'));
+    pdpa.hasActiveConsent.mockResolvedValueOnce(false);
+    const result = await service.canSend({
+      channel: 'LINE',
+      customerId: 'c1',
+      contractId: 'k1',
+      category: NotificationCategory.DUNNING,
+    });
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toBe('NO_CONSENT');
+  });
+
+  it('bypass: TRANSACTIONAL category always allowed', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-05-04T20:00:00Z'));
+    const result = await service.canSend({
+      channel: 'LINE',
+      customerId: 'c1',
+      category: NotificationCategory.TRANSACTIONAL,
+    });
+    expect(result.allowed).toBe(true);
+  });
+
+  it('bypass: STAFF category always allowed', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-05-04T20:00:00Z'));
+    const result = await service.canSend({
+      channel: 'LINE',
+      category: NotificationCategory.STAFF,
+    });
+    expect(result.allowed).toBe(true);
+  });
+
+  it('bypass: bypassCompliance flag overrides everything', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-05-04T20:00:00Z'));
+    const result = await service.canSend({
+      channel: 'LINE',
+      customerId: 'c1',
+      category: NotificationCategory.DUNNING,
+      bypassCompliance: true,
+    });
+    expect(result.allowed).toBe(true);
+  });
+});

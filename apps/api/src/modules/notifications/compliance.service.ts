@@ -1,0 +1,134 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
+import { PDPAService } from '../pdpa/pdpa.service';
+import { HolidayService } from './holiday.service';
+import {
+  NotificationCategory,
+  COMPLIANCE_CHECKED_CATEGORIES,
+  FREQUENCY_CAP_CATEGORIES,
+} from './notification-category.enum';
+import { isWithinBusinessHours, nextBusinessHourOpen } from '../../utils/business-hours.util';
+import type { NotificationChannel } from '@prisma/client';
+
+export interface ComplianceContext {
+  channel: NotificationChannel;
+  customerId?: string;
+  contractId?: string;
+  category: NotificationCategory;
+  bypassCompliance?: boolean;
+}
+
+export type ComplianceBlockReason =
+  | 'OUTSIDE_HOURS'
+  | 'FREQUENCY_CAP'
+  | 'NO_CONSENT'
+  | 'HOLIDAY_BLOCK';
+
+export interface CanSendResult {
+  allowed: boolean;
+  reason?: ComplianceBlockReason;
+  retryAfter?: Date;
+}
+
+/**
+ * Single decision point for whether a notification may be sent right now.
+ *
+ * Gates (in order):
+ * 1. Bypass flag — explicit override (e.g., manual staff send-now)
+ * 2. Category bypass — TRANSACTIONAL (receipts) and STAFF skip all compliance
+ * 3. Time-window — Asia/Bangkok 8-20 weekday, 8-18 weekend/holiday
+ * 4. PDPA consent — required for any customer-facing send (DUNNING/REMINDER/MARKETING)
+ * 5. Frequency cap — 1/day per (customer + contract) for DUNNING only
+ *
+ * Compliance basis: พ.ร.บ.ทวงถามหนี้ พ.ศ. 2558 มาตรา 9 + PDPA.
+ */
+@Injectable()
+export class ComplianceService {
+  private readonly logger = new Logger(ComplianceService.name);
+
+  constructor(
+    private prisma: PrismaService,
+    private pdpa: PDPAService,
+    private holiday: HolidayService,
+  ) {}
+
+  async canSend(ctx: ComplianceContext): Promise<CanSendResult> {
+    if (ctx.bypassCompliance) return { allowed: true };
+
+    if (
+      ctx.category === NotificationCategory.TRANSACTIONAL ||
+      ctx.category === NotificationCategory.STAFF
+    ) {
+      return { allowed: true };
+    }
+
+    if (!COMPLIANCE_CHECKED_CATEGORIES.has(ctx.category)) {
+      return { allowed: true };
+    }
+
+    const now = new Date();
+    const isWeekendOrHoliday = this.isWeekendOrHoliday(now);
+
+    if (!isWithinBusinessHours(now, isWeekendOrHoliday)) {
+      return {
+        allowed: false,
+        reason: 'OUTSIDE_HOURS',
+        retryAfter: nextBusinessHourOpen(now, isWeekendOrHoliday),
+      };
+    }
+
+    if (ctx.customerId) {
+      const hasConsent = await this.pdpa.hasActiveConsent(ctx.customerId);
+      if (!hasConsent) {
+        this.logger.debug(`Compliance: no PDPA consent for customer ${ctx.customerId}`);
+        return { allowed: false, reason: 'NO_CONSENT' };
+      }
+    }
+
+    if (
+      FREQUENCY_CAP_CATEGORIES.has(ctx.category) &&
+      ctx.customerId &&
+      ctx.contractId
+    ) {
+      const todayStart = this.startOfBangkokDay(now);
+      const count = await this.prisma.notificationLog.count({
+        where: {
+          customerId: ctx.customerId,
+          relatedId: ctx.contractId,
+          category: ctx.category,
+          status: 'SENT',
+          sentAt: { gte: todayStart },
+          deletedAt: null,
+        },
+      });
+      if (count >= 1) {
+        return {
+          allowed: false,
+          reason: 'FREQUENCY_CAP',
+          retryAfter: nextBusinessHourOpen(now, isWeekendOrHoliday),
+        };
+      }
+    }
+
+    return { allowed: true };
+  }
+
+  private isWeekendOrHoliday(date: Date): boolean {
+    if (this.holiday.isHoliday(date)) return true;
+    const weekday = date.toLocaleString('en-US', {
+      timeZone: 'Asia/Bangkok',
+      weekday: 'short',
+    });
+    return weekday === 'Sat' || weekday === 'Sun';
+  }
+
+  private startOfBangkokDay(date: Date): Date {
+    const localDate = date.toLocaleDateString('en-CA', {
+      timeZone: 'Asia/Bangkok',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    return new Date(`${localDate}T00:00:00+07:00`);
+  }
+}

@@ -1,4 +1,4 @@
--- Seed 18 required notification templates
+-- Seed 19 required notification templates
 -- Idempotent via ON CONFLICT (event_type) DO NOTHING
 
 -- Dunning escalation stages (4)

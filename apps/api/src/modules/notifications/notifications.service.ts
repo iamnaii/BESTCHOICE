@@ -485,18 +485,19 @@ export class NotificationsService {
   }
 
   /**
-   * Replace {placeholders} in a string with data values
+   * Replace ${placeholders} in a string with data values.
+   * Matches NotificationTemplateService syntax (${var}). Unknown vars are
+   * left in their original ${var} form so reviewers spot them in logs.
    */
   private replacePlaceholders(text: string, data: Record<string, string>): string {
-    let result = text;
-    for (const [key, value] of Object.entries(data)) {
-      result = result.replace(new RegExp(`\\{${key}\\}`, 'g'), value);
-    }
-    return result;
+    return text.replace(/\$\{([^}]+)\}/g, (_match, varName: string) => {
+      const trimmed = varName.trim();
+      return data[trimmed] ?? `\${${trimmed}}`;
+    });
   }
 
   /**
-   * Replace {placeholders} in a JSON object recursively
+   * Replace ${placeholders} in a JSON object recursively
    */
   private replacePlaceholdersInJson(obj: unknown, data: Record<string, string>): unknown {
     if (typeof obj === 'string') {
@@ -542,6 +543,7 @@ export class NotificationsService {
       Sentry.captureMessage(`Notification template missing: ${eventType}`, {
         level: 'error',
         tags: { module: 'notifications', eventType },
+        fingerprint: ['template-missing', eventType],
       });
       throw new InternalServerErrorException(`Notification template not found: ${eventType}`);
     }
@@ -551,6 +553,7 @@ export class NotificationsService {
       Sentry.captureMessage(`Notification template inactive: ${eventType}`, {
         level: 'warning',
         tags: { module: 'notifications', eventType },
+        fingerprint: ['template-inactive', eventType],
       });
       return { id: null, status: 'BLOCKED', blockReason: 'TEMPLATE_INACTIVE' };
     }

@@ -1,8 +1,12 @@
-import { IsBoolean, IsEnum, IsObject, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsBoolean, IsEnum, IsObject, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 import { NotificationCategory, NotificationChannel } from '@prisma/client';
 
 export class CreateNotificationTemplateDto {
-  @IsString() @MaxLength(100)
+  @IsString()
+  @MaxLength(100)
+  @Matches(/^[a-z][a-z0-9_.-]*$/i, {
+    message: 'eventType ต้องเริ่มด้วยตัวอักษร และมีเฉพาะ a-z, 0-9, ., _, - เท่านั้น',
+  })
   eventType!: string;
 
   @IsString() @MaxLength(200)

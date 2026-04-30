@@ -151,7 +151,7 @@ export class NotificationsController {
   }
 
   @Post('templates/:eventType/test-send')
-  @Roles('OWNER', 'BRANCH_MANAGER')
+  @Roles('OWNER')
   async testSendTemplate(
     @Param('eventType') eventType: string,
     @Body() dto: TestSendTemplateDto,

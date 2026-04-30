@@ -54,7 +54,7 @@ export class SchedulerService {
   /**
    * Run daily at midnight: calculate late fees for all overdue payments
    */
-  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT, { timeZone: 'Asia/Bangkok' })
   async handleLateFeeCalculation() {
     this.logger.log('Starting daily late fee calculation...');
     try {
@@ -68,7 +68,7 @@ export class SchedulerService {
   /**
    * Run daily at 00:30: update contract statuses (ACTIVE->OVERDUE->DEFAULT)
    */
-  @Cron('30 0 * * *')
+  @Cron('30 0 * * *', { timeZone: 'Asia/Bangkok' })
   async handleContractStatusUpdate() {
     this.logger.log('Starting daily contract status update...');
     try {
@@ -150,7 +150,7 @@ export class SchedulerService {
   /**
    * Run daily at 08:00: send payment reminders (3 days and 1 day before due)
    */
-  @Cron('0 8 * * *')
+  @Cron('0 8 * * *', { timeZone: 'Asia/Bangkok' })
   async handlePaymentReminders() {
     this.logger.log('Starting daily payment reminders...');
     try {
@@ -164,7 +164,7 @@ export class SchedulerService {
   /**
    * Run daily at 09:00: send overdue notices (day 1, 3, 7)
    */
-  @Cron('0 9 * * *')
+  @Cron('0 9 * * *', { timeZone: 'Asia/Bangkok' })
   async handleOverdueNotices() {
     this.logger.log('Starting daily overdue notices...');
     try {
@@ -178,7 +178,7 @@ export class SchedulerService {
   /**
    * Run daily at 09:30: notify branch managers about overdue contracts
    */
-  @Cron('30 9 * * *')
+  @Cron('30 9 * * *', { timeZone: 'Asia/Bangkok' })
   async handleManagerNotifications() {
     this.logger.log('Starting manager notifications...');
     try {
@@ -192,7 +192,7 @@ export class SchedulerService {
   /**
    * Run daily at 10:00: notify owner about defaulted contracts
    */
-  @Cron('0 10 * * *')
+  @Cron('0 10 * * *', { timeZone: 'Asia/Bangkok' })
   async handleOwnerDefaultNotifications() {
     this.logger.log('Starting owner default notifications...');
     try {
@@ -206,7 +206,7 @@ export class SchedulerService {
   /**
    * Run daily at 01:00: escalate dunning stages and send stage-specific notifications
    */
-  @Cron('0 1 * * *')
+  @Cron('0 1 * * *', { timeZone: 'Asia/Bangkok' })
   async handleDunningEscalation() {
     this.logger.log('Starting daily dunning escalation...');
     try {
@@ -277,7 +277,7 @@ export class SchedulerService {
   /**
    * Run daily at 07:00: check stock levels and send alerts for low stock
    */
-  @Cron('0 7 * * *')
+  @Cron('0 7 * * *', { timeZone: 'Asia/Bangkok' })
   async handleStockLevelCheck() {
     this.logger.log('Starting daily stock level check...');
     try {
@@ -291,7 +291,7 @@ export class SchedulerService {
   /**
    * Run every 5 minutes: SLA alerts for contracts pending approval > 20min/60min
    */
-  @Cron('*/5 * * * *')
+  @Cron('*/5 * * * *', { timeZone: 'Asia/Bangkok' })
   async handleSlaNotifications() {
     this.logger.log('Starting SLA notification check...');
     try {
@@ -349,7 +349,7 @@ export class SchedulerService {
    * Run daily at 08:15: execute configurable dunning rules
    * Runs AFTER payment reminders (08:00) and BEFORE overdue notices (09:00)
    */
-  @Cron('15 8 * * *')
+  @Cron('15 8 * * *', { timeZone: 'Asia/Bangkok' })
   async handleDunningRuleExecution() {
     this.logger.log('Starting configurable dunning rule execution...');
     try {
@@ -365,7 +365,7 @@ export class SchedulerService {
   /**
    * Run daily at 08:30: auto-send payment links 3 days before due
    */
-  @Cron('30 8 * * *')
+  @Cron('30 8 * * *', { timeZone: 'Asia/Bangkok' })
   async handleAutoPaymentLinks() {
     this.logger.log('Starting auto payment link generation...');
     try {
@@ -438,7 +438,7 @@ export class SchedulerService {
    * Run every 5 minutes: process notification retry queue
    * Retries failed LINE/SMS notifications with exponential backoff
    */
-  @Cron('*/5 * * * *')
+  @Cron('*/5 * * * *', { timeZone: 'Asia/Bangkok' })
   async handleNotificationRetryQueue() {
     try {
       const result = await this.notificationsService.processRetryQueue();
@@ -451,12 +451,12 @@ export class SchedulerService {
   }
 
   /**
-   * Run weekly on Sunday at 02:00: data retention cleanup
+   * Run weekly on Sunday at 09:00 ICT: data retention cleanup
    * - 5 years after COMPLETED/EARLY_PAYOFF → soft-delete contract data
    * - 2 years after CLOSED_BAD_DEBT/EXCHANGED → soft-delete contract data
    * - Clean expired customer access tokens
    */
-  @Cron('0 2 * * 0')
+  @Cron('0 9 * * 0', { timeZone: 'Asia/Bangkok' }) // Sunday 09:00 ICT
   async handleDataRetention() {
     this.logger.log('Starting weekly data retention cleanup...');
     try {
@@ -556,9 +556,9 @@ export class SchedulerService {
 
   /**
    * Daily: Generate daily financial summary report.
-   * Runs at 23:55 ICT (16:55 UTC) to capture full day's data.
+   * Runs at 23:55 ICT to capture full day's data.
    */
-  @Cron('55 16 * * *') // 23:55 ICT
+  @Cron('55 23 * * *', { timeZone: 'Asia/Bangkok' }) // 23:55 ICT
   async handleDailyReport() {
     try {
       const report = await this.reportGeneratorService.generateDailySummary();
@@ -571,7 +571,7 @@ export class SchedulerService {
   /**
    * Weekly: Generate weekly summary (every Monday at 00:05 ICT).
    */
-  @Cron('5 17 * * 0') // Monday 00:05 ICT (Sunday 17:05 UTC)
+  @Cron('5 0 * * 1', { timeZone: 'Asia/Bangkok' }) // Monday 00:05 ICT
   async handleWeeklyReport() {
     try {
       const report = await this.reportGeneratorService.generateWeeklySummary();
@@ -583,9 +583,9 @@ export class SchedulerService {
 
   /**
    * Daily: Mark expired warranties and log count.
-   * Runs at 02:30 ICT (19:30 UTC previous day) to avoid overlap with backup cron.
+   * Runs at 02:30 ICT to avoid overlap with backup cron.
    */
-  @Cron('30 19 * * *') // 02:30 ICT
+  @Cron('30 2 * * *', { timeZone: 'Asia/Bangkok' }) // 02:30 ICT
   async handleWarrantyExpiry() {
     try {
       const count = await this.warrantyService.markExpiredWarranties();
@@ -602,7 +602,7 @@ export class SchedulerService {
    * ChatMessage has a deletedAt field so we use soft-delete to preserve referential integrity.
    * DocumentAuditLog (no deletedAt) uses hard-delete in the companion cron below.
    */
-  @Cron('0 2 1 * *')
+  @Cron('0 2 1 * *', { timeZone: 'Asia/Bangkok' })
   async handleChatMessageRetention() {
     this.logger.log('Starting monthly ChatMessage retention cleanup...');
     try {
@@ -628,7 +628,7 @@ export class SchedulerService {
    * DocumentAuditLog has no deletedAt column (append-only audit trail) so we hard-delete.
    * 2-year retention satisfies Thai e-commerce / PDPA audit trail requirements.
    */
-  @Cron('15 2 1 * *')
+  @Cron('15 2 1 * *', { timeZone: 'Asia/Bangkok' })
   async handleDocumentAuditLogRetention() {
     this.logger.log('Starting monthly DocumentAuditLog retention cleanup...');
     try {
@@ -646,9 +646,9 @@ export class SchedulerService {
   }
 
   /**
-   * Daily at 20:00 ICT (13:00 UTC): Send daily summary report via LINE to all OWNER users
+   * Daily at 20:00 ICT: Send daily summary report via LINE to all OWNER users
    */
-  @Cron('0 13 * * *') // 20:00 ICT
+  @Cron('0 20 * * *', { timeZone: 'Asia/Bangkok' }) // 20:00 ICT
   async handleDailyLineReport() {
     this.logger.log('Starting daily LINE report to OWNER users...');
     try {
@@ -725,7 +725,7 @@ export class SchedulerService {
   /**
    * Run daily at 09:00 ICT — alert if SMS credit is low
    */
-  @Cron('0 2 * * *') // 09:00 ICT = 02:00 UTC
+  @Cron('0 9 * * *', { timeZone: 'Asia/Bangkok' }) // 09:00 ICT
   async handleSmsCreditAlert() {
     this.logger.log('Checking SMS credit balance...');
     try {

@@ -143,7 +143,7 @@ function PromiseCycleView({ row }: { row: ContractRow }) {
                 className={`px-2 py-0.5 rounded text-xs font-medium leading-snug ${tone}`}
                 title={`งวดที่ ${s.slotIndex} — ${slotDate} · ${s.settlementAmount.toLocaleString()} ฿`}
               >
-                งวด {s.slotIndex}
+                งวด {s.slotIndex} · {slotDate} · {s.settlementAmount.toLocaleString()} ฿
               </div>
             );
           })}

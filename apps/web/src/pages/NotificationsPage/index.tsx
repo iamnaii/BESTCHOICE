@@ -73,6 +73,11 @@ export default function NotificationsPage() {
     queryFn: async () => (await api.get('/notifications/logs/stats')).data,
   });
 
+  const { data: complianceStats } = useQuery<Record<string, number>>({
+    queryKey: ['notification-compliance-stats'],
+    queryFn: async () => (await api.get('/notifications/compliance/stats')).data,
+  });
+
   const sendNotificationMutation = useMutation({
     mutationFn: async (data: {
       customerId: string;
@@ -184,6 +189,41 @@ export default function NotificationsPage() {
       )}
 
       </QueryBoundary>
+
+      {/* Compliance block-rate (last 7 days) */}
+      {complianceStats && Object.values(complianceStats).some((n) => n > 0) && (
+        <div className="rounded-lg border border-border bg-muted/30 p-4 mb-6">
+          <div className="text-sm text-muted-foreground mb-2">
+            Compliance blocks (7 วันล่าสุด)
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+            <div>
+              นอกเวลา:{' '}
+              <span className="font-semibold tabular-nums">
+                {complianceStats.OUTSIDE_HOURS}
+              </span>
+            </div>
+            <div>
+              เกินจำนวนครั้ง:{' '}
+              <span className="font-semibold tabular-nums">
+                {complianceStats.FREQUENCY_CAP}
+              </span>
+            </div>
+            <div>
+              ไม่มี PDPA:{' '}
+              <span className="font-semibold tabular-nums">
+                {complianceStats.NO_CONSENT}
+              </span>
+            </div>
+            <div>
+              วันหยุด:{' '}
+              <span className="font-semibold tabular-nums">
+                {complianceStats.HOLIDAY_BLOCK}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Quick Actions */}
       <div className="flex gap-3 mb-6">

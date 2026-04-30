@@ -69,6 +69,12 @@ export class NotificationsController {
     return this.notificationsService.getLogStats();
   }
 
+  @Get('compliance/stats')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER')
+  getComplianceStats() {
+    return this.notificationsService.getComplianceStats(7);
+  }
+
   // ============================================================
   // TEMPLATES
   // ============================================================

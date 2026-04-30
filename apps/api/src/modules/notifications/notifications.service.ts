@@ -815,6 +815,37 @@ export class NotificationsService {
     return result;
   }
 
+  /**
+   * Compliance block-rate stats — last N days, grouped by blockReason.
+   * Used by NotificationsPage dashboard to surface compliance enforcement
+   * activity (OUTSIDE_HOURS / FREQUENCY_CAP / NO_CONSENT / HOLIDAY_BLOCK).
+   */
+  async getComplianceStats(days = 7) {
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const blocks = await this.prisma.notificationLog.groupBy({
+      by: ['blockReason'],
+      where: {
+        blockReason: { not: null },
+        createdAt: { gte: since },
+        deletedAt: null,
+      },
+      _count: { _all: true },
+    });
+
+    const result: Record<string, number> = {
+      OUTSIDE_HOURS: 0,
+      FREQUENCY_CAP: 0,
+      NO_CONSENT: 0,
+      HOLIDAY_BLOCK: 0,
+    };
+    for (const b of blocks) {
+      if (b.blockReason && result[b.blockReason] !== undefined) {
+        result[b.blockReason] = b._count._all;
+      }
+    }
+    return result;
+  }
+
   // ============================================================
   // NOTIFICATION TEMPLATES (stored in system_config)
   // ============================================================

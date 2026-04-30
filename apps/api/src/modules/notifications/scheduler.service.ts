@@ -520,13 +520,18 @@ export class SchedulerService {
       //                      standard). Soft-archive via archivedAt instead of
       //                      DELETE — a DB trigger also rejects DELETE so this
       //                      logic cannot be weaponised by a malicious path.
-      //   - NotificationLog: เก็บ 6 เดือน (delivery report ไม่ต้องเก็บนาน)
+      //   - NotificationLog (finance: DUNNING/REMINDER/TRANSACTIONAL):
+      //                      เก็บ 5 ปี — พ.ร.บ.ทวงถามหนี้ มาตรา 16 + Revenue Code
+      //                      (ต้องเก็บ delivery proof สำหรับ debt collection audit)
+      //   - NotificationLog (STAFF/MARKETING/legacy null):
+      //                      เก็บ 1 ปี (delivery report ไม่ต้องเก็บนาน)
       const sevenYearsAgo = new Date(
         now.getFullYear() - 7,
         now.getMonth(),
         now.getDate(),
       );
-      const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate());
+      const oneYearAgoLogs = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+      const fiveYearsAgoLogs = new Date(now.getFullYear() - 5, now.getMonth(), now.getDate());
 
       let auditLogsArchived = 0;
       try {
@@ -539,20 +544,43 @@ export class SchedulerService {
         this.logger.warn(`AuditLog archive failed: ${err instanceof Error ? err.message : err}`);
       }
 
-      let notificationLogsCleared = 0;
+      // Finance categories — 5 year retention (พ.ร.บ.ทวงถามหนี้ มาตรา 16)
+      let financeLogsCleared = 0;
       try {
         const result = await this.prisma.notificationLog.deleteMany({
-          where: { createdAt: { lt: sixMonthsAgo } },
+          where: {
+            category: { in: ['DUNNING', 'REMINDER', 'TRANSACTIONAL'] },
+            createdAt: { lt: fiveYearsAgoLogs },
+          },
         });
-        notificationLogsCleared = result.count;
+        financeLogsCleared = result.count;
       } catch (err) {
-        this.logger.warn(`NotificationLog cleanup failed: ${err instanceof Error ? err.message : err}`);
+        this.logger.warn(
+          `NotificationLog finance cleanup failed: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+
+      // Non-finance / legacy — 1 year retention
+      let otherLogsCleared = 0;
+      try {
+        const result = await this.prisma.notificationLog.deleteMany({
+          where: {
+            OR: [{ category: { in: ['STAFF', 'MARKETING'] } }, { category: null }],
+            createdAt: { lt: oneYearAgoLogs },
+          },
+        });
+        otherLogsCleared = result.count;
+      } catch (err) {
+        this.logger.warn(
+          `NotificationLog other cleanup failed: ${err instanceof Error ? err.message : err}`,
+        );
       }
 
       this.logger.log(
         `Data retention complete: ${completedAnonymized.count} completed, ${cancelledAnonymized.count} cancelled soft-deleted, ` +
         `${tokensCleared} expired tokens, ${consentsCleared} withdrawn consents, ` +
-        `${auditLogsArchived} audit logs archived, ${notificationLogsCleared} notification logs cleared`,
+        `${auditLogsArchived} audit logs archived, ` +
+        `${financeLogsCleared} finance notification logs (>5y) + ${otherLogsCleared} other (>1y) cleared`,
       );
     } catch (error) {
       this.reportCronFailure('data-retention', error);

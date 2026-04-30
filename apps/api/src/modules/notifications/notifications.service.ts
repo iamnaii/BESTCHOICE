@@ -533,6 +533,7 @@ export class NotificationsService {
       relatedId?: string;
       customerId?: string;
       bypassCompliance?: boolean;
+      fallbackPhone?: string;
     } = {},
   ): Promise<{ id: string | null; status: string; blockReason?: string }> {
     const tpl = await this.templateService.findByEventType(eventType);
@@ -598,6 +599,7 @@ export class NotificationsService {
       customerId: options.customerId,
       category: tpl.category,
       bypassCompliance: options.bypassCompliance,
+      fallbackPhone: options.fallbackPhone,
     });
   }
 

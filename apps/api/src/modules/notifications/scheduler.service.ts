@@ -17,6 +17,7 @@ import { DashboardService } from '../dashboard/dashboard.service';
 import { PDPAService } from '../pdpa/pdpa.service';
 import { DunningEngineService } from '../overdue/dunning-engine.service';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
+import { isSmsPaymentReminderDisabled } from '../../utils/sms-payment-reminder.util';
 
 @Injectable()
 export class SchedulerService {
@@ -261,6 +262,9 @@ export class SchedulerService {
             {
               relatedId: esc.contractId,
               customerId: contract.customerId,
+              fallbackPhone: isSmsPaymentReminderDisabled()
+                ? undefined
+                : contract.customer.phone || undefined,
             },
           );
           notified++;

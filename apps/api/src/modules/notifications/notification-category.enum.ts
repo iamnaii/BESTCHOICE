@@ -1,10 +1,5 @@
-export enum NotificationCategory {
-  DUNNING = 'DUNNING',             // ทวงถามหนี้ — strict + frequency cap
-  REMINDER = 'REMINDER',           // เตือนก่อนงวด — strict windows + PDPA, no cap
-  TRANSACTIONAL = 'TRANSACTIONAL', // ใบเสร็จ — bypassed
-  STAFF = 'STAFF',                 // staff alerts — bypass time windows
-  MARKETING = 'MARKETING',         // promo — strict + opt-in
-}
+import { NotificationCategory } from '@prisma/client';
+export { NotificationCategory };
 
 export const COMPLIANCE_CHECKED_CATEGORIES = new Set<NotificationCategory>([
   NotificationCategory.DUNNING,

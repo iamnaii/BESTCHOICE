@@ -240,6 +240,14 @@ enum NotificationChannel {
   IN_APP
 }
 
+enum NotificationCategory {
+  DUNNING
+  REMINDER
+  TRANSACTIONAL
+  STAFF
+  MARKETING
+}
+
 enum RepossessionStatus {
   REPOSSESSED
   UNDER_REPAIR
@@ -1835,6 +1843,30 @@ model NotificationLog {
   @@index([customerId, relatedId, category, sentAt])
   @@index([category, sentAt])
   @@map("notification_logs")
+}
+
+model NotificationTemplate {
+  id              String                @id @default(uuid())
+  eventType       String                @unique @map("event_type")
+  name            String
+  category        NotificationCategory
+  channelKey      String?               @map("channel_key")
+  channel         NotificationChannel
+  format          String                @default("text")
+  subject         String?
+  messageTemplate String                @map("message_template") @db.Text
+  flexTemplate    String?               @map("flex_template") @db.Text
+  description     String?               @db.Text
+  isActive        Boolean               @default(true) @map("is_active")
+  sampleData      Json?                 @map("sample_data")
+  lastEditedBy    String?               @map("last_edited_by")
+  createdAt       DateTime              @default(now()) @map("created_at")
+  updatedAt       DateTime              @updatedAt @map("updated_at")
+  deletedAt       DateTime?             @map("deleted_at")
+
+  @@index([eventType])
+  @@index([category])
+  @@map("notification_templates")
 }
 
 model CallLog {

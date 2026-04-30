@@ -163,7 +163,36 @@ If you see `getValue('line-shop', ...)` hardcoded → revert to channelKey param
 - [ ] If runbook missed the case, update this doc
 - [ ] If a code change is needed, open PR and link to incident report
 
+## P2 Compliance failure modes
+
+### Symptom: status='BLOCKED' or status='DELAYED' in notification_logs
+
+These are EXPECTED, not failures — they are compliance enforcement.
+
+| status | block_reason | action |
+|---|---|---|
+| `BLOCKED` | `FREQUENCY_CAP` | wait — only 1 dunning per (customer+contract) per day allowed |
+| `BLOCKED` | `NO_CONSENT` | re-obtain PDPA consent from customer |
+| `DELAYED` | `OUTSIDE_HOURS` | none — retry queue auto-resumes at 08:00 ICT next window |
+| `DELAYED` | `HOLIDAY_BLOCK` | none — auto-resumes after holiday |
+
+### Symptom: Dunning queue accumulating (DELAYED count rising)
+
+Likely cause: too many crons firing outside business hours, OR retry queue cron not running.
+
+Action:
+1. Check cron status: `grep "handleNotificationRetryQueue" apps/api/src/modules/notifications/scheduler.service.ts`
+2. Cloud Run logs: search for "retry queue" entries — should appear every 5 min
+3. If retry queue stuck, restart Cloud Run service
+
+### Symptom: Sentry warns about content guardrails
+
+`Notification content review needed: <reasons>` warnings — review the template that produced this message. May contain forbidden words. Update template to use compliant wording.
+
+See `notifications-compliance.md` for full guidance.
+
 ## Related
 
 - Spec: `docs/superpowers/specs/2026-04-30-notifications-p1-operational-readiness-design.md`
+- Compliance: `docs/runbooks/notifications-compliance.md`
 - Credential rotation: `docs/runbooks/notifications-credential-rotation.md`

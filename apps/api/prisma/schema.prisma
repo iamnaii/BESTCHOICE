@@ -1816,6 +1816,9 @@ model NotificationLog {
   externalId     String?             @map("external_id") // message_id from ThaiBulkSMS / LINE
   deliveryStatus String?             @map("delivery_status") // DELIVERED, UNDELIVERED, REJECTED, etc.
   deliveredAt    DateTime?           @map("delivered_at")
+  customerId     String?             @map("customer_id")
+  category       String?             @map("category") // DUNNING | REMINDER | TRANSACTIONAL | STAFF | MARKETING
+  blockReason    String?             @map("block_reason") // OUTSIDE_HOURS | FREQUENCY_CAP | NO_CONSENT | HOLIDAY_BLOCK
   createdAt      DateTime            @default(now()) @map("created_at")
   updatedAt      DateTime            @updatedAt @map("updated_at")
   deletedAt      DateTime?           @map("deleted_at")
@@ -1829,6 +1832,8 @@ model NotificationLog {
   // Speeds up the per-payment dedup probe in notifications.service.ts
   // (queries by relatedId + subject + sentAt to skip already-sent reminders)
   @@index([relatedId, subject, sentAt])
+  @@index([customerId, relatedId, category, sentAt])
+  @@index([category, sentAt])
   @@map("notification_logs")
 }
 

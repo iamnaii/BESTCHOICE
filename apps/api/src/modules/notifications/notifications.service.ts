@@ -11,6 +11,8 @@ import { FlexMessagePayload } from '../line-oa/flex-messages/base-template';
 import { FlexTemplatesService } from '../line-oa/flex-templates.service';
 import { QuickReplyService } from '../line-oa/quick-reply.service';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
+import { ComplianceService } from './compliance.service';
+import { NotificationCategory } from './notification-category.enum';
 
 @Injectable()
 export class NotificationsService {
@@ -22,6 +24,7 @@ export class NotificationsService {
     private flexTemplates: FlexTemplatesService,
     private quickReplyService: QuickReplyService,
     private integrationConfig: IntegrationConfigService,
+    private compliance: ComplianceService,
   ) {}
 
   private async getLineToken(channelKey: LineChannelKey): Promise<string> {
@@ -51,7 +54,7 @@ export class NotificationsService {
   /**
    * Send a notification via LINE, SMS, or IN_APP with retry support
    */
-  async send(dto: SendNotificationDto): Promise<{ id: string; status: string; errorMsg?: string }> {
+  async send(dto: SendNotificationDto): Promise<{ id: string; status: string; errorMsg?: string; blockReason?: string }> {
     // LINE channel requires explicit channelKey — backward-compat default
     // ('line-finance') was removed in Phase 7 once all callers were updated.
     // DTO validator enforces this at the HTTP boundary; this guard catches
@@ -63,6 +66,63 @@ export class NotificationsService {
     }
     const channelKey = dto.channelKey as LineChannelKey;
 
+    // ===== P2 Compliance gate =====
+    // Only enforce when category provided AND channel is LINE/SMS
+    // (IN_APP doesn't go to customer — staff-only context).
+    if (dto.category && (dto.channel === 'LINE' || dto.channel === 'SMS')) {
+      const result = await this.compliance.canSend({
+        channel: dto.channel as NotificationChannel,
+        customerId: dto.customerId,
+        contractId: dto.relatedId,
+        category: dto.category,
+        bypassCompliance: dto.bypassCompliance,
+      });
+
+      if (!result.allowed) {
+        // OUTSIDE_HOURS → DELAYED (will retry); other reasons → BLOCKED (final)
+        const blockedStatus = result.reason === 'OUTSIDE_HOURS' ? 'DELAYED' : 'BLOCKED';
+        const log = await this.prisma.notificationLog.create({
+          data: {
+            channel: dto.channel as NotificationChannel,
+            channelKey: dto.channelKey ?? null,
+            recipient: dto.recipient,
+            subject: dto.subject,
+            message: dto.message,
+            status: blockedStatus,
+            relatedId: dto.relatedId,
+            customerId: dto.customerId ?? null,
+            category: dto.category ?? null,
+            blockReason: result.reason ?? null,
+            errorMsg: blockedStatus === 'BLOCKED' ? `Compliance block: ${result.reason}` : null,
+            sentAt: null,
+            externalId: null,
+            nextRetryAt: result.retryAfter ?? null,
+          },
+        });
+        return { id: log.id, status: blockedStatus, blockReason: result.reason };
+      }
+    }
+    // ===== End compliance gate =====
+
+    // Ensure DUNNING messages carry the [BESTCHOICE FINANCE] identification
+    // prefix per พ.ร.บ.การทวงถามหนี้ มาตรา 8. Auto-prepends + Sentry-warns
+    // when the upstream template forgot. Also scan for forbidden content
+    // (threats/insults/profanity) per มาตรา 11 — Sentry-warns only, does
+    // NOT block delivery (manual review pattern).
+    let messageToSend = dto.message;
+    if (dto.category === NotificationCategory.DUNNING) {
+      messageToSend = this.compliance.ensureIdentificationPrefix(
+        dto.message,
+        dto.category,
+      );
+      // Derive dunning stage from subject (e.g. "Dunning: LEGAL_ACTION") so
+      // the legal-threat pattern is only allowed when staff is sending an
+      // actual LEGAL_ACTION-stage message.
+      const stageMatch = dto.subject?.match(/Dunning:\s*(\w+)/);
+      const dunningStage = stageMatch?.[1];
+      this.compliance.scanForbiddenContent(messageToSend, dunningStage);
+    }
+
     let status = 'PENDING';
     let errorMsg: string | null = null;
     let sentAt: Date | null = null;
@@ -72,9 +132,9 @@ export class NotificationsService {
 
     const attemptSend = async (): Promise<void> => {
       if (dto.channel === 'LINE') {
-        await this.sendLine(dto.recipient, dto.message, channelKey);
+        await this.sendLine(dto.recipient, messageToSend, channelKey);
       } else if (dto.channel === 'SMS') {
-        const messageId = await this.sendSms(dto.recipient, dto.message);
+        const messageId = await this.sendSms(dto.recipient, messageToSend);
         if (messageId) externalId = messageId;
       }
       // IN_APP requires no external call
@@ -108,7 +168,7 @@ export class NotificationsService {
           if (dto.channel === 'LINE' && dto.fallbackPhone) {
             this.logger.log(`Attempting SMS fallback for failed LINE notification`);
             try {
-              const fallbackMsgId = await this.sendSms(dto.fallbackPhone, dto.message);
+              const fallbackMsgId = await this.sendSms(dto.fallbackPhone, messageToSend);
               if (fallbackMsgId) externalId = fallbackMsgId;
               status = 'SENT';
               sentAt = new Date();
@@ -127,9 +187,14 @@ export class NotificationsService {
         channelKey: dto.channelKey ?? null,
         recipient: dto.recipient,
         subject: dto.subject,
-        message: dto.message,
+        // Persist the prefixed message so audit trail matches what was
+        // actually delivered to the customer.
+        message: messageToSend,
         status,
         relatedId: dto.relatedId,
+        customerId: dto.customerId ?? null,
+        category: dto.category ?? null,
+        blockReason: null,
         errorMsg,
         sentAt,
         externalId,
@@ -456,7 +521,7 @@ export class NotificationsService {
     data: Record<string, string>,
     recipient: string,
     relatedId?: string,
-    options: { channelKey?: LineChannelKey } = {},
+    options: { channelKey?: LineChannelKey; customerId?: string; category?: NotificationCategory } = {},
   ) {
     const template = await this.prisma.systemConfig.findFirst({
       where: { key: `notification_template_${templateId}`, deletedAt: null },
@@ -519,6 +584,8 @@ export class NotificationsService {
       subject: templateData.subject,
       message,
       relatedId,
+      customerId: options.customerId,
+      category: options.category ?? NotificationCategory.DUNNING,
     });
   }
 
@@ -531,7 +598,7 @@ export class NotificationsService {
     // Batch load all contracts to avoid N+1 queries
     const contracts = await this.prisma.contract.findMany({
       where: { id: { in: contractIds }, deletedAt: null },
-      include: { customer: { select: { name: true, phone: true, lineIdFinance: true } } },
+      include: { customer: { select: { id: true, name: true, phone: true, lineIdFinance: true } } },
     });
     const contractMap = new Map(contracts.map((c) => [c.id, c]));
 
@@ -551,7 +618,10 @@ export class NotificationsService {
         continue;
       }
 
-      const result = await this.sendFromTemplate(templateId, data, recipient, contractId);
+      const result = await this.sendFromTemplate(templateId, data, recipient, contractId, {
+        customerId: customer.id,
+        category: NotificationCategory.DUNNING,
+      });
       results.push({ contractId, status: result.status });
     }
 
@@ -605,11 +675,24 @@ export class NotificationsService {
       data: { status: 'FAILED', errorMsg: 'Orphaned retry record — no nextRetryAt set' },
     });
 
+    // Expire DELAYED rows older than 24h to FAILED. Without this they would
+    // orphan silently in DELAYED forever (the findMany below filters by
+    // createdAt >= 24h ago, so old rows would never re-enter the queue).
+    const retryWindowCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    await this.prisma.notificationLog.updateMany({
+      where: { status: 'DELAYED', createdAt: { lt: retryWindowCutoff } },
+      data: {
+        status: 'FAILED',
+        errorMsg: 'retry window expired (>24h DELAYED)',
+        nextRetryAt: null,
+      },
+    });
+
     const pendingRetries = await this.prisma.notificationLog.findMany({
       where: {
-        status: 'RETRY_PENDING',
+        status: { in: ['RETRY_PENDING', 'DELAYED'] },
         nextRetryAt: { lte: now },
-        createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+        createdAt: { gte: retryWindowCutoff },
       },
       orderBy: { nextRetryAt: 'asc' },
       take: 50, // Process max 50 per batch to avoid blocking
@@ -619,6 +702,38 @@ export class NotificationsService {
     let failed = 0;
 
     for (const notification of pendingRetries) {
+      // Re-check compliance for DELAYED items (was blocked due to time window).
+      // If still outside hours, re-schedule; if now blocked for a different
+      // reason (e.g. consent revoked), mark BLOCKED and stop retrying.
+      if (notification.status === 'DELAYED' && notification.category) {
+        const result = await this.compliance.canSend({
+          channel: notification.channel,
+          customerId: notification.customerId ?? undefined,
+          contractId: notification.relatedId ?? undefined,
+          category: notification.category as NotificationCategory,
+        });
+        if (!result.allowed) {
+          if (result.reason === 'OUTSIDE_HOURS') {
+            await this.prisma.notificationLog.update({
+              where: { id: notification.id },
+              data: {
+                nextRetryAt: result.retryAfter ?? new Date(Date.now() + 60 * 60 * 1000),
+              },
+            });
+          } else {
+            await this.prisma.notificationLog.update({
+              where: { id: notification.id },
+              data: {
+                status: 'BLOCKED',
+                blockReason: result.reason ?? null,
+                errorMsg: `Compliance block on retry: ${result.reason}`,
+              },
+            });
+          }
+          continue;
+        }
+      }
+
       try {
         if (notification.channel === 'LINE') {
           // Use the original channelKey persisted on the log so retries hit
@@ -710,6 +825,37 @@ export class NotificationsService {
       // ignore — credit check is informational
     }
 
+    return result;
+  }
+
+  /**
+   * Compliance block-rate stats — last N days, grouped by blockReason.
+   * Used by NotificationsPage dashboard to surface compliance enforcement
+   * activity (OUTSIDE_HOURS / FREQUENCY_CAP / NO_CONSENT / HOLIDAY_BLOCK).
+   */
+  async getComplianceStats(days = 7) {
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const blocks = await this.prisma.notificationLog.groupBy({
+      by: ['blockReason'],
+      where: {
+        blockReason: { not: null },
+        createdAt: { gte: since },
+        deletedAt: null,
+      },
+      _count: { _all: true },
+    });
+
+    const result: Record<string, number> = {
+      OUTSIDE_HOURS: 0,
+      FREQUENCY_CAP: 0,
+      NO_CONSENT: 0,
+      HOLIDAY_BLOCK: 0,
+    };
+    for (const b of blocks) {
+      if (b.blockReason && result[b.blockReason] !== undefined) {
+        result[b.blockReason] = b._count._all;
+      }
+    }
     return result;
   }
 
@@ -941,6 +1087,8 @@ export class NotificationsService {
             message,
             relatedId: payment.id,
             fallbackPhone: isSmsPaymentReminderDisabled() ? undefined : (customer.phone || undefined),
+            customerId: customer.id,
+            category: NotificationCategory.REMINDER,
           });
           sent++;
         }
@@ -953,6 +1101,8 @@ export class NotificationsService {
             recipient: customer.phone,
             message,
             relatedId: payment.id,
+            customerId: customer.id,
+            category: NotificationCategory.REMINDER,
           });
           sent++;
         }
@@ -1072,6 +1222,8 @@ export class NotificationsService {
             message,
             relatedId: payment.id,
             fallbackPhone: isSmsPaymentReminderDisabled() ? undefined : (customer.phone || undefined),
+            customerId: customer.id,
+            category: NotificationCategory.DUNNING,
           });
           sent++;
         }
@@ -1084,6 +1236,8 @@ export class NotificationsService {
             recipient: customer.phone,
             message,
             relatedId: payment.id,
+            customerId: customer.id,
+            category: NotificationCategory.DUNNING,
           });
           sent++;
         }
@@ -1139,6 +1293,7 @@ export class NotificationsService {
         recipient: manager.email,
         subject: `สัญญาค้างชำระ ${contracts.length} รายการ`,
         message: `สัญญาค้างชำระที่ต้องติดตาม:\n${contracts.map((c) => `- ${c}`).join('\n')}`,
+        category: NotificationCategory.STAFF,
       });
       sent++;
     }
@@ -1175,6 +1330,7 @@ export class NotificationsService {
           recipient: owner.email,
           subject: `สัญญา DEFAULT ${defaultContracts.length} รายการ`,
           message: `สัญญาที่อยู่ในสถานะ DEFAULT:\n${contractList}`,
+          category: NotificationCategory.STAFF,
         });
         sent++;
       }

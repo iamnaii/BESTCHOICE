@@ -4,7 +4,7 @@ import { maskPhone } from '../../utils/mask.util';
 import { isSmsPaymentReminderDisabled } from '../../utils/sms-payment-reminder.util';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
-import { SendNotificationDto, CreateNotificationTemplateDto, UpdateNotificationTemplateDto } from './dto/create-notification.dto';
+import { SendNotificationDto } from './dto/create-notification.dto';
 import type { LineChannelKey } from './dto/create-notification.dto';
 import { NotificationChannel } from '@prisma/client';
 import { FlexMessagePayload } from '../line-oa/flex-messages/base-template';
@@ -873,117 +873,6 @@ export class NotificationsService {
       }
     }
     return result;
-  }
-
-  // ============================================================
-  // NOTIFICATION TEMPLATES (stored in system_config)
-  // ============================================================
-
-  async findTemplates() {
-    const configs = await this.prisma.systemConfig.findMany({
-      where: { key: { startsWith: 'notification_template_' }, deletedAt: null },
-      orderBy: { key: 'asc' },
-    });
-
-    return configs.map((c) => ({
-      id: c.key.replace('notification_template_', ''),
-      ...JSON.parse(c.value),
-      updatedAt: c.updatedAt,
-    }));
-  }
-
-  async findTemplate(id: string) {
-    const config = await this.prisma.systemConfig.findFirst({
-      where: { key: `notification_template_${id}`, deletedAt: null },
-    });
-    if (!config) throw new NotFoundException('ไม่พบ template');
-
-    return {
-      id,
-      ...JSON.parse(config.value),
-      updatedAt: config.updatedAt,
-    };
-  }
-
-  async createTemplate(dto: CreateNotificationTemplateDto) {
-    const id = dto.eventType.toLowerCase() + '_' + dto.channel.toLowerCase();
-
-    const exists = await this.prisma.systemConfig.findFirst({
-      where: { key: `notification_template_${id}`, deletedAt: null },
-    });
-    if (exists) {
-      // Update existing
-      return this.updateTemplate(id, {
-        name: dto.name,
-        format: dto.format,
-        subject: dto.subject,
-        messageTemplate: dto.messageTemplate,
-        flexTemplate: dto.flexTemplate,
-        description: dto.description,
-      });
-    }
-
-    const templateValue: Record<string, unknown> = {
-      name: dto.name,
-      eventType: dto.eventType,
-      channel: dto.channel,
-      format: dto.format || 'text',
-      subject: dto.subject,
-      messageTemplate: dto.messageTemplate,
-      description: dto.description,
-      isActive: true,
-    };
-    if (dto.flexTemplate) {
-      templateValue.flexTemplate = dto.flexTemplate;
-    }
-
-    const config = await this.prisma.systemConfig.create({
-      data: {
-        key: `notification_template_${id}`,
-        value: JSON.stringify(templateValue),
-        label: `Template: ${dto.name}`,
-      },
-    });
-
-    return { id, ...JSON.parse(config.value) };
-  }
-
-  async updateTemplate(id: string, dto: UpdateNotificationTemplateDto) {
-    const config = await this.prisma.systemConfig.findFirst({
-      where: { key: `notification_template_${id}`, deletedAt: null },
-    });
-    if (!config) throw new NotFoundException('ไม่พบ template');
-
-    const existing = JSON.parse(config.value);
-    const updated = { ...existing };
-    if (dto.name !== undefined) updated.name = dto.name;
-    if (dto.format !== undefined) updated.format = dto.format;
-    if (dto.subject !== undefined) updated.subject = dto.subject;
-    if (dto.messageTemplate !== undefined) updated.messageTemplate = dto.messageTemplate;
-    if (dto.flexTemplate !== undefined) updated.flexTemplate = dto.flexTemplate;
-    if (dto.description !== undefined) updated.description = dto.description;
-    if (dto.isActive !== undefined) updated.isActive = dto.isActive;
-
-    await this.prisma.systemConfig.update({
-      where: { key: `notification_template_${id}` },
-      data: { value: JSON.stringify(updated) },
-    });
-
-    return { id, ...updated };
-  }
-
-  async deleteTemplate(id: string) {
-    const config = await this.prisma.systemConfig.findFirst({
-      where: { key: `notification_template_${id}`, deletedAt: null },
-    });
-    if (!config) throw new NotFoundException('ไม่พบ template');
-
-    await this.prisma.systemConfig.update({
-      where: { key: `notification_template_${id}` },
-      data: { deletedAt: new Date() },
-    });
-
-    return { deleted: true };
   }
 
   // ============================================================

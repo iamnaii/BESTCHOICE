@@ -1,12 +1,29 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, Logger } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
-import { NotificationsService } from './notifications.service';
 import {
-  SendNotificationDto,
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Body,
+  Param,
+  Query,
+  Request,
+  UseGuards,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import { NotificationCategory } from '@prisma/client';
+import { NotificationsService } from './notifications.service';
+import { NotificationTemplateService } from './notification-template.service';
+import { SendNotificationDto, BulkNotificationDto } from './dto/create-notification.dto';
+import {
   CreateNotificationTemplateDto,
   UpdateNotificationTemplateDto,
-  BulkNotificationDto,
-} from './dto/create-notification.dto';
+  PreviewTemplateDto,
+  TestSendTemplateDto,
+} from './dto/notification-template.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -18,7 +35,10 @@ import { Roles } from '../auth/decorators/roles.decorator';
 export class NotificationsController {
   private readonly logger = new Logger(NotificationsController.name);
 
-  constructor(private notificationsService: NotificationsService) {}
+  constructor(
+    private notificationsService: NotificationsService,
+    private templateService: NotificationTemplateService,
+  ) {}
 
   // ============================================================
   // SEND NOTIFICATIONS
@@ -81,37 +101,94 @@ export class NotificationsController {
   }
 
   // ============================================================
-  // TEMPLATES
+  // TEMPLATES (DB-backed via NotificationTemplateService)
   // ============================================================
 
   @Get('templates')
   @Roles('OWNER', 'BRANCH_MANAGER')
-  findTemplates() {
-    return this.notificationsService.findTemplates();
+  async listTemplates(@Query('category') category?: string) {
+    const filter = category ? { category: category as NotificationCategory } : undefined;
+    return this.templateService.findAll(filter);
   }
 
-  @Get('templates/:id')
+  @Get('templates/:eventType')
   @Roles('OWNER', 'BRANCH_MANAGER')
-  findTemplate(@Param('id') id: string) {
-    return this.notificationsService.findTemplate(id);
+  async getTemplate(@Param('eventType') eventType: string) {
+    const tpl = await this.templateService.findByEventType(eventType);
+    if (!tpl) throw new NotFoundException(`Template ${eventType} not found`);
+    return tpl;
   }
 
   @Post('templates')
   @Roles('OWNER')
-  createTemplate(@Body() dto: CreateNotificationTemplateDto) {
-    return this.notificationsService.createTemplate(dto);
+  async createTemplate(@Body() dto: CreateNotificationTemplateDto, @Request() req: any) {
+    return this.templateService.create(dto, req.user?.id);
   }
 
-  @Patch('templates/:id')
+  @Patch('templates/:eventType')
   @Roles('OWNER')
-  updateTemplate(@Param('id') id: string, @Body() dto: UpdateNotificationTemplateDto) {
-    return this.notificationsService.updateTemplate(id, dto);
+  async updateTemplate(
+    @Param('eventType') eventType: string,
+    @Body() dto: UpdateNotificationTemplateDto,
+    @Request() req: any,
+  ) {
+    return this.templateService.update(eventType, dto, req.user?.id);
   }
 
-  @Delete('templates/:id')
+  @Delete('templates/:eventType')
   @Roles('OWNER')
-  deleteTemplate(@Param('id') id: string) {
-    return this.notificationsService.deleteTemplate(id);
+  async deleteTemplate(@Param('eventType') eventType: string, @Request() req: any) {
+    return this.templateService.softDelete(eventType, req.user?.id);
+  }
+
+  @Post('templates/:eventType/preview')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  async previewTemplate(
+    @Param('eventType') eventType: string,
+    @Body() dto: PreviewTemplateDto,
+  ) {
+    return this.templateService.renderPreview(eventType, dto.data);
+  }
+
+  @Post('templates/:eventType/test-send')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  async testSendTemplate(
+    @Param('eventType') eventType: string,
+    @Body() dto: TestSendTemplateDto,
+    @Request() req: any,
+  ) {
+    const adminUser = req.user;
+    const tpl = await this.templateService.findByEventType(eventType);
+    if (!tpl) throw new NotFoundException(`Template ${eventType} not found`);
+
+    // Resolve recipient based on template's channel
+    let recipient: string | null = null;
+    if (tpl.channel === 'LINE') {
+      recipient = adminUser.lineId ?? null;
+    } else if (tpl.channel === 'SMS') {
+      recipient = adminUser.phone ?? null;
+    }
+
+    if (!recipient) {
+      throw new BadRequestException(`Cannot test-send: admin has no ${tpl.channel} contact`);
+    }
+
+    // Use the template's sample data (or override if provided)
+    const data = dto.data ?? (tpl.sampleData as Record<string, string> | null) ?? {};
+
+    // Render the message + send raw with [TEST] prefix
+    const rendered = await this.templateService.renderPreview(eventType, data);
+
+    return this.notificationsService.send({
+      channel: tpl.channel,
+      channelKey: tpl.channelKey as any,
+      recipient,
+      subject: `[TEST] ${tpl.subject ?? tpl.name}`,
+      message: `[TEST] ${rendered.rendered}`,
+      customerId: adminUser.id,
+      category: tpl.category,
+      bypassCompliance: true, // test sends bypass time/frequency gates
+    });
   }
 
   @Post('bulk')

@@ -3,6 +3,7 @@ import * as Sentry from '@sentry/nestjs';
 import { formatDateShort } from '../../utils/thai-date.util';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { NotificationsService } from './notifications.service';
+import { NotificationCategory } from './notification-category.enum';
 import { OverdueService } from '../overdue/overdue.service';
 import { ReorderPointsService } from '../inventory/reorder-points.service';
 import { WarrantyService } from '../products/warranty.service';
@@ -260,6 +261,8 @@ export class SchedulerService {
               message,
               relatedId: esc.contractId,
               fallbackPhone: isSmsPaymentReminderDisabled() ? undefined : (contract.customer.phone || undefined),
+              customerId: contract.customerId,
+              category: NotificationCategory.DUNNING,
             });
             notified++;
           }
@@ -743,6 +746,7 @@ export class SchedulerService {
             message,
             relatedId: 'sms-credit-alert',
             noRetry: true,
+            category: NotificationCategory.STAFF,
           });
         }
         this.logger.warn(`SMS credit low (${credit.credit}) — alerted ${targets.length} staff`);

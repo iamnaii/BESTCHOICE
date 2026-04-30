@@ -500,7 +500,7 @@ export class NotificationsService {
     data: Record<string, string>,
     recipient: string,
     relatedId?: string,
-    options: { channelKey?: LineChannelKey } = {},
+    options: { channelKey?: LineChannelKey; customerId?: string; category?: NotificationCategory } = {},
   ) {
     const template = await this.prisma.systemConfig.findFirst({
       where: { key: `notification_template_${templateId}`, deletedAt: null },
@@ -563,6 +563,8 @@ export class NotificationsService {
       subject: templateData.subject,
       message,
       relatedId,
+      customerId: options.customerId,
+      category: options.category ?? NotificationCategory.DUNNING,
     });
   }
 
@@ -575,7 +577,7 @@ export class NotificationsService {
     // Batch load all contracts to avoid N+1 queries
     const contracts = await this.prisma.contract.findMany({
       where: { id: { in: contractIds }, deletedAt: null },
-      include: { customer: { select: { name: true, phone: true, lineIdFinance: true } } },
+      include: { customer: { select: { id: true, name: true, phone: true, lineIdFinance: true } } },
     });
     const contractMap = new Map(contracts.map((c) => [c.id, c]));
 
@@ -595,7 +597,10 @@ export class NotificationsService {
         continue;
       }
 
-      const result = await this.sendFromTemplate(templateId, data, recipient, contractId);
+      const result = await this.sendFromTemplate(templateId, data, recipient, contractId, {
+        customerId: customer.id,
+        category: NotificationCategory.DUNNING,
+      });
       results.push({ contractId, status: result.status });
     }
 
@@ -1017,6 +1022,8 @@ export class NotificationsService {
             message,
             relatedId: payment.id,
             fallbackPhone: isSmsPaymentReminderDisabled() ? undefined : (customer.phone || undefined),
+            customerId: customer.id,
+            category: NotificationCategory.REMINDER,
           });
           sent++;
         }
@@ -1029,6 +1036,8 @@ export class NotificationsService {
             recipient: customer.phone,
             message,
             relatedId: payment.id,
+            customerId: customer.id,
+            category: NotificationCategory.REMINDER,
           });
           sent++;
         }
@@ -1148,6 +1157,8 @@ export class NotificationsService {
             message,
             relatedId: payment.id,
             fallbackPhone: isSmsPaymentReminderDisabled() ? undefined : (customer.phone || undefined),
+            customerId: customer.id,
+            category: NotificationCategory.DUNNING,
           });
           sent++;
         }
@@ -1160,6 +1171,8 @@ export class NotificationsService {
             recipient: customer.phone,
             message,
             relatedId: payment.id,
+            customerId: customer.id,
+            category: NotificationCategory.DUNNING,
           });
           sent++;
         }
@@ -1215,6 +1228,7 @@ export class NotificationsService {
         recipient: manager.email,
         subject: `สัญญาค้างชำระ ${contracts.length} รายการ`,
         message: `สัญญาค้างชำระที่ต้องติดตาม:\n${contracts.map((c) => `- ${c}`).join('\n')}`,
+        category: NotificationCategory.STAFF,
       });
       sent++;
     }
@@ -1251,6 +1265,7 @@ export class NotificationsService {
           recipient: owner.email,
           subject: `สัญญา DEFAULT ${defaultContracts.length} รายการ`,
           message: `สัญญาที่อยู่ในสถานะ DEFAULT:\n${contractList}`,
+          category: NotificationCategory.STAFF,
         });
         sent++;
       }

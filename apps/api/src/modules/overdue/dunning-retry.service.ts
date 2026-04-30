@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationCategory } from '../notifications/notification-category.enum';
 
 @Injectable()
 export class DunningRetryService {
@@ -90,6 +91,8 @@ export class DunningRetryService {
         relatedId: action.contractId,
         subject: `Dunning retry: ${action.dunningRule.name}`,
         noRetry: true, // manual retry — don't re-enqueue on failure
+        customerId: customer.id,
+        category: NotificationCategory.DUNNING,
       });
 
       if (sendResult.status === 'SENT') {

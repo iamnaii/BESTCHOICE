@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MdmLockService } from './mdm-lock.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationCategory } from '../notifications/notification-category.enum';
 import { BulkAssignDto, BulkProposeLockDto, BulkSendLineDto } from './dto/bulk.dto';
 
 @Injectable()
@@ -62,7 +63,7 @@ export class OverdueBulkService {
     const contracts = await this.prisma.contract.findMany({
       where: { id: { in: dto.contractIds }, deletedAt: null },
       include: {
-        customer: { select: { lineIdFinance: true, phone: true, name: true } },
+        customer: { select: { id: true, lineIdFinance: true, phone: true, name: true } },
       },
     });
 
@@ -105,6 +106,8 @@ export class OverdueBulkService {
           message,
           relatedId: c.id,
           fallbackPhone: c.customer.phone ?? undefined,
+          customerId: c.customer.id,
+          category: NotificationCategory.DUNNING,
         });
         sent++;
         auditEntries.push({

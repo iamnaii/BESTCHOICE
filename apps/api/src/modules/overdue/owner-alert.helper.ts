@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationCategory } from '../notifications/notification-category.enum';
 
 /**
  * Sends an internal LINE alert to all OWNER users who have lineId set.
@@ -45,6 +46,7 @@ export class OwnerAlertHelper {
       try {
         const result = await this.notifications.send({
           channel: 'LINE',
+          channelKey: 'line-staff',
           recipient: owner.lineId!,
           message,
           // relatedId is informational only (indexed but not unique) — it's
@@ -52,6 +54,7 @@ export class OwnerAlertHelper {
           // as a dedup key. Safe for repeat cron runs to reuse the same value.
           relatedId: relatedId ?? 'collections-alert',
           fallbackPhone: owner.phone ?? undefined,
+          category: NotificationCategory.STAFF,
         });
         if (result.status === 'SENT') sent++;
         else failed++;

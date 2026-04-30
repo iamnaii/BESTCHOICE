@@ -5,6 +5,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { DunningRuleService } from './dunning-rule.service';
 import { DunningRuleResolverService } from './dunning-rule-resolver.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationCategory } from '../notifications/notification-category.enum';
 import { PaymentLinkService } from '../line-oa/payment-links/payment-link.service';
 import { formatDateShort } from '../../utils/thai-date.util';
 
@@ -210,6 +211,8 @@ export class DunningEngineService {
                     relatedId: payment.contractId,
                     fallbackPhone:
                       rule.channel === 'LINE' ? payment.contract.customer.phone : undefined,
+                    customerId: payment.contract.customer.id,
+                    category: NotificationCategory.DUNNING,
                   });
 
                   status = sendResult.status === 'SENT' ? 'SENT' : 'FAILED';
@@ -432,6 +435,8 @@ export class DunningEngineService {
             relatedId: contractId,
             fallbackPhone:
               rule.channel === 'LINE' ? contract.customer.phone : undefined,
+            customerId: contract.customer.id,
+            category: NotificationCategory.DUNNING,
           });
           status = sendResult.status === 'SENT' ? 'SENT' : 'FAILED';
           result = `notificationId:${sendResult.id}`;

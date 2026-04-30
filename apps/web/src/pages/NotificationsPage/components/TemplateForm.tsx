@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
@@ -69,7 +69,27 @@ interface TemplateFormProps {
   setJsonError: (err: string | null) => void;
 }
 
-const placeholdersList = [
+// Variable hints — names match seeded templates (camelCase) and use ${var} syntax to match
+// the backend P3 substitution regex: /\$\{([^}]+)\}/g
+const VARIABLE_HINTS = [
+  'name',
+  'amount',
+  'contractNumber',
+  'daysOverdue',
+  'installmentNo',
+  'dueDate',
+  'paymentUrl',
+  'totalOverdue',
+  'date',
+  'count',
+  'totalAmount',
+];
+
+// Legacy {var} placeholders kept ONLY for the flex JSON editor — the seeded flex
+// templates above still use {var} style inside the JSON. The P3 backend handles
+// flex via the same regex, but we leave the legacy chips here untouched until
+// flex defaults are migrated.
+const flexPlaceholdersList = [
   '{customer_name}',
   '{contract_number}',
   '{amount}',
@@ -375,6 +395,36 @@ export default function TemplateForm({
 
   const variables = extractVariables(templateForm.messageTemplate);
 
+  // Live preview — client-side substitution so it updates on every keystroke
+  // without a server round-trip. Renders ${var} → value from sampleData JSON.
+  // Unmatched ${var} stays as ${var} so authors can spot missing data.
+  const livePreview = useMemo(() => {
+    let data: Record<string, string> = {};
+    try {
+      const parsed = JSON.parse(templateForm.sampleData);
+      if (parsed && typeof parsed === 'object') {
+        data = parsed as Record<string, string>;
+      }
+    } catch {
+      // sampleData not valid JSON yet — render with empty data
+    }
+    return templateForm.messageTemplate.replace(
+      /\$\{([^}]+)\}/g,
+      (_, varName: string) => {
+        const trimmed = varName.trim();
+        const val = data[trimmed];
+        return val !== undefined && val !== null ? String(val) : `\${${trimmed}}`;
+      },
+    );
+  }, [templateForm.messageTemplate, templateForm.sampleData]);
+
+  const insertVariable = (varName: string) => {
+    setTemplateForm((prev) => ({
+      ...prev,
+      messageTemplate: `${prev.messageTemplate}\${${varName}}`,
+    }));
+  };
+
   const validateJson = useCallback(
     (json: string): boolean => {
       if (!json.trim()) {
@@ -513,49 +563,64 @@ export default function TemplateForm({
           </div>
         </div>
 
-        {/* Text Message Template */}
-        <div>
-          <label className="block text-sm font-medium text-foreground mb-1">
-            {templateForm.format === 'flex' ? 'ข้อความสำรอง (altText / SMS fallback) *' : 'ข้อความ *'}
-          </label>
-          <textarea
-            value={templateForm.messageTemplate}
-            onChange={(e) =>
-              setTemplateForm((prev) => ({ ...prev, messageTemplate: e.target.value }))
-            }
-            rows={templateForm.format === 'flex' ? 3 : 5}
-            className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden font-mono"
-            placeholder="สวัสดีค่ะ คุณ{customer_name}&#10;แจ้งเตือนค่างวดที่ {installment_no}..."
-            required
-          />
-          <div className="mt-1 flex flex-wrap gap-1">
-            {placeholdersList.map((p) => (
-              <button
-                key={p}
-                type="button"
-                onClick={() =>
-                  setTemplateForm((prev) => ({
-                    ...prev,
-                    messageTemplate: prev.messageTemplate + p,
-                  }))
-                }
-                className="px-2 py-0.5 bg-muted rounded text-xs text-muted-foreground hover:bg-muted"
-              >
-                {p}
-              </button>
-            ))}
-          </div>
-          {variables.length > 0 && (
-            <div className="text-xs text-muted-foreground mt-2">
-              Variables ที่ตรวจพบ:
-              {variables.map((v) => (
-                <code
-                  key={v}
-                  className="mx-1 px-1 bg-muted rounded text-xs"
-                >{`\${${v}}`}</code>
+        {/* Text Message Template + Live Preview (split on desktop) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">
+              {templateForm.format === 'flex' ? 'ข้อความสำรอง (altText / SMS fallback) *' : 'ข้อความ *'}
+            </label>
+            <textarea
+              value={templateForm.messageTemplate}
+              onChange={(e) =>
+                setTemplateForm((prev) => ({ ...prev, messageTemplate: e.target.value }))
+              }
+              rows={templateForm.format === 'flex' ? 4 : 6}
+              className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden font-mono"
+              placeholder="สวัสดีค่ะ คุณ${name}&#10;แจ้งเตือนค่างวดที่ ${installmentNo}..."
+              required
+            />
+            <div className="mt-1 flex flex-wrap gap-1">
+              {VARIABLE_HINTS.map((varName) => (
+                <button
+                  key={varName}
+                  type="button"
+                  onClick={() => insertVariable(varName)}
+                  className="px-2 py-0.5 bg-muted rounded text-xs text-muted-foreground hover:bg-accent font-mono"
+                >
+                  {`\${${varName}}`}
+                </button>
               ))}
             </div>
-          )}
+            {variables.length > 0 && (
+              <div className="text-xs text-muted-foreground mt-2">
+                Variables ที่ตรวจพบ:
+                {variables.map((v) => (
+                  <code
+                    key={v}
+                    className="mx-1 px-1 bg-muted rounded text-xs"
+                  >{`\${${v}}`}</code>
+                ))}
+              </div>
+            )}
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">
+              ตัวอย่างที่จะส่ง (live)
+            </label>
+            <div className="border border-border rounded-lg p-4 bg-muted/30 min-h-[160px]">
+              <div className="bg-card rounded-2xl px-4 py-3 max-w-md shadow-sm whitespace-pre-wrap text-sm text-foreground">
+                {livePreview ? (
+                  livePreview
+                ) : (
+                  <span className="text-muted-foreground italic">ยังไม่มีข้อความ</span>
+                )}
+              </div>
+              <div className="mt-2 text-xs text-muted-foreground leading-snug">
+                แทนค่าจาก JSON ด้านล่าง (sampleData) — {`\${var}`} ที่ไม่มีค่าจะแสดงเป็น{' '}
+                {`\${var}`} ตามเดิม
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Sample data editor */}
@@ -644,7 +709,7 @@ export default function TemplateForm({
             <div className="mt-2 p-3 bg-primary/5 border border-primary/20 rounded-lg">
               <p className="text-xs text-primary font-medium mb-1">ใช้ Placeholder ใน JSON ได้:</p>
               <div className="flex flex-wrap gap-1">
-                {placeholdersList.map((p) => (
+                {flexPlaceholdersList.map((p) => (
                   <button
                     key={`flex-${p}`}
                     type="button"

@@ -9,6 +9,7 @@ import { QuickReplyService } from '../line-oa/quick-reply.service';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
 import { PDPAService } from '../pdpa/pdpa.service';
 import { NotificationCategory } from './notification-category.enum';
+import { NotificationTemplateService } from './notification-template.service';
 
 describe('NotificationsService — compliance integration', () => {
   let service: NotificationsService;
@@ -38,6 +39,7 @@ describe('NotificationsService — compliance integration', () => {
         { provide: QuickReplyService, useValue: {} },
         { provide: IntegrationConfigService, useValue: integrationConfig },
         { provide: PDPAService, useValue: pdpa },
+        { provide: NotificationTemplateService, useValue: { findByEventType: jest.fn() } },
       ],
     }).compile();
 

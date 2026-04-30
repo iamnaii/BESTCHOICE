@@ -33,14 +33,19 @@ export class NotificationsController {
   @Post('send-from-template')
   @Roles('OWNER', 'BRANCH_MANAGER')
   sendFromTemplate(
-    @Body() body: { templateId: string; data: Record<string, string>; recipient: string; relatedId?: string },
+    @Body()
+    body: {
+      eventType: string;
+      data: Record<string, string>;
+      recipient: string;
+      relatedId?: string;
+      customerId?: string;
+    },
   ) {
-    return this.notificationsService.sendFromTemplate(
-      body.templateId,
-      body.data,
-      body.recipient,
-      body.relatedId,
-    );
+    return this.notificationsService.sendFromTemplate(body.eventType, body.data, body.recipient, {
+      relatedId: body.relatedId,
+      customerId: body.customerId,
+    });
   }
 
   // ============================================================

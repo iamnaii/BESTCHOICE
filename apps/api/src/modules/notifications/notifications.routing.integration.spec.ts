@@ -6,6 +6,7 @@ import { FlexTemplatesService } from '../line-oa/flex-templates.service';
 import { QuickReplyService } from '../line-oa/quick-reply.service';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
 import { ComplianceService } from './compliance.service';
+import { NotificationTemplateService } from './notification-template.service';
 
 describe('NotificationsService — integration: per-channel routing', () => {
   let service: NotificationsService;
@@ -27,6 +28,7 @@ describe('NotificationsService — integration: per-channel routing', () => {
         { provide: QuickReplyService, useValue: {} },
         { provide: IntegrationConfigService, useValue: integrationConfig },
         { provide: ComplianceService, useValue: { canSend: jest.fn().mockResolvedValue({ allowed: true }) } },
+        { provide: NotificationTemplateService, useValue: { findByEventType: jest.fn() } },
       ],
     }).compile();
     service = moduleRef.get(NotificationsService);

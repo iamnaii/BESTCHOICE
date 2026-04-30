@@ -13,6 +13,8 @@ import { QuickReplyService } from '../line-oa/quick-reply.service';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
 import { ComplianceService } from './compliance.service';
 import { NotificationCategory } from './notification-category.enum';
+import { NotificationTemplateService } from './notification-template.service';
+import * as Sentry from '@sentry/nestjs';
 
 @Injectable()
 export class NotificationsService {
@@ -25,6 +27,7 @@ export class NotificationsService {
     private quickReplyService: QuickReplyService,
     private integrationConfig: IntegrationConfigService,
     private compliance: ComplianceService,
+    private templateService: NotificationTemplateService,
   ) {}
 
   private async getLineToken(channelKey: LineChannelKey): Promise<string> {
@@ -513,86 +516,97 @@ export class NotificationsService {
   }
 
   /**
-   * Send notification using a template with data substitution
-   * Supports both text and Flex Message JSON templates
+   * Send notification from a NotificationTemplate keyed by eventType.
+   *
+   * Phase 7 (P3): looks up via NotificationTemplateService (DB-backed
+   * NotificationTemplate model). Hard-fails with Sentry if template missing
+   * (was: NotFoundException with no Sentry signal). Inactive templates
+   * return BLOCKED with TEMPLATE_INACTIVE reason and Sentry warn.
+   *
+   * Template carries channel/channelKey/category — caller no longer offloads.
    */
   async sendFromTemplate(
-    templateId: string,
+    eventType: string,
     data: Record<string, string>,
     recipient: string,
-    relatedId?: string,
-    options: { channelKey?: LineChannelKey; customerId?: string; category?: NotificationCategory } = {},
-  ) {
-    const template = await this.prisma.systemConfig.findFirst({
-      where: { key: `notification_template_${templateId}`, deletedAt: null },
-    });
+    options: {
+      relatedId?: string;
+      customerId?: string;
+      bypassCompliance?: boolean;
+    } = {},
+  ): Promise<{ id: string | null; status: string; blockReason?: string }> {
+    const tpl = await this.templateService.findByEventType(eventType);
 
-    if (!template) throw new NotFoundException('ไม่พบ template');
-
-    const templateData = JSON.parse(template.value);
-
-    // Check if template is active
-    if (templateData.isActive === false) {
-      this.logger.warn(`Template ${templateId} is inactive, skipping`);
-      return { id: null, status: 'SKIPPED', reason: 'Template is inactive' };
+    if (!tpl) {
+      Sentry.captureMessage(`Notification template missing: ${eventType}`, {
+        level: 'error',
+        tags: { module: 'notifications', eventType },
+      });
+      throw new InternalServerErrorException(`Notification template not found: ${eventType}`);
     }
 
-    // Resolve channelKey: caller override > template-declared > legacy default.
-    // Templates that don't declare a channelKey still default to line-finance
-    // (preserves legacy behavior for HP/finance reminders) but callers sending
-    // shop-side templates MUST pass options.channelKey = 'line-shop'.
-    const resolvedChannelKey: LineChannelKey =
-      options.channelKey ??
-      (templateData.channelKey as LineChannelKey | undefined) ??
-      'line-finance';
+    if (!tpl.isActive) {
+      this.logger.warn(`Template ${eventType} is inactive — send blocked`);
+      Sentry.captureMessage(`Notification template inactive: ${eventType}`, {
+        level: 'warning',
+        tags: { module: 'notifications', eventType },
+      });
+      return { id: null, status: 'BLOCKED', blockReason: 'TEMPLATE_INACTIVE' };
+    }
 
-    // If format is 'flex' and channel is LINE, send as Flex Message
-    if (templateData.format === 'flex' && templateData.channel === 'LINE' && templateData.flexTemplate) {
+    const message = this.replacePlaceholders(tpl.messageTemplate, data);
+
+    // For Flex templates with channel=LINE, render JSON and send via lineOaService
+    if (tpl.format === 'flex' && tpl.flexTemplate && tpl.channel === 'LINE' && tpl.channelKey) {
       try {
-        const flexJson = JSON.parse(templateData.flexTemplate);
+        const flexJson = JSON.parse(tpl.flexTemplate);
         const resolvedFlex = this.replacePlaceholdersInJson(flexJson, data) as FlexMessagePayload;
-        await this.sendLineFlexMessage(recipient, resolvedFlex, resolvedChannelKey);
+        await this.sendLineFlexMessage(recipient, resolvedFlex, tpl.channelKey as LineChannelKey);
 
-        const textSummary = this.replacePlaceholders(templateData.messageTemplate || templateData.name, data);
         const log = await this.prisma.notificationLog.create({
           data: {
             channel: 'LINE',
-            channelKey: resolvedChannelKey,
+            channelKey: tpl.channelKey,
             recipient,
-            subject: templateData.subject || templateData.name,
-            message: `Flex: ${textSummary}`,
+            subject: tpl.subject ?? tpl.name,
+            message: `Flex: ${message}`,
             status: 'SENT',
-            relatedId,
+            relatedId: options.relatedId ?? null,
+            customerId: options.customerId ?? null,
+            category: tpl.category,
+            blockReason: null,
             sentAt: new Date(),
           },
         });
-
         return { id: log.id, status: 'SENT' };
       } catch (err) {
-        this.logger.warn(`Flex template send failed, falling back to text: ${err instanceof Error ? err.message : err}`);
-        // Fall through to text message
+        this.logger.warn(
+          `Flex template send failed for ${eventType}, falling back to text: ${err instanceof Error ? err.message : err}`,
+        );
+        // Fall through to text send below
       }
     }
 
-    let message = templateData.messageTemplate as string;
-    message = this.replacePlaceholders(message, data);
-
+    // Text path (default)
     return this.send({
-      channel: templateData.channel,
-      channelKey: templateData.channel === 'LINE' ? resolvedChannelKey : undefined,
+      channel: tpl.channel,
+      channelKey: tpl.channelKey as LineChannelKey | undefined,
       recipient,
-      subject: templateData.subject,
+      subject: tpl.subject ?? tpl.name,
       message,
-      relatedId,
+      relatedId: options.relatedId,
       customerId: options.customerId,
-      category: options.category ?? NotificationCategory.DUNNING,
+      category: tpl.category,
+      bypassCompliance: options.bypassCompliance,
     });
   }
 
   /**
-   * Bulk send notifications to multiple contracts
+   * Bulk send notifications to multiple contracts.
+   * @param eventType — NotificationTemplate.eventType (e.g. 'dunning.line.text.t-3').
+   *   Template carries channel/channelKey/category — no longer caller-passed.
    */
-  async sendBulk(templateId: string, contractIds: string[]) {
+  async sendBulk(eventType: string, contractIds: string[]) {
     const results: { contractId: string; status: string }[] = [];
 
     // Batch load all contracts to avoid N+1 queries
@@ -618,9 +632,9 @@ export class NotificationsService {
         continue;
       }
 
-      const result = await this.sendFromTemplate(templateId, data, recipient, contractId, {
+      const result = await this.sendFromTemplate(eventType, data, recipient, {
+        relatedId: contractId,
         customerId: customer.id,
-        category: NotificationCategory.DUNNING,
       });
       results.push({ contractId, status: result.status });
     }

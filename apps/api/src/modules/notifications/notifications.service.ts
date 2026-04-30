@@ -106,13 +106,21 @@ export class NotificationsService {
 
     // Ensure DUNNING messages carry the [BESTCHOICE FINANCE] identification
     // prefix per พ.ร.บ.การทวงถามหนี้ มาตรา 8. Auto-prepends + Sentry-warns
-    // when the upstream template forgot.
+    // when the upstream template forgot. Also scan for forbidden content
+    // (threats/insults/profanity) per มาตรา 11 — Sentry-warns only, does
+    // NOT block delivery (manual review pattern).
     let messageToSend = dto.message;
     if (dto.category === NotificationCategory.DUNNING) {
       messageToSend = this.compliance.ensureIdentificationPrefix(
         dto.message,
         dto.category,
       );
+      // Derive dunning stage from subject (e.g. "Dunning: LEGAL_ACTION") so
+      // the legal-threat pattern is only allowed when staff is sending an
+      // actual LEGAL_ACTION-stage message.
+      const stageMatch = dto.subject?.match(/Dunning:\s*(\w+)/);
+      const dunningStage = stageMatch?.[1];
+      this.compliance.scanForbiddenContent(messageToSend, dunningStage);
     }
 
     let status = 'PENDING';

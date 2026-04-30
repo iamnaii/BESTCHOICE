@@ -17,6 +17,25 @@ import type { NotificationChannel } from '@prisma/client';
  */
 const DUNNING_IDENTIFICATION_PREFIX = '[BESTCHOICE FINANCE]';
 
+/**
+ * Forbidden content patterns for dunning messages. Matches trigger Sentry
+ * warnings (manual review pattern, not blocking).
+ *
+ * `allowedInLegalAction: true` — pattern is only acceptable when the dunning
+ * stage is LEGAL_ACTION (i.e., real legal-action notice). Outside that stage
+ * such language is considered non-compliant under พ.ร.บ.ทวงถามหนี้ มาตรา 11.
+ */
+const FORBIDDEN_PATTERNS: {
+  pattern: RegExp;
+  reason: string;
+  allowedInLegalAction: boolean;
+}[] = [
+  { pattern: /(ข่มขู่|ขู่)/, reason: 'threatening language', allowedInLegalAction: false },
+  { pattern: /(ดูถูก|เหยียดหยาม)/, reason: 'insult', allowedInLegalAction: false },
+  { pattern: /(ระยำ|เหี้ย|ส้นตีน)/, reason: 'profanity', allowedInLegalAction: false },
+  { pattern: /(แจ้งความ|ฟ้องร้อง|ดำเนินคดี)/, reason: 'legal threat', allowedInLegalAction: true },
+];
+
 export interface ComplianceContext {
   channel: NotificationChannel;
   customerId?: string;
@@ -155,6 +174,42 @@ export class ComplianceService {
     );
 
     return `${DUNNING_IDENTIFICATION_PREFIX} ${message}`;
+  }
+
+  /**
+   * Scan a dunning message for forbidden content patterns (threats, insults,
+   * profanity, legal threats outside LEGAL_ACTION stage). Returns a list of
+   * matched reason strings. Sentry-warns on any match — does NOT block the
+   * send (manual review pattern).
+   *
+   * Compliance basis: พ.ร.บ.การทวงถามหนี้ พ.ศ. 2558 มาตรา 11 — ห้ามทวงถามหนี้
+   * ในลักษณะข่มขู่ ใช้ความรุนแรง ดูหมิ่น เปิดเผยความเป็นหนี้.
+   */
+  scanForbiddenContent(message: string, dunningStage?: string): string[] {
+    const matches: string[] = [];
+    for (const { pattern, reason, allowedInLegalAction } of FORBIDDEN_PATTERNS) {
+      if (pattern.test(message)) {
+        if (allowedInLegalAction && dunningStage === 'LEGAL_ACTION') continue;
+        matches.push(reason);
+      }
+    }
+
+    if (matches.length > 0) {
+      const preview = message.slice(0, 100);
+      this.logger.warn(
+        `Forbidden content detected: ${matches.join(', ')} — message: "${preview.slice(0, 60)}..."`,
+      );
+      Sentry.captureMessage(
+        `Notification content review needed: ${matches.join(', ')}`,
+        {
+          level: 'warning',
+          tags: { module: 'notifications', compliance: 'content-guardrails' },
+          extra: { messagePreview: preview, dunningStage: dunningStage ?? null },
+        },
+      );
+    }
+
+    return matches;
   }
 
   private startOfBangkokDay(date: Date): Date {

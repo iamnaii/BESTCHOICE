@@ -178,4 +178,31 @@ describe('ComplianceService', () => {
       expect(result).toBe('hello');
     });
   });
+
+  describe('scanForbiddenContent', () => {
+    it('detects threatening language', () => {
+      const matches = service.scanForbiddenContent('เราจะข่มขู่คุณถ้าไม่จ่าย');
+      expect(matches).toContain('threatening language');
+    });
+
+    it('allows ดำเนินคดี in LEGAL_ACTION stage', () => {
+      const matches = service.scanForbiddenContent(
+        'จะดำเนินคดีตามกฎหมาย',
+        'LEGAL_ACTION',
+      );
+      expect(matches).toEqual([]);
+    });
+
+    it('blocks ดำเนินคดี in non-LEGAL_ACTION stages', () => {
+      const matches = service.scanForbiddenContent('จะดำเนินคดี');
+      expect(matches).toContain('legal threat');
+    });
+
+    it('returns empty for clean message', () => {
+      const matches = service.scanForbiddenContent(
+        'แจ้งเตือน: ครบกำหนดชำระงวดที่ 3',
+      );
+      expect(matches).toEqual([]);
+    });
+  });
 });

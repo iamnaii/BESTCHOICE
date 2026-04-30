@@ -3,6 +3,7 @@ import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LineMessagePayload } from '../line-oa/dto/webhook-event.dto';
 import { LineOaService } from '../line-oa/line-oa.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { MdmService } from './mdm.service';
 
 export interface MdmAutoSettings {
@@ -26,6 +27,7 @@ export class MdmAutoService {
     private prisma: PrismaService,
     private mdmService: MdmService,
     private lineOaService: LineOaService,
+    private notificationsService: NotificationsService,
   ) {}
 
   // ─── Settings ───────────────────────────────────────────
@@ -273,23 +275,26 @@ export class MdmAutoService {
   // ─── LINE Notifications ─────────────────────────────────
 
   private async notifyCustomerLock(
-    contract: { contractNumber: string; customer: { name: string; lineIdFinance: string | null } | null },
+    contract: { id: string; contractNumber: string; customer: { id: string; name: string; lineIdFinance: string | null } | null },
     daysOverdue: number,
   ): Promise<void> {
     const lineId = contract.customer?.lineIdFinance;
     if (!lineId) return;
 
     try {
-      const message =
-        `⚠️ แจ้งเตือนจาก BESTCHOICE\n` +
-        `สัญญาเลขที่: ${contract.contractNumber}\n` +
-        `เครื่องของท่านถูกระงับการใช้งานชั่วคราว เนื่องจากค้างชำระ ${daysOverdue} วัน\n` +
-        `กรุณาติดต่อชำระค่างวดเพื่อปลดล็อคเครื่อง`;
-
-      await this.lineOaService.pushMessage(
+      // mdm.lock_notice template — caller offloads channelKey/category to template
+      await this.notificationsService.sendFromTemplate(
+        'mdm.lock_notice',
+        {
+          name: contract.customer!.name,
+          contractNumber: contract.contractNumber,
+          daysOverdue: String(daysOverdue),
+        },
         lineId,
-        [{ type: 'text', text: message } as LineMessagePayload],
-        'line-finance',
+        {
+          relatedId: contract.id,
+          customerId: contract.customer!.id,
+        },
       );
       this.logger.log(`MDM lock LINE notify sent to customer (contract ${contract.contractNumber})`);
     } catch (err) {

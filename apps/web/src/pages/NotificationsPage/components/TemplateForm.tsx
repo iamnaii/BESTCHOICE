@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
@@ -8,6 +8,8 @@ interface NotificationTemplate {
   id: string;
   name: string;
   eventType: string;
+  category?: string;
+  channelKey?: string | null;
   channel: string;
   format?: string;
   subject: string | null;
@@ -15,18 +17,46 @@ interface NotificationTemplate {
   flexTemplate?: string;
   description: string | null;
   isActive: boolean;
+  sampleData?: Record<string, unknown> | null;
   updatedAt: string;
 }
 
 export interface TemplateFormState {
-  name: string;
   eventType: string;
+  name: string;
+  category: string;
+  channelKey: string | null;
   channel: string;
   format: 'text' | 'flex';
   subject: string;
   messageTemplate: string;
   flexTemplate: string;
   description: string;
+  isActive: boolean;
+  sampleData: string;
+}
+
+function extractVariables(template: string): string[] {
+  const regex = /\$\{([^}]+)\}/g;
+  const seen = new Set<string>();
+  const order: string[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(template)) !== null) {
+    const varName = match[1].trim();
+    if (!seen.has(varName)) {
+      seen.add(varName);
+      order.push(varName);
+    }
+  }
+  return order;
+}
+
+function tryParseJson(s: string): unknown {
+  try {
+    return s.trim() ? JSON.parse(s) : null;
+  } catch {
+    return null;
+  }
 }
 
 interface TemplateFormProps {
@@ -288,13 +318,23 @@ export default function TemplateForm({
   setJsonError,
 }: TemplateFormProps) {
   const queryClient = useQueryClient();
+  const [previewModalOpen, setPreviewModalOpen] = useState(false);
+  const [previewResult, setPreviewResult] = useState<{
+    rendered: string;
+    flexJson?: unknown;
+  } | null>(null);
 
   const saveTemplateMutation = useMutation({
     mutationFn: async (data: TemplateFormState) => {
+      const payload: Record<string, unknown> = {
+        ...data,
+        sampleData: data.sampleData ? tryParseJson(data.sampleData) : null,
+      };
       if (editingTemplate) {
-        return api.patch(`/notifications/templates/${editingTemplate.id}`, data);
+        delete payload.eventType; // immutable on update
+        return api.patch(`/notifications/templates/${editingTemplate.eventType}`, payload);
       }
-      return api.post('/notifications/templates', data);
+      return api.post('/notifications/templates', payload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notification-templates'] });
@@ -303,6 +343,37 @@ export default function TemplateForm({
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
+
+  const previewMutation = useMutation({
+    mutationFn: async () => {
+      const data = tryParseJson(templateForm.sampleData) ?? undefined;
+      const res = await api.post(
+        `/notifications/templates/${templateForm.eventType}/preview`,
+        { data },
+      );
+      return res.data as { rendered: string; flexJson?: unknown };
+    },
+    onSuccess: (data) => {
+      setPreviewResult(data);
+      setPreviewModalOpen(true);
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  const testSendMutation = useMutation({
+    mutationFn: async () => {
+      const data = tryParseJson(templateForm.sampleData) ?? undefined;
+      const res = await api.post(
+        `/notifications/templates/${templateForm.eventType}/test-send`,
+        { data },
+      );
+      return res.data;
+    },
+    onSuccess: () => toast.success('ส่งทดสอบเรียบร้อย — เช็ค LINE/SMS ของคุณ'),
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  const variables = extractVariables(templateForm.messageTemplate);
 
   const validateJson = useCallback(
     (json: string): boolean => {
@@ -366,28 +437,50 @@ export default function TemplateForm({
       size="lg"
     >
       <form onSubmit={handleTemplateSave} className="flex flex-col gap-5 lg:gap-7.5">
-        <div>
-          <label className="block text-sm font-medium text-foreground mb-1">ชื่อ Template *</label>
-          <input
-            type="text"
-            value={templateForm.name}
-            onChange={(e) => setTemplateForm((prev) => ({ ...prev, name: e.target.value }))}
-            className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
-            required
-          />
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">Event Type *</label>
+            <input
+              type="text"
+              value={templateForm.eventType}
+              onChange={(e) =>
+                setTemplateForm((prev) => ({ ...prev, eventType: e.target.value }))
+              }
+              disabled={!!editingTemplate}
+              className="w-full px-3 py-2 border border-input rounded-lg text-sm font-mono focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden disabled:opacity-60"
+              placeholder="dunning.reminder"
+              required
+            />
+            <div className="text-xs text-muted-foreground mt-1">
+              ใช้สำหรับ scheduler หา template เช่น dunning.reminder, payment.due_in_3_days
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">ชื่อ Template *</label>
+            <input
+              type="text"
+              value={templateForm.name}
+              onChange={(e) => setTemplateForm((prev) => ({ ...prev, name: e.target.value }))}
+              className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
+              required
+            />
+          </div>
         </div>
         <div className="grid grid-cols-3 gap-4">
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">ประเภทเหตุการณ์ *</label>
+            <label className="block text-sm font-medium text-foreground mb-1">หมวดหมู่ *</label>
             <select
-              value={templateForm.eventType}
-              onChange={(e) => setTemplateForm((prev) => ({ ...prev, eventType: e.target.value }))}
+              value={templateForm.category}
+              onChange={(e) =>
+                setTemplateForm((prev) => ({ ...prev, category: e.target.value }))
+              }
               className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
             >
-              <option value="PAYMENT_REMINDER">เตือนชำระ</option>
-              <option value="OVERDUE_NOTICE">ทวงหนี้</option>
-              <option value="PAYMENT_SUCCESS">ชำระสำเร็จ</option>
-              <option value="CONTRACT_DEFAULT">ผิดนัด</option>
+              <option value="DUNNING">DUNNING (ทวงหนี้)</option>
+              <option value="REMINDER">REMINDER (เตือนก่อนงวด)</option>
+              <option value="TRANSACTIONAL">TRANSACTIONAL (ใบเสร็จ)</option>
+              <option value="STAFF">STAFF (ทีม)</option>
+              <option value="MARKETING">MARKETING (โปรโมชั่น)</option>
             </select>
           </div>
           <div>
@@ -452,6 +545,55 @@ export default function TemplateForm({
               </button>
             ))}
           </div>
+          {variables.length > 0 && (
+            <div className="text-xs text-muted-foreground mt-2">
+              Variables ที่ตรวจพบ:
+              {variables.map((v) => (
+                <code
+                  key={v}
+                  className="mx-1 px-1 bg-muted rounded text-xs"
+                >{`\${${v}}`}</code>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Sample data editor */}
+        <div>
+          <label className="block text-sm font-medium text-foreground mb-1">
+            ข้อมูลตัวอย่าง (JSON สำหรับ preview)
+          </label>
+          <textarea
+            value={templateForm.sampleData}
+            onChange={(e) =>
+              setTemplateForm((prev) => ({ ...prev, sampleData: e.target.value }))
+            }
+            className="w-full px-3 py-2 border border-input rounded-lg font-mono text-xs focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
+            rows={4}
+            placeholder='{"name":"สมหมาย","amount":"1500"}'
+          />
+        </div>
+
+        {/* Preview + Test send buttons */}
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => previewMutation.mutate()}
+            disabled={previewMutation.isPending || !templateForm.eventType || !editingTemplate}
+            className="px-4 py-2 border border-input rounded-lg text-sm hover:bg-accent disabled:opacity-50"
+            title={!editingTemplate ? 'บันทึก template ก่อนเพื่อใช้ Preview' : ''}
+          >
+            {previewMutation.isPending ? 'กำลัง...' : 'Preview'}
+          </button>
+          <button
+            type="button"
+            onClick={() => testSendMutation.mutate()}
+            disabled={testSendMutation.isPending || !templateForm.eventType || !editingTemplate}
+            className="px-4 py-2 border border-input rounded-lg text-sm hover:bg-accent disabled:opacity-50"
+            title={!editingTemplate ? 'บันทึก template ก่อนเพื่อใช้ Test send' : ''}
+          >
+            {testSendMutation.isPending ? 'กำลังส่ง...' : 'ส่งทดสอบให้ตัวเอง'}
+          </button>
         </div>
 
         {/* Flex JSON Editor (LINE + flex only) */}
@@ -567,6 +709,35 @@ export default function TemplateForm({
           </button>
         </div>
       </form>
+
+      {previewModalOpen && previewResult && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+          onClick={() => setPreviewModalOpen(false)}
+        >
+          <div
+            className="bg-card rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="font-semibold mb-2">Preview</h3>
+            <pre className="bg-muted p-3 rounded text-sm whitespace-pre-wrap mb-2">
+              {previewResult.rendered}
+            </pre>
+            {previewResult.flexJson != null && (
+              <pre className="mt-2 bg-muted p-3 rounded text-xs overflow-auto max-h-64">
+                {JSON.stringify(previewResult.flexJson, null, 2)}
+              </pre>
+            )}
+            <button
+              type="button"
+              onClick={() => setPreviewModalOpen(false)}
+              className="mt-4 px-4 py-2 border border-input rounded-lg text-sm hover:bg-accent"
+            >
+              ปิด
+            </button>
+          </div>
+        </div>
+      )}
     </Modal>
   );
 }

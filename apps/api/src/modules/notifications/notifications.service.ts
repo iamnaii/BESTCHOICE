@@ -4,7 +4,7 @@ import { maskPhone } from '../../utils/mask.util';
 import { isSmsPaymentReminderDisabled } from '../../utils/sms-payment-reminder.util';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
-import { SendNotificationDto, CreateNotificationTemplateDto, UpdateNotificationTemplateDto } from './dto/create-notification.dto';
+import { SendNotificationDto } from './dto/create-notification.dto';
 import type { LineChannelKey } from './dto/create-notification.dto';
 import { NotificationChannel } from '@prisma/client';
 import { FlexMessagePayload } from '../line-oa/flex-messages/base-template';
@@ -13,6 +13,8 @@ import { QuickReplyService } from '../line-oa/quick-reply.service';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
 import { ComplianceService } from './compliance.service';
 import { NotificationCategory } from './notification-category.enum';
+import { NotificationTemplateService } from './notification-template.service';
+import * as Sentry from '@sentry/nestjs';
 
 @Injectable()
 export class NotificationsService {
@@ -25,6 +27,7 @@ export class NotificationsService {
     private quickReplyService: QuickReplyService,
     private integrationConfig: IntegrationConfigService,
     private compliance: ComplianceService,
+    private templateService: NotificationTemplateService,
   ) {}
 
   private async getLineToken(channelKey: LineChannelKey): Promise<string> {
@@ -482,18 +485,19 @@ export class NotificationsService {
   }
 
   /**
-   * Replace {placeholders} in a string with data values
+   * Replace ${placeholders} in a string with data values.
+   * Matches NotificationTemplateService syntax (${var}). Unknown vars are
+   * left in their original ${var} form so reviewers spot them in logs.
    */
   private replacePlaceholders(text: string, data: Record<string, string>): string {
-    let result = text;
-    for (const [key, value] of Object.entries(data)) {
-      result = result.replace(new RegExp(`\\{${key}\\}`, 'g'), value);
-    }
-    return result;
+    return text.replace(/\$\{([^}]+)\}/g, (_match, varName: string) => {
+      const trimmed = varName.trim();
+      return data[trimmed] ?? `\${${trimmed}}`;
+    });
   }
 
   /**
-   * Replace {placeholders} in a JSON object recursively
+   * Replace ${placeholders} in a JSON object recursively
    */
   private replacePlaceholdersInJson(obj: unknown, data: Record<string, string>): unknown {
     if (typeof obj === 'string') {
@@ -513,86 +517,101 @@ export class NotificationsService {
   }
 
   /**
-   * Send notification using a template with data substitution
-   * Supports both text and Flex Message JSON templates
+   * Send notification from a NotificationTemplate keyed by eventType.
+   *
+   * Phase 7 (P3): looks up via NotificationTemplateService (DB-backed
+   * NotificationTemplate model). Hard-fails with Sentry if template missing
+   * (was: NotFoundException with no Sentry signal). Inactive templates
+   * return BLOCKED with TEMPLATE_INACTIVE reason and Sentry warn.
+   *
+   * Template carries channel/channelKey/category — caller no longer offloads.
    */
   async sendFromTemplate(
-    templateId: string,
+    eventType: string,
     data: Record<string, string>,
     recipient: string,
-    relatedId?: string,
-    options: { channelKey?: LineChannelKey; customerId?: string; category?: NotificationCategory } = {},
-  ) {
-    const template = await this.prisma.systemConfig.findFirst({
-      where: { key: `notification_template_${templateId}`, deletedAt: null },
-    });
+    options: {
+      relatedId?: string;
+      customerId?: string;
+      bypassCompliance?: boolean;
+      fallbackPhone?: string;
+    } = {},
+  ): Promise<{ id: string | null; status: string; blockReason?: string }> {
+    const tpl = await this.templateService.findByEventType(eventType);
 
-    if (!template) throw new NotFoundException('ไม่พบ template');
-
-    const templateData = JSON.parse(template.value);
-
-    // Check if template is active
-    if (templateData.isActive === false) {
-      this.logger.warn(`Template ${templateId} is inactive, skipping`);
-      return { id: null, status: 'SKIPPED', reason: 'Template is inactive' };
+    if (!tpl) {
+      Sentry.captureMessage(`Notification template missing: ${eventType}`, {
+        level: 'error',
+        tags: { module: 'notifications', eventType },
+        fingerprint: ['template-missing', eventType],
+      });
+      throw new InternalServerErrorException(`Notification template not found: ${eventType}`);
     }
 
-    // Resolve channelKey: caller override > template-declared > legacy default.
-    // Templates that don't declare a channelKey still default to line-finance
-    // (preserves legacy behavior for HP/finance reminders) but callers sending
-    // shop-side templates MUST pass options.channelKey = 'line-shop'.
-    const resolvedChannelKey: LineChannelKey =
-      options.channelKey ??
-      (templateData.channelKey as LineChannelKey | undefined) ??
-      'line-finance';
+    if (!tpl.isActive) {
+      this.logger.warn(`Template ${eventType} is inactive — send blocked`);
+      Sentry.captureMessage(`Notification template inactive: ${eventType}`, {
+        level: 'warning',
+        tags: { module: 'notifications', eventType },
+        fingerprint: ['template-inactive', eventType],
+      });
+      return { id: null, status: 'BLOCKED', blockReason: 'TEMPLATE_INACTIVE' };
+    }
 
-    // If format is 'flex' and channel is LINE, send as Flex Message
-    if (templateData.format === 'flex' && templateData.channel === 'LINE' && templateData.flexTemplate) {
+    const message = this.replacePlaceholders(tpl.messageTemplate, data);
+
+    // For Flex templates with channel=LINE, render JSON and send via lineOaService
+    if (tpl.format === 'flex' && tpl.flexTemplate && tpl.channel === 'LINE' && tpl.channelKey) {
       try {
-        const flexJson = JSON.parse(templateData.flexTemplate);
+        const flexJson = JSON.parse(tpl.flexTemplate);
         const resolvedFlex = this.replacePlaceholdersInJson(flexJson, data) as FlexMessagePayload;
-        await this.sendLineFlexMessage(recipient, resolvedFlex, resolvedChannelKey);
+        await this.sendLineFlexMessage(recipient, resolvedFlex, tpl.channelKey as LineChannelKey);
 
-        const textSummary = this.replacePlaceholders(templateData.messageTemplate || templateData.name, data);
         const log = await this.prisma.notificationLog.create({
           data: {
             channel: 'LINE',
-            channelKey: resolvedChannelKey,
+            channelKey: tpl.channelKey,
             recipient,
-            subject: templateData.subject || templateData.name,
-            message: `Flex: ${textSummary}`,
+            subject: tpl.subject ?? tpl.name,
+            message: `Flex: ${message}`,
             status: 'SENT',
-            relatedId,
+            relatedId: options.relatedId ?? null,
+            customerId: options.customerId ?? null,
+            category: tpl.category,
+            blockReason: null,
             sentAt: new Date(),
           },
         });
-
         return { id: log.id, status: 'SENT' };
       } catch (err) {
-        this.logger.warn(`Flex template send failed, falling back to text: ${err instanceof Error ? err.message : err}`);
-        // Fall through to text message
+        this.logger.warn(
+          `Flex template send failed for ${eventType}, falling back to text: ${err instanceof Error ? err.message : err}`,
+        );
+        // Fall through to text send below
       }
     }
 
-    let message = templateData.messageTemplate as string;
-    message = this.replacePlaceholders(message, data);
-
+    // Text path (default)
     return this.send({
-      channel: templateData.channel,
-      channelKey: templateData.channel === 'LINE' ? resolvedChannelKey : undefined,
+      channel: tpl.channel,
+      channelKey: tpl.channelKey as LineChannelKey | undefined,
       recipient,
-      subject: templateData.subject,
+      subject: tpl.subject ?? tpl.name,
       message,
-      relatedId,
+      relatedId: options.relatedId,
       customerId: options.customerId,
-      category: options.category ?? NotificationCategory.DUNNING,
+      category: tpl.category,
+      bypassCompliance: options.bypassCompliance,
+      fallbackPhone: options.fallbackPhone,
     });
   }
 
   /**
-   * Bulk send notifications to multiple contracts
+   * Bulk send notifications to multiple contracts.
+   * @param eventType — NotificationTemplate.eventType (e.g. 'dunning.line.text.t-3').
+   *   Template carries channel/channelKey/category — no longer caller-passed.
    */
-  async sendBulk(templateId: string, contractIds: string[]) {
+  async sendBulk(eventType: string, contractIds: string[]) {
     const results: { contractId: string; status: string }[] = [];
 
     // Batch load all contracts to avoid N+1 queries
@@ -618,9 +637,9 @@ export class NotificationsService {
         continue;
       }
 
-      const result = await this.sendFromTemplate(templateId, data, recipient, contractId, {
+      const result = await this.sendFromTemplate(eventType, data, recipient, {
+        relatedId: contractId,
         customerId: customer.id,
-        category: NotificationCategory.DUNNING,
       });
       results.push({ contractId, status: result.status });
     }
@@ -860,117 +879,6 @@ export class NotificationsService {
   }
 
   // ============================================================
-  // NOTIFICATION TEMPLATES (stored in system_config)
-  // ============================================================
-
-  async findTemplates() {
-    const configs = await this.prisma.systemConfig.findMany({
-      where: { key: { startsWith: 'notification_template_' }, deletedAt: null },
-      orderBy: { key: 'asc' },
-    });
-
-    return configs.map((c) => ({
-      id: c.key.replace('notification_template_', ''),
-      ...JSON.parse(c.value),
-      updatedAt: c.updatedAt,
-    }));
-  }
-
-  async findTemplate(id: string) {
-    const config = await this.prisma.systemConfig.findFirst({
-      where: { key: `notification_template_${id}`, deletedAt: null },
-    });
-    if (!config) throw new NotFoundException('ไม่พบ template');
-
-    return {
-      id,
-      ...JSON.parse(config.value),
-      updatedAt: config.updatedAt,
-    };
-  }
-
-  async createTemplate(dto: CreateNotificationTemplateDto) {
-    const id = dto.eventType.toLowerCase() + '_' + dto.channel.toLowerCase();
-
-    const exists = await this.prisma.systemConfig.findFirst({
-      where: { key: `notification_template_${id}`, deletedAt: null },
-    });
-    if (exists) {
-      // Update existing
-      return this.updateTemplate(id, {
-        name: dto.name,
-        format: dto.format,
-        subject: dto.subject,
-        messageTemplate: dto.messageTemplate,
-        flexTemplate: dto.flexTemplate,
-        description: dto.description,
-      });
-    }
-
-    const templateValue: Record<string, unknown> = {
-      name: dto.name,
-      eventType: dto.eventType,
-      channel: dto.channel,
-      format: dto.format || 'text',
-      subject: dto.subject,
-      messageTemplate: dto.messageTemplate,
-      description: dto.description,
-      isActive: true,
-    };
-    if (dto.flexTemplate) {
-      templateValue.flexTemplate = dto.flexTemplate;
-    }
-
-    const config = await this.prisma.systemConfig.create({
-      data: {
-        key: `notification_template_${id}`,
-        value: JSON.stringify(templateValue),
-        label: `Template: ${dto.name}`,
-      },
-    });
-
-    return { id, ...JSON.parse(config.value) };
-  }
-
-  async updateTemplate(id: string, dto: UpdateNotificationTemplateDto) {
-    const config = await this.prisma.systemConfig.findFirst({
-      where: { key: `notification_template_${id}`, deletedAt: null },
-    });
-    if (!config) throw new NotFoundException('ไม่พบ template');
-
-    const existing = JSON.parse(config.value);
-    const updated = { ...existing };
-    if (dto.name !== undefined) updated.name = dto.name;
-    if (dto.format !== undefined) updated.format = dto.format;
-    if (dto.subject !== undefined) updated.subject = dto.subject;
-    if (dto.messageTemplate !== undefined) updated.messageTemplate = dto.messageTemplate;
-    if (dto.flexTemplate !== undefined) updated.flexTemplate = dto.flexTemplate;
-    if (dto.description !== undefined) updated.description = dto.description;
-    if (dto.isActive !== undefined) updated.isActive = dto.isActive;
-
-    await this.prisma.systemConfig.update({
-      where: { key: `notification_template_${id}` },
-      data: { value: JSON.stringify(updated) },
-    });
-
-    return { id, ...updated };
-  }
-
-  async deleteTemplate(id: string) {
-    const config = await this.prisma.systemConfig.findFirst({
-      where: { key: `notification_template_${id}`, deletedAt: null },
-    });
-    if (!config) throw new NotFoundException('ไม่พบ template');
-
-    await this.prisma.systemConfig.update({
-      where: { key: `notification_template_${id}` },
-      data: { deletedAt: new Date() },
-    });
-
-    return { deleted: true };
-  }
-
-  // ============================================================
   // SCHEDULING (CRON-BASED)
   // ============================================================
 
@@ -1051,9 +959,10 @@ export class NotificationsService {
         continue;
       }
 
-      const message = `สวัสดีค่ะ คุณ${customer.name}\nแจ้งเตือน: ค่างวดที่ ${payment.installmentNo} สัญญา ${payment.contract.contractNumber}\nจำนวน ${Number(payment.amountDue).toLocaleString()} บาท\nครบกำหนดชำระ${daysUntil === 0 ? 'วันนี้' : `อีก ${daysUntil} วัน`} (${formatDateShort(payment.dueDate)})\nกรุณาชำระตามกำหนด ขอบคุณค่ะ`;
+      // SMS branch + flex-fallback fallback uses the same plain-text body
+      const smsMessage = `สวัสดีค่ะ คุณ${customer.name}\nแจ้งเตือน: ค่างวดที่ ${payment.installmentNo} สัญญา ${payment.contract.contractNumber}\nจำนวน ${Number(payment.amountDue).toLocaleString()} บาท\nครบกำหนดชำระ${daysUntil === 0 ? 'วันนี้' : `อีก ${daysUntil} วัน`} (${formatDateShort(payment.dueDate)})\nกรุณาชำระตามกำหนด ขอบคุณค่ะ`;
 
-      // Try LINE Flex Message first, fallback to text, then SMS
+      // Try LINE Flex Message first, fallback to template, then SMS
       if (customer.lineIdFinance) {
         try {
           const flex = this.flexTemplates.paymentReminder({
@@ -1079,27 +988,54 @@ export class NotificationsService {
           });
           sent++;
         } catch (err) {
-          this.logger.warn(`Flex message failed, falling back to text: ${err instanceof Error ? err.message : err}`);
-          await this.send({
-            channel: 'LINE',
-            channelKey: 'line-finance',
-            recipient: customer.lineIdFinance,
-            message,
-            relatedId: payment.id,
-            fallbackPhone: isSmsPaymentReminderDisabled() ? undefined : (customer.phone || undefined),
-            customerId: customer.id,
-            category: NotificationCategory.REMINDER,
-          });
+          this.logger.warn(`Flex message failed, falling back to template text: ${err instanceof Error ? err.message : err}`);
+          // Pick template by daysUntil. Fall back to legacy inline send for
+          // day-0 (no dedicated template exists for "due today").
+          const eventType =
+            daysUntil === 3
+              ? 'payment.due_in_3_days'
+              : daysUntil === 1
+                ? 'payment.due_in_1_day'
+                : null;
+          if (eventType) {
+            await this.sendFromTemplate(
+              eventType,
+              {
+                name: customer.name,
+                amount: Number(payment.amountDue).toLocaleString(),
+                installmentNo: String(payment.installmentNo),
+                dueDate: formatDateShort(payment.dueDate),
+              },
+              customer.lineIdFinance,
+              {
+                relatedId: payment.id,
+                customerId: customer.id,
+              },
+            );
+          } else {
+            // Day-0 (due today) — preserve legacy text path
+            await this.send({
+              channel: 'LINE',
+              channelKey: 'line-finance',
+              recipient: customer.lineIdFinance,
+              message: smsMessage,
+              relatedId: payment.id,
+              fallbackPhone: isSmsPaymentReminderDisabled() ? undefined : (customer.phone || undefined),
+              customerId: customer.id,
+              category: NotificationCategory.REMINDER,
+            });
+          }
           sent++;
         }
       } else if (customer.phone) {
         if (isSmsPaymentReminderDisabled()) {
           this.logger.warn(`[SMS-REMINDER-OFF] Skipping payment reminder SMS for payment ${payment.id}`);
         } else {
+          // SMS branch — template is LINE-only so keep raw send()
           await this.send({
             channel: 'SMS',
             recipient: customer.phone,
-            message,
+            message: smsMessage,
             relatedId: payment.id,
             customerId: customer.id,
             category: NotificationCategory.REMINDER,
@@ -1186,9 +1122,10 @@ export class NotificationsService {
       }
 
       const outstanding = Number(payment.amountDue) - Number(payment.amountPaid) + Number(payment.lateFee);
-      const message = `แจ้งเตือน: คุณ${customer.name}\nค่างวดที่ ${payment.installmentNo} สัญญา ${payment.contract.contractNumber}\nเลยกำหนดชำระ ${daysOverdue} วัน\nยอดค้างชำระ ${outstanding.toLocaleString()} บาท (รวมค่าปรับ)\nกรุณาชำระโดยเร็ว`;
+      // SMS branch + flex-fallback fallback uses the same plain-text body
+      const smsMessage = `แจ้งเตือน: คุณ${customer.name}\nค่างวดที่ ${payment.installmentNo} สัญญา ${payment.contract.contractNumber}\nเลยกำหนดชำระ ${daysOverdue} วัน\nยอดค้างชำระ ${outstanding.toLocaleString()} บาท (รวมค่าปรับ)\nกรุณาชำระโดยเร็ว`;
 
-      // Try LINE Flex Message first, fallback to text, then SMS
+      // Try LINE Flex Message first, fallback to template, then SMS
       if (customer.lineIdFinance) {
         try {
           const flex = this.flexTemplates.overdueNotice({
@@ -1214,27 +1151,41 @@ export class NotificationsService {
           });
           sent++;
         } catch (err) {
-          this.logger.warn(`Flex message failed, falling back to text: ${err instanceof Error ? err.message : err}`);
-          await this.send({
-            channel: 'LINE',
-            channelKey: 'line-finance',
-            recipient: customer.lineIdFinance,
-            message,
-            relatedId: payment.id,
-            fallbackPhone: isSmsPaymentReminderDisabled() ? undefined : (customer.phone || undefined),
-            customerId: customer.id,
-            category: NotificationCategory.DUNNING,
-          });
+          this.logger.warn(`Flex message failed, falling back to template text: ${err instanceof Error ? err.message : err}`);
+          // Pick template by daysOverdue (1, 3, or 7) — the cron only fetches
+          // payments at exactly those offsets so other values shouldn't occur,
+          // but fall back defensively to the day-1 template if so.
+          const eventType =
+            daysOverdue >= 7
+              ? 'payment.overdue_day_7'
+              : daysOverdue >= 3
+                ? 'payment.overdue_day_3'
+                : 'payment.overdue_day_1';
+          await this.sendFromTemplate(
+            eventType,
+            {
+              name: customer.name,
+              amount: outstanding.toLocaleString(),
+              installmentNo: String(payment.installmentNo),
+              contractNumber: payment.contract.contractNumber,
+            },
+            customer.lineIdFinance,
+            {
+              relatedId: payment.id,
+              customerId: customer.id,
+            },
+          );
           sent++;
         }
       } else if (customer.phone) {
         if (isSmsPaymentReminderDisabled()) {
           this.logger.warn(`[SMS-REMINDER-OFF] Skipping overdue notice SMS for payment ${payment.id}`);
         } else {
+          // SMS branch — template is LINE-only so keep raw send()
           await this.send({
             channel: 'SMS',
             recipient: customer.phone,
-            message,
+            message: smsMessage,
             relatedId: payment.id,
             customerId: customer.id,
             category: NotificationCategory.DUNNING,

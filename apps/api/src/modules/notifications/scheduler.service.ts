@@ -3,7 +3,6 @@ import * as Sentry from '@sentry/nestjs';
 import { formatDateShort } from '../../utils/thai-date.util';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { NotificationsService } from './notifications.service';
-import { NotificationCategory } from './notification-category.enum';
 import { OverdueService } from '../overdue/overdue.service';
 import { ReorderPointsService } from '../inventory/reorder-points.service';
 import { WarrantyService } from '../products/warranty.service';
@@ -243,31 +242,32 @@ export class SchedulerService {
             0,
           );
 
-          // Stage-specific messaging — [BESTCHOICE FINANCE] prefix required
-          // by พ.ร.บ.การทวงถามหนี้ มาตรา 8 (creditor identification on every
-          // dunning communication).
-          const stageMessages: Record<string, string> = {
-            REMINDER: `[BESTCHOICE FINANCE] แจ้งเตือน: คุณ${contract.customer.name} มียอดค้างชำระ ${totalOverdue.toLocaleString()} บาท สัญญา ${esc.contractNumber} กรุณาชำระโดยเร็ว`,
-            NOTICE: `[BESTCHOICE FINANCE] แจ้งค้างชำระ: คุณ${contract.customer.name} มียอดค้างชำระ ${totalOverdue.toLocaleString()} บาท ค้างชำระ ${esc.daysOverdue} วัน กรุณาติดต่อชำระเงินทันที`,
-            FINAL_WARNING: `[BESTCHOICE FINANCE] เตือนครั้งสุดท้าย: คุณ${contract.customer.name} ค้างชำระ ${esc.daysOverdue} วัน ยอด ${totalOverdue.toLocaleString()} บาท หากไม่ชำระภายใน 30 วัน จะดำเนินการตามกฎหมาย`,
-            LEGAL_ACTION: `[BESTCHOICE FINANCE] แจ้งดำเนินการ: สัญญา ${esc.contractNumber} ค้างชำระเกิน 60 วัน ทางร้านจะดำเนินการยึดคืนสินค้า กรุณาติดต่อร้านทันที`,
-          };
-
-          const message = stageMessages[esc.to];
-          if (message) {
-            await this.notificationsService.send({
-              channelKey: 'line-finance',
-              channel: 'LINE',
-              recipient: contract.customer.lineIdFinance,
-              subject: `Dunning: ${esc.to}`,
-              message,
+          // Stage-specific messaging — template owns channel/category and
+          // [BESTCHOICE FINANCE] prefix required by พ.ร.บ.การทวงถามหนี้ มาตรา 8.
+          // Stage values map directly to template eventType:
+          //   REMINDER → dunning.reminder
+          //   NOTICE → dunning.notice
+          //   FINAL_WARNING → dunning.final_warning
+          //   LEGAL_ACTION → dunning.legal_action
+          const eventType = `dunning.${esc.to.toLowerCase()}`;
+          await this.notificationsService.sendFromTemplate(
+            eventType,
+            {
+              name: contract.customer.name,
+              amount: totalOverdue.toLocaleString(),
+              contractNumber: esc.contractNumber,
+              daysOverdue: String(esc.daysOverdue),
+            },
+            contract.customer.lineIdFinance,
+            {
               relatedId: esc.contractId,
-              fallbackPhone: isSmsPaymentReminderDisabled() ? undefined : (contract.customer.phone || undefined),
               customerId: contract.customerId,
-              category: NotificationCategory.DUNNING,
-            });
-            notified++;
-          }
+              fallbackPhone: isSmsPaymentReminderDisabled()
+                ? undefined
+                : contract.customer.phone || undefined,
+            },
+          );
+          notified++;
         } catch (err) {
           this.logger.warn(`Failed to send dunning notification for ${esc.contractNumber}: ${err}`);
         }
@@ -765,19 +765,15 @@ export class SchedulerService {
       const credit = await this.notificationsService.checkSmsCredit();
       if (!credit.configured) return;
       if (credit.credit !== undefined && credit.credit < 100) {
-        const message = `[BESTCHOICE] เครดิต SMS ใกล้หมด: เหลือ ${credit.credit} เครดิต — กรุณาเติมก่อนหมด`;
         const staffTargets = (await this.integrationConfig.getValue('line-staff', 'notifyTargets')) || '';
         const targets = staffTargets.split(',').map((s) => s.trim()).filter(Boolean);
         for (const target of targets) {
-          await this.notificationsService.send({
-            channelKey: 'line-staff',
-            channel: 'LINE',
-            recipient: target,
-            message,
-            relatedId: 'sms-credit-alert',
-            noRetry: true,
-            category: NotificationCategory.STAFF,
-          });
+          await this.notificationsService.sendFromTemplate(
+            'staff.sms_credit_low',
+            { credit: String(credit.credit) },
+            target,
+            { relatedId: 'sms-credit-alert' },
+          );
         }
         this.logger.warn(`SMS credit low (${credit.credit}) — alerted ${targets.length} staff`);
       }

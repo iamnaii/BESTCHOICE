@@ -675,11 +675,24 @@ export class NotificationsService {
       data: { status: 'FAILED', errorMsg: 'Orphaned retry record — no nextRetryAt set' },
     });
 
+    // Expire DELAYED rows older than 24h to FAILED. Without this they would
+    // orphan silently in DELAYED forever (the findMany below filters by
+    // createdAt >= 24h ago, so old rows would never re-enter the queue).
+    const retryWindowCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    await this.prisma.notificationLog.updateMany({
+      where: { status: 'DELAYED', createdAt: { lt: retryWindowCutoff } },
+      data: {
+        status: 'FAILED',
+        errorMsg: 'retry window expired (>24h DELAYED)',
+        nextRetryAt: null,
+      },
+    });
+
     const pendingRetries = await this.prisma.notificationLog.findMany({
       where: {
         status: { in: ['RETRY_PENDING', 'DELAYED'] },
         nextRetryAt: { lte: now },
-        createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+        createdAt: { gte: retryWindowCutoff },
       },
       orderBy: { nextRetryAt: 'asc' },
       take: 50, // Process max 50 per batch to avoid blocking

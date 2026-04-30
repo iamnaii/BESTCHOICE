@@ -117,14 +117,21 @@ export class ComplianceService {
       ctx.contractId
     ) {
       const todayStart = this.startOfBangkokDay(now);
+      // Count both SENT (already delivered today) and DELAYED (queued for
+      // delayed send today). Without DELAYED, a dunning queued at 23:00
+      // (status=DELAYED) would not block a fresh dunning at 08:30 next
+      // morning — both could SEND, with the first then re-blocked at retry.
+      // DELAYED rows have sentAt=null so we match them by createdAt instead.
       const count = await this.prisma.notificationLog.count({
         where: {
           customerId: ctx.customerId,
           relatedId: ctx.contractId,
           category: ctx.category,
-          status: 'SENT',
-          sentAt: { gte: todayStart },
           deletedAt: null,
+          OR: [
+            { status: 'SENT', sentAt: { gte: todayStart } },
+            { status: 'DELAYED', createdAt: { gte: todayStart } },
+          ],
         },
       });
       if (count >= 1) {

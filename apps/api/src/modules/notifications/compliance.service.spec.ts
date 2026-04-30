@@ -90,6 +90,38 @@ describe('ComplianceService', () => {
     expect(result.reason).toBe('FREQUENCY_CAP');
   });
 
+  it('frequency-cap: counts DELAYED rows (queued send still blocks new dunning)', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-05-04T07:00:00Z'));
+    // 1 DELAYED row exists (queued from earlier, not yet sent)
+    prisma.notificationLog.count.mockResolvedValueOnce(1);
+    const result = await service.canSend({
+      channel: 'LINE',
+      customerId: 'c1',
+      contractId: 'k1',
+      category: NotificationCategory.DUNNING,
+    });
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toBe('FREQUENCY_CAP');
+  });
+
+  it('frequency-cap: query includes both SENT and DELAYED via OR clause', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-05-04T07:00:00Z'));
+    await service.canSend({
+      channel: 'LINE',
+      customerId: 'c1',
+      contractId: 'k1',
+      category: NotificationCategory.DUNNING,
+    });
+    expect(prisma.notificationLog.count).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        OR: expect.arrayContaining([
+          expect.objectContaining({ status: 'SENT' }),
+          expect.objectContaining({ status: 'DELAYED' }),
+        ]),
+      }),
+    });
+  });
+
   it('frequency-cap: does not apply to REMINDER', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-05-04T07:00:00Z'));
     prisma.notificationLog.count.mockResolvedValueOnce(5);

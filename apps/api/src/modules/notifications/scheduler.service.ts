@@ -243,12 +243,14 @@ export class SchedulerService {
             0,
           );
 
-          // Stage-specific messaging
+          // Stage-specific messaging — [BESTCHOICE FINANCE] prefix required
+          // by พ.ร.บ.การทวงถามหนี้ มาตรา 8 (creditor identification on every
+          // dunning communication).
           const stageMessages: Record<string, string> = {
-            REMINDER: `แจ้งเตือน: คุณ${contract.customer.name} มียอดค้างชำระ ${totalOverdue.toLocaleString()} บาท สัญญา ${esc.contractNumber} กรุณาชำระโดยเร็ว`,
-            NOTICE: `แจ้งค้างชำระ: คุณ${contract.customer.name} มียอดค้างชำระ ${totalOverdue.toLocaleString()} บาท ค้างชำระ ${esc.daysOverdue} วัน กรุณาติดต่อชำระเงินทันที`,
-            FINAL_WARNING: `เตือนครั้งสุดท้าย: คุณ${contract.customer.name} ค้างชำระ ${esc.daysOverdue} วัน ยอด ${totalOverdue.toLocaleString()} บาท หากไม่ชำระภายใน 30 วัน จะดำเนินการตามกฎหมาย`,
-            LEGAL_ACTION: `แจ้งดำเนินการ: สัญญา ${esc.contractNumber} ค้างชำระเกิน 60 วัน ทางร้านจะดำเนินการยึดคืนสินค้า กรุณาติดต่อร้านทันที`,
+            REMINDER: `[BESTCHOICE FINANCE] แจ้งเตือน: คุณ${contract.customer.name} มียอดค้างชำระ ${totalOverdue.toLocaleString()} บาท สัญญา ${esc.contractNumber} กรุณาชำระโดยเร็ว`,
+            NOTICE: `[BESTCHOICE FINANCE] แจ้งค้างชำระ: คุณ${contract.customer.name} มียอดค้างชำระ ${totalOverdue.toLocaleString()} บาท ค้างชำระ ${esc.daysOverdue} วัน กรุณาติดต่อชำระเงินทันที`,
+            FINAL_WARNING: `[BESTCHOICE FINANCE] เตือนครั้งสุดท้าย: คุณ${contract.customer.name} ค้างชำระ ${esc.daysOverdue} วัน ยอด ${totalOverdue.toLocaleString()} บาท หากไม่ชำระภายใน 30 วัน จะดำเนินการตามกฎหมาย`,
+            LEGAL_ACTION: `[BESTCHOICE FINANCE] แจ้งดำเนินการ: สัญญา ${esc.contractNumber} ค้างชำระเกิน 60 วัน ทางร้านจะดำเนินการยึดคืนสินค้า กรุณาติดต่อร้านทันที`,
           };
 
           const message = stageMessages[esc.to];

@@ -144,4 +144,38 @@ describe('ComplianceService', () => {
     });
     expect(result.allowed).toBe(true);
   });
+
+  describe('ensureIdentificationPrefix', () => {
+    it('prepends [BESTCHOICE FINANCE] to DUNNING message missing it', () => {
+      const result = service.ensureIdentificationPrefix(
+        'hello',
+        NotificationCategory.DUNNING,
+      );
+      expect(result).toBe('[BESTCHOICE FINANCE] hello');
+    });
+
+    it('leaves DUNNING message that already has prefix unchanged', () => {
+      const result = service.ensureIdentificationPrefix(
+        '[BESTCHOICE FINANCE] hello',
+        NotificationCategory.DUNNING,
+      );
+      expect(result).toBe('[BESTCHOICE FINANCE] hello');
+    });
+
+    it('does not modify REMINDER messages', () => {
+      const result = service.ensureIdentificationPrefix(
+        'hello',
+        NotificationCategory.REMINDER,
+      );
+      expect(result).toBe('hello');
+    });
+
+    it('does not modify TRANSACTIONAL messages', () => {
+      const result = service.ensureIdentificationPrefix(
+        'hello',
+        NotificationCategory.TRANSACTIONAL,
+      );
+      expect(result).toBe('hello');
+    });
+  });
 });

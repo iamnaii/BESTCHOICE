@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import * as Sentry from '@sentry/node';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PDPAService } from '../pdpa/pdpa.service';
 import { HolidayService } from './holiday.service';
@@ -9,6 +10,12 @@ import {
 } from './notification-category.enum';
 import { isWithinBusinessHours, nextBusinessHourOpen } from '../../utils/business-hours.util';
 import type { NotificationChannel } from '@prisma/client';
+
+/**
+ * Identification prefix required by พ.ร.บ.การทวงถามหนี้ มาตรา 8 on every
+ * dunning communication.
+ */
+const DUNNING_IDENTIFICATION_PREFIX = '[BESTCHOICE FINANCE]';
 
 export interface ComplianceContext {
   channel: NotificationChannel;
@@ -120,6 +127,34 @@ export class ComplianceService {
       weekday: 'short',
     });
     return weekday === 'Sat' || weekday === 'Sun';
+  }
+
+  /**
+   * Ensure dunning messages start with the creditor identification prefix
+   * `[BESTCHOICE FINANCE]`. If missing, auto-prepend and Sentry-warn so the
+   * upstream template can be fixed.
+   *
+   * Compliance basis: พ.ร.บ.การทวงถามหนี้ พ.ศ. 2558 มาตรา 8 — ผู้ทวงถามหนี้
+   * ต้องระบุชื่อเจ้าหนี้บนทุกการสื่อสาร.
+   */
+  ensureIdentificationPrefix(message: string, category: NotificationCategory): string {
+    if (category !== NotificationCategory.DUNNING) return message;
+    if (message.startsWith(DUNNING_IDENTIFICATION_PREFIX)) return message;
+
+    const preview = message.slice(0, 60);
+    this.logger.warn(
+      `Dunning message missing identification prefix — auto-prepending: "${preview}..."`,
+    );
+    Sentry.captureMessage(
+      `Dunning message missing [BESTCHOICE FINANCE] prefix — auto-prepended`,
+      {
+        level: 'warning',
+        tags: { module: 'notifications', compliance: 'identification-prefix' },
+        extra: { messagePreview: preview },
+      },
+    );
+
+    return `${DUNNING_IDENTIFICATION_PREFIX} ${message}`;
   }
 
   private startOfBangkokDay(date: Date): Date {

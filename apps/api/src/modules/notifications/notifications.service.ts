@@ -104,6 +104,17 @@ export class NotificationsService {
     }
     // ===== End compliance gate =====
 
+    // Ensure DUNNING messages carry the [BESTCHOICE FINANCE] identification
+    // prefix per พ.ร.บ.การทวงถามหนี้ มาตรา 8. Auto-prepends + Sentry-warns
+    // when the upstream template forgot.
+    let messageToSend = dto.message;
+    if (dto.category === NotificationCategory.DUNNING) {
+      messageToSend = this.compliance.ensureIdentificationPrefix(
+        dto.message,
+        dto.category,
+      );
+    }
+
     let status = 'PENDING';
     let errorMsg: string | null = null;
     let sentAt: Date | null = null;
@@ -113,9 +124,9 @@ export class NotificationsService {
 
     const attemptSend = async (): Promise<void> => {
       if (dto.channel === 'LINE') {
-        await this.sendLine(dto.recipient, dto.message, channelKey);
+        await this.sendLine(dto.recipient, messageToSend, channelKey);
       } else if (dto.channel === 'SMS') {
-        const messageId = await this.sendSms(dto.recipient, dto.message);
+        const messageId = await this.sendSms(dto.recipient, messageToSend);
         if (messageId) externalId = messageId;
       }
       // IN_APP requires no external call
@@ -149,7 +160,7 @@ export class NotificationsService {
           if (dto.channel === 'LINE' && dto.fallbackPhone) {
             this.logger.log(`Attempting SMS fallback for failed LINE notification`);
             try {
-              const fallbackMsgId = await this.sendSms(dto.fallbackPhone, dto.message);
+              const fallbackMsgId = await this.sendSms(dto.fallbackPhone, messageToSend);
               if (fallbackMsgId) externalId = fallbackMsgId;
               status = 'SENT';
               sentAt = new Date();
@@ -168,7 +179,9 @@ export class NotificationsService {
         channelKey: dto.channelKey ?? null,
         recipient: dto.recipient,
         subject: dto.subject,
-        message: dto.message,
+        // Persist the prefixed message so audit trail matches what was
+        // actually delivered to the customer.
+        message: messageToSend,
         status,
         relatedId: dto.relatedId,
         customerId: dto.customerId ?? null,

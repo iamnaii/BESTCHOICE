@@ -4,6 +4,7 @@ import { formatDateShort, formatDateMedium, formatDateLong, getThaiDateParts } f
 import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationCategory } from '../notifications/notification-category.enum';
 import { SettingsService } from '../settings/settings.service';
 import { CreateTemplateDto, UpdateTemplateDto } from './dto/document.dto';
 import * as crypto from 'crypto';
@@ -497,6 +498,8 @@ export class DocumentsService {
           recipient: contract.customer.lineIdFinance,
           message: `สัญญาเลขที่ ${contract.contractNumber} เซ็นเรียบร้อยแล้ว (${signatureCount} ลายเซ็น)\nสินค้า: ${contract.product?.name || '-'}\nดาวน์โหลดเอกสารผ่าน LINE`,
           relatedId: contractId,
+          customerId: contract.customer.id,
+          category: NotificationCategory.TRANSACTIONAL,
         });
         this.logger.log(`Sent contract-signed notification to LINE: ${contract.customer.lineIdFinance}`);
       }

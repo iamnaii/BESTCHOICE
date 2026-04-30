@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException, Logger } from '@nes
 import { ProductCategory } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationCategory } from '../notifications/notification-category.enum';
 import { CreateReorderPointDto, UpdateReorderPointDto } from './dto/reorder-point.dto';
 
 @Injectable()
@@ -184,6 +185,7 @@ export class ReorderPointsService {
               subject: `Stock ต่ำ: ${productDesc} (${rp.branch.name})`,
               message,
               relatedId: rp.id,
+              category: NotificationCategory.STAFF,
             });
             notificationsSent++;
           }
@@ -200,6 +202,7 @@ export class ReorderPointsService {
               subject: `Stock ต่ำ: ${productDesc}`,
               message,
               relatedId: rp.id,
+              category: NotificationCategory.STAFF,
             });
             notificationsSent++;
           }
@@ -213,6 +216,7 @@ export class ReorderPointsService {
                 recipient: owner.email,
                 message,
                 relatedId: rp.id,
+                category: NotificationCategory.STAFF,
               });
               notificationsSent++;
             } catch {

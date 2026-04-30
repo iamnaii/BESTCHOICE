@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { formatDateShort } from '../../utils/thai-date.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationCategory } from '../notifications/notification-category.enum';
 import {
   checkAgeEligibility,
   checkRequiredContractFields,
@@ -511,6 +512,8 @@ export class ContractWorkflowService {
         message,
         relatedId: contract.id,
         fallbackPhone: customer.phone || undefined,
+        customerId: customer.id,
+        category: NotificationCategory.TRANSACTIONAL,
       });
     } else if (customer.phone) {
       await this.notificationsService.send({
@@ -518,6 +521,8 @@ export class ContractWorkflowService {
         recipient: customer.phone,
         message,
         relatedId: contract.id,
+        customerId: customer.id,
+        category: NotificationCategory.TRANSACTIONAL,
       });
     }
   }

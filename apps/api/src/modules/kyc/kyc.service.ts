@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException, InternalServerErrorException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationCategory } from '../notifications/notification-category.enum';
 import * as crypto from 'crypto';
 
 const OTP_EXPIRY_MINUTES = 10;
@@ -67,6 +68,8 @@ export class KycService {
         message,
         relatedId: contractId,
         noRetry: true, // OTP expires in 10 min — retry queue would only spam
+        customerId: customer.id,
+        category: NotificationCategory.TRANSACTIONAL,
       });
       if (result.status === 'FAILED') {
         throw new InternalServerErrorException(

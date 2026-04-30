@@ -11,8 +11,10 @@ import TemplateForm, { type TemplateFormState } from './components/TemplateForm'
 
 interface NotificationTemplate {
   id: string;
-  name: string;
   eventType: string;
+  name: string;
+  category?: string;
+  channelKey?: string | null;
   channel: string;
   format?: string;
   subject: string | null;
@@ -20,6 +22,7 @@ interface NotificationTemplate {
   flexTemplate?: string;
   description: string | null;
   isActive: boolean;
+  sampleData?: Record<string, unknown> | null;
   updatedAt: string;
 }
 
@@ -37,14 +40,18 @@ interface LogStats {
 }
 
 const defaultTemplateForm: TemplateFormState = {
+  eventType: '',
   name: '',
-  eventType: 'PAYMENT_REMINDER',
+  category: 'DUNNING',
+  channelKey: 'line-finance',
   channel: 'LINE',
   format: 'text',
   subject: '',
   messageTemplate: '',
   flexTemplate: '',
   description: '',
+  isActive: true,
+  sampleData: '',
 };
 
 export default function NotificationsPage() {
@@ -124,14 +131,18 @@ export default function NotificationsPage() {
   const openEditTemplate = (t: NotificationTemplate) => {
     setEditingTemplate(t);
     setTemplateForm({
-      name: t.name,
       eventType: t.eventType,
+      name: t.name,
+      category: t.category || 'DUNNING',
+      channelKey: t.channelKey ?? null,
       channel: t.channel,
       format: (t.format as 'text' | 'flex') || 'text',
       subject: t.subject || '',
       messageTemplate: t.messageTemplate,
       flexTemplate: t.flexTemplate || '',
       description: t.description || '',
+      isActive: t.isActive,
+      sampleData: t.sampleData ? JSON.stringify(t.sampleData, null, 2) : '',
     });
     setJsonError(null);
     setIsTemplateModalOpen(true);

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
@@ -10,6 +11,8 @@ interface NotificationTemplate {
   id: string;
   name: string;
   eventType: string;
+  category?: string;
+  channelKey?: string | null;
   channel: string;
   format?: string;
   subject: string | null;
@@ -41,15 +44,22 @@ export default function TemplateManager({
   onConfirmDelete,
 }: TemplateManagerProps) {
   const queryClient = useQueryClient();
+  const [categoryFilter, setCategoryFilter] = useState<string>('');
 
   const { data: templates = [], isLoading: templatesLoading } = useQuery<NotificationTemplate[]>({
-    queryKey: ['notification-templates'],
-    queryFn: async () => (await api.get('/notifications/templates')).data,
+    queryKey: ['notification-templates', categoryFilter],
+    queryFn: async () => {
+      const url = categoryFilter
+        ? `/notifications/templates?category=${categoryFilter}`
+        : '/notifications/templates';
+      return (await api.get(url)).data;
+    },
     enabled: activeTab === 'templates',
   });
 
   const deleteTemplateMutation = useMutation({
-    mutationFn: async (id: string) => api.delete(`/notifications/templates/${id}`),
+    mutationFn: async (eventType: string) =>
+      api.delete(`/notifications/templates/${eventType}`),
     onSuccess: () => {
       toast.success('ลบเทมเพลตสำเร็จ');
       queryClient.invalidateQueries({ queryKey: ['notification-templates'] });
@@ -58,12 +68,34 @@ export default function TemplateManager({
   });
 
   const templateColumns = [
-    { key: 'name', label: 'ชื่อ Template' },
+    {
+      key: 'name',
+      label: 'ชื่อ Template',
+      render: (t: NotificationTemplate) => (
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium">{t.name}</span>
+          {!t.isActive && (
+            <span className="px-2 py-0.5 bg-warning/15 text-warning text-xs rounded">
+              ปิดใช้งาน
+            </span>
+          )}
+        </div>
+      ),
+    },
     {
       key: 'eventType',
-      label: 'ประเภท',
+      label: 'Event Type',
       render: (t: NotificationTemplate) => (
-        <span className="text-sm">{eventTypeLabels[t.eventType] || t.eventType}</span>
+        <span className="text-sm font-mono">
+          {eventTypeLabels[t.eventType] || t.eventType}
+        </span>
+      ),
+    },
+    {
+      key: 'category',
+      label: 'หมวดหมู่',
+      render: (t: NotificationTemplate) => (
+        <span className="text-xs text-muted-foreground">{t.category || '-'}</span>
       ),
     },
     {
@@ -120,7 +152,7 @@ export default function TemplateManager({
           <button
             onClick={() =>
               onConfirmDelete('ต้องการลบ template นี้?', () =>
-                deleteTemplateMutation.mutate(t.id),
+                deleteTemplateMutation.mutate(t.eventType),
               )
             }
             disabled={deleteTemplateMutation.isPending}
@@ -135,13 +167,28 @@ export default function TemplateManager({
 
   return (
     <>
-      <div className="mb-4">
+      <div className="mb-4 flex items-center gap-3 flex-wrap">
         <button
           onClick={onCreateTemplate}
           className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90"
         >
           + สร้าง Template
         </button>
+        <div className="flex items-center gap-2 ml-auto">
+          <label className="text-sm text-muted-foreground">หมวดหมู่:</label>
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
+          >
+            <option value="">ทั้งหมด</option>
+            <option value="DUNNING">DUNNING (ทวงหนี้)</option>
+            <option value="REMINDER">REMINDER (เตือนก่อนงวด)</option>
+            <option value="TRANSACTIONAL">TRANSACTIONAL (ใบเสร็จ)</option>
+            <option value="STAFF">STAFF (ทีม)</option>
+            <option value="MARKETING">MARKETING (โปรโมชั่น)</option>
+          </select>
+        </div>
       </div>
       <Card>
         <CardContent className="p-0">

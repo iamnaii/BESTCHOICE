@@ -567,6 +567,41 @@ export class NotificationsService {
         const resolvedFlex = this.replacePlaceholdersInJson(flexJson, data) as FlexMessagePayload;
         await this.sendLineFlexMessage(recipient, resolvedFlex, tpl.channelKey as LineChannelKey);
 
+        // Mirror to staff inbox: create a ChatMessage so the staff sees what
+        // the customer received. Best-effort — failures here must not break
+        // the notification send.
+        if (options.customerId) {
+          try {
+            const channel = tpl.channelKey === 'line-shop' ? 'LINE_SHOP' : 'LINE_FINANCE';
+            const room = await this.prisma.chatRoom.findFirst({
+              where: {
+                customerId: options.customerId,
+                channel: channel as 'LINE_SHOP' | 'LINE_FINANCE',
+                deletedAt: null,
+              },
+              orderBy: { lastMessageAt: 'desc' },
+            });
+            if (room) {
+              await this.prisma.chatMessage.create({
+                data: {
+                  roomId: room.id,
+                  role: 'STAFF',
+                  type: 'TEMPLATE',
+                  text: message,
+                  flexJson: resolvedFlex as object,
+                  deliveredAt: new Date(),
+                },
+              });
+            }
+          } catch (mirrorErr) {
+            this.logger.warn(
+              `Failed to mirror Flex to ChatMessage for ${eventType}: ${
+                mirrorErr instanceof Error ? mirrorErr.message : mirrorErr
+              }`,
+            );
+          }
+        }
+
         const log = await this.prisma.notificationLog.create({
           data: {
             channel: 'LINE',

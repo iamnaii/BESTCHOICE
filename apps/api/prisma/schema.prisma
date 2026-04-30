@@ -4150,6 +4150,10 @@ model ChatMessage {
   mediaUrl  String? @map("media_url")
   mediaType String? @map("media_type")
 
+  /// LINE Flex Message JSON for type=TEMPLATE messages — staff inbox renders
+  /// a preview that mirrors what customer received. NULL for non-Flex messages.
+  flexJson Json? @map("flex_json")
+
   // Staff attribution
   staffId String? @map("staff_id")
   staff   User?   @relation("ChatMessageStaff", fields: [staffId], references: [id])

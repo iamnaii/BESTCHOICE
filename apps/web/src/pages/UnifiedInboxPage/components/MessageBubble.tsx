@@ -1,14 +1,17 @@
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { PaymentFlexPreview, parsePaymentFlex } from './PaymentFlexPreview';
+import FlexBubblePreview from './FlexBubblePreview';
 
 interface MessageBubbleProps {
   message: {
     id: string;
     role: string;
+    type?: string | null;
     text?: string | null;
     mediaUrl?: string | null;
     mediaType?: string | null;
+    flexJson?: unknown;
     createdAt: string;
     readAt?: string | null;
     staff?: { id: string; name: string; avatarUrl?: string | null } | null;
@@ -29,6 +32,32 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
         <span className="text-[11px] text-muted-foreground bg-muted px-3 py-1 rounded-full">
           {message.text}
         </span>
+      </div>
+    );
+  }
+
+  // TEMPLATE message with structured Flex JSON — render full Flex preview
+  if (message.type === 'TEMPLATE' && message.flexJson) {
+    return (
+      <div className={cn('flex gap-2 mb-3', isCustomer ? 'justify-start' : 'justify-end')}>
+        <div className="flex flex-col max-w-[75%] items-end">
+          {(isBot || isStaff) && (
+            <span className="text-[10px] text-muted-foreground mb-0.5 px-1">
+              {isBot ? 'Bot' : message.staff?.name ?? 'พนักงาน'}
+            </span>
+          )}
+          <FlexBubblePreview flex={message.flexJson} />
+          <span className="flex items-center mt-0.5 px-1">
+            <span className="text-[10px] text-muted-foreground">
+              {format(new Date(message.createdAt), 'HH:mm')}
+            </span>
+            {isStaff && (
+              <span className={cn('text-[10px] ml-1', message.readAt ? 'text-primary' : 'text-muted-foreground')}>
+                {message.readAt ? '✓✓' : '✓'}
+              </span>
+            )}
+          </span>
+        </div>
       </div>
     );
   }

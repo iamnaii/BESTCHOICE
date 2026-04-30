@@ -146,7 +146,7 @@ export class LineOaChatbotController {
         ...reWelcomeFlex,
         quickReply: { items: this.quickReplyService.verifiedReturn() },
       };
-      await this.lineOaService.replyMessage(event.replyToken, [reWelcomeMsg]);
+      await this.lineOaService.replyMessage(event.replyToken, [reWelcomeMsg], 'line-shop');
       return;
     }
 
@@ -210,7 +210,7 @@ export class LineOaChatbotController {
       ];
     }
 
-    await this.lineOaService.replyMessage(event.replyToken, lineMessages);
+    await this.lineOaService.replyMessage(event.replyToken, lineMessages, 'line-shop');
   }
 
   // ─── Text Message Handler ─────────────────────────────
@@ -251,11 +251,11 @@ export class LineOaChatbotController {
         });
         await this.lineOaService.replyMessage(event.replyToken, [
           { type: 'text', text: `บันทึก Owner LINE ID เรียบร้อยแล้วค่ะ\n\nUser ID: ${userId}\n\nตอนนี้สามารถใช้ "ส่งทดสอบ" จากหน้าตั้งค่า LINE OA ได้เลยค่ะ` },
-        ]);
+        ], 'line-shop');
       } catch {
         await this.lineOaService.replyMessage(event.replyToken, [
           { type: 'text', text: 'ไม่สามารถบันทึกได้ กรุณาลองใหม่อีกครั้ง' },
-        ]);
+        ], 'line-shop');
       }
       return;
     }
@@ -266,14 +266,14 @@ export class LineOaChatbotController {
       if (result.success && result.customerName) {
         await this.lineOaService.replyMessage(event.replyToken, [
           { type: 'text', text: `ผูกบัญชีสำเร็จค่ะ คุณ${result.customerName} 🎉\n\nตอนนี้สามารถใช้คำสั่งต่างๆ ได้แล้วค่ะ:\n• "เช็คยอด" - ดูยอดค้างชำระ\n• "งวด" - ดูตารางค่างวด\n• "ชำระ" - ชำระเงิน` },
-        ]);
+        ], 'line-shop');
         return;
       }
       const existing = await this.lineOaService.findCustomerByLineId(userId);
       if (!existing) {
         await this.lineOaService.replyMessage(event.replyToken, [
           { type: 'text', text: 'ไม่พบข้อมูลเบอร์โทรนี้ในระบบค่ะ กรุณาตรวจสอบเบอร์โทร หรือติดต่อสาขาเพื่อลงทะเบียน' },
-        ]);
+        ], 'line-shop');
         return;
       }
     }
@@ -282,7 +282,7 @@ export class LineOaChatbotController {
     if (!this.isBusinessHours()) {
       await this.lineOaService.replyMessage(event.replyToken, [
         { type: 'text', text: CHATBOT_RESPONSES.outsideHours },
-      ]);
+      ], 'line-shop');
       return;
     }
 
@@ -355,7 +355,7 @@ export class LineOaChatbotController {
     if (!customer) {
       await this.lineOaService.replyMessage(event.replyToken, [
         { type: 'text', text: 'ยังไม่ได้เชื่อมบัญชีค่ะ กรุณาพิมพ์เบอร์โทรศัพท์ที่ลงทะเบียนไว้เพื่อเชื่อมบัญชีก่อนนะคะ\n\nตัวอย่าง: 0812345678' },
-      ]);
+      ], 'line-shop');
       return;
     }
 
@@ -363,12 +363,12 @@ export class LineOaChatbotController {
     if (!activeContract) {
       await this.lineOaService.replyMessage(event.replyToken, [
         { type: 'text', text: 'ไม่พบงวดค้างชำระ ชำระครบทุกงวดแล้วค่ะ' },
-      ]);
+      ], 'line-shop');
       return;
     }
 
     try {
-      const imageBuffer = await this.lineOaService.downloadContent(event.message.id);
+      const imageBuffer = await this.lineOaService.downloadContent(event.message.id, 'line-shop');
       const filename = `slips/slip-${userId}-${Date.now()}.jpg`;
       await this.storageService.upload(filename, imageBuffer, 'image/jpeg');
 
@@ -387,12 +387,12 @@ export class LineOaChatbotController {
 
       await this.lineOaService.replyMessage(event.replyToken, [
         { type: 'text', text: `รับสลิปเรียบร้อยแล้วค่ะ คุณ${customer.name}\nสัญญา: ${activeContract.contractNumber}\n\nกำลังตรวจสอบ จะแจ้งผลให้ทราบภายหลังค่ะ` },
-      ]);
+      ], 'line-shop');
     } catch (err) {
       this.logger.error(`Error processing slip: ${err instanceof Error ? err.message : err}`);
       await this.lineOaService.replyMessage(event.replyToken, [
         { type: 'text', text: 'ขออภัยค่ะ เกิดข้อผิดพลาดในการรับสลิป กรุณาลองใหม่อีกครั้ง' },
-      ]);
+      ], 'line-shop');
     }
   }
 
@@ -403,13 +403,13 @@ export class LineOaChatbotController {
     if (!customer) {
       await this.lineOaService.replyMessage(replyToken, [
         { type: 'text', text: 'ยังไม่ได้เชื่อมบัญชีค่ะ กรุณาพิมพ์เบอร์โทรศัพท์ที่ลงทะเบียนไว้เพื่อเชื่อมบัญชีก่อนนะคะ\n\nตัวอย่าง: 0812345678' },
-      ]);
+      ], 'line-shop');
       return;
     }
     if (customer.contracts.length === 0) {
       await this.lineOaService.replyMessage(replyToken, [
         { type: 'text', text: `คุณ${customer.name} ไม่มีสัญญาที่ใช้งานอยู่ค่ะ` },
-      ]);
+      ], 'line-shop');
       return;
     }
 
@@ -429,13 +429,13 @@ export class LineOaChatbotController {
     });
 
     const flex = this.lineOaService.buildBalanceSummary({ customerName: customer.name, contracts: contractsData });
-    await this.lineOaService.replyMessage(replyToken, [flex]);
+    await this.lineOaService.replyMessage(replyToken, [flex], 'line-shop');
   }
 
   private async handleCheckInstallments(userId: string, replyToken: string, contractNumber?: string): Promise<void> {
     const customer = await this.lineOaService.findCustomerByLineId(userId);
-    if (!customer) { await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: 'ยังไม่ได้เชื่อมบัญชีค่ะ กรุณาพิมพ์เบอร์โทรศัพท์ที่ลงทะเบียนไว้เพื่อเชื่อมบัญชีก่อนนะคะ\n\nตัวอย่าง: 0812345678' }]); return; }
-    if (customer.contracts.length === 0) { await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: `คุณ${customer.name} ไม่มีสัญญาที่ใช้งานอยู่ค่ะ` }]); return; }
+    if (!customer) { await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: 'ยังไม่ได้เชื่อมบัญชีค่ะ กรุณาพิมพ์เบอร์โทรศัพท์ที่ลงทะเบียนไว้เพื่อเชื่อมบัญชีก่อนนะคะ\n\nตัวอย่าง: 0812345678' }], 'line-shop'); return; }
+    if (customer.contracts.length === 0) { await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: `คุณ${customer.name} ไม่มีสัญญาที่ใช้งานอยู่ค่ะ` }], 'line-shop'); return; }
 
     if (!contractNumber && customer.contracts.length > 1) {
       const options = customer.contracts.map((c) => ({
@@ -443,7 +443,7 @@ export class LineOaChatbotController {
         totalOutstanding: sumOutstanding(c.payments.filter((p) => p.status !== 'PAID')),
       }));
       const flex = this.lineOaService.buildContractSelector(customer.name, options, 'check_installments');
-      await this.lineOaService.replyMessage(replyToken, [flex]);
+      await this.lineOaService.replyMessage(replyToken, [flex], 'line-shop');
       return;
     }
 
@@ -458,13 +458,13 @@ export class LineOaChatbotController {
 
     await this.lineOaService.replyMessage(replyToken, [
       { type: 'text', text: `ตารางค่างวด: ${contract.contractNumber}\n\n${lines.join('\n')}\n\n✅ ชำระแล้ว  ⬜ รอชำระ  ❌ ค้างชำระ` },
-    ]);
+    ], 'line-shop');
   }
 
   private async handlePaymentRequest(userId: string, replyToken: string, contractNumber?: string): Promise<void> {
     const customer = await this.lineOaService.findCustomerByLineId(userId);
-    if (!customer) { await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: 'ยังไม่ได้เชื่อมบัญชีค่ะ กรุณาพิมพ์เบอร์โทรศัพท์ที่ลงทะเบียนไว้เพื่อเชื่อมบัญชีก่อนนะคะ\n\nตัวอย่าง: 0812345678' }]); return; }
-    if (customer.contracts.length === 0) { await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: `คุณ${customer.name} ไม่มีสัญญาที่ใช้งานอยู่ค่ะ` }]); return; }
+    if (!customer) { await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: 'ยังไม่ได้เชื่อมบัญชีค่ะ กรุณาพิมพ์เบอร์โทรศัพท์ที่ลงทะเบียนไว้เพื่อเชื่อมบัญชีก่อนนะคะ\n\nตัวอย่าง: 0812345678' }], 'line-shop'); return; }
+    if (customer.contracts.length === 0) { await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: `คุณ${customer.name} ไม่มีสัญญาที่ใช้งานอยู่ค่ะ` }], 'line-shop'); return; }
 
     if (!contractNumber && customer.contracts.length > 1) {
       const options = customer.contracts.map((c) => ({
@@ -472,13 +472,13 @@ export class LineOaChatbotController {
         totalOutstanding: sumOutstanding(c.payments.filter((p) => p.status !== 'PAID')),
       }));
       const flex = this.lineOaService.buildContractSelector(customer.name, options, 'pay');
-      await this.lineOaService.replyMessage(replyToken, [flex]);
+      await this.lineOaService.replyMessage(replyToken, [flex], 'line-shop');
       return;
     }
 
     const contract = contractNumber ? customer.contracts.find((c) => c.contractNumber === contractNumber) || customer.contracts[0] : customer.contracts[0];
     const nextPayment = contract.payments.find((p) => p.status !== 'PAID');
-    if (!nextPayment) { await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: 'ชำระครบทุกงวดแล้วค่ะ ขอบคุณค่ะ' }]); return; }
+    if (!nextPayment) { await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: 'ชำระครบทุกงวดแล้วค่ะ ขอบคุณค่ะ' }], 'line-shop'); return; }
 
     const amount = sumOutstanding([nextPayment]);
     try {
@@ -490,7 +490,7 @@ export class LineOaChatbotController {
         amount, qrImageUrl: qrDataUrl, accountName: this.promptPayQrService.getAccountName(),
         maskedPromptPayId: this.promptPayQrService.getMaskedPromptPayId(), paymentLinkUrl: paymentLink.url,
       });
-      await this.lineOaService.replyMessage(replyToken, [flex]);
+      await this.lineOaService.replyMessage(replyToken, [flex], 'line-shop');
     } catch (err) {
       this.logger.warn(`QR generation failed: ${err}`);
       let bankInfo = '';
@@ -504,14 +504,14 @@ export class LineOaChatbotController {
       } catch { /* ignore */ }
       await this.lineOaService.replyMessage(replyToken, [
         { type: 'text', text: `ข้อมูลชำระเงิน:\nสัญญา: ${contract.contractNumber}\nงวดที่: ${nextPayment.installmentNo}/${contract.payments.length}\nยอด: ${amount.toLocaleString()} บาท\nกำหนด: ${formatDateShort(nextPayment.dueDate)}${bankInfo}\n\nหลังโอนเงินแล้ว ส่งสลิปมาในแชทนี้ได้เลยค่ะ` },
-      ]);
+      ], 'line-shop');
     }
   }
 
   private async handleReceipt(userId: string, replyToken: string): Promise<void> {
     const customer = await this.lineOaService.findCustomerByLineId(userId);
-    if (!customer) { await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: 'ยังไม่ได้เชื่อมบัญชีค่ะ กรุณาพิมพ์เบอร์โทรศัพท์ที่ลงทะเบียนไว้เพื่อเชื่อมบัญชีก่อนนะคะ\n\nตัวอย่าง: 0812345678' }]); return; }
-    if (customer.contracts.length === 0) { await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: `คุณ${customer.name} ไม่มีสัญญาที่ใช้งานอยู่ค่ะ` }]); return; }
+    if (!customer) { await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: 'ยังไม่ได้เชื่อมบัญชีค่ะ กรุณาพิมพ์เบอร์โทรศัพท์ที่ลงทะเบียนไว้เพื่อเชื่อมบัญชีก่อนนะคะ\n\nตัวอย่าง: 0812345678' }], 'line-shop'); return; }
+    if (customer.contracts.length === 0) { await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: `คุณ${customer.name} ไม่มีสัญญาที่ใช้งานอยู่ค่ะ` }], 'line-shop'); return; }
 
     const contractsData = customer.contracts.map((c) => ({
       contractNumber: c.contractNumber,
@@ -521,20 +521,20 @@ export class LineOaChatbotController {
     }));
 
     if (contractsData.every((c) => c.payments.length === 0)) {
-      await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: 'ยังไม่มีรายการชำระเงินค่ะ' }]);
+      await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: 'ยังไม่มีรายการชำระเงินค่ะ' }], 'line-shop');
       return;
     }
     const flex = this.lineOaService.buildReceiptHistory({ customerName: customer.name, contracts: contractsData });
-    await this.lineOaService.replyMessage(replyToken, [flex]);
+    await this.lineOaService.replyMessage(replyToken, [flex], 'line-shop');
   }
 
   private async handleContact(userId: string, replyToken: string): Promise<void> {
     const branch = await this.lineOaService.findBranchForCustomer(userId);
-    if (!branch) { await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: 'กรุณาติดต่อสาขา BEST CHOICE ใกล้บ้านค่ะ' }]); return; }
+    if (!branch) { await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: 'กรุณาติดต่อสาขา BEST CHOICE ใกล้บ้านค่ะ' }], 'line-shop'); return; }
     const parts = ['📍 ข้อมูลติดต่อสาขา\n', `🏢 ${branch.name}`];
     if (branch.phone) parts.push(`📞 ${branch.phone}`);
     if (branch.location) parts.push(`📍 ${branch.location}`);
-    await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: parts.join('\n') }]);
+    await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: parts.join('\n') }], 'line-shop');
   }
 
   private async handlePostback(event: LinePostbackEvent): Promise<void> {
@@ -553,43 +553,43 @@ export class LineOaChatbotController {
   private async handleContractLink(userId: string, replyToken: string): Promise<void> {
     const customer = await this.lineOaService.findCustomerByLineId(userId);
     if (!customer) {
-      await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: `ยังไม่ได้เชื่อมบัญชีค่ะ กรุณาลงทะเบียนก่อนนะคะ\n\n👉 ลงทะเบียน:\n${buildBrowserUrl('/liff/register')}\n\nหรือพิมพ์เบอร์โทรที่ลงทะเบียนไว้เพื่อเชื่อมบัญชี` }]);
+      await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: `ยังไม่ได้เชื่อมบัญชีค่ะ กรุณาลงทะเบียนก่อนนะคะ\n\n👉 ลงทะเบียน:\n${buildBrowserUrl('/liff/register')}\n\nหรือพิมพ์เบอร์โทรที่ลงทะเบียนไว้เพื่อเชื่อมบัญชี` }], 'line-shop');
       return;
     }
-    await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: `คุณ${customer.name} สามารถดูข้อมูลสัญญาทั้งหมดได้ที่ลิงก์ด้านล่างค่ะ\n\n📋 ดูสัญญา:\n${buildBrowserUrl('/liff/contract')}` }]);
+    await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: `คุณ${customer.name} สามารถดูข้อมูลสัญญาทั้งหมดได้ที่ลิงก์ด้านล่างค่ะ\n\n📋 ดูสัญญา:\n${buildBrowserUrl('/liff/contract')}` }], 'line-shop');
   }
 
   private async handleRegisterLink(userId: string, replyToken: string): Promise<void> {
     const customer = await this.lineOaService.findCustomerByLineId(userId);
     if (customer) {
-      await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: `คุณ${customer.name} ลงทะเบียนแล้วค่ะ\n\n📋 ดูสัญญา:\n${buildBrowserUrl('/liff/contract')}` }]);
+      await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: `คุณ${customer.name} ลงทะเบียนแล้วค่ะ\n\n📋 ดูสัญญา:\n${buildBrowserUrl('/liff/contract')}` }], 'line-shop');
       return;
     }
-    await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: `กรุณาลงทะเบียนเพื่อผูกบัญชี LINE กับระบบค่ะ\n\n👉 ลงทะเบียน:\n${buildBrowserUrl('/liff/register')}\n\nหรือพิมพ์เบอร์โทรที่ลงทะเบียนไว้เพื่อเชื่อมบัญชี` }]);
+    await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: `กรุณาลงทะเบียนเพื่อผูกบัญชี LINE กับระบบค่ะ\n\n👉 ลงทะเบียน:\n${buildBrowserUrl('/liff/register')}\n\nหรือพิมพ์เบอร์โทรที่ลงทะเบียนไว้เพื่อเชื่อมบัญชี` }], 'line-shop');
   }
 
   private async handleGreeting(replyToken: string): Promise<void> {
-    await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: CHATBOT_RESPONSES.onboarding }]);
+    await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: CHATBOT_RESPONSES.onboarding }], 'line-shop');
   }
 
   private async handleAndroidRedirect(replyToken: string): Promise<void> {
-    await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: CHATBOT_RESPONSES.androidRedirect }]);
+    await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: CHATBOT_RESPONSES.androidRedirect }], 'line-shop');
   }
 
   private async handleIpadUsedRedirect(replyToken: string): Promise<void> {
-    await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: CHATBOT_RESPONSES.ipadUsedRedirect }]);
+    await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: CHATBOT_RESPONSES.ipadUsedRedirect }], 'line-shop');
   }
 
   private async handleFreeformMessage(text: string, replyToken: string, userId?: string): Promise<void> {
     const aiResponse = await this.chatbotService.generateResponse(text, userId);
     await this.lineOaService.replyMessage(replyToken, [
       { type: 'text', text: aiResponse ?? 'ได้รับข้อความแล้วค่ะ น้องเบสจะตอบกลับภายใน 5 นาทีนะคะ 🙏' },
-    ]);
+    ], 'line-shop');
   }
 
   private async handleHelp(replyToken: string): Promise<void> {
     await this.lineOaService.replyMessage(replyToken, [
       { type: 'text', text: '📋 คำสั่งที่ใช้ได้:\n\n💰 "เช็คยอด" - ดูยอดค้างชำระ\n📊 "งวด" - ดูตารางค่างวดทั้งหมด\n💳 "ชำระ" - ข้อมูลการชำระเงิน\n📋 "สัญญา" - ดูข้อมูลสัญญา\n🧾 "ใบเสร็จ" - ดูประวัติการชำระ\n📞 "ติดต่อ" - ข้อมูลติดต่อสาขา\n🔗 "ลงทะเบียน" - ผูกบัญชี LINE\n📷 ส่งรูปสลิป - แจ้งชำระเงิน\n❓ "ช่วยเหลือ" - แสดงเมนูนี้\n\nหรือกดเมนูด้านล่างได้เลยค่ะ' },
-    ]);
+    ], 'line-shop');
   }
 }

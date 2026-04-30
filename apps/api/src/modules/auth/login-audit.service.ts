@@ -153,7 +153,11 @@ export class LoginAuditService {
         `เวลา: ${bangkokTime} (เวลาไทย)\n` +
         `หากไม่ใช่คุณ กรุณาติดต่อผู้ดูแลระบบทันที`;
 
-      await this.lineOaService.pushMessage(staffLineId, [{ type: 'text', text: message }]);
+      await this.lineOaService.pushMessage(
+        staffLineId,
+        [{ type: 'text', text: message }],
+        'line-staff',
+      );
     } catch (err) {
       this.logger.error(
         `Failed to send new-device LINE alert: ${err instanceof Error ? err.message : err}`,

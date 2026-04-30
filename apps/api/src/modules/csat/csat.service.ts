@@ -46,7 +46,7 @@ export class CsatService {
       ].join('\n'),
     } as unknown as LineMessagePayload;
 
-    await this.lineOaService.pushMessage(room.lineUserId, [surveyMessage]);
+    await this.lineOaService.pushMessage(room.lineUserId, [surveyMessage], 'line-shop');
     this.logger.log(`[CSAT] Survey sent for room ${roomId} to ${room.lineUserId}`);
   }
 

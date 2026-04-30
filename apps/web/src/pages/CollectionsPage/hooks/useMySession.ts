@@ -12,7 +12,7 @@ export interface SessionContract {
     id: string;
     contractNumber: string;
     daysOverdue: number;
-    customer: { id: string; name: string; phone: string | null; lineId: string | null };
+    customer: { id: string; name: string; phone: string | null; lineIdFinance: string | null; lineIdShop: string | null };
     branch: { id: string; name: string };
     assignedTo: { id: string; name: string } | null;
     outstanding?: number | null;

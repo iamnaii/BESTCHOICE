@@ -1,4 +1,7 @@
-import { IsString, IsOptional, IsArray, IsDateString, IsBoolean } from 'class-validator';
+import { IsString, IsOptional, IsArray, IsDateString, IsBoolean, IsEnum, ValidateIf } from 'class-validator';
+
+export type LineChannelKey = 'line-shop' | 'line-finance' | 'line-staff';
+export const LINE_CHANNEL_KEYS: LineChannelKey[] = ['line-shop', 'line-finance', 'line-staff'];
 
 export class SendNotificationDto {
   @IsString()
@@ -28,6 +31,15 @@ export class SendNotificationDto {
   @IsBoolean()
   @IsOptional()
   noRetry?: boolean;
+
+  // Routing key for LINE channel — selects which OA (and therefore which
+  // channelToken) to use. Required when channel === 'LINE' (Phase 7 hardening
+  // after every call site has been updated explicitly in Phase 4-5). Ignored
+  // for SMS / IN_APP. NotificationsService.send() also enforces this at
+  // runtime so JS callers can't bypass DTO validation.
+  @ValidateIf((o) => o.channel === 'LINE')
+  @IsEnum(LINE_CHANNEL_KEYS, { message: 'channelKey จำเป็นสำหรับ LINE — ต้องเป็น line-shop, line-finance หรือ line-staff' })
+  channelKey?: LineChannelKey;
 }
 
 export class CreateNotificationTemplateDto {

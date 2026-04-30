@@ -21,7 +21,7 @@ const FETCH_CAP = 500;
 // Z2: shape of the contract include used by getQueue → enrichRows. Kept as a
 // const so we can derive a precise Prisma payload type instead of `any`.
 const queueContractInclude = {
-  customer: { select: { id: true, name: true, phone: true, lineId: true } },
+  customer: { select: { id: true, name: true, phone: true, lineIdFinance: true } },
   branch: { select: { id: true, name: true } },
   assignedTo: { select: { id: true, name: true } },
   payments: {
@@ -327,7 +327,7 @@ export class OverdueQueueService {
       brokenPromiseCount: number;
       mdmState: MdmState;
       settlementDate: Date | string | null;
-      customer: { lineId: string | null };
+      customer: { lineIdFinance: string | null };
       letterCount: number;
       slipReviewPending: boolean;
       latestLineDeliveryStatus?: string | null;
@@ -438,7 +438,7 @@ export class OverdueQueueService {
     // NULL status — those rows fall through all status filters and remain
     // visible regardless of which filter is active.
     if (f.lineResponse === LineResponseState.NO_LINE) {
-      filtered = filtered.filter((r) => !r.customer.lineId);
+      filtered = filtered.filter((r) => !r.customer.lineIdFinance);
     } else if (f.lineResponse === LineResponseState.RESPONDED) {
       filtered = filtered.filter((r) => r.latestLineDeliveryStatus === 'RESPONDED');
     } else if (f.lineResponse === LineResponseState.IGNORED) {

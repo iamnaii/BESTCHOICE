@@ -70,7 +70,7 @@ export class ShopInstallmentApplyService {
 
     if (dto.lineUserId) {
       try {
-        await this.line.sendFlexMessage(dto.lineUserId, this.buildSubmittedFlex(app.applicationNumber));
+        await this.line.sendFlexMessage(dto.lineUserId, this.buildSubmittedFlex(app.applicationNumber), 'line-shop');
       } catch {
         // non-fatal — staff will follow up by phone
       }
@@ -158,6 +158,7 @@ export class ShopInstallmentApplyService {
         await this.line.sendFlexMessage(
           app.lineUserId,
           this.buildRejectedFlex(app.applicationNumber, reason),
+          'line-shop',
         );
       } catch {
         // non-fatal — staff will follow up by phone

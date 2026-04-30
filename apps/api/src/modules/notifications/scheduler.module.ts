@@ -8,9 +8,10 @@ import { ReportsModule } from '../reports/reports.module';
 import { LineOaModule } from '../line-oa/line-oa.module';
 import { DashboardModule } from '../dashboard/dashboard.module';
 import { PDPAModule } from '../pdpa/pdpa.module';
+import { IntegrationsModule } from '../integrations/integrations.module';
 
 @Module({
-  imports: [NotificationsModule, OverdueModule, InventoryModule, ProductsModule, ReportsModule, LineOaModule, DashboardModule, PDPAModule],
+  imports: [NotificationsModule, OverdueModule, InventoryModule, ProductsModule, ReportsModule, LineOaModule, DashboardModule, PDPAModule, IntegrationsModule],
   providers: [SchedulerService],
 })
 export class SchedulerModule {}

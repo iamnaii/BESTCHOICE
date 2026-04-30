@@ -80,7 +80,7 @@ export class CollectionsSummaryService {
     for (const owner of owners) {
       try {
         const payload: LineMessagePayload = { type: 'text', text: message };
-        await this.line.pushMessage(owner.lineId!, [payload]);
+        await this.line.pushMessage(owner.lineId!, [payload], 'line-staff');
         sent++;
       } catch (err) {
         this.logger.warn(`Failed to push summary to OWNER ${owner.id}: ${err}`);

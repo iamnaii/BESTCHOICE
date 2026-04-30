@@ -831,7 +831,8 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
                 <CustomerInfoRow label="โทรศัพท์" value={customer.phone} />
                 <CustomerInfoRow label="โทรสำรอง" value={customer.phoneSecondary} />
                 <CustomerInfoRow label="อีเมล" value={customer.email} />
-                <CustomerInfoRow label="LINE ID" value={customer.lineId} />
+                <CustomerInfoRow label="LINE ID (Finance / น้องเบส)" value={customer.lineIdFinance} />
+                <CustomerInfoRow label="LINE ID (Shop / ร้าน)" value={customer.lineIdShop} />
                 <CustomerInfoRow label="Facebook" value={customer.facebookName} />
               </CustomerInfoSection>
 

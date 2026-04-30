@@ -185,7 +185,7 @@ export class ReportsService {
       this.prisma.contract.findMany({
         where,
         include: {
-          customer: { select: { id: true, name: true, phone: true, lineId: true } },
+          customer: { select: { id: true, name: true, phone: true, lineIdFinance: true, lineIdShop: true } },
           branch: { select: { name: true } },
           payments: {
             where: { status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] } },

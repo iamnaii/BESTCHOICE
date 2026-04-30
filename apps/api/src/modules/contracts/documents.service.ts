@@ -489,15 +489,16 @@ export class DocumentsService {
         where: { id: contractId },
         include: { customer: true, product: true, signatures: { where: { deletedAt: null } } },
       });
-      if (contract?.customer?.lineId) {
+      if (contract?.customer?.lineIdFinance) {
         const signatureCount = contract.signatures?.length || 0;
         await this.notificationsService.send({
           channel: 'LINE',
-          recipient: contract.customer.lineId,
+          channelKey: 'line-finance',
+          recipient: contract.customer.lineIdFinance,
           message: `สัญญาเลขที่ ${contract.contractNumber} เซ็นเรียบร้อยแล้ว (${signatureCount} ลายเซ็น)\nสินค้า: ${contract.product?.name || '-'}\nดาวน์โหลดเอกสารผ่าน LINE`,
           relatedId: contractId,
         });
-        this.logger.log(`Sent contract-signed notification to LINE: ${contract.customer.lineId}`);
+        this.logger.log(`Sent contract-signed notification to LINE: ${contract.customer.lineIdFinance}`);
       }
     } catch (notifyErr) {
       this.logger.warn(`Failed to send contract-signed notification: ${notifyErr instanceof Error ? notifyErr.message : notifyErr}`);
@@ -973,7 +974,7 @@ ${(() => {
       '{customer_address_id_card}': esc(this.formatAddress(contract.customer?.addressIdCard)),
       '{customer_address_current}': esc(this.formatAddress(contract.customer?.addressCurrent)),
       '{customer_zipcode}': esc(contract.customer?.zipcode || contract.customer?.postalCode || ''),
-      '{customer_line_id}': esc(contract.customer?.lineId || '-'),
+      '{customer_line_id}': esc(contract.customer?.lineIdFinance || '-'),
       '{customer_facebook}': esc(contract.customer?.facebookLink || contract.customer?.facebookName || '-'),
       '{customer_occupation}': esc(contract.customer?.occupation || '-'),
       '{customer_salary}': contract.customer?.salary ? Number(contract.customer.salary).toLocaleString() : '-',

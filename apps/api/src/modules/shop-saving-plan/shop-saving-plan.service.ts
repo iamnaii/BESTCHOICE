@@ -97,7 +97,8 @@ export class ShopSavingPlanService {
         },
         deletedAt: null,
       },
-      include: { customer: { select: { lineId: true, name: true } } },
+      // SHOP saving plan reminders use SHOP OA (channelKey='line-shop').
+      include: { customer: { select: { lineIdShop: true, name: true } } },
     });
   }
 

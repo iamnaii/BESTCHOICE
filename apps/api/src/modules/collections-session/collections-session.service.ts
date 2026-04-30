@@ -21,7 +21,7 @@ export class CollectionsSessionService {
       include: {
         contract: {
           include: {
-            customer: { select: { id: true, name: true, phone: true, lineId: true } },
+            customer: { select: { id: true, name: true, phone: true, lineIdFinance: true } },
             branch: { select: { id: true, name: true } },
             assignedTo: { select: { id: true, name: true } },
           },
@@ -63,7 +63,7 @@ export class CollectionsSessionService {
 
     const callsCount = pending.filter((a) => !!(a.contract as any).customer?.phone).length;
     const lineCount = pending.filter(
-      (a) => !!(a.contract as any).customer?.lineId && !(a.contract as any).customer?.phone,
+      (a) => !!(a.contract as any).customer?.lineIdFinance && !(a.contract as any).customer?.phone,
     ).length;
 
     const summary =

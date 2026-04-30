@@ -19,7 +19,7 @@ export interface UpdateCustomerContactPayload {
 export interface UpdateCustomerContactResponse {
   id: string;
   phone: string | null;
-  lineId: string | null;
+  lineIdFinance: string | null;
   status: 'ACTIVE' | 'INACTIVE' | 'LOST';
 }
 

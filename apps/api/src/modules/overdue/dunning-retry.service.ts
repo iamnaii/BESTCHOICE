@@ -23,7 +23,7 @@ export class DunningRetryService {
           select: {
             id: true,
             contractNumber: true,
-            customer: { select: { id: true, name: true, phone: true, lineId: true } },
+            customer: { select: { id: true, name: true, phone: true, lineIdFinance: true } },
           },
         },
         dunningRule: {
@@ -49,7 +49,7 @@ export class DunningRetryService {
           select: {
             id: true,
             contractNumber: true,
-            customer: { select: { id: true, name: true, phone: true, lineId: true } },
+            customer: { select: { id: true, name: true, phone: true, lineIdFinance: true } },
           },
         },
         dunningRule: {
@@ -71,7 +71,7 @@ export class DunningRetryService {
 
     // Resolve recipient based on channel
     const recipient =
-      channel === 'LINE' ? customer.lineId : customer.phone;
+      channel === 'LINE' ? customer.lineIdFinance : customer.phone;
 
     if (!recipient) {
       throw new BadRequestException(
@@ -84,6 +84,7 @@ export class DunningRetryService {
     try {
       const sendResult = await this.notificationsService.send({
         channel: channel as 'LINE' | 'SMS',
+        channelKey: channel === 'LINE' ? 'line-finance' : undefined,
         recipient,
         message,
         relatedId: action.contractId,

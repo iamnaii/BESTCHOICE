@@ -209,8 +209,12 @@ export function CustomerCreateModal({
                   <input type="email" value={custForm.email} onChange={(e) => setCustForm({ ...custForm, email: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                 </div>
                 <div>
-                  <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">LINE ID</label>
-                  <input type="text" value={custForm.lineId} onChange={(e) => setCustForm({ ...custForm, lineId: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
+                  <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">LINE ID (Finance / น้องเบส)</label>
+                  <input type="text" value={custForm.lineIdFinance} onChange={(e) => setCustForm({ ...custForm, lineIdFinance: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" placeholder="U1234567890abcdef..." />
+                </div>
+                <div>
+                  <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">LINE ID (Shop / ร้าน)</label>
+                  <input type="text" value={custForm.lineIdShop} onChange={(e) => setCustForm({ ...custForm, lineIdShop: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" placeholder="U1234567890abcdef..." />
                 </div>
                 <div>
                   <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ลิงก์ Facebook</label>

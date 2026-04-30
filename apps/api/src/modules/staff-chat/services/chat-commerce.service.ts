@@ -35,14 +35,18 @@ export class ChatCommerceService {
     contractId: string;
     installmentNo?: number;
   }): Promise<{ contractId: string; contractNumber: string; installmentNo: number; amount: number; paymentId: string }> {
-    // 1. Find session to get customer lineUserId
+    // 1. Find session to get customer lineUserId. We pick the customer LINE ID
+    //    matching the chat channel (LINE_FINANCE → lineIdFinance, LINE_SHOP → lineIdShop).
     const session = await this.prisma.chatRoom.findUnique({
       where: { id: params.sessionId },
       select: {
         id: true,
         lineUserId: true,
+        channel: true,
         customerId: true,
-        customer: { select: { id: true, name: true, lineId: true } },
+        customer: {
+          select: { id: true, name: true, lineIdFinance: true, lineIdShop: true },
+        },
       },
     });
 
@@ -54,7 +58,29 @@ export class ChatCommerceService {
       throw new BadRequestException('ห้องแชทนี้ยังไม่ได้เชื่อมกับลูกค้า');
     }
 
-    const customerLineId = session.customer.lineId || session.lineUserId;
+    // Resolve customer LINE ID per chat channel. Non-LINE channels (FACEBOOK,
+    // TIKTOK, WEB) have no LINE ID by definition — we still allow the staff
+    // payment-info message to be saved into the chat thread (the customer
+    // sees it on their native channel), but we don't try to look up a LINE
+    // user ID. The legacy ternary fell back to lineIdFinance for any
+    // non-LINE_SHOP channel which was incorrect for FB/TikTok/Web.
+    let customerLineIdForChannel: string | null = null;
+    switch (session.channel) {
+      case 'LINE_SHOP':
+        customerLineIdForChannel = session.customer.lineIdShop;
+        break;
+      case 'LINE_FINANCE':
+        customerLineIdForChannel = session.customer.lineIdFinance;
+        break;
+      case 'FACEBOOK':
+      case 'TIKTOK':
+      case 'WEB':
+        // No LINE ID applicable — fall through to session.lineUserId
+        // (which is also typically null for these channels)
+        customerLineIdForChannel = null;
+        break;
+    }
+    const customerLineId = customerLineIdForChannel || session.lineUserId;
     if (!customerLineId) {
       throw new BadRequestException('ลูกค้าไม่มี LINE ID ไม่สามารถสร้างลิงก์ชำระเงินได้');
     }
@@ -63,7 +89,7 @@ export class ChatCommerceService {
     const contract = await this.prisma.contract.findUnique({
       where: { id: params.contractId },
       include: {
-        customer: { select: { id: true, lineId: true } },
+        customer: { select: { id: true, lineIdFinance: true, lineIdShop: true } },
         payments: {
           where: { deletedAt: null },
           orderBy: { installmentNo: 'asc' },

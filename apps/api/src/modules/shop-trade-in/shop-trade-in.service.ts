@@ -103,7 +103,7 @@ export class ShopTradeInService {
     // Non-fatal LINE flex notification — customer still sees the in-app confirmation
     if (dto.lineUserId) {
       try {
-        await this.line.sendFlexMessage(dto.lineUserId, this.buildSubmittedFlex(tradeIn.id));
+        await this.line.sendFlexMessage(dto.lineUserId, this.buildSubmittedFlex(tradeIn.id), 'line-shop');
       } catch (err) {
         this.logger.warn(`Failed to send trade-in LINE flex: ${(err as Error).message}`);
       }

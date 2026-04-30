@@ -203,7 +203,7 @@ describe('LiffApiService', () => {
 
     it('returns error if customer soft-deleted', async () => {
       prisma.customer.findFirst.mockResolvedValue(null);
-      prisma.customer.findUnique.mockResolvedValue({ id: 'cust1', deletedAt: new Date(), lineId: null });
+      prisma.customer.findUnique.mockResolvedValue({ id: 'cust1', deletedAt: new Date(), lineIdFinance: null });
 
       const result = await service.confirmLinkLine('cust1', 'U_line');
       expect(result.success).toBe(false);
@@ -211,7 +211,7 @@ describe('LiffApiService', () => {
 
     it('returns error if customer linked to different LINE', async () => {
       prisma.customer.findFirst.mockResolvedValue(null);
-      prisma.customer.findUnique.mockResolvedValue({ id: 'cust1', deletedAt: null, lineId: 'U_other' });
+      prisma.customer.findUnique.mockResolvedValue({ id: 'cust1', deletedAt: null, lineIdFinance: 'U_other' });
 
       const result = await service.confirmLinkLine('cust1', 'U_line');
       expect(result.success).toBe(false);
@@ -220,20 +220,20 @@ describe('LiffApiService', () => {
 
     it('links successfully and updates customer', async () => {
       prisma.customer.findFirst.mockResolvedValue(null);
-      prisma.customer.findUnique.mockResolvedValue({ id: 'cust1', name: 'สมชาย', deletedAt: null, lineId: null });
+      prisma.customer.findUnique.mockResolvedValue({ id: 'cust1', name: 'สมชาย', deletedAt: null, lineIdFinance: null });
       prisma.customer.update.mockResolvedValue({});
 
       const result = await service.confirmLinkLine('cust1', 'U_line');
       expect(result.success).toBe(true);
       expect(prisma.customer.update).toHaveBeenCalledWith({
         where: { id: 'cust1' },
-        data: { lineId: 'U_line' },
+        data: { lineIdFinance: 'U_line' },
       });
     });
 
     it('allows re-linking same LINE to same customer', async () => {
       prisma.customer.findFirst.mockResolvedValue(null);
-      prisma.customer.findUnique.mockResolvedValue({ id: 'cust1', name: 'สมชาย', deletedAt: null, lineId: 'U_line' });
+      prisma.customer.findUnique.mockResolvedValue({ id: 'cust1', name: 'สมชาย', deletedAt: null, lineIdFinance: 'U_line' });
       prisma.customer.update.mockResolvedValue({});
 
       const result = await service.confirmLinkLine('cust1', 'U_line');
@@ -366,7 +366,7 @@ describe('LiffApiService', () => {
       expect(result.success).toBe(true);
       expect(prisma.customer.update).toHaveBeenCalledWith({
         where: { id: 'cust1' },
-        data: { lineId: null },
+        data: { lineIdFinance: null },
       });
     });
   });

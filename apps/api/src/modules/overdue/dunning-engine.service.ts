@@ -166,7 +166,7 @@ export class DunningEngineService {
 
             let paymentLinkUrl: string | undefined;
 
-            if (rule.includePaymentLink && payment.contract.customer.lineId) {
+            if (rule.includePaymentLink && payment.contract.customer.lineIdFinance) {
               try {
                 const link = await this.paymentLinkService.createPaymentLink(
                   payment.contractId,
@@ -193,7 +193,7 @@ export class DunningEngineService {
             if (isNotificationChannel && rule.autoExecute) {
               const recipient =
                 rule.channel === 'LINE'
-                  ? payment.contract.customer.lineId
+                  ? payment.contract.customer.lineIdFinance
                   : payment.contract.customer.phone;
 
               if (recipient) {
@@ -204,6 +204,7 @@ export class DunningEngineService {
                 try {
                   const sendResult = await this.notificationsService.send({
                     channel: rule.channel as 'LINE' | 'SMS',
+                    channelKey: rule.channel === 'LINE' ? 'line-finance' : undefined,
                     recipient,
                     message: finalMessage,
                     relatedId: payment.contractId,
@@ -307,7 +308,7 @@ export class DunningEngineService {
         contract: {
           include: {
             customer: {
-              select: { id: true, name: true, lineId: true, phone: true },
+              select: { id: true, name: true, lineIdFinance: true, phone: true },
             },
           },
         },
@@ -352,7 +353,7 @@ export class DunningEngineService {
 
     const contract = await this.prisma.contract.findUnique({
       where: { id: contractId },
-      include: { customer: { select: { id: true, name: true, lineId: true, phone: true } } },
+      include: { customer: { select: { id: true, name: true, lineIdFinance: true, phone: true } } },
     });
     if (!contract) return;
 
@@ -394,7 +395,7 @@ export class DunningEngineService {
     const messageContent = this.renderTemplate(templateBody, vars);
 
     let paymentLinkUrl: string | undefined;
-    if (rule.includePaymentLink && payment && contract.customer.lineId) {
+    if (rule.includePaymentLink && payment && contract.customer.lineIdFinance) {
       try {
         const link = await this.paymentLinkService.createPaymentLink(
           contractId,
@@ -417,7 +418,7 @@ export class DunningEngineService {
 
     if (rule.autoExecute && (rule.channel === 'LINE' || rule.channel === 'SMS')) {
       const recipient =
-        rule.channel === 'LINE' ? contract.customer.lineId : contract.customer.phone;
+        rule.channel === 'LINE' ? contract.customer.lineIdFinance : contract.customer.phone;
       if (recipient) {
         const finalMessage = paymentLinkUrl
           ? `${messageContent}\n\nชำระเงินออนไลน์: ${paymentLinkUrl}`
@@ -425,6 +426,7 @@ export class DunningEngineService {
         try {
           const sendResult = await this.notificationsService.send({
             channel: rule.channel as 'LINE' | 'SMS',
+            channelKey: rule.channel === 'LINE' ? 'line-finance' : undefined,
             recipient,
             message: finalMessage,
             relatedId: contractId,

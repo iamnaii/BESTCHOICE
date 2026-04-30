@@ -53,7 +53,8 @@ export class ChatbotService {
       let customerContext: any = null;
       if (lineUserId) {
         customerContext = await this.prisma.customer.findFirst({
-          where: { lineId: lineUserId, deletedAt: null },
+          // line-oa is SHOP-first (channelKey='line-shop'); look up customer by SHOP LINE ID.
+          where: { lineIdShop: lineUserId, deletedAt: null },
           include: {
             contracts: {
               where: { status: { in: ['ACTIVE', 'OVERDUE'] }, deletedAt: null },

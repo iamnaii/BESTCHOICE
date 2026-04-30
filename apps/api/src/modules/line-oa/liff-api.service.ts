@@ -22,7 +22,7 @@ export class LiffApiService {
 
   async findCustomerContractsFull(lineId: string): Promise<LiffContractResponse | null> {
     const customer = await this.prisma.customer.findFirst({
-      where: { lineId, deletedAt: null },
+      where: { lineIdFinance: lineId, deletedAt: null },
       select: {
         id: true,
         name: true,
@@ -124,7 +124,7 @@ export class LiffApiService {
 
   async isLineIdLinked(lineId: string): Promise<boolean> {
     const customer = await this.prisma.customer.findFirst({
-      where: { lineId, deletedAt: null },
+      where: { lineIdFinance: lineId, deletedAt: null },
     });
     return !!customer;
   }
@@ -135,7 +135,7 @@ export class LiffApiService {
   ): Promise<LiffRegisterLookupResponse | null> {
     // Check if this lineId is already linked
     const alreadyLinked = await this.prisma.customer.findFirst({
-      where: { lineId, deletedAt: null },
+      where: { lineIdFinance: lineId, deletedAt: null },
     });
     if (alreadyLinked) return null;
 
@@ -168,9 +168,9 @@ export class LiffApiService {
     customerId: string,
     lineId: string,
   ): Promise<{ success: boolean; error?: string }> {
-    // Check if lineId already linked to another customer
+    // Check if lineId already linked to another customer (finance OA)
     const existingLink = await this.prisma.customer.findFirst({
-      where: { lineId, deletedAt: null },
+      where: { lineIdFinance: lineId, deletedAt: null },
     });
     if (existingLink) {
       return { success: false, error: 'บัญชี LINE นี้เชื่อมต่อกับลูกค้ารายอื่นแล้ว' };
@@ -182,16 +182,16 @@ export class LiffApiService {
     if (!customer || customer.deletedAt) {
       return { success: false, error: 'ไม่พบข้อมูลลูกค้า' };
     }
-    if (customer.lineId && customer.lineId !== lineId) {
+    if (customer.lineIdFinance && customer.lineIdFinance !== lineId) {
       return { success: false, error: 'ลูกค้ารายนี้เชื่อมต่อกับบัญชี LINE อื่นแล้ว' };
     }
 
     await this.prisma.customer.update({
       where: { id: customerId },
-      data: { lineId },
+      data: { lineIdFinance: lineId },
     });
 
-    this.logger.log(`[LIFF] Linked LINE ${lineId} to customer ${customer.name} via registration`);
+    this.logger.log(`[LIFF] Linked LINE ${lineId} to customer ${customer.name} via finance registration`);
     return { success: true };
   }
 
@@ -199,7 +199,7 @@ export class LiffApiService {
 
   async findCustomerPaymentHistory(lineId: string): Promise<LiffHistoryResponse | null> {
     const customer = await this.prisma.customer.findFirst({
-      where: { lineId, deletedAt: null },
+      where: { lineIdFinance: lineId, deletedAt: null },
       select: {
         name: true,
         contracts: {
@@ -266,7 +266,7 @@ export class LiffApiService {
 
   async findCustomerProfile(lineId: string): Promise<LiffProfileResponse | null> {
     const customer = await this.prisma.customer.findFirst({
-      where: { lineId, deletedAt: null },
+      where: { lineIdFinance: lineId, deletedAt: null },
       select: {
         id: true,
         name: true,
@@ -295,7 +295,7 @@ export class LiffApiService {
 
   async unlinkLineAccount(lineId: string): Promise<{ success: boolean; error?: string }> {
     const customer = await this.prisma.customer.findFirst({
-      where: { lineId, deletedAt: null },
+      where: { lineIdFinance: lineId, deletedAt: null },
     });
 
     if (!customer) {
@@ -304,7 +304,7 @@ export class LiffApiService {
 
     await this.prisma.customer.update({
       where: { id: customer.id },
-      data: { lineId: null },
+      data: { lineIdFinance: null },
     });
 
     this.logger.log(`[LIFF] Unlinked LINE ${lineId} from customer ${customer.name}`);
@@ -315,7 +315,7 @@ export class LiffApiService {
 
   async findCustomerByLineId(lineId: string) {
     return this.prisma.customer.findFirst({
-      where: { lineId, deletedAt: null },
+      where: { lineIdFinance: lineId, deletedAt: null },
       select: { id: true, name: true },
     });
   }
@@ -340,7 +340,7 @@ export class LiffApiService {
 
   async getConsentStatus(lineId: string): Promise<{ consent: boolean; consentAt: string | null } | null> {
     const customer = await this.prisma.customer.findFirst({
-      where: { lineId, deletedAt: null },
+      where: { lineIdFinance: lineId, deletedAt: null },
       select: { chatConsent: true, chatConsentAt: true },
     });
     if (!customer) return null;
@@ -352,7 +352,7 @@ export class LiffApiService {
 
   async updateConsent(lineId: string, consent: boolean): Promise<{ success: boolean; error?: string }> {
     const customer = await this.prisma.customer.findFirst({
-      where: { lineId, deletedAt: null },
+      where: { lineIdFinance: lineId, deletedAt: null },
     });
     if (!customer) {
       return { success: false, error: 'ไม่พบข้อมูลลูกค้า' };
@@ -376,7 +376,7 @@ export class LiffApiService {
 
   async getNotificationPreferences(lineId: string) {
     const customer = await this.prisma.customer.findFirst({
-      where: { lineId, deletedAt: null },
+      where: { lineIdFinance: lineId, deletedAt: null },
       select: {
         notifPaymentReminder: true,
         notifOverdueNotice: true,
@@ -396,7 +396,7 @@ export class LiffApiService {
     prefs: { paymentReminder: boolean; overdueNotice: boolean; receiptNotification: boolean },
   ) {
     const customer = await this.prisma.customer.findFirst({
-      where: { lineId, deletedAt: null },
+      where: { lineIdFinance: lineId, deletedAt: null },
     });
     if (!customer) return { success: false, error: 'ไม่พบข้อมูลลูกค้า' };
 

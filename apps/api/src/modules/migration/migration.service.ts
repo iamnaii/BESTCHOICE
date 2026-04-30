@@ -68,7 +68,10 @@ export class MigrationService {
             name: c.name,
             phone: c.phone,
             phoneSecondary: c.phoneSecondary,
-            lineId: c.lineId,
+            // Legacy CSV `lineId` maps to `lineIdFinance` — historical imports were
+            // all finance-side (FINANCE OA was the only customer LINE channel before
+            // SHOP OA was added). Shop LINE IDs must be backfilled separately.
+            lineIdFinance: c.lineId,
             addressIdCard: c.addressIdCard,
             addressCurrent: c.addressCurrent,
             occupation: c.occupation,
@@ -79,7 +82,7 @@ export class MigrationService {
             name: c.name,
             phone: c.phone,
             phoneSecondary: c.phoneSecondary,
-            lineId: c.lineId,
+            lineIdFinance: c.lineId,
             addressIdCard: c.addressIdCard,
             addressCurrent: c.addressCurrent,
             occupation: c.occupation,

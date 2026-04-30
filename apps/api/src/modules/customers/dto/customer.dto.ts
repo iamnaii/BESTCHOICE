@@ -40,7 +40,11 @@ export class CreateCustomerDto {
 
   @IsString()
   @IsOptional()
-  lineId?: string;
+  lineIdFinance?: string;
+
+  @IsString()
+  @IsOptional()
+  lineIdShop?: string;
 
   @IsString()
   @IsOptional()
@@ -142,7 +146,11 @@ export class UpdateCustomerDto {
 
   @IsString()
   @IsOptional()
-  lineId?: string;
+  lineIdFinance?: string;
+
+  @IsString()
+  @IsOptional()
+  lineIdShop?: string;
 
   @IsString()
   @IsOptional()

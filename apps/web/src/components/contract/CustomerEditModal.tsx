@@ -37,7 +37,8 @@ export default function CustomerEditModal({ customerId, customerSnapshot, custom
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({
     prefix: '', name: '', nickname: '', birthDate: '',
-    phone: '', phoneSecondary: '', email: '', lineId: '',
+    phone: '', phoneSecondary: '', email: '',
+    lineIdFinance: '', lineIdShop: '',
     facebookLink: '', facebookName: '', facebookFriends: '', googleMapLink: '',
     addressCurrentType: '', occupation: '', occupationDetail: '', salary: '', workplace: '',
   });
@@ -60,7 +61,9 @@ export default function CustomerEditModal({ customerId, customerSnapshot, custom
           prefix: fc.prefix || '', name: fc.name || '', nickname: fc.nickname || '',
           birthDate: fc.birthDate ? fc.birthDate.split('T')[0] : '',
           phone: fc.phone || '', phoneSecondary: fc.phoneSecondary || '',
-          email: fc.email || '', lineId: fc.lineId || '',
+          email: fc.email || '',
+          lineIdFinance: fc.lineIdFinance || '',
+          lineIdShop: fc.lineIdShop || '',
           facebookLink: fc.facebookLink || '', facebookName: fc.facebookName || '',
           facebookFriends: fc.facebookFriends || '', googleMapLink: fc.googleMapLink || '',
           addressCurrentType: fc.addressCurrentType || '',
@@ -87,7 +90,9 @@ export default function CustomerEditModal({ customerId, customerSnapshot, custom
           prefix: snap?.prefix || '', name: snap?.name || customerBasic.name || '',
           nickname: snap?.nickname || '', birthDate: '',
           phone: snap?.phone || customerBasic.phone || '', phoneSecondary: '',
-          email: '', lineId: '', facebookLink: '', facebookName: '',
+          email: '',
+          lineIdFinance: '', lineIdShop: '',
+          facebookLink: '', facebookName: '',
           facebookFriends: '', googleMapLink: '',
           addressCurrentType: '',
           occupation: snap?.occupation || '', occupationDetail: '',
@@ -125,7 +130,8 @@ export default function CustomerEditModal({ customerId, customerSnapshot, custom
       phone: form.phone || null,
       phoneSecondary: form.phoneSecondary || null,
       email: form.email || null,
-      lineId: form.lineId || null,
+      lineIdFinance: form.lineIdFinance || null,
+      lineIdShop: form.lineIdShop || null,
       facebookLink: form.facebookLink || null,
       facebookName: form.facebookName || null,
       facebookFriends: form.facebookFriends || null,
@@ -277,8 +283,12 @@ export default function CustomerEditModal({ customerId, customerSnapshot, custom
                     <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
                   </div>
                   <div>
-                    <label className="block text-xs text-muted-foreground mb-1">LINE ID</label>
-                    <input type="text" value={form.lineId} onChange={(e) => setForm({ ...form, lineId: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" />
+                    <label className="block text-xs text-muted-foreground mb-1">LINE ID (น้องเบส / FINANCE)</label>
+                    <input type="text" value={form.lineIdFinance} onChange={(e) => setForm({ ...form, lineIdFinance: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" placeholder="U1234567890abcdef..." />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-muted-foreground mb-1">LINE ID (ร้าน / SHOP)</label>
+                    <input type="text" value={form.lineIdShop} onChange={(e) => setForm({ ...form, lineIdShop: e.target.value })} className="w-full px-3 py-2 border border-input rounded-lg text-sm" placeholder="U1234567890abcdef..." />
                   </div>
                   <div>
                     <label className="block text-xs text-muted-foreground mb-1">ลิงก์ Facebook</label>

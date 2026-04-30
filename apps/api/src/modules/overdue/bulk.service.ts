@@ -62,7 +62,7 @@ export class OverdueBulkService {
     const contracts = await this.prisma.contract.findMany({
       where: { id: { in: dto.contractIds }, deletedAt: null },
       include: {
-        customer: { select: { lineId: true, phone: true, name: true } },
+        customer: { select: { lineIdFinance: true, phone: true, name: true } },
       },
     });
 
@@ -82,7 +82,7 @@ export class OverdueBulkService {
     let failed = 0;
     const auditEntries: Prisma.AuditLogCreateManyInput[] = [];
     for (const c of contracts) {
-      if (!c.customer.lineId) {
+      if (!c.customer.lineIdFinance) {
         failed++;
         continue;
       }
@@ -100,7 +100,8 @@ export class OverdueBulkService {
       try {
         await this.notifications.send({
           channel: 'LINE',
-          recipient: c.customer.lineId,
+          channelKey: 'line-finance',
+          recipient: c.customer.lineIdFinance,
           message,
           relatedId: c.id,
           fallbackPhone: c.customer.phone ?? undefined,

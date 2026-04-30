@@ -211,7 +211,8 @@ export function useContractCreateData() {
       if (custForm.birthDate) payload.birthDate = new Date(custForm.birthDate).toISOString();
       if (custForm.phoneSecondary) payload.phoneSecondary = custForm.phoneSecondary;
       if (custForm.email) payload.email = custForm.email;
-      if (custForm.lineId) payload.lineId = custForm.lineId;
+      if (custForm.lineIdFinance) payload.lineIdFinance = custForm.lineIdFinance;
+      if (custForm.lineIdShop) payload.lineIdShop = custForm.lineIdShop;
       if (custForm.facebookLink) payload.facebookLink = custForm.facebookLink;
       if (custForm.facebookName) payload.facebookName = custForm.facebookName;
       if (custForm.facebookFriends) payload.facebookFriends = custForm.facebookFriends;

@@ -19,7 +19,7 @@ describe('KycService', () => {
     customer: {
       id: 'customer-1',
       phone: '0891234567',
-      lineId: 'U1234567890',
+      lineIdFinance: 'U1234567890',
     },
   };
 

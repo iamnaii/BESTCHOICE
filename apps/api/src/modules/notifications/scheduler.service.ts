@@ -16,6 +16,7 @@ import { buildDailyReportFlex } from '../line-oa/flex-messages/daily-report.flex
 import { DashboardService } from '../dashboard/dashboard.service';
 import { PDPAService } from '../pdpa/pdpa.service';
 import { DunningEngineService } from '../overdue/dunning-engine.service';
+import { IntegrationConfigService } from '../integrations/integration-config.service';
 import { isSmsPaymentReminderDisabled } from '../../utils/sms-payment-reminder.util';
 
 @Injectable()
@@ -34,6 +35,7 @@ export class SchedulerService {
     private dashboardService: DashboardService,
     private pdpaService: PDPAService,
     private dunningEngineService: DunningEngineService,
+    private integrationConfig: IntegrationConfigService,
   ) {}
 
   /**
@@ -90,7 +92,7 @@ export class SchedulerService {
     const contracts = await this.prisma.contract.findMany({
       where: { id: { in: contractIds } },
       include: {
-        customer: { select: { id: true, name: true, lineId: true, phone: true } },
+        customer: { select: { id: true, name: true, lineIdFinance: true, phone: true } },
         payments: {
           where: { status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] }, dueDate: { lt: new Date() } },
           orderBy: { installmentNo: 'asc' },
@@ -100,7 +102,7 @@ export class SchedulerService {
 
     let sent = 0;
     for (const contract of contracts) {
-      const lineId = contract.customer?.lineId;
+      const lineId = contract.customer?.lineIdFinance;
       if (!lineId) continue;
 
       // Check PDPA consent before sending
@@ -135,7 +137,7 @@ export class SchedulerService {
           daysOverdue,
         });
 
-        await this.lineOaService.sendFlexMessage(lineId, flex);
+        await this.lineOaService.sendFlexMessage(lineId, flex, 'line-finance');
         sent++;
       } catch (err) {
         this.logger.warn(`Failed to notify customer for contract ${contract.contractNumber}: ${err}`);
@@ -218,7 +220,7 @@ export class SchedulerService {
           await this.prisma.contract.findMany({
             where: { id: { in: escalatedIds } },
             include: {
-              customer: { select: { name: true, lineId: true, phone: true } },
+              customer: { select: { name: true, lineIdFinance: true, phone: true } },
               payments: {
                 where: { status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] }, dueDate: { lt: now } },
                 orderBy: { installmentNo: 'asc' },
@@ -233,7 +235,7 @@ export class SchedulerService {
       for (const esc of result.escalated) {
         try {
           const contract = contractsById.get(esc.contractId);
-          if (!contract?.customer?.lineId) continue;
+          if (!contract?.customer?.lineIdFinance) continue;
 
           const totalOverdue = contract.payments.reduce(
             (sum, p) => sum + (Number(p.amountDue) - Number(p.amountPaid) + Number(p.lateFee)),
@@ -251,8 +253,9 @@ export class SchedulerService {
           const message = stageMessages[esc.to];
           if (message) {
             await this.notificationsService.send({
+              channelKey: 'line-finance',
               channel: 'LINE',
-              recipient: contract.customer.lineId,
+              recipient: contract.customer.lineIdFinance,
               subject: `Dunning: ${esc.to}`,
               message,
               relatedId: esc.contractId,
@@ -380,13 +383,13 @@ export class SchedulerService {
           contract: {
             deletedAt: null,
             status: { in: ['ACTIVE'] },
-            customer: { lineId: { not: null }, deletedAt: null },
+            customer: { lineIdFinance: { not: null }, deletedAt: null },
           },
         },
         include: {
           contract: {
             include: {
-              customer: { select: { name: true, lineId: true } },
+              customer: { select: { name: true, lineIdFinance: true } },
             },
           },
         },
@@ -394,7 +397,7 @@ export class SchedulerService {
 
       let sent = 0;
       for (const payment of payments) {
-        const lineId = payment.contract.customer?.lineId;
+        const lineId = payment.contract.customer?.lineIdFinance;
         if (!lineId) continue;
 
         try {
@@ -418,7 +421,7 @@ export class SchedulerService {
             paymentUrl: link.url,
           });
 
-          await this.lineOaService.sendFlexMessage(lineId, flex);
+          await this.lineOaService.sendFlexMessage(lineId, flex, 'line-finance');
           sent++;
         } catch (err) {
           this.logger.warn(`Failed to send auto payment link for contract ${payment.contract.contractNumber}: ${err}`);
@@ -706,7 +709,7 @@ export class SchedulerService {
       let sent = 0;
       for (const owner of owners) {
         try {
-          await this.lineOaService.sendFlexMessage(owner.lineId!, flex);
+          await this.lineOaService.sendFlexMessage(owner.lineId!, flex, 'line-staff');
           sent++;
         } catch (err) {
           this.logger.warn(`Daily LINE report: failed to send to ${owner.name}: ${err}`);
@@ -716,6 +719,36 @@ export class SchedulerService {
       this.logger.log(`Daily LINE report sent: ${sent}/${owners.length} OWNER users`);
     } catch (error) {
       this.reportCronFailure('daily-line-report', error);
+    }
+  }
+
+  /**
+   * Run daily at 09:00 ICT — alert if SMS credit is low
+   */
+  @Cron('0 2 * * *') // 09:00 ICT = 02:00 UTC
+  async handleSmsCreditAlert() {
+    this.logger.log('Checking SMS credit balance...');
+    try {
+      const credit = await this.notificationsService.checkSmsCredit();
+      if (!credit.configured) return;
+      if (credit.credit !== undefined && credit.credit < 100) {
+        const message = `[BESTCHOICE] เครดิต SMS ใกล้หมด: เหลือ ${credit.credit} เครดิต — กรุณาเติมก่อนหมด`;
+        const staffTargets = (await this.integrationConfig.getValue('line-staff', 'notifyTargets')) || '';
+        const targets = staffTargets.split(',').map((s) => s.trim()).filter(Boolean);
+        for (const target of targets) {
+          await this.notificationsService.send({
+            channelKey: 'line-staff',
+            channel: 'LINE',
+            recipient: target,
+            message,
+            relatedId: 'sms-credit-alert',
+            noRetry: true,
+          });
+        }
+        this.logger.warn(`SMS credit low (${credit.credit}) — alerted ${targets.length} staff`);
+      }
+    } catch (error) {
+      this.reportCronFailure('sms-credit-alert', error);
     }
   }
 }

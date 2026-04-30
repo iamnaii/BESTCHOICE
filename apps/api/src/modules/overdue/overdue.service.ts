@@ -104,7 +104,7 @@ export class OverdueService {
       this.prisma.contract.findMany({
         where,
         include: {
-          customer: { select: { id: true, name: true, phone: true, lineId: true } },
+          customer: { select: { id: true, name: true, phone: true, lineIdFinance: true } },
           product: { select: { id: true, name: true, brand: true, model: true, imeiSerial: true } },
           branch: { select: { id: true, name: true } },
           salesperson: { select: { id: true, name: true } },
@@ -1313,7 +1313,7 @@ export class OverdueService {
             id: true,
             contractNumber: true,
             branchId: true,
-            customer: { select: { id: true, name: true, lineId: true, phone: true } },
+            customer: { select: { id: true, name: true, lineIdFinance: true, phone: true } },
           },
         },
       },
@@ -1321,14 +1321,14 @@ export class OverdueService {
 
     return {
       total: rows.length,
-      withLine: rows.filter((r) => !!r.contract.customer.lineId).length,
+      withLine: rows.filter((r) => !!r.contract.customer.lineIdFinance).length,
       contractIds: rows.map((r) => r.contractId),
       data: rows.map((r) => ({
         id: r.id,
         contractId: r.contractId,
         contractNumber: r.contract.contractNumber,
         customerName: r.contract.customer.name,
-        hasLine: !!r.contract.customer.lineId,
+        hasLine: !!r.contract.customer.lineIdFinance,
         createdAt: r.createdAt,
       })),
     };

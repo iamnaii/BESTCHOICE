@@ -25,7 +25,7 @@ const contract: ContractRow = {
   contractNumber: 'BC-2026-0001',
   status: 'OVERDUE',
   dunningStage: 'NOTICE',
-  customer: { id: 'cus-1', name: 'สมชาย ใจดี', phone: '0812345678', lineId: null },
+  customer: { id: 'cus-1', name: 'สมชาย ใจดี', phone: '0812345678', lineIdFinance: null, lineIdShop: null },
   branch: { id: 'br-1', name: 'สาขาลาดพร้าว' },
   assignedTo: null,
   outstanding: 5500,

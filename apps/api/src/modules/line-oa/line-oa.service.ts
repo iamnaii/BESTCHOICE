@@ -6,6 +6,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { toNum } from '../../utils/decimal.util';
 import { PDPAService } from '../pdpa/pdpa.service';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
+import type { LineChannelKey } from '../notifications/dto/create-notification.dto';
 import { LineMessagePayload } from './dto/webhook-event.dto';
 import { FlexMessagePayload } from './flex-messages/base-template';
 import { buildPaymentSuccessFlex, PaymentSuccessData } from './flex-messages/payment-success.flex';
@@ -40,17 +41,24 @@ export class LineOaService {
   ) {}
 
   /**
-   * LineOaService is SHOP-only by design. FINANCE has its own client at
-   * chatbot-finance/services/line-finance-client.service.ts which reads
-   * the `line-finance` integration independently. If you need FINANCE LINE
-   * messaging, use that service — do NOT generalize this one.
+   * LineOaService routes through three OAs (line-shop, line-finance,
+   * line-staff). FINANCE also has a dedicated client at
+   * chatbot-finance/services/line-finance-client.service.ts which reads the
+   * `line-finance` integration independently for chatbot reply flows.
+   *
+   * Phase 7 (2026-04-30): the previous BC default of `'line-shop'` was
+   * removed from every public sender method. Every caller MUST pass
+   * channelKey explicitly so we never silently send a finance message via
+   * the SHOP OA again. TypeScript enforces this at compile time.
    */
-  private async getShopChannelToken(): Promise<string> {
-    return (await this.integrationConfig.getValue('line-shop', 'channelToken')) || '';
+  private async getChannelToken(channelKey: LineChannelKey): Promise<string> {
+    return (await this.integrationConfig.getValue(channelKey, 'channelToken')) || '';
   }
 
-  async testConnection(): Promise<{ displayName: string; userId: string; pictureUrl?: string }> {
-    const token = await this.getShopChannelToken();
+  async testConnection(
+    channelKey: LineChannelKey,
+  ): Promise<{ displayName: string; userId: string; pictureUrl?: string }> {
+    const token = await this.getChannelToken(channelKey);
     if (!token) {
       throw new BadRequestException('LINE Channel Access Token ยังไม่ได้ตั้งค่า');
     }
@@ -73,37 +81,60 @@ export class LineOaService {
   /**
    * Send push message(s) to a user
    */
-  async pushMessage(to: string, messages: LineMessagePayload[]): Promise<void> {
-    await this.callLineApi(`${this.lineApiBaseUrl}/message/push`, {
-      to,
-      messages,
-    });
-    this.logger.log(`[LINE] Push message sent to ${to}`);
+  async pushMessage(
+    to: string,
+    messages: LineMessagePayload[],
+    channelKey: LineChannelKey,
+  ): Promise<void> {
+    await this.callLineApi(
+      `${this.lineApiBaseUrl}/message/push`,
+      {
+        to,
+        messages,
+      },
+      channelKey,
+    );
+    this.logger.log(`[LINE:${channelKey}] Push message sent to ${to}`);
   }
 
   /**
    * Reply to a message using reply token
    */
-  async replyMessage(replyToken: string, messages: LineMessagePayload[]): Promise<void> {
-    await this.callLineApi(`${this.lineApiBaseUrl}/message/reply`, {
-      replyToken,
-      messages,
-    });
-    this.logger.log(`[LINE] Reply message sent`);
+  async replyMessage(
+    replyToken: string,
+    messages: LineMessagePayload[],
+    channelKey: LineChannelKey,
+  ): Promise<void> {
+    await this.callLineApi(
+      `${this.lineApiBaseUrl}/message/reply`,
+      {
+        replyToken,
+        messages,
+      },
+      channelKey,
+    );
+    this.logger.log(`[LINE:${channelKey}] Reply message sent`);
   }
 
   /**
    * Send a Flex Message via push
    */
-  async sendFlexMessage(to: string, flexMessage: FlexMessagePayload): Promise<void> {
-    await this.pushMessage(to, [flexMessage as unknown as LineMessagePayload]);
+  async sendFlexMessage(
+    to: string,
+    flexMessage: FlexMessagePayload,
+    channelKey: LineChannelKey,
+  ): Promise<void> {
+    await this.pushMessage(to, [flexMessage as unknown as LineMessagePayload], channelKey);
   }
 
   /**
    * Download content (image, video, etc.) from LINE
    */
-  async downloadContent(messageId: string): Promise<Buffer> {
-    const token = await this.getShopChannelToken();
+  async downloadContent(
+    messageId: string,
+    channelKey: LineChannelKey,
+  ): Promise<Buffer> {
+    const token = await this.getChannelToken(channelKey);
     if (!token) {
       throw new BadRequestException('LINE channel access token not configured');
     }
@@ -127,8 +158,11 @@ export class LineOaService {
   /**
    * Get user profile
    */
-  async getUserProfile(userId: string): Promise<{ displayName: string; pictureUrl?: string; statusMessage?: string }> {
-    const token = await this.getShopChannelToken();
+  async getUserProfile(
+    userId: string,
+    channelKey: LineChannelKey,
+  ): Promise<{ displayName: string; pictureUrl?: string; statusMessage?: string }> {
+    const token = await this.getChannelToken(channelKey);
     if (!token) {
       throw new BadRequestException('LINE channel access token not configured');
     }
@@ -154,9 +188,9 @@ export class LineOaService {
    * Link a LINE user ID to a customer (on follow event)
    */
   async linkLineId(lineUserId: string): Promise<void> {
-    // Try to find existing customer with this lineId
+    // Try to find existing customer with this lineIdShop
     const existing = await this.prisma.customer.findFirst({
-      where: { lineId: lineUserId, deletedAt: null },
+      where: { lineIdShop: lineUserId, deletedAt: null },
     });
 
     if (existing) {
@@ -166,12 +200,16 @@ export class LineOaService {
 
     this.logger.log(`[LINE] New follow from ${lineUserId} - sending welcome message`);
     try {
-      await this.pushMessage(lineUserId, [
-        {
-          type: 'text',
-          text: CHATBOT_RESPONSES.welcomeFollow,
-        } as unknown as LineMessagePayload,
-      ]);
+      await this.pushMessage(
+        lineUserId,
+        [
+          {
+            type: 'text',
+            text: CHATBOT_RESPONSES.welcomeFollow,
+          } as unknown as LineMessagePayload,
+        ],
+        'line-shop',
+      );
     } catch (err) {
       this.logger.warn(`[LINE] Failed to send welcome message: ${err}`);
     }
@@ -183,7 +221,7 @@ export class LineOaService {
   async selfLinkByPhone(lineUserId: string, phone: string): Promise<{ success: boolean; customerName?: string }> {
     // Check if already linked
     const alreadyLinked = await this.prisma.customer.findFirst({
-      where: { lineId: lineUserId, deletedAt: null },
+      where: { lineIdShop: lineUserId, deletedAt: null },
     });
     if (alreadyLinked) {
       return { success: true, customerName: alreadyLinked.name };
@@ -191,7 +229,7 @@ export class LineOaService {
 
     // Find customer by phone
     const customer = await this.prisma.customer.findFirst({
-      where: { phone, deletedAt: null, lineId: null },
+      where: { phone, deletedAt: null, lineIdShop: null },
     });
 
     if (!customer) {
@@ -201,7 +239,7 @@ export class LineOaService {
     // Link
     await this.prisma.customer.update({
       where: { id: customer.id },
-      data: { lineId: lineUserId },
+      data: { lineIdShop: lineUserId },
     });
 
     this.logger.log(`[LINE] Self-linked ${lineUserId} to customer ${customer.name} via phone ${phone}`);
@@ -213,8 +251,8 @@ export class LineOaService {
    */
   async unlinkLineId(lineUserId: string): Promise<void> {
     await this.prisma.customer.updateMany({
-      where: { lineId: lineUserId, deletedAt: null },
-      data: { lineId: null },
+      where: { lineIdShop: lineUserId, deletedAt: null },
+      data: { lineIdShop: null },
     });
     this.logger.log(`[LINE] Unlinked LINE ID ${lineUserId}`);
   }
@@ -224,7 +262,7 @@ export class LineOaService {
    */
   async findCustomerByLineId(lineUserId: string) {
     return this.prisma.customer.findFirst({
-      where: { lineId: lineUserId, deletedAt: null },
+      where: { lineIdShop: lineUserId, deletedAt: null },
       include: {
         contracts: {
           where: {
@@ -281,10 +319,14 @@ export class LineOaService {
   /**
    * Build and send receipt Flex Message
    */
-  async sendReceipt(lineUserId: string, receiptData: ReceiptData): Promise<void> {
+  async sendReceipt(
+    lineUserId: string,
+    receiptData: ReceiptData,
+    channelKey: LineChannelKey,
+  ): Promise<void> {
     const flexMessage = buildReceiptMessage(receiptData);
-    await this.sendFlexMessage(lineUserId, flexMessage);
-    this.logger.log(`[LINE] Receipt ${receiptData.receiptNumber} sent to ${lineUserId}`);
+    await this.sendFlexMessage(lineUserId, flexMessage, channelKey);
+    this.logger.log(`[LINE:${channelKey}] Receipt ${receiptData.receiptNumber} sent to ${lineUserId}`);
   }
 
   /**
@@ -308,16 +350,16 @@ export class LineOaService {
       const customer = await this.prisma.customer.findFirst({
         where: {
           id: customerId,
-          lineId: { not: null },
+          lineIdShop: { not: null },
           deletedAt: null
         },
         select: {
-          lineId: true,
+          lineIdShop: true,
           name: true
         }
       });
 
-      if (!customer?.lineId) {
+      if (!customer?.lineIdShop) {
         this.logger.log('[LINE] Customer not linked to LINE, skipping receipt send');
         return false;
       }
@@ -356,14 +398,14 @@ export class LineOaService {
         verifyUrl: `${this.configService.get<string>('FRONTEND_URL') || 'https://bestchoice.com'}/verify/${receipt.receiptNumber}`
       };
 
-      // Send receipt via LINE
-      await this.sendReceipt(customer.lineId, receiptData);
+      // Send receipt via LINE (SHOP receipt — sale completed at shop)
+      await this.sendReceipt(customer.lineIdShop, receiptData, 'line-shop');
 
       // Log notification
       await this.prisma.notificationLog.create({
         data: {
           channel: 'LINE',
-          recipient: customer.lineId,
+          recipient: customer.lineIdShop,
           message: `ใบเสร็จ #${receipt.receiptNumber}`,
           status: 'SENT',
           sentAt: new Date(),
@@ -382,7 +424,7 @@ export class LineOaService {
 
   async findBranchForCustomer(lineUserId: string) {
     const customer = await this.prisma.customer.findFirst({
-      where: { lineId: lineUserId, deletedAt: null },
+      where: { lineIdShop: lineUserId, deletedAt: null },
       include: {
         contracts: {
           where: { deletedAt: null },
@@ -411,7 +453,7 @@ export class LineOaService {
     today.setHours(0, 0, 0, 0);
 
     const [linkedCustomers, pendingSlips, todayNotifications] = await Promise.all([
-      this.prisma.customer.count({ where: { lineId: { not: null }, deletedAt: null } }),
+      this.prisma.customer.count({ where: { lineIdShop: { not: null }, deletedAt: null } }),
       this.prisma.paymentEvidence.count({ where: { status: 'PENDING_REVIEW' } }),
       this.prisma.notificationLog.count({ where: { channel: 'LINE', sentAt: { gte: today } } }),
     ]);
@@ -513,9 +555,9 @@ export class LineOaService {
             const msg = buildMessage(customer.name);
 
             if (dto.messageType === CampaignMessageType.TEXT) {
-              await this.pushMessage(customer.lineId, msg as LineMessagePayload[]);
+              await this.pushMessage(customer.lineId, msg as LineMessagePayload[], 'line-shop');
             } else {
-              await this.sendFlexMessage(customer.lineId, msg as FlexMessagePayload);
+              await this.sendFlexMessage(customer.lineId, msg as FlexMessagePayload, 'line-shop');
             }
 
             // Log success
@@ -590,47 +632,53 @@ export class LineOaService {
     switch (targetGroup) {
       case CampaignTargetGroup.ALL: {
         const customers = await this.prisma.customer.findMany({
-          where: { lineId: { not: null }, deletedAt: null, pdpaConsents: { some: { status: 'GRANTED', deletedAt: null } } },
-          select: { lineId: true, name: true },
+          where: { lineIdShop: { not: null }, deletedAt: null, pdpaConsents: { some: { status: 'GRANTED', deletedAt: null } } },
+          select: { lineIdShop: true, name: true },
         });
-        return customers.filter((c): c is { lineId: string; name: string } => c.lineId !== null);
+        return customers
+          .filter((c): c is { lineIdShop: string; name: string } => c.lineIdShop !== null)
+          .map((c) => ({ lineId: c.lineIdShop, name: c.name }));
       }
 
       case CampaignTargetGroup.ACTIVE: {
         const customers = await this.prisma.customer.findMany({
           where: {
-            lineId: { not: null },
+            lineIdShop: { not: null },
             deletedAt: null,
             pdpaConsents: { some: { status: 'GRANTED', deletedAt: null } },
             contracts: {
               some: { status: 'ACTIVE', deletedAt: null },
             },
           },
-          select: { lineId: true, name: true },
+          select: { lineIdShop: true, name: true },
         });
-        return customers.filter((c): c is { lineId: string; name: string } => c.lineId !== null);
+        return customers
+          .filter((c): c is { lineIdShop: string; name: string } => c.lineIdShop !== null)
+          .map((c) => ({ lineId: c.lineIdShop, name: c.name }));
       }
 
       case CampaignTargetGroup.OVERDUE: {
         const customers = await this.prisma.customer.findMany({
           where: {
-            lineId: { not: null },
+            lineIdShop: { not: null },
             deletedAt: null,
             pdpaConsents: { some: { status: 'GRANTED', deletedAt: null } },
             contracts: {
               some: { status: { in: ['OVERDUE', 'DEFAULT'] }, deletedAt: null },
             },
           },
-          select: { lineId: true, name: true },
+          select: { lineIdShop: true, name: true },
         });
-        return customers.filter((c): c is { lineId: string; name: string } => c.lineId !== null);
+        return customers
+          .filter((c): c is { lineIdShop: string; name: string } => c.lineIdShop !== null)
+          .map((c) => ({ lineId: c.lineIdShop, name: c.name }));
       }
 
       case CampaignTargetGroup.COMPLETED: {
         // Customers who have all contracts completed (loyalty group)
         const customers = await this.prisma.customer.findMany({
           where: {
-            lineId: { not: null },
+            lineIdShop: { not: null },
             deletedAt: null,
             pdpaConsents: { some: { status: 'GRANTED', deletedAt: null } },
             contracts: {
@@ -638,7 +686,7 @@ export class LineOaService {
             },
           },
           select: {
-            lineId: true,
+            lineIdShop: true,
             name: true,
             contracts: {
               where: { deletedAt: null },
@@ -651,14 +699,14 @@ export class LineOaService {
           .filter((c) => {
             // All contracts must be COMPLETED or EARLY_PAYOFF
             return (
-              c.lineId !== null &&
+              c.lineIdShop !== null &&
               c.contracts.length > 0 &&
               c.contracts.every((con) =>
                 ['COMPLETED', 'EARLY_PAYOFF'].includes(con.status),
               )
             );
           })
-          .map((c) => ({ lineId: c.lineId!, name: c.name }));
+          .map((c) => ({ lineId: c.lineIdShop!, name: c.name }));
       }
 
       default:
@@ -731,10 +779,14 @@ export class LineOaService {
 
   // ─── Private Helpers ──────────────────────────────────
 
-  private async callLineApi(url: string, body: unknown): Promise<void> {
-    const token = await this.getShopChannelToken();
+  private async callLineApi(
+    url: string,
+    body: unknown,
+    channelKey: LineChannelKey,
+  ): Promise<void> {
+    const token = await this.getChannelToken(channelKey);
     if (!token) {
-      throw new BadRequestException('LINE channel access token not configured');
+      throw new BadRequestException(`LINE ${channelKey} channelToken not configured`);
     }
 
     try {
@@ -767,9 +819,9 @@ export class LineOaService {
       }
     } catch (err) {
       if (err instanceof Error && err.name === 'TimeoutError') {
-        this.logger.error(`[LINE SHOP] API timeout after 10s: ${url}`);
+        this.logger.error(`[LINE:${channelKey}] API timeout after 10s: ${url}`);
         Sentry.captureException(err, {
-          tags: { module: 'line-shop', action: 'line_api', reason: 'timeout' },
+          tags: { module: 'line-oa', channelKey, action: 'line_api', reason: 'timeout' },
           extra: { url },
         });
         throw new InternalServerErrorException('LINE API timeout');

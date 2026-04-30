@@ -1150,10 +1150,10 @@ export class PaymentsService {
         select: {
           contractNumber: true,
           totalMonths: true,
-          customer: { select: { lineId: true, name: true, notifReceipt: true } },
+          customer: { select: { lineIdFinance: true, name: true, notifReceipt: true } },
         },
       });
-      if (!contract?.customer?.lineId || !contract.customer.notifReceipt) return;
+      if (!contract?.customer?.lineIdFinance || !contract.customer.notifReceipt) return;
 
       const paidCount = await this.prisma.payment.count({
         where: { contractId, status: 'PAID' },
@@ -1171,7 +1171,7 @@ export class PaymentsService {
       // Attach Quick Reply so customer can quickly check balance, receipt, or contract
       flex.quickReply = { items: this.quickReplyService.afterPayment() };
 
-      await this.lineOaService.sendFlexMessage(contract.customer.lineId, flex);
+      await this.lineOaService.sendFlexMessage(contract.customer.lineIdFinance, flex, 'line-finance');
 
       this.logger.log(
         `[LINE] Payment success flex sent for contract ${contract.contractNumber} ` +

@@ -172,7 +172,7 @@ export class LineOaController {
   @Roles('OWNER')
   async testLineConnection() {
     try {
-      const result = await this.lineOaService.testConnection();
+      const result = await this.lineOaService.testConnection('line-shop');
       return { success: true, botInfo: result };
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : 'ไม่สามารถเชื่อมต่อ LINE ได้' };
@@ -211,7 +211,7 @@ export class LineOaController {
       if (!flex) {
         return { success: false, error: `ไม่รู้จักประเภทข้อความ: ${body.messageType}` };
       }
-      await this.lineOaService.sendFlexMessage(targetLineId, flex);
+      await this.lineOaService.sendFlexMessage(targetLineId, flex, 'line-shop');
       this.logger.log(`[LINE] Test message '${body.messageType}' sent to ${targetLineId}`);
       return { success: true, message: `ส่งข้อความทดสอบ "${body.messageType}" สำเร็จ` };
     } catch (err) {
@@ -242,7 +242,7 @@ export class LineOaController {
           results.push({ type, ok: false, error: 'unknown type' });
           continue;
         }
-        await this.lineOaService.sendFlexMessage(targetLineId, flex);
+        await this.lineOaService.sendFlexMessage(targetLineId, flex, 'line-shop');
         results.push({ type, ok: true });
         // Small throttle between messages — LINE push limit burst protection.
         await new Promise((resolve) => setTimeout(resolve, 250));

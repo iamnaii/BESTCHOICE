@@ -122,12 +122,12 @@ describe('OverdueBulkService', () => {
         {
           id: 'c1',
           contractNumber: 'BC-001',
-          customer: { lineId: null, phone: '0812345678', name: 'ลูกค้า 1' },
+          customer: { lineIdFinance: null, phone: '0812345678', name: 'ลูกค้า 1' },
         },
         {
           id: 'c2',
           contractNumber: 'BC-002',
-          customer: { lineId: 'U123', phone: '0812345679', name: 'ลูกค้า 2' },
+          customer: { lineIdFinance: 'U123', phone: '0812345679', name: 'ลูกค้า 2' },
         },
       ]);
       mockNotifications.send.mockResolvedValueOnce({ id: 'n1', status: 'SENT' });
@@ -146,7 +146,7 @@ describe('OverdueBulkService', () => {
         {
           id: 'c1',
           contractNumber: 'BC-001',
-          customer: { lineId: 'U999', phone: '0899999999', name: 'ทดสอบ' },
+          customer: { lineIdFinance: 'U999', phone: '0899999999', name: 'ทดสอบ' },
         },
       ]);
       mockNotifications.send.mockResolvedValueOnce({ id: 'n1', status: 'SENT' });
@@ -167,7 +167,7 @@ describe('OverdueBulkService', () => {
         {
           id: 'c1',
           contractNumber: 'BC-2026-001',
-          customer: { lineId: 'U777', phone: '0811111111', name: 'สมชาย ใจดี' },
+          customer: { lineIdFinance: 'U777', phone: '0811111111', name: 'สมชาย ใจดี' },
         },
       ]);
       mockPrisma.dunningRule.findUnique.mockResolvedValueOnce({
@@ -191,7 +191,7 @@ describe('OverdueBulkService', () => {
         {
           id: 'c1',
           contractNumber: 'BC-001',
-          customer: { lineId: 'U111', phone: '0800000000', name: 'ลูกค้า' },
+          customer: { lineIdFinance: 'U111', phone: '0800000000', name: 'ลูกค้า' },
         },
       ]);
       mockPrisma.dunningRule.findUnique.mockResolvedValueOnce(null);
@@ -206,12 +206,12 @@ describe('OverdueBulkService', () => {
         {
           id: 'c1',
           contractNumber: 'BC-001',
-          customer: { lineId: 'U100', phone: '0800000001', name: 'ผู้ทดสอบ' },
+          customer: { lineIdFinance: 'U100', phone: '0800000001', name: 'ผู้ทดสอบ' },
         },
         {
           id: 'c2',
           contractNumber: 'BC-002',
-          customer: { lineId: 'U200', phone: '0800000002', name: 'ผู้ทดสอบ 2' },
+          customer: { lineIdFinance: 'U200', phone: '0800000002', name: 'ผู้ทดสอบ 2' },
         },
       ]);
       mockNotifications.send

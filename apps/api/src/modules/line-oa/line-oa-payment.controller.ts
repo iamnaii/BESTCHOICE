@@ -224,7 +224,7 @@ export class LineOaPaymentController {
               paidDate: formatDateShort(new Date()),
               remainingInstallments: totalInstallments - paidCount - 1,
             });
-            await this.lineOaService.sendFlexMessage(evidence.lineUserId, flex);
+            await this.lineOaService.sendFlexMessage(evidence.lineUserId, flex, 'line-finance');
           } catch (err) {
             this.logger.error(`Failed to send batch approval notification for ${id}: ${err}`);
           }
@@ -274,12 +274,16 @@ export class LineOaPaymentController {
         // Send LINE notification
         if (evidence.lineUserId) {
           try {
-            await this.lineOaService.pushMessage(evidence.lineUserId, [
-              {
-                type: 'text',
-                text: `ขออภัยค่ะ สลิปที่ส่งมาไม่ผ่านการตรวจสอบ${body.reviewNote ? `\nเหตุผล: ${body.reviewNote}` : ''}\n\nกรุณาส่งสลิปใหม่ หรือติดต่อสาขาค่ะ`,
-              },
-            ]);
+            await this.lineOaService.pushMessage(
+              evidence.lineUserId,
+              [
+                {
+                  type: 'text',
+                  text: `ขออภัยค่ะ สลิปที่ส่งมาไม่ผ่านการตรวจสอบ${body.reviewNote ? `\nเหตุผล: ${body.reviewNote}` : ''}\n\nกรุณาส่งสลิปใหม่ หรือติดต่อสาขาค่ะ`,
+                },
+              ],
+              'line-finance',
+            );
           } catch (err) {
             this.logger.error(`Failed to send batch rejection notification for ${id}: ${err}`);
           }
@@ -377,7 +381,7 @@ export class LineOaPaymentController {
       });
 
       try {
-        await this.lineOaService.sendFlexMessage(evidence.lineUserId, flex);
+        await this.lineOaService.sendFlexMessage(evidence.lineUserId, flex, 'line-finance');
       } catch (err) {
         this.logger.error(`Failed to send payment success notification: ${err}`);
       }
@@ -417,12 +421,16 @@ export class LineOaPaymentController {
     // Notify customer via LINE
     if (evidence.lineUserId) {
       try {
-        await this.lineOaService.pushMessage(evidence.lineUserId, [
-          {
-            type: 'text',
-            text: `ขออภัยค่ะ สลิปที่ส่งมาไม่ผ่านการตรวจสอบ${body.reviewNote ? `\nเหตุผล: ${body.reviewNote}` : ''}\n\nกรุณาส่งสลิปใหม่ หรือติดต่อสาขาค่ะ`,
-          },
-        ]);
+        await this.lineOaService.pushMessage(
+          evidence.lineUserId,
+          [
+            {
+              type: 'text',
+              text: `ขออภัยค่ะ สลิปที่ส่งมาไม่ผ่านการตรวจสอบ${body.reviewNote ? `\nเหตุผล: ${body.reviewNote}` : ''}\n\nกรุณาส่งสลิปใหม่ หรือติดต่อสาขาค่ะ`,
+            },
+          ],
+          'line-finance',
+        );
       } catch (err) {
         this.logger.error(`Failed to send rejection notification: ${err}`);
       }
@@ -654,7 +662,7 @@ export class LineOaPaymentController {
         data: {
           contractId: linkContract.id,
           paymentId: link.payment!.id,
-          lineUserId: linkContract.customer.lineId || null,
+          lineUserId: linkContract.customer.lineIdFinance || null,
           imageUrl,
           amount: body.amount ? new Prisma.Decimal(body.amount) : null,
           status: 'PENDING_REVIEW',
@@ -684,7 +692,7 @@ export class LineOaPaymentController {
     });
 
     // Send LINE confirmation message to customer
-    const customerLineId = linkContract.customer.lineId;
+    const customerLineId = linkContract.customer.lineIdFinance;
     if (customerLineId) {
       try {
         const payment = link.payment!;
@@ -708,7 +716,7 @@ export class LineOaPaymentController {
           paidDate: formatDateShort(new Date()),
           remainingInstallments: totalInstallments - paidCount,
         });
-        await this.lineOaService.sendFlexMessage(customerLineId, flex);
+        await this.lineOaService.sendFlexMessage(customerLineId, flex, 'line-finance');
       } catch (err) {
         this.logger.warn(`Failed to send slip confirmation: ${err}`);
       }

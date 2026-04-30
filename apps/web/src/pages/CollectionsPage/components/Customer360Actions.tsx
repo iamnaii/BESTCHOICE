@@ -44,9 +44,9 @@ export default function Customer360Actions({ contract, onSendLine }: Props) {
 
         <button
           onClick={onSendLine}
-          disabled={!contract.customer.lineId || !onSendLine}
+          disabled={!contract.customer.lineIdFinance || !onSendLine}
           className="flex flex-col items-center gap-1.5 py-3 rounded-lg border border-input hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          title={!contract.customer.lineId ? 'ลูกค้าไม่มี LINE ID' : undefined}
+          title={!contract.customer.lineIdFinance ? 'ลูกค้าไม่มี LINE ID (Finance OA)' : undefined}
         >
           <MessageSquare className="size-5" />
           <span className="text-xs font-medium leading-snug">ส่ง LINE</span>

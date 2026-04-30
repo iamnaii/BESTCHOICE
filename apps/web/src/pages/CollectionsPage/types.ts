@@ -35,7 +35,7 @@ export interface ContractRow {
   contractNumber: string;
   status: string;
   dunningStage: string;
-  customer: { id: string; name: string; phone: string; lineId: string | null };
+  customer: { id: string; name: string; phone: string; lineIdFinance: string | null; lineIdShop: string | null };
   branch: { id: string; name: string };
   assignedTo: { id: string; name: string } | null;
   outstanding: number;

@@ -1065,9 +1065,10 @@ export class NotificationsService {
         continue;
       }
 
-      const message = `สวัสดีค่ะ คุณ${customer.name}\nแจ้งเตือน: ค่างวดที่ ${payment.installmentNo} สัญญา ${payment.contract.contractNumber}\nจำนวน ${Number(payment.amountDue).toLocaleString()} บาท\nครบกำหนดชำระ${daysUntil === 0 ? 'วันนี้' : `อีก ${daysUntil} วัน`} (${formatDateShort(payment.dueDate)})\nกรุณาชำระตามกำหนด ขอบคุณค่ะ`;
+      // SMS branch + flex-fallback fallback uses the same plain-text body
+      const smsMessage = `สวัสดีค่ะ คุณ${customer.name}\nแจ้งเตือน: ค่างวดที่ ${payment.installmentNo} สัญญา ${payment.contract.contractNumber}\nจำนวน ${Number(payment.amountDue).toLocaleString()} บาท\nครบกำหนดชำระ${daysUntil === 0 ? 'วันนี้' : `อีก ${daysUntil} วัน`} (${formatDateShort(payment.dueDate)})\nกรุณาชำระตามกำหนด ขอบคุณค่ะ`;
 
-      // Try LINE Flex Message first, fallback to text, then SMS
+      // Try LINE Flex Message first, fallback to template, then SMS
       if (customer.lineIdFinance) {
         try {
           const flex = this.flexTemplates.paymentReminder({
@@ -1093,27 +1094,54 @@ export class NotificationsService {
           });
           sent++;
         } catch (err) {
-          this.logger.warn(`Flex message failed, falling back to text: ${err instanceof Error ? err.message : err}`);
-          await this.send({
-            channel: 'LINE',
-            channelKey: 'line-finance',
-            recipient: customer.lineIdFinance,
-            message,
-            relatedId: payment.id,
-            fallbackPhone: isSmsPaymentReminderDisabled() ? undefined : (customer.phone || undefined),
-            customerId: customer.id,
-            category: NotificationCategory.REMINDER,
-          });
+          this.logger.warn(`Flex message failed, falling back to template text: ${err instanceof Error ? err.message : err}`);
+          // Pick template by daysUntil. Fall back to legacy inline send for
+          // day-0 (no dedicated template exists for "due today").
+          const eventType =
+            daysUntil === 3
+              ? 'payment.due_in_3_days'
+              : daysUntil === 1
+                ? 'payment.due_in_1_day'
+                : null;
+          if (eventType) {
+            await this.sendFromTemplate(
+              eventType,
+              {
+                name: customer.name,
+                amount: Number(payment.amountDue).toLocaleString(),
+                installmentNo: String(payment.installmentNo),
+                dueDate: formatDateShort(payment.dueDate),
+              },
+              customer.lineIdFinance,
+              {
+                relatedId: payment.id,
+                customerId: customer.id,
+              },
+            );
+          } else {
+            // Day-0 (due today) — preserve legacy text path
+            await this.send({
+              channel: 'LINE',
+              channelKey: 'line-finance',
+              recipient: customer.lineIdFinance,
+              message: smsMessage,
+              relatedId: payment.id,
+              fallbackPhone: isSmsPaymentReminderDisabled() ? undefined : (customer.phone || undefined),
+              customerId: customer.id,
+              category: NotificationCategory.REMINDER,
+            });
+          }
           sent++;
         }
       } else if (customer.phone) {
         if (isSmsPaymentReminderDisabled()) {
           this.logger.warn(`[SMS-REMINDER-OFF] Skipping payment reminder SMS for payment ${payment.id}`);
         } else {
+          // SMS branch — template is LINE-only so keep raw send()
           await this.send({
             channel: 'SMS',
             recipient: customer.phone,
-            message,
+            message: smsMessage,
             relatedId: payment.id,
             customerId: customer.id,
             category: NotificationCategory.REMINDER,
@@ -1200,9 +1228,10 @@ export class NotificationsService {
       }
 
       const outstanding = Number(payment.amountDue) - Number(payment.amountPaid) + Number(payment.lateFee);
-      const message = `แจ้งเตือน: คุณ${customer.name}\nค่างวดที่ ${payment.installmentNo} สัญญา ${payment.contract.contractNumber}\nเลยกำหนดชำระ ${daysOverdue} วัน\nยอดค้างชำระ ${outstanding.toLocaleString()} บาท (รวมค่าปรับ)\nกรุณาชำระโดยเร็ว`;
+      // SMS branch + flex-fallback fallback uses the same plain-text body
+      const smsMessage = `แจ้งเตือน: คุณ${customer.name}\nค่างวดที่ ${payment.installmentNo} สัญญา ${payment.contract.contractNumber}\nเลยกำหนดชำระ ${daysOverdue} วัน\nยอดค้างชำระ ${outstanding.toLocaleString()} บาท (รวมค่าปรับ)\nกรุณาชำระโดยเร็ว`;
 
-      // Try LINE Flex Message first, fallback to text, then SMS
+      // Try LINE Flex Message first, fallback to template, then SMS
       if (customer.lineIdFinance) {
         try {
           const flex = this.flexTemplates.overdueNotice({
@@ -1228,27 +1257,41 @@ export class NotificationsService {
           });
           sent++;
         } catch (err) {
-          this.logger.warn(`Flex message failed, falling back to text: ${err instanceof Error ? err.message : err}`);
-          await this.send({
-            channel: 'LINE',
-            channelKey: 'line-finance',
-            recipient: customer.lineIdFinance,
-            message,
-            relatedId: payment.id,
-            fallbackPhone: isSmsPaymentReminderDisabled() ? undefined : (customer.phone || undefined),
-            customerId: customer.id,
-            category: NotificationCategory.DUNNING,
-          });
+          this.logger.warn(`Flex message failed, falling back to template text: ${err instanceof Error ? err.message : err}`);
+          // Pick template by daysOverdue (1, 3, or 7) — the cron only fetches
+          // payments at exactly those offsets so other values shouldn't occur,
+          // but fall back defensively to the day-1 template if so.
+          const eventType =
+            daysOverdue >= 7
+              ? 'payment.overdue_day_7'
+              : daysOverdue >= 3
+                ? 'payment.overdue_day_3'
+                : 'payment.overdue_day_1';
+          await this.sendFromTemplate(
+            eventType,
+            {
+              name: customer.name,
+              amount: outstanding.toLocaleString(),
+              installmentNo: String(payment.installmentNo),
+              contractNumber: payment.contract.contractNumber,
+            },
+            customer.lineIdFinance,
+            {
+              relatedId: payment.id,
+              customerId: customer.id,
+            },
+          );
           sent++;
         }
       } else if (customer.phone) {
         if (isSmsPaymentReminderDisabled()) {
           this.logger.warn(`[SMS-REMINDER-OFF] Skipping overdue notice SMS for payment ${payment.id}`);
         } else {
+          // SMS branch — template is LINE-only so keep raw send()
           await this.send({
             channel: 'SMS',
             recipient: customer.phone,
-            message,
+            message: smsMessage,
             relatedId: payment.id,
             customerId: customer.id,
             category: NotificationCategory.DUNNING,

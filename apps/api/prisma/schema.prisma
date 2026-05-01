@@ -4783,6 +4783,9 @@ model AiTrainingPair {
   intent          String?
   quality         Float?
   usedInPrompt    Boolean   @default(false) @map("used_in_prompt")
+  embedding       Unsupported("vector(768)")?
+  embeddingModel  String?   @map("embedding_model")
+  embeddedAt      DateTime? @map("embedded_at")
   createdAt       DateTime  @default(now()) @map("created_at")
 
   @@index([intent, quality])

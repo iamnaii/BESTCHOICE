@@ -1,10 +1,16 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { SaveFeedbackDto } from '../dto/ai-training.dto';
+import { EmbeddingService } from './embedding.service';
 
 @Injectable()
 export class AiTrainingService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(AiTrainingService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly embedding: EmbeddingService,
+  ) {}
 
   /**
    * Calculate quality score based on feedback type and edit distance.
@@ -60,9 +66,70 @@ export class AiTrainingService {
 
   /**
    * Return top training pairs for few-shot prompt injection.
-   * Filters quality >= 0.7, optionally by intent.
+   *
+   * If a query is provided AND the embedding service is configured, uses
+   * pgvector cosine-similarity search over embedded pairs. Otherwise falls
+   * back to highest-quality pairs (legacy behavior).
+   *
+   * Filters: quality >= 0.5 (CHATCONE_IMPORT default), optionally by intent.
    */
   async getFewShotExamples(
+    intent: string | null,
+    limit: number,
+    query?: string,
+  ): Promise<{ customerMessage: string; staffResponse: string }[]> {
+    if (query && query.trim() && this.embedding.isReady()) {
+      try {
+        return await this.semanticSearch(query.trim(), intent, limit);
+      } catch (err) {
+        this.logger.warn(
+          `Semantic retrieval failed, falling back to top-quality: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+    }
+    return this.topQualityExamples(intent, limit);
+  }
+
+  private async semanticSearch(
+    query: string,
+    intent: string | null,
+    limit: number,
+  ): Promise<{ customerMessage: string; staffResponse: string }[]> {
+    const queryVec = await this.embedding.embedOne(query, 'RETRIEVAL_QUERY');
+    const vectorLiteral = this.embedding.toPgvector(queryVec);
+
+    // Cosine distance via <=> operator. Lower = more similar.
+    // Use parameterized query to avoid injection.
+    const rows = intent
+      ? await this.prisma.$queryRaw<
+          { customer_message: string; ai_draft: string | null; human_edit: string | null }[]
+        >`
+          SELECT customer_message, ai_draft, human_edit
+          FROM ai_training_pairs
+          WHERE embedding IS NOT NULL
+            AND quality >= 0.5
+            AND intent = ${intent}
+          ORDER BY embedding <=> ${vectorLiteral}::vector
+          LIMIT ${limit}
+        `
+      : await this.prisma.$queryRaw<
+          { customer_message: string; ai_draft: string | null; human_edit: string | null }[]
+        >`
+          SELECT customer_message, ai_draft, human_edit
+          FROM ai_training_pairs
+          WHERE embedding IS NOT NULL
+            AND quality >= 0.5
+          ORDER BY embedding <=> ${vectorLiteral}::vector
+          LIMIT ${limit}
+        `;
+
+    return rows.map((r) => ({
+      customerMessage: r.customer_message,
+      staffResponse: r.human_edit ?? r.ai_draft ?? '',
+    }));
+  }
+
+  private async topQualityExamples(
     intent: string | null,
     limit: number,
   ): Promise<{ customerMessage: string; staffResponse: string }[]> {

@@ -4,6 +4,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ProductDetectService } from './product-detect.service';
 import { AiTrainingService } from './ai-training.service';
+import { SHOP_SALES_PERSONA } from '../prompts/sales-persona';
 import type { AiSuggestion, AiSuggestResponse } from '../dto/ai-suggest.dto';
 
 @Injectable()
@@ -115,23 +116,25 @@ export class AiSuggestService {
         ? promotions.map((p) => `- ${p.name}: ${p.description ?? ''}`).join('\n')
         : 'ไม่มีโปรโมชันที่ active';
 
-    const systemPrompt = `คุณเป็น AI ช่วยพนักงานขายร้านมือถือ BESTCHOICE ตอบแชทลูกค้า
-คุณต้องแนะนำข้อความตอบลูกค้าให้พนักงานเลือก (2-3 ข้อความ)
+    const systemPrompt = `${SHOP_SALES_PERSONA}
 
-กฎ:
-- ข้อความต้องสุภาพ เป็นมิตร ใช้ครับ/ค่ะ
-- ใส่ข้อมูลราคา/ผ่อน/โปรโมชัน ถ้าเกี่ยวข้อง
-- พยายามปิดการขาย (ถามว่าสนใจไหม, อยากดูเงื่อนไขไหม, จะจองไหม)
-- ข้อความสั้นกระชับ ไม่เกิน 3 บรรทัด
-- ตอบเป็นภาษาไทย
-
-ตอบเป็น JSON array เท่านั้น:
+# Output format
+แนะนำข้อความตอบลูกค้า 2-3 ข้อความ ตอบเป็น JSON array เท่านั้น:
 [{"text":"ข้อความ","intent":"answer_price","confidence":0.9}]
 
-intent ที่ใช้ได้: answer_price, answer_spec, answer_stock, answer_promotion, close_sale, ask_preference, greet, follow_up`;
+intent ที่ใช้ได้: answer_price, answer_spec, answer_stock, answer_promotion, close_sale, ask_preference, greet, follow_up
 
-    // Fetch few-shot examples from training data
-    const examples = await this.aiTraining.getFewShotExamples(null, 5);
+confidence แนวทาง:
+- 0.9+ = มั่นใจมาก (มีตัวอย่างใกล้เคียงในข้อมูลอ้างอิง + ข้อมูลครบ)
+- 0.7-0.9 = ค่อนข้างมั่นใจ (ตอบทั่วไปได้)
+- 0.5-0.7 = ไม่แน่ใจ (ขอข้อมูลเพิ่ม / handoff ดีกว่า)
+- ต่ำกว่า 0.5 = ไม่ควรตอบ ส่งให้แอดมิน`;
+
+    // Fetch few-shot examples from training data — use last customer message for semantic retrieval
+    const lastCustomerMsg = [...reversed]
+      .reverse()
+      .find((m) => m.role === 'CUSTOMER' && m.text)?.text ?? undefined;
+    const examples = await this.aiTraining.getFewShotExamples(null, 5, lastCustomerMsg);
     const examplesText =
       examples.length > 0
         ? '## ตัวอย่างข้อความที่ดีจากพนักงาน\n\n' +

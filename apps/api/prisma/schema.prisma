@@ -689,6 +689,9 @@ model User {
   // Used by click-to-call (originate from) and inbound screen pop (identify agent)
   yeastarExtension String? @map("yeastar_extension")
 
+  // Phase A.4 — default cash/bank account for payment recording
+  defaultCashAccountCode String? @map("default_cash_account_code")
+
   @@index([branchId])
   @@index([yeastarExtension])
   @@map("users")
@@ -839,13 +842,6 @@ model Contract {
   interestTotal    Decimal        @map("interest_total") @db.Decimal(12, 2)
   financedAmount   Decimal        @map("financed_amount") @db.Decimal(12, 2)
   storeCommission  Decimal?       @map("store_commission") @db.Decimal(12, 2)
-  // Phase A.2 — Deferred income tracking. At activation: unearnedInterest =
-  // interestTotal, unearnedCommission = storeCommission. Each payment moves
-  // monthlyInterest/monthlyCommission from Unearned (Cr Unearned acct) to
-  // Earned (Cr Income acct). Recognises revenue cash-basis per TFRS for NPAEs
-  // instead of double-counting at activation + per payment.
-  unearnedInterest    Decimal @default(0) @map("unearned_interest") @db.Decimal(12, 2)
-  unearnedCommission  Decimal @default(0) @map("unearned_commission") @db.Decimal(12, 2)
   vatAmount        Decimal?       @map("vat_amount") @db.Decimal(12, 2)
   vatPct           Decimal?       @map("vat_pct") @db.Decimal(5, 4)
   monthlyPayment   Decimal        @map("monthly_payment") @db.Decimal(12, 2)
@@ -998,6 +994,9 @@ model Contract {
   // Collections Guided Session — daily assignment back-relation
   dailyAssignments DailyAssignment[]
 
+  // Phase A.4 — installment schedule rows
+  installmentSchedules InstallmentSchedule[]
+
   @@index([customerId])
   @@index([branchId])
   @@index([assignedToId])
@@ -1088,6 +1087,10 @@ model Payment {
   // Legacy migration tracking (จากโปรแกรมเขียว)
   legacyInstallmentCode String? @unique @map("legacy_installment_code")
 
+  // Phase A.4 — cash account dimension + tolerance JE link
+  depositAccountCode     String? @map("deposit_account_code")
+  toleranceJournalLineId String? @map("tolerance_journal_line_id")
+
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
@@ -1116,6 +1119,31 @@ model Payment {
   @@index([waivedById])
   @@index([waivedApprovedById])
   @@map("payments")
+}
+
+/// Phase A.4 — Installment schedule rows (one per installment period).
+/// Tracks reschedule history and links to accrual journal entries.
+model InstallmentSchedule {
+  id                     String    @id @default(uuid())
+  contractId             String    @map("contract_id")
+  installmentNo          Int       @map("installment_no")
+  dueDate                DateTime  @map("due_date")
+  principal              Decimal   @map("principal") @db.Decimal(12, 2)
+  interest               Decimal   @map("interest") @db.Decimal(12, 2)
+  rescheduledFromDate    DateTime? @map("rescheduled_from_date")
+  rescheduleCount        Int       @default(0) @map("reschedule_count")
+  accrualJournalEntryId  String?   @map("accrual_journal_entry_id")
+  vat60dayJournalEntryId String?   @map("vat_60day_journal_entry_id")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
+  deletedAt              DateTime? @map("deleted_at")
+
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Restrict)
+
+  @@unique([contractId, installmentNo])
+  @@index([contractId])
+  @@index([dueDate])
+  @@map("installment_schedules")
 }
 
 /// Refund workflow (T1-C1 / P2Q7=F — bank reversal model):
@@ -1846,23 +1874,23 @@ model NotificationLog {
 }
 
 model NotificationTemplate {
-  id              String                @id @default(uuid())
-  eventType       String                @unique @map("event_type")
+  id              String               @id @default(uuid())
+  eventType       String               @unique @map("event_type")
   name            String
   category        NotificationCategory
-  channelKey      String?               @map("channel_key")
+  channelKey      String?              @map("channel_key")
   channel         NotificationChannel
-  format          String                @default("text")
+  format          String               @default("text")
   subject         String?
-  messageTemplate String                @map("message_template") @db.Text
-  flexTemplate    String?               @map("flex_template") @db.Text
-  description     String?               @db.Text
-  isActive        Boolean               @default(true) @map("is_active")
-  sampleData      Json?                 @map("sample_data")
-  lastEditedBy    String?               @map("last_edited_by")
-  createdAt       DateTime              @default(now()) @map("created_at")
-  updatedAt       DateTime              @updatedAt @map("updated_at")
-  deletedAt       DateTime?             @map("deleted_at")
+  messageTemplate String               @map("message_template") @db.Text
+  flexTemplate    String?              @map("flex_template") @db.Text
+  description     String?              @db.Text
+  isActive        Boolean              @default(true) @map("is_active")
+  sampleData      Json?                @map("sample_data")
+  lastEditedBy    String?              @map("last_edited_by")
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+  deletedAt       DateTime?            @map("deleted_at")
 
   @@index([eventType])
   @@index([category])
@@ -2916,7 +2944,6 @@ model CompanyInfo {
   taxReports         TaxReport[]
   ownedProducts      Product[]                 @relation("ProductOwnership")
   accountingPeriods  AccountingPeriod[]
-  chartOfAccounts    ChartOfAccount[]          @relation("CompanyChartOfAccounts")
 
   @@map("company_info")
 }
@@ -3199,31 +3226,19 @@ enum AccountGroup {
 }
 
 model ChartOfAccount {
-  id           String       @id @default(uuid())
-  code         String // e.g. "1100", "4100"
-  nameTh       String       @map("name_th") // ชื่อบัญชีภาษาไทย
-  nameEn       String?      @map("name_en") // English name (optional)
-  accountGroup AccountGroup @map("account_group")
-  parentCode   String?      @map("parent_code") // parent account code for hierarchy
-  level        Int          @default(1) // 1=group, 2=sub-group, 3=detail
-  isActive     Boolean      @default(true) @map("is_active")
+  id            String    @id @default(uuid())
+  code          String    @unique // 11-1101 (no companyId scoping in A.4)
+  name          String
+  type          String // สินทรัพย์ | หนี้สิน | ทุน | รายได้ | ค่าใช้จ่าย | สินทรัพย์ (Contra)
+  normalBalance String // Dr | Cr | Dr/Cr
+  category      String? // เงินสด, ลูกหนี้, VAT, ฯลฯ
+  vatApplicable Boolean   @default(false)
+  notes         String?
+  status        String    @default("ใช้งาน")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
 
-  // ── Multi-entity partition (Phase A.1a) ──
-  companyId String?      @map("company_id")
-  company   CompanyInfo? @relation("CompanyChartOfAccounts", fields: [companyId], references: [id], onDelete: SetNull)
-
-  // ── การ sync กับ PEAK (ระบบบัญชีภายนอก) ──
-  peakAccountCode String? @map("peak_account_code") // รหัสบัญชีฝั่ง PEAK (สำหรับ export journal)
-  peakAccountId   String? @map("peak_account_id") // ID บัญชีบน PEAK API
-
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-  deletedAt DateTime? @map("deleted_at")
-
-  @@unique([companyId, code])
-  @@index([accountGroup])
-  @@index([code])
-  @@index([companyId])
   @@map("chart_of_accounts")
 }
 
@@ -3253,6 +3268,7 @@ model JournalEntry {
   updatedAt     DateTime           @updatedAt @map("updated_at")
   deletedAt     DateTime?          @map("deleted_at")
   peakSyncedAt  DateTime?          @map("peak_synced_at") // When synced to PEAK accounting
+  metadata      Json? // T6+ template tags and routing info
 
   company       CompanyInfo           @relation(fields: [companyId], references: [id])
   lines         JournalLine[]
@@ -4772,21 +4788,21 @@ model AccountingPeriod {
 
 /// Stores accepted/edited/rejected AI reply pairs for model fine-tuning
 model AiTrainingPair {
-  id              String    @id @default(uuid())
+  id              String                      @id @default(uuid())
   type            String // ACCEPT, EDIT, REJECT
   source          String // SUGGEST_FEEDBACK, CHATCONE_IMPORT, SYSTEM_EXTRACT
-  roomId          String?   @map("room_id")
-  room            ChatRoom? @relation(fields: [roomId], references: [id])
-  customerMessage String    @map("customer_message") @db.Text
-  aiDraft         String?   @map("ai_draft") @db.Text
-  humanEdit       String?   @map("human_edit") @db.Text
+  roomId          String?                     @map("room_id")
+  room            ChatRoom?                   @relation(fields: [roomId], references: [id])
+  customerMessage String                      @map("customer_message") @db.Text
+  aiDraft         String?                     @map("ai_draft") @db.Text
+  humanEdit       String?                     @map("human_edit") @db.Text
   intent          String?
   quality         Float?
-  usedInPrompt    Boolean   @default(false) @map("used_in_prompt")
+  usedInPrompt    Boolean                     @default(false) @map("used_in_prompt")
   embedding       Unsupported("vector(768)")?
-  embeddingModel  String?   @map("embedding_model")
-  embeddedAt      DateTime? @map("embedded_at")
-  createdAt       DateTime  @default(now()) @map("created_at")
+  embeddingModel  String?                     @map("embedding_model")
+  embeddedAt      DateTime?                   @map("embedded_at")
+  createdAt       DateTime                    @default(now()) @map("created_at")
 
   @@index([intent, quality])
   @@index([source])

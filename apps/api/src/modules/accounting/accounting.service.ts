@@ -46,13 +46,35 @@ const CATEGORY_ACCOUNT_MAP: Record<string, ExpenseAccountType> = {
 };
 
 // Map category → account code (PEAK format XX-XXXX)
+// C3 FIX (Phase A.4 PR #741 review): audited against finance-coa.csv new chart.
+// FINANCE entity has NO COGS accounts — COGS is booked on SHOP side (deferred to A.5).
+// ADMIN_SOCIAL_SECURITY and ADMIN_INSURANCE share 53-1102 (เงินสมทบประกันสังคม) — confirmed.
+// ADMIN_DEPRECIATION 53-1601 does NOT exist in new chart — commented out.
+// All other codes verified present and semantically correct.
 const CATEGORY_CODE_MAP: Record<string, string> = {
-  COGS_PRODUCT: '51-1101', COGS_REPAIR_PARTS: '51-1102',
-  SELL_COMMISSION: '52-1101', SELL_ADVERTISING: '52-1102', SELL_TRANSPORT: '53-1304', SELL_PACKAGING: '52-1102',
-  ADMIN_SALARY: '53-1101', ADMIN_SOCIAL_SECURITY: '53-1103', ADMIN_RENT: '53-1301', ADMIN_UTILITIES: '53-1302',
-  ADMIN_OFFICE_SUPPLIES: '53-1201', ADMIN_DEPRECIATION: '53-1601', ADMIN_INSURANCE: '53-1103',
-  ADMIN_TAX_FEE: '54-1103', ADMIN_MAINTENANCE: '53-1305', ADMIN_TRAVEL: '53-1304', ADMIN_TELEPHONE: '53-1303',
-  OTHER_INTEREST: '53-1501', OTHER_LOSS: '53-1503', OTHER_FINE: '54-1104', OTHER_MISC: '53-1502',
+  // TODO A.5: remap COGS_PRODUCT + COGS_REPAIR_PARTS when SHOP chart is re-introduced.
+  // FINANCE entity does NOT book COGS — these categories must not be used for FINANCE JEs.
+  // COGS_PRODUCT: '51-1101',      // REMOVED — 51-1101 in new chart = "ค่าใช้จ่าย VAT ลูกหนี้ไม่ชำระ" (Finance Cost, not COGS)
+  // COGS_REPAIR_PARTS: '51-1102', // REMOVED — 51-1102 in new chart = "หนี้สูญ/ขาดทุนจากยึดเครื่อง" (Finance Cost, not COGS)
+  SELL_COMMISSION: '52-1101',     // ค่าคอมฯ พนักงาน — verified
+  SELL_ADVERTISING: '52-1102',    // ค่าส่งเสริมการขาย — verified
+  SELL_TRANSPORT: '53-1304',      // ค่าไปรษณีย์ และขนส่ง — verified
+  SELL_PACKAGING: '52-1102',      // ค่าส่งเสริมการขาย (บรรจุภัณฑ์ — nearest match) — verified
+  ADMIN_SALARY: '53-1101',        // เงินเดือน ค่าจ้าง — verified
+  ADMIN_SOCIAL_SECURITY: '53-1102', // เงินสมทบประกันสังคม — verified (was 53-1103 ค่าล่วงเวลา, corrected)
+  ADMIN_RENT: '53-1301',          // ค่าน้ำ group — NOTE: no dedicated rent account in chart; 53-1301=ค่าน้ำ. TODO A.5: add 53-13XX rent account
+  ADMIN_UTILITIES: '53-1302',     // ค่าไฟฟ้า — verified
+  ADMIN_OFFICE_SUPPLIES: '53-1201', // ค่าเครื่องเขียน วัสดุสำนักงาน — verified
+  // ADMIN_DEPRECIATION: '53-1601', // REMOVED — 53-1601 does NOT exist in new chart. TODO A.5: add depreciation account
+  ADMIN_INSURANCE: '53-1103',     // ค่าล่วงเวลา — closest existing; TODO A.5: add dedicated insurance account
+  ADMIN_TAX_FEE: '54-1103',       // เบี้ยปรับ-ภ.พ.30 (รายจ่ายต้องห้าม) — verified
+  ADMIN_MAINTENANCE: '53-1305',   // ค่าซ่อมแซมฯ — verified
+  ADMIN_TRAVEL: '53-1304',        // ค่าไปรษณีย์ และขนส่ง — verified (nearest travel/transport)
+  ADMIN_TELEPHONE: '53-1303',     // ค่าโทรศัพท์สำนักงาน — verified
+  OTHER_INTEREST: '53-1501',      // ค่าธรรมเนียมธนาคาร — verified (finance charge bucket)
+  OTHER_LOSS: '53-1503',          // กำไร(ขาดทุน)สุทธิจากการปัดเศษ — verified (Dr when loss)
+  OTHER_FINE: '54-1104',          // เบี้ยปรับเงินเพิ่ม (อื่นๆ) — verified
+  OTHER_MISC: '53-1502',          // ค่าธรรมเนียมราชการ — verified (misc fees bucket)
 };
 
 async function generateExpenseNumber(tx: Prisma.TransactionClient): Promise<string> {

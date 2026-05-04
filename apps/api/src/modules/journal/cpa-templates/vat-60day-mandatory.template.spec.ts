@@ -96,6 +96,58 @@ describe('Vat60dayMandatoryTemplate', () => {
     expect(updatedInst.vat60dayJournalEntryId).toBe(result!.entryNo);
   });
 
+  it('fallback vat computation (no vatAmount) yields 1190 for standard 17K contract', async () => {
+    // Seed a fresh contract with vatAmount=null to exercise the fallback path
+    await prisma.journalLine.deleteMany({});
+    await prisma.journalEntry.deleteMany({});
+    await prisma.payment.deleteMany({});
+    await prisma.installmentSchedule.deleteMany({});
+    await prisma.contract.deleteMany({ where: { contractNumber: { startsWith: 'TEST-' } } });
+    await seedFinanceCoa(prisma);
+
+    const c = await seedStandard17k12m(prisma);
+    // Null out vatAmount to force fallback
+    await prisma.contract.update({ where: { id: c.id }, data: { vatAmount: null } });
+
+    const journal = new JournalAutoService(prisma as any);
+    await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
+
+    // Re-read contract after activation JE
+    const inst = await prisma.installmentSchedule.findFirstOrThrow({
+      where: { contractId: c.id, installmentNo: 1 },
+    });
+    await prisma.installmentSchedule.update({
+      where: { id: inst.id },
+      data: { dueDate: new Date(Date.now() - 70 * 24 * 60 * 60 * 1000) },
+    });
+
+    // Clear any previous VAT60 entries from JournalEntry (idempotency reset)
+    // Fetch IDs first then delete lines, then entries (FK order)
+    const prevEntries = await prisma.journalEntry.findMany({
+      where: { metadata: { path: ['tag'], equals: 'VAT60-MANDATORY' } } as any,
+      select: { id: true },
+    });
+    const prevIds = prevEntries.map((e) => e.id);
+    if (prevIds.length > 0) {
+      await prisma.journalLine.deleteMany({ where: { journalEntryId: { in: prevIds } } });
+      await prisma.journalEntry.deleteMany({ where: { id: { in: prevIds } } });
+    }
+
+    const tmpl = new Vat60dayMandatoryTemplate(journal, prisma as any);
+    const result = await tmpl.execute(inst.id);
+    expect(result).not.toBeNull();
+
+    const entry = await prisma.journalEntry.findFirstOrThrow({
+      where: { metadata: { path: ['tag'], equals: 'VAT60-MANDATORY' } } as any,
+      include: { lines: true },
+    });
+
+    // Standard 17K contract: financed=10000, commission=1000 (10%), interest=6000 → gross=17000 → VAT=1190
+    // vatPerInst = 1190 / 12 = 99.1666... → 99.17
+    const line5101 = entry.lines.find((l) => l.accountCode === '51-1101');
+    expect(new Decimal(line5101!.debit.toString()).toFixed(2)).toBe('99.17');
+  });
+
   it('is idempotent — returns null if already processed', async () => {
     const { inst, journal } = await setup();
 

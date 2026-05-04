@@ -18,7 +18,8 @@
     "prisma:studio": "prisma studio",
     "prisma:seed": "npx tsx prisma/seed.ts",
     "backfill:promise-slots": "tsx scripts/backfill-promise-slots.ts",
-    "wipe:accounting": "tsx src/cli/wipe-accounting.cli.ts"
+    "wipe:accounting": "tsx src/cli/wipe-accounting.cli.ts",
+    "wipe:accounting:help": "echo 'Usage: CONFIRM_WIPE=YES_I_AM_SURE EXPECTED_DB_NAME=<db> [ALLOW_PROD_WIPE=YES_I_AM_SURE] npm run wipe:accounting'"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.88.0",

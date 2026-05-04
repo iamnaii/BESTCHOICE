@@ -42,10 +42,17 @@ export class Vat60dayReversalTemplate {
     const c = await this.prisma.contract.findUniqueOrThrow({ where: { id: inst.contractId } });
 
     const total = new Decimal(c.totalMonths);
-    const vat =
-      c.vatAmount != null
-        ? new Decimal(c.vatAmount.toString())
-        : new Decimal(c.financedAmount.toString()).times('1.17').times('0.07').toDecimalPlaces(2);
+    // C4 FIX: fallback was financedAmount × 1.17 × 0.07 = wrong (819 for 17K contract).
+    // Correct: grossExclVat (financed + commission + interest) × 0.07 → 1190 for standard contract.
+    const financed = new Decimal(c.financedAmount.toString());
+    const commission = (c as any).storeCommission != null
+      ? new Decimal((c as any).storeCommission.toString())
+      : financed.times('0.10').toDecimalPlaces(2);
+    const interest = new Decimal((c as any).interestTotal.toString());
+    const grossExclVat = financed.plus(commission).plus(interest);
+    const vat = (c as any).vatAmount != null
+      ? new Decimal((c as any).vatAmount.toString())
+      : grossExclVat.times('0.07').toDecimalPlaces(2);
 
     const vatPerInst = vat.div(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
     const doubleVat = vatPerInst.times(2);

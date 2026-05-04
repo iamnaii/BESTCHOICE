@@ -135,52 +135,70 @@ export class JournalAutoService {
   }
 
   // -----------------------------------------------------------------------
-  // TODO Phase A.4 T6-T14: the methods below are stubs replacing old A.0-A.3
-  // implementations. Each will be replaced by a proper CPA template in the
-  // corresponding task. Callers compile; no journal is written until the real
-  // implementation lands.
+  // C1 FIX (Phase A.4 PR #741 review): stubs now THROW instead of silently
+  // dropping JE writes. Every caller that was silently losing journal entries
+  // will now visibly fail in tests/dev, making unwired callers discoverable.
+  // Wire each caller to the correct cpa-templates/ template in follow-up tasks
+  // T6-T14 — see docs/superpowers/specs/2026-05-04-accounting-phase-a4-cpa-chart-adoption-design.md
   // -----------------------------------------------------------------------
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async createPaymentJournal(_tx: Prisma.TransactionClient, _args: Record<string, unknown>): Promise<void> {
-    this.logger.warn('createPaymentJournal: stub — awaiting T6 CPA template');
+    throw new Error(
+      '[Phase A.4] createPaymentJournal stub — caller must migrate to new cpa-templates/. See docs/superpowers/specs/2026-05-04-accounting-phase-a4-cpa-chart-adoption-design.md',
+    );
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async createExpenseJournal(_tx: Prisma.TransactionClient, _args: Record<string, unknown>): Promise<void> {
-    this.logger.warn('createExpenseJournal: stub — awaiting T7 CPA template');
+    throw new Error(
+      '[Phase A.4] createExpenseJournal stub — caller must migrate to new cpa-templates/. See docs/superpowers/specs/2026-05-04-accounting-phase-a4-cpa-chart-adoption-design.md',
+    );
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async createContractActivationJournal(_tx: Prisma.TransactionClient, _args: Record<string, unknown>): Promise<void> {
-    this.logger.warn('createContractActivationJournal: stub — awaiting T8 CPA template');
+    throw new Error(
+      '[Phase A.4] createContractActivationJournal stub — caller must migrate to new cpa-templates/. See docs/superpowers/specs/2026-05-04-accounting-phase-a4-cpa-chart-adoption-design.md',
+    );
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async createEarlyPayoffJournal(_tx: Prisma.TransactionClient, _args: Record<string, unknown>): Promise<void> {
-    this.logger.warn('createEarlyPayoffJournal: stub — awaiting T9 CPA template');
+    throw new Error(
+      '[Phase A.4] createEarlyPayoffJournal stub — caller must migrate to new cpa-templates/. See docs/superpowers/specs/2026-05-04-accounting-phase-a4-cpa-chart-adoption-design.md',
+    );
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async createReversalJournal(_tx: Prisma.TransactionClient, _args: Record<string, unknown>): Promise<void> {
-    this.logger.warn('createReversalJournal: stub — awaiting T10 CPA template');
+    throw new Error(
+      '[Phase A.4] createReversalJournal stub — caller must migrate to new cpa-templates/. See docs/superpowers/specs/2026-05-04-accounting-phase-a4-cpa-chart-adoption-design.md',
+    );
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async createBadDebtProvisionJournal(_prisma: unknown, _args: Record<string, unknown>): Promise<void> {
-    this.logger.warn('createBadDebtProvisionJournal: stub — awaiting T11 CPA template');
+    throw new Error(
+      '[Phase A.4] createBadDebtProvisionJournal stub — caller must migrate to new cpa-templates/. See docs/superpowers/specs/2026-05-04-accounting-phase-a4-cpa-chart-adoption-design.md',
+    );
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async createBadDebtWriteOffJournal(_tx: Prisma.TransactionClient, _args: Record<string, unknown>): Promise<void> {
-    this.logger.warn('createBadDebtWriteOffJournal: stub — awaiting T12 CPA template');
+    throw new Error(
+      '[Phase A.4] createBadDebtWriteOffJournal stub — caller must migrate to new cpa-templates/. See docs/superpowers/specs/2026-05-04-accounting-phase-a4-cpa-chart-adoption-design.md',
+    );
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async createInterCompanySettlementJournal(_tx: Prisma.TransactionClient, _args: Record<string, unknown>): Promise<void> {
-    this.logger.warn('createInterCompanySettlementJournal: stub — awaiting T13 CPA template');
+    throw new Error(
+      '[Phase A.4] createInterCompanySettlementJournal stub — caller must migrate to new cpa-templates/. See docs/superpowers/specs/2026-05-04-accounting-phase-a4-cpa-chart-adoption-design.md',
+    );
   }
 
+  // TODO Phase A.4: redirect to AccountingService.getTrialBalance when T14 template is wired
   async getTrialBalance(_args: { asOfDate?: string; companyId?: string }): Promise<unknown[]> {
     this.logger.warn('getTrialBalance: stub — awaiting T14 CPA template');
     return [];
@@ -188,16 +206,22 @@ export class JournalAutoService {
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async createCustomerCreditOverpaymentJournal(_tx: Prisma.TransactionClient, _args: Record<string, unknown>): Promise<void> {
-    this.logger.warn('createCustomerCreditOverpaymentJournal: stub — awaiting T6 CPA template');
+    throw new Error(
+      '[Phase A.4] createCustomerCreditOverpaymentJournal stub — caller must migrate to new cpa-templates/. See docs/superpowers/specs/2026-05-04-accounting-phase-a4-cpa-chart-adoption-design.md',
+    );
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async createCreditAllocationJournal(_tx: Prisma.TransactionClient, _args: Record<string, unknown>): Promise<void> {
-    this.logger.warn('createCreditAllocationJournal: stub — awaiting T6 CPA template');
+    throw new Error(
+      '[Phase A.4] createCreditAllocationJournal stub — caller must migrate to new cpa-templates/. See docs/superpowers/specs/2026-05-04-accounting-phase-a4-cpa-chart-adoption-design.md',
+    );
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async createRepossessionResaleJournal(_tx: Prisma.TransactionClient, _args: Record<string, unknown>): Promise<void> {
-    this.logger.warn('createRepossessionResaleJournal: stub — awaiting T12 CPA template');
+    throw new Error(
+      '[Phase A.4] createRepossessionResaleJournal stub — caller must migrate to new cpa-templates/. See docs/superpowers/specs/2026-05-04-accounting-phase-a4-cpa-chart-adoption-design.md',
+    );
   }
 }

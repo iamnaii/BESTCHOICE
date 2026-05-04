@@ -178,3 +178,24 @@ CLI source: `apps/api/src/cli/wipe-accounting.cli.ts`
 | PEAK code mapping | column in CSV | Export reconciliation |
 | SHOP-side accounting | SHOP chart (separate) | Paired SHOP+FINANCE JEs (currently FINANCE-only) |
 | 41-2101/02 HP Revenue | — | CSV omits: FINANCE income = interest, not principal |
+
+---
+
+## Wipe CLI (Phase A.4 migration helper)
+
+`apps/api/src/cli/wipe-accounting.cli.ts` truncates all accounting data and reseeds the FINANCE chart.
+**DESTRUCTIVE — requires all 3 env vars:**
+
+```bash
+# Dev / staging
+CONFIRM_WIPE=YES_I_AM_SURE EXPECTED_DB_NAME=bestchoice_dev npm --prefix apps/api run wipe:accounting
+
+# Production (requires additional ALLOW_PROD_WIPE)
+CONFIRM_WIPE=YES_I_AM_SURE EXPECTED_DB_NAME=bestchoice_prod ALLOW_PROD_WIPE=YES_I_AM_SURE npm --prefix apps/api run wipe:accounting
+```
+
+Guards (C7 hardening PR #741):
+1. `CONFIRM_WIPE=YES_I_AM_SURE` — basic consent
+2. `NODE_ENV=production` → also requires `ALLOW_PROD_WIPE=YES_I_AM_SURE`
+3. `EXPECTED_DB_NAME` must match `current_database()` — prevents wrong-DB runs
+4. 5-second Ctrl+C cooldown printed to stderr before any TRUNCATE

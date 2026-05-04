@@ -32,11 +32,40 @@ async function main(): Promise<void> {
     console.error('This is a one-time operation for migrating from Phase A.0-A.3 to Phase A.4.');
     console.error('Production use requires explicit owner approval before running.');
     console.error('');
-    console.error(`Re-run with: CONFIRM_WIPE=${REQUIRED_CONSENT} npm --prefix apps/api run wipe:accounting`);
+    console.error(`Re-run with: CONFIRM_WIPE=${REQUIRED_CONSENT} EXPECTED_DB_NAME=<db-name> npm --prefix apps/api run wipe:accounting`);
+    console.error(`Production: also add ALLOW_PROD_WIPE=${REQUIRED_CONSENT}`);
+    process.exit(1);
+  }
+
+  // C7 FIX: Guard 1 — refuse to run in production unless ALLOW_PROD_WIPE is also set
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_PROD_WIPE !== REQUIRED_CONSENT) {
+    console.error('ERROR: Refusing to wipe in NODE_ENV=production without ALLOW_PROD_WIPE=YES_I_AM_SURE');
+    console.error('Re-run with: CONFIRM_WIPE=YES_I_AM_SURE ALLOW_PROD_WIPE=YES_I_AM_SURE EXPECTED_DB_NAME=<db> npm --prefix apps/api run wipe:accounting');
+    process.exit(1);
+  }
+
+  // C7 FIX: Guard 2 — require EXPECTED_DB_NAME to prevent wrong-database runs
+  const expectedDb = process.env.EXPECTED_DB_NAME;
+  if (!expectedDb) {
+    console.error('ERROR: Refusing to run without EXPECTED_DB_NAME=<exact-db-name> (must match current_database())');
+    console.error('Re-run with: CONFIRM_WIPE=YES_I_AM_SURE EXPECTED_DB_NAME=<db> npm --prefix apps/api run wipe:accounting');
     process.exit(1);
   }
 
   const prisma = new PrismaClient();
+
+  // C7 FIX: Guard 3 — verify connected DB matches EXPECTED_DB_NAME
+  const [{ current_database: actualDb }] = await prisma.$queryRaw<{ current_database: string }[]>`SELECT current_database()`;
+  if (actualDb !== expectedDb) {
+    console.error(`ERROR: DB mismatch: connected to "${actualDb}" but EXPECTED_DB_NAME="${expectedDb}". Aborting.`);
+    await prisma.$disconnect();
+    process.exit(1);
+  }
+
+  // C7 FIX: Guard 4 — print intent + 5-second cooldown to allow Ctrl+C
+  console.error(`WARNING: About to TRUNCATE journal_lines, journal_entries, payments, installment_schedules, contracts, chart_of_accounts on database "${actualDb}".`);
+  console.error('Press Ctrl+C within 5 seconds to abort.');
+  await new Promise((r) => setTimeout(r, 5000));
 
   try {
     console.log('[wipe-accounting] Starting Phase A.4 wipe & reseed...');

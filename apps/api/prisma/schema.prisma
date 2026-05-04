@@ -1130,6 +1130,7 @@ model InstallmentSchedule {
   dueDate                DateTime  @map("due_date")
   principal              Decimal   @map("principal") @db.Decimal(12, 2)
   interest               Decimal   @map("interest") @db.Decimal(12, 2)
+  amountDue              Decimal?  @map("amount_due") @db.Decimal(12, 2) // principal + interest + vat per installment
   rescheduledFromDate    DateTime? @map("rescheduled_from_date")
   rescheduleCount        Int       @default(0) @map("reschedule_count")
   accrualJournalEntryId  String?   @map("accrual_journal_entry_id")

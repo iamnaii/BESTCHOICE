@@ -3449,6 +3449,13 @@ model Expense {
   isRecurring  Boolean @default(false) @map("is_recurring")
   recurringDay Int?    @map("recurring_day")
 
+  // Tax-disallowed expense flag (Phase A.5c)
+  // When true, the expense routes to 54-XXXX accounts and cannot claim VAT input.
+  // Reasons: NO_RECEIPT (ไม่มีใบเสร็จ), PERSONAL_USE (ใช้ส่วนตัว),
+  //          PENALTY (เบี้ยปรับ), OTHER (อื่นๆ)
+  taxDisallowed    Boolean @default(false) @map("tax_disallowed")
+  disallowedReason String? @map("disallowed_reason")
+
   note String?
 
   createdAt DateTime  @default(now()) @map("created_at")

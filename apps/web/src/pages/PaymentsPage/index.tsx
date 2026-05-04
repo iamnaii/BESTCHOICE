@@ -50,6 +50,10 @@ export default function PaymentsPage() {
   const [showPayModal, setShowPayModal] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<PendingPayment | null>(null);
   const [payForm, setPayForm] = useState({ amount: 0, paymentMethod: 'CASH', notes: '', paidDate: new Date().toISOString().split('T')[0] });
+  // T15: deposit account code for the payment journal Dr leg; defaults to user preference or system default
+  const [depositAccountCode, setDepositAccountCode] = useState<string>(
+    user?.defaultCashAccountCode ?? '11-1101',
+  );
 
   // Batch selection state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -285,9 +289,10 @@ export default function PaymentsPage() {
     setSelectedPayment(payment);
     const remaining = parseFloat(payment.amountDue) + parseFloat(payment.lateFee) - parseFloat(payment.amountPaid);
     setPayForm({ amount: Math.round(remaining * 100) / 100, paymentMethod: 'CASH', notes: '', paidDate: new Date().toISOString().split('T')[0] });
+    setDepositAccountCode(user?.defaultCashAccountCode ?? '11-1101');
     setSlipResult(null);
     setShowPayModal(true);
-  }, []);
+  }, [user?.defaultCashAccountCode]);
 
   const handlePay = () => {
     if (!selectedPayment || payForm.amount <= 0) return;
@@ -303,6 +308,7 @@ export default function PaymentsPage() {
       paymentMethod: payForm.paymentMethod,
       notes: payForm.notes || undefined,
       transactionRef: slipResult?.transactionRef || `${payForm.paymentMethod}-${Date.now()}`,
+      depositAccountCode,
     });
   };
 
@@ -559,6 +565,8 @@ export default function PaymentsPage() {
         onSlipScan={handleSlipScan}
         ocrSlipLoading={ocrSlipLoading}
         slipResult={slipResult}
+        depositAccountCode={depositAccountCode}
+        onDepositAccountCodeChange={setDepositAccountCode}
       />
 
       {/* Batch Payment Modal */}

@@ -27,6 +27,16 @@ export class ChartOfAccountsService {
     });
   }
 
+  /** T15: Return code+name pairs for a list of account codes (for UI dropdowns). */
+  async findByCodes(codes: string[]): Promise<{ code: string; name: string }[]> {
+    if (!codes.length) return [];
+    return this.prisma.chartOfAccount.findMany({
+      where: { code: { in: codes }, deletedAt: null },
+      select: { code: true, name: true },
+      orderBy: { code: 'asc' },
+    });
+  }
+
   async findOne(id: string) {
     const account = await this.prisma.chartOfAccount.findUnique({ where: { id, deletedAt: null } });
     if (!account) throw new NotFoundException('ไม่พบบัญชี');

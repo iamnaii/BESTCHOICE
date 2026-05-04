@@ -41,6 +41,18 @@ export class PaymentsService {
   ) {}
 
   /**
+   * T15: Resolve the cash/bank account code for a payment.
+   * Priority: user.defaultCashAccountCode → system default '11-1101'.
+   */
+  private async resolveUserDefaultCashAccount(userId: string): Promise<string> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { defaultCashAccountCode: true },
+    });
+    return user?.defaultCashAccountCode ?? '11-1101';
+  }
+
+  /**
    * F-3-027 part 2/3: Resolve FINANCE companyId for HP installment journal entries.
    * Payments on installment contracts post to FINANCE-side accounts (HP Receivable,
    * Interest Income, VAT Output) — must be passed explicitly to JournalAutoService
@@ -99,6 +111,7 @@ export class PaymentsService {
     evidenceUrl?: string,
     notes?: string,
     transactionRef?: string,
+    depositAccountCode?: string,
   ) {
     if (!amount || amount <= 0) {
       throw new BadRequestException('จำนวนเงินต้องมากกว่า 0');
@@ -111,6 +124,9 @@ export class PaymentsService {
 
     // CR-7: Validate payment date is not in a closed accounting period
     await validatePeriodOpen(this.prisma, new Date());
+
+    // T15: Resolve deposit account — caller-provided > user default > system default 11-1101
+    const resolvedDepositAccountCode = depositAccountCode ?? (await this.resolveUserDefaultCashAccount(recordedById));
 
     // F-3-027 part 2/3 + Phase A.1b: resolve FINANCE + SHOP companyIds BEFORE
     // the transaction so both can be passed explicitly to the payment JE.
@@ -208,6 +224,7 @@ export class PaymentsService {
           recordedById,
           evidenceUrl: evidenceUrl || payment.evidenceUrl,
           notes: updatedNotes,
+          depositAccountCode: resolvedDepositAccountCode,
         },
       });
 

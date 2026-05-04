@@ -5,6 +5,7 @@ import {
   IsEnum,
   IsDateString,
   IsBoolean,
+  IsIn,
   Min,
   Max,
   IsInt,
@@ -103,6 +104,15 @@ export class CreateExpenseDto {
   recurringDay?: number;
 
   @IsOptional()
+  @IsBoolean()
+  taxDisallowed?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['NO_RECEIPT', 'PERSONAL_USE', 'PENALTY', 'OTHER'])
+  disallowedReason?: string;
+
+  @IsOptional()
   @IsString()
   note?: string;
 }
@@ -170,6 +180,15 @@ export class UpdateExpenseDto {
   @IsOptional()
   @IsString()
   taxInvoiceNo?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  taxDisallowed?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['NO_RECEIPT', 'PERSONAL_USE', 'PENALTY', 'OTHER'])
+  disallowedReason?: string;
 
   @IsOptional()
   @IsString()

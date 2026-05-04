@@ -1,7 +1,8 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, Optional } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { Vat60dayReversalTemplate } from './vat-60day-reversal.template';
 
 const TOLERANCE = new Decimal('1.00');
 
@@ -38,6 +39,7 @@ export class PaymentReceipt2BTemplate {
   constructor(
     private readonly journal: JournalAutoService,
     private readonly prisma: PrismaService,
+    @Optional() private readonly vat60Reversal?: Vat60dayReversalTemplate,
   ) {}
 
   async execute(input: PaymentReceiptInput): Promise<{ entryNo: string }> {
@@ -162,6 +164,12 @@ export class PaymentReceipt2BTemplate {
       },
       lines,
     });
+
+    // Feature I: if this installment had a 60-day mandatory VAT JE posted,
+    // trigger the reversal now that the customer has paid.
+    if (this.vat60Reversal && inst.vat60dayJournalEntryId) {
+      await this.vat60Reversal.execute(inst.id);
+    }
 
     return { entryNo: result.entryNumber };
   }

@@ -9,6 +9,8 @@ import { diffGoldenJE } from '../__tests__/golden-je-matcher';
 import { ContractActivation1ATemplate } from './contract-activation-1a.template';
 import { InstallmentAccrual2ATemplate } from './installment-accrual-2a.template';
 import { PaymentReceipt2BTemplate } from './payment-receipt-2b.template';
+import { Vat60dayMandatoryTemplate } from './vat-60day-mandatory.template';
+import { Vat60dayReversalTemplate } from './vat-60day-reversal.template';
 import { JournalAutoService } from '../journal-auto.service';
 import type { ActualJe } from '../__tests__/golden-je-matcher';
 
@@ -145,5 +147,76 @@ describe('PaymentReceipt2BTemplate', () => {
         // no toleranceApproverId
       }),
     ).rejects.toThrow(/approver/i);
+  });
+
+  it('triggers VAT 60-day reversal when installment has vat60dayJournalEntryId set', async () => {
+    const { contract, inst, journal } = await setup();
+
+    // Backdate and post the mandatory VAT 60-day JE
+    await prisma.installmentSchedule.update({
+      where: { id: inst.id },
+      data: { dueDate: new Date(Date.now() - 70 * 24 * 60 * 60 * 1000) },
+    });
+    const mandatory = new Vat60dayMandatoryTemplate(journal, prisma as any);
+    await mandatory.execute(inst.id);
+
+    // Verify mandatory JE was set
+    const instAfterMandatory = await prisma.installmentSchedule.findUniqueOrThrow({
+      where: { id: inst.id },
+    });
+    expect(instAfterMandatory.vat60dayJournalEntryId).not.toBeNull();
+
+    // Now run 2B with reversal injected
+    const reversal = new Vat60dayReversalTemplate(journal, prisma as any);
+    const tmpl = new PaymentReceipt2BTemplate(journal, prisma as any, reversal);
+
+    await tmpl.execute({
+      installmentScheduleId: inst.id,
+      amountReceived: new Decimal('1515.83'),
+      depositAccountCode: '11-1101',
+    });
+
+    // Verify 2B JE was posted
+    const entry2B = await prisma.journalEntry.findFirst({
+      where: { metadata: { path: ['tag'], equals: '2B' } } as any,
+    });
+    expect(entry2B).not.toBeNull();
+
+    // Verify reversal JE was also posted
+    const entryReversal = await prisma.journalEntry.findFirst({
+      where: { metadata: { path: ['tag'], equals: 'VAT60-REVERSAL' } } as any,
+    });
+    expect(entryReversal).not.toBeNull();
+
+    // Verify vat60dayJournalEntryId was cleared
+    const instAfterPayment = await prisma.installmentSchedule.findUniqueOrThrow({
+      where: { id: inst.id },
+    });
+    expect(instAfterPayment.vat60dayJournalEntryId).toBeNull();
+  });
+
+  it('does NOT trigger reversal when no 60-day VAT JE exists', async () => {
+    const { inst, journal } = await setup();
+
+    // No mandatory JE — vat60dayJournalEntryId is null
+    const reversal = new Vat60dayReversalTemplate(journal, prisma as any);
+    const tmpl = new PaymentReceipt2BTemplate(journal, prisma as any, reversal);
+
+    await tmpl.execute({
+      installmentScheduleId: inst.id,
+      amountReceived: new Decimal('1515.83'),
+      depositAccountCode: '11-1101',
+    });
+
+    // Should have 2B but no reversal
+    const entry2B = await prisma.journalEntry.findFirst({
+      where: { metadata: { path: ['tag'], equals: '2B' } } as any,
+    });
+    expect(entry2B).not.toBeNull();
+
+    const entryReversal = await prisma.journalEntry.findFirst({
+      where: { metadata: { path: ['tag'], equals: 'VAT60-REVERSAL' } } as any,
+    });
+    expect(entryReversal).toBeNull();
   });
 });

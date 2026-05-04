@@ -10,6 +10,7 @@ import { ExpenseAccountType, ExpenseCategory, ExpenseStatus, Prisma, WhtIncomeTy
 import { CreateExpenseDto, UpdateExpenseDto } from './dto/expense.dto';
 import { validatePeriodOpen as validatePeriodOpenUtil } from '../../utils/period-lock.util';
 import { JournalAutoService } from '../journal/journal-auto.service';
+import { ExpenseTemplate } from '../journal/cpa-templates/expense.template';
 import { d, dAdd, dSub, dMul, dRound } from '../../utils/decimal.util';
 
 /**
@@ -120,6 +121,7 @@ export class AccountingService {
   constructor(
     private prisma: PrismaService,
     private journalAutoService: JournalAutoService,
+    private expenseTemplate: ExpenseTemplate,
   ) {}
 
   /**
@@ -395,12 +397,18 @@ export class AccountingService {
         data: { status: 'PAID', paymentDate: paymentDate ? new Date(paymentDate) : new Date() },
       });
 
-      // TODO Phase A.5: implement ExpenseJournal template using CATEGORY_CODE_MAP
-      // Args available when A.5 is ready: companyId = expense.branch?.companyId, expense object, userId = expense.createdById
-      this.logger.warn(
-        `[Phase A.4] Expense JE skipped for expense ${updated.expenseNumber} — TODO Phase A.5: implement ExpenseTemplate using CATEGORY_CODE_MAP`,
-      );
-      // Expense payment status is still updated above; only JE is deferred
+      // Phase A.5a: post expense JE (non-blocking — JE failure must not roll back the status update)
+      try {
+        await this.expenseTemplate.execute({
+          expenseId: updated.id,
+          depositAccountCode: '11-1101', // Default cash account; caller can pass custom in future
+          isPaid: true,
+        });
+      } catch (err) {
+        this.logger.error(
+          `[A.5a] Expense JE failed for ${updated.expenseNumber}: ${(err as Error).message}`,
+        );
+      }
 
       return updated;
     });

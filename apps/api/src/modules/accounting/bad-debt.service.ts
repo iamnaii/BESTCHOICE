@@ -9,6 +9,8 @@ import { Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
+import { BadDebtProvisionTemplate } from '../journal/cpa-templates/bad-debt-provision.template';
+import { BadDebtWriteOffTemplate } from '../journal/cpa-templates/bad-debt-writeoff.template';
 
 const DEFAULT_PROVISION_RATES: Record<string, number> = {
   '1-30': 0.02,
@@ -26,6 +28,8 @@ export class BadDebtService {
   constructor(
     private prisma: PrismaService,
     private journalAutoService: JournalAutoService,
+    private badDebtProvisionTemplate: BadDebtProvisionTemplate,
+    private badDebtWriteOffTemplate: BadDebtWriteOffTemplate,
   ) {}
 
   /** Load provision rates from system config or use defaults */
@@ -177,11 +181,19 @@ export class BadDebtService {
       const delta = newAmount.sub(prev);
       if (delta.eq(0)) continue;
 
-      // TODO Phase A.5: implement BadDebtProvision JE template (53-1701 หนี้สูญ / 11-2103 ค่าเผื่อหนี้สงสัยจะสูญ)
-      this.logger.warn(
-        `[Phase A.4] Bad debt provision JE skipped for contract ${p.contractId} period ${period} — TODO Phase A.5: implement BadDebtJP* template per CSV (53-1701 หนี้สูญ, 11-2103 ค่าเผื่อหนี้สงสัยจะสูญ)`,
-      );
-      // Continue — provision record itself is still created; only JE is deferred
+      // Phase A.5a: post provision JE (non-blocking — a single JE failure must not abort the run)
+      try {
+        await this.badDebtProvisionTemplate.execute({
+          contractId: p.contractId,
+          provisionAmount: delta,
+          period,
+        });
+      } catch (err) {
+        Sentry.captureException(err, { extra: { contractId: p.contractId, period } });
+        this.logger.error(
+          `[A.5a] Bad debt provision JE failed for contract ${p.contractId} period ${period}: ${(err as Error).message}`,
+        );
+      }
     }
 
     const totalProvision = provisions.reduce((sum, p) => sum + p.provisionAmount, 0);
@@ -371,11 +383,18 @@ export class BadDebtService {
         },
       });
 
-      // TODO Phase A.5: implement BadDebtWriteOff JE template (53-1701 หนี้สูญ / 11-2103 ค่าเผื่อ / 11-2102 ลูกหนี้เช่าซื้อ)
-      this.logger.warn(
-        `[Phase A.4] Bad debt write-off JE skipped for contract ${contract.contractNumber} — TODO Phase A.5: implement BadDebtWriteOff template per CSV (53-1701, 11-2103, 11-2102)`,
-      );
-      // Write-off record + audit log still committed; only JE is deferred
+      // Phase A.5a: post write-off JE (non-blocking inside transaction — failure captured to Sentry)
+      try {
+        await this.badDebtWriteOffTemplate.execute({
+          contractId,
+          writeOffReason: notes ?? undefined,
+        });
+      } catch (err) {
+        Sentry.captureException(err, { extra: { contractId, contractNumber: contract.contractNumber } });
+        this.logger.error(
+          `[A.5a] Bad debt write-off JE failed for contract ${contract.contractNumber}: ${(err as Error).message}`,
+        );
+      }
 
       // T1-C7: Immutable audit log inside the same transaction. Captures
       // both parties' roles at write-off time (role can change later, the

@@ -8,6 +8,7 @@ import * as QRCode from 'qrcode';
 import { LineOaService } from '../line-oa/line-oa.service';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
 import { JournalAutoService } from '../journal/journal-auto.service';
+import { ReceiptVoidReversalTemplate } from '../journal/cpa-templates/receipt-void-reversal.template';
 
 // Embedded BESTCHOICE logo. Single source of truth for the receipt header.
 // Loaded inline so the PDF renders without network access.
@@ -19,6 +20,7 @@ export class ReceiptsService {
   constructor(
     private prisma: PrismaService,
     private journalAutoService: JournalAutoService,
+    private receiptVoidReversalTemplate: ReceiptVoidReversalTemplate,
     @Inject(forwardRef(() => LineOaService))
     private lineOaService?: LineOaService,
   ) {}
@@ -409,9 +411,7 @@ export class ReceiptsService {
         },
       });
 
-      // Auto journal — create reversal entry for the original payment.
-      // TODO Phase A.5: implement ReceiptVoidReversalTemplate
-      // originalEntry lookup preserved for when A.5 is ready
+      // Phase A.5a: reverse the original payment JE (non-blocking)
       if (receipt.paymentId) {
         const originalEntry = await tx.journalEntry.findFirst({
           where: {
@@ -422,9 +422,13 @@ export class ReceiptsService {
           },
         });
         if (originalEntry) {
-          this.logger.warn(
-            `[Phase A.4] Receipt void reversal JE skipped for payment ${receipt.paymentId} — TODO Phase A.5: implement ReceiptVoidReversalTemplate`,
-          );
+          try {
+            await this.receiptVoidReversalTemplate.voidReceipt(originalEntry.id);
+          } catch (err) {
+            this.logger.error(
+              `[A.5a] Receipt void reversal JE failed for payment ${receipt.paymentId}: ${(err as Error).message}`,
+            );
+          }
         }
       }
 

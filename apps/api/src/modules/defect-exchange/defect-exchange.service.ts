@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
+import { DefectExchangeReversalTemplate } from '../journal/cpa-templates/defect-exchange-reversal.template';
 import { ExecuteDefectExchangeDto } from './dto/defect-exchange.dto';
 import { generateContractNumber } from '../../utils/sequence.util';
 import { Decimal } from '@prisma/client/runtime/library';
@@ -15,6 +16,7 @@ export class DefectExchangeService {
   constructor(
     private prisma: PrismaService,
     private journalAutoService: JournalAutoService,
+    private defectExchangeReversalTemplate: DefectExchangeReversalTemplate,
   ) {}
 
   /**
@@ -153,24 +155,12 @@ export class DefectExchangeService {
           data: { status: 'DEFECT_RETURN' },
         });
 
-        // TODO Phase A.5: implement DefectExchangeReversalTemplate (reverse CONTRACT + CONTRACT_COGS JEs)
-        // originalJe and cogsJe lookups preserved below for when A.5 is ready
-        const originalJe = await tx.journalEntry.findFirst({
-          where: { referenceType: 'CONTRACT', referenceId: oldContract.id, deletedAt: null },
-          orderBy: { createdAt: 'asc' },
-        });
-        if (originalJe) {
-          this.logger.warn(
-            `[Phase A.4] Defect exchange reversal JE skipped for contract ${oldContract.contractNumber} (CONTRACT) — TODO Phase A.5: implement DefectExchangeReversalTemplate`,
-          );
-        }
-        const cogsJe = await tx.journalEntry.findFirst({
-          where: { referenceType: 'CONTRACT_COGS', referenceId: oldContract.id, deletedAt: null },
-          orderBy: { createdAt: 'asc' },
-        });
-        if (cogsJe) {
-          this.logger.warn(
-            `[Phase A.4] Defect exchange reversal JE skipped for contract ${oldContract.contractNumber} (CONTRACT_COGS) — TODO Phase A.5: implement DefectExchangeReversalTemplate`,
+        // Phase A.5a: reverse all JEs for the old contract (non-blocking)
+        try {
+          await this.defectExchangeReversalTemplate.reverseContract(oldContract.id);
+        } catch (err) {
+          this.logger.error(
+            `[A.5a] Defect exchange reversal JE failed for contract ${oldContract.contractNumber}: ${(err as Error).message}`,
           );
         }
 

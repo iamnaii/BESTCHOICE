@@ -15,6 +15,11 @@ import { VendorClearanceTemplate } from './cpa-templates/vendor-clearance.templa
 import { Vat60dayMandatoryTemplate } from './cpa-templates/vat-60day-mandatory.template';
 import { Vat60dayReversalTemplate } from './cpa-templates/vat-60day-reversal.template';
 import { Vat60dayCron } from './cron/vat-60day.cron';
+import { BadDebtProvisionTemplate } from './cpa-templates/bad-debt-provision.template';
+import { BadDebtWriteOffTemplate } from './cpa-templates/bad-debt-writeoff.template';
+import { ExpenseTemplate } from './cpa-templates/expense.template';
+import { DefectExchangeReversalTemplate } from './cpa-templates/defect-exchange-reversal.template';
+import { ReceiptVoidReversalTemplate } from './cpa-templates/receipt-void-reversal.template';
 
 @Module({
   imports: [PrismaModule],
@@ -34,6 +39,11 @@ import { Vat60dayCron } from './cron/vat-60day.cron';
     Vat60dayMandatoryTemplate,
     Vat60dayReversalTemplate,
     Vat60dayCron,
+    BadDebtProvisionTemplate,
+    BadDebtWriteOffTemplate,
+    ExpenseTemplate,
+    DefectExchangeReversalTemplate,
+    ReceiptVoidReversalTemplate,
   ],
   exports: [
     JournalService,
@@ -48,6 +58,11 @@ import { Vat60dayCron } from './cron/vat-60day.cron';
     VendorClearanceTemplate,
     Vat60dayMandatoryTemplate,
     Vat60dayReversalTemplate,
+    BadDebtProvisionTemplate,
+    BadDebtWriteOffTemplate,
+    ExpenseTemplate,
+    DefectExchangeReversalTemplate,
+    ReceiptVoidReversalTemplate,
   ],
 })
 export class JournalModule {}

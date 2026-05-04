@@ -14,4 +14,7 @@ coverage
 apps/web/dist
 **/*.test.ts
 **/*.spec.ts
-**/__tests__
+# NOTE: __tests__/ NOT excluded — apps/api/src/modules/journal/__tests__/csv-fixture-loader.ts
+# + fixtures/cpa-cases/finance-coa.csv are runtime dependencies of seed-coa-finance.ts
+# (which runs on prod boot) and wipe CLI. Spec files inside __tests__/ are still excluded
+# by the *.spec.ts pattern above.

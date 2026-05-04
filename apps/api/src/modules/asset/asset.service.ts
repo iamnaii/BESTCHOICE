@@ -1,14 +1,19 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import * as Sentry from '@sentry/nestjs';
+import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateFixedAssetDto, UpdateFixedAssetDto, DisposeAssetDto } from './dto/asset.dto';
+import { AssetDisposalTemplate } from '../journal/cpa-templates/asset-disposal.template';
 
 @Injectable()
 export class AssetService {
   private readonly logger = new Logger(AssetService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private disposalTemplate: AssetDisposalTemplate,
+  ) {}
 
   /**
    * Generate asset code: PA-YYYYMMXXXX
@@ -36,10 +41,12 @@ export class AssetService {
         name: dto.name,
         description: dto.description,
         category: dto.category,
+        assetCategory: dto.assetCategory ?? null,
         branchId: dto.branchId,
         costValue: dto.costValue,
         salvageValue: dto.salvageValue ?? 0,
         usefulLife: dto.usefulLife,
+        usefulLifeMonths: dto.usefulLifeMonths ?? null,
         purchaseDate: new Date(dto.purchaseDate),
         depreciationAccountCode: dto.depreciationAccountCode ?? '53-1601',
         accumulatedAccountCode: dto.accumulatedAccountCode ?? '12-2102',
@@ -141,7 +148,8 @@ export class AssetService {
   }
 
   /**
-   * Dispose an asset (soft disposal)
+   * Dispose an asset — posts AssetDisposalTemplate JE (Phase A.5c).
+   * Updates asset status to DISPOSED and records disposal proceeds.
    */
   async dispose(id: string, dto: DisposeAssetDto) {
     const existing = await this.prisma.fixedAsset.findFirst({
@@ -151,14 +159,28 @@ export class AssetService {
       throw new NotFoundException('ไม่พบสินทรัพย์ที่ระบุ');
     }
 
-    return this.prisma.fixedAsset.update({
-      where: { id },
-      data: {
-        status: 'DISPOSED',
-        disposedAt: new Date(),
-        disposalNote: dto.disposalNote,
-      },
+    const result = await this.disposalTemplate.execute({
+      assetId: id,
+      disposalDate: new Date(),
+      disposalProceeds: new Decimal(dto.disposalProceeds?.toString() ?? '0'),
+      depositAccountCode: dto.depositAccountCode,
     });
+
+    // Add disposalNote if provided (template already sets a default)
+    if (dto.disposalNote) {
+      await this.prisma.fixedAsset.update({
+        where: { id },
+        data: { disposalNote: dto.disposalNote },
+      });
+    }
+
+    return {
+      ...(await this.prisma.fixedAsset.findFirst({
+        where: { id },
+        include: { branch: true },
+      })),
+      journalEntryNo: result.entryNo,
+    };
   }
 
   /**

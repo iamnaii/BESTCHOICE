@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Loader2, Phone } from 'lucide-react';
+import { Loader2, Phone, Banknote } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import PageHeader from '@/components/ui/PageHeader';
@@ -15,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { CashAccountSelect } from '@/components/CashAccountSelect';
 
 interface PbxExtension {
   number: string;
@@ -24,8 +25,13 @@ interface PbxExtension {
 
 export default function UserProfilePage() {
   useDocumentTitle('โปรไฟล์ของฉัน');
-  const { user } = useAuth();
+  const { user, refresh } = useAuth();
+  const queryClient = useQueryClient();
   const [yeastarExtension, setYeastarExtension] = useState('');
+  // T15: default cash account for payment deposit dimension
+  const [defaultCashCode, setDefaultCashCode] = useState<string>(
+    user?.defaultCashAccountCode ?? '11-1101',
+  );
 
   const { data: pbxExtensions = [] } = useQuery<PbxExtension[]>({
     queryKey: ['yeastar-extensions'],
@@ -40,6 +46,18 @@ export default function UserProfilePage() {
   const saveExtensionMutation = useMutation({
     mutationFn: (extension: string) => api.patch('/users/me/extension', { extension }),
     onSuccess: () => toast.success('บันทึก Extension สำเร็จ'),
+    onError: () => toast.error('บันทึกไม่สำเร็จ'),
+  });
+
+  // T15: save default cash account preference
+  const saveCashAccountMutation = useMutation({
+    mutationFn: (code: string) =>
+      api.patch('/users/me/cash-account', { defaultCashAccountCode: code }),
+    onSuccess: async () => {
+      toast.success('บันทึกบัญชีรับเงินเริ่มต้นสำเร็จ');
+      await refresh(); // update auth context so next payment modal pre-fills correctly
+      queryClient.invalidateQueries({ queryKey: ['chart-of-accounts', 'cash-codes'] });
+    },
     onError: () => toast.error('บันทึกไม่สำเร็จ'),
   });
 
@@ -119,6 +137,41 @@ export default function UserProfilePage() {
             </CardContent>
           </Card>
         )}
+
+        {/* T15: Default Cash Account */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Banknote className="size-4 text-muted-foreground" strokeWidth={1.75} />
+              บัญชีรับเงินเริ่มต้น
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground leading-snug">
+              บัญชีนี้จะถูกเลือกอัตโนมัติเมื่อบันทึกการชำระ (Dr leg ในสมุดบัญชี)
+            </p>
+            <div className="flex gap-2 items-center">
+              <div className="flex-1 max-w-xs">
+                <CashAccountSelect
+                  value={defaultCashCode}
+                  onChange={setDefaultCashCode}
+                  disabled={saveCashAccountMutation.isPending}
+                />
+              </div>
+              <Button
+                size="sm"
+                onClick={() => saveCashAccountMutation.mutate(defaultCashCode)}
+                disabled={saveCashAccountMutation.isPending || !defaultCashCode}
+              >
+                {saveCashAccountMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  'บันทึก'
+                )}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

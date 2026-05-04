@@ -160,6 +160,34 @@ export class AccountingController {
     return this.service.voidExpense(id, req.user.id, reason);
   }
 
+  // ============================================================
+  // T17: Journal-line-based financial reports (CPA chart)
+  // ============================================================
+
+  @Get('ledger/trial-balance')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getTrialBalance(@Query('asOfDate') asOfDate?: string) {
+    return this.service.getTrialBalance(asOfDate ? new Date(asOfDate) : undefined);
+  }
+
+  @Get('ledger/profit-loss')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getProfitLossFromJournal(
+    @Query('periodStart') periodStart: string,
+    @Query('periodEnd') periodEnd: string,
+  ) {
+    const start = new Date(periodStart);
+    const end = new Date(periodEnd);
+    end.setHours(23, 59, 59, 999);
+    return this.service.getProfitLossFromJournal(start, end);
+  }
+
+  @Get('ledger/balance-sheet')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getBalanceSheetFromJournal(@Query('asOfDate') asOfDate?: string) {
+    return this.service.getBalanceSheetFromJournal(asOfDate ? new Date(asOfDate) : undefined);
+  }
+
   // Balance Sheet & Cash Flow endpoints are in ReportsController (/reports/balance-sheet, /reports/cash-flow)
   // to avoid duplicate routes. See reports.controller.ts.
 

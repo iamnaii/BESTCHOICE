@@ -177,24 +177,11 @@ export class BadDebtService {
       const delta = newAmount.sub(prev);
       if (delta.eq(0)) continue;
 
-      try {
-        await this.journalAutoService.createBadDebtProvisionJournal(this.prisma, {
-          contractId: p.contractId,
-          period,
-          delta,
-          userId: calculatedById,
-        });
-      } catch (err) {
-        this.logger.error(
-          `createBadDebtProvisionJournal failed for contract ${p.contractId} period ${period}`,
-          err,
-        );
-        Sentry.captureException(err, {
-          extra: { contractId: p.contractId, period, delta: delta.toNumber() },
-          tags: { service: 'BadDebtService', method: 'calculateProvisions' },
-        });
-        // Continue — one JE failure must not abort the entire provision run
-      }
+      // TODO Phase A.5: implement BadDebtProvision JE template (53-1701 หนี้สูญ / 11-2103 ค่าเผื่อหนี้สงสัยจะสูญ)
+      this.logger.warn(
+        `[Phase A.4] Bad debt provision JE skipped for contract ${p.contractId} period ${period} — TODO Phase A.5: implement BadDebtJP* template per CSV (53-1701 หนี้สูญ, 11-2103 ค่าเผื่อหนี้สงสัยจะสูญ)`,
+      );
+      // Continue — provision record itself is still created; only JE is deferred
     }
 
     const totalProvision = provisions.reduce((sum, p) => sum + p.provisionAmount, 0);
@@ -384,14 +371,11 @@ export class BadDebtService {
         },
       });
 
-      // Create double-entry journal for the write-off
-      await this.journalAutoService.createBadDebtWriteOffJournal(tx, {
-        contractId: contract.id,
-        contractNumber: contract.contractNumber,
-        writeOffAmount: outstandingAmount,
-        provisionAmount: existingProvisionAmount,
-        createdById: approvedById,
-      });
+      // TODO Phase A.5: implement BadDebtWriteOff JE template (53-1701 หนี้สูญ / 11-2103 ค่าเผื่อ / 11-2102 ลูกหนี้เช่าซื้อ)
+      this.logger.warn(
+        `[Phase A.4] Bad debt write-off JE skipped for contract ${contract.contractNumber} — TODO Phase A.5: implement BadDebtWriteOff template per CSV (53-1701, 11-2103, 11-2102)`,
+      );
+      // Write-off record + audit log still committed; only JE is deferred
 
       // T1-C7: Immutable audit log inside the same transaction. Captures
       // both parties' roles at write-off time (role can change later, the

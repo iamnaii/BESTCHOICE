@@ -108,6 +108,8 @@ export class PaymentsController {
       dto.evidenceUrl,
       dto.notes,
       dto.transactionRef,
+      dto.depositAccountCode,
+      dto.toleranceApproverId,
     );
   }
 

@@ -21,7 +21,7 @@
  * Re-running does NOT overwrite OWNER's manual isActive toggles on event rules.
  */
 import { PrismaClient } from '@prisma/client';
-import { seedChartOfAccounts } from './seeds/chart-of-accounts';
+import { seedFinanceCoa } from './seed-coa-finance';
 import { seedTradeInValuations } from './seeds/trade-in-valuations';
 import { seedKnowledgeBase } from './seeds/knowledge-base';
 import { seedCollectionsFoundation } from './seeds/collections-foundation.seed';
@@ -156,8 +156,8 @@ async function main() {
   // STEP 3: Chart of Accounts (upsert by code — idempotent)
   // ============================================================
   console.log('[3/6] Chart of Accounts...');
-  await seedChartOfAccounts(prisma);
-  console.log('  ✅ Chart of Accounts seeded');
+  const coaResult = await seedFinanceCoa(prisma);
+  console.log(`  Chart of Accounts: created=${coaResult.created} updated=${coaResult.updated}`);
 
   // ============================================================
   // STEP 4: Trade-in Valuations (upsert — idempotent)

@@ -483,6 +483,7 @@ export class AuthService {
         branchId: true,
         deletedAt: true,
         preferences: true,
+        defaultCashAccountCode: true,
         branch: { select: { id: true, name: true } },
       },
     });

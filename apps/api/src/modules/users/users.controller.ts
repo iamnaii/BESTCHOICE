@@ -61,6 +61,15 @@ export class UsersController {
     return this.usersService.updateExtension(userId, dto.extension);
   }
 
+  @Patch('me/cash-account')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  updateDefaultCashAccount(
+    @CurrentUser('id') userId: string,
+    @Body() dto: UpdateUserDto,
+  ) {
+    return this.usersService.updateDefaultCashAccount(userId, dto.defaultCashAccountCode ?? null);
+  }
+
   @Patch(':id')
   @Roles('OWNER')
   update(@Param('id') id: string, @Body() dto: UpdateUserDto) {

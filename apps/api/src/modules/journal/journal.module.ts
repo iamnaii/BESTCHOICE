@@ -23,6 +23,8 @@ import { ReceiptVoidReversalTemplate } from './cpa-templates/receipt-void-revers
 import { DepreciationTemplate } from './cpa-templates/depreciation.template';
 import { AssetDisposalTemplate } from './cpa-templates/asset-disposal.template';
 import { DepreciationCron } from './cron/depreciation.cron';
+import { WhtAccrualTemplate } from './cpa-templates/wht-accrual.template';
+import { WhtRemittanceTemplate } from './cpa-templates/wht-remittance.template';
 
 @Module({
   imports: [PrismaModule],
@@ -50,6 +52,8 @@ import { DepreciationCron } from './cron/depreciation.cron';
     DepreciationTemplate,
     AssetDisposalTemplate,
     DepreciationCron,
+    WhtAccrualTemplate,
+    WhtRemittanceTemplate,
   ],
   exports: [
     JournalService,
@@ -71,6 +75,8 @@ import { DepreciationCron } from './cron/depreciation.cron';
     ReceiptVoidReversalTemplate,
     DepreciationTemplate,
     AssetDisposalTemplate,
+    WhtAccrualTemplate,
+    WhtRemittanceTemplate,
   ],
 })
 export class JournalModule {}

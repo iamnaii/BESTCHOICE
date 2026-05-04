@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, BadRequestException, InternalServerErrorException, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
@@ -6,6 +6,8 @@ import { SettleIntercompanyDto } from './dto/settle-intercompany.dto';
 
 @Injectable()
 export class IntercompanyService {
+  private readonly logger = new Logger(IntercompanyService.name);
+
   constructor(
     private prisma: PrismaService,
     private journalAuto: JournalAutoService,
@@ -83,15 +85,11 @@ export class IntercompanyService {
       );
     }
 
-    await this.prisma.$transaction(async (tx) => {
-      await this.journalAuto.createInterCompanySettlementJournal(tx, {
-        amount: dto.amount,
-        reference: dto.reference,
-        notes: dto.notes,
-        paidDate: dto.paidDate ? new Date(dto.paidDate) : null,
-        userId,
-      });
-    });
+    // TODO Phase A.5: implement IC settlement JE (SHOP-side accounting — 11-2105 Due-from-FINANCE / Cash)
+    this.logger.warn(
+      `[Phase A.4] Inter-company settlement JE skipped for ref ${dto.reference} — TODO Phase A.5: SHOP-side accounting`,
+    );
+    // Balance tracking is still available via getOutstandingBalance(); only JE is deferred
 
     return {
       amount: dto.amount,

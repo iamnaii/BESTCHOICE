@@ -45,6 +45,7 @@ const makeAccountingService = () => ({
   getBranchIdsForCompany: jest.fn(),
   getProfitLossReport: jest.fn(),
   getBalanceSheet: jest.fn(),
+  getTrialBalance: jest.fn().mockResolvedValue({ accounts: [], isBalanced: true }),
 });
 
 const makePeakService = () => ({

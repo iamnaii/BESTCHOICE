@@ -4,6 +4,8 @@ import { Prisma } from '@prisma/client';
 import { BadDebtService } from './bad-debt.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
+import { BadDebtProvisionTemplate } from '../journal/cpa-templates/bad-debt-provision.template';
+import { BadDebtWriteOffTemplate } from '../journal/cpa-templates/bad-debt-writeoff.template';
 
 /**
  * BadDebtService is the financial provisioning engine. It maps overdue
@@ -76,6 +78,8 @@ describe('BadDebtService', () => {
             createBadDebtProvisionJournal: jest.fn().mockResolvedValue('je-provision-mock'),
           },
         },
+        { provide: BadDebtProvisionTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK' }) } },
+        { provide: BadDebtWriteOffTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK' }) } },
       ],
     }).compile();
 
@@ -286,7 +290,7 @@ describe('BadDebtService', () => {
       expect(created[0].outstandingAmount).toBe(1000);
     });
 
-    it('calls createBadDebtProvisionJournal with correct delta vs prior provision (Phase A.1b)', async () => {
+    it('calls BadDebtProvisionTemplate.execute with correct delta vs prior provision (Phase A.5a)', async () => {
       // Prior ACTIVE provision for c1: 50 (2%)
       prisma.badDebtProvision.findMany.mockResolvedValue([
         { contractId: 'c1', provisionAmount: new Prisma.Decimal(50) },
@@ -308,19 +312,18 @@ describe('BadDebtService', () => {
       ]);
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const journalAutoService = (service as any).journalAutoService;
+      const badDebtProvisionTemplate = (service as any).badDebtProvisionTemplate;
       await service.calculateProvisions('user-1');
 
-      expect(journalAutoService.createBadDebtProvisionJournal).toHaveBeenCalledTimes(1);
-      const callArgs = journalAutoService.createBadDebtProvisionJournal.mock.calls[0][1];
+      expect(badDebtProvisionTemplate.execute).toHaveBeenCalledTimes(1);
+      const callArgs = badDebtProvisionTemplate.execute.mock.calls[0][0];
       expect(callArgs.contractId).toBe('c1');
-      // new = 100, prev = 50, delta = 50
-      expect(Number(callArgs.delta)).toBeCloseTo(50, 4);
-      expect(callArgs.userId).toBe('user-1');
+      // new = 100, prev = 50, provisionAmount (delta) = 50
+      expect(Number(callArgs.provisionAmount)).toBeCloseTo(50, 4);
       expect(callArgs.period).toMatch(/^\d{4}-\d{2}$/);
     });
 
-    it('skips createBadDebtProvisionJournal when delta is zero (no change in provision)', async () => {
+    it('skips BadDebtProvisionTemplate.execute when delta is zero (no change in provision)', async () => {
       // Prior ACTIVE provision = same as new provision (1000 * 0.02 = 20)
       prisma.badDebtProvision.findMany.mockResolvedValue([
         { contractId: 'c1', provisionAmount: new Prisma.Decimal(20) },
@@ -342,10 +345,10 @@ describe('BadDebtService', () => {
       ]);
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const journalAutoService = (service as any).journalAutoService;
+      const badDebtProvisionTemplate = (service as any).badDebtProvisionTemplate;
       await service.calculateProvisions('user-1');
 
-      expect(journalAutoService.createBadDebtProvisionJournal).not.toHaveBeenCalled();
+      expect(badDebtProvisionTemplate.execute).not.toHaveBeenCalled();
     });
   });
 

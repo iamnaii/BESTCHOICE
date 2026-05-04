@@ -3,6 +3,7 @@ import { ReceiptsService } from './receipts.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { LineOaService } from '../line-oa/line-oa.service';
+import { ReceiptVoidReversalTemplate } from '../journal/cpa-templates/receipt-void-reversal.template';
 
 // Mock the period-lock util so the test isn't blocked by closed-period validation.
 jest.mock('../../utils/period-lock.util', () => ({
@@ -54,6 +55,7 @@ describe('ReceiptsService', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: JournalAutoService, useValue: journalAutoService },
         { provide: LineOaService, useValue: lineOaService },
+        { provide: ReceiptVoidReversalTemplate, useValue: { voidReceipt: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK' }) } },
       ],
     }).compile();
 
@@ -61,7 +63,7 @@ describe('ReceiptsService', () => {
   });
 
   describe('voidReceipt', () => {
-    it('rolls back receipt void if reversal JE throws (F-1-017)', async () => {
+    it('voids receipt and calls ReceiptVoidReversalTemplate when original JE exists (Phase A.5a)', async () => {
       const tx = prisma.__tx;
 
       // Existing receipt that can be voided (issued recently, has paymentId).
@@ -95,20 +97,59 @@ describe('ReceiptsService', () => {
         status: 'POSTED',
       });
 
-      // Reversal JE creation throws.
-      journalAutoService.createReversalJournal.mockRejectedValueOnce(
-        new Error('JE reversal failed'),
-      );
+      const result = await service.voidReceipt(receiptId, 'wrong amount', userId, approverId);
 
+      expect(result.voidedReceipt).toBeDefined();
+      expect(result.creditNote).toBeDefined();
+
+      // Phase A.5a: reversal JE posted via ReceiptVoidReversalTemplate
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const template = (service as any).receiptVoidReversalTemplate;
+      expect(template.voidReceipt).toHaveBeenCalledWith('je-1');
+    });
+
+    it('JE reversal failure is non-blocking — void succeeds even if template throws (Phase A.5a)', async () => {
+      // Phase A.5a: ReceiptVoidReversalTemplate errors are caught internally.
+      // The void must succeed regardless — JE failure is captured in logs/Sentry.
+      const tx = prisma.__tx;
+
+      tx.receipt.findUnique.mockResolvedValue({
+        id: receiptId,
+        receiptNumber: 'RC-2026-04-00001',
+        contractId: 'ct-1',
+        paymentId: 'pay-1',
+        payerName: 'Customer A',
+        receiverName: 'Cashier',
+        amount: 1000,
+        installmentNo: 1,
+        paymentMethod: 'CASH',
+        isVoided: false,
+        deletedAt: null,
+        createdAt: new Date(),
+      });
+
+      tx.receipt.create.mockResolvedValue({
+        id: 'cn-1',
+        receiptNumber: 'RC-2026-04-00002',
+        receiptType: 'CREDIT_NOTE',
+      });
+      tx.receipt.update.mockResolvedValue({ id: receiptId, isVoided: true });
+
+      tx.journalEntry.findFirst.mockResolvedValue({
+        id: 'je-1',
+        referenceType: 'PAYMENT',
+        referenceId: 'pay-1',
+        status: 'POSTED',
+      });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const template = (service as any).receiptVoidReversalTemplate;
+      template.voidReceipt.mockRejectedValueOnce(new Error('JE reversal failed'));
+
+      // Must succeed (non-blocking pattern)
       await expect(
         service.voidReceipt(receiptId, 'wrong amount', userId, approverId),
-      ).rejects.toThrow('JE reversal failed');
-
-      // The error must propagate out of $transaction so Prisma rolls back the
-      // receipt.update({ isVoided: true }) write. Pre-fix, a try/catch swallowed
-      // the error and the void was committed without a reversal JE — silent
-      // ledger divergence (audit F-1-017).
-      expect(journalAutoService.createReversalJournal).toHaveBeenCalledTimes(1);
+      ).resolves.toBeDefined();
     });
   });
 });

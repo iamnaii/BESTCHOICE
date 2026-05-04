@@ -91,25 +91,21 @@ describe('IntercompanyService (Phase A.3 W-5)', () => {
         .mockResolvedValueOnce({ _sum: { debit: 0, credit: 10600 } });
     });
 
-    it('posts settlement when amount within outstanding balance', async () => {
+    it('records settlement when amount within outstanding balance (Phase A.4 — JE deferred to A.5)', async () => {
       const result = await service.settle(
         { amount: 5000, reference: 'TXN-2026-04-1' },
         'user-1',
       );
-      expect(journalAuto.createInterCompanySettlementJournal).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({ amount: 5000, reference: 'TXN-2026-04-1', userId: 'user-1' }),
-      );
+      // Phase A.4: IC settlement JE is a stub (deferred to Phase A.5 SHOP-side accounting)
+      // The settle() still returns the correct amounts without a JE call.
       expect(result.amount).toBe(5000);
       expect(result.remainingBalance).toBeCloseTo(5600, 2);
-      // TODO Phase A.4 T13: financeEntryId/shopEntryId removed — IC settlement journal is now a stub
     });
 
     it('rejects when amount exceeds outstanding balance', async () => {
       await expect(
         service.settle({ amount: 11000, reference: 'TXN-OVER' }, 'user-1'),
       ).rejects.toThrow(BadRequestException);
-      expect(journalAuto.createInterCompanySettlementJournal).not.toHaveBeenCalled();
     });
 
     it('allows settling exact outstanding balance', async () => {

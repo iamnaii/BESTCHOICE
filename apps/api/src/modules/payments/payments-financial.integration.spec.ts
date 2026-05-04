@@ -10,6 +10,7 @@ import { FlexTemplatesService } from '../line-oa/flex-templates.service';
 import { QuickReplyService } from '../line-oa/quick-reply.service';
 import { WarrantyService } from '../warranty/warranty.service';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { PaymentReceipt2BTemplate } from '../journal/cpa-templates/payment-receipt-2b.template';
 
 /**
  * Integration tests for financial flows.
@@ -74,6 +75,9 @@ describe('PaymentsService — Financial Integration', () => {
       callLog: {
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
+      installmentSchedule: {
+        findUnique: jest.fn().mockResolvedValue(null),
+      },
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -82,12 +86,13 @@ describe('PaymentsService — Financial Integration', () => {
         { provide: PrismaService, useValue: { $transaction: jest.fn(fn => fn(tx)), systemConfig: { findUnique: jest.fn().mockResolvedValue(null) }, companyInfo: { findFirst: jest.fn().mockResolvedValue({ id: 'co-FINANCE' }) }, user: { findUnique: jest.fn().mockResolvedValue({ id: 'u1', defaultCashAccountCode: '11-1101', role: 'OWNER', deletedAt: null }) } } },
         { provide: ReceiptsService, useValue: { generateReceipt: jest.fn().mockResolvedValue({}) } },
         { provide: AuditService, useValue: { logPaymentEvent: jest.fn().mockResolvedValue(undefined), log: jest.fn().mockResolvedValue(undefined) } },
-        { provide: JournalAutoService, useValue: { createPaymentJournal: jest.fn().mockResolvedValue('je-1'), createExpenseJournal: jest.fn(), createContractActivationJournal: jest.fn(), createBadDebtWriteOffJournal: jest.fn(), createCustomerCreditOverpaymentJournal: jest.fn().mockResolvedValue('je-overpay'), createCreditAllocationJournal: jest.fn().mockResolvedValue('je-credit-alloc') } },
+        { provide: JournalAutoService, useValue: { createPaymentJournal: jest.fn().mockResolvedValue('je-1'), createExpenseJournal: jest.fn(), createContractActivationJournal: jest.fn(), createBadDebtWriteOffJournal: jest.fn(), createCustomerCreditOverpaymentJournal: jest.fn().mockResolvedValue('je-overpay'), createCreditAllocationJournal: jest.fn().mockResolvedValue('je-credit-alloc'), createAndPost: jest.fn().mockResolvedValue({ id: 'je-mock-id', entryNo: 'JE-MOCK' }) } },
         { provide: ProductsService, useValue: { transferOwnership: jest.fn() } },
         { provide: LineOaService, useValue: { buildPaymentSuccess: jest.fn().mockReturnValue({}), sendFlexMessage: jest.fn() } },
         { provide: FlexTemplatesService, useValue: { paymentReceipt: jest.fn().mockReturnValue({ type: 'flex', altText: 'test', contents: {} }) } },
         { provide: QuickReplyService, useValue: { afterPayment: jest.fn().mockReturnValue([]) } },
         { provide: WarrantyService, useValue: { setShopWarranty: jest.fn().mockResolvedValue(undefined) } },
+        { provide: PaymentReceipt2BTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK' }) } },
       ],
     }).compile();
 

@@ -5,6 +5,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { ProductsService } from '../products/products.service';
+import { ContractActivation1ATemplate } from '../journal/cpa-templates/contract-activation-1a.template';
 
 /**
  * T5-C20 — extended contract integrity hash.
@@ -25,6 +26,7 @@ describe('ContractWorkflowService — hash integrity (T5-C20)', () => {
         { provide: NotificationsService, useValue: {} },
         { provide: JournalAutoService, useValue: {} },
         { provide: ProductsService, useValue: {} },
+        { provide: ContractActivation1ATemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK' }) } },
       ],
     }).compile();
     service = module.get(ContractWorkflowService);

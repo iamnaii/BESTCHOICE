@@ -7,6 +7,7 @@ import { ContractActivation1ATemplate } from './cpa-templates/contract-activatio
 import { InstallmentAccrual2ATemplate } from './cpa-templates/installment-accrual-2a.template';
 import { InstallmentAccrualCron } from './cron/installment-accrual.cron';
 import { PaymentReceipt2BTemplate } from './cpa-templates/payment-receipt-2b.template';
+import { PaymentReceipt2BSplitTemplate } from './cpa-templates/payment-receipt-2b-split.template';
 
 @Module({
   imports: [PrismaModule],
@@ -18,6 +19,7 @@ import { PaymentReceipt2BTemplate } from './cpa-templates/payment-receipt-2b.tem
     InstallmentAccrual2ATemplate,
     InstallmentAccrualCron,
     PaymentReceipt2BTemplate,
+    PaymentReceipt2BSplitTemplate,
   ],
   exports: [
     JournalService,
@@ -25,6 +27,7 @@ import { PaymentReceipt2BTemplate } from './cpa-templates/payment-receipt-2b.tem
     ContractActivation1ATemplate,
     InstallmentAccrual2ATemplate,
     PaymentReceipt2BTemplate,
+    PaymentReceipt2BSplitTemplate,
   ],
 })
 export class JournalModule {}

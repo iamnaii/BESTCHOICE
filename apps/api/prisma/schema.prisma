@@ -3001,23 +3001,41 @@ enum AssetStatus {
   ACTIVE // ใช้งานอยู่
   FULLY_DEPRECIATED // หักค่าเสื่อมราคาครบแล้ว
   DISPOSED // จำหน่ายแล้ว
+  WRITTEN_OFF // ตัดบัญชีสินทรัพย์แล้ว (ไม่มีราคาขาย)
+}
+
+/// Phase A.5c — Typed category enum maps to specific Dr/Cr account codes
+enum AssetCategory {
+  OFFICE_EQUIPMENT     // Dr 53-1601 / Cr 12-2102
+  BUILDING_IMPROVEMENT // Dr 53-1602 / Cr 12-2104
+  OFFICE_FURNITURE     // Dr 53-1603 / Cr 12-2106
+  VEHICLE              // Dr 53-1604 / Cr 12-2108
 }
 
 model FixedAsset {
-  id               String      @id @default(uuid())
-  assetCode        String      @unique @map("asset_code") // รหัสสินทรัพย์ e.g. "PA-20241200002"
+  id               String        @id @default(uuid())
+  assetCode        String        @unique @map("asset_code") // รหัสสินทรัพย์ e.g. "PA-20241200002"
   name             String // ชื่อสินทรัพย์
   description      String?
-  category         String? // หมวดหมู่ (อุปกรณ์สำนักงาน, ส่วนปรับปรุงอาคาร, เครื่องตกแต่ง, ยานพาหนะ)
-  branchId         String?     @map("branch_id")
-  costValue        Decimal     @map("cost_value") @db.Decimal(12, 2) // ราคาทุนที่ซื้อมา
-  salvageValue     Decimal     @default(0) @map("salvage_value") @db.Decimal(12, 2) // ราคาซาก (ปกติ 1 บาท หรือ 0)
-  usefulLife       Int         @map("useful_life") // อายุการใช้งาน (จำนวนปี เช่น 5 ปี)
-  purchaseDate     DateTime    @map("purchase_date") // วันที่ซื้อ/เริ่มใช้งาน
-  accumulatedDepre Decimal     @default(0) @map("accumulated_depre") @db.Decimal(12, 2) // ค่าเสื่อมราคาสะสม
-  status           AssetStatus @default(ACTIVE)
-  disposedAt       DateTime?   @map("disposed_at")
-  disposalNote     String?     @map("disposal_note")
+  /// Free-form category string (legacy). Use assetCategory for A.5c depreciation journal routing.
+  category         String?       // หมวดหมู่ (อุปกรณ์สำนักงาน, ส่วนปรับปรุงอาคาร, เครื่องตกแต่ง, ยานพาหนะ)
+  /// Phase A.5c: typed category for precise account code routing
+  assetCategory    AssetCategory? @map("asset_category")
+  branchId         String?       @map("branch_id")
+  costValue        Decimal       @map("cost_value") @db.Decimal(12, 2) // ราคาทุนที่ซื้อมา
+  salvageValue     Decimal       @default(0) @map("salvage_value") @db.Decimal(12, 2) // ราคาซาก (ปกติ 1 บาท หรือ 0)
+  usefulLife       Int           @map("useful_life") // อายุการใช้งาน (จำนวนปี เช่น 5 ปี)
+  /// Phase A.5c: useful life in months (overrides usefulLife when set; takes precedence)
+  usefulLifeMonths Int?          @map("useful_life_months")
+  purchaseDate     DateTime      @map("purchase_date") // วันที่ซื้อ/เริ่มใช้งาน
+  accumulatedDepre Decimal       @default(0) @map("accumulated_depre") @db.Decimal(12, 2) // ค่าเสื่อมราคาสะสม
+  status           AssetStatus   @default(ACTIVE)
+  disposedAt       DateTime?     @map("disposed_at")
+  disposalNote     String?       @map("disposal_note")
+  /// Phase A.5c: disposal proceeds for gain/loss calculation
+  disposalProceeds Decimal?      @map("disposal_proceeds") @db.Decimal(12, 2)
+  /// Phase A.5c: period of last depreciation accrual e.g. "2026-04"; null = never depreciated
+  lastDepreciationPeriod String? @map("last_depreciation_period")
 
   // Account codes for journal entries
   depreciationAccountCode String @default("53-1601") @map("depreciation_account_code") // Dr: ค่าเสื่อมราคา (Expense)
@@ -3028,14 +3046,33 @@ model FixedAsset {
   updatedAt   DateTime  @updatedAt @map("updated_at")
   deletedAt   DateTime? @map("deleted_at")
 
-  branch    Branch? @relation(fields: [branchId], references: [id])
-  createdBy User?   @relation("AssetCreatedBy", fields: [createdById], references: [id])
+  branch               Branch?             @relation(fields: [branchId], references: [id])
+  createdBy            User?               @relation("AssetCreatedBy", fields: [createdById], references: [id])
+  depreciationEntries  DepreciationEntry[]
 
   @@index([branchId])
   @@index([status])
   @@index([category])
+  @@index([assetCategory, status])
   @@index([purchaseDate])
   @@map("fixed_assets")
+}
+
+/// Phase A.5c — Idempotency record: one depreciation JE per asset per period
+/// Immutable audit log — updatedAt/deletedAt intentionally omitted
+model DepreciationEntry {
+  id             String     @id @default(uuid())
+  assetId        String     @map("asset_id")
+  asset          FixedAsset @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  period         String     // "2026-04"
+  amount         Decimal    @db.Decimal(12, 2)
+  journalEntryNo String?    @map("journal_entry_no") // JE-202604-00001
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([assetId, period])
+  @@index([period])
+  @@map("depreciation_entries")
 }
 
 // ============================================================
@@ -3411,6 +3448,13 @@ model Expense {
 
   isRecurring  Boolean @default(false) @map("is_recurring")
   recurringDay Int?    @map("recurring_day")
+
+  // Tax-disallowed expense flag (Phase A.5c)
+  // When true, the expense routes to 54-XXXX accounts and cannot claim VAT input.
+  // Reasons: NO_RECEIPT (ไม่มีใบเสร็จ), PERSONAL_USE (ใช้ส่วนตัว),
+  //          PENALTY (เบี้ยปรับ), OTHER (อื่นๆ)
+  taxDisallowed    Boolean @default(false) @map("tax_disallowed")
+  disallowedReason String? @map("disallowed_reason")
 
   note String?
 

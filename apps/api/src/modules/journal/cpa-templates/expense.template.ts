@@ -31,6 +31,25 @@ const CATEGORY_CODE_MAP: Record<string, string> = {
 const VAT_INPUT_CODE = '11-4101'; // ภาษีซื้อ
 const AP_ACCRUED_CODE = '21-1104'; // เจ้าหนี้ค่าใช้จ่ายกิจการ (unpaid)
 
+/**
+ * Maps disallowedReason → 54-XXXX account code.
+ * Used when Expense.taxDisallowed = true to override the normal expense account.
+ *
+ * NO_RECEIPT_PND3  → 54-1101 (ภาษีออกแทนผู้รับ บุคคลธรรมดา)
+ * NO_RECEIPT_PND53 → 54-1102 (ภาษีออกแทนผู้รับ นิติบุคคล)
+ * NO_RECEIPT       → 54-1101 (default to PND3 when not specified)
+ * PERSONAL_USE     → 54-1104 (other disallowed)
+ * PENALTY_VAT      → 54-1103 (เบี้ยปรับ ภ.พ.30)
+ * PENALTY          → 54-1103 (VAT penalty)
+ * OTHER            → 54-1104
+ */
+const DISALLOWED_REASON_CODE: Record<string, string> = {
+  NO_RECEIPT: '54-1101',
+  PERSONAL_USE: '54-1104',
+  PENALTY: '54-1103',
+  OTHER: '54-1104',
+};
+
 export interface ExpenseTemplateInput {
   expenseId: string;
   /** Cash/bank account code when paid immediately (e.g. '11-1101', '11-1201') */
@@ -91,9 +110,28 @@ export class ExpenseTemplate {
     }
 
     // Resolve expense account code
-    const expenseAccountCode =
-      expense.accountCode ?? CATEGORY_CODE_MAP[expense.category];
-    if (!expenseAccountCode) {
+    let resolvedAccountCode = expense.accountCode ?? CATEGORY_CODE_MAP[expense.category];
+
+    // Tax-disallowed override: route to 54-XXXX when taxDisallowed = true.
+    // If the CATEGORY_CODE_MAP already routes to a 54-XXXX code (e.g. ADMIN_TAX_FEE, OTHER_FINE),
+    // we prefer the more specific 54-XXXX from disallowedReason when provided, otherwise keep the map code.
+    const isTaxDisallowed = (expense as any).taxDisallowed === true;
+    const disallowedReason = (expense as any).disallowedReason as string | null | undefined;
+
+    if (isTaxDisallowed) {
+      const reasonCode = disallowedReason
+        ? DISALLOWED_REASON_CODE[disallowedReason]
+        : undefined;
+      if (reasonCode) {
+        resolvedAccountCode = reasonCode;
+      } else if (!resolvedAccountCode?.startsWith('54-')) {
+        // Fallback: use 54-1104 (other disallowed) if no specific mapping
+        resolvedAccountCode = '54-1104';
+      }
+      // If already 54-XXXX from CATEGORY_CODE_MAP, keep it (no double-route).
+    }
+
+    if (!resolvedAccountCode) {
       throw new BadRequestException(
         `No account code mapping for expense category '${expense.category}' — expense ${expense.expenseNumber}. Add to CATEGORY_CODE_MAP or set accountCode on the Expense record.`,
       );
@@ -107,22 +145,36 @@ export class ExpenseTemplate {
     // Credit side: cash account or AP accrued
     const creditAccountCode = isPaid ? depositAccountCode : AP_ACCRUED_CODE;
 
-    const lines: { accountCode: string; dr: Decimal; cr: Decimal; description?: string }[] = [
-      {
-        accountCode: expenseAccountCode,
+    const lines: { accountCode: string; dr: Decimal; cr: Decimal; description?: string }[] = [];
+
+    if (isTaxDisallowed) {
+      // Tax-disallowed: the entire cash outflow (including VAT) is non-deductible.
+      // Book the full totalAmount to the 54-XXXX disallowed expense account.
+      // No VAT input claim (11-4101 is excluded).
+      // JE: Dr 54-XXXX [totalAmount] / Cr Cash [totalAmount]
+      lines.push({
+        accountCode: resolvedAccountCode,
+        dr: totalAmount,
+        cr: zero,
+        description: expense.description,
+      });
+    } else {
+      // Normal expense: Dr expense account [amount excl VAT]
+      lines.push({
+        accountCode: resolvedAccountCode,
         dr: amount,
         cr: zero,
         description: expense.description,
-      },
-    ];
-
-    if (vatAmount.gt(0)) {
-      lines.push({
-        accountCode: VAT_INPUT_CODE,
-        dr: vatAmount,
-        cr: zero,
-        description: 'ภาษีซื้อ',
       });
+
+      if (vatAmount.gt(0)) {
+        lines.push({
+          accountCode: VAT_INPUT_CODE,
+          dr: vatAmount,
+          cr: zero,
+          description: 'ภาษีซื้อ',
+        });
+      }
     }
 
     lines.push({
@@ -142,6 +194,8 @@ export class ExpenseTemplate {
         expenseNumber: expense.expenseNumber,
         category: expense.category,
         isPaid,
+        taxDisallowed: isTaxDisallowed,
+        disallowedReason: disallowedReason ?? null,
       },
       lines,
     });

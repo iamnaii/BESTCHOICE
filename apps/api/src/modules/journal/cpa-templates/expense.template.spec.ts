@@ -47,13 +47,15 @@ async function createTestExpense(
     category?: string;
     amount?: number;
     vatAmount?: number;
+    taxDisallowed?: boolean;
+    disallowedReason?: string;
   },
 ) {
   const category = (opts?.category ?? 'ADMIN_UTILITIES') as 'ADMIN_UTILITIES' | 'ADMIN_SALARY' | 'ADMIN_TELEPHONE';
   const amount = opts?.amount ?? 1000;
   const vatAmount = opts?.vatAmount ?? 70;
   const totalAmount = amount + vatAmount;
-  const expenseNumber = `EXP-TEST-${Date.now()}`;
+  const expenseNumber = `EXP-TEST-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
   return prisma.expense.create({
     data: {
@@ -68,7 +70,9 @@ async function createTestExpense(
       expenseDate: new Date(),
       status: 'PAID',
       createdById: userId,
-    },
+      taxDisallowed: opts?.taxDisallowed ?? false,
+      disallowedReason: opts?.disallowedReason ?? null,
+    } as any,
   });
 }
 
@@ -184,6 +188,101 @@ describe('ExpenseTemplate', () => {
     const apLine = je!.lines.find((l) => l.accountCode === '21-1104');
     expect(apLine).toBeDefined();
     expect(new Decimal(apLine!.credit.toString()).toFixed(2)).toBe('5000.00');
+  });
+
+  it('tax-disallowed: routes to 54-1101 (NO_RECEIPT) and skips VAT input', async () => {
+    const expense = await createTestExpense(prisma, branchId, userId, {
+      category: 'ADMIN_UTILITIES',
+      amount: 1000,
+      vatAmount: 70,
+      taxDisallowed: true,
+      disallowedReason: 'NO_RECEIPT',
+    });
+
+    const tmpl = new ExpenseTemplate(journal, prisma as any);
+    const result = await tmpl.execute({
+      expenseId: expense.id,
+      depositAccountCode: '11-1101',
+      isPaid: true,
+    });
+
+    expect(result).not.toBeNull();
+
+    const je = await prisma.journalEntry.findFirst({
+      where: {
+        AND: [
+          { metadata: { path: ['flow'], equals: 'expense' } } as any,
+          { metadata: { path: ['expenseId'], equals: expense.id } } as any,
+        ],
+      },
+      include: { lines: true },
+    });
+
+    expect(je).toBeDefined();
+    const lines = je!.lines;
+
+    // Balanced
+    const totalDr = lines.reduce((s, l) => s.plus(l.debit.toString()), new Decimal(0));
+    const totalCr = lines.reduce((s, l) => s.plus(l.credit.toString()), new Decimal(0));
+    expect(totalDr.toFixed(2)).toBe(totalCr.toFixed(2));
+
+    // Dr 54-1101 (tax-disallowed, full totalAmount including VAT — cannot claim VAT input)
+    const disallowedLine = lines.find((l) => l.accountCode === '54-1101');
+    expect(disallowedLine).toBeDefined();
+    expect(new Decimal(disallowedLine!.debit.toString()).toFixed(2)).toBe('1070.00');
+
+    // No 11-4101 VAT input (disallowed expenses cannot claim VAT)
+    const vatLine = lines.find((l) => l.accountCode === '11-4101');
+    expect(vatLine).toBeUndefined();
+
+    // Normal expense account (53-1302) should NOT appear
+    const normalLine = lines.find((l) => l.accountCode === '53-1302');
+    expect(normalLine).toBeUndefined();
+  });
+
+  it('tax-disallowed: routes to 54-1103 (PENALTY) and skips VAT input', async () => {
+    const expense = await createTestExpense(prisma, branchId, userId, {
+      category: 'ADMIN_UTILITIES',
+      amount: 500,
+      vatAmount: 35,
+      taxDisallowed: true,
+      disallowedReason: 'PENALTY',
+    });
+
+    const tmpl = new ExpenseTemplate(journal, prisma as any);
+    const result = await tmpl.execute({
+      expenseId: expense.id,
+      depositAccountCode: '11-1101',
+      isPaid: true,
+    });
+
+    expect(result).not.toBeNull();
+
+    const je = await prisma.journalEntry.findFirst({
+      where: {
+        AND: [
+          { metadata: { path: ['flow'], equals: 'expense' } } as any,
+          { metadata: { path: ['expenseId'], equals: expense.id } } as any,
+        ],
+      },
+      include: { lines: true },
+    });
+
+    const lines = je!.lines;
+
+    // Balanced
+    const totalDr = lines.reduce((s, l) => s.plus(l.debit.toString()), new Decimal(0));
+    const totalCr = lines.reduce((s, l) => s.plus(l.credit.toString()), new Decimal(0));
+    expect(totalDr.toFixed(2)).toBe(totalCr.toFixed(2));
+
+    // Dr 54-1103 (VAT penalty disallowed — full totalAmount = 500 + 35 = 535)
+    const disallowedLine = lines.find((l) => l.accountCode === '54-1103');
+    expect(disallowedLine).toBeDefined();
+    expect(new Decimal(disallowedLine!.debit.toString()).toFixed(2)).toBe('535.00');
+
+    // No VAT input
+    const vatLine = lines.find((l) => l.accountCode === '11-4101');
+    expect(vatLine).toBeUndefined();
   });
 
   it('is idempotent — second call returns same entry', async () => {

@@ -4,7 +4,6 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { ChartOfAccountsService } from './chart-of-accounts.service';
 import { CreateChartOfAccountDto, UpdateChartOfAccountDto } from './dto/chart-of-account.dto';
-import { AccountGroup } from '@prisma/client';
 
 @Controller('chart-of-accounts')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -14,17 +13,11 @@ export class ChartOfAccountsController {
   @Get()
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   findAll(
-    @Query('group') group?: AccountGroup,
-    @Query('active') active?: string,
+    @Query('type') type?: string,
+    @Query('status') status?: string,
     @Query('q') q?: string,
-    @Query('companyId') companyId?: string,
   ) {
-    return this.service.findAll({
-      group,
-      active: active != null ? active === 'true' : undefined,
-      q,
-      companyId: companyId === 'SHARED' ? 'SHARED' : companyId,
-    });
+    return this.service.findAll({ type, status, q });
   }
 
   @Get(':id')

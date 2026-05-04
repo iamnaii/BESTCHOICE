@@ -1,5 +1,4 @@
-import { IsString, IsOptional, IsEnum, IsBoolean, IsInt, Matches, MaxLength, Min, Max, IsUUID } from 'class-validator';
-import { AccountGroup } from '@prisma/client';
+import { IsString, IsOptional, IsBoolean, Matches, MaxLength } from 'class-validator';
 
 export class CreateChartOfAccountDto {
   @IsString()
@@ -8,87 +7,62 @@ export class CreateChartOfAccountDto {
 
   @IsString()
   @MaxLength(200, { message: 'ชื่อบัญชียาวเกินไป' })
-  nameTh: string;
+  name: string;
 
   @IsString()
-  @IsOptional()
-  @MaxLength(200)
-  nameEn?: string;
-
-  @IsEnum(AccountGroup, { message: 'หมวดบัญชีไม่ถูกต้อง' })
-  accountGroup: AccountGroup;
+  type: string; // สินทรัพย์ | หนี้สิน | ทุน | รายได้ | ค่าใช้จ่าย | สินทรัพย์ (Contra)
 
   @IsString()
-  @IsOptional()
-  parentCode?: string;
-
-  @IsInt()
-  @Min(1)
-  @Max(5)
-  @IsOptional()
-  level?: number;
-
-  @IsBoolean()
-  @IsOptional()
-  isActive?: boolean;
-
-  @IsUUID(undefined, { message: 'companyId ต้องเป็น UUID ที่ถูกต้อง' })
-  @IsOptional()
-  companyId?: string;
-
-  @IsString()
-  @IsOptional()
-  @MaxLength(50)
-  peakAccountCode?: string;
+  normalBalance: string; // Dr | Cr | Dr/Cr
 
   @IsString()
   @IsOptional()
   @MaxLength(100)
-  peakAccountId?: string;
+  category?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  vatApplicable?: boolean;
+
+  @IsString()
+  @IsOptional()
+  notes?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(20)
+  status?: string; // ใช้งาน | ไม่ใช้งาน
 }
 
 export class UpdateChartOfAccountDto {
   @IsString()
   @IsOptional()
   @MaxLength(200)
-  nameTh?: string;
+  name?: string;
 
   @IsString()
   @IsOptional()
-  @MaxLength(200)
-  nameEn?: string;
-
-  @IsEnum(AccountGroup)
-  @IsOptional()
-  accountGroup?: AccountGroup;
+  type?: string;
 
   @IsString()
   @IsOptional()
-  parentCode?: string;
-
-  @IsInt()
-  @Min(1)
-  @Max(5)
-  @IsOptional()
-  level?: number;
-
-  @IsBoolean()
-  @IsOptional()
-  isActive?: boolean;
-
-  // companyId kept for symmetry with CreateDto, but service.update() ignores it.
-  // Moving an account between companies must be done via delete+recreate to preserve audit trail.
-  @IsUUID(undefined, { message: 'companyId ต้องเป็น UUID ที่ถูกต้อง' })
-  @IsOptional()
-  companyId?: string;
-
-  @IsString()
-  @IsOptional()
-  @MaxLength(50)
-  peakAccountCode?: string;
+  normalBalance?: string;
 
   @IsString()
   @IsOptional()
   @MaxLength(100)
-  peakAccountId?: string;
+  category?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  vatApplicable?: boolean;
+
+  @IsString()
+  @IsOptional()
+  notes?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(20)
+  status?: string;
 }

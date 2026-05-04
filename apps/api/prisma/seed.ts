@@ -2,7 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import * as fs from 'fs';
 import * as path from 'path';
-import { seedChartOfAccounts } from './seeds/chart-of-accounts';
+// Phase A.4 T3: seedChartOfAccounts removed — replaced by CPA CSV loader in T4
 import { seedTradeInValuations } from './seeds/trade-in-valuations';
 import { seedKnowledgeBase } from './seeds/knowledge-base';
 import { seedCollectionsFoundation } from './seeds/collections-foundation.seed';
@@ -1520,7 +1520,7 @@ async function main() {
   // ============================================================
   // CHART OF ACCOUNTS (ผังบัญชี)
   // ============================================================
-  await seedChartOfAccounts(prisma);
+  // TODO Phase A.4 T4: seed CPA chart from CSV fixture
 
   // ============================================================
   // TRADE-IN VALUATION TABLE (ตารางราคารับซื้ออ้างอิง)

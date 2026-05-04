@@ -83,8 +83,8 @@ export class IntercompanyService {
       );
     }
 
-    const result = await this.prisma.$transaction(async (tx) => {
-      return this.journalAuto.createInterCompanySettlementJournal(tx, {
+    await this.prisma.$transaction(async (tx) => {
+      await this.journalAuto.createInterCompanySettlementJournal(tx, {
         amount: dto.amount,
         reference: dto.reference,
         notes: dto.notes,
@@ -94,7 +94,6 @@ export class IntercompanyService {
     });
 
     return {
-      ...result,
       amount: dto.amount,
       reference: dto.reference,
       remainingBalance: Math.round((balance.financeOwesToShop - dto.amount) * 100) / 100,

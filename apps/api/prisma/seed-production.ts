@@ -21,7 +21,7 @@
  * Re-running does NOT overwrite OWNER's manual isActive toggles on event rules.
  */
 import { PrismaClient } from '@prisma/client';
-import { seedChartOfAccounts } from './seeds/chart-of-accounts';
+// Phase A.4 T3: seedChartOfAccounts removed — replaced by CPA CSV loader in T4
 import { seedTradeInValuations } from './seeds/trade-in-valuations';
 import { seedKnowledgeBase } from './seeds/knowledge-base';
 import { seedCollectionsFoundation } from './seeds/collections-foundation.seed';
@@ -156,8 +156,8 @@ async function main() {
   // STEP 3: Chart of Accounts (upsert by code — idempotent)
   // ============================================================
   console.log('[3/6] Chart of Accounts...');
-  await seedChartOfAccounts(prisma);
-  console.log('  ✅ Chart of Accounts seeded');
+  // TODO Phase A.4 T4: seed CPA chart from CSV fixture
+  console.log('  [SKIPPED] Chart of Accounts — awaiting T4 CPA CSV loader');
 
   // ============================================================
   // STEP 4: Trade-in Valuations (upsert — idempotent)

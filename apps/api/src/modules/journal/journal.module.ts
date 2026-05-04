@@ -20,6 +20,9 @@ import { BadDebtWriteOffTemplate } from './cpa-templates/bad-debt-writeoff.templ
 import { ExpenseTemplate } from './cpa-templates/expense.template';
 import { DefectExchangeReversalTemplate } from './cpa-templates/defect-exchange-reversal.template';
 import { ReceiptVoidReversalTemplate } from './cpa-templates/receipt-void-reversal.template';
+import { DepreciationTemplate } from './cpa-templates/depreciation.template';
+import { AssetDisposalTemplate } from './cpa-templates/asset-disposal.template';
+import { DepreciationCron } from './cron/depreciation.cron';
 
 @Module({
   imports: [PrismaModule],
@@ -44,6 +47,9 @@ import { ReceiptVoidReversalTemplate } from './cpa-templates/receipt-void-revers
     ExpenseTemplate,
     DefectExchangeReversalTemplate,
     ReceiptVoidReversalTemplate,
+    DepreciationTemplate,
+    AssetDisposalTemplate,
+    DepreciationCron,
   ],
   exports: [
     JournalService,
@@ -63,6 +69,8 @@ import { ReceiptVoidReversalTemplate } from './cpa-templates/receipt-void-revers
     ExpenseTemplate,
     DefectExchangeReversalTemplate,
     ReceiptVoidReversalTemplate,
+    DepreciationTemplate,
+    AssetDisposalTemplate,
   ],
 })
 export class JournalModule {}

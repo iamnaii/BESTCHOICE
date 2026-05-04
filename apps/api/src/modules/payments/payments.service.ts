@@ -112,6 +112,7 @@ export class PaymentsService {
     notes?: string,
     transactionRef?: string,
     depositAccountCode?: string,
+    toleranceApproverId?: string,
   ) {
     if (!amount || amount <= 0) {
       throw new BadRequestException('จำนวนเงินต้องมากกว่า 0');
@@ -124,6 +125,24 @@ export class PaymentsService {
 
     // CR-7: Validate payment date is not in a closed accounting period
     await validatePeriodOpen(this.prisma, new Date());
+
+    // T16: Tolerance approver role validation.
+    // If toleranceApproverId is supplied, verify the named user has an approved role.
+    // This is validated early (before the serializable tx) to fail fast without
+    // holding a DB lock on a rejection.
+    if (toleranceApproverId) {
+      const approver = await this.prisma.user.findUnique({
+        where: { id: toleranceApproverId },
+        select: { id: true, role: true, deletedAt: true },
+      });
+      if (!approver || approver.deletedAt) {
+        throw new BadRequestException('ไม่พบผู้อนุมัติที่ระบุ');
+      }
+      const allowedRoles = ['OWNER', 'ACCOUNTANT', 'BRANCH_MANAGER'];
+      if (!allowedRoles.includes(approver.role)) {
+        throw new ForbiddenException('ผู้อนุมัติต้องมีบทบาท OWNER, ACCOUNTANT หรือ BRANCH_MANAGER');
+      }
+    }
 
     // T15: Resolve deposit account — caller-provided > user default > system default 11-1101
     const resolvedDepositAccountCode = depositAccountCode ?? (await this.resolveUserDefaultCashAccount(recordedById));
@@ -283,6 +302,31 @@ export class PaymentsService {
       installmentNo,
       details: { paymentMethod, transactionRef, totalPaid: d(updated.amountPaid).toNumber() },
     });
+
+    // T16: Write TOLERANCE_APPROVED audit log when a tolerance approver was named.
+    // Uses the generic log() path so the hash-chain is preserved.
+    // The approver is the userId of the log row (who authorised the rounding),
+    // and requestedBy is embedded in newValue for full traceability.
+    if (toleranceApproverId) {
+      const amountDueForLog = d(updated.amountDue ?? 0);
+      const amountReceivedD = d(amount);
+      const diffD = amountReceivedD.sub(amountDueForLog).abs();
+      await this.auditService.log({
+        userId: toleranceApproverId,
+        action: 'TOLERANCE_APPROVED',
+        entity: 'payment',
+        entityId: updated.id,
+        newValue: {
+          diff: diffD.toString(),
+          amountReceived: amountReceivedD.toString(),
+          installmentTotal: amountDueForLog.toString(),
+          requestedBy: recordedById,
+          contractId,
+          installmentNo,
+          timestamp: new Date().toISOString(),
+        },
+      });
+    }
 
     // Auto-generate e-Receipt for every payment event (TFRS practice:
     // issue a receipt each time money is received, including partial payments).

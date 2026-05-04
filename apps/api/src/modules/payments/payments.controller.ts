@@ -109,6 +109,7 @@ export class PaymentsController {
       dto.notes,
       dto.transactionRef,
       dto.depositAccountCode,
+      dto.toleranceApproverId,
     );
   }
 

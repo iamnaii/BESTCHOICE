@@ -19,6 +19,7 @@ import PaymentFilters from './components/PaymentFilters';
 import PaymentTable from './components/PaymentTable';
 import PaymentSummary from './components/PaymentSummary';
 import { RecordPaymentModal, BatchPaymentModal, AdvancePaymentModal } from './components/PaymentModals';
+import { ToleranceApprovalDialog } from '@/components/ToleranceApprovalDialog';
 import type { PendingPayment, DailySummary, OcrPaymentSlipResult } from './types';
 import { paymentStatusLabels, isSlipRequired } from './types';
 
@@ -80,6 +81,10 @@ export default function PaymentsPage() {
   const advanceSlipFileRef = useRef<HTMLInputElement>(null);
   const [advanceOcrLoading, setAdvanceOcrLoading] = useState(false);
   const [advanceSlipResult, setAdvanceSlipResult] = useState<OcrPaymentSlipResult | null>(null);
+
+  // T16: Tolerance approval dialog state
+  const [showToleranceDialog, setShowToleranceDialog] = useState(false);
+  const [pendingPayload, setPendingPayload] = useState<Record<string, unknown> | null>(null);
 
   // Quick scan slip (top-level)
   const quickSlipFileRef = useRef<HTMLInputElement>(null);
@@ -296,12 +301,18 @@ export default function PaymentsPage() {
 
   const handlePay = () => {
     if (!selectedPayment || payForm.amount <= 0) return;
-    const remaining = parseFloat(selectedPayment.amountDue) + parseFloat(selectedPayment.lateFee) - parseFloat(selectedPayment.amountPaid);
+    const remaining = new Decimal(selectedPayment.amountDue)
+      .add(selectedPayment.lateFee)
+      .sub(selectedPayment.amountPaid)
+      .toDecimalPlaces(2)
+      .toNumber();
+
     if (payForm.amount > Math.round(remaining * 100) / 100) {
       toast.error(`จำนวนเงินไม่ควรเกินยอดคงค้าง ${remaining.toLocaleString()} ฿`);
       return;
     }
-    recordMutation.mutate({
+
+    const payload: Record<string, unknown> = {
       contractId: selectedPayment.contract.id,
       installmentNo: selectedPayment.installmentNo,
       amount: payForm.amount,
@@ -309,7 +320,23 @@ export default function PaymentsPage() {
       notes: payForm.notes || undefined,
       transactionRef: slipResult?.transactionRef || `${payForm.paymentMethod}-${Date.now()}`,
       depositAccountCode,
-    });
+    };
+
+    // T16: Tolerance gate — diff 0.01–1.00 ฿ requires approval; > 1.00 ฿ is blocked
+    const diff = new Decimal(payForm.amount).sub(remaining).toDecimalPlaces(2).toNumber();
+    const absDiff = Math.abs(diff);
+    if (absDiff > 1.0) {
+      toast.error(`ส่วนต่างเกิน 1 ฿ (${absDiff.toFixed(2)} ฿) ไม่สามารถอนุมัติได้ กรุณาแก้ไขจำนวนเงิน`);
+      return;
+    }
+    if (absDiff >= 0.01) {
+      // Pause: ask approver to confirm before submitting
+      setPendingPayload(payload);
+      setShowToleranceDialog(true);
+      return;
+    }
+
+    recordMutation.mutate(payload);
   };
 
   // Generic OCR slip scan helper
@@ -620,6 +647,34 @@ export default function PaymentsPage() {
         contractId={historyContractId}
         onClose={() => setHistoryContractId(null)}
       />
+
+      {/* T16: Tolerance Approval Dialog */}
+      {showToleranceDialog && pendingPayload && selectedPayment && (() => {
+        const remaining = new Decimal(selectedPayment.amountDue)
+          .add(selectedPayment.lateFee)
+          .sub(selectedPayment.amountPaid)
+          .toDecimalPlaces(2)
+          .toNumber();
+        const diff = new Decimal(pendingPayload.amount as number).sub(remaining).toDecimalPlaces(2).toNumber();
+        return (
+          <ToleranceApprovalDialog
+            open={showToleranceDialog}
+            onOpenChange={setShowToleranceDialog}
+            diff={diff}
+            amountReceived={pendingPayload.amount as number}
+            outstanding={remaining}
+            onApprove={(approverId) => {
+              setShowToleranceDialog(false);
+              recordMutation.mutate({ ...pendingPayload, toleranceApproverId: approverId });
+              setPendingPayload(null);
+            }}
+            onCancel={() => {
+              setShowToleranceDialog(false);
+              setPendingPayload(null);
+            }}
+          />
+        );
+      })()}
     </div>
   );
 }

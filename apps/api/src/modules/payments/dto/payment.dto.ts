@@ -38,6 +38,14 @@ export class RecordPaymentDto {
   @IsString()
   @Matches(CASH_CODE_REGEX, { message: 'depositAccountCode ต้องเป็น 11-1101..03 หรือ 11-1201..03' })
   depositAccountCode?: string;
+
+  /**
+   * T16: Tolerance approval — required when amountReceived differs from amountDue by 0.01–1.00 ฿.
+   * Must be an OWNER, ACCOUNTANT, or BRANCH_MANAGER. Backend validates role and writes TOLERANCE_APPROVED AuditLog.
+   */
+  @IsOptional()
+  @IsString()
+  toleranceApproverId?: string;
 }
 
 export class BulkRecordPaymentDto {

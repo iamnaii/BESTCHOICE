@@ -12,6 +12,13 @@ export interface PaymentReceiptInput {
   amountReceived: Decimal;
   depositAccountCode: string;
   toleranceApproverId?: string;
+  /**
+   * Phase A.4b caller wiring: when the caller has already created the Payment row
+   * (e.g. payments.service, paysolutions.service), pass the existing paymentId here.
+   * The template will use it as the JE referenceId and skip creating a new Payment row.
+   * When omitted, the template creates its own Payment row (standalone use).
+   */
+  existingPaymentId?: string;
 }
 
 /**
@@ -86,22 +93,33 @@ export class PaymentReceipt2BTemplate {
       );
     }
 
-    // Wrap Payment.create + JE post + reversal in a single atomic transaction.
-    // If JE post fails (unbalanced, missing account), Payment row is rolled back — no orphans.
+    // Wrap Payment.create (if needed) + JE post + reversal in a single atomic transaction.
+    // If JE post fails (unbalanced, missing account), any Payment row created here is rolled back.
+    // When existingPaymentId is provided (caller already created the Payment row), skip Payment.create
+    // and use the provided id as the JE referenceId.
     const entryNumber = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      // Create a Payment row to use as unique referenceId (avoids collision with 2A's installmentScheduleId)
-      const payment = await tx.payment.create({
-        data: {
-          contractId: c.id,
-          installmentNo: inst.installmentNo,
-          dueDate: inst.dueDate,
-          amountDue: installmentTotal,
-          amountPaid: input.amountReceived,
-          paidDate: new Date(),
-          paidAt: new Date(),
-          status: 'PAID',
-        },
-      });
+      let paymentId: string;
+      if (input.existingPaymentId) {
+        // Caller owns the Payment row — just use its id as JE reference
+        paymentId = input.existingPaymentId;
+      } else {
+        // Standalone: create the Payment row now (original behavior)
+        const payment = await tx.payment.create({
+          data: {
+            contractId: c.id,
+            installmentNo: inst.installmentNo,
+            dueDate: inst.dueDate,
+            amountDue: installmentTotal,
+            amountPaid: input.amountReceived,
+            paidDate: new Date(),
+            paidAt: new Date(),
+            status: 'PAID',
+          },
+        });
+        paymentId = payment.id;
+      }
+      // Legacy variable name kept for compat with lines below
+      const payment = { id: paymentId };
 
       const zero = new Decimal(0);
 

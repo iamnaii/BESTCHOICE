@@ -26,6 +26,8 @@ import { FlexMessagePayload } from '../line-oa/flex-messages/base-template';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
 import { ProductsService } from '../products/products.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
+import { PaymentReceipt2BTemplate } from '../journal/cpa-templates/payment-receipt-2b.template';
+import { Decimal } from '@prisma/client/runtime/library';
 
 export interface PaymentIntentResult {
   paymentId: string;
@@ -58,6 +60,7 @@ export class PaySolutionsService {
     private saleAdapter: OnlineOrderSaleAdapter,
     private productsService: ProductsService,
     private journalAutoService: JournalAutoService,
+    private paymentReceipt2BTemplate: PaymentReceipt2BTemplate,
   ) {
     this.returnUrl = this.config.get<string>('PAYSOLUTIONS_RETURN_URL', '');
     this.apiBaseUrl = this.config.get<string>(
@@ -910,30 +913,31 @@ export class PaySolutionsService {
       if (contractForJe && systemUserId) {
         for (const snapshot of result.fullyPaidSnapshots) {
           try {
-            await this.prisma.$transaction(async (tx2) => {
-              await this.journalAutoService.createPaymentJournal(tx2, {
-                shopCompanyId,
-                financeCompanyId,
-                payment: {
-                  id: snapshot.id,
+            // Phase A.4b: replaced createPaymentJournal (old stub) with PaymentReceipt2BTemplate.
+            // Look up the InstallmentSchedule by contractId + installmentNo, then call template
+            // with existingPaymentId so template skips creating a duplicate Payment row.
+            // Default deposit account '11-1202' = SCB (PaySolutions settlement account).
+            const instSchedPs = await this.prisma.installmentSchedule.findUnique({
+              where: {
+                contractId_installmentNo: {
+                  contractId: contractForJe.id,
                   installmentNo: snapshot.installmentNo,
-                  amountPaid: snapshot.amountPaid,
-                  monthlyPrincipal: snapshot.monthlyPrincipal,
-                  monthlyInterest: snapshot.monthlyInterest,
-                  monthlyCommission: snapshot.monthlyCommission,
-                  vatAmount: snapshot.vatAmount,
-                  lateFee: snapshot.lateFee,
-                  lateFeeWaived: snapshot.lateFeeWaived,
-                  paidDate: snapshot.paidDate,
                 },
-                contract: {
-                  id: contractForJe.id,
-                  contractNumber: contractForJe.contractNumber,
-                  branchId: contractForJe.branchId,
-                },
-                userId: systemUserId,
-              });
+              },
+              select: { id: true },
             });
+            if (instSchedPs) {
+              await this.paymentReceipt2BTemplate.execute({
+                installmentScheduleId: instSchedPs.id,
+                amountReceived: new Decimal(snapshot.amountPaid.toString()),
+                depositAccountCode: '11-1202',
+                existingPaymentId: snapshot.id,
+              });
+            } else {
+              this.logger.warn(
+                `PaySolutions: PaymentReceipt2B skipped — no InstallmentSchedule for contractId=${contractForJe.id} installmentNo=${snapshot.installmentNo}`,
+              );
+            }
           } catch (jeErr) {
             Sentry.captureException(jeErr, {
               tags: {

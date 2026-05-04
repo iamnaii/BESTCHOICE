@@ -6,7 +6,8 @@
     "deleteOutDir": true,
     "assets": [
       { "include": "modules/documents/templates/**/*.html", "outDir": "dist/src" },
-      { "include": "modules/contracts/templates/**/*.html", "outDir": "dist/src" }
+      { "include": "modules/contracts/templates/**/*.html", "outDir": "dist/src" },
+      { "include": "modules/journal/__tests__/fixtures/cpa-cases/*.csv", "outDir": "dist/src" }
     ]
   }
 }

@@ -62,4 +62,10 @@ export class UpdateUserDto {
   @IsOptional()
   @IsDateString()
   birthDate?: string;
+
+  /** บัญชีรับเงินเริ่มต้นของ user เช่น 11-1101 / 11-1201 */
+  @IsOptional()
+  @IsString()
+  @Matches(/^11-(110[1-3]|120[1-3])$/, { message: 'defaultCashAccountCode ต้องเป็น 11-1101..03 หรือ 11-1201..03' })
+  defaultCashAccountCode?: string;
 }

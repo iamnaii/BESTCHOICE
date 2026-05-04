@@ -61,16 +61,12 @@ export class JournalService {
     // anyone backdate a journal into a closed month.
     await validatePeriodOpen(this.prisma, new Date(dto.entryDate), dto.companyId);
 
-    // 4. Validate accountCodes exist in this company's ChartOfAccount
-    // Phase A.1a: chart is now per-company (composite key (companyId, code)),
-    // so the lookup is scoped to dto.companyId. Any code not in this company's
-    // chart is reported back; allowedCompanies array is no longer used.
+    // 4. Validate accountCodes exist in the single FINANCE chart (Phase A.4 — no companyId scoping)
     const accountCodes = dto.lines.map((line) => line.accountCode);
     const accounts = await this.prisma.chartOfAccount.findMany({
       where: {
         code: { in: accountCodes },
-        companyId: dto.companyId,
-        isActive: true,
+        status: 'ใช้งาน',
         deletedAt: null,
       },
       select: { code: true },
@@ -81,7 +77,7 @@ export class JournalService {
 
     if (missingCodes.length > 0) {
       throw new BadRequestException(
-        `รหัสบัญชีไม่ถูกต้องหรือไม่อยู่ในผังบัญชีของบริษัทนี้: ${missingCodes.join(', ')}`,
+        `รหัสบัญชีไม่ถูกต้องหรือไม่อยู่ในผังบัญชี: ${missingCodes.join(', ')}`,
       );
     }
 

@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { formatThaiDate } from '@/lib/date';
 import type { PendingPayment, OcrPaymentSlipResult } from '../types';
 import { slipTypeLabels, isSlipRequired } from '../types';
+import { CashAccountSelect } from '@/components/CashAccountSelect';
 
 /* ─── Slip Scanner Button ─── */
 function SlipScannerSection({
@@ -85,6 +86,9 @@ interface RecordPaymentModalProps {
   onSlipScan: (e: React.ChangeEvent<HTMLInputElement>) => void;
   ocrSlipLoading: boolean;
   slipResult: OcrPaymentSlipResult | null;
+  /** T15: cash/bank account code for the Dr leg of the payment journal entry */
+  depositAccountCode?: string;
+  onDepositAccountCodeChange?: (code: string) => void;
 }
 
 export function RecordPaymentModal({
@@ -99,6 +103,8 @@ export function RecordPaymentModal({
   onSlipScan,
   ocrSlipLoading,
   slipResult,
+  depositAccountCode,
+  onDepositAccountCodeChange,
 }: RecordPaymentModalProps) {
   if (!show || !payment) return null;
 
@@ -260,6 +266,16 @@ export function RecordPaymentModal({
                 <label className="block text-xs font-medium text-foreground mb-1.5">หมายเหตุ</label>
                 <input type="text" value={payForm.notes} onChange={(e) => onPayFormChange({ ...payForm, notes: e.target.value })} className={inputClass} placeholder="หมายเหตุเพิ่มเติม (ถ้ามี)" />
               </div>
+
+              {onDepositAccountCodeChange && (
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1.5">บัญชีรับเงิน (Dr)</label>
+                  <CashAccountSelect
+                    value={depositAccountCode}
+                    onChange={onDepositAccountCodeChange}
+                  />
+                </div>
+              )}
 
               {/* Summary box */}
               {received > 0 && (

@@ -7,6 +7,7 @@ import { paginatedResponse } from '../../common/helpers/pagination.helper';
 import { ReceiptsService } from '../receipts/receipts.service';
 import { AuditService } from '../audit/audit.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
+import { PaymentReceipt2BTemplate } from '../journal/cpa-templates/payment-receipt-2b.template';
 import { ProductsService } from '../products/products.service';
 import { hasCrossBranchAccess } from '../auth/branch-access.util';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
@@ -31,6 +32,7 @@ export class PaymentsService {
     private receiptsService: ReceiptsService,
     private auditService: AuditService,
     private journalAutoService: JournalAutoService,
+    private paymentReceipt2BTemplate: PaymentReceipt2BTemplate,
     private productsService: ProductsService,
     private lineOaService: LineOaService,
     private flexTemplates: FlexTemplatesService,
@@ -39,6 +41,18 @@ export class PaymentsService {
     @Optional() @Inject(forwardRef(() => PromiseService)) private promiseService?: PromiseService,
     @Optional() private mdmLockService?: MdmLockService,
   ) {}
+
+  /**
+   * T15: Resolve the cash/bank account code for a payment.
+   * Priority: user.defaultCashAccountCode → system default '11-1101'.
+   */
+  private async resolveUserDefaultCashAccount(userId: string): Promise<string> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { defaultCashAccountCode: true },
+    });
+    return user?.defaultCashAccountCode ?? '11-1101';
+  }
 
   /**
    * F-3-027 part 2/3: Resolve FINANCE companyId for HP installment journal entries.
@@ -99,6 +113,8 @@ export class PaymentsService {
     evidenceUrl?: string,
     notes?: string,
     transactionRef?: string,
+    depositAccountCode?: string,
+    toleranceApproverId?: string,
   ) {
     if (!amount || amount <= 0) {
       throw new BadRequestException('จำนวนเงินต้องมากกว่า 0');
@@ -111,6 +127,27 @@ export class PaymentsService {
 
     // CR-7: Validate payment date is not in a closed accounting period
     await validatePeriodOpen(this.prisma, new Date());
+
+    // T16: Tolerance approver role validation.
+    // If toleranceApproverId is supplied, verify the named user has an approved role.
+    // This is validated early (before the serializable tx) to fail fast without
+    // holding a DB lock on a rejection.
+    if (toleranceApproverId) {
+      const approver = await this.prisma.user.findUnique({
+        where: { id: toleranceApproverId },
+        select: { id: true, role: true, deletedAt: true },
+      });
+      if (!approver || approver.deletedAt) {
+        throw new BadRequestException('ไม่พบผู้อนุมัติที่ระบุ');
+      }
+      const allowedRoles = ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'BRANCH_MANAGER'];
+      if (!allowedRoles.includes(approver.role)) {
+        throw new ForbiddenException('ผู้อนุมัติต้องมีบทบาท OWNER, FINANCE_MANAGER, ACCOUNTANT หรือ BRANCH_MANAGER');
+      }
+    }
+
+    // T15: Resolve deposit account — caller-provided > user default > system default 11-1101
+    const resolvedDepositAccountCode = depositAccountCode ?? (await this.resolveUserDefaultCashAccount(recordedById));
 
     // F-3-027 part 2/3 + Phase A.1b: resolve FINANCE + SHOP companyIds BEFORE
     // the transaction so both can be passed explicitly to the payment JE.
@@ -208,6 +245,7 @@ export class PaymentsService {
           recordedById,
           evidenceUrl: evidenceUrl || payment.evidenceUrl,
           notes: updatedNotes,
+          depositAccountCode: resolvedDepositAccountCode,
         },
       });
 
@@ -216,28 +254,32 @@ export class PaymentsService {
         await this.checkContractCompletion(contractId, tx);
       }
 
-      // Auto journal entry — only on full payment to avoid partial double-entries.
-      // No try/catch: a journal failure must roll back the payment update so the
-      // ledger and cash never diverge. (Audit finding J5.)
+      // Phase A.4b: replaced createPaymentJournal (old stub) with PaymentReceipt2BTemplate.
+      // Template is called only on full payment. It runs inside the same $transaction so
+      // a JE failure rolls back the Payment.update — no orphan ledger entries.
       if (isPaidInFull) {
-        await this.journalAutoService.createPaymentJournal(tx, {
-          shopCompanyId,
-          financeCompanyId,
-          payment: {
-            id: result.id,
-            installmentNo: result.installmentNo,
-            amountPaid: result.amountPaid,
-            monthlyPrincipal: result.monthlyPrincipal,
-            monthlyInterest: result.monthlyInterest,
-            monthlyCommission: result.monthlyCommission,
-            vatAmount: result.vatAmount,
-            lateFee: result.lateFee,
-            lateFeeWaived: result.lateFeeWaived,
-            paidDate: result.paidDate,
+        const instSched = await tx.installmentSchedule.findUnique({
+          where: {
+            contractId_installmentNo: {
+              contractId: contract.id,
+              installmentNo: result.installmentNo,
+            },
           },
-          contract: { id: contract.id, contractNumber: contract.contractNumber, branchId: contract.branchId },
-          userId: recordedById,
+          select: { id: true },
         });
+        if (instSched) {
+          await this.paymentReceipt2BTemplate.execute({
+            installmentScheduleId: instSched.id,
+            amountReceived: new Prisma.Decimal(result.amountPaid.toString()),
+            depositAccountCode: resolvedDepositAccountCode,
+            toleranceApproverId: toleranceApproverId,
+            existingPaymentId: result.id,
+          });
+        } else {
+          this.logger.warn(
+            `PaymentReceipt2B skipped — no InstallmentSchedule found for contractId=${contract.id} installmentNo=${result.installmentNo}. TODO: verify schedule was generated.`,
+          );
+        }
       }
 
       return result;
@@ -266,6 +308,31 @@ export class PaymentsService {
       installmentNo,
       details: { paymentMethod, transactionRef, totalPaid: d(updated.amountPaid).toNumber() },
     });
+
+    // T16: Write TOLERANCE_APPROVED audit log when a tolerance approver was named.
+    // Uses the generic log() path so the hash-chain is preserved.
+    // The approver is the userId of the log row (who authorised the rounding),
+    // and requestedBy is embedded in newValue for full traceability.
+    if (toleranceApproverId) {
+      const amountDueForLog = d(updated.amountDue ?? 0);
+      const amountReceivedD = d(amount);
+      const diffD = amountReceivedD.sub(amountDueForLog).abs();
+      await this.auditService.log({
+        userId: toleranceApproverId,
+        action: 'TOLERANCE_APPROVED',
+        entity: 'payment',
+        entityId: updated.id,
+        newValue: {
+          diff: diffD.toString(),
+          amountReceived: amountReceivedD.toString(),
+          installmentTotal: amountDueForLog.toString(),
+          requestedBy: recordedById,
+          contractId,
+          installmentNo,
+          timestamp: new Date().toISOString(),
+        },
+      });
+    }
 
     // Auto-generate e-Receipt for every payment event (TFRS practice:
     // issue a receipt each time money is received, including partial payments).
@@ -397,28 +464,29 @@ export class PaymentsService {
         if (isPaidInFull) {
           await this.checkContractCompletion(contractId, tx);
 
-          // Auto journal entry per fully-paid installment — same pattern as
-          // recordPayment(). Errors propagate so the whole tx rolls back.
-          // (Audit finding J1: closes the journal coverage gap on the
-          // multi-installment auto-allocate path.)
-          await this.journalAutoService.createPaymentJournal(tx, {
-            shopCompanyId,
-            financeCompanyId,
-            payment: {
-              id: updated.id,
-              installmentNo: updated.installmentNo,
-              amountPaid: updated.amountPaid,
-              monthlyPrincipal: updated.monthlyPrincipal,
-              monthlyInterest: updated.monthlyInterest,
-              monthlyCommission: updated.monthlyCommission,
-              vatAmount: updated.vatAmount,
-              lateFee: updated.lateFee,
-              lateFeeWaived: updated.lateFeeWaived,
-              paidDate: updated.paidDate,
+          // Phase A.4b: replaced createPaymentJournal (old stub) with PaymentReceipt2BTemplate.
+          // autoAllocate has no depositAccountCode param — use system default.
+          const instSchedBulk = await tx.installmentSchedule.findUnique({
+            where: {
+              contractId_installmentNo: {
+                contractId: contract.id,
+                installmentNo: updated.installmentNo,
+              },
             },
-            contract: { id: contract.id, contractNumber: contract.contractNumber, branchId: contract.branchId },
-            userId: recordedById,
+            select: { id: true },
           });
+          if (instSchedBulk) {
+            await this.paymentReceipt2BTemplate.execute({
+              installmentScheduleId: instSchedBulk.id,
+              amountReceived: new Prisma.Decimal(updated.amountPaid.toString()),
+              depositAccountCode: updated.depositAccountCode ?? '11-1101',
+              existingPaymentId: updated.id,
+            });
+          } else {
+            this.logger.warn(
+              `PaymentReceipt2B skipped (bulk) — no InstallmentSchedule for contractId=${contract.id} installmentNo=${updated.installmentNo}`,
+            );
+          }
         }
       }
 
@@ -469,14 +537,39 @@ export class PaymentsService {
         const referencePaymentId = results.length > 0
           ? results[results.length - 1].updated.id
           : contractId;
-        await this.journalAutoService.createCustomerCreditOverpaymentJournal(tx, {
-          paymentId: referencePaymentId,
-          contractNumber: contract.contractNumber,
-          overpaymentAmount: overpayment,
-          userId: recordedById,
-          financeCompanyId,
-          paidDate: results.length > 0 ? results[results.length - 1].updated.paidDate : new Date(),
-        });
+        // Phase A.4b: replaced createCustomerCreditOverpaymentJournal (old stub)
+        // with inline createAndPost. JE: Dr Cash (deposit) / Cr 21-5101 Customer Credit Balance.
+        // 21-5101 = เงินเกินของลูกค้า (confirmed in finance-chart-of-accounts.csv).
+        const depositCode = results.length > 0
+          ? (results[results.length - 1].updated.depositAccountCode ?? '11-1101')
+          : '11-1101';
+        const zero = new Prisma.Decimal(0);
+        await this.journalAutoService.createAndPost(
+          {
+            description: `เงินเกินชำระ — สัญญา ${contract.contractNumber} บันทึกเครดิต ${overpayment.toFixed(2)} บาท`,
+            reference: referencePaymentId,
+            metadata: {
+              tag: 'overpayment-credit',
+              contractId: contract.id,
+              paymentId: referencePaymentId,
+            },
+            lines: [
+              {
+                accountCode: depositCode,
+                dr: overpayment,
+                cr: zero,
+                description: 'รับเงินเกิน',
+              },
+              {
+                accountCode: '21-5101',
+                dr: zero,
+                cr: overpayment,
+                description: 'เงินเกินของลูกค้า (Customer Credit Balance)',
+              },
+            ],
+          },
+          tx,
+        );
       }
 
       return {
@@ -795,29 +888,39 @@ export class PaymentsService {
         if (isPaidInFull) {
           await this.checkContractCompletion(contractId, tx);
 
-          // Phase A.1b (audit F-1-004): use createCreditAllocationJournal which
-          // debits Customer Credit (21-5101) instead of Cash. Calling
-          // createPaymentJournal here would Dr Cash a second time even though
-          // no cash was received — credit was already booked when the
-          // overpayment originally came in.
-          await this.journalAutoService.createCreditAllocationJournal(tx, {
-            shopCompanyId,
-            financeCompanyId,
-            payment: {
-              id: updated.id,
-              installmentNo: updated.installmentNo,
-              amountPaid: updated.amountPaid,
-              monthlyPrincipal: updated.monthlyPrincipal,
-              monthlyInterest: updated.monthlyInterest,
-              monthlyCommission: updated.monthlyCommission,
-              vatAmount: updated.vatAmount,
-              lateFee: updated.lateFee,
-              lateFeeWaived: updated.lateFeeWaived,
-              paidDate: updated.paidDate,
+          // Phase A.4b: replaced createCreditAllocationJournal (old stub).
+          // Dr 21-5101 Customer Credit / Cr 11-2103 ลูกหนี้ค้างชำระ —
+          // clears the customer credit balance against the outstanding receivable.
+          // No Dr Cash because the cash was already recorded when the overpayment
+          // was originally received (audit finding F-1-004).
+          const creditZero = new Prisma.Decimal(0);
+          const creditPayAmount = new Prisma.Decimal(updated.amountPaid.toString());
+          await this.journalAutoService.createAndPost(
+            {
+              description: `ใช้เครดิตชำระงวด #${updated.installmentNo} — สัญญา ${contract.contractNumber}`,
+              reference: updated.id,
+              metadata: {
+                tag: 'credit-allocation',
+                contractId: contract.id,
+                paymentId: updated.id,
+              },
+              lines: [
+                {
+                  accountCode: '21-5101',
+                  dr: creditPayAmount,
+                  cr: creditZero,
+                  description: 'ใช้เงินเกินของลูกค้า (Customer Credit)',
+                },
+                {
+                  accountCode: '11-2103',
+                  dr: creditZero,
+                  cr: creditPayAmount,
+                  description: 'ล้างลูกหนี้ค้างชำระ',
+                },
+              ],
             },
-            contract: { id: contract.id, contractNumber: contract.contractNumber, branchId: contract.branchId },
-            userId: recordedById,
-          });
+            tx,
+          );
         }
       }
 

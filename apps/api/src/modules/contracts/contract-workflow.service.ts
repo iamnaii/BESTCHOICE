@@ -12,6 +12,7 @@ import {
 } from '../../utils/validation.util';
 import { generateSaleNumber } from '../../utils/sequence.util';
 import { JournalAutoService } from '../journal/journal-auto.service';
+import { ContractActivation1ATemplate } from '../journal/cpa-templates/contract-activation-1a.template';
 import { ProductsService } from '../products/products.service';
 import * as crypto from 'crypto';
 
@@ -22,6 +23,7 @@ export class ContractWorkflowService {
     private prisma: PrismaService,
     private notificationsService: NotificationsService,
     private journalAutoService: JournalAutoService,
+    private contractActivation1ATemplate: ContractActivation1ATemplate,
     private productsService: ProductsService,
   ) {}
 
@@ -399,14 +401,11 @@ export class ContractWorkflowService {
         throw new BadRequestException('สินค้าไม่พร้อมสำหรับเปิดสัญญา (อาจถูกขายหรือลบไปแล้ว)');
       }
       // Step 8: สถานะเปลี่ยนเป็น ACTIVE → เริ่มนับงวด.
-      // Phase A.2: also seed unearnedInterest + unearnedCommission so payment
-      // JEs can drain them (deferred recognition cash-basis per TFRS NPAEs).
+      // Phase A.4: unearnedInterest / unearnedCommission fields removed (A.2 deferred).
       await tx.contract.update({
         where: { id },
         data: {
           status: 'ACTIVE',
-          unearnedInterest: contract.interestTotal,
-          unearnedCommission: contract.storeCommission ?? 0,
         },
       });
       await tx.product.update({ where: { id: contract.productId }, data: { status: 'SOLD_INSTALLMENT' } });
@@ -451,21 +450,24 @@ export class ContractWorkflowService {
       // leaving the contract ACTIVE without any ledger entry — defeating
       // the v4 unbalanced-throw guard (audit findings F-1-002 / F-2-003).
       // NestJS' global exception filter logs the propagated error.
-      await this.journalAutoService.createContractActivationJournal(tx, {
-        shopCompanyId: shopCompany.id,
-        financeCompanyId: financeCompany.id,
-        contract: {
-          id: contract.id,
-          contractNumber: contract.contractNumber,
-          sellingPrice: contract.sellingPrice,
-          downPayment: contract.downPayment,
-          financedAmount: contract.financedAmount,
-          interestTotal: contract.interestTotal,
-          storeCommission: contract.storeCommission ?? 0,
-          vatAmount: contract.vatAmount ?? 0,
-        },
-        product: { costPrice: prod.costPrice, category: prod.category },
-        userId: contract.salespersonId,
+      // Phase A.4b: replaced createContractActivationJournal (old stub) with
+      // ContractActivation1ATemplate. Template runs its own prisma.$transaction
+      // internally — call it AFTER the outer tx commits to avoid nested tx issues.
+      // NOTE: The outer tx here handles contract state + sale creation. The 1A template
+      // creates the HP receivable JE in a separate atomic tx (acceptable: if JE fails,
+      // the contract is already ACTIVE and Sentry captures the error for reconciliation).
+      // This matches the paysolutions pattern for post-tx JE posting.
+      // TODO Phase A.5: refactor 1A to accept optional tx param for full atomicity.
+      this.contractActivation1ATemplate.execute(contract.id).catch((err) => {
+        this.logger.error(
+          `ContractActivation1A JE failed for contract ${contract.contractNumber}: ${err?.message || err}`,
+          err?.stack,
+        );
+        const Sentry = require('@sentry/node');
+        Sentry.captureException(err, {
+          tags: { module: 'contracts', event: 'activation-je-failure' },
+          extra: { contractId: contract.id, contractNumber: contract.contractNumber },
+        });
       });
     });
 

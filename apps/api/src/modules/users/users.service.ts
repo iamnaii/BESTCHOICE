@@ -147,6 +147,7 @@ export class UsersService {
     if (dto.startDate !== undefined) data.startDate = dto.startDate ? new Date(dto.startDate) : null;
     if (dto.nationalId !== undefined) data.nationalId = dto.nationalId || null;
     if (dto.birthDate !== undefined) data.birthDate = dto.birthDate ? new Date(dto.birthDate) : null;
+    if (dto.defaultCashAccountCode !== undefined) data.defaultCashAccountCode = dto.defaultCashAccountCode || null;
 
     const updated = await this.prisma.user.update({
       where: { id },
@@ -167,6 +168,7 @@ export class UsersService {
         startDate: true,
         nationalId: true,
         birthDate: true,
+        defaultCashAccountCode: true,
         branch: { select: { id: true, name: true } },
       },
     });
@@ -194,5 +196,14 @@ export class UsersService {
       where: { id: userId, deletedAt: null },
       data: { yeastarExtension: extension ?? null },
     });
+  }
+
+  async updateDefaultCashAccount(userId: string, code: string | null): Promise<{ defaultCashAccountCode: string | null }> {
+    const result = await this.prisma.user.update({
+      where: { id: userId, deletedAt: null },
+      data: { defaultCashAccountCode: code },
+      select: { defaultCashAccountCode: true },
+    });
+    return result;
   }
 }

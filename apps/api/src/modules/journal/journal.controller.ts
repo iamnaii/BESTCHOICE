@@ -13,7 +13,6 @@ import {
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { JournalService } from './journal.service';
-import { JournalAutoService } from './journal-auto.service';
 import { CreateJournalEntryDto } from './dto/journal.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -28,17 +27,10 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 export class JournalController {
   constructor(
     private journalService: JournalService,
-    private journalAutoService: JournalAutoService,
   ) {}
 
-  @Get('trial-balance')
-  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
-  getTrialBalance(
-    @Query('asOfDate') asOfDate?: string,
-    @Query('companyId') companyId?: string,
-  ) {
-    return this.journalAutoService.getTrialBalance({ asOfDate, companyId });
-  }
+  // NOTE: trial-balance endpoint removed from this controller.
+  // Use GET /accounting/trial-balance (AccountingService.getTrialBalance) instead.
 
   @Post()
   @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')

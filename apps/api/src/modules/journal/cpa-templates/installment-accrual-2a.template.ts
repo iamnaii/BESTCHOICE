@@ -1,0 +1,126 @@
+import { Injectable } from '@nestjs/common';
+import { Decimal } from '@prisma/client/runtime/library';
+import { JournalAutoService } from '../journal-auto.service';
+import { PrismaService } from '../../../prisma/prisma.service';
+
+/**
+ * Template 2A — Installment Accrual (fires on each installment due date).
+ *
+ * Spec §6.2 — recognizes each installment as it comes due:
+ *
+ *   Dr 11-2103 ลูกหนี้ค้างชำระ          (installmentTotal = installmentExclVat + vatPerInst)
+ *   Dr 21-2102 ล้างภาษีขายรอเรียกเก็บ   (vatPerInst)
+ *   Dr 11-2106 ล้างรายได้รอตัดบัญชี      (interestPerInst)
+ *     Cr 11-2101 ลูกหนี้ Gross (ลด)       (installmentExclVat)
+ *     Cr 11-2105 ลูกหนี้ภาษีขายรอฯ (ล้าง) (vatPerInst)
+ *     Cr 41-1101 รายได้ดอกเบี้ย (รับรู้)   (interestPerInst)
+ *     Cr 21-2101 ภาษีขาย ภ.พ.30           (vatPerInst)
+ *
+ * Total Dr = installmentTotal + vatPerInst + interestPerInst = 2,115.00
+ * Total Cr = installmentExclVat + vatPerInst + interestPerInst + vatPerInst = 2,115.00 ✓
+ *
+ * Rounding modes (per CSV spec):
+ *   installmentExclVat = grossExclVat / totalMonths → ROUND_DOWN  (17000/12 = 1416.66)
+ *   vatPerInst         = vatTotal / totalMonths     → ROUND_HALF_UP (1190/12 = 99.17)
+ *   interestPerInst    = interestTotal / totalMonths → ROUND_HALF_UP (6000/12 = 500.00 exact)
+ *
+ * Idempotent: returns null if accrualJournalEntryId is already set on the installment.
+ */
+@Injectable()
+export class InstallmentAccrual2ATemplate {
+  constructor(
+    private readonly journal: JournalAutoService,
+    private readonly prisma: PrismaService,
+  ) {}
+
+  async execute(installmentScheduleId: string): Promise<{ entryNo: string } | null> {
+    const inst = await this.prisma.installmentSchedule.findUniqueOrThrow({
+      where: { id: installmentScheduleId },
+    });
+
+    // Idempotency guard
+    if (inst.accrualJournalEntryId) return null;
+
+    const c = await this.prisma.contract.findUniqueOrThrow({ where: { id: inst.contractId } });
+
+    const total = new Decimal(c.totalMonths);
+    const financed = new Decimal(c.financedAmount.toString());
+    const commission =
+      c.storeCommission != null
+        ? new Decimal(c.storeCommission.toString())
+        : financed.times('0.10').toDecimalPlaces(2);
+    const interest = new Decimal(c.interestTotal.toString());
+    const grossExclVat = financed.plus(commission).plus(interest);
+    const vat =
+      c.vatAmount != null
+        ? new Decimal(c.vatAmount.toString())
+        : grossExclVat.times('0.07').toDecimalPlaces(2);
+
+    // Per-installment amounts — rounding modes match CSV spec
+    const installmentExclVat = grossExclVat.div(total).toDecimalPlaces(2, Decimal.ROUND_DOWN); // 1,416.66
+    const interestPerInst = interest.div(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP); //   500.00
+    const vatPerInst = vat.div(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP); //    99.17
+    const installmentTotal = installmentExclVat.plus(vatPerInst); // 1,515.83
+
+    const zero = new Decimal(0);
+
+    const result = await this.journal.createAndPost({
+      description: `Accrual งวด #${inst.installmentNo} — สัญญา ${c.contractNumber}`,
+      reference: inst.id,
+      metadata: { tag: '2A', contractId: c.id, installmentScheduleId: inst.id },
+      postedAt: inst.dueDate,
+      lines: [
+        {
+          accountCode: '11-2103',
+          dr: installmentTotal,
+          cr: zero,
+          description: 'ลูกหนี้ค้างชำระ (Accrual)',
+        },
+        {
+          accountCode: '21-2102',
+          dr: vatPerInst,
+          cr: zero,
+          description: 'ล้าง ภาษีขายรอเรียกเก็บ',
+        },
+        {
+          accountCode: '11-2106',
+          dr: interestPerInst,
+          cr: zero,
+          description: 'ล้าง รายได้รอตัดบัญชี-ดอกเบี้ย',
+        },
+        {
+          accountCode: '11-2101',
+          dr: zero,
+          cr: installmentExclVat,
+          description: 'ลูกหนี้ Gross (ลด excl.VAT)',
+        },
+        {
+          accountCode: '11-2105',
+          dr: zero,
+          cr: vatPerInst,
+          description: 'ลูกหนี้ภาษีขายรอฯ (ล้าง)',
+        },
+        {
+          accountCode: '41-1101',
+          dr: zero,
+          cr: interestPerInst,
+          description: 'รายได้ดอกเบี้ย (รับรู้)',
+        },
+        {
+          accountCode: '21-2101',
+          dr: zero,
+          cr: vatPerInst,
+          description: 'ภาษีขาย ภ.พ.30',
+        },
+      ],
+    });
+
+    // Mark installment as accrued (idempotency)
+    await this.prisma.installmentSchedule.update({
+      where: { id: inst.id },
+      data: { accrualJournalEntryId: result.entryNumber },
+    });
+
+    return { entryNo: result.entryNumber };
+  }
+}

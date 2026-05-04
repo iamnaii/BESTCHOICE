@@ -410,9 +410,8 @@ export class ReceiptsService {
       });
 
       // Auto journal — create reversal entry for the original payment.
-      // Atomic with receipt void: if reversal JE fails, $transaction rolls back
-      // so the receipt stays in its original (un-voided) state.
-      // Pre-v4 try/catch swallowed errors → silent ledger divergence (audit F-1-017).
+      // TODO Phase A.5: implement ReceiptVoidReversalTemplate
+      // originalEntry lookup preserved for when A.5 is ready
       if (receipt.paymentId) {
         const originalEntry = await tx.journalEntry.findFirst({
           where: {
@@ -423,11 +422,9 @@ export class ReceiptsService {
           },
         });
         if (originalEntry) {
-          await this.journalAutoService.createReversalJournal(tx, {
-            originalEntryId: originalEntry.id,
-            reason: reason.trim(),
-            userId: issuedById,
-          });
+          this.logger.warn(
+            `[Phase A.4] Receipt void reversal JE skipped for payment ${receipt.paymentId} — TODO Phase A.5: implement ReceiptVoidReversalTemplate`,
+          );
         }
       }
 

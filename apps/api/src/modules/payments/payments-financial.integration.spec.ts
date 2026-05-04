@@ -79,9 +79,9 @@ describe('PaymentsService — Financial Integration', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PaymentsService,
-        { provide: PrismaService, useValue: { $transaction: jest.fn(fn => fn(tx)), systemConfig: { findUnique: jest.fn().mockResolvedValue(null) }, companyInfo: { findFirst: jest.fn().mockResolvedValue({ id: 'co-FINANCE' }) } } },
+        { provide: PrismaService, useValue: { $transaction: jest.fn(fn => fn(tx)), systemConfig: { findUnique: jest.fn().mockResolvedValue(null) }, companyInfo: { findFirst: jest.fn().mockResolvedValue({ id: 'co-FINANCE' }) }, user: { findUnique: jest.fn().mockResolvedValue({ id: 'u1', defaultCashAccountCode: '11-1101', role: 'OWNER', deletedAt: null }) } } },
         { provide: ReceiptsService, useValue: { generateReceipt: jest.fn().mockResolvedValue({}) } },
-        { provide: AuditService, useValue: { logPaymentEvent: jest.fn().mockResolvedValue(undefined) } },
+        { provide: AuditService, useValue: { logPaymentEvent: jest.fn().mockResolvedValue(undefined), log: jest.fn().mockResolvedValue(undefined) } },
         { provide: JournalAutoService, useValue: { createPaymentJournal: jest.fn().mockResolvedValue('je-1'), createExpenseJournal: jest.fn(), createContractActivationJournal: jest.fn(), createBadDebtWriteOffJournal: jest.fn(), createCustomerCreditOverpaymentJournal: jest.fn().mockResolvedValue('je-overpay'), createCreditAllocationJournal: jest.fn().mockResolvedValue('je-credit-alloc') } },
         { provide: ProductsService, useValue: { transferOwnership: jest.fn() } },
         { provide: LineOaService, useValue: { buildPaymentSuccess: jest.fn().mockReturnValue({}), sendFlexMessage: jest.fn() } },
@@ -130,6 +130,29 @@ describe('PaymentsService — Financial Integration', () => {
       await expect(
         service.recordPayment('c1', 1, -100, 'CASH', 'u1', 'https://s3.example.com/slip.jpg'),
       ).rejects.toThrow('จำนวนเงินต้องมากกว่า 0');
+    });
+
+    // T16: Tolerance approval tests
+    it('T16 — succeeds with toleranceApproverId when diff is within 1 ฿', async () => {
+      // Amount 999.50 vs outstanding 1000 — diff 0.50 ฿, within tolerance
+      const result = await service.recordPayment('c1', 1, 999.5, 'CASH', 'u1', 'https://s3.example.com/slip.jpg', undefined, 'TXN-TOL1', undefined, 'u1');
+      expect(result).toBeDefined();
+    });
+
+    it('T16 — rejects toleranceApproverId with SALES role', async () => {
+      // Mock user.findUnique to return a SALES user for this test
+      const prisma = (service['prisma'] as unknown) as { user: { findUnique: jest.Mock } };
+      prisma.user.findUnique.mockResolvedValueOnce({ id: 'u-sales', role: 'SALES', deletedAt: null });
+      await expect(
+        service.recordPayment('c1', 1, 999.5, 'CASH', 'u1', 'https://s3.example.com/slip.jpg', undefined, 'TXN-TOL2', undefined, 'u-sales'),
+      ).rejects.toThrow('ผู้อนุมัติต้องมีบทบาท OWNER');
+    });
+
+    it('T16 — no AuditLog written when payment is exact (no toleranceApproverId)', async () => {
+      const auditService = (service['auditService'] as unknown) as { log: jest.Mock };
+      auditService.log.mockClear();
+      await service.recordPayment('c1', 1, 1000, 'CASH', 'u1', 'https://s3.example.com/slip.jpg', undefined, 'TXN-TOL3');
+      expect(auditService.log).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'TOLERANCE_APPROVED' }));
     });
   });
 

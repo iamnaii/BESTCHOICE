@@ -3,6 +3,8 @@ import { PaymentMethod, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ProductsService } from '../products/products.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
+import { EarlyPayoffJP4Template } from '../journal/cpa-templates/early-payoff-jp4.template';
+import { Decimal } from '@prisma/client/runtime/library';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
 import { EarlyPayoffDto } from './dto/contract.dto';
 import { d, dAdd, dSub, dMul, dDiv, dRound, dSum, dGte } from '../../utils/decimal.util';
@@ -14,6 +16,7 @@ export class ContractPaymentService {
     private prisma: PrismaService,
     private productsService: ProductsService,
     private journalAutoService: JournalAutoService,
+    private earlyPayoffJP4Template: EarlyPayoffJP4Template,
   ) {}
 
   /**
@@ -229,19 +232,64 @@ export class ContractPaymentService {
           });
         }
 
-        // One aggregated JE for the whole payoff. Discount is absorbed by
-        // proportionally reducing interest / commission / VAT (principal
-        // must always be settled in full so HP Receivable stays correct).
-        await this.journalAutoService.createEarlyPayoffJournal(tx, {
-          contractId: id,
-          contractNumber: freshContract.contractNumber,
-          installments: installmentSnapshots,
-          totalPayoff: quote.totalPayoff,
-          userId,
-          shopCompanyId,
-          financeCompanyId,
-          paidDate,
-        });
+        // Phase A.4b: replaced createEarlyPayoffJournal (old stub) with inline
+        // createAndPost mirroring JP4 template's JE structure.
+        // Payment rows are already updated above — JP4 template cannot be called
+        // directly here because it also creates Payment rows (duplicate conflict).
+        // JE accounts mirror EarlyPayoffJP4Template.execute() spec §6.4.
+        {
+          const ep0 = new Decimal(0);
+          const epUnpaid = installmentSnapshots.length;
+          const epContract = await tx.contract.findUniqueOrThrow({ where: { id } });
+          const epUnpaidD = new Decimal(epUnpaid);
+          const epTotal = new Decimal(epContract.totalMonths);
+          const epFinanced = new Decimal(epContract.financedAmount.toString());
+          const epCommission = epContract.storeCommission != null
+            ? new Decimal(epContract.storeCommission.toString())
+            : epFinanced.times('0.10').toDecimalPlaces(2);
+          const epInterest = new Decimal(epContract.interestTotal.toString());
+          const epGrossExclVat = epFinanced.plus(epCommission).plus(epInterest);
+          const epVat = epContract.vatAmount != null
+            ? new Decimal(epContract.vatAmount.toString())
+            : epGrossExclVat.times('0.07').toDecimalPlaces(2);
+          const epInstallmentExclVat = epGrossExclVat.div(epTotal).toDecimalPlaces(2, Decimal.ROUND_DOWN);
+          const epInterestPerInst = epInterest.div(epTotal).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+          const epVatPerInst = epVat.div(epTotal).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+          const epRemainingGross = epInstallmentExclVat.times(epUnpaidD);
+          const epRemainingDeferredInterest = epInterestPerInst.times(epUnpaidD);
+          const epRemainingDeferredVat = epVatPerInst.times(epUnpaidD);
+          const epDiscount = epRemainingDeferredInterest
+            .times(new Decimal(quote.discountPct))
+            .div(100)
+            .toDecimalPlaces(2);
+          const epSettlement = epRemainingGross.minus(epDiscount).plus(epRemainingDeferredVat);
+
+          await this.journalAutoService.createAndPost(
+            {
+              description: `ปิดยอดก่อนกำหนด — สัญญา ${freshContract.contractNumber} (${epUnpaid} งวดคงเหลือ)`,
+              reference: `${id}:early-payoff`,
+              metadata: {
+                tag: 'JP4',
+                flow: 'early-payoff',
+                contractId: id,
+                unpaidInstallments: epUnpaid,
+                discount: epDiscount.toFixed(2),
+                interestDiscountPercent: quote.discountPct,
+              },
+              lines: [
+                { accountCode: '11-1101', dr: epSettlement, cr: ep0, description: `รับ ${epSettlement.toFixed(2)} ฿ ปิดยอด` },
+                { accountCode: '11-2106', dr: epRemainingDeferredInterest, cr: ep0, description: 'ยกเลิกรายได้รอตัดบัญชี-ดอกเบี้ย' },
+                { accountCode: '21-2102', dr: epRemainingDeferredVat, cr: ep0, description: 'ล้างภาษีขายรอเรียกเก็บ' },
+                { accountCode: '52-1106', dr: epDiscount, cr: ep0, description: 'ส่วนลดดอกเบี้ย-ปิดยอดก่อนกำหนด' },
+                { accountCode: '11-2101', dr: ep0, cr: epRemainingGross, description: 'ล้างลูกหนี้ Gross (excl. VAT)' },
+                { accountCode: '11-2105', dr: ep0, cr: epRemainingDeferredVat, description: 'ล้างลูกหนี้ภาษีขายรอฯ' },
+                { accountCode: '41-1101', dr: ep0, cr: epRemainingDeferredInterest, description: 'รับรู้รายได้ดอกเบี้ย' },
+                { accountCode: '21-2101', dr: ep0, cr: epRemainingDeferredVat, description: 'ภาษีขาย ภ.พ.30 ถึงกำหนด' },
+              ],
+            },
+            tx,
+          );
+        }
 
         // Reset credit balance (used up by the early payoff)
         const updated = await tx.contract.update({

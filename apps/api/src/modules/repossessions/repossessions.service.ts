@@ -6,6 +6,8 @@ import { CreateRepossessionDto, UpdateRepossessionDto } from './dto/create-repos
 import { ConditionGrade, RepossessionStatus, ProductStatus } from '@prisma/client';
 import { d, dAdd, dSub } from '../../utils/decimal.util';
 import { JournalAutoService } from '../journal/journal-auto.service';
+import { RepossessionJP5Template } from '../journal/cpa-templates/repossession-jp5.template';
+import { Decimal } from '@prisma/client/runtime/library';
 
 // VAT rate used to back out principal from VAT-inclusive amounts
 const VAT_RATE = new Prisma.Decimal('1.07');
@@ -25,6 +27,7 @@ export class RepossessionsService {
   constructor(
     private prisma: PrismaService,
     private journalAutoService: JournalAutoService,
+    private repossessionJP5Template: RepossessionJP5Template,
   ) {}
 
   async findAll(filters: { status?: string; branchId?: string; page?: number; limit?: number }) {
@@ -266,12 +269,29 @@ export class RepossessionsService {
       // (Audit finding J4: closes the silent accounting gap where
       // repossessions left outstanding receivable on the books with no
       // balancing entry. Errors propagate so the whole tx rolls back.)
+      // Phase A.4b: replaced createBadDebtWriteOffJournal (old stub) with
+      // RepossessionJP5Template. Template handles both loss and gain paths and
+      // closes out remaining HP Receivable (spec §6.5).
+      // repossessionValue = appraisalValue from dto (amount FINANCE recovers from asset).
+      // Template runs its own $transaction — called outside the outer tx to avoid
+      // nested-tx conflicts (fire-and-forget with Sentry capture on failure).
       if (outstandingBalance.greaterThan(0)) {
-        await this.journalAutoService.createBadDebtWriteOffJournal(tx, {
+        const repoValue = dto.appraisalPrice != null
+          ? new Decimal(String(dto.appraisalPrice))
+          : new Decimal('0');
+        this.repossessionJP5Template.execute({
           contractId: dto.contractId,
-          contractNumber: contract.contractNumber,
-          writeOffAmount: outstandingBalance,
-          createdById: userId,
+          depositAccountCode: '11-1101',
+          repossessionValue: repoValue,
+        }).catch((err) => {
+          this.logger.error(
+            `RepossessionJP5 JE failed for contract ${dto.contractId}: ${err?.message || err}`,
+            err?.stack,
+          );
+          Sentry.captureException(err, {
+            tags: { module: 'repossessions', event: 'jp5-je-failure' },
+            extra: { contractId: dto.contractId },
+          });
         });
       }
 
@@ -398,23 +418,11 @@ export class RepossessionsService {
           const repairCost = new Prisma.Decimal(repo.repairCost ?? 0);
           const bookValue = costPrice.add(repairCost);
 
-          this.journalAutoService
-            .createRepossessionResaleJournal(this.prisma, {
-              repossessionId: id,
-              resellPrice,
-              bookValue,
-              userId,
-            })
-            .catch((err) => {
-              this.logger.error(
-                `Repossession resale JE failed for ${id}: ${err.message}`,
-                err.stack,
-              );
-              Sentry.captureException(err, {
-                tags: { kind: 'journal', referenceType: 'REPO_RESALE' },
-                extra: { repossessionId: id },
-              });
-            });
+          // Phase A.4b: Repossession resale JE deferred to Phase A.5 (SHOP-side accounting).
+          // TODO Phase A.5: implement RepossessionResaleSHOPTemplate for SHOP-side JE.
+          this.logger.warn(
+            `Repossession resale JE skipped for repossession ${id} — deferred to A.5 SHOP-side accounting`,
+          );
         }
 
         return updatedRepo;

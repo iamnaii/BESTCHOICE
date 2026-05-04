@@ -10,6 +10,8 @@ interface User {
   branchId: string | null;
   branchName?: string | null;
   preferences?: Record<string, unknown> | null;
+  /** T15: default cash/bank account code (e.g. '11-1101') for payment deposit dimension. */
+  defaultCashAccountCode?: string | null;
 }
 
 /** State after password phase — waiting for OTP or 2FA setup */

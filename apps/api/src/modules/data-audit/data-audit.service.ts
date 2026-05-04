@@ -1098,42 +1098,16 @@ export class DataAuditService {
         });
         stats.contracts.backfilled++;
       } else {
-        try {
-          await this.prisma.$transaction(async (tx) => {
-            await this.journalAutoService.createContractActivationJournal(tx, {
-              contract: {
-                id: contract.id,
-                contractNumber: contract.contractNumber,
-                sellingPrice: contract.sellingPrice,
-                downPayment: contract.downPayment,
-                financedAmount: contract.financedAmount,
-                interestTotal: contract.interestTotal,
-                storeCommission: contract.storeCommission ?? 0,
-                vatAmount: contract.vatAmount ?? 0,
-              },
-              product: {
-                costPrice: contract.product?.costPrice,
-                category: contract.product?.category,
-              },
-              userId: systemUser.id,
-            });
-          });
-          details.push({
-            contractNumber: contract.contractNumber,
-            action: 'CREATE_CONTRACT_JOURNAL',
-            status: 'OK',
-          });
-          stats.contracts.backfilled++;
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          details.push({
-            contractNumber: contract.contractNumber,
-            action: 'CREATE_CONTRACT_JOURNAL',
-            status: 'ERROR',
-            error: message,
-          });
-          stats.contracts.errors++;
-        }
+        // TODO Phase A.5: data-audit replay tool needs new templates once A.5 templates are implemented
+        this.logger.warn(
+          `[Phase A.4] Data audit contract JE replay skipped for ${contract.contractNumber} — TODO Phase A.5: replay tool needs new templates`,
+        );
+        details.push({
+          contractNumber: contract.contractNumber,
+          action: 'CREATE_CONTRACT_JOURNAL',
+          status: 'SKIPPED_A4',
+        });
+        // continue to next contract; don't increment backfilled
       }
 
       // Backfill payment journals for this contract
@@ -1162,47 +1136,16 @@ export class DataAuditService {
           });
           stats.payments.backfilled++;
         } else {
-          try {
-            await this.prisma.$transaction(async (tx) => {
-              await this.journalAutoService.createPaymentJournal(tx, {
-                shopCompanyId,
-                financeCompanyId,
-                payment: {
-                  id: payment.id,
-                  installmentNo: payment.installmentNo,
-                  amountPaid: payment.amountPaid,
-                  monthlyPrincipal: payment.monthlyPrincipal,
-                  monthlyInterest: payment.monthlyInterest,
-                  monthlyCommission: payment.monthlyCommission,
-                  vatAmount: payment.vatAmount,
-                  lateFee: payment.lateFee,
-                  lateFeeWaived: payment.lateFeeWaived,
-                  paidDate: payment.paidDate,
-                },
-                contract: {
-                  id: contract.id,
-                  contractNumber: contract.contractNumber,
-                  branchId: contract.branchId,
-                },
-                userId: systemUser.id,
-              });
-            });
-            details.push({
-              contractNumber: contract.contractNumber,
-              action: `CREATE_PAYMENT_JOURNAL #${payment.installmentNo}`,
-              status: 'OK',
-            });
-            stats.payments.backfilled++;
-          } catch (err) {
-            const message = err instanceof Error ? err.message : String(err);
-            details.push({
-              contractNumber: contract.contractNumber,
-              action: `CREATE_PAYMENT_JOURNAL #${payment.installmentNo}`,
-              status: 'ERROR',
-              error: message,
-            });
-            stats.payments.errors++;
-          }
+          // TODO Phase A.5: data-audit replay tool needs new templates once A.5 templates are implemented
+          this.logger.warn(
+            `[Phase A.4] Data audit payment JE replay skipped for ${contract.contractNumber} #${payment.installmentNo} — TODO Phase A.5: replay tool needs new templates`,
+          );
+          details.push({
+            contractNumber: contract.contractNumber,
+            action: `CREATE_PAYMENT_JOURNAL #${payment.installmentNo}`,
+            status: 'SKIPPED_A4',
+          });
+          // continue to next payment; don't increment backfilled
         }
       }
     }

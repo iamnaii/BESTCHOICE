@@ -1,10 +1,9 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, BadRequestException } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { ChartOfAccountsService } from './chart-of-accounts.service';
 import { CreateChartOfAccountDto, UpdateChartOfAccountDto } from './dto/chart-of-account.dto';
-import { AccountGroup } from '@prisma/client';
 
 @Controller('chart-of-accounts')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -12,19 +11,23 @@ export class ChartOfAccountsController {
   constructor(private readonly service: ChartOfAccountsService) {}
 
   @Get()
-  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   findAll(
-    @Query('group') group?: AccountGroup,
-    @Query('active') active?: string,
+    @Query('type') type?: string,
+    @Query('status') status?: string,
     @Query('q') q?: string,
-    @Query('companyId') companyId?: string,
   ) {
-    return this.service.findAll({
-      group,
-      active: active != null ? active === 'true' : undefined,
-      q,
-      companyId: companyId === 'SHARED' ? 'SHARED' : companyId,
-    });
+    return this.service.findAll({ type, status, q });
+  }
+
+  /** T15: Fetch CoA rows by comma-separated code list — used by CashAccountSelect dropdown. */
+  @Get('by-codes')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  findByCodes(@Query('codes') codes?: string): Promise<{ code: string; name: string }[]> {
+    if (!codes) return Promise.resolve([]);
+    const codeList = codes.split(',').map((c) => c.trim()).filter(Boolean);
+    if (codeList.length > 20) throw new BadRequestException('codes ต้องไม่เกิน 20 รายการ');
+    return this.service.findByCodes(codeList);
   }
 
   @Get(':id')

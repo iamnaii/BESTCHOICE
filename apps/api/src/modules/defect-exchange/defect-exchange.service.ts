@@ -153,29 +153,25 @@ export class DefectExchangeService {
           data: { status: 'DEFECT_RETURN' },
         });
 
-        // Reverse original activation journal to avoid double-counting revenue/receivable
+        // TODO Phase A.5: implement DefectExchangeReversalTemplate (reverse CONTRACT + CONTRACT_COGS JEs)
+        // originalJe and cogsJe lookups preserved below for when A.5 is ready
         const originalJe = await tx.journalEntry.findFirst({
           where: { referenceType: 'CONTRACT', referenceId: oldContract.id, deletedAt: null },
           orderBy: { createdAt: 'asc' },
         });
         if (originalJe) {
-          await this.journalAutoService.createReversalJournal(tx, {
-            originalEntryId: originalJe.id,
-            reason: `Defect exchange: ${oldContract.contractNumber}`,
-            userId,
-          });
+          this.logger.warn(
+            `[Phase A.4] Defect exchange reversal JE skipped for contract ${oldContract.contractNumber} (CONTRACT) — TODO Phase A.5: implement DefectExchangeReversalTemplate`,
+          );
         }
-        // Also reverse COGS journal if it exists
         const cogsJe = await tx.journalEntry.findFirst({
           where: { referenceType: 'CONTRACT_COGS', referenceId: oldContract.id, deletedAt: null },
           orderBy: { createdAt: 'asc' },
         });
         if (cogsJe) {
-          await this.journalAutoService.createReversalJournal(tx, {
-            originalEntryId: cogsJe.id,
-            reason: `Defect exchange: ${oldContract.contractNumber}`,
-            userId,
-          });
+          this.logger.warn(
+            `[Phase A.4] Defect exchange reversal JE skipped for contract ${oldContract.contractNumber} (CONTRACT_COGS) — TODO Phase A.5: implement DefectExchangeReversalTemplate`,
+          );
         }
 
         // Total paid by customer on old contract = down payment + sum of installment payments received

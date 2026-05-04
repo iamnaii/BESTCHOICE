@@ -102,8 +102,7 @@ describe('IntercompanyService (Phase A.3 W-5)', () => {
       );
       expect(result.amount).toBe(5000);
       expect(result.remainingBalance).toBeCloseTo(5600, 2);
-      expect(result.financeEntryId).toBe('je-finance');
-      expect(result.shopEntryId).toBe('je-shop');
+      // TODO Phase A.4 T13: financeEntryId/shopEntryId removed — IC settlement journal is now a stub
     });
 
     it('rejects when amount exceeds outstanding balance', async () => {

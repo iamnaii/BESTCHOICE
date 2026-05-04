@@ -1,5 +1,8 @@
 import { IsString, IsNumber, IsOptional, Matches, Min, IsNotEmpty, MaxLength } from 'class-validator';
 
+/** Regex for valid cash/bank account codes: 11-1101..03, 11-1201..03 */
+const CASH_CODE_REGEX = /^11-(110[1-3]|120[1-3])$/;
+
 export class RecordPaymentDto {
   @IsString()
   contractId: string;
@@ -29,6 +32,20 @@ export class RecordPaymentDto {
   @IsString()
   @IsOptional()
   notes?: string;
+
+  /** บัญชีรับเงินสด/ธนาคาร เช่น 11-1101 / 11-1201. ถ้าไม่ส่งจะใช้ค่าเริ่มต้นของ user หรือ 11-1101 */
+  @IsOptional()
+  @IsString()
+  @Matches(CASH_CODE_REGEX, { message: 'depositAccountCode ต้องเป็น 11-1101..03 หรือ 11-1201..03' })
+  depositAccountCode?: string;
+
+  /**
+   * T16: Tolerance approval — required when amountReceived differs from amountDue by 0.01–1.00 ฿.
+   * Must be an OWNER, ACCOUNTANT, or BRANCH_MANAGER. Backend validates role and writes TOLERANCE_APPROVED AuditLog.
+   */
+  @IsOptional()
+  @IsString()
+  toleranceApproverId?: string;
 }
 
 export class BulkRecordPaymentDto {
@@ -52,6 +69,12 @@ export class BulkRecordPaymentDto {
   @IsString()
   @IsOptional()
   notes?: string;
+
+  /** บัญชีรับเงินสด/ธนาคาร เช่น 11-1101 / 11-1201. ถ้าไม่ส่งจะใช้ค่าเริ่มต้นของ user หรือ 11-1101 */
+  @IsOptional()
+  @IsString()
+  @Matches(CASH_CODE_REGEX, { message: 'depositAccountCode ต้องเป็น 11-1101..03 หรือ 11-1201..03' })
+  depositAccountCode?: string;
 }
 
 export class WaiveLateFeeDto {

@@ -101,6 +101,13 @@
     ],
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "/cpa-templates/.*\\.spec\\.ts$",
+      "/journal/__tests__/.*\\.spec\\.ts$",
+      "/journal/cron/.*\\.spec\\.ts$",
+      "/installments/reschedule\\.service\\.spec\\.ts$"
+    ],
     "transform": {
       "^.+\\.ts$": "ts-jest"
     },

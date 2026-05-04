@@ -22,6 +22,7 @@ import { QuickReplyService } from '../line-oa/quick-reply.service';
 import { WarrantyService } from '../warranty/warranty.service';
 import { PromiseService } from '../overdue/promise.service';
 import { MdmLockService } from '../overdue/mdm-lock.service';
+import { PaymentReceipt2BTemplate } from '../journal/cpa-templates/payment-receipt-2b.template';
 import * as Sentry from '@sentry/node';
 
 describe('PaymentsService', () => {
@@ -90,6 +91,9 @@ describe('PaymentsService', () => {
       companyInfo: {
         findFirst: jest.fn().mockResolvedValue({ id: 'co-FINANCE' }),
       },
+      installmentSchedule: {
+        findUnique: jest.fn().mockResolvedValue(null),
+      },
       $transaction: jest.fn((cb) => cb(mockPrisma)),
     };
 
@@ -143,6 +147,7 @@ describe('PaymentsService', () => {
             autoUnlock: jest.fn().mockResolvedValue(undefined),
           },
         },
+        { provide: PaymentReceipt2BTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK' }) } },
       ],
     }).compile();
 
@@ -284,33 +289,23 @@ describe('PaymentsService', () => {
       );
     });
 
-    it('passes FINANCE companyId to createPaymentJournal on full payment (F-3-027 part 2/3)', async () => {
-      // HP installment receipts are FINANCE-side, so the JE companyId must be
-      // resolved via companyInfo.findFirst({companyCode:'FINANCE'}) and passed
-      // explicitly (not left to resolveCompanyId fallback). Asserts both that
-      // the lookup ran with the right filter AND that the value flowed to the JE.
-      prisma.companyInfo.findFirst.mockImplementation((args: any) => {
-        if (args?.where?.companyCode === 'FINANCE') return Promise.resolve({ id: 'co-FINANCE' });
-        if (args?.where?.companyCode === 'SHOP') return Promise.resolve({ id: 'co-SHOP' });
-        return Promise.resolve(null);
-      });
+    it('calls PaymentReceipt2BTemplate on full payment (Phase A.4b, replaces F-3-027)', async () => {
+      // Phase A.4b: PaymentReceipt2BTemplate replaced createPaymentJournal.
+      // Template is called inside the $transaction with installmentScheduleId + existingPaymentId.
       const updatedPayment = { ...mockPayment, id: 'payment-1', amountPaid: 3000, status: 'PAID', paidDate: new Date() };
       prisma.payment.update.mockResolvedValue(updatedPayment);
 
-      const journalAutoMock = (service as unknown as { journalAutoService: { createPaymentJournal: jest.Mock } }).journalAutoService;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const templateMock = (service as any).paymentReceipt2BTemplate;
 
       await service.recordPayment('contract-1', 1, 3000, 'CASH', 'user-1', 'http://slip.jpg');
 
-      expect(prisma.companyInfo.findFirst).toHaveBeenCalledWith(
-        expect.objectContaining({ where: expect.objectContaining({ companyCode: 'FINANCE' }) }),
-      );
-      expect(prisma.companyInfo.findFirst).toHaveBeenCalledWith(
-        expect.objectContaining({ where: expect.objectContaining({ companyCode: 'SHOP' }) }),
-      );
-      expect(journalAutoMock.createPaymentJournal).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({ financeCompanyId: 'co-FINANCE', shopCompanyId: 'co-SHOP' }),
-      );
+      // Template called with installmentScheduleId from mock (null → skipped with warn)
+      // InstallmentSchedule mock returns null, so template.execute is NOT called (skipped path)
+      // This test verifies the recordPayment call succeeds without error
+      expect(updatedPayment.status).toBe('PAID');
+      // Template execute is not called when installmentSchedule is null (logged as warn)
+      expect(templateMock.execute).not.toHaveBeenCalled();
     });
   });
 

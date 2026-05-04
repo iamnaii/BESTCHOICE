@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import { RepossessionsService } from './repossessions.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { RepossessionJP5Template } from '../journal/cpa-templates/repossession-jp5.template';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -154,6 +155,7 @@ describe('RepossessionsService', () => {
             createRepossessionResaleJournal: jest.fn().mockResolvedValue('je-repo-1'),
           },
         },
+        { provide: RepossessionJP5Template, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK' }) } },
       ],
     }).compile();
 
@@ -395,7 +397,9 @@ describe('RepossessionsService', () => {
       );
     });
 
-    it('calls createRepossessionResaleJournal when status transitions to SOLD', async () => {
+    it('updates repossession to SOLD status and returns updated record (Phase A.5 JE deferred)', async () => {
+      // Phase A.4b: repossession resale JE is deferred to Phase A.5 (SHOP-side accounting).
+      // Until then, the service logs a warning and proceeds without a JE.
       const repoWithPrice = makeRepossession({
         status: 'READY_FOR_SALE',
         resellPrice: decimal(7000),
@@ -413,21 +417,14 @@ describe('RepossessionsService', () => {
       const updatedRepo = makeRepossession({ status: 'SOLD', resellPrice: decimal(7000) });
       prisma.repossession.update.mockResolvedValue(updatedRepo);
 
-      // Access the injected JournalAutoService mock through the module
-      const journalService = (service as unknown as { journalAutoService: { createRepossessionResaleJournal: jest.Mock } }).journalAutoService;
+      const result = await service.update('repo-1', { status: 'SOLD', resellPrice: 7000 } as never, 'user-1');
 
-      await service.update('repo-1', { status: 'SOLD', resellPrice: 7000 } as never, 'user-1');
-
-      // JE is fired asynchronously — wait a tick for the Promise chain to settle
-      await new Promise((r) => setImmediate(r));
-
-      expect(journalService.createRepossessionResaleJournal).toHaveBeenCalledWith(
-        expect.anything(), // prisma client
-        expect.objectContaining({
-          repossessionId: 'repo-1',
-          userId: 'user-1',
-        }),
-      );
+      // Repossession was updated to SOLD
+      expect(result.status).toBe('SOLD');
+      // RepossessionJP5Template.execute was NOT called for resale (deferred to Phase A.5)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const template = (service as any).repossessionJP5Template;
+      expect(template.execute).not.toHaveBeenCalled();
     });
   });
 });

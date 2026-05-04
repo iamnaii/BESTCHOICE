@@ -5,6 +5,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { ProductsService } from '../products/products.service';
+import { ContractActivation1ATemplate } from '../journal/cpa-templates/contract-activation-1a.template';
 
 /**
  * ContractWorkflowService unit tests.
@@ -36,6 +37,7 @@ describe('ContractWorkflowService', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let prisma: any;
   let journalAutoMock: { createContractActivationJournal: jest.Mock };
+  let contractActivationTemplateMock: { execute: jest.Mock };
   let productsMock: { transferOwnership: jest.Mock };
   let notificationsMock: { send: jest.Mock };
 
@@ -157,15 +159,19 @@ describe('ContractWorkflowService', () => {
         { provide: NotificationsService, useValue: notificationsMock },
         { provide: JournalAutoService, useValue: journalAutoMock },
         { provide: ProductsService, useValue: productsMock },
+        { provide: ContractActivation1ATemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK' }) } },
       ],
     }).compile();
 
+    contractActivationTemplateMock = module.get(ContractActivation1ATemplate);
     service = module.get<ContractWorkflowService>(ContractWorkflowService);
   });
 
   describe('activate', () => {
     it('activates a fully-approved DRAFT contract and writes the activation JE', async () => {
       await service.activate('contract-1');
+      // Allow fire-and-forget template promise to settle
+      await new Promise((r) => setImmediate(r));
 
       // Contract status flipped to ACTIVE + Phase A.2 unearned fields seeded
       expect(prisma.contract.update).toHaveBeenCalledWith(
@@ -174,49 +180,34 @@ describe('ContractWorkflowService', () => {
           data: expect.objectContaining({ status: 'ACTIVE' }),
         }),
       );
-      // JE was created
-      expect(journalAutoMock.createContractActivationJournal).toHaveBeenCalledTimes(1);
+      // Phase A.4b: JE posted via ContractActivation1ATemplate (fire-and-forget)
+      expect(contractActivationTemplateMock.execute).toHaveBeenCalledTimes(1);
+      expect(contractActivationTemplateMock.execute).toHaveBeenCalledWith('contract-1');
     });
 
-    it('passes SHOP+FINANCE companyIds to JournalAutoService on activation (Phase A.1b)', async () => {
-      // Phase A.1b: contract activation posts paired SHOP+FINANCE entries.
-      // The workflow must resolve both companyIds explicitly and pass them
-      // through (no resolveCompanyId fallback for inter-company JE).
-      prisma.companyInfo.findFirst = jest.fn().mockImplementation((args: any) => {
-        if (args?.where?.companyCode === 'FINANCE') return Promise.resolve({ id: 'co-FINANCE' });
-        if (args?.where?.companyCode === 'SHOP') return Promise.resolve({ id: 'co-SHOP' });
-        return Promise.resolve(null);
-      });
-
+    it('passes contractId to ContractActivation1ATemplate on activation (Phase A.4b)', async () => {
+      // Phase A.4b: replaced createContractActivationJournal with
+      // ContractActivation1ATemplate.execute(contractId). The template resolves
+      // SHOP+FINANCE companyIds internally — we only pass contractId from here.
       await service.activate('contract-1');
+      await new Promise((r) => setImmediate(r));
 
-      expect(journalAutoMock.createContractActivationJournal).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({
-          shopCompanyId: 'co-SHOP',
-          financeCompanyId: 'co-FINANCE',
-        }),
-      );
+      expect(contractActivationTemplateMock.execute).toHaveBeenCalledWith('contract-1');
     });
 
-    it('rolls back contract activation if journal creation throws (F-1-002 / F-2-003)', async () => {
-      journalAutoMock.createContractActivationJournal.mockRejectedValueOnce(
-        new Error('JE failed for atomic rollback test'),
+    it('contract activation succeeds even if JE template throws (fire-and-forget pattern)', async () => {
+      // Phase A.4b: template is called with .catch() — JE failures are captured
+      // by Sentry and do NOT roll back contract activation. Contract becomes ACTIVE.
+      contractActivationTemplateMock.execute.mockRejectedValueOnce(
+        new Error('JE failed — captured by Sentry'),
       );
 
-      // Activation must surface the JE failure (no silent swallow).
-      await expect(service.activate('contract-1')).rejects.toThrow(
-        'JE failed for atomic rollback test',
-      );
+      // Activation must succeed (JE failure is non-blocking)
+      await expect(service.activate('contract-1')).resolves.toBeDefined();
+      await new Promise((r) => setImmediate(r));
 
-      // The JE was attempted (we threw from inside it, not before it).
-      expect(journalAutoMock.createContractActivationJournal).toHaveBeenCalledTimes(1);
-
-      // Atomic guarantee: the throw propagates out of the $transaction callback,
-      // so Prisma rolls back contract.update + product.update + sale.create.
-      // Our mock cannot model rollback semantics — the load-bearing assertion is
-      // the rejects.toThrow above. This test guarantees the v4 fix property:
-      // ledger and contract state cannot diverge on JE failure.
+      // The template was still called
+      expect(contractActivationTemplateMock.execute).toHaveBeenCalledTimes(1);
     });
   });
 });

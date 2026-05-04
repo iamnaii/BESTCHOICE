@@ -9,6 +9,7 @@ import { IntegrationConfigService } from '../integrations/integration-config.ser
 import { OnlineOrderSaleAdapter } from '../shop-orders/online-order-sale.adapter';
 import { ProductsService } from '../products/products.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
+import { PaymentReceipt2BTemplate } from '../journal/cpa-templates/payment-receipt-2b.template';
 
 // We don't care about the underlying Sentry transport during unit tests —
 // captureException is spied on directly in the JE-failure test.
@@ -21,6 +22,7 @@ describe('PaySolutionsService.handlePaymentCallback — payment JE (F-1-003)', (
   let service: PaySolutionsService;
   let prisma: any;
   let journalAuto: { createPaymentJournal: jest.Mock };
+  let paymentReceiptTemplate: { execute: jest.Mock };
   const paymentId = 'pay-1';
   const contractId = 'ct-1';
   const linkId = 'link-1';
@@ -104,6 +106,9 @@ describe('PaySolutionsService.handlePaymentCallback — payment JE (F-1-003)', (
           branchId: 'br-1',
         }),
       },
+      installmentSchedule: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'inst-sched-1' }),
+      },
       // Both the main tx and the post-tx JE-only tx invoke the same callback
       // signature — txMock works for both since JE only needs a Prisma client
       // surface (the real JournalAutoService is mocked).
@@ -137,9 +142,11 @@ describe('PaySolutionsService.handlePaymentCallback — payment JE (F-1-003)', (
         { provide: OnlineOrderSaleAdapter, useValue: saleAdapter },
         { provide: ProductsService, useValue: products },
         { provide: JournalAutoService, useValue: journalAuto },
+        { provide: PaymentReceipt2BTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK' }) } },
       ],
     }).compile();
 
+    paymentReceiptTemplate = mod.get(PaymentReceipt2BTemplate);
     service = mod.get<PaySolutionsService>(PaySolutionsService);
     // Suppress notification-side-effect logs/throws — we don't test those here.
     jest
@@ -159,29 +166,21 @@ describe('PaySolutionsService.handlePaymentCallback — payment JE (F-1-003)', (
       total: '1000',
     });
 
-    expect(journalAuto.createPaymentJournal).toHaveBeenCalledTimes(1);
-    expect(journalAuto.createPaymentJournal).toHaveBeenCalledWith(
-      expect.anything(),
+    // Phase A.4b: JE now posted via PaymentReceipt2BTemplate (not JournalAutoService)
+    expect(paymentReceiptTemplate.execute).toHaveBeenCalledTimes(1);
+    expect(paymentReceiptTemplate.execute).toHaveBeenCalledWith(
       expect.objectContaining({
-        financeCompanyId: 'co-finance',
-        shopCompanyId: 'co-shop',
-        payment: expect.objectContaining({ id: paymentId, installmentNo: 1 }),
-        contract: expect.objectContaining({
-          contractNumber: 'CT-2026-0001',
-          branchId: 'br-1',
-        }),
-        // Real OWNER user.id, not the literal 'paysolutions-webhook' string
-        // (FK-violation fix — see data-audit.service.ts:1023 reference pattern)
-        userId: 'user-system-1',
+        installmentScheduleId: 'inst-sched-1',
+        depositAccountCode: '11-1202',
+        existingPaymentId: paymentId,
       }),
     );
   });
 
   it('JE failure does not roll back payment.update — tx-poisoning prevention (F-1-003 follow-up)', async () => {
-    // The JE call lives in a SEPARATE $transaction posted AFTER the main tx
-    // commits. A JE rejection must therefore be unable to undo Payment.update
-    // to PAID — this is the whole point of the post-tx restructuring.
-    journalAuto.createPaymentJournal.mockRejectedValueOnce(
+    // The JE call lives AFTER the main tx commits (caught by try/catch per payment).
+    // A JE rejection must NOT undo Payment.update to PAID.
+    paymentReceiptTemplate.execute.mockRejectedValueOnce(
       new Error('JE failed'),
     );
 
@@ -199,9 +198,6 @@ describe('PaySolutionsService.handlePaymentCallback — payment JE (F-1-003)', (
         data: expect.objectContaining({ status: 'PAID' }),
       }),
     );
-    // And there are at least two distinct $transaction invocations now —
-    // the main payment tx and one JE tx per fully-paid installment.
-    expect((prisma.$transaction as jest.Mock).mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 
   it('skips JE entirely when no OWNER user is present (FK-violation guard)', async () => {
@@ -217,7 +213,7 @@ describe('PaySolutionsService.handlePaymentCallback — payment JE (F-1-003)', (
 
     // No JE was attempted — guard prevents FK violation that would otherwise
     // be swallowed by the inner try/catch.
-    expect(journalAuto.createPaymentJournal).not.toHaveBeenCalled();
+    expect(paymentReceiptTemplate.execute).not.toHaveBeenCalled();
     // But payment was still committed (P2 — webhook MUST acknowledge).
     expect(prisma.__tx.payment.update).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -232,7 +228,7 @@ describe('PaySolutionsService.handlePaymentCallback — payment JE (F-1-003)', (
   });
 
   it('does not block payment processing if JE creation fails (F-1-003 P2 pattern)', async () => {
-    journalAuto.createPaymentJournal.mockRejectedValueOnce(
+    paymentReceiptTemplate.execute.mockRejectedValueOnce(
       new Error('JE post failed'),
     );
 

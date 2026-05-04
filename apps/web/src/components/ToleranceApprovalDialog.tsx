@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useAuth } from '@/contexts/AuthContext';
 
-const APPROVER_ROLES = ['OWNER', 'ACCOUNTANT', 'BRANCH_MANAGER'];
+const APPROVER_ROLES = ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'BRANCH_MANAGER'];
 
 interface ToleranceApprovalDialogProps {
   open: boolean;
@@ -67,7 +67,7 @@ export function ToleranceApprovalDialog({
               </div>
               {!canApprove && (
                 <p className="text-destructive text-xs pt-1">
-                  คุณไม่มีสิทธิ์อนุมัติส่วนต่าง — ต้องเป็น OWNER, ACCOUNTANT หรือ BRANCH_MANAGER
+                  คุณไม่มีสิทธิ์อนุมัติส่วนต่าง — ต้องเป็น OWNER, FINANCE_MANAGER, ACCOUNTANT หรือ BRANCH_MANAGER
                 </p>
               )}
               {canApprove && (

@@ -1,5 +1,6 @@
 import { Injectable, BadRequestException, Optional } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
+import { Prisma } from '@prisma/client';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { Vat60dayReversalTemplate } from './vat-60day-reversal.template';
@@ -43,6 +44,7 @@ export class PaymentReceipt2BTemplate {
   ) {}
 
   async execute(input: PaymentReceiptInput): Promise<{ entryNo: string }> {
+    // Pre-fetch outside transaction for validation (read-only)
     const inst = await this.prisma.installmentSchedule.findUniqueOrThrow({
       where: { id: input.installmentScheduleId },
       include: { contract: true },
@@ -70,7 +72,7 @@ export class PaymentReceipt2BTemplate {
 
     const diff = input.amountReceived.minus(installmentTotal); // + overpay, - underpay
 
-    // Validate tolerance
+    // Validate tolerance (before entering TX — fast-fail on bad input)
     if (diff.abs().gt(TOLERANCE)) {
       throw new BadRequestException(
         `Payment difference ${diff.abs().toFixed(2)} exceeds tolerance 1.00`,
@@ -84,93 +86,102 @@ export class PaymentReceipt2BTemplate {
       );
     }
 
-    // Create a Payment row to use as unique referenceId (avoids collision with 2A's installmentScheduleId)
-    const payment = await this.prisma.payment.create({
-      data: {
-        contractId: c.id,
-        installmentNo: inst.installmentNo,
-        dueDate: inst.dueDate,
-        amountDue: installmentTotal,
-        amountPaid: input.amountReceived,
-        paidDate: new Date(),
-        paidAt: new Date(),
-        status: 'PAID',
-      },
+    // Wrap Payment.create + JE post + reversal in a single atomic transaction.
+    // If JE post fails (unbalanced, missing account), Payment row is rolled back — no orphans.
+    const entryNumber = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      // Create a Payment row to use as unique referenceId (avoids collision with 2A's installmentScheduleId)
+      const payment = await tx.payment.create({
+        data: {
+          contractId: c.id,
+          installmentNo: inst.installmentNo,
+          dueDate: inst.dueDate,
+          amountDue: installmentTotal,
+          amountPaid: input.amountReceived,
+          paidDate: new Date(),
+          paidAt: new Date(),
+          status: 'PAID',
+        },
+      });
+
+      const zero = new Decimal(0);
+
+      const lines: {
+        accountCode: string;
+        dr: Decimal;
+        cr: Decimal;
+        description?: string;
+      }[] = [
+        {
+          accountCode: input.depositAccountCode,
+          dr: input.amountReceived,
+          cr: zero,
+          description: 'รับเงิน',
+        },
+      ];
+
+      if (diff.gt(0)) {
+        // Overpay — split credit between receivable + rounding gain
+        lines.push({
+          accountCode: '11-2103',
+          dr: zero,
+          cr: installmentTotal,
+          description: 'ล้างลูกหนี้ค้างชำระ',
+        });
+        lines.push({
+          accountCode: '53-1503',
+          dr: zero,
+          cr: diff,
+          description: 'กำไรปัดเศษ (Policy C)',
+        });
+      } else if (diff.lt(0)) {
+        // Underpay — add discount expense
+        lines.push({
+          accountCode: '52-1104',
+          dr: diff.abs(),
+          cr: zero,
+          description: 'ส่วนลดเศษสตางค์ (Policy C)',
+        });
+        lines.push({
+          accountCode: '11-2103',
+          dr: zero,
+          cr: installmentTotal,
+          description: 'ล้างลูกหนี้ค้างชำระ',
+        });
+      } else {
+        // Exact — simple credit
+        lines.push({
+          accountCode: '11-2103',
+          dr: zero,
+          cr: installmentTotal,
+          description: 'ล้างลูกหนี้ค้างชำระ',
+        });
+      }
+
+      const result = await this.journal.createAndPost(
+        {
+          description: `รับชำระงวด #${inst.installmentNo} — สัญญา ${c.contractNumber}`,
+          reference: payment.id,
+          metadata: {
+            tag: '2B',
+            contractId: c.id,
+            installmentScheduleId: inst.id,
+            paymentId: payment.id,
+            toleranceApproverId: input.toleranceApproverId,
+          },
+          lines,
+        },
+        tx,
+      );
+
+      // Feature I: if this installment had a 60-day mandatory VAT JE posted,
+      // trigger the reversal now that the customer has paid (inside same TX).
+      if (this.vat60Reversal && inst.vat60dayJournalEntryId) {
+        await this.vat60Reversal.execute(inst.id, tx);
+      }
+
+      return result.entryNumber;
     });
 
-    const zero = new Decimal(0);
-
-    const lines: {
-      accountCode: string;
-      dr: Decimal;
-      cr: Decimal;
-      description?: string;
-    }[] = [
-      {
-        accountCode: input.depositAccountCode,
-        dr: input.amountReceived,
-        cr: zero,
-        description: 'รับเงิน',
-      },
-    ];
-
-    if (diff.gt(0)) {
-      // Overpay — split credit between receivable + rounding gain
-      lines.push({
-        accountCode: '11-2103',
-        dr: zero,
-        cr: installmentTotal,
-        description: 'ล้างลูกหนี้ค้างชำระ',
-      });
-      lines.push({
-        accountCode: '53-1503',
-        dr: zero,
-        cr: diff,
-        description: 'กำไรปัดเศษ (Policy C)',
-      });
-    } else if (diff.lt(0)) {
-      // Underpay — add discount expense
-      lines.push({
-        accountCode: '52-1104',
-        dr: diff.abs(),
-        cr: zero,
-        description: 'ส่วนลดเศษสตางค์ (Policy C)',
-      });
-      lines.push({
-        accountCode: '11-2103',
-        dr: zero,
-        cr: installmentTotal,
-        description: 'ล้างลูกหนี้ค้างชำระ',
-      });
-    } else {
-      // Exact — simple credit
-      lines.push({
-        accountCode: '11-2103',
-        dr: zero,
-        cr: installmentTotal,
-        description: 'ล้างลูกหนี้ค้างชำระ',
-      });
-    }
-
-    const result = await this.journal.createAndPost({
-      description: `รับชำระงวด #${inst.installmentNo} — สัญญา ${c.contractNumber}`,
-      reference: payment.id,
-      metadata: {
-        tag: '2B',
-        contractId: c.id,
-        installmentScheduleId: inst.id,
-        paymentId: payment.id,
-        toleranceApproverId: input.toleranceApproverId,
-      },
-      lines,
-    });
-
-    // Feature I: if this installment had a 60-day mandatory VAT JE posted,
-    // trigger the reversal now that the customer has paid.
-    if (this.vat60Reversal && inst.vat60dayJournalEntryId) {
-      await this.vat60Reversal.execute(inst.id);
-    }
-
-    return { entryNo: result.entryNumber };
+    return { entryNo: entryNumber };
   }
 }

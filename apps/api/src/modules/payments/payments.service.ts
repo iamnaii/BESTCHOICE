@@ -138,9 +138,9 @@ export class PaymentsService {
       if (!approver || approver.deletedAt) {
         throw new BadRequestException('ไม่พบผู้อนุมัติที่ระบุ');
       }
-      const allowedRoles = ['OWNER', 'ACCOUNTANT', 'BRANCH_MANAGER'];
+      const allowedRoles = ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'BRANCH_MANAGER'];
       if (!allowedRoles.includes(approver.role)) {
-        throw new ForbiddenException('ผู้อนุมัติต้องมีบทบาท OWNER, ACCOUNTANT หรือ BRANCH_MANAGER');
+        throw new ForbiddenException('ผู้อนุมัติต้องมีบทบาท OWNER, FINANCE_MANAGER, ACCOUNTANT หรือ BRANCH_MANAGER');
       }
     }
 

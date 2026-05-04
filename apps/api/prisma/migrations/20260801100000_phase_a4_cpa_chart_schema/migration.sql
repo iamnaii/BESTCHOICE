@@ -4,6 +4,15 @@
 -- adds cash-account dimension to Payment + User,
 -- adds metadata to JournalEntry,
 -- creates InstallmentSchedule model.
+--
+-- DEPLOYMENT ORDER WARNING:
+-- This migration adds NOT NULL columns (name, normalBalance, type) on chart_of_accounts
+-- and drops columns on contracts. Both tables must be empty or the NOT NULL additions will fail.
+-- Accounting has NOT gone live in production — chart_of_accounts will be wiped and reseeded.
+-- Required deploy sequence:
+--   1. Run wipe CLI: CONFIRM_WIPE=... EXPECTED_DB_NAME=... npm --prefix apps/api run wipe:accounting
+--   2. Then run:    npx prisma migrate deploy
+-- For fresh dev environments: prisma migrate reset auto-orders correctly (no manual wipe needed).
 
 -- DropForeignKey
 ALTER TABLE "chart_of_accounts" DROP CONSTRAINT "chart_of_accounts_company_id_fkey";

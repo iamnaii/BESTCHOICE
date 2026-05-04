@@ -198,12 +198,6 @@ export class JournalAutoService {
     );
   }
 
-  // TODO Phase A.4: redirect to AccountingService.getTrialBalance when T14 template is wired
-  async getTrialBalance(_args: { asOfDate?: string; companyId?: string }): Promise<unknown[]> {
-    this.logger.warn('getTrialBalance: stub — awaiting T14 CPA template');
-    return [];
-  }
-
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async createCustomerCreditOverpaymentJournal(_tx: Prisma.TransactionClient, _args: Record<string, unknown>): Promise<void> {
     throw new Error(

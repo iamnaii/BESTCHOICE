@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
+import { Prisma } from '@prisma/client';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 
@@ -69,14 +70,14 @@ export class EarlyPayoffJP4Template {
 
     const financed = new Decimal(c.financedAmount.toString());
     const commission =
-      (c as any).storeCommission != null
-        ? new Decimal((c as any).storeCommission.toString())
+      c.storeCommission != null
+        ? new Decimal(c.storeCommission.toString())
         : financed.times('0.10').toDecimalPlaces(2);
-    const interest = new Decimal((c as any).interestTotal.toString());
+    const interest = new Decimal(c.interestTotal.toString());
     const grossExclVat = financed.plus(commission).plus(interest);
     const vat =
-      (c as any).vatAmount != null
-        ? new Decimal((c as any).vatAmount.toString())
+      c.vatAmount != null
+        ? new Decimal(c.vatAmount.toString())
         : grossExclVat.times('0.07').toDecimalPlaces(2);
 
     // Per-installment amounts (consistent with 2A/2B rounding)
@@ -100,95 +101,104 @@ export class EarlyPayoffJP4Template {
 
     const zero = new Decimal(0);
 
-    const result = await this.journal.createAndPost({
-      description: `ปิดยอดก่อนกำหนด — สัญญา ${c.contractNumber} (${unpaid} งวดคงเหลือ, ส่วนลด ${input.interestDiscountPercent}%)`,
-      reference: `${c.id}:early-payoff`,
-      metadata: {
-        tag: '3',
-        flow: 'early-payoff',
-        contractId: c.id,
-        unpaidInstallments: unpaid,
-        discount: discount.toFixed(2),
-        interestDiscountPercent: input.interestDiscountPercent.toFixed(2),
-      },
-      lines: [
+    // Wrap JE post + Payment.create loop in a single atomic transaction.
+    // If JE post fails (unbalanced, missing account), Payment rows are rolled back — no orphans.
+    const entryNumber = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const result = await this.journal.createAndPost(
         {
-          accountCode: input.depositAccountCode,
-          dr: settlement,
-          cr: zero,
-          description: `รับ ${settlement.toFixed(2)} ฿ ปิดยอด`,
+          description: `ปิดยอดก่อนกำหนด — สัญญา ${c.contractNumber} (${unpaid} งวดคงเหลือ, ส่วนลด ${input.interestDiscountPercent}%)`,
+          reference: `${c.id}:early-payoff`,
+          metadata: {
+            tag: '3',
+            flow: 'early-payoff',
+            contractId: c.id,
+            unpaidInstallments: unpaid,
+            discount: discount.toFixed(2),
+            interestDiscountPercent: input.interestDiscountPercent.toFixed(2),
+          },
+          lines: [
+            {
+              accountCode: input.depositAccountCode,
+              dr: settlement,
+              cr: zero,
+              description: `รับ ${settlement.toFixed(2)} ฿ ปิดยอด`,
+            },
+            {
+              accountCode: '11-2106',
+              dr: remainingDeferredInterest,
+              cr: zero,
+              description: 'ยกเลิกรายได้รอตัดบัญชี-ดอกเบี้ย',
+            },
+            {
+              accountCode: '21-2102',
+              dr: remainingDeferredVat,
+              cr: zero,
+              description: 'ล้างภาษีขายรอเรียกเก็บ',
+            },
+            {
+              accountCode: '52-1106',
+              dr: discount,
+              cr: zero,
+              description: 'ส่วนลดดอกเบี้ย-ปิดยอดก่อนกำหนด',
+            },
+            {
+              accountCode: '11-2101',
+              dr: zero,
+              cr: remainingGross,
+              description: 'ล้างลูกหนี้ Gross (excl. VAT)',
+            },
+            {
+              accountCode: '11-2105',
+              dr: zero,
+              cr: remainingDeferredVat,
+              description: 'ล้างลูกหนี้ภาษีขายรอฯ',
+            },
+            {
+              accountCode: '41-1101',
+              dr: zero,
+              cr: remainingDeferredInterest,
+              description: 'รับรู้รายได้ดอกเบี้ย (เต็มจำนวน; ส่วนลดอยู่ฝั่ง Dr 52-1106)',
+            },
+            {
+              accountCode: '21-2101',
+              dr: zero,
+              cr: remainingDeferredVat,
+              description: 'ภาษีขาย ภ.พ.30 ถึงกำหนด',
+            },
+          ],
         },
-        {
-          accountCode: '11-2106',
-          dr: remainingDeferredInterest,
-          cr: zero,
-          description: 'ยกเลิกรายได้รอตัดบัญชี-ดอกเบี้ย',
-        },
-        {
-          accountCode: '21-2102',
-          dr: remainingDeferredVat,
-          cr: zero,
-          description: 'ล้างภาษีขายรอเรียกเก็บ',
-        },
-        {
-          accountCode: '52-1106',
-          dr: discount,
-          cr: zero,
-          description: 'ส่วนลดดอกเบี้ย-ปิดยอดก่อนกำหนด',
-        },
-        {
-          accountCode: '11-2101',
-          dr: zero,
-          cr: remainingGross,
-          description: 'ล้างลูกหนี้ Gross (excl. VAT)',
-        },
-        {
-          accountCode: '11-2105',
-          dr: zero,
-          cr: remainingDeferredVat,
-          description: 'ล้างลูกหนี้ภาษีขายรอฯ',
-        },
-        {
-          accountCode: '41-1101',
-          dr: zero,
-          cr: remainingDeferredInterest,
-          description: 'รับรู้รายได้ดอกเบี้ย (เต็มจำนวน; ส่วนลดอยู่ฝั่ง Dr 52-1106)',
-        },
-        {
-          accountCode: '21-2101',
-          dr: zero,
-          cr: remainingDeferredVat,
-          description: 'ภาษีขาย ภ.พ.30 ถึงกำหนด',
-        },
-      ],
+        tx,
+      );
+
+      // Create Payment rows for all unpaid installments (marks them as settled via EARLY_PAYOFF).
+      // Each installment gets its own Payment row; total across all = settlementAmount.
+      // We tag via notes to distinguish from normal payments.
+      const perInstSettlement = settlement.div(unpaidD).toDecimalPlaces(2, Decimal.ROUND_DOWN);
+      let distributed = new Decimal(0);
+      for (let idx = 0; idx < unpaidInsts.length; idx++) {
+        const inst = unpaidInsts[idx];
+        const isLast = idx === unpaidInsts.length - 1;
+        // Absorb rounding remainder in last installment
+        const thisAmount = isLast ? settlement.minus(distributed) : perInstSettlement;
+        distributed = distributed.plus(thisAmount);
+        await tx.payment.create({
+          data: {
+            contractId: c.id,
+            installmentNo: inst.installmentNo,
+            dueDate: inst.dueDate,
+            amountDue: inst.amountDue ?? installmentExclVat.plus(vatPerInst),
+            amountPaid: thisAmount,
+            paidDate: new Date(),
+            paidAt: new Date(),
+            status: 'PAID',
+            notes: 'EARLY_PAYOFF',
+          },
+        });
+      }
+
+      return result.entryNumber;
     });
 
-    // Create Payment rows for all unpaid installments (marks them as settled via EARLY_PAYOFF)
-    // Each installment gets its own Payment row; total across all = settlementAmount
-    // We tag via notes to distinguish from normal payments
-    const perInstSettlement = settlement.div(unpaidD).toDecimalPlaces(2, Decimal.ROUND_DOWN);
-    let distributed = new Decimal(0);
-    for (let idx = 0; idx < unpaidInsts.length; idx++) {
-      const inst = unpaidInsts[idx];
-      const isLast = idx === unpaidInsts.length - 1;
-      // Absorb rounding remainder in last installment
-      const thisAmount = isLast ? settlement.minus(distributed) : perInstSettlement;
-      distributed = distributed.plus(thisAmount);
-      await this.prisma.payment.create({
-        data: {
-          contractId: c.id,
-          installmentNo: inst.installmentNo,
-          dueDate: inst.dueDate,
-          amountDue: inst.amountDue ?? installmentExclVat.plus(vatPerInst),
-          amountPaid: thisAmount,
-          paidDate: new Date(),
-          paidAt: new Date(),
-          status: 'PAID',
-          notes: 'EARLY_PAYOFF',
-        },
-      });
-    }
-
-    return { entryNo: result.entryNumber };
+    return { entryNo: entryNumber };
   }
 }

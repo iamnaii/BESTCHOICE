@@ -71,14 +71,14 @@ export class RepossessionJP5Template {
 
     const financed = new Decimal(c.financedAmount.toString());
     const commission =
-      (c as any).storeCommission != null
-        ? new Decimal((c as any).storeCommission.toString())
+      c.storeCommission != null
+        ? new Decimal(c.storeCommission.toString())
         : financed.times('0.10').toDecimalPlaces(2);
-    const interest = new Decimal((c as any).interestTotal.toString());
+    const interest = new Decimal(c.interestTotal.toString());
     const grossExclVat = financed.plus(commission).plus(interest);
     const vat =
-      (c as any).vatAmount != null
-        ? new Decimal((c as any).vatAmount.toString())
+      c.vatAmount != null
+        ? new Decimal(c.vatAmount.toString())
         : grossExclVat.times('0.07').toDecimalPlaces(2);
 
     // Per-installment rounding (same as 2A/2B)

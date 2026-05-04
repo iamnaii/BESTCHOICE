@@ -512,7 +512,7 @@ export class MonthlyCloseService {
     const branchIds = await this.accountingService.getBranchIdsForCompany(companyId);
 
     const [trialBalance, profitLoss, balanceSheet, vatSummary] = await Promise.allSettled([
-      this.journalAutoService.getTrialBalance({ asOfDate, companyId }),
+      this.accountingService.getTrialBalance(new Date(asOfDate)),
       this.accountingService.getProfitLossReport(startDate, asOfDate, undefined, branchIds),
       this.accountingService.getBalanceSheet(asOfDate, undefined, branchIds),
       this.taxService.previewPP30(companyId, year, month),

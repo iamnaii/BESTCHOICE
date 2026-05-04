@@ -144,13 +144,28 @@ UI: tolerance approval modal in `PaymentForm` — opens when delta <=1 THB on un
 
 Run as Cloud Run Job after merging Phase A.4 to production. Requires explicit owner approval.
 
+### CRITICAL: Deploy order for Phase A.4 migration
+
+The migration `20260801100000_phase_a4_cpa_chart_schema` adds NOT NULL columns (`name`, `normalBalance`, `type`) on `chart_of_accounts`. Running `prisma migrate deploy` on a non-empty `chart_of_accounts` table WILL FAIL.
+
+**Mandatory sequence:**
+1. Wipe first: run the CLI below (clears accounting tables including `chart_of_accounts`)
+2. Then migrate: `npx prisma migrate deploy`
+3. Reseed is automatic (wipe CLI reseeds 99 FINANCE CoA after truncate)
+
 ```bash
+# Step 1: Wipe + reseed CoA
 CONFIRM_WIPE=YES_I_AM_SURE npm --prefix apps/api run wipe:accounting
+
+# Step 2: Apply migration (chart_of_accounts now empty — NOT NULL columns will succeed)
+npx prisma migrate deploy
 ```
+
+For fresh dev environments (`prisma migrate reset`): ordering is automatic — no manual wipe needed.
 
 Truncates (in order): `journal_lines`, `journal_entries`, `payments`, `installment_schedules`, `contracts`, `chart_of_accounts`, then reseeds 99 FINANCE CoA from CPA CSV.
 
-After wipe, verify:
+After wipe + migrate, verify:
 1. `SELECT COUNT(*) FROM chart_of_accounts;` — expected 99
 2. Smoke one contract end-to-end via UI
 3. Run TB report and confirm it balances

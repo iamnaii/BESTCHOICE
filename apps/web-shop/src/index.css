@@ -2,6 +2,11 @@
 @import "./styles/tokens.css";
 @import "./styles/motion.css";
 
+/* Inter for English display + tabular numbers — paired with IBM Plex Sans Thai
+   for Thai text. Thai body text uses Plex; English headlines + numbers use
+   Inter at tighter tracking for an Apple-minimal feel. */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap");
+
 @layer base {
   body {
     font-family: "IBM Plex Sans Thai", Inter, sans-serif;
@@ -9,5 +14,19 @@
   }
   * {
     line-height: 1.375; /* snug — Thai text safe */
+  }
+}
+
+@layer utilities {
+  /* Display = Inter with tight tracking for English headlines */
+  .font-display {
+    font-family: "Inter", "IBM Plex Sans Thai", sans-serif;
+    letter-spacing: -0.03em;
+  }
+  /* Tabular numbers in Inter — for prices, counts, money */
+  .num {
+    font-family: "Inter", sans-serif;
+    font-feature-settings: "tnum";
+    letter-spacing: -0.01em;
   }
 }

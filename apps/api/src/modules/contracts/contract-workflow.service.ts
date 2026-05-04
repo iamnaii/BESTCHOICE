@@ -1,5 +1,6 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException, InternalServerErrorException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import * as Sentry from '@sentry/nestjs';
 import { formatDateShort } from '../../utils/thai-date.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -463,7 +464,6 @@ export class ContractWorkflowService {
           `ContractActivation1A JE failed for contract ${contract.contractNumber}: ${err?.message || err}`,
           err?.stack,
         );
-        const Sentry = require('@sentry/node');
         Sentry.captureException(err, {
           tags: { module: 'contracts', event: 'activation-je-failure' },
           extra: { contractId: contract.id, contractNumber: contract.contractNumber },

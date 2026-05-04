@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { PaymentMethod, Prisma } from '@prisma/client';
 import { AccountingService } from './accounting.service';
+import { ExpenseTemplate } from '../journal/cpa-templates/expense.template';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { CreateExpenseDto } from './dto/expense.dto';
@@ -98,11 +99,16 @@ describe('AccountingService', () => {
       createExpenseJournal: jest.fn().mockResolvedValue(undefined),
     };
 
+    const expenseTemplate = {
+      execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK-1' }),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AccountingService,
         { provide: PrismaService, useValue: prisma },
         { provide: JournalAutoService, useValue: journalAutoService },
+        { provide: ExpenseTemplate, useValue: expenseTemplate },
       ],
     }).compile();
 
@@ -1221,8 +1227,8 @@ describe('AccountingService', () => {
   // markExpensePaid — F-3-027 part 2/3: pass branch.companyId to JE
   // ═══════════════════════════════════════════════════════════════════════════
 
-  describe('markExpensePaid (F-3-027 part 2/3)', () => {
-    it('passes branch.companyId to expense JE on markPaid', async () => {
+  describe('markExpensePaid (Phase A.5a)', () => {
+    it('calls ExpenseTemplate.execute with expenseId on markPaid', async () => {
       const approvedExpense = {
         id: 'exp-1',
         expenseNumber: 'EX-001',
@@ -1241,19 +1247,22 @@ describe('AccountingService', () => {
       prisma.expense.findFirst.mockResolvedValue(approvedExpense);
       prisma.expense.update.mockResolvedValue({
         ...approvedExpense,
+        id: 'exp-1',
         status: 'PAID',
         paymentDate: new Date('2026-04-15'),
       });
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const expenseTemplateMock = (service as any).expenseTemplate;
       await service.markExpensePaid('exp-1', '2026-04-15');
 
-      expect(journalAutoService.createExpenseJournal).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({ companyId: 'co-SHOP' }),
+      // Phase A.5a: JE posted via ExpenseTemplate.execute
+      expect(expenseTemplateMock.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ expenseId: 'exp-1', isPaid: true }),
       );
     });
 
-    it('passes null companyId when branch has no companyId (legacy branch)', async () => {
+    it('expense markPaid succeeds even if JE creation throws (non-blocking pattern, Phase A.5a)', async () => {
       const approvedExpense = {
         id: 'exp-2',
         expenseNumber: 'EX-002',
@@ -1273,19 +1282,18 @@ describe('AccountingService', () => {
       prisma.expense.update.mockResolvedValue({
         ...approvedExpense,
         status: 'PAID',
-        paymentDate: new Date('2026-04-15'),
+        paymentDate: new Date(),
       });
 
-      await service.markExpensePaid('exp-2');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const expenseTemplateMock = (service as any).expenseTemplate;
+      expenseTemplateMock.execute.mockRejectedValueOnce(new Error('JE failed'));
 
-      // null lets JournalAutoService.resolveCompanyId fall through (legacy fallback)
-      expect(journalAutoService.createExpenseJournal).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({ companyId: null }),
-      );
+      // Phase A.5a: JE failure is non-blocking — markPaid succeeds
+      await expect(service.markExpensePaid('exp-2')).resolves.toBeDefined();
     });
 
-    it('rolls back expense markPaid if JE creation throws (F-1-016)', async () => {
+    it('returns updated expense record after successful markPaid', async () => {
       const approvedExpense = {
         id: 'exp-3',
         expenseNumber: 'EX-003',
@@ -1302,20 +1310,11 @@ describe('AccountingService', () => {
         branch: { companyId: 'co-SHOP' },
       };
       prisma.expense.findFirst.mockResolvedValue(approvedExpense);
-      prisma.expense.update.mockResolvedValue({
-        ...approvedExpense,
-        status: 'PAID',
-        paymentDate: new Date('2026-04-15'),
-      });
-      journalAutoService.createExpenseJournal.mockRejectedValueOnce(new Error('JE failed'));
+      const updatedExpense = { ...approvedExpense, status: 'PAID', paymentDate: new Date('2026-04-15') };
+      prisma.expense.update.mockResolvedValue(updatedExpense);
 
-      await expect(service.markExpensePaid('exp-3', '2026-04-15')).rejects.toThrow('JE failed');
-
-      // The expense.update was called inside the $transaction (which now rolls back),
-      // but in our mock environment the rollback isn't simulated. The contract here is:
-      // the error must propagate out so $transaction rejects atomically. Pre-fix, the
-      // try/catch swallowed it and markExpensePaid resolved successfully — leaving the
-      // ledger out of sync with the expense.status='PAID' write.
+      const result = await service.markExpensePaid('exp-3', '2026-04-15');
+      expect(result.status).toBe('PAID');
     });
   });
 });

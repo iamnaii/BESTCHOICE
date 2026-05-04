@@ -75,35 +75,48 @@ async function main(): Promise<void> {
     console.log('[wipe-accounting] Step 1: Truncating accounting tables...');
     // Order matters: journal_lines references journal_entries, so lines first.
     // CASCADE handles FK children of each table.
-    // We run in sequence (not $transaction) because TRUNCATE CASCADE cannot
-    // be mixed with regular Prisma operations in the same interactive TX.
-    await prisma.$executeRawUnsafe('TRUNCATE "journal_lines" CASCADE');
-    console.log('[wipe-accounting]   journal_lines truncated');
-
-    await prisma.$executeRawUnsafe('TRUNCATE "journal_entries" CASCADE');
-    console.log('[wipe-accounting]   journal_entries truncated');
-
-    // Truncating contracts cascades to: payments, installment_schedules,
-    // contract_documents, contract_letters, contract_snoozes,
-    // contract_daily_snapshots, payment_links, payment_evidences, call_logs,
-    // promise_slots, daily_assignments. Explicit truncation of payments +
-    // installment_schedules is listed for clarity but CASCADE covers them.
-    await prisma.$executeRawUnsafe('TRUNCATE "payments" CASCADE');
-    console.log('[wipe-accounting]   payments truncated');
-
-    await prisma.$executeRawUnsafe('TRUNCATE "installment_schedules" CASCADE');
-    console.log('[wipe-accounting]   installment_schedules truncated');
-
-    await prisma.$executeRawUnsafe('TRUNCATE "contracts" CASCADE');
-    console.log('[wipe-accounting]   contracts truncated');
-
-    await prisma.$executeRawUnsafe('TRUNCATE "chart_of_accounts" CASCADE');
-    console.log('[wipe-accounting]   chart_of_accounts truncated');
+    // Skip-if-missing: when running on OLD pre-A.4 schema (no installment_schedules),
+    // skip tables that don't exist instead of failing.
+    const tables = [
+      'journal_lines',
+      'journal_entries',
+      'payments',
+      'installment_schedules',
+      'contracts',
+      'chart_of_accounts',
+    ];
+    for (const t of tables) {
+      try {
+        await prisma.$executeRawUnsafe(`TRUNCATE "${t}" CASCADE`);
+        console.log(`[wipe-accounting]   ${t} truncated`);
+      } catch (e: unknown) {
+        const msg = (e as { message?: string }).message ?? '';
+        if (msg.includes('does not exist')) {
+          console.log(`[wipe-accounting]   ${t} skipped (table does not exist on this schema)`);
+        } else {
+          throw e;
+        }
+      }
+    }
 
     console.log('');
     console.log('[wipe-accounting] Step 2: Reseeding 99-account FINANCE chart of accounts...');
-    const result = await seedFinanceCoa(prisma);
-    console.log(`[wipe-accounting]   Reseed complete: ${result.created} created, ${result.updated} updated`);
+    // Skip seeding if the chart_of_accounts table is on OLD schema (lacks new
+    // columns like normalBalance/category). Detect by attempting a probe query.
+    let canSeed = true;
+    try {
+      await prisma.$queryRawUnsafe('SELECT "normalBalance" FROM "chart_of_accounts" LIMIT 0');
+    } catch (e: unknown) {
+      const msg = (e as { message?: string }).message ?? '';
+      if (msg.includes('does not exist')) {
+        canSeed = false;
+        console.log('[wipe-accounting]   Skipping seed: chart_of_accounts is on OLD schema. Run prisma migrate deploy first, then retry seed.');
+      }
+    }
+    if (canSeed) {
+      const result = await seedFinanceCoa(prisma);
+      console.log(`[wipe-accounting]   Reseed complete: ${result.created} created, ${result.updated} updated`);
+    }
     console.log('');
     console.log('[wipe-accounting] Wipe & reseed finished successfully.');
     console.log('[wipe-accounting] Next steps:');

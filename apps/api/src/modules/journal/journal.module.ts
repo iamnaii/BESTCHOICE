@@ -10,6 +10,7 @@ import { PaymentReceipt2BTemplate } from './cpa-templates/payment-receipt-2b.tem
 import { PaymentReceipt2BSplitTemplate } from './cpa-templates/payment-receipt-2b-split.template';
 import { EarlyPayoffJP4Template } from './cpa-templates/early-payoff-jp4.template';
 import { RepossessionJP5Template } from './cpa-templates/repossession-jp5.template';
+import { RescheduleJP6Template } from './cpa-templates/reschedule-jp6.template';
 
 @Module({
   imports: [PrismaModule],
@@ -24,6 +25,7 @@ import { RepossessionJP5Template } from './cpa-templates/repossession-jp5.templa
     PaymentReceipt2BSplitTemplate,
     EarlyPayoffJP4Template,
     RepossessionJP5Template,
+    RescheduleJP6Template,
   ],
   exports: [
     JournalService,
@@ -34,6 +36,7 @@ import { RepossessionJP5Template } from './cpa-templates/repossession-jp5.templa
     PaymentReceipt2BSplitTemplate,
     EarlyPayoffJP4Template,
     RepossessionJP5Template,
+    RescheduleJP6Template,
   ],
 })
 export class JournalModule {}

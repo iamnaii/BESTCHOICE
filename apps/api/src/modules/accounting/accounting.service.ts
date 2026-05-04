@@ -1148,6 +1148,336 @@ export class AccountingService {
     };
   }
 
+  // ─── T17: Journal-line-based Trial Balance / P&L / Balance Sheet ─────────────
+  //
+  // These methods pull from the JournalEntry/JournalLine general ledger (Phase A.4
+  // CPA chart). They are distinct from getProfitLossReport / getBalanceSheet (which
+  // pull from raw transactional tables and are retained for backward compat).
+  //
+  // Account code prefix → section mapping (FINANCE 99-account chart):
+  //   11 = สินทรัพย์หมุนเวียน (Current Assets)
+  //   12 = สินทรัพย์ไม่หมุนเวียน (Non-Current Assets)
+  //   21 = หนี้สินหมุนเวียน (Current Liabilities)
+  //   22 = หนี้สินไม่หมุนเวียน (Non-Current Liabilities)
+  //   31 = ทุนจดทะเบียน (Share Capital)
+  //   32 = กำไรสะสม (Retained Earnings)
+  //   33 = กำไรขาดทุนปีปัจจุบัน (Current Year Profit)
+  //   41 = รายได้จากการดำเนินงาน (Operating Revenue)
+  //   42 = รายได้อื่น (Other Income)
+  //   51 = ต้นทุนทางการเงิน (Finance Costs)
+  //   52 = ค่าใช้จ่ายขาย (Selling Expenses)
+  //   53 = ค่าใช้จ่ายบริหาร (Admin Expenses)
+  //   54 = ค่าใช้จ่ายต้องห้าม (Tax-disallowed Expenses)
+  //   55 = EXCLUDE from P&L (พีคโปรแกรม — ไม่นำมาแสดงในงบกำไรขาดทุน)
+
+  private static readonly SECTION_MAP: Record<string, string> = {
+    '11': 'สินทรัพย์หมุนเวียน',
+    '12': 'สินทรัพย์ไม่หมุนเวียน',
+    '21': 'หนี้สินหมุนเวียน',
+    '22': 'หนี้สินไม่หมุนเวียน',
+    '31': 'ทุนจดทะเบียน',
+    '32': 'กำไรสะสม',
+    '33': 'กำไรขาดทุนปีปัจจุบัน',
+    '41': 'รายได้จากการดำเนินงาน',
+    '42': 'รายได้อื่น',
+    '51': 'ต้นทุนทางการเงิน',
+    '52': 'ค่าใช้จ่ายขาย',
+    '53': 'ค่าใช้จ่ายบริหาร',
+    '54': 'ค่าใช้จ่ายต้องห้ามทางภาษี',
+    '55': 'ค่าใช้จ่ายโปรแกรมบัญชี (ยกเว้น P&L)',
+  };
+
+  /**
+   * Get Trial Balance from journal lines as of a given date.
+   *
+   * Queries all ChartOfAccount records and sums JournalLine debit/credit
+   * from POSTED JournalEntries with entryDate <= asOfDate.
+   *
+   * Sections are grouped by the 2-digit prefix of the account code (11, 12, 21, …).
+   * isBalanced = grandDrTotal equals grandCrTotal (accounting identity check).
+   */
+  async getTrialBalance(asOfDate?: Date) {
+    const cutoff = asOfDate ?? new Date();
+
+    // 1. Load all active chart of accounts
+    const accounts = await this.prisma.chartOfAccount.findMany({
+      where: { deletedAt: null, status: 'ใช้งาน' },
+      orderBy: { code: 'asc' },
+    });
+
+    // 2. Sum journal lines per accountCode from POSTED entries up to cutoff
+    const lineSums = await this.prisma.journalLine.groupBy({
+      by: ['accountCode'],
+      where: {
+        journalEntry: {
+          status: 'POSTED',
+          entryDate: { lte: cutoff },
+          deletedAt: null,
+        },
+        deletedAt: null,
+      },
+      _sum: { debit: true, credit: true },
+    });
+
+    const sumMap = new Map<string, { dr: Prisma.Decimal; cr: Prisma.Decimal }>();
+    for (const row of lineSums) {
+      sumMap.set(row.accountCode, {
+        dr: new Prisma.Decimal(row._sum.debit ?? 0),
+        cr: new Prisma.Decimal(row._sum.credit ?? 0),
+      });
+    }
+
+    // 3. Build per-section rows (include accounts with activity even if CoA doesn't exist,
+    //    and include CoA accounts with zero balances)
+    const sectionMap = new Map<string, {
+      sectionName: string;
+      codePrefix: string;
+      rows: {
+        code: string; name: string; type: string; normalBalance: string;
+        drBalance: Prisma.Decimal; crBalance: Prisma.Decimal; netBalance: Prisma.Decimal;
+      }[];
+      drTotal: Prisma.Decimal;
+      crTotal: Prisma.Decimal;
+    }>();
+
+    for (const acc of accounts) {
+      const prefix = acc.code.slice(0, 2);
+      const sectionName = AccountingService.SECTION_MAP[prefix] ?? `หมวด ${prefix}`;
+
+      if (!sectionMap.has(prefix)) {
+        sectionMap.set(prefix, {
+          sectionName,
+          codePrefix: prefix,
+          rows: [],
+          drTotal: new Prisma.Decimal(0),
+          crTotal: new Prisma.Decimal(0),
+        });
+      }
+
+      const sums = sumMap.get(acc.code) ?? { dr: new Prisma.Decimal(0), cr: new Prisma.Decimal(0) };
+      // netBalance: Dr-normal → dr - cr; Cr-normal → cr - dr; Dr/Cr → dr - cr (default Dr)
+      const netBalance = acc.normalBalance === 'Cr'
+        ? sums.cr.sub(sums.dr)
+        : sums.dr.sub(sums.cr);
+
+      const section = sectionMap.get(prefix)!;
+      section.rows.push({
+        code: acc.code,
+        name: acc.name,
+        type: acc.type,
+        normalBalance: acc.normalBalance,
+        drBalance: sums.dr,
+        crBalance: sums.cr,
+        netBalance,
+      });
+      section.drTotal = section.drTotal.add(sums.dr);
+      section.crTotal = section.crTotal.add(sums.cr);
+    }
+
+    // Also include any journal lines for codes not in CoA (orphan codes)
+    for (const [code, sums] of sumMap) {
+      const prefix = code.slice(0, 2);
+      if (!sectionMap.has(prefix)) {
+        sectionMap.set(prefix, {
+          sectionName: AccountingService.SECTION_MAP[prefix] ?? `หมวด ${prefix}`,
+          codePrefix: prefix,
+          rows: [],
+          drTotal: new Prisma.Decimal(0),
+          crTotal: new Prisma.Decimal(0),
+        });
+      }
+      const section = sectionMap.get(prefix)!;
+      // Check if already added via CoA iteration
+      if (!section.rows.find((r) => r.code === code)) {
+        section.rows.push({
+          code,
+          name: `[ไม่พบในผังบัญชี] ${code}`,
+          type: 'ไม่ระบุ',
+          normalBalance: 'Dr',
+          drBalance: sums.dr,
+          crBalance: sums.cr,
+          netBalance: sums.dr.sub(sums.cr),
+        });
+        section.drTotal = section.drTotal.add(sums.dr);
+        section.crTotal = section.crTotal.add(sums.cr);
+      }
+    }
+
+    // 4. Sort sections by code prefix and compute grand totals
+    const sections = Array.from(sectionMap.values()).sort((a, b) =>
+      a.codePrefix.localeCompare(b.codePrefix),
+    );
+
+    let grandDrTotal = new Prisma.Decimal(0);
+    let grandCrTotal = new Prisma.Decimal(0);
+    for (const s of sections) {
+      grandDrTotal = grandDrTotal.add(s.drTotal);
+      grandCrTotal = grandCrTotal.add(s.crTotal);
+    }
+
+    return {
+      asOfDate: cutoff,
+      sections,
+      grandDrTotal,
+      grandCrTotal,
+      isBalanced: grandDrTotal.equals(grandCrTotal),
+    };
+  }
+
+  /**
+   * Get P&L from journal lines for a given period.
+   *
+   * Revenue = net Cr balance of accounts 41 + 42 for the period.
+   * Expenses = net Dr balance of accounts 51 + 52 + 53 + 54 for the period.
+   * Accounts in prefix 55 are EXCLUDED per CPA chart note ("ไม่นำมาแสดงในงบกำไรขาดทุน").
+   *
+   * Period filter: JournalEntry.entryDate between periodStart and periodEnd (inclusive).
+   */
+  async getProfitLossFromJournal(periodStart: Date, periodEnd: Date) {
+    const REVENUE_PREFIXES = ['41', '42'];
+    const EXPENSE_PREFIXES = ['51', '52', '53', '54']; // 55 excluded
+
+    const lineSums = await this.prisma.journalLine.groupBy({
+      by: ['accountCode'],
+      where: {
+        journalEntry: {
+          status: 'POSTED',
+          entryDate: { gte: periodStart, lte: periodEnd },
+          deletedAt: null,
+        },
+        deletedAt: null,
+      },
+      _sum: { debit: true, credit: true },
+    });
+
+    // Load CoA for names
+    const codes = lineSums.map((r) => r.accountCode);
+    const coaRecords = codes.length > 0
+      ? await this.prisma.chartOfAccount.findMany({
+          where: { code: { in: codes }, deletedAt: null },
+          select: { code: true, name: true },
+        })
+      : [];
+    const nameMap = new Map(coaRecords.map((c) => [c.code, c.name]));
+
+    const revenueRows: { code: string; name: string; amount: Prisma.Decimal }[] = [];
+    const expenseRows: { code: string; name: string; amount: Prisma.Decimal }[] = [];
+    let revenueTotal = new Prisma.Decimal(0);
+    let expenseTotal = new Prisma.Decimal(0);
+
+    for (const row of lineSums) {
+      const prefix = row.accountCode.slice(0, 2);
+      const dr = new Prisma.Decimal(row._sum.debit ?? 0);
+      const cr = new Prisma.Decimal(row._sum.credit ?? 0);
+      const name = nameMap.get(row.accountCode) ?? row.accountCode;
+
+      if (REVENUE_PREFIXES.includes(prefix)) {
+        // Revenue accounts are Cr-normal: net = Cr - Dr
+        const amount = cr.sub(dr);
+        revenueRows.push({ code: row.accountCode, name, amount });
+        revenueTotal = revenueTotal.add(amount);
+      } else if (EXPENSE_PREFIXES.includes(prefix)) {
+        // Expense accounts are Dr-normal: net = Dr - Cr
+        const amount = dr.sub(cr);
+        expenseRows.push({ code: row.accountCode, name, amount });
+        expenseTotal = expenseTotal.add(amount);
+      }
+      // prefix 55 and others: skip
+    }
+
+    revenueRows.sort((a, b) => a.code.localeCompare(b.code));
+    expenseRows.sort((a, b) => a.code.localeCompare(b.code));
+
+    return {
+      periodStart,
+      periodEnd,
+      revenue: {
+        sectionName: 'รายได้รวม',
+        rows: revenueRows,
+        total: revenueTotal,
+      },
+      expenses: {
+        sectionName: 'ค่าใช้จ่ายรวม',
+        rows: expenseRows,
+        total: expenseTotal,
+      },
+      netIncome: revenueTotal.sub(expenseTotal),
+    };
+  }
+
+  /**
+   * Get Balance Sheet from journal lines as of a given date.
+   *
+   * Assets (11 + 12): Dr-normal accounts add, Contra assets (type='สินทรัพย์ (Contra)'
+   *   or normalBalance='Cr') subtract.
+   * Liabilities (21 + 22): Cr-normal sums.
+   * Equity (31 + 32 + 33): Cr-normal sums.
+   *
+   * isBalanced: assets.total === liabilities.total + equity.total
+   */
+  async getBalanceSheetFromJournal(asOfDate?: Date) {
+    const cutoff = asOfDate ?? new Date();
+    const tb = await this.getTrialBalance(cutoff);
+
+    const zero = new Prisma.Decimal(0);
+
+    // Helper: sum net balances for a set of code prefixes within trial balance sections
+    const sumNetForPrefixes = (prefixes: string[]) => {
+      let total = zero;
+      for (const section of tb.sections) {
+        if (!prefixes.includes(section.codePrefix)) continue;
+        for (const row of section.rows) {
+          // For Contra assets (Cr-normal inside asset sections):
+          // netBalance is already negative (cr - dr when Cr-normal), so adding it reduces total — correct.
+          // For Dr-normal assets: netBalance is positive — adds to total.
+          total = total.add(row.netBalance);
+        }
+      }
+      return total;
+    };
+
+    const buildSection = (prefixes: string[]) => {
+      const rows: { code: string; name: string; type: string; normalBalance: string; netBalance: Prisma.Decimal }[] = [];
+      for (const section of tb.sections) {
+        if (!prefixes.includes(section.codePrefix)) continue;
+        for (const row of section.rows) {
+          rows.push({ code: row.code, name: row.name, type: row.type, normalBalance: row.normalBalance, netBalance: row.netBalance });
+        }
+      }
+      rows.sort((a, b) => a.code.localeCompare(b.code));
+      const total = rows.reduce((sum, r) => sum.add(r.netBalance), zero);
+      return { rows, total };
+    };
+
+    const currentAssets = buildSection(['11']);
+    const nonCurrentAssets = buildSection(['12']);
+    const assetsTotal = currentAssets.total.add(nonCurrentAssets.total);
+
+    const currentLiabilities = buildSection(['21']);
+    const nonCurrentLiabilities = buildSection(['22']);
+    const liabilitiesTotal = currentLiabilities.total.add(nonCurrentLiabilities.total);
+
+    const equity = buildSection(['31', '32', '33']);
+
+    const isBalanced = assetsTotal.equals(liabilitiesTotal.add(equity.total));
+
+    return {
+      asOfDate: cutoff,
+      assets: {
+        current: { ...currentAssets, sectionName: 'สินทรัพย์หมุนเวียน' },
+        nonCurrent: { ...nonCurrentAssets, sectionName: 'สินทรัพย์ไม่หมุนเวียน' },
+        total: assetsTotal,
+      },
+      liabilities: {
+        current: { ...currentLiabilities, sectionName: 'หนี้สินหมุนเวียน' },
+        nonCurrent: { ...nonCurrentLiabilities, sectionName: 'หนี้สินไม่หมุนเวียน' },
+        total: liabilitiesTotal,
+      },
+      equity: { ...equity, sectionName: 'ส่วนของผู้ถือหุ้น' },
+      isBalanced,
+    };
+  }
+
   // ─── Cash Flow Statement (derived from existing data, no general ledger) ──────
 
   async getCashFlowStatement(startDate: string, endDate: string, branchId?: string, branchIds?: string[]) {

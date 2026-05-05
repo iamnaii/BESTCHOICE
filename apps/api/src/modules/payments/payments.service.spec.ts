@@ -742,4 +742,149 @@ describe('PaymentsService', () => {
       });
     });
   });
+
+  // ─── previewJournal ────────────────────────────────────────────
+  describe('previewJournal', () => {
+    // Contract fixture matching the mockup: BCP-TEST-6904-00017, 12 months
+    // financedAmount=17000 + commission(10%=1700) + interest(6000) = 24700
+    // grossExclVat=24700, vat=1729 (24700×0.07), total=26429
+    // installmentExclVat = 24700/12 = 2058.33 ROUND_DOWN
+    // vatPerInst = 1729/12 = 144.08 ROUND_HALF_UP
+    // installmentTotal = 2058.33 + 144.08 = 2202.41
+    const mockContractFull = {
+      id: 'contract-preview',
+      contractNumber: 'BCP-TEST-6904-00017',
+      totalMonths: 12,
+      financedAmount: '17000.00',
+      storeCommission: '1700.00',
+      interestTotal: '6000.00',
+      vatAmount: '1729.00',
+    };
+
+    const mockInstallmentNotAccrued = {
+      id: 'inst-1',
+      contractId: 'contract-preview',
+      installmentNo: 2,
+      dueDate: new Date('2025-12-26'),
+      accrualJournalEntryId: null, // NOT yet accrued — consolidated path
+      contract: mockContractFull,
+    };
+
+    const mockInstallmentAccrued = {
+      ...mockInstallmentNotAccrued,
+      accrualJournalEntryId: 'JE-2A-001', // Already accrued — 2B-only path
+    };
+
+    const mockCoaRows = [
+      { code: '11-1101', name: 'เงินสด — สุทธินีย์ คงเดช' },
+      { code: '11-2101', name: 'ลูกหนี้ผ่อนชำระ (HP Receivable Gross)' },
+      { code: '11-2103', name: 'ลูกหนี้ค้างชำระ (Accrued Receivable)' },
+      { code: '11-2105', name: 'ลูกหนี้ภาษีขายรอเรียกเก็บ' },
+      { code: '11-2106', name: 'รายได้รอตัดบัญชี-ดอกเบี้ย' },
+      { code: '21-2101', name: 'ภาษีขาย ภ.พ.30' },
+      { code: '21-2102', name: 'ภาษีขายรอเรียกเก็บ' },
+      { code: '41-1101', name: 'รายได้ดอกเบี้ย' },
+      { code: '42-1103', name: 'ค่าปรับชำระล่าช้า' },
+    ];
+
+    beforeEach(() => {
+      prisma.chartOfAccount = {
+        findMany: jest.fn().mockResolvedValue(mockCoaRows),
+      };
+    });
+
+    it('throws NotFoundException when installmentSchedule not found', async () => {
+      prisma.installmentSchedule.findUnique.mockResolvedValue(null);
+      await expect(
+        service.previewJournal({
+          contractId: 'contract-preview',
+          installmentNo: 99,
+          amountReceived: 2000,
+          depositAccountCode: '11-1101',
+        }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('returns balanced JE for consolidated 2A+2B path (not accrued, no late fee)', async () => {
+      prisma.installmentSchedule.findUnique.mockResolvedValue(mockInstallmentNotAccrued);
+
+      const result = await service.previewJournal({
+        contractId: 'contract-preview',
+        installmentNo: 2,
+        amountReceived: 2202.41,
+        depositAccountCode: '11-1101',
+      });
+
+      expect(result.isBalanced).toBe(true);
+      expect(parseFloat(result.totalDebit)).toBeCloseTo(parseFloat(result.totalCredit), 2);
+
+      // Must include 11-2106 (Unearned) in Dr side for consolidated path
+      const unearnedLine = result.lines.find((l) => l.accountCode === '11-2106');
+      expect(unearnedLine).toBeDefined();
+      expect(parseFloat(unearnedLine!.debit)).toBeGreaterThan(0);
+
+      // Must include cash Dr line
+      const cashLine = result.lines.find((l) => l.accountCode === '11-1101');
+      expect(cashLine).toBeDefined();
+      expect(parseFloat(cashLine!.debit)).toBeCloseTo(2202.41, 2);
+    });
+
+    it('returns balanced JE for 2B-only path (already accrued, no late fee)', async () => {
+      prisma.installmentSchedule.findUnique.mockResolvedValue(mockInstallmentAccrued);
+
+      const result = await service.previewJournal({
+        contractId: 'contract-preview',
+        installmentNo: 2,
+        amountReceived: 2202.41,
+        depositAccountCode: '11-1101',
+      });
+
+      expect(result.isBalanced).toBe(true);
+      // 2B-only should have 11-2103 Cr (clear accrued receivable)
+      const accrualLine = result.lines.find((l) => l.accountCode === '11-2103');
+      expect(accrualLine).toBeDefined();
+      expect(parseFloat(accrualLine!.credit)).toBeGreaterThan(0);
+
+      // Should NOT have 11-2106 (unearned) in Dr for 2B-only
+      const unearnedLine = result.lines.find((l) => l.accountCode === '11-2106');
+      expect(unearnedLine).toBeUndefined();
+    });
+
+    it('includes late fee line (42-1103) when lateFee > 0', async () => {
+      prisma.installmentSchedule.findUnique.mockResolvedValue(mockInstallmentAccrued);
+
+      const lateFee = 54;
+      const result = await service.previewJournal({
+        contractId: 'contract-preview',
+        installmentNo: 2,
+        amountReceived: 2202.41,
+        depositAccountCode: '11-1101',
+        lateFee,
+      });
+
+      expect(result.isBalanced).toBe(true);
+
+      const lateFeeLineCr = result.lines.find((l) => l.accountCode === '42-1103');
+      expect(lateFeeLineCr).toBeDefined();
+      expect(parseFloat(lateFeeLineCr!.credit)).toBeCloseTo(lateFee, 2);
+
+      // Cash received must include late fee
+      const cashLine = result.lines.find((l) => l.accountCode === '11-1101');
+      expect(parseFloat(cashLine!.debit)).toBeCloseTo(2202.41 + lateFee, 2);
+    });
+
+    it('resolves account names from CoA', async () => {
+      prisma.installmentSchedule.findUnique.mockResolvedValue(mockInstallmentNotAccrued);
+
+      const result = await service.previewJournal({
+        contractId: 'contract-preview',
+        installmentNo: 2,
+        amountReceived: 2202.41,
+        depositAccountCode: '11-1101',
+      });
+
+      const cashLine = result.lines.find((l) => l.accountCode === '11-1101');
+      expect(cashLine?.accountName).toBe('เงินสด — สุทธินีย์ คงเดช');
+    });
+  });
 });

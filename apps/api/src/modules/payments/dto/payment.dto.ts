@@ -1,7 +1,41 @@
-import { IsString, IsNumber, IsOptional, Matches, Min, IsNotEmpty, MaxLength } from 'class-validator';
+import { IsString, IsNumber, IsOptional, Matches, Min, IsNotEmpty, MaxLength, IsIn } from 'class-validator';
 
 /** Regex for valid cash/bank account codes: 11-1101..03, 11-1201..03 */
 const CASH_CODE_REGEX = /^11-(110[1-3]|120[1-3])$/;
+
+/** Payment case types for the wizard */
+export type PaymentCase = 'NORMAL' | 'OVERPAY' | 'UNDERPAY' | 'PARTIAL' | 'EARLY_PAYOFF' | 'RESCHEDULE';
+
+export class PreviewJournalDto {
+  /** Look up installmentSchedule by contractId + installmentNo (same unique key as recordPayment) */
+  @IsString()
+  contractId: string;
+
+  @IsNumber()
+  installmentNo: number;
+
+  @IsNumber()
+  @Min(0.01, { message: 'จำนวนเงินต้องมากกว่า 0' })
+  amountReceived: number;
+
+  @IsString()
+  @Matches(CASH_CODE_REGEX, { message: 'depositAccountCode ต้องเป็น 11-1101..03 หรือ 11-1201..03' })
+  depositAccountCode: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  lateFee?: number;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['NORMAL', 'OVERPAY', 'UNDERPAY', 'PARTIAL', 'EARLY_PAYOFF', 'RESCHEDULE'])
+  case?: PaymentCase;
+
+  @IsOptional()
+  @IsString()
+  toleranceApproverId?: string;
+}
 
 export class RecordPaymentDto {
   @IsString()

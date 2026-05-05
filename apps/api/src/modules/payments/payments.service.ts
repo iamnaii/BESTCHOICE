@@ -680,6 +680,8 @@ export class PaymentsService {
             select: {
               id: true,
               contractNumber: true,
+              totalMonths: true,
+              monthlyPayment: true,
               customer: { select: { id: true, name: true, phone: true } },
               branch: { select: { id: true, name: true } },
             },
@@ -1390,5 +1392,119 @@ export class PaymentsService {
     });
     if (!user) throw new Error('System user not found');
     return user.id;
+  }
+
+  /**
+   * Preview JE lines for a payment without persisting anything.
+   * Used by the RecordPaymentWizard frontend to show "Journal Auto" live.
+   *
+   * Logic mirrors PaymentReceipt2BTemplate but read-only.
+   * - If installment NOT yet accrued (accrualJournalEntryId is null):
+   *     builds COMBINED 2A+2B+lateFee lines (consolidated posting)
+   * - If installment already accrued (cron ran):
+   *     builds 2B+lateFee only
+   * - Late fee → Cr 42-1103 ค่าปรับชำระล่าช้า (same JE)
+   */
+  async previewJournal(input: {
+    contractId: string;
+    installmentNo: number;
+    amountReceived: number;
+    depositAccountCode: string;
+    lateFee?: number;
+    case?: string;
+  }): Promise<{
+    lines: Array<{ accountCode: string; accountName: string; debit: string; credit: string; description: string }>;
+    totalDebit: string;
+    totalCredit: string;
+    isBalanced: boolean;
+  }> {
+    const inst = await this.prisma.installmentSchedule.findUnique({
+      where: { contractId_installmentNo: { contractId: input.contractId, installmentNo: input.installmentNo } },
+      include: { contract: true },
+    });
+    if (!inst) throw new NotFoundException('ไม่พบงวดชำระ');
+
+    const c = inst.contract;
+    const zero = new Prisma.Decimal(0);
+
+    // Per-installment calculations (same rounding as 2A/2B templates)
+    const total = new Prisma.Decimal(c.totalMonths);
+    const financed = new Prisma.Decimal(c.financedAmount.toString());
+    const commission =
+      c.storeCommission != null
+        ? new Prisma.Decimal(c.storeCommission.toString())
+        : financed.times('0.10').toDecimalPlaces(2);
+    const interest = new Prisma.Decimal(c.interestTotal.toString());
+    const grossExclVat = financed.plus(commission).plus(interest);
+    const vat =
+      c.vatAmount != null
+        ? new Prisma.Decimal(c.vatAmount.toString())
+        : grossExclVat.times('0.07').toDecimalPlaces(2);
+
+    const installmentExclVat = grossExclVat.div(total).toDecimalPlaces(2, Prisma.Decimal.ROUND_DOWN);
+    const interestPerInst = interest.div(total).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+    const vatPerInst = vat.div(total).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+    const installmentTotal = installmentExclVat.plus(vatPerInst);
+
+    const amountReceived = new Prisma.Decimal(input.amountReceived.toString());
+    const lateFeeAmount = input.lateFee ? new Prisma.Decimal(input.lateFee.toString()) : zero;
+    const isConsolidated = !inst.accrualJournalEntryId; // 2A not yet run
+
+    // Build raw JE lines (code, dr, cr, description)
+    const rawLines: { code: string; dr: Prisma.Decimal; cr: Prisma.Decimal; description: string }[] = [];
+
+    // Dr: cash/bank received (installment total + late fee)
+    const totalReceived = amountReceived.plus(lateFeeAmount);
+    rawLines.push({ code: input.depositAccountCode, dr: totalReceived, cr: zero, description: 'รับชำระ' });
+
+    if (isConsolidated) {
+      // CONSOLIDATED 2A+2B: Dr 21-2102 + 11-2106 to clear accrual side
+      rawLines.push({ code: '21-2102', dr: vatPerInst, cr: zero, description: 'ล้าง VAT รอเรียกเก็บ' });
+      rawLines.push({ code: '11-2106', dr: interestPerInst, cr: zero, description: 'ล้าง Unearned รายได้รอตัดบัญชี' });
+      // Cr: clear gross receivable, VAT asset, and recognize income
+      rawLines.push({ code: '11-2101', dr: zero, cr: installmentExclVat, description: 'ลูกหนี้ Gross (ลด)' });
+      rawLines.push({ code: '11-2105', dr: zero, cr: vatPerInst, description: 'VAT รอเรียกเก็บ (ล้าง)' });
+      rawLines.push({ code: '21-2101', dr: zero, cr: vatPerInst, description: 'ภาษีขาย ภ.พ.30' });
+      rawLines.push({ code: '41-1101', dr: zero, cr: interestPerInst, description: 'รายได้ดอกเบี้ย (รับรู้)' });
+    } else {
+      // 2B ONLY: installment already accrued, just clear the accrued receivable
+      rawLines.push({ code: '11-2103', dr: zero, cr: installmentTotal, description: 'ล้างลูกหนี้ค้างชำระ' });
+    }
+
+    // Late fee: Cr 42-1103 if > 0
+    if (lateFeeAmount.gt(zero)) {
+      rawLines.push({ code: '42-1103', dr: zero, cr: lateFeeAmount, description: 'ค่าปรับชำระล่าช้า' });
+    }
+
+    // Resolve account names from CoA
+    const codes = [...new Set(rawLines.map((l) => l.code))];
+    const coaRows = await this.prisma.chartOfAccount.findMany({
+      where: { code: { in: codes } },
+      select: { code: true, name: true },
+    });
+    const nameMap = new Map(coaRows.map((r) => [r.code, r.name]));
+
+    // Compute totals
+    let totalDebit = zero;
+    let totalCredit = zero;
+    for (const l of rawLines) {
+      totalDebit = totalDebit.plus(l.dr);
+      totalCredit = totalCredit.plus(l.cr);
+    }
+
+    const isBalanced = totalDebit.toFixed(2) === totalCredit.toFixed(2);
+
+    return {
+      lines: rawLines.map((l) => ({
+        accountCode: l.code,
+        accountName: nameMap.get(l.code) ?? l.code,
+        debit: l.dr.toFixed(2),
+        credit: l.cr.toFixed(2),
+        description: l.description,
+      })),
+      totalDebit: totalDebit.toFixed(2),
+      totalCredit: totalCredit.toFixed(2),
+      isBalanced,
+    };
   }
 }

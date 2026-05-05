@@ -3,7 +3,7 @@ import type { Request } from 'express';
 import { ApiTags, ApiBearerAuth , ApiOperation} from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { PaymentsService } from './payments.service';
-import { RecordPaymentDto, BulkRecordPaymentDto, WaiveLateFeeDto } from './dto/payment.dto';
+import { RecordPaymentDto, BulkRecordPaymentDto, WaiveLateFeeDto, PreviewJournalDto } from './dto/payment.dto';
 import { ImportPaymentsCsvDto } from './dto/csv-import.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -85,6 +85,24 @@ export class PaymentsController {
       parsedPage && !isNaN(parsedPage) ? parsedPage : undefined,
       parsedLimit && !isNaN(parsedLimit) ? parsedLimit : undefined,
     );
+  }
+
+  /**
+   * Preview JE lines for a payment without persisting anything.
+   * Used by the RecordPaymentWizard to show "Journal Auto" live preview.
+   */
+  @Post('preview-journal')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @ApiOperation({ summary: 'คำนวณ JE preview สำหรับการชำระ (ไม่บันทึก)' })
+  previewJournal(@Body() dto: PreviewJournalDto) {
+    return this.paymentsService.previewJournal({
+      contractId: dto.contractId,
+      installmentNo: dto.installmentNo,
+      amountReceived: dto.amountReceived,
+      depositAccountCode: dto.depositAccountCode,
+      lateFee: dto.lateFee,
+      case: dto.case,
+    });
   }
 
   @Post('record')

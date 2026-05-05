@@ -11,6 +11,7 @@ import {
   QrCode,
   CreditCard,
   Building2,
+  Info,
 } from 'lucide-react';
 import {
   Dialog,
@@ -34,16 +35,16 @@ import type { PendingPayment } from '../types';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type PaymentCase =
-  | 'NORMAL'
-  | 'OVERPAY'
-  | 'UNDERPAY'
-  | 'PARTIAL'
-  | 'EARLY_PAYOFF'
-  | 'RESCHEDULE';
+/**
+ * Auto-detected payment case (computed from amount diff client-side).
+ * RESCHEDULE / EARLY_PAYOFF are handled in separate contract-detail pages, not here.
+ */
+type DetectedCase = 'NORMAL' | 'OVERPAY' | 'UNDERPAY' | 'OUT_OF_RANGE';
+
+/** Legacy type kept for API compatibility — backend accepts all 6 values */
+type PaymentCase = 'NORMAL' | 'OVERPAY' | 'UNDERPAY' | 'PARTIAL' | 'EARLY_PAYOFF' | 'RESCHEDULE';
 
 type WizardMethod = 'CASH' | 'TRANSFER' | 'QR' | 'PAYSOLUTIONS';
-type SplitMode = 'SINGLE' | 'SPLIT';
 
 interface JePreviewLine {
   accountCode: string;
@@ -68,7 +69,7 @@ interface CoaRow {
 
 // ─── Step indicator ───────────────────────────────────────────────────────────
 
-const STEPS = ['ข้อมูล', 'กรณี', 'ช่องทาง', 'Journal'];
+const STEPS = ['ข้อมูล', 'ยอดรับ', 'ช่องทาง', 'Journal'];
 
 function WizardStepper({ step }: { step: number }) {
   return (
@@ -144,7 +145,7 @@ function ContractInfoPanel({
       </h3>
       {row('เลขสัญญา', <span className="font-mono text-xs">{payment.contract.contractNumber}</span>)}
       {row('ชื่อลูกค้า', payment.contract.customer.name)}
-      {row('งวดที่', `${payment.installmentNo} / ${payment.contract.totalMonths}`)}
+      {row('งวดที่', `งวดที่ ${payment.installmentNo}`)}
       {row('วันครบกำหนด', formatThaiDate(payment.dueDate), isOverdue)}
       {row(
         'ค่างวด',
@@ -186,20 +187,62 @@ function ContractInfoPanel({
   );
 }
 
-// ─── Case + Amount + Cash Account Step (Step 2) ───────────────────────────────
+// ─── Auto-detect case badge ────────────────────────────────────────────────────
 
-const PAYMENT_CASES: { id: PaymentCase; label: string; desc: string }[] = [
-  { id: 'NORMAL', label: 'ปกติ', desc: 'จ่ายครบยอด' },
-  { id: 'OVERPAY', label: 'จ่ายเกิน', desc: 'ปัดเศษขึ้น' },
-  { id: 'UNDERPAY', label: 'จ่ายขาด', desc: 'ยกให้ ≤1฿' },
-  { id: 'PARTIAL', label: 'แบ่งชำระ', desc: 'บางส่วน' },
-  { id: 'EARLY_PAYOFF', label: 'ปิดยอด', desc: 'ก่อนกำหนด' },
-  { id: 'RESCHEDULE', label: 'ปรับดิว', desc: 'เลื่อนวัน' },
-];
+function CaseBadge({
+  detectedCase,
+  diff,
+}: {
+  detectedCase: DetectedCase;
+  diff: number;
+}) {
+  const absDiff = Math.abs(diff).toLocaleString('th-TH', { minimumFractionDigits: 2 });
 
-function CaseStep({
-  selectedCase,
-  onCaseChange,
+  if (detectedCase === 'NORMAL') {
+    return (
+      <div className="flex items-center gap-1.5 rounded-lg border border-success/40 bg-success/5 px-3 py-2 text-sm">
+        <CheckCircle2 className="size-4 text-success shrink-0" />
+        <span className="text-success font-medium leading-snug">จ่ายครบยอด</span>
+      </div>
+    );
+  }
+
+  if (detectedCase === 'OVERPAY') {
+    return (
+      <div className="flex items-center gap-1.5 rounded-lg border border-warning/40 bg-warning/5 px-3 py-2 text-sm">
+        <AlertCircle className="size-4 text-warning shrink-0" />
+        <span className="text-warning font-medium leading-snug">
+          จ่ายเกิน {absDiff} ฿ — บันทึกเข้า 53-1503 อัตโนมัติ
+        </span>
+      </div>
+    );
+  }
+
+  if (detectedCase === 'UNDERPAY') {
+    return (
+      <div className="flex items-center gap-1.5 rounded-lg border border-warning/40 bg-warning/5 px-3 py-2 text-sm">
+        <AlertCircle className="size-4 text-warning shrink-0" />
+        <span className="text-warning font-medium leading-snug">
+          จ่ายขาด {absDiff} ฿ — Dr 52-1104 (ต้องอนุมัติ)
+        </span>
+      </div>
+    );
+  }
+
+  // OUT_OF_RANGE
+  return (
+    <div className="flex items-center gap-1.5 rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm">
+      <AlertCircle className="size-4 text-destructive shrink-0" />
+      <span className="text-destructive font-medium leading-snug">
+        ห่างเกิน 1 ฿ — ใช้เมนูแบ่งชำระ/ปิดยอดแทน
+      </span>
+    </div>
+  );
+}
+
+// ─── Amount + Cash Account Step (Step 2) ─────────────────────────────────────
+
+function AmountStep({
   amountReceived,
   onAmountChange,
   lateFeeStr,
@@ -207,9 +250,9 @@ function CaseStep({
   depositAccountCode,
   onDepositAccountCodeChange,
   coaNames,
+  detectedCase,
+  diff,
 }: {
-  selectedCase: PaymentCase;
-  onCaseChange: (c: PaymentCase) => void;
   amountReceived: string;
   onAmountChange: (v: string) => void;
   lateFeeStr: string;
@@ -217,59 +260,41 @@ function CaseStep({
   depositAccountCode: string;
   onDepositAccountCodeChange: (code: string) => void;
   coaNames: Map<string, string>;
+  detectedCase: DetectedCase;
+  diff: number;
 }) {
-  const isReschedule = selectedCase === 'RESCHEDULE';
+  const hasAmount = parseFloat(amountReceived) > 0;
 
   return (
     <div className="space-y-5">
-      {/* Case selector */}
-      <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3 leading-snug">
-          เลือกกรณีที่เกิดขึ้น
-        </h3>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {PAYMENT_CASES.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              onClick={() => onCaseChange(c.id)}
-              className={cn(
-                'flex flex-col items-center justify-center rounded-xl border-2 px-3 py-3 text-sm transition-colors',
-                selectedCase === c.id
-                  ? 'bg-primary border-primary text-primary-foreground'
-                  : 'bg-card border-border text-foreground hover:border-primary/40 hover:bg-accent',
-              )}
-            >
-              <span className="font-semibold leading-snug">{c.label}</span>
-              <span
-                className={cn(
-                  'text-xs leading-snug mt-0.5',
-                  selectedCase === c.id ? 'text-primary-foreground/80' : 'text-muted-foreground',
-                )}
-              >
-                {c.desc}
-              </span>
-            </button>
-          ))}
-        </div>
+      {/* Note: separate menus for early payoff / reschedule */}
+      <div className="flex items-start gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2.5">
+        <Info className="size-4 text-muted-foreground shrink-0 mt-0.5" />
+        <p className="text-xs text-muted-foreground leading-snug">
+          หากต้องการปิดยอดก่อนกำหนดหรือปรับดิว ใช้เมนูแยกในหน้าสัญญา
+        </p>
       </div>
 
-      {/* Amount field — optional/hidden for RESCHEDULE */}
-      {!isReschedule && (
-        <div>
-          <Label className="block text-sm font-medium text-foreground mb-1.5 leading-snug">
-            ยอดรับจริง (฿) <span className="text-destructive">*</span>
-          </Label>
-          <Input
-            type="number"
-            value={amountReceived}
-            onChange={(e) => onAmountChange(e.target.value)}
-            min={0}
-            step="0.01"
-            className="text-right font-mono"
-          />
-        </div>
-      )}
+      {/* Amount field */}
+      <div>
+        <Label className="block text-sm font-medium text-foreground mb-1.5 leading-snug">
+          ยอดรับจริง (฿) <span className="text-destructive">*</span>
+        </Label>
+        <Input
+          type="number"
+          value={amountReceived}
+          onChange={(e) => onAmountChange(e.target.value)}
+          min={0}
+          step="0.01"
+          className="text-right font-mono"
+        />
+        {/* Auto-detect status badge — shown once user types an amount */}
+        {hasAmount && (
+          <div className="mt-2">
+            <CaseBadge detectedCase={detectedCase} diff={diff} />
+          </div>
+        )}
+      </div>
 
       {/* Late fee */}
       <div>
@@ -289,9 +314,7 @@ function CaseStep({
 
       {/* Cash account selector */}
       <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3 leading-snug">
-          บัญชีรับเงิน
-        </h3>
+        <h3 className="text-sm font-semibold text-foreground mb-3 leading-snug">บัญชีรับเงิน</h3>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {CASH_ACCOUNT_CODES.map((code) => {
             const name = coaNames.get(code) ?? '';
@@ -376,12 +399,6 @@ function MethodStep({
   onSlipUrlChange,
   memo,
   onMemoChange,
-  selectedCase,
-  daysToShift,
-  onDaysToShiftChange,
-  splitMode,
-  onSplitModeChange,
-  installmentTotal,
 }: {
   method: WizardMethod;
   onMethodChange: (m: WizardMethod) => void;
@@ -391,26 +408,13 @@ function MethodStep({
   onSlipUrlChange: (url: string) => void;
   memo: string;
   onMemoChange: (v: string) => void;
-  selectedCase: PaymentCase;
-  daysToShift: string;
-  onDaysToShiftChange: (v: string) => void;
-  splitMode: SplitMode;
-  onSplitModeChange: (m: SplitMode) => void;
-  installmentTotal: Decimal;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [slipFileName, setSlipFileName] = useState('');
   const uploadMutation = useSlipUpload();
 
-  const isReschedule = selectedCase === 'RESCHEDULE';
   const requiresRef = method !== 'CASH';
   const requiresSlip = method === 'TRANSFER' || method === 'QR';
-
-  // Computed reschedule fee
-  const days = parseInt(daysToShift, 10) || 0;
-  const rescheduleFee = days > 0
-    ? installmentTotal.div(30).times(days).toDecimalPlaces(2, Decimal.ROUND_DOWN)
-    : new Decimal(0);
 
   const handleFileChange = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -553,81 +557,6 @@ function MethodStep({
         )}
       </div>
 
-      {/* Reschedule-specific fields */}
-      {isReschedule && (
-        <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-4">
-          <h4 className="text-sm font-semibold text-foreground leading-snug">
-            รายละเอียดการปรับดิว
-          </h4>
-
-          <div>
-            <Label className="block text-sm font-medium text-foreground mb-1.5 leading-snug">
-              เลื่อนกี่วัน <span className="text-destructive">*</span>
-            </Label>
-            <Input
-              type="number"
-              value={daysToShift}
-              onChange={(e) => onDaysToShiftChange(e.target.value)}
-              min={1}
-              step={1}
-              placeholder="จำนวนวันที่เลื่อน"
-              className="text-right font-mono"
-            />
-          </div>
-
-          {/* Auto-computed fee display */}
-          {days > 0 && (
-            <div className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2 text-sm">
-              <span className="text-muted-foreground leading-snug">
-                ค่าปรับดิว = {installmentTotal.toFixed(2)} ÷ 30 × {days} วัน
-              </span>
-              <span className="font-mono font-semibold text-foreground leading-snug">
-                {rescheduleFee.toNumber().toLocaleString('th-TH', { minimumFractionDigits: 2 })} ฿
-              </span>
-            </div>
-          )}
-
-          {/* Split mode */}
-          <div>
-            <Label className="block text-sm font-medium text-foreground mb-2 leading-snug">
-              แบ่งจ่าย
-            </Label>
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                { id: 'SINGLE' as SplitMode, label: 'ครั้งเดียว (6b)', desc: 'งวด + ค่าปรับ รวมกัน' },
-                { id: 'SPLIT' as SplitMode, label: '2 ครั้ง (6a)', desc: 'ค่าปรับก่อน แล้วค่องวด' },
-              ].map((opt) => (
-                <button
-                  key={opt.id}
-                  type="button"
-                  onClick={() => onSplitModeChange(opt.id)}
-                  className={cn(
-                    'flex flex-col rounded-xl border-2 px-3 py-2.5 text-left text-sm transition-colors',
-                    splitMode === opt.id
-                      ? 'bg-primary border-primary text-primary-foreground'
-                      : 'bg-card border-border text-foreground hover:border-primary/40 hover:bg-accent',
-                  )}
-                >
-                  <span className="font-semibold leading-snug">{opt.label}</span>
-                  <span
-                    className={cn(
-                      'text-xs leading-snug mt-0.5',
-                      splitMode === opt.id ? 'text-primary-foreground/80' : 'text-muted-foreground',
-                    )}
-                  >
-                    {opt.desc}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <p className="text-xs text-muted-foreground leading-snug">
-            ดู JE preview ด้านล่างก่อนกด ถัดไป — การปรับดิวจะดำเนินการที่หน้า /contracts/:id/reschedule
-          </p>
-        </div>
-      )}
-
       {/* Memo */}
       <div>
         <Label className="block text-sm font-medium text-foreground mb-1.5 leading-snug">
@@ -746,11 +675,9 @@ function JePreviewPanel({
 function JournalReviewStep({
   preview,
   isLoading,
-  selectedCase,
 }: {
   preview: JePreview | undefined;
   isLoading: boolean;
-  selectedCase: PaymentCase;
 }) {
   return (
     <div className="space-y-3">
@@ -760,15 +687,6 @@ function JournalReviewStep({
       <p className="text-xs text-muted-foreground leading-snug">
         ระบบจะสร้างรายการบัญชีเหล่านี้อัตโนมัติเมื่อกดบันทึก
       </p>
-      {selectedCase === 'RESCHEDULE' && (
-        <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/5 px-3 py-2.5">
-          <AlertCircle className="size-4 text-warning shrink-0 mt-0.5" />
-          <p className="text-xs text-warning leading-snug">
-            การปรับดิวผ่าน wizard จะแสดง JE preview แต่การบันทึกจริงต้องดำเนินการที่หน้า
-            /contracts/:id/reschedule (TODO: wire in follow-up PR)
-          </p>
-        </div>
-      )}
       {isLoading || !preview ? (
         <div className="flex items-center gap-2 py-4 text-muted-foreground text-sm">
           <Loader2 className="size-4 animate-spin" />
@@ -842,6 +760,24 @@ function JournalReviewStep({
   );
 }
 
+// ─── Auto-detect case from amount diff ───────────────────────────────────────
+
+function detectCase(received: number, expectedTotal: Decimal): DetectedCase {
+  if (received <= 0) return 'OUT_OF_RANGE';
+  const diff = received - expectedTotal.toNumber();
+  if (Math.abs(diff) < 0.01) return 'NORMAL';
+  if (diff > 0 && diff <= 1) return 'OVERPAY';
+  if (diff < 0 && diff >= -1) return 'UNDERPAY';
+  return 'OUT_OF_RANGE';
+}
+
+/** Map auto-detected case to the API PaymentCase param (best fit) */
+function toApiCase(detected: DetectedCase): PaymentCase {
+  if (detected === 'OVERPAY') return 'OVERPAY';
+  if (detected === 'UNDERPAY') return 'UNDERPAY';
+  return 'NORMAL'; // OUT_OF_RANGE should never reach API (submit blocked)
+}
+
 // ─── Main wizard ──────────────────────────────────────────────────────────────
 
 interface RecordPaymentWizardProps {
@@ -860,8 +796,6 @@ interface RecordPaymentWizardProps {
     referenceNumber?: string;
     slipUrl?: string;
     memo?: string;
-    daysToShift?: number;
-    splitMode?: SplitMode;
     notes?: string;
   }) => void;
   isSubmitting: boolean;
@@ -877,7 +811,6 @@ export function RecordPaymentWizard({
   defaultDepositAccountCode = '11-1101',
 }: RecordPaymentWizardProps) {
   const [step, setStep] = useState(1);
-  const [selectedCase, setSelectedCase] = useState<PaymentCase>('NORMAL');
   const [depositAccountCode, setDepositAccountCode] = useState(defaultDepositAccountCode);
 
   // Step 2 fields
@@ -895,22 +828,16 @@ export function RecordPaymentWizard({
   const [slipUrl, setSlipUrl] = useState('');
   const [memo, setMemo] = useState('');
 
-  // Reschedule fields
-  const [daysToShift, setDaysToShift] = useState('');
-  const [splitMode, setSplitMode] = useState<SplitMode>('SINGLE');
-
-  // Net Exposure
+  // Net Exposure — use amountDue (remaining on this installment) as proxy
+  // contract.monthlyPayment / totalMonths not available in this endpoint's select
   const netExposure = useMemo(() => {
-    const monthlyPayment = new Decimal(payment.contract.monthlyPayment);
-    const totalMonths = payment.contract.totalMonths;
-    const remaining = Math.max(totalMonths - (payment.installmentNo - 1), 0);
-    return monthlyPayment.mul(remaining).add(lateFeeDecimal).toDecimalPlaces(2);
-  }, [payment, lateFeeDecimal]);
+    return amountDueDecimal.add(lateFeeDecimal).sub(amountPaidDecimal).toDecimalPlaces(2);
+  }, [amountDueDecimal, lateFeeDecimal, amountPaidDecimal]);
 
-  // installmentTotal for reschedule fee calc (approximate — full calc is server-side)
+  // installmentTotal: the base installment amount (amountDue on this payment row)
   const installmentTotal = useMemo(() => {
-    return new Decimal(payment.contract.monthlyPayment);
-  }, [payment.contract.monthlyPayment]);
+    return amountDueDecimal;
+  }, [amountDueDecimal]);
 
   // Fetch CoA names
   const { data: coaData = [] } = useQuery<CoaRow[]>({
@@ -931,37 +858,41 @@ export function RecordPaymentWizard({
     return isNaN(v) ? new Decimal(0) : new Decimal(v);
   }, [lateFeeStr]);
 
+  // Auto-detect case from amount diff
+  const receivedNum = parseFloat(amountReceived) || 0;
+  const expectedTotal = useMemo(
+    () => installmentTotal.plus(currentLateFee),
+    [installmentTotal, currentLateFee],
+  );
+  const detectedCase = useMemo(
+    () => detectCase(receivedNum, expectedTotal),
+    [receivedNum, expectedTotal],
+  );
+  const amountDiff = useMemo(
+    () => receivedNum - expectedTotal.toNumber(),
+    [receivedNum, expectedTotal],
+  );
+  const apiCase = toApiCase(detectedCase);
+
   // Preview params — debounced
   const previewParams = useMemo(
     () => ({
       contractId: payment.contract.id,
       installmentNo: payment.installmentNo,
-      amountReceived:
-        selectedCase === 'RESCHEDULE' ? installmentTotal.toNumber() : parseFloat(amountReceived) || 0,
+      amountReceived: receivedNum,
       depositAccountCode,
       lateFee: currentLateFee.toNumber(),
-      case: selectedCase,
-      daysToShift: parseInt(daysToShift, 10) || undefined,
-      splitMode: selectedCase === 'RESCHEDULE' ? splitMode : undefined,
+      case: apiCase,
     }),
-    [
-      amountReceived,
-      depositAccountCode,
-      currentLateFee,
-      selectedCase,
-      payment,
-      installmentTotal,
-      daysToShift,
-      splitMode,
-    ],
+    [receivedNum, depositAccountCode, currentLateFee, apiCase, payment],
   );
   const debouncedParams = useDebounce(previewParams, 300);
 
+  // Don't fire preview when out of range or amount is zero
   const isPreviewReady: boolean =
-    debouncedParams.depositAccountCode.length > 0 &&
-    (selectedCase === 'RESCHEDULE'
-      ? (debouncedParams.daysToShift ?? 0) > 0
-      : debouncedParams.amountReceived > 0);
+    detectedCase !== 'OUT_OF_RANGE' &&
+    debouncedParams.amountReceived > 0 &&
+    debouncedParams.depositAccountCode.length > 0;
 
   const { data: previewData, isFetching: previewLoading } = useQuery<JePreview, Error, JePreview>({
     queryKey: ['payment-preview', debouncedParams],
@@ -980,7 +911,7 @@ export function RecordPaymentWizard({
     onSubmit({
       contractId: payment.contract.id,
       installmentNo: payment.installmentNo,
-      amount: parseFloat(amountReceived) || 0,
+      amount: receivedNum,
       paymentMethod:
         method === 'TRANSFER' || method === 'PAYSOLUTIONS'
           ? 'BANK_TRANSFER'
@@ -989,13 +920,11 @@ export function RecordPaymentWizard({
           : 'CASH',
       depositAccountCode,
       lateFee: currentLateFee.toNumber(),
-      case: selectedCase,
+      case: apiCase,
       wizardMethod: method,
       referenceNumber: referenceNumber || undefined,
       slipUrl: slipUrl || undefined,
       memo: memo || undefined,
-      daysToShift: daysToShift ? parseInt(daysToShift, 10) : undefined,
-      splitMode: selectedCase === 'RESCHEDULE' ? splitMode : undefined,
     });
   };
 
@@ -1003,16 +932,15 @@ export function RecordPaymentWizard({
   const canAdvance = (): boolean => {
     if (step === 1) return true;
     if (step === 2) {
-      if (selectedCase === 'RESCHEDULE') return !!depositAccountCode;
-      return parseFloat(amountReceived) > 0 && !!depositAccountCode;
+      return (
+        receivedNum > 0 &&
+        !!depositAccountCode &&
+        detectedCase !== 'OUT_OF_RANGE'
+      );
     }
     if (step === 3) {
-      // Ref required for non-cash
       if (method !== 'CASH' && !referenceNumber.trim()) return false;
-      // Slip required for TRANSFER / QR
       if ((method === 'TRANSFER' || method === 'QR') && !slipUrl) return false;
-      // Reschedule: need days
-      if (selectedCase === 'RESCHEDULE' && (!daysToShift || parseInt(daysToShift, 10) < 1)) return false;
       return true;
     }
     if (step === 4) return !!(preview?.isBalanced);
@@ -1023,7 +951,6 @@ export function RecordPaymentWizard({
     if (!isOpen) {
       onClose();
       setStep(1);
-      setSelectedCase('NORMAL');
       setDepositAccountCode(defaultDepositAccountCode);
       setAmountReceived(defaultAmount.toFixed(2));
       setLateFeeStr(lateFeeDecimal.toFixed(2));
@@ -1031,8 +958,6 @@ export function RecordPaymentWizard({
       setReferenceNumber('');
       setSlipUrl('');
       setMemo('');
-      setDaysToShift('');
-      setSplitMode('SINGLE');
     }
   };
 
@@ -1058,7 +983,7 @@ export function RecordPaymentWizard({
               />
               <div className="rounded-xl border border-border bg-card p-4">
                 <p className="text-sm text-muted-foreground leading-snug">
-                  กดถัดไปเพื่อเลือกกรณีการชำระและจำนวนเงิน
+                  กดถัดไปเพื่อกรอกยอดรับและช่องทาง
                 </p>
               </div>
             </div>
@@ -1074,9 +999,7 @@ export function RecordPaymentWizard({
 
               <div className="min-w-0">
                 {step === 2 && (
-                  <CaseStep
-                    selectedCase={selectedCase}
-                    onCaseChange={setSelectedCase}
+                  <AmountStep
                     amountReceived={amountReceived}
                     onAmountChange={setAmountReceived}
                     lateFeeStr={lateFeeStr}
@@ -1084,6 +1007,8 @@ export function RecordPaymentWizard({
                     depositAccountCode={depositAccountCode}
                     onDepositAccountCodeChange={setDepositAccountCode}
                     coaNames={coaNames}
+                    detectedCase={detectedCase}
+                    diff={amountDiff}
                   />
                 )}
                 {step === 3 && (
@@ -1096,19 +1021,12 @@ export function RecordPaymentWizard({
                     onSlipUrlChange={setSlipUrl}
                     memo={memo}
                     onMemoChange={setMemo}
-                    selectedCase={selectedCase}
-                    daysToShift={daysToShift}
-                    onDaysToShiftChange={setDaysToShift}
-                    splitMode={splitMode}
-                    onSplitModeChange={setSplitMode}
-                    installmentTotal={installmentTotal}
                   />
                 )}
                 {step === 4 && (
                   <JournalReviewStep
                     preview={preview}
                     isLoading={previewLoading}
-                    selectedCase={selectedCase}
                   />
                 )}
               </div>
@@ -1134,21 +1052,24 @@ export function RecordPaymentWizard({
               <Button
                 onClick={() => setStep((s) => Math.min(4, s + 1))}
                 disabled={!canAdvance()}
+                title={
+                  step === 2 && detectedCase === 'OUT_OF_RANGE'
+                    ? 'ใช้เมนูแบ่งชำระหรือปิดยอดแทน'
+                    : undefined
+                }
               >
                 ถัดไป
               </Button>
             ) : (
               <Button
                 onClick={handleSubmit}
-                disabled={isSubmitting || previewLoading || !preview?.isBalanced || selectedCase === 'RESCHEDULE'}
+                disabled={isSubmitting || previewLoading || !preview?.isBalanced}
               >
                 {isSubmitting ? (
                   <>
                     <Loader2 className="size-4 animate-spin mr-2" />
                     กำลังบันทึก...
                   </>
-                ) : selectedCase === 'RESCHEDULE' ? (
-                  'ดู JE เท่านั้น (TODO)'
                 ) : (
                   'บันทึกการชำระ'
                 )}

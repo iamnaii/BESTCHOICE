@@ -1412,11 +1412,14 @@ export class PaymentsService {
     depositAccountCode: string;
     lateFee?: number;
     case?: string;
+    daysToShift?: number;
+    splitMode?: string;
   }): Promise<{
     lines: Array<{ accountCode: string; accountName: string; debit: string; credit: string; description: string }>;
     totalDebit: string;
     totalCredit: string;
     isBalanced: boolean;
+    rescheduleFeeDisplay?: string;
   }> {
     const inst = await this.prisma.installmentSchedule.findUnique({
       where: { contractId_installmentNo: { contractId: input.contractId, installmentNo: input.installmentNo } },
@@ -1446,12 +1449,75 @@ export class PaymentsService {
     const vatPerInst = vat.div(total).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
     const installmentTotal = installmentExclVat.plus(vatPerInst);
 
-    const amountReceived = new Prisma.Decimal(input.amountReceived.toString());
     const lateFeeAmount = input.lateFee ? new Prisma.Decimal(input.lateFee.toString()) : zero;
-    const isConsolidated = !inst.accrualJournalEntryId; // 2A not yet run
 
     // Build raw JE lines (code, dr, cr, description)
     const rawLines: { code: string; dr: Prisma.Decimal; cr: Prisma.Decimal; description: string }[] = [];
+
+    // ── RESCHEDULE case (JP6 template preview) ──────────────────────────────
+    if (input.case === 'RESCHEDULE') {
+      const days = input.daysToShift ?? 0;
+      const monthlyPayment = new Prisma.Decimal(c.monthlyPayment.toString());
+      // Reschedule fee = installmentTotal / 30 × daysToShift (ROUND_DOWN per spec)
+      const rescheduleFee = days > 0
+        ? monthlyPayment.div(30).times(days).toDecimalPlaces(2, Prisma.Decimal.ROUND_DOWN)
+        : zero;
+
+      const isSplit = input.splitMode === 'SPLIT';
+      const amountReceived = new Prisma.Decimal(input.amountReceived.toString());
+
+      if (isSplit) {
+        // 6a — fee advance only (step 1):
+        //   Dr depositAccountCode  feeAmount
+        //     Cr 21-1103           feeAmount (เงินรับล่วงหน้างวดสุดท้าย)
+        const feeAmount = rescheduleFee.gt(zero) ? rescheduleFee : amountReceived;
+        rawLines.push({ code: input.depositAccountCode, dr: feeAmount, cr: zero, description: 'รับค่าปรับดิวล่วงหน้า (6a)' });
+        rawLines.push({ code: '21-1103', dr: zero, cr: feeAmount, description: 'เงินรับล่วงหน้างวดสุดท้าย' });
+      } else {
+        // 6b — bundled (installment + fee in one transaction):
+        //   Dr depositAccountCode  installmentAmount + feeAmount
+        //     Cr 11-2103           installmentAmount
+        //     Cr 21-1103           feeAmount
+        const bundledTotal = installmentTotal.plus(rescheduleFee);
+        rawLines.push({ code: input.depositAccountCode, dr: bundledTotal, cr: zero, description: 'รับชำระงวด + ค่าปรับดิว (6b)' });
+        rawLines.push({ code: '11-2103', dr: zero, cr: installmentTotal, description: 'ล้างลูกหนี้ค้างชำระงวด' });
+        rawLines.push({ code: '21-1103', dr: zero, cr: rescheduleFee, description: 'เงินรับล่วงหน้างวดสุดท้าย' });
+      }
+
+      // Resolve CoA names
+      const codes = [...new Set(rawLines.map((l) => l.code))];
+      const coaRows = await this.prisma.chartOfAccount.findMany({
+        where: { code: { in: codes } },
+        select: { code: true, name: true },
+      });
+      const nameMap = new Map(coaRows.map((r) => [r.code, r.name]));
+
+      let totalDebit = zero;
+      let totalCredit = zero;
+      for (const l of rawLines) {
+        totalDebit = totalDebit.plus(l.dr);
+        totalCredit = totalCredit.plus(l.cr);
+      }
+      const isBalanced = totalDebit.toFixed(2) === totalCredit.toFixed(2);
+
+      return {
+        lines: rawLines.map((l) => ({
+          accountCode: l.code,
+          accountName: nameMap.get(l.code) ?? l.code,
+          debit: l.dr.toFixed(2),
+          credit: l.cr.toFixed(2),
+          description: l.description,
+        })),
+        totalDebit: totalDebit.toFixed(2),
+        totalCredit: totalCredit.toFixed(2),
+        isBalanced,
+        rescheduleFeeDisplay: rescheduleFee.toFixed(2),
+      };
+    }
+
+    // ── Normal / Overpay / Underpay / Partial / EarlyPayoff ─────────────────
+    const amountReceived = new Prisma.Decimal(input.amountReceived.toString());
+    const isConsolidated = !inst.accrualJournalEntryId; // 2A not yet run
 
     // Dr: cash/bank received (installment total + late fee)
     const totalReceived = amountReceived.plus(lateFeeAmount);

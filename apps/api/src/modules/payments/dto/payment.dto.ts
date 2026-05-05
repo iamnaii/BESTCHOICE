@@ -6,6 +6,12 @@ const CASH_CODE_REGEX = /^11-(110[1-3]|120[1-3])$/;
 /** Payment case types for the wizard */
 export type PaymentCase = 'NORMAL' | 'OVERPAY' | 'UNDERPAY' | 'PARTIAL' | 'EARLY_PAYOFF' | 'RESCHEDULE';
 
+/** Payment channel/method enum */
+export type PaymentMethod = 'CASH' | 'TRANSFER' | 'QR' | 'PAYSOLUTIONS';
+
+/** Reschedule split mode — 6a (split: fee paid first) or 6b (bundled: fee + installment together) */
+export type RescheduleSplitMode = 'SINGLE' | 'SPLIT';
+
 export class PreviewJournalDto {
   /** Look up installmentSchedule by contractId + installmentNo (same unique key as recordPayment) */
   @IsString()
@@ -15,7 +21,7 @@ export class PreviewJournalDto {
   installmentNo: number;
 
   @IsNumber()
-  @Min(0.01, { message: 'จำนวนเงินต้องมากกว่า 0' })
+  @Min(0, { message: 'จำนวนเงินต้องไม่ติดลบ' })
   amountReceived: number;
 
   @IsString()
@@ -35,6 +41,42 @@ export class PreviewJournalDto {
   @IsOptional()
   @IsString()
   toleranceApproverId?: string;
+
+  /** ช่องทางรับชำระ (step 3) */
+  @IsOptional()
+  @IsString()
+  @IsIn(['CASH', 'TRANSFER', 'QR', 'PAYSOLUTIONS'])
+  method?: PaymentMethod;
+
+  /** เลขอ้างอิง / เลขโอน (required เมื่อ method !== CASH) */
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  referenceNumber?: string;
+
+  /** URL สลิป (S3/GCS URL) */
+  @IsOptional()
+  @IsString()
+  @MaxLength(2048)
+  slipUrl?: string;
+
+  /** หมายเหตุ */
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  memo?: string;
+
+  /** RESCHEDULE: จำนวนวันที่เลื่อน */
+  @IsOptional()
+  @IsNumber()
+  @Min(1, { message: 'จำนวนวันต้องมากกว่า 0' })
+  daysToShift?: number;
+
+  /** RESCHEDULE: แบ่งจ่าย (SINGLE = 6b bundled, SPLIT = 6a fee advance first) */
+  @IsOptional()
+  @IsString()
+  @IsIn(['SINGLE', 'SPLIT'])
+  splitMode?: RescheduleSplitMode;
 }
 
 export class RecordPaymentDto {
@@ -56,7 +98,7 @@ export class RecordPaymentDto {
   @IsOptional()
   @MaxLength(2048)
   @Matches(/^https:\/\/.+/, { message: 'evidenceUrl ต้องเป็น HTTPS URL' })
-  evidenceUrl?: string; // บังคับ: สลิปโอนเงิน / หลักฐานการชำระ
+  evidenceUrl?: string; // สลิปโอนเงิน / หลักฐานการชำระ
 
   @IsString()
   @IsOptional()
@@ -80,6 +122,42 @@ export class RecordPaymentDto {
   @IsOptional()
   @IsString()
   toleranceApproverId?: string;
+
+  /** ช่องทางรับชำระจากฝั่งลูกค้า (wizard step 3) */
+  @IsOptional()
+  @IsString()
+  @IsIn(['CASH', 'TRANSFER', 'QR', 'PAYSOLUTIONS'])
+  wizardMethod?: PaymentMethod;
+
+  /** เลขอ้างอิงธุรกรรมจาก wizard step 3 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  referenceNumber?: string;
+
+  /** URL สลิป (S3/GCS) จาก wizard step 3 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(2048)
+  slipUrl?: string;
+
+  /** หมายเหตุจาก wizard step 3 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  memo?: string;
+
+  /** RESCHEDULE: จำนวนวันที่เลื่อน */
+  @IsOptional()
+  @IsNumber()
+  @Min(1, { message: 'จำนวนวันต้องมากกว่า 0' })
+  daysToShift?: number;
+
+  /** RESCHEDULE: SINGLE = 6b bundled, SPLIT = 6a fee advance first */
+  @IsOptional()
+  @IsString()
+  @IsIn(['SINGLE', 'SPLIT'])
+  splitMode?: RescheduleSplitMode;
 }
 
 export class BulkRecordPaymentDto {

@@ -606,7 +606,13 @@ export default function PaymentsPage() {
               amount: payload.amount,
               paymentMethod: payload.paymentMethod,
               depositAccountCode: payload.depositAccountCode,
-              transactionRef: `${payload.paymentMethod}-${Date.now()}`,
+              // Step 3 fields: use referenceNumber if provided, else fallback timestamp ref
+              transactionRef: payload.referenceNumber || `${payload.paymentMethod}-${Date.now()}`,
+              wizardMethod: payload.wizardMethod,
+              referenceNumber: payload.referenceNumber,
+              slipUrl: payload.slipUrl,
+              memo: payload.memo,
+              case: payload.case,
             };
             if (absDiff >= 0.01) {
               setPendingPayload(mutationPayload);

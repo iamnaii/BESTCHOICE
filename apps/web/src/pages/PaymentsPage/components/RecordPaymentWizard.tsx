@@ -67,54 +67,6 @@ interface CoaRow {
   name: string;
 }
 
-// ─── Step indicator ───────────────────────────────────────────────────────────
-
-const STEPS = ['ข้อมูล', 'ยอดรับ', 'ช่องทาง', 'Journal'];
-
-function WizardStepper({ step }: { step: number }) {
-  return (
-    <div className="flex items-center w-full mb-6">
-      {STEPS.map((label, idx) => {
-        const stepNo = idx + 1;
-        const done = step > stepNo;
-        const active = step === stepNo;
-        return (
-          <div key={label} className="flex items-center flex-1 last:flex-none">
-            <div className="flex flex-col items-center gap-1">
-              <div
-                className={cn(
-                  'flex items-center justify-center size-7 rounded-full text-xs font-semibold border-2 transition-colors',
-                  done || active
-                    ? 'bg-primary border-primary text-primary-foreground'
-                    : 'bg-background border-border text-muted-foreground',
-                )}
-              >
-                {done ? <CheckCircle2 className="size-4" /> : stepNo}
-              </div>
-              <span
-                className={cn(
-                  'text-xs leading-snug whitespace-nowrap',
-                  active ? 'text-foreground font-medium' : 'text-muted-foreground',
-                )}
-              >
-                {label}
-              </span>
-            </div>
-            {idx < STEPS.length - 1 && (
-              <div
-                className={cn(
-                  'flex-1 h-0.5 mx-2 mb-5 rounded-full',
-                  step > stepNo ? 'bg-primary' : 'bg-border',
-                )}
-              />
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 // ─── Contract info panel ──────────────────────────────────────────────────────
 
 function ContractInfoPanel({
@@ -139,7 +91,7 @@ function ContractInfoPanel({
   );
 
   return (
-    <div className="rounded-xl border border-border bg-card p-4 space-y-1 min-w-0">
+    <div className="rounded-xl border border-border bg-card p-4 space-y-1 min-w-0 h-fit">
       <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
         ข้อมูลสัญญา
       </h3>
@@ -240,110 +192,6 @@ function CaseBadge({
   );
 }
 
-// ─── Amount + Cash Account Step (Step 2) ─────────────────────────────────────
-
-function AmountStep({
-  amountReceived,
-  onAmountChange,
-  lateFeeStr,
-  onLateFeeChange,
-  depositAccountCode,
-  onDepositAccountCodeChange,
-  coaNames,
-  detectedCase,
-  diff,
-}: {
-  amountReceived: string;
-  onAmountChange: (v: string) => void;
-  lateFeeStr: string;
-  onLateFeeChange: (v: string) => void;
-  depositAccountCode: string;
-  onDepositAccountCodeChange: (code: string) => void;
-  coaNames: Map<string, string>;
-  detectedCase: DetectedCase;
-  diff: number;
-}) {
-  const hasAmount = parseFloat(amountReceived) > 0;
-
-  return (
-    <div className="space-y-5">
-      {/* Note: separate menus for early payoff / reschedule */}
-      <div className="flex items-start gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2.5">
-        <Info className="size-4 text-muted-foreground shrink-0 mt-0.5" />
-        <p className="text-xs text-muted-foreground leading-snug">
-          หากต้องการปิดยอดก่อนกำหนดหรือปรับดิว ใช้เมนูแยกในหน้าสัญญา
-        </p>
-      </div>
-
-      {/* Amount field */}
-      <div>
-        <Label className="block text-sm font-medium text-foreground mb-1.5 leading-snug">
-          ยอดรับจริง (฿) <span className="text-destructive">*</span>
-        </Label>
-        <Input
-          type="number"
-          value={amountReceived}
-          onChange={(e) => onAmountChange(e.target.value)}
-          min={0}
-          step="0.01"
-          className="text-right font-mono"
-        />
-        {/* Auto-detect status badge — shown once user types an amount */}
-        {hasAmount && (
-          <div className="mt-2">
-            <CaseBadge detectedCase={detectedCase} diff={diff} />
-          </div>
-        )}
-      </div>
-
-      {/* Late fee */}
-      <div>
-        <Label className="block text-sm font-medium text-foreground mb-1.5 leading-snug">
-          ค่าปรับ (฿)
-          <span className="ml-1 text-xs text-muted-foreground font-normal">(ระบุ 0 ถ้าไม่มี)</span>
-        </Label>
-        <Input
-          type="number"
-          value={lateFeeStr}
-          onChange={(e) => onLateFeeChange(e.target.value)}
-          min={0}
-          step="0.01"
-          className="text-right font-mono"
-        />
-      </div>
-
-      {/* Cash account selector */}
-      <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3 leading-snug">บัญชีรับเงิน</h3>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {CASH_ACCOUNT_CODES.map((code) => {
-            const name = coaNames.get(code) ?? '';
-            const isBank = code.startsWith('11-12');
-            return (
-              <button
-                key={code}
-                type="button"
-                onClick={() => onDepositAccountCodeChange(code)}
-                className={cn(
-                  'flex flex-col items-start rounded-xl border-2 px-3 py-2.5 text-left text-sm transition-colors',
-                  depositAccountCode === code
-                    ? 'bg-primary border-primary text-primary-foreground'
-                    : 'bg-card border-border text-foreground hover:border-primary/40 hover:bg-accent',
-                )}
-              >
-                <span className="font-mono text-xs leading-snug opacity-75">{code}</span>
-                <span className="font-medium leading-snug text-xs mt-0.5 line-clamp-2">
-                  {name || (isBank ? 'ธนาคาร' : 'เงินสด')}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Slip upload helper ────────────────────────────────────────────────────────
 
 const MAX_SLIP_BYTES = 10 * 1024 * 1024; // 10 MB
@@ -356,7 +204,6 @@ function useSlipUpload() {
       if (!SLIP_MIME_TYPES.includes(file.type)) {
         throw new Error('รองรับ JPG, PNG, WebP, PDF เท่านั้น');
       }
-      // Step 1: get presigned upload URL
       const { data: presign } = await api.post<{
         uploadUrl: string;
         method: string;
@@ -367,7 +214,6 @@ function useSlipUpload() {
         contentType: file.type,
       });
 
-      // Step 2: PUT file to S3/GCS
       const putRes = await fetch(presign.uploadUrl, {
         method: presign.method,
         body: file,
@@ -381,7 +227,7 @@ function useSlipUpload() {
   return mutation;
 }
 
-// ─── Method + Evidence Step (Step 3) ─────────────────────────────────────────
+// ─── Method options ───────────────────────────────────────────────────────────
 
 const METHOD_OPTIONS: { id: WizardMethod; label: string; icon: React.ReactNode; desc: string }[] = [
   { id: 'CASH', label: 'เงินสด', icon: <Banknote className="size-4" />, desc: 'รับเงินสดโดยตรง' },
@@ -389,192 +235,6 @@ const METHOD_OPTIONS: { id: WizardMethod; label: string; icon: React.ReactNode; 
   { id: 'QR', label: 'QR', icon: <QrCode className="size-4" />, desc: 'QR Code / PromptPay' },
   { id: 'PAYSOLUTIONS', label: 'PaySolutions', icon: <CreditCard className="size-4" />, desc: 'ผ่าน gateway' },
 ];
-
-function MethodStep({
-  method,
-  onMethodChange,
-  referenceNumber,
-  onReferenceNumberChange,
-  slipUrl,
-  onSlipUrlChange,
-  memo,
-  onMemoChange,
-}: {
-  method: WizardMethod;
-  onMethodChange: (m: WizardMethod) => void;
-  referenceNumber: string;
-  onReferenceNumberChange: (v: string) => void;
-  slipUrl: string;
-  onSlipUrlChange: (url: string) => void;
-  memo: string;
-  onMemoChange: (v: string) => void;
-}) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [slipFileName, setSlipFileName] = useState('');
-  const uploadMutation = useSlipUpload();
-
-  const requiresRef = method !== 'CASH';
-  const requiresSlip = method === 'TRANSFER' || method === 'QR';
-
-  const handleFileChange = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      setSlipFileName(file.name);
-      try {
-        const url = await uploadMutation.mutateAsync(file);
-        onSlipUrlChange(url);
-        toast.success('อัปโหลดสลิปสำเร็จ');
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : 'อัปโหลดสลิปไม่สำเร็จ';
-        toast.error(msg);
-        setSlipFileName('');
-        if (fileInputRef.current) fileInputRef.current.value = '';
-      }
-    },
-    [uploadMutation, onSlipUrlChange],
-  );
-
-  const handleClearSlip = () => {
-    onSlipUrlChange('');
-    setSlipFileName('');
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
-  return (
-    <div className="space-y-5">
-      {/* Method selector */}
-      <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3 leading-snug">
-          ช่องทางรับชำระจากลูกค้า
-        </h3>
-        <div className="grid grid-cols-2 gap-2">
-          {METHOD_OPTIONS.map((m) => (
-            <button
-              key={m.id}
-              type="button"
-              onClick={() => onMethodChange(m.id)}
-              className={cn(
-                'flex items-center gap-2.5 rounded-xl border-2 px-3 py-3 text-left text-sm transition-colors',
-                method === m.id
-                  ? 'bg-primary border-primary text-primary-foreground'
-                  : 'bg-card border-border text-foreground hover:border-primary/40 hover:bg-accent',
-              )}
-            >
-              <span
-                className={cn(
-                  'shrink-0',
-                  method === m.id ? 'text-primary-foreground' : 'text-muted-foreground',
-                )}
-              >
-                {m.icon}
-              </span>
-              <div className="min-w-0">
-                <div className="font-semibold leading-snug">{m.label}</div>
-                <div
-                  className={cn(
-                    'text-xs leading-snug',
-                    method === m.id ? 'text-primary-foreground/80' : 'text-muted-foreground',
-                  )}
-                >
-                  {m.desc}
-                </div>
-              </div>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Reference number */}
-      {requiresRef && (
-        <div>
-          <Label className="block text-sm font-medium text-foreground mb-1.5 leading-snug">
-            เลขอ้างอิงธุรกรรม <span className="text-destructive">*</span>
-          </Label>
-          <Input
-            value={referenceNumber}
-            onChange={(e) => onReferenceNumberChange(e.target.value)}
-            placeholder="ระบุเลขอ้างอิง / เลขธุรกรรม"
-            maxLength={255}
-          />
-        </div>
-      )}
-
-      {/* Slip upload */}
-      <div>
-        <Label className="block text-sm font-medium text-foreground mb-1.5 leading-snug">
-          สลิป / หลักฐาน{requiresSlip && <span className="text-destructive"> *</span>}
-          {!requiresSlip && (
-            <span className="ml-1 text-xs text-muted-foreground font-normal">(ไม่บังคับ)</span>
-          )}
-        </Label>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept={SLIP_MIME_TYPES.join(',')}
-          className="hidden"
-          aria-label="อัปโหลดสลิป"
-          onChange={handleFileChange}
-        />
-        {slipUrl ? (
-          <div className="flex items-center gap-2 rounded-lg border border-success/40 bg-success/5 px-3 py-2.5">
-            <CheckCircle2 className="size-4 text-success shrink-0" />
-            <span className="text-sm text-foreground leading-snug truncate flex-1">
-              {slipFileName || 'สลิปอัปโหลดแล้ว'}
-            </span>
-            <button
-              type="button"
-              onClick={handleClearSlip}
-              className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-              aria-label="ลบสลิป"
-            >
-              <X className="size-3.5" />
-            </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploadMutation.isPending}
-            className={cn(
-              'flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-3 text-sm transition-colors',
-              'border-border text-muted-foreground hover:border-primary/40 hover:text-foreground hover:bg-accent',
-              uploadMutation.isPending && 'opacity-60 pointer-events-none',
-            )}
-          >
-            {uploadMutation.isPending ? (
-              <>
-                <Loader2 className="size-4 animate-spin" />
-                <span className="leading-snug">กำลังอัปโหลด...</span>
-              </>
-            ) : (
-              <>
-                <Upload className="size-4" />
-                <span className="leading-snug">คลิกเพื่ออัปโหลดสลิป (JPG/PNG/PDF)</span>
-              </>
-            )}
-          </button>
-        )}
-      </div>
-
-      {/* Memo */}
-      <div>
-        <Label className="block text-sm font-medium text-foreground mb-1.5 leading-snug">
-          หมายเหตุ
-          <span className="ml-1 text-xs text-muted-foreground font-normal">(ไม่บังคับ)</span>
-        </Label>
-        <Textarea
-          value={memo}
-          onChange={(e) => onMemoChange(e.target.value)}
-          placeholder="หมายเหตุเพิ่มเติม..."
-          rows={2}
-          maxLength={1000}
-          className="resize-none"
-        />
-      </div>
-    </div>
-  );
-}
 
 // ─── JE Preview panel (always visible) ────────────────────────────────────────
 
@@ -586,7 +246,7 @@ function JePreviewPanel({
   isLoading: boolean;
 }) {
   return (
-    <div className="rounded-xl border border-border bg-card p-4 mt-4">
+    <div className="rounded-xl border border-border bg-card p-4">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-foreground leading-snug">
           JOURNAL AUTO — บันทึกทางบัญชี
@@ -606,7 +266,7 @@ function JePreviewPanel({
 
       {!isLoading && !preview && (
         <p className="text-xs text-muted-foreground leading-snug py-2">
-          กรอกข้อมูลเพื่อดู JE preview
+          กรอกยอดรับเพื่อดู JE preview
         </p>
       )}
 
@@ -670,96 +330,6 @@ function JePreviewPanel({
   );
 }
 
-// ─── Journal review step (Step 4) ─────────────────────────────────────────────
-
-function JournalReviewStep({
-  preview,
-  isLoading,
-}: {
-  preview: JePreview | undefined;
-  isLoading: boolean;
-}) {
-  return (
-    <div className="space-y-3">
-      <h3 className="text-sm font-semibold text-foreground leading-snug">
-        ตรวจสอบรายการบัญชีก่อนบันทึก
-      </h3>
-      <p className="text-xs text-muted-foreground leading-snug">
-        ระบบจะสร้างรายการบัญชีเหล่านี้อัตโนมัติเมื่อกดบันทึก
-      </p>
-      {isLoading || !preview ? (
-        <div className="flex items-center gap-2 py-4 text-muted-foreground text-sm">
-          <Loader2 className="size-4 animate-spin" />
-          <span className="leading-snug">กำลังคำนวณ...</span>
-        </div>
-      ) : (
-        <div className="rounded-lg border border-border overflow-hidden">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="bg-muted">
-                <th className="px-3 py-2 text-left font-medium text-muted-foreground leading-snug">รหัส</th>
-                <th className="px-3 py-2 text-left font-medium text-muted-foreground leading-snug">บัญชี</th>
-                <th className="px-3 py-2 text-right font-medium text-muted-foreground leading-snug">Dr</th>
-                <th className="px-3 py-2 text-right font-medium text-muted-foreground leading-snug">Cr</th>
-              </tr>
-            </thead>
-            <tbody>
-              {preview.lines.map((line, idx) => (
-                <tr key={idx} className="border-t border-border/50">
-                  <td className="px-3 py-2 font-mono text-muted-foreground leading-snug">
-                    {line.accountCode}
-                  </td>
-                  <td className="px-3 py-2 leading-snug">
-                    <div className="text-foreground">{line.accountName}</div>
-                    <div className="text-muted-foreground/70 text-[10px]">{line.description}</div>
-                  </td>
-                  <td className="px-3 py-2 text-right font-mono leading-snug">
-                    {parseFloat(line.debit) > 0
-                      ? parseFloat(line.debit).toLocaleString('th-TH', { minimumFractionDigits: 2 })
-                      : '—'}
-                  </td>
-                  <td className="px-3 py-2 text-right font-mono leading-snug">
-                    {parseFloat(line.credit) > 0
-                      ? parseFloat(line.credit).toLocaleString('th-TH', { minimumFractionDigits: 2 })
-                      : '—'}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr className="border-t border-border bg-muted/50">
-                <td colSpan={2} className="px-3 py-2 font-semibold text-xs leading-snug">รวม</td>
-                <td className="px-3 py-2 text-right font-mono font-semibold text-xs leading-snug">
-                  {parseFloat(preview.totalDebit).toLocaleString('th-TH', { minimumFractionDigits: 2 })}
-                </td>
-                <td className="px-3 py-2 text-right font-mono font-semibold text-xs leading-snug">
-                  {parseFloat(preview.totalCredit).toLocaleString('th-TH', { minimumFractionDigits: 2 })}
-                </td>
-              </tr>
-            </tfoot>
-          </table>
-          {!preview.isBalanced && (
-            <div className="flex items-center gap-1.5 px-3 py-2 bg-destructive/10 border-t border-destructive/20">
-              <AlertCircle className="size-3.5 text-destructive shrink-0" />
-              <span className="text-xs text-destructive leading-snug font-medium">
-                รายการไม่สมดุล — ไม่สามารถบันทึกได้
-              </span>
-            </div>
-          )}
-          {preview.isBalanced && (
-            <div className="flex items-center gap-1.5 px-3 py-2 bg-success/10 border-t border-success/20">
-              <CheckCircle2 className="size-3.5 text-success shrink-0" />
-              <span className="text-xs text-success leading-snug font-medium">
-                รายการสมดุล — พร้อมบันทึก
-              </span>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ─── Auto-detect case from amount diff ───────────────────────────────────────
 
 function detectCase(received: number, expectedTotal: Decimal): DetectedCase {
@@ -778,7 +348,7 @@ function toApiCase(detected: DetectedCase): PaymentCase {
   return 'NORMAL'; // OUT_OF_RANGE should never reach API (submit blocked)
 }
 
-// ─── Main wizard ──────────────────────────────────────────────────────────────
+// ─── Main dialog (single screen) ─────────────────────────────────────────────
 
 interface RecordPaymentWizardProps {
   open: boolean;
@@ -810,10 +380,9 @@ export function RecordPaymentWizard({
   isSubmitting,
   defaultDepositAccountCode = '11-1101',
 }: RecordPaymentWizardProps) {
-  const [step, setStep] = useState(1);
   const [depositAccountCode, setDepositAccountCode] = useState(defaultDepositAccountCode);
 
-  // Step 2 fields
+  // Amount fields
   const lateFeeDecimal = useMemo(() => new Decimal(payment.lateFee), [payment.lateFee]);
   const amountDueDecimal = useMemo(() => new Decimal(payment.amountDue), [payment.amountDue]);
   const amountPaidDecimal = useMemo(() => new Decimal(payment.amountPaid), [payment.amountPaid]);
@@ -822,22 +391,47 @@ export function RecordPaymentWizard({
   const [amountReceived, setAmountReceived] = useState(defaultAmount.toFixed(2));
   const [lateFeeStr, setLateFeeStr] = useState(lateFeeDecimal.toFixed(2));
 
-  // Step 3 fields
+  // Method + evidence fields
   const [method, setMethod] = useState<WizardMethod>('CASH');
   const [referenceNumber, setReferenceNumber] = useState('');
   const [slipUrl, setSlipUrl] = useState('');
+  const [slipFileName, setSlipFileName] = useState('');
   const [memo, setMemo] = useState('');
 
-  // Net Exposure — use amountDue (remaining on this installment) as proxy
-  // contract.monthlyPayment / totalMonths not available in this endpoint's select
-  const netExposure = useMemo(() => {
-    return amountDueDecimal.add(lateFeeDecimal).sub(amountPaidDecimal).toDecimalPlaces(2);
-  }, [amountDueDecimal, lateFeeDecimal, amountPaidDecimal]);
+  // Slip upload
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadMutation = useSlipUpload();
 
-  // installmentTotal: the base installment amount (amountDue on this payment row)
-  const installmentTotal = useMemo(() => {
-    return amountDueDecimal;
-  }, [amountDueDecimal]);
+  const handleFileChange = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      setSlipFileName(file.name);
+      try {
+        const url = await uploadMutation.mutateAsync(file);
+        setSlipUrl(url);
+        toast.success('อัปโหลดสลิปสำเร็จ');
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'อัปโหลดสลิปไม่สำเร็จ';
+        toast.error(msg);
+        setSlipFileName('');
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }
+    },
+    [uploadMutation],
+  );
+
+  const handleClearSlip = () => {
+    setSlipUrl('');
+    setSlipFileName('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  // Net Exposure
+  const netExposure = useMemo(
+    () => amountDueDecimal.add(lateFeeDecimal).sub(amountPaidDecimal).toDecimalPlaces(2),
+    [amountDueDecimal, lateFeeDecimal, amountPaidDecimal],
+  );
 
   // Fetch CoA names
   const { data: coaData = [] } = useQuery<CoaRow[]>({
@@ -858,11 +452,11 @@ export function RecordPaymentWizard({
     return isNaN(v) ? new Decimal(0) : new Decimal(v);
   }, [lateFeeStr]);
 
-  // Auto-detect case from amount diff
+  // Auto-detect case
   const receivedNum = parseFloat(amountReceived) || 0;
   const expectedTotal = useMemo(
-    () => installmentTotal.plus(currentLateFee),
-    [installmentTotal, currentLateFee],
+    () => amountDueDecimal.plus(currentLateFee),
+    [amountDueDecimal, currentLateFee],
   );
   const detectedCase = useMemo(
     () => detectCase(receivedNum, expectedTotal),
@@ -874,7 +468,7 @@ export function RecordPaymentWizard({
   );
   const apiCase = toApiCase(detectedCase);
 
-  // Preview params — debounced
+  // JE Preview — debounced
   const previewParams = useMemo(
     () => ({
       contractId: payment.contract.id,
@@ -888,7 +482,6 @@ export function RecordPaymentWizard({
   );
   const debouncedParams = useDebounce(previewParams, 300);
 
-  // Don't fire preview when out of range or amount is zero
   const isPreviewReady: boolean =
     detectedCase !== 'OUT_OF_RANGE' &&
     debouncedParams.amountReceived > 0 &&
@@ -906,6 +499,20 @@ export function RecordPaymentWizard({
   });
 
   const preview: JePreview | undefined = previewData;
+
+  // Validation
+  const requiresRef = method !== 'CASH';
+  const requiresSlip = method === 'TRANSFER' || method === 'QR';
+
+  const canSubmit = (): boolean => {
+    if (receivedNum <= 0) return false;
+    if (!depositAccountCode) return false;
+    if (detectedCase === 'OUT_OF_RANGE') return false;
+    if (requiresRef && !referenceNumber.trim()) return false;
+    if (requiresSlip && !slipUrl) return false;
+    if (!preview?.isBalanced) return false;
+    return true;
+  };
 
   const handleSubmit = () => {
     onSubmit({
@@ -928,154 +535,286 @@ export function RecordPaymentWizard({
     });
   };
 
-  // Validation per step
-  const canAdvance = (): boolean => {
-    if (step === 1) return true;
-    if (step === 2) {
-      return (
-        receivedNum > 0 &&
-        !!depositAccountCode &&
-        detectedCase !== 'OUT_OF_RANGE'
-      );
-    }
-    if (step === 3) {
-      if (method !== 'CASH' && !referenceNumber.trim()) return false;
-      if ((method === 'TRANSFER' || method === 'QR') && !slipUrl) return false;
-      return true;
-    }
-    if (step === 4) return !!(preview?.isBalanced);
-    return false;
-  };
-
   const handleOpenChange = (isOpen: boolean) => {
     if (!isOpen) {
       onClose();
-      setStep(1);
       setDepositAccountCode(defaultDepositAccountCode);
       setAmountReceived(defaultAmount.toFixed(2));
       setLateFeeStr(lateFeeDecimal.toFixed(2));
       setMethod('CASH');
       setReferenceNumber('');
       setSlipUrl('');
+      setSlipFileName('');
       setMemo('');
     }
   };
 
+  const hasAmount = receivedNum > 0;
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[92vh] flex flex-col p-0 gap-0">
-        <DialogHeader className="px-6 pt-5 pb-0 shrink-0">
+      <DialogContent className="w-full max-w-5xl max-h-[92vh] flex flex-col p-0 gap-0">
+        {/* Header */}
+        <DialogHeader className="px-6 pt-5 pb-3 shrink-0 border-b border-border">
           <DialogTitle className="text-base font-semibold leading-snug">
-            {payment.contract.contractNumber} / {payment.contract.customer.name} — งวดที่{' '}
+            บันทึกชำระ — {payment.contract.contractNumber} / {payment.contract.customer.name} — งวดที่{' '}
             {payment.installmentNo}
           </DialogTitle>
         </DialogHeader>
 
+        {/* Body */}
         <DialogBody className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-          <WizardStepper step={step} />
+          {/* 2-column: info LEFT, form RIGHT */}
+          <div className="grid grid-cols-[260px_1fr] gap-4 items-start">
+            {/* LEFT: Contract info */}
+            <ContractInfoPanel
+              payment={payment}
+              lateFee={currentLateFee}
+              netExposure={netExposure}
+            />
 
-          {step === 1 && (
-            <div className="grid grid-cols-1 gap-4">
-              <ContractInfoPanel
-                payment={payment}
-                lateFee={lateFeeDecimal}
-                netExposure={netExposure}
-              />
-              <div className="rounded-xl border border-border bg-card p-4">
-                <p className="text-sm text-muted-foreground leading-snug">
-                  กดถัดไปเพื่อกรอกยอดรับและช่องทาง
+            {/* RIGHT: Form */}
+            <div className="space-y-5 min-w-0">
+              {/* Hint */}
+              <div className="flex items-start gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2.5">
+                <Info className="size-4 text-muted-foreground shrink-0 mt-0.5" />
+                <p className="text-xs text-muted-foreground leading-snug">
+                  หากต้องการปิดยอดก่อนกำหนดหรือปรับดิว ใช้เมนูแยกในหน้าสัญญา
                 </p>
               </div>
-            </div>
-          )}
 
-          {step >= 2 && (
-            <div className="grid grid-cols-[280px_1fr] gap-4">
-              <ContractInfoPanel
-                payment={payment}
-                lateFee={currentLateFee}
-                netExposure={netExposure}
-              />
-
-              <div className="min-w-0">
-                {step === 2 && (
-                  <AmountStep
-                    amountReceived={amountReceived}
-                    onAmountChange={setAmountReceived}
-                    lateFeeStr={lateFeeStr}
-                    onLateFeeChange={setLateFeeStr}
-                    depositAccountCode={depositAccountCode}
-                    onDepositAccountCodeChange={setDepositAccountCode}
-                    coaNames={coaNames}
-                    detectedCase={detectedCase}
-                    diff={amountDiff}
-                  />
-                )}
-                {step === 3 && (
-                  <MethodStep
-                    method={method}
-                    onMethodChange={setMethod}
-                    referenceNumber={referenceNumber}
-                    onReferenceNumberChange={setReferenceNumber}
-                    slipUrl={slipUrl}
-                    onSlipUrlChange={setSlipUrl}
-                    memo={memo}
-                    onMemoChange={setMemo}
-                  />
-                )}
-                {step === 4 && (
-                  <JournalReviewStep
-                    preview={preview}
-                    isLoading={previewLoading}
-                  />
+              {/* Amount received */}
+              <div>
+                <Label className="block text-sm font-medium text-foreground mb-1.5 leading-snug">
+                  ยอดรับจริง (฿) <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  type="number"
+                  value={amountReceived}
+                  onChange={(e) => setAmountReceived(e.target.value)}
+                  min={0}
+                  step="0.01"
+                  className="text-right font-mono"
+                />
+                {hasAmount && (
+                  <div className="mt-2">
+                    <CaseBadge detectedCase={detectedCase} diff={amountDiff} />
+                  </div>
                 )}
               </div>
-            </div>
-          )}
 
-          {step >= 2 && <JePreviewPanel preview={preview} isLoading={previewLoading} />}
+              {/* Late fee */}
+              <div>
+                <Label className="block text-sm font-medium text-foreground mb-1.5 leading-snug">
+                  ค่าปรับ (฿)
+                  <span className="ml-1 text-xs text-muted-foreground font-normal">(ระบุ 0 ถ้าไม่มี)</span>
+                </Label>
+                <Input
+                  type="number"
+                  value={lateFeeStr}
+                  onChange={(e) => setLateFeeStr(e.target.value)}
+                  min={0}
+                  step="0.01"
+                  className="text-right font-mono"
+                />
+              </div>
+
+              {/* Cash account selector */}
+              <div>
+                <h3 className="text-sm font-semibold text-foreground mb-2 leading-snug">
+                  บัญชีรับเงิน <span className="text-destructive">*</span>
+                </h3>
+                <div className="grid grid-cols-3 gap-2">
+                  {CASH_ACCOUNT_CODES.map((code) => {
+                    const name = coaNames.get(code) ?? '';
+                    const isBank = code.startsWith('11-12');
+                    return (
+                      <button
+                        key={code}
+                        type="button"
+                        onClick={() => setDepositAccountCode(code)}
+                        className={cn(
+                          'flex flex-col items-start rounded-xl border-2 px-3 py-2.5 text-left text-sm transition-colors',
+                          depositAccountCode === code
+                            ? 'bg-primary border-primary text-primary-foreground'
+                            : 'bg-card border-border text-foreground hover:border-primary/40 hover:bg-accent',
+                        )}
+                      >
+                        <span className="font-mono text-xs leading-snug opacity-75">{code}</span>
+                        <span className="font-medium leading-snug text-xs mt-0.5 line-clamp-2">
+                          {name || (isBank ? 'ธนาคาร' : 'เงินสด')}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Method selector */}
+              <div>
+                <h3 className="text-sm font-semibold text-foreground mb-2 leading-snug">
+                  ช่องทางรับชำระ <span className="text-destructive">*</span>
+                </h3>
+                <div className="grid grid-cols-2 gap-2">
+                  {METHOD_OPTIONS.map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => setMethod(m.id)}
+                      className={cn(
+                        'flex items-center gap-2.5 rounded-xl border-2 px-3 py-3 text-left text-sm transition-colors',
+                        method === m.id
+                          ? 'bg-primary border-primary text-primary-foreground'
+                          : 'bg-card border-border text-foreground hover:border-primary/40 hover:bg-accent',
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          'shrink-0',
+                          method === m.id ? 'text-primary-foreground' : 'text-muted-foreground',
+                        )}
+                      >
+                        {m.icon}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="font-semibold leading-snug">{m.label}</div>
+                        <div
+                          className={cn(
+                            'text-xs leading-snug',
+                            method === m.id ? 'text-primary-foreground/80' : 'text-muted-foreground',
+                          )}
+                        >
+                          {m.desc}
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Reference number — shown for non-cash methods */}
+              {requiresRef && (
+                <div>
+                  <Label className="block text-sm font-medium text-foreground mb-1.5 leading-snug">
+                    เลขอ้างอิงธุรกรรม <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    value={referenceNumber}
+                    onChange={(e) => setReferenceNumber(e.target.value)}
+                    placeholder="ระบุเลขอ้างอิง / เลขธุรกรรม"
+                    maxLength={255}
+                  />
+                </div>
+              )}
+
+              {/* Slip upload */}
+              <div>
+                <Label className="block text-sm font-medium text-foreground mb-1.5 leading-snug">
+                  สลิป / หลักฐาน
+                  {requiresSlip ? (
+                    <span className="text-destructive"> *</span>
+                  ) : (
+                    <span className="ml-1 text-xs text-muted-foreground font-normal">(ไม่บังคับ)</span>
+                  )}
+                </Label>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept={SLIP_MIME_TYPES.join(',')}
+                  className="hidden"
+                  aria-label="อัปโหลดสลิป"
+                  onChange={handleFileChange}
+                />
+                {slipUrl ? (
+                  <div className="flex items-center gap-2 rounded-lg border border-success/40 bg-success/5 px-3 py-2.5">
+                    <CheckCircle2 className="size-4 text-success shrink-0" />
+                    <span className="text-sm text-foreground leading-snug truncate flex-1">
+                      {slipFileName || 'สลิปอัปโหลดแล้ว'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleClearSlip}
+                      className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                      aria-label="ลบสลิป"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploadMutation.isPending}
+                    className={cn(
+                      'flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-3 text-sm transition-colors',
+                      'border-border text-muted-foreground hover:border-primary/40 hover:text-foreground hover:bg-accent',
+                      uploadMutation.isPending && 'opacity-60 pointer-events-none',
+                    )}
+                  >
+                    {uploadMutation.isPending ? (
+                      <>
+                        <Loader2 className="size-4 animate-spin" />
+                        <span className="leading-snug">กำลังอัปโหลด...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="size-4" />
+                        <span className="leading-snug">คลิกเพื่ออัปโหลดสลิป (JPG/PNG/PDF)</span>
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+
+              {/* Memo — disclosure-style: smaller label + compact textarea */}
+              <details className="group">
+                <summary className="cursor-pointer list-none flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors select-none">
+                  <span className="leading-snug">หมายเหตุ (ไม่บังคับ)</span>
+                  <span className="text-[10px] group-open:hidden">+ เพิ่ม</span>
+                </summary>
+                <div className="mt-2">
+                  <Textarea
+                    value={memo}
+                    onChange={(e) => setMemo(e.target.value)}
+                    placeholder="หมายเหตุเพิ่มเติม..."
+                    rows={2}
+                    maxLength={1000}
+                    className="resize-none text-sm"
+                  />
+                </div>
+              </details>
+            </div>
+          </div>
+
+          {/* JE Preview — always visible */}
+          <JePreviewPanel preview={preview} isLoading={previewLoading} />
         </DialogBody>
 
+        {/* Footer — single submit */}
         <DialogFooter className="px-6 py-4 border-t border-border shrink-0 flex items-center justify-between">
-          <Button
-            variant="ghost"
-            onClick={() => setStep((s) => Math.max(1, s - 1))}
-            disabled={step === 1 || isSubmitting}
-          >
-            ก่อนหน้า
+          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
+            ยกเลิก
           </Button>
-          <div className="flex items-center gap-3">
-            <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
-              ยกเลิก
-            </Button>
-            {step < 4 ? (
-              <Button
-                onClick={() => setStep((s) => Math.min(4, s + 1))}
-                disabled={!canAdvance()}
-                title={
-                  step === 2 && detectedCase === 'OUT_OF_RANGE'
-                    ? 'ใช้เมนูแบ่งชำระหรือปิดยอดแทน'
-                    : undefined
-                }
-              >
-                ถัดไป
-              </Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={isSubmitting || previewLoading || !canSubmit()}
+            title={
+              detectedCase === 'OUT_OF_RANGE'
+                ? 'ห่างเกิน 1 ฿ — ใช้เมนูแบ่งชำระหรือปิดยอดแทน'
+                : !preview?.isBalanced && isPreviewReady
+                ? 'รายการบัญชีไม่สมดุล'
+                : undefined
+            }
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2 className="size-4 animate-spin mr-2" />
+                กำลังบันทึก...
+              </>
             ) : (
-              <Button
-                onClick={handleSubmit}
-                disabled={isSubmitting || previewLoading || !preview?.isBalanced}
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="size-4 animate-spin mr-2" />
-                    กำลังบันทึก...
-                  </>
-                ) : (
-                  'บันทึกการชำระ'
-                )}
-              </Button>
+              'บันทึกชำระ'
             )}
-          </div>
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

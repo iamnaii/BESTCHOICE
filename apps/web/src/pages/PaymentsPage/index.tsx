@@ -19,6 +19,7 @@ import PaymentFilters from './components/PaymentFilters';
 import PaymentTable from './components/PaymentTable';
 import PaymentSummary from './components/PaymentSummary';
 import { RecordPaymentModal, BatchPaymentModal, AdvancePaymentModal } from './components/PaymentModals';
+import { RecordPaymentWizard } from './components/RecordPaymentWizard';
 import { ToleranceApprovalDialog } from '@/components/ToleranceApprovalDialog';
 import type { PendingPayment, DailySummary, OcrPaymentSlipResult } from './types';
 import { paymentStatusLabels, isSlipRequired } from './types';
@@ -49,6 +50,7 @@ export default function PaymentsPage() {
   // History sheet state
   const [historyContractId, setHistoryContractId] = useState<string | null>(null);
   const [showPayModal, setShowPayModal] = useState(false);
+  const [showPayWizard, setShowPayWizard] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<PendingPayment | null>(null);
   const [payForm, setPayForm] = useState({ amount: 0, paymentMethod: 'CASH', notes: '', paidDate: new Date().toISOString().split('T')[0] });
   // T15: deposit account code for the payment journal Dr leg; defaults to user preference or system default
@@ -296,7 +298,8 @@ export default function PaymentsPage() {
     setPayForm({ amount: Math.round(remaining * 100) / 100, paymentMethod: 'CASH', notes: '', paidDate: new Date().toISOString().split('T')[0] });
     setDepositAccountCode(user?.defaultCashAccountCode ?? '11-1101');
     setSlipResult(null);
-    setShowPayModal(true);
+    // Open the new wizard UI
+    setShowPayWizard(true);
   }, [user?.defaultCashAccountCode]);
 
   const handlePay = () => {
@@ -579,7 +582,53 @@ export default function PaymentsPage() {
         />
       )}
 
-      {/* Record Payment Modal */}
+      {/* Record Payment Wizard (new 4-step UI with live JE preview) */}
+      {showPayWizard && selectedPayment && (
+        <RecordPaymentWizard
+          open={showPayWizard}
+          payment={selectedPayment}
+          onClose={() => { setShowPayWizard(false); setSelectedPayment(null); }}
+          onSubmit={(payload) => {
+            const remaining = new Decimal(selectedPayment.amountDue)
+              .add(selectedPayment.lateFee)
+              .sub(selectedPayment.amountPaid)
+              .toDecimalPlaces(2)
+              .toNumber();
+            const diff = new Decimal(payload.amount).sub(remaining).toDecimalPlaces(2).toNumber();
+            const absDiff = Math.abs(diff);
+            if (absDiff > 1.0) {
+              toast.error(`ส่วนต่างเกิน 1 ฿ (${absDiff.toFixed(2)} ฿) ไม่สามารถอนุมัติได้ กรุณาแก้ไขจำนวนเงิน`);
+              return;
+            }
+            const mutationPayload: Record<string, unknown> = {
+              contractId: payload.contractId,
+              installmentNo: payload.installmentNo,
+              amount: payload.amount,
+              paymentMethod: payload.paymentMethod,
+              depositAccountCode: payload.depositAccountCode,
+              // Step 3 fields: use referenceNumber if provided, else fallback timestamp ref
+              transactionRef: payload.referenceNumber || `${payload.paymentMethod}-${Date.now()}`,
+              wizardMethod: payload.wizardMethod,
+              referenceNumber: payload.referenceNumber,
+              slipUrl: payload.slipUrl,
+              memo: payload.memo,
+              case: payload.case,
+            };
+            if (absDiff >= 0.01) {
+              setPendingPayload(mutationPayload);
+              setShowToleranceDialog(true);
+              return;
+            }
+            recordMutation.mutate(mutationPayload);
+            setShowPayWizard(false);
+            setSelectedPayment(null);
+          }}
+          isSubmitting={recordMutation.isPending}
+          defaultDepositAccountCode={user?.defaultCashAccountCode ?? '11-1101'}
+        />
+      )}
+
+      {/* Record Payment Modal (legacy — kept for batch/advance flows) */}
       <RecordPaymentModal
         show={showPayModal}
         payment={selectedPayment}

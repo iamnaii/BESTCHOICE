@@ -1,9 +1,9 @@
-import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards, Req } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Post, Patch, Param, Body, Query, UseGuards, Req } from '@nestjs/common';
 import type { Request } from 'express';
 import { ApiTags, ApiBearerAuth , ApiOperation} from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { PaymentsService } from './payments.service';
-import { RecordPaymentDto, BulkRecordPaymentDto, WaiveLateFeeDto } from './dto/payment.dto';
+import { RecordPaymentDto, BulkRecordPaymentDto, WaiveLateFeeDto, PreviewJournalDto } from './dto/payment.dto';
 import { ImportPaymentsCsvDto } from './dto/csv-import.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -87,6 +87,26 @@ export class PaymentsController {
     );
   }
 
+  /**
+   * Preview JE lines for a payment without persisting anything.
+   * Used by the RecordPaymentWizard to show "Journal Auto" live preview.
+   */
+  @Post('preview-journal')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @ApiOperation({ summary: 'คำนวณ JE preview สำหรับการชำระ (ไม่บันทึก)' })
+  previewJournal(@Body() dto: PreviewJournalDto) {
+    return this.paymentsService.previewJournal({
+      contractId: dto.contractId,
+      installmentNo: dto.installmentNo,
+      amountReceived: dto.amountReceived,
+      depositAccountCode: dto.depositAccountCode,
+      lateFee: dto.lateFee,
+      case: dto.case,
+      daysToShift: dto.daysToShift,
+      splitMode: dto.splitMode,
+    });
+  }
+
   @Post('record')
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'FINANCE_MANAGER', 'ACCOUNTANT')
   @UseGuards(UserThrottlerGuard)
@@ -96,18 +116,48 @@ export class PaymentsController {
     @Body() dto: RecordPaymentDto,
     @CurrentUser() user: { id: string; role: string; branchId: string | null },
   ) {
+    // RESCHEDULE case stub — wizard preview works, but actual execution routes to /contracts/:id/reschedule
+    // TODO: wire to RescheduleService.execute() + RescheduleJP6Template in a follow-up PR
+    if ((dto as any).case === 'RESCHEDULE') {
+      throw new BadRequestException(
+        'การปรับดิวผ่าน wizard ยังไม่พร้อม — ใช้หน้า /contracts/:id/reschedule แทน (TODO)',
+      );
+    }
+
     // Validate branch access: SALES and BRANCH_MANAGER can only record for their branch
     await this.paymentsService.validateBranchAccess(dto.contractId, user);
+
+    // Wizard step 3 fields: wizardMethod/referenceNumber/slipUrl/memo map to existing recordPayment params.
+    // slipUrl → evidenceUrl, referenceNumber → transactionRef, memo → notes (merged)
+    const effectiveEvidenceUrl = dto.slipUrl || dto.evidenceUrl;
+    const effectiveTransactionRef = dto.referenceNumber || dto.transactionRef;
+    const effectiveNotes = dto.memo
+      ? dto.notes
+        ? `${dto.notes}\n${dto.memo}`
+        : dto.memo
+      : dto.notes;
+
+    // Map wizard method to legacy paymentMethod enum
+    let effectivePaymentMethod = dto.paymentMethod;
+    if (dto.wizardMethod) {
+      const methodMap: Record<string, string> = {
+        CASH: 'CASH',
+        TRANSFER: 'BANK_TRANSFER',
+        QR: 'QR_EWALLET',
+        PAYSOLUTIONS: 'BANK_TRANSFER', // PaySolutions uses bank transfer settlement
+      };
+      effectivePaymentMethod = methodMap[dto.wizardMethod] ?? dto.paymentMethod;
+    }
 
     return this.paymentsService.recordPayment(
       dto.contractId,
       dto.installmentNo,
       dto.amount,
-      dto.paymentMethod,
+      effectivePaymentMethod,
       user.id,
-      dto.evidenceUrl,
-      dto.notes,
-      dto.transactionRef,
+      effectiveEvidenceUrl,
+      effectiveNotes,
+      effectiveTransactionRef,
       dto.depositAccountCode,
       dto.toleranceApproverId,
     );

@@ -28,6 +28,8 @@ export interface PendingPayment {
   contract: {
     id: string;
     contractNumber: string;
+    totalMonths: number;
+    monthlyPayment: string;
     customer: { id: string; name: string; phone: string };
     branch: { id: string; name: string };
   };

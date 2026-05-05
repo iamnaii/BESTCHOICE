@@ -50,6 +50,19 @@ Frontend rule: "ห้ามใช้ hardcoded... ใช้ semantic tokens เ
 
 ---
 
+**W3 — Hardcoded `amber-*` and `emerald-*` in stock chip (`ProductCard.tsx`)**
+
+```tsx
+? 'text-amber-700 bg-amber-100/80'
+: 'text-emerald-700 bg-emerald-50',
+```
+
+Same rule as W2 — bypasses the CSS variable token system. Options:
+- Extend `tokens.css` with `--color-stock-urgent` / `--color-stock-ok` and reference via `bg-[var(--color-stock-ok)]`
+- Or use existing semantic tokens: `bg-destructive/10 text-destructive` for urgent, `bg-primary/10 text-primary` for available
+
+---
+
 ### Info
 
 **I1 — Hero noun defaults to "iPhone." for the all-brands view (`CatalogPage.tsx`)**
@@ -82,6 +95,16 @@ Approaching the 500-line soft limit; acceptable today. If the sticky toolbar or 
 
 ---
 
+**I4 — Google Fonts loaded via CSS `@import url(...)` at runtime (`index.css`)**
+
+```css
+@import url("https://fonts.googleapis.com/css2?family=Inter:...");
+```
+
+External network call on every page load. Consider self-hosting Inter via `@fontsource/inter` (already present in the main `apps/web` bundle) to improve offline resilience and GDPR posture. Not blocking for now.
+
+---
+
 ## Positive Findings
 
 - ✅ Data fetching correctly uses `useQuery` + `api.get()` — no raw `fetch()`.
@@ -98,8 +121,9 @@ Approaching the 500-line soft limit; acceptable today. If the sticky toolbar or 
 
 ## Recommendation
 
-**REVIEW** — Two Warning items must be addressed before merge:
+**REVIEW** — Three Warning items must be addressed before merge:
 1. Replace `leading-none` with `leading-[1]` in `gradeChip`.
 2. Replace `bg-zinc-100` / `text-zinc-400` with `bg-muted` / `text-muted-foreground`.
+3. Replace hardcoded `amber-*`/`emerald-*` stock chip colors with CSS-variable tokens.
 
 Info items can be deferred to a follow-up.

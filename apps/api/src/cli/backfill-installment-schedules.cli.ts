@@ -33,7 +33,7 @@ async function main(): Promise<void> {
 
   const candidates = await prisma.contract.findMany({
     where: {
-      workflowStatus: 'ACTIVE' as any,
+      status: { in: ['ACTIVE', 'OVERDUE', 'DEFAULT', 'LEGAL'] as any },
       deletedAt: null,
     },
     select: {

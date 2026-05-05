@@ -469,6 +469,19 @@ export class ContractWorkflowService {
           extra: { contractId: contract.id, contractNumber: contract.contractNumber },
         });
       });
+
+      // Phase A.4 — generate installment_schedules rows so accrual cron + payment
+      // preview API can find them. Per-installment due_date = startDate + (i × 1 month).
+      this.generateInstallmentSchedules(contract).catch((err) => {
+        this.logger.error(
+          `Failed to generate installment_schedules for contract ${contract.contractNumber}: ${err?.message || err}`,
+          err?.stack,
+        );
+        Sentry.captureException(err, {
+          tags: { module: 'contracts', event: 'schedule-generation-failure' },
+          extra: { contractId: contract.id, contractNumber: contract.contractNumber },
+        });
+      });
     });
 
     // Send LINE notification to customer (non-blocking)
@@ -477,6 +490,57 @@ export class ContractWorkflowService {
     );
 
     return this.findOne(id);
+  }
+
+  /**
+   * Phase A.4 — generate installment_schedules rows on contract activation.
+   * Idempotent: skips if rows already exist for this contract.
+   * Per-installment values:
+   *   principal = financedAmount / totalMonths (ROUND_DOWN truncate)
+   *   interest  = interestTotal / totalMonths (ROUND_HALF_UP)
+   *   amountDue = monthlyPayment (incl. VAT)
+   *   dueDate   = startDate + (i months)
+   */
+  private async generateInstallmentSchedules(contract: { id: string; contractNumber: string }) {
+    const c = await this.prisma.contract.findUniqueOrThrow({
+      where: { id: contract.id },
+    });
+    const existing = await this.prisma.installmentSchedule.count({
+      where: { contractId: c.id, deletedAt: null },
+    });
+    if (existing > 0) {
+      this.logger.log(`Skipping schedule generation for contract ${c.contractNumber} — ${existing} rows already exist`);
+      return;
+    }
+    const total = c.totalMonths;
+    if (total <= 0) {
+      this.logger.warn(`Cannot generate schedule for contract ${c.contractNumber} — totalMonths=${total}`);
+      return;
+    }
+
+    const financed = new Prisma.Decimal(c.financedAmount.toString());
+    const interest = new Prisma.Decimal((c.interestTotal ?? 0).toString());
+    const monthly = new Prisma.Decimal((c.monthlyPayment ?? 0).toString());
+    const principalPerInst = financed.div(total).toDecimalPlaces(2, Prisma.Decimal.ROUND_DOWN);
+    const interestPerInst = interest.div(total).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+
+    const baseDate = c.createdAt;
+    const dueDay = c.paymentDueDay ?? baseDate.getDate();
+
+    const rows: Prisma.InstallmentScheduleCreateManyInput[] = [];
+    for (let i = 1; i <= total; i++) {
+      const dueDate = new Date(baseDate.getFullYear(), baseDate.getMonth() + i, dueDay);
+      rows.push({
+        contractId: c.id,
+        installmentNo: i,
+        dueDate,
+        principal: principalPerInst,
+        interest: interestPerInst,
+        amountDue: monthly,
+      });
+    }
+    await this.prisma.installmentSchedule.createMany({ data: rows });
+    this.logger.log(`Generated ${rows.length} installment_schedules rows for contract ${c.contractNumber}`);
   }
 
   private async sendContractActivatedNotification(contract: Awaited<ReturnType<ContractWorkflowService['findOne']>>) {

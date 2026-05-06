@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateChartOfAccountDto, UpdateChartOfAccountDto } from './dto/chart-of-account.dto';
+import { CoaAccountRow, CoaGroupedResponse } from './dto/coa-grouped.dto';
 
 @Injectable()
 export class ChartOfAccountsService {
@@ -35,6 +37,41 @@ export class ChartOfAccountsService {
       select: { code: true, name: true },
       orderBy: { code: 'asc' },
     });
+  }
+
+  async findGrouped(query: { type?: string; codePrefix?: string; category?: string }): Promise<CoaGroupedResponse> {
+    const where: Prisma.ChartOfAccountWhereInput = { deletedAt: null, status: 'ใช้งาน' };
+    if (query.type) where.type = query.type;
+    if (query.codePrefix) where.code = { startsWith: query.codePrefix };
+    if (query.category) where.category = query.category;
+
+    const rows = await this.prisma.chartOfAccount.findMany({
+      where,
+      orderBy: { code: 'asc' },
+      select: {
+        code: true,
+        name: true,
+        normalBalance: true,
+        category: true,
+        vatApplicable: true,
+        notes: true,
+      },
+    });
+
+    const map = new Map<string, CoaAccountRow[]>();
+    for (const r of rows) {
+      const cat = r.category ?? 'อื่นๆ';
+      const arr = map.get(cat) ?? [];
+      arr.push({
+        code: r.code,
+        name: r.name,
+        normalBalance: r.normalBalance,
+        vatApplicable: r.vatApplicable,
+        notes: r.notes,
+      });
+      map.set(cat, arr);
+    }
+    return { groups: Array.from(map, ([category, accounts]) => ({ category, accounts })) };
   }
 
   async findOne(id: string) {

@@ -118,22 +118,22 @@ export class OtherIncomeService {
         paymentDate: dto.paymentDate ?? existing.paymentDate?.toISOString(),
         priceType: dto.priceType ?? existing.priceType,
         paymentAccountCode: dto.paymentAccountCode ?? existing.paymentAccountCode,
-        amountReceived: dto.amountReceived ?? Number(existing.amountReceived),
+        amountReceived: dto.amountReceived ?? (existing.amountReceived.toString() as any),
         items: (dto.items ??
           existing.items.map((i) => ({
             accountCode: i.accountCode,
             description: i.description ?? undefined,
-            quantity: Number(i.quantity),
-            unitAmount: Number(i.unitAmount),
-            discountAmount: Number(i.discountAmount),
-            vatPct: Number(i.vatPct),
-            whtPct: Number(i.whtPct),
+            quantity: i.quantity.toString() as any,
+            unitAmount: i.unitAmount.toString() as any,
+            discountAmount: i.discountAmount.toString() as any,
+            vatPct: i.vatPct.toString() as any,
+            whtPct: i.whtPct.toString() as any,
           }))) as OtherIncomeItemDto[],
         adjustments:
           dto.adjustments ??
           existing.adjustments?.map((a) => ({
             accountCode: a.accountCode,
-            amount: Number(a.amount),
+            amount: a.amount.toString() as any,
             note: a.note ?? undefined,
           })),
         customerId: dto.customerId ?? existing.customerId ?? undefined,
@@ -267,6 +267,29 @@ export class OtherIncomeService {
       throw new BadRequestException({ message: 'ไม่ผ่านการตรวจสอบก่อน POST', errors });
     }
 
+    // C3: validate override lines balance (Dr = Cr) before entering transaction
+    if (dto.override && dto.overrideLines && dto.overrideLines.length > 0) {
+      const totalDr = dto.overrideLines.reduce(
+        (s, l) => s.plus(new D(l.debit)),
+        new D(0),
+      );
+      const totalCr = dto.overrideLines.reduce(
+        (s, l) => s.plus(new D(l.credit)),
+        new D(0),
+      );
+      if (!totalDr.eq(totalCr)) {
+        throw new BadRequestException({
+          message: 'Validation failed',
+          errors: [
+            {
+              rule: 'V1',
+              msg: `บรรทัดที่แก้ไขเอง: Dr=${totalDr} ≠ Cr=${totalCr} — ยอดเดบิตและเครดิตต้องเท่ากัน`,
+            },
+          ],
+        });
+      }
+    }
+
     // Generate or use override JE lines
     let jeLines;
     if (dto.override && dto.overrideLines && dto.overrideLines.length > 0) {
@@ -341,8 +364,8 @@ export class OtherIncomeService {
       );
     }
 
-    // Period lock on original's issue date
-    await validatePeriodOpen(this.prisma, original.issueDate);
+    // Period lock on today — the reversal JE is posted today, not on original's issueDate
+    await validatePeriodOpen(this.prisma, new Date());
 
     // Load original JE lines
     if (!original.journalEntryId) {
@@ -467,11 +490,11 @@ export class OtherIncomeService {
       const srcItems = src.items.map((it) => ({
         accountCode: it.accountCode,
         description: it.description ?? undefined,
-        quantity: Number(it.quantity),
-        unitAmount: Number(it.unitAmount),
-        discountAmount: Number(it.discountAmount),
-        vatPct: Number(it.vatPct),
-        whtPct: Number(it.whtPct),
+        quantity: it.quantity.toString() as any,
+        unitAmount: it.unitAmount.toString() as any,
+        discountAmount: it.discountAmount.toString() as any,
+        vatPct: it.vatPct.toString() as any,
+        whtPct: it.whtPct.toString() as any,
       }));
       const totals = this.computeTotals({
         issueDate: issueDate.toISOString(),
@@ -704,11 +727,11 @@ export class OtherIncomeService {
     priceType: 'EXCLUSIVE' | 'INCLUSIVE',
     lineNo: number,
   ) {
-    const qty = new D(it.quantity);
-    const unit = new D(it.unitAmount);
-    const disc = new D(it.discountAmount ?? 0);
-    const vatPct = new D(it.vatPct ?? 0);
-    const whtPct = new D(it.whtPct ?? 0);
+    const qty = new D(String(it.quantity));
+    const unit = new D(String(it.unitAmount));
+    const disc = new D(String(it.discountAmount ?? 0));
+    const vatPct = new D(String(it.vatPct ?? 0));
+    const whtPct = new D(String(it.whtPct ?? 0));
 
     const gross = qty.times(unit).minus(disc);
     let amountBeforeVat: Decimal;

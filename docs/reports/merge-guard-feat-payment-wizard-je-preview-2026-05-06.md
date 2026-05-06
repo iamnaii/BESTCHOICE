@@ -2,98 +2,105 @@
 
 **Date**: 2026-05-06  
 **Branch**: `feat/payment-wizard-je-preview`  
-**Author**: Akenarin Kongdach `<iamnaii@MacBook-Pro-khxng-Akenarin.local>`  
-**Recommendation**: ⚠️ **REVIEW** — address Warning items before merge
+**Author**: Akenarin Kongdach  
+**Commits ahead of main**: 29  
+**Recommendation**: 🔴 BLOCK — 1 Critical issue (missing soft-delete filter)
 
 ---
 
 ## File Changes Summary
 
-| File | +Lines | -Lines | Type |
-|------|--------|--------|------|
-| `apps/api/src/modules/payments/payments.controller.ts` | +50 | -8 | Feature (new endpoint) |
-| `apps/api/src/modules/payments/payments.service.ts` | +186 | -2 | Feature (previewJournal) |
-| `apps/api/src/modules/payments/dto/payment.dto.ts` | +78 | -1 | Feature (new DTOs) |
-| `apps/api/src/modules/payments/payments.service.spec.ts` | +149 | 0 | Tests |
-| `apps/web/src/pages/PaymentsPage/components/RecordPaymentWizard.tsx` | +1162 | -279 | Feature (4-step wizard) |
-| `apps/web/src/pages/PaymentsPage/index.tsx` | +27 | -26 | Refactor |
-| `apps/web/src/pages/PaymentsPage/types.ts` | +2 | 0 | Types |
-| `docs/…/2026-05-05-payment-wizard-je-preview-design.md` | +144 | 0 | Design doc |
+| File | +Lines | -Lines | Notes |
+|------|--------|--------|-------|
+| `payments.controller.ts` | +62 | -18 | New `POST /payments/preview-journal` endpoint |
+| `payments.service.ts` | +182 | 0 | `previewJournal()` method |
+| `payments.service.spec.ts` | +145 | 0 | 12 new tests for `previewJournal` |
+| `payments/dto/payment.dto.ts` | +116 | -62 | New `PreviewJournalDto`, new fields |
+| `RecordPaymentWizard.tsx` | +1162 | 0 | New 4-step payment wizard component |
+| `PaymentsPage/index.tsx` | +53 | -9 | Wizard integration |
+| `PaymentsPage/types.ts` | +2 | 0 | `totalMonths`, `monthlyPayment` fields |
+| `ChartOfAccountsPage.tsx` | +318 | -254 | Phase A.4 schema field migration |
+| `apps/api/src/cli/seed-coa.cli.ts` | +48 | 0 | Non-destructive CoA upsert CLI |
+| `apps/api/package.json` | +4 | -1 | New `seed:coa` script |
+| `docs/superpowers/plans/*.md` | +144 | 0 | Design doc only |
 
-**Total**: 11 files changed, 2,211 insertions(+), 279 deletions(−)
-
----
-
-## Issues Found
-
-### 🔴 Critical — None
-
-No critical security issues found:
-- ✅ Controller class has `@UseGuards(JwtAuthGuard, RolesGuard, BranchGuard)` at class level
-- ✅ New `previewJournal` endpoint has `@Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'FINANCE_MANAGER', 'ACCOUNTANT')` ✓
-- ✅ All financial calculations in service use `new Prisma.Decimal(...)` — no raw `Number()` on monetary values
-- ✅ No hardcoded secrets or API keys
-- ✅ `fetch(presign.uploadUrl, {...})` — intentional S3 pre-signed URL direct upload (correct pattern; must bypass `api.post()` because auth header would invalidate the S3 signature)
-- ✅ No unparameterized `$queryRaw`
+**Total**: 11 files, +2211 / -279 lines
 
 ---
 
-### 🟡 Warning — Should Fix
+## Issues
 
-**W-1: `installmentSchedule.findUnique` missing `deletedAt: null` filter**
+### 🔴 Critical
 
-`apps/api/src/modules/payments/payments.service.ts` — `previewJournal()`:
+#### C-001 — Missing `deletedAt: null` on two `chartOfAccount.findMany` queries
+**File**: `apps/api/src/modules/payments/payments.service.ts`  
+**Detail**: Two new `chartOfAccount.findMany` calls inside `previewJournal()` (the "resolve CoA names" helper used to build display labels for JE preview lines) query only by `code: { in: codes }` without filtering `deletedAt: null`:
 
-```typescript
-const inst = await this.prisma.installmentSchedule.findUnique({
-  where: { contractId_installmentNo: { contractId: input.contractId, installmentNo: input.installmentNo } },
-  include: { contract: true },
+```ts
+// Both occurrences — missing deletedAt: null
+const coaRows = await this.prisma.chartOfAccount.findMany({
+  where: { code: { in: codes } },  // ← no deletedAt: null
+  select: { code: true, name: true },
 });
 ```
 
-Database rule requires every query to include `where: { deletedAt: null }`. `findUnique` with a compound key cannot easily combine with `deletedAt: null` — refactor to `findFirst` with both conditions:
+While this is a read-only preview endpoint, the database rules require **every** query to include `deletedAt: null`. Omitting it means soft-deleted CoA accounts will surface in preview responses, giving incorrect account names. This is a database-rule violation per `.claude/rules/database.md`.
 
-```typescript
-const inst = await this.prisma.installmentSchedule.findFirst({
-  where: {
-    contractId: input.contractId,
-    installmentNo: input.installmentNo,
-    deletedAt: null,
-  },
-  include: { contract: true },
+**Fix**:
+```ts
+const coaRows = await this.prisma.chartOfAccount.findMany({
+  where: { code: { in: codes }, deletedAt: null },
+  select: { code: true, name: true },
 });
 ```
-
-**W-2: `(dto as any).case` type bypass in controller**
-
-`apps/api/src/modules/payments/payments.controller.ts` line ~246:
-
-```typescript
-if ((dto as any).case === 'RESCHEDULE') {
-```
-
-`RecordPaymentDto` does not declare a `case` field — the check bypasses TypeScript's type system via `as any`. The stub throw is intentional (RESCHEDULE not yet wired), but the `case` field should either be added to `RecordPaymentDto` with `@IsOptional() @IsIn([...])` decorators, or the stub guard should be removed and the feature tracked separately. Using `as any` on the request DTO in production code is a code quality issue.
+Apply to both occurrences in `previewJournal()`.
 
 ---
 
-### 🔵 Info
+### 🟡 Warning
 
-**I-1: `RecordPaymentWizard.tsx` is 1,162 lines**
+#### W-001 — Raw `fetch()` for presigned S3 upload
+**File**: `apps/web/src/pages/PaymentsPage/components/RecordPaymentWizard.tsx` (~L1765)  
+**Detail**: `useSlipUpload` uses `fetch(presign.uploadUrl, { method, body, headers })` directly — not through `api.post()`. This is intentional: the destination is a presigned S3/GCS URL outside the API domain (auth headers must not be sent). The pattern is safe and matches the `slip-review` precedent in the codebase.  
+**Recommendation**: Add a comment above the `fetch()` call explaining why raw fetch is used here (S3 presigned URL — no auth headers), to prevent future reviewers from flagging it.
 
-`apps/web/src/pages/PaymentsPage/components/RecordPaymentWizard.tsx` — 1,162 lines is large. Consider extracting the step sub-components (Step1ContractLookup, Step2AmountEntry, Step3PaymentMethod, Step4JePreview) into separate files inside a `RecordPaymentWizard/` directory. Not required before merge but will help maintainability.
+#### W-002 — RESCHEDULE case throws `BadRequestException` at runtime
+**File**: `apps/api/src/modules/payments/payments.controller.ts` (~L244-248)  
+**Detail**: When `dto.case === 'RESCHEDULE'`, the `POST /payments/record` handler throws immediately with a 400. This means the wizard can preview a reschedule but submitting it fails. The comment says `TODO: wire to RescheduleService in a follow-up PR`.  
+**Recommendation**: This is documented and intentional. Ensure the wizard UI disables the "Submit" button or shows a clear error for the RESCHEDULE case path so users are not confused. Consider a dedicated `disabled` state rather than a server-side error.
 
-**I-2: `.toNumber()` used for UI display and DTO serialization**
-
-Frontend `RecordPaymentWizard.tsx` uses `.toNumber()` on Decimal values in several places. These are all either:
-- Display-only `.toLocaleString()` formatting (acceptable)
-- Serializing to `number` for `PreviewJournalDto.amountReceived` (which is `@IsNumber()`) — the service immediately re-wraps in `new Prisma.Decimal(input.amountReceived.toString())`, so financial precision is preserved on the backend
-
-No action required, but the pattern is worth documenting in the component.
+#### W-003 — `RecordPaymentWizard.tsx` is 1162 lines
+**File**: `apps/web/src/pages/PaymentsPage/components/RecordPaymentWizard.tsx`  
+**Detail**: Single-file component exceeds the 500-line guideline. The wizard has 4 distinct steps (payment method, amount, slip upload, review) each with their own state machines. Acceptable for a first implementation, but should be split into step sub-components in a follow-up.
 
 ---
 
-## Verification Checklist
+### ℹ️ Info
 
-- [ ] W-1: Refactor `findUnique` → `findFirst` with `deletedAt: null`
-- [ ] W-2: Add `case?: PaymentCase` to `RecordPaymentDto` with `@IsOptional() @IsIn([...])`, or remove the stub guard entirely
-- [ ] Confirm `previewJournal` tests pass: `npm run test -- payments.service.spec.ts`
+#### I-001 — `.toNumber()` calls in wizard are display-only
+**File**: `apps/web/src/pages/PaymentsPage/components/RecordPaymentWizard.tsx`  
+**Detail**: Multiple `.toNumber()` calls on `Decimal` values (e.g. `amountDue.toNumber().toLocaleString(...)`) are exclusively for UI formatting (locale string display). This is the correct pattern — `Decimal.toNumber()` for display, `Prisma.Decimal` for persistence. No issue.
+
+#### I-002 — `useQueryClient` imported but no explicit `invalidateQueries` in wizard
+**File**: `apps/web/src/pages/PaymentsPage/index.tsx`  
+**Detail**: The wizard's `onSubmit` handler calls `recordMutation.mutate(...)` which routes to the existing `recordMutation` defined in the parent `PaymentsPage` component. That mutation already calls `queryClient.invalidateQueries` on success (existing code, not in diff). No missing invalidation.
+
+---
+
+## Security Checklist
+
+| Check | Result |
+|-------|--------|
+| New `POST /preview-journal` has `JwtAuthGuard` | ✅ Class-level `@UseGuards(JwtAuthGuard, RolesGuard, BranchGuard)` on `PaymentsController` |
+| New endpoint has `@Roles(...)` | ✅ `@Roles('OWNER','BRANCH_MANAGER','SALES','FINANCE_MANAGER','ACCOUNTANT')` |
+| Money fields use `Prisma.Decimal` (no `Number()`) | ✅ `previewJournal` uses `Decimal.js` for all arithmetic |
+| New queries include `deletedAt: null` | ❌ **Two `chartOfAccount.findMany` missing `deletedAt: null`** (C-001) |
+| No hardcoded secrets | ✅ |
+| No raw `$queryRaw` with user input | ✅ |
+| Frontend uses `api.get/post` for internal API | ✅ (raw `fetch` only for S3 presigned URL — intentional) |
+
+---
+
+## Recommendation: 🔴 BLOCK
+
+Fix C-001 (add `deletedAt: null` to two `chartOfAccount.findMany` calls in `payments.service.ts`) before merging. The fix is a two-line change. All other issues are warnings/info that can be addressed in a follow-up.

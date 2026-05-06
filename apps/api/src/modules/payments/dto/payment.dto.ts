@@ -165,6 +165,12 @@ export class RecordPaymentDto {
   @IsString()
   @IsIn(['SINGLE', 'SPLIT'])
   splitMode?: RescheduleSplitMode;
+
+  /** กรณีการชำระ — ระบุเพื่อให้ service เลือก JE template ที่ถูกต้อง */
+  @IsOptional()
+  @IsString()
+  @IsIn(['NORMAL', 'OVERPAY', 'UNDERPAY', 'PARTIAL', 'EARLY_PAYOFF', 'RESCHEDULE', 'OVERPAY_ADVANCE'])
+  case?: PaymentCase;
 }
 
 export class BulkRecordPaymentDto {

@@ -265,7 +265,7 @@ describe('PaymentsService', () => {
       const updatedPayment = { ...mockPayment, amountPaid: 1000, status: 'PARTIALLY_PAID', paidDate: null };
       prisma.payment.update.mockResolvedValue(updatedPayment);
 
-      const result = await service.recordPayment('contract-1', 1, 1000, 'CASH', 'user-1', 'http://slip.jpg');
+      const result = await service.recordPayment('contract-1', 1, 1000, 'CASH', 'user-1', 'http://slip.jpg', undefined, undefined, undefined, undefined, 'PARTIAL');
       expect(result.status).toBe('PARTIALLY_PAID');
     });
 
@@ -283,7 +283,7 @@ describe('PaymentsService', () => {
       const updatedPayment = { ...mockPayment, id: 'payment-1', amountPaid: 1000, status: 'PARTIALLY_PAID', paidDate: null };
       prisma.payment.update.mockResolvedValue(updatedPayment);
 
-      await service.recordPayment('contract-1', 1, 1000, 'CASH', 'user-1', 'http://slip.jpg');
+      await service.recordPayment('contract-1', 1, 1000, 'CASH', 'user-1', 'http://slip.jpg', undefined, undefined, undefined, undefined, 'PARTIAL');
       expect(receiptsService.generateReceipt).toHaveBeenCalledWith(
         'contract-1', 'payment-1', 'INSTALLMENT', 1000, 1, 'CASH', null, 'user-1',
       );

@@ -38,9 +38,11 @@ export class OtherIncomeTemplate {
         description: input.description,
         // reference stored as referenceId (type becomes 'AUTO' by JournalAutoService convention)
         reference: input.otherIncomeId,
-        // metadata intentionally omitted: the column was added in phase_a4_cpa_chart_schema migration
-        // but may not be present on all dev DBs. The JournalAutoService.createAndPost spreads
-        // metadata conditionally, so omitting it here prevents "column does not exist" errors.
+        metadata: {
+          source: 'OTHER_INCOME',
+          docNumber: input.docNumber,
+          otherIncomeId: input.otherIncomeId,
+        },
         postedAt: input.entryDate,
         // Bridge JeLineInput { debit, credit } → CreateAndPostInput lines { dr, cr }
         lines: input.lines.map((l) => ({

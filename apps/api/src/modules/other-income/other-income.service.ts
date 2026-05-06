@@ -349,21 +349,13 @@ export class OtherIncomeService {
       throw new BadRequestException(`เอกสาร ${original.docNumber} ไม่มี JE reference`);
     }
 
-    // Use raw query to avoid Prisma SELECT including `metadata` column which may not
-    // exist in the dev DB if phase_a4_cpa_chart_schema migration hasn't been applied.
-    const jeRows = await this.prisma.$queryRaw<{ id: string }[]>`
-      SELECT id FROM journal_entries WHERE id = ${original.journalEntryId} LIMIT 1
-    `;
-    if (jeRows.length === 0) {
+    const originalJe = await this.prisma.journalEntry.findUnique({
+      where: { id: original.journalEntryId },
+      include: { lines: true },
+    });
+    if (!originalJe) {
       throw new NotFoundException(`JE ${original.journalEntryId} not found`);
     }
-    const originalJeLines = await this.prisma.$queryRaw<
-      { account_code: string; debit: string; credit: string; description: string | null }[]
-    >`
-      SELECT account_code, debit::text, credit::text, description
-      FROM journal_lines
-      WHERE journal_entry_id = ${original.journalEntryId}
-    `;
 
     return this.prisma.$transaction(async (tx) => {
       const issueDate = new Date();
@@ -372,10 +364,10 @@ export class OtherIncomeService {
       const now = new Date();
 
       // Flip Dr/Cr from original JE lines
-      const reversalLines = originalJeLines.map((l) => ({
-        accountCode: l.account_code,
-        debit: new D(l.credit),
-        credit: new D(l.debit),
+      const reversalLines = originalJe.lines.map((l) => ({
+        accountCode: l.accountCode,
+        debit: new D(l.credit.toString()),
+        credit: new D(l.debit.toString()),
         description: l.description ? `[กลับรายการ] ${l.description}` : '[กลับรายการ]',
       }));
 

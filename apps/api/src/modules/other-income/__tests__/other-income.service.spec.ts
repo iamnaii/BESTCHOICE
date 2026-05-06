@@ -262,17 +262,19 @@ describe('OtherIncomeService — post + reverse + copy', () => {
       },
     });
 
-    // Seed required CoA codes via raw SQL (schema.prisma ChartOfAccount is out of sync
-    // with the actual DB — A.6 added name_th/account_group/level columns).
-    // We use INSERT ... ON CONFLICT DO NOTHING to be idempotent.
-    await prisma.$executeRaw`
-      INSERT INTO chart_of_accounts (id, code, name_th, name, account_group, level,
-        "normalBalance", type, category, created_at, updated_at, "createdAt", "updatedAt")
-      VALUES (gen_random_uuid(), '11-4103', 'ลูกหนี้ภาษีหัก ณ ที่จ่าย', 'ลูกหนี้ภาษีหัก ณ ที่จ่าย',
-        'ASSET'::"AccountGroup", 2, 'Dr', 'สินทรัพย์', 'สินทรัพย์หมุนเวียน',
-        NOW(), NOW(), NOW(), NOW())
-      ON CONFLICT (code) DO NOTHING
-    `;
+    // Seed required CoA codes
+    const coaSeeds = [
+      { code: '42-1102', name: 'รายได้ดอกเบี้ยฝากธนาคาร', type: 'รายได้', normalBalance: 'Cr', category: 'รายได้อื่น' },
+      { code: '11-1201', name: 'ธนาคาร KBank', type: 'สินทรัพย์', normalBalance: 'Dr', category: 'เงินฝากธนาคาร' },
+      { code: '11-4103', name: 'ลูกหนี้ภาษีหัก ณ ที่จ่าย', type: 'สินทรัพย์', normalBalance: 'Dr', category: 'สินทรัพย์หมุนเวียน' },
+    ];
+    for (const seed of coaSeeds) {
+      await prisma.chartOfAccount.upsert({
+        where: { code: seed.code },
+        update: {},
+        create: seed,
+      });
+    }
 
     // Create a unique test user
     const user = await prisma.user.create({
@@ -363,23 +365,16 @@ describe('OtherIncomeService — post + reverse + copy', () => {
     expect(posted.receiptNo).toMatch(/^RC-20260506-\d{3}$/);
     expect(posted.postedAt).toBeTruthy();
 
-    // Verify JE was created correctly via raw query (Prisma ORM SELECT includes `metadata`
-    // column which may not yet exist in the dev DB)
-    type JeRow = { id: string; status: string; reference_id: string | null };
-    const jeRows = await prisma.$queryRaw<JeRow[]>`
-      SELECT id, status, reference_id FROM journal_entries WHERE id = ${posted.journalEntryId}
-    `;
-    expect(jeRows.length).toBe(1);
-    const je = jeRows[0];
-    expect(je.status).toBe('POSTED');
-    expect(je.reference_id).toBe(draft.id);
-
-    type LineRow = { account_code: string };
-    const lines = await prisma.$queryRaw<LineRow[]>`
-      SELECT account_code FROM journal_lines WHERE journal_entry_id = ${posted.journalEntryId}
-    `;
+    // Verify JE was created correctly
+    const je = await prisma.journalEntry.findUnique({
+      where: { id: posted.journalEntryId! },
+      include: { lines: true },
+    });
+    expect(je).toBeDefined();
+    expect(je!.status).toBe('POSTED');
+    expect(je!.referenceId).toBe(draft.id);
     // 3 lines: Dr 11-1201 (bank), Dr 11-4103 (WHT), Cr 42-1102 (income)
-    expect(lines.length).toBe(3);
+    expect(je!.lines.length).toBe(3);
   }, 30_000);
 
   // ----------------------------------------------------------------
@@ -437,19 +432,18 @@ describe('OtherIncomeService — post + reverse + copy', () => {
     const original = await prisma.otherIncome.findUnique({ where: { id: posted.id } });
     expect(original!.status).toBe('REVERSED');
 
-    // Verify reversal JE lines via raw query (avoid `metadata` column in Prisma ORM SELECT)
-    type LineRow2 = { account_code: string; debit: string; credit: string };
-    const reversalLines = await prisma.$queryRaw<LineRow2[]>`
-      SELECT account_code, debit::text, credit::text
-      FROM journal_lines WHERE journal_entry_id = ${reversal.journalEntryId}
-    `;
-    expect(reversalLines.length).toBe(3);
+    // Verify reversal JE has the same number of lines as original (flipped)
+    const reversalJe = await prisma.journalEntry.findUnique({
+      where: { id: reversal.journalEntryId! },
+      include: { lines: true },
+    });
+    expect(reversalJe!.lines.length).toBe(3);
 
     // Verify Dr/Cr are flipped: original had Dr 11-1201, reversal should have Cr 11-1201
-    const bankLine = reversalLines.find((l) => l.account_code === '11-1201');
+    const bankLine = reversalJe!.lines.find((l) => l.accountCode === '11-1201');
     expect(bankLine).toBeDefined();
-    expect(new Prisma.Decimal(bankLine!.credit).gt(0)).toBe(true);
-    expect(new Prisma.Decimal(bankLine!.debit).eq(0)).toBe(true);
+    expect(new Prisma.Decimal(bankLine!.credit.toString()).gt(0)).toBe(true);
+    expect(new Prisma.Decimal(bankLine!.debit.toString()).eq(0)).toBe(true);
   }, 30_000);
 
   // ----------------------------------------------------------------

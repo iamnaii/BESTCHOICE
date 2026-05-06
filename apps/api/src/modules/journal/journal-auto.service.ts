@@ -65,64 +65,31 @@ export class JournalAutoService {
     const entryNumber = await this.generateEntryNumber(postedAt, client);
 
     // 4. create entry + lines (POSTED immediately — auto-generated entries skip DRAFT/SoD)
-    const companyId = await this.resolveFinanceCompanyId(client);
-    const createdById = await this.resolveSystemUserId(client);
-
-    // Use $executeRaw for the JournalEntry INSERT to avoid Prisma generating a RETURNING
-    // clause that references schema columns (e.g. `metadata`) that may not yet exist in the
-    // dev database (phase_a4_cpa_chart_schema migration may not have been applied).
-    // The `metadata` column is conditionally included only when the column exists.
-    const entryId = `${require('crypto').randomUUID()}`;
-    const referenceType = input.reference ? 'AUTO' : null;
-    const referenceId = input.reference ?? null;
-
-    if (input.metadata !== undefined) {
-      // Attempt metadata write; if the column doesn't exist, fall back to no-metadata INSERT
-      try {
-        await client.$executeRaw`
-          INSERT INTO journal_entries (id, entry_number, company_id, entry_date, description,
-            status, reference_type, reference_id, posted_at, created_by_id, created_at, updated_at, metadata)
-          VALUES (${entryId}, ${entryNumber}, ${companyId}, ${postedAt}, ${input.description},
-            'POSTED'::"JournalEntryStatus", ${referenceType}, ${referenceId},
-            ${postedAt}, ${createdById}, NOW(), NOW(),
-            ${JSON.stringify(input.metadata)}::jsonb)
-        `;
-      } catch (e: unknown) {
-        const msg = (e instanceof Error ? e.message : String(e)).toLowerCase();
-        if (msg.includes('metadata') && msg.includes('does not exist')) {
-          // Column not yet in DB — retry without metadata
-          await client.$executeRaw`
-            INSERT INTO journal_entries (id, entry_number, company_id, entry_date, description,
-              status, reference_type, reference_id, posted_at, created_by_id, created_at, updated_at)
-            VALUES (${entryId}, ${entryNumber}, ${companyId}, ${postedAt}, ${input.description},
-              'POSTED'::"JournalEntryStatus", ${referenceType}, ${referenceId},
-              ${postedAt}, ${createdById}, NOW(), NOW())
-          `;
-        } else {
-          throw e;
-        }
-      }
-    } else {
-      await client.$executeRaw`
-        INSERT INTO journal_entries (id, entry_number, company_id, entry_date, description,
-          status, reference_type, reference_id, posted_at, created_by_id, created_at, updated_at)
-        VALUES (${entryId}, ${entryNumber}, ${companyId}, ${postedAt}, ${input.description},
-          'POSTED'::"JournalEntryStatus", ${referenceType}, ${referenceId},
-          ${postedAt}, ${createdById}, NOW(), NOW())
-      `;
-    }
-
-    // Insert journal lines
-    for (const l of input.lines) {
-      const lineId = `${require('crypto').randomUUID()}`;
-      await client.$executeRaw`
-        INSERT INTO journal_lines (id, journal_entry_id, account_code, debit, credit, description, created_at, updated_at)
-        VALUES (${lineId}, ${entryId}, ${l.accountCode}, ${l.dr.toFixed(2)}::DECIMAL, ${l.cr.toFixed(2)}::DECIMAL,
-          ${l.description ?? null}, NOW(), NOW())
-      `;
-    }
-
-    return { id: entryId, entryNumber };
+    const entry = await client.journalEntry.create({
+      data: {
+        entryNumber,
+        description: input.description,
+        referenceType: input.reference ? 'AUTO' : null,
+        referenceId: input.reference ?? null,
+        metadata: input.metadata ?? Prisma.JsonNull,
+        entryDate: postedAt,
+        status: 'POSTED',
+        postedAt,
+        // companyId required by schema — FINANCE company resolved at runtime
+        // TODO T6+: pass companyId from caller context
+        companyId: await this.resolveFinanceCompanyId(client),
+        createdById: await this.resolveSystemUserId(client),
+        lines: {
+          create: input.lines.map((l) => ({
+            accountCode: l.accountCode,
+            debit: l.dr,
+            credit: l.cr,
+            description: l.description ?? null,
+          })),
+        },
+      },
+    });
+    return { id: entry.id, entryNumber };
   }
 
   private async generateEntryNumber(

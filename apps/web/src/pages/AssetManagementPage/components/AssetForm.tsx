@@ -11,6 +11,7 @@ import {
 import { Button } from '@/components/ui/button';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { Asset, Branch, categoryOptions, inputClass, fmt, AssetForm as AssetFormType } from '../types';
+import { useCoaGroups } from '@/hooks/useCoa';
 
 interface AssetFormProps {
   editingAsset: Asset | null;
@@ -32,6 +33,14 @@ export default function AssetForm({
   setField,
 }: AssetFormProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  const { data: assetCoa } = useCoaGroups({ codePrefix: '12-21' });
+  const { data: depCoa } = useCoaGroups({ codePrefix: '53-16' });
+
+  const allAssets = assetCoa?.groups.flatMap((g) => g.accounts) ?? [];
+  const costAccounts = allAssets.filter((a) => a.normalBalance === 'Dr');
+  const accumAccounts = allAssets.filter((a) => a.normalBalance === 'Cr');
+  const depAccounts = depCoa?.groups.flatMap((g) => g.accounts) ?? [];
 
   return (
     <div className="fixed inset-0 z-50 bg-foreground/50 backdrop-blur-xs flex items-start justify-center pt-8 pb-8">
@@ -299,18 +308,11 @@ export default function AssetForm({
                     onChange={(e) => setField('assetAccountCode', e.target.value)}
                   >
                     <option value="">-- เลือก --</option>
-                    <optgroup label="อุปกรณ์สำนักงาน">
-                      <option value="12-2101">12-2101 อุปกรณ์สำนักงาน</option>
-                    </optgroup>
-                    <optgroup label="ส่วนปรับปรุงอาคาร">
-                      <option value="12-2103">12-2103 ส่วนปรับปรุงอาคาร</option>
-                    </optgroup>
-                    <optgroup label="เครื่องตกแต่ง">
-                      <option value="12-2105">12-2105 เครื่องตกแต่งสำนักงาน</option>
-                    </optgroup>
-                    <optgroup label="ยานพาหนะ">
-                      <option value="12-2107">12-2107 ยานพาหนะ</option>
-                    </optgroup>
+                    {costAccounts.map((a) => (
+                      <option key={a.code} value={a.code}>
+                        {a.code} {a.name}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div>
@@ -323,10 +325,11 @@ export default function AssetForm({
                     onChange={(e) => setField('depreciationAccountCode', e.target.value)}
                   >
                     <option value="">-- เลือก --</option>
-                    <option value="53-1601">53-1601 ค่าเสื่อมราคา - อุปกรณ์สำนักงาน</option>
-                    <option value="53-1602">53-1602 ค่าเสื่อมราคา - ส่วนปรับปรุงอาคาร</option>
-                    <option value="53-1603">53-1603 ค่าเสื่อมราคา - เครื่องตกแต่ง</option>
-                    <option value="53-1604">53-1604 ค่าเสื่อมราคา - ยานพาหนะ</option>
+                    {depAccounts.map((a) => (
+                      <option key={a.code} value={a.code}>
+                        {a.code} {a.name}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div>
@@ -339,9 +342,11 @@ export default function AssetForm({
                     onChange={(e) => setField('accumulatedDepreAccountCode', e.target.value)}
                   >
                     <option value="">-- เลือก --</option>
-                    <option value="12-2102">12-2102 ค่าเสื่อมสะสม - อุปกรณ์สำนักงาน</option>
-                    <option value="12-2104">12-2104 ค่าเสื่อมสะสม - ส่วนปรับปรุงอาคาร</option>
-                    <option value="12-2106">12-2106 ค่าเสื่อมสะสม - เครื่องตกแต่ง</option>
+                    {accumAccounts.map((a) => (
+                      <option key={a.code} value={a.code}>
+                        {a.code} {a.name}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>

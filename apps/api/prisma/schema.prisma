@@ -3416,7 +3416,7 @@ model Expense {
   expenseNumber  String             @unique @map("expense_number")
   branchId       String             @map("branch_id")
   accountType    ExpenseAccountType @map("account_type")
-  category       ExpenseCategory
+  category       String          // Phase A.6: was ExpenseCategory enum; now stores CoA code OR legacy enum string
   accountCode    String?            @map("account_code")
   description    String
   amount         Decimal            @db.Decimal(12, 2)

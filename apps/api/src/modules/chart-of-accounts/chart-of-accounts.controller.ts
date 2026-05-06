@@ -4,6 +4,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { ChartOfAccountsService } from './chart-of-accounts.service';
 import { CreateChartOfAccountDto, UpdateChartOfAccountDto } from './dto/chart-of-account.dto';
+import { CoaGroupedQueryDto, CoaGroupedResponse } from './dto/coa-grouped.dto';
 
 @Controller('chart-of-accounts')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -28,6 +29,12 @@ export class ChartOfAccountsController {
     const codeList = codes.split(',').map((c) => c.trim()).filter(Boolean);
     if (codeList.length > 20) throw new BadRequestException('codes ต้องไม่เกิน 20 รายการ');
     return this.service.findByCodes(codeList);
+  }
+
+  @Get('grouped')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  grouped(@Query() query: CoaGroupedQueryDto): Promise<CoaGroupedResponse> {
+    return this.service.findGrouped(query);
   }
 
   @Get(':id')

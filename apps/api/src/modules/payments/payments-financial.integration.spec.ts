@@ -107,7 +107,7 @@ describe('PaymentsService — Financial Integration', () => {
     });
 
     it('should handle partial payment', async () => {
-      await service.recordPayment('c1', 1, 500, 'CASH', 'u1', 'https://s3.example.com/slip.jpg', undefined, 'TXN-2');
+      await service.recordPayment('c1', 1, 500, 'CASH', 'u1', 'https://s3.example.com/slip.jpg', undefined, 'TXN-2', undefined, undefined, 'PARTIAL');
       expect(payments[0].status).toBe('PARTIALLY_PAID');
       // amountPaid is now stored as Prisma.Decimal — compare numeric value
       expect(Number(payments[0].amountPaid)).toBe(500);

@@ -231,7 +231,9 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
         { label: 'รายจ่าย', path: '/expenses', icon: Receipt },
+        { label: 'รายได้อื่น', path: '/other-income', icon: TrendingUp },
         { label: 'กำไร-ขาดทุน', path: '/profit-loss', icon: PieChart },
+        { label: 'งวดบัญชี', path: '/accounting/periods', icon: CalendarDays },
       ],
     },
     {
@@ -273,6 +275,7 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
       label: 'บัญชี & รายงาน',
       icon: BarChart3,
       items: [
+        { label: 'รายได้อื่น', path: '/other-income', icon: TrendingUp },
         { label: 'กำไร-ขาดทุน', path: '/profit-loss', icon: PieChart },
         { label: 'ภาษี', path: '/tax-reports', icon: Calculator },
         { label: 'รายงาน', path: '/reports', icon: BarChart3 },
@@ -285,6 +288,7 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
       icon: CalendarDays,
       items: [
         { label: 'ปิดบัญชีรายเดือน', path: '/monthly-close', icon: CalendarDays },
+        { label: 'งวดบัญชี', path: '/accounting/periods', icon: CalendarDays },
         { label: 'ชำระเงินระหว่างบริษัท', path: '/accounting/intercompany', icon: ClipboardList },
         { label: 'ผังบัญชี', path: '/settings/chart-of-accounts', icon: ClipboardList },
         { label: 'ตรวจสอบบัญชี', path: '/financial-audit', icon: ClipboardList },
@@ -355,10 +359,12 @@ const OWNER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
         { label: 'รายจ่าย', path: '/expenses', icon: Receipt },
+        { label: 'รายได้อื่น', path: '/other-income', icon: TrendingUp },
         { label: 'รายงาน', path: '/reports', icon: BarChart3 },
         { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
         { label: 'ภาษี', path: '/tax-reports', icon: Calculator },
         { label: 'ปิดบัญชีรายเดือน', path: '/monthly-close', icon: CalendarDays },
+        { label: 'งวดบัญชี', path: '/accounting/periods', icon: CalendarDays },
         { label: 'ชำระเงินระหว่างบริษัท', path: '/accounting/intercompany', icon: ClipboardList },
         { label: 'ผังบัญชี', path: '/settings/chart-of-accounts', icon: ClipboardList },
         { label: 'ตรวจสอบบัญชี', path: '/financial-audit', icon: ClipboardList },

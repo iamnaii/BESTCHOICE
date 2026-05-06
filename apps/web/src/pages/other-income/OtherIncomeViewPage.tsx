@@ -23,7 +23,7 @@ const STATUS_LABELS: Record<OtherIncomeStatus, string> = {
 
 const STATUS_COLORS: Record<OtherIncomeStatus, string> = {
   DRAFT: 'bg-muted text-muted-foreground',
-  POSTED: 'bg-green-100 text-green-700',
+  POSTED: 'bg-success/10 text-success',
   REVERSED: 'bg-destructive/10 text-destructive',
 };
 
@@ -427,15 +427,15 @@ export default function OtherIncomeViewPage() {
                     <span
                       className={
                         Math.abs(parseFloat(doc.amountReceived) - parseFloat(doc.netReceived)) > 0.01
-                          ? 'text-orange-500'
-                          : 'text-green-600'
+                          ? 'text-warning'
+                          : 'text-success'
                       }
                     >
                       {fmt(doc.amountReceived)} ฿
                     </span>
                   </div>
                   {doc.isOverridden && (
-                    <p className="text-xs text-orange-500 pt-1">
+                    <p className="text-xs text-warning pt-1">
                       * JE ถูก override โดยผู้ใช้
                     </p>
                   )}

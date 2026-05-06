@@ -17,7 +17,7 @@ const STATUS_LABELS: Record<OtherIncomeStatus, string> = {
 
 const STATUS_COLORS: Record<OtherIncomeStatus, string> = {
   DRAFT: 'bg-muted text-muted-foreground',
-  POSTED: 'bg-green-100 text-green-700',
+  POSTED: 'bg-success/10 text-success',
   REVERSED: 'bg-destructive/10 text-destructive',
 };
 
@@ -118,10 +118,10 @@ export default function OtherIncomeListPage() {
         </div>
         <div className="rounded-xl border bg-card p-4">
           <div className="flex items-center gap-2 mb-1">
-            <TrendingUp size={16} className="text-green-600" />
+            <TrendingUp size={16} className="text-success" />
             <span className="text-xs text-muted-foreground">บันทึกแล้ว</span>
           </div>
-          <p className="text-2xl font-bold font-mono text-green-600">{postedDocs.length}</p>
+          <p className="text-2xl font-bold font-mono text-success">{postedDocs.length}</p>
         </div>
         <div className="rounded-xl border bg-card p-4">
           <div className="flex items-center gap-2 mb-1">

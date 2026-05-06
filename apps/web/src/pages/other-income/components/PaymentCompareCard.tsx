@@ -29,9 +29,9 @@ export function PaymentCompareCard({ expected, received }: Props) {
     label = `ขาด ${Math.abs(diff).toFixed(2)} ฿`;
   }
   const colorMap = {
-    success: 'border-green-500 bg-green-500/10 text-green-700',
-    info: 'border-blue-500 bg-blue-500/10 text-blue-700',
-    warning: 'border-orange-500 bg-orange-500/10 text-orange-700',
+    success: 'border-success bg-success/10 text-success',
+    info: 'border-info bg-info/10 text-info',
+    warning: 'border-warning bg-warning/10 text-warning',
   };
   return (
     <div className={`rounded-lg border-2 p-3 ${colorMap[tone]}`}>

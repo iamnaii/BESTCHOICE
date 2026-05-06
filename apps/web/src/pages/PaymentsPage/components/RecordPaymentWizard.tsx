@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import Decimal from 'decimal.js';
 import {
@@ -40,7 +41,7 @@ import { AdvanceBalanceBanner } from './AdvanceBalanceBanner';
  * Auto-detected payment case (computed from amount diff client-side).
  * RESCHEDULE / EARLY_PAYOFF are handled in separate contract-detail pages, not here.
  */
-type DetectedCase = 'NORMAL' | 'OVERPAY' | 'UNDERPAY' | 'OVERPAY_ADVANCE' | 'OUT_OF_RANGE';
+type DetectedCase = 'NORMAL' | 'OVERPAY' | 'UNDERPAY' | 'OVERPAY_ADVANCE' | 'PARTIAL' | 'OUT_OF_RANGE';
 
 /** Legacy type kept for API compatibility — backend accepts all 7 values */
 type PaymentCase = 'NORMAL' | 'OVERPAY' | 'UNDERPAY' | 'PARTIAL' | 'EARLY_PAYOFF' | 'RESCHEDULE' | 'OVERPAY_ADVANCE';
@@ -110,12 +111,30 @@ function ContractInfoPanel({
           `${lateFee.toNumber().toLocaleString('th-TH', { minimumFractionDigits: 2 })} ฿`,
           true,
         )}
+      {amountPaid.gt(0) && (
+        <>
+          {row(
+            'จ่ายแล้ว',
+            <span className="text-muted-foreground font-mono">
+              {amountPaid.toNumber().toLocaleString('th-TH', { minimumFractionDigits: 2 })} ฿
+            </span>,
+          )}
+          <div className="flex justify-between text-sm py-1 border-b border-border/50 border-t mt-1 pt-1">
+            <span className="text-warning font-bold leading-snug">ยอดเหลือ</span>
+            <span className="text-warning font-bold font-mono leading-snug">
+              {totalDue.toNumber().toLocaleString('th-TH', { minimumFractionDigits: 2 })} ฿
+            </span>
+          </div>
+        </>
+      )}
+      {amountPaid.lte(0) && (
       <div className="flex justify-between text-sm pt-2 font-bold">
         <span className="leading-snug">ยอดรวมต้องชำระ</span>
         <span className="text-primary leading-snug">
           {totalDue.toNumber().toLocaleString('th-TH', { minimumFractionDigits: 2 })} ฿
         </span>
       </div>
+      )}
       <div className="pt-2 mt-1 border-t border-border">
         <div className="flex justify-between text-xs text-muted-foreground">
           <span className="leading-snug">Net Exposure</span>
@@ -188,6 +207,17 @@ function CaseBadge({
         <Info className="size-4 text-info shrink-0" />
         <span className="text-info font-medium leading-snug">
           เกิน {absDiff} ฿ — บันทึกเป็นเงินรับล่วงหน้า (หักงวดถัดไปอัตโนมัติ)
+        </span>
+      </div>
+    );
+  }
+
+  if (detectedCase === 'PARTIAL') {
+    return (
+      <div className="flex items-center gap-1.5 rounded-lg border border-warning/40 bg-warning/5 px-3 py-2 text-sm">
+        <AlertCircle className="size-4 text-warning shrink-0" />
+        <span className="text-warning font-medium leading-snug">
+          จ่ายขาด {absDiff} ฿ — บันทึกบางส่วน ลูกค้าค้าง {absDiff} ฿ ต่อ
         </span>
       </div>
     );
@@ -362,7 +392,8 @@ function detectCase(
   if (diff > 0 && diff <= 1) return 'OVERPAY';            // rounding (gain)
   if (diff < 0 && diff >= -1) return 'UNDERPAY';          // rounding (loss, requires approver)
   if (diff > 1) return 'OVERPAY_ADVANCE';                 // pay > installment+1฿ → park excess
-  return 'OUT_OF_RANGE';                                  // diff < -1: still blocked → use แบ่งชำระ
+  if (diff < -1) return 'PARTIAL';                        // paid something but not enough → partial payment
+  return 'OUT_OF_RANGE';                                  // only reached when received <= 0 edge cases
 }
 
 /** Map auto-detected case to the API PaymentCase param (best fit) */
@@ -370,6 +401,7 @@ function toApiCase(detected: DetectedCase): PaymentCase {
   if (detected === 'OVERPAY') return 'OVERPAY';
   if (detected === 'UNDERPAY') return 'UNDERPAY';
   if (detected === 'OVERPAY_ADVANCE') return 'OVERPAY_ADVANCE';
+  if (detected === 'PARTIAL') return 'PARTIAL';
   return 'NORMAL'; // OUT_OF_RANGE should never reach API (submit blocked)
 }
 
@@ -406,6 +438,7 @@ export function RecordPaymentWizard({
   defaultDepositAccountCode = '11-1101',
 }: RecordPaymentWizardProps) {
   const [depositAccountCode, setDepositAccountCode] = useState(defaultDepositAccountCode);
+  const [showPartialConfirm, setShowPartialConfirm] = useState(false);
 
   // Amount fields
   const lateFeeDecimal = useMemo(() => new Decimal(payment.lateFee), [payment.lateFee]);
@@ -530,6 +563,7 @@ export function RecordPaymentWizard({
   );
   const debouncedParams = useDebounce(previewParams, 300);
 
+  // PARTIAL is now a valid case that can be submitted — treat same as other valid cases
   const isPreviewReady: boolean =
     detectedCase !== 'OUT_OF_RANGE' &&
     // Allow 0 cash when advance fully covers installment (detectCase = NORMAL)
@@ -564,7 +598,8 @@ export function RecordPaymentWizard({
     return true;
   };
 
-  const handleSubmit = () => {
+  const actuallySubmit = () => {
+    setShowPartialConfirm(false);
     onSubmit({
       contractId: payment.contract.id,
       installmentNo: payment.installmentNo,
@@ -583,6 +618,14 @@ export function RecordPaymentWizard({
       slipUrl: slipUrl || undefined,
       memo: memo || undefined,
     });
+  };
+
+  const handleSubmit = () => {
+    if (detectedCase === 'PARTIAL') {
+      setShowPartialConfirm(true);
+      return;
+    }
+    actuallySubmit();
   };
 
   const handleOpenChange = (isOpen: boolean) => {
@@ -879,6 +922,17 @@ export function RecordPaymentWizard({
           </Button>
         </DialogFooter>
       </DialogContent>
+
+      {/* Partial payment confirmation gate */}
+      <ConfirmDialog
+        open={showPartialConfirm}
+        onOpenChange={setShowPartialConfirm}
+        title="ยืนยันบันทึกบางส่วน"
+        description={`ค่างวด ${expectedTotal.toFixed(2)} ฿ • ลูกค้าจ่าย ${(receivedNum).toFixed(2)} ฿ • ค้าง ${Math.abs(amountDiff).toFixed(2)} ฿. ลูกค้าจะค้างยอดนี้จนกว่าจะจ่ายเพิ่ม.`}
+        confirmLabel="ยืนยันบันทึก"
+        cancelLabel="ยกเลิก"
+        onConfirm={actuallySubmit}
+      />
     </Dialog>
   );
 }

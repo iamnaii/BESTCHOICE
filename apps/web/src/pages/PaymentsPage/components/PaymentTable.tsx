@@ -90,6 +90,14 @@ export default function PaymentTable({
       key: 'status',
       label: 'สถานะ',
       render: (p: PendingPayment) => {
+        if (p.status === 'PARTIALLY_PAID') {
+          const owed = (parseFloat(p.amountDue) + parseFloat(p.lateFee)) - parseFloat(p.amountPaid);
+          return (
+            <Badge variant="warning" appearance="default" size="md">
+              ค้าง {owed.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿
+            </Badge>
+          );
+        }
         const cfg = getStatusBadgeProps(p.status, paymentStatusMap);
         return <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>;
       },

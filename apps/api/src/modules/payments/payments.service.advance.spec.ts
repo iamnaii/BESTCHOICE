@@ -374,4 +374,89 @@ describe('PaymentsService — advance balance (Task 4)', () => {
       ),
     ).rejects.toThrow(BadRequestException);
   });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // PARTIAL case tests (Task 2)
+  // ─────────────────────────────────────────────────────────────────────────────
+  describe('PARTIAL case', () => {
+    it('partial 800 of 1000 → status PARTIALLY_PAID, partialClear flag passed to template', async () => {
+      // Return an installmentSchedule so the template is actually called
+      prisma.installmentSchedule.findUnique.mockResolvedValueOnce({ id: 'sch-partial-1' });
+      prisma.payment.findFirst.mockResolvedValueOnce(makePayment(7));
+
+      await service.recordPayment(
+        'adv-contract-1',
+        7,
+        800, // 200 shortage → requires PARTIAL
+        'CASH',
+        'user-1',
+        undefined,
+        undefined,
+        'TEST-P1',
+        '11-1101',
+        undefined,
+        'PARTIAL',
+      );
+
+      expect(receipt2BExecute).toHaveBeenCalledWith(
+        expect.objectContaining({ partialClear: true }),
+      );
+
+      expect(prisma.payment.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: 'PARTIALLY_PAID' }),
+        }),
+      );
+    });
+
+    it('shortage > 1฿ without case=PARTIAL throws BadRequestException', async () => {
+      prisma.payment.findFirst.mockResolvedValueOnce(makePayment(8));
+
+      await expect(
+        service.recordPayment(
+          'adv-contract-1',
+          8,
+          800, // 200 shortage — no explicit PARTIAL case
+          'CASH',
+          'user-1',
+          undefined,
+          undefined,
+          'TEST-P2',
+          '11-1101',
+        ),
+      ).rejects.toThrow(/PARTIAL/);
+    });
+
+    it('re-pay full remainder after partial → status PAID, partialClear NOT passed', async () => {
+      // Simulate installment 9 with prevPaid = 800 (PARTIALLY_PAID)
+      prisma.payment.findFirst.mockResolvedValueOnce(
+        makePayment(9, { amountPaid: D(800), status: 'PARTIALLY_PAID' }),
+      );
+      // Return an installmentSchedule for the template call
+      prisma.installmentSchedule.findUnique.mockResolvedValueOnce({ id: 'sch-partial-3' });
+
+      await service.recordPayment(
+        'adv-contract-1',
+        9,
+        200, // 800 prevPaid + 200 cash = 1000 = PAID in full
+        'CASH',
+        'user-1',
+        undefined,
+        undefined,
+        'TEST-P3',
+        '11-1101',
+      );
+
+      // partialClear should NOT be set (shortage = 0)
+      expect(receipt2BExecute).toHaveBeenCalledWith(
+        expect.not.objectContaining({ partialClear: true }),
+      );
+
+      expect(prisma.payment.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: 'PAID' }),
+        }),
+      );
+    });
+  });
 });

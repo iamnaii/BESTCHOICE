@@ -1,6 +1,7 @@
-import { useMemo } from 'react';
+import { useMemo, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useForm } from 'react-hook-form';
+import { standardSchemaResolver } from '@hookform/resolvers/standard-schema';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Save, Send, ArrowLeft, Receipt } from 'lucide-react';
@@ -176,15 +177,15 @@ export default function OtherIncomeEntryPage() {
     enabled: isEdit,
   });
 
-  // Note: no resolver passed — validation is applied manually on submit via
-  // otherIncomeFormSchema.safeParse() to avoid TS2719 duplicate-type conflict
-  // with the react-hook-form Control type used in sub-components (bundler
-  // module resolution sometimes resolves the same package twice).
-  const form = useForm<OtherIncomeFormValues>({ defaultValues });
+  const form = useForm<OtherIncomeFormValues>({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    resolver: standardSchemaResolver(otherIncomeFormSchema) as any,
+    defaultValues,
+  });
 
-  // Populate form when existing doc loads
+  // Populate form when existing doc loads (edit mode)
   const { reset } = form;
-  useMemo(() => {
+  useEffect(() => {
     if (loadQuery.data && isEdit) {
       const d = loadQuery.data;
       reset({
@@ -456,7 +457,8 @@ export default function OtherIncomeEntryPage() {
                 </p>
               )}
               <ItemsTable
-                control={form.control}
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                control={form.control as any}
                 register={form.register}
                 watch={form.watch}
                 setValue={form.setValue}
@@ -488,7 +490,8 @@ export default function OtherIncomeEntryPage() {
               {/* Adjustment table — only when there's a diff */}
               {diffSign !== 'zero' && (
                 <AdjustmentTable
-                  control={form.control}
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  control={form.control as any}
                   register={form.register}
                   setValue={form.setValue}
                   totalDiff={totalDiff}

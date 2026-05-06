@@ -21,6 +21,7 @@ import { formatDateShort } from '../../utils/thai-date.util';
 import { MdmAutoService } from '../mdm/mdm-auto.service';
 import { PromiseService } from '../overdue/promise.service';
 import { MdmLockService } from '../overdue/mdm-lock.service';
+import { PaymentCase } from './dto/payment.dto';
 
 @Injectable()
 export class PaymentsService {
@@ -115,6 +116,7 @@ export class PaymentsService {
     transactionRef?: string,
     depositAccountCode?: string,
     toleranceApproverId?: string,
+    paymentCase?: PaymentCase,
   ) {
     if (!amount || amount <= 0) {
       throw new BadRequestException('จำนวนเงินต้องมากกว่า 0');
@@ -220,15 +222,40 @@ export class PaymentsService {
       const prevPaid = dRound(d(payment.amountPaid));
       const remaining = dRound(dSub(amountDue, prevPaid));
 
-      // Prevent overpayment: cap amount at what is owed for this installment
-      if (d(amount).gt(remaining)) {
-        throw new BadRequestException(
-          `จำนวนเงินเกินยอดค้างชำระ (ยอดค้าง ${remaining.toNumber().toLocaleString()} บาท, ชำระ ${amount.toLocaleString()} บาท) กรุณาใช้ระบบจัดสรรอัตโนมัติสำหรับการชำระหลายงวด`,
-        );
-      }
-      const totalPaid = dAdd(prevPaid, amount);
+      // Advance balance split logic (Task 4):
+      // - OVERPAY_ADVANCE: overage > 1฿ parked as advance (Cr 21-1103)
+      // - NORMAL/others: auto-consume existing advance to cover shortfall
+      const overage = d(amount).minus(remaining);
+      let advanceCredit = d(0);
+      let advanceConsume = d(0);
+      const beforeAdvance = d(contract.advanceBalance ?? 0);
 
-      const isPaidInFull = dGte(totalPaid, amountDue);
+      if (overage.gt(d('1.00'))) {
+        // Overpay > tolerance — must explicitly opt into advance posting
+        if (paymentCase !== 'OVERPAY_ADVANCE') {
+          throw new BadRequestException(
+            `จำนวนเงินเกินยอดค้างชำระ (ยอดค้าง ${remaining.toNumber().toLocaleString()} บาท, ชำระ ${amount.toLocaleString()} บาท) — ต้องเลือก case 'OVERPAY_ADVANCE' เพื่อบันทึกส่วนเกินเป็นเงินรับล่วงหน้า`,
+          );
+        }
+        advanceCredit = overage;
+      } else if (
+        d(amount).lt(remaining) &&
+        beforeAdvance.gt(0) &&
+        (paymentCase === undefined || paymentCase === 'NORMAL')
+      ) {
+        // Auto-consume FIFO ONLY for default/NORMAL case. PARTIAL/RESCHEDULE/EARLY_PAYOFF
+        // are explicit flows where the caller controls allocation directly.
+        const gap = remaining.minus(d(amount));
+        advanceConsume = Prisma.Decimal.min(beforeAdvance, gap);
+      }
+
+      // For OVERPAY_ADVANCE: amountPaid = installmentTotal (full clear via cash + advance posting).
+      // Otherwise: amountPaid = cash + consumed advance (may or may not fully clear).
+      const recordedAmountPaid =
+        paymentCase === 'OVERPAY_ADVANCE' ? remaining : dAdd(prevPaid, amount).plus(advanceConsume);
+
+      const isPaidInFull =
+        paymentCase === 'OVERPAY_ADVANCE' ? true : dGte(recordedAmountPaid, amountDue);
 
       // Append transactionRef to notes for idempotency tracking
       const updatedNotes = transactionRef
@@ -238,7 +265,7 @@ export class PaymentsService {
       const result = await tx.payment.update({
         where: { id: payment.id },
         data: {
-          amountPaid: totalPaid,
+          amountPaid: recordedAmountPaid,
           paidDate: isPaidInFull ? new Date() : null,
           paymentMethod: paymentMethod as PaymentMethod,
           status: isPaidInFull ? 'PAID' : 'PARTIALLY_PAID',
@@ -248,6 +275,33 @@ export class PaymentsService {
           depositAccountCode: resolvedDepositAccountCode,
         },
       });
+
+      // Update Contract.advanceBalance atomically with payment (Task 4.5)
+      const advanceDelta = advanceCredit.minus(advanceConsume);
+      if (!advanceDelta.eq(0)) {
+        await tx.contract.update({
+          where: { id: contractId },
+          data: { advanceBalance: { increment: advanceDelta } },
+        });
+        // Audit advance balance changes for forensics
+        await tx.auditLog.create({
+          data: {
+            action: 'OVERPAY_ADVANCE_RECORDED',
+            entity: 'contract',
+            entityId: contractId,
+            userId: recordedById,
+            newValue: {
+              paymentId: result.id,
+              installmentNo,
+              advanceCredit: advanceCredit.toString(),
+              advanceConsume: advanceConsume.toString(),
+              delta: advanceDelta.toString(),
+              beforeBalance: beforeAdvance.toString(),
+              afterBalance: beforeAdvance.plus(advanceDelta).toString(),
+            },
+          },
+        });
+      }
 
       // Check if all payments are completed → update contract status
       if (isPaidInFull) {
@@ -270,10 +324,12 @@ export class PaymentsService {
         if (instSched) {
           await this.paymentReceipt2BTemplate.execute({
             installmentScheduleId: instSched.id,
-            amountReceived: new Prisma.Decimal(result.amountPaid.toString()),
+            amountReceived: new Prisma.Decimal(amount.toString()),
             depositAccountCode: resolvedDepositAccountCode,
             toleranceApproverId: toleranceApproverId,
             existingPaymentId: result.id,
+            advanceCredit: advanceCredit.gt(0) ? advanceCredit : undefined,
+            advanceConsume: advanceConsume.gt(0) ? advanceConsume : undefined,
           });
         } else {
           this.logger.warn(
@@ -682,6 +738,7 @@ export class PaymentsService {
               contractNumber: true,
               totalMonths: true,
               monthlyPayment: true,
+              advanceBalance: true,
               customer: { select: { id: true, name: true, phone: true } },
               branch: { select: { id: true, name: true } },
             },
@@ -1520,7 +1577,35 @@ export class PaymentsService {
 
     // Dr: cash/bank received (installment total + late fee)
     const totalReceived = amountReceived.plus(lateFeeAmount);
-    rawLines.push({ code: input.depositAccountCode, dr: totalReceived, cr: zero, description: 'รับชำระ' });
+
+    // ── Advance balance split (mirror recordPayment §Task 4) ────────────────
+    // The wizard preview must match what the save actually does — including 21-1103 lines.
+    const advanceBalance = new Prisma.Decimal((c.advanceBalance ?? 0).toString());
+    const remaining = installmentTotal.plus(lateFeeAmount); // gross owed (no prevPaid in preview)
+    const overage = amountReceived.plus(lateFeeAmount).minus(remaining);
+    let previewAdvCredit = zero;
+    let previewAdvConsume = zero;
+
+    if (overage.gt(new Prisma.Decimal('1.00')) && input.case === 'OVERPAY_ADVANCE') {
+      previewAdvCredit = overage;
+    } else if (
+      amountReceived.plus(lateFeeAmount).lt(remaining) &&
+      advanceBalance.gt(zero) &&
+      (input.case === undefined || input.case === 'NORMAL')
+    ) {
+      const gap = remaining.minus(amountReceived.plus(lateFeeAmount));
+      previewAdvConsume = Prisma.Decimal.min(advanceBalance, gap);
+    }
+
+    // 1. Cash in (skip when 0 — full advance cover edge)
+    if (totalReceived.gt(zero)) {
+      rawLines.push({ code: input.depositAccountCode, dr: totalReceived, cr: zero, description: 'รับชำระ' });
+    }
+
+    // 2. Consume existing advance
+    if (previewAdvConsume.gt(zero)) {
+      rawLines.push({ code: '21-1103', dr: previewAdvConsume, cr: zero, description: 'หักเงินรับล่วงหน้า' });
+    }
 
     if (isConsolidated) {
       // CONSOLIDATED 2A+2B: Dr 21-2102 + 11-2106 to clear accrual side
@@ -1539,6 +1624,11 @@ export class PaymentsService {
     // Late fee: Cr 42-1103 if > 0
     if (lateFeeAmount.gt(zero)) {
       rawLines.push({ code: '42-1103', dr: zero, cr: lateFeeAmount, description: 'ค่าปรับชำระล่าช้า' });
+    }
+
+    // 5. Park new advance (overpay → 21-1103)
+    if (previewAdvCredit.gt(zero)) {
+      rawLines.push({ code: '21-1103', dr: zero, cr: previewAdvCredit, description: 'เงินรับล่วงหน้า' });
     }
 
     // Resolve account names from CoA

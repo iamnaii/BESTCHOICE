@@ -759,6 +759,9 @@ describe('PaymentsService', () => {
       storeCommission: '1700.00',
       interestTotal: '6000.00',
       vatAmount: '1729.00',
+      // monthlyPayment is now source of truth (PR #758): installmentExclVat + vatPerInst
+      // = (24700 - 1729)/12 ROUND_DOWN + 1729/12 = ... derived: 2202.41 per legacy test
+      monthlyPayment: '2202.41',
     };
 
     const mockInstallmentNotAccrued = {

@@ -1430,24 +1430,23 @@ export class PaymentsService {
     const c = inst.contract;
     const zero = new Prisma.Decimal(0);
 
-    // Per-installment calculations (same rounding as 2A/2B templates)
+    // Per-installment calculations.
+    // Use contract.monthlyPayment as source of truth (set by sales workflow,
+    // matches what user sees). Derive breakdown so JE always balances.
     const total = new Prisma.Decimal(c.totalMonths);
-    const financed = new Prisma.Decimal(c.financedAmount.toString());
-    const commission =
-      c.storeCommission != null
-        ? new Prisma.Decimal(c.storeCommission.toString())
-        : financed.times('0.10').toDecimalPlaces(2);
-    const interest = new Prisma.Decimal(c.interestTotal.toString());
-    const grossExclVat = financed.plus(commission).plus(interest);
-    const vat =
-      c.vatAmount != null
-        ? new Prisma.Decimal(c.vatAmount.toString())
-        : grossExclVat.times('0.07').toDecimalPlaces(2);
+    const interest = new Prisma.Decimal(c.interestTotal?.toString() ?? '0');
+    const monthly = new Prisma.Decimal((c.monthlyPayment ?? 0).toString());
 
-    const installmentExclVat = grossExclVat.div(total).toDecimalPlaces(2, Prisma.Decimal.ROUND_DOWN);
+    // VAT preference: explicit contract.vatAmount → /total ; else 7% on (monthlyPayment*total) excl VAT
+    const explicitVat = c.vatAmount != null ? new Prisma.Decimal(c.vatAmount.toString()) : null;
+    const vatPerInst = explicitVat != null
+      ? explicitVat.div(total).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP)
+      : monthly.div('1.07').times('0.07').toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+
+    // installmentExclVat = monthly - vat (so installmentExclVat + vatPerInst === monthly)
+    const installmentExclVat = monthly.minus(vatPerInst);
     const interestPerInst = interest.div(total).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
-    const vatPerInst = vat.div(total).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
-    const installmentTotal = installmentExclVat.plus(vatPerInst);
+    const installmentTotal = monthly;
 
     const lateFeeAmount = input.lateFee ? new Prisma.Decimal(input.lateFee.toString()) : zero;
 

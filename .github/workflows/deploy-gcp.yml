@@ -3,8 +3,18 @@ name: Deploy to GCP (Cloud Run + Firebase)
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.claude/**'
+      - 'workflows/**'
   pull_request:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.claude/**'
+      - 'workflows/**'
 
 env:
   NODE_VERSION: '20'

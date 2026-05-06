@@ -4,7 +4,14 @@ import { IsString, IsNumber, IsOptional, Matches, Min, IsNotEmpty, MaxLength, Is
 const CASH_CODE_REGEX = /^11-(110[1-3]|120[1-3])$/;
 
 /** Payment case types for the wizard */
-export type PaymentCase = 'NORMAL' | 'OVERPAY' | 'UNDERPAY' | 'PARTIAL' | 'EARLY_PAYOFF' | 'RESCHEDULE';
+export type PaymentCase =
+  | 'NORMAL'
+  | 'OVERPAY'
+  | 'UNDERPAY'
+  | 'PARTIAL'
+  | 'EARLY_PAYOFF'
+  | 'RESCHEDULE'
+  | 'OVERPAY_ADVANCE';
 
 /** Payment channel/method enum */
 export type PaymentMethod = 'CASH' | 'TRANSFER' | 'QR' | 'PAYSOLUTIONS';
@@ -35,7 +42,7 @@ export class PreviewJournalDto {
 
   @IsOptional()
   @IsString()
-  @IsIn(['NORMAL', 'OVERPAY', 'UNDERPAY', 'PARTIAL', 'EARLY_PAYOFF', 'RESCHEDULE'])
+  @IsIn(['NORMAL', 'OVERPAY', 'UNDERPAY', 'PARTIAL', 'EARLY_PAYOFF', 'RESCHEDULE', 'OVERPAY_ADVANCE'])
   case?: PaymentCase;
 
   @IsOptional()

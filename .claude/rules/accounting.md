@@ -224,12 +224,11 @@ Module: `apps/api/src/modules/other-income/`
 Frontend pages: `apps/web/src/pages/other-income/`
 Routes: `/other-income`, `/other-income/new`, `/other-income/:id`, `/other-income/:id/receipt`, `/other-income/daily-sheet`
 
-Key accounts:
-- `42-1101` — ดอกเบี้ยเงินฝาก (Bank interest income)
-- `42-1102` — รายได้ค่าปรับล่าช้า (Late fee income — NOT subject to VAT per owner policy)
-- `42-1103` — รายได้อื่น (Miscellaneous other income)
-- `42-1104` — รายได้ค่าบริการ (Service fee income)
-- `42-1105` — รายได้ค่าธรรมเนียม (Fee income)
+Key accounts (from FINANCE 99-account chart):
+- `42-1102` — ดอกเบี้ยเงินฝาก (Bank interest income — exempt from VAT, subject to 15% WHT)
+- `42-1103` — ค่าปรับชำระล่าช้า (Late fee — auto-posted via `PaymentReceipt2BTemplate`; **blocked at V4 in this module to prevent duplicate entry**)
+- `42-1104` — รายได้จากการหักค่าจ้าง (Payroll deduction — Pattern B deferred until payroll module exists)
+- `42-1105` — กำไรจากการจำหน่ายสินทรัพย์ (Gain on disposal of assets — VAT 7%)
 
 JE template: `OtherIncomeTemplate` at `apps/api/src/modules/other-income/templates/other-income.template.ts`
 Doc numbering: `OI-YYYYMMDD-NNNN` (advisory-lock per-day sequence)

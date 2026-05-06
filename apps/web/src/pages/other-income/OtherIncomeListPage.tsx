@@ -5,9 +5,11 @@ import { toast } from 'sonner';
 import { Plus, Search, FileText, TrendingUp, Receipt, RotateCcw } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useDebounce } from '@/hooks/useDebounce';
 import { otherIncomeApi } from '@/lib/otherIncome';
 import type { OtherIncome, OtherIncomeStatus } from '@/lib/otherIncome.types';
+import { formatThaiDateShort } from '@/lib/date';
 
 const STATUS_LABELS: Record<OtherIncomeStatus, string> = {
   DRAFT: 'ร่าง',
@@ -38,11 +40,7 @@ function fmt(v: string | number | undefined | null) {
 
 function fmtDate(d: string | null | undefined) {
   if (!d) return '—';
-  return new Date(d).toLocaleDateString('th-TH', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
+  return formatThaiDateShort(d);
 }
 
 export default function OtherIncomeListPage() {
@@ -54,6 +52,8 @@ export default function OtherIncomeListPage() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [page, setPage] = useState(1);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [confirmDeleteNumber, setConfirmDeleteNumber] = useState<string>('');
 
   const debouncedQ = useDebounce(q, 300);
 
@@ -260,9 +260,8 @@ export default function OtherIncomeListPage() {
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (confirm(`ลบร่าง ${doc.docNumber}?`)) {
-                                deleteMutation.mutate(doc.id);
-                              }
+                              setConfirmDeleteId(doc.id);
+                              setConfirmDeleteNumber(doc.docNumber);
                             }}
                             className="text-xs text-destructive hover:opacity-80 px-2 py-1 rounded hover:bg-destructive/10"
                           >
@@ -306,6 +305,20 @@ export default function OtherIncomeListPage() {
           </div>
         )}
       </QueryBoundary>
+
+      <ConfirmDialog
+        open={confirmDeleteId !== null}
+        onOpenChange={(open) => { if (!open) setConfirmDeleteId(null); }}
+        title="ลบฉบับร่าง"
+        description={`ต้องการลบร่างเอกสาร ${confirmDeleteNumber}? การดำเนินการนี้ไม่สามารถยกเลิกได้`}
+        confirmLabel="ลบ"
+        variant="destructive"
+        loading={deleteMutation.isPending}
+        onConfirm={() => {
+          if (confirmDeleteId) deleteMutation.mutate(confirmDeleteId);
+          setConfirmDeleteId(null);
+        }}
+      />
     </div>
   );
 }

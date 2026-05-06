@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { Search } from 'lucide-react';
+import { useDebounce } from '@/hooks/useDebounce';
 
 interface Counterparty {
   customerId: string | null;
@@ -32,19 +33,32 @@ interface CustomerLite {
 export function CounterpartyPicker({ value, onChange }: Props) {
   const [search, setSearch] = useState(value.name ?? '');
   const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const debouncedSearch = useDebounce(search, 300);
+
+  // Click-outside handler
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   const { data: customers } = useQuery<CustomerLite[]>({
-    queryKey: ['customers', 'search', search],
+    queryKey: ['customers', 'search', debouncedSearch],
     queryFn: async () => {
-      if (search.trim().length < 2) return [];
-      const res = await api.get('/customers', { params: { q: search, limit: 10 } });
+      const res = await api.get('/customers', { params: { q: debouncedSearch, limit: 10 } });
       return (res.data?.data ?? []) as CustomerLite[];
     },
-    enabled: search.trim().length >= 2,
+    enabled: debouncedSearch.trim().length >= 2,
   });
 
   return (
-    <div className="relative">
+    <div className="relative" ref={ref}>
       <div className="relative">
         <Search size={14} className="absolute left-3 top-3 text-muted-foreground" />
         <input

@@ -3,11 +3,17 @@ import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Printer } from 'lucide-react';
 import { otherIncomeApi } from '@/lib/otherIncome';
 import QueryBoundary from '@/components/QueryBoundary';
+import { formatThaiDate } from '@/lib/date';
+import api from '@/lib/api';
 
-const formatThaiDate = (iso: string) => {
-  const d = new Date(iso);
-  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear() + 543}`;
-};
+interface CompanyInfo {
+  id: string;
+  nameTh: string;
+  companyCode: string;
+  taxId: string | null;
+  address: string | null;
+  phone: string | null;
+}
 
 export default function OtherIncomeReceiptPage() {
   const { id } = useParams<{ id: string }>();
@@ -17,6 +23,13 @@ export default function OtherIncomeReceiptPage() {
     queryFn: () => otherIncomeApi.findOne(id!),
     enabled: !!id,
   });
+
+  const companyQuery = useQuery<CompanyInfo[]>({
+    queryKey: ['companies'],
+    queryFn: () => api.get<CompanyInfo[]>('/companies').then((r) => r.data),
+  });
+
+  const financeCompany = companyQuery.data?.find((c) => c.companyCode === 'FINANCE');
 
   return (
     <QueryBoundary
@@ -54,33 +67,41 @@ export default function OtherIncomeReceiptPage() {
             </button>
           </div>
 
-          {/* A4 receipt body — uses fixed colors intentionally for paper output */}
-          <div className="receipt-page mx-auto max-w-[210mm] bg-white text-black p-8 shadow-xl">
+          {/* A4 receipt body */}
+          <div className="receipt-page mx-auto max-w-[210mm] bg-background text-foreground p-8 shadow-xl">
             {/* Title block (right top) */}
             <div className="text-right mb-4">
-              <p className="text-xs text-gray-500">(ต้นฉบับ)</p>
-              <h1 className="text-3xl font-bold text-blue-900">ใบเสร็จรับเงิน / ใบกำกับภาษี</h1>
+              <p className="text-xs text-muted-foreground">(ต้นฉบับ)</p>
+              <h1 className="text-3xl font-bold text-primary">ใบเสร็จรับเงิน / ใบกำกับภาษี</h1>
             </div>
 
             {/* Two-column: seller (left) / info box (right) */}
             <div className="grid grid-cols-2 gap-4 mb-6">
               {/* Seller block */}
               <div className="text-sm">
-                <p className="font-bold text-base">บริษัท เบสท์ช้อยส์ ไฟแนนท์ จำกัด</p>
-                <p className="text-xs text-gray-600">เลขที่ผู้เสียภาษี: (กรอกเลขผู้เสียภาษีที่นี่)</p>
-                <p className="text-xs text-gray-600">ที่อยู่: (กรอกที่อยู่ที่นี่)</p>
-                <p className="text-xs text-gray-600">โทร: (กรอกเบอร์โทรที่นี่)</p>
+                <p className="font-bold text-base">
+                  {financeCompany?.nameTh ?? 'บริษัท เบสท์ช้อยส์ ไฟแนนท์ จำกัด'}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  เลขที่ผู้เสียภาษี: {financeCompany?.taxId ?? '—'}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  ที่อยู่: {financeCompany?.address ?? '—'}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  โทร: {financeCompany?.phone ?? '—'}
+                </p>
               </div>
 
-              {/* Info box (blue background) */}
-              <div className="bg-blue-50 border border-blue-200 p-3 rounded text-sm">
+              {/* Info box */}
+              <div className="bg-primary/5 border border-primary/20 p-3 rounded text-sm">
                 <p>
                   เลขที่:{' '}
                   <strong>{docQuery.data.receiptNo ?? docQuery.data.docNumber}</strong>
                 </p>
                 <p>วันที่: {formatThaiDate(docQuery.data.issueDate)}</p>
                 {docQuery.data.journalEntryId && (
-                  <p className="text-xs text-gray-600">
+                  <p className="text-xs text-muted-foreground">
                     JV: {docQuery.data.journalEntryId}
                   </p>
                 )}
@@ -94,22 +115,22 @@ export default function OtherIncomeReceiptPage() {
                 {docQuery.data.customer?.name ?? docQuery.data.counterpartyName ?? '—'}
               </p>
               {docQuery.data.counterpartyAddress && (
-                <p className="text-xs text-gray-600">{docQuery.data.counterpartyAddress}</p>
+                <p className="text-xs text-muted-foreground">{docQuery.data.counterpartyAddress}</p>
               )}
               {docQuery.data.counterpartyTaxId && (
-                <p className="text-xs text-gray-600">
+                <p className="text-xs text-muted-foreground">
                   เลขผู้เสียภาษี: {docQuery.data.counterpartyTaxId}
                 </p>
               )}
               {docQuery.data.counterpartyPhone && (
-                <p className="text-xs text-gray-600">โทร: {docQuery.data.counterpartyPhone}</p>
+                <p className="text-xs text-muted-foreground">โทร: {docQuery.data.counterpartyPhone}</p>
               )}
             </div>
 
             {/* Items table */}
             <table className="w-full text-sm border-collapse mb-6">
               <thead>
-                <tr className="bg-gray-100 border-t border-b">
+                <tr className="bg-muted border-t border-b">
                   <th className="px-2 py-2 text-left font-semibold">รายละเอียด</th>
                   <th className="px-2 py-2 text-right font-semibold">จำนวน</th>
                   <th className="px-2 py-2 text-right font-semibold">ราคา/หน่วย</th>
@@ -122,9 +143,9 @@ export default function OtherIncomeReceiptPage() {
                   <tr key={it.id} className="border-b">
                     <td className="px-2 py-2">
                       <p className="font-semibold">{it.accountName}</p>
-                      <p className="text-xs text-gray-500">({it.accountCode})</p>
+                      <p className="text-xs text-muted-foreground">({it.accountCode})</p>
                       {it.description && (
-                        <p className="text-xs text-gray-600">{it.description}</p>
+                        <p className="text-xs text-muted-foreground">{it.description}</p>
                       )}
                     </td>
                     <td className="px-2 py-2 text-right font-mono">
@@ -148,16 +169,16 @@ export default function OtherIncomeReceiptPage() {
             <div className="grid grid-cols-2 gap-4 text-sm mb-8">
               <div>
                 {/* Left breakdown — payment note */}
-                <p className="text-xs text-gray-500 mt-2">
+                <p className="text-xs text-muted-foreground mt-2">
                   ช่องทางชำระ: {docQuery.data.paymentAccountCode}
                 </p>
                 {docQuery.data.paymentDate && (
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-muted-foreground">
                     วันที่รับเงิน: {formatThaiDate(docQuery.data.paymentDate)}
                   </p>
                 )}
                 {docQuery.data.customerNote && (
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-xs text-muted-foreground mt-1">
                     หมายเหตุ: {docQuery.data.customerNote}
                   </p>
                 )}
@@ -175,21 +196,21 @@ export default function OtherIncomeReceiptPage() {
                     <strong className="font-mono">{Number(docQuery.data.vatAmount).toFixed(2)}</strong>
                   </div>
                 )}
-                <div className="flex justify-between bg-blue-50 border border-blue-200 p-2 rounded">
+                <div className="flex justify-between bg-primary/5 border border-primary/20 p-2 rounded">
                   <span className="font-bold">จำนวนเงินทั้งสิ้น:</span>
                   <strong className="font-mono">
                     {Number(docQuery.data.totalAmount).toFixed(2)} ฿
                   </strong>
                 </div>
                 {Number(docQuery.data.whtAmount) > 0 && (
-                  <div className="flex justify-between text-xs text-gray-600">
+                  <div className="flex justify-between text-xs text-muted-foreground">
                     <span>หัก ณ ที่จ่าย ({docQuery.data.items[0]?.whtPct}%):</span>
                     <span className="font-mono">
                       ({Number(docQuery.data.whtAmount).toFixed(2)})
                     </span>
                   </div>
                 )}
-                <div className="flex justify-between border-t pt-1 text-xs text-gray-600">
+                <div className="flex justify-between border-t pt-1 text-xs text-muted-foreground">
                   <span>ยอดที่ชำระสุทธิ:</span>
                   <span className="font-mono font-bold">
                     {Number(docQuery.data.amountReceived).toFixed(2)} ฿
@@ -199,13 +220,13 @@ export default function OtherIncomeReceiptPage() {
             </div>
 
             {/* 4-signature block */}
-            <div className="grid grid-cols-2 gap-8 mt-4 text-center text-xs text-gray-600">
+            <div className="grid grid-cols-2 gap-8 mt-4 text-center text-xs text-muted-foreground">
               <div>
-                <div className="border-b border-gray-400 mb-2 h-12"></div>
+                <div className="border-b border-border mb-2 h-12"></div>
                 <p>ผู้ออกเอกสาร / ผู้รับเงิน</p>
               </div>
               <div>
-                <div className="border-b border-gray-400 mb-2 h-12"></div>
+                <div className="border-b border-border mb-2 h-12"></div>
                 <p>ผู้รับเอกสาร / ลูกค้า</p>
               </div>
             </div>

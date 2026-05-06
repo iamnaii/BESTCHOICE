@@ -10,6 +10,7 @@ import { AutoJournalPreview } from './components/AutoJournalPreview';
 import { otherIncomeApi } from '@/lib/otherIncome';
 import type { OtherIncome, OtherIncomeStatus, OtherIncomeReverseReason } from '@/lib/otherIncome.types';
 import { useAuth } from '@/contexts/AuthContext';
+import { formatThaiDateLong } from '@/lib/date';
 
 // ------------------------------------------------------------------
 // Helpers
@@ -46,11 +47,7 @@ function fmt(v: string | number | undefined | null) {
 
 function fmtDate(d: string | null | undefined) {
   if (!d) return '—';
-  return new Date(d).toLocaleDateString('th-TH', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
+  return formatThaiDateLong(d);
 }
 
 function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {

@@ -7,6 +7,13 @@ import QueryBoundary from '@/components/QueryBoundary';
 
 const today = () => new Date().toISOString().slice(0, 10);
 
+function fmt(v: string | number | undefined | null) {
+  if (v === undefined || v === null) return '—';
+  const n = typeof v === 'string' ? parseFloat(v) : v;
+  if (isNaN(n)) return '—';
+  return n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 // ─── Summary box sub-component ───────────────────────────────────────────────
 
 interface SummaryBoxProps {
@@ -28,7 +35,7 @@ function SummaryBox({ label, value, colorClass, highlight }: SummaryBoxProps) {
         className={`font-mono font-bold mt-1 ${colorClass}`}
         style={{ fontSize: highlight ? 20 : 16 }}
       >
-        {value.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿
+        {fmt(value)} ฿
       </p>
     </div>
   );

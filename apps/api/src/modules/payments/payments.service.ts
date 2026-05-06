@@ -229,6 +229,7 @@ export class PaymentsService {
       let advanceCredit = d(0);
       let advanceConsume = d(0);
       const beforeAdvance = d(contract.advanceBalance ?? 0);
+      let isPartialClear = false;
 
       if (overage.gt(d('1.00'))) {
         // Overpay > tolerance — must explicitly opt into advance posting
@@ -247,6 +248,18 @@ export class PaymentsService {
         // are explicit flows where the caller controls allocation directly.
         const gap = remaining.minus(d(amount));
         advanceConsume = Prisma.Decimal.min(beforeAdvance, gap);
+      }
+
+      // NEW: shortage > 1฿ requires explicit case='PARTIAL'.
+      // Compute shortage AFTER advanceConsume (advance covers part of the gap).
+      const shortage = remaining.minus(d(amount)).minus(advanceConsume);
+      if (shortage.gt(d('1.00'))) {
+        if (paymentCase !== 'PARTIAL') {
+          throw new BadRequestException(
+            `จำนวนเงินน้อยกว่ายอดที่ต้องชำระ (ยอดที่ต้องชำระ ${remaining.toNumber().toLocaleString()} บาท, ชำระ ${amount.toLocaleString()} บาท) — เลือก case 'PARTIAL' เพื่อบันทึกเป็นจ่ายบางส่วน`,
+          );
+        }
+        isPartialClear = true;
       }
 
       // For OVERPAY_ADVANCE: amountPaid = installmentTotal (full clear via cash + advance posting).
@@ -309,9 +322,10 @@ export class PaymentsService {
       }
 
       // Phase A.4b: replaced createPaymentJournal (old stub) with PaymentReceipt2BTemplate.
-      // Template is called only on full payment. It runs inside the same $transaction so
-      // a JE failure rolls back the Payment.update — no orphan ledger entries.
-      if (isPaidInFull) {
+      // Template is called on full payment OR partial payment (isPartialClear).
+      // It runs inside the same $transaction so a JE failure rolls back the
+      // Payment.update — no orphan ledger entries.
+      if (isPaidInFull || isPartialClear) {
         const instSched = await tx.installmentSchedule.findUnique({
           where: {
             contractId_installmentNo: {
@@ -330,6 +344,7 @@ export class PaymentsService {
             existingPaymentId: result.id,
             advanceCredit: advanceCredit.gt(0) ? advanceCredit : undefined,
             advanceConsume: advanceConsume.gt(0) ? advanceConsume : undefined,
+            partialClear: isPartialClear ? true : undefined,
           });
         } else {
           this.logger.warn(
@@ -1571,7 +1586,39 @@ export class PaymentsService {
       };
     }
 
-    // ── Normal / Overpay / Underpay / Partial / EarlyPayoff ─────────────────
+    // ── PARTIAL case: minimal partial-clear preview ─────────────────────────
+    if (input.case === 'PARTIAL') {
+      const amountReceived = new Prisma.Decimal(input.amountReceived.toString());
+      rawLines.push({ code: input.depositAccountCode, dr: amountReceived, cr: zero, description: 'รับชำระบางส่วน' });
+      rawLines.push({ code: '11-2103', dr: zero, cr: amountReceived, description: 'ล้างลูกหนี้ค้างชำระ (บางส่วน)' });
+
+      const codes = [...new Set(rawLines.map((l) => l.code))];
+      const coaRows = await this.prisma.chartOfAccount.findMany({
+        where: { code: { in: codes } },
+        select: { code: true, name: true },
+      });
+      const nameMap = new Map(coaRows.map((r) => [r.code, r.name]));
+      let totalDebit = zero;
+      let totalCredit = zero;
+      for (const l of rawLines) {
+        totalDebit = totalDebit.plus(l.dr);
+        totalCredit = totalCredit.plus(l.cr);
+      }
+      return {
+        lines: rawLines.map((l) => ({
+          accountCode: l.code,
+          accountName: nameMap.get(l.code) ?? l.code,
+          debit: l.dr.toFixed(2),
+          credit: l.cr.toFixed(2),
+          description: l.description,
+        })),
+        totalDebit: totalDebit.toFixed(2),
+        totalCredit: totalCredit.toFixed(2),
+        isBalanced: totalDebit.toFixed(2) === totalCredit.toFixed(2),
+      };
+    }
+
+    // ── Normal / Overpay / Underpay / EarlyPayoff (existing logic continues) ─
     const amountReceived = new Prisma.Decimal(input.amountReceived.toString());
     const isConsolidated = !inst.accrualJournalEntryId; // 2A not yet run
 

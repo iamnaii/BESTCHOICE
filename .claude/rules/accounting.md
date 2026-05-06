@@ -214,3 +214,24 @@ Guards (C7 hardening PR #741):
 2. `NODE_ENV=production` → also requires `ALLOW_PROD_WIPE=YES_I_AM_SURE`
 3. `EXPECTED_DB_NAME` must match `current_database()` — prevents wrong-DB runs
 4. 5-second Ctrl+C cooldown printed to stderr before any TRUNCATE
+
+---
+
+## Other Income Module (42-XXXX entries)
+
+FINANCE-side other income (interest on deposits, penalty income, miscellaneous revenue).
+Module: `apps/api/src/modules/other-income/`
+Frontend pages: `apps/web/src/pages/other-income/`
+Routes: `/other-income`, `/other-income/new`, `/other-income/:id`, `/other-income/:id/receipt`, `/other-income/daily-sheet`
+
+Key accounts:
+- `42-1101` — ดอกเบี้ยเงินฝาก (Bank interest income)
+- `42-1102` — รายได้ค่าปรับล่าช้า (Late fee income — NOT subject to VAT per owner policy)
+- `42-1103` — รายได้อื่น (Miscellaneous other income)
+- `42-1104` — รายได้ค่าบริการ (Service fee income)
+- `42-1105` — รายได้ค่าธรรมเนียม (Fee income)
+
+JE template: `OtherIncomeTemplate` at `apps/api/src/modules/other-income/templates/other-income.template.ts`
+Doc numbering: `OI-YYYYMMDD-NNNN` (advisory-lock per-day sequence)
+Lifecycle: DRAFT → POSTED → REVERSED (soft-delete via `deletedAt`)
+WHT: per-item `whtPct` field; WHT payable posts to `21-3101`

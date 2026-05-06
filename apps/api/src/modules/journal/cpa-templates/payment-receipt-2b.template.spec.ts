@@ -351,4 +351,34 @@ describe('PaymentReceipt2BTemplate', () => {
       expect(totalDr.toFixed(2)).toBe(totalCr.toFixed(2));
     });
   });
+
+  describe('partial clear', () => {
+    it('partial: posts only Dr cash + Cr 11-2103 (amount), no tolerance check', async () => {
+      const { inst, journal } = await setup();
+      const tmpl = new PaymentReceipt2BTemplate(journal, prisma as any);
+
+      const result = await tmpl.execute({
+        installmentScheduleId: inst.id,
+        amountReceived: new Decimal('800'),
+        depositAccountCode: '11-1101',
+        partialClear: true,
+      });
+      const je = await prisma.journalEntry.findFirstOrThrow({
+        where: { entryNumber: result.entryNo },
+        include: { lines: { orderBy: { createdAt: 'asc' } } },
+      });
+      expect(je.lines).toHaveLength(2);
+      const cash = je.lines.find((l) => l.accountCode === '11-1101')!;
+      expect(cash.debit.toString()).toBe('800');
+      expect(cash.credit.toString()).toBe('0');
+      const recv = je.lines.find((l) => l.accountCode === '11-2103')!;
+      expect(recv.debit.toString()).toBe('0');
+      expect(recv.credit.toString()).toBe('800');
+      expect(je.lines.find((l) => l.accountCode === '53-1503')).toBeUndefined();
+      expect(je.lines.find((l) => l.accountCode === '52-1104')).toBeUndefined();
+      const totalDr = je.lines.reduce((s, l) => s.plus(l.debit.toString()), new Decimal(0));
+      const totalCr = je.lines.reduce((s, l) => s.plus(l.credit.toString()), new Decimal(0));
+      expect(totalDr.eq(totalCr)).toBe(true);
+    });
+  });
 });

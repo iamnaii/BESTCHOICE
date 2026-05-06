@@ -219,4 +219,136 @@ describe('PaymentReceipt2BTemplate', () => {
     });
     expect(entryReversal).toBeNull();
   });
+
+  describe('advance handling', () => {
+    it('overpay → advance: posts Cr 21-1103, no 53-1503 line', async () => {
+      // installmentTotal = 1,515.83 (standard 17K/12M fixture)
+      // Customer pays 1,600 — overpay = 84.17 → park to 21-1103
+      const { contract, inst, journal } = await setup();
+      const tmpl = new PaymentReceipt2BTemplate(journal, prisma as any);
+
+      const advanceCredit = new Decimal('84.17');
+      await tmpl.execute({
+        installmentScheduleId: inst.id,
+        amountReceived: new Decimal('1600.00'),
+        depositAccountCode: '11-1101',
+        advanceCredit,
+      });
+
+      const entry2B = await prisma.journalEntry.findFirstOrThrow({
+        where: { metadata: { path: ['tag'], equals: '2B' } } as any,
+        include: { lines: true },
+      });
+      const lines = entry2B.lines;
+
+      // Must have Cr 21-1103 with advanceCredit
+      const advance21_1103Cr = lines.find(
+        (l) => l.accountCode === '21-1103' && new Decimal(l.credit.toString()).eq(advanceCredit),
+      );
+      expect(advance21_1103Cr, 'Cr 21-1103 advance line missing').not.toBeUndefined();
+
+      // Must NOT have 53-1503 line (no rounding gain)
+      const rounding53 = lines.find((l) => l.accountCode === '53-1503');
+      expect(rounding53, '53-1503 should not appear').toBeUndefined();
+
+      // Journal must balance (total Dr = total Cr)
+      const totalDr = lines.reduce((acc, l) => acc.plus(l.debit.toString()), new Decimal(0));
+      const totalCr = lines.reduce((acc, l) => acc.plus(l.credit.toString()), new Decimal(0));
+      expect(totalDr.toFixed(2)).toBe(totalCr.toFixed(2));
+    });
+
+    it('consume: posts Dr 21-1103, partial cash', async () => {
+      // installmentTotal = 1,515.83
+      // Customer has 200 advance → pays 1,315.83 cash + consume 200
+      const { contract, inst, journal } = await setup();
+      const tmpl = new PaymentReceipt2BTemplate(journal, prisma as any);
+
+      const advanceConsume = new Decimal('200.00');
+      const cashAmount = new Decimal('1315.83');
+      await tmpl.execute({
+        installmentScheduleId: inst.id,
+        amountReceived: cashAmount,
+        depositAccountCode: '11-1101',
+        advanceConsume,
+      });
+
+      const entry2B = await prisma.journalEntry.findFirstOrThrow({
+        where: { metadata: { path: ['tag'], equals: '2B' } } as any,
+        include: { lines: true },
+      });
+      const lines = entry2B.lines;
+
+      // Dr 21-1103 = advanceConsume
+      const advance21_1103Dr = lines.find(
+        (l) =>
+          l.accountCode === '21-1103' && new Decimal(l.debit.toString()).eq(advanceConsume),
+      );
+      expect(advance21_1103Dr, 'Dr 21-1103 consume line missing').not.toBeUndefined();
+
+      // Dr 11-1101 = cashAmount
+      const cashLine = lines.find(
+        (l) =>
+          l.accountCode === '11-1101' && new Decimal(l.debit.toString()).eq(cashAmount),
+      );
+      expect(cashLine, 'Dr 11-1101 cash line missing').not.toBeUndefined();
+
+      // Cr 11-2103 = installmentTotal (1,515.83)
+      const receivableLine = lines.find(
+        (l) =>
+          l.accountCode === '11-2103' &&
+          new Decimal(l.credit.toString()).eq(new Decimal('1515.83')),
+      );
+      expect(receivableLine, 'Cr 11-2103 = 1515.83 missing').not.toBeUndefined();
+
+      // Balanced
+      const totalDr = lines.reduce((acc, l) => acc.plus(l.debit.toString()), new Decimal(0));
+      const totalCr = lines.reduce((acc, l) => acc.plus(l.credit.toString()), new Decimal(0));
+      expect(totalDr.toFixed(2)).toBe(totalCr.toFixed(2));
+    });
+
+    it('full-cover: 100% from advance, no Dr cash line', async () => {
+      // installmentTotal = 1,515.83
+      // Customer has 1,515.83 advance → pays 0 cash, fully covered by advance
+      const { contract, inst, journal } = await setup();
+      const tmpl = new PaymentReceipt2BTemplate(journal, prisma as any);
+
+      const advanceConsume = new Decimal('1515.83');
+      await tmpl.execute({
+        installmentScheduleId: inst.id,
+        amountReceived: new Decimal('0'),
+        depositAccountCode: '11-1101',
+        advanceConsume,
+      });
+
+      const entry2B = await prisma.journalEntry.findFirstOrThrow({
+        where: { metadata: { path: ['tag'], equals: '2B' } } as any,
+        include: { lines: true },
+      });
+      const lines = entry2B.lines;
+
+      // No Dr 11-1101 cash line
+      const cashLine = lines.find((l) => l.accountCode === '11-1101');
+      expect(cashLine, '11-1101 should not appear when amountReceived=0').toBeUndefined();
+
+      // Dr 21-1103 = 1,515.83
+      const advance21_1103Dr = lines.find(
+        (l) =>
+          l.accountCode === '21-1103' && new Decimal(l.debit.toString()).eq(advanceConsume),
+      );
+      expect(advance21_1103Dr, 'Dr 21-1103 = 1515.83 missing').not.toBeUndefined();
+
+      // Cr 11-2103 = 1,515.83
+      const receivableLine = lines.find(
+        (l) =>
+          l.accountCode === '11-2103' &&
+          new Decimal(l.credit.toString()).eq(new Decimal('1515.83')),
+      );
+      expect(receivableLine, 'Cr 11-2103 = 1515.83 missing').not.toBeUndefined();
+
+      // Balanced
+      const totalDr = lines.reduce((acc, l) => acc.plus(l.debit.toString()), new Decimal(0));
+      const totalCr = lines.reduce((acc, l) => acc.plus(l.credit.toString()), new Decimal(0));
+      expect(totalDr.toFixed(2)).toBe(totalCr.toFixed(2));
+    });
+  });
 });

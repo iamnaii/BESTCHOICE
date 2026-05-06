@@ -19,6 +19,18 @@ export interface PaymentReceiptInput {
    * When omitted, the template creates its own Payment row (standalone use).
    */
   existingPaymentId?: string;
+  /**
+   * Overpay > 1฿ → post Cr 21-1103 (park excess as advance).
+   * Caller pre-computes: advanceCredit = amountReceived - installmentTotal.
+   * When provided, the overpay amount is removed from the tolerance check.
+   */
+  advanceCredit?: Decimal;
+  /**
+   * Consume existing 21-1103 advance balance → post Dr 21-1103.
+   * Caller pre-computes: advanceConsume = min(contract.advanceBalance, gap).
+   * When provided, this amount supplements amountReceived to cover installmentTotal.
+   */
+  advanceConsume?: Decimal;
 }
 
 /**
@@ -77,17 +89,27 @@ export class PaymentReceipt2BTemplate {
     const vatPerInst = vat.div(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
     const installmentTotal = installmentExclVat.plus(vatPerInst); // 1,515.83
 
-    const diff = input.amountReceived.minus(installmentTotal); // + overpay, - underpay
+    const advCredit = input.advanceCredit ?? new Decimal(0);
+    const advConsume = input.advanceConsume ?? new Decimal(0);
+
+    // Effective rounding diff (subject to TOLERANCE):
+    //   amountReceived + advConsume - installmentTotal - advCredit
+    // Advance components are explicit by design; only the rounding remainder is
+    // checked against the 1฿ tolerance.
+    const roundingDiff = input.amountReceived
+      .plus(advConsume)
+      .minus(installmentTotal)
+      .minus(advCredit);
 
     // Validate tolerance (before entering TX — fast-fail on bad input)
-    if (diff.abs().gt(TOLERANCE)) {
+    if (roundingDiff.abs().gt(TOLERANCE)) {
       throw new BadRequestException(
-        `Payment difference ${diff.abs().toFixed(2)} exceeds tolerance 1.00`,
+        `Payment difference ${roundingDiff.abs().toFixed(2)} exceeds tolerance 1.00`,
       );
     }
 
     // Underpay requires approver
-    if (diff.lt(0) && !input.toleranceApproverId) {
+    if (roundingDiff.lt(0) && !input.toleranceApproverId) {
       throw new BadRequestException(
         'Underpay tolerance requires approver (toleranceApproverId)',
       );
@@ -128,50 +150,63 @@ export class PaymentReceipt2BTemplate {
         dr: Decimal;
         cr: Decimal;
         description?: string;
-      }[] = [
-        {
+      }[] = [];
+
+      // 1. Cash in (skip when 0 — full advance cover edge case)
+      if (input.amountReceived.gt(0)) {
+        lines.push({
           accountCode: input.depositAccountCode,
           dr: input.amountReceived,
           cr: zero,
           description: 'รับเงิน',
-        },
-      ];
+        });
+      }
 
-      if (diff.gt(0)) {
-        // Overpay — split credit between receivable + rounding gain
+      // 2. Consume existing advance
+      if (advConsume.gt(0)) {
         lines.push({
-          accountCode: '11-2103',
-          dr: zero,
-          cr: installmentTotal,
-          description: 'ล้างลูกหนี้ค้างชำระ',
+          accountCode: '21-1103',
+          dr: advConsume,
+          cr: zero,
+          description: 'หักเงินรับล่วงหน้า',
         });
-        lines.push({
-          accountCode: '53-1503',
-          dr: zero,
-          cr: diff,
-          description: 'กำไรปัดเศษ (Policy C)',
-        });
-      } else if (diff.lt(0)) {
-        // Underpay — add discount expense
+      }
+
+      // 3. Underpay rounding
+      if (roundingDiff.lt(0)) {
         lines.push({
           accountCode: '52-1104',
-          dr: diff.abs(),
+          dr: roundingDiff.abs(),
           cr: zero,
           description: 'ส่วนลดเศษสตางค์ (Policy C)',
         });
+      }
+
+      // 4. Clear receivable (always)
+      lines.push({
+        accountCode: '11-2103',
+        dr: zero,
+        cr: installmentTotal,
+        description: 'ล้างลูกหนี้ค้างชำระ',
+      });
+
+      // 5. Park new advance
+      if (advCredit.gt(0)) {
         lines.push({
-          accountCode: '11-2103',
+          accountCode: '21-1103',
           dr: zero,
-          cr: installmentTotal,
-          description: 'ล้างลูกหนี้ค้างชำระ',
+          cr: advCredit,
+          description: 'เงินรับล่วงหน้า',
         });
-      } else {
-        // Exact — simple credit
+      }
+
+      // 6. Overpay rounding
+      if (roundingDiff.gt(0)) {
         lines.push({
-          accountCode: '11-2103',
+          accountCode: '53-1503',
           dr: zero,
-          cr: installmentTotal,
-          description: 'ล้างลูกหนี้ค้างชำระ',
+          cr: roundingDiff,
+          description: 'กำไรปัดเศษ (Policy C)',
         });
       }
 

@@ -145,8 +145,7 @@ describe('PaymentsService — advance balance (Task 4)', () => {
 
     // We need the mock instance to reference itself inside $transaction
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let mockPrismaInst: any;
-    mockPrismaInst = buildMockPrisma();
+    const mockPrismaInst: any = buildMockPrisma();
     prisma = mockPrismaInst;
 
     receipt2BExecute = jest.fn().mockResolvedValue({ entryNo: 'JE-ADV' });

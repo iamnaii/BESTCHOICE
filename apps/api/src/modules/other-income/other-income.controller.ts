@@ -46,6 +46,11 @@ export class OtherIncomeController {
     return this.service.findOneOrFail(id);
   }
 
+  @Get(':id/audit')
+  getAuditTrail(@Param('id', new ParseUUIDPipe()) id: string) {
+    return this.service.getAuditTrail(id);
+  }
+
   @Post()
   create(@Body() dto: CreateOtherIncomeDto, @CurrentUser('id') userId: string) {
     return this.service.create(dto, userId);

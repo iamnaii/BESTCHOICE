@@ -1,6 +1,7 @@
 import { useNavigate, useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Printer } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { otherIncomeApi } from '@/lib/otherIncome';
 import QueryBoundary from '@/components/QueryBoundary';
 import { formatThaiDate } from '@/lib/date';
@@ -219,8 +220,8 @@ export default function OtherIncomeReceiptPage() {
               </div>
             </div>
 
-            {/* 4-signature block */}
-            <div className="grid grid-cols-2 gap-8 mt-4 text-center text-xs text-muted-foreground">
+            {/* Signature block + QR code */}
+            <div className="grid grid-cols-3 gap-8 mt-4 text-center text-xs text-muted-foreground items-end">
               <div>
                 <div className="border-b border-border mb-2 h-12"></div>
                 <p>ผู้ออกเอกสาร / ผู้รับเงิน</p>
@@ -228,6 +229,16 @@ export default function OtherIncomeReceiptPage() {
               <div>
                 <div className="border-b border-border mb-2 h-12"></div>
                 <p>ผู้รับเอกสาร / ลูกค้า</p>
+              </div>
+              <div className="flex flex-col items-center gap-1">
+                <QRCodeSVG
+                  value={`${window.location.origin}/other-income/${docQuery.data.id}`}
+                  size={80}
+                  level="M"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  {docQuery.data.docNumber}
+                </p>
               </div>
             </div>
           </div>

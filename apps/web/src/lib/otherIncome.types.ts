@@ -101,3 +101,12 @@ export interface ListResponse {
   page: number;
   limit: number;
 }
+
+export interface AuditLogEntry {
+  id: string;
+  action: string;
+  createdAt: string;
+  user: { id: string; name: string; email: string } | null;
+  oldValue?: unknown;
+  newValue?: unknown;
+}

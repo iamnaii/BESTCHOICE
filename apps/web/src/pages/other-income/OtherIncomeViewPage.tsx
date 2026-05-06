@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ArrowLeft, Copy, Edit, RotateCcw, Receipt, FileText } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Copy, Edit, History, Printer, RotateCcw, Receipt, FileText } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { ReverseModal } from './components/ReverseModal';
@@ -134,6 +134,12 @@ export default function OtherIncomeViewPage() {
 
   const [showReverseModal, setShowReverseModal] = useState(false);
 
+  const auditQuery = useQuery({
+    queryKey: ['other-income', id, 'audit'],
+    queryFn: () => otherIncomeApi.getAuditTrail(id!),
+    enabled: !!id,
+  });
+
   const docQuery = useQuery({
     queryKey: ['other-income', id],
     queryFn: () => otherIncomeApi.findOne(id!),
@@ -189,6 +195,16 @@ export default function OtherIncomeViewPage() {
                 <Copy size={14} />
                 คัดลอก
               </button>
+              {doc.status === 'POSTED' && doc.customerId && (
+                <button
+                  type="button"
+                  onClick={() => navigate(`/other-income/${doc.id}/receipt`)}
+                  className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium border rounded-lg hover:bg-accent"
+                >
+                  <Printer size={14} />
+                  พิมพ์ใบเสร็จ
+                </button>
+              )}
               {doc.status === 'DRAFT' && (
                 <button
                   type="button"
@@ -222,6 +238,26 @@ export default function OtherIncomeViewPage() {
         onRetry={docQuery.refetch}
       >
         {doc && (
+          <div>
+          {doc.postedAt && Date.now() - new Date(doc.postedAt).getTime() < 60_000 && (
+            <div className="rounded-xl border-2 border-success bg-success/10 px-5 py-4 mb-4 flex items-center gap-4">
+              <CheckCircle2 size={24} className="text-success" />
+              <div className="flex-1">
+                <p className="font-bold text-success">บันทึกและ POST เรียบร้อยแล้ว</p>
+                <p className="text-xs text-success/80">
+                  เอกสาร {doc.docNumber} ลงบัญชีเรียบร้อย
+                </p>
+              </div>
+              {doc.customerId && (
+                <button
+                  onClick={() => navigate(`/other-income/${doc.id}/receipt`)}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-bold bg-primary text-primary-foreground rounded-md"
+                >
+                  <Printer size={16} /> พิมพ์ใบเสร็จ
+                </button>
+              )}
+            </div>
+          )}
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
             {/* Left / Main column */}
             <div className="xl:col-span-2 space-y-6">
@@ -457,6 +493,35 @@ export default function OtherIncomeViewPage() {
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Audit trail */}
+          <section className="rounded-xl border bg-card p-5 mt-6">
+            <h3 className="font-bold mb-3 flex items-center gap-2">
+              <History size={16} /> ประวัติการแก้ไข
+            </h3>
+            {auditQuery.isLoading ? (
+              <p className="text-sm text-muted-foreground">กำลังโหลด...</p>
+            ) : !auditQuery.data || auditQuery.data.length === 0 ? (
+              <p className="text-sm text-muted-foreground">— ไม่มีประวัติ —</p>
+            ) : (
+              <ul className="space-y-2">
+                {auditQuery.data.map((log) => (
+                  <li key={log.id} className="border-l-2 pl-3 py-1.5 border-border">
+                    <div className="flex items-center gap-2 text-xs flex-wrap">
+                      <span className="px-2 py-0.5 rounded bg-muted font-mono text-xs">
+                        {log.action}
+                      </span>
+                      <span className="text-muted-foreground">{fmtDate(log.createdAt)}</span>
+                      {log.user && (
+                        <span>โดย <strong>{log.user.name}</strong></span>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
           </div>
         )}
       </QueryBoundary>

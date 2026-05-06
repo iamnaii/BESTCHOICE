@@ -1,5 +1,6 @@
 import api from './api';
 import type {
+  AuditLogEntry,
   OtherIncome,
   ListResponse,
   DailySheet,
@@ -58,4 +59,7 @@ export const otherIncomeApi = {
     api
       .get<DailySheet>('/other-income/daily-sheet', { params: { date } })
       .then((r) => r.data),
+
+  getAuditTrail: (id: string) =>
+    api.get<AuditLogEntry[]>(`/other-income/${id}/audit`).then((r) => r.data),
 };

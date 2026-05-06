@@ -661,6 +661,27 @@ export class OtherIncomeService {
   }
 
   // -------------------------------------------------------------------------
+  // getAuditTrail()
+  // -------------------------------------------------------------------------
+
+  async getAuditTrail(id: string) {
+    // Verify doc exists — throws NotFoundException for unknown id
+    await this.findOneOrFail(id);
+    return this.prisma.auditLog.findMany({
+      where: {
+        OR: [
+          { entity: 'OtherIncome', entityId: id },
+          { entity: 'other_income', entityId: id },
+        ],
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      include: {
+        user: { select: { id: true, name: true, email: true } },
+      },
+    });
+  }
+
   // findOneOrFail()
   // -------------------------------------------------------------------------
 

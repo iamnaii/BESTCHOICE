@@ -32,6 +32,7 @@ import { formatThaiDate } from '@/lib/date';
 import { useDebounce } from '@/hooks/useDebounce';
 import { toast } from 'sonner';
 import type { PendingPayment } from '../types';
+import { AdvanceBalanceBanner } from './AdvanceBalanceBanner';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -39,10 +40,10 @@ import type { PendingPayment } from '../types';
  * Auto-detected payment case (computed from amount diff client-side).
  * RESCHEDULE / EARLY_PAYOFF are handled in separate contract-detail pages, not here.
  */
-type DetectedCase = 'NORMAL' | 'OVERPAY' | 'UNDERPAY' | 'OUT_OF_RANGE';
+type DetectedCase = 'NORMAL' | 'OVERPAY' | 'UNDERPAY' | 'OVERPAY_ADVANCE' | 'OUT_OF_RANGE';
 
-/** Legacy type kept for API compatibility — backend accepts all 6 values */
-type PaymentCase = 'NORMAL' | 'OVERPAY' | 'UNDERPAY' | 'PARTIAL' | 'EARLY_PAYOFF' | 'RESCHEDULE';
+/** Legacy type kept for API compatibility — backend accepts all 7 values */
+type PaymentCase = 'NORMAL' | 'OVERPAY' | 'UNDERPAY' | 'PARTIAL' | 'EARLY_PAYOFF' | 'RESCHEDULE' | 'OVERPAY_ADVANCE';
 
 type WizardMethod = 'CASH' | 'TRANSFER' | 'QR' | 'PAYSOLUTIONS';
 
@@ -176,6 +177,17 @@ function CaseBadge({
         <AlertCircle className="size-4 text-warning shrink-0" />
         <span className="text-warning font-medium leading-snug">
           จ่ายขาด {absDiff} ฿ — Dr 52-1104 (ต้องอนุมัติ)
+        </span>
+      </div>
+    );
+  }
+
+  if (detectedCase === 'OVERPAY_ADVANCE') {
+    return (
+      <div className="flex items-center gap-1.5 rounded-lg border border-info/40 bg-info/5 px-3 py-2 text-sm">
+        <Info className="size-4 text-info shrink-0" />
+        <span className="text-info font-medium leading-snug">
+          เกิน {absDiff} ฿ — บันทึกเป็นเงินรับล่วงหน้า (หักงวดถัดไปอัตโนมัติ)
         </span>
       </div>
     );
@@ -332,19 +344,32 @@ function JePreviewPanel({
 
 // ─── Auto-detect case from amount diff ───────────────────────────────────────
 
-function detectCase(received: number, expectedTotal: Decimal): DetectedCase {
-  if (received <= 0) return 'OUT_OF_RANGE';
-  const diff = received - expectedTotal.toNumber();
+function detectCase(
+  received: number,
+  expectedTotal: Decimal,
+  advanceBalance: Decimal = new Decimal(0),
+): DetectedCase {
+  // Effective amount due = installment minus existing advance (FIFO consume).
+  // Cashier collects this — system splits internally on save.
+  const effectiveDue = Decimal.max(new Decimal(0), expectedTotal.minus(advanceBalance));
+
+  if (received <= 0) {
+    // Zero cash is OK iff advance fully covers the installment
+    return advanceBalance.gte(expectedTotal) ? 'NORMAL' : 'OUT_OF_RANGE';
+  }
+  const diff = received - effectiveDue.toNumber();
   if (Math.abs(diff) < 0.01) return 'NORMAL';
-  if (diff > 0 && diff <= 1) return 'OVERPAY';
-  if (diff < 0 && diff >= -1) return 'UNDERPAY';
-  return 'OUT_OF_RANGE';
+  if (diff > 0 && diff <= 1) return 'OVERPAY';            // rounding (gain)
+  if (diff < 0 && diff >= -1) return 'UNDERPAY';          // rounding (loss, requires approver)
+  if (diff > 1) return 'OVERPAY_ADVANCE';                 // pay > installment+1฿ → park excess
+  return 'OUT_OF_RANGE';                                  // diff < -1: still blocked → use แบ่งชำระ
 }
 
 /** Map auto-detected case to the API PaymentCase param (best fit) */
 function toApiCase(detected: DetectedCase): PaymentCase {
   if (detected === 'OVERPAY') return 'OVERPAY';
   if (detected === 'UNDERPAY') return 'UNDERPAY';
+  if (detected === 'OVERPAY_ADVANCE') return 'OVERPAY_ADVANCE';
   return 'NORMAL'; // OUT_OF_RANGE should never reach API (submit blocked)
 }
 
@@ -469,6 +494,12 @@ export function RecordPaymentWizard({
     return isNaN(v) ? new Decimal(0) : new Decimal(v);
   }, [lateFeeStr]);
 
+  // Advance balance from contract (Decimal, serialized as string from Prisma)
+  const advanceBalance = useMemo(
+    () => new Decimal(payment.contract.advanceBalance ?? 0),
+    [payment.contract.advanceBalance],
+  );
+
   // Auto-detect case
   const receivedNum = parseFloat(amountReceived) || 0;
   const expectedTotal = useMemo(
@@ -476,8 +507,8 @@ export function RecordPaymentWizard({
     [amountDueDecimal, currentLateFee],
   );
   const detectedCase = useMemo(
-    () => detectCase(receivedNum, expectedTotal),
-    [receivedNum, expectedTotal],
+    () => detectCase(receivedNum, expectedTotal, advanceBalance),
+    [receivedNum, expectedTotal, advanceBalance],
   );
   const amountDiff = useMemo(
     () => receivedNum - expectedTotal.toNumber(),
@@ -501,7 +532,8 @@ export function RecordPaymentWizard({
 
   const isPreviewReady: boolean =
     detectedCase !== 'OUT_OF_RANGE' &&
-    debouncedParams.amountReceived > 0 &&
+    // Allow 0 cash when advance fully covers installment (detectCase = NORMAL)
+    (debouncedParams.amountReceived > 0 || (detectedCase === 'NORMAL' && advanceBalance.gte(expectedTotal))) &&
     debouncedParams.depositAccountCode.length > 0;
 
   const { data: previewData, isFetching: previewLoading } = useQuery<JePreview, Error, JePreview>({
@@ -522,7 +554,8 @@ export function RecordPaymentWizard({
   const requiresSlip = method === 'TRANSFER' || method === 'QR';
 
   const canSubmit = (): boolean => {
-    if (receivedNum <= 0) return false;
+    // Allow zero-cash when advance fully covers the installment (detectCase returns NORMAL)
+    if (receivedNum <= 0 && detectedCase !== 'NORMAL') return false;
     if (!depositAccountCode) return false;
     if (detectedCase === 'OUT_OF_RANGE') return false;
     if (requiresRef && !referenceNumber.trim()) return false;
@@ -599,6 +632,18 @@ export function RecordPaymentWizard({
                   หากต้องการปิดยอดก่อนกำหนดหรือปรับดิว ใช้เมนูแยกในหน้าสัญญา
                 </p>
               </div>
+
+              {/* Advance balance banner — shown when contract has advance to consume */}
+              {advanceBalance.gt(0) && (
+                <AdvanceBalanceBanner
+                  amountDue={amountDueDecimal.add(currentLateFee).sub(amountPaidDecimal)}
+                  advanceBalance={advanceBalance}
+                  onApply={(netDue) => {
+                    setAmountReceived(netDue);
+                    setAmountManuallyEdited(true);
+                  }}
+                />
+              )}
 
               {/* Amount received */}
               <div>

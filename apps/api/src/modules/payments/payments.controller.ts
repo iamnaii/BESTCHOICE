@@ -160,6 +160,7 @@ export class PaymentsController {
       effectiveTransactionRef,
       dto.depositAccountCode,
       dto.toleranceApproverId,
+      dto.case,
     );
   }
 

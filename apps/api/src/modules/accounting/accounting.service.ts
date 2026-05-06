@@ -3,10 +3,11 @@ import {
   Logger,
   NotFoundException,
   BadRequestException,
+  OnModuleInit,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StructuredLoggerService } from '../../common/logger';
-import { ExpenseAccountType, ExpenseCategory, ExpenseStatus, Prisma, WhtIncomeType } from '@prisma/client';
+import { ExpenseAccountType, ExpenseStatus, Prisma, WhtIncomeType } from '@prisma/client';
 import { CreateExpenseDto, UpdateExpenseDto } from './dto/expense.dto';
 import { validatePeriodOpen as validatePeriodOpenUtil } from '../../utils/period-lock.util';
 import { JournalAutoService } from '../journal/journal-auto.service';
@@ -47,36 +48,42 @@ const CATEGORY_ACCOUNT_MAP: Record<string, ExpenseAccountType> = {
 };
 
 // Map category → account code (PEAK format XX-XXXX)
-// C3 FIX (Phase A.4 PR #741 review): audited against finance-coa.csv new chart.
-// FINANCE entity has NO COGS accounts — COGS is booked on SHOP side (deferred to A.5).
-// ADMIN_SOCIAL_SECURITY and ADMIN_INSURANCE share 53-1102 (เงินสมทบประกันสังคม) — confirmed.
-// ADMIN_DEPRECIATION 53-1601 does NOT exist in new chart — commented out.
-// All other codes verified present and semantically correct.
+// Phase A.6: audited against 105-account finance-coa.csv.
+// FINANCE entity has NO COGS accounts — COGS is booked on SHOP side (deferred to A.5b).
+// COGS_PRODUCT, COGS_REPAIR_PARTS — deprecated; FINANCE has no COGS. UI hides these.
 const CATEGORY_CODE_MAP: Record<string, string> = {
-  // TODO A.5: remap COGS_PRODUCT + COGS_REPAIR_PARTS when SHOP chart is re-introduced.
-  // FINANCE entity does NOT book COGS — these categories must not be used for FINANCE JEs.
-  // COGS_PRODUCT: '51-1101',      // REMOVED — 51-1101 in new chart = "ค่าใช้จ่าย VAT ลูกหนี้ไม่ชำระ" (Finance Cost, not COGS)
-  // COGS_REPAIR_PARTS: '51-1102', // REMOVED — 51-1102 in new chart = "หนี้สูญ/ขาดทุนจากยึดเครื่อง" (Finance Cost, not COGS)
-  SELL_COMMISSION: '52-1101',     // ค่าคอมฯ พนักงาน — verified
-  SELL_ADVERTISING: '52-1102',    // ค่าส่งเสริมการขาย — verified
-  SELL_TRANSPORT: '53-1304',      // ค่าไปรษณีย์ และขนส่ง — verified
-  SELL_PACKAGING: '52-1102',      // ค่าส่งเสริมการขาย (บรรจุภัณฑ์ — nearest match) — verified
-  ADMIN_SALARY: '53-1101',        // เงินเดือน ค่าจ้าง — verified
-  ADMIN_SOCIAL_SECURITY: '53-1102', // เงินสมทบประกันสังคม — verified (was 53-1103 ค่าล่วงเวลา, corrected)
-  ADMIN_RENT: '53-1301',          // ค่าน้ำ group — NOTE: no dedicated rent account in chart; 53-1301=ค่าน้ำ. TODO A.5: add 53-13XX rent account
-  ADMIN_UTILITIES: '53-1302',     // ค่าไฟฟ้า — verified
-  ADMIN_OFFICE_SUPPLIES: '53-1201', // ค่าเครื่องเขียน วัสดุสำนักงาน — verified
-  // ADMIN_DEPRECIATION: '53-1601', // REMOVED — 53-1601 does NOT exist in new chart. TODO A.5: add depreciation account
-  ADMIN_INSURANCE: '53-1103',     // ค่าล่วงเวลา — closest existing; TODO A.5: add dedicated insurance account
-  ADMIN_TAX_FEE: '54-1103',       // เบี้ยปรับ-ภ.พ.30 (รายจ่ายต้องห้าม) — verified
-  ADMIN_MAINTENANCE: '53-1305',   // ค่าซ่อมแซมฯ — verified
-  ADMIN_TRAVEL: '53-1304',        // ค่าไปรษณีย์ และขนส่ง — verified (nearest travel/transport)
-  ADMIN_TELEPHONE: '53-1303',     // ค่าโทรศัพท์สำนักงาน — verified
-  OTHER_INTEREST: '53-1501',      // ค่าธรรมเนียมธนาคาร — verified (finance charge bucket)
-  OTHER_LOSS: '53-1503',          // กำไร(ขาดทุน)สุทธิจากการปัดเศษ — verified (Dr when loss)
-  OTHER_FINE: '54-1104',          // เบี้ยปรับเงินเพิ่ม (อื่นๆ) — verified
-  OTHER_MISC: '53-1502',          // ค่าธรรมเนียมราชการ — verified (misc fees bucket)
+  SELL_COMMISSION: '52-1101',       // ค่าคอมฯ พนักงาน
+  SELL_ADVERTISING: '52-1102',      // ค่าส่งเสริมการขาย
+  SELL_TRANSPORT: '53-1304',        // ค่าไปรษณีย์ และขนส่ง
+  SELL_PACKAGING: '52-1102',        // nearest match (CSV lacks dedicated packaging)
+  ADMIN_SALARY: '53-1101',          // เงินเดือน ค่าจ้าง
+  ADMIN_SOCIAL_SECURITY: '53-1102', // เงินสมทบประกันสังคม (corrected from 53-1103 ค่าล่วงเวลา per audit)
+  ADMIN_RENT: '53-1502',            // ค่าธรรมเนียมราชการ — TEMP placeholder; CSV needs dedicated rent (defer A.7)
+  ADMIN_UTILITIES: '53-1302',       // ค่าไฟฟ้า
+  ADMIN_OFFICE_SUPPLIES: '53-1201', // ค่าเครื่องเขียน วัสดุสำนักงาน
+  ADMIN_DEPRECIATION: '53-1601',    // ค่าเสื่อมราคา-อุปกรณ์ (now exists in 105-CSV)
+  ADMIN_INSURANCE: '53-1502',       // ค่าธรรมเนียมราชการ — TEMP; CSV needs dedicated insurance
+  ADMIN_TAX_FEE: '54-1103',         // เบี้ยปรับ-ภ.พ.30 (รายจ่ายต้องห้าม)
+  ADMIN_MAINTENANCE: '53-1305',     // ค่าซ่อมแซมฯ
+  ADMIN_TRAVEL: '53-1304',          // ค่าไปรษณีย์ และขนส่ง
+  ADMIN_TELEPHONE: '53-1303',       // ค่าโทรศัพท์สำนักงาน
+  OTHER_INTEREST: '53-1501',        // ค่าธรรมเนียมธนาคาร
+  OTHER_LOSS: '53-1503',            // กำไร(ขาดทุน) สุทธิจากการปัดเศษ
+  OTHER_FINE: '54-1104',            // เบี้ยปรับเงินเพิ่ม (อื่นๆ)
+  OTHER_MISC: '53-1502',            // ค่าธรรมเนียมราชการ
 };
+
+/**
+ * Resolve a category string to a CoA account code.
+ * Phase A.6: category column is now String (was enum), so we handle two cases:
+ *  1. If it looks like a CoA code already (XX-XXXX), return as-is.
+ *  2. Otherwise, treat as legacy enum key and look up in CATEGORY_CODE_MAP.
+ * Returns null if not resolvable — caller should log warn + skip JE post.
+ */
+function resolveAccountCode(category: string): string | null {
+  if (/^\d{2}-\d{4}$/.test(category)) return category;
+  return CATEGORY_CODE_MAP[category] ?? null;
+}
 
 async function generateExpenseNumber(tx: Prisma.TransactionClient): Promise<string> {
   const now = new Date();
@@ -115,7 +122,7 @@ async function generateExpenseNumber(tx: Prisma.TransactionClient): Promise<stri
  *    - สินค้าแต่ละชิ้นมี costPrice เฉพาะ (IMEI-level tracking)
  */
 @Injectable()
-export class AccountingService {
+export class AccountingService implements OnModuleInit {
   private readonly logger = new Logger(AccountingService.name);
   private readonly structuredLogger = new StructuredLoggerService(AccountingService.name);
   constructor(
@@ -123,6 +130,27 @@ export class AccountingService {
     private journalAutoService: JournalAutoService,
     private expenseTemplate: ExpenseTemplate,
   ) {}
+
+  /**
+   * Phase A.6 boot validator — verifies every code in CATEGORY_CODE_MAP exists
+   * in the chart_of_accounts table. Throws on startup if any code is missing
+   * so misconfiguration is caught immediately rather than at JE-post time.
+   */
+  async onModuleInit() {
+    const codes = [...new Set(Object.values(CATEGORY_CODE_MAP))];
+    const found = await this.prisma.chartOfAccount.findMany({
+      where: { code: { in: codes }, deletedAt: null },
+      select: { code: true },
+    });
+    const foundSet = new Set(found.map((f) => f.code));
+    const missing = codes.filter((c) => !foundSet.has(c));
+    if (missing.length > 0) {
+      const msg = `[Phase A.6] CATEGORY_CODE_MAP references missing CoA codes: ${missing.join(', ')}. Update CATEGORY_CODE_MAP or seed missing codes.`;
+      this.logger.error(msg);
+      throw new Error(msg);
+    }
+    this.logger.log(`CATEGORY_CODE_MAP validated: all ${codes.length} codes exist in CoA.`);
+  }
 
   /**
    * Resolve companyId to an array of branchIds belonging to that company.
@@ -167,7 +195,7 @@ export class AccountingService {
     const whtIncomeType = (dto.whtIncomeType as WhtIncomeType) || null;
     const totalAmount = dRound(dAdd(dto.amount, vatAmount)).toNumber();
     const netPayment = dRound(dSub(totalAmount, withholdingTax)).toNumber();
-    const accountCode = dto.accountCode || CATEGORY_CODE_MAP[dto.category] || null;
+    const accountCode = dto.accountCode || resolveAccountCode(dto.category) || null;
 
     const expense = await this.prisma.$transaction(async (tx) => {
       const expenseNumber = await generateExpenseNumber(tx);
@@ -177,7 +205,8 @@ export class AccountingService {
           expenseNumber,
           branchId: dto.branchId,
           accountType: dto.accountType,
-          category: dto.category,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          category: dto.category as any, // Phase A.6: String after migration; cast until Prisma client regenerates
           accountCode,
           description: dto.description,
           amount: dto.amount,
@@ -221,7 +250,7 @@ export class AccountingService {
   async findAllExpenses(filters: {
     branchId?: string;
     accountType?: ExpenseAccountType;
-    category?: ExpenseCategory;
+    category?: string;
     status?: ExpenseStatus;
     search?: string;
     startDate?: string;
@@ -236,7 +265,8 @@ export class AccountingService {
     const where: Prisma.ExpenseWhereInput = { deletedAt: null };
     if (branchId) where.branchId = branchId;
     if (accountType) where.accountType = accountType;
-    if (category) where.category = category;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (category) where.category = category as any; // Phase A.6: String after migration; cast until Prisma client regenerates
     if (status) where.status = status;
     if (startDate || endDate) {
       where.expenseDate = {};
@@ -311,8 +341,9 @@ export class AccountingService {
     const data: Prisma.ExpenseUpdateInput = {};
     if (dto.accountType !== undefined) data.accountType = dto.accountType;
     if (dto.category !== undefined) {
-      data.category = dto.category;
-      data.accountCode = CATEGORY_CODE_MAP[dto.category] || expense.accountCode;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      data.category = dto.category as any; // Phase A.6: String after migration; cast until Prisma client regenerates
+      data.accountCode = resolveAccountCode(dto.category) || expense.accountCode;
     }
     if (dto.accountCode !== undefined) data.accountCode = dto.accountCode;
     if (dto.description !== undefined) data.description = dto.description;

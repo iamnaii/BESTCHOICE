@@ -87,6 +87,9 @@ describe('AccountingService', () => {
       accountingPeriod: {
         findUnique: jest.fn().mockResolvedValue(null),
       },
+      chartOfAccount: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
       $transaction: jest.fn().mockImplementation(async (fn) => {
         if (typeof fn === 'function') {
           return fn(prisma);
@@ -1315,6 +1318,32 @@ describe('AccountingService', () => {
 
       const result = await service.markExpensePaid('exp-3', '2026-04-15');
       expect(result.status).toBe('PAID');
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CATEGORY_CODE_MAP boot validator (Phase A.6)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  describe('CATEGORY_CODE_MAP boot validator', () => {
+    it('throws when any mapped code missing from CoA', async () => {
+      // Only return one code — rest are "missing"
+      prisma.chartOfAccount = {
+        ...prisma.chartOfAccount,
+        findMany: jest.fn().mockResolvedValue([{ code: '52-1101' }]),
+      };
+      await expect(service.onModuleInit()).rejects.toThrow(/missing CoA codes/);
+    });
+
+    it('passes when all mapped codes exist', async () => {
+      prisma.chartOfAccount = {
+        ...prisma.chartOfAccount,
+        findMany: jest.fn().mockImplementation(({ where }: { where: { code: { in: string[] } } }) => {
+          const requested = where.code.in;
+          return Promise.resolve(requested.map((code: string) => ({ code })));
+        }),
+      };
+      await expect(service.onModuleInit()).resolves.not.toThrow();
     });
   });
 });

@@ -6,13 +6,13 @@ import {
   IsDateString,
   IsBoolean,
   IsIn,
+  IsNotEmpty,
   Min,
   Max,
   IsInt,
 } from 'class-validator';
 import {
   ExpenseAccountType,
-  ExpenseCategory,
   ExpenseStatus,
   PaymentMethod,
 } from '@prisma/client';
@@ -24,8 +24,9 @@ export class CreateExpenseDto {
   @IsEnum(ExpenseAccountType)
   accountType: ExpenseAccountType;
 
-  @IsEnum(ExpenseCategory)
-  category: ExpenseCategory;
+  @IsString()
+  @IsNotEmpty()
+  category: string; // Phase A.6: was ExpenseCategory enum; now stores CoA code OR legacy enum string
 
   @IsOptional()
   @IsString()
@@ -123,8 +124,8 @@ export class UpdateExpenseDto {
   accountType?: ExpenseAccountType;
 
   @IsOptional()
-  @IsEnum(ExpenseCategory)
-  category?: ExpenseCategory;
+  @IsString()
+  category?: string; // Phase A.6: was ExpenseCategory enum; now stores CoA code OR legacy enum string
 
   @IsOptional()
   @IsString()

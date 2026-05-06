@@ -15,6 +15,7 @@ on:
       - 'docs/**'
       - '.claude/**'
       - 'workflows/**'
+  workflow_dispatch:
 
 env:
   NODE_VERSION: '20'

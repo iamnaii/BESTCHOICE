@@ -32,10 +32,10 @@ export function AutoJournalPreview({ lines }: Props) {
                 key={idx}
                 className="flex items-baseline gap-2 px-2 py-1 hover:bg-accent rounded"
               >
-                <span className={`font-bold w-6 ${isDr ? 'text-cyan-600' : 'text-purple-600'}`}>
+                <span className={`font-bold w-6 ${isDr ? 'text-info' : 'text-primary'}`}>
                   {isDr ? 'Dr' : 'Cr'}
                 </span>
-                <span className={`font-bold w-20 ${isDr ? 'text-cyan-600' : 'text-purple-600'}`}>
+                <span className={`font-bold w-20 ${isDr ? 'text-info' : 'text-primary'}`}>
                   {l.accountCode}
                 </span>
                 <span className="font-bold w-28 text-right">
@@ -52,7 +52,7 @@ export function AutoJournalPreview({ lines }: Props) {
       <div className="mt-2 pt-2 border-t flex items-center justify-between text-sm">
         <span className="text-muted-foreground text-xs">Dr รวม = Cr รวม</span>
         {balanced ? (
-          <span className="text-green-600 font-bold font-mono">
+          <span className="text-success font-bold font-mono">
             ✓ {totalDr.toFixed(2)} = {totalCr.toFixed(2)} BALANCED
           </span>
         ) : (

@@ -51,7 +51,7 @@ export function ReverseModal({ docNumber, onCancel, onConfirm, isLoading }: Prop
           placeholder="เช่น ลูกค้าโทรมาแจ้งว่ายอดผิด ต้องเป็น 1,500 ฿ ไม่ใช่ 5,000 ฿"
           className="w-full border rounded-md px-3 py-2 text-sm"
         />
-        <div className="rounded-md p-3 mt-3 bg-orange-500/10 border border-orange-500 text-xs">
+        <div className="rounded-md p-3 mt-3 bg-warning/10 border border-warning text-xs">
           <strong>การ Reverse ไม่สามารถยกเลิกได้</strong> —
           ทั้งเอกสารต้นฉบับและ Reversing Entry จะอยู่ในระบบถาวร
         </div>

@@ -852,6 +852,7 @@ model Contract {
   vatAmount        Decimal?       @map("vat_amount") @db.Decimal(12, 2)
   vatPct           Decimal?       @map("vat_pct") @db.Decimal(5, 4)
   monthlyPayment   Decimal        @map("monthly_payment") @db.Decimal(12, 2)
+  advanceBalance   Decimal        @default(0) @map("advance_balance") @db.Decimal(12, 2)
   status           ContractStatus @default(DRAFT)
   parentContractId String?        @map("parent_contract_id")
   notes            String?

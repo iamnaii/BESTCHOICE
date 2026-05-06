@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useCallback } from 'react';
+import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import Decimal from 'decimal.js';
 import {
@@ -386,10 +386,27 @@ export function RecordPaymentWizard({
   const lateFeeDecimal = useMemo(() => new Decimal(payment.lateFee), [payment.lateFee]);
   const amountDueDecimal = useMemo(() => new Decimal(payment.amountDue), [payment.amountDue]);
   const amountPaidDecimal = useMemo(() => new Decimal(payment.amountPaid), [payment.amountPaid]);
-  const defaultAmount = amountDueDecimal.add(lateFeeDecimal).sub(amountPaidDecimal).toDecimalPlaces(2);
+  // Pre-fill amount = amountDue only (no auto-add lateFee). User explicitly enters
+  // lateFee in the dedicated field if applicable, then can manually update amount.
+  // This avoids the "ห่างเกิน 1฿" warning on first render when payment.lateFee was
+  // server-computed but lateFee input shows 0.00.
+  const defaultAmount = amountDueDecimal.sub(amountPaidDecimal).toDecimalPlaces(2);
 
   const [amountReceived, setAmountReceived] = useState(defaultAmount.toFixed(2));
-  const [lateFeeStr, setLateFeeStr] = useState(lateFeeDecimal.toFixed(2));
+  const [amountManuallyEdited, setAmountManuallyEdited] = useState(false);
+  // lateFee always starts at 0 — user explicitly enters if applicable
+  const [lateFeeStr, setLateFeeStr] = useState('0.00');
+
+  // Auto-sync amountReceived = amountDue + lateFee while user hasn't touched
+  // the amount field. Once user edits amount manually, stop auto-syncing so
+  // their edit isn't clobbered.
+  useEffect(() => {
+    if (amountManuallyEdited) return;
+    const lf = parseFloat(lateFeeStr);
+    if (isNaN(lf)) return;
+    const next = amountDueDecimal.plus(lf).sub(amountPaidDecimal).toDecimalPlaces(2);
+    setAmountReceived(next.toFixed(2));
+  }, [lateFeeStr, amountDueDecimal, amountPaidDecimal, amountManuallyEdited]);
 
   // Method + evidence fields
   const [method, setMethod] = useState<WizardMethod>('CASH');
@@ -591,7 +608,7 @@ export function RecordPaymentWizard({
                 <Input
                   type="number"
                   value={amountReceived}
-                  onChange={(e) => setAmountReceived(e.target.value)}
+                  onChange={(e) => { setAmountReceived(e.target.value); setAmountManuallyEdited(true); }}
                   min={0}
                   step="0.01"
                   className="text-right font-mono"

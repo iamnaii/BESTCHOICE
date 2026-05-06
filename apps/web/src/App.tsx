@@ -117,6 +117,12 @@ const InstallmentApplicationsPage = lazy(() => import('@/pages/InstallmentApplic
 const SavingPlansAdminPage = lazy(() => import('@/pages/SavingPlansAdminPage'));
 const ReviewsModerationPage = lazy(() => import('@/pages/ReviewsModerationPage'));
 const UserProfilePage = lazy(() => import('@/pages/UserProfilePage'));
+const OtherIncomeListPage = lazy(() => import('@/pages/other-income/OtherIncomeListPage'));
+const OtherIncomeEntryPage = lazy(() => import('@/pages/other-income/OtherIncomeEntryPage'));
+const OtherIncomeViewPage = lazy(() => import('@/pages/other-income/OtherIncomeViewPage'));
+const OtherIncomeReceiptPage = lazy(() => import('@/pages/other-income/OtherIncomeReceiptPage'));
+const OtherIncomeDailySheetPage = lazy(() => import('@/pages/other-income/OtherIncomeDailySheetPage'));
+const PeriodClosePage = lazy(() => import('@/pages/accounting/PeriodClosePage'));
 
 const PageLoader = () => (
   <div className="flex items-center justify-center py-20">
@@ -802,6 +808,66 @@ function App() {
                 roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES']}
               >
                 <UserProfilePage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* รายได้อื่น (Other Income) — CRITICAL: /daily-sheet BEFORE /:id */}
+          <Route
+            path="/other-income"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <OtherIncomeListPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/other-income/new"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <OtherIncomeEntryPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/other-income/daily-sheet"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <OtherIncomeDailySheetPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/other-income/:id"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <OtherIncomeViewPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/other-income/:id/edit"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <OtherIncomeEntryPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/other-income/:id/receipt"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <OtherIncomeReceiptPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* งวดบัญชี (Accounting Periods) */}
+          <Route
+            path="/accounting/periods"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <PeriodClosePage />
               </ProtectedRoute>
             }
           />

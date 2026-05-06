@@ -30,6 +30,7 @@ export interface PendingPayment {
     contractNumber: string;
     totalMonths: number;
     monthlyPayment: string;
+    advanceBalance: string;  // serialized Decimal from API — '0' for most contracts
     customer: { id: string; name: string; phone: string };
     branch: { id: string; name: string };
   };

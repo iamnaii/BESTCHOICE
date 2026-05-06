@@ -715,6 +715,7 @@ export class PaymentsService {
               contractNumber: true,
               totalMonths: true,
               monthlyPayment: true,
+              advanceBalance: true,
               customer: { select: { id: true, name: true, phone: true } },
               branch: { select: { id: true, name: true } },
             },

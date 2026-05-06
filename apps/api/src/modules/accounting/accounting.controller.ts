@@ -21,7 +21,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
 import { hasCrossBranchAccess } from '../auth/branch-access.util';
 import { Roles } from '../auth/decorators/roles.decorator';
-import { ExpenseAccountType, ExpenseCategory, ExpenseStatus } from '@prisma/client';
+import { ExpenseAccountType, ExpenseStatus } from '@prisma/client';
 
 @ApiTags('Expenses')
 @ApiBearerAuth('JWT')
@@ -48,7 +48,7 @@ export class AccountingController {
   findAll(
     @Query('branchId') branchId?: string,
     @Query('accountType') accountType?: ExpenseAccountType,
-    @Query('category') category?: ExpenseCategory,
+    @Query('category') category?: string,
     @Query('status') status?: ExpenseStatus,
     @Query('search') search?: string,
     @Query('startDate') startDate?: string,

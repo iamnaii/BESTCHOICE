@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import { useDebounce } from '@/hooks/useDebounce';
+import { useCoaGroups } from '@/hooks/useCoa';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import QueryBoundary from '@/components/QueryBoundary';
@@ -39,24 +40,6 @@ interface Summary {
 }
 
 // ─── Constants ───
-const accountTypeLabels: Record<string, string> = {
-  COST_OF_SALES: '51 ต้นทุนขาย', SELLING_EXPENSE: '52 ค่าใช้จ่ายในการขาย',
-  ADMINISTRATIVE_EXPENSE: '53 ค่าใช้จ่ายในการบริหาร', OTHER_EXPENSE: '54 ค่าใช้จ่ายอื่น',
-};
-
-const categoryLabels: Record<string, string> = {
-  COGS_PRODUCT: 'ต้นทุนสินค้า', COGS_REPAIR_PARTS: 'อะไหล่/ซ่อม',
-  SELL_COMMISSION: 'ค่าคอมมิชชั่น', SELL_ADVERTISING: 'ค่าโฆษณา/การตลาด',
-  SELL_TRANSPORT: 'ค่าขนส่ง', SELL_PACKAGING: 'ค่าบรรจุภัณฑ์',
-  ADMIN_SALARY: 'เงินเดือน/ค่าจ้าง', ADMIN_SOCIAL_SECURITY: 'ประกันสังคม',
-  ADMIN_RENT: 'ค่าเช่าสถานที่', ADMIN_UTILITIES: 'ค่าน้ำ/ไฟ/เน็ต',
-  ADMIN_OFFICE_SUPPLIES: 'วัสดุสำนักงาน', ADMIN_DEPRECIATION: 'ค่าเสื่อมราคา',
-  ADMIN_INSURANCE: 'ค่าประกันภัย', ADMIN_TAX_FEE: 'ภาษี/ค่าธรรมเนียม',
-  ADMIN_MAINTENANCE: 'ค่าซ่อมบำรุง', ADMIN_TRAVEL: 'ค่าเดินทาง',
-  ADMIN_TELEPHONE: 'ค่าโทรศัพท์',
-  OTHER_INTEREST: 'ดอกเบี้ยจ่าย', OTHER_LOSS: 'ขาดทุนจำหน่ายสินทรัพย์',
-  OTHER_FINE: 'ค่าปรับ', OTHER_MISC: 'เบ็ดเตล็ด',
-};
 
 const statusLabels: Record<string, string> = {
   DRAFT: 'ร่าง', PENDING_APPROVAL: 'รออนุมัติ', APPROVED: 'อนุมัติแล้ว',
@@ -68,38 +51,6 @@ const paymentMethodLabels: Record<string, string> = {
   CASH: 'เงินสด', BANK_TRANSFER: 'โอนเงิน', QR_EWALLET: 'QR/e-Wallet',
 };
 
-const categoryGroups: Record<string, { value: string; label: string }[]> = {
-  COST_OF_SALES: [
-    { value: 'COGS_PRODUCT', label: '51-1101 ต้นทุนมือถือ (ใหม่)' },
-    { value: 'COGS_REPAIR_PARTS', label: '51-1102 ต้นทุนมือถือ (มือสอง)' },
-  ],
-  SELLING_EXPENSE: [
-    { value: 'SELL_COMMISSION', label: '52-1101 ค่าคอมมิชชั่น' },
-    { value: 'SELL_ADVERTISING', label: '52-1102 ค่าส่งเสริมการขาย' },
-    { value: 'SELL_TRANSPORT', label: '53-1304 ค่าขนส่ง' },
-    { value: 'SELL_PACKAGING', label: '52-1103 ค่าบริการส่ง SMS' },
-  ],
-  ADMINISTRATIVE_EXPENSE: [
-    { value: 'ADMIN_SALARY', label: '53-1101 เงินเดือน/ค่าจ้าง' },
-    { value: 'ADMIN_SOCIAL_SECURITY', label: '53-1103 ประกันสังคม/กองทุน' },
-    { value: 'ADMIN_RENT', label: '53-1301 ค่าเช่าสถานที่' },
-    { value: 'ADMIN_UTILITIES', label: '53-1302 ค่าน้ำ/ไฟฟ้า' },
-    { value: 'ADMIN_OFFICE_SUPPLIES', label: '53-1201 วัสดุสำนักงาน' },
-    { value: 'ADMIN_DEPRECIATION', label: '53-1601 ค่าเสื่อมราคา' },
-    { value: 'ADMIN_INSURANCE', label: '53-1103 ค่าประกันภัย' },
-    { value: 'ADMIN_TAX_FEE', label: '54-1103 ภาษี/ค่าธรรมเนียม' },
-    { value: 'ADMIN_MAINTENANCE', label: '53-1305 ค่าซ่อมบำรุง' },
-    { value: 'ADMIN_TRAVEL', label: '53-1304 ค่าเดินทาง/ขนส่ง' },
-    { value: 'ADMIN_TELEPHONE', label: '53-1303 ค่าโทรศัพท์' },
-  ],
-  OTHER_EXPENSE: [
-    { value: 'OTHER_INTEREST', label: '53-1501 ค่าธรรมเนียมธนาคาร' },
-    { value: 'OTHER_LOSS', label: '53-1503 ขาดทุนจากการปิดสัญญา' },
-    { value: 'OTHER_FINE', label: '54-1104 เบี้ยปรับเงินเพิ่ม' },
-    { value: 'OTHER_MISC', label: '53-1502 ค่าธรรมเนียมอื่น' },
-  ],
-};
-
 const inputClass = 'w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden';
 
 function fmt(n: string | number | null | undefined): string {
@@ -108,7 +59,7 @@ function fmt(n: string | number | null | undefined): string {
 }
 
 const emptyForm = {
-  branchId: '', accountType: 'ADMINISTRATIVE_EXPENSE', category: 'ADMIN_UTILITIES',
+  branchId: '', category: '',
   description: '', amount: '', vatAmount: '0', withholdingTax: '0',
   expenseDate: new Date().toISOString().split('T')[0], paymentMethod: '',
   vendorName: '', vendorTaxId: '', reference: '', taxInvoiceNo: '', note: '',
@@ -126,10 +77,13 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
   const [includeVat, setIncludeVat] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  const { data: coaData } = useCoaGroups({ type: 'ค่าใช้จ่าย' });
+  const groups = coaData?.groups ?? [];
+
   useEffect(() => {
     if (editingExpense) {
       setForm({
-        branchId: editingExpense.branch.id, accountType: editingExpense.accountType,
+        branchId: editingExpense.branch.id,
         category: editingExpense.category, description: editingExpense.description,
         amount: editingExpense.amount, vatAmount: editingExpense.vatAmount,
         withholdingTax: editingExpense.withholdingTax, expenseDate: editingExpense.expenseDate.slice(0, 10),
@@ -145,6 +99,13 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
       setIncludeVat(false);
     }
   }, [editingExpense, branches]);
+
+  // Set initial category once CoA groups load (new form only)
+  useEffect(() => {
+    if (groups.length > 0 && !form.category && !editingExpense) {
+      setForm((f) => ({ ...f, category: groups[0].accounts[0]?.code ?? '' }));
+    }
+  }, [groups, form.category, editingExpense]);
 
   useEffect(() => {
     if (includeVat) {
@@ -189,7 +150,7 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
     const withholdingTax = parseFloat(form.withholdingTax) || 0;
     saveMutation.mutate({
       data: {
-        branchId: form.branchId || branches[0]?.id, accountType: form.accountType,
+        branchId: form.branchId || branches[0]?.id,
         category: form.category, description: form.description, amount, vatAmount,
         withholdingTax, includeVat, expenseDate: form.expenseDate,
         paymentMethod: form.paymentMethod || undefined, vendorName: form.vendorName || undefined,
@@ -202,8 +163,6 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
       andSubmit,
     });
   };
-
-  const availableCategories = categoryGroups[form.accountType] || [];
   const amt = parseFloat(form.amount || '0');
   const vat = parseFloat(form.vatAmount || '0');
   const wht = parseFloat(form.withholdingTax || '0');
@@ -289,19 +248,17 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
               </div>
             </div>
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-foreground mb-1.5">หมวดบัญชี <span className="text-destructive">*</span></label>
-                  <select value={form.accountType} onChange={(e) => { const t = e.target.value; setForm({ ...form, accountType: t, category: categoryGroups[t]?.[0]?.value || '' }); }} className={inputClass}>
-                    {Object.entries(accountTypeLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-foreground mb-1.5">หมวดย่อย <span className="text-destructive">*</span></label>
-                  <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className={inputClass}>
-                    {availableCategories.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-                  </select>
-                </div>
+              <div>
+                <label className="block text-xs font-medium text-foreground mb-1.5">หมวดบัญชี <span className="text-destructive">*</span></label>
+                <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className={inputClass}>
+                  {groups.map((g) => (
+                    <optgroup key={g.category} label={g.category}>
+                      {g.accounts.map((a) => (
+                        <option key={a.code} value={a.code}>{a.code} {a.name}</option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="block text-xs font-medium text-foreground mb-1.5">รายละเอียด <span className="text-destructive">*</span></label>
@@ -467,7 +424,6 @@ export default function ExpensesPage() {
   const isOwner = currentUser?.role === 'OWNER';
   const [searchParams, setSearchParams] = useSearchParams();
   const statusFilter = searchParams.get('status') || '';
-  const accountTypeFilter = searchParams.get('accountType') || '';
   const categoryFilter = searchParams.get('category') || '';
   const branchFilter = searchParams.get('branch') || '';
   const startDate = searchParams.get('startDate') || '';
@@ -499,6 +455,14 @@ export default function ExpensesPage() {
 
   const { data: branches = [] } = useQuery<{ id: string; name: string }[]>({ queryKey: ['branches'], queryFn: async () => (await api.get('/branches')).data });
 
+  const { data: coaData } = useCoaGroups({ type: 'ค่าใช้จ่าย' });
+  const coaGroups = coaData?.groups ?? [];
+  const codeToName = useMemo(() => {
+    const m = new Map<string, string>();
+    coaGroups.forEach((g) => g.accounts.forEach((a) => m.set(a.code, a.name)));
+    return m;
+  }, [coaGroups]);
+
   const { data: summary } = useQuery<Summary>({
     queryKey: ['expenses-summary', branchFilter, startDate, endDate],
     queryFn: async () => { const p = new URLSearchParams(); if (branchFilter) p.set('branchId', branchFilter); if (startDate) p.set('startDate', startDate); if (endDate) p.set('endDate', endDate); return (await api.get(`/expenses/summary?${p}`)).data; },
@@ -511,11 +475,10 @@ export default function ExpensesPage() {
     error,
     refetch,
   } = useQuery<{ data: Expense[]; total: number }>({
-    queryKey: ['expenses', statusFilter, accountTypeFilter, categoryFilter, branchFilter, startDate, endDate, debouncedSearch, page],
+    queryKey: ['expenses', statusFilter, categoryFilter, branchFilter, startDate, endDate, debouncedSearch, page],
     queryFn: async () => {
       const p = new URLSearchParams({ limit: '20', page: String(page) });
       if (statusFilter) p.set('status', statusFilter);
-      if (accountTypeFilter) p.set('accountType', accountTypeFilter);
       if (categoryFilter) p.set('category', categoryFilter);
       if (branchFilter) p.set('branchId', branchFilter);
       if (startDate) p.set('startDate', startDate);
@@ -561,7 +524,7 @@ export default function ExpensesPage() {
     },
     {
       key: 'description', label: 'รายละเอียด',
-      render: (e: Expense) => (<div className="min-w-0"><div className="font-medium truncate">{e.description}</div><div className="text-xs text-muted-foreground">{categoryLabels[e.category] || e.category}</div></div>),
+      render: (e: Expense) => (<div className="min-w-0"><div className="font-medium truncate">{e.description}</div><div className="text-xs text-muted-foreground">{codeToName.get(e.category) || e.category}</div></div>),
     },
     { key: 'branch', label: 'สาขา', render: (e: Expense) => e.branch.name },
     { key: 'vendorName', label: 'ผู้รับเงิน', render: (e: Expense) => e.vendorName || '-' },
@@ -658,17 +621,14 @@ export default function ExpensesPage() {
         </div>
         <div>
           <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">หมวดบัญชี</label>
-          <select value={accountTypeFilter} onChange={(e) => { setFilter('accountType', e.target.value); setFilter('category', ''); }} className={`${inputClass} w-auto min-w-[160px]`}>
-            <option value="">ทั้งหมด</option>
-            {Object.entries(accountTypeLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">หมวดย่อย</label>
           <select value={categoryFilter} onChange={(e) => setFilter('category', e.target.value)} className={`${inputClass} w-auto min-w-[180px]`}>
             <option value="">ทั้งหมด</option>
-            {Object.entries(categoryGroups).filter(([key]) => !accountTypeFilter || key === accountTypeFilter).map(([groupKey, cats]) => (
-              <optgroup key={groupKey} label={accountTypeLabels[groupKey]}>{cats.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}</optgroup>
+            {coaGroups.map((g) => (
+              <optgroup key={g.category} label={g.category}>
+                {g.accounts.map((a) => (
+                  <option key={a.code} value={a.code}>{a.code} {a.name}</option>
+                ))}
+              </optgroup>
             ))}
           </select>
         </div>

@@ -168,7 +168,7 @@ function StickerCard({ data }: { data: StickerData }) {
       {/* Footer: IMEI + brand mark */}
       <div className="st-footer">
         <span className="st-imei truncate">
-          {data.imei ? `IMEI ${data.imei}` : ' '}
+          {data.imei ?? ' '}
         </span>
         {data.shopLogoUrl ? (
           <img src={data.shopLogoUrl} alt="" className="st-logo" />

@@ -1678,6 +1678,19 @@ export class PaymentsService {
       rawLines.push({ code: '21-1103', dr: zero, cr: previewAdvCredit, description: 'เงินรับล่วงหน้า' });
     }
 
+    // 6. Rounding adjustment (≤1฿ tolerance) — must include for balanced preview
+    // This mirrors PaymentReceipt2BTemplate's rounding logic.
+    // Skipped for OVERPAY_ADVANCE / advance consume because those clear the diff via 21-1103.
+    if (previewAdvCredit.eq(zero) && previewAdvConsume.eq(zero)) {
+      const roundingDiff = amountReceived.minus(installmentTotal);
+      const tolerance = new Prisma.Decimal('1.00');
+      if (roundingDiff.gt(zero) && roundingDiff.lte(tolerance)) {
+        rawLines.push({ code: '53-1503', dr: zero, cr: roundingDiff, description: 'กำไรปัดเศษ (Policy C)' });
+      } else if (roundingDiff.lt(zero) && roundingDiff.abs().lte(tolerance)) {
+        rawLines.push({ code: '52-1104', dr: roundingDiff.abs(), cr: zero, description: 'ส่วนลดเศษสตางค์ (Policy C)' });
+      }
+    }
+
     // Resolve account names from CoA
     const codes = [...new Set(rawLines.map((l) => l.code))];
     const coaRows = await this.prisma.chartOfAccount.findMany({

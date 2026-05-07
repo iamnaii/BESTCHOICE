@@ -20,6 +20,10 @@ interface PricingTemplate {
   installmentBestchoicePrice: string;
   installmentFinancePrice: string;
   isActive: boolean;
+  rate1DownPayment: number | null;
+  rate1TermMonths: number | null;
+  rate2DownPayment: number | null;
+  rate2TermMonths: number | null;
 }
 
 const CATEGORIES = [
@@ -36,6 +40,10 @@ const defaultForm = {
   cashPrice: '',
   installmentBestchoicePrice: '',
   installmentFinancePrice: '',
+  rate1DownPayment: undefined as number | undefined,
+  rate1TermMonths: undefined as number | undefined,
+  rate2DownPayment: undefined as number | undefined,
+  rate2TermMonths: undefined as number | undefined,
 };
 
 export default function PricingTemplatesPage() {
@@ -74,6 +82,10 @@ export default function PricingTemplatesPage() {
           cashPrice: payload.cashPrice,
           installmentBestchoicePrice: payload.installmentBestchoicePrice,
           installmentFinancePrice: payload.installmentFinancePrice,
+          rate1DownPayment: form.rate1DownPayment ?? null,
+          rate1TermMonths: form.rate1TermMonths ?? null,
+          rate2DownPayment: form.rate2DownPayment ?? null,
+          rate2TermMonths: form.rate2TermMonths ?? null,
         });
         return data;
       }
@@ -221,6 +233,10 @@ export default function PricingTemplatesPage() {
       cashPrice: t.cashPrice,
       installmentBestchoicePrice: t.installmentBestchoicePrice,
       installmentFinancePrice: t.installmentFinancePrice,
+      rate1DownPayment: t.rate1DownPayment ?? undefined,
+      rate1TermMonths: t.rate1TermMonths ?? undefined,
+      rate2DownPayment: t.rate2DownPayment ?? undefined,
+      rate2TermMonths: t.rate2TermMonths ?? undefined,
     });
     setShowModal(true);
   };
@@ -483,6 +499,54 @@ export default function PricingTemplatesPage() {
                   className="w-full px-3 py-2 border border-input rounded-lg text-sm"
                   min="0"
                 />
+              </div>
+            </div>
+
+            <div className="mt-4 pt-4 border-t border-border/40">
+              <h3 className="text-sm font-medium text-muted-foreground mb-3">
+                ดาวน์ + จำนวนเดือน (เว้นว่าง = ใช้ default จาก Settings)
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1">ดาวน์เรทที่ 1 (บาท)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={form.rate1DownPayment ?? ''}
+                    onChange={(e) => setForm((f) => ({ ...f, rate1DownPayment: e.target.value === '' ? undefined : Number(e.target.value) }))}
+                    className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1">จำนวนเดือนเรทที่ 1</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={form.rate1TermMonths ?? ''}
+                    onChange={(e) => setForm((f) => ({ ...f, rate1TermMonths: e.target.value === '' ? undefined : Number(e.target.value) }))}
+                    className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1">ดาวน์เรทที่ 2 (บาท)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={form.rate2DownPayment ?? ''}
+                    onChange={(e) => setForm((f) => ({ ...f, rate2DownPayment: e.target.value === '' ? undefined : Number(e.target.value) }))}
+                    className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1">จำนวนเดือนเรทที่ 2</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={form.rate2TermMonths ?? ''}
+                    onChange={(e) => setForm((f) => ({ ...f, rate2TermMonths: e.target.value === '' ? undefined : Number(e.target.value) }))}
+                    className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                  />
+                </div>
               </div>
             </div>
 

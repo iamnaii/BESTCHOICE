@@ -163,8 +163,8 @@ function StickerCard({ data }: { data: StickerData }) {
   );
 }
 
-/* ─── product card (catalog picker) ──────────────── */
-function ProductCard({
+/* ─── product row (catalog picker, list mode) ────── */
+function ProductRow({
   product,
   selected,
   qty,
@@ -186,52 +186,37 @@ function ProductCard({
   const tint = brandTint(product.brand);
 
   return (
-    <article
-      className={`product-card group relative ${selected ? 'is-selected' : ''}`}
+    <div
+      className={`product-row ${selected ? 'is-selected' : ''}`}
       onClick={() => {
         if (!selected) onAdd();
       }}
     >
-      {/* Media */}
-      <div className={`product-media bg-gradient-to-br ${tint}`}>
+      {/* Thumbnail */}
+      <div className={`row-thumb bg-gradient-to-br ${tint}`}>
         {photo ? (
           <img src={photo} alt="" loading="lazy" className="size-full object-cover" />
         ) : (
-          <div className="flex size-full items-center justify-center">
-            <Smartphone className="size-12 text-white/30" strokeWidth={1.2} />
-          </div>
+          <Smartphone className="size-5 text-white/40" strokeWidth={1.4} />
         )}
         {selected && (
-          <div className="product-check">
-            <Check className="size-3.5" strokeWidth={3} />
+          <div className="row-check">
+            <Check className="size-2.5" strokeWidth={3.5} />
           </div>
         )}
       </div>
 
       {/* Body */}
-      <div className="product-body">
-        <div className="flex items-start justify-between gap-2 min-w-0">
-          <div className="min-w-0">
-            <div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
-              {product.brand}
-            </div>
-            <h3 className="font-semibold text-[15px] leading-tight truncate mt-0.5">
-              {product.model}
-            </h3>
-          </div>
-          {cash !== null && (
-            <div className="text-right shrink-0">
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                ราคา
-              </div>
-              <div className="font-mono font-semibold text-[15px] tabular-nums leading-tight">
-                {formatBaht(cash)}
-              </div>
-            </div>
-          )}
+      <div className="row-body min-w-0 flex-1">
+        <div className="flex items-baseline gap-2 min-w-0">
+          <span className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground shrink-0">
+            {product.brand}
+          </span>
+          <h3 className="font-semibold text-[14px] leading-tight truncate">
+            {product.model}
+          </h3>
         </div>
-
-        <div className="flex flex-wrap gap-1.5 mt-2.5">
+        <div className="flex flex-wrap items-center gap-1.5 mt-1">
           {product.color && <span className="spec-pill">{product.color}</span>}
           {product.storage && <span className="spec-pill">{product.storage}</span>}
           {product.imeiSerial && (
@@ -239,54 +224,41 @@ function ProductCard({
               …{product.imeiSerial.slice(-6)}
             </span>
           )}
-        </div>
-
-        {/* Action footer */}
-        <div className="product-action">
-          {selected ? (
-            <div className="qty-control" onClick={(e) => e.stopPropagation()}>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (qty <= 1) onRemove();
-                  else onDec();
-                }}
-                aria-label={qty <= 1 ? 'ลบรายการ' : 'ลด'}
-              >
-                {qty <= 1 ? <Trash2 className="size-3.5" /> : '−'}
-              </button>
-              <span className="qty-num font-mono tabular-nums">{qty}</span>
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground mr-2">
-                ดวง
-              </span>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onInc();
-                }}
-                aria-label="เพิ่ม"
-              >
-                +
-              </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onAdd();
-              }}
-              className="add-btn"
-            >
-              <Plus className="size-3.5" />
-              เพิ่มเข้าคิว
-            </button>
+          {product.branch?.name && (
+            <span className="text-[10px] text-muted-foreground/80">· {product.branch.name}</span>
           )}
         </div>
       </div>
-    </article>
+
+      {/* Price */}
+      {cash !== null && (
+        <div className="row-price font-mono tabular-nums">
+          ฿ {formatBaht(cash)}
+        </div>
+      )}
+
+      {/* Action */}
+      <div className="row-action" onClick={(e) => e.stopPropagation()}>
+        {selected ? (
+          <div className="qty-control">
+            <button
+              type="button"
+              onClick={() => (qty <= 1 ? onRemove() : onDec())}
+              aria-label={qty <= 1 ? 'ลบ' : 'ลด'}
+            >
+              {qty <= 1 ? <Trash2 className="size-3.5" /> : '−'}
+            </button>
+            <span className="qty-num font-mono tabular-nums">{qty}</span>
+            <button type="button" onClick={onInc} aria-label="เพิ่ม">+</button>
+          </div>
+        ) : (
+          <button type="button" onClick={onAdd} className="add-btn-row">
+            <Plus className="size-3.5" />
+            เพิ่ม
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -579,11 +551,11 @@ export default function StickerPrintPage() {
                   </p>
                 </div>
               ) : (
-                <div className="product-grid">
+                <div className="product-list">
                   {products.map((p) => {
                     const item = itemMap.get(p.id);
                     return (
-                      <ProductCard
+                      <ProductRow
                         key={p.id}
                         product={p}
                         selected={!!item}
@@ -926,85 +898,93 @@ export default function StickerPrintPage() {
           box-shadow: 0 4px 12px -4px hsl(var(--primary) / 0.5);
         }
 
-        /* ─── Product grid ──────────────────────────────── */
-        .product-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-          gap: 0.875rem;
-        }
-        .product-card {
-          position: relative;
+        /* ─── Product list (rows) ───────────────────────── */
+        .product-list {
           display: flex;
           flex-direction: column;
+          gap: 0.375rem;
+        }
+        .product-row {
+          display: flex;
+          align-items: center;
+          gap: 0.875rem;
+          padding: 0.625rem 0.875rem;
           background: hsl(var(--card));
           border: 1px solid hsl(var(--border));
-          border-radius: 12px;
-          overflow: hidden;
+          border-radius: 10px;
           cursor: pointer;
-          transition: transform 200ms, border-color 200ms, box-shadow 200ms;
+          transition: border-color 150ms, background 150ms, transform 150ms;
         }
-        .product-card:hover {
-          transform: translateY(-2px);
+        .product-row:hover {
           border-color: hsl(var(--primary) / 0.5);
-          box-shadow: 0 12px 28px -16px hsl(0 0% 0% / 0.35);
+          background: hsl(var(--accent) / 0.4);
         }
-        .product-card.is-selected {
+        .product-row.is-selected {
           border-color: hsl(var(--primary));
-          box-shadow:
-            0 0 0 1px hsl(var(--primary)),
-            0 12px 28px -12px hsl(var(--primary) / 0.4);
+          background: hsl(var(--primary) / 0.06);
+          box-shadow: inset 3px 0 0 hsl(var(--primary));
         }
-        .product-media {
+        .row-thumb {
           position: relative;
-          aspect-ratio: 16 / 10;
+          width: 44px;
+          height: 44px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 8px;
           overflow: hidden;
+          flex-shrink: 0;
         }
-        .product-check {
+        .row-check {
           position: absolute;
-          top: 8px;
-          right: 8px;
-          width: 24px;
-          height: 24px;
+          top: -3px;
+          right: -3px;
+          width: 16px;
+          height: 16px;
           display: flex;
           align-items: center;
           justify-content: center;
           color: white;
           background: hsl(var(--primary));
+          border: 2px solid hsl(var(--card));
           border-radius: 999px;
-          box-shadow: 0 4px 10px hsl(var(--primary) / 0.5);
-          animation: check-in 200ms cubic-bezier(0.16, 1, 0.3, 1);
+          animation: check-in 180ms cubic-bezier(0.16, 1, 0.3, 1);
         }
         @keyframes check-in {
-          from { transform: scale(0.4); opacity: 0; }
+          from { transform: scale(0.3); opacity: 0; }
           to   { transform: scale(1); opacity: 1; }
         }
-        .product-body {
-          padding: 0.75rem 0.875rem;
+        .row-body {
           display: flex;
           flex-direction: column;
-          flex: 1;
+          gap: 0.125rem;
         }
+        .row-price {
+          font-size: 14px;
+          font-weight: 600;
+          color: hsl(var(--foreground));
+          flex-shrink: 0;
+          padding: 0 0.625rem;
+          border-left: 1px dashed hsl(var(--border));
+          line-height: 1;
+        }
+        .row-action { flex-shrink: 0; }
+
         .spec-pill {
-          padding: 0.125rem 0.5rem;
+          padding: 0.1rem 0.4rem;
           font-size: 10px;
           color: hsl(var(--muted-foreground));
           background: hsl(var(--muted));
-          border-radius: 4px;
+          border-radius: 3px;
+          line-height: 1.4;
         }
         .spec-pill-mono { font-family: var(--font-mono); }
 
-        .product-action {
-          margin-top: 0.75rem;
-          padding-top: 0.625rem;
-          border-top: 1px dashed hsl(var(--border));
-        }
-        .add-btn {
-          width: 100%;
+        .add-btn-row {
           display: inline-flex;
           align-items: center;
-          justify-content: center;
-          gap: 0.375rem;
-          padding: 0.4rem 0.75rem;
+          gap: 0.25rem;
+          padding: 0.375rem 0.75rem;
           font-size: 12px;
           font-weight: 600;
           color: hsl(var(--foreground));
@@ -1014,43 +994,45 @@ export default function StickerPrintPage() {
           cursor: pointer;
           transition: all 150ms;
         }
-        .add-btn:hover {
+        .add-btn-row:hover {
           color: hsl(var(--primary));
           border-color: hsl(var(--primary));
           background: hsl(var(--primary) / 0.06);
         }
         .qty-control {
-          display: flex;
+          display: inline-flex;
           align-items: center;
-          justify-content: space-between;
-          gap: 0.25rem;
-          padding: 0.25rem;
+          gap: 0;
+          padding: 0;
           background: hsl(var(--primary) / 0.08);
-          border: 1px solid hsl(var(--primary) / 0.3);
+          border: 1px solid hsl(var(--primary) / 0.4);
           border-radius: 8px;
+          overflow: hidden;
         }
         .qty-control button {
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          width: 26px;
-          height: 26px;
+          width: 28px;
+          height: 28px;
           font-size: 14px;
           font-weight: 600;
           color: hsl(var(--primary));
           background: transparent;
           border: 0;
-          border-radius: 6px;
           cursor: pointer;
           transition: background 150ms;
         }
         .qty-control button:hover { background: hsl(var(--primary) / 0.15); }
         .qty-num {
-          flex: 1;
+          min-width: 2rem;
           text-align: center;
-          font-size: 14px;
+          font-size: 13px;
           font-weight: 700;
           color: hsl(var(--primary));
+          padding: 0 0.25rem;
+          border-left: 1px solid hsl(var(--primary) / 0.25);
+          border-right: 1px solid hsl(var(--primary) / 0.25);
         }
 
         .empty-grid {

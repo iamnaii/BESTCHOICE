@@ -44,6 +44,7 @@ import {
   ClipboardCheck,
   PiggyBank,
   Star,
+  Tag,
 } from 'lucide-react';
 
 /* ── Types ─────────────────────────────────────────── */
@@ -104,6 +105,7 @@ const SALES_CONFIG: RoleMenuConfig = {
       icon: Warehouse,
       items: [
         { label: 'สต็อกสินค้า', path: '/stock', icon: Warehouse },
+        { label: 'พิมพ์สติกเกอร์', path: '/stickers', icon: Tag },
         { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
         { label: 'CRM Pipeline', path: '/crm', icon: Kanban },
         { label: 'รวมแชท', path: '/chat', icon: MessageSquareMore },
@@ -153,6 +155,7 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
       icon: Warehouse,
       items: [
         { label: 'สต็อกสินค้า', path: '/stock', icon: Warehouse },
+        { label: 'พิมพ์สติกเกอร์', path: '/stickers', icon: Tag },
         { label: 'สั่งซื้อ (PO)', path: '/purchase-orders', icon: ClipboardList },
         { label: 'ผู้ขาย', path: '/suppliers', icon: Building2 },
       ],
@@ -211,6 +214,7 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
         { label: 'จัดการอุปกรณ์', path: '/mdm', icon: Smartphone },
+        { label: 'พิมพ์สติกเกอร์', path: '/stickers', icon: Tag },
       ],
     },
     {
@@ -267,6 +271,7 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
         { label: 'บันทึกรายจ่าย', path: '/expenses', icon: Receipt },
+        { label: 'พิมพ์สติกเกอร์', path: '/stickers', icon: Tag },
         { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
       ],
     },
@@ -329,6 +334,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'สั่งซื้อ (PO)', path: '/purchase-orders', icon: ClipboardList },
         { label: 'รับซื้อมือสอง', path: '/trade-in', icon: Smartphone },
         { label: 'สต็อกสินค้า', path: '/stock', icon: Warehouse },
+        { label: 'พิมพ์สติกเกอร์', path: '/stickers', icon: Tag },
       ],
     },
     {

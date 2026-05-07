@@ -730,40 +730,40 @@ export default function StickerPrintPage() {
         .sticker {
           width: 50mm;
           height: 30mm;
-          padding: 1.4mm 1.6mm 1mm;
+          padding: 1.6mm 1.8mm 1.2mm;
           font-family: 'IBM Plex Sans Thai', system-ui, sans-serif;
           box-sizing: border-box;
           display: flex;
           flex-direction: column;
           color: #000;
-          line-height: 1.15;
+          line-height: 1.12;
         }
         .st-row {
           display: flex;
           justify-content: space-between;
           align-items: flex-start;
-          gap: 1mm;
+          gap: 1.2mm;
         }
-        .st-row-top { align-items: flex-start; }
+        .st-row-top { align-items: center; }
         .st-brandblock {
           display: flex;
           flex-direction: column;
           min-width: 0;
         }
         .st-brand {
-          font-size: 5.6pt;
+          font-size: 7pt;
           font-weight: 700;
-          letter-spacing: 0.06em;
+          letter-spacing: 0.08em;
           text-transform: uppercase;
           line-height: 1;
           color: #000;
-          margin-bottom: 0.3mm;
+          margin-bottom: 0.5mm;
         }
         .st-model {
-          font-size: 8.5pt;
-          font-weight: 700;
-          line-height: 1.05;
-          letter-spacing: -0.005em;
+          font-size: 11pt;
+          font-weight: 800;
+          line-height: 1;
+          letter-spacing: -0.01em;
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
@@ -771,86 +771,88 @@ export default function StickerPrintPage() {
         .st-price {
           display: inline-flex;
           align-items: baseline;
-          gap: 0.4mm;
+          gap: 0.6mm;
           flex-shrink: 0;
-          padding: 0.6mm 1mm;
+          padding: 0.9mm 1.4mm;
           background: #000;
           color: #fff;
-          border-radius: 0.6mm;
+          border-radius: 0.8mm;
         }
         .st-currency {
-          font-size: 5.6pt;
+          font-size: 7pt;
           font-weight: 600;
           line-height: 1;
         }
         .st-amount {
-          font-size: 9pt;
+          font-size: 12pt;
           font-weight: 800;
           line-height: 1;
-          letter-spacing: -0.01em;
+          letter-spacing: -0.015em;
         }
         .st-spec {
-          font-size: 6.2pt;
-          margin-top: 0.7mm;
-          color: #1a1a1a;
+          font-size: 7.5pt;
+          margin-top: 1mm;
+          color: #000;
+          font-weight: 500;
         }
-        .st-warranty { color: #444; }
+        .st-warranty { color: #333; font-weight: 400; }
         .st-rule {
-          margin: 0.7mm 0 0.6mm;
+          margin: 1mm 0 0.8mm;
           height: 0;
-          border-top: 0.18mm solid #000;
+          border-top: 0.22mm solid #000;
         }
         .st-rates {
           display: flex;
           flex-direction: column;
-          gap: 0.4mm;
+          gap: 0.6mm;
         }
         .st-rate {
           display: grid;
-          grid-template-columns: 3.4mm 1fr auto;
-          align-items: baseline;
-          gap: 1mm;
-          font-size: 6.5pt;
-          line-height: 1.15;
+          grid-template-columns: 3.8mm 1fr auto;
+          align-items: center;
+          gap: 1.2mm;
+          font-size: 8pt;
+          line-height: 1.1;
         }
         .st-rate-tag {
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          width: 3mm;
-          height: 3mm;
+          width: 3.4mm;
+          height: 3.4mm;
           font-family: var(--font-mono);
-          font-size: 5.5pt;
+          font-size: 7pt;
           font-weight: 700;
           color: #fff;
           background: #000;
-          border-radius: 0.5mm;
+          border-radius: 0.6mm;
           line-height: 1;
         }
         .st-rate-down { font-weight: 600; color: #000; }
-        .st-rate-monthly { font-weight: 600; color: #000; white-space: nowrap; }
+        .st-rate-monthly { font-weight: 700; color: #000; white-space: nowrap; }
         .st-x { color: #555; font-weight: 400; }
 
         .st-footer {
           margin-top: auto;
-          padding-top: 0.6mm;
-          border-top: 0.18mm dotted #000;
+          padding-top: 0.8mm;
+          border-top: 0.22mm dotted #000;
           display: flex;
           align-items: center;
           justify-content: space-between;
-          gap: 1mm;
+          gap: 1.2mm;
         }
         .st-imei {
           font-family: var(--font-mono);
-          font-size: 5.4pt;
+          font-size: 6.6pt;
           letter-spacing: 0.02em;
-          color: #1a1a1a;
+          color: #000;
           flex: 1;
           min-width: 0;
+          font-weight: 500;
         }
         .st-logo {
-          width: 6mm;
-          height: 4.5mm;
+          width: 7mm;
+          height: 5.5mm;
           object-fit: contain;
           flex-shrink: 0;
         }
@@ -858,22 +860,22 @@ export default function StickerPrintPage() {
           display: inline-flex;
           align-items: center;
           flex-shrink: 0;
-          font-size: 5.4pt;
+          font-size: 6.4pt;
           font-weight: 700;
-          letter-spacing: 0.06em;
+          letter-spacing: 0.08em;
           text-transform: uppercase;
         }
         .st-mark-b {
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          width: 3mm;
-          height: 3mm;
-          margin-right: 0.6mm;
+          width: 3.6mm;
+          height: 3.6mm;
+          margin-right: 0.8mm;
           color: #fff;
           background: #000;
-          border-radius: 0.4mm;
-          font-size: 5.4pt;
+          border-radius: 0.5mm;
+          font-size: 6.6pt;
           font-weight: 800;
         }
         .st-mark-rest { color: #000; }

@@ -42,7 +42,8 @@ const SalesHistoryPage = lazy(() => import('@/pages/SalesHistoryPage'));
 const InterestConfigPage = lazy(() => import('@/pages/InterestConfigPage'));
 const PricingTemplatesPage = lazy(() => import('@/pages/PricingTemplatesPage'));
 const SuppliersPage = lazy(() => import('@/pages/SuppliersPage'));
-const StockPage = lazy(() => import('@/pages/StockPage'));
+const StockOverviewPage = lazy(() => import('@/pages/StockPage/OverviewPage'));
+const StockProductsPage = lazy(() => import('@/pages/StockPage/ProductsPage'));
 const PurchaseOrdersPage = lazy(() => import('@/pages/PurchaseOrdersPage'));
 
 const StockTransfersPage = lazy(() => import('@/pages/StockTransfersPage'));
@@ -240,11 +241,19 @@ function App() {
             path="/stock"
             element={
               <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES']}>
-                <StockPage />
+                <StockOverviewPage />
               </ProtectedRoute>
             }
           />
-          <Route path="/products" element={<Navigate to="/stock?tab=list" replace />} />
+          <Route
+            path="/stock/products"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES']}>
+                <StockProductsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="/products" element={<Navigate to="/stock/products" replace />} />
           <Route
             path="/stock/transfers"
             element={

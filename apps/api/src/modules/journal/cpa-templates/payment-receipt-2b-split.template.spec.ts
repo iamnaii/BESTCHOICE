@@ -16,6 +16,17 @@ const prisma = new PrismaClient();
 async function setup() {
   await prisma.journalLine.deleteMany({});
   await prisma.journalEntry.deleteMany({});
+  await prisma.receipt.deleteMany({});
+  await prisma.eDocument.deleteMany({});
+  await prisma.signature.deleteMany({});
+  await prisma.contractDocument.deleteMany({});
+  await prisma.partialPaymentLink.deleteMany({});
+  await prisma.warrantyAuditLog.deleteMany({});
+  await prisma.badDebtWriteOffAuditLog.deleteMany({});
+  await prisma.promiseSlot.deleteMany({});
+  await prisma.callLog.deleteMany({});
+  await prisma.dunningAction.deleteMany({});
+  await prisma.repossession.deleteMany({});
   await prisma.installmentSchedule.deleteMany({});
   await prisma.payment.deleteMany({});
   await prisma.contract.deleteMany({});

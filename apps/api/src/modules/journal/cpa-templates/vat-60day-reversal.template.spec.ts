@@ -14,6 +14,17 @@ async function setup() {
   // Clean in FK-safe order
   await prisma.journalLine.deleteMany({});
   await prisma.journalEntry.deleteMany({});
+  await prisma.receipt.deleteMany({});
+  await prisma.eDocument.deleteMany({});
+  await prisma.signature.deleteMany({});
+  await prisma.contractDocument.deleteMany({});
+  await prisma.partialPaymentLink.deleteMany({});
+  await prisma.warrantyAuditLog.deleteMany({});
+  await prisma.badDebtWriteOffAuditLog.deleteMany({});
+  await prisma.promiseSlot.deleteMany({});
+  await prisma.callLog.deleteMany({});
+  await prisma.dunningAction.deleteMany({});
+  await prisma.repossession.deleteMany({});
   await prisma.payment.deleteMany({});
   await prisma.installmentSchedule.deleteMany({});
   await prisma.contract.deleteMany({ where: { contractNumber: { startsWith: 'TEST-' } } });
@@ -112,6 +123,17 @@ describe('Vat60dayReversalTemplate', () => {
     // Use a fresh install where mandatory was NOT run
     await prisma.journalLine.deleteMany({});
     await prisma.journalEntry.deleteMany({});
+    await prisma.receipt.deleteMany({});
+    await prisma.eDocument.deleteMany({});
+    await prisma.signature.deleteMany({});
+    await prisma.contractDocument.deleteMany({});
+    await prisma.partialPaymentLink.deleteMany({});
+    await prisma.warrantyAuditLog.deleteMany({});
+    await prisma.badDebtWriteOffAuditLog.deleteMany({});
+    await prisma.promiseSlot.deleteMany({});
+    await prisma.callLog.deleteMany({});
+    await prisma.dunningAction.deleteMany({});
+    await prisma.repossession.deleteMany({});
     await prisma.payment.deleteMany({});
     await prisma.installmentSchedule.deleteMany({});
     await prisma.contract.deleteMany({ where: { contractNumber: { startsWith: 'TEST-' } } });

@@ -9,13 +9,19 @@ import {
   Post,
   Query,
   Request,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
+  ParseFilePipe,
+  MaxFileSizeValidator,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { OtherIncomeService } from './other-income.service';
+import { StorageService } from '../storage/storage.service';
 import { CreateOtherIncomeDto } from './dto/create-other-income.dto';
 import { UpdateOtherIncomeDto } from './dto/update-other-income.dto';
 import { PostOtherIncomeDto } from './dto/post-other-income.dto';
@@ -27,7 +33,10 @@ import { DailySheetQueryDto } from './dto/daily-sheet-query.dto';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
 export class OtherIncomeController {
-  constructor(private readonly service: OtherIncomeService) {}
+  constructor(
+    private readonly service: OtherIncomeService,
+    private readonly storage: StorageService,
+  ) {}
 
   // CRITICAL: declare daily-sheet BEFORE :id so the literal string
   // doesn't get parsed as a UUID by ParseUUIDPipe on the :id routes.
@@ -98,5 +107,27 @@ export class OtherIncomeController {
     @CurrentUser('id') userId: string,
   ) {
     return this.service.copy(id, userId);
+  }
+
+  @Post(':id/attachments')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadAttachment(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @CurrentUser('id') userId: string,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({
+            maxSize: 20 * 1024 * 1024, // 20 MB
+            message: 'ไฟล์มีขนาดเกิน 20MB',
+          }),
+        ],
+        fileIsRequired: true,
+        errorHttpStatusCode: 400,
+      }),
+    )
+    file: Express.Multer.File,
+  ) {
+    return this.service.uploadAttachment(id, file, userId, this.storage);
   }
 }

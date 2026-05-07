@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { JournalModule } from '../journal/journal.module';
+import { StorageModule } from '../storage/storage.module';
 import { OtherIncomeService } from './other-income.service';
 import { OtherIncomeController } from './other-income.controller';
 import { DocNumberService } from './services/doc-number.service';
@@ -10,7 +11,7 @@ import { OtherIncomeTemplate } from './templates/other-income.template';
 // PrismaService is provided globally via PrismaModule (@Global) — no import needed.
 
 @Module({
-  imports: [JournalModule],
+  imports: [JournalModule, StorageModule],
   controllers: [OtherIncomeController],
   providers: [
     OtherIncomeService,

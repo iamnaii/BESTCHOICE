@@ -220,20 +220,41 @@ export default function OtherIncomeReceiptPage() {
               </div>
             </div>
 
-            {/* Signature block + QR code */}
-            <div className="grid grid-cols-3 gap-8 mt-4 text-center text-xs text-muted-foreground items-end">
-              <div>
-                <div className="border-b border-border mb-2 h-12"></div>
-                <p>ผู้ออกเอกสาร / ผู้รับเงิน</p>
+            {/* B11: 4 signature blocks per spec §3.5 + QR code */}
+            <div className="mt-6">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center text-xs text-muted-foreground">
+                {/* 1: ผู้ออกเอกสาร */}
+                <div>
+                  <div className="border-b border-border mb-2 h-14"></div>
+                  <p className="font-medium">ผู้ออกเอกสาร</p>
+                  <p className="text-muted-foreground">ลายเซ็น / วันที่</p>
+                </div>
+                {/* 2: ตราประทับผู้ขาย */}
+                <div>
+                  <div className="border border-dashed border-border mb-2 h-14 flex items-center justify-center rounded">
+                    <span className="text-muted-foreground/50">ตราประทับ</span>
+                  </div>
+                  <p className="font-medium">ตราประทับ (ผู้ขาย)</p>
+                </div>
+                {/* 3: ผู้รับเอกสาร */}
+                <div>
+                  <div className="border-b border-border mb-2 h-14"></div>
+                  <p className="font-medium">ผู้รับเอกสาร</p>
+                  <p className="text-muted-foreground">ลายเซ็น / วันที่</p>
+                </div>
+                {/* 4: ตราประทับลูกค้า */}
+                <div>
+                  <div className="border border-dashed border-border mb-2 h-14 flex items-center justify-center rounded">
+                    <span className="text-muted-foreground/50">ตราประทับ</span>
+                  </div>
+                  <p className="font-medium">ตราประทับ (ลูกค้า)</p>
+                </div>
               </div>
-              <div>
-                <div className="border-b border-border mb-2 h-12"></div>
-                <p>ผู้รับเอกสาร / ลูกค้า</p>
-              </div>
-              <div className="flex flex-col items-center gap-1">
+              {/* QR code below signature row */}
+              <div className="flex flex-col items-center gap-1 mt-4">
                 <QRCodeSVG
                   value={`${window.location.origin}/other-income/${docQuery.data.id}`}
-                  size={80}
+                  size={72}
                   level="M"
                 />
                 <p className="text-xs text-muted-foreground mt-1">

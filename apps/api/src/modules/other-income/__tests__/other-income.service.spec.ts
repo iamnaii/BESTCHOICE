@@ -499,10 +499,16 @@ describe('OtherIncomeService — post + reverse + copy', () => {
     expect(sheet.summary.docCount).toBeGreaterThanOrEqual(1);
     expect(new Prisma.Decimal(sheet.summary.incomeGross.toString()).gte(1000)).toBe(true);
 
-    // byAccount should have 42-1102
-    expect(sheet.byAccount.has('42-1102')).toBe(true);
+    // byAccount should be an array (B1 fix) containing 42-1102
+    expect(Array.isArray(sheet.byAccount)).toBe(true);
+    expect(sheet.byAccount.some((r) => r.code === '42-1102')).toBe(true);
 
-    // byPayment should have 11-1201
-    expect(sheet.byPayment.has('11-1201')).toBe(true);
+    // byPayment should be an array (B1 fix) containing 11-1201
+    expect(Array.isArray(sheet.byPayment)).toBe(true);
+    expect(sheet.byPayment.some((r) => r.code === '11-1201')).toBe(true);
+
+    // summary should use vat/wht keys (B2 fix)
+    expect(sheet.summary).toHaveProperty('vat');
+    expect(sheet.summary).toHaveProperty('wht');
   }, 30_000);
 });

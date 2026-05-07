@@ -111,9 +111,15 @@ export function ItemsTable({ control, register, watch, setValue }: Props) {
               </select>
             </div>
             <div className="col-span-1">
-              <label className="text-muted-foreground">WHT%</label>
+              <label
+                className="text-muted-foreground"
+                title="แนะนำ: ดอกเบี้ย 15% / ค่าบริการ 3% / ค่าเช่า 5% / นิติบุคคล 1%"
+              >
+                WHT%
+              </label>
               <select
                 {...register(`items.${idx}.whtPct`)}
+                title="แนะนำ: ดอกเบี้ย 15% / ค่าบริการ 3% / ค่าเช่า 5% / นิติบุคคล 1%"
                 className="w-full border rounded px-1 py-1 text-xs font-mono"
               >
                 {[0, 1, 2, 3, 5, 7, 10, 15].map((p) => (

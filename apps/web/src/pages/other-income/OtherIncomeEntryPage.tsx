@@ -1,10 +1,10 @@
-import { useMemo, useEffect } from 'react';
+import { useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useForm } from 'react-hook-form';
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Save, Send, ArrowLeft, Receipt } from 'lucide-react';
+import { Save, Send, ArrowLeft, Receipt, FileText, Paperclip, AlertTriangle } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { otherIncomeApi } from '@/lib/otherIncome';
@@ -14,6 +14,9 @@ import { AdjustmentTable } from './components/AdjustmentTable';
 import { AutoJournalPreview } from './components/AutoJournalPreview';
 import { PaymentCompareCard } from './components/PaymentCompareCard';
 import { CounterpartyPicker } from './components/CounterpartyPicker';
+
+// Threshold above which attachment is required (matches backend SystemConfig default)
+const ATTACHMENT_THRESHOLD = 50_000;
 
 // ------------------------------------------------------------------
 // JE preview computation — mirrors AutoJournalService on the backend
@@ -299,6 +302,21 @@ export default function OtherIncomeEntryPage() {
 
   const isSubmitting = saveDraftMutation.isPending || saveAndPostMutation.isPending;
 
+  // B7: Attachment uploader (only available after doc is saved and has an id)
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadAttachmentMutation = useMutation({
+    mutationFn: (file: File) => otherIncomeApi.uploadAttachment(id!, file),
+    onSuccess: () => {
+      toast.success('แนบไฟล์เรียบร้อยแล้ว');
+      queryClient.invalidateQueries({ queryKey: ['other-income', id] });
+    },
+    onError: () => toast.error('ไม่สามารถแนบไฟล์ได้'),
+  });
+
+  const currentAttachments = loadQuery.data?.attachments ?? [];
+  const amountReceived = Number(values.amountReceived) || 0;
+  const needsAttachment = amountReceived >= ATTACHMENT_THRESHOLD && currentAttachments.length === 0;
+
   return (
     <div className="pb-32">
       <div className="p-6 max-w-7xl mx-auto">
@@ -513,6 +531,64 @@ export default function OtherIncomeEntryPage() {
                 className="w-full border rounded-md px-3 py-2 text-sm bg-background"
               />
             </div>
+
+            {/* --- B7: Attachment section (visible in edit mode when doc exists) --- */}
+            {isEdit && (
+              <div className={`rounded-xl border p-5 space-y-3 ${needsAttachment ? 'border-warning bg-warning/5' : 'bg-card'}`}>
+                <div className="flex items-center gap-2">
+                  <Paperclip size={16} className={needsAttachment ? 'text-warning' : 'text-muted-foreground'} />
+                  <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                    เอกสารแนบ
+                  </h2>
+                </div>
+                {needsAttachment && (
+                  <div className="flex items-start gap-2 text-xs text-warning">
+                    <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                    <span>ยอดรับ ≥ {ATTACHMENT_THRESHOLD.toLocaleString()} ฿ — ต้องแนบไฟล์ประกอบเพื่อ POST</span>
+                  </div>
+                )}
+                {/* Existing attachments */}
+                {currentAttachments.length > 0 && (
+                  <ul className="space-y-1">
+                    {currentAttachments.map((att) => (
+                      <li key={att.id} className="flex items-center gap-2 text-xs">
+                        <FileText size={12} className="text-muted-foreground shrink-0" />
+                        <span className="flex-1 truncate">{att.filename}</span>
+                        <span className="text-muted-foreground">
+                          {(att.size / 1024).toFixed(1)} KB
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {/* Upload button */}
+                <div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    className="hidden"
+                    accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) uploadAttachmentMutation.mutate(file);
+                      if (fileInputRef.current) fileInputRef.current.value = '';
+                    }}
+                  />
+                  <button
+                    type="button"
+                    disabled={uploadAttachmentMutation.isPending}
+                    onClick={() => fileInputRef.current?.click()}
+                    className="inline-flex items-center gap-2 px-3 py-2 text-xs font-semibold border rounded-md hover:bg-accent disabled:opacity-50"
+                  >
+                    <Paperclip size={12} />
+                    {uploadAttachmentMutation.isPending ? 'กำลังอัปโหลด...' : 'แนบไฟล์'}
+                  </button>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    รองรับ PDF, รูปภาพ, Word — ขนาดสูงสุด 20 MB
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Right column — JE Preview */}
@@ -606,23 +682,34 @@ export default function OtherIncomeEntryPage() {
               <Save size={16} />
               {saveDraftMutation.isPending ? 'กำลังบันทึก...' : 'บันทึกร่าง'}
             </button>
-            <button
-              type="button"
-              disabled={isSubmitting}
-              onClick={() => {
-                const raw = form.getValues();
-                const result = otherIncomeFormSchema.safeParse(raw);
-                if (!result.success) {
-                  toast.error('กรุณาตรวจสอบข้อมูลให้ครบถ้วน');
-                  return;
-                }
-                saveAndPostMutation.mutate(result.data);
-              }}
-              className="inline-flex items-center gap-2 px-5 py-2 text-sm font-bold bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
-            >
-              <Send size={16} />
-              {saveAndPostMutation.isPending ? 'กำลัง POST...' : 'บันทึก & POST'}
-            </button>
+            {(() => {
+              const errors = form.formState.errors;
+              const errorKeys = Object.keys(errors);
+              const hasErrors = errorKeys.length > 0;
+              const tooltipMsg = hasErrors
+                ? `ฟิลด์ที่ยังไม่ผ่าน: ${errorKeys.join(', ')}`
+                : undefined;
+              return (
+                <button
+                  type="button"
+                  disabled={isSubmitting || hasErrors}
+                  title={tooltipMsg}
+                  onClick={() => {
+                    const raw = form.getValues();
+                    const result = otherIncomeFormSchema.safeParse(raw);
+                    if (!result.success) {
+                      toast.error('กรุณาตรวจสอบข้อมูลให้ครบถ้วน');
+                      return;
+                    }
+                    saveAndPostMutation.mutate(result.data);
+                  }}
+                  className="inline-flex items-center gap-2 px-5 py-2 text-sm font-bold bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
+                >
+                  <Send size={16} />
+                  {saveAndPostMutation.isPending ? 'กำลัง POST...' : 'บันทึก & POST'}
+                </button>
+              );
+            })()}
           </div>
         </div>
       </div>

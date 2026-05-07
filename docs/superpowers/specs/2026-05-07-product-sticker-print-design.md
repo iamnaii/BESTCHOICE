@@ -51,11 +51,11 @@
 | โลโก้ | `CompanyInfo.logoUrl` where `companyCode = 'SHOP'` |
 | ราคาเงินสด | `PricingTemplate.cashPrice` ที่ match (`brand`, `model`, `storage`, `category`, `hasWarranty`) |
 | เรทที่ 1 ผ่อน/เดือน | `PricingTemplate.installmentBestchoicePrice` |
-| เรทที่ 1 ดาวน์ | `PricingTemplate.rate1DownPayment` (ใหม่) → fallback `SystemSetting.sticker.rate1.defaultDown` |
-| เรทที่ 1 จำนวนเดือน | `PricingTemplate.rate1TermMonths` (ใหม่) → fallback `SystemSetting.sticker.rate1.defaultTerm` |
+| เรทที่ 1 ดาวน์ | `PricingTemplate.rate1DownPayment` (ใหม่) → fallback `SystemConfig['sticker.rate1.defaultDown']` |
+| เรทที่ 1 จำนวนเดือน | `PricingTemplate.rate1TermMonths` (ใหม่) → fallback `SystemConfig['sticker.rate1.defaultTerm']` |
 | เรทที่ 2 ผ่อน/เดือน | `PricingTemplate.installmentFinancePrice` |
-| เรทที่ 2 ดาวน์ | `PricingTemplate.rate2DownPayment` (ใหม่) → fallback `SystemSetting.sticker.rate2.defaultDown` |
-| เรทที่ 2 จำนวนเดือน | `PricingTemplate.rate2TermMonths` (ใหม่) → fallback `SystemSetting.sticker.rate2.defaultTerm` |
+| เรทที่ 2 ดาวน์ | `PricingTemplate.rate2DownPayment` (ใหม่) → fallback `SystemConfig['sticker.rate2.defaultDown']` |
+| เรทที่ 2 จำนวนเดือน | `PricingTemplate.rate2TermMonths` (ใหม่) → fallback `SystemConfig['sticker.rate2.defaultTerm']` |
 
 **Note**: ถ้าไม่เจอ `PricingTemplate` ที่ match (สินค้ายังไม่มีตัวตั้งราคา) → ใช้ `Product.costPrice` × 1.15 หาก fallback หรือซ่อนทั้งราคาและเรทผ่อน (เลือก strategy ใน implementation)
 
@@ -77,25 +77,18 @@ model PricingTemplate {
 }
 ```
 
-### Migration 2: SystemSetting (or seed if model exists)
+### Defaults via existing `SystemConfig` (no new table)
 
-ตรวจสอบใน implementation: ถ้ามี `SystemSetting` / `Setting` / `Config` model ใช้ตัวเดิม
-ถ้าไม่มี — เพิ่ม `StickerSetting` model:
+ระบบมี `SystemConfig` (key/value) อยู่แล้ว — ใช้ key เหล่านี้:
 
-```prisma
-model StickerSetting {
-  id                    String   @id @default(uuid())
-  rate1DefaultDownPayment Decimal @map("rate1_default_down_payment") @db.Decimal(12, 2) @default(0)
-  rate1DefaultTermMonths  Int     @map("rate1_default_term_months") @default(24)
-  rate2DefaultDownPayment Decimal @map("rate2_default_down_payment") @db.Decimal(12, 2) @default(0)
-  rate2DefaultTermMonths  Int     @map("rate2_default_term_months") @default(12)
-  createdAt             DateTime @default(now()) @map("created_at")
-  updatedAt             DateTime @updatedAt @map("updated_at")
-  @@map("sticker_settings")
-}
-```
+| Key | Default | Type |
+|---|---|---|
+| `sticker.rate1.defaultDown` | `"0"` | Decimal as string |
+| `sticker.rate1.defaultTerm` | `"24"` | Int as string |
+| `sticker.rate2.defaultDown` | `"0"` | Decimal as string |
+| `sticker.rate2.defaultTerm` | `"12"` | Int as string |
 
-Singleton pattern: 1 row only, seed default values in migration.
+Seed via migration data step (insert if not exists). Service reads via `SettingsService.findAll()` filter ด้วย key prefix.
 
 ## API Endpoints
 
@@ -121,8 +114,7 @@ Singleton pattern: 1 row only, seed default values in migration.
 
 ### New
 - `GET /sticker-templates/products/data?ids=id1,id2,id3` — batch endpoint, returns `StickerData[]` for bulk print
-- `GET /sticker-settings` — return singleton `StickerSetting`
-- `PATCH /sticker-settings` — update singleton (OWNER only)
+- Sticker defaults read/write **via existing `/settings` endpoints** (no new endpoint) — keys ขึ้นต้น `sticker.*`
 
 ### Deprecated
 - `StickerTemplate` CRUD endpoints (`POST /sticker-templates`, `PATCH /sticker-templates/:id`, etc.) — **เก็บไว้ in DB schema สำหรับ future** แต่ไม่ wire UI. ลบออก controller ได้เพราะไม่มี UI consume
@@ -150,14 +142,15 @@ Singleton pattern: 1 row only, seed default values in migration.
   - "จำนวนเดือนเรทที่ 2..." `rate2TermMonths`
 - Placeholder แสดงค่า default จาก StickerSetting
 
-### 4. New `/settings/sticker-defaults` page
+### 4. Settings page — เพิ่ม section "สติกเกอร์ติดเครื่อง"
+- ใน `/settings` หน้า index — เพิ่ม section ใหม่ที่ใช้ pattern เดียวกับ `SystemSettings.tsx` / `GeneralSettings.tsx`
 - 4 inputs:
-  - "ดาวน์เรทที่ 1 default"
-  - "จำนวนเดือนเรทที่ 1 default" (default 24)
-  - "ดาวน์เรทที่ 2 default"
-  - "จำนวนเดือนเรทที่ 2 default" (default 12)
-- ปุ่ม Save → `PATCH /sticker-settings`
-- เพิ่ม link ใน `/settings` index page
+  - "ดาวน์เรทที่ 1 default" → key `sticker.rate1.defaultDown`
+  - "จำนวนเดือนเรทที่ 1 default" → key `sticker.rate1.defaultTerm`
+  - "ดาวน์เรทที่ 2 default" → key `sticker.rate2.defaultDown`
+  - "จำนวนเดือนเรทที่ 2 default" → key `sticker.rate2.defaultTerm`
+- Save ผ่าน existing `PATCH /settings` (batch update รับ `items: { key, value }[]`)
+- จำกัดสิทธิ์ที่ frontend: section แสดงเฉพาะ OWNER role
 
 ## Print CSS
 
@@ -212,13 +205,14 @@ Singleton pattern: 1 row only, seed default values in migration.
 
 ## Implementation Order
 
-1. Migration: PricingTemplate + StickerSetting + seed default
-2. Backend: extend `getStickerData`, batch endpoint, StickerSetting CRUD
-3. Frontend: `/stickers` redesign with print CSS
-4. Frontend: `/stock` bulk action button
-5. Frontend: `/settings/sticker-defaults` page
-6. Frontend: extend `/settings/pricing-templates` form
-7. Tests + type check + manual print test
+1. Migration: PricingTemplate add 4 cols + seed `SystemConfig` keys
+2. Backend: extend `getStickerData`, batch endpoint
+3. Backend: extend PricingTemplate DTO + service for 4 new optional fields
+4. Frontend: `/stickers` redesign with print CSS
+5. Frontend: `/stock` bulk action button
+6. Frontend: `/settings` page — add sticker defaults section
+7. Frontend: `/settings/pricing-templates` form — add 4 fields
+8. Tests + type check + manual print test
 
 ## Open Questions (resolved during impl, document choice)
 

@@ -31,6 +31,14 @@ export class StickersController {
     return this.stickersService.getStickerData(productId);
   }
 
+  @Get('products/data')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
+  getStickerDataBatch(@Query('ids') ids?: string) {
+    if (!ids) return [];
+    const productIds = ids.split(',').map((s) => s.trim()).filter(Boolean);
+    return this.stickersService.getStickerDataBatch(productIds);
+  }
+
   @Get(':id')
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
   findOne(@Param('id') id: string) {

@@ -200,6 +200,16 @@ export class PaymentsService {
       if (payment.status === 'PAID') throw new BadRequestException('งวดนี้ชำระแล้ว');
       capturedDueDate = payment.dueDate;
 
+      // Auto-cancel any active partial-payment QR for this Payment so the
+      // customer can't double-pay through a stale QR they were sent earlier.
+      // (Webhook path marks PAID first then calls recordPayment, so the
+      // updateMany here is a no-op for that case — only cashier-initiated
+      // CASH/TRANSFER recording triggers the cancel.)
+      await tx.partialPaymentLink.updateMany({
+        where: { paymentId: payment.id, status: 'ACTIVE' },
+        data: { status: 'CANCELLED', cancelledAt: new Date() },
+      });
+
       // Real-time late fee: recalculate at payment time (cron may not have run yet)
       let lateFee = d(payment.lateFee);
       if (!payment.lateFeeWaived && payment.dueDate < new Date()) {

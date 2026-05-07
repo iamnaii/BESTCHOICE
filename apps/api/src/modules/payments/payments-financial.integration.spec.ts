@@ -78,6 +78,9 @@ describe('PaymentsService — Financial Integration', () => {
       installmentSchedule: {
         findUnique: jest.fn().mockResolvedValue(null),
       },
+      partialPaymentLink: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
     };
 
     const module: TestingModule = await Test.createTestingModule({

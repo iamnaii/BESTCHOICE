@@ -49,7 +49,7 @@ type DetectedCase = 'NORMAL' | 'OVERPAY' | 'UNDERPAY' | 'OVERPAY_ADVANCE' | 'PAR
 /** Legacy type kept for API compatibility — backend accepts all 7 values */
 type PaymentCase = 'NORMAL' | 'OVERPAY' | 'UNDERPAY' | 'PARTIAL' | 'EARLY_PAYOFF' | 'RESCHEDULE' | 'OVERPAY_ADVANCE';
 
-type WizardMethod = 'CASH' | 'TRANSFER' | 'QR' | 'PAYSOLUTIONS';
+type WizardMethod = 'CASH' | 'TRANSFER' | 'QR';
 
 interface JePreviewLine {
   accountCode: string;
@@ -286,9 +286,8 @@ function useSlipUpload() {
 
 const METHOD_OPTIONS: { id: WizardMethod; label: string; icon: React.ReactNode; desc: string }[] = [
   { id: 'CASH', label: 'เงินสด', icon: <Banknote className="size-4" />, desc: 'รับเงินสดโดยตรง' },
-  { id: 'TRANSFER', label: 'โอนธนาคาร', icon: <Building2 className="size-4" />, desc: 'QR / พร้อมเพย์ / โอน' },
-  { id: 'QR', label: 'QR', icon: <QrCode className="size-4" />, desc: 'QR Code / PromptPay' },
-  { id: 'PAYSOLUTIONS', label: 'PaySolutions', icon: <CreditCard className="size-4" />, desc: 'ผ่าน gateway' },
+  { id: 'TRANSFER', label: 'โอนธนาคาร', icon: <Building2 className="size-4" />, desc: 'ลูกค้าโอนเอง · กรอก ref + slip' },
+  { id: 'QR', label: 'ชำระผ่าน QR', icon: <QrCode className="size-4" />, desc: 'ส่ง QR ให้ลูกค้าใน LINE' },
 ];
 
 // ─── JE Preview panel (always visible) ────────────────────────────────────────
@@ -535,6 +534,42 @@ export function RecordPaymentWizard({
   });
   const coaNames = useMemo(() => new Map(coaData.map((r) => [r.code, r.name])), [coaData]);
 
+  // Method × account mapping (settings page → /settings/payment-methods).
+  // Filters which cash account codes are valid for the picked method, and
+  // identifies the default account to auto-select on method change.
+  interface PaymentMethodConfig {
+    id: string;
+    method: WizardMethod;
+    accountCode: string;
+    isDefault: boolean;
+    enabled: boolean;
+  }
+  const { data: methodConfigs = [] } = useQuery<PaymentMethodConfig[]>({
+    queryKey: ['payment-method-configs'],
+    queryFn: async () => (await api.get<PaymentMethodConfig[]>('/payment-method-configs')).data,
+    staleTime: 60_000,
+  });
+  const accountsForMethod = useMemo(
+    () =>
+      methodConfigs.filter((c) => c.method === method && c.enabled).map((c) => c.accountCode),
+    [methodConfigs, method],
+  );
+  const defaultAccountForMethod = useMemo(
+    () => methodConfigs.find((c) => c.method === method && c.enabled && c.isDefault)?.accountCode,
+    [methodConfigs, method],
+  );
+
+  // Auto-switch the cash account when the cashier changes method, OR when
+  // the configs load late and the current selection turns out not to be
+  // valid for the current method.
+  useEffect(() => {
+    if (methodConfigs.length === 0) return; // configs still loading
+    const currentValid = accountsForMethod.includes(depositAccountCode);
+    if (!currentValid && defaultAccountForMethod) {
+      setDepositAccountCode(defaultAccountForMethod);
+    }
+  }, [methodConfigs, method, accountsForMethod, defaultAccountForMethod, depositAccountCode]);
+
   // Current effective late fee
   const currentLateFee = useMemo(() => {
     const v = parseFloat(lateFeeStr);
@@ -597,9 +632,11 @@ export function RecordPaymentWizard({
 
   const preview: JePreview | undefined = previewData;
 
-  // Validation
-  const requiresRef = method !== 'CASH';
-  const requiresSlip = method === 'TRANSFER' || method === 'QR';
+  // QR mode: ref + slip auto-captured by webhook log, no manual input.
+  // Submit becomes "ส่ง QR ให้ลูกค้า" instead of "บันทึกการชำระ".
+  const isQrMode = method === 'QR';
+  const requiresRef = method === 'TRANSFER';
+  const requiresSlip = method === 'TRANSFER';
 
   const canSubmit = (): boolean => {
     // Allow zero-cash when advance fully covers the installment (detectCase returns NORMAL)
@@ -608,7 +645,16 @@ export function RecordPaymentWizard({
     if (detectedCase === 'OUT_OF_RANGE') return false;
     if (requiresRef && !referenceNumber.trim()) return false;
     if (requiresSlip && !slipUrl) return false;
-    if (!preview?.isBalanced) return false;
+    // QR mode skips the JE preview gate — the JE only posts when webhook
+    // fires and recordPayment runs server-side, where the preview will be
+    // recomputed against the actual paid amount.
+    if (!isQrMode && !preview?.isBalanced) return false;
+    return true;
+  };
+
+  const canSendQr = (): boolean => {
+    if (receivedNum <= 0) return false;
+    if (!depositAccountCode) return false;
     return true;
   };
 
@@ -619,7 +665,7 @@ export function RecordPaymentWizard({
       installmentNo: payment.installmentNo,
       amount: receivedNum,
       paymentMethod:
-        method === 'TRANSFER' || method === 'PAYSOLUTIONS'
+        method === 'TRANSFER'
           ? 'BANK_TRANSFER'
           : method === 'QR'
           ? 'QR_EWALLET'
@@ -641,6 +687,34 @@ export function RecordPaymentWizard({
     }
     actuallySubmit();
   };
+
+  // QR mode: send PromptPay QR via PaySolutions + Flex push to customer's
+  // LINE OA. Closes the dialog on success — webhook will record the payment
+  // when the customer scans + pays.
+  const sendQrMutation = useMutation({
+    mutationFn: async () => {
+      const { data } = await api.post<{
+        partialPaymentLinkId: string;
+        paymentUrl: string;
+        orderRef: string;
+        sentToLine: boolean;
+      }>(`/payments/${payment.id}/partial-qr`, { amount: receivedNum });
+      return data;
+    },
+    onSuccess: (data) => {
+      if (data.sentToLine) {
+        toast.success('ส่ง QR ให้ลูกค้าใน LINE แล้ว — จ่ายเสร็จระบบบันทึก auto');
+      } else {
+        toast.success('สร้าง QR แล้ว — ลูกค้ายังไม่ผูก LINE · ให้สแกนหน้าจอแทน');
+      }
+      onClose();
+    },
+    onError: (err: unknown) => {
+      const msg =
+        err instanceof Error ? err.message : 'ส่ง QR ไม่สำเร็จ — ลองอีกครั้ง';
+      toast.error(msg);
+    },
+  });
 
   const handleOpenChange = (isOpen: boolean) => {
     if (!isOpen) {
@@ -732,43 +806,13 @@ export function RecordPaymentWizard({
                 />
               </div>
 
-              {/* Cash account selector */}
-              <div>
-                <h3 className="text-sm font-semibold text-foreground mb-2 leading-snug">
-                  บัญชีรับเงิน <span className="text-destructive">*</span>
-                </h3>
-                <div className="grid grid-cols-3 gap-2">
-                  {CASH_ACCOUNT_CODES.map((code) => {
-                    const name = coaNames.get(code) ?? '';
-                    const isBank = code.startsWith('11-12');
-                    return (
-                      <button
-                        key={code}
-                        type="button"
-                        onClick={() => setDepositAccountCode(code)}
-                        className={cn(
-                          'flex flex-col items-start rounded-xl border-2 px-3 py-2.5 text-left text-sm transition-colors',
-                          depositAccountCode === code
-                            ? 'bg-primary border-primary text-primary-foreground'
-                            : 'bg-card border-border text-foreground hover:border-primary/40 hover:bg-accent',
-                        )}
-                      >
-                        <span className="font-mono text-xs leading-snug opacity-75">{code}</span>
-                        <span className="font-medium leading-snug text-xs mt-0.5 line-clamp-2">
-                          {name || (isBank ? 'ธนาคาร' : 'เงินสด')}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Method selector */}
+              {/* Method selector — comes first so the cash account list can
+                  filter to compatible accounts (set in /settings/payment-methods). */}
               <div>
                 <h3 className="text-sm font-semibold text-foreground mb-2 leading-snug">
                   ช่องทางรับชำระ <span className="text-destructive">*</span>
                 </h3>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   {METHOD_OPTIONS.map((m) => (
                     <button
                       key={m.id}
@@ -805,7 +849,63 @@ export function RecordPaymentWizard({
                 </div>
               </div>
 
-              {/* Reference number — shown for non-cash methods */}
+              {/* Cash account selector — filtered by method ↦ account mapping
+                  configured in /settings/payment-methods. Out-of-mapping codes
+                  appear disabled so cashier sees the constraint visually. */}
+              <div>
+                <h3 className="text-sm font-semibold text-foreground mb-2 leading-snug flex items-center gap-2">
+                  <span>บัญชีรับเงิน <span className="text-destructive">*</span></span>
+                  {accountsForMethod.length > 0 && (
+                    <span className="text-xs text-muted-foreground font-normal">
+                      เฉพาะที่ผูกกับ "{METHOD_OPTIONS.find((o) => o.id === method)?.label}"
+                    </span>
+                  )}
+                </h3>
+                <div className="grid grid-cols-3 gap-2">
+                  {CASH_ACCOUNT_CODES.map((code) => {
+                    const name = coaNames.get(code) ?? '';
+                    const isBank = code.startsWith('11-12');
+                    const allowed =
+                      accountsForMethod.length === 0 || accountsForMethod.includes(code);
+                    return (
+                      <button
+                        key={code}
+                        type="button"
+                        onClick={() => allowed && setDepositAccountCode(code)}
+                        disabled={!allowed}
+                        className={cn(
+                          'flex flex-col items-start rounded-xl border-2 px-3 py-2.5 text-left text-sm transition-colors',
+                          depositAccountCode === code
+                            ? 'bg-primary border-primary text-primary-foreground'
+                            : 'bg-card border-border text-foreground hover:border-primary/40 hover:bg-accent',
+                          !allowed && 'opacity-30 pointer-events-none',
+                        )}
+                      >
+                        <span className="font-mono text-xs leading-snug opacity-75">{code}</span>
+                        <span className="font-medium leading-snug text-xs mt-0.5 line-clamp-2">
+                          {name || (isBank ? 'ธนาคาร' : 'เงินสด')}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* QR mode info pane — replaces ref + slip inputs (webhook log
+                  is the audit trail, no manual evidence needed). */}
+              {isQrMode && (
+                <div className="rounded-lg border border-blue-500/30 bg-blue-500/5 px-3 py-3 flex items-start gap-2.5">
+                  <Info className="size-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                  <div className="text-xs text-foreground leading-relaxed">
+                    <strong className="block mb-1">ระบบจะส่ง QR ให้ลูกค้าทาง LINE OA</strong>
+                    <span className="text-muted-foreground">
+                      เลขอ้างอิง + หลักฐานบันทึกอัตโนมัติจาก PaySolutions webhook · QR หมดอายุ 24 ชม. · ลูกค้าจ่ายเสร็จระบบบันทึก payment ให้ทันที
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Reference number — TRANSFER only */}
               {requiresRef && (
                 <div>
                   <Label className="block text-sm font-medium text-foreground mb-1.5 leading-snug">
@@ -820,7 +920,8 @@ export function RecordPaymentWizard({
                 </div>
               )}
 
-              {/* Slip upload */}
+              {/* Slip upload — TRANSFER only (QR webhook captures evidence) */}
+              {!isQrMode && (
               <div>
                 <Label className="block text-sm font-medium text-foreground mb-1.5 leading-snug">
                   สลิป / หลักฐาน
@@ -878,6 +979,7 @@ export function RecordPaymentWizard({
                   </button>
                 )}
               </div>
+              )}
 
               {/* Memo — disclosure-style: smaller label + compact textarea */}
               <details className="group">
@@ -903,31 +1005,51 @@ export function RecordPaymentWizard({
           <JePreviewPanel preview={preview} isLoading={previewLoading} />
         </DialogBody>
 
-        {/* Footer — single submit */}
+        {/* Footer — single submit · QR mode swaps "บันทึกชำระ" for "ส่ง QR" */}
         <DialogFooter className="px-6 py-4 border-t border-border shrink-0 flex items-center justify-between">
-          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
-            ยกเลิก
+          <Button variant="outline" onClick={onClose} disabled={isSubmitting || sendQrMutation.isPending}>
+            {isQrMode ? 'ปิด' : 'ยกเลิก'}
           </Button>
-          <Button
-            onClick={handleSubmit}
-            disabled={isSubmitting || previewLoading || !canSubmit()}
-            title={
-              detectedCase === 'OUT_OF_RANGE'
-                ? 'ห่างเกิน 1 ฿ — ใช้เมนูแบ่งชำระหรือปิดยอดแทน'
-                : !preview?.isBalanced && isPreviewReady
-                ? 'รายการบัญชีไม่สมดุล'
-                : undefined
-            }
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2 className="size-4 animate-spin mr-2" />
-                กำลังบันทึก...
-              </>
-            ) : (
-              'บันทึกชำระ'
-            )}
-          </Button>
+          {isQrMode ? (
+            <Button
+              onClick={() => sendQrMutation.mutate()}
+              disabled={sendQrMutation.isPending || !canSendQr()}
+              className="gap-2"
+            >
+              {sendQrMutation.isPending ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  กำลังส่ง...
+                </>
+              ) : (
+                <>
+                  <QrCode className="size-4" />
+                  ส่ง QR ให้ลูกค้าสแกนจ่าย ฿{receivedNum.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                </>
+              )}
+            </Button>
+          ) : (
+            <Button
+              onClick={handleSubmit}
+              disabled={isSubmitting || previewLoading || !canSubmit()}
+              title={
+                detectedCase === 'OUT_OF_RANGE'
+                  ? 'ห่างเกิน 1 ฿ — ใช้เมนูแบ่งชำระหรือปิดยอดแทน'
+                  : !preview?.isBalanced && isPreviewReady
+                  ? 'รายการบัญชีไม่สมดุล'
+                  : undefined
+              }
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="size-4 animate-spin mr-2" />
+                  กำลังบันทึก...
+                </>
+              ) : (
+                'บันทึกชำระ'
+              )}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
 

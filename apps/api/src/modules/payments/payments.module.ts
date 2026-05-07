@@ -7,9 +7,18 @@ import { ProductsModule } from '../products/products.module';
 import { LineOaModule } from '../line-oa/line-oa.module';
 import { MdmModule } from '../mdm/mdm.module';
 import { OverdueModule } from '../overdue/overdue.module';
+import { PaySolutionsModule } from '../paysolutions/paysolutions.module';
 
 @Module({
-  imports: [ReceiptsModule, JournalModule, ProductsModule, LineOaModule, MdmModule, forwardRef(() => OverdueModule)],
+  imports: [
+    ReceiptsModule,
+    JournalModule,
+    ProductsModule,
+    LineOaModule,
+    MdmModule,
+    forwardRef(() => OverdueModule),
+    forwardRef(() => PaySolutionsModule),
+  ],
   controllers: [PaymentsController],
   providers: [PaymentsService],
   exports: [PaymentsService],

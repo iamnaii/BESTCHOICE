@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ForbiddenException } from '@nestjs/common';
 import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
+import { PaySolutionsService } from '../paysolutions/paysolutions.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UserThrottlerGuard } from '../../guards/user-throttler.guard';
 import { RecordPaymentDto, BulkRecordPaymentDto } from './dto/payment.dto';
@@ -41,6 +42,7 @@ describe('PaymentsController', () => {
       providers: [
         { provide: PaymentsService, useValue: mockPaymentsService },
         { provide: PrismaService, useValue: mockPrisma },
+        { provide: PaySolutionsService, useValue: { createPartialPaymentQR: jest.fn() } },
       ],
     })
       .overrideGuard(UserThrottlerGuard)

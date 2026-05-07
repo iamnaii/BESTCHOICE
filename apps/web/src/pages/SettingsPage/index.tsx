@@ -139,6 +139,20 @@ export default function SettingsPage() {
 
         {/* Collections — Phase 2 tuning knobs (auto-assign + pool + session) */}
         <CollectionsConfigCard />
+
+        {/* Payment method × cash account mapping — settings page link */}
+        <a
+          href="/settings/payment-methods"
+          className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card p-4 hover:bg-accent transition-colors"
+        >
+          <div>
+            <div className="text-base font-semibold leading-snug">ช่องทางรับชำระ × บัญชี</div>
+            <div className="text-sm text-muted-foreground leading-snug mt-0.5">
+              ตั้งค่าว่าช่องทาง CASH / TRANSFER / QR ใช้บัญชีไหนได้บ้าง · เลือก default ของแต่ละช่องทาง
+            </div>
+          </div>
+          <span className="text-sm text-muted-foreground">→</span>
+        </a>
       </div>
       </QueryBoundary>
     </div>

@@ -825,6 +825,9 @@ model Customer {
   // Other Income module
   otherIncomes OtherIncome[] @relation("CustomerOtherIncome")
 
+  // Cashier-initiated partial-payment QR sent to this customer
+  partialPaymentLinks PartialPaymentLink[]
+
   @@index([phone])
   @@index([name])
   @@index([createdAt])
@@ -949,6 +952,7 @@ model Contract {
   pdpaConsent              PDPAConsent?                  @relation(fields: [pdpaConsentId], references: [id])
   receipts                 Receipt[]
   paymentLinks             PaymentLink[]
+  partialPaymentLinks      PartialPaymentLink[]
   paymentEvidences         PaymentEvidence[]
   kycVerifications         KycVerification[]
   loyaltyPoints            LoyaltyPoint[]
@@ -1107,15 +1111,16 @@ model Payment {
   // a contract while it still has payments. Use soft-delete on the contract
   // instead. Cascade was the original default but it would erase audit
   // trail in one accidental hard-delete (see ultraplan v3 audit).
-  contract         Contract          @relation(fields: [contractId], references: [id], onDelete: Restrict)
-  recordedBy       User?             @relation("RecordedBy", fields: [recordedById], references: [id])
-  waivedBy         User?             @relation("PaymentWaivedBy", fields: [waivedById], references: [id])
-  waivedApprovedBy User?             @relation("PaymentWaivedApprovedBy", fields: [waivedApprovedById], references: [id])
-  paymentLinks     PaymentLink[]
-  paymentEvidences PaymentEvidence[]
-  loyaltyPoint     LoyaltyPoint?
-  dunningActions   DunningAction[]
-  refunds          Refund[]
+  contract            Contract             @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  recordedBy          User?                @relation("RecordedBy", fields: [recordedById], references: [id])
+  waivedBy            User?                @relation("PaymentWaivedBy", fields: [waivedById], references: [id])
+  waivedApprovedBy    User?                @relation("PaymentWaivedApprovedBy", fields: [waivedApprovedById], references: [id])
+  paymentLinks        PaymentLink[]
+  partialPaymentLinks PartialPaymentLink[]
+  paymentEvidences    PaymentEvidence[]
+  loyaltyPoint        LoyaltyPoint?
+  dunningActions      DunningAction[]
+  refunds             Refund[]
 
   @@unique([contractId, installmentNo])
   @@index([contractId])
@@ -5697,4 +5702,65 @@ model OtherIncomeAttachment {
 
   @@index([otherIncomeId])
   @@map("other_income_attachments")
+}
+
+/// Maps each payment method (CASH/TRANSFER/QR) to one or more Chart-of-Accounts
+/// codes. The cashier wizard reads this to filter the cash-account selector
+/// based on the picked method, and to auto-pre-select the default account.
+/// Edited via the OWNER+FINANCE_MANAGER settings page at /settings/payment-methods.
+model PaymentMethodConfig {
+  id          String  @id @default(uuid())
+  /// 'CASH' | 'TRANSFER' | 'QR' (string-typed; PaymentMethod prisma enum has more
+  /// historical values like PAYSOLUTIONS that we don't surface in the new wizard).
+  method      String
+  accountCode String  @map("account_code")
+  isDefault   Boolean @default(false) @map("is_default")
+  enabled     Boolean @default(true)
+  sortOrder   Int     @default(0) @map("sort_order")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@unique([method, accountCode])
+  @@index([method, enabled])
+  @@map("payment_method_configs")
+}
+
+/// Cashier-initiated partial-payment QR. Cashier opens RecordPaymentWizard,
+/// types an amount < installment, picks method=QR, clicks "ส่ง QR" — backend
+/// creates a PaySolutions QR + sends a STYLE_D info Flex to the customer's LINE OA,
+/// then logs this row.
+///
+/// Lifecycle: ACTIVE → PAID (PaySolutions webhook) | EXPIRED (cron after 24h)
+/// | CANCELLED (auto-cancel hook in PaymentService.create when cashier records
+/// the same Payment via another method, prevents double-pay).
+model PartialPaymentLink {
+  id         String  @id @default(uuid())
+  paymentId  String  @map("payment_id")
+  contractId String  @map("contract_id")
+  customerId String  @map("customer_id")
+  token      String  @unique
+  amount     Decimal @db.Decimal(12, 2)
+  gatewayRef String? @map("gateway_ref")
+  paymentUrl String? @map("payment_url")
+
+  /// 'ACTIVE' | 'PAID' | 'EXPIRED' | 'CANCELLED'
+  status String @default("ACTIVE")
+
+  expiresAt   DateTime  @map("expires_at")
+  paidAt      DateTime? @map("paid_at")
+  cancelledAt DateTime? @map("cancelled_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  payment  Payment  @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+
+  @@index([paymentId])
+  @@index([contractId])
+  @@index([status, expiresAt])
+  @@map("partial_payment_links")
 }

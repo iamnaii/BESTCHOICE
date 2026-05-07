@@ -8,6 +8,7 @@ import { formatDateShort } from '@/utils/formatters';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import type { PendingPayment } from '../types';
 import { getStatusBadgeProps, paymentStatusMap } from '@/lib/status-badges';
+import { QrSentBadge } from './QrSentBadge';
 
 interface PaymentTableProps {
   pendingPayments: PendingPayment[];
@@ -90,16 +91,25 @@ export default function PaymentTable({
       key: 'status',
       label: 'สถานะ',
       render: (p: PendingPayment) => {
+        let mainBadge: React.ReactNode;
         if (p.status === 'PARTIALLY_PAID') {
           const owed = (parseFloat(p.amountDue) + parseFloat(p.lateFee)) - parseFloat(p.amountPaid);
-          return (
+          mainBadge = (
             <Badge variant="warning" appearance="default" size="md">
               ค้าง {owed.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿
             </Badge>
           );
+        } else {
+          const cfg = getStatusBadgeProps(p.status, paymentStatusMap);
+          mainBadge = <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>;
         }
-        const cfg = getStatusBadgeProps(p.status, paymentStatusMap);
-        return <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>;
+        return (
+          <div>
+            {mainBadge}
+            {/* Active partial-payment QR (cashier sent QR earlier, awaiting customer scan) */}
+            {p.status !== 'PAID' && <QrSentBadge paymentId={p.id} />}
+          </div>
+        );
       },
     },
     { key: 'branch', label: 'สาขา', render: (p: PendingPayment) => <span className="text-xs">{p.contract.branch.name}</span> },

@@ -467,8 +467,9 @@ describe('OtherIncomeService — post + reverse + copy', () => {
   // Test 5: dailySheet() — aggregates POSTED docs for a date
   // ----------------------------------------------------------------
   it('dailySheet(): aggregates POSTED docs for a given date', async () => {
-    // Use a distinct date to avoid pollution from other tests
-    const testDate = '2026-05-07';
+    // Use a far-future distinct date to avoid pollution from other tests
+    // and prevent collision with "today" when CI happens to run on the hardcoded date
+    const testDate = '2099-12-31';
 
     // Create and post a doc on that date
     const draft = await service.create(

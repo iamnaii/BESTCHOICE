@@ -110,8 +110,7 @@ export default function StickerPrintPage() {
         .map((id) => ({ productId: id, qty: 1 }));
       setItems(initial);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [idsFromUrl]);
 
   const productIdsKey = useMemo(() => items.map((i) => i.productId).sort().join(','), [items]);
 

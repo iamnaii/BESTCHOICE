@@ -2,7 +2,8 @@ import DataTable, { Column } from '@/components/ui/DataTable';
 import { statusLabels, categoryLabels } from '@/lib/constants';
 import { StockProduct } from '../types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Package, Search, X } from 'lucide-react';
+import { Package, Printer, Search, X } from 'lucide-react';
+import { useNavigate } from 'react-router';
 
 export interface StockListTabProps {
   search: string;
@@ -39,6 +40,7 @@ export function StockListTab({
   page,
   setPage,
 }: StockListTabProps) {
+  const navigate = useNavigate();
   return (
     <>
       {/* Filters */}
@@ -134,6 +136,17 @@ export function StockListTab({
             emptyIcon={search ? Search : Package}
             emptyDescription={search || filterStatus || filterCategory || filterBranch ? 'ลองล้างตัวกรองหรือค้นหาด้วยคำอื่น' : undefined}
             columnToggle
+            selectable
+            bulkActions={[
+              {
+                label: 'พิมพ์สติกเกอร์',
+                icon: <Printer className="size-4" />,
+                onAction: (selected: StockProduct[]) => {
+                  const ids = selected.map((p) => p.id).join(',');
+                  navigate(`/stickers?productIds=${encodeURIComponent(ids)}`);
+                },
+              },
+            ]}
             pagination={listResult ? {
               page: listResult.page,
               totalPages: listResult.totalPages,

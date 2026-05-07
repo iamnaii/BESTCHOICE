@@ -1,18 +1,13 @@
 import { formatDateShort } from '../../../utils/thai-date.util';
+import { FlexMessagePayload, formatBaht } from './base-template';
 import {
-  FlexMessagePayload,
-  FlexBubble,
-  FlexComponent,
-  COLORS,
-  formatBaht,
-} from './base-template';
-import {
-  STYLE_C,
-  createStyleCHeader,
-  createInfoCard,
-  createStyleCButtons,
-} from './style-c';
-import { ICONS } from './icons';
+  buildPremiumBubble,
+  createHeroAmount,
+  createRow,
+  createRowsBlock,
+  createButton,
+  type Role,
+} from './style-d';
 
 export interface ReceiptData {
   receiptNumber: string;
@@ -29,11 +24,11 @@ export interface ReceiptData {
   verifyUrl: string;
 }
 
-const typeLabels: Record<string, { text: string; emoji: string }> = {
-  PAYMENT: { text: 'ใบเสร็จรับเงิน', emoji: '🧾' },
-  DOWN_PAYMENT: { text: 'ใบเสร็จเงินดาวน์', emoji: '💰' },
-  EARLY_PAYOFF: { text: 'ใบเสร็จปิดยอด', emoji: '⚡' },
-  CREDIT_NOTE: { text: 'ใบลดหนี้', emoji: '📋' },
+const typeLabels: Record<string, string> = {
+  PAYMENT: 'ใบเสร็จรับเงิน',
+  DOWN_PAYMENT: 'ใบเสร็จเงินดาวน์',
+  EARLY_PAYOFF: 'ใบเสร็จปิดยอด',
+  CREDIT_NOTE: 'ใบลดหนี้',
 };
 
 const methodLabels: Record<string, string> = {
@@ -44,251 +39,52 @@ const methodLabels: Record<string, string> = {
 };
 
 export function buildReceiptMessage(data: ReceiptData): FlexMessagePayload {
-  const typeInfo = typeLabels[data.receiptType] || { text: 'ใบเสร็จ', emoji: '🧾' };
   const isCreditNote = data.receiptType === 'CREDIT_NOTE';
-  const gradient = isCreditNote ? STYLE_C.GRADIENT.ORANGE : STYLE_C.GRADIENT.GREEN;
-  const amountColor = isCreditNote ? COLORS.WARNING : STYLE_C.BUTTON.GREEN;
-  const cardBg = isCreditNote ? STYLE_C.INFO_CARD_BG.WARNING : STYLE_C.INFO_CARD_BG.SUCCESS;
+  const isPayoff = data.receiptType === 'EARLY_PAYOFF';
+  const role: Role = isCreditNote ? 'warn' : isPayoff ? 'payoff' : 'success';
+  const tag = isCreditNote ? 'Credit Note' : isPayoff ? 'Payoff Receipt' : 'Receipt';
+  const headlineLabel = typeLabels[data.receiptType] || 'ใบเสร็จ';
 
-  const bodyContents: FlexComponent[] = [
-    // Receipt number header
-    {
-      type: 'box',
-      layout: 'horizontal',
-      contents: [
-        {
-          type: 'text',
-          text: 'เลขใบเสร็จ',
-          size: 'xs',
-          color: STYLE_C.TEXT.SECONDARY,
-          flex: 1,
-        },
-        {
-          type: 'text',
-          text: data.receiptNumber,
-          size: 'xs',
-          color: STYLE_C.BUTTON.GREEN,
-          weight: 'bold',
-          align: 'end',
-          flex: 0,
-        },
-      ],
-      justifyContent: 'space-between',
-    },
-    // Product & Contract
-    ...(data.productName
-      ? [
-          {
-            type: 'box' as const,
-            layout: 'horizontal' as const,
-            contents: [
-              {
-                type: 'text' as const,
-                text: 'สินค้า',
-                size: 'xs',
-                color: STYLE_C.TEXT.SECONDARY,
-                flex: 1,
-              },
-              {
-                type: 'text' as const,
-                text: data.productName,
-                size: 'xs',
-                color: STYLE_C.TEXT.PRIMARY,
-                weight: 'bold' as const,
-                align: 'end' as const,
-                flex: 2,
-                wrap: true,
-              },
-            ],
-            justifyContent: 'space-between' as const,
-            margin: 'sm' as const,
-          },
-        ]
-      : []),
-    ...(data.contractNumber
-      ? [
-          {
-            type: 'box' as const,
-            layout: 'horizontal' as const,
-            contents: [
-              {
-                type: 'text' as const,
-                text: 'เลขสัญญา',
-                size: 'xs',
-                color: STYLE_C.TEXT.SECONDARY,
-                flex: 1,
-              },
-              {
-                type: 'text' as const,
-                text: data.contractNumber,
-                size: 'xs',
-                color: STYLE_C.TEXT.PRIMARY,
-                weight: 'bold' as const,
-                align: 'end' as const,
-                flex: 0,
-              },
-            ],
-            justifyContent: 'space-between' as const,
-            margin: 'sm' as const,
-          },
-        ]
-      : []),
-    // Separator
-    { type: 'separator', margin: 'md', color: '#e2e8f0' },
-    // Payer + date + method + installment
-    {
-      type: 'box',
-      layout: 'horizontal',
-      contents: [
-        { type: 'text', text: 'ผู้ชำระ', size: 'xs', color: STYLE_C.TEXT.SECONDARY, flex: 1 },
-        {
-          type: 'text',
-          text: data.payerName,
-          size: 'xs',
-          color: STYLE_C.TEXT.PRIMARY,
-          weight: 'bold',
-          align: 'end',
-          flex: 2,
-          wrap: true,
-        },
-      ],
-      justifyContent: 'space-between',
-      margin: 'sm',
-    },
-    {
-      type: 'box',
-      layout: 'horizontal',
-      contents: [
-        { type: 'text', text: 'วันที่', size: 'xs', color: STYLE_C.TEXT.SECONDARY, flex: 1 },
-        {
-          type: 'text',
-          text: formatDateShort(data.paidDate),
-          size: 'xs',
-          color: STYLE_C.TEXT.PRIMARY,
-          weight: 'bold',
-          align: 'end',
-          flex: 0,
-        },
-      ],
-      justifyContent: 'space-between',
-      margin: 'sm',
-    },
-    ...(data.paymentMethod
-      ? [
-          {
-            type: 'box' as const,
-            layout: 'horizontal' as const,
-            contents: [
-              {
-                type: 'text' as const,
-                text: 'วิธีชำระ',
-                size: 'xs',
-                color: STYLE_C.TEXT.SECONDARY,
-                flex: 1,
-              },
-              {
-                type: 'text' as const,
-                text: methodLabels[data.paymentMethod] || data.paymentMethod,
-                size: 'xs',
-                color: STYLE_C.TEXT.PRIMARY,
-                weight: 'bold' as const,
-                align: 'end' as const,
-                flex: 0,
-              },
-            ],
-            justifyContent: 'space-between' as const,
-            margin: 'sm' as const,
-          },
-        ]
-      : []),
-    ...(data.installmentNo
-      ? [
-          {
-            type: 'box' as const,
-            layout: 'horizontal' as const,
-            contents: [
-              {
-                type: 'text' as const,
-                text: 'งวดที่',
-                size: 'xs',
-                color: STYLE_C.TEXT.SECONDARY,
-                flex: 1,
-              },
-              {
-                type: 'text' as const,
-                text: data.installmentNo.toString(),
-                size: 'xs',
-                color: STYLE_C.TEXT.PRIMARY,
-                weight: 'bold' as const,
-                align: 'end' as const,
-                flex: 0,
-              },
-            ],
-            justifyContent: 'space-between' as const,
-            margin: 'sm' as const,
-          },
-        ]
-      : []),
-    // Amount info card
-    createInfoCard(
-      'จำนวนเงินที่ชำระ',
-      '',
-      formatBaht(data.amount),
-      amountColor,
-      undefined,
-      undefined,
-      cardBg,
-    ),
-    // Remaining balance
-    ...(data.remainingBalance != null && data.remainingBalance > 0
-      ? [
-          createInfoCard(
-            'ยอดคงเหลือ',
-            data.remainingMonths != null ? `เหลืออีก ${data.remainingMonths} งวด` : '',
-            formatBaht(data.remainingBalance),
-            COLORS.WARNING,
-            undefined,
-            undefined,
-            STYLE_C.INFO_CARD_BG.WARNING,
-          ),
-        ]
-      : []),
+  const rows = [createRow('เลขใบเสร็จ', data.receiptNumber)];
+  if (data.productName) rows.push(createRow('สินค้า', data.productName));
+  if (data.contractNumber) rows.push(createRow('สัญญา', data.contractNumber));
+  rows.push(createRow('ผู้ชำระ', data.payerName));
+  rows.push(createRow('วันที่', formatDateShort(data.paidDate)));
+  if (data.paymentMethod) rows.push(createRow('วิธีชำระ', methodLabels[data.paymentMethod] || data.paymentMethod));
+  if (data.installmentNo) rows.push(createRow('งวดที่', data.installmentNo.toString()));
+
+  const body = [
+    createHeroAmount(role, formatBaht(data.amount), {
+      cap: 'จำนวนที่ชำระ',
+    }),
+    createRowsBlock(rows),
   ];
 
-  const bubble: FlexBubble = {
-    type: 'bubble',
-    size: 'mega',
-    header: createStyleCHeader(
-      ICONS.RECEIPT,
-      typeInfo.text,
-      'BESTCHOICE',
-      gradient,
-      { text: 'สำเร็จ', bg: STYLE_C.BADGE.SUCCESS.bg, textColor: STYLE_C.BADGE.SUCCESS.text },
-    ),
-    body: {
-      type: 'box',
-      layout: 'vertical',
-      contents: bodyContents,
-      paddingAll: '20px',
-      spacing: 'sm',
+  if (data.remainingBalance != null && data.remainingBalance > 0) {
+    body.push(
+      createRowsBlock([
+        createRow('ยอดคงเหลือ', formatBaht(data.remainingBalance), { valueColor: '#b45309' }),
+        ...(data.remainingMonths != null ? [createRow('งวดคงเหลือ', `${data.remainingMonths} งวด`)] : []),
+      ]),
+    );
+  }
+
+  const bubble = buildPremiumBubble({
+    role,
+    tag,
+    section: {
+      label: headlineLabel,
+      headline: data.receiptNumber,
     },
-    footer: {
-      type: 'box',
-      layout: 'vertical',
-      contents: [
-        createStyleCButtons(
-          'ตรวจสอบใบเสร็จ',
-          { type: 'uri', label: 'ตรวจสอบใบเสร็จ', uri: data.verifyUrl },
-          STYLE_C.BUTTON.GREEN,
-        ),
-      ],
-      paddingAll: '12px',
-    },
-  };
+    body,
+    buttons: [
+      createButton('ตรวจสอบใบเสร็จ', { type: 'uri', label: 'ตรวจสอบใบเสร็จ', uri: data.verifyUrl }, role),
+    ],
+  });
 
   return {
     type: 'flex',
-    altText: `${typeInfo.text} #${data.receiptNumber}`,
+    altText: `${headlineLabel} #${data.receiptNumber}`,
     contents: bubble,
   };
 }

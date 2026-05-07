@@ -58,6 +58,16 @@ export function formatThaiDate(input: DateInput): string {
 }
 
 /**
+ * DD/MM/YYYY (ค.ศ.) — e.g. "08/04/2026"
+ * Use when output must be Gregorian, not Buddhist (e.g. on print stickers).
+ */
+export function formatGregorianDate(input: DateInput): string {
+  const d = toDate(input);
+  if (!d) return '-';
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
+}
+
+/**
  * D MMMM YYYY (พ.ศ.) — e.g. "8 เมษายน 2569"
  */
 export function formatThaiDateLong(input: DateInput): string {

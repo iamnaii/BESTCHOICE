@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { StickersService } from './stickers.service';
 import { CreateStickerTemplateDto, UpdateStickerTemplateDto } from './dto/sticker.dto';
@@ -29,6 +29,17 @@ export class StickersController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
   getStickerData(@Param('productId') productId: string) {
     return this.stickersService.getStickerData(productId);
+  }
+
+  @Get('products/data')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
+  getStickerDataBatch(@Query('ids') ids?: string) {
+    if (!ids) return [];
+    const productIds = ids.split(',').map((s) => s.trim()).filter(Boolean);
+    if (productIds.length > 100) {
+      throw new BadRequestException('จำนวนสินค้าต้องไม่เกิน 100 รายการต่อครั้ง');
+    }
+    return this.stickersService.getStickerDataBatch(productIds);
   }
 
   @Get(':id')

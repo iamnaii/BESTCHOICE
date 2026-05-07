@@ -9,6 +9,7 @@ import SystemSettings from './components/SystemSettings';
 import CompanySettings from './components/CompanySettings';
 import GeneralSettings from './components/GeneralSettings';
 import CollectionsConfigCard from './components/CollectionsConfigCard';
+import StickerSettings from './components/StickerSettings';
 import type { ConfigItem } from './components/shared';
 
 export default function SettingsPage() {
@@ -118,6 +119,16 @@ export default function SettingsPage() {
         {/* banking + payment_link */}
         <GeneralSettings
           slot="post"
+          values={values}
+          editingSection={editingSection}
+          onEdit={handleEdit}
+          onSave={handleSave}
+          onCancel={handleCancel}
+          isSaving={saveMutation.isPending}
+        />
+
+        {/* Sticker defaults — OWNER only */}
+        <StickerSettings
           values={values}
           editingSection={editingSection}
           onEdit={handleEdit}

@@ -37,9 +37,9 @@ describe('buildContractSignedFlex', () => {
     const bubble = result.contents as FlexBubble;
 
     expect(bubble.footer).toBeDefined();
-    expect(bubble.footer!.contents).toHaveLength(1);
+    expect(bubble.footer!.contents.length).toBeGreaterThanOrEqual(1);
     expect(bubble.footer!.contents[0]).toMatchObject({
-      type: 'box',
+      type: 'button',
     });
   });
 
@@ -49,11 +49,10 @@ describe('buildContractSignedFlex', () => {
     expect(bubble.footer).toBeUndefined();
   });
 
-  it('should have header and body sections', () => {
+  it('should have body section with contents', () => {
     const result = buildContractSignedFlex(baseData);
     const bubble = result.contents as FlexBubble;
 
-    expect(bubble.header).toBeDefined();
     expect(bubble.body).toBeDefined();
     expect(bubble.body!.contents.length).toBeGreaterThan(0);
   });

@@ -1,6 +1,8 @@
-import { FlexMessagePayload, FlexComponent, COLORS } from './base-template';
-import { STYLE_C, createStyleCHeader } from './style-c';
-import { ICONS } from './icons';
+import { FlexMessagePayload } from './base-template';
+import {
+  buildPremiumBubble,
+  createButton,
+} from './style-d';
 
 export interface ContractOption {
   contractNumber: string;
@@ -13,52 +15,29 @@ export function buildContractSelector(
   contracts: ContractOption[],
   action: string,
 ): FlexMessagePayload {
-  const buttons: FlexComponent[] = contracts.map((c) => ({
-    type: 'button' as const,
-    action: {
-      type: 'postback' as const,
-      label: `${c.contractNumber} (${c.totalOutstanding.toLocaleString()} ฿)`,
-      data: `action=${action}&contract=${c.contractNumber}`,
+  const buttons = contracts.map((c) =>
+    createButton(
+      `${c.contractNumber} (${c.totalOutstanding.toLocaleString()} ฿)`,
+      { type: 'postback', label: c.contractNumber, data: `action=${action}&contract=${c.contractNumber}` },
+      c.status === 'OVERDUE' ? 'danger' : 'primary',
+    ),
+  );
+
+  const bubble = buildPremiumBubble({
+    role: 'brand',
+    tag: 'Select Contract',
+    section: {
+      label: 'เลือกสัญญา',
+      headline: `คุณ${customerName}`,
+      subtle: 'กรุณาเลือกสัญญาที่ต้องการ',
     },
-    style: 'primary' as const,
-    color: c.status === 'OVERDUE' ? COLORS.DANGER : STYLE_C.BUTTON.GREEN,
-    height: 'sm' as const,
-    margin: 'sm',
-  }));
+    body: [],
+    buttons,
+  });
 
   return {
     type: 'flex',
     altText: `เลือกสัญญา - ${customerName}`,
-    contents: {
-      type: 'bubble',
-      size: 'mega',
-      header: createStyleCHeader(
-        ICONS.FILE_TEXT,
-        'เลือกสัญญา',
-        `คุณ${customerName}`,
-        STYLE_C.GRADIENT.GREEN,
-      ),
-      body: {
-        type: 'box',
-        layout: 'vertical',
-        contents: [
-          {
-            type: 'text' as const,
-            text: 'กรุณาเลือกสัญญาที่ต้องการ',
-            size: 'sm',
-            color: STYLE_C.TEXT.SECONDARY,
-            margin: 'md',
-          },
-        ],
-        paddingAll: '20px',
-      },
-      footer: {
-        type: 'box',
-        layout: 'vertical',
-        contents: buttons,
-        spacing: 'sm',
-        paddingAll: '15px',
-      },
-    },
+    contents: bubble,
   };
 }

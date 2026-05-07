@@ -15,6 +15,7 @@ import { useStockFilters } from './hooks/useStockFilters';
 import QueryBoundary from '@/components/QueryBoundary';
 import { BranchSummaryCards } from './components/BranchSummaryCards';
 import { StockHeroKpi } from './components/StockHeroKpi';
+import { StockActionZone } from './components/StockActionZone';
 import { StockDashboardTab } from './components/StockDashboardTab';
 import { StockListTab } from './components/StockListTab';
 import { BulkTransferModal } from './components/BulkTransferModal';
@@ -255,9 +256,13 @@ export default function StockPage() {
     },
   ], [navigateToProduct, openPriceEdit, isManager, selectedIds, listProducts]);
 
-  const actionTotal = dashboard
-    ? dashboard.actionRequired.inspection + (dashboard.actionRequired.photoPending || 0) + dashboard.actionRequired.pendingTransfers + dashboard.actionRequired.repossessed + dashboard.actionRequired.agingOver90
-    : 0;
+  const handleActionZoneNav = useCallback(
+    (status?: string) => {
+      handleTabChange('list');
+      if (status) setFilterStatus(status);
+    },
+    [handleTabChange, setFilterStatus],
+  );
 
   return (
     <div>
@@ -265,28 +270,40 @@ export default function StockPage() {
         title="คลังสินค้า"
         subtitle="จัดการคลังสินค้าและดูภาพรวมสต๊อค"
         action={
-          isManager && activeTab === 'list' ? (
-            <div className="flex gap-2">
-              {selectedIds.size > 0 && (
-                <Button variant="outline" size="md" onClick={() => setShowBulkTransfer(true)}>
-                  <ArrowRightLeft className="size-4" />
-                  โอนสินค้า ({selectedIds.size})
-                </Button>
+          isManager ? (
+            <div className="flex gap-2 flex-wrap">
+              {activeTab === 'list' && selectedIds.size > 0 && (
+                <>
+                  <Button variant="outline" size="md" onClick={() => setShowBulkTransfer(true)}>
+                    <ArrowRightLeft className="size-4" />
+                    โอน ({selectedIds.size})
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="md"
+                    onClick={() =>
+                      navigate(
+                        `/stickers?productIds=${encodeURIComponent(Array.from(selectedIds).join(','))}`,
+                      )
+                    }
+                  >
+                    <Printer className="size-4" />
+                    พิมพ์ ({selectedIds.size})
+                  </Button>
+                </>
               )}
-              {selectedIds.size > 0 && (
-                <Button
-                  variant="outline"
-                  size="md"
-                  onClick={() => navigate(`/stickers?productIds=${encodeURIComponent(Array.from(selectedIds).join(','))}`)}
-                >
+              {activeTab !== 'list' && (
+                <Button variant="outline" size="md" onClick={() => navigate('/stickers')}>
                   <Printer className="size-4" />
-                  พิมพ์สติกเกอร์ ({selectedIds.size})
+                  พิมพ์สติกเกอร์
                 </Button>
               )}
-              <Button variant="outline" size="md" onClick={() => handleExport(listProducts)}>
-                <Download className="size-4" />
-                {selectedIds.size > 0 ? `ส่งออก (${selectedIds.size})` : 'ส่งออก CSV'}
-              </Button>
+              {activeTab === 'list' && (
+                <Button variant="outline" size="md" onClick={() => handleExport(listProducts)}>
+                  <Download className="size-4" />
+                  {selectedIds.size > 0 ? `ส่งออก (${selectedIds.size})` : 'ส่งออก CSV'}
+                </Button>
+              )}
               <Button variant="primary" size="md" onClick={() => navigate('/products/create')}>
                 <Plus className="size-4" />
                 เพิ่มสินค้า
@@ -303,6 +320,12 @@ export default function StockPage() {
         isManager={isManager}
       />
 
+      <StockActionZone
+        dashboard={dashboard}
+        warrantyExpiring={warrantyExpiring}
+        onNavigateToList={handleActionZoneNav}
+      />
+
       <BranchSummaryCards
         summary={summary}
         filterBranch={filterBranch}
@@ -310,22 +333,27 @@ export default function StockPage() {
       />
 
       {/* Tabs: Dashboard / List */}
-      <div className="flex gap-1 mb-6 bg-muted rounded-xl p-1 w-fit">
+      <div className="flex gap-1 mb-5 bg-muted rounded-lg p-1 w-fit">
         <button
           onClick={() => handleTabChange('dashboard')}
-          className={`px-4 py-2 text-sm rounded-lg font-medium transition-all ${
+          className={`px-4 py-1.5 text-[13px] rounded-md font-semibold transition-all ${
             activeTab === 'dashboard' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
           }`}
         >
-          Dashboard
+          ภาพรวม
         </button>
         <button
           onClick={() => handleTabChange('list')}
-          className={`px-4 py-2 text-sm rounded-lg font-medium transition-all ${
+          className={`px-4 py-1.5 text-[13px] rounded-md font-semibold transition-all ${
             activeTab === 'list' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
           }`}
         >
-          รายการสินค้า {listResult ? `(${listResult.total})` : ''}
+          รายการสินค้า
+          {listResult ? (
+            <span className="ml-1.5 font-mono tabular-nums text-muted-foreground/80">
+              ({listResult.total})
+            </span>
+          ) : ''}
         </button>
       </div>
 
@@ -333,8 +361,6 @@ export default function StockPage() {
         <StockDashboardTab
           dashboard={dashboard}
           isManager={isManager}
-          actionTotal={actionTotal}
-          warrantyExpiring={warrantyExpiring}
         />
       )}
 

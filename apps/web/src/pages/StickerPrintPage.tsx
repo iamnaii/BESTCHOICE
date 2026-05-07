@@ -1410,15 +1410,34 @@ export default function StickerPrintPage() {
         /* ─── Print rules ────────────────────────────────── */
         @media print {
           @page { size: 50mm 30mm; margin: 0; }
-          body { margin: 0; padding: 0; background: white; }
+
+          /* Hide everything (MainLayout sidebar/topbar/etc.) */
+          html, body { margin: 0; padding: 0; background: white; }
+          body * { visibility: hidden !important; }
+
+          /* Reveal only the stickers */
+          .print-stickers, .print-stickers * { visibility: visible !important; }
+          .print-stickers {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 50mm;
+          }
+
           .print\\:hidden { display: none !important; }
           .print\\:block { display: block !important; }
           .sticker {
             page-break-after: always;
+            page-break-inside: avoid;
+            break-after: page;
+            break-inside: avoid;
             border: 0 !important;
             margin: 0;
           }
-          .sticker:last-child { page-break-after: auto; }
+          .sticker:last-child {
+            page-break-after: auto;
+            break-after: auto;
+          }
         }
       `}</style>
     </div>

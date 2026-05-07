@@ -71,6 +71,10 @@ export class PricingTemplatesService {
           cashPrice: dto.cashPrice,
           installmentBestchoicePrice: dto.installmentBestchoicePrice,
           installmentFinancePrice: dto.installmentFinancePrice,
+          rate1DownPayment: dto.rate1DownPayment,
+          rate1TermMonths: dto.rate1TermMonths,
+          rate2DownPayment: dto.rate2DownPayment,
+          rate2TermMonths: dto.rate2TermMonths,
         },
       });
     } catch (e: unknown) {

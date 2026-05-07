@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, IsBoolean, IsEnum } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsBoolean, IsEnum, IsInt, Min } from 'class-validator';
 
 enum ProductCategory {
   PHONE_NEW = 'PHONE_NEW',
@@ -33,6 +33,24 @@ export class CreatePricingTemplateDto {
 
   @IsNumber()
   installmentFinancePrice: number;
+
+  @IsNumber()
+  @IsOptional()
+  rate1DownPayment?: number;
+
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  rate1TermMonths?: number;
+
+  @IsNumber()
+  @IsOptional()
+  rate2DownPayment?: number;
+
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  rate2TermMonths?: number;
 }
 
 export class UpdatePricingTemplateDto {
@@ -47,6 +65,24 @@ export class UpdatePricingTemplateDto {
   @IsNumber()
   @IsOptional()
   installmentFinancePrice?: number;
+
+  @IsNumber()
+  @IsOptional()
+  rate1DownPayment?: number;
+
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  rate1TermMonths?: number;
+
+  @IsNumber()
+  @IsOptional()
+  rate2DownPayment?: number;
+
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  rate2TermMonths?: number;
 
   @IsBoolean()
   @IsOptional()

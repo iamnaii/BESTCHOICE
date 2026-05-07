@@ -14,9 +14,11 @@ import {
   CircleAlert,
   Loader2,
   Trash2,
+  Tag,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { formatGregorianDate } from '@/lib/date';
+import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 
 /* ─── types ─────────────────────────────────────────── */
@@ -439,37 +441,29 @@ export default function StickerPrintPage() {
   return (
     <div>
       <div className="print:hidden">
-        {/* ─── HERO ────────────────────────────────────── */}
-        <header className="hero">
-          <div>
-            <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-primary mb-1">
-              <span className="inline-block size-1.5 rounded-full bg-primary mr-2 align-middle animate-pulse" />
-              thermal label · 50 × 30 mm
+        <PageHeader
+          icon={<Tag className="size-4" strokeWidth={1.75} />}
+          title="พิมพ์สติกเกอร์"
+          subtitle="เลือกหลายเครื่องจากสต็อกพร้อมขาย เพิ่มเข้าคิว แล้วสั่งพิมพ์ทีเดียว · thermal 50 × 30 mm"
+          action={
+            <div className="hidden sm:flex items-center gap-3 px-3.5 py-1.5 rounded-md border border-border bg-card text-[12px]">
+              <div className="flex items-baseline gap-1">
+                <span className="font-semibold tabular-nums">{totalItems}</span>
+                <span className="text-muted-foreground">รายการ</span>
+              </div>
+              <span className="text-border">·</span>
+              <div className="flex items-baseline gap-1">
+                <span className="font-semibold tabular-nums">{totalSheets}</span>
+                <span className="text-muted-foreground">ดวง</span>
+              </div>
+              <span className="text-border">·</span>
+              <div className="flex items-baseline gap-1">
+                <span className="font-semibold tabular-nums">{tapeCm.toFixed(0)}</span>
+                <span className="text-muted-foreground">ซม.เทป</span>
+              </div>
             </div>
-            <h1 className="text-[28px] sm:text-[32px] font-bold tracking-tight leading-none">
-              พิมพ์สติกเกอร์
-            </h1>
-            <p className="text-sm text-muted-foreground mt-1.5">
-              เลือกหลายเครื่องจากสต็อกพร้อมขาย เพิ่มเข้าคิว แล้วสั่งพิมพ์ทีเดียว
-            </p>
-          </div>
-          <div className="hero-stats">
-            <div>
-              <div className="hero-stat-num tabular-nums">{totalItems}</div>
-              <div className="hero-stat-label">รายการ</div>
-            </div>
-            <div className="hero-divider" />
-            <div>
-              <div className="hero-stat-num tabular-nums">{totalSheets}</div>
-              <div className="hero-stat-label">ดวง</div>
-            </div>
-            <div className="hero-divider" />
-            <div>
-              <div className="hero-stat-num tabular-nums">{tapeCm.toFixed(0)}</div>
-              <div className="hero-stat-label">ซม.เทป</div>
-            </div>
-          </div>
-        </header>
+          }
+        />
 
         {/* ─── MAIN GRID ────────────────────────────────── */}
         <div className="main-grid">
@@ -747,67 +741,6 @@ export default function StickerPrintPage() {
           padding: 1mm 1.5mm;
           font-family: 'IBM Plex Sans Thai', system-ui, sans-serif;
           box-sizing: border-box;
-        }
-
-        /* ─── Hero ──────────────────────────────────────── */
-        .hero {
-          display: flex;
-          align-items: flex-end;
-          justify-content: space-between;
-          gap: 1.5rem;
-          padding: 1.25rem 1.5rem;
-          margin-bottom: 1.25rem;
-          background: linear-gradient(
-            135deg,
-            hsl(var(--card)) 0%,
-            hsl(var(--card)) 60%,
-            hsl(var(--primary) / 0.06) 100%
-          );
-          border: 1px solid hsl(var(--border));
-          border-radius: 14px;
-          position: relative;
-          overflow: hidden;
-        }
-        .hero::before {
-          content: '';
-          position: absolute;
-          inset: 0;
-          background-image:
-            radial-gradient(circle at 1px 1px, hsl(var(--primary) / 0.06) 1px, transparent 0);
-          background-size: 22px 22px;
-          mask-image: linear-gradient(to right, transparent 30%, black 100%);
-          pointer-events: none;
-        }
-        .hero-stats {
-          display: flex;
-          align-items: center;
-          gap: 1rem;
-          padding: 0.75rem 1.25rem;
-          background: hsl(var(--background));
-          border: 1px solid hsl(var(--border));
-          border-radius: 10px;
-          z-index: 1;
-        }
-        .hero-stat-num {
-          font-size: 24px;
-          font-weight: 700;
-          line-height: 1;
-          color: hsl(var(--foreground));
-        }
-        .hero-stat-label {
-          font-size: 10px;
-          text-transform: uppercase;
-          letter-spacing: 0.16em;
-          color: hsl(var(--muted-foreground));
-          margin-top: 4px;
-        }
-        .hero-divider {
-          width: 1px;
-          height: 32px;
-          background: hsl(var(--border));
-        }
-        @media (max-width: 640px) {
-          .hero { flex-direction: column; align-items: flex-start; }
         }
 
         /* ─── Layout ────────────────────────────────────── */

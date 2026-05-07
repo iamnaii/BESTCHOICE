@@ -13,6 +13,7 @@ async function setup() {
   // Clean in FK-safe order
   await prisma.journalLine.deleteMany({});
   await prisma.journalEntry.deleteMany({});
+  await prisma.receipt.deleteMany({});
   await prisma.payment.deleteMany({});
   await prisma.installmentSchedule.deleteMany({});
   // Delete only test contracts (by contractNumber prefix) to avoid FK issues from other test data
@@ -100,6 +101,7 @@ describe('Vat60dayMandatoryTemplate', () => {
     // Seed a fresh contract with vatAmount=null to exercise the fallback path
     await prisma.journalLine.deleteMany({});
     await prisma.journalEntry.deleteMany({});
+    await prisma.receipt.deleteMany({});
     await prisma.payment.deleteMany({});
     await prisma.installmentSchedule.deleteMany({});
     await prisma.contract.deleteMany({ where: { contractNumber: { startsWith: 'TEST-' } } });

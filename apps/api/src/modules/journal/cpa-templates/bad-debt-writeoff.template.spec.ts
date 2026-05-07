@@ -13,6 +13,7 @@ const prisma = new PrismaClient();
 async function setup() {
   await prisma.journalLine.deleteMany({});
   await prisma.journalEntry.deleteMany({});
+  await prisma.receipt.deleteMany({});
   await prisma.payment.deleteMany({});
   await prisma.installmentSchedule.deleteMany({});
   await prisma.contract.deleteMany({});

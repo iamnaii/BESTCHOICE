@@ -16,6 +16,7 @@ describe('VendorClearanceTemplate', () => {
   beforeAll(async () => {
     await prisma.journalLine.deleteMany({});
     await prisma.journalEntry.deleteMany({});
+    await prisma.receipt.deleteMany({});
     await prisma.installmentSchedule.deleteMany({});
     await prisma.payment.deleteMany({});
     await prisma.contract.deleteMany({});

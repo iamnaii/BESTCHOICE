@@ -37,6 +37,7 @@ describe('Template 2A — Installment Accrual', () => {
   beforeAll(async () => {
     await prisma.journalLine.deleteMany({});
     await prisma.journalEntry.deleteMany({});
+    await prisma.receipt.deleteMany({});
     await prisma.installmentSchedule.deleteMany({});
     await prisma.contract.deleteMany({});
     await seedFinanceCoa(prisma);

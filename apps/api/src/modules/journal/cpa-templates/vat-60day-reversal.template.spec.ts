@@ -14,6 +14,7 @@ async function setup() {
   // Clean in FK-safe order
   await prisma.journalLine.deleteMany({});
   await prisma.journalEntry.deleteMany({});
+  await prisma.receipt.deleteMany({});
   await prisma.payment.deleteMany({});
   await prisma.installmentSchedule.deleteMany({});
   await prisma.contract.deleteMany({ where: { contractNumber: { startsWith: 'TEST-' } } });
@@ -112,6 +113,7 @@ describe('Vat60dayReversalTemplate', () => {
     // Use a fresh install where mandatory was NOT run
     await prisma.journalLine.deleteMany({});
     await prisma.journalEntry.deleteMany({});
+    await prisma.receipt.deleteMany({});
     await prisma.payment.deleteMany({});
     await prisma.installmentSchedule.deleteMany({});
     await prisma.contract.deleteMany({ where: { contractNumber: { startsWith: 'TEST-' } } });

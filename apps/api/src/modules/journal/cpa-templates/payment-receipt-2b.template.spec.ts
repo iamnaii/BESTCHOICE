@@ -20,6 +20,7 @@ async function setup() {
   // Clean slate for each test
   await prisma.journalLine.deleteMany({});
   await prisma.journalEntry.deleteMany({});
+  await prisma.receipt.deleteMany({});
   await prisma.payment.deleteMany({});
   await prisma.installmentSchedule.deleteMany({});
   await prisma.contract.deleteMany({});

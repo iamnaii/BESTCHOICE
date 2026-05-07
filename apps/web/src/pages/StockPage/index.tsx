@@ -7,7 +7,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/button';
 import { statusLabels, categoryLabels } from '@/lib/constants';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { ArrowRightLeft, Check, Copy, Download, Eye, Plus } from 'lucide-react';
+import { ArrowRightLeft, Check, Copy, Download, Eye, Plus, Printer } from 'lucide-react';
 import { StockProduct } from './types';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import { useStockData, useEditingProductSync } from './hooks/useStockData';
@@ -271,6 +271,16 @@ export default function StockPage() {
                 <Button variant="outline" size="md" onClick={() => setShowBulkTransfer(true)}>
                   <ArrowRightLeft className="size-4" />
                   โอนสินค้า ({selectedIds.size})
+                </Button>
+              )}
+              {selectedIds.size > 0 && (
+                <Button
+                  variant="outline"
+                  size="md"
+                  onClick={() => navigate(`/stickers?productIds=${encodeURIComponent(Array.from(selectedIds).join(','))}`)}
+                >
+                  <Printer className="size-4" />
+                  พิมพ์สติกเกอร์ ({selectedIds.size})
                 </Button>
               )}
               <Button variant="outline" size="md" onClick={() => handleExport(listProducts)}>

@@ -13,6 +13,7 @@ import {
   CreditCard,
   Building2,
   Info,
+  Lock,
 } from 'lucide-react';
 import {
   Dialog,
@@ -161,9 +162,10 @@ function ContractInfoPanel({
       <button
         type="button"
         onClick={onOpenPayoff}
-        className="mt-3 w-full text-xs text-primary hover:underline flex items-center justify-center gap-1 py-2 border-t border-border"
+        className="mt-3 w-full inline-flex items-center justify-center gap-2 px-3 py-2.5 text-sm font-semibold rounded-lg bg-warning/10 text-warning border border-warning/30 hover:bg-warning/20 transition-colors"
       >
-        ปิดยอดสัญญาทั้งหมด ›
+        <Lock className="size-4" />
+        ปิดยอดสัญญาทั้งหมด
       </button>
     </div>
   );
@@ -656,6 +658,7 @@ export function RecordPaymentWizard({
   const hasAmount = receivedNum > 0;
 
   return (
+    <>
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="w-full max-w-5xl max-h-[92vh] flex flex-col p-0 gap-0">
         {/* Header */}
@@ -675,7 +678,10 @@ export function RecordPaymentWizard({
               payment={payment}
               lateFee={currentLateFee}
               netExposure={netExposure}
-              onOpenPayoff={() => setShowPayoffOverlay(true)}
+              onOpenPayoff={() => {
+                setShowPayoffOverlay(true);
+                onClose(); // Close wizard so overlay's fixed-positioned div is on top
+              }}
             />
 
             {/* RIGHT: Form */}
@@ -938,7 +944,9 @@ export function RecordPaymentWizard({
         onConfirm={actuallySubmit}
       />
 
-      {/* Early-payoff shortcut from wizard */}
+    </Dialog>
+
+      {/* Early-payoff overlay — rendered as sibling of Dialog so its fixed-positioned div isn't trapped inside the wizard's portal */}
       {showPayoffOverlay && (
         <EarlyPayoffOverlay
           contractId={payment.contract.id}
@@ -948,10 +956,9 @@ export function RecordPaymentWizard({
           onClose={() => setShowPayoffOverlay(false)}
           onSuccess={() => {
             setShowPayoffOverlay(false);
-            onClose();
           }}
         />
       )}
-    </Dialog>
+    </>
   );
 }

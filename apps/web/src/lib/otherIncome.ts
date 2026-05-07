@@ -2,6 +2,7 @@ import api from './api';
 import type {
   AuditLogEntry,
   OtherIncome,
+  OtherIncomeAttachment,
   ListResponse,
   DailySheet,
   OtherIncomeStatus,
@@ -62,4 +63,17 @@ export const otherIncomeApi = {
 
   getAuditTrail: (id: string) =>
     api.get<AuditLogEntry[]>(`/other-income/${id}/audit`).then((r) => r.data),
+
+  uploadAttachment: (id: string, file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api
+      .post<OtherIncomeAttachment>(`/other-income/${id}/attachments`, formData)
+      .then((r) => r.data);
+  },
+
+  getAttachmentThreshold: () =>
+    api
+      .get<{ threshold: number }>('/other-income/config/attachment-threshold')
+      .then((r) => r.data.threshold),
 };

@@ -67,7 +67,7 @@ export default function OtherIncomeDailySheetPage() {
         Number(d.incomeGross).toFixed(2),
         Number(d.vatAmount).toFixed(2),
         Number(d.whtAmount).toFixed(2),
-        Number(d.amountReceived).toFixed(2),
+        Number(d.netReceived).toFixed(2),
         d.paymentAccountCode,
       ]);
     });
@@ -236,7 +236,7 @@ export default function OtherIncomeDailySheetPage() {
                             {Number(d.whtAmount).toFixed(2)}
                           </td>
                           <td className="px-2 py-2 text-right font-mono font-bold">
-                            {Number(d.amountReceived).toFixed(2)}
+                            {Number(d.netReceived).toFixed(2)}
                           </td>
                         </tr>
                       ))}

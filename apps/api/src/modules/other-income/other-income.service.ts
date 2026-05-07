@@ -5,7 +5,9 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { OtherIncomeStatus, Prisma } from '@prisma/client';
+import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
+import { StorageService } from '../storage/storage.service';
 import { DocNumberService } from './services/doc-number.service';
 import { ValidationService } from './services/validation.service';
 import { AutoJournalService } from './services/auto-journal.service';
@@ -29,6 +31,7 @@ export class OtherIncomeService {
     private readonly validation: ValidationService,
     private readonly autoJournal: AutoJournalService,
     private readonly template: OtherIncomeTemplate,
+    private readonly storage: StorageService,
   ) {}
 
   async create(dto: CreateOtherIncomeDto, userId: string) {
@@ -592,22 +595,64 @@ export class OtherIncomeService {
       byPaymentMap.set(doc.paymentAccountCode, prevPay.plus(doc.amountReceived.toString()));
     }
 
-    // Sort maps by account code
-    const byAccount = new Map(
-      [...byAccountMap.entries()].sort(([a], [b]) => a.localeCompare(b)),
-    );
-    const byPayment = new Map(
-      [...byPaymentMap.entries()].sort(([a], [b]) => a.localeCompare(b)),
-    );
+    // B1: convert Maps to sorted arrays (Maps serialize to {} via JSON.stringify)
+    // B3: include name + count per byAccount item
+    // B4: include count per byPayment item
+
+    // Gather account names from ChartOfAccount for B3
+    const allAccountCodes = [...byAccountMap.keys()];
+    const coaRows = allAccountCodes.length > 0
+      ? await this.prisma.chartOfAccount.findMany({
+          where: { code: { in: allAccountCodes } },
+          select: { code: true, name: true },
+        })
+      : [];
+    const nameByCode = Object.fromEntries(coaRows.map((r) => [r.code, r.name]));
+
+    // Count per account code (number of distinct docs contributing to each)
+    const byAccountCountMap = new Map<string, number>();
+    for (const doc of docs) {
+      const codesInDoc = new Set(doc.items.map((it) => it.accountCode));
+      for (const code of codesInDoc) {
+        byAccountCountMap.set(code, (byAccountCountMap.get(code) ?? 0) + 1);
+      }
+    }
+
+    // Count per payment account code (number of docs per payment channel)
+    const byPaymentCountMap = new Map<string, number>();
+    for (const doc of docs) {
+      byPaymentCountMap.set(
+        doc.paymentAccountCode,
+        (byPaymentCountMap.get(doc.paymentAccountCode) ?? 0) + 1,
+      );
+    }
+
+    const byAccount = [...byAccountMap.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([code, total]) => ({
+        code,
+        name: nameByCode[code] ?? code,
+        total: total.toFixed(2),
+        count: byAccountCountMap.get(code) ?? 0,
+      }));
+
+    const byPayment = [...byPaymentMap.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([code, total]) => ({
+        code,
+        total: total.toFixed(2),
+        count: byPaymentCountMap.get(code) ?? 0,
+      }));
 
     return {
       date,
       summary: {
         docCount: docs.length,
-        incomeGross,
-        vatAmount: vat,
-        whtAmount: wht,
-        netReceived: net,
+        incomeGross: incomeGross.toFixed(2),
+        // B2: rename to vat/wht to match frontend DailySheet type
+        vat: vat.toFixed(2),
+        wht: wht.toFixed(2),
+        netReceived: net.toFixed(2),
       },
       docs,
       byAccount,
@@ -682,6 +727,41 @@ export class OtherIncomeService {
     });
   }
 
+  // -------------------------------------------------------------------------
+  // uploadAttachment(): store file in S3/GCS + create OtherIncomeAttachment row
+  // -------------------------------------------------------------------------
+
+  async uploadAttachment(id: string, file: Express.Multer.File, userId: string) {
+    const doc = await this.findOneOrFail(id);
+
+    if (doc.status === OtherIncomeStatus.REVERSED) {
+      throw new BadRequestException('ไม่สามารถแนบไฟล์เอกสารที่ถูกกลับรายการ');
+    }
+
+    const decodedName = Buffer.from(file.originalname, 'latin1').toString('utf8');
+    // eslint-disable-next-line no-control-regex
+    const safeName = decodedName.replace(/[<>:"/\\|?* -\s]/g, '_');
+    const key = `other-income/${id}/${Date.now()}-${randomUUID()}-${safeName}`;
+
+    await this.storage.upload(key, file.buffer, file.mimetype);
+
+    try {
+      return await this.prisma.otherIncomeAttachment.create({
+        data: {
+          otherIncomeId: id,
+          s3Key: key,
+          filename: decodedName,
+          size: file.size,
+          mimeType: file.mimetype,
+          uploadedById: userId,
+        },
+      });
+    } catch (err) {
+      await this.storage.delete(key).catch(() => undefined);
+      throw err;
+    }
+  }
+
   // findOneOrFail()
   // -------------------------------------------------------------------------
 
@@ -717,7 +797,7 @@ export class OtherIncomeService {
   }
 
   /** Read OTHER_INCOME_ATTACHMENT_THRESHOLD from SystemConfig. Falls back to 50_000. */
-  private async getAttachmentThreshold(): Promise<number> {
+  async getAttachmentThreshold(): Promise<number> {
     try {
       const row = await this.prisma.systemConfig.findUnique({
         where: { key: 'OTHER_INCOME_ATTACHMENT_THRESHOLD' },

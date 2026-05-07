@@ -9,8 +9,14 @@ import {
   Post,
   Query,
   Request,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
+  ParseFilePipe,
+  MaxFileSizeValidator,
+  FileTypeValidator,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -34,6 +40,11 @@ export class OtherIncomeController {
   @Get('daily-sheet')
   dailySheet(@Query() q: DailySheetQueryDto) {
     return this.service.dailySheet(q.date);
+  }
+
+  @Get('config/attachment-threshold')
+  async attachmentThreshold() {
+    return { threshold: await this.service.getAttachmentThreshold() };
   }
 
   @Get()
@@ -98,5 +109,30 @@ export class OtherIncomeController {
     @CurrentUser('id') userId: string,
   ) {
     return this.service.copy(id, userId);
+  }
+
+  @Post(':id/attachments')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadAttachment(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @CurrentUser('id') userId: string,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({
+            maxSize: 5 * 1024 * 1024,
+            message: 'ไฟล์มีขนาดเกิน 5MB',
+          }),
+          new FileTypeValidator({
+            fileType: /^(application\/pdf|image\/(jpeg|png|webp))$/,
+          }),
+        ],
+        fileIsRequired: true,
+        errorHttpStatusCode: 400,
+      }),
+    )
+    file: Express.Multer.File,
+  ) {
+    return this.service.uploadAttachment(id, file, userId);
   }
 }

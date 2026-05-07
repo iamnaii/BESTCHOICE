@@ -87,9 +87,10 @@ function buildJeFromDoc(doc: OtherIncome): JeLine[] {
     lines.push({ accountCode: '21-2101', debit: 0, credit: totalVat, description: 'ภาษีขาย' });
   }
 
+  // B6: WHT is Dr 11-4103 (WHT receivable) per AutoJournalService — not Cr 21-3101
   const totalWht = parseFloat(doc.whtAmount) || 0;
   if (totalWht > 0) {
-    lines.push({ accountCode: '21-3101', debit: 0, credit: totalWht, description: 'ภาษีหัก ณ ที่จ่าย' });
+    lines.push({ accountCode: '11-4103', debit: totalWht, credit: 0, description: 'ภาษีหัก ณ ที่จ่าย' });
   }
 
   for (const adj of doc.adjustments) {
@@ -120,7 +121,8 @@ function buildJeFromDoc(doc: OtherIncome): JeLine[] {
 }
 
 // Roles that can reverse a POSTED document
-const REVERSE_ROLES = ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'];
+// B9: ACCOUNTANT removed — backend @Roles only allows OWNER/FINANCE_MANAGER on POST :id/reverse
+const REVERSE_ROLES = ['OWNER', 'FINANCE_MANAGER'];
 
 // ------------------------------------------------------------------
 // Main component
@@ -251,7 +253,7 @@ export default function OtherIncomeViewPage() {
               {doc.customerId && (
                 <button
                   onClick={() => navigate(`/other-income/${doc.id}/receipt`)}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-bold bg-primary text-primary-foreground rounded-md"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-bold bg-primary text-primary-foreground rounded-md animate-pulse"
                 >
                   <Printer size={16} /> พิมพ์ใบเสร็จ
                 </button>

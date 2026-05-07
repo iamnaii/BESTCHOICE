@@ -11,5 +11,6 @@ export * from './verify-success.flex';
 export * from './link-contract.flex';
 export * from './contract-completed.flex';
 export * from './early-payoff-success.flex';
+export * from './partial-payment-qr.flex';
 export * from './icons';
 export * from './style-c';

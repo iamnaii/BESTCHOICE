@@ -136,6 +136,9 @@ describe('PaymentsService — advance balance (Task 4)', () => {
       callLog: {
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
+      partialPaymentLink: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
       auditLog: {
         create: jest.fn().mockResolvedValue({ id: 'al-1' }),
       },

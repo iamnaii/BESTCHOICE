@@ -1,7 +1,24 @@
-import { BadRequestException, Controller, Get, Post, Patch, Param, Body, Query, UseGuards, Req } from '@nestjs/common';
+import {
+  BadRequestException,
+  Controller,
+  Delete,
+  Get,
+  Post,
+  Patch,
+  Param,
+  ParseUUIDPipe,
+  Body,
+  Query,
+  UseGuards,
+  Req,
+  Inject,
+  forwardRef,
+  NotFoundException,
+} from '@nestjs/common';
 import type { Request } from 'express';
 import { ApiTags, ApiBearerAuth , ApiOperation} from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
+import { IsNumber, Min } from 'class-validator';
 import { PaymentsService } from './payments.service';
 import { RecordPaymentDto, BulkRecordPaymentDto, WaiveLateFeeDto, PreviewJournalDto } from './dto/payment.dto';
 import { ImportPaymentsCsvDto } from './dto/csv-import.dto';
@@ -12,13 +29,26 @@ import { hasCrossBranchAccess } from '../auth/branch-access.util';
 import { UserThrottlerGuard } from '../../guards/user-throttler.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { PaySolutionsService } from '../paysolutions/paysolutions.service';
+import { PrismaService } from '../../prisma/prisma.service';
+
+class CreatePartialQrDto {
+  @IsNumber()
+  @Min(1, { message: 'ยอดต้องมากกว่า 0 บาท' })
+  amount!: number;
+}
 
 @ApiTags('Payments')
 @ApiBearerAuth('JWT')
 @Controller('payments')
 @UseGuards(JwtAuthGuard, RolesGuard, BranchGuard)
 export class PaymentsController {
-  constructor(private paymentsService: PaymentsService) {}
+  constructor(
+    private paymentsService: PaymentsService,
+    @Inject(forwardRef(() => PaySolutionsService))
+    private paySolutionsService: PaySolutionsService,
+    private prisma: PrismaService,
+  ) {}
 
   @Get('pending')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
@@ -254,5 +284,48 @@ export class PaymentsController {
     if (hasCrossBranchAccess(user)) return requestedBranchId;
     // SALES and BRANCH_MANAGER must see only their branch
     return user.branchId || requestedBranchId;
+  }
+
+  // ─── Partial-payment QR (cashier sends QR to customer's LINE) ───────
+  // Customer pays via PaySolutions PromptPay → webhook auto-records as PARTIAL.
+  // The active link is what powers the "QR ส่งแล้ว" badge in the payments table.
+
+  @Post(':id/partial-qr')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  async createPartialQr(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CreatePartialQrDto,
+  ) {
+    return this.paySolutionsService.createPartialPaymentQR({
+      paymentId: id,
+      amount: dto.amount,
+    });
+  }
+
+  @Get(':id/partial-qr/active')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  async getActivePartialQr(@Param('id', ParseUUIDPipe) id: string) {
+    return this.prisma.partialPaymentLink.findFirst({
+      where: {
+        paymentId: id,
+        status: 'ACTIVE',
+        expiresAt: { gt: new Date() },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  @Delete(':id/partial-qr')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  async cancelPartialQr(@Param('id', ParseUUIDPipe) id: string) {
+    const link = await this.prisma.partialPaymentLink.findFirst({
+      where: { paymentId: id, status: 'ACTIVE' },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!link) throw new NotFoundException('ไม่มี QR ที่กำลังใช้งานอยู่');
+    return this.prisma.partialPaymentLink.update({
+      where: { id: link.id },
+      data: { status: 'CANCELLED', cancelledAt: new Date() },
+    });
   }
 }

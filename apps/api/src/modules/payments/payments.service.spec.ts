@@ -94,6 +94,10 @@ describe('PaymentsService', () => {
       installmentSchedule: {
         findUnique: jest.fn().mockResolvedValue(null),
       },
+      // recordPayment auto-cancels active partial-payment QRs to prevent double-pay
+      partialPaymentLink: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
       $transaction: jest.fn((cb) => cb(mockPrisma)),
     };
 

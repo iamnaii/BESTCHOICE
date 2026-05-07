@@ -10,6 +10,7 @@ import { OnlineOrderSaleAdapter } from '../shop-orders/online-order-sale.adapter
 import { ProductsService } from '../products/products.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { PaymentReceipt2BTemplate } from '../journal/cpa-templates/payment-receipt-2b.template';
+import { PaymentsService } from '../payments/payments.service';
 
 // We don't care about the underlying Sentry transport during unit tests —
 // captureException is spied on directly in the JE-failure test.
@@ -89,6 +90,10 @@ describe('PaySolutionsService.handlePaymentCallback — payment JE (F-1-003)', (
         }),
         update: jest.fn(),
       },
+      partialPaymentLink: {
+        // Default: no partial-payment link exists for this refno (regular path).
+        findUnique: jest.fn().mockResolvedValue(null),
+      },
       companyInfo: {
         findFirst: jest.fn().mockImplementation((args: any) => {
           if (args?.where?.companyCode === 'SHOP') return Promise.resolve({ id: 'co-shop' });
@@ -143,6 +148,7 @@ describe('PaySolutionsService.handlePaymentCallback — payment JE (F-1-003)', (
         { provide: ProductsService, useValue: products },
         { provide: JournalAutoService, useValue: journalAuto },
         { provide: PaymentReceipt2BTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK' }) } },
+        { provide: PaymentsService, useValue: { recordPayment: jest.fn() } },
       ],
     }).compile();
 

@@ -5,19 +5,21 @@ import {
   Printer,
   Plus,
   X,
-  ScanBarcode,
-  CornerDownLeft,
+  Search,
+  ScanLine,
+  Check,
+  Smartphone,
+  Package,
   CheckCircle2,
   CircleAlert,
   Loader2,
-  Layers,
-  Ruler,
   Trash2,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { formatGregorianDate } from '@/lib/date';
 import QueryBoundary from '@/components/QueryBoundary';
 
+/* ─── types ─────────────────────────────────────────── */
 interface StickerRate {
   downPayment: number;
   monthlyPrice: number;
@@ -39,20 +41,46 @@ interface StickerData {
   shopLogoUrl: string | null;
 }
 
+interface StockProduct {
+  id: string;
+  brand: string;
+  model: string;
+  color: string | null;
+  storage: string | null;
+  imeiSerial: string | null;
+  photos: string[];
+  branch: { id: string; name: string } | null;
+  prices: Array<{ price: string }>;
+}
+
 interface PrintItem {
   productId: string;
   qty: number;
 }
 
+/* ─── constants ────────────────────────────────────── */
 const RECENT_KEY = 'sticker-print:recent';
-const MAX_RECENT = 6;
+const MAX_RECENT = 8;
+const TAPE_PER_STICKER_MM = 52;
+
+const BRAND_TINTS: Record<string, string> = {
+  Apple: 'from-zinc-900 to-zinc-700',
+  Samsung: 'from-blue-900 to-blue-700',
+  OPPO: 'from-emerald-900 to-emerald-700',
+  Vivo: 'from-violet-900 to-violet-700',
+  Xiaomi: 'from-orange-900 to-orange-700',
+  Huawei: 'from-rose-900 to-rose-700',
+  Realme: 'from-yellow-900 to-amber-700',
+  Honor: 'from-sky-900 to-sky-700',
+};
+
+function brandTint(brand: string): string {
+  return BRAND_TINTS[brand] ?? 'from-slate-800 to-slate-600';
+}
 
 function formatBaht(n: number): string {
   return n.toLocaleString('th-TH');
 }
-
-// 50mm sticker + ~2mm gap between labels on a continuous roll
-const TAPE_PER_STICKER_MM = 52;
 
 function loadRecent(): string[] {
   try {
@@ -74,7 +102,7 @@ function saveRecent(ids: string[]) {
   }
 }
 
-// Physical-size sticker (50×30mm) — used for both screen preview AND print.
+/* ─── 50×30mm sticker (used for both print & preview) ─ */
 function StickerCard({ data }: { data: StickerData }) {
   const specParts = [
     data.color,
@@ -133,61 +161,146 @@ function StickerCard({ data }: { data: StickerData }) {
   );
 }
 
-// Wraps a StickerCard inside crop-mark frame for on-screen preview only.
-function DielineFrame({ children, label }: { children: React.ReactNode; label?: string }) {
-  return (
-    <div className="dieline-frame">
-      <div className="dieline-marks" aria-hidden="true">
-        <span className="mark mark-tl" />
-        <span className="mark mark-tr" />
-        <span className="mark mark-bl" />
-        <span className="mark mark-br" />
-      </div>
-      {children}
-      {label && <div className="dieline-label font-mono">{label}</div>}
-    </div>
-  );
-}
-
-function StatusBadge({
-  state,
+/* ─── product card (catalog picker) ──────────────── */
+function ProductCard({
+  product,
+  selected,
+  qty,
+  onAdd,
+  onInc,
+  onDec,
+  onRemove,
 }: {
-  state: 'ready' | 'loading' | 'missing' | 'pending';
+  product: StockProduct;
+  selected: boolean;
+  qty: number;
+  onAdd: () => void;
+  onInc: () => void;
+  onDec: () => void;
+  onRemove: () => void;
 }) {
-  if (state === 'ready')
-    return (
-      <span className="inline-flex items-center gap-1 text-[10px] font-mono uppercase text-primary">
-        <CheckCircle2 className="size-3" /> ready
-      </span>
-    );
-  if (state === 'loading')
-    return (
-      <span className="inline-flex items-center gap-1 text-[10px] font-mono uppercase text-muted-foreground">
-        <Loader2 className="size-3 animate-spin" /> lookup
-      </span>
-    );
-  if (state === 'missing')
-    return (
-      <span className="inline-flex items-center gap-1 text-[10px] font-mono uppercase text-warning">
-        <CircleAlert className="size-3" /> not found
-      </span>
-    );
+  const photo = product.photos?.[0];
+  const cash = product.prices?.[0]?.price ? parseFloat(product.prices[0].price) : null;
+  const tint = brandTint(product.brand);
+
   return (
-    <span className="inline-flex items-center gap-1 text-[10px] font-mono uppercase text-muted-foreground/60">
-      <span className="size-1.5 rounded-full bg-muted-foreground/40" /> queued
-    </span>
+    <article
+      className={`product-card group relative ${selected ? 'is-selected' : ''}`}
+      onClick={() => {
+        if (!selected) onAdd();
+      }}
+    >
+      {/* Media */}
+      <div className={`product-media bg-gradient-to-br ${tint}`}>
+        {photo ? (
+          <img src={photo} alt="" loading="lazy" className="size-full object-cover" />
+        ) : (
+          <div className="flex size-full items-center justify-center">
+            <Smartphone className="size-12 text-white/30" strokeWidth={1.2} />
+          </div>
+        )}
+        {selected && (
+          <div className="product-check">
+            <Check className="size-3.5" strokeWidth={3} />
+          </div>
+        )}
+      </div>
+
+      {/* Body */}
+      <div className="product-body">
+        <div className="flex items-start justify-between gap-2 min-w-0">
+          <div className="min-w-0">
+            <div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+              {product.brand}
+            </div>
+            <h3 className="font-semibold text-[15px] leading-tight truncate mt-0.5">
+              {product.model}
+            </h3>
+          </div>
+          {cash !== null && (
+            <div className="text-right shrink-0">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                ราคา
+              </div>
+              <div className="font-mono font-semibold text-[15px] tabular-nums leading-tight">
+                {formatBaht(cash)}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-wrap gap-1.5 mt-2.5">
+          {product.color && <span className="spec-pill">{product.color}</span>}
+          {product.storage && <span className="spec-pill">{product.storage}</span>}
+          {product.imeiSerial && (
+            <span className="spec-pill spec-pill-mono" title={product.imeiSerial}>
+              …{product.imeiSerial.slice(-6)}
+            </span>
+          )}
+        </div>
+
+        {/* Action footer */}
+        <div className="product-action">
+          {selected ? (
+            <div className="qty-control" onClick={(e) => e.stopPropagation()}>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (qty <= 1) onRemove();
+                  else onDec();
+                }}
+                aria-label={qty <= 1 ? 'ลบรายการ' : 'ลด'}
+              >
+                {qty <= 1 ? <Trash2 className="size-3.5" /> : '−'}
+              </button>
+              <span className="qty-num font-mono tabular-nums">{qty}</span>
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground mr-2">
+                ดวง
+              </span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onInc();
+                }}
+                aria-label="เพิ่ม"
+              >
+                +
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onAdd();
+              }}
+              className="add-btn"
+            >
+              <Plus className="size-3.5" />
+              เพิ่มเข้าคิว
+            </button>
+          )}
+        </div>
+      </div>
+    </article>
   );
 }
 
+/* ─── main page ───────────────────────────────────── */
 export default function StickerPrintPage() {
   const [searchParams] = useSearchParams();
   const idsFromUrl = searchParams.get('productIds');
 
   const [items, setItems] = useState<PrintItem[]>([]);
-  const [manualInput, setManualInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [activeBrand, setActiveBrand] = useState<string>('ทั้งหมด');
+  const [scanInput, setScanInput] = useState('');
+  const [scanOpen, setScanOpen] = useState(false);
   const [recent, setRecent] = useState<string[]>(() => loadRecent());
-  const [now, setNow] = useState(() => new Date());
-  const inputRef = useRef<HTMLInputElement>(null);
+  const scanRef = useRef<HTMLInputElement>(null);
 
   // Initialize from URL once on mount
   useEffect(() => {
@@ -199,27 +312,51 @@ export default function StickerPrintPage() {
         .map((id) => ({ productId: id, qty: 1 }));
       setItems(initial);
     }
-    inputRef.current?.focus();
   }, [idsFromUrl]);
 
-  // Live clock for the operator strip — refreshes once a minute
+  // Debounce search
   useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 60_000);
-    return () => clearInterval(t);
-  }, []);
+    const t = setTimeout(() => setDebouncedSearch(search), 200);
+    return () => clearTimeout(t);
+  }, [search]);
 
+  // Focus scanner when opened
+  useEffect(() => {
+    if (scanOpen) scanRef.current?.focus();
+  }, [scanOpen]);
+
+  /* ─── data: stock products ────────────────────── */
+  const stockQuery = useQuery({
+    queryKey: ['sticker-stock', debouncedSearch, activeBrand],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        status: 'IN_STOCK',
+        limit: '60',
+        page: '1',
+      });
+      if (debouncedSearch) params.set('search', debouncedSearch);
+      if (activeBrand && activeBrand !== 'ทั้งหมด') params.set('brand', activeBrand);
+      const res = await api.get(`/products/stock?${params.toString()}`);
+      return res.data as { products: StockProduct[]; total: number };
+    },
+  });
+
+  /* ─── data: brand list ────────────────────────── */
+  const brandsQuery = useQuery({
+    queryKey: ['sticker-brands'],
+    queryFn: async () => {
+      const res = await api.get('/products/brands');
+      return Array.isArray(res.data) ? (res.data as string[]) : [];
+    },
+  });
+
+  /* ─── data: sticker preview data ──────────────── */
   const productIdsKey = useMemo(
     () => items.map((i) => i.productId).sort().join(','),
     [items],
   );
 
-  const {
-    data: stickerData = [],
-    isFetching,
-    isError,
-    error,
-    refetch,
-  } = useQuery<StickerData[]>({
+  const previewQuery = useQuery<StickerData[]>({
     queryKey: ['sticker-data', productIdsKey],
     queryFn: async () => {
       if (items.length === 0) return [];
@@ -233,11 +370,10 @@ export default function StickerPrintPage() {
   });
 
   const dataMap = useMemo(
-    () => new Map(stickerData.map((d) => [d.productId, d])),
-    [stickerData],
+    () => new Map((previewQuery.data ?? []).map((d) => [d.productId, d])),
+    [previewQuery.data],
   );
 
-  // Build flat list expanded by qty, in user's input order
   const expandedStickers = useMemo(() => {
     const out: StickerData[] = [];
     for (const item of items) {
@@ -250,243 +386,290 @@ export default function StickerPrintPage() {
 
   const totalSheets = expandedStickers.length;
   const totalItems = items.length;
-  const readyCount = items.filter((i) => dataMap.has(i.productId)).length;
-  const tapeCm = (totalSheets * TAPE_PER_STICKER_MM) / 10; // mm → cm
+  const tapeCm = (totalSheets * TAPE_PER_STICKER_MM) / 10;
 
-  const addManual = (raw?: string) => {
-    const value = raw ?? manualInput;
-    const ids = value
+  /* ─── actions ────────────────────────────────── */
+  const addProduct = (productId: string) => {
+    setItems((prev) => {
+      if (prev.some((p) => p.productId === productId)) return prev;
+      return [...prev, { productId, qty: 1 }];
+    });
+    saveRecent([productId]);
+    setRecent(loadRecent());
+  };
+
+  const incQty = (productId: string) =>
+    setItems(items.map((i) => (i.productId === productId ? { ...i, qty: i.qty + 1 } : i)));
+  const decQty = (productId: string) =>
+    setItems(
+      items.map((i) =>
+        i.productId === productId ? { ...i, qty: Math.max(1, i.qty - 1) } : i,
+      ),
+    );
+  const removeItem = (productId: string) =>
+    setItems(items.filter((i) => i.productId !== productId));
+  const clearAll = () => setItems([]);
+
+  const handleScan = () => {
+    const ids = scanInput
       .split(/[\s,]+/)
       .map((s) => s.trim())
       .filter(Boolean);
     if (ids.length === 0) return;
-
     setItems((prev) => {
       const seen = new Set(prev.map((p) => p.productId));
       const next = [...prev];
       for (const id of ids) {
-        if (!seen.has(id)) {
-          next.push({ productId: id, qty: 1 });
-          seen.add(id);
-        }
+        if (!seen.has(id)) next.push({ productId: id, qty: 1 });
       }
       return next;
     });
     saveRecent(ids);
     setRecent(loadRecent());
-    setManualInput('');
-    inputRef.current?.focus();
-  };
-
-  const updateQty = (productId: string, qty: number) => {
-    setItems(items.map((i) => (i.productId === productId ? { ...i, qty: Math.max(1, qty) } : i)));
-  };
-
-  const removeItem = (productId: string) => {
-    setItems(items.filter((i) => i.productId !== productId));
-  };
-
-  const clearAll = () => {
-    setItems([]);
-    inputRef.current?.focus();
+    setScanInput('');
+    scanRef.current?.focus();
   };
 
   const handlePrint = () => window.print();
 
-  const dateLabel = now.toLocaleDateString('th-TH', {
-    weekday: 'short',
-    day: '2-digit',
-    month: 'short',
-  });
-  const timeLabel = now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+  const products = stockQuery.data?.products ?? [];
+  const brandPills = ['ทั้งหมด', ...(brandsQuery.data ?? [])];
+  const itemMap = new Map(items.map((i) => [i.productId, i]));
 
   return (
     <div>
-      {/* ─── PRINT-HIDDEN OPERATOR CONSOLE ──────────────────────────── */}
       <div className="print:hidden">
-        <header className="sticker-header">
-          <div className="flex items-baseline gap-3 min-w-0">
-            <div className="font-mono text-xs uppercase tracking-[0.18em] text-primary">
-              <span className="inline-block size-1.5 rounded-full bg-primary mr-2 animate-pulse" />
-              station / labels
+        {/* ─── HERO ────────────────────────────────────── */}
+        <header className="hero">
+          <div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-primary mb-1">
+              <span className="inline-block size-1.5 rounded-full bg-primary mr-2 align-middle animate-pulse" />
+              thermal label · 50 × 30 mm
             </div>
-            <h1 className="text-lg font-semibold tracking-tight truncate">เครื่องพิมพ์สติกเกอร์</h1>
-            <span className="text-xs text-muted-foreground hidden sm:inline">
-              สติกเกอร์ติดเครื่อง 50 × 30 mm · thermal roll
-            </span>
+            <h1 className="text-[28px] sm:text-[32px] font-bold tracking-tight leading-none">
+              พิมพ์สติกเกอร์
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1.5">
+              เลือกหลายเครื่องจากสต็อกพร้อมขาย เพิ่มเข้าคิว แล้วสั่งพิมพ์ทีเดียว
+            </p>
           </div>
-          <div className="hidden md:flex items-center gap-4 font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
-            <span>{dateLabel}</span>
-            <span className="text-foreground tabular-nums">{timeLabel}</span>
+          <div className="hero-stats">
+            <div>
+              <div className="hero-stat-num tabular-nums">{totalItems}</div>
+              <div className="hero-stat-label">รายการ</div>
+            </div>
+            <div className="hero-divider" />
+            <div>
+              <div className="hero-stat-num tabular-nums">{totalSheets}</div>
+              <div className="hero-stat-label">ดวง</div>
+            </div>
+            <div className="hero-divider" />
+            <div>
+              <div className="hero-stat-num tabular-nums">{tapeCm.toFixed(0)}</div>
+              <div className="hero-stat-label">ซม.เทป</div>
+            </div>
           </div>
         </header>
 
-        <div className="sticker-grid">
-          {/* ─── LEFT: SCANNER + QUEUE ─────────────────────────── */}
-          <section className="sticker-panel">
-            {/* Scanner input */}
-            <div className="scanner">
-              <ScanBarcode className={`scanner-icon ${manualInput ? 'is-active' : ''}`} />
-              <input
-                ref={inputRef}
-                type="text"
-                value={manualInput}
-                onChange={(e) => setManualInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    addManual();
-                  }
-                }}
-                placeholder="สแกน หรือ วาง Product ID / IMEI"
-                className="scanner-input font-mono"
-                spellCheck={false}
-                autoComplete="off"
-              />
-              <kbd className="scanner-hint">
-                <CornerDownLeft className="size-3" />
-                <span>Enter</span>
-              </kbd>
+        {/* ─── MAIN GRID ────────────────────────────────── */}
+        <div className="main-grid">
+          {/* LEFT: Picker */}
+          <section className="picker">
+            {/* Toolbar */}
+            <div className="toolbar">
+              <div className="search-box">
+                <Search className="size-4 text-muted-foreground shrink-0" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="ค้นหาแบรนด์ / รุ่น / IMEI ในสต็อก…"
+                  className="search-input"
+                  spellCheck={false}
+                />
+                {search && (
+                  <button type="button" onClick={() => setSearch('')} className="search-clear" aria-label="ล้าง">
+                    <X className="size-3.5" />
+                  </button>
+                )}
+              </div>
               <button
                 type="button"
-                onClick={() => addManual()}
-                disabled={!manualInput.trim()}
-                className="scanner-add"
+                onClick={() => setScanOpen((v) => !v)}
+                className={`scan-toggle ${scanOpen ? 'is-open' : ''}`}
               >
-                <Plus className="size-3.5" />
-                เพิ่ม
+                <ScanLine className="size-4" />
+                <span className="hidden sm:inline">สแกน / วาง ID</span>
               </button>
             </div>
 
-            {/* Stats strip */}
-            <dl className="stats-strip">
-              <div>
-                <dt>รายการ</dt>
-                <dd className="tabular-nums">
-                  <span className="text-foreground font-semibold">{totalItems}</span>
-                  <span className="text-muted-foreground/60 text-[11px] ml-1">/ {readyCount} พร้อม</span>
-                </dd>
-              </div>
-              <div>
-                <dt>ดวงทั้งหมด</dt>
-                <dd className="tabular-nums">
-                  <Layers className="size-3 inline-block mr-1 text-muted-foreground/70" />
-                  <span className="text-foreground font-semibold">{totalSheets}</span>
-                </dd>
-              </div>
-              <div>
-                <dt>เทปประมาณ</dt>
-                <dd className="tabular-nums">
-                  <Ruler className="size-3 inline-block mr-1 text-muted-foreground/70" />
-                  <span className="text-foreground font-semibold">
-                    {tapeCm > 0 ? tapeCm.toFixed(1) : '—'}
-                  </span>
-                  <span className="text-muted-foreground/60 text-[11px] ml-1">cm</span>
-                </dd>
-              </div>
-            </dl>
-
-            {/* Recent chips */}
-            {recent.length > 0 && (
-              <div className="recent">
-                <span className="recent-label">ใช้ล่าสุด</span>
-                <div className="recent-chips">
-                  {recent.map((id) => (
-                    <button
-                      key={id}
-                      type="button"
-                      onClick={() => addManual(id)}
-                      className="recent-chip font-mono"
-                      disabled={items.some((i) => i.productId === id)}
-                      title={`เพิ่ม ${id}`}
-                    >
-                      <Plus className="size-3 opacity-60" />
-                      {id.length > 14 ? `…${id.slice(-12)}` : id}
-                    </button>
-                  ))}
+            {/* Scanner panel (collapsed) */}
+            {scanOpen && (
+              <div className="scan-panel">
+                <div className="scan-row">
+                  <input
+                    ref={scanRef}
+                    type="text"
+                    value={scanInput}
+                    onChange={(e) => setScanInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleScan();
+                      }
+                    }}
+                    placeholder="วาง Product ID หรือ IMEI หลายๆ ตัว คั่นด้วยช่องว่าง / comma"
+                    className="scan-input font-mono"
+                    spellCheck={false}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleScan}
+                    disabled={!scanInput.trim()}
+                    className="scan-add"
+                  >
+                    <Plus className="size-4" />
+                    เพิ่ม
+                  </button>
                 </div>
+                {recent.length > 0 && (
+                  <div className="recent-row">
+                    <span className="recent-label">ใช้ล่าสุด</span>
+                    {recent.map((id) => (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => addProduct(id)}
+                        disabled={items.some((i) => i.productId === id)}
+                        className="recent-pill font-mono"
+                      >
+                        {id.length > 14 ? `…${id.slice(-12)}` : id}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
-            {/* Queue */}
-            <div className="queue">
-              <div className="queue-head">
-                <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-                  คิวพิมพ์
-                </span>
+            {/* Brand chips */}
+            {brandPills.length > 1 && (
+              <div className="brand-chips">
+                {brandPills.map((b) => (
+                  <button
+                    key={b}
+                    type="button"
+                    onClick={() => setActiveBrand(b)}
+                    className={`brand-chip ${activeBrand === b ? 'is-active' : ''}`}
+                  >
+                    {b}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Product grid */}
+            <QueryBoundary
+              isLoading={stockQuery.isLoading}
+              isError={stockQuery.isError}
+              error={stockQuery.error}
+              onRetry={stockQuery.refetch}
+              errorTitle="โหลดสต็อกไม่สำเร็จ"
+            >
+              {products.length === 0 ? (
+                <div className="empty-grid">
+                  <Package className="size-10 text-muted-foreground/40 mb-2" strokeWidth={1.2} />
+                  <p className="text-sm text-muted-foreground">
+                    {debouncedSearch || activeBrand !== 'ทั้งหมด'
+                      ? 'ไม่พบสินค้าตามเงื่อนไข — ลองเปลี่ยนคำค้นหรือแบรนด์'
+                      : 'ไม่มีสินค้าพร้อมขายในสต็อก'}
+                  </p>
+                </div>
+              ) : (
+                <div className="product-grid">
+                  {products.map((p) => {
+                    const item = itemMap.get(p.id);
+                    return (
+                      <ProductCard
+                        key={p.id}
+                        product={p}
+                        selected={!!item}
+                        qty={item?.qty ?? 0}
+                        onAdd={() => addProduct(p.id)}
+                        onInc={() => incQty(p.id)}
+                        onDec={() => decQty(p.id)}
+                        onRemove={() => removeItem(p.id)}
+                      />
+                    );
+                  })}
+                </div>
+              )}
+            </QueryBoundary>
+          </section>
+
+          {/* RIGHT: Print queue + preview */}
+          <aside className="queue-side">
+            <div className="queue-card">
+              <div className="queue-card-head">
+                <h2 className="text-[15px] font-semibold leading-tight">คิวพิมพ์</h2>
                 {items.length > 0 && (
                   <button type="button" onClick={clearAll} className="queue-clear">
                     <Trash2 className="size-3" />
-                    ล้างทั้งหมด
+                    ล้าง
                   </button>
                 )}
               </div>
 
               {items.length === 0 ? (
                 <div className="queue-empty">
-                  <p className="text-sm text-muted-foreground">
-                    คิวยังว่าง — สแกน barcode, วาง ID,
-                    <br />
-                    หรือเปิดจากหน้า "สต็อกสินค้า" → "พิมพ์สติกเกอร์"
+                  <div className="ghost-stack">
+                    <div className="ghost-paper" />
+                    <div className="ghost-paper" />
+                    <div className="ghost-paper top">
+                      <div className="text-[8pt] font-mono uppercase tracking-[0.2em] text-black/30">
+                        sticker preview
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground text-center mt-3 max-w-[24ch]">
+                    เลือกเครื่องจากด้านซ้าย เพื่อเริ่มสร้างคิวพิมพ์
                   </p>
                 </div>
               ) : (
                 <ul className="queue-list">
                   {items.map((item, idx) => {
                     const data = dataMap.get(item.productId);
-                    const state: 'ready' | 'loading' | 'missing' | 'pending' = data
+                    const state = data
                       ? 'ready'
-                      : isFetching
+                      : previewQuery.isFetching
                         ? 'loading'
                         : 'missing';
                     return (
-                      <li key={item.productId} className="queue-row">
-                        <span className="queue-num font-mono">
-                          {String(idx + 1).padStart(2, '0')}
-                        </span>
+                      <li key={item.productId} className="queue-item">
+                        <div className="queue-marker">
+                          {state === 'ready' && <CheckCircle2 className="size-4 text-primary" />}
+                          {state === 'loading' && <Loader2 className="size-4 text-muted-foreground animate-spin" />}
+                          {state === 'missing' && <CircleAlert className="size-4 text-warning" />}
+                        </div>
                         <div className="min-w-0 flex-1">
-                          <div className="font-mono text-xs text-foreground/90 truncate">
-                            {item.productId}
-                          </div>
-                          <div className="text-[11px] text-muted-foreground truncate">
-                            {data ? (
-                              <>
-                                {data.brand} {data.model}
-                                {data.cashPrice !== null && (
-                                  <span className="ml-2 tabular-nums text-foreground/70">
-                                    ฿ {formatBaht(data.cashPrice)}
-                                  </span>
-                                )}
-                              </>
-                            ) : (
-                              <StatusBadge state={state} />
+                          <div className="text-[13px] font-medium truncate">
+                            {data ? `${data.brand} ${data.model}` : (
+                              <span className="text-muted-foreground">ไม่พบสินค้า</span>
                             )}
                           </div>
+                          <div className="text-[11px] font-mono text-muted-foreground/80 truncate">
+                            #{idx + 1} · {item.productId.slice(0, 12)}
+                            {item.productId.length > 12 ? '…' : ''}
+                          </div>
                         </div>
-                        {data && <StatusBadge state="ready" />}
-                        <div className="qty-stepper">
-                          <button
-                            type="button"
-                            onClick={() => updateQty(item.productId, item.qty - 1)}
-                            disabled={item.qty <= 1}
-                            aria-label="ลด"
-                          >
-                            −
-                          </button>
-                          <span className="font-mono tabular-nums">{item.qty}</span>
-                          <button
-                            type="button"
-                            onClick={() => updateQty(item.productId, item.qty + 1)}
-                            aria-label="เพิ่ม"
-                          >
-                            +
-                          </button>
+                        <div className="queue-qty">
+                          <span className="font-mono font-semibold tabular-nums">{item.qty}</span>
+                          <span className="text-[10px] text-muted-foreground ml-0.5">ดวง</span>
                         </div>
                         <button
                           type="button"
                           onClick={() => removeItem(item.productId)}
-                          className="queue-remove"
-                          aria-label="ลบรายการ"
+                          className="queue-x"
+                          aria-label="ลบ"
                         >
                           <X className="size-3.5" />
                         </button>
@@ -496,79 +679,60 @@ export default function StickerPrintPage() {
                 </ul>
               )}
             </div>
-          </section>
 
-          {/* ─── RIGHT: PREVIEW DECK ────────────────────────────── */}
-          <section className="sticker-deck">
-            <div className="deck-head">
-              <div className="flex items-center gap-2">
-                <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-                  preview deck
-                </span>
-                <span className="text-xs text-muted-foreground">· แสดงผลตามจริง 1 : 1</span>
+            {/* Preview deck */}
+            {expandedStickers.length > 0 && (
+              <div className="preview-card">
+                <div className="preview-head">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                    preview
+                  </span>
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground tabular-nums">
+                    {totalSheets} ดวง · {tapeCm.toFixed(1)} cm
+                  </span>
+                </div>
+                <div className="preview-stack">
+                  {expandedStickers.slice(0, 8).map((data, idx) => (
+                    <div key={`${data.productId}-${idx}`} className="dieline">
+                      <span className="mark mark-tl" />
+                      <span className="mark mark-tr" />
+                      <span className="mark mark-bl" />
+                      <span className="mark mark-br" />
+                      <StickerCard data={data} />
+                    </div>
+                  ))}
+                  {expandedStickers.length > 8 && (
+                    <div className="preview-more font-mono">
+                      + อีก {expandedStickers.length - 8} ดวง
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground tabular-nums">
-                {totalSheets} / {totalSheets} ดวง
-              </div>
-            </div>
+            )}
 
-            <QueryBoundary
-              isLoading={false}
-              isError={isError}
-              error={error}
-              onRetry={refetch}
-              errorTitle="โหลดข้อมูลสติกเกอร์ไม่สำเร็จ"
+            {/* PRINT button */}
+            <button
+              type="button"
+              onClick={handlePrint}
+              disabled={totalSheets === 0}
+              className="print-cta"
             >
-              <div className="deck-surface">
-                {expandedStickers.length === 0 ? (
-                  <div className="deck-empty">
-                    <DielineFrame label="50 × 30 mm">
-                      <div className="ghost-sticker">
-                        <div className="text-[7pt] uppercase tracking-[0.2em] text-black/30 font-mono">
-                          awaiting input
-                        </div>
-                        <div className="text-[10pt] text-black/40 mt-2">
-                          รอข้อมูลแรก…
-                        </div>
-                      </div>
-                    </DielineFrame>
-                    <p className="text-xs text-muted-foreground text-center max-w-[28ch]">
-                      ตัวอย่างจะปรากฏที่นี่ทันทีหลังเพิ่ม Product ID จากช่องสแกนทางซ้าย
-                    </p>
-                  </div>
-                ) : (
-                  <div className="deck-grid">
-                    {expandedStickers.map((data, idx) => (
-                      <DielineFrame
-                        key={`${data.productId}-${idx}`}
-                        label={`#${String(idx + 1).padStart(3, '0')}`}
-                      >
-                        <StickerCard data={data} />
-                      </DielineFrame>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </QueryBoundary>
-          </section>
-        </div>
-
-        {/* Sticky action bar */}
-        {totalSheets > 0 && (
-          <div className="print-bar">
-            <div className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
-              {totalSheets} ดวง · {tapeCm.toFixed(1)} cm tape
-            </div>
-            <button type="button" onClick={handlePrint} className="print-btn">
-              <Printer className="size-4" />
-              <span>พิมพ์</span>
-              <span className="font-mono tabular-nums opacity-80">({totalSheets})</span>
+              <Printer className="size-5" />
+              <span className="flex-1 text-left">
+                <span className="block text-[15px] font-semibold leading-tight">พิมพ์สติกเกอร์</span>
+                <span className="block text-[11px] opacity-80 leading-tight tabular-nums">
+                  {totalSheets > 0 ? `${totalSheets} ดวง · ใช้เทป ~${tapeCm.toFixed(1)} ซม.` : 'ยังไม่มีรายการในคิว'}
+                </span>
+              </span>
+              <span className="font-mono text-[14px] tabular-nums opacity-90">
+                {totalSheets}
+              </span>
             </button>
-          </div>
-        )}
+          </aside>
+        </div>
       </div>
 
-      {/* ─── PRINT-ONLY AREA ───────────────────────────────────────── */}
+      {/* ─── PRINT-ONLY ─────────────────────────────────── */}
       <div className="print-stickers hidden print:block">
         {expandedStickers.map((data, idx) => (
           <StickerCard key={`p-${data.productId}-${idx}`} data={data} />
@@ -576,7 +740,7 @@ export default function StickerPrintPage() {
       </div>
 
       <style>{`
-        /* ─── physical 50×30mm sticker ─────────────────────── */
+        /* ─── Physical sticker ──────────────────────────── */
         .sticker {
           width: 50mm;
           height: 30mm;
@@ -585,226 +749,423 @@ export default function StickerPrintPage() {
           box-sizing: border-box;
         }
 
-        /* ─── operator console layout ──────────────────────── */
-        .sticker-header {
+        /* ─── Hero ──────────────────────────────────────── */
+        .hero {
           display: flex;
-          align-items: center;
+          align-items: flex-end;
           justify-content: space-between;
-          gap: 1rem;
-          padding: 1rem 1.25rem;
-          margin-bottom: 1rem;
-          background: hsl(var(--card));
+          gap: 1.5rem;
+          padding: 1.25rem 1.5rem;
+          margin-bottom: 1.25rem;
+          background: linear-gradient(
+            135deg,
+            hsl(var(--card)) 0%,
+            hsl(var(--card)) 60%,
+            hsl(var(--primary) / 0.06) 100%
+          );
           border: 1px solid hsl(var(--border));
-          border-radius: 8px;
+          border-radius: 14px;
           position: relative;
           overflow: hidden;
         }
-        .sticker-header::before {
+        .hero::before {
           content: '';
           position: absolute;
-          left: 0; right: 0; bottom: 0;
-          height: 2px;
-          background: repeating-linear-gradient(
-            90deg,
-            hsl(var(--primary)) 0 8px,
-            transparent 8px 16px
-          );
-          opacity: 0.6;
+          inset: 0;
+          background-image:
+            radial-gradient(circle at 1px 1px, hsl(var(--primary) / 0.06) 1px, transparent 0);
+          background-size: 22px 22px;
+          mask-image: linear-gradient(to right, transparent 30%, black 100%);
+          pointer-events: none;
+        }
+        .hero-stats {
+          display: flex;
+          align-items: center;
+          gap: 1rem;
+          padding: 0.75rem 1.25rem;
+          background: hsl(var(--background));
+          border: 1px solid hsl(var(--border));
+          border-radius: 10px;
+          z-index: 1;
+        }
+        .hero-stat-num {
+          font-size: 24px;
+          font-weight: 700;
+          line-height: 1;
+          color: hsl(var(--foreground));
+        }
+        .hero-stat-label {
+          font-size: 10px;
+          text-transform: uppercase;
+          letter-spacing: 0.16em;
+          color: hsl(var(--muted-foreground));
+          margin-top: 4px;
+        }
+        .hero-divider {
+          width: 1px;
+          height: 32px;
+          background: hsl(var(--border));
+        }
+        @media (max-width: 640px) {
+          .hero { flex-direction: column; align-items: flex-start; }
         }
 
-        .sticker-grid {
+        /* ─── Layout ────────────────────────────────────── */
+        .main-grid {
           display: grid;
-          grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
-          gap: 1rem;
+          grid-template-columns: minmax(0, 1fr) 360px;
+          gap: 1.25rem;
           align-items: start;
         }
-        @media (max-width: 1024px) {
-          .sticker-grid { grid-template-columns: 1fr; }
+        @media (max-width: 1100px) {
+          .main-grid { grid-template-columns: 1fr; }
         }
 
-        .sticker-panel,
-        .sticker-deck {
+        /* ─── Picker ────────────────────────────────────── */
+        .picker {
           background: hsl(var(--card));
           border: 1px solid hsl(var(--border));
-          border-radius: 8px;
+          border-radius: 14px;
           padding: 1rem;
         }
 
-        /* ─── scanner input ────────────────────────────────── */
-        .scanner {
-          position: relative;
+        .toolbar {
+          display: flex;
+          gap: 0.5rem;
+        }
+        .search-box {
+          flex: 1;
           display: flex;
           align-items: center;
-          gap: 0.5rem;
-          padding: 0.625rem 0.75rem;
+          gap: 0.625rem;
+          padding: 0 0.875rem;
           background: hsl(var(--background));
           border: 1px solid hsl(var(--border));
-          border-radius: 6px;
+          border-radius: 10px;
+          height: 42px;
           transition: border-color 200ms, box-shadow 200ms;
         }
-        .scanner:focus-within {
+        .search-box:focus-within {
           border-color: hsl(var(--primary));
           box-shadow: 0 0 0 3px hsl(var(--primary) / 0.12);
         }
-        .scanner::after {
-          content: '';
-          position: absolute;
-          left: 2.25rem;
-          right: 8rem;
-          bottom: -1px;
-          height: 1px;
-          background: linear-gradient(
-            90deg,
-            transparent 0%,
-            hsl(var(--primary)) 50%,
-            transparent 100%
-          );
-          opacity: 0;
-          transition: opacity 200ms;
-        }
-        .scanner:focus-within::after { opacity: 0.4; animation: scan-line 1.6s ease-in-out infinite; }
-        @keyframes scan-line {
-          0%   { transform: translateX(-30%); opacity: 0; }
-          50%  { opacity: 0.6; }
-          100% { transform: translateX(30%); opacity: 0; }
-        }
-        .scanner-icon {
-          color: hsl(var(--muted-foreground));
-          flex-shrink: 0;
-          width: 1.125rem;
-          height: 1.125rem;
-        }
-        .scanner-icon.is-active { color: hsl(var(--primary)); }
-        .scanner-input {
+        .search-input {
           flex: 1;
           background: transparent;
           border: 0;
           outline: 0;
-          font-size: 0.95rem;
-          letter-spacing: 0.02em;
+          font-size: 14px;
           min-width: 0;
         }
-        .scanner-input::placeholder { color: hsl(var(--muted-foreground) / 0.7); letter-spacing: 0; }
-        .scanner-hint {
+        .search-input::placeholder { color: hsl(var(--muted-foreground) / 0.7); }
+        .search-clear {
           display: inline-flex;
           align-items: center;
-          gap: 0.25rem;
-          padding: 0.125rem 0.4rem;
-          font-family: var(--font-mono);
-          font-size: 10px;
-          text-transform: uppercase;
-          letter-spacing: 0.08em;
+          justify-content: center;
+          width: 22px;
+          height: 22px;
           color: hsl(var(--muted-foreground));
-          background: hsl(var(--muted));
-          border: 1px solid hsl(var(--border));
-          border-radius: 4px;
-        }
-        .scanner-add {
-          display: inline-flex;
-          align-items: center;
-          gap: 0.25rem;
-          padding: 0.375rem 0.75rem;
-          font-size: 0.8rem;
-          font-weight: 600;
-          color: hsl(var(--foreground));
-          background: hsl(var(--muted));
-          border: 1px solid hsl(var(--border));
+          background: transparent;
+          border: 0;
           border-radius: 4px;
           cursor: pointer;
-          transition: background 150ms;
         }
-        .scanner-add:hover:not(:disabled) { background: hsl(var(--accent)); }
-        .scanner-add:disabled { opacity: 0.4; cursor: not-allowed; }
+        .search-clear:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
 
-        /* ─── stats strip ─────────────────────────────────── */
-        .stats-strip {
-          display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          gap: 0;
-          margin: 0.875rem 0;
-          padding: 0;
-          border-top: 1px dashed hsl(var(--border));
-          border-bottom: 1px dashed hsl(var(--border));
-        }
-        .stats-strip > div {
-          padding: 0.625rem 0.75rem;
-          border-right: 1px dashed hsl(var(--border));
-        }
-        .stats-strip > div:last-child { border-right: 0; }
-        .stats-strip dt {
-          font-family: var(--font-mono);
-          font-size: 10px;
-          text-transform: uppercase;
-          letter-spacing: 0.16em;
-          color: hsl(var(--muted-foreground));
-          margin-bottom: 0.125rem;
-        }
-        .stats-strip dd {
-          font-size: 0.95rem;
-          margin: 0;
-        }
-
-        /* ─── recent chips ────────────────────────────────── */
-        .recent {
-          display: flex;
-          align-items: flex-start;
-          gap: 0.625rem;
-          margin-bottom: 0.875rem;
-        }
-        .recent-label {
-          flex-shrink: 0;
-          padding-top: 0.3rem;
-          font-family: var(--font-mono);
-          font-size: 10px;
-          text-transform: uppercase;
-          letter-spacing: 0.16em;
-          color: hsl(var(--muted-foreground));
-        }
-        .recent-chips {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 0.3rem;
-          min-width: 0;
-        }
-        .recent-chip {
+        .scan-toggle {
           display: inline-flex;
           align-items: center;
-          gap: 0.25rem;
-          padding: 0.25rem 0.5rem;
-          font-size: 11px;
+          gap: 0.5rem;
+          padding: 0 0.875rem;
+          height: 42px;
+          font-size: 13px;
+          font-weight: 500;
           color: hsl(var(--foreground));
           background: hsl(var(--background));
           border: 1px solid hsl(var(--border));
-          border-radius: 4px;
+          border-radius: 10px;
           cursor: pointer;
-          transition: all 120ms;
+          transition: all 150ms;
         }
-        .recent-chip:hover:not(:disabled) {
+        .scan-toggle:hover { border-color: hsl(var(--primary) / 0.5); }
+        .scan-toggle.is-open {
+          background: hsl(var(--primary) / 0.1);
           border-color: hsl(var(--primary));
           color: hsl(var(--primary));
         }
-        .recent-chip:disabled { opacity: 0.35; cursor: not-allowed; }
 
-        /* ─── queue list ──────────────────────────────────── */
-        .queue-head {
+        /* Scan panel */
+        .scan-panel {
+          margin-top: 0.625rem;
+          padding: 0.875rem;
+          background: hsl(var(--background));
+          border: 1px solid hsl(var(--border));
+          border-radius: 10px;
+          animation: panel-in 200ms ease-out;
+        }
+        @keyframes panel-in {
+          from { opacity: 0; transform: translateY(-4px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        .scan-row { display: flex; gap: 0.5rem; }
+        .scan-input {
+          flex: 1;
+          padding: 0.5rem 0.75rem;
+          background: hsl(var(--card));
+          border: 1px solid hsl(var(--border));
+          border-radius: 8px;
+          font-size: 13px;
+          outline: 0;
+        }
+        .scan-input:focus {
+          border-color: hsl(var(--primary));
+          box-shadow: 0 0 0 3px hsl(var(--primary) / 0.12);
+        }
+        .scan-add {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.25rem;
+          padding: 0 0.875rem;
+          font-size: 13px;
+          font-weight: 600;
+          color: hsl(var(--primary-foreground));
+          background: hsl(var(--primary));
+          border: 0;
+          border-radius: 8px;
+          cursor: pointer;
+        }
+        .scan-add:disabled { opacity: 0.4; cursor: not-allowed; }
+        .recent-row {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 0.375rem;
+          margin-top: 0.625rem;
+        }
+        .recent-label {
+          font-size: 10px;
+          text-transform: uppercase;
+          letter-spacing: 0.16em;
+          color: hsl(var(--muted-foreground));
+          margin-right: 0.25rem;
+        }
+        .recent-pill {
+          padding: 0.2rem 0.5rem;
+          font-size: 11px;
+          color: hsl(var(--foreground));
+          background: hsl(var(--card));
+          border: 1px solid hsl(var(--border));
+          border-radius: 999px;
+          cursor: pointer;
+          transition: all 120ms;
+        }
+        .recent-pill:hover:not(:disabled) {
+          border-color: hsl(var(--primary));
+          color: hsl(var(--primary));
+        }
+        .recent-pill:disabled { opacity: 0.3; cursor: not-allowed; }
+
+        /* Brand chips */
+        .brand-chips {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 0.375rem;
+          margin: 1rem 0 0.875rem;
+          padding-bottom: 0.875rem;
+          border-bottom: 1px dashed hsl(var(--border));
+        }
+        .brand-chip {
+          padding: 0.375rem 0.875rem;
+          font-size: 12px;
+          font-weight: 500;
+          color: hsl(var(--muted-foreground));
+          background: hsl(var(--background));
+          border: 1px solid hsl(var(--border));
+          border-radius: 999px;
+          cursor: pointer;
+          transition: all 150ms;
+        }
+        .brand-chip:hover { color: hsl(var(--foreground)); border-color: hsl(var(--primary) / 0.4); }
+        .brand-chip.is-active {
+          background: hsl(var(--primary));
+          color: hsl(var(--primary-foreground));
+          border-color: hsl(var(--primary));
+          box-shadow: 0 4px 12px -4px hsl(var(--primary) / 0.5);
+        }
+
+        /* ─── Product grid ──────────────────────────────── */
+        .product-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+          gap: 0.875rem;
+        }
+        .product-card {
+          position: relative;
+          display: flex;
+          flex-direction: column;
+          background: hsl(var(--card));
+          border: 1px solid hsl(var(--border));
+          border-radius: 12px;
+          overflow: hidden;
+          cursor: pointer;
+          transition: transform 200ms, border-color 200ms, box-shadow 200ms;
+        }
+        .product-card:hover {
+          transform: translateY(-2px);
+          border-color: hsl(var(--primary) / 0.5);
+          box-shadow: 0 12px 28px -16px hsl(0 0% 0% / 0.35);
+        }
+        .product-card.is-selected {
+          border-color: hsl(var(--primary));
+          box-shadow:
+            0 0 0 1px hsl(var(--primary)),
+            0 12px 28px -12px hsl(var(--primary) / 0.4);
+        }
+        .product-media {
+          position: relative;
+          aspect-ratio: 16 / 10;
+          overflow: hidden;
+        }
+        .product-check {
+          position: absolute;
+          top: 8px;
+          right: 8px;
+          width: 24px;
+          height: 24px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: white;
+          background: hsl(var(--primary));
+          border-radius: 999px;
+          box-shadow: 0 4px 10px hsl(var(--primary) / 0.5);
+          animation: check-in 200ms cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        @keyframes check-in {
+          from { transform: scale(0.4); opacity: 0; }
+          to   { transform: scale(1); opacity: 1; }
+        }
+        .product-body {
+          padding: 0.75rem 0.875rem;
+          display: flex;
+          flex-direction: column;
+          flex: 1;
+        }
+        .spec-pill {
+          padding: 0.125rem 0.5rem;
+          font-size: 10px;
+          color: hsl(var(--muted-foreground));
+          background: hsl(var(--muted));
+          border-radius: 4px;
+        }
+        .spec-pill-mono { font-family: var(--font-mono); }
+
+        .product-action {
+          margin-top: 0.75rem;
+          padding-top: 0.625rem;
+          border-top: 1px dashed hsl(var(--border));
+        }
+        .add-btn {
+          width: 100%;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.375rem;
+          padding: 0.4rem 0.75rem;
+          font-size: 12px;
+          font-weight: 600;
+          color: hsl(var(--foreground));
+          background: hsl(var(--background));
+          border: 1px solid hsl(var(--border));
+          border-radius: 8px;
+          cursor: pointer;
+          transition: all 150ms;
+        }
+        .add-btn:hover {
+          color: hsl(var(--primary));
+          border-color: hsl(var(--primary));
+          background: hsl(var(--primary) / 0.06);
+        }
+        .qty-control {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 0.5rem 0.25rem 0.625rem;
+          gap: 0.25rem;
+          padding: 0.25rem;
+          background: hsl(var(--primary) / 0.08);
+          border: 1px solid hsl(var(--primary) / 0.3);
+          border-radius: 8px;
+        }
+        .qty-control button {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 26px;
+          height: 26px;
+          font-size: 14px;
+          font-weight: 600;
+          color: hsl(var(--primary));
+          background: transparent;
+          border: 0;
+          border-radius: 6px;
+          cursor: pointer;
+          transition: background 150ms;
+        }
+        .qty-control button:hover { background: hsl(var(--primary) / 0.15); }
+        .qty-num {
+          flex: 1;
+          text-align: center;
+          font-size: 14px;
+          font-weight: 700;
+          color: hsl(var(--primary));
+        }
+
+        .empty-grid {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 3rem 1rem;
+          background: hsl(var(--background));
+          border: 1px dashed hsl(var(--border));
+          border-radius: 10px;
+        }
+
+        /* ─── Queue side ────────────────────────────────── */
+        .queue-side {
+          position: sticky;
+          top: 1rem;
+          display: flex;
+          flex-direction: column;
+          gap: 0.875rem;
+        }
+        .queue-card,
+        .preview-card {
+          background: hsl(var(--card));
+          border: 1px solid hsl(var(--border));
+          border-radius: 14px;
+          padding: 0.875rem 1rem;
+        }
+        .queue-card-head,
+        .preview-head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding-bottom: 0.625rem;
+          margin-bottom: 0.5rem;
           border-bottom: 1px solid hsl(var(--border));
         }
         .queue-clear {
           display: inline-flex;
           align-items: center;
           gap: 0.25rem;
+          padding: 0.25rem 0.5rem;
           font-size: 11px;
           color: hsl(var(--muted-foreground));
-          cursor: pointer;
-          background: none;
+          background: transparent;
           border: 0;
-          padding: 0.25rem 0.5rem;
           border-radius: 4px;
-          transition: color 150ms, background 150ms;
+          cursor: pointer;
         }
         .queue-clear:hover { color: hsl(var(--destructive)); background: hsl(var(--destructive) / 0.08); }
 
@@ -812,62 +1173,38 @@ export default function StickerPrintPage() {
           list-style: none;
           padding: 0;
           margin: 0;
-          max-height: 50vh;
+          max-height: 260px;
           overflow-y: auto;
         }
-        .queue-row {
+        .queue-item {
           display: flex;
           align-items: center;
           gap: 0.625rem;
-          padding: 0.625rem 0.25rem;
+          padding: 0.5rem 0;
           border-bottom: 1px dashed hsl(var(--border));
-          animation: queue-in 220ms ease-out;
+          animation: row-in 200ms ease-out;
         }
-        .queue-row:last-child { border-bottom: 0; }
-        @keyframes queue-in {
+        .queue-item:last-child { border-bottom: 0; }
+        @keyframes row-in {
           from { opacity: 0; transform: translateX(-4px); }
           to   { opacity: 1; transform: translateX(0); }
         }
-        .queue-num {
-          font-size: 10px;
-          color: hsl(var(--muted-foreground) / 0.7);
-          min-width: 1.5ch;
-          text-align: right;
+        .queue-marker {
+          flex-shrink: 0;
+          width: 20px;
+          display: flex;
+          justify-content: center;
         }
-
-        .qty-stepper {
-          display: inline-flex;
-          align-items: center;
-          border: 1px solid hsl(var(--border));
-          border-radius: 4px;
-          overflow: hidden;
-          background: hsl(var(--background));
-        }
-        .qty-stepper button {
-          width: 1.5rem;
-          height: 1.5rem;
-          font-size: 14px;
-          line-height: 1;
-          color: hsl(var(--foreground));
-          background: transparent;
-          border: 0;
-          cursor: pointer;
-          transition: background 120ms;
-        }
-        .qty-stepper button:hover:not(:disabled) { background: hsl(var(--accent)); }
-        .qty-stepper button:disabled { opacity: 0.3; cursor: not-allowed; }
-        .qty-stepper span {
-          min-width: 1.75rem;
-          text-align: center;
+        .queue-qty {
+          flex-shrink: 0;
+          padding: 0.25rem 0.5rem;
+          background: hsl(var(--muted));
+          border-radius: 6px;
           font-size: 12px;
-          padding: 0 0.25rem;
-          border-left: 1px solid hsl(var(--border));
-          border-right: 1px solid hsl(var(--border));
         }
-
-        .queue-remove {
-          width: 1.5rem;
-          height: 1.5rem;
+        .queue-x {
+          width: 22px;
+          height: 22px;
           display: inline-flex;
           align-items: center;
           justify-content: center;
@@ -876,143 +1213,121 @@ export default function StickerPrintPage() {
           border: 0;
           border-radius: 4px;
           cursor: pointer;
-          transition: color 150ms, background 150ms;
         }
-        .queue-remove:hover { color: hsl(var(--destructive)); background: hsl(var(--destructive) / 0.08); }
+        .queue-x:hover { color: hsl(var(--destructive)); background: hsl(var(--destructive) / 0.08); }
 
         .queue-empty {
-          padding: 2rem 1rem;
-          text-align: center;
-          background: repeating-linear-gradient(
-            -45deg,
-            hsl(var(--muted) / 0.4) 0 6px,
-            transparent 6px 12px
-          );
-          border-radius: 6px;
-          margin-top: 0.625rem;
-        }
-
-        /* ─── preview deck ────────────────────────────────── */
-        .deck-head {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding-bottom: 0.625rem;
-          margin-bottom: 0.875rem;
-          border-bottom: 1px solid hsl(var(--border));
-        }
-        .deck-surface {
-          background:
-            radial-gradient(circle at 1px 1px, hsl(var(--muted-foreground) / 0.18) 1px, transparent 0)
-            0 0 / 16px 16px,
-            hsl(var(--muted) / 0.4);
-          border: 1px solid hsl(var(--border));
-          border-radius: 6px;
-          min-height: 320px;
-          padding: 1.5rem;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-        .deck-grid {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 1.5rem;
-          justify-content: center;
-          width: 100%;
-        }
-        .deck-empty {
           display: flex;
           flex-direction: column;
           align-items: center;
-          gap: 1rem;
+          padding: 1rem 0.5rem 0.5rem;
+        }
+        .ghost-stack {
+          position: relative;
+          width: 110px;
+          height: 70px;
+        }
+        .ghost-paper {
+          position: absolute;
+          inset: 0;
+          background: hsl(var(--background));
+          border: 1px dashed hsl(var(--border));
+          border-radius: 4px;
+        }
+        .ghost-paper:nth-child(1) { transform: rotate(-6deg) translate(-6px, 4px); opacity: 0.5; }
+        .ghost-paper:nth-child(2) { transform: rotate(3deg) translate(2px, 2px); opacity: 0.7; }
+        .ghost-paper.top {
+          background: white;
+          border-style: dashed;
+          border-color: hsl(var(--border));
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 6px;
+          color: black;
+          box-shadow: 0 4px 12px -4px hsl(0 0% 0% / 0.15);
         }
 
-        /* ─── dieline frame (crop marks around sticker) ─── */
-        .dieline-frame {
+        /* Preview deck */
+        .preview-stack {
+          display: flex;
+          flex-direction: column;
+          gap: 0.75rem;
+          align-items: center;
+          max-height: 360px;
+          overflow-y: auto;
+          padding: 0.5rem;
+          background:
+            radial-gradient(circle at 1px 1px, hsl(var(--muted-foreground) / 0.15) 1px, transparent 0)
+            0 0 / 14px 14px,
+            hsl(var(--background));
+          border-radius: 8px;
+        }
+        .dieline {
           position: relative;
-          padding: 8px;
+          padding: 6px;
           background: white;
           box-shadow:
             0 1px 0 hsl(var(--border)),
-            0 8px 20px -8px hsl(0 0% 0% / 0.18);
-          animation: dieline-in 260ms ease-out;
+            0 6px 16px -8px hsl(0 0% 0% / 0.2);
+          animation: dieline-in 240ms ease-out;
         }
         @keyframes dieline-in {
           from { opacity: 0; transform: translateY(4px); }
           to   { opacity: 1; transform: translateY(0); }
         }
-        .dieline-marks .mark {
+        .dieline .mark {
           position: absolute;
-          width: 8px;
-          height: 8px;
+          width: 7px;
+          height: 7px;
           border-color: hsl(var(--primary) / 0.65);
           border-style: solid;
           border-width: 0;
         }
-        .dieline-marks .mark-tl { top: -2px; left: -2px; border-top-width: 1.5px; border-left-width: 1.5px; }
-        .dieline-marks .mark-tr { top: -2px; right: -2px; border-top-width: 1.5px; border-right-width: 1.5px; }
-        .dieline-marks .mark-bl { bottom: -2px; left: -2px; border-bottom-width: 1.5px; border-left-width: 1.5px; }
-        .dieline-marks .mark-br { bottom: -2px; right: -2px; border-bottom-width: 1.5px; border-right-width: 1.5px; }
-        .dieline-label {
-          position: absolute;
-          right: 0;
-          top: -1.1rem;
-          font-size: 9px;
-          letter-spacing: 0.12em;
-          text-transform: uppercase;
+        .dieline .mark-tl { top: -2px; left: -2px; border-top-width: 1.5px; border-left-width: 1.5px; }
+        .dieline .mark-tr { top: -2px; right: -2px; border-top-width: 1.5px; border-right-width: 1.5px; }
+        .dieline .mark-bl { bottom: -2px; left: -2px; border-bottom-width: 1.5px; border-left-width: 1.5px; }
+        .dieline .mark-br { bottom: -2px; right: -2px; border-bottom-width: 1.5px; border-right-width: 1.5px; }
+
+        .preview-more {
+          width: 100%;
+          padding: 0.5rem;
+          text-align: center;
+          font-size: 11px;
           color: hsl(var(--muted-foreground));
-        }
-
-        .ghost-sticker {
-          width: 50mm;
-          height: 30mm;
-          background: white;
-          border: 1px dashed hsl(var(--border));
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          padding: 1mm;
-        }
-
-        /* ─── sticky print bar ────────────────────────────── */
-        .print-bar {
-          position: fixed;
-          right: 1.5rem;
-          bottom: 1.5rem;
-          display: flex;
-          align-items: center;
-          gap: 1rem;
-          padding: 0.5rem 0.5rem 0.5rem 1rem;
           background: hsl(var(--card));
-          border: 1px solid hsl(var(--border));
-          border-radius: 999px;
-          box-shadow: 0 12px 32px -8px hsl(0 0% 0% / 0.25);
-          z-index: 30;
-          animation: bar-in 240ms cubic-bezier(0.16, 1, 0.3, 1);
+          border: 1px dashed hsl(var(--border));
+          border-radius: 6px;
         }
-        @keyframes bar-in {
-          from { opacity: 0; transform: translateY(8px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-        .print-btn {
-          display: inline-flex;
-          align-items: center;
-          gap: 0.5rem;
-          padding: 0.5rem 1rem;
-          font-weight: 600;
-          color: hsl(var(--primary-foreground));
-          background: hsl(var(--primary));
-          border: 0;
-          border-radius: 999px;
-          cursor: pointer;
-          transition: filter 150ms, transform 150ms;
-        }
-        .print-btn:hover { filter: brightness(1.1); transform: translateY(-1px); }
-        .print-btn:active { transform: translateY(0); }
 
-        /* ─── print rules ─────────────────────────────────── */
+        /* PRINT cta */
+        .print-cta {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+          padding: 0.875rem 1rem;
+          color: hsl(var(--primary-foreground));
+          background:
+            linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.85) 100%);
+          border: 0;
+          border-radius: 14px;
+          cursor: pointer;
+          transition: transform 200ms, box-shadow 200ms, filter 200ms;
+          box-shadow: 0 8px 24px -8px hsl(var(--primary) / 0.6);
+        }
+        .print-cta:not(:disabled):hover {
+          transform: translateY(-1px);
+          filter: brightness(1.05);
+          box-shadow: 0 12px 28px -8px hsl(var(--primary) / 0.7);
+        }
+        .print-cta:disabled {
+          background: hsl(var(--muted));
+          color: hsl(var(--muted-foreground));
+          cursor: not-allowed;
+          box-shadow: none;
+        }
+
+        /* ─── Print rules ────────────────────────────────── */
         @media print {
           @page { size: 50mm 30mm; margin: 0; }
           body { margin: 0; padding: 0; background: white; }

@@ -104,7 +104,7 @@ function saveRecent(ids: string[]) {
   }
 }
 
-/* ─── 50×30mm sticker (used for both print & preview) ─ */
+/* ─── 50×30mm thermal sticker — receipt-card aesthetic ─ */
 function StickerCard({ data }: { data: StickerData }) {
   const specParts = [
     data.color,
@@ -112,53 +112,73 @@ function StickerCard({ data }: { data: StickerData }) {
     data.batteryHealth !== null ? `แบต ${data.batteryHealth}%` : null,
   ].filter(Boolean);
   const warrantyText = data.warrantyExpireDate
-    ? `ประกันศูนย์ ${formatGregorianDate(data.warrantyExpireDate)}`
+    ? `ประกัน ${formatGregorianDate(data.warrantyExpireDate)}`
     : null;
 
   return (
-    <div className="sticker bg-white text-black relative overflow-hidden">
-      <div className="flex justify-between items-start gap-1">
-        <div className="font-bold text-[8pt] leading-tight truncate">
-          {data.brand} {data.model}
+    <div className="sticker bg-white text-black relative">
+      {/* Top: brand badge + model + price hero */}
+      <div className="st-row st-row-top">
+        <div className="st-brandblock min-w-0">
+          <span className="st-brand">{data.brand}</span>
+          <span className="st-model">{data.model}</span>
         </div>
         {data.cashPrice !== null && (
-          <div className="font-bold text-[9pt] leading-tight whitespace-nowrap">
-            ฿ {formatBaht(data.cashPrice)}
+          <div className="st-price tabular-nums">
+            <span className="st-currency">฿</span>
+            <span className="st-amount">{formatBaht(data.cashPrice)}</span>
           </div>
         )}
       </div>
 
-      <div className="flex justify-between items-start gap-1 text-[6.5pt] leading-tight mt-[0.5mm]">
-        <div className="truncate">{specParts.join(' · ') || ' '}</div>
-        {warrantyText && <div className="whitespace-nowrap">{warrantyText}</div>}
-      </div>
-
-      <hr className="my-[0.8mm] border-t border-black/40" />
-
-      {data.rate1 && (
-        <div className="text-[6.5pt] leading-tight tabular-nums">
-          เรทที่ 1 ดาวน์ {formatBaht(data.rate1.downPayment)} {formatBaht(data.rate1.monthlyPrice)} ×{' '}
-          {data.rate1.termMonths} ด.
-        </div>
-      )}
-      {data.rate2 && (
-        <div className="text-[6.5pt] leading-tight tabular-nums">
-          เรทที่ 2 ดาวน์ {formatBaht(data.rate2.downPayment)} {formatBaht(data.rate2.monthlyPrice)} ×{' '}
-          {data.rate2.termMonths} ด.
+      {/* Spec line */}
+      {(specParts.length > 0 || warrantyText) && (
+        <div className="st-row st-spec">
+          <span className="truncate">{specParts.join(' · ') || ' '}</span>
+          {warrantyText && <span className="st-warranty whitespace-nowrap">{warrantyText}</span>}
         </div>
       )}
 
-      <div className="absolute left-[1mm] right-[8mm] bottom-[0.5mm] text-[6pt] font-mono leading-none truncate">
-        {data.imei ? `IMEI: ${data.imei}` : ' '}
-      </div>
+      <div className="st-rule" />
 
-      {data.shopLogoUrl && (
-        <img
-          src={data.shopLogoUrl}
-          alt=""
-          className="absolute right-[1mm] bottom-[1mm] w-[7mm] h-[7mm] object-contain"
-        />
+      {/* Rates as mini-table */}
+      {(data.rate1 || data.rate2) && (
+        <div className="st-rates tabular-nums">
+          {data.rate1 && (
+            <div className="st-rate">
+              <span className="st-rate-tag">1</span>
+              <span className="st-rate-down">ดาวน์ {formatBaht(data.rate1.downPayment)}</span>
+              <span className="st-rate-monthly">
+                {formatBaht(data.rate1.monthlyPrice)}<span className="st-x"> × </span>{data.rate1.termMonths} ด.
+              </span>
+            </div>
+          )}
+          {data.rate2 && (
+            <div className="st-rate">
+              <span className="st-rate-tag">2</span>
+              <span className="st-rate-down">ดาวน์ {formatBaht(data.rate2.downPayment)}</span>
+              <span className="st-rate-monthly">
+                {formatBaht(data.rate2.monthlyPrice)}<span className="st-x"> × </span>{data.rate2.termMonths} ด.
+              </span>
+            </div>
+          )}
+        </div>
       )}
+
+      {/* Footer: IMEI + brand mark */}
+      <div className="st-footer">
+        <span className="st-imei truncate">
+          {data.imei ? `IMEI ${data.imei}` : ' '}
+        </span>
+        {data.shopLogoUrl ? (
+          <img src={data.shopLogoUrl} alt="" className="st-logo" />
+        ) : (
+          <span className="st-mark">
+            <span className="st-mark-b">B</span>
+            <span className="st-mark-rest">ESTCHOICE</span>
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -706,14 +726,157 @@ export default function StickerPrintPage() {
       </div>
 
       <style>{`
-        /* ─── Physical sticker ──────────────────────────── */
+        /* ─── Physical thermal sticker (50×30mm B&W) ───── */
         .sticker {
           width: 50mm;
           height: 30mm;
-          padding: 1mm 1.5mm;
+          padding: 1.4mm 1.6mm 1mm;
           font-family: 'IBM Plex Sans Thai', system-ui, sans-serif;
           box-sizing: border-box;
+          display: flex;
+          flex-direction: column;
+          color: #000;
+          line-height: 1.15;
         }
+        .st-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 1mm;
+        }
+        .st-row-top { align-items: flex-start; }
+        .st-brandblock {
+          display: flex;
+          flex-direction: column;
+          min-width: 0;
+        }
+        .st-brand {
+          font-size: 5.6pt;
+          font-weight: 700;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+          line-height: 1;
+          color: #000;
+          margin-bottom: 0.3mm;
+        }
+        .st-model {
+          font-size: 8.5pt;
+          font-weight: 700;
+          line-height: 1.05;
+          letter-spacing: -0.005em;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .st-price {
+          display: inline-flex;
+          align-items: baseline;
+          gap: 0.4mm;
+          flex-shrink: 0;
+          padding: 0.6mm 1mm;
+          background: #000;
+          color: #fff;
+          border-radius: 0.6mm;
+        }
+        .st-currency {
+          font-size: 5.6pt;
+          font-weight: 600;
+          line-height: 1;
+        }
+        .st-amount {
+          font-size: 9pt;
+          font-weight: 800;
+          line-height: 1;
+          letter-spacing: -0.01em;
+        }
+        .st-spec {
+          font-size: 6.2pt;
+          margin-top: 0.7mm;
+          color: #1a1a1a;
+        }
+        .st-warranty { color: #444; }
+        .st-rule {
+          margin: 0.7mm 0 0.6mm;
+          height: 0;
+          border-top: 0.18mm solid #000;
+        }
+        .st-rates {
+          display: flex;
+          flex-direction: column;
+          gap: 0.4mm;
+        }
+        .st-rate {
+          display: grid;
+          grid-template-columns: 3.4mm 1fr auto;
+          align-items: baseline;
+          gap: 1mm;
+          font-size: 6.5pt;
+          line-height: 1.15;
+        }
+        .st-rate-tag {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 3mm;
+          height: 3mm;
+          font-family: var(--font-mono);
+          font-size: 5.5pt;
+          font-weight: 700;
+          color: #fff;
+          background: #000;
+          border-radius: 0.5mm;
+          line-height: 1;
+        }
+        .st-rate-down { font-weight: 600; color: #000; }
+        .st-rate-monthly { font-weight: 600; color: #000; white-space: nowrap; }
+        .st-x { color: #555; font-weight: 400; }
+
+        .st-footer {
+          margin-top: auto;
+          padding-top: 0.6mm;
+          border-top: 0.18mm dotted #000;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 1mm;
+        }
+        .st-imei {
+          font-family: var(--font-mono);
+          font-size: 5.4pt;
+          letter-spacing: 0.02em;
+          color: #1a1a1a;
+          flex: 1;
+          min-width: 0;
+        }
+        .st-logo {
+          width: 6mm;
+          height: 4.5mm;
+          object-fit: contain;
+          flex-shrink: 0;
+        }
+        .st-mark {
+          display: inline-flex;
+          align-items: center;
+          flex-shrink: 0;
+          font-size: 5.4pt;
+          font-weight: 700;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+        }
+        .st-mark-b {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 3mm;
+          height: 3mm;
+          margin-right: 0.6mm;
+          color: #fff;
+          background: #000;
+          border-radius: 0.4mm;
+          font-size: 5.4pt;
+          font-weight: 800;
+        }
+        .st-mark-rest { color: #000; }
 
         /* ─── Layout ────────────────────────────────────── */
         .main-grid {

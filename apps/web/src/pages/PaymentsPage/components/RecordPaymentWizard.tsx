@@ -34,6 +34,7 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { toast } from 'sonner';
 import type { PendingPayment } from '../types';
 import { AdvanceBalanceBanner } from './AdvanceBalanceBanner';
+import { EarlyPayoffOverlay } from '@/components/contract/ContractEarlyPayoff';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -75,10 +76,12 @@ function ContractInfoPanel({
   payment,
   lateFee,
   netExposure,
+  onOpenPayoff,
 }: {
   payment: PendingPayment;
   lateFee: Decimal;
   netExposure: Decimal;
+  onOpenPayoff: () => void;
 }) {
   const amountDue = new Decimal(payment.amountDue);
   const amountPaid = new Decimal(payment.amountPaid);
@@ -155,6 +158,13 @@ function ContractInfoPanel({
           </span>
         </div>
       </div>
+      <button
+        type="button"
+        onClick={onOpenPayoff}
+        className="mt-3 w-full text-xs text-primary hover:underline flex items-center justify-center gap-1 py-2 border-t border-border"
+      >
+        ปิดยอดสัญญาทั้งหมด ›
+      </button>
     </div>
   );
 }
@@ -439,6 +449,7 @@ export function RecordPaymentWizard({
 }: RecordPaymentWizardProps) {
   const [depositAccountCode, setDepositAccountCode] = useState(defaultDepositAccountCode);
   const [showPartialConfirm, setShowPartialConfirm] = useState(false);
+  const [showPayoffOverlay, setShowPayoffOverlay] = useState(false);
 
   // Amount fields
   const lateFeeDecimal = useMemo(() => new Decimal(payment.lateFee), [payment.lateFee]);
@@ -664,18 +675,11 @@ export function RecordPaymentWizard({
               payment={payment}
               lateFee={currentLateFee}
               netExposure={netExposure}
+              onOpenPayoff={() => setShowPayoffOverlay(true)}
             />
 
             {/* RIGHT: Form */}
             <div className="space-y-5 min-w-0">
-              {/* Hint */}
-              <div className="flex items-start gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2.5">
-                <Info className="size-4 text-muted-foreground shrink-0 mt-0.5" />
-                <p className="text-xs text-muted-foreground leading-snug">
-                  หากต้องการปิดยอดก่อนกำหนดหรือปรับดิว ใช้เมนูแยกในหน้าสัญญา
-                </p>
-              </div>
-
               {/* Advance balance banner — shown when contract has advance to consume */}
               {advanceBalance.gt(0) && (
                 <AdvanceBalanceBanner
@@ -933,6 +937,21 @@ export function RecordPaymentWizard({
         cancelLabel="ยกเลิก"
         onConfirm={actuallySubmit}
       />
+
+      {/* Early-payoff shortcut from wizard */}
+      {showPayoffOverlay && (
+        <EarlyPayoffOverlay
+          contractId={payment.contract.id}
+          contractNumber={payment.contract.contractNumber}
+          customerName={payment.contract.customer.name}
+          branchName={payment.contract.branch.name}
+          onClose={() => setShowPayoffOverlay(false)}
+          onSuccess={() => {
+            setShowPayoffOverlay(false);
+            onClose();
+          }}
+        />
+      )}
     </Dialog>
   );
 }

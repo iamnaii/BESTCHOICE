@@ -19,18 +19,18 @@
 
 ```
 ┌──────────────────────────────────────────────┐
-│ [LOGO] iPhone 15 Pro Max         ฿ 35,900   │   ← logo + รุ่น (bold) + ราคาเงินสด (bold ใหญ่)
-│        ดำ · 256GB · แบต 95% ประกัน 22/05/27 │   ← spec + warranty (DD/MM/YYYY ค.ศ.)
+│ iPhone 15 Pro Max                  ฿ 35,900 │   ← รุ่น (bold) + ราคาเงินสด (bold ใหญ่)
+│ ดำ · 256GB · แบต 95%   ประกันศูนย์ 22/05/2027│   ← spec + warranty (DD/MM/YYYY ค.ศ.)
 │ ─────────────────────────────────────────────│
 │ เรทที่ 1  ดาวน์ 0      1,500 × 24 ด.        │   ← rate 1: down + monthly × term
 │ เรทที่ 2  ดาวน์ 1,000  1,800 × 12 ด.        │   ← rate 2
-│ IMEI: 359123456789012                        │   ← IMEI (mono font)
+│ IMEI: 359123456789012              [LOGO]    │   ← IMEI (mono) + logo มุมขวาล่าง
 └──────────────────────────────────────────────┘
 ```
 
 **ข้อกำหนด layout**:
 - Font: IBM Plex Sans Thai (ในระบบอยู่แล้ว) ขนาด ~6.5pt body, ~8pt รุ่น/ราคา bold
-- Logo: 8×8mm จาก `CompanyInfo.logoUrl` ของ company `SHOP`
+- Logo: 7×7mm มุมขวาล่าง (absolute position, padding ~1mm จากขอบ), จาก `CompanyInfo.logoUrl` ของ company `SHOP`
 - ฟิลด์ที่ไม่มีข้อมูล → ซ่อนทั้งบรรทัด (warranty null, batteryHealth null, IMEI null)
 - ถ้า PricingTemplate ไม่มี rate1/rate2 fields → fallback ไป SystemSetting global default
 - ถ้าทั้งคู่ไม่มี → ซ่อนบรรทัดเรท (ไม่ค้าง "ดาวน์ - × - ด.")

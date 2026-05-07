@@ -14,6 +14,16 @@ async function setup() {
   await prisma.journalLine.deleteMany({});
   await prisma.journalEntry.deleteMany({});
   await prisma.receipt.deleteMany({});
+  await prisma.eDocument.deleteMany({});
+  await prisma.signature.deleteMany({});
+  await prisma.contractDocument.deleteMany({});
+  await prisma.partialPaymentLink.deleteMany({});
+  await prisma.warrantyAuditLog.deleteMany({});
+  await prisma.badDebtWriteOffAuditLog.deleteMany({});
+  await prisma.promiseSlot.deleteMany({});
+  await prisma.callLog.deleteMany({});
+  await prisma.dunningAction.deleteMany({});
+  await prisma.repossession.deleteMany({});
   await prisma.payment.deleteMany({});
   await prisma.installmentSchedule.deleteMany({});
   // Delete only test contracts (by contractNumber prefix) to avoid FK issues from other test data
@@ -102,6 +112,16 @@ describe('Vat60dayMandatoryTemplate', () => {
     await prisma.journalLine.deleteMany({});
     await prisma.journalEntry.deleteMany({});
     await prisma.receipt.deleteMany({});
+    await prisma.eDocument.deleteMany({});
+    await prisma.signature.deleteMany({});
+    await prisma.contractDocument.deleteMany({});
+    await prisma.partialPaymentLink.deleteMany({});
+    await prisma.warrantyAuditLog.deleteMany({});
+    await prisma.badDebtWriteOffAuditLog.deleteMany({});
+    await prisma.promiseSlot.deleteMany({});
+    await prisma.callLog.deleteMany({});
+    await prisma.dunningAction.deleteMany({});
+    await prisma.repossession.deleteMany({});
     await prisma.payment.deleteMany({});
     await prisma.installmentSchedule.deleteMany({});
     await prisma.contract.deleteMany({ where: { contractNumber: { startsWith: 'TEST-' } } });

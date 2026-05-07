@@ -6,7 +6,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 describe('StickersService.getStickerData', () => {
   let service: StickersService;
   let prisma: {
-    product: { findUnique: jest.Mock };
+    product: { findFirst: jest.Mock };
     pricingTemplate: { findFirst: jest.Mock };
     systemConfig: { findMany: jest.Mock };
     companyInfo: { findFirst: jest.Mock };
@@ -14,7 +14,7 @@ describe('StickersService.getStickerData', () => {
 
   beforeEach(async () => {
     prisma = {
-      product: { findUnique: jest.fn() },
+      product: { findFirst: jest.fn() },
       pricingTemplate: { findFirst: jest.fn() },
       systemConfig: { findMany: jest.fn() },
       companyInfo: { findFirst: jest.fn() },
@@ -59,7 +59,7 @@ describe('StickersService.getStickerData', () => {
   };
 
   it('returns full sticker data with PricingTemplate match using SystemConfig fallbacks', async () => {
-    prisma.product.findUnique.mockResolvedValue(baseProduct);
+    prisma.product.findFirst.mockResolvedValue(baseProduct);
     prisma.pricingTemplate.findFirst.mockResolvedValue(fullPricingTemplate);
     prisma.systemConfig.findMany.mockResolvedValue(defaultConfigs);
     prisma.companyInfo.findFirst.mockResolvedValue({ logoUrl: 'https://cdn/logo.png' });
@@ -83,7 +83,7 @@ describe('StickersService.getStickerData', () => {
   });
 
   it('uses PricingTemplate rate overrides when set (not fallback)', async () => {
-    prisma.product.findUnique.mockResolvedValue(baseProduct);
+    prisma.product.findFirst.mockResolvedValue(baseProduct);
     prisma.pricingTemplate.findFirst.mockResolvedValue({
       ...fullPricingTemplate,
       rate1DownPayment: new Decimal(2000),
@@ -99,7 +99,7 @@ describe('StickersService.getStickerData', () => {
   });
 
   it('hides cashPrice + rates when no PricingTemplate matches', async () => {
-    prisma.product.findUnique.mockResolvedValue(baseProduct);
+    prisma.product.findFirst.mockResolvedValue(baseProduct);
     prisma.pricingTemplate.findFirst.mockResolvedValue(null);
     prisma.systemConfig.findMany.mockResolvedValue(defaultConfigs);
     prisma.companyInfo.findFirst.mockResolvedValue(null);
@@ -113,7 +113,7 @@ describe('StickersService.getStickerData', () => {
   });
 
   it('returns null for warrantyExpireDate when warrantyExpired = true', async () => {
-    prisma.product.findUnique.mockResolvedValue({ ...baseProduct, warrantyExpired: true });
+    prisma.product.findFirst.mockResolvedValue({ ...baseProduct, warrantyExpired: true });
     prisma.pricingTemplate.findFirst.mockResolvedValue(fullPricingTemplate);
     prisma.systemConfig.findMany.mockResolvedValue(defaultConfigs);
     prisma.companyInfo.findFirst.mockResolvedValue(null);
@@ -124,7 +124,7 @@ describe('StickersService.getStickerData', () => {
   });
 
   it('returns null for warrantyExpireDate when expire date is in the past', async () => {
-    prisma.product.findUnique.mockResolvedValue({
+    prisma.product.findFirst.mockResolvedValue({
       ...baseProduct,
       warrantyExpireDate: new Date('2024-01-01'),
       warrantyExpired: false,
@@ -139,7 +139,7 @@ describe('StickersService.getStickerData', () => {
   });
 
   it('returns null fields for missing battery/IMEI/color/storage', async () => {
-    prisma.product.findUnique.mockResolvedValue({
+    prisma.product.findFirst.mockResolvedValue({
       ...baseProduct,
       color: null,
       storage: null,
@@ -159,15 +159,71 @@ describe('StickersService.getStickerData', () => {
   });
 
   it('throws NotFoundException when product not found', async () => {
-    prisma.product.findUnique.mockResolvedValue(null);
+    prisma.product.findFirst.mockResolvedValue(null);
     await expect(service.getStickerData('missing-id')).rejects.toThrow('ไม่พบสินค้า');
+  });
+
+  it('queries PricingTemplate with hasWarranty=true for PHONE_USED with active warranty', async () => {
+    const futureDate = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
+    prisma.product.findFirst.mockResolvedValue({
+      ...baseProduct,
+      category: 'PHONE_USED',
+      warrantyExpireDate: futureDate,
+      warrantyExpired: false,
+    });
+    prisma.pricingTemplate.findFirst.mockResolvedValue(fullPricingTemplate);
+    prisma.systemConfig.findMany.mockResolvedValue(defaultConfigs);
+    prisma.companyInfo.findFirst.mockResolvedValue(null);
+
+    await service.getStickerData('product-1');
+
+    expect(prisma.pricingTemplate.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ hasWarranty: true, category: 'PHONE_USED' }),
+      }),
+    );
+  });
+
+  it('queries PricingTemplate with hasWarranty=false for PHONE_USED with expired warranty', async () => {
+    prisma.product.findFirst.mockResolvedValue({
+      ...baseProduct,
+      category: 'PHONE_USED',
+      warrantyExpireDate: new Date('2024-01-01'),
+      warrantyExpired: true,
+    });
+    prisma.pricingTemplate.findFirst.mockResolvedValue(fullPricingTemplate);
+    prisma.systemConfig.findMany.mockResolvedValue(defaultConfigs);
+    prisma.companyInfo.findFirst.mockResolvedValue(null);
+
+    await service.getStickerData('product-1');
+
+    expect(prisma.pricingTemplate.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ hasWarranty: false, category: 'PHONE_USED' }),
+      }),
+    );
+  });
+
+  it('queries Product with deletedAt: null filter (excludes soft-deleted)', async () => {
+    prisma.product.findFirst.mockResolvedValue(baseProduct);
+    prisma.pricingTemplate.findFirst.mockResolvedValue(null);
+    prisma.systemConfig.findMany.mockResolvedValue(defaultConfigs);
+    prisma.companyInfo.findFirst.mockResolvedValue(null);
+
+    await service.getStickerData('product-1');
+
+    expect(prisma.product.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: 'product-1', deletedAt: null }),
+      }),
+    );
   });
 });
 
 describe('StickersService.getStickerDataBatch', () => {
   let service: StickersService;
   let prisma: {
-    product: { findUnique: jest.Mock };
+    product: { findFirst: jest.Mock };
     pricingTemplate: { findFirst: jest.Mock };
     systemConfig: { findMany: jest.Mock };
     companyInfo: { findFirst: jest.Mock };
@@ -175,7 +231,7 @@ describe('StickersService.getStickerDataBatch', () => {
 
   beforeEach(async () => {
     prisma = {
-      product: { findUnique: jest.fn() },
+      product: { findFirst: jest.fn() },
       pricingTemplate: { findFirst: jest.fn() },
       systemConfig: { findMany: jest.fn() },
       companyInfo: { findFirst: jest.fn() },
@@ -194,7 +250,7 @@ describe('StickersService.getStickerDataBatch', () => {
       { key: 'sticker.rate2.defaultTerm', value: '12' },
     ]);
     prisma.companyInfo.findFirst.mockResolvedValue(null);
-    prisma.product.findUnique.mockImplementation(({ where: { id } }) => {
+    prisma.product.findFirst.mockImplementation(({ where: { id } }) => {
       if (id === 'p1') {
         return Promise.resolve({
           id: 'p1',

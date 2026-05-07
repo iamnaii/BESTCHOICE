@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { Printer, Plus, X } from 'lucide-react';
 import api from '@/lib/api';
+import { formatGregorianDate } from '@/lib/date';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Button } from '@/components/ui/button';
@@ -33,19 +34,13 @@ interface PrintItem {
   qty: number;
 }
 
-function formatThaiDate(isoDate: string): string {
-  // YYYY-MM-DD → DD/MM/YYYY (ค.ศ.)
-  const [y, m, d] = isoDate.split('-');
-  return `${d}/${m}/${y}`;
-}
-
 function formatBaht(n: number): string {
   return n.toLocaleString('th-TH');
 }
 
 function StickerCard({ data }: { data: StickerData }) {
   const specParts = [data.color, data.storage, data.batteryHealth !== null ? `แบต ${data.batteryHealth}%` : null].filter(Boolean);
-  const warrantyText = data.warrantyExpireDate ? `ประกันศูนย์ ${formatThaiDate(data.warrantyExpireDate)}` : null;
+  const warrantyText = data.warrantyExpireDate ? `ประกันศูนย์ ${formatGregorianDate(data.warrantyExpireDate)}` : null;
 
   return (
     <div className="sticker bg-white text-black relative overflow-hidden border border-dashed border-border print:border-0">

@@ -123,8 +123,8 @@ export class StickersService {
     defaults: StickerDefaults,
     shopLogoUrl: string | null,
   ): Promise<StickerData | null> {
-    const product = await this.prisma.product.findUnique({
-      where: { id: productId },
+    const product = await this.prisma.product.findFirst({
+      where: { id: productId, deletedAt: null },
       include: {
         branch: { select: { name: true } },
         inspection: { select: { overallGrade: true, gradeOverride: true } },
@@ -132,12 +132,20 @@ export class StickersService {
     });
     if (!product) return null;
 
+    // PHONE_USED templates are uniquely keyed by hasWarranty too — derive from product
+    const productHasWarranty =
+      product.category === 'PHONE_USED' &&
+      product.warrantyExpired !== true &&
+      product.warrantyExpireDate !== null &&
+      product.warrantyExpireDate.getTime() >= Date.now();
+
     const pricing = await this.prisma.pricingTemplate.findFirst({
       where: {
         brand: { equals: product.brand, mode: 'insensitive' },
         model: { equals: product.model, mode: 'insensitive' },
         storage: product.storage ?? '',
         category: product.category as ProductCategory,
+        hasWarranty: product.category === 'PHONE_USED' ? productHasWarranty : false,
         isActive: true,
         deletedAt: null,
       },

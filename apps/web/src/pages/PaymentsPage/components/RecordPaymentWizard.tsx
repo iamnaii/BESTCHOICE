@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import Decimal from 'decimal.js';
@@ -678,10 +679,7 @@ export function RecordPaymentWizard({
               payment={payment}
               lateFee={currentLateFee}
               netExposure={netExposure}
-              onOpenPayoff={() => {
-                setShowPayoffOverlay(true);
-                onClose(); // Close wizard so overlay's fixed-positioned div is on top
-              }}
+              onOpenPayoff={() => setShowPayoffOverlay(true)}
             />
 
             {/* RIGHT: Form */}
@@ -946,8 +944,8 @@ export function RecordPaymentWizard({
 
     </Dialog>
 
-      {/* Early-payoff overlay — rendered as sibling of Dialog so its fixed-positioned div isn't trapped inside the wizard's portal */}
-      {showPayoffOverlay && (
+      {/* Early-payoff overlay — rendered via createPortal to document.body to escape Radix Dialog's portal context (otherwise the overlay's fixed-positioned div is trapped inside wizard's portal and invisible). */}
+      {showPayoffOverlay && createPortal(
         <EarlyPayoffOverlay
           contractId={payment.contract.id}
           contractNumber={payment.contract.contractNumber}
@@ -956,8 +954,10 @@ export function RecordPaymentWizard({
           onClose={() => setShowPayoffOverlay(false)}
           onSuccess={() => {
             setShowPayoffOverlay(false);
+            onClose(); // close wizard after successful payoff
           }}
-        />
+        />,
+        document.body,
       )}
     </>
   );

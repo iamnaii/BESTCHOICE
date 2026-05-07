@@ -222,7 +222,7 @@ export default function OtherIncomeReceiptPage() {
 
             {/* B11: 4 signature blocks per spec §3.5 + QR code */}
             <div className="mt-6">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center text-xs text-muted-foreground">
+              <div className="grid grid-cols-2 md:grid-cols-4 print:grid-cols-4 gap-6 text-center text-xs text-muted-foreground">
                 {/* 1: ผู้ออกเอกสาร */}
                 <div>
                   <div className="border-b border-border mb-2 h-14"></div>

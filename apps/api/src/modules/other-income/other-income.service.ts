@@ -31,6 +31,7 @@ export class OtherIncomeService {
     private readonly validation: ValidationService,
     private readonly autoJournal: AutoJournalService,
     private readonly template: OtherIncomeTemplate,
+    private readonly storage: StorageService,
   ) {}
 
   async create(dto: CreateOtherIncomeDto, userId: string) {
@@ -730,33 +731,35 @@ export class OtherIncomeService {
   // uploadAttachment(): store file in S3/GCS + create OtherIncomeAttachment row
   // -------------------------------------------------------------------------
 
-  async uploadAttachment(
-    id: string,
-    file: Express.Multer.File,
-    userId: string,
-    storage: StorageService,
-  ) {
-    // Verify doc exists
-    await this.findOneOrFail(id);
+  async uploadAttachment(id: string, file: Express.Multer.File, userId: string) {
+    const doc = await this.findOneOrFail(id);
 
-    // Sanitize filename
+    if (doc.status === OtherIncomeStatus.REVERSED) {
+      throw new BadRequestException('ไม่สามารถแนบไฟล์เอกสารที่ถูกกลับรายการ');
+    }
+
     const decodedName = Buffer.from(file.originalname, 'latin1').toString('utf8');
     // eslint-disable-next-line no-control-regex
-    const safeName = decodedName.replace(/[<>:"/\\|?* -]/g, '_');
+    const safeName = decodedName.replace(/[<>:"/\\|?* -\s]/g, '_');
     const key = `other-income/${id}/${Date.now()}-${randomUUID()}-${safeName}`;
 
-    await storage.upload(key, file.buffer, file.mimetype);
+    await this.storage.upload(key, file.buffer, file.mimetype);
 
-    return this.prisma.otherIncomeAttachment.create({
-      data: {
-        otherIncomeId: id,
-        s3Key: key,
-        filename: decodedName,
-        size: file.size,
-        mimeType: file.mimetype,
-        uploadedById: userId,
-      },
-    });
+    try {
+      return await this.prisma.otherIncomeAttachment.create({
+        data: {
+          otherIncomeId: id,
+          s3Key: key,
+          filename: decodedName,
+          size: file.size,
+          mimeType: file.mimetype,
+          uploadedById: userId,
+        },
+      });
+    } catch (err) {
+      await this.storage.delete(key).catch(() => undefined);
+      throw err;
+    }
   }
 
   // findOneOrFail()
@@ -794,7 +797,7 @@ export class OtherIncomeService {
   }
 
   /** Read OTHER_INCOME_ATTACHMENT_THRESHOLD from SystemConfig. Falls back to 50_000. */
-  private async getAttachmentThreshold(): Promise<number> {
+  async getAttachmentThreshold(): Promise<number> {
     try {
       const row = await this.prisma.systemConfig.findUnique({
         where: { key: 'OTHER_INCOME_ATTACHMENT_THRESHOLD' },

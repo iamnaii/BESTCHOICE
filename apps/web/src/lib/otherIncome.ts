@@ -68,9 +68,12 @@ export const otherIncomeApi = {
     const formData = new FormData();
     formData.append('file', file);
     return api
-      .post<OtherIncomeAttachment>(`/other-income/${id}/attachments`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
+      .post<OtherIncomeAttachment>(`/other-income/${id}/attachments`, formData)
       .then((r) => r.data);
   },
+
+  getAttachmentThreshold: () =>
+    api
+      .get<{ threshold: number }>('/other-income/config/attachment-threshold')
+      .then((r) => r.data.threshold),
 };

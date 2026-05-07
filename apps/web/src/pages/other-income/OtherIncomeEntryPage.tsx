@@ -15,8 +15,8 @@ import { AutoJournalPreview } from './components/AutoJournalPreview';
 import { PaymentCompareCard } from './components/PaymentCompareCard';
 import { CounterpartyPicker } from './components/CounterpartyPicker';
 
-// Threshold above which attachment is required (matches backend SystemConfig default)
-const ATTACHMENT_THRESHOLD = 50_000;
+// Fallback while config is loading; live value comes from /other-income/config/attachment-threshold
+const ATTACHMENT_THRESHOLD_FALLBACK = 50_000;
 
 // ------------------------------------------------------------------
 // JE preview computation — mirrors AutoJournalService on the backend
@@ -85,13 +85,13 @@ function computeJePreview(values: OtherIncomeFormValues): JeLine[] {
     });
   }
 
-  // Dr WHT payable (21-3101) if any
+  // Dr WHT receivable (11-4103) if any
   if (totalWht > 0) {
     lines.push({
-      accountCode: '21-3101',
-      debit: 0,
-      credit: +totalWht.toFixed(2),
-      description: 'ภาษีหัก ณ ที่จ่าย',
+      accountCode: '11-4103',
+      debit: +totalWht.toFixed(2),
+      credit: 0,
+      description: 'ภาษีหัก ณ ที่จ่าย (รอเรียกคืน)',
     });
   }
 
@@ -313,9 +313,16 @@ export default function OtherIncomeEntryPage() {
     onError: () => toast.error('ไม่สามารถแนบไฟล์ได้'),
   });
 
+  const thresholdQuery = useQuery({
+    queryKey: ['other-income-attachment-threshold'],
+    queryFn: () => otherIncomeApi.getAttachmentThreshold(),
+    staleTime: 5 * 60_000,
+  });
+  const attachmentThreshold = thresholdQuery.data ?? ATTACHMENT_THRESHOLD_FALLBACK;
+
   const currentAttachments = loadQuery.data?.attachments ?? [];
   const amountReceived = Number(values.amountReceived) || 0;
-  const needsAttachment = amountReceived >= ATTACHMENT_THRESHOLD && currentAttachments.length === 0;
+  const needsAttachment = amountReceived >= attachmentThreshold && currentAttachments.length === 0;
 
   return (
     <div className="pb-32">
@@ -544,7 +551,7 @@ export default function OtherIncomeEntryPage() {
                 {needsAttachment && (
                   <div className="flex items-start gap-2 text-xs text-warning">
                     <AlertTriangle size={14} className="shrink-0 mt-0.5" />
-                    <span>ยอดรับ ≥ {ATTACHMENT_THRESHOLD.toLocaleString()} ฿ — ต้องแนบไฟล์ประกอบเพื่อ POST</span>
+                    <span>ยอดรับ ≥ {attachmentThreshold.toLocaleString()} ฿ — ต้องแนบไฟล์ประกอบเพื่อ POST</span>
                   </div>
                 )}
                 {/* Existing attachments */}
@@ -566,11 +573,19 @@ export default function OtherIncomeEntryPage() {
                   <input
                     ref={fileInputRef}
                     type="file"
+                    aria-hidden="true"
+                    tabIndex={-1}
                     className="hidden"
-                    accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                    accept="application/pdf,image/jpeg,image/png,image/webp"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
-                      if (file) uploadAttachmentMutation.mutate(file);
+                      if (file) {
+                        if (file.size > 5 * 1024 * 1024) {
+                          toast.error('ไฟล์มีขนาดเกิน 5 MB');
+                        } else {
+                          uploadAttachmentMutation.mutate(file);
+                        }
+                      }
                       if (fileInputRef.current) fileInputRef.current.value = '';
                     }}
                   />
@@ -584,7 +599,7 @@ export default function OtherIncomeEntryPage() {
                     {uploadAttachmentMutation.isPending ? 'กำลังอัปโหลด...' : 'แนบไฟล์'}
                   </button>
                   <p className="text-xs text-muted-foreground mt-1">
-                    รองรับ PDF, รูปภาพ, Word — ขนาดสูงสุด 20 MB
+                    รองรับ PDF, JPG, PNG, WebP — ขนาดสูงสุด 5 MB
                   </p>
                 </div>
               </div>
@@ -631,8 +646,8 @@ export default function OtherIncomeEntryPage() {
                   <span className="text-muted-foreground">WHT</span>
                   <span>
                     -{jeLines
-                      .filter((l) => l.accountCode === '21-3101')
-                      .reduce((s, l) => s + l.credit, 0)
+                      .filter((l) => l.accountCode === '11-4103')
+                      .reduce((s, l) => s + l.debit, 0)
                       .toFixed(2)}{' '}
                     ฿
                   </span>
@@ -686,13 +701,15 @@ export default function OtherIncomeEntryPage() {
               const errors = form.formState.errors;
               const errorKeys = Object.keys(errors);
               const hasErrors = errorKeys.length > 0;
-              const tooltipMsg = hasErrors
-                ? `ฟิลด์ที่ยังไม่ผ่าน: ${errorKeys.join(', ')}`
-                : undefined;
+              const tooltipMsg = needsAttachment
+                ? `ต้องแนบเอกสารเมื่อยอดรับ ≥ ${attachmentThreshold.toLocaleString()} ฿`
+                : hasErrors
+                  ? `ฟิลด์ที่ยังไม่ผ่าน: ${errorKeys.join(', ')}`
+                  : undefined;
               return (
                 <button
                   type="button"
-                  disabled={isSubmitting || hasErrors}
+                  disabled={isSubmitting || hasErrors || needsAttachment}
                   title={tooltipMsg}
                   onClick={() => {
                     const raw = form.getValues();

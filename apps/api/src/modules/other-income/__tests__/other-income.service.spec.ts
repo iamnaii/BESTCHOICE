@@ -7,6 +7,13 @@ import { ValidationService } from '../services/validation.service';
 import { AutoJournalService } from '../services/auto-journal.service';
 import { OtherIncomeTemplate } from '../templates/other-income.template';
 import { JournalAutoService } from '../../journal/journal-auto.service';
+import { StorageService } from '../../storage/storage.service';
+
+const stubStorage = {
+  upload: async () => undefined,
+  delete: async () => undefined,
+  getSignedUrl: async () => 'https://stub/url',
+};
 
 const D = (n: number | string) => new Prisma.Decimal(n);
 
@@ -30,6 +37,7 @@ describe('OtherIncomeService — CRUD', () => {
         AutoJournalService,
         PrismaService,
         { provide: OtherIncomeTemplate, useValue: stubTemplate },
+        { provide: StorageService, useValue: stubStorage },
       ],
     }).compile();
     await module.init();
@@ -230,6 +238,7 @@ describe('OtherIncomeService — post + reverse + copy', () => {
         OtherIncomeTemplate,
         JournalAutoService,
         PrismaService,
+        { provide: StorageService, useValue: stubStorage },
       ],
     }).compile();
     await module.init();

@@ -5,17 +5,11 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { AssetService } from '../asset.service';
 import { AssetPurchaseTemplate } from '../../journal/cpa-templates/asset-purchase.template';
 import { AssetPurchaseReverseTemplate } from '../../journal/cpa-templates/asset-purchase-reverse.template';
+import { JournalAutoService } from '../../journal/journal-auto.service';
+import { seedFinanceCoa } from '../../../../prisma/seed-coa-finance';
 import { CreateAssetDto } from '../dto/create-asset.dto';
 
 const D = (n: number | string) => new Prisma.Decimal(n);
-
-// Stub templates (Tasks 7-8 will exercise the real ones via service.post / service.reverse).
-const stubPurchaseTemplate = {
-  execute: async () => ({ entryNo: 'JE-STUB' }),
-};
-const stubReverseTemplate = {
-  execute: async () => ({ entryNo: 'JE-STUB-REV' }),
-};
 
 describe('AssetService — CRUD + helpers', () => {
   let service: AssetService;
@@ -36,8 +30,9 @@ describe('AssetService — CRUD + helpers', () => {
       providers: [
         AssetService,
         PrismaService,
-        { provide: AssetPurchaseTemplate, useValue: stubPurchaseTemplate },
-        { provide: AssetPurchaseReverseTemplate, useValue: stubReverseTemplate },
+        JournalAutoService,
+        AssetPurchaseTemplate,
+        AssetPurchaseReverseTemplate,
       ],
     }).compile();
     await module.init();
@@ -58,6 +53,24 @@ describe('AssetService — CRUD + helpers', () => {
       },
     });
 
+    // Seed FINANCE chart of accounts (required for JE creation via real templates)
+    await seedFinanceCoa(prisma);
+
+    // System user — required by JournalAutoService.resolveSystemUserId
+    let admin = await prisma.user.findFirst({
+      where: { email: 'admin@bestchoice.com' },
+    });
+    if (!admin) {
+      admin = await prisma.user.create({
+        data: {
+          email: 'admin@bestchoice.com',
+          password: 'x',
+          name: 'admin',
+          role: 'OWNER',
+        },
+      });
+    }
+
     // Create unique test user
     const user = await prisma.user.create({
       data: {
@@ -71,6 +84,63 @@ describe('AssetService — CRUD + helpers', () => {
   });
 
   async function cleanupUserAssets() {
+    // Collect asset ids first so we can clean dependent rows
+    const assets = await prisma.fixedAsset.findMany({
+      where: { createdById: userId },
+      select: { id: true },
+    });
+    const assetIds = assets.map((a) => a.id);
+
+    if (assetIds.length > 0) {
+      // Delete journal post audit logs + journal lines + journal entries linked
+      // via metadata.assetId (asset-purchase + asset-purchase-reverse JEs).
+      const jeRows = await prisma.journalEntry.findMany({
+        where: {
+          OR: assetIds.map((id) => ({
+            metadata: { path: ['assetId'], equals: id } as any,
+          })),
+        },
+        select: { id: true },
+      });
+      const jeIds = jeRows.map((j) => j.id);
+      if (jeIds.length > 0) {
+        await prisma.journalPostAuditLog.deleteMany({
+          where: { journalEntryId: { in: jeIds } },
+        });
+        await prisma.journalLine.deleteMany({
+          where: { journalEntryId: { in: jeIds } },
+        });
+        await prisma.journalEntry.deleteMany({
+          where: { id: { in: jeIds } },
+        });
+      }
+      // AuditLog rows for these assets — T2-C4 BEFORE DELETE trigger blocks
+      // normal DELETE, so disable trigger for the duration of the cleanup.
+      // (Tests share a DB; bypass is scoped to this transaction-less cleanup.)
+      await prisma.$executeRawUnsafe(
+        `ALTER TABLE audit_logs DISABLE TRIGGER audit_logs_no_delete`,
+      );
+      try {
+        await prisma.$executeRawUnsafe(
+          `DELETE FROM audit_logs WHERE entity = 'fixed_asset' AND entity_id = ANY($1::text[])`,
+          assetIds,
+        );
+        // Also nuke audit logs by this test user (keeps user-deletable in afterAll)
+        await prisma.$executeRawUnsafe(
+          `DELETE FROM audit_logs WHERE user_id = $1`,
+          userId,
+        );
+      } finally {
+        await prisma.$executeRawUnsafe(
+          `ALTER TABLE audit_logs ENABLE TRIGGER audit_logs_no_delete`,
+        );
+      }
+      // DepreciationEntry rows
+      await prisma.depreciationEntry.deleteMany({
+        where: { assetId: { in: assetIds } },
+      });
+    }
+
     // Delete transfer history first (FK Restrict on asset_id)
     await prisma.assetTransferHistory.deleteMany({
       where: { asset: { createdById: userId } },
@@ -343,5 +413,166 @@ describe('AssetService — CRUD + helpers', () => {
     // totalPurchaseCost should be a Decimal-or-zero
     const totalCost = new Decimal(summary.totalPurchaseCost.toString());
     expect(totalCost.gte(36000)).toBe(true);
+  });
+
+  // ==========================================================================
+  // Task 7 — post + reverse with V15 period guard + AuditLog
+  // ==========================================================================
+
+  /** Helper — create an asset and POST it (real JE via AssetPurchaseTemplate). */
+  async function createPostedAsset() {
+    const draft = await service.createDraft(baseDto, userId);
+    await service.post(draft.id, userId);
+    const posted = await prisma.fixedAsset.findUnique({ where: { id: draft.id } });
+    return posted!;
+  }
+
+  describe('AssetService.post', () => {
+    it('transitions DRAFT → POSTED and creates JE', async () => {
+      const draft = await service.createDraft(baseDto, userId);
+      const result = await service.post(draft.id, userId);
+      expect(result.entryNo).toMatch(/^JE-\d{6}-\d{5}$/);
+      const updated = await prisma.fixedAsset.findUnique({
+        where: { id: draft.id },
+      });
+      expect(updated!.status).toBe(AssetStatus.POSTED);
+      expect(updated!.postedById).toBe(userId);
+      expect(updated!.postedAt).toBeTruthy();
+    });
+
+    it('rejects POST if status != DRAFT', async () => {
+      const asset = await createPostedAsset();
+      await expect(service.post(asset.id, userId)).rejects.toThrow(/DRAFT/);
+    });
+
+    it('writes AuditLog with action=ASSET_POST', async () => {
+      const draft = await service.createDraft(baseDto, userId);
+      await service.post(draft.id, userId);
+      const log = await prisma.auditLog.findFirst({
+        where: {
+          entity: 'fixed_asset',
+          entityId: draft.id,
+          action: 'ASSET_POST',
+        },
+      });
+      expect(log).toBeTruthy();
+      expect((log!.newValue as any).status).toBe('POSTED');
+    });
+
+    it('post is idempotent — second call returns same JE OR rejects with already-posted error', async () => {
+      const draft = await service.createDraft(baseDto, userId);
+      const r1 = await service.post(draft.id, userId);
+      const r2 = await service.post(draft.id, userId).catch((e) => e);
+      // Either rejects (clearer UX) or returns same entry — either is acceptable
+      if (r2 instanceof Error) {
+        expect(r2.message).toMatch(/DRAFT|already/i);
+      } else {
+        expect((r2 as { entryNo: string }).entryNo).toBe(r1.entryNo);
+      }
+    });
+
+    it('V15 period closed → reject + AuditLog ASSET_POST_BLOCKED', async () => {
+      // Create closed AccountingPeriod for asset purchase month
+      const finance = await prisma.companyInfo.findFirst({
+        where: { companyCode: 'FINANCE' },
+      });
+      if (!finance) {
+        // Should never happen — beforeAll seeds it
+        throw new Error('FINANCE company missing');
+      }
+      // baseDto.purchaseDate = '2026-05-01' → year=2026, month=5
+      const period = await prisma.accountingPeriod.upsert({
+        where: {
+          companyId_year_month: {
+            companyId: finance.id,
+            year: 2026,
+            month: 5,
+          },
+        },
+        update: { status: 'CLOSED', closedAt: new Date(), closedById: userId },
+        create: {
+          companyId: finance.id,
+          year: 2026,
+          month: 5,
+          status: 'CLOSED',
+          closedAt: new Date(),
+          closedById: userId,
+        },
+      });
+
+      try {
+        const draft = await service.createDraft(baseDto, userId);
+        await expect(service.post(draft.id, userId)).rejects.toThrow(
+          /period|งวด/i,
+        );
+        const blockedLog = await prisma.auditLog.findFirst({
+          where: {
+            entity: 'fixed_asset',
+            entityId: draft.id,
+            action: 'ASSET_POST_BLOCKED',
+          },
+        });
+        expect(blockedLog).toBeTruthy();
+      } finally {
+        // Cleanup the test period
+        await prisma.accountingPeriod.delete({
+          where: { id: period.id },
+        });
+      }
+    });
+  });
+
+  describe('AssetService.reverse', () => {
+    it('transitions POSTED → REVERSED and creates reversal JE', async () => {
+      const asset = await createPostedAsset();
+      const result = await service.reverse(asset.id, userId, 'ลงผิด');
+      expect(result.entryNo).toMatch(/^JE-\d{6}-\d{5}$/);
+      const updated = await prisma.fixedAsset.findUnique({
+        where: { id: asset.id },
+      });
+      expect(updated!.status).toBe(AssetStatus.REVERSED);
+      expect(updated!.reversedById).toBe(userId);
+      expect(updated!.reversalReason).toBe('ลงผิด');
+    });
+
+    it('rejects reverse if status != POSTED', async () => {
+      const draft = await service.createDraft(baseDto, userId);
+      await expect(service.reverse(draft.id, userId, 'reason')).rejects.toThrow(
+        /POSTED/,
+      );
+    });
+
+    it('rejects reverse if asset has DepreciationEntry', async () => {
+      const asset = await createPostedAsset();
+      await prisma.depreciationEntry.create({
+        data: {
+          assetId: asset.id,
+          period: '2026-05',
+          amount: new Decimal(100),
+        },
+      });
+      await expect(service.reverse(asset.id, userId, 'x')).rejects.toThrow(
+        /depreciation/i,
+      );
+    });
+
+    it('writes AuditLog with action=ASSET_REVERSE', async () => {
+      const asset = await createPostedAsset();
+      await service.reverse(asset.id, userId, 'x');
+      const log = await prisma.auditLog.findFirst({
+        where: {
+          entity: 'fixed_asset',
+          entityId: asset.id,
+          action: 'ASSET_REVERSE',
+        },
+      });
+      expect(log).toBeTruthy();
+      expect((log!.newValue as any).status).toBe('REVERSED');
+    });
+
+    it('rejects reverse with empty reason', async () => {
+      const asset = await createPostedAsset();
+      await expect(service.reverse(asset.id, userId, '')).rejects.toThrow();
+    });
   });
 });

@@ -11,6 +11,7 @@ import { CreateAssetDto } from './dto/create-asset.dto';
 import { UpdateAssetDto } from './dto/update-asset.dto';
 import { AssetPurchaseTemplate } from '../journal/cpa-templates/asset-purchase.template';
 import { AssetPurchaseReverseTemplate } from '../journal/cpa-templates/asset-purchase-reverse.template';
+import { validatePeriodOpen } from '../../utils/period-lock.util';
 
 const CATEGORY_PREFIX: Record<AssetCategory, string> = {
   EQUIPMENT: 'EQ',
@@ -428,16 +429,153 @@ export class AssetService {
   // Stubs — implemented in Tasks 7-9
   // ==========================================================================
 
-  async post(_id: string, _userId: string): Promise<{ entryNo: string }> {
-    throw new Error('post: implement in Task 7');
+  async post(id: string, postedById: string): Promise<{ entryNo: string }> {
+    const asset = await this.prisma.fixedAsset.findFirst({
+      where: { id, deletedAt: null },
+    });
+    if (!asset) throw new NotFoundException('ไม่พบสินทรัพย์');
+    if (asset.status !== AssetStatus.DRAFT) {
+      throw new BadRequestException(
+        `POST ได้เฉพาะสถานะ DRAFT (ปัจจุบัน: ${asset.status})`,
+      );
+    }
+
+    // V15: Period lock check
+    const financeCompanyId = await this.getFinanceCompanyId();
+    try {
+      await validatePeriodOpen(this.prisma, asset.purchaseDate, financeCompanyId);
+    } catch (err: any) {
+      // Log blocked attempt
+      await this.prisma.auditLog.create({
+        data: {
+          userId: postedById,
+          action: 'ASSET_POST_BLOCKED',
+          entity: 'fixed_asset',
+          entityId: id,
+          oldValue: { status: 'DRAFT' },
+          newValue: { reason: err?.message ?? 'period closed' },
+        },
+      });
+      throw new BadRequestException(
+        `ไม่สามารถ POST: ${err?.message ?? 'งวดบัญชีปิดแล้ว'}`,
+      );
+    }
+
+    // Post JE via template
+    const result = await this.purchaseTemplate.execute({
+      assetId: id,
+      postedById,
+    });
+
+    // Update asset status (template already wrote account snapshots)
+    await this.prisma.$transaction(async (tx) => {
+      await tx.fixedAsset.update({
+        where: { id },
+        data: {
+          status: AssetStatus.POSTED,
+          postedById,
+          postedAt: new Date(),
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          userId: postedById,
+          action: 'ASSET_POST',
+          entity: 'fixed_asset',
+          entityId: id,
+          oldValue: { status: 'DRAFT' },
+          newValue: {
+            status: 'POSTED',
+            postedById,
+            journalEntryNumber: result.entryNo,
+          },
+        },
+      });
+    });
+
+    this.logger.log(
+      `[Phase1] POST asset ${asset.assetCode} → ${result.entryNo}`,
+    );
+    return result;
   }
 
   async reverse(
-    _id: string,
-    _userId: string,
-    _reason: string,
+    id: string,
+    reversedById: string,
+    reason: string,
   ): Promise<{ entryNo: string }> {
-    throw new Error('reverse: implement in Task 7');
+    if (!reason || reason.trim().length === 0) {
+      throw new BadRequestException('กรุณาระบุเหตุผลการกลับรายการ');
+    }
+    const asset = await this.prisma.fixedAsset.findFirst({
+      where: { id, deletedAt: null },
+    });
+    if (!asset) throw new NotFoundException('ไม่พบสินทรัพย์');
+    if (asset.status !== AssetStatus.POSTED) {
+      throw new BadRequestException(
+        `Reverse ได้เฉพาะสถานะ POSTED (ปัจจุบัน: ${asset.status})`,
+      );
+    }
+
+    // V15: Period lock check
+    const financeCompanyId = await this.getFinanceCompanyId();
+    try {
+      await validatePeriodOpen(this.prisma, asset.purchaseDate, financeCompanyId);
+    } catch (err: any) {
+      await this.prisma.auditLog.create({
+        data: {
+          userId: reversedById,
+          action: 'ASSET_REVERSE_BLOCKED',
+          entity: 'fixed_asset',
+          entityId: id,
+          oldValue: { status: 'POSTED' },
+          newValue: { reason: err?.message ?? 'period closed' },
+        },
+      });
+      throw new BadRequestException(
+        `ไม่สามารถ Reverse: ${err?.message ?? 'งวดบัญชีปิดแล้ว'}`,
+      );
+    }
+
+    // Post reversal JE (template already checks for DepreciationEntry)
+    const result = await this.reverseTemplate.execute({
+      assetId: id,
+      reversedById,
+      reason,
+    });
+
+    // Update asset status
+    await this.prisma.$transaction(async (tx) => {
+      await tx.fixedAsset.update({
+        where: { id },
+        data: {
+          status: AssetStatus.REVERSED,
+          reversedById,
+          reversedAt: new Date(),
+          reversalReason: reason,
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          userId: reversedById,
+          action: 'ASSET_REVERSE',
+          entity: 'fixed_asset',
+          entityId: id,
+          oldValue: { status: 'POSTED' },
+          newValue: {
+            status: 'REVERSED',
+            reversedById,
+            reversalReason: reason,
+            reversalEntryNumber: result.entryNo,
+          },
+        },
+      });
+    });
+
+    this.logger.log(
+      `[Phase1] REVERSE asset ${asset.assetCode} → ${result.entryNo}`,
+    );
+    return result;
   }
 
   async copy(_id: string, _userId: string) {

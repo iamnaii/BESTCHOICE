@@ -7,18 +7,22 @@ import { PrismaService } from '../../../prisma/prisma.service';
  * Template Feature I — VAT 60-Day Mandatory
  *
  * When a customer has not paid an installment for 60+ days, Thai tax law
- * requires the seller to remit VAT to the Revenue Department on their behalf.
- * This JE recognises:
- *   - The P&L cost of paying VAT for the non-paying customer (51-1101)
+ * (ประมวลรัษฎากร ม.82/3) requires the seller to remit VAT to the Revenue
+ * Department on the customer's behalf. The seller still expects to collect
+ * the VAT back from the customer eventually.
+ *
+ * This JE recognises (per ม.82/3, 1× per installment — NOT 2×):
  *   - A receivable from the customer for VAT paid on their behalf (11-2104)
  *   - The liability to the RD (21-2103)
  *
- * Double-entry (vatPerInst = 99.17):
- *   Dr 51-1101 ค่าใช้จ่าย VAT ลูกหนี้ไม่ชำระ   99.17
- *   Dr 11-2104 ลูกหนี้-VAT ที่ออกแทน           99.17
- *     Cr 21-2103 VAT บังคับ-ลูกหนี้ค้าง 60 วัน 198.34
+ * NO P&L expense is recognised here because the customer still owes the
+ * amount (write-off only happens when the receivable is deemed bad).
  *
- * Total: Dr 198.34 = Cr 198.34 ✓
+ * Double-entry (vatPerInst = 99.17):
+ *   Dr 11-2104 ลูกหนี้-VAT ที่ออกแทน           99.17
+ *     Cr 21-2103 VAT บังคับ-ลูกหนี้ค้าง 60 วัน  99.17
+ *
+ * Total: Dr 99.17 = Cr 99.17 ✓
  *
  * Idempotent: returns null if vat60dayJournalEntryId is already set.
  */
@@ -53,7 +57,6 @@ export class Vat60dayMandatoryTemplate {
       : grossExclVat.times('0.07').toDecimalPlaces(2);
 
     const vatPerInst = vat.div(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-    const doubleVat = vatPerInst.times(2);
 
     const zero = new Decimal(0);
 
@@ -69,12 +72,6 @@ export class Vat60dayMandatoryTemplate {
       },
       lines: [
         {
-          accountCode: '51-1101',
-          dr: vatPerInst,
-          cr: zero,
-          description: 'ค่าใช้จ่าย VAT ลูกหนี้ไม่ชำระ',
-        },
-        {
           accountCode: '11-2104',
           dr: vatPerInst,
           cr: zero,
@@ -83,7 +80,7 @@ export class Vat60dayMandatoryTemplate {
         {
           accountCode: '21-2103',
           dr: zero,
-          cr: doubleVat,
+          cr: vatPerInst,
           description: 'VAT บังคับ-ลูกหนี้ค้าง 60 วัน',
         },
       ],

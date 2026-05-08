@@ -7,17 +7,15 @@ import { PrismaService } from '../../../prisma/prisma.service';
  * Template Feature I — VAT 60-Day Reversal
  *
  * When a customer finally pays the installment that triggered the 60-day
- * mandatory VAT JE, this reversal clears those entries:
- *   - Reverses the RD liability (21-2103)
- *   - Records the P&L reversal/recovery (51-1105)
- *   - Clears the VAT receivable from the customer (11-2104)
+ * mandatory VAT JE, this reversal clears the receivable + liability pair
+ * that the mandatory template booked. Mirrors mandatory at 1× vatPerInst
+ * per ม.82/3 (mandatory = 1× → reversal = 1×).
  *
  * Double-entry (vatPerInst = 99.17):
- *   Dr 21-2103 (กลับรายการ VAT บังคับ)             198.34
- *     Cr 51-1105 VAT กลับรายการ-ลูกหนี้ชำระ         99.17
- *     Cr 11-2104 ล้างลูกหนี้-VAT ที่ออกแทน          99.17
+ *   Dr 21-2103 กลับรายการ VAT บังคับ                99.17
+ *     Cr 11-2104 ล้างลูกหนี้-VAT ที่ออกแทน           99.17
  *
- * Total: Dr 198.34 = Cr 198.34 ✓
+ * Total: Dr 99.17 = Cr 99.17 ✓
  *
  * Idempotent: returns null if vat60dayJournalEntryId is already null
  * (no mandatory JE was ever posted, or already reversed).
@@ -61,7 +59,6 @@ export class Vat60dayReversalTemplate {
         : grossExclVat.times('0.07').toDecimalPlaces(2);
 
     const vatPerInst = vat.div(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-    const doubleVat = vatPerInst.times(2);
 
     const zero = new Decimal(0);
 
@@ -80,15 +77,9 @@ export class Vat60dayReversalTemplate {
         lines: [
           {
             accountCode: '21-2103',
-            dr: doubleVat,
+            dr: vatPerInst,
             cr: zero,
             description: 'กลับรายการ VAT บังคับ',
-          },
-          {
-            accountCode: '51-1105',
-            dr: zero,
-            cr: vatPerInst,
-            description: 'VAT กลับรายการ-ลูกหนี้ชำระ',
           },
           {
             accountCode: '11-2104',

@@ -138,6 +138,9 @@ describe('RepossessionsService', () => {
       auditLog: {
         create: jest.fn(),
       },
+      user: {
+        findUnique: jest.fn().mockResolvedValue({ defaultCashAccountCode: '11-1101' }),
+      },
       $transaction: jest.fn().mockImplementation(async (fn: unknown) => {
         if (typeof fn === 'function') return fn(prisma);
         return Promise.all(fn as Promise<unknown>[]);

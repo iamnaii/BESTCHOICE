@@ -374,8 +374,39 @@
     <p class="sub">ตรวจสอบระบบ BESTCHOICE FINANCE Phase A.4 ตามมาตรฐาน 4 หลัก: TFRS 9, TFRS 15, Accrual VAT, ปพพ. ม.386</p>
     <div class="doc-meta">
       <span><strong>วันที่ตรวจสอบ:</strong> 8 พ.ค. 2568</span>
-      <span><strong>วิธีการ:</strong> 4 parallel deep-verify agents (อ่านโค้ดจริง 19 templates + 7 CSV golden cases)</span>
+      <span><strong>วันที่แก้เสร็จ:</strong> 8 พ.ค. 2568 (Wave 1-4 complete)</span>
       <span><strong>ขอบเขต:</strong> JE templates, services, cron jobs, fixture compliance</span>
+    </div>
+  </div>
+
+  <!-- WAVE STATUS BANNER -->
+  <div style="background: #ecfdf5; border: 2px solid #047857; border-radius: 12px; padding: 20px 24px; margin-bottom: 28px;">
+    <div style="font-size: 13px; font-weight: 700; color: #047857; letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 8px;">REMEDIATION COMPLETE</div>
+    <div style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">Wave 1-4 ดำเนินการเสร็จ — 25 commits / 4 waves</div>
+    <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+      <tr style="border-bottom: 1px solid #a7f3d0;">
+        <td style="padding: 6px 0;"><strong>Wave 1 (P0)</strong></td>
+        <td>7 Critical · atomicity + 2A residual + JP5 split + provision consume + Bad Debt Decimal</td>
+        <td style="text-align: right; color: #047857; font-weight: 600;">10 commits ✓</td>
+      </tr>
+      <tr style="border-bottom: 1px solid #a7f3d0;">
+        <td style="padding: 6px 0;"><strong>Wave 2 (P1)</strong></td>
+        <td>4 Critical · VAT 60-day fix + JP5 credit note + JP4 VAT discount + Reschedule atomic</td>
+        <td style="text-align: right; color: #047857; font-weight: 600;">4 commits ✓</td>
+      </tr>
+      <tr style="border-bottom: 1px solid #a7f3d0;">
+        <td style="padding: 6px 0;"><strong>Wave 3 (P2)</strong></td>
+        <td>3 Critical + 4 Warning · tag fix + i18n + payment guard + auth + RESCHEDULE wiring + audit PII</td>
+        <td style="text-align: right; color: #047857; font-weight: 600;">4 commits ✓</td>
+      </tr>
+      <tr>
+        <td style="padding: 6px 0;"><strong>Wave 4 (P3)</strong></td>
+        <td>1 Warning + Info · Bad Debt cron + timezone + as any cleanup + legal comments + EIR memo</td>
+        <td style="text-align: right; color: #047857; font-weight: 600;">3 commits ✓</td>
+      </tr>
+    </table>
+    <div style="margin-top: 14px; font-size: 13px; color: #065f46;">
+      <strong>Pending owner action:</strong> CPA hearing สำหรับ TFRS 15 §60-65 EIR decision · ดู <a href="eir-decision-memo.md" style="color: #047857;">eir-decision-memo.md</a>
     </div>
   </div>
 

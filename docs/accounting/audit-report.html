@@ -381,8 +381,8 @@
 
   <!-- WAVE STATUS BANNER -->
   <div style="background: #ecfdf5; border: 2px solid #047857; border-radius: 12px; padding: 20px 24px; margin-bottom: 28px;">
-    <div style="font-size: 13px; font-weight: 700; color: #047857; letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 8px;">REMEDIATION COMPLETE</div>
-    <div style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">Wave 1-4 ดำเนินการเสร็จ — 25 commits / 4 waves</div>
+    <div style="font-size: 13px; font-weight: 700; color: #047857; letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 8px;">FULL TFRS COMPLIANCE — REMEDIATION COMPLETE</div>
+    <div style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">Wave 1-4 + EIR migration เสร็จ — 26 commits</div>
     <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
       <tr style="border-bottom: 1px solid #a7f3d0;">
         <td style="padding: 6px 0;"><strong>Wave 1 (P0)</strong></td>
@@ -399,14 +399,20 @@
         <td>3 Critical + 4 Warning · tag fix + i18n + payment guard + auth + RESCHEDULE wiring + audit PII</td>
         <td style="text-align: right; color: #047857; font-weight: 600;">4 commits ✓</td>
       </tr>
-      <tr>
+      <tr style="border-bottom: 1px solid #a7f3d0;">
         <td style="padding: 6px 0;"><strong>Wave 4 (P3)</strong></td>
         <td>1 Warning + Info · Bad Debt cron + timezone + as any cleanup + legal comments + EIR memo</td>
         <td style="text-align: right; color: #047857; font-weight: 600;">3 commits ✓</td>
       </tr>
+      <tr style="background: #d1fae5;">
+        <td style="padding: 8px 0;"><strong>Option B (EIR)</strong></td>
+        <td><strong>TFRS 15 §60-65 100% compliant</strong> · Newton-Raphson EIR solver + 2A/JP4/JP5 declining balance + 7 CSV regen</td>
+        <td style="text-align: right; color: #047857; font-weight: 700;">5 commits ✓</td>
+      </tr>
     </table>
     <div style="margin-top: 14px; font-size: 13px; color: #065f46;">
-      <strong>Pending owner action:</strong> CPA hearing สำหรับ TFRS 15 §60-65 EIR decision · ดู <a href="eir-decision-memo.md" style="color: #047857;">eir-decision-memo.md</a>
+      <strong>Sample EIR (P=11K, n=12, totalInterest=6K):</strong> r=7.43% monthly · period 1 = 817.05฿ · period 12 = 98.02฿ · sum exact 6,000.00฿ ·
+      ดู <a href="eir-decision-memo.md" style="color: #047857;">eir-decision-memo.md</a>
     </div>
   </div>
 

@@ -1,6 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateRepossessionDto, UpdateRepossessionDto } from './dto/create-repossession.dto';
 import { ConditionGrade, RepossessionStatus, ProductStatus } from '@prisma/client';
@@ -268,31 +267,28 @@ export class RepossessionsService {
       // Auto bad-debt write-off journal: ตัด HP Receivable ที่เหลือออกจากบัญชี.
       // (Audit finding J4: closes the silent accounting gap where
       // repossessions left outstanding receivable on the books with no
-      // balancing entry. Errors propagate so the whole tx rolls back.)
+      // balancing entry.)
       // Phase A.4b: replaced createBadDebtWriteOffJournal (old stub) with
       // RepossessionJP5Template. Template handles both loss and gain paths and
       // closes out remaining HP Receivable (spec §6.5).
       // repossessionValue = appraisalValue from dto (amount FINANCE recovers from asset).
-      // Template runs its own $transaction — called outside the outer tx to avoid
-      // nested-tx conflicts (fire-and-forget with Sentry capture on failure).
+      //
+      // Wave 1 / Task 3: JP5 ห่อใน outer $transaction พร้อม contract+product
+      // status updates. ปพพ.ม.392 — เลิกสัญญาต้องกลับสู่ฐานะเดิม. ก่อนหน้านี้
+      // .catch() fire-and-forget ทำให้ contract status commit แต่ JE อาจ fail
+      // ลูกหนี้ค้างใน ledger ตลอดกาล. ตอนนี้ ถ้า JE fail ทุกอย่าง rollback.
       if (outstandingBalance.greaterThan(0)) {
         const repoValue = dto.appraisalPrice != null
           ? new Decimal(String(dto.appraisalPrice))
           : new Decimal('0');
-        this.repossessionJP5Template.execute({
-          contractId: dto.contractId,
-          depositAccountCode: '11-1101',
-          repossessionValue: repoValue,
-        }).catch((err) => {
-          this.logger.error(
-            `RepossessionJP5 JE failed for contract ${dto.contractId}: ${err?.message || err}`,
-            err?.stack,
-          );
-          Sentry.captureException(err, {
-            tags: { module: 'repossessions', event: 'jp5-je-failure' },
-            extra: { contractId: dto.contractId },
-          });
-        });
+        await this.repossessionJP5Template.execute(
+          {
+            contractId: dto.contractId,
+            depositAccountCode: '11-1101',
+            repossessionValue: repoValue,
+          },
+          tx,
+        );
       }
 
       // Update product status

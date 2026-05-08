@@ -341,6 +341,44 @@ describe('RepossessionsService', () => {
       );
       expect(result).toMatchObject({ id: 'repo-new' });
     });
+
+    it('passes tx to JP5 template (atomic — JE inside outer $transaction)', async () => {
+      prisma.contract.findUnique.mockResolvedValue(makeContract());
+      prisma.repossession.create.mockResolvedValue({ ...makeRepossession(), id: 'repo-new' });
+      prisma.contract.update.mockResolvedValue({});
+      prisma.product.update.mockResolvedValue({});
+      prisma.auditLog.create.mockResolvedValue({});
+
+      await service.create(baseDto as never, 'user-1');
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const template = (service as any).repossessionJP5Template;
+      expect(template.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          contractId: 'contract-1',
+          depositAccountCode: '11-1101',
+        }),
+        prisma, // tx (mock $transaction passes prisma itself as tx)
+      );
+    });
+
+    it('rolls back contract+product update when JP5 throws (atomicity)', async () => {
+      prisma.contract.findUnique.mockResolvedValue(makeContract());
+      prisma.repossession.create.mockResolvedValue({ ...makeRepossession(), id: 'repo-new' });
+      prisma.contract.update.mockResolvedValue({});
+      prisma.product.update.mockResolvedValue({});
+      prisma.auditLog.create.mockResolvedValue({});
+
+      // Mock JP5 to reject — should propagate up through $transaction (no fire-and-forget)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const template = (service as any).repossessionJP5Template;
+      template.execute.mockRejectedValueOnce(new Error('JE fail'));
+
+      await expect(service.create(baseDto as never, 'user-1')).rejects.toThrow('JE fail');
+
+      // JP5 was awaited — error propagated (proves no .catch() fire-and-forget remains)
+      expect(template.execute).toHaveBeenCalled();
+    });
   });
 
   // ──────────────────────────────────────────────────────────────────────────

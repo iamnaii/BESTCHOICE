@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
+import { Prisma } from '@prisma/client';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 
@@ -33,15 +34,19 @@ export class InstallmentAccrual2ATemplate {
     private readonly prisma: PrismaService,
   ) {}
 
-  async execute(installmentScheduleId: string): Promise<{ entryNo: string } | null> {
-    const inst = await this.prisma.installmentSchedule.findUniqueOrThrow({
+  async execute(
+    installmentScheduleId: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<{ entryNo: string } | null> {
+    const client = tx ?? this.prisma;
+    const inst = await client.installmentSchedule.findUniqueOrThrow({
       where: { id: installmentScheduleId },
     });
 
     // Idempotency guard
     if (inst.accrualJournalEntryId) return null;
 
-    const c = await this.prisma.contract.findUniqueOrThrow({ where: { id: inst.contractId } });
+    const c = await client.contract.findUniqueOrThrow({ where: { id: inst.contractId } });
 
     const total = new Decimal(c.totalMonths);
     const financed = new Decimal(c.financedAmount.toString());
@@ -64,7 +69,8 @@ export class InstallmentAccrual2ATemplate {
 
     const zero = new Decimal(0);
 
-    const result = await this.journal.createAndPost({
+    const result = await this.journal.createAndPost(
+      {
       description: `Accrual งวด #${inst.installmentNo} — สัญญา ${c.contractNumber}`,
       reference: inst.id,
       metadata: { tag: '2A', contractId: c.id, installmentScheduleId: inst.id },
@@ -113,10 +119,12 @@ export class InstallmentAccrual2ATemplate {
           description: 'ภาษีขาย ภ.พ.30',
         },
       ],
-    });
+      },
+      tx,
+    );
 
     // Mark installment as accrued (idempotency)
-    await this.prisma.installmentSchedule.update({
+    await client.installmentSchedule.update({
       where: { id: inst.id },
       data: { accrualJournalEntryId: result.entryNumber },
     });

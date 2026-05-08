@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
+import { Prisma } from '@prisma/client';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 
@@ -30,8 +31,12 @@ export class ContractActivation1ATemplate {
     private readonly prisma: PrismaService,
   ) {}
 
-  async execute(contractId: string): Promise<{ entryNumber: string }> {
-    const c = await this.prisma.contract.findUniqueOrThrow({
+  async execute(
+    contractId: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<{ entryNumber: string }> {
+    const client = tx ?? this.prisma;
+    const c = await client.contract.findUniqueOrThrow({
       where: { id: contractId },
     });
 
@@ -54,7 +59,8 @@ export class ContractActivation1ATemplate {
 
     const zero = new Decimal(0);
 
-    const result = await this.journal.createAndPost({
+    const result = await this.journal.createAndPost(
+      {
       description: `สัญญาผ่อนชำระ ${c.contractNumber} — รับรู้ลูกหนี้ครั้งแรก`,
       reference: contractId,
       metadata: { tag: '1A', contractId },
@@ -96,7 +102,9 @@ export class ContractActivation1ATemplate {
           description: 'ภาษีขายรอเรียกเก็บ',
         },
       ],
-    });
+      },
+      tx,
+    );
 
     return { entryNumber: result.entryNumber };
   }

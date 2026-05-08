@@ -45,15 +45,19 @@ export class EarlyPayoffJP4Template {
     private readonly prisma: PrismaService,
   ) {}
 
-  async execute(input: EarlyPayoffInput): Promise<{ entryNo: string }> {
-    const c = await this.prisma.contract.findUniqueOrThrow({ where: { id: input.contractId } });
+  async execute(
+    input: EarlyPayoffInput,
+    outerTx?: Prisma.TransactionClient,
+  ): Promise<{ entryNo: string }> {
+    const readClient = outerTx ?? this.prisma;
+    const c = await readClient.contract.findUniqueOrThrow({ where: { id: input.contractId } });
 
     // Determine unpaid installments: those without a PAID Payment record
-    const allInsts = await this.prisma.installmentSchedule.findMany({
+    const allInsts = await readClient.installmentSchedule.findMany({
       where: { contractId: c.id, deletedAt: null },
       orderBy: { installmentNo: 'asc' },
     });
-    const paidPayments = await this.prisma.payment.findMany({
+    const paidPayments = await readClient.payment.findMany({
       where: { contractId: c.id, status: 'PAID' },
       select: { installmentNo: true },
     });
@@ -103,7 +107,7 @@ export class EarlyPayoffJP4Template {
 
     // Wrap JE post + Payment.create loop in a single atomic transaction.
     // If JE post fails (unbalanced, missing account), Payment rows are rolled back — no orphans.
-    const entryNumber = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    const exec = async (tx: Prisma.TransactionClient) => {
       const result = await this.journal.createAndPost(
         {
           description: `ปิดยอดก่อนกำหนด — สัญญา ${c.contractNumber} (${unpaid} งวดคงเหลือ, ส่วนลด ${input.interestDiscountPercent}%)`,
@@ -197,7 +201,9 @@ export class EarlyPayoffJP4Template {
       }
 
       return result.entryNumber;
-    });
+    };
+
+    const entryNumber = outerTx ? await exec(outerTx) : await this.prisma.$transaction(exec);
 
     return { entryNo: entryNumber };
   }

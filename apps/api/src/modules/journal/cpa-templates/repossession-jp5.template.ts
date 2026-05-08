@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
+import { Prisma } from '@prisma/client';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 
@@ -46,15 +47,19 @@ export class RepossessionJP5Template {
     private readonly prisma: PrismaService,
   ) {}
 
-  async execute(input: RepossessionInput): Promise<{ entryNo: string }> {
-    const c = await this.prisma.contract.findUniqueOrThrow({ where: { id: input.contractId } });
+  async execute(
+    input: RepossessionInput,
+    tx?: Prisma.TransactionClient,
+  ): Promise<{ entryNo: string }> {
+    const client = tx ?? this.prisma;
+    const c = await client.contract.findUniqueOrThrow({ where: { id: input.contractId } });
 
     // Determine unpaid installments via Payment table (no status field on InstallmentSchedule)
-    const allInsts = await this.prisma.installmentSchedule.findMany({
+    const allInsts = await client.installmentSchedule.findMany({
       where: { contractId: c.id, deletedAt: null },
       orderBy: { installmentNo: 'asc' },
     });
-    const paidPayments = await this.prisma.payment.findMany({
+    const paidPayments = await client.payment.findMany({
       where: { contractId: c.id, status: 'PAID' },
       select: { installmentNo: true },
     });
@@ -159,18 +164,21 @@ export class RepossessionJP5Template {
       });
     }
 
-    const result = await this.journal.createAndPost({
-      description: `ยึดเครื่อง — สัญญา ${c.contractNumber} (${unpaid} งวดคงเหลือ)`,
-      reference: `${c.id}:repossession`,
-      metadata: {
-        tag: '3',
-        flow: 'repossession',
-        contractId: c.id,
-        unpaidInstallments: unpaid,
-        repossessionValue: input.repossessionValue.toFixed(2),
+    const result = await this.journal.createAndPost(
+      {
+        description: `ยึดเครื่อง — สัญญา ${c.contractNumber} (${unpaid} งวดคงเหลือ)`,
+        reference: `${c.id}:repossession`,
+        metadata: {
+          tag: '3',
+          flow: 'repossession',
+          contractId: c.id,
+          unpaidInstallments: unpaid,
+          repossessionValue: input.repossessionValue.toFixed(2),
+        },
+        lines,
       },
-      lines,
-    });
+      tx,
+    );
 
     return { entryNo: result.entryNumber };
   }

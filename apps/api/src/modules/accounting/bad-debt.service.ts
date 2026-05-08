@@ -72,8 +72,26 @@ export class BadDebtService {
   }
 
   /**
-   * Calculate provisions for all overdue contracts.
-   * Reverses existing ACTIVE provisions and creates fresh ones.
+   * Calculate Bad Debt provisions per TFRS for NPAEs Chapter 13.
+   *
+   * Uses simplified aging-based approach (NOT TFRS 9 full ECL 3-stage model):
+   *   1-30 days overdue:   2%   provision
+   *   31-60 days overdue:  10%  provision
+   *   61-90 days overdue:  25%  provision
+   *   91-180 days overdue: 50%  provision
+   *   181-360 days overdue: 75% provision
+   *   360+ days overdue:   100% provision
+   *
+   * Approved NPAEs simplification per Ch.13 — forward-looking macro factors
+   * not required at NPAEs level. Rates are configurable via
+   * SystemConfig key `bad_debt_provision_rates`; if unset the defaults above
+   * apply.
+   *
+   * Reverses existing ACTIVE provisions for in-scope contracts before
+   * creating fresh ones, so re-running is idempotent. Posts a delta JE
+   * per contract via BadDebtProvisionTemplate (Phase A.5a).
+   *
+   * Refs: docs/accounting/audit-report.html (Wave 4 T1, TFRS 9 W-1/W-2)
    */
   async calculateProvisions(calculatedById: string, branchId?: string): Promise<{
     created: number;

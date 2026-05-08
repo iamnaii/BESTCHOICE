@@ -60,21 +60,7 @@ export class AssetPurchaseTemplate {
   async execute(input: AssetPurchaseInput): Promise<{ entryNo: string }> {
     const { assetId, postedById } = input;
 
-    // Idempotency check (outside tx — cheap read)
-    const existing = await this.prisma.journalEntry.findFirst({
-      where: {
-        metadata: { path: ['assetId'], equals: assetId } as any,
-        AND: [{ metadata: { path: ['flow'], equals: 'asset-purchase' } as any }],
-        deletedAt: null,
-      },
-    });
-    if (existing) {
-      this.logger.log(
-        `[Phase1] AssetPurchaseTemplate idempotency — JE ${existing.entryNumber} already exists for asset ${assetId}, skipping`,
-      );
-      return { entryNo: existing.entryNumber };
-    }
-
+    // Asset existence check (read-only, no race condition — leave outside tx)
     const asset = await this.prisma.fixedAsset.findFirst({
       where: { id: assetId, deletedAt: null },
     });
@@ -153,10 +139,26 @@ export class AssetPurchaseTemplate {
       );
     }
 
-    // Wrap JE post + asset snapshot update + audit log in a single transaction
-    let entryNo = '';
-    let entryId = '';
+    // Wrap idempotency check + JE post + asset snapshot update + audit log in a single transaction.
+    // The idempotency check MUST be inside the tx to prevent TOCTOU races where two concurrent
+    // calls for the same assetId both pass the check and create duplicate POSTED JEs.
+    let entryNo: string | undefined;
     await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const existing = await tx.journalEntry.findFirst({
+        where: {
+          metadata: { path: ['assetId'], equals: assetId } as any,
+          AND: [{ metadata: { path: ['flow'], equals: 'asset-purchase' } as any }],
+          deletedAt: null,
+        },
+      });
+      if (existing) {
+        entryNo = existing.entryNumber;
+        this.logger.log(
+          `[Phase1] AssetPurchaseTemplate idempotency — JE ${entryNo} already exists for asset ${assetId}, skipping`,
+        );
+        return;
+      }
+
       const result = await this.journal.createAndPost(
         {
           description: `ซื้อสินทรัพย์ ${asset.assetCode} - ${asset.name}`,
@@ -175,7 +177,7 @@ export class AssetPurchaseTemplate {
         tx,
       );
       entryNo = result.entryNumber;
-      entryId = result.id;
+      const entryId = result.id;
 
       // Pin account snapshots to the asset (Handover Fix #1.2)
       await tx.fixedAsset.update({
@@ -197,6 +199,10 @@ export class AssetPurchaseTemplate {
         },
       });
     });
+
+    if (!entryNo) {
+      throw new Error('AssetPurchase: failed to determine entry number');
+    }
 
     this.logger.log(
       `[Phase1] AssetPurchaseTemplate posted JE ${entryNo} for asset ${asset.assetCode} cost=${purchaseCost.toFixed(2)}`,

@@ -105,9 +105,9 @@ describe('AssetPurchaseTemplate', () => {
     expect(totalDr.toFixed(2)).toBe(totalCr.toFixed(2));
     expect(totalDr.toFixed(2)).toBe('10000.00');
 
-    const dr = je!.lines.find((l) => Number(l.debit) > 0);
+    const dr = je!.lines.find((l) => new Decimal(l.debit.toString()).gt(0));
     expect(dr!.accountCode).toBe('12-2101');
-    const cr = je!.lines.find((l) => Number(l.credit) > 0);
+    const cr = je!.lines.find((l) => new Decimal(l.credit.toString()).gt(0));
     expect(cr!.accountCode).toBe('11-1201');
   });
 
@@ -118,7 +118,7 @@ describe('AssetPurchaseTemplate', () => {
       where: { metadata: { path: ['assetId'], equals: asset.id } } as any,
       include: { lines: true },
     });
-    const dr = je!.lines.find((l) => Number(l.debit) > 0);
+    const dr = je!.lines.find((l) => new Decimal(l.debit.toString()).gt(0));
     expect(dr!.accountCode).toBe('12-2103');
   });
 
@@ -129,7 +129,9 @@ describe('AssetPurchaseTemplate', () => {
       where: { metadata: { path: ['assetId'], equals: f.id } } as any,
       include: { lines: true },
     });
-    expect(fJe!.lines.find((l) => Number(l.debit) > 0)!.accountCode).toBe('12-2105');
+    expect(
+      fJe!.lines.find((l) => new Decimal(l.debit.toString()).gt(0))!.accountCode,
+    ).toBe('12-2105');
 
     const v = await createAsset({ category: 'VEHICLE' });
     await template.execute({ assetId: v.id, postedById: userId });
@@ -137,7 +139,9 @@ describe('AssetPurchaseTemplate', () => {
       where: { metadata: { path: ['assetId'], equals: v.id } } as any,
       include: { lines: true },
     });
-    expect(vJe!.lines.find((l) => Number(l.debit) > 0)!.accountCode).toBe('12-2107');
+    expect(
+      vJe!.lines.find((l) => new Decimal(l.debit.toString()).gt(0))!.accountCode,
+    ).toBe('12-2107');
   });
 
   it('VAT exclusive: adds Dr 11-4101 line for VAT', async () => {

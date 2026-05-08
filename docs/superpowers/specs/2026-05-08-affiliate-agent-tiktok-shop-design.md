@@ -527,13 +527,15 @@ if both channels.roas > 1.5:
 
 ---
 
-## 11. Open Questions (need owner decision before implementation)
+## 11. Defaults applied (owner can override later)
 
-1. **TikTok handles** — owner pick: `@<home_handle>` and `@<gadget_handle>`?
-2. **Initial product seed** — owner has any specific products in mind, or agent picks from trending?
-3. **ElevenLabs subscription tier** — Starter ($5/mo, 30 min), Creator ($22/mo, 100 min), Pro ($99/mo, 500 min)?
-4. **Higgsfield reuse** — reuse owner's existing Higgsfield account credentials, or separate for this profile?
-5. **Approval cadence** — should agent require Telegram confirm before EVERY video upload, or only for ads boosts?
+| # | Question | Default |
+|---|---|---|
+| 1 | TikTok handles | Agent suggests 5 candidate handles per channel during Phase 1 setup; owner picks final |
+| 2 | Initial product seed | Agent picks from TikTok Affiliate Center trending; owner approves first batch via Telegram |
+| 3 | ElevenLabs tier | **Creator $22/mo (100 min)** — sweet spot for 7-8 vids/wk × 2 channels |
+| 4 | Higgsfield reuse | **Reuse** existing account (per `project_hermes_higgsfield_home_isolation` pattern, symlink credentials into `<profile>/home/.config/higgsfield/`) |
+| 5 | Approval cadence | **Confirm only for ads boost > 500฿/day**; video uploads = no confirm needed (script `/check-claims` already gates compliance) |
 
 ---
 

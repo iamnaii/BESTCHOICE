@@ -268,7 +268,7 @@ export class RepossessionJP5Template {
         description: `ยึดเครื่อง — สัญญา ${c.contractNumber} (${unpaid} งวดคงเหลือ)`,
         reference: `${c.id}:repossession`,
         metadata: {
-          tag: '3',
+          tag: 'JP5',
           flow: 'repossession',
           contractId: c.id,
           unpaidInstallments: unpaid,

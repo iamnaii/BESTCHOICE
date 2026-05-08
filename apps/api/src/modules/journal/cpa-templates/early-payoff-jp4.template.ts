@@ -197,7 +197,7 @@ export class EarlyPayoffJP4Template {
           description: `ปิดยอดก่อนกำหนด — สัญญา ${c.contractNumber} (${unpaid} งวดคงเหลือ, ส่วนลด ${input.interestDiscountPercent}%)`,
           reference: `${c.id}:early-payoff`,
           metadata: {
-            tag: '3',
+            tag: 'JP4',
             flow: 'early-payoff',
             contractId: c.id,
             unpaidInstallments: unpaid,

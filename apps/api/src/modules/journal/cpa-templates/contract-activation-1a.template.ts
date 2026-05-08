@@ -83,6 +83,12 @@ export class ContractActivation1ATemplate {
           cr: financed,
           description: 'เจ้าหนี้-หน้าร้าน',
         },
+        // TFRS 15 §B34-B38 (Principal vs Agent):
+        // FINANCE acts as agent for SHOP commission — pass-through liability,
+        // not revenue. Customer pays via installments → liability cleared via
+        // VendorClearance JE (no impact on 41-XXXX revenue accounts).
+        // Commission is recorded gross in HP receivable (11-2101) but offset
+        // by liability (21-1102) per agent accounting model.
         {
           accountCode: '21-1102',
           dr: zero,

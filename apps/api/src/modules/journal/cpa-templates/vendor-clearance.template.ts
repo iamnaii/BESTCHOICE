@@ -27,7 +27,7 @@ export class VendorClearanceTemplate {
       description: `Vendor payment for contract ${c.contractNumber}`,
       reference: `${c.id}:vendor-clearance:${Date.now()}`,
       metadata: {
-        tag: '3',
+        tag: 'VC',
         flow: 'vendor-clearance',
         contractId: c.id,
         financedAmount: financed.toFixed(2),

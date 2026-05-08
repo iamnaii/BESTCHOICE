@@ -36,7 +36,7 @@ export class RescheduleJP6Template {
     depositAccountCode: string;
   }): Promise<{ entryNo: string }> {
     const result = await this.journal.createAndPost({
-      description: 'Reschedule fee advance receipt',
+      description: 'รับค่าธรรมเนียมเลื่อนนัดล่วงหน้า',
       reference: `${input.contractId}:reschedule-fee:${Date.now()}`,
       metadata: {
         tag: '2B',
@@ -75,7 +75,7 @@ export class RescheduleJP6Template {
   }): Promise<{ entryNo: string }> {
     const total = input.installmentAmount.plus(input.feeAmount);
     const result = await this.journal.createAndPost({
-      description: 'Reschedule bundled payment (installment + fee advance)',
+      description: 'รับชำระงวดรวมค่าธรรมเนียมเลื่อนนัด',
       reference: `${input.installmentScheduleId}:bundled`,
       metadata: {
         tag: '2B',
@@ -123,7 +123,7 @@ export class RescheduleJP6Template {
   }): Promise<{ entryNo: string }> {
     const total = input.advanceAmount.plus(input.cashRemainder);
     const result = await this.journal.createAndPost({
-      description: 'Reschedule advance consumption on final installment',
+      description: 'หักเงินรับล่วงหน้าเข้างวดสุดท้าย',
       reference: `${input.installmentScheduleId}:final-consumption`,
       metadata: {
         tag: '2B',

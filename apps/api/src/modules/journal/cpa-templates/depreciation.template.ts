@@ -5,16 +5,16 @@ import { PrismaService } from '../../../prisma/prisma.service';
 
 /** Maps AssetCategory → [Dr expenseCode, Cr accumulatedCode] */
 const CATEGORY_ACCOUNT_MAP: Record<string, [string, string]> = {
-  OFFICE_EQUIPMENT: ['53-1601', '12-2102'],
-  BUILDING_IMPROVEMENT: ['53-1602', '12-2104'],
-  OFFICE_FURNITURE: ['53-1603', '12-2106'],
+  EQUIPMENT: ['53-1601', '12-2102'],
+  IMPROVEMENT: ['53-1602', '12-2104'],
+  FURNITURE: ['53-1603', '12-2106'],
   VEHICLE: ['53-1604', '12-2108'],
 };
 
 const CATEGORY_LABEL: Record<string, string> = {
-  OFFICE_EQUIPMENT: 'อุปกรณ์สำนักงาน',
-  BUILDING_IMPROVEMENT: 'ส่วนปรับปรุงอาคาร',
-  OFFICE_FURNITURE: 'เครื่องตกแต่งสำนักงาน',
+  EQUIPMENT: 'อุปกรณ์สำนักงาน',
+  IMPROVEMENT: 'ส่วนปรับปรุงอาคาร',
+  FURNITURE: 'เครื่องตกแต่งสำนักงาน',
   VEHICLE: 'ยานพาหนะ',
 };
 
@@ -25,20 +25,20 @@ export interface DepreciationTemplateInput {
 }
 
 /**
- * Template — Monthly straight-line depreciation (Phase A.5c).
+ * Template — Monthly straight-line depreciation (Phase 1).
  *
  * JE per asset:
  *   Dr 53-160X ค่าเสื่อมราคา - <category>         [monthlyAmount]
  *     Cr 12-210X ค่าเสื่อมราคาสะสม - <category>   [monthlyAmount]
  *
  * Category → account mapping:
- *   OFFICE_EQUIPMENT:     Dr 53-1601 / Cr 12-2102
- *   BUILDING_IMPROVEMENT: Dr 53-1602 / Cr 12-2104
- *   OFFICE_FURNITURE:     Dr 53-1603 / Cr 12-2106
- *   VEHICLE:              Dr 53-1604 / Cr 12-2108
+ *   EQUIPMENT:   Dr 53-1601 / Cr 12-2102
+ *   IMPROVEMENT: Dr 53-1602 / Cr 12-2104
+ *   FURNITURE:   Dr 53-1603 / Cr 12-2106
+ *   VEHICLE:     Dr 53-1604 / Cr 12-2108
  *
- * Idempotent: second call for same (assetId, period) returns null.
- * Guards: ACTIVE status only, not fully depreciated.
+ * Idempotent: second call for same (assetId, period) returns the same JE.
+ * Guards: POSTED status only, not fully depreciated.
  */
 @Injectable()
 export class DepreciationTemplate {
@@ -57,13 +57,13 @@ export class DepreciationTemplate {
     });
 
     if (!asset) {
-      this.logger.warn(`[A.5c] DepreciationTemplate: asset ${assetId} not found`);
+      this.logger.warn(`[Phase1] DepreciationTemplate: asset ${assetId} not found`);
       return null;
     }
 
-    if (asset.status !== 'ACTIVE') {
+    if (asset.status !== 'POSTED') {
       this.logger.log(
-        `[A.5c] DepreciationTemplate: asset ${asset.assetCode} status=${asset.status} — skipping`,
+        `[Phase1] DepreciationTemplate: asset ${asset.assetCode} status=${asset.status} — skipping`,
       );
       return null;
     }
@@ -74,42 +74,32 @@ export class DepreciationTemplate {
     });
     if (existing) {
       this.logger.log(
-        `[A.5c] DepreciationTemplate idempotency — entry already exists for asset ${asset.assetCode} period ${period}`,
+        `[Phase1] DepreciationTemplate idempotency — entry already exists for asset ${asset.assetCode} period ${period}`,
       );
       return existing.journalEntryNo ? { entryNo: existing.journalEntryNo } : null;
     }
 
-    // Resolve account codes: prefer explicit codes, fall back to assetCategory enum
-    let drCode: string;
-    let crCode: string;
-
-    if (asset.assetCategory && CATEGORY_ACCOUNT_MAP[asset.assetCategory]) {
-      [drCode, crCode] = CATEGORY_ACCOUNT_MAP[asset.assetCategory];
-    } else {
-      // Fall back to asset's stored account codes (legacy assets without assetCategory)
-      drCode = asset.depreciationAccountCode;
-      crCode = asset.accumulatedAccountCode;
-    }
+    // Resolve account codes by category
+    const [drCode, crCode] = CATEGORY_ACCOUNT_MAP[asset.category];
 
     // Compute monthly depreciation
-    const costValue = new Decimal(asset.costValue.toString());
-    const salvageValue = new Decimal(asset.salvageValue.toString());
-    const accumulatedDepre = new Decimal(asset.accumulatedDepre.toString());
-    const depreciableBase = costValue.minus(salvageValue);
-    const remainingBase = depreciableBase.minus(accumulatedDepre);
+    const purchaseCost = new Decimal(asset.purchaseCost.toString());
+    const residualValue = new Decimal(asset.residualValue.toString());
+    const accumulatedDepr = new Decimal(asset.accumulatedDepr.toString());
+    const depreciableBase = purchaseCost.minus(residualValue);
+    const remainingBase = depreciableBase.minus(accumulatedDepr);
 
     if (remainingBase.lte(0)) {
       this.logger.log(
-        `[A.5c] DepreciationTemplate: asset ${asset.assetCode} fully depreciated — skipping`,
+        `[Phase1] DepreciationTemplate: asset ${asset.assetCode} fully depreciated — skipping`,
       );
       return null;
     }
 
-    // usefulLifeMonths takes precedence over usefulLife (years)
-    const lifeMonths = asset.usefulLifeMonths ?? asset.usefulLife * 12;
+    const lifeMonths = asset.usefulLifeMonths;
     if (lifeMonths <= 0) {
       this.logger.warn(
-        `[A.5c] DepreciationTemplate: asset ${asset.assetCode} usefulLifeMonths=${lifeMonths} invalid — skipping`,
+        `[Phase1] DepreciationTemplate: asset ${asset.assetCode} usefulLifeMonths=${lifeMonths} invalid — skipping`,
       );
       return null;
     }
@@ -118,8 +108,7 @@ export class DepreciationTemplate {
     // Final partial month: cap to remaining
     const actualAmount = monthlyAmount.gt(remainingBase) ? remainingBase : monthlyAmount;
 
-    const categoryLabel =
-      (asset.assetCategory && CATEGORY_LABEL[asset.assetCategory]) ?? 'สินทรัพย์';
+    const categoryLabel = CATEGORY_LABEL[asset.category] ?? 'สินทรัพย์';
 
     const zero = new Decimal(0);
 
@@ -132,7 +121,7 @@ export class DepreciationTemplate {
         assetId,
         assetCode: asset.assetCode,
         period,
-        category: asset.assetCategory ?? 'LEGACY',
+        category: asset.category,
       },
       lines: [
         {
@@ -160,21 +149,22 @@ export class DepreciationTemplate {
       },
     });
 
-    // Update asset accumulated depreciation + lastDepreciationPeriod
-    const newAccumulated = accumulatedDepre.plus(actualAmount);
-    const isFullyDepreciated = newAccumulated.gte(depreciableBase);
+    // Update asset accumulated depreciation + netBookValue.
+    // Phase 1 schema does not have a `lastDepreciationPeriod` or FULLY_DEPRECIATED status —
+    // fully-depreciated state is implied by `accumulatedDepr >= (purchaseCost - residualValue)`.
+    const newAccumulated = accumulatedDepr.plus(actualAmount);
+    const newNetBookValue = purchaseCost.minus(newAccumulated);
 
     await this.prisma.fixedAsset.update({
       where: { id: assetId },
       data: {
-        accumulatedDepre: newAccumulated,
-        lastDepreciationPeriod: period,
-        status: isFullyDepreciated ? 'FULLY_DEPRECIATED' : 'ACTIVE',
+        accumulatedDepr: newAccumulated,
+        netBookValue: newNetBookValue,
       },
     });
 
     this.logger.log(
-      `[A.5c] DepreciationTemplate: posted JE ${result.entryNumber} for asset ${asset.assetCode} period ${period} amount ${actualAmount.toFixed(2)}`,
+      `[Phase1] DepreciationTemplate: posted JE ${result.entryNumber} for asset ${asset.assetCode} period ${period} amount ${actualAmount.toFixed(2)}`,
     );
 
     return { entryNo: result.entryNumber };

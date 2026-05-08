@@ -37,11 +37,11 @@ export class DepreciationCron {
     this.logger.log(`[A.5c] DepreciationCron: running for period ${period}`);
 
     const assets = await this.prisma.fixedAsset.findMany({
-      where: { status: 'ACTIVE', deletedAt: null },
+      where: { status: 'POSTED', deletedAt: null },
       select: { id: true, assetCode: true },
     });
 
-    this.logger.log(`[A.5c] DepreciationCron: ${assets.length} active asset(s) to process`);
+    this.logger.log(`[A.5c] DepreciationCron: ${assets.length} posted asset(s) to process`);
 
     let processed = 0;
     let skipped = 0;

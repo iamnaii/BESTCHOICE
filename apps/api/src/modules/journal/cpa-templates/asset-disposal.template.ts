@@ -5,9 +5,9 @@ import { PrismaService } from '../../../prisma/prisma.service';
 
 /** Maps AssetCategory → [assetCostCode, accumulatedDepCode] */
 const CATEGORY_ASSET_CODE_MAP: Record<string, [string, string]> = {
-  OFFICE_EQUIPMENT: ['12-2101', '12-2102'],
-  BUILDING_IMPROVEMENT: ['12-2103', '12-2104'],
-  OFFICE_FURNITURE: ['12-2105', '12-2106'],
+  EQUIPMENT: ['12-2101', '12-2102'],
+  IMPROVEMENT: ['12-2103', '12-2104'],
+  FURNITURE: ['12-2105', '12-2106'],
   VEHICLE: ['12-2107', '12-2108'],
 };
 
@@ -78,38 +78,27 @@ export class AssetDisposalTemplate {
       );
     }
 
-    // Resolve asset cost/accumulated account codes from assetCategory
-    let assetCostCode: string;
-    let accumulatedCode: string;
-
-    if (asset.assetCategory && CATEGORY_ASSET_CODE_MAP[asset.assetCategory]) {
-      [assetCostCode, accumulatedCode] = CATEGORY_ASSET_CODE_MAP[asset.assetCategory];
-    } else {
-      // Legacy: use stored accumulated code, derive cost code from accumulated (remove last digit + replace)
-      accumulatedCode = asset.accumulatedAccountCode;
-      // For legacy assets without assetCategory, use stored depreciation account's accumulated pair
-      // Best-effort: assume cost code is accumulated minus the +1 suffix
-      // e.g. "12-2102" → "12-2101"; "12-2104" → "12-2103"; "12-2106" → "12-2105"; "12-2108" → "12-2107"
-      const lastChar = accumulatedCode.slice(-1);
-      const lastDigit = parseInt(lastChar, 10);
-      assetCostCode = accumulatedCode.slice(0, -1) + (lastDigit - 1).toString();
-      this.logger.warn(
-        `[A.5c] AssetDisposalTemplate: asset ${asset.assetCode} has no assetCategory — derived cost code ${assetCostCode}`,
+    // Resolve asset cost/accumulated account codes from category
+    const codePair = CATEGORY_ASSET_CODE_MAP[asset.category];
+    if (!codePair) {
+      throw new BadRequestException(
+        `ไม่พบรหัสบัญชีสำหรับหมวดสินทรัพย์ ${asset.category} (asset ${asset.assetCode})`,
       );
     }
+    const [assetCostCode, accumulatedCode] = codePair;
 
-    const costValue = new Decimal(asset.costValue.toString());
-    const accumulatedDepre = new Decimal(asset.accumulatedDepre.toString());
-    const nbv = costValue.minus(accumulatedDepre);
+    const purchaseCost = new Decimal(asset.purchaseCost.toString());
+    const accumulatedDepr = new Decimal(asset.accumulatedDepr.toString());
+    const nbv = purchaseCost.minus(accumulatedDepr);
     const zero = new Decimal(0);
 
     const lines: { accountCode: string; dr: Decimal; cr: Decimal; description?: string }[] = [];
 
     // Dr: derecognize accumulated depreciation
-    if (accumulatedDepre.gt(0)) {
+    if (accumulatedDepr.gt(0)) {
       lines.push({
         accountCode: accumulatedCode,
-        dr: accumulatedDepre,
+        dr: accumulatedDepr,
         cr: zero,
         description: `ตัดค่าเสื่อมราคาสะสม - ${asset.name}`,
       });
@@ -129,7 +118,7 @@ export class AssetDisposalTemplate {
     lines.push({
       accountCode: assetCostCode,
       dr: zero,
-      cr: costValue,
+      cr: purchaseCost,
       description: `ตัดบัญชีสินทรัพย์ - ${asset.name}`,
     });
 
@@ -172,19 +161,18 @@ export class AssetDisposalTemplate {
       lines,
     });
 
-    // Update asset status
+    // Update asset status (Phase 2 will refactor to capture proceeds/note in dedicated fields)
     await this.prisma.fixedAsset.update({
       where: { id: assetId },
       data: {
         status: 'DISPOSED',
-        disposedAt: disposalDate,
-        disposalNote: `จำหน่ายสินทรัพย์ ณ ${disposalDate.toLocaleDateString('th-TH')}`,
-        disposalProceeds: proceeds,
+        disposalDate,
+        netBookValue: new Decimal(0),
       },
     });
 
     this.logger.log(
-      `[A.5c] AssetDisposalTemplate: posted JE ${result.entryNumber} for asset ${asset.assetCode} proceeds=${proceeds.toFixed(2)} NBV=${nbv.toFixed(2)} gain/loss=${gainOrLoss.toFixed(2)}`,
+      `[Phase1] AssetDisposalTemplate: posted JE ${result.entryNumber} for asset ${asset.assetCode} proceeds=${proceeds.toFixed(2)} NBV=${nbv.toFixed(2)} gain/loss=${gainOrLoss.toFixed(2)}`,
     );
 
     return { entryNo: result.entryNumber };

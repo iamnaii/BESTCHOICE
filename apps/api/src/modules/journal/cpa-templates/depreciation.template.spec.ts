@@ -7,30 +7,56 @@ import { JournalAutoService } from '../journal-auto.service';
 
 const prisma = new PrismaClient();
 
+const CATEGORY_ACCOUNTS: Record<string, { cost: string; depr: string; expense: string }> = {
+  EQUIPMENT: { cost: '12-2101', depr: '12-2102', expense: '53-1601' },
+  IMPROVEMENT: { cost: '12-2103', depr: '12-2104', expense: '53-1602' },
+  FURNITURE: { cost: '12-2105', depr: '12-2106', expense: '53-1603' },
+  VEHICLE: { cost: '12-2107', depr: '12-2108', expense: '53-1604' },
+};
+
 async function ensureTestAsset(opts: {
-  assetCategory?: string;
-  costValue?: number;
-  salvageValue?: number;
+  category?: string;
+  purchaseCost?: number;
+  residualValue?: number;
   usefulLifeMonths?: number;
-  usefulLife?: number;
-  accumulatedDepre?: number;
+  accumulatedDepr?: number;
 }) {
   const assetCode = `DEP-TEST-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  const docNo = `ASSET-DEP-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  const cat = (opts.category ?? 'EQUIPMENT') as 'EQUIPMENT' | 'IMPROVEMENT' | 'FURNITURE' | 'VEHICLE';
+  const purchaseCost = opts.purchaseCost ?? 60000;
+  const residualValue = opts.residualValue ?? 0;
+  const usefulLifeMonths = opts.usefulLifeMonths ?? 60;
+  const monthlyDepr = (purchaseCost - residualValue) / usefulLifeMonths;
+  const accumulatedDepr = opts.accumulatedDepr ?? 0;
+  const netBookValue = purchaseCost - accumulatedDepr;
+  const accounts = CATEGORY_ACCOUNTS[cat];
+
+  // Need a creator user (FK created_by_id NOT NULL)
+  const user = await prisma.user.findFirst({ where: { email: 'admin@bestchoice.com' } });
+  if (!user) {
+    throw new Error('Test setup error: admin@bestchoice.com user must exist before creating assets');
+  }
+
   return prisma.fixedAsset.create({
     data: {
       assetCode,
+      docNo,
       name: `Test Asset ${assetCode}`,
-      category: opts.assetCategory ?? 'OFFICE_EQUIPMENT',
-      assetCategory: (opts.assetCategory ?? 'OFFICE_EQUIPMENT') as any,
-      costValue: new Decimal(opts.costValue ?? 60000),
-      salvageValue: new Decimal(opts.salvageValue ?? 0),
-      usefulLife: opts.usefulLife ?? 5,
-      usefulLifeMonths: opts.usefulLifeMonths ?? null,
+      category: cat,
+      basePrice: new Decimal(purchaseCost),
+      purchaseCost: new Decimal(purchaseCost),
+      residualValue: new Decimal(residualValue),
+      usefulLifeMonths,
+      monthlyDepr: new Decimal(monthlyDepr),
+      accumulatedDepr: new Decimal(accumulatedDepr),
+      netBookValue: new Decimal(netBookValue),
       purchaseDate: new Date('2026-01-01'),
-      accumulatedDepre: new Decimal(opts.accumulatedDepre ?? 0),
-      depreciationAccountCode: '53-1601',
-      accumulatedAccountCode: '12-2102',
-      status: 'ACTIVE',
+      coaCostAccount: accounts.cost,
+      coaDeprAccount: accounts.depr,
+      coaExpenseAccount: accounts.expense,
+      status: 'POSTED',
+      createdById: user.id,
     },
   });
 }
@@ -39,6 +65,7 @@ async function setup() {
   await prisma.depreciationEntry.deleteMany({});
   await prisma.journalLine.deleteMany({});
   await prisma.journalEntry.deleteMany({});
+  await prisma.fixedAsset.deleteMany({});
   await seedFinanceCoa(prisma);
 
   const existing = await prisma.user.findFirst({ where: { email: 'admin@bestchoice.com' } });
@@ -58,12 +85,12 @@ describe('DepreciationTemplate', () => {
     journal = await setup();
   });
 
-  it('posts balanced JE for OFFICE_EQUIPMENT (Dr 53-1601 / Cr 12-2102)', async () => {
+  it('posts balanced JE for EQUIPMENT (Dr 53-1601 / Cr 12-2102)', async () => {
     // 60,000 / 60 months = 1,000/month
     const asset = await ensureTestAsset({
-      assetCategory: 'OFFICE_EQUIPMENT',
-      costValue: 60000,
-      salvageValue: 0,
+      category: 'EQUIPMENT',
+      purchaseCost: 60000,
+      residualValue: 0,
       usefulLifeMonths: 60,
     });
 
@@ -101,14 +128,13 @@ describe('DepreciationTemplate', () => {
 
     // Asset updated
     const updated = await prisma.fixedAsset.findFirst({ where: { id: asset.id } });
-    expect(new Decimal(updated!.accumulatedDepre.toString()).toFixed(2)).toBe('1000.00');
-    expect(updated!.lastDepreciationPeriod).toBe('2026-04');
+    expect(new Decimal(updated!.accumulatedDepr.toString()).toFixed(2)).toBe('1000.00');
   });
 
   it('posts correct accounts per category: VEHICLE → Dr 53-1604 / Cr 12-2108', async () => {
     const asset = await ensureTestAsset({
-      assetCategory: 'VEHICLE',
-      costValue: 120000,
+      category: 'VEHICLE',
+      purchaseCost: 120000,
       usefulLifeMonths: 60,
     });
 
@@ -128,8 +154,8 @@ describe('DepreciationTemplate', () => {
     expect(crLine).toBeDefined();
   });
 
-  it('is idempotent — second call for same period returns null', async () => {
-    const asset = await ensureTestAsset({ assetCategory: 'OFFICE_FURNITURE', usefulLifeMonths: 60 });
+  it('is idempotent — second call for same period returns same JE', async () => {
+    const asset = await ensureTestAsset({ category: 'FURNITURE', usefulLifeMonths: 60 });
 
     const tmpl = new DepreciationTemplate(journal, prisma as any);
     const first = await tmpl.execute({ assetId: asset.id, period: '2026-05' });
@@ -148,11 +174,11 @@ describe('DepreciationTemplate', () => {
   it('caps final partial month to remaining depreciable base', async () => {
     // 60,000 over 60 months = 1,000/month. Start with 59,500 accumulated → remaining 500
     const asset = await ensureTestAsset({
-      assetCategory: 'OFFICE_EQUIPMENT',
-      costValue: 60000,
-      salvageValue: 0,
+      category: 'EQUIPMENT',
+      purchaseCost: 60000,
+      residualValue: 0,
       usefulLifeMonths: 60,
-      accumulatedDepre: 59500,
+      accumulatedDepr: 59500,
     });
 
     const tmpl = new DepreciationTemplate(journal, prisma as any);
@@ -166,17 +192,18 @@ describe('DepreciationTemplate', () => {
     // Should be capped at 500, not 1000
     expect(new Decimal(entry!.amount.toString()).toFixed(2)).toBe('500.00');
 
+    // Phase 1: fully-depreciated state is implied by accumulatedDepr >= depreciable base.
     const updated = await prisma.fixedAsset.findFirst({ where: { id: asset.id } });
-    expect(updated!.status).toBe('FULLY_DEPRECIATED');
+    expect(new Decimal(updated!.accumulatedDepr.toString()).toFixed(2)).toBe('60000.00');
   });
 
   it('skips fully depreciated asset', async () => {
     const asset = await ensureTestAsset({
-      assetCategory: 'BUILDING_IMPROVEMENT',
-      costValue: 30000,
-      salvageValue: 0,
+      category: 'IMPROVEMENT',
+      purchaseCost: 30000,
+      residualValue: 0,
       usefulLifeMonths: 60,
-      accumulatedDepre: 30000, // fully depreciated
+      accumulatedDepr: 30000, // fully depreciated
     });
 
     const tmpl = new DepreciationTemplate(journal, prisma as any);
@@ -186,7 +213,7 @@ describe('DepreciationTemplate', () => {
   });
 
   it('skips DISPOSED asset', async () => {
-    const asset = await ensureTestAsset({ assetCategory: 'VEHICLE', usefulLifeMonths: 60 });
+    const asset = await ensureTestAsset({ category: 'VEHICLE', usefulLifeMonths: 60 });
     await prisma.fixedAsset.update({ where: { id: asset.id }, data: { status: 'DISPOSED' } });
 
     const tmpl = new DepreciationTemplate(journal, prisma as any);
@@ -195,13 +222,11 @@ describe('DepreciationTemplate', () => {
     expect(result).toBeNull();
   });
 
-  it('uses usefulLifeMonths over usefulLife (years)', async () => {
-    // usefulLife=5 years would be 60 months → 1000/mo
-    // But usefulLifeMonths=12 → 5000/mo on 60000 cost
+  it('uses usefulLifeMonths to compute monthly depreciation', async () => {
+    // usefulLifeMonths=12 on 60,000 cost → 5,000/month
     const asset = await ensureTestAsset({
-      assetCategory: 'OFFICE_EQUIPMENT',
-      costValue: 60000,
-      usefulLife: 5,
+      category: 'EQUIPMENT',
+      purchaseCost: 60000,
       usefulLifeMonths: 12,
     });
 

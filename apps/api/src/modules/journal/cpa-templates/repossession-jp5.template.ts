@@ -22,8 +22,17 @@ export interface RepossessionInput {
  *
  *   Accrued (2A already ran — receivable parked at 11-2103):
  *     Dr depositAccountCode           (cash leg, shared)
+ *     Dr 21-2101 (credit note VAT)    vatPerInst × accruedCount  [Wave 2 / Task 2]
  *     Cr 11-2103 ลูกหนี้ค้างชำระ         installmentTotal × accruedCount
- *     (NO 21-2101/11-2105/11-2106/21-2102/41-1101 — already settled by 2A)
+ *     (No 11-2105/11-2106/21-2102/41-1101 — already settled by 2A.
+ *      Income (41-1101) NOT reversed — customer used the goods, income properly earned;
+ *      uncollectable portion flows to 51-1102 bad debt loss below.)
+ *
+ * Credit Note for accrued VAT (Wave 2 / Task 2) — ป.รัษฎากร ม.82/5 + ประกาศ 36/2536 ข้อ 2(6):
+ *   ตอนยึดเครื่อง ส่วน VAT ที่นำส่งไปแล้ว (settled at 21-2101 by 2A) ต้องออกใบลดหนี้
+ *   (credit note) ภายใน 30 วัน → Dr 21-2101 reduces VAT liability.
+ *   Net effect on JE balance: 51-1102 loss reduces by exactly the credit note amount
+ *   (VAT recovered via credit note is NOT a loss — it offsets receivable derecognized).
  *
  *   Deferred (2A not run — receivable still at 11-2101/11-2105/11-2106):
  *     Dr 11-2106 รายได้รอตัดบัญชี-ดอกเบี้ย  deferredInterest
@@ -34,9 +43,10 @@ export interface RepossessionInput {
  *       Cr 41-1101 รายได้ดอกเบี้ย             deferredInterest
  *
  * Loss / Gain (computed against TOTAL receivable being derecognized):
- *   remainingTotal = accruedTotal + deferredGross + deferredVat
+ *   remainingTotal = accruedTotal + deferredGross + deferredVat - accruedCreditNoteVat
  *   loss = remainingTotal - repossessionValue   → Dr 51-1102 (when > 0)
  *   gain = repossessionValue - remainingTotal   → Cr 41-1102 (when > 0)
+ *   (Credit note VAT subtracted because it's recovered via Dr 21-2101 — not a P&L loss)
  *
  * Calculations (per-installment, consistent rounding with 2A/2B):
  *   installmentExclVat = grossExclVat / totalMonths  (ROUND_DOWN)
@@ -107,13 +117,21 @@ export class RepossessionJP5Template {
     // Accrued portion — only 11-2103 needs clearing (offset of 2A's Dr 11-2103)
     const accruedClear11_2103 = installmentTotal.times(accruedCount);
 
+    // Wave 2 T2 — Credit note VAT for accrued installments (per ม.82/5)
+    // Recovers settled VAT (21-2101) → reduces both VAT liability and loss recognition
+    const accruedCreditNoteVat = vatPerInst.times(accruedCount);
+
     // Deferred portion — full original clearance / VAT settlement
     const deferredGross = installmentExclVat.times(deferredCount);
     const deferredVat = vatPerInst.times(deferredCount);
     const deferredInterest = interestPerInst.times(deferredCount);
 
     // Total receivable being derecognized (drives loss/gain calc)
-    const remainingTotal = accruedClear11_2103.plus(deferredGross).plus(deferredVat);
+    // Wave 2 T2: subtract accrued VAT recovered via credit note (Dr 21-2101) — not a loss.
+    const remainingTotal = accruedClear11_2103
+      .plus(deferredGross)
+      .plus(deferredVat)
+      .minus(accruedCreditNoteVat);
 
     // lossOrGain: positive = loss (remainingTotal > repoValue), negative = gain
     const lossOrGain = remainingTotal.minus(input.repossessionValue);
@@ -130,7 +148,14 @@ export class RepossessionJP5Template {
     ];
 
     // Accrued path — Cr 11-2103 only (VAT already settled by 2A; do not Cr 21-2101 again)
+    // Wave 2 Task 2: also issue credit note (Dr 21-2101) per ม.82/5 — reverses settled VAT
     if (accruedCount.gt(0)) {
+      lines.push({
+        accountCode: '21-2101',
+        dr: accruedCreditNoteVat,
+        cr: zero,
+        description: `ใบลดหนี้ VAT ${accruedInsts.length} งวด (ม.82/5)`,
+      });
       lines.push({
         accountCode: '11-2103',
         dr: zero,
@@ -250,6 +275,9 @@ export class RepossessionJP5Template {
           accruedInstallments: accruedInsts.length,
           deferredInstallments: deferredInsts.length,
           repossessionValue: input.repossessionValue.toFixed(2),
+          // Wave 2 T2: Credit Note tracking (per ม.82/5)
+          creditNoteIssued: accruedCount.gt(0),
+          creditNoteVatAmount: accruedCreditNoteVat.toFixed(2),
         },
         lines,
       },

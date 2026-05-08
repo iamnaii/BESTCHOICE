@@ -359,3 +359,150 @@ describe('JP5 consume Bad Debt provision before loss (Task 8)', () => {
     expect(totalDr.toFixed(2)).toBe(totalCr.toFixed(2));
   });
 });
+
+/**
+ * JP5 Credit Note for accrued VAT (Wave 2 / Task 2).
+ *
+ * Background: ป.รัษฎากร ม.82/5 + ประกาศ 36/2536 ข้อ 2(6) — ตอนยึดเครื่อง
+ * ส่วน VAT ที่นำส่งไปแล้ว (settled at 21-2101 by 2A) ต้องออกใบลดหนี้
+ * (credit note) ภายใน 30 วัน → Dr 21-2101 reduces VAT liability.
+ *
+ * Income recognition: ลูกค้าใช้สินค้าจริงในช่วง accrued → 41-1101 ไม่ reverse
+ * (ส่วนที่ uncollectable handled via bad debt loss in 51-1102).
+ *
+ * Pattern:
+ *   - accrued installments: Dr 21-2101 = vatPerInst × accruedCount (credit note)
+ *     Net effect on JE balance: 51-1102 loss reduces by exactly accruedVat
+ *     (VAT recovered via credit note is NOT a loss).
+ *   - deferred installments: no credit note (VAT was never settled)
+ *
+ * JE metadata: creditNoteIssued + creditNoteVatAmount tracking.
+ */
+describe('JP5 Credit Note for accrued VAT (Wave 2 Task 2)', () => {
+  beforeAll(async () => {
+    await setup();
+  });
+
+  it('issues credit note (Dr 21-2101) for accrued installments per ม.82/5', async () => {
+    const journal = await setup();
+    const c = await seedStandard17k12m(prisma);
+    await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
+
+    // Run 2A for installments 1-3 — VAT moved to 21-2101 settled
+    const accrual = new InstallmentAccrual2ATemplate(journal, prisma as any);
+    const insts = await prisma.installmentSchedule.findMany({
+      where: { contractId: c.id },
+      orderBy: { installmentNo: 'asc' },
+    });
+    for (let i = 0; i < 3; i++) {
+      await accrual.execute(insts[i].id);
+    }
+
+    const jp5 = new RepossessionJP5Template(journal, prisma as any);
+    await jp5.execute({
+      contractId: c.id,
+      depositAccountCode: '11-1101',
+      repossessionValue: new Decimal('5000.00'),
+    });
+
+    const lines = await getJp5Lines(c.id);
+
+    // Credit Note: Dr 21-2101 = 3 × vatPerInst (99.17) = 297.51
+    const expectedCreditNoteVat = new Decimal('99.17').times(3); // 297.51
+    const dr21_2101 = sumDr(lines, '21-2101');
+    expect(dr21_2101.toFixed(2)).toBe(expectedCreditNoteVat.toFixed(2));
+
+    // Cr 21-2101 only from deferred (9 × 99.17 = 892.53) — accrued path no longer credits
+    const expectedDeferredVat = new Decimal('99.17').times(9); // 892.53
+    const cr21_2101 = sumCr(lines, '21-2101');
+    expect(cr21_2101.toFixed(2)).toBe(expectedDeferredVat.toFixed(2));
+
+    // JE metadata: credit note issued
+    const entries = await prisma.journalEntry.findMany({
+      where: {
+        AND: [
+          { metadata: { path: ['contractId'], equals: c.id } } as any,
+          { metadata: { path: ['flow'], equals: 'repossession' } } as any,
+        ],
+      },
+    });
+    expect(entries.length).toBe(1);
+    const meta = entries[0].metadata as Record<string, unknown>;
+    expect(meta.creditNoteIssued).toBe(true);
+    expect(meta.creditNoteVatAmount).toBe('297.51');
+
+    // JE balanced
+    const totalDr = lines.reduce((s, l) => s.plus(l.debit), new Decimal(0));
+    const totalCr = lines.reduce((s, l) => s.plus(l.credit), new Decimal(0));
+    expect(totalDr.toFixed(2)).toBe(totalCr.toFixed(2));
+  });
+
+  it('does NOT issue credit note when all installments are deferred (no settled VAT to reverse)', async () => {
+    const journal = await setup();
+    const c = await seedStandard17k12m(prisma);
+    await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
+
+    // No 2A run — all 12 installments are deferred
+    const jp5 = new RepossessionJP5Template(journal, prisma as any);
+    await jp5.execute({
+      contractId: c.id,
+      depositAccountCode: '11-1101',
+      repossessionValue: new Decimal('5000.00'),
+    });
+
+    const lines = await getJp5Lines(c.id);
+
+    // No Dr 21-2101 line (no credit note)
+    const dr21_2101 = sumDr(lines, '21-2101');
+    expect(dr21_2101.toFixed(2)).toBe('0.00');
+
+    // JE metadata: credit note NOT issued
+    const entries = await prisma.journalEntry.findMany({
+      where: {
+        AND: [
+          { metadata: { path: ['contractId'], equals: c.id } } as any,
+          { metadata: { path: ['flow'], equals: 'repossession' } } as any,
+        ],
+      },
+    });
+    expect(entries.length).toBe(1);
+    const meta = entries[0].metadata as Record<string, unknown>;
+    expect(meta.creditNoteIssued).toBe(false);
+    expect(meta.creditNoteVatAmount).toBe('0.00');
+  });
+
+  it('reduces 51-1102 loss by exactly the accrued VAT amount (credit note recovery)', async () => {
+    const journal = await setup();
+    const c = await seedStandard17k12m(prisma);
+    await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
+
+    // Run 2A for installments 1-3
+    const accrual = new InstallmentAccrual2ATemplate(journal, prisma as any);
+    const insts = await prisma.installmentSchedule.findMany({
+      where: { contractId: c.id },
+      orderBy: { installmentNo: 'asc' },
+    });
+    for (let i = 0; i < 3; i++) {
+      await accrual.execute(insts[i].id);
+    }
+
+    // Repo at 5,000 — without credit note loss = 13,189.96 (Task 8 baseline)
+    // With credit note Dr 21-2101 = 297.51, loss reduces by 297.51 → 12,892.45
+    const jp5 = new RepossessionJP5Template(journal, prisma as any);
+    await jp5.execute({
+      contractId: c.id,
+      depositAccountCode: '11-1101',
+      repossessionValue: new Decimal('5000.00'),
+    });
+
+    const lines = await getJp5Lines(c.id);
+
+    const dr51_1102 = sumDr(lines, '51-1102');
+    expect(dr51_1102.toFixed(2)).toBe('12892.45');
+
+    // JE balanced
+    const totalDr = lines.reduce((s, l) => s.plus(l.debit), new Decimal(0));
+    const totalCr = lines.reduce((s, l) => s.plus(l.credit), new Decimal(0));
+    expect(totalDr.toFixed(2)).toBe(totalCr.toFixed(2));
+  });
+});

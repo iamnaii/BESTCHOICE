@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException, Inject, forwardRef } from '@nestjs/common';
 import { formatDateShort } from '../../utils/thai-date.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
@@ -361,11 +361,32 @@ export class ReceiptsService {
   /**
    * Void a receipt (ถ้าผิด → ออกใบลดหนี้/ใบแก้ไขแทน)
    * ใบเสร็จที่ออกแล้วห้ามแก้ไข/ลบ
+   *
+   * Wave 3 T2 (ปพพ.386 W-3): จำกัดสิทธิ์ — เฉพาะ OWNER / ACCOUNTANT /
+   * BRANCH_MANAGER เท่านั้นที่ void ได้. SALES void ไม่ได้เพื่อป้องกัน
+   * fraud โดยพนักงานหน้าร้าน. บันทึก audit log RECEIPT_VOID เพิ่มเติม
+   * นอกเหนือจาก voidApprovedById บน receipt row เพื่อ forensic trail.
    */
-  async voidReceipt(id: string, reason: string, issuedById: string, approvedById: string) {
+  async voidReceipt(
+    id: string,
+    reason: string,
+    issuedById: string,
+    approvedById: string,
+    userRole?: string,
+  ) {
     if (!reason?.trim()) {
       throw new BadRequestException('กรุณาระบุเหตุผลในการยกเลิก');
     }
+
+    // Wave 3 T2: Role check — controller passes userRole; if absent we
+    // still defend in service layer (defensive — prevents future caller misuse).
+    const ALLOWED_VOID_ROLES = ['OWNER', 'ACCOUNTANT', 'BRANCH_MANAGER', 'FINANCE_MANAGER'];
+    if (userRole !== undefined && !ALLOWED_VOID_ROLES.includes(userRole)) {
+      throw new ForbiddenException(
+        'ไม่มีสิทธิ์ยกเลิกใบเสร็จ · ต้องเป็นเจ้าของ / ฝ่ายบัญชี / ผจก.สาขา / ผจก.การเงิน',
+      );
+    }
+
     // CR-7: Validate void date is not in a closed accounting period
     await validatePeriodOpen(this.prisma, new Date());
     return this.prisma.$transaction(async (tx) => {
@@ -431,6 +452,34 @@ export class ReceiptsService {
           }
         }
       }
+
+      // Wave 3 T2 (ปพพ.386 W-3): forensic audit log for receipt voids.
+      // voidApprovedById on receipt is operational; this is the immutable
+      // tamper-evident trail (Merkle-chained, 7-yr retention).
+      await tx.auditLog.create({
+        data: {
+          userId: issuedById,
+          action: 'RECEIPT_VOID',
+          entity: 'receipt',
+          entityId: receipt.id,
+          oldValue: {
+            receiptNumber: receipt.receiptNumber,
+            amount: Number(receipt.amount),
+            payerName: receipt.payerName,
+            paymentMethod: receipt.paymentMethod,
+            installmentNo: receipt.installmentNo,
+            paidDate: receipt.paidDate.toISOString(),
+          },
+          newValue: {
+            reason: reason.trim(),
+            voidedAt: new Date().toISOString(),
+            approvedById,
+            creditNoteId: creditNote.id,
+            creditNoteNumber: creditNote.receiptNumber,
+            userRole: userRole ?? null,
+          },
+        },
+      });
 
       return { voidedReceipt: receipt, creditNote };
     });

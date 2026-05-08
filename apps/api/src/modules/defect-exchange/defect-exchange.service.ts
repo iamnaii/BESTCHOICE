@@ -131,6 +131,24 @@ export class DefectExchangeService {
           throw new BadRequestException(`ไม่เข้าเกณฑ์: ${elig.reasons.join(', ')}`);
         }
 
+        // Wave 3 T2 (ปพพ.386 C-6): Defect Exchange ไม่อนุญาตถ้ามี Payment record
+        // ใดๆ บนสัญญาเดิม. การชำระเงินแม้แต่งวดเดียว → ลูกค้าได้รับประโยชน์
+        // จากการครอบครอง → ไม่ใช่ "เครื่องตำหนิ" ที่จะคืนได้ตามกฎหมาย.
+        // ต้องยกเลิกการชำระก่อนถึงจะ exchange ได้.
+        const paidPaymentCount = await tx.payment.count({
+          where: {
+            contractId: dto.oldContractId,
+            deletedAt: null,
+            OR: [{ status: 'PAID' }, { amountPaid: { gt: 0 } }],
+          },
+        });
+        if (paidPaymentCount > 0) {
+          throw new BadRequestException(
+            'ไม่สามารถเปลี่ยนเครื่องตำหนิได้ — มีรายการชำระเงินแล้ว ' +
+              `(${paidPaymentCount} รายการ) · กรุณายกเลิก/คืนเงินค่างวดก่อน`,
+          );
+        }
+
         const oldContract = await tx.contract.findUnique({
           where: { id: dto.oldContractId },
           include: { product: true, payments: true },

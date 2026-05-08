@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ForbiddenException } from '@nestjs/common';
 import { ReceiptsService } from './receipts.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
@@ -30,6 +31,9 @@ describe('ReceiptsService', () => {
       },
       journalEntry: {
         findFirst: jest.fn(),
+      },
+      auditLog: {
+        create: jest.fn().mockResolvedValue({ id: 'audit-1' }),
       },
       $queryRaw: jest.fn().mockResolvedValue([]),
     };
@@ -80,6 +84,7 @@ describe('ReceiptsService', () => {
         isVoided: false,
         deletedAt: null,
         createdAt: new Date(), // today → within 30-day limit
+        paidDate: new Date(),
       });
 
       tx.receipt.create.mockResolvedValue({
@@ -126,6 +131,7 @@ describe('ReceiptsService', () => {
         isVoided: false,
         deletedAt: null,
         createdAt: new Date(),
+        paidDate: new Date(),
       });
 
       tx.receipt.create.mockResolvedValue({
@@ -147,6 +153,114 @@ describe('ReceiptsService', () => {
       template.voidReceipt.mockRejectedValueOnce(new Error('JE reversal failed'));
 
       // Must succeed (non-blocking pattern)
+      await expect(
+        service.voidReceipt(receiptId, 'wrong amount', userId, approverId),
+      ).resolves.toBeDefined();
+    });
+  });
+
+  describe('voidReceipt — Wave 3 T2 authorization (ปพพ.386 W-3)', () => {
+    const validReceiptMock = () => ({
+      id: receiptId,
+      receiptNumber: 'RC-2026-04-00001',
+      contractId: 'ct-1',
+      paymentId: 'pay-1',
+      payerName: 'Customer A',
+      receiverName: 'Cashier',
+      amount: 1000,
+      installmentNo: 1,
+      paymentMethod: 'CASH',
+      isVoided: false,
+      deletedAt: null,
+      createdAt: new Date(),
+      paidDate: new Date(),
+    });
+
+    const setupHappyPath = (tx: any) => {
+      tx.receipt.findUnique.mockResolvedValue(validReceiptMock());
+      tx.receipt.create.mockResolvedValue({
+        id: 'cn-1',
+        receiptNumber: 'RC-2026-04-00002',
+        receiptType: 'CREDIT_NOTE',
+      });
+      tx.receipt.update.mockResolvedValue({ id: receiptId, isVoided: true });
+      tx.journalEntry.findFirst.mockResolvedValue(null); // no JE → skip reversal
+    };
+
+    it('throws ForbiddenException when SALES role attempts to void', async () => {
+      const tx = prisma.__tx;
+      setupHappyPath(tx);
+
+      await expect(
+        service.voidReceipt(receiptId, 'wrong amount', userId, approverId, 'SALES'),
+      ).rejects.toThrow(ForbiddenException);
+
+      // Audit log must NOT be created on rejection
+      expect(tx.auditLog.create).not.toHaveBeenCalled();
+    });
+
+    it('allows OWNER role and writes RECEIPT_VOID audit log', async () => {
+      const tx = prisma.__tx;
+      setupHappyPath(tx);
+
+      const result = await service.voidReceipt(
+        receiptId,
+        'wrong amount',
+        userId,
+        approverId,
+        'OWNER',
+      );
+
+      expect(result.voidedReceipt).toBeDefined();
+      expect(result.creditNote).toBeDefined();
+
+      // Audit log written with correct shape
+      expect(tx.auditLog.create).toHaveBeenCalledTimes(1);
+      const auditCall = tx.auditLog.create.mock.calls[0][0];
+      expect(auditCall.data.action).toBe('RECEIPT_VOID');
+      expect(auditCall.data.entity).toBe('receipt');
+      expect(auditCall.data.entityId).toBe(receiptId);
+      expect(auditCall.data.userId).toBe(userId);
+      expect(auditCall.data.newValue.reason).toBe('wrong amount');
+      expect(auditCall.data.newValue.userRole).toBe('OWNER');
+      expect(auditCall.data.newValue.creditNoteId).toBe('cn-1');
+      expect(auditCall.data.oldValue.receiptNumber).toBe('RC-2026-04-00001');
+    });
+
+    it('allows ACCOUNTANT role', async () => {
+      const tx = prisma.__tx;
+      setupHappyPath(tx);
+
+      await expect(
+        service.voidReceipt(receiptId, 'wrong amount', userId, approverId, 'ACCOUNTANT'),
+      ).resolves.toBeDefined();
+    });
+
+    it('allows BRANCH_MANAGER role', async () => {
+      const tx = prisma.__tx;
+      setupHappyPath(tx);
+
+      await expect(
+        service.voidReceipt(receiptId, 'wrong amount', userId, approverId, 'BRANCH_MANAGER'),
+      ).resolves.toBeDefined();
+    });
+
+    it('allows FINANCE_MANAGER role', async () => {
+      const tx = prisma.__tx;
+      setupHappyPath(tx);
+
+      await expect(
+        service.voidReceipt(receiptId, 'wrong amount', userId, approverId, 'FINANCE_MANAGER'),
+      ).resolves.toBeDefined();
+    });
+
+    it('falls back to defensive allow when userRole is undefined (legacy callers)', async () => {
+      // Service-layer guard skips role check if undefined — controller is
+      // single source of truth via @Roles. Defensive layer rejects only if
+      // a known-bad role is explicitly passed.
+      const tx = prisma.__tx;
+      setupHappyPath(tx);
+
       await expect(
         service.voidReceipt(receiptId, 'wrong amount', userId, approverId),
       ).resolves.toBeDefined();

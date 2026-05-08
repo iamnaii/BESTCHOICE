@@ -57,13 +57,21 @@ export class ReceiptsController {
   }
 
   @Post(':id/void')
-  @Roles('OWNER', 'BRANCH_MANAGER')
+  // Wave 3 T2 (ปพพ.386 W-3): Receipt void restricted to OWNER / ACCOUNTANT /
+  // BRANCH_MANAGER / FINANCE_MANAGER. SALES cannot void — fraud prevention.
+  @Roles('OWNER', 'ACCOUNTANT', 'BRANCH_MANAGER', 'FINANCE_MANAGER')
   voidReceipt(
     @Param('id') id: string,
     @Body() dto: VoidReceiptDto,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: { id: string; role: string },
   ) {
-    return this.receiptsService.voidReceipt(id, dto.reason, user.id, dto.approvedById || user.id);
+    return this.receiptsService.voidReceipt(
+      id,
+      dto.reason,
+      user.id,
+      dto.approvedById || user.id,
+      user.role,
+    );
   }
 
   @Post(':id/send-line')

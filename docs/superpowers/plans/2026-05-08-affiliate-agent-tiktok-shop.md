@@ -80,7 +80,7 @@ This task collects the credentials + handles from the owner. **Cannot proceed wi
 
 ```bash
 cat > /tmp/affiliate-prereqs.md <<'EOF'
-# Affiliate Agent — Owner Prerequisites
+# Affiliate Agent — Owner Prerequisites (UPDATED for AI-Avatar)
 
 Owner needs to gather these BEFORE Task 2 can proceed:
 
@@ -89,39 +89,84 @@ Owner needs to gather these BEFORE Task 2 can proceed:
 - [ ] Register as **Marketing Account** (NOT Creator) — bypasses 1k follower requirement
 - [ ] Verify Thai national ID + business documents
 - [ ] Note the Shop ID once approved
-- [ ] **Field needed:** TIKTOK_SHOP_ID (e.g., 7XXXXXXXXX)
+- [ ] **Field needed:** TIKTOK_SHOP_ID
 
 ## B. TikTok account creation (~15 min × 2)
 - [ ] Create 2 fresh TikTok accounts:
-  - Channel 1 (Home/Kitchen): `@<home_handle>` — suggest e.g., homemate.th, ของดีของถูก, finds.th
-  - Channel 2 (Phone/Gadget): `@<gadget_handle>` — suggest e.g., gadgetdrip, techfinds.th, gadgetshelf
+  - Channel 1 (Home/Kitchen): suggested handles `homemate.th`, `findsby.you`, `homehacks.daily`
+  - Channel 2 (Phone/Gadget): suggested handles `gadgetdrip.th`, `techfinds.daily`
+- [ ] Bio: do NOT mention or link to BESTCHOICE (privacy stance — Q3=A)
 - [ ] Link both to TikTok Shop Marketing Account
 - [ ] **Fields needed:** HOME_HANDLE, GADGET_HANDLE
 
 ## C. Telegram bot creation (~5 min)
 - [ ] Open Telegram, message @BotFather
 - [ ] Send `/newbot`
-- [ ] Bot name: "เลขา Affiliate" (display)
-- [ ] Bot username: `affiliate_secretary_bot` (must end with _bot)
-- [ ] Save the bot token
-- [ ] **Field needed:** TG_BOT_TOKEN (format: 123456789:AAA...)
+- [ ] Bot name: "เลขา Affiliate"
+- [ ] Bot username: `affiliate_secretary_bot`
+- [ ] **Field needed:** TG_BOT_TOKEN
 
 ## D. ElevenLabs subscription (~5 min)
 - [ ] Visit https://elevenlabs.io/sign-up
 - [ ] Subscribe to **Creator tier ($22/mo, 100 min audio)**
-- [ ] Voice library → pick 2 Thai voices:
-  - Voice 1 (Home channel): warm female ("เพื่อนแชร์ของถูก")
-  - Voice 2 (Gadget channel): neutral mid-tone ("นักรีวิวสายเทค")
+- [ ] Voice library → pick 2 Thai voices (stock voices, NO clone — Q1=A):
+  - Voice 1 (Home channel): warm female "เพื่อนแชร์ของถูก"
+  - Voice 2 (Gadget channel): neutral mid-tone "นักรีวิวสายเทค"
 - [ ] Settings → API Keys → Create
 - [ ] **Fields needed:** ELEVENLABS_API_KEY, ELEVENLABS_HOME_VOICE_ID, ELEVENLABS_GADGET_VOICE_ID
 
-## E. Owner Telegram ID
-- [ ] Message @userinfobot in Telegram → returns your numeric ID
-- [ ] **Field needed:** OWNER_TG_ID (numeric)
+## E. Owner Telegram ID (~1 min)
+- [ ] Message @userinfobot → returns numeric ID
+- [ ] **Field needed:** OWNER_TG_ID
 
-## F. (Optional) Higgsfield reuse
+## F. HeyGen subscription (~10 min) — NEW for AI-avatar
+- [ ] Visit https://www.heygen.com/pricing
+- [ ] Subscribe to **Starter $29/mo** (covers ~10 mins of avatar video/mo)
+- [ ] Account → Avatars → Create Avatar from photos
+- [ ] Upload **10-20 reference photos** of owner (see Section H below)
+- [ ] Wait 5-15 min for avatar training to complete
+- [ ] Note the trained Avatar ID
+- [ ] Settings → API → Generate API Key
+- [ ] **Fields needed:** HEYGEN_API_KEY, HEYGEN_AVATAR_ID
+
+## G. Hedra subscription (~5 min) — NEW for lip sync (optional)
+- [ ] Visit https://www.hedra.com/pricing
+- [ ] Subscribe **Pro $30/mo** (or skip — re-evaluate Week 2)
+- [ ] Settings → API Keys → Create
+- [ ] **Field needed:** HEDRA_API_KEY (or "skip")
+
+## H. Reference photos (~30 min) — NEW for AI-avatar training
+
+Owner needs to take 10-20 photos of themselves with these requirements:
+
+**Coverage:**
+- 5+ front-facing (looking at camera, neutral + smiling + talking-mid)
+- 2-3 ¾ profile (left + right turns)
+- 2-3 full profile (both sides)
+- Indoor + outdoor lighting variants
+- Same hairstyle/glasses across all photos (avatar trains on consistency)
+- Resolution ≥ 1024×1024 px
+- Face well-lit, no shadows on face
+- Plain background preferred (or simple)
+
+**Avoid:**
+- Sunglasses, hats blocking face
+- Heavy filters / makeup difference between photos
+- Photos with multiple people
+- Low-light/blurry shots
+
+**Action:**
+- Save 10-20 photos in a folder, ZIP it
+- Upload ZIP to HeyGen during avatar creation
+- Also keep ZIP on local machine — will upload to Higgsfield in Task 3
+
+## I. Higgsfield reuse (~10 sec)
 - [ ] Confirm reuse of existing Higgsfield credentials (already on VM)
-- [ ] If needs separate: provide separate API key
+- [ ] **Field needed:** HIGGSFIELD_REUSE (true|false)
+
+## J. (Optional) Voice sample
+- [ ] If at any point owner wants voice clone (Phase 4+), record 90 sec of clear Thai speech
+- [ ] **Field needed:** Defer — collect at Phase 4 if needed
 
 ---
 
@@ -136,11 +181,13 @@ ELEVENLABS_API_KEY=
 ELEVENLABS_HOME_VOICE_ID=
 ELEVENLABS_GADGET_VOICE_ID=
 OWNER_TG_ID=
+HEYGEN_API_KEY=
+HEYGEN_AVATAR_ID=
+HEDRA_API_KEY=          # or "skip"
 HIGGSFIELD_REUSE=true|false
 ```
 
----
-After collecting these fields, proceed to Task 2.
+12 fields total. After collecting these fields, proceed to Task 2.
 EOF
 
 cat /tmp/affiliate-prereqs.md
@@ -215,11 +262,11 @@ Expected: existing 5 profiles use 8642-8646; **8647 reserved for affiliate gatew
 
 - [ ] **Step 1: Create profile directory tree**
 
-`SSH('sudo -u hermes mkdir -p /home/hermes/.hermes/profiles/affiliate/{skills,cron,home/.config}')`
+`SSH('sudo -u hermes mkdir -p /home/hermes/.hermes/profiles/affiliate/{skills,cron,home/.config} && sudo -u hermes mkdir -p /home/hermes/data/{voiceovers,renders,reference-photos}')`
 
 Expected: no error.
 
-- [ ] **Step 2: Write config.yaml (mirror fon, swap port + bot)**
+- [ ] **Step 2: Write config.yaml (mirror fon, swap port + bot, add new MCPs)**
 
 ```bash
 SSH('sudo -u hermes tee /home/hermes/.hermes/profiles/affiliate/config.yaml <<YAML
@@ -237,8 +284,9 @@ telegram:
 mcp:
   - affiliate-db
   - elevenlabs-tts
-  - google-calendar          # reuse existing wrapper
+  - heygen-render            # NEW for AI-avatar
   - higgsfield               # reuse if HIGGSFIELD_REUSE=true
+  - google-calendar
 home_dir: /home/hermes/.hermes/profiles/affiliate/home
 YAML
 ')
@@ -291,6 +339,61 @@ curl -X POST "https://api.elevenlabs.io/v1/text-to-speech/\$1" \
 SHELL
 sudo -u hermes chmod 700 /home/hermes/data/mcp-bin/elevenlabs-tts')
 ```
+
+- [ ] **Step 4.5: Write heygen-render MCP wrapper (NEW)**
+
+```bash
+SSH('sudo -u hermes tee /home/hermes/data/mcp-bin/heygen-render <<SHELL
+#!/bin/bash
+# HeyGen avatar video generation
+# Args: avatar_id audio_path output_path
+export HOME=/home/hermes
+export HEYGEN_API_KEY=<HEYGEN_API_KEY>
+
+AVATAR_ID="\$1"
+AUDIO="\$2"
+OUTPUT="\$3"
+
+# Step 1: Upload audio file to HeyGen, get audio_asset_id
+AUDIO_ID=\$(curl -s -X POST https://api.heygen.com/v1/asset \
+  -H "X-API-KEY: \$HEYGEN_API_KEY" \
+  -F "file=@\$AUDIO" | jq -r ".data.id")
+
+if [ -z "\$AUDIO_ID" ] || [ "\$AUDIO_ID" = "null" ]; then
+  echo "ERROR: HeyGen audio upload failed" >&2
+  exit 1
+fi
+
+# Step 2: Create video generation job
+JOB_ID=\$(curl -s -X POST https://api.heygen.com/v2/video/generate \
+  -H "X-API-KEY: \$HEYGEN_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d "{\"video_inputs\":[{\"character\":{\"type\":\"avatar\",\"avatar_id\":\"\$AVATAR_ID\",\"avatar_style\":\"normal\"},\"voice\":{\"type\":\"audio\",\"audio_asset_id\":\"\$AUDIO_ID\"}}],\"dimension\":{\"width\":1080,\"height\":1920}}" \
+  | jq -r ".data.video_id")
+
+# Step 3: Poll for completion (max 5 min)
+for i in \$(seq 1 30); do
+  STATUS=\$(curl -s "https://api.heygen.com/v1/video_status.get?video_id=\$JOB_ID" \
+    -H "X-API-KEY: \$HEYGEN_API_KEY" | jq -r ".data.status")
+  if [ "\$STATUS" = "completed" ]; then
+    URL=\$(curl -s "https://api.heygen.com/v1/video_status.get?video_id=\$JOB_ID" \
+      -H "X-API-KEY: \$HEYGEN_API_KEY" | jq -r ".data.video_url")
+    curl -sL "\$URL" -o "\$OUTPUT"
+    exit 0
+  elif [ "\$STATUS" = "failed" ]; then
+    echo "ERROR: HeyGen render failed" >&2
+    exit 1
+  fi
+  sleep 10
+done
+
+echo "ERROR: HeyGen render timed out" >&2
+exit 1
+SHELL
+sudo -u hermes chmod 700 /home/hermes/data/mcp-bin/heygen-render')
+```
+
+**Substitute `<HEYGEN_API_KEY>` from Task 1.**
 
 - [ ] **Step 5: Symlink Higgsfield credentials (per existing pattern)**
 
@@ -546,6 +649,7 @@ CREATE TABLE videos (
   channel_id TEXT NOT NULL REFERENCES channels(id),
   script_id TEXT REFERENCES scripts(id),
   product_id TEXT REFERENCES products(id),
+  content_type TEXT NOT NULL CHECK (content_type IN ("review","tip","story","trend")),
   posted_at DATETIME,
   views INTEGER NOT NULL DEFAULT 0,
   likes INTEGER NOT NULL DEFAULT 0,
@@ -559,6 +663,7 @@ CREATE TABLE videos (
 );
 CREATE INDEX idx_videos_channel_status ON videos(channel_id, status);
 CREATE INDEX idx_videos_posted_at ON videos(posted_at);
+CREATE INDEX idx_videos_content_type ON videos(channel_id, content_type, posted_at);
 
 CREATE TABLE revenue (
   id TEXT PRIMARY KEY,
@@ -637,7 +742,14 @@ INSERT INTO settings (key, value) VALUES
 ("min_commission_pct", "5"),
 ("min_commission_per_sale_thb", "20"),
 ("phase", "1"),
-("ads_unlocked", "false");
+("ads_unlocked", "false"),
+("content_mix_review_pct", "60"),
+("content_mix_tip_pct", "20"),
+("content_mix_story_pct", "10"),
+("content_mix_trend_pct", "10"),
+("heygen_avatar_id", ""),
+("heygen_api_key_set", "false"),
+("hedra_enabled", "false");
 
 -- Seed TH events (90 days from 2026-05-08)
 INSERT INTO events (id, date, name, category, hook_template, applies_to_channels) VALUES
@@ -790,11 +902,13 @@ Expected: shows `products`, `check-impulse` (and any inherited skills).
 
 ---
 
-## Task 7: Skills batch 2 — Content (`/script`, `/voiceover`, `/check-claims`)
+## Task 7: Skills batch 2 — Content (`/script`, `/avatar-script`, `/voiceover`, `/avatar-render`, `/check-claims`)
 
 **Files:**
 - Create on VM: `/home/hermes/.hermes/profiles/affiliate/skills/script/SKILL.md`
+- Create on VM: `/home/hermes/.hermes/profiles/affiliate/skills/avatar-script/SKILL.md`
 - Create on VM: `/home/hermes/.hermes/profiles/affiliate/skills/voiceover/SKILL.md`
+- Create on VM: `/home/hermes/.hermes/profiles/affiliate/skills/avatar-render/SKILL.md`
 - Create on VM: `/home/hermes/.hermes/profiles/affiliate/skills/check-claims/SKILL.md`
 
 - [ ] **Step 1: Write `/script` skill**
@@ -857,6 +971,68 @@ MD
 ')
 ```
 
+- [ ] **Step 1.5: Write `/avatar-script` skill (NEW for non-product content)**
+
+```bash
+SSH('sudo -u hermes mkdir -p /home/hermes/.hermes/profiles/affiliate/skills/avatar-script && \
+sudo -u hermes tee /home/hermes/.hermes/profiles/affiliate/skills/avatar-script/SKILL.md <<MD
+---
+name: avatar-script
+description: Generate Thai script for non-product content (tips/story/trend) — for AI-avatar talking-head
+---
+
+# /avatar-script <topic> --type tip|story|trend --channel home|gadget [--duration 30|45|60]
+
+Trigger: `/avatar-script <topic>` when topic is NOT tied to a specific product.
+
+## Type-specific formats
+
+### type=tip (Tips/Hacks/Edutainment, 30-45s)
+\`\`\`
+[0-3s]   HOOK: AI-avatar (owner) "5 ทริค X ที่ไม่มีใครบอก"
+[3-8s]   Context: ทำไมเรื่องนี้สำคัญ
+[8-35s]  Tips 1-5 (5-7 sec each), AI-avatar inset on b-roll
+[35-45s] CTA: "follow ไว้เผื่อมีของดี" (NO product link)
+\`\`\`
+
+### type=story (Behind-the-scenes/Story, 30-60s)
+\`\`\`
+[0-3s]   HOOK: AI-avatar "วันนี้เจอเรื่อง..." or "เล่าให้ฟัง..."
+[3-50s]  Narrative + b-roll context
+[50-60s] Soft CTA: "follow เผื่อมีเรื่องเล่าทุกอาทิตย์" (NO product link)
+\`\`\`
+
+### type=trend (TikTok Trend adapt, 15-30s)
+\`\`\`
+Identify trending audio/format → AI-avatar adapt to channel niche
+e.g., trend "5 things in my bag" → "5 things in my kitchen drawer" for home channel
+\`\`\`
+
+## Insert into scripts table
+
+\`\`\`sql
+INSERT INTO scripts (id, product_id, channel_id, hook, body, cta, duration_sec, ...)
+VALUES ("AS-...", NULL, ?, ?, ?, ?, ?, ...);
+\`\`\`
+
+Note: product_id is NULL for non-product content. Track via videos.content_type.
+
+Output:
+\`\`\`
+Avatar Script ID: AS-2026-05-08-001
+Channel: home
+Type: tip
+Duration: 45s
+---
+[HOOK]: 5 ทริคล้างจานเร็วขึ้น ที่หาย่าหายนาน
+[TIP 1]: ใส่น้ำมะนาวก่อน ฟองง่ายขึ้น
+[TIP 2]: แช่ก่อน 5 นาที ขัดน้อยลง
+... etc
+\`\`\`
+MD
+')
+```
+
 - [ ] **Step 2: Write `/voiceover` skill**
 
 ```bash
@@ -896,6 +1072,76 @@ Error handling:
 - If ElevenLabs returns 429 (rate limit): retry once after 30s, else surface error
 - If quota exceeded: alert "ElevenLabs quota หมด — เช็ค billing"
 - If voice_id invalid: alert "voice_id ของช่อง <ch> ผิด — แก้ใน context.md"
+MD
+')
+```
+
+- [ ] **Step 2.5: Write `/avatar-render` skill (NEW for AI-avatar pipeline)**
+
+```bash
+SSH('sudo -u hermes mkdir -p /home/hermes/.hermes/profiles/affiliate/skills/avatar-render && \
+sudo -u hermes tee /home/hermes/.hermes/profiles/affiliate/skills/avatar-render/SKILL.md <<MD
+---
+name: avatar-render
+description: Pipeline — voiceover mp3 + HeyGen avatar + Higgsfield b-roll → final mp4 ready to upload
+---
+
+# /avatar-render <script_id>
+
+End-to-end pipeline:
+
+1. Fetch script + channel + content_type from DB
+2. Verify voice_path exists (if not, auto-call /voiceover first)
+3. Determine render mode by content_type:
+   - **review/tip**: Foreground = HeyGen avatar talking-head (50-60% screen) + product/tip b-roll
+   - **story**: Foreground = HeyGen avatar full-body + slice-of-life b-roll
+   - **trend**: Foreground = HeyGen avatar + trending audio overlay
+
+4. Call HeyGen API:
+   - input_audio: voice_path (mp3)
+   - avatar_id: <HEYGEN_AVATAR_ID> (from settings, owner-trained)
+   - output_format: mp4 (1080×1920 vertical)
+
+5. Call Higgsfield API for b-roll matching script content (5-10 sec clips):
+   - For review: product close-up + before/after
+   - For tip: scenes matching each tip
+   - For story: contextual scenes
+   - Output: b-roll mp4 segments
+
+6. (Optional) If hedra_enabled=true: pass HeyGen output through Hedra for tighter lip sync
+
+7. Concatenate via ffmpeg:
+   \`\`\`
+   ffmpeg -i avatar.mp4 -i broll1.mp4 -i broll2.mp4 \\
+     -filter_complex "[0:v]scale=1080:1920[v0]; ..." \\
+     -c:a aac -ar 44100 final.mp4
+   \`\`\`
+
+8. Save to /home/hermes/data/renders/<script_id>.mp4
+9. Send mp4 attachment to Telegram for owner approval
+10. Insert into videos table with status=pending_upload, content_type per script
+
+Cost estimate (per render):
+- HeyGen Starter: ~3-5 credits/render = ~30-50 sec audio
+- Higgsfield: existing quota (no incremental cost)
+- Total ~10-15 renders/wk fits within $29 HeyGen Starter plan
+
+Output:
+\`\`\`
+Render complete: SC-2026-05-08-001
+Type: review (home channel)
+Duration: 58s
+File: /home/hermes/data/renders/SC-2026-05-08-001.mp4
+[mp4 attached to Telegram]
+
+Approve upload? ตอบ yes/no/regen
+\`\`\`
+
+Error handling:
+- HeyGen quota exceeded: alert, suggest upgrade or wait reset
+- Avatar render fails (face occlusion in source photos): suggest re-train with new photos
+- Higgsfield b-roll fails: fall back to stock b-roll
+- ffmpeg merge fails: log + alert, don't crash agent
 MD
 ')
 ```
@@ -952,10 +1198,10 @@ MD
 
 ---
 
-## Task 8: Skills batch 3 — Operations (`/calendar`, `/dashboard`, `/winners`, `/spark`, `/budget`, `/inbox`)
+## Task 8: Skills batch 3 — Operations (`/calendar`, `/content-plan`, `/dashboard`, `/winners`, `/spark`, `/budget`, `/inbox`)
 
 **Files:**
-- Create on VM: `/home/hermes/.hermes/profiles/affiliate/skills/<name>/SKILL.md` × 6
+- Create on VM: `/home/hermes/.hermes/profiles/affiliate/skills/<name>/SKILL.md` × 7
 
 - [ ] **Step 1: Write `/calendar` skill**
 
@@ -982,6 +1228,69 @@ Steps:
 2026-05-25 | เงินเดือน | "เงินเดือนเข้าเเล้วใช่ไหม? อันนี้ดี + ราคาเบาๆ"
 2026-05-30 | เงินเดือน | (ใช้ template)
 2026-06-09 | วันเด็ก | "ของเด็กๆ ใช้ได้นานๆ" (home only)
+\`\`\`
+MD
+')
+```
+
+- [ ] **Step 1.5: Write `/content-plan` skill (NEW for content mix)**
+
+```bash
+SSH('sudo -u hermes mkdir -p /home/hermes/.hermes/profiles/affiliate/skills/content-plan && \
+sudo -u hermes tee /home/hermes/.hermes/profiles/affiliate/skills/content-plan/SKILL.md <<MD
+---
+name: content-plan
+description: Generate weekly content plan with 60/20/10/10 mix per channel
+---
+
+# /content-plan [home|gadget] [--weeks 1|2]
+
+Trigger: `/content-plan` or `/content-plan home --weeks 2`.
+
+## Logic
+
+1. Read content mix targets from settings:
+   - review_pct=60, tip_pct=20, story_pct=10, trend_pct=10
+
+2. For weekly target of 8 videos/channel:
+   - 5 reviews
+   - 2 tips
+   - 1 story OR trend (alternate weeks)
+
+3. Pull ideas:
+   - **Reviews**: top 5 from /products (already-running pipeline)
+   - **Tips**: brainstorm 2 niche-relevant tips/hacks (from sub-niches in context.md)
+   - **Story**: 1 personal-angle (e.g., "วันที่เจอกลัวเดน", "ตื่นเช้าทำอาหาร") — owner-relatable
+   - **Trend**: scan 24-hr TikTok trending audio + suggest niche adapt
+
+4. Output weekly calendar:
+
+\`\`\`
+📅 Week of 2026-05-12 — channel: home (target 8 vids)
+
+จันทร์ 19:00 [review] ที่ปอกกระเทียม 199฿ — /products picked
+อังคาร 11:00 [tip] "5 ทริคล้างจานเร็วขึ้น 2 เท่า"
+อังคาร 19:00 [review] sticky cleaner roll 149฿
+พุธ 11:00 [review] แม่เหล็กติดผนัง 99฿
+พฤ 19:00 [story] "วันที่หาของในห้องครัวไม่เจอ"
+ศุกร์ 11:00 [review] ที่หั่นผัก 299฿
+ศุกร์ 19:00 [trend] adapt "5 things in my X" trend → ครัวฉัน
+ส 11:00 [tip] "3 ของในครัวที่หลายคนทิ้งทั้งที่ใช้ได้"
+
+Mix actual: review 50%, tip 25%, story 12.5%, trend 12.5% — slightly review-low
+ปรับ: เพิ่ม 1 review ในวันอาทิตย์ → 6 review = 60% target ✓
+\`\`\`
+
+5. Track delivered vs planned:
+   - Compare against videos.content_type counts last 7 days
+   - Flag if any type < target by > 30%
+
+6. Reply with action items:
+
+\`\`\`
+จุดควรปรับ:
+- review = 50% (target 60%) → ขาด 1 vid
+- trend = 0% last week (target 10%) → grab today\\'s trending audio
 \`\`\`
 MD
 ')
@@ -1394,8 +1703,11 @@ Owner does this manually in Telegram:
 > Paste:
 > ```
 > products - หาสินค้าน่าปักวันนี้
-> script - เขียน script ภาษาไทย 30/60s
+> content_plan - แผน content รายสัปดาห์ (60/20/10/10)
+> script - เขียน script ขายสินค้า (Hook→Pain→Sol→Result→CTA)
+> avatar_script - เขียน script ไม่เกี่ยวสินค้า (tip/story/trend)
 > voiceover - อัด voice ผ่าน ElevenLabs
+> avatar_render - render คลิป HeyGen avatar + b-roll
 > check_impulse - คะแนน impulse-fit ของสินค้า
 > check_claims - ตรวจ compliance (TikTok+อย.)
 > calendar - TH event 30 วันข้างหน้า

@@ -10,8 +10,9 @@
 ## 1. Strategy Summary
 
 โปรเจคนี้เป็น **second job** สร้างรายได้เสริมจาก TikTok Shop Affiliate (ปักตะกร้า) แบบ
-**faceless content + impulse-buy products** บน 2 channels พร้อมกัน — โดยมี Hermes profile
-ตัวที่ 6 (Telegram bot + cron + DB) เป็น operations agent ช่วย research, script, monitor,
+**AI-avatar (หน้า owner สร้างโดย AI) + impulse-buy products + content mix 60/20/10/10**
+บน 2 channels พร้อมกัน — โดยมี Hermes profile ตัวที่ 6 (Telegram bot + cron + DB)
+เป็น operations agent ช่วย research, script, content planning, avatar render, monitor,
 performance dashboard
 
 ### Core decisions (locked)
@@ -19,13 +20,15 @@ performance dashboard
 | Setting | Value | Rationale |
 |---|---|---|
 | Niche channels | Home/Kitchen + Phone/Gadget | Audience ไม่ทับ, demo ง่าย, owner รู้ phone gadget อยู่แล้ว |
-| Content style | Faceless impulse (POV demo + AI voiceover) | Scale ได้, ไม่ผูกหน้า, BESTCHOICE conflict ต่ำ |
+| Content style | **AI-avatar** (owner's face cloned by HeyGen/Higgsfield + AI voice + AI b-roll) | Owner's face = trust building; AI gen = scale + privacy still tooling-controlled |
+| Content mix | **60% review / 20% tips / 10% behind-scenes / 10% trends** | TikTok algorithm 2026 penalizes pure-sales channels; growth + revenue balance |
 | Price ceiling | ≤ 499 ฿ (max 799 ฿) | Impulse buy threshold |
 | Time budget | 8-12 hr/wk | Sweet spot solo + agent |
 | Ad budget | 50k/เดือน (25k/ch) | Phased — start week 5 |
-| Setup ownership | Claude builds agent, owner registers TikTok Shop + 2 TikTok accounts | Split by ID/legal requirement |
-| Voice strategy | 2 ElevenLabs Thai voices (different per niche) | Brand recall per channel |
-| Architecture | Hermes profile #6 (multi-channel-aware) | Reuse existing VM + pattern |
+| Setup ownership | Claude builds agent, owner registers TikTok Shop + 2 TikTok accounts + 10-20 reference photos | Split by ID/legal requirement |
+| Voice strategy | **ElevenLabs stock Thai voices** (2 voices, no clone) | Cheaper start; defer voice cloning to Phase 4 if winners |
+| Privacy stance | **Real face on public TikTok** (owner accepts BESTCHOICE customer overlap risk) | Q3=A locked; bio must NOT link back to BESTCHOICE |
+| Architecture | Hermes profile #6 (multi-channel-aware + content-type-aware) | Reuse existing VM + pattern |
 
 ### Why TikTok Shop Affiliate (not other affiliate models)
 
@@ -33,13 +36,15 @@ performance dashboard
 - Beauty/Health/Personal Care = #1 GMV category 2026
 - **No 1,000-follower wait** — register via Shop Seller Center → Marketing Account → ปักตะกร้าได้ทันที
 - Commission 5-15% standard, 20-30% LIVE, payable D+15 to D+31
-- AI voiceover + CapCut + ElevenLabs = production batch 10-15 vids/wk realistic at 8-12 hr
+- AI avatar + ElevenLabs + CapCut = production batch 10-12 vids/wk realistic at 8-12 hr
 
-### Why faceless impulse (not face-on review or high-ticket)
+### Why AI-avatar + content mix (not pure-faceless or pure-product)
 
-- Faceless top accounts ทำได้ $5-15k/mo verified (2026 stats)
-- Owner ไม่ต้องอัดเอง → privacy preserved, BESTCHOICE conflict zero
-- Impulse products (≤499฿) = visual = sale, ไม่ต้อง trust ผู้รีวิว
+- **AI-avatar > faceless** for trust: viewers connect with a face, conversion rate higher 2-3x vs pure-product POV
+- **AI-avatar > real-camera** for scale: no studio, no light setup, no re-shoot — generate on demand from script
+- **Owner's face as anchor + AI body/scene**: HeyGen/Higgsfield generate b-roll while owner's face does the talking
+- **Content mix 60/20/10/10**: TikTok 2026 algorithm penalizes channels >70% sponsored — non-sales content is the price of algo reach
+- Impulse products (≤499฿) = visual = sale, **but face-on still helps** for review credibility
 - Return rate ต่ำ → clawback กิน revenue น้อย
 
 ---
@@ -94,55 +99,129 @@ performance dashboard
 
 ---
 
-## 3. Content Workflow (Batch Faceless)
+## 3. Content Workflow (AI-Avatar + Mix)
 
-### Single-video pipeline (target 30 min/video at scale)
+### Single-video pipeline — 4 content types (target 30-45 min/video at scale)
+
+#### Type 1: Product Review (60% — revenue-direct)
 
 ```
 [Trending product] → /products picks (agent)
         ↓
-[Compliance check] → /check-impulse + /check-thai-fda (agent)
+[Impulse check]  → /check-impulse (agent)
         ↓
-[Script gen]    → /script <product> --channel home (agent, GPT/Claude)
+[Script gen]     → /script <product> --channel home (agent, Hook→Pain→Solution→Result→CTA)
         ↓
-[Voiceover]     → ElevenLabs Thai voice (per channel)
+[Compliance]     → /check-claims (TikTok+อย.)
         ↓
-[B-roll]        → AI gen (Sora/Higgsfield) + stock + product image
+[Voiceover]      → ElevenLabs Thai voice (per channel)
         ↓
-[Edit]          → CapCut template (auto-cap Thai, transitions, music)
+[Avatar render]  → /avatar-render → HeyGen talking-head with owner's face + Higgsfield b-roll
         ↓
-[Upload]        → TikTok with affiliate cart link, hashtags by channel
+[Edit]           → CapCut (auto-cap Thai, music, transitions)
         ↓
-[Track]         → DB record, agent monitors performance
+[Upload]         → TikTok with affiliate cart link
+        ↓
+[Track]          → DB, agent monitors
 ```
 
-### Content format (30-60 sec)
+#### Type 2: Tips/Hacks/Edutainment (20% — algo growth)
 
 ```
-[0-3s]   HOOK: ปัญหา POV — มือทำงาน + voiceover "เคยเจอแบบนี้ไหม?"
-[3-8s]   PAIN: วิธีเดิมแย่ยังไง — เลอะ ช้า เจ็บ
-[8-20s]  SOLUTION: สินค้าโผล่ → demo close-up
-[20-40s] RESULT: before/after, ASMR satisfying
-[40-55s] CTA: "กดตะกร้าด้านล่าง" + urgency
+[Topic idea] → /content-plan suggests (agent picks from trending hashtags + niche keywords)
+        ↓
+[Script]     → /avatar-script <topic> --type tip (5 tips list, no product CTA)
+        ↓
+[Avatar render] → owner's face + relevant b-roll
+        ↓
+[Upload]     → TikTok with niche hashtags (no affiliate link)
+```
+
+#### Type 3: Behind-the-scenes / Story (10% — trust)
+
+```
+[Story idea] → /avatar-script --type story (e.g., "วันนี้ไปหาของ", "เล่าเรื่องที่เพิ่งเจอ")
+        ↓
+[Avatar render] → owner's face + slice-of-life b-roll
+        ↓
+[Upload]
+```
+
+#### Type 4: Trends / Reactions (10% — virality)
+
+```
+[Trending topic] → /content-plan flags TikTok trend within 48hr
+        ↓
+[Adapt to niche] → /avatar-script --type trend
+        ↓
+[Avatar render] → quick turnaround (12-24hr from trend appearing)
+        ↓
+[Upload]
+```
+
+### Content format
+
+#### Type 1 (Product Review, 30-60 sec)
+
+```
+[0-3s]   HOOK: AI-avatar (owner) + opening line "เคยเจอแบบนี้ไหม?"
+[3-8s]   PAIN: AI-avatar + b-roll showing inefficiency
+[8-20s]  SOLUTION: product demo close-up + AI-avatar narration
+[20-40s] RESULT: before/after demo + AI-avatar reaction
+[40-55s] CTA: AI-avatar "กดตะกร้าด้านล่าง" + urgency hook
 [55-60s] LOOP back to hook
+```
+
+#### Type 2 (Tips/Hacks, 30-45 sec)
+
+```
+[0-3s]   HOOK: AI-avatar "5 ทริค X ที่ไม่มีใครบอก"
+[3-40s]  5 tips delivered in punchy clips, AI-avatar transitions
+[40-45s] CTA: "กด follow เผื่อ tip ใหม่"
+```
+
+#### Type 3 (Behind-the-scenes/Story, 30-60 sec)
+
+```
+[0-3s]   HOOK: AI-avatar story opener "วันนี้เจอเรื่อง..."
+[3-50s]  Narrative + b-roll of context
+[50-60s] Soft CTA: "follow ไว้นะ มีเล่าทุกอาทิตย์"
+```
+
+#### Type 4 (Trends, 15-30 sec)
+
+```
+Trend audio + AI-avatar adapts to niche angle
 ```
 
 ### Posting cadence per channel
 
-- **Phase 2 (organic test):** 3-4 videos/wk per channel = ~7-8 videos/wk total
-- **Phase 3-4 (ads scale):** maintain 3-4/wk + Spark Ads boost on winners
-- **Phase 5+:** หากมี winner ที่ ROAS > 2 → produce 5-7 variants/winner
+- **Phase 2 (organic test):** 4 videos/wk per channel = ~8 videos/wk total (mix: ~5 review, 2 tips, 1 trend/story)
+- **Phase 3-4 (ads scale):** maintain 4/wk + Spark Ads boost on winners; mix preserved 60/20/10/10
+- **Phase 5+:** scale winners; non-product content stays 40% min
 
 ### Tooling stack
 
 | Tool | Purpose | Cost |
 |---|---|---|
-| ChatGPT/Claude API | Script generation | ~500-2000฿/mo |
-| ElevenLabs | Thai TTS (2 voices) | $11-22/mo (~400-800฿) |
-| CapCut Pro | Edit + auto-cap | Free → $7.99/mo if upgrade |
-| Higgsfield/Sora | AI b-roll | Variable, owner already has Higgsfield |
+| ChatGPT/Claude API | Script generation | ~500-2,000฿/mo |
+| **HeyGen Starter** | AI-avatar talking-head from owner's photos | **$29/mo (~1,000฿)** |
+| **Hedra Pro** (optional) | Face-to-video lip sync | $15-30/mo (~500-1,000฿) |
+| **Higgsfield** (existing) | Full-scene AI gen with face consistency | reuse owner's account |
+| ElevenLabs Creator | Thai TTS (2 stock voices) | $22/mo (~750฿) |
+| CapCut Pro | Edit + auto-cap Thai | $7.99/mo (~270฿) |
 | TikTok Affiliate Center | Product picks (manual scrape) | Free |
-| n8n (optional) | Workflow automation | Self-host on Hermes VM |
+| **TOTAL tools/mo** | | **~2,500-3,500฿** |
+
+### AI-Avatar setup requirements (one-time)
+
+- **10-20 reference photos** of owner (different angles, expressions, lighting)
+  - Front-facing, ¾ profile (left + right), full profile (both sides)
+  - Smiling, neutral, talking, eyes-closed mid-blink (Hedra needs)
+  - Indoor + outdoor lighting variants
+  - Same hairstyle/glasses across all 20 (avatar trains on consistency)
+- Upload to HeyGen + Higgsfield → train avatar models
+- Avatar model is reused for all videos across both channels (face is consistent, voice differentiates by channel)
 
 ---
 
@@ -165,12 +244,15 @@ performance dashboard
 | Command | Args | Purpose |
 |---|---|---|
 | `/products` | `[home\|gadget]` | Top trending products today, filtered by impulse rules |
-| `/script` | `<product_name> --channel <home\|gadget>` | Generate Thai script 30/60s with channel tone |
+| `/content-plan` | `[home\|gadget]` | Weekly plan with 60/20/10/10 mix — list ideas across all 4 content types |
+| `/script` | `<product_name> --channel <home\|gadget>` | Generate Thai PRODUCT script (Hook→Pain→Solution→Result→CTA) |
+| `/avatar-script` | `<topic> --type tip\|story\|trend --channel <ch>` | Generate non-product script (tips/story/trend) |
 | `/voiceover` | `<script_id>` | Send script to ElevenLabs → returns mp3 |
+| `/avatar-render` | `<script_id>` | Pipeline: voiceover → HeyGen avatar lip sync → output mp4 ready to upload |
 | `/check-impulse` | `<product_name>` | Score product fit (price/demo/pain/trust) — pass or reject |
 | `/check-claims` | `<script>` | TikTok Guidelines + Thai FDA check on cosmetic/health claims |
 | `/calendar` | — | TH event calendar (Songkran, payday 25-30, holidays, school dates) |
-| `/dashboard` | `[--channel <ch>]` | Yesterday or week: views, CTR, GMV, commission, clawback |
+| `/dashboard` | `[--channel <ch>]` | Yesterday or week: views, CTR, GMV, commission, clawback, **content-mix actual vs target** |
 | `/winners` | — | Videos qualifying for Spark Ads (CTR>5%, completion>30%) |
 | `/spark` | `<video_id>` | Recommend Spark Ads boost decision + budget |
 | `/budget` | — | Show current spend allocation + recommend rebalance |
@@ -238,7 +320,8 @@ CREATE TABLE videos (
   tiktok_video_id TEXT UNIQUE,
   channel_id TEXT REFERENCES channels(id),
   script_id TEXT REFERENCES scripts(id),
-  product_id TEXT REFERENCES products(id),
+  product_id TEXT REFERENCES products(id),       -- NULL for non-product content
+  content_type TEXT NOT NULL,            -- 'review' | 'tip' | 'story' | 'trend'
   posted_at DATETIME,
   views INT DEFAULT 0,
   likes INT DEFAULT 0,
@@ -533,9 +616,13 @@ if both channels.roas > 1.5:
 |---|---|---|
 | 1 | TikTok handles | Agent suggests 5 candidate handles per channel during Phase 1 setup; owner picks final |
 | 2 | Initial product seed | Agent picks from TikTok Affiliate Center trending; owner approves first batch via Telegram |
-| 3 | ElevenLabs tier | **Creator $22/mo (100 min)** — sweet spot for 7-8 vids/wk × 2 channels |
-| 4 | Higgsfield reuse | **Reuse** existing account (per `project_hermes_higgsfield_home_isolation` pattern, symlink credentials into `<profile>/home/.config/higgsfield/`) |
-| 5 | Approval cadence | **Confirm only for ads boost > 500฿/day**; video uploads = no confirm needed (script `/check-claims` already gates compliance) |
+| 3 | ElevenLabs tier | **Creator $22/mo (100 min)**, stock Thai voices, **no voice cloning** (Q1=A) |
+| 4 | Higgsfield reuse | **Reuse** existing account (symlink credentials into `<profile>/home/.config/higgsfield/`) |
+| 5 | Approval cadence | **Confirm only for ads boost > 500฿/day**; video uploads = no confirm needed |
+| 6 | **HeyGen subscription** | **Starter $29/mo** for AI-avatar talking-head (10-20 ref photos required) |
+| 7 | **Hedra subscription** | **Pro $30/mo** for face-to-video lip sync (or skip if HeyGen alone enough — re-evaluate Week 2) |
+| 8 | **Content mix** | **60/20/10/10** (review / tip / story / trend) — Q2=A |
+| 9 | **Privacy stance** | **Real face on public TikTok** (Q3=A); bio MUST NOT link to BESTCHOICE |
 
 ---
 

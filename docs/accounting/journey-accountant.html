@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BESTCHOICE FINANCE — เส้นทางบันทึกบัญชี (สำหรับนักบัญชีตรวจสอบ)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #fafaf9;
+    --paper: #ffffff;
+    --border: #d6d3d1;
+    --line: #e7e5e4;
+    --text: #0c0a09;
+    --muted: #57534e;
+    --subtle: #78716c;
+
+    --emerald: #047857;
+    --emerald-bg: #ecfdf5;
+    --emerald-border: #a7f3d0;
+
+    --rose: #be123c;
+    --rose-bg: #fef2f2;
+
+    --amber: #b45309;
+    --amber-bg: #fffbeb;
+
+    --blue: #1d4ed8;
+    --blue-bg: #eff6ff;
+
+    --violet: #6d28d9;
+    --violet-bg: #f5f3ff;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Sans Thai', system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+  }
+
+  .page {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 56px 40px 80px;
+    background: var(--paper);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+
+  /* ─── HEADER ─── */
+  .doc-header {
+    border-bottom: 2px solid var(--text);
+    padding-bottom: 20px;
+    margin-bottom: 36px;
+  }
+  .doc-header .org { font-size: 13px; color: var(--subtle); letter-spacing: 0.05em; margin-bottom: 6px; }
+  h1 { font-size: 28px; font-weight: 700; margin: 0 0 8px; letter-spacing: -0.01em; }
+  .doc-header .sub { color: var(--muted); font-size: 15px; margin: 0; }
+  .doc-meta { display: flex; gap: 28px; margin-top: 14px; font-size: 12px; color: var(--subtle); flex-wrap: wrap; }
+  .doc-meta strong { color: var(--text); }
+
+  /* ─── EXAMPLE BOX ─── */
+  .example {
+    background: var(--blue-bg);
+    border: 1px solid #c7d2fe;
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin: 0 0 24px;
+  }
+  .example-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--blue);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  .example h3 { font-size: 16px; margin: 0 0 12px; font-weight: 600; }
+  .example dl { margin: 0; display: grid; grid-template-columns: 240px 1fr; gap: 6px 16px; font-size: 14px; }
+  .example dt { color: var(--muted); }
+  .example dd { margin: 0; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .example dd strong { color: var(--blue); }
+
+  /* ─── LEGEND ─── */
+  .legend {
+    background: #fafaf9;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 18px;
+    margin-bottom: 36px;
+    font-size: 13px;
+    color: var(--muted);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px;
+  }
+  .legend-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 6px;
+    vertical-align: middle;
+    border: 1px solid rgba(0,0,0,0.1);
+  }
+  .legend-green  { background: #10b981; }
+  .legend-yellow { background: #f59e0b; }
+  .legend-white  { background: #ffffff; }
+  .legend-blue   { background: #3b82f6; }
+  .legend-rose   { background: #f43f5e; }
+
+  /* ─── SECTION ─── */
+  section { margin-bottom: 44px; }
+  h2 {
+    font-size: 20px;
+    font-weight: 700;
+    margin: 0 0 18px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    letter-spacing: -0.01em;
+  }
+  h2 .badge-section {
+    display: inline-block;
+    background: var(--text);
+    color: white;
+    padding: 2px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-right: 10px;
+    vertical-align: middle;
+  }
+
+  /* ─── ENTRY ─── */
+  .entry {
+    margin-bottom: 30px;
+    page-break-inside: avoid;
+  }
+  .entry-when {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+  }
+  .entry-tag {
+    background: var(--emerald);
+    color: white;
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 0.02em;
+    flex-shrink: 0;
+  }
+  .entry-tag.tag-violet { background: var(--violet); }
+  .entry-tag.tag-blue   { background: var(--blue); }
+  .entry-tag.tag-amber  { background: var(--amber); }
+  .entry-tag.tag-rose   { background: var(--rose); }
+  .entry-tag.tag-zinc   { background: var(--subtle); }
+  .entry-title {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0;
+    flex: 1;
+  }
+  .entry-date {
+    color: var(--subtle);
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  .entry-narrative {
+    margin: 4px 0 12px 0;
+    color: var(--muted);
+    font-size: 14px;
+  }
+
+  /* ─── JOURNAL TABLE ─── */
+  .ledger {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    font-size: 14px;
+    background: var(--paper);
+  }
+  .ledger table { width: 100%; border-collapse: collapse; }
+  .ledger thead {
+    background: #fafaf9;
+    border-bottom: 2px solid var(--border);
+  }
+  .ledger th {
+    text-align: left;
+    padding: 8px 14px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--muted);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .ledger th.num { text-align: right; }
+  .ledger td {
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--line);
+    font-variant-numeric: tabular-nums;
+  }
+  .ledger tr:last-child td { border-bottom: none; }
+  .ledger .acc-code {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--subtle);
+    width: 75px;
+  }
+  .ledger .acc-name { font-size: 14px; }
+  .ledger .acc-name.indent { padding-left: 36px; color: var(--muted); }
+  .ledger .num { text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 13px; width: 110px; }
+  .ledger .num.dr { color: var(--rose); }
+  .ledger .num.cr { color: var(--emerald); }
+  .ledger .total-row {
+    background: #fafaf9;
+    border-top: 2px solid var(--border);
+    font-weight: 700;
+  }
+  .ledger .total-row td { padding: 10px 14px; }
+  .check {
+    margin: 8px 0 0;
+    font-size: 13px;
+    color: var(--emerald);
+    display: inline-block;
+    background: var(--emerald-bg);
+    padding: 4px 12px;
+    border-radius: 4px;
+    border: 1px solid var(--emerald-border);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ─── NOTE / STANDARD ─── */
+  .standard {
+    margin: 10px 0 0;
+    padding: 8px 14px;
+    border-left: 3px solid var(--blue);
+    background: var(--blue-bg);
+    font-size: 13px;
+    border-radius: 0 4px 4px 0;
+    color: var(--text);
+  }
+  .standard strong { color: var(--blue); }
+
+  .warn {
+    margin: 10px 0 0;
+    padding: 8px 14px;
+    border-left: 3px solid var(--amber);
+    background: var(--amber-bg);
+    font-size: 13px;
+    border-radius: 0 4px 4px 0;
+  }
+
+  /* ─── BALANCE TRACKER ─── */
+  .balance {
+    margin: 14px 0 0;
+    background: #fafaf9;
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+    padding: 12px 16px;
+    font-size: 12px;
+  }
+  .balance-title { color: var(--subtle); font-weight: 600; margin-bottom: 6px; letter-spacing: 0.04em; text-transform: uppercase; font-size: 11px; }
+  .balance-line { font-family: 'IBM Plex Mono', monospace; line-height: 1.85; }
+  .balance-line .acc { color: var(--muted); }
+  .balance-line .amt { font-weight: 500; }
+  .balance-line .amt.zero { color: var(--emerald); font-weight: 700; }
+
+  /* ─── CASE TABLE ─── */
+  table.cases {
+    width: 100%;
+    border-collapse: collapse;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    font-size: 14px;
+  }
+  table.cases thead { background: #fafaf9; }
+  table.cases th {
+    text-align: left;
+    padding: 10px 14px;
+    font-size: 11px;
+    color: var(--muted);
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    border-bottom: 2px solid var(--border);
+  }
+  table.cases td { padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.cases tr:last-child td { border-bottom: none; }
+  table.cases code {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    background: var(--blue-bg);
+    color: var(--blue);
+    padding: 1px 6px;
+    border-radius: 3px;
+  }
+
+  /* ─── CHECKLIST ─── */
+  .checklist {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    counter-reset: chk;
+  }
+  .checklist li {
+    background: var(--paper);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 18px 14px 50px;
+    margin-bottom: 8px;
+    position: relative;
+  }
+  .checklist li::before {
+    content: '';
+    position: absolute;
+    left: 16px;
+    top: 17px;
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--border);
+    border-radius: 4px;
+    background: white;
+  }
+  .checklist li strong { display: block; margin-bottom: 2px; font-weight: 600; }
+  .checklist li span { color: var(--muted); font-size: 13px; }
+
+  /* ─── PRINT ─── */
+  @media print {
+    body { background: white; }
+    .page { box-shadow: none; max-width: none; padding: 0; }
+    .entry, table.cases, .ledger { page-break-inside: avoid; }
+    h2 { page-break-after: avoid; }
+    .print-btn { display: none; }
+  }
+
+  .print-btn {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: var(--text);
+    color: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 14px;
+    border: none;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  }
+  .print-btn:hover { opacity: 0.9; }
+
+  @media (max-width: 720px) {
+    .page { padding: 28px 18px 60px; }
+    .example dl { grid-template-columns: 1fr; gap: 2px; }
+    .ledger { font-size: 13px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <!-- HEADER -->
+  <div class="doc-header">
+    <div class="org">บริษัท เบสท์ช้อยส์ ไฟแนนซ์ จำกัด · จดทะเบียน VAT</div>
+    <h1>เส้นทางการบันทึกบัญชี — สัญญาผ่อนชำระ</h1>
+    <p class="sub">เอกสารแสดงลำดับรายการบัญชีตั้งแต่เปิดสัญญาจนถึงปิดสัญญา สำหรับให้นักบัญชีตรวจสอบความถูกต้อง</p>
+    <div class="doc-meta">
+      <span><strong>มาตรฐานที่ใช้:</strong> TFRS for NPAEs (Full Accrual TFRS&nbsp;15)</span>
+      <span><strong>ภาษีมูลค่าเพิ่ม:</strong> 7%</span>
+      <span><strong>วันที่จัดทำ:</strong> 8 พฤษภาคม 2568</span>
+    </div>
+  </div>
+
+  <!-- EXAMPLE -->
+  <div class="example">
+    <div class="example-title">ตัวอย่างประกอบที่ใช้ตลอดเอกสารนี้</div>
+    <h3>สัญญาผ่อนชำระมือถือ — ผ่อน 12 งวด (กรณีที่ 1: ลูกค้าจ่ายเกิน 0.17 บาท)</h3>
+    <dl>
+      <dt>ราคาเครื่อง / ยอดจัด (ก่อน VAT)</dt>      <dd>10,000.00 บาท</dd>
+      <dt>ค่าคอมมิชชั่นหน้าร้าน</dt>                  <dd>1,000.00 บาท</dd>
+      <dt>ดอกเบี้ยรวมตลอดอายุสัญญา</dt>              <dd>6,000.00 บาท</dd>
+      <dt>ยอดรวมก่อน VAT (Gross excl. VAT)</dt>      <dd><strong>17,000.00 บาท</strong></dd>
+      <dt>ภาษีมูลค่าเพิ่ม 7%</dt>                      <dd>1,190.00 บาท</dd>
+      <dt>ยอดรวมตลอดสัญญา (Total)</dt>                <dd><strong>18,190.00 บาท</strong></dd>
+      <dt>ค่างวดต่อเดือน</dt>                          <dd>1,515.83 บาท × 12 งวด</dd>
+      <dt>ดาวน์</dt>                                   <dd>0.00 บาท (จัดเต็มยอด)</dd>
+      <dt>ลูกค้าจ่ายงวด 1</dt>                         <dd>1,516.00 บาท · เกิน 0.17 บาท</dd>
+    </dl>
+  </div>
+
+  <!-- LEGEND -->
+  <div class="legend">
+    <span><span class="legend-dot legend-green"></span>ลูกหนี้ภาษีขายรอเรียกเก็บ (11-2105)</span>
+    <span><span class="legend-dot legend-yellow"></span>VAT (21-2102 / 21-2101)</span>
+    <span><span class="legend-dot legend-white"></span>รายได้ดอกเบี้ย (41-1101)</span>
+    <span><span class="legend-dot legend-blue"></span>เงินสด/ธนาคาร</span>
+    <span><span class="legend-dot legend-rose"></span>ส่วนลด/ปัดเศษ</span>
+  </div>
+
+  <!-- ─── 1. ─── -->
+  <section>
+    <h2><span class="badge-section">1</span>ลำดับรายการบัญชี — กรณีปกติ</h2>
+
+    <!-- จุดที่ 1 -->
+    <div class="entry">
+      <div class="entry-when">
+        <span class="entry-tag">จุดที่ 1</span>
+        <h3 class="entry-title">วันทำสัญญา — รับรู้ลูกหนี้ + ตั้ง 11-2105 + 21-2102</h3>
+        <span class="entry-date">01/04/2568</span>
+      </div>
+      <p class="entry-narrative">ตั้งลูกหนี้ Gross เต็มจำนวน + Park ดอกเบี้ยและภาษีรอตัดบัญชีไว้</p>
+
+      <div class="ledger">
+        <table>
+          <thead>
+            <tr><th>รหัส</th><th>ชื่อบัญชี</th><th class="num">เดบิต</th><th class="num">เครดิต</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="acc-code">11-2101</td><td class="acc-name">ลูกหนี้ผ่อนชำระ Gross (ไม่รวม VAT)</td><td class="num dr">17,000.00</td><td class="num"></td></tr>
+            <tr><td class="acc-code">11-2105</td><td class="acc-name">ลูกหนี้ภาษีขายรอเรียกเก็บ</td><td class="num dr">1,190.00</td><td class="num"></td></tr>
+            <tr><td class="acc-code">21-1101</td><td class="acc-name indent">เจ้าหนี้-หน้าร้าน</td><td class="num"></td><td class="num cr">10,000.00</td></tr>
+            <tr><td class="acc-code">21-1102</td><td class="acc-name indent">เจ้าหนี้ค่าคอม-หน้าร้าน</td><td class="num"></td><td class="num cr">1,000.00</td></tr>
+            <tr><td class="acc-code">11-2106</td><td class="acc-name indent">รายได้รอตัดบัญชี-ดอกเบี้ย <em style="color:var(--subtle); font-style:normal;">(Contra Asset)</em></td><td class="num"></td><td class="num cr">6,000.00</td></tr>
+            <tr><td class="acc-code">21-2102</td><td class="acc-name indent">ภาษีขายรอเรียกเก็บ</td><td class="num"></td><td class="num cr">1,190.00</td></tr>
+            <tr class="total-row"><td></td><td>รวม</td><td class="num dr">18,190.00</td><td class="num cr">18,190.00</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="check">BALANCED · Dr 18,190.00 = Cr 18,190.00</div>
+
+      <div class="standard">
+        <strong>อ้างอิงมาตรฐาน:</strong> TFRS&nbsp;15 — รายได้ดอกเบี้ยและ VAT ที่ยังไม่ถึงกำหนด ต้องตั้งเป็น Deferred (Contra Asset / Liability) เพื่อทยอยรับรู้ตามอายุสัญญา ไม่รับรู้เป็นรายได้ทั้งจำนวนในวันเปิดสัญญา
+      </div>
+    </div>
+
+    <!-- จุดที่ 2A -->
+    <div class="entry">
+      <div class="entry-when">
+        <span class="entry-tag tag-violet">จุดที่ 2A</span>
+        <h3 class="entry-title">ถึงกำหนดงวด (Accrual) — ทยอยรับรู้รายได้ดอกเบี้ย + ย้าย VAT</h3>
+        <span class="entry-date">01/05/2568</span>
+      </div>
+      <p class="entry-narrative">ทุกงวดที่ครบกำหนด ระบบบันทึกอัตโนมัติเวลา 00:01 น. · ทำซ้ำสำหรับงวดที่ 2 ถึง 12</p>
+
+      <div class="ledger">
+        <table>
+          <thead>
+            <tr><th>รหัส</th><th>ชื่อบัญชี</th><th class="num">เดบิต</th><th class="num">เครดิต</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="acc-code">11-2103</td><td class="acc-name">ลูกหนี้ค้างชำระ (Accrual)</td><td class="num dr">1,515.83</td><td class="num"></td></tr>
+            <tr><td class="acc-code">21-2102</td><td class="acc-name">ล้างภาษีขายรอเรียกเก็บ</td><td class="num dr">99.17</td><td class="num"></td></tr>
+            <tr><td class="acc-code">11-2106</td><td class="acc-name">ล้างรายได้รอตัดบัญชี-ดอกเบี้ย</td><td class="num dr">500.00</td><td class="num"></td></tr>
+            <tr><td class="acc-code">11-2101</td><td class="acc-name indent">ลูกหนี้ Gross (ลด excl. VAT)</td><td class="num"></td><td class="num cr">1,416.66</td></tr>
+            <tr><td class="acc-code">11-2105</td><td class="acc-name indent">ลูกหนี้ภาษีขายรอฯ (ล้าง)</td><td class="num"></td><td class="num cr">99.17</td></tr>
+            <tr><td class="acc-code">21-2101</td><td class="acc-name indent">ภาษีขาย ภ.พ.30</td><td class="num"></td><td class="num cr">99.17</td></tr>
+            <tr><td class="acc-code">41-1101</td><td class="acc-name indent">รายได้ดอกเบี้ย (รับรู้)</td><td class="num"></td><td class="num cr">500.00</td></tr>
+            <tr class="total-row"><td></td><td>รวม</td><td class="num dr">2,115.00</td><td class="num cr">2,115.00</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="check">BALANCED · Dr 2,115.00 = Cr 2,115.00</div>
+
+      <div class="warn">
+        <strong>วิธีปัดเศษ (สำคัญ):</strong>
+        ค่างวดก่อน VAT (17,000 ÷ 12) = <strong>1,416.66</strong> · ใช้ <em>ROUND_DOWN</em><br>
+        VAT ต่องวด (1,190 ÷ 12) = <strong>99.17</strong> · ใช้ <em>ROUND_HALF_UP</em><br>
+        ดอกเบี้ยต่องวด (6,000 ÷ 12) = <strong>500.00</strong> · ใช้ <em>ROUND_HALF_UP</em>
+      </div>
+
+      <div class="standard">
+        <strong>อ้างอิงมาตรฐาน:</strong> TFRS&nbsp;15 ย่อหน้า 35 — รับรู้รายได้เมื่อ "performance obligation" สำเร็จในแต่ละช่วงเวลา · รายได้ดอกเบี้ยที่ park ไว้ใน 11-2106 ทยอยล้างเข้า 41-1101 ตามงวดที่ครบกำหนด
+      </div>
+    </div>
+
+    <!-- จุดที่ 2B -->
+    <div class="entry">
+      <div class="entry-when">
+        <span class="entry-tag tag-blue">จุดที่ 2B</span>
+        <h3 class="entry-title">รับเงินงวดที่ 1 — ลูกค้าจ่าย 1,516.00 บาท (เกิน 0.17 บาท)</h3>
+        <span class="entry-date">03/05/2568</span>
+      </div>
+      <p class="entry-narrative">ลูกค้าจ่ายเข้าเงินสด 1,516.00 บาท · เกินจาก 1,515.83 = 0.17 บาท → เข้าบัญชีกำไรปัดเศษอัตโนมัติ (Policy C: ส่วนต่าง ≤ 1 บาท)</p>
+
+      <div class="ledger">
+        <table>
+          <thead>
+            <tr><th>รหัส</th><th>ชื่อบัญชี</th><th class="num">เดบิต</th><th class="num">เครดิต</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="acc-code">11-1101</td><td class="acc-name">เงินสด</td><td class="num dr">1,516.00</td><td class="num"></td></tr>
+            <tr><td class="acc-code">11-2103</td><td class="acc-name indent">ลูกหนี้ค้างชำระ</td><td class="num"></td><td class="num cr">1,515.83</td></tr>
+            <tr><td class="acc-code">53-1503</td><td class="acc-name indent">กำไร (ขาดทุน) จากการปัดเศษ</td><td class="num"></td><td class="num cr">0.17</td></tr>
+            <tr class="total-row"><td></td><td>รวม</td><td class="num dr">1,516.00</td><td class="num cr">1,516.00</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="check">BALANCED · Dr 1,516.00 = Cr 1,516.00</div>
+
+      <div class="balance">
+        <div class="balance-title">ความก้าวหน้าหลังจ่ายงวด 1</div>
+        <div class="balance-line"><span class="acc">11-2101 ลูกหนี้ Gross คงเหลือ</span> = <span class="amt">15,583.34</span> (จาก 17,000)</div>
+        <div class="balance-line"><span class="acc">11-2106 ดอกเบี้ยรอตัดบัญชี</span> = <span class="amt">5,500.00</span> (จาก 6,000)</div>
+        <div class="balance-line"><span class="acc">41-1101 รายได้ดอกเบี้ย (สะสม)</span> = <span class="amt">500.00</span></div>
+        <div class="balance-line"><span class="acc">21-2101 VAT ภ.พ.30 (สะสม)</span> = <span class="amt">99.17</span></div>
+      </div>
+    </div>
+
+    <!-- จุดที่ 3 -->
+    <div class="entry">
+      <div class="entry-when">
+        <span class="entry-tag tag-amber">จุดที่ 3</span>
+        <h3 class="entry-title">เครดิตเทอม จ่ายหน้าร้าน 11,000 บาท</h3>
+        <span class="entry-date">15/04/2568</span>
+      </div>
+      <p class="entry-narrative">FINANCE โอนเงินให้ SHOP เพื่อล้างเจ้าหนี้ที่ตั้งไว้ในจุดที่ 1 (ยอดจัด 10,000 + ค่าคอม 1,000 = 11,000)</p>
+
+      <div class="ledger">
+        <table>
+          <thead>
+            <tr><th>รหัส</th><th>ชื่อบัญชี</th><th class="num">เดบิต</th><th class="num">เครดิต</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="acc-code">21-1101</td><td class="acc-name">เจ้าหนี้-หน้าร้าน</td><td class="num dr">10,000.00</td><td class="num"></td></tr>
+            <tr><td class="acc-code">21-1102</td><td class="acc-name">เจ้าหนี้ค่าคอม-หน้าร้าน</td><td class="num dr">1,000.00</td><td class="num"></td></tr>
+            <tr><td class="acc-code">11-1101</td><td class="acc-name indent">เงินสด / ธนาคาร</td><td class="num"></td><td class="num cr">11,000.00</td></tr>
+            <tr class="total-row"><td></td><td>รวม</td><td class="num dr">11,000.00</td><td class="num cr">11,000.00</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="check">BALANCED · Dr 11,000.00 = Cr 11,000.00</div>
+
+      <div class="balance">
+        <div class="balance-title">ยอดคงเหลือบัญชีเจ้าหนี้-หน้าร้านหลังรายการนี้</div>
+        <div class="balance-line"><span class="acc">21-1101 เจ้าหนี้-หน้าร้าน</span>     = <span class="amt zero">0.00</span> · ล้างหมด</div>
+        <div class="balance-line"><span class="acc">21-1102 เจ้าหนี้ค่าคอม</span>          = <span class="amt zero">0.00</span> · ล้างหมด</div>
+      </div>
+    </div>
+
+    <!-- จุดที่ 4 (ทำซ้ำงวด 2-11) -->
+    <div class="entry">
+      <div class="entry-when">
+        <span class="entry-tag tag-zinc">งวดที่ 2–11</span>
+        <h3 class="entry-title">ทำซ้ำจุดที่ 2A + 2B เดือนละครั้ง</h3>
+        <span class="entry-date">01/06/2568 — 01/03/2569</span>
+      </div>
+      <p class="entry-narrative">แต่ละเดือนเกิด 2 รายการเสมอ — รายการ Accrual (จุดที่ 2A) ตามด้วยรายการรับชำระ (จุดที่ 2B)</p>
+    </div>
+
+    <!-- จุดสุดท้าย -->
+    <div class="entry">
+      <div class="entry-when">
+        <span class="entry-tag">จบสัญญา</span>
+        <h3 class="entry-title">งวดที่ 12 (งวดสุดท้าย) — ปิดสัญญาสมบูรณ์</h3>
+        <span class="entry-date">01/04/2569</span>
+      </div>
+      <p class="entry-narrative">ทำเหมือนจุดที่ 2A และ 2B — เมื่อจบ บัญชีลูกหนี้ทุกตัวต้องเป็น 0 · สัญญา = COMPLETED</p>
+
+      <div class="balance">
+        <div class="balance-title">ยอดคงเหลือทุกบัญชีหลังจบสัญญา (สำคัญ — ตรวจสอบที่นี่)</div>
+        <div class="balance-line"><span class="acc">11-2101 ลูกหนี้ Gross</span>            = <span class="amt zero">0.00</span></div>
+        <div class="balance-line"><span class="acc">11-2105 ลูกหนี้ VAT รอเรียกเก็บ</span>     = <span class="amt zero">0.00</span></div>
+        <div class="balance-line"><span class="acc">11-2103 ลูกหนี้ค้างชำระ</span>             = <span class="amt zero">0.00</span></div>
+        <div class="balance-line"><span class="acc">11-2106 ดอกเบี้ยรอตัดบัญชี</span>          = <span class="amt zero">0.00</span></div>
+        <div class="balance-line"><span class="acc">21-2102 VAT รอเรียกเก็บ</span>             = <span class="amt zero">0.00</span></div>
+        <div class="balance-line">─────────────────────────────────────</div>
+        <div class="balance-line"><span class="acc">41-1101 รายได้ดอกเบี้ย (สะสม)</span>      = <span class="amt">6,000.00</span></div>
+        <div class="balance-line"><span class="acc">21-2101 VAT ภ.พ.30 (นำส่ง)</span>          = <span class="amt">1,190.00</span></div>
+        <div class="balance-line"><span class="acc">53-1503 กำไรปัดเศษ (สะสม)</span>           = <span class="amt">2.04</span> (12 งวด × 0.17)</div>
+        <div class="balance-line"><span class="acc">11-1101 เงินสด (รับเข้าสะสม)</span>        = <span class="amt">18,192.00</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── 2. CASES ─── -->
+  <section>
+    <h2><span class="badge-section">2</span>กรณีตอนรับชำระค่างวด (6 รูปแบบ)</h2>
+
+    <table class="cases">
+      <thead>
+        <tr>
+          <th style="width: 22%;">รูปแบบการจ่าย</th>
+          <th style="width: 30%;">เงื่อนไข</th>
+          <th>การบันทึกบัญชีเพิ่มเติม</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>ปกติ — จ่ายตรง</strong></td>
+          <td>1,515.83 บาทพอดี</td>
+          <td>เหมือนตัวอย่างปกติ — ไม่มีรายการพิเศษ</td>
+        </tr>
+        <tr>
+          <td><strong>เกินไม่ถึง 1 บาท</strong></td>
+          <td>เช่น จ่าย 1,516.00 (เกิน 0.17) <em>← ตัวอย่างในเอกสาร</em></td>
+          <td>+ Cr <code>53-1503</code> กำไรจากการปัดเศษ · ระบบโพสต์อัตโนมัติ</td>
+        </tr>
+        <tr>
+          <td><strong>ขาดไม่ถึง 1 บาท</strong></td>
+          <td>เช่น จ่าย 1,515.00 (ขาด 0.83)</td>
+          <td>+ Dr <code>52-1104</code> ส่วนลดเศษสตางค์ · <strong>ต้องผู้มีอำนาจอนุมัติ</strong> (เจ้าของ / ฝ่ายบัญชี / ผจก.สาขา)</td>
+        </tr>
+        <tr>
+          <td><strong>เกินมากกว่า 1 บาท</strong></td>
+          <td>เช่น จ่าย 3,000 (เกิน 1,484.17)</td>
+          <td>+ Cr <code>21-1103</code> เงินรับล่วงหน้า · ระบบหักจากงวดถัดไปอัตโนมัติแบบ FIFO</td>
+        </tr>
+        <tr>
+          <td><strong>จ่ายเป็นบางส่วน</strong></td>
+          <td>เช่น จ่าย 800 (จ่ายไม่ครบงวด)</td>
+          <td>หลายรายการต่อ 1 งวด · ใบเสร็จออกเฉพาะงวดสุดท้ายที่จ่ายครบ</td>
+        </tr>
+        <tr>
+          <td><strong>จ่ายหลังโดน VAT บังคับ 60 วัน</strong></td>
+          <td>งวดเคยถูกตั้ง VAT บังคับมาก่อน</td>
+          <td>+ รายการกลับ VAT บังคับอัตโนมัติ (ดูจุดที่ 9)</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ─── 3. SPECIAL ─── -->
+  <section>
+    <h2><span class="badge-section">3</span>กรณีพิเศษ (ถ้าเกิดระหว่างสัญญา)</h2>
+
+    <div class="entry">
+      <div class="entry-when">
+        <span class="entry-tag tag-blue">A</span>
+        <h3 class="entry-title">ปิดยอดก่อนกำหนด (Early Payoff)</h3>
+      </div>
+      <p class="entry-narrative">ลูกค้าขอจ่ายปิดทั้งก้อน · มีส่วนลดดอกเบี้ยตามนโยบาย</p>
+      <div class="ledger">
+        <table>
+          <thead><tr><th>รหัส</th><th>ชื่อบัญชี</th><th>คำอธิบาย</th></tr></thead>
+          <tbody>
+            <tr><td class="acc-code">11-1201</td><td>ธนาคาร</td><td>เดบิต — เงินที่ลูกค้าจ่ายปิด</td></tr>
+            <tr><td class="acc-code">11-2106</td><td>รายได้รอตัดบัญชี-ดอกเบี้ย</td><td>เดบิต — ล้างดอกที่เหลือทั้งหมด</td></tr>
+            <tr><td class="acc-code">21-2102</td><td>ภาษีขายรอเรียกเก็บ</td><td>เดบิต — ล้าง VAT ที่เหลือทั้งหมด</td></tr>
+            <tr><td class="acc-code">52-1106</td><td>ส่วนลดดอกเบี้ย-ปิดยอด</td><td>เดบิต — ส่วนลดที่ให้ลูกค้า</td></tr>
+            <tr><td class="acc-code">11-2101</td><td class="acc-name indent">ลูกหนี้ Gross</td><td>เครดิต — ล้างยอดคงเหลือ</td></tr>
+            <tr><td class="acc-code">11-2105</td><td class="acc-name indent">ลูกหนี้ VAT รอเรียกเก็บ</td><td>เครดิต — ล้างยอดคงเหลือ</td></tr>
+            <tr><td class="acc-code">41-1101</td><td class="acc-name indent">รายได้ดอกเบี้ย</td><td>เครดิต — รับรู้ดอกเบี้ยทั้งก้อน</td></tr>
+            <tr><td class="acc-code">21-2101</td><td class="acc-name indent">VAT ภ.พ.30</td><td>เครดิต — นำส่ง VAT ที่เหลือ</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="entry">
+      <div class="entry-when">
+        <span class="entry-tag tag-rose">B</span>
+        <h3 class="entry-title">ยึดเครื่องคืน (Repossession)</h3>
+      </div>
+      <p class="entry-narrative">เมื่อลูกค้าผิดนัดและตัดสินใจยึดเครื่องคืน · มีทั้งกรณี <strong>ขาดทุน</strong> (ราคากลางเครื่อง &lt; ลูกหนี้คงเหลือ) และ <strong>กำไร</strong></p>
+      <table class="cases">
+        <thead><tr><th>กรณี</th><th>บัญชีที่กระทบ</th></tr></thead>
+        <tbody>
+          <tr><td><strong>ขาดทุน</strong></td><td>Dr <code>51-1102</code> ขาดทุนจากยึดเครื่อง</td></tr>
+          <tr><td><strong>กำไร</strong></td><td>Cr <code>41-1102</code> รายได้จากการยึดสินค้า</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="entry">
+      <div class="entry-when">
+        <span class="entry-tag tag-amber">C</span>
+        <h3 class="entry-title">เลื่อนนัดชำระ (มีค่าธรรมเนียม)</h3>
+      </div>
+      <p class="entry-narrative">ค่าธรรมเนียม park ไว้ใน <code>21-1103</code> เงินรับล่วงหน้า · หักออกในงวดสุดท้าย</p>
+    </div>
+
+    <div class="entry">
+      <div class="entry-when">
+        <span class="entry-tag tag-zinc">D</span>
+        <h3 class="entry-title">เปลี่ยนเครื่องภายใน 7 วัน (เครื่องตำหนิ)</h3>
+      </div>
+      <p class="entry-narrative">รายการบัญชีเดิมถูกกลับรายการ (mirror Dr/Cr) · จากนั้นเปิดสัญญาใหม่ตามจุดที่ 1</p>
+    </div>
+
+    <div class="entry">
+      <div class="entry-when">
+        <span class="entry-tag tag-zinc">E</span>
+        <h3 class="entry-title">ยกเลิกใบเสร็จ</h3>
+      </div>
+      <p class="entry-narrative">กลับรายการเฉพาะรายการ Payment ที่ยกเลิก (ไม่กระทบรายการอื่น)</p>
+    </div>
+  </section>
+
+  <!-- ─── 4. RISK ─── -->
+  <section>
+    <h2><span class="badge-section">4</span>กรณีลูกค้าค้างชำระ</h2>
+
+    <div class="entry">
+      <div class="entry-when">
+        <span class="entry-tag tag-rose">จุดที่ 9</span>
+        <h3 class="entry-title">ลูกหนี้ค้าง 60 วัน — VAT บังคับ</h3>
+        <span class="entry-date">ระบบบันทึกอัตโนมัติเวลา 02:00 น.</span>
+      </div>
+      <p class="entry-narrative">ตามกฎหมายไทย — เมื่อลูกหนี้ค้างเกิน 60 วัน บริษัทต้องนำส่ง VAT แทนลูกค้าแม้ยังไม่ได้รับเงิน</p>
+      <div class="ledger">
+        <table>
+          <thead><tr><th>รหัส</th><th>ชื่อบัญชี</th><th class="num">เดบิต</th><th class="num">เครดิต</th></tr></thead>
+          <tbody>
+            <tr><td class="acc-code">51-1101</td><td>ค่าใช้จ่าย VAT ลูกหนี้ไม่ชำระ</td><td class="num dr">99.17</td><td class="num"></td></tr>
+            <tr><td class="acc-code">11-2104</td><td>ลูกหนี้-VAT ที่ออกแทน</td><td class="num dr">99.17</td><td class="num"></td></tr>
+            <tr><td class="acc-code">21-2103</td><td class="acc-name indent">VAT บังคับ-ลูกหนี้ค้าง 60 วัน</td><td class="num"></td><td class="num cr">198.34</td></tr>
+            <tr class="total-row"><td></td><td>รวม</td><td class="num dr">198.34</td><td class="num cr">198.34</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="check">BALANCED · Dr 198.34 = Cr 198.34</div>
+      <div class="standard"><strong>อ้างอิง:</strong> ประมวลรัษฎากร มาตรา 82/3 และคำสั่งกรมสรรพากร — VAT ต้องนำส่งภายใน 60 วันนับแต่วันที่ออกใบกำกับภาษี · เมื่อลูกค้ามาจ่ายภายหลัง ระบบจะทำรายการกลับให้อัตโนมัติ</div>
+    </div>
+
+    <div class="entry">
+      <div class="entry-when">
+        <span class="entry-tag tag-amber">จุดที่ 10</span>
+        <h3 class="entry-title">ตั้งค่าเผื่อหนี้สงสัยจะสูญ (รายเดือนสิ้นเดือน)</h3>
+      </div>
+      <div class="ledger">
+        <table>
+          <thead><tr><th>รหัส</th><th>ชื่อบัญชี</th><th class="num">เดบิต</th><th class="num">เครดิต</th></tr></thead>
+          <tbody>
+            <tr><td class="acc-code">51-1103</td><td>ค่าเผื่อหนี้สงสัยจะสูญ (เพิ่มในปี)</td><td class="num dr">XXX</td><td class="num"></td></tr>
+            <tr><td class="acc-code">11-2102</td><td class="acc-name indent">ค่าเผื่อหนี้สงสัยจะสูญ <em style="color:var(--subtle); font-style:normal;">(Contra Asset)</em></td><td class="num"></td><td class="num cr">XXX</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="entry">
+      <div class="entry-when">
+        <span class="entry-tag tag-rose">จุดที่ 11</span>
+        <h3 class="entry-title">ตัดหนี้สูญ</h3>
+      </div>
+      <p class="entry-narrative">ใช้ค่าเผื่อใน <code>11-2102</code> ก่อน · ส่วนเกินรับรู้เป็นหนี้สูญใน <code>51-1102</code></p>
+    </div>
+  </section>
+
+  <!-- ─── 5. CHECKLIST ─── -->
+  <section>
+    <h2><span class="badge-section">5</span>Checklist สำหรับนักบัญชีตรวจสอบ</h2>
+    <ol class="checklist">
+      <li>
+        <strong>ทุกรายการ Dr = Cr</strong>
+        <span>ระบบ throw error ทันทีถ้า Dr ≠ Cr (ไม่อนุญาตให้ post รายการที่ไม่ balance)</span>
+      </li>
+      <li>
+        <strong>ลูกหนี้ Gross (11-2101) ลดลงตรงตามค่างวด ROUND_DOWN</strong>
+        <span>ทุกงวดต้องลดลง 1,416.66 บาท · งวดสุดท้ายต้องเป็น 0</span>
+      </li>
+      <li>
+        <strong>รายได้ดอกเบี้ย (41-1101) สะสมตรงกับยอดรวมในสัญญา</strong>
+        <span>ตอนจบสัญญาต้องเท่ากับ 6,000 บาท พอดี (ห้ามเกินห้ามขาด)</span>
+      </li>
+      <li>
+        <strong>VAT ขาย ภ.พ.30 (21-2101) สะสมตรงกับ VAT ในสัญญา</strong>
+        <span>ตอนจบสัญญาต้องเท่ากับ 1,190 บาท พอดี · ตรงกับยอดที่นำส่งสรรพากร</span>
+      </li>
+      <li>
+        <strong>บัญชี Park (11-2106 ดอกเบี้ยรอตัด, 21-2102 VAT รอเรียก) ต้องเป็น 0 ตอนจบสัญญา</strong>
+        <span>ถ้ายังคงเหลือ = มีรายการที่ยังไม่ recognize หรือ accrual หาย</span>
+      </li>
+      <li>
+        <strong>ค่าคอมมิชชั่นและยอดจัดล้างหมดทันทีหลังจ่ายหน้าร้าน</strong>
+        <span>21-1101 และ 21-1102 ต้องเป็น 0 หลังการโอนเงินให้ SHOP</span>
+      </li>
+      <li>
+        <strong>ส่วนลด/ปัดเศษ ≤ 1 บาท เท่านั้น</strong>
+        <span>ใหญ่กว่า 1 บาท ระบบ reject ทันที · Underpay ต้องมีผู้อนุมัติ (audit log บันทึก)</span>
+      </li>
+      <li>
+        <strong>VAT 60 วันบังคับ ทำงานทุกวันเวลา 02:00 น.</strong>
+        <span>เมื่อลูกค้าจ่ายภายหลัง ระบบกลับรายการอัตโนมัติ — ตรวจสอบในรายงาน VAT ภ.พ.30 ปลายเดือน</span>
+      </li>
+      <li>
+        <strong>ทุก Payment ต้องระบุบัญชีเงินสดหรือธนาคารที่รับเงิน</strong>
+        <span>เลือกได้ 6 บัญชี: เงินสด 3 (สุทธินีย์/เอกนรินทร์/พนักงานบัญชี) + ธนาคาร 3 (KBank/SCB ค่าใช้จ่าย/SCB ค่าเสื่อม)</span>
+      </li>
+      <li>
+        <strong>งบทดลอง (Trial Balance) ออกได้ทุกวัน</strong>
+        <span>ระบบรวมยอดทุก 2 หลักของรหัสบัญชี · Dr รวม = Cr รวม เสมอ (ถ้าไม่เท่า = มีรายการเสียหาย)</span>
+      </li>
+    </ol>
+  </section>
+
+  <!-- ─── FOOTER ─── -->
+  <div style="margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--border); color: var(--subtle); font-size: 12px; text-align: center;">
+    เอกสารนี้สรุปจาก JE Templates 19 ตัวที่ใช้งานจริงในระบบ BESTCHOICE FINANCE · Phase A.4–A.5c<br>
+    หากพบความไม่สอดคล้องกับมาตรฐาน TFRS โปรดแจ้งทีมพัฒนาเพื่อตรวจสอบและแก้ไข
+  </div>
+
+</div>
+
+<button class="print-btn" onclick="window.print()">Print / Save PDF</button>
+
+</body>
+</html>

@@ -25,6 +25,18 @@ import { PrismaService } from '../../../prisma/prisma.service';
  *   vatPerInst         = vatTotal / totalMonths     → ROUND_HALF_UP (1190/12 = 99.17)
  *   interestPerInst    = interestTotal / totalMonths → ROUND_HALF_UP (6000/12 = 500.00 exact)
  *
+ * Recognition policy (Wave 4 / Task 2 — Info comments):
+ *   - TFRS 15 §35(b): performance obligation satisfied "over time" — financing
+ *     service is consumed by the customer through each due date, so revenue is
+ *     recognised per period (this template, fired daily by accrual cron).
+ *   - Interest recognition: straight-line allocation per period (NPAEs simplification
+ *     per W-003 in CLAUDE.md). NOT effective interest method (EIR).
+ *     Material deviation from EIR documented in audit report; owner+CPA approved
+ *     NPAEs simplification (target adoption date TBD).
+ *   - VAT recognition: deferred VAT (21-2102 booked at contract activation) is
+ *     reclassified to settled VAT (21-2101) per period — matches TFRS 15
+ *     pattern of recognising tax liability when service is performed.
+ *
  * Idempotent: returns null if accrualJournalEntryId is already set on the installment.
  */
 @Injectable()

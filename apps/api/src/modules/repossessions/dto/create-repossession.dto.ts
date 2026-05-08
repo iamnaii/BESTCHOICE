@@ -37,6 +37,12 @@ export class CreateRepossessionDto {
   @IsBoolean()
   @IsOptional()
   customerRefundEnabled?: boolean;
+
+  // Cash account dimension for JP5 deposit leg.
+  // Falls back to user.defaultCashAccountCode then '11-1101' if omitted.
+  @IsString()
+  @IsOptional()
+  depositAccountCode?: string;
 }
 
 export class UpdateRepossessionDto {

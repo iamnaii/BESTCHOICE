@@ -38,6 +38,16 @@ export interface EarlyPayoffInput {
  *     Cr 41-1101 รายได้ดอกเบี้ย             remainingDeferredInterest
  *     Cr 21-2101 ภาษีขาย ภ.พ.30            settleVat  (= remainingDeferredVat - vatOnDiscount)
  *
+ * VAT discount policy (Wave 4 / Task 2 — Info comments):
+ *   - ป.รัษฎากร ม.79: ฐาน VAT = "ราคาที่ได้รับจริง" (ไม่รวมส่วนลดที่ผู้ขายให้
+ *     แก่ผู้ซื้อขณะส่งมอบ/รับชำระ) → ส่วนลดดอกเบี้ย ทำให้ฐาน VAT ลดลง
+ *     ตามส่วน vatOnDiscount = discount × 7%.
+ *   - ป.รัษฎากร ม.86/10: ผู้ขาย VAT ต้องออกใบลดหนี้ (credit note) สำหรับ
+ *     ส่วน VAT ที่ลด — ทำให้ Cr 21-2101 (VAT ภ.พ.30) ลดเหลือ settleVat แทน
+ *     remainingDeferredVat เต็มจำนวน.
+ *   - Dr 21-2102 ยังคงเต็ม (ปิดบัญชี deferred VAT ไม่ให้มี balance ค้าง);
+ *     ส่วนต่าง vatOnDiscount สะท้อนผ่าน Cash leg ที่ลดลง — JE ยัง balanced.
+ *
  * Derivations (per-installment using same rounding as 2A/2B):
  *   installmentExclVat = grossExclVat / totalMonths  (ROUND_DOWN)
  *   interestPerInst    = interestTotal / totalMonths  (ROUND_HALF_UP)

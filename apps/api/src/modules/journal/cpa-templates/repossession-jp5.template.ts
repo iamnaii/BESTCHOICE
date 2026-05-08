@@ -53,6 +53,16 @@ export interface RepossessionInput {
  *   interestPerInst    = interestTotal / totalMonths  (ROUND_HALF_UP)
  *   vatPerInst         = vatTotal / totalMonths       (ROUND_HALF_UP)
  *   installmentTotal   = installmentExclVat + vatPerInst
+ *
+ * Legal basis for VAT credit note (accrued portion) — Wave 4 / Task 2:
+ *   - ป.รัษฎากร ม.82/5: ผู้ขายต้องออกใบลดหนี้ภายใน 30 วันนับแต่เหตุการณ์ที่
+ *     ทำให้ฐาน VAT ลด (เลิกสัญญา · ยึดเครื่อง · ลดหนี้)
+ *   - ประกาศอธิบดีกรมสรรพากร เกี่ยวกับ VAT (ฉบับที่) 36/2536 ข้อ 2(6):
+ *     การยกเลิกสัญญาผ่อนชำระ (รวมถึงการยึดสินค้าคืน) ถือเป็นเหตุที่ทำให้
+ *     เกิดสิทธิออกใบลดหนี้ — VAT ที่นำส่งไปแล้ว (settled at 21-2101 by 2A)
+ *     สามารถออกใบลดหนี้กลับได้.
+ *   - Deferred portion (2A ยังไม่ run): VAT ยังอยู่ที่ 21-2102 (deferred) →
+ *     ปิดบัญชีตรง ๆ ไม่ต้องออกใบลดหนี้เพราะยังไม่เกิดความรับผิด.
  */
 @Injectable()
 export class RepossessionJP5Template {

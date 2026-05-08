@@ -26,9 +26,30 @@ export class Vat60dayCron {
     private readonly mandatory: Vat60dayMandatoryTemplate,
   ) {}
 
+  /**
+   * Returns the 60-day cutoff anchored to Asia/Bangkok midnight.
+   *
+   * Wave 4 / Task 2 (Info I-1): the previous `Date.now() - 60d * ms` form
+   * silently shifted by the host's offset (UTC on Cloud Run). Using the
+   * Bangkok calendar date keeps the cutoff stable across DST/host clocks
+   * and matches the cron's posted timezone.
+   */
+  private getCutoffBangkok(): Date {
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Bangkok',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    const bkkDate = formatter.format(new Date()); // YYYY-MM-DD in Bangkok
+    const cutoff = new Date(`${bkkDate}T00:00:00+07:00`);
+    cutoff.setDate(cutoff.getDate() - 60);
+    return cutoff;
+  }
+
   @Cron('0 2 * * *', { timeZone: 'Asia/Bangkok' })
   async tick(): Promise<{ processed: number; failed: number }> {
-    const cutoff = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
+    const cutoff = this.getCutoffBangkok();
 
     const candidates = await this.prisma.installmentSchedule.findMany({
       where: {

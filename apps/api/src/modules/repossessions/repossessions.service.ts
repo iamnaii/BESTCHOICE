@@ -281,10 +281,18 @@ export class RepossessionsService {
         const repoValue = dto.appraisalPrice != null
           ? new Decimal(String(dto.appraisalPrice))
           : new Decimal('0');
+        // Wave 4 / Task 2 (Info I-1): prefer caller-supplied account, fall
+        // back to user's default cash account, then '11-1101' as last resort.
+        const user = await tx.user.findUnique({
+          where: { id: userId },
+          select: { defaultCashAccountCode: true },
+        });
+        const depositAccountCode =
+          dto.depositAccountCode ?? user?.defaultCashAccountCode ?? '11-1101';
         await this.repossessionJP5Template.execute(
           {
             contractId: dto.contractId,
-            depositAccountCode: '11-1101',
+            depositAccountCode,
             repossessionValue: repoValue,
           },
           tx,

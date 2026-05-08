@@ -3,7 +3,6 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import { JournalAutoService, JeLineInput } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { allocateInterestEIR } from '../utils/eir';
 
 export interface EarlyPayoffInput {
   contractId: string;
@@ -51,16 +50,11 @@ export interface EarlyPayoffInput {
  *
  * Derivations (per-installment using same rounding as 2A/2B):
  *   installmentExclVat = grossExclVat / totalMonths  (ROUND_DOWN)
+ *   interestPerInst    = interestTotal / totalMonths  (ROUND_HALF_UP)
  *   vatPerInst         = vatTotal / totalMonths       (ROUND_HALF_UP)
  *   remainingGross     = installmentExclVat × unpaid
+ *   remainingDeferredInterest = interestPerInst × unpaid
  *   remainingDeferredVat      = vatPerInst × unpaid
- *
- *   --- EIR allocation (Phase 3 — TFRS 15 §60-65) ---
- *   eirPrincipal       = financedAmount + storeCommission
- *   interestSchedule   = allocateInterestEIR(eirPrincipal, interestTotal, totalMonths)
- *   remainingDeferredInterest = sum of interestSchedule[period - 1] for each unpaid period
- *
- *   --- Discount + VAT base reduction ---
  *   discount           = remainingDeferredInterest × interestDiscountPercent / 100
  *   vatOnDiscount      = discount × 0.07  (ROUND_HALF_UP)
  *   settleVat          = remainingDeferredVat - vatOnDiscount
@@ -116,25 +110,13 @@ export class EarlyPayoffJP4Template {
         : grossExclVat.times('0.07').toDecimalPlaces(2);
 
     // Per-installment amounts (consistent with 2A/2B rounding)
-    // NOTE: installmentExclVat + vatPerInst are still straight-line constant.
-    // Only interest allocation moved to EIR (Phase 3).
     const installmentExclVat = grossExclVat.div(total).toDecimalPlaces(2, Decimal.ROUND_DOWN);
+    const interestPerInst = interest.div(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
     const vatPerInst = vat.div(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-
-    // Phase 3 — EIR allocation for remaining interest (TFRS 15 §60-65)
-    // Interest per period declines as principal balance reduces.
-    // EIR principal = financedAmount + storeCommission (matches 2A logic).
-    const eirPrincipal = financed.plus(commission);
-    const interestSchedule = allocateInterestEIR(eirPrincipal, interest, c.totalMonths);
-
-    // Sum interest for unpaid periods only (period N → interestSchedule[N - 1])
-    const remainingDeferredInterest = unpaidInsts.reduce(
-      (sum, inst) => sum.add(interestSchedule[inst.installmentNo - 1]),
-      new Decimal(0),
-    );
 
     // Remaining balances for unpaid installments
     const remainingGross = installmentExclVat.times(unpaidD);
+    const remainingDeferredInterest = interestPerInst.times(unpaidD);
     const remainingDeferredVat = vatPerInst.times(unpaidD);
 
     // Discount on interest only

@@ -3,7 +3,6 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { allocateInterestEIR } from '../utils/eir';
 
 /**
  * Template 2A — Installment Accrual (fires on each installment due date).
@@ -18,22 +17,22 @@ import { allocateInterestEIR } from '../utils/eir';
  *     Cr 41-1101 รายได้ดอกเบี้ย (รับรู้)   (interestPerInst)
  *     Cr 21-2101 ภาษีขาย ภ.พ.30           (vatPerInst)
  *
- * Interest recognition: EIR (Effective Interest Method) per TFRS 15 §60-65.
- *   - Period 1: highest interest (= openingPrincipal × monthlyEIR)
- *   - Period N: lowest interest (snap to clear residual)
- *   - Total interest = interestTotal (matches contract)
+ * Total Dr = installmentTotal + vatPerInst + interestPerInst = 2,115.00
+ * Total Cr = installmentExclVat + vatPerInst + interestPerInst + vatPerInst = 2,115.00 ✓
  *
- * Updated from straight-line allocation (Wave 4 / Option B / Phase 2 EIR migration).
- *
- * Rounding modes:
+ * Rounding modes (per CSV spec):
  *   installmentExclVat = grossExclVat / totalMonths → ROUND_DOWN  (17000/12 = 1416.66)
  *   vatPerInst         = vatTotal / totalMonths     → ROUND_HALF_UP (1190/12 = 99.17)
- *   interestPerInst    = allocateInterestEIR(...)   → declining balance (Phase 2)
+ *   interestPerInst    = interestTotal / totalMonths → ROUND_HALF_UP (6000/12 = 500.00 exact)
  *
- * Recognition policy:
+ * Recognition policy (Wave 4 / Task 2 — Info comments):
  *   - TFRS 15 §35(b): performance obligation satisfied "over time" — financing
  *     service is consumed by the customer through each due date, so revenue is
  *     recognised per period (this template, fired daily by accrual cron).
+ *   - Interest recognition: straight-line allocation per period (NPAEs simplification
+ *     per W-003 in CLAUDE.md). NOT effective interest method (EIR).
+ *     Material deviation from EIR documented in audit report; owner+CPA approved
+ *     NPAEs simplification (target adoption date TBD).
  *   - VAT recognition: deferred VAT (21-2102 booked at contract activation) is
  *     reclassified to settled VAT (21-2101) per period — matches TFRS 15
  *     pattern of recognising tax liability when service is performed.
@@ -74,34 +73,24 @@ export class InstallmentAccrual2ATemplate {
         ? new Decimal(c.vatAmount.toString())
         : grossExclVat.times('0.07').toDecimalPlaces(2);
 
-    // Per-installment amounts:
-    //   - installmentExclVat (customer payment): straight-line ROUND_DOWN (unchanged)
-    //   - vatPerInst: straight-line ROUND_HALF_UP (unchanged)
-    //   - interestPerInst: EIR allocation per TFRS 15 §60-65 (Phase 2 EIR migration)
+    // Per-installment amounts — rounding modes match CSV spec
     let installmentExclVat = grossExclVat.div(total).toDecimalPlaces(2, Decimal.ROUND_DOWN); // 1,416.66
+    let interestPerInst = interest.div(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP); //   500.00
     let vatPerInst = vat.div(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP); //    99.17
-
-    // EIR principal = financedAmount + commission (FINANCE's outlay).
-    // Allocate totalInterest across periods using declining-balance EIR.
-    // The allocator already adjusts the final period so sum equals interestTotal exactly.
-    const eirPrincipal = financed.plus(commission);
-    const interestSchedule = allocateInterestEIR(eirPrincipal, interest, c.totalMonths);
-    const interestPerInst = interestSchedule[inst.installmentNo - 1];
 
     // Final-period residual adjustment (Wave 1 / Task 6 — Audit P0 TFRS 15 C-1).
     // ROUND_DOWN/ROUND_HALF_UP per-installment rounding can leak residuals
     // (e.g. 1416.66 × 12 = 16,999.92 vs target 17,000.00). On the LAST
-    // installment we absorb whatever remains so 11-2101 / 11-2105 hit exactly 0
-    // after the cycle completes.
-    //
-    // Note: interestPerInst does NOT need final-period adjustment here — the
-    // allocateInterestEIR utility already balances the final period.
+    // installment we absorb whatever remains so 11-2101 / 11-2105 / 41-1101
+    // hit exactly 0 after the cycle completes.
     if (inst.installmentNo === c.totalMonths) {
       const priorPeriods = new Decimal(c.totalMonths - 1);
       const priorExclVat = installmentExclVat.times(priorPeriods);
       const priorVat = vatPerInst.times(priorPeriods);
+      const priorInterest = interestPerInst.times(priorPeriods);
       installmentExclVat = grossExclVat.minus(priorExclVat);
       vatPerInst = vat.minus(priorVat);
+      interestPerInst = interest.minus(priorInterest);
     }
 
     const installmentTotal = installmentExclVat.plus(vatPerInst); // 1,515.83

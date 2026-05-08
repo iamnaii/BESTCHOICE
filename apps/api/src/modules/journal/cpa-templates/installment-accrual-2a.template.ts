@@ -62,9 +62,25 @@ export class InstallmentAccrual2ATemplate {
         : grossExclVat.times('0.07').toDecimalPlaces(2);
 
     // Per-installment amounts — rounding modes match CSV spec
-    const installmentExclVat = grossExclVat.div(total).toDecimalPlaces(2, Decimal.ROUND_DOWN); // 1,416.66
-    const interestPerInst = interest.div(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP); //   500.00
-    const vatPerInst = vat.div(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP); //    99.17
+    let installmentExclVat = grossExclVat.div(total).toDecimalPlaces(2, Decimal.ROUND_DOWN); // 1,416.66
+    let interestPerInst = interest.div(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP); //   500.00
+    let vatPerInst = vat.div(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP); //    99.17
+
+    // Final-period residual adjustment (Wave 1 / Task 6 — Audit P0 TFRS 15 C-1).
+    // ROUND_DOWN/ROUND_HALF_UP per-installment rounding can leak residuals
+    // (e.g. 1416.66 × 12 = 16,999.92 vs target 17,000.00). On the LAST
+    // installment we absorb whatever remains so 11-2101 / 11-2105 / 41-1101
+    // hit exactly 0 after the cycle completes.
+    if (inst.installmentNo === c.totalMonths) {
+      const priorPeriods = new Decimal(c.totalMonths - 1);
+      const priorExclVat = installmentExclVat.times(priorPeriods);
+      const priorVat = vatPerInst.times(priorPeriods);
+      const priorInterest = interestPerInst.times(priorPeriods);
+      installmentExclVat = grossExclVat.minus(priorExclVat);
+      vatPerInst = vat.minus(priorVat);
+      interestPerInst = interest.minus(priorInterest);
+    }
+
     const installmentTotal = installmentExclVat.plus(vatPerInst); // 1,515.83
 
     const zero = new Decimal(0);

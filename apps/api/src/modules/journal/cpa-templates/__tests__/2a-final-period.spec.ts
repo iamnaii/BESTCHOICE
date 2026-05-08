@@ -11,19 +11,22 @@ const prisma = new PrismaClient();
 
 /**
  * Wave 1 / Task 6 — 2A Final-Period Residual Adjustment.
+ * Phase 2 EIR migration — interestPerInst now follows declining-balance EIR.
  *
  * Without the adjustment, ROUND_DOWN on installmentExclVat (1416.66) and
  * ROUND_HALF_UP on vatPerInst (99.17) leak residuals after 12 installments:
  *   11-2101 Cr: 1416.66 × 12 = 16,999.92 (under by 0.08)
  *   11-2105 Cr: 99.17  × 12 = 1,190.04 (over by 0.04)
- *   41-1101 Cr: 500    × 12 = 6,000.00 (exact, no residual)
  *
  * Final-period adjustment makes installment 12 absorb the residual so
  * full-cycle totals match the contract amounts EXACTLY.
  *
+ * Interest residual is handled by allocateInterestEIR() utility — no
+ * extra adjustment needed in the template.
+ *
  * Acceptance:
- *   - Installments 1..11 unchanged (CSV golden values still match)
- *   - Installment 12 absorbs (grossExclVat - 11×1416.66) and (vatTotal - 11×99.17)
+ *   - installmentExclVat / vatPerInst constant for installments 1..11
+ *   - interestPerInst varies by EIR (period 1 highest, period 12 lowest)
  *   - Sum across all 12 = 17,000.00 / 1,190.00 / 6,000.00 EXACTLY
  */
 
@@ -156,7 +159,8 @@ describe('Template 2A — Final-Period Residual Adjustment (Wave 1 / Task 6)', (
     expect(final.cr11_2101.toFixed(2)).toBe('1416.74'); // 17000 - 11*1416.66
     expect(final.cr11_2105.toFixed(2)).toBe('99.13');   // 1190 - 11*99.17
     expect(final.cr21_2101.toFixed(2)).toBe('99.13');   // mirror of 11-2105
-    expect(final.cr41_1101.toFixed(2)).toBe('500.00');  // 6000 - 11*500 = 500 (no residual on interest in this scenario)
+    // EIR period 12 interest is small (declining balance, last period snap)
+    expect(final.cr41_1101.toNumber()).toBeLessThan(150);
 
     // Final 11-2103 Dr = installmentExclVat + vatPerInst = 1416.74 + 99.13 = 1515.87
     expect(final.dr11_2103.toFixed(2)).toBe('1515.87');
@@ -182,19 +186,25 @@ describe('Template 2A — Final-Period Residual Adjustment (Wave 1 / Task 6)', (
     const rawRows = await get2AEntriesForContract(c.id);
     const rows = await attachInstallmentNumbers(rawRows as any);
 
-    // Non-final installments keep CSV-spec exact values
+    // Non-final installments keep CSV-spec exact values for installmentExclVat + VAT
+    // (interestPerInst now varies by EIR — declining each period)
     for (const r of rows.filter((x) => x.installmentNo !== 12)) {
       expect(r.cr11_2101.toFixed(2)).toBe('1416.66');
       expect(r.cr11_2105.toFixed(2)).toBe('99.17');
       expect(r.cr21_2101.toFixed(2)).toBe('99.17');
-      expect(r.cr41_1101.toFixed(2)).toBe('500.00');
       expect(r.dr11_2103.toFixed(2)).toBe('1515.83'); // 1416.66 + 99.17
     }
 
-    // Specifically check installment 1 and 11 are still the legacy values
+    // EIR interest schedule: period 1 highest, declining each period
     const i1 = rows.find((x) => x.installmentNo === 1)!;
     const i11 = rows.find((x) => x.installmentNo === 11)!;
     expect(i1.cr11_2101.toFixed(2)).toBe('1416.66');
     expect(i11.cr11_2101.toFixed(2)).toBe('1416.66');
+    // EIR period 1 ≈ 817.05 (openingPrincipal=11000 × monthlyEIR ≈ 7.43%)
+    expect(i1.cr41_1101.toFixed(2)).toBe('817.05');
+    // EIR period 11 ≈ 189.13 (declining balance)
+    expect(i11.cr41_1101.toFixed(2)).toBe('189.13');
+    // Period 1 > Period 11 (declining)
+    expect(i1.cr41_1101.greaterThan(i11.cr41_1101)).toBe(true);
   });
 });

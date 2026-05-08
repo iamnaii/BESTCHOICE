@@ -1,7 +1,9 @@
 import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { AssetService } from './asset.service';
-import { CreateFixedAssetDto, UpdateFixedAssetDto, DisposeAssetDto } from './dto/asset.dto';
+import { CreateFixedAssetDto } from './dto/create-asset.dto';
+import { UpdateFixedAssetDto } from './dto/update-asset.dto';
+import { DisposeAssetDto } from './dto/reverse-asset.dto';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';

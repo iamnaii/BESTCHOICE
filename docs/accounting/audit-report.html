@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BESTCHOICE FINANCE — Accounting Compliance Audit Report</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #fafaf9;
+    --paper: #ffffff;
+    --border: #d6d3d1;
+    --line: #e7e5e4;
+    --text: #0c0a09;
+    --muted: #57534e;
+    --subtle: #78716c;
+
+    --rose: #be123c;
+    --rose-bg: #fef2f2;
+    --rose-strong: #9f1239;
+
+    --amber: #b45309;
+    --amber-bg: #fffbeb;
+
+    --emerald: #047857;
+    --emerald-bg: #ecfdf5;
+
+    --blue: #1d4ed8;
+    --blue-bg: #eff6ff;
+
+    --zinc: #52525b;
+    --zinc-bg: #f4f4f5;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Sans Thai', system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+  }
+
+  .page {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 56px 40px 80px;
+    background: var(--paper);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+
+  /* HEADER */
+  .doc-header {
+    border-bottom: 4px solid var(--rose);
+    padding-bottom: 24px;
+    margin-bottom: 28px;
+  }
+  .doc-header .stamp {
+    display: inline-block;
+    background: var(--rose);
+    color: white;
+    padding: 4px 14px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    margin-bottom: 12px;
+  }
+  h1 { font-size: 28px; font-weight: 700; margin: 0 0 8px; letter-spacing: -0.01em; }
+  .doc-header .sub { color: var(--muted); font-size: 15px; margin: 0; }
+  .doc-meta { display: flex; gap: 28px; margin-top: 14px; font-size: 12px; color: var(--subtle); flex-wrap: wrap; }
+  .doc-meta strong { color: var(--text); }
+
+  /* VERDICT BANNER */
+  .verdict {
+    background: linear-gradient(135deg, var(--rose-bg), #fff);
+    border: 2px solid var(--rose);
+    border-radius: 12px;
+    padding: 24px 28px;
+    margin: 0 0 36px;
+  }
+  .verdict-grade {
+    display: inline-block;
+    background: var(--rose);
+    color: white;
+    font-size: 32px;
+    font-weight: 700;
+    padding: 8px 24px;
+    border-radius: 8px;
+    letter-spacing: 0.04em;
+    margin-bottom: 12px;
+  }
+  .verdict h2 { margin: 0 0 6px; font-size: 18px; font-weight: 600; }
+  .verdict-sub { color: var(--muted); margin: 0; font-size: 14px; }
+  .verdict-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-top: 20px;
+  }
+  .stat {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    text-align: center;
+  }
+  .stat .num {
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+  .stat .label {
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .stat-critical .num { color: var(--rose); }
+  .stat-warning  .num { color: var(--amber); }
+  .stat-info     .num { color: var(--blue); }
+  .stat-total    .num { color: var(--text); }
+
+  /* SECTION */
+  section { margin-bottom: 44px; }
+  h2 {
+    font-size: 20px;
+    font-weight: 700;
+    margin: 0 0 18px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    letter-spacing: -0.01em;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  h2 .badge {
+    background: var(--text);
+    color: white;
+    padding: 2px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  h3 {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 24px 0 12px;
+  }
+
+  /* STANDARD BLOCK */
+  .standard {
+    background: var(--paper);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin-bottom: 16px;
+    page-break-inside: avoid;
+  }
+  .standard-head {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+  .standard-name {
+    font-size: 16px;
+    font-weight: 600;
+    flex: 1;
+  }
+  .verdict-pill {
+    padding: 3px 12px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    border: 1px solid;
+  }
+  .verdict-fail { background: var(--rose-bg); color: var(--rose); border-color: var(--rose); }
+  .verdict-warn { background: var(--amber-bg); color: var(--amber); border-color: var(--amber); }
+  .verdict-pass { background: var(--emerald-bg); color: var(--emerald); border-color: var(--emerald); }
+
+  .standard-counts {
+    display: flex;
+    gap: 12px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .standard-counts span strong { color: var(--text); }
+
+  /* FINDING */
+  .finding {
+    border-left: 4px solid;
+    padding: 12px 16px;
+    margin: 10px 0;
+    background: var(--paper);
+    border-radius: 0 6px 6px 0;
+  }
+  .finding-critical { border-color: var(--rose); background: var(--rose-bg); }
+  .finding-warning  { border-color: var(--amber); background: var(--amber-bg); }
+  .finding-info     { border-color: var(--blue); background: var(--blue-bg); }
+
+  .finding-head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 4px;
+    flex-wrap: wrap;
+  }
+  .finding-tag {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 1px 8px;
+    border-radius: 4px;
+    letter-spacing: 0.04em;
+    flex-shrink: 0;
+  }
+  .finding-tag.critical { background: var(--rose); color: white; }
+  .finding-tag.warning  { background: var(--amber); color: white; }
+  .finding-tag.info     { background: var(--blue); color: white; }
+  .finding-title {
+    font-weight: 600;
+    font-size: 14px;
+    line-height: 1.4;
+  }
+  .finding-body {
+    margin: 4px 0 0;
+    font-size: 13.5px;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+  .finding-ref {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11.5px;
+    color: var(--subtle);
+    margin-top: 6px;
+  }
+  .finding-ref a { color: var(--blue); text-decoration: none; }
+  .finding-ref a:hover { text-decoration: underline; }
+  .finding code {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    background: rgba(0,0,0,0.06);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  /* TOP CRITICAL TABLE */
+  .top-issues {
+    width: 100%;
+    border-collapse: collapse;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    font-size: 14px;
+  }
+  .top-issues thead { background: var(--rose); color: white; }
+  .top-issues th {
+    text-align: left;
+    padding: 10px 14px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .top-issues td {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+  }
+  .top-issues tr:last-child td { border-bottom: none; }
+  .top-issues td:nth-child(1) { width: 40px; font-weight: 700; color: var(--rose); font-family: 'IBM Plex Mono', monospace; }
+  .top-issues td:nth-child(2) { width: 110px; font-size: 12px; color: var(--muted); }
+  .top-issues td code {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11.5px;
+    background: var(--zinc-bg);
+    padding: 1px 6px;
+    border-radius: 3px;
+  }
+
+  /* ACTION PLAN */
+  .action-plan {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    counter-reset: action;
+  }
+  .action-plan li {
+    background: var(--paper);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--emerald);
+    border-radius: 0 8px 8px 0;
+    padding: 14px 18px 14px 56px;
+    margin-bottom: 10px;
+    position: relative;
+    counter-increment: action;
+  }
+  .action-plan li::before {
+    content: counter(action);
+    position: absolute;
+    left: 16px;
+    top: 14px;
+    width: 28px;
+    height: 28px;
+    background: var(--emerald);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 13px;
+  }
+  .action-plan strong { display: block; margin-bottom: 2px; font-weight: 600; }
+  .action-plan span { color: var(--muted); font-size: 13px; }
+  .action-plan .effort {
+    display: inline-block;
+    margin-top: 6px;
+    font-size: 11px;
+    color: var(--blue);
+    background: var(--blue-bg);
+    padding: 1px 8px;
+    border-radius: 4px;
+    font-weight: 500;
+  }
+
+  /* PRINT */
+  @media print {
+    body { background: white; }
+    .page { box-shadow: none; max-width: none; padding: 0; }
+    .standard, .finding { page-break-inside: avoid; }
+    h2 { page-break-after: avoid; }
+    .print-btn { display: none; }
+  }
+
+  .print-btn {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: var(--text);
+    color: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 14px;
+    border: none;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  }
+
+  @media (max-width: 720px) {
+    .page { padding: 28px 18px 60px; }
+    .verdict-stats { grid-template-columns: repeat(2, 1fr); }
+    .top-issues { font-size: 12px; }
+    .top-issues td { padding: 8px 10px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <div class="doc-header">
+    <span class="stamp">CONFIDENTIAL · INTERNAL AUDIT</span>
+    <h1>รายงานการตรวจสอบความสอดคล้องระบบบัญชี</h1>
+    <p class="sub">ตรวจสอบระบบ BESTCHOICE FINANCE Phase A.4 ตามมาตรฐาน 4 หลัก: TFRS 9, TFRS 15, Accrual VAT, ปพพ. ม.386</p>
+    <div class="doc-meta">
+      <span><strong>วันที่ตรวจสอบ:</strong> 8 พ.ค. 2568</span>
+      <span><strong>วันที่แก้เสร็จ:</strong> 8 พ.ค. 2568 (Wave 1-4 complete)</span>
+      <span><strong>ขอบเขต:</strong> JE templates, services, cron jobs, fixture compliance</span>
+    </div>
+  </div>
+
+  <!-- WAVE STATUS BANNER -->
+  <div style="background: #ecfdf5; border: 2px solid #047857; border-radius: 12px; padding: 20px 24px; margin-bottom: 28px;">
+    <div style="font-size: 13px; font-weight: 700; color: #047857; letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 8px;">REMEDIATION COMPLETE</div>
+    <div style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">Wave 1-4 ดำเนินการเสร็จ — 25 commits / 4 waves</div>
+    <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+      <tr style="border-bottom: 1px solid #a7f3d0;">
+        <td style="padding: 6px 0;"><strong>Wave 1 (P0)</strong></td>
+        <td>7 Critical · atomicity + 2A residual + JP5 split + provision consume + Bad Debt Decimal</td>
+        <td style="text-align: right; color: #047857; font-weight: 600;">10 commits ✓</td>
+      </tr>
+      <tr style="border-bottom: 1px solid #a7f3d0;">
+        <td style="padding: 6px 0;"><strong>Wave 2 (P1)</strong></td>
+        <td>4 Critical · VAT 60-day fix + JP5 credit note + JP4 VAT discount + Reschedule atomic</td>
+        <td style="text-align: right; color: #047857; font-weight: 600;">4 commits ✓</td>
+      </tr>
+      <tr style="border-bottom: 1px solid #a7f3d0;">
+        <td style="padding: 6px 0;"><strong>Wave 3 (P2)</strong></td>
+        <td>3 Critical + 4 Warning · tag fix + i18n + payment guard + auth + RESCHEDULE wiring + audit PII</td>
+        <td style="text-align: right; color: #047857; font-weight: 600;">4 commits ✓</td>
+      </tr>
+      <tr>
+        <td style="padding: 6px 0;"><strong>Wave 4 (P3)</strong></td>
+        <td>1 Warning + Info · Bad Debt cron + timezone + as any cleanup + legal comments + EIR memo</td>
+        <td style="text-align: right; color: #047857; font-weight: 600;">3 commits ✓</td>
+      </tr>
+    </table>
+    <div style="margin-top: 14px; font-size: 13px; color: #065f46;">
+      <strong>Pending owner action:</strong> CPA hearing สำหรับ TFRS 15 §60-65 EIR decision · ดู <a href="eir-decision-memo.md" style="color: #047857;">eir-decision-memo.md</a>
+    </div>
+  </div>
+
+  <!-- VERDICT -->
+  <div class="verdict">
+    <span class="verdict-grade">FAIL</span>
+    <h2>ระบบยังไม่พร้อมใช้งานจริงตามมาตรฐาน 4 หลัก</h2>
+    <p class="verdict-sub">มีประเด็นสำคัญ 15 ข้อที่ขัดต่อ TFRS / กฎหมายภาษี / กฎหมายแพ่ง · ต้องแก้ Critical ทุกข้อก่อน go-live ขายผ่อน</p>
+    <div class="verdict-stats">
+      <div class="stat stat-critical"><div class="num">15</div><div class="label">Critical</div></div>
+      <div class="stat stat-warning"><div class="num">17</div><div class="label">Warning</div></div>
+      <div class="stat stat-info"><div class="num">11</div><div class="label">Info</div></div>
+      <div class="stat stat-total"><div class="num">43</div><div class="label">Total Findings</div></div>
+    </div>
+  </div>
+
+  <!-- TOP CRITICAL -->
+  <section>
+    <h2><span class="badge">TOP</span>10 ปัญหาสำคัญที่สุด — เรียงตามผลกระทบ</h2>
+    <table class="top-issues">
+      <thead>
+        <tr><th>#</th><th>มาตรฐาน</th><th>ปัญหา</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>1</td><td>ปพพ.392 + TFRS</td>
+          <td><strong>JP5 (ยึดเครื่อง) Non-atomic</strong> — contract status `CLOSED_BAD_DEBT` commit แต่ JE ใช้ <code>.catch()</code> fire-and-forget · ถ้า JE crash ลูกหนี้ค้างในบัญชีตลอดกาล ขัด ปพพ.392 (กลับสู่ฐานะเดิม)</td>
+        </tr>
+        <tr>
+          <td>2</td><td>ม.82/5 + 36/2536</td>
+          <td><strong>JP5 ไม่ออกใบลดหนี้ VAT</strong> — งวดที่นำส่ง ภ.พ.30 ไปแล้วต้องคืน VAT แต่ระบบไม่มีกระบวนการ Credit Note · เสี่ยงโดนปรับ 2× ตาม ม.89</td>
+        </tr>
+        <tr>
+          <td>3</td><td>ม.82/3</td>
+          <td><strong>JP5 Double-credit VAT</strong> — งวดที่ Template 2A run แล้ว (Cr 21-2101) JP5 ยัง Cr 21-2101 ซ้ำอีก → ภ.พ.30 รายงานเกินจริง 2 เท่า</td>
+        </tr>
+        <tr>
+          <td>4</td><td>TFRS 15 §60-65</td>
+          <td><strong>Straight-line vs Effective Interest Method</strong> — ใช้ดอกเบี้ย 500/งวดตายตัว · EIR งวดแรกควร 809.27 (ผลต่าง +61.9%) · flat rate 37.5% ไม่ผ่านเกณฑ์ "insignificant financing"</td>
+        </tr>
+        <tr>
+          <td>5</td><td>TFRS 15 §B61</td>
+          <td><strong>JP5 ไม่ consume Bad Debt Provision (11-2102)</strong> ก่อน → recognize loss ตรงเข้า 51-1102 = double-count loss</td>
+        </tr>
+        <tr>
+          <td>6</td><td>v4 Hardening</td>
+          <td><strong>Bad Debt Service ใช้ Number()</strong> ทั้ง pipeline (provision + write-off) · ขัด Decimal precision mandate · เลขในรายงานคลาดเคลื่อน</td>
+        </tr>
+        <tr>
+          <td>7</td><td>ปพพ.392</td>
+          <td><strong>Write-off JE ใช้ PrismaService ไม่ใช่ tx</strong> · contract ปิด `CLOSED_BAD_DEBT` ได้แม้ JE fail (silent error swallow) → ledger ไม่มี Cr 11-2101</td>
+        </tr>
+        <tr>
+          <td>8</td><td>TFRS 15 §31-38</td>
+          <td><strong>Balance Sheet leak</strong> — residual `11-2101 = +0.08` และ `11-2105 = -0.04` ค้างหลังจบสัญญาตลอดกาล (ไม่มี final-period adjustment ใน 2A)</td>
+        </tr>
+        <tr>
+          <td>9</td><td>ม.79 + 82/5</td>
+          <td><strong>JP4 (Early Payoff) Discount ไม่ลด VAT base</strong> — discount บนดอกเบี้ย 50% แต่ Cr 21-2101 ยังเต็มยอด → นำส่ง VAT เกิน · ไม่มี Credit Note</td>
+        </tr>
+        <tr>
+          <td>10</td><td>ม.82/3</td>
+          <td><strong>VAT 60-day doubleVat</strong> — Cr 21-2103 = 198.34 (2× vatPerInst) ตามกฎหมายควรเป็น 1× (99.17/งวด) · reconcile กับ ภ.พ.30 ไม่ตรง</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- BY STANDARD -->
+  <section>
+    <h2><span class="badge">BY-STD</span>ผลตรวจตามมาตรฐาน 4 หลัก</h2>
+
+    <!-- TFRS 15 -->
+    <div class="standard">
+      <div class="standard-head">
+        <div class="standard-name">TFRS 15 — Revenue Recognition</div>
+        <span class="verdict-pill verdict-fail">FAIL</span>
+        <div class="standard-counts">
+          <span><strong>3</strong> Critical</span>
+          <span><strong>3</strong> Warning</span>
+          <span><strong>2</strong> Info</span>
+        </div>
+      </div>
+
+      <div class="finding finding-critical">
+        <div class="finding-head"><span class="finding-tag critical">C-1</span><span class="finding-title">ไม่มี final-period rounding adjustment ใน 2A</span></div>
+        <div class="finding-body">หลัง 12 งวด: <code>11-2101 = +0.08</code> (1416.66 × 12 = 16,999.92 ≠ 17,000) · <code>11-2105 = -0.04</code> (99.17 × 12 = 1,190.04) · ค้างบัญชีตลอดกาล · BS integrity bug</div>
+        <div class="finding-ref">installment-accrual-2a.template.ts:60-63</div>
+      </div>
+
+      <div class="finding finding-critical">
+        <div class="finding-head"><span class="finding-tag critical">C-2</span><span class="finding-title">TFRS 15 §60-65 — Straight-line ≠ Effective Interest Method</span></div>
+        <div class="finding-body">EIR monthly ≈ 8.09% / annual ≈ 154% · งวดแรก EIR = 809.27 vs straight-line 500.00 (ต่าง +61.9%) · งวดสุดท้าย 99.82 vs 500.00 (ต่าง -400.18) · ที่ flat rate 37.5% ไม่ผ่าน "insignificant" exemption · ต้อง CPA ยืนยัน NPAEs simplification ก่อน</div>
+        <div class="finding-ref">installment-accrual-2a.template.ts:61</div>
+      </div>
+
+      <div class="finding finding-critical">
+        <div class="finding-head"><span class="finding-tag critical">C-3</span><span class="finding-title">Metadata tag '3' collision — ใน 3 templates</span></div>
+        <div class="finding-body">JP4, Vendor Clearance, JP5 ใช้ <code>tag: '3'</code> เหมือนกัน · audit query filter แยกไม่ออก</div>
+        <div class="finding-ref">early-payoff-jp4.template.ts:112 · vendor-clearance.template.ts:30 · repossession-jp5.template.ts:166</div>
+      </div>
+
+      <div class="finding finding-warning">
+        <div class="finding-head"><span class="finding-tag warning">W-1</span><span class="finding-title">Principal vs Agent — ไม่มี policy comment ใน code</span></div>
+        <div class="finding-body">Commission 1,000฿ ผ่าน 21-1102 (agent role) แต่ไม่มี comment ระบุ TFRS 15 §B34-B38 justification · ถ้า auditor ถามไม่มีหลักฐานในโค้ด</div>
+      </div>
+
+      <div class="finding finding-warning">
+        <div class="finding-head"><span class="finding-tag warning">W-2</span><span class="finding-title">2B-split ใช้ JSON metadata path query — fragile</span></div>
+        <div class="finding-body"><code>sumPriorPartials</code> query JE metadata ไม่มี GIN index · slow + เสี่ยง sum ผิดถ้ามี duplicate JE</div>
+      </div>
+
+      <div class="finding finding-warning">
+        <div class="finding-head"><span class="finding-tag warning">W-3</span><span class="finding-title">JP4 คำนวณ remainingGross จาก formula ไม่ใช่ DB balance</span></div>
+        <div class="finding-body">ถ้ามี partial payment ก่อนหน้า อาจไม่ตรงกับ 11-2101 จริง · ขาด cross-check test</div>
+      </div>
+    </div>
+
+    <!-- TFRS 9 -->
+    <div class="standard">
+      <div class="standard-head">
+        <div class="standard-name">TFRS 9 — Expected Credit Loss (ECL)</div>
+        <span class="verdict-pill verdict-fail">FAIL</span>
+        <div class="standard-counts">
+          <span><strong>3</strong> Critical</span>
+          <span><strong>5</strong> Warning</span>
+          <span><strong>3</strong> Info</span>
+        </div>
+      </div>
+
+      <div class="finding finding-critical">
+        <div class="finding-head"><span class="finding-tag critical">C-1</span><span class="finding-title">Number() แทน Decimal precision</span></div>
+        <div class="finding-body"><code>Number(p.amountDue) - Number(p.amountPaid)</code> ทั้ง <code>calculateProvisions</code> + <code>writeOffBadDebt</code> · ขัด v4 hardening mandate · เลข float สะสม error</div>
+        <div class="finding-ref">bad-debt.service.ts:100-102, 350-351</div>
+      </div>
+
+      <div class="finding finding-critical">
+        <div class="finding-head"><span class="finding-tag critical">C-2</span><span class="finding-title">Write-off JE failure ไม่ rollback transaction</span></div>
+        <div class="finding-body"><code>try/catch</code> swallow error · contract status `CLOSED_BAD_DEBT` + provisions `WRITTEN_OFF` แต่ JE หาย → ledger ไม่มี Cr 11-2101</div>
+        <div class="finding-ref">bad-debt.service.ts:185-197</div>
+      </div>
+
+      <div class="finding finding-critical">
+        <div class="finding-head"><span class="finding-tag critical">C-3</span><span class="finding-title">Write-off JE ใช้ PrismaService ไม่ใช่ tx client</span></div>
+        <div class="finding-body">JE อาจ commit แม้ outer tx rollback (phantom write) · ถ้า tx rollback ภายหลัง JE ค้างใน DB</div>
+        <div class="finding-ref">bad-debt.service.ts:184-197</div>
+      </div>
+
+      <div class="finding finding-warning">
+        <div class="finding-head"><span class="finding-tag warning">W-1</span><span class="finding-title">ไม่มี automated cron — provision manual-only</span></div>
+        <div class="finding-body">ต้องกดเองทุกเดือน · monthly-close.service ไม่เรียก calculateProvisions · เสี่ยงลืม</div>
+      </div>
+
+      <div class="finding finding-warning">
+        <div class="finding-head"><span class="finding-tag warning">W-2</span><span class="finding-title">ไม่มี 3-Stage ECL classification</span></div>
+        <div class="finding-body">ใช้ aging-based simplified (NPAEs Ch.13 allow) · แต่ไม่มี comment ยืนยัน policy decision · auditor ถามไม่มีหลักฐาน</div>
+      </div>
+
+      <div class="finding finding-warning">
+        <div class="finding-head"><span class="finding-tag warning">W-3</span><span class="finding-title">Math.round() บน plain number — rounding inconsistent</span></div>
+        <div class="finding-body"><code>Math.round(data.amount * rate * 100) / 100</code> ไม่ match ROUND_DOWN/ROUND_HALF_UP ที่กำหนดใน accounting.md</div>
+      </div>
+
+      <div class="finding finding-warning">
+        <div class="finding-head"><span class="finding-tag warning">W-4</span><span class="finding-title">Provision idempotency ผ่าน JSON path filter</span></div>
+        <div class="finding-body">ไม่มี index บน metadata column · seq scan ทุกครั้ง · slow ที่ scale</div>
+      </div>
+
+      <div class="finding finding-warning">
+        <div class="finding-head"><span class="finding-tag warning">W-5</span><span class="finding-title">getProvisionSummary ใช้ Number() อีก</span></div>
+        <div class="finding-body">รายงาน UI accumulate ผ่าน float · เลขเพี้ยน</div>
+      </div>
+    </div>
+
+    <!-- VAT -->
+    <div class="standard">
+      <div class="standard-head">
+        <div class="standard-name">Accrual VAT — ป.รัษฎากร 78/1, 82/3, 82/5 + ประกาศ 36/2536</div>
+        <span class="verdict-pill verdict-fail">FAIL</span>
+        <div class="standard-counts">
+          <span><strong>3</strong> Critical</span>
+          <span><strong>3</strong> Warning</span>
+          <span><strong>3</strong> Info</span>
+        </div>
+      </div>
+
+      <div class="finding finding-critical">
+        <div class="finding-head"><span class="finding-tag critical">C-1</span><span class="finding-title">JP5 — VAT account mismatch เมื่อมี 2A accrual ก่อน</span></div>
+        <div class="finding-body">ถ้างวด N ถูก 2A accrue แล้ว (Cr 21-2101) → ลูกค้าค้าง → ยึด → JP5 พยายาม Dr 21-2102 อีก แต่ 21-2102 ถูกล้างไปแล้ว → 21-2102 ติดลบ + Cr 21-2101 ซ้ำ · ภ.พ.30 รายงาน VAT 2 เท่า</div>
+        <div class="finding-ref">repossession-jp5.template.ts:113-134 · ม.82/3 + ประกาศ 36/2536 ข้อ 3</div>
+      </div>
+
+      <div class="finding finding-critical">
+        <div class="finding-head"><span class="finding-tag critical">C-2</span><span class="finding-title">JP5 — ไม่ออกใบลดหนี้ (Credit Note) ตาม ม.82/5</span></div>
+        <div class="finding-body">ยึดเครื่อง = ยกเลิกสัญญาบางส่วน (ประกาศ 36/2536 ข้อ 2(6)) ต้องออก Credit Note ภายใน 30 วัน · ระบบไม่มี mechanism · ถ้าสรรพากรตรวจ → ปรับ 2× ตาม ม.89</div>
+        <div class="finding-ref">repossession-jp5.template.ts (ทั้งไฟล์)</div>
+      </div>
+
+      <div class="finding finding-critical">
+        <div class="finding-head"><span class="finding-tag critical">C-3</span><span class="finding-title">VAT 60-day Mandatory — doubleVat = 2× vatPerInst</span></div>
+        <div class="finding-body">Cr 21-2103 = 198.34 ตามกฎหมายควรเป็น 99.17 (1×/งวด) · ม.82/3 ระบุความรับผิด 1 ครั้ง/งวด · ภ.พ.30 reconcile ไม่ได้</div>
+        <div class="finding-ref">vat-60day-mandatory.template.ts:56,87 · ม.82/3</div>
+      </div>
+
+      <div class="finding finding-warning">
+        <div class="finding-head"><span class="finding-tag warning">W-1</span><span class="finding-title">ไม่มีกระบวนการออกใบกำกับภาษีต่องวด</span></div>
+        <div class="finding-body">ประกาศ 36/2536 ข้อ 4 — ผู้ขายผ่อนต้องออกใบกำกับทุกงวด · 2A รับรู้ VAT ใน 21-2101 แต่ไม่ผูก invoice number · ถ้าสรรพากรขอ ภ.พ.30 reconciliation ไม่มีหลักฐาน</div>
+      </div>
+
+      <div class="finding finding-warning">
+        <div class="finding-head"><span class="finding-tag warning">W-2</span><span class="finding-title">ภ.พ.30 Preview ไม่ตรงกับ 21-2101 balance</span></div>
+        <div class="finding-body"><code>previewPP30()</code> นับ payment.vatAmount แต่ 2A Cr 21-2101 ตอน dueDate (ก่อนชำระ) · มีช่วงเวลาที่ 21-2101 มียอดแต่ payment ยังไม่เกิด</div>
+      </div>
+
+      <div class="finding finding-warning">
+        <div class="finding-head"><span class="finding-tag warning">W-3</span><span class="finding-title">JP4 Discount ไม่ลด VAT base</span></div>
+        <div class="finding-body">ลดดอกเบี้ย 50% (1,500฿) แต่ Cr 21-2101 ยังเต็ม · ม.79 ระบุฐาน VAT = "ราคาที่ได้รับจริง" · ต้อง Credit Note (ม.82/5)</div>
+      </div>
+    </div>
+
+    <!-- ปพพ.386 -->
+    <div class="standard">
+      <div class="standard-head">
+        <div class="standard-name">ปพพ. ม.386 — บอกเลิกสัญญา (+ ม.392-393)</div>
+        <span class="verdict-pill verdict-fail">FAIL</span>
+        <div class="standard-counts">
+          <span><strong>6</strong> Critical</span>
+          <span><strong>6</strong> Warning</span>
+          <span><strong>3</strong> Info</span>
+        </div>
+      </div>
+
+      <div class="finding finding-critical">
+        <div class="finding-head"><span class="finding-tag critical">C-1</span><span class="finding-title">JP5 Fire-and-forget — Non-atomic termination</span></div>
+        <div class="finding-body">JP5 call นอก outer <code>$transaction</code> ด้วย <code>.catch()</code> · contract.status = CLOSED_BAD_DEBT + product.status = REPOSSESSED commit แต่ HP Receivable derecognition ไม่เกิด · ขัด ปพพ.392 (กลับสู่ฐานะเดิม)</div>
+        <div class="finding-ref">repossessions.service.ts:286 · ปพพ.392 + TFRS 15 §B61</div>
+      </div>
+
+      <div class="finding finding-critical">
+        <div class="finding-head"><span class="finding-tag critical">C-2</span><span class="finding-title">JP5 — VAT treatment ไม่มี legal opinion comment</span></div>
+        <div class="finding-body">Cr 21-2101 = 793.36 = remainingDeferredVat · semantic confusion: ยึดเครื่องไม่ใช่ "ส่งมอบสำเร็จ" · ต้องอ้างอิงประกาศ 36/2536 ข้อ 2(6) ใน comment</div>
+      </div>
+
+      <div class="finding finding-critical">
+        <div class="finding-head"><span class="finding-tag critical">C-3</span><span class="finding-title">JP5 ไม่ห่อ $transaction</span></div>
+        <div class="finding-body">JP4 ห่อใน $transaction · JP5 ไม่ · ถ้า JE สำเร็จแต่ caller-side fail → state mismatch</div>
+      </div>
+
+      <div class="finding finding-critical">
+        <div class="finding-head"><span class="finding-tag critical">C-4</span><span class="finding-title">JP5 ไม่ consume Bad Debt Provision (11-2102) ก่อน</span></div>
+        <div class="finding-body">TFRS §B61-B63 + TAS 36 — มี provision ต้องใช้ก่อน · template recognize loss (Dr 51-1102) ตรงเลย → double-count loss</div>
+      </div>
+
+      <div class="finding finding-critical">
+        <div class="finding-head"><span class="finding-tag critical">C-5</span><span class="finding-title">JP4 — Settlement VAT ไม่ลดตาม discount</span></div>
+        <div class="finding-body">Discount บนดอกเบี้ย แต่ VAT base (ม.79) ไม่ลด · ต้อง Credit Note ตาม ม.86/10</div>
+      </div>
+
+      <div class="finding finding-critical">
+        <div class="finding-head"><span class="finding-tag critical">C-6</span><span class="finding-title">Defect Exchange — ไม่ guard payment-after-void</span></div>
+        <div class="finding-body">ภายใน 7 วันถ้าลูกค้าจ่ายแล้ว template skip 2B reversal · payment record ค้าง · ต้อง enforce "ห้ามจ่ายระหว่าง 7 วัน" prerequisite</div>
+      </div>
+
+      <div class="finding finding-warning">
+        <div class="finding-head"><span class="finding-tag warning">W-1</span><span class="finding-title">1A Contract Activation ก็ Fire-and-forget เหมือนกัน</span></div>
+        <div class="finding-body">contract-workflow.service.ts:462 · TODO "Phase A.5: refactor" ค้าง · ถ้า 1A JE crash → ลูกหนี้ไม่ถูกตั้งใน ledger แต่ contract activated</div>
+      </div>
+
+      <div class="finding finding-warning">
+        <div class="finding-head"><span class="finding-tag warning">W-2</span><span class="finding-title">JP5 idempotency หาย</span></div>
+        <div class="finding-body">ถ้า call ซ้ำ post JE ซ้ำ · ไม่มี uniqueness check ใน JournalAutoService</div>
+      </div>
+
+      <div class="finding finding-warning">
+        <div class="finding-head"><span class="finding-tag warning">W-3</span><span class="finding-title">Receipt Void — ไม่มี authorization check</span></div>
+        <div class="finding-body">ไม่ตรวจ role · ใครก็ void ใบเสร็จได้ · ต้อง audit trail</div>
+      </div>
+
+      <div class="finding finding-warning">
+        <div class="finding-head"><span class="finding-tag warning">W-4</span><span class="finding-title">JP6 — description hardcode English</span></div>
+        <div class="finding-body">'Reschedule fee advance receipt' · ขัด coding-standards (UI text ภาษาไทย)</div>
+      </div>
+
+      <div class="finding finding-warning">
+        <div class="finding-head"><span class="finding-tag warning">W-5</span><span class="finding-title">JP6 ไม่ update due_date ของ installment_schedules</span></div>
+        <div class="finding-body">CSV กำหนดชัด · template ทำแค่ JE side · cron 2A อาจ post accrual วันผิด</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ACTION PLAN -->
+  <section>
+    <h2><span class="badge">FIX</span>แผนแก้ไข — เรียงตามลำดับความเร่งด่วน</h2>
+    <ol class="action-plan">
+      <li>
+        <strong>P0 — ห่อทุก JE call ใน $transaction พร้อม business operation</strong>
+        <span>JP5, JP4, 1A, Bad Debt Write-off · เปลี่ยน <code>.catch()</code> fire-and-forget → atomic transaction · ส่ง <code>tx</code> client เข้า template ทุกตัว</span>
+        <span class="effort">~1 วัน · แก้ 4 caller + 19 templates accept tx param</span>
+      </li>
+      <li>
+        <strong>P0 — แก้ JP5 VAT logic แยกงวดที่ accrued vs deferred</strong>
+        <span>เพิ่มเงื่อนไข check <code>installmentSchedule.accrualJournalEntryId</code> · สำหรับงวดที่ accrued แล้ว Dr 11-2103 ไม่ Cr 21-2101 ซ้ำ</span>
+        <span class="effort">~0.5 วัน · ต้อง regenerate CSV golden</span>
+      </li>
+      <li>
+        <strong>P0 — เพิ่มกระบวนการออกใบลดหนี้ (Credit Note)</strong>
+        <span>JP5 + JP4 (กรณีมี discount) · ออก document + adjust 21-2101 · ภายใน 30 วัน (ม.82/5)</span>
+        <span class="effort">~2 วัน · ต้องหารือ CPA ว่า JE pattern ใหม่ถูกหรือไม่</span>
+      </li>
+      <li>
+        <strong>P1 — แก้ VAT 60-day doubleVat = 2× → 1×</strong>
+        <span>Cr 21-2103 ควรเป็น vatPerInst (99.17) ไม่ใช่ doubleVat (198.34) · ปรับ Dr ฝั่งให้สมดุล</span>
+        <span class="effort">~2 ชม. · ต้อง CPA review ตรรกะ</span>
+      </li>
+      <li>
+        <strong>P1 — แก้ Bad Debt Service ใช้ Prisma.Decimal ทั้ง pipeline</strong>
+        <span>ทุก <code>Number()</code> → <code>.add()/.sub()/.mul()</code> · sync กับ v4 hardening mandate</span>
+        <span class="effort">~0.5 วัน</span>
+      </li>
+      <li>
+        <strong>P1 — เพิ่ม final-period adjustment ใน 2A</strong>
+        <span>ถ้า <code>installmentNo === totalMonths</code> → ปรับ residual ของ 11-2101 และ 11-2105 ให้เป็น 0 แน่นอน · ใช้ DB balance แทน formula</span>
+        <span class="effort">~0.5 วัน</span>
+      </li>
+      <li>
+        <strong>P1 — JP5 consume Bad Debt Provision (11-2102) ก่อน recognize loss</strong>
+        <span>เพิ่ม logic ตรวจ provision balance · Dr 11-2102 ก่อน · ส่วนเกินค่อยเข้า 51-1102</span>
+        <span class="effort">~0.5 วัน</span>
+      </li>
+      <li>
+        <strong>P1 — JP4 ลด VAT base ตาม discount</strong>
+        <span>Cr 21-2101 = (remaining - discount portion) × 7% · ออก Credit Note ตาม ม.86/10</span>
+        <span class="effort">~0.5 วัน · ต้อง CPA confirm</span>
+      </li>
+      <li>
+        <strong>P1 — JP6 update installment_schedules.due_date</strong>
+        <span>service ต้อง UPDATE due_date ก่อน post JE · ป้องกัน cron 2A post วันผิด</span>
+        <span class="effort">~0.5 วัน</span>
+      </li>
+      <li>
+        <strong>P2 — แก้ tag '3' collision ใน metadata</strong>
+        <span>JP4 → 'JP4' · VendorClearance → 'VC' · JP5 → 'JP5' · audit query แยกออกจากกันได้</span>
+        <span class="effort">~1 ชม.</span>
+      </li>
+      <li>
+        <strong>P2 — Defect Exchange enforce no-payment guard</strong>
+        <span>Service ตรวจ <code>contract.payments.count() === 0</code> ก่อน reverse · ถ้ามี payment → reject + alert</span>
+        <span class="effort">~1 ชม.</span>
+      </li>
+      <li>
+        <strong>P2 — Receipt Void authorization check</strong>
+        <span>เพิ่ม <code>userId</code> + role guard (OWNER/ACCOUNTANT) · audit log บันทึกผู้ void</span>
+        <span class="effort">~1 ชม.</span>
+      </li>
+      <li>
+        <strong>P3 — เพิ่ม automated bad debt cron + monthly close integration</strong>
+        <span>monthly-close.service เรียก calculateProvisions อัตโนมัติ · ป้องกันลืม</span>
+        <span class="effort">~2 ชม.</span>
+      </li>
+      <li>
+        <strong>P3 — เพิ่มกระบวนการออกใบกำกับภาษีต่องวด (e-invoice)</strong>
+        <span>ผูก invoice number กับ 2A JE ทุกงวด · เก็บใน document module</span>
+        <span class="effort">~2 วัน · feature ใหม่</span>
+      </li>
+      <li>
+        <strong>P3 — TFRS 15 §60-65 Decision: Effective Interest Method</strong>
+        <span>หารือ CPA ว่าจะ implement EIR หรือ document NPAEs simplification ใน policy memo · update JE template ถ้าจำเป็น</span>
+        <span class="effort">ขึ้นกับ CPA · 0–5 วัน implement</span>
+      </li>
+    </ol>
+  </section>
+
+  <!-- BOTTOM LINE -->
+  <section>
+    <h2><span class="badge">CONCLUSION</span>สรุป</h2>
+    <div style="background: var(--rose-bg); border: 1px solid var(--rose); border-radius: 10px; padding: 22px 26px;">
+      <p style="margin: 0 0 12px;"><strong>ระบบยังไม่ควร go-live ขายผ่อนจริงในสถานะปัจจุบัน</strong></p>
+      <p style="margin: 0 0 12px;">มี 15 ประเด็น Critical ที่ขัดต่อ TFRS / กฎหมายภาษี / กฎหมายแพ่ง · ส่วนใหญ่เกี่ยวกับ <strong>atomicity</strong> (JE fire-and-forget), <strong>VAT compliance</strong> (Credit Note หาย, double-count), และ <strong>termination flow</strong> (ยึดเครื่อง / ปิดยอดก่อน)</p>
+      <p style="margin: 0;">ต้องแก้ <strong>P0 + P1 (9 ข้อ)</strong> ก่อนเปิดให้ลูกค้าจริง · ใช้เวลาประมาณ <strong>5-7 วัน</strong> ของทีม dev · หลังแก้ต้อง regenerate CSV golden values + run E2E ผ่าน 7 cases ครบทั้งหมด</p>
+    </div>
+  </section>
+
+  <div style="margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--border); color: var(--subtle); font-size: 12px; text-align: center;">
+    Audit ทำโดย 4 parallel deep-verify agents (TFRS 15 / TFRS 9 / VAT / ปพพ.386) · อ่านโค้ดจริง 19 templates · เปรียบเทียบ 7 CSV golden cases<br>
+    เอกสารนี้เป็น internal report · ก่อนยึดถือเป็น final assessment ควรให้ CPA review อีกครั้ง
+  </div>
+
+</div>
+
+<button class="print-btn" onclick="window.print()">Print / Save PDF</button>
+
+</body>
+</html>

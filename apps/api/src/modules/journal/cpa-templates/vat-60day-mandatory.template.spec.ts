@@ -56,7 +56,7 @@ async function setup() {
 }
 
 describe('Vat60dayMandatoryTemplate', () => {
-  it('posts the correct double-entry JE (vatPerInst=99.17)', async () => {
+  it('posts VAT 60-day liability at 1x vatPerInst (per ม.82/3)', async () => {
     const { inst, journal } = await setup();
 
     // Backdate installment dueDate to 70 days ago (past the 60-day threshold)
@@ -77,28 +77,30 @@ describe('Vat60dayMandatoryTemplate', () => {
       include: { lines: true },
     });
 
-    const line5101 = entry.lines.find((l) => l.accountCode === '51-1101');
     const line1124 = entry.lines.find((l) => l.accountCode === '11-2104');
     const line2123 = entry.lines.find((l) => l.accountCode === '21-2103');
 
-    expect(line5101).toBeDefined();
+    // Per Option A (ม.82/3): receivable + liability only — NO P&L expense
     expect(line1124).toBeDefined();
     expect(line2123).toBeDefined();
 
-    // vatPerInst = 1190 / 12 = 99.1666... rounded HALF_UP → 99.17
-    expect(new Decimal(line5101!.debit.toString()).toFixed(2)).toBe('99.17');
-    expect(new Decimal(line5101!.credit.toString()).toFixed(2)).toBe('0.00');
+    // 51-1101 must NOT exist (no expense recognition — customer still owes)
+    const line5101 = entry.lines.find((l) => l.accountCode === '51-1101');
+    expect(line5101).toBeUndefined();
 
+    // vatPerInst = 1190 / 12 = 99.1666... rounded HALF_UP → 99.17
     expect(new Decimal(line1124!.debit.toString()).toFixed(2)).toBe('99.17');
     expect(new Decimal(line1124!.credit.toString()).toFixed(2)).toBe('0.00');
 
+    // Cr 21-2103 = 1× vatPerInst (99.17), NOT 2× (198.34) — fixes audit Wave 2 P1
     expect(new Decimal(line2123!.debit.toString()).toFixed(2)).toBe('0.00');
-    expect(new Decimal(line2123!.credit.toString()).toFixed(2)).toBe('198.34');
+    expect(new Decimal(line2123!.credit.toString()).toFixed(2)).toBe('99.17');
 
     // Verify balanced: total Dr = total Cr
     const totalDr = entry.lines.reduce((s, l) => s.plus(l.debit.toString()), new Decimal(0));
     const totalCr = entry.lines.reduce((s, l) => s.plus(l.credit.toString()), new Decimal(0));
     expect(totalDr.toFixed(2)).toBe(totalCr.toFixed(2));
+    expect(totalDr.toFixed(2)).toBe('99.17');
 
     // Verify installment now has vat60dayJournalEntryId set
     const updatedInst = await prisma.installmentSchedule.findUniqueOrThrow({
@@ -166,8 +168,28 @@ describe('Vat60dayMandatoryTemplate', () => {
 
     // Standard 17K contract: financed=10000, commission=1000 (10%), interest=6000 → gross=17000 → VAT=1190
     // vatPerInst = 1190 / 12 = 99.1666... → 99.17
-    const line5101 = entry.lines.find((l) => l.accountCode === '51-1101');
-    expect(new Decimal(line5101!.debit.toString()).toFixed(2)).toBe('99.17');
+    // Per Option A: Dr 11-2104 / Cr 21-2103 (no 51-1101 expense)
+    const line1124 = entry.lines.find((l) => l.accountCode === '11-2104');
+    expect(new Decimal(line1124!.debit.toString()).toFixed(2)).toBe('99.17');
+  });
+
+  it('persists vatPerInst on metadata for the reversal to mirror exactly (Wave 1 P0 — drift fix)', async () => {
+    const { inst, journal } = await setup();
+    await prisma.installmentSchedule.update({
+      where: { id: inst.id },
+      data: { dueDate: new Date(Date.now() - 70 * 24 * 60 * 60 * 1000) },
+    });
+
+    const tmpl = new Vat60dayMandatoryTemplate(journal, prisma as any);
+    const result = await tmpl.execute(inst.id);
+    expect(result).not.toBeNull();
+
+    const entry = await prisma.journalEntry.findFirstOrThrow({
+      where: { metadata: { path: ['tag'], equals: 'VAT60-MANDATORY' } } as any,
+    });
+    const meta = entry.metadata as Record<string, unknown>;
+    expect(typeof meta.vatPerInst).toBe('string');
+    expect(meta.vatPerInst).toBe('99.17');
   });
 
   it('is idempotent — returns null if already processed', async () => {

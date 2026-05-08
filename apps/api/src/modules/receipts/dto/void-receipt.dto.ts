@@ -1,10 +1,12 @@
-import { IsString, IsOptional } from 'class-validator';
+import { IsString } from 'class-validator';
 
 export class VoidReceiptDto {
   @IsString({ message: 'กรุณาระบุเหตุผลในการยกเลิก' })
   reason: string;
 
-  @IsOptional()
-  @IsString()
-  approvedById?: string; // ผู้อนุมัติการยกเลิก (���้าไม่ระบุ = ผู้ร้องขอเอง สำหรับ OWNER)
+  // Segregation of duties: must be a different user from the requester.
+  // OWNER bypass removed — every void requires an independent approver
+  // to prevent fraud (one person cannot both request and approve).
+  @IsString({ message: 'กรุณาระบุผู้อนุมัติการยกเลิก' })
+  approvedById: string;
 }

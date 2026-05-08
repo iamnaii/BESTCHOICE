@@ -64,7 +64,7 @@ async function setup() {
 }
 
 describe('Vat60dayReversalTemplate', () => {
-  it('posts the correct reversal JE (vatPerInst=99.17)', async () => {
+  it('mirrors mandatory at 1x vatPerInst (per ม.82/3)', async () => {
     const { inst, journal } = await setup();
 
     const reversal = new Vat60dayReversalTemplate(journal, prisma as any);
@@ -80,29 +80,28 @@ describe('Vat60dayReversalTemplate', () => {
     });
 
     const line2123 = entry.lines.find((l) => l.accountCode === '21-2103');
-    const line5115 = entry.lines.find((l) => l.accountCode === '51-1105');
     const line1124 = entry.lines.find((l) => l.accountCode === '11-2104');
 
     expect(line2123).toBeDefined();
-    expect(line5115).toBeDefined();
     expect(line1124).toBeDefined();
 
-    // Dr 21-2103 = 198.34 (doubleVat)
-    expect(new Decimal(line2123!.debit.toString()).toFixed(2)).toBe('198.34');
+    // 51-1105 must NOT exist (mandatory had no 51-1101 expense to reverse)
+    const line5115 = entry.lines.find((l) => l.accountCode === '51-1105');
+    expect(line5115).toBeUndefined();
+
+    // Dr 21-2103 = 1× vatPerInst (99.17), mirrors mandatory Cr 21-2103 = 99.17
+    expect(new Decimal(line2123!.debit.toString()).toFixed(2)).toBe('99.17');
     expect(new Decimal(line2123!.credit.toString()).toFixed(2)).toBe('0.00');
 
-    // Cr 51-1105 = 99.17
-    expect(new Decimal(line5115!.debit.toString()).toFixed(2)).toBe('0.00');
-    expect(new Decimal(line5115!.credit.toString()).toFixed(2)).toBe('99.17');
-
-    // Cr 11-2104 = 99.17
+    // Cr 11-2104 = 99.17 (clears the receivable mandatory recorded)
     expect(new Decimal(line1124!.debit.toString()).toFixed(2)).toBe('0.00');
     expect(new Decimal(line1124!.credit.toString()).toFixed(2)).toBe('99.17');
 
-    // Balanced
+    // Balanced at 1×
     const totalDr = entry.lines.reduce((s, l) => s.plus(l.debit.toString()), new Decimal(0));
     const totalCr = entry.lines.reduce((s, l) => s.plus(l.credit.toString()), new Decimal(0));
     expect(totalDr.toFixed(2)).toBe(totalCr.toFixed(2));
+    expect(totalDr.toFixed(2)).toBe('99.17');
   });
 
   it('clears vat60dayJournalEntryId after reversal', async () => {

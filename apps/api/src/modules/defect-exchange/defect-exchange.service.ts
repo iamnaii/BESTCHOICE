@@ -131,6 +131,24 @@ export class DefectExchangeService {
           throw new BadRequestException(`ไม่เข้าเกณฑ์: ${elig.reasons.join(', ')}`);
         }
 
+        // Wave 3 T2 (ปพพ.386 C-6): Defect Exchange ไม่อนุญาตถ้ามี Payment record
+        // ใดๆ บนสัญญาเดิม. การชำระเงินแม้แต่งวดเดียว → ลูกค้าได้รับประโยชน์
+        // จากการครอบครอง → ไม่ใช่ "เครื่องตำหนิ" ที่จะคืนได้ตามกฎหมาย.
+        // ต้องยกเลิกการชำระก่อนถึงจะ exchange ได้.
+        const paidPaymentCount = await tx.payment.count({
+          where: {
+            contractId: dto.oldContractId,
+            deletedAt: null,
+            OR: [{ status: 'PAID' }, { amountPaid: { gt: 0 } }],
+          },
+        });
+        if (paidPaymentCount > 0) {
+          throw new BadRequestException(
+            'ไม่สามารถเปลี่ยนเครื่องตำหนิได้ — มีรายการชำระเงินแล้ว ' +
+              `(${paidPaymentCount} รายการ) · กรุณายกเลิก/คืนเงินค่างวดก่อน`,
+          );
+        }
+
         const oldContract = await tx.contract.findUnique({
           where: { id: dto.oldContractId },
           include: { product: true, payments: true },
@@ -155,14 +173,11 @@ export class DefectExchangeService {
           data: { status: 'DEFECT_RETURN' },
         });
 
-        // Phase A.5a: reverse all JEs for the old contract (non-blocking)
-        try {
-          await this.defectExchangeReversalTemplate.reverseContract(oldContract.id);
-        } catch (err) {
-          this.logger.error(
-            `[A.5a] Defect exchange reversal JE failed for contract ${oldContract.contractNumber}: ${(err as Error).message}`,
-          );
-        }
+        // Phase A.5a: reverse all JEs for the old contract.
+        // Must run in the same outer tx so an exchange that fails to
+        // reverse cleanly rolls back the contract status update — never
+        // leaves a contract DEFECT_EXCHANGED with old JEs still active.
+        await this.defectExchangeReversalTemplate.reverseContract(oldContract.id, tx);
 
         // Total paid by customer on old contract = down payment + sum of installment payments received
         const paidInstallments = oldContract.payments

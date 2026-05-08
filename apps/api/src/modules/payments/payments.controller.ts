@@ -13,7 +13,6 @@ import {
   Req,
   Inject,
   forwardRef,
-  NotFoundException,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { ApiTags, ApiBearerAuth , ApiOperation} from '@nestjs/swagger';
@@ -30,7 +29,7 @@ import { UserThrottlerGuard } from '../../guards/user-throttler.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { PaySolutionsService } from '../paysolutions/paysolutions.service';
-import { PrismaService } from '../../prisma/prisma.service';
+import { RescheduleService } from '../installments/reschedule.service';
 
 class CreatePartialQrDto {
   @IsNumber()
@@ -47,7 +46,7 @@ export class PaymentsController {
     private paymentsService: PaymentsService,
     @Inject(forwardRef(() => PaySolutionsService))
     private paySolutionsService: PaySolutionsService,
-    private prisma: PrismaService,
+    private rescheduleService: RescheduleService,
   ) {}
 
   @Get('pending')
@@ -146,16 +145,38 @@ export class PaymentsController {
     @Body() dto: RecordPaymentDto,
     @CurrentUser() user: { id: string; role: string; branchId: string | null },
   ) {
-    // RESCHEDULE case stub — wizard preview works, but actual execution routes to /contracts/:id/reschedule
-    // TODO: wire to RescheduleService.execute() + RescheduleJP6Template in a follow-up PR
-    if ((dto as any).case === 'RESCHEDULE') {
-      throw new BadRequestException(
-        'การปรับดิวผ่าน wizard ยังไม่พร้อม — ใช้หน้า /contracts/:id/reschedule แทน (TODO)',
-      );
-    }
-
     // Validate branch access: SALES and BRANCH_MANAGER can only record for their branch
     await this.paymentsService.validateBranchAccess(dto.contractId, user);
+
+    // ── RESCHEDULE case (Wave 3 / T3) ─────────────────────────────────────────
+    // Per CSV golden case-6a/6b: "Step 1 — UPDATE DB (ไม่มี Journal)".
+    // RescheduleService.execute() shifts due_dates + reduces last installment
+    // amountDue by fee + writes RESCHEDULE AuditLog atomically.
+    // The JP6 JE post happens later when the customer actually pays — split-pay
+    // (6a) sends a fee-advance receipt, bundled (6b) bundles fee + installment
+    // in the next normal recordPayment call. Both flows are dispatched by
+    // payments.service.previewJournal / recordPayment using `splitMode`.
+    if (dto.case === 'RESCHEDULE') {
+      if (!dto.daysToShift || dto.daysToShift < 1) {
+        throw new BadRequestException('กรุณาระบุจำนวนวันที่เลื่อน (daysToShift) มากกว่า 0');
+      }
+      const variant = dto.splitMode === 'SPLIT' ? '6a' : '6b';
+      const result = await this.rescheduleService.execute({
+        contractId: dto.contractId,
+        fromInstallmentNo: dto.installmentNo,
+        daysToShift: dto.daysToShift,
+        userId: user.id,
+        variant,
+      });
+      return {
+        success: true,
+        case: 'RESCHEDULE',
+        variant,
+        rescheduleFee: result.rescheduleFee.toFixed(2),
+        shiftedInstallmentCount: result.shiftedInstallmentIds.length,
+        shiftedInstallmentIds: result.shiftedInstallmentIds,
+      };
+    }
 
     // Wizard step 3 fields: wizardMethod/referenceNumber/slipUrl/memo map to existing recordPayment params.
     // slipUrl → evidenceUrl, referenceNumber → transactionRef, memo → notes (merged)
@@ -305,27 +326,12 @@ export class PaymentsController {
   @Get(':id/partial-qr/active')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   async getActivePartialQr(@Param('id', ParseUUIDPipe) id: string) {
-    return this.prisma.partialPaymentLink.findFirst({
-      where: {
-        paymentId: id,
-        status: 'ACTIVE',
-        expiresAt: { gt: new Date() },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    return this.paymentsService.getActivePartialQr(id);
   }
 
   @Delete(':id/partial-qr')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   async cancelPartialQr(@Param('id', ParseUUIDPipe) id: string) {
-    const link = await this.prisma.partialPaymentLink.findFirst({
-      where: { paymentId: id, status: 'ACTIVE' },
-      orderBy: { createdAt: 'desc' },
-    });
-    if (!link) throw new NotFoundException('ไม่มี QR ที่กำลังใช้งานอยู่');
-    return this.prisma.partialPaymentLink.update({
-      where: { id: link.id },
-      data: { status: 'CANCELLED', cancelledAt: new Date() },
-    });
+    return this.paymentsService.cancelActivePartialQr(id);
   }
 }

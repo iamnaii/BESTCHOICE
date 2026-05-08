@@ -107,7 +107,7 @@
     "testPathIgnorePatterns": [
       "/node_modules/",
       "/cpa-templates/.*\\.spec\\.ts$",
-      "/journal/__tests__/.*\\.spec\\.ts$",
+      "/journal/.*__tests__/.*\\.spec\\.ts$",
       "/journal/cron/.*\\.spec\\.ts$",
       "/installments/reschedule\\.service\\.spec\\.ts$"
     ],

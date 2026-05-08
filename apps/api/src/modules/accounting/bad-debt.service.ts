@@ -6,6 +6,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { Decimal } from '@prisma/client/runtime/library';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
@@ -58,8 +59,39 @@ export class BadDebtService {
   }
 
   /**
-   * Calculate provisions for all overdue contracts.
-   * Reverses existing ACTIVE provisions and creates fresh ones.
+   * Helper for outstanding calculation (DRY) — Decimal precision (TFRS 9 / v4 mandate).
+   * Replaces Number() casts which lose precision on Prisma.Decimal fields.
+   */
+  private computeOutstanding(
+    p: { amountDue: Prisma.Decimal; amountPaid: Prisma.Decimal },
+    lateFee: Prisma.Decimal | number = 0,
+  ): Decimal {
+    return new Decimal(p.amountDue.toString())
+      .sub(new Decimal(p.amountPaid.toString()))
+      .add(new Decimal(lateFee.toString()));
+  }
+
+  /**
+   * Calculate Bad Debt provisions per TFRS for NPAEs Chapter 13.
+   *
+   * Uses simplified aging-based approach (NOT TFRS 9 full ECL 3-stage model):
+   *   1-30 days overdue:   2%   provision
+   *   31-60 days overdue:  10%  provision
+   *   61-90 days overdue:  25%  provision
+   *   91-180 days overdue: 50%  provision
+   *   181-360 days overdue: 75% provision
+   *   360+ days overdue:   100% provision
+   *
+   * Approved NPAEs simplification per Ch.13 — forward-looking macro factors
+   * not required at NPAEs level. Rates are configurable via
+   * SystemConfig key `bad_debt_provision_rates`; if unset the defaults above
+   * apply.
+   *
+   * Reverses existing ACTIVE provisions for in-scope contracts before
+   * creating fresh ones, so re-running is idempotent. Posts a delta JE
+   * per contract via BadDebtProvisionTemplate (Phase A.5a).
+   *
+   * Refs: docs/accounting/audit-report.html (Wave 4 T1, TFRS 9 W-1/W-2)
    */
   async calculateProvisions(calculatedById: string, branchId?: string): Promise<{
     created: number;
@@ -91,17 +123,17 @@ export class BadDebtService {
       orderBy: { dueDate: 'asc' },
     });
 
-    // Group by contract and calculate total outstanding per contract
+    // Group by contract and calculate total outstanding per contract (Decimal arithmetic)
     const contractOutstanding = new Map<
       string,
-      { amount: number; oldestDueDate: Date }
+      { amount: Decimal; oldestDueDate: Date }
     >();
     for (const p of overduePayments) {
       const existing = contractOutstanding.get(p.contract.id);
-      const unpaidLateFee = !p.lateFeeWaived ? Number(p.lateFee) : 0;
-      const remaining = Number(p.amountDue) - Number(p.amountPaid) + unpaidLateFee;
+      const unpaidLateFee = !p.lateFeeWaived ? new Decimal(p.lateFee.toString()) : new Decimal(0);
+      const remaining = this.computeOutstanding(p, unpaidLateFee);
       if (existing) {
-        existing.amount += remaining;
+        existing.amount = existing.amount.add(remaining);
       } else {
         contractOutstanding.set(p.contract.id, {
           amount: remaining,
@@ -110,38 +142,24 @@ export class BadDebtService {
       }
     }
 
-    // Reverse existing ACTIVE provisions only for contracts in scope
+    // Reverse existing ACTIVE provisions only for contracts in scope.
+    // Wrap REVERSE + CREATE in a single $transaction — without it, a
+    // failed createMany after the reverse would leave provisions REVERSED
+    // with no replacement, dropping coverage on the balance sheet.
     const contractIdsInScope = [...contractOutstanding.keys()];
 
-    // Capture previous provision amounts BEFORE reversing, to compute delta for JE
-    const previousProvisionByContract = new Map<string, Prisma.Decimal>();
-    if (contractIdsInScope.length > 0) {
-      const activeProvisions = await this.prisma.badDebtProvision.findMany({
-        where: { status: 'ACTIVE', contractId: { in: contractIdsInScope }, deletedAt: null },
-        select: { contractId: true, provisionAmount: true },
-      });
-      for (const p of activeProvisions) {
-        const prev = previousProvisionByContract.get(p.contractId) ?? new Prisma.Decimal(0);
-        previousProvisionByContract.set(p.contractId, prev.add(p.provisionAmount));
-      }
-
-      await this.prisma.badDebtProvision.updateMany({
-        where: { status: 'ACTIVE', contractId: { in: contractIdsInScope }, deletedAt: null },
-        data: { status: 'REVERSED' },
-      });
-    }
-
-    // Create new provisions
-    const byBucket: Record<string, { count: number; amount: number }> = {};
-    const provisions: Array<{
+    // Pre-compute provision rows (Decimal — no Number cast in persisted values)
+    type ProvisionRow = {
       contractId: string;
       provisionDate: Date;
       agingBucket: string;
       daysOverdue: number;
-      outstandingAmount: number;
-      provisionRate: number;
-      provisionAmount: number;
-    }> = [];
+      outstandingAmount: Prisma.Decimal;
+      provisionRate: Prisma.Decimal;
+      provisionAmount: Prisma.Decimal;
+    };
+    const byBucket: Record<string, { count: number; amount: Decimal }> = {};
+    const provisions: ProvisionRow[] = [];
 
     for (const [contractId, data] of contractOutstanding) {
       const daysOverdue = Math.floor(
@@ -149,26 +167,50 @@ export class BadDebtService {
       );
       const bucket = this.getAgingBucket(daysOverdue);
       const rate = rates[bucket] || 0;
-      const provisionAmount = Math.round(data.amount * rate * 100) / 100;
+      const rateDec = new Decimal(rate);
+      const outstandingDec = data.amount.toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+      const provisionAmountDec = data.amount
+        .mul(rateDec)
+        .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
 
       provisions.push({
         contractId,
         provisionDate: now,
         agingBucket: bucket,
         daysOverdue,
-        outstandingAmount: data.amount,
-        provisionRate: rate,
-        provisionAmount,
+        outstandingAmount: outstandingDec,
+        provisionRate: rateDec,
+        provisionAmount: provisionAmountDec,
       });
 
-      if (!byBucket[bucket]) byBucket[bucket] = { count: 0, amount: 0 };
+      if (!byBucket[bucket]) byBucket[bucket] = { count: 0, amount: new Decimal(0) };
       byBucket[bucket].count++;
-      byBucket[bucket].amount += provisionAmount;
+      byBucket[bucket].amount = byBucket[bucket].amount.add(provisionAmountDec);
     }
 
-    if (provisions.length > 0) {
-      await this.prisma.badDebtProvision.createMany({ data: provisions });
-    }
+    // Atomic REVERSE + CREATE — never leave the balance sheet without coverage
+    const previousProvisionByContract = new Map<string, Prisma.Decimal>();
+    await this.prisma.$transaction(async (tx) => {
+      if (contractIdsInScope.length > 0) {
+        const activeProvisions = await tx.badDebtProvision.findMany({
+          where: { status: 'ACTIVE', contractId: { in: contractIdsInScope }, deletedAt: null },
+          select: { contractId: true, provisionAmount: true },
+        });
+        for (const p of activeProvisions) {
+          const prev = previousProvisionByContract.get(p.contractId) ?? new Prisma.Decimal(0);
+          previousProvisionByContract.set(p.contractId, prev.add(p.provisionAmount));
+        }
+
+        await tx.badDebtProvision.updateMany({
+          where: { status: 'ACTIVE', contractId: { in: contractIdsInScope }, deletedAt: null },
+          data: { status: 'REVERSED' },
+        });
+      }
+
+      if (provisions.length > 0) {
+        await tx.badDebtProvision.createMany({ data: provisions });
+      }
+    });
 
     // Post delta-based provision JEs (non-blocking — a single JE failure must not abort the run)
     const year = now.getFullYear();
@@ -177,7 +219,7 @@ export class BadDebtService {
 
     for (const p of provisions) {
       const prev = previousProvisionByContract.get(p.contractId) ?? new Prisma.Decimal(0);
-      const newAmount = new Prisma.Decimal(p.provisionAmount);
+      const newAmount = p.provisionAmount;
       const delta = newAmount.sub(prev);
       if (delta.eq(0)) continue;
 
@@ -196,8 +238,18 @@ export class BadDebtService {
       }
     }
 
-    const totalProvision = provisions.reduce((sum, p) => sum + p.provisionAmount, 0);
-    return { created: provisions.length, totalProvision, byBucket };
+    // Decimal sum for total provision (TFRS 9 / v4 mandate — avoid float drift on aggregation)
+    const totalProvisionDecimal = provisions.reduce(
+      (sum, p) => sum.add(p.provisionAmount),
+      new Decimal(0),
+    );
+    const totalProvision = totalProvisionDecimal.toNumber();
+    // Convert byBucket Decimals to numbers for the response shape (display only)
+    const byBucketResp: Record<string, { count: number; amount: number }> = {};
+    for (const [bucket, agg] of Object.entries(byBucket)) {
+      byBucketResp[bucket] = { count: agg.count, amount: agg.amount.toNumber() };
+    }
+    return { created: provisions.length, totalProvision, byBucket: byBucketResp };
   }
 
   /**
@@ -218,41 +270,64 @@ export class BadDebtService {
       orderBy: { daysOverdue: 'desc' },
     });
 
+    // Decimal accumulation (TFRS 9 / v4 mandate — avoid float drift on aggregation)
+    let totalOutstandingDec = new Decimal(0);
+    let totalProvisionDec = new Decimal(0);
+    const bucketDec = new Map<
+      string,
+      { count: number; outstanding: Decimal; provision: Decimal; rate: number }
+    >();
+
+    for (const p of provisions) {
+      const outstandingDec = new Decimal(p.outstandingAmount.toString());
+      const provisionDec = new Decimal(p.provisionAmount.toString());
+      totalOutstandingDec = totalOutstandingDec.add(outstandingDec);
+      totalProvisionDec = totalProvisionDec.add(provisionDec);
+
+      const bucket = p.agingBucket;
+      const entry = bucketDec.get(bucket);
+      if (!entry) {
+        bucketDec.set(bucket, {
+          count: 1,
+          outstanding: outstandingDec,
+          provision: provisionDec,
+          rate: Number(p.provisionRate),
+        });
+      } else {
+        entry.count++;
+        entry.outstanding = entry.outstanding.add(outstandingDec);
+        entry.provision = entry.provision.add(provisionDec);
+      }
+    }
+
+    const byBucket: Record<
+      string,
+      { count: number; outstanding: number; provision: number; rate: number }
+    > = {};
+    for (const [bucket, entry] of bucketDec) {
+      byBucket[bucket] = {
+        count: entry.count,
+        outstanding: entry.outstanding.toNumber(),
+        provision: entry.provision.toNumber(),
+        rate: entry.rate,
+      };
+    }
+
     const summary = {
-      totalOutstanding: 0,
-      totalProvision: 0,
-      byBucket: {} as Record<
-        string,
-        { count: number; outstanding: number; provision: number; rate: number }
-      >,
+      totalOutstanding: totalOutstandingDec.toNumber(),
+      totalProvision: totalProvisionDec.toNumber(),
+      byBucket,
       details: provisions.map((p) => ({
         contractId: p.contractId,
         contractNumber: p.contract.contractNumber,
         customerName: p.contract.customer?.name,
         agingBucket: p.agingBucket,
         daysOverdue: p.daysOverdue,
-        outstandingAmount: Number(p.outstandingAmount),
+        outstandingAmount: new Decimal(p.outstandingAmount.toString()).toNumber(),
         provisionRate: Number(p.provisionRate),
-        provisionAmount: Number(p.provisionAmount),
+        provisionAmount: new Decimal(p.provisionAmount.toString()).toNumber(),
       })),
     };
-
-    for (const p of provisions) {
-      summary.totalOutstanding += Number(p.outstandingAmount);
-      summary.totalProvision += Number(p.provisionAmount);
-      const bucket = p.agingBucket;
-      if (!summary.byBucket[bucket]) {
-        summary.byBucket[bucket] = {
-          count: 0,
-          outstanding: 0,
-          provision: 0,
-          rate: Number(p.provisionRate),
-        };
-      }
-      summary.byBucket[bucket].count++;
-      summary.byBucket[bucket].outstanding += Number(p.outstandingAmount);
-      summary.byBucket[bucket].provision += Number(p.provisionAmount);
-    }
 
     return summary;
   }
@@ -337,7 +412,7 @@ export class BadDebtService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      // Calculate outstanding amount from unpaid/partial payments
+      // Calculate outstanding amount from unpaid/partial payments (Decimal arithmetic)
       const unpaidPayments = await tx.payment.findMany({
         where: {
           contractId,
@@ -346,23 +421,25 @@ export class BadDebtService {
         },
         select: { amountDue: true, amountPaid: true, lateFee: true, lateFeeWaived: true },
       });
-      const outstandingAmount = unpaidPayments.reduce((sum, p) => {
-        const unpaidLateFee = !p.lateFeeWaived ? Number(p.lateFee) : 0;
-        return sum + Number(p.amountDue) - Number(p.amountPaid) + unpaidLateFee;
-      }, 0);
+      const outstandingDec = unpaidPayments.reduce((sum, p) => {
+        const unpaidLateFee = !p.lateFeeWaived ? new Decimal(p.lateFee.toString()) : new Decimal(0);
+        return sum.add(this.computeOutstanding(p, unpaidLateFee));
+      }, new Decimal(0));
+      const outstandingAmount = outstandingDec.toNumber();
 
       // T3-C6 — enforce amount-tier approval rule before any write.
       this.assertWriteOffTierPermitted(outstandingAmount, writer.role, approver.role);
 
-      // Capture total active provision amount before updating status
+      // Capture total active provision amount before updating status (Decimal sum)
       const activeProvisions = await tx.badDebtProvision.findMany({
         where: { contractId, status: 'ACTIVE', deletedAt: null },
         select: { provisionAmount: true },
       });
-      const existingProvisionAmount = activeProvisions.reduce(
-        (sum, p) => sum + Number(p.provisionAmount),
-        0,
+      const existingProvisionDec = activeProvisions.reduce(
+        (sum, p) => sum.add(new Decimal(p.provisionAmount.toString())),
+        new Decimal(0),
       );
+      const existingProvisionAmount = existingProvisionDec.toNumber();
 
       // Update contract status to CLOSED_BAD_DEBT
       await tx.contract.update({
@@ -383,18 +460,16 @@ export class BadDebtService {
         },
       });
 
-      // Phase A.5a: post write-off JE (non-blocking inside transaction — failure captured to Sentry)
-      try {
-        await this.badDebtWriteOffTemplate.execute({
+      // Phase A.5a + Wave 1 Task 5: write-off JE inside same $transaction.
+      // Template now accepts tx parameter (Task 1) — JE failure rolls back the whole
+      // write-off. No more silent fail / orphan AR (TFRS 9 Critical 1).
+      await this.badDebtWriteOffTemplate.execute(
+        {
           contractId,
           writeOffReason: notes ?? undefined,
-        });
-      } catch (err) {
-        Sentry.captureException(err, { extra: { contractId, contractNumber: contract.contractNumber } });
-        this.logger.error(
-          `[A.5a] Bad debt write-off JE failed for contract ${contract.contractNumber}: ${(err as Error).message}`,
-        );
-      }
+        },
+        tx,
+      );
 
       // T1-C7: Immutable audit log inside the same transaction. Captures
       // both parties' roles at write-off time (role can change later, the

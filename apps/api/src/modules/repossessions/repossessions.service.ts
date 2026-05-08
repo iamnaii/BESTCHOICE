@@ -1,6 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateRepossessionDto, UpdateRepossessionDto } from './dto/create-repossession.dto';
 import { ConditionGrade, RepossessionStatus, ProductStatus } from '@prisma/client';
@@ -268,31 +267,36 @@ export class RepossessionsService {
       // Auto bad-debt write-off journal: ตัด HP Receivable ที่เหลือออกจากบัญชี.
       // (Audit finding J4: closes the silent accounting gap where
       // repossessions left outstanding receivable on the books with no
-      // balancing entry. Errors propagate so the whole tx rolls back.)
+      // balancing entry.)
       // Phase A.4b: replaced createBadDebtWriteOffJournal (old stub) with
       // RepossessionJP5Template. Template handles both loss and gain paths and
       // closes out remaining HP Receivable (spec §6.5).
       // repossessionValue = appraisalValue from dto (amount FINANCE recovers from asset).
-      // Template runs its own $transaction — called outside the outer tx to avoid
-      // nested-tx conflicts (fire-and-forget with Sentry capture on failure).
+      //
+      // Wave 1 / Task 3: JP5 ห่อใน outer $transaction พร้อม contract+product
+      // status updates. ปพพ.ม.392 — เลิกสัญญาต้องกลับสู่ฐานะเดิม. ก่อนหน้านี้
+      // .catch() fire-and-forget ทำให้ contract status commit แต่ JE อาจ fail
+      // ลูกหนี้ค้างใน ledger ตลอดกาล. ตอนนี้ ถ้า JE fail ทุกอย่าง rollback.
       if (outstandingBalance.greaterThan(0)) {
         const repoValue = dto.appraisalPrice != null
           ? new Decimal(String(dto.appraisalPrice))
           : new Decimal('0');
-        this.repossessionJP5Template.execute({
-          contractId: dto.contractId,
-          depositAccountCode: '11-1101',
-          repossessionValue: repoValue,
-        }).catch((err) => {
-          this.logger.error(
-            `RepossessionJP5 JE failed for contract ${dto.contractId}: ${err?.message || err}`,
-            err?.stack,
-          );
-          Sentry.captureException(err, {
-            tags: { module: 'repossessions', event: 'jp5-je-failure' },
-            extra: { contractId: dto.contractId },
-          });
+        // Wave 4 / Task 2 (Info I-1): prefer caller-supplied account, fall
+        // back to user's default cash account, then '11-1101' as last resort.
+        const user = await tx.user.findUnique({
+          where: { id: userId },
+          select: { defaultCashAccountCode: true },
         });
+        const depositAccountCode =
+          dto.depositAccountCode ?? user?.defaultCashAccountCode ?? '11-1101';
+        await this.repossessionJP5Template.execute(
+          {
+            contractId: dto.contractId,
+            depositAccountCode,
+            repossessionValue: repoValue,
+          },
+          tx,
+        );
       }
 
       // Update product status
@@ -304,6 +308,9 @@ export class RepossessionsService {
       });
 
       // Audit log for repossession
+      // Wave 3 / Task 4 (W-1): Decimal objects serialize to non-deterministic
+      // JSON (`{ s, e, d }`). Convert to fixed-precision strings so audit
+      // history remains human-readable and diff-able.
       await tx.auditLog.create({
         data: {
           userId,
@@ -316,8 +323,8 @@ export class RepossessionsService {
             productId: contract.productId,
             conditionGrade: dto.conditionGrade,
             appraisalPrice: dto.appraisalPrice,
-            outstandingBalance,
-            totalPaid,
+            outstandingBalance: outstandingBalance.toFixed(2),
+            totalPaid: totalPaid.toFixed(2),
           },
           ipAddress: '',
         },
@@ -357,9 +364,13 @@ export class RepossessionsService {
       }
 
       // Validate resell price is set when marking as READY_FOR_SALE or SOLD
+      // Wave 3 / Task 4 (W-2): use Decimal comparison instead of Number() cast
+      // to avoid float precision drift on large amounts.
       if (['READY_FOR_SALE', 'SOLD'].includes(dto.status)) {
-        const resellPrice = dto.resellPrice ?? Number(repo.resellPrice || 0);
-        if (!resellPrice || resellPrice <= 0) {
+        const resellPrice = dto.resellPrice != null
+          ? new Prisma.Decimal(dto.resellPrice)
+          : new Prisma.Decimal(repo.resellPrice ?? 0);
+        if (resellPrice.lessThanOrEqualTo(0)) {
           throw new BadRequestException('กรุณาระบุราคาขายต่อก่อนเปลี่ยนสถานะ');
         }
       }
@@ -384,9 +395,12 @@ export class RepossessionsService {
         const updatedRepo = await this.prisma.$transaction(async (tx) => {
           const productUpdateData: Record<string, unknown> = { status: newProductStatus };
           // R-007: Adjust costPrice to appraised/fair value per TAS 2 when moving to REFURBISHED
+          // Wave 3 / Task 4 (W-2): Decimal arithmetic to preserve precision.
           if (dto.status === 'READY_FOR_SALE') {
-            const appraisalPrice = dto.resellPrice ?? Number(repo.appraisalPrice || 0);
-            if (appraisalPrice > 0) {
+            const appraisalPrice = dto.resellPrice != null
+              ? new Prisma.Decimal(dto.resellPrice)
+              : new Prisma.Decimal(repo.appraisalPrice ?? 0);
+            if (appraisalPrice.greaterThan(0)) {
               productUpdateData.costPrice = appraisalPrice;
             }
           }
@@ -409,9 +423,11 @@ export class RepossessionsService {
         // Post resale JE after the main $transaction commits (non-blocking, no tx-poison risk).
         // bookValue = costPrice (adjusted to appraisalPrice at READY_FOR_SALE per R-007) + repairCost
         if (dto.status === 'SOLD' && userId) {
-          const resellPrice = new Prisma.Decimal(
-            dto.resellPrice ?? Number(repo.resellPrice ?? 0),
-          );
+          // Wave 3 / Task 4 (W-2): build Decimal directly from repo value
+          // (skip Number() round-trip that loses precision on large amounts).
+          const resellPrice = dto.resellPrice != null
+            ? new Prisma.Decimal(dto.resellPrice)
+            : new Prisma.Decimal(repo.resellPrice ?? 0);
           const costPrice = new Prisma.Decimal(
             (repo.product as unknown as { costPrice?: number | Prisma.Decimal })?.costPrice ?? 0,
           );
@@ -464,12 +480,14 @@ export class RepossessionsService {
       });
 
       // R-007: Adjust costPrice to appraised/fair value per TAS 2 when refurbishing
-      const appraisalPrice = Number(repo.appraisalPrice || 0);
+      // Wave 3 / Task 4 (W-2): Decimal arithmetic preserves precision; fall back
+      // to resellPrice when appraisal is zero/null.
+      const appraisalPrice = new Prisma.Decimal(repo.appraisalPrice ?? 0);
       await tx.product.update({
         where: { id: repo.product.id },
         data: {
           status: 'REFURBISHED',
-          costPrice: appraisalPrice || resellPrice, // Adjust cost to appraised/fair value per TAS 2
+          costPrice: appraisalPrice.greaterThan(0) ? appraisalPrice : new Prisma.Decimal(resellPrice),
           stockInDate: new Date(),
           ...(mainWarehouse ? { branchId: mainWarehouse.id } : {}),
         },

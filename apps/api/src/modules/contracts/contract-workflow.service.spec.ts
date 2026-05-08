@@ -170,44 +170,49 @@ describe('ContractWorkflowService', () => {
   describe('activate', () => {
     it('activates a fully-approved DRAFT contract and writes the activation JE', async () => {
       await service.activate('contract-1');
-      // Allow fire-and-forget template promise to settle
-      await new Promise((r) => setImmediate(r));
 
-      // Contract status flipped to ACTIVE + Phase A.2 unearned fields seeded
+      // Contract status flipped to ACTIVE
       expect(prisma.contract.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: 'contract-1' },
           data: expect.objectContaining({ status: 'ACTIVE' }),
         }),
       );
-      // Phase A.4b: JE posted via ContractActivation1ATemplate (fire-and-forget)
+      // Wave 1 / Task 4: JE posted via ContractActivation1ATemplate
+      // INSIDE the outer $transaction (tx is passed as 2nd arg).
       expect(contractActivationTemplateMock.execute).toHaveBeenCalledTimes(1);
-      expect(contractActivationTemplateMock.execute).toHaveBeenCalledWith('contract-1');
+      expect(contractActivationTemplateMock.execute).toHaveBeenCalledWith(
+        'contract-1',
+        expect.anything(), // tx client
+      );
     });
 
-    it('passes contractId to ContractActivation1ATemplate on activation (Phase A.4b)', async () => {
-      // Phase A.4b: replaced createContractActivationJournal with
-      // ContractActivation1ATemplate.execute(contractId). The template resolves
-      // SHOP+FINANCE companyIds internally — we only pass contractId from here.
+    it('passes contractId + tx to ContractActivation1ATemplate on activation', async () => {
+      // Wave 1 / Task 4: template now runs inside outer $transaction so it
+      // receives tx as its 2nd argument. If 1A throws, the whole activation
+      // (contract status + product ownership transfer + sale row) rolls back.
       await service.activate('contract-1');
-      await new Promise((r) => setImmediate(r));
 
-      expect(contractActivationTemplateMock.execute).toHaveBeenCalledWith('contract-1');
+      expect(contractActivationTemplateMock.execute).toHaveBeenCalledWith(
+        'contract-1',
+        expect.anything(),
+      );
     });
 
-    it('contract activation succeeds even if JE template throws (fire-and-forget pattern)', async () => {
-      // Phase A.4b: template is called with .catch() — JE failures are captured
-      // by Sentry and do NOT roll back contract activation. Contract becomes ACTIVE.
+    it('rolls back contract activation when 1A JE throws (Wave 1 P0 W-1 atomicity)', async () => {
+      // Wave 1 / Task 4: 1A is now inside outer $transaction. Mocked tx
+      // re-throws callback errors so service.activate() must reject.
       contractActivationTemplateMock.execute.mockRejectedValueOnce(
-        new Error('JE failed — captured by Sentry'),
+        new Error('1A fail'),
       );
 
-      // Activation must succeed (JE failure is non-blocking)
-      await expect(service.activate('contract-1')).resolves.toBeDefined();
-      await new Promise((r) => setImmediate(r));
+      await expect(service.activate('contract-1')).rejects.toThrow('1A fail');
 
-      // The template was still called
+      // The 1A template was still called once before rejecting
       expect(contractActivationTemplateMock.execute).toHaveBeenCalledTimes(1);
+      // Atomicity assertion: in real Prisma the $transaction would roll back
+      // every prior write. We can't assert against a real DB here, but we do
+      // confirm the error escapes activate() rather than being swallowed.
     });
   });
 });

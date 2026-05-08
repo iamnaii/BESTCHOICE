@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BESTCHOICE — Accounting Journey</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #fafaf9;
+    --card: #ffffff;
+    --border: #e7e5e4;
+    --text: #0c0a09;
+    --muted: #57534e;
+    --subtle: #78716c;
+
+    --emerald: #059669;
+    --emerald-bg: #ecfdf5;
+    --emerald-border: #a7f3d0;
+
+    --blue: #2563eb;
+    --blue-bg: #eff6ff;
+    --blue-border: #bfdbfe;
+
+    --amber: #d97706;
+    --amber-bg: #fffbeb;
+    --amber-border: #fde68a;
+
+    --rose: #e11d48;
+    --rose-bg: #fff1f2;
+    --rose-border: #fecdd3;
+
+    --violet: #7c3aed;
+    --violet-bg: #f5f3ff;
+    --violet-border: #ddd6fe;
+
+    --zinc: #52525b;
+    --zinc-bg: #f4f4f5;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Sans Thai', system-ui, -apple-system, sans-serif;
+    font-size: 15px;
+    line-height: 1.65;
+  }
+
+  .container {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 48px 32px 80px;
+  }
+
+  /* ─────── HEADER ─────── */
+  .header {
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 28px;
+    margin-bottom: 40px;
+  }
+  .eyebrow {
+    color: var(--emerald);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  h1 {
+    font-size: 34px;
+    font-weight: 700;
+    margin: 0 0 12px;
+    letter-spacing: -0.02em;
+  }
+  .subtitle {
+    color: var(--muted);
+    font-size: 17px;
+    margin: 0;
+    line-height: 1.5;
+  }
+  .meta {
+    display: flex;
+    gap: 24px;
+    margin-top: 18px;
+    font-size: 13px;
+    color: var(--subtle);
+    flex-wrap: wrap;
+  }
+  .meta strong { color: var(--text); font-weight: 500; }
+
+  /* ─────── TOC ─────── */
+  .toc {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px 28px;
+    margin-bottom: 48px;
+  }
+  .toc-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--subtle);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+  .toc-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 8px 24px;
+  }
+  .toc a {
+    color: var(--text);
+    text-decoration: none;
+    font-size: 14px;
+    padding: 4px 0;
+    transition: color 0.15s;
+  }
+  .toc a:hover { color: var(--emerald); }
+  .toc-num {
+    display: inline-block;
+    width: 24px;
+    color: var(--subtle);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ─────── SECTIONS ─────── */
+  section {
+    margin-bottom: 56px;
+  }
+  h2 {
+    font-size: 24px;
+    font-weight: 700;
+    margin: 0 0 24px;
+    letter-spacing: -0.01em;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  h2 .num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: var(--emerald-bg);
+    color: var(--emerald);
+    font-size: 16px;
+    font-weight: 700;
+    border: 1px solid var(--emerald-border);
+  }
+
+  /* ─────── STEP CARD ─────── */
+  .step {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 24px 28px;
+    margin-bottom: 16px;
+    page-break-inside: avoid;
+  }
+  .step-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .step-title {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0;
+    line-height: 1.4;
+  }
+  .step-trigger {
+    color: var(--muted);
+    font-size: 13px;
+    margin: 4px 0 0;
+  }
+  .step-trigger code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    background: var(--zinc-bg);
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+
+  /* ─────── BADGES ─────── */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    border: 1px solid;
+    white-space: nowrap;
+  }
+  .badge-emerald { background: var(--emerald-bg); color: var(--emerald); border-color: var(--emerald-border); }
+  .badge-blue    { background: var(--blue-bg);    color: var(--blue);    border-color: var(--blue-border); }
+  .badge-amber   { background: var(--amber-bg);   color: var(--amber);   border-color: var(--amber-border); }
+  .badge-rose    { background: var(--rose-bg);    color: var(--rose);    border-color: var(--rose-border); }
+  .badge-violet  { background: var(--violet-bg);  color: var(--violet);  border-color: var(--violet-border); }
+  .badge-zinc    { background: var(--zinc-bg);    color: var(--zinc);    border-color: var(--border); }
+
+  /* ─────── JE BLOCK ─────── */
+  .je {
+    background: #0c0a09;
+    color: #e7e5e4;
+    border-radius: 10px;
+    padding: 18px 22px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    line-height: 1.85;
+    overflow-x: auto;
+    margin: 14px 0 8px;
+  }
+  .je .dr { color: #fca5a5; }
+  .je .cr { color: #86efac; }
+  .je .ind { padding-left: 28px; display: inline-block; }
+  .je .acc { color: #fde047; }
+  .je .desc { color: #a8a29e; }
+
+  /* ─────── NOTE ─────── */
+  .note {
+    border-left: 3px solid var(--emerald);
+    padding: 8px 14px;
+    background: var(--emerald-bg);
+    border-radius: 0 8px 8px 0;
+    margin: 14px 0 0;
+    font-size: 13px;
+    color: var(--text);
+  }
+  .note-amber { border-color: var(--amber); background: var(--amber-bg); }
+  .note-rose  { border-color: var(--rose);  background: var(--rose-bg);  }
+  .note strong { font-weight: 600; }
+
+  /* ─────── TABLE ─────── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    font-size: 14px;
+  }
+  thead {
+    background: #fafaf9;
+  }
+  th {
+    text-align: left;
+    padding: 12px 16px;
+    font-weight: 600;
+    font-size: 12px;
+    color: var(--subtle);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-bottom: 1px solid var(--border);
+  }
+  td {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  tr:last-child td { border-bottom: none; }
+  td code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    background: var(--zinc-bg);
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+
+  /* ─────── FLOW DIAGRAM ─────── */
+  .flow {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 32px;
+    overflow-x: auto;
+  }
+  .flow-pre {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    margin: 0;
+    white-space: pre;
+    color: var(--text);
+  }
+
+  /* ─────── WATCHPOINT ─────── */
+  .watch {
+    display: grid;
+    grid-template-columns: 32px 1fr;
+    gap: 14px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 22px;
+    margin-bottom: 12px;
+  }
+  .watch-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    background: var(--rose-bg);
+    color: var(--rose);
+    font-weight: 700;
+    font-size: 13px;
+    border: 1px solid var(--rose-border);
+  }
+  .watch h4 {
+    margin: 0 0 4px;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .watch p {
+    margin: 0;
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  /* ─────── KBD ─────── */
+  kbd {
+    background: var(--zinc-bg);
+    border: 1px solid var(--border);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+  }
+
+  /* ─────── PRINT ─────── */
+  @media print {
+    body { background: white; font-size: 11pt; }
+    .container { max-width: none; padding: 20px; }
+    .toc, .step, .flow, .watch, table {
+      page-break-inside: avoid;
+      box-shadow: none;
+    }
+    section { page-break-inside: auto; }
+    h2 { page-break-after: avoid; }
+    .je { background: #fafaf9; color: #0c0a09; border: 1px solid var(--border); }
+    .je .dr { color: #b91c1c; }
+    .je .cr { color: #047857; }
+    .je .acc { color: #a16207; }
+    .je .desc { color: #57534e; }
+    .print-hint { display: none; }
+  }
+
+  .print-hint {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: var(--text);
+    color: white;
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    cursor: pointer;
+    border: none;
+    font-family: inherit;
+    transition: opacity 0.2s;
+  }
+  .print-hint:hover { opacity: 0.85; }
+
+  /* ─────── 2-COL ─────── */
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  @media (max-width: 720px) {
+    .grid-2 { grid-template-columns: 1fr; }
+    h1 { font-size: 26px; }
+    .container { padding: 24px 16px 60px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- HEADER -->
+  <header class="header">
+    <div class="eyebrow">BESTCHOICE FINANCE · TFRS for NPAEs</div>
+    <h1>เส้นทางบัญชี — จากเปิดสัญญาถึงปิดสัญญา</h1>
+    <p class="subtitle">Journey ของรายการบัญชีทุกขั้นตอน อิงจากโค้ดจริงใน Phase A.4–A.5c (FINANCE chart 99 บัญชี, Full Accrual TFRS&nbsp;15)</p>
+    <div class="meta">
+      <span><strong>JE Templates</strong> 19 ตัว</span>
+      <span><strong>Cron Jobs</strong> 3 ตัว</span>
+      <span><strong>Update</strong> 8 พ.ค. 2569</span>
+      <span><strong>Source</strong> apps/api/src/modules/journal/cpa-templates/</span>
+    </div>
+  </header>
+
+  <!-- TOC -->
+  <nav class="toc">
+    <div class="toc-title">สารบัญ</div>
+    <div class="toc-grid">
+      <a href="#happy"><span class="toc-num">1.</span> เส้นทางหลัก (Happy Path)</a>
+      <a href="#payment-cases"><span class="toc-num">2.</span> 6 Cases ตอนรับชำระงวด</a>
+      <a href="#branches"><span class="toc-num">3.</span> Special Cases</a>
+      <a href="#risk"><span class="toc-num">4.</span> Risk &amp; Loss Path</a>
+      <a href="#ops"><span class="toc-num">5.</span> Operating (Phase A.5c)</a>
+      <a href="#cron"><span class="toc-num">6.</span> Cron Jobs</a>
+      <a href="#flow"><span class="toc-num">7.</span> ภาพรวม Flow</a>
+      <a href="#watch"><span class="toc-num">8.</span> จุดที่ต้องระวัง</a>
+    </div>
+  </nav>
+
+  <!-- ─────── 1. HAPPY PATH ─────── -->
+  <section id="happy">
+    <h2><span class="num">1</span> เส้นทางหลัก (Happy Path)</h2>
+
+    <!-- STEP 1 -->
+    <div class="step">
+      <div class="step-header">
+        <div>
+          <h3 class="step-title">วันเปิดสัญญา (Day 0)</h3>
+          <p class="step-trigger">Trigger: Contract activated · <code>contract-workflow.service.ts</code> · Template <strong>1A — ContractActivation</strong></p>
+        </div>
+        <span class="badge badge-emerald">START</span>
+      </div>
+
+      <div class="je">
+<span class="dr">Dr</span> <span class="acc">11-2101</span> ลูกหนี้ผ่อนชำระ Gross         <span class="desc">// financed + commission + interest</span>
+<span class="dr">Dr</span> <span class="acc">11-2105</span> ลูกหนี้ภาษีขายรอเรียกเก็บ      <span class="desc">// VAT 7%</span>
+   <span class="cr">Cr</span> <span class="acc">21-1101</span> เจ้าหนี้-หน้าร้าน              <span class="desc">// ยอดจัด</span>
+   <span class="cr">Cr</span> <span class="acc">21-1102</span> เจ้าหนี้ค่าคอม                  <span class="desc">// commission</span>
+   <span class="cr">Cr</span> <span class="acc">11-2106</span> รายได้รอตัดบัญชี-ดอกเบี้ย       <span class="desc">// Contra Asset</span>
+   <span class="cr">Cr</span> <span class="acc">21-2102</span> ภาษีขายรอเรียกเก็บ              <span class="desc">// Deferred VAT</span>
+      </div>
+
+      <div class="note">
+        <strong>หลัก:</strong> ตั้งลูกหนี้เต็มจำนวน + Park ดอกเบี้ย/VAT ไว้ในบัญชี Contra/Deferred รอทยอยรับรู้ตามงวด (TFRS&nbsp;15)
+      </div>
+    </div>
+
+    <!-- STEP 2 -->
+    <div class="step">
+      <div class="step-header">
+        <div>
+          <h3 class="step-title">จ่ายเงินให้หน้าร้าน (1–2 วันถัดมา)</h3>
+          <p class="step-trigger">Trigger: Manual payout to SHOP · Template <strong>VendorClearance</strong></p>
+        </div>
+        <span class="badge badge-blue">CASH OUT</span>
+      </div>
+
+      <div class="je">
+<span class="dr">Dr</span> <span class="acc">21-1101</span> เจ้าหนี้-หน้าร้าน                 <span class="desc">// ยอดจัด</span>
+<span class="dr">Dr</span> <span class="acc">21-1102</span> เจ้าหนี้ค่าคอม                    <span class="desc">// commission</span>
+   <span class="cr">Cr</span> <span class="acc">11-1201/02/03</span> ธนาคาร                    <span class="desc">// โอนจริง</span>
+      </div>
+
+      <div class="note">
+        <strong>หลัก:</strong> ล้างเจ้าหนี้ที่ตั้งไว้ตอน 1A ออก เมื่อ FINANCE จ่ายเงินให้ SHOP จริง
+      </div>
+    </div>
+
+    <!-- STEP 3 -->
+    <div class="step">
+      <div class="step-header">
+        <div>
+          <h3 class="step-title">ทุกงวดถึงวัน Due Date (Daily Cron 00:01 BKK)</h3>
+          <p class="step-trigger">Trigger: <code>installment-accrual.cron.ts</code> · Template <strong>2A — InstallmentAccrual</strong> · idempotent</p>
+        </div>
+        <span class="badge badge-violet">RECURRING</span>
+      </div>
+
+      <div class="je">
+<span class="dr">Dr</span> <span class="acc">11-2103</span> ลูกหนี้ค้างชำระ              <span class="desc">// installmentTotal</span>
+<span class="dr">Dr</span> <span class="acc">21-2102</span> ล้างภาษีขายรอเรียกเก็บ        <span class="desc">// vatPerInst</span>
+<span class="dr">Dr</span> <span class="acc">11-2106</span> ล้างรายได้รอตัดบัญชี           <span class="desc">// interestPerInst</span>
+   <span class="cr">Cr</span> <span class="acc">11-2101</span> ลูกหนี้ Gross (ลด)             <span class="desc">// excl VAT</span>
+   <span class="cr">Cr</span> <span class="acc">11-2105</span> ลูกหนี้ภาษีขายรอฯ (ล้าง)        <span class="desc">// VAT</span>
+   <span class="cr">Cr</span> <span class="acc">41-1101</span> รายได้ดอกเบี้ย (รับรู้)         <span class="desc">// recognize</span>
+   <span class="cr">Cr</span> <span class="acc">21-2101</span> ภาษีขาย ภ.พ.30 (settled)        <span class="desc">// settled VAT</span>
+      </div>
+
+      <div class="note">
+        <strong>หลัก:</strong> ทยอยรับรู้รายได้ดอกเบี้ย + ย้าย VAT จาก deferred → settled รายเดือน
+      </div>
+      <div class="note note-amber">
+        <strong>Rounding (ห้ามผิด):</strong> excl/months → <kbd>ROUND_DOWN</kbd> · vat &amp; interest/months → <kbd>ROUND_HALF_UP</kbd>
+      </div>
+    </div>
+
+    <!-- STEP 4 -->
+    <div class="step">
+      <div class="step-header">
+        <div>
+          <h3 class="step-title">ลูกค้าจ่ายงวด</h3>
+          <p class="step-trigger">Trigger: <code>payments.service.ts</code> / <code>paysolutions.service.ts</code> · Template <strong>2B</strong> หรือ <strong>2B-split</strong></p>
+        </div>
+        <span class="badge badge-emerald">CASH IN</span>
+      </div>
+      <p style="margin: 0 0 8px; color: var(--muted); font-size: 14px;">แยกย่อยเป็น 6 cases ตามจำนวนเงินที่จ่าย — ดูรายละเอียดในหัวข้อถัดไป</p>
+    </div>
+
+    <!-- STEP 5 -->
+    <div class="step">
+      <div class="step-header">
+        <div>
+          <h3 class="step-title">งวดสุดท้ายจ่ายครบ → จบสัญญา</h3>
+          <p class="step-trigger">No special template · contract status → <code>COMPLETED</code></p>
+        </div>
+        <span class="badge badge-emerald">END</span>
+      </div>
+      <div class="note">
+        <strong>หลัก:</strong> รัน 2A + 2B รอบสุดท้ายตามปกติ — เมื่อ Payment ครบทุกงวด ระบบ flag สัญญาเป็น COMPLETED อัตโนมัติ
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────── 2. PAYMENT CASES ─────── -->
+  <section id="payment-cases">
+    <h2><span class="num">2</span> 6 Cases ตอนรับชำระงวด</h2>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Case</th>
+          <th>เงื่อนไข</th>
+          <th>Template</th>
+          <th>Behavior</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="badge badge-emerald">EXACT</span></td>
+          <td>จ่ายตรง</td>
+          <td><code>PaymentReceipt2B</code></td>
+          <td>Dr cash / Cr <code>11-2103</code></td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-blue">OVERPAY ≤1฿</span></td>
+          <td>เกิน &lt; 1 บาท</td>
+          <td><code>PaymentReceipt2B</code></td>
+          <td>+ Cr <code>53-1503</code> (กำไรปัดเศษ — auto)</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-amber">UNDERPAY ≤1฿</span></td>
+          <td>ขาด &lt; 1 บาท</td>
+          <td><code>PaymentReceipt2B</code></td>
+          <td>+ Dr <code>52-1104</code> · ต้อง <strong>approver</strong> (OWNER / ACCOUNTANT / BRANCH_MANAGER)</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-violet">OVERPAY &gt;1฿</span></td>
+          <td>เกิน &gt; 1 บาท → Advance</td>
+          <td><code>PaymentReceipt2B</code></td>
+          <td>+ Cr <code>21-1103</code> (park as advance) → FIFO consume งวดถัดไปอัตโนมัติ</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-zinc">PARTIAL</span></td>
+          <td>จ่ายบางส่วน</td>
+          <td><code>PaymentReceipt2B-split</code></td>
+          <td>Multiple JE ต่อ 1 งวด · Payment row create เฉพาะ final partial</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-rose">+ VAT 60-day</span></td>
+          <td>งวดนั้นโดน VAT บังคับมาก่อน</td>
+          <td>auto-trigger <code>Vat60dayReversal</code></td>
+          <td>กลับรายการ VAT บังคับเมื่อชำระเงินเข้า</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ─────── 3. SPECIAL CASES ─────── -->
+  <section id="branches">
+    <h2><span class="num">3</span> Special Cases (Branch)</h2>
+
+    <div class="step">
+      <div class="step-header">
+        <div>
+          <h3 class="step-title">A. Early Payoff — ปิดยอดก่อนกำหนด</h3>
+          <p class="step-trigger">Template <strong>JP4 — EarlyPayoff</strong></p>
+        </div>
+        <span class="badge badge-emerald">EXIT</span>
+      </div>
+      <div class="je">
+<span class="dr">Dr</span> cash + <span class="acc">11-2106</span> + <span class="acc">21-2102</span> + <span class="acc">52-1106</span> ส่วนลดดอกเบี้ย
+   <span class="cr">Cr</span> <span class="acc">11-2101</span> + <span class="acc">11-2105</span> + <span class="acc">41-1101</span> + <span class="acc">21-2101</span>
+      </div>
+      <div class="note">เคลียร์ deferred ที่เหลือ + รับรู้ดอกเบี้ยเต็ม + ส่วนลดเข้า P&amp;L</div>
+    </div>
+
+    <div class="step">
+      <div class="step-header">
+        <div>
+          <h3 class="step-title">B. Repossession — ยึดเครื่อง</h3>
+          <p class="step-trigger">Template <strong>JP5 — Repossession</strong> · Loss/Gain branches</p>
+        </div>
+        <span class="badge badge-rose">EXIT</span>
+      </div>
+      <div class="grid-2">
+        <div>
+          <p style="margin: 0 0 6px; font-size: 13px; color: var(--muted);"><strong>Loss path</strong> — ขาดทุน</p>
+          <div class="je"><span class="dr">Dr</span> <span class="acc">51-1102</span> ขาดทุนจากยึดเครื่อง</div>
+        </div>
+        <div>
+          <p style="margin: 0 0 6px; font-size: 13px; color: var(--muted);"><strong>Gain path</strong> — กำไร</p>
+          <div class="je"><span class="cr">Cr</span> <span class="acc">41-1102</span> รายได้จากการยึดสินค้า</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-header">
+        <div>
+          <h3 class="step-title">C. Reschedule — เลื่อนนัด มีค่าธรรมเนียม</h3>
+          <p class="step-trigger">Template <strong>JP6 — Reschedule</strong> · 2 variants</p>
+        </div>
+        <span class="badge badge-amber">CONTINUE</span>
+      </div>
+      <div class="grid-2">
+        <div>
+          <p style="margin: 0 0 6px; font-size: 13px; color: var(--muted);"><strong>6a Split-pay</strong> — จ่ายแยก</p>
+          <div class="je">ค่าธรรมเนียม → <span class="acc">21-1103</span>
+แล้วค่อยจ่ายงวดเต็มทีหลัง</div>
+        </div>
+        <div>
+          <p style="margin: 0 0 6px; font-size: 13px; color: var(--muted);"><strong>6b Bundled</strong> — จ่ายรวม</p>
+          <div class="je">installment + fee
+ครั้งเดียว</div>
+        </div>
+      </div>
+      <div class="note"><strong>Final:</strong> consume <code>21-1103</code> → ล้าง <code>11-2103</code> งวดสุดท้าย</div>
+    </div>
+
+    <div class="step">
+      <div class="step-header">
+        <div>
+          <h3 class="step-title">D. Defect Exchange — เปลี่ยนเครื่องใน 7 วัน</h3>
+          <p class="step-trigger">Template <strong>DefectExchangeReversal</strong></p>
+        </div>
+        <span class="badge badge-zinc">REVERSE</span>
+      </div>
+      <div class="note">Auto mirror Dr/Cr ของ JE เดิม → ตามด้วย <strong>1A ใหม่</strong> สำหรับสัญญาเครื่องใหม่</div>
+    </div>
+
+    <div class="step">
+      <div class="step-header">
+        <div>
+          <h3 class="step-title">E. Receipt Void — ยกเลิกใบเสร็จ</h3>
+          <p class="step-trigger">Template <strong>ReceiptVoidReversal</strong></p>
+        </div>
+        <span class="badge badge-zinc">REVERSE</span>
+      </div>
+      <div class="note">Single 2B reversal — mirror เฉพาะ JE ของใบเสร็จที่ void เท่านั้น</div>
+    </div>
+  </section>
+
+  <!-- ─────── 4. RISK PATH ─────── -->
+  <section id="risk">
+    <h2><span class="num">4</span> Risk &amp; Loss Path</h2>
+
+    <div class="step">
+      <div class="step-header">
+        <div>
+          <h3 class="step-title">F. VAT 60-Day Mandatory (Daily Cron 02:00 BKK)</h3>
+          <p class="step-trigger">Trigger: <code>vat-60day.cron.ts</code> · Template <strong>Vat60dayMandatory</strong></p>
+        </div>
+        <span class="badge badge-rose">TAX</span>
+      </div>
+      <div class="je">
+<span class="dr">Dr</span> <span class="acc">51-1101</span> ค่าใช้จ่าย VAT ลูกหนี้ไม่ชำระ    <span class="desc">// vatPerInst</span>
+<span class="dr">Dr</span> <span class="acc">11-2104</span> ลูกหนี้-VAT ที่ออกแทน             <span class="desc">// vatPerInst</span>
+   <span class="cr">Cr</span> <span class="acc">21-2103</span> VAT บังคับ-ลูกหนี้ค้าง 60 วัน      <span class="desc">// 2× vatPerInst</span>
+      </div>
+      <div class="note note-rose"><strong>กฎไทย:</strong> ลูกค้าค้างเกิน 60 วัน → ต้องนำส่ง VAT ให้สรรพากรแทนลูกค้า</div>
+    </div>
+
+    <div class="step">
+      <div class="step-header">
+        <div>
+          <h3 class="step-title">G. Bad Debt Provision — สำรองหนี้สงสัยจะสูญ (Monthly Close)</h3>
+          <p class="step-trigger">Template <strong>BadDebtProvision</strong></p>
+        </div>
+        <span class="badge badge-amber">PROVISION</span>
+      </div>
+      <div class="je">
+<span class="dr">Dr</span> <span class="acc">51-1103</span> ค่าเผื่อหนี้สงสัยจะสูญ
+   <span class="cr">Cr</span> <span class="acc">11-2102</span> Contra Asset
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-header">
+        <div>
+          <h3 class="step-title">H. Bad Debt Write-Off — ตัดหนี้สูญ</h3>
+          <p class="step-trigger">Template <strong>BadDebtWriteOff</strong></p>
+        </div>
+        <span class="badge badge-rose">WRITE-OFF</span>
+      </div>
+      <div class="note">consume provision balance ใน <code>11-2102</code> ก่อน · ส่วนเกินเข้า <code>51-1102</code> หนี้สูญ</div>
+    </div>
+  </section>
+
+  <!-- ─────── 5. OPERATING ─────── -->
+  <section id="ops">
+    <h2><span class="num">5</span> Operating (Phase A.5c)</h2>
+
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 30%;">Module</th>
+          <th>Template</th>
+          <th>JE Pattern</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>I.</strong> Monthly Depreciation</td>
+          <td><code>Depreciation</code> (cron)</td>
+          <td>Dr <code>53-160X</code> ค่าเสื่อม / Cr <code>12-210X</code> สะสม (per asset category)</td>
+        </tr>
+        <tr>
+          <td><strong>J.</strong> Asset Disposal</td>
+          <td><code>AssetDisposal</code></td>
+          <td>Loss / Gain / Write-off branches</td>
+        </tr>
+        <tr>
+          <td><strong>K.</strong> Vendor Payment + WHT</td>
+          <td><code>WhtAccrual</code></td>
+          <td>Dr expense + <code>11-4101</code> / Cr cash (net) + <code>21-310X</code> (PND1/3/53)</td>
+        </tr>
+        <tr>
+          <td><strong>L.</strong> Remit WHT to RD</td>
+          <td><code>WhtRemittance</code></td>
+          <td>Dr <code>21-310X</code> / Cr cash</td>
+        </tr>
+        <tr>
+          <td><strong>M.</strong> Generic Expense</td>
+          <td><code>Expense</code></td>
+          <td>Paid (Cr cash) หรือ Unpaid (Cr <code>21-1104</code>) · auto route <code>54-XXXX</code> ถ้า taxDisallowed</td>
+        </tr>
+        <tr>
+          <td><strong>N.</strong> Other Income (42-XXXX)</td>
+          <td><code>OtherIncome</code></td>
+          <td>42-1102 ดอกเบี้ยเงินฝาก (WHT 15%) · 42-1103 ค่าปรับ (auto จาก 2B) · 42-1105 กำไรจำหน่ายสินทรัพย์</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ─────── 6. CRON ─────── -->
+  <section id="cron">
+    <h2><span class="num">6</span> Cron Jobs ที่ขับ Journey</h2>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Cron</th>
+          <th>Schedule</th>
+          <th>Template</th>
+          <th>หน้าที่</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>installment-accrual</code></td>
+          <td>Daily 00:01 BKK</td>
+          <td>2A</td>
+          <td>Accrual ทุกงวดที่ถึง due</td>
+        </tr>
+        <tr>
+          <td><code>vat-60day</code></td>
+          <td>Daily 02:00 BKK</td>
+          <td>VAT60-Mandatory</td>
+          <td>ตั้ง VAT บังคับสำหรับลูกหนี้ค้าง 60 วัน</td>
+        </tr>
+        <tr>
+          <td><code>depreciation</code></td>
+          <td>Daily</td>
+          <td>Depreciation</td>
+          <td>ค่าเสื่อมรายเดือนต่อ asset</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ─────── 7. FLOW DIAGRAM ─────── -->
+  <section id="flow">
+    <h2><span class="num">7</span> ภาพรวม Flow</h2>
+    <div class="flow">
+<pre class="flow-pre">[เปิดสัญญา] ──1A──▶ [จ่ายหน้าร้าน] ──VendorClearance──▶
+                                                      │
+        ┌──────────── Daily 00:01 ─────────────┐      │
+        ▼                                       │      │
+[ทุก Due Date] ──2A──▶ [ลูกค้าจ่าย] ──2B / 2B-split──▶ [งวดต่อไป]
+                              │
+                              ├──▶ EXACT / OVERPAY≤1 / UNDERPAY≤1 → 53-1503 / 52-1104
+                              ├──▶ OVERPAY &gt;1 → 21-1103 (advance) → FIFO
+                              ├──▶ PARTIAL → multiple JE
+                              └──▶ Vat60dayReversal (ถ้ามี flag)
+
+[Branch cases]
+   ├─ ปิดก่อน         ──JP4──▶ จบสัญญา (+ส่วนลด 52-1106)
+   ├─ ยึดเครื่อง      ──JP5──▶ จบสัญญา (Loss 51-1102 / Gain 41-1102)
+   ├─ เลื่อนนัด       ──JP6──▶ ผ่อนต่อ
+   ├─ เปลี่ยน 7 วัน   ──Reversal──▶ 1A ใหม่
+   └─ ยกเลิกใบเสร็จ   ──VoidReversal──▶ Payment ใหม่
+
+[ลูกหนี้ค้างนาน]
+   ├─ ค้าง 60 วัน    ──VAT60Mandatory──▶  ─จ่าย─▶ VAT60Reversal ──▶ ปกติ
+   └─ ค้างนานมาก     ──BadDebtProvision──▶ ──Writeoff──▶ ตัดสูญ</pre>
+    </div>
+  </section>
+
+  <!-- ─────── 8. WATCHPOINTS ─────── -->
+  <section id="watch">
+    <h2><span class="num">8</span> จุดที่ต้องระวัง</h2>
+
+    <div class="watch">
+      <span class="watch-num">1</span>
+      <div>
+        <h4>2A เป็น idempotent ผ่าน accrualJournalEntryId</h4>
+        <p>รัน cron ซ้ำได้ปลอดภัย — ไม่สร้าง JE ซ้ำ</p>
+      </div>
+    </div>
+
+    <div class="watch">
+      <span class="watch-num">2</span>
+      <div>
+        <h4>Tolerance ≤ 1 บาท</h4>
+        <p>Overpay → auto โพสต์ <code>53-1503</code> · Underpay → ต้อง approver (OWNER / ACCOUNTANT / BRANCH_MANAGER)</p>
+      </div>
+    </div>
+
+    <div class="watch">
+      <span class="watch-num">3</span>
+      <div>
+        <h4>Cash dimension required</h4>
+        <p>ทุก Payment ต้องเลือก 1 ใน 6 บัญชี: <code>11-1101/02/03</code> (เงินสดต่อคน) หรือ <code>11-1201/02/03</code> (ธนาคาร)</p>
+      </div>
+    </div>
+
+    <div class="watch">
+      <span class="watch-num">4</span>
+      <div>
+        <h4>Late fee VAT exempt</h4>
+        <p>auto post <code>42-1103</code> จาก 2B (block ใน Other Income module เพื่อกัน double entry)</p>
+      </div>
+    </div>
+
+    <div class="watch">
+      <span class="watch-num">5</span>
+      <div>
+        <h4>Unbalanced JE → throw + Sentry</h4>
+        <p>PR #444 fix — เคยเป็น silent return null ทำให้ silent loss · ตอนนี้ throw ทันทีถ้า Dr ≠ Cr</p>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<button class="print-hint" onclick="window.print()">🖨️ Print / Save as PDF</button>
+
+</body>
+</html>

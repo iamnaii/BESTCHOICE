@@ -138,6 +138,9 @@ describe('RepossessionsService', () => {
       auditLog: {
         create: jest.fn(),
       },
+      user: {
+        findUnique: jest.fn().mockResolvedValue({ defaultCashAccountCode: '11-1101' }),
+      },
       $transaction: jest.fn().mockImplementation(async (fn: unknown) => {
         if (typeof fn === 'function') return fn(prisma);
         return Promise.all(fn as Promise<unknown>[]);
@@ -341,6 +344,44 @@ describe('RepossessionsService', () => {
       );
       expect(result).toMatchObject({ id: 'repo-new' });
     });
+
+    it('passes tx to JP5 template (atomic — JE inside outer $transaction)', async () => {
+      prisma.contract.findUnique.mockResolvedValue(makeContract());
+      prisma.repossession.create.mockResolvedValue({ ...makeRepossession(), id: 'repo-new' });
+      prisma.contract.update.mockResolvedValue({});
+      prisma.product.update.mockResolvedValue({});
+      prisma.auditLog.create.mockResolvedValue({});
+
+      await service.create(baseDto as never, 'user-1');
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const template = (service as any).repossessionJP5Template;
+      expect(template.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          contractId: 'contract-1',
+          depositAccountCode: '11-1101',
+        }),
+        prisma, // tx (mock $transaction passes prisma itself as tx)
+      );
+    });
+
+    it('rolls back contract+product update when JP5 throws (atomicity)', async () => {
+      prisma.contract.findUnique.mockResolvedValue(makeContract());
+      prisma.repossession.create.mockResolvedValue({ ...makeRepossession(), id: 'repo-new' });
+      prisma.contract.update.mockResolvedValue({});
+      prisma.product.update.mockResolvedValue({});
+      prisma.auditLog.create.mockResolvedValue({});
+
+      // Mock JP5 to reject — should propagate up through $transaction (no fire-and-forget)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const template = (service as any).repossessionJP5Template;
+      template.execute.mockRejectedValueOnce(new Error('JE fail'));
+
+      await expect(service.create(baseDto as never, 'user-1')).rejects.toThrow('JE fail');
+
+      // JP5 was awaited — error propagated (proves no .catch() fire-and-forget remains)
+      expect(template.execute).toHaveBeenCalled();
+    });
   });
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -390,11 +431,12 @@ describe('RepossessionsService', () => {
 
       await service.update('repo-1', { status: 'READY_FOR_SALE', resellPrice: 7500 } as never);
 
-      expect(prisma.product.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ costPrice: 7500 }),
-        }),
-      );
+      // Wave 3 / Task 4 (W-2): costPrice now passed as Prisma.Decimal to
+      // preserve precision. Compare via Decimal.eq instead of numeric equality.
+      expect(prisma.product.update).toHaveBeenCalledTimes(1);
+      const call = prisma.product.update.mock.calls[0][0];
+      expect(call.data.status).toBe('REFURBISHED');
+      expect(new Prisma.Decimal(call.data.costPrice).eq(7500)).toBe(true);
     });
 
     it('updates repossession to SOLD status and returns updated record (Phase A.5 JE deferred)', async () => {

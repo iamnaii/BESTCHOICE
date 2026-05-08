@@ -445,30 +445,15 @@ export class ContractWorkflowService {
         },
       });
 
-      // Auto journal entry — record contract activation (sales + COGS).
-      // Atomic with contract activation: if JE fails, the entire $transaction
-      // rolls back. The pre-v4 try/catch silently swallowed JE failures,
-      // leaving the contract ACTIVE without any ledger entry — defeating
-      // the v4 unbalanced-throw guard (audit findings F-1-002 / F-2-003).
-      // NestJS' global exception filter logs the propagated error.
-      // Phase A.4b: replaced createContractActivationJournal (old stub) with
-      // ContractActivation1ATemplate. Template runs its own prisma.$transaction
-      // internally — call it AFTER the outer tx commits to avoid nested tx issues.
-      // NOTE: The outer tx here handles contract state + sale creation. The 1A template
-      // creates the HP receivable JE in a separate atomic tx (acceptable: if JE fails,
-      // the contract is already ACTIVE and Sentry captures the error for reconciliation).
-      // This matches the paysolutions pattern for post-tx JE posting.
-      // TODO Phase A.5: refactor 1A to accept optional tx param for full atomicity.
-      this.contractActivation1ATemplate.execute(contract.id).catch((err) => {
-        this.logger.error(
-          `ContractActivation1A JE failed for contract ${contract.contractNumber}: ${err?.message || err}`,
-          err?.stack,
-        );
-        Sentry.captureException(err, {
-          tags: { module: 'contracts', event: 'activation-je-failure' },
-          extra: { contractId: contract.id, contractNumber: contract.contractNumber },
-        });
-      });
+      // Auto journal entry — record contract activation (HP receivable).
+      // Wave 1 / Task 4: 1A JE now runs inside the outer $transaction by
+      // passing `tx` to the template. If the JE fails (unbalanced, FK, etc.)
+      // the entire activation rolls back — contract stays DRAFT, product
+      // ownership is not transferred, sale row is not created. This closes
+      // audit Wave 1 P0 W-1 (ปพพ.386 termination atomicity) which the prior
+      // fire-and-forget pattern violated by leaving contracts ACTIVE without
+      // any ledger entry when the JE failed.
+      await this.contractActivation1ATemplate.execute(contract.id, tx);
 
       // Phase A.4 — generate installment_schedules rows so accrual cron + payment
       // preview API can find them. Per-installment due_date = startDate + (i × 1 month).

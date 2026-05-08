@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
+import { Prisma } from '@prisma/client';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 
@@ -24,6 +25,18 @@ import { PrismaService } from '../../../prisma/prisma.service';
  *   vatPerInst         = vatTotal / totalMonths     → ROUND_HALF_UP (1190/12 = 99.17)
  *   interestPerInst    = interestTotal / totalMonths → ROUND_HALF_UP (6000/12 = 500.00 exact)
  *
+ * Recognition policy (Wave 4 / Task 2 — Info comments):
+ *   - TFRS 15 §35(b): performance obligation satisfied "over time" — financing
+ *     service is consumed by the customer through each due date, so revenue is
+ *     recognised per period (this template, fired daily by accrual cron).
+ *   - Interest recognition: straight-line allocation per period (NPAEs simplification
+ *     per W-003 in CLAUDE.md). NOT effective interest method (EIR).
+ *     Material deviation from EIR documented in audit report; owner+CPA approved
+ *     NPAEs simplification (target adoption date TBD).
+ *   - VAT recognition: deferred VAT (21-2102 booked at contract activation) is
+ *     reclassified to settled VAT (21-2101) per period — matches TFRS 15
+ *     pattern of recognising tax liability when service is performed.
+ *
  * Idempotent: returns null if accrualJournalEntryId is already set on the installment.
  */
 @Injectable()
@@ -33,15 +46,19 @@ export class InstallmentAccrual2ATemplate {
     private readonly prisma: PrismaService,
   ) {}
 
-  async execute(installmentScheduleId: string): Promise<{ entryNo: string } | null> {
-    const inst = await this.prisma.installmentSchedule.findUniqueOrThrow({
+  async execute(
+    installmentScheduleId: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<{ entryNo: string } | null> {
+    const client = tx ?? this.prisma;
+    const inst = await client.installmentSchedule.findUniqueOrThrow({
       where: { id: installmentScheduleId },
     });
 
     // Idempotency guard
     if (inst.accrualJournalEntryId) return null;
 
-    const c = await this.prisma.contract.findUniqueOrThrow({ where: { id: inst.contractId } });
+    const c = await client.contract.findUniqueOrThrow({ where: { id: inst.contractId } });
 
     const total = new Decimal(c.totalMonths);
     const financed = new Decimal(c.financedAmount.toString());
@@ -57,14 +74,31 @@ export class InstallmentAccrual2ATemplate {
         : grossExclVat.times('0.07').toDecimalPlaces(2);
 
     // Per-installment amounts — rounding modes match CSV spec
-    const installmentExclVat = grossExclVat.div(total).toDecimalPlaces(2, Decimal.ROUND_DOWN); // 1,416.66
-    const interestPerInst = interest.div(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP); //   500.00
-    const vatPerInst = vat.div(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP); //    99.17
+    let installmentExclVat = grossExclVat.div(total).toDecimalPlaces(2, Decimal.ROUND_DOWN); // 1,416.66
+    let interestPerInst = interest.div(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP); //   500.00
+    let vatPerInst = vat.div(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP); //    99.17
+
+    // Final-period residual adjustment (Wave 1 / Task 6 — Audit P0 TFRS 15 C-1).
+    // ROUND_DOWN/ROUND_HALF_UP per-installment rounding can leak residuals
+    // (e.g. 1416.66 × 12 = 16,999.92 vs target 17,000.00). On the LAST
+    // installment we absorb whatever remains so 11-2101 / 11-2105 / 41-1101
+    // hit exactly 0 after the cycle completes.
+    if (inst.installmentNo === c.totalMonths) {
+      const priorPeriods = new Decimal(c.totalMonths - 1);
+      const priorExclVat = installmentExclVat.times(priorPeriods);
+      const priorVat = vatPerInst.times(priorPeriods);
+      const priorInterest = interestPerInst.times(priorPeriods);
+      installmentExclVat = grossExclVat.minus(priorExclVat);
+      vatPerInst = vat.minus(priorVat);
+      interestPerInst = interest.minus(priorInterest);
+    }
+
     const installmentTotal = installmentExclVat.plus(vatPerInst); // 1,515.83
 
     const zero = new Decimal(0);
 
-    const result = await this.journal.createAndPost({
+    const result = await this.journal.createAndPost(
+      {
       description: `Accrual งวด #${inst.installmentNo} — สัญญา ${c.contractNumber}`,
       reference: inst.id,
       metadata: { tag: '2A', contractId: c.id, installmentScheduleId: inst.id },
@@ -113,10 +147,12 @@ export class InstallmentAccrual2ATemplate {
           description: 'ภาษีขาย ภ.พ.30',
         },
       ],
-    });
+      },
+      tx,
+    );
 
     // Mark installment as accrued (idempotency)
-    await this.prisma.installmentSchedule.update({
+    await client.installmentSchedule.update({
       where: { id: inst.id },
       data: { accrualJournalEntryId: result.entryNumber },
     });

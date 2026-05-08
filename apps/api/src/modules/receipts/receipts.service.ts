@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException, Inject, forwardRef } from '@nestjs/common';
 import { formatDateShort } from '../../utils/thai-date.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
@@ -91,9 +91,16 @@ export class ReceiptsService {
       const company = await tx.companyInfo.findFirst({ where: { isActive: true, deletedAt: null } });
       const receiverName = company?.nameTh || 'บริษัท เบสท์ช้อยส์โฟน จำกัด';
 
-      // Calculate remaining balance
-      const totalPaid = contract.payments.reduce((sum, p) => sum + Number(p.amountPaid), 0);
-      const remainingBalance = Number(contract.financedAmount) - totalPaid;
+      // Calculate remaining balance with Decimal arithmetic — avoids float
+      // drift on the persisted remainingBalance field (Decimal(12,2)).
+      const totalPaid = contract.payments.reduce(
+        (sum, p) => sum.add(new Prisma.Decimal(p.amountPaid.toString())),
+        new Prisma.Decimal(0),
+      );
+      const remainingBalanceDec = new Prisma.Decimal(contract.financedAmount.toString()).sub(
+        totalPaid,
+      );
+      const remainingBalance = Prisma.Decimal.max(remainingBalanceDec, new Prisma.Decimal(0));
       const totalMonths = contract.totalMonths;
       const paidMonths = contract.payments.length;
       const remainingMonths = totalMonths - paidMonths;
@@ -121,7 +128,7 @@ export class ReceiptsService {
           receiverName,
           amount,
           installmentNo,
-          remainingBalance: Math.max(0, remainingBalance),
+          remainingBalance,
           remainingMonths: Math.max(0, remainingMonths),
           paymentMethod,
           transactionRef,
@@ -361,11 +368,42 @@ export class ReceiptsService {
   /**
    * Void a receipt (ถ้าผิด → ออกใบลดหนี้/ใบแก้ไขแทน)
    * ใบเสร็จที่ออกแล้วห้ามแก้ไข/ลบ
+   *
+   * Wave 3 T2 (ปพพ.386 W-3): จำกัดสิทธิ์ — เฉพาะ OWNER / ACCOUNTANT /
+   * BRANCH_MANAGER เท่านั้นที่ void ได้. SALES void ไม่ได้เพื่อป้องกัน
+   * fraud โดยพนักงานหน้าร้าน. บันทึก audit log RECEIPT_VOID เพิ่มเติม
+   * นอกเหนือจาก voidApprovedById บน receipt row เพื่อ forensic trail.
    */
-  async voidReceipt(id: string, reason: string, issuedById: string, approvedById: string) {
+  async voidReceipt(
+    id: string,
+    reason: string,
+    issuedById: string,
+    approvedById: string,
+    userRole?: string,
+  ) {
     if (!reason?.trim()) {
       throw new BadRequestException('กรุณาระบุเหตุผลในการยกเลิก');
     }
+
+    // Wave 3 T2: Role check — controller passes userRole; if absent we
+    // still defend in service layer (defensive — prevents future caller misuse).
+    const ALLOWED_VOID_ROLES = ['OWNER', 'ACCOUNTANT', 'BRANCH_MANAGER', 'FINANCE_MANAGER'];
+    if (userRole !== undefined && !ALLOWED_VOID_ROLES.includes(userRole)) {
+      throw new ForbiddenException(
+        'ไม่มีสิทธิ์ยกเลิกใบเสร็จ · ต้องเป็นเจ้าของ / ฝ่ายบัญชี / ผจก.สาขา / ผจก.การเงิน',
+      );
+    }
+
+    // Segregation of duties: the user requesting the void cannot be the same
+    // user approving it. Mirrors bad-debt write-off pattern (writtenOffById !==
+    // approvedById). Prevents the controller fallback `dto.approvedById ?? user.id`
+    // from auto-approving on behalf of the requester.
+    if (issuedById === approvedById) {
+      throw new ForbiddenException(
+        'การยกเลิกใบเสร็จต้องมีผู้ขออนุมัติและผู้อนุมัติเป็นคนละคน',
+      );
+    }
+
     // CR-7: Validate void date is not in a closed accounting period
     await validatePeriodOpen(this.prisma, new Date());
     return this.prisma.$transaction(async (tx) => {
@@ -411,7 +449,9 @@ export class ReceiptsService {
         },
       });
 
-      // Phase A.5a: reverse the original payment JE (non-blocking)
+      // Phase A.5a: reverse the original payment JE.
+      // Must propagate errors — receipt void without ledger reversal would
+      // leave HP receivable cleared by 2B but no offsetting credit note JE.
       if (receipt.paymentId) {
         const originalEntry = await tx.journalEntry.findFirst({
           where: {
@@ -422,15 +462,37 @@ export class ReceiptsService {
           },
         });
         if (originalEntry) {
-          try {
-            await this.receiptVoidReversalTemplate.voidReceipt(originalEntry.id);
-          } catch (err) {
-            this.logger.error(
-              `[A.5a] Receipt void reversal JE failed for payment ${receipt.paymentId}: ${(err as Error).message}`,
-            );
-          }
+          await this.receiptVoidReversalTemplate.voidReceipt(originalEntry.id, tx);
         }
       }
+
+      // Wave 3 T2 (ปพพ.386 W-3): forensic audit log for receipt voids.
+      // voidApprovedById on receipt is operational; this is the immutable
+      // tamper-evident trail (Merkle-chained, 7-yr retention).
+      await tx.auditLog.create({
+        data: {
+          userId: issuedById,
+          action: 'RECEIPT_VOID',
+          entity: 'receipt',
+          entityId: receipt.id,
+          oldValue: {
+            receiptNumber: receipt.receiptNumber,
+            amount: Number(receipt.amount),
+            payerName: receipt.payerName,
+            paymentMethod: receipt.paymentMethod,
+            installmentNo: receipt.installmentNo,
+            paidDate: receipt.paidDate.toISOString(),
+          },
+          newValue: {
+            reason: reason.trim(),
+            voidedAt: new Date().toISOString(),
+            approvedById,
+            creditNoteId: creditNote.id,
+            creditNoteNumber: creditNote.receiptNumber,
+            userRole: userRole ?? null,
+          },
+        },
+      });
 
       return { voidedReceipt: receipt, creditNote };
     });

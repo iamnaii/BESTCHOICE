@@ -26,6 +26,7 @@ describe('Template 1A — Contract Activation', () => {
     await prisma.callLog.deleteMany({});
     await prisma.dunningAction.deleteMany({});
     await prisma.repossession.deleteMany({});
+    await prisma.payment.deleteMany({});
     await prisma.installmentSchedule.deleteMany({});
     // Cascade: delete contracts after clearing child tables
     await prisma.contract.deleteMany({});

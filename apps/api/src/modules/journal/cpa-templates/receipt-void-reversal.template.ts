@@ -27,9 +27,13 @@ export class ReceiptVoidReversalTemplate {
    * @param originalJournalEntryId - ID of the POSTED 2B JE to reverse
    * @returns entryNo of the new reversal JE
    */
-  async voidReceipt(originalJournalEntryId: string): Promise<{ entryNo: string }> {
+  async voidReceipt(
+    originalJournalEntryId: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<{ entryNo: string }> {
+    const client = tx ?? this.prisma;
     // Idempotency check
-    const existingReversal = await this.prisma.journalEntry.findFirst({
+    const existingReversal = await client.journalEntry.findFirst({
       where: {
         AND: [
           {
@@ -49,7 +53,7 @@ export class ReceiptVoidReversalTemplate {
     }
 
     // Load original JE + lines
-    const originalJe = await this.prisma.journalEntry.findUnique({
+    const originalJe = await client.journalEntry.findUnique({
       where: { id: originalJournalEntryId },
       include: { lines: true },
     });
@@ -83,20 +87,23 @@ export class ReceiptVoidReversalTemplate {
       description: `[VOID] ${l.description ?? ''}`.trim(),
     }));
 
-    const result = await this.journal.createAndPost({
-      description: `[ยกเลิกใบเสร็จ] ยกเลิก JE ${originalJe.entryNumber}`,
-      reference: `${originalJournalEntryId}:void`,
-      metadata: {
-        tag: 'REVERSAL',
-        flow: 'receipt-void',
-        originalEntryId: originalJournalEntryId,
-        originalEntryNumber: originalJe.entryNumber,
+    const result = await this.journal.createAndPost(
+      {
+        description: `[ยกเลิกใบเสร็จ] ยกเลิก JE ${originalJe.entryNumber}`,
+        reference: `${originalJournalEntryId}:void`,
+        metadata: {
+          tag: 'REVERSAL',
+          flow: 'receipt-void',
+          originalEntryId: originalJournalEntryId,
+          originalEntryNumber: originalJe.entryNumber,
+        },
+        lines: reversedLines,
       },
-      lines: reversedLines,
-    });
+      tx,
+    );
 
     // Mark original as reversed
-    await this.prisma.journalEntry.update({
+    await client.journalEntry.update({
       where: { id: originalJournalEntryId },
       data: {
         metadata: {

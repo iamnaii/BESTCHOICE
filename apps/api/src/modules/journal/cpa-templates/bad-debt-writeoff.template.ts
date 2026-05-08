@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
+import { Prisma } from '@prisma/client';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 
@@ -28,11 +29,15 @@ export class BadDebtWriteOffTemplate {
     private readonly prisma: PrismaService,
   ) {}
 
-  async execute(input: BadDebtWriteOffInput): Promise<{ entryNo: string }> {
+  async execute(
+    input: BadDebtWriteOffInput,
+    tx?: Prisma.TransactionClient,
+  ): Promise<{ entryNo: string }> {
     const { contractId, writeOffReason } = input;
+    const client = tx ?? this.prisma;
 
     // Idempotency check
-    const existingWo = await this.prisma.journalEntry.findFirst({
+    const existingWo = await client.journalEntry.findFirst({
       where: {
         AND: [
           { metadata: { path: ['flow'], equals: 'write-off' } } as any,
@@ -48,18 +53,19 @@ export class BadDebtWriteOffTemplate {
       return { entryNo: existingWo.entryNumber };
     }
 
-    const contract = await this.prisma.contract.findUniqueOrThrow({
+    const contract = await client.contract.findUniqueOrThrow({
       where: { id: contractId },
       select: { id: true, contractNumber: true },
     });
 
     // Compute gross outstanding from JournalLine balances for this contract
     // Sum Dr lines on 11-2101 (HP Receivable) minus Cr lines (payments, reversals)
-    const lines1A = await this.prisma.journalLine.findMany({
+    const lines1A = await client.journalLine.findMany({
       where: {
         accountCode: '11-2101',
         journalEntry: {
           metadata: { path: ['contractId'], equals: contractId },
+          status: 'POSTED',
           deletedAt: null,
         },
       },
@@ -78,11 +84,12 @@ export class BadDebtWriteOffTemplate {
     }
 
     // Compute existing provision (11-2102 Cr balance for this contract)
-    const provisionLines = await this.prisma.journalLine.findMany({
+    const provisionLines = await client.journalLine.findMany({
       where: {
         accountCode: '11-2102',
         journalEntry: {
           metadata: { path: ['contractId'], equals: contractId },
+          status: 'POSTED',
           deletedAt: null,
         },
       },
@@ -125,20 +132,23 @@ export class BadDebtWriteOffTemplate {
       description: 'ล้างลูกหนี้ผ่อนชำระ (Gross)',
     });
 
-    const result = await this.journal.createAndPost({
-      description: `ตัดหนี้สูญ — สัญญา ${contract.contractNumber}`,
-      reference: `${contractId}:bad-debt-write-off`,
-      metadata: {
-        tag: 'BAD-DEBT',
-        flow: 'write-off',
-        contractId,
-        grossOutstanding: grossOutstanding.toFixed(2),
-        provisionConsumed: provisionConsumed.toFixed(2),
-        writeOffExpense: writeOffExpense.toFixed(2),
-        writeOffReason: writeOffReason ?? null,
+    const result = await this.journal.createAndPost(
+      {
+        description: `ตัดหนี้สูญ — สัญญา ${contract.contractNumber}`,
+        reference: `${contractId}:bad-debt-write-off`,
+        metadata: {
+          tag: 'BAD-DEBT',
+          flow: 'write-off',
+          contractId,
+          grossOutstanding: grossOutstanding.toFixed(2),
+          provisionConsumed: provisionConsumed.toFixed(2),
+          writeOffExpense: writeOffExpense.toFixed(2),
+          writeOffReason: writeOffReason ?? null,
+        },
+        lines: drLines,
       },
-      lines: drLines,
-    });
+      tx,
+    );
 
     return { entryNo: result.entryNumber };
   }

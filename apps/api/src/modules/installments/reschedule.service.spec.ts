@@ -7,13 +7,34 @@ import { RescheduleService } from './reschedule.service';
 
 const prisma = new PrismaClient();
 
+async function ensureRescheduleTestUser(): Promise<string> {
+  const email = 'reschedule-tester@bestchoice-test.internal';
+  const existing = await prisma.user.findFirst({ where: { email } });
+  if (existing) return existing.id;
+  const created = await prisma.user.create({
+    data: {
+      email,
+      password: 'hashed_placeholder',
+      name: 'Reschedule Tester',
+      role: 'OWNER',
+    },
+  });
+  return created.id;
+}
+
+async function cleanContractsAndJournal() {
+  // audit_logs is immutable (T2-C4 trigger blocks DELETE) — we scope each
+  // test by contract.id so no inter-test cleanup is needed for the audit table.
+  await prisma.journalLine.deleteMany({});
+  await prisma.journalEntry.deleteMany({});
+  await prisma.installmentSchedule.deleteMany({});
+  await prisma.payment.deleteMany({});
+  await prisma.contract.deleteMany({});
+}
+
 describe('RescheduleService', () => {
   beforeAll(async () => {
-    await prisma.journalLine.deleteMany({});
-    await prisma.journalEntry.deleteMany({});
-    await prisma.installmentSchedule.deleteMany({});
-    await prisma.payment.deleteMany({});
-    await prisma.contract.deleteMany({});
+    await cleanContractsAndJournal();
     await seedFinanceCoa(prisma);
   });
 
@@ -27,6 +48,7 @@ describe('RescheduleService', () => {
     });
 
     expect(result.rescheduleFee.toFixed(2)).toBe('808.44');
+    expect(result.shiftedInstallmentIds.length).toBe(8); // installments 5..12
 
     const inst5 = await prisma.installmentSchedule.findFirstOrThrow({
       where: { contractId: c.id, installmentNo: 5 },
@@ -68,5 +90,87 @@ describe('RescheduleService', () => {
       expect(inst.rescheduleCount).toBe(0);
       expect(inst.rescheduledFromDate).toBeNull();
     }
+
+    // Without userId — no AuditLog row created (backward-compat path)
+    const auditCount = await prisma.auditLog.count({
+      where: { entityId: c.id, action: 'RESCHEDULE' },
+    });
+    expect(auditCount).toBe(0);
+  });
+
+  it('writes AuditLog action=RESCHEDULE inside the transaction when userId provided (Wave 2 Task 4)', async () => {
+    await cleanContractsAndJournal();
+
+    const c = await seedStandard17k12m(prisma);
+    const userId = await ensureRescheduleTestUser();
+    const svc = new RescheduleService(prisma as any);
+
+    await svc.execute({
+      contractId: c.id,
+      fromInstallmentNo: 5,
+      daysToShift: 16,
+      userId,
+      variant: '6a',
+    });
+
+    const audits = await prisma.auditLog.findMany({
+      where: { entity: 'contract', entityId: c.id, action: 'RESCHEDULE' },
+    });
+    expect(audits.length).toBe(1);
+    const meta = audits[0].newValue as any;
+    expect(meta.fromInstallmentNo).toBe(5);
+    expect(meta.daysToShift).toBe(16);
+    expect(meta.variant).toBe('6a');
+    expect(meta.rescheduleFee).toBe('808.44');
+    expect(meta.shiftedInstallmentCount).toBe(8);
+    expect(meta.firstShiftedInstallmentNo).toBe(5);
+    expect(audits[0].userId).toBe(userId);
+  });
+
+  it('rolls back due_date AND skips AuditLog when transaction throws (atomicity)', async () => {
+    await cleanContractsAndJournal();
+
+    const c = await seedStandard17k12m(prisma);
+    const userId = await ensureRescheduleTestUser();
+    const svc = new RescheduleService(prisma as any);
+
+    // Force a transaction failure by passing a non-existent userId — FK violation
+    // on AuditLog.userId → User.id will abort the transaction and roll back the
+    // due_date updates AND the audit row.
+    await expect(
+      svc.execute({
+        contractId: c.id,
+        fromInstallmentNo: 5,
+        daysToShift: 16,
+        userId: '00000000-0000-0000-0000-000000000000',
+        variant: '6a',
+      }),
+    ).rejects.toThrow();
+
+    // Installment 5 dueDate must be unchanged (rollback worked)
+    const inst5 = await prisma.installmentSchedule.findFirstOrThrow({
+      where: { contractId: c.id, installmentNo: 5 },
+    });
+    expect(inst5.rescheduleCount).toBe(0);
+    expect(inst5.rescheduledFromDate).toBeNull();
+
+    // No audit row leaked
+    const audits = await prisma.auditLog.findMany({
+      where: { entity: 'contract', entityId: c.id, action: 'RESCHEDULE' },
+    });
+    expect(audits.length).toBe(0);
+
+    // Sanity: a follow-up correct call must still succeed
+    await svc.execute({
+      contractId: c.id,
+      fromInstallmentNo: 5,
+      daysToShift: 16,
+      userId,
+      variant: '6b',
+    });
+    const inst5after = await prisma.installmentSchedule.findFirstOrThrow({
+      where: { contractId: c.id, installmentNo: 5 },
+    });
+    expect(inst5after.rescheduleCount).toBe(1);
   });
 });

@@ -1476,6 +1476,35 @@ export class PaymentsService {
     return user.id;
   }
 
+  // ─── Partial-payment QR (cashier sends QR to customer's LINE) ─────────────
+  // Customer pays via PaySolutions PromptPay → webhook auto-records as PARTIAL.
+  // The active link powers the "QR ส่งแล้ว" badge in the payments table.
+
+  /** Get the currently-active (un-expired) partial-payment QR link for a payment. */
+  async getActivePartialQr(paymentId: string) {
+    return this.prisma.partialPaymentLink.findFirst({
+      where: {
+        paymentId,
+        status: 'ACTIVE',
+        expiresAt: { gt: new Date() },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  /** Cancel the currently-active partial-payment QR link, if one exists. */
+  async cancelActivePartialQr(paymentId: string) {
+    const link = await this.prisma.partialPaymentLink.findFirst({
+      where: { paymentId, status: 'ACTIVE' },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!link) throw new NotFoundException('ไม่มี QR ที่กำลังใช้งานอยู่');
+    return this.prisma.partialPaymentLink.update({
+      where: { id: link.id },
+      data: { status: 'CANCELLED', cancelledAt: new Date() },
+    });
+  }
+
   /**
    * Preview JE lines for a payment without persisting anything.
    * Used by the RecordPaymentWizard frontend to show "Journal Auto" live.

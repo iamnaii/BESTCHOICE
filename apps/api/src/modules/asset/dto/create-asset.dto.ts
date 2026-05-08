@@ -107,6 +107,3 @@ export class CreateAssetDto {
   @IsOptional() @IsString()
   approverId?: string;
 }
-
-// Aliases for backward compatibility with existing controller imports
-export class CreateFixedAssetDto extends CreateAssetDto {}

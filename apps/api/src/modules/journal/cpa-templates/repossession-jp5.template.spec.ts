@@ -44,10 +44,9 @@ async function setup() {
 }
 
 describe('RepossessionJP5Template', () => {
-  // Phase 3 EIR migration: CSV golden values are based on straight-line interest
-  // (500 × n). With EIR allocation, deferred interest for periods 5..12 = 3,012.50
-  // (vs 4,000 straight-line). CSV regen pending Phase 4.
-  it.skip('CSV golden case — pending Phase 4 regen (EIR allocation differs from straight-line)', async () => {
+  // Phase 4 EIR migration: CSV regenerated to match EIR allocation
+  // (deferred interest for periods 5..12 = 3,012.50, was straight-line 4,000). Re-enabled.
+  it('CSV golden case — EIR allocation matches Phase 4 fixture', async () => {
     const journal = await setup();
     const c = await seedStandard17k12m(prisma);
     await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);

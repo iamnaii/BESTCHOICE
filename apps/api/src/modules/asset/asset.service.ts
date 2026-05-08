@@ -578,8 +578,102 @@ export class AssetService {
     return result;
   }
 
-  async copy(_id: string, _userId: string) {
-    throw new Error('copy: implement in Task 8');
+  /**
+   * Clone an existing asset into a new DRAFT. Source can be in any status.
+   * - Cloned: name, description, category, branch, cost fields, VAT/WHT config,
+   *   vendor info, custodian, location, payment, warranty, prRef, note.
+   * - Reset: id, assetCode, docNo, dates (purchaseDate=today; invoiceDate/
+   *   warrantyExpire flags individually handled), invoiceNo, taxInvoiceNo,
+   *   serialNo, whtBaseAmount, accumulatedDepr, all coa* snapshots,
+   *   approverId, posted/reversed/audit fields, status=DRAFT.
+   * - NOT copied: transferHistory rows, depreciationEntries (separate tables).
+   * - AuditLog ASSET_CREATE includes copiedFromAssetId/copiedFromAssetCode for lineage.
+   */
+  async copy(id: string, createdById: string) {
+    const source = await this.prisma.fixedAsset.findFirst({
+      where: { id, deletedAt: null },
+    });
+    if (!source) throw new NotFoundException('ไม่พบสินทรัพย์ต้นทาง');
+
+    return this.prisma.$transaction(async (tx) => {
+      const docNo = await this.generateDocNo(tx);
+      const { assetCode } = await this.generateAssetCode(source.category);
+
+      const copy = await tx.fixedAsset.create({
+        data: {
+          // Generated
+          assetCode,
+          docNo,
+          // Copied operational fields
+          name: source.name,
+          description: source.description,
+          category: source.category,
+          branchId: source.branchId,
+          basePrice: source.basePrice,
+          shippingCost: source.shippingCost,
+          installationCost: source.installationCost,
+          otherCapitalized: source.otherCapitalized,
+          hasVat: source.hasVat,
+          vatInclusive: source.vatInclusive,
+          vatAmount: source.vatAmount,
+          vatAccount: source.vatAccount,
+          hasWht: source.hasWht,
+          whtRate: source.whtRate,
+          whtAccount: source.whtAccount,
+          whtFormType: source.whtFormType,
+          whtAmount: source.whtAmount,
+          purchaseCost: source.purchaseCost,
+          residualValue: source.residualValue,
+          usefulLifeMonths: source.usefulLifeMonths,
+          monthlyDepr: source.monthlyDepr,
+          netBookValue: source.purchaseCost, // reset to full
+          purchaseDate: new Date(), // today
+          warrantyExpire: source.warrantyExpire,
+          supplierName: source.supplierName,
+          supplierTaxId: source.supplierTaxId,
+          paymentMethod: source.paymentMethod,
+          paymentAccount: source.paymentAccount,
+          custodian: source.custodian,
+          location: source.location,
+          prRef: source.prRef,
+          note: source.note,
+          // Reset
+          whtBaseAmount: null,
+          invoiceDate: null,
+          invoiceNo: null,
+          taxInvoiceNo: null,
+          serialNo: null,
+          accumulatedDepr: 0,
+          coaCostAccount: null,
+          coaDeprAccount: null,
+          coaExpenseAccount: null,
+          approverId: null,
+          postedById: null,
+          postedAt: null,
+          reversedById: null,
+          reversedAt: null,
+          reversalReason: null,
+          status: AssetStatus.DRAFT,
+          createdById,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId: createdById,
+          action: 'ASSET_CREATE',
+          entity: 'fixed_asset',
+          entityId: copy.id,
+          newValue: {
+            status: 'DRAFT',
+            copiedFromAssetId: source.id,
+            copiedFromAssetCode: source.assetCode,
+          },
+        },
+      });
+
+      return copy;
+    });
   }
 
   /** Backward-compat for controller — implemented in Task 9. */

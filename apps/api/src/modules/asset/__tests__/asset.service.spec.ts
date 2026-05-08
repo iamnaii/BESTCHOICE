@@ -420,8 +420,8 @@ describe('AssetService — CRUD + helpers', () => {
   // ==========================================================================
 
   /** Helper — create an asset and POST it (real JE via AssetPurchaseTemplate). */
-  async function createPostedAsset() {
-    const draft = await service.createDraft(baseDto, userId);
+  async function createPostedAsset(overrides: Partial<CreateAssetDto> = {}) {
+    const draft = await service.createDraft({ ...baseDto, ...overrides }, userId);
     await service.post(draft.id, userId);
     const posted = await prisma.fixedAsset.findUnique({ where: { id: draft.id } });
     return posted!;
@@ -573,6 +573,66 @@ describe('AssetService — CRUD + helpers', () => {
     it('rejects reverse with empty reason', async () => {
       const asset = await createPostedAsset();
       await expect(service.reverse(asset.id, userId, '')).rejects.toThrow();
+    });
+  });
+
+  // ==========================================================================
+  // Task 8 — copy: clone POSTED/REVERSED asset into new DRAFT
+  // ==========================================================================
+  describe('AssetService.copy', () => {
+    it('clones a POSTED asset into a new DRAFT', async () => {
+      const source = await createPostedAsset({
+        name: 'Notebook X',
+        custodian: 'Alice',
+        supplierName: 'Vendor A',
+      });
+      const copy = await service.copy(source.id, userId);
+      expect(copy.id).not.toBe(source.id);
+      expect(copy.assetCode).not.toBe(source.assetCode);
+      expect(copy.docNo).not.toBe(source.docNo);
+      expect(copy.status).toBe('DRAFT');
+      expect(copy.name).toBe('Notebook X');
+      expect(copy.custodian).toBe('Alice');
+      expect(copy.supplierName).toBe('Vendor A');
+      expect(copy.postedAt).toBeNull();
+      expect(copy.coaCostAccount).toBeNull();
+    });
+
+    it('clones a REVERSED asset (any source status allowed)', async () => {
+      const source = await createPostedAsset();
+      await service.reverse(source.id, userId, 'x');
+      const copy = await service.copy(source.id, userId);
+      expect(copy.status).toBe('DRAFT');
+    });
+
+    it('AuditLog ASSET_CREATE includes copiedFromAssetId', async () => {
+      const source = await createPostedAsset();
+      const copy = await service.copy(source.id, userId);
+      const log = await prisma.auditLog.findFirst({
+        where: { entity: 'fixed_asset', entityId: copy.id, action: 'ASSET_CREATE' },
+      });
+      expect(log).toBeTruthy();
+      expect((log!.newValue as any).copiedFromAssetId).toBe(source.id);
+      expect((log!.newValue as any).copiedFromAssetCode).toBe(source.assetCode);
+    });
+
+    it('does NOT copy transferHistory or depreciationEntries', async () => {
+      const source = await createPostedAsset();
+      await prisma.assetTransferHistory.create({
+        data: {
+          transferId: `TRF-test-${Date.now()}`,
+          assetId: source.id,
+          transferDate: new Date(),
+          toCustodian: 'Bob',
+          reason: 'test',
+          transferredById: userId,
+        },
+      });
+      const copy = await service.copy(source.id, userId);
+      const copyHistory = await prisma.assetTransferHistory.count({
+        where: { assetId: copy.id },
+      });
+      expect(copyHistory).toBe(0);
     });
   });
 });

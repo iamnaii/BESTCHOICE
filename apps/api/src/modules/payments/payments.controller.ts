@@ -31,6 +31,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { PaySolutionsService } from '../paysolutions/paysolutions.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { RescheduleService } from '../installments/reschedule.service';
 
 class CreatePartialQrDto {
   @IsNumber()
@@ -48,6 +49,7 @@ export class PaymentsController {
     @Inject(forwardRef(() => PaySolutionsService))
     private paySolutionsService: PaySolutionsService,
     private prisma: PrismaService,
+    private rescheduleService: RescheduleService,
   ) {}
 
   @Get('pending')
@@ -146,16 +148,38 @@ export class PaymentsController {
     @Body() dto: RecordPaymentDto,
     @CurrentUser() user: { id: string; role: string; branchId: string | null },
   ) {
-    // RESCHEDULE case stub — wizard preview works, but actual execution routes to /contracts/:id/reschedule
-    // TODO: wire to RescheduleService.execute() + RescheduleJP6Template in a follow-up PR
-    if ((dto as any).case === 'RESCHEDULE') {
-      throw new BadRequestException(
-        'การปรับดิวผ่าน wizard ยังไม่พร้อม — ใช้หน้า /contracts/:id/reschedule แทน (TODO)',
-      );
-    }
-
     // Validate branch access: SALES and BRANCH_MANAGER can only record for their branch
     await this.paymentsService.validateBranchAccess(dto.contractId, user);
+
+    // ── RESCHEDULE case (Wave 3 / T3) ─────────────────────────────────────────
+    // Per CSV golden case-6a/6b: "Step 1 — UPDATE DB (ไม่มี Journal)".
+    // RescheduleService.execute() shifts due_dates + reduces last installment
+    // amountDue by fee + writes RESCHEDULE AuditLog atomically.
+    // The JP6 JE post happens later when the customer actually pays — split-pay
+    // (6a) sends a fee-advance receipt, bundled (6b) bundles fee + installment
+    // in the next normal recordPayment call. Both flows are dispatched by
+    // payments.service.previewJournal / recordPayment using `splitMode`.
+    if (dto.case === 'RESCHEDULE') {
+      if (!dto.daysToShift || dto.daysToShift < 1) {
+        throw new BadRequestException('กรุณาระบุจำนวนวันที่เลื่อน (daysToShift) มากกว่า 0');
+      }
+      const variant = dto.splitMode === 'SPLIT' ? '6a' : '6b';
+      const result = await this.rescheduleService.execute({
+        contractId: dto.contractId,
+        fromInstallmentNo: dto.installmentNo,
+        daysToShift: dto.daysToShift,
+        userId: user.id,
+        variant,
+      });
+      return {
+        success: true,
+        case: 'RESCHEDULE',
+        variant,
+        rescheduleFee: result.rescheduleFee.toFixed(2),
+        shiftedInstallmentCount: result.shiftedInstallmentIds.length,
+        shiftedInstallmentIds: result.shiftedInstallmentIds,
+      };
+    }
 
     // Wizard step 3 fields: wizardMethod/referenceNumber/slipUrl/memo map to existing recordPayment params.
     // slipUrl → evidenceUrl, referenceNumber → transactionRef, memo → notes (merged)

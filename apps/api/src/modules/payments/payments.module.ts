@@ -8,6 +8,7 @@ import { LineOaModule } from '../line-oa/line-oa.module';
 import { MdmModule } from '../mdm/mdm.module';
 import { OverdueModule } from '../overdue/overdue.module';
 import { PaySolutionsModule } from '../paysolutions/paysolutions.module';
+import { InstallmentsModule } from '../installments/installments.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { PaySolutionsModule } from '../paysolutions/paysolutions.module';
     ProductsModule,
     LineOaModule,
     MdmModule,
+    InstallmentsModule,
     forwardRef(() => OverdueModule),
     forwardRef(() => PaySolutionsModule),
   ],

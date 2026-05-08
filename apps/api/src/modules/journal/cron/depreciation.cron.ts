@@ -34,14 +34,14 @@ export class DepreciationCron {
     }
 
     const period = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
-    this.logger.log(`[A.5c] DepreciationCron: running for period ${period}`);
+    this.logger.log(`[Phase1] DepreciationCron: running for period ${period}`);
 
     const assets = await this.prisma.fixedAsset.findMany({
       where: { status: 'POSTED', deletedAt: null },
       select: { id: true, assetCode: true },
     });
 
-    this.logger.log(`[A.5c] DepreciationCron: ${assets.length} posted asset(s) to process`);
+    this.logger.log(`[Phase1] DepreciationCron: ${assets.length} posted asset(s) to process`);
 
     let processed = 0;
     let skipped = 0;
@@ -62,13 +62,13 @@ export class DepreciationCron {
           tags: { kind: 'cron-job', cron: 'monthly-depreciation-a5c' },
         });
         this.logger.error(
-          `[A.5c] DepreciationCron: failed for asset ${asset.assetCode}: ${(e as Error).message}`,
+          `[Phase1] DepreciationCron: failed for asset ${asset.assetCode}: ${(e as Error).message}`,
         );
       }
     }
 
     this.logger.log(
-      `[A.5c] DepreciationCron: period=${period} processed=${processed} skipped=${skipped} failed=${failed}`,
+      `[Phase1] DepreciationCron: period=${period} processed=${processed} skipped=${skipped} failed=${failed}`,
     );
 
     return { processed, skipped, failed };

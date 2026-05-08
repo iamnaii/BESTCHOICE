@@ -7,6 +7,16 @@
 -- (doc_no, base_price, purchase_cost, monthly_depr, net_book_value, useful_life_months,
 -- created_by_id) cannot be backfilled mechanically.
 
+-- Pre-condition guard: Phase 1 migration assumes fixed_assets is empty
+-- (production deploys must run wipe-assets CLI first; see plan Task 2).
+-- If any rows exist, abort the migration before destructive ops begin.
+DO $$
+BEGIN
+  IF (SELECT COUNT(*) FROM fixed_assets) > 0 THEN
+    RAISE EXCEPTION 'Refusing to run asset_phase1 migration: fixed_assets must be empty (run wipe:assets CLI first). Found % rows.', (SELECT COUNT(*) FROM fixed_assets);
+  END IF;
+END $$;
+
 -- =============================================================================
 -- Step 1: Rename AssetCategory enum values
 -- (PG 13+ supports ALTER TYPE ... RENAME VALUE)

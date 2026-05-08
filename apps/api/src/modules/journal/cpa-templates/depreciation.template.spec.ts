@@ -129,6 +129,8 @@ describe('DepreciationTemplate', () => {
     // Asset updated
     const updated = await prisma.fixedAsset.findFirst({ where: { id: asset.id } });
     expect(new Decimal(updated!.accumulatedDepr.toString()).toFixed(2)).toBe('1000.00');
+    // netBookValue must be updated alongside accumulatedDepr: 60000 - 1000 = 59000
+    expect(new Decimal(updated!.netBookValue.toString()).toFixed(2)).toBe('59000.00');
   });
 
   it('posts correct accounts per category: VEHICLE → Dr 53-1604 / Cr 12-2108', async () => {

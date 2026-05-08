@@ -182,14 +182,52 @@ export class RepossessionJP5Template {
     }
 
     if (lossOrGain.gt(0)) {
-      // Loss — Dr 51-1102
-      // TODO Task 8: consume Bad Debt provision (11-2102) before recognizing loss in 51-1102
-      lines.push({
-        accountCode: '51-1102',
-        dr: lossOrGain,
-        cr: zero,
-        description: 'ขาดทุนจากยึดเครื่อง',
+      // Loss case — TFRS §B61-B63 + TAS 36: consume any existing
+      // Bad Debt provision (11-2102 contra asset) before recognizing
+      // loss to 51-1102. Otherwise loss is double-counted (once via the
+      // provision expense in a prior period, once via repo loss now).
+      //
+      // provisionBalance = sum(Cr 11-2102) - sum(Dr 11-2102) for this contractId
+      // (only POSTED entries; deletedAt-null implicit via journalLine relation)
+      const provisionLines = await client.journalLine.findMany({
+        where: {
+          accountCode: '11-2102',
+          journalEntry: {
+            metadata: { path: ['contractId'], equals: c.id },
+            status: 'POSTED',
+            deletedAt: null,
+          },
+        },
+        select: { debit: true, credit: true },
       });
+      const provisionBalance = provisionLines.reduce(
+        (sum, l) => sum.plus(new Decimal(l.credit.toString())).minus(new Decimal(l.debit.toString())),
+        new Decimal(0),
+      );
+
+      let remainingLoss = lossOrGain;
+
+      if (provisionBalance.gt(0)) {
+        const consume = Decimal.min(remainingLoss, provisionBalance);
+        lines.push({
+          accountCode: '11-2102',
+          dr: consume,
+          cr: zero,
+          description: `ใช้ค่าเผื่อหนี้สงสัยจะสูญที่ตั้งไว้ (${consume.toFixed(2)} ฿)`,
+        });
+        remainingLoss = remainingLoss.minus(consume);
+      }
+
+      if (remainingLoss.gt(0)) {
+        lines.push({
+          accountCode: '51-1102',
+          dr: remainingLoss,
+          cr: zero,
+          description: provisionBalance.gt(0)
+            ? 'ขาดทุนจากยึดเครื่อง (ส่วนเกินค่าเผื่อ)'
+            : 'ขาดทุนจากยึดเครื่อง',
+        });
+      }
     } else if (lossOrGain.lt(0)) {
       // Gain — Cr 41-1102
       lines.push({

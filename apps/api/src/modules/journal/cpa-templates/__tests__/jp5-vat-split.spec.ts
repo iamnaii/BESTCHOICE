@@ -6,6 +6,7 @@ import { seedStandard17k12m } from '../../__tests__/scenario-helpers';
 import { ContractActivation1ATemplate } from '../contract-activation-1a.template';
 import { InstallmentAccrual2ATemplate } from '../installment-accrual-2a.template';
 import { RepossessionJP5Template } from '../repossession-jp5.template';
+import { BadDebtProvisionTemplate } from '../bad-debt-provision.template';
 import { JournalAutoService } from '../../journal-auto.service';
 
 /**
@@ -228,5 +229,133 @@ describe('JP5 VAT split — accrued vs deferred (P0 Wave 1 Task 7)', () => {
     const totalCr = lines.reduce((s, l) => s.plus(l.credit), new Decimal(0));
     expect(totalDr.toFixed(2)).toBe(totalCr.toFixed(2));
     expect(totalDr.gt(0)).toBe(true);
+  });
+});
+
+/**
+ * JP5 consume Bad Debt provision (11-2102) before recognizing 51-1102 loss
+ * (Wave 1 / Task 8).
+ *
+ * TFRS §B61-B63 + TAS 36 — when an allowance for doubtful accounts (provision)
+ * has already been recognized for a receivable, derecognition of that receivable
+ * (e.g. on repossession) must consume the existing provision FIRST. Recognizing
+ * the loss directly to 51-1102 without consuming 11-2102 = double-count loss
+ * (once via provision expense in prior period, once via repo loss now).
+ *
+ * Logic:
+ *   provisionBalance = sum(Cr 11-2102) - sum(Dr 11-2102)  for this contractId
+ *   loss             = remainingTotal - repossessionValue
+ *   consume          = min(loss, provisionBalance)
+ *   if consume > 0:  Dr 11-2102 (consume)
+ *   if loss - consume > 0:  Dr 51-1102 (loss - consume)
+ *
+ * Standard 17K/12M, no 2A run beforehand → 12 deferred installments:
+ *   deferredGross = 12 × 1416.66 = 16,999.92
+ *   deferredVat   = 12 × 99.17   =  1,190.04
+ *   remainingTotal = 18,189.96
+ */
+describe('JP5 consume Bad Debt provision before loss (Task 8)', () => {
+  beforeAll(async () => {
+    await setup();
+  });
+
+  it('consumes 11-2102 balance before recognizing 51-1102 loss', async () => {
+    const journal = await setup();
+    const c = await seedStandard17k12m(prisma);
+    await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
+
+    // Pre-seed provision = 3,000 (e.g. monthly close ran before)
+    const provisionTmpl = new BadDebtProvisionTemplate(journal, prisma as any);
+    await provisionTmpl.execute({
+      contractId: c.id,
+      provisionAmount: new Decimal('3000.00'),
+      period: '2025-04',
+    });
+
+    // Repo at 5,000 — remainingTotal = 18,189.96 → loss = 13,189.96
+    const jp5 = new RepossessionJP5Template(journal, prisma as any);
+    await jp5.execute({
+      contractId: c.id,
+      depositAccountCode: '11-1101',
+      repossessionValue: new Decimal('5000.00'),
+    });
+
+    const lines = await getJp5Lines(c.id);
+
+    // Should consume the entire provision balance: Dr 11-2102 = 3,000
+    const dr11_2102 = sumDr(lines, '11-2102');
+    expect(dr11_2102.toFixed(2)).toBe('3000.00');
+
+    // Remaining loss to P&L: Dr 51-1102 = 13,189.96 - 3,000 = 10,189.96
+    const dr51_1102 = sumDr(lines, '51-1102');
+    expect(dr51_1102.toFixed(2)).toBe('10189.96');
+
+    // JE remains balanced
+    const totalDr = lines.reduce((s, l) => s.plus(l.debit), new Decimal(0));
+    const totalCr = lines.reduce((s, l) => s.plus(l.credit), new Decimal(0));
+    expect(totalDr.toFixed(2)).toBe(totalCr.toFixed(2));
+  });
+
+  it('skips 11-2102 entirely when no prior provision exists', async () => {
+    const journal = await setup();
+    const c = await seedStandard17k12m(prisma);
+    await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
+
+    // No provision — repo straight away
+    const jp5 = new RepossessionJP5Template(journal, prisma as any);
+    await jp5.execute({
+      contractId: c.id,
+      depositAccountCode: '11-1101',
+      repossessionValue: new Decimal('5000.00'),
+    });
+
+    const lines = await getJp5Lines(c.id);
+
+    // No 11-2102 line at all (neither Dr nor Cr)
+    const dr11_2102 = sumDr(lines, '11-2102');
+    const cr11_2102 = sumCr(lines, '11-2102');
+    expect(dr11_2102.toFixed(2)).toBe('0.00');
+    expect(cr11_2102.toFixed(2)).toBe('0.00');
+
+    // Full loss recognized at 51-1102: 18,189.96 - 5,000 = 13,189.96
+    const dr51_1102 = sumDr(lines, '51-1102');
+    expect(dr51_1102.toFixed(2)).toBe('13189.96');
+  });
+
+  it('consumes provision up to loss amount only when provision exceeds loss', async () => {
+    const journal = await setup();
+    const c = await seedStandard17k12m(prisma);
+    await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
+
+    // Pre-seed a generous provision = 20,000 (exceeds the 13,189.96 loss)
+    const provisionTmpl = new BadDebtProvisionTemplate(journal, prisma as any);
+    await provisionTmpl.execute({
+      contractId: c.id,
+      provisionAmount: new Decimal('20000.00'),
+      period: '2025-04',
+    });
+
+    // Repo at 5,000 — loss = 13,189.96 (less than provision balance)
+    const jp5 = new RepossessionJP5Template(journal, prisma as any);
+    await jp5.execute({
+      contractId: c.id,
+      depositAccountCode: '11-1101',
+      repossessionValue: new Decimal('5000.00'),
+    });
+
+    const lines = await getJp5Lines(c.id);
+
+    // Consume only the loss amount (not the full 20,000 provision)
+    const dr11_2102 = sumDr(lines, '11-2102');
+    expect(dr11_2102.toFixed(2)).toBe('13189.96');
+
+    // No 51-1102 line — provision fully covers the loss
+    const dr51_1102 = sumDr(lines, '51-1102');
+    expect(dr51_1102.toFixed(2)).toBe('0.00');
+
+    // JE balanced
+    const totalDr = lines.reduce((s, l) => s.plus(l.debit), new Decimal(0));
+    const totalCr = lines.reduce((s, l) => s.plus(l.credit), new Decimal(0));
+    expect(totalDr.toFixed(2)).toBe(totalCr.toFixed(2));
   });
 });

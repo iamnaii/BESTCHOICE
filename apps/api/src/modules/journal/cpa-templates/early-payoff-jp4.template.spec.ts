@@ -96,20 +96,23 @@ describe('EarlyPayoffJP4Template', () => {
       interestDiscountPercent: new Decimal('50'),
     });
 
-    // Math (17K/12M, 6 unpaid):
-    //   remainingDeferredInterest = 500 × 6      = 3,000.00
-    //   discount                   = 50% × 3,000  = 1,500.00
-    //   vatOnDiscount              = 1,500 × 0.07 =   105.00
-    //   remainingDeferredVat       = 99.17 × 6   =   595.02
-    //   settleVat                  = 595.02 - 105 = 490.02
-    //   remainingGross             = 1,416.66 × 6 = 8,499.96
-    //   settlement                 = 8,499.96 - 1,500 + 490.02 = 7,489.98
+    // Math (17K/12M, 6 unpaid — Phase 3 EIR allocation):
+    //   eirPrincipal               = 10,000 + 1,000 = 11,000
+    //   interestSchedule (12 mo)   = [817.05, 772.51, 724.67, 673.27, 618.05, 558.73,
+    //                                  495.01, 426.55, 353.01, 274.00, 189.13, 98.02]
+    //   remainingDeferredInterest  = sum(periods 7..12) = 1,835.72
+    //   discount                   = 50% × 1,835.72   =   917.86
+    //   vatOnDiscount              = 917.86 × 0.07    =    64.25  (ROUND_HALF_UP)
+    //   remainingDeferredVat       = 99.17 × 6        =   595.02
+    //   settleVat                  = 595.02 - 64.25   =   530.77
+    //   remainingGross             = 1,416.66 × 6     = 8,499.96
+    //   settlement                 = 8,499.96 - 917.86 + 530.77 = 8,112.87
     const je = await getEarlyPayoffJe(c.id);
 
     const cr21_2101 = je.lines.find((l) => l.accountCode === '21-2101');
     expect(cr21_2101).toBeDefined();
     // Cr 21-2101 must equal settleVat (reduced by vatOnDiscount per ม.79), NOT full deferred VAT
-    expect(new Decimal(cr21_2101!.credit.toString()).toNumber()).toBeCloseTo(490.02, 2);
+    expect(new Decimal(cr21_2101!.credit.toString()).toNumber()).toBeCloseTo(530.77, 2);
 
     // Dr 21-2102 still cleared in full (deferred VAT account closed)
     const dr21_2102 = je.lines.find((l) => l.accountCode === '21-2102');
@@ -118,16 +121,16 @@ describe('EarlyPayoffJP4Template', () => {
     // Customer cash payment reduced by vatOnDiscount
     const drCash = je.lines.find((l) => l.accountCode === '11-1101');
     expect(drCash).toBeDefined();
-    expect(new Decimal(drCash!.debit.toString()).toNumber()).toBeCloseTo(7489.98, 2);
+    expect(new Decimal(drCash!.debit.toString()).toNumber()).toBeCloseTo(8112.87, 2);
 
-    // Discount line still present
+    // Discount line still present (50% of EIR remainingDeferredInterest)
     const dr52_1106 = je.lines.find((l) => l.accountCode === '52-1106');
-    expect(new Decimal(dr52_1106!.debit.toString()).toNumber()).toBeCloseTo(1500, 2);
+    expect(new Decimal(dr52_1106!.debit.toString()).toNumber()).toBeCloseTo(917.86, 2);
 
     // Metadata records the credit-back for traceability (per ม.86/10)
     const meta = je.metadata as Record<string, string>;
-    expect(meta.vatCreditBackOnDiscount).toBe('105.00');
-    expect(meta.settleVat).toBe('490.02');
+    expect(meta.vatCreditBackOnDiscount).toBe('64.25');
+    expect(meta.settleVat).toBe('530.77');
 
     // JE balanced
     const totalDr = je.lines.reduce(
@@ -139,7 +142,9 @@ describe('EarlyPayoffJP4Template', () => {
       new Decimal(0),
     );
     expect(totalDr.minus(totalCr).abs().lte('0.01')).toBe(true);
-    expect(totalDr.toNumber()).toBeCloseTo(12585, 2);
+    // totalDr = settlement + remainingDeferredInterest + remainingDeferredVat + discount
+    //        = 8,112.87 + 1,835.72 + 595.02 + 917.86 = 11,461.47
+    expect(totalDr.toNumber()).toBeCloseTo(11461.47, 2);
   });
 
   it('Wave 2 T3 — zero discount = no VAT credit back (Cr 21-2101 = full deferred VAT)', async () => {
@@ -188,18 +193,21 @@ describe('EarlyPayoffJP4Template', () => {
       interestDiscountPercent: new Decimal('100'),
     });
 
-    // discount = 3000, vatOnDiscount = 210, settleVat = 595.02 - 210 = 385.02
+    // Phase 3 EIR: remainingDeferredInterest = 1,835.72 (sum periods 7..12)
+    // discount = 100% × 1,835.72 = 1,835.72
+    // vatOnDiscount = 1,835.72 × 0.07 = 128.50 (ROUND_HALF_UP from 128.5004)
+    // settleVat = 595.02 - 128.50 = 466.52
+    // settlement = 8,499.96 - 1,835.72 + 466.52 = 7,130.76
     const je = await getEarlyPayoffJe(c.id);
 
     const cr21_2101 = je.lines.find((l) => l.accountCode === '21-2101');
-    expect(new Decimal(cr21_2101!.credit.toString()).toNumber()).toBeCloseTo(385.02, 2);
+    expect(new Decimal(cr21_2101!.credit.toString()).toNumber()).toBeCloseTo(466.52, 2);
 
-    // settlement = 8499.96 - 3000 + 385.02 = 5884.98
     const drCash = je.lines.find((l) => l.accountCode === '11-1101');
-    expect(new Decimal(drCash!.debit.toString()).toNumber()).toBeCloseTo(5884.98, 2);
+    expect(new Decimal(drCash!.debit.toString()).toNumber()).toBeCloseTo(7130.76, 2);
 
     const meta = je.metadata as Record<string, string>;
-    expect(meta.vatCreditBackOnDiscount).toBe('210.00');
+    expect(meta.vatCreditBackOnDiscount).toBe('128.50');
   });
 
   it('marks all remaining installments as PAID', async () => {

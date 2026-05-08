@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
+import { Prisma } from '@prisma/client';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 
@@ -24,6 +25,15 @@ import { PrismaService } from '../../../prisma/prisma.service';
  *
  * Total: Dr 99.17 = Cr 99.17 ✓
  *
+ * Atomicity: createAndPost + installmentSchedule.update wrapped in
+ * a single $transaction. Without the wrapper a process crash between
+ * the two writes would commit the JE but leave vat60dayJournalEntryId
+ * null — next cron run would double-post.
+ *
+ * vatPerInst is persisted on metadata so the reversal template can
+ * read it back and reverse the same value (avoids fallback drift if
+ * Contract fields change between mandatory and reversal).
+ *
  * Idempotent: returns null if vat60dayJournalEntryId is already set.
  */
 @Injectable()
@@ -33,69 +43,78 @@ export class Vat60dayMandatoryTemplate {
     private readonly prisma: PrismaService,
   ) {}
 
-  async execute(installmentScheduleId: string): Promise<{ entryNo: string } | null> {
-    const inst = await this.prisma.installmentSchedule.findUniqueOrThrow({
-      where: { id: installmentScheduleId },
-    });
+  async execute(
+    installmentScheduleId: string,
+    outerTx?: Prisma.TransactionClient,
+  ): Promise<{ entryNo: string } | null> {
+    const exec = async (tx: Prisma.TransactionClient) => {
+      const inst = await tx.installmentSchedule.findUniqueOrThrow({
+        where: { id: installmentScheduleId },
+      });
 
-    // Idempotency guard — already processed
-    if (inst.vat60dayJournalEntryId) return null;
+      // Idempotency guard — already processed
+      if (inst.vat60dayJournalEntryId) return null;
 
-    const c = await this.prisma.contract.findUniqueOrThrow({ where: { id: inst.contractId } });
+      const c = await tx.contract.findUniqueOrThrow({ where: { id: inst.contractId } });
 
-    const total = new Decimal(c.totalMonths);
-    // C4 FIX: fallback was financedAmount × 1.17 × 0.07 = wrong (819 for 17K contract).
-    // Correct: grossExclVat (financed + commission + interest) × 0.07 → 1190 for standard contract.
-    // Wave 4 / Task 2 (Info I-3): removed `as any` casts — Contract has these
-    // fields typed (storeCommission, interestTotal, vatAmount).
-    const financed = new Decimal(c.financedAmount.toString());
-    const commission =
-      c.storeCommission != null
-        ? new Decimal(c.storeCommission.toString())
-        : financed.times('0.10').toDecimalPlaces(2);
-    const interest = new Decimal(c.interestTotal.toString());
-    const grossExclVat = financed.plus(commission).plus(interest);
-    const vat =
-      c.vatAmount != null
-        ? new Decimal(c.vatAmount.toString())
-        : grossExclVat.times('0.07').toDecimalPlaces(2);
+      const total = new Decimal(c.totalMonths);
+      // grossExclVat (financed + commission + interest) × 0.07
+      const financed = new Decimal(c.financedAmount.toString());
+      const commission =
+        c.storeCommission != null
+          ? new Decimal(c.storeCommission.toString())
+          : financed.times('0.10').toDecimalPlaces(2);
+      const interest = new Decimal(c.interestTotal.toString());
+      const grossExclVat = financed.plus(commission).plus(interest);
+      const vat =
+        c.vatAmount != null
+          ? new Decimal(c.vatAmount.toString())
+          : grossExclVat.times('0.07').toDecimalPlaces(2);
 
-    const vatPerInst = vat.div(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+      const vatPerInst = vat.div(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
 
-    const zero = new Decimal(0);
+      const zero = new Decimal(0);
 
-    const result = await this.journal.createAndPost({
-      description: `VAT 60-day mandatory งวด #${inst.installmentNo} สัญญา ${c.contractNumber}`,
-      reference: `${inst.id}:vat60-mandatory`,
-      metadata: {
-        tag: 'VAT60-MANDATORY',
-        flow: 'mandatory',
-        contractId: c.id,
-        installmentScheduleId: inst.id,
-        installmentNo: inst.installmentNo,
-      },
-      lines: [
+      const result = await this.journal.createAndPost(
         {
-          accountCode: '11-2104',
-          dr: vatPerInst,
-          cr: zero,
-          description: 'ลูกหนี้-VAT ที่ออกแทน',
+          description: `VAT 60-day mandatory งวด #${inst.installmentNo} สัญญา ${c.contractNumber}`,
+          reference: `${inst.id}:vat60-mandatory`,
+          metadata: {
+            tag: 'VAT60-MANDATORY',
+            flow: 'mandatory',
+            contractId: c.id,
+            installmentScheduleId: inst.id,
+            installmentNo: inst.installmentNo,
+            // Persist vatPerInst so reversal can mirror it exactly
+            vatPerInst: vatPerInst.toFixed(2),
+          },
+          lines: [
+            {
+              accountCode: '11-2104',
+              dr: vatPerInst,
+              cr: zero,
+              description: 'ลูกหนี้-VAT ที่ออกแทน',
+            },
+            {
+              accountCode: '21-2103',
+              dr: zero,
+              cr: vatPerInst,
+              description: 'VAT บังคับ-ลูกหนี้ค้าง 60 วัน',
+            },
+          ],
         },
-        {
-          accountCode: '21-2103',
-          dr: zero,
-          cr: vatPerInst,
-          description: 'VAT บังคับ-ลูกหนี้ค้าง 60 วัน',
-        },
-      ],
-    });
+        tx,
+      );
 
-    // Mark installment as having a 60-day VAT JE
-    await this.prisma.installmentSchedule.update({
-      where: { id: inst.id },
-      data: { vat60dayJournalEntryId: result.entryNumber },
-    });
+      // Mark installment as having a 60-day VAT JE — same tx as JE post
+      await tx.installmentSchedule.update({
+        where: { id: inst.id },
+        data: { vat60dayJournalEntryId: result.entryNumber },
+      });
 
-    return { entryNo: result.entryNumber };
+      return { entryNo: result.entryNumber };
+    };
+
+    return outerTx ? exec(outerTx) : this.prisma.$transaction(exec);
   }
 }

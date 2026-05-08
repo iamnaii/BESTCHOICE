@@ -91,9 +91,16 @@ export class ReceiptsService {
       const company = await tx.companyInfo.findFirst({ where: { isActive: true, deletedAt: null } });
       const receiverName = company?.nameTh || 'บริษัท เบสท์ช้อยส์โฟน จำกัด';
 
-      // Calculate remaining balance
-      const totalPaid = contract.payments.reduce((sum, p) => sum + Number(p.amountPaid), 0);
-      const remainingBalance = Number(contract.financedAmount) - totalPaid;
+      // Calculate remaining balance with Decimal arithmetic — avoids float
+      // drift on the persisted remainingBalance field (Decimal(12,2)).
+      const totalPaid = contract.payments.reduce(
+        (sum, p) => sum.add(new Prisma.Decimal(p.amountPaid.toString())),
+        new Prisma.Decimal(0),
+      );
+      const remainingBalanceDec = new Prisma.Decimal(contract.financedAmount.toString()).sub(
+        totalPaid,
+      );
+      const remainingBalance = Prisma.Decimal.max(remainingBalanceDec, new Prisma.Decimal(0));
       const totalMonths = contract.totalMonths;
       const paidMonths = contract.payments.length;
       const remainingMonths = totalMonths - paidMonths;
@@ -121,7 +128,7 @@ export class ReceiptsService {
           receiverName,
           amount,
           installmentNo,
-          remainingBalance: Math.max(0, remainingBalance),
+          remainingBalance,
           remainingMonths: Math.max(0, remainingMonths),
           paymentMethod,
           transactionRef,
@@ -387,6 +394,16 @@ export class ReceiptsService {
       );
     }
 
+    // Segregation of duties: the user requesting the void cannot be the same
+    // user approving it. Mirrors bad-debt write-off pattern (writtenOffById !==
+    // approvedById). Prevents the controller fallback `dto.approvedById ?? user.id`
+    // from auto-approving on behalf of the requester.
+    if (issuedById === approvedById) {
+      throw new ForbiddenException(
+        'การยกเลิกใบเสร็จต้องมีผู้ขออนุมัติและผู้อนุมัติเป็นคนละคน',
+      );
+    }
+
     // CR-7: Validate void date is not in a closed accounting period
     await validatePeriodOpen(this.prisma, new Date());
     return this.prisma.$transaction(async (tx) => {
@@ -432,7 +449,9 @@ export class ReceiptsService {
         },
       });
 
-      // Phase A.5a: reverse the original payment JE (non-blocking)
+      // Phase A.5a: reverse the original payment JE.
+      // Must propagate errors — receipt void without ledger reversal would
+      // leave HP receivable cleared by 2B but no offsetting credit note JE.
       if (receipt.paymentId) {
         const originalEntry = await tx.journalEntry.findFirst({
           where: {
@@ -443,13 +462,7 @@ export class ReceiptsService {
           },
         });
         if (originalEntry) {
-          try {
-            await this.receiptVoidReversalTemplate.voidReceipt(originalEntry.id);
-          } catch (err) {
-            this.logger.error(
-              `[A.5a] Receipt void reversal JE failed for payment ${receipt.paymentId}: ${(err as Error).message}`,
-            );
-          }
+          await this.receiptVoidReversalTemplate.voidReceipt(originalEntry.id, tx);
         }
       }
 

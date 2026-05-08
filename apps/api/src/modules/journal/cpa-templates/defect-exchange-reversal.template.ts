@@ -32,14 +32,18 @@ export class DefectExchangeReversalTemplate {
    * Reverse all contract-activation JEs for the given contract.
    * Idempotent: skips JEs already marked reversed.
    */
-  async reverseContract(contractId: string): Promise<{ reversedCount: number; entryNos: string[] }> {
-    const contract = await this.prisma.contract.findUniqueOrThrow({
+  async reverseContract(
+    contractId: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<{ reversedCount: number; entryNos: string[] }> {
+    const client = tx ?? this.prisma;
+    const contract = await client.contract.findUniqueOrThrow({
       where: { id: contractId },
       select: { contractNumber: true },
     });
 
     // Find all posted JEs tagged to this contract (metadata.contractId)
-    const originalJes = await this.prisma.journalEntry.findMany({
+    const originalJes = await client.journalEntry.findMany({
       where: {
         AND: [
           { metadata: { path: ['contractId'], equals: contractId } } as Prisma.JournalEntryWhereInput,
@@ -87,7 +91,7 @@ export class DefectExchangeReversalTemplate {
       }
 
       // Idempotency: check if reversal JE already exists for this original
-      const existingReversal = await this.prisma.journalEntry.findFirst({
+      const existingReversal = await client.journalEntry.findFirst({
         where: {
           AND: [
             {
@@ -122,20 +126,23 @@ export class DefectExchangeReversalTemplate {
         description: `[REVERSAL] ${l.description ?? ''}`.trim(),
       }));
 
-      const result = await this.journal.createAndPost({
-        description: `[เปลี่ยนเครื่องตำหนิ] ยกเลิก JE ${je.entryNumber} — สัญญา ${contract.contractNumber}`,
-        reference: `${je.id}:reversal`,
-        metadata: {
-          tag: 'REVERSAL',
-          flow: 'defect-exchange',
-          originalEntryId: je.id,
-          contractId,
+      const result = await this.journal.createAndPost(
+        {
+          description: `[เปลี่ยนเครื่องตำหนิ] ยกเลิก JE ${je.entryNumber} — สัญญา ${contract.contractNumber}`,
+          reference: `${je.id}:reversal`,
+          metadata: {
+            tag: 'REVERSAL',
+            flow: 'defect-exchange',
+            originalEntryId: je.id,
+            contractId,
+          },
+          lines: reversedLines,
         },
-        lines: reversedLines,
-      });
+        tx,
+      );
 
       // Mark original as reversed
-      await this.prisma.journalEntry.update({
+      await client.journalEntry.update({
         where: { id: je.id },
         data: {
           metadata: {

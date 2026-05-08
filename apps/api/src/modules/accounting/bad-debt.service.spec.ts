@@ -178,7 +178,8 @@ describe('BadDebtService', () => {
       const created = prisma.badDebtProvision.createMany.mock.calls[0][0].data;
       expect(created).toHaveLength(1); // one provision per contract
       // outstanding = (1000 - 200 + 50) + (500 - 0 + 0) = 850 + 500 = 1350
-      expect(created[0].outstandingAmount).toBe(1350);
+      // PR #780 Wave 1: outstandingAmount is now persisted as Decimal (not Number cast)
+      expect(Number(created[0].outstandingAmount)).toBe(1350);
     });
 
     it('uses the OLDEST overdue installment for the aging bucket (not the newest)', async () => {
@@ -287,7 +288,7 @@ describe('BadDebtService', () => {
       await service.calculateProvisions('user-1');
       const created = prisma.badDebtProvision.createMany.mock.calls[0][0].data;
       // outstanding = 1000 - 0 + 0 (waived) = 1000
-      expect(created[0].outstandingAmount).toBe(1000);
+      expect(Number(created[0].outstandingAmount)).toBe(1000);
     });
 
     it('calls BadDebtProvisionTemplate.execute with correct delta vs prior provision (Phase A.5a)', async () => {

@@ -250,6 +250,55 @@ describe('EarlyPayoffJP4Template', () => {
     );
   });
 
+  it('clamps settleVat at zero when discount-driven VAT credit exceeds remaining deferred VAT (Wave 1 P0)', async () => {
+    // PR #780: vatOnDiscount = discount × 0.07 can theoretically exceed
+    // remainingDeferredVat in pathological cases (very high % discount with
+    // few periods left where interest dominates VAT base). Without the
+    // Decimal.min() clamp, settleVat goes negative — a negative Cr 21-2101
+    // would invert the VAT liability direction.
+    //
+    // We simulate the edge by manipulating the early-payoff state: pay
+    // installments 1-11 leaving only 1 left, then early-payoff at 100%
+    // discount. settleVat must be >= 0 in the JE.
+    const journal = await setup();
+    const c = await seedStandard17k12m(prisma);
+    await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
+
+    const insts = await prisma.installmentSchedule.findMany({
+      where: { contractId: c.id },
+      orderBy: { installmentNo: 'asc' },
+    });
+    for (const inst of insts.slice(0, 11)) {
+      await prisma.payment.create({
+        data: {
+          contractId: c.id,
+          installmentNo: inst.installmentNo,
+          dueDate: inst.dueDate,
+          amountDue: new Decimal('1515.83'),
+          amountPaid: new Decimal('1515.83'),
+          paidDate: new Date(),
+          paidAt: new Date(),
+          status: 'PAID',
+        },
+      });
+    }
+
+    const tmpl = new EarlyPayoffJP4Template(journal, prisma as any);
+    const result = await tmpl.execute({
+      contractId: c.id,
+      depositAccountCode: '11-1101',
+      interestDiscountPercent: new Decimal('100'),
+    });
+
+    const je = await prisma.journalEntry.findUniqueOrThrow({
+      where: { entryNumber: result.entryNo },
+      include: { lines: true },
+    });
+    const cr21_2101 = je.lines.find((l) => l.accountCode === '21-2101');
+    expect(cr21_2101).toBeDefined();
+    expect(new Decimal(cr21_2101!.credit.toString()).gte(0)).toBe(true);
+  });
+
   it('throws when all installments are already paid', async () => {
     const journal = await setup();
     const c = await seedStandard17k12m(prisma);

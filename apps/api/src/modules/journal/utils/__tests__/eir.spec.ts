@@ -80,5 +80,22 @@ describe('EIR Solver (TFRS 15 §60-65)', () => {
       expect(interests).toHaveLength(1);
       expect(interests[0].toString()).toBe('100');
     });
+
+    it('returns all-zero schedule when totalInterest <= 0 (cash sale, 0% promo)', () => {
+      // PR #780 Wave 1 P0: zero-interest contracts must not crash the solver.
+      // Previously solveMonthlyEIR threw "totalPayments must exceed principal".
+      const interests = allocateInterestEIR(new Decimal(10000), new Decimal(0), 12);
+      expect(interests).toHaveLength(12);
+      for (const i of interests) {
+        expect(i.toString()).toBe('0');
+      }
+    });
+
+    it('returns all-zero schedule when totalInterest is negative (defensive guard)', () => {
+      const interests = allocateInterestEIR(new Decimal(5000), new Decimal(-10), 6);
+      expect(interests).toHaveLength(6);
+      const sum = interests.reduce((a, b) => a.add(b), new Decimal(0));
+      expect(sum.toString()).toBe('0');
+    });
   });
 });

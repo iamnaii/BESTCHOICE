@@ -142,38 +142,24 @@ export class BadDebtService {
       }
     }
 
-    // Reverse existing ACTIVE provisions only for contracts in scope
+    // Reverse existing ACTIVE provisions only for contracts in scope.
+    // Wrap REVERSE + CREATE in a single $transaction — without it, a
+    // failed createMany after the reverse would leave provisions REVERSED
+    // with no replacement, dropping coverage on the balance sheet.
     const contractIdsInScope = [...contractOutstanding.keys()];
 
-    // Capture previous provision amounts BEFORE reversing, to compute delta for JE
-    const previousProvisionByContract = new Map<string, Prisma.Decimal>();
-    if (contractIdsInScope.length > 0) {
-      const activeProvisions = await this.prisma.badDebtProvision.findMany({
-        where: { status: 'ACTIVE', contractId: { in: contractIdsInScope }, deletedAt: null },
-        select: { contractId: true, provisionAmount: true },
-      });
-      for (const p of activeProvisions) {
-        const prev = previousProvisionByContract.get(p.contractId) ?? new Prisma.Decimal(0);
-        previousProvisionByContract.set(p.contractId, prev.add(p.provisionAmount));
-      }
-
-      await this.prisma.badDebtProvision.updateMany({
-        where: { status: 'ACTIVE', contractId: { in: contractIdsInScope }, deletedAt: null },
-        data: { status: 'REVERSED' },
-      });
-    }
-
-    // Create new provisions
-    const byBucket: Record<string, { count: number; amount: number }> = {};
-    const provisions: Array<{
+    // Pre-compute provision rows (Decimal — no Number cast in persisted values)
+    type ProvisionRow = {
       contractId: string;
       provisionDate: Date;
       agingBucket: string;
       daysOverdue: number;
-      outstandingAmount: number;
-      provisionRate: number;
-      provisionAmount: number;
-    }> = [];
+      outstandingAmount: Prisma.Decimal;
+      provisionRate: Prisma.Decimal;
+      provisionAmount: Prisma.Decimal;
+    };
+    const byBucket: Record<string, { count: number; amount: Decimal }> = {};
+    const provisions: ProvisionRow[] = [];
 
     for (const [contractId, data] of contractOutstanding) {
       const daysOverdue = Math.floor(
@@ -181,31 +167,50 @@ export class BadDebtService {
       );
       const bucket = this.getAgingBucket(daysOverdue);
       const rate = rates[bucket] || 0;
-      // Decimal precision: ROUND_HALF_UP to 2 d.p. (was Math.round which used banker's rounding edge cases)
-      const provisionAmountDecimal = data.amount
-        .mul(new Decimal(rate))
+      const rateDec = new Decimal(rate);
+      const outstandingDec = data.amount.toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+      const provisionAmountDec = data.amount
+        .mul(rateDec)
         .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-      const provisionAmount = provisionAmountDecimal.toNumber();
-      const outstandingAmount = data.amount.toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toNumber();
 
       provisions.push({
         contractId,
         provisionDate: now,
         agingBucket: bucket,
         daysOverdue,
-        outstandingAmount,
-        provisionRate: rate,
-        provisionAmount,
+        outstandingAmount: outstandingDec,
+        provisionRate: rateDec,
+        provisionAmount: provisionAmountDec,
       });
 
-      if (!byBucket[bucket]) byBucket[bucket] = { count: 0, amount: 0 };
+      if (!byBucket[bucket]) byBucket[bucket] = { count: 0, amount: new Decimal(0) };
       byBucket[bucket].count++;
-      byBucket[bucket].amount += provisionAmount;
+      byBucket[bucket].amount = byBucket[bucket].amount.add(provisionAmountDec);
     }
 
-    if (provisions.length > 0) {
-      await this.prisma.badDebtProvision.createMany({ data: provisions });
-    }
+    // Atomic REVERSE + CREATE — never leave the balance sheet without coverage
+    const previousProvisionByContract = new Map<string, Prisma.Decimal>();
+    await this.prisma.$transaction(async (tx) => {
+      if (contractIdsInScope.length > 0) {
+        const activeProvisions = await tx.badDebtProvision.findMany({
+          where: { status: 'ACTIVE', contractId: { in: contractIdsInScope }, deletedAt: null },
+          select: { contractId: true, provisionAmount: true },
+        });
+        for (const p of activeProvisions) {
+          const prev = previousProvisionByContract.get(p.contractId) ?? new Prisma.Decimal(0);
+          previousProvisionByContract.set(p.contractId, prev.add(p.provisionAmount));
+        }
+
+        await tx.badDebtProvision.updateMany({
+          where: { status: 'ACTIVE', contractId: { in: contractIdsInScope }, deletedAt: null },
+          data: { status: 'REVERSED' },
+        });
+      }
+
+      if (provisions.length > 0) {
+        await tx.badDebtProvision.createMany({ data: provisions });
+      }
+    });
 
     // Post delta-based provision JEs (non-blocking — a single JE failure must not abort the run)
     const year = now.getFullYear();
@@ -214,7 +219,7 @@ export class BadDebtService {
 
     for (const p of provisions) {
       const prev = previousProvisionByContract.get(p.contractId) ?? new Prisma.Decimal(0);
-      const newAmount = new Prisma.Decimal(p.provisionAmount);
+      const newAmount = p.provisionAmount;
       const delta = newAmount.sub(prev);
       if (delta.eq(0)) continue;
 
@@ -235,11 +240,16 @@ export class BadDebtService {
 
     // Decimal sum for total provision (TFRS 9 / v4 mandate — avoid float drift on aggregation)
     const totalProvisionDecimal = provisions.reduce(
-      (sum, p) => sum.add(new Decimal(p.provisionAmount)),
+      (sum, p) => sum.add(p.provisionAmount),
       new Decimal(0),
     );
     const totalProvision = totalProvisionDecimal.toNumber();
-    return { created: provisions.length, totalProvision, byBucket };
+    // Convert byBucket Decimals to numbers for the response shape (display only)
+    const byBucketResp: Record<string, { count: number; amount: number }> = {};
+    for (const [bucket, agg] of Object.entries(byBucket)) {
+      byBucketResp[bucket] = { count: agg.count, amount: agg.amount.toNumber() };
+    }
+    return { created: provisions.length, totalProvision, byBucket: byBucketResp };
   }
 
   /**

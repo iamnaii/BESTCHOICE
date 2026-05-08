@@ -13,7 +13,6 @@ import {
   Req,
   Inject,
   forwardRef,
-  NotFoundException,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { ApiTags, ApiBearerAuth , ApiOperation} from '@nestjs/swagger';
@@ -30,7 +29,6 @@ import { UserThrottlerGuard } from '../../guards/user-throttler.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { PaySolutionsService } from '../paysolutions/paysolutions.service';
-import { PrismaService } from '../../prisma/prisma.service';
 import { RescheduleService } from '../installments/reschedule.service';
 
 class CreatePartialQrDto {
@@ -48,7 +46,6 @@ export class PaymentsController {
     private paymentsService: PaymentsService,
     @Inject(forwardRef(() => PaySolutionsService))
     private paySolutionsService: PaySolutionsService,
-    private prisma: PrismaService,
     private rescheduleService: RescheduleService,
   ) {}
 
@@ -329,27 +326,12 @@ export class PaymentsController {
   @Get(':id/partial-qr/active')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   async getActivePartialQr(@Param('id', ParseUUIDPipe) id: string) {
-    return this.prisma.partialPaymentLink.findFirst({
-      where: {
-        paymentId: id,
-        status: 'ACTIVE',
-        expiresAt: { gt: new Date() },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    return this.paymentsService.getActivePartialQr(id);
   }
 
   @Delete(':id/partial-qr')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   async cancelPartialQr(@Param('id', ParseUUIDPipe) id: string) {
-    const link = await this.prisma.partialPaymentLink.findFirst({
-      where: { paymentId: id, status: 'ACTIVE' },
-      orderBy: { createdAt: 'desc' },
-    });
-    if (!link) throw new NotFoundException('ไม่มี QR ที่กำลังใช้งานอยู่');
-    return this.prisma.partialPaymentLink.update({
-      where: { id: link.id },
-      data: { status: 'CANCELLED', cancelledAt: new Date() },
-    });
+    return this.paymentsService.cancelActivePartialQr(id);
   }
 }

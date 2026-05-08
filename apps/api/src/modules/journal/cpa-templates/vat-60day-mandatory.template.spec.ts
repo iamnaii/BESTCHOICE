@@ -173,6 +173,25 @@ describe('Vat60dayMandatoryTemplate', () => {
     expect(new Decimal(line1124!.debit.toString()).toFixed(2)).toBe('99.17');
   });
 
+  it('persists vatPerInst on metadata for the reversal to mirror exactly (Wave 1 P0 — drift fix)', async () => {
+    const { inst, journal } = await setup();
+    await prisma.installmentSchedule.update({
+      where: { id: inst.id },
+      data: { dueDate: new Date(Date.now() - 70 * 24 * 60 * 60 * 1000) },
+    });
+
+    const tmpl = new Vat60dayMandatoryTemplate(journal, prisma as any);
+    const result = await tmpl.execute(inst.id);
+    expect(result).not.toBeNull();
+
+    const entry = await prisma.journalEntry.findFirstOrThrow({
+      where: { metadata: { path: ['tag'], equals: 'VAT60-MANDATORY' } } as any,
+    });
+    const meta = entry.metadata as Record<string, unknown>;
+    expect(typeof meta.vatPerInst).toBe('string');
+    expect(meta.vatPerInst).toBe('99.17');
+  });
+
   it('is idempotent — returns null if already processed', async () => {
     const { inst, journal } = await setup();
 

@@ -108,14 +108,17 @@ describe('ReceiptsService', () => {
       expect(result.creditNote).toBeDefined();
 
       // Phase A.5a: reversal JE posted via ReceiptVoidReversalTemplate
+      // (PR #780 Wave 1 P0: tx is forwarded so JE post + receipt void roll back together)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const template = (service as any).receiptVoidReversalTemplate;
-      expect(template.voidReceipt).toHaveBeenCalledWith('je-1');
+      expect(template.voidReceipt).toHaveBeenCalledWith('je-1', expect.anything());
     });
 
-    it('JE reversal failure is non-blocking — void succeeds even if template throws (Phase A.5a)', async () => {
-      // Phase A.5a: ReceiptVoidReversalTemplate errors are caught internally.
-      // The void must succeed regardless — JE failure is captured in logs/Sentry.
+    it('JE reversal failure rolls the entire void back (Wave 1 P0 — atomicity)', async () => {
+      // Wave 1 P0: ReceiptVoidReversalTemplate errors must propagate so the
+      // outer $transaction rolls back. Without this, the receipt would be
+      // marked VOIDED but the ledger would still show the original payment JE
+      // — leaving HP receivable cleared with no offsetting credit-note JE.
       const tx = prisma.__tx;
 
       tx.receipt.findUnique.mockResolvedValue({
@@ -152,10 +155,10 @@ describe('ReceiptsService', () => {
       const template = (service as any).receiptVoidReversalTemplate;
       template.voidReceipt.mockRejectedValueOnce(new Error('JE reversal failed'));
 
-      // Must succeed (non-blocking pattern)
+      // Must throw — outer $transaction rolls back the receipt.update + auditLog
       await expect(
         service.voidReceipt(receiptId, 'wrong amount', userId, approverId),
-      ).resolves.toBeDefined();
+      ).rejects.toThrow('JE reversal failed');
     });
   });
 

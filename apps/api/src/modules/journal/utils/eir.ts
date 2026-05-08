@@ -136,6 +136,11 @@ export function buildEIRSchedule(
  *
  * Use this when caller has totalInterest as input (vs deriving from EIR).
  * Final period takes whatever residual remains.
+ *
+ * Edge cases:
+ *   - totalInterest <= 0 (cash sale, 0% promo): returns array of n zeros.
+ *     Solver is not called (would throw on equal totalPayments == principal).
+ *   - n must be >= 1
  */
 export function allocateInterestEIR(
   principal: Decimal,
@@ -143,7 +148,18 @@ export function allocateInterestEIR(
   n: number,
   options: EIRSolverOptions = {},
 ): Decimal[] {
-  // monthlyPayment derived from principal + totalInterest
+  if (n <= 0) throw new Error('n must be positive');
+
+  // Zero-interest contracts (cash installment, 0% promo): allocate zeros.
+  // Avoids solver throwing on totalPayments == principal.
+  if (totalInterest.lte(0)) {
+    return Array.from({ length: n }, () => new Decimal(0));
+  }
+
+  // monthlyPayment uses ROUND_DOWN to 2dp — matches the CPA-certified flat-rate
+  // amortization tables and per-installment values declared in CSV goldens.
+  // (e.g. 17000/12 → PMT 1416.66, NOT 1416.6666... — required so per-period
+  // interest amounts in the EIR schedule equal the hand-computed CPA values.)
   const totalReceipts = principal.add(totalInterest);
   const monthlyPayment = totalReceipts.div(n).toDecimalPlaces(2, Decimal.ROUND_DOWN);
 

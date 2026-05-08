@@ -148,9 +148,14 @@ export class EarlyPayoffJP4Template {
     // ลดเป็น settleVat. Dr 21-2102 ยังเต็ม (ปิด deferred VAT). ความต่าง 105
     // สะท้อนทาง Cash ที่ลดลง — JE balanced. vatCreditBackOnDiscount เก็บใน
     // metadata เพื่อ traceability + reporting.
-    const vatOnDiscount = discount
+    // Cap vatOnDiscount at remainingDeferredVat so settleVat never goes
+    // negative. A negative Cr 21-2101 would invert the VAT liability and
+    // corrupt ภ.พ.30. If discount * 0.07 exceeds remainingDeferredVat,
+    // the over-cap portion is absorbed entirely by Dr 52-1106 instead.
+    const rawVatOnDiscount = discount
       .times(new Decimal('0.07'))
       .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+    const vatOnDiscount = Decimal.min(rawVatOnDiscount, remainingDeferredVat);
     const settleVat = remainingDeferredVat.minus(vatOnDiscount);
 
     // Settlement amount customer pays (reduced by both discount and vatOnDiscount)

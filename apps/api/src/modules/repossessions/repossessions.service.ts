@@ -300,6 +300,9 @@ export class RepossessionsService {
       });
 
       // Audit log for repossession
+      // Wave 3 / Task 4 (W-1): Decimal objects serialize to non-deterministic
+      // JSON (`{ s, e, d }`). Convert to fixed-precision strings so audit
+      // history remains human-readable and diff-able.
       await tx.auditLog.create({
         data: {
           userId,
@@ -312,8 +315,8 @@ export class RepossessionsService {
             productId: contract.productId,
             conditionGrade: dto.conditionGrade,
             appraisalPrice: dto.appraisalPrice,
-            outstandingBalance,
-            totalPaid,
+            outstandingBalance: outstandingBalance.toFixed(2),
+            totalPaid: totalPaid.toFixed(2),
           },
           ipAddress: '',
         },
@@ -353,9 +356,13 @@ export class RepossessionsService {
       }
 
       // Validate resell price is set when marking as READY_FOR_SALE or SOLD
+      // Wave 3 / Task 4 (W-2): use Decimal comparison instead of Number() cast
+      // to avoid float precision drift on large amounts.
       if (['READY_FOR_SALE', 'SOLD'].includes(dto.status)) {
-        const resellPrice = dto.resellPrice ?? Number(repo.resellPrice || 0);
-        if (!resellPrice || resellPrice <= 0) {
+        const resellPrice = dto.resellPrice != null
+          ? new Prisma.Decimal(dto.resellPrice)
+          : new Prisma.Decimal(repo.resellPrice ?? 0);
+        if (resellPrice.lessThanOrEqualTo(0)) {
           throw new BadRequestException('กรุณาระบุราคาขายต่อก่อนเปลี่ยนสถานะ');
         }
       }
@@ -380,9 +387,12 @@ export class RepossessionsService {
         const updatedRepo = await this.prisma.$transaction(async (tx) => {
           const productUpdateData: Record<string, unknown> = { status: newProductStatus };
           // R-007: Adjust costPrice to appraised/fair value per TAS 2 when moving to REFURBISHED
+          // Wave 3 / Task 4 (W-2): Decimal arithmetic to preserve precision.
           if (dto.status === 'READY_FOR_SALE') {
-            const appraisalPrice = dto.resellPrice ?? Number(repo.appraisalPrice || 0);
-            if (appraisalPrice > 0) {
+            const appraisalPrice = dto.resellPrice != null
+              ? new Prisma.Decimal(dto.resellPrice)
+              : new Prisma.Decimal(repo.appraisalPrice ?? 0);
+            if (appraisalPrice.greaterThan(0)) {
               productUpdateData.costPrice = appraisalPrice;
             }
           }
@@ -405,9 +415,11 @@ export class RepossessionsService {
         // Post resale JE after the main $transaction commits (non-blocking, no tx-poison risk).
         // bookValue = costPrice (adjusted to appraisalPrice at READY_FOR_SALE per R-007) + repairCost
         if (dto.status === 'SOLD' && userId) {
-          const resellPrice = new Prisma.Decimal(
-            dto.resellPrice ?? Number(repo.resellPrice ?? 0),
-          );
+          // Wave 3 / Task 4 (W-2): build Decimal directly from repo value
+          // (skip Number() round-trip that loses precision on large amounts).
+          const resellPrice = dto.resellPrice != null
+            ? new Prisma.Decimal(dto.resellPrice)
+            : new Prisma.Decimal(repo.resellPrice ?? 0);
           const costPrice = new Prisma.Decimal(
             (repo.product as unknown as { costPrice?: number | Prisma.Decimal })?.costPrice ?? 0,
           );
@@ -460,12 +472,14 @@ export class RepossessionsService {
       });
 
       // R-007: Adjust costPrice to appraised/fair value per TAS 2 when refurbishing
-      const appraisalPrice = Number(repo.appraisalPrice || 0);
+      // Wave 3 / Task 4 (W-2): Decimal arithmetic preserves precision; fall back
+      // to resellPrice when appraisal is zero/null.
+      const appraisalPrice = new Prisma.Decimal(repo.appraisalPrice ?? 0);
       await tx.product.update({
         where: { id: repo.product.id },
         data: {
           status: 'REFURBISHED',
-          costPrice: appraisalPrice || resellPrice, // Adjust cost to appraised/fair value per TAS 2
+          costPrice: appraisalPrice.greaterThan(0) ? appraisalPrice : new Prisma.Decimal(resellPrice),
           stockInDate: new Date(),
           ...(mainWarehouse ? { branchId: mainWarehouse.id } : {}),
         },

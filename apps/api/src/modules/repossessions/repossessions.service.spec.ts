@@ -428,11 +428,12 @@ describe('RepossessionsService', () => {
 
       await service.update('repo-1', { status: 'READY_FOR_SALE', resellPrice: 7500 } as never);
 
-      expect(prisma.product.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ costPrice: 7500 }),
-        }),
-      );
+      // Wave 3 / Task 4 (W-2): costPrice now passed as Prisma.Decimal to
+      // preserve precision. Compare via Decimal.eq instead of numeric equality.
+      expect(prisma.product.update).toHaveBeenCalledTimes(1);
+      const call = prisma.product.update.mock.calls[0][0];
+      expect(call.data.status).toBe('REFURBISHED');
+      expect(new Prisma.Decimal(call.data.costPrice).eq(7500)).toBe(true);
     });
 
     it('updates repossession to SOLD status and returns updated record (Phase A.5 JE deferred)', async () => {

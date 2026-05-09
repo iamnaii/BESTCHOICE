@@ -2886,6 +2886,10 @@ model Receipt {
   @@index([receiptNumber])
   @@index([paymentId])
   @@index([createdAt])
+  // Speeds up the partial-receipt cumulative-sum query
+  // (`generateReceipt` looks up `(contractId, installmentNo)` rows on every
+  // partial payment to compute installmentPartialSeq + remainingAmount).
+  @@index([contractId, installmentNo])
   @@map("receipts")
 }
 

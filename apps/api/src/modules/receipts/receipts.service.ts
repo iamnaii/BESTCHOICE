@@ -107,6 +107,12 @@ export class ReceiptsService {
       //   paymentStatus: PARTIAL until Payment.status flips to PAID, then PAID
       //   installmentPartialSeq: 1, 2, 3 ... within same installment (null on full payment)
       //   remainingAmount: amountDue - cumulative receipt amounts for this installment
+      //
+      // Voided receipts are intentionally excluded from priorReceipts: a voided
+      // receipt is legally non-existent (มาตรฐานการบัญชี — กลับรายการแล้วถือ
+      // เสมือนไม่ได้ออก) so the next receipt re-uses its slot in the seq —
+      // e.g. if seq #2 is voided, the following partial becomes #2, not #3.
+      // This matches how an accountant would re-issue a corrected receipt.
       let paymentStatus = 'PAID';
       let installmentPartialSeq: number | null = null;
       let remainingAmount: Prisma.Decimal | null = null;

@@ -4,11 +4,15 @@ import api from '@/lib/api';
 import type {
   Asset,
   AssetCategory,
+  AssetJournalRow,
+  AssetRegisterResponse,
+  AssetScheduleResponse,
   AssetStatus,
   AssetSummary,
   AssetTransferRow,
   AuditLogEntry,
   ListResponse,
+  SummaryRow,
 } from './types';
 
 export interface ListFilters {
@@ -143,6 +147,70 @@ export const assetsApi = {
       page: number;
       limit: number;
     }>('/asset-transfers', { params });
+    return data;
+  },
+
+  getRegister: async (filters: {
+    asOfDate?: string;
+    category?: AssetCategory;
+    status?: AssetStatus;
+    branchId?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<AssetRegisterResponse> => {
+    const params: Record<string, string | number> = {};
+    if (filters.asOfDate) params.asOfDate = filters.asOfDate;
+    if (filters.category) params.category = filters.category;
+    if (filters.status) params.status = filters.status;
+    if (filters.branchId) params.branchId = filters.branchId;
+    if (filters.search) params.search = filters.search;
+    if (filters.page) params.page = filters.page;
+    if (filters.limit) params.limit = filters.limit;
+    const { data } = await api.get<AssetRegisterResponse>('/assets/register', { params });
+    return data;
+  },
+
+  getSchedule: async (id: string): Promise<AssetScheduleResponse> => {
+    const { data } = await api.get<AssetScheduleResponse>(`/assets/${id}/schedule`);
+    return data;
+  },
+
+  listJournal: async (filters: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    flowType?: string;
+    fromDate?: string;
+    toDate?: string;
+  }): Promise<{ data: AssetJournalRow[]; total: number; page: number; limit: number }> => {
+    const params: Record<string, string | number> = {};
+    if (filters.page) params.page = filters.page;
+    if (filters.limit) params.limit = filters.limit;
+    if (filters.search) params.search = filters.search;
+    if (filters.flowType) params.flowType = filters.flowType;
+    if (filters.fromDate) params.fromDate = filters.fromDate;
+    if (filters.toDate) params.toDate = filters.toDate;
+    const { data } = await api.get<{
+      data: AssetJournalRow[];
+      total: number;
+      page: number;
+      limit: number;
+    }>('/assets/journal', { params });
+    return data;
+  },
+
+  summaryReport: async (filters: {
+    groupBy: 'category' | 'custodian' | 'location';
+    asOfDate?: string;
+    status?: AssetStatus;
+    branchId?: string;
+  }): Promise<SummaryRow[]> => {
+    const params: Record<string, string> = { groupBy: filters.groupBy };
+    if (filters.asOfDate) params.asOfDate = filters.asOfDate;
+    if (filters.status) params.status = filters.status;
+    if (filters.branchId) params.branchId = filters.branchId;
+    const { data } = await api.get<SummaryRow[]>('/reports/asset-summary', { params });
     return data;
   },
 };

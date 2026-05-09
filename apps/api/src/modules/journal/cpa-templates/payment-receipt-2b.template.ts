@@ -62,12 +62,14 @@ export function calcLateFee(overdueDays: number): Decimal {
 
 /**
  * Calculate postpone fee (ค่าปรับดิว) — daily-prorated rescheduling charge.
- * Formula: monthlyPayment ÷ 30 × daysToShift, rounded HALF_UP to 2dp.
+ * Formula: monthlyPayment ÷ 30 × daysToShift, rounded DOWN to 2dp.
+ * ROUND_DOWN per CPA Policy A spec — matches the hand-computed examples
+ * provided by the accountant; HALF_UP would produce off-by-0.01 deltas.
  * Posted as Cr 21-1103 (เงินรับล่วงหน้า) via RescheduleJP6Template.recordFeeAdvance.
  */
 export function calcPostponeFee(monthlyPayment: Decimal, daysToShift: number): Decimal {
   if (daysToShift <= 0) return new Decimal(0);
-  return monthlyPayment.div(30).times(daysToShift).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+  return monthlyPayment.div(30).times(daysToShift).toDecimalPlaces(2, Decimal.ROUND_DOWN);
 }
 
 /**

@@ -561,7 +561,7 @@ describe('calcPostponeFee', () => {
   it('1515.83 / 30 * 7 days = 353.69', () => {
     // 1515.83 / 30 = 50.5276666...
     // 50.5276666 * 7 = 353.6936666...
-    // ROUND_HALF_UP to 2dp = 353.69
+    // ROUND_DOWN to 2dp = 353.69
     expect(calcPostponeFee(new Decimal('1515.83'), 7).toString()).toBe('353.69');
   });
 
@@ -569,10 +569,12 @@ describe('calcPostponeFee', () => {
     expect(calcPostponeFee(new Decimal('1500'), 30).toString()).toBe('1500');
   });
 
-  it('rounds HALF_UP at 2dp', () => {
-    // 100 / 30 * 1 = 3.3333... → 3.33
+  it('rounds DOWN at 2dp (CPA Policy A spec — accountant hand-computed)', () => {
+    // 100 / 30 * 1 = 3.3333... → 3.33 (truncate)
     expect(calcPostponeFee(new Decimal('100'), 1).toString()).toBe('3.33');
-    // 100 / 30 * 2 = 6.6666... → 6.67
-    expect(calcPostponeFee(new Decimal('100'), 2).toString()).toBe('6.67');
+    // 100 / 30 * 2 = 6.6666... → 6.66 (truncate, NOT 6.67 — that would be HALF_UP)
+    expect(calcPostponeFee(new Decimal('100'), 2).toString()).toBe('6.66');
+    // 100 / 30 * 5 = 16.6666... → 16.66
+    expect(calcPostponeFee(new Decimal('100'), 5).toString()).toBe('16.66');
   });
 });

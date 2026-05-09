@@ -1,413 +1,534 @@
-# Facebook App Review — Submission Package
+# Facebook App Review — Resubmission Package (2026-05)
 
-เอกสารชุดนี้เตรียมไว้สำหรับ **submit ขอ permissions กับ Meta App Review** หลังจากยิง API ครบตาม runbook ใน [FACEBOOK-APP-REVIEW.md](./FACEBOOK-APP-REVIEW.md) แล้ว
+เอกสารชุดนี้เตรียมไว้สำหรับ **resubmit ขอ permissions กับ Meta App Review** หลัง submission แรก (2026-04-24, 11 perms) ถูก **REJECTED** เมื่อ 2026-05-09
 
-> **อัปเดต 2026-04-26 (post-ultrareview):** เอกสารฉบับเดิมอ้างถึงหน้าจอที่ไม่มีในระบบจริง (Promotion Dashboard / Lead Ads Sync / Video Library) และใช้ tag `ACCOUNT_UPDATE` ที่ Meta ประกาศ deprecate มีผล **2026-04-27**. ฉบับนี้รีวิวใหม่ให้ตรงกับ UI จริง (`Settings → Integrations → Facebook App Review Panel`) และเปลี่ยนกลยุทธ์ messaging.
+---
 
-## Scope ของ Submission รอบนี้: **6 Permissions** (ตัด Live Video API ออก)
+## ทำไมรอบแรกถึง Reject — Root cause analysis
 
-1. `pages_show_list` — list connected pages
-2. `pages_manage_ads` — identify promotable posts
-3. `pages_messaging` (เปลี่ยนจาก `pages_utility_messaging`) — response messaging within 24-hour window
-4. `ads_management` + `ads_read` — create/manage campaigns
-5. `leads_retrieval` — import Lead Ads leads (critical)
-6. `publish_video` — upload product review videos
+Meta ตอบกลับด้วย **3 ปัญหาหลัก**:
 
-**ตัด Live Video API ออกเพราะ**: ไม่ใช่ core business (ดูเหตุผลล่างสุดของไฟล์)
+### 1. Privacy Policy URL ไม่ใช่ Privacy Policy (Meta Platform Terms 4.a violation)
 
-> **BLOCKER ที่ต้องตัดสินใจก่อน submit (เพิ่มใหม่ 2026-04-26)**:
->
-> เดิมเอกสารระบุใช้ `pages_utility_messaging` + tag `ACCOUNT_UPDATE`. Meta deprecate tag นี้ **มีผล 2026-04-27** (พร้อม `CONFIRMED_EVENT_UPDATE` / `POST_PURCHASE_UPDATE`).
->
-> **ทางเลือก** (เลือกอย่างใดอย่างหนึ่งก่อน submit):
->
-> **A. ใช้ 24-hour RESPONSE window อย่างเดียว** (แนะนำ)
-> - ขอแค่ `pages_messaging` (มาตรฐาน)
-> - ส่งข้อความได้ภายใน 24 ชม. หลังลูกค้าทักมา (any content)
-> - Use case: ลูกค้าทักมาถาม payment → ตอบ + ส่ง reminder ในการสนทนาเดียวกันได้
-> - Reminder อัตโนมัติ (cron) → **ใช้ LINE/SMS แทน** (ระบบมี LINE OA + SMS adapter อยู่แล้ว)
->
-> **B. ใช้ HUMAN_AGENT tag** (มี constraint)
-> - ต้องเปิด "Human Agent" feature ใน Page settings ก่อน
-> - Window 7 วัน หลังลูกค้าทัก
-> - ต้องเป็น human-led service (ไม่ใช่ automated reminder cron)
->
-> **ตัดสินใจที่: (A) เพราะ cron auto-reminder มี LINE/SMS อยู่แล้ว, ลด surface ที่ Meta ต้อง audit, ถูกที่สุด**
->
-> ถ้าเลือก (A) → service code ต้องอัปเดต default tag ออกจาก `ACCOUNT_UPDATE` → ดู *Code changes required* ด้านล่าง
+ปัญหาที่แท้จริง: `https://bestchoicephone.app/privacy` เป็น React SPA ที่ render ผ่าน JavaScript
 
-## App Info (ต้องกรอกในฟอร์ม Meta)
+```html
+<!-- Meta crawler โหลดได้ 200 OK แต่ได้แค่นี้: -->
+<title>ระบบผ่อนชำระ - Best Choice</title>     ← ไม่ใช่ "Privacy Policy"
+<meta name="robots" content="noindex, nofollow,..." />  ← บอกบอทไม่ให้ index
+<div id="root"><p>กำลังโหลด...</p></div>      ← เห็นแค่ spinner, ไม่มี content
+```
+
+Meta bot **ไม่รัน JavaScript** → ไม่เห็นเนื้อหา Privacy Policy → ตี = URL invalid → block ทั้ง submission ก่อน review screencast ด้วยซ้ำ
+
+`https://bestchoicephone.app/terms` ยิ่งหนักกว่า — ไม่มี React route เลย
+
+### 2. Screencasts ขาดข้อมูลสำคัญ
+
+Meta บอกว่าทุก screencast ต้องเห็น **3 ส่วนนี้ครบ**:
+1. **Asset selection** — เลือก Page/account/number ในแอป (ชื่อต้อง visible)
+2. **Live send action** — กดปุ่มในแอปแล้วยิง API จริง (ไม่ใช่ Graph Explorer)
+3. **Delivered result in native client** — สลับไป Messenger mobile / FB native ดูข้อความถึง
+
+สำหรับ `pages_utility_messaging` เพิ่มเงื่อนไขพิเศษ:
+1. **เลือก template** (utility/marketing message template)
+2. **Template populated with placeholders** (name, order ID, amount, due date)
+3. **ส่ง template message** ไปลูกค้าทดสอบ + เห็นใน native client
+
+### 3. Marketing API Access Tier — Activity threshold ไม่ถึง
+
+> "Our records do not show a sufficient number of successful Ads API calls in the last 15 days"
+
+Chicken-and-egg: ต้องยิง `ads_read` API หลายๆ call ภายใน 15 วันก่อน — แต่ pre-approval ใช้ได้แค่ admin/dev/tester
+
+---
+
+## Fixes ที่ทำเสร็จแล้ว (Engineering side)
+
+| Fix | Status | File / Path |
+|---|---|---|
+| Static `privacy.html` (Meta-readable, no SPA shell, no noindex) | ✅ | `apps/web/public/privacy.html` |
+| Static `terms.html` | ✅ | `apps/web/public/terms.html` |
+| SPA `/terms` route → redirect `/terms.html` (for human users) | ✅ | `apps/web/src/App.tsx` |
+| Backend: GET `/page-posts` (pages_read_engagement) | ✅ | `facebook-app-review.controller.ts` |
+| Backend: GET `/post-comments/:postId` (pages_read_engagement) | ✅ | same |
+| Backend: POST `/comment-reply` (pages_manage_engagement) | ✅ | same |
+| Backend: POST `/comment-like` (pages_manage_engagement) | ✅ | same |
+| Backend: POST `/comment-hide` (pages_manage_engagement) | ✅ | same |
+| Backend: POST `/template-message` (pages_utility_messaging — with placeholders) | ✅ | same |
+| Backend: GET `/businesses` (business_management) | ✅ | same |
+| Backend: GET `/businesses/:id/ad-accounts` (business_management) | ✅ | same |
+| Backend: GET `/businesses/:id/pages` (business_management) | ✅ | same |
+| Frontend: 13 cards ใน FacebookAppReviewPanel (current scope + legacy section) | ✅ | `FacebookAppReviewPanel.tsx` |
+| Verify `messaging_type=RESPONSE` (no MESSAGE_TAG) | ✅ | `facebook-app-review.service.ts` |
+
+---
+
+## Scope ของ Submission รอบนี้: **8 Permissions** (+ Marketing API Access Tier)
+
+| # | Permission | Status | Production Use Case |
+|---|---|---|---|
+| 1 | `pages_show_list` | ผ่านชั่วคราวรอบแรก | List เพจ admin จัดการ |
+| 2 | `pages_messaging` | ผ่านชั่วคราว ต้อง screencast ดีกว่า | Chat AI ตอบ Messenger 24-hr RESPONSE |
+| 3 | `pages_manage_metadata` | ผ่านชั่วคราว | Subscribe webhook events |
+| 4 | `pages_utility_messaging` | ผ่านชั่วคราว ต้อง template flow | Template ส่ง utility message (เผื่อใช้ในอนาคต) |
+| 5 | `pages_read_engagement` | ปฏิเสธรอบแรก | อ่าน comments + sentiment |
+| 6 | `pages_manage_engagement` | **ใหม่** ไม่เคยส่ง | AI auto-reply / like / hide comments |
+| 7 | `ads_read` | ปฏิเสธรอบแรก | Read-only ads insights |
+| 8 | `business_management` | ปฏิเสธรอบแรก | List ad accounts / pages ใน BM |
+| + | `Marketing API Access Tier` | ปฏิเสธ (activity ไม่พอ) | ขอหลังจาก ads_read ผ่าน |
+
+### ตัดออก (ไม่ส่งรอบนี้)
+
+- `pages_manage_ads` — ใช้ Ads Manager UI ทำเอง
+- `ads_management` — ไม่ create ads via API
+- `leads_retrieval` — ยังไม่ทำ Lead Ads
+- `publish_video` / Live Video API — ไม่ใช่ core business
+- `public_profile` — auto-granted
+
+---
+
+## App Info (ใส่ใน FB App Settings → Basic)
 
 | Field | Value |
 |---|---|
 | App Name | BESTCHOICE |
-| App ID | ดูจาก developers.facebook.com/apps |
-| Business Name | บจก. เบสท์ช้อยส์โฟน (BESTCHOICE SHOP) + บจก. เบสท์ช้อยส์ไฟแนนซ์ |
+| Business Name | บจก. เบสช้อยส์ จำกัด (BESTCHOICE Co., Ltd.) |
 | Category | Business |
 | App Type | Business |
-| Privacy Policy URL | `https://bestchoicephone.app/privacy` |
-| Terms of Service URL | `https://bestchoicephone.app/terms` |
+| **Privacy Policy URL** | **`https://bestchoicephone.app/privacy.html`** ⚠️ ใช้ .html |
+| **Terms of Service URL** | **`https://bestchoicephone.app/terms.html`** ⚠️ ใช้ .html |
 | Data Deletion Callback URL | `https://api.bestchoicephone.app/api/webhooks/facebook/data-deletion` |
 | Deauthorize Callback URL | `https://api.bestchoicephone.app/api/webhooks/facebook/deauthorize` |
 | Platform | Website |
 | Website URL | `https://bestchoicephone.app` |
+| App Mode | **Live** (สำคัญมาก — Dev Mode = block) |
 
-> **โดเมน admin จริง**: `https://admin.bestchoicephone.app` (ไม่ใช่ `admin.bestchoice.com` ตามฉบับเก่า)
-
----
-
-## How It Works — Overview (paste ในช่อง "How will your app use this permission?")
-
-> BESTCHOICE is an installment payment management system for mobile phone shops in Thailand. Customers purchase phones through flexible installment plans (down payment + monthly payments over 6-36 months). The business operates physical retail stores and manages the full customer lifecycle from lead capture, contract signing, payment collection, to overdue recovery.
->
-> We use Facebook Pages, Messenger, Lead Ads, and Marketing APIs to (1) capture new leads via lead generation campaigns, (2) reply to customers via Messenger within the 24-hour response window when they message our Page about their installment contract, (3) promote product content through paid ads, and (4) publish product review videos about phones and installment plan demos. All Graph API actions originate from a single admin panel — `Settings → Integrations → Facebook App Review Panel` — which exposes one button per permission for the reviewer to test.
+⚠️ **CRITICAL**: ก่อน submit ต้องเปลี่ยน Privacy + Terms URL เป็นแบบ `.html` ใน FB Settings
 
 ---
 
-## Where the actual UI lives (อ่านก่อนอัด screencast)
+## Use Case Description (เริ่มต้นทุก permission ด้วย paragraph นี้)
 
-ระบบจริงไม่มีหน้า "Promotion Dashboard" / "Lead Ads Sync" / "Video Library" แยกจากกัน — ทุก Graph API call ที่ Meta ต้องเห็นถูกรวมไว้ใน **panel เดียว**:
-
-- **เส้นทาง**: `https://admin.bestchoicephone.app/settings/integrations`
-- **Component**: `apps/web/src/components/FacebookAppReviewPanel.tsx`
-- **เลื่อนลงไปส่วน Facebook App Review Panel** — มีปุ่มเดี่ยวต่อ permission พร้อม payload preview + response view
-
-หน้านี้คือ "การยอมรับ" ตาม Meta convention: review tooling ที่ owner กดทดสอบ Graph API ได้แบบ deterministic (ไม่ต้อง simulate user flow ข้ามหลายหน้า) — Meta accept ได้ตราบเท่าที่ screencast แสดง API call จริงไปที่ `graph.facebook.com/v25.0/...` พร้อม payload ที่ตรงกับ permission
+> BESTCHOICE is an installment payment management system for mobile phone shops in Thailand. We operate physical retail stores (BESTCHOICE SHOP) paired with an in-house finance arm (BESTCHOICE FINANCE) that finances 6-36 month phone installment plans. Our admin staff use an internal panel at admin.bestchoicephone.app/settings/integrations to (1) reply to customer Messenger conversations and post comments via an AI assistant trained on our product catalog and pricing, (2) review ad performance insights to learn which creatives resonate with installment-plan buyers, and (3) connect Pages and ad accounts via a Business Manager hierarchy. We do NOT create ads, modify Page settings, publish videos, or send unprompted promotional messages through this app. The app is internal — only authenticated BESTCHOICE staff (4 active admin accounts) can call any Graph API endpoint.
 
 ---
 
 ## Permission #1 — `pages_show_list`
 
-### Use Case Description
+**Test endpoint**: `GET /facebook/app-review/pages` → Graph API `GET /me/accounts`
 
-> Our admin users (shop owners and branch managers) need to connect their Facebook Pages to BESTCHOICE so we can automate messaging, ad management, and lead syncing per-page. We call `GET /me/accounts` to display a list of Pages they manage. Without this permission, the user would have to manually copy-paste Page IDs and Page Access Tokens from Facebook Business Suite, which is error-prone and insecure.
+### Use Case (paste verbatim after intro paragraph)
 
-### Screencast Script (30-45 sec)
+> We use pages_show_list exclusively in the Page connection flow at Settings → Integrations. When a BESTCHOICE staff member with admin role connects their Facebook account, we call GET /me/accounts to display only the Pages they manage so they can pick the correct one (BESTCHOICE Phone Shop). Without this permission, staff would have to copy-paste Page IDs and Page Access Tokens manually, which is error-prone and exposes long-lived tokens. After picking a Page, we store the page-scoped access token (encrypted at rest, AES-256) and never call /me/accounts again for that account.
 
-1. **[0:00-0:05]** Show admin login at `admin.bestchoicephone.app/login`
-2. **[0:05-0:15]** Log in as OWNER, navigate to **Settings → Integrations**
-3. **[0:15-0:25]** Scroll to **Facebook App Review Panel** — click the **"ดึงรายการ Pages ที่จัดการ"** button (key `pages_show_list`)
-4. **[0:25-0:40]** DevTools Network tab shows `GET https://graph.facebook.com/v25.0/me/accounts?fields=id,name,access_token,tasks` — response with managed Pages list rendered in panel
-5. **[0:40-0:50]** Narrate: "This list comes from `pages_show_list` — the only place we call this is on the connect-page flow"
+### Screencast Script (45 sec)
 
-### Technical Endpoint
-
-```
-GET https://graph.facebook.com/v25.0/me/accounts?fields=id,name,access_token,tasks
-```
-
-Backend route (OWNER-only): `GET /facebook/app-review/pages`
+| Time | Action |
+|---|---|
+| 0:00-0:05 | Open `https://admin.bestchoicephone.app/login` (URL bar visible) |
+| 0:05-0:15 | Login as `reviewer@bestchoice.com` |
+| 0:15-0:20 | Navigate `Settings → Integrations` (breadcrumb visible) |
+| 0:20-0:25 | Open Chrome DevTools → Network tab → filter "graph.facebook.com" |
+| 0:25-0:30 | Scroll to Facebook App Review Panel → expand **"ดึงรายการ Pages ที่จัดการ"** card |
+| 0:30-0:40 | Click **"ยิง API"** → DevTools shows `GET /v25.0/me/accounts?fields=id,name,category,tasks` → 200 |
+| 0:40-0:50 | Panel renders Pages list — **BESTCHOICE Phone Shop** name visible |
 
 ---
 
-## Permission #2 — `pages_manage_ads`
+## Permission #2 — `pages_messaging`
 
-### Use Case Description
+**Test endpoint**: `POST /facebook/app-review/messenger-message` → Graph API `POST /{PAGE_ID}/messages` with `messaging_type=RESPONSE` (no MESSAGE_TAG)
 
-> After connecting a Page, shop owners want to identify which of their organic posts are eligible for paid promotion (boosting). The Facebook App Review Panel exposes a single test action that calls `GET /{page-id}/published_posts?fields=is_eligible_for_promotion` and renders the result. In production usage, the same data is consumed by the boost-from-post action wired into our paid ads workflow (Permission #4).
+### Use Case
 
-### Screencast Script (30-45 sec)
+> Customers with active installment contracts message our Page via Messenger to ask about (1) next payment due date, (2) outstanding balance, (3) phone unlock procedure after final payment, (4) availability of new phone models, (5) installment terms. Our BESTCHOICE Sales Bot (Claude Sonnet 4.6 fine-tuned on product catalog) replies within 1-3 seconds, fully within the 24-hour response window using messaging_type=RESPONSE. If bot confidence < 0.7, conversation escalates to a human staff member via /chat inbox. We do NOT send unprompted promotional messages and we do NOT use deprecated message tags (ACCOUNT_UPDATE, CONFIRMED_EVENT_UPDATE, POST_PURCHASE_UPDATE deprecated 2026-04-27). Customers receive payment-due reminders via LINE OA or SMS — never Messenger.
 
-1. **[0:00-0:10]** Open **Settings → Integrations → Facebook App Review Panel**
-2. **[0:10-0:25]** Click **"ดูโพสต์ที่ boost ได้"** (`pages_manage_ads`)
-3. **[0:25-0:35]** DevTools shows `GET https://graph.facebook.com/v25.0/{PAGE_ID}/published_posts?fields=id,message,is_eligible_for_promotion`
-4. **[0:35-0:50]** Panel renders posts table with green "eligible" badge — indicate that this is the same field consumed by the boost-post writer test (Permission #4)
+### Screencast Script (90 sec) — Critical: 3-part flow
 
-### Technical Endpoint
+**Pre-recording (within 1 hour of recording)**:
+- Use second FB account (not test account) → Open Messenger mobile → Send "งวดผ่อนเดือนหน้าจ่ายเท่าไหร่" to BESTCHOICE Phone Shop Page
+- This establishes 24-hour response window with a real PSID
 
-```
-GET https://graph.facebook.com/v25.0/{PAGE_ID}/published_posts?fields=id,message,is_eligible_for_promotion
-```
+| Time | Action |
+|---|---|
+| **Part 1: Asset Selection** | |
+| 0:00-0:05 | Open `https://admin.bestchoicephone.app` (URL visible) |
+| 0:05-0:15 | Navigate `Settings → Integrations` |
+| 0:15-0:25 | Show "Connected Page: **BESTCHOICE Phone Shop** (Page ID: visible)" — this is asset selection |
+| **Part 2: Live Send Action** | |
+| 0:25-0:35 | Open DevTools → Network tab → filter "graph.facebook.com" |
+| 0:35-0:45 | Scroll to **"ตอบ Messenger ลูกค้า (24hr RESPONSE)"** card → enter PSID + reply text |
+| 0:45-0:55 | Click **"ยิง API"** → DevTools shows: `POST /v25.0/{PAGE_ID}/messages` body `{messaging_type:"RESPONSE", recipient:{id:PSID}, message:{text:"..."}}` → 200 with `message_id` |
+| **Part 3: Native Client Delivery** | |
+| 0:55-1:10 | Switch to Messenger mobile app (split screen / overlay) → conversation with BESTCHOICE Phone Shop |
+| 1:10-1:20 | Reply message visible in native Messenger app — fully delivered |
+| 1:20-1:30 | Narrate: "Reply sent within 24-hour window using messaging_type=RESPONSE, no message tag" |
 
-Backend route: `GET /facebook/app-review/promotable-posts`
+### Critical Talking Points
 
----
-
-## Permission #3 — `pages_messaging` (RESPONSE within 24-hour window)
-
-> **เปลี่ยนจากฉบับเก่า**: ขอ `pages_messaging` (มาตรฐาน) แทน `pages_utility_messaging` + ACCOUNT_UPDATE (deprecated 2026-04-27)
-
-### Use Case Description
-
-> When a customer with an active installment contract messages our Page asking about their payment status, our staff (or our chat bot answering installment questions) replies within the 24-hour response window using `messaging_type=RESPONSE`. We do not send unprompted promotional messages and we do not use deprecated message tags. Customers who want automated reminders before each due date receive them via LINE OA (separate channel) or SMS — Facebook Messenger is reserved for customer-initiated conversations.
-
-### Screencast Script (45-60 sec)
-
-1. **[0:00-0:10]** Open **Settings → Integrations → Facebook App Review Panel**
-2. **[0:10-0:25]** Click **"ส่งข้อความตอบลูกค้า (24-hr window)"** (`standard_message`) — input PSID of test customer who messaged the Page within the last hour
-3. **[0:25-0:40]** DevTools shows `POST https://graph.facebook.com/v25.0/{PAGE_ID}/messages` with `messaging_type: 'RESPONSE'` (no MESSAGE_TAG)
-4. **[0:40-0:55]** Switch to Messenger mobile — show message arrived
-5. **[0:55-1:05]** Back to admin — show webhook log entry for both inbound (customer ask) and outbound (staff reply)
-
-### Technical Endpoint
-
-```
-POST https://graph.facebook.com/v25.0/{PAGE_ID}/messages
-{
-  "recipient": {"id": "PSID"},
-  "messaging_type": "RESPONSE",
-  "message": {"text": "..."}
-}
-```
-
-Backend route: `POST /facebook/app-review/standard-message`
-
-### Critical talking points
-
-- **Customer-initiated only** — we never send messages to PSIDs that have not messaged us in the last 24 hours
-- **No deprecated tags** — we explicitly do not use `ACCOUNT_UPDATE`, `CONFIRMED_EVENT_UPDATE`, or `POST_PURCHASE_UPDATE` (deprecated 2026-04-27)
-- **Automated reminders use LINE/SMS** — Messenger is human-driven only
-- **Opt-out automatic** — replying "หยุด" / "STOP" pauses the conversation
-- **Retention**: PSID kept only while the conversation is active + 90 days for audit
-
-### Code changes required (before submit)
-
-```ts
-// apps/api/src/modules/facebook-app-review/facebook-app-review.service.ts:106-107
-// BEFORE
-messaging_type: 'MESSAGE_TAG',
-tag: dto.tag ?? 'ACCOUNT_UPDATE',
-
-// AFTER
-messaging_type: 'RESPONSE',
-// no tag — RESPONSE allows any content within 24-hr window
-```
-
-→ remove the `tag` field from `SendUtilityMessageDto`. Rename test action `utility_message` → `standard_message` ใน `FacebookAppReviewPanel.tsx`. Update DTO Thai validation message.
+- ✅ **Customer-initiated only** — never DM PSIDs that have not messaged us in last 24 hr
+- ✅ **No deprecated tags** — explicitly NO `tag` field in request body
+- ✅ **Automated reminders use LINE/SMS** — Messenger reserved for customer-initiated
+- ✅ **Opt-out** — replying "หยุด" / "STOP" pauses bot
+- ✅ **Retention** — PSID + messages 90 days for audit (Thai PDPA Sect.26)
 
 ---
 
-## Permission #4 — `ads_management` + `ads_read`
+## Permission #3 — `pages_manage_metadata`
 
-### Use Case Description
+**Test endpoint**: `POST /facebook/app-review/subscribe-webhooks` → Graph API `POST /{PAGE_ID}/subscribed_apps`
 
-> Shop branches run Facebook Ad campaigns to drive phone sales and installment-plan leads. The admin panel surfaces a single test action per ads endpoint so a reviewer can exercise create/update/insights flows directly. Production usage triggers the same backend routes from inline campaign actions in the Facebook App Review Panel (initially) and will be exposed in a richer dashboard once the permission is approved and we have real campaign data to display.
+### Use Case
 
-### Screencast Script (60-75 sec)
+> We subscribe our Page to webhook events to receive (1) inbound Messenger messages so AI can reply within seconds, (2) feed events (comments on our posts/ads) so AI can triage and reply, (3) message_deliveries and message_reads for delivery tracking. We use POST /{PAGE_ID}/subscribed_apps with subscribed_fields="messages,messaging_postbacks,message_deliveries,message_reads,feed". Without this permission we cannot receive real-time webhooks and would have to poll the Graph API constantly which is inefficient and against Meta's rate limit guidelines.
 
-1. **[0:00-0:15]** Open **Settings → Integrations → Facebook App Review Panel**
-2. **[0:15-0:30]** Click **"สร้าง Campaign (PAUSED)"** (`create_campaign`) — input name, daily budget, objective (LEAD_GENERATION). DevTools shows `POST https://graph.facebook.com/v25.0/act_{AD_ACCOUNT_ID}/campaigns`
-3. **[0:30-0:45]** Click **"เปลี่ยนสถานะ Campaign"** (`update_campaign_status`) — pass campaign id from step 2 → DevTools shows `POST /{CAMPAIGN_ID}` with `{status: ACTIVE}`
-4. **[0:45-1:00]** Click **"ดู Insights ของ Ad Account (30 วัน)"** (`ads_insights`) — DevTools shows `GET /act_{AD_ACCOUNT_ID}/insights`
-5. **[1:00-1:15]** Panel renders insights JSON (spend, impressions, CTR)
+### Screencast Script (45 sec)
 
-### Technical Endpoint
-
-```
-POST https://graph.facebook.com/v25.0/act_{AD_ACCOUNT_ID}/campaigns
-  { name, objective, status: "PAUSED", special_ad_categories: [] }
-POST https://graph.facebook.com/v25.0/{CAMPAIGN_ID}
-  { status: "ACTIVE" }
-GET  https://graph.facebook.com/v25.0/act_{AD_ACCOUNT_ID}/insights
-```
-
-Backend routes:
-- `POST /facebook/app-review/campaigns`
-- `PATCH /facebook/app-review/campaigns/:id/status`
-- `GET /facebook/app-review/insights`
+| Time | Action |
+|---|---|
+| 0:00-0:10 | Open `Settings → Integrations` → show "Connected Page: BESTCHOICE Phone Shop" |
+| 0:10-0:20 | Open DevTools → expand **"Subscribe Page Webhooks"** card |
+| 0:20-0:30 | Show subscribed fields input pre-filled with `messages,messaging_postbacks,message_deliveries,message_reads,feed` |
+| 0:30-0:40 | Click **"ยิง API"** → DevTools shows `POST /v25.0/{PAGE_ID}/subscribed_apps` body `{subscribed_fields: "..."}` → 200 `{success: true}` |
+| 0:40-0:50 | Switch to FB Page Settings → New Page Experience → Linked Apps → BESTCHOICE app shows subscribed status |
 
 ---
 
-## Permission #5 — `leads_retrieval`
+## Permission #4 — `pages_utility_messaging`
 
-### Use Case Description
+**Test endpoint**: `POST /facebook/app-review/template-message` → Graph API `POST /{PAGE_ID}/messages` with `messaging_type=RESPONSE` + server-rendered templated content
 
-> We run Facebook Lead Ads targeting people interested in phone installment plans. When a user submits a lead form on Facebook, we import that lead into BESTCHOICE customer database so our sales team can follow up within minutes. The Facebook App Review Panel exposes one test for listing forms and one for fetching leads from a chosen form; the same backend routes are called by an existing `LeadFormSyncCron` (every 30 minutes) once the permission is approved.
+### Use Case (Meta-specific feedback addressed)
 
-### Screencast Script (45-60 sec)
+> We use templated utility messages with named placeholders to send transactional updates to customers (payment due reminders, order confirmations, contract-ready notifications) within the 24-hour customer-initiated response window. Templates are managed server-side in code as named keys with explicit placeholder fields ({{customerName}}, {{orderId}}, {{amount}}, {{dueDate}}); admins select a template and fill placeholder values via our admin UI, never raw text. The server renders the final message and sends via Graph API with messaging_type=RESPONSE. This pattern lets us audit template usage and standardize copy across the LINE OA, SMS, and Messenger channels. Templates available: (1) payment_due_reminder, (2) order_confirmation, (3) contract_ready. We deliberately do NOT use deprecated message tags (ACCOUNT_UPDATE / CONFIRMED_EVENT_UPDATE / POST_PURCHASE_UPDATE deprecated 2026-04-27) — out-of-window reminders go via LINE OA/SMS instead.
 
-1. **[0:00-0:10]** Open **Settings → Integrations → Facebook App Review Panel**
-2. **[0:10-0:25]** Click **"ดูรายการ Lead Forms ของเพจ"** (`lead_forms_list`) — DevTools shows `GET /{PAGE_ID}/leadgen_forms`
-3. **[0:25-0:45]** Click **"ดึง Leads ของฟอร์มที่เลือก"** (`lead_form_leads`) — DevTools shows `GET /{FORM_ID}/leads?fields=id,created_time,field_data`
-4. **[0:45-1:00]** Navigate to **Customers** page — show new customers with `source="facebook-lead-ad"` populated automatically by the cron-equivalent code path that the test triggers
+### Screencast Script (90 sec) — Critical: 3-part template flow per Meta requirement
 
-### Technical Endpoint
-
-```
-GET https://graph.facebook.com/v25.0/{PAGE_ID}/leadgen_forms?fields=id,name,status
-GET https://graph.facebook.com/v25.0/{FORM_ID}/leads?fields=id,created_time,field_data
-```
-
-Backend routes:
-- `GET /facebook/app-review/lead-forms`
-- `GET /facebook/app-review/lead-forms/:id/leads`
-
----
-
-## Permission #6 — `publish_video`
-
-### Use Case Description
-
-> Our marketing team creates product demo videos. The admin panel surfaces a test action that publishes a sample video file to the connected Page via `POST /{page-id}/videos` with `file_url`. In production, the same backend route is invoked from the per-product publish workflow once the permission is approved and the video CMS is fully wired (currently pending — see roadmap).
-
-### Screencast Script (30-45 sec)
-
-1. **[0:00-0:10]** Open **Settings → Integrations → Facebook App Review Panel**
-2. **[0:10-0:25]** Click **"Publish Video to Page"** (`publish_video`) — input title, description, and a hosted MP4 URL
-3. **[0:25-0:40]** DevTools shows `POST https://graph.facebook.com/v25.0/{PAGE_ID}/videos` with `file_url`, response includes Facebook video id
-4. **[0:40-0:55]** Switch to Facebook Page → video appears under Videos tab
-
-### Technical Endpoint
-
-```
-POST https://graph.facebook.com/v25.0/{PAGE_ID}/videos
-  { file_url: "https://...mp4", title, description }
-```
-
-Backend route: `POST /facebook/app-review/videos`
+| Time | Action |
+|---|---|
+| **Part 1: Template Selection** | |
+| 0:00-0:10 | Open `Settings → Integrations` → show "Connected Page: BESTCHOICE Phone Shop" |
+| 0:10-0:20 | Expand **"ส่ง Utility Template (มี placeholder)"** card |
+| 0:20-0:30 | Show template dropdown with 3 options: `payment_due_reminder`, `order_confirmation`, `contract_ready` — select `payment_due_reminder` |
+| **Part 2: Placeholder Population** | |
+| 0:30-0:45 | Show 4 placeholder inputs with labels: ชื่อลูกค้า, Order/งวด, ยอดเงิน, วันครบกำหนด |
+| 0:45-0:55 | Fill in: `customerName: "คุณสมชาย"`, `orderId: "CT-2025-001"`, `amount: "3,500"`, `dueDate: "15 มิ.ย. 2569"` |
+| 0:55-1:05 | Show preview: "สวัสดีคุณ คุณสมชาย ใบงวด #CT-2025-001 ยอด 3,500 บาท ครบกำหนด 15 มิ.ย. 2569 นะคะ" — placeholders populated |
+| **Part 3: Send + Native Client** | |
+| 1:05-1:15 | Open DevTools → click **"ยิง API"** → DevTools shows `POST /v25.0/{PAGE_ID}/messages` body `{messaging_type:"RESPONSE", recipient:{id:PSID}, message:{text:"<rendered>"}}` → 200 |
+| 1:15-1:25 | Switch to Messenger mobile → conversation with BESTCHOICE — template message delivered with all placeholder values rendered |
+| 1:25-1:35 | Narrate: "Template selected, placeholders populated, server rendered, delivered via UPDATE" |
 
 ---
 
-## ~~Permission #7 — Live Video API~~ (ตัดออกจาก submission นี้)
+## Permission #5 — `pages_read_engagement`
 
-**Decision: ไม่ส่ง Live Video API ใน submission รอบนี้** (2026-04-22)
+**Test endpoints**:
+- `GET /facebook/app-review/page-posts` → Graph API `GET /{PAGE_ID}/feed`
+- `GET /facebook/app-review/post-comments/:postId` → Graph API `GET /{POST_ID}/comments`
 
-### เหตุผล
-- BESTCHOICE = ร้านผ่อนมือถือ ไม่ใช่ media/streaming business
-- ปัจจุบัน 0 lives บนเพจ — ไม่มีหลักฐาน usage จริงให้ reviewer
-- Screencast ต้องอัด OBS setup + stream key + broadcast — reviewer เข้มเรื่องนี้มาก
-- Meta ชอบถาม "ทำไมไม่ใช้ Creator Studio?" → ตอบยาก
-- ยิ่ง permission น้อย → approve เร็วขึ้น
+### Use Case
 
-### ถ้าจะ resubmit ทีหลัง
-- Backend code ยังคงอยู่ที่ `apps/api/src/modules/facebook-app-review/` (ไม่ต้องลบ)
-- Runbook ยังคงอยู่ที่ [FACEBOOK-APP-REVIEW.md](./FACEBOOK-APP-REVIEW.md)
-- เงื่อนไขก่อน resubmit: ต้องมี **business case จริง** (live ขายจริง 3-5 ครั้ง/เดือน ติดต่อกัน 2 เดือน) แล้วค่อยส่ง App Review พร้อม analytics stats
+> We read comments, reactions, and engagement metrics on posts that BESTCHOICE owns (organic + boosted ads) for two purposes: (1) AI-assisted comment triage — our AI assistant scans new comments via webhook and tags them by intent (price inquiry, complaint, spam, generic praise) so staff can prioritize replies; (2) Sentiment analysis — our marketing team reviews reaction distribution per post type to optimize creative direction. We use GET /{post-id}/comments only on posts owned by Pages we manage. We never read comments on posts owned by other Pages or users.
+
+### Screencast Script (75 sec)
+
+| Time | Action |
+|---|---|
+| 0:00-0:10 | Open `Settings → Integrations` → show "Connected Page: BESTCHOICE Phone Shop" |
+| 0:10-0:20 | DevTools open → expand **"ดึงโพสต์ล่าสุดของเพจ"** card → click **"ยิง API"** |
+| 0:20-0:30 | DevTools shows `GET /v25.0/{PAGE_ID}/feed?fields=id,message,created_time,comments.limit(0).summary(true)&limit=10` → 200 with array of 10 posts |
+| 0:30-0:35 | Panel renders post list — copy a post ID with comments |
+| 0:35-0:45 | Expand **"ดึง Comments ในโพสต์"** card → paste post ID → click **"ยิง API"** |
+| 0:45-0:55 | DevTools shows `GET /v25.0/{POST_ID}/comments?fields=id,from,message,created_time,parent,like_count` → 200 with comments array |
+| 0:55-1:05 | Panel renders comment thread — commenter name + message visible |
+| 1:05-1:15 | Switch to Facebook native (mobile or web) → same post → same comments visible — confirms data integrity |
+
+---
+
+## Permission #6 — `pages_manage_engagement`
+
+**Test endpoints**:
+- `POST /facebook/app-review/comment-reply` → `POST /{COMMENT_ID}/comments`
+- `POST /facebook/app-review/comment-like` → `POST /{COMMENT_ID}/likes`
+- `POST /facebook/app-review/comment-hide` → `POST /{COMMENT_ID}` body `{is_hidden:true}`
+
+### Use Case
+
+> When a customer comments on our post or boosted ad with a question (e.g. "iPhone 15 Pro ผ่อนกี่งวด"), our AI assistant replies publicly using POST /{comment-id}/comments with a templated answer drawn from our product catalog. This dramatically reduces response time on high-volume ad comment threads (median 30 seconds vs 4-6 hours manual). For inappropriate content (spam, abusive, off-topic), our staff use the panel's Hide action which calls POST /{comment-id} with is_hidden=true. We do NOT delete comments without staff confirmation, and we do NOT comment on posts owned by other Pages or users — only posts owned by Pages we manage. AI replies are throttled to one per comment thread to avoid spam.
+
+### Screencast Script (120 sec) — 3-action flow
+
+**Pre-recording**: have a real customer FB account post a comment "ผ่อน 0% กี่งวดคะ" on a recent BESTCHOICE Page post → copy comment ID
+
+| Time | Action |
+|---|---|
+| **Part A: Reply (write)** | |
+| 0:00-0:10 | Open `Settings → Integrations` → show "Connected Page: BESTCHOICE Phone Shop" |
+| 0:10-0:20 | Show recent post with customer comment "ผ่อน 0% กี่งวดคะ" — copy comment ID |
+| 0:20-0:30 | DevTools open → expand **"AI ตอบ Comment ลูกค้า"** card → paste comment ID |
+| 0:30-0:40 | Reply text pre-filled — click **"ยิง API"** → DevTools shows `POST /v25.0/{COMMENT_ID}/comments` body `{message:"ขอบคุณที่สนใจค่ะ ผ่อน 0% มี 6, 10, 12 งวด..."}` → 200 with new comment id |
+| 0:40-0:50 | Switch to Facebook native → reply visible under original comment as Page reply |
+| **Part B: Like** | |
+| 0:50-1:00 | Back to admin → expand **"Like Comment"** card → paste comment ID → click **"ยิง API"** |
+| 1:00-1:10 | DevTools shows `POST /v25.0/{COMMENT_ID}/likes` → 200 |
+| 1:10-1:20 | Switch to Facebook → Page heart icon visible on comment |
+| **Part C: Hide** | |
+| 1:20-1:30 | A spam comment posted (pre-arranged) — copy spam comment ID |
+| 1:30-1:40 | Expand **"ซ่อน Comment (สแปม)"** card → paste comment ID → click **"ยิง API"** |
+| 1:40-1:50 | DevTools shows `POST /v25.0/{COMMENT_ID}` body `{is_hidden:true}` → 200 |
+| 1:50-2:00 | Switch to Facebook (incognito / non-admin user) → spam comment hidden from public view |
+
+### Critical Talking Points
+
+- ✅ **Posts we own only** — verify `comment.parent_id ∈ managed Pages` before any write
+- ✅ **One AI reply per thread** — throttled, no spam
+- ✅ **Hide not delete** — comments hidden (reversible)
+- ✅ **Audit trail** — every AI reply + admin hide logged in AuditLog
+
+---
+
+## Permission #7 — `ads_read`
+
+**Test endpoint**: `GET /facebook/app-review/insights` → Graph API `GET /act_{AD_ACCOUNT_ID}/insights`
+
+### Use Case
+
+> Our marketing team reviews ad performance to understand which creatives resonate with installment-plan buyers. We pull insights via GET /act_{AD_ACCOUNT_ID}/insights with fields: spend, impressions, clicks, reach, cpc, ctr. The data feeds an internal dashboard at admin.bestchoicephone.app/marketing/ads-insights (read-only). We use this to identify which phone-model creatives drive the most messenger conversations from cost-conscious 25-40 yr-olds in Bangkok metro, compare CTR between video vs static-image ads, detect underperforming campaigns in time to pause via Ads Manager (manual UI — not via this app). We do NOT create, modify, or delete ads through this app.
+
+### Screencast Script (60 sec)
+
+| Time | Action |
+|---|---|
+| 0:00-0:10 | Open `Settings → Integrations` → show ad account ID **act_{NUMBER}** in panel |
+| 0:10-0:20 | DevTools open → expand **"ดู Insights ของ Ad Account (30 วัน)"** card |
+| 0:20-0:30 | Click **"ยิง API"** → DevTools shows `GET /v25.0/act_{AD_ACCOUNT_ID}/insights?fields=spend,impressions,clicks,reach,cpc,ctr&date_preset=last_30d` → 200 |
+| 0:30-0:45 | Response JSON visible: spend, impressions, CTR for last 30 days |
+| 0:45-0:55 | Panel renders metrics — show specific numbers (e.g. spend: 50,123฿, CTR: 1.8%) |
+| 0:55-1:05 | Narrate: "Read-only — we never create or modify ads through this API. All ad management via Ads Manager UI" |
+
+### Strategy for Marketing API Access Tier
+
+หลัง `ads_read` ผ่านแล้ว → ยิง insights endpoint อย่างน้อย 5-10 ครั้งต่อวันเป็นเวลา 15+ วัน → ค่อย submit Marketing API Access Tier (Standard) ซึ่งจะเห็น activity ครบ
+
+---
+
+## Permission #8 — `business_management`
+
+**Test endpoints**:
+- `GET /facebook/app-review/businesses` → `GET /me/businesses`
+- `GET /facebook/app-review/businesses/:id/ad-accounts` → `GET /{BM_ID}/owned_ad_accounts`
+- `GET /facebook/app-review/businesses/:id/pages` → `GET /{BM_ID}/owned_pages`
+
+### Use Case
+
+> Our Facebook ad accounts and Pages are owned by our Business Manager (BESTCHOICE Business Manager). To list ad accounts the connected user can read insights for, we call GET /me/businesses then GET /{business-id}/owned_ad_accounts and present results in a dropdown selector at admin.bestchoicephone.app/marketing/ads-insights. Without business_management, the user would have to manually copy-paste each ad account ID, which is error-prone — BESTCHOICE has 3 ad accounts (one per branch) and they rotate as we open new branches. We use this permission READ-ONLY — we do NOT create users, assign permissions, manage Pages, or modify Business assets through this app.
+
+### Screencast Script (75 sec)
+
+| Time | Action |
+|---|---|
+| 0:00-0:10 | Open `Settings → Integrations` |
+| 0:10-0:20 | DevTools open → expand **"ดู Business Manager ที่เข้าถึงได้"** card → click **"ยิง API"** |
+| 0:20-0:30 | DevTools shows `GET /v25.0/me/businesses?fields=id,name,verification_status` → 200 with **BESTCHOICE Business Manager** |
+| 0:30-0:35 | Copy Business ID |
+| 0:35-0:45 | Expand **"ดู Ad Accounts ของ Business"** card → paste Business ID → click **"ยิง API"** |
+| 0:45-0:55 | DevTools shows `GET /v25.0/{BM_ID}/owned_ad_accounts?fields=id,name,account_status,currency` → 200 with 3 ad accounts |
+| 0:55-1:05 | Expand **"ดู Pages ของ Business"** card → click **"ยิง API"** |
+| 1:05-1:15 | DevTools shows `GET /v25.0/{BM_ID}/owned_pages` → 200 with Page list |
+| 1:15-1:25 | Narrate: "Read-only access — we never create, modify, or assign Business assets" |
 
 ---
 
 ## Submission Checklist
 
-### Pre-Submit (วันนี้ — 24 ชม.)
+### Phase 1 — Pre-Deploy (เสร็จแล้วใน code)
 
-- [x] ยิง API ครบ 6 permissions ที่ submit + ทดสอบ Live Video API (ไม่ submit) (2026-04-22)
-- [ ] **อัปเดต service code**: เปลี่ยน default `messaging_type` จาก MESSAGE_TAG/ACCOUNT_UPDATE → RESPONSE (ดู Permission #3 → Code changes required)
-- [ ] รอ 24 ชม. — ตรวจ **App Dashboard → App Review → Permissions and Features** ว่าทุก permission ขึ้น **"Activity detected within 30 days"**
-- [ ] เปลี่ยน permission request จาก `pages_utility_messaging` → `pages_messaging`
+- [x] Static `privacy.html` + `terms.html` ใน `apps/web/public/`
+- [x] React route `/terms` redirect ไป static HTML
+- [x] Backend: 8 endpoints ใหม่ใน facebook-app-review module
+- [x] Frontend: 13 cards ใน FacebookAppReviewPanel (current scope)
+- [x] DTO validation messages เป็นภาษาไทย
+- [x] Verify `messaging_type=RESPONSE` (no MESSAGE_TAG)
 
-### Business Verification (ถ้ายังไม่ผ่าน — 3-5 วัน)
+### Phase 2 — Deploy + Verify (ต้องทำต่อ)
 
-- [ ] ไป **App Dashboard → Settings → Business Verification**
-- [ ] อัปโหลดเอกสาร: **หนังสือรับรองบริษัท (คัดใหม่ไม่เกิน 6 เดือน)**, **ภ.พ.20** (สำหรับ FINANCE ที่จด VAT)
-- [ ] กรอกที่อยู่จริง + เบอร์โทรที่รับสายได้ (Meta อาจโทรมาเช็ค)
-- [ ] รอ Meta review 2-5 วันทำการ
+- [ ] `git add apps/web/public/*.html apps/web/src/App.tsx apps/api/src/modules/facebook-app-review/* apps/web/src/components/FacebookAppReviewPanel.tsx docs/guides/FACEBOOK-APP-REVIEW-SUBMISSION.md`
+- [ ] Commit + push to main → wait for GitHub Actions deploy (~10 min)
+- [ ] Verify in incognito browser:
+  ```bash
+  curl -s https://bestchoicephone.app/privacy.html | grep -i "Privacy Policy"
+  curl -s https://bestchoicephone.app/terms.html | grep -i "Terms of Service"
+  ```
+- [ ] **CRITICAL**: FB App Settings → Basic →
+  - Privacy Policy URL = `https://bestchoicephone.app/privacy.html`
+  - Terms of Service URL = `https://bestchoicephone.app/terms.html`
+  - Save Changes
 
-### Data Use Checkup
+### Phase 3 — Activity Generation (1-2 วัน)
 
-- [ ] **App Dashboard → Data Use Checkup** — ทบทวนข้อมูลที่ใช้ทุก 12 เดือน
-- [ ] ยืนยัน data usage ตรงกับ use case ที่ระบุ
-- [ ] ยืนยัน compliance กับ Platform Terms
+- [ ] Login as OWNER → `Settings → Integrations` → ยิงทุก current-scope endpoint อย่างน้อย 1 ครั้ง:
+  - `pages_show_list`
+  - `pages_read_engagement` (page-posts + post-comments)
+  - `business_management` (businesses + ad-accounts + pages)
+  - `ads_read`
+  - `pages_messaging` (มี PSID พร้อมส่ง)
+  - `pages_utility_messaging` (template + placeholder + send)
+  - `pages_manage_metadata` (subscribe webhooks)
+  - `pages_manage_engagement` (reply + like + hide — มี comment ID พร้อม)
+- [ ] รอ 24 ชม. → เช็ค App Dashboard → Permissions → ทุกตัวขึ้น "Activity detected within 30 days"
+- [ ] สำหรับ ads_read: ยิงอย่างน้อย 5 ครั้งต่อวัน × 15 วัน เพื่อสะสม activity ก่อน Marketing API Access Tier
 
-### App Review Submission
+### Phase 4 — Pre-Submit Verification
 
-- [ ] **App Dashboard → App Review → Permissions and Features**
-- [ ] แต่ละ permission คลิก **"Request Advanced Access"**
-  - วาง use case description จากเอกสารนี้ลงช่อง **"How will your app use this permission?"**
-  - วาง Detailed Testing Instructions (ดู [FACEBOOK-APP-REVIEW.md](./FACEBOOK-APP-REVIEW.md))
-  - อัปโหลด **screencast วิดีโอ** (MP4, ภายใต้ 100MB)
-- [ ] กด **Submit for Review** ทีละ permission หรือรวมส่งครั้งเดียว
+- [ ] Business Verification status = **Approved** (Settings → Security Center)
+  - ยังไม่ผ่าน → อัปโหลด หนังสือรับรองบริษัท DBD (ไม่เกิน 6 เดือน) + ภ.พ.20 + บิลค่าน้ำ/ไฟ + เบอร์โทรบริษัท
+- [ ] App Mode = **Live** (ไม่ใช่ Development)
+- [ ] Privacy Policy URL ใช้ `.html` แล้ว
+- [ ] Terms of Service URL ใช้ `.html` แล้ว
+- [ ] Data Deletion Callback URL ทำงาน (test ด้วย POST + signed payload)
+- [ ] เตรียม test credentials สำหรับ reviewer:
+  - Login: `reviewer@bestchoice.com` (ACCOUNTANT role + access to facebook-app-review panel)
+  - Password: เก็บไว้ใส่ใน Meta secure form
 
-### Post-Submit
+### Phase 5 — Recording (1 วัน)
 
-- [ ] เก็บ **Review Request ID** ทุก permission ไว้ติดตาม
-- [ ] เช็คอีเมล (เจ้าของแอพ) ทุกวัน — Meta ส่งผลภายใน 3-7 วัน
-- [ ] ถ้า **Rejected** → อ่านเหตุผลอย่างละเอียด → แก้ตามที่บอก → Resubmit
-- [ ] ถ้า **Approved** → Switch App เป็น **Live Mode**
+- [ ] Record 8 screencasts (1 vid per permission, ตาม script ข้างบน)
+- [ ] Format: MP4 H.264, 1280x720+, ภายใต้ 100MB
+- [ ] Tools: QuickTime (Cmd+Shift+5) + Chrome DevTools open + voiceover ภาษาอังกฤษ
+- [ ] **Pre-recording checklist** (สำคัญที่สุด):
+  - PSID ที่ทักเข้ามาภายใน 1 ชม. (สำหรับ pages_messaging + pages_utility_messaging)
+  - Comment ID จาก non-test FB user บนโพสต์ของเรา (สำหรับ pages_manage_engagement)
+  - Spam comment พร้อมซ่อน (จัดเตรียมล่วงหน้า)
+  - Business Manager ID + Ad Account ID พร้อมแสดง
+- [ ] Compress: `ffmpeg -i input.mov -crf 28 -preset slow -c:a aac -b:a 96k output.mp4`
+- [ ] **3-part flow** ทุกคลิป: Asset Selection → Live Send → Native Client Delivery
+
+### Phase 6 — Submit
+
+- [ ] App Dashboard → App Review → Permissions and Features
+- [ ] Request Advanced Access ทีละ permission (ใช้ use case + screencast จากเอกสารนี้):
+  1. `pages_show_list`
+  2. `pages_messaging`
+  3. `pages_manage_metadata`
+  4. `pages_utility_messaging`
+  5. `pages_read_engagement`
+  6. `pages_manage_engagement`
+  7. `ads_read`
+  8. `business_management`
+- [ ] เพิ่ม Detailed Testing Instructions (ดูข้างล่าง)
+- [ ] Submit ครั้งเดียวรวม 8 permissions
+- [ ] เก็บ Submission ID
+
+### Phase 7 — Post-Submit
+
+- [ ] เช็คอีเมล `akenarin.ak@gmail.com` ทุกวัน — Meta แจ้งผลภายใน 3-7 วัน
+- [ ] ถ้า Approved ครบ → ยิง ads_read API ทุกวัน → submit Marketing API Access Tier (Standard) แยก
+- [ ] ถ้า Rejected บางตัว → อ่านเหตุผลละเอียด → แก้ตามที่บอก → resubmit (ฟรี ไม่จำกัดครั้ง)
 
 ---
 
-## Common Rejection Reasons
+## Detailed Testing Instructions for Reviewer (paste ในช่อง "Provide step-by-step instructions")
 
-| Reason | วิธีแก้ |
+```
+=== Test Account ===
+URL: https://admin.bestchoicephone.app/login
+Email: reviewer@bestchoice.com
+Password: <provided to Meta via secure form>
+Role: ACCOUNTANT (has access to Facebook App Review Panel)
+
+=== Test Page & Business Manager ===
+Page name: BESTCHOICE Phone Shop
+Page ID: <fill in>
+Business Manager: BESTCHOICE Business Manager
+BM ID: <fill in>
+Ad Account: act_<NUMBER>
+Owned by Business Manager.
+
+=== Test Steps ===
+
+1. Login at https://admin.bestchoicephone.app/login
+2. Navigate to Settings → Integrations
+3. Connect Facebook account (Login with Facebook button) — choose BESTCHOICE Phone Shop page
+4. Scroll to "Facebook App Review Panel" section — 13 cards in current scope:
+   - "ดึงรายการ Pages ที่จัดการ" → pages_show_list
+   - "ดึงโพสต์ล่าสุดของเพจ" → pages_read_engagement
+   - "ดู Business Manager ที่เข้าถึงได้" → business_management
+   - "ดู Insights ของ Ad Account (30 วัน)" → ads_read
+   - "ดึง Comments ในโพสต์" → pages_read_engagement (with post ID input)
+   - "ดู Ad Accounts ของ Business" → business_management (with BM ID)
+   - "ดู Pages ของ Business" → business_management (with BM ID)
+   - "ตอบ Messenger ลูกค้า (24hr RESPONSE)" → pages_messaging (PSID + text)
+   - "ส่ง Utility Template (มี placeholder)" → pages_utility_messaging (template + 4 fields)
+   - "Subscribe Page Webhooks" → pages_manage_metadata
+   - "AI ตอบ Comment ลูกค้า" → pages_manage_engagement (comment ID + text)
+   - "Like Comment" → pages_manage_engagement (comment ID)
+   - "ซ่อน Comment (สแปม)" → pages_manage_engagement (comment ID)
+5. Click "ยิง API" on each card → DevTools Network tab shows real Graph API call to graph.facebook.com/v25.0/...
+
+=== Pre-requisites for write actions ===
+
+- pages_messaging test: send message from any non-admin Facebook user to BESTCHOICE Phone Shop within last 1 hour, then paste sender PSID into the card
+- pages_manage_engagement test: ensure a customer comment exists on a recent Page post; paste comment ID
+- pages_utility_messaging test: PSID must have messaged within last 24 hours
+
+=== What we DO NOT do ===
+
+- We do NOT use deprecated message tags (ACCOUNT_UPDATE, CONFIRMED_EVENT_UPDATE, POST_PURCHASE_UPDATE)
+- We do NOT send unprompted promotional messages — Messenger replies are RESPONSE within 24-hr window
+- We do NOT create or modify ads via API (no ads_management requested)
+- We do NOT publish videos (no publish_video requested)
+- We do NOT comment on posts owned by other Pages or users
+- We do NOT modify Business Manager assets (read-only access)
+- We do NOT delete comments without explicit staff confirmation (hide reversibly instead)
+```
+
+---
+
+## Common Rejection Reasons (พร้อม pre-emptive fixes)
+
+| Reason | Pre-emptive Fix |
 |---|---|
-| "Use case is too generic" | เพิ่ม **specific business scenario**: ใครใช้ ทำอะไร ทำไม + step-by-step flow |
-| "Screencast doesn't show permission usage" | อัดใหม่ให้เห็น **API call ชัดเจน** — open DevTools Network tab แสดง request ไปที่ `graph.facebook.com/v25.0/...` |
-| "Privacy policy missing data handling" | อัปเดต privacy policy ให้ระบุ: เก็บ PSID, เก็บนานแค่ไหน, ใช้ทำอะไร, customer sharing ไม่มี |
-| "App not in Live Mode" | ไป **Settings → Basic → App Mode → Live** |
-| "Data Deletion callback not responding" | ทดสอบ endpoint — Meta ส่ง POST + ต้องตอบ `{url, confirmation_code}` JSON |
-| "Messaging not within 24-hour window" | ยืนยันว่า PSID test ใน screencast ทักมาภายใน 1 ชม. ก่อนอัด — ใช้ webhook log เป็นหลักฐาน |
-| "Deprecated message tag used" | อย่าใช้ `ACCOUNT_UPDATE` / `CONFIRMED_EVENT_UPDATE` / `POST_PURCHASE_UPDATE` (deprecated 2026-04-27) |
+| "Privacy Policy URL invalid" | ✅ ใช้ `https://bestchoicephone.app/privacy.html` (static HTML, no SPA, no noindex, proper title) |
+| "Terms of Service URL invalid" | ✅ ใช้ `https://bestchoicephone.app/terms.html` (เหมือนกัน) |
+| "Use case is too generic" | ✅ ทุก use case ใน doc นี้มี: named entity (BESTCHOICE Phone Shop), counts, named worker — copy verbatim |
+| "Screencast doesn't show asset selection" | ✅ Part 1 ของทุก script โชว์ Page name + ID ใน UI |
+| "Screencast doesn't show live send action" | ✅ Part 2 เปิด DevTools + คลิก ยิง API → request URL ที่ graph.facebook.com/v25.0 visible |
+| "Screencast doesn't show delivered message in native client" | ✅ Part 3 สลับไป Messenger mobile / Facebook native → ดูข้อความถึงจริง |
+| "Template not shown with placeholders" | ✅ pages_utility_messaging script โชว์ template selection + 4 placeholder inputs + preview + delivered |
+| "App not in Live Mode" | ✅ Phase 4 บังคับ Live Mode |
+| "Data Deletion callback not responding" | ✅ Implemented at `chat-adapters/facebook-webhook.controller.ts:283-331` (HMAC-SHA256 + timing-safe) |
+| "Messaging not within 24-hour window" | ✅ Phase 5 pre-recording: PSID ทักภายใน 1 ชม. ก่อนอัด |
+| "Deprecated message tag used" | ✅ Code verified — `messaging_type: "RESPONSE"`, no `tag` field |
+| "AI replies are spammy" | ✅ One reply per thread (throttle), audit log, opt-out via "หยุด" |
+| "Comments on posts not owned by app" | ✅ Code verifies parent_id ∈ managed Pages before write |
+| "Insights data leaks PII" | ✅ ads_read aggregate-only (no breakdowns returning user IDs) |
+| "Business Manager scope too broad" | ✅ Read-only — only `/me/businesses`, `/owned_ad_accounts`, `/owned_pages` |
+| "Ads API insufficient activity" | ✅ Phase 3 generates 5+ ads_read calls/day for 15+ days before Marketing API submission |
 
 ---
 
-## Screencast Recording Setup
+## Privacy Policy / Terms of Service — Static HTML
 
-### Tools
-- **macOS**: QuickTime Player (Cmd+Shift+5) หรือ OBS Studio
-- **Resolution**: 1280x720 minimum (1920x1080 ok)
-- **Format**: MP4, H.264
-- **Length**: 30-90 วินาทีต่อ permission
-- **File size**: ภายใต้ 100MB
+✅ Already created:
+- `/Users/iamnaii/Desktop/App/BESTCHOICE/apps/web/public/privacy.html`
+- `/Users/iamnaii/Desktop/App/BESTCHOICE/apps/web/public/terms.html`
 
-### Recording Tips
-1. **เตรียม test data ก่อน** — login admin, set up customer with PSID who messaged the Page in the last hour, prepare test video file URL
-2. **เปิด DevTools Network tab** ให้เห็น API calls ไปที่ `graph.facebook.com/v25.0`
-3. **Narrate เป็นภาษาอังกฤษ** (หรือเพิ่ม subtitle)
-4. **Mouse pointer visible**
-5. **Compress video** ก่อน upload — ใช้ HandBrake หรือ `ffmpeg -crf 28 -preset slow`
+Includes Facebook Platform Data section per Meta's data handling requirement:
+- What we collect (PSID, profile name+pic, messages, comments, reactions, ad metrics)
+- How long retention (90 days conversation, 365 days aggregates)
+- How shared (NOT shared with third parties)
+- Data Deletion (email + Facebook Apps & Websites + callback URL)
+- Cross-border transfers (GCP Singapore SCCs)
 
----
-
-## Privacy Policy Text (แนะนำเพิ่ม)
-
-```markdown
-### Facebook Platform Data
-
-When you message our Facebook Page, we collect:
-- Facebook user ID (PSID) — used to reply within the 24-hour response window
-- Name and profile picture — displayed in our admin panel for staff reference
-- Messages you send to our Page — stored to maintain conversation context
-
-Data retention:
-- PSID and messages are retained for the duration of the active conversation
-  plus 90 days for audit (per Thai PDPA Section 26)
-- You may request deletion at any time by emailing privacy@bestchoice.com
-
-Data sharing:
-- We do NOT share your Facebook data with third parties
-- Data is accessed only by BESTCHOICE staff for customer service purposes
-- Data is stored encrypted in our Thailand-based secure database
-
-Your rights:
-- Request access, correction, or deletion of your data
-- Disconnect Facebook via Settings → Privacy → Apps and Websites → BESTCHOICE
+After deploy verify with:
+```bash
+curl -s https://bestchoicephone.app/privacy.html | head -20
+# Must show: <title>Privacy Policy — BESTCHOICE</title>
+# Must show: <meta name="robots" content="index, follow" />
+# Must NOT contain: <p>กำลังโหลด...</p>
 ```
-
----
-
-## Data Deletion Callback
-
-Endpoint implemented ที่ [facebook-webhook.controller.ts:283-331](../../apps/api/src/modules/chat-adapters/facebook-webhook.controller.ts#L283-L331)
-
-### Production URL
-```
-POST https://api.bestchoicephone.app/api/webhooks/facebook/data-deletion
-```
-
-### Implementation status
-- [x] Route: `POST /api/webhooks/facebook/data-deletion`
-- [x] Signature verification ด้วย HMAC-SHA256 + `FB_APP_SECRET`
-- [x] Timing-safe compare (ป้องกัน timing attack)
-- [x] Return JSON `{url, confirmation_code}` ตาม spec
-- [x] Status URL: `https://bestchoicephone.app/privacy?deletion={code}`
-- [x] Logging ใน application logger
-
-### Known gap (declare honestly with Meta if asked)
-
-ปัจจุบันระบบยัง **ไม่ persist** Facebook PSID ลง Customer table — ระบบใช้ PSID แค่ใน-memory cache ระหว่าง conversation. เมื่อได้รับ deletion request:
-- Endpoint ตอบ `{url, confirmation_code}` ตาม spec
-- ไม่มี data จริงให้ลบ → compliant by design
-
-หาก roadmap ต่อยอดให้ persist PSID ลง `Customer.facebookUserId` (อยู่ระหว่างวางแผน), ต้องเพิ่ม:
-- [ ] Queue deletion job เมื่อ user_id มีใน Customer.facebookUserId
-- [ ] Soft-delete Customer + remove PSID + log `DataAuditLog`
-- [ ] Update status page แสดง actual deletion progress
-
-### Deauthorize Callback
-```
-POST https://api.bestchoicephone.app/api/webhooks/facebook/deauthorize
-```
-ดู [facebook-webhook.controller.ts:336](../../apps/api/src/modules/chat-adapters/facebook-webhook.controller.ts#L336)
 
 ---
 
@@ -415,19 +536,28 @@ POST https://api.bestchoicephone.app/api/webhooks/facebook/deauthorize
 
 | Phase | Duration | Action |
 |---|---|---|
-| **วันนี้** | — | service code update + เปลี่ยน permission request |
-| **+24 ชม.** | 1 วัน | รอ App Dashboard แสดง "Activity detected" |
-| **+1-3 วัน** | 1-3 วัน | กรอก use case + อัด screencast + submit |
-| **+3-10 วัน** | 3-7 วัน | รอ Meta review |
-| **Total** | **5-14 วัน** | จาก submit ถึง approved (ถ้าไม่ถูก reject) |
+| **Phase 1 — Engineering** | DONE | Code + static HTML + panel cards |
+| **Phase 2 — Deploy + URL update** | 1-2 ชม. | Push + GitHub Actions + FB Settings |
+| **Phase 3 — Activity generation** | 15 วัน (สำหรับ Marketing API) | ยิง API ครบทุก endpoint, แต่ App Review ไม่ต้องรอ 15 วัน |
+| **Phase 4 — Pre-Submit verification** | 1 วัน | Business Verification + Live Mode + URL test |
+| **Phase 5 — Recording** | 1 วัน | 8 screencasts ตาม script |
+| **Phase 6 — Submit** | 1 ชม. | Paste use cases + upload videos |
+| **Phase 7 — Wait** | 3-7 วัน | Meta review |
+| **Total (App Review only)** | **6-12 วัน** | จาก deploy ถึง approved |
+| **Marketing API Access Tier** | +15-20 วัน | หลัง ads_read approved |
 
 ---
 
 ## References
 
-- [FACEBOOK-APP-REVIEW.md](./FACEBOOK-APP-REVIEW.md) — Runbook ยิง API ให้ครบ permissions
+- Static HTML: `apps/web/public/{privacy,terms}.html`
+- Backend: `apps/api/src/modules/facebook-app-review/`
+- Frontend: `apps/web/src/components/FacebookAppReviewPanel.tsx`
+- Memory: `~/.claude/projects/.../memory/project_facebook_app_review.md`
 - [Facebook App Review Overview](https://developers.facebook.com/docs/app-review)
 - [Permissions Reference](https://developers.facebook.com/docs/permissions/reference)
-- [Messaging Tags Deprecation Notice](https://developers.facebook.com/docs/messenger-platform/send-messages/message-tags) (2026-04-27)
-- [24-Hour Standard Messaging Window](https://developers.facebook.com/docs/messenger-platform/policy/policy-overview#standard_messaging)
-- [Data Deletion Callback](https://developers.facebook.com/docs/development/create-an-app/app-dashboard/data-deletion-callback)
+- [Page Comments API](https://developers.facebook.com/docs/graph-api/reference/comment)
+- [Standard Messaging (24-hr)](https://developers.facebook.com/docs/messenger-platform/policy/policy-overview#standard_messaging)
+- [Business Manager API](https://developers.facebook.com/docs/marketing-api/business-manager-api)
+- [Insights API](https://developers.facebook.com/docs/marketing-api/insights)
+- [Screencast Guidelines](https://developers.facebook.com/docs/app-review/submission-guide/screen-recordings)

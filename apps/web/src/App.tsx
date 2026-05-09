@@ -1,8 +1,16 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router';
 import { useAuth } from '@/contexts/AuthContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import MainLayout from '@/components/layout/MainLayout';
+
+// Redirect to a non-router URL (used for static HTML pages served from /public).
+function ExternalRedirect({ to }: { to: string }) {
+  useEffect(() => {
+    window.location.replace(to);
+  }, [to]);
+  return null;
+}
 
 // Lazy-load all pages (separate chunks, loaded on demand)
 const LandingPage = lazy(() => import('@/pages/LandingPage'));
@@ -169,6 +177,12 @@ function App() {
           element={isAuthenticated ? <Navigate to="/" replace /> : <LoginPage />}
         />
         <Route path="/privacy" element={<PrivacyPolicyPage />} />
+        {/* /terms — static HTML in apps/web/public/terms.html (Meta-readable).
+            Route here only handles direct user nav; redirects to static file. */}
+        <Route
+          path="/terms"
+          element={<ExternalRedirect to="/terms.html" />}
+        />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/register" element={<RegisterInvitePage />} />

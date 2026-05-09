@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsNumber, Min, IsIn } from 'class-validator';
+import { IsString, IsOptional, IsNumber, Min, IsIn, IsBoolean } from 'class-validator';
 
 export class CreateAdCampaignDto {
   @IsString({ message: 'กรุณาระบุชื่อ campaign' })
@@ -78,4 +78,70 @@ export class SubscribePageWebhooksDto {
   @IsString()
   @IsOptional()
   fields?: string;
+}
+
+// ─── pages_read_engagement ────────────────────────────────────────────────
+export class ListPostCommentsDto {
+  @IsString({ message: 'กรุณาระบุ Post ID' })
+  postId: string;
+
+  @IsString()
+  @IsOptional()
+  fields?: string;
+}
+
+// ─── pages_manage_engagement ──────────────────────────────────────────────
+export class ReplyToCommentDto {
+  @IsString({ message: 'กรุณาระบุ Comment ID' })
+  commentId: string;
+
+  @IsString({ message: 'กรุณาระบุข้อความตอบ' })
+  message: string;
+}
+
+export class LikeCommentDto {
+  @IsString({ message: 'กรุณาระบุ Comment ID' })
+  commentId: string;
+}
+
+export class HideCommentDto {
+  @IsString({ message: 'กรุณาระบุ Comment ID' })
+  commentId: string;
+
+  @IsBoolean({ message: 'is_hidden ต้องเป็น true หรือ false' })
+  @IsOptional()
+  isHidden?: boolean;
+}
+
+// ─── pages_utility_messaging — template with placeholders ─────────────────
+export class SendTemplateMessageDto {
+  @IsString({ message: 'กรุณาระบุ PSID ของผู้รับ' })
+  recipientPsid: string;
+
+  @IsString({ message: 'กรุณาเลือก template' })
+  @IsIn(['payment_due_reminder', 'order_confirmation', 'contract_ready'], {
+    message: 'template ต้องเป็นรายการที่กำหนดไว้',
+  })
+  templateKey: string;
+
+  @IsString({ message: 'กรุณาระบุชื่อลูกค้า' })
+  customerName: string;
+
+  @IsString()
+  @IsOptional()
+  orderId?: string;
+
+  @IsString()
+  @IsOptional()
+  amount?: string;
+
+  @IsString()
+  @IsOptional()
+  dueDate?: string;
+}
+
+// ─── business_management ──────────────────────────────────────────────────
+export class ListBusinessAdAccountsDto {
+  @IsString({ message: 'กรุณาระบุ Business ID' })
+  businessId: string;
 }

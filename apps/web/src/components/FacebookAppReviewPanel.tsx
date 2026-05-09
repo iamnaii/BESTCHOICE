@@ -33,11 +33,20 @@ interface TestResult {
 
 type TestKey =
   | 'pages_show_list'
-  | 'pages_manage_ads'
-  | 'lead_forms_list'
+  | 'page_posts'
+  | 'post_comments'
+  | 'businesses'
+  | 'business_ad_accounts'
+  | 'business_pages'
   | 'ads_insights'
   | 'standard_message'
+  | 'template_message'
   | 'subscribe_webhooks'
+  | 'comment_reply'
+  | 'comment_like'
+  | 'comment_hide'
+  | 'pages_manage_ads'
+  | 'lead_forms_list'
   | 'create_campaign'
   | 'update_campaign_status'
   | 'lead_form_leads'
@@ -51,6 +60,7 @@ interface TestCase {
   endpoint: string;
   method: 'GET' | 'POST' | 'PATCH';
   group: 'read' | 'write';
+  scope: 'current' | 'legacy';
   inputs?: InputField[];
 }
 
@@ -63,6 +73,7 @@ interface InputField {
 }
 
 const TESTS: TestCase[] = [
+  // ─── Current scope (resubmit 2026-05) ────────────────────────────────────
   {
     key: 'pages_show_list',
     permission: 'pages_show_list',
@@ -70,22 +81,25 @@ const TESTS: TestCase[] = [
     endpoint: '/facebook/app-review/pages',
     method: 'GET',
     group: 'read',
+    scope: 'current',
   },
   {
-    key: 'pages_manage_ads',
-    permission: 'pages_manage_ads',
-    title: 'ดูโพสต์ที่ boost ได้',
-    endpoint: '/facebook/app-review/promotable-posts',
+    key: 'page_posts',
+    permission: 'pages_read_engagement',
+    title: 'ดึงโพสต์ล่าสุดของเพจ (พร้อมจำนวน comments)',
+    endpoint: '/facebook/app-review/page-posts',
     method: 'GET',
     group: 'read',
+    scope: 'current',
   },
   {
-    key: 'lead_forms_list',
-    permission: 'leads_retrieval (list)',
-    title: 'ดูรายการ Lead Forms ของเพจ',
-    endpoint: '/facebook/app-review/lead-forms',
+    key: 'businesses',
+    permission: 'business_management',
+    title: 'ดู Business Manager ที่เข้าถึงได้',
+    endpoint: '/facebook/app-review/businesses',
     method: 'GET',
     group: 'read',
+    scope: 'current',
   },
   {
     key: 'ads_insights',
@@ -94,45 +108,157 @@ const TESTS: TestCase[] = [
     endpoint: '/facebook/app-review/insights',
     method: 'GET',
     group: 'read',
+    scope: 'current',
+  },
+  {
+    key: 'post_comments',
+    permission: 'pages_read_engagement',
+    title: 'ดึง Comments ในโพสต์',
+    endpoint: '/facebook/app-review/post-comments/:id',
+    method: 'GET',
+    group: 'write',
+    scope: 'current',
+    inputs: [{ key: 'id', label: 'Post ID (จากโพสต์ของเพจเรา)', placeholder: '1234567890_111' }],
+  },
+  {
+    key: 'business_ad_accounts',
+    permission: 'business_management',
+    title: 'ดู Ad Accounts ของ Business',
+    endpoint: '/facebook/app-review/businesses/:id/ad-accounts',
+    method: 'GET',
+    group: 'write',
+    scope: 'current',
+    inputs: [{ key: 'id', label: 'Business ID', placeholder: '123456789012345' }],
+  },
+  {
+    key: 'business_pages',
+    permission: 'business_management',
+    title: 'ดู Pages ของ Business',
+    endpoint: '/facebook/app-review/businesses/:id/pages',
+    method: 'GET',
+    group: 'write',
+    scope: 'current',
+    inputs: [{ key: 'id', label: 'Business ID', placeholder: '123456789012345' }],
   },
   {
     key: 'standard_message',
     permission: 'pages_messaging',
-    title: 'ส่งข้อความ Messenger ปกติ (24hr window)',
+    title: 'ตอบ Messenger ลูกค้า (24hr RESPONSE)',
     endpoint: '/facebook/app-review/messenger-message',
     method: 'POST',
     group: 'write',
+    scope: 'current',
     inputs: [
-      { key: 'recipientPsid', label: 'PSID ผู้รับ', placeholder: '1234567890' },
+      { key: 'recipientPsid', label: 'PSID ผู้รับ (ทักเข้ามาภายใน 24 ชม.)', placeholder: '1234567890' },
       {
         key: 'text',
         label: 'ข้อความตอบกลับ',
-        defaultValue: 'สวัสดีครับ ขอบคุณที่ติดต่อ BESTCHOICE',
+        defaultValue: 'สวัสดีค่ะ ขอบคุณที่ติดต่อ BESTCHOICE มีอะไรให้ช่วยคะ?',
       },
+    ],
+  },
+  {
+    key: 'template_message',
+    permission: 'pages_utility_messaging',
+    title: 'ส่ง Utility Template (มี placeholder: ชื่อ, order, ยอด, วันครบกำหนด)',
+    endpoint: '/facebook/app-review/template-message',
+    method: 'POST',
+    group: 'write',
+    scope: 'current',
+    inputs: [
+      { key: 'recipientPsid', label: 'PSID ผู้รับ', placeholder: '1234567890' },
+      {
+        key: 'templateKey',
+        label: 'Template (payment_due_reminder | order_confirmation | contract_ready)',
+        defaultValue: 'payment_due_reminder',
+      },
+      { key: 'customerName', label: 'ชื่อลูกค้า ({{customerName}})', defaultValue: 'คุณสมชาย' },
+      { key: 'orderId', label: 'Order/งวดเลขที่ ({{orderId}})', defaultValue: 'CT-2025-001' },
+      { key: 'amount', label: 'ยอดเงิน ({{amount}})', defaultValue: '3,500' },
+      { key: 'dueDate', label: 'วันครบกำหนด ({{dueDate}})', defaultValue: '15 มิ.ย. 2569' },
     ],
   },
   {
     key: 'subscribe_webhooks',
     permission: 'pages_manage_metadata',
-    title: 'Subscribe Page Webhooks',
+    title: 'Subscribe Page Webhooks (messages + feed comments)',
     endpoint: '/facebook/app-review/subscribe-webhooks',
     method: 'POST',
     group: 'write',
+    scope: 'current',
     inputs: [
       {
         key: 'fields',
         label: 'Subscribed fields (comma-separated)',
-        defaultValue: 'messages,messaging_postbacks,message_deliveries,message_reads',
+        defaultValue: 'messages,messaging_postbacks,message_deliveries,message_reads,feed',
       },
     ],
   },
   {
+    key: 'comment_reply',
+    permission: 'pages_manage_engagement',
+    title: 'AI ตอบ Comment ลูกค้าใต้โพสต์/แอด',
+    endpoint: '/facebook/app-review/comment-reply',
+    method: 'POST',
+    group: 'write',
+    scope: 'current',
+    inputs: [
+      { key: 'commentId', label: 'Comment ID', placeholder: '1234567890_111' },
+      {
+        key: 'message',
+        label: 'ข้อความตอบ',
+        defaultValue: 'ขอบคุณที่สนใจค่ะ ผ่อน 0% มี 6, 10, 12 งวด ทักแชทดูเพิ่มเติมได้เลยนะคะ',
+      },
+    ],
+  },
+  {
+    key: 'comment_like',
+    permission: 'pages_manage_engagement',
+    title: 'Like Comment ลูกค้า (ในนามเพจ)',
+    endpoint: '/facebook/app-review/comment-like',
+    method: 'POST',
+    group: 'write',
+    scope: 'current',
+    inputs: [{ key: 'commentId', label: 'Comment ID', placeholder: '1234567890_111' }],
+  },
+  {
+    key: 'comment_hide',
+    permission: 'pages_manage_engagement',
+    title: 'ซ่อน Comment (สแปม/ไม่เหมาะสม)',
+    endpoint: '/facebook/app-review/comment-hide',
+    method: 'POST',
+    group: 'write',
+    scope: 'current',
+    inputs: [{ key: 'commentId', label: 'Comment ID', placeholder: '1234567890_111' }],
+  },
+
+  // ─── Legacy (out of current scope, kept for back-compat) ─────────────────
+  {
+    key: 'pages_manage_ads',
+    permission: 'pages_manage_ads (legacy)',
+    title: 'ดูโพสต์ที่ boost ได้',
+    endpoint: '/facebook/app-review/promotable-posts',
+    method: 'GET',
+    group: 'read',
+    scope: 'legacy',
+  },
+  {
+    key: 'lead_forms_list',
+    permission: 'leads_retrieval (legacy)',
+    title: 'ดูรายการ Lead Forms',
+    endpoint: '/facebook/app-review/lead-forms',
+    method: 'GET',
+    group: 'read',
+    scope: 'legacy',
+  },
+  {
     key: 'create_campaign',
-    permission: 'ads_management + Standard Access',
+    permission: 'ads_management (legacy)',
     title: 'สร้าง Ad Campaign (PAUSED)',
     endpoint: '/facebook/app-review/campaigns',
     method: 'POST',
     group: 'write',
+    scope: 'legacy',
     inputs: [
       { key: 'name', label: 'ชื่อ Campaign', defaultValue: 'App Review Test Campaign' },
       { key: 'dailyBudget', label: 'งบรายวัน (บาท)', type: 'number', defaultValue: '20' },
@@ -140,11 +266,12 @@ const TESTS: TestCase[] = [
   },
   {
     key: 'update_campaign_status',
-    permission: 'ads_management',
+    permission: 'ads_management (legacy)',
     title: 'อัปเดตสถานะ Campaign',
     endpoint: '/facebook/app-review/campaigns/:id/status',
     method: 'PATCH',
     group: 'write',
+    scope: 'legacy',
     inputs: [
       { key: 'id', label: 'Campaign ID', placeholder: '120xxx...' },
       { key: 'status', label: 'Status (ACTIVE/PAUSED)', defaultValue: 'PAUSED' },
@@ -152,20 +279,22 @@ const TESTS: TestCase[] = [
   },
   {
     key: 'lead_form_leads',
-    permission: 'leads_retrieval (fetch)',
+    permission: 'leads_retrieval (legacy)',
     title: 'ดึง Leads จาก Form',
     endpoint: '/facebook/app-review/lead-forms/:id/leads',
     method: 'GET',
     group: 'write',
+    scope: 'legacy',
     inputs: [{ key: 'id', label: 'Form ID', placeholder: '1234567890' }],
   },
   {
     key: 'live_video',
-    permission: 'Live Video API',
+    permission: 'Live Video API (legacy)',
     title: 'สร้าง Live Video (SCHEDULED)',
     endpoint: '/facebook/app-review/live-videos',
     method: 'POST',
     group: 'write',
+    scope: 'legacy',
     inputs: [
       { key: 'title', label: 'หัวข้อไลฟ์', defaultValue: 'BESTCHOICE Live Test' },
       {
@@ -178,11 +307,12 @@ const TESTS: TestCase[] = [
   },
   {
     key: 'publish_video',
-    permission: 'publish_video',
+    permission: 'publish_video (legacy)',
     title: 'อัปโหลด Video ขึ้นเพจ',
     endpoint: '/facebook/app-review/videos',
     method: 'POST',
     group: 'write',
+    scope: 'legacy',
     inputs: [
       {
         key: 'fileUrl',
@@ -414,8 +544,13 @@ function extractSummary(data: unknown): string {
 }
 
 export function FacebookAppReviewPanel() {
-  const readTests = TESTS.filter((t) => t.group === 'read');
-  const writeTests = TESTS.filter((t) => t.group === 'write');
+  const [showLegacy, setShowLegacy] = useState(false);
+  const current = TESTS.filter((t) => t.scope === 'current');
+  const legacy = TESTS.filter((t) => t.scope === 'legacy');
+  const currentRead = current.filter((t) => t.group === 'read');
+  const currentWrite = current.filter((t) => t.group === 'write');
+  const legacyRead = legacy.filter((t) => t.group === 'read');
+  const legacyWrite = legacy.filter((t) => t.group === 'write');
 
   return (
     <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-4">
@@ -431,21 +566,53 @@ export function FacebookAppReviewPanel() {
 
       <div className="space-y-2">
         <p className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
-          อ่านข้อมูล (ไม่ต้องกรอกเพิ่ม)
+          ปัจจุบัน — อ่านข้อมูล (ไม่ต้องกรอกเพิ่ม)
         </p>
-        {readTests.map((t) => (
+        {currentRead.map((t) => (
           <TestRow key={t.key} test={t} />
         ))}
       </div>
 
       <div className="space-y-2">
         <p className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
-          ต้องกรอกข้อมูลทดสอบ
+          ปัจจุบัน — ต้องกรอกข้อมูลทดสอบ
         </p>
-        {writeTests.map((t) => (
+        {currentWrite.map((t) => (
           <TestRow key={t.key} test={t} />
         ))}
       </div>
+
+      <button
+        type="button"
+        onClick={() => setShowLegacy((v) => !v)}
+        className="text-2xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
+      >
+        {showLegacy
+          ? `ซ่อน legacy endpoints (${legacy.length})`
+          : `แสดง legacy endpoints (${legacy.length}) — out of current scope`}
+      </button>
+
+      {showLegacy && (
+        <>
+          <div className="space-y-2">
+            <p className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Legacy — อ่านข้อมูล
+            </p>
+            {legacyRead.map((t) => (
+              <TestRow key={t.key} test={t} />
+            ))}
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Legacy — เขียน
+            </p>
+            {legacyWrite.map((t) => (
+              <TestRow key={t.key} test={t} />
+            ))}
+          </div>
+        </>
+      )}
 
       <a
         href="/docs/guides/FACEBOOK-APP-REVIEW.md"

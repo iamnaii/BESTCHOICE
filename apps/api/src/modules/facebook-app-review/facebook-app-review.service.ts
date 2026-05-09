@@ -4,8 +4,14 @@ import { IntegrationConfigService } from '../integrations/integration-config.ser
 import {
   CreateAdCampaignDto,
   CreateLiveVideoDto,
+  HideCommentDto,
+  LikeCommentDto,
+  ListBusinessAdAccountsDto,
+  ListPostCommentsDto,
   PublishVideoDto,
+  ReplyToCommentDto,
   SendStandardMessageDto,
+  SendTemplateMessageDto,
   SubscribePageWebhooksDto,
   UpdateCampaignStatusDto,
 } from './dto/facebook-app-review.dto';
@@ -271,6 +277,188 @@ export class FacebookAppReviewService {
     const url = `${GRAPH_BASE}/${c.pageId}/subscribed_apps`;
     const body = { subscribed_fields: fields };
     return this.call('POST', url, body, 'subscribe_page_webhooks', c.pageToken);
+  }
+
+  // ─── pages_read_engagement ───────────────────────────────────────────────
+  /**
+   * GET /{PAGE_ID}/feed — list recent posts on the Page (used to discover post IDs).
+   * Permissions: pages_read_engagement
+   */
+  async listPagePosts(): Promise<FbJson> {
+    const c = await this.getCreds();
+    if (!c.pageToken || !c.pageId) {
+      throw new BadRequestException('ยังไม่ได้ตั้งค่า FB page token/id');
+    }
+
+    const fields = ['id', 'message', 'created_time', 'comments.limit(0).summary(true)'].join(',');
+    const url = `${GRAPH_BASE}/${c.pageId}/feed?fields=${fields}&limit=10`;
+    return this.call('GET', url, undefined, 'list_page_posts', c.pageToken);
+  }
+
+  /**
+   * GET /{POST_ID}/comments — read comments + commenter info + reactions on a post.
+   * Permissions: pages_read_engagement
+   */
+  async listPostComments(dto: ListPostCommentsDto): Promise<FbJson> {
+    const c = await this.getCreds();
+    if (!c.pageToken) {
+      throw new BadRequestException('ยังไม่ได้ตั้งค่า FB page token');
+    }
+
+    const fields =
+      dto.fields ?? ['id', 'from', 'message', 'created_time', 'parent', 'like_count'].join(',');
+    const url = `${GRAPH_BASE}/${dto.postId}/comments?fields=${fields}&limit=25`;
+    return this.call('GET', url, undefined, 'list_post_comments', c.pageToken);
+  }
+
+  // ─── pages_manage_engagement ─────────────────────────────────────────────
+  /**
+   * POST /{COMMENT_ID}/comments — reply to a comment as the Page (AI auto-reply).
+   * Permissions: pages_manage_engagement
+   */
+  async replyToComment(dto: ReplyToCommentDto): Promise<FbJson> {
+    const c = await this.getCreds();
+    if (!c.pageToken) {
+      throw new BadRequestException('ยังไม่ได้ตั้งค่า FB page token');
+    }
+
+    const url = `${GRAPH_BASE}/${dto.commentId}/comments`;
+    const body = { message: dto.message };
+    return this.call('POST', url, body, 'reply_to_comment', c.pageToken);
+  }
+
+  /**
+   * POST /{COMMENT_ID}/likes — like a comment as the Page.
+   * Permissions: pages_manage_engagement
+   */
+  async likeComment(dto: LikeCommentDto): Promise<FbJson> {
+    const c = await this.getCreds();
+    if (!c.pageToken) {
+      throw new BadRequestException('ยังไม่ได้ตั้งค่า FB page token');
+    }
+
+    const url = `${GRAPH_BASE}/${dto.commentId}/likes`;
+    return this.call('POST', url, {}, 'like_comment', c.pageToken);
+  }
+
+  /**
+   * POST /{COMMENT_ID} — hide or unhide a comment.
+   * Permissions: pages_manage_engagement
+   */
+  async hideComment(dto: HideCommentDto): Promise<FbJson> {
+    const c = await this.getCreds();
+    if (!c.pageToken) {
+      throw new BadRequestException('ยังไม่ได้ตั้งค่า FB page token');
+    }
+
+    const url = `${GRAPH_BASE}/${dto.commentId}`;
+    const body = { is_hidden: dto.isHidden ?? true };
+    return this.call('POST', url, body, 'hide_comment', c.pageToken);
+  }
+
+  // ─── pages_utility_messaging — template with placeholders ────────────────
+  /**
+   * POST /{PAGE_ID}/messages — send a templated utility message with
+   * placeholders (name, order ID, amount). Used for transactional updates
+   * within the 24-hour window or via a permitted utility tag.
+   *
+   * Templates are managed in code (apps/api/.../utility-templates.ts) and
+   * populated server-side; clients send keys + variables, never raw text.
+   *
+   * Permissions: pages_utility_messaging
+   */
+  async sendTemplateMessage(dto: SendTemplateMessageDto): Promise<FbJson> {
+    const c = await this.getCreds();
+    if (!c.pageToken || !c.pageId) {
+      throw new BadRequestException('ยังไม่ได้ตั้งค่า FB page token/id');
+    }
+
+    const renderedText = this.renderUtilityTemplate(dto);
+
+    // messaging_type=RESPONSE works within the 24-hour customer-initiated
+    // window. Out-of-window utility tags (ACCOUNT_UPDATE / CONFIRMED_EVENT_UPDATE
+    // / POST_PURCHASE_UPDATE) are deprecated since 2026-04-27. The remaining
+    // valid tag (HUMAN_AGENT) requires the Human Agent matched feature which
+    // we do not enable. So the template demo runs inside the 24-hr window.
+    const url = `${GRAPH_BASE}/${c.pageId}/messages`;
+    const body = {
+      messaging_type: 'RESPONSE',
+      recipient: { id: dto.recipientPsid },
+      message: { text: renderedText },
+    };
+
+    return this.call('POST', url, body, 'send_template_message', c.pageToken);
+  }
+
+  private renderUtilityTemplate(dto: SendTemplateMessageDto): string {
+    const templates: Record<string, string> = {
+      payment_due_reminder:
+        'สวัสดีคุณ {{customerName}} ใบงวด #{{orderId}} ยอด {{amount}} บาท ครบกำหนด {{dueDate}} นะคะ',
+      order_confirmation:
+        'ยืนยันรับใบสั่งซื้อ #{{orderId}} ของคุณ {{customerName}} ยอดรวม {{amount}} บาท ขอบคุณค่ะ',
+      contract_ready:
+        'สัญญาผ่อนของคุณ {{customerName}} (เลขที่ {{orderId}}) พร้อมเซ็นแล้ว แตะที่ลิงก์เพื่อดำเนินการต่อ',
+    };
+
+    const tpl = templates[dto.templateKey];
+    if (!tpl) {
+      throw new BadRequestException(`Template "${dto.templateKey}" ไม่รู้จัก`);
+    }
+
+    return tpl
+      .replace('{{customerName}}', dto.customerName)
+      .replace('{{orderId}}', dto.orderId ?? '-')
+      .replace('{{amount}}', dto.amount ?? '-')
+      .replace('{{dueDate}}', dto.dueDate ?? '-');
+  }
+
+  // ─── business_management ─────────────────────────────────────────────────
+  /**
+   * GET /me/businesses — list Business Manager accounts the user has access to.
+   * Permissions: business_management
+   */
+  async listBusinesses(): Promise<FbJson> {
+    const c = await this.getCreds();
+    const token = c.userToken ?? c.systemUserToken ?? c.pageToken;
+    if (!token) {
+      throw new BadRequestException('ยังไม่ได้ตั้งค่า FB access token');
+    }
+
+    const url = `${GRAPH_BASE}/me/businesses?fields=id,name,verification_status`;
+    return this.call('GET', url, undefined, 'list_businesses', token);
+  }
+
+  /**
+   * GET /{BUSINESS_ID}/owned_ad_accounts — list ad accounts owned by a Business.
+   * Used to populate the Ad Account dropdown in admin's Ads Insights dashboard.
+   * Permissions: business_management
+   */
+  async listBusinessAdAccounts(dto: ListBusinessAdAccountsDto): Promise<FbJson> {
+    const c = await this.getCreds();
+    const token = c.userToken ?? c.systemUserToken ?? c.pageToken;
+    if (!token) {
+      throw new BadRequestException('ยังไม่ได้ตั้งค่า FB access token');
+    }
+
+    const fields = ['id', 'name', 'account_status', 'currency'].join(',');
+    const url = `${GRAPH_BASE}/${dto.businessId}/owned_ad_accounts?fields=${fields}`;
+    return this.call('GET', url, undefined, 'list_business_ad_accounts', token);
+  }
+
+  /**
+   * GET /{BUSINESS_ID}/owned_pages — list Pages owned by a Business.
+   * Permissions: business_management
+   */
+  async listBusinessPages(dto: ListBusinessAdAccountsDto): Promise<FbJson> {
+    const c = await this.getCreds();
+    const token = c.userToken ?? c.systemUserToken ?? c.pageToken;
+    if (!token) {
+      throw new BadRequestException('ยังไม่ได้ตั้งค่า FB access token');
+    }
+
+    const fields = ['id', 'name', 'category', 'tasks'].join(',');
+    const url = `${GRAPH_BASE}/${dto.businessId}/owned_pages?fields=${fields}`;
+    return this.call('GET', url, undefined, 'list_business_pages', token);
   }
 
   // ─── publish_video ───────────────────────────────────────────────────────

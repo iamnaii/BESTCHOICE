@@ -1,5 +1,12 @@
 # Facebook App Review — Permission Testing Runbook
 
+> **2026-05-09 UPDATE — Resubmit scope**: หลัง submission รอบแรก (2026-04-24) ถูก reject 2026-05-09
+> เนื่องจาก Privacy Policy URL invalid + screencast ไม่ครบ → scope ใหม่ลดเหลือ 8 perms
+> และเพิ่ม endpoints สำหรับ `pages_read_engagement`, `pages_manage_engagement`, `pages_utility_messaging` (template flow)
+> ดู [FACEBOOK-APP-REVIEW-SUBMISSION.md](./FACEBOOK-APP-REVIEW-SUBMISSION.md) เป็น **source of truth** สำหรับ submission ใหม่
+>
+> Runbook ฉบับนี้เก็บไว้สำหรับอ้างอิง endpoint mapping เท่านั้น — use case + screencast script อยู่ใน submission doc
+
 คู่มือยิง API ทุก endpoint เพื่อให้ Facebook App Dashboard บันทึกว่าแต่ละ permission
 "มีการเรียกใช้ API อย่างน้อย 1 ครั้ง" ก่อนส่ง App Review
 

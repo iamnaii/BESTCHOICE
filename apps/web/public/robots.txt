@@ -1,7 +1,9 @@
-# BESTCHOICE Admin — internal tool, block all crawlers
+# BESTCHOICE Admin — internal tool, block all crawlers EXCEPT public legal pages
 
 User-agent: *
 Disallow: /
+Allow: /privacy.html
+Allow: /terms.html
 
 # Block AI training crawlers explicitly
 User-agent: GPTBot
@@ -32,6 +34,14 @@ User-agent: omgilibot
 Disallow: /
 
 User-agent: FacebookBot
+Disallow: /
+Allow: /privacy.html
+Allow: /terms.html
+
+# Meta's Open Graph / App Review crawler (separate from FacebookBot)
+User-agent: facebookexternalhit
+Allow: /privacy.html
+Allow: /terms.html
 Disallow: /
 
 User-agent: Google-Extended

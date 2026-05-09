@@ -102,7 +102,7 @@ describe('PaymentsService', () => {
     };
 
     const mockReceiptsService = {
-      generateReceipt: jest.fn().mockResolvedValue({ id: 'receipt-1', receiptNumber: 'RC-2026-03-00001' }),
+      generateReceipt: jest.fn().mockResolvedValue({ id: 'receipt-1', receiptNumber: 'RT-202603-00001' }),
     };
 
     const mockAuditService = {

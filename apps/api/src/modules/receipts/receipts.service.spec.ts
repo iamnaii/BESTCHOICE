@@ -73,7 +73,7 @@ describe('ReceiptsService', () => {
       // Existing receipt that can be voided (issued recently, has paymentId).
       tx.receipt.findUnique.mockResolvedValue({
         id: receiptId,
-        receiptNumber: 'RC-2026-04-00001',
+        receiptNumber: 'RT-202604-00001',
         contractId: 'ct-1',
         paymentId: 'pay-1',
         payerName: 'Customer A',
@@ -89,7 +89,7 @@ describe('ReceiptsService', () => {
 
       tx.receipt.create.mockResolvedValue({
         id: 'cn-1',
-        receiptNumber: 'RC-2026-04-00002',
+        receiptNumber: 'RT-202604-00002',
         receiptType: 'CREDIT_NOTE',
       });
       tx.receipt.update.mockResolvedValue({ id: receiptId, isVoided: true });
@@ -123,7 +123,7 @@ describe('ReceiptsService', () => {
 
       tx.receipt.findUnique.mockResolvedValue({
         id: receiptId,
-        receiptNumber: 'RC-2026-04-00001',
+        receiptNumber: 'RT-202604-00001',
         contractId: 'ct-1',
         paymentId: 'pay-1',
         payerName: 'Customer A',
@@ -139,7 +139,7 @@ describe('ReceiptsService', () => {
 
       tx.receipt.create.mockResolvedValue({
         id: 'cn-1',
-        receiptNumber: 'RC-2026-04-00002',
+        receiptNumber: 'RT-202604-00002',
         receiptType: 'CREDIT_NOTE',
       });
       tx.receipt.update.mockResolvedValue({ id: receiptId, isVoided: true });
@@ -165,7 +165,7 @@ describe('ReceiptsService', () => {
   describe('voidReceipt — Wave 3 T2 authorization (ปพพ.386 W-3)', () => {
     const validReceiptMock = () => ({
       id: receiptId,
-      receiptNumber: 'RC-2026-04-00001',
+      receiptNumber: 'RT-202604-00001',
       contractId: 'ct-1',
       paymentId: 'pay-1',
       payerName: 'Customer A',
@@ -183,7 +183,7 @@ describe('ReceiptsService', () => {
       tx.receipt.findUnique.mockResolvedValue(validReceiptMock());
       tx.receipt.create.mockResolvedValue({
         id: 'cn-1',
-        receiptNumber: 'RC-2026-04-00002',
+        receiptNumber: 'RT-202604-00002',
         receiptType: 'CREDIT_NOTE',
       });
       tx.receipt.update.mockResolvedValue({ id: receiptId, isVoided: true });
@@ -227,7 +227,7 @@ describe('ReceiptsService', () => {
       expect(auditCall.data.newValue.reason).toBe('wrong amount');
       expect(auditCall.data.newValue.userRole).toBe('OWNER');
       expect(auditCall.data.newValue.creditNoteId).toBe('cn-1');
-      expect(auditCall.data.oldValue.receiptNumber).toBe('RC-2026-04-00001');
+      expect(auditCall.data.oldValue.receiptNumber).toBe('RT-202604-00001');
     });
 
     it('allows ACCOUNTANT role', async () => {
@@ -267,6 +267,150 @@ describe('ReceiptsService', () => {
       await expect(
         service.voidReceipt(receiptId, 'wrong amount', userId, approverId),
       ).resolves.toBeDefined();
+    });
+  });
+
+  describe('generateReceipt — RT-YYYYMM format + partial fields', () => {
+    function buildPrismaForGenerate(opts: {
+      lastReceiptNumber?: string;
+      paymentStatus: 'PAID' | 'PARTIALLY_PAID';
+      amountDue: string;
+      priorReceipts: Array<{ amount: string }>;
+    }) {
+      const created = jest.fn(async ({ data }: any) => ({ id: 'rcpt-new', ...data }));
+      const tx = {
+        contract: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'ct-1',
+            financedAmount: '20000',
+            totalMonths: 12,
+            customer: { name: 'ลูกค้า ก' },
+            payments: [],
+            deletedAt: null,
+          }),
+        },
+        companyInfo: {
+          findFirst: jest.fn().mockResolvedValue({ nameTh: 'BESTCHOICE FINANCE' }),
+        },
+        payment: {
+          findUnique: jest.fn().mockResolvedValue({
+            status: opts.paymentStatus,
+            amountDue: opts.amountDue,
+          }),
+        },
+        receipt: {
+          findMany: jest.fn().mockResolvedValue(opts.priorReceipts),
+          create: created,
+        },
+        customer: { findFirst: jest.fn().mockResolvedValue(null) },
+        $queryRaw: jest
+          .fn()
+          // pg_advisory_xact_lock — no-op
+          .mockResolvedValueOnce(undefined)
+          // last receipt number lookup
+          .mockResolvedValueOnce(
+            opts.lastReceiptNumber
+              ? [{ receiptNumber: opts.lastReceiptNumber }]
+              : [],
+          ),
+      };
+      const local = {
+        $transaction: jest.fn().mockImplementation((cb: any) => cb(tx)),
+        __tx: tx,
+        __created: created,
+      };
+      return local;
+    }
+
+    function buildService(localPrisma: any) {
+      return new ReceiptsService(
+        localPrisma,
+        { createReversalJournal: jest.fn() } as any,
+        { voidReceipt: jest.fn() } as any,
+        {} as any,
+      );
+    }
+
+    it('generates RT-YYYYMM-NNNNN with seq=1 when month is empty', async () => {
+      const local = buildPrismaForGenerate({
+        paymentStatus: 'PAID',
+        amountDue: '1515.83',
+        priorReceipts: [],
+      });
+      const svc = buildService(local);
+
+      await svc.generateReceipt('ct-1', 'pay-1', 'INSTALLMENT', 1515.83, 1, 'CASH', null, 'u-1');
+
+      const data = local.__created.mock.calls[0][0].data;
+      expect(data.receiptNumber).toMatch(/^RT-\d{6}-00001$/);
+      expect(data.paymentStatus).toBe('PAID');
+      expect(data.installmentPartialSeq).toBeNull();
+    });
+
+    it('increments seq from last receipt of the same month', async () => {
+      const now = new Date();
+      const yyyymm = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const local = buildPrismaForGenerate({
+        lastReceiptNumber: `RT-${yyyymm}-00042`,
+        paymentStatus: 'PAID',
+        amountDue: '1515.83',
+        priorReceipts: [],
+      });
+      const svc = buildService(local);
+
+      await svc.generateReceipt('ct-1', 'pay-1', 'INSTALLMENT', 1515.83, 1, 'CASH', null, 'u-1');
+
+      const data = local.__created.mock.calls[0][0].data;
+      expect(data.receiptNumber).toBe(`RT-${yyyymm}-00043`);
+    });
+
+    it('partial payment: paymentStatus=PARTIAL, installmentPartialSeq counts prior receipts +1, remainingAmount = due - cumulative', async () => {
+      const local = buildPrismaForGenerate({
+        paymentStatus: 'PARTIALLY_PAID',
+        amountDue: '1515.83',
+        priorReceipts: [{ amount: '500' }, { amount: '300' }],
+      });
+      const svc = buildService(local);
+
+      await svc.generateReceipt('ct-1', 'pay-1', 'INSTALLMENT', 200, 1, 'CASH', null, 'u-1');
+
+      const data = local.__created.mock.calls[0][0].data;
+      expect(data.paymentStatus).toBe('PARTIAL');
+      expect(data.installmentPartialSeq).toBe(3);
+      // 1515.83 - (500 + 300 + 200) = 515.83
+      expect(data.remainingAmount.toString()).toBe('515.83');
+    });
+
+    it('final partial payment that clears installment: paymentStatus=PAID, seq=null, remainingAmount=0', async () => {
+      const local = buildPrismaForGenerate({
+        paymentStatus: 'PAID',
+        amountDue: '1515.83',
+        priorReceipts: [{ amount: '500' }, { amount: '500' }],
+      });
+      const svc = buildService(local);
+
+      await svc.generateReceipt('ct-1', 'pay-1', 'INSTALLMENT', 515.83, 1, 'CASH', null, 'u-1');
+
+      const data = local.__created.mock.calls[0][0].data;
+      expect(data.paymentStatus).toBe('PAID');
+      expect(data.installmentPartialSeq).toBeNull();
+      expect(data.remainingAmount.toString()).toBe('0');
+    });
+
+    it('clamps remainingAmount to 0 when overpay is recorded as receipt', async () => {
+      const local = buildPrismaForGenerate({
+        paymentStatus: 'PAID',
+        amountDue: '1515.83',
+        priorReceipts: [],
+      });
+      const svc = buildService(local);
+
+      // Customer pays 1600 (overpay 84.17) — remainingAmount should clamp to 0,
+      // not surface as negative.
+      await svc.generateReceipt('ct-1', 'pay-1', 'INSTALLMENT', 1600, 1, 'CASH', null, 'u-1');
+
+      const data = local.__created.mock.calls[0][0].data;
+      expect(data.remainingAmount.toString()).toBe('0');
     });
   });
 });

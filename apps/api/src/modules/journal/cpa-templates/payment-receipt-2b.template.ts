@@ -37,6 +37,39 @@ export interface PaymentReceiptInput {
    * Per CSV case-3-split-payment.csv pattern.
    */
   partialClear?: boolean;
+  /**
+   * Late fee charged for overdue payments (CPA case 6 — ค่าปรับชำระล่าช้า).
+   * - <3 days overdue: 50฿
+   * - ≥3 days overdue: 100฿
+   * Posted as Cr 42-1103 (ค่าปรับชำระล่าช้า, รายได้).
+   * Cash leg increases by lateFee amount.
+   * Caller computes via calcLateFee(overdue_days) helper.
+   */
+  lateFee?: Decimal;
+}
+
+/**
+ * Calculate late fee per CPA spec (สรุปการบันทึกรับชำระค่างวด.csv กรณีที่ 6).
+ * - 0 days overdue: no fee
+ * - 1-2 days: 50฿
+ * - 3+ days: 100฿
+ */
+export function calcLateFee(overdueDays: number): Decimal {
+  if (overdueDays <= 0) return new Decimal(0);
+  if (overdueDays < 3) return new Decimal(50);
+  return new Decimal(100);
+}
+
+/**
+ * Calculate postpone fee (ค่าปรับดิว) — daily-prorated rescheduling charge.
+ * Formula: monthlyPayment ÷ 30 × daysToShift, rounded DOWN to 2dp.
+ * ROUND_DOWN per CPA Policy A spec — matches the hand-computed examples
+ * provided by the accountant; HALF_UP would produce off-by-0.01 deltas.
+ * Posted as Cr 21-1103 (เงินรับล่วงหน้า) via RescheduleJP6Template.recordFeeAdvance.
+ */
+export function calcPostponeFee(monthlyPayment: Decimal, daysToShift: number): Decimal {
+  if (daysToShift <= 0) return new Decimal(0);
+  return monthlyPayment.div(30).times(daysToShift).toDecimalPlaces(2, Decimal.ROUND_DOWN);
 }
 
 /**
@@ -97,17 +130,20 @@ export class PaymentReceipt2BTemplate {
 
     const advCredit = input.advanceCredit ?? new Decimal(0);
     const advConsume = input.advanceConsume ?? new Decimal(0);
+    const lateFee = input.lateFee ?? new Decimal(0);
     let roundingDiff = new Decimal(0);
 
     if (!input.partialClear) {
       // Effective rounding diff (subject to TOLERANCE):
-      //   amountReceived + advConsume - installmentTotal - advCredit
+      //   amountReceived + advConsume - installmentTotal - advCredit - lateFee
+      // Late fee is collected on top of the installment (CPA case 6).
       // Advance components are explicit by design; only the rounding remainder is
       // checked against the 1฿ tolerance.
       roundingDiff = input.amountReceived
         .plus(advConsume)
         .minus(installmentTotal)
-        .minus(advCredit);
+        .minus(advCredit)
+        .minus(lateFee);
 
       // Validate tolerance (before entering TX — fast-fail on bad input)
       if (roundingDiff.abs().gt(TOLERANCE)) {
@@ -231,6 +267,16 @@ export class PaymentReceipt2BTemplate {
             dr: zero,
             cr: roundingDiff,
             description: 'กำไรปัดเศษ (Policy C)',
+          });
+        }
+
+        // 7. Late fee income (CPA case 6 — ค่าปรับชำระล่าช้า)
+        if (lateFee.gt(0)) {
+          lines.push({
+            accountCode: '42-1103',
+            dr: zero,
+            cr: lateFee,
+            description: 'ค่าปรับชำระล่าช้า',
           });
         }
       }

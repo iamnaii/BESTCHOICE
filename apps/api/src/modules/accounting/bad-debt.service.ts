@@ -13,13 +13,18 @@ import { JournalAutoService } from '../journal/journal-auto.service';
 import { BadDebtProvisionTemplate } from '../journal/cpa-templates/bad-debt-provision.template';
 import { BadDebtWriteOffTemplate } from '../journal/cpa-templates/bad-debt-writeoff.template';
 
+// CPA ECL v3.0 — NPAEs Ch.13 Aging-based (6 buckets B0-B5)
+// Refs: docs/superpowers/specs/2026-05-09-cpa-policy-a-100-compliance-design.md
+//       + สรุปการบันทึกรับชำระค่างวด.csv §6 ECL Provision
+//
+// Note: 0-day bucket (B0) handled implicitly = no provision created
+//       (only installments WITH overdue days get a provision row).
 const DEFAULT_PROVISION_RATES: Record<string, number> = {
-  '1-30': 0.02,
-  '31-60': 0.10,
-  '61-90': 0.25,
-  '91-180': 0.50,
-  '181-360': 0.75,
-  '360+': 1.00,
+  '1-30': 0.02,    // B1 ACTIVE
+  '31-60': 0.15,   // B2 ACTIVE (alert 60d trigger)
+  '61-90': 0.50,   // B3 → contract should be TERMINATED (manual)
+  '91-180': 0.75,  // B4 TERMINATED
+  '180+': 1.00,    // B5 TERMINATED (NPL)
 };
 
 @Injectable()
@@ -48,14 +53,13 @@ export class BadDebtService {
     return DEFAULT_PROVISION_RATES;
   }
 
-  /** Determine aging bucket for a given number of overdue days */
+  /** Determine aging bucket for a given number of overdue days (CPA ECL v3.0) */
   private getAgingBucket(daysOverdue: number): string {
-    if (daysOverdue <= 30) return '1-30';
-    if (daysOverdue <= 60) return '31-60';
-    if (daysOverdue <= 90) return '61-90';
-    if (daysOverdue <= 180) return '91-180';
-    if (daysOverdue <= 360) return '181-360';
-    return '360+';
+    if (daysOverdue <= 30) return '1-30';     // B1
+    if (daysOverdue <= 60) return '31-60';    // B2 (alert 60d)
+    if (daysOverdue <= 90) return '61-90';    // B3 (TERMINATED)
+    if (daysOverdue <= 180) return '91-180';  // B4 (TERMINATED)
+    return '180+';                             // B5 (NPL)
   }
 
   /**
@@ -74,13 +78,13 @@ export class BadDebtService {
   /**
    * Calculate Bad Debt provisions per TFRS for NPAEs Chapter 13.
    *
-   * Uses simplified aging-based approach (NOT TFRS 9 full ECL 3-stage model):
-   *   1-30 days overdue:   2%   provision
-   *   31-60 days overdue:  10%  provision
-   *   61-90 days overdue:  25%  provision
-   *   91-180 days overdue: 50%  provision
-   *   181-360 days overdue: 75% provision
-   *   360+ days overdue:   100% provision
+   * Uses CPA ECL v3.0 (NPAEs Ch.13 Aging-based · 6 buckets B0-B5):
+   *   B0: 0 days (ปกติ)    0%   ACTIVE (no provision row created)
+   *   B1: 1-30 days        2%   ACTIVE
+   *   B2: 31-60 days       15%  ACTIVE (alert 60d trigger)
+   *   B3: 61-90 days       50%  → contract should be TERMINATED (manual)
+   *   B4: 91-180 days      75%  TERMINATED
+   *   B5: >180 days        100% TERMINATED (NPL)
    *
    * Approved NPAEs simplification per Ch.13 — forward-looking macro factors
    * not required at NPAEs level. Rates are configurable via

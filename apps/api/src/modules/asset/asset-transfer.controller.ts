@@ -32,9 +32,15 @@ export class AssetTransferController {
     @Query('fromDate') fromDate?: string,
     @Query('toDate') toDate?: string,
   ) {
+    // NaN-safe parse: reject non-numeric or non-positive values → undefined
+    // so the service falls back to its defaults instead of NaN poisoning math.
+    const parsedPage = page ? parseInt(page, 10) : NaN;
+    const parsedLimit = limit ? parseInt(limit, 10) : NaN;
     return this.service.listAllTransfers({
-      page: page ? parseInt(page, 10) : undefined,
-      limit: limit ? parseInt(limit, 10) : undefined,
+      page:
+        Number.isInteger(parsedPage) && parsedPage > 0 ? parsedPage : undefined,
+      limit:
+        Number.isInteger(parsedLimit) && parsedLimit > 0 ? parsedLimit : undefined,
       search,
       assetId,
       custodianContains,

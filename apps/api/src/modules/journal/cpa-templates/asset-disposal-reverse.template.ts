@@ -48,7 +48,7 @@ export class AssetDisposalReverseTemplate {
     const { assetId, reversedById, reason } = input;
 
     if (!reason || reason.trim().length === 0) {
-      throw new BadRequestException('Reversal reason is required');
+      throw new BadRequestException('กรุณาระบุเหตุผลการกลับรายการ');
     }
 
     const run = async (tx: Prisma.TransactionClient): Promise<{ entryNo: string }> => {

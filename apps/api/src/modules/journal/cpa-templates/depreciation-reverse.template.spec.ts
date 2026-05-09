@@ -111,14 +111,14 @@ describe('DepreciationReverseTemplate', () => {
     const asset = await postedAsset();
     await depr.execute({ assetId: asset.id, period: '2026-05' });
     const beforeReverse = await prisma.fixedAsset.findUnique({ where: { id: asset.id } });
-    expect(parseFloat(beforeReverse!.accumulatedDepr.toString())).toBeCloseTo(833.33, 2);
+    expect(new Decimal(beforeReverse!.accumulatedDepr.toString()).toFixed(2)).toBe('833.33');
 
-    const result = await reverseDepr.execute({ period: '2026-05', reversedById: userId });
+    const result = await reverseDepr.execute({ period: '2026-05', reversedById: userId, reason: 'test' });
     expect(result.reversedCount).toBe(1);
 
     const updated = await prisma.fixedAsset.findUnique({ where: { id: asset.id } });
-    expect(parseFloat(updated!.accumulatedDepr.toString())).toBeCloseTo(0, 2);
-    expect(parseFloat(updated!.netBookValue.toString())).toBeCloseTo(30000, 2);
+    expect(new Decimal(updated!.accumulatedDepr.toString()).toFixed(2)).toBe('0.00');
+    expect(new Decimal(updated!.netBookValue.toString()).toFixed(2)).toBe('30000.00');
 
     const entry = await prisma.depreciationEntry.findFirst({
       where: { assetId: asset.id, period: '2026-05' },
@@ -132,7 +132,7 @@ describe('DepreciationReverseTemplate', () => {
     const b = await postedAsset();
     await depr.execute({ assetId: a.id, period: '2026-05' });
     await depr.execute({ assetId: b.id, period: '2026-05' });
-    const result = await reverseDepr.execute({ period: '2026-05', reversedById: userId });
+    const result = await reverseDepr.execute({ period: '2026-05', reversedById: userId, reason: 'test' });
     expect(result.reversedCount).toBe(2);
     const entries = await prisma.depreciationEntry.findMany({ where: { period: '2026-05' } });
     expect(entries.every((e) => e.reversedAt !== null)).toBe(true);
@@ -141,7 +141,7 @@ describe('DepreciationReverseTemplate', () => {
   it('original JEs remain POSTED with metadata.reversed=true', async () => {
     const asset = await postedAsset();
     await depr.execute({ assetId: asset.id, period: '2026-05' });
-    await reverseDepr.execute({ period: '2026-05', reversedById: userId });
+    await reverseDepr.execute({ period: '2026-05', reversedById: userId, reason: 'test' });
     const original = await prisma.journalEntry.findFirst({
       where: {
         AND: [
@@ -157,7 +157,7 @@ describe('DepreciationReverseTemplate', () => {
   it('reversal JEs created with metadata.flow=depreciation-reverse', async () => {
     const asset = await postedAsset();
     await depr.execute({ assetId: asset.id, period: '2026-05' });
-    await reverseDepr.execute({ period: '2026-05', reversedById: userId });
+    await reverseDepr.execute({ period: '2026-05', reversedById: userId, reason: 'test' });
     const reversals = await prisma.journalEntry.findMany({
       where: {
         AND: [
@@ -173,16 +173,16 @@ describe('DepreciationReverseTemplate', () => {
 
   it('rejects when no DepreciationEntry exists for period', async () => {
     await expect(
-      reverseDepr.execute({ period: '2026-05', reversedById: userId }),
+      reverseDepr.execute({ period: '2026-05', reversedById: userId, reason: 'test' }),
     ).rejects.toThrow(/not found|ไม่พบ/i);
   });
 
   it('skips entries already reversed (idempotent)', async () => {
     const asset = await postedAsset();
     await depr.execute({ assetId: asset.id, period: '2026-05' });
-    await reverseDepr.execute({ period: '2026-05', reversedById: userId });
+    await reverseDepr.execute({ period: '2026-05', reversedById: userId, reason: 'test' });
     await expect(
-      reverseDepr.execute({ period: '2026-05', reversedById: userId }),
+      reverseDepr.execute({ period: '2026-05', reversedById: userId, reason: 'test' }),
     ).rejects.toThrow(/all entries already reversed|ไม่พบ/i);
   });
 
@@ -191,14 +191,14 @@ describe('DepreciationReverseTemplate', () => {
     await depr.execute({ assetId: asset.id, period: '2026-05' });
     await depr.execute({ assetId: asset.id, period: '2026-06' });
     await expect(
-      reverseDepr.execute({ period: '2026-05', reversedById: userId }),
+      reverseDepr.execute({ period: '2026-05', reversedById: userId, reason: 'test' }),
     ).rejects.toThrow(/หลังจากนี้|later/i);
   });
 
   it('reversal lines are mirrors of originals (Dr↔Cr swap, [VOID] prefix)', async () => {
     const asset = await postedAsset();
     await depr.execute({ assetId: asset.id, period: '2026-05' });
-    await reverseDepr.execute({ period: '2026-05', reversedById: userId });
+    await reverseDepr.execute({ period: '2026-05', reversedById: userId, reason: 'test' });
     const reversal = await prisma.journalEntry.findFirst({
       where: { metadata: { path: ['flow'], equals: 'depreciation-reverse' } as any },
       include: { lines: true },
@@ -207,5 +207,20 @@ describe('DepreciationReverseTemplate', () => {
     const totalDr = reversal!.lines.reduce((s, l) => s.plus(l.debit.toString()), new Decimal(0));
     const totalCr = reversal!.lines.reduce((s, l) => s.plus(l.credit.toString()), new Decimal(0));
     expect(totalDr.equals(totalCr)).toBe(true);
+  });
+
+  it('reason propagates to reversal JE metadata', async () => {
+    const asset = await postedAsset();
+    await depr.execute({ assetId: asset.id, period: '2026-05' });
+    await reverseDepr.execute({ period: '2026-05', reversedById: userId, reason: 'mistake in depreciation' });
+    const reversal = await prisma.journalEntry.findFirst({
+      where: {
+        AND: [
+          { metadata: { path: ['flow'], equals: 'depreciation-reverse' } as any },
+          { metadata: { path: ['reversedAssetId'], equals: asset.id } as any },
+        ],
+      },
+    });
+    expect((reversal!.metadata as any).reversalReason).toBe('mistake in depreciation');
   });
 });

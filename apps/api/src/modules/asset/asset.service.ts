@@ -770,8 +770,11 @@ export class AssetService {
       );
     }
 
-    const proceeds =
-      dto.disposalType === 'SALE' ? dto.proceeds ?? 0 : 0;
+    // Convert dto.proceeds (number from DTO) → Decimal once for safe arithmetic.
+    const proceedsDecimal =
+      dto.disposalType === 'SALE'
+        ? new Decimal(dto.proceeds ?? 0)
+        : new Decimal(0);
     const depositAccountCode =
       dto.disposalType === 'SALE' ? dto.depositAccountCode : undefined;
 
@@ -787,7 +790,7 @@ export class AssetService {
         {
           assetId: id,
           disposalDate,
-          disposalProceeds: proceeds,
+          disposalProceeds: proceedsDecimal,
           depositAccountCode,
         },
         tx,
@@ -802,7 +805,8 @@ export class AssetService {
         });
       }
 
-      const gainLoss = new Decimal(proceeds).minus(nbvBefore);
+      const gainLoss = proceedsDecimal.minus(nbvBefore);
+      const proceedsForAudit = dto.disposalType === 'SALE' ? dto.proceeds ?? 0 : 0;
 
       await tx.auditLog.create({
         data: {
@@ -818,7 +822,7 @@ export class AssetService {
             status: newStatus,
             disposalType: dto.disposalType,
             disposalDate: dto.disposalDate,
-            proceeds,
+            proceeds: proceedsForAudit,
             gainLoss: gainLoss.toString(),
             journalEntryNumber: inner.entryNo,
             reason: dto.reason,

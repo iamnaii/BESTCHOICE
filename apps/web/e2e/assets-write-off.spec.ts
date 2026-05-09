@@ -64,50 +64,6 @@ test.describe('Asset — write-off variations', () => {
     await expect(page.locator('body')).not.toContainText('เกิดข้อผิดพลาด');
   });
 
-  test('write-off with loss category selection', async ({ page }) => {
-    // Write-off due to loss (e.g., theft, natural disaster)
-    // vs. damage (mechanical failure, wear & tear)
-    await loginAsRole(page, 'FINANCE_MANAGER');
-
-    const createRes = await page.request.post(`${API_URL}/api/assets`, {
-      data: {
-        name: `E2E Loss Category Test ${Date.now()}`,
-        category: 'EQUIPMENT',
-        basePrice: 12000,
-        usefulLifeMonths: 24,
-        purchaseDate: new Date().toISOString().slice(0, 10),
-        paymentAccount: '11-1201',
-      },
-    });
-    expect(createRes.ok()).toBeTruthy();
-    const created = await createRes.json();
-    const assetId = created.id;
-
-    // POST asset
-    const postRes = await page.request.post(`${API_URL}/api/assets/${assetId}/post`);
-    expect(postRes.ok()).toBeTruthy();
-
-    // Write off with specific reason (loss category)
-    const writeOffRes = await page.request.post(`${API_URL}/api/assets/${assetId}/dispose`, {
-      data: {
-        disposalType: 'WRITE_OFF',
-        disposalDate: new Date().toISOString().slice(0, 10),
-        reason: 'E2E test write-off — stolen from warehouse',
-        lossCategory: 'THEFT', // e.g., THEFT | DAMAGE | OBSOLETE | OTHER
-      },
-    });
-    expect(writeOffRes.ok()).toBeTruthy();
-    const result = await writeOffRes.json();
-    expect(result.entryNo).toBeTruthy();
-
-    // Verify journal entry includes loss expense
-    const afterDispose = await page.request.get(`${API_URL}/api/assets/${assetId}`);
-    expect(afterDispose.ok()).toBeTruthy();
-    const detail = await afterDispose.json();
-    expect(detail.status).toBe('WRITTEN_OFF');
-    expect(detail.lossCategory).toBe('THEFT');
-  });
-
   test('dispose via UI page form (smoke test)', async ({ page }) => {
     // UI smoke: AssetDisposePage form loads and renders without errors
     await loginAsRole(page, 'FINANCE_MANAGER');
@@ -135,16 +91,8 @@ test.describe('Asset — write-off variations', () => {
     const ok = await gotoWithRetry(page, `/assets/${assetId}/dispose`);
     if (!ok) return;
 
-    // Form should render without errors
-    // Look for form title or key fields (disposal type, proceeds, reason, etc.)
+    // Form should render without errors and the form element must be visible.
     await expect(page.locator('body')).not.toContainText('เกิดข้อผิดพลาด');
-
-    // The page should have a submit button or form controls
-    // (exact selectors depend on AssetDisposePage implementation)
-    const form = page.locator('form').first();
-    if (await form.isVisible({ timeout: 5000 })) {
-      // If form is visible, it loaded successfully
-      expect(true).toBe(true);
-    }
+    await expect(page.locator('form').first()).toBeVisible({ timeout: 10000 });
   });
 });

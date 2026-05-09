@@ -71,8 +71,11 @@ export class DepreciationService {
    * - entryNumbers: distinct journalEntryNo values seen
    */
   async listRuns(): Promise<DepreciationRunSummary[]> {
+    // Cap at 5000 entries (~24 months × 200 assets) to prevent unbounded
+    // growth as DepreciationEntry table grows over years of use.
     const entries = await this.prisma.depreciationEntry.findMany({
       orderBy: { period: 'desc' },
+      take: 5000,
       include: {
         reversedBy: { select: { name: true } },
       },
@@ -191,10 +194,11 @@ export class DepreciationService {
    * 3. V15 closed-period guard via validatePeriodOpen — on rejection, writes
    *    DEPRECIATION_RUN_MANUAL_BLOCKED audit + throws.
    *
-   * Atomicity: each asset's JE+DepreciationEntry is one transaction inside the
-   * template. We do NOT wrap the whole iteration in a single transaction so a
-   * single bad asset cannot poison the whole run; partial-failure recovery is
-   * a re-run (idempotency makes it safe).
+   * Atomicity: the entire asset loop runs inside ONE outer $transaction so
+   * partial failures roll back the whole run (per spec). Re-runs are still
+   * safe because DepreciationTemplate is internally idempotent on
+   * (assetId, period) — a successful re-run after a fix will simply no-op the
+   * already-posted assets.
    */
   async runManual(period: string, userId: string): Promise<DepreciationRunSummary> {
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(period)) {
@@ -203,19 +207,19 @@ export class DepreciationService {
 
     // Reject future period (period that hasn't started yet — periodStart > today)
     // We compare periodStart so depreciation can be run for the current month
-    // (tests + UX expectation: ผู้ใช้รันเดือนปัจจุบันได้ทุกวัน). periodEnd is
-    // still used downstream for V15 closed-period lookup.
+    // (tests + UX expectation: ผู้ใช้รันเดือนปัจจุบันได้ทุกวัน).
     const [y, m] = period.split('-').map(Number);
-    const periodStart = new Date(y, m - 1, 1);
-    const periodEnd = new Date(y, m, 0); // day=0 of next month → last day of period
+    const periodStart = new Date(y, m - 1, 1); // first day of month
     if (periodStart > new Date()) {
       throw new BadRequestException('ไม่สามารถรันค่าเสื่อมล่วงหน้า (period อยู่ในอนาคต)');
     }
 
     // V15 closed-period guard
+    // V15 anchor: use period start so both Tier-1 (year/month) and Tier-2
+    // (closed-until date) checks fail consistently when the period is closed.
     const financeCompanyId = await this.getFinanceCompanyId();
     try {
-      await validatePeriodOpen(this.prisma, periodEnd, financeCompanyId);
+      await validatePeriodOpen(this.prisma, periodStart, financeCompanyId);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'period closed';
       await this.prisma.auditLog.create({
@@ -241,57 +245,61 @@ export class DepreciationService {
     });
     const alreadyRun = new Set(existing.map((e) => e.assetId));
 
-    let processedCount = 0;
-    const entryNumbers: string[] = [];
+    // Wrap whole run in single transaction for atomicity (per spec).
+    // Any thrown error rolls back all posted JEs + DepreciationEntry rows
+    // for this run — no partial state. Re-runs are safe (template is
+    // idempotent on (assetId, period)).
+    const { processedCount, entryNumbers, totalAmount, allEntriesCount } =
+      await this.prisma.$transaction(async (tx) => {
+        let processedCount = 0;
+        const entryNumbers: string[] = [];
 
-    // Per-asset loop — DepreciationTemplate.execute is internally tx-wrapped
-    // and idempotent. We swallow per-asset failures (logged) so one bad asset
-    // doesn't abort the whole run.
-    for (const asset of assets) {
-      if (alreadyRun.has(asset.id)) continue;
-      try {
-        const result = await this.depreciationTemplate.execute({
-          assetId: asset.id,
-          period,
-        });
-        if (result?.entryNo) {
-          entryNumbers.push(result.entryNo);
-          processedCount++;
+        for (const asset of assets) {
+          if (alreadyRun.has(asset.id)) continue;
+          const result = await this.depreciationTemplate.execute(
+            { assetId: asset.id, period },
+            tx,
+          );
+          if (result?.entryNo) {
+            entryNumbers.push(result.entryNo);
+            processedCount++;
+          }
         }
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : String(err);
-        this.logger.warn(
-          `runManual: asset ${asset.assetCode} failed: ${message}`,
+
+        // Re-aggregate inside tx (includes pre-existing active entries
+        // for this period — so re-runs report the full picture).
+        const allEntries = await tx.depreciationEntry.findMany({
+          where: { period, reversedAt: null },
+        });
+        const totalAmount = allEntries.reduce(
+          (s, e) => s.plus(e.amount.toString()),
+          new Decimal(0),
         );
-        // Continue to next asset; partial-failure is OK (idempotent on re-run)
-      }
-    }
 
-    // Re-aggregate to compute final totals (includes pre-existing active entries
-    // for this period — so re-runs report the full picture).
-    const allEntries = await this.prisma.depreciationEntry.findMany({
-      where: { period, reversedAt: null },
-    });
-    const totalAmount = allEntries.reduce(
-      (s, e) => s.plus(e.amount.toString()),
-      new Decimal(0),
-    );
+        // Write AuditLog inside same tx so it rolls back together with JEs.
+        await tx.auditLog.create({
+          data: {
+            userId,
+            action: 'DEPRECIATION_RUN_MANUAL',
+            entity: 'depreciation_run',
+            entityId: period,
+            oldValue: { period, alreadyRunCount: alreadyRun.size },
+            newValue: {
+              period,
+              processedCount,
+              totalAmount: totalAmount.toFixed(2),
+              entryNumbers,
+            },
+          },
+        });
 
-    await this.prisma.auditLog.create({
-      data: {
-        userId,
-        action: 'DEPRECIATION_RUN_MANUAL',
-        entity: 'depreciation_run',
-        entityId: period,
-        oldValue: { period, alreadyRunCount: alreadyRun.size },
-        newValue: {
-          period,
+        return {
           processedCount,
-          totalAmount: totalAmount.toFixed(2),
           entryNumbers,
-        },
-      },
-    });
+          totalAmount,
+          allEntriesCount: allEntries.length,
+        };
+      });
 
     this.logger.log(
       `[Phase2] DepreciationRunManual ${period} — processed ${processedCount} assets`,
@@ -301,7 +309,7 @@ export class DepreciationService {
       period,
       entryNumbers,
       totalAmount: totalAmount.toFixed(2),
-      assetCount: allEntries.length,
+      assetCount: allEntriesCount,
       ranAt: new Date().toISOString(),
       runByName: null,
       status: 'POSTED',
@@ -356,7 +364,7 @@ export class DepreciationService {
 
     return this.prisma.$transaction(async (tx) => {
       const result = await this.depreciationReverseTemplate.execute(
-        { period, reversedById: userId },
+        { period, reversedById: userId, reason },
         tx,
       );
 

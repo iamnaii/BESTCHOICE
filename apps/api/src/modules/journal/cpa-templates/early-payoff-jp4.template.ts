@@ -15,6 +15,10 @@ export interface EarlyPayoffInput {
  * Template JP4 — Early Payoff (Case 4).
  *
  * Spec §6.4 — close out remaining installments with optional interest discount.
+ * Policy A (CPA decision · 2026-05-09):
+ *   VAT ไม่ลดตามส่วนลดดอกเบี้ย — Cr 21-2101 = remainingDeferredVat เต็มยอด
+ *   ไม่ออกใบลดหนี้ (Credit Note) per ม.82/5 — บริษัทเลือก Policy A vs ม.79+86/10
+ * Refs: docs/superpowers/specs/2026-05-09-cpa-policy-a-100-compliance-design.md
  *
  * Wave 2 Task 3 (ป.รัษฎากร ม.79 + ม.86/10):
  *   ฐาน VAT = "ราคาที่ได้รับจริง" → ถ้ามีส่วนลดดอกเบี้ย ฐาน VAT ลดตามส่วน
@@ -125,22 +129,16 @@ export class EarlyPayoffJP4Template {
       .div(100)
       .toDecimalPlaces(2);
 
-    // Wave 2 T3 — ม.79 + ม.86/10: VAT base = "ราคาที่ได้รับจริง"
-    // ถ้ามีส่วนลดดอกเบี้ย → ฐาน VAT ลดตามส่วน · Cr 21-2101 (VAT ภ.พ.30)
-    // ลดเป็น settleVat. Dr 21-2102 ยังเต็ม (ปิด deferred VAT). ความต่าง 105
-    // สะท้อนทาง Cash ที่ลดลง — JE balanced. vatCreditBackOnDiscount เก็บใน
-    // metadata เพื่อ traceability + reporting.
-    // Cap vatOnDiscount at remainingDeferredVat so settleVat never goes
-    // negative. A negative Cr 21-2101 would invert the VAT liability and
-    // corrupt ภ.พ.30. If discount * 0.07 exceeds remainingDeferredVat,
-    // the over-cap portion is absorbed entirely by Dr 52-1106 instead.
-    const rawVatOnDiscount = discount
-      .times(new Decimal('0.07'))
-      .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-    const vatOnDiscount = Decimal.min(rawVatOnDiscount, remainingDeferredVat);
-    const settleVat = remainingDeferredVat.minus(vatOnDiscount);
+    // Policy A (CPA decision) — VAT ไม่ลดตามส่วนลดดอกเบี้ย
+    // CPA เลือก Policy A vs ม.79+86/10:
+    //   - Cr 21-2101 (VAT ภ.พ.30) = remainingDeferredVat เต็ม ไม่ลดตาม discount
+    //   - ไม่ออกใบลดหนี้ VAT (Credit Note)
+    //   - บริษัทรับภาระ VAT ส่วนเกินจาก discount เอง
+    // อ้างอิง: docs/superpowers/specs/2026-05-09-cpa-policy-a-100-compliance-design.md
+    //          + Handover_BestChoiceFinance v3.0.pdf §9 Policy Decisions
+    const settleVat = remainingDeferredVat;
 
-    // Settlement amount customer pays (reduced by both discount and vatOnDiscount)
+    // Settlement amount customer pays (reduced by discount only — VAT full)
     const settlement = remainingGross.minus(discount).plus(settleVat);
 
     const zero = new Decimal(0);
@@ -201,9 +199,7 @@ export class EarlyPayoffJP4Template {
           accountCode: '21-2101',
           dr: zero,
           cr: settleVat,
-          description: vatOnDiscount.gt(0)
-            ? `ภาษีขาย ภ.พ.30 ถึงกำหนด (ลด ${vatOnDiscount.toFixed(2)} ตามส่วนลด ม.79)`
-            : 'ภาษีขาย ภ.พ.30 ถึงกำหนด',
+          description: 'ภาษีขาย ภ.พ.30 ถึงกำหนด (Policy A: VAT ไม่ลดตามส่วนลด)',
         },
       );
 
@@ -218,8 +214,8 @@ export class EarlyPayoffJP4Template {
             unpaidInstallments: unpaid,
             discount: discount.toFixed(2),
             interestDiscountPercent: input.interestDiscountPercent.toFixed(2),
-            // Wave 2 T3 — VAT credit back per ม.79 + ม.86/10
-            vatCreditBackOnDiscount: vatOnDiscount.toFixed(2),
+            // Policy A — VAT ไม่ลดตามส่วนลด (CPA decision · vs ม.79+86/10)
+            policy: 'A',
             settleVat: settleVat.toFixed(2),
           },
           lines,

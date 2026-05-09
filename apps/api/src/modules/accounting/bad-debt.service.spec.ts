@@ -112,34 +112,34 @@ describe('BadDebtService', () => {
       expect(result.byBucket['1-30'].amount).toBeCloseTo(20, 4);
     });
 
-    it('places a 31-day overdue payment in the 31-60 bucket (boundary)', async () => {
+    it('places a 31-day overdue payment in the 31-60 bucket (boundary, B2)', async () => {
       prisma.payment.findMany.mockResolvedValue([makePayment('c1', 31, 1000)]);
       const result = await service.calculateProvisions('user-1');
-      expect(result.byBucket['31-60'].amount).toBeCloseTo(100, 4); // 1000 * 0.10
+      expect(result.byBucket['31-60'].amount).toBeCloseTo(150, 4); // 1000 * 0.15 (CPA ECL v3.0)
     });
 
-    it('places a 61-day overdue payment in the 61-90 bucket', async () => {
+    it('places a 61-day overdue payment in the 61-90 bucket (B3 → terminate)', async () => {
       prisma.payment.findMany.mockResolvedValue([makePayment('c1', 61, 1000)]);
       const result = await service.calculateProvisions('user-1');
-      expect(result.byBucket['61-90'].amount).toBeCloseTo(250, 4); // 1000 * 0.25
+      expect(result.byBucket['61-90'].amount).toBeCloseTo(500, 4); // 1000 * 0.50 (CPA ECL v3.0)
     });
 
-    it('places a 91-day overdue payment in the 91-180 bucket', async () => {
+    it('places a 91-day overdue payment in the 91-180 bucket (B4)', async () => {
       prisma.payment.findMany.mockResolvedValue([makePayment('c1', 91, 1000)]);
       const result = await service.calculateProvisions('user-1');
-      expect(result.byBucket['91-180'].amount).toBeCloseTo(500, 4); // 1000 * 0.50
+      expect(result.byBucket['91-180'].amount).toBeCloseTo(750, 4); // 1000 * 0.75 (CPA ECL v3.0)
     });
 
-    it('places a 181-day overdue payment in the 181-360 bucket', async () => {
+    it('places a 181-day overdue payment in the 180+ bucket (B5 NPL)', async () => {
       prisma.payment.findMany.mockResolvedValue([makePayment('c1', 181, 1000)]);
       const result = await service.calculateProvisions('user-1');
-      expect(result.byBucket['181-360'].amount).toBeCloseTo(750, 4); // 1000 * 0.75
+      expect(result.byBucket['180+'].amount).toBeCloseTo(1000, 4); // 1000 * 1.00 (CPA B5 NPL)
     });
 
-    it('places a 361-day overdue payment in the 360+ bucket (full provision)', async () => {
+    it('places a 361-day overdue payment in the 180+ bucket (still B5)', async () => {
       prisma.payment.findMany.mockResolvedValue([makePayment('c1', 361, 1000)]);
       const result = await service.calculateProvisions('user-1');
-      expect(result.byBucket['360+'].amount).toBeCloseTo(1000, 4); // 1000 * 1.00
+      expect(result.byBucket['180+'].amount).toBeCloseTo(1000, 4); // CPA collapses 180+ into single bucket
     });
   });
 
@@ -306,7 +306,7 @@ describe('BadDebtService', () => {
           lateFee: new Prisma.Decimal(0),
           lateFeeWaived: false,
           status: 'PENDING',
-          // 31 days ago → 31-60 bucket → 10% → provisionAmount = 100
+          // 31 days ago → 31-60 bucket (B2) → 15% → provisionAmount = 150 (CPA ECL v3.0)
           dueDate: new Date(Date.now() - 31 * 24 * 60 * 60 * 1000),
           contract: { id: 'c1', status: 'OVERDUE' },
         },
@@ -319,8 +319,8 @@ describe('BadDebtService', () => {
       expect(badDebtProvisionTemplate.execute).toHaveBeenCalledTimes(1);
       const callArgs = badDebtProvisionTemplate.execute.mock.calls[0][0];
       expect(callArgs.contractId).toBe('c1');
-      // new = 100, prev = 50, provisionAmount (delta) = 50
-      expect(Number(callArgs.provisionAmount)).toBeCloseTo(50, 4);
+      // new = 150 (B2 15%), prev = 50, provisionAmount (delta) = 100
+      expect(Number(callArgs.provisionAmount)).toBeCloseTo(100, 4);
       expect(callArgs.period).toMatch(/^\d{4}-\d{2}$/);
     });
 

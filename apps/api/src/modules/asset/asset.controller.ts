@@ -69,6 +69,27 @@ export class AssetController {
     return this.assetService.generateAssetCode(undefined, category);
   }
 
+  @Get('register')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getRegister(
+    @Query() pagination: PaginationDto,
+    @Query('asOfDate') asOfDate?: string,
+    @Query('category') category?: AssetCategory,
+    @Query('status') status?: AssetStatus,
+    @Query('branchId') branchId?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.assetService.getRegister({
+      asOfDate,
+      category,
+      status,
+      branchId,
+      search,
+      page: pagination.page,
+      limit: pagination.limit,
+    });
+  }
+
   @Get(':id')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   findOne(@Param('id') id: string) {
@@ -79,6 +100,12 @@ export class AssetController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   audit(@Param('id') id: string) {
     return this.assetService.getAuditTrail(id);
+  }
+
+  @Get(':id/schedule')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getSchedule(@Param('id') id: string) {
+    return this.assetService.getAssetSchedule(id);
   }
 
   @Post()

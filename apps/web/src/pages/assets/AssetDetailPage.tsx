@@ -14,6 +14,8 @@ import {
   Undo2,
   Trash2,
   CheckSquare,
+  TrendingDown,
+  History,
 } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -199,6 +201,12 @@ export default function AssetDetailPage() {
                 >
                   <Copy className="mr-2 size-4" /> คัดลอกเป็น DRAFT ใหม่
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate(`/assets/${id}/schedule`)}>
+                  <TrendingDown className="mr-2 size-4" /> ดูตาราง NBV
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate(`/assets/${id}/audit`)}>
+                  <History className="mr-2 size-4" /> ดูประวัติทั้งหมด
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           )
@@ -352,6 +360,14 @@ export default function AssetDetailPage() {
                   ) : (
                     <p className="text-sm text-muted-foreground">ยังไม่มีประวัติ</p>
                   )}
+                  {auditQuery.data?.length ? (
+                    <Link
+                      to={`/assets/${id}/audit`}
+                      className="text-sm text-muted-foreground hover:text-primary underline cursor-pointer block mt-3"
+                    >
+                      ดูประวัติทั้งหมด →
+                    </Link>
+                  ) : null}
                 </CardContent>
               </Card>
             </div>

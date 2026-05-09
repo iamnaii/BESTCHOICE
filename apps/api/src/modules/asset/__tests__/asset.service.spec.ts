@@ -1001,4 +1001,197 @@ describe('AssetService — CRUD + helpers', () => {
       );
     });
   });
+
+  // ==========================================================================
+  // Phase 3 — Task 1: getRegister (asOfDate-based historical NBV)
+  // ==========================================================================
+  describe('AssetService.getRegister', () => {
+    it('default asOfDate (today): returns all POSTED assets with current NBV', async () => {
+      const a = await createPostedAsset({ name: 'Test 1' });
+      const b = await createPostedAsset({ name: 'Test 2' });
+      const result = await service.getRegister({});
+      expect(result.data.length).toBeGreaterThanOrEqual(2);
+      expect(result.summary.count).toBeGreaterThanOrEqual(2);
+      const aRow = result.data.find((r) => r.id === a.id)!;
+      expect(aRow).toBeTruthy();
+      expect(new Decimal(aRow.netBookValueAt).equals(a.netBookValue.toString())).toBe(true);
+      // Reference b to keep helper's createPostedAsset call meaningful
+      expect(result.data.find((r) => r.id === b.id)).toBeTruthy();
+    });
+
+    it('past asOfDate: excludes assets created after asOfDate', async () => {
+      const a = await createPostedAsset({ purchaseDate: '2026-01-01' });
+      const b = await createPostedAsset({ purchaseDate: '2026-04-01' });
+      const result = await service.getRegister({ asOfDate: '2026-02-15' });
+      const ids = result.data.map((r) => r.id);
+      expect(ids).toContain(a.id);
+      expect(ids).not.toContain(b.id);
+    });
+
+    it('past asOfDate: includes disposed asset if disposalDate > asOfDate', async () => {
+      const a = await createPostedAsset({ purchaseDate: '2026-01-01' });
+      await prisma.fixedAsset.update({
+        where: { id: a.id },
+        data: { status: 'DISPOSED', disposalDate: new Date('2026-04-01') },
+      });
+      const result = await service.getRegister({ asOfDate: '2026-03-01' });
+      expect(result.data.find((r) => r.id === a.id)).toBeTruthy();
+    });
+
+    it('historical NBV: subtracts depreciation entries up to asOfDate, ignores reversed', async () => {
+      // basePrice 36000, usefulLife 36 → purchaseCost 36000, monthlyDepr 1000
+      const a = await createPostedAsset({ purchaseDate: '2026-01-01' });
+      // 3 entries (Jan, Feb, Mar) — Mar reversed
+      await prisma.depreciationEntry.create({
+        data: { assetId: a.id, period: '2026-01', amount: new Decimal(1000) },
+      });
+      await prisma.depreciationEntry.create({
+        data: { assetId: a.id, period: '2026-02', amount: new Decimal(1000) },
+      });
+      await prisma.depreciationEntry.create({
+        data: {
+          assetId: a.id,
+          period: '2026-03',
+          amount: new Decimal(1000),
+          reversedAt: new Date(),
+          reversedById: userId,
+        },
+      });
+
+      const result = await service.getRegister({ asOfDate: '2026-04-15' });
+      const row = result.data.find((r) => r.id === a.id)!;
+      expect(row).toBeTruthy();
+      expect(new Decimal(row.accumulatedDeprAt).equals(2000)).toBe(true); // only Jan+Feb count
+      expect(new Decimal(row.netBookValueAt).equals(34000)).toBe(true);
+    });
+
+    it('summary totals match sum of rows', async () => {
+      // Two assets with different purchase costs (36000 default + 18000 via basePrice override).
+      await createPostedAsset();
+      await createPostedAsset({ basePrice: 18000 });
+      const result = await service.getRegister({});
+      const sumPC = result.data.reduce(
+        (s, r) => s.plus(r.purchaseCost.toString()),
+        new Decimal(0),
+      );
+      const sumNBV = result.data.reduce(
+        (s, r) => s.plus(r.netBookValueAt.toString()),
+        new Decimal(0),
+      );
+      expect(new Decimal(result.summary.totalPurchaseCost).equals(sumPC)).toBe(true);
+      expect(new Decimal(result.summary.totalNbv).equals(sumNBV)).toBe(true);
+    });
+
+    it('paginates and filters by category', async () => {
+      await createPostedAsset({ category: 'EQUIPMENT' as AssetCategory });
+      await createPostedAsset({ category: 'VEHICLE' as AssetCategory });
+      const result = await service.getRegister({
+        category: 'EQUIPMENT' as AssetCategory,
+        limit: 1,
+      });
+      expect(result.data.length).toBe(1);
+      expect(result.data[0].category).toBe('EQUIPMENT');
+    });
+
+    it('status=POSTED filter excludes DISPOSED assets', async () => {
+      const a = await createPostedAsset();
+      await prisma.fixedAsset.update({
+        where: { id: a.id },
+        data: { status: 'DISPOSED', disposalDate: new Date('2026-04-01') },
+      });
+      const result = await service.getRegister({
+        status: 'POSTED' as AssetStatus,
+        asOfDate: '2026-05-01',
+      });
+      expect(result.data.find((r) => r.id === a.id)).toBeUndefined();
+    });
+
+    it('status=DISPOSED filter shows only assets disposed by asOfDate', async () => {
+      const a = await createPostedAsset({ name: 'disposed-before', purchaseDate: '2026-01-01' });
+      const b = await createPostedAsset({ name: 'disposed-after', purchaseDate: '2026-01-01' });
+      // a: disposed before asOfDate (March 15) — should appear when filtered DISPOSED
+      await prisma.fixedAsset.update({
+        where: { id: a.id },
+        data: { status: 'DISPOSED', disposalDate: new Date('2026-03-15') },
+      });
+      // b: disposed after asOfDate (May 15) — should NOT appear (future disposal not yet happened)
+      await prisma.fixedAsset.update({
+        where: { id: b.id },
+        data: { status: 'DISPOSED', disposalDate: new Date('2026-05-15') },
+      });
+      const result = await service.getRegister({
+        status: 'DISPOSED' as AssetStatus,
+        asOfDate: '2026-04-01',
+      });
+      expect(result.data.find((r) => r.id === a.id)).toBeTruthy();
+      expect(result.data.find((r) => r.id === b.id)).toBeUndefined();
+    });
+  });
+
+  // ==========================================================================
+  // Phase 3 — Task 2: getAssetSchedule (per-asset NBV month-by-month projection)
+  // ==========================================================================
+  describe('AssetService.getAssetSchedule', () => {
+    it('produces schedule rows from purchase to fully depreciated, capped at 60 months', async () => {
+      // basePrice 36000, usefulLife 36 → monthlyDepr = 1000, residual = 0
+      const a = await createPostedAsset({
+        purchaseDate: '2026-01-15',
+        basePrice: 36000,
+        usefulLifeMonths: 36,
+      });
+      const result = await service.getAssetSchedule(a.id);
+      expect(result.assetId).toBe(a.id);
+      expect(result.rows.length).toBe(36); // 36 months for 36000 / 1000
+      expect(result.rows[35].status).toBe('FULLY_DEPRECIATED');
+      expect(new Decimal(result.rows[35].netBookValue).equals(0)).toBe(true);
+    });
+
+    it('last period adjusts to residualValue floor (no over-depreciation)', async () => {
+      // basePrice 10000, residualValue 1000, usefulLife 30 → monthlyDepr = 9000/30 = 300
+      // After 30 months: accumulated = 9000, NBV = 10000 - 9000 = 1000 (residual floor).
+      const a = await createPostedAsset({
+        basePrice: 10000,
+        residualValue: 1000,
+        usefulLifeMonths: 30,
+      });
+      const result = await service.getAssetSchedule(a.id);
+      const last = result.rows[result.rows.length - 1];
+      expect(new Decimal(last.netBookValue).equals(1000)).toBe(true);
+      expect(last.status).toBe('FULLY_DEPRECIATED');
+    });
+
+    it('truncates schedule at disposalDate when set', async () => {
+      const a = await createPostedAsset({
+        purchaseDate: '2026-01-01',
+        basePrice: 36000,
+        usefulLifeMonths: 36,
+      });
+      await prisma.fixedAsset.update({
+        where: { id: a.id },
+        data: { status: 'DISPOSED', disposalDate: new Date('2026-04-30') },
+      });
+      const result = await service.getAssetSchedule(a.id);
+      expect(result.rows.length).toBeLessThanOrEqual(4); // Jan, Feb, Mar, Apr
+      expect(result.rows.some((r) => r.period === '2026-05')).toBe(false);
+    });
+
+    it('uses actual DepreciationEntry where it exists, projection otherwise', async () => {
+      const a = await createPostedAsset({
+        purchaseDate: '2026-01-01',
+        basePrice: 36000,
+        usefulLifeMonths: 36,
+      });
+      // Actual entry for 2026-02 = 950 (lower than projected 1000)
+      await prisma.depreciationEntry.create({
+        data: { assetId: a.id, period: '2026-02', amount: new Decimal(950) },
+      });
+      const result = await service.getAssetSchedule(a.id);
+      const feb = result.rows.find((r) => r.period === '2026-02')!;
+      expect(feb).toBeTruthy();
+      expect(new Decimal(feb.monthlyDepr).equals(950)).toBe(true);
+      // Sanity: Jan still uses projection (1000)
+      const jan = result.rows.find((r) => r.period === '2026-01')!;
+      expect(new Decimal(jan.monthlyDepr).equals(1000)).toBe(true);
+    });
+  });
 });

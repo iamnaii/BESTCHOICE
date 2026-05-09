@@ -96,13 +96,15 @@ export interface AssetSummary {
 
 export interface AuditLogEntry {
   id: string;
+  userId: string;
+  user: { id: string; name: string };
   action: string;
   entity: string;
   entityId: string;
   oldValue: Record<string, unknown> | null;
   newValue: Record<string, unknown> | null;
+  ipAddress: string | null;
   createdAt: string;
-  user: { id: string; name: string };
 }
 
 export interface ListResponse {
@@ -160,4 +162,81 @@ export interface DisposalCalculation {
     credit: number;
   }>;
   isBalanced: boolean;
+}
+
+// Phase 3 — Register / Schedule / Journal / Reports
+
+export interface AssetRegisterRow {
+  id: string;
+  assetCode: string;
+  name: string;
+  category: AssetCategory;
+  branchId: string | null;
+  branch: { id: string; name: string } | null;
+  custodian: string | null;
+  location: string | null;
+  purchaseDate: string;
+  purchaseCost: string;
+  accumulatedDeprAt: string;
+  netBookValueAt: string;
+  monthlyDepr: string;
+  remainingMonths: number;
+  status: AssetStatus;
+}
+
+export interface AssetRegisterResponse {
+  data: AssetRegisterRow[];
+  total: number;
+  page: number;
+  limit: number;
+  asOfDate: string;
+  summary: {
+    count: number;
+    totalPurchaseCost: string;
+    totalAccumulatedDepr: string;
+    totalNbv: string;
+  };
+}
+
+export interface AssetScheduleRow {
+  period: string;
+  monthlyDepr: string;
+  accumulatedDepr: string;
+  netBookValue: string;
+  status: 'ACTIVE' | 'FULLY_DEPRECIATED';
+}
+
+export interface AssetScheduleResponse {
+  assetId: string;
+  assetCode: string;
+  name: string;
+  purchaseDate: string;
+  purchaseCost: string;
+  residualValue: string;
+  monthlyDepr: string;
+  rows: AssetScheduleRow[];
+}
+
+export interface AssetJournalRow {
+  id: string;
+  entryNumber: string;
+  entryDate: string;
+  status: string;
+  description: string;
+  flow: string;
+  assetId: string | null;
+  asset: { id: string; assetCode: string; name: string } | null;
+  totalDr: string;
+  totalCr: string;
+  reversed: boolean;
+  reversedByEntryNumber: string | null;
+}
+
+export interface SummaryRow {
+  key: string;
+  label: string;
+  count: number;
+  totalPurchaseCost: string;
+  totalAccumulatedDepr: string;
+  totalNbv: string;
 }

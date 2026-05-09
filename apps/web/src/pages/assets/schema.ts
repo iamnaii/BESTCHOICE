@@ -1,7 +1,7 @@
 // Asset module — zod entry-form schema (Phase 1)
 // V1-V14 client-side validation. Server-side guards remain authoritative.
 
-import { z } from 'zod';
+import { z } from 'zod/v4';
 
 export const assetEntrySchema = z
   .object({
@@ -59,6 +59,7 @@ export const assetEntrySchema = z
     message: 'มูลค่าซากต้องไม่เกินราคา',
     path: ['residualValue'],
   })
+  // NOTE: anchored to local browser time. Server re-validates via V11 (purchaseDate ≤ today).
   .refine((data) => new Date(data.purchaseDate) <= new Date(), {
     message: 'วันที่ซื้อต้องไม่อยู่ในอนาคต',
     path: ['purchaseDate'],

@@ -8,8 +8,8 @@
 
 import { useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { useForm, FormProvider, type Resolver } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
+import { useForm, FormProvider } from 'react-hook-form';
+import { standardSchemaResolver } from '@hookform/resolvers/standard-schema';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { ArrowLeft } from 'lucide-react';
@@ -34,7 +34,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 
 const defaultValues: AssetEntryFormValues = {
   name: '',
-  category: 'EQUIPMENT' as never,
+  category: 'EQUIPMENT',
   basePrice: 0,
   shippingCost: 0,
   installationCost: 0,
@@ -65,19 +65,19 @@ export default function AssetEntryPage() {
     enabled: isEdit,
   });
 
-  const codeQuery = useQuery({
-    queryKey: ['asset-generate-code', 'EQUIPMENT'],
-    queryFn: () => assetsApi.generateCode('EQUIPMENT'),
-    enabled: !isEdit,
+  const form = useForm<AssetEntryFormValues>({
+    // standardSchemaResolver input type ≠ output type because schema uses z.coerce.number()
+    // (input is unknown, output is number). useForm<T> assumes input == output, so cast.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    resolver: standardSchemaResolver(assetEntrySchema) as any,
+    defaultValues,
   });
 
-  const form = useForm<AssetEntryFormValues>({
-    // Cast resolver: zod v4.3 + @hookform/resolvers built against zod 4.0 ⇒
-    // version.minor type mismatch. Children of FormProvider use the output
-    // (`AssetEntryFormValues`) shape, so we coerce the resolver to match.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    resolver: zodResolver(assetEntrySchema as any) as unknown as Resolver<AssetEntryFormValues>,
-    defaultValues,
+  const watchedCategory = form.watch('category');
+  const codeQuery = useQuery({
+    queryKey: ['asset-generate-code', watchedCategory],
+    queryFn: () => assetsApi.generateCode(watchedCategory),
+    enabled: !isEdit && !!watchedCategory,
   });
 
   // Hydrate form when editing
@@ -104,11 +104,11 @@ export default function AssetEntryPage() {
         otherCapitalized: Number(a.otherCapitalized),
         hasVat: a.hasVat,
         vatInclusive: a.vatInclusive,
-        vatAccount: a.vatAccount as never,
+        vatAccount: (a.vatAccount as AssetEntryFormValues['vatAccount']) ?? undefined,
         hasWht: a.hasWht,
         whtBaseAmount: a.whtBaseAmount ? Number(a.whtBaseAmount) : undefined,
         whtRate: a.whtRate ? Number(a.whtRate) : undefined,
-        whtAccount: a.whtAccount as never,
+        whtAccount: (a.whtAccount as AssetEntryFormValues['whtAccount']) ?? undefined,
         whtFormType: a.whtFormType ?? undefined,
         residualValue: Number(a.residualValue),
         usefulLifeMonths: a.usefulLifeMonths,
@@ -118,7 +118,7 @@ export default function AssetEntryPage() {
         supplierTaxId: a.supplierTaxId ?? undefined,
         invoiceNo: a.invoiceNo ?? undefined,
         taxInvoiceNo: a.taxInvoiceNo ?? undefined,
-        paymentMethod: a.paymentMethod as never,
+        paymentMethod: a.paymentMethod ?? undefined,
         paymentAccount: a.paymentAccount ?? '',
         approverId: a.approverId ?? undefined,
         note: a.note ?? undefined,
@@ -130,17 +130,18 @@ export default function AssetEntryPage() {
   const calc = useAssetCalculation(watchedValues);
 
   const createMutation = useMutation({
-    mutationFn: (payload: AssetEntryFormValues) => assetsApi.create(payload as never),
+    mutationFn: (payload: AssetEntryFormValues) => assetsApi.create(payload),
     onSuccess: (asset) => {
       toast.success(`สร้างสินทรัพย์ ${asset.assetCode} แล้ว`);
       queryClient.invalidateQueries({ queryKey: ['assets'] });
+      queryClient.invalidateQueries({ queryKey: ['assets-summary'] });
       navigate(`/assets/${asset.id}`);
     },
     onError: (e) => toast.error(getErrorMessage(e)),
   });
 
   const updateMutation = useMutation({
-    mutationFn: (payload: AssetEntryFormValues) => assetsApi.update(id!, payload as never),
+    mutationFn: (payload: AssetEntryFormValues) => assetsApi.update(id!, payload),
     onSuccess: () => {
       toast.success('บันทึกแล้ว');
       queryClient.invalidateQueries({ queryKey: ['assets'] });
@@ -154,6 +155,7 @@ export default function AssetEntryPage() {
     onSuccess: (result) => {
       toast.success(`POST แล้ว → ${result.entryNo}`);
       queryClient.invalidateQueries({ queryKey: ['assets'] });
+      queryClient.invalidateQueries({ queryKey: ['assets-summary'] });
       queryClient.invalidateQueries({ queryKey: ['asset', id] });
       navigate(`/assets/${id}`);
     },
@@ -175,6 +177,9 @@ export default function AssetEntryPage() {
       try {
         const result = await assetsApi.post(created.id);
         toast.success(`POST แล้ว → ${result.entryNo}`);
+        queryClient.invalidateQueries({ queryKey: ['assets'] });
+        queryClient.invalidateQueries({ queryKey: ['assets-summary'] });
+        queryClient.invalidateQueries({ queryKey: ['asset', created.id] });
         navigate(`/assets/${created.id}`);
       } catch (e) {
         toast.error(getErrorMessage(e));
@@ -186,7 +191,8 @@ export default function AssetEntryPage() {
   const assetCode = isEdit ? assetQuery.data?.assetCode : codeQuery.data?.assetCode;
   const isLoading = createMutation.isPending || updateMutation.isPending || postMutation.isPending;
 
-  if (isEdit && assetQuery.isLoading) return <div className="p-8">Loading…</div>;
+  if (isEdit && assetQuery.isLoading)
+    return <div className="p-8 text-muted-foreground">กำลังโหลด...</div>;
 
   return (
     <FormProvider {...form}>

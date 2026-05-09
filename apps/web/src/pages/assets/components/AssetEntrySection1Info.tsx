@@ -100,7 +100,7 @@ export function AssetEntrySection1Info({ assetCode, branches }: Props) {
           </Select>
         </div>
         <div>
-          <Label>ผู้ดูแล (custodian)</Label>
+          <Label>ผู้ดูแล</Label>
           <Input {...register('custodian')} placeholder="ชื่อ" />
         </div>
         <div>

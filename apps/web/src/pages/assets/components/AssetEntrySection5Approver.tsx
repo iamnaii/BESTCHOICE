@@ -71,9 +71,9 @@ export function AssetEntrySection5Approver() {
             </SelectContent>
           </Select>
           {sodWarning && (
-            <div className="flex items-center gap-2 mt-2 p-2 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 rounded">
-              <AlertTriangle className="h-4 w-4 text-amber-600" />
-              <p className="text-sm text-amber-800 dark:text-amber-200">
+            <div className="flex items-center gap-2 mt-2 p-2 bg-warning/10 border border-warning/20 rounded">
+              <AlertTriangle className="h-4 w-4 text-warning" />
+              <p className="text-sm text-foreground">
                 คุณกำลังกำหนดให้ตัวเองเป็นผู้อนุมัติ (Segregation of Duties warning)
               </p>
             </div>

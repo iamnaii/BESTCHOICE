@@ -13,11 +13,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { formatNumberDecimal } from '@/utils/formatters';
 import type { AssetEntryFormValues } from '../schema';
 import type { CalculationResult } from '../hooks/useAssetCalculation';
 
-const fmt = (n: number) =>
-  n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmt = (n: number | string | null | undefined) =>
+  n == null ? '-' : formatNumberDecimal(Number(n));
 
 export function AssetEntrySection2Cost({ calc }: { calc: CalculationResult }) {
   const {

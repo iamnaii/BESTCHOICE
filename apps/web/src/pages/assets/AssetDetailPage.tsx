@@ -26,7 +26,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import QueryBoundary from '@/components/QueryBoundary';
-import { formatDateShortThai } from '@/utils/formatters';
+import { formatDateShortThai, formatDateTime, formatNumberDecimal } from '@/utils/formatters';
 import { getErrorMessage } from '@/lib/api';
 import { assetsApi } from './api';
 import { AssetStatusBadge } from './components/AssetStatusBadge';
@@ -34,13 +34,8 @@ import { ReverseAssetDialog } from './components/ReverseAssetDialog';
 import { TransferAssetDialog } from './components/TransferAssetDialog';
 import { CATEGORY_LABEL } from './types';
 
-const fmt = (n: string | number | null | undefined): string => {
-  if (n == null) return '-';
-  return Number(n).toLocaleString('th-TH', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-};
+const fmt = (n: string | number | null | undefined): string =>
+  n == null ? '-' : formatNumberDecimal(Number(n));
 
 export default function AssetDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -83,6 +78,8 @@ export default function AssetDetailPage() {
       toast.success('โอนสินทรัพย์แล้ว');
       queryClient.invalidateQueries({ queryKey: ['asset', id] });
       queryClient.invalidateQueries({ queryKey: ['asset-audit', id] });
+      queryClient.invalidateQueries({ queryKey: ['assets'] });
+      queryClient.invalidateQueries({ queryKey: ['assets-summary'] });
       setShowTransfer(false);
     },
     onError: (e) => toast.error(getErrorMessage(e)),
@@ -125,7 +122,7 @@ export default function AssetDetailPage() {
   return (
     <div className="space-y-4">
       <PageHeader
-        title={asset?.assetCode ?? 'กำลังโหลด…'}
+        title={asset?.assetCode ?? 'กำลังโหลด...'}
         subtitle={asset?.name}
         onBack={() => navigate('/assets')}
         badge={asset && <AssetStatusBadge status={asset.status} />}
@@ -313,8 +310,7 @@ export default function AssetDetailPage() {
                         <li key={log.id} className="border-l-2 border-muted pl-2 py-0.5">
                           <div className="font-medium">{log.action}</div>
                           <div className="text-muted-foreground">
-                            {log.user.name} ·{' '}
-                            {new Date(log.createdAt).toLocaleString('th-TH')}
+                            {log.user.name} · {formatDateTime(log.createdAt)}
                           </div>
                         </li>
                       ))}

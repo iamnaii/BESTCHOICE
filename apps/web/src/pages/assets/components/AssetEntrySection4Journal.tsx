@@ -1,9 +1,10 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { formatNumberDecimal } from '@/utils/formatters';
 import type { CalculationResult } from '../hooks/useAssetCalculation';
 
-const fmt = (n: number) =>
-  n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmt = (n: number | string | null | undefined) =>
+  n == null ? '-' : formatNumberDecimal(Number(n));
 
 export function AssetEntrySection4Journal({ calc }: { calc: CalculationResult }) {
   const totalDr = calc.journalLines.reduce((s, l) => s + l.debit, 0);
@@ -14,7 +15,7 @@ export function AssetEntrySection4Journal({ calc }: { calc: CalculationResult })
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>4. รายการบัญชี (Auto JE Preview)</CardTitle>
         <Badge variant={calc.isBalanced ? 'success' : 'destructive'}>
-          {calc.isBalanced ? '✓ Balanced' : '✗ Unbalanced'}
+          {calc.isBalanced ? '✓ สมดุล' : '✗ ไม่สมดุล'}
         </Badge>
       </CardHeader>
       <CardContent>

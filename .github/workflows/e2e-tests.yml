@@ -36,8 +36,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Shard E2E tests across 4 parallel runners for speed
-        shard: [1, 2, 3, 4]
+        # Shard E2E tests across 2 parallel runners (was 4) — halves the
+        # setup overhead (npm ci + Prisma generate + build × shards) which
+        # is the dominant cost. Tests still run in parallel so wall time is
+        # only marginally longer.
+        shard: [1, 2]
 
     env:
       DATABASE_URL: postgresql://test:test@localhost:5432/test_db?schema=public
@@ -96,8 +99,8 @@ jobs:
       - name: Wait for Web
         run: npx wait-on http://localhost:5173 --timeout 15000
 
-      - name: Run E2E tests (shard ${{ matrix.shard }}/4)
-        run: npx playwright test --project=chromium --shard=${{ matrix.shard }}/4
+      - name: Run E2E tests (shard ${{ matrix.shard }}/2)
+        run: npx playwright test --project=chromium --shard=${{ matrix.shard }}/2
         working-directory: apps/web
 
       - name: Upload test results

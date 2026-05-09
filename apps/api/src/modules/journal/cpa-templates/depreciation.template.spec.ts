@@ -106,7 +106,7 @@ describe('DepreciationTemplate', () => {
     const je = await prisma.journalEntry.findFirst({
       where: {
         AND: [
-          { metadata: { path: ['flow'], equals: 'monthly' } } as any,
+          { metadata: { path: ['flow'], equals: 'depreciation' } } as any,
           { metadata: { path: ['assetId'], equals: asset.id } } as any,
         ],
       },

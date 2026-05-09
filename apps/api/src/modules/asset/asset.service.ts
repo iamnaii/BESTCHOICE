@@ -1071,6 +1071,7 @@ export class AssetService {
           disposalDate,
           disposalProceeds: proceedsDecimal,
           depositAccountCode,
+          issueTaxInvoice: dto.disposalType === 'SALE' ? dto.issueTaxInvoice ?? false : false,
         },
         tx,
       );

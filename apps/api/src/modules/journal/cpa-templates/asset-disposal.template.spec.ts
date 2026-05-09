@@ -251,4 +251,94 @@ describe('AssetDisposalTemplate', () => {
     const accLine = je!.lines.find((l) => l.accountCode === '12-2108');
     expect(accLine).toBeDefined();
   });
+
+  // ─── CRITICAL #3 — VAT on disposal (ม.77/1 + ม.82) ─────────────────────────
+
+  it('VAT on disposal: issueTaxInvoice=true → Cr 21-2101 7% + Cr cash = proceeds × 1.07', async () => {
+    // Asset NBV = 30,000.08 (cost 50,000 - accumDepr 19,999.92)
+    // Sale price (excl VAT) = 40,000 → gain 9,999.92
+    // VAT 7% × 40,000 = 2,800 → totalCash = 42,800
+    const asset = await ensureTestAsset({
+      category: 'EQUIPMENT',
+      purchaseCost: 50000,
+      accumulatedDepr: 19999.92,
+    });
+
+    const tmpl = new AssetDisposalTemplate(journal, prisma as any);
+    await tmpl.execute({
+      assetId: asset.id,
+      disposalDate: new Date(),
+      disposalProceeds: 40000,
+      depositAccountCode: '11-1201',
+      issueTaxInvoice: true,
+    });
+
+    const je = await prisma.journalEntry.findFirst({
+      where: { metadata: { path: ['assetId'], equals: asset.id } } as any,
+      include: { lines: true },
+    });
+    const lines = je!.lines;
+
+    // Balanced
+    const drSum = lines.reduce((s, l) => s.plus(l.debit.toString()), new Decimal(0));
+    const crSum = lines.reduce((s, l) => s.plus(l.credit.toString()), new Decimal(0));
+    expect(drSum.toFixed(2)).toBe(crSum.toFixed(2));
+
+    // Cr 21-2101 = 2,800
+    const vatLine = lines.find((l) => l.accountCode === '21-2101');
+    expect(vatLine, 'Cr 21-2101 VAT output line missing on issueTaxInvoice=true').toBeDefined();
+    expect(new Decimal(vatLine!.credit.toString()).toFixed(2)).toBe('2800.00');
+
+    // Cr 12-2101 = 50,000 (asset cost, no VAT)
+    const costLine = lines.find((l) => l.accountCode === '12-2101');
+    expect(new Decimal(costLine!.credit.toString()).toFixed(2)).toBe('50000.00');
+
+    // Dr 11-1201 = 42,800 (proceeds + VAT)
+    const cashLine = lines.find((l) => l.accountCode === '11-1201');
+    expect(new Decimal(cashLine!.debit.toString()).toFixed(2)).toBe('42800.00');
+
+    // Cr 42-1105 = 9,999.92 (gain on disposal — unchanged by VAT)
+    const gainLine = lines.find((l) => l.accountCode === '42-1105');
+    expect(new Decimal(gainLine!.credit.toString()).toFixed(2)).toBe('9999.92');
+
+    // metadata records VAT bookkeeping
+    const meta = je!.metadata as Record<string, unknown>;
+    expect(meta.issueTaxInvoice).toBe(true);
+    expect(meta.vatOnSale).toBe('2800.00');
+    expect(meta.totalCashReceived).toBe('42800.00');
+  });
+
+  it('VAT on disposal: issueTaxInvoice=false (default) → no 21-2101 line', async () => {
+    const asset = await ensureTestAsset({ purchaseCost: 50000, accumulatedDepr: 19999.92 });
+
+    const tmpl = new AssetDisposalTemplate(journal, prisma as any);
+    await tmpl.execute({
+      assetId: asset.id,
+      disposalDate: new Date(),
+      disposalProceeds: 40000,
+      depositAccountCode: '11-1201',
+      // issueTaxInvoice omitted — defaults to false
+    });
+
+    const je = await prisma.journalEntry.findFirst({
+      where: { metadata: { path: ['assetId'], equals: asset.id } } as any,
+      include: { lines: true },
+    });
+    expect(je!.lines.find((l) => l.accountCode === '21-2101')).toBeUndefined();
+    const cashLine = je!.lines.find((l) => l.accountCode === '11-1201');
+    expect(new Decimal(cashLine!.debit.toString()).toFixed(2)).toBe('40000.00');
+  });
+
+  it('VAT on disposal: rejected on write-off (proceeds=0)', async () => {
+    const asset = await ensureTestAsset({ purchaseCost: 50000, accumulatedDepr: 19999.92 });
+    const tmpl = new AssetDisposalTemplate(journal, prisma as any);
+    await expect(
+      tmpl.execute({
+        assetId: asset.id,
+        disposalDate: new Date(),
+        disposalProceeds: 0,
+        issueTaxInvoice: true,
+      }),
+    ).rejects.toThrow(/ใบกำกับ/);
+  });
 });

@@ -401,10 +401,12 @@
 
   <!-- Legal compliance update banner -->
   <div class="info-box" style="margin-bottom: 24px; background: #f0fdf4; border-left-color: #16a34a;">
-    <strong style="color: #15803d;">เปลี่ยนแปลงตามคำติชมของ CPA (9 พ.ค. 2569):</strong> เอกสารนี้เวอร์ชัน v1 มี 2 จุดผิดกฎหมายที่แก้ไขแล้ว
+    <strong style="color: #15803d;">เปลี่ยนแปลงตามคำติชมของ CPA (9 พ.ค. 2569):</strong> เอกสารนี้เวอร์ชัน v1 มี 3 จุดผิดกฎหมายที่แก้ไขแล้ว + 1 Decision Point ที่ยืนยันแล้ว
     <ul style="margin: 4px 0 0 16px; padding: 0;">
-      <li><strong>CRITICAL #1 (ทป.4/2528 + ม.50 ทวิ):</strong> ตัวอย่างเดิม "ซื้อรถ Toyota Hilux + WHT 1%" ผิดกฎหมาย — การซื้อสินค้าห้ามหัก WHT · เปลี่ยนเป็น "ซื้อ CCTV พร้อมติดตั้ง" ที่หัก WHT เฉพาะค่าบริการ + เพิ่ม validation ใน <code>asset.service.ts</code></li>
+      <li><strong>CRITICAL #1 (ทป.4/2528 + ม.50 ทวิ + ม.40(7)(8)):</strong> ตัวอย่างเดิม "ซื้อรถ Toyota Hilux + WHT 1%" ผิดกฎหมาย — การซื้อสินค้าห้ามหัก WHT · เปลี่ยนเป็น "ซื้อ CCTV พร้อมติดตั้ง" ที่หัก WHT เฉพาะค่าบริการ + เพิ่ม validation ใน <code>asset.service.ts</code></li>
       <li><strong>CRITICAL #2 (ม.82/3):</strong> VAT Inclusive case เดิมไม่ post Dr 11-4101 ทำให้สูญสิทธิเครดิตภาษีซื้อ · แก้ <code>asset-purchase.template.ts</code> ให้ post 11-4101 เสมอเมื่อ <code>hasVat=true</code></li>
+      <li><strong>CRITICAL #3 (ม.77/1 + ม.82):</strong> เดิมระบบไม่ออก JE VAT ขายตอนจำหน่าย — ฝ่ายบัญชีต้องบันทึกเอง · แก้ <code>asset-disposal.template.ts</code> เพิ่ม flag <code>issueTaxInvoice</code> + DTO checkbox · ติ๊กแล้วระบบ post Cr 21-2101 อัตโนมัติ + เก็บ VAT จากผู้ซื้อ (proceeds × 1.07)</li>
+      <li><strong>DECISION POINT:</strong> รูปแบบการปัดเศษ — ยืนยันใช้ <strong>ROUND_DOWN</strong> ทั้งใน depreciation template (50,000/60 = 833.33 ตัด) เพื่อป้องกัน NBV ติดลบ + งวดสุดท้ายระบบ cap ให้ตรงกับ residualValue (เช็คใน <a href="../../apps/api/src/modules/journal/cpa-templates/depreciation.template.ts">depreciation.template.ts:107</a>)</li>
     </ul>
   </div>
 
@@ -726,8 +728,47 @@
         <strong>หลักการ:</strong> เมื่อขายสินทรัพย์ ต้องตัดทั้งบัญชีต้นทุน (Cr 12-2101) และค่าเสื่อมสะสม (Dr 12-2102) ออกพร้อมกัน · ส่วนต่างระหว่างเงินที่ได้รับ (proceeds) กับ NBV เข้าบัญชีกำไรขาดทุนจากการจำหน่าย — กำไรเข้า <strong>42-1105</strong> ขาดทุนเข้า <strong>53-1605</strong>
       </div>
 
+      <div class="standard">
+        <strong>VAT จากการขาย (CRITICAL #3 fix · 2569-05-09):</strong> เดิมระบบ <em>ไม่ออก</em> JE 21-2101 อัตโนมัติ — ผิด ม.77/1 + ม.82 (ขายสินทรัพย์ถาวรอยู่ในข่าย VAT 7%) · <strong>ปัจจุบันแก้แล้ว</strong>: หน้า Disposal มี checkbox "ออกใบกำกับภาษีให้ผู้ซื้อ" · ติ๊กแล้วระบบจะ post Cr 21-2101 + เก็บ VAT จากผู้ซื้อ (proceeds × 1.07) อัตโนมัติ — ดูกรณี 3.1b ด้านล่าง
+      </div>
+    </div>
+
+    <!-- Case 3.1b: Sale with tax invoice (CRITICAL #3 — VAT auto-posted) -->
+    <div class="entry">
+      <div class="entry-when">
+        <span class="entry-tag tag-violet">กรณี 3.1b</span>
+        <h3 class="entry-title">ขายมีกำไร + ออกใบกำกับภาษี (issueTaxInvoice=true) → VAT auto-post</h3>
+        <span class="entry-date">01/04/2571</span>
+      </div>
+      <p class="entry-narrative">ผู้ซื้อขอใบกำกับภาษี · ราคาขาย 40,000 บาท + VAT 7% (2,800) = ผู้ซื้อจ่าย 42,800 บาท · ระบบ post Cr 21-2101 อัตโนมัติเข้าบัญชีภาษีขาย ภ.พ.30 พร้อมจำหน่ายสินทรัพย์ในธุรกรรมเดียว</p>
+
+      <div class="ledger">
+        <table>
+          <thead>
+            <tr><th>รหัส</th><th>ชื่อบัญชี</th><th class="num">เดบิต</th><th class="num">เครดิต</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="acc-code">12-2102</td><td class="acc-name">ค่าเสื่อมราคาสะสม - อุปกรณ์สำนักงาน</td><td class="num dr">19,999.92</td><td class="num"></td></tr>
+            <tr><td class="acc-code">11-1201</td><td class="acc-name">ธนาคาร KBank <em style="color:var(--subtle); font-style:normal;">(proceeds 40,000 + VAT 2,800)</em></td><td class="num dr">42,800.00</td><td class="num"></td></tr>
+            <tr><td class="acc-code">12-2101</td><td class="acc-name indent">อุปกรณ์สำนักงาน</td><td class="num"></td><td class="num cr">50,000.00</td></tr>
+            <tr><td class="acc-code">42-1105</td><td class="acc-name indent">กำไรจากการจำหน่ายสินทรัพย์</td><td class="num"></td><td class="num cr">9,999.92</td></tr>
+            <tr><td class="acc-code">21-2101</td><td class="acc-name indent">ภาษีขาย ภ.พ.30 <em style="color:var(--subtle); font-style:normal;">(VAT 7% × proceeds)</em></td><td class="num"></td><td class="num cr">2,800.00</td></tr>
+            <tr class="total-row"><td></td><td>รวม</td><td class="num dr">62,799.92</td><td class="num cr">62,799.92</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="check">BALANCED · Dr 62,799.92 = Cr 62,799.92</div>
+
+      <div class="standard">
+        <strong>หลักการ ม.77/1 + ม.82:</strong> ผู้ประกอบการจด VAT ที่ขายสินทรัพย์ถาวรต้องคิด VAT 7% บนราคาขาย — รวมเฉพาะ proceeds (ไม่รวมกำไร/ขาดทุน) · VAT บันทึก 21-2101 (ภาษีขาย ภ.พ.30) นำส่งรายเดือนพร้อม VAT ขายอื่นๆ
+      </div>
+
+      <div class="info-box">
+        <strong>กรณีไม่ออกใบกำกับ (issueTaxInvoice=false):</strong> ใช้กับการขายให้ผู้ใช้ทั่วไปที่ไม่ต้องการใบกำกับ · กฎหมายไทยอนุญาต <em>เฉพาะ</em> เมื่อผู้ซื้อไม่เป็นผู้ประกอบการจด VAT — ให้ระมัดระวัง · ระบบ post JE แบบ 3.1 (ไม่มี 21-2101)
+      </div>
+
       <div class="warn">
-        <strong>VAT จากการขาย:</strong> โมดูลนี้ <em>ยังไม่</em> ออก JE VAT ขาย (21-2101) อัตโนมัติ — ถ้าผู้ซื้อต้องการใบกำกับภาษี ฝ่ายบัญชีต้องบันทึก VAT ขายเพิ่มเองในรายการ "รายได้อื่น" หรือ Manual JE
+        <strong>Constraint:</strong> ระบบจะ <strong>throw BadRequestException</strong> ถ้า issueTaxInvoice=true แต่ proceeds=0 (write-off) — ไม่มีรายรับเพื่อคิด VAT
       </div>
     </div>
 
@@ -1067,10 +1108,6 @@
         </tr>
       </thead>
       <tbody>
-        <tr>
-          <td><strong>VAT ขายจากการจำหน่ายสินทรัพย์</strong></td>
-          <td>ระบบไม่ออก JE 21-2101 อัตโนมัติ — ฝ่ายบัญชีต้องบันทึก VAT ขายเพิ่มในรายการ "รายได้อื่น" (Module Other Income) หรือ Manual JE หากผู้ซื้อต้องการใบกำกับ</td>
-        </tr>
         <tr>
           <td><strong>การด้อยค่า (Impairment)</strong></td>
           <td>ยังไม่รองรับ · TFRS for NPAEs ไม่บังคับ test impairment รายงวด — หากเกิดเหตุการณ์ที่ต้องด้อยค่า ใช้ Manual JE ลด NBV + Cr 53-1605</td>

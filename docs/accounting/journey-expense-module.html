@@ -1,0 +1,1101 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BESTCHOICE FINANCE — เส้นทางบันทึกบัญชี ค่าใช้จ่ายกิจการ (สำหรับนักบัญชีตรวจสอบ)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #fafaf9;
+    --paper: #ffffff;
+    --border: #d6d3d1;
+    --line: #e7e5e4;
+    --text: #0c0a09;
+    --muted: #57534e;
+    --subtle: #78716c;
+
+    --emerald: #047857;
+    --emerald-bg: #ecfdf5;
+    --emerald-border: #a7f3d0;
+
+    --rose: #be123c;
+    --rose-bg: #fef2f2;
+
+    --amber: #b45309;
+    --amber-bg: #fffbeb;
+
+    --blue: #1d4ed8;
+    --blue-bg: #eff6ff;
+
+    --violet: #6d28d9;
+    --violet-bg: #f5f3ff;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Sans Thai', system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+  }
+
+  .page {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 56px 40px 80px;
+    background: var(--paper);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+
+  .doc-header {
+    border-bottom: 2px solid var(--text);
+    padding-bottom: 20px;
+    margin-bottom: 36px;
+  }
+  .doc-header .org { font-size: 13px; color: var(--subtle); letter-spacing: 0.05em; margin-bottom: 6px; }
+  h1 { font-size: 28px; font-weight: 700; margin: 0 0 8px; letter-spacing: -0.01em; }
+  .doc-header .sub { color: var(--muted); font-size: 15px; margin: 0; }
+  .doc-meta { display: flex; gap: 28px; margin-top: 14px; font-size: 12px; color: var(--subtle); flex-wrap: wrap; }
+  .doc-meta strong { color: var(--text); }
+
+  .example {
+    background: var(--blue-bg);
+    border: 1px solid #c7d2fe;
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin: 0 0 24px;
+  }
+  .example-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--blue);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  .example h3 { font-size: 16px; margin: 0 0 12px; font-weight: 600; }
+  .example dl { margin: 0; display: grid; grid-template-columns: 240px 1fr; gap: 6px 16px; font-size: 14px; }
+  .example dt { color: var(--muted); }
+  .example dd { margin: 0; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .example dd strong { color: var(--blue); }
+
+  .legend {
+    background: #fafaf9;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 18px;
+    margin-bottom: 36px;
+    font-size: 13px;
+    color: var(--muted);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px;
+  }
+  .legend-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 6px;
+    vertical-align: middle;
+    border: 1px solid rgba(0,0,0,0.1);
+  }
+  .legend-green  { background: #10b981; }
+  .legend-yellow { background: #f59e0b; }
+  .legend-violet { background: #8b5cf6; }
+  .legend-blue   { background: #3b82f6; }
+  .legend-rose   { background: #f43f5e; }
+
+  section { margin-bottom: 44px; }
+  h2 {
+    font-size: 20px;
+    font-weight: 700;
+    margin: 0 0 18px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    letter-spacing: -0.01em;
+  }
+  h2 .badge-section {
+    display: inline-block;
+    background: var(--text);
+    color: white;
+    padding: 2px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-right: 10px;
+    vertical-align: middle;
+  }
+
+  .entry {
+    margin-bottom: 30px;
+    page-break-inside: avoid;
+  }
+  .entry-when {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+  }
+  .entry-tag {
+    background: var(--emerald);
+    color: white;
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 0.02em;
+    flex-shrink: 0;
+  }
+  .entry-tag.tag-violet { background: var(--violet); }
+  .entry-tag.tag-blue   { background: var(--blue); }
+  .entry-tag.tag-amber  { background: var(--amber); }
+  .entry-tag.tag-rose   { background: var(--rose); }
+  .entry-tag.tag-zinc   { background: var(--subtle); }
+  .entry-title {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0;
+    flex: 1;
+  }
+  .entry-date {
+    color: var(--subtle);
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  .entry-narrative {
+    margin: 4px 0 12px 0;
+    color: var(--muted);
+    font-size: 14px;
+  }
+
+  .ledger {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    font-size: 14px;
+    background: var(--paper);
+  }
+  .ledger table { width: 100%; border-collapse: collapse; }
+  .ledger thead {
+    background: #fafaf9;
+    border-bottom: 2px solid var(--border);
+  }
+  .ledger th {
+    text-align: left;
+    padding: 8px 14px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--muted);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .ledger th.num { text-align: right; }
+  .ledger td {
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--line);
+    font-variant-numeric: tabular-nums;
+  }
+  .ledger tr:last-child td { border-bottom: none; }
+  .ledger .acc-code {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--subtle);
+    width: 75px;
+  }
+  .ledger .acc-name { font-size: 14px; }
+  .ledger .acc-name.indent { padding-left: 36px; color: var(--muted); }
+  .ledger .num { text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 13px; width: 110px; }
+  .ledger .num.dr { color: var(--rose); }
+  .ledger .num.cr { color: var(--emerald); }
+  .ledger .total-row {
+    background: #fafaf9;
+    border-top: 2px solid var(--border);
+    font-weight: 700;
+  }
+  .ledger .total-row td { padding: 10px 14px; }
+  .check {
+    margin: 8px 0 0;
+    font-size: 13px;
+    color: var(--emerald);
+    display: inline-block;
+    background: var(--emerald-bg);
+    padding: 4px 12px;
+    border-radius: 4px;
+    border: 1px solid var(--emerald-border);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .standard {
+    margin: 10px 0 0;
+    padding: 8px 14px;
+    border-left: 3px solid var(--blue);
+    background: var(--blue-bg);
+    font-size: 13px;
+    border-radius: 0 4px 4px 0;
+    color: var(--text);
+  }
+  .standard strong { color: var(--blue); }
+
+  .warn {
+    margin: 10px 0 0;
+    padding: 8px 14px;
+    border-left: 3px solid var(--amber);
+    background: var(--amber-bg);
+    font-size: 13px;
+    border-radius: 0 4px 4px 0;
+  }
+  .warn strong { color: var(--amber); }
+
+  .danger {
+    margin: 10px 0 0;
+    padding: 10px 14px;
+    border-left: 3px solid var(--rose);
+    background: var(--rose-bg);
+    font-size: 13px;
+    border-radius: 0 4px 4px 0;
+  }
+  .danger strong { color: var(--rose); }
+
+  .info-box {
+    margin: 10px 0 0;
+    padding: 8px 14px;
+    border-left: 3px solid var(--violet);
+    background: var(--violet-bg);
+    font-size: 13px;
+    border-radius: 0 4px 4px 0;
+  }
+  .info-box strong { color: var(--violet); }
+
+  .balance {
+    margin: 14px 0 0;
+    background: #fafaf9;
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+    padding: 12px 16px;
+    font-size: 12px;
+  }
+  .balance-title { color: var(--subtle); font-weight: 600; margin-bottom: 6px; letter-spacing: 0.04em; text-transform: uppercase; font-size: 11px; }
+  .balance-line { font-family: 'IBM Plex Mono', monospace; line-height: 1.85; }
+  .balance-line .acc { color: var(--muted); }
+  .balance-line .amt { font-weight: 500; }
+  .balance-line .amt.zero { color: var(--emerald); font-weight: 700; }
+  .balance-line .amt.neg { color: var(--rose); }
+
+  table.cases {
+    width: 100%;
+    border-collapse: collapse;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    font-size: 14px;
+  }
+  table.cases thead { background: #fafaf9; }
+  table.cases th {
+    text-align: left;
+    padding: 10px 14px;
+    font-size: 11px;
+    color: var(--muted);
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    border-bottom: 2px solid var(--border);
+  }
+  table.cases td { padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.cases tr:last-child td { border-bottom: none; }
+  table.cases code {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    background: var(--blue-bg);
+    color: var(--blue);
+    padding: 1px 6px;
+    border-radius: 3px;
+  }
+
+  .checklist {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    counter-reset: chk;
+  }
+  .checklist li {
+    background: var(--paper);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 18px 14px 50px;
+    margin-bottom: 8px;
+    position: relative;
+  }
+  .checklist li::before {
+    content: '';
+    position: absolute;
+    left: 16px;
+    top: 17px;
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--border);
+    border-radius: 4px;
+    background: white;
+  }
+  .checklist li strong { display: block; margin-bottom: 2px; font-weight: 600; }
+  .checklist li span { color: var(--muted); font-size: 13px; }
+
+  @media print {
+    body { background: white; }
+    .page { box-shadow: none; max-width: none; padding: 0; }
+    .entry, table.cases, .ledger { page-break-inside: avoid; }
+    h2 { page-break-after: avoid; }
+    .print-btn { display: none; }
+  }
+
+  .print-btn {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: var(--text);
+    color: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 14px;
+    border: none;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  }
+  .print-btn:hover { opacity: 0.9; }
+
+  @media (max-width: 720px) {
+    .page { padding: 28px 18px 60px; }
+    .example dl { grid-template-columns: 1fr; gap: 2px; }
+    .ledger { font-size: 13px; }
+  }
+
+  .status-flag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    vertical-align: middle;
+    margin-left: 8px;
+  }
+  .status-flag.implemented { background: var(--emerald-bg); color: var(--emerald); border: 1px solid var(--emerald-border); }
+  .status-flag.gap { background: var(--rose-bg); color: var(--rose); border: 1px solid #fecaca; }
+  .status-flag.partial { background: var(--amber-bg); color: var(--amber); border: 1px solid #fde68a; }
+</style>
+</head>
+<body>
+
+<button class="print-btn" onclick="window.print()">พิมพ์ / บันทึก PDF</button>
+
+<div class="page">
+
+  <div class="doc-header">
+    <div class="org">บริษัท เบสท์ช้อยส์ ไฟแนนซ์ จำกัด · จดทะเบียน VAT</div>
+    <h1>เส้นทางการบันทึกบัญชี — ค่าใช้จ่ายกิจการ</h1>
+    <p class="sub">เอกสารแสดงลำดับรายการบัญชีของโมดูลรายจ่าย — บันทึกค่าใช้จ่าย · จ่ายเงิน · ค้างจ่าย · WHT · รายจ่ายภาษีไม่ให้หัก · กลับรายการ สำหรับให้นักบัญชีตรวจสอบความถูกต้อง</p>
+    <div class="doc-meta">
+      <span><strong>มาตรฐาน:</strong> TFRS for NPAEs · Accrual Basis</span>
+      <span><strong>ภาษีซื้อ VAT:</strong> 7%</span>
+      <span><strong>ภาษีหัก ณ ที่จ่าย:</strong> ภ.ง.ด.3 / ภ.ง.ด.53</span>
+      <span><strong>วันที่จัดทำ:</strong> 9 พฤษภาคม 2569</span>
+    </div>
+  </div>
+
+  <!-- SUMMARY: Implementation status -->
+  <div class="info-box" style="margin-bottom: 36px;">
+    <strong>สถานะการ implement (ปรับปรุง 9 พ.ค. 2569):</strong> โมดูลรายจ่ายอยู่ใน Phase A.5a · รองรับ workflow DRAFT → PENDING_APPROVAL → APPROVED → PAID/VOIDED + 2-step accrual (ค้างจ่าย → จ่ายจริง) · บันทึก JE อัตโนมัติทุกขั้นตอนแบบ Atomic · WHT บรรจุใน JE อัตโนมัติ · VOID ออก JE Reverse อัตโนมัติ · <strong style="color:var(--emerald);">ปิด gap ที่เคยเจอครบแล้ว</strong> ดูหัวข้อที่ 8
+  </div>
+
+  <!-- EXAMPLE -->
+  <div class="example">
+    <div class="example-title">ตัวอย่างหลักที่ใช้ตลอดเอกสารนี้</div>
+    <h3>ค่าเช่าสำนักงาน เดือน เม.ย. 69 — หมวด ADMIN_RENT</h3>
+    <dl>
+      <dt>เลขที่เอกสาร (expenseNumber)</dt>          <dd>EX-256904-0001</dd>
+      <dt>หมวดหลัก (accountType)</dt>                <dd>ADMINISTRATIVE_EXPENSE</dd>
+      <dt>หมวดย่อย (category)</dt>                   <dd>ADMIN_RENT (ค่าเช่า)</dd>
+      <dt>บัญชีปลายทาง</dt>                          <dd><strong>53-1301 ค่าเช่า</strong></dd>
+      <dt>จำนวนเงินก่อน VAT (amount)</dt>            <dd>10,000.00 บาท</dd>
+      <dt>VAT 7% (vatAmount)</dt>                     <dd>700.00 บาท</dd>
+      <dt>รวมก่อน WHT (totalAmount)</dt>             <dd><strong>10,700.00 บาท</strong></dd>
+      <dt>WHT 5% (withholdingTax)</dt>               <dd>500.00 บาท · ใช้ภ.ง.ด.53 (ผู้ให้เช่าเป็นนิติบุคคล)</dd>
+      <dt>จำนวนจ่ายจริง (netPayment)</dt>            <dd><strong>10,200.00 บาท</strong></dd>
+      <dt>วันที่ออกใบกำกับ (expenseDate)</dt>        <dd>01/04/2569</dd>
+      <dt>ผู้ขาย (vendorName)</dt>                   <dd>บริษัท เอบีซี พร็อพเพอร์ตี้ จำกัด</dd>
+      <dt>เลขประจำตัวผู้เสียภาษี</dt>                <dd>0105561234567</dd>
+      <dt>ใบกำกับภาษีเลขที่</dt>                     <dd>INV-2569-0042</dd>
+    </dl>
+  </div>
+
+  <div class="legend">
+    <span><span class="legend-dot legend-rose"></span>ค่าใช้จ่าย (52-XXXX, 53-XXXX, 54-XXXX)</span>
+    <span><span class="legend-dot legend-blue"></span>ภาษีซื้อ (11-4101)</span>
+    <span><span class="legend-dot legend-yellow"></span>WHT ค้างจ่าย (21-31XX)</span>
+    <span><span class="legend-dot legend-violet"></span>เจ้าหนี้ค้างจ่าย (21-1104)</span>
+    <span><span class="legend-dot legend-green"></span>เงินสด/ธนาคาร (11-11XX, 11-12XX)</span>
+  </div>
+
+  <!-- ─── 1. WORKFLOW ─── -->
+  <section>
+    <h2><span class="badge-section">1</span>Workflow ตามสถานะ — DRAFT → PAID</h2>
+
+    <table class="cases">
+      <thead>
+        <tr>
+          <th style="width: 18%;">สถานะ</th>
+          <th style="width: 22%;">ใครทำได้</th>
+          <th style="width: 30%;">เหตุการณ์</th>
+          <th>ผลกระทบทางบัญชี (JE)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>DRAFT</strong></td>
+          <td>ผู้สร้างเอกสาร (ทุก role)</td>
+          <td>กรอกรายจ่ายเก็บไว้ก่อน · ยังไม่ส่งอนุมัติ</td>
+          <td><em style="color:var(--subtle);">ไม่มี JE</em></td>
+        </tr>
+        <tr>
+          <td><strong>PENDING_APPROVAL</strong></td>
+          <td>ผู้สร้างเอกสาร</td>
+          <td>ส่งให้หัวหน้าอนุมัติ</td>
+          <td><em style="color:var(--subtle);">ไม่มี JE</em></td>
+        </tr>
+        <tr>
+          <td><strong>APPROVED</strong></td>
+          <td>OWNER, FINANCE_MANAGER</td>
+          <td>อนุมัติให้จ่ายได้</td>
+          <td><em style="color:var(--subtle);">ไม่มี JE — แค่บันทึก approvedById/approvedAt</em></td>
+        </tr>
+        <tr>
+          <td><strong>REJECTED</strong></td>
+          <td>OWNER, FINANCE_MANAGER</td>
+          <td>ปฏิเสธ + ให้เหตุผล</td>
+          <td><em style="color:var(--subtle);">ไม่มี JE — เอกสารปิด</em></td>
+        </tr>
+        <tr>
+          <td><strong>PAID</strong> 🔥</td>
+          <td>OWNER, FINANCE_MANAGER, ACCOUNTANT</td>
+          <td>บันทึกจ่ายเงิน → ระบบเรียก ExpenseTemplate.execute()</td>
+          <td><strong style="color:var(--rose);">บันทึก JE อัตโนมัติ</strong> · ดูหัวข้อ 2-5</td>
+        </tr>
+        <tr>
+          <td><strong>VOIDED</strong></td>
+          <td>OWNER เท่านั้น (หาก PAID แล้ว)</td>
+          <td>ยกเลิก + ระบุเหตุผล</td>
+          <td><strong style="color:var(--rose);">ระบบยังไม่ออก JE Reverse อัตโนมัติ</strong> · ดูหัวข้อ 6</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ─── 2. CASE A: PAID NORMAL ─── -->
+  <section>
+    <h2><span class="badge-section">2</span>กรณี A — จ่ายเงินสด/โอนทันที (Normal · ไม่มี WHT) <span class="status-flag implemented">ระบบทำได้</span></h2>
+
+    <div class="entry">
+      <div class="entry-when">
+        <span class="entry-tag tag-blue">การเปลี่ยนแปลง</span>
+        <h3 class="entry-title">บันทึกจ่ายเงินค่าซ่อมเครื่องปรับอากาศ — ADMIN_MAINTENANCE</h3>
+        <span class="entry-date">15/04/2569</span>
+      </div>
+      <p class="entry-narrative">บริษัทรับใบกำกับ 5,000 + VAT 350 = 5,350 จ่ายโดยเงินสด · ผู้รับเป็นบุคคลธรรมดาแต่จ่าย ≤ 1,000 จึงไม่หัก WHT (ตามเกณฑ์กรมสรรพากร)</p>
+
+      <div class="ledger">
+        <table>
+          <thead>
+            <tr><th>รหัส</th><th>ชื่อบัญชี</th><th class="num">เดบิต</th><th class="num">เครดิต</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="acc-code">53-1305</td><td class="acc-name">ค่าซ่อมแซม</td><td class="num dr">5,000.00</td><td class="num"></td></tr>
+            <tr><td class="acc-code">11-4101</td><td class="acc-name">ภาษีซื้อ</td><td class="num dr">350.00</td><td class="num"></td></tr>
+            <tr><td class="acc-code">11-1101</td><td class="acc-name indent">เงินสด</td><td class="num"></td><td class="num cr">5,350.00</td></tr>
+            <tr class="total-row"><td></td><td>รวม</td><td class="num dr">5,350.00</td><td class="num cr">5,350.00</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="check">BALANCED · Dr 5,350.00 = Cr 5,350.00</div>
+
+      <div class="standard">
+        <strong>หลักการ:</strong> ค่าใช้จ่ายรับรู้ตามเกณฑ์คงค้าง (Accrual) แต่ในกรณีจ่ายทันที วันที่ค่าใช้จ่ายและวันที่จ่ายเงินตรงกัน → JE 1 ฉบับเดียว · VAT ซื้อแยกเข้า 11-4101 (Asset) เพื่อหักกลบกับภาษีขายในเดือนที่ยื่น ภ.พ.30
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── 3. CASE B: ACCRUED (UNPAID) ─── -->
+  <section>
+    <h2><span class="badge-section">3</span>กรณี B — รับใบกำกับแต่ยังไม่จ่าย (ค้างจ่าย / Accrued AP) <span class="status-flag implemented">ระบบทำได้แบบ 2-step</span></h2>
+
+    <div class="entry">
+      <div class="entry-when">
+        <span class="entry-tag tag-violet">วันรับใบกำกับ</span>
+        <h3 class="entry-title">บันทึกค่าโทรศัพท์เดือน เม.ย. 69 — ADMIN_TELEPHONE (ยังไม่ครบกำหนดจ่าย)</h3>
+        <span class="entry-date">30/04/2569</span>
+      </div>
+      <p class="entry-narrative">รับใบกำกับ AIS 1,500 + VAT 105 = 1,605 · กำหนดชำระ 15/05/69 · ระบบเรียก template ด้วย <code>isPaid: false</code> → Cr ไปที่บัญชีเจ้าหนี้ค่าใช้จ่ายกิจการ (21-1104) แทนเงินสด</p>
+
+      <div class="ledger">
+        <table>
+          <thead>
+            <tr><th>รหัส</th><th>ชื่อบัญชี</th><th class="num">เดบิต</th><th class="num">เครดิต</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="acc-code">53-1303</td><td class="acc-name">ค่าโทรศัพท์</td><td class="num dr">1,500.00</td><td class="num"></td></tr>
+            <tr><td class="acc-code">11-4101</td><td class="acc-name">ภาษีซื้อ</td><td class="num dr">105.00</td><td class="num"></td></tr>
+            <tr><td class="acc-code">21-1104</td><td class="acc-name indent">เจ้าหนี้ค่าใช้จ่ายกิจการ <em style="color:var(--subtle); font-style:normal;">(AP Accrued)</em></td><td class="num"></td><td class="num cr">1,605.00</td></tr>
+            <tr class="total-row"><td></td><td>รวม</td><td class="num dr">1,605.00</td><td class="num cr">1,605.00</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="check">BALANCED · Dr 1,605.00 = Cr 1,605.00</div>
+    </div>
+
+    <div class="entry">
+      <div class="entry-when">
+        <span class="entry-tag">วันจ่ายเงิน</span>
+        <h3 class="entry-title">จ่ายเงินค่าโทรศัพท์ — ล้างบัญชี 21-1104</h3>
+        <span class="entry-date">15/05/2569</span>
+      </div>
+      <p class="entry-narrative">ครบกำหนดชำระ → เรียก <code>POST /accounting/expenses/:id/pay</code> · ระบบตรวจอัตโนมัติ ถ้าพบ accrual JE อยู่แล้ว จะใช้ <strong>ExpenseClearanceTemplate</strong> โพสต์ Dr 21-1104 / Cr WHT (ถ้ามี) / Cr Cash อัตโนมัติ — ไม่ต้อง Manual JE</p>
+
+      <div class="ledger">
+        <table>
+          <thead>
+            <tr><th>รหัส</th><th>ชื่อบัญชี</th><th class="num">เดบิต</th><th class="num">เครดิต</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="acc-code">21-1104</td><td class="acc-name">เจ้าหนี้ค่าใช้จ่ายกิจการ</td><td class="num dr">1,605.00</td><td class="num"></td></tr>
+            <tr><td class="acc-code">11-1201</td><td class="acc-name indent">ธนาคาร KBank</td><td class="num"></td><td class="num cr">1,605.00</td></tr>
+            <tr class="total-row"><td></td><td>รวม</td><td class="num dr">1,605.00</td><td class="num cr">1,605.00</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="check">BALANCED · Dr 1,605.00 = Cr 1,605.00</div>
+
+      <div class="standard">
+        <strong>2-step Accrual Flow (ใหม่):</strong>
+        <ol style="margin: 4px 0 0 16px; padding: 0;">
+          <li><code>POST /accounting/expenses/:id/accrue</code> → โพสต์ accrual JE (Dr expense + Dr VAT / Cr 21-1104) — ใช้เมื่อรับใบกำกับ</li>
+          <li><code>POST /accounting/expenses/:id/pay</code> → ตรวจเจอ accrual แล้ว โพสต์ clearance JE (Dr 21-1104 / Cr WHT / Cr Cash) อัตโนมัติ</li>
+        </ol>
+        Atomic ทั้งคู่ — failure ใน JE rollback status update เสมอ
+      </div>
+
+      <div class="balance">
+        <div class="balance-title">ยอด 21-1104 หลังจ่าย</div>
+        <div class="balance-line"><span class="acc">21-1104 เจ้าหนี้ค่าใช้จ่ายกิจการ</span> = <span class="amt zero">0.00</span> (ล้างหมด)</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── 4. CASE C: WHT ─── -->
+  <section>
+    <h2><span class="badge-section">4</span>กรณี C — รายจ่ายมีการหัก ณ ที่จ่าย (WHT) <span class="status-flag implemented">ปิด gap แล้ว 2569-05-09</span></h2>
+
+    <div class="entry">
+      <div class="entry-when">
+        <span class="entry-tag">JE ที่ระบบโพสต์ตอนนี้</span>
+        <h3 class="entry-title">จ่ายค่าเช่า 10,000 + VAT 700 + WHT 5% (ตัวอย่างหลัก)</h3>
+        <span class="entry-date">01/04/2569</span>
+      </div>
+      <p class="entry-narrative">รายจ่ายค่าเช่ารับเงิน 10,000 บาท · VAT 7% = 700 · WHT 5% (ม.40(5) ค่าเช่าทรัพย์สิน) คำนวณจาก amount ก่อน VAT = 500 · ผู้ให้เช่าเป็นนิติบุคคล → ใช้ ภ.ง.ด.53 (21-3103)</p>
+
+      <div class="ledger">
+        <table>
+          <thead>
+            <tr><th>รหัส</th><th>ชื่อบัญชี</th><th class="num">เดบิต</th><th class="num">เครดิต</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="acc-code">53-1301</td><td class="acc-name">ค่าเช่า</td><td class="num dr">10,000.00</td><td class="num"></td></tr>
+            <tr><td class="acc-code">11-4101</td><td class="acc-name">ภาษีซื้อ</td><td class="num dr">700.00</td><td class="num"></td></tr>
+            <tr><td class="acc-code">21-3103</td><td class="acc-name indent">ภ.ง.ด.53 ค้างจ่าย (WHT)</td><td class="num"></td><td class="num cr">500.00</td></tr>
+            <tr><td class="acc-code">11-1201</td><td class="acc-name indent">ธนาคาร KBank (จ่ายจริง)</td><td class="num"></td><td class="num cr">10,200.00</td></tr>
+            <tr class="total-row"><td></td><td>รวม</td><td class="num dr">10,700.00</td><td class="num cr">10,700.00</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="check">BALANCED · Dr 10,700.00 = Cr 10,700.00</div>
+
+      <div class="standard">
+        <strong>หลักการ WHT:</strong> WHT คำนวณจาก amount ก่อน VAT (ไม่รวม VAT) · ผู้รับเงินเป็นบุคคลธรรมดา → ภ.ง.ด.3 (21-3102) · ผู้รับเป็นนิติบุคคล → ภ.ง.ด.53 (21-3103) · 21-31XX เป็นเจ้าหนี้ค้างจ่ายให้กรมสรรพากร นำส่งภายในวันที่ 7 ของเดือนถัดไป (ภ.ง.ด.3, ภ.ง.ด.53 ต้องนำส่งพร้อมแบบ ภ.ง.ด.)
+      </div>
+    </div>
+
+    <div class="standard">
+      <strong>วิธีกำหนดบัญชี WHT (Auto-routing):</strong>
+      <ul style="margin: 4px 0 0 16px; padding: 0;">
+        <li><code>vendorTaxId</code> ขึ้นต้นด้วย <strong>"0"</strong> → นิติบุคคล → <strong>21-3103 (PND53)</strong></li>
+        <li><code>vendorTaxId</code> ขึ้นต้นด้วยเลขอื่น → บุคคลธรรมดา → <strong>21-3102 (PND3)</strong></li>
+        <li>ไม่มี <code>vendorTaxId</code> → default → <strong>21-3103 (PND53)</strong> (B2B common case)</li>
+      </ul>
+      ระบบ resolve อัตโนมัติใน <code>expense.template.ts</code> · ฝ่ายบัญชีไม่ต้องทำ Manual JE
+    </div>
+
+    <div class="info-box" style="margin-top: 14px;">
+      <strong>การคำนวณ:</strong> WHT คิดจาก <em>amount ก่อน VAT</em> · ระบบไม่บันทึก WHT ใน <strong>กรณี Tax-Disallowed</strong> และ <strong>กรณี Accrued (isPaid=false)</strong> · กรณี Accrued ระบบจะ settle WHT ตอน Clearance (ดูหัวข้อ 3 — 2-step path)
+    </div>
+  </section>
+
+  <!-- ─── 5. CASE D: TAX-DISALLOWED ─── -->
+  <section>
+    <h2><span class="badge-section">5</span>กรณี D — รายจ่ายภาษีไม่ให้หัก (Tax-Disallowed) <span class="status-flag implemented">ระบบทำได้</span></h2>
+
+    <div class="entry">
+      <div class="entry-when">
+        <span class="entry-tag tag-rose">วันบันทึก</span>
+        <h3 class="entry-title">ค่าใช้จ่ายไม่มีใบเสร็จ — ค่าจอดรถพาลูกค้าไปทำสัญญา 200 บาท</h3>
+        <span class="entry-date">10/04/2569</span>
+      </div>
+      <p class="entry-narrative">มี <em>taxDisallowed: true</em> + <em>disallowedReason: NO_RECEIPT</em> · ระบบ route ไปบัญชี <strong>54-1101</strong> แทน 53-XXXX · บันทึกเต็มยอด (ไม่แยก VAT)</p>
+
+      <div class="ledger">
+        <table>
+          <thead>
+            <tr><th>รหัส</th><th>ชื่อบัญชี</th><th class="num">เดบิต</th><th class="num">เครดิต</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="acc-code">54-1101</td><td class="acc-name">ค่าใช้จ่ายภาษีออกแทนผู้รับ บุคคลธรรมดา <em style="color:var(--subtle); font-style:normal;">(Tax-Disallowed)</em></td><td class="num dr">200.00</td><td class="num"></td></tr>
+            <tr><td class="acc-code">11-1101</td><td class="acc-name indent">เงินสด</td><td class="num"></td><td class="num cr">200.00</td></tr>
+            <tr class="total-row"><td></td><td>รวม</td><td class="num dr">200.00</td><td class="num cr">200.00</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="check">BALANCED · Dr 200.00 = Cr 200.00</div>
+
+      <div class="standard">
+        <strong>หลักการ:</strong> รายจ่ายที่ไม่มีใบกำกับภาษี/ใบเสร็จ หรือไม่เกี่ยวกับธุรกิจ ต้องถือเป็นค่าใช้จ่ายต้องห้าม (Tax-Disallowed) ในการคำนวณภาษีเงินได้นิติบุคคล · ระบบ route ไปกลุ่ม 54-XXXX เพื่อให้ฝ่ายบัญชีตอนปลายปีรู้ว่าต้องบวกกลับใน ภ.ง.ด.50
+      </div>
+
+      <h4 style="font-size: 14px; margin: 18px 0 8px; font-weight: 600;">ตาราง Mapping disallowedReason → บัญชี 54-XXXX</h4>
+      <table class="cases">
+        <thead>
+          <tr>
+            <th style="width: 30%;">เหตุผล (disallowedReason)</th>
+            <th style="width: 18%;">บัญชี</th>
+            <th>ใช้เมื่อ</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>NO_RECEIPT</code></td>
+            <td><code>54-1101</code></td>
+            <td>ไม่มีใบเสร็จ/ใบกำกับ (ค่าใช้จ่ายภาษีออกแทนบุคคลธรรมดา)</td>
+          </tr>
+          <tr>
+            <td><code>PERSONAL_USE</code></td>
+            <td><code>54-1104</code></td>
+            <td>ใช้ส่วนตัว (ไม่เกี่ยวธุรกิจ) เช่น น้ำมันรถส่วนตัวของกรรมการ</td>
+          </tr>
+          <tr>
+            <td><code>PENALTY</code></td>
+            <td><code>54-1103</code></td>
+            <td>เบี้ยปรับ ภ.พ.30 / ค่าปรับสรรพากร · ภาษีไม่ให้หัก</td>
+          </tr>
+          <tr>
+            <td><code>OTHER</code></td>
+            <td><code>54-1104</code></td>
+            <td>กรณีอื่นๆ ไม่ระบุ</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ─── 6. CASE E: VOID ─── -->
+  <section>
+    <h2><span class="badge-section">6</span>กรณี E — ยกเลิกรายจ่าย (VOIDED) <span class="status-flag implemented">ปิด gap แล้ว 2569-05-09</span></h2>
+
+    <div class="entry">
+      <div class="entry-when">
+        <span class="entry-tag tag-rose">เหตุการณ์</span>
+        <h3 class="entry-title">ยกเลิกรายจ่ายค่าเช่า 10,700 บาท (พบว่าคีย์ผิด)</h3>
+        <span class="entry-date">02/04/2569</span>
+      </div>
+      <p class="entry-narrative">เรียก <code>POST /accounting/expenses/:id/void</code> · ระบบ Atomic 1 transaction: เปลี่ยนสถานะ → VOIDED + ตรวจ wasPaid + เรียก <strong>ExpenseReverseTemplate</strong> โพสต์ JE Reverse แบบ TFRS no-touch + flag <em>metadata.reversed=true</em> บน JE เดิม · กรณี 2-step accrual reverse ทั้ง accrual + clearance ครบ</p>
+
+      <div class="ledger">
+        <table>
+          <thead>
+            <tr><th>รหัส</th><th>ชื่อบัญชี</th><th class="num">เดบิต</th><th class="num">เครดิต</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="acc-code">11-1201</td><td class="acc-name">[VOID] ธนาคาร KBank (เงินกลับเข้า)</td><td class="num dr">10,700.00</td><td class="num"></td></tr>
+            <tr><td class="acc-code">53-1301</td><td class="acc-name indent">[VOID] ค่าเช่า (ตัดออก)</td><td class="num"></td><td class="num cr">10,000.00</td></tr>
+            <tr><td class="acc-code">11-4101</td><td class="acc-name indent">[VOID] ภาษีซื้อ (ตัดออก)</td><td class="num"></td><td class="num cr">700.00</td></tr>
+            <tr class="total-row"><td></td><td>รวม</td><td class="num dr">10,700.00</td><td class="num cr">10,700.00</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="check">BALANCED · Dr 10,700.00 = Cr 10,700.00 (Auto JE Reverse)</div>
+
+      <div class="standard">
+        <strong>เงื่อนไข VOID auto-reverse:</strong>
+        <ul style="margin: 4px 0 0 16px; padding: 0;">
+          <li><code>wasPaid=true</code> (เคยมี JE) → ระบบโพสต์ Reverse JE อัตโนมัติ + flag JE เดิม <em>reversed=true</em></li>
+          <li>กรณี 2-step (มีทั้ง accrual + clearance) → reverse ทั้งคู่ในทรานแซกชันเดียว · cash + WHT + AP กลับเข้าที่ครบ</li>
+          <li>กรณี DRAFT/PENDING/APPROVED (ไม่เคยมี JE) → แค่เปลี่ยนสถานะ ไม่มี JE</li>
+          <li>Atomic — Reverse failure rolls back status update</li>
+        </ul>
+      </div>
+
+      <div class="info-box">
+        <strong>เงื่อนไขการ VOID:</strong> ถ้าสถานะ PAID แล้ว → <strong>เฉพาะ OWNER</strong> เท่านั้นที่ยกเลิกได้ · ถ้า DRAFT/PENDING/APPROVED → ผู้สร้างยกเลิกเองได้
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── 7. ACCOUNT MAP ─── -->
+  <section>
+    <h2><span class="badge-section">7</span>ตาราง Mapping หมวดย่อย → บัญชีต้นทาง (Dr)</h2>
+
+    <table class="cases">
+      <thead>
+        <tr>
+          <th style="width: 22%;">หมวดหลัก</th>
+          <th style="width: 32%;">หมวดย่อย (category)</th>
+          <th style="width: 16%;">บัญชี</th>
+          <th>หมายเหตุ</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td rowspan="4"><strong>SELLING_EXPENSE</strong> (ค่าใช้จ่ายในการขาย 52-XXXX)</td>
+          <td>SELL_COMMISSION</td>
+          <td><code>52-1101</code></td>
+          <td>ค่าคอมพนักงานขาย</td>
+        </tr>
+        <tr>
+          <td>SELL_ADVERTISING</td>
+          <td><code>52-1102</code></td>
+          <td>ค่าโฆษณา (FB/TikTok/ป้าย)</td>
+        </tr>
+        <tr>
+          <td>SELL_TRANSPORT</td>
+          <td><code>53-1304</code></td>
+          <td>ค่าขนส่ง <em style="color:var(--rose);">⚠️ ตอนนี้ map ผิดกลุ่ม → 53-XXXX</em></td>
+        </tr>
+        <tr>
+          <td>SELL_PACKAGING</td>
+          <td><code>52-1102</code></td>
+          <td>ค่าบรรจุภัณฑ์ (รวมกับค่าโฆษณา)</td>
+        </tr>
+        <tr>
+          <td rowspan="10"><strong>ADMINISTRATIVE_EXPENSE</strong> (ค่าใช้จ่ายในการบริหาร 53-XXXX)</td>
+          <td>ADMIN_SALARY</td>
+          <td><code>53-1101</code></td>
+          <td>เงินเดือนพนักงาน</td>
+        </tr>
+        <tr>
+          <td>ADMIN_SOCIAL_SECURITY</td>
+          <td><code>53-1102</code></td>
+          <td>ประกันสังคมส่วนนายจ้าง</td>
+        </tr>
+        <tr>
+          <td>ADMIN_INSURANCE</td>
+          <td><code>53-1103</code></td>
+          <td>ประกันต่างๆ</td>
+        </tr>
+        <tr>
+          <td>ADMIN_OFFICE_SUPPLIES</td>
+          <td><code>53-1201</code></td>
+          <td>วัสดุสำนักงาน</td>
+        </tr>
+        <tr>
+          <td>ADMIN_RENT</td>
+          <td><code>53-1301</code></td>
+          <td>ค่าเช่า</td>
+        </tr>
+        <tr>
+          <td>ADMIN_UTILITIES</td>
+          <td><code>53-1302</code></td>
+          <td>ค่าน้ำ ค่าไฟ</td>
+        </tr>
+        <tr>
+          <td>ADMIN_TELEPHONE</td>
+          <td><code>53-1303</code></td>
+          <td>ค่าโทรศัพท์ ค่าอินเทอร์เน็ต</td>
+        </tr>
+        <tr>
+          <td>ADMIN_TRAVEL</td>
+          <td><code>53-1304</code></td>
+          <td>ค่าเดินทาง</td>
+        </tr>
+        <tr>
+          <td>ADMIN_MAINTENANCE</td>
+          <td><code>53-1305</code></td>
+          <td>ค่าซ่อมแซม บำรุงรักษา</td>
+        </tr>
+        <tr>
+          <td>ADMIN_TAX_FEE</td>
+          <td><code>54-1103</code></td>
+          <td>ค่าธรรมเนียมภาษี <em style="color:var(--amber);">→ route 54-XXXX (ภาษีไม่ให้หัก)</em></td>
+        </tr>
+        <tr>
+          <td rowspan="4"><strong>OTHER_EXPENSE</strong> (ค่าใช้จ่ายอื่น)</td>
+          <td>OTHER_INTEREST</td>
+          <td><code>53-1501</code></td>
+          <td>ดอกเบี้ยจ่าย (เงินกู้)</td>
+        </tr>
+        <tr>
+          <td>OTHER_LOSS</td>
+          <td><code>53-1503</code></td>
+          <td>ขาดทุน/ปัดเศษ</td>
+        </tr>
+        <tr>
+          <td>OTHER_FINE</td>
+          <td><code>54-1104</code></td>
+          <td>ค่าปรับ/ค่าธรรมเนียม <em style="color:var(--amber);">→ 54-XXXX</em></td>
+        </tr>
+        <tr>
+          <td>OTHER_MISC</td>
+          <td><code>53-1502</code></td>
+          <td>อื่นๆ เบ็ดเตล็ด</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="warn" style="margin-top: 14px;">
+      <strong>หมายเหตุ Mapping:</strong> SELL_TRANSPORT ปัจจุบัน map ไป 53-1304 ทำให้ค่าขนส่งฝั่งขาย <em>ปนอยู่ในค่าใช้จ่ายบริหาร</em> · ถ้าต้องการแยก ให้กรอก <code>accountCode</code> เองตอนสร้างเอกสาร (จะ override mapping ตามหมวด)
+    </div>
+
+    <h4 style="font-size: 14px; margin: 18px 0 8px; font-weight: 600;">หมวดที่ <em>ยังไม่</em> มี mapping (ต้องระบุ accountCode เอง)</h4>
+    <table class="cases">
+      <thead>
+        <tr><th>หมวด</th><th>เหตุผล</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>COGS_PRODUCT</code> + <code>COGS_REPAIR_PARTS</code></td>
+          <td>FINANCE chart ยังไม่มีบัญชี COGS — ต้นทุนขายอยู่ฝั่ง SHOP (ยังไม่ได้ implement)</td>
+        </tr>
+        <tr>
+          <td><code>ADMIN_DEPRECIATION</code></td>
+          <td>ค่าเสื่อมต้องเรียกผ่าน DepreciationTemplate (เห็น <a href="journey-asset-module.html" style="color:var(--blue);">journey สินทรัพย์</a>) — ห้ามใช้ Expense module</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ─── 8. KNOWN GAPS ─── -->
+  <section>
+    <h2><span class="badge-section">8</span>Known Gaps — สิ่งที่ระบบยังไม่ครอบคลุม</h2>
+
+    <h3 style="font-size: 15px; margin: 0 0 10px; font-weight: 600;">ปิดแล้ว 9 พ.ค. 2569 (Phase A.5a hardening)</h3>
+    <table class="cases">
+      <thead>
+        <tr>
+          <th style="width: 36%;">ช่องว่างที่ปิด</th>
+          <th style="width: 12%;">ระดับ</th>
+          <th>วิธีแก้</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>WHT ไม่ถูกบรรจุใน JE</strong></td>
+          <td><span class="status-flag implemented">CLOSED</span></td>
+          <td>expense.template.ts เพิ่ม Cr 21-3102/03 อัตโนมัติจาก vendorTaxId · Cr Cash = netPayment</td>
+        </tr>
+        <tr>
+          <td><strong>JE post แบบ non-atomic หลัง mark PAID</strong></td>
+          <td><span class="status-flag implemented">CLOSED</span></td>
+          <td>markExpensePaid wrap JE ใน $transaction เดียวกับ status update — JE fail = rollback</td>
+        </tr>
+        <tr>
+          <td><strong>ไม่มี Auto-clear AP (21-1104)</strong></td>
+          <td><span class="status-flag implemented">CLOSED</span></td>
+          <td>เพิ่ม <code>POST /accounting/expenses/:id/accrue</code> + ExpenseClearanceTemplate · markPaid ตรวจ accrual JE อัตโนมัติ → route ไป clearance</td>
+        </tr>
+        <tr>
+          <td><strong>VOID ไม่ออก JE Reverse</strong></td>
+          <td><span class="status-flag implemented">CLOSED</span></td>
+          <td>ExpenseReverseTemplate (TFRS no-touch pattern) · voidExpense atomic + รองรับ 2-step accrual reverse</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3 style="font-size: 15px; margin: 22px 0 10px; font-weight: 600;">ยังเหลือ (รอ implement / out of scope)</h3>
+    <table class="cases">
+      <thead>
+        <tr>
+          <th style="width: 36%;">ช่องว่าง</th>
+          <th style="width: 12%;">ระดับ</th>
+          <th>หมายเหตุ</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>FX/หลายสกุลเงิน</strong></td>
+          <td><span class="status-flag gap">Out of Scope</span></td>
+          <td>ระบบรองรับเฉพาะ THB</td>
+        </tr>
+        <tr>
+          <td><strong>SHOP-side รายจ่าย</strong></td>
+          <td><span class="status-flag gap">Out of Scope</span></td>
+          <td>ปัจจุบันใช้ FINANCE chart เท่านั้น · SHOP เป็น Cash basis ไม่จด VAT</td>
+        </tr>
+        <tr>
+          <td><strong>Recurring Expense (ค่าเช่ารายเดือนอัตโนมัติ)</strong></td>
+          <td><span class="status-flag partial">P2</span></td>
+          <td>มีฟิลด์ <em>isRecurring + recurringDay</em> แต่ยังไม่มี cron auto-create</td>
+        </tr>
+        <tr>
+          <td><strong>WHT remittance (นำส่ง ภ.ง.ด.) อัตโนมัติ</strong></td>
+          <td><span class="status-flag partial">P2</span></td>
+          <td>มี WhtRemittanceTemplate แล้ว — ยังต้อง trigger ผ่านหน้า "ภาษี"</td>
+        </tr>
+        <tr>
+          <td><strong>Multi-installment vendor payment</strong></td>
+          <td><span class="status-flag gap">Out of Scope</span></td>
+          <td>ใช้ Manual JE หรือสร้างหลายใบ Expense</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ─── 9. CHECKLIST ─── -->
+  <section>
+    <h2><span class="badge-section">9</span>เช็คลิสต์สำหรับนักบัญชีตรวจสอบ</h2>
+
+    <ul class="checklist">
+      <li>
+        <strong>1. ทุก Expense ที่ status=PAID ต้องมี JE (atomic guarantee)</strong>
+        <span>หลัง 9 พ.ค. 2569 — ระบบ atomic แล้ว ไม่ควรเจอ orphan · Query verify: SELECT e.id, e.expense_number FROM expenses e LEFT JOIN journal_entries j ON j.metadata->>'expenseId' = e.id::text WHERE e.status='PAID' AND e.deleted_at IS NULL AND j.id IS NULL — ต้องคืน 0 แถว</span>
+      </li>
+      <li>
+        <strong>2. ทุก JE ที่มี WHT &gt; 0 ต้องมีบรรทัด Cr 21-3102 หรือ 21-3103</strong>
+        <span>หลัง 9 พ.ค. 2569 — ระบบ post WHT line อัตโนมัติแล้ว · Query verify: SELECT je.entry_number FROM journal_entries je WHERE (je.metadata->>'withholdingTax')::numeric &gt; 0 AND je.id NOT IN (SELECT journal_entry_id FROM journal_lines WHERE account_code IN ('21-3102','21-3103')) — ต้องคืน 0 แถว</span>
+      </li>
+      <li>
+        <strong>3. 21-1104 (เจ้าหนี้ค่าใช้จ่าย) ต้อง = ผลรวม Expense ที่ยังไม่จ่าย</strong>
+        <span>SUM(totalAmount) ของ Expense ที่ <em>เคยโพสต์ JE accrued</em> แต่ยังไม่จ่าย</span>
+      </li>
+      <li>
+        <strong>4. WHT รายเดือน — ตรงกับ ภ.ง.ด.3, ภ.ง.ด.53</strong>
+        <span>ใช้รายงานภาษี → ยอด WHT ม.ค. - ธ.ค. ต้องตรงกับใบรับรองหัก ณ ที่จ่ายและยื่น ภ.ง.ด.</span>
+      </li>
+      <li>
+        <strong>5. รายจ่ายภาษีไม่ให้หัก (54-XXXX) ต้องเก็บใบเสร็จ + เหตุผลครบ</strong>
+        <span>Filter Expense.taxDisallowed = true → ตรวจว่ามี receiptImageUrl + disallowedReason ครบ · ปลายปีบวกกลับใน ภ.ง.ด.50</span>
+      </li>
+      <li>
+        <strong>6. VOID หลัง PAID ต้องมี Manual JE Reverse คู่กัน</strong>
+        <span>Filter Expense.status='VOIDED' AND voidedAt &gt; original paymentDate → ตรวจว่ามี Manual JE Reverse · ถ้าไม่มี = ค่าใช้จ่ายค้างใน P&L ผิด</span>
+      </li>
+      <li>
+        <strong>7. accountType สอดคล้องกับ category</strong>
+        <span>ADMIN_* ต้องอยู่ในกลุ่ม ADMINISTRATIVE_EXPENSE · SELL_* ต้องอยู่ใน SELLING_EXPENSE · ระบบมี validator ตรงนี้แล้ว แต่ตรวจซ้ำในรายงาน</span>
+      </li>
+      <li>
+        <strong>8. Vendor Tax ID ครบ (สำหรับ WHT)</strong>
+        <span>หากมี withholdingTax &gt; 0 → vendorTaxId ต้องไม่ว่าง · เป็นข้อมูลบังคับสำหรับ ภ.ง.ด.3, ภ.ง.ด.53</span>
+      </li>
+      <li>
+        <strong>9. ใบกำกับภาษีมี taxInvoiceNo (สำหรับ VAT input)</strong>
+        <span>ถ้า vatAmount &gt; 0 → taxInvoiceNo ต้องไม่ว่าง · เป็นเอกสารหลักฐานหักภาษีซื้อ</span>
+      </li>
+      <li>
+        <strong>10. รายการที่จ่ายเงินแล้วต้องมี depositAccountCode</strong>
+        <span>ระบบใช้ default 11-1101 ถ้าไม่ได้ระบุ — แต่ควรกรอก paymentMethod + paymentDate ให้ตรงจริงเพื่อ reconcile กับ bank statement</span>
+      </li>
+      <li>
+        <strong>11. Recurring expense (isRecurring=true) ต้อง follow up รายเดือน</strong>
+        <span>ระบบยังไม่ auto-create — ตรวจรายเดือนว่ามีบันทึก expense ของ ค่าเช่า ค่าน้ำ ค่าไฟ ค่าโทรศัพท์ ครบ</span>
+      </li>
+      <li>
+        <strong>12. ส่งคืน 11-4101 (ภาษีซื้อ) ทุกเดือน</strong>
+        <span>ภาษีซื้อใน 11-4101 ต้องคีย์ลง ภ.พ.30 ทุกเดือน เพื่อหักกลบกับภาษีขาย · ตรวจที่หน้า "ภาษี → VAT" เทียบกับสรุป ภ.พ.30</span>
+      </li>
+    </ul>
+  </section>
+
+  <!-- ─── 10. TIMELINE ─── -->
+  <section>
+    <h2><span class="badge-section">10</span>Timeline ตัวอย่าง — ค่าเช่าเดือน เม.ย. 69 (ครบขั้นตอน)</h2>
+
+    <table class="cases">
+      <thead>
+        <tr>
+          <th style="width: 14%;">วันที่</th>
+          <th style="width: 22%;">เหตุการณ์</th>
+          <th style="width: 18%;">สถานะ Expense</th>
+          <th>JE ที่ระบบโพสต์ + Manual ที่ต้องทำเอง</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>30/03/69</td>
+          <td>รับใบกำกับล่วงหน้า (กำหนดชำระ 5/4)</td>
+          <td>DRAFT</td>
+          <td><em style="color:var(--subtle);">ไม่มี JE</em></td>
+        </tr>
+        <tr>
+          <td>31/03/69</td>
+          <td>ส่งหัวหน้าอนุมัติ</td>
+          <td>PENDING_APPROVAL</td>
+          <td><em style="color:var(--subtle);">ไม่มี JE</em></td>
+        </tr>
+        <tr>
+          <td>01/04/69</td>
+          <td>หัวหน้าอนุมัติ</td>
+          <td>APPROVED</td>
+          <td><em style="color:var(--subtle);">ไม่มี JE</em></td>
+        </tr>
+        <tr>
+          <td>05/04/69</td>
+          <td>โอนเงินจ่ายค่าเช่า 10,200 (หัก WHT 500)</td>
+          <td>PAID</td>
+          <td>
+            <strong>Auto JE:</strong> Dr 53-1301 10,000 / Dr 11-4101 700 / Cr 11-1201 10,700<br>
+            <strong style="color:var(--rose);">Manual JE (ฝ่ายบัญชีต้องทำ):</strong> Dr 11-1201 500 / Cr 21-3103 500
+          </td>
+        </tr>
+        <tr>
+          <td>07/05/69</td>
+          <td>นำส่ง ภ.ง.ด.53 ม.4</td>
+          <td>PAID (ไม่เปลี่ยน)</td>
+          <td><strong>Manual JE:</strong> Dr 21-3103 500 / Cr 11-1201 500 (จ่ายให้กรมสรรพากร)</td>
+        </tr>
+        <tr>
+          <td>15/05/69</td>
+          <td>ยื่น ภ.พ.30 ม.4 — เครดิตภาษีซื้อ 700</td>
+          <td>PAID (ไม่เปลี่ยน)</td>
+          <td><strong>Manual JE:</strong> Dr 21-2101 700 / Cr 11-4101 700 (หักกลบ VAT ขาย-ซื้อ)</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="balance">
+      <div class="balance-title">สรุปยอดทุกบัญชีที่เกี่ยวข้อง หลังจบ Timeline</div>
+      <div class="balance-line"><span class="acc">53-1301 ค่าเช่า (P&L)</span>          = <span class="amt">10,000.00</span></div>
+      <div class="balance-line"><span class="acc">11-4101 ภาษีซื้อ</span>                 = <span class="amt zero">0.00</span> (ล้างเข้า ภ.พ.30)</div>
+      <div class="balance-line"><span class="acc">21-3103 ภ.ง.ด.53 ค้างจ่าย</span>        = <span class="amt zero">0.00</span> (นำส่งแล้ว)</div>
+      <div class="balance-line"><span class="acc">11-1201 ธนาคาร KBank (สุทธิ)</span>     = <span class="amt neg">-10,700.00</span> (จ่ายค่าเช่า 10,200 + WHT 500)</div>
+      <div class="balance-line">─────────────────────────────────────</div>
+      <div class="balance-line"><span class="acc">รวมเงินไหลออก</span>                    = <span class="amt">10,700.00</span> (ตรงกับ totalAmount เริ่มต้น)</div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <div style="margin-top: 60px; padding-top: 24px; border-top: 1px solid var(--border); font-size: 12px; color: var(--subtle); text-align: center;">
+    <p style="margin: 0;">
+      เอกสารนี้จัดทำขึ้นเพื่อให้นักบัญชีตรวจสอบความถูกต้องของระบบรายจ่าย — สอบถามเพิ่มเติม ติดต่อทีมพัฒนา BESTCHOICE<br>
+      อ้างอิง: <code style="font-family:'IBM Plex Mono',monospace; background:var(--blue-bg); color:var(--blue); padding:1px 6px; border-radius:3px;">apps/api/src/modules/journal/cpa-templates/expense.template.ts</code> · <code style="font-family:'IBM Plex Mono',monospace; background:var(--blue-bg); color:var(--blue); padding:1px 6px; border-radius:3px;">apps/api/src/modules/accounting/accounting.service.ts</code>
+    </p>
+  </div>
+
+</div>
+</body>
+</html>

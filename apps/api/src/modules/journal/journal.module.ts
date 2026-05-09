@@ -19,6 +19,8 @@ import { BadDebtProvisionTemplate } from './cpa-templates/bad-debt-provision.tem
 import { BadDebtWriteOffTemplate } from './cpa-templates/bad-debt-writeoff.template';
 import { EclStageReverseTemplate } from './cpa-templates/ecl-stage-reverse.template';
 import { ExpenseTemplate } from './cpa-templates/expense.template';
+import { ExpenseReverseTemplate } from './cpa-templates/expense-reverse.template';
+import { ExpenseClearanceTemplate } from './cpa-templates/expense-clearance.template';
 import { DefectExchangeReversalTemplate } from './cpa-templates/defect-exchange-reversal.template';
 import { ReceiptVoidReversalTemplate } from './cpa-templates/receipt-void-reversal.template';
 import { DepreciationTemplate } from './cpa-templates/depreciation.template';
@@ -49,6 +51,8 @@ import { WhtRemittanceTemplate } from './cpa-templates/wht-remittance.template';
     BadDebtWriteOffTemplate,
     EclStageReverseTemplate,
     ExpenseTemplate,
+    ExpenseReverseTemplate,
+    ExpenseClearanceTemplate,
     DefectExchangeReversalTemplate,
     ReceiptVoidReversalTemplate,
     DepreciationTemplate,
@@ -74,6 +78,8 @@ import { WhtRemittanceTemplate } from './cpa-templates/wht-remittance.template';
     BadDebtWriteOffTemplate,
     EclStageReverseTemplate,
     ExpenseTemplate,
+    ExpenseReverseTemplate,
+    ExpenseClearanceTemplate,
     DefectExchangeReversalTemplate,
     ReceiptVoidReversalTemplate,
     DepreciationTemplate,

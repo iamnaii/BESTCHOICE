@@ -1105,6 +1105,27 @@ describe('AssetService — CRUD + helpers', () => {
       });
       expect(result.data.find((r) => r.id === a.id)).toBeUndefined();
     });
+
+    it('status=DISPOSED filter shows only assets disposed by asOfDate', async () => {
+      const a = await createPostedAsset({ name: 'disposed-before', purchaseDate: '2026-01-01' });
+      const b = await createPostedAsset({ name: 'disposed-after', purchaseDate: '2026-01-01' });
+      // a: disposed before asOfDate (March 15) — should appear when filtered DISPOSED
+      await prisma.fixedAsset.update({
+        where: { id: a.id },
+        data: { status: 'DISPOSED', disposalDate: new Date('2026-03-15') },
+      });
+      // b: disposed after asOfDate (May 15) — should NOT appear (future disposal not yet happened)
+      await prisma.fixedAsset.update({
+        where: { id: b.id },
+        data: { status: 'DISPOSED', disposalDate: new Date('2026-05-15') },
+      });
+      const result = await service.getRegister({
+        status: 'DISPOSED' as AssetStatus,
+        asOfDate: '2026-04-01',
+      });
+      expect(result.data.find((r) => r.id === a.id)).toBeTruthy();
+      expect(result.data.find((r) => r.id === b.id)).toBeUndefined();
+    });
   });
 
   // ==========================================================================

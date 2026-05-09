@@ -490,7 +490,7 @@ export class AssetService {
     const limit = Math.min(filters.limit ?? 50, 200);
 
     // Filter assets: purchased on or before asOfDate; if disposed/written-off,
-    // disposalDate > asOfDate (still active at asOfDate).
+    // disposalDate <= asOfDate (disposed by the report date).
     const where: Prisma.FixedAssetWhereInput = {
       deletedAt: null,
       purchaseDate: { lte: asOfDate },
@@ -505,7 +505,7 @@ export class AssetService {
         filters.status === AssetStatus.WRITTEN_OFF
       ) {
         where.status = filters.status;
-        where.disposalDate = { gt: asOfDate }; // still active at asOfDate (not yet disposed)
+        where.disposalDate = { lte: asOfDate }; // disposed BY the report date
       } else {
         where.status = filters.status; // DRAFT, REVERSED — pass through
       }

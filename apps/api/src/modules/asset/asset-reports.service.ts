@@ -51,7 +51,7 @@ export class AssetReportsService {
         where.status = 'POSTED';
       } else if (filters.status === 'DISPOSED' || filters.status === 'WRITTEN_OFF') {
         where.status = filters.status;
-        where.disposalDate = { gt: asOfDate }; // still active at asOfDate (not yet disposed)
+        where.disposalDate = { lte: asOfDate }; // disposed BY the report date
       } else {
         where.status = filters.status; // DRAFT, REVERSED — pass through
       }

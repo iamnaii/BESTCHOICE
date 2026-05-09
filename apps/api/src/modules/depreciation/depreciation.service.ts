@@ -2,6 +2,7 @@ import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DepreciationTemplate } from '../journal/cpa-templates/depreciation.template';
+import { DepreciationReverseTemplate } from '../journal/cpa-templates/depreciation-reverse.template';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
 
 /** Maps AssetCategory → [Dr expenseCode, Cr accumulatedCode] (fallback when asset.coa* snapshots are null) */
@@ -47,6 +48,7 @@ export class DepreciationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly depreciationTemplate: DepreciationTemplate,
+    private readonly depreciationReverseTemplate: DepreciationReverseTemplate,
   ) {}
 
   private async getFinanceCompanyId(): Promise<string> {
@@ -306,11 +308,79 @@ export class DepreciationService {
     };
   }
 
+  /**
+   * Reverse all unreversed DepreciationEntry rows in the given period.
+   *
+   * Delegates to DepreciationReverseTemplate (cascading reverse with
+   * cross-period guard, JE mirror, NBV/accum rollback). Wraps the call in
+   * an outer $transaction so the AuditLog DEPRECIATION_RUN_REVERSE is atomic
+   * with the reversal itself.
+   *
+   * Guards:
+   * 1. Period regex YYYY-MM (else BadRequestException).
+   * 2. Reason required (≥1 char after trim).
+   * 3. V15 closed-period guard on `new Date()` — reverse JE is dated TODAY,
+   *    so we check current period (not the original period). On rejection,
+   *    writes DEPRECIATION_RUN_REVERSE_BLOCKED audit + throws.
+   */
   async reverseRun(
-    _period: string,
-    _reason: string,
-    _userId: string,
-  ): Promise<{ reversedCount: number }> {
-    throw new Error('reverseRun: implement in Task 12');
+    period: string,
+    reason: string,
+    userId: string,
+  ): Promise<{ reversedCount: number; entryNumbers: string[] }> {
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(period)) {
+      throw new BadRequestException('รูปแบบงวดต้องเป็น YYYY-MM');
+    }
+    if (!reason || reason.trim().length === 0) {
+      throw new BadRequestException('กรุณาระบุเหตุผลการกลับรายการ');
+    }
+
+    // V15 on current date (reverse JE posted today)
+    const financeCompanyId = await this.getFinanceCompanyId();
+    try {
+      await validatePeriodOpen(this.prisma, new Date(), financeCompanyId);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'period closed';
+      await this.prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'DEPRECIATION_RUN_REVERSE_BLOCKED',
+          entity: 'depreciation_run',
+          entityId: period,
+          oldValue: { period },
+          newValue: { reason: message },
+        },
+      });
+      throw new BadRequestException(`ไม่สามารถ reverse: ${message}`);
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const result = await this.depreciationReverseTemplate.execute(
+        { period, reversedById: userId },
+        tx,
+      );
+
+      await tx.auditLog.create({
+        data: {
+          userId,
+          action: 'DEPRECIATION_RUN_REVERSE',
+          entity: 'depreciation_run',
+          entityId: period,
+          oldValue: { period },
+          newValue: {
+            period,
+            reason,
+            reversedCount: result.reversedCount,
+            entryNumbers: result.entryNumbers,
+          },
+        },
+      });
+
+      this.logger.log(
+        `[Phase2] DepreciationRunReverse ${period} — reversed ${result.reversedCount} entries`,
+      );
+
+      return result;
+    });
   }
 }

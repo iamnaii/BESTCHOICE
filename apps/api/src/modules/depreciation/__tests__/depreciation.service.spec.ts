@@ -5,6 +5,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { DepreciationService } from '../depreciation.service';
 import { DepreciationTemplate } from '../../journal/cpa-templates/depreciation.template';
+import { DepreciationReverseTemplate } from '../../journal/cpa-templates/depreciation-reverse.template';
 import { JournalAutoService } from '../../journal/journal-auto.service';
 import { seedFinanceCoa } from '../../../../prisma/seed-coa-finance';
 
@@ -46,6 +47,7 @@ beforeAll(async () => {
     providers: [
       DepreciationService,
       DepreciationTemplate,
+      DepreciationReverseTemplate,
       JournalAutoService,
       { provide: PrismaService, useValue: prisma },
     ],
@@ -82,6 +84,11 @@ beforeEach(async () => {
   });
   await prisma.journalEntry.deleteMany({ where: { createdById: userId } });
   await prisma.fixedAsset.deleteMany({ where: { createdById: userId } });
+  // Also clean stale assets from sibling test files (DEP-TEST-* prefix from
+  // depreciation.template.spec.ts) that might pollute previewRun's POSTED query.
+  await prisma.fixedAsset.deleteMany({
+    where: { assetCode: { startsWith: 'DEP-TEST-' } },
+  });
 });
 
 async function postedAsset(monthly = '833.33') {
@@ -284,6 +291,77 @@ describe('DepreciationService.runManual', () => {
     expect(blocked).toBeTruthy();
     await prisma.accountingPeriod.delete({
       where: { companyId_year_month: { companyId: finance.id, year: 2026, month: 5 } },
+    });
+  });
+});
+
+describe('DepreciationService.reverseRun', () => {
+  it('reverses entries + writes AuditLog DEPRECIATION_RUN_REVERSE', async () => {
+    await postedAsset();
+    await service.runManual('2026-05', userId);
+    const result = await service.reverseRun('2026-05', 'mistake', userId);
+    expect(result.reversedCount).toBe(1);
+
+    const log = await prisma.auditLog.findFirst({
+      where: { entity: 'depreciation_run', entityId: '2026-05', action: 'DEPRECIATION_RUN_REVERSE' },
+    });
+    expect(log).toBeTruthy();
+    expect((log!.newValue as any).reason).toBe('mistake');
+  });
+
+  it('rejects with empty/whitespace reason', async () => {
+    await postedAsset();
+    await service.runManual('2026-05', userId);
+    await expect(service.reverseRun('2026-05', '   ', userId)).rejects.toThrow();
+  });
+
+  it('rejects invalid period format', async () => {
+    await expect(service.reverseRun('2026-13', 'reason', userId)).rejects.toThrow(/YYYY-MM/);
+  });
+
+  it('V15 closed period (current date) → DEPRECIATION_RUN_REVERSE_BLOCKED audit + reject', async () => {
+    const finance = await prisma.companyInfo.findFirst({ where: { companyCode: 'FINANCE' } });
+    if (!finance) throw new Error('FINANCE company missing');
+    await postedAsset();
+    await service.runManual('2026-05', userId);
+    const now = new Date();
+    await prisma.accountingPeriod.upsert({
+      where: {
+        companyId_year_month: {
+          companyId: finance.id,
+          year: now.getFullYear(),
+          month: now.getMonth() + 1,
+        },
+      },
+      update: { status: 'CLOSED', closedAt: new Date(), closedById: userId },
+      create: {
+        companyId: finance.id,
+        year: now.getFullYear(),
+        month: now.getMonth() + 1,
+        status: 'CLOSED',
+        closedAt: new Date(),
+        closedById: userId,
+      },
+    });
+    await expect(service.reverseRun('2026-05', 'test reason', userId)).rejects.toThrow(
+      /period|งวด/i,
+    );
+    const blocked = await prisma.auditLog.findFirst({
+      where: {
+        entity: 'depreciation_run',
+        entityId: '2026-05',
+        action: 'DEPRECIATION_RUN_REVERSE_BLOCKED',
+      },
+    });
+    expect(blocked).toBeTruthy();
+    await prisma.accountingPeriod.delete({
+      where: {
+        companyId_year_month: {
+          companyId: finance.id,
+          year: now.getFullYear(),
+          month: now.getMonth() + 1,
+        },
+      },
     });
   });
 });

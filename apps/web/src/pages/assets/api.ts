@@ -95,4 +95,25 @@ export const assetsApi = {
     const { data } = await api.post<Asset>(`/assets/${id}/copy`);
     return data;
   },
+
+  dispose: async (
+    id: string,
+    payload: {
+      disposalType: 'SALE' | 'WRITE_OFF';
+      disposalDate: string;
+      proceeds?: number;
+      depositAccountCode?: string;
+      reason: string;
+    },
+  ): Promise<{ entryNo: string }> => {
+    const { data } = await api.post<{ entryNo: string }>(`/assets/${id}/dispose`, payload);
+    return data;
+  },
+
+  reverseDispose: async (id: string, reason: string): Promise<{ entryNo: string }> => {
+    const { data } = await api.post<{ entryNo: string }>(`/assets/${id}/reverse-dispose`, {
+      reason,
+    });
+    return data;
+  },
 };

@@ -134,3 +134,16 @@ export const CASH_ACCOUNTS: { code: string; name: string }[] = [
   { code: '11-1202', name: 'ธนาคาร SCB (ค่าใช้จ่าย)' },
   { code: '11-1203', name: 'ธนาคาร SCB (ค่าเสื่อม)' },
 ];
+
+export interface DisposalCalculation {
+  nbv: number;
+  proceeds: number;
+  gainLoss: number; // positive = gain, negative = loss
+  journalLines: Array<{
+    accountCode: string;
+    accountName: string;
+    debit: number;
+    credit: number;
+  }>;
+  isBalanced: boolean;
+}

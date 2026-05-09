@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { Search, FileText } from 'lucide-react';
@@ -35,12 +35,18 @@ export default function AssetJournalPage() {
   const search = useDebounce(searchInput, 300);
   const page = Number(searchParams.get('page') ?? 1);
 
-  const setParam = (key: string, val: string | null) => {
+  const setParam = (key: string, val: string | null, replace = false) => {
     const next = new URLSearchParams(searchParams);
     if (val) next.set(key, val); else next.delete(key);
     if (key !== 'page') next.delete('page');
-    setSearchParams(next);
+    setSearchParams(next, replace ? { replace: true } : undefined);
   };
+
+  // Sync URL after debounce, not on every keystroke (avoids history pollution)
+  useEffect(() => {
+    setParam('search', search || null, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
 
   const query = useQuery({
     queryKey: ['asset-journal', { flowType, fromDate, toDate, search, page }],
@@ -111,7 +117,7 @@ export default function AssetJournalPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input className="pl-10" placeholder="ค้นหาสินทรัพย์"
               value={searchInput}
-              onChange={(e) => { setSearchInput(e.target.value); setParam('search', e.target.value || null); }}
+              onChange={(e) => setSearchInput(e.target.value)}
             />
           </div>
         </CardContent>

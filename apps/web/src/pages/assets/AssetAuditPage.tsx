@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { Link, useNavigate, useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { History, ChevronDown, ChevronRight } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
@@ -73,6 +73,13 @@ export default function AssetAuditPage() {
         onBack={() => navigate(`/assets/${id}`)}
       />
 
+      <p className="text-sm text-muted-foreground mb-2">
+        แสดงเฉพาะ 100 รายการล่าสุด · สำหรับประวัติเก่ากว่านี้ ใช้หน้า{' '}
+        <Link to="/audit-logs" className="text-primary underline">
+          Audit Logs (ทั้งระบบ)
+        </Link>
+      </p>
+
       <Card>
         <CardContent className="p-4 grid grid-cols-1 md:grid-cols-3 gap-3">
           <Select value={actionFilter || 'ALL'} onValueChange={(v) => setActionFilter(v === 'ALL' ? '' : v)}>
@@ -126,7 +133,14 @@ export default function AssetAuditPage() {
                 </li>
               ))}
               {filtered.length === 0 && (
-                <li className="p-4 text-center text-muted-foreground">ไม่พบรายการ</li>
+                <li className="p-4 text-center text-muted-foreground">
+                  ไม่พบรายการ
+                  {(actionFilter || fromDate || toDate) && (
+                    <span className="block text-xs mt-1">
+                      (ไม่พบใน 100 รายการล่าสุด — ลองดู Audit Logs ของทั้งระบบ)
+                    </span>
+                  )}
+                </li>
               )}
             </ul>
           </CardContent>

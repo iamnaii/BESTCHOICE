@@ -200,4 +200,10 @@ describe('AssetJournalService.list', () => {
     const page2 = await service.list({ page: 2, limit: 5, search: RUN_TAG });
     expect(page2.data.length).toBe(2);
   });
+
+  it('rejects invalid flowType', async () => {
+    await expect(service.list({ flowType: 'invalid-flow' })).rejects.toThrow(
+      /ไม่ถูกต้อง|flowType/i,
+    );
+  });
 });

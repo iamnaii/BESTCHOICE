@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { BarChart3, ArrowRightLeft } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
@@ -70,8 +71,12 @@ export default function AssetSummaryReportPage() {
   });
 
   const movementQuery = useQuery({
-    queryKey: ['asset-transfers-recent'],
-    queryFn: () => assetsApi.listAllTransfers({ limit: 100 }),
+    queryKey: ['asset-transfers-recent', asOfDate],
+    queryFn: () =>
+      assetsApi.listAllTransfers({
+        limit: 100,
+        toDate: asOfDate, // bound by asOfDate — only show transfers ≤ asOfDate
+      }),
     enabled: tab === 'movement',
   });
 
@@ -177,6 +182,14 @@ export default function AssetSummaryReportPage() {
                     </li>
                   ))}
                 </ul>
+                {(movementQuery.data?.total ?? 0) > 100 && (
+                  <p className="text-sm text-muted-foreground text-center mt-4">
+                    แสดง 100 รายการล่าสุดจากทั้งหมด {movementQuery.data?.total} รายการ ·{' '}
+                    <Link to="/assets/transfers" className="text-primary underline">
+                      ดูทั้งหมด →
+                    </Link>
+                  </p>
+                )}
               </CardContent>
             </Card>
           </QueryBoundary>

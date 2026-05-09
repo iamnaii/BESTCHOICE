@@ -2,7 +2,7 @@
 // As-of-date register with 4 stat cards, filters (category/status/search),
 // 9-column DataTable, CSV/Excel export. URL-synced filters.
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -49,13 +49,19 @@ export default function AssetRegisterPage() {
   const search = useDebounce(searchInput, 300);
   const page = Number(searchParams.get('page') ?? 1);
 
-  const setParam = (key: string, val: string | null) => {
+  const setParam = (key: string, val: string | null, replace = false) => {
     const next = new URLSearchParams(searchParams);
     if (val) next.set(key, val);
     else next.delete(key);
     if (key !== 'page') next.delete('page');
-    setSearchParams(next);
+    setSearchParams(next, replace ? { replace: true } : undefined);
   };
+
+  // Sync URL after debounce, not on every keystroke (avoids history pollution)
+  useEffect(() => {
+    setParam('search', search || null, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
 
   const query = useQuery({
     queryKey: ['asset-register', { asOfDate, category, status, search, page }],
@@ -261,10 +267,7 @@ export default function AssetRegisterPage() {
               className="pl-10"
               placeholder="ค้นหา รหัส/ชื่อ/serial"
               value={searchInput}
-              onChange={(e) => {
-                setSearchInput(e.target.value);
-                setParam('search', e.target.value || null);
-              }}
+              onChange={(e) => setSearchInput(e.target.value)}
             />
           </div>
         </CardContent>

@@ -1,3 +1,4 @@
+import { CATEGORY_LABEL } from '../types';
 import type { AssetRegisterResponse, AssetRegisterRow } from '../types';
 
 const HEADERS = [
@@ -5,13 +6,6 @@ const HEADERS = [
   'ค่าเสื่อมสะสม', 'NBV', 'ค่าเสื่อม/เดือน', 'เดือนคงเหลือ',
   'ผู้ดูแล', 'ที่ตั้ง', 'สาขา', 'สถานะ',
 ];
-
-const CATEGORY_LABEL: Record<string, string> = {
-  EQUIPMENT: 'อุปกรณ์สำนักงาน',
-  IMPROVEMENT: 'ส่วนปรับปรุงอาคาร',
-  FURNITURE: 'เครื่องตกแต่งสำนักงาน',
-  VEHICLE: 'ยานพาหนะ',
-};
 
 function rowsToValues(row: AssetRegisterRow): (string | number)[] {
   return [

@@ -31,6 +31,7 @@ import { getErrorMessage } from '@/lib/api';
 import { assetsApi } from './api';
 import { AssetStatusBadge } from './components/AssetStatusBadge';
 import { ReverseAssetDialog } from './components/ReverseAssetDialog';
+import { ReverseDisposalDialog } from './components/ReverseDisposalDialog';
 import { TransferAssetDialog } from './components/TransferAssetDialog';
 import { CATEGORY_LABEL } from './types';
 
@@ -55,6 +56,7 @@ export default function AssetDetailPage() {
   });
 
   const [showReverse, setShowReverse] = useState(false);
+  const [showReverseDisposal, setShowReverseDisposal] = useState(false);
   const [showTransfer, setShowTransfer] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
 
@@ -67,6 +69,19 @@ export default function AssetDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['assets'] });
       queryClient.invalidateQueries({ queryKey: ['assets-summary'] });
       setShowReverse(false);
+    },
+    onError: (e) => toast.error(getErrorMessage(e)),
+  });
+
+  const reverseDisposeMutation = useMutation({
+    mutationFn: (reason: string) => assetsApi.reverseDispose(id!, reason),
+    onSuccess: (r) => {
+      toast.success(`คืนสถานะแล้ว → ${r.entryNo}`);
+      queryClient.invalidateQueries({ queryKey: ['asset', id] });
+      queryClient.invalidateQueries({ queryKey: ['asset-audit', id] });
+      queryClient.invalidateQueries({ queryKey: ['assets'] });
+      queryClient.invalidateQueries({ queryKey: ['assets-summary'] });
+      setShowReverseDisposal(false);
     },
     onError: (e) => toast.error(getErrorMessage(e)),
   });
@@ -159,6 +174,9 @@ export default function AssetDetailPage() {
                     <DropdownMenuItem onClick={() => setShowTransfer(true)}>
                       <ArrowRightLeft className="mr-2 size-4" /> โอนผู้ดูแล/ที่ตั้ง
                     </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => navigate(`/assets/${id}/dispose`)}>
+                      <Trash2 className="mr-2 size-4" /> จำหน่ายสินทรัพย์
+                    </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={() => setShowReverse(true)}
                       className="text-destructive"
@@ -166,6 +184,14 @@ export default function AssetDetailPage() {
                       <Undo2 className="mr-2 size-4" /> กลับรายการ
                     </DropdownMenuItem>
                   </>
+                )}
+                {(asset.status === 'DISPOSED' || asset.status === 'WRITTEN_OFF') && (
+                  <DropdownMenuItem
+                    onClick={() => setShowReverseDisposal(true)}
+                    className="text-destructive"
+                  >
+                    <Undo2 className="mr-2 size-4" /> กลับรายการจำหน่าย
+                  </DropdownMenuItem>
                 )}
                 <DropdownMenuItem
                   onClick={() => copyMutation.mutate()}
@@ -293,6 +319,18 @@ export default function AssetDetailPage() {
                         </li>
                       ))}
                     </ul>
+                    <div className="mt-3 text-sm">
+                      <a
+                        href="/assets/transfers"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          navigate('/assets/transfers');
+                        }}
+                        className="text-muted-foreground hover:text-primary underline"
+                      >
+                        ดูประวัติการโอนทั้งหมด →
+                      </a>
+                    </div>
                   </CardContent>
                 </Card>
               )}
@@ -339,6 +377,12 @@ export default function AssetDetailPage() {
             onOpenChange={setShowTransfer}
             onConfirm={(p) => transferMutation.mutate(p)}
             isPending={transferMutation.isPending}
+          />
+          <ReverseDisposalDialog
+            open={showReverseDisposal}
+            onOpenChange={setShowReverseDisposal}
+            onConfirm={(reason) => reverseDisposeMutation.mutate(reason)}
+            isPending={reverseDisposeMutation.isPending}
           />
           <ConfirmDialog
             open={showDelete}

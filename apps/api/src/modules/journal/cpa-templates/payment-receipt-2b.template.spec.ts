@@ -8,7 +8,11 @@ import { loadCaseFromCsv } from '../__tests__/csv-fixture-loader';
 import { diffGoldenJE } from '../__tests__/golden-je-matcher';
 import { ContractActivation1ATemplate } from './contract-activation-1a.template';
 import { InstallmentAccrual2ATemplate } from './installment-accrual-2a.template';
-import { PaymentReceipt2BTemplate } from './payment-receipt-2b.template';
+import {
+  PaymentReceipt2BTemplate,
+  calcLateFee,
+  calcPostponeFee,
+} from './payment-receipt-2b.template';
 import { Vat60dayMandatoryTemplate } from './vat-60day-mandatory.template';
 import { Vat60dayReversalTemplate } from './vat-60day-reversal.template';
 import { JournalAutoService } from '../journal-auto.service';
@@ -18,6 +22,9 @@ const prisma = new PrismaClient();
 
 async function setup() {
   // Clean slate for each test
+  if ('journalPostAuditLog' in prisma) {
+    await (prisma as any).journalPostAuditLog.deleteMany({});
+  }
   await prisma.journalLine.deleteMany({});
   await prisma.journalEntry.deleteMany({});
   await prisma.receipt.deleteMany({});
@@ -363,6 +370,133 @@ describe('PaymentReceipt2BTemplate', () => {
     });
   });
 
+  describe('late fee (CPA case 6)', () => {
+    it('on-time payment: lateFee=0, no 42-1103 line', async () => {
+      const { contract, inst, journal } = await setup();
+      const tmpl = new PaymentReceipt2BTemplate(journal, prisma as any);
+
+      await tmpl.execute({
+        installmentScheduleId: inst.id,
+        amountReceived: new Decimal('1515.83'),
+        depositAccountCode: '11-1101',
+        lateFee: new Decimal(0),
+      });
+
+      const entry2B = await prisma.journalEntry.findFirstOrThrow({
+        where: { metadata: { path: ['tag'], equals: '2B' } } as any,
+        include: { lines: true },
+      });
+      expect(entry2B.lines.find((l) => l.accountCode === '42-1103')).toBeUndefined();
+    });
+
+    it('1-2 days overdue: 50฿ late fee → Cr 42-1103 = 50', async () => {
+      const { contract, inst, journal } = await setup();
+      const tmpl = new PaymentReceipt2BTemplate(journal, prisma as any);
+
+      // Customer pays installmentTotal + 50฿ late fee
+      const lateFee = new Decimal(50);
+      await tmpl.execute({
+        installmentScheduleId: inst.id,
+        amountReceived: new Decimal('1515.83').plus(lateFee),
+        depositAccountCode: '11-1101',
+        lateFee,
+      });
+
+      const entry2B = await prisma.journalEntry.findFirstOrThrow({
+        where: { metadata: { path: ['tag'], equals: '2B' } } as any,
+        include: { lines: true },
+      });
+      const lines = entry2B.lines;
+
+      // Dr cash = 1565.83 (installmentTotal + lateFee)
+      const cash = lines.find((l) => l.accountCode === '11-1101')!;
+      expect(cash.debit.toString()).toBe('1565.83');
+
+      // Cr 11-2103 = installmentTotal only
+      const recv = lines.find((l) => l.accountCode === '11-2103')!;
+      expect(recv.credit.toString()).toBe('1515.83');
+
+      // Cr 42-1103 = 50฿ late fee
+      const lateFeeLine = lines.find((l) => l.accountCode === '42-1103')!;
+      expect(lateFeeLine).toBeDefined();
+      expect(lateFeeLine.credit.toString()).toBe('50');
+
+      // Balanced
+      const totalDr = lines.reduce((acc, l) => acc.plus(l.debit.toString()), new Decimal(0));
+      const totalCr = lines.reduce((acc, l) => acc.plus(l.credit.toString()), new Decimal(0));
+      expect(totalDr.toFixed(2)).toBe(totalCr.toFixed(2));
+    });
+
+    it('3+ days overdue: 100฿ late fee → Cr 42-1103 = 100', async () => {
+      const { contract, inst, journal } = await setup();
+      const tmpl = new PaymentReceipt2BTemplate(journal, prisma as any);
+
+      const lateFee = new Decimal(100);
+      await tmpl.execute({
+        installmentScheduleId: inst.id,
+        amountReceived: new Decimal('1515.83').plus(lateFee),
+        depositAccountCode: '11-1101',
+        lateFee,
+      });
+
+      const entry2B = await prisma.journalEntry.findFirstOrThrow({
+        where: { metadata: { path: ['tag'], equals: '2B' } } as any,
+        include: { lines: true },
+      });
+      const lateFeeLine = entry2B.lines.find((l) => l.accountCode === '42-1103')!;
+      expect(lateFeeLine.credit.toString()).toBe('100');
+    });
+
+    it('late fee + overpay 0.17: 42-1103 + 53-1503 both posted', async () => {
+      // installmentTotal = 1515.83, late fee = 50, customer pays 1566.00 (overpay 0.17 within tolerance)
+      const { contract, inst, journal } = await setup();
+      const tmpl = new PaymentReceipt2BTemplate(journal, prisma as any);
+
+      await tmpl.execute({
+        installmentScheduleId: inst.id,
+        amountReceived: new Decimal('1566.00'),
+        depositAccountCode: '11-1101',
+        lateFee: new Decimal(50),
+      });
+
+      const entry2B = await prisma.journalEntry.findFirstOrThrow({
+        where: { metadata: { path: ['tag'], equals: '2B' } } as any,
+        include: { lines: true },
+      });
+      const lines = entry2B.lines;
+
+      // Cr 42-1103 = 50
+      const lateFeeLine = lines.find((l) => l.accountCode === '42-1103')!;
+      expect(lateFeeLine.credit.toString()).toBe('50');
+
+      // Cr 53-1503 = 0.17 (rounding diff after subtracting late fee)
+      const rounding = lines.find((l) => l.accountCode === '53-1503')!;
+      expect(rounding.credit.toString()).toBe('0.17');
+
+      // Balanced
+      const totalDr = lines.reduce((acc, l) => acc.plus(l.debit.toString()), new Decimal(0));
+      const totalCr = lines.reduce((acc, l) => acc.plus(l.credit.toString()), new Decimal(0));
+      expect(totalDr.toFixed(2)).toBe(totalCr.toFixed(2));
+    });
+
+    it('late fee with rounding > 1฿ (excluding lateFee) still rejected', async () => {
+      const { inst, journal } = await setup();
+      const tmpl = new PaymentReceipt2BTemplate(journal, prisma as any);
+
+      // installmentTotal = 1515.83, late fee = 50
+      // Customer pays 1500 + 50 = 1550 → after lateFee, rounding = 1500 - 1515.83 = -15.83 (>1฿)
+      await expect(
+        tmpl.execute({
+          installmentScheduleId: inst.id,
+          amountReceived: new Decimal('1550.00'),
+          depositAccountCode: '11-1101',
+          lateFee: new Decimal(50),
+          toleranceApproverId: 'test-approver-id',
+        }),
+      ).rejects.toThrow(/exceeds tolerance/i);
+    });
+  });
+
   describe('partial clear', () => {
     it('partial: posts only Dr cash + Cr 11-2103 (amount), no tolerance check', async () => {
       const { inst, journal } = await setup();
@@ -391,5 +525,54 @@ describe('PaymentReceipt2BTemplate', () => {
       const totalCr = je.lines.reduce((s, l) => s.plus(l.credit.toString()), new Decimal(0));
       expect(totalDr.eq(totalCr)).toBe(true);
     });
+  });
+});
+
+describe('calcLateFee', () => {
+  it('returns 0 for 0 days overdue', () => {
+    expect(calcLateFee(0).toString()).toBe('0');
+  });
+
+  it('returns 0 for negative days (early payment)', () => {
+    expect(calcLateFee(-3).toString()).toBe('0');
+  });
+
+  it('returns 50 for 1-2 days overdue', () => {
+    expect(calcLateFee(1).toString()).toBe('50');
+    expect(calcLateFee(2).toString()).toBe('50');
+  });
+
+  it('returns 100 for 3+ days overdue', () => {
+    expect(calcLateFee(3).toString()).toBe('100');
+    expect(calcLateFee(30).toString()).toBe('100');
+    expect(calcLateFee(365).toString()).toBe('100');
+  });
+});
+
+describe('calcPostponeFee', () => {
+  it('returns 0 for 0 days', () => {
+    expect(calcPostponeFee(new Decimal('1515.83'), 0).toString()).toBe('0');
+  });
+
+  it('returns 0 for negative days', () => {
+    expect(calcPostponeFee(new Decimal('1515.83'), -5).toString()).toBe('0');
+  });
+
+  it('1515.83 / 30 * 7 days = 353.69', () => {
+    // 1515.83 / 30 = 50.5276666...
+    // 50.5276666 * 7 = 353.6936666...
+    // ROUND_HALF_UP to 2dp = 353.69
+    expect(calcPostponeFee(new Decimal('1515.83'), 7).toString()).toBe('353.69');
+  });
+
+  it('1500 / 30 * 30 days = full installment 1500', () => {
+    expect(calcPostponeFee(new Decimal('1500'), 30).toString()).toBe('1500');
+  });
+
+  it('rounds HALF_UP at 2dp', () => {
+    // 100 / 30 * 1 = 3.3333... → 3.33
+    expect(calcPostponeFee(new Decimal('100'), 1).toString()).toBe('3.33');
+    // 100 / 30 * 2 = 6.6666... → 6.67
+    expect(calcPostponeFee(new Decimal('100'), 2).toString()).toBe('6.67');
   });
 });

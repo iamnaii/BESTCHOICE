@@ -43,10 +43,10 @@ else
   check_fail "GET $PRIVACY_URL → HTTP $PRIVACY_CODE (expected 200)"
 fi
 
-if echo "$PRIVACY_BODY" | grep -qE "<title>(Privacy Policy|นโยบายความเป็นส่วนตัว)"; then
-  check_pass "Title identifies as Privacy Policy (Thai or English)"
+if echo "$PRIVACY_BODY" | grep -q "<title>Privacy Policy"; then
+  check_pass "Title contains 'Privacy Policy'"
 else
-  check_fail "Title doesn't identify as Privacy Policy (Meta crawler won't recognize)"
+  check_fail "Title missing 'Privacy Policy' (Meta crawler won't recognize as policy)"
 fi
 
 if echo "$PRIVACY_BODY" | grep -qE 'name="robots"[^>]*content="[^"]*noindex'; then
@@ -55,7 +55,7 @@ else
   check_pass "No noindex meta tag"
 fi
 
-if echo "$PRIVACY_BODY" | grep -qE "(Facebook Platform Data|ข้อมูลที่ได้รับผ่านแพลตฟอร์ม Facebook)"; then
+if echo "$PRIVACY_BODY" | grep -q "Facebook Platform Data"; then
   check_pass "Contains Facebook Platform Data section"
 else
   check_warn "Missing Facebook Platform Data section (recommended by Meta)"
@@ -79,10 +79,10 @@ else
   check_fail "GET $TERMS_URL → HTTP $TERMS_CODE"
 fi
 
-if echo "$TERMS_BODY" | grep -qE "<title>(Terms of Service|ข้อกำหนดและเงื่อนไขการใช้บริการ)"; then
-  check_pass "Title identifies as Terms of Service (Thai or English)"
+if echo "$TERMS_BODY" | grep -q "<title>Terms of Service"; then
+  check_pass "Title contains 'Terms of Service'"
 else
-  check_fail "Title doesn't identify as Terms of Service"
+  check_fail "Title missing 'Terms of Service'"
 fi
 
 if echo "$TERMS_BODY" | grep -qE 'กำลังโหลด|<div id="root">'; then

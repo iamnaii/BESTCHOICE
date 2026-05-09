@@ -56,12 +56,20 @@ export class AssetService {
   /**
    * Generate next sequential assetCode for the given category.
    * Format: {prefix}-{NNN} (e.g. EQ-001, IM-002)
+   *
+   * When `tx` is provided, the read happens inside the caller's transaction so
+   * it sees rows being created by the same caller (race-free with createDraft /
+   * copy which insert from inside a $transaction).
    */
-  async generateAssetCode(category?: AssetCategory): Promise<{ assetCode: string }> {
+  async generateAssetCode(
+    tx?: Prisma.TransactionClient,
+    category?: AssetCategory,
+  ): Promise<{ assetCode: string }> {
+    const client: Prisma.TransactionClient | PrismaService = tx ?? this.prisma;
     const prefix = category ? CATEGORY_PREFIX[category] : 'EQ';
     // Pull recent rows; skip non-numeric suffixes so legacy/test rows like
     // TEST-1778255626578-QU052F don't poison parseInt.
-    const recent = await this.prisma.fixedAsset.findMany({
+    const recent = await client.fixedAsset.findMany({
       where: { assetCode: { startsWith: `${prefix}-` } },
       orderBy: { assetCode: 'desc' },
       take: 50,
@@ -109,18 +117,37 @@ export class AssetService {
     return `${prefix}${seq.toString().padStart(4, '0')}`;
   }
 
-  async createDraft(dto: CreateAssetDto, createdById: string) {
-    // Compute derived values
-    const basePriceRaw = new Decimal(dto.basePrice);
-    const shippingCost = new Decimal(dto.shippingCost ?? 0);
-    const installationCost = new Decimal(dto.installationCost ?? 0);
-    const otherCapitalized = new Decimal(dto.otherCapitalized ?? 0);
-    const residualValue = new Decimal(dto.residualValue ?? 0);
+  /**
+   * Compute derived cost fields (basePrice ex-VAT, vatAmount, purchaseCost,
+   * whtAmount, monthlyDepr) from raw input. Used by both `createDraft` and
+   * `update` to keep the math identical between insert and edit paths.
+   *
+   * Input shape accepts either DTO numbers/strings or Prisma Decimal values
+   * (since `update` merges the existing asset with the partial DTO).
+   */
+  private computeCostFields(input: {
+    basePrice: Decimal | number | string;
+    shippingCost?: Decimal | number | string | null;
+    installationCost?: Decimal | number | string | null;
+    otherCapitalized?: Decimal | number | string | null;
+    residualValue?: Decimal | number | string | null;
+    usefulLifeMonths: number;
+    hasVat?: boolean | null;
+    vatInclusive?: boolean | null;
+    hasWht?: boolean | null;
+    whtBaseAmount?: Decimal | number | string | null;
+    whtRate?: Decimal | number | string | null;
+  }) {
+    const basePriceRaw = new Decimal(input.basePrice.toString());
+    const shippingCost = new Decimal((input.shippingCost ?? 0).toString());
+    const installationCost = new Decimal((input.installationCost ?? 0).toString());
+    const otherCapitalized = new Decimal((input.otherCapitalized ?? 0).toString());
+    const residualValue = new Decimal((input.residualValue ?? 0).toString());
 
     let basePrice = basePriceRaw;
     let vatAmount = new Decimal(0);
-    if (dto.hasVat) {
-      if (dto.vatInclusive) {
+    if (input.hasVat) {
+      if (input.vatInclusive) {
         // Fix #1.3: extract VAT from inclusive basePrice
         vatAmount = round2(basePriceRaw.times(7).div(107));
         basePrice = basePriceRaw.minus(vatAmount);
@@ -133,20 +160,49 @@ export class AssetService {
       basePrice.plus(shippingCost).plus(installationCost).plus(otherCapitalized),
     );
 
-    // WHT — Fix #1.1: base on installation cost (or custom)
+    // WHT — Fix #1.1: base on installation cost (or custom whtBaseAmount)
     let whtAmount = new Decimal(0);
-    if (dto.hasWht && dto.whtRate) {
-      const whtBase = new Decimal(dto.whtBaseAmount ?? installationCost);
-      whtAmount = round2(whtBase.times(dto.whtRate));
+    if (input.hasWht && input.whtRate != null) {
+      const whtBase = new Decimal(
+        (input.whtBaseAmount ?? installationCost).toString(),
+      );
+      whtAmount = round2(whtBase.times(input.whtRate.toString()));
     }
 
     const monthlyDepr = round4(
-      purchaseCost.minus(residualValue).div(dto.usefulLifeMonths),
+      purchaseCost.minus(residualValue).div(input.usefulLifeMonths),
     );
+
+    return {
+      basePrice,
+      vatAmount,
+      purchaseCost,
+      whtAmount,
+      monthlyDepr,
+      // Echo back inputs that callers also need
+      shippingCost,
+      installationCost,
+      otherCapitalized,
+      residualValue,
+    };
+  }
+
+  async createDraft(dto: CreateAssetDto, createdById: string) {
+    const {
+      basePrice,
+      vatAmount,
+      purchaseCost,
+      whtAmount,
+      monthlyDepr,
+      shippingCost,
+      installationCost,
+      otherCapitalized,
+      residualValue,
+    } = this.computeCostFields(dto);
 
     return this.prisma.$transaction(async (tx) => {
       const docNo = await this.generateDocNo(tx);
-      const { assetCode } = await this.generateAssetCode(dto.category);
+      const { assetCode } = await this.generateAssetCode(tx, dto.category);
 
       return tx.fixedAsset.create({
         data: {
@@ -229,8 +285,8 @@ export class AssetService {
 
     let derivedUpdate: Prisma.FixedAssetUpdateInput = {};
     if (costChanged) {
-      // Merge current asset with dto for recompute
-      const m = {
+      // Merge current asset with dto, then run the shared compute helper.
+      const computed = this.computeCostFields({
         basePrice: dto.basePrice ?? asset.basePrice,
         shippingCost: dto.shippingCost ?? asset.shippingCost,
         installationCost: dto.installationCost ?? asset.installationCost,
@@ -242,45 +298,15 @@ export class AssetService {
         hasWht: dto.hasWht ?? asset.hasWht,
         whtRate: dto.whtRate ?? asset.whtRate,
         whtBaseAmount: dto.whtBaseAmount ?? asset.whtBaseAmount,
-      };
-
-      const basePriceRaw = new Decimal(m.basePrice.toString());
-      const shippingCost = new Decimal(m.shippingCost.toString());
-      const installationCost = new Decimal(m.installationCost.toString());
-      const otherCapitalized = new Decimal(m.otherCapitalized.toString());
-      const residualValue = new Decimal(m.residualValue.toString());
-
-      let basePrice = basePriceRaw;
-      let vatAmount = new Decimal(0);
-      if (m.hasVat) {
-        if (m.vatInclusive) {
-          vatAmount = round2(basePriceRaw.times(7).div(107));
-          basePrice = basePriceRaw.minus(vatAmount);
-        } else {
-          vatAmount = round2(basePriceRaw.times('0.07'));
-        }
-      }
-      const purchaseCost = round2(
-        basePrice.plus(shippingCost).plus(installationCost).plus(otherCapitalized),
-      );
-      let whtAmount = new Decimal(0);
-      if (m.hasWht && m.whtRate != null) {
-        const whtBase = new Decimal(
-          (m.whtBaseAmount ?? installationCost).toString(),
-        );
-        whtAmount = round2(whtBase.times(m.whtRate.toString()));
-      }
-      const monthlyDepr = round4(
-        purchaseCost.minus(residualValue).div(m.usefulLifeMonths),
-      );
+      });
 
       derivedUpdate = {
-        basePrice,
-        vatAmount,
-        purchaseCost,
-        whtAmount,
-        monthlyDepr,
-        netBookValue: purchaseCost,
+        basePrice: computed.basePrice,
+        vatAmount: computed.vatAmount,
+        purchaseCost: computed.purchaseCost,
+        whtAmount: computed.whtAmount,
+        monthlyDepr: computed.monthlyDepr,
+        netBookValue: computed.purchaseCost,
       };
     }
 
@@ -440,12 +466,13 @@ export class AssetService {
       );
     }
 
-    // V15: Period lock check
+    // V15: Period lock check (purchase date must be in an open period for POST)
     const financeCompanyId = await this.getFinanceCompanyId();
     try {
       await validatePeriodOpen(this.prisma, asset.purchaseDate, financeCompanyId);
     } catch (err: any) {
-      // Log blocked attempt
+      // Log blocked attempt (own write — outside the post tx by design,
+      // we want a record of the failed attempt even though the tx never opens).
       await this.prisma.auditLog.create({
         data: {
           userId: postedById,
@@ -461,14 +488,15 @@ export class AssetService {
       );
     }
 
-    // Post JE via template
-    const result = await this.purchaseTemplate.execute({
-      assetId: id,
-      postedById,
-    });
+    // Atomic: template (idempotency + JE post + snapshots + journal-post audit)
+    // + asset status update + AuditLog all run in ONE outer $transaction.
+    // Crash anywhere = full rollback. No more orphan JE / stuck status.
+    const result = await this.prisma.$transaction(async (tx) => {
+      const inner = await this.purchaseTemplate.execute(
+        { assetId: id, postedById },
+        tx,
+      );
 
-    // Update asset status (template already wrote account snapshots)
-    await this.prisma.$transaction(async (tx) => {
       await tx.fixedAsset.update({
         where: { id },
         data: {
@@ -477,6 +505,7 @@ export class AssetService {
           postedAt: new Date(),
         },
       });
+
       await tx.auditLog.create({
         data: {
           userId: postedById,
@@ -487,10 +516,12 @@ export class AssetService {
           newValue: {
             status: 'POSTED',
             postedById,
-            journalEntryNumber: result.entryNo,
+            journalEntryNumber: inner.entryNo,
           },
         },
       });
+
+      return inner;
     });
 
     this.logger.log(
@@ -517,10 +548,12 @@ export class AssetService {
       );
     }
 
-    // V15: Period lock check
+    // V15: Period lock check — reversal posts TODAY, not on the original
+    // purchaseDate. A long-since-closed past period must not block a valid
+    // reversal posted into the current open period.
     const financeCompanyId = await this.getFinanceCompanyId();
     try {
-      await validatePeriodOpen(this.prisma, asset.purchaseDate, financeCompanyId);
+      await validatePeriodOpen(this.prisma, new Date(), financeCompanyId);
     } catch (err: any) {
       await this.prisma.auditLog.create({
         data: {
@@ -537,15 +570,14 @@ export class AssetService {
       );
     }
 
-    // Post reversal JE (template already checks for DepreciationEntry)
-    const result = await this.reverseTemplate.execute({
-      assetId: id,
-      reversedById,
-      reason,
-    });
+    // Atomic: template (deprCount + idempotency + JE post + flag + audit)
+    // + asset status update + AuditLog all run in ONE outer $transaction.
+    const result = await this.prisma.$transaction(async (tx) => {
+      const inner = await this.reverseTemplate.execute(
+        { assetId: id, reversedById, reason },
+        tx,
+      );
 
-    // Update asset status
-    await this.prisma.$transaction(async (tx) => {
       await tx.fixedAsset.update({
         where: { id },
         data: {
@@ -555,6 +587,7 @@ export class AssetService {
           reversalReason: reason,
         },
       });
+
       await tx.auditLog.create({
         data: {
           userId: reversedById,
@@ -566,10 +599,12 @@ export class AssetService {
             status: 'REVERSED',
             reversedById,
             reversalReason: reason,
-            reversalEntryNumber: result.entryNo,
+            reversalEntryNumber: inner.entryNo,
           },
         },
       });
+
+      return inner;
     });
 
     this.logger.log(
@@ -597,7 +632,7 @@ export class AssetService {
 
     return this.prisma.$transaction(async (tx) => {
       const docNo = await this.generateDocNo(tx);
-      const { assetCode } = await this.generateAssetCode(source.category);
+      const { assetCode } = await this.generateAssetCode(tx, source.category);
 
       const copy = await tx.fixedAsset.create({
         data: {

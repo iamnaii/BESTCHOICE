@@ -62,7 +62,10 @@ async function ensureTestAsset(opts: {
 }
 
 async function setup() {
+  // Order matters — child tables before parents.
   await prisma.depreciationEntry.deleteMany({});
+  await prisma.assetTransferHistory.deleteMany({});
+  await prisma.journalPostAuditLog.deleteMany({});
   await prisma.journalLine.deleteMany({});
   await prisma.journalEntry.deleteMany({});
   await prisma.fixedAsset.deleteMany({});

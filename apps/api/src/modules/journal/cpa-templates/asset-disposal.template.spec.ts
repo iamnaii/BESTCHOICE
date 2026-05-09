@@ -61,7 +61,10 @@ async function ensureTestAsset(opts: {
 }
 
 async function setup() {
+  // Order matters — child tables before parents.
   await prisma.depreciationEntry.deleteMany({});
+  await prisma.assetTransferHistory.deleteMany({});
+  await prisma.journalPostAuditLog.deleteMany({});
   await prisma.journalLine.deleteMany({});
   await prisma.journalEntry.deleteMany({});
   await prisma.fixedAsset.deleteMany({});
@@ -141,7 +144,7 @@ describe('AssetDisposalTemplate', () => {
     expect(updated!.disposalDate).toBeDefined();
   });
 
-  it('gain case: NBV=20000, proceeds=30000 → Cr 41-1102 กำไร 10000', async () => {
+  it('gain case: NBV=20000, proceeds=30000 → Cr 42-1105 กำไร 10000', async () => {
     // cost=100000, accumulated=80000, NBV=20000, proceeds=30000, gain=10000
     const asset = await ensureTestAsset({
       category: 'EQUIPMENT',
@@ -169,8 +172,8 @@ describe('AssetDisposalTemplate', () => {
     const totalCr = je!.lines.reduce((s, l) => s.plus(l.credit.toString()), new Decimal(0));
     expect(totalDr.toFixed(2)).toBe(totalCr.toFixed(2));
 
-    // Cr gain 10000 (interim account 41-1102)
-    const gainLine = je!.lines.find((l) => l.accountCode === '41-1102');
+    // Cr gain 10000 (account 42-1105 — กำไรจากการจำหน่ายสินทรัพย์)
+    const gainLine = je!.lines.find((l) => l.accountCode === '42-1105');
     expect(gainLine).toBeDefined();
     expect(new Decimal(gainLine!.credit.toString()).toFixed(2)).toBe('10000.00');
 

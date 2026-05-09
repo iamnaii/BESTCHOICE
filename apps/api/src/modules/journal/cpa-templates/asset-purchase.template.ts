@@ -57,11 +57,16 @@ export class AssetPurchaseTemplate {
     private readonly prisma: PrismaService,
   ) {}
 
-  async execute(input: AssetPurchaseInput): Promise<{ entryNo: string }> {
+  async execute(
+    input: AssetPurchaseInput,
+    outerTx?: Prisma.TransactionClient,
+  ): Promise<{ entryNo: string }> {
     const { assetId, postedById } = input;
 
-    // Asset existence check (read-only, no race condition — leave outside tx)
-    const asset = await this.prisma.fixedAsset.findFirst({
+    // Asset existence check — use outer tx if provided so we read inside the
+    // caller's transaction snapshot (consistent with other reads).
+    const reader = (outerTx ?? this.prisma) as Prisma.TransactionClient;
+    const asset = await reader.fixedAsset.findFirst({
       where: { id: assetId, deletedAt: null },
     });
     if (!asset) {
@@ -142,8 +147,10 @@ export class AssetPurchaseTemplate {
     // Wrap idempotency check + JE post + asset snapshot update + audit log in a single transaction.
     // The idempotency check MUST be inside the tx to prevent TOCTOU races where two concurrent
     // calls for the same assetId both pass the check and create duplicate POSTED JEs.
-    let entryNo: string | undefined;
-    await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    //
+    // When outerTx is provided, we run inside the caller's transaction (no nested $transaction)
+    // so service-level atomicity (template + asset status update + AuditLog) is achievable.
+    const run = async (tx: Prisma.TransactionClient): Promise<{ entryNo: string }> => {
       const existing = await tx.journalEntry.findFirst({
         where: {
           metadata: { path: ['assetId'], equals: assetId } as any,
@@ -152,11 +159,10 @@ export class AssetPurchaseTemplate {
         },
       });
       if (existing) {
-        entryNo = existing.entryNumber;
         this.logger.log(
-          `[Phase1] AssetPurchaseTemplate idempotency — JE ${entryNo} already exists for asset ${assetId}, skipping`,
+          `[Phase1] AssetPurchaseTemplate idempotency — JE ${existing.entryNumber} already exists for asset ${assetId}, skipping`,
         );
-        return;
+        return { entryNo: existing.entryNumber };
       }
 
       const result = await this.journal.createAndPost(
@@ -176,8 +182,6 @@ export class AssetPurchaseTemplate {
         },
         tx,
       );
-      entryNo = result.entryNumber;
-      const entryId = result.id;
 
       // Pin account snapshots to the asset (Handover Fix #1.2)
       await tx.fixedAsset.update({
@@ -193,20 +197,22 @@ export class AssetPurchaseTemplate {
       // rolls back the JE post — never end up with a POSTED entry sans audit.
       await tx.journalPostAuditLog.create({
         data: {
-          journalEntryId: entryId,
+          journalEntryId: result.id,
           postedById,
           postedAt: new Date(),
         },
       });
-    });
 
-    if (!entryNo) {
-      throw new Error('AssetPurchase: failed to determine entry number');
-    }
+      return { entryNo: result.entryNumber };
+    };
+
+    const out = outerTx
+      ? await run(outerTx)
+      : await this.prisma.$transaction(run);
 
     this.logger.log(
-      `[Phase1] AssetPurchaseTemplate posted JE ${entryNo} for asset ${asset.assetCode} cost=${purchaseCost.toFixed(2)}`,
+      `[Phase1] AssetPurchaseTemplate posted JE ${out.entryNo} for asset ${asset.assetCode} cost=${purchaseCost.toFixed(2)}`,
     );
-    return { entryNo };
+    return out;
   }
 }

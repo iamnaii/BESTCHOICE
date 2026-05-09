@@ -37,7 +37,10 @@ export class AssetPurchaseReverseTemplate {
     private readonly prisma: PrismaService,
   ) {}
 
-  async execute(input: AssetPurchaseReverseInput): Promise<{ entryNo: string }> {
+  async execute(
+    input: AssetPurchaseReverseInput,
+    outerTx?: Prisma.TransactionClient,
+  ): Promise<{ entryNo: string }> {
     const { assetId, reversedById, reason } = input;
 
     // 1. reason validation
@@ -45,8 +48,10 @@ export class AssetPurchaseReverseTemplate {
       throw new BadRequestException('Reversal reason is required');
     }
 
+    const reader = (outerTx ?? this.prisma) as Prisma.TransactionClient;
+
     // 2. find original purchase JE via metadata flow + assetId
-    const original = await this.prisma.journalEntry.findFirst({
+    const original = await reader.journalEntry.findFirst({
       where: {
         AND: [
           { metadata: { path: ['flow'], equals: 'asset-purchase' } as any },
@@ -68,13 +73,7 @@ export class AssetPurchaseReverseTemplate {
       );
     }
 
-    // 4. block if any depreciation entry exists for this asset
-    const deprCount = await this.prisma.depreciationEntry.count({ where: { assetId } });
-    if (deprCount > 0) {
-      throw new BadRequestException(
-        `Cannot reverse: asset has ${deprCount} depreciation entries. Reverse those first.`,
-      );
-    }
+    // 4. depreciation check moved inside $transaction (TOCTOU-safe, see below).
 
     // 5. build mirror lines (Dr <-> Cr swap, prefix description with [VOID])
     type Line = { accountCode: string; dr: Decimal; cr: Decimal; description?: string };
@@ -94,9 +93,16 @@ export class AssetPurchaseReverseTemplate {
       );
     }
 
-    // 6. transactional: TOCTOU-safe idempotency + post + flag original + audit
-    let entryNo: string | undefined;
-    await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    // 6. transactional: TOCTOU-safe idempotency + deprCount + post + flag + audit
+    const run = async (tx: Prisma.TransactionClient): Promise<{ entryNo: string }> => {
+      // Block if any depreciation entry exists — must be inside tx (TOCTOU).
+      const deprCount = await tx.depreciationEntry.count({ where: { assetId } });
+      if (deprCount > 0) {
+        throw new BadRequestException(
+          `Cannot reverse: asset has ${deprCount} depreciation entries. Reverse those first.`,
+        );
+      }
+
       // Re-check: another caller may have raced and already reversed
       const existingReversal = await tx.journalEntry.findFirst({
         where: {
@@ -142,7 +148,6 @@ export class AssetPurchaseReverseTemplate {
         },
         tx,
       );
-      entryNo = result.entryNumber;
 
       // Flag the original JE — TFRS no-touch: only the metadata bag changes.
       await tx.journalEntry.update({
@@ -167,15 +172,17 @@ export class AssetPurchaseReverseTemplate {
           postedAt: new Date(),
         },
       });
-    });
 
-    if (!entryNo) {
-      throw new Error('AssetPurchaseReverse: failed to determine entry number');
-    }
+      return { entryNo: result.entryNumber };
+    };
+
+    const out = outerTx
+      ? await run(outerTx)
+      : await this.prisma.$transaction(run);
 
     this.logger.log(
-      `[Phase1] AssetPurchaseReverseTemplate posted JE ${entryNo} reversing ${original.entryNumber} for asset ${assetId}`,
+      `[Phase1] AssetPurchaseReverseTemplate posted JE ${out.entryNo} reversing ${original.entryNumber} for asset ${assetId}`,
     );
-    return { entryNo };
+    return out;
   }
 }

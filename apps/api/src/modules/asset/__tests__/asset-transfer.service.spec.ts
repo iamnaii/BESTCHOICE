@@ -335,7 +335,7 @@ describe('AssetTransferService', () => {
     expect((log!.oldValue as any).location).toBe('HQ');
     expect((log!.newValue as any).custodian).toBe('Bob');
     expect((log!.newValue as any).location).toBe('HQ');
-    expect((log!.newValue as any).transferId).toMatch(/^TRF-\d+/);
+    expect((log!.newValue as any).transferId).toMatch(/^TRF-[a-f0-9]{12}$/);
     expect((log!.newValue as any).reason).toBe('reassign to Bob');
   });
 
@@ -363,8 +363,8 @@ describe('AssetTransferService', () => {
     expect(history[1].toCustodian).toBe('C');
   });
 
-  // 10. transferId is unique and TRF-prefixed
-  it('transferId is unique and TRF-prefixed (regex /^TRF-\\d+/)', async () => {
+  // 10. transferId is unique and TRF-prefixed (TRF-<12 hex chars>, crypto.randomUUID)
+  it('transferId is unique and TRF-prefixed (regex /^TRF-[a-f0-9]{12}$/)', async () => {
     const asset = await createPostedAsset();
     await transferSvc.transfer(
       asset.id,
@@ -375,6 +375,6 @@ describe('AssetTransferService', () => {
       where: { assetId: asset.id },
     });
     expect(history).toBeTruthy();
-    expect(history!.transferId).toMatch(/^TRF-\d+/);
+    expect(history!.transferId).toMatch(/^TRF-[a-f0-9]{12}$/);
   });
 });

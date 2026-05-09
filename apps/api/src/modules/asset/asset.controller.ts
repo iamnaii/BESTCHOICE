@@ -63,7 +63,8 @@ export class AssetController {
   @Get('generate-code')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   generateCode(@Query('category') category?: AssetCategory) {
-    return this.assetService.generateAssetCode(category);
+    // No tx — controller is read-only (returns next free code suggestion).
+    return this.assetService.generateAssetCode(undefined, category);
   }
 
   @Get(':id')

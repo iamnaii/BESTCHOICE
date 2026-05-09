@@ -46,7 +46,7 @@ export class CreateAssetDto {
   @IsOptional() @IsNumber() @Min(0)
   whtBaseAmount?: number;
 
-  @IsOptional() @IsNumber() @Min(0) @Max(0.05, { message: 'อัตรา WHT ต้องไม่เกิน 5%' })
+  @IsOptional() @IsNumber() @Min(0) @Max(0.03, { message: 'อัตรา WHT ต้องไม่เกิน 3%' })
   whtRate?: number;
 
   @IsOptional() @IsString() @IsIn(['21-3102', '21-3103'], { message: 'รหัสบัญชี WHT ไม่ถูกต้อง' })

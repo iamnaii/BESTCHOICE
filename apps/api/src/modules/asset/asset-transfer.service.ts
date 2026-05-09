@@ -5,6 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { AssetStatus } from '@prisma/client';
+import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TransferAssetDto } from './dto/transfer-asset.dto';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
@@ -110,9 +111,10 @@ export class AssetTransferService {
 
     // 8. Atomic: history + asset update + audit log
     return this.prisma.$transaction(async (tx) => {
-      const transferId = `TRF-${Date.now()}-${Math.random()
-        .toString(36)
-        .slice(2, 6)}`;
+      // 12 hex chars = ~48 bits of entropy → collision probability negligible
+      // even at millions of transfers/day. The previous 4-char Math.random()
+      // suffix only had ~20 bits and was prone to collisions in batches.
+      const transferId = `TRF-${randomUUID().replace(/-/g, '').slice(0, 12)}`;
 
       await tx.assetTransferHistory.create({
         data: {

@@ -38,11 +38,12 @@ async function createAsset(overrides: Partial<Prisma.FixedAssetUncheckedCreateIn
 }
 
 async function setup() {
-  // Clean accounting tables
+  // Clean accounting tables (children-first to satisfy FK constraints)
   await prisma.journalPostAuditLog.deleteMany({});
   await prisma.journalLine.deleteMany({});
   await prisma.journalEntry.deleteMany({});
   await prisma.depreciationEntry.deleteMany({});
+  await prisma.assetTransferHistory.deleteMany({});
   await prisma.fixedAsset.deleteMany({});
 
   await seedFinanceCoa(prisma);
@@ -85,6 +86,7 @@ describe('AssetPurchaseTemplate', () => {
     await prisma.journalPostAuditLog.deleteMany({});
     await prisma.journalLine.deleteMany({});
     await prisma.journalEntry.deleteMany({});
+    await prisma.assetTransferHistory.deleteMany({});
     await prisma.fixedAsset.deleteMany({});
   });
 

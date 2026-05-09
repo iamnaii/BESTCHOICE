@@ -35,6 +35,7 @@ async function get2AJEs(contractId: string): Promise<ActualJe[]> {
 
 describe('Template 2A — Installment Accrual', () => {
   beforeAll(async () => {
+    await prisma.journalPostAuditLog.deleteMany({});
     await prisma.journalLine.deleteMany({});
     await prisma.journalEntry.deleteMany({});
     await prisma.receipt.deleteMany({});
@@ -187,8 +188,11 @@ describe('Template 2A — Installment Accrual', () => {
 
       const consumeJE = await prisma.journalEntry.findFirstOrThrow({
         where: {
-          metadata: { path: ['flow'], equals: 'advance-consume-on-accrual' },
-        } as any,
+          AND: [
+            { metadata: { path: ['flow'], equals: 'advance-consume-on-accrual' } as any },
+            { metadata: { path: ['contractId'], equals: c.id } as any },
+          ],
+        },
         include: { lines: { orderBy: { createdAt: 'asc' } } },
       });
 
@@ -224,8 +228,11 @@ describe('Template 2A — Installment Accrual', () => {
 
       const consumeJE = await prisma.journalEntry.findFirstOrThrow({
         where: {
-          metadata: { path: ['flow'], equals: 'advance-consume-on-accrual' },
-        } as any,
+          AND: [
+            { metadata: { path: ['flow'], equals: 'advance-consume-on-accrual' } as any },
+            { metadata: { path: ['contractId'], equals: c.id } as any },
+          ],
+        },
         include: { lines: true },
       });
 

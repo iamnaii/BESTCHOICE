@@ -86,6 +86,7 @@ const AssetDisposePage = lazy(() => import('@/pages/assets/AssetDisposePage'));
 const AssetSchedulePage = lazy(() => import('@/pages/assets/AssetSchedulePage'));
 const AssetRegisterPage = lazy(() => import('@/pages/assets/AssetRegisterPage'));
 const AssetJournalPage = lazy(() => import('@/pages/assets/AssetJournalPage'));
+const AssetSummaryReportPage = lazy(() => import('@/pages/assets/AssetSummaryReportPage'));
 const AssetTransfersListPage = lazy(() => import('@/pages/transfers/AssetTransfersListPage'));
 const DepreciationPage = lazy(() => import('@/pages/depreciation/DepreciationPage'));
 const ChartOfAccountsPage = lazy(() => import('@/pages/ChartOfAccountsPage'));
@@ -737,6 +738,14 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
                 <AssetJournalPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/assets/summary-report"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <AssetSummaryReportPage />
               </ProtectedRoute>
             }
           />

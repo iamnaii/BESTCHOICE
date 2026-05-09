@@ -45,6 +45,7 @@ import {
   PiggyBank,
   Star,
   Tag,
+  TrendingDown,
 } from 'lucide-react';
 
 /* ── Types ─────────────────────────────────────────── */
@@ -239,6 +240,8 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'รายจ่าย', path: '/expenses', icon: Receipt },
         { label: 'รายได้อื่น', path: '/other-income', icon: TrendingUp },
         { label: 'กำไร-ขาดทุน', path: '/profit-loss', icon: PieChart },
+        { label: 'สินทรัพย์', path: '/assets', icon: Landmark },
+        { label: 'ค่าเสื่อม', path: '/depreciation', icon: TrendingDown },
         { label: 'งวดบัญชี', path: '/accounting/periods', icon: CalendarDays },
       ],
     },
@@ -287,6 +290,7 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
         { label: 'ภาษี', path: '/tax-reports', icon: Calculator },
         { label: 'รายงาน', path: '/reports', icon: BarChart3 },
         { label: 'สินทรัพย์', path: '/assets', icon: Landmark },
+        { label: 'ค่าเสื่อม', path: '/depreciation', icon: TrendingDown },
       ],
     },
     {
@@ -372,6 +376,8 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'รายงาน', path: '/reports', icon: BarChart3 },
         { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
         { label: 'ภาษี', path: '/tax-reports', icon: Calculator },
+        { label: 'สินทรัพย์', path: '/assets', icon: Landmark },
+        { label: 'ค่าเสื่อม', path: '/depreciation', icon: TrendingDown },
         { label: 'ปิดบัญชีรายเดือน', path: '/monthly-close', icon: CalendarDays },
         { label: 'งวดบัญชี', path: '/accounting/periods', icon: CalendarDays },
         { label: 'ชำระเงินระหว่างบริษัท', path: '/accounting/intercompany', icon: ClipboardList },

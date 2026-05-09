@@ -4,7 +4,7 @@ import {
   NotFoundException,
   Logger,
 } from '@nestjs/common';
-import { AssetStatus } from '@prisma/client';
+import { AssetStatus, Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TransferAssetDto } from './dto/transfer-asset.dto';
@@ -162,5 +162,126 @@ export class AssetTransferService {
       );
       return updated;
     });
+  }
+
+  /**
+   * Phase 2 — Cross-asset transfer audit list.
+   *
+   * Lists all transfer history rows across all assets (not scoped to a single
+   * asset). Supports search across asset code/name/serial, custodian and
+   * location "contains" filters (case-insensitive), branchId filter via the
+   * asset relation, date range on transferDate, and direct assetId filter.
+   *
+   * Returns ordered by transferDate desc with joined asset + transferredBy.
+   */
+  async listAllTransfers(filters: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    assetId?: string;
+    custodianContains?: string;
+    locationContains?: string;
+    branchId?: string;
+    fromDate?: string;
+    toDate?: string;
+  }) {
+    const page = filters.page ?? 1;
+    const limit = filters.limit ?? 50;
+    const where: Prisma.AssetTransferHistoryWhereInput = {};
+
+    if (filters.assetId) where.assetId = filters.assetId;
+
+    if (filters.custodianContains) {
+      where.OR = [
+        {
+          fromCustodian: {
+            contains: filters.custodianContains,
+            mode: 'insensitive',
+          },
+        },
+        {
+          toCustodian: {
+            contains: filters.custodianContains,
+            mode: 'insensitive',
+          },
+        },
+      ];
+    }
+
+    if (filters.locationContains) {
+      const existingAnd = Array.isArray(where.AND)
+        ? where.AND
+        : where.AND
+          ? [where.AND]
+          : [];
+      where.AND = [
+        ...existingAnd,
+        {
+          OR: [
+            {
+              fromLocation: {
+                contains: filters.locationContains,
+                mode: 'insensitive',
+              },
+            },
+            {
+              toLocation: {
+                contains: filters.locationContains,
+                mode: 'insensitive',
+              },
+            },
+          ],
+        },
+      ];
+    }
+
+    // Combine branchId + search into where.asset
+    const assetWhere: Prisma.FixedAssetWhereInput = {};
+    if (filters.branchId) assetWhere.branchId = filters.branchId;
+    if (filters.search) {
+      assetWhere.OR = [
+        { assetCode: { contains: filters.search, mode: 'insensitive' } },
+        { name: { contains: filters.search, mode: 'insensitive' } },
+        { serialNo: { contains: filters.search, mode: 'insensitive' } },
+      ];
+    }
+    if (Object.keys(assetWhere).length > 0) {
+      where.asset = assetWhere;
+    }
+
+    if (filters.fromDate || filters.toDate) {
+      const range: Prisma.DateTimeFilter = {};
+      if (filters.fromDate) range.gte = new Date(filters.fromDate);
+      if (filters.toDate) {
+        const end = new Date(filters.toDate);
+        end.setHours(23, 59, 59, 999);
+        range.lte = end;
+      }
+      where.transferDate = range;
+    }
+
+    const [data, total] = await Promise.all([
+      this.prisma.assetTransferHistory.findMany({
+        where,
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: { transferDate: 'desc' },
+        include: {
+          asset: {
+            select: {
+              id: true,
+              assetCode: true,
+              name: true,
+              serialNo: true,
+              branchId: true,
+            },
+          },
+          transferredBy: { select: { id: true, name: true } },
+        },
+      }),
+      this.prisma.assetTransferHistory.count({ where }),
+    ]);
+
+    return { data, total, page, limit };
   }
 }

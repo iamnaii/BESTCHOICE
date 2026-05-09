@@ -112,6 +112,20 @@ export interface ListResponse {
   limit: number;
 }
 
+export interface AssetTransferRow {
+  id: string;
+  transferId: string;
+  transferDate: string;
+  fromCustodian: string | null;
+  toCustodian: string | null;
+  fromLocation: string | null;
+  toLocation: string | null;
+  reason: string;
+  asset: { id: string; assetCode: string; name: string; serialNo: string | null; branchId: string | null };
+  transferredBy: { id: string; name: string };
+  createdAt: string;
+}
+
 export const CATEGORY_LABEL: Record<AssetCategory, string> = {
   EQUIPMENT: 'อุปกรณ์สำนักงาน',
   IMPROVEMENT: 'ส่วนปรับปรุงอาคาร',
@@ -134,3 +148,16 @@ export const CASH_ACCOUNTS: { code: string; name: string }[] = [
   { code: '11-1202', name: 'ธนาคาร SCB (ค่าใช้จ่าย)' },
   { code: '11-1203', name: 'ธนาคาร SCB (ค่าเสื่อม)' },
 ];
+
+export interface DisposalCalculation {
+  nbv: number;
+  proceeds: number;
+  gainLoss: number; // positive = gain, negative = loss
+  journalLines: Array<{
+    accountCode: string;
+    accountName: string;
+    debit: number;
+    credit: number;
+  }>;
+  isBalanced: boolean;
+}

@@ -6,6 +6,8 @@ import { AssetService } from '../asset.service';
 import { AssetTransferService } from '../asset-transfer.service';
 import { AssetPurchaseTemplate } from '../../journal/cpa-templates/asset-purchase.template';
 import { AssetPurchaseReverseTemplate } from '../../journal/cpa-templates/asset-purchase-reverse.template';
+import { AssetDisposalTemplate } from '../../journal/cpa-templates/asset-disposal.template';
+import { AssetDisposalReverseTemplate } from '../../journal/cpa-templates/asset-disposal-reverse.template';
 import { JournalAutoService } from '../../journal/journal-auto.service';
 import { seedFinanceCoa } from '../../../../prisma/seed-coa-finance';
 import { CreateAssetDto } from '../dto/create-asset.dto';
@@ -32,6 +34,8 @@ describe('AssetTransferService', () => {
         AssetTransferService,
         AssetPurchaseTemplate,
         AssetPurchaseReverseTemplate,
+        AssetDisposalTemplate,
+        AssetDisposalReverseTemplate,
         JournalAutoService,
         PrismaService,
       ],
@@ -376,5 +380,170 @@ describe('AssetTransferService', () => {
     });
     expect(history).toBeTruthy();
     expect(history!.transferId).toMatch(/^TRF-[a-f0-9]{12}$/);
+  });
+
+  // -------------------------------------------------------------------------
+  // Phase 2 — listAllTransfers (cross-asset audit query)
+  // -------------------------------------------------------------------------
+  describe('listAllTransfers', () => {
+    beforeEach(async () => {
+      // cleanupUserAssets in outer beforeEach already handled, but ensure
+      // any cross-test transfer rows from this user are gone before each case
+      await prisma.assetTransferHistory.deleteMany({
+        where: { asset: { createdById: userId } },
+      });
+    });
+
+    it('returns paginated rows with joined asset + transferredBy', async () => {
+      const a = await createPostedAsset('Alice', 'HQ');
+      await transferSvc.transfer(
+        a.id,
+        {
+          transferDate: '2026-05-08',
+          toCustodian: 'Bob',
+          reason: 'staff change',
+        },
+        userId,
+      );
+      const result = await transferSvc.listAllTransfers({
+        page: 1,
+        limit: 50,
+        assetId: a.id,
+      });
+      expect(result.total).toBe(1);
+      expect(result.data[0]).toMatchObject({
+        toCustodian: 'Bob',
+        reason: 'staff change',
+        asset: expect.objectContaining({
+          assetCode: a.assetCode,
+          name: a.name,
+        }),
+        transferredBy: expect.objectContaining({ id: userId }),
+      });
+      expect(result.data[0].transferDate).toBeInstanceOf(Date);
+    });
+
+    it('paginates correctly (12 transfers, page 1 limit 5 = 5 rows; page 3 = 2)', async () => {
+      const a = await createPostedAsset();
+      for (let i = 0; i < 12; i++) {
+        await transferSvc.transfer(
+          a.id,
+          {
+            transferDate: '2026-05-08',
+            toCustodian: `Person${i}`,
+            reason: `transfer ${i}`,
+          },
+          userId,
+        );
+      }
+      const page1 = await transferSvc.listAllTransfers({
+        page: 1,
+        limit: 5,
+        assetId: a.id,
+      });
+      expect(page1.data).toHaveLength(5);
+      expect(page1.total).toBe(12);
+      const page3 = await transferSvc.listAllTransfers({
+        page: 3,
+        limit: 5,
+        assetId: a.id,
+      });
+      expect(page3.data).toHaveLength(2);
+    });
+
+    it('filters by date range', async () => {
+      const a = await createPostedAsset();
+      await transferSvc.transfer(
+        a.id,
+        { transferDate: '2026-03-01', toCustodian: 'A', reason: 'mar' },
+        userId,
+      );
+      await transferSvc.transfer(
+        a.id,
+        { transferDate: '2026-04-15', toCustodian: 'B', reason: 'apr' },
+        userId,
+      );
+      const result = await transferSvc.listAllTransfers({
+        fromDate: '2026-04-01',
+        toDate: '2026-04-30',
+        assetId: a.id,
+      });
+      expect(result.total).toBe(1);
+      expect(result.data[0].toCustodian).toBe('B');
+    });
+
+    it('filters by custodian (case-insensitive contains)', async () => {
+      // Initial custodian must NOT contain "alice" or "bob" — both rows would
+      // otherwise match via fromCustodian after the first transfer.
+      const a = await createPostedAsset('Smith', 'HQ');
+      await transferSvc.transfer(
+        a.id,
+        {
+          transferDate: '2026-04-01',
+          toCustodian: 'Alice Wong',
+          reason: 'one',
+        },
+        userId,
+      );
+      // Second transfer from 'Alice Wong' to 'Charlie' — fromCustodian still
+      // contains 'alice', so both rows match. To make the assertion clean we
+      // create a SECOND asset for the non-matching transfer instead.
+      const b = await createPostedAsset('Daniel', 'HQ');
+      await transferSvc.transfer(
+        b.id,
+        { transferDate: '2026-04-02', toCustodian: 'Bob', reason: 'two' },
+        userId,
+      );
+      const result = await transferSvc.listAllTransfers({
+        custodianContains: 'alice',
+      });
+      expect(result.total).toBe(1);
+      expect(result.data[0].toCustodian).toBe('Alice Wong');
+    });
+
+    it('filters by branchId via asset relation', async () => {
+      const branch = await prisma.branch.findFirst({
+        where: { deletedAt: null },
+      });
+      if (!branch) return; // skip if no branches in test DB
+      const a = await createPostedAsset();
+      await prisma.fixedAsset.update({
+        where: { id: a.id },
+        data: { branchId: branch.id },
+      });
+      await transferSvc.transfer(
+        a.id,
+        { transferDate: '2026-05-08', toCustodian: 'Bob', reason: 'test' },
+        userId,
+      );
+      const result = await transferSvc.listAllTransfers({
+        branchId: branch.id,
+        assetId: a.id,
+      });
+      expect(result.total).toBeGreaterThanOrEqual(1);
+    });
+
+    it('search matches assetCode/name/serialNo', async () => {
+      const a = await createPostedAsset();
+      await prisma.fixedAsset.update({
+        where: { id: a.id },
+        data: { name: 'Special Notebook X1', serialNo: 'SN-12345' },
+      });
+      await transferSvc.transfer(
+        a.id,
+        { transferDate: '2026-05-08', toCustodian: 'Bob', reason: 'test' },
+        userId,
+      );
+      const byName = await transferSvc.listAllTransfers({
+        search: 'Special',
+        assetId: a.id,
+      });
+      expect(byName.total).toBe(1);
+      const bySerial = await transferSvc.listAllTransfers({
+        search: 'SN-12345',
+        assetId: a.id,
+      });
+      expect(bySerial.total).toBe(1);
+    });
   });
 });

@@ -144,7 +144,7 @@ export class DepreciationTemplate {
           reference: `${assetId}:depreciation:${period}`,
           metadata: {
             tag: 'DEPRECIATION',
-            flow: 'monthly',
+            flow: 'depreciation',
             assetId,
             assetCode: asset.assetCode,
             period,

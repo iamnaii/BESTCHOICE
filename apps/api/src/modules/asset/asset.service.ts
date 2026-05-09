@@ -9,8 +9,11 @@ import { Prisma, AssetCategory, AssetStatus } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { CreateAssetDto } from './dto/create-asset.dto';
 import { UpdateAssetDto } from './dto/update-asset.dto';
+import { DisposeAssetDto } from './dto/dispose-asset.dto';
 import { AssetPurchaseTemplate } from '../journal/cpa-templates/asset-purchase.template';
 import { AssetPurchaseReverseTemplate } from '../journal/cpa-templates/asset-purchase-reverse.template';
+import { AssetDisposalTemplate } from '../journal/cpa-templates/asset-disposal.template';
+import { AssetDisposalReverseTemplate } from '../journal/cpa-templates/asset-disposal-reverse.template';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
 
 const CATEGORY_PREFIX: Record<AssetCategory, string> = {
@@ -37,6 +40,8 @@ export class AssetService {
     private readonly prisma: PrismaService,
     private readonly purchaseTemplate: AssetPurchaseTemplate,
     private readonly reverseTemplate: AssetPurchaseReverseTemplate,
+    private readonly disposalTemplate: AssetDisposalTemplate,
+    private readonly disposalReverseTemplate: AssetDisposalReverseTemplate,
   ) {}
 
   /**
@@ -711,9 +716,208 @@ export class AssetService {
     });
   }
 
-  /** Backward-compat for controller — implemented in Task 9. */
-  async dispose(_id: string, _dto: unknown) {
-    throw new Error('dispose: implement in Task 9 (Phase 2)');
+  /**
+   * Dispose a POSTED asset — SALE or WRITE_OFF.
+   *
+   * - Outer $transaction wraps:
+   *     disposalTemplate.execute (sets status=DISPOSED + NBV=0 + posts JE)
+   *     + manual status update to WRITTEN_OFF for WRITE_OFF disposals
+   *     + AuditLog ASSET_DISPOSE with disposalType/proceeds/gainLoss metadata.
+   * - V15 period guard on disposalDate → ASSET_DISPOSE_BLOCKED audit on rejection.
+   * - Idempotent: second call returns same JE entryNo via template's
+   *   metadata-based lookup (flow=asset-disposal + assetId).
+   */
+  async dispose(
+    id: string,
+    dto: DisposeAssetDto,
+    userId: string,
+  ): Promise<{ entryNo: string }> {
+    const asset = await this.prisma.fixedAsset.findFirst({
+      where: { id, deletedAt: null },
+    });
+    if (!asset) throw new NotFoundException('ไม่พบสินทรัพย์');
+    if (asset.status !== AssetStatus.POSTED) {
+      throw new BadRequestException(
+        `จำหน่ายได้เฉพาะสถานะ POSTED (ปัจจุบัน: ${asset.status})`,
+      );
+    }
+
+    const disposalDate = new Date(dto.disposalDate);
+    if (disposalDate.getTime() > Date.now()) {
+      throw new BadRequestException('วันที่จำหน่ายต้องไม่อยู่ในอนาคต (future date not allowed)');
+    }
+
+    // V15 guard — disposalDate must be in an open period
+    const financeCompanyId = await this.getFinanceCompanyId();
+    try {
+      await validatePeriodOpen(this.prisma, disposalDate, financeCompanyId);
+    } catch (err: any) {
+      await this.prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'ASSET_DISPOSE_BLOCKED',
+          entity: 'fixed_asset',
+          entityId: id,
+          oldValue: { status: 'POSTED' },
+          newValue: {
+            reason: err?.message ?? 'period closed',
+            disposalType: dto.disposalType,
+          },
+        },
+      });
+      throw new BadRequestException(
+        `ไม่สามารถจำหน่าย: ${err?.message ?? 'งวดบัญชีปิดแล้ว (period closed)'}`,
+      );
+    }
+
+    const proceeds =
+      dto.disposalType === 'SALE' ? dto.proceeds ?? 0 : 0;
+    const depositAccountCode =
+      dto.disposalType === 'SALE' ? dto.depositAccountCode : undefined;
+
+    // Capture NBV BEFORE the template runs (template overwrites NBV=0).
+    const nbvBefore = new Decimal(asset.netBookValue.toString());
+    const newStatus: AssetStatus =
+      dto.disposalType === 'WRITE_OFF'
+        ? AssetStatus.WRITTEN_OFF
+        : AssetStatus.DISPOSED;
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const inner = await this.disposalTemplate.execute(
+        {
+          assetId: id,
+          disposalDate,
+          disposalProceeds: proceeds,
+          depositAccountCode,
+        },
+        tx,
+      );
+
+      // Template sets status = 'DISPOSED'. For WRITE_OFF we want WRITTEN_OFF.
+      const afterTemplate = await tx.fixedAsset.findUnique({ where: { id } });
+      if (afterTemplate!.status !== newStatus) {
+        await tx.fixedAsset.update({
+          where: { id },
+          data: { status: newStatus },
+        });
+      }
+
+      const gainLoss = new Decimal(proceeds).minus(nbvBefore);
+
+      await tx.auditLog.create({
+        data: {
+          userId,
+          action: 'ASSET_DISPOSE',
+          entity: 'fixed_asset',
+          entityId: id,
+          oldValue: {
+            status: 'POSTED',
+            netBookValue: nbvBefore.toString(),
+          },
+          newValue: {
+            status: newStatus,
+            disposalType: dto.disposalType,
+            disposalDate: dto.disposalDate,
+            proceeds,
+            gainLoss: gainLoss.toString(),
+            journalEntryNumber: inner.entryNo,
+            reason: dto.reason,
+          },
+        },
+      });
+
+      return inner;
+    });
+
+    this.logger.log(
+      `[Phase2] DISPOSE asset ${asset.assetCode} type=${dto.disposalType} → ${result.entryNo}`,
+    );
+    return result;
+  }
+
+  /**
+   * Reverse a previously disposed asset (undo SALE / WRITE_OFF).
+   *
+   * - Status DISPOSED or WRITTEN_OFF → POSTED, disposalDate cleared,
+   *   NBV recomputed from purchaseCost - accumulatedDepr (template handles).
+   * - Outer $transaction wraps disposalReverseTemplate.execute + AuditLog
+   *   ASSET_REVERSE_DISPOSE.
+   * - V15 period guard runs on TODAY (reversal posted into current period),
+   *   not on the original disposalDate.
+   * - Idempotent: second call rejects (template flags original JE as reversed).
+   */
+  async reverseDispose(
+    id: string,
+    reason: string,
+    userId: string,
+  ): Promise<{ entryNo: string }> {
+    if (!reason || reason.trim().length === 0) {
+      throw new BadRequestException('กรุณาระบุเหตุผลการกลับรายการ');
+    }
+    const asset = await this.prisma.fixedAsset.findFirst({
+      where: { id, deletedAt: null },
+    });
+    if (!asset) throw new NotFoundException('ไม่พบสินทรัพย์');
+    if (
+      asset.status !== AssetStatus.DISPOSED &&
+      asset.status !== AssetStatus.WRITTEN_OFF
+    ) {
+      throw new BadRequestException(
+        `Reverse dispose ได้เฉพาะสถานะ DISPOSED หรือ WRITTEN_OFF (ปัจจุบัน: ${asset.status})`,
+      );
+    }
+
+    // V15 guard — reversal posts TODAY, not on the original disposalDate.
+    const financeCompanyId = await this.getFinanceCompanyId();
+    try {
+      await validatePeriodOpen(this.prisma, new Date(), financeCompanyId);
+    } catch (err: any) {
+      await this.prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'ASSET_REVERSE_DISPOSE_BLOCKED',
+          entity: 'fixed_asset',
+          entityId: id,
+          oldValue: { status: asset.status },
+          newValue: { reason: err?.message ?? 'period closed' },
+        },
+      });
+      throw new BadRequestException(
+        `ไม่สามารถ Reverse: ${err?.message ?? 'งวดบัญชีปิดแล้ว (period closed)'}`,
+      );
+    }
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const inner = await this.disposalReverseTemplate.execute(
+        { assetId: id, reversedById: userId, reason },
+        tx,
+      );
+
+      await tx.auditLog.create({
+        data: {
+          userId,
+          action: 'ASSET_REVERSE_DISPOSE',
+          entity: 'fixed_asset',
+          entityId: id,
+          oldValue: {
+            status: asset.status,
+            disposalDate: asset.disposalDate?.toISOString() ?? null,
+          },
+          newValue: {
+            status: 'POSTED',
+            reversalReason: reason,
+            reversalEntryNumber: inner.entryNo,
+          },
+        },
+      });
+
+      return inner;
+    });
+
+    this.logger.log(
+      `[Phase2] REVERSE_DISPOSE asset ${asset.assetCode} → ${result.entryNo}`,
+    );
+    return result;
   }
 
   /** Backward-compat for controller — implemented in Task 9. */

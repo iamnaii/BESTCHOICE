@@ -18,6 +18,8 @@ import { CreateAssetDto } from './dto/create-asset.dto';
 import { UpdateAssetDto } from './dto/update-asset.dto';
 import { ReverseAssetDto } from './dto/reverse-asset.dto';
 import { TransferAssetDto } from './dto/transfer-asset.dto';
+import { DisposeAssetDto } from './dto/dispose-asset.dto';
+import { ReverseDisposalDto } from './dto/reverse-disposal.dto';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -122,6 +124,26 @@ export class AssetController {
     @CurrentUser('id') userId: string,
   ) {
     return this.transferService.transfer(id, dto, userId);
+  }
+
+  @Post(':id/dispose')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  dispose(
+    @Param('id') id: string,
+    @Body() dto: DisposeAssetDto,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.assetService.dispose(id, dto, userId);
+  }
+
+  @Post(':id/reverse-dispose')
+  @Roles('OWNER')
+  reverseDispose(
+    @Param('id') id: string,
+    @Body() dto: ReverseDisposalDto,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.assetService.reverseDispose(id, dto.reason, userId);
   }
 
   @Post(':id/copy')

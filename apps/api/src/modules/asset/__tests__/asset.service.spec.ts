@@ -5,6 +5,8 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { AssetService } from '../asset.service';
 import { AssetPurchaseTemplate } from '../../journal/cpa-templates/asset-purchase.template';
 import { AssetPurchaseReverseTemplate } from '../../journal/cpa-templates/asset-purchase-reverse.template';
+import { AssetDisposalTemplate } from '../../journal/cpa-templates/asset-disposal.template';
+import { AssetDisposalReverseTemplate } from '../../journal/cpa-templates/asset-disposal-reverse.template';
 import { JournalAutoService } from '../../journal/journal-auto.service';
 import { seedFinanceCoa } from '../../../../prisma/seed-coa-finance';
 import { CreateAssetDto } from '../dto/create-asset.dto';
@@ -33,6 +35,8 @@ describe('AssetService — CRUD + helpers', () => {
         JournalAutoService,
         AssetPurchaseTemplate,
         AssetPurchaseReverseTemplate,
+        AssetDisposalTemplate,
+        AssetDisposalReverseTemplate,
       ],
     }).compile();
     await module.init();
@@ -633,6 +637,368 @@ describe('AssetService — CRUD + helpers', () => {
         where: { assetId: copy.id },
       });
       expect(copyHistory).toBe(0);
+    });
+  });
+
+  // ==========================================================================
+  // Task 3 — dispose + reverseDispose with V15 period guard + AuditLog
+  // ==========================================================================
+
+  describe('AssetService.dispose', () => {
+    it('SALE with proceeds > NBV: status DISPOSED, gain JE line, AuditLog ASSET_DISPOSE', async () => {
+      const asset = await createPostedAsset();
+      // Set NBV to 20000 (purchaseCost 30000 - accumulated 10000) for testing
+      await prisma.fixedAsset.update({
+        where: { id: asset.id },
+        data: { accumulatedDepr: new Decimal(10000), netBookValue: new Decimal(20000) },
+      });
+      const result = await service.dispose(
+        asset.id,
+        {
+          disposalType: 'SALE',
+          disposalDate: '2026-05-09',
+          proceeds: 25000,
+          depositAccountCode: '11-1201',
+          reason: 'ขายให้พนักงาน',
+        },
+        userId,
+      );
+      expect(result.entryNo).toMatch(/^JE-\d{6}-\d{5}$/);
+
+      const updated = await prisma.fixedAsset.findUnique({ where: { id: asset.id } });
+      expect(updated!.status).toBe('DISPOSED');
+      expect(updated!.disposalDate).not.toBeNull();
+      expect(new Decimal(updated!.netBookValue.toString()).equals(0)).toBe(true);
+
+      const log = await prisma.auditLog.findFirst({
+        where: { entity: 'fixed_asset', entityId: asset.id, action: 'ASSET_DISPOSE' },
+      });
+      expect(log).toBeTruthy();
+      expect((log!.newValue as any).disposalType).toBe('SALE');
+      expect((log!.newValue as any).proceeds).toBe(25000);
+    });
+
+    it('SALE with proceeds < NBV: loss JE line', async () => {
+      const asset = await createPostedAsset();
+      await prisma.fixedAsset.update({
+        where: { id: asset.id },
+        data: { accumulatedDepr: new Decimal(5000), netBookValue: new Decimal(25000) },
+      });
+      await service.dispose(
+        asset.id,
+        {
+          disposalType: 'SALE',
+          disposalDate: '2026-05-09',
+          proceeds: 18000,
+          depositAccountCode: '11-1201',
+          reason: 'ขายขาดทุน',
+        },
+        userId,
+      );
+      const je = await prisma.journalEntry.findFirst({
+        where: {
+          AND: [
+            { metadata: { path: ['flow'], equals: 'asset-disposal' } as any },
+            { metadata: { path: ['assetId'], equals: asset.id } as any },
+          ],
+        },
+        include: { lines: true },
+      });
+      const lossLine = je!.lines.find((l) => l.accountCode === '53-1605');
+      expect(lossLine).toBeTruthy();
+    });
+
+    it('WRITE_OFF: status WRITTEN_OFF, full NBV loss, no proceeds line', async () => {
+      const asset = await createPostedAsset();
+      await prisma.fixedAsset.update({
+        where: { id: asset.id },
+        data: { accumulatedDepr: new Decimal(5000), netBookValue: new Decimal(25000) },
+      });
+      await service.dispose(
+        asset.id,
+        {
+          disposalType: 'WRITE_OFF',
+          disposalDate: '2026-05-09',
+          reason: 'เครื่องพังแก้ไม่ได้',
+        },
+        userId,
+      );
+      const updated = await prisma.fixedAsset.findUnique({ where: { id: asset.id } });
+      expect(updated!.status).toBe('WRITTEN_OFF');
+      const je = await prisma.journalEntry.findFirst({
+        where: {
+          AND: [
+            { metadata: { path: ['flow'], equals: 'asset-disposal' } as any },
+            { metadata: { path: ['assetId'], equals: asset.id } as any },
+          ],
+        },
+        include: { lines: true },
+      });
+      expect(je!.lines.find((l) => l.accountCode === '53-1605')).toBeTruthy();
+      expect(je!.lines.find((l) => l.accountCode === '11-1201')).toBeFalsy();
+    });
+
+    it('rejects if status != POSTED', async () => {
+      const draft = await service.createDraft(
+        {
+          name: 'X',
+          category: 'EQUIPMENT' as AssetCategory,
+          basePrice: 1000,
+          usefulLifeMonths: 12,
+          purchaseDate: '2026-05-01',
+          paymentAccount: '11-1201',
+        },
+        userId,
+      );
+      await expect(
+        service.dispose(
+          draft.id,
+          {
+            disposalType: 'SALE',
+            disposalDate: '2026-05-09',
+            proceeds: 500,
+            depositAccountCode: '11-1201',
+            reason: 'test reason',
+          },
+          userId,
+        ),
+      ).rejects.toThrow(/POSTED/);
+    });
+
+    it('rejects if disposalDate is in the future', async () => {
+      const asset = await createPostedAsset();
+      const future = new Date();
+      future.setFullYear(future.getFullYear() + 1);
+      await expect(
+        service.dispose(
+          asset.id,
+          {
+            disposalType: 'SALE',
+            disposalDate: future.toISOString().slice(0, 10),
+            proceeds: 1000,
+            depositAccountCode: '11-1201',
+            reason: 'future test',
+          },
+          userId,
+        ),
+      ).rejects.toThrow(/future|อนาคต/i);
+    });
+
+    it('V15 closed period → ASSET_DISPOSE_BLOCKED audit + reject', async () => {
+      const finance = await prisma.companyInfo.findFirst({
+        where: { companyCode: 'FINANCE' },
+      });
+      if (!finance) throw new Error('FINANCE company missing');
+      // Create asset FIRST (purchase month also May 2026), then close the period.
+      const asset = await createPostedAsset();
+      await prisma.accountingPeriod.upsert({
+        where: { companyId_year_month: { companyId: finance.id, year: 2026, month: 5 } },
+        update: { status: 'CLOSED', closedAt: new Date(), closedById: userId },
+        create: {
+          companyId: finance.id,
+          year: 2026,
+          month: 5,
+          status: 'CLOSED',
+          closedAt: new Date(),
+          closedById: userId,
+        },
+      });
+      try {
+        await expect(
+          service.dispose(
+            asset.id,
+            {
+              disposalType: 'SALE',
+              disposalDate: '2026-05-02',
+              proceeds: 1000,
+              depositAccountCode: '11-1201',
+              reason: 'period closed test',
+            },
+            userId,
+          ),
+        ).rejects.toThrow(/period|งวด/i);
+        const blocked = await prisma.auditLog.findFirst({
+          where: {
+            entity: 'fixed_asset',
+            entityId: asset.id,
+            action: 'ASSET_DISPOSE_BLOCKED',
+          },
+        });
+        expect(blocked).toBeTruthy();
+      } finally {
+        await prisma.accountingPeriod.delete({
+          where: { companyId_year_month: { companyId: finance.id, year: 2026, month: 5 } },
+        });
+      }
+    });
+
+    it('idempotent: second call returns same JE', async () => {
+      const asset = await createPostedAsset();
+      const r1 = await service.dispose(
+        asset.id,
+        {
+          disposalType: 'SALE',
+          disposalDate: '2026-05-09',
+          proceeds: 25000,
+          depositAccountCode: '11-1201',
+          reason: 'first call',
+        },
+        userId,
+      );
+      // Reset status to test idempotency on the JE level
+      await prisma.fixedAsset.update({
+        where: { id: asset.id },
+        data: { status: 'POSTED', disposalDate: null },
+      });
+      const r2 = await service.dispose(
+        asset.id,
+        {
+          disposalType: 'SALE',
+          disposalDate: '2026-05-09',
+          proceeds: 25000,
+          depositAccountCode: '11-1201',
+          reason: 'second call',
+        },
+        userId,
+      );
+      expect(r2.entryNo).toBe(r1.entryNo);
+    });
+  });
+
+  describe('AssetService.reverseDispose', () => {
+    it('restores asset to POSTED, clears disposalDate, recomputes NBV', async () => {
+      const asset = await createPostedAsset();
+      await prisma.fixedAsset.update({
+        where: { id: asset.id },
+        data: { accumulatedDepr: new Decimal(10000), netBookValue: new Decimal(20000) },
+      });
+      await service.dispose(
+        asset.id,
+        {
+          disposalType: 'SALE',
+          disposalDate: '2026-05-09',
+          proceeds: 25000,
+          depositAccountCode: '11-1201',
+          reason: 'first',
+        },
+        userId,
+      );
+      const result = await service.reverseDispose(asset.id, 'ลูกค้าคืน', userId);
+      expect(result.entryNo).toMatch(/^JE-\d{6}-\d{5}$/);
+      const updated = await prisma.fixedAsset.findUnique({ where: { id: asset.id } });
+      expect(updated!.status).toBe('POSTED');
+      expect(updated!.disposalDate).toBeNull();
+      // NBV = purchaseCost (36000) - accumulatedDepr (10000) = 26000
+      // The reverse template recomputes NBV from purchaseCost - accumulatedDepr,
+      // not from the previous explicit netBookValue value (asset accumulated was 10000).
+      expect(new Decimal(updated!.netBookValue.toString()).equals(26000)).toBe(true);
+    });
+
+    it('rejects if status != DISPOSED/WRITTEN_OFF', async () => {
+      const asset = await createPostedAsset();
+      await expect(service.reverseDispose(asset.id, 'test', userId)).rejects.toThrow(
+        /DISPOSED|WRITTEN_OFF/,
+      );
+    });
+
+    it('writes AuditLog ASSET_REVERSE_DISPOSE', async () => {
+      const asset = await createPostedAsset();
+      await service.dispose(
+        asset.id,
+        { disposalType: 'WRITE_OFF', disposalDate: '2026-05-09', reason: 'first' },
+        userId,
+      );
+      await service.reverseDispose(asset.id, 'mistake', userId);
+      const log = await prisma.auditLog.findFirst({
+        where: {
+          entity: 'fixed_asset',
+          entityId: asset.id,
+          action: 'ASSET_REVERSE_DISPOSE',
+        },
+      });
+      expect(log).toBeTruthy();
+    });
+
+    it('rejects with empty reason', async () => {
+      const asset = await createPostedAsset();
+      await service.dispose(
+        asset.id,
+        { disposalType: 'WRITE_OFF', disposalDate: '2026-05-09', reason: 'first' },
+        userId,
+      );
+      await expect(service.reverseDispose(asset.id, '', userId)).rejects.toThrow();
+    });
+
+    it('V15 current-date guard: ASSET_REVERSE_DISPOSE_BLOCKED audit if today is in closed period', async () => {
+      const finance = await prisma.companyInfo.findFirst({
+        where: { companyCode: 'FINANCE' },
+      });
+      if (!finance) throw new Error('FINANCE company missing');
+      const now = new Date();
+      const asset = await createPostedAsset();
+      await service.dispose(
+        asset.id,
+        {
+          disposalType: 'WRITE_OFF',
+          disposalDate: now.toISOString().slice(0, 10),
+          reason: 'first',
+        },
+        userId,
+      );
+      await prisma.accountingPeriod.upsert({
+        where: {
+          companyId_year_month: {
+            companyId: finance.id,
+            year: now.getFullYear(),
+            month: now.getMonth() + 1,
+          },
+        },
+        update: { status: 'CLOSED', closedAt: new Date(), closedById: userId },
+        create: {
+          companyId: finance.id,
+          year: now.getFullYear(),
+          month: now.getMonth() + 1,
+          status: 'CLOSED',
+          closedAt: new Date(),
+          closedById: userId,
+        },
+      });
+      try {
+        await expect(service.reverseDispose(asset.id, 'test', userId)).rejects.toThrow(
+          /period|งวด/i,
+        );
+        const blocked = await prisma.auditLog.findFirst({
+          where: {
+            entity: 'fixed_asset',
+            entityId: asset.id,
+            action: 'ASSET_REVERSE_DISPOSE_BLOCKED',
+          },
+        });
+        expect(blocked).toBeTruthy();
+      } finally {
+        await prisma.accountingPeriod.delete({
+          where: {
+            companyId_year_month: {
+              companyId: finance.id,
+              year: now.getFullYear(),
+              month: now.getMonth() + 1,
+            },
+          },
+        });
+      }
+    });
+
+    it('idempotent: second reverseDispose call rejects (already-reversed)', async () => {
+      const asset = await createPostedAsset();
+      await service.dispose(
+        asset.id,
+        { disposalType: 'WRITE_OFF', disposalDate: '2026-05-09', reason: 'first' },
+        userId,
+      );
+      await service.reverseDispose(asset.id, 'first', userId);
+      await expect(service.reverseDispose(asset.id, 'second', userId)).rejects.toThrow(
+        /POSTED|DISPOSED|already/i,
+      );
     });
   });
 });

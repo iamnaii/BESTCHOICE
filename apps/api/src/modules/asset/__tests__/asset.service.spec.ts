@@ -1092,6 +1092,19 @@ describe('AssetService — CRUD + helpers', () => {
       expect(result.data.length).toBe(1);
       expect(result.data[0].category).toBe('EQUIPMENT');
     });
+
+    it('status=POSTED filter excludes DISPOSED assets', async () => {
+      const a = await createPostedAsset();
+      await prisma.fixedAsset.update({
+        where: { id: a.id },
+        data: { status: 'DISPOSED', disposalDate: new Date('2026-04-01') },
+      });
+      const result = await service.getRegister({
+        status: 'POSTED' as AssetStatus,
+        asOfDate: '2026-05-01',
+      });
+      expect(result.data.find((r) => r.id === a.id)).toBeUndefined();
+    });
   });
 
   // ==========================================================================

@@ -43,7 +43,21 @@ export class AssetReportsService {
     const where: Prisma.FixedAssetWhereInput = {
       deletedAt: null,
       purchaseDate: { lte: asOfDate },
-      OR: [
+    };
+
+    if (filters.status) {
+      // User explicitly wants a specific status — narrow active-at-asOfDate accordingly
+      if (filters.status === 'POSTED') {
+        where.status = 'POSTED';
+      } else if (filters.status === 'DISPOSED' || filters.status === 'WRITTEN_OFF') {
+        where.status = filters.status;
+        where.disposalDate = { gt: asOfDate }; // still active at asOfDate (not yet disposed)
+      } else {
+        where.status = filters.status; // DRAFT, REVERSED — pass through
+      }
+    } else {
+      // No status filter: include POSTED OR (DISPOSED/WRITTEN_OFF still active at asOfDate)
+      where.OR = [
         { status: 'POSTED' },
         {
           AND: [
@@ -51,11 +65,9 @@ export class AssetReportsService {
             { disposalDate: { gt: asOfDate } },
           ],
         },
-      ],
-    };
-    if (filters.status) {
-      where.AND = [{ status: filters.status }];
+      ];
     }
+
     if (filters.branchId) where.branchId = filters.branchId;
 
     const assets = await this.prisma.fixedAsset.findMany({

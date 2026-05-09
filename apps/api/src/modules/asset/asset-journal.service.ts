@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -37,7 +37,13 @@ export class AssetJournalService {
   }) {
     const page = filters.page ?? 1;
     const limit = Math.min(filters.limit ?? 50, 200);
-    const flows = FLOW_GROUPS[filters.flowType ?? 'all'] ?? [...ASSET_FLOWS];
+    const flowKey = filters.flowType ?? 'all';
+    if (filters.flowType !== undefined && !(flowKey in FLOW_GROUPS)) {
+      throw new BadRequestException(
+        `flowType ไม่ถูกต้อง: ${filters.flowType} (ต้องเป็น ${Object.keys(FLOW_GROUPS).join(', ')})`,
+      );
+    }
+    const flows = FLOW_GROUPS[flowKey];
 
     const flowOr = flows.map((f) => ({ metadata: { path: ['flow'], equals: f } }));
     const where: Prisma.JournalEntryWhereInput = {

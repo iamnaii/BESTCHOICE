@@ -494,7 +494,24 @@ export class AssetService {
     const where: Prisma.FixedAssetWhereInput = {
       deletedAt: null,
       purchaseDate: { lte: asOfDate },
-      OR: [
+    };
+
+    if (filters.status) {
+      // User explicitly wants a specific status — narrow active-at-asOfDate accordingly
+      if (filters.status === AssetStatus.POSTED) {
+        where.status = AssetStatus.POSTED;
+      } else if (
+        filters.status === AssetStatus.DISPOSED ||
+        filters.status === AssetStatus.WRITTEN_OFF
+      ) {
+        where.status = filters.status;
+        where.disposalDate = { gt: asOfDate }; // still active at asOfDate (not yet disposed)
+      } else {
+        where.status = filters.status; // DRAFT, REVERSED — pass through
+      }
+    } else {
+      // No status filter: include POSTED OR (DISPOSED/WRITTEN_OFF still active at asOfDate)
+      where.OR = [
         { status: AssetStatus.POSTED },
         {
           AND: [
@@ -502,13 +519,10 @@ export class AssetService {
             { disposalDate: { gt: asOfDate } },
           ],
         },
-      ],
-    };
-    if (filters.category) where.category = filters.category;
-    if (filters.status) {
-      // status filter narrows further (within the OR above)
-      where.AND = [{ status: filters.status }];
+      ];
     }
+
+    if (filters.category) where.category = filters.category;
     if (filters.branchId) where.branchId = filters.branchId;
     if (filters.search) {
       where.AND = [
@@ -565,7 +579,7 @@ export class AssetService {
       const remainingDepreciable = netBookValueAt.minus(residualValue);
       const remainingMonths =
         monthlyDepr.gt(0) && remainingDepreciable.gt(0)
-          ? Math.ceil(remainingDepreciable.div(monthlyDepr).toNumber())
+          ? remainingDepreciable.div(monthlyDepr).ceil().toNumber()
           : 0;
 
       totalPurchaseCost = totalPurchaseCost.plus(purchaseCost);

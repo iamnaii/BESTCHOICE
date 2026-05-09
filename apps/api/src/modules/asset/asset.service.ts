@@ -606,6 +606,97 @@ export class AssetService {
     };
   }
 
+  /**
+   * Per-asset Asset Schedule — month-by-month NBV projection from purchaseDate.
+   *
+   * Behavior:
+   *  - Cursor starts at first day of asset.purchaseDate's month
+   *  - Each iteration: if a DepreciationEntry exists for the period, use its
+   *    actual amount; otherwise use the formula `monthlyDepr` (clamped so we
+   *    never depreciate below the residualValue floor)
+   *  - Stops at the first FULLY_DEPRECIATED period (NBV ≤ residualValue)
+   *  - If asset.disposalDate is set, also stops when periodEnd > disposalDate
+   *  - Hard cap at 60 months as a sanity guard (unbounded loops shouldn't occur
+   *    given the residual-floor + disposalDate truncation, but guard anyway)
+   */
+  async getAssetSchedule(assetId: string) {
+    const asset = await this.prisma.fixedAsset.findFirst({
+      where: { id: assetId, deletedAt: null },
+    });
+    if (!asset) throw new NotFoundException('ไม่พบสินทรัพย์');
+
+    const purchaseCost = new Decimal(asset.purchaseCost.toString());
+    const residualValue = new Decimal(asset.residualValue.toString());
+    const monthlyDepr = new Decimal(asset.monthlyDepr.toString());
+
+    // Load existing entries indexed by period (skip reversed)
+    const entries = await this.prisma.depreciationEntry.findMany({
+      where: { assetId, reversedAt: null },
+      select: { period: true, amount: true },
+    });
+    const entryByPeriod = new Map(
+      entries.map((e) => [e.period, new Decimal(e.amount.toString())]),
+    );
+
+    const rows: Array<{
+      period: string;
+      monthlyDepr: string;
+      accumulatedDepr: string;
+      netBookValue: string;
+      status: 'ACTIVE' | 'FULLY_DEPRECIATED';
+    }> = [];
+
+    let accumulated = new Decimal(0);
+    const cursor = new Date(asset.purchaseDate);
+    cursor.setDate(1);
+    const cutoff = asset.disposalDate ?? null;
+    const HARD_CAP = 60;
+
+    for (let i = 0; i < HARD_CAP; i++) {
+      const periodEnd = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0);
+      if (cutoff && periodEnd > cutoff) break;
+
+      const period = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`;
+      const remaining = purchaseCost.minus(accumulated).minus(residualValue);
+      if (remaining.lte(0)) break;
+
+      let thisMonth: Decimal;
+      if (entryByPeriod.has(period)) {
+        thisMonth = entryByPeriod.get(period)!;
+      } else {
+        // Last-period adjustment: never over-depreciate past residual floor
+        thisMonth = remaining.lt(monthlyDepr) ? remaining : monthlyDepr;
+      }
+
+      accumulated = accumulated.plus(thisMonth);
+      const nbv = purchaseCost.minus(accumulated);
+      const status: 'ACTIVE' | 'FULLY_DEPRECIATED' =
+        nbv.lte(residualValue) ? 'FULLY_DEPRECIATED' : 'ACTIVE';
+
+      rows.push({
+        period,
+        monthlyDepr: thisMonth.toFixed(2),
+        accumulatedDepr: accumulated.toFixed(2),
+        netBookValue: nbv.toFixed(2),
+        status,
+      });
+
+      if (status === 'FULLY_DEPRECIATED') break;
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
+
+    return {
+      assetId: asset.id,
+      assetCode: asset.assetCode,
+      name: asset.name,
+      purchaseDate: asset.purchaseDate.toISOString().slice(0, 10),
+      purchaseCost: purchaseCost.toFixed(2),
+      residualValue: residualValue.toFixed(2),
+      monthlyDepr: monthlyDepr.toFixed(2),
+      rows,
+    };
+  }
+
   // ==========================================================================
   // Stubs — implemented in Tasks 7-9
   // ==========================================================================

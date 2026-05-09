@@ -7,13 +7,18 @@
 -- (doc_no, base_price, purchase_cost, monthly_depr, net_book_value, useful_life_months,
 -- created_by_id) cannot be backfilled mechanically.
 
--- Pre-condition guard: Phase 1 migration assumes fixed_assets is empty
--- (production deploys must run wipe-assets CLI first; see plan Task 2).
--- If any rows exist, abort the migration before destructive ops begin.
+-- Pre-condition guard: Phase 1 migration assumes fixed_assets AND
+-- depreciation_entries are empty (production deploys must run wipe-assets CLI
+-- first; see plan Task 2). If any rows exist in either table, abort the
+-- migration before destructive ops begin. depreciation_entries has FK →
+-- fixed_assets, so orphan rows there could interfere with DROP COLUMN steps.
 DO $$
 BEGIN
   IF (SELECT COUNT(*) FROM fixed_assets) > 0 THEN
     RAISE EXCEPTION 'Refusing to run asset_phase1 migration: fixed_assets must be empty (run wipe:assets CLI first). Found % rows.', (SELECT COUNT(*) FROM fixed_assets);
+  END IF;
+  IF (SELECT COUNT(*) FROM depreciation_entries) > 0 THEN
+    RAISE EXCEPTION 'Refusing to run asset_phase1 migration: depreciation_entries must be empty (run wipe:assets CLI first). Found % rows.', (SELECT COUNT(*) FROM depreciation_entries);
   END IF;
 END $$;
 
@@ -37,6 +42,9 @@ CREATE TYPE "AssetStatus_new" AS ENUM ('DRAFT', 'POSTED', 'REVERSED', 'DISPOSED'
 
 -- Map legacy values: ACTIVE → DRAFT, FULLY_DEPRECIATED → POSTED (best-effort; production
 -- expected to be empty per spec § Migration plan).
+-- USING CASE mapping is documentation only — guard above guarantees 0 rows
+-- so no actual data is converted. The mapping exists to satisfy PostgreSQL's
+-- requirement that USING be specified for enum-with-removed-values cast.
 ALTER TABLE "fixed_assets"
   ALTER COLUMN "status" TYPE "AssetStatus_new"
   USING (
@@ -73,6 +81,25 @@ ALTER TABLE "fixed_assets"
   DROP COLUMN IF EXISTS "last_depreciation_period",
   DROP COLUMN IF EXISTS "depreciation_account_code",
   DROP COLUMN IF EXISTS "accumulated_account_code";
+
+-- =============================================================================
+-- Pre-condition guard #2: Re-check before destructive ADD COLUMN NOT NULL steps.
+-- Defense-in-depth — if anyone removes the top guard during a manual rerun,
+-- this second guard prevents the 7 NOT NULL columns without DEFAULT
+-- (category, doc_no, base_price, purchase_cost, monthly_depr, net_book_value,
+-- useful_life_months) from partial-failing and leaving the DB inconsistent.
+-- Same logic as top guard: refuse if either fixed_assets or depreciation_entries
+-- has any rows.
+-- =============================================================================
+DO $$
+BEGIN
+  IF (SELECT COUNT(*) FROM fixed_assets) > 0 THEN
+    RAISE EXCEPTION 'Refusing to run destructive ADD COLUMN steps: fixed_assets must be empty. Found % rows.', (SELECT COUNT(*) FROM fixed_assets);
+  END IF;
+  IF (SELECT COUNT(*) FROM depreciation_entries) > 0 THEN
+    RAISE EXCEPTION 'Refusing to run destructive ADD COLUMN steps: depreciation_entries must be empty. Found % rows.', (SELECT COUNT(*) FROM depreciation_entries);
+  END IF;
+END $$;
 
 -- =============================================================================
 -- Step 4: Convert legacy free-form `category` (TEXT?) to enum AssetCategory NOT NULL
@@ -138,6 +165,10 @@ ALTER TABLE "fixed_assets" ALTER COLUMN "created_by_id" SET NOT NULL;
 -- =============================================================================
 CREATE UNIQUE INDEX "fixed_assets_doc_no_key" ON "fixed_assets" ("doc_no");
 CREATE INDEX "fixed_assets_category_status_idx" ON "fixed_assets" ("category", "status");
+-- Schema-declared single-column indexes (matches schema.prisma @@index annotations)
+CREATE INDEX IF NOT EXISTS "fixed_assets_status_idx" ON "fixed_assets" ("status");
+CREATE INDEX IF NOT EXISTS "fixed_assets_purchase_date_idx" ON "fixed_assets" ("purchase_date");
+CREATE INDEX IF NOT EXISTS "fixed_assets_branch_id_idx" ON "fixed_assets" ("branch_id");
 
 -- =============================================================================
 -- Step 7: Foreign keys for new audit relations + restore created_by_id FK

@@ -1001,4 +1001,96 @@ describe('AssetService — CRUD + helpers', () => {
       );
     });
   });
+
+  // ==========================================================================
+  // Phase 3 — Task 1: getRegister (asOfDate-based historical NBV)
+  // ==========================================================================
+  describe('AssetService.getRegister', () => {
+    it('default asOfDate (today): returns all POSTED assets with current NBV', async () => {
+      const a = await createPostedAsset({ name: 'Test 1' });
+      const b = await createPostedAsset({ name: 'Test 2' });
+      const result = await service.getRegister({});
+      expect(result.data.length).toBeGreaterThanOrEqual(2);
+      expect(result.summary.count).toBeGreaterThanOrEqual(2);
+      const aRow = result.data.find((r) => r.id === a.id)!;
+      expect(aRow).toBeTruthy();
+      expect(new Decimal(aRow.netBookValueAt).equals(a.netBookValue.toString())).toBe(true);
+      // Reference b to keep helper's createPostedAsset call meaningful
+      expect(result.data.find((r) => r.id === b.id)).toBeTruthy();
+    });
+
+    it('past asOfDate: excludes assets created after asOfDate', async () => {
+      const a = await createPostedAsset({ purchaseDate: '2026-01-01' });
+      const b = await createPostedAsset({ purchaseDate: '2026-04-01' });
+      const result = await service.getRegister({ asOfDate: '2026-02-15' });
+      const ids = result.data.map((r) => r.id);
+      expect(ids).toContain(a.id);
+      expect(ids).not.toContain(b.id);
+    });
+
+    it('past asOfDate: includes disposed asset if disposalDate > asOfDate', async () => {
+      const a = await createPostedAsset({ purchaseDate: '2026-01-01' });
+      await prisma.fixedAsset.update({
+        where: { id: a.id },
+        data: { status: 'DISPOSED', disposalDate: new Date('2026-04-01') },
+      });
+      const result = await service.getRegister({ asOfDate: '2026-03-01' });
+      expect(result.data.find((r) => r.id === a.id)).toBeTruthy();
+    });
+
+    it('historical NBV: subtracts depreciation entries up to asOfDate, ignores reversed', async () => {
+      // basePrice 36000, usefulLife 36 → purchaseCost 36000, monthlyDepr 1000
+      const a = await createPostedAsset({ purchaseDate: '2026-01-01' });
+      // 3 entries (Jan, Feb, Mar) — Mar reversed
+      await prisma.depreciationEntry.create({
+        data: { assetId: a.id, period: '2026-01', amount: new Decimal(1000) },
+      });
+      await prisma.depreciationEntry.create({
+        data: { assetId: a.id, period: '2026-02', amount: new Decimal(1000) },
+      });
+      await prisma.depreciationEntry.create({
+        data: {
+          assetId: a.id,
+          period: '2026-03',
+          amount: new Decimal(1000),
+          reversedAt: new Date(),
+          reversedById: userId,
+        },
+      });
+
+      const result = await service.getRegister({ asOfDate: '2026-04-15' });
+      const row = result.data.find((r) => r.id === a.id)!;
+      expect(row).toBeTruthy();
+      expect(new Decimal(row.accumulatedDeprAt).equals(2000)).toBe(true); // only Jan+Feb count
+      expect(new Decimal(row.netBookValueAt).equals(34000)).toBe(true);
+    });
+
+    it('summary totals match sum of rows', async () => {
+      // Two assets with different purchase costs (36000 default + 18000 via basePrice override).
+      await createPostedAsset();
+      await createPostedAsset({ basePrice: 18000 });
+      const result = await service.getRegister({});
+      const sumPC = result.data.reduce(
+        (s, r) => s.plus(r.purchaseCost.toString()),
+        new Decimal(0),
+      );
+      const sumNBV = result.data.reduce(
+        (s, r) => s.plus(r.netBookValueAt.toString()),
+        new Decimal(0),
+      );
+      expect(new Decimal(result.summary.totalPurchaseCost).equals(sumPC)).toBe(true);
+      expect(new Decimal(result.summary.totalNbv).equals(sumNBV)).toBe(true);
+    });
+
+    it('paginates and filters by category', async () => {
+      await createPostedAsset({ category: 'EQUIPMENT' as AssetCategory });
+      await createPostedAsset({ category: 'VEHICLE' as AssetCategory });
+      const result = await service.getRegister({
+        category: 'EQUIPMENT' as AssetCategory,
+        limit: 1,
+      });
+      expect(result.data.length).toBe(1);
+      expect(result.data[0].category).toBe('EQUIPMENT');
+    });
+  });
 });

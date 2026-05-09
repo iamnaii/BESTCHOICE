@@ -456,6 +456,156 @@ export class AssetService {
     });
   }
 
+  /**
+   * Asset Register report — paginated rows of fixed assets active AT `asOfDate`,
+   * with historical accumulated depreciation + net book value computed from
+   * DepreciationEntry rows up to the asOfDate's year-month (exclusive of reversed entries).
+   *
+   * Asset filter:
+   *  - purchaseDate ≤ asOfDate
+   *  - status='POSTED'  OR  (status IN ['DISPOSED','WRITTEN_OFF'] AND disposalDate > asOfDate)
+   *
+   * Per-row historical NBV:
+   *  accumulatedDeprAt = SUM(DepreciationEntry.amount WHERE assetId = id
+   *                            AND period ≤ asOfYearMonth AND reversedAt IS NULL)
+   *  netBookValueAt    = purchaseCost − accumulatedDeprAt
+   *  remainingMonths   = ceil((netBookValueAt − residualValue) / monthlyDepr), floor at 0
+   *
+   * Returns: { data, total, page, limit, asOfDate (resolved), summary }
+   */
+  async getRegister(filters: {
+    asOfDate?: string;
+    category?: AssetCategory;
+    status?: AssetStatus;
+    branchId?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const asOfDate = filters.asOfDate ? new Date(filters.asOfDate) : new Date();
+    const asOfYearMonth = `${asOfDate.getFullYear()}-${String(
+      asOfDate.getMonth() + 1,
+    ).padStart(2, '0')}`;
+    const page = filters.page ?? 1;
+    const limit = Math.min(filters.limit ?? 50, 200);
+
+    // Filter assets: purchased on or before asOfDate; if disposed/written-off,
+    // disposalDate > asOfDate (still active at asOfDate).
+    const where: Prisma.FixedAssetWhereInput = {
+      deletedAt: null,
+      purchaseDate: { lte: asOfDate },
+      OR: [
+        { status: AssetStatus.POSTED },
+        {
+          AND: [
+            { status: { in: [AssetStatus.DISPOSED, AssetStatus.WRITTEN_OFF] } },
+            { disposalDate: { gt: asOfDate } },
+          ],
+        },
+      ],
+    };
+    if (filters.category) where.category = filters.category;
+    if (filters.status) {
+      // status filter narrows further (within the OR above)
+      where.AND = [{ status: filters.status }];
+    }
+    if (filters.branchId) where.branchId = filters.branchId;
+    if (filters.search) {
+      where.AND = [
+        ...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []),
+        {
+          OR: [
+            { assetCode: { contains: filters.search, mode: 'insensitive' } },
+            { name: { contains: filters.search, mode: 'insensitive' } },
+            { serialNo: { contains: filters.search, mode: 'insensitive' } },
+          ],
+        },
+      ];
+    }
+
+    const [assets, total] = await Promise.all([
+      this.prisma.fixedAsset.findMany({
+        where,
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: { purchaseDate: 'desc' },
+        include: { branch: { select: { id: true, name: true } } },
+      }),
+      this.prisma.fixedAsset.count({ where }),
+    ]);
+
+    // Compute historical NBV per asset
+    const assetIds = assets.map((a) => a.id);
+    const entries = assetIds.length
+      ? await this.prisma.depreciationEntry.findMany({
+          where: {
+            assetId: { in: assetIds },
+            period: { lte: asOfYearMonth },
+            reversedAt: null,
+          },
+        })
+      : [];
+
+    const accumByAsset = new Map<string, Decimal>();
+    for (const e of entries) {
+      const cur = accumByAsset.get(e.assetId) ?? new Decimal(0);
+      accumByAsset.set(e.assetId, cur.plus(e.amount.toString()));
+    }
+
+    let totalPurchaseCost = new Decimal(0);
+    let totalAccumulatedDepr = new Decimal(0);
+    let totalNbv = new Decimal(0);
+
+    const data = assets.map((a) => {
+      const purchaseCost = new Decimal(a.purchaseCost.toString());
+      const residualValue = new Decimal(a.residualValue.toString());
+      const monthlyDepr = new Decimal(a.monthlyDepr.toString());
+      const accumulatedDeprAt = accumByAsset.get(a.id) ?? new Decimal(0);
+      const netBookValueAt = purchaseCost.minus(accumulatedDeprAt);
+      const remainingDepreciable = netBookValueAt.minus(residualValue);
+      const remainingMonths =
+        monthlyDepr.gt(0) && remainingDepreciable.gt(0)
+          ? Math.ceil(remainingDepreciable.div(monthlyDepr).toNumber())
+          : 0;
+
+      totalPurchaseCost = totalPurchaseCost.plus(purchaseCost);
+      totalAccumulatedDepr = totalAccumulatedDepr.plus(accumulatedDeprAt);
+      totalNbv = totalNbv.plus(netBookValueAt);
+
+      return {
+        id: a.id,
+        assetCode: a.assetCode,
+        name: a.name,
+        category: a.category,
+        branchId: a.branchId,
+        branch: a.branch,
+        custodian: a.custodian,
+        location: a.location,
+        purchaseDate: a.purchaseDate.toISOString().slice(0, 10),
+        purchaseCost: purchaseCost.toFixed(2),
+        accumulatedDeprAt: accumulatedDeprAt.toFixed(2),
+        netBookValueAt: netBookValueAt.toFixed(2),
+        monthlyDepr: monthlyDepr.toFixed(2),
+        remainingMonths,
+        status: a.status,
+      };
+    });
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+      asOfDate: asOfDate.toISOString().slice(0, 10),
+      summary: {
+        count: total,
+        totalPurchaseCost: totalPurchaseCost.toFixed(2),
+        totalAccumulatedDepr: totalAccumulatedDepr.toFixed(2),
+        totalNbv: totalNbv.toFixed(2),
+      },
+    };
+  }
+
   // ==========================================================================
   // Stubs — implemented in Tasks 7-9
   // ==========================================================================

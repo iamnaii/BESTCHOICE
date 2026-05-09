@@ -157,6 +157,92 @@ export class InstallmentAccrual2ATemplate {
       data: { accrualJournalEntryId: result.entryNumber },
     });
 
+    // CPA Policy A — Auto-consume advance balance on accrual.
+    //
+    // If the contract has an advance parked in 21-1103 (from a payment
+    // posted before this installment's due date — see PaymentReceipt2B
+    // `advanceCredit` flow), immediately clear up to installmentTotal
+    // inside the same tx. Otherwise the trial balance shows both the
+    // freshly-accrued 11-2103 receivable AND the advance liability
+    // sitting alongside each other until the next 2B receipt fires —
+    // which only happens if the customer pays again. Auto-clearing here
+    // keeps the books accurate without requiring a redundant manual
+    // payment touch.
+    //
+    // JE: Dr 21-1103 (consume advance) / Cr 11-2103 (clear receivable)
+    //   for amount = min(advanceBalance, installmentTotal).
+    //
+    // Atomicity: posted in the same outer tx as the accrual JE +
+    // schedule update, so a JE-post failure rolls everything back —
+    // no partially-consumed advance with the receivable still showing.
+    const advanceBalance = new Decimal(c.advanceBalance.toString());
+    if (advanceBalance.gt(0)) {
+      const consume = Decimal.min(advanceBalance, installmentTotal);
+
+      await this.journal.createAndPost(
+        {
+          description: `หักเงินรับล่วงหน้าเข้างวด #${inst.installmentNo} — สัญญา ${c.contractNumber}`,
+          reference: `${inst.id}:advance-consume-on-accrual`,
+          metadata: {
+            tag: '2B',
+            flow: 'advance-consume-on-accrual',
+            contractId: c.id,
+            installmentScheduleId: inst.id,
+            installmentNo: inst.installmentNo,
+            consumeAmount: consume.toFixed(2),
+          },
+          postedAt: inst.dueDate,
+          lines: [
+            {
+              accountCode: '21-1103',
+              dr: consume,
+              cr: zero,
+              description: 'หักเงินรับล่วงหน้าเข้างวด',
+            },
+            {
+              accountCode: '11-2103',
+              dr: zero,
+              cr: consume,
+              description: 'ล้างลูกหนี้ค้างชำระ (จาก advance)',
+            },
+          ],
+        },
+        tx,
+      );
+
+      // Decrement contract's parked advance balance by the consumed amount.
+      await client.contract.update({
+        where: { id: c.id },
+        data: { advanceBalance: { decrement: consume } },
+      });
+
+      // Reflect the consume on the existing Payment row (if one was
+      // pre-created when the advance was first received). Fully covered
+      // installments flip to PAID; partial covers stay PARTIALLY_PAID.
+      const payment = await client.payment.findFirst({
+        where: {
+          contractId: c.id,
+          installmentNo: inst.installmentNo,
+          deletedAt: null,
+        },
+        select: { id: true, amountDue: true, amountPaid: true },
+      });
+      if (payment) {
+        const newAmountPaid = new Decimal(payment.amountPaid.toString()).plus(consume);
+        const due = new Decimal((payment.amountDue ?? installmentTotal).toString());
+        const isPaidInFull = newAmountPaid.gte(due);
+        await client.payment.update({
+          where: { id: payment.id },
+          data: {
+            amountPaid: newAmountPaid,
+            status: isPaidInFull ? 'PAID' : 'PARTIALLY_PAID',
+            paidDate: isPaidInFull ? new Date() : null,
+            paidAt: isPaidInFull ? new Date() : null,
+          },
+        });
+      }
+    }
+
     return { entryNo: result.entryNumber };
   }
 }

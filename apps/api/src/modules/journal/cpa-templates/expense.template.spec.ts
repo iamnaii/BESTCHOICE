@@ -51,6 +51,7 @@ async function createTestExpense(
     disallowedReason?: string;
     withholdingTax?: number;
     vendorTaxId?: string;
+    whtFormType?: 'PND3' | 'PND53';
   },
 ) {
   const category = (opts?.category ?? 'ADMIN_UTILITIES') as 'ADMIN_UTILITIES' | 'ADMIN_SALARY' | 'ADMIN_TELEPHONE';
@@ -73,6 +74,7 @@ async function createTestExpense(
       withholdingTax: new Decimal(withholdingTax),
       netPayment: new Decimal(totalAmount - withholdingTax),
       vendorTaxId: opts?.vendorTaxId ?? null,
+      whtFormType: opts?.whtFormType ?? null,
       expenseDate: new Date(),
       status: 'PAID',
       createdById: userId,
@@ -83,6 +85,7 @@ async function createTestExpense(
 }
 
 async function setup() {
+  await prisma.journalPostAuditLog.deleteMany({});
   await prisma.journalLine.deleteMany({});
   await prisma.journalEntry.deleteMany({});
   await seedFinanceCoa(prisma);
@@ -437,6 +440,37 @@ describe('ExpenseTemplate', () => {
     const disallowed = lines.find((l) => l.accountCode === '54-1103');
     expect(disallowed).toBeDefined();
     expect(new Decimal(disallowed!.debit.toString()).toFixed(2)).toBe('1070.00');
+  });
+
+  it('WHT — explicit whtFormType=PND3 overrides vendorTaxId heuristic', async () => {
+    // vendorTaxId starts with 0 (would heuristically route to PND53 / 21-3103)
+    // but whtFormType=PND3 must take precedence → 21-3102
+    const expense = await createTestExpense(prisma, branchId, userId, {
+      category: 'ADMIN_TELEPHONE',
+      amount: 1000,
+      vatAmount: 70,
+      withholdingTax: 30,
+      vendorTaxId: '0105561234567', // looks corporate by heuristic
+      whtFormType: 'PND3', // explicit individual override
+    });
+
+    const tmpl = new ExpenseTemplate(journal, prisma as any);
+    await tmpl.execute({ expenseId: expense.id, isPaid: true });
+
+    const je = await prisma.journalEntry.findFirst({
+      where: {
+        AND: [
+          { metadata: { path: ['flow'], equals: 'expense' } } as any,
+          { metadata: { path: ['expenseId'], equals: expense.id } } as any,
+        ],
+      },
+      include: { lines: true },
+    });
+    const lines = je!.lines;
+
+    // whtFormType wins → 21-3102, not 21-3103
+    expect(lines.find((l) => l.accountCode === '21-3102')).toBeDefined();
+    expect(lines.find((l) => l.accountCode === '21-3103')).toBeUndefined();
   });
 
   it('WHT skipped on accrual (isPaid=false) — settled at clearance', async () => {

@@ -40,11 +40,25 @@ const DISALLOWED_REASON_CODE: Record<string, string> = {
 };
 
 /**
- * Resolves WHT credit account code based on vendor type.
- * Heuristic: Thai juristic-person tax IDs always start with '0'.
- * Falls back to PND53 (B2B default) when no vendorTaxId.
+ * Resolves WHT credit account code based on form type (preferred) or vendorTaxId
+ * heuristic (fallback when whtFormType wasn't recorded — legacy expenses).
+ *
+ * Order of precedence:
+ *   1. expense.whtFormType = 'PND3' → 21-3102 (บุคคลธรรมดา)
+ *   2. expense.whtFormType = 'PND53' → 21-3103 (นิติบุคคล)
+ *   3. vendorTaxId.startsWith('0') → 21-3103 (juristic-person heuristic)
+ *   4. otherwise → 21-3102 (individual heuristic)
+ *   5. no vendorTaxId either → 21-3103 (B2B default)
+ *
+ * The heuristic alone misroutes pre-2012 corporate IDs that don't start with 0,
+ * so callers should prefer setting whtFormType explicitly on new expenses.
  */
-function resolveWhtAccount(vendorTaxId?: string | null): string {
+function resolveWhtAccount(
+  whtFormType?: string | null,
+  vendorTaxId?: string | null,
+): string {
+  if (whtFormType === 'PND3') return WHT_PND3_CODE;
+  if (whtFormType === 'PND53') return WHT_PND53_CODE;
   if (!vendorTaxId) return WHT_PND53_CODE;
   return vendorTaxId.startsWith('0') ? WHT_PND53_CODE : WHT_PND3_CODE;
 }
@@ -55,6 +69,8 @@ export interface ExpenseTemplateInput {
   depositAccountCode?: string;
   /** If false, credits AP instead of cash. AP-credit ignores WHT (settled at AP-clearance time). */
   isPaid?: boolean;
+  /** User ID for T2-C14 JournalPostAuditLog. Falls back to expense.createdById when omitted. */
+  postedById?: string;
 }
 
 /**
@@ -99,7 +115,7 @@ export class ExpenseTemplate {
     input: ExpenseTemplateInput,
     outerTx?: Prisma.TransactionClient,
   ): Promise<{ entryNo: string } | null> {
-    const { expenseId, depositAccountCode = '11-1101', isPaid = true } = input;
+    const { expenseId, depositAccountCode = '11-1101', isPaid = true, postedById } = input;
 
     const reader = (outerTx ?? this.prisma) as Prisma.TransactionClient;
 
@@ -143,7 +159,9 @@ export class ExpenseTemplate {
     // Tax-disallowed expenses are typically penalties/personal-use — WHT not applicable.
     // Accrued (AP) expenses defer WHT to clearance JE.
     const whtApplies = isPaid && !isTaxDisallowed && withholdingTax.gt(0);
-    const whtAccountCode = whtApplies ? resolveWhtAccount(expense.vendorTaxId) : null;
+    const whtAccountCode = whtApplies
+      ? resolveWhtAccount((expense as any).whtFormType, expense.vendorTaxId)
+      : null;
 
     const lines: { accountCode: string; dr: Decimal; cr: Decimal; description?: string }[] = [];
 
@@ -256,6 +274,15 @@ export class ExpenseTemplate {
         },
         tx,
       );
+
+      // T2-C14: immutable audit log inside the same tx so failure rolls back the JE post.
+      await tx.journalPostAuditLog.create({
+        data: {
+          journalEntryId: result.id,
+          postedById: postedById ?? expense.createdById,
+          postedAt: new Date(),
+        },
+      });
 
       return { entryNo: result.entryNumber };
     };

@@ -100,7 +100,10 @@ export class AssetDisposalTemplate {
     // VAT 7% on sale proceeds (CRITICAL #3 fix · ม.77/1 + ม.82).
     // VAT is only added when issueTaxInvoice = true. Cash received from buyer
     // includes VAT (proceeds × 1.07). VAT is remitted via 21-2101.
-    const vatOnSale = issueTaxInvoice ? proceeds.times(VAT_RATE).toDecimalPlaces(2) : new Decimal(0);
+    // ROUND_HALF_UP per accounting.md VAT convention (matches per-installment vatPerInst).
+    const vatOnSale = issueTaxInvoice
+      ? proceeds.times(VAT_RATE).toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+      : new Decimal(0);
     const totalCashReceived = proceeds.plus(vatOnSale);
 
     const reader = (outerTx ?? this.prisma) as Prisma.TransactionClient;

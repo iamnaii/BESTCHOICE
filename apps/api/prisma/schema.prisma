@@ -3525,6 +3525,7 @@ model Expense {
   withholdingTax Decimal            @default(0) @map("withholding_tax") @db.Decimal(12, 2)
   whtRate        Decimal?           @map("wht_rate") @db.Decimal(5, 4) // อัตราภาษีหัก ณ ที่จ่าย (0.01, 0.02, 0.03, 0.05)
   whtIncomeType  WhtIncomeType?     @map("wht_income_type") // ประเภทเงินได้ตาม ม.40
+  whtFormType    String?            @map("wht_form_type") // PND3 (บุคคลธรรมดา → 21-3102) | PND53 (นิติบุคคล → 21-3103). Source of truth for WHT routing; falls back to vendorTaxId heuristic.
   netPayment     Decimal?           @map("net_payment") @db.Decimal(12, 2) // จำนวนจ่ายจริง = totalAmount - withholdingTax
 
   expenseDate   DateTime       @map("expense_date")

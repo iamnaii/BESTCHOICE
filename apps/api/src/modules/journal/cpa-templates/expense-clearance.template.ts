@@ -8,7 +8,13 @@ const WHT_PND3_CODE = '21-3102';
 const WHT_PND53_CODE = '21-3103';
 const AP_ACCRUED_CODE = '21-1104';
 
-function resolveWhtAccount(vendorTaxId?: string | null): string {
+/** Mirror of resolveWhtAccount in expense.template.ts — kept in sync intentionally. */
+function resolveWhtAccount(
+  whtFormType?: string | null,
+  vendorTaxId?: string | null,
+): string {
+  if (whtFormType === 'PND3') return WHT_PND3_CODE;
+  if (whtFormType === 'PND53') return WHT_PND53_CODE;
   if (!vendorTaxId) return WHT_PND53_CODE;
   return vendorTaxId.startsWith('0') ? WHT_PND53_CODE : WHT_PND3_CODE;
 }
@@ -17,6 +23,8 @@ export interface ExpenseClearanceInput {
   expenseId: string;
   /** Cash/bank account paying the AP. */
   depositAccountCode?: string;
+  /** User ID for T2-C14 JournalPostAuditLog. Falls back to expense.createdById when omitted. */
+  postedById?: string;
 }
 
 /**
@@ -50,7 +58,7 @@ export class ExpenseClearanceTemplate {
     input: ExpenseClearanceInput,
     outerTx?: Prisma.TransactionClient,
   ): Promise<{ entryNo: string }> {
-    const { expenseId, depositAccountCode = '11-1101' } = input;
+    const { expenseId, depositAccountCode = '11-1101', postedById } = input;
 
     const reader = (outerTx ?? this.prisma) as Prisma.TransactionClient;
 
@@ -72,7 +80,9 @@ export class ExpenseClearanceTemplate {
     }
 
     const whtApplies = withholdingTax.gt(0);
-    const whtAccountCode = whtApplies ? resolveWhtAccount(expense.vendorTaxId) : null;
+    const whtAccountCode = whtApplies
+      ? resolveWhtAccount((expense as any).whtFormType, expense.vendorTaxId)
+      : null;
     const netPayment = totalAmount.minus(withholdingTax);
 
     const lines: { accountCode: string; dr: Decimal; cr: Decimal; description?: string }[] = [
@@ -160,6 +170,15 @@ export class ExpenseClearanceTemplate {
         },
         tx,
       );
+
+      // T2-C14: immutable audit log inside the same tx so failure rolls back the JE post.
+      await tx.journalPostAuditLog.create({
+        data: {
+          journalEntryId: result.id,
+          postedById: postedById ?? expense.createdById,
+          postedAt: new Date(),
+        },
+      });
 
       this.logger.log(
         `[A.5a] ExpenseClearanceTemplate: posted JE ${result.entryNumber} clearing accrual ${accrual.entryNumber} for expense ${expenseId}`,

@@ -146,6 +146,27 @@ describe('ExpenseReverseTemplate', () => {
     ).rejects.toThrow(/เหตุผล/);
   });
 
+  it('reverses only the matching expenseId — sibling expenses are not touched', async () => {
+    // Two distinct expenses, both PAID, both with flow='expense' JE.
+    // Reversing one must NOT mark the other's JE as reversed.
+    const e1 = await makeExpense(branchId, userId);
+    const e2 = await makeExpense(branchId, userId);
+    const r1 = await template.execute({ expenseId: e1.id, isPaid: true });
+    const r2 = await template.execute({ expenseId: e2.id, isPaid: true });
+    expect(r1!.entryNo).not.toBe(r2!.entryNo);
+
+    await reverseTemplate.execute({
+      expenseId: e1.id,
+      reversedById: userId,
+      reason: 'reverse only e1',
+    });
+
+    const e1Original = await prisma.journalEntry.findFirst({ where: { entryNumber: r1!.entryNo } });
+    const e2Original = await prisma.journalEntry.findFirst({ where: { entryNumber: r2!.entryNo } });
+    expect((e1Original!.metadata as Record<string, unknown>).reversed).toBe(true);
+    expect((e2Original!.metadata as Record<string, unknown>).reversed).toBeUndefined();
+  });
+
   it('handles flowOverride to reverse clearance leg of 2-step accrual', async () => {
     const expense = await makeExpense(branchId, userId);
     // accrual leg

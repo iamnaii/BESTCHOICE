@@ -329,6 +329,52 @@ describe('AssetDisposalTemplate', () => {
     expect(new Decimal(cashLine!.debit.toString()).toFixed(2)).toBe('40000.00');
   });
 
+  it('VAT on disposal: loss case + tax invoice → 21-2101 + 53-1605 both posted', async () => {
+    // NBV = 30,000.08 (cost 50k - accumDepr 19,999.92)
+    // Sale price 20,000 (excl VAT) → loss 10,000.08
+    // VAT 7% × 20,000 = 1,400 → totalCash 21,400
+    const asset = await ensureTestAsset({
+      category: 'EQUIPMENT',
+      purchaseCost: 50000,
+      accumulatedDepr: 19999.92,
+    });
+
+    const tmpl = new AssetDisposalTemplate(journal, prisma as any);
+    await tmpl.execute({
+      assetId: asset.id,
+      disposalDate: new Date(),
+      disposalProceeds: 20000,
+      depositAccountCode: '11-1201',
+      issueTaxInvoice: true,
+    });
+
+    const je = await prisma.journalEntry.findFirst({
+      where: { metadata: { path: ['assetId'], equals: asset.id } } as any,
+      include: { lines: true },
+    });
+    const lines = je!.lines;
+
+    const drSum = lines.reduce((s, l) => s.plus(l.debit.toString()), new Decimal(0));
+    const crSum = lines.reduce((s, l) => s.plus(l.credit.toString()), new Decimal(0));
+    expect(drSum.toFixed(2)).toBe(crSum.toFixed(2));
+
+    // Loss line + VAT line both present
+    const lossLine = lines.find((l) => l.accountCode === '53-1605');
+    expect(lossLine, '53-1605 loss line missing').toBeDefined();
+    expect(new Decimal(lossLine!.debit.toString()).toFixed(2)).toBe('10000.08');
+
+    const vatLine = lines.find((l) => l.accountCode === '21-2101');
+    expect(vatLine).toBeDefined();
+    expect(new Decimal(vatLine!.credit.toString()).toFixed(2)).toBe('1400.00');
+
+    // Cash = proceeds + VAT
+    const cashLine = lines.find((l) => l.accountCode === '11-1201');
+    expect(new Decimal(cashLine!.debit.toString()).toFixed(2)).toBe('21400.00');
+
+    // No gain account
+    expect(lines.find((l) => l.accountCode === '42-1105')).toBeUndefined();
+  });
+
   it('VAT on disposal: rejected on write-off (proceeds=0)', async () => {
     const asset = await ensureTestAsset({ purchaseCost: 50000, accumulatedDepr: 19999.92 });
     const tmpl = new AssetDisposalTemplate(journal, prisma as any);

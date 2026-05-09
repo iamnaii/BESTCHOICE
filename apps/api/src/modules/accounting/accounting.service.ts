@@ -197,6 +197,7 @@ export class AccountingService implements OnModuleInit {
     const withholdingTax = dto.withholdingTax || 0;
     const whtRate = dto.whtRate || null;
     const whtIncomeType = (dto.whtIncomeType as WhtIncomeType) || null;
+    const whtFormType = dto.whtFormType ?? null;
     const totalAmount = dRound(dAdd(dto.amount, vatAmount)).toNumber();
     const netPayment = dRound(dSub(totalAmount, withholdingTax)).toNumber();
     const accountCode = dto.accountCode || resolveAccountCode(dto.category) || null;
@@ -219,6 +220,7 @@ export class AccountingService implements OnModuleInit {
           withholdingTax,
           whtRate,
           whtIncomeType,
+          whtFormType,
           netPayment,
           expenseDate: new Date(dto.expenseDate),
           paymentMethod: dto.paymentMethod,
@@ -360,6 +362,10 @@ export class AccountingService implements OnModuleInit {
     if (dto.receiptImageUrl !== undefined) data.receiptImageUrl = dto.receiptImageUrl;
     if (dto.taxInvoiceNo !== undefined) data.taxInvoiceNo = dto.taxInvoiceNo;
     if (dto.note !== undefined) data.note = dto.note;
+    if (dto.whtFormType !== undefined) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (data as any).whtFormType = dto.whtFormType;
+    }
 
     const amount = dto.amount !== undefined ? dto.amount : d(expense.amount).toNumber();
     const vatAmount = dto.vatAmount !== undefined ? dto.vatAmount : d(expense.vatAmount).toNumber();
@@ -422,7 +428,7 @@ export class AccountingService implements OnModuleInit {
    * Allows 2-step accrual workflow: APPROVED → recordExpenseAccrual → markExpensePaid.
    * markExpensePaid detects the accrual and posts a clearance JE instead of full payment.
    */
-  async recordExpenseAccrual(id: string) {
+  async recordExpenseAccrual(id: string, actingUserId?: string) {
     return this.prisma.$transaction(async (tx) => {
       const expense = await tx.expense.findFirst({ where: { id, deletedAt: null } });
       if (!expense) throw new NotFoundException('ไม่พบรายจ่าย');
@@ -446,7 +452,7 @@ export class AccountingService implements OnModuleInit {
       }
 
       const result = await this.expenseTemplate.execute(
-        { expenseId: id, isPaid: false },
+        { expenseId: id, isPaid: false, postedById: actingUserId },
         tx,
       );
       return { expense, journalEntryNo: result?.entryNo };
@@ -456,7 +462,8 @@ export class AccountingService implements OnModuleInit {
   async markExpensePaid(
     id: string,
     paymentDate?: string,
-    depositAccountCode: string = '11-1101',
+    depositAccountCode?: string,
+    actingUserId?: string,
   ) {
     return this.prisma.$transaction(async (tx) => {
       const expense = await tx.expense.findFirst({
@@ -467,6 +474,21 @@ export class AccountingService implements OnModuleInit {
       if (expense.status !== 'APPROVED') {
         throw new BadRequestException('ต้องอนุมัติก่อนถึงจะบันทึกจ่ายได้');
       }
+
+      // Resolve cash account in priority order:
+      //   1. Explicit caller param (depositAccountCode)
+      //   2. Acting user's defaultCashAccountCode (per accounting.md cash dimension policy)
+      //   3. Hard fallback: 11-1101
+      let resolvedDepositCode = depositAccountCode;
+      if (!resolvedDepositCode && actingUserId) {
+        const user = await tx.user.findUnique({
+          where: { id: actingUserId },
+          select: { defaultCashAccountCode: true },
+        });
+        resolvedDepositCode = user?.defaultCashAccountCode ?? undefined;
+      }
+      resolvedDepositCode = resolvedDepositCode || '11-1101';
+
       const updated = await tx.expense.update({
         where: { id },
         data: { status: 'PAID', paymentDate: paymentDate ? new Date(paymentDate) : new Date() },
@@ -488,13 +510,22 @@ export class AccountingService implements OnModuleInit {
       if (accrual) {
         // 2-step path: accrual already booked → post clearance JE only
         await this.expenseClearanceTemplate.execute(
-          { expenseId: updated.id, depositAccountCode },
+          {
+            expenseId: updated.id,
+            depositAccountCode: resolvedDepositCode,
+            postedById: actingUserId,
+          },
           tx,
         );
       } else {
         // 1-step path: post full payment JE atomic with status update
         await this.expenseTemplate.execute(
-          { expenseId: updated.id, depositAccountCode, isPaid: true },
+          {
+            expenseId: updated.id,
+            depositAccountCode: resolvedDepositCode,
+            isPaid: true,
+            postedById: actingUserId,
+          },
           tx,
         );
       }

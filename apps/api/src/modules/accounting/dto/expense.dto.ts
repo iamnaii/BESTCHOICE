@@ -63,6 +63,10 @@ export class CreateExpenseDto {
   @IsString()
   whtIncomeType?: string; // ประเภทเงินได้ เช่น '40(2)', '40(5)', '40(8)'
 
+  @IsOptional()
+  @IsIn(['PND3', 'PND53'], { message: 'whtFormType ต้องเป็น PND3 หรือ PND53' })
+  whtFormType?: 'PND3' | 'PND53'; // PND3 (บุคคลธรรมดา → 21-3102) | PND53 (นิติบุคคล → 21-3103)
+
   @IsDateString()
   expenseDate: string;
 
@@ -149,6 +153,10 @@ export class UpdateExpenseDto {
   @IsNumber()
   @Min(0)
   withholdingTax?: number;
+
+  @IsOptional()
+  @IsIn(['PND3', 'PND53'], { message: 'whtFormType ต้องเป็น PND3 หรือ PND53' })
+  whtFormType?: 'PND3' | 'PND53';
 
   @IsOptional()
   @IsDateString()

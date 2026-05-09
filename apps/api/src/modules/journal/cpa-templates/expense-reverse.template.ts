@@ -43,11 +43,14 @@ export class ExpenseReverseTemplate {
     input: ExpenseReverseInput,
     outerTx?: Prisma.TransactionClient,
   ): Promise<{ entryNo: string }> {
-    const { expenseId, reason } = input;
+    const { expenseId, reason, reversedById } = input;
     const flow = input.flowOverride ?? 'expense';
 
     if (!reason || reason.trim().length === 0) {
       throw new BadRequestException('กรุณาระบุเหตุผลการกลับรายการ');
+    }
+    if (!reversedById) {
+      throw new BadRequestException('reversedById is required for audit logging (T2-C14)');
     }
 
     const run = async (tx: Prisma.TransactionClient): Promise<{ entryNo: string }> => {
@@ -107,7 +110,9 @@ export class ExpenseReverseTemplate {
         tx,
       );
 
-      // Mark original as reversed (metadata flag — don't mutate lines)
+      // Mark original as reversed (metadata flag — don't mutate lines).
+      // TFRS no-touch: ledger lines on POSTED entries are immutable;
+      // only metadata.reversed flag is mutable to mark voided status.
       await tx.journalEntry.update({
         where: { id: original.id },
         data: {
@@ -117,6 +122,15 @@ export class ExpenseReverseTemplate {
             reversedByEntryNumber: result.entryNumber,
             reversedAt: new Date().toISOString(),
           },
+        },
+      });
+
+      // T2-C14: immutable audit log inside the same tx so failure rolls back the JE post.
+      await tx.journalPostAuditLog.create({
+        data: {
+          journalEntryId: result.id,
+          postedById: reversedById,
+          postedAt: new Date(),
         },
       });
 

@@ -3153,6 +3153,7 @@ model AssetTransferHistory {
 }
 
 /// Phase A.5c — Idempotency record: one depreciation JE per asset per period
+/// Immutable audit log — updatedAt/deletedAt intentionally omitted (additive event log)
 /// Phase 2 — Adds reversedAt/reversedById for reverse-run tracking
 model DepreciationEntry {
   id             String     @id @default(uuid())
@@ -3170,7 +3171,6 @@ model DepreciationEntry {
   createdAt DateTime @default(now()) @map("created_at")
 
   @@unique([assetId, period])
-  @@index([period])
   @@index([period, reversedAt])
   @@map("depreciation_entries")
 }

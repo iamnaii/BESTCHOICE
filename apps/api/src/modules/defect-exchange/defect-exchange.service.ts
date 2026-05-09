@@ -173,14 +173,11 @@ export class DefectExchangeService {
           data: { status: 'DEFECT_RETURN' },
         });
 
-        // Phase A.5a: reverse all JEs for the old contract (non-blocking)
-        try {
-          await this.defectExchangeReversalTemplate.reverseContract(oldContract.id);
-        } catch (err) {
-          this.logger.error(
-            `[A.5a] Defect exchange reversal JE failed for contract ${oldContract.contractNumber}: ${(err as Error).message}`,
-          );
-        }
+        // Phase A.5a: reverse all JEs for the old contract.
+        // Must run in the same outer tx so an exchange that fails to
+        // reverse cleanly rolls back the contract status update — never
+        // leaves a contract DEFECT_EXCHANGED with old JEs still active.
+        await this.defectExchangeReversalTemplate.reverseContract(oldContract.id, tx);
 
         // Total paid by customer on old contract = down payment + sum of installment payments received
         const paidInstallments = oldContract.payments

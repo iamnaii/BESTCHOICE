@@ -69,7 +69,7 @@ export class ReceiptsController {
       id,
       dto.reason,
       user.id,
-      dto.approvedById || user.id,
+      dto.approvedById,
       user.role,
     );
   }

@@ -29,7 +29,7 @@ export class InstallmentAccrualCron {
     tomorrow.setDate(tomorrow.getDate() + 1);
 
     // CPA Manual Termination Policy: skip contracts that have been terminated
-    // via 60D dispatch (status='LEGAL'). Once หนังสือบอกเลิก is dispatched,
+    // via 60D dispatch (status='TERMINATED'). Once หนังสือบอกเลิก is dispatched,
     // 2A accrual must stop — contract is closed legally (ปพพ.386).
     // Refs: docs/superpowers/specs/2026-05-09-manual-termination-workflow-design.md
     const due = await this.prisma.installmentSchedule.findMany({
@@ -38,7 +38,7 @@ export class InstallmentAccrualCron {
         accrualJournalEntryId: null,
         deletedAt: null,
         contract: {
-          status: { notIn: ['LEGAL', 'CLOSED_BAD_DEBT', 'COMPLETED', 'EARLY_PAYOFF', 'EXCHANGED', 'DEFECT_EXCHANGED'] },
+          status: { notIn: ['TERMINATED', 'CLOSED_BAD_DEBT', 'COMPLETED', 'EARLY_PAYOFF', 'EXCHANGED', 'DEFECT_EXCHANGED'] },
           deletedAt: null,
         },
       },

@@ -197,10 +197,7 @@ describe('JP5 VAT split — accrued vs deferred (P0 Wave 1 Task 7)', () => {
     const cr11_2101 = sumCr(lines, '11-2101');
     expect(cr11_2101.toFixed(2)).toBe(expectedGross.toFixed(2));
 
-    // 11-2106 Dr = sum of EIR interest schedule for periods 1..12
-    // Phase 3 EIR allocation totals exactly to interestTotal (6000) via final-period
-    // residual adjustment. Same total as straight-line 12 × 500 — only the per-period
-    // distribution differs.
+    // 11-2106 Dr = 12 × 500 = 6000
     const dr11_2106 = sumDr(lines, '11-2106');
     expect(dr11_2106.toFixed(2)).toBe('6000.00');
   });

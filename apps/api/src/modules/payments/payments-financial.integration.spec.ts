@@ -11,6 +11,7 @@ import { QuickReplyService } from '../line-oa/quick-reply.service';
 import { WarrantyService } from '../warranty/warranty.service';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { PaymentReceipt2BTemplate } from '../journal/cpa-templates/payment-receipt-2b.template';
+import { BadDebtService } from '../accounting/bad-debt.service';
 
 /**
  * Integration tests for financial flows.
@@ -96,6 +97,7 @@ describe('PaymentsService — Financial Integration', () => {
         { provide: QuickReplyService, useValue: { afterPayment: jest.fn().mockReturnValue([]) } },
         { provide: WarrantyService, useValue: { setShopWarranty: jest.fn().mockResolvedValue(undefined) } },
         { provide: PaymentReceipt2BTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK' }) } },
+        { provide: BadDebtService, useValue: { reverseStageOnPayment: jest.fn().mockResolvedValue(null) } },
       ],
     }).compile();
 

@@ -128,7 +128,7 @@ export class AutoBalanceService {
     const contracts = (await this.prisma.contract.findMany({
       where: {
         deletedAt: null,
-        status: { in: ['OVERDUE', 'DEFAULT', 'LEGAL', 'ACTIVE'] },
+        status: { in: ['OVERDUE', 'DEFAULT', 'TERMINATED', 'ACTIVE'] },
       },
       select: {
         id: true,
@@ -192,7 +192,7 @@ export class AutoBalanceService {
     for (const c of contracts) {
       // Order matters: each contract counted once. LEGAL is sticky regardless
       // of recent activity; snooze beats recent (both are "operator intent").
-      if (c.status === 'LEGAL') {
+      if (c.status === 'TERMINATED') {
         excludedLegal += 1;
         continue;
       }

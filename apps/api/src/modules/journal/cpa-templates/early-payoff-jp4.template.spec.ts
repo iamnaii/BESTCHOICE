@@ -13,6 +13,11 @@ const prisma = new PrismaClient();
 
 async function setup() {
   await prisma.journalLine.deleteMany({});
+  // FK: journal_post_audit_logs references journal_entry — delete before parent
+  if ('journalPostAuditLog' in prisma) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (prisma as any).journalPostAuditLog.deleteMany({});
+  }
   await prisma.journalEntry.deleteMany({});
   await prisma.receipt.deleteMany({});
   await prisma.eDocument.deleteMany({});
@@ -83,7 +88,7 @@ async function payFirstN(
 }
 
 describe('EarlyPayoffJP4Template', () => {
-  it('Wave 2 T3 — 50% discount lowers VAT base per ม.79 + ม.86/10', async () => {
+  it('Policy A — 50% discount: VAT ไม่ลดตามส่วนลด (Cr 21-2101 = full deferred VAT)', async () => {
     const journal = await setup();
     const c = await seedStandard17k12m(prisma);
     await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
@@ -96,41 +101,37 @@ describe('EarlyPayoffJP4Template', () => {
       interestDiscountPercent: new Decimal('50'),
     });
 
-    // Math (17K/12M, 6 unpaid — Phase 3 EIR allocation):
-    //   eirPrincipal               = 10,000 + 1,000 = 11,000
-    //   interestSchedule (12 mo)   = [817.05, 772.51, 724.67, 673.27, 618.05, 558.73,
-    //                                  495.01, 426.55, 353.01, 274.00, 189.13, 98.02]
-    //   remainingDeferredInterest  = sum(periods 7..12) = 1,835.72
-    //   discount                   = 50% × 1,835.72   =   917.86
-    //   vatOnDiscount              = 917.86 × 0.07    =    64.25  (ROUND_HALF_UP)
-    //   remainingDeferredVat       = 99.17 × 6        =   595.02
-    //   settleVat                  = 595.02 - 64.25   =   530.77
-    //   remainingGross             = 1,416.66 × 6     = 8,499.96
-    //   settlement                 = 8,499.96 - 917.86 + 530.77 = 8,112.87
+    // Math (17K/12M, 6 unpaid · Policy A — VAT ไม่ลด):
+    //   remainingDeferredInterest = 500 × 6      = 3,000.00
+    //   discount                   = 50% × 3,000  = 1,500.00
+    //   remainingDeferredVat       = 99.17 × 6   =   595.02 (full · ไม่ลด)
+    //   remainingGross             = 1,416.66 × 6 = 8,499.96
+    //   settlement                 = 8,499.96 - 1,500 + 595.02 = 7,594.98
     const je = await getEarlyPayoffJe(c.id);
 
     const cr21_2101 = je.lines.find((l) => l.accountCode === '21-2101');
     expect(cr21_2101).toBeDefined();
-    // Cr 21-2101 must equal settleVat (reduced by vatOnDiscount per ม.79), NOT full deferred VAT
-    expect(new Decimal(cr21_2101!.credit.toString()).toNumber()).toBeCloseTo(530.77, 2);
+    // Policy A: Cr 21-2101 = remainingDeferredVat เต็มยอด (NOT reduced by discount)
+    expect(new Decimal(cr21_2101!.credit.toString()).toNumber()).toBeCloseTo(595.02, 2);
 
-    // Dr 21-2102 still cleared in full (deferred VAT account closed)
+    // Dr 21-2102 cleared in full (deferred VAT account closed)
     const dr21_2102 = je.lines.find((l) => l.accountCode === '21-2102');
     expect(new Decimal(dr21_2102!.debit.toString()).toNumber()).toBeCloseTo(595.02, 2);
 
-    // Customer cash payment reduced by vatOnDiscount
+    // Customer cash payment = remainingGross - discount + full VAT
     const drCash = je.lines.find((l) => l.accountCode === '11-1101');
     expect(drCash).toBeDefined();
-    expect(new Decimal(drCash!.debit.toString()).toNumber()).toBeCloseTo(8112.87, 2);
+    expect(new Decimal(drCash!.debit.toString()).toNumber()).toBeCloseTo(7594.98, 2);
 
-    // Discount line still present (50% of EIR remainingDeferredInterest)
+    // Discount line still present (interest only — VAT untouched per Policy A)
     const dr52_1106 = je.lines.find((l) => l.accountCode === '52-1106');
-    expect(new Decimal(dr52_1106!.debit.toString()).toNumber()).toBeCloseTo(917.86, 2);
+    expect(new Decimal(dr52_1106!.debit.toString()).toNumber()).toBeCloseTo(1500, 2);
 
-    // Metadata records the credit-back for traceability (per ม.86/10)
+    // Metadata: Policy A flag (no vatCreditBackOnDiscount)
     const meta = je.metadata as Record<string, string>;
-    expect(meta.vatCreditBackOnDiscount).toBe('64.25');
-    expect(meta.settleVat).toBe('530.77');
+    expect(meta.policy).toBe('A');
+    expect(meta.settleVat).toBe('595.02');
+    expect(meta.vatCreditBackOnDiscount).toBeUndefined();
 
     // JE balanced
     const totalDr = je.lines.reduce(
@@ -142,12 +143,10 @@ describe('EarlyPayoffJP4Template', () => {
       new Decimal(0),
     );
     expect(totalDr.minus(totalCr).abs().lte('0.01')).toBe(true);
-    // totalDr = settlement + remainingDeferredInterest + remainingDeferredVat + discount
-    //        = 8,112.87 + 1,835.72 + 595.02 + 917.86 = 11,461.47
-    expect(totalDr.toNumber()).toBeCloseTo(11461.47, 2);
+    expect(totalDr.toNumber()).toBeCloseTo(12690, 2);
   });
 
-  it('Wave 2 T3 — zero discount = no VAT credit back (Cr 21-2101 = full deferred VAT)', async () => {
+  it('Policy A — zero discount: Cr 21-2101 = full deferred VAT (no change)', async () => {
     const journal = await setup();
     const c = await seedStandard17k12m(prisma);
     await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
@@ -176,11 +175,11 @@ describe('EarlyPayoffJP4Template', () => {
     expect(new Decimal(drCash!.debit.toString()).toNumber()).toBeCloseTo(9094.98, 2);
 
     const meta = je.metadata as Record<string, string>;
-    expect(meta.vatCreditBackOnDiscount).toBe('0.00');
+    expect(meta.policy).toBe('A');
     expect(meta.settleVat).toBe('595.02');
   });
 
-  it('Wave 2 T3 — 100% discount = full VAT credit back (Cr 21-2101 reduced by full deferred VAT)', async () => {
+  it('Policy A — 100% discount: VAT still full (CPA decision · บริษัทรับภาระ)', async () => {
     const journal = await setup();
     const c = await seedStandard17k12m(prisma);
     await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
@@ -193,21 +192,18 @@ describe('EarlyPayoffJP4Template', () => {
       interestDiscountPercent: new Decimal('100'),
     });
 
-    // Phase 3 EIR: remainingDeferredInterest = 1,835.72 (sum periods 7..12)
-    // discount = 100% × 1,835.72 = 1,835.72
-    // vatOnDiscount = 1,835.72 × 0.07 = 128.50 (ROUND_HALF_UP from 128.5004)
-    // settleVat = 595.02 - 128.50 = 466.52
-    // settlement = 8,499.96 - 1,835.72 + 466.52 = 7,130.76
+    // Policy A: discount = 3000, Cr 21-2101 = 595.02 (full · NOT reduced)
     const je = await getEarlyPayoffJe(c.id);
 
     const cr21_2101 = je.lines.find((l) => l.accountCode === '21-2101');
-    expect(new Decimal(cr21_2101!.credit.toString()).toNumber()).toBeCloseTo(466.52, 2);
+    expect(new Decimal(cr21_2101!.credit.toString()).toNumber()).toBeCloseTo(595.02, 2);
 
+    // settlement = 8499.96 - 3000 + 595.02 = 6094.98
     const drCash = je.lines.find((l) => l.accountCode === '11-1101');
-    expect(new Decimal(drCash!.debit.toString()).toNumber()).toBeCloseTo(7130.76, 2);
+    expect(new Decimal(drCash!.debit.toString()).toNumber()).toBeCloseTo(6094.98, 2);
 
     const meta = je.metadata as Record<string, string>;
-    expect(meta.vatCreditBackOnDiscount).toBe('128.50');
+    expect(meta.policy).toBe('A');
   });
 
   it('marks all remaining installments as PAID', async () => {
@@ -248,6 +244,50 @@ describe('EarlyPayoffJP4Template', () => {
     expect(paidCount, 'all installments should have PAID Payment records after early payoff').toBe(
       totalInsts,
     );
+  });
+
+  it.skip('clamps settleVat at zero when discount-driven VAT credit exceeds remaining deferred VAT (Wave 1 P0)', async () => {
+    // SKIPPED post Policy A revert (2026-05-09):
+    // Under Policy A, settleVat = remainingDeferredVat (full · always positive).
+    // The clamp logic was removed because there's no longer any deduction
+    // that could push it negative. Test kept for archaeology only.
+    const journal = await setup();
+    const c = await seedStandard17k12m(prisma);
+    await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
+
+    const insts = await prisma.installmentSchedule.findMany({
+      where: { contractId: c.id },
+      orderBy: { installmentNo: 'asc' },
+    });
+    for (const inst of insts.slice(0, 11)) {
+      await prisma.payment.create({
+        data: {
+          contractId: c.id,
+          installmentNo: inst.installmentNo,
+          dueDate: inst.dueDate,
+          amountDue: new Decimal('1515.83'),
+          amountPaid: new Decimal('1515.83'),
+          paidDate: new Date(),
+          paidAt: new Date(),
+          status: 'PAID',
+        },
+      });
+    }
+
+    const tmpl = new EarlyPayoffJP4Template(journal, prisma as any);
+    const result = await tmpl.execute({
+      contractId: c.id,
+      depositAccountCode: '11-1101',
+      interestDiscountPercent: new Decimal('100'),
+    });
+
+    const je = await prisma.journalEntry.findUniqueOrThrow({
+      where: { entryNumber: result.entryNo },
+      include: { lines: true },
+    });
+    const cr21_2101 = je.lines.find((l) => l.accountCode === '21-2101');
+    expect(cr21_2101).toBeDefined();
+    expect(new Decimal(cr21_2101!.credit.toString()).gte(0)).toBe(true);
   });
 
   it('throws when all installments are already paid', async () => {

@@ -25,10 +25,16 @@ env:
 jobs:
   # ============================================
   # Job 1: Lint, Test, Build (same as deploy.yml)
+  #
+  # Runs on pull_request only — once a PR's lint+test passes and gets
+  # merged, the same commit doesn't need to re-run lint+test on push to
+  # main (build-and-push-api uses Docker layer caching independently).
+  # Saves ~5 min per merge × every PR = significant Actions minutes/month.
   # ============================================
   lint-and-test:
     name: Lint & Test
     runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
 
     services:
       postgres:
@@ -101,7 +107,6 @@ jobs:
   # ============================================
   build-and-push-api:
     name: Build & Push API Image
-    needs: lint-and-test
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
@@ -291,7 +296,6 @@ jobs:
   # ============================================
   deploy-web:
     name: Deploy Web to Firebase Hosting
-    needs: lint-and-test
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 

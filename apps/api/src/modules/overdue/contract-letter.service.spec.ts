@@ -299,7 +299,7 @@ describe('ContractLetterService', () => {
       );
       expect(legalAuditCall).toBeDefined();
       expect(legalAuditCall?.[0]?.data?.newValue?.from).toBe('OVERDUE');
-      expect(legalAuditCall?.[0]?.data?.newValue?.to).toBe('LEGAL');
+      expect(legalAuditCall?.[0]?.data?.newValue?.to).toBe('TERMINATED');
       expect(txOps.length).toBe(4);
     });
 

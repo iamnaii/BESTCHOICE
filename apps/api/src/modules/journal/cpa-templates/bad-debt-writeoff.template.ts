@@ -65,6 +65,7 @@ export class BadDebtWriteOffTemplate {
         accountCode: '11-2101',
         journalEntry: {
           metadata: { path: ['contractId'], equals: contractId },
+          status: 'POSTED',
           deletedAt: null,
         },
       },
@@ -88,6 +89,7 @@ export class BadDebtWriteOffTemplate {
         accountCode: '11-2102',
         journalEntry: {
           metadata: { path: ['contractId'], equals: contractId },
+          status: 'POSTED',
           deletedAt: null,
         },
       },

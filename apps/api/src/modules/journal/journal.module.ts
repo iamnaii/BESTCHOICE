@@ -17,6 +17,7 @@ import { Vat60dayReversalTemplate } from './cpa-templates/vat-60day-reversal.tem
 import { Vat60dayCron } from './cron/vat-60day.cron';
 import { BadDebtProvisionTemplate } from './cpa-templates/bad-debt-provision.template';
 import { BadDebtWriteOffTemplate } from './cpa-templates/bad-debt-writeoff.template';
+import { EclStageReverseTemplate } from './cpa-templates/ecl-stage-reverse.template';
 import { ExpenseTemplate } from './cpa-templates/expense.template';
 import { ExpenseReverseTemplate } from './cpa-templates/expense-reverse.template';
 import { ExpenseClearanceTemplate } from './cpa-templates/expense-clearance.template';
@@ -52,6 +53,7 @@ import { WhtRemittanceTemplate } from './cpa-templates/wht-remittance.template';
     Vat60dayCron,
     BadDebtProvisionTemplate,
     BadDebtWriteOffTemplate,
+    EclStageReverseTemplate,
     ExpenseTemplate,
     ExpenseReverseTemplate,
     ExpenseClearanceTemplate,
@@ -82,6 +84,7 @@ import { WhtRemittanceTemplate } from './cpa-templates/wht-remittance.template';
     Vat60dayReversalTemplate,
     BadDebtProvisionTemplate,
     BadDebtWriteOffTemplate,
+    EclStageReverseTemplate,
     ExpenseTemplate,
     ExpenseReverseTemplate,
     ExpenseClearanceTemplate,

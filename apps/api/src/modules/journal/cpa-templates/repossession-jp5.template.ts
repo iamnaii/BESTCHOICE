@@ -3,7 +3,6 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { allocateInterestEIR } from '../utils/eir';
 
 export interface RepossessionInput {
   contractId: string;
@@ -51,14 +50,9 @@ export interface RepossessionInput {
  *
  * Calculations (per-installment, consistent rounding with 2A/2B):
  *   installmentExclVat = grossExclVat / totalMonths  (ROUND_DOWN)
+ *   interestPerInst    = interestTotal / totalMonths  (ROUND_HALF_UP)
  *   vatPerInst         = vatTotal / totalMonths       (ROUND_HALF_UP)
  *   installmentTotal   = installmentExclVat + vatPerInst
- *
- * Phase 3 — EIR allocation for deferred interest (TFRS 15 §60-65):
- *   eirPrincipal       = financedAmount + storeCommission
- *   interestSchedule   = allocateInterestEIR(eirPrincipal, interestTotal, totalMonths)
- *   deferredInterest   = sum of interestSchedule[period - 1] for each deferred-only installment
- *   (Accrued installments already recognized via 2A — no interest recognized here.)
  *
  * Legal basis for VAT credit note (accrued portion) — Wave 4 / Task 2:
  *   - ป.รัษฎากร ม.82/5: ผู้ขายต้องออกใบลดหนี้ภายใน 30 วันนับแต่เหตุการณ์ที่
@@ -115,10 +109,9 @@ export class RepossessionJP5Template {
         ? new Decimal(c.vatAmount.toString())
         : grossExclVat.times('0.07').toDecimalPlaces(2);
 
-    // Per-installment rounding (same as 2A/2B).
-    // NOTE: installmentExclVat + vatPerInst are still straight-line constant.
-    // Only interest allocation moved to EIR (Phase 3).
+    // Per-installment rounding (same as 2A/2B)
     const installmentExclVat = grossExclVat.div(total).toDecimalPlaces(2, Decimal.ROUND_DOWN);
+    const interestPerInst = interest.div(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
     const vatPerInst = vat.div(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
     const installmentTotal = installmentExclVat.plus(vatPerInst);
 
@@ -141,15 +134,7 @@ export class RepossessionJP5Template {
     // Deferred portion — full original clearance / VAT settlement
     const deferredGross = installmentExclVat.times(deferredCount);
     const deferredVat = vatPerInst.times(deferredCount);
-
-    // Phase 3 — EIR allocation for deferred interest (TFRS 15 §60-65)
-    // Sum interestSchedule[period - 1] for each deferred-only installment.
-    const eirPrincipal = financed.plus(commission);
-    const interestSchedule = allocateInterestEIR(eirPrincipal, interest, c.totalMonths);
-    const deferredInterest = deferredInsts.reduce(
-      (sum, inst) => sum.add(interestSchedule[inst.installmentNo - 1]),
-      new Decimal(0),
-    );
+    const deferredInterest = interestPerInst.times(deferredCount);
 
     // Total receivable being derecognized (drives loss/gain calc)
     // Wave 2 T2: subtract accrued VAT recovered via credit note (Dr 21-2101) — not a loss.

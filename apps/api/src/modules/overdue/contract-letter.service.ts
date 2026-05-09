@@ -189,7 +189,7 @@ export class ContractLetterService {
       transactionOps.push(
         this.prisma.contract.update({
           where: { id: letter.contractId },
-          data: { status: 'LEGAL' },
+          data: { status: 'TERMINATED' },
         }),
       );
       transactionOps.push(
@@ -201,7 +201,7 @@ export class ContractLetterService {
             entityId: letter.contractId,
             newValue: {
               from: fromStatus,
-              to: 'LEGAL',
+              to: 'TERMINATED',
               reason: `60d termination letter dispatched: ${letter.letterNumber}`,
             },
           },

@@ -3,7 +3,6 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import { JournalAutoService, JeLineInput } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { allocateInterestEIR } from '../utils/eir';
 
 export interface EarlyPayoffInput {
   contractId: string;
@@ -16,6 +15,10 @@ export interface EarlyPayoffInput {
  * Template JP4 — Early Payoff (Case 4).
  *
  * Spec §6.4 — close out remaining installments with optional interest discount.
+ * Policy A (CPA decision · 2026-05-09):
+ *   VAT ไม่ลดตามส่วนลดดอกเบี้ย — Cr 21-2101 = remainingDeferredVat เต็มยอด
+ *   ไม่ออกใบลดหนี้ (Credit Note) per ม.82/5 — บริษัทเลือก Policy A vs ม.79+86/10
+ * Refs: docs/superpowers/specs/2026-05-09-cpa-policy-a-100-compliance-design.md
  *
  * Wave 2 Task 3 (ป.รัษฎากร ม.79 + ม.86/10):
  *   ฐาน VAT = "ราคาที่ได้รับจริง" → ถ้ามีส่วนลดดอกเบี้ย ฐาน VAT ลดตามส่วน
@@ -51,16 +54,11 @@ export interface EarlyPayoffInput {
  *
  * Derivations (per-installment using same rounding as 2A/2B):
  *   installmentExclVat = grossExclVat / totalMonths  (ROUND_DOWN)
+ *   interestPerInst    = interestTotal / totalMonths  (ROUND_HALF_UP)
  *   vatPerInst         = vatTotal / totalMonths       (ROUND_HALF_UP)
  *   remainingGross     = installmentExclVat × unpaid
+ *   remainingDeferredInterest = interestPerInst × unpaid
  *   remainingDeferredVat      = vatPerInst × unpaid
- *
- *   --- EIR allocation (Phase 3 — TFRS 15 §60-65) ---
- *   eirPrincipal       = financedAmount + storeCommission
- *   interestSchedule   = allocateInterestEIR(eirPrincipal, interestTotal, totalMonths)
- *   remainingDeferredInterest = sum of interestSchedule[period - 1] for each unpaid period
- *
- *   --- Discount + VAT base reduction ---
  *   discount           = remainingDeferredInterest × interestDiscountPercent / 100
  *   vatOnDiscount      = discount × 0.07  (ROUND_HALF_UP)
  *   settleVat          = remainingDeferredVat - vatOnDiscount
@@ -116,25 +114,13 @@ export class EarlyPayoffJP4Template {
         : grossExclVat.times('0.07').toDecimalPlaces(2);
 
     // Per-installment amounts (consistent with 2A/2B rounding)
-    // NOTE: installmentExclVat + vatPerInst are still straight-line constant.
-    // Only interest allocation moved to EIR (Phase 3).
     const installmentExclVat = grossExclVat.div(total).toDecimalPlaces(2, Decimal.ROUND_DOWN);
+    const interestPerInst = interest.div(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
     const vatPerInst = vat.div(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-
-    // Phase 3 — EIR allocation for remaining interest (TFRS 15 §60-65)
-    // Interest per period declines as principal balance reduces.
-    // EIR principal = financedAmount + storeCommission (matches 2A logic).
-    const eirPrincipal = financed.plus(commission);
-    const interestSchedule = allocateInterestEIR(eirPrincipal, interest, c.totalMonths);
-
-    // Sum interest for unpaid periods only (period N → interestSchedule[N - 1])
-    const remainingDeferredInterest = unpaidInsts.reduce(
-      (sum, inst) => sum.add(interestSchedule[inst.installmentNo - 1]),
-      new Decimal(0),
-    );
 
     // Remaining balances for unpaid installments
     const remainingGross = installmentExclVat.times(unpaidD);
+    const remainingDeferredInterest = interestPerInst.times(unpaidD);
     const remainingDeferredVat = vatPerInst.times(unpaidD);
 
     // Discount on interest only
@@ -143,17 +129,16 @@ export class EarlyPayoffJP4Template {
       .div(100)
       .toDecimalPlaces(2);
 
-    // Wave 2 T3 — ม.79 + ม.86/10: VAT base = "ราคาที่ได้รับจริง"
-    // ถ้ามีส่วนลดดอกเบี้ย → ฐาน VAT ลดตามส่วน · Cr 21-2101 (VAT ภ.พ.30)
-    // ลดเป็น settleVat. Dr 21-2102 ยังเต็ม (ปิด deferred VAT). ความต่าง 105
-    // สะท้อนทาง Cash ที่ลดลง — JE balanced. vatCreditBackOnDiscount เก็บใน
-    // metadata เพื่อ traceability + reporting.
-    const vatOnDiscount = discount
-      .times(new Decimal('0.07'))
-      .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-    const settleVat = remainingDeferredVat.minus(vatOnDiscount);
+    // Policy A (CPA decision) — VAT ไม่ลดตามส่วนลดดอกเบี้ย
+    // CPA เลือก Policy A vs ม.79+86/10:
+    //   - Cr 21-2101 (VAT ภ.พ.30) = remainingDeferredVat เต็ม ไม่ลดตาม discount
+    //   - ไม่ออกใบลดหนี้ VAT (Credit Note)
+    //   - บริษัทรับภาระ VAT ส่วนเกินจาก discount เอง
+    // อ้างอิง: docs/superpowers/specs/2026-05-09-cpa-policy-a-100-compliance-design.md
+    //          + Handover_BestChoiceFinance v3.0.pdf §9 Policy Decisions
+    const settleVat = remainingDeferredVat;
 
-    // Settlement amount customer pays (reduced by both discount and vatOnDiscount)
+    // Settlement amount customer pays (reduced by discount only — VAT full)
     const settlement = remainingGross.minus(discount).plus(settleVat);
 
     const zero = new Decimal(0);
@@ -214,9 +199,7 @@ export class EarlyPayoffJP4Template {
           accountCode: '21-2101',
           dr: zero,
           cr: settleVat,
-          description: vatOnDiscount.gt(0)
-            ? `ภาษีขาย ภ.พ.30 ถึงกำหนด (ลด ${vatOnDiscount.toFixed(2)} ตามส่วนลด ม.79)`
-            : 'ภาษีขาย ภ.พ.30 ถึงกำหนด',
+          description: 'ภาษีขาย ภ.พ.30 ถึงกำหนด (Policy A: VAT ไม่ลดตามส่วนลด)',
         },
       );
 
@@ -231,8 +214,8 @@ export class EarlyPayoffJP4Template {
             unpaidInstallments: unpaid,
             discount: discount.toFixed(2),
             interestDiscountPercent: input.interestDiscountPercent.toFixed(2),
-            // Wave 2 T3 — VAT credit back per ม.79 + ม.86/10
-            vatCreditBackOnDiscount: vatOnDiscount.toFixed(2),
+            // Policy A — VAT ไม่ลดตามส่วนลด (CPA decision · vs ม.79+86/10)
+            policy: 'A',
             settleVat: settleVat.toFixed(2),
           },
           lines,

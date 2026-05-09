@@ -86,8 +86,8 @@ describe('AutoBalanceService — P3 Task 2 exclusions', () => {
     it('excludes contracts with status = LEGAL', async () => {
       mockPrisma.contract.findMany.mockResolvedValue([
         { id: 'c1', status: 'OVERDUE', assignedToId: null, assignedAt: null },
-        { id: 'c2', status: 'LEGAL', assignedToId: null, assignedAt: null },
-        { id: 'c3', status: 'LEGAL', assignedToId: 'user-A', assignedAt: null },
+        { id: 'c2', status: 'TERMINATED', assignedToId: null, assignedAt: null },
+        { id: 'c3', status: 'TERMINATED', assignedToId: 'user-A', assignedAt: null },
       ]);
 
       const preview = await service.preview();
@@ -179,7 +179,7 @@ describe('AutoBalanceService — P3 Task 2 exclusions', () => {
       mockPrisma.contract.findMany.mockResolvedValue([
         {
           id: 'c1',
-          status: 'LEGAL',
+          status: 'TERMINATED',
           assignedToId: 'user-A',
           assignedAt: new Date(NOW.getTime() - 1 * 60 * 60 * 1000), // also recent
         },
@@ -213,7 +213,7 @@ describe('AutoBalanceService — P3 Task 2 exclusions', () => {
       mockPrisma.contract.findMany.mockResolvedValue([
         { id: 'c1', status: 'OVERDUE', assignedToId: null, assignedAt: null },
         { id: 'c2', status: 'OVERDUE', assignedToId: null, assignedAt: null },
-        { id: 'c3', status: 'LEGAL', assignedToId: null, assignedAt: null }, // excluded
+        { id: 'c3', status: 'TERMINATED', assignedToId: null, assignedAt: null }, // excluded
         {
           id: 'c4',
           status: 'OVERDUE',

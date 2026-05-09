@@ -39,7 +39,7 @@ export class RescheduleJP6Template {
       description: 'รับค่าธรรมเนียมเลื่อนนัดล่วงหน้า',
       reference: `${input.contractId}:reschedule-fee:${Date.now()}`,
       metadata: {
-        tag: '2B',
+        tag: '6a',
         flow: 'reschedule-fee',
         contractId: input.contractId,
       },
@@ -78,7 +78,7 @@ export class RescheduleJP6Template {
       description: 'รับชำระงวดรวมค่าธรรมเนียมเลื่อนนัด',
       reference: `${input.installmentScheduleId}:bundled`,
       metadata: {
-        tag: '2B',
+        tag: '6b',
         flow: 'reschedule-bundled',
         contractId: input.contractId,
         installmentScheduleId: input.installmentScheduleId,
@@ -126,7 +126,7 @@ export class RescheduleJP6Template {
       description: 'หักเงินรับล่วงหน้าเข้างวดสุดท้าย',
       reference: `${input.installmentScheduleId}:final-consumption`,
       metadata: {
-        tag: '2B',
+        tag: '6a',
         flow: 'reschedule-final',
         contractId: input.contractId,
         installmentScheduleId: input.installmentScheduleId,

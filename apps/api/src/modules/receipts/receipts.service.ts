@@ -26,22 +26,20 @@ export class ReceiptsService {
   ) {}
 
   /**
-   * Generate receipt number: RC-YYYY-MM-NNNNN
+   * Generate receipt number: RT-YYYYMM-NNNNN (CPA Policy A spec).
    *
-   * Phase W-2: pg_advisory_xact_lock serialises concurrent generation within
-   * the same month, even when no rows yet exist for that prefix. The previous
-   * SELECT ... FOR UPDATE only locked existing rows — first receipt of a new
-   * month still race-conditioned (two callers both saw empty, both wrote -00001).
-   * Lock key = numeric YYYYMM with a +1 prefix (1<YYYYMM>) to namespace separate
-   * from journal entries which use the same lock space (raw YYYYMM).
-   * Auto-released at tx commit/rollback.
+   * Per-month sequence guarded by pg_advisory_xact_lock so concurrent generation
+   * within the same month — even on the first row of a new month — stays serialised
+   * and never produces duplicate -00001 sequences. Lock key is `1<YYYYMM>` (numeric)
+   * to namespace receipts separately from journal entries (which use raw YYYYMM).
+   * Lock auto-releases on tx commit/rollback.
    */
   private async generateReceiptNumber(tx?: Prisma.TransactionClient): Promise<string> {
     const db = tx || this.prisma;
     const now = new Date();
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
-    const prefix = `RC-${year}-${month}-`;
+    const prefix = `RT-${year}${month}-`;
 
     const lockKey = parseInt(`1${year}${month}`, 10);
     await db.$queryRaw`SELECT pg_advisory_xact_lock(${lockKey}::bigint)`;
@@ -91,12 +89,60 @@ export class ReceiptsService {
       const company = await tx.companyInfo.findFirst({ where: { isActive: true, deletedAt: null } });
       const receiverName = company?.nameTh || 'บริษัท เบสท์ช้อยส์โฟน จำกัด';
 
-      // Calculate remaining balance
-      const totalPaid = contract.payments.reduce((sum, p) => sum + Number(p.amountPaid), 0);
-      const remainingBalance = Number(contract.financedAmount) - totalPaid;
+      // Calculate remaining balance with Decimal arithmetic — avoids float
+      // drift on the persisted remainingBalance field (Decimal(12,2)).
+      const totalPaid = contract.payments.reduce(
+        (sum, p) => sum.add(new Prisma.Decimal(p.amountPaid.toString())),
+        new Prisma.Decimal(0),
+      );
+      const remainingBalanceDec = new Prisma.Decimal(contract.financedAmount.toString()).sub(
+        totalPaid,
+      );
+      const remainingBalance = Prisma.Decimal.max(remainingBalanceDec, new Prisma.Decimal(0));
       const totalMonths = contract.totalMonths;
       const paidMonths = contract.payments.length;
       const remainingMonths = totalMonths - paidMonths;
+
+      // Per-installment partial receipt fields (CPA Policy A spec):
+      //   paymentStatus: PARTIAL until Payment.status flips to PAID, then PAID
+      //   installmentPartialSeq: 1, 2, 3 ... within same installment (null on full payment)
+      //   remainingAmount: amountDue - cumulative receipt amounts for this installment
+      //
+      // Voided receipts are intentionally excluded from priorReceipts: a voided
+      // receipt is legally non-existent (มาตรฐานการบัญชี — กลับรายการแล้วถือ
+      // เสมือนไม่ได้ออก) so the next receipt re-uses its slot in the seq —
+      // e.g. if seq #2 is voided, the following partial becomes #2, not #3.
+      // This matches how an accountant would re-issue a corrected receipt.
+      let paymentStatus = 'PAID';
+      let installmentPartialSeq: number | null = null;
+      let remainingAmount: Prisma.Decimal | null = null;
+      if (paymentId && installmentNo != null) {
+        const payment = await tx.payment.findUnique({
+          where: { id: paymentId },
+          select: { status: true, amountDue: true },
+        });
+        if (payment) {
+          const priorReceipts = await tx.receipt.findMany({
+            where: {
+              contractId,
+              installmentNo,
+              isVoided: false,
+              deletedAt: null,
+            },
+            select: { amount: true },
+          });
+          const priorTotal = priorReceipts.reduce(
+            (acc, r) => acc.plus(r.amount),
+            new Prisma.Decimal(0),
+          );
+          const cumulative = priorTotal.plus(amount);
+          const due = new Prisma.Decimal((payment.amountDue ?? 0).toString());
+          paymentStatus = payment.status === 'PAID' ? 'PAID' : 'PARTIAL';
+          installmentPartialSeq = paymentStatus === 'PARTIAL' ? priorReceipts.length + 1 : null;
+          const remainder = due.minus(cumulative);
+          remainingAmount = remainder.gt(0) ? remainder : new Prisma.Decimal(0);
+        }
+      }
 
       // Generate receipt number inside transaction (uses FOR UPDATE lock)
       const receiptNumber = await this.generateReceiptNumber(tx);
@@ -121,8 +167,11 @@ export class ReceiptsService {
           receiverName,
           amount,
           installmentNo,
-          remainingBalance: Math.max(0, remainingBalance),
+          remainingBalance,
           remainingMonths: Math.max(0, remainingMonths),
+          paymentStatus,
+          installmentPartialSeq,
+          remainingAmount,
           paymentMethod,
           transactionRef,
           paidDate: new Date(),
@@ -387,6 +436,16 @@ export class ReceiptsService {
       );
     }
 
+    // Segregation of duties: the user requesting the void cannot be the same
+    // user approving it. Mirrors bad-debt write-off pattern (writtenOffById !==
+    // approvedById). Prevents the controller fallback `dto.approvedById ?? user.id`
+    // from auto-approving on behalf of the requester.
+    if (issuedById === approvedById) {
+      throw new ForbiddenException(
+        'การยกเลิกใบเสร็จต้องมีผู้ขออนุมัติและผู้อนุมัติเป็นคนละคน',
+      );
+    }
+
     // CR-7: Validate void date is not in a closed accounting period
     await validatePeriodOpen(this.prisma, new Date());
     return this.prisma.$transaction(async (tx) => {
@@ -432,7 +491,9 @@ export class ReceiptsService {
         },
       });
 
-      // Phase A.5a: reverse the original payment JE (non-blocking)
+      // Phase A.5a: reverse the original payment JE.
+      // Must propagate errors — receipt void without ledger reversal would
+      // leave HP receivable cleared by 2B but no offsetting credit note JE.
       if (receipt.paymentId) {
         const originalEntry = await tx.journalEntry.findFirst({
           where: {
@@ -443,13 +504,7 @@ export class ReceiptsService {
           },
         });
         if (originalEntry) {
-          try {
-            await this.receiptVoidReversalTemplate.voidReceipt(originalEntry.id);
-          } catch (err) {
-            this.logger.error(
-              `[A.5a] Receipt void reversal JE failed for payment ${receipt.paymentId}: ${(err as Error).message}`,
-            );
-          }
+          await this.receiptVoidReversalTemplate.voidReceipt(originalEntry.id, tx);
         }
       }
 

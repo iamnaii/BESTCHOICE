@@ -45,7 +45,7 @@ export class ContractSnapshotCron {
       const contracts = await this.prisma.contract.findMany({
         where: {
           deletedAt: null,
-          status: { in: ['OVERDUE', 'DEFAULT', 'LEGAL'] },
+          status: { in: ['OVERDUE', 'DEFAULT', 'TERMINATED'] },
           // Must have at least one unpaid past-due payment to qualify as
           // "active overdue" (mirrors queue tab filter).
           payments: {

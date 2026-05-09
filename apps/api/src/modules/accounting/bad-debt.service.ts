@@ -12,14 +12,20 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { BadDebtProvisionTemplate } from '../journal/cpa-templates/bad-debt-provision.template';
 import { BadDebtWriteOffTemplate } from '../journal/cpa-templates/bad-debt-writeoff.template';
+import { EclStageReverseTemplate } from '../journal/cpa-templates/ecl-stage-reverse.template';
 
+// CPA ECL v3.0 — NPAEs Ch.13 Aging-based (6 buckets B0-B5)
+// Refs: docs/superpowers/specs/2026-05-09-cpa-policy-a-100-compliance-design.md
+//       + สรุปการบันทึกรับชำระค่างวด.csv §6 ECL Provision
+//
+// Note: 0-day bucket (B0) handled implicitly = no provision created
+//       (only installments WITH overdue days get a provision row).
 const DEFAULT_PROVISION_RATES: Record<string, number> = {
-  '1-30': 0.02,
-  '31-60': 0.10,
-  '61-90': 0.25,
-  '91-180': 0.50,
-  '181-360': 0.75,
-  '360+': 1.00,
+  '1-30': 0.02,    // B1 ACTIVE
+  '31-60': 0.15,   // B2 ACTIVE (alert 60d trigger)
+  '61-90': 0.50,   // B3 → contract should be TERMINATED (manual)
+  '91-180': 0.75,  // B4 TERMINATED
+  '180+': 1.00,    // B5 TERMINATED (NPL)
 };
 
 @Injectable()
@@ -31,6 +37,7 @@ export class BadDebtService {
     private journalAutoService: JournalAutoService,
     private badDebtProvisionTemplate: BadDebtProvisionTemplate,
     private badDebtWriteOffTemplate: BadDebtWriteOffTemplate,
+    private eclStageReverseTemplate: EclStageReverseTemplate,
   ) {}
 
   /** Load provision rates from system config or use defaults */
@@ -48,14 +55,13 @@ export class BadDebtService {
     return DEFAULT_PROVISION_RATES;
   }
 
-  /** Determine aging bucket for a given number of overdue days */
+  /** Determine aging bucket for a given number of overdue days (CPA ECL v3.0) */
   private getAgingBucket(daysOverdue: number): string {
-    if (daysOverdue <= 30) return '1-30';
-    if (daysOverdue <= 60) return '31-60';
-    if (daysOverdue <= 90) return '61-90';
-    if (daysOverdue <= 180) return '91-180';
-    if (daysOverdue <= 360) return '181-360';
-    return '360+';
+    if (daysOverdue <= 30) return '1-30';     // B1
+    if (daysOverdue <= 60) return '31-60';    // B2 (alert 60d)
+    if (daysOverdue <= 90) return '61-90';    // B3 (TERMINATED)
+    if (daysOverdue <= 180) return '91-180';  // B4 (TERMINATED)
+    return '180+';                             // B5 (NPL)
   }
 
   /**
@@ -74,13 +80,13 @@ export class BadDebtService {
   /**
    * Calculate Bad Debt provisions per TFRS for NPAEs Chapter 13.
    *
-   * Uses simplified aging-based approach (NOT TFRS 9 full ECL 3-stage model):
-   *   1-30 days overdue:   2%   provision
-   *   31-60 days overdue:  10%  provision
-   *   61-90 days overdue:  25%  provision
-   *   91-180 days overdue: 50%  provision
-   *   181-360 days overdue: 75% provision
-   *   360+ days overdue:   100% provision
+   * Uses CPA ECL v3.0 (NPAEs Ch.13 Aging-based · 6 buckets B0-B5):
+   *   B0: 0 days (ปกติ)    0%   ACTIVE (no provision row created)
+   *   B1: 1-30 days        2%   ACTIVE
+   *   B2: 31-60 days       15%  ACTIVE (alert 60d trigger)
+   *   B3: 61-90 days       50%  → contract should be TERMINATED (manual)
+   *   B4: 91-180 days      75%  TERMINATED
+   *   B5: >180 days        100% TERMINATED (NPL)
    *
    * Approved NPAEs simplification per Ch.13 — forward-looking macro factors
    * not required at NPAEs level. Rates are configurable via
@@ -142,38 +148,24 @@ export class BadDebtService {
       }
     }
 
-    // Reverse existing ACTIVE provisions only for contracts in scope
+    // Reverse existing ACTIVE provisions only for contracts in scope.
+    // Wrap REVERSE + CREATE in a single $transaction — without it, a
+    // failed createMany after the reverse would leave provisions REVERSED
+    // with no replacement, dropping coverage on the balance sheet.
     const contractIdsInScope = [...contractOutstanding.keys()];
 
-    // Capture previous provision amounts BEFORE reversing, to compute delta for JE
-    const previousProvisionByContract = new Map<string, Prisma.Decimal>();
-    if (contractIdsInScope.length > 0) {
-      const activeProvisions = await this.prisma.badDebtProvision.findMany({
-        where: { status: 'ACTIVE', contractId: { in: contractIdsInScope }, deletedAt: null },
-        select: { contractId: true, provisionAmount: true },
-      });
-      for (const p of activeProvisions) {
-        const prev = previousProvisionByContract.get(p.contractId) ?? new Prisma.Decimal(0);
-        previousProvisionByContract.set(p.contractId, prev.add(p.provisionAmount));
-      }
-
-      await this.prisma.badDebtProvision.updateMany({
-        where: { status: 'ACTIVE', contractId: { in: contractIdsInScope }, deletedAt: null },
-        data: { status: 'REVERSED' },
-      });
-    }
-
-    // Create new provisions
-    const byBucket: Record<string, { count: number; amount: number }> = {};
-    const provisions: Array<{
+    // Pre-compute provision rows (Decimal — no Number cast in persisted values)
+    type ProvisionRow = {
       contractId: string;
       provisionDate: Date;
       agingBucket: string;
       daysOverdue: number;
-      outstandingAmount: number;
-      provisionRate: number;
-      provisionAmount: number;
-    }> = [];
+      outstandingAmount: Prisma.Decimal;
+      provisionRate: Prisma.Decimal;
+      provisionAmount: Prisma.Decimal;
+    };
+    const byBucket: Record<string, { count: number; amount: Decimal }> = {};
+    const provisions: ProvisionRow[] = [];
 
     for (const [contractId, data] of contractOutstanding) {
       const daysOverdue = Math.floor(
@@ -181,31 +173,50 @@ export class BadDebtService {
       );
       const bucket = this.getAgingBucket(daysOverdue);
       const rate = rates[bucket] || 0;
-      // Decimal precision: ROUND_HALF_UP to 2 d.p. (was Math.round which used banker's rounding edge cases)
-      const provisionAmountDecimal = data.amount
-        .mul(new Decimal(rate))
+      const rateDec = new Decimal(rate);
+      const outstandingDec = data.amount.toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+      const provisionAmountDec = data.amount
+        .mul(rateDec)
         .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-      const provisionAmount = provisionAmountDecimal.toNumber();
-      const outstandingAmount = data.amount.toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toNumber();
 
       provisions.push({
         contractId,
         provisionDate: now,
         agingBucket: bucket,
         daysOverdue,
-        outstandingAmount,
-        provisionRate: rate,
-        provisionAmount,
+        outstandingAmount: outstandingDec,
+        provisionRate: rateDec,
+        provisionAmount: provisionAmountDec,
       });
 
-      if (!byBucket[bucket]) byBucket[bucket] = { count: 0, amount: 0 };
+      if (!byBucket[bucket]) byBucket[bucket] = { count: 0, amount: new Decimal(0) };
       byBucket[bucket].count++;
-      byBucket[bucket].amount += provisionAmount;
+      byBucket[bucket].amount = byBucket[bucket].amount.add(provisionAmountDec);
     }
 
-    if (provisions.length > 0) {
-      await this.prisma.badDebtProvision.createMany({ data: provisions });
-    }
+    // Atomic REVERSE + CREATE — never leave the balance sheet without coverage
+    const previousProvisionByContract = new Map<string, Prisma.Decimal>();
+    await this.prisma.$transaction(async (tx) => {
+      if (contractIdsInScope.length > 0) {
+        const activeProvisions = await tx.badDebtProvision.findMany({
+          where: { status: 'ACTIVE', contractId: { in: contractIdsInScope }, deletedAt: null },
+          select: { contractId: true, provisionAmount: true },
+        });
+        for (const p of activeProvisions) {
+          const prev = previousProvisionByContract.get(p.contractId) ?? new Prisma.Decimal(0);
+          previousProvisionByContract.set(p.contractId, prev.add(p.provisionAmount));
+        }
+
+        await tx.badDebtProvision.updateMany({
+          where: { status: 'ACTIVE', contractId: { in: contractIdsInScope }, deletedAt: null },
+          data: { status: 'REVERSED' },
+        });
+      }
+
+      if (provisions.length > 0) {
+        await tx.badDebtProvision.createMany({ data: provisions });
+      }
+    });
 
     // Post delta-based provision JEs (non-blocking — a single JE failure must not abort the run)
     const year = now.getFullYear();
@@ -214,7 +225,7 @@ export class BadDebtService {
 
     for (const p of provisions) {
       const prev = previousProvisionByContract.get(p.contractId) ?? new Prisma.Decimal(0);
-      const newAmount = new Prisma.Decimal(p.provisionAmount);
+      const newAmount = p.provisionAmount;
       const delta = newAmount.sub(prev);
       if (delta.eq(0)) continue;
 
@@ -235,11 +246,16 @@ export class BadDebtService {
 
     // Decimal sum for total provision (TFRS 9 / v4 mandate — avoid float drift on aggregation)
     const totalProvisionDecimal = provisions.reduce(
-      (sum, p) => sum.add(new Decimal(p.provisionAmount)),
+      (sum, p) => sum.add(p.provisionAmount),
       new Decimal(0),
     );
     const totalProvision = totalProvisionDecimal.toNumber();
-    return { created: provisions.length, totalProvision, byBucket };
+    // Convert byBucket Decimals to numbers for the response shape (display only)
+    const byBucketResp: Record<string, { count: number; amount: number }> = {};
+    for (const [bucket, agg] of Object.entries(byBucket)) {
+      byBucketResp[bucket] = { count: agg.count, amount: agg.amount.toNumber() };
+    }
+    return { created: provisions.length, totalProvision, byBucket: byBucketResp };
   }
 
   /**
@@ -480,5 +496,123 @@ export class BadDebtService {
 
       return { contractId, status: 'CLOSED_BAD_DEBT', writtenOffAt: new Date() };
     });
+  }
+
+  /**
+   * ECL Stage Reverse on payment (CPA Policy A spec §3.6).
+   *
+   * Called from PaymentReceipt2BTemplate / payments.service after a successful
+   * payment posts. Recomputes the contract's max-aging bucket using the latest
+   * (post-payment) installment state. If the new bucket is below all the
+   * persisted ACTIVE provisions, releases the over-provision delta back to
+   * P&L via EclStageReverseTemplate (Dr 11-2102 / Cr 51-1103).
+   *
+   * Pass `tx` to chain into the caller's transaction so a JE failure rolls
+   * back the parent receipt JE. Returns null when no reverse is needed
+   * (no ACTIVE provision, or aging didn't drop).
+   *
+   * Note: bucket comparison is done by rate ordering (B1=2% < B2=15% < B3=50%
+   * < B4=75% < B5=100%) — a "drop" is when the new bucket's rate is strictly
+   * less than the existing provision's rate.
+   */
+  async reverseStageOnPayment(
+    contractId: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<{ entryNo: string; reverseAmount: string; fromBucket: string; toBucket: string } | null> {
+    const db = tx ?? this.prisma;
+
+    const existing = await db.badDebtProvision.findFirst({
+      where: { contractId, status: 'ACTIVE', deletedAt: null },
+      orderBy: { provisionDate: 'desc' },
+    });
+    if (!existing) return null;
+
+    const overduePayments = await db.payment.findMany({
+      where: {
+        contractId,
+        status: { in: ['PENDING', 'PARTIALLY_PAID'] },
+        deletedAt: null,
+      },
+      select: { dueDate: true, amountDue: true, amountPaid: true, lateFee: true, lateFeeWaived: true },
+    });
+
+    const now = new Date();
+    let maxOverdueDays = 0;
+    let totalOutstanding = new Decimal(0);
+    for (const p of overduePayments) {
+      const days = Math.floor((now.getTime() - p.dueDate.getTime()) / (1000 * 60 * 60 * 24));
+      if (days > maxOverdueDays) maxOverdueDays = days;
+      const unpaidLateFee = !p.lateFeeWaived ? new Decimal(p.lateFee.toString()) : new Decimal(0);
+      totalOutstanding = totalOutstanding.add(this.computeOutstanding(p, unpaidLateFee));
+    }
+
+    if (maxOverdueDays <= 0 || totalOutstanding.lte(0)) {
+      // Contract is fully current — fall through and reverse the entire provision.
+      const reverseAmount = new Decimal(existing.provisionAmount.toString());
+      if (reverseAmount.lte(0)) return null;
+      const result = await this.eclStageReverseTemplate.execute(
+        {
+          contractId,
+          reverseAmount,
+          fromBucket: existing.agingBucket,
+          toBucket: 'CURRENT',
+        },
+        tx,
+      );
+      if (!result) return null;
+      await db.badDebtProvision.update({
+        where: { id: existing.id },
+        data: { status: 'REVERSED' },
+      });
+      return {
+        entryNo: result.entryNo,
+        reverseAmount: reverseAmount.toFixed(2),
+        fromBucket: existing.agingBucket,
+        toBucket: 'CURRENT',
+      };
+    }
+
+    const newBucket = this.getAgingBucket(maxOverdueDays);
+    const rates = await this.getProvisionRates();
+    // Decimal compare to avoid float-precision drift when rates come from
+    // SystemConfig JSON (e.g. 0.15 stored as 0.149999... after JSON roundtrip).
+    const oldRate = new Decimal(existing.provisionRate.toString());
+    const newRate = new Decimal(rates[newBucket] ?? 0);
+    if (newRate.gte(oldRate)) return null; // Stage didn't drop
+
+    const newProvision = totalOutstanding
+      .times(newRate)
+      .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+    const reverseAmount = new Decimal(existing.provisionAmount.toString()).sub(newProvision);
+    if (reverseAmount.lte(0)) return null;
+
+    const result = await this.eclStageReverseTemplate.execute(
+      {
+        contractId,
+        reverseAmount,
+        fromBucket: existing.agingBucket,
+        toBucket: newBucket,
+      },
+      tx,
+    );
+    if (!result) return null;
+
+    await db.badDebtProvision.update({
+      where: { id: existing.id },
+      data: {
+        agingBucket: newBucket,
+        daysOverdue: maxOverdueDays,
+        outstandingAmount: totalOutstanding,
+        provisionRate: new Prisma.Decimal(newRate.toString()),
+        provisionAmount: newProvision,
+      },
+    });
+
+    return {
+      entryNo: result.entryNo,
+      reverseAmount: reverseAmount.toFixed(2),
+      fromBucket: existing.agingBucket,
+      toBucket: newBucket,
+    };
   }
 }

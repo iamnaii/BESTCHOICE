@@ -22,6 +22,7 @@ import { MdmAutoService } from '../mdm/mdm-auto.service';
 import { PromiseService } from '../overdue/promise.service';
 import { MdmLockService } from '../overdue/mdm-lock.service';
 import { PaymentCase } from './dto/payment.dto';
+import { BadDebtService } from '../accounting/bad-debt.service';
 
 @Injectable()
 export class PaymentsService {
@@ -38,6 +39,11 @@ export class PaymentsService {
     private lineOaService: LineOaService,
     private flexTemplates: FlexTemplatesService,
     private quickReplyService: QuickReplyService,
+    // BadDebtService is REQUIRED — ECL stage reverse on payment is a
+    // regulatory requirement (NPAEs Ch.13). Failure to load the dependency
+    // must break boot, not silently skip the reverse. Kept above the
+    // @Optional() params per TS rule (required cannot follow optional).
+    private badDebtService: BadDebtService,
     @Optional() private mdmAuto?: MdmAutoService,
     @Optional() @Inject(forwardRef(() => PromiseService)) private promiseService?: PromiseService,
     @Optional() private mdmLockService?: MdmLockService,
@@ -356,6 +362,20 @@ export class PaymentsService {
             advanceConsume: advanceConsume.gt(0) ? advanceConsume : undefined,
             partialClear: isPartialClear ? true : undefined,
           });
+
+          // CPA Policy A §3.6 — ECL stage reverse on payment.
+          // After the receipt JE posts, recompute aging. If the bucket dropped
+          // (e.g. B2 → B1) the persisted provision is now overstated; release
+          // the over-provision back to P&L atomically inside the same tx so a
+          // reverse-JE failure rolls back the receipt.
+          try {
+            await this.badDebtService.reverseStageOnPayment(contract.id, tx);
+          } catch (err) {
+            Sentry.captureException(err, {
+              extra: { contractId: contract.id, installmentNo: result.installmentNo, paymentId: result.id },
+            });
+            throw err;
+          }
         } else {
           this.logger.warn(
             `PaymentReceipt2B skipped — no InstallmentSchedule found for contractId=${contract.id} installmentNo=${result.installmentNo}. TODO: verify schedule was generated.`,
@@ -1474,6 +1494,35 @@ export class PaymentsService {
     });
     if (!user) throw new Error('System user not found');
     return user.id;
+  }
+
+  // ─── Partial-payment QR (cashier sends QR to customer's LINE) ─────────────
+  // Customer pays via PaySolutions PromptPay → webhook auto-records as PARTIAL.
+  // The active link powers the "QR ส่งแล้ว" badge in the payments table.
+
+  /** Get the currently-active (un-expired) partial-payment QR link for a payment. */
+  async getActivePartialQr(paymentId: string) {
+    return this.prisma.partialPaymentLink.findFirst({
+      where: {
+        paymentId,
+        status: 'ACTIVE',
+        expiresAt: { gt: new Date() },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  /** Cancel the currently-active partial-payment QR link, if one exists. */
+  async cancelActivePartialQr(paymentId: string) {
+    const link = await this.prisma.partialPaymentLink.findFirst({
+      where: { paymentId, status: 'ACTIVE' },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!link) throw new NotFoundException('ไม่มี QR ที่กำลังใช้งานอยู่');
+    return this.prisma.partialPaymentLink.update({
+      where: { id: link.id },
+      data: { status: 'CANCELLED', cancelledAt: new Date() },
+    });
   }
 
   /**

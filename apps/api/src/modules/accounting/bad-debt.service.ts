@@ -574,12 +574,14 @@ export class BadDebtService {
 
     const newBucket = this.getAgingBucket(maxOverdueDays);
     const rates = await this.getProvisionRates();
-    const oldRate = Number(existing.provisionRate);
-    const newRate = rates[newBucket] ?? 0;
-    if (newRate >= oldRate) return null; // Stage didn't drop
+    // Decimal compare to avoid float-precision drift when rates come from
+    // SystemConfig JSON (e.g. 0.15 stored as 0.149999... after JSON roundtrip).
+    const oldRate = new Decimal(existing.provisionRate.toString());
+    const newRate = new Decimal(rates[newBucket] ?? 0);
+    if (newRate.gte(oldRate)) return null; // Stage didn't drop
 
     const newProvision = totalOutstanding
-      .times(new Decimal(newRate))
+      .times(newRate)
       .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
     const reverseAmount = new Decimal(existing.provisionAmount.toString()).sub(newProvision);
     if (reverseAmount.lte(0)) return null;
@@ -601,7 +603,7 @@ export class BadDebtService {
         agingBucket: newBucket,
         daysOverdue: maxOverdueDays,
         outstandingAmount: totalOutstanding,
-        provisionRate: new Prisma.Decimal(newRate),
+        provisionRate: new Prisma.Decimal(newRate.toString()),
         provisionAmount: newProvision,
       },
     });

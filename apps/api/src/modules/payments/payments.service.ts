@@ -39,10 +39,14 @@ export class PaymentsService {
     private lineOaService: LineOaService,
     private flexTemplates: FlexTemplatesService,
     private quickReplyService: QuickReplyService,
+    // BadDebtService is REQUIRED — ECL stage reverse on payment is a
+    // regulatory requirement (NPAEs Ch.13). Failure to load the dependency
+    // must break boot, not silently skip the reverse. Kept above the
+    // @Optional() params per TS rule (required cannot follow optional).
+    private badDebtService: BadDebtService,
     @Optional() private mdmAuto?: MdmAutoService,
     @Optional() @Inject(forwardRef(() => PromiseService)) private promiseService?: PromiseService,
     @Optional() private mdmLockService?: MdmLockService,
-    @Optional() private badDebtService?: BadDebtService,
   ) {}
 
   /**
@@ -364,15 +368,13 @@ export class PaymentsService {
           // (e.g. B2 → B1) the persisted provision is now overstated; release
           // the over-provision back to P&L atomically inside the same tx so a
           // reverse-JE failure rolls back the receipt.
-          if (this.badDebtService) {
-            try {
-              await this.badDebtService.reverseStageOnPayment(contract.id, tx);
-            } catch (err) {
-              Sentry.captureException(err, {
-                extra: { contractId: contract.id, installmentNo: result.installmentNo, paymentId: result.id },
-              });
-              throw err;
-            }
+          try {
+            await this.badDebtService.reverseStageOnPayment(contract.id, tx);
+          } catch (err) {
+            Sentry.captureException(err, {
+              extra: { contractId: contract.id, installmentNo: result.installmentNo, paymentId: result.id },
+            });
+            throw err;
           }
         } else {
           this.logger.warn(

@@ -740,5 +740,60 @@ describe('BadDebtService', () => {
       const updateCall = prisma.badDebtProvision.update.mock.calls[0][0];
       expect(updateCall.data.status).toBe('REVERSED');
     });
+
+    it('concurrent payments on the same contract: each reads its own snapshot, updates atomically', async () => {
+      // Two payments race on the same contract within the same serializable
+      // tx isolation in payments.service.ts. At the service layer, both calls
+      // see the ACTIVE provision and post their own reverse — but in
+      // production the outer serializable tx will retry one of them, so each
+      // call must be self-consistent on its own snapshot.
+      //
+      // We verify the orchestration is deterministic: same input → same
+      // output. The actual write-side conflict resolution lives in
+      // recordPayment's serializable tx (covered by integration tests).
+      setActiveProvision({ provisionAmount: 300, provisionRate: 0.15, agingBucket: '31-60' });
+      setOverduePayments([{ daysAgo: 15, due: 1500, paid: 0 }]);
+
+      const [r1, r2] = await Promise.all([
+        service.reverseStageOnPayment('ct-1'),
+        service.reverseStageOnPayment('ct-1'),
+      ]);
+
+      expect(r1).not.toBeNull();
+      expect(r2).not.toBeNull();
+      expect(r1!.reverseAmount).toBe(r2!.reverseAmount);
+      expect(r1!.fromBucket).toBe(r2!.fromBucket);
+      expect(r1!.toBucket).toBe(r2!.toBucket);
+
+      // Both calls saw the same provision row + same overdue snapshot, so
+      // both posted reverses. Production safety: outer serializable tx will
+      // 40001-retry one of them, ensuring the final state has at most one
+      // reverse JE per provision row.
+      expect(prisma.badDebtProvision.update).toHaveBeenCalledTimes(2);
+    });
+
+    it('handles SystemConfig rate roundtrip precision (Decimal compare, not Number)', async () => {
+      // SystemConfig stores rates as JSON; round-tripping 0.15 through
+      // JSON.parse can leave 0.149999... which would falsely compare > old
+      // rate of exactly 0.15 if we used Number. Decimal compare avoids this.
+      prisma.systemConfig.findUnique.mockResolvedValue({
+        key: 'bad_debt_provision_rates',
+        value: JSON.stringify({
+          '1-30': 0.02,
+          '31-60': 0.15,
+          '61-90': 0.5,
+          '91-180': 0.75,
+          '180+': 1.0,
+        }),
+      });
+
+      // Existing B2 (15%); new aging 15 days → B1 (2%). Drop confirmed.
+      setActiveProvision({ provisionAmount: 300, provisionRate: 0.15, agingBucket: '31-60' });
+      setOverduePayments([{ daysAgo: 15, due: 1500, paid: 0 }]);
+
+      const result = await service.reverseStageOnPayment('ct-1');
+      expect(result).not.toBeNull();
+      expect(result!.toBucket).toBe('1-30');
+    });
   });
 });

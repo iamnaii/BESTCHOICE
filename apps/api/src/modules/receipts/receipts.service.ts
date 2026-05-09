@@ -26,22 +26,20 @@ export class ReceiptsService {
   ) {}
 
   /**
-   * Generate receipt number: RC-YYYY-MM-NNNNN
+   * Generate receipt number: RT-YYYYMM-NNNNN (CPA Policy A spec).
    *
-   * Phase W-2: pg_advisory_xact_lock serialises concurrent generation within
-   * the same month, even when no rows yet exist for that prefix. The previous
-   * SELECT ... FOR UPDATE only locked existing rows — first receipt of a new
-   * month still race-conditioned (two callers both saw empty, both wrote -00001).
-   * Lock key = numeric YYYYMM with a +1 prefix (1<YYYYMM>) to namespace separate
-   * from journal entries which use the same lock space (raw YYYYMM).
-   * Auto-released at tx commit/rollback.
+   * Per-month sequence guarded by pg_advisory_xact_lock so concurrent generation
+   * within the same month — even on the first row of a new month — stays serialised
+   * and never produces duplicate -00001 sequences. Lock key is `1<YYYYMM>` (numeric)
+   * to namespace receipts separately from journal entries (which use raw YYYYMM).
+   * Lock auto-releases on tx commit/rollback.
    */
   private async generateReceiptNumber(tx?: Prisma.TransactionClient): Promise<string> {
     const db = tx || this.prisma;
     const now = new Date();
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
-    const prefix = `RC-${year}-${month}-`;
+    const prefix = `RT-${year}${month}-`;
 
     const lockKey = parseInt(`1${year}${month}`, 10);
     await db.$queryRaw`SELECT pg_advisory_xact_lock(${lockKey}::bigint)`;
@@ -105,6 +103,41 @@ export class ReceiptsService {
       const paidMonths = contract.payments.length;
       const remainingMonths = totalMonths - paidMonths;
 
+      // Per-installment partial receipt fields (CPA Policy A spec):
+      //   paymentStatus: PARTIAL until Payment.status flips to PAID, then PAID
+      //   installmentPartialSeq: 1, 2, 3 ... within same installment (null on full payment)
+      //   remainingAmount: amountDue - cumulative receipt amounts for this installment
+      let paymentStatus = 'PAID';
+      let installmentPartialSeq: number | null = null;
+      let remainingAmount: Prisma.Decimal | null = null;
+      if (paymentId && installmentNo != null) {
+        const payment = await tx.payment.findUnique({
+          where: { id: paymentId },
+          select: { status: true, amountDue: true },
+        });
+        if (payment) {
+          const priorReceipts = await tx.receipt.findMany({
+            where: {
+              contractId,
+              installmentNo,
+              isVoided: false,
+              deletedAt: null,
+            },
+            select: { amount: true },
+          });
+          const priorTotal = priorReceipts.reduce(
+            (acc, r) => acc.plus(r.amount),
+            new Prisma.Decimal(0),
+          );
+          const cumulative = priorTotal.plus(amount);
+          const due = new Prisma.Decimal((payment.amountDue ?? 0).toString());
+          paymentStatus = payment.status === 'PAID' ? 'PAID' : 'PARTIAL';
+          installmentPartialSeq = paymentStatus === 'PARTIAL' ? priorReceipts.length + 1 : null;
+          const remainder = due.minus(cumulative);
+          remainingAmount = remainder.gt(0) ? remainder : new Prisma.Decimal(0);
+        }
+      }
+
       // Generate receipt number inside transaction (uses FOR UPDATE lock)
       const receiptNumber = await this.generateReceiptNumber(tx);
 
@@ -130,6 +163,9 @@ export class ReceiptsService {
           installmentNo,
           remainingBalance,
           remainingMonths: Math.max(0, remainingMonths),
+          paymentStatus,
+          installmentPartialSeq,
+          remainingAmount,
           paymentMethod,
           transactionRef,
           paidDate: new Date(),

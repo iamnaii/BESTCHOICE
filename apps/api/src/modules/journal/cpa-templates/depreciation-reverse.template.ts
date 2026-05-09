@@ -8,6 +8,8 @@ export interface DepreciationReverseInput {
   /** Period in "YYYY-MM" format, e.g. "2026-04" */
   period: string;
   reversedById: string;
+  /** Reason for the reversal (required) */
+  reason: string;
 }
 
 /**
@@ -54,7 +56,11 @@ export class DepreciationReverseTemplate {
     input: DepreciationReverseInput,
     outerTx?: Prisma.TransactionClient,
   ): Promise<{ reversedCount: number; entryNumbers: string[] }> {
-    const { period, reversedById } = input;
+    const { period, reversedById, reason } = input;
+
+    if (!reason || reason.trim().length === 0) {
+      throw new BadRequestException('กรุณาระบุเหตุผลการกลับรายการ');
+    }
 
     const run = async (
       tx: Prisma.TransactionClient,
@@ -140,6 +146,7 @@ export class DepreciationReverseTemplate {
               reversedAssetId: entry.assetId,
               originalEntryId: original.id,
               originalEntryNumber: original.entryNumber,
+              reversalReason: reason,
               eventType: 'DEPRECIATION_REVERSAL',
             },
             lines: reversedLines,
@@ -164,6 +171,9 @@ export class DepreciationReverseTemplate {
         });
 
         // 7. Roll back FixedAsset.accumulatedDepr + recompute NBV
+        // Each entry processes one (assetId, period) pair, so entry.asset.accumulatedDepr
+        // is the asset's state at loop start. Multi-asset runs are safe because per-asset
+        // state is independent — one asset's rollback can't affect another's snapshot.
         const reverseAmount = new Decimal(entry.amount.toString());
         const currentAccum = new Decimal(entry.asset.accumulatedDepr.toString());
         const purchaseCost = new Decimal(entry.asset.purchaseCost.toString());

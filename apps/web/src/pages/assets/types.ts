@@ -112,6 +112,20 @@ export interface ListResponse {
   limit: number;
 }
 
+export interface AssetTransferRow {
+  id: string;
+  transferId: string;
+  transferDate: string;
+  fromCustodian: string | null;
+  toCustodian: string | null;
+  fromLocation: string | null;
+  toLocation: string | null;
+  reason: string;
+  asset: { id: string; assetCode: string; name: string; serialNo: string | null; branchId: string | null };
+  transferredBy: { id: string; name: string };
+  createdAt: string;
+}
+
 export const CATEGORY_LABEL: Record<AssetCategory, string> = {
   EQUIPMENT: 'อุปกรณ์สำนักงาน',
   IMPROVEMENT: 'ส่วนปรับปรุงอาคาร',

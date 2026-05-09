@@ -6,6 +6,7 @@ import type {
   AssetCategory,
   AssetStatus,
   AssetSummary,
+  AssetTransferRow,
   AuditLogEntry,
   ListResponse,
 } from './types';
@@ -114,6 +115,34 @@ export const assetsApi = {
     const { data } = await api.post<{ entryNo: string }>(`/assets/${id}/reverse-dispose`, {
       reason,
     });
+    return data;
+  },
+
+  listAllTransfers: async (filters: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    custodianContains?: string;
+    locationContains?: string;
+    branchId?: string;
+    fromDate?: string;
+    toDate?: string;
+  }): Promise<{ data: AssetTransferRow[]; total: number; page: number; limit: number }> => {
+    const params: Record<string, string | number> = {};
+    if (filters.page) params.page = filters.page;
+    if (filters.limit) params.limit = filters.limit;
+    if (filters.search) params.search = filters.search;
+    if (filters.custodianContains) params.custodianContains = filters.custodianContains;
+    if (filters.locationContains) params.locationContains = filters.locationContains;
+    if (filters.branchId) params.branchId = filters.branchId;
+    if (filters.fromDate) params.fromDate = filters.fromDate;
+    if (filters.toDate) params.toDate = filters.toDate;
+    const { data } = await api.get<{
+      data: AssetTransferRow[];
+      total: number;
+      page: number;
+      limit: number;
+    }>('/asset-transfers', { params });
     return data;
   },
 };

@@ -1,6 +1,7 @@
 // Depreciation module — preview table (Phase 2)
 // Per-asset rows with monthly depreciation + Dr/Cr account codes.
 
+import Decimal from 'decimal.js';
 import { formatNumberDecimal } from '@/utils/formatters';
 import type { DepreciationPreview } from '../types';
 
@@ -31,7 +32,7 @@ export function DepreciationPreviewTable({ preview }: { preview: DepreciationPre
               <td className="py-2 px-2 font-mono">{l.assetCode}</td>
               <td className="py-2 px-2">{l.assetName}</td>
               <td className="py-2 px-2 text-right tabular-nums">
-                {formatNumberDecimal(parseFloat(l.monthlyDepr))}
+                {formatNumberDecimal(new Decimal(l.monthlyDepr).toNumber())}
               </td>
               <td className="py-2 px-2 font-mono text-xs">{l.drAccount}</td>
               <td className="py-2 px-2 font-mono text-xs">{l.crAccount}</td>
@@ -42,7 +43,7 @@ export function DepreciationPreviewTable({ preview }: { preview: DepreciationPre
               รวม ({preview.assetCount} สินทรัพย์)
             </td>
             <td className="py-2 px-2 text-right tabular-nums">
-              {formatNumberDecimal(parseFloat(preview.totalAmount))}
+              {formatNumberDecimal(new Decimal(preview.totalAmount).toNumber())}
             </td>
             <td colSpan={2} />
           </tr>

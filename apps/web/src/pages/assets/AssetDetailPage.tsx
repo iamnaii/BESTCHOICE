@@ -3,7 +3,7 @@
 // + transfer history timeline + audit trail sidebar.
 
 import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { Link, useNavigate, useParams } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -320,16 +320,12 @@ export default function AssetDetailPage() {
                       ))}
                     </ul>
                     <div className="mt-3 text-sm">
-                      <a
-                        href="/assets/transfers"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          navigate('/assets/transfers');
-                        }}
+                      <Link
+                        to="/assets/transfers"
                         className="text-muted-foreground hover:text-primary underline"
                       >
                         ดูประวัติการโอนทั้งหมด →
-                      </a>
+                      </Link>
                     </div>
                   </CardContent>
                 </Card>

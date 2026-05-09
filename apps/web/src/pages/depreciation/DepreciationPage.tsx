@@ -5,6 +5,7 @@
 import { useState, useMemo, type ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import Decimal from 'decimal.js';
 import { TrendingDown, Undo2 } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,7 +20,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import DataTable from '@/components/ui/DataTable';
 import QueryBoundary from '@/components/QueryBoundary';
-import { formatNumberDecimal, formatDateTime } from '@/utils/formatters';
+import { formatNumberDecimal, formatDateTime, formatMonthName } from '@/utils/formatters';
 import { getErrorMessage } from '@/lib/api';
 import { depreciationApi } from './api';
 import { DepreciationPreviewTable } from './components/DepreciationPreviewTable';
@@ -36,7 +37,9 @@ function lastTwelveMonths(): { value: string; label: string }[] {
   for (let i = 0; i < 12; i++) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    const label = d.toLocaleDateString('th-TH', { year: 'numeric', month: 'long' });
+    // Use พ.ศ. (Buddhist year) — Thai accounting convention. toLocaleDateString
+    // returns ค.ศ. on some Node/browser locales which is wrong for our UI.
+    const label = `${formatMonthName(d)} ${d.getFullYear() + 543}`;
     result.push({ value, label });
   }
   return result;
@@ -64,7 +67,7 @@ export default function DepreciationPage() {
     mutationFn: (period: string) => depreciationApi.run(period),
     onSuccess: (result) => {
       toast.success(
-        `รันค่าเสื่อมเสร็จ ${result.assetCount} สินทรัพย์ (${formatNumberDecimal(parseFloat(result.totalAmount))} บาท)`,
+        `รันค่าเสื่อมเสร็จ ${result.assetCount} สินทรัพย์ (${formatNumberDecimal(new Decimal(result.totalAmount).toNumber())} บาท)`,
       );
       queryClient.invalidateQueries({ queryKey: ['depreciation-runs'] });
       queryClient.invalidateQueries({ queryKey: ['depreciation-preview'] });
@@ -105,7 +108,7 @@ export default function DepreciationPage() {
         key: 'totalAmount',
         label: 'ยอดรวม',
         render: (row: RunRow): ReactNode => (
-          <span className="tabular-nums">{formatNumberDecimal(parseFloat(row.totalAmount))}</span>
+          <span className="tabular-nums">{formatNumberDecimal(new Decimal(row.totalAmount).toNumber())}</span>
         ),
       },
       {
@@ -222,7 +225,7 @@ export default function DepreciationPage() {
           open={showRun}
           onOpenChange={setShowRun}
           period={selectedPeriod}
-          totalAmount={parseFloat(previewQuery.data.totalAmount)}
+          totalAmount={new Decimal(previewQuery.data.totalAmount).toNumber()}
           assetCount={previewQuery.data.assetCount}
           onConfirm={() => runMutation.mutate(selectedPeriod)}
           isPending={runMutation.isPending}

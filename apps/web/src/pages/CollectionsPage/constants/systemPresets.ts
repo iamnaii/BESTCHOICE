@@ -28,7 +28,7 @@ export const SYSTEM_PRESETS: SystemPreset[] = [
   {
     key: 'legal-pipeline',
     name: 'LEGAL pipeline',
-    filter: { contractStatuses: ['LEGAL'] },
+    filter: { contractStatuses: ['TERMINATED'] },
   },
   {
     key: 'untouched-7-days',

@@ -21,7 +21,7 @@ export default function LegalCaseBanner({ contractId, contractStatus, onOpen }: 
   const { user } = useAuth();
   const role = user?.role ?? '';
   const canEdit = LEGAL_ROLES.includes(role);
-  const enabled = contractStatus === 'LEGAL';
+  const enabled = contractStatus === 'TERMINATED';
   const { data: legalCase } = useLegalCase(enabled ? contractId : null);
 
   if (!enabled) return null;

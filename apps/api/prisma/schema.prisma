@@ -33,7 +33,7 @@ enum ContractStatus {
   ACTIVE
   OVERDUE
   DEFAULT
-  LEGAL // ดำเนินคดีทางกฎหมายแล้ว — 60d termination letter dispatched
+  TERMINATED // หนังสือบอกเลิกสัญญาดิสแพตช์แล้ว (ปพพ.386) — สอดคล้องกับ termination_policy.docx
   EARLY_PAYOFF
   COMPLETED
   EXCHANGED

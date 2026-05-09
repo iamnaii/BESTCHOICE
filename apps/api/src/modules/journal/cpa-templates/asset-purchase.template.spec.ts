@@ -170,22 +170,42 @@ describe('AssetPurchaseTemplate', () => {
     expect(totalDr.toFixed(2)).toBe(totalCr.toFixed(2));
   });
 
-  it('VAT inclusive: NO separate VAT line (already in basePrice)', async () => {
+  it('VAT inclusive: posts Dr 11-4101 (ม.82/3 — VAT creditable regardless of inclusive/exclusive)', async () => {
+    // Furniture priced 21,400 inclusive → basePrice (excl VAT) 20,000 + vatAmount 1,400.
+    // Per CRITICAL #2 fix (2569-05-09): inclusive case must still post Dr 11-4101
+    // and Cr cash = full 21,400 (vendor receives the full inclusive amount).
     const asset = await createAsset({
-      basePrice: new Decimal(10000),
+      basePrice: new Decimal(20000),
       hasVat: true,
       vatInclusive: true,
-      vatAmount: new Decimal(700),
+      vatAmount: new Decimal(1400),
       vatAccount: '11-4101',
-      purchaseCost: new Decimal(10000),
-      netBookValue: new Decimal(10000),
+      purchaseCost: new Decimal(20000),
+      netBookValue: new Decimal(20000),
+      paymentAccount: '11-1201',
     });
     await template.execute({ assetId: asset.id, postedById: userId });
     const je = await prisma.journalEntry.findFirst({
       where: { metadata: { path: ['assetId'], equals: asset.id } } as any,
       include: { lines: true },
     });
-    expect(je!.lines.find((l) => l.accountCode === '11-4101')).toBeUndefined();
+    const lines = je!.lines;
+
+    // Dr 11-4101 must exist (CRITICAL #2 fix)
+    const vatLine = lines.find((l) => l.accountCode === '11-4101');
+    expect(vatLine, 'Dr 11-4101 line missing for VAT inclusive case').toBeTruthy();
+    expect(new Decimal(vatLine!.debit.toString()).toFixed(2)).toBe('1400.00');
+
+    // Cr 11-1201 must equal full inclusive total 21,400
+    const cashLine = lines.find((l) => l.accountCode === '11-1201');
+    expect(cashLine).toBeTruthy();
+    expect(new Decimal(cashLine!.credit.toString()).toFixed(2)).toBe('21400.00');
+
+    // Balanced
+    const drSum = lines.reduce((s, l) => s.plus(l.debit.toString()), new Decimal(0));
+    const crSum = lines.reduce((s, l) => s.plus(l.credit.toString()), new Decimal(0));
+    expect(drSum.toFixed(2)).toBe(crSum.toFixed(2));
+    expect(drSum.toFixed(2)).toBe('21400.00');
   });
 
   it('WHT PND53 (corporate): adds Cr 21-3103 line', async () => {

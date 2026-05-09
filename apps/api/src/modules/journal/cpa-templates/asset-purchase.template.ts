@@ -27,11 +27,24 @@ export interface AssetPurchaseInput {
 /**
  * Template — Fixed asset purchase (Phase 1).
  *
- * JE structure:
- *   Dr 12-21XX  สินทรัพย์ - <category>           [purchaseCost]
- *   Dr 11-4101  ภาษีซื้อ (VAT exclusive only)    [vatAmount]
- *     Cr 21-3102/03 WHT (if hasWht)              [whtAmount]
- *     Cr <paymentAccount>                         [totalPayable = cost + (excl ? vat : 0) - wht]
+ * JE structure (legally compliant per ทป.4/2528 + ม.50 ทวิ + ม.82/3):
+ *   Dr 12-21XX  สินทรัพย์ - <category>           [purchaseCost = basePrice excl VAT]
+ *   Dr 11-4101  ภาษีซื้อ                          [vatAmount]   ← always when hasVat (ม.82/3)
+ *     Cr 21-3102/03 WHT (service portion only)    [whtAmount]
+ *     Cr <paymentAccount>                         [totalPayable = cost + vat - wht]
+ *
+ * VAT (CRITICAL #2 fix): Per ม.82/3, ภาษีซื้อหักเครดิตได้ทุกกรณี ไม่ว่า
+ * inclusive หรือ exclusive. Both branches now post Dr 11-4101.
+ *   - exclusive: basePrice + 7% on top → vatAmount = basePrice × 0.07
+ *   - inclusive: vatAmount extracted = basePrice × 7/107, basePrice ex-VAT = basePrice − vatAmount
+ *   (computeCostFields in asset.service.ts already does this extraction)
+ *
+ * WHT (CRITICAL #1 fix): WHT applies ONLY to service/hire-of-work components
+ * per ทป.4/2528 + ม.40(7)(8). Goods purchases (vehicles, equipment, furniture)
+ * MUST NOT carry WHT. The asset.service computeCostFields enforces:
+ *   whtBaseAmount default → installationCost (service portion)
+ * Caller controls whether hasWht=true via DTO. This template trusts the DTO
+ * but the service layer guards against goods-only assets having hasWht=true.
  *
  * Category → cost account routing:
  *   EQUIPMENT   → 12-2101  (depr 12-2102 / expense 53-1601)
@@ -104,8 +117,10 @@ export class AssetPurchaseTemplate {
       description: `${label} - ${asset.assetCode}`,
     });
 
-    // Dr VAT input (exclusive only — inclusive is already part of basePrice)
-    if (asset.hasVat && !asset.vatInclusive && vatAmount.gt(0) && asset.vatAccount) {
+    // Dr VAT input — ม.82/3 ภาษีซื้อเครดิตได้ทุกกรณี
+    // basePrice in DB is always excl VAT (computeCostFields extracts it for inclusive case),
+    // so vatAmount + 11-4101 is posted regardless of inclusive/exclusive.
+    if (asset.hasVat && vatAmount.gt(0) && asset.vatAccount) {
       lines.push({
         accountCode: asset.vatAccount,
         dr: vatAmount,
@@ -124,10 +139,11 @@ export class AssetPurchaseTemplate {
       });
     }
 
-    // Cr payment account — net of WHT, plus exclusive VAT
-    const totalPayable = purchaseCost
-      .plus(asset.vatInclusive ? zero : vatAmount)
-      .minus(whtAmount);
+    // Cr payment account — purchaseCost (excl VAT) + vatAmount − whtAmount.
+    // No vatInclusive branching: basePrice is normalized to excl-VAT in
+    // computeCostFields, so adding vatAmount yields the correct cash outflow
+    // for both inclusive (21,400) and exclusive (53,500) cases.
+    const totalPayable = purchaseCost.plus(vatAmount).minus(whtAmount);
     lines.push({
       accountCode: asset.paymentAccount,
       dr: zero,

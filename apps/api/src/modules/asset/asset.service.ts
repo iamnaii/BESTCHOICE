@@ -165,13 +165,37 @@ export class AssetService {
       basePrice.plus(shippingCost).plus(installationCost).plus(otherCapitalized),
     );
 
-    // WHT — Fix #1.1: base on installation cost (or custom whtBaseAmount)
+    // WHT — ทป.4/2528 + ม.50 ทวิ + ม.40(7)(8): WHT applies ONLY to service /
+    // hire-of-work components, NOT to goods purchases.
+    //
+    // Asset purchases are predominantly goods. WHT is permitted ONLY on the
+    // service portion (e.g. installation cost). We enforce:
+    //   1. hasWht=true requires installationCost > 0 (service portion exists)
+    //   2. whtBaseAmount must be ≤ installationCost (cannot extend to goods)
+    //   3. Default whtBaseAmount = installationCost when not specified
+    //
+    // CRITICAL #1 fix (2569-05-09): Previously a user could set hasWht=true
+    // on a pure goods purchase (e.g. vehicle without installation) and the
+    // template would post Cr 21-3102/03 — illegal per ทป.4/2528.
     let whtAmount = new Decimal(0);
     if (input.hasWht && input.whtRate != null) {
-      const whtBase = new Decimal(
+      if (installationCost.lte(0)) {
+        throw new BadRequestException(
+          'ไม่สามารถหัก ณ ที่จ่าย (WHT) สำหรับการซื้อสินค้าได้ ตามทป.4/2528 + ม.50 ทวิ — ' +
+            'WHT บังคับใช้กับ "ค่าบริการ" หรือ "ค่าจ้างทำของ" เท่านั้น ' +
+            'หากซื้อสินค้าพร้อมบริการติดตั้ง กรุณาแยกค่าติดตั้งใส่ช่อง installationCost',
+        );
+      }
+      const whtBaseRaw = new Decimal(
         (input.whtBaseAmount ?? installationCost).toString(),
       );
-      whtAmount = round2(whtBase.times(input.whtRate.toString()));
+      if (whtBaseRaw.gt(installationCost)) {
+        throw new BadRequestException(
+          `ฐานคำนวณ WHT (${whtBaseRaw.toFixed(2)}) ต้องไม่เกินค่าติดตั้ง/บริการ ` +
+            `(${installationCost.toFixed(2)}) — WHT คิดเฉพาะส่วนค่าบริการตาม ทป.4/2528`,
+        );
+      }
+      whtAmount = round2(whtBaseRaw.times(input.whtRate.toString()));
     }
 
     const monthlyDepr = round4(

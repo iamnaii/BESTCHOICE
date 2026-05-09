@@ -232,6 +232,67 @@ describe('AssetService — CRUD + helpers', () => {
   });
 
   // ==========================================================================
+  // 5b. createDraft rejects WHT on pure goods purchase (CRITICAL #1 — ทป.4/2528)
+  // ==========================================================================
+  it('createDraft rejects hasWht=true when installationCost=0 (goods purchase)', async () => {
+    await expect(
+      service.createDraft(
+        {
+          ...baseDto,
+          basePrice: 1000000,
+          // No installationCost → goods only
+          hasWht: true,
+          whtRate: 0.01,
+          whtAccount: '21-3103',
+          whtFormType: 'PND53',
+        },
+        userId,
+      ),
+    ).rejects.toThrow(/ค่าบริการ|WHT/);
+  });
+
+  // ==========================================================================
+  // 5c. createDraft rejects whtBaseAmount > installationCost
+  // ==========================================================================
+  it('createDraft rejects whtBaseAmount exceeding installationCost', async () => {
+    await expect(
+      service.createDraft(
+        {
+          ...baseDto,
+          basePrice: 100000,
+          installationCost: 5000,
+          hasWht: true,
+          whtBaseAmount: 50000, // exceeds installationCost — would tax goods
+          whtRate: 0.03,
+          whtAccount: '21-3103',
+        },
+        userId,
+      ),
+    ).rejects.toThrow(/ฐานคำนวณ WHT|installationCost|ทป\.4/);
+  });
+
+  // ==========================================================================
+  // 5d. createDraft VAT inclusive — extracts VAT correctly for ม.82/3 credit
+  // ==========================================================================
+  it('createDraft VAT inclusive — extracts VAT from price (ม.82/3)', async () => {
+    const asset = await service.createDraft(
+      {
+        ...baseDto,
+        basePrice: 21400,
+        hasVat: true,
+        vatInclusive: true,
+        vatAccount: '11-4101',
+      },
+      userId,
+    );
+    // VAT extracted: 21,400 × 7/107 = 1,400
+    expect(D(asset.vatAmount.toString()).equals('1400')).toBe(true);
+    // basePrice ex-VAT: 21,400 - 1,400 = 20,000
+    expect(D(asset.basePrice.toString()).equals('20000')).toBe(true);
+    expect(D(asset.purchaseCost.toString()).equals('20000')).toBe(true);
+  });
+
+  // ==========================================================================
   // 6. update rejects if status != DRAFT
   // ==========================================================================
   it('update rejects if status != DRAFT', async () => {

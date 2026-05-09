@@ -36,6 +36,7 @@ import { QuickReplyService } from '../line-oa/quick-reply.service';
 import { PromiseService } from '../overdue/promise.service';
 import { MdmLockService } from '../overdue/mdm-lock.service';
 import { PaymentReceipt2BTemplate } from '../journal/cpa-templates/payment-receipt-2b.template';
+import { BadDebtService } from '../accounting/bad-debt.service';
 
 const D = (n: number | string) => new Prisma.Decimal(n);
 
@@ -202,6 +203,10 @@ describe('PaymentsService — advance balance (Task 4)', () => {
         {
           provide: PaymentReceipt2BTemplate,
           useValue: { execute: receipt2BExecute },
+        },
+        {
+          provide: BadDebtService,
+          useValue: { reverseStageOnPayment: jest.fn().mockResolvedValue(null) },
         },
       ],
     }).compile();

@@ -53,86 +53,86 @@ export class FacebookAppReviewController {
 
   // ─── pages_show_list ─────────────────────────────────────────────────────
   @Get('pages')
-  @Roles('OWNER')
+  @Roles('OWNER', 'ACCOUNTANT')
   async listPages() {
     return this.service.listManagedPages();
   }
 
   // ─── pages_messaging ─────────────────────────────────────────────────────
   @Post('messenger-message')
-  @Roles('OWNER')
+  @Roles('OWNER', 'ACCOUNTANT')
   async sendStandardMessage(@Body() dto: SendStandardMessageDto) {
     return this.service.sendStandardMessage(dto);
   }
 
   // ─── pages_manage_metadata ───────────────────────────────────────────────
   @Post('subscribe-webhooks')
-  @Roles('OWNER')
+  @Roles('OWNER', 'ACCOUNTANT')
   async subscribePageWebhooks(@Body() dto: SubscribePageWebhooksDto) {
     return this.service.subscribePageWebhooks(dto);
   }
 
   // ─── pages_utility_messaging ─────────────────────────────────────────────
   @Post('template-message')
-  @Roles('OWNER')
+  @Roles('OWNER', 'ACCOUNTANT')
   async sendTemplateMessage(@Body() dto: SendTemplateMessageDto) {
     return this.service.sendTemplateMessage(dto);
   }
 
   // ─── pages_read_engagement ───────────────────────────────────────────────
   @Get('page-posts')
-  @Roles('OWNER')
+  @Roles('OWNER', 'ACCOUNTANT')
   async listPagePosts() {
     return this.service.listPagePosts();
   }
 
   @Get('post-comments/:postId')
-  @Roles('OWNER')
+  @Roles('OWNER', 'ACCOUNTANT')
   async listPostComments(@Param('postId') postId: string) {
     return this.service.listPostComments({ postId });
   }
 
   // ─── pages_manage_engagement ─────────────────────────────────────────────
   @Post('comment-reply')
-  @Roles('OWNER')
+  @Roles('OWNER', 'ACCOUNTANT')
   async replyToComment(@Body() dto: ReplyToCommentDto) {
     return this.service.replyToComment(dto);
   }
 
   @Post('comment-like')
-  @Roles('OWNER')
+  @Roles('OWNER', 'ACCOUNTANT')
   async likeComment(@Body() dto: LikeCommentDto) {
     return this.service.likeComment(dto);
   }
 
   @Post('comment-hide')
-  @Roles('OWNER')
+  @Roles('OWNER', 'ACCOUNTANT')
   async hideComment(@Body() dto: HideCommentDto) {
     return this.service.hideComment(dto);
   }
 
   // ─── ads_read ────────────────────────────────────────────────────────────
   @Get('insights')
-  @Roles('OWNER')
+  @Roles('OWNER', 'ACCOUNTANT')
   async getInsights() {
     return this.service.getCampaignInsights();
   }
 
   // ─── business_management ─────────────────────────────────────────────────
   @Get('businesses')
-  @Roles('OWNER')
+  @Roles('OWNER', 'ACCOUNTANT')
   async listBusinesses() {
     return this.service.listBusinesses();
   }
 
   @Get('businesses/:id/ad-accounts')
-  @Roles('OWNER')
+  @Roles('OWNER', 'ACCOUNTANT')
   async listBusinessAdAccounts(@Param('id') businessId: string) {
     return this.service.listBusinessAdAccounts({ businessId });
   }
 
   @Get('businesses/:id/pages')
-  @Roles('OWNER')
+  @Roles('OWNER', 'ACCOUNTANT')
   async listBusinessPages(@Param('id') businessId: string) {
     return this.service.listBusinessPages({ businessId });
   }
@@ -140,43 +140,43 @@ export class FacebookAppReviewController {
   // ─── Legacy endpoints (out of current scope, kept for back-compat) ───────
 
   @Get('promotable-posts')
-  @Roles('OWNER')
+  @Roles('OWNER', 'ACCOUNTANT')
   async listPromotablePosts() {
     return this.service.listPromotablePosts();
   }
 
   @Post('campaigns')
-  @Roles('OWNER')
+  @Roles('OWNER', 'ACCOUNTANT')
   async createCampaign(@Body() dto: CreateAdCampaignDto) {
     return this.service.createAdCampaign(dto);
   }
 
   @Patch('campaigns/:id/status')
-  @Roles('OWNER')
+  @Roles('OWNER', 'ACCOUNTANT')
   async updateCampaignStatus(@Param('id') id: string, @Body() dto: UpdateCampaignStatusDto) {
     return this.service.updateCampaignStatus(id, dto);
   }
 
   @Get('lead-forms')
-  @Roles('OWNER')
+  @Roles('OWNER', 'ACCOUNTANT')
   async listLeadForms() {
     return this.service.listLeadForms();
   }
 
   @Get('lead-forms/:id/leads')
-  @Roles('OWNER')
+  @Roles('OWNER', 'ACCOUNTANT')
   async fetchLeads(@Param('id') formId: string) {
     return this.service.fetchLeadsForForm(formId);
   }
 
   @Post('live-videos')
-  @Roles('OWNER')
+  @Roles('OWNER', 'ACCOUNTANT')
   async createLiveVideo(@Body() dto: CreateLiveVideoDto) {
     return this.service.createLiveVideo(dto);
   }
 
   @Post('videos')
-  @Roles('OWNER')
+  @Roles('OWNER', 'ACCOUNTANT')
   async publishVideo(@Body() dto: PublishVideoDto) {
     return this.service.publishVideo(dto);
   }

@@ -879,7 +879,7 @@ function App() {
           <Route
             path="/settings/integrations"
             element={
-              <ProtectedRoute roles={['OWNER']}>
+              <ProtectedRoute roles={['OWNER', 'ACCOUNTANT']}>
                 <IntegrationHubPage />
               </ProtectedRoute>
             }

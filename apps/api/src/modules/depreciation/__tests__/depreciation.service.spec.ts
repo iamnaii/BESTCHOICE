@@ -206,3 +206,84 @@ describe('DepreciationService.previewRun', () => {
     expect(preview.lines[0].crAccount).toBe('12-2104');
   });
 });
+
+describe('DepreciationService.runManual', () => {
+  it('posts JE per eligible asset and inserts DepreciationEntry rows', async () => {
+    const a = await postedAsset();
+    const b = await postedAsset();
+    const result = await service.runManual('2026-05', userId);
+    expect(result.assetCount).toBe(2);
+    expect(parseFloat(result.totalAmount)).toBeCloseTo(1666.66, 2);
+
+    const entries = await prisma.depreciationEntry.findMany({ where: { period: '2026-05' } });
+    expect(entries).toHaveLength(2);
+    const aEntry = entries.find((e) => e.assetId === a.id)!;
+    expect(parseFloat(aEntry.amount.toString())).toBeCloseTo(833.33, 2);
+    expect(aEntry.journalEntryNo).toMatch(/^JE-\d{6}-\d{5}$/);
+
+    // accumulatedDepr updated
+    const aUpdated = await prisma.fixedAsset.findUnique({ where: { id: a.id } });
+    expect(parseFloat(aUpdated!.accumulatedDepr.toString())).toBeCloseTo(833.33, 2);
+    const bUpdated = await prisma.fixedAsset.findUnique({ where: { id: b.id } });
+    expect(parseFloat(bUpdated!.accumulatedDepr.toString())).toBeCloseTo(833.33, 2);
+  });
+
+  it('idempotent: second runManual for same period returns existing entries (no duplicates)', async () => {
+    await postedAsset();
+    const r1 = await service.runManual('2026-05', userId);
+    const r2 = await service.runManual('2026-05', userId);
+    expect(r2.assetCount).toBe(r1.assetCount);
+    const entries = await prisma.depreciationEntry.findMany({ where: { period: '2026-05' } });
+    expect(entries).toHaveLength(r1.assetCount);
+  });
+
+  it('rejects invalid period format', async () => {
+    await expect(service.runManual('2026-13', userId)).rejects.toThrow(/YYYY-MM/);
+  });
+
+  it('rejects future period', async () => {
+    const future = new Date();
+    future.setMonth(future.getMonth() + 2);
+    const futurePeriod = `${future.getFullYear()}-${String(future.getMonth() + 1).padStart(2, '0')}`;
+    await expect(service.runManual(futurePeriod, userId)).rejects.toThrow(/อนาคต|future/i);
+  });
+
+  it('writes AuditLog DEPRECIATION_RUN_MANUAL', async () => {
+    await postedAsset();
+    await service.runManual('2026-05', userId);
+    const log = await prisma.auditLog.findFirst({
+      where: { entity: 'depreciation_run', entityId: '2026-05', action: 'DEPRECIATION_RUN_MANUAL' },
+    });
+    expect(log).toBeTruthy();
+  });
+
+  it('V15 closed period → DEPRECIATION_RUN_MANUAL_BLOCKED audit + reject', async () => {
+    const finance = await prisma.companyInfo.findFirst({ where: { companyCode: 'FINANCE' } });
+    if (!finance) throw new Error('FINANCE company missing');
+    await prisma.accountingPeriod.upsert({
+      where: { companyId_year_month: { companyId: finance.id, year: 2026, month: 5 } },
+      update: { status: 'CLOSED', closedAt: new Date(), closedById: userId },
+      create: {
+        companyId: finance.id,
+        year: 2026,
+        month: 5,
+        status: 'CLOSED',
+        closedAt: new Date(),
+        closedById: userId,
+      },
+    });
+    await postedAsset();
+    await expect(service.runManual('2026-05', userId)).rejects.toThrow(/period|งวด/i);
+    const blocked = await prisma.auditLog.findFirst({
+      where: {
+        entity: 'depreciation_run',
+        entityId: '2026-05',
+        action: 'DEPRECIATION_RUN_MANUAL_BLOCKED',
+      },
+    });
+    expect(blocked).toBeTruthy();
+    await prisma.accountingPeriod.delete({
+      where: { companyId_year_month: { companyId: finance.id, year: 2026, month: 5 } },
+    });
+  });
+});

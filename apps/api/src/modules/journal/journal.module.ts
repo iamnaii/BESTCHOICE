@@ -22,6 +22,8 @@ import { DefectExchangeReversalTemplate } from './cpa-templates/defect-exchange-
 import { ReceiptVoidReversalTemplate } from './cpa-templates/receipt-void-reversal.template';
 import { DepreciationTemplate } from './cpa-templates/depreciation.template';
 import { AssetDisposalTemplate } from './cpa-templates/asset-disposal.template';
+import { AssetPurchaseTemplate } from './cpa-templates/asset-purchase.template';
+import { AssetPurchaseReverseTemplate } from './cpa-templates/asset-purchase-reverse.template';
 import { DepreciationCron } from './cron/depreciation.cron';
 import { WhtAccrualTemplate } from './cpa-templates/wht-accrual.template';
 import { WhtRemittanceTemplate } from './cpa-templates/wht-remittance.template';
@@ -51,6 +53,8 @@ import { WhtRemittanceTemplate } from './cpa-templates/wht-remittance.template';
     ReceiptVoidReversalTemplate,
     DepreciationTemplate,
     AssetDisposalTemplate,
+    AssetPurchaseTemplate,
+    AssetPurchaseReverseTemplate,
     DepreciationCron,
     WhtAccrualTemplate,
     WhtRemittanceTemplate,
@@ -75,6 +79,8 @@ import { WhtRemittanceTemplate } from './cpa-templates/wht-remittance.template';
     ReceiptVoidReversalTemplate,
     DepreciationTemplate,
     AssetDisposalTemplate,
+    AssetPurchaseTemplate,
+    AssetPurchaseReverseTemplate,
     WhtAccrualTemplate,
     WhtRemittanceTemplate,
   ],

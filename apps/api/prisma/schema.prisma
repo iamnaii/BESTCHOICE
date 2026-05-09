@@ -626,6 +626,10 @@ model User {
   tradeInsAppraised           TradeIn[]                 @relation("TradeInAppraisedBy")
   tradeInsIdVerified          TradeIn[]                 @relation("TradeInIdCardVerifiedBy")
   assetsCreated               FixedAsset[]              @relation("AssetCreatedBy")
+  assetsApproved              FixedAsset[]              @relation("AssetApprover")
+  assetsPosted                FixedAsset[]              @relation("AssetPostedBy")
+  assetsReversed              FixedAsset[]              @relation("AssetReversedBy")
+  assetsTransferred           AssetTransferHistory[]    @relation("AssetTransferredBy")
   todosCreated                Todo[]                    @relation("TodoCreatedBy")
   todosAssigned               Todo[]                    @relation("TodoAssignedTo")
   todoComments                TodoComment[]             @relation("TodoCommentUser")
@@ -3017,64 +3021,134 @@ model TaxReport {
 // ============================================================
 
 enum AssetStatus {
-  ACTIVE // ใช้งานอยู่
-  FULLY_DEPRECIATED // หักค่าเสื่อมราคาครบแล้ว
-  DISPOSED // จำหน่ายแล้ว
-  WRITTEN_OFF // ตัดบัญชีสินทรัพย์แล้ว (ไม่มีราคาขาย)
+  DRAFT // ร่าง
+  POSTED // ลง JE แล้ว
+  REVERSED // กลับรายการ
+  DISPOSED // จำหน่ายแล้ว (Phase 2)
+  WRITTEN_OFF // ตัดบัญชี (Phase 2)
 }
 
-/// Phase A.5c — Typed category enum maps to specific Dr/Cr account codes
+/// Phase 1 — Typed category enum maps to specific Dr/Cr account codes
 enum AssetCategory {
-  OFFICE_EQUIPMENT // Dr 53-1601 / Cr 12-2102
-  BUILDING_IMPROVEMENT // Dr 53-1602 / Cr 12-2104
-  OFFICE_FURNITURE // Dr 53-1603 / Cr 12-2106
-  VEHICLE // Dr 53-1604 / Cr 12-2108
+  EQUIPMENT // อุปกรณ์สำนักงาน → 12-2101 / 12-2102 / 53-1601
+  IMPROVEMENT // ปรับปรุงอาคาร → 12-2103 / 12-2104 / 53-1602
+  FURNITURE // เครื่องตกแต่ง → 12-2105 / 12-2106 / 53-1603
+  VEHICLE // ยานพาหนะ → 12-2107 / 12-2108 / 53-1604
 }
 
 model FixedAsset {
-  id                     String         @id @default(uuid())
-  assetCode              String         @unique @map("asset_code") // รหัสสินทรัพย์ e.g. "PA-20241200002"
-  name                   String // ชื่อสินทรัพย์
-  description            String?
-  /// Free-form category string (legacy). Use assetCategory for A.5c depreciation journal routing.
-  category               String? // หมวดหมู่ (อุปกรณ์สำนักงาน, ส่วนปรับปรุงอาคาร, เครื่องตกแต่ง, ยานพาหนะ)
-  /// Phase A.5c: typed category for precise account code routing
-  assetCategory          AssetCategory? @map("asset_category")
-  branchId               String?        @map("branch_id")
-  costValue              Decimal        @map("cost_value") @db.Decimal(12, 2) // ราคาทุนที่ซื้อมา
-  salvageValue           Decimal        @default(0) @map("salvage_value") @db.Decimal(12, 2) // ราคาซาก (ปกติ 1 บาท หรือ 0)
-  usefulLife             Int            @map("useful_life") // อายุการใช้งาน (จำนวนปี เช่น 5 ปี)
-  /// Phase A.5c: useful life in months (overrides usefulLife when set; takes precedence)
-  usefulLifeMonths       Int?           @map("useful_life_months")
-  purchaseDate           DateTime       @map("purchase_date") // วันที่ซื้อ/เริ่มใช้งาน
-  accumulatedDepre       Decimal        @default(0) @map("accumulated_depre") @db.Decimal(12, 2) // ค่าเสื่อมราคาสะสม
-  status                 AssetStatus    @default(ACTIVE)
-  disposedAt             DateTime?      @map("disposed_at")
-  disposalNote           String?        @map("disposal_note")
-  /// Phase A.5c: disposal proceeds for gain/loss calculation
-  disposalProceeds       Decimal?       @map("disposal_proceeds") @db.Decimal(12, 2)
-  /// Phase A.5c: period of last depreciation accrual e.g. "2026-04"; null = never depreciated
-  lastDepreciationPeriod String?        @map("last_depreciation_period")
+  id          String        @id @default(uuid())
+  assetCode   String        @unique @map("asset_code") // COMP-001 (auto-generated)
+  docNo       String        @unique @map("doc_no") // ASSET-2605-0001
+  name        String
+  description String?
+  category    AssetCategory
+  branchId    String?       @map("branch_id") // optional placement
 
-  // Account codes for journal entries
-  depreciationAccountCode String @default("53-1601") @map("depreciation_account_code") // Dr: ค่าเสื่อมราคา (Expense)
-  accumulatedAccountCode  String @default("12-2102") @map("accumulated_account_code") // Cr: ค่าเสื่อมราคาสะสม (Contra Asset)
+  // Cost breakdown (Handover §13 Section 2)
+  basePrice        Decimal @map("base_price") @db.Decimal(12, 2)
+  shippingCost     Decimal @default(0) @map("shipping_cost") @db.Decimal(12, 2)
+  installationCost Decimal @default(0) @map("installation_cost") @db.Decimal(12, 2)
+  otherCapitalized Decimal @default(0) @map("other_capitalized") @db.Decimal(12, 2)
 
-  createdById String?   @map("created_by_id")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
-  deletedAt   DateTime? @map("deleted_at")
+  // VAT
+  hasVat       Boolean @default(false) @map("has_vat")
+  vatInclusive Boolean @default(false) @map("vat_inclusive")
+  vatAmount    Decimal @default(0) @map("vat_amount") @db.Decimal(12, 2)
+  vatAccount   String? @map("vat_account") // 11-4101 (เครดิตได้) | 11-4102 (รอเรียกเก็บ)
 
-  branch              Branch?             @relation(fields: [branchId], references: [id])
-  createdBy           User?               @relation("AssetCreatedBy", fields: [createdById], references: [id])
+  // WHT (Handover Fix #1.1 — base on installation cost or custom)
+  hasWht        Boolean  @default(false) @map("has_wht")
+  whtBaseAmount Decimal? @map("wht_base_amount") @db.Decimal(12, 2)
+  whtRate       Decimal? @map("wht_rate") @db.Decimal(5, 4)
+  whtAmount     Decimal  @default(0) @map("wht_amount") @db.Decimal(12, 2)
+  whtAccount    String?  @map("wht_account") // 21-3102 (PND3 บุคคล) | 21-3103 (PND53 นิติ)
+  whtFormType   String?  @map("wht_form_type") // PND3 | PND53
+
+  // Totals (computed at POST, persisted)
+  purchaseCost     Decimal @map("purchase_cost") @db.Decimal(12, 2) // basePrice + ship + install + other (no VAT/WHT)
+  residualValue    Decimal @default(0) @map("residual_value") @db.Decimal(12, 2)
+  usefulLifeMonths Int     @map("useful_life_months")
+  monthlyDepr      Decimal @map("monthly_depr") @db.Decimal(12, 4) // 4 decimals to avoid drift over months
+  accumulatedDepr  Decimal @default(0) @map("accumulated_depr") @db.Decimal(12, 2)
+  netBookValue     Decimal @map("net_book_value") @db.Decimal(12, 2)
+
+  // Account snapshots (Handover Fix #1.2 — pinned at POST, immune to A.6 dynamic CoA remap)
+  coaCostAccount    String? @map("coa_cost_account") // 12-2101/03/05/07
+  coaDeprAccount    String? @map("coa_depr_account") // 12-2102/04/06/08
+  coaExpenseAccount String? @map("coa_expense_account") // 53-1601/02/03/04
+
+  // Dates
+  purchaseDate   DateTime  @map("purchase_date")
+  invoiceDate    DateTime? @map("invoice_date")
+  disposalDate   DateTime? @map("disposal_date") // Phase 2
+  warrantyExpire DateTime? @map("warranty_expire")
+
+  // Vendor (Handover §13 Section 3)
+  supplierName   String?        @map("supplier_name")
+  supplierTaxId  String?        @map("supplier_tax_id")
+  invoiceNo      String?        @map("invoice_no")
+  taxInvoiceNo   String?        @map("tax_invoice_no")
+  paymentMethod  PaymentMethod? @map("payment_method")
+  paymentAccount String?        @map("payment_account") // bank account code
+
+  // Operations
+  custodian String? // ผู้ดูแล (free text — wire to User in future)
+  location  String? // ที่ตั้ง
+  serialNo  String? @map("serial_no")
+  prRef     String? @map("pr_ref")
+  note      String?
+
+  // Workflow
+  status       AssetStatus @default(DRAFT)
+  isOverridden Boolean     @default(false) @map("is_overridden") // JE override mode
+
+  // Audit
+  createdById    String    @map("created_by_id")
+  approverId     String?   @map("approver_id")
+  postedById     String?   @map("posted_by_id")
+  postedAt       DateTime? @map("posted_at")
+  reversedById   String?   @map("reversed_by_id")
+  reversedAt     DateTime? @map("reversed_at")
+  reversalReason String?   @map("reversal_reason")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  branch              Branch?                @relation(fields: [branchId], references: [id])
+  createdBy           User                   @relation("AssetCreatedBy", fields: [createdById], references: [id])
+  approver            User?                  @relation("AssetApprover", fields: [approverId], references: [id])
+  postedBy            User?                  @relation("AssetPostedBy", fields: [postedById], references: [id])
+  reversedBy          User?                  @relation("AssetReversedBy", fields: [reversedById], references: [id])
   depreciationEntries DepreciationEntry[]
+  transferHistory     AssetTransferHistory[]
 
-  @@index([branchId])
   @@index([status])
-  @@index([category])
-  @@index([assetCategory, status])
+  @@index([category, status])
   @@index([purchaseDate])
+  @@index([branchId])
   @@map("fixed_assets")
+}
+
+/// Append-only — updatedAt/deletedAt intentionally omitted (event log).
+model AssetTransferHistory {
+  id              String     @id @default(uuid())
+  transferId      String     @unique @map("transfer_id") // TRF-1715000000
+  assetId         String     @map("asset_id")
+  asset           FixedAsset @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  transferDate    DateTime   @map("transfer_date")
+  fromCustodian   String?    @map("from_custodian")
+  toCustodian     String?    @map("to_custodian")
+  fromLocation    String?    @map("from_location")
+  toLocation      String?    @map("to_location")
+  reason          String
+  transferredById String     @map("transferred_by_id")
+  transferredBy   User       @relation("AssetTransferredBy", fields: [transferredById], references: [id])
+  createdAt       DateTime   @default(now()) @map("created_at")
+
+  @@index([assetId, transferDate])
+  @@map("asset_transfer_history")
 }
 
 /// Phase A.5c — Idempotency record: one depreciation JE per asset per period

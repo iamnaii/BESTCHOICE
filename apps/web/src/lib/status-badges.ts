@@ -401,13 +401,20 @@ export const webhookStatusMap: Record<string, StatusConfig> = {
 };
 
 // ─── Asset statuses ───────────────────────────────────────────────────────────
-
+// Combined map: legacy AssetManagementPage statuses + new asset-module
+// (Phase 1) lifecycle statuses.
 export const assetStatusMap: Record<string, StatusConfig> = {
+  // Legacy AssetManagementPage
   ACTIVE: { variant: 'success', appearance: 'light', label: 'ใช้งาน' },
   FULLY_DEPRECIATED: { variant: 'warning', appearance: 'light', label: 'หมดค่าเสื่อม' },
   MAINTENANCE: { variant: 'warning', appearance: 'light', label: 'ซ่อมบำรุง' },
   RETIRED: { variant: 'secondary', label: 'เลิกใช้' },
+  // New asset-module lifecycle (Phase 1)
+  DRAFT: { variant: 'secondary', label: 'ร่าง' },
+  POSTED: { variant: 'success', appearance: 'light', label: 'ลงบัญชีแล้ว' },
+  REVERSED: { variant: 'outline', label: 'กลับรายการ' },
   DISPOSED: { variant: 'secondary', label: 'จำหน่ายแล้ว' },
+  WRITTEN_OFF: { variant: 'destructive', appearance: 'light', label: 'ตัดบัญชี' },
 };
 
 // ─── Migration statuses ───────────────────────────────────────────────────────

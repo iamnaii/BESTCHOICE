@@ -7,37 +7,67 @@ import { JournalAutoService } from '../journal-auto.service';
 
 const prisma = new PrismaClient();
 
+const CATEGORY_ACCOUNTS: Record<string, { cost: string; depr: string; expense: string }> = {
+  EQUIPMENT: { cost: '12-2101', depr: '12-2102', expense: '53-1601' },
+  IMPROVEMENT: { cost: '12-2103', depr: '12-2104', expense: '53-1602' },
+  FURNITURE: { cost: '12-2105', depr: '12-2106', expense: '53-1603' },
+  VEHICLE: { cost: '12-2107', depr: '12-2108', expense: '53-1604' },
+};
+
 async function ensureTestAsset(opts: {
-  assetCategory?: string;
-  costValue?: number;
-  salvageValue?: number;
-  accumulatedDepre?: number;
+  category?: string;
+  purchaseCost?: number;
+  residualValue?: number;
+  accumulatedDepr?: number;
   status?: string;
 }) {
   const assetCode = `DIS-TEST-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  const docNo = `ASSET-DIS-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  const cat = (opts.category ?? 'EQUIPMENT') as 'EQUIPMENT' | 'IMPROVEMENT' | 'FURNITURE' | 'VEHICLE';
+  const purchaseCost = opts.purchaseCost ?? 100000;
+  const residualValue = opts.residualValue ?? 0;
+  const accumulatedDepr = opts.accumulatedDepr ?? 40000;
+  const usefulLifeMonths = 60;
+  const monthlyDepr = (purchaseCost - residualValue) / usefulLifeMonths;
+  const netBookValue = purchaseCost - accumulatedDepr;
+  const accounts = CATEGORY_ACCOUNTS[cat];
+
+  const user = await prisma.user.findFirst({ where: { email: 'admin@bestchoice.com' } });
+  if (!user) {
+    throw new Error('Test setup error: admin@bestchoice.com user must exist before creating assets');
+  }
+
   return prisma.fixedAsset.create({
     data: {
       assetCode,
+      docNo,
       name: `Disposal Test Asset ${assetCode}`,
-      category: opts.assetCategory ?? 'OFFICE_EQUIPMENT',
-      assetCategory: (opts.assetCategory ?? 'OFFICE_EQUIPMENT') as any,
-      costValue: new Decimal(opts.costValue ?? 100000),
-      salvageValue: new Decimal(opts.salvageValue ?? 0),
-      usefulLife: 5,
-      usefulLifeMonths: 60,
+      category: cat,
+      basePrice: new Decimal(purchaseCost),
+      purchaseCost: new Decimal(purchaseCost),
+      residualValue: new Decimal(residualValue),
+      usefulLifeMonths,
+      monthlyDepr: new Decimal(monthlyDepr),
+      accumulatedDepr: new Decimal(accumulatedDepr),
+      netBookValue: new Decimal(netBookValue),
       purchaseDate: new Date('2024-01-01'),
-      accumulatedDepre: new Decimal(opts.accumulatedDepre ?? 40000),
-      depreciationAccountCode: '53-1601',
-      accumulatedAccountCode: '12-2102',
-      status: (opts.status ?? 'ACTIVE') as any,
+      coaCostAccount: accounts.cost,
+      coaDeprAccount: accounts.depr,
+      coaExpenseAccount: accounts.expense,
+      status: (opts.status ?? 'POSTED') as any,
+      createdById: user.id,
     },
   });
 }
 
 async function setup() {
+  // Order matters — child tables before parents.
   await prisma.depreciationEntry.deleteMany({});
+  await prisma.assetTransferHistory.deleteMany({});
+  await prisma.journalPostAuditLog.deleteMany({});
   await prisma.journalLine.deleteMany({});
   await prisma.journalEntry.deleteMany({});
+  await prisma.fixedAsset.deleteMany({});
   await seedFinanceCoa(prisma);
 
   const existing = await prisma.user.findFirst({ where: { email: 'admin@bestchoice.com' } });
@@ -60,9 +90,9 @@ describe('AssetDisposalTemplate', () => {
   it('loss case: NBV=60000, proceeds=50000 → Dr 53-1605 ขาดทุน 10000', async () => {
     // cost=100000, accumulated=40000, NBV=60000, proceeds=50000, loss=10000
     const asset = await ensureTestAsset({
-      assetCategory: 'OFFICE_EQUIPMENT',
-      costValue: 100000,
-      accumulatedDepre: 40000,
+      category: 'EQUIPMENT',
+      purchaseCost: 100000,
+      accumulatedDepr: 40000,
     });
 
     const tmpl = new AssetDisposalTemplate(journal, prisma as any);
@@ -111,15 +141,15 @@ describe('AssetDisposalTemplate', () => {
     // Asset status → DISPOSED
     const updated = await prisma.fixedAsset.findFirst({ where: { id: asset.id } });
     expect(updated!.status).toBe('DISPOSED');
-    expect(new Decimal(updated!.disposalProceeds!.toString()).toFixed(2)).toBe('50000.00');
+    expect(updated!.disposalDate).toBeDefined();
   });
 
-  it('gain case: NBV=20000, proceeds=30000 → Cr 41-1102 กำไร 10000', async () => {
+  it('gain case: NBV=20000, proceeds=30000 → Cr 42-1105 กำไร 10000', async () => {
     // cost=100000, accumulated=80000, NBV=20000, proceeds=30000, gain=10000
     const asset = await ensureTestAsset({
-      assetCategory: 'OFFICE_EQUIPMENT',
-      costValue: 100000,
-      accumulatedDepre: 80000,
+      category: 'EQUIPMENT',
+      purchaseCost: 100000,
+      accumulatedDepr: 80000,
     });
 
     const tmpl = new AssetDisposalTemplate(journal, prisma as any);
@@ -142,8 +172,8 @@ describe('AssetDisposalTemplate', () => {
     const totalCr = je!.lines.reduce((s, l) => s.plus(l.credit.toString()), new Decimal(0));
     expect(totalDr.toFixed(2)).toBe(totalCr.toFixed(2));
 
-    // Cr gain 10000 (interim account 41-1102)
-    const gainLine = je!.lines.find((l) => l.accountCode === '41-1102');
+    // Cr gain 10000 (account 42-1105 — กำไรจากการจำหน่ายสินทรัพย์)
+    const gainLine = je!.lines.find((l) => l.accountCode === '42-1105');
     expect(gainLine).toBeDefined();
     expect(new Decimal(gainLine!.credit.toString()).toFixed(2)).toBe('10000.00');
 
@@ -158,9 +188,9 @@ describe('AssetDisposalTemplate', () => {
   it('zero proceeds write-off: Dr 53-1605 = full NBV', async () => {
     // cost=50000, accumulated=20000, NBV=30000, proceeds=0, loss=30000
     const asset = await ensureTestAsset({
-      assetCategory: 'OFFICE_FURNITURE',
-      costValue: 50000,
-      accumulatedDepre: 20000,
+      category: 'FURNITURE',
+      purchaseCost: 50000,
+      accumulatedDepr: 20000,
     });
 
     const tmpl = new AssetDisposalTemplate(journal, prisma as any);
@@ -195,9 +225,9 @@ describe('AssetDisposalTemplate', () => {
 
   it('uses VEHICLE account codes: 12-2107 / 12-2108', async () => {
     const asset = await ensureTestAsset({
-      assetCategory: 'VEHICLE',
-      costValue: 500000,
-      accumulatedDepre: 200000,
+      category: 'VEHICLE',
+      purchaseCost: 500000,
+      accumulatedDepr: 200000,
     });
 
     const tmpl = new AssetDisposalTemplate(journal, prisma as any);

@@ -1,12 +1,13 @@
 import { Module } from '@nestjs/common';
 import { AssetController } from './asset.controller';
 import { AssetService } from './asset.service';
+import { AssetTransferService } from './asset-transfer.service';
 import { JournalModule } from '../journal/journal.module';
 
 @Module({
   imports: [JournalModule],
   controllers: [AssetController],
-  providers: [AssetService],
-  exports: [AssetService],
+  providers: [AssetService, AssetTransferService],
+  exports: [AssetService, AssetTransferService],
 })
 export class AssetModule {}

@@ -79,7 +79,9 @@ const TaxReportsPage = lazy(() => import('@/pages/TaxReportsPage'));
 const CommissionsPage = lazy(() => import('@/pages/CommissionsPage'));
 const TradeInPage = lazy(() => import('@/pages/TradeInPage'));
 const PromotionsPage = lazy(() => import('@/pages/PromotionsPage'));
-const AssetManagementPage = lazy(() => import('@/pages/AssetManagementPage'));
+const AssetsListPage = lazy(() => import('@/pages/assets/AssetsListPage'));
+const AssetEntryPage = lazy(() => import('@/pages/assets/AssetEntryPage'));
+const AssetDetailPage = lazy(() => import('@/pages/assets/AssetDetailPage'));
 const ChartOfAccountsPage = lazy(() => import('@/pages/ChartOfAccountsPage'));
 const TodosPage = lazy(() => import('@/pages/TodosPage'));
 const UnifiedInboxPage = lazy(() => import('@/pages/UnifiedInboxPage'));
@@ -688,7 +690,31 @@ function App() {
             path="/assets"
             element={
               <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
-                <AssetManagementPage />
+                <AssetsListPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/assets/new"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <AssetEntryPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/assets/:id/edit"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <AssetEntryPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/assets/:id"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <AssetDetailPage />
               </ProtectedRoute>
             }
           />

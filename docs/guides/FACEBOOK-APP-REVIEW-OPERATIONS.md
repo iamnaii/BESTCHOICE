@@ -24,7 +24,7 @@ Last name:   Reviewer
 
 | ✓ | ทดสอบ | Expected |
 |---|---|---|
-| □ | Login ที่ `https://admin.bestchoicephone.app/login` | Dashboard โหลด |
+| □ | Login ที่ `https://bestchoicephone.app/login` | Dashboard โหลด |
 | □ | เข้า `Settings → Integrations` | เห็น Facebook App Review Panel |
 | □ | กดปุ่ม "ยิง API" บนการ์ด `pages_show_list` | Response แสดงรายการ Page |
 

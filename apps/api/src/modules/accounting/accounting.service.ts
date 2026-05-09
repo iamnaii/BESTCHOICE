@@ -12,6 +12,8 @@ import { CreateExpenseDto, UpdateExpenseDto } from './dto/expense.dto';
 import { validatePeriodOpen as validatePeriodOpenUtil } from '../../utils/period-lock.util';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { ExpenseTemplate } from '../journal/cpa-templates/expense.template';
+import { ExpenseReverseTemplate } from '../journal/cpa-templates/expense-reverse.template';
+import { ExpenseClearanceTemplate } from '../journal/cpa-templates/expense-clearance.template';
 import { d, dAdd, dSub, dMul, dRound } from '../../utils/decimal.util';
 
 /**
@@ -129,6 +131,8 @@ export class AccountingService implements OnModuleInit {
     private prisma: PrismaService,
     private journalAutoService: JournalAutoService,
     private expenseTemplate: ExpenseTemplate,
+    private expenseReverseTemplate: ExpenseReverseTemplate,
+    private expenseClearanceTemplate: ExpenseClearanceTemplate,
   ) {}
 
   /**
@@ -413,7 +417,47 @@ export class AccountingService implements OnModuleInit {
     });
   }
 
-  async markExpensePaid(id: string, paymentDate?: string) {
+  /**
+   * Records an accrual JE for an APPROVED expense (Cr 21-1104).
+   * Allows 2-step accrual workflow: APPROVED → recordExpenseAccrual → markExpensePaid.
+   * markExpensePaid detects the accrual and posts a clearance JE instead of full payment.
+   */
+  async recordExpenseAccrual(id: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const expense = await tx.expense.findFirst({ where: { id, deletedAt: null } });
+      if (!expense) throw new NotFoundException('ไม่พบรายจ่าย');
+      if (expense.status !== 'APPROVED') {
+        throw new BadRequestException('ต้องอนุมัติก่อนถึงจะบันทึกค้างจ่ายได้');
+      }
+
+      const existing = await tx.journalEntry.findFirst({
+        where: {
+          AND: [
+            { metadata: { path: ['flow'], equals: 'expense' } as any },
+            { metadata: { path: ['expenseId'], equals: id } as any },
+          ],
+          deletedAt: null,
+        },
+      });
+      if (existing) {
+        throw new BadRequestException(
+          `รายจ่ายนี้มี JE อยู่แล้ว (${existing.entryNumber}) — บันทึกค้างจ่ายซ้ำไม่ได้`,
+        );
+      }
+
+      const result = await this.expenseTemplate.execute(
+        { expenseId: id, isPaid: false },
+        tx,
+      );
+      return { expense, journalEntryNo: result?.entryNo };
+    });
+  }
+
+  async markExpensePaid(
+    id: string,
+    paymentDate?: string,
+    depositAccountCode: string = '11-1101',
+  ) {
     return this.prisma.$transaction(async (tx) => {
       const expense = await tx.expense.findFirst({
         where: { id, deletedAt: null },
@@ -428,16 +472,30 @@ export class AccountingService implements OnModuleInit {
         data: { status: 'PAID', paymentDate: paymentDate ? new Date(paymentDate) : new Date() },
       });
 
-      // Phase A.5a: post expense JE (non-blocking — JE failure must not roll back the status update)
-      try {
-        await this.expenseTemplate.execute({
-          expenseId: updated.id,
-          depositAccountCode: '11-1101', // Default cash account; caller can pass custom in future
-          isPaid: true,
-        });
-      } catch (err) {
-        this.logger.error(
-          `[A.5a] Expense JE failed for ${updated.expenseNumber}: ${(err as Error).message}`,
+      // Detect existing accrual JE — if present, route to clearance template.
+      // Otherwise, post the full payment JE.
+      const accrual = await tx.journalEntry.findFirst({
+        where: {
+          AND: [
+            { metadata: { path: ['flow'], equals: 'expense' } as any },
+            { metadata: { path: ['expenseId'], equals: id } as any },
+            { metadata: { path: ['isPaid'], equals: false } as any },
+          ],
+          deletedAt: null,
+        },
+      });
+
+      if (accrual) {
+        // 2-step path: accrual already booked → post clearance JE only
+        await this.expenseClearanceTemplate.execute(
+          { expenseId: updated.id, depositAccountCode },
+          tx,
+        );
+      } else {
+        // 1-step path: post full payment JE atomic with status update
+        await this.expenseTemplate.execute(
+          { expenseId: updated.id, depositAccountCode, isPaid: true },
+          tx,
         );
       }
 
@@ -449,30 +507,76 @@ export class AccountingService implements OnModuleInit {
     if (!voidReason?.trim()) {
       throw new BadRequestException('กรุณาระบุเหตุผลในการยกเลิก');
     }
-    const expense = await this.prisma.expense.findFirst({ where: { id, deletedAt: null } });
-    if (!expense) throw new NotFoundException('ไม่พบรายจ่าย');
-    if (expense.status === 'VOIDED') {
-      throw new BadRequestException('รายจ่ายนี้ถูกยกเลิกไปแล้ว');
-    }
-    if (expense.status === 'PAID') {
-      const voider = await this.prisma.user.findUnique({ where: { id: voidedById } });
-      if (voider?.role !== 'OWNER') {
-        throw new BadRequestException('เฉพาะ OWNER เท่านั้นที่สามารถยกเลิกรายจ่ายที่จ่ายแล้ว');
+    return this.prisma.$transaction(async (tx) => {
+      const expense = await tx.expense.findFirst({ where: { id, deletedAt: null } });
+      if (!expense) throw new NotFoundException('ไม่พบรายจ่าย');
+      if (expense.status === 'VOIDED') {
+        throw new BadRequestException('รายจ่ายนี้ถูกยกเลิกไปแล้ว');
       }
-    }
-    const voided = await this.prisma.expense.update({
-      where: { id },
-      data: { status: 'VOIDED', voidReason: voidReason.trim(), voidedById, voidedAt: new Date() },
+
+      const wasPaid = expense.status === 'PAID';
+
+      if (wasPaid) {
+        const voider = await tx.user.findUnique({ where: { id: voidedById } });
+        if (voider?.role !== 'OWNER') {
+          throw new BadRequestException('เฉพาะ OWNER เท่านั้นที่สามารถยกเลิกรายจ่ายที่จ่ายแล้ว');
+        }
+      }
+
+      const voided = await tx.expense.update({
+        where: { id },
+        data: { status: 'VOIDED', voidReason: voidReason.trim(), voidedById, voidedAt: new Date() },
+      });
+
+      // Auto-post reverse JE for expenses that already had a JE posted (PAID status).
+      // Atomic with status update — if reverse fails, void rolls back.
+      // Note: 2-step accruals produce TWO JEs (flow='expense' isPaid:false + flow='expense-clearance').
+      // Both must be reversed for the cancellation to net to zero on the cash side.
+      if (wasPaid) {
+        // Reverse the original expense JE (covers 1-step PAID + the accrual leg of 2-step)
+        await this.expenseReverseTemplate.execute(
+          {
+            expenseId: voided.id,
+            reversedById: voidedById,
+            reason: voidReason.trim(),
+          },
+          tx,
+        );
+
+        // Reverse the clearance JE if 2-step path was used
+        const clearance = await tx.journalEntry.findFirst({
+          where: {
+            AND: [
+              { metadata: { path: ['flow'], equals: 'expense-clearance' } as any },
+              { metadata: { path: ['expenseId'], equals: voided.id } as any },
+            ],
+            deletedAt: null,
+          },
+        });
+        if (clearance) {
+          await this.expenseReverseTemplate.execute(
+            {
+              expenseId: voided.id,
+              reversedById: voidedById,
+              reason: voidReason.trim(),
+              flowOverride: 'expense-clearance',
+            },
+            tx,
+          );
+        }
+      }
+
+      this.structuredLogger.log('expense.voided', {
+        expenseId: voided.id,
+        expenseNumber: voided.expenseNumber,
+        branchId: voided.branchId,
+        totalAmount: Number(voided.totalAmount),
+        voidedById,
+        voidReason: voidReason.trim(),
+        reversedJe: wasPaid,
+      });
+      return voided;
     });
-    this.structuredLogger.log('expense.voided', {
-      expenseId: voided.id,
-      expenseNumber: voided.expenseNumber,
-      branchId: voided.branchId,
-      totalAmount: Number(voided.totalAmount),
-      voidedById,
-      voidReason: voidReason.trim(),
-    });
-    return voided;
   }
 
   async getExpenseSummary(filters: { branchId?: string; startDate?: string; endDate?: string }) {

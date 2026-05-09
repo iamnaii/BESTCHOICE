@@ -2844,7 +2844,7 @@ model KycVerification {
 
 model Receipt {
   id               String    @id @default(uuid())
-  receiptNumber    String    @unique @map("receipt_number") // RC-YYYY-MM-NNNNN
+  receiptNumber    String    @unique @map("receipt_number") // RT-YYYYMM-NNNNN
   contractId       String    @map("contract_id")
   paymentId        String?   @map("payment_id")
   receiptType      String    @default("PAYMENT") // PAYMENT, DOWN_PAYMENT, EARLY_PAYOFF, CREDIT_NOTE
@@ -2856,8 +2856,14 @@ model Receipt {
   amountBeforeVat  Decimal?  @map("amount_before_vat") @db.Decimal(12, 2) // ราคาก่อน VAT
   vatAmount        Decimal?  @map("vat_amount") @db.Decimal(12, 2) // จำนวน VAT
   installmentNo    Int?      @map("installment_no") // งวดที่
-  remainingBalance Decimal?  @map("remaining_balance") @db.Decimal(12, 2)
+  remainingBalance Decimal?  @map("remaining_balance") @db.Decimal(12, 2) // contract balance after this payment
   remainingMonths  Int?      @map("remaining_months")
+  /// Per-installment payment status — PARTIAL until installmentTotal cleared, then PAID.
+  paymentStatus    String    @default("PAID") @map("payment_status")
+  /// 1, 2, 3 ... for partial receipts within the same installment (null for full payment).
+  installmentPartialSeq Int? @map("installment_partial_seq")
+  /// Installment balance still owed AFTER this receipt (0 when paymentStatus=PAID).
+  remainingAmount  Decimal?  @map("remaining_amount") @db.Decimal(12, 2)
   paymentMethod    String?   @map("payment_method")
   transactionRef   String?   @map("transaction_ref") // เลขอ้างอิงธุรกรรม
   itemDescription  String?   @map("item_description") // รายละเอียดสินค้า/บริการ
@@ -2880,6 +2886,10 @@ model Receipt {
   @@index([receiptNumber])
   @@index([paymentId])
   @@index([createdAt])
+  // Speeds up the partial-receipt cumulative-sum query
+  // (`generateReceipt` looks up `(contractId, installmentNo)` rows on every
+  // partial payment to compute installmentPartialSeq + remainingAmount).
+  @@index([contractId, installmentNo])
   @@map("receipts")
 }
 

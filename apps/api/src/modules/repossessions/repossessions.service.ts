@@ -191,8 +191,26 @@ export class RepossessionsService {
       });
 
       if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
-      if (!['DEFAULT', 'OVERDUE'].includes(contract.status)) {
-        throw new BadRequestException('สัญญานี้ไม่อยู่ในสถานะที่สามารถยึดคืนได้');
+      // CPA Manual Termination Policy (ปพพ.386):
+      //   ยึดเครื่อง (JP5) ต้องมีหนังสือบอกเลิกสัญญาดิสแพตช์แล้ว = status='LEGAL'
+      //   หากยังไม่ได้ส่งหนังสือ → ห้ามยึด · ต้องสร้าง CONTRACT_TERMINATION_60D letter
+      //   ผ่าน /api/contract-letters/:id/dispatch ก่อน
+      // Allow LEGAL (after letter dispatch) · DEFAULT/OVERDUE for legacy compat
+      // (existing contracts pre-Manual-Termination workflow may still be DEFAULT)
+      if (!['LEGAL', 'DEFAULT', 'OVERDUE'].includes(contract.status)) {
+        throw new BadRequestException(
+          'สัญญานี้ไม่อยู่ในสถานะที่สามารถยึดคืนได้ — ต้องเป็น LEGAL (ส่งหนังสือบอกเลิกแล้ว) หรือ DEFAULT/OVERDUE',
+        );
+      }
+      // Strict mode: require LEGAL (letter dispatched) — flagged via SystemConfig
+      const strictTerminationConfig = await tx.systemConfig.findUnique({
+        where: { key: 'jp5_require_legal_status' },
+      });
+      const requireLegal = strictTerminationConfig?.value === 'true';
+      if (requireLegal && contract.status !== 'LEGAL') {
+        throw new BadRequestException(
+          'JP5 strict mode: ต้องส่งหนังสือบอกเลิกสัญญา (CONTRACT_TERMINATION_60D) ก่อนยึดเครื่อง',
+        );
       }
 
       // Check if product is already repossessed

@@ -141,6 +141,9 @@ describe('RepossessionsService', () => {
       user: {
         findUnique: jest.fn().mockResolvedValue({ defaultCashAccountCode: '11-1101' }),
       },
+      systemConfig: {
+        findUnique: jest.fn().mockResolvedValue(null), // strict mode off by default
+      },
       $transaction: jest.fn().mockImplementation(async (fn: unknown) => {
         if (typeof fn === 'function') return fn(prisma);
         return Promise.all(fn as Promise<unknown>[]);
@@ -301,7 +304,7 @@ describe('RepossessionsService', () => {
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('throws BadRequestException when contract status is not DEFAULT or OVERDUE', async () => {
+    it('throws BadRequestException when contract status is ACTIVE (no termination)', async () => {
       prisma.contract.findUnique.mockResolvedValue(
         makeContract({ status: 'ACTIVE' }),
       );
@@ -309,6 +312,30 @@ describe('RepossessionsService', () => {
       await expect(
         service.create(baseDto as never, 'user-1'),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    it('allows JP5 when contract status is LEGAL (termination letter dispatched)', async () => {
+      prisma.contract.findUnique.mockResolvedValue(
+        makeContract({ status: 'LEGAL' }),
+      );
+      prisma.repossession.create.mockResolvedValue(makeRepossession({ id: 'repo-legal' }));
+      prisma.contract.update.mockResolvedValue({});
+      prisma.product.update.mockResolvedValue({});
+
+      const result = await service.create(baseDto as never, 'user-1');
+      expect(result).toBeDefined();
+    });
+
+    it('strict mode: rejects DEFAULT status when jp5_require_legal_status=true', async () => {
+      // CPA Manual Termination Policy: enforce LEGAL-only via SystemConfig
+      prisma.systemConfig.findUnique.mockResolvedValue({ value: 'true' });
+      prisma.contract.findUnique.mockResolvedValue(
+        makeContract({ status: 'DEFAULT' }),
+      );
+
+      await expect(
+        service.create(baseDto as never, 'user-1'),
+      ).rejects.toThrow(/strict mode|หนังสือบอกเลิก/);
     });
 
     it('throws BadRequestException when product is already repossessed', async () => {

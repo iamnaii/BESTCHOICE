@@ -59,7 +59,7 @@ export class StuckContractsService {
           LEFT JOIN dunning_actions da
             ON da.contract_id = c.id AND da.deleted_at IS NULL
           WHERE c.deleted_at IS NULL
-            AND c.status IN ('OVERDUE', 'DEFAULT', 'LEGAL')
+            AND c.status IN ('OVERDUE', 'DEFAULT', 'TERMINATED')
           GROUP BY c.id, c.last_contact_date
         ),
         outstanding AS (
@@ -88,7 +88,7 @@ export class StuckContractsService {
         INNER JOIN last_activity la ON la.contract_id = c.id
         LEFT JOIN outstanding o ON o.contract_id = c.id
         WHERE c.deleted_at IS NULL
-          AND c.status IN ('OVERDUE', 'DEFAULT', 'LEGAL')
+          AND c.status IN ('OVERDUE', 'DEFAULT', 'TERMINATED')
           AND la.last_activity < NOW() - ($1::int * INTERVAL '1 day')
         ORDER BY la.last_activity ASC
         LIMIT 200

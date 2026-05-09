@@ -54,7 +54,7 @@ export class AnalyticsLeaderboardService {
           FROM contracts c
           WHERE c.deleted_at IS NULL
             AND c.assigned_to_id IS NOT NULL
-            AND c.status IN ('OVERDUE', 'DEFAULT', 'LEGAL')
+            AND c.status IN ('OVERDUE', 'DEFAULT', 'TERMINATED')
           GROUP BY c.assigned_to_id
         ),
         promises AS (

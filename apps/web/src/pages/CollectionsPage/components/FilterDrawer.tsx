@@ -41,7 +41,7 @@ const STATUSES: Array<{ value: string; label: string }> = [
   { value: 'ACTIVE', label: 'ACTIVE' },
   { value: 'OVERDUE', label: 'OVERDUE' },
   { value: 'DEFAULT', label: 'DEFAULT' },
-  { value: 'LEGAL', label: 'LEGAL' },
+  { value: 'TERMINATED', label: 'TERMINATED' },
 ];
 const PRODUCTS: Array<{ value: string; label: string }> = [
   { value: 'PHONE_NEW', label: 'มือถือใหม่' },

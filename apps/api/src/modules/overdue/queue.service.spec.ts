@@ -669,11 +669,11 @@ describe('OverdueQueueService', () => {
         tab: 'today',
         userRole: 'OWNER',
         userBranchId: null,
-        contractStatuses: ['DEFAULT', 'LEGAL'] as any,
+        contractStatuses: ['DEFAULT', 'TERMINATED'] as any,
       });
 
       const callArg = mockPrisma.contract.findMany.mock.calls[0][0];
-      expect(callArg.where.status).toEqual({ in: ['DEFAULT', 'LEGAL'] });
+      expect(callArg.where.status).toEqual({ in: ['DEFAULT', 'TERMINATED'] });
     });
 
     it('applies productTypes filter via Product relation', async () => {

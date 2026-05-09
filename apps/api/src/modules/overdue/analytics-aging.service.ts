@@ -58,7 +58,7 @@ export class AnalyticsAgingService {
           INNER JOIN contracts c ON c.id = p.contract_id
           WHERE p.deleted_at IS NULL
             AND c.deleted_at IS NULL
-            AND c.status IN ('OVERDUE', 'DEFAULT', 'LEGAL')
+            AND c.status IN ('OVERDUE', 'DEFAULT', 'TERMINATED')
             AND p.status IN ('PENDING', 'OVERDUE', 'PARTIALLY_PAID')
             AND p.due_date < NOW()
             ${branchId ? 'AND c.branch_id = $1' : ''}

@@ -533,7 +533,7 @@ export class OverdueQueueService {
         by: ['customerId'],
         where: {
           customerId: { in: customerIds },
-          status: { in: ['ACTIVE', 'OVERDUE', 'DEFAULT', 'LEGAL'] },
+          status: { in: ['ACTIVE', 'OVERDUE', 'DEFAULT', 'TERMINATED'] },
           deletedAt: null,
         },
         _count: { _all: true },

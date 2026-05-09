@@ -316,7 +316,7 @@ describe('RepossessionsService', () => {
 
     it('allows JP5 when contract status is LEGAL (termination letter dispatched)', async () => {
       prisma.contract.findUnique.mockResolvedValue(
-        makeContract({ status: 'LEGAL' }),
+        makeContract({ status: 'TERMINATED' }),
       );
       prisma.repossession.create.mockResolvedValue(makeRepossession({ id: 'repo-legal' }));
       prisma.contract.update.mockResolvedValue({});
@@ -326,8 +326,8 @@ describe('RepossessionsService', () => {
       expect(result).toBeDefined();
     });
 
-    it('strict mode: rejects DEFAULT status when jp5_require_legal_status=true', async () => {
-      // CPA Manual Termination Policy: enforce LEGAL-only via SystemConfig
+    it('strict mode: rejects DEFAULT status when jp5_require_terminated_status=true', async () => {
+      // CPA Manual Termination Policy: enforce TERMINATED-only via SystemConfig
       prisma.systemConfig.findUnique.mockResolvedValue({ value: 'true' });
       prisma.contract.findUnique.mockResolvedValue(
         makeContract({ status: 'DEFAULT' }),

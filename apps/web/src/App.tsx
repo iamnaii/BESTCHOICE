@@ -82,6 +82,7 @@ const PromotionsPage = lazy(() => import('@/pages/PromotionsPage'));
 const AssetsListPage = lazy(() => import('@/pages/assets/AssetsListPage'));
 const AssetEntryPage = lazy(() => import('@/pages/assets/AssetEntryPage'));
 const AssetDetailPage = lazy(() => import('@/pages/assets/AssetDetailPage'));
+const AssetDisposePage = lazy(() => import('@/pages/assets/AssetDisposePage'));
 const ChartOfAccountsPage = lazy(() => import('@/pages/ChartOfAccountsPage'));
 const TodosPage = lazy(() => import('@/pages/TodosPage'));
 const UnifiedInboxPage = lazy(() => import('@/pages/UnifiedInboxPage'));
@@ -715,6 +716,14 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
                 <AssetDetailPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/assets/:id/dispose"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER']}>
+                <AssetDisposePage />
               </ProtectedRoute>
             }
           />

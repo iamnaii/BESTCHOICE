@@ -3,6 +3,8 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { PaymentMethod, Prisma } from '@prisma/client';
 import { AccountingService } from './accounting.service';
 import { ExpenseTemplate } from '../journal/cpa-templates/expense.template';
+import { ExpenseReverseTemplate } from '../journal/cpa-templates/expense-reverse.template';
+import { ExpenseClearanceTemplate } from '../journal/cpa-templates/expense-clearance.template';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { CreateExpenseDto } from './dto/expense.dto';
@@ -90,6 +92,9 @@ describe('AccountingService', () => {
       chartOfAccount: {
         findMany: jest.fn().mockResolvedValue([]),
       },
+      journalEntry: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
       $transaction: jest.fn().mockImplementation(async (fn) => {
         if (typeof fn === 'function') {
           return fn(prisma);
@@ -106,12 +111,22 @@ describe('AccountingService', () => {
       execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK-1' }),
     };
 
+    const expenseReverseTemplate = {
+      execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK-REVERSE-1' }),
+    };
+
+    const expenseClearanceTemplate = {
+      execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK-CLEARANCE-1' }),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AccountingService,
         { provide: PrismaService, useValue: prisma },
         { provide: JournalAutoService, useValue: journalAutoService },
         { provide: ExpenseTemplate, useValue: expenseTemplate },
+        { provide: ExpenseReverseTemplate, useValue: expenseReverseTemplate },
+        { provide: ExpenseClearanceTemplate, useValue: expenseClearanceTemplate },
       ],
     }).compile();
 
@@ -1259,13 +1274,14 @@ describe('AccountingService', () => {
       const expenseTemplateMock = (service as any).expenseTemplate;
       await service.markExpensePaid('exp-1', '2026-04-15');
 
-      // Phase A.5a: JE posted via ExpenseTemplate.execute
+      // JE posted via ExpenseTemplate.execute (now atomic — passes tx as 2nd arg)
       expect(expenseTemplateMock.execute).toHaveBeenCalledWith(
         expect.objectContaining({ expenseId: 'exp-1', isPaid: true }),
+        expect.anything(), // tx client
       );
     });
 
-    it('expense markPaid succeeds even if JE creation throws (non-blocking pattern, Phase A.5a)', async () => {
+    it('expense markPaid is atomic — JE creation failure rolls back status update', async () => {
       const approvedExpense = {
         id: 'exp-2',
         expenseNumber: 'EX-002',
@@ -1292,8 +1308,8 @@ describe('AccountingService', () => {
       const expenseTemplateMock = (service as any).expenseTemplate;
       expenseTemplateMock.execute.mockRejectedValueOnce(new Error('JE failed'));
 
-      // Phase A.5a: JE failure is non-blocking — markPaid succeeds
-      await expect(service.markExpensePaid('exp-2')).resolves.toBeDefined();
+      // Atomic refactor: JE failure now bubbles up — markPaid rejects
+      await expect(service.markExpensePaid('exp-2')).rejects.toThrow('JE failed');
     });
 
     it('returns updated expense record after successful markPaid', async () => {

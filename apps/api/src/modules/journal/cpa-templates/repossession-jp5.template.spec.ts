@@ -44,7 +44,9 @@ async function setup() {
 }
 
 describe('RepossessionJP5Template', () => {
-  it('matches CSV golden case-5 with 4 paid + 8 unpaid + repoValue 7000 (loss path)', async () => {
+  // Phase 4 EIR migration: CSV regenerated to match EIR allocation
+  // (deferred interest for periods 5..12 = 3,012.50, was straight-line 4,000). Re-enabled.
+  it('CSV golden case — EIR allocation matches Phase 4 fixture', async () => {
     const journal = await setup();
     const c = await seedStandard17k12m(prisma);
     await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);

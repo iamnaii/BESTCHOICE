@@ -79,7 +79,17 @@ const TaxReportsPage = lazy(() => import('@/pages/TaxReportsPage'));
 const CommissionsPage = lazy(() => import('@/pages/CommissionsPage'));
 const TradeInPage = lazy(() => import('@/pages/TradeInPage'));
 const PromotionsPage = lazy(() => import('@/pages/PromotionsPage'));
-const AssetManagementPage = lazy(() => import('@/pages/AssetManagementPage'));
+const AssetsListPage = lazy(() => import('@/pages/assets/AssetsListPage'));
+const AssetEntryPage = lazy(() => import('@/pages/assets/AssetEntryPage'));
+const AssetDetailPage = lazy(() => import('@/pages/assets/AssetDetailPage'));
+const AssetDisposePage = lazy(() => import('@/pages/assets/AssetDisposePage'));
+const AssetSchedulePage = lazy(() => import('@/pages/assets/AssetSchedulePage'));
+const AssetAuditPage = lazy(() => import('@/pages/assets/AssetAuditPage'));
+const AssetRegisterPage = lazy(() => import('@/pages/assets/AssetRegisterPage'));
+const AssetJournalPage = lazy(() => import('@/pages/assets/AssetJournalPage'));
+const AssetSummaryReportPage = lazy(() => import('@/pages/assets/AssetSummaryReportPage'));
+const AssetTransfersListPage = lazy(() => import('@/pages/transfers/AssetTransfersListPage'));
+const DepreciationPage = lazy(() => import('@/pages/depreciation/DepreciationPage'));
 const ChartOfAccountsPage = lazy(() => import('@/pages/ChartOfAccountsPage'));
 const TodosPage = lazy(() => import('@/pages/TodosPage'));
 const UnifiedInboxPage = lazy(() => import('@/pages/UnifiedInboxPage'));
@@ -688,7 +698,95 @@ function App() {
             path="/assets"
             element={
               <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
-                <AssetManagementPage />
+                <AssetsListPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/assets/new"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <AssetEntryPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/assets/:id/edit"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <AssetEntryPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/assets/transfers"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <AssetTransfersListPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/assets/register"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <AssetRegisterPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/assets/journal"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <AssetJournalPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/assets/summary-report"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <AssetSummaryReportPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/assets/:id"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <AssetDetailPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/assets/:id/dispose"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER']}>
+                <AssetDisposePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/assets/:id/schedule"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <AssetSchedulePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/assets/:id/audit"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <AssetAuditPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/depreciation"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <DepreciationPage />
               </ProtectedRoute>
             }
           />

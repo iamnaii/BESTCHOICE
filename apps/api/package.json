@@ -20,9 +20,13 @@
     "backfill:promise-slots": "tsx scripts/backfill-promise-slots.ts",
     "wipe:accounting": "node dist/src/cli/wipe-accounting.cli.js",
     "wipe:accounting:help": "echo 'Usage: CONFIRM_WIPE=YES_I_AM_SURE EXPECTED_DB_NAME=<db> [ALLOW_PROD_WIPE=YES_I_AM_SURE] npm run wipe:accounting'",
+    "wipe:assets": "node dist/src/cli/wipe-assets.cli.js",
+    "wipe:assets:help": "echo 'Usage: CONFIRM_WIPE=YES_I_AM_SURE EXPECTED_DB_NAME=<db> [ALLOW_PROD_WIPE=YES_I_AM_SURE] npm run wipe:assets'",
     "seed:coa": "node dist/src/cli/seed-coa.cli.js",
     "seed:coa:help": "echo 'Usage: EXPECTED_DB_NAME=<db> npm run seed:coa  (non-destructive upsert from CSV)'",
-    "backfill:schedules": "node dist/src/cli/backfill-installment-schedules.cli.js"
+    "backfill:schedules": "node dist/src/cli/backfill-installment-schedules.cli.js",
+    "backfill:asset-vat": "node dist/src/cli/backfill-asset-vat-corrections.cli.js",
+    "backfill:asset-vat:help": "echo 'Usage: EXPECTED_DB_NAME=<db> [DRY_RUN=true|false] [ALLOW_PROD_BACKFILL=YES_I_AM_SURE] npm run backfill:asset-vat'"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.88.0",

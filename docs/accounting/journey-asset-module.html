@@ -1,0 +1,1141 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BESTCHOICE FINANCE — เส้นทางบันทึกบัญชี สินทรัพย์ถาวร (สำหรับนักบัญชีตรวจสอบ)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #fafaf9;
+    --paper: #ffffff;
+    --border: #d6d3d1;
+    --line: #e7e5e4;
+    --text: #0c0a09;
+    --muted: #57534e;
+    --subtle: #78716c;
+
+    --emerald: #047857;
+    --emerald-bg: #ecfdf5;
+    --emerald-border: #a7f3d0;
+
+    --rose: #be123c;
+    --rose-bg: #fef2f2;
+
+    --amber: #b45309;
+    --amber-bg: #fffbeb;
+
+    --blue: #1d4ed8;
+    --blue-bg: #eff6ff;
+
+    --violet: #6d28d9;
+    --violet-bg: #f5f3ff;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Sans Thai', system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+  }
+
+  .page {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 56px 40px 80px;
+    background: var(--paper);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+
+  /* ─── HEADER ─── */
+  .doc-header {
+    border-bottom: 2px solid var(--text);
+    padding-bottom: 20px;
+    margin-bottom: 36px;
+  }
+  .doc-header .org { font-size: 13px; color: var(--subtle); letter-spacing: 0.05em; margin-bottom: 6px; }
+  h1 { font-size: 28px; font-weight: 700; margin: 0 0 8px; letter-spacing: -0.01em; }
+  .doc-header .sub { color: var(--muted); font-size: 15px; margin: 0; }
+  .doc-meta { display: flex; gap: 28px; margin-top: 14px; font-size: 12px; color: var(--subtle); flex-wrap: wrap; }
+  .doc-meta strong { color: var(--text); }
+
+  /* ─── EXAMPLE BOX ─── */
+  .example {
+    background: var(--blue-bg);
+    border: 1px solid #c7d2fe;
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin: 0 0 24px;
+  }
+  .example-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--blue);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  .example h3 { font-size: 16px; margin: 0 0 12px; font-weight: 600; }
+  .example dl { margin: 0; display: grid; grid-template-columns: 240px 1fr; gap: 6px 16px; font-size: 14px; }
+  .example dt { color: var(--muted); }
+  .example dd { margin: 0; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .example dd strong { color: var(--blue); }
+
+  /* ─── LEGEND ─── */
+  .legend {
+    background: #fafaf9;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 18px;
+    margin-bottom: 36px;
+    font-size: 13px;
+    color: var(--muted);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px;
+  }
+  .legend-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 6px;
+    vertical-align: middle;
+    border: 1px solid rgba(0,0,0,0.1);
+  }
+  .legend-green  { background: #10b981; }
+  .legend-yellow { background: #f59e0b; }
+  .legend-violet { background: #8b5cf6; }
+  .legend-blue   { background: #3b82f6; }
+  .legend-rose   { background: #f43f5e; }
+
+  /* ─── SECTION ─── */
+  section { margin-bottom: 44px; }
+  h2 {
+    font-size: 20px;
+    font-weight: 700;
+    margin: 0 0 18px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    letter-spacing: -0.01em;
+  }
+  h2 .badge-section {
+    display: inline-block;
+    background: var(--text);
+    color: white;
+    padding: 2px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-right: 10px;
+    vertical-align: middle;
+  }
+
+  /* ─── ENTRY ─── */
+  .entry {
+    margin-bottom: 30px;
+    page-break-inside: avoid;
+  }
+  .entry-when {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+  }
+  .entry-tag {
+    background: var(--emerald);
+    color: white;
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 0.02em;
+    flex-shrink: 0;
+  }
+  .entry-tag.tag-violet { background: var(--violet); }
+  .entry-tag.tag-blue   { background: var(--blue); }
+  .entry-tag.tag-amber  { background: var(--amber); }
+  .entry-tag.tag-rose   { background: var(--rose); }
+  .entry-tag.tag-zinc   { background: var(--subtle); }
+  .entry-title {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0;
+    flex: 1;
+  }
+  .entry-date {
+    color: var(--subtle);
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  .entry-narrative {
+    margin: 4px 0 12px 0;
+    color: var(--muted);
+    font-size: 14px;
+  }
+
+  /* ─── JOURNAL TABLE ─── */
+  .ledger {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    font-size: 14px;
+    background: var(--paper);
+  }
+  .ledger table { width: 100%; border-collapse: collapse; }
+  .ledger thead {
+    background: #fafaf9;
+    border-bottom: 2px solid var(--border);
+  }
+  .ledger th {
+    text-align: left;
+    padding: 8px 14px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--muted);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .ledger th.num { text-align: right; }
+  .ledger td {
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--line);
+    font-variant-numeric: tabular-nums;
+  }
+  .ledger tr:last-child td { border-bottom: none; }
+  .ledger .acc-code {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--subtle);
+    width: 75px;
+  }
+  .ledger .acc-name { font-size: 14px; }
+  .ledger .acc-name.indent { padding-left: 36px; color: var(--muted); }
+  .ledger .num { text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 13px; width: 110px; }
+  .ledger .num.dr { color: var(--rose); }
+  .ledger .num.cr { color: var(--emerald); }
+  .ledger .total-row {
+    background: #fafaf9;
+    border-top: 2px solid var(--border);
+    font-weight: 700;
+  }
+  .ledger .total-row td { padding: 10px 14px; }
+  .check {
+    margin: 8px 0 0;
+    font-size: 13px;
+    color: var(--emerald);
+    display: inline-block;
+    background: var(--emerald-bg);
+    padding: 4px 12px;
+    border-radius: 4px;
+    border: 1px solid var(--emerald-border);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ─── NOTE / STANDARD ─── */
+  .standard {
+    margin: 10px 0 0;
+    padding: 8px 14px;
+    border-left: 3px solid var(--blue);
+    background: var(--blue-bg);
+    font-size: 13px;
+    border-radius: 0 4px 4px 0;
+    color: var(--text);
+  }
+  .standard strong { color: var(--blue); }
+
+  .warn {
+    margin: 10px 0 0;
+    padding: 8px 14px;
+    border-left: 3px solid var(--amber);
+    background: var(--amber-bg);
+    font-size: 13px;
+    border-radius: 0 4px 4px 0;
+  }
+
+  .info-box {
+    margin: 10px 0 0;
+    padding: 8px 14px;
+    border-left: 3px solid var(--violet);
+    background: var(--violet-bg);
+    font-size: 13px;
+    border-radius: 0 4px 4px 0;
+  }
+  .info-box strong { color: var(--violet); }
+
+  /* ─── BALANCE TRACKER ─── */
+  .balance {
+    margin: 14px 0 0;
+    background: #fafaf9;
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+    padding: 12px 16px;
+    font-size: 12px;
+  }
+  .balance-title { color: var(--subtle); font-weight: 600; margin-bottom: 6px; letter-spacing: 0.04em; text-transform: uppercase; font-size: 11px; }
+  .balance-line { font-family: 'IBM Plex Mono', monospace; line-height: 1.85; }
+  .balance-line .acc { color: var(--muted); }
+  .balance-line .amt { font-weight: 500; }
+  .balance-line .amt.zero { color: var(--emerald); font-weight: 700; }
+
+  /* ─── CASE TABLE ─── */
+  table.cases {
+    width: 100%;
+    border-collapse: collapse;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    font-size: 14px;
+  }
+  table.cases thead { background: #fafaf9; }
+  table.cases th {
+    text-align: left;
+    padding: 10px 14px;
+    font-size: 11px;
+    color: var(--muted);
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    border-bottom: 2px solid var(--border);
+  }
+  table.cases td { padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.cases tr:last-child td { border-bottom: none; }
+  table.cases code {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    background: var(--blue-bg);
+    color: var(--blue);
+    padding: 1px 6px;
+    border-radius: 3px;
+  }
+
+  /* ─── CHECKLIST ─── */
+  .checklist {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    counter-reset: chk;
+  }
+  .checklist li {
+    background: var(--paper);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 18px 14px 50px;
+    margin-bottom: 8px;
+    position: relative;
+  }
+  .checklist li::before {
+    content: '';
+    position: absolute;
+    left: 16px;
+    top: 17px;
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--border);
+    border-radius: 4px;
+    background: white;
+  }
+  .checklist li strong { display: block; margin-bottom: 2px; font-weight: 600; }
+  .checklist li span { color: var(--muted); font-size: 13px; }
+
+  /* ─── PRINT ─── */
+  @media print {
+    body { background: white; }
+    .page { box-shadow: none; max-width: none; padding: 0; }
+    .entry, table.cases, .ledger { page-break-inside: avoid; }
+    h2 { page-break-after: avoid; }
+    .print-btn { display: none; }
+  }
+
+  .print-btn {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: var(--text);
+    color: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 14px;
+    border: none;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  }
+  .print-btn:hover { opacity: 0.9; }
+
+  @media (max-width: 720px) {
+    .page { padding: 28px 18px 60px; }
+    .example dl { grid-template-columns: 1fr; gap: 2px; }
+    .ledger { font-size: 13px; }
+  }
+</style>
+</head>
+<body>
+
+<button class="print-btn" onclick="window.print()">พิมพ์ / บันทึก PDF</button>
+
+<div class="page">
+
+  <!-- HEADER -->
+  <div class="doc-header">
+    <div class="org">บริษัท เบสท์ช้อยส์ ไฟแนนซ์ จำกัด · จดทะเบียน VAT</div>
+    <h1>เส้นทางการบันทึกบัญชี — สินทรัพย์ถาวร</h1>
+    <p class="sub">เอกสารแสดงลำดับรายการบัญชีของโมดูลสินทรัพย์ — ซื้อ · ค่าเสื่อมรายเดือน · จำหน่าย · กลับรายการ · โอนผู้ดูแล สำหรับให้นักบัญชีตรวจสอบความถูกต้อง</p>
+    <div class="doc-meta">
+      <span><strong>มาตรฐานที่ใช้:</strong> TFRS for NPAEs (Straight-line depreciation)</span>
+      <span><strong>ภาษีมูลค่าเพิ่ม:</strong> 7%</span>
+      <span><strong>หัก ณ ที่จ่าย:</strong> ภ.ง.ด.3 / ภ.ง.ด.53</span>
+      <span><strong>เวอร์ชัน:</strong> v2 — 9 พ.ค. 2569 (ปิด CRITICAL #1 + #2)</span>
+    </div>
+  </div>
+
+  <!-- Legal compliance update banner -->
+  <div class="info-box" style="margin-bottom: 24px; background: #f0fdf4; border-left-color: #16a34a;">
+    <strong style="color: #15803d;">เปลี่ยนแปลงตามคำติชมของ CPA (9 พ.ค. 2569):</strong> เอกสารนี้เวอร์ชัน v1 มี 3 จุดผิดกฎหมายที่แก้ไขแล้ว + 1 Decision Point ที่ยืนยันแล้ว
+    <ul style="margin: 4px 0 0 16px; padding: 0;">
+      <li><strong>CRITICAL #1 (ทป.4/2528 + ม.50 ทวิ + ม.40(7)(8)):</strong> ตัวอย่างเดิม "ซื้อรถ Toyota Hilux + WHT 1%" ผิดกฎหมาย — การซื้อสินค้าห้ามหัก WHT · เปลี่ยนเป็น "ซื้อ CCTV พร้อมติดตั้ง" ที่หัก WHT เฉพาะค่าบริการ + เพิ่ม validation ใน <code>asset.service.ts</code></li>
+      <li><strong>CRITICAL #2 (ม.82/3):</strong> VAT Inclusive case เดิมไม่ post Dr 11-4101 ทำให้สูญสิทธิเครดิตภาษีซื้อ · แก้ <code>asset-purchase.template.ts</code> ให้ post 11-4101 เสมอเมื่อ <code>hasVat=true</code></li>
+      <li><strong>CRITICAL #3 (ม.77/1 + ม.82):</strong> เดิมระบบไม่ออก JE VAT ขายตอนจำหน่าย — ฝ่ายบัญชีต้องบันทึกเอง · แก้ <code>asset-disposal.template.ts</code> เพิ่ม flag <code>issueTaxInvoice</code> + DTO checkbox · ติ๊กแล้วระบบ post Cr 21-2101 อัตโนมัติ + เก็บ VAT จากผู้ซื้อ (proceeds × 1.07)</li>
+      <li><strong>DECISION POINT:</strong> รูปแบบการปัดเศษ — ยืนยันใช้ <strong>ROUND_DOWN</strong> ทั้งใน depreciation template (50,000/60 = 833.33 ตัด) เพื่อป้องกัน NBV ติดลบ + งวดสุดท้ายระบบ cap ให้ตรงกับ residualValue (เช็คใน <a href="../../apps/api/src/modules/journal/cpa-templates/depreciation.template.ts">depreciation.template.ts:107</a>)</li>
+    </ul>
+  </div>
+
+  <!-- EXAMPLE -->
+  <div class="example">
+    <div class="example-title">ตัวอย่างหลักที่ใช้ตลอดเอกสารนี้</div>
+    <h3>คอมพิวเตอร์สำนักงาน — หมวด EQUIPMENT (อุปกรณ์สำนักงาน)</h3>
+    <dl>
+      <dt>รหัสสินทรัพย์</dt>                        <dd>FA-2569-0001</dd>
+      <dt>ชื่อสินทรัพย์</dt>                        <dd>คอมพิวเตอร์ Dell OptiPlex 7090</dd>
+      <dt>หมวดสินทรัพย์</dt>                       <dd>EQUIPMENT (อุปกรณ์สำนักงาน)</dd>
+      <dt>ราคาทุน (ก่อน VAT)</dt>                  <dd><strong>50,000.00 บาท</strong></dd>
+      <dt>VAT 7% (Exclusive)</dt>                   <dd>3,500.00 บาท</dd>
+      <dt>ยอดชำระจริง (ราคา + VAT)</dt>            <dd><strong>53,500.00 บาท</strong></dd>
+      <dt>วันที่ซื้อ</dt>                          <dd>01/04/2569</dd>
+      <dt>อายุการใช้งาน</dt>                       <dd>60 เดือน (5 ปี)</dd>
+      <dt>มูลค่าซาก (Residual)</dt>                <dd>0.00 บาท</dd>
+      <dt>ค่าเสื่อมรายเดือน</dt>                   <dd>50,000 ÷ 60 = <strong>833.33 บาท/เดือน</strong> (ROUND_DOWN)</dd>
+      <dt>ชำระโดย</dt>                              <dd>ธนาคาร KBank (11-1201)</dd>
+      <dt>ผู้ดูแลสินทรัพย์</dt>                    <dd>คุณสุธินีย์ คงเดช (สำนักงานใหญ่)</dd>
+    </dl>
+  </div>
+
+  <!-- LEGEND -->
+  <div class="legend">
+    <span><span class="legend-dot legend-green"></span>สินทรัพย์ (12-21XX)</span>
+    <span><span class="legend-dot legend-yellow"></span>ค่าเสื่อมราคาสะสม (12-21XX, contra)</span>
+    <span><span class="legend-dot legend-rose"></span>ค่าเสื่อม / ขาดทุน (53-16XX)</span>
+    <span><span class="legend-dot legend-violet"></span>กำไรจากจำหน่าย (42-1105)</span>
+    <span><span class="legend-dot legend-blue"></span>VAT / WHT</span>
+  </div>
+
+  <!-- ─── 1. ซื้อสินทรัพย์ ─── -->
+  <section>
+    <h2><span class="badge-section">1</span>ซื้อสินทรัพย์ — รับรู้สินทรัพย์ + VAT + WHT</h2>
+
+    <!-- Case 1.1: VAT exclusive, no WHT -->
+    <div class="entry">
+      <div class="entry-when">
+        <span class="entry-tag">กรณี 1.1</span>
+        <h3 class="entry-title">ซื้อคอมพิวเตอร์ — VAT Exclusive · ไม่มี WHT</h3>
+        <span class="entry-date">01/04/2569</span>
+      </div>
+      <p class="entry-narrative">รับใบกำกับภาษีจากผู้ขาย ราคา 50,000 + VAT 7% (3,500) = 53,500 ชำระโดยโอน KBank · ผู้ขายเป็นบุคคลธรรมดา ไม่หัก WHT (ซื้อสินค้า ไม่ใช่บริการ)</p>
+
+      <div class="ledger">
+        <table>
+          <thead>
+            <tr><th>รหัส</th><th>ชื่อบัญชี</th><th class="num">เดบิต</th><th class="num">เครดิต</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="acc-code">12-2101</td><td class="acc-name">อุปกรณ์สำนักงาน</td><td class="num dr">50,000.00</td><td class="num"></td></tr>
+            <tr><td class="acc-code">11-4101</td><td class="acc-name">ภาษีซื้อ</td><td class="num dr">3,500.00</td><td class="num"></td></tr>
+            <tr><td class="acc-code">11-1201</td><td class="acc-name indent">ธนาคาร KBank</td><td class="num"></td><td class="num cr">53,500.00</td></tr>
+            <tr class="total-row"><td></td><td>รวม</td><td class="num dr">53,500.00</td><td class="num cr">53,500.00</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="check">BALANCED · Dr 53,500.00 = Cr 53,500.00</div>
+
+      <div class="standard">
+        <strong>หลักการ:</strong> สินทรัพย์รับรู้ตามราคาทุน (ก่อน VAT) เข้าบัญชีหมวดสินทรัพย์ตามประเภท · VAT ซื้อแยกเข้า 11-4101 เพื่อหักกลบกับ VAT ขายในเดือนที่ยื่น ภ.พ.30
+      </div>
+
+      <div class="info-box">
+        <strong>การกำหนดบัญชีตามหมวดสินทรัพย์ (Account Pinning):</strong> เมื่อโพสต์ JE ระบบจะ pin บัญชี cost / accumDepr / expense ลงบนตารางสินทรัพย์เลย — ทำให้ค่าเสื่อม + จำหน่ายในอนาคตใช้บัญชีเดิมเสมอ ไม่กระทบหากมีการแก้ผังบัญชี
+      </div>
+    </div>
+
+    <!-- Case 1.2: ซื้อพร้อมติดตั้ง — WHT คิดเฉพาะค่าติดตั้ง (ส่วนบริการ) -->
+    <div class="entry">
+      <div class="entry-when">
+        <span class="entry-tag tag-violet">กรณี 1.2</span>
+        <h3 class="entry-title">ซื้อพร้อมติดตั้ง — WHT คิด<em>เฉพาะค่าบริการติดตั้ง</em> (ภ.ง.ด.53)</h3>
+        <span class="entry-date">15/04/2569</span>
+      </div>
+      <p class="entry-narrative">ซื้อระบบ CCTV จากบริษัทผู้ขาย — สินค้า 100,000 + ค่าติดตั้ง (บริการ) 50,000 + VAT 7% (10,500) = 160,500 บาท · WHT 3% หักเฉพาะค่าติดตั้ง 50,000 = 1,500 บาท → ชำระจริง 159,000 บาท · ผู้ขายเป็นนิติบุคคล (ภ.ง.ด.53)</p>
+
+      <div class="ledger">
+        <table>
+          <thead>
+            <tr><th>รหัส</th><th>ชื่อบัญชี</th><th class="num">เดบิต</th><th class="num">เครดิต</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="acc-code">12-2101</td><td class="acc-name">อุปกรณ์สำนักงาน <em style="color:var(--subtle); font-style:normal;">(ราคาทุน + ค่าติดตั้ง)</em></td><td class="num dr">150,000.00</td><td class="num"></td></tr>
+            <tr><td class="acc-code">11-4101</td><td class="acc-name">ภาษีซื้อ</td><td class="num dr">10,500.00</td><td class="num"></td></tr>
+            <tr><td class="acc-code">21-3103</td><td class="acc-name indent">ภ.ง.ด.53 ค้างจ่าย (WHT 3% × ค่าบริการ 50,000)</td><td class="num"></td><td class="num cr">1,500.00</td></tr>
+            <tr><td class="acc-code">11-1201</td><td class="acc-name indent">ธนาคาร KBank</td><td class="num"></td><td class="num cr">159,000.00</td></tr>
+            <tr class="total-row"><td></td><td>รวม</td><td class="num dr">160,500.00</td><td class="num cr">160,500.00</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="check">BALANCED · Dr 160,500.00 = Cr 160,500.00</div>
+
+      <div class="danger">
+        <strong>ข้อกฎหมายสำคัญ — ทป.4/2528 + ม.50 ทวิ + ม.40(7)(8):</strong>
+        <ul style="margin: 4px 0 0 16px; padding: 0;">
+          <li><strong>การซื้อสินค้าล้วน (รถยนต์ / อุปกรณ์ / เฟอร์นิเจอร์) → ห้ามหัก WHT</strong> — เป็นการซื้อขายสินค้า ไม่ใช่ค่าบริการ</li>
+          <li><strong>WHT บังคับใช้เฉพาะค่าบริการ / ค่าจ้างทำของ</strong> เช่น ค่าติดตั้ง · ค่าออกแบบ · ค่าฝึกอบรม</li>
+          <li>ฐานคำนวณ WHT = <em>เฉพาะส่วนค่าบริการ</em> (ใน BESTCHOICE = ฟิลด์ <code>installationCost</code>) ไม่รวมราคาสินค้า</li>
+          <li>ขนส่ง (Carrier service) ใช้อัตราพิเศษ 1% — ทป.4/2528 ข้อ 12/1</li>
+        </ul>
+      </div>
+
+      <div class="standard">
+        <strong>การ Validation ในระบบ (CRITICAL #1 fix · 2569-05-09):</strong>
+        <ul style="margin: 4px 0 0 16px; padding: 0;">
+          <li>ถ้า <code>hasWht=true</code> แต่ <code>installationCost=0</code> → ระบบ <strong>ปฏิเสธ</strong> (BadRequestException)</li>
+          <li>ถ้า <code>whtBaseAmount &gt; installationCost</code> → ระบบ <strong>ปฏิเสธ</strong> (ป้องกันการดึงราคาสินค้ามาคิด WHT)</li>
+          <li>Default <code>whtBaseAmount = installationCost</code> ถ้าไม่ระบุ</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Case 1.3: VAT inclusive (price already includes VAT) -->
+    <div class="entry">
+      <div class="entry-when">
+        <span class="entry-tag tag-blue">กรณี 1.3</span>
+        <h3 class="entry-title">ซื้อเฟอร์นิเจอร์ — VAT Inclusive (ราคารวม VAT แล้ว)</h3>
+        <span class="entry-date">20/04/2569</span>
+      </div>
+      <p class="entry-narrative">ซื้อโต๊ะ + เก้าอี้ ราคารวม VAT <strong>21,400 บาท</strong> · ระบบแยก VAT ออกอัตโนมัติ: ราคาทุน 20,000 + VAT 1,400 (= 21,400 × 7/107) · <strong>ยังคงบันทึก Dr 11-4101</strong> เพราะ ม.82/3 ภาษีซื้อหักเครดิตได้ทุกกรณีถ้ามีใบกำกับภาษี</p>
+
+      <div class="ledger">
+        <table>
+          <thead>
+            <tr><th>รหัส</th><th>ชื่อบัญชี</th><th class="num">เดบิต</th><th class="num">เครดิต</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="acc-code">12-2105</td><td class="acc-name">เครื่องตกแต่งสำนักงาน <em style="color:var(--subtle); font-style:normal;">(ราคาทุน excl VAT)</em></td><td class="num dr">20,000.00</td><td class="num"></td></tr>
+            <tr><td class="acc-code">11-4101</td><td class="acc-name">ภาษีซื้อ <em style="color:var(--subtle); font-style:normal;">(แยกจาก inclusive ตาม ม.82/3)</em></td><td class="num dr">1,400.00</td><td class="num"></td></tr>
+            <tr><td class="acc-code">11-1201</td><td class="acc-name indent">ธนาคาร KBank <em style="color:var(--subtle); font-style:normal;">(จ่ายตามราคา inclusive เต็ม)</em></td><td class="num"></td><td class="num cr">21,400.00</td></tr>
+            <tr class="total-row"><td></td><td>รวม</td><td class="num dr">21,400.00</td><td class="num cr">21,400.00</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="check">BALANCED · Dr 21,400.00 = Cr 21,400.00</div>
+
+      <div class="danger">
+        <strong>CRITICAL #2 fix (2569-05-09) — เคยพลาดแบบ:</strong>
+        เดิม template มีเงื่อนไข <code>!asset.vatInclusive</code> ทำให้ inclusive case <strong>ไม่ post Dr 11-4101</strong> ส่งผลให้ Cash Cr แค่ 20,000 (เงินหายไป 1,400) และเสียสิทธิเครดิตภาษีซื้อ ผิด ม.82/3 · ปัจจุบันแก้แล้ว — VAT extracted เก็บใน <code>asset.vatAmount</code> และ post 11-4101 เสมอเมื่อ <code>hasVat=true</code>
+      </div>
+
+      <div class="standard">
+        <strong>เมื่อใดใช้ VAT Inclusive:</strong> ใบกำกับภาษีบางฉบับระบุยอด <em>"รวมภาษีมูลค่าเพิ่ม"</em> ในราคาเดียว (เช่น ออกจากเครื่อง POS ในร้านค้าปลีก) · กรอก <code>basePrice=21,400</code> + <code>vatInclusive=true</code> ระบบจะ extract ให้อัตโนมัติ
+      </div>
+    </div>
+
+    <!-- Mapping table -->
+    <div class="warn" style="margin-top: 22px;">
+      <strong>สรุปกฎ WHT ตามทป.4/2528 + ม.40(7)(8):</strong>
+      <table style="width:100%; border-collapse:collapse; font-size:13px; margin-top:6px;">
+        <tr style="background:rgba(0,0,0,0.04);"><th style="text-align:left; padding:6px;">ลักษณะการซื้อ</th><th style="text-align:left; padding:6px;">หัก WHT?</th><th style="text-align:left; padding:6px;">อัตรา</th></tr>
+        <tr><td style="padding:6px;">ซื้อสินค้าล้วน (รถ, อุปกรณ์, เฟอร์นิเจอร์)</td><td style="padding:6px;"><span style="color:var(--rose); font-weight:700;">ห้าม</span></td><td style="padding:6px;">—</td></tr>
+        <tr><td style="padding:6px;">ค่าบริการ / ค่าจ้างทำของ</td><td style="padding:6px;"><span style="color:var(--emerald); font-weight:700;">ใช่</span></td><td style="padding:6px;">3%</td></tr>
+        <tr><td style="padding:6px;">ค่าขนส่ง (Carrier)</td><td style="padding:6px;"><span style="color:var(--emerald); font-weight:700;">ใช่</span></td><td style="padding:6px;">1% (ทป.4/2528 ข้อ 12/1)</td></tr>
+        <tr><td style="padding:6px;">ค่าเช่า ม.40(5)</td><td style="padding:6px;"><span style="color:var(--emerald); font-weight:700;">ใช่</span></td><td style="padding:6px;">5%</td></tr>
+        <tr><td style="padding:6px;">ซื้อสินค้า + บริการติดตั้ง</td><td style="padding:6px;"><span style="color:var(--amber); font-weight:700;">เฉพาะค่าบริการ</span></td><td style="padding:6px;">3% × installationCost</td></tr>
+      </table>
+    </div>
+
+    <h3 style="font-size: 15px; margin-top: 28px; margin-bottom: 10px;">ตารางการกำหนดบัญชีตามหมวดสินทรัพย์</h3>
+    <table class="cases">
+      <thead>
+        <tr>
+          <th>หมวดสินทรัพย์</th>
+          <th>บัญชีต้นทุน (Dr)</th>
+          <th>ค่าเสื่อมสะสม (Cr)</th>
+          <th>ค่าเสื่อม (Dr รายเดือน)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>EQUIPMENT</strong> · อุปกรณ์สำนักงาน</td>
+          <td><code>12-2101</code></td>
+          <td><code>12-2102</code></td>
+          <td><code>53-1601</code></td>
+        </tr>
+        <tr>
+          <td><strong>IMPROVEMENT</strong> · ส่วนปรับปรุงอาคาร</td>
+          <td><code>12-2103</code></td>
+          <td><code>12-2104</code></td>
+          <td><code>53-1602</code></td>
+        </tr>
+        <tr>
+          <td><strong>FURNITURE</strong> · เครื่องตกแต่งสำนักงาน</td>
+          <td><code>12-2105</code></td>
+          <td><code>12-2106</code></td>
+          <td><code>53-1603</code></td>
+        </tr>
+        <tr>
+          <td><strong>VEHICLE</strong> · ยานพาหนะ</td>
+          <td><code>12-2107</code></td>
+          <td><code>12-2108</code></td>
+          <td><code>53-1604</code></td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ─── 2. ค่าเสื่อม ─── -->
+  <section>
+    <h2><span class="badge-section">2</span>ค่าเสื่อมราคารายเดือน — Straight-line</h2>
+
+    <div class="entry">
+      <div class="entry-when">
+        <span class="entry-tag tag-violet">งวดที่ 1</span>
+        <h3 class="entry-title">ค่าเสื่อมราคาเดือน เม.ย. 2569 — คอมพิวเตอร์ EQUIPMENT</h3>
+        <span class="entry-date">30/04/2569</span>
+      </div>
+      <p class="entry-narrative">ระบบรัน Cron อัตโนมัติทุกวันที่ 1 ของเดือนถัดไปเวลา 02:00 น. (Asia/Bangkok) · หรือเรียกแบบ Manual Run ผ่านหน้า "ค่าเสื่อม" ก็ได้</p>
+
+      <div class="ledger">
+        <table>
+          <thead>
+            <tr><th>รหัส</th><th>ชื่อบัญชี</th><th class="num">เดบิต</th><th class="num">เครดิต</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="acc-code">53-1601</td><td class="acc-name">ค่าเสื่อมราคา - อุปกรณ์สำนักงาน</td><td class="num dr">833.33</td><td class="num"></td></tr>
+            <tr><td class="acc-code">12-2102</td><td class="acc-name indent">ค่าเสื่อมราคาสะสม - อุปกรณ์สำนักงาน <em style="color:var(--subtle); font-style:normal;">(Contra Asset)</em></td><td class="num"></td><td class="num cr">833.33</td></tr>
+            <tr class="total-row"><td></td><td>รวม</td><td class="num dr">833.33</td><td class="num cr">833.33</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="check">BALANCED · Dr 833.33 = Cr 833.33</div>
+
+      <div class="warn">
+        <strong>วิธีคำนวณ + ปัดเศษ:</strong> (ราคาทุน − มูลค่าซาก) ÷ จำนวนเดือน = (50,000 − 0) ÷ 60 = <strong>833.333…</strong> · ปัดด้วย <em>ROUND_DOWN</em> = <strong>833.33</strong> บาท/เดือน <br>
+        งวดสุดท้าย (งวดที่ 60) จะปรับยอดให้พอดี: 50,000 − (833.33 × 59) = 50,000 − 49,166.47 = <strong>833.53</strong> บาท
+      </div>
+
+      <div class="standard">
+        <strong>หลักการ:</strong> Straight-line method · รับรู้ค่าเสื่อมเท่ากันทุกเดือน · TFRS for NPAEs ย่อหน้า 13 — สินทรัพย์ถาวรต้องตัดค่าเสื่อมตามอายุการใช้งานคงที่ ไม่บันทึกขาดทุนการด้อยค่าจนกว่าจะมีหลักฐานชัดเจน
+      </div>
+
+      <div class="balance">
+        <div class="balance-title">ความก้าวหน้าหลังบันทึกค่าเสื่อมงวดที่ 1</div>
+        <div class="balance-line"><span class="acc">12-2101 ราคาทุนเดิม</span>          = <span class="amt">50,000.00</span></div>
+        <div class="balance-line"><span class="acc">12-2102 ค่าเสื่อมสะสม</span>        = <span class="amt">833.33</span></div>
+        <div class="balance-line"><span class="acc">มูลค่าตามบัญชี (NBV)</span>        = <span class="amt">49,166.67</span></div>
+      </div>
+    </div>
+
+    <div class="entry">
+      <div class="entry-when">
+        <span class="entry-tag tag-zinc">งวดที่ 2 — 59</span>
+        <h3 class="entry-title">ทำซ้ำเดือนละครั้ง</h3>
+        <span class="entry-date">31/05/2569 — 30/03/2574</span>
+      </div>
+      <p class="entry-narrative">JE เหมือนงวดที่ 1 ทุกประการ · ค่าเสื่อมเท่าเดิม 833.33 บาท/เดือน · ระบบมีตัวกัน Idempotent: ถ้ารันซ้ำงวดเดิม จะไม่บันทึก JE ซ้ำ ส่ง JE เดิมกลับมาแทน</p>
+    </div>
+
+    <div class="entry">
+      <div class="entry-when">
+        <span class="entry-tag">งวดที่ 60 (สุดท้าย)</span>
+        <h3 class="entry-title">ค่าเสื่อมงวดสุดท้าย — ปรับยอดให้พอดี</h3>
+        <span class="entry-date">30/04/2574</span>
+      </div>
+      <p class="entry-narrative">งวดสุดท้ายจะตัดยอดที่เหลือทั้งหมดให้พอดี · NBV ต้อง = มูลค่าซาก (0 บาทในตัวอย่างนี้)</p>
+
+      <div class="ledger">
+        <table>
+          <thead>
+            <tr><th>รหัส</th><th>ชื่อบัญชี</th><th class="num">เดบิต</th><th class="num">เครดิต</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="acc-code">53-1601</td><td class="acc-name">ค่าเสื่อมราคา - อุปกรณ์สำนักงาน</td><td class="num dr">833.53</td><td class="num"></td></tr>
+            <tr><td class="acc-code">12-2102</td><td class="acc-name indent">ค่าเสื่อมราคาสะสม - อุปกรณ์สำนักงาน</td><td class="num"></td><td class="num cr">833.53</td></tr>
+            <tr class="total-row"><td></td><td>รวม</td><td class="num dr">833.53</td><td class="num cr">833.53</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="check">BALANCED · Dr 833.53 = Cr 833.53</div>
+
+      <div class="balance">
+        <div class="balance-title">ยอดสะสมหลังจบอายุการใช้งาน (60 เดือน)</div>
+        <div class="balance-line"><span class="acc">12-2101 ราคาทุน</span>              = <span class="amt">50,000.00</span></div>
+        <div class="balance-line"><span class="acc">12-2102 ค่าเสื่อมสะสม</span>        = <span class="amt">50,000.00</span> (ตัดเต็ม)</div>
+        <div class="balance-line"><span class="acc">มูลค่าตามบัญชี (NBV)</span>          = <span class="amt zero">0.00</span> (= มูลค่าซาก)</div>
+        <div class="balance-line"><span class="acc">53-1601 ค่าเสื่อม (สะสม 5 ปี)</span> = <span class="amt">50,000.00</span></div>
+      </div>
+
+      <div class="info-box">
+        <strong>หลังตัดเต็ม:</strong> สินทรัพย์ยังอยู่ในระบบสถานะ POSTED + NBV=0 · ระบบจะไม่ตัดค่าเสื่อมงวดต่อไปแล้ว (โดน guard "fully depreciated") · ถ้าจะนำสินทรัพย์ออกจากบัญชี ต้องไปใช้รายการ "จำหน่าย" หรือ "ตัดจำหน่าย" (ดูหัวข้อที่ 3)
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── 3. จำหน่ายสินทรัพย์ ─── -->
+  <section>
+    <h2><span class="badge-section">3</span>จำหน่ายสินทรัพย์ — ขาย / ตัดบัญชี / Write-off</h2>
+
+    <!-- Case 3.1: Sale at GAIN (proceeds > NBV) -->
+    <div class="entry">
+      <div class="entry-when">
+        <span class="entry-tag">กรณี 3.1</span>
+        <h3 class="entry-title">ขายมีกำไร — ราคาขาย > มูลค่าตามบัญชี (NBV)</h3>
+        <span class="entry-date">01/04/2571 (ใช้งานครบ 24 เดือน)</span>
+      </div>
+      <p class="entry-narrative">ขายคอมพิวเตอร์ออกในราคา <strong>40,000 บาท</strong> ขณะ NBV เหลือ <strong>30,000.08 บาท</strong> (ราคาทุน 50,000 − ค่าเสื่อมสะสม 24 งวด × 833.33 = 19,999.92) → กำไร 9,999.92 บาท</p>
+
+      <div class="ledger">
+        <table>
+          <thead>
+            <tr><th>รหัส</th><th>ชื่อบัญชี</th><th class="num">เดบิต</th><th class="num">เครดิต</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="acc-code">12-2102</td><td class="acc-name">ค่าเสื่อมราคาสะสม - อุปกรณ์สำนักงาน <em style="color:var(--subtle); font-style:normal;">(ตัดออก)</em></td><td class="num dr">19,999.92</td><td class="num"></td></tr>
+            <tr><td class="acc-code">11-1201</td><td class="acc-name">ธนาคาร KBank <em style="color:var(--subtle); font-style:normal;">(รับเงินจากการขาย)</em></td><td class="num dr">40,000.00</td><td class="num"></td></tr>
+            <tr><td class="acc-code">12-2101</td><td class="acc-name indent">อุปกรณ์สำนักงาน <em style="color:var(--subtle); font-style:normal;">(ตัดออกเต็มราคาทุน)</em></td><td class="num"></td><td class="num cr">50,000.00</td></tr>
+            <tr><td class="acc-code">42-1105</td><td class="acc-name indent">กำไรจากการจำหน่ายสินทรัพย์</td><td class="num"></td><td class="num cr">9,999.92</td></tr>
+            <tr class="total-row"><td></td><td>รวม</td><td class="num dr">59,999.92</td><td class="num cr">59,999.92</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="check">BALANCED · Dr 59,999.92 = Cr 59,999.92</div>
+
+      <div class="standard">
+        <strong>หลักการ:</strong> เมื่อขายสินทรัพย์ ต้องตัดทั้งบัญชีต้นทุน (Cr 12-2101) และค่าเสื่อมสะสม (Dr 12-2102) ออกพร้อมกัน · ส่วนต่างระหว่างเงินที่ได้รับ (proceeds) กับ NBV เข้าบัญชีกำไรขาดทุนจากการจำหน่าย — กำไรเข้า <strong>42-1105</strong> ขาดทุนเข้า <strong>53-1605</strong>
+      </div>
+
+      <div class="standard">
+        <strong>VAT จากการขาย (CRITICAL #3 fix · 2569-05-09):</strong> เดิมระบบ <em>ไม่ออก</em> JE 21-2101 อัตโนมัติ — ผิด ม.77/1 + ม.82 (ขายสินทรัพย์ถาวรอยู่ในข่าย VAT 7%) · <strong>ปัจจุบันแก้แล้ว</strong>: หน้า Disposal มี checkbox "ออกใบกำกับภาษีให้ผู้ซื้อ" · ติ๊กแล้วระบบจะ post Cr 21-2101 + เก็บ VAT จากผู้ซื้อ (proceeds × 1.07) อัตโนมัติ — ดูกรณี 3.1b ด้านล่าง
+      </div>
+    </div>
+
+    <!-- Case 3.1b: Sale with tax invoice (CRITICAL #3 — VAT auto-posted) -->
+    <div class="entry">
+      <div class="entry-when">
+        <span class="entry-tag tag-violet">กรณี 3.1b</span>
+        <h3 class="entry-title">ขายมีกำไร + ออกใบกำกับภาษี (issueTaxInvoice=true) → VAT auto-post</h3>
+        <span class="entry-date">01/04/2571</span>
+      </div>
+      <p class="entry-narrative">ผู้ซื้อขอใบกำกับภาษี · ราคาขาย 40,000 บาท + VAT 7% (2,800) = ผู้ซื้อจ่าย 42,800 บาท · ระบบ post Cr 21-2101 อัตโนมัติเข้าบัญชีภาษีขาย ภ.พ.30 พร้อมจำหน่ายสินทรัพย์ในธุรกรรมเดียว</p>
+
+      <div class="ledger">
+        <table>
+          <thead>
+            <tr><th>รหัส</th><th>ชื่อบัญชี</th><th class="num">เดบิต</th><th class="num">เครดิต</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="acc-code">12-2102</td><td class="acc-name">ค่าเสื่อมราคาสะสม - อุปกรณ์สำนักงาน</td><td class="num dr">19,999.92</td><td class="num"></td></tr>
+            <tr><td class="acc-code">11-1201</td><td class="acc-name">ธนาคาร KBank <em style="color:var(--subtle); font-style:normal;">(proceeds 40,000 + VAT 2,800)</em></td><td class="num dr">42,800.00</td><td class="num"></td></tr>
+            <tr><td class="acc-code">12-2101</td><td class="acc-name indent">อุปกรณ์สำนักงาน</td><td class="num"></td><td class="num cr">50,000.00</td></tr>
+            <tr><td class="acc-code">42-1105</td><td class="acc-name indent">กำไรจากการจำหน่ายสินทรัพย์</td><td class="num"></td><td class="num cr">9,999.92</td></tr>
+            <tr><td class="acc-code">21-2101</td><td class="acc-name indent">ภาษีขาย ภ.พ.30 <em style="color:var(--subtle); font-style:normal;">(VAT 7% × proceeds)</em></td><td class="num"></td><td class="num cr">2,800.00</td></tr>
+            <tr class="total-row"><td></td><td>รวม</td><td class="num dr">62,799.92</td><td class="num cr">62,799.92</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="check">BALANCED · Dr 62,799.92 = Cr 62,799.92</div>
+
+      <div class="standard">
+        <strong>หลักการ ม.77/1 + ม.82:</strong> ผู้ประกอบการจด VAT ที่ขายสินทรัพย์ถาวรต้องคิด VAT 7% บนราคาขาย — รวมเฉพาะ proceeds (ไม่รวมกำไร/ขาดทุน) · VAT บันทึก 21-2101 (ภาษีขาย ภ.พ.30) นำส่งรายเดือนพร้อม VAT ขายอื่นๆ
+      </div>
+
+      <div class="info-box">
+        <strong>กรณีไม่ออกใบกำกับ (issueTaxInvoice=false):</strong> ใช้กับการขายให้ผู้ใช้ทั่วไปที่ไม่ต้องการใบกำกับ · กฎหมายไทยอนุญาต <em>เฉพาะ</em> เมื่อผู้ซื้อไม่เป็นผู้ประกอบการจด VAT — ให้ระมัดระวัง · ระบบ post JE แบบ 3.1 (ไม่มี 21-2101)
+      </div>
+
+      <div class="warn">
+        <strong>Constraint:</strong> ระบบจะ <strong>throw BadRequestException</strong> ถ้า issueTaxInvoice=true แต่ proceeds=0 (write-off) — ไม่มีรายรับเพื่อคิด VAT
+      </div>
+    </div>
+
+    <!-- Case 3.2: Sale at LOSS (proceeds < NBV) -->
+    <div class="entry">
+      <div class="entry-when">
+        <span class="entry-tag tag-rose">กรณี 3.2</span>
+        <h3 class="entry-title">ขายขาดทุน — ราคาขาย &lt; มูลค่าตามบัญชี (NBV)</h3>
+        <span class="entry-date">01/04/2571 (ใช้งานครบ 24 เดือน)</span>
+      </div>
+      <p class="entry-narrative">ขายคอมพิวเตอร์ออกในราคา <strong>20,000 บาท</strong> ขณะ NBV เหลือ <strong>30,000.08 บาท</strong> → ขาดทุน 10,000.08 บาท</p>
+
+      <div class="ledger">
+        <table>
+          <thead>
+            <tr><th>รหัส</th><th>ชื่อบัญชี</th><th class="num">เดบิต</th><th class="num">เครดิต</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="acc-code">12-2102</td><td class="acc-name">ค่าเสื่อมราคาสะสม - อุปกรณ์สำนักงาน</td><td class="num dr">19,999.92</td><td class="num"></td></tr>
+            <tr><td class="acc-code">11-1201</td><td class="acc-name">ธนาคาร KBank</td><td class="num dr">20,000.00</td><td class="num"></td></tr>
+            <tr><td class="acc-code">53-1605</td><td class="acc-name">ขาดทุนจากการจำหน่ายสินทรัพย์</td><td class="num dr">10,000.08</td><td class="num"></td></tr>
+            <tr><td class="acc-code">12-2101</td><td class="acc-name indent">อุปกรณ์สำนักงาน</td><td class="num"></td><td class="num cr">50,000.00</td></tr>
+            <tr class="total-row"><td></td><td>รวม</td><td class="num dr">50,000.00</td><td class="num cr">50,000.00</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="check">BALANCED · Dr 50,000.00 = Cr 50,000.00</div>
+    </div>
+
+    <!-- Case 3.3: Write-off (proceeds = 0) -->
+    <div class="entry">
+      <div class="entry-when">
+        <span class="entry-tag tag-amber">กรณี 3.3</span>
+        <h3 class="entry-title">ตัดจำหน่าย/Write-off — ไม่ได้เงิน (เสีย / สูญหาย / ทิ้ง)</h3>
+        <span class="entry-date">01/04/2571</span>
+      </div>
+      <p class="entry-narrative">คอมพิวเตอร์เสีย/น้ำท่วม → ทิ้งทั้งเครื่อง · proceeds = 0 → ขาดทุนเต็มจำนวน NBV (30,000.08 บาท)</p>
+
+      <div class="ledger">
+        <table>
+          <thead>
+            <tr><th>รหัส</th><th>ชื่อบัญชี</th><th class="num">เดบิต</th><th class="num">เครดิต</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="acc-code">12-2102</td><td class="acc-name">ค่าเสื่อมราคาสะสม - อุปกรณ์สำนักงาน</td><td class="num dr">19,999.92</td><td class="num"></td></tr>
+            <tr><td class="acc-code">53-1605</td><td class="acc-name">ขาดทุนจากการจำหน่ายสินทรัพย์</td><td class="num dr">30,000.08</td><td class="num"></td></tr>
+            <tr><td class="acc-code">12-2101</td><td class="acc-name indent">อุปกรณ์สำนักงาน</td><td class="num"></td><td class="num cr">50,000.00</td></tr>
+            <tr class="total-row"><td></td><td>รวม</td><td class="num dr">50,000.00</td><td class="num cr">50,000.00</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="check">BALANCED · Dr 50,000.00 = Cr 50,000.00</div>
+
+      <div class="info-box">
+        <strong>ผลในระบบ:</strong> สถานะสินทรัพย์เปลี่ยนจาก POSTED → DISPOSED (กรณีขาย) หรือ WRITTEN_OFF (กรณีตัดจำหน่าย) · NBV ในระบบ = 0 · บันทึกวันที่จำหน่าย (disposalDate) · บันทึก AuditLog action = ASSET_DISPOSE · เข้าหน้า "รายงานสินทรัพย์" จะไม่ปรากฏในรายการ ณ วันหลังจำหน่าย แต่ปรากฏในรายงาน Movement เป็น OUT
+      </div>
+    </div>
+
+    <!-- Case 3.4: Sale at break-even (proceeds = NBV) -->
+    <div class="entry">
+      <div class="entry-when">
+        <span class="entry-tag tag-blue">กรณี 3.4</span>
+        <h3 class="entry-title">ขายเท่าทุน — proceeds = NBV (กำไร/ขาดทุน = 0)</h3>
+        <span class="entry-date">01/04/2571</span>
+      </div>
+      <p class="entry-narrative">ขายในราคา <strong>30,000.08 บาท</strong> = NBV → ไม่มี gain/loss · JE มี 3 บรรทัด ไม่บันทึก 53-1605 หรือ 42-1105</p>
+
+      <div class="ledger">
+        <table>
+          <thead>
+            <tr><th>รหัส</th><th>ชื่อบัญชี</th><th class="num">เดบิต</th><th class="num">เครดิต</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="acc-code">12-2102</td><td class="acc-name">ค่าเสื่อมราคาสะสม</td><td class="num dr">19,999.92</td><td class="num"></td></tr>
+            <tr><td class="acc-code">11-1201</td><td class="acc-name">ธนาคาร KBank</td><td class="num dr">30,000.08</td><td class="num"></td></tr>
+            <tr><td class="acc-code">12-2101</td><td class="acc-name indent">อุปกรณ์สำนักงาน</td><td class="num"></td><td class="num cr">50,000.00</td></tr>
+            <tr class="total-row"><td></td><td>รวม</td><td class="num dr">50,000.00</td><td class="num cr">50,000.00</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="check">BALANCED · Dr 50,000.00 = Cr 50,000.00</div>
+    </div>
+  </section>
+
+  <!-- ─── 4. กลับรายการ ─── -->
+  <section>
+    <h2><span class="badge-section">4</span>กลับรายการ (Reverse) — TFRS No-Touch Pattern</h2>
+
+    <div class="info-box" style="margin-bottom: 24px;">
+      <strong>หลักการ TFRS No-Touch:</strong> JE เดิมที่ POSTED แล้ว <strong>ห้ามแก้ไข</strong> เด็ดขาด · เมื่อต้องการกลับรายการ ระบบจะสร้าง JE ใหม่ที่ Dr ↔ Cr สลับกัน + คำอธิบายขึ้นต้น <code style="background:var(--violet-bg); color:var(--violet); padding:1px 6px; border-radius:3px;">[VOID]</code> และเพิ่ม metadata <em>reversed=true</em> บน JE เดิม · บัญชีกระทบ 0 (Self-clearing)
+    </div>
+
+    <!-- Case 4.1: Reverse Purchase -->
+    <div class="entry">
+      <div class="entry-when">
+        <span class="entry-tag tag-rose">กรณี 4.1</span>
+        <h3 class="entry-title">กลับรายการซื้อ (เช่น คีย์ผิด/ส่งคืนผู้ขาย)</h3>
+        <span class="entry-date">02/04/2569 (พบว่าคีย์ราคาทุนผิด)</span>
+      </div>
+      <p class="entry-narrative">JE เดิม (จุดที่ 1.1) สลับ Dr ↔ Cr · สถานะสินทรัพย์ POSTED → DRAFT · ค่าเสื่อมที่บันทึกไปแล้วต้อง Reverse แยก (ดูกรณี 4.3) ก่อน Reverse Purchase</p>
+
+      <div class="ledger">
+        <table>
+          <thead>
+            <tr><th>รหัส</th><th>ชื่อบัญชี</th><th class="num">เดบิต</th><th class="num">เครดิต</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="acc-code">11-1201</td><td class="acc-name">[VOID] ธนาคาร KBank (เงินกลับเข้า)</td><td class="num dr">53,500.00</td><td class="num"></td></tr>
+            <tr><td class="acc-code">12-2101</td><td class="acc-name indent">[VOID] อุปกรณ์สำนักงาน (ตัดออก)</td><td class="num"></td><td class="num cr">50,000.00</td></tr>
+            <tr><td class="acc-code">11-4101</td><td class="acc-name indent">[VOID] ภาษีซื้อ (กลับ)</td><td class="num"></td><td class="num cr">3,500.00</td></tr>
+            <tr class="total-row"><td></td><td>รวม</td><td class="num dr">53,500.00</td><td class="num cr">53,500.00</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="check">BALANCED · Dr 53,500.00 = Cr 53,500.00</div>
+
+      <div class="warn">
+        <strong>เงื่อนไข Reverse Purchase:</strong> สินทรัพย์ต้องไม่มีค่าเสื่อมสะสม &gt; 0 (หากมี ต้อง reverse depreciation รายงวดก่อน) · ห้ามมี disposalDate · ต้องระบุ <em>reason</em> ที่ชัดเจน · ระบบบันทึก AuditLog action = ASSET_REVERSE_PURCHASE
+      </div>
+    </div>
+
+    <!-- Case 4.2: Reverse Disposal -->
+    <div class="entry">
+      <div class="entry-when">
+        <span class="entry-tag tag-rose">กรณี 4.2</span>
+        <h3 class="entry-title">กลับรายการจำหน่าย (เช่น ลูกค้าคืนของหลังขาย/บันทึกผิด)</h3>
+        <span class="entry-date">02/04/2571 (พบว่าจำหน่ายผิดเครื่อง)</span>
+      </div>
+      <p class="entry-narrative">JE จำหน่ายเดิม (จุดที่ 3.1 ขายมีกำไร) สลับ Dr ↔ Cr · สถานะสินทรัพย์กลับเป็น POSTED · NBV คำนวณใหม่จากราคาทุน − accumDepr · ลบ disposalDate</p>
+
+      <div class="ledger">
+        <table>
+          <thead>
+            <tr><th>รหัส</th><th>ชื่อบัญชี</th><th class="num">เดบิต</th><th class="num">เครดิต</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="acc-code">12-2101</td><td class="acc-name">[VOID] อุปกรณ์สำนักงาน (กลับเข้า)</td><td class="num dr">50,000.00</td><td class="num"></td></tr>
+            <tr><td class="acc-code">12-2102</td><td class="acc-name indent">[VOID] ค่าเสื่อมราคาสะสม</td><td class="num"></td><td class="num cr">19,999.92</td></tr>
+            <tr><td class="acc-code">11-1201</td><td class="acc-name indent">[VOID] ธนาคาร KBank (เงินคืน)</td><td class="num"></td><td class="num cr">40,000.00</td></tr>
+            <tr><td class="acc-code">42-1105</td><td class="acc-name">[VOID] กำไรจากการจำหน่ายสินทรัพย์</td><td class="num dr">9,999.92</td><td class="num"></td></tr>
+            <tr class="total-row"><td></td><td>รวม</td><td class="num dr">59,999.92</td><td class="num cr">59,999.92</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="check">BALANCED · Dr 59,999.92 = Cr 59,999.92</div>
+
+      <div class="standard">
+        <strong>เงื่อนไข Reverse Disposal:</strong> JE เดิมต้องเป็น POSTED + ยังไม่ถูก reverse · ระบบ Idempotent — กลับซ้ำจะ throw error · บันทึก AuditLog action = ASSET_REVERSE_DISPOSE · กระทบ V15 (Period Guard) ใช้ <strong>วันที่กลับรายการ</strong> ไม่ใช่วันที่ JE เดิม
+      </div>
+    </div>
+
+    <!-- Case 4.3: Reverse Depreciation -->
+    <div class="entry">
+      <div class="entry-when">
+        <span class="entry-tag tag-rose">กรณี 4.3</span>
+        <h3 class="entry-title">กลับรายการค่าเสื่อม (Cascading — กลับทุก Asset ในงวดเดียวกัน)</h3>
+        <span class="entry-date">02/05/2569 (พบว่า run ผิดงวด)</span>
+      </div>
+      <p class="entry-narrative">เมื่อกลับรายการค่าเสื่อมงวดใดงวดหนึ่ง <strong>ระบบจะ reverse ทุก asset ในงวดนั้นพร้อมกัน</strong> · แต่ละ asset จะมี JE reverse แยก + อัพเดต accumDepr ลดลง + คำนวณ NBV ใหม่ + mark <em>DepreciationEntry.reversedAt</em></p>
+
+      <div class="ledger">
+        <table>
+          <thead>
+            <tr><th>รหัส</th><th>ชื่อบัญชี</th><th class="num">เดบิต</th><th class="num">เครดิต</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="acc-code">12-2102</td><td class="acc-name">[VOID] ค่าเสื่อมราคาสะสม - อุปกรณ์สำนักงาน</td><td class="num dr">833.33</td><td class="num"></td></tr>
+            <tr><td class="acc-code">53-1601</td><td class="acc-name indent">[VOID] ค่าเสื่อมราคา - อุปกรณ์สำนักงาน</td><td class="num"></td><td class="num cr">833.33</td></tr>
+            <tr class="total-row"><td></td><td>รวม</td><td class="num dr">833.33</td><td class="num cr">833.33</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="check">BALANCED · Dr 833.33 = Cr 833.33 (ต่อ asset · ต้อง × จำนวน asset ในงวด)</div>
+
+      <div class="warn">
+        <strong>Cross-period Guard:</strong> ระบบจะ <strong>ปฏิเสธ</strong> หากมีงวดถัดไปที่ยังไม่ได้ reverse — ต้อง reverse <em>จากใหม่ไปเก่า</em> เสมอ เพื่อรักษาลำดับ accumDepr · ตัวอย่าง: หากต้องการ reverse งวด พ.ค. 69 แต่งวด มิ.ย. 69 ยังไม่ได้ reverse → ระบบจะปฏิเสธ
+      </div>
+
+      <div class="balance">
+        <div class="balance-title">ยอดหลัง Reverse ค่าเสื่อมงวดที่ 1</div>
+        <div class="balance-line"><span class="acc">12-2102 ค่าเสื่อมสะสม</span> = <span class="amt zero">0.00</span> (กลับมาเป็นเริ่มต้น)</div>
+        <div class="balance-line"><span class="acc">มูลค่าตามบัญชี (NBV)</span>   = <span class="amt">50,000.00</span> (กลับเท่าราคาทุน)</div>
+        <div class="balance-line"><span class="acc">DepreciationEntry.reversedAt</span> = <span class="amt">02/05/2569</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── 5. โอนผู้ดูแล/ที่ตั้ง ─── -->
+  <section>
+    <h2><span class="badge-section">5</span>โอนผู้ดูแล / ที่ตั้ง — ไม่มี JE</h2>
+
+    <div class="entry">
+      <div class="entry-when">
+        <span class="entry-tag tag-zinc">เหตุการณ์</span>
+        <h3 class="entry-title">โอนคอมพิวเตอร์ จาก คุณสุธินีย์ → คุณเอกนรินทร์</h3>
+        <span class="entry-date">15/04/2569</span>
+      </div>
+      <p class="entry-narrative">เปลี่ยนผู้ดูแลและ/หรือสถานที่ตั้งสินทรัพย์ · ระบบไม่ออก JE เพราะกรรมสิทธิ์อยู่กับบริษัทเดิม · บันทึก AssetTransferHistory + AuditLog action = ASSET_TRANSFER เพื่อเก็บประวัติเชิง audit</p>
+
+      <table class="cases">
+        <thead>
+          <tr><th>ฟิลด์</th><th>ค่าก่อนโอน</th><th>ค่าหลังโอน</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>custodianName</td><td>สุธินีย์ คงเดช</td><td><strong>เอกนรินทร์ อาคะนาริน</strong></td></tr>
+          <tr><td>locationLabel</td><td>สำนักงานใหญ่ ชั้น 3</td><td><strong>สำนักงานใหญ่ ชั้น 5</strong></td></tr>
+          <tr><td>branchId</td><td>HQ-001</td><td>HQ-001 (ไม่เปลี่ยน)</td></tr>
+          <tr><td>หมายเหตุ</td><td colspan="2">โอนตามคำสั่งย้ายแผนก IT</td></tr>
+        </tbody>
+      </table>
+
+      <div class="info-box">
+        <strong>เหตุผลที่ไม่มี JE:</strong> การโอนผู้ดูแลภายในบริษัทเดียวกัน <strong>ไม่กระทบงบการเงิน</strong> — สินทรัพย์ยังอยู่ในบัญชี 12-2101 ของบริษัทเดิม เพียงเปลี่ยนข้อมูลเชิง operational (ผู้รับผิดชอบ + ที่ตั้ง) เท่านั้น · ดูประวัติได้ที่หน้า "ประวัติการโอนสินทรัพย์" หรือใน Tab "การโอนย้าย" ของหน้ารายละเอียดสินทรัพย์
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── 6. รายงาน ─── -->
+  <section>
+    <h2><span class="badge-section">6</span>รายงานที่ใช้ตรวจสอบ — Phase 3 Reports</h2>
+
+    <table class="cases">
+      <thead>
+        <tr>
+          <th style="width: 26%;">รายงาน</th>
+          <th style="width: 28%;">ใช้ตรวจสอบอะไร</th>
+          <th>หมายเหตุ</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>ทะเบียนสินทรัพย์</strong> · <code>/assets/register</code></td>
+          <td>ราคาทุน · ค่าเสื่อมสะสม · NBV ณ วันที่กำหนด · กรองตามหมวด/สาขา</td>
+          <td>NBV ย้อนหลัง = ราคาทุน − Σ DepreciationEntry ที่ period ≤ asOfDate และยังไม่ reverse · Export CSV (BOM) + XLSX ได้</td>
+        </tr>
+        <tr>
+          <td><strong>ตารางคำนวณค่าเสื่อม</strong> · <code>/assets/schedule</code></td>
+          <td>คาดการณ์ค่าเสื่อมแต่ละเดือนล่วงหน้า · เปรียบเทียบกับที่บันทึกจริง</td>
+          <td>คำนวณตาม Straight-line · งวดสุดท้ายปรับยอดให้ NBV = residualValue เป๊ะ</td>
+        </tr>
+        <tr>
+          <td><strong>สมุดรายวันสินทรัพย์</strong> · <code>/assets/journal</code></td>
+          <td>JE ทั้งหมดที่เกี่ยวกับโมดูลสินทรัพย์ · กรองตาม flow type (purchase/depreciation/disposal/reverse)</td>
+          <td>กรองจาก metadata.flow ใน JournalEntry · เห็นครบทั้ง JE หลัก + JE reverse</td>
+        </tr>
+        <tr>
+          <td><strong>สรุปสินทรัพย์</strong> · <code>/assets/summary-report</code></td>
+          <td>รวมยอดตามหมวด · ผู้ดูแล · สาขา · การเคลื่อนไหว (IN/OUT)</td>
+          <td>4 Tabs: Category / Custodian / Location / Movement</td>
+        </tr>
+        <tr>
+          <td><strong>Audit Trail</strong> · <code>/assets/:id/audit</code></td>
+          <td>ประวัติทุก action ของสินทรัพย์รายตัว — ใครทำ/ทำเมื่อไหร่/IP/Reason</td>
+          <td>ดึงจาก AuditLog.entity = "fixedAsset" + entityId = assetId · ดูได้จากปุ่ม "ประวัติ" บนหน้ารายละเอียด</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ─── 7. CHECKLIST ─── -->
+  <section>
+    <h2><span class="badge-section">7</span>เช็คลิสต์สำหรับนักบัญชีตรวจสอบ</h2>
+
+    <ul class="checklist">
+      <li>
+        <strong>1. JE ทุกฉบับสมดุล (Dr = Cr)</strong>
+        <span>ใช้รายงาน "สมุดรายวันสินทรัพย์" — ทุก entry ต้องมีป้าย "BALANCED" · หากเจอ unbalanced ต้องตรวจ DB ทันที (ระบบมี guard ใน createAndPost ป้องกันอยู่แล้ว แต่ต้องเช็คซ้ำ)</span>
+      </li>
+      <li>
+        <strong>2. ทะเบียนสินทรัพย์ (NBV) = สมุดบัญชี (12-2101 − 12-2102)</strong>
+        <span>NBV รวมจากทะเบียนสินทรัพย์ ณ วันสิ้นเดือน ต้อง = ยอดคงเหลือ 12-21XX − 12-21X2 ใน Trial Balance</span>
+      </li>
+      <li>
+        <strong>3. ค่าเสื่อมสะสม ≤ ราคาทุน − มูลค่าซาก</strong>
+        <span>สำหรับทุกสินทรัพย์ที่ POSTED · หากเกิน = bug · ตรวจในรายงานทะเบียนสินทรัพย์ แถว NBV &lt; 0 แสดงว่าผิด</span>
+      </li>
+      <li>
+        <strong>4. ค่าเสื่อมรายเดือนใช้ ROUND_DOWN</strong>
+        <span>ตัวอย่าง: 50,000 ÷ 60 = 833.33 (ไม่ใช่ 833.34) · งวดสุดท้ายปรับให้ NBV = residual เป๊ะ</span>
+      </li>
+      <li>
+        <strong>5. JE จำหน่ายต้องตัดทั้ง 12-2101 (Cr) และ 12-2102 (Dr)</strong>
+        <span>หากตัดแค่ตัวใดตัวหนึ่ง → bug · ใช้รายงานสมุดรายวัน filter "disposal" ตรวจทุกฉบับ</span>
+      </li>
+      <li>
+        <strong>6. กำไร/ขาดทุนจากการจำหน่ายอยู่ในผังบัญชีถูกต้อง</strong>
+        <span>กำไร → 42-1105 (รายได้อื่น) · ขาดทุน → 53-1605 (ค่าใช้จ่าย) · ห้ามสลับ</span>
+      </li>
+      <li>
+        <strong>7. JE Reverse มี [VOID] ขึ้นต้นทุกบรรทัด</strong>
+        <span>JE เดิมที่ถูก reverse ต้องมี metadata.reversed = true · ใหม่ ↔ เก่า ผูกผ่าน metadata.reversedByEntryNumber</span>
+      </li>
+      <li>
+        <strong>8. หลังกลับรายการค่าเสื่อม สถานะ DepreciationEntry.reversedAt มีค่า</strong>
+        <span>ระบบใช้ flag นี้เพื่อไม่นับ entry ที่ถูก reverse ในการคำนวณ NBV ย้อนหลัง</span>
+      </li>
+      <li>
+        <strong>9. การโอนผู้ดูแลไม่มี JE</strong>
+        <span>ตรวจในสมุดรายวันสินทรัพย์ — ไม่ควรเจอ entry ที่ flow = "transfer" · มีแค่ AssetTransferHistory + AuditLog</span>
+      </li>
+      <li>
+        <strong>10. WHT บันทึกบัญชีถูก type</strong>
+        <span>บุคคลธรรมดา → 21-3102 (PND3) · นิติบุคคล → 21-3103 (PND53) · ห้ามสลับ · ตรงกับใบรับรองการหัก ณ ที่จ่าย</span>
+      </li>
+      <li>
+        <strong>11. VAT Inclusive ไม่บันทึก 11-4101 แยก</strong>
+        <span>กรณี vatInclusive = true ราคาทุนรวม VAT แล้ว ต้องไม่มี 11-4101 ใน JE — มิเช่นนั้น VAT จะถูกนำไปหักกลบซ้ำ</span>
+      </li>
+      <li>
+        <strong>12. AuditLog ครบทุก action</strong>
+        <span>ASSET_POST · ASSET_REVERSE_PURCHASE · ASSET_DISPOSE · ASSET_REVERSE_DISPOSE · DEPRECIATION_RUN · DEPRECIATION_REVERSE · ASSET_TRANSFER · ผู้ทำต้องมี userId จริง (ไม่ใช่ system)</span>
+      </li>
+      <li>
+        <strong>13. V15 Period Guard ทำงาน</strong>
+        <span>ห้ามโพสต์/กลับรายการในงวดที่ "ปิดงบ" แล้ว · ระบบจะ throw "งวดบัญชีถูกปิดแล้ว" · ตรวจหน้า "การปิดงบ" ว่ามีการ lock ตามที่ผู้บริหารอนุมัติ</span>
+      </li>
+      <li>
+        <strong>14. ทุก JE มี JournalPostAuditLog ผูก</strong>
+        <span>T2-C14 — ทุก JournalEntry ที่ POSTED ต้องมี row ใน JournalPostAuditLog (postedById + postedAt) · query: SELECT je.id FROM journal_entries je LEFT JOIN journal_post_audit_logs jpa ON jpa.journal_entry_id = je.id WHERE je.status = 'POSTED' AND jpa.id IS NULL — ต้องคืน 0 แถว</span>
+      </li>
+      <li>
+        <strong>15. รายงาน Schedule = ผลรวม DepreciationEntry จริง</strong>
+        <span>คาดการณ์ค่าเสื่อมในรายงาน Schedule ณ งวดที่ผ่านไปแล้ว ต้องตรงกับ DepreciationEntry ที่บันทึกจริง — ส่วนต่างที่ยอมรับได้คือเศษสตางค์จากการ ROUND_DOWN เท่านั้น</span>
+      </li>
+    </ul>
+  </section>
+
+  <!-- ─── 8. ขอบเขต / Out of Scope ─── -->
+  <section>
+    <h2><span class="badge-section">8</span>ขอบเขตปัจจุบัน · สิ่งที่ยัง <em>ไม่</em> ครอบคลุม</h2>
+
+    <table class="cases">
+      <thead>
+        <tr>
+          <th style="width: 30%;">หัวข้อ</th>
+          <th>สถานะ / วิธีทำในปัจจุบัน</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>การด้อยค่า (Impairment)</strong></td>
+          <td>ยังไม่รองรับ · TFRS for NPAEs ไม่บังคับ test impairment รายงวด — หากเกิดเหตุการณ์ที่ต้องด้อยค่า ใช้ Manual JE ลด NBV + Cr 53-1605</td>
+        </tr>
+        <tr>
+          <td><strong>การประเมินราคาใหม่ (Revaluation)</strong></td>
+          <td>ยังไม่รองรับ · ใช้ Cost model อย่างเดียว · การปรับราคาทุนต้องทำผ่าน Reverse Purchase + Re-post</td>
+        </tr>
+        <tr>
+          <td><strong>SHOP-side accounting</strong></td>
+          <td>โมดูลนี้ใช้ FINANCE chart เท่านั้น (12-21XX, 53-16XX) · SHOP ยังไม่จด VAT และยังไม่มีระบบสินทรัพย์แยก</td>
+        </tr>
+        <tr>
+          <td><strong>เปลี่ยนหมวดสินทรัพย์ (Reclassify)</strong></td>
+          <td>ยังไม่มีหน้า UI · หากต้องเปลี่ยน เช่น EQUIPMENT → FURNITURE ต้อง Reverse Purchase แล้ว Post ใหม่ในหมวดที่ถูก</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- FOOTER -->
+  <div style="margin-top: 60px; padding-top: 24px; border-top: 1px solid var(--border); font-size: 12px; color: var(--subtle); text-align: center;">
+    <p style="margin: 0;">
+      เอกสารนี้จัดทำขึ้นเพื่อให้นักบัญชีตรวจสอบความถูกต้องของระบบสินทรัพย์ — สอบถามเพิ่มเติม ติดต่อทีมพัฒนา BESTCHOICE<br>
+      อ้างอิง: <code style="font-family:'IBM Plex Mono',monospace; background:var(--blue-bg); color:var(--blue); padding:1px 6px; border-radius:3px;">apps/api/src/modules/journal/cpa-templates/asset-*.template.ts</code> · <code style="font-family:'IBM Plex Mono',monospace; background:var(--blue-bg); color:var(--blue); padding:1px 6px; border-radius:3px;">apps/api/src/modules/journal/cpa-templates/depreciation*.template.ts</code>
+    </p>
+  </div>
+
+</div>
+</body>
+</html>

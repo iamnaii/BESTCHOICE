@@ -141,13 +141,25 @@ export class AccountingController {
     return this.service.rejectExpense(id, req.user.id, dto.reason);
   }
 
+  @Post(':id/accrue')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  accrue(@Param('id') id: string, @Request() req?: { user?: { id?: string } }) {
+    return this.service.recordExpenseAccrual(id, req?.user?.id);
+  }
+
   @Post(':id/pay')
   @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   markPaid(
     @Param('id') id: string,
-    @Body('paymentDate') paymentDate?: string,
+    @Body() body: { paymentDate?: string; depositAccountCode?: string } = {},
+    @Request() req?: { user?: { id?: string } },
   ) {
-    return this.service.markExpensePaid(id, paymentDate);
+    return this.service.markExpensePaid(
+      id,
+      body.paymentDate,
+      body.depositAccountCode,
+      req?.user?.id,
+    );
   }
 
   @Post(':id/void')

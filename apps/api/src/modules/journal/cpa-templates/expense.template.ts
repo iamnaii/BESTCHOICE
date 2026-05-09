@@ -1,5 +1,6 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
+import { Prisma } from '@prisma/client';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 
@@ -24,25 +25,13 @@ const CATEGORY_CODE_MAP: Record<string, string> = {
   OTHER_LOSS: '53-1503',
   OTHER_FINE: '54-1104',
   OTHER_MISC: '53-1502',
-  // NOTE: COGS_PRODUCT + COGS_REPAIR_PARTS are not mapped here — FINANCE has no COGS accounts.
-  // ADMIN_DEPRECIATION is not mapped — no dedicated account in current chart (TODO A.5b).
 };
 
-const VAT_INPUT_CODE = '11-4101'; // ภาษีซื้อ
-const AP_ACCRUED_CODE = '21-1104'; // เจ้าหนี้ค่าใช้จ่ายกิจการ (unpaid)
+const VAT_INPUT_CODE = '11-4101';
+const AP_ACCRUED_CODE = '21-1104';
+const WHT_PND3_CODE = '21-3102';   // PND3 — บุคคลธรรมดา
+const WHT_PND53_CODE = '21-3103';  // PND53 — นิติบุคคล
 
-/**
- * Maps disallowedReason → 54-XXXX account code.
- * Used when Expense.taxDisallowed = true to override the normal expense account.
- *
- * NO_RECEIPT_PND3  → 54-1101 (ภาษีออกแทนผู้รับ บุคคลธรรมดา)
- * NO_RECEIPT_PND53 → 54-1102 (ภาษีออกแทนผู้รับ นิติบุคคล)
- * NO_RECEIPT       → 54-1101 (default to PND3 when not specified)
- * PERSONAL_USE     → 54-1104 (other disallowed)
- * PENALTY_VAT      → 54-1103 (เบี้ยปรับ ภ.พ.30)
- * PENALTY          → 54-1103 (VAT penalty)
- * OTHER            → 54-1104
- */
 const DISALLOWED_REASON_CODE: Record<string, string> = {
   NO_RECEIPT: '54-1101',
   PERSONAL_USE: '54-1104',
@@ -50,28 +39,68 @@ const DISALLOWED_REASON_CODE: Record<string, string> = {
   OTHER: '54-1104',
 };
 
+/**
+ * Resolves WHT credit account code based on form type (preferred) or vendorTaxId
+ * heuristic (fallback when whtFormType wasn't recorded — legacy expenses).
+ *
+ * Order of precedence:
+ *   1. expense.whtFormType = 'PND3' → 21-3102 (บุคคลธรรมดา)
+ *   2. expense.whtFormType = 'PND53' → 21-3103 (นิติบุคคล)
+ *   3. vendorTaxId.startsWith('0') → 21-3103 (juristic-person heuristic)
+ *   4. otherwise → 21-3102 (individual heuristic)
+ *   5. no vendorTaxId either → 21-3103 (B2B default)
+ *
+ * The heuristic alone misroutes pre-2012 corporate IDs that don't start with 0,
+ * so callers should prefer setting whtFormType explicitly on new expenses.
+ */
+function resolveWhtAccount(
+  whtFormType?: string | null,
+  vendorTaxId?: string | null,
+): string {
+  if (whtFormType === 'PND3') return WHT_PND3_CODE;
+  if (whtFormType === 'PND53') return WHT_PND53_CODE;
+  if (!vendorTaxId) return WHT_PND53_CODE;
+  return vendorTaxId.startsWith('0') ? WHT_PND53_CODE : WHT_PND3_CODE;
+}
+
 export interface ExpenseTemplateInput {
   expenseId: string;
   /** Cash/bank account code when paid immediately (e.g. '11-1101', '11-1201') */
   depositAccountCode?: string;
-  /** If false, credits AP instead of cash */
+  /** If false, credits AP instead of cash. AP-credit ignores WHT (settled at AP-clearance time). */
   isPaid?: boolean;
+  /** User ID for T2-C14 JournalPostAuditLog. Falls back to expense.createdById when omitted. */
+  postedById?: string;
 }
 
 /**
  * Template — Expense booking (generic).
  *
- * JE (paid):
+ * Paid (no WHT):
  *   Dr <expenseAccountCode>    [amount excl VAT]
  *   Dr 11-4101 ภาษีซื้อ        [vatAmount]   ← if vatAmount > 0
- *     Cr <depositAccountCode>  [totalAmount]
+ *     Cr <depositAccountCode>  [totalAmount = amount + vatAmount]
  *
- * JE (unpaid / accrued):
+ * Paid (with WHT):
  *   Dr <expenseAccountCode>    [amount excl VAT]
- *   Dr 11-4101 ภาษีซื้อ        [vatAmount]   ← if vatAmount > 0
+ *   Dr 11-4101 ภาษีซื้อ        [vatAmount]
+ *     Cr 21-3102 หรือ 21-3103  [withholdingTax]   ← derived from vendorTaxId
+ *     Cr <depositAccountCode>  [netPayment = totalAmount - withholdingTax]
+ *
+ * Unpaid (Accrued AP):
+ *   Dr <expenseAccountCode>    [amount excl VAT]
+ *   Dr 11-4101 ภาษีซื้อ        [vatAmount]
  *     Cr 21-1104 เจ้าหนี้ค่าใช้จ่ายกิจการ  [totalAmount]
+ *   (WHT booked at AP-clearance time, not now)
+ *
+ * Tax-disallowed (54-XXXX):
+ *   Dr 54-XXXX                 [totalAmount — VAT input not claimable]
+ *     Cr <depositAccountCode>  [totalAmount or netPayment]
  *
  * Idempotent: skips if JE with flow='expense' + expenseId already exists.
+ *
+ * Atomicity: when called inside an outer transaction (via outerTx), runs there directly.
+ * When called standalone, wraps idempotency-check + JE-post in its own transaction.
  */
 @Injectable()
 export class ExpenseTemplate {
@@ -82,39 +111,24 @@ export class ExpenseTemplate {
     private readonly prisma: PrismaService,
   ) {}
 
-  async execute(input: ExpenseTemplateInput): Promise<{ entryNo: string } | null> {
-    const { expenseId, depositAccountCode = '11-1101', isPaid = true } = input;
+  async execute(
+    input: ExpenseTemplateInput,
+    outerTx?: Prisma.TransactionClient,
+  ): Promise<{ entryNo: string } | null> {
+    const { expenseId, depositAccountCode = '11-1101', isPaid = true, postedById } = input;
 
-    // Idempotency
-    const existing = await this.prisma.journalEntry.findFirst({
-      where: {
-        AND: [
-          { metadata: { path: ['flow'], equals: 'expense' } } as any,
-          { metadata: { path: ['expenseId'], equals: expenseId } } as any,
-        ],
-        deletedAt: null,
-      },
-    });
-    if (existing) {
-      this.logger.log(
-        `[A.5a] ExpenseTemplate idempotency — JE ${existing.entryNumber} already exists for expense ${expenseId}, skipping`,
-      );
-      return { entryNo: existing.entryNumber };
-    }
+    const reader = (outerTx ?? this.prisma) as Prisma.TransactionClient;
 
-    const expense = await this.prisma.expense.findFirst({
+    const expense = await reader.expense.findFirst({
       where: { id: expenseId, deletedAt: null },
     });
     if (!expense) {
-      throw new BadRequestException(`Expense not found: ${expenseId}`);
+      throw new NotFoundException(`Expense not found: ${expenseId}`);
     }
 
     // Resolve expense account code
     let resolvedAccountCode = expense.accountCode ?? CATEGORY_CODE_MAP[expense.category];
 
-    // Tax-disallowed override: route to 54-XXXX when taxDisallowed = true.
-    // If the CATEGORY_CODE_MAP already routes to a 54-XXXX code (e.g. ADMIN_TAX_FEE, OTHER_FINE),
-    // we prefer the more specific 54-XXXX from disallowedReason when provided, otherwise keep the map code.
     const isTaxDisallowed = (expense as any).taxDisallowed === true;
     const disallowedReason = (expense as any).disallowedReason as string | null | undefined;
 
@@ -125,10 +139,8 @@ export class ExpenseTemplate {
       if (reasonCode) {
         resolvedAccountCode = reasonCode;
       } else if (!resolvedAccountCode?.startsWith('54-')) {
-        // Fallback: use 54-1104 (other disallowed) if no specific mapping
         resolvedAccountCode = '54-1104';
       }
-      // If already 54-XXXX from CATEGORY_CODE_MAP, keep it (no double-route).
     }
 
     if (!resolvedAccountCode) {
@@ -140,18 +152,21 @@ export class ExpenseTemplate {
     const amount = new Decimal(expense.amount.toString());
     const vatAmount = new Decimal(expense.vatAmount.toString());
     const totalAmount = new Decimal(expense.totalAmount.toString());
+    const withholdingTax = new Decimal((expense.withholdingTax ?? 0).toString());
     const zero = new Decimal(0);
 
-    // Credit side: cash account or AP accrued
-    const creditAccountCode = isPaid ? depositAccountCode : AP_ACCRUED_CODE;
+    // WHT only applies on paid + non-disallowed branches.
+    // Tax-disallowed expenses are typically penalties/personal-use — WHT not applicable.
+    // Accrued (AP) expenses defer WHT to clearance JE.
+    const whtApplies = isPaid && !isTaxDisallowed && withholdingTax.gt(0);
+    const whtAccountCode = whtApplies
+      ? resolveWhtAccount((expense as any).whtFormType, expense.vendorTaxId)
+      : null;
 
     const lines: { accountCode: string; dr: Decimal; cr: Decimal; description?: string }[] = [];
 
     if (isTaxDisallowed) {
-      // Tax-disallowed: the entire cash outflow (including VAT) is non-deductible.
-      // Book the full totalAmount to the 54-XXXX disallowed expense account.
-      // No VAT input claim (11-4101 is excluded).
-      // JE: Dr 54-XXXX [totalAmount] / Cr Cash [totalAmount]
+      // Tax-disallowed: full totalAmount to 54-XXXX, no VAT input claim.
       lines.push({
         accountCode: resolvedAccountCode,
         dr: totalAmount,
@@ -159,7 +174,6 @@ export class ExpenseTemplate {
         description: expense.description,
       });
     } else {
-      // Normal expense: Dr expense account [amount excl VAT]
       lines.push({
         accountCode: resolvedAccountCode,
         dr: amount,
@@ -177,29 +191,104 @@ export class ExpenseTemplate {
       }
     }
 
-    lines.push({
-      accountCode: creditAccountCode,
-      dr: zero,
-      cr: totalAmount,
-      description: isPaid ? 'จ่ายเงิน' : 'ค้างจ่าย',
-    });
+    // Credit side
+    if (isPaid) {
+      // Cash payment path. Split into WHT + net cash when WHT applies.
+      if (whtApplies && whtAccountCode) {
+        lines.push({
+          accountCode: whtAccountCode,
+          dr: zero,
+          cr: withholdingTax,
+          description: `WHT ${whtAccountCode === WHT_PND3_CODE ? 'ภ.ง.ด.3' : 'ภ.ง.ด.53'}`,
+        });
+        const netPayment = totalAmount.minus(withholdingTax);
+        lines.push({
+          accountCode: depositAccountCode,
+          dr: zero,
+          cr: netPayment,
+          description: 'จ่ายเงินสุทธิ (หัก WHT)',
+        });
+      } else {
+        lines.push({
+          accountCode: depositAccountCode,
+          dr: zero,
+          cr: totalAmount,
+          description: 'จ่ายเงิน',
+        });
+      }
+    } else {
+      // Accrued — entire totalAmount sits in AP (WHT settled at clearance).
+      lines.push({
+        accountCode: AP_ACCRUED_CODE,
+        dr: zero,
+        cr: totalAmount,
+        description: 'ค้างจ่าย',
+      });
+    }
 
-    const result = await this.journal.createAndPost({
-      description: `บันทึกค่าใช้จ่าย ${expense.expenseNumber} — ${expense.description}`,
-      reference: `${expenseId}:expense`,
-      metadata: {
-        tag: 'EXPENSE',
-        flow: 'expense',
-        expenseId,
-        expenseNumber: expense.expenseNumber,
-        category: expense.category,
-        isPaid,
-        taxDisallowed: isTaxDisallowed,
-        disallowedReason: disallowedReason ?? null,
-      },
-      lines,
-    });
+    // Sanity check (createAndPost also checks)
+    const totalDr = lines.reduce((s, l) => s.plus(l.dr), zero);
+    const totalCr = lines.reduce((s, l) => s.plus(l.cr), zero);
+    if (!totalDr.equals(totalCr)) {
+      throw new BadRequestException(
+        `Expense JE unbalanced: Dr=${totalDr.toFixed(2)} Cr=${totalCr.toFixed(2)} for expense ${expense.expenseNumber}`,
+      );
+    }
 
-    return { entryNo: result.entryNumber };
+    // Atomic block: idempotency check + JE post inside ONE transaction.
+    // When outerTx is provided, run inside the caller's transaction.
+    const run = async (tx: Prisma.TransactionClient): Promise<{ entryNo: string }> => {
+      const existing = await tx.journalEntry.findFirst({
+        where: {
+          AND: [
+            { metadata: { path: ['flow'], equals: 'expense' } } as any,
+            { metadata: { path: ['expenseId'], equals: expenseId } } as any,
+          ],
+          deletedAt: null,
+        },
+      });
+      if (existing) {
+        this.logger.log(
+          `[A.5a] ExpenseTemplate idempotency — JE ${existing.entryNumber} already exists for expense ${expenseId}, skipping`,
+        );
+        return { entryNo: existing.entryNumber };
+      }
+
+      const result = await this.journal.createAndPost(
+        {
+          description: `บันทึกค่าใช้จ่าย ${expense.expenseNumber} — ${expense.description}`,
+          reference: `${expenseId}:expense`,
+          metadata: {
+            tag: 'EXPENSE',
+            flow: 'expense',
+            expenseId,
+            expenseNumber: expense.expenseNumber,
+            category: expense.category,
+            isPaid,
+            taxDisallowed: isTaxDisallowed,
+            disallowedReason: disallowedReason ?? null,
+            withholdingTax: withholdingTax.toFixed(2),
+            whtAccountCode,
+          },
+          lines,
+        },
+        tx,
+      );
+
+      // T2-C14: immutable audit log inside the same tx so failure rolls back the JE post.
+      await tx.journalPostAuditLog.create({
+        data: {
+          journalEntryId: result.id,
+          postedById: postedById ?? expense.createdById,
+          postedAt: new Date(),
+        },
+      });
+
+      return { entryNo: result.entryNumber };
+    };
+
+    const out = outerTx ? await run(outerTx) : await this.prisma.$transaction(run);
+
+    return out;
   }
 }

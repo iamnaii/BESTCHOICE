@@ -1,7 +1,25 @@
-import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Param,
+  Body,
+  Query,
+  UseGuards,
+  HttpCode,
+} from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import { AssetCategory, AssetStatus } from '@prisma/client';
 import { AssetService } from './asset.service';
-import { CreateFixedAssetDto, UpdateFixedAssetDto, DisposeAssetDto } from './dto/asset.dto';
+import { AssetTransferService } from './asset-transfer.service';
+import { CreateAssetDto } from './dto/create-asset.dto';
+import { UpdateAssetDto } from './dto/update-asset.dto';
+import { ReverseAssetDto } from './dto/reverse-asset.dto';
+import { TransferAssetDto } from './dto/transfer-asset.dto';
+import { DisposeAssetDto } from './dto/dispose-asset.dto';
+import { ReverseDisposalDto } from './dto/reverse-disposal.dto';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -14,15 +32,18 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 @Controller('assets')
 @UseGuards(JwtAuthGuard, RolesGuard, BranchGuard)
 export class AssetController {
-  constructor(private assetService: AssetService) {}
+  constructor(
+    private readonly assetService: AssetService,
+    private readonly transferService: AssetTransferService,
+  ) {}
 
   @Get()
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   findAll(
     @Query() pagination: PaginationDto,
     @Query('branchId') branchId?: string,
-    @Query('category') category?: string,
-    @Query('status') status?: string,
+    @Query('category') category?: AssetCategory,
+    @Query('status') status?: AssetStatus,
     @Query('search') search?: string,
   ) {
     return this.assetService.findAll({
@@ -37,14 +58,36 @@ export class AssetController {
 
   @Get('summary')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
-  getDepreciationSummary() {
+  getSummary() {
     return this.assetService.getDepreciationSummary();
   }
 
   @Get('generate-code')
-  @Roles('OWNER', 'BRANCH_MANAGER')
-  generateAssetCode() {
-    return this.assetService.generateAssetCode();
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  generateCode(@Query('category') category?: AssetCategory) {
+    // No tx — controller is read-only (returns next free code suggestion).
+    return this.assetService.generateAssetCode(undefined, category);
+  }
+
+  @Get('register')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getRegister(
+    @Query() pagination: PaginationDto,
+    @Query('asOfDate') asOfDate?: string,
+    @Query('category') category?: AssetCategory,
+    @Query('status') status?: AssetStatus,
+    @Query('branchId') branchId?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.assetService.getRegister({
+      asOfDate,
+      category,
+      status,
+      branchId,
+      search,
+      page: pagination.page,
+      limit: pagination.limit,
+    });
   }
 
   @Get(':id')
@@ -53,27 +96,86 @@ export class AssetController {
     return this.assetService.findOne(id);
   }
 
+  @Get(':id/audit')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  audit(@Param('id') id: string) {
+    return this.assetService.getAuditTrail(id);
+  }
+
+  @Get(':id/schedule')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getSchedule(@Param('id') id: string) {
+    return this.assetService.getAssetSchedule(id);
+  }
+
   @Post()
-  @Roles('OWNER', 'BRANCH_MANAGER')
-  create(@Body() dto: CreateFixedAssetDto, @CurrentUser('id') userId: string) {
-    return this.assetService.create(dto, userId);
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  create(@Body() dto: CreateAssetDto, @CurrentUser('id') userId: string) {
+    return this.assetService.createDraft(dto, userId);
   }
 
   @Patch(':id')
-  @Roles('OWNER', 'BRANCH_MANAGER')
-  update(@Param('id') id: string, @Body() dto: UpdateFixedAssetDto) {
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  update(@Param('id') id: string, @Body() dto: UpdateAssetDto) {
     return this.assetService.update(id, dto);
   }
 
-  @Post(':id/dispose')
-  @Roles('OWNER')
-  dispose(@Param('id') id: string, @Body() dto: DisposeAssetDto) {
-    return this.assetService.dispose(id, dto);
+  @Delete(':id')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @HttpCode(204)
+  delete(@Param('id') id: string, @CurrentUser('id') userId: string) {
+    return this.assetService.delete(id, userId);
   }
 
-  @Post('run-depreciation')
+  @Post(':id/post')
   @Roles('OWNER', 'FINANCE_MANAGER')
-  runDepreciation(@CurrentUser('id') userId: string) {
-    return this.assetService.runMonthEndDepreciation(undefined, userId);
+  post(@Param('id') id: string, @CurrentUser('id') userId: string) {
+    return this.assetService.post(id, userId);
+  }
+
+  @Post(':id/reverse')
+  @Roles('OWNER')
+  reverse(
+    @Param('id') id: string,
+    @Body() dto: ReverseAssetDto,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.assetService.reverse(id, userId, dto.reason);
+  }
+
+  @Post(':id/transfer')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  transfer(
+    @Param('id') id: string,
+    @Body() dto: TransferAssetDto,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.transferService.transfer(id, dto, userId);
+  }
+
+  @Post(':id/dispose')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  dispose(
+    @Param('id') id: string,
+    @Body() dto: DisposeAssetDto,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.assetService.dispose(id, dto, userId);
+  }
+
+  @Post(':id/reverse-dispose')
+  @Roles('OWNER')
+  reverseDispose(
+    @Param('id') id: string,
+    @Body() dto: ReverseDisposalDto,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.assetService.reverseDispose(id, dto.reason, userId);
+  }
+
+  @Post(':id/copy')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  copy(@Param('id') id: string, @CurrentUser('id') userId: string) {
+    return this.assetService.copy(id, userId);
   }
 }

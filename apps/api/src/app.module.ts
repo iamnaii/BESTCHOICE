@@ -71,6 +71,7 @@ import { TradeInModule } from './modules/trade-in/trade-in.module';
 import { PromotionsModule } from './modules/promotions/promotions.module';
 import { WarrantyModule } from './modules/warranty/warranty.module';
 import { AssetModule } from './modules/asset/asset.module';
+import { DepreciationModule } from './modules/depreciation/depreciation.module';
 import { TodosModule } from './modules/todos/todos.module';
 import { ChatbotFinanceModule } from './modules/chatbot-finance/chatbot-finance.module';
 import { ChatEngineModule } from './modules/chat-engine/chat-engine.module';
@@ -233,6 +234,7 @@ import { AppCacheModule } from './cache/cache.module';
     WarrantyModule,
     // Fixed Asset & Depreciation
     AssetModule,
+    DepreciationModule,
     // Todos / Task management
     TodosModule,
     // Chatbot Finance — น้องเบส (LINE OA "ชำระค่างวด BESTCHOICE")

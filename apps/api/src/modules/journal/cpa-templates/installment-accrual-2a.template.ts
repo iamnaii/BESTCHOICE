@@ -3,6 +3,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
+// EIR utility removed — CPA Policy A revert (#783) reverted to straight-line allocation.
 
 /**
  * Template 2A — Installment Accrual (fires on each installment due date).
@@ -17,13 +18,25 @@ import { PrismaService } from '../../../prisma/prisma.service';
  *     Cr 41-1101 รายได้ดอกเบี้ย (รับรู้)   (interestPerInst)
  *     Cr 21-2101 ภาษีขาย ภ.พ.30           (vatPerInst)
  *
- * Total Dr = installmentTotal + vatPerInst + interestPerInst = 2,115.00
- * Total Cr = installmentExclVat + vatPerInst + interestPerInst + vatPerInst = 2,115.00 ✓
+ * Interest recognition: EIR (Effective Interest Method) per TFRS 15 §60-65.
+ *   - Period 1: highest interest (= openingPrincipal × monthlyEIR)
+ *   - Period N: lowest interest (snap to clear residual)
+ *   - Total interest = interestTotal (matches contract)
  *
- * Rounding modes (per CSV spec):
+ * Updated from straight-line allocation (Wave 4 / Option B / Phase 2 EIR migration).
+ *
+ * Rounding modes:
  *   installmentExclVat = grossExclVat / totalMonths → ROUND_DOWN  (17000/12 = 1416.66)
  *   vatPerInst         = vatTotal / totalMonths     → ROUND_HALF_UP (1190/12 = 99.17)
- *   interestPerInst    = interestTotal / totalMonths → ROUND_HALF_UP (6000/12 = 500.00 exact)
+ *   interestPerInst    = interest / totalMonths     → ROUND_HALF_UP straight-line (CPA Policy A · #783)
+ *
+ * Recognition policy:
+ *   - TFRS 15 §35(b): performance obligation satisfied "over time" — financing
+ *     service is consumed by the customer through each due date, so revenue is
+ *     recognised per period (this template, fired daily by accrual cron).
+ *   - VAT recognition: deferred VAT (21-2102 booked at contract activation) is
+ *     reclassified to settled VAT (21-2101) per period — matches TFRS 15
+ *     pattern of recognising tax liability when service is performed.
  *
  * Recognition policy (Wave 4 / Task 2 — Info comments):
  *   - TFRS 15 §35(b): performance obligation satisfied "over time" — financing
@@ -73,7 +86,8 @@ export class InstallmentAccrual2ATemplate {
         ? new Decimal(c.vatAmount.toString())
         : grossExclVat.times('0.07').toDecimalPlaces(2);
 
-    // Per-installment amounts — rounding modes match CSV spec
+    // Per-installment amounts — rounding modes match CSV spec.
+    // Straight-line interest allocation per CPA Policy A (post-#783 revert from EIR).
     let installmentExclVat = grossExclVat.div(total).toDecimalPlaces(2, Decimal.ROUND_DOWN); // 1,416.66
     let interestPerInst = interest.div(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP); //   500.00
     let vatPerInst = vat.div(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP); //    99.17
@@ -156,6 +170,92 @@ export class InstallmentAccrual2ATemplate {
       where: { id: inst.id },
       data: { accrualJournalEntryId: result.entryNumber },
     });
+
+    // CPA Policy A — Auto-consume advance balance on accrual.
+    //
+    // If the contract has an advance parked in 21-1103 (from a payment
+    // posted before this installment's due date — see PaymentReceipt2B
+    // `advanceCredit` flow), immediately clear up to installmentTotal
+    // inside the same tx. Otherwise the trial balance shows both the
+    // freshly-accrued 11-2103 receivable AND the advance liability
+    // sitting alongside each other until the next 2B receipt fires —
+    // which only happens if the customer pays again. Auto-clearing here
+    // keeps the books accurate without requiring a redundant manual
+    // payment touch.
+    //
+    // JE: Dr 21-1103 (consume advance) / Cr 11-2103 (clear receivable)
+    //   for amount = min(advanceBalance, installmentTotal).
+    //
+    // Atomicity: posted in the same outer tx as the accrual JE +
+    // schedule update, so a JE-post failure rolls everything back —
+    // no partially-consumed advance with the receivable still showing.
+    const advanceBalance = new Decimal(c.advanceBalance.toString());
+    if (advanceBalance.gt(0)) {
+      const consume = Decimal.min(advanceBalance, installmentTotal);
+
+      await this.journal.createAndPost(
+        {
+          description: `หักเงินรับล่วงหน้าเข้างวด #${inst.installmentNo} — สัญญา ${c.contractNumber}`,
+          reference: `${inst.id}:advance-consume-on-accrual`,
+          metadata: {
+            tag: '2B',
+            flow: 'advance-consume-on-accrual',
+            contractId: c.id,
+            installmentScheduleId: inst.id,
+            installmentNo: inst.installmentNo,
+            consumeAmount: consume.toFixed(2),
+          },
+          postedAt: inst.dueDate,
+          lines: [
+            {
+              accountCode: '21-1103',
+              dr: consume,
+              cr: zero,
+              description: 'หักเงินรับล่วงหน้าเข้างวด',
+            },
+            {
+              accountCode: '11-2103',
+              dr: zero,
+              cr: consume,
+              description: 'ล้างลูกหนี้ค้างชำระ (จาก advance)',
+            },
+          ],
+        },
+        tx,
+      );
+
+      // Decrement contract's parked advance balance by the consumed amount.
+      await client.contract.update({
+        where: { id: c.id },
+        data: { advanceBalance: { decrement: consume } },
+      });
+
+      // Reflect the consume on the existing Payment row (if one was
+      // pre-created when the advance was first received). Fully covered
+      // installments flip to PAID; partial covers stay PARTIALLY_PAID.
+      const payment = await client.payment.findFirst({
+        where: {
+          contractId: c.id,
+          installmentNo: inst.installmentNo,
+          deletedAt: null,
+        },
+        select: { id: true, amountDue: true, amountPaid: true },
+      });
+      if (payment) {
+        const newAmountPaid = new Decimal(payment.amountPaid.toString()).plus(consume);
+        const due = new Decimal((payment.amountDue ?? installmentTotal).toString());
+        const isPaidInFull = newAmountPaid.gte(due);
+        await client.payment.update({
+          where: { id: payment.id },
+          data: {
+            amountPaid: newAmountPaid,
+            status: isPaidInFull ? 'PAID' : 'PARTIALLY_PAID',
+            paidDate: isPaidInFull ? new Date() : null,
+            paidAt: isPaidInFull ? new Date() : null,
+          },
+        });
+      }
+    }
 
     return { entryNo: result.entryNumber };
   }

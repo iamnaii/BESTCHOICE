@@ -12,6 +12,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { BadDebtProvisionTemplate } from '../journal/cpa-templates/bad-debt-provision.template';
 import { BadDebtWriteOffTemplate } from '../journal/cpa-templates/bad-debt-writeoff.template';
+import { EclStageReverseTemplate } from '../journal/cpa-templates/ecl-stage-reverse.template';
 
 // CPA ECL v3.0 — NPAEs Ch.13 Aging-based (6 buckets B0-B5)
 // Refs: docs/superpowers/specs/2026-05-09-cpa-policy-a-100-compliance-design.md
@@ -36,6 +37,7 @@ export class BadDebtService {
     private journalAutoService: JournalAutoService,
     private badDebtProvisionTemplate: BadDebtProvisionTemplate,
     private badDebtWriteOffTemplate: BadDebtWriteOffTemplate,
+    private eclStageReverseTemplate: EclStageReverseTemplate,
   ) {}
 
   /** Load provision rates from system config or use defaults */
@@ -494,5 +496,123 @@ export class BadDebtService {
 
       return { contractId, status: 'CLOSED_BAD_DEBT', writtenOffAt: new Date() };
     });
+  }
+
+  /**
+   * ECL Stage Reverse on payment (CPA Policy A spec §3.6).
+   *
+   * Called from PaymentReceipt2BTemplate / payments.service after a successful
+   * payment posts. Recomputes the contract's max-aging bucket using the latest
+   * (post-payment) installment state. If the new bucket is below all the
+   * persisted ACTIVE provisions, releases the over-provision delta back to
+   * P&L via EclStageReverseTemplate (Dr 11-2102 / Cr 51-1103).
+   *
+   * Pass `tx` to chain into the caller's transaction so a JE failure rolls
+   * back the parent receipt JE. Returns null when no reverse is needed
+   * (no ACTIVE provision, or aging didn't drop).
+   *
+   * Note: bucket comparison is done by rate ordering (B1=2% < B2=15% < B3=50%
+   * < B4=75% < B5=100%) — a "drop" is when the new bucket's rate is strictly
+   * less than the existing provision's rate.
+   */
+  async reverseStageOnPayment(
+    contractId: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<{ entryNo: string; reverseAmount: string; fromBucket: string; toBucket: string } | null> {
+    const db = tx ?? this.prisma;
+
+    const existing = await db.badDebtProvision.findFirst({
+      where: { contractId, status: 'ACTIVE', deletedAt: null },
+      orderBy: { provisionDate: 'desc' },
+    });
+    if (!existing) return null;
+
+    const overduePayments = await db.payment.findMany({
+      where: {
+        contractId,
+        status: { in: ['PENDING', 'PARTIALLY_PAID'] },
+        deletedAt: null,
+      },
+      select: { dueDate: true, amountDue: true, amountPaid: true, lateFee: true, lateFeeWaived: true },
+    });
+
+    const now = new Date();
+    let maxOverdueDays = 0;
+    let totalOutstanding = new Decimal(0);
+    for (const p of overduePayments) {
+      const days = Math.floor((now.getTime() - p.dueDate.getTime()) / (1000 * 60 * 60 * 24));
+      if (days > maxOverdueDays) maxOverdueDays = days;
+      const unpaidLateFee = !p.lateFeeWaived ? new Decimal(p.lateFee.toString()) : new Decimal(0);
+      totalOutstanding = totalOutstanding.add(this.computeOutstanding(p, unpaidLateFee));
+    }
+
+    if (maxOverdueDays <= 0 || totalOutstanding.lte(0)) {
+      // Contract is fully current — fall through and reverse the entire provision.
+      const reverseAmount = new Decimal(existing.provisionAmount.toString());
+      if (reverseAmount.lte(0)) return null;
+      const result = await this.eclStageReverseTemplate.execute(
+        {
+          contractId,
+          reverseAmount,
+          fromBucket: existing.agingBucket,
+          toBucket: 'CURRENT',
+        },
+        tx,
+      );
+      if (!result) return null;
+      await db.badDebtProvision.update({
+        where: { id: existing.id },
+        data: { status: 'REVERSED' },
+      });
+      return {
+        entryNo: result.entryNo,
+        reverseAmount: reverseAmount.toFixed(2),
+        fromBucket: existing.agingBucket,
+        toBucket: 'CURRENT',
+      };
+    }
+
+    const newBucket = this.getAgingBucket(maxOverdueDays);
+    const rates = await this.getProvisionRates();
+    // Decimal compare to avoid float-precision drift when rates come from
+    // SystemConfig JSON (e.g. 0.15 stored as 0.149999... after JSON roundtrip).
+    const oldRate = new Decimal(existing.provisionRate.toString());
+    const newRate = new Decimal(rates[newBucket] ?? 0);
+    if (newRate.gte(oldRate)) return null; // Stage didn't drop
+
+    const newProvision = totalOutstanding
+      .times(newRate)
+      .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+    const reverseAmount = new Decimal(existing.provisionAmount.toString()).sub(newProvision);
+    if (reverseAmount.lte(0)) return null;
+
+    const result = await this.eclStageReverseTemplate.execute(
+      {
+        contractId,
+        reverseAmount,
+        fromBucket: existing.agingBucket,
+        toBucket: newBucket,
+      },
+      tx,
+    );
+    if (!result) return null;
+
+    await db.badDebtProvision.update({
+      where: { id: existing.id },
+      data: {
+        agingBucket: newBucket,
+        daysOverdue: maxOverdueDays,
+        outstandingAmount: totalOutstanding,
+        provisionRate: new Prisma.Decimal(newRate.toString()),
+        provisionAmount: newProvision,
+      },
+    });
+
+    return {
+      entryNo: result.entryNo,
+      reverseAmount: reverseAmount.toFixed(2),
+      fromBucket: existing.agingBucket,
+      toBucket: newBucket,
+    };
   }
 }

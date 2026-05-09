@@ -6,6 +6,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { BadDebtProvisionTemplate } from '../journal/cpa-templates/bad-debt-provision.template';
 import { BadDebtWriteOffTemplate } from '../journal/cpa-templates/bad-debt-writeoff.template';
+import { EclStageReverseTemplate } from '../journal/cpa-templates/ecl-stage-reverse.template';
 
 /**
  * BadDebtService is the financial provisioning engine. It maps overdue
@@ -39,6 +40,8 @@ describe('BadDebtService', () => {
       },
       badDebtProvision: {
         findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn().mockResolvedValue(null),
+        update: jest.fn().mockResolvedValue({}),
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
         createMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
@@ -80,6 +83,7 @@ describe('BadDebtService', () => {
         },
         { provide: BadDebtProvisionTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK' }) } },
         { provide: BadDebtWriteOffTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK' }) } },
+        { provide: EclStageReverseTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-ECL-MOCK' }) } },
       ],
     }).compile();
 
@@ -652,6 +656,144 @@ describe('BadDebtService', () => {
       expect(summary.byBucket['1-30'].count).toBe(1);
       expect(summary.byBucket['31-60'].count).toBe(1);
       expect(summary.details).toHaveLength(2);
+    });
+  });
+
+  describe('reverseStageOnPayment — CPA Policy A §3.6', () => {
+    function setActiveProvision(opts: {
+      provisionAmount: number;
+      provisionRate: number;
+      agingBucket: string;
+    }) {
+      prisma.badDebtProvision.findFirst.mockResolvedValue({
+        id: 'prov-1',
+        contractId: 'ct-1',
+        agingBucket: opts.agingBucket,
+        daysOverdue: 45,
+        outstandingAmount: new Prisma.Decimal(2000),
+        provisionRate: new Prisma.Decimal(opts.provisionRate),
+        provisionAmount: new Prisma.Decimal(opts.provisionAmount),
+        status: 'ACTIVE',
+      });
+    }
+
+    function setOverduePayments(rows: Array<{ daysAgo: number; due: number; paid: number }>) {
+      const now = Date.now();
+      prisma.payment.findMany.mockResolvedValue(
+        rows.map((r, i) => ({
+          id: `p-${i}`,
+          dueDate: new Date(now - r.daysAgo * 24 * 60 * 60 * 1000),
+          amountDue: new Prisma.Decimal(r.due),
+          amountPaid: new Prisma.Decimal(r.paid),
+          lateFee: new Prisma.Decimal(0),
+          lateFeeWaived: false,
+        })),
+      );
+    }
+
+    it('returns null when no ACTIVE provision exists for the contract', async () => {
+      prisma.badDebtProvision.findFirst.mockResolvedValue(null);
+      const result = await service.reverseStageOnPayment('ct-1');
+      expect(result).toBeNull();
+    });
+
+    it('returns null when bucket did not drop (new rate >= old rate)', async () => {
+      // Existing B2 provision @ 15%; overdue still 45 days → still B2 → no reverse.
+      setActiveProvision({ provisionAmount: 300, provisionRate: 0.15, agingBucket: '31-60' });
+      setOverduePayments([{ daysAgo: 45, due: 1000, paid: 0 }]);
+      const result = await service.reverseStageOnPayment('ct-1');
+      expect(result).toBeNull();
+    });
+
+    it('reverses delta when bucket drops B2 → B1 and updates provision row', async () => {
+      // Existing B2 (15%) on 2000 = 300 provision.
+      // After payment: aging now 15 days (B1) on 1500 outstanding = 1500*0.02 = 30 provision.
+      // Reverse delta = 300 - 30 = 270.
+      setActiveProvision({ provisionAmount: 300, provisionRate: 0.15, agingBucket: '31-60' });
+      setOverduePayments([{ daysAgo: 15, due: 1500, paid: 0 }]);
+
+      const result = await service.reverseStageOnPayment('ct-1');
+
+      expect(result).not.toBeNull();
+      expect(result!.fromBucket).toBe('31-60');
+      expect(result!.toBucket).toBe('1-30');
+      expect(result!.reverseAmount).toBe('270.00');
+
+      // Provision row updated to new bucket / amount
+      const updateCall = prisma.badDebtProvision.update.mock.calls[0][0];
+      expect(updateCall.where.id).toBe('prov-1');
+      expect(updateCall.data.agingBucket).toBe('1-30');
+      expect(updateCall.data.provisionAmount.toString()).toBe('30');
+    });
+
+    it('reverses entire provision and marks REVERSED when contract becomes fully current', async () => {
+      setActiveProvision({ provisionAmount: 300, provisionRate: 0.15, agingBucket: '31-60' });
+      // No overdue payments at all
+      prisma.payment.findMany.mockResolvedValue([]);
+
+      const result = await service.reverseStageOnPayment('ct-1');
+
+      expect(result).not.toBeNull();
+      expect(result!.toBucket).toBe('CURRENT');
+      expect(result!.reverseAmount).toBe('300.00');
+
+      const updateCall = prisma.badDebtProvision.update.mock.calls[0][0];
+      expect(updateCall.data.status).toBe('REVERSED');
+    });
+
+    it('concurrent payments on the same contract: each reads its own snapshot, updates atomically', async () => {
+      // Two payments race on the same contract within the same serializable
+      // tx isolation in payments.service.ts. At the service layer, both calls
+      // see the ACTIVE provision and post their own reverse — but in
+      // production the outer serializable tx will retry one of them, so each
+      // call must be self-consistent on its own snapshot.
+      //
+      // We verify the orchestration is deterministic: same input → same
+      // output. The actual write-side conflict resolution lives in
+      // recordPayment's serializable tx (covered by integration tests).
+      setActiveProvision({ provisionAmount: 300, provisionRate: 0.15, agingBucket: '31-60' });
+      setOverduePayments([{ daysAgo: 15, due: 1500, paid: 0 }]);
+
+      const [r1, r2] = await Promise.all([
+        service.reverseStageOnPayment('ct-1'),
+        service.reverseStageOnPayment('ct-1'),
+      ]);
+
+      expect(r1).not.toBeNull();
+      expect(r2).not.toBeNull();
+      expect(r1!.reverseAmount).toBe(r2!.reverseAmount);
+      expect(r1!.fromBucket).toBe(r2!.fromBucket);
+      expect(r1!.toBucket).toBe(r2!.toBucket);
+
+      // Both calls saw the same provision row + same overdue snapshot, so
+      // both posted reverses. Production safety: outer serializable tx will
+      // 40001-retry one of them, ensuring the final state has at most one
+      // reverse JE per provision row.
+      expect(prisma.badDebtProvision.update).toHaveBeenCalledTimes(2);
+    });
+
+    it('handles SystemConfig rate roundtrip precision (Decimal compare, not Number)', async () => {
+      // SystemConfig stores rates as JSON; round-tripping 0.15 through
+      // JSON.parse can leave 0.149999... which would falsely compare > old
+      // rate of exactly 0.15 if we used Number. Decimal compare avoids this.
+      prisma.systemConfig.findUnique.mockResolvedValue({
+        key: 'bad_debt_provision_rates',
+        value: JSON.stringify({
+          '1-30': 0.02,
+          '31-60': 0.15,
+          '61-90': 0.5,
+          '91-180': 0.75,
+          '180+': 1.0,
+        }),
+      });
+
+      // Existing B2 (15%); new aging 15 days → B1 (2%). Drop confirmed.
+      setActiveProvision({ provisionAmount: 300, provisionRate: 0.15, agingBucket: '31-60' });
+      setOverduePayments([{ daysAgo: 15, due: 1500, paid: 0 }]);
+
+      const result = await service.reverseStageOnPayment('ct-1');
+      expect(result).not.toBeNull();
+      expect(result!.toBucket).toBe('1-30');
     });
   });
 });

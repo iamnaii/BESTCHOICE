@@ -22,6 +22,7 @@ import { MdmAutoService } from '../mdm/mdm-auto.service';
 import { PromiseService } from '../overdue/promise.service';
 import { MdmLockService } from '../overdue/mdm-lock.service';
 import { PaymentCase } from './dto/payment.dto';
+import { BadDebtService } from '../accounting/bad-debt.service';
 
 @Injectable()
 export class PaymentsService {
@@ -41,6 +42,7 @@ export class PaymentsService {
     @Optional() private mdmAuto?: MdmAutoService,
     @Optional() @Inject(forwardRef(() => PromiseService)) private promiseService?: PromiseService,
     @Optional() private mdmLockService?: MdmLockService,
+    @Optional() private badDebtService?: BadDebtService,
   ) {}
 
   /**
@@ -356,6 +358,22 @@ export class PaymentsService {
             advanceConsume: advanceConsume.gt(0) ? advanceConsume : undefined,
             partialClear: isPartialClear ? true : undefined,
           });
+
+          // CPA Policy A §3.6 — ECL stage reverse on payment.
+          // After the receipt JE posts, recompute aging. If the bucket dropped
+          // (e.g. B2 → B1) the persisted provision is now overstated; release
+          // the over-provision back to P&L atomically inside the same tx so a
+          // reverse-JE failure rolls back the receipt.
+          if (this.badDebtService) {
+            try {
+              await this.badDebtService.reverseStageOnPayment(contract.id, tx);
+            } catch (err) {
+              Sentry.captureException(err, {
+                extra: { contractId: contract.id, installmentNo: result.installmentNo, paymentId: result.id },
+              });
+              throw err;
+            }
+          }
         } else {
           this.logger.warn(
             `PaymentReceipt2B skipped — no InstallmentSchedule found for contractId=${contract.id} installmentNo=${result.installmentNo}. TODO: verify schedule was generated.`,

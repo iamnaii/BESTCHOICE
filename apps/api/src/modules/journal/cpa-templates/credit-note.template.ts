@@ -39,7 +39,10 @@ export class CreditNoteTemplate {
     const exec = async (tx: Prisma.TransactionClient): Promise<{ entryNo: string }> => {
       const cn = await tx.expenseDocument.findUniqueOrThrow({
         where: { id: documentId },
-        include: { creditNote: true },
+        include: {
+          creditNote: true,
+          expenseDetail: { include: { lines: { orderBy: { lineNo: 'asc' } } } },
+        },
       });
 
       // Idempotency
@@ -51,27 +54,34 @@ export class CreditNoteTemplate {
       if (!cn.creditNote) {
         throw new Error(`CreditNote ${documentId} missing creditNote detail`);
       }
-      const { originalDocumentId, category } = cn.creditNote;
-      // Validate `category` against the chart of accounts BEFORE building any
-      // JE lines — without this, a corrupted category string would post a
-      // journal entry to a non-existent account and silently corrupt the ledger.
-      // Must be an active expense account (5x-xxxx prefix AND type "ค่าใช้จ่าย"
-      // in CoA — defends against codes that start with '5' but are mis-typed).
+      const { originalDocumentId } = cn.creditNote;
+
+      const cnLines = cn.expenseDetail?.lines ?? [];
+      if (cnLines.length === 0) {
+        throw new Error(`CreditNote ${documentId} has no expense lines`);
+      }
+
+      // Validate every CN line.category against CoA BEFORE building any JE lines.
+      // Must be an active expense account (5x-xxxx prefix AND type "ค่าใช้จ่าย").
       // Note: ChartOfAccount.type stores the Thai label from the CSV seed
       // (e.g. "ค่าใช้จ่าย", "สินทรัพย์"), NOT an English enum.
-      const coaRow = await tx.chartOfAccount.findFirst({
-        where: { code: category, deletedAt: null },
+      const codes = [...new Set(cnLines.map((l) => l.category))];
+      const coaRows = await tx.chartOfAccount.findMany({
+        where: { code: { in: codes }, deletedAt: null },
         select: { code: true, type: true },
       });
-      if (!coaRow) {
-        throw new BadRequestException(
-          `หมวดบัญชี ${category} ไม่พบในผังบัญชี — ไม่สามารถ post ใบลดหนี้`,
-        );
-      }
-      if (!category.startsWith('5') || coaRow.type !== 'ค่าใช้จ่าย') {
-        throw new BadRequestException(
-          `หมวดบัญชี ${category} ไม่ใช่บัญชีค่าใช้จ่าย — ใบลดหนี้ต้องอ้างถึงบัญชี 5x-xxxx ประเภท "ค่าใช้จ่าย" เท่านั้น`,
-        );
+      const byCode = new Map(coaRows.map((r) => [r.code, r.type]));
+      for (const c of codes) {
+        if (!byCode.get(c)) {
+          throw new BadRequestException(
+            `หมวดบัญชี ${c} ไม่พบในผังบัญชี — ไม่สามารถ post ใบลดหนี้`,
+          );
+        }
+        if (!c.startsWith('5') || byCode.get(c) !== 'ค่าใช้จ่าย') {
+          throw new BadRequestException(
+            `หมวดบัญชี ${c} ไม่ใช่บัญชีค่าใช้จ่าย — ใบลดหนี้ต้องอ้างถึงบัญชี 5x-xxxx ประเภท "ค่าใช้จ่าย" เท่านั้น`,
+          );
+        }
       }
 
       const original = await tx.expenseDocument.findUniqueOrThrow({
@@ -85,7 +95,6 @@ export class CreditNoteTemplate {
       }
 
       const zero = new Decimal(0);
-      const subtotal = new Decimal(cn.subtotal.toString());
       const vat = new Decimal(cn.vatAmount.toString());
       const total = new Decimal(cn.totalAmount.toString());
 
@@ -116,13 +125,15 @@ export class CreditNoteTemplate {
         });
       }
 
-      // Cr legs (always)
-      lines.push({
-        accountCode: category,
-        dr: zero,
-        cr: subtotal,
-        description: `กลับค่าใช้จ่าย — ${cn.number}`,
-      });
+      // Cr expense legs — aggregate by category (collapse lines with same category)
+      const byCategory = new Map<string, Decimal>();
+      for (const l of cnLines) {
+        const amt = new Decimal(l.amountBeforeVat.toString());
+        byCategory.set(l.category, (byCategory.get(l.category) ?? zero).plus(amt));
+      }
+      for (const [code, amt] of byCategory.entries()) {
+        lines.push({ accountCode: code, dr: zero, cr: amt, description: `กลับค่าใช้จ่าย — ${cn.number}` });
+      }
       if (vat.gt(zero)) {
         lines.push({
           accountCode: '11-2104',
@@ -145,6 +156,7 @@ export class CreditNoteTemplate {
             documentType: cn.documentType,
             originalDocumentId,
             flow: 'expense-credit-note',
+            lineCount: cnLines.length,
           },
           postedAt: cn.documentDate,
           companyId: shopCompanyId,

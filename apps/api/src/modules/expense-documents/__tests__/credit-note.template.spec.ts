@@ -19,10 +19,11 @@ describe('CreditNoteTemplate', () => {
       companyInfo: {
         findFirst: jest.fn().mockResolvedValue({ id: 'company-shop' }),
       },
-      // CoA validation guard added for C2 — return a valid expense account by default.
+      // CoA validation guard — returns a valid expense account list by default.
       // ChartOfAccount.type stores the Thai label from the CSV seed (NOT 'EXPENSE').
       chartOfAccount: {
         findFirst: jest.fn().mockResolvedValue({ code: '53-1404', type: 'ค่าใช้จ่าย' }),
+        findMany: jest.fn().mockResolvedValue([{ code: '53-1404', type: 'ค่าใช้จ่าย' }]),
       },
     };
     template = new CreditNoteTemplate(journal, prisma);
@@ -44,6 +45,10 @@ describe('CreditNoteTemplate', () => {
         depositAccountCode: null,
         journalEntryId: null,
         creditNote: { originalDocumentId: 'orig-1', reason: 'partial return', category: '53-1404' },
+        expenseDetail: {
+          priceType: 'EXCLUSIVE',
+          lines: [{ lineNo: 1, category: '53-1404', amountBeforeVat: new Decimal('500.00') }],
+        },
       });
       if (args.where.id === 'orig-1') return Promise.resolve({
         id: 'orig-1',
@@ -52,6 +57,7 @@ describe('CreditNoteTemplate', () => {
       });
       return Promise.reject(new Error('unknown id'));
     });
+    prisma.chartOfAccount.findMany.mockResolvedValueOnce([{ code: '53-1404', type: 'ค่าใช้จ่าย' }]);
 
     const result = await template.execute('cn-1');
     expect(result.entryNo).toBe('JE-CN-001');
@@ -86,6 +92,10 @@ describe('CreditNoteTemplate', () => {
         depositAccountCode: '11-1101',
         journalEntryId: null,
         creditNote: { originalDocumentId: 'orig-2', reason: 'full return', category: '53-1302' },
+        expenseDetail: {
+          priceType: 'EXCLUSIVE',
+          lines: [{ lineNo: 1, category: '53-1302', amountBeforeVat: new Decimal('1000.00') }],
+        },
       });
       if (args.where.id === 'orig-2') return Promise.resolve({
         id: 'orig-2',
@@ -94,6 +104,7 @@ describe('CreditNoteTemplate', () => {
       });
       return Promise.reject(new Error('unknown id'));
     });
+    prisma.chartOfAccount.findMany.mockResolvedValueOnce([{ code: '53-1302', type: 'ค่าใช้จ่าย' }]);
 
     await template.execute('cn-2');
     const [args] = journal.createAndPost.mock.calls[0];
@@ -133,6 +144,10 @@ describe('CreditNoteTemplate', () => {
         depositAccountCode: null,
         journalEntryId: null,
         creditNote: { originalDocumentId: 'orig-4', reason: 'r', category: '53-1302' },
+        expenseDetail: {
+          priceType: 'EXCLUSIVE',
+          lines: [{ lineNo: 1, category: '53-1302', amountBeforeVat: new Decimal('100.00') }],
+        },
       });
       if (args.where.id === 'orig-4') return Promise.resolve({
         id: 'orig-4',
@@ -141,7 +156,7 @@ describe('CreditNoteTemplate', () => {
       });
       return Promise.reject(new Error('unknown id'));
     });
-    prisma.chartOfAccount.findFirst.mockResolvedValueOnce({ code: '53-1302', type: 'ค่าใช้จ่าย' });
+    prisma.chartOfAccount.findMany.mockResolvedValueOnce([{ code: '53-1302', type: 'ค่าใช้จ่าย' }]);
 
     await template.execute('cn-4');
     expect(prisma.expenseDocument.update).toHaveBeenCalledWith(
@@ -172,6 +187,10 @@ describe('CreditNoteTemplate', () => {
         depositAccountCode: '11-1101',
         journalEntryId: null,
         creditNote: { originalDocumentId: 'orig-5', reason: 'r', category: '53-1302' },
+        expenseDetail: {
+          priceType: 'EXCLUSIVE',
+          lines: [{ lineNo: 1, category: '53-1302', amountBeforeVat: new Decimal('200.00') }],
+        },
       });
       if (args.where.id === 'orig-5') return Promise.resolve({
         id: 'orig-5',
@@ -180,7 +199,7 @@ describe('CreditNoteTemplate', () => {
       });
       return Promise.reject(new Error('unknown id'));
     });
-    prisma.chartOfAccount.findFirst.mockResolvedValueOnce({ code: '53-1302', type: 'ค่าใช้จ่าย' });
+    prisma.chartOfAccount.findMany.mockResolvedValueOnce([{ code: '53-1302', type: 'ค่าใช้จ่าย' }]);
 
     await template.execute('cn-5');
     expect(prisma.expenseDocument.update).toHaveBeenCalledWith(
@@ -210,8 +229,12 @@ describe('CreditNoteTemplate', () => {
       depositAccountCode: null,
       journalEntryId: null,
       creditNote: { originalDocumentId: 'orig', reason: 'r', category: '99-9999' },
+      expenseDetail: {
+        priceType: 'EXCLUSIVE',
+        lines: [{ lineNo: 1, category: '99-9999', amountBeforeVat: new Decimal('100.00') }],
+      },
     });
-    prisma.chartOfAccount.findFirst.mockResolvedValueOnce(null);
+    prisma.chartOfAccount.findMany.mockResolvedValueOnce([]); // code not found
     await expect(template.execute('cn-coa-missing')).rejects.toThrow(
       /ไม่พบในผังบัญชี/,
     );
@@ -232,11 +255,12 @@ describe('CreditNoteTemplate', () => {
       journalEntryId: null,
       // 11-2101 is asset prefix → prefix guard rejects regardless of type
       creditNote: { originalDocumentId: 'orig', reason: 'r', category: '11-2101' },
+      expenseDetail: {
+        priceType: 'EXCLUSIVE',
+        lines: [{ lineNo: 1, category: '11-2101', amountBeforeVat: new Decimal('100.00') }],
+      },
     });
-    prisma.chartOfAccount.findFirst.mockResolvedValueOnce({
-      code: '11-2101',
-      type: 'สินทรัพย์',
-    });
+    prisma.chartOfAccount.findMany.mockResolvedValueOnce([{ code: '11-2101', type: 'สินทรัพย์' }]);
     await expect(template.execute('cn-non-expense-prefix')).rejects.toThrow(
       /ไม่ใช่บัญชีค่าใช้จ่าย/,
     );
@@ -260,11 +284,12 @@ describe('CreditNoteTemplate', () => {
       depositAccountCode: null,
       journalEntryId: null,
       creditNote: { originalDocumentId: 'orig', reason: 'r', category: '53-9999' },
+      expenseDetail: {
+        priceType: 'EXCLUSIVE',
+        lines: [{ lineNo: 1, category: '53-9999', amountBeforeVat: new Decimal('100.00') }],
+      },
     });
-    prisma.chartOfAccount.findFirst.mockResolvedValueOnce({
-      code: '53-9999',
-      type: 'ต้นทุน',
-    });
+    prisma.chartOfAccount.findMany.mockResolvedValueOnce([{ code: '53-9999', type: 'ต้นทุน' }]);
     await expect(template.execute('cn-typo-coa')).rejects.toThrow(
       /ไม่ใช่บัญชีค่าใช้จ่าย/,
     );
@@ -285,6 +310,10 @@ describe('CreditNoteTemplate', () => {
         depositAccountCode: null,
         journalEntryId: null,
         creditNote: { originalDocumentId: 'orig-x', reason: 'r', category: '53-1302' },
+        expenseDetail: {
+          priceType: 'EXCLUSIVE',
+          lines: [{ lineNo: 1, category: '53-1302', amountBeforeVat: new Decimal('100.00') }],
+        },
       });
       if (args.where.id === 'orig-x') return Promise.resolve({
         id: 'orig-x',
@@ -293,6 +322,7 @@ describe('CreditNoteTemplate', () => {
       });
       return Promise.reject(new Error('unknown id'));
     });
+    prisma.chartOfAccount.findMany.mockResolvedValueOnce([{ code: '53-1302', type: 'ค่าใช้จ่าย' }]);
     await expect(template.execute('cn-x')).rejects.toThrow(/สถานะ VOIDED/);
   });
 
@@ -311,6 +341,10 @@ describe('CreditNoteTemplate', () => {
         depositAccountCode: null,
         journalEntryId: null,
         creditNote: { originalDocumentId: 'orig-5', reason: 'r', category: '53-1302' },
+        expenseDetail: {
+          priceType: 'EXCLUSIVE',
+          lines: [{ lineNo: 1, category: '53-1302', amountBeforeVat: new Decimal('200.00') }],
+        },
       });
       if (args.where.id === 'orig-5') return Promise.resolve({
         id: 'orig-5',
@@ -319,9 +353,48 @@ describe('CreditNoteTemplate', () => {
       });
       return Promise.reject(new Error('unknown id'));
     });
+    prisma.chartOfAccount.findMany.mockResolvedValueOnce([{ code: '53-1302', type: 'ค่าใช้จ่าย' }]);
 
     await template.execute('cn-5');
     const [args] = journal.createAndPost.mock.calls[0];
     expect(args.lines.find((l: { accountCode: string }) => l.accountCode === '11-2104')).toBeUndefined();
+  });
+
+  it('multi-line CN: 2 line categories → 2 Cr expense rows', async () => {
+    prisma.expenseDocument.findUniqueOrThrow.mockImplementation((args: { where: { id: string } }) => {
+      if (args.where.id === 'cn-multi') return Promise.resolve({
+        id: 'cn-multi',
+        number: 'CN-20260511-0050',
+        documentType: 'CREDIT_NOTE',
+        branchId: 'branch-1',
+        documentDate: new Date('2026-05-11'),
+        subtotal: new Decimal('1500'),
+        vatAmount: new Decimal('0'),
+        withholdingTax: new Decimal('0'),
+        totalAmount: new Decimal('1500'),
+        depositAccountCode: null,
+        journalEntryId: null,
+        creditNote: { originalDocumentId: 'orig-multi', reason: 'partial return' },
+        expenseDetail: {
+          priceType: 'EXCLUSIVE',
+          lines: [
+            { lineNo: 1, category: '53-1101', amountBeforeVat: new Decimal('1000'), vatAmount: new Decimal('0'), whtAmount: new Decimal('0') },
+            { lineNo: 2, category: '53-1404', amountBeforeVat: new Decimal('500'),  vatAmount: new Decimal('0'), whtAmount: new Decimal('0') },
+          ],
+        },
+      });
+      if (args.where.id === 'orig-multi') return Promise.resolve({
+        id: 'orig-multi', status: 'ACCRUAL', depositAccountCode: null,
+      });
+      return Promise.reject(new Error('unknown id'));
+    });
+    prisma.chartOfAccount.findMany.mockResolvedValueOnce([
+      { code: '53-1101', type: 'ค่าใช้จ่าย' },
+      { code: '53-1404', type: 'ค่าใช้จ่าย' },
+    ]);
+    await template.execute('cn-multi');
+    const args = journal.createAndPost.mock.calls[0][0];
+    const cr5x = args.lines.filter((l: { accountCode: string; cr: Decimal }) => l.accountCode.startsWith('5') && l.cr.gt(0));
+    expect(cr5x).toHaveLength(2);
   });
 });

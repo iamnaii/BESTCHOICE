@@ -19,9 +19,10 @@ describe('CreditNoteTemplate', () => {
       companyInfo: {
         findFirst: jest.fn().mockResolvedValue({ id: 'company-shop' }),
       },
-      // CoA validation guard added for C2 — return a valid expense account by default
+      // CoA validation guard added for C2 — return a valid expense account by default.
+      // ChartOfAccount.type stores the Thai label from the CSV seed (NOT 'EXPENSE').
       chartOfAccount: {
-        findFirst: jest.fn().mockResolvedValue({ code: '53-1404', type: 'EXPENSE' }),
+        findFirst: jest.fn().mockResolvedValue({ code: '53-1404', type: 'ค่าใช้จ่าย' }),
       },
     };
     template = new CreditNoteTemplate(journal, prisma);
@@ -140,7 +141,7 @@ describe('CreditNoteTemplate', () => {
       });
       return Promise.reject(new Error('unknown id'));
     });
-    prisma.chartOfAccount.findFirst.mockResolvedValueOnce({ code: '53-1302', type: 'EXPENSE' });
+    prisma.chartOfAccount.findFirst.mockResolvedValueOnce({ code: '53-1302', type: 'ค่าใช้จ่าย' });
 
     await template.execute('cn-4');
     expect(prisma.expenseDocument.update).toHaveBeenCalledWith(
@@ -179,7 +180,7 @@ describe('CreditNoteTemplate', () => {
       });
       return Promise.reject(new Error('unknown id'));
     });
-    prisma.chartOfAccount.findFirst.mockResolvedValueOnce({ code: '53-1302', type: 'EXPENSE' });
+    prisma.chartOfAccount.findFirst.mockResolvedValueOnce({ code: '53-1302', type: 'ค่าใช้จ่าย' });
 
     await template.execute('cn-5');
     expect(prisma.expenseDocument.update).toHaveBeenCalledWith(
@@ -192,6 +193,52 @@ describe('CreditNoteTemplate', () => {
           journalEntryId: 'je-cn-1',
         }),
       }),
+    );
+  });
+
+  it('rejects post when category code is missing from CoA', async () => {
+    prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+      id: 'cn-coa-missing',
+      number: 'CN-20260510-7777',
+      documentType: 'CREDIT_NOTE',
+      branchId: 'branch-1',
+      documentDate: new Date('2026-05-10'),
+      subtotal: new Decimal('100.00'),
+      vatAmount: new Decimal('0.00'),
+      withholdingTax: new Decimal('0.00'),
+      totalAmount: new Decimal('100.00'),
+      depositAccountCode: null,
+      journalEntryId: null,
+      creditNote: { originalDocumentId: 'orig', reason: 'r', category: '99-9999' },
+    });
+    prisma.chartOfAccount.findFirst.mockResolvedValueOnce(null);
+    await expect(template.execute('cn-coa-missing')).rejects.toThrow(
+      /ไม่พบในผังบัญชี/,
+    );
+  });
+
+  it('rejects post when category type is not "ค่าใช้จ่าย" (e.g. asset code)', async () => {
+    prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+      id: 'cn-asset',
+      number: 'CN-20260510-7778',
+      documentType: 'CREDIT_NOTE',
+      branchId: 'branch-1',
+      documentDate: new Date('2026-05-10'),
+      subtotal: new Decimal('100.00'),
+      vatAmount: new Decimal('0.00'),
+      withholdingTax: new Decimal('0.00'),
+      totalAmount: new Decimal('100.00'),
+      depositAccountCode: null,
+      journalEntryId: null,
+      // 11-2101 is an asset code that starts with '1', not '5' — prefix guard catches first
+      creditNote: { originalDocumentId: 'orig', reason: 'r', category: '11-2101' },
+    });
+    prisma.chartOfAccount.findFirst.mockResolvedValueOnce({
+      code: '11-2101',
+      type: 'สินทรัพย์',
+    });
+    await expect(template.execute('cn-asset')).rejects.toThrow(
+      /ไม่ใช่บัญชีค่าใช้จ่าย/,
     );
   });
 

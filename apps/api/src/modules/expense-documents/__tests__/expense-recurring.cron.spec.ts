@@ -4,7 +4,15 @@ import { ExpenseRecurringCron } from '../crons/expense-recurring.cron';
 // (which used to read live `new Date().getDate()`) drift across the day boundary
 // on UTC CI. Mid-day BKK = Mon 12:00 BKK = Mon 05:00 UTC.
 const FIXED_NOW = new Date('2026-05-10T05:00:00.000Z');
-const FIXED_BKK_DAY = 10; // BKK calendar day at FIXED_NOW
+// Derive day-of-month in Asia/Bangkok from FIXED_NOW so the constant cannot
+// drift if FIXED_NOW is ever updated without keeping the day in sync.
+const FIXED_BKK_DAY = parseInt(
+  FIXED_NOW.toLocaleString('en-CA', {
+    timeZone: 'Asia/Bangkok',
+    day: '2-digit',
+  }),
+  10,
+);
 
 describe('ExpenseRecurringCron', () => {
   let cron: ExpenseRecurringCron;

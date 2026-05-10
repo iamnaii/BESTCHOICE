@@ -55,8 +55,10 @@ export class CreditNoteTemplate {
       // Validate `category` against the chart of accounts BEFORE building any
       // JE lines — without this, a corrupted category string would post a
       // journal entry to a non-existent account and silently corrupt the ledger.
-      // Must be an active expense account (5x-xxxx prefix AND type=EXPENSE
+      // Must be an active expense account (5x-xxxx prefix AND type "ค่าใช้จ่าย"
       // in CoA — defends against codes that start with '5' but are mis-typed).
+      // Note: ChartOfAccount.type stores the Thai label from the CSV seed
+      // (e.g. "ค่าใช้จ่าย", "สินทรัพย์"), NOT an English enum.
       const coaRow = await tx.chartOfAccount.findFirst({
         where: { code: category, deletedAt: null },
         select: { code: true, type: true },
@@ -66,9 +68,9 @@ export class CreditNoteTemplate {
           `หมวดบัญชี ${category} ไม่พบในผังบัญชี — ไม่สามารถ post ใบลดหนี้`,
         );
       }
-      if (!category.startsWith('5') || coaRow.type !== 'EXPENSE') {
+      if (!category.startsWith('5') || coaRow.type !== 'ค่าใช้จ่าย') {
         throw new BadRequestException(
-          `หมวดบัญชี ${category} ไม่ใช่บัญชีค่าใช้จ่าย — ใบลดหนี้ต้องอ้างถึงบัญชี 5x-xxxx ประเภท EXPENSE เท่านั้น`,
+          `หมวดบัญชี ${category} ไม่ใช่บัญชีค่าใช้จ่าย — ใบลดหนี้ต้องอ้างถึงบัญชี 5x-xxxx ประเภท "ค่าใช้จ่าย" เท่านั้น`,
         );
       }
 

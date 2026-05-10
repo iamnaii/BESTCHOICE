@@ -94,7 +94,6 @@ export default function ExpenseFavoritesPage() {
         >
           <option value="">ทุกประเภท</option>
           <option value="EXPENSE">รายจ่าย</option>
-          <option value="CREDIT_NOTE">ใบลดหนี้</option>
           <option value="PAYROLL">เงินเดือน</option>
           <option value="VENDOR_SETTLEMENT">จ่ายเจ้าหนี้</option>
         </select>

@@ -22,6 +22,7 @@ import { ListExpenseDocumentsQueryDto } from './dto/list-query.dto';
 import { CreateCreditNoteDto } from './dto/create-credit-note.dto';
 import { CreatePayrollDto } from './dto/create-payroll.dto';
 import { CreateSettlementDto } from './dto/create-settlement.dto';
+import { hasCrossBranchAccess } from '../auth/branch-access.util';
 
 @Controller('expense-documents')
 @UseGuards(JwtAuthGuard, RolesGuard, BranchGuard)
@@ -81,11 +82,11 @@ export class ExpenseDocumentsController {
     @Query('endDate') endDate?: string,
     @Req() req?: { user: { id: string; branchId?: string; role: string } },
   ) {
-    // Branch scoping mirror: if user lacks cross-branch role, override with their branch
-    const effective =
-      req?.user.role && ['OWNER', 'FINANCE_MANAGER'].includes(req.user.role)
-        ? branchId
-        : req?.user.branchId ?? branchId;
+    // Mirror list() scoping: cross-branch roles see all (or filter by ?branchId);
+    // others are pinned to their own branch regardless of query.
+    const effective = hasCrossBranchAccess(req?.user)
+      ? branchId
+      : (req?.user.branchId ?? branchId);
     return this.service.getSummary({ branchId: effective, startDate, endDate });
   }
 

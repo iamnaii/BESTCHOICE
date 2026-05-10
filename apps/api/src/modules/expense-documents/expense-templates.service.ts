@@ -36,6 +36,13 @@ export class ExpenseTemplatesService {
 
   async create(dto: CreateTemplateDto, user: UserContext) {
     this.assertBranchAccess(dto.branchId, user);
+    // CN ผูกกับเอกสารต้นฉบับเฉพาะตัว — บันทึกเป็น template ไม่ได้
+    // (originalDocumentId จะ stale + cumulative cap จะหมดเมื่อใช้รอบสอง)
+    if (dto.documentType === 'CREDIT_NOTE') {
+      throw new BadRequestException(
+        'ใบลดหนี้บันทึกเป็นรายการโปรดไม่ได้ — แต่ละใบลดหนี้ต้องผูกกับเอกสารต้นฉบับเฉพาะ',
+      );
+    }
     if (dto.isRecurring && (dto.recurringDay == null || dto.recurringDay < 1 || dto.recurringDay > 31)) {
       throw new BadRequestException('Recurring template ต้องระบุ recurringDay 1-31');
     }
@@ -117,12 +124,11 @@ export class ExpenseTemplatesService {
         } as never, user.id);
       }
       case 'CREDIT_NOTE': {
-        return this.docs.createCreditNote({
-          ...data,
-          branchId: tpl.branchId,
-          documentDate,
-          fromTemplateId: tpl.id,
-        } as never, user.id);
+        // Defensive — create() rejects CREDIT_NOTE templates, but legacy rows
+        // from before that guard could still exist.
+        throw new BadRequestException(
+          'ใบลดหนี้สร้างจากรายการโปรดไม่ได้ — กรุณาเปิดเอกสารต้นฉบับแล้วกด "ออกใบลดหนี้"',
+        );
       }
       case 'PAYROLL': {
         // payrollPeriod = current month YYYY-MM

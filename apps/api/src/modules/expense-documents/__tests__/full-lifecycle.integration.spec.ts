@@ -92,6 +92,7 @@ describe('ExpenseDocuments full lifecycle (integration)', () => {
       cn,
       payroll,
       settlement,
+      journal,
     );
   }
 

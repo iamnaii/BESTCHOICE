@@ -31,6 +31,7 @@ describe('ExpenseDocumentsService.createPayroll', () => {
       cn,
       payroll,
       settlement,
+      { createAndPost: jest.fn() } as never,
     );
   });
 

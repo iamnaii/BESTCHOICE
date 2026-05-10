@@ -14,7 +14,8 @@ import { compressImageForOcr } from '@/lib/compressImage';
 import { Receipt, Plus, Pencil, Upload, X, ArrowLeft, MoreVertical, FileText, Store, Layers, CreditCard, Paperclip, StickyNote, Bookmark, Wallet, BarChart3, Search, SlidersHorizontal, Eye, ArrowRight, UserCircle2, ChevronDown } from 'lucide-react';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { Button } from '@/components/ui/button';
-import { formatDateShortThai } from '@/utils/formatters';
+import { formatDateShortThai, formatNumberDecimal } from '@/utils/formatters';
+import { CashAccountSelect } from '@/components/CashAccountSelect';
 
 // ─── Types ───
 interface ExpenseDocument {
@@ -98,7 +99,7 @@ const inputClass = 'w-full px-3 py-2 border border-input rounded-lg focus-visibl
 
 function fmt(n: string | number | null | undefined): string {
   if (n == null) return '-';
-  return Number(n).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return formatNumberDecimal(n, 2);
 }
 
 // Recurring template feature deferred to PR-5 (Favorites)
@@ -106,6 +107,7 @@ const emptyForm = {
   branchId: '', category: '',
   description: '', amount: '', vatAmount: '0', withholdingTax: '0',
   expenseDate: new Date().toISOString().split('T')[0], paymentMethod: '',
+  depositAccountCode: '',
   vendorName: '', vendorTaxId: '', reference: '', taxInvoiceNo: '', note: '',
   receiptImageUrl: '',
 };
@@ -117,7 +119,9 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [form, setForm] = useState(emptyForm);
+  const { user } = useAuth();
+  const defaultCashCode = user?.defaultCashAccountCode || '11-1101';
+  const [form, setForm] = useState({ ...emptyForm, depositAccountCode: defaultCashCode });
   const [includeVat, setIncludeVat] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -135,6 +139,7 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
         withholdingTax: editingExpense.withholdingTax,
         expenseDate: editingExpense.documentDate.slice(0, 10),
         paymentMethod: editingExpense.paymentMethod || '',
+        depositAccountCode: editingExpense.depositAccountCode || defaultCashCode,
         vendorName: editingExpense.vendorName || '',
         vendorTaxId: editingExpense.vendorTaxId || '',
         reference: editingExpense.reference || '',
@@ -144,7 +149,7 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
       });
       setIncludeVat(Number(editingExpense.vatAmount) > 0);
     } else {
-      setForm({ ...emptyForm, branchId: branches[0]?.id || '' });
+      setForm({ ...emptyForm, branchId: branches[0]?.id || '', depositAccountCode: defaultCashCode });
       setIncludeVat(false);
     }
   }, [editingExpense, branches]);
@@ -206,8 +211,7 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
         vatAmount,
         withholdingTax,
         paymentMethod: form.paymentMethod || undefined,
-        // PR-1: assume default cash account; UI selector lands in PR-3
-        depositAccountCode: form.paymentMethod ? '11-1101' : undefined,
+        depositAccountCode: form.paymentMethod ? form.depositAccountCode : undefined,
         vendorName: form.vendorName || undefined,
         vendorTaxId: form.vendorTaxId || undefined,
         taxInvoiceNo: form.taxInvoiceNo || undefined,
@@ -387,6 +391,17 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
                 <input type="text" value={form.taxInvoiceNo} onChange={(e) => setForm({ ...form, taxInvoiceNo: e.target.value })} className={inputClass} />
               </div>
             </div>
+            {form.paymentMethod && (
+              <div className="grid grid-cols-3 gap-4 mt-4">
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1.5">บัญชีรับเงิน <span className="text-destructive">*</span></label>
+                  <CashAccountSelect
+                    value={form.depositAccountCode}
+                    onChange={(code) => setForm({ ...form, depositAccountCode: code })}
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Section: แนบไฟล์ */}

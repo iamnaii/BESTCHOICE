@@ -8,6 +8,7 @@ import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { Button } from '@/components/ui/button';
 import { CashAccountSelect } from '@/components/CashAccountSelect';
 import { formatNumberDecimal } from '@/utils/formatters';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface PayrollLine {
   id: string; // local UUID for keying
@@ -34,12 +35,15 @@ interface Props {
 
 export function PayrollForm({ onClose, onSaved }: Props) {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   // Default = current Buddhist year + month
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear() + 543);
   const [month, setMonth] = useState(today.getMonth() + 1);
   const [documentDate, setDocumentDate] = useState(today.toISOString().slice(0, 10));
-  const [depositAccountCode, setDepositAccountCode] = useState('11-1101');
+  const [depositAccountCode, setDepositAccountCode] = useState(
+    user?.defaultCashAccountCode || '11-1101',
+  );
   const [paymentMethod, setPaymentMethod] = useState('BANK_TRANSFER');
   const [note, setNote] = useState('');
   const [lines, setLines] = useState<PayrollLine[]>([newLine()]);

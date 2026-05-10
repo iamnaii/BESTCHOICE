@@ -51,6 +51,7 @@ describe('Vendor Settlement lifecycle (integration)', () => {
       cn,
       payroll,
       settlement,
+      journal,
     );
   }
 

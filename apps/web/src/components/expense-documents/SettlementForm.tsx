@@ -8,6 +8,7 @@ import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { Button } from '@/components/ui/button';
 import { CashAccountSelect } from '@/components/CashAccountSelect';
 import { formatNumberDecimal } from '@/utils/formatters';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface AccrualDoc {
   id: string;
@@ -32,9 +33,12 @@ interface Props {
 
 export function SettlementForm({ onClose, onSaved }: Props) {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const today = new Date();
   const [documentDate, setDocumentDate] = useState(today.toISOString().slice(0, 10));
-  const [depositAccountCode, setDepositAccountCode] = useState('11-1101');
+  const [depositAccountCode, setDepositAccountCode] = useState(
+    user?.defaultCashAccountCode || '11-1101',
+  );
   const [paymentMethod, setPaymentMethod] = useState('BANK_TRANSFER');
   const [vendorName, setVendorName] = useState('');
   const [whtAmount, setWhtAmount] = useState('0');

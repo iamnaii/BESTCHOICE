@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { Prisma, DocumentStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { JournalAutoService } from '../journal/journal-auto.service';
 import { DocNumberService } from './services/doc-number.service';
 import { StatusTransitionService } from './services/status-transition.service';
 import { ExpenseSameDayTemplate } from '../journal/cpa-templates/expense-same-day.template';
@@ -35,6 +36,7 @@ export class ExpenseDocumentsService {
     private readonly creditNoteTemplate: CreditNoteTemplate,
     private readonly payrollTemplate: PayrollTemplate,
     private readonly settlementTemplate: VendorSettlementTemplate,
+    private readonly journal: JournalAutoService,
   ) {}
 
   // ─── Create ──────────────────────────────────────────────────────────
@@ -715,9 +717,14 @@ export class ExpenseDocumentsService {
   }
 
   // ─── Void (any non-VOIDED → VOIDED) ──────────────────────────────────
+  // Posts a reversal JE (flipped Dr/Cr) when the doc had a journal entry,
+  // and for VENDOR_SETTLEMENT also reverts each cleared EX back to ACCRUAL.
   async voidDocument(id: string, _userId: string) {
     return this.prisma.$transaction(async (tx) => {
-      const doc = await tx.expenseDocument.findUniqueOrThrow({ where: { id } });
+      const doc = await tx.expenseDocument.findUniqueOrThrow({
+        where: { id },
+        include: { settlement: { include: { settlementLines: true } } },
+      });
 
       const pendingCn = await tx.expenseDocument.count({
         where: {
@@ -733,10 +740,48 @@ export class ExpenseDocumentsService {
 
       this.transition.assertCanVoid({ from: doc.status });
 
-      // Reverse JE if doc was POSTED/ACCRUAL — full Dr↔Cr swap is deferred.
-      // PR-1 just flips status to VOIDED. Followup work in journal helper.
+      // Post reversal JE (flipped Dr/Cr) if doc had one. The original JE stays
+      // intact; the reversal lives as a separate POSTED entry tagged via metadata.
       if (doc.journalEntryId) {
-        this.logger.warn(`Voiding doc ${id} with posted JE — reverse JE TODO in journal helper`);
+        const original = await tx.journalEntry.findUniqueOrThrow({
+          where: { id: doc.journalEntryId },
+          include: { lines: true },
+        });
+        await this.journal.createAndPost(
+          {
+            description: `กลับรายการ ${doc.number}`,
+            reference: doc.id,
+            metadata: {
+              tag: 'EXPENSE_VOID_REVERSAL',
+              documentId: doc.id,
+              documentNumber: doc.number,
+              documentType: doc.documentType,
+              originalJournalEntryId: original.id,
+              flow: `expense-${doc.documentType.toLowerCase()}-void`,
+            },
+            postedAt: new Date(),
+            companyId: original.companyId,
+            lines: original.lines.map((l) => ({
+              accountCode: l.accountCode,
+              dr: new Prisma.Decimal(l.credit.toString()),
+              cr: new Prisma.Decimal(l.debit.toString()),
+              description: l.description ? `[กลับรายการ] ${l.description}` : '[กลับรายการ]',
+            })),
+          },
+          tx,
+        );
+      }
+
+      // VENDOR_SETTLEMENT side-effect: revert each cleared EX back to ACCRUAL.
+      // The SE was the only thing that flipped them to POSTED + paidAt; voiding
+      // the SE must undo that, otherwise the EXs stay POSTED with no payment.
+      if (doc.documentType === 'VENDOR_SETTLEMENT' && doc.settlement) {
+        for (const line of doc.settlement.settlementLines) {
+          await tx.expenseDocument.update({
+            where: { id: line.clearedDocumentId },
+            data: { status: 'ACCRUAL', paidAt: null },
+          });
+        }
       }
 
       return tx.expenseDocument.update({

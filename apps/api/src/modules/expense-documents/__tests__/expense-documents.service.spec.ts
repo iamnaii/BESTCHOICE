@@ -58,6 +58,7 @@ describe('ExpenseDocumentsService', () => {
       creditNote,
       payroll,
       settlement,
+      { createAndPost: jest.fn() } as never,
     );
   });
 
@@ -347,7 +348,7 @@ describe('ExpenseDocumentsService', () => {
   describe('voidDocument', () => {
     it('flips status to VOIDED for non-VOIDED doc', async () => {
       prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
-        id: 'doc-1', status: 'POSTED', journalEntryId: null,
+        id: 'doc-1', status: 'POSTED', journalEntryId: null, documentType: 'EXPENSE',
       });
       await service.voidDocument('doc-1', 'user-1');
       expect(prisma.expenseDocument.update).toHaveBeenCalledWith(
@@ -356,10 +357,80 @@ describe('ExpenseDocumentsService', () => {
     });
     it('rejects void when transition guard throws (already VOIDED)', async () => {
       prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
-        id: 'doc-1', status: 'VOIDED', journalEntryId: null,
+        id: 'doc-1', status: 'VOIDED', journalEntryId: null, documentType: 'EXPENSE',
       });
       transition.assertCanVoid.mockImplementation(() => { throw new BadRequestException('already void'); });
       await expect(service.voidDocument('doc-1', 'user-1')).rejects.toThrow(BadRequestException);
+    });
+    it('posts a reversal JE (flipped Dr/Cr) when doc had a journalEntryId', async () => {
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-1',
+        number: 'EX-20260510-0001',
+        status: 'POSTED',
+        documentType: 'EXPENSE',
+        journalEntryId: 'je-1',
+      });
+      prisma.journalEntry = {
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          id: 'je-1',
+          companyId: 'shop-co',
+          lines: [
+            { accountCode: '53-1302', debit: '1000', credit: '0', description: 'expense' },
+            { accountCode: '11-1101', debit: '0', credit: '1000', description: 'cash' },
+          ],
+        }),
+      };
+      const journalMock = { createAndPost: jest.fn().mockResolvedValue({ id: 'je-r1', entryNumber: 'JE-202605-00002' }) };
+      const svc = new ExpenseDocumentsService(
+        prisma, docNumber, transition, sameDay, accrual, creditNote, payroll, settlement,
+        journalMock as never,
+      );
+      await svc.voidDocument('doc-1', 'user-1');
+      expect(journalMock.createAndPost).toHaveBeenCalledTimes(1);
+      const call = journalMock.createAndPost.mock.calls[0][0];
+      // Lines flipped
+      expect(call.lines[0]).toMatchObject({ accountCode: '53-1302' });
+      expect(call.lines[0].dr.toString()).toBe('0');
+      expect(call.lines[0].cr.toString()).toBe('1000');
+      expect(call.lines[1]).toMatchObject({ accountCode: '11-1101' });
+      expect(call.lines[1].dr.toString()).toBe('1000');
+      expect(call.lines[1].cr.toString()).toBe('0');
+      expect(call.metadata).toMatchObject({ tag: 'EXPENSE_VOID_REVERSAL', originalJournalEntryId: 'je-1' });
+    });
+    it('reverts cleared EXs back to ACCRUAL when voiding a VENDOR_SETTLEMENT', async () => {
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'se-1',
+        number: 'SE-20260510-0001',
+        status: 'POSTED',
+        documentType: 'VENDOR_SETTLEMENT',
+        journalEntryId: 'je-se-1',
+        settlement: {
+          settlementLines: [
+            { clearedDocumentId: 'ex-a' },
+            { clearedDocumentId: 'ex-b' },
+          ],
+        },
+      });
+      prisma.journalEntry = {
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          id: 'je-se-1', companyId: 'shop-co', lines: [
+            { accountCode: '21-1104', debit: '500', credit: '0', description: 'AP' },
+            { accountCode: '11-1201', debit: '0', credit: '500', description: 'bank' },
+          ],
+        }),
+      };
+      const journalMock = { createAndPost: jest.fn().mockResolvedValue({ id: 'je-r2', entryNumber: 'JE-202605-00003' }) };
+      const svc = new ExpenseDocumentsService(
+        prisma, docNumber, transition, sameDay, accrual, creditNote, payroll, settlement,
+        journalMock as never,
+      );
+      await svc.voidDocument('se-1', 'user-1');
+      // Both cleared EXs reverted
+      const updateCalls = prisma.expenseDocument.update.mock.calls;
+      const exA = updateCalls.find((c: unknown[]) => (c[0] as { where: { id: string } }).where.id === 'ex-a');
+      const exB = updateCalls.find((c: unknown[]) => (c[0] as { where: { id: string } }).where.id === 'ex-b');
+      expect(exA?.[0]).toMatchObject({ data: { status: 'ACCRUAL', paidAt: null } });
+      expect(exB?.[0]).toMatchObject({ data: { status: 'ACCRUAL', paidAt: null } });
     });
   });
 });

@@ -51,6 +51,7 @@ describe('Payroll lifecycle (integration)', () => {
       cn,
       payroll,
       settlement,
+      journal,
     );
   }
 

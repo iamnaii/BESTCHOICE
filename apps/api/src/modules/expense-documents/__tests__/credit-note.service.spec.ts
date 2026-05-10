@@ -1,0 +1,165 @@
+import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { Decimal } from '@prisma/client/runtime/library';
+import { ExpenseDocumentsService } from '../expense-documents.service';
+
+describe('ExpenseDocumentsService.createCreditNote', () => {
+  let service: ExpenseDocumentsService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let prisma: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let docNumber: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let transition: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let sameDay: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let accrual: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let creditNote: any;
+
+  const ORIG_ID = '00000000-0000-4000-8000-000000000001';
+
+  beforeEach(() => {
+    prisma = {
+      $transaction: jest.fn(async (cb: any) => cb(prisma)),
+      expenseDocument: {
+        create: jest.fn().mockResolvedValue({ id: 'cn-1', number: 'CN-20260510-0001' }),
+        findUniqueOrThrow: jest.fn(),
+        aggregate: jest.fn(),
+      },
+    };
+    docNumber = { next: jest.fn().mockResolvedValue('CN-20260510-0001') };
+    transition = { assertCanPost: jest.fn(), assertCanVoid: jest.fn(), assertCanEdit: jest.fn(), resolveTargetStatus: jest.fn() };
+    sameDay = { execute: jest.fn() };
+    accrual = { execute: jest.fn() };
+    creditNote = { execute: jest.fn() };
+    service = new ExpenseDocumentsService(prisma, docNumber, transition, sameDay, accrual, creditNote);
+  });
+
+  it('rejects when original not found', async () => {
+    prisma.expenseDocument.findUniqueOrThrow.mockRejectedValue(new Error('not found'));
+    await expect(service.createCreditNote({
+      branchId: 'b1',
+      documentDate: '2026-05-10',
+      originalDocumentId: ORIG_ID,
+      reason: 'partial',
+      subtotal: 100,
+    } as never, 'user-1')).rejects.toThrow();
+  });
+
+  it('rejects when original is different branch', async () => {
+    prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+      id: ORIG_ID,
+      branchId: 'b2',
+      documentType: 'EXPENSE',
+      status: 'POSTED',
+      totalAmount: new Decimal('1000.00'),
+      expenseDetail: { category: '53-1302' },
+    });
+    await expect(service.createCreditNote({
+      branchId: 'b1',
+      documentDate: '2026-05-10',
+      originalDocumentId: ORIG_ID,
+      reason: 'partial',
+      subtotal: 100,
+    } as never, 'user-1')).rejects.toThrow(BadRequestException);
+  });
+
+  it('rejects when original is not EXPENSE type', async () => {
+    prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+      id: ORIG_ID,
+      branchId: 'b1',
+      documentType: 'PAYROLL',
+      status: 'POSTED',
+      totalAmount: new Decimal('1000.00'),
+      expenseDetail: null,
+    });
+    await expect(service.createCreditNote({
+      branchId: 'b1',
+      documentDate: '2026-05-10',
+      originalDocumentId: ORIG_ID,
+      reason: 'r',
+      subtotal: 100,
+    } as never, 'user-1')).rejects.toThrow(BadRequestException);
+  });
+
+  it('rejects when original is DRAFT or VOIDED', async () => {
+    for (const status of ['DRAFT', 'VOIDED']) {
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: ORIG_ID,
+        branchId: 'b1',
+        documentType: 'EXPENSE',
+        status,
+        totalAmount: new Decimal('1000.00'),
+        expenseDetail: { category: '53-1302' },
+      });
+      await expect(service.createCreditNote({
+        branchId: 'b1',
+        documentDate: '2026-05-10',
+        originalDocumentId: ORIG_ID,
+        reason: 'r',
+        subtotal: 100,
+      } as never, 'user-1')).rejects.toThrow(BadRequestException);
+    }
+  });
+
+  it('rejects when subtotal+vat > original.totalAmount minus prior CNs', async () => {
+    prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+      id: ORIG_ID,
+      branchId: 'b1',
+      documentType: 'EXPENSE',
+      status: 'POSTED',
+      totalAmount: new Decimal('1000.00'),
+      expenseDetail: { category: '53-1302' },
+    });
+    // Prior CNs total 600
+    prisma.expenseDocument.aggregate.mockResolvedValue({ _sum: { totalAmount: new Decimal('600.00') } });
+    // Cap = 1000 - 600 = 400; we ask for 500 → reject
+    await expect(service.createCreditNote({
+      branchId: 'b1',
+      documentDate: '2026-05-10',
+      originalDocumentId: ORIG_ID,
+      reason: 'r',
+      subtotal: 500,
+    } as never, 'user-1')).rejects.toThrow(/เกินยอดที่ลดได้/);
+  });
+
+  it('happy path creates CN with originalDocumentId + auto category mirror', async () => {
+    prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+      id: ORIG_ID,
+      branchId: 'b1',
+      documentType: 'EXPENSE',
+      status: 'POSTED',
+      totalAmount: new Decimal('1000.00'),
+      expenseDetail: { category: '53-1302' },
+    });
+    prisma.expenseDocument.aggregate.mockResolvedValue({ _sum: { totalAmount: null } });
+
+    await service.createCreditNote({
+      branchId: 'b1',
+      documentDate: '2026-05-10',
+      originalDocumentId: ORIG_ID,
+      reason: 'partial return',
+      subtotal: 200,
+      vatAmount: 14,
+    } as never, 'user-1');
+
+    expect(prisma.expenseDocument.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          number: 'CN-20260510-0001',
+          documentType: 'CREDIT_NOTE',
+          createdById: 'user-1',
+          status: 'DRAFT',
+          creditNote: {
+            create: expect.objectContaining({
+              originalDocumentId: ORIG_ID,
+              reason: 'partial return',
+              category: '53-1302',
+            }),
+          },
+        }),
+      }),
+    );
+  });
+});

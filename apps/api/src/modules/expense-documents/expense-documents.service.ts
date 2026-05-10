@@ -10,9 +10,11 @@ import { DocNumberService } from './services/doc-number.service';
 import { StatusTransitionService } from './services/status-transition.service';
 import { ExpenseSameDayTemplate } from '../journal/cpa-templates/expense-same-day.template';
 import { ExpenseAccrualTemplate } from '../journal/cpa-templates/expense-accrual.template';
+import { CreditNoteTemplate } from '../journal/cpa-templates/credit-note.template';
 import { CreateExpenseDocumentDto } from './dto/create.dto';
 import { UpdateExpenseDocumentDto } from './dto/update.dto';
 import { ListExpenseDocumentsQueryDto } from './dto/list-query.dto';
+import { CreateCreditNoteDto } from './dto/create-credit-note.dto';
 import { hasCrossBranchAccess } from '../auth/branch-access.util';
 
 @Injectable()
@@ -25,6 +27,7 @@ export class ExpenseDocumentsService {
     private readonly transition: StatusTransitionService,
     private readonly sameDayTemplate: ExpenseSameDayTemplate,
     private readonly accrualTemplate: ExpenseAccrualTemplate,
+    private readonly creditNoteTemplate: CreditNoteTemplate,
   ) {}
 
   // ─── Create ──────────────────────────────────────────────────────────
@@ -63,6 +66,87 @@ export class ExpenseDocumentsService {
           expenseDetail: { create: { category: dto.detail.category } },
         },
         include: { expenseDetail: true },
+      });
+    });
+  }
+
+  // ─── Credit Note create (validates + auto-mirrors category) ──────────
+  async createCreditNote(dto: CreateCreditNoteDto, userId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      // Load + validate original
+      const original = await tx.expenseDocument.findUniqueOrThrow({
+        where: { id: dto.originalDocumentId },
+        include: { expenseDetail: true },
+      });
+      if (original.branchId !== dto.branchId) {
+        throw new BadRequestException('ใบลดหนี้ต้องอยู่สาขาเดียวกับเอกสารต้นฉบับ');
+      }
+      if (original.documentType !== 'EXPENSE') {
+        throw new BadRequestException('ใบลดหนี้ใช้ลดเอกสารรายจ่ายเท่านั้น');
+      }
+      if (!['ACCRUAL', 'POSTED'].includes(original.status)) {
+        throw new BadRequestException(`ไม่สามารถออกใบลดหนี้บนเอกสารสถานะ ${original.status}`);
+      }
+
+      // Cumulative cap check
+      const priorAgg = await tx.expenseDocument.aggregate({
+        where: {
+          documentType: 'CREDIT_NOTE',
+          status: { not: 'VOIDED' },
+          deletedAt: null,
+          creditNote: { originalDocumentId: dto.originalDocumentId },
+        },
+        _sum: { totalAmount: true },
+      });
+      const priorTotal = new Prisma.Decimal(priorAgg._sum.totalAmount ?? 0);
+
+      const subtotal = new Prisma.Decimal(dto.subtotal);
+      const vat = new Prisma.Decimal(dto.vatAmount ?? 0);
+      const total = subtotal.plus(vat);
+
+      const cap = new Prisma.Decimal(original.totalAmount.toString()).minus(priorTotal);
+      if (total.gt(cap)) {
+        throw new BadRequestException(
+          `จำนวนเงินเกินยอดที่ลดได้ (เหลือ ${cap.toFixed(2)} ฿)`,
+        );
+      }
+
+      // Mirror category from original
+      const category = original.expenseDetail?.category;
+      if (!category) {
+        throw new BadRequestException('เอกสารต้นฉบับไม่มีหมวดบัญชี (data corruption)');
+      }
+
+      const documentDate = new Date(dto.documentDate);
+      const number = await this.docNumber.next(tx, 'CREDIT_NOTE', documentDate);
+
+      return tx.expenseDocument.create({
+        data: {
+          number,
+          documentType: 'CREDIT_NOTE',
+          branchId: dto.branchId,
+          documentDate,
+          description: dto.description ?? null,
+          subtotal,
+          vatAmount: vat,
+          withholdingTax: new Prisma.Decimal(0),
+          totalAmount: total,
+          netPayment: dto.depositAccountCode ? total : null,
+          depositAccountCode: dto.depositAccountCode ?? null,
+          status: 'DRAFT',
+          reference: dto.reference ?? null,
+          receiptImageUrl: dto.receiptImageUrl ?? null,
+          note: dto.note ?? null,
+          createdById: userId,
+          creditNote: {
+            create: {
+              originalDocumentId: dto.originalDocumentId,
+              reason: dto.reason,
+              category,
+            },
+          },
+        },
+        include: { creditNote: true },
       });
     });
   }
@@ -277,11 +361,14 @@ export class ExpenseDocumentsService {
         hasPaymentMethod: !!doc.paymentMethod && !!doc.depositAccountCode,
       });
 
-      // EXPENSE only in PR-1
-      if (doc.documentType !== 'EXPENSE') {
-        throw new BadRequestException(`PR-1 รองรับเฉพาะ EXPENSE — type ${doc.documentType} จะมาใน PR-2..4`);
+      // EXPENSE + CREDIT_NOTE supported (PR-3..4: PAYROLL, ASSET to follow)
+      if (!['EXPENSE', 'CREDIT_NOTE'].includes(doc.documentType)) {
+        throw new BadRequestException(`type ${doc.documentType} จะมาใน PR-3..4`);
       }
 
+      if (doc.documentType === 'CREDIT_NOTE') {
+        return this.creditNoteTemplate.execute(id, tx);
+      }
       const target = this.transition.resolveTargetStatus(
         doc.documentType,
         !!doc.paymentMethod && !!doc.depositAccountCode,

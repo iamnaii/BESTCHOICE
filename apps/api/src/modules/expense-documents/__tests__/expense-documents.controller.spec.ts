@@ -22,6 +22,7 @@ describe('ExpenseDocumentsController', () => {
       voidDocument: jest.fn().mockResolvedValue({ id: 'doc-1' }),
       softDelete: jest.fn().mockResolvedValue({ id: 'doc-1' }),
       createCreditNote: jest.fn().mockResolvedValue({ id: 'cn-1', number: 'CN-20260510-0001' }),
+      createPayroll: jest.fn().mockResolvedValue({ id: 'pr-1', number: 'PR-20260510-0001' }),
     };
     const moduleRef = await Test.createTestingModule({
       controllers: [ExpenseDocumentsController],
@@ -90,5 +91,10 @@ describe('ExpenseDocumentsController', () => {
   it('POST /credit-note calls service.createCreditNote with userId', async () => {
     await controller.createCreditNote({ originalDocumentId: 'orig-1' } as never, { id: 'user-1' } as never);
     expect(service.createCreditNote).toHaveBeenCalledWith({ originalDocumentId: 'orig-1' }, 'user-1');
+  });
+
+  it('POST /payroll calls service.createPayroll with userId', async () => {
+    await controller.createPayroll({ payrollPeriod: '2569-05' } as never, { id: 'user-1' } as never);
+    expect(service.createPayroll).toHaveBeenCalledWith({ payrollPeriod: '2569-05' }, 'user-1');
   });
 });

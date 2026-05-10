@@ -3517,6 +3517,7 @@ model ExpenseDocument {
   depositAccountCode  String?        @map("deposit_account_code")
 
   expenseDetail   ExpenseDetail?
+  creditNote      CreditNoteDetail?
 
   journalEntryId  String?  @unique @map("journal_entry_id")
 
@@ -3548,6 +3549,17 @@ model ExpenseDetail {
   category   String
 
   @@map("expense_details")
+}
+
+model CreditNoteDetail {
+  documentId         String          @id @map("document_id")
+  document           ExpenseDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  originalDocumentId String          @map("original_document_id")
+  reason             String
+  category           String
+
+  @@index([originalDocumentId])
+  @@map("credit_note_details")
 }
 
 // ============================================================

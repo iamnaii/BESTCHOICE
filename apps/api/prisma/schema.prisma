@@ -3518,6 +3518,7 @@ model ExpenseDocument {
 
   expenseDetail       ExpenseDetail?
   creditNote          CreditNoteDetail?  @relation("CreditNoteDocument")
+  payroll             PayrollDetail?
   creditNotesAgainst  CreditNoteDetail[] @relation("CreditNoteOriginal")
 
   journalEntryId  String?  @unique @map("journal_entry_id")
@@ -3562,6 +3563,30 @@ model CreditNoteDetail {
 
   @@index([originalDocumentId])
   @@map("credit_note_details")
+}
+
+model PayrollDetail {
+  documentId    String          @id @map("document_id")
+  document      ExpenseDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  payrollPeriod String          @map("payroll_period")
+  lines         PayrollLine[]
+
+  @@map("payroll_details")
+}
+
+model PayrollLine {
+  id            String        @id @default(uuid())
+  payrollId     String        @map("payroll_id")
+  payroll       PayrollDetail @relation(fields: [payrollId], references: [documentId], onDelete: Cascade)
+  employeeName  String        @map("employee_name")
+  employeeTaxId String?       @map("employee_tax_id")
+  baseSalary    Decimal       @db.Decimal(12, 2) @map("base_salary")
+  ssoEmployee   Decimal       @default(0) @db.Decimal(12, 2) @map("sso_employee")
+  whtAmount     Decimal       @default(0) @db.Decimal(12, 2) @map("wht_amount")
+  netPaid       Decimal       @db.Decimal(12, 2) @map("net_paid")
+
+  @@index([payrollId])
+  @@map("payroll_lines")
 }
 
 // ============================================================

@@ -529,6 +529,7 @@ model Branch {
   inviteTokens             InviteToken[]
   financeReceivables       FinanceReceivable[]
   expenseDocuments         ExpenseDocument[]
+  expenseTemplates         ExpenseTemplate[]
   interCompanyTransactions InterCompanyTransaction[]
   fixedAssets              FixedAsset[]
   tradeIns                 TradeIn[]
@@ -613,6 +614,7 @@ model User {
   financeRecorded             FinanceReceivable[]       @relation("FinanceRecordedBy")
   expenseDocumentsCreated     ExpenseDocument[]         @relation("ExpenseDocumentCreator")
   expenseDocumentsApproved    ExpenseDocument[]         @relation("ExpenseDocumentApprover")
+  expenseTemplates            ExpenseTemplate[]         @relation("ExpenseTemplateCreator")
   journalEntriesCreated       JournalEntry[]            @relation("JournalCreatedBy")
   journalEntriesPosted        JournalEntry[]            @relation("JournalPostedBy")
   taxReportsFiled             TaxReport[]               @relation("TaxReportFiledBy")
@@ -3610,6 +3612,27 @@ model SettlementLine {
   @@index([settlementId])
   @@index([clearedDocumentId])
   @@map("settlement_lines")
+}
+
+model ExpenseTemplate {
+  id              String   @id @default(uuid())
+  name            String
+  documentType    DocumentType    @map("document_type")
+  branchId        String          @map("branch_id")
+  prefilledData   Json            @map("prefilled_data")
+  isRecurring     Boolean         @default(false) @map("is_recurring")
+  recurringDay    Int?            @map("recurring_day")
+  createdById     String          @map("created_by_id")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+  deletedAt       DateTime?       @map("deleted_at")
+
+  branch          Branch          @relation(fields: [branchId], references: [id])
+  createdBy       User            @relation("ExpenseTemplateCreator", fields: [createdById], references: [id])
+
+  @@index([branchId, deletedAt])
+  @@index([isRecurring, recurringDay])
+  @@map("expense_templates")
 }
 
 // ============================================================

@@ -66,4 +66,8 @@ export class CreateSettlementDto {
   @IsString()
   @IsOptional()
   note?: string;
+
+  @IsString()
+  @IsOptional()
+  fromTemplateId?: string;
 }

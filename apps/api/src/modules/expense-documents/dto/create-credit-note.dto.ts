@@ -54,4 +54,8 @@ export class CreateCreditNoteDto {
   @IsString()
   @IsOptional()
   note?: string;
+
+  @IsString()
+  @IsOptional()
+  fromTemplateId?: string;
 }

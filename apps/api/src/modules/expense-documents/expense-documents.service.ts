@@ -69,6 +69,7 @@ export class ExpenseDocumentsService {
           reference: dto.reference ?? null,
           receiptImageUrl: dto.receiptImageUrl ?? null,
           note: dto.note ?? null,
+          fromTemplateId: dto.fromTemplateId ?? null,
           createdById: userId,
           expenseDetail: { create: { category: dto.detail.category } },
         },
@@ -158,6 +159,7 @@ export class ExpenseDocumentsService {
           reference: dto.reference ?? null,
           receiptImageUrl: dto.receiptImageUrl ?? null,
           note: dto.note ?? null,
+          fromTemplateId: dto.fromTemplateId ?? null,
           createdById: userId,
           creditNote: {
             create: {
@@ -241,6 +243,7 @@ export class ExpenseDocumentsService {
           status: 'DRAFT',
           reference: dto.reference ?? null,
           note: dto.note ?? null,
+          fromTemplateId: dto.fromTemplateId ?? null,
           createdById: user.id,
           payroll: {
             create: {
@@ -360,6 +363,7 @@ export class ExpenseDocumentsService {
           status: 'DRAFT',
           reference: dto.reference ?? null,
           note: dto.note ?? null,
+          fromTemplateId: dto.fromTemplateId ?? null,
           createdById: user.id,
           settlement: {
             create: {

@@ -74,4 +74,8 @@ export class CreatePayrollDto {
   @IsString()
   @IsOptional()
   note?: string;
+
+  @IsString()
+  @IsOptional()
+  fromTemplateId?: string;
 }

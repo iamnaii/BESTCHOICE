@@ -83,6 +83,10 @@ export class CreateExpenseDocumentDto {
   @IsOptional()
   note?: string;
 
+  @IsString()
+  @IsOptional()
+  fromTemplateId?: string;
+
   @ValidateNested()
   @Type(() => ExpenseDetailInput)
   detail!: ExpenseDetailInput;

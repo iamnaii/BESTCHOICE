@@ -4,13 +4,20 @@ import { JournalModule } from '../journal/journal.module';
 import { AuthModule } from '../auth/auth.module';
 import { ExpenseDocumentsController } from './expense-documents.controller';
 import { ExpenseDocumentsService } from './expense-documents.service';
+import { ExpenseTemplatesController } from './expense-templates.controller';
+import { ExpenseTemplatesService } from './expense-templates.service';
 import { DocNumberService } from './services/doc-number.service';
 import { StatusTransitionService } from './services/status-transition.service';
 
 @Module({
   imports: [PrismaModule, JournalModule, AuthModule],
-  controllers: [ExpenseDocumentsController],
-  providers: [ExpenseDocumentsService, DocNumberService, StatusTransitionService],
-  exports: [ExpenseDocumentsService],
+  controllers: [ExpenseDocumentsController, ExpenseTemplatesController],
+  providers: [
+    ExpenseDocumentsService,
+    ExpenseTemplatesService,
+    DocNumberService,
+    StatusTransitionService,
+  ],
+  exports: [ExpenseDocumentsService, ExpenseTemplatesService],
 })
 export class ExpenseDocumentsModule {}

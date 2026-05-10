@@ -49,7 +49,7 @@ export class ExpenseSameDayTemplate {
     const exec = async (tx: Prisma.TransactionClient): Promise<{ entryNo: string }> => {
       const doc = await tx.expenseDocument.findUniqueOrThrow({
         where: { id: documentId },
-        include: { expenseDetail: true },
+        include: { expenseDetail: { include: { lines: { orderBy: { lineNo: 'asc' } } } } },
       });
 
       // Idempotency — journalEntryId stores JournalEntry.id (UUID).
@@ -69,8 +69,9 @@ export class ExpenseSameDayTemplate {
       const total = new Decimal(doc.totalAmount.toString());
       const cashAmount = total.minus(wht);
 
-      if (!doc.expenseDetail?.category) {
-        throw new Error(`ExpenseDocument ${documentId} missing expenseDetail.category`);
+      const primaryCategory = doc.expenseDetail?.lines?.[0]?.category;
+      if (!primaryCategory) {
+        throw new Error(`ExpenseDocument ${documentId} missing expenseDetail lines/category`);
       }
       if (!doc.depositAccountCode) {
         throw new Error(`ExpenseDocument ${documentId} missing depositAccountCode`);
@@ -78,7 +79,7 @@ export class ExpenseSameDayTemplate {
 
       const lines: JeLineInput[] = [
         {
-          accountCode: doc.expenseDetail.category,
+          accountCode: primaryCategory,
           dr: subtotal,
           cr: zero,
           description: `ค่าใช้จ่าย — ${doc.number}`,

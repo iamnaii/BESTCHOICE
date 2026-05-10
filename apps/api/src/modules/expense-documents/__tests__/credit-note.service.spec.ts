@@ -1,6 +1,7 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { ExpenseDocumentsService } from '../expense-documents.service';
+import { LineAggregatorService } from '../services/line-aggregator.service';
 
 describe('ExpenseDocumentsService.createCreditNote', () => {
   let service: ExpenseDocumentsService;
@@ -50,6 +51,7 @@ describe('ExpenseDocumentsService.createCreditNote', () => {
       payroll,
       settlement,
       { createAndPost: jest.fn() } as never,
+      new LineAggregatorService(),
     );
   });
 
@@ -71,7 +73,7 @@ describe('ExpenseDocumentsService.createCreditNote', () => {
       documentType: 'EXPENSE',
       status: 'POSTED',
       totalAmount: new Decimal('1000.00'),
-      expenseDetail: { category: '53-1302' },
+      expenseDetail: { priceType: 'EXCLUSIVE', lines: [{ lineNo: 1, category: '53-1302' }] },
     });
     await expect(service.createCreditNote({
       branchId: 'b1',
@@ -108,7 +110,7 @@ describe('ExpenseDocumentsService.createCreditNote', () => {
         documentType: 'EXPENSE',
         status,
         totalAmount: new Decimal('1000.00'),
-        expenseDetail: { category: '53-1302' },
+        expenseDetail: { priceType: 'EXCLUSIVE', lines: [{ lineNo: 1, category: '53-1302' }] },
       });
       await expect(service.createCreditNote({
         branchId: 'b1',
@@ -128,7 +130,7 @@ describe('ExpenseDocumentsService.createCreditNote', () => {
       status: 'POSTED',
       totalAmount: new Decimal('1000.00'),
       withholdingTax: new Decimal('30.00'),
-      expenseDetail: { category: '53-1302' },
+      expenseDetail: { priceType: 'EXCLUSIVE', lines: [{ lineNo: 1, category: '53-1302' }] },
     });
     await expect(service.createCreditNote({
       branchId: 'b1',
@@ -147,7 +149,7 @@ describe('ExpenseDocumentsService.createCreditNote', () => {
       status: 'POSTED',
       totalAmount: new Decimal('1000.00'),
       withholdingTax: new Decimal('0'),
-      expenseDetail: { category: '53-1302' },
+      expenseDetail: { priceType: 'EXCLUSIVE', lines: [{ lineNo: 1, category: '53-1302' }] },
     });
     // Prior CNs total 600
     prisma.expenseDocument.aggregate.mockResolvedValue({ _sum: { totalAmount: new Decimal('600.00') } });
@@ -169,7 +171,7 @@ describe('ExpenseDocumentsService.createCreditNote', () => {
       status: 'POSTED',
       totalAmount: new Decimal('1000.00'),
       withholdingTax: new Decimal('0'),
-      expenseDetail: { category: '53-1302' },
+      expenseDetail: { priceType: 'EXCLUSIVE', lines: [{ lineNo: 1, category: '53-1302' }] },
     });
     prisma.expenseDocument.aggregate.mockResolvedValue({ _sum: { totalAmount: null } });
 

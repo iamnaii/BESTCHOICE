@@ -22,6 +22,7 @@ import { CreateCreditNoteDto } from './dto/create-credit-note.dto';
 import { CreatePayrollDto } from './dto/create-payroll.dto';
 import { CreateSettlementDto } from './dto/create-settlement.dto';
 import { hasCrossBranchAccess } from '../auth/branch-access.util';
+import { LineAggregatorService } from './services/line-aggregator.service';
 
 /**
  * Returns a Date representing 12:00 noon Asia/Bangkok on the same calendar day
@@ -54,18 +55,37 @@ export class ExpenseDocumentsService {
     private readonly payrollTemplate: PayrollTemplate,
     private readonly settlementTemplate: VendorSettlementTemplate,
     private readonly journal: JournalAutoService,
+    private readonly aggregator: LineAggregatorService,
   ) {}
 
   // ─── Create ──────────────────────────────────────────────────────────
   async create(dto: CreateExpenseDocumentDto, userId: string) {
     const documentDate = new Date(dto.documentDate);
-    const subtotal = new Prisma.Decimal(dto.subtotal);
-    const vat = new Prisma.Decimal(dto.vatAmount ?? 0);
-    const wht = new Prisma.Decimal(dto.withholdingTax ?? 0);
-    const total = subtotal.plus(vat);
+    const priceType = dto.priceType ?? 'EXCLUSIVE';
+
+    // Compute per-line totals + aggregate
+    const linesPrepared = dto.lines.map((l, idx) => {
+      const out = this.aggregator.computeLine(l, priceType);
+      return { ...l, lineNo: idx + 1, ...out };
+    });
+    const totals = this.aggregator.aggregateLines(linesPrepared);
 
     return this.prisma.$transaction(async (tx) => {
+      // CoA validation — every category must exist + be type "ค่าใช้จ่าย"
+      const codes = [...new Set(linesPrepared.map((l) => l.category))];
+      const coaRows = await tx.chartOfAccount.findMany({
+        where: { code: { in: codes }, deletedAt: null },
+        select: { code: true, type: true },
+      });
+      const byCode = new Map(coaRows.map((r) => [r.code, r.type]));
+      for (const c of codes) {
+        const t = byCode.get(c);
+        if (!t) throw new BadRequestException(`หมวดบัญชี ${c} ไม่พบในผังบัญชี`);
+        if (t !== 'ค่าใช้จ่าย') throw new BadRequestException(`หมวดบัญชี ${c} ไม่ใช่ "ค่าใช้จ่าย"`);
+      }
+
       const number = await this.docNumber.next(tx, 'EXPENSE', documentDate);
+
       return tx.expenseDocument.create({
         data: {
           number,
@@ -76,12 +96,12 @@ export class ExpenseDocumentsService {
           vendorTaxId: dto.vendorTaxId ?? null,
           taxInvoiceNo: dto.taxInvoiceNo ?? null,
           description: dto.description ?? null,
-          subtotal,
-          vatAmount: vat,
-          withholdingTax: wht,
+          subtotal: totals.subtotal,
+          vatAmount: totals.vatAmount,
+          withholdingTax: totals.withholdingTax,
           whtFormType: dto.whtFormType ?? null,
-          totalAmount: total,
-          netPayment: dto.depositAccountCode ? total.minus(wht) : null,
+          totalAmount: totals.totalAmount,
+          netPayment: dto.depositAccountCode ? totals.netPayment : null,
           paymentMethod: (dto.paymentMethod as never) ?? null,
           depositAccountCode: dto.depositAccountCode ?? null,
           status: 'DRAFT',
@@ -89,10 +109,30 @@ export class ExpenseDocumentsService {
           receiptImageUrl: dto.receiptImageUrl ?? null,
           note: dto.note ?? null,
           fromTemplateId: dto.fromTemplateId ?? null,
+          approvedById: dto.approvedById ?? null,
           createdById: userId,
-          expenseDetail: { create: { category: dto.detail.category } },
+          expenseDetail: {
+            create: {
+              priceType,
+              lines: {
+                create: linesPrepared.map((l) => ({
+                  lineNo: l.lineNo,
+                  category: l.category,
+                  description: l.description ?? null,
+                  quantity: new Prisma.Decimal(l.quantity),
+                  unitPrice: new Prisma.Decimal(l.unitPrice),
+                  discount: new Prisma.Decimal(l.discount ?? 0),
+                  vatPercent: new Prisma.Decimal(l.vatPercent ?? 0),
+                  whtPercent: new Prisma.Decimal(l.whtPercent ?? 0),
+                  amountBeforeVat: l.amountBeforeVat,
+                  vatAmount: l.vatAmount,
+                  whtAmount: l.whtAmount,
+                })),
+              },
+            },
+          },
         },
-        include: { expenseDetail: true },
+        include: { expenseDetail: { include: { lines: { orderBy: { lineNo: 'asc' } } } } },
       });
     });
   }
@@ -103,7 +143,7 @@ export class ExpenseDocumentsService {
       // Load + validate original
       const original = await tx.expenseDocument.findUniqueOrThrow({
         where: { id: dto.originalDocumentId },
-        include: { expenseDetail: true },
+        include: { expenseDetail: { include: { lines: { orderBy: { lineNo: 'asc' } } } } },
       });
       if (original.deletedAt) {
         throw new NotFoundException('เอกสารต้นฉบับถูกลบแล้ว');
@@ -155,8 +195,8 @@ export class ExpenseDocumentsService {
         );
       }
 
-      // Mirror category from original
-      const category = original.expenseDetail?.category;
+      // Mirror primary category from original's first line
+      const category = original.expenseDetail?.lines?.[0]?.category;
       if (!category) {
         throw new BadRequestException('เอกสารต้นฉบับไม่มีหมวดบัญชี (data corruption)');
       }
@@ -456,9 +496,9 @@ export class ExpenseDocumentsService {
       }
     }
 
-    // Filter by ExpenseDetail.category (e.g. CoA code "53-1302")
+    // Filter by ExpenseLine.category (e.g. CoA code "53-1302")
     if (query.category) {
-      where.expenseDetail = { category: query.category };
+      where.expenseDetail = { lines: { some: { category: query.category } } };
     }
 
     if (query.search) {
@@ -477,7 +517,7 @@ export class ExpenseDocumentsService {
       this.prisma.expenseDocument.findMany({
         where,
         include: {
-          expenseDetail: true,
+          expenseDetail: { include: { lines: { orderBy: { lineNo: 'asc' } } } },
           branch: { select: { id: true, name: true } },
           createdBy: { select: { id: true, name: true } },
         },
@@ -564,7 +604,7 @@ export class ExpenseDocumentsService {
         deletedAt: null,
       },
       include: {
-        expenseDetail: true,
+        expenseDetail: { include: { lines: { orderBy: { lineNo: 'asc' }, take: 1 } } },
         creditNote: true,
         payroll: true,
         settlement: true,
@@ -602,9 +642,9 @@ export class ExpenseDocumentsService {
         byPaymentMethod[mKey] = mBucket;
       }
 
-      // By category (EXPENSE + CREDIT_NOTE — others have no category)
+      // By category — EXPENSE: primary line category; CREDIT_NOTE: creditNote.category
       const cat =
-        (d as { expenseDetail?: { category: string } | null }).expenseDetail?.category ??
+        (d as { expenseDetail?: { lines?: { category: string }[] } | null }).expenseDetail?.lines?.[0]?.category ??
         (d as { creditNote?: { category: string } | null }).creditNote?.category;
       if (cat) {
         const cBucket = byCategory[cat] ?? { count: 0, total: '0' };
@@ -673,7 +713,7 @@ export class ExpenseDocumentsService {
     const doc = await this.prisma.expenseDocument.findUniqueOrThrow({
       where: { id },
       include: {
-        expenseDetail: true,
+        expenseDetail: { include: { lines: { orderBy: { lineNo: 'asc' } } } },
         branch: { select: { id: true, name: true } },
         createdBy: { select: { id: true, name: true } },
         approvedBy: { select: { id: true, name: true } },
@@ -686,7 +726,10 @@ export class ExpenseDocumentsService {
   // ─── Update (DRAFT only) ─────────────────────────────────────────────
   async update(id: string, dto: UpdateExpenseDocumentDto, _userId: string) {
     return this.prisma.$transaction(async (tx) => {
-      const existing = await tx.expenseDocument.findUniqueOrThrow({ where: { id } });
+      const existing = await tx.expenseDocument.findUniqueOrThrow({
+        where: { id },
+        include: { expenseDetail: { include: { lines: true } } },
+      });
       if (existing.deletedAt) throw new NotFoundException('เอกสารถูกลบแล้ว');
       this.transition.assertCanEdit({ from: existing.status });
 
@@ -696,48 +739,64 @@ export class ExpenseDocumentsService {
       if (dto.vendorTaxId !== undefined) data.vendorTaxId = dto.vendorTaxId;
       if (dto.taxInvoiceNo !== undefined) data.taxInvoiceNo = dto.taxInvoiceNo;
       if (dto.description !== undefined) data.description = dto.description;
-      if (dto.subtotal !== undefined) data.subtotal = new Prisma.Decimal(dto.subtotal);
-      if (dto.vatAmount !== undefined) data.vatAmount = new Prisma.Decimal(dto.vatAmount);
-      if (dto.withholdingTax !== undefined) data.withholdingTax = new Prisma.Decimal(dto.withholdingTax);
       if (dto.whtFormType !== undefined) data.whtFormType = dto.whtFormType;
       if (dto.paymentMethod !== undefined) data.paymentMethod = dto.paymentMethod as never;
       if (dto.depositAccountCode !== undefined) data.depositAccountCode = dto.depositAccountCode;
       if (dto.reference !== undefined) data.reference = dto.reference;
       if (dto.receiptImageUrl !== undefined) data.receiptImageUrl = dto.receiptImageUrl;
       if (dto.note !== undefined) data.note = dto.note;
-      // Recalculate totalAmount + netPayment if money fields touched.
-      // netPayment is set only when there's a payment dimension (depositAccountCode).
-      if (
-        dto.subtotal !== undefined ||
-        dto.vatAmount !== undefined ||
-        dto.withholdingTax !== undefined ||
-        dto.depositAccountCode !== undefined
-      ) {
-        const subtotal = dto.subtotal !== undefined
-          ? new Prisma.Decimal(dto.subtotal)
-          : new Prisma.Decimal(existing.subtotal.toString());
-        const vat = dto.vatAmount !== undefined
-          ? new Prisma.Decimal(dto.vatAmount)
-          : new Prisma.Decimal(existing.vatAmount.toString());
-        const wht = dto.withholdingTax !== undefined
-          ? new Prisma.Decimal(dto.withholdingTax)
-          : new Prisma.Decimal(existing.withholdingTax.toString());
-        const total = subtotal.plus(vat);
-        data.totalAmount = total;
-        const hasDepositAccount = dto.depositAccountCode !== undefined
-          ? !!dto.depositAccountCode
-          : !!existing.depositAccountCode;
-        data.netPayment = hasDepositAccount ? total.minus(wht) : null;
+      if (dto.approvedById !== undefined) {
+        data.approvedBy = dto.approvedById
+          ? { connect: { id: dto.approvedById } }
+          : { disconnect: true };
       }
 
-      const updated = await tx.expenseDocument.update({ where: { id }, data });
-      if (dto.detail?.category) {
+      if (dto.lines !== undefined) {
+        const priceType = dto.priceType ?? existing.expenseDetail?.priceType ?? 'EXCLUSIVE';
+        const linesPrepared = dto.lines.map((l, idx) => {
+          const out = this.aggregator.computeLine(l, priceType as never);
+          return { ...l, lineNo: idx + 1, ...out };
+        });
+        const totals = this.aggregator.aggregateLines(linesPrepared);
+
+        data.subtotal = totals.subtotal;
+        data.vatAmount = totals.vatAmount;
+        data.withholdingTax = totals.withholdingTax;
+        data.totalAmount = totals.totalAmount;
+        data.netPayment = (dto.depositAccountCode ?? existing.depositAccountCode)
+          ? totals.netPayment
+          : null;
+
+        // Replace lines wholesale — expenseDetailId FK = documentId
+        await tx.expenseLine.deleteMany({ where: { expenseDetailId: id } });
         await tx.expenseDetail.update({
           where: { documentId: id },
-          data: { category: dto.detail.category },
+          data: {
+            priceType: priceType as string,
+            lines: {
+              create: linesPrepared.map((l) => ({
+                lineNo: l.lineNo,
+                category: l.category,
+                description: l.description ?? null,
+                quantity: new Prisma.Decimal(l.quantity),
+                unitPrice: new Prisma.Decimal(l.unitPrice),
+                discount: new Prisma.Decimal(l.discount ?? 0),
+                vatPercent: new Prisma.Decimal(l.vatPercent ?? 0),
+                whtPercent: new Prisma.Decimal(l.whtPercent ?? 0),
+                amountBeforeVat: l.amountBeforeVat,
+                vatAmount: l.vatAmount,
+                whtAmount: l.whtAmount,
+              })),
+            },
+          },
         });
       }
-      return updated;
+
+      return tx.expenseDocument.update({
+        where: { id },
+        data,
+        include: { expenseDetail: { include: { lines: { orderBy: { lineNo: 'asc' } } } } },
+      });
     });
   }
 

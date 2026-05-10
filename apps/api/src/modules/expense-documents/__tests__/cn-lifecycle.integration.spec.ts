@@ -3,6 +3,7 @@ import { PrismaClient, DocumentStatus } from '@prisma/client';
 import { ExpenseDocumentsService } from '../expense-documents.service';
 import { DocNumberService } from '../services/doc-number.service';
 import { StatusTransitionService } from '../services/status-transition.service';
+import { LineAggregatorService } from '../services/line-aggregator.service';
 import { ExpenseSameDayTemplate } from '../../journal/cpa-templates/expense-same-day.template';
 import { ExpenseAccrualTemplate } from '../../journal/cpa-templates/expense-accrual.template';
 import { CreditNoteTemplate } from '../../journal/cpa-templates/credit-note.template';
@@ -52,6 +53,7 @@ describe('Credit Note lifecycle (integration)', () => {
       payroll,
       settlement,
       journal,
+      new LineAggregatorService(),
     );
   }
 
@@ -63,9 +65,10 @@ describe('Credit Note lifecycle (integration)', () => {
         documentType: 'EXPENSE',
         branchId,
         documentDate: new Date().toISOString(),
-        subtotal: 1000,
-        vatAmount: 70,
-        detail: { category: '53-1302' },
+        priceType: 'EXCLUSIVE',
+        lines: [
+          { category: '53-1302', quantity: 1, unitPrice: 1000, vatPercent: 7, whtPercent: 0 },
+        ],
       } as never,
       userId,
     );
@@ -108,9 +111,8 @@ describe('Credit Note lifecycle (integration)', () => {
         documentType: 'EXPENSE',
         branchId,
         documentDate: new Date().toISOString(),
-        subtotal: 1000,
-        vatAmount: 0,
-        detail: { category: '53-1302' },
+        priceType: 'EXCLUSIVE',
+        lines: [{ category: '53-1302', quantity: 1, unitPrice: 1000, vatPercent: 0, whtPercent: 0 }],
       } as never,
       userId,
     );
@@ -140,7 +142,7 @@ describe('Credit Note lifecycle (integration)', () => {
   it('CN cross-branch rejected', async () => {
     const service = buildService();
     const original = await service.create(
-      { documentType: 'EXPENSE', branchId, documentDate: new Date().toISOString(), subtotal: 100, detail: { category: '53-1302' } } as never,
+      { documentType: 'EXPENSE', branchId, documentDate: new Date().toISOString(), priceType: 'EXCLUSIVE', lines: [{ category: '53-1302', quantity: 1, unitPrice: 100, vatPercent: 0, whtPercent: 0 }] } as never,
       userId,
     );
     await service.post(original.id, userId);

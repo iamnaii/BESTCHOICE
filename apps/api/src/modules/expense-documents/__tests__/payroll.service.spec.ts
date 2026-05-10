@@ -1,5 +1,6 @@
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { ExpenseDocumentsService } from '../expense-documents.service';
+import { LineAggregatorService } from '../services/line-aggregator.service';
 
 describe('ExpenseDocumentsService.createPayroll', () => {
   let service: ExpenseDocumentsService;
@@ -32,6 +33,7 @@ describe('ExpenseDocumentsService.createPayroll', () => {
       payroll,
       settlement,
       { createAndPost: jest.fn() } as never,
+      new LineAggregatorService(),
     );
   });
 

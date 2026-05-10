@@ -41,7 +41,7 @@ describe('ExpenseAccrualTemplate', () => {
       depositAccountCode: null,
       paymentMethod: null,
       journalEntryId: null,
-      expenseDetail: { category: '53-1404' },
+      expenseDetail: { priceType: 'EXCLUSIVE', lines: [{ lineNo: 1, category: '53-1404' }] },
     });
 
     const result = await template.execute('doc-2');
@@ -76,7 +76,7 @@ describe('ExpenseAccrualTemplate', () => {
       depositAccountCode: null,
       paymentMethod: null,
       journalEntryId: null,
-      expenseDetail: { category: '53-1302' },
+      expenseDetail: { priceType: 'EXCLUSIVE', lines: [{ lineNo: 1, category: '53-1302' }] },
     });
 
     await template.execute('doc-3');

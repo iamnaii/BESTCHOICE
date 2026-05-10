@@ -1,5 +1,6 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ExpenseDocumentsService } from '../expense-documents.service';
+import { LineAggregatorService } from '../services/line-aggregator.service';
 
 describe('ExpenseDocumentsService', () => {
   let service: ExpenseDocumentsService;
@@ -37,6 +38,15 @@ describe('ExpenseDocumentsService', () => {
       expenseDetail: {
         update: jest.fn().mockResolvedValue({}),
       },
+      expenseLine: {
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      chartOfAccount: {
+        findMany: jest.fn().mockResolvedValue([
+          { code: '53-1302', type: 'ค่าใช้จ่าย' },
+          { code: '53-1404', type: 'ค่าใช้จ่าย' },
+        ]),
+      },
     };
     docNumber = { next: jest.fn().mockResolvedValue('EX-20260510-0001') };
     transition = {
@@ -60,20 +70,21 @@ describe('ExpenseDocumentsService', () => {
       payroll,
       settlement,
       { createAndPost: jest.fn() } as never,
+      new LineAggregatorService(),
     );
   });
 
   describe('create', () => {
-    it('generates number, creates header + ExpenseDetail in same tx', async () => {
+    it('generates number, creates header + ExpenseDetail with lines in same tx', async () => {
       await service.create(
         {
           documentType: 'EXPENSE',
           branchId: 'branch-1',
           documentDate: '2026-05-10',
-          subtotal: 1000,
-          vatAmount: 70,
-          withholdingTax: 0,
-          detail: { category: '53-1302' },
+          priceType: 'EXCLUSIVE',
+          lines: [
+            { category: '53-1302', quantity: 1, unitPrice: 1000, vatPercent: 7, whtPercent: 0 },
+          ],
         } as never,
         'user-1',
       );
@@ -85,27 +96,26 @@ describe('ExpenseDocumentsService', () => {
             documentType: 'EXPENSE',
             createdById: 'user-1',
             status: 'DRAFT',
-            expenseDetail: { create: { category: '53-1302' } },
           }),
         }),
       );
     });
 
-    it('computes totalAmount = subtotal + vatAmount when not provided', async () => {
+    it('computes totalAmount = subtotal + vatAmount from lines', async () => {
       await service.create(
         {
           documentType: 'EXPENSE',
           branchId: 'branch-1',
           documentDate: '2026-05-10',
-          subtotal: 1000,
-          vatAmount: 70,
-          detail: { category: '53-1302' },
+          priceType: 'EXCLUSIVE',
+          lines: [
+            { category: '53-1302', quantity: 1, unitPrice: 1000, vatPercent: 7, whtPercent: 0 },
+          ],
         } as never,
         'user-1',
       );
       const callArg = prisma.expenseDocument.create.mock.calls[0][0];
-      // Match @db.Decimal(12, 2) precision — DB always stores 2-decimal-place strings,
-      // pinning here prevents drift if integer inputs ever flow through unchanged.
+      // subtotal=1000, vat=70, total=1070
       expect(callArg.data.totalAmount.toFixed(2)).toBe('1070.00');
     });
   });
@@ -412,6 +422,7 @@ describe('ExpenseDocumentsService', () => {
       const svc = new ExpenseDocumentsService(
         prisma, docNumber, transition, sameDay, accrual, creditNote, payroll, settlement,
         journalMock as never,
+        new LineAggregatorService(),
       );
       await svc.voidDocument('doc-1', 'user-1');
       expect(journalMock.createAndPost).toHaveBeenCalledTimes(1);
@@ -451,6 +462,7 @@ describe('ExpenseDocumentsService', () => {
       const svc = new ExpenseDocumentsService(
         prisma, docNumber, transition, sameDay, accrual, creditNote, payroll, settlement,
         journalMock as never,
+        new LineAggregatorService(),
       );
       await svc.voidDocument('se-1', 'user-1');
       // Both cleared EXs reverted via updateMany with deletedAt:null guard

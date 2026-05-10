@@ -3,6 +3,7 @@ import { PrismaClient, DocumentStatus } from '@prisma/client';
 import { ExpenseDocumentsService } from '../expense-documents.service';
 import { DocNumberService } from '../services/doc-number.service';
 import { StatusTransitionService } from '../services/status-transition.service';
+import { LineAggregatorService } from '../services/line-aggregator.service';
 import { ExpenseSameDayTemplate } from '../../journal/cpa-templates/expense-same-day.template';
 import { ExpenseAccrualTemplate } from '../../journal/cpa-templates/expense-accrual.template';
 import { CreditNoteTemplate } from '../../journal/cpa-templates/credit-note.template';
@@ -93,6 +94,7 @@ describe('ExpenseDocuments full lifecycle (integration)', () => {
       payroll,
       settlement,
       journal,
+      new LineAggregatorService(),
     );
   }
 
@@ -103,12 +105,12 @@ describe('ExpenseDocuments full lifecycle (integration)', () => {
         documentType: 'EXPENSE',
         branchId,
         documentDate: new Date().toISOString(),
-        subtotal: 1000,
-        vatAmount: 70,
-        withholdingTax: 0,
+        priceType: 'EXCLUSIVE',
         paymentMethod: 'CASH',
         depositAccountCode: '11-1101',
-        detail: { category: '53-1302' },
+        lines: [
+          { category: '53-1302', quantity: 1, unitPrice: 1000, vatPercent: 7, whtPercent: 0 },
+        ],
       } as never,
       userId,
     );
@@ -140,11 +142,11 @@ describe('ExpenseDocuments full lifecycle (integration)', () => {
         documentType: 'EXPENSE',
         branchId,
         documentDate: new Date().toISOString(),
-        subtotal: 5000,
-        vatAmount: 350,
-        withholdingTax: 0,
+        priceType: 'EXCLUSIVE',
         // No paymentMethod
-        detail: { category: '53-1404' },
+        lines: [
+          { category: '53-1404', quantity: 1, unitPrice: 5000, vatPercent: 7, whtPercent: 0 },
+        ],
       } as never,
       userId,
     );
@@ -172,8 +174,8 @@ describe('ExpenseDocuments full lifecycle (integration)', () => {
         documentType: 'EXPENSE',
         branchId,
         documentDate: new Date().toISOString(),
-        subtotal: 100,
-        detail: { category: '53-1302' },
+        priceType: 'EXCLUSIVE',
+        lines: [{ category: '53-1302', quantity: 1, unitPrice: 100, vatPercent: 0, whtPercent: 0 }],
       } as never,
       userId,
     );
@@ -182,8 +184,8 @@ describe('ExpenseDocuments full lifecycle (integration)', () => {
         documentType: 'EXPENSE',
         branchId,
         documentDate: new Date().toISOString(),
-        subtotal: 200,
-        detail: { category: '53-1302' },
+        priceType: 'EXCLUSIVE',
+        lines: [{ category: '53-1302', quantity: 1, unitPrice: 200, vatPercent: 0, whtPercent: 0 }],
       } as never,
       userId,
     );
@@ -211,10 +213,10 @@ describe('ExpenseDocuments full lifecycle (integration)', () => {
         documentType: 'EXPENSE',
         branchId,
         documentDate: new Date().toISOString(),
-        subtotal: 100,
+        priceType: 'EXCLUSIVE',
         paymentMethod: 'CASH',
         depositAccountCode: '11-1101',
-        detail: { category: '53-1302' },
+        lines: [{ category: '53-1302', quantity: 1, unitPrice: 100, vatPercent: 0, whtPercent: 0 }],
       } as never,
       userId,
     );
@@ -229,8 +231,8 @@ describe('ExpenseDocuments full lifecycle (integration)', () => {
         documentType: 'EXPENSE',
         branchId,
         documentDate: new Date().toISOString(),
-        subtotal: 100,
-        detail: { category: '53-1302' },
+        priceType: 'EXCLUSIVE',
+        lines: [{ category: '53-1302', quantity: 1, unitPrice: 100, vatPercent: 0, whtPercent: 0 }],
       } as never,
       userId,
     );
@@ -239,8 +241,8 @@ describe('ExpenseDocuments full lifecycle (integration)', () => {
         documentType: 'EXPENSE',
         branchId,
         documentDate: new Date().toISOString(),
-        subtotal: 100,
-        detail: { category: '53-1302' },
+        priceType: 'EXCLUSIVE',
+        lines: [{ category: '53-1302', quantity: 1, unitPrice: 100, vatPercent: 0, whtPercent: 0 }],
       } as never,
       userId,
     );

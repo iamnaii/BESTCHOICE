@@ -3,6 +3,7 @@ import { PrismaClient, DocumentStatus } from '@prisma/client';
 import { ExpenseDocumentsService } from '../expense-documents.service';
 import { DocNumberService } from '../services/doc-number.service';
 import { StatusTransitionService } from '../services/status-transition.service';
+import { LineAggregatorService } from '../services/line-aggregator.service';
 import { ExpenseSameDayTemplate } from '../../journal/cpa-templates/expense-same-day.template';
 import { ExpenseAccrualTemplate } from '../../journal/cpa-templates/expense-accrual.template';
 import { CreditNoteTemplate } from '../../journal/cpa-templates/credit-note.template';
@@ -52,6 +53,7 @@ describe('Vendor Settlement lifecycle (integration)', () => {
       payroll,
       settlement,
       journal,
+      new LineAggregatorService(),
     );
   }
 
@@ -64,8 +66,8 @@ describe('Vendor Settlement lifecycle (integration)', () => {
         documentType: 'EXPENSE',
         branchId,
         documentDate: new Date().toISOString(),
-        subtotal: 1000,
-        detail: { category: '53-1404' },
+        priceType: 'EXCLUSIVE',
+        lines: [{ category: '53-1404', quantity: 1, unitPrice: 1000, vatPercent: 0, whtPercent: 0 }],
       } as never,
       userId,
     );
@@ -74,8 +76,8 @@ describe('Vendor Settlement lifecycle (integration)', () => {
         documentType: 'EXPENSE',
         branchId,
         documentDate: new Date().toISOString(),
-        subtotal: 2000,
-        detail: { category: '53-1404' },
+        priceType: 'EXCLUSIVE',
+        lines: [{ category: '53-1404', quantity: 1, unitPrice: 2000, vatPercent: 0, whtPercent: 0 }],
       } as never,
       userId,
     );
@@ -130,10 +132,10 @@ describe('Vendor Settlement lifecycle (integration)', () => {
         documentType: 'EXPENSE',
         branchId,
         documentDate: new Date().toISOString(),
-        subtotal: 500,
+        priceType: 'EXCLUSIVE',
         paymentMethod: 'CASH',
         depositAccountCode: '11-1101',
-        detail: { category: '53-1302' },
+        lines: [{ category: '53-1302', quantity: 1, unitPrice: 500, vatPercent: 0, whtPercent: 0 }],
       } as never,
       userId,
     );
@@ -162,8 +164,8 @@ describe('Vendor Settlement lifecycle (integration)', () => {
         documentType: 'EXPENSE',
         branchId,
         documentDate: new Date().toISOString(),
-        subtotal: 1000,
-        detail: { category: '53-1404' },
+        priceType: 'EXCLUSIVE',
+        lines: [{ category: '53-1404', quantity: 1, unitPrice: 1000, vatPercent: 0, whtPercent: 0 }],
       } as never,
       userId,
     );

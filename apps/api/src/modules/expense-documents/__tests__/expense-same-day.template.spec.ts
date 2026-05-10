@@ -45,7 +45,7 @@ describe('ExpenseSameDayTemplate', () => {
       depositAccountCode: '11-1101',
       paymentMethod: 'CASH',
       journalEntryId: null,
-      expenseDetail: { category: '53-1302' },
+      expenseDetail: { priceType: 'EXCLUSIVE', lines: [{ lineNo: 1, category: '53-1302' }] },
     });
 
     const result = await template.execute(docId);
@@ -80,7 +80,7 @@ describe('ExpenseSameDayTemplate', () => {
       depositAccountCode: '11-1101',
       paymentMethod: 'CASH',
       journalEntryId: null,
-      expenseDetail: { category: '53-1302' },
+      expenseDetail: { priceType: 'EXCLUSIVE', lines: [{ lineNo: 1, category: '53-1302' }] },
     });
 
     await template.execute(docId);
@@ -104,7 +104,7 @@ describe('ExpenseSameDayTemplate', () => {
       depositAccountCode: '11-1201',
       paymentMethod: 'BANK_TRANSFER',
       journalEntryId: null,
-      expenseDetail: { category: '53-1702' },
+      expenseDetail: { priceType: 'EXCLUSIVE', lines: [{ lineNo: 1, category: '53-1702' }] },
     });
 
     await template.execute(docId);
@@ -132,7 +132,7 @@ describe('ExpenseSameDayTemplate', () => {
       depositAccountCode: '11-1201',
       paymentMethod: 'BANK_TRANSFER',
       journalEntryId: null,
-      expenseDetail: { category: '53-1702' },
+      expenseDetail: { priceType: 'EXCLUSIVE', lines: [{ lineNo: 1, category: '53-1702' }] },
     });
 
     await template.execute(docId);
@@ -168,7 +168,7 @@ describe('ExpenseSameDayTemplate', () => {
       depositAccountCode: '11-1101',
       paymentMethod: 'CASH',
       journalEntryId: null,
-      expenseDetail: { category: '53-1302' },
+      expenseDetail: { priceType: 'EXCLUSIVE', lines: [{ lineNo: 1, category: '53-1302' }] },
     });
 
     await template.execute(docId);

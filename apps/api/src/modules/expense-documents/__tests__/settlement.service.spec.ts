@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { ExpenseDocumentsService } from '../expense-documents.service';
+import { LineAggregatorService } from '../services/line-aggregator.service';
 
 describe('ExpenseDocumentsService.createSettlement', () => {
   let service: ExpenseDocumentsService;
@@ -62,6 +63,7 @@ describe('ExpenseDocumentsService.createSettlement', () => {
       payroll,
       settlement,
       { createAndPost: jest.fn() } as never,
+      new LineAggregatorService(),
     );
   });
 

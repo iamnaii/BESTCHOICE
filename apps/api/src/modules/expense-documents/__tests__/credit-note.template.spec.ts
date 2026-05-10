@@ -217,9 +217,9 @@ describe('CreditNoteTemplate', () => {
     );
   });
 
-  it('rejects post when category type is not "ค่าใช้จ่าย" (e.g. asset code)', async () => {
+  it('rejects post when category prefix is not 5x-xxxx (asset/liability code)', async () => {
     prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
-      id: 'cn-asset',
+      id: 'cn-non-expense-prefix',
       number: 'CN-20260510-7778',
       documentType: 'CREDIT_NOTE',
       branchId: 'branch-1',
@@ -230,14 +230,42 @@ describe('CreditNoteTemplate', () => {
       totalAmount: new Decimal('100.00'),
       depositAccountCode: null,
       journalEntryId: null,
-      // 11-2101 is an asset code that starts with '1', not '5' — prefix guard catches first
+      // 11-2101 is asset prefix → prefix guard rejects regardless of type
       creditNote: { originalDocumentId: 'orig', reason: 'r', category: '11-2101' },
     });
     prisma.chartOfAccount.findFirst.mockResolvedValueOnce({
       code: '11-2101',
       type: 'สินทรัพย์',
     });
-    await expect(template.execute('cn-asset')).rejects.toThrow(
+    await expect(template.execute('cn-non-expense-prefix')).rejects.toThrow(
+      /ไม่ใช่บัญชีค่าใช้จ่าย/,
+    );
+  });
+
+  it('rejects post when 5x-xxxx code has type !== "ค่าใช้จ่าย" (defense-in-depth — type guard)', async () => {
+    // Synthetic case: a 5x-xxxx code that the prefix guard accepts but the
+    // type guard rejects. No such row exists in the current seed, but if a
+    // future seed mis-classifies a 5x-xxxx as "ต้นทุน" or similar this guard
+    // is what stops the JE from posting to the wrong bucket.
+    prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+      id: 'cn-typo-coa',
+      number: 'CN-20260510-7779',
+      documentType: 'CREDIT_NOTE',
+      branchId: 'branch-1',
+      documentDate: new Date('2026-05-10'),
+      subtotal: new Decimal('100.00'),
+      vatAmount: new Decimal('0.00'),
+      withholdingTax: new Decimal('0.00'),
+      totalAmount: new Decimal('100.00'),
+      depositAccountCode: null,
+      journalEntryId: null,
+      creditNote: { originalDocumentId: 'orig', reason: 'r', category: '53-9999' },
+    });
+    prisma.chartOfAccount.findFirst.mockResolvedValueOnce({
+      code: '53-9999',
+      type: 'ต้นทุน',
+    });
+    await expect(template.execute('cn-typo-coa')).rejects.toThrow(
       /ไม่ใช่บัญชีค่าใช้จ่าย/,
     );
   });

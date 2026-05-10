@@ -46,6 +46,7 @@ if [ -z "$TOKEN" ]; then
   echo -e "${BLUE}Logging in as $EMAIL...${RESET}"
   TOKEN=$(curl -sL --max-time 15 -X POST "$API/api/auth/login" \
     -H 'Content-Type: application/json' \
+    -H 'X-Requested-With: XMLHttpRequest' \
     -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}" \
     | sed -n 's/.*"accessToken"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
 
@@ -63,7 +64,9 @@ call_api() {
   echo -en "${BLUE}→${RESET}  ${BOLD}$label${RESET}  $method $path  "
 
   local args=(-sL --max-time 30 -o /tmp/fb-smoke-resp -w '%{http_code}'
-              -H "Authorization: Bearer $TOKEN" -X "$method")
+              -H "Authorization: Bearer $TOKEN"
+              -H 'X-Requested-With: XMLHttpRequest'
+              -X "$method")
   if [ -n "$body" ]; then
     args+=(-H 'Content-Type: application/json' -d "$body")
   fi

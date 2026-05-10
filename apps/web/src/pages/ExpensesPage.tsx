@@ -3,22 +3,18 @@ import { useSearchParams } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
+import { cn } from '@/lib/utils';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useCoaGroups } from '@/hooks/useCoa';
-import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import QueryBoundary from '@/components/QueryBoundary';
 import Modal from '@/components/ui/Modal';
-import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useAuth } from '@/contexts/AuthContext';
 import { compressImageForOcr } from '@/lib/compressImage';
-import { Receipt, Plus, Pencil, Upload, X, ArrowLeft, ShoppingBag, Megaphone, Building2, MoreHorizontal, MoreVertical, TrendingDown, FileText, Store, Layers, CreditCard, Paperclip, StickyNote } from 'lucide-react';
-import AnimatedCounter from '@/components/ui/animated-counter';
+import { Receipt, Plus, Pencil, Upload, X, ArrowLeft, MoreVertical, FileText, Store, Layers, CreditCard, Paperclip, StickyNote, Bookmark, Wallet, BarChart3, Search, SlidersHorizontal, Eye, ArrowRight, UserCircle2 } from 'lucide-react';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { getStatusBadgeProps, expenseStatusMap } from '@/lib/status-badges';
 import { formatDateShortThai } from '@/utils/formatters';
 
 // ─── Types ───
@@ -35,8 +31,37 @@ interface Expense {
 }
 
 interface Summary {
-  totalAmount: number; totalCount: number; pendingCount: number;
+  totalAmount: number;
+  totalCount: number;
+  pendingCount: number;
   byAccountType: Record<string, number>;
+  byStatus?: Record<string, number>;
+  accrualUnpaidCount?: number;
+  accrualUnpaidTotal?: number;
+}
+
+// Map document number prefix + paymentDate to display "type"
+function getDocumentType(e: Expense): { label: string; cls: string } {
+  const num = e.expenseNumber || '';
+  if (num.startsWith('CN')) return { label: 'ใบลดหนี้', cls: 'bg-destructive/10 text-destructive border-destructive/20' };
+  if (num.startsWith('PR')) return { label: 'เงินเดือน', cls: 'bg-info/10 text-info border-info/20' };
+  if (num.startsWith('SE')) return { label: 'จ่ายเจ้าหนี้', cls: 'bg-muted text-muted-foreground border-border' };
+  // EX prefix or default — derive from paymentDate
+  return e.paymentDate
+    ? { label: 'Same-day', cls: 'bg-success/10 text-success border-success/20' }
+    : { label: 'ตั้งหนี้', cls: 'bg-warning/10 text-warning border-warning/20' };
+}
+
+// Derived status badge — simplifies 6 internal statuses to 3 user-facing
+function getStatusBadge(e: Expense): { label: string; cls: string } {
+  if (e.status === 'DRAFT') return { label: 'DRAFT', cls: 'bg-muted text-muted-foreground border-border' };
+  if (e.status === 'REJECTED') return { label: 'REJECTED', cls: 'bg-destructive/10 text-destructive border-destructive/20' };
+  if (e.status === 'VOIDED') return { label: 'VOIDED', cls: 'bg-muted text-muted-foreground border-border' };
+  if (e.status === 'PAID') return { label: 'POSTED', cls: 'bg-success/10 text-success border-success/20' };
+  // APPROVED / PENDING_APPROVAL: split by paymentDate
+  return e.paymentDate
+    ? { label: 'POSTED', cls: 'bg-success/10 text-success border-success/20' }
+    : { label: 'ACCRUAL', cls: 'bg-success/10 text-success border-success/20' };
 }
 
 // ─── Constants ───
@@ -423,6 +448,7 @@ export default function ExpensesPage() {
   const { user: currentUser } = useAuth();
   const isOwner = currentUser?.role === 'OWNER';
   const [searchParams, setSearchParams] = useSearchParams();
+  const tabFilter = searchParams.get('tab') || 'all';
   const statusFilter = searchParams.get('status') || '';
   const categoryFilter = searchParams.get('category') || '';
   const branchFilter = searchParams.get('branch') || '';
@@ -430,6 +456,7 @@ export default function ExpensesPage() {
   const endDate = searchParams.get('endDate') || '';
   const page = parseInt(searchParams.get('page') || '1');
   const [search, setSearch] = useState(searchParams.get('search') || '');
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const debouncedSearch = useDebounce(search, 300);
   const [showForm, setShowForm] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
@@ -441,6 +468,14 @@ export default function ExpensesPage() {
     const params = new URLSearchParams(searchParams);
     if (value) params.set(key, value); else params.delete(key);
     if (key !== 'page') params.delete('page');
+    setSearchParams(params, { replace: true });
+  };
+
+  const setTab = (tab: string) => {
+    const params = new URLSearchParams(searchParams);
+    if (tab === 'all') params.delete('tab'); else params.set('tab', tab);
+    params.delete('page');
+    params.delete('status'); // tab supersedes manual status filter
     setSearchParams(params, { replace: true });
   };
 
@@ -475,9 +510,10 @@ export default function ExpensesPage() {
     error,
     refetch,
   } = useQuery<{ data: Expense[]; total: number }>({
-    queryKey: ['expenses', statusFilter, categoryFilter, branchFilter, startDate, endDate, debouncedSearch, page],
+    queryKey: ['expenses', tabFilter, statusFilter, categoryFilter, branchFilter, startDate, endDate, debouncedSearch, page],
     queryFn: async () => {
       const p = new URLSearchParams({ limit: '20', page: String(page) });
+      if (tabFilter && tabFilter !== 'all') p.set('tab', tabFilter);
       if (statusFilter) p.set('status', statusFilter);
       if (categoryFilter) p.set('category', categoryFilter);
       if (branchFilter) p.set('branchId', branchFilter);
@@ -499,162 +535,334 @@ export default function ExpensesPage() {
   const openEdit = (e: Expense) => { setEditingExpense(e); setShowForm(true); setOpenMenuId(null); };
   const handleFormSaved = () => { setShowForm(false); setEditingExpense(null); invalidateAll(); };
 
-  const summaryCards = [
-    { label: 'รายจ่ายทั้งหมด', amount: summary?.totalAmount, sub: `${summary?.totalCount || 0} รายการ | รออนุมัติ ${summary?.pendingCount || 0}`, icon: TrendingDown, color: 'text-primary', iconBg: 'bg-primary/20', stripe: 'bg-primary', accent: true },
-    { label: 'ต้นทุนขาย', amount: summary?.byAccountType?.COST_OF_SALES, icon: ShoppingBag, color: 'text-warning', iconBg: 'bg-warning/20', stripe: 'bg-warning' },
-    { label: 'ค่าใช้จ่ายขาย', amount: summary?.byAccountType?.SELLING_EXPENSE, icon: Megaphone, color: 'text-info', iconBg: 'bg-info/20', stripe: 'bg-info' },
-    { label: 'ค่าใช้จ่ายบริหาร', amount: summary?.byAccountType?.ADMINISTRATIVE_EXPENSE, icon: Building2, color: 'text-success', iconBg: 'bg-success/20', stripe: 'bg-success' },
-    { label: 'ค่าใช้จ่ายอื่น', amount: summary?.byAccountType?.OTHER_EXPENSE, icon: MoreHorizontal, color: 'text-muted-foreground', iconBg: 'bg-muted-foreground/15', stripe: 'bg-muted-foreground/50' },
-  ] as const;
-
   const totalPages = Math.ceil((expensesData?.total || 0) / 20);
 
-  // Primary action per status
-  const getPrimaryAction = (e: Expense) => {
-    if (e.status === 'DRAFT' || e.status === 'REJECTED') return { label: 'ส่งอนุมัติ', action: 'submit', cls: 'bg-primary text-primary-foreground hover:bg-primary/90' };
-    if (e.status === 'PENDING_APPROVAL' && isOwner) return { label: 'อนุมัติ', action: 'approve', cls: 'bg-primary text-primary-foreground hover:bg-primary/90' };
-    if (e.status === 'APPROVED') return { label: 'จ่ายแล้ว', action: 'pay', cls: 'bg-primary text-primary-foreground hover:bg-primary/90' };
-    return null;
-  };
+  // Tab counts derived from summary endpoint
+  const totalCount = summary?.totalCount ?? 0;
+  const draftCount = summary?.byStatus?.DRAFT ?? 0;
+  const unpaidCount = summary?.accrualUnpaidCount ?? 0;
+  const unpaidTotal = summary?.accrualUnpaidTotal ?? 0;
+  const paidCount = summary?.byStatus?.PAID ?? 0;
+  const recordedCount = totalCount - draftCount;
+
+  const tabs = [
+    { id: 'all', label: 'ทั้งหมด', count: totalCount, icon: Receipt },
+    { id: 'draft', label: 'ฉบับร่าง', count: draftCount, icon: FileText },
+    { id: 'unpaid', label: 'รอจ่าย', count: unpaidCount, sub: unpaidTotal > 0 ? `รวม ${fmt(unpaidTotal)} B` : undefined, icon: Wallet },
+    { id: 'recorded', label: 'บันทึกแล้ว', count: recordedCount, icon: CreditCard },
+    { id: 'paid', label: 'จ่ายแล้ว', count: paidCount, icon: Receipt },
+    { id: 'favorites', label: 'รายการโปรด', count: 0, sub: 'ใช้บันทึกซ้ำ', icon: Bookmark },
+    { id: 'daily-summary', label: 'สรุปรายวัน', icon: BarChart3, isAction: true },
+  ] as const;
 
   const columns = [
     {
-      key: 'expenseNumber', label: 'เลขที่',
-      render: (e: Expense) => (<div className="min-w-0"><div className="font-medium">{e.expenseNumber}</div><div className="text-xs text-muted-foreground">{e.accountCode}</div></div>),
+      key: 'expenseNumber',
+      label: 'เลขเอกสาร',
+      render: (e: Expense) => <span className="font-mono text-sm font-medium text-warning">{e.expenseNumber}</span>,
     },
     {
-      key: 'description', label: 'รายละเอียด',
-      render: (e: Expense) => (<div className="min-w-0"><div className="font-medium truncate">{e.description}</div><div className="text-xs text-muted-foreground">{codeToName.get(e.category) || e.category}</div></div>),
-    },
-    { key: 'branch', label: 'สาขา', render: (e: Expense) => e.branch.name },
-    { key: 'vendorName', label: 'ผู้รับเงิน', render: (e: Expense) => e.vendorName || '-' },
-    { key: 'amount', label: 'จำนวนเงิน', render: (e: Expense) => <div className="text-right text-sm">{fmt(e.amount)}</div> },
-    { key: 'vatAmount', label: 'VAT', render: (e: Expense) => <div className="text-right text-sm">{Number(e.vatAmount) > 0 ? fmt(e.vatAmount) : '-'}</div> },
-    { key: 'totalAmount', label: 'รวม', render: (e: Expense) => <div className="text-right font-medium">{fmt(e.totalAmount)}</div> },
-    {
-      key: 'expenseDate', label: 'วันที่',
-      render: (e: Expense) => formatDateShortThai(e.expenseDate),
+      key: 'vendorName',
+      label: 'ผู้ขาย',
+      render: (e: Expense) => <span className="text-sm">{e.vendorName || '–'}</span>,
     },
     {
-      key: 'status', label: 'สถานะ',
+      key: 'category',
+      label: 'บัญชี',
+      render: (e: Expense) =>
+        e.category ? (
+          <div className="min-w-0">
+            <div className="font-mono text-sm font-medium text-warning">{e.category}</div>
+            <div className="text-xs text-muted-foreground truncate">{codeToName.get(e.category) || e.category}</div>
+          </div>
+        ) : (
+          <span className="text-muted-foreground">–</span>
+        ),
+    },
+    {
+      key: 'totalAmount',
+      label: 'ยอดรวม',
       render: (e: Expense) => {
-        const cfg = getStatusBadgeProps(e.status, expenseStatusMap);
+        const amt = parseFloat(e.totalAmount || '0');
+        const isCredit = (e.expenseNumber || '').startsWith('CN');
+        const isUnpaid = !e.paymentDate && (e.status === 'APPROVED' || e.status === 'PENDING_APPROVAL');
         return (
-          <div>
-            <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>
-            {e.rejectReason && <div className="text-xs text-destructive mt-0.5 truncate max-w-[100px]">{e.rejectReason}</div>}
+          <div className="text-right">
+            <div className={`font-mono font-medium text-sm ${isCredit ? 'text-destructive' : ''}`}>
+              {isCredit ? '-' : ''}
+              {fmt(Math.abs(amt))}
+            </div>
+            {isUnpaid && (
+              <div className="text-xs text-muted-foreground">
+                คงค้าง <span className="font-mono">{fmt(amt)}</span>
+              </div>
+            )}
           </div>
         );
       },
     },
     {
-      key: 'actions', label: '',
+      key: 'expenseDate',
+      label: 'วันที่ใบกำกับ',
+      render: (e: Expense) => <span className="text-sm">{formatDateShortThai(e.expenseDate)}</span>,
+    },
+    {
+      key: 'docType',
+      label: 'ประเภท',
       render: (e: Expense) => {
-        if (e.status === 'VOIDED' || e.status === 'PAID') return null;
-        const primary = getPrimaryAction(e);
+        const t = getDocumentType(e);
         return (
-          <div className="flex items-center gap-1.5">
-            {primary && (
-              <button onClick={() => setConfirmDialog({ open: true, message: `${primary.label} "${e.expenseNumber}"?`, action: () => actionMutation.mutate({ id: e.id, action: primary.action }) })}
-                className={`px-2.5 py-1 rounded text-xs font-medium ${primary.cls}`}>{primary.label}</button>
-            )}
+          <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs border font-medium leading-snug ${t.cls}`}>
+            {t.label}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'status',
+      label: 'สถานะ',
+      render: (e: Expense) => {
+        const s = getStatusBadge(e);
+        return (
+          <div>
+            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs border font-semibold uppercase tracking-wide leading-snug ${s.cls}`}>
+              {s.label}
+            </span>
+            {e.rejectReason && <div className="text-xs text-destructive mt-0.5 truncate max-w-[120px]">{e.rejectReason}</div>}
+          </div>
+        );
+      },
+    },
+    {
+      key: 'actions',
+      label: 'ACTION',
+      render: (e: Expense) => (
+        <div className="flex items-center gap-1">
+          <button
+            onClick={(ev) => { ev.stopPropagation(); openEdit(e); }}
+            className="p-1.5 hover:bg-muted rounded transition-colors"
+            title="ดู / แก้ไข"
+          >
+            <Eye className="size-4 text-muted-foreground" />
+          </button>
+          {(e.status === 'DRAFT' || e.status === 'REJECTED' || e.status === 'PENDING_APPROVAL' || e.status === 'APPROVED') && (
             <div className="relative">
-              <button onClick={(ev) => { ev.stopPropagation(); setOpenMenuId(openMenuId === e.id ? null : e.id); }} className="p-1 hover:bg-muted rounded"><MoreVertical className="size-4 text-muted-foreground" /></button>
+              <button
+                onClick={(ev) => { ev.stopPropagation(); setOpenMenuId(openMenuId === e.id ? null : e.id); }}
+                className="p-1.5 hover:bg-muted rounded transition-colors"
+              >
+                <MoreVertical className="size-4 text-muted-foreground" />
+              </button>
               {openMenuId === e.id && (
-                <div className="absolute right-0 top-full mt-1 z-10 bg-background border rounded-lg shadow-lg py-1 min-w-[130px]">
-                  {(e.status === 'DRAFT' || e.status === 'REJECTED') && <button onClick={() => openEdit(e)} className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted flex items-center gap-2"><Pencil className="size-3.5" /> แก้ไข</button>}
-                  {e.status === 'PENDING_APPROVAL' && isOwner && <button onClick={() => { setRejectDialog({ open: true, expenseId: e.id, reason: '' }); setOpenMenuId(null); }} className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted text-destructive">ไม่อนุมัติ</button>}
-                  {isOwner && <button onClick={() => { setConfirmDialog({ open: true, message: `ยกเลิก "${e.expenseNumber}"?`, action: () => actionMutation.mutate({ id: e.id, action: 'void' }) }); setOpenMenuId(null); }} className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted text-destructive">ยกเลิก</button>}
+                <div className="absolute right-0 top-full mt-1 z-10 bg-card border border-border rounded-lg shadow-lg py-1 min-w-[140px]">
+                  {(e.status === 'DRAFT' || e.status === 'REJECTED') && (
+                    <>
+                      <button onClick={() => openEdit(e)} className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted flex items-center gap-2">
+                        <Pencil className="size-3.5" /> แก้ไข
+                      </button>
+                      <button
+                        onClick={() => setConfirmDialog({ open: true, message: `ส่งอนุมัติ "${e.expenseNumber}"?`, action: () => actionMutation.mutate({ id: e.id, action: 'submit' }) })}
+                        className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted"
+                      >
+                        ส่งอนุมัติ
+                      </button>
+                    </>
+                  )}
+                  {e.status === 'PENDING_APPROVAL' && isOwner && (
+                    <>
+                      <button
+                        onClick={() => setConfirmDialog({ open: true, message: `อนุมัติ "${e.expenseNumber}"?`, action: () => actionMutation.mutate({ id: e.id, action: 'approve' }) })}
+                        className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted"
+                      >
+                        อนุมัติ
+                      </button>
+                      <button
+                        onClick={() => { setRejectDialog({ open: true, expenseId: e.id, reason: '' }); setOpenMenuId(null); }}
+                        className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted text-destructive"
+                      >
+                        ไม่อนุมัติ
+                      </button>
+                    </>
+                  )}
+                  {e.status === 'APPROVED' && (
+                    <button
+                      onClick={() => setConfirmDialog({ open: true, message: `บันทึกจ่าย "${e.expenseNumber}"?`, action: () => actionMutation.mutate({ id: e.id, action: 'pay' }) })}
+                      className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted"
+                    >
+                      จ่ายแล้ว
+                    </button>
+                  )}
+                  {isOwner && (
+                    <button
+                      onClick={() => { setConfirmDialog({ open: true, message: `ยกเลิก "${e.expenseNumber}"?`, action: () => actionMutation.mutate({ id: e.id, action: 'void' }) }); setOpenMenuId(null); }}
+                      className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted text-destructive"
+                    >
+                      ยกเลิก
+                    </button>
+                  )}
                 </div>
               )}
             </div>
-          </div>
-        );
-      },
+          )}
+        </div>
+      ),
     },
   ];
 
   return (
     <div onClick={() => setOpenMenuId(null)} onKeyDown={(e) => { if (e.key === 'Escape') setOpenMenuId(null); }}>
-      <PageHeader title="บันทึกรายจ่าย" subtitle={`ทั้งหมด ${expensesData?.total || 0} รายการ`}
-        action={
-          <Button variant="primary" size="md" onClick={openCreate}>
-            <Plus className="size-4" /> บันทึกรายจ่าย
-          </Button>
-        }
-      />
-
-      {/* Summary Cards — color stripe left border */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-5 mb-6">
-        {summaryCards.map((card) => (
-          <Card key={card.label} className="rounded-xl border border-border/50 bg-card shadow-sm h-full overflow-hidden hover:shadow-card-hover transition-all">
-            <div className="flex h-full">
-              {/* Color stripe */}
-              <div className={`w-1 shrink-0 ${card.stripe}`} />
-              <CardContent className="p-4 flex flex-col justify-between flex-1">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs font-medium text-muted-foreground">{card.label}</span>
-                  <div className={`size-8 rounded-lg flex items-center justify-center shrink-0 ${card.iconBg}`}>
-                    <card.icon className={`size-4 ${card.color}`} />
-                  </div>
-                </div>
-                <div>
-                  <AnimatedCounter value={card.amount || 0} className={`text-xl font-bold ${'accent' in card && card.accent ? card.color : 'text-foreground'}`} />
-                  <div className="text-2xs text-muted-foreground mt-1 min-h-4">
-                    {'sub' in card && card.sub ? card.sub : '\u00A0'}
-                  </div>
-                </div>
-              </CardContent>
+      {/* Compact branded header */}
+      <div className="flex items-center justify-between gap-4 pb-4 mb-5 border-b border-border flex-wrap">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="size-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+            <Receipt className="size-5 text-primary" />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-base font-semibold leading-snug text-foreground truncate">ระบบบันทึกค่าใช้จ่ายกิจการ</h1>
+            <p className="text-xs text-muted-foreground leading-snug">Business Expense Module · v1.0</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button className="px-3 py-1.5 rounded-lg border border-border text-xs flex items-center gap-1.5 hover:bg-muted transition-colors">
+            <Bookmark className="size-3.5 text-muted-foreground" />
+            <span className="text-foreground">รายการโปรด</span>
+            <span className="text-primary font-semibold ml-0.5 font-mono">0</span>
+          </button>
+          <button className="px-3 py-1.5 rounded-lg border border-border text-xs flex items-center gap-1.5 hover:bg-muted transition-colors">
+            <Wallet className="size-3.5 text-muted-foreground" />
+            <span className="text-foreground">เจ้าหนี้คงค้าง</span>
+            <span className="text-primary font-semibold ml-0.5 font-mono">{fmt(unpaidTotal)}</span>
+          </button>
+          <button className="px-3 py-1.5 rounded-lg border border-border text-xs flex items-center gap-1.5 hover:bg-muted transition-colors">
+            <BarChart3 className="size-3.5 text-muted-foreground" />
+            <span className="text-foreground">สรุปรายวัน</span>
+          </button>
+          {currentUser && (
+            <div className="px-3 py-1.5 rounded-lg border border-border text-xs flex items-center gap-1.5 bg-card">
+              <UserCircle2 className="size-3.5 text-muted-foreground" />
+              <span className="font-medium text-foreground">{currentUser.name}</span>
             </div>
-          </Card>
-        ))}
+          )}
+        </div>
       </div>
 
-      {/* Filters — grouped in card */}
-      <div className="flex flex-wrap gap-4 mb-5 bg-card rounded-xl border border-border/50 shadow-sm p-5">
-        <div>
-          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สถานะ</label>
-          <select value={statusFilter} onChange={(e) => setFilter('status', e.target.value)} className={`${inputClass} w-auto min-w-[120px]`}>
-            <option value="">ทั้งหมด</option>
-            {Object.entries(statusLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">หมวดบัญชี</label>
-          <select value={categoryFilter} onChange={(e) => setFilter('category', e.target.value)} className={`${inputClass} w-auto min-w-[180px]`}>
-            <option value="">ทั้งหมด</option>
-            {coaGroups.map((g) => (
-              <optgroup key={g.category} label={g.category}>
-                {g.accounts.map((a) => (
-                  <option key={a.code} value={a.code}>{a.code} {a.name}</option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สาขา</label>
-          <select value={branchFilter} onChange={(e) => setFilter('branch', e.target.value)} className={`${inputClass} w-auto min-w-[120px]`}>
-            <option value="">ทุกสาขา</option>
-            {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ตั้งแต่</label>
-          <ThaiDateInput value={startDate} onChange={(e) => setFilter('startDate', e.target.value)} className={`${inputClass} w-auto`} />
-        </div>
-        <div>
-          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ถึง</label>
-          <ThaiDateInput value={endDate} onChange={(e) => setFilter('endDate', e.target.value)} className={`${inputClass} w-auto`} />
-        </div>
-        <div className="flex items-end gap-1">
-          {quickPresets.map((p) => <button key={p.label} onClick={p.fn} className="px-3 py-2 text-xs border border-input rounded-lg hover:bg-muted">{p.label}</button>)}
-        </div>
-        <div className="flex-1 min-w-[160px]">
-          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ค้นหา</label>
-          <input type="text" placeholder="เลขที่, รายละเอียด, ผู้รับเงิน..." value={search} onChange={(e) => setSearch(e.target.value)} className={inputClass} />
-        </div>
+      {/* Filter tabs — 7 cards mirror screenshot */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 mb-5">
+        {tabs.map((tab) => {
+          const isActive = (tabFilter || 'all') === tab.id;
+          const Icon = tab.icon;
+          const isAction = 'isAction' in tab && tab.isAction;
+          const hasCount = 'count' in tab && tab.count !== undefined;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => { if (isAction) return; setTab(tab.id); }}
+              className={cn(
+                'rounded-xl border p-4 text-left transition-all hover:bg-muted/30',
+                isActive
+                  ? 'border-foreground/30 bg-card shadow-sm ring-1 ring-foreground/10'
+                  : 'border-border bg-card/40',
+              )}
+            >
+              <div className="flex items-start justify-between mb-1.5">
+                <Icon className={cn('size-4', isActive ? 'text-foreground' : 'text-muted-foreground')} />
+                {hasCount ? (
+                  <span className={cn(
+                    'text-2xl font-bold leading-none tabular-nums',
+                    tab.id === 'paid' || tab.id === 'recorded' || tab.id === 'unpaid'
+                      ? 'text-success'
+                      : 'text-foreground',
+                  )}>
+                    {tab.count}
+                  </span>
+                ) : isAction ? (
+                  <ArrowRight className="size-4 text-muted-foreground" />
+                ) : null}
+              </div>
+              <div className="text-xs font-medium text-foreground leading-snug">{tab.label}</div>
+              {'sub' in tab && tab.sub && (
+                <div className="text-[10px] text-muted-foreground mt-0.5 leading-snug">{tab.sub}</div>
+              )}
+            </button>
+          );
+        })}
       </div>
+
+      {/* Search + filter toggle + type select + create */}
+      <div className="flex items-center gap-3 mb-5 flex-wrap">
+        <div className="flex-1 min-w-[260px] relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="ค้นหาเลขเอกสาร / ผู้ขาย / เลขใบกำกับ..."
+            className="w-full pl-10 pr-3 py-2.5 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 outline-hidden bg-background"
+          />
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowAdvancedFilters((v) => !v)}
+          className={cn(
+            'size-10 shrink-0 rounded-lg border flex items-center justify-center transition-colors',
+            showAdvancedFilters ? 'bg-primary/10 border-primary text-primary' : 'border-input hover:bg-muted text-muted-foreground',
+          )}
+          title="ตัวกรองเพิ่มเติม"
+        >
+          <SlidersHorizontal className="size-4" />
+        </button>
+        <select
+          value={categoryFilter}
+          onChange={(e) => setFilter('category', e.target.value)}
+          className="px-3 py-2.5 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 outline-hidden bg-background min-w-[150px]"
+        >
+          <option value="">ทุกประเภท</option>
+          {coaGroups.map((g) => (
+            <optgroup key={g.category} label={g.category}>
+              {g.accounts.map((a) => (
+                <option key={a.code} value={a.code}>
+                  {a.code} {a.name}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+        <Button variant="primary" size="md" onClick={openCreate}>
+          <Plus className="size-4" /> สร้างเอกสารใหม่
+        </Button>
+      </div>
+
+      {/* Advanced filters drawer */}
+      {showAdvancedFilters && (
+        <div className="flex flex-wrap gap-4 mb-5 bg-card rounded-xl border border-border/50 shadow-sm p-5">
+          <div>
+            <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สถานะ (ละเอียด)</label>
+            <select value={statusFilter} onChange={(e) => setFilter('status', e.target.value)} className={`${inputClass} w-auto min-w-[120px]`}>
+              <option value="">ตามแถบที่เลือก</option>
+              {Object.entries(statusLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">สาขา</label>
+            <select value={branchFilter} onChange={(e) => setFilter('branch', e.target.value)} className={`${inputClass} w-auto min-w-[120px]`}>
+              <option value="">ทุกสาขา</option>
+              {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ตั้งแต่</label>
+            <ThaiDateInput value={startDate} onChange={(e) => setFilter('startDate', e.target.value)} className={`${inputClass} w-auto`} />
+          </div>
+          <div>
+            <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ถึง</label>
+            <ThaiDateInput value={endDate} onChange={(e) => setFilter('endDate', e.target.value)} className={`${inputClass} w-auto`} />
+          </div>
+          <div className="flex items-end gap-1">
+            {quickPresets.map((p) => <button key={p.label} onClick={p.fn} className="px-3 py-2 text-xs border border-input rounded-lg hover:bg-muted">{p.label}</button>)}
+          </div>
+        </div>
+      )}
 
       <QueryBoundary
         isLoading={isLoading && !expensesData}

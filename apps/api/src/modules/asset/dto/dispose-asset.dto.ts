@@ -11,14 +11,7 @@ import {
   MinLength,
 } from 'class-validator';
 
-const CASH_ACCOUNT_CODES = [
-  '11-1101',
-  '11-1102',
-  '11-1103',
-  '11-1201',
-  '11-1202',
-  '11-1203',
-] as const;
+import { CASH_ACCOUNT_CODES } from '../../../constants/cash-account.constants';
 
 export class DisposeAssetDto {
   @IsIn(['SALE', 'WRITE_OFF'], { message: 'วิธีจำหน่ายไม่ถูกต้อง' })

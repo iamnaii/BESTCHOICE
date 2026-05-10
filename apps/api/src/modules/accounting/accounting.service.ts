@@ -263,8 +263,9 @@ export class AccountingService implements OnModuleInit {
     endDate?: string;
     page?: number;
     limit?: number;
+    tab?: string;
   }) {
-    const { branchId, accountType, category, status, search, startDate, endDate, page = 1, limit = 20 } = filters;
+    const { branchId, accountType, category, status, search, startDate, endDate, page = 1, limit = 20, tab } = filters;
     const safePage = Math.max(1, page);
     const safeLimit = Math.min(100, Math.max(1, limit));
 
@@ -274,6 +275,29 @@ export class AccountingService implements OnModuleInit {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if (category) where.category = category as any; // Phase A.6: String after migration; cast until Prisma client regenerates
     if (status) where.status = status;
+
+    // Tab-based logical filters (UI shortcut). Each tab translates to a
+    // status set + paymentDate constraint. `status` query param wins if both
+    // are passed.
+    if (!status && tab) {
+      switch (tab) {
+        case 'draft':
+          where.status = 'DRAFT';
+          break;
+        case 'unpaid': // รอจ่าย — recorded but not paid yet
+          where.status = { in: ['APPROVED', 'PENDING_APPROVAL'] };
+          where.paymentDate = null;
+          break;
+        case 'recorded': // บันทึกแล้ว — any non-draft / non-voided / non-rejected
+          where.status = { in: ['APPROVED', 'PENDING_APPROVAL', 'PAID'] };
+          break;
+        case 'paid':
+          where.status = 'PAID';
+          break;
+        // 'all' or unknown → no extra filter
+      }
+    }
+
     if (startDate || endDate) {
       where.expenseDate = {};
       if (startDate) where.expenseDate.gte = new Date(startDate);
@@ -625,23 +649,41 @@ export class AccountingService implements OnModuleInit {
 
     const expenses = await this.prisma.expense.findMany({
       where,
-      select: { accountType: true, category: true, totalAmount: true, status: true },
+      select: { accountType: true, category: true, totalAmount: true, status: true, paymentDate: true },
     });
 
     const byAccountType: Record<string, number> = {};
     const byCategory: Record<string, number> = {};
+    const byStatus: Record<string, number> = {};
     let totalAmount = 0;
     let pendingCount = 0;
+    let accrualUnpaidCount = 0;
+    let accrualUnpaidTotal = 0;
 
     for (const e of expenses) {
       const amt = new Prisma.Decimal(e.totalAmount);
       totalAmount = new Prisma.Decimal(totalAmount).add(amt).toNumber();
       byAccountType[e.accountType] = new Prisma.Decimal(byAccountType[e.accountType] ?? 0).add(amt).toNumber();
       byCategory[e.category] = new Prisma.Decimal(byCategory[e.category] ?? 0).add(amt).toNumber();
+      byStatus[e.status] = (byStatus[e.status] ?? 0) + 1;
       if (e.status === 'PENDING_APPROVAL' || e.status === 'DRAFT') pendingCount++;
+      // Accrual unpaid = approved/recorded but not yet paid (paymentDate null)
+      if ((e.status === 'APPROVED' || e.status === 'PENDING_APPROVAL') && !e.paymentDate) {
+        accrualUnpaidCount++;
+        accrualUnpaidTotal = new Prisma.Decimal(accrualUnpaidTotal).add(amt).toNumber();
+      }
     }
 
-    return { totalAmount, totalCount: expenses.length, pendingCount, byAccountType, byCategory };
+    return {
+      totalAmount,
+      totalCount: expenses.length,
+      pendingCount,
+      byAccountType,
+      byCategory,
+      byStatus,
+      accrualUnpaidCount,
+      accrualUnpaidTotal,
+    };
   }
 
   async getExpenseCategoryBreakdown(filters: { branchId?: string; startDate?: string; endDate?: string }) {

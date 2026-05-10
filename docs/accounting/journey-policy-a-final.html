@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BESTCHOICE FINANCE — บันทึกบัญชี Policy A 100% (สรุปการเปลี่ยนแปลง)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #fafaf9;
+    --paper: #ffffff;
+    --border: #d6d3d1;
+    --line: #e7e5e4;
+    --text: #0c0a09;
+    --muted: #57534e;
+    --subtle: #78716c;
+    --emerald: #047857;
+    --emerald-bg: #ecfdf5;
+    --emerald-border: #a7f3d0;
+    --rose: #be123c;
+    --rose-bg: #fef2f2;
+    --amber: #b45309;
+    --amber-bg: #fffbeb;
+    --blue: #1d4ed8;
+    --blue-bg: #eff6ff;
+    --violet: #6d28d9;
+    --violet-bg: #f5f3ff;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans Thai', system-ui, sans-serif; font-size: 15px; line-height: 1.7; }
+  .page { max-width: 920px; margin: 0 auto; padding: 56px 40px 80px; background: var(--paper); box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  .doc-header { border-bottom: 2px solid var(--text); padding-bottom: 20px; margin-bottom: 36px; }
+  .doc-header .org { font-size: 13px; color: var(--subtle); letter-spacing: 0.05em; margin-bottom: 6px; }
+  h1 { font-size: 28px; font-weight: 700; margin: 0 0 8px; letter-spacing: -0.01em; }
+  .doc-header .sub { color: var(--muted); font-size: 15px; margin: 0; }
+  .doc-meta { display: flex; gap: 28px; margin-top: 14px; font-size: 12px; color: var(--subtle); flex-wrap: wrap; }
+  .doc-meta strong { color: var(--text); }
+
+  .summary-box { background: var(--emerald-bg); border: 1px solid var(--emerald-border); border-radius: 10px; padding: 20px 24px; margin: 0 0 28px; }
+  .summary-box h3 { font-size: 14px; margin: 0 0 10px; font-weight: 700; color: var(--emerald); letter-spacing: 0.04em; text-transform: uppercase; }
+  .summary-list { margin: 0; padding-left: 20px; font-size: 14px; }
+  .summary-list li { margin-bottom: 6px; }
+  .summary-list strong { color: var(--text); }
+  .summary-list code { font-family: 'IBM Plex Mono', monospace; font-size: 12px; background: white; padding: 1px 6px; border-radius: 3px; border: 1px solid var(--emerald-border); }
+
+  section { margin-bottom: 44px; }
+  h2 { font-size: 20px; font-weight: 700; margin: 0 0 18px; padding-bottom: 8px; border-bottom: 1px solid var(--border); letter-spacing: -0.01em; }
+  h2 .badge-section { display: inline-block; background: var(--text); color: white; padding: 2px 10px; border-radius: 4px; font-size: 12px; font-weight: 600; margin-right: 10px; vertical-align: middle; }
+  h2 .pr-tag { display: inline-block; background: var(--blue); color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; margin-left: 8px; vertical-align: middle; font-family: 'IBM Plex Mono', monospace; }
+
+  .change-box { background: var(--paper); border: 1px solid var(--border); border-radius: 8px; padding: 18px 22px; margin-bottom: 18px; }
+  .change-box .label { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+  .change-box .label.before { color: var(--rose); }
+  .change-box .label.after { color: var(--emerald); }
+  .change-box .body { font-size: 14px; color: var(--text); }
+
+  .entry { margin-bottom: 30px; page-break-inside: avoid; }
+  .entry-when { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; flex-wrap: wrap; }
+  .entry-tag { background: var(--emerald); color: white; padding: 4px 12px; border-radius: 6px; font-weight: 700; font-size: 13px; letter-spacing: 0.02em; flex-shrink: 0; }
+  .entry-tag.tag-violet { background: var(--violet); }
+  .entry-tag.tag-blue   { background: var(--blue); }
+  .entry-tag.tag-amber  { background: var(--amber); }
+  .entry-tag.tag-rose   { background: var(--rose); }
+  .entry-tag.tag-zinc   { background: var(--subtle); }
+  .entry-title { font-size: 16px; font-weight: 600; margin: 0; flex: 1; }
+  .entry-narrative { margin: 4px 0 12px 0; color: var(--muted); font-size: 14px; }
+
+  .ledger { border: 1px solid var(--border); border-radius: 6px; overflow: hidden; font-size: 14px; background: var(--paper); }
+  .ledger table { width: 100%; border-collapse: collapse; }
+  .ledger thead { background: #fafaf9; border-bottom: 2px solid var(--border); }
+  .ledger th { text-align: left; padding: 8px 14px; font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: 0.05em; text-transform: uppercase; }
+  .ledger th.num { text-align: right; }
+  .ledger td { padding: 9px 14px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+  .ledger tr:last-child td { border-bottom: none; }
+  .ledger .acc-code { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--subtle); width: 75px; }
+  .ledger .acc-name { font-size: 14px; }
+  .ledger .acc-name.indent { padding-left: 36px; color: var(--muted); }
+  .ledger .num { text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 13px; width: 110px; }
+  .ledger .num.dr { color: var(--rose); }
+  .ledger .num.cr { color: var(--emerald); }
+  .ledger .total-row { background: #fafaf9; border-top: 2px solid var(--border); font-weight: 700; }
+  .ledger .total-row td { padding: 10px 14px; }
+
+  .check { margin: 8px 0 0; font-size: 13px; color: var(--emerald); display: inline-block; background: var(--emerald-bg); padding: 4px 12px; border-radius: 4px; border: 1px solid var(--emerald-border); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .standard { margin: 10px 0 0; padding: 8px 14px; border-left: 3px solid var(--blue); background: var(--blue-bg); font-size: 13px; border-radius: 0 4px 4px 0; color: var(--text); }
+  .standard strong { color: var(--blue); }
+  .warn { margin: 10px 0 0; padding: 8px 14px; border-left: 3px solid var(--amber); background: var(--amber-bg); font-size: 13px; border-radius: 0 4px 4px 0; }
+  .warn strong { color: var(--amber); }
+
+  table.cases { width: 100%; border-collapse: collapse; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; font-size: 14px; }
+  table.cases thead { background: #fafaf9; }
+  table.cases th { text-align: left; padding: 10px 14px; font-size: 11px; color: var(--muted); font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; border-bottom: 2px solid var(--border); }
+  table.cases td { padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.cases tr:last-child td { border-bottom: none; }
+  table.cases code { font-family: 'IBM Plex Mono', monospace; font-size: 12px; background: var(--blue-bg); color: var(--blue); padding: 1px 6px; border-radius: 3px; }
+  table.cases td.num { text-align: right; font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; }
+
+  .checklist { list-style: none; padding: 0; margin: 0; counter-reset: chk; }
+  .checklist li { background: var(--paper); border: 1px solid var(--border); border-radius: 6px; padding: 14px 18px 14px 50px; margin-bottom: 8px; position: relative; }
+  .checklist li::before { content: ''; position: absolute; left: 16px; top: 17px; width: 18px; height: 18px; border: 2px solid var(--border); border-radius: 4px; background: white; }
+  .checklist li strong { display: block; margin-bottom: 2px; font-weight: 600; }
+  .checklist li span { color: var(--muted); font-size: 13px; }
+
+  @media print {
+    body { background: white; }
+    .page { box-shadow: none; max-width: none; padding: 0; }
+    .entry, table.cases, .ledger { page-break-inside: avoid; }
+    h2 { page-break-after: avoid; }
+    .print-btn { display: none; }
+  }
+  .print-btn { position: fixed; bottom: 24px; right: 24px; background: var(--text); color: white; padding: 12px 20px; border-radius: 8px; font-family: inherit; font-size: 14px; border: none; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+  .print-btn:hover { opacity: 0.9; }
+
+  @media (max-width: 720px) {
+    .page { padding: 28px 18px 60px; }
+    .ledger { font-size: 13px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <div class="doc-header">
+    <div class="org">บริษัท เบสท์ช้อยส์ ไฟแนนซ์ จำกัด · จดทะเบียน VAT</div>
+    <h1>เส้นทางบันทึกบัญชี Policy A 100%</h1>
+    <p class="sub">สรุปการเปลี่ยนแปลงบันทึกบัญชี 6 จุด หลังเทียบกับเอกสาร CPA (3 ไฟล์: CSV กรณีรับชำระค่างวด · Handover_BestChoiceFinance v3.0 · termination_policy)</p>
+    <div class="doc-meta">
+      <span><strong>มาตรฐานที่ใช้:</strong> TFRS for NPAEs (Full Accrual TFRS&nbsp;15)</span>
+      <span><strong>ภาษีมูลค่าเพิ่ม:</strong> 7%</span>
+      <span><strong>วันที่จัดทำ:</strong> 9 พฤษภาคม 2568</span>
+      <span><strong>เอกสารเทียบ:</strong> journey-accountant.html (8 พ.ค. 68)</span>
+    </div>
+  </div>
+
+  <div class="summary-box">
+    <h3>สรุป — สิ่งที่แก้ไข 6 จุด</h3>
+    <ol class="summary-list">
+      <li><strong>Policy A — VAT ไม่ลดตามส่วนลดปิดยอด</strong> · ปิดยอดเร็ว (JP4) ส่วนลด 905.02 ฿ · VAT ยังนำส่งเต็ม 595.02 ฿ <code>PR #783</code></li>
+      <li><strong>ECL v3.0 — 6 buckets (B0-B5)</strong> · อัตรา 0/2/15/50/75/100% ตามวันค้าง · เพิ่มจุด TERMINATED ที่ 61-90 วัน <code>PR #783</code></li>
+      <li><strong>Manual Termination ปพพ.386</strong> · ส่งหนังสือบอกเลิก → status='LEGAL' → หยุด accrual + ปลดล็อกยึดเครื่อง JP5 <code>PR #784</code></li>
+      <li><strong>ค่าปรับชำระล่าช้า (Late Fee)</strong> · Cr 42-1103 รายได้ค่าปรับ · 0 / 50 / 100 ฿ ตามวันค้าง 0 / 1-2 / 3+ วัน + ค่าปรับดิว ROUND_DOWN <code>PR #785</code></li>
+      <li><strong>เลขใบเสร็จใหม่ RT-YYYYMM-NNNNN + รับชำระบางส่วน</strong> · ออกใบเสร็จทุกครั้งที่รับเงิน · ระบุ "ชำระบางส่วน งวด N — ครั้งที่ X" + ยอดค้าง <code>PR #786</code></li>
+      <li><strong>ECL Stage Reverse on Payment</strong> · ลูกค้าจ่ายแล้ว aging bucket ลด → กลับสำรองส่วนเกิน Dr 11-2102 / Cr 51-1103 ทันที (ไม่ต้องรอสิ้นเดือน) <code>PR #787</code></li>
+    </ol>
+  </div>
+
+  <!-- ─── 1. Policy A ─── -->
+  <section>
+    <h2><span class="badge-section">1</span>Policy A — VAT ไม่ลดตามส่วนลด<span class="pr-tag">PR #783</span></h2>
+
+    <div class="change-box">
+      <div class="label before">เดิม (ผิด — ก่อนแก้ไข)</div>
+      <div class="body">เมื่อปิดยอดเร็วได้ส่วนลดดอกเบี้ย 905.02 ฿ ระบบลด VAT ที่นำส่งตามสัดส่วน → Cr 21-2101 = 531.67 ฿</div>
+    </div>
+    <div class="change-box">
+      <div class="label after">หลังแก้ (ตรงตาม CPA Policy A)</div>
+      <div class="body">VAT ที่นำส่งคงเดิม → Cr 21-2101 = <strong>595.02 ฿</strong> เต็มจำนวน · ส่วนลดอยู่ฝั่งดอกเบี้ย/รายได้เท่านั้น ไม่กระทบ VAT (ตามมาตรา 79 + 86/10 — ส่วนลดที่ให้หลัง tax point ไม่ลด VAT base)</div>
+    </div>
+
+    <div class="entry">
+      <div class="entry-when">
+        <span class="entry-tag tag-amber">JP4</span>
+        <h3 class="entry-title">ตัวอย่าง — ปิดยอดเร็ว งวด 4 จาก 12 (เหลือ 8 งวด)</h3>
+      </div>
+      <p class="entry-narrative">ลูกค้าจ่ายปิดยอด · ส่วนลด = ดอกเบี้ยที่ยังไม่รับรู้ × Policy ส่วนลด 25%</p>
+
+      <div class="ledger">
+        <table>
+          <thead><tr><th>รหัส</th><th>ชื่อบัญชี</th><th class="num">เดบิต</th><th class="num">เครดิต</th></tr></thead>
+          <tbody>
+            <tr><td class="acc-code">11-1101</td><td class="acc-name">เงินสดรับ</td><td class="num dr">7,594.98</td><td class="num"></td></tr>
+            <tr><td class="acc-code">52-1106</td><td class="acc-name">ส่วนลดดอกเบี้ย-ปิดยอด</td><td class="num dr">905.02</td><td class="num"></td></tr>
+            <tr><td class="acc-code">11-2106</td><td class="acc-name">กลับรายได้ดอกเบี้ยรอตัดบัญชี</td><td class="num dr">3,500.00</td><td class="num"></td></tr>
+            <tr><td class="acc-code">21-2102</td><td class="acc-name">ล้างภาษีขายรอเรียกเก็บ</td><td class="num dr">595.02</td><td class="num"></td></tr>
+            <tr><td class="acc-code">11-2101</td><td class="acc-name indent">ลูกหนี้ Gross (ตัดบัญชี)</td><td class="num"></td><td class="num cr">11,000.00</td></tr>
+            <tr><td class="acc-code">21-2101</td><td class="acc-name indent">ภาษีขาย ภ.พ.30 (เต็ม)</td><td class="num"></td><td class="num cr">595.02</td></tr>
+            <tr><td class="acc-code">41-1101</td><td class="acc-name indent">รายได้ดอกเบี้ย</td><td class="num"></td><td class="num cr">1,000.00</td></tr>
+            <tr class="total-row"><td></td><td>รวม</td><td class="num dr">12,595.02</td><td class="num cr">12,595.02</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="check">BALANCED · Dr 12,595.02 = Cr 12,595.02</div>
+      <div class="standard"><strong>อ้างอิงมาตรฐาน:</strong> ม.79 + 86/10 ประมวลรัษฎากร — ส่วนลดที่ให้หลังจุดความรับผิดของ VAT ไม่ลด tax base · นำส่ง VAT เต็มตาม invoice เดิม</div>
+    </div>
+  </section>
+
+  <!-- ─── 2. ECL v3.0 ─── -->
+  <section>
+    <h2><span class="badge-section">2</span>ECL v3.0 — 6 Buckets (NPAEs Ch.13)<span class="pr-tag">PR #783</span></h2>
+
+    <div class="change-box">
+      <div class="label before">เดิม</div>
+      <div class="body">ใช้ 5 buckets — 1-30 (2%), 31-60 (10%), 61-90 (25%), 91-180 (50%), 180+ (100%)</div>
+    </div>
+    <div class="change-box">
+      <div class="label after">หลังแก้</div>
+      <div class="body">6 buckets ตามอัตราใหม่ — เพิ่มความเข้มงวดในช่วง B2/B3/B4 + ระบุจุดที่สัญญาควร TERMINATED</div>
+    </div>
+
+    <table class="cases">
+      <thead><tr><th>Bucket</th><th>วันค้างชำระ</th><th class="num">อัตราสำรอง</th><th>สถานะสัญญา</th></tr></thead>
+      <tbody>
+        <tr><td><code>B0</code></td><td>0 วัน (ปกติ)</td><td class="num">0%</td><td>ACTIVE — ไม่ตั้งสำรอง</td></tr>
+        <tr><td><code>B1</code></td><td>1-30 วัน</td><td class="num">2%</td><td>ACTIVE</td></tr>
+        <tr><td><code>B2</code></td><td>31-60 วัน</td><td class="num"><strong>15%</strong></td><td>ACTIVE · alert 60d</td></tr>
+        <tr><td><code>B3</code></td><td>61-90 วัน</td><td class="num"><strong>50%</strong></td><td>→ ควร TERMINATED</td></tr>
+        <tr><td><code>B4</code></td><td>91-180 วัน</td><td class="num"><strong>75%</strong></td><td>TERMINATED</td></tr>
+        <tr><td><code>B5</code></td><td>&gt; 180 วัน</td><td class="num">100%</td><td>NPL — ตัดหนี้สูญ</td></tr>
+      </tbody>
+    </table>
+    <div class="standard"><strong>อ้างอิงมาตรฐาน:</strong> TFRS for NPAEs Chapter 13 (ECL Aging-based simplification) · เลือก Aging-based แทน Forward-looking macro factors เพราะระดับ NPAEs ไม่ต้องรับ macro overlay</div>
+  </section>
+
+  <!-- ─── 3. Manual Termination ─── -->
+  <section>
+    <h2><span class="badge-section">3</span>Manual Termination ปพพ.386<span class="pr-tag">PR #784</span></h2>
+
+    <p>เมื่อค้าง ≥ 60 วัน → ทีมเก็บหนี้ส่งหนังสือบอกเลิกสัญญา (ตามมาตรา 386 ปพพ.) → ระบบเปลี่ยน contract.status = <code style="font-family: 'IBM Plex Mono'; font-size:12px; background:#fef2f2; color:var(--rose); padding:1px 6px; border-radius:3px;">LEGAL</code> → หยุด 2A daily accrual ทันที + ปลดล็อกยึดเครื่อง JP5</p>
+
+    <table class="cases" style="margin-top:14px;">
+      <thead><tr><th>ขั้นตอน</th><th>ระบบทำอะไร</th><th>หลักฐาน/อ้างอิง</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>1. ส่งหนังสือบอกเลิก</td>
+          <td>เก็บไฟล์ PDF + วันส่ง + ID ผู้อนุมัติ</td>
+          <td>มาตรา 386 ปพพ. — สัญญาถือเลิกเมื่อหนังสือถึงผู้รับ</td>
+        </tr>
+        <tr>
+          <td>2. ระบบ flag LEGAL</td>
+          <td>contract.status = LEGAL · หยุด installment-accrual cron (จุดที่ 2A)</td>
+          <td>2A cron filter — skip status ใน [LEGAL, CLOSED_BAD_DEBT, COMPLETED, EARLY_PAYOFF, EXCHANGED, DEFECT_EXCHANGED]</td>
+        </tr>
+        <tr>
+          <td>3. ปลดล็อก JP5</td>
+          <td>ยึดเครื่องได้ทันที (ก่อนหน้าต้องรอ DEFAULT/OVERDUE)</td>
+          <td>JP5 strict mode (SystemConfig <code>jp5_require_legal_status</code>) บังคับว่าต้อง LEGAL ก่อนยึด</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="warn"><strong>ข้อสำคัญ:</strong> เมื่อ status = LEGAL แล้ว <strong>ห้าม</strong> รับชำระค่างวดเพิ่ม (ลูกหนี้ค้างชำระไม่เพิ่ม) · ถ้าลูกค้ามาจ่าย ต้องเปลี่ยน status กลับเป็น ACTIVE ก่อน (โดยฝ่ายกฎหมาย) แล้วค่อย record payment</div>
+  </section>
+
+  <!-- ─── 4. Late Fee + Postpone ─── -->
+  <section>
+    <h2><span class="badge-section">4</span>ค่าปรับชำระล่าช้า + ค่าปรับดิว<span class="pr-tag">PR #785</span></h2>
+
+    <p>ตามตาราง CPA กรณีที่ 6 — ลูกค้าจ่ายค่างวดล่าช้า ต้องเก็บค่าปรับเพิ่มจากค่างวด:</p>
+
+    <table class="cases">
+      <thead><tr><th>วันค้างชำระ</th><th class="num">ค่าปรับ</th><th>บันทึกเป็น</th></tr></thead>
+      <tbody>
+        <tr><td>0 วัน (ตรงกำหนด)</td><td class="num">0 ฿</td><td>ไม่บันทึก</td></tr>
+        <tr><td>1-2 วัน</td><td class="num"><strong>50 ฿</strong></td><td>Cr 42-1103 ค่าปรับชำระล่าช้า (รายได้)</td></tr>
+        <tr><td>3+ วัน</td><td class="num"><strong>100 ฿</strong></td><td>Cr 42-1103 ค่าปรับชำระล่าช้า (รายได้)</td></tr>
+      </tbody>
+    </table>
+
+    <div class="entry" style="margin-top:24px;">
+      <div class="entry-when">
+        <span class="entry-tag">2B + Late Fee</span>
+        <h3 class="entry-title">ตัวอย่าง — ค่างวด 1,515.83 + ค่าปรับ 50 ฿ (ค้าง 2 วัน)</h3>
+      </div>
+      <p class="entry-narrative">ลูกค้าจ่าย 1,565.83 ฿ (รวมค่าปรับแล้ว) · ระบบ split อัตโนมัติ</p>
+
+      <div class="ledger">
+        <table>
+          <thead><tr><th>รหัส</th><th>ชื่อบัญชี</th><th class="num">เดบิต</th><th class="num">เครดิต</th></tr></thead>
+          <tbody>
+            <tr><td class="acc-code">11-1101</td><td class="acc-name">เงินสดรับ (รวมค่าปรับ)</td><td class="num dr">1,565.83</td><td class="num"></td></tr>
+            <tr><td class="acc-code">11-2103</td><td class="acc-name indent">ล้างลูกหนี้ค้างชำระ</td><td class="num"></td><td class="num cr">1,515.83</td></tr>
+            <tr><td class="acc-code">42-1103</td><td class="acc-name indent">ค่าปรับชำระล่าช้า (รายได้)</td><td class="num"></td><td class="num cr">50.00</td></tr>
+            <tr class="total-row"><td></td><td>รวม</td><td class="num dr">1,565.83</td><td class="num cr">1,565.83</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="check">BALANCED · Dr 1,565.83 = Cr 1,565.83</div>
+      <div class="standard"><strong>นโยบาย VAT:</strong> ค่าปรับล่าช้า <strong>ไม่อยู่ในฐานภาษีมูลค่าเพิ่ม</strong> — ตามนโยบายเจ้าของ + หลักการสากล (penalty ≠ consideration for goods/services)</div>
+    </div>
+
+    <div class="change-box" style="margin-top:18px;">
+      <div class="label">ค่าปรับดิว (Postpone Fee)</div>
+      <div class="body">สูตร: <code style="font-family:'IBM Plex Mono'; font-size:12px;">ค่างวด ÷ 30 × จำนวนวันที่เลื่อน</code> · ปัด <strong>ROUND_DOWN</strong> 2 ตำแหน่ง ตาม CPA spec · บันทึกเป็น Cr 21-1103 (เงินรับล่วงหน้า — park ไว้ ล้างเข้างวดสุดท้าย)</div>
+    </div>
+  </section>
+
+  <!-- ─── 5. Receipt RT format + Partial ─── -->
+  <section>
+    <h2><span class="badge-section">5</span>เลขใบเสร็จใหม่ + รับชำระบางส่วน<span class="pr-tag">PR #786</span></h2>
+
+    <div class="change-box">
+      <div class="label before">เดิม</div>
+      <div class="body"><code style="font-family:'IBM Plex Mono'; font-size:12px;">RC-YYYY-MM-NNNNN</code> เช่น <code style="font-family:'IBM Plex Mono'; font-size:12px;">RC-2026-05-00001</code> · ออกใบเสร็จเฉพาะตอนปิดงวด</div>
+    </div>
+    <div class="change-box">
+      <div class="label after">หลังแก้</div>
+      <div class="body"><code style="font-family:'IBM Plex Mono'; font-size:12px;">RT-YYYYMM-NNNNN</code> เช่น <code style="font-family:'IBM Plex Mono'; font-size:12px;">RT-202605-00001</code> · ออกใบเสร็จ <strong>ทุกครั้งที่รับเงิน</strong> (รวมการชำระบางส่วน)</div>
+    </div>
+
+    <p style="margin-top:18px;">ใบเสร็จเพิ่มข้อมูล 3 ฟิลด์ใหม่:</p>
+    <table class="cases">
+      <thead><tr><th>ฟิลด์</th><th>ความหมาย</th><th>ตัวอย่าง</th></tr></thead>
+      <tbody>
+        <tr><td><code>paymentStatus</code></td><td>สถานะของงวด — PARTIAL หรือ PAID</td><td>PARTIAL</td></tr>
+        <tr><td><code>installmentPartialSeq</code></td><td>ครั้งที่ของการชำระบางส่วน (1, 2, 3, ...)</td><td>2</td></tr>
+        <tr><td><code>remainingAmount</code></td><td>ยอดค้างของงวดนี้หลังออกใบเสร็จนี้</td><td>515.83</td></tr>
+      </tbody>
+    </table>
+
+    <div class="entry" style="margin-top:24px;">
+      <div class="entry-when">
+        <span class="entry-tag tag-blue">ตัวอย่าง</span>
+        <h3 class="entry-title">งวด 1 ค่างวด 1,515.83 — ลูกค้าจ่ายเป็น 3 ครั้ง</h3>
+      </div>
+      <table class="cases" style="margin-top:8px;">
+        <thead><tr><th>ครั้งที่</th><th>เลขใบเสร็จ</th><th class="num">จำนวน</th><th>สถานะ</th><th class="num">ยอดค้าง</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td><code>RT-202605-00001</code></td><td class="num">500.00</td><td>PARTIAL</td><td class="num">1,015.83</td></tr>
+          <tr><td>2</td><td><code>RT-202605-00002</code></td><td class="num">500.00</td><td>PARTIAL</td><td class="num">515.83</td></tr>
+          <tr><td>3</td><td><code>RT-202605-00003</code></td><td class="num">515.83</td><td><strong>PAID</strong></td><td class="num">0.00</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="warn"><strong>หมายเหตุ:</strong> ใบเสร็จที่ถูกยกเลิก (void) ไม่นับใน <code>installmentPartialSeq</code> — ครั้งถัดไปจะใช้ลำดับเดิม (เพราะใบที่ยกเลิกถือเสมือนไม่ได้ออก) · เลขใบเสร็จ <code>RT-...</code> ยังคงเดินตามลำดับปกติ ไม่ recycle</div>
+  </section>
+
+  <!-- ─── 6. ECL Stage Reverse ─── -->
+  <section>
+    <h2><span class="badge-section">6</span>ECL Stage Reverse on Payment<span class="pr-tag">PR #787</span></h2>
+
+    <div class="change-box">
+      <div class="label before">เดิม</div>
+      <div class="body">เมื่อลูกค้าจ่ายค่างวดที่ค้างนาน → aging bucket ลดลงทันที (เช่น B2 → B1) แต่ <strong>สำรองที่ตั้งไว้ยังเก่าจน cron สิ้นเดือนถัดไป</strong> → กระทบ P&L กลางเดือน</div>
+    </div>
+    <div class="change-box">
+      <div class="label after">หลังแก้</div>
+      <div class="body">เมื่อ 2B receipt JE post เสร็จ → ระบบคำนวณ aging ใหม่จาก Payment ปัจจุบัน → ถ้า bucket ลด → กลับสำรองส่วนเกินทันที (atomic ใน tx เดียวกับการรับชำระ)</div>
+    </div>
+
+    <div class="entry" style="margin-top:24px;">
+      <div class="entry-when">
+        <span class="entry-tag tag-violet">ECL-STAGE-REVERSE</span>
+        <h3 class="entry-title">ตัวอย่าง — ลูกค้า B2 (ค้าง 45 วัน, สำรอง 300) จ่ายแล้วเหลือค้าง 15 วัน (B1)</h3>
+      </div>
+      <p class="entry-narrative">สำรองใหม่ = 1,500 × 2% = 30 ฿ · ส่วนเกิน = 300 - 30 = 270 ฿ → กลับ</p>
+
+      <div class="ledger">
+        <table>
+          <thead><tr><th>รหัส</th><th>ชื่อบัญชี</th><th class="num">เดบิต</th><th class="num">เครดิต</th></tr></thead>
+          <tbody>
+            <tr><td class="acc-code">11-2102</td><td class="acc-name">กลับสำรอง 31-60 → 1-30 (Contra)</td><td class="num dr">270.00</td><td class="num"></td></tr>
+            <tr><td class="acc-code">51-1103</td><td class="acc-name indent">กลับค่าเผื่อหนี้สงสัยจะสูญ</td><td class="num"></td><td class="num cr">270.00</td></tr>
+            <tr class="total-row"><td></td><td>รวม</td><td class="num dr">270.00</td><td class="num cr">270.00</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="check">BALANCED · Dr 270.00 = Cr 270.00</div>
+
+      <div class="standard"><strong>กรณีพิเศษ:</strong> ถ้าลูกค้าจ่ายจนสัญญา <strong>ไม่ค้างเลย</strong> (B0) → กลับสำรอง <strong>เต็มจำนวน</strong> + mark BadDebtProvision.status = REVERSED</div>
+    </div>
+  </section>
+
+  <!-- ─── 7. Checklist ─── -->
+  <section>
+    <h2><span class="badge-section">7</span>Checklist สำหรับนักบัญชีตรวจ</h2>
+
+    <ul class="checklist">
+      <li>
+        <strong>1. Policy A — VAT ไม่ลดตามส่วนลด (PR #783)</strong>
+        <span>ตรวจ JE ปิดยอดเร็ว (JP4) ว่า Cr 21-2101 = 595.02 ฿ เต็ม (ไม่ใช่ 531.67)</span>
+      </li>
+      <li>
+        <strong>2. ECL v3.0 — 6 buckets อัตราใหม่ (PR #783)</strong>
+        <span>ตรวจรายงาน Bad Debt Provision summary แสดง 6 buckets B0-B5 ตามอัตรา 0/2/15/50/75/100%</span>
+      </li>
+      <li>
+        <strong>3. Manual Termination — ปพพ.386 (PR #784)</strong>
+        <span>ตรวจว่าสัญญาที่ status='LEGAL' ไม่มี 2A accrual JE post หลังวันบอกเลิก</span>
+      </li>
+      <li>
+        <strong>4. ค่าปรับล่าช้า — Cr 42-1103 (PR #785)</strong>
+        <span>ตรวจ JE ที่มี 42-1103 ว่า Dr cash = ค่างวด + ค่าปรับ + ไม่มี VAT ในส่วนค่าปรับ</span>
+      </li>
+      <li>
+        <strong>5. เลขใบเสร็จ RT-YYYYMM-NNNNN (PR #786)</strong>
+        <span>ตรวจใบเสร็จเดือนที่ออกใหม่ขึ้นต้นด้วย RT- ทั้งหมด · ใบเสร็จ partial มียอดค้าง + ครั้งที่ระบุชัด</span>
+      </li>
+      <li>
+        <strong>6. ECL Stage Reverse — Dr 11-2102 / Cr 51-1103 (PR #787)</strong>
+        <span>ตรวจ JE tag = ECL-STAGE-REVERSE ที่ post พร้อม payment receipt · metadata มี fromBucket / toBucket / reverseAmount</span>
+      </li>
+      <li>
+        <strong>7. งบทดลอง (Trial Balance) — สมดุล</strong>
+        <span>ตรวจ TB หลังแก้ทั้ง 6 จุด ว่า Dr รวม = Cr รวม · 11-2102 ขึ้นเป็น contra (ลด 11-2101 ใน Balance Sheet)</span>
+      </li>
+    </ul>
+  </section>
+
+  <div style="margin-top:48px; padding-top:24px; border-top:1px solid var(--border); font-size:13px; color:var(--subtle); text-align:center;">
+    <p>
+      เอกสารนี้สรุปเฉพาะ <strong>การเปลี่ยนแปลง</strong> 6 จุด · เส้นทางบันทึกบัญชีพื้นฐาน (จุดที่ 1-6) ดูได้จาก
+      <code style="font-family:'IBM Plex Mono'; font-size:12px;">journey-accountant.html</code> ฉบับ 8 พ.ค. 68
+    </p>
+    <p style="margin-top:8px;">PR ที่อ้างอิง: <code style="font-family:'IBM Plex Mono'; font-size:12px;">#783</code> · <code style="font-family:'IBM Plex Mono'; font-size:12px;">#784</code> · <code style="font-family:'IBM Plex Mono'; font-size:12px;">#785</code> · <code style="font-family:'IBM Plex Mono'; font-size:12px;">#786</code> · <code style="font-family:'IBM Plex Mono'; font-size:12px;">#787</code> · spec: <code style="font-family:'IBM Plex Mono'; font-size:12px;">2026-05-09-cpa-policy-a-100-compliance-design.md</code></p>
+  </div>
+
+</div>
+
+<button class="print-btn" onclick="window.print()">พิมพ์ / บันทึกเป็น PDF</button>
+
+</body>
+</html>

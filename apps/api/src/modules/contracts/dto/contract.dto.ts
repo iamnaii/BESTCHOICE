@@ -1,4 +1,5 @@
-import { IsString, IsNumber, IsOptional, IsInt, IsBoolean, Min, Max, Matches } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsInt, IsBoolean, Min, Max, Matches, IsIn } from 'class-validator';
+import { CASH_ACCOUNT_CODES } from '../../../constants/cash-account.constants';
 
 export class CreateContractDto {
   @IsString()
@@ -98,6 +99,15 @@ export class EarlyPayoffDto {
   /** ส่วนลดเปอร์เซ็นต์บนกำไรขั้นต้น (0-100) — default 50 */
   @IsOptional()
   discountPct?: number;
+
+  /**
+   * Cash dimension: บัญชีรับเงินจริง (one of 6 codes per accounting.md).
+   * Optional — falls back to user.defaultCashAccountCode then 11-1101.
+   */
+  @IsOptional()
+  @IsString()
+  @IsIn([...CASH_ACCOUNT_CODES], { message: 'บัญชีรับเงินไม่ถูกต้อง' })
+  depositAccountCode?: string;
 
   /** วันที่ชำระ (ISO date) — default = วันนี้ */
   @IsString()

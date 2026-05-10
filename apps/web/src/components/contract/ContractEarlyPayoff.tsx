@@ -1,10 +1,20 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
-import { formatNumber } from '@/utils/formatters';
+import { formatNumber, formatNumberDecimal } from '@/utils/formatters';
+import { CashAccountSelect } from '@/components/CashAccountSelect';
 
 /* ─── Types ───────────────────────────────────────── */
+export interface JeLinePreview {
+  accountCode: string;
+  accountName: string;
+  debit: string;
+  credit: string;
+  description: string;
+}
+
 export interface EarlyPayoffQuote {
   monthlyPayment: number;
   remainingMonths: number;
@@ -18,6 +28,13 @@ export interface EarlyPayoffQuote {
   discountAmount: number;
   unpaidLateFees: number;
   totalPayoff: number;
+  /** JE preview (JP4 template) — emitted when contract is in payoff-eligible state. */
+  journalPreview?: {
+    lines: JeLinePreview[];
+    totalDebit: string;
+    totalCredit: string;
+    isBalanced: boolean;
+  };
 }
 
 interface Props {
@@ -72,14 +89,17 @@ export function EarlyPayoffOverlay({
   const queryClient = useQueryClient();
   const [discountPct, setDiscountPct] = useState(50);
   const [paymentMethod, setPaymentMethod] = useState('CASH');
+  const [depositAccountCode, setDepositAccountCode] = useState('11-1101');
   const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [referenceNo, setReferenceNo] = useState('');
   const [notes, setNotes] = useState('');
 
   const { data: quote, isLoading } = useQuery<EarlyPayoffQuote>({
-    queryKey: ['contract-payoff', contractId, discountPct],
+    queryKey: ['contract-payoff', contractId, discountPct, depositAccountCode],
     queryFn: async () => {
-      const { data } = await api.get(`/contracts/${contractId}/early-payoff-quote?discountPct=${discountPct}`);
+      const { data } = await api.get(
+        `/contracts/${contractId}/early-payoff-quote?discountPct=${discountPct}&depositAccountCode=${depositAccountCode}`,
+      );
       return data;
     },
   });
@@ -89,6 +109,7 @@ export function EarlyPayoffOverlay({
       const { data } = await api.post(`/contracts/${contractId}/early-payoff`, {
         paymentMethod,
         discountPct,
+        depositAccountCode,
         paymentDate,
         referenceNo: referenceNo || undefined,
         notes: notes || undefined,
@@ -112,7 +133,11 @@ export function EarlyPayoffOverlay({
   const needsReference = paymentMethod !== 'CASH';
   const canSubmit = !!quote && !mutation.isPending && (!needsReference || referenceNo.trim().length > 0);
 
-  return (
+  // Render via createPortal to document.body so the fixed-position overlay
+  // is never trapped inside a parent stacking context (transformed ancestor,
+  // Radix Dialog portal, etc.) — previous bug: buttons appeared but click
+  // events did not reach handlers when mounted inside transformed parent.
+  return createPortal(
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-start justify-center pt-8 pb-8">
       <div className="w-full max-w-2xl bg-background rounded-xl shadow-2xl overflow-y-auto max-h-[calc(100vh-4rem)]">
         {/* Header */}
@@ -250,6 +275,12 @@ export function EarlyPayoffOverlay({
                   <input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} className={inputClass} />
                 </div>
               </div>
+              <div>
+                <label className="block text-xs font-medium text-foreground mb-1.5">
+                  บัญชีรับเงิน <span className="text-destructive">*</span>
+                </label>
+                <CashAccountSelect value={depositAccountCode} onChange={setDepositAccountCode} />
+              </div>
               {needsReference && (
                 <div>
                   <label className="block text-xs font-medium text-foreground mb-1.5">
@@ -270,6 +301,65 @@ export function EarlyPayoffOverlay({
               </div>
             </div>
           </div>
+
+          {/* Section JOURNAL AUTO */}
+          {quote?.journalPreview && (
+            <div className="rounded-xl border border-border bg-card p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex items-center justify-center size-8 rounded-lg bg-primary/10 text-primary">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold text-foreground">JOURNAL AUTO — บันทึกทางบัญชี</h3>
+                    <p className="text-xs text-muted-foreground">JP4 — ปิดยอดก่อนกำหนด (Policy A)</p>
+                  </div>
+                </div>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-medium leading-snug">
+                  AUTO
+                </span>
+              </div>
+              <div className="space-y-1">
+                <div className="grid grid-cols-[80px_1fr_90px_90px] gap-1 text-xs text-muted-foreground font-medium pb-1 border-b border-border">
+                  <span>รหัส</span>
+                  <span>บัญชี</span>
+                  <span className="text-right">Dr</span>
+                  <span className="text-right">Cr</span>
+                </div>
+                {quote.journalPreview.lines.map((line, idx) => (
+                  <div key={idx} className="grid grid-cols-[80px_1fr_90px_90px] gap-1 text-xs leading-snug">
+                    <span className="font-mono text-muted-foreground">{line.accountCode}</span>
+                    <div className="min-w-0">
+                      <span className="text-foreground truncate block">{line.accountName}</span>
+                      <span className="text-muted-foreground/70 text-[10px]">{line.description}</span>
+                    </div>
+                    <span className="text-right font-mono text-foreground">
+                      {parseFloat(line.debit) > 0 ? formatNumberDecimal(line.debit) : ''}
+                    </span>
+                    <span className="text-right font-mono text-foreground">
+                      {parseFloat(line.credit) > 0 ? formatNumberDecimal(line.credit) : ''}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div
+                className={`flex items-center justify-between mt-3 pt-2 border-t text-xs font-medium ${
+                  quote.journalPreview.isBalanced
+                    ? 'border-success/30 text-success'
+                    : 'border-destructive/30 text-destructive'
+                }`}
+              >
+                <span>Dr รวม = Cr รวม</span>
+                <span className="font-mono">
+                  {formatNumberDecimal(quote.journalPreview.totalDebit)} ={' '}
+                  {formatNumberDecimal(quote.journalPreview.totalCredit)}{' '}
+                  {quote.journalPreview.isBalanced ? 'BALANCED' : 'UNBALANCED'}
+                </span>
+              </div>
+            </div>
+          )}
 
           {/* Section 4: สิ่งที่จะเกิดขึ้น */}
           <div className="rounded-xl border border-border bg-card p-5">
@@ -308,7 +398,8 @@ export function EarlyPayoffOverlay({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

@@ -263,6 +263,7 @@ export class PaymentsController {
       dto.csv,
       dto.paymentMethod || 'BANK_TRANSFER',
       user.id,
+      dto.depositAccountCode,
     );
   }
 

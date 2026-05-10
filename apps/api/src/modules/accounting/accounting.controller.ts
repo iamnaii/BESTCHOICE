@@ -55,6 +55,7 @@ export class AccountingController {
     @Query('endDate') endDate?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('tab') tab?: string,
     @Request() req?: { user: { role: string; branchId?: string } },
   ) {
     const effectiveBranchId = hasCrossBranchAccess(req?.user)
@@ -71,6 +72,7 @@ export class AccountingController {
       endDate,
       page: page ? parseInt(page) : 1,
       limit: limit ? parseInt(limit) : 20,
+      tab,
     });
   }
 

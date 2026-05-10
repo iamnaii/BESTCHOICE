@@ -22,6 +22,7 @@ import { MdmAutoService } from '../mdm/mdm-auto.service';
 import { PromiseService } from '../overdue/promise.service';
 import { MdmLockService } from '../overdue/mdm-lock.service';
 import { PaymentCase } from './dto/payment.dto';
+import { CASH_ACCOUNT_CODES, type CashAccountCode } from './dto/csv-import.dto';
 import { BadDebtService } from '../accounting/bad-debt.service';
 
 @Injectable()
@@ -1056,13 +1057,17 @@ export class PaymentsService {
   // ─── Batch CSV Payment Import ────────────────────────
   /**
    * Parse CSV and record payments in batch.
-   * Expected CSV format: contractNumber,installmentNo,amount,paymentMethod,transactionRef,notes
+   * Expected CSV format:
+   *   contractNumber,installmentNo,amount,paymentMethod,transactionRef,notes,depositAccountCode
+   * Last column (depositAccountCode) is optional; falls back to body-level
+   * dto.depositAccountCode → user defaultCashAccountCode → 11-1101.
    * First row is header (skipped).
    */
   async importPaymentsFromCsv(
     csvText: string,
     defaultPaymentMethod: string,
     recordedById: string,
+    bodyDepositAccountCode?: string,
   ): Promise<{ total: number; success: number; errors: { row: number; message: string }[] }> {
     const lines = csvText.trim().split('\n');
     if (lines.length < 2) {
@@ -1086,12 +1091,30 @@ export class PaymentsService {
         continue;
       }
 
-      const [contractNumber, installmentNoStr, amountStr, paymentMethod, transactionRef, notes] = cols;
+      const [
+        contractNumber,
+        installmentNoStr,
+        amountStr,
+        paymentMethod,
+        transactionRef,
+        notes,
+        rowDepositAccountCode,
+      ] = cols;
       const installmentNo = parseInt(installmentNoStr, 10);
       const amount = parseFloat(amountStr);
 
       if (!contractNumber || isNaN(installmentNo) || isNaN(amount) || amount <= 0) {
         errors.push({ row, message: `ข้อมูลไม่ถูกต้อง: contractNumber=${contractNumber}, installmentNo=${installmentNoStr}, amount=${amountStr}` });
+        continue;
+      }
+
+      // Per-row deposit account: row column > body default > recordPayment fallback
+      const depositCode = rowDepositAccountCode?.trim() || bodyDepositAccountCode;
+      if (depositCode && !CASH_ACCOUNT_CODES.includes(depositCode as CashAccountCode)) {
+        errors.push({
+          row,
+          message: `บัญชีรับเงินไม่ถูกต้อง: ${depositCode} (รหัสที่อนุญาต: ${CASH_ACCOUNT_CODES.join(', ')})`,
+        });
         continue;
       }
 
@@ -1115,6 +1138,7 @@ export class PaymentsService {
           undefined, // evidenceUrl
           notes || `CSV import row ${row}`,
           transactionRef || `CSV-${Date.now()}-${row}-${Math.random().toString(36).slice(2, 8)}`,
+          depositCode, // resolves to user default → 11-1101 if undefined
         );
         success++;
       } catch (err) {
@@ -1551,6 +1575,17 @@ export class PaymentsService {
     totalCredit: string;
     isBalanced: boolean;
     rescheduleFeeDisplay?: string;
+    /**
+     * 2B_ONLY: 2A daily accrual cron has already posted for this installment.
+     *   JE clears 11-2103 only.
+     * CONSOLIDATED_PAYING_AHEAD: dueDate is in the future — customer is paying
+     *   before due. 2A has not yet fired; preview folds 2A+2B into one JE so
+     *   the books balance without recognizing revenue early in two passes.
+     * CONSOLIDATED_BACKFILL: dueDate is past or today but 2A is missing —
+     *   anomaly the daily cron will catch up on the next 00:01 BKK run.
+     */
+    accrualMode?: '2B_ONLY' | 'CONSOLIDATED_PAYING_AHEAD' | 'CONSOLIDATED_BACKFILL';
+    dueDate?: string;
   }> {
     const inst = await this.prisma.installmentSchedule.findUnique({
       where: { contractId_installmentNo: { contractId: input.contractId, installmentNo: input.installmentNo } },
@@ -1583,6 +1618,20 @@ export class PaymentsService {
 
     // Build raw JE lines (code, dr, cr, description)
     const rawLines: { code: string; dr: Prisma.Decimal; cr: Prisma.Decimal; description: string }[] = [];
+
+    // PARTIAL and RESCHEDULE both emit Cr 11-2103 directly — they assume 2A
+    // has already accrued the installment into 11-2103. If 2A is missing
+    // (paying ahead, cron lag), the JE would credit a zero-balance account.
+    // Block here with a clear Thai message so the wizard can prompt user to
+    // wait for the next 2A tick instead of silently producing a malformed JE.
+    if (
+      !inst.accrualJournalEntryId &&
+      (input.case === 'PARTIAL' || input.case === 'RESCHEDULE')
+    ) {
+      throw new BadRequestException(
+        `งวดนี้ยังไม่ได้ทำ accrual (2A) — ไม่สามารถใช้ ${input.case === 'PARTIAL' ? 'จ่ายบางส่วน' : 'เลื่อนงวด'} ได้ก่อน accrual กรุณารอรอบ 00:01 น. หรือใช้รับชำระแบบปกติ`,
+      );
+    }
 
     // ── RESCHEDULE case (JP6 template preview) ──────────────────────────────
     if (input.case === 'RESCHEDULE') {
@@ -1680,6 +1729,21 @@ export class PaymentsService {
     // ── Normal / Overpay / Underpay / EarlyPayoff (existing logic continues) ─
     const amountReceived = new Prisma.Decimal(input.amountReceived.toString());
     const isConsolidated = !inst.accrualJournalEntryId; // 2A not yet run
+
+    // Accrual-mode classification for UI explanation chip:
+    //   PAYING_AHEAD   — dueDate is in the future, customer paying early
+    //   BACKFILL       — dueDate has passed but 2A still missing (cron lag)
+    //   2B_ONLY        — 2A already posted, JE only clears 11-2103
+    let accrualMode: '2B_ONLY' | 'CONSOLIDATED_PAYING_AHEAD' | 'CONSOLIDATED_BACKFILL';
+    if (!isConsolidated) {
+      accrualMode = '2B_ONLY';
+    } else {
+      const todayMidnight = new Date();
+      todayMidnight.setHours(0, 0, 0, 0);
+      accrualMode = inst.dueDate.getTime() > todayMidnight.getTime()
+        ? 'CONSOLIDATED_PAYING_AHEAD'
+        : 'CONSOLIDATED_BACKFILL';
+    }
 
     // Dr: cash/bank received (installment total + late fee)
     const totalReceived = amountReceived.plus(lateFeeAmount);
@@ -1779,6 +1843,8 @@ export class PaymentsService {
       totalDebit: totalDebit.toFixed(2),
       totalCredit: totalCredit.toFixed(2),
       isBalanced,
+      accrualMode,
+      dueDate: inst.dueDate.toISOString(),
     };
   }
 }

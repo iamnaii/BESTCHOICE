@@ -21,6 +21,7 @@ describe('ExpenseDocumentsService.createPayroll', () => {
     const accrual: any = {};
     const cn: any = {};
     const payroll: any = { execute: jest.fn() };
+    const settlement: any = { execute: jest.fn() };
     service = new ExpenseDocumentsService(
       prisma,
       docNumber,
@@ -29,6 +30,7 @@ describe('ExpenseDocumentsService.createPayroll', () => {
       accrual,
       cn,
       payroll,
+      settlement,
     );
   });
 

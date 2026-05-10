@@ -13,11 +13,13 @@ import { ExpenseSameDayTemplate } from '../journal/cpa-templates/expense-same-da
 import { ExpenseAccrualTemplate } from '../journal/cpa-templates/expense-accrual.template';
 import { CreditNoteTemplate } from '../journal/cpa-templates/credit-note.template';
 import { PayrollTemplate } from '../journal/cpa-templates/payroll.template';
+import { VendorSettlementTemplate } from '../journal/cpa-templates/vendor-settlement.template';
 import { CreateExpenseDocumentDto } from './dto/create.dto';
 import { UpdateExpenseDocumentDto } from './dto/update.dto';
 import { ListExpenseDocumentsQueryDto } from './dto/list-query.dto';
 import { CreateCreditNoteDto } from './dto/create-credit-note.dto';
 import { CreatePayrollDto } from './dto/create-payroll.dto';
+import { CreateSettlementDto } from './dto/create-settlement.dto';
 import { hasCrossBranchAccess } from '../auth/branch-access.util';
 
 @Injectable()
@@ -32,6 +34,7 @@ export class ExpenseDocumentsService {
     private readonly accrualTemplate: ExpenseAccrualTemplate,
     private readonly creditNoteTemplate: CreditNoteTemplate,
     private readonly payrollTemplate: PayrollTemplate,
+    private readonly settlementTemplate: VendorSettlementTemplate,
   ) {}
 
   // ─── Create ──────────────────────────────────────────────────────────
@@ -251,6 +254,108 @@ export class ExpenseDocumentsService {
     });
   }
 
+  // ─── Vendor Settlement create — multi-line clears ACCRUAL EXs ────────
+  async createSettlement(
+    dto: CreateSettlementDto,
+    user: { id: string; branchId?: string | null; role?: string },
+  ) {
+    if (!hasCrossBranchAccess(user) && user.branchId !== dto.branchId) {
+      throw new ForbiddenException('ไม่สามารถสร้างเอกสารในสาขาอื่นได้');
+    }
+    return this.prisma.$transaction(async (tx) => {
+      // Acquire advisory locks on each cleared doc to prevent concurrent over-clearing
+      for (const line of dto.lines) {
+        await tx.$executeRawUnsafe(
+          `SELECT pg_advisory_xact_lock(hashtext($1))`,
+          line.clearedDocumentId,
+        );
+      }
+      // Validate + load each cleared doc
+      let sumSettled = new Prisma.Decimal(0);
+      for (const line of dto.lines) {
+        const cleared = await tx.expenseDocument.findUniqueOrThrow({
+          where: { id: line.clearedDocumentId },
+        });
+        if (cleared.deletedAt) {
+          throw new BadRequestException(`เอกสาร ${cleared.number} ถูกลบไปแล้ว`);
+        }
+        if (cleared.branchId !== dto.branchId) {
+          throw new BadRequestException(`เอกสาร ${cleared.number} อยู่สาขาอื่น`);
+        }
+        if (cleared.documentType !== 'EXPENSE') {
+          throw new BadRequestException(
+            `เอกสาร ${cleared.number} ไม่ใช่ใบรายจ่าย (EX)`,
+          );
+        }
+        if (cleared.status !== 'ACCRUAL') {
+          throw new BadRequestException(
+            `เอกสาร ${cleared.number} ไม่ได้อยู่ในสถานะ ACCRUAL (ขณะนี้: ${cleared.status})`,
+          );
+        }
+        // Cap: amountSettled <= cleared.totalAmount minus prior settlements
+        const priorAgg = await tx.settlementLine.aggregate({
+          where: {
+            clearedDocumentId: line.clearedDocumentId,
+            settlement: {
+              document: {
+                status: { not: 'VOIDED' },
+                deletedAt: null,
+              },
+            },
+          },
+          _sum: { amountSettled: true },
+        });
+        const priorTotal = new Prisma.Decimal(priorAgg._sum.amountSettled ?? 0);
+        const cap = new Prisma.Decimal(cleared.totalAmount.toString()).minus(priorTotal);
+        const amount = new Prisma.Decimal(line.amountSettled);
+        if (amount.gt(cap)) {
+          throw new BadRequestException(
+            `เอกสาร ${cleared.number} จำนวนที่จ่ายเกินยอดที่ค้าง (เหลือ ${cap.toFixed(2)} ฿)`,
+          );
+        }
+        sumSettled = sumSettled.plus(amount);
+      }
+
+      const wht = new Prisma.Decimal(dto.withholdingTax ?? 0);
+      const documentDate = new Date(dto.documentDate);
+      const number = await this.docNumber.next(tx, 'VENDOR_SETTLEMENT', documentDate);
+
+      return tx.expenseDocument.create({
+        data: {
+          number,
+          documentType: 'VENDOR_SETTLEMENT',
+          branchId: dto.branchId,
+          documentDate,
+          vendorName: dto.vendorName ?? null,
+          description: dto.description ?? null,
+          subtotal: sumSettled,
+          vatAmount: new Prisma.Decimal(0),
+          withholdingTax: wht,
+          whtFormType: dto.whtFormType ?? null,
+          totalAmount: sumSettled,
+          netPayment: sumSettled.minus(wht),
+          depositAccountCode: dto.depositAccountCode,
+          paymentMethod: (dto.paymentMethod as never) ?? null,
+          status: 'DRAFT',
+          reference: dto.reference ?? null,
+          note: dto.note ?? null,
+          createdById: user.id,
+          settlement: {
+            create: {
+              settlementLines: {
+                create: dto.lines.map((l) => ({
+                  clearedDocumentId: l.clearedDocumentId,
+                  amountSettled: new Prisma.Decimal(l.amountSettled),
+                })),
+              },
+            },
+          },
+        },
+        include: { settlement: { include: { settlementLines: true } } },
+      });
+    });
+  }
+
   // ─── List ────────────────────────────────────────────────────────────
   async list(
     query: ListExpenseDocumentsQueryDto,
@@ -461,9 +566,9 @@ export class ExpenseDocumentsService {
         hasPaymentMethod: !!doc.paymentMethod && !!doc.depositAccountCode,
       });
 
-      // EXPENSE + CREDIT_NOTE + PAYROLL supported (PR-4: ASSET to follow)
-      if (!['EXPENSE', 'CREDIT_NOTE', 'PAYROLL'].includes(doc.documentType)) {
-        throw new BadRequestException(`type ${doc.documentType} จะมาใน PR-4`);
+      // EXPENSE + CREDIT_NOTE + PAYROLL + VENDOR_SETTLEMENT supported
+      if (!['EXPENSE', 'CREDIT_NOTE', 'PAYROLL', 'VENDOR_SETTLEMENT'].includes(doc.documentType)) {
+        throw new BadRequestException(`type ${doc.documentType} not supported`);
       }
 
       if (doc.documentType === 'CREDIT_NOTE') {
@@ -471,6 +576,9 @@ export class ExpenseDocumentsService {
       }
       if (doc.documentType === 'PAYROLL') {
         return this.payrollTemplate.execute(id, tx);
+      }
+      if (doc.documentType === 'VENDOR_SETTLEMENT') {
+        return this.settlementTemplate.execute(id, tx);
       }
       const target = this.transition.resolveTargetStatus(
         doc.documentType,

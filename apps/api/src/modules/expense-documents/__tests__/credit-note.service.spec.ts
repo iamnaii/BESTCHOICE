@@ -18,6 +18,8 @@ describe('ExpenseDocumentsService.createCreditNote', () => {
   let creditNote: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let payroll: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let settlement: any;
 
   const ORIG_ID = '00000000-0000-4000-8000-000000000001';
 
@@ -37,6 +39,7 @@ describe('ExpenseDocumentsService.createCreditNote', () => {
     accrual = { execute: jest.fn() };
     creditNote = { execute: jest.fn() };
     payroll = { execute: jest.fn() };
+    settlement = { execute: jest.fn() };
     service = new ExpenseDocumentsService(
       prisma,
       docNumber,
@@ -45,6 +48,7 @@ describe('ExpenseDocumentsService.createCreditNote', () => {
       accrual,
       creditNote,
       payroll,
+      settlement,
     );
   });
 

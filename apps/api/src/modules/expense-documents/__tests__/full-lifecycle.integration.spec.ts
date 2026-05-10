@@ -7,6 +7,7 @@ import { ExpenseSameDayTemplate } from '../../journal/cpa-templates/expense-same
 import { ExpenseAccrualTemplate } from '../../journal/cpa-templates/expense-accrual.template';
 import { CreditNoteTemplate } from '../../journal/cpa-templates/credit-note.template';
 import { PayrollTemplate } from '../../journal/cpa-templates/payroll.template';
+import { VendorSettlementTemplate } from '../../journal/cpa-templates/vendor-settlement.template';
 import { JournalAutoService } from '../../journal/journal-auto.service';
 import { seedFinanceCoa } from '../../../../prisma/seed-coa-finance';
 
@@ -81,6 +82,7 @@ describe('ExpenseDocuments full lifecycle (integration)', () => {
     const accrual = new ExpenseAccrualTemplate(journal, prisma as never);
     const cn = new CreditNoteTemplate(journal, prisma as never);
     const payroll = new PayrollTemplate(journal, prisma as never);
+    const settlement = new VendorSettlementTemplate(journal, prisma as never);
     return new ExpenseDocumentsService(
       prisma as never,
       new DocNumberService(),
@@ -89,6 +91,7 @@ describe('ExpenseDocuments full lifecycle (integration)', () => {
       accrual,
       cn,
       payroll,
+      settlement,
     );
   }
 

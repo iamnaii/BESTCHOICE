@@ -78,6 +78,15 @@ CREATE INDEX "expense_documents_document_type_status_idx"
 CREATE INDEX "expense_documents_status_paid_at_idx"
   ON "expense_documents" ("status", "paid_at");
 
+CREATE UNIQUE INDEX "expense_documents_journal_entry_id_key"
+  ON "expense_documents" ("journal_entry_id");
+
+CREATE INDEX "expense_documents_created_by_id_idx"
+  ON "expense_documents" ("created_by_id");
+
+CREATE INDEX "expense_documents_approved_by_id_idx"
+  ON "expense_documents" ("approved_by_id");
+
 ALTER TABLE "expense_documents"
   ADD CONSTRAINT "expense_documents_branch_id_fkey"
   FOREIGN KEY ("branch_id") REFERENCES "branches"("id")

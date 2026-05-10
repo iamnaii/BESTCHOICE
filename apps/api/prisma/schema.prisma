@@ -3508,6 +3508,9 @@ model ExpenseDocument {
   totalAmount     Decimal  @db.Decimal(12, 2) @map("total_amount")
   netPayment      Decimal? @db.Decimal(12, 2) @map("net_payment")
 
+  /// Void audit (who/when) is tracked via AuditLog only — no voidedById/voidedAt
+  /// columns. Status flips DRAFT/ACCRUAL/POSTED → VOIDED via VoidExpenseDocument
+  /// action; AuditLog row captures actor + timestamp + reason.
   status              DocumentStatus @default(DRAFT)
   paidAt              DateTime?      @map("paid_at")
   paymentMethod       PaymentMethod? @map("payment_method")
@@ -3515,7 +3518,7 @@ model ExpenseDocument {
 
   expenseDetail   ExpenseDetail?
 
-  journalEntryId  String?  @map("journal_entry_id")
+  journalEntryId  String?  @unique @map("journal_entry_id")
 
   receiptImageUrl String?  @map("receipt_image_url")
   reference       String?

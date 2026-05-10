@@ -841,7 +841,8 @@ export default function ExpensesPage() {
                 className="w-full px-3 py-2 text-sm text-left hover:bg-muted">รายจ่าย (EX)</button>
               <button onClick={() => { setShowCreateMenu(false); navigate('/expenses/new?type=CN'); }}
                 className="w-full px-3 py-2 text-sm text-left hover:bg-muted">ใบลดหนี้ (CN)</button>
-              <button disabled className="w-full px-3 py-2 text-sm text-left text-muted-foreground/50 cursor-not-allowed">เงินเดือน (PR-3)</button>
+              <button onClick={() => { setShowCreateMenu(false); navigate('/expenses/new?type=PR'); }}
+                className="w-full px-3 py-2 text-sm text-left hover:bg-muted">เงินเดือน (PR)</button>
               <button disabled className="w-full px-3 py-2 text-sm text-left text-muted-foreground/50 cursor-not-allowed">จ่ายเจ้าหนี้ (PR-4)</button>
             </div>
           )}

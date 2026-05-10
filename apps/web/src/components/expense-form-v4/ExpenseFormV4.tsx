@@ -155,45 +155,28 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
         if (!state.originalDocumentId || !state.cnReason.trim()) {
           throw new Error('กรุณาเลือกเอกสารต้นฉบับและระบุเหตุผล');
         }
-        // Use server-side preview to compute totals — avoids client-side rounding drift.
-        // Totals are returned as Decimal strings; pass them directly to the CN endpoint
-        // to avoid any float-cast at the money boundary (W-1).
-        const exPayload = {
-          documentType: 'EXPENSE',
-          branchId: state.branchId,
-          documentDate: state.documentDate,
-          priceType: state.priceType,
-          lines: state.lines
-            .filter((l) => l.category && parseFloat(l.unitPrice) > 0)
-            .map((l) => ({
-              category: l.category,
-              description: l.description || undefined,
-              quantity: parseFloat(l.quantity) || 1,
-              unitPrice: parseFloat(l.unitPrice) || 0,
-              discount: parseFloat(l.discount) || 0,
-              vatPercent: parseFloat(l.vatPercent) || 0,
-              whtPercent: parseFloat(l.whtPercent) || 0,
-            })),
-        };
-        let previewResp;
-        try {
-          previewResp = await api.post('/expense-documents/preview-je', exPayload);
-        } catch (e) {
-          // Re-wrap with CN context so the error toast names "ใบลดหนี้" not "ใบรายจ่าย" (W-5)
-          throw new Error(`ไม่สามารถคำนวณยอดใบลดหนี้: ${getErrorMessage(e)}`);
+        const validLines = state.lines.filter((l) => l.category && parseFloat(l.unitPrice) > 0);
+        if (validLines.length === 0) {
+          throw new Error('ต้องมีรายการบัญชีอย่างน้อย 1 บรรทัด');
         }
-        // Pass strings directly — CreateCreditNoteDto.subtotal/vatAmount are @IsString()
-        const subtotal: string = previewResp.data.totals.subtotal;
-        const vatAmount: string = previewResp.data.totals.vatAmount;
+        // Server computes totals from lines — no preview-je hop needed.
+        // This also eliminates the float-string-Decimal dance at the money boundary.
         const { data } = await api.post('/expense-documents/credit-note', {
           branchId: state.branchId,
           documentDate: state.documentDate,
           originalDocumentId: state.originalDocumentId,
           reason: state.cnReason,
-          subtotal,
-          vatAmount,
           depositAccountCode: state.depositAccountCode || undefined,
           note: state.note || undefined,
+          lines: validLines.map((l) => ({
+            category: l.category,
+            description: l.description || undefined,
+            quantity: parseFloat(l.quantity) || 1,
+            unitPrice: parseFloat(l.unitPrice) || 0,
+            discount: parseFloat(l.discount) || 0,
+            vatPercent: parseFloat(l.vatPercent) || 0,
+            whtPercent: parseFloat(l.whtPercent) || 0,
+          })),
         });
         createdId = data.id;
       }

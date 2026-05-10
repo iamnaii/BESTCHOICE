@@ -4,10 +4,15 @@ import {
   IsIn,
   IsDateString,
   IsUUID,
+  IsArray,
+  ArrayMinSize,
   MinLength,
   Matches,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { CASH_ACCOUNT_CODES } from '../../../constants/cash-account.constants';
+import { ExpenseLineInput } from './expense-line-input.dto';
 
 export class CreateCreditNoteDto {
   @IsString()
@@ -27,16 +32,24 @@ export class CreateCreditNoteDto {
   @IsOptional()
   description?: string;
 
-  // Accept Decimal string from server-side /preview-je — never user-keyed,
-  // so parseFloat/IsNumber conversion risk is eliminated at the money boundary.
+  // Server computes totals from lines — subtotal/vatAmount kept optional for
+  // backward-compat but are IGNORED in createCreditNote (server re-derives them).
   @IsString()
+  @IsOptional()
   @Matches(/^\d+(\.\d{1,2})?$/, { message: 'จำนวนเงิน subtotal ไม่ถูกต้อง' })
-  subtotal!: string;
+  subtotal?: string;
 
   @IsString()
   @IsOptional()
   @Matches(/^\d+(\.\d{1,2})?$/, { message: 'จำนวนเงิน vatAmount ไม่ถูกต้อง' })
   vatAmount?: string;
+
+  /** CN expense lines — server re-computes totals from these. */
+  @IsArray()
+  @ArrayMinSize(1, { message: 'ต้องมีรายการบัญชีอย่างน้อย 1 บรรทัด' })
+  @ValidateNested({ each: true })
+  @Type(() => ExpenseLineInput)
+  lines!: ExpenseLineInput[];
 
   // Refund-account: required when original was POSTED + already paid
   @IsString()

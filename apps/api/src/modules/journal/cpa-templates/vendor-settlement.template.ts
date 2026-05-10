@@ -63,10 +63,12 @@ export class VendorSettlementTemplate {
         },
         select: { id: true, vendorTaxId: true, vendorName: true },
       });
+      // Use doc.id as fallback when both vendorTaxId and vendorName are null so
+      // two anonymous-vendor docs produce distinct keys and correctly trip the invariant.
+      // (Previous '' fallback + vendorKeys.delete('') silently allowed mixed null vendors.)
       const vendorKeys = new Set(
-        clearedDocs.map((d) => d.vendorTaxId ?? d.vendorName ?? ''),
+        clearedDocs.map((d) => d.vendorTaxId ?? d.vendorName ?? `__doc:${d.id}__`),
       );
-      vendorKeys.delete('');
       if (vendorKeys.size > 1) {
         throw new BadRequestException(
           'SE หนึ่งใบล้างหนี้ได้เพียงผู้ขายรายเดียว — กรุณาแยกใบจ่ายเจ้าหนี้ตามผู้ขาย',

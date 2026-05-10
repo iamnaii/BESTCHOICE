@@ -3,6 +3,10 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { ExpenseDocumentsService } from '../expense-documents.service';
 import { LineAggregatorService } from '../services/line-aggregator.service';
 
+const VALID_LINES = [
+  { category: '53-1302', quantity: 1, unitPrice: 200, vatPercent: 0, whtPercent: 0 },
+];
+
 describe('ExpenseDocumentsService.createCreditNote', () => {
   let service: ExpenseDocumentsService;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -32,6 +36,11 @@ describe('ExpenseDocumentsService.createCreditNote', () => {
         create: jest.fn().mockResolvedValue({ id: 'cn-1', number: 'CN-20260510-0001' }),
         findUniqueOrThrow: jest.fn(),
         aggregate: jest.fn(),
+      },
+      chartOfAccount: {
+        findMany: jest.fn().mockResolvedValue([
+          { code: '53-1302', type: 'ค่าใช้จ่าย' },
+        ]),
       },
     };
     docNumber = { next: jest.fn().mockResolvedValue('CN-20260510-0001') };
@@ -63,7 +72,7 @@ describe('ExpenseDocumentsService.createCreditNote', () => {
       documentDate: '2026-05-10',
       originalDocumentId: ORIG_ID,
       reason: 'partial',
-      subtotal: 100,
+      lines: VALID_LINES,
     } as never, 'user-1')).rejects.toThrow();
   });
 
@@ -81,7 +90,7 @@ describe('ExpenseDocumentsService.createCreditNote', () => {
       documentDate: '2026-05-10',
       originalDocumentId: ORIG_ID,
       reason: 'partial',
-      subtotal: 100,
+      lines: VALID_LINES,
     } as never, 'user-1')).rejects.toThrow(BadRequestException);
   });
 
@@ -99,7 +108,7 @@ describe('ExpenseDocumentsService.createCreditNote', () => {
       documentDate: '2026-05-10',
       originalDocumentId: ORIG_ID,
       reason: 'r',
-      subtotal: 100,
+      lines: VALID_LINES,
     } as never, 'user-1')).rejects.toThrow(BadRequestException);
   });
 
@@ -118,7 +127,7 @@ describe('ExpenseDocumentsService.createCreditNote', () => {
         documentDate: '2026-05-10',
         originalDocumentId: ORIG_ID,
         reason: 'r',
-        subtotal: 100,
+        lines: VALID_LINES,
       } as never, 'user-1')).rejects.toThrow(BadRequestException);
     }
   });
@@ -138,11 +147,11 @@ describe('ExpenseDocumentsService.createCreditNote', () => {
       documentDate: '2026-05-10',
       originalDocumentId: ORIG_ID,
       reason: 'r',
-      subtotal: 100,
+      lines: VALID_LINES,
     } as never, 'user-1')).rejects.toThrow(/หัก ณ ที่จ่าย/);
   });
 
-  it('rejects when subtotal+vat > original.totalAmount minus prior CNs', async () => {
+  it('rejects when computed total > cap (prior CNs reduce remaining)', async () => {
     prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
       id: ORIG_ID,
       branchId: 'b1',
@@ -152,19 +161,18 @@ describe('ExpenseDocumentsService.createCreditNote', () => {
       withholdingTax: new Decimal('0'),
       expenseDetail: { priceType: 'EXCLUSIVE', lines: [{ lineNo: 1, category: '53-1302' }] },
     });
-    // Prior CNs total 600
-    prisma.expenseDocument.aggregate.mockResolvedValue({ _sum: { totalAmount: new Decimal('600.00') } });
-    // Cap = 1000 - 600 = 400; we ask for 500 → reject
+    // Prior CNs total 900 → cap = 100; our lines = 200 → reject
+    prisma.expenseDocument.aggregate.mockResolvedValue({ _sum: { totalAmount: new Decimal('900.00') } });
     await expect(service.createCreditNote({
       branchId: 'b1',
       documentDate: '2026-05-10',
       originalDocumentId: ORIG_ID,
       reason: 'r',
-      subtotal: 500,
+      lines: VALID_LINES, // unitPrice 200 > cap 100
     } as never, 'user-1')).rejects.toThrow(/เกินยอดที่ลดได้/);
   });
 
-  it('happy path creates CN with originalDocumentId + auto category mirror', async () => {
+  it('happy path creates CN with originalDocumentId + correct creditNote relation', async () => {
     prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
       id: ORIG_ID,
       branchId: 'b1',
@@ -181,8 +189,9 @@ describe('ExpenseDocumentsService.createCreditNote', () => {
       documentDate: '2026-05-10',
       originalDocumentId: ORIG_ID,
       reason: 'partial return',
-      subtotal: 200,
-      vatAmount: 14,
+      lines: [
+        { category: '53-1302', quantity: 1, unitPrice: 200, vatPercent: 14, whtPercent: 0 },
+      ],
     } as never, 'user-1');
 
     expect(prisma.expenseDocument.create).toHaveBeenCalledWith(
@@ -201,5 +210,57 @@ describe('ExpenseDocumentsService.createCreditNote', () => {
         }),
       }),
     );
+  });
+
+  it('createCreditNote attaches expenseDetail.lines for CreditNoteTemplate to read', async () => {
+    prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+      id: ORIG_ID,
+      branchId: 'b1',
+      documentType: 'EXPENSE',
+      status: 'POSTED',
+      totalAmount: new Decimal('1000.00'),
+      withholdingTax: new Decimal('0'),
+      expenseDetail: { priceType: 'EXCLUSIVE', lines: [{ lineNo: 1, category: '53-1404' }] },
+    });
+    prisma.expenseDocument.aggregate.mockResolvedValue({ _sum: { totalAmount: null } });
+    prisma.chartOfAccount.findMany.mockResolvedValue([
+      { code: '53-1404', type: 'ค่าใช้จ่าย' },
+    ]);
+
+    await service.createCreditNote({
+      branchId: 'b1',
+      documentDate: '2026-05-11',
+      originalDocumentId: ORIG_ID,
+      reason: 'partial return',
+      lines: [{ category: '53-1404', quantity: 1, unitPrice: 500, vatPercent: 0, whtPercent: 0 }],
+    } as never, 'user-1');
+
+    const callArg = prisma.expenseDocument.create.mock.calls[0][0];
+    expect(callArg.data.expenseDetail.create.lines.create).toHaveLength(1);
+    expect(callArg.data.expenseDetail.create.lines.create[0].category).toBe('53-1404');
+  });
+
+  it('rejects when CoA code is not expense type', async () => {
+    prisma.chartOfAccount.findMany.mockResolvedValue([
+      { code: '53-1302', type: 'สินทรัพย์' }, // wrong type
+    ]);
+    prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+      id: ORIG_ID,
+      branchId: 'b1',
+      documentType: 'EXPENSE',
+      status: 'POSTED',
+      totalAmount: new Decimal('1000.00'),
+      withholdingTax: new Decimal('0'),
+      expenseDetail: { priceType: 'EXCLUSIVE', lines: [] },
+    });
+    prisma.expenseDocument.aggregate.mockResolvedValue({ _sum: { totalAmount: null } });
+
+    await expect(service.createCreditNote({
+      branchId: 'b1',
+      documentDate: '2026-05-10',
+      originalDocumentId: ORIG_ID,
+      reason: 'test',
+      lines: VALID_LINES,
+    } as never, 'user-1')).rejects.toThrow(/ไม่ใช่ "ค่าใช้จ่าย"/);
   });
 });

@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { DocumentStatus, DocumentType } from '@prisma/client';
+import { Decimal } from '@prisma/client/runtime/library';
 
 @Injectable()
 export class StatusTransitionService {
@@ -13,17 +14,21 @@ export class StatusTransitionService {
     type: DocumentType;
     from: DocumentStatus;
     hasPaymentMethod: boolean;
-    totalAmount?: number | string;
+    totalAmount?: number | string | Decimal;
   }): void {
     if (input.from !== 'DRAFT') {
       throw new BadRequestException(`ไม่สามารถ post จากสถานะ ${input.from} ได้ (ต้องเป็น DRAFT)`);
     }
     if (input.totalAmount !== undefined) {
       const t =
-        typeof input.totalAmount === 'string'
-          ? parseFloat(input.totalAmount)
-          : input.totalAmount;
-      if (!isNaN(t) && t <= 0.01) {
+        input.totalAmount instanceof Decimal
+          ? input.totalAmount
+          : new Decimal(
+              typeof input.totalAmount === 'number'
+                ? input.totalAmount.toString()
+                : input.totalAmount,
+            );
+      if (t.lte(new Decimal('0.01'))) {
         throw new BadRequestException(
           'ยอดรวมต้องมากกว่า 0.01 บาท — กรุณาแก้ไขจำนวนเงินก่อน Post',
         );

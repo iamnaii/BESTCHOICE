@@ -139,9 +139,32 @@ export class ExpenseDocumentsService {
     });
   }
 
-  // ─── Credit Note create (validates + auto-mirrors category) ──────────
+  // ─── Credit Note create (validates + computes totals from lines) ──────────
   async createCreditNote(dto: CreateCreditNoteDto, userId: string) {
+    // Compute per-line totals + aggregate server-side.
+    // Inherits priceType from the original's expenseDetail (EXCLUSIVE by default).
+    // dto.subtotal/vatAmount are IGNORED — server is the source of truth.
+    const priceType = 'EXCLUSIVE';
+    const linesPrepared = dto.lines.map((l, idx) => {
+      const out = this.aggregator.computeLine(l, priceType);
+      return { ...l, lineNo: idx + 1, ...out };
+    });
+    const totals = this.aggregator.aggregateLines(linesPrepared);
+
     return this.prisma.$transaction(async (tx) => {
+      // CoA validation — every category must exist + be type "ค่าใช้จ่าย"
+      const codes = [...new Set(linesPrepared.map((l) => l.category))];
+      const coaRows = await tx.chartOfAccount.findMany({
+        where: { code: { in: codes }, deletedAt: null },
+        select: { code: true, type: true },
+      });
+      const byCode = new Map(coaRows.map((r) => [r.code, r.type]));
+      for (const c of codes) {
+        const t = byCode.get(c);
+        if (!t) throw new BadRequestException(`หมวดบัญชี ${c} ไม่พบในผังบัญชี`);
+        if (t !== 'ค่าใช้จ่าย') throw new BadRequestException(`หมวดบัญชี ${c} ไม่ใช่ "ค่าใช้จ่าย"`);
+      }
+
       // Load + validate original
       const original = await tx.expenseDocument.findUniqueOrThrow({
         where: { id: dto.originalDocumentId },
@@ -174,7 +197,7 @@ export class ExpenseDocumentsService {
         dto.originalDocumentId,
       );
 
-      // Cumulative cap check
+      // Cumulative cap check — use server-computed totals.totalAmount
       const priorAgg = await tx.expenseDocument.aggregate({
         where: {
           documentType: 'CREDIT_NOTE',
@@ -186,12 +209,8 @@ export class ExpenseDocumentsService {
       });
       const priorTotal = new Prisma.Decimal(priorAgg._sum.totalAmount ?? 0);
 
-      const subtotal = new Prisma.Decimal(dto.subtotal);
-      const vat = new Prisma.Decimal(dto.vatAmount ?? 0);
-      const total = subtotal.plus(vat);
-
       const cap = new Prisma.Decimal(original.totalAmount.toString()).minus(priorTotal);
-      if (total.gt(cap)) {
+      if (totals.totalAmount.gt(cap)) {
         throw new BadRequestException(
           `จำนวนเงินเกินยอดที่ลดได้ (เหลือ ${cap.toFixed(2)} ฿)`,
         );
@@ -207,11 +226,11 @@ export class ExpenseDocumentsService {
           branchId: dto.branchId,
           documentDate,
           description: dto.description ?? null,
-          subtotal,
-          vatAmount: vat,
+          subtotal: totals.subtotal,
+          vatAmount: totals.vatAmount,
           withholdingTax: new Prisma.Decimal(0),
-          totalAmount: total,
-          netPayment: dto.depositAccountCode ? total : null,
+          totalAmount: totals.totalAmount,
+          netPayment: dto.depositAccountCode ? totals.netPayment : null,
           depositAccountCode: dto.depositAccountCode ?? null,
           status: 'DRAFT',
           reference: dto.reference ?? null,
@@ -225,8 +244,31 @@ export class ExpenseDocumentsService {
               reason: dto.reason,
             },
           },
+          expenseDetail: {
+            create: {
+              priceType,
+              lines: {
+                create: linesPrepared.map((l) => ({
+                  lineNo: l.lineNo,
+                  category: l.category,
+                  description: l.description ?? null,
+                  quantity: new Prisma.Decimal(l.quantity),
+                  unitPrice: new Prisma.Decimal(l.unitPrice),
+                  discount: new Prisma.Decimal(l.discount ?? 0),
+                  vatPercent: new Prisma.Decimal(l.vatPercent ?? 0),
+                  whtPercent: new Prisma.Decimal(l.whtPercent ?? 0),
+                  amountBeforeVat: l.amountBeforeVat,
+                  vatAmount: l.vatAmount,
+                  whtAmount: l.whtAmount,
+                })),
+              },
+            },
+          },
         },
-        include: { creditNote: true },
+        include: {
+          creditNote: true,
+          expenseDetail: { include: { lines: { orderBy: { lineNo: 'asc' } } } },
+        },
       });
     });
   }

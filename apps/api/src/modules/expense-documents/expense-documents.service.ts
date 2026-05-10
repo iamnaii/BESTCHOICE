@@ -262,12 +262,26 @@ export class ExpenseDocumentsService {
     if (!hasCrossBranchAccess(user) && user.branchId !== dto.branchId) {
       throw new ForbiddenException('ไม่สามารถสร้างเอกสารในสาขาอื่นได้');
     }
+
+    // Dedup: prevent same cleared doc from appearing twice in one SE
+    const seenClearedIds = new Set<string>();
+    for (const line of dto.lines) {
+      if (seenClearedIds.has(line.clearedDocumentId)) {
+        throw new BadRequestException(
+          `เอกสาร ${line.clearedDocumentId} ปรากฏซ้ำในรายการ`,
+        );
+      }
+      seenClearedIds.add(line.clearedDocumentId);
+    }
+
     return this.prisma.$transaction(async (tx) => {
-      // Acquire advisory locks on each cleared doc to prevent concurrent over-clearing
-      for (const line of dto.lines) {
+      // Acquire advisory locks in sorted order to prevent deadlock under concurrent
+      // SEs targeting overlapping cleared docs.
+      const sortedClearedIds = [...new Set(dto.lines.map((l) => l.clearedDocumentId))].sort();
+      for (const clearedId of sortedClearedIds) {
         await tx.$executeRawUnsafe(
           `SELECT pg_advisory_xact_lock(hashtext($1))`,
-          line.clearedDocumentId,
+          clearedId,
         );
       }
       // Validate + load each cleared doc
@@ -292,13 +306,15 @@ export class ExpenseDocumentsService {
             `เอกสาร ${cleared.number} ไม่ได้อยู่ในสถานะ ACCRUAL (ขณะนี้: ${cleared.status})`,
           );
         }
-        // Cap: amountSettled <= cleared.totalAmount minus prior settlements
+        // Cap: amountSettled <= cleared.totalAmount minus prior settlements.
+        // Only count POSTED SEs (DRAFT SEs not yet posted should not consume cap,
+        // otherwise unposted drafts could starve other SEs from clearing the same doc).
         const priorAgg = await tx.settlementLine.aggregate({
           where: {
             clearedDocumentId: line.clearedDocumentId,
             settlement: {
               document: {
-                status: { not: 'VOIDED' },
+                status: 'POSTED',
                 deletedAt: null,
               },
             },
@@ -317,6 +333,11 @@ export class ExpenseDocumentsService {
       }
 
       const wht = new Prisma.Decimal(dto.withholdingTax ?? 0);
+      if (wht.gt(sumSettled)) {
+        throw new BadRequestException(
+          `หัก ณ ที่จ่าย (${wht}) เกินยอดรวมที่จ่าย (${sumSettled})`,
+        );
+      }
       const documentDate = new Date(dto.documentDate);
       const number = await this.docNumber.next(tx, 'VENDOR_SETTLEMENT', documentDate);
 

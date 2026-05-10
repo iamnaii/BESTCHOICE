@@ -231,4 +231,120 @@ describe('ExpenseDocumentsService.createSettlement', () => {
       ),
     ).rejects.toThrow(ForbiddenException);
   });
+
+  it('rejects duplicate clearedDocumentId in lines', async () => {
+    await expect(
+      service.createSettlement(
+        {
+          branchId: 'b1',
+          documentDate: '2026-05-10',
+          depositAccountCode: '11-1101',
+          lines: [
+            { clearedDocumentId: EX_ID, amountSettled: 500 },
+            { clearedDocumentId: EX_ID, amountSettled: 600 },
+          ],
+        } as never,
+        owner,
+      ),
+    ).rejects.toThrow(/ปรากฏซ้ำในรายการ/);
+  });
+
+  it('rejects WHT > sumSettled', async () => {
+    prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+      id: EX_ID,
+      number: 'EX-1',
+      branchId: 'b1',
+      documentType: 'EXPENSE',
+      status: 'ACCRUAL',
+      totalAmount: new Decimal('1000.00'),
+      deletedAt: null,
+    });
+    await expect(
+      service.createSettlement(
+        {
+          branchId: 'b1',
+          documentDate: '2026-05-10',
+          depositAccountCode: '11-1101',
+          withholdingTax: 200,
+          lines: [{ clearedDocumentId: EX_ID, amountSettled: 100 }],
+        } as never,
+        owner,
+      ),
+    ).rejects.toThrow(/หัก ณ ที่จ่าย/);
+  });
+
+  it('cap aggregation only counts POSTED SEs (DRAFT does not consume cap)', async () => {
+    prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+      id: EX_ID,
+      number: 'EX-1',
+      branchId: 'b1',
+      documentType: 'EXPENSE',
+      status: 'ACCRUAL',
+      totalAmount: new Decimal('1000.00'),
+      deletedAt: null,
+    });
+    prisma.settlementLine.aggregate.mockResolvedValue({
+      _sum: { amountSettled: null },
+    });
+
+    await service.createSettlement(
+      {
+        branchId: 'b1',
+        documentDate: '2026-05-10',
+        depositAccountCode: '11-1101',
+        lines: [{ clearedDocumentId: EX_ID, amountSettled: 1000 }],
+      } as never,
+      owner,
+    );
+
+    // Confirm aggregation filter uses status === 'POSTED' (not "not VOIDED")
+    expect(prisma.settlementLine.aggregate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          settlement: expect.objectContaining({
+            document: expect.objectContaining({
+              status: 'POSTED',
+              deletedAt: null,
+            }),
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('acquires advisory locks in sorted+deduped order', async () => {
+    const ID_A = '00000000-0000-4000-8000-00000000000a';
+    const ID_B = '00000000-0000-4000-8000-00000000000b';
+    const ID_C = '00000000-0000-4000-8000-00000000000c';
+    prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+      id: ID_A,
+      number: 'EX-A',
+      branchId: 'b1',
+      documentType: 'EXPENSE',
+      status: 'ACCRUAL',
+      totalAmount: new Decimal('10000.00'),
+      deletedAt: null,
+    });
+
+    await service.createSettlement(
+      {
+        branchId: 'b1',
+        documentDate: '2026-05-10',
+        depositAccountCode: '11-1101',
+        // intentionally unsorted (C, A, B) — expect lock order A, B, C
+        lines: [
+          { clearedDocumentId: ID_C, amountSettled: 100 },
+          { clearedDocumentId: ID_A, amountSettled: 100 },
+          { clearedDocumentId: ID_B, amountSettled: 100 },
+        ],
+      } as never,
+      owner,
+    );
+
+    const lockCalls = (prisma.$executeRawUnsafe as jest.Mock).mock.calls;
+    expect(lockCalls.length).toBe(3);
+    expect(lockCalls[0][1]).toBe(ID_A);
+    expect(lockCalls[1][1]).toBe(ID_B);
+    expect(lockCalls[2][1]).toBe(ID_C);
+  });
 });

@@ -56,7 +56,7 @@ export class ExpenseDocumentsController {
   }
 
   @Post('settlement')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   createSettlement(
     @Body() dto: CreateSettlementDto,
     @CurrentUser() user: { id: string; branchId?: string; role: string },

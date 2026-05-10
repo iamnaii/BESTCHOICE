@@ -19,6 +19,10 @@ describe('CreditNoteTemplate', () => {
       companyInfo: {
         findFirst: jest.fn().mockResolvedValue({ id: 'company-shop' }),
       },
+      // CoA validation guard added for C2 — return a valid expense account by default
+      chartOfAccount: {
+        findFirst: jest.fn().mockResolvedValue({ code: '53-1404', type: 'EXPENSE' }),
+      },
     };
     template = new CreditNoteTemplate(journal, prisma);
   });
@@ -113,7 +117,7 @@ describe('CreditNoteTemplate', () => {
     expect(journal.createAndPost).not.toHaveBeenCalled();
   });
 
-  it('updates CN status=POSTED + paidAt + journalEntryId after post', async () => {
+  it('ACCRUAL-path CN: status=POSTED + paidAt=null (no cash moved) + journalEntryId', async () => {
     prisma.expenseDocument.findUniqueOrThrow.mockImplementation((args: { where: { id: string } }) => {
       if (args.where.id === 'cn-4') return Promise.resolve({
         id: 'cn-4',
@@ -136,6 +140,7 @@ describe('CreditNoteTemplate', () => {
       });
       return Promise.reject(new Error('unknown id'));
     });
+    prisma.chartOfAccount.findFirst.mockResolvedValueOnce({ code: '53-1302', type: 'EXPENSE' });
 
     await template.execute('cn-4');
     expect(prisma.expenseDocument.update).toHaveBeenCalledWith(
@@ -143,7 +148,47 @@ describe('CreditNoteTemplate', () => {
         where: { id: 'cn-4' },
         data: expect.objectContaining({
           status: 'POSTED',
+          paidAt: null,
+          netPayment: null,
+          journalEntryId: 'je-cn-1',
+        }),
+      }),
+    );
+  });
+
+  it('POSTED-path CN (cash refund): paidAt + netPayment populated', async () => {
+    prisma.expenseDocument.findUniqueOrThrow.mockImplementation((args: { where: { id: string } }) => {
+      if (args.where.id === 'cn-5') return Promise.resolve({
+        id: 'cn-5',
+        number: 'CN-20260510-0005',
+        documentType: 'CREDIT_NOTE',
+        branchId: 'branch-1',
+        documentDate: new Date('2026-05-10'),
+        subtotal: new Decimal('200.00'),
+        vatAmount: new Decimal('0.00'),
+        withholdingTax: new Decimal('0.00'),
+        totalAmount: new Decimal('200.00'),
+        depositAccountCode: '11-1101',
+        journalEntryId: null,
+        creditNote: { originalDocumentId: 'orig-5', reason: 'r', category: '53-1302' },
+      });
+      if (args.where.id === 'orig-5') return Promise.resolve({
+        id: 'orig-5',
+        status: 'POSTED',
+        depositAccountCode: '11-1101',
+      });
+      return Promise.reject(new Error('unknown id'));
+    });
+    prisma.chartOfAccount.findFirst.mockResolvedValueOnce({ code: '53-1302', type: 'EXPENSE' });
+
+    await template.execute('cn-5');
+    expect(prisma.expenseDocument.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'cn-5' },
+        data: expect.objectContaining({
+          status: 'POSTED',
           paidAt: expect.any(Date),
+          netPayment: expect.any(Object),
           journalEntryId: 'je-cn-1',
         }),
       }),

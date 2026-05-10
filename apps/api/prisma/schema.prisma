@@ -2849,42 +2849,42 @@ model KycVerification {
 // ============================================================
 
 model Receipt {
-  id               String    @id @default(uuid())
-  receiptNumber    String    @unique @map("receipt_number") // RT-YYYYMM-NNNNN
-  contractId       String    @map("contract_id")
-  paymentId        String?   @map("payment_id")
-  receiptType      String    @default("PAYMENT") // PAYMENT, DOWN_PAYMENT, EARLY_PAYOFF, CREDIT_NOTE
-  payerName        String    @map("payer_name")
-  payerAddress     String?   @map("payer_address")
-  payerTaxId       String?   @map("payer_tax_id") // เลขประจำตัวผู้เสียภาษีผู้ซื้อ
-  receiverName     String    @map("receiver_name")
-  amount           Decimal   @db.Decimal(12, 2)
-  amountBeforeVat  Decimal?  @map("amount_before_vat") @db.Decimal(12, 2) // ราคาก่อน VAT
-  vatAmount        Decimal?  @map("vat_amount") @db.Decimal(12, 2) // จำนวน VAT
-  installmentNo    Int?      @map("installment_no") // งวดที่
-  remainingBalance Decimal?  @map("remaining_balance") @db.Decimal(12, 2) // contract balance after this payment
-  remainingMonths  Int?      @map("remaining_months")
+  id                    String    @id @default(uuid())
+  receiptNumber         String    @unique @map("receipt_number") // RT-YYYYMM-NNNNN
+  contractId            String    @map("contract_id")
+  paymentId             String?   @map("payment_id")
+  receiptType           String    @default("PAYMENT") // PAYMENT, DOWN_PAYMENT, EARLY_PAYOFF, CREDIT_NOTE
+  payerName             String    @map("payer_name")
+  payerAddress          String?   @map("payer_address")
+  payerTaxId            String?   @map("payer_tax_id") // เลขประจำตัวผู้เสียภาษีผู้ซื้อ
+  receiverName          String    @map("receiver_name")
+  amount                Decimal   @db.Decimal(12, 2)
+  amountBeforeVat       Decimal?  @map("amount_before_vat") @db.Decimal(12, 2) // ราคาก่อน VAT
+  vatAmount             Decimal?  @map("vat_amount") @db.Decimal(12, 2) // จำนวน VAT
+  installmentNo         Int?      @map("installment_no") // งวดที่
+  remainingBalance      Decimal?  @map("remaining_balance") @db.Decimal(12, 2) // contract balance after this payment
+  remainingMonths       Int?      @map("remaining_months")
   /// Per-installment payment status — PARTIAL until installmentTotal cleared, then PAID.
-  paymentStatus    String    @default("PAID") @map("payment_status")
+  paymentStatus         String    @default("PAID") @map("payment_status")
   /// 1, 2, 3 ... for partial receipts within the same installment (null for full payment).
-  installmentPartialSeq Int? @map("installment_partial_seq")
+  installmentPartialSeq Int?      @map("installment_partial_seq")
   /// Installment balance still owed AFTER this receipt (0 when paymentStatus=PAID).
-  remainingAmount  Decimal?  @map("remaining_amount") @db.Decimal(12, 2)
-  paymentMethod    String?   @map("payment_method")
-  transactionRef   String?   @map("transaction_ref") // เลขอ้างอิงธุรกรรม
-  itemDescription  String?   @map("item_description") // รายละเอียดสินค้า/บริการ
-  paidDate         DateTime  @map("paid_date")
-  fileUrl          String?   @map("file_url") // PDF URL
-  fileHash         String?   @map("file_hash") // SHA-256
-  isVoided         Boolean   @default(false) @map("is_voided")
-  voidReason       String?   @map("void_reason")
-  voidApprovedById String?   @map("void_approved_by_id") // ผู้อนุมัติการยกเลิก
-  voidApprovedAt   DateTime? @map("void_approved_at")
-  voidedReceiptId  String?   @map("voided_receipt_id") // อ้างอิงใบเสร็จที่ถูกยกเลิก
-  issuedById       String    @map("issued_by_id")
-  createdAt        DateTime  @default(now()) @map("created_at")
-  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at")
-  deletedAt        DateTime? @map("deleted_at")
+  remainingAmount       Decimal?  @map("remaining_amount") @db.Decimal(12, 2)
+  paymentMethod         String?   @map("payment_method")
+  transactionRef        String?   @map("transaction_ref") // เลขอ้างอิงธุรกรรม
+  itemDescription       String?   @map("item_description") // รายละเอียดสินค้า/บริการ
+  paidDate              DateTime  @map("paid_date")
+  fileUrl               String?   @map("file_url") // PDF URL
+  fileHash              String?   @map("file_hash") // SHA-256
+  isVoided              Boolean   @default(false) @map("is_voided")
+  voidReason            String?   @map("void_reason")
+  voidApprovedById      String?   @map("void_approved_by_id") // ผู้อนุมัติการยกเลิก
+  voidApprovedAt        DateTime? @map("void_approved_at")
+  voidedReceiptId       String?   @map("voided_receipt_id") // อ้างอิงใบเสร็จที่ถูกยกเลิก
+  issuedById            String    @map("issued_by_id")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @default(now()) @updatedAt @map("updated_at")
+  deletedAt             DateTime? @map("deleted_at")
 
   contract Contract @relation(fields: [contractId], references: [id])
 
@@ -3493,59 +3493,62 @@ enum DocumentStatus {
 }
 
 model ExpenseDocument {
-  id              String   @id @default(uuid())
-  number          String   @unique
-  documentType    DocumentType   @map("document_type")
-  branchId        String   @map("branch_id")
-  documentDate    DateTime @map("document_date")
-  vendorName      String?  @map("vendor_name")
-  vendorTaxId     String?  @map("vendor_tax_id")
-  taxInvoiceNo    String?  @map("tax_invoice_no")
-  description     String?
+  id           String       @id @default(uuid())
+  number       String       @unique
+  documentType DocumentType @map("document_type")
+  branchId     String       @map("branch_id")
+  documentDate DateTime     @map("document_date")
+  vendorName   String?      @map("vendor_name")
+  vendorTaxId  String?      @map("vendor_tax_id")
+  taxInvoiceNo String?      @map("tax_invoice_no")
+  description  String?
 
-  subtotal        Decimal  @db.Decimal(12, 2)
-  vatAmount       Decimal  @default(0) @db.Decimal(12, 2) @map("vat_amount")
-  withholdingTax  Decimal  @default(0) @db.Decimal(12, 2) @map("withholding_tax")
-  whtFormType     String?  @map("wht_form_type")
-  totalAmount     Decimal  @db.Decimal(12, 2) @map("total_amount")
-  netPayment      Decimal? @db.Decimal(12, 2) @map("net_payment")
+  subtotal       Decimal  @db.Decimal(12, 2)
+  vatAmount      Decimal  @default(0) @map("vat_amount") @db.Decimal(12, 2)
+  withholdingTax Decimal  @default(0) @map("withholding_tax") @db.Decimal(12, 2)
+  whtFormType    String?  @map("wht_form_type")
+  totalAmount    Decimal  @map("total_amount") @db.Decimal(12, 2)
+  netPayment     Decimal? @map("net_payment") @db.Decimal(12, 2)
 
   /// Void audit (who/when) is tracked via AuditLog only — no voidedById/voidedAt
   /// columns. Status flips DRAFT/ACCRUAL/POSTED → VOIDED via VoidExpenseDocument
   /// action; AuditLog row captures actor + timestamp + reason.
-  status              DocumentStatus @default(DRAFT)
-  paidAt              DateTime?      @map("paid_at")
-  paymentMethod       PaymentMethod? @map("payment_method")
-  depositAccountCode  String?        @map("deposit_account_code")
+  status             DocumentStatus @default(DRAFT)
+  paidAt             DateTime?      @map("paid_at")
+  paymentMethod      PaymentMethod? @map("payment_method")
+  depositAccountCode String?        @map("deposit_account_code")
 
-  expenseDetail       ExpenseDetail?
-  creditNote          CreditNoteDetail?  @relation("CreditNoteDocument")
-  payroll             PayrollDetail?
+  expenseDetail           ExpenseDetail?
+  creditNote              CreditNoteDetail?       @relation("CreditNoteDocument")
+  payroll                 PayrollDetail?
   settlement              VendorSettlementDetail?
   settlementsClearingThis SettlementLine[]        @relation("SettlementCleared")
-  creditNotesAgainst  CreditNoteDetail[] @relation("CreditNoteOriginal")
+  creditNotesAgainst      CreditNoteDetail[]      @relation("CreditNoteOriginal")
 
-  journalEntryId  String?  @unique @map("journal_entry_id")
+  journalEntryId String? @unique @map("journal_entry_id")
 
-  receiptImageUrl String?  @map("receipt_image_url")
+  receiptImageUrl String? @map("receipt_image_url")
   reference       String?
   note            String?
 
-  fromTemplateId  String?  @map("from_template_id")
+  fromTemplateId String? @map("from_template_id")
 
-  createdById     String   @map("created_by_id")
-  approvedById    String?  @map("approved_by_id")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
-  deletedAt       DateTime? @map("deleted_at")
+  createdById  String    @map("created_by_id")
+  approvedById String?   @map("approved_by_id")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
 
-  branch          Branch   @relation(fields: [branchId], references: [id])
-  createdBy       User     @relation("ExpenseDocumentCreator", fields: [createdById], references: [id])
-  approvedBy      User?    @relation("ExpenseDocumentApprover", fields: [approvedById], references: [id])
+  branch       Branch           @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  createdBy    User             @relation("ExpenseDocumentCreator", fields: [createdById], references: [id])
+  approvedBy   User?            @relation("ExpenseDocumentApprover", fields: [approvedById], references: [id])
+  fromTemplate ExpenseTemplate? @relation("ExpenseDocumentFromTemplate", fields: [fromTemplateId], references: [id], onDelete: SetNull)
 
   @@index([branchId, documentDate])
+  @@index([branchId, deletedAt])
   @@index([documentType, status])
   @@index([status, paidAt])
+  @@index([fromTemplateId])
   @@map("expense_documents")
 }
 
@@ -3584,10 +3587,12 @@ model PayrollLine {
   payroll       PayrollDetail @relation(fields: [payrollId], references: [documentId], onDelete: Cascade)
   employeeName  String        @map("employee_name")
   employeeTaxId String?       @map("employee_tax_id")
-  baseSalary    Decimal       @db.Decimal(12, 2) @map("base_salary")
-  ssoEmployee   Decimal       @default(0) @db.Decimal(12, 2) @map("sso_employee")
-  whtAmount     Decimal       @default(0) @db.Decimal(12, 2) @map("wht_amount")
-  netPaid       Decimal       @db.Decimal(12, 2) @map("net_paid")
+  baseSalary    Decimal       @map("base_salary") @db.Decimal(12, 2)
+  ssoEmployee   Decimal       @default(0) @map("sso_employee") @db.Decimal(12, 2)
+  whtAmount     Decimal       @default(0) @map("wht_amount") @db.Decimal(12, 2)
+  netPaid       Decimal       @map("net_paid") @db.Decimal(12, 2)
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
 
   @@index([payrollId])
   @@map("payroll_lines")
@@ -3607,7 +3612,9 @@ model SettlementLine {
   settlement        VendorSettlementDetail @relation(fields: [settlementId], references: [documentId], onDelete: Cascade)
   clearedDocumentId String                 @map("cleared_document_id")
   clearedDocument   ExpenseDocument        @relation("SettlementCleared", fields: [clearedDocumentId], references: [id], onDelete: Restrict)
-  amountSettled     Decimal                @db.Decimal(12, 2) @map("amount_settled")
+  amountSettled     Decimal                @map("amount_settled") @db.Decimal(12, 2)
+  createdAt         DateTime               @default(now()) @map("created_at")
+  updatedAt         DateTime               @updatedAt @map("updated_at")
 
   @@index([settlementId])
   @@index([clearedDocumentId])
@@ -3615,20 +3622,21 @@ model SettlementLine {
 }
 
 model ExpenseTemplate {
-  id              String   @id @default(uuid())
-  name            String
-  documentType    DocumentType    @map("document_type")
-  branchId        String          @map("branch_id")
-  prefilledData   Json            @map("prefilled_data")
-  isRecurring     Boolean         @default(false) @map("is_recurring")
-  recurringDay    Int?            @map("recurring_day")
-  createdById     String          @map("created_by_id")
-  createdAt       DateTime        @default(now()) @map("created_at")
-  updatedAt       DateTime        @updatedAt @map("updated_at")
-  deletedAt       DateTime?       @map("deleted_at")
+  id            String       @id @default(uuid())
+  name          String
+  documentType  DocumentType @map("document_type")
+  branchId      String       @map("branch_id")
+  prefilledData Json         @map("prefilled_data")
+  isRecurring   Boolean      @default(false) @map("is_recurring")
+  recurringDay  Int?         @map("recurring_day")
+  createdById   String       @map("created_by_id")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+  deletedAt     DateTime?    @map("deleted_at")
 
-  branch          Branch          @relation(fields: [branchId], references: [id])
-  createdBy       User            @relation("ExpenseTemplateCreator", fields: [createdById], references: [id])
+  branch                Branch            @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  createdBy             User              @relation("ExpenseTemplateCreator", fields: [createdById], references: [id])
+  documentsFromTemplate ExpenseDocument[] @relation("ExpenseDocumentFromTemplate")
 
   @@index([branchId, deletedAt])
   @@index([isRecurring, recurringDay])

@@ -54,6 +54,25 @@ export class VendorSettlementTemplate {
         throw new BadRequestException(`Settlement ${documentId} requires depositAccountCode`);
       }
 
+      // Single-vendor invariant — SE.whtFormType applies to ONE vendor's payment.
+      // Reject if cleared EXs span multiple vendors (different tax IDs would
+      // need separate SEs because PND.3/PND.53 routing is per-recipient).
+      const clearedDocs = await tx.expenseDocument.findMany({
+        where: {
+          id: { in: se.settlement.settlementLines.map((l) => l.clearedDocumentId) },
+        },
+        select: { id: true, vendorTaxId: true, vendorName: true },
+      });
+      const vendorKeys = new Set(
+        clearedDocs.map((d) => d.vendorTaxId ?? d.vendorName ?? ''),
+      );
+      vendorKeys.delete('');
+      if (vendorKeys.size > 1) {
+        throw new BadRequestException(
+          'SE หนึ่งใบล้างหนี้ได้เพียงผู้ขายรายเดียว — กรุณาแยกใบจ่ายเจ้าหนี้ตามผู้ขาย',
+        );
+      }
+
       const zero = new Decimal(0);
       const sumSettled = se.settlement.settlementLines.reduce(
         (s: Decimal, l: { amountSettled: Decimal }) => s.plus(l.amountSettled.toString()),
@@ -107,17 +126,18 @@ export class VendorSettlementTemplate {
         tx,
       );
 
-      // SIDE EFFECT: each cleared EX → POSTED + paidAt
+      // SIDE EFFECT: each cleared EX → POSTED + paidAt (single batched update).
       // Note: does NOT overwrite cleared.journalEntryId — original ACCRUAL JE stays intact.
-      for (const line of se.settlement.settlementLines) {
-        await tx.expenseDocument.update({
-          where: { id: line.clearedDocumentId },
-          data: {
-            status: 'POSTED',
-            paidAt: se.documentDate,
-          },
-        });
-      }
+      await tx.expenseDocument.updateMany({
+        where: {
+          id: { in: se.settlement.settlementLines.map((l) => l.clearedDocumentId) },
+          deletedAt: null,
+        },
+        data: {
+          status: 'POSTED',
+          paidAt: se.documentDate,
+        },
+      });
 
       // Update SE itself
       await tx.expenseDocument.update({

@@ -120,7 +120,7 @@ export default function ExpenseFavoritesPage() {
                     <Bookmark className="size-4 text-primary" />
                     <span className="font-medium">{tpl.name}</span>
                   </div>
-                  <span className={`text-2xs border rounded px-1.5 py-0.5 ${t.cls}`}>
+                  <span className={`text-xs border rounded px-1.5 py-0.5 ${t.cls}`}>
                     {t.label}
                   </span>
                 </div>

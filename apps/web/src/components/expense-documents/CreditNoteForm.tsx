@@ -6,6 +6,7 @@ import api, { getErrorMessage } from '@/lib/api';
 import { ArrowLeft, FileText, Search, AlertCircle } from 'lucide-react';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { Button } from '@/components/ui/button';
+import { formatNumberDecimal } from '@/utils/formatters';
 
 interface OriginalDoc {
   id: string;
@@ -46,14 +47,17 @@ export function CreditNoteForm({ onClose, onSaved }: Props) {
     enabled: search.trim().length >= 3,
   });
 
-  // Fetch creditedAmount for selected original
-  const { data: capInfo } = useQuery<{ remainingCap: number }>({
+  // Fetch remaining CN cap from server. Returned as decimal strings;
+  // parsed to Number for client-side comparison only (server re-validates on submit).
+  const { data: capInfo } = useQuery<{
+    originalTotal: string;
+    usedTotal: string;
+    remainingCap: string;
+  }>({
     queryKey: ['cn-cap', original?.id],
     queryFn: async () => {
-      if (!original) return { remainingCap: 0 };
-      // For PR-2: rely on submit-time validation; we approximate cap as totalAmount.
-      // Future: dedicated /:id/cn-cap endpoint
-      return { remainingCap: parseFloat(original.totalAmount) };
+      const { data } = await api.get(`/expense-documents/${original!.id}/cn-cap`);
+      return data;
     },
     enabled: !!original,
   });
@@ -84,8 +88,8 @@ export function CreditNoteForm({ onClose, onSaved }: Props) {
   });
 
   const total = (parseFloat(subtotal) || 0) + (parseFloat(vatAmount) || 0);
-  const remaining = capInfo?.remainingCap ?? 0;
-  const exceedsCap = total > remaining;
+  const remaining = capInfo ? parseFloat(capInfo.remainingCap) : 0;
+  const exceedsCap = !!capInfo && total > remaining;
   const canSubmit = original && reason.trim().length >= 3 && parseFloat(subtotal) > 0 && !exceedsCap;
 
   return createPortal(
@@ -216,12 +220,12 @@ export function CreditNoteForm({ onClose, onSaved }: Props) {
               </div>
               <div className="rounded-lg bg-muted p-3 text-sm flex justify-between">
                 <span>รวม</span>
-                <span className="font-semibold">{total.toFixed(2)} ฿</span>
+                <span className="font-semibold">{formatNumberDecimal(total)} ฿</span>
               </div>
               {exceedsCap && (
                 <div className="flex items-start gap-2 text-destructive text-sm">
                   <AlertCircle className="size-4 mt-0.5" />
-                  <span>เกินยอดที่ลดได้สูงสุด {remaining.toFixed(2)} ฿</span>
+                  <span>เกินยอดที่ลดได้สูงสุด {formatNumberDecimal(remaining)} ฿</span>
                 </div>
               )}
               <div>

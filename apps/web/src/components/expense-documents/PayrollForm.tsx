@@ -170,9 +170,14 @@ export function PayrollForm({ onClose, onSaved }: Props) {
                   onChange={(e) => setMonth(Number(e.target.value))}
                   className={inputClass}
                 >
-                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((m) => (
+                  {[
+                    [1, 'มกราคม'], [2, 'กุมภาพันธ์'], [3, 'มีนาคม'],
+                    [4, 'เมษายน'], [5, 'พฤษภาคม'], [6, 'มิถุนายน'],
+                    [7, 'กรกฎาคม'], [8, 'สิงหาคม'], [9, 'กันยายน'],
+                    [10, 'ตุลาคม'], [11, 'พฤศจิกายน'], [12, 'ธันวาคม'],
+                  ].map(([m, name]) => (
                     <option key={m} value={m}>
-                      {m}
+                      {name}
                     </option>
                   ))}
                 </select>
@@ -310,7 +315,7 @@ export function PayrollForm({ onClose, onSaved }: Props) {
                           r.netPaid < 0 ? 'text-destructive' : 'text-success'
                         }`}
                       >
-                        {r.netPaid.toFixed(2)}
+                        {formatNumberDecimal(r.netPaid)}
                       </td>
                       <td className="p-1.5">
                         <button

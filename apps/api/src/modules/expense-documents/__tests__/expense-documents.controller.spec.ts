@@ -54,9 +54,12 @@ describe('ExpenseDocumentsController', () => {
   });
 
   it('GET /summary calls service.getSummary', async () => {
-    await controller.summary('b1', undefined, undefined, {
-      user: { id: 'u', branchId: 'b1', role: 'OWNER' },
-    } as never);
+    await controller.summary(
+      { user: { id: 'u', branchId: 'b1', role: 'OWNER' } } as never,
+      'b1',
+      undefined,
+      undefined,
+    );
     expect(service.getSummary).toHaveBeenCalledWith({
       branchId: 'b1',
       startDate: undefined,

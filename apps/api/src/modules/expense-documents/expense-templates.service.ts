@@ -64,9 +64,13 @@ export class ExpenseTemplatesService {
     const branchId = hasCrossBranchAccess(user) ? filters.branchId : (user.branchId ?? filters.branchId);
     if (branchId) where.branchId = branchId;
     if (filters.type) where.documentType = filters.type as never;
+    // Hard cap on rows returned. Favorites are user-curated so this should
+    // never realistically be hit, but it prevents an unbounded findMany if a
+    // future caller floods the table.
     return this.prisma.expenseTemplate.findMany({
       where,
       orderBy: [{ isRecurring: 'desc' }, { updatedAt: 'desc' }],
+      take: 200,
       include: { branch: { select: { id: true, name: true } }, createdBy: { select: { id: true, name: true } } },
     });
   }

@@ -18,7 +18,11 @@ describe('VendorSettlementTemplate', () => {
       $transaction: jest.fn(async (cb: (tx: unknown) => unknown) => cb(prisma)),
       expenseDocument: {
         findUniqueOrThrow: jest.fn(),
+        // findMany used for single-vendor invariant check (added in PR-1 hardening)
+        findMany: jest.fn().mockResolvedValue([]),
         update: jest.fn().mockResolvedValue({}),
+        // updateMany used for batched cleared-EX status flip (replaces N x update)
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
       journalEntry: {
         findUnique: jest.fn().mockResolvedValue({ entryNumber: 'JE-SE-001' }),
@@ -180,19 +184,17 @@ describe('VendorSettlementTemplate', () => {
 
     await template.execute(docId);
 
-    expect(prisma.expenseDocument.update).toHaveBeenCalledWith(
+    // Cleared EXs flipped via batched updateMany (deletedAt:null guard)
+    expect(prisma.expenseDocument.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'ex-a' },
+        where: expect.objectContaining({
+          id: { in: ['ex-a', 'ex-b'] },
+          deletedAt: null,
+        }),
         data: expect.objectContaining({ status: 'POSTED', paidAt: documentDate }),
       }),
     );
-    expect(prisma.expenseDocument.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: 'ex-b' },
-        data: expect.objectContaining({ status: 'POSTED', paidAt: documentDate }),
-      }),
-    );
-    // SE itself also updated to POSTED + journalEntryId
+    // SE itself updated via single update to POSTED + journalEntryId
     expect(prisma.expenseDocument.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: docId },

@@ -52,6 +52,25 @@ export class CreditNoteTemplate {
         throw new Error(`CreditNote ${documentId} missing creditNote detail`);
       }
       const { originalDocumentId, category } = cn.creditNote;
+      // Validate `category` against the chart of accounts BEFORE building any
+      // JE lines — without this, a corrupted category string would post a
+      // journal entry to a non-existent account and silently corrupt the ledger.
+      // Must be an active expense account (5x-xxxx).
+      const coaRow = await tx.chartOfAccount.findFirst({
+        where: { code: category, deletedAt: null },
+        select: { code: true, type: true },
+      });
+      if (!coaRow) {
+        throw new BadRequestException(
+          `หมวดบัญชี ${category} ไม่พบในผังบัญชี — ไม่สามารถ post ใบลดหนี้`,
+        );
+      }
+      if (!category.startsWith('5')) {
+        throw new BadRequestException(
+          `หมวดบัญชี ${category} ไม่ใช่บัญชีค่าใช้จ่าย — ใบลดหนี้ต้องอ้างถึงบัญชี 5x-xxxx เท่านั้น`,
+        );
+      }
+
       const original = await tx.expenseDocument.findUniqueOrThrow({
         where: { id: originalDocumentId },
       });
@@ -131,13 +150,16 @@ export class CreditNoteTemplate {
         tx,
       );
 
+      // paidAt only on POSTED-original path (cash actually moved); ACCRUAL-path
+      // CN clears AP without any cash flow, so paidAt stays null.
+      const isCashRefund = original.status === 'POSTED';
       await tx.expenseDocument.update({
         where: { id: cn.id },
         data: {
           status: 'POSTED',
-          paidAt: cn.documentDate,
+          paidAt: isCashRefund ? cn.documentDate : null,
           journalEntryId: result.id,
-          netPayment: total,
+          netPayment: isCashRefund ? total : null,
         },
       });
 

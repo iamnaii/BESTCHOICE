@@ -77,16 +77,17 @@ export class ExpenseDocumentsController {
   @Get('summary')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   summary(
+    @Req() req: { user: { id: string; branchId?: string; role: string } },
     @Query('branchId') branchId?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
-    @Req() req?: { user: { id: string; branchId?: string; role: string } },
   ) {
     // Mirror list() scoping: cross-branch roles see all (or filter by ?branchId);
-    // others are pinned to their own branch regardless of query.
-    const effective = hasCrossBranchAccess(req?.user)
+    // others are pinned to their own branch — query param ignored.
+    // @Req() is non-optional: JwtAuthGuard guarantees req.user is present.
+    const effective = hasCrossBranchAccess(req.user)
       ? branchId
-      : (req?.user.branchId ?? branchId);
+      : req.user.branchId;
     return this.service.getSummary({ branchId: effective, startDate, endDate });
   }
 
@@ -98,6 +99,12 @@ export class ExpenseDocumentsController {
     @CurrentUser() user: { id: string; branchId?: string | null; role?: string | null },
   ) {
     return this.service.getDailySummary({ date, branchId }, user);
+  }
+
+  @Get(':id/cn-cap')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  cnCap(@Param('id') id: string) {
+    return this.service.getCreditNoteCap(id);
   }
 
   @Get(':id')

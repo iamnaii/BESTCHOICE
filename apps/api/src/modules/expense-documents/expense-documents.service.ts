@@ -23,6 +23,23 @@ import { CreatePayrollDto } from './dto/create-payroll.dto';
 import { CreateSettlementDto } from './dto/create-settlement.dto';
 import { hasCrossBranchAccess } from '../auth/branch-access.util';
 
+/**
+ * Returns a Date representing 12:00 noon Asia/Bangkok on the same calendar day
+ * as `now`. Used as a stable `postedAt` for journal entries that should land
+ * on the BKK business day regardless of the server's UTC clock — without this,
+ * a void after 17:00 BKK (= next UTC day) would post in the wrong accounting period.
+ */
+function bkkBusinessDate(now: Date): Date {
+  const ymd = now.toLocaleString('en-CA', {
+    timeZone: 'Asia/Bangkok',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  // ymd is "YYYY-MM-DD" in BKK; build noon BKK = 05:00 UTC of the same date
+  return new Date(`${ymd}T05:00:00.000Z`);
+}
+
 @Injectable()
 export class ExpenseDocumentsService {
   private readonly logger = new Logger(ExpenseDocumentsService.name);
@@ -88,6 +105,9 @@ export class ExpenseDocumentsService {
         where: { id: dto.originalDocumentId },
         include: { expenseDetail: true },
       });
+      if (original.deletedAt) {
+        throw new NotFoundException('เอกสารต้นฉบับถูกลบแล้ว');
+      }
       if (original.branchId !== dto.branchId) {
         throw new BadRequestException('ใบลดหนี้ต้องอยู่สาขาเดียวกับเอกสารต้นฉบับ');
       }
@@ -390,11 +410,18 @@ export class ExpenseDocumentsService {
   ) {
     const where: Prisma.ExpenseDocumentWhereInput = { deletedAt: null };
 
-    // Branch scoping
-    const effectiveBranchId = hasCrossBranchAccess(user)
-      ? query.branchId
-      : user.branchId || query.branchId;
-    if (effectiveBranchId) where.branchId = effectiveBranchId;
+    // Branch scoping: cross-branch roles can pass ?branchId or omit it for "all";
+    // non-cross-branch users are PINNED to their assigned branch — the query
+    // param is ignored. If a non-cross-branch user has no branchId assigned
+    // (data corruption), reject rather than fall through to query.branchId.
+    if (hasCrossBranchAccess(user)) {
+      if (query.branchId) where.branchId = query.branchId;
+    } else {
+      if (!user.branchId) {
+        throw new ForbiddenException('ผู้ใช้ไม่มีสาขาที่ได้รับมอบหมาย');
+      }
+      where.branchId = user.branchId;
+    }
 
     // Tab translation
     switch (query.tab) {
@@ -608,6 +635,37 @@ export class ExpenseDocumentsService {
     };
   }
 
+  // ─── Credit-Note remaining cap ───────────────────────────────────────
+  // Returns how much CN can still be issued against this original document.
+  // cap = original.totalAmount - Σ (non-VOIDED CNs against this original).
+  async getCreditNoteCap(originalDocumentId: string) {
+    const original = await this.prisma.expenseDocument.findUniqueOrThrow({
+      where: { id: originalDocumentId },
+    });
+    if (original.deletedAt) {
+      throw new NotFoundException('เอกสารต้นฉบับถูกลบแล้ว');
+    }
+    if (original.documentType !== 'EXPENSE') {
+      throw new BadRequestException('ใบลดหนี้ใช้ลดเอกสารรายจ่ายเท่านั้น');
+    }
+    const priorAgg = await this.prisma.expenseDocument.aggregate({
+      where: {
+        documentType: 'CREDIT_NOTE',
+        status: { not: 'VOIDED' },
+        deletedAt: null,
+        creditNote: { originalDocumentId },
+      },
+      _sum: { totalAmount: true },
+    });
+    const used = new Prisma.Decimal(priorAgg._sum.totalAmount ?? 0);
+    const cap = new Prisma.Decimal(original.totalAmount.toString()).minus(used);
+    return {
+      originalTotal: original.totalAmount.toString(),
+      usedTotal: used.toString(),
+      remainingCap: cap.toString(),
+    };
+  }
+
   // ─── Find one ────────────────────────────────────────────────────────
   async findOne(id: string) {
     const doc = await this.prisma.expenseDocument.findUniqueOrThrow({
@@ -627,6 +685,7 @@ export class ExpenseDocumentsService {
   async update(id: string, dto: UpdateExpenseDocumentDto, _userId: string) {
     return this.prisma.$transaction(async (tx) => {
       const existing = await tx.expenseDocument.findUniqueOrThrow({ where: { id } });
+      if (existing.deletedAt) throw new NotFoundException('เอกสารถูกลบแล้ว');
       this.transition.assertCanEdit({ from: existing.status });
 
       const data: Prisma.ExpenseDocumentUpdateInput = {};
@@ -683,7 +742,14 @@ export class ExpenseDocumentsService {
   // ─── Post (DRAFT → ACCRUAL or POSTED) ────────────────────────────────
   async post(id: string, _userId: string) {
     return this.prisma.$transaction(async (tx) => {
+      // Per-doc advisory lock — serializes concurrent post calls on the same id.
+      // Without this, two callers could both read DRAFT, both pass assertCanPost,
+      // and both run the JE template → two journal entries for one document
+      // (same race class as voidDocument).
+      await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(hashtext($1))`, `post:${id}`);
+
       const doc = await tx.expenseDocument.findUniqueOrThrow({ where: { id } });
+      if (doc.deletedAt) throw new NotFoundException('เอกสารถูกลบแล้ว');
       this.transition.assertCanPost({
         type: doc.documentType,
         from: doc.status,
@@ -730,6 +796,7 @@ export class ExpenseDocumentsService {
         where: { id },
         include: { settlement: { include: { settlementLines: true } } },
       });
+      if (doc.deletedAt) throw new NotFoundException('เอกสารถูกลบแล้ว');
 
       const pendingCn = await tx.expenseDocument.count({
         where: {
@@ -747,6 +814,8 @@ export class ExpenseDocumentsService {
 
       // Post reversal JE (flipped Dr/Cr) if doc had one. The original JE stays
       // intact; the reversal lives as a separate POSTED entry tagged via metadata.
+      // Reversal postedAt is BKK noon "today" — keeps the entry inside the
+      // intended Thai accounting day regardless of UTC server clock.
       if (doc.journalEntryId) {
         const original = await tx.journalEntry.findUniqueOrThrow({
           where: { id: doc.journalEntryId },
@@ -764,7 +833,7 @@ export class ExpenseDocumentsService {
               originalJournalEntryId: original.id,
               flow: `expense-${doc.documentType.toLowerCase()}-void`,
             },
-            postedAt: new Date(),
+            postedAt: bkkBusinessDate(new Date()),
             companyId: original.companyId,
             lines: original.lines.map((l) => ({
               accountCode: l.accountCode,

@@ -114,7 +114,8 @@ export default function ExpenseDailySummaryPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `daily-summary-${date.replace(/-/g, '')}-${branchId}.xlsx`;
+    const safeBranch = (summary.branchName ?? 'all').replace(/[^A-Za-z0-9ก-๙_-]+/g, '_');
+    a.download = `daily-summary-${date.replace(/-/g, '')}-${safeBranch}.xlsx`;
     a.click();
     URL.revokeObjectURL(url);
   };

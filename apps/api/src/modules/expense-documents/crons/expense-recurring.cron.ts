@@ -16,14 +16,28 @@ export class ExpenseRecurringCron {
   /** Daily at 08:00 Asia/Bangkok — auto-create DRAFT docs from recurring templates */
   @Cron('0 8 * * *', { timeZone: 'Asia/Bangkok' })
   async tick(): Promise<{ processed: number; failed: number; skipped: number }> {
-    const today = new Date();
-    const dayOfMonth = today.getDate();
+    const now = new Date();
+    // Compute "today" in Asia/Bangkok via Intl — server may run UTC, in which
+    // case `now.getDate()` would be off by a day for a few hours each evening.
+    const bkkParts = now.toLocaleString('en-CA', {
+      timeZone: 'Asia/Bangkok',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    const [bkkY, bkkM, bkkD] = bkkParts.split('-').map((n) => parseInt(n, 10));
+    const dayOfMonth = bkkD;
+    // BKK = UTC+7 (no DST). Day spans [BKK 00:00 → BKK 23:59:59.999] which in
+    // UTC is [-7:00..16:59:59.999] of the same calendar date, so we build the
+    // window via UTC explicitly to avoid server-locale drift.
+    const startOfDay = new Date(Date.UTC(bkkY, bkkM - 1, bkkD, -7, 0, 0, 0));
+    const endOfDay = new Date(Date.UTC(bkkY, bkkM - 1, bkkD, 16, 59, 59, 999));
 
     const templates = await this.prisma.expenseTemplate.findMany({
       where: { isRecurring: true, recurringDay: dayOfMonth, deletedAt: null },
     });
     this.logger.log(
-      `Recurring cron: ${templates.length} template(s) due today (day ${dayOfMonth})`,
+      `Recurring cron: ${templates.length} template(s) due today (BKK day ${dayOfMonth})`,
     );
 
     if (templates.length === 0) return { processed: 0, failed: 0, skipped: 0 };
@@ -39,11 +53,6 @@ export class ExpenseRecurringCron {
       Sentry.captureMessage(msg, { level: 'error', tags: { cron: 'expense-recurring' } });
       return { processed: 0, failed: 0, skipped: templates.length };
     }
-
-    const startOfDay = new Date(today);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(today);
-    endOfDay.setHours(23, 59, 59, 999);
 
     let processed = 0;
     let failed = 0;
@@ -65,7 +74,9 @@ export class ExpenseRecurringCron {
           continue;
         }
 
-        // Use OWNER role for system context (cross-branch authoritative)
+        // Use OWNER role for system context (cross-branch authoritative).
+        // documentDate = BKK noon today so it falls cleanly in the BKK day.
+        const bkkNoonToday = new Date(Date.UTC(bkkY, bkkM - 1, bkkD, 5, 0, 0, 0));
         await this.templatesService.instantiate(
           tpl.id,
           {
@@ -73,7 +84,7 @@ export class ExpenseRecurringCron {
             branchId: systemUser.branchId,
             role: 'OWNER',
           },
-          { documentDate: today },
+          { documentDate: bkkNoonToday },
         );
         processed++;
       } catch (e) {

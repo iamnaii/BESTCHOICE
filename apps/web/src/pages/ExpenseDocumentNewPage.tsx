@@ -1,4 +1,4 @@
-import { useSearchParams, useNavigate } from 'react-router';
+import { useSearchParams, useNavigate, Navigate } from 'react-router';
 import { CreditNoteForm } from '@/components/expense-documents/CreditNoteForm';
 import { PayrollForm } from '@/components/expense-documents/PayrollForm';
 import { SettlementForm } from '@/components/expense-documents/SettlementForm';
@@ -8,8 +8,6 @@ export default function ExpenseDocumentNewPage() {
   const navigate = useNavigate();
   const type = params.get('type') ?? 'EX';
 
-  // PR-1 already handles EX via the modal in ExpensesPage; PR-2 adds CN.
-  // PR-3 adds PR (payroll); PR-4 adds SE (vendor settlement).
   switch (type) {
     case 'CN':
       return (
@@ -33,8 +31,7 @@ export default function ExpenseDocumentNewPage() {
         />
       );
     default:
-      // EX still uses the existing modal — redirect home
-      navigate('/expenses?openNew=1');
-      return null;
+      // EX uses the existing modal — declarative redirect (no side effect in render)
+      return <Navigate to="/expenses?openNew=1" replace />;
   }
 }

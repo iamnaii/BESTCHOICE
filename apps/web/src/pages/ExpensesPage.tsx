@@ -8,7 +8,6 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { useCoaGroups } from '@/hooks/useCoa';
 import DataTable from '@/components/ui/DataTable';
 import QueryBoundary from '@/components/QueryBoundary';
-import Modal from '@/components/ui/Modal';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useAuth } from '@/contexts/AuthContext';
 import { compressImageForOcr } from '@/lib/compressImage';
@@ -18,57 +17,76 @@ import { Button } from '@/components/ui/button';
 import { formatDateShortThai } from '@/utils/formatters';
 
 // ─── Types ───
-interface Expense {
-  id: string; expenseNumber: string; accountType: string; category: string;
-  accountCode: string | null; description: string; amount: string; vatAmount: string;
-  totalAmount: string; withholdingTax: string; expenseDate: string;
-  paymentMethod: string | null; paymentDate: string | null; reference: string | null;
-  vendorName: string | null; vendorTaxId: string | null; receiptImageUrl: string | null;
-  taxInvoiceNo: string | null; status: string; rejectReason: string | null;
-  note: string | null; isRecurring: boolean; createdAt: string;
-  branch: { id: string; name: string }; createdBy: { id: string; name: string };
-  approvedBy: { id: string; name: string } | null;
+interface ExpenseDocument {
+  id: string;
+  number: string;
+  documentType: 'EXPENSE' | 'CREDIT_NOTE' | 'PAYROLL' | 'VENDOR_SETTLEMENT';
+  branchId: string;
+  documentDate: string;
+  vendorName: string | null;
+  vendorTaxId: string | null;
+  taxInvoiceNo: string | null;
+  description: string | null;
+  subtotal: string;
+  vatAmount: string;
+  withholdingTax: string;
+  totalAmount: string;
+  netPayment: string | null;
+  status: 'DRAFT' | 'ACCRUAL' | 'POSTED' | 'VOIDED';
+  paidAt: string | null;
+  paymentMethod: string | null;
+  depositAccountCode: string | null;
+  expenseDetail: { category: string } | null;
+  branch: { id: string; name: string };
+  createdBy: { id: string; name: string };
+  createdAt: string;
+  reference: string | null;
+  note: string | null;
+  receiptImageUrl: string | null;
 }
+
+// Alias for backward compat with existing code in the file
+type Expense = ExpenseDocument;
 
 interface Summary {
-  totalAmount: number;
   totalCount: number;
-  pendingCount: number;
-  byAccountType: Record<string, number>;
-  byStatus?: Record<string, number>;
-  accrualUnpaidCount?: number;
-  accrualUnpaidTotal?: number;
+  byStatus: Record<string, number>;
+  accrualUnpaidCount: number;
+  accrualUnpaidTotal: number;
 }
 
-// Map document number prefix + paymentDate to display "type"
+// Map documentType to display "type" (with Same-day vs Accrual fallback for EXPENSE)
 function getDocumentType(e: Expense): { label: string; cls: string } {
-  const num = e.expenseNumber || '';
-  if (num.startsWith('CN')) return { label: 'ใบลดหนี้', cls: 'bg-destructive/10 text-destructive border-destructive/20' };
-  if (num.startsWith('PR')) return { label: 'เงินเดือน', cls: 'bg-info/10 text-info border-info/20' };
-  if (num.startsWith('SE')) return { label: 'จ่ายเจ้าหนี้', cls: 'bg-muted text-muted-foreground border-border' };
-  // EX prefix or default — derive from paymentDate
-  return e.paymentDate
-    ? { label: 'Same-day', cls: 'bg-success/10 text-success border-success/20' }
-    : { label: 'ตั้งหนี้', cls: 'bg-warning/10 text-warning border-warning/20' };
+  switch (e.documentType) {
+    case 'CREDIT_NOTE':
+      return { label: 'ใบลดหนี้', cls: 'bg-destructive/10 text-destructive border-destructive/20' };
+    case 'PAYROLL':
+      return { label: 'เงินเดือน', cls: 'bg-info/10 text-info border-info/20' };
+    case 'VENDOR_SETTLEMENT':
+      return { label: 'จ่ายเจ้าหนี้', cls: 'bg-muted text-muted-foreground border-border' };
+    case 'EXPENSE':
+    default:
+      return e.status === 'ACCRUAL'
+        ? { label: 'ตั้งหนี้', cls: 'bg-warning/10 text-warning border-warning/20' }
+        : { label: 'Same-day', cls: 'bg-success/10 text-success border-success/20' };
+  }
 }
 
-// Derived status badge — simplifies 6 internal statuses to 3 user-facing
+// Derived status badge — 4 statuses mapped to user-facing labels
 function getStatusBadge(e: Expense): { label: string; cls: string } {
   if (e.status === 'DRAFT') return { label: 'DRAFT', cls: 'bg-muted text-muted-foreground border-border' };
-  if (e.status === 'REJECTED') return { label: 'REJECTED', cls: 'bg-destructive/10 text-destructive border-destructive/20' };
   if (e.status === 'VOIDED') return { label: 'VOIDED', cls: 'bg-muted text-muted-foreground border-border' };
-  if (e.status === 'PAID') return { label: 'POSTED', cls: 'bg-success/10 text-success border-success/20' };
-  // APPROVED / PENDING_APPROVAL: split by paymentDate
-  return e.paymentDate
-    ? { label: 'POSTED', cls: 'bg-success/10 text-success border-success/20' }
-    : { label: 'ACCRUAL', cls: 'bg-success/10 text-success border-success/20' };
+  if (e.status === 'ACCRUAL') return { label: 'ACCRUAL', cls: 'bg-success/10 text-success border-success/20' };
+  return { label: 'POSTED', cls: 'bg-success/10 text-success border-success/20' };
 }
 
 // ─── Constants ───
 
 const statusLabels: Record<string, string> = {
-  DRAFT: 'ร่าง', PENDING_APPROVAL: 'รออนุมัติ', APPROVED: 'อนุมัติแล้ว',
-  REJECTED: 'ไม่อนุมัติ', PAID: 'จ่ายแล้ว', VOIDED: 'ยกเลิก',
+  DRAFT: 'ร่าง',
+  ACCRUAL: 'ตั้งหนี้',
+  POSTED: 'บันทึกแล้ว',
+  VOIDED: 'ยกเลิก',
 };
 
 
@@ -109,13 +127,20 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
     if (editingExpense) {
       setForm({
         branchId: editingExpense.branch.id,
-        category: editingExpense.category, description: editingExpense.description,
-        amount: editingExpense.amount, vatAmount: editingExpense.vatAmount,
-        withholdingTax: editingExpense.withholdingTax, expenseDate: editingExpense.expenseDate.slice(0, 10),
-        paymentMethod: editingExpense.paymentMethod || '', vendorName: editingExpense.vendorName || '',
-        vendorTaxId: editingExpense.vendorTaxId || '', reference: editingExpense.reference || '',
-        taxInvoiceNo: editingExpense.taxInvoiceNo || '', note: editingExpense.note || '',
-        isRecurring: editingExpense.isRecurring, recurringDay: '',
+        category: editingExpense.expenseDetail?.category ?? '',
+        description: editingExpense.description ?? '',
+        amount: editingExpense.subtotal,
+        vatAmount: editingExpense.vatAmount,
+        withholdingTax: editingExpense.withholdingTax,
+        expenseDate: editingExpense.documentDate.slice(0, 10),
+        paymentMethod: editingExpense.paymentMethod || '',
+        vendorName: editingExpense.vendorName || '',
+        vendorTaxId: editingExpense.vendorTaxId || '',
+        reference: editingExpense.reference || '',
+        taxInvoiceNo: editingExpense.taxInvoiceNo || '',
+        note: editingExpense.note || '',
+        isRecurring: false,
+        recurringDay: '',
         receiptImageUrl: editingExpense.receiptImageUrl || '',
       });
       setIncludeVat(Number(editingExpense.vatAmount) > 0);
@@ -142,16 +167,16 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
   const saveMutation = useMutation({
     mutationFn: async ({ data, andSubmit }: { data: Record<string, unknown>; andSubmit: boolean }) => {
       const res = editingExpense
-        ? await api.patch(`/expenses/${editingExpense.id}`, data)
-        : await api.post('/expenses', data);
+        ? await api.patch(`/expense-documents/${editingExpense.id}`, data)
+        : await api.post('/expense-documents', data);
       if (andSubmit) {
         const id = editingExpense?.id || res.data.id;
-        await api.post(`/expenses/${id}/submit`);
+        await api.post(`/expense-documents/${id}/post`);
       }
       return res;
     },
     onSuccess: (_, { andSubmit }) => {
-      toast.success(andSubmit ? 'บันทึกและส่งอนุมัติสำเร็จ' : 'บันทึกร่างสำเร็จ');
+      toast.success(andSubmit ? 'บันทึกและโพสต์สำเร็จ' : 'บันทึกร่างสำเร็จ');
       onSaved();
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
@@ -175,15 +200,23 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
     const withholdingTax = parseFloat(form.withholdingTax) || 0;
     saveMutation.mutate({
       data: {
+        documentType: 'EXPENSE',
         branchId: form.branchId || branches[0]?.id,
-        category: form.category, description: form.description, amount, vatAmount,
-        withholdingTax, includeVat, expenseDate: form.expenseDate,
-        paymentMethod: form.paymentMethod || undefined, vendorName: form.vendorName || undefined,
-        vendorTaxId: form.vendorTaxId || undefined, reference: form.reference || undefined,
-        taxInvoiceNo: form.taxInvoiceNo || undefined, note: form.note || undefined,
-        isRecurring: form.isRecurring || undefined,
-        recurringDay: form.recurringDay ? parseInt(form.recurringDay) : undefined,
+        documentDate: form.expenseDate,
+        subtotal: amount,
+        vatAmount,
+        withholdingTax,
+        paymentMethod: form.paymentMethod || undefined,
+        // PR-1: assume default cash account; UI selector lands in PR-3
+        depositAccountCode: form.paymentMethod ? '11-1101' : undefined,
+        vendorName: form.vendorName || undefined,
+        vendorTaxId: form.vendorTaxId || undefined,
+        taxInvoiceNo: form.taxInvoiceNo || undefined,
+        description: form.description,
+        note: form.note || undefined,
         receiptImageUrl: form.receiptImageUrl || undefined,
+        reference: form.reference || undefined,
+        detail: { category: form.category },
       },
       andSubmit,
     });
@@ -462,7 +495,6 @@ export default function ExpensesPage() {
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
-  const [rejectDialog, setRejectDialog] = useState<{ open: boolean; expenseId: string; reason: string }>({ open: false, expenseId: '', reason: '' });
 
   const setFilter = (key: string, value: string) => {
     const params = new URLSearchParams(searchParams);
@@ -500,7 +532,7 @@ export default function ExpensesPage() {
 
   const { data: summary } = useQuery<Summary>({
     queryKey: ['expenses-summary', branchFilter, startDate, endDate],
-    queryFn: async () => { const p = new URLSearchParams(); if (branchFilter) p.set('branchId', branchFilter); if (startDate) p.set('startDate', startDate); if (endDate) p.set('endDate', endDate); return (await api.get(`/expenses/summary?${p}`)).data; },
+    queryFn: async () => { const p = new URLSearchParams(); if (branchFilter) p.set('branchId', branchFilter); if (startDate) p.set('startDate', startDate); if (endDate) p.set('endDate', endDate); return (await api.get(`/expense-documents/summary?${p}`)).data; },
   });
 
   const {
@@ -520,13 +552,17 @@ export default function ExpensesPage() {
       if (startDate) p.set('startDate', startDate);
       if (endDate) p.set('endDate', endDate);
       if (debouncedSearch) p.set('search', debouncedSearch);
-      return (await api.get(`/expenses?${p}`)).data;
+      return (await api.get(`/expense-documents?${p}`)).data;
     },
   });
 
   const actionMutation = useMutation({
-    mutationFn: async ({ id, action, body }: { id: string; action: string; body?: Record<string, unknown> }) =>
-      api.post(`/expenses/${id}/${action}`, body || {}),
+    mutationFn: async ({ id, action, body }: { id: string; action: string; body?: Record<string, unknown> }) => {
+      // Old API actions (submit/approve/reject/accrue/pay) collapse to "post" in the new API.
+      // Only "void" survives as a distinct action.
+      const newAction = action === 'void' ? 'void' : 'post';
+      return api.post(`/expense-documents/${id}/${newAction}`, body || {});
+    },
     onSuccess: () => { invalidateAll(); toast.success('อัปเดตสถานะสำเร็จ'); },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
@@ -542,7 +578,7 @@ export default function ExpensesPage() {
   const draftCount = summary?.byStatus?.DRAFT ?? 0;
   const unpaidCount = summary?.accrualUnpaidCount ?? 0;
   const unpaidTotal = summary?.accrualUnpaidTotal ?? 0;
-  const paidCount = summary?.byStatus?.PAID ?? 0;
+  const paidCount = summary?.byStatus?.POSTED ?? 0;
   const recordedCount = totalCount - draftCount;
 
   const tabs = [
@@ -557,9 +593,9 @@ export default function ExpensesPage() {
 
   const columns = [
     {
-      key: 'expenseNumber',
+      key: 'number',
       label: 'เลขเอกสาร',
-      render: (e: Expense) => <span className="font-mono text-sm font-medium text-warning">{e.expenseNumber}</span>,
+      render: (e: Expense) => <span className="font-mono text-sm font-medium text-warning">{e.number}</span>,
     },
     {
       key: 'vendorName',
@@ -569,23 +605,25 @@ export default function ExpensesPage() {
     {
       key: 'category',
       label: 'บัญชี',
-      render: (e: Expense) =>
-        e.category ? (
+      render: (e: Expense) => {
+        const code = e.expenseDetail?.category;
+        return code ? (
           <div className="min-w-0">
-            <div className="font-mono text-sm font-medium text-warning">{e.category}</div>
-            <div className="text-xs text-muted-foreground truncate">{codeToName.get(e.category) || e.category}</div>
+            <div className="font-mono text-sm font-medium text-warning">{code}</div>
+            <div className="text-xs text-muted-foreground truncate">{codeToName.get(code) || code}</div>
           </div>
         ) : (
           <span className="text-muted-foreground">–</span>
-        ),
+        );
+      },
     },
     {
       key: 'totalAmount',
       label: 'ยอดรวม',
       render: (e: Expense) => {
         const amt = parseFloat(e.totalAmount || '0');
-        const isCredit = (e.expenseNumber || '').startsWith('CN');
-        const isUnpaid = !e.paymentDate && (e.status === 'APPROVED' || e.status === 'PENDING_APPROVAL');
+        const isCredit = e.documentType === 'CREDIT_NOTE';
+        const isUnpaid = e.status === 'ACCRUAL' && !e.paidAt;
         return (
           <div className="text-right">
             <div className={`font-mono font-medium text-sm ${isCredit ? 'text-destructive' : ''}`}>
@@ -602,9 +640,9 @@ export default function ExpensesPage() {
       },
     },
     {
-      key: 'expenseDate',
+      key: 'documentDate',
       label: 'วันที่ใบกำกับ',
-      render: (e: Expense) => <span className="text-sm">{formatDateShortThai(e.expenseDate)}</span>,
+      render: (e: Expense) => <span className="text-sm">{formatDateShortThai(e.documentDate)}</span>,
     },
     {
       key: 'docType',
@@ -628,7 +666,6 @@ export default function ExpensesPage() {
             <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs border font-semibold uppercase tracking-wide leading-snug ${s.cls}`}>
               {s.label}
             </span>
-            {e.rejectReason && <div className="text-xs text-destructive mt-0.5 truncate max-w-[120px]">{e.rejectReason}</div>}
           </div>
         );
       },
@@ -645,7 +682,7 @@ export default function ExpensesPage() {
           >
             <Eye className="size-4 text-muted-foreground" />
           </button>
-          {(e.status === 'DRAFT' || e.status === 'REJECTED' || e.status === 'PENDING_APPROVAL' || e.status === 'APPROVED') && (
+          {e.status !== 'VOIDED' && (
             <div className="relative">
               <button
                 onClick={(ev) => { ev.stopPropagation(); setOpenMenuId(openMenuId === e.id ? null : e.id); }}
@@ -655,46 +692,22 @@ export default function ExpensesPage() {
               </button>
               {openMenuId === e.id && (
                 <div className="absolute right-0 top-full mt-1 z-10 bg-card border border-border rounded-lg shadow-lg py-1 min-w-[140px]">
-                  {(e.status === 'DRAFT' || e.status === 'REJECTED') && (
+                  {e.status === 'DRAFT' && (
                     <>
                       <button onClick={() => openEdit(e)} className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted flex items-center gap-2">
                         <Pencil className="size-3.5" /> แก้ไข
                       </button>
                       <button
-                        onClick={() => setConfirmDialog({ open: true, message: `ส่งอนุมัติ "${e.expenseNumber}"?`, action: () => actionMutation.mutate({ id: e.id, action: 'submit' }) })}
+                        onClick={() => setConfirmDialog({ open: true, message: `โพสต์ "${e.number}"?`, action: () => actionMutation.mutate({ id: e.id, action: 'post' }) })}
                         className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted"
                       >
-                        ส่งอนุมัติ
+                        โพสต์
                       </button>
                     </>
-                  )}
-                  {e.status === 'PENDING_APPROVAL' && isOwner && (
-                    <>
-                      <button
-                        onClick={() => setConfirmDialog({ open: true, message: `อนุมัติ "${e.expenseNumber}"?`, action: () => actionMutation.mutate({ id: e.id, action: 'approve' }) })}
-                        className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted"
-                      >
-                        อนุมัติ
-                      </button>
-                      <button
-                        onClick={() => { setRejectDialog({ open: true, expenseId: e.id, reason: '' }); setOpenMenuId(null); }}
-                        className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted text-destructive"
-                      >
-                        ไม่อนุมัติ
-                      </button>
-                    </>
-                  )}
-                  {e.status === 'APPROVED' && (
-                    <button
-                      onClick={() => setConfirmDialog({ open: true, message: `บันทึกจ่าย "${e.expenseNumber}"?`, action: () => actionMutation.mutate({ id: e.id, action: 'pay' }) })}
-                      className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted"
-                    >
-                      จ่ายแล้ว
-                    </button>
                   )}
                   {isOwner && (
                     <button
-                      onClick={() => { setConfirmDialog({ open: true, message: `ยกเลิก "${e.expenseNumber}"?`, action: () => actionMutation.mutate({ id: e.id, action: 'void' }) }); setOpenMenuId(null); }}
+                      onClick={() => { setConfirmDialog({ open: true, message: `ยกเลิก "${e.number}"?`, action: () => actionMutation.mutate({ id: e.id, action: 'void' }) }); setOpenMenuId(null); }}
                       className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted text-destructive"
                     >
                       ยกเลิก
@@ -887,18 +900,6 @@ export default function ExpensesPage() {
 
       {/* PEAK-style Form Panel */}
       {showForm && <ExpenseFormPanel editingExpense={editingExpense} branches={branches} onClose={() => { setShowForm(false); setEditingExpense(null); }} onSaved={handleFormSaved} />}
-
-      {/* Reject Dialog */}
-      <Modal isOpen={rejectDialog.open} onClose={() => setRejectDialog({ open: false, expenseId: '', reason: '' })} title="ไม่อนุมัติรายจ่าย">
-        <div className="space-y-4">
-          <div><label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">เหตุผล *</label><textarea value={rejectDialog.reason} onChange={(e) => setRejectDialog(prev => ({ ...prev, reason: e.target.value }))} rows={3} placeholder="กรุณาระบุเหตุผล..." className={inputClass} /></div>
-          <div className="flex justify-end gap-3">
-            <button onClick={() => setRejectDialog({ open: false, expenseId: '', reason: '' })} className="px-4 py-2 text-sm text-muted-foreground">ยกเลิก</button>
-            <button onClick={() => { if (!rejectDialog.reason.trim()) { toast.error('กรุณาระบุเหตุผล'); return; } actionMutation.mutate({ id: rejectDialog.expenseId, action: 'reject', body: { reason: rejectDialog.reason } }); setRejectDialog({ open: false, expenseId: '', reason: '' }); }}
-              className="px-4 py-2 bg-destructive text-destructive-foreground rounded-lg text-sm font-medium hover:bg-destructive/90">ยืนยันไม่อนุมัติ</button>
-          </div>
-        </div>
-      </Modal>
 
       <ConfirmDialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, open }))} description={confirmDialog.message} onConfirm={confirmDialog.action} />
     </div>

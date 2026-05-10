@@ -32,6 +32,8 @@ import { DepreciationReverseTemplate } from './cpa-templates/depreciation-revers
 import { DepreciationCron } from './cron/depreciation.cron';
 import { WhtAccrualTemplate } from './cpa-templates/wht-accrual.template';
 import { WhtRemittanceTemplate } from './cpa-templates/wht-remittance.template';
+import { ExpenseSameDayTemplate } from './cpa-templates/expense-same-day.template';
+import { ExpenseAccrualTemplate } from './cpa-templates/expense-accrual.template';
 
 @Module({
   imports: [PrismaModule],
@@ -68,6 +70,8 @@ import { WhtRemittanceTemplate } from './cpa-templates/wht-remittance.template';
     DepreciationCron,
     WhtAccrualTemplate,
     WhtRemittanceTemplate,
+    ExpenseSameDayTemplate,
+    ExpenseAccrualTemplate,
   ],
   exports: [
     JournalService,
@@ -98,6 +102,8 @@ import { WhtRemittanceTemplate } from './cpa-templates/wht-remittance.template';
     DepreciationReverseTemplate,
     WhtAccrualTemplate,
     WhtRemittanceTemplate,
+    ExpenseSameDayTemplate,
+    ExpenseAccrualTemplate,
   ],
 })
 export class JournalModule {}

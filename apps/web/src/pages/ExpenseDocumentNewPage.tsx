@@ -1,37 +1,24 @@
-import { useSearchParams, useNavigate, Navigate } from 'react-router';
-import { CreditNoteForm } from '@/components/expense-documents/CreditNoteForm';
-import { PayrollForm } from '@/components/expense-documents/PayrollForm';
-import { SettlementForm } from '@/components/expense-documents/SettlementForm';
+import { useNavigate, Navigate } from 'react-router';
+import { useQuery } from '@tanstack/react-query';
+import api from '@/lib/api';
+import { ExpenseFormV4 } from '@/components/expense-form-v4/ExpenseFormV4';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function ExpenseDocumentNewPage() {
-  const [params] = useSearchParams();
   const navigate = useNavigate();
-  const type = params.get('type') ?? 'EX';
+  const { user } = useAuth();
+  const { data: branches } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ['branches'],
+    queryFn: async () => (await api.get('/branches')).data,
+  });
+  const branchId = user?.branchId || branches?.[0]?.id;
+  if (!branchId) return <Navigate to="/expenses" replace />;
 
-  switch (type) {
-    case 'CN':
-      return (
-        <CreditNoteForm
-          onClose={() => navigate('/expenses')}
-          onSaved={() => navigate('/expenses')}
-        />
-      );
-    case 'PR':
-      return (
-        <PayrollForm
-          onClose={() => navigate('/expenses')}
-          onSaved={() => navigate('/expenses')}
-        />
-      );
-    case 'SE':
-      return (
-        <SettlementForm
-          onClose={() => navigate('/expenses')}
-          onSaved={() => navigate('/expenses')}
-        />
-      );
-    default:
-      // EX uses the existing modal — declarative redirect (no side effect in render)
-      return <Navigate to="/expenses?openNew=1" replace />;
-  }
+  return (
+    <ExpenseFormV4
+      branchId={branchId}
+      onClose={() => navigate('/expenses')}
+      onSaved={() => navigate('/expenses')}
+    />
+  );
 }

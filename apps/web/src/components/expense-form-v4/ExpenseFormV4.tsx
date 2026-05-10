@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Receipt, Users, Banknote, FileText, Check } from 'lucide-react';
+import { ArrowLeft, Receipt, Users, Banknote, FileText, Check, CheckCircle2, Clock } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import { ExpenseFormState, newLine, newPayrollLine } from './types';
@@ -155,20 +155,34 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
         if (!state.originalDocumentId || !state.cnReason.trim()) {
           throw new Error('กรุณาเลือกเอกสารต้นฉบับและระบุเหตุผล');
         }
-        const validLines = state.lines.filter((l) => l.category && parseFloat(l.unitPrice) > 0);
-        const subtotal = validLines.reduce((s, l) => {
-          const q = parseFloat(l.quantity) || 1;
-          const u = parseFloat(l.unitPrice) || 0;
-          const d = parseFloat(l.discount) || 0;
-          return s + Math.max(0, q * u - d);
-        }, 0);
+        // Use server-side preview to compute totals — avoids client-side rounding drift
+        const exPayload = {
+          documentType: 'EXPENSE',
+          branchId: state.branchId,
+          documentDate: state.documentDate,
+          priceType: state.priceType,
+          lines: state.lines
+            .filter((l) => l.category && parseFloat(l.unitPrice) > 0)
+            .map((l) => ({
+              category: l.category,
+              description: l.description || undefined,
+              quantity: parseFloat(l.quantity) || 1,
+              unitPrice: parseFloat(l.unitPrice) || 0,
+              discount: parseFloat(l.discount) || 0,
+              vatPercent: parseFloat(l.vatPercent) || 0,
+              whtPercent: parseFloat(l.whtPercent) || 0,
+            })),
+        };
+        const previewResp = await api.post('/expense-documents/preview-je', exPayload);
+        const subtotal = parseFloat(previewResp.data.totals.subtotal);
+        const vatAmount = parseFloat(previewResp.data.totals.vatAmount);
         const { data } = await api.post('/expense-documents/credit-note', {
           branchId: state.branchId,
           documentDate: state.documentDate,
           originalDocumentId: state.originalDocumentId,
           reason: state.cnReason,
           subtotal,
-          vatAmount: 0,
+          vatAmount,
           depositAccountCode: state.depositAccountCode || undefined,
           note: state.note || undefined,
         });
@@ -205,8 +219,8 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
     : itemCount > 0;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-start justify-center pt-8 pb-8 overflow-y-auto">
-      <div className="w-full max-w-5xl bg-background rounded-xl shadow-lg min-h-[80vh]">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-start justify-center pt-8 pb-8 overflow-y-auto">
+      <div className="w-full max-w-5xl bg-background rounded-xl shadow-modal min-h-[80vh]">
         {/* Header */}
         <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -379,8 +393,9 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
           </Button>
           <div className="flex items-center gap-3 text-xs">
             <span>Items: {itemCount}</span>
-            <span className={ready ? 'text-success' : 'text-muted-foreground'}>
-              {ready ? '✓ Ready' : '⌛ ยังไม่พร้อม'}
+            <span className={cn('flex items-center gap-1', ready ? 'text-success' : 'text-muted-foreground')}>
+              {ready ? <CheckCircle2 className="size-3" /> : <Clock className="size-3" />}
+              {ready ? 'Ready' : 'ยังไม่พร้อม'}
             </span>
           </div>
           <div className="flex items-center gap-2">

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import api from '@/lib/api';
 import { ExpenseFormState, JePreviewResponse } from './types';
 
@@ -44,7 +44,10 @@ function buildPayload(state: ExpenseFormState): CreateExpensePayload | null {
   };
 }
 
-/** Debounced server-side JE preview. Re-runs ~300ms after the form stops changing. */
+/** Debounced server-side JE preview. Re-runs ~300ms after the form stops changing.
+ *  Deps are stabilized as a content-hash string so object identity changes on every
+ *  render don't re-arm the debounce timer unnecessarily.
+ */
 export function useFormCompute(state: ExpenseFormState): {
   preview: JePreviewResponse | null;
   loading: boolean;
@@ -54,9 +57,29 @@ export function useFormCompute(state: ExpenseFormState): {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Serialize only the fields that affect the JE preview result — prevents
+  // re-firing when unrelated state (e.g. payroll, settlement) changes.
+  const payloadString = useMemo(() => {
+    const p = buildPayload(state);
+    return p ? JSON.stringify(p) : null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    state.docType,
+    state.branchId,
+    state.documentDate,
+    state.priceType,
+    state.paymentMethod,
+    state.depositAccountCode,
+    state.whtFormType,
+    // Serialize lines to a stable string so array object identity doesn't matter
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    state.lines
+      .map((l) => `${l.category}|${l.quantity}|${l.unitPrice}|${l.discount}|${l.vatPercent}|${l.whtPercent}`)
+      .join(';'),
+  ]);
+
   useEffect(() => {
-    const payload = buildPayload(state);
-    if (!payload) {
+    if (!payloadString) {
       setPreview(null);
       return;
     }
@@ -66,7 +89,7 @@ export function useFormCompute(state: ExpenseFormState): {
       try {
         const { data } = await api.post<JePreviewResponse>(
           '/expense-documents/preview-je',
-          payload,
+          JSON.parse(payloadString),
         );
         setPreview(data);
       } catch (e) {
@@ -76,7 +99,7 @@ export function useFormCompute(state: ExpenseFormState): {
       }
     }, 300);
     return () => clearTimeout(t);
-  }, [state]);
+  }, [payloadString]);
 
   return { preview, loading, error };
 }

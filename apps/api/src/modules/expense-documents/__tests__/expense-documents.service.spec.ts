@@ -277,7 +277,7 @@ describe('ExpenseDocumentsService', () => {
           paymentMethod: null,
           paidAt: null,
           depositAccountCode: null,
-          expenseDetail: { category: '53-1302' },
+          expenseDetail: { priceType: 'EXCLUSIVE', lines: [{ lineNo: 1, category: '53-1302' }] },
           branch: { id: 'b1', name: 'A' },
         },
         {
@@ -287,7 +287,7 @@ describe('ExpenseDocumentsService', () => {
           paymentMethod: null,
           paidAt: null,
           depositAccountCode: null,
-          expenseDetail: { category: '53-1302' },
+          expenseDetail: { priceType: 'EXCLUSIVE', lines: [{ lineNo: 1, category: '53-1302' }] },
           branch: { id: 'b1', name: 'A' },
         },
         {

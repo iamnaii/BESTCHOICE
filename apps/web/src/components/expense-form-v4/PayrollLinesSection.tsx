@@ -2,6 +2,7 @@ import { Plus, Trash2 } from 'lucide-react';
 import { PayrollFormFields, newPayrollLine } from './types';
 import { formatNumberDecimal } from '@/utils/formatters';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
+import { THAI_MONTHS_FULL } from '@/lib/date';
 
 interface Props {
   value: PayrollFormFields;
@@ -9,21 +10,6 @@ interface Props {
   documentDate: string;
   onDocumentDateChange: (d: string) => void;
 }
-
-const MONTHS_TH = [
-  'มกราคม',
-  'กุมภาพันธ์',
-  'มีนาคม',
-  'เมษายน',
-  'พฤษภาคม',
-  'มิถุนายน',
-  'กรกฎาคม',
-  'สิงหาคม',
-  'กันยายน',
-  'ตุลาคม',
-  'พฤศจิกายน',
-  'ธันวาคม',
-];
 
 export function PayrollLinesSection({ value, onChange, documentDate, onDocumentDateChange }: Props) {
   const updateField = (patch: Partial<PayrollFormFields>) => onChange({ ...value, ...patch });
@@ -90,7 +76,7 @@ export function PayrollLinesSection({ value, onChange, documentDate, onDocumentD
             }}
             className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background"
           >
-            {MONTHS_TH.map((label, idx) => (
+            {THAI_MONTHS_FULL.map((label, idx) => (
               <option key={idx} value={idx + 1}>
                 {label}
               </option>

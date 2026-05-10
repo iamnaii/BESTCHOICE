@@ -105,7 +105,9 @@ describe('ExpenseTemplatesService', () => {
           paymentMethod: 'BANK_TRANSFER',
           depositAccountCode: '11-1201',
           fromTemplateId: 'tpl-1',
-          detail: expect.objectContaining({ category: '53-1302' }),
+          lines: expect.arrayContaining([
+            expect.objectContaining({ category: '53-1302' }),
+          ]),
         }),
         'u1',
       );

@@ -769,6 +769,20 @@ export class ExpenseDocumentsService {
           const out = this.aggregator.computeLine(l, priceType as never);
           return { ...l, lineNo: idx + 1, ...out };
         });
+
+        // CoA validation — every category must exist + be type "ค่าใช้จ่าย"
+        const codes = [...new Set(linesPrepared.map((l) => l.category))];
+        const coaRows = await tx.chartOfAccount.findMany({
+          where: { code: { in: codes }, deletedAt: null },
+          select: { code: true, type: true },
+        });
+        const byCode = new Map(coaRows.map((r) => [r.code, r.type]));
+        for (const c of codes) {
+          const t = byCode.get(c);
+          if (!t) throw new BadRequestException(`หมวดบัญชี ${c} ไม่พบในผังบัญชี`);
+          if (t !== 'ค่าใช้จ่าย') throw new BadRequestException(`หมวดบัญชี ${c} ไม่ใช่ "ค่าใช้จ่าย"`);
+        }
+
         const totals = this.aggregator.aggregateLines(linesPrepared);
 
         data.subtotal = totals.subtotal;

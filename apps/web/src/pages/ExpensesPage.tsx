@@ -36,7 +36,7 @@ interface ExpenseDocument {
   paidAt: string | null;
   paymentMethod: string | null;
   depositAccountCode: string | null;
-  expenseDetail: { category: string } | null;
+  expenseDetail: { lines: { category: string }[] } | null;
   branch: { id: string; name: string };
   createdBy: { id: string; name: string };
   createdAt: string;
@@ -231,7 +231,7 @@ export default function ExpensesPage() {
       key: 'category',
       label: 'บัญชี',
       render: (e: Expense) => {
-        const code = e.expenseDetail?.category;
+        const code = e.expenseDetail?.lines?.[0]?.category;
         return code ? (
           <div className="min-w-0">
             <div className="font-mono text-sm font-medium text-warning">{code}</div>

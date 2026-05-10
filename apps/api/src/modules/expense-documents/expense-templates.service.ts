@@ -120,14 +120,23 @@ export class ExpenseTemplatesService {
 
     switch (tpl.documentType) {
       case 'EXPENSE': {
+        // V4 multi-line: synthesize one line from the legacy single-category template.
+        // amount is placeholder (0.01); user must edit unitPrice before posting.
         return this.docs.create({
           ...data,
           documentType: 'EXPENSE',
           branchId: tpl.branchId,
           documentDate,
-          subtotal: 0.01, // Placeholder — user must fill before posting
           fromTemplateId: tpl.id,
-          detail: { category: data.category as string },
+          lines: [{
+            category: (data.category as string) || '53-1302',
+            description: (data.description as string) || tpl.name,
+            quantity: 1,
+            unitPrice: (data.sampleAmount as number) ?? 0.01,
+            discount: 0,
+            vatPercent: 0,
+            whtPercent: 0,
+          }],
         } as never, user.id);
       }
       case 'CREDIT_NOTE': {

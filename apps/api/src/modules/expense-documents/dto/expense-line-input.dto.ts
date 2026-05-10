@@ -4,7 +4,6 @@ import {
   IsOptional,
   Min,
   Max,
-  MinLength,
   Matches,
 } from 'class-validator';
 
@@ -16,19 +15,21 @@ export class ExpenseLineInput {
 
   @IsString()
   @IsOptional()
-  @MinLength(0)
   description?: string;
 
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0.01, { message: 'จำนวนต้องมากกว่า 0' })
+  @Max(99999999.99, { message: 'จำนวนเกินขอบเขต' })
   quantity!: number;
 
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0.01, { message: 'ราคาต่อหน่วยต้องมากกว่า 0' })
+  @Max(99999999.99, { message: 'ราคาต่อหน่วยเกินขอบเขต' })
   unitPrice!: number;
 
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
+  @Max(99999999.99, { message: 'ส่วนลดเกินขอบเขต' })
   @IsOptional()
   discount?: number;
 

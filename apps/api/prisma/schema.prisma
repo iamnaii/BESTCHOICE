@@ -528,7 +528,7 @@ model Branch {
   stockCounts              StockCount[]
   inviteTokens             InviteToken[]
   financeReceivables       FinanceReceivable[]
-  expenses                 Expense[]
+  expenseDocuments         ExpenseDocument[]
   interCompanyTransactions InterCompanyTransaction[]
   fixedAssets              FixedAsset[]
   tradeIns                 TradeIn[]
@@ -611,9 +611,8 @@ model User {
   reviewedEvidences           PaymentEvidence[]         @relation("EvidenceReviewedBy")
   inviteTokens                InviteToken[]
   financeRecorded             FinanceReceivable[]       @relation("FinanceRecordedBy")
-  expensesCreated             Expense[]                 @relation("ExpenseCreatedBy")
-  expensesApproved            Expense[]                 @relation("ExpenseApprovedBy")
-  expensesVoided              Expense[]                 @relation("ExpenseVoidedBy")
+  expenseDocumentsCreated     ExpenseDocument[]         @relation("ExpenseDocumentCreator")
+  expenseDocumentsApproved    ExpenseDocument[]         @relation("ExpenseDocumentApprover")
   journalEntriesCreated       JournalEntry[]            @relation("JournalCreatedBy")
   journalEntriesPosted        JournalEntry[]            @relation("JournalPostedBy")
   taxReportsFiled             TaxReport[]               @relation("TaxReportFiledBy")
@@ -3477,121 +3476,75 @@ model JournalLine {
 // EXPENSE / บัญชีรายจ่าย (ผังบัญชีไทย หมวด 5)
 // ============================================================
 
-enum ExpenseAccountType {
-  COST_OF_SALES
-  SELLING_EXPENSE
-  ADMINISTRATIVE_EXPENSE
-  OTHER_EXPENSE
+enum DocumentType {
+  EXPENSE
+  CREDIT_NOTE
+  PAYROLL
+  VENDOR_SETTLEMENT
 }
 
-enum ExpenseCategory {
-  // ── ต้นทุนขาย (5100) ──
-  COGS_PRODUCT
-  COGS_REPAIR_PARTS
-  // ── ค่าใช้จ่ายในการขาย (5200) ──
-  SELL_COMMISSION
-  SELL_ADVERTISING
-  SELL_TRANSPORT
-  SELL_PACKAGING
-  // ── ค่าใช้จ่ายในการบริหาร (5300) ──
-  ADMIN_SALARY
-  ADMIN_SOCIAL_SECURITY
-  ADMIN_RENT
-  ADMIN_UTILITIES
-  ADMIN_OFFICE_SUPPLIES
-  ADMIN_DEPRECIATION
-  ADMIN_INSURANCE
-  ADMIN_TAX_FEE
-  ADMIN_MAINTENANCE
-  ADMIN_TRAVEL
-  ADMIN_TELEPHONE
-  // ── ค่าใช้จ่ายอื่น (5900) ──
-  OTHER_INTEREST
-  OTHER_LOSS
-  OTHER_FINE
-  OTHER_MISC
-}
-
-enum ExpenseStatus {
+enum DocumentStatus {
   DRAFT
-  PENDING_APPROVAL
-  APPROVED
-  REJECTED
-  PAID
+  ACCRUAL
+  POSTED
   VOIDED
 }
 
-model Expense {
-  id             String             @id @default(uuid())
-  expenseNumber  String             @unique @map("expense_number")
-  branchId       String             @map("branch_id")
-  accountType    ExpenseAccountType @map("account_type")
-  category       String // Phase A.6: was ExpenseCategory enum; now stores CoA code OR legacy enum string
-  accountCode    String?            @map("account_code")
-  description    String
-  amount         Decimal            @db.Decimal(12, 2)
-  vatAmount      Decimal            @default(0) @map("vat_amount") @db.Decimal(12, 2)
-  totalAmount    Decimal            @map("total_amount") @db.Decimal(12, 2)
-  withholdingTax Decimal            @default(0) @map("withholding_tax") @db.Decimal(12, 2)
-  whtRate        Decimal?           @map("wht_rate") @db.Decimal(5, 4) // อัตราภาษีหัก ณ ที่จ่าย (0.01, 0.02, 0.03, 0.05)
-  whtIncomeType  WhtIncomeType?     @map("wht_income_type") // ประเภทเงินได้ตาม ม.40
-  whtFormType    String?            @map("wht_form_type") // PND3 (บุคคลธรรมดา → 21-3102) | PND53 (นิติบุคคล → 21-3103). Source of truth for WHT routing; falls back to vendorTaxId heuristic.
-  netPayment     Decimal?           @map("net_payment") @db.Decimal(12, 2) // จำนวนจ่ายจริง = totalAmount - withholdingTax
+model ExpenseDocument {
+  id              String   @id @default(uuid())
+  number          String   @unique
+  documentType    DocumentType   @map("document_type")
+  branchId        String   @map("branch_id")
+  documentDate    DateTime @map("document_date")
+  vendorName      String?  @map("vendor_name")
+  vendorTaxId     String?  @map("vendor_tax_id")
+  taxInvoiceNo    String?  @map("tax_invoice_no")
+  description     String?
 
-  expenseDate   DateTime       @map("expense_date")
-  paymentMethod PaymentMethod? @map("payment_method")
-  paymentDate   DateTime?      @map("payment_date")
-  reference     String?
+  subtotal        Decimal  @db.Decimal(12, 2)
+  vatAmount       Decimal  @default(0) @db.Decimal(12, 2) @map("vat_amount")
+  withholdingTax  Decimal  @default(0) @db.Decimal(12, 2) @map("withholding_tax")
+  whtFormType     String?  @map("wht_form_type")
+  totalAmount     Decimal  @db.Decimal(12, 2) @map("total_amount")
+  netPayment      Decimal? @db.Decimal(12, 2) @map("net_payment")
 
-  vendorName      String? @map("vendor_name")
-  vendorTaxId     String? @map("vendor_tax_id")
-  receiptImageUrl String? @map("receipt_image_url")
-  taxInvoiceNo    String? @map("tax_invoice_no")
+  status              DocumentStatus @default(DRAFT)
+  paidAt              DateTime?      @map("paid_at")
+  paymentMethod       PaymentMethod? @map("payment_method")
+  depositAccountCode  String?        @map("deposit_account_code")
 
-  status       ExpenseStatus @default(DRAFT)
-  approvedById String?       @map("approved_by_id")
-  approvedAt   DateTime?     @map("approved_at")
-  rejectReason String?       @map("reject_reason")
-  voidReason   String?       @map("void_reason")
-  voidedById   String?       @map("voided_by_id")
-  voidedAt     DateTime?     @map("voided_at")
-  createdById  String        @map("created_by_id")
+  expenseDetail   ExpenseDetail?
 
-  isRecurring  Boolean @default(false) @map("is_recurring")
-  recurringDay Int?    @map("recurring_day")
+  journalEntryId  String?  @map("journal_entry_id")
 
-  // Tax-disallowed expense flag (Phase A.5c)
-  // When true, the expense routes to 54-XXXX accounts and cannot claim VAT input.
-  // Reasons: NO_RECEIPT (ไม่มีใบเสร็จ), PERSONAL_USE (ใช้ส่วนตัว),
-  //          PENALTY (เบี้ยปรับ), OTHER (อื่นๆ)
-  taxDisallowed    Boolean @default(false) @map("tax_disallowed")
-  disallowedReason String? @map("disallowed_reason")
+  receiptImageUrl String?  @map("receipt_image_url")
+  reference       String?
+  note            String?
 
-  note String?
+  fromTemplateId  String?  @map("from_template_id")
 
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-  deletedAt DateTime? @map("deleted_at")
+  createdById     String   @map("created_by_id")
+  approvedById    String?  @map("approved_by_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
 
-  branch     Branch @relation(fields: [branchId], references: [id])
-  createdBy  User   @relation("ExpenseCreatedBy", fields: [createdById], references: [id])
-  approvedBy User?  @relation("ExpenseApprovedBy", fields: [approvedById], references: [id])
-  voidedBy   User?  @relation("ExpenseVoidedBy", fields: [voidedById], references: [id])
+  branch          Branch   @relation(fields: [branchId], references: [id])
+  createdBy       User     @relation("ExpenseDocumentCreator", fields: [createdById], references: [id])
+  approvedBy      User?    @relation("ExpenseDocumentApprover", fields: [approvedById], references: [id])
 
-  @@index([branchId])
-  @@index([accountType])
-  @@index([category])
-  @@index([status])
-  @@index([expenseDate])
-  @@index([createdById])
-  @@index([deletedAt])
-  // Compound index for "expenses by branch in date range" — the most
-  // common dashboard query. Single-column branchId + expenseDate scans
-  // can't be combined as efficiently as a compound index.
-  @@index([branchId, expenseDate])
-  // Index for the approver dropdown filter on the expenses list
-  @@index([approvedById])
-  @@map("expenses")
+  @@index([branchId, documentDate])
+  @@index([documentType, status])
+  @@index([status, paidAt])
+  @@map("expense_documents")
+}
+
+model ExpenseDetail {
+  documentId String          @id @map("document_id")
+  document   ExpenseDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  category   String
+
+  @@map("expense_details")
 }
 
 // ============================================================

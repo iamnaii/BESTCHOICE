@@ -522,10 +522,17 @@ layer(base);
 
 /* ── Print Styles for the public verify page ─────────── */
 @media print {
+  @page {
+    size: A4;
+    margin: 1cm;
+  }
+
   body {
     margin: 0;
     padding: 0;
     background: white;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 
   button,

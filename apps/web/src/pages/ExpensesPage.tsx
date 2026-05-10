@@ -765,6 +765,10 @@ export default function ExpensesPage() {
                   navigate('/expenses/favorites');
                   return;
                 }
+                if (tab.id === 'daily-summary') {
+                  navigate('/expenses/daily-summary');
+                  return;
+                }
                 if (isAction) return;
                 setTab(tab.id);
               }}

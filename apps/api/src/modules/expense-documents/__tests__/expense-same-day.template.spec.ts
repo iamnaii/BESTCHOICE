@@ -1,5 +1,5 @@
 import { Decimal } from '@prisma/client/runtime/library';
-import { ExpenseSameDayTemplate } from './expense-same-day.template';
+import { ExpenseSameDayTemplate } from '../../journal/cpa-templates/expense-same-day.template';
 
 describe('ExpenseSameDayTemplate', () => {
   let template: ExpenseSameDayTemplate;

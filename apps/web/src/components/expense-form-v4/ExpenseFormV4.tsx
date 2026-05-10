@@ -12,6 +12,9 @@ import { QuickStartPanel } from './QuickStartPanel';
 import { TypeTabs } from './TypeTabs';
 import { VendorSection } from './VendorSection';
 import { ItemLinesSection } from './ItemLinesSection';
+import { PayrollLinesSection } from './PayrollLinesSection';
+import { SettlementLinesSection } from './SettlementLinesSection';
+import { CreditNoteLinesSection } from './CreditNoteLinesSection';
 import { CashAccountVisualPicker } from './CashAccountVisualPicker';
 import { JePreview } from './JePreview';
 import { ApproverSection } from './ApproverSection';
@@ -84,39 +87,98 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
 
   const saveMutation = useMutation({
     mutationFn: async ({ andPost }: { andPost: boolean }) => {
-      const isEx = state.docType === 'EXPENSE_SAMEDAY' || state.docType === 'EXPENSE_ACCRUAL';
-      if (!isEx) {
-        throw new Error('PR/SE/CN paths wired in Task 20');
-      }
-      const payload = {
-        documentType: 'EXPENSE',
-        branchId: state.branchId,
-        documentDate: state.documentDate,
-        priceType: state.priceType,
-        vendorName: state.vendorName || undefined,
-        vendorTaxId: state.vendorTaxId || undefined,
-        taxInvoiceNo: state.taxInvoiceNo || undefined,
-        whtFormType: state.whtFormType || undefined,
-        paymentMethod: state.docType === 'EXPENSE_SAMEDAY' ? state.paymentMethod : undefined,
-        depositAccountCode:
-          state.docType === 'EXPENSE_SAMEDAY' ? state.depositAccountCode : undefined,
-        approvedById: state.approvedById || undefined,
-        fromTemplateId: state.fromTemplateId || undefined,
-        lines: state.lines
-          .filter((l) => l.category && parseFloat(l.unitPrice) > 0)
-          .map((l) => ({
-            category: l.category,
-            description: l.description || undefined,
-            quantity: parseFloat(l.quantity) || 1,
-            unitPrice: parseFloat(l.unitPrice) || 0,
-            discount: parseFloat(l.discount) || 0,
-            vatPercent: parseFloat(l.vatPercent) || 0,
-            whtPercent: parseFloat(l.whtPercent) || 0,
+      let createdId: string | null = null;
+
+      if (state.docType === 'EXPENSE_SAMEDAY' || state.docType === 'EXPENSE_ACCRUAL') {
+        const payload = {
+          documentType: 'EXPENSE',
+          branchId: state.branchId,
+          documentDate: state.documentDate,
+          priceType: state.priceType,
+          vendorName: state.vendorName || undefined,
+          vendorTaxId: state.vendorTaxId || undefined,
+          taxInvoiceNo: state.taxInvoiceNo || undefined,
+          whtFormType: state.whtFormType || undefined,
+          paymentMethod: state.docType === 'EXPENSE_SAMEDAY' ? state.paymentMethod : undefined,
+          depositAccountCode:
+            state.docType === 'EXPENSE_SAMEDAY' ? state.depositAccountCode : undefined,
+          approvedById: state.approvedById || undefined,
+          fromTemplateId: state.fromTemplateId || undefined,
+          lines: state.lines
+            .filter((l) => l.category && parseFloat(l.unitPrice) > 0)
+            .map((l) => ({
+              category: l.category,
+              description: l.description || undefined,
+              quantity: parseFloat(l.quantity) || 1,
+              unitPrice: parseFloat(l.unitPrice) || 0,
+              discount: parseFloat(l.discount) || 0,
+              vatPercent: parseFloat(l.vatPercent) || 0,
+              whtPercent: parseFloat(l.whtPercent) || 0,
+            })),
+        };
+        const { data } = await api.post('/expense-documents', payload);
+        createdId = data.id;
+      } else if (state.docType === 'PAYROLL') {
+        const { data } = await api.post('/expense-documents/payroll', {
+          branchId: state.branchId,
+          documentDate: state.documentDate,
+          payrollPeriod: state.payroll.payrollPeriod,
+          depositAccountCode: state.depositAccountCode,
+          paymentMethod: 'BANK_TRANSFER',
+          lines: state.payroll.lines
+            .filter((l) => l.employeeName && parseFloat(l.baseSalary) > 0)
+            .map((l) => ({
+              employeeName: l.employeeName,
+              employeeTaxId: l.employeeTaxId || undefined,
+              baseSalary: parseFloat(l.baseSalary),
+              ssoEmployee: parseFloat(l.ssoEmployee) || 0,
+              whtAmount: parseFloat(l.whtAmount) || 0,
+            })),
+        });
+        createdId = data.id;
+      } else if (state.docType === 'VENDOR_SETTLEMENT') {
+        const { data } = await api.post('/expense-documents/settlement', {
+          branchId: state.branchId,
+          documentDate: state.documentDate,
+          depositAccountCode: state.depositAccountCode,
+          paymentMethod: 'BANK_TRANSFER',
+          vendorName: state.settlement.vendorName || undefined,
+          whtFormType: state.settlement.whtFormType || undefined,
+          withholdingTax: parseFloat(state.settlement.whtAmount) || undefined,
+          lines: [...state.settlement.selections.values()].map((s) => ({
+            clearedDocumentId: s.docId,
+            amountSettled: parseFloat(s.amount) || 0,
           })),
-      };
-      const { data } = await api.post('/expense-documents', payload);
-      if (andPost) await api.post(`/expense-documents/${data.id}/post`);
-      return data;
+        });
+        createdId = data.id;
+      } else if (state.docType === 'CREDIT_NOTE') {
+        if (!state.originalDocumentId || !state.cnReason.trim()) {
+          throw new Error('กรุณาเลือกเอกสารต้นฉบับและระบุเหตุผล');
+        }
+        const validLines = state.lines.filter((l) => l.category && parseFloat(l.unitPrice) > 0);
+        const subtotal = validLines.reduce((s, l) => {
+          const q = parseFloat(l.quantity) || 1;
+          const u = parseFloat(l.unitPrice) || 0;
+          const d = parseFloat(l.discount) || 0;
+          return s + Math.max(0, q * u - d);
+        }, 0);
+        const { data } = await api.post('/expense-documents/credit-note', {
+          branchId: state.branchId,
+          documentDate: state.documentDate,
+          originalDocumentId: state.originalDocumentId,
+          reason: state.cnReason,
+          subtotal,
+          vatAmount: 0,
+          depositAccountCode: state.depositAccountCode || undefined,
+          note: state.note || undefined,
+        });
+        createdId = data.id;
+      }
+
+      if (andPost && createdId) {
+        await api.post(`/expense-documents/${createdId}/post`);
+      }
+      return { id: createdId };
     },
     onSuccess: () => {
       toast.success('บันทึกรายจ่ายสำเร็จ');
@@ -127,8 +189,20 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
     onError: (e) => toast.error(getErrorMessage(e)),
   });
 
-  const itemCount = state.lines.filter((l) => l.category).length;
-  const ready = !!preview && preview.totals.balanced && itemCount > 0;
+  const itemCount =
+    state.docType === 'PAYROLL'
+      ? state.payroll.lines.filter((l) => l.employeeName && parseFloat(l.baseSalary) > 0).length
+      : state.docType === 'VENDOR_SETTLEMENT'
+        ? state.settlement.selections.size
+        : state.docType === 'CREDIT_NOTE'
+          ? state.lines.filter((l) => l.category && parseFloat(l.unitPrice) > 0).length
+          : state.lines.filter((l) => l.category).length;
+
+  const isPreviewType =
+    state.docType === 'EXPENSE_SAMEDAY' || state.docType === 'EXPENSE_ACCRUAL';
+  const ready = isPreviewType
+    ? !!preview && preview.totals.balanced && itemCount > 0
+    : itemCount > 0;
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-start justify-center pt-8 pb-8 overflow-y-auto">
@@ -231,31 +305,56 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
             </Section>
           )}
 
-          {/* PR/SE/CN placeholder until Task 20 */}
-          {(state.docType === 'PAYROLL' ||
-            state.docType === 'VENDOR_SETTLEMENT' ||
-            state.docType === 'CREDIT_NOTE') && (
-            <Section num={3} title="รายการ" Icon={Receipt}>
-              <div className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground leading-snug">
-                {state.docType === 'PAYROLL' && 'แบบฟอร์มเงินเดือนจะเชื่อมในขั้นถัดไป'}
-                {state.docType === 'VENDOR_SETTLEMENT' && 'แบบฟอร์มจ่ายเจ้าหนี้จะเชื่อมในขั้นถัดไป'}
-                {state.docType === 'CREDIT_NOTE' && 'แบบฟอร์มใบลดหนี้จะเชื่อมในขั้นถัดไป'}
-              </div>
+          {/* Section 3: PAYROLL lines */}
+          {state.docType === 'PAYROLL' && (
+            <Section num={3} title="งวดเงินเดือน + พนักงาน" Icon={Users}>
+              <PayrollLinesSection
+                value={state.payroll}
+                onChange={(p) => patch({ payroll: p })}
+                documentDate={state.documentDate}
+                onDocumentDateChange={(d) => patch({ documentDate: d })}
+              />
             </Section>
           )}
 
-          {/* Section 4: Cash account (Same-day only) */}
-          {state.docType === 'EXPENSE_SAMEDAY' && (
+          {/* Section 3: VENDOR_SETTLEMENT lines */}
+          {state.docType === 'VENDOR_SETTLEMENT' && (
+            <Section num={3} title="เอกสารตั้งหนี้ที่จะล้าง" Icon={FileText}>
+              <SettlementLinesSection
+                branchId={state.branchId}
+                value={state.settlement}
+                onChange={(s) => patch({ settlement: s })}
+              />
+            </Section>
+          )}
+
+          {/* Section 3: CREDIT_NOTE — original EX picker + reason + item lines */}
+          {state.docType === 'CREDIT_NOTE' && (
+            <Section num={3} title="ใบลดหนี้ — เอกสารต้นฉบับ + รายการ" Icon={Receipt}>
+              <CreditNoteLinesSection
+                state={state}
+                onChange={patch}
+                onLinesChange={(lines) => patch({ lines })}
+              />
+            </Section>
+          )}
+
+          {/* Section 4: Cash account (SAMEDAY, PAYROLL, VENDOR_SETTLEMENT) */}
+          {(state.docType === 'EXPENSE_SAMEDAY' ||
+            state.docType === 'PAYROLL' ||
+            state.docType === 'VENDOR_SETTLEMENT') && (
             <Section num={4} title="ช่องทางจ่ายเงิน" Icon={Banknote}>
               <CashAccountVisualPicker
                 value={state.depositAccountCode}
                 onChange={(code) => patch({ depositAccountCode: code })}
               />
-              <div className="grid grid-cols-3 gap-2 mt-4 text-xs">
-                <Stat label="ที่ต้องจ่าย" value={preview?.totals.netPayment ?? '0.00'} />
-                <Stat label="จ่ายจริง" value={preview?.totals.netPayment ?? '0.00'} />
-                <Stat label="ผลต่าง" value="0.00" highlight />
-              </div>
+              {state.docType === 'EXPENSE_SAMEDAY' && (
+                <div className="grid grid-cols-3 gap-2 mt-4 text-xs">
+                  <Stat label="ที่ต้องจ่าย" value={preview?.totals.netPayment ?? '0.00'} />
+                  <Stat label="จ่ายจริง" value={preview?.totals.netPayment ?? '0.00'} />
+                  <Stat label="ผลต่าง" value="0.00" highlight />
+                </div>
+              )}
             </Section>
           )}
 

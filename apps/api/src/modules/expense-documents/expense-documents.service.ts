@@ -88,6 +88,20 @@ export class ExpenseDocumentsService {
         throw new BadRequestException(`ไม่สามารถออกใบลดหนี้บนเอกสารสถานะ ${original.status}`);
       }
 
+      const origWht = new Prisma.Decimal(original.withholdingTax?.toString() ?? '0');
+      if (origWht.gt(0)) {
+        throw new BadRequestException(
+          'ไม่รองรับใบลดหนี้บนเอกสารที่มีการหัก ณ ที่จ่าย — กรุณาใช้การยกเลิก (void) แล้วสร้างเอกสารใหม่',
+        );
+      }
+
+      // Prevent race condition: two concurrent CN creations on same original could
+      // both pass the cap check. Lock per original-document for the tx.
+      await tx.$executeRawUnsafe(
+        `SELECT pg_advisory_xact_lock(hashtext($1))`,
+        dto.originalDocumentId,
+      );
+
       // Cumulative cap check
       const priorAgg = await tx.expenseDocument.aggregate({
         where: {
@@ -385,6 +399,19 @@ export class ExpenseDocumentsService {
   async voidDocument(id: string, _userId: string) {
     return this.prisma.$transaction(async (tx) => {
       const doc = await tx.expenseDocument.findUniqueOrThrow({ where: { id } });
+
+      const pendingCn = await tx.expenseDocument.count({
+        where: {
+          documentType: 'CREDIT_NOTE',
+          status: { not: 'VOIDED' },
+          deletedAt: null,
+          creditNote: { originalDocumentId: id },
+        },
+      });
+      if (pendingCn > 0) {
+        throw new BadRequestException('มีใบลดหนี้ที่ยังไม่ถูกยกเลิก ไม่สามารถยกเลิกเอกสารต้นฉบับได้');
+      }
+
       this.transition.assertCanVoid({ from: doc.status });
 
       // Reverse JE if doc was POSTED/ACCRUAL — full Dr↔Cr swap is deferred.

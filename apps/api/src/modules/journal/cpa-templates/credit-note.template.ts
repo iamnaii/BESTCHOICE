@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import { JournalAutoService, JeLineInput } from '../journal-auto.service';
@@ -55,6 +55,12 @@ export class CreditNoteTemplate {
       const original = await tx.expenseDocument.findUniqueOrThrow({
         where: { id: originalDocumentId },
       });
+
+      if (['VOIDED', 'DRAFT'].includes(original.status)) {
+        throw new BadRequestException(
+          `ไม่สามารถ post ใบลดหนี้ เพราะเอกสารต้นฉบับอยู่ในสถานะ ${original.status}`,
+        );
+      }
 
       const zero = new Decimal(0);
       const subtotal = new Decimal(cn.subtotal.toString());

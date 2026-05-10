@@ -77,6 +77,7 @@ export function CreditNoteForm({ onClose, onSaved }: Props) {
     onSuccess: () => {
       toast.success('สร้างใบลดหนี้สำเร็จ');
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['expenses-summary'] });
       onSaved();
     },
     onError: (err) => toast.error(getErrorMessage(err)),

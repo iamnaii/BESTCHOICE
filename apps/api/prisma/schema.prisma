@@ -3516,8 +3516,9 @@ model ExpenseDocument {
   paymentMethod       PaymentMethod? @map("payment_method")
   depositAccountCode  String?        @map("deposit_account_code")
 
-  expenseDetail   ExpenseDetail?
-  creditNote      CreditNoteDetail?
+  expenseDetail       ExpenseDetail?
+  creditNote          CreditNoteDetail?  @relation("CreditNoteDocument")
+  creditNotesAgainst  CreditNoteDetail[] @relation("CreditNoteOriginal")
 
   journalEntryId  String?  @unique @map("journal_entry_id")
 
@@ -3553,8 +3554,9 @@ model ExpenseDetail {
 
 model CreditNoteDetail {
   documentId         String          @id @map("document_id")
-  document           ExpenseDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  document           ExpenseDocument @relation("CreditNoteDocument", fields: [documentId], references: [id], onDelete: Cascade)
   originalDocumentId String          @map("original_document_id")
+  originalDocument   ExpenseDocument @relation("CreditNoteOriginal", fields: [originalDocumentId], references: [id], onDelete: Restrict)
   reason             String
   category           String
 

@@ -13,3 +13,6 @@ CREATE INDEX "credit_note_details_original_document_id_idx" ON "credit_note_deta
 
 -- AddForeignKey
 ALTER TABLE "credit_note_details" ADD CONSTRAINT "credit_note_details_document_id_fkey" FOREIGN KEY ("document_id") REFERENCES "expense_documents"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "credit_note_details" ADD CONSTRAINT "credit_note_details_original_document_id_fkey" FOREIGN KEY ("original_document_id") REFERENCES "expense_documents"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

@@ -22,6 +22,7 @@ describe('ExpenseDocumentsService.createCreditNote', () => {
   beforeEach(() => {
     prisma = {
       $transaction: jest.fn(async (cb: any) => cb(prisma)),
+      $executeRawUnsafe: jest.fn().mockResolvedValue(1),
       expenseDocument: {
         create: jest.fn().mockResolvedValue({ id: 'cn-1', number: 'CN-20260510-0001' }),
         findUniqueOrThrow: jest.fn(),
@@ -103,6 +104,25 @@ describe('ExpenseDocumentsService.createCreditNote', () => {
     }
   });
 
+  it('rejects when original has WHT > 0', async () => {
+    prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+      id: ORIG_ID,
+      branchId: 'b1',
+      documentType: 'EXPENSE',
+      status: 'POSTED',
+      totalAmount: new Decimal('1000.00'),
+      withholdingTax: new Decimal('30.00'),
+      expenseDetail: { category: '53-1302' },
+    });
+    await expect(service.createCreditNote({
+      branchId: 'b1',
+      documentDate: '2026-05-10',
+      originalDocumentId: ORIG_ID,
+      reason: 'r',
+      subtotal: 100,
+    } as never, 'user-1')).rejects.toThrow(/หัก ณ ที่จ่าย/);
+  });
+
   it('rejects when subtotal+vat > original.totalAmount minus prior CNs', async () => {
     prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
       id: ORIG_ID,
@@ -110,6 +130,7 @@ describe('ExpenseDocumentsService.createCreditNote', () => {
       documentType: 'EXPENSE',
       status: 'POSTED',
       totalAmount: new Decimal('1000.00'),
+      withholdingTax: new Decimal('0'),
       expenseDetail: { category: '53-1302' },
     });
     // Prior CNs total 600
@@ -131,6 +152,7 @@ describe('ExpenseDocumentsService.createCreditNote', () => {
       documentType: 'EXPENSE',
       status: 'POSTED',
       totalAmount: new Decimal('1000.00'),
+      withholdingTax: new Decimal('0'),
       expenseDetail: { category: '53-1302' },
     });
     prisma.expenseDocument.aggregate.mockResolvedValue({ _sum: { totalAmount: null } });

@@ -150,6 +150,32 @@ describe('CreditNoteTemplate', () => {
     );
   });
 
+  it('rejects post when original is VOIDED', async () => {
+    prisma.expenseDocument.findUniqueOrThrow.mockImplementation((args: { where: { id: string } }) => {
+      if (args.where.id === 'cn-x') return Promise.resolve({
+        id: 'cn-x',
+        number: 'CN-20260510-9999',
+        documentType: 'CREDIT_NOTE',
+        branchId: 'branch-1',
+        documentDate: new Date('2026-05-10'),
+        subtotal: new Decimal('100.00'),
+        vatAmount: new Decimal('0.00'),
+        withholdingTax: new Decimal('0.00'),
+        totalAmount: new Decimal('100.00'),
+        depositAccountCode: null,
+        journalEntryId: null,
+        creditNote: { originalDocumentId: 'orig-x', reason: 'r', category: '53-1302' },
+      });
+      if (args.where.id === 'orig-x') return Promise.resolve({
+        id: 'orig-x',
+        status: 'VOIDED',
+        depositAccountCode: null,
+      });
+      return Promise.reject(new Error('unknown id'));
+    });
+    await expect(template.execute('cn-x')).rejects.toThrow(/สถานะ VOIDED/);
+  });
+
   it('VAT line skipped when CN has no VAT', async () => {
     prisma.expenseDocument.findUniqueOrThrow.mockImplementation((args: { where: { id: string } }) => {
       if (args.where.id === 'cn-5') return Promise.resolve({

@@ -19,6 +19,7 @@ describe('ExpenseDocumentsService', () => {
   beforeEach(() => {
     prisma = {
       $transaction: jest.fn(async (cb: any) => cb(prisma)),
+      $executeRawUnsafe: jest.fn().mockResolvedValue(1),
       expenseDocument: {
         create: jest.fn().mockResolvedValue({ id: 'doc-1', number: 'EX-20260510-0001' }),
         findMany: jest.fn().mockResolvedValue([]),
@@ -26,6 +27,7 @@ describe('ExpenseDocumentsService', () => {
         findFirst: jest.fn().mockResolvedValue(null),
         findUniqueOrThrow: jest.fn(),
         update: jest.fn().mockResolvedValue({ id: 'doc-1' }),
+        aggregate: jest.fn(),
       },
       expenseDetail: {
         update: jest.fn().mockResolvedValue({}),

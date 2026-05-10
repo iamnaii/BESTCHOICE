@@ -17,6 +17,12 @@ export interface CreateAndPostInput {
   metadata?: Prisma.JsonValue;
   lines: JeLineInput[];
   postedAt?: Date;
+  /**
+   * Optional companyId override. Defaults to FINANCE company.
+   * Pass SHOP company id for SHOP-side flows (e.g. expense documents
+   * are recorded against SHOP per Phase A.5b plan — see PR #795).
+   */
+  companyId?: string;
 }
 
 /**
@@ -75,9 +81,9 @@ export class JournalAutoService {
         entryDate: postedAt,
         status: 'POSTED',
         postedAt,
-        // companyId required by schema — FINANCE company resolved at runtime
-        // TODO T6+: pass companyId from caller context
-        companyId: await this.resolveFinanceCompanyId(client),
+        // companyId required by schema. Defaults to FINANCE; callers (e.g.
+        // expense-documents PR #795) pass SHOP id when posting SHOP-side flows.
+        companyId: input.companyId ?? (await this.resolveFinanceCompanyId(client)),
         createdById: await this.resolveSystemUserId(client),
         lines: {
           create: input.lines.map((l) => ({

@@ -16,6 +16,12 @@ describe('ExpenseAccrualTemplate', () => {
         findUniqueOrThrow: jest.fn(),
         update: jest.fn().mockResolvedValue({}),
       },
+      journalEntry: {
+        findUnique: jest.fn().mockResolvedValue({ entryNumber: 'JE-A1' }),
+      },
+      companyInfo: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'shop-co-1' }),
+      },
     };
     template = new ExpenseAccrualTemplate(journal, prisma);
   });
@@ -80,7 +86,7 @@ describe('ExpenseAccrualTemplate', () => {
         data: expect.objectContaining({
           status: 'ACCRUAL',
           paidAt: null,
-          journalEntryId: 'JE-A1',
+          journalEntryId: 'je-a1',
         }),
       }),
     );
@@ -89,8 +95,9 @@ describe('ExpenseAccrualTemplate', () => {
   it('idempotent: skips post when journalEntryId already set', async () => {
     prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
       id: 'doc-4',
-      journalEntryId: 'JE-EXISTING-A',
+      journalEntryId: 'je-existing-a-uuid',
     });
+    prisma.journalEntry.findUnique.mockResolvedValueOnce({ entryNumber: 'JE-EXISTING-A' });
     const result = await template.execute('doc-4');
     expect(result.entryNo).toBe('JE-EXISTING-A');
     expect(journal.createAndPost).not.toHaveBeenCalled();

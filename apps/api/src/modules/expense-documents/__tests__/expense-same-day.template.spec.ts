@@ -20,6 +20,12 @@ describe('ExpenseSameDayTemplate', () => {
         findUniqueOrThrow: jest.fn(),
         update: jest.fn().mockResolvedValue({}),
       },
+      journalEntry: {
+        findUnique: jest.fn().mockResolvedValue({ entryNumber: 'JE-001' }),
+      },
+      companyInfo: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'shop-co-1' }),
+      },
     };
     template = new ExpenseSameDayTemplate(journal, prisma);
   });
@@ -138,8 +144,10 @@ describe('ExpenseSameDayTemplate', () => {
   it('idempotent: returns existing entryNo when journalEntryId already set', async () => {
     prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
       id: docId,
-      journalEntryId: 'JE-EXISTING',
+      journalEntryId: 'je-existing-uuid',
     });
+    // Idempotency path looks up entryNumber by stored JE id (UUID).
+    prisma.journalEntry.findUnique.mockResolvedValueOnce({ entryNumber: 'JE-EXISTING' });
     const result = await template.execute(docId);
     expect(result.entryNo).toBe('JE-EXISTING');
     expect(journal.createAndPost).not.toHaveBeenCalled();
@@ -171,7 +179,7 @@ describe('ExpenseSameDayTemplate', () => {
         data: expect.objectContaining({
           status: 'POSTED',
           paidAt: expect.any(Date),
-          journalEntryId: 'JE-001',
+          journalEntryId: 'je-1',
         }),
       }),
     );

@@ -114,7 +114,7 @@ describe('ExpenseDocuments full lifecycle (integration)', () => {
     expect(after.journalEntryId).not.toBeNull();
 
     const je = await prisma.journalEntry.findFirstOrThrow({
-      where: { entryNumber: after.journalEntryId! },
+      where: { id: after.journalEntryId! },
       include: { lines: true },
     });
     const drSum = je.lines.reduce((s, l) => s + Number(l.debit), 0);
@@ -147,7 +147,7 @@ describe('ExpenseDocuments full lifecycle (integration)', () => {
     expect(after.paidAt).toBeNull();
 
     const je = await prisma.journalEntry.findFirstOrThrow({
-      where: { entryNumber: after.journalEntryId! },
+      where: { id: after.journalEntryId! },
       include: { lines: true },
     });
     const codes = je.lines.map((l) => l.accountCode);

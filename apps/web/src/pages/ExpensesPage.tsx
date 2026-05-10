@@ -101,12 +101,13 @@ function fmt(n: string | number | null | undefined): string {
   return Number(n).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+// Recurring template feature deferred to PR-5 (Favorites)
 const emptyForm = {
   branchId: '', category: '',
   description: '', amount: '', vatAmount: '0', withholdingTax: '0',
   expenseDate: new Date().toISOString().split('T')[0], paymentMethod: '',
   vendorName: '', vendorTaxId: '', reference: '', taxInvoiceNo: '', note: '',
-  isRecurring: false, recurringDay: '', receiptImageUrl: '',
+  receiptImageUrl: '',
 };
 
 // ─── PEAK-style Form Panel ───
@@ -139,8 +140,6 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
         reference: editingExpense.reference || '',
         taxInvoiceNo: editingExpense.taxInvoiceNo || '',
         note: editingExpense.note || '',
-        isRecurring: false,
-        recurringDay: '',
         receiptImageUrl: editingExpense.receiptImageUrl || '',
       });
       setIncludeVat(Number(editingExpense.vatAmount) > 0);
@@ -436,22 +435,11 @@ function ExpenseFormPanel({ editingExpense, branches, onClose, onSaved }: {
               </div>
               <div>
                 <h3 className="text-sm font-semibold text-foreground">หมายเหตุ</h3>
-                <p className="text-xs text-muted-foreground">บันทึกเพิ่มเติม, รายจ่ายประจำ</p>
+                <p className="text-xs text-muted-foreground">บันทึกเพิ่มเติม</p>
               </div>
             </div>
             <textarea value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} rows={2} placeholder="หมายเหตุเพิ่มเติม..." className={`${inputClass} resize-none`} />
-            <div className="flex items-center gap-4 mt-3">
-              <label className="flex items-center gap-2 text-sm cursor-pointer">
-                <input type="checkbox" checked={form.isRecurring} onChange={(e) => setForm({ ...form, isRecurring: e.target.checked, recurringDay: e.target.checked ? form.recurringDay : '' })} className="rounded border-input text-primary" />
-                <span className="text-muted-foreground">รายจ่ายประจำ (ทุกเดือน)</span>
-              </label>
-              {form.isRecurring && (
-                <div className="flex items-center gap-1.5">
-                  <span className="text-sm text-muted-foreground">ทุกวันที่</span>
-                  <input type="number" min="1" max="31" value={form.recurringDay} onChange={(e) => setForm({ ...form, recurringDay: e.target.value })} className={`${inputClass} w-16 text-center`} placeholder="1-31" />
-                </div>
-              )}
-            </div>
+            {/* Recurring template feature deferred to PR-5 (Favorites) */}
           </div>
         </div>
 

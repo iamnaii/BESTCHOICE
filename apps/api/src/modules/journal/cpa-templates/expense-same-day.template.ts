@@ -19,10 +19,28 @@ import { PrismaService } from '../../../prisma/prisma.service';
  */
 @Injectable()
 export class ExpenseSameDayTemplate {
+  private shopCompanyId: string | null = null;
+
   constructor(
     private readonly journal: JournalAutoService,
     private readonly prisma: PrismaService,
   ) {}
+
+  /** Resolve SHOP company id (cached). Expense docs are SHOP-side per Phase A.5b plan. */
+  private async getShopCompanyId(tx: Prisma.TransactionClient): Promise<string> {
+    if (this.shopCompanyId) return this.shopCompanyId;
+    const company = await tx.companyInfo.findFirst({
+      where: { companyCode: 'SHOP', deletedAt: null },
+      select: { id: true },
+    });
+    if (!company) {
+      throw new Error(
+        'SHOP company not found in database — expense documents must be recorded against SHOP',
+      );
+    }
+    this.shopCompanyId = company.id;
+    return company.id;
+  }
 
   async execute(
     documentId: string,
@@ -34,9 +52,14 @@ export class ExpenseSameDayTemplate {
         include: { expenseDetail: true },
       });
 
-      // Idempotency
+      // Idempotency — journalEntryId stores JournalEntry.id (UUID).
+      // Look up entryNumber for legacy/return shape parity.
       if (doc.journalEntryId) {
-        return { entryNo: doc.journalEntryId };
+        const existing = await tx.journalEntry.findUnique({
+          where: { id: doc.journalEntryId },
+          select: { entryNumber: true },
+        });
+        return { entryNo: existing?.entryNumber ?? doc.journalEntryId };
       }
 
       const zero = new Decimal(0);
@@ -85,6 +108,7 @@ export class ExpenseSameDayTemplate {
         });
       }
 
+      const companyId = await this.getShopCompanyId(tx);
       const result = await this.journal.createAndPost(
         {
           description: `รับชำระค่าใช้จ่าย ${doc.number}`,
@@ -98,6 +122,7 @@ export class ExpenseSameDayTemplate {
           },
           postedAt: doc.documentDate,
           lines,
+          companyId,
         },
         tx,
       );
@@ -107,7 +132,7 @@ export class ExpenseSameDayTemplate {
         data: {
           status: 'POSTED',
           paidAt: doc.documentDate,
-          journalEntryId: result.entryNumber,
+          journalEntryId: result.id,
           netPayment: cashAmount,
         },
       });

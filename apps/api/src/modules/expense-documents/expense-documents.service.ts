@@ -113,6 +113,11 @@ export class ExpenseDocumentsService {
       }
     }
 
+    // Filter by ExpenseDetail.category (e.g. CoA code "53-1302")
+    if (query.category) {
+      where.expenseDetail = { category: query.category };
+    }
+
     if (query.search) {
       where.OR = [
         { number: { contains: query.search, mode: 'insensitive' } },
@@ -164,27 +169,29 @@ export class ExpenseDocumentsService {
       }
     }
 
-    const docs = await this.prisma.expenseDocument.findMany({
-      where,
-      select: { status: true, documentType: true, paidAt: true, totalAmount: true },
-    });
+    // Server-side aggregation — does not load full rows into memory.
+    const [totalCount, statusGroups, accrualUnpaid] = await Promise.all([
+      this.prisma.expenseDocument.count({ where }),
+      this.prisma.expenseDocument.groupBy({
+        by: ['status'],
+        where,
+        _count: { _all: true },
+      }),
+      this.prisma.expenseDocument.aggregate({
+        where: { ...where, status: 'ACCRUAL', paidAt: null },
+        _count: { _all: true },
+        _sum: { totalAmount: true },
+      }),
+    ]);
 
     const byStatus: Record<string, number> = {};
-    let accrualUnpaidCount = 0;
-    let accrualUnpaidTotal = new Prisma.Decimal(0);
-    for (const d of docs) {
-      byStatus[d.status] = (byStatus[d.status] ?? 0) + 1;
-      if (d.status === 'ACCRUAL' && !d.paidAt) {
-        accrualUnpaidCount++;
-        accrualUnpaidTotal = accrualUnpaidTotal.plus(d.totalAmount);
-      }
-    }
+    for (const g of statusGroups) byStatus[g.status] = g._count._all;
 
     return {
-      totalCount: docs.length,
+      totalCount,
       byStatus,
-      accrualUnpaidCount,
-      accrualUnpaidTotal: accrualUnpaidTotal.toNumber(),
+      accrualUnpaidCount: accrualUnpaid._count._all,
+      accrualUnpaidTotal: accrualUnpaid._sum.totalAmount?.toNumber() ?? 0,
     };
   }
 
@@ -224,15 +231,29 @@ export class ExpenseDocumentsService {
       if (dto.reference !== undefined) data.reference = dto.reference;
       if (dto.receiptImageUrl !== undefined) data.receiptImageUrl = dto.receiptImageUrl;
       if (dto.note !== undefined) data.note = dto.note;
-      // Recalculate totalAmount if money fields touched
-      if (dto.subtotal !== undefined || dto.vatAmount !== undefined) {
+      // Recalculate totalAmount + netPayment if money fields touched.
+      // netPayment is set only when there's a payment dimension (depositAccountCode).
+      if (
+        dto.subtotal !== undefined ||
+        dto.vatAmount !== undefined ||
+        dto.withholdingTax !== undefined ||
+        dto.depositAccountCode !== undefined
+      ) {
         const subtotal = dto.subtotal !== undefined
           ? new Prisma.Decimal(dto.subtotal)
           : new Prisma.Decimal(existing.subtotal.toString());
         const vat = dto.vatAmount !== undefined
           ? new Prisma.Decimal(dto.vatAmount)
           : new Prisma.Decimal(existing.vatAmount.toString());
-        data.totalAmount = subtotal.plus(vat);
+        const wht = dto.withholdingTax !== undefined
+          ? new Prisma.Decimal(dto.withholdingTax)
+          : new Prisma.Decimal(existing.withholdingTax.toString());
+        const total = subtotal.plus(vat);
+        data.totalAmount = total;
+        const hasDepositAccount = dto.depositAccountCode !== undefined
+          ? !!dto.depositAccountCode
+          : !!existing.depositAccountCode;
+        data.netPayment = hasDepositAccount ? total.minus(wht) : null;
       }
 
       const updated = await tx.expenseDocument.update({ where: { id }, data });

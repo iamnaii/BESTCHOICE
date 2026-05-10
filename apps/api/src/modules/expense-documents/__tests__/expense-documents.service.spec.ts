@@ -31,6 +31,7 @@ describe('ExpenseDocumentsService', () => {
         findFirst: jest.fn().mockResolvedValue(null),
         findUniqueOrThrow: jest.fn(),
         update: jest.fn().mockResolvedValue({ id: 'doc-1' }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         aggregate: jest.fn(),
       },
       expenseDetail: {
@@ -351,8 +352,12 @@ describe('ExpenseDocumentsService', () => {
         id: 'doc-1', status: 'POSTED', journalEntryId: null, documentType: 'EXPENSE',
       });
       await service.voidDocument('doc-1', 'user-1');
-      expect(prisma.expenseDocument.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: { status: 'VOIDED' } }),
+      // Compare-and-swap on status — only flips if not already VOIDED
+      expect(prisma.expenseDocument.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'doc-1', status: { not: 'VOIDED' } },
+          data: { status: 'VOIDED' },
+        }),
       );
     });
     it('rejects void when transition guard throws (already VOIDED)', async () => {
@@ -361,6 +366,27 @@ describe('ExpenseDocumentsService', () => {
       });
       transition.assertCanVoid.mockImplementation(() => { throw new BadRequestException('already void'); });
       await expect(service.voidDocument('doc-1', 'user-1')).rejects.toThrow(BadRequestException);
+    });
+    it('takes per-doc advisory lock to serialize concurrent voids', async () => {
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-1', status: 'POSTED', journalEntryId: null, documentType: 'EXPENSE',
+      });
+      await service.voidDocument('doc-1', 'user-1');
+      // Lock is taken at the start of the tx, before any read.
+      expect(prisma.$executeRawUnsafe).toHaveBeenCalledWith(
+        expect.stringContaining('pg_advisory_xact_lock'),
+        'void:doc-1',
+      );
+    });
+    it('throws when CAS detects another caller already voided the doc', async () => {
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-1', status: 'POSTED', journalEntryId: null, documentType: 'EXPENSE',
+      });
+      // updateMany returns count=0 → status flipped between read and write
+      prisma.expenseDocument.updateMany.mockResolvedValueOnce({ count: 0 });
+      await expect(service.voidDocument('doc-1', 'user-1')).rejects.toThrow(
+        /ถูกยกเลิกไปแล้ว/,
+      );
     });
     it('posts a reversal JE (flipped Dr/Cr) when doc had a journalEntryId', async () => {
       prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
@@ -425,12 +451,47 @@ describe('ExpenseDocumentsService', () => {
         journalMock as never,
       );
       await svc.voidDocument('se-1', 'user-1');
-      // Both cleared EXs reverted
-      const updateCalls = prisma.expenseDocument.update.mock.calls;
-      const exA = updateCalls.find((c: unknown[]) => (c[0] as { where: { id: string } }).where.id === 'ex-a');
-      const exB = updateCalls.find((c: unknown[]) => (c[0] as { where: { id: string } }).where.id === 'ex-b');
-      expect(exA?.[0]).toMatchObject({ data: { status: 'ACCRUAL', paidAt: null } });
-      expect(exB?.[0]).toMatchObject({ data: { status: 'ACCRUAL', paidAt: null } });
+      // Both cleared EXs reverted via updateMany with deletedAt:null guard
+      const updateManyCalls = prisma.expenseDocument.updateMany.mock.calls;
+      const exA = updateManyCalls.find(
+        (c: unknown[]) => (c[0] as { where: { id?: string } }).where.id === 'ex-a',
+      );
+      const exB = updateManyCalls.find(
+        (c: unknown[]) => (c[0] as { where: { id?: string } }).where.id === 'ex-b',
+      );
+      expect(exA?.[0]).toMatchObject({
+        where: { id: 'ex-a', deletedAt: null },
+        data: { status: 'ACCRUAL', paidAt: null },
+      });
+      expect(exB?.[0]).toMatchObject({
+        where: { id: 'ex-b', deletedAt: null },
+        data: { status: 'ACCRUAL', paidAt: null },
+      });
+    });
+    it('skips soft-deleted EXs when reverting on SE void (does not throw)', async () => {
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'se-1',
+        number: 'SE-20260510-0001',
+        status: 'POSTED',
+        documentType: 'VENDOR_SETTLEMENT',
+        journalEntryId: null,
+        settlement: {
+          settlementLines: [{ clearedDocumentId: 'ex-deleted' }],
+        },
+      });
+      // First updateMany call (revert ex-deleted) returns count=0 because the EX is soft-deleted
+      // Second call (final CAS flip) returns count=1.
+      prisma.expenseDocument.updateMany
+        .mockResolvedValueOnce({ count: 0 })
+        .mockResolvedValueOnce({ count: 1 });
+      await expect(service.voidDocument('se-1', 'user-1')).resolves.toBeDefined();
+      // Revert call used the deletedAt:null filter
+      expect(prisma.expenseDocument.updateMany).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          where: { id: 'ex-deleted', deletedAt: null },
+        }),
+      );
     });
   });
 });

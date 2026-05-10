@@ -721,6 +721,11 @@ export class ExpenseDocumentsService {
   // and for VENDOR_SETTLEMENT also reverts each cleared EX back to ACCRUAL.
   async voidDocument(id: string, _userId: string) {
     return this.prisma.$transaction(async (tx) => {
+      // Per-doc advisory lock — serializes concurrent voids on the same id so
+      // two callers cannot both pass assertCanVoid and double-post a reversal JE.
+      // (PG REPEATABLE READ does not prevent this write skew on its own.)
+      await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(hashtext($1))`, `void:${id}`);
+
       const doc = await tx.expenseDocument.findUniqueOrThrow({
         where: { id },
         include: { settlement: { include: { settlementLines: true } } },
@@ -775,19 +780,32 @@ export class ExpenseDocumentsService {
       // VENDOR_SETTLEMENT side-effect: revert each cleared EX back to ACCRUAL.
       // The SE was the only thing that flipped them to POSTED + paidAt; voiding
       // the SE must undo that, otherwise the EXs stay POSTED with no payment.
+      // updateMany with deletedAt:null guard so a soft-deleted EX is not
+      // resurrected — if it was already deleted, we simply skip + log.
       if (doc.documentType === 'VENDOR_SETTLEMENT' && doc.settlement) {
         for (const line of doc.settlement.settlementLines) {
-          await tx.expenseDocument.update({
-            where: { id: line.clearedDocumentId },
+          const result = await tx.expenseDocument.updateMany({
+            where: { id: line.clearedDocumentId, deletedAt: null },
             data: { status: 'ACCRUAL', paidAt: null },
           });
+          if (result.count === 0) {
+            this.logger.warn(
+              `Void SE ${doc.number}: cleared EX ${line.clearedDocumentId} was soft-deleted — skipped revert`,
+            );
+          }
         }
       }
 
-      return tx.expenseDocument.update({
-        where: { id },
+      // Compare-and-swap on status — second concurrent caller (if it somehow
+      // bypassed the advisory lock) sees count=0 and aborts. Belt-and-braces.
+      const flip = await tx.expenseDocument.updateMany({
+        where: { id, status: { not: 'VOIDED' } },
         data: { status: 'VOIDED' },
       });
+      if (flip.count === 0) {
+        throw new BadRequestException('เอกสารถูกยกเลิกไปแล้ว');
+      }
+      return tx.expenseDocument.findUniqueOrThrow({ where: { id } });
     });
   }
 

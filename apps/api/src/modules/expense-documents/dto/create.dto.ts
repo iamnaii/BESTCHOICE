@@ -1,29 +1,26 @@
 import {
   IsString,
   IsOptional,
-  IsIn,
   IsDateString,
-  IsNumber,
-  Min,
   ValidateNested,
+  IsArray,
+  ArrayMinSize,
+  IsIn,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { CASH_ACCOUNT_CODES } from '../../../constants/cash-account.constants';
+import { ExpenseLineInput } from './expense-line-input.dto';
 
-class ExpenseDetailInput {
-  @IsString()
-  category!: string;
-}
+const PRICE_TYPES = ['EXCLUSIVE', 'INCLUSIVE'] as const;
+const CASH_ACCOUNT_CODES = ['11-1101', '11-1102', '11-1103', '11-1201', '11-1202', '11-1203'] as const;
 
 export class CreateExpenseDocumentDto {
-  // PR-1 supports EXPENSE only. CN/PR/SE shorthand endpoints come later.
-  @IsIn(['EXPENSE'], { message: 'ใน PR-1 รองรับเฉพาะ EXPENSE — CN/PR/SE ทำใน PR-2..4' })
+  @IsIn(['EXPENSE'])
   documentType!: 'EXPENSE';
 
   @IsString()
   branchId!: string;
 
-  @IsDateString({}, { message: 'วันที่ใบกำกับไม่ถูกต้อง' })
+  @IsDateString()
   documentDate!: string;
 
   @IsString()
@@ -42,33 +39,24 @@ export class CreateExpenseDocumentDto {
   @IsOptional()
   description?: string;
 
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0.01, { message: 'จำนวนเงินต้องมากกว่า 0' })
-  subtotal!: number;
-
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0)
-  @IsOptional()
-  vatAmount?: number;
-
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0)
-  @IsOptional()
-  withholdingTax?: number;
-
   @IsString()
+  @IsIn(PRICE_TYPES as never)
   @IsOptional()
-  @IsIn(['PND3', 'PND53'])
-  whtFormType?: string;
+  priceType?: 'EXCLUSIVE' | 'INCLUSIVE';
 
-  // Payment dimension (for Same-day flow). If absent → ACCRUAL.
+  /** Form-type for WHT routing (PND.3 → 21-3102, PND.53 → 21-3103) */
+  @IsString()
+  @IsIn(['PND3', 'PND53'])
+  @IsOptional()
+  whtFormType?: 'PND3' | 'PND53';
+
   @IsString()
   @IsOptional()
   paymentMethod?: string;
 
   @IsString()
+  @IsIn([...CASH_ACCOUNT_CODES])
   @IsOptional()
-  @IsIn([...CASH_ACCOUNT_CODES], { message: 'บัญชีรับเงินไม่ถูกต้อง' })
   depositAccountCode?: string;
 
   @IsString()
@@ -87,7 +75,13 @@ export class CreateExpenseDocumentDto {
   @IsOptional()
   fromTemplateId?: string;
 
-  @ValidateNested()
-  @Type(() => ExpenseDetailInput)
-  detail!: ExpenseDetailInput;
+  @IsString()
+  @IsOptional()
+  approvedById?: string;
+
+  @IsArray()
+  @ArrayMinSize(1, { message: 'ต้องมีรายการบัญชีอย่างน้อย 1 บรรทัด' })
+  @ValidateNested({ each: true })
+  @Type(() => ExpenseLineInput)
+  lines!: ExpenseLineInput[];
 }

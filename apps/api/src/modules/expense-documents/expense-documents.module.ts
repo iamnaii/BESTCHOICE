@@ -8,6 +8,7 @@ import { ExpenseTemplatesController } from './expense-templates.controller';
 import { ExpenseTemplatesService } from './expense-templates.service';
 import { DocNumberService } from './services/doc-number.service';
 import { StatusTransitionService } from './services/status-transition.service';
+import { ExpenseRecurringCron } from './crons/expense-recurring.cron';
 
 @Module({
   imports: [PrismaModule, JournalModule, AuthModule],
@@ -17,6 +18,7 @@ import { StatusTransitionService } from './services/status-transition.service';
     ExpenseTemplatesService,
     DocNumberService,
     StatusTransitionService,
+    ExpenseRecurringCron,
   ],
   exports: [ExpenseDocumentsService, ExpenseTemplatesService],
 })

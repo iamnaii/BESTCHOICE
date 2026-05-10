@@ -21,6 +21,7 @@ describe('ExpenseDocumentsController', () => {
       post: jest.fn().mockResolvedValue({ entryNo: 'JE-1' }),
       voidDocument: jest.fn().mockResolvedValue({ id: 'doc-1' }),
       softDelete: jest.fn().mockResolvedValue({ id: 'doc-1' }),
+      createCreditNote: jest.fn().mockResolvedValue({ id: 'cn-1', number: 'CN-20260510-0001' }),
     };
     const moduleRef = await Test.createTestingModule({
       controllers: [ExpenseDocumentsController],
@@ -84,5 +85,10 @@ describe('ExpenseDocumentsController', () => {
   it('DELETE /:id calls softDelete', async () => {
     await controller.delete('doc-1', { id: 'user-1' } as never);
     expect(service.softDelete).toHaveBeenCalledWith('doc-1', 'user-1');
+  });
+
+  it('POST /credit-note calls service.createCreditNote with userId', async () => {
+    await controller.createCreditNote({ originalDocumentId: 'orig-1' } as never, { id: 'user-1' } as never);
+    expect(service.createCreditNote).toHaveBeenCalledWith({ originalDocumentId: 'orig-1' }, 'user-1');
   });
 });

@@ -19,6 +19,7 @@ import { ExpenseDocumentsService } from './expense-documents.service';
 import { CreateExpenseDocumentDto } from './dto/create.dto';
 import { UpdateExpenseDocumentDto } from './dto/update.dto';
 import { ListExpenseDocumentsQueryDto } from './dto/list-query.dto';
+import { CreateCreditNoteDto } from './dto/create-credit-note.dto';
 
 @Controller('expense-documents')
 @UseGuards(JwtAuthGuard, RolesGuard, BranchGuard)
@@ -32,6 +33,15 @@ export class ExpenseDocumentsController {
     @CurrentUser() user: { id: string },
   ) {
     return this.service.create(dto, user.id);
+  }
+
+  @Post('credit-note')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  createCreditNote(
+    @Body() dto: CreateCreditNoteDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.service.createCreditNote(dto, user.id);
   }
 
   @Get()

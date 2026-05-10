@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { useSearchParams } from 'react-router';
+import { useSearchParams, useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
@@ -11,7 +11,7 @@ import QueryBoundary from '@/components/QueryBoundary';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useAuth } from '@/contexts/AuthContext';
 import { compressImageForOcr } from '@/lib/compressImage';
-import { Receipt, Plus, Pencil, Upload, X, ArrowLeft, MoreVertical, FileText, Store, Layers, CreditCard, Paperclip, StickyNote, Bookmark, Wallet, BarChart3, Search, SlidersHorizontal, Eye, ArrowRight, UserCircle2 } from 'lucide-react';
+import { Receipt, Plus, Pencil, Upload, X, ArrowLeft, MoreVertical, FileText, Store, Layers, CreditCard, Paperclip, StickyNote, Bookmark, Wallet, BarChart3, Search, SlidersHorizontal, Eye, ArrowRight, UserCircle2, ChevronDown } from 'lucide-react';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { Button } from '@/components/ui/button';
 import { formatDateShortThai } from '@/utils/formatters';
@@ -482,6 +482,8 @@ export default function ExpensesPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [showCreateMenu, setShowCreateMenu] = useState(false);
+  const navigate = useNavigate();
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
 
   const setFilter = (key: string, value: string) => {
@@ -711,7 +713,7 @@ export default function ExpensesPage() {
   ];
 
   return (
-    <div onClick={() => setOpenMenuId(null)} onKeyDown={(e) => { if (e.key === 'Escape') setOpenMenuId(null); }}>
+    <div onClick={() => { setOpenMenuId(null); setShowCreateMenu(false); }} onKeyDown={(e) => { if (e.key === 'Escape') { setOpenMenuId(null); setShowCreateMenu(false); } }}>
       {/* Compact branded header */}
       <div className="flex items-center justify-between gap-4 pb-4 mb-5 border-b border-border flex-wrap">
         <div className="flex items-center gap-3 min-w-0">
@@ -829,9 +831,21 @@ export default function ExpensesPage() {
             </optgroup>
           ))}
         </select>
-        <Button variant="primary" size="md" onClick={openCreate}>
-          <Plus className="size-4" /> สร้างเอกสารใหม่
-        </Button>
+        <div className="relative" onClick={(ev) => ev.stopPropagation()}>
+          <Button variant="primary" size="md" onClick={() => setShowCreateMenu((v) => !v)}>
+            <Plus className="size-4" /> สร้างเอกสารใหม่ <ChevronDown className="size-3" />
+          </Button>
+          {showCreateMenu && (
+            <div className="absolute right-0 top-full mt-1 z-10 bg-card border border-border rounded-lg shadow-lg py-1 min-w-[160px]">
+              <button onClick={() => { setShowCreateMenu(false); openCreate(); }}
+                className="w-full px-3 py-2 text-sm text-left hover:bg-muted">รายจ่าย (EX)</button>
+              <button onClick={() => { setShowCreateMenu(false); navigate('/expenses/new?type=CN'); }}
+                className="w-full px-3 py-2 text-sm text-left hover:bg-muted">ใบลดหนี้ (CN)</button>
+              <button disabled className="w-full px-3 py-2 text-sm text-left text-muted-foreground/50 cursor-not-allowed">เงินเดือน (PR-3)</button>
+              <button disabled className="w-full px-3 py-2 text-sm text-left text-muted-foreground/50 cursor-not-allowed">จ่ายเจ้าหนี้ (PR-4)</button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Advanced filters drawer */}

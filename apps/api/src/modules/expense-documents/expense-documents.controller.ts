@@ -21,6 +21,7 @@ import { UpdateExpenseDocumentDto } from './dto/update.dto';
 import { ListExpenseDocumentsQueryDto } from './dto/list-query.dto';
 import { CreateCreditNoteDto } from './dto/create-credit-note.dto';
 import { CreatePayrollDto } from './dto/create-payroll.dto';
+import { CreateSettlementDto } from './dto/create-settlement.dto';
 
 @Controller('expense-documents')
 @UseGuards(JwtAuthGuard, RolesGuard, BranchGuard)
@@ -52,6 +53,15 @@ export class ExpenseDocumentsController {
     @CurrentUser() user: { id: string; branchId?: string | null; role?: string | null },
   ) {
     return this.service.createPayroll(dto, user);
+  }
+
+  @Post('settlement')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  createSettlement(
+    @Body() dto: CreateSettlementDto,
+    @CurrentUser() user: { id: string; branchId?: string; role: string },
+  ) {
+    return this.service.createSettlement(dto, user);
   }
 
   @Get()

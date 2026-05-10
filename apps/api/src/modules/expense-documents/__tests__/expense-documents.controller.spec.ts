@@ -23,6 +23,7 @@ describe('ExpenseDocumentsController', () => {
       softDelete: jest.fn().mockResolvedValue({ id: 'doc-1' }),
       createCreditNote: jest.fn().mockResolvedValue({ id: 'cn-1', number: 'CN-20260510-0001' }),
       createPayroll: jest.fn().mockResolvedValue({ id: 'pr-1', number: 'PR-20260510-0001' }),
+      createSettlement: jest.fn().mockResolvedValue({ id: 'se-1', number: 'SE-20260510-0001' }),
     };
     const moduleRef = await Test.createTestingModule({
       controllers: [ExpenseDocumentsController],
@@ -97,5 +98,16 @@ describe('ExpenseDocumentsController', () => {
     const user = { id: 'user-1', branchId: 'b1', role: 'BRANCH_MANAGER' };
     await controller.createPayroll({ payrollPeriod: '2026-05' } as never, user as never);
     expect(service.createPayroll).toHaveBeenCalledWith({ payrollPeriod: '2026-05' }, user);
+  });
+
+  it('POST /settlement calls service.createSettlement with user', async () => {
+    await controller.createSettlement(
+      { branchId: 'b1' } as never,
+      { id: 'user-1', branchId: 'b1', role: 'OWNER' } as never,
+    );
+    expect(service.createSettlement).toHaveBeenCalledWith(
+      { branchId: 'b1' },
+      { id: 'user-1', branchId: 'b1', role: 'OWNER' },
+    );
   });
 });

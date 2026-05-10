@@ -31,6 +31,7 @@ import { WhtAccrualTemplate } from './cpa-templates/wht-accrual.template';
 import { WhtRemittanceTemplate } from './cpa-templates/wht-remittance.template';
 import { ExpenseSameDayTemplate } from './cpa-templates/expense-same-day.template';
 import { ExpenseAccrualTemplate } from './cpa-templates/expense-accrual.template';
+import { CreditNoteTemplate } from './cpa-templates/credit-note.template';
 
 @Module({
   imports: [PrismaModule],
@@ -66,6 +67,7 @@ import { ExpenseAccrualTemplate } from './cpa-templates/expense-accrual.template
     WhtRemittanceTemplate,
     ExpenseSameDayTemplate,
     ExpenseAccrualTemplate,
+    CreditNoteTemplate,
   ],
   exports: [
     JournalService,
@@ -95,6 +97,7 @@ import { ExpenseAccrualTemplate } from './cpa-templates/expense-accrual.template
     WhtRemittanceTemplate,
     ExpenseSameDayTemplate,
     ExpenseAccrualTemplate,
+    CreditNoteTemplate,
   ],
 })
 export class JournalModule {}

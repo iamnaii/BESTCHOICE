@@ -49,11 +49,17 @@ export function SettlementForm({ onClose, onSaved }: Props) {
   const { data: branches } = useQuery<{ id: string; name: string }[]>({
     queryKey: ['branches'],
     queryFn: async () => (await api.get('/branches')).data,
+    initialData: () =>
+      queryClient.getQueryData<{ id: string; name: string }[]>(['branches']),
   });
-  const [branchId, setBranchId] = useState('');
+  const [branchId, setBranchId] = useState<string>(
+    () => user?.branchId || branches?.[0]?.id || '',
+  );
   useEffect(() => {
-    if (branches && branches.length > 0 && !branchId) setBranchId(branches[0].id);
-  }, [branches, branchId]);
+    if (!branchId && branches && branches.length > 0) {
+      setBranchId(user?.branchId || branches[0].id);
+    }
+  }, [branches, branchId, user?.branchId]);
 
   // Fetch ACCRUAL EX docs for selected branch
   const { data: accrualList } = useQuery<{ data: AccrualDoc[] }>({

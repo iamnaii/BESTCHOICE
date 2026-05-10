@@ -1,5 +1,11 @@
 import { ExpenseRecurringCron } from '../crons/expense-recurring.cron';
 
+// Pin "today" so neither the production code (Intl en-CA) nor the spec fixtures
+// (which used to read live `new Date().getDate()`) drift across the day boundary
+// on UTC CI. Mid-day BKK = Mon 12:00 BKK = Mon 05:00 UTC.
+const FIXED_NOW = new Date('2026-05-10T05:00:00.000Z');
+const FIXED_BKK_DAY = 10; // BKK calendar day at FIXED_NOW
+
 describe('ExpenseRecurringCron', () => {
   let cron: ExpenseRecurringCron;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -8,6 +14,7 @@ describe('ExpenseRecurringCron', () => {
   let templatesService: any;
 
   beforeEach(() => {
+    jest.useFakeTimers({ now: FIXED_NOW });
     prisma = {
       expenseTemplate: { findMany: jest.fn().mockResolvedValue([]) },
       user: { findFirst: jest.fn() },
@@ -15,6 +22,10 @@ describe('ExpenseRecurringCron', () => {
     };
     templatesService = { instantiate: jest.fn() };
     cron = new ExpenseRecurringCron(prisma, templatesService);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   it('skips silently when no recurring templates due today', async () => {
@@ -26,7 +37,7 @@ describe('ExpenseRecurringCron', () => {
 
   it('aborts when SYSTEM user not found', async () => {
     prisma.expenseTemplate.findMany.mockResolvedValue([
-      { id: 't1', branchId: 'b1', isRecurring: true, recurringDay: new Date().getDate() },
+      { id: 't1', branchId: 'b1', isRecurring: true, recurringDay: FIXED_BKK_DAY },
     ]);
     prisma.user.findFirst.mockResolvedValue(null);
     const result = await cron.tick();
@@ -37,7 +48,7 @@ describe('ExpenseRecurringCron', () => {
 
   it('skips templates already instantiated today (idempotent)', async () => {
     prisma.expenseTemplate.findMany.mockResolvedValue([
-      { id: 't1', branchId: 'b1', isRecurring: true, recurringDay: new Date().getDate() },
+      { id: 't1', branchId: 'b1', isRecurring: true, recurringDay: FIXED_BKK_DAY },
     ]);
     prisma.user.findFirst.mockResolvedValue({ id: 'sys', branchId: 'b1', role: 'OWNER' });
     prisma.expenseDocument.findFirst.mockResolvedValue({ id: 'existing-doc' });
@@ -49,7 +60,7 @@ describe('ExpenseRecurringCron', () => {
 
   it('instantiates templates that have not been processed today', async () => {
     prisma.expenseTemplate.findMany.mockResolvedValue([
-      { id: 't1', branchId: 'b1', isRecurring: true, recurringDay: new Date().getDate() },
+      { id: 't1', branchId: 'b1', isRecurring: true, recurringDay: FIXED_BKK_DAY },
     ]);
     prisma.user.findFirst.mockResolvedValue({ id: 'sys', branchId: 'b1', role: 'OWNER' });
     prisma.expenseDocument.findFirst.mockResolvedValue(null);
@@ -64,8 +75,8 @@ describe('ExpenseRecurringCron', () => {
 
   it('captures failures + continues batch', async () => {
     prisma.expenseTemplate.findMany.mockResolvedValue([
-      { id: 't1', branchId: 'b1', isRecurring: true, recurringDay: new Date().getDate() },
-      { id: 't2', branchId: 'b1', isRecurring: true, recurringDay: new Date().getDate() },
+      { id: 't1', branchId: 'b1', isRecurring: true, recurringDay: FIXED_BKK_DAY },
+      { id: 't2', branchId: 'b1', isRecurring: true, recurringDay: FIXED_BKK_DAY },
     ]);
     prisma.user.findFirst.mockResolvedValue({ id: 'sys', branchId: 'b1', role: 'OWNER' });
     prisma.expenseDocument.findFirst.mockResolvedValue(null);

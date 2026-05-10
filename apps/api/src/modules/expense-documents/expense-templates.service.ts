@@ -67,6 +67,9 @@ export class ExpenseTemplatesService {
     // Hard cap on rows returned. Favorites are user-curated so this should
     // never realistically be hit, but it prevents an unbounded findMany if a
     // future caller floods the table.
+    // TODO: switch to cursor pagination when a shop legitimately exceeds this.
+    // Returning the cap silently is acceptable today because the UI only
+    // surfaces the most recent + recurring entries first via the orderBy.
     return this.prisma.expenseTemplate.findMany({
       where,
       orderBy: [{ isRecurring: 'desc' }, { updatedAt: 'desc' }],

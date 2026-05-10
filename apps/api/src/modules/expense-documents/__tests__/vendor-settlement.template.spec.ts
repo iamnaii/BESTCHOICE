@@ -207,6 +207,36 @@ describe('VendorSettlementTemplate', () => {
     );
   });
 
+  it('rejects when cleared EXs span multiple vendors (single-vendor invariant)', async () => {
+    prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+      id: docId,
+      number: 'SE-20260510-0006',
+      documentType: 'VENDOR_SETTLEMENT',
+      documentDate: new Date('2026-05-10'),
+      totalAmount: new Decimal('3000.00'),
+      withholdingTax: new Decimal('0.00'),
+      whtFormType: null,
+      depositAccountCode: '11-1101',
+      journalEntryId: null,
+      settlement: {
+        settlementLines: [
+          { id: 'l1', clearedDocumentId: 'ex-vendorA', amountSettled: new Decimal('1000.00') },
+          { id: 'l2', clearedDocumentId: 'ex-vendorB', amountSettled: new Decimal('2000.00') },
+        ],
+      },
+    });
+    // findMany returns docs from two distinct vendors → invariant must reject
+    prisma.expenseDocument.findMany.mockResolvedValueOnce([
+      { id: 'ex-vendorA', vendorTaxId: '1234567890123', vendorName: 'Vendor A' },
+      { id: 'ex-vendorB', vendorTaxId: '9876543210987', vendorName: 'Vendor B' },
+    ]);
+
+    await expect(template.execute(docId)).rejects.toThrow(
+      /ผู้ขายรายเดียว/,
+    );
+    expect(journal.createAndPost).not.toHaveBeenCalled();
+  });
+
   it('idempotent — returns existing entryNo when journalEntryId already set, no createAndPost call', async () => {
     prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
       id: docId,

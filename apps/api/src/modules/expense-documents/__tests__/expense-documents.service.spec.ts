@@ -104,7 +104,9 @@ describe('ExpenseDocumentsService', () => {
         'user-1',
       );
       const callArg = prisma.expenseDocument.create.mock.calls[0][0];
-      expect(callArg.data.totalAmount.toString()).toBe('1070');
+      // Match @db.Decimal(12, 2) precision — DB always stores 2-decimal-place strings,
+      // pinning here prevents drift if integer inputs ever flow through unchanged.
+      expect(callArg.data.totalAmount.toFixed(2)).toBe('1070.00');
     });
   });
 

@@ -53,7 +53,8 @@ interface Summary {
   totalCount: number;
   byStatus: Record<string, number>;
   accrualUnpaidCount: number;
-  accrualUnpaidTotal: number;
+  /** Decimal serialized as fixed-2 string (e.g. "1234.56") */
+  accrualUnpaidTotal: string;
 }
 
 // Map documentType to display "type" (with Same-day vs Accrual fallback for EXPENSE)
@@ -582,14 +583,14 @@ export default function ExpensesPage() {
   const totalCount = summary?.totalCount ?? 0;
   const draftCount = summary?.byStatus?.DRAFT ?? 0;
   const unpaidCount = summary?.accrualUnpaidCount ?? 0;
-  const unpaidTotal = summary?.accrualUnpaidTotal ?? 0;
+  const unpaidTotal = summary?.accrualUnpaidTotal ?? '0.00';
   const paidCount = summary?.byStatus?.POSTED ?? 0;
   const recordedCount = totalCount - draftCount;
 
   const tabs = [
     { id: 'all', label: 'ทั้งหมด', count: totalCount, icon: Receipt },
     { id: 'draft', label: 'ฉบับร่าง', count: draftCount, icon: FileText },
-    { id: 'unpaid', label: 'รอจ่าย', count: unpaidCount, sub: unpaidTotal > 0 ? `รวม ${fmt(unpaidTotal)} B` : undefined, icon: Wallet },
+    { id: 'unpaid', label: 'รอจ่าย', count: unpaidCount, sub: parseFloat(unpaidTotal) > 0 ? `รวม ${fmt(unpaidTotal)} B` : undefined, icon: Wallet },
     { id: 'recorded', label: 'บันทึกแล้ว', count: recordedCount, icon: CreditCard },
     { id: 'paid', label: 'จ่ายแล้ว', count: paidCount, icon: Receipt },
     { id: 'favorites', label: 'รายการโปรด', count: 0, sub: 'ใช้บันทึกซ้ำ', icon: Bookmark },

@@ -48,15 +48,24 @@ export function PayrollForm({ onClose, onSaved }: Props) {
   const [note, setNote] = useState('');
   const [lines, setLines] = useState<PayrollLine[]>([newLine()]);
 
-  // Fetch branches for branchId (use first one or user's default)
+  // Fetch branches for branchId; user's branch wins, otherwise first available.
+  // initialData seeds the query so branchId is set on the first render —
+  // avoids the prior useEffect that caused a one-render flash with empty branchId.
   const { data: branches } = useQuery<{ id: string; name: string }[]>({
     queryKey: ['branches'],
     queryFn: async () => (await api.get('/branches')).data,
+    initialData: () =>
+      queryClient.getQueryData<{ id: string; name: string }[]>(['branches']),
   });
-  const [branchId, setBranchId] = useState('');
+  const [branchId, setBranchId] = useState<string>(
+    () => user?.branchId || branches?.[0]?.id || '',
+  );
+  // If branches load after mount and branchId is still empty, sync once.
   useEffect(() => {
-    if (branches && branches.length > 0 && !branchId) setBranchId(branches[0].id);
-  }, [branches, branchId]);
+    if (!branchId && branches && branches.length > 0) {
+      setBranchId(user?.branchId || branches[0].id);
+    }
+  }, [branches, branchId, user?.branchId]);
 
   // Compute per-line netPaid + sums
   const computed = useMemo(() => {

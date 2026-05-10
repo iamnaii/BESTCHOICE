@@ -534,7 +534,9 @@ export class ExpenseDocumentsService {
       totalCount,
       byStatus,
       accrualUnpaidCount: accrualUnpaid._count._all,
-      accrualUnpaidTotal: accrualUnpaid._sum.totalAmount?.toNumber() ?? 0,
+      // Decimal serialized as string ("1234.56") for parity with daily-summary
+      // grandTotal — clients should parse for display rather than trusting JS float.
+      accrualUnpaidTotal: accrualUnpaid._sum.totalAmount?.toFixed(2) ?? '0.00',
     };
   }
 

@@ -14,7 +14,7 @@ describe('ExpenseDocumentsController', () => {
         totalCount: 0,
         byStatus: {},
         accrualUnpaidCount: 0,
-        accrualUnpaidTotal: 0,
+        accrualUnpaidTotal: '0.00',
       }),
       findOne: jest.fn().mockResolvedValue({ id: 'doc-1' }),
       update: jest.fn().mockResolvedValue({ id: 'doc-1' }),

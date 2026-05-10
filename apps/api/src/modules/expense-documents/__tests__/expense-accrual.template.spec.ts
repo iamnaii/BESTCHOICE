@@ -41,7 +41,7 @@ describe('ExpenseAccrualTemplate', () => {
       depositAccountCode: null,
       paymentMethod: null,
       journalEntryId: null,
-      expenseDetail: { priceType: 'EXCLUSIVE', lines: [{ lineNo: 1, category: '53-1404' }] },
+      expenseDetail: { priceType: 'EXCLUSIVE', lines: [{ lineNo: 1, category: '53-1404', amountBeforeVat: new Decimal('5000.00') }] },
     });
 
     const result = await template.execute('doc-2');
@@ -76,7 +76,7 @@ describe('ExpenseAccrualTemplate', () => {
       depositAccountCode: null,
       paymentMethod: null,
       journalEntryId: null,
-      expenseDetail: { priceType: 'EXCLUSIVE', lines: [{ lineNo: 1, category: '53-1302' }] },
+      expenseDetail: { priceType: 'EXCLUSIVE', lines: [{ lineNo: 1, category: '53-1302', amountBeforeVat: new Decimal('1000.00') }] },
     });
 
     await template.execute('doc-3');
@@ -101,5 +101,31 @@ describe('ExpenseAccrualTemplate', () => {
     const result = await template.execute('doc-4');
     expect(result.entryNo).toBe('JE-EXISTING-A');
     expect(journal.createAndPost).not.toHaveBeenCalled();
+  });
+
+  it('multi-line accrual: 2 categories → 2 Dr rows + 1 Cr 21-1104', async () => {
+    prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+      id: 'a-multi', number: 'EX-20260511-0011',
+      documentType: 'EXPENSE',
+      documentDate: new Date('2026-05-11'),
+      subtotal: new Decimal('2000'),
+      vatAmount: new Decimal('140'),
+      withholdingTax: new Decimal('0'),
+      totalAmount: new Decimal('2140'),
+      depositAccountCode: null,
+      journalEntryId: null,
+      expenseDetail: {
+        priceType: 'EXCLUSIVE',
+        lines: [
+          { lineNo: 1, category: '53-1101', amountBeforeVat: new Decimal('1500'), vatAmount: new Decimal('105'), whtAmount: new Decimal('0') },
+          { lineNo: 2, category: '53-1404', amountBeforeVat: new Decimal('500'),  vatAmount: new Decimal('35'), whtAmount: new Decimal('0') },
+        ],
+      },
+    });
+    await template.execute('a-multi');
+    const args = journal.createAndPost.mock.calls[0][0];
+    expect(args.lines.find((l: { accountCode: string; cr: { toString: () => string } }) => l.accountCode === '21-1104').cr.toString()).toBe('2140');
+    const dr5x = args.lines.filter((l: { accountCode: string }) => l.accountCode.startsWith('5'));
+    expect(dr5x).toHaveLength(2);
   });
 });

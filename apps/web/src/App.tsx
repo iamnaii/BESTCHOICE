@@ -82,6 +82,7 @@ const FinanceReceivablePage = lazy(() => import('@/pages/FinanceReceivablePage')
 const FinancePortfolioPage = lazy(() => import('@/pages/FinancePortfolioPage'));
 const ExpensesPage = lazy(() => import('@/pages/ExpensesPage'));
 const ExpenseDocumentNewPage = lazy(() => import('@/pages/ExpenseDocumentNewPage'));
+const ExpenseFavoritesPage = lazy(() => import('@/pages/ExpenseFavoritesPage'));
 const ProfitLossPage = lazy(() => import('@/pages/ProfitLossPage'));
 const CompanySettingsPage = lazy(() => import('@/pages/CompanySettingsPage'));
 const TaxReportsPage = lazy(() => import('@/pages/TaxReportsPage'));
@@ -432,6 +433,14 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
                 <ExpenseDocumentNewPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/expenses/favorites"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <ExpenseFavoritesPage />
               </ProtectedRoute>
             }
           />

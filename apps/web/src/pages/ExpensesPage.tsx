@@ -760,7 +760,14 @@ export default function ExpensesPage() {
             <button
               key={tab.id}
               type="button"
-              onClick={() => { if (isAction) return; setTab(tab.id); }}
+              onClick={() => {
+                if (tab.id === 'favorites') {
+                  navigate('/expenses/favorites');
+                  return;
+                }
+                if (isAction) return;
+                setTab(tab.id);
+              }}
               className={cn(
                 'rounded-xl border p-4 text-left transition-all hover:bg-muted/30',
                 isActive

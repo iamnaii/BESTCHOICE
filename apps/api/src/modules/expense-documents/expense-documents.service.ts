@@ -2,6 +2,7 @@ import {
   Injectable,
   BadRequestException,
   NotFoundException,
+  ForbiddenException,
   Logger,
 } from '@nestjs/common';
 import { Prisma, DocumentStatus } from '@prisma/client';
@@ -169,7 +170,16 @@ export class ExpenseDocumentsService {
   }
 
   // ─── Payroll create — multi-line, computes netPaid per line ──────────
-  async createPayroll(dto: CreatePayrollDto, userId: string) {
+  async createPayroll(
+    dto: CreatePayrollDto,
+    user: { id: string; branchId?: string | null; role?: string | null },
+  ) {
+    // Branch access enforcement: users without cross-branch role
+    // can only create payroll documents for their own branch.
+    if (!hasCrossBranchAccess(user) && user.branchId !== dto.branchId) {
+      throw new ForbiddenException('ไม่สามารถสร้างเอกสารในสาขาอื่นได้');
+    }
+
     // Compute netPaid per line + validate
     const linesPrepared = dto.lines.map((l) => {
       const base = new Prisma.Decimal(l.baseSalary);
@@ -228,7 +238,7 @@ export class ExpenseDocumentsService {
           status: 'DRAFT',
           reference: dto.reference ?? null,
           note: dto.note ?? null,
-          createdById: userId,
+          createdById: user.id,
           payroll: {
             create: {
               payrollPeriod: dto.payrollPeriod,

@@ -93,8 +93,9 @@ describe('ExpenseDocumentsController', () => {
     expect(service.createCreditNote).toHaveBeenCalledWith({ originalDocumentId: 'orig-1' }, 'user-1');
   });
 
-  it('POST /payroll calls service.createPayroll with userId', async () => {
-    await controller.createPayroll({ payrollPeriod: '2569-05' } as never, { id: 'user-1' } as never);
-    expect(service.createPayroll).toHaveBeenCalledWith({ payrollPeriod: '2569-05' }, 'user-1');
+  it('POST /payroll calls service.createPayroll with full user object', async () => {
+    const user = { id: 'user-1', branchId: 'b1', role: 'BRANCH_MANAGER' };
+    await controller.createPayroll({ payrollPeriod: '2026-05' } as never, user as never);
+    expect(service.createPayroll).toHaveBeenCalledWith({ payrollPeriod: '2026-05' }, user);
   });
 });

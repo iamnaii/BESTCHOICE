@@ -31,7 +31,7 @@ describe('PayrollTemplate', () => {
     template = new PayrollTemplate(journal, prisma);
   });
 
-  it('posts balanced JE: Dr 53-1101 = sum(baseSalary) / Cr 21-3102 = sum(wht) + Cr 21-3104 = sum(sso) + Cr cash = sum(netPaid)', async () => {
+  it('posts balanced JE: Dr 53-1101 = sum(baseSalary) / Cr 21-3101 = sum(wht) + Cr 21-1104 = sum(sso) + Cr cash = sum(netPaid)', async () => {
     prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
       id: docId,
       number: 'PR-20260510-0001',
@@ -41,7 +41,7 @@ describe('PayrollTemplate', () => {
       depositAccountCode: '11-1101',
       journalEntryId: null,
       payroll: {
-        payrollPeriod: '2569-05',
+        payrollPeriod: '2026-05',
         lines: [
           { id: '1', baseSalary: new Decimal('10000.00'), ssoEmployee: new Decimal('750.00'), whtAmount: new Decimal('0.00'), netPaid: new Decimal('9250.00') },
           { id: '2', baseSalary: new Decimal('15000.00'), ssoEmployee: new Decimal('750.00'), whtAmount: new Decimal('300.00'), netPaid: new Decimal('13950.00') },
@@ -58,10 +58,10 @@ describe('PayrollTemplate', () => {
     const drExpense = args.lines.find((l: { accountCode: string }) => l.accountCode === '53-1101');
     expect(drExpense.dr).toEqual(new Decimal('25000'));
 
-    const crWht = args.lines.find((l: { accountCode: string }) => l.accountCode === '21-3102');
+    const crWht = args.lines.find((l: { accountCode: string }) => l.accountCode === '21-3101');
     expect(crWht.cr).toEqual(new Decimal('300'));
 
-    const crSso = args.lines.find((l: { accountCode: string }) => l.accountCode === '21-3104');
+    const crSso = args.lines.find((l: { accountCode: string }) => l.accountCode === '21-1104');
     expect(crSso.cr).toEqual(new Decimal('1500'));
 
     const crCash = args.lines.find((l: { accountCode: string }) => l.accountCode === '11-1101');
@@ -103,7 +103,7 @@ describe('PayrollTemplate', () => {
       depositAccountCode: '11-1101',
       journalEntryId: null,
       payroll: {
-        payrollPeriod: '2569-05',
+        payrollPeriod: '2026-05',
         lines: [
           { id: '1', baseSalary: new Decimal('5000.00'), ssoEmployee: new Decimal('0.00'), whtAmount: new Decimal('0.00'), netPaid: new Decimal('5000.00') },
         ],
@@ -134,7 +134,7 @@ describe('PayrollTemplate', () => {
       depositAccountCode: '11-1101',
       journalEntryId: null,
       payroll: {
-        payrollPeriod: '2569-05',
+        payrollPeriod: '2026-05',
         lines: [
           { id: '1', baseSalary: new Decimal('5000.00'), ssoEmployee: new Decimal('0.00'), whtAmount: new Decimal('0.00'), netPaid: new Decimal('5000.00') },
         ],
@@ -144,8 +144,8 @@ describe('PayrollTemplate', () => {
     await template.execute(docId);
     const [args] = journal.createAndPost.mock.calls[0];
     const codes = args.lines.map((l: { accountCode: string }) => l.accountCode);
-    expect(codes).not.toContain('21-3102');
-    expect(codes).not.toContain('21-3104');
+    expect(codes).not.toContain('21-3101');
+    expect(codes).not.toContain('21-1104');
     expect(codes).toContain('53-1101');
     expect(codes).toContain('11-1101');
   });
@@ -160,7 +160,7 @@ describe('PayrollTemplate', () => {
       depositAccountCode: null,
       journalEntryId: null,
       payroll: {
-        payrollPeriod: '2569-05',
+        payrollPeriod: '2026-05',
         lines: [
           { id: '1', baseSalary: new Decimal('5000.00'), ssoEmployee: new Decimal('0.00'), whtAmount: new Decimal('0.00'), netPaid: new Decimal('5000.00') },
         ],

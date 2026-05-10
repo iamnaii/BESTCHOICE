@@ -106,11 +106,15 @@ Run validate + generate, commit.
 ## Task 2: PayrollTemplate JE (TDD)
 
 5 tests:
-1. JE balanced: Dr 53-1101 (sum baseSalary) / Cr 21-3102 (sum wht) + Cr 21-3104 (sum sso) + Cr cash (sum netPaid)
+1. JE balanced: Dr 53-1101 (sum baseSalary) / Cr 21-3101 (sum wht — ภ.ง.ด. 1 ค้างจ่าย) + Cr 21-1104 (sum sso — placeholder; CPA must confirm dedicated SSO payable in Phase A.7) + Cr cash (sum netPaid)
 2. Idempotent
 3. Updates status=POSTED + paidAt + journalEntryId
 4. SSO/WHT zero handled (skip those CR lines if Σ = 0)
 5. Multi-line aggregation works (3+ employees)
+
+**Account code notes (post-review correction 2026-05-10):**
+- `21-3101` ภ.ง.ด. 1 ค้างจ่าย — correct WHT account from CoA (was incorrectly `21-3102` ภ.ง.ด. 3 in initial plan)
+- `21-1104` เจ้าหนี้ค่าใช้จ่ายกิจการ — defensible placeholder for SSO. CoA has no dedicated SSO payable account; `21-3104` is ภ.ง.ด. 2 ปันผล WHT (wrong). TODO: CPA to confirm or add new account in Phase A.7.
 
 Implementation key points:
 - Includes `payroll: { include: { lines: true } }` when reading doc

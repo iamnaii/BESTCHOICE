@@ -10,11 +10,18 @@ import { PrismaService } from '../../../prisma/prisma.service';
  * Spec §4.4 — aggregates PayrollLine[] into single balanced JE.
  *
  *   Dr 53-1101 เงินเดือน-ค่าจ้าง          (Σ baseSalary)
- *     Cr 21-3102 หัก ณ ที่จ่าย ภงด.1      (Σ whtAmount)      [if Σ > 0]
- *     Cr 21-3104 ประกันสังคม               (Σ ssoEmployee)    [if Σ > 0]
+ *     Cr 21-3101 ภ.ง.ด. 1 ค้างจ่าย        (Σ whtAmount)      [if Σ > 0]
+ *     Cr 21-1104 เจ้าหนี้ค่าใช้จ่ายกิจการ   (Σ ssoEmployee)    [if Σ > 0] — TODO: CPA review
  *     Cr depositAccountCode               (Σ netPaid)
  *
  * Line-level data stays in PayrollLine[]. ภงด.1 file generation deferred.
+ *
+ * Account code notes:
+ *   - WHT employee = 21-3101 (ภ.ง.ด. 1 ค้างจ่าย — employee income tax payable)
+ *   - SSO payable: NO dedicated account in CoA. Using 21-1104
+ *     (เจ้าหนี้ค่าใช้จ่ายกิจการ — generic accrued expense payable) as a
+ *     defensible placeholder. CPA must confirm or add dedicated SSO payable
+ *     (e.g. 21-3105) in Phase A.7.
  *
  * ⚠️ CPA AUDIT REQUIRED — Phase A.7 review.
  */
@@ -78,7 +85,7 @@ export class PayrollTemplate {
       ];
       if (sumWht.gt(zero)) {
         lines.push({
-          accountCode: '21-3102',
+          accountCode: '21-3101',
           dr: zero,
           cr: sumWht,
           description: 'หัก ณ ที่จ่าย ภงด.1',
@@ -86,10 +93,12 @@ export class PayrollTemplate {
       }
       if (sumSso.gt(zero)) {
         lines.push({
-          accountCode: '21-3104',
+          // TODO(CPA Phase A.7): no dedicated SSO payable in CoA.
+          // Using 21-1104 (เจ้าหนี้ค่าใช้จ่ายกิจการ) as defensible placeholder.
+          accountCode: '21-1104',
           dr: zero,
           cr: sumSso,
-          description: 'ประกันสังคม',
+          description: 'ประกันสังคมค้างจ่าย (รอ CPA ยืนยันบัญชี)',
         });
       }
       lines.push({

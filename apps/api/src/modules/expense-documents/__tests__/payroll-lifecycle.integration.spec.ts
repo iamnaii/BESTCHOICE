@@ -57,7 +57,7 @@ describe('Payroll lifecycle (integration)', () => {
       {
         branchId,
         documentDate: new Date().toISOString(),
-        payrollPeriod: '2569-05',
+        payrollPeriod: '2026-05',
         depositAccountCode: '11-1101',
         lines: [
           { employeeName: 'A', baseSalary: 10000, ssoEmployee: 750, whtAmount: 0 },
@@ -65,7 +65,7 @@ describe('Payroll lifecycle (integration)', () => {
           { employeeName: 'C', baseSalary: 20000, ssoEmployee: 750, whtAmount: 800 },
         ],
       } as never,
-      userId,
+      { id: userId, branchId, role: 'OWNER' },
     );
     expect(pr.documentType).toBe('PAYROLL');
     expect(pr.subtotal.toString()).toBe('45000');
@@ -90,8 +90,8 @@ describe('Payroll lifecycle (integration)', () => {
 
     const codes = je.lines.map((l) => l.accountCode);
     expect(codes).toContain('53-1101'); // salary expense
-    expect(codes).toContain('21-3102'); // WHT
-    expect(codes).toContain('21-3104'); // SSO
+    expect(codes).toContain('21-3101'); // WHT (ภ.ง.ด. 1 ค้างจ่าย)
+    expect(codes).toContain('21-1104'); // SSO placeholder (CPA review)
     expect(codes).toContain('11-1101'); // cash
   });
 
@@ -101,11 +101,11 @@ describe('Payroll lifecycle (integration)', () => {
       {
         branchId,
         documentDate: new Date().toISOString(),
-        payrollPeriod: '2569-05',
+        payrollPeriod: '2026-05',
         depositAccountCode: '11-1101',
         lines: [{ employeeName: 'X', baseSalary: 1000, ssoEmployee: 700, whtAmount: 500 }],
       } as never,
-      userId,
+      { id: userId, branchId, role: 'OWNER' },
     )).rejects.toThrow(/เงินสุทธิติดลบ/);
   });
 
@@ -115,11 +115,11 @@ describe('Payroll lifecycle (integration)', () => {
       {
         branchId,
         documentDate: new Date().toISOString(),
-        payrollPeriod: '2569-05',
+        payrollPeriod: '2026-05',
         depositAccountCode: '11-1101',
         lines: [{ employeeName: 'A', baseSalary: 5000 }],
       } as never,
-      userId,
+      { id: userId, branchId, role: 'OWNER' },
     );
     expect(pr.number).toMatch(/^PR-\d{8}-0001$/);
   });

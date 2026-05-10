@@ -49,9 +49,9 @@ export class ExpenseDocumentsController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   createPayroll(
     @Body() dto: CreatePayrollDto,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: { id: string; branchId?: string | null; role?: string | null },
   ) {
-    return this.service.createPayroll(dto, user.id);
+    return this.service.createPayroll(dto, user);
   }
 
   @Get()

@@ -5,6 +5,7 @@ import { DocNumberService } from '../services/doc-number.service';
 import { StatusTransitionService } from '../services/status-transition.service';
 import { ExpenseSameDayTemplate } from '../../journal/cpa-templates/expense-same-day.template';
 import { ExpenseAccrualTemplate } from '../../journal/cpa-templates/expense-accrual.template';
+import { CreditNoteTemplate } from '../../journal/cpa-templates/credit-note.template';
 import { JournalAutoService } from '../../journal/journal-auto.service';
 import { seedFinanceCoa } from '../../../../prisma/seed-coa-finance';
 
@@ -77,12 +78,14 @@ describe('ExpenseDocuments full lifecycle (integration)', () => {
     const journal = new JournalAutoService(prisma as never);
     const sameDay = new ExpenseSameDayTemplate(journal, prisma as never);
     const accrual = new ExpenseAccrualTemplate(journal, prisma as never);
+    const cn = new CreditNoteTemplate(journal, prisma as never);
     return new ExpenseDocumentsService(
       prisma as never,
       new DocNumberService(),
       new StatusTransitionService(),
       sameDay,
       accrual,
+      cn,
     );
   }
 

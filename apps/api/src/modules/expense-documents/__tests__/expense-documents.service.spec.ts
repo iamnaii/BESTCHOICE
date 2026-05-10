@@ -221,6 +221,129 @@ describe('ExpenseDocumentsService', () => {
     });
   });
 
+  describe('getDailySummary', () => {
+    beforeEach(() => {
+      prisma.expenseDocument.findMany.mockResolvedValue([]);
+    });
+
+    it('throws when branchId missing', async () => {
+      await expect(
+        service.getDailySummary(
+          { date: '2026-05-10' } as never,
+          { id: 'u1', branchId: null, role: 'OWNER' },
+        ),
+      ).rejects.toThrow();
+    });
+
+    it('filters by branchId + date range + excludes VOIDED + deleted', async () => {
+      await service.getDailySummary(
+        { date: '2026-05-10', branchId: 'b1' } as never,
+        { id: 'u1', branchId: 'b1', role: 'OWNER' },
+      );
+      expect(prisma.expenseDocument.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            branchId: 'b1',
+            status: { not: 'VOIDED' },
+            deletedAt: null,
+          }),
+        }),
+      );
+    });
+
+    it('aggregates byType correctly across multiple docs', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { Decimal } = require('@prisma/client/runtime/library');
+      prisma.expenseDocument.findMany.mockResolvedValue([
+        {
+          documentType: 'EXPENSE',
+          totalAmount: new Decimal('1000'),
+          netPayment: null,
+          paymentMethod: null,
+          paidAt: null,
+          depositAccountCode: null,
+          expenseDetail: { category: '53-1302' },
+          branch: { id: 'b1', name: 'A' },
+        },
+        {
+          documentType: 'EXPENSE',
+          totalAmount: new Decimal('500'),
+          netPayment: null,
+          paymentMethod: null,
+          paidAt: null,
+          depositAccountCode: null,
+          expenseDetail: { category: '53-1302' },
+          branch: { id: 'b1', name: 'A' },
+        },
+        {
+          documentType: 'PAYROLL',
+          totalAmount: new Decimal('30000'),
+          netPayment: null,
+          paymentMethod: null,
+          paidAt: null,
+          depositAccountCode: null,
+          expenseDetail: null,
+          branch: { id: 'b1', name: 'A' },
+        },
+      ]);
+      const result = await service.getDailySummary(
+        { date: '2026-05-10', branchId: 'b1' } as never,
+        { id: 'u1', branchId: 'b1', role: 'OWNER' },
+      );
+      expect(result.byType.EXPENSE.count).toBe(2);
+      expect(result.byType.EXPENSE.total).toBe('1500.00');
+      expect(result.byType.PAYROLL.count).toBe(1);
+      expect(result.byType.PAYROLL.total).toBe('30000.00');
+      expect(result.grandTotal).toBe('31500.00');
+    });
+
+    it('aggregates cashMovement only for docs with paidAt today + depositAccountCode', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { Decimal } = require('@prisma/client/runtime/library');
+      const today = new Date('2026-05-10T10:00:00Z');
+      const yesterday = new Date('2026-05-09T10:00:00Z');
+      prisma.expenseDocument.findMany.mockResolvedValue([
+        {
+          documentType: 'EXPENSE',
+          totalAmount: new Decimal('1000'),
+          netPayment: new Decimal('1000'),
+          paymentMethod: 'CASH',
+          paidAt: today,
+          depositAccountCode: '11-1101',
+          expenseDetail: null,
+          branch: { id: 'b1', name: 'A' },
+        },
+        {
+          documentType: 'EXPENSE',
+          totalAmount: new Decimal('500'),
+          netPayment: null,
+          paymentMethod: null,
+          paidAt: null,
+          depositAccountCode: null,
+          expenseDetail: null,
+          branch: { id: 'b1', name: 'A' },
+        },
+        {
+          documentType: 'EXPENSE',
+          totalAmount: new Decimal('300'),
+          netPayment: new Decimal('300'),
+          paymentMethod: 'CASH',
+          paidAt: yesterday,
+          depositAccountCode: '11-1101',
+          expenseDetail: null,
+          branch: { id: 'b1', name: 'A' },
+        },
+      ]);
+      const result = await service.getDailySummary(
+        { date: '2026-05-10', branchId: 'b1' } as never,
+        { id: 'u1', branchId: 'b1', role: 'OWNER' },
+      );
+      // Only the first doc (paidAt=today) should be in cashMovement
+      expect(result.cashMovement['11-1101']?.count).toBe(1);
+      expect(result.cashMovement['11-1101']?.out).toBe('1000.00');
+    });
+  });
+
   describe('voidDocument', () => {
     it('flips status to VOIDED for non-VOIDED doc', async () => {
       prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({

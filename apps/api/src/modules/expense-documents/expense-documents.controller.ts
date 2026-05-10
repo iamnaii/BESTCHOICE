@@ -89,6 +89,16 @@ export class ExpenseDocumentsController {
     return this.service.getSummary({ branchId: effective, startDate, endDate });
   }
 
+  @Get('daily-summary')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  dailySummary(
+    @Query('date') date: string,
+    @Query('branchId') branchId: string | undefined,
+    @CurrentUser() user: { id: string; branchId?: string | null; role?: string | null },
+  ) {
+    return this.service.getDailySummary({ date, branchId }, user);
+  }
+
   @Get(':id')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   findOne(@Param('id') id: string) {

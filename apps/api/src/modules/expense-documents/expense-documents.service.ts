@@ -509,6 +509,103 @@ export class ExpenseDocumentsService {
     };
   }
 
+  // ─── Daily summary (print-ready aggregation) ─────────────────────────
+  async getDailySummary(
+    filters: { date: string; branchId?: string },
+    user: { id: string; branchId?: string | null; role?: string | null },
+  ) {
+    const branchId = hasCrossBranchAccess(user)
+      ? filters.branchId
+      : (user.branchId ?? filters.branchId);
+    if (!branchId) {
+      throw new BadRequestException('ต้องระบุสาขา');
+    }
+    const start = new Date(filters.date);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(filters.date);
+    end.setHours(23, 59, 59, 999);
+
+    const documents = await this.prisma.expenseDocument.findMany({
+      where: {
+        branchId,
+        documentDate: { gte: start, lte: end },
+        status: { not: 'VOIDED' },
+        deletedAt: null,
+      },
+      include: {
+        expenseDetail: true,
+        creditNote: true,
+        payroll: { include: { lines: true } },
+        settlement: { include: { settlementLines: true } },
+        branch: { select: { id: true, name: true } },
+      },
+      orderBy: { number: 'asc' },
+    });
+
+    // Aggregate
+    const byType: Record<string, { count: number; total: string }> = {};
+    const byPaymentMethod: Record<string, { count: number; total: string }> = {};
+    const byCategory: Record<string, { count: number; total: string }> = {};
+    const cashMovement: Record<string, { out: string; count: number }> = {};
+
+    let grandTotal = new Prisma.Decimal(0);
+
+    for (const d of documents) {
+      const total = new Prisma.Decimal(d.totalAmount.toString());
+      grandTotal = grandTotal.plus(total);
+
+      // By type
+      const tKey = d.documentType;
+      const tBucket = byType[tKey] ?? { count: 0, total: '0' };
+      tBucket.count++;
+      tBucket.total = new Prisma.Decimal(tBucket.total).plus(total).toFixed(2);
+      byType[tKey] = tBucket;
+
+      // By payment method (only if doc has paymentMethod set)
+      if (d.paymentMethod) {
+        const mKey = d.paymentMethod;
+        const mBucket = byPaymentMethod[mKey] ?? { count: 0, total: '0' };
+        mBucket.count++;
+        const netAmt = d.netPayment ? new Prisma.Decimal(d.netPayment.toString()) : total;
+        mBucket.total = new Prisma.Decimal(mBucket.total).plus(netAmt).toFixed(2);
+        byPaymentMethod[mKey] = mBucket;
+      }
+
+      // By category (EXPENSE + CREDIT_NOTE — others have no category)
+      const cat =
+        (d as { expenseDetail?: { category: string } | null }).expenseDetail?.category ??
+        (d as { creditNote?: { category: string } | null }).creditNote?.category;
+      if (cat) {
+        const cBucket = byCategory[cat] ?? { count: 0, total: '0' };
+        cBucket.count++;
+        cBucket.total = new Prisma.Decimal(cBucket.total).plus(total).toFixed(2);
+        byCategory[cat] = cBucket;
+      }
+
+      // Cash movement (only docs with depositAccountCode + paidAt today)
+      if (d.depositAccountCode && d.paidAt && d.paidAt >= start && d.paidAt <= end) {
+        const aKey = d.depositAccountCode;
+        const aBucket = cashMovement[aKey] ?? { out: '0', count: 0 };
+        const netAmt = d.netPayment ? new Prisma.Decimal(d.netPayment.toString()) : total;
+        aBucket.out = new Prisma.Decimal(aBucket.out).plus(netAmt).toFixed(2);
+        aBucket.count++;
+        cashMovement[aKey] = aBucket;
+      }
+    }
+
+    return {
+      date: filters.date,
+      branchId,
+      branchName: documents[0]?.branch?.name ?? null,
+      documents,
+      grandTotal: grandTotal.toFixed(2),
+      byType,
+      byPaymentMethod,
+      byCategory,
+      cashMovement,
+    };
+  }
+
   // ─── Find one ────────────────────────────────────────────────────────
   async findOne(id: string) {
     const doc = await this.prisma.expenseDocument.findUniqueOrThrow({

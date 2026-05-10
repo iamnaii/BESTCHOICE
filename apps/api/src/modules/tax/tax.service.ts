@@ -50,26 +50,20 @@ export class TaxService {
       new Prisma.Decimal(0),
     );
 
-    // Input VAT (ภาษีซื้อ): PAID expenses with vatAmount > 0 from branches of this company
-    const expenses = await this.prisma.expense.findMany({
-      where: {
-        deletedAt: null,
-        status: 'PAID',
-        vatAmount: { gt: 0 },
-        expenseDate: { gte: startDate, lte: endDate },
-        branchId: { in: branchIds },
-      },
-      orderBy: { expenseDate: 'asc' },
-    });
+    // Input VAT (ภาษีซื้อ): legacy `expense` model removed; ExpenseDocument-based tax
+    // reporting will be added in a follow-up PR. For now PP30 returns sales-only data.
+    const expenses: Array<{
+      expenseDate: Date;
+      description: string;
+      vendorName: string | null;
+      vendorTaxId: string | null;
+      taxInvoiceNo: string | null;
+      totalAmount: Prisma.Decimal;
+      vatAmount: Prisma.Decimal;
+    }> = [];
 
-    const totalPurchases = expenses.reduce(
-      (sum, e) => sum.add(e.totalAmount),
-      new Prisma.Decimal(0),
-    );
-    const totalVatInput = expenses.reduce(
-      (sum, e) => sum.add(e.vatAmount),
-      new Prisma.Decimal(0),
-    );
+    const totalPurchases = new Prisma.Decimal(0);
+    const totalVatInput = new Prisma.Decimal(0);
 
     const netVat = totalVatOutput.sub(totalVatInput);
 
@@ -298,72 +292,22 @@ export class TaxService {
     month: number,
     type: 'PND3' | 'PND53',
   ) {
-    const { startDate, endDate } = this.getDateRange(year, month);
-    const branchIds = await this.getBranchIds(companyId);
+    // Legacy `expense` model removed; WHT reporting on the new ExpenseDocument
+    // module will be reinstated in a follow-up PR. For now PND3/PND53 preview is empty.
+    void this.getDateRange(year, month);
+    void (await this.getBranchIds(companyId));
+    void type;
 
-    const expenses = await this.prisma.expense.findMany({
-      where: {
-        deletedAt: null,
-        status: 'PAID',
-        withholdingTax: { gt: 0 },
-        expenseDate: { gte: startDate, lte: endDate },
-        branchId: { in: branchIds },
-        vendorTaxId: { not: null },
-      },
-      orderBy: { expenseDate: 'asc' },
-    });
-
-    // Filter by vendor type:
-    // PND3 = individual (Thai national ID starts with 1-9, 13 chars)
-    // PND53 = company (Thai corporate tax ID starts with 0, 13 chars)
-    const filtered = expenses.filter((e) => {
-      const taxId = e.vendorTaxId ?? '';
-      if (taxId.length !== 13) return false;
-      if (type === 'PND3') {
-        return /^[1-9]/.test(taxId);
-      }
-      return taxId.startsWith('0');
-    });
-
-    // Group by vendorName + vendorTaxId + whtIncomeType
-    const groupMap = new Map<
-      string,
-      {
+    return {
+      totalWht: new Prisma.Decimal(0),
+      transactionCount: 0,
+      vendors: [] as Array<{
         vendorName: string;
         vendorTaxId: string;
         whtIncomeType: string | null;
         totalAmount: Prisma.Decimal;
         whtAmount: Prisma.Decimal;
-      }
-    >();
-
-    for (const exp of filtered) {
-      const key = `${exp.vendorName}|${exp.vendorTaxId}|${exp.whtIncomeType}`;
-      const existing = groupMap.get(key);
-      if (existing) {
-        existing.totalAmount = existing.totalAmount.add(exp.totalAmount);
-        existing.whtAmount = existing.whtAmount.add(exp.withholdingTax);
-      } else {
-        groupMap.set(key, {
-          vendorName: exp.vendorName ?? '',
-          vendorTaxId: exp.vendorTaxId ?? '',
-          whtIncomeType: exp.whtIncomeType,
-          totalAmount: exp.totalAmount,
-          whtAmount: exp.withholdingTax,
-        });
-      }
-    }
-
-    const vendors = Array.from(groupMap.values());
-    const totalWht = vendors.reduce(
-      (sum, v) => sum.add(v.whtAmount),
-      new Prisma.Decimal(0),
-    );
-
-    return {
-      totalWht,
-      transactionCount: filtered.length,
-      vendors,
+      }>,
     };
   }
 }

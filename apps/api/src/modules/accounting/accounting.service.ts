@@ -1,20 +1,12 @@
 import {
   Injectable,
   Logger,
-  NotFoundException,
-  BadRequestException,
   OnModuleInit,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StructuredLoggerService } from '../../common/logger';
-import { ExpenseAccountType, ExpenseStatus, Prisma, WhtIncomeType } from '@prisma/client';
-import { CreateExpenseDto, UpdateExpenseDto } from './dto/expense.dto';
-import { validatePeriodOpen as validatePeriodOpenUtil } from '../../utils/period-lock.util';
+import { Prisma } from '@prisma/client';
 import { JournalAutoService } from '../journal/journal-auto.service';
-import { ExpenseTemplate } from '../journal/cpa-templates/expense.template';
-import { ExpenseReverseTemplate } from '../journal/cpa-templates/expense-reverse.template';
-import { ExpenseClearanceTemplate } from '../journal/cpa-templates/expense-clearance.template';
-import { d, dAdd, dSub, dMul, dRound } from '../../utils/decimal.util';
 
 /**
  * INVENTORY COSTING METHOD: Specific Identification
@@ -24,81 +16,12 @@ import { d, dAdd, dSub, dMul, dRound } from '../../utils/decimal.util';
  */
 export const INVENTORY_COSTING_METHOD = 'SPECIFIC_IDENTIFICATION' as const;
 
-// Map category → accountType for validation
-const CATEGORY_ACCOUNT_MAP: Record<string, ExpenseAccountType> = {
-  COGS_PRODUCT: 'COST_OF_SALES',
-  COGS_REPAIR_PARTS: 'COST_OF_SALES',
-  SELL_COMMISSION: 'SELLING_EXPENSE',
-  SELL_ADVERTISING: 'SELLING_EXPENSE',
-  SELL_TRANSPORT: 'SELLING_EXPENSE',
-  SELL_PACKAGING: 'SELLING_EXPENSE',
-  ADMIN_SALARY: 'ADMINISTRATIVE_EXPENSE',
-  ADMIN_SOCIAL_SECURITY: 'ADMINISTRATIVE_EXPENSE',
-  ADMIN_RENT: 'ADMINISTRATIVE_EXPENSE',
-  ADMIN_UTILITIES: 'ADMINISTRATIVE_EXPENSE',
-  ADMIN_OFFICE_SUPPLIES: 'ADMINISTRATIVE_EXPENSE',
-  ADMIN_DEPRECIATION: 'ADMINISTRATIVE_EXPENSE',
-  ADMIN_INSURANCE: 'ADMINISTRATIVE_EXPENSE',
-  ADMIN_TAX_FEE: 'ADMINISTRATIVE_EXPENSE',
-  ADMIN_MAINTENANCE: 'ADMINISTRATIVE_EXPENSE',
-  ADMIN_TRAVEL: 'ADMINISTRATIVE_EXPENSE',
-  ADMIN_TELEPHONE: 'ADMINISTRATIVE_EXPENSE',
-  OTHER_INTEREST: 'OTHER_EXPENSE',
-  OTHER_LOSS: 'OTHER_EXPENSE',
-  OTHER_FINE: 'OTHER_EXPENSE',
-  OTHER_MISC: 'OTHER_EXPENSE',
-};
+// Legacy CATEGORY_ACCOUNT_MAP / CATEGORY_CODE_MAP / generateExpenseNumber were removed
+// alongside the legacy Expense model. The new ExpenseDocument module owns category↔code
+// resolution and document numbering — see modules/expense-documents/.
 
-// Map category → account code (PEAK format XX-XXXX)
-// Phase A.6: audited against 105-account finance-coa.csv.
-// FINANCE entity has NO COGS accounts — COGS is booked on SHOP side (deferred to A.5b).
-// COGS_PRODUCT, COGS_REPAIR_PARTS — deprecated; FINANCE has no COGS. UI hides these.
-const CATEGORY_CODE_MAP: Record<string, string> = {
-  SELL_COMMISSION: '52-1101',       // ค่าคอมฯ พนักงาน
-  SELL_ADVERTISING: '52-1102',      // ค่าส่งเสริมการขาย
-  SELL_TRANSPORT: '53-1304',        // ค่าไปรษณีย์ และขนส่ง
-  SELL_PACKAGING: '52-1102',        // nearest match (CSV lacks dedicated packaging)
-  ADMIN_SALARY: '53-1101',          // เงินเดือน ค่าจ้าง
-  ADMIN_SOCIAL_SECURITY: '53-1102', // เงินสมทบประกันสังคม (corrected from 53-1103 ค่าล่วงเวลา per audit)
-  ADMIN_RENT: '53-1502',            // ค่าธรรมเนียมราชการ — TEMP placeholder; CSV needs dedicated rent (defer A.7)
-  ADMIN_UTILITIES: '53-1302',       // ค่าไฟฟ้า
-  ADMIN_OFFICE_SUPPLIES: '53-1201', // ค่าเครื่องเขียน วัสดุสำนักงาน
-  ADMIN_DEPRECIATION: '53-1601',    // ค่าเสื่อมราคา-อุปกรณ์ (now exists in 105-CSV)
-  ADMIN_INSURANCE: '53-1502',       // ค่าธรรมเนียมราชการ — TEMP; CSV needs dedicated insurance
-  ADMIN_TAX_FEE: '54-1103',         // เบี้ยปรับ-ภ.พ.30 (รายจ่ายต้องห้าม)
-  ADMIN_MAINTENANCE: '53-1305',     // ค่าซ่อมแซมฯ
-  ADMIN_TRAVEL: '53-1304',          // ค่าไปรษณีย์ และขนส่ง
-  ADMIN_TELEPHONE: '53-1303',       // ค่าโทรศัพท์สำนักงาน
-  OTHER_INTEREST: '53-1501',        // ค่าธรรมเนียมธนาคาร
-  OTHER_LOSS: '53-1503',            // กำไร(ขาดทุน) สุทธิจากการปัดเศษ
-  OTHER_FINE: '54-1104',            // เบี้ยปรับเงินเพิ่ม (อื่นๆ)
-  OTHER_MISC: '53-1502',            // ค่าธรรมเนียมราชการ
-};
-
-/**
- * Resolve a category string to a CoA account code.
- * Phase A.6: category column is now String (was enum), so we handle two cases:
- *  1. If it looks like a CoA code already (XX-XXXX), return as-is.
- *  2. Otherwise, treat as legacy enum key and look up in CATEGORY_CODE_MAP.
- * Returns null if not resolvable — caller should log warn + skip JE post.
- */
-function resolveAccountCode(category: string): string | null {
-  if (/^\d{2}-\d{4}$/.test(category)) return category;
-  return CATEGORY_CODE_MAP[category] ?? null;
-}
-
-async function generateExpenseNumber(tx: Prisma.TransactionClient): Promise<string> {
-  const now = new Date();
-  const ym = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
-  const prefix = `EXP-${ym}-`;
-  const last = await tx.expense.findFirst({
-    where: { expenseNumber: { startsWith: prefix } },
-    orderBy: { expenseNumber: 'desc' },
-    select: { expenseNumber: true },
-  });
-  const seq = last ? parseInt(last.expenseNumber.slice(prefix.length), 10) + 1 : 1;
-  return `${prefix}${String(seq).padStart(4, '0')}`;
-}
+// Phase A.6 boot validator was tied to the legacy CATEGORY_CODE_MAP — the new
+// ExpenseDocument module performs its own CoA validation at document creation time.
 
 /**
  * ═══════════════════════════════════════════════════════════════
@@ -130,30 +53,14 @@ export class AccountingService implements OnModuleInit {
   constructor(
     private prisma: PrismaService,
     private journalAutoService: JournalAutoService,
-    private expenseTemplate: ExpenseTemplate,
-    private expenseReverseTemplate: ExpenseReverseTemplate,
-    private expenseClearanceTemplate: ExpenseClearanceTemplate,
   ) {}
 
   /**
-   * Phase A.6 boot validator — verifies every code in CATEGORY_CODE_MAP exists
-   * in the chart_of_accounts table. Throws on startup if any code is missing
-   * so misconfiguration is caught immediately rather than at JE-post time.
+   * Boot hook retained for future CoA validation needs. Legacy CATEGORY_CODE_MAP
+   * validation moved to the new ExpenseDocument module.
    */
   async onModuleInit() {
-    const codes = [...new Set(Object.values(CATEGORY_CODE_MAP))];
-    const found = await this.prisma.chartOfAccount.findMany({
-      where: { code: { in: codes }, deletedAt: null },
-      select: { code: true },
-    });
-    const foundSet = new Set(found.map((f) => f.code));
-    const missing = codes.filter((c) => !foundSet.has(c));
-    if (missing.length > 0) {
-      const msg = `[Phase A.6] CATEGORY_CODE_MAP references missing CoA codes: ${missing.join(', ')}. Update CATEGORY_CODE_MAP or seed missing codes.`;
-      this.logger.error(msg);
-      throw new Error(msg);
-    }
-    this.logger.log(`CATEGORY_CODE_MAP validated: all ${codes.length} codes exist in CoA.`);
+    // No-op — see ExpenseDocument module for CoA validation.
   }
 
   /**
@@ -168,555 +75,6 @@ export class AccountingService implements OnModuleInit {
     return branches.map((b) => b.id);
   }
 
-  // ─── Expenses CRUD ───────────────────────────────────────────────────────────
-
-  async createExpense(dto: CreateExpenseDto, createdById: string) {
-    // W-013: Validate expense date is not in a closed period.
-    // Resolve companyId from branchId so AccountingPeriod model can be checked.
-    const branch = dto.branchId
-      ? await this.prisma.branch.findUnique({
-          where: { id: dto.branchId },
-          select: { companyId: true },
-        })
-      : null;
-    await this.validatePeriodOpen(new Date(dto.expenseDate), branch?.companyId ?? undefined);
-
-    const expectedAccountType = CATEGORY_ACCOUNT_MAP[dto.category];
-    if (expectedAccountType && expectedAccountType !== dto.accountType) {
-      throw new BadRequestException(
-        `หมวดย่อย ${dto.category} ต้องอยู่ในหมวดหลัก ${expectedAccountType}`,
-      );
-    }
-
-    let vatAmount = dto.vatAmount || 0;
-    if (dto.includeVat && !dto.vatAmount) {
-      const vatConfig = await this.prisma.systemConfig.findUnique({ where: { key: 'vat_pct' } });
-      const vatRate = vatConfig ? d(vatConfig.value) : d(0.07);
-      vatAmount = dRound(dMul(dto.amount, vatRate)).toNumber();
-    }
-    const withholdingTax = dto.withholdingTax || 0;
-    const whtRate = dto.whtRate || null;
-    const whtIncomeType = (dto.whtIncomeType as WhtIncomeType) || null;
-    const whtFormType = dto.whtFormType ?? null;
-    const totalAmount = dRound(dAdd(dto.amount, vatAmount)).toNumber();
-    const netPayment = dRound(dSub(totalAmount, withholdingTax)).toNumber();
-    const accountCode = dto.accountCode || resolveAccountCode(dto.category) || null;
-
-    const expense = await this.prisma.$transaction(async (tx) => {
-      const expenseNumber = await generateExpenseNumber(tx);
-
-      return tx.expense.create({
-        data: {
-          expenseNumber,
-          branchId: dto.branchId,
-          accountType: dto.accountType,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          category: dto.category as any, // Phase A.6: String after migration; cast until Prisma client regenerates
-          accountCode,
-          description: dto.description,
-          amount: dto.amount,
-          vatAmount,
-          totalAmount,
-          withholdingTax,
-          whtRate,
-          whtIncomeType,
-          whtFormType,
-          netPayment,
-          expenseDate: new Date(dto.expenseDate),
-          paymentMethod: dto.paymentMethod,
-          paymentDate: dto.paymentDate ? new Date(dto.paymentDate) : null,
-          reference: dto.reference,
-          vendorName: dto.vendorName,
-          vendorTaxId: dto.vendorTaxId,
-          receiptImageUrl: dto.receiptImageUrl,
-          taxInvoiceNo: dto.taxInvoiceNo,
-          isRecurring: dto.isRecurring || false,
-          recurringDay: dto.recurringDay,
-          note: dto.note,
-          createdById,
-        },
-        include: {
-          branch: { select: { id: true, name: true } },
-          createdBy: { select: { id: true, name: true } },
-        },
-      });
-    });
-    this.structuredLogger.log('expense.created', {
-      expenseId: expense.id,
-      expenseNumber: expense.expenseNumber,
-      branchId: expense.branchId,
-      accountType: expense.accountType,
-      category: expense.category,
-      totalAmount: Number(expense.totalAmount),
-      createdById,
-    });
-    return expense;
-  }
-
-  async findAllExpenses(filters: {
-    branchId?: string;
-    accountType?: ExpenseAccountType;
-    category?: string;
-    status?: ExpenseStatus;
-    search?: string;
-    startDate?: string;
-    endDate?: string;
-    page?: number;
-    limit?: number;
-    tab?: string;
-  }) {
-    const { branchId, accountType, category, status, search, startDate, endDate, page = 1, limit = 20, tab } = filters;
-    const safePage = Math.max(1, page);
-    const safeLimit = Math.min(100, Math.max(1, limit));
-
-    const where: Prisma.ExpenseWhereInput = { deletedAt: null };
-    if (branchId) where.branchId = branchId;
-    if (accountType) where.accountType = accountType;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if (category) where.category = category as any; // Phase A.6: String after migration; cast until Prisma client regenerates
-    if (status) where.status = status;
-
-    // Tab-based logical filters (UI shortcut). Each tab translates to a
-    // status set + paymentDate constraint. `status` query param wins if both
-    // are passed.
-    if (!status && tab) {
-      switch (tab) {
-        case 'draft':
-          where.status = 'DRAFT';
-          break;
-        case 'unpaid': // รอจ่าย — recorded but not paid yet
-          where.status = { in: ['APPROVED', 'PENDING_APPROVAL'] };
-          where.paymentDate = null;
-          break;
-        case 'recorded': // บันทึกแล้ว — any non-draft / non-voided / non-rejected
-          where.status = { in: ['APPROVED', 'PENDING_APPROVAL', 'PAID'] };
-          break;
-        case 'paid':
-          where.status = 'PAID';
-          break;
-        // 'all' or unknown → no extra filter
-      }
-    }
-
-    if (startDate || endDate) {
-      where.expenseDate = {};
-      if (startDate) where.expenseDate.gte = new Date(startDate);
-      if (endDate) {
-        const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999);
-        where.expenseDate.lte = end;
-      }
-    }
-    if (search) {
-      where.OR = [
-        { expenseNumber: { contains: search, mode: 'insensitive' } },
-        { description: { contains: search, mode: 'insensitive' } },
-        { vendorName: { contains: search, mode: 'insensitive' } },
-        { reference: { contains: search, mode: 'insensitive' } },
-      ];
-    }
-
-    const [data, total] = await Promise.all([
-      this.prisma.expense.findMany({
-        where,
-        include: {
-          branch: { select: { id: true, name: true } },
-          createdBy: { select: { id: true, name: true } },
-          approvedBy: { select: { id: true, name: true } },
-        },
-        orderBy: { expenseDate: 'desc' },
-        skip: (safePage - 1) * safeLimit,
-        take: safeLimit,
-      }),
-      this.prisma.expense.count({ where }),
-    ]);
-
-    return { data, total, page: safePage, limit: safeLimit };
-  }
-
-  async findOneExpense(id: string) {
-    const expense = await this.prisma.expense.findFirst({
-      where: { id, deletedAt: null },
-      include: {
-        branch: { select: { id: true, name: true } },
-        createdBy: { select: { id: true, name: true } },
-        approvedBy: { select: { id: true, name: true } },
-      },
-    });
-    if (!expense) throw new NotFoundException('ไม่พบรายจ่าย');
-    return expense;
-  }
-
-  async updateExpense(id: string, dto: UpdateExpenseDto) {
-    const expense = await this.prisma.expense.findFirst({ where: { id, deletedAt: null } });
-    if (!expense) throw new NotFoundException('ไม่พบรายจ่าย');
-    if (expense.status === 'APPROVED' || expense.status === 'PAID') {
-      throw new BadRequestException('ไม่สามารถแก้ไขรายจ่ายที่อนุมัติหรือจ่ายแล้ว');
-    }
-
-    // T2-C12: once a staff member submits the expense for approval, the
-    // monetary fields (amount, vatAmount, withholdingTax) are frozen. Only
-    // description-like metadata may still be edited. Prevents silently
-    // bumping a number between submission and approval. (APPROVED / PAID
-    // are already fully blocked above — this catches PENDING_APPROVAL.)
-    if (
-      expense.status === 'PENDING_APPROVAL' &&
-      (dto.amount !== undefined || dto.vatAmount !== undefined || dto.withholdingTax !== undefined)
-    ) {
-      throw new BadRequestException(
-        'แก้ไขจำนวนเงิน / VAT / ภาษีหัก ณ ที่จ่าย ไม่ได้เมื่อรายจ่ายอยู่ในสถานะรออนุมัติ — ยกเลิกการส่งอนุมัติก่อน',
-      );
-    }
-
-    const data: Prisma.ExpenseUpdateInput = {};
-    if (dto.accountType !== undefined) data.accountType = dto.accountType;
-    if (dto.category !== undefined) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      data.category = dto.category as any; // Phase A.6: String after migration; cast until Prisma client regenerates
-      data.accountCode = resolveAccountCode(dto.category) || expense.accountCode;
-    }
-    if (dto.accountCode !== undefined) data.accountCode = dto.accountCode;
-    if (dto.description !== undefined) data.description = dto.description;
-    if (dto.expenseDate !== undefined) data.expenseDate = new Date(dto.expenseDate);
-    if (dto.paymentMethod !== undefined) data.paymentMethod = dto.paymentMethod;
-    if (dto.paymentDate !== undefined) data.paymentDate = new Date(dto.paymentDate);
-    if (dto.reference !== undefined) data.reference = dto.reference;
-    if (dto.vendorName !== undefined) data.vendorName = dto.vendorName;
-    if (dto.vendorTaxId !== undefined) data.vendorTaxId = dto.vendorTaxId;
-    if (dto.receiptImageUrl !== undefined) data.receiptImageUrl = dto.receiptImageUrl;
-    if (dto.taxInvoiceNo !== undefined) data.taxInvoiceNo = dto.taxInvoiceNo;
-    if (dto.note !== undefined) data.note = dto.note;
-    if (dto.whtFormType !== undefined) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (data as any).whtFormType = dto.whtFormType;
-    }
-
-    const amount = dto.amount !== undefined ? dto.amount : d(expense.amount).toNumber();
-    const vatAmount = dto.vatAmount !== undefined ? dto.vatAmount : d(expense.vatAmount).toNumber();
-    const withholdingTax = dto.withholdingTax !== undefined ? dto.withholdingTax : d(expense.withholdingTax).toNumber();
-    if (dto.amount !== undefined || dto.vatAmount !== undefined || dto.withholdingTax !== undefined) {
-      data.amount = amount;
-      data.vatAmount = vatAmount;
-      data.totalAmount = dAdd(amount, vatAmount).toNumber();
-      data.withholdingTax = withholdingTax;
-    }
-
-    return this.prisma.expense.update({
-      where: { id },
-      data,
-      include: {
-        branch: { select: { id: true, name: true } },
-        createdBy: { select: { id: true, name: true } },
-      },
-    });
-  }
-
-  async submitExpenseForApproval(id: string) {
-    const expense = await this.prisma.expense.findFirst({ where: { id, deletedAt: null } });
-    if (!expense) throw new NotFoundException('ไม่พบรายจ่าย');
-    if (expense.status !== 'DRAFT' && expense.status !== 'REJECTED') {
-      throw new BadRequestException('สถานะปัจจุบันไม่สามารถส่งอนุมัติได้');
-    }
-    return this.prisma.expense.update({ where: { id }, data: { status: 'PENDING_APPROVAL' } });
-  }
-
-  async approveExpense(id: string, approvedById: string) {
-    const expense = await this.prisma.expense.findFirst({ where: { id, deletedAt: null } });
-    if (!expense) throw new NotFoundException('ไม่พบรายจ่าย');
-    if (expense.status !== 'PENDING_APPROVAL') {
-      throw new BadRequestException('รายจ่ายนี้ไม่ได้อยู่ในสถานะรออนุมัติ');
-    }
-    if (expense.createdById === approvedById) {
-      throw new BadRequestException('ผู้อนุมัติต้องไม่ใช่ผู้สร้างรายการ (Segregation of Duties)');
-    }
-    return this.prisma.expense.update({
-      where: { id },
-      data: { status: 'APPROVED', approvedById, approvedAt: new Date() },
-    });
-  }
-
-  async rejectExpense(id: string, approvedById: string, reason: string) {
-    const expense = await this.prisma.expense.findFirst({ where: { id, deletedAt: null } });
-    if (!expense) throw new NotFoundException('ไม่พบรายจ่าย');
-    if (expense.status !== 'PENDING_APPROVAL') {
-      throw new BadRequestException('รายจ่ายนี้ไม่ได้อยู่ในสถานะรออนุมัติ');
-    }
-    return this.prisma.expense.update({
-      where: { id },
-      data: { status: 'REJECTED', approvedById, approvedAt: new Date(), rejectReason: reason },
-    });
-  }
-
-  /**
-   * Records an accrual JE for an APPROVED expense (Cr 21-1104).
-   * Allows 2-step accrual workflow: APPROVED → recordExpenseAccrual → markExpensePaid.
-   * markExpensePaid detects the accrual and posts a clearance JE instead of full payment.
-   */
-  async recordExpenseAccrual(id: string, actingUserId?: string) {
-    return this.prisma.$transaction(async (tx) => {
-      const expense = await tx.expense.findFirst({ where: { id, deletedAt: null } });
-      if (!expense) throw new NotFoundException('ไม่พบรายจ่าย');
-      if (expense.status !== 'APPROVED') {
-        throw new BadRequestException('ต้องอนุมัติก่อนถึงจะบันทึกค้างจ่ายได้');
-      }
-
-      const existing = await tx.journalEntry.findFirst({
-        where: {
-          AND: [
-            { metadata: { path: ['flow'], equals: 'expense' } as any },
-            { metadata: { path: ['expenseId'], equals: id } as any },
-          ],
-          deletedAt: null,
-        },
-      });
-      if (existing) {
-        throw new BadRequestException(
-          `รายจ่ายนี้มี JE อยู่แล้ว (${existing.entryNumber}) — บันทึกค้างจ่ายซ้ำไม่ได้`,
-        );
-      }
-
-      const result = await this.expenseTemplate.execute(
-        { expenseId: id, isPaid: false, postedById: actingUserId },
-        tx,
-      );
-      return { expense, journalEntryNo: result?.entryNo };
-    });
-  }
-
-  async markExpensePaid(
-    id: string,
-    paymentDate?: string,
-    depositAccountCode?: string,
-    actingUserId?: string,
-  ) {
-    return this.prisma.$transaction(async (tx) => {
-      const expense = await tx.expense.findFirst({
-        where: { id, deletedAt: null },
-        include: { branch: { select: { companyId: true } } },
-      });
-      if (!expense) throw new NotFoundException('ไม่พบรายจ่าย');
-      if (expense.status !== 'APPROVED') {
-        throw new BadRequestException('ต้องอนุมัติก่อนถึงจะบันทึกจ่ายได้');
-      }
-
-      // Resolve cash account in priority order:
-      //   1. Explicit caller param (depositAccountCode)
-      //   2. Acting user's defaultCashAccountCode (per accounting.md cash dimension policy)
-      //   3. Hard fallback: 11-1101
-      let resolvedDepositCode = depositAccountCode;
-      if (!resolvedDepositCode && actingUserId) {
-        const user = await tx.user.findUnique({
-          where: { id: actingUserId },
-          select: { defaultCashAccountCode: true },
-        });
-        resolvedDepositCode = user?.defaultCashAccountCode ?? undefined;
-      }
-      resolvedDepositCode = resolvedDepositCode || '11-1101';
-
-      const updated = await tx.expense.update({
-        where: { id },
-        data: { status: 'PAID', paymentDate: paymentDate ? new Date(paymentDate) : new Date() },
-      });
-
-      // Detect existing accrual JE — if present, route to clearance template.
-      // Otherwise, post the full payment JE.
-      const accrual = await tx.journalEntry.findFirst({
-        where: {
-          AND: [
-            { metadata: { path: ['flow'], equals: 'expense' } as any },
-            { metadata: { path: ['expenseId'], equals: id } as any },
-            { metadata: { path: ['isPaid'], equals: false } as any },
-          ],
-          deletedAt: null,
-        },
-      });
-
-      if (accrual) {
-        // 2-step path: accrual already booked → post clearance JE only
-        await this.expenseClearanceTemplate.execute(
-          {
-            expenseId: updated.id,
-            depositAccountCode: resolvedDepositCode,
-            postedById: actingUserId,
-          },
-          tx,
-        );
-      } else {
-        // 1-step path: post full payment JE atomic with status update
-        await this.expenseTemplate.execute(
-          {
-            expenseId: updated.id,
-            depositAccountCode: resolvedDepositCode,
-            isPaid: true,
-            postedById: actingUserId,
-          },
-          tx,
-        );
-      }
-
-      return updated;
-    });
-  }
-
-  async voidExpense(id: string, voidedById: string, voidReason: string) {
-    if (!voidReason?.trim()) {
-      throw new BadRequestException('กรุณาระบุเหตุผลในการยกเลิก');
-    }
-    return this.prisma.$transaction(async (tx) => {
-      const expense = await tx.expense.findFirst({ where: { id, deletedAt: null } });
-      if (!expense) throw new NotFoundException('ไม่พบรายจ่าย');
-      if (expense.status === 'VOIDED') {
-        throw new BadRequestException('รายจ่ายนี้ถูกยกเลิกไปแล้ว');
-      }
-
-      const wasPaid = expense.status === 'PAID';
-
-      if (wasPaid) {
-        const voider = await tx.user.findUnique({ where: { id: voidedById } });
-        if (voider?.role !== 'OWNER') {
-          throw new BadRequestException('เฉพาะ OWNER เท่านั้นที่สามารถยกเลิกรายจ่ายที่จ่ายแล้ว');
-        }
-      }
-
-      const voided = await tx.expense.update({
-        where: { id },
-        data: { status: 'VOIDED', voidReason: voidReason.trim(), voidedById, voidedAt: new Date() },
-      });
-
-      // Auto-post reverse JE for expenses that already had a JE posted (PAID status).
-      // Atomic with status update — if reverse fails, void rolls back.
-      // Note: 2-step accruals produce TWO JEs (flow='expense' isPaid:false + flow='expense-clearance').
-      // Both must be reversed for the cancellation to net to zero on the cash side.
-      if (wasPaid) {
-        // Reverse the original expense JE (covers 1-step PAID + the accrual leg of 2-step)
-        await this.expenseReverseTemplate.execute(
-          {
-            expenseId: voided.id,
-            reversedById: voidedById,
-            reason: voidReason.trim(),
-          },
-          tx,
-        );
-
-        // Reverse the clearance JE if 2-step path was used
-        const clearance = await tx.journalEntry.findFirst({
-          where: {
-            AND: [
-              { metadata: { path: ['flow'], equals: 'expense-clearance' } as any },
-              { metadata: { path: ['expenseId'], equals: voided.id } as any },
-            ],
-            deletedAt: null,
-          },
-        });
-        if (clearance) {
-          await this.expenseReverseTemplate.execute(
-            {
-              expenseId: voided.id,
-              reversedById: voidedById,
-              reason: voidReason.trim(),
-              flowOverride: 'expense-clearance',
-            },
-            tx,
-          );
-        }
-      }
-
-      this.structuredLogger.log('expense.voided', {
-        expenseId: voided.id,
-        expenseNumber: voided.expenseNumber,
-        branchId: voided.branchId,
-        totalAmount: Number(voided.totalAmount),
-        voidedById,
-        voidReason: voidReason.trim(),
-        reversedJe: wasPaid,
-      });
-      return voided;
-    });
-  }
-
-  async getExpenseSummary(filters: { branchId?: string; startDate?: string; endDate?: string }) {
-    const where: Prisma.ExpenseWhereInput = { deletedAt: null, status: { notIn: ['VOIDED', 'REJECTED'] } };
-    if (filters.branchId) where.branchId = filters.branchId;
-    if (filters.startDate || filters.endDate) {
-      where.expenseDate = {};
-      if (filters.startDate) where.expenseDate.gte = new Date(filters.startDate);
-      if (filters.endDate) {
-        const end = new Date(filters.endDate);
-        end.setHours(23, 59, 59, 999);
-        where.expenseDate.lte = end;
-      }
-    }
-
-    const expenses = await this.prisma.expense.findMany({
-      where,
-      select: { accountType: true, category: true, totalAmount: true, status: true, paymentDate: true },
-    });
-
-    const byAccountType: Record<string, number> = {};
-    const byCategory: Record<string, number> = {};
-    const byStatus: Record<string, number> = {};
-    let totalAmount = 0;
-    let pendingCount = 0;
-    let accrualUnpaidCount = 0;
-    let accrualUnpaidTotal = 0;
-
-    for (const e of expenses) {
-      const amt = new Prisma.Decimal(e.totalAmount);
-      totalAmount = new Prisma.Decimal(totalAmount).add(amt).toNumber();
-      byAccountType[e.accountType] = new Prisma.Decimal(byAccountType[e.accountType] ?? 0).add(amt).toNumber();
-      byCategory[e.category] = new Prisma.Decimal(byCategory[e.category] ?? 0).add(amt).toNumber();
-      byStatus[e.status] = (byStatus[e.status] ?? 0) + 1;
-      if (e.status === 'PENDING_APPROVAL' || e.status === 'DRAFT') pendingCount++;
-      // Accrual unpaid = approved/recorded but not yet paid (paymentDate null)
-      if ((e.status === 'APPROVED' || e.status === 'PENDING_APPROVAL') && !e.paymentDate) {
-        accrualUnpaidCount++;
-        accrualUnpaidTotal = new Prisma.Decimal(accrualUnpaidTotal).add(amt).toNumber();
-      }
-    }
-
-    return {
-      totalAmount,
-      totalCount: expenses.length,
-      pendingCount,
-      byAccountType,
-      byCategory,
-      byStatus,
-      accrualUnpaidCount,
-      accrualUnpaidTotal,
-    };
-  }
-
-  async getExpenseCategoryBreakdown(filters: { branchId?: string; startDate?: string; endDate?: string }) {
-    const where: Prisma.ExpenseWhereInput = { deletedAt: null, status: { notIn: ['VOIDED', 'REJECTED'] } };
-    if (filters.branchId) where.branchId = filters.branchId;
-    if (filters.startDate || filters.endDate) {
-      where.expenseDate = {};
-      if (filters.startDate) where.expenseDate.gte = new Date(filters.startDate);
-      if (filters.endDate) {
-        const end = new Date(filters.endDate);
-        end.setHours(23, 59, 59, 999);
-        where.expenseDate.lte = end;
-      }
-    }
-
-    const expenses = await this.prisma.expense.findMany({
-      where,
-      select: { accountType: true, category: true, totalAmount: true, accountCode: true },
-    });
-
-    const breakdown: Record<string, { accountType: string; accountCode: string | null; total: number; count: number }> = {};
-    for (const e of expenses) {
-      if (!breakdown[e.category]) {
-        breakdown[e.category] = { accountType: e.accountType, accountCode: e.accountCode, total: 0, count: 0 };
-      }
-      breakdown[e.category].total = new Prisma.Decimal(breakdown[e.category].total).add(new Prisma.Decimal(e.totalAmount)).toNumber();
-      breakdown[e.category].count++;
-    }
-
-    return Object.entries(breakdown)
-      .map(([category, data]) => ({ category, ...data }))
-      .sort((a, b) => (a.accountCode || '').localeCompare(b.accountCode || ''));
-  }
 
   // ─── P&L Calculation ─────────────────────────────────────────────────────────
 
@@ -774,15 +132,9 @@ export class AccountingService implements OnModuleInit {
         where: { status: 'RECEIVED', receivedDate: dateRange, ...branchFilter },
         _sum: { receivedAmount: true },
       }),
-      this.prisma.expense.findMany({
-        where: {
-          expenseDate: dateRange,
-          status: { in: ['PAID', 'APPROVED'] },
-          deletedAt: null,
-          ...branchFilter,
-        },
-        select: { category: true, totalAmount: true },
-      }),
+      // Legacy `expense` model removed — expense aggregation deferred to ExpenseDocument
+      // module integration in a follow-up PR. Returns empty list so downstream maps stay zero.
+      Promise.resolve([] as { category: string; totalAmount: Prisma.Decimal }[]),
       this.prisma.sale.findMany({
         where: { createdAt: dateRange, deletedAt: null, ...branchFilter },
         select: { product: { select: { costPrice: true } }, bundleProductIds: true },
@@ -1020,10 +372,9 @@ export class AccountingService implements OnModuleInit {
         where: { status: 'RECEIVED', receivedDate: dateRange, deletedAt: null, ...branchFilter },
         select: { receivedAmount: true, receivedDate: true },
       }),
-      this.prisma.expense.findMany({
-        where: { expenseDate: dateRange, status: { in: ['PAID', 'APPROVED'] }, deletedAt: null, ...branchFilter },
-        select: { totalAmount: true, expenseDate: true },
-      }),
+      // Legacy `expense` model removed — expense aggregation deferred to ExpenseDocument
+      // module integration in a follow-up PR. Returns empty list so downstream sums stay zero.
+      Promise.resolve([] as { totalAmount: Prisma.Decimal; expenseDate: Date }[]),
       this.prisma.sale.findMany({
         where: { createdAt: dateRange, ...branchFilter },
         select: { createdAt: true, product: { select: { costPrice: true } } },
@@ -1136,18 +487,6 @@ export class AccountingService implements OnModuleInit {
 
   // ─── W-013: Period Closing Lock ───────────────────────────────────────────────
 
-  /**
-   * Check if a date falls in a closed accounting period.
-   *
-   * @param date        - The transaction date to validate.
-   * @param companyId   - Optional. When provided, also checks the AccountingPeriod
-   *                      model for a CLOSED/SYNCED period for that company's year+month.
-   *                      Falls back to legacy SystemConfig check regardless.
-   */
-  private async validatePeriodOpen(date: Date, companyId?: string): Promise<void> {
-    return validatePeriodOpenUtil(this.prisma, date, companyId);
-  }
-
   async closeAccountingPeriod(closedUntil: string) {
     await this.prisma.systemConfig.upsert({
       where: { key: 'accounting_period_closed_until' },
@@ -1211,11 +550,9 @@ export class AccountingService implements OnModuleInit {
           where: { status: 'RECEIVED', receivedDate: { lte: endDate }, deletedAt: null, ...branchFilter },
           _sum: { receivedAmount: true },
         }),
-        // Expenses paid (cash outflow)
-        this.prisma.expense.aggregate({
-          where: { status: 'PAID', paymentDate: { lte: endDate }, deletedAt: null, ...branchFilter },
-          _sum: { totalAmount: true },
-        }),
+        // Expenses paid (cash outflow) — legacy `expense` model removed; ExpenseDocument
+        // integration deferred to a follow-up PR. Returns zero stub.
+        Promise.resolve({ _sum: { totalAmount: null as Prisma.Decimal | null } }),
       ]);
 
     // Purchase orders paid (cash outflow for inventory)
@@ -1274,22 +611,10 @@ export class AccountingService implements OnModuleInit {
           where: { creditBalance: { gt: 0 }, deletedAt: null, ...branchFilter },
           _sum: { creditBalance: true },
         }),
-        // 2300 WHT payable (from expenses with withholding tax)
-        this.prisma.expense.aggregate({
-          where: {
-            status: { in: ['APPROVED', 'PAID'] },
-            deletedAt: null,
-            withholdingTax: { gt: 0 },
-            expenseDate: { lte: endDate },
-            ...branchFilter,
-          },
-          _sum: { withholdingTax: true },
-        }),
-        // 2600 Accrued expenses (approved but not yet paid)
-        this.prisma.expense.aggregate({
-          where: { status: 'APPROVED', deletedAt: null, expenseDate: { lte: endDate }, ...branchFilter },
-          _sum: { totalAmount: true },
-        }),
+        // 2300 WHT payable + 2600 Accrued expenses — legacy `expense` model removed;
+        // ExpenseDocument integration deferred to a follow-up PR. Returns zero stubs.
+        Promise.resolve({ _sum: { withholdingTax: null as Prisma.Decimal | null } }),
+        Promise.resolve({ _sum: { totalAmount: null as Prisma.Decimal | null } }),
       ]);
 
     const grossReceivables = new Prisma.Decimal(hpReceivables._sum.amountDue ?? 0);
@@ -1748,11 +1073,9 @@ export class AccountingService implements OnModuleInit {
           where: { status: 'RECEIVED', receivedDate: dateRange, deletedAt: null, ...branchFilter },
           _sum: { receivedAmount: true },
         }),
-        // Cash paid for expenses
-        this.prisma.expense.aggregate({
-          where: { status: 'PAID', paymentDate: dateRange, deletedAt: null, ...branchFilter },
-          _sum: { totalAmount: true },
-        }),
+        // Cash paid for expenses — legacy `expense` model removed; ExpenseDocument
+        // integration deferred to a follow-up PR. Returns zero stub.
+        Promise.resolve({ _sum: { totalAmount: null as Prisma.Decimal | null } }),
       ]);
 
     // Cash paid for inventory (purchase orders paid in the period)

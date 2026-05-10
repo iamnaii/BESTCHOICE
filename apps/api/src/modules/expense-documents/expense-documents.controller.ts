@@ -101,6 +101,12 @@ export class ExpenseDocumentsController {
     return this.service.getDailySummary({ date, branchId }, user);
   }
 
+  @Post('preview-je')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  previewJe(@Body() dto: CreateExpenseDocumentDto) {
+    return this.service.previewJe(dto);
+  }
+
   @Get(':id/cn-cap')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   cnCap(@Param('id') id: string) {

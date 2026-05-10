@@ -34,6 +34,7 @@ describe('ExpenseDocumentsService.createPayroll', () => {
       settlement,
       { createAndPost: jest.fn() } as never,
       new LineAggregatorService(),
+      { preview: jest.fn() } as never,
     );
   });
 

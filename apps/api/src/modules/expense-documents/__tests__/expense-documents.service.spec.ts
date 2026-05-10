@@ -71,6 +71,7 @@ describe('ExpenseDocumentsService', () => {
       settlement,
       { createAndPost: jest.fn() } as never,
       new LineAggregatorService(),
+      { preview: jest.fn() } as never,
     );
   });
 
@@ -423,6 +424,7 @@ describe('ExpenseDocumentsService', () => {
         prisma, docNumber, transition, sameDay, accrual, creditNote, payroll, settlement,
         journalMock as never,
         new LineAggregatorService(),
+        { preview: jest.fn() } as never,
       );
       await svc.voidDocument('doc-1', 'user-1');
       expect(journalMock.createAndPost).toHaveBeenCalledTimes(1);
@@ -463,6 +465,7 @@ describe('ExpenseDocumentsService', () => {
         prisma, docNumber, transition, sameDay, accrual, creditNote, payroll, settlement,
         journalMock as never,
         new LineAggregatorService(),
+        { preview: jest.fn() } as never,
       );
       await svc.voidDocument('se-1', 'user-1');
       // Both cleared EXs reverted via updateMany with deletedAt:null guard

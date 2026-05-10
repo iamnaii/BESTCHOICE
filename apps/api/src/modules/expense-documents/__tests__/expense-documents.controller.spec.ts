@@ -24,6 +24,7 @@ describe('ExpenseDocumentsController', () => {
       createCreditNote: jest.fn().mockResolvedValue({ id: 'cn-1', number: 'CN-20260510-0001' }),
       createPayroll: jest.fn().mockResolvedValue({ id: 'pr-1', number: 'PR-20260510-0001' }),
       createSettlement: jest.fn().mockResolvedValue({ id: 'se-1', number: 'SE-20260510-0001' }),
+      previewJe: jest.fn().mockResolvedValue({ flow: 'expense-accrual', lines: [], totals: { balanced: true } }),
     };
     const moduleRef = await Test.createTestingModule({
       controllers: [ExpenseDocumentsController],
@@ -112,5 +113,12 @@ describe('ExpenseDocumentsController', () => {
       { branchId: 'b1' },
       { id: 'user-1', branchId: 'b1', role: 'OWNER' },
     );
+  });
+
+  it('POST /preview-je calls service.previewJe', async () => {
+    const dto = { documentType: 'EXPENSE', branchId: 'b1', documentDate: '2026-05-11', lines: [{ category: '53-1101', quantity: 1, unitPrice: 100 }] };
+    service.previewJe = jest.fn().mockResolvedValue({ flow: 'expense-accrual', lines: [], totals: { balanced: true } });
+    await controller.previewJe(dto as never);
+    expect(service.previewJe).toHaveBeenCalledWith(dto);
   });
 });

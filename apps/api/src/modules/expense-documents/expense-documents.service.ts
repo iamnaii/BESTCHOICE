@@ -23,6 +23,7 @@ import { CreatePayrollDto } from './dto/create-payroll.dto';
 import { CreateSettlementDto } from './dto/create-settlement.dto';
 import { hasCrossBranchAccess } from '../auth/branch-access.util';
 import { LineAggregatorService } from './services/line-aggregator.service';
+import { JePreviewService } from './services/je-preview.service';
 
 /**
  * Returns a Date representing 12:00 noon Asia/Bangkok on the same calendar day
@@ -56,6 +57,7 @@ export class ExpenseDocumentsService {
     private readonly settlementTemplate: VendorSettlementTemplate,
     private readonly journal: JournalAutoService,
     private readonly aggregator: LineAggregatorService,
+    private readonly jePreview: JePreviewService,
   ) {}
 
   // ─── Create ──────────────────────────────────────────────────────────
@@ -706,6 +708,23 @@ export class ExpenseDocumentsService {
       usedTotal: used.toString(),
       remainingCap: cap.toString(),
     };
+  }
+
+  // ─── JE Preview (pure — no DB write) ────────────────────────────────
+  async previewJe(dto: CreateExpenseDocumentDto) {
+    const codes = new Set<string>();
+    for (const l of dto.lines) codes.add(l.category);
+    if (dto.depositAccountCode) codes.add(dto.depositAccountCode);
+    codes.add('11-2104');
+    codes.add('21-1104');
+    if (dto.whtFormType === 'PND53') codes.add('21-3103'); else codes.add('21-3102');
+
+    const rows = await this.prisma.chartOfAccount.findMany({
+      where: { code: { in: [...codes] }, deletedAt: null },
+      select: { code: true, name: true },
+    });
+    const accountNames = new Map(rows.map((r) => [r.code, r.name]));
+    return this.jePreview.preview(dto, accountNames);
   }
 
   // ─── Find one ────────────────────────────────────────────────────────

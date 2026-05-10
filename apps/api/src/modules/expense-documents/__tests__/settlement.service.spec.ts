@@ -64,6 +64,7 @@ describe('ExpenseDocumentsService.createSettlement', () => {
       settlement,
       { createAndPost: jest.fn() } as never,
       new LineAggregatorService(),
+      { preview: jest.fn() } as never,
     );
   });
 

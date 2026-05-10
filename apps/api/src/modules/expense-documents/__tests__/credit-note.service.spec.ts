@@ -52,6 +52,7 @@ describe('ExpenseDocumentsService.createCreditNote', () => {
       settlement,
       { createAndPost: jest.fn() } as never,
       new LineAggregatorService(),
+      { preview: jest.fn() } as never,
     );
   });
 

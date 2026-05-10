@@ -4,6 +4,7 @@ import { ExpenseDocumentsService } from '../expense-documents.service';
 import { DocNumberService } from '../services/doc-number.service';
 import { StatusTransitionService } from '../services/status-transition.service';
 import { LineAggregatorService } from '../services/line-aggregator.service';
+import { JePreviewService } from '../services/je-preview.service';
 import { ExpenseSameDayTemplate } from '../../journal/cpa-templates/expense-same-day.template';
 import { ExpenseAccrualTemplate } from '../../journal/cpa-templates/expense-accrual.template';
 import { CreditNoteTemplate } from '../../journal/cpa-templates/credit-note.template';
@@ -95,6 +96,7 @@ describe('ExpenseDocuments full lifecycle (integration)', () => {
       settlement,
       journal,
       new LineAggregatorService(),
+      new JePreviewService(new LineAggregatorService()),
     );
   }
 

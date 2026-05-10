@@ -18,9 +18,6 @@ import { Vat60dayCron } from './cron/vat-60day.cron';
 import { BadDebtProvisionTemplate } from './cpa-templates/bad-debt-provision.template';
 import { BadDebtWriteOffTemplate } from './cpa-templates/bad-debt-writeoff.template';
 import { EclStageReverseTemplate } from './cpa-templates/ecl-stage-reverse.template';
-import { ExpenseTemplate } from './cpa-templates/expense.template';
-import { ExpenseReverseTemplate } from './cpa-templates/expense-reverse.template';
-import { ExpenseClearanceTemplate } from './cpa-templates/expense-clearance.template';
 import { DefectExchangeReversalTemplate } from './cpa-templates/defect-exchange-reversal.template';
 import { ReceiptVoidReversalTemplate } from './cpa-templates/receipt-void-reversal.template';
 import { DepreciationTemplate } from './cpa-templates/depreciation.template';
@@ -32,6 +29,11 @@ import { DepreciationReverseTemplate } from './cpa-templates/depreciation-revers
 import { DepreciationCron } from './cron/depreciation.cron';
 import { WhtAccrualTemplate } from './cpa-templates/wht-accrual.template';
 import { WhtRemittanceTemplate } from './cpa-templates/wht-remittance.template';
+import { ExpenseSameDayTemplate } from './cpa-templates/expense-same-day.template';
+import { ExpenseAccrualTemplate } from './cpa-templates/expense-accrual.template';
+import { CreditNoteTemplate } from './cpa-templates/credit-note.template';
+import { PayrollTemplate } from './cpa-templates/payroll.template';
+import { VendorSettlementTemplate } from './cpa-templates/vendor-settlement.template';
 
 @Module({
   imports: [PrismaModule],
@@ -54,9 +56,6 @@ import { WhtRemittanceTemplate } from './cpa-templates/wht-remittance.template';
     BadDebtProvisionTemplate,
     BadDebtWriteOffTemplate,
     EclStageReverseTemplate,
-    ExpenseTemplate,
-    ExpenseReverseTemplate,
-    ExpenseClearanceTemplate,
     DefectExchangeReversalTemplate,
     ReceiptVoidReversalTemplate,
     DepreciationTemplate,
@@ -68,6 +67,11 @@ import { WhtRemittanceTemplate } from './cpa-templates/wht-remittance.template';
     DepreciationCron,
     WhtAccrualTemplate,
     WhtRemittanceTemplate,
+    ExpenseSameDayTemplate,
+    ExpenseAccrualTemplate,
+    CreditNoteTemplate,
+    PayrollTemplate,
+    VendorSettlementTemplate,
   ],
   exports: [
     JournalService,
@@ -85,9 +89,6 @@ import { WhtRemittanceTemplate } from './cpa-templates/wht-remittance.template';
     BadDebtProvisionTemplate,
     BadDebtWriteOffTemplate,
     EclStageReverseTemplate,
-    ExpenseTemplate,
-    ExpenseReverseTemplate,
-    ExpenseClearanceTemplate,
     DefectExchangeReversalTemplate,
     ReceiptVoidReversalTemplate,
     DepreciationTemplate,
@@ -98,6 +99,11 @@ import { WhtRemittanceTemplate } from './cpa-templates/wht-remittance.template';
     DepreciationReverseTemplate,
     WhtAccrualTemplate,
     WhtRemittanceTemplate,
+    ExpenseSameDayTemplate,
+    ExpenseAccrualTemplate,
+    CreditNoteTemplate,
+    PayrollTemplate,
+    VendorSettlementTemplate,
   ],
 })
 export class JournalModule {}

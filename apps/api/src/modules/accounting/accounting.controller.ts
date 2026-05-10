@@ -2,7 +2,6 @@ import {
   Controller,
   Get,
   Post,
-  Patch,
   Param,
   Body,
   Query,
@@ -13,17 +12,22 @@ import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { AccountingService } from './accounting.service';
 import { BadDebtService } from './bad-debt.service';
 import { MonthlyCloseService } from './monthly-close.service';
-import { CreateExpenseDto, UpdateExpenseDto, RejectExpenseDto } from './dto/expense.dto';
 import { CloseMonthDto } from './dto/monthly-close.dto';
 import { ReopenPeriodDto } from './dto/reopen-period.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
-import { hasCrossBranchAccess } from '../auth/branch-access.util';
 import { Roles } from '../auth/decorators/roles.decorator';
-import { ExpenseAccountType, ExpenseStatus } from '@prisma/client';
 
-@ApiTags('Expenses')
+/**
+ * Legacy expenses CRUD endpoints have been removed (Phase: expense-documents PR-1).
+ * Replaced by the new ExpenseDocument module — see modules/expense-documents/.
+ *
+ * This controller now exposes only the financial-reporting + period-close + bad-debt
+ * + monthly-close endpoints that were historically grouped under /expenses for legacy
+ * routing reasons. They retain the /expenses prefix to avoid breaking existing clients.
+ */
+@ApiTags('Accounting')
 @ApiBearerAuth('JWT')
 @Controller('expenses')
 @UseGuards(JwtAuthGuard, RolesGuard, BranchGuard)
@@ -33,144 +37,6 @@ export class AccountingController {
     private badDebtService: BadDebtService,
     private monthlyCloseService: MonthlyCloseService,
   ) {}
-
-  @Post()
-  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
-  create(
-    @Body() dto: CreateExpenseDto,
-    @Request() req: { user: { id: string } },
-  ) {
-    return this.service.createExpense(dto, req.user.id);
-  }
-
-  @Get()
-  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
-  findAll(
-    @Query('branchId') branchId?: string,
-    @Query('accountType') accountType?: ExpenseAccountType,
-    @Query('category') category?: string,
-    @Query('status') status?: ExpenseStatus,
-    @Query('search') search?: string,
-    @Query('startDate') startDate?: string,
-    @Query('endDate') endDate?: string,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-    @Request() req?: { user: { role: string; branchId?: string } },
-  ) {
-    const effectiveBranchId = hasCrossBranchAccess(req?.user)
-      ? branchId
-      : req?.user?.branchId || branchId;
-
-    return this.service.findAllExpenses({
-      branchId: effectiveBranchId,
-      accountType,
-      category,
-      status,
-      search,
-      startDate,
-      endDate,
-      page: page ? parseInt(page) : 1,
-      limit: limit ? parseInt(limit) : 20,
-    });
-  }
-
-  @Get('summary')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
-  getSummary(
-    @Query('branchId') branchId?: string,
-    @Query('startDate') startDate?: string,
-    @Query('endDate') endDate?: string,
-    @Request() req?: { user: { role: string; branchId?: string } },
-  ) {
-    const effectiveBranchId = hasCrossBranchAccess(req?.user)
-      ? branchId
-      : req?.user?.branchId || branchId;
-
-    return this.service.getExpenseSummary({ branchId: effectiveBranchId, startDate, endDate });
-  }
-
-  @Get('category-breakdown')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
-  getCategoryBreakdown(
-    @Query('branchId') branchId?: string,
-    @Query('startDate') startDate?: string,
-    @Query('endDate') endDate?: string,
-    @Request() req?: { user: { role: string; branchId?: string } },
-  ) {
-    const effectiveBranchId = hasCrossBranchAccess(req?.user)
-      ? branchId
-      : req?.user?.branchId || branchId;
-
-    return this.service.getExpenseCategoryBreakdown({ branchId: effectiveBranchId, startDate, endDate });
-  }
-
-  @Get(':id')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
-  findOne(@Param('id') id: string) {
-    return this.service.findOneExpense(id);
-  }
-
-  @Patch(':id')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
-  update(@Param('id') id: string, @Body() dto: UpdateExpenseDto) {
-    return this.service.updateExpense(id, dto);
-  }
-
-  @Post(':id/submit')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
-  submitForApproval(@Param('id') id: string) {
-    return this.service.submitExpenseForApproval(id);
-  }
-
-  @Post(':id/approve')
-  @Roles('OWNER')
-  approve(
-    @Param('id') id: string,
-    @Request() req: { user: { id: string } },
-  ) {
-    return this.service.approveExpense(id, req.user.id);
-  }
-
-  @Post(':id/reject')
-  @Roles('OWNER')
-  reject(
-    @Param('id') id: string,
-    @Body() dto: RejectExpenseDto,
-    @Request() req: { user: { id: string } },
-  ) {
-    return this.service.rejectExpense(id, req.user.id, dto.reason);
-  }
-
-  @Post(':id/accrue')
-  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
-  accrue(@Param('id') id: string, @Request() req?: { user?: { id?: string } }) {
-    return this.service.recordExpenseAccrual(id, req?.user?.id);
-  }
-
-  @Post(':id/pay')
-  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
-  markPaid(
-    @Param('id') id: string,
-    @Body() body: { paymentDate?: string; depositAccountCode?: string } = {},
-    @Request() req?: { user?: { id?: string } },
-  ) {
-    return this.service.markExpensePaid(
-      id,
-      body.paymentDate,
-      body.depositAccountCode,
-      req?.user?.id,
-    );
-  }
-
-  @Post(':id/void')
-  @Roles('OWNER')
-  void(
-    @Param('id') id: string,
-    @Request() req: { user: { id: string } },
-    @Body('reason') reason: string,
-  ) {
-    return this.service.voidExpense(id, req.user.id, reason);
-  }
 
   // ============================================================
   // T17: Journal-line-based financial reports (CPA chart)

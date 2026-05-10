@@ -81,6 +81,9 @@ const LineOaSettingsPage = lazy(() => import('@/pages/LineOaSettingsPage'));
 const FinanceReceivablePage = lazy(() => import('@/pages/FinanceReceivablePage'));
 const FinancePortfolioPage = lazy(() => import('@/pages/FinancePortfolioPage'));
 const ExpensesPage = lazy(() => import('@/pages/ExpensesPage'));
+const ExpenseDocumentNewPage = lazy(() => import('@/pages/ExpenseDocumentNewPage'));
+const ExpenseFavoritesPage = lazy(() => import('@/pages/ExpenseFavoritesPage'));
+const ExpenseDailySummaryPage = lazy(() => import('@/pages/ExpenseDailySummaryPage'));
 const ProfitLossPage = lazy(() => import('@/pages/ProfitLossPage'));
 const CompanySettingsPage = lazy(() => import('@/pages/CompanySettingsPage'));
 const TaxReportsPage = lazy(() => import('@/pages/TaxReportsPage'));
@@ -423,6 +426,30 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
                 <FinancePortfolioPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/expenses/new"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <ExpenseDocumentNewPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/expenses/favorites"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <ExpenseFavoritesPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/expenses/daily-summary"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <ExpenseDailySummaryPage />
               </ProtectedRoute>
             }
           />

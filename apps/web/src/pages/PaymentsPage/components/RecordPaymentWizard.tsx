@@ -29,7 +29,9 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
+import { formatNumberDecimal } from '@/utils/formatters';
+import { AccrualModeChip } from './AccrualModeChip';
 import { CASH_ACCOUNT_CODES } from '@/components/CashAccountSelect';
 import { formatThaiDate } from '@/lib/date';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -65,6 +67,8 @@ interface JePreview {
   totalCredit: string;
   isBalanced: boolean;
   rescheduleFeeDisplay?: string;
+  accrualMode?: '2B_ONLY' | 'CONSOLIDATED_PAYING_AHEAD' | 'CONSOLIDATED_BACKFILL';
+  dueDate?: string;
 }
 
 interface CoaRow {
@@ -295,9 +299,11 @@ const METHOD_OPTIONS: { id: WizardMethod; label: string; icon: React.ReactNode; 
 function JePreviewPanel({
   preview,
   isLoading,
+  errorMessage,
 }: {
   preview: JePreview | undefined;
   isLoading: boolean;
+  errorMessage?: string;
 }) {
   return (
     <div className="rounded-xl border border-border bg-card p-4">
@@ -311,6 +317,20 @@ function JePreviewPanel({
         </span>
       </div>
 
+      {preview?.accrualMode && (
+        <AccrualModeChip mode={preview.accrualMode} dueDate={preview.dueDate} />
+      )}
+
+      {errorMessage && !isLoading && (
+        <div className="mb-3 rounded-lg border border-destructive/30 bg-destructive/5 p-2.5 text-xs leading-snug flex gap-2 text-destructive">
+          <AlertCircle className="size-3.5 shrink-0 mt-0.5" />
+          <div className="space-y-0.5">
+            <div className="font-medium">ไม่สามารถสร้าง JE preview ได้</div>
+            <div className="text-[11px] opacity-90">{errorMessage}</div>
+          </div>
+        </div>
+      )}
+
       {isLoading && (
         <div className="flex items-center gap-2 py-4 text-muted-foreground text-sm">
           <Loader2 className="size-4 animate-spin" />
@@ -318,7 +338,7 @@ function JePreviewPanel({
         </div>
       )}
 
-      {!isLoading && !preview && (
+      {!isLoading && !preview && !errorMessage && (
         <p className="text-xs text-muted-foreground leading-snug py-2">
           กรอกยอดรับเพื่อดู JE preview
         </p>
@@ -343,14 +363,10 @@ function JePreviewPanel({
                   </span>
                 </div>
                 <span className="text-right font-mono leading-snug text-foreground">
-                  {parseFloat(line.debit) > 0
-                    ? parseFloat(line.debit).toLocaleString('th-TH', { minimumFractionDigits: 2 })
-                    : ''}
+                  {parseFloat(line.debit) > 0 ? formatNumberDecimal(line.debit) : ''}
                 </span>
                 <span className="text-right font-mono leading-snug text-foreground">
-                  {parseFloat(line.credit) > 0
-                    ? parseFloat(line.credit).toLocaleString('th-TH', { minimumFractionDigits: 2 })
-                    : ''}
+                  {parseFloat(line.credit) > 0 ? formatNumberDecimal(line.credit) : ''}
                 </span>
               </div>
             ))}
@@ -373,8 +389,8 @@ function JePreviewPanel({
               <span>Dr รวม = Cr รวม</span>
             </div>
             <span className="font-mono leading-snug">
-              {parseFloat(preview.totalDebit).toLocaleString('th-TH', { minimumFractionDigits: 2 })} ={' '}
-              {parseFloat(preview.totalCredit).toLocaleString('th-TH', { minimumFractionDigits: 2 })}{' '}
+              {formatNumberDecimal(preview.totalDebit)} ={' '}
+              {formatNumberDecimal(preview.totalCredit)}{' '}
               {preview.isBalanced ? 'BALANCED' : 'UNBALANCED'}
             </span>
           </div>
@@ -619,7 +635,7 @@ export function RecordPaymentWizard({
     (debouncedParams.amountReceived > 0 || (detectedCase === 'NORMAL' && advanceBalance.gte(expectedTotal))) &&
     debouncedParams.depositAccountCode.length > 0;
 
-  const { data: previewData, isFetching: previewLoading } = useQuery<JePreview, Error, JePreview>({
+  const { data: previewData, isFetching: previewLoading, error: previewError } = useQuery<JePreview, Error, JePreview>({
     queryKey: ['payment-preview', debouncedParams],
     queryFn: async () => {
       const { data } = await api.post<JePreview>('/payments/preview-journal', debouncedParams);
@@ -631,6 +647,7 @@ export function RecordPaymentWizard({
   });
 
   const preview: JePreview | undefined = previewData;
+  const previewErrorMessage = previewError ? getErrorMessage(previewError) : undefined;
 
   // QR mode: ref + slip auto-captured by webhook log, no manual input.
   // Submit becomes "ส่ง QR ให้ลูกค้า" instead of "บันทึกการชำระ".
@@ -1002,7 +1019,7 @@ export function RecordPaymentWizard({
           </div>
 
           {/* JE Preview — always visible */}
-          <JePreviewPanel preview={preview} isLoading={previewLoading} />
+          <JePreviewPanel preview={preview} isLoading={previewLoading} errorMessage={previewErrorMessage} />
         </DialogBody>
 
         {/* Footer — single submit · QR mode swaps "บันทึกชำระ" for "ส่ง QR" */}

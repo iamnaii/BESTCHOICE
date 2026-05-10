@@ -1,0 +1,47 @@
+import {
+  IsString,
+  IsNumber,
+  IsOptional,
+  Min,
+  Max,
+  Matches,
+} from 'class-validator';
+
+export class ExpenseLineInput {
+  /** CoA code prefixed 5x-xxxx (validated against chart_of_accounts in service) */
+  @IsString()
+  @Matches(/^5\d-\d{4}$/, { message: 'หมวดบัญชีต้องเป็นรูปแบบ 5x-xxxx' })
+  category!: string;
+
+  @IsString()
+  @IsOptional()
+  description?: string;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01, { message: 'จำนวนต้องมากกว่า 0' })
+  @Max(99999999.99, { message: 'จำนวนเกินขอบเขต' })
+  quantity!: number;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01, { message: 'ราคาต่อหน่วยต้องมากกว่า 0' })
+  @Max(99999999.99, { message: 'ราคาต่อหน่วยเกินขอบเขต' })
+  unitPrice!: number;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(99999999.99, { message: 'ส่วนลดเกินขอบเขต' })
+  @IsOptional()
+  discount?: number;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100)
+  @IsOptional()
+  vatPercent?: number;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100)
+  @IsOptional()
+  whtPercent?: number;
+}

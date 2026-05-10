@@ -895,5 +895,84 @@ describe('PaymentsService', () => {
       const cashLine = result.lines.find((l) => l.accountCode === '11-1101');
       expect(cashLine?.accountName).toBe('เงินสด — สุทธินีย์ คงเดช');
     });
+
+    it('reports accrualMode=2B_ONLY when installment is already accrued', async () => {
+      prisma.installmentSchedule.findUnique.mockResolvedValue(mockInstallmentAccrued);
+
+      const result = await service.previewJournal({
+        contractId: 'contract-preview',
+        installmentNo: 2,
+        amountReceived: 2202.41,
+        depositAccountCode: '11-1101',
+      });
+
+      expect(result.accrualMode).toBe('2B_ONLY');
+      expect(result.dueDate).toBeDefined();
+    });
+
+    it('reports accrualMode=CONSOLIDATED_PAYING_AHEAD when dueDate is in the future', async () => {
+      const futureDate = new Date();
+      futureDate.setDate(futureDate.getDate() + 30);
+      prisma.installmentSchedule.findUnique.mockResolvedValue({
+        ...mockInstallmentNotAccrued,
+        dueDate: futureDate,
+      });
+
+      const result = await service.previewJournal({
+        contractId: 'contract-preview',
+        installmentNo: 2,
+        amountReceived: 2202.41,
+        depositAccountCode: '11-1101',
+      });
+
+      expect(result.accrualMode).toBe('CONSOLIDATED_PAYING_AHEAD');
+    });
+
+    it('reports accrualMode=CONSOLIDATED_BACKFILL when dueDate has passed but not accrued', async () => {
+      const pastDate = new Date();
+      pastDate.setDate(pastDate.getDate() - 7);
+      prisma.installmentSchedule.findUnique.mockResolvedValue({
+        ...mockInstallmentNotAccrued,
+        dueDate: pastDate,
+      });
+
+      const result = await service.previewJournal({
+        contractId: 'contract-preview',
+        installmentNo: 2,
+        amountReceived: 2202.41,
+        depositAccountCode: '11-1101',
+      });
+
+      expect(result.accrualMode).toBe('CONSOLIDATED_BACKFILL');
+    });
+
+    it('blocks PARTIAL when installment is not yet accrued', async () => {
+      prisma.installmentSchedule.findUnique.mockResolvedValue(mockInstallmentNotAccrued);
+
+      await expect(
+        service.previewJournal({
+          contractId: 'contract-preview',
+          installmentNo: 2,
+          amountReceived: 1000,
+          depositAccountCode: '11-1101',
+          case: 'PARTIAL',
+        }),
+      ).rejects.toThrow(/ยังไม่ได้ทำ accrual/);
+    });
+
+    it('blocks RESCHEDULE when installment is not yet accrued', async () => {
+      prisma.installmentSchedule.findUnique.mockResolvedValue(mockInstallmentNotAccrued);
+
+      await expect(
+        service.previewJournal({
+          contractId: 'contract-preview',
+          installmentNo: 2,
+          amountReceived: 100,
+          depositAccountCode: '11-1101',
+          case: 'RESCHEDULE',
+          daysToShift: 5,
+        }),
+      ).rejects.toThrow(/ยังไม่ได้ทำ accrual/);
+    });
   });
 });

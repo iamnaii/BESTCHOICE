@@ -72,7 +72,7 @@ export class ContractPaymentService {
    *   (7) ส่วนลด           = (6) × discountPct
    *   (8) ยอดชำระปิดยอด    = (3) - (7)
    */
-  async getEarlyPayoffQuote(id: string, discountPctInput?: number) {
+  async getEarlyPayoffQuote(id: string, discountPctInput?: number, depositAccountCode?: string) {
     const contract = await this.findOne(id);
     if (!['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status)) {
       throw new BadRequestException('สัญญาต้องอยู่ในสถานะ ACTIVE, OVERDUE หรือ DEFAULT');
@@ -81,8 +81,20 @@ export class ContractPaymentService {
       throw new BadRequestException('ข้อมูลสัญญาผิดพลาด: จำนวนงวดต้องมากกว่า 0');
     }
 
-    const fullyPaidCount = contract.payments.filter(p => p.status === 'PAID').length;
-    const remainingMonths = contract.totalMonths - fullyPaidCount;
+    // Align with EarlyPayoffJP4Template.execute: count distinct installment
+    // schedules NOT covered by a PAID Payment row (Set lookup) — instead of
+    // simply counting PAID payments. Both yield the same number under
+    // 1:1 invariant, but using the same shape as the template guarantees
+    // preview and post never drift if the data model evolves (e.g.,
+    // multiple Payment rows per installment from PARTIAL flows).
+    const allInstNos = await this.prisma.installmentSchedule.findMany({
+      where: { contractId: contract.id, deletedAt: null },
+      select: { installmentNo: true },
+    });
+    const paidInstNos = new Set(
+      contract.payments.filter((p) => p.status === 'PAID').map((p) => p.installmentNo),
+    );
+    const remainingMonths = allInstNos.filter((i) => !paidInstNos.has(i.installmentNo)).length;
     if (remainingMonths <= 0) {
       throw new BadRequestException('ไม่มีงวดค้างชำระ ไม่จำเป็นต้องปิดก่อนกำหนด');
     }
@@ -135,6 +147,77 @@ export class ContractPaymentService {
         .map(p => d(p.lateFee)),
     ).toNumber();
 
+    // ── JE preview (mirrors EarlyPayoffJP4Template.execute structure) ────────
+    // Computed from contract fields directly so the UI shows the same JE
+    // shape as what gets posted on confirm. Uses installment-level rounding
+    // (ROUND_DOWN principal, ROUND_HALF_UP interest+VAT) to match 2A/2B.
+    const epTotal = new Decimal(contract.totalMonths);
+    const epUnpaidD = new Decimal(remainingMonths);
+    const epFinanced = new Decimal(contract.financedAmount.toString());
+    const epCommission = contract.storeCommission != null
+      ? new Decimal(contract.storeCommission.toString())
+      : epFinanced.times('0.10').toDecimalPlaces(2);
+    const epInterest = new Decimal(contract.interestTotal.toString());
+    const epGrossExclVat = epFinanced.plus(epCommission).plus(epInterest);
+    const epVat = contract.vatAmount != null
+      ? new Decimal(contract.vatAmount.toString())
+      : epGrossExclVat.times('0.07').toDecimalPlaces(2);
+    const epInstallmentExclVat = epGrossExclVat.div(epTotal).toDecimalPlaces(2, Decimal.ROUND_DOWN);
+    const epInterestPerInst = epInterest.div(epTotal).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+    const epVatPerInst = epVat.div(epTotal).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+    const epRemainingGross = epInstallmentExclVat.times(epUnpaidD);
+    const epRemainingDeferredInterest = epInterestPerInst.times(epUnpaidD);
+    const epRemainingDeferredVat = epVatPerInst.times(epUnpaidD);
+    // discountPct here is fraction 0..1 (0.5 for 50%); epDiscount math takes
+    // the fraction directly, no scaling needed.
+    const epDiscount = epRemainingDeferredInterest
+      .times(new Decimal(discountPct))
+      .toDecimalPlaces(2);
+    // Policy A — VAT ไม่ลดตาม discount
+    const epSettleVat = epRemainingDeferredVat;
+    const epSettlement = epRemainingGross.minus(epDiscount).plus(epSettleVat);
+
+    // Cash dimension: caller-provided > fallback 11-1101 (matches accounting.md)
+    const epDepositCode = depositAccountCode ?? '11-1101';
+    // Resolve all account names from CoA so preview shows real labels.
+    const epCodes = [epDepositCode, '11-2106', '21-2102', '52-1106', '11-2101', '11-2105', '41-1101', '21-2101'];
+    const epCoaRows = await this.prisma.chartOfAccount.findMany({
+      where: { code: { in: epCodes } },
+      select: { code: true, name: true },
+    });
+    const epNameMap = new Map(epCoaRows.map((r) => [r.code, r.name]));
+    const nameOf = (code: string) => epNameMap.get(code) ?? code;
+
+    type JeLine = { accountCode: string; accountName: string; debit: string; credit: string; description: string };
+    const jeLines: JeLine[] = [
+      { accountCode: epDepositCode, accountName: nameOf(epDepositCode), debit: epSettlement.toFixed(2), credit: '0.00', description: `รับ ${epSettlement.toFixed(2)} ฿ ปิดยอด` },
+      { accountCode: '11-2106', accountName: nameOf('11-2106'), debit: epRemainingDeferredInterest.toFixed(2), credit: '0.00', description: `ยกเลิกค่าอนาคต ${epRemainingDeferredInterest.toFixed(2)}` },
+      { accountCode: '21-2102', accountName: nameOf('21-2102'), debit: epRemainingDeferredVat.toFixed(2), credit: '0.00', description: `ล้าง 21-2102 ${epRemainingDeferredVat.toFixed(2)}` },
+    ];
+    if (epDiscount.gt(0)) {
+      jeLines.push({
+        accountCode: '52-1106',
+        accountName: nameOf('52-1106'),
+        debit: epDiscount.toFixed(2),
+        credit: '0.00',
+        description: `ส่วนลดดอกเบี้ย ${discountPct * 100}%`,
+      });
+    }
+    jeLines.push(
+      { accountCode: '11-2101', accountName: nameOf('11-2101'), debit: '0.00', credit: epRemainingGross.toFixed(2), description: `ล้าง Gross ${epRemainingGross.toFixed(2)}` },
+      { accountCode: '11-2105', accountName: nameOf('11-2105'), debit: '0.00', credit: epRemainingDeferredVat.toFixed(2), description: `ล้าง 11-2105 ${epRemainingDeferredVat.toFixed(2)}` },
+      { accountCode: '41-1101', accountName: nameOf('41-1101'), debit: '0.00', credit: epRemainingDeferredInterest.toFixed(2), description: 'รับรู้รายได้' },
+      { accountCode: '21-2101', accountName: nameOf('21-2101'), debit: '0.00', credit: epSettleVat.toFixed(2), description: `VAT ถึงกำหนด ${epSettleVat.toFixed(2)}` },
+    );
+
+    let jeTotalDr = new Decimal(0);
+    let jeTotalCr = new Decimal(0);
+    for (const l of jeLines) {
+      jeTotalDr = jeTotalDr.plus(l.debit);
+      jeTotalCr = jeTotalCr.plus(l.credit);
+    }
+    const jeIsBalanced = jeTotalDr.toFixed(2) === jeTotalCr.toFixed(2);
+
     return {
       monthlyPayment: round2(monthlyPayment),
       remainingMonths,
@@ -148,11 +231,19 @@ export class ContractPaymentService {
       discountAmount,
       unpaidLateFees,
       totalPayoff: round2(dAdd(totalPayoff, unpaidLateFees)),
+      journalPreview: {
+        lines: jeLines,
+        totalDebit: jeTotalDr.toFixed(2),
+        totalCredit: jeTotalCr.toFixed(2),
+        isBalanced: jeIsBalanced,
+      },
     };
   }
 
   async earlyPayoff(id: string, userId: string, dto: EarlyPayoffDto) {
-    const quote = await this.getEarlyPayoffQuote(id, dto.discountPct);
+    // Resolve cash dimension once: dto > user default (TODO via userId lookup) > 11-1101
+    const depositAccountCode = dto.depositAccountCode ?? '11-1101';
+    const quote = await this.getEarlyPayoffQuote(id, dto.discountPct, depositAccountCode);
     const paidDate = dto.paymentDate ? new Date(dto.paymentDate) : new Date();
 
     // Require reference for non-cash methods
@@ -277,7 +368,7 @@ export class ContractPaymentService {
                 interestDiscountPercent: quote.discountPct,
               },
               lines: [
-                { accountCode: '11-1101', dr: epSettlement, cr: ep0, description: `รับ ${epSettlement.toFixed(2)} ฿ ปิดยอด` },
+                { accountCode: depositAccountCode, dr: epSettlement, cr: ep0, description: `รับ ${epSettlement.toFixed(2)} ฿ ปิดยอด` },
                 { accountCode: '11-2106', dr: epRemainingDeferredInterest, cr: ep0, description: 'ยกเลิกรายได้รอตัดบัญชี-ดอกเบี้ย' },
                 { accountCode: '21-2102', dr: epRemainingDeferredVat, cr: ep0, description: 'ล้างภาษีขายรอเรียกเก็บ' },
                 { accountCode: '52-1106', dr: epDiscount, cr: ep0, description: 'ส่วนลดดอกเบี้ย-ปิดยอดก่อนกำหนด' },

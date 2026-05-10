@@ -18,10 +18,10 @@ interface ImportResult {
   errors: ImportError[];
 }
 
-const SAMPLE_CSV = `contractNumber,installmentNo,amount,paymentMethod,transactionRef,notes
-BC-2568-0001,1,3500,BANK_TRANSFER,REF001,ชำระงวดที่ 1
-BC-2568-0001,2,3500,CASH,,ชำระงวดที่ 2
-BC-2568-0002,1,4200,BANK_TRANSFER,REF002,`;
+const SAMPLE_CSV = `contractNumber,installmentNo,amount,paymentMethod,transactionRef,notes,depositAccountCode
+BC-2568-0001,1,3500,BANK_TRANSFER,REF001,ชำระงวดที่ 1,11-1201
+BC-2568-0001,2,3500,CASH,,ชำระงวดที่ 2,11-1101
+BC-2568-0002,1,4200,BANK_TRANSFER,REF002,,11-1201`;
 
 export default function PaymentCsvImportPage() {
   const [csvText, setCsvText] = useState('');
@@ -130,10 +130,15 @@ export default function PaymentCsvImportPage() {
         <CardContent className="p-4">
           <div className="text-xs font-medium text-muted-foreground mb-2">รูปแบบ CSV ที่รองรับ</div>
           <code className="block text-xs bg-muted p-3 rounded-lg overflow-x-auto whitespace-pre">
-            contractNumber,installmentNo,amount,paymentMethod,transactionRef,notes
+            contractNumber,installmentNo,amount,paymentMethod,transactionRef,notes,depositAccountCode
           </code>
-          <div className="mt-2 text-xs text-muted-foreground">
-            <strong>paymentMethod:</strong> CASH, BANK_TRANSFER, PROMPTPAY, CREDIT_CARD (ถ้าไม่ระบุจะใช้ BANK_TRANSFER)
+          <div className="mt-2 space-y-1 text-xs text-muted-foreground leading-snug">
+            <div>
+              <strong>paymentMethod:</strong> CASH, BANK_TRANSFER, PROMPTPAY, CREDIT_CARD (ถ้าไม่ระบุจะใช้ BANK_TRANSFER)
+            </div>
+            <div>
+              <strong>depositAccountCode</strong> (ไม่บังคับ): บัญชีรับเงิน — 11-1101 / 11-1102 / 11-1103 (เงินสด) หรือ 11-1201 / 11-1202 / 11-1203 (ธนาคาร) ถ้าไม่ระบุจะใช้บัญชีเริ่มต้นของผู้ใช้ที่ import
+            </div>
           </div>
         </CardContent>
       </Card>

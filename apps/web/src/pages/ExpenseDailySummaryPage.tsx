@@ -5,7 +5,8 @@ import api from '@/lib/api';
 import { ArrowLeft, Printer, FileSpreadsheet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
-import { formatNumberDecimal, formatDateShortThai } from '@/utils/formatters';
+import { formatNumberDecimal } from '@/utils/formatters';
+import { formatThaiDateLong } from '@/lib/date';
 import { useAuth } from '@/contexts/AuthContext';
 
 // ─── Types ─────────────────────────────────────────────────────────────
@@ -160,15 +161,19 @@ export default function ExpenseDailySummaryPage() {
       <div className="hidden print:block mb-4">
         <h1 className="text-lg font-bold text-center">ใบสรุปรายจ่ายประจำวัน</h1>
         <div className="text-center text-sm">
-          วันที่ {formatDateShortThai(date)} · สาขา {summary?.branchName ?? '-'}
+          วันที่ {formatThaiDateLong(date)} · สาขา {summary?.branchName ?? '-'}
         </div>
         <div className="text-center text-xs text-muted-foreground">
           ผู้จัดทำ: {user?.name ?? '-'}
         </div>
       </div>
 
-      {isLoading || !summary ? (
+      {!branchId ? (
+        <div className="text-center py-12 text-muted-foreground">กรุณาเลือกสาขา</div>
+      ) : isLoading ? (
         <div className="text-center py-12 text-muted-foreground">กำลังโหลด...</div>
+      ) : !summary ? (
+        <div className="text-center py-12 text-muted-foreground">ไม่พบข้อมูลในวันที่เลือก</div>
       ) : (
         <div className="space-y-6">
           {/* Documents table */}

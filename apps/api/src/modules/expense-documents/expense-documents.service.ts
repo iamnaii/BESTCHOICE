@@ -535,8 +535,8 @@ export class ExpenseDocumentsService {
       include: {
         expenseDetail: true,
         creditNote: true,
-        payroll: { include: { lines: true } },
-        settlement: { include: { settlementLines: true } },
+        payroll: true,
+        settlement: true,
         branch: { select: { id: true, name: true } },
       },
       orderBy: { number: 'asc' },

@@ -58,13 +58,14 @@ export function useFormCompute(state: ExpenseFormState): {
   const [error, setError] = useState<string | null>(null);
 
   // Serialize only the fields that affect the JE preview result — prevents
-  // re-firing when unrelated state (e.g. payroll, settlement) changes.
+  // re-firing when unrelated state (e.g. payroll, settlement, docType tab) changes.
+  // state.docType is intentionally omitted: buildPayload always returns documentType:'EXPENSE'
+  // regardless of docType, so toggling tabs does not change the payload string.
   const payloadString = useMemo(() => {
     const p = buildPayload(state);
     return p ? JSON.stringify(p) : null;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    state.docType,
     state.branchId,
     state.documentDate,
     state.priceType,

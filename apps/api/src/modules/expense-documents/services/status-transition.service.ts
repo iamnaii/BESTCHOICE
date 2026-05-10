@@ -6,14 +6,28 @@ export class StatusTransitionService {
   /**
    * Validate that a document can be posted from its current status.
    * Allowed source: DRAFT only.
+   * Optional totalAmount guard: prevents posting a placeholder-instantiated doc
+   * where unitPrice=0.01 was never edited by the user.
    */
   assertCanPost(input: {
     type: DocumentType;
     from: DocumentStatus;
     hasPaymentMethod: boolean;
+    totalAmount?: number | string;
   }): void {
     if (input.from !== 'DRAFT') {
       throw new BadRequestException(`ไม่สามารถ post จากสถานะ ${input.from} ได้ (ต้องเป็น DRAFT)`);
+    }
+    if (input.totalAmount !== undefined) {
+      const t =
+        typeof input.totalAmount === 'string'
+          ? parseFloat(input.totalAmount)
+          : input.totalAmount;
+      if (!isNaN(t) && t <= 0.01) {
+        throw new BadRequestException(
+          'ยอดรวมต้องมากกว่า 0.01 บาท — กรุณาแก้ไขจำนวนเงินก่อน Post',
+        );
+      }
     }
   }
 

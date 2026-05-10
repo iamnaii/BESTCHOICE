@@ -3,10 +3,9 @@ import {
   IsOptional,
   IsIn,
   IsDateString,
-  IsNumber,
-  Min,
   IsUUID,
   MinLength,
+  Matches,
 } from 'class-validator';
 import { CASH_ACCOUNT_CODES } from '../../../constants/cash-account.constants';
 
@@ -28,14 +27,16 @@ export class CreateCreditNoteDto {
   @IsOptional()
   description?: string;
 
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0.01, { message: 'จำนวนเงินต้องมากกว่า 0' })
-  subtotal!: number;
+  // Accept Decimal string from server-side /preview-je — never user-keyed,
+  // so parseFloat/IsNumber conversion risk is eliminated at the money boundary.
+  @IsString()
+  @Matches(/^\d+(\.\d{1,2})?$/, { message: 'จำนวนเงิน subtotal ไม่ถูกต้อง' })
+  subtotal!: string;
 
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0)
+  @IsString()
   @IsOptional()
-  vatAmount?: number;
+  @Matches(/^\d+(\.\d{1,2})?$/, { message: 'จำนวนเงิน vatAmount ไม่ถูกต้อง' })
+  vatAmount?: string;
 
   // Refund-account: required when original was POSTED + already paid
   @IsString()

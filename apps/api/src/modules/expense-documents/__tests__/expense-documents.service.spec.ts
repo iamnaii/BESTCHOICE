@@ -167,12 +167,14 @@ describe('ExpenseDocumentsService', () => {
 
   describe('post', () => {
     it('calls SameDay template when paymentMethod set', async () => {
+      const { Decimal } = require('@prisma/client/runtime/library');
       prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
         id: 'doc-1',
         status: 'DRAFT',
         documentType: 'EXPENSE',
         paymentMethod: 'CASH',
         depositAccountCode: '11-1101',
+        totalAmount: new Decimal('500.00'),
       });
       transition.resolveTargetStatus.mockReturnValue('POSTED');
       await service.post('doc-1', 'user-1');
@@ -180,12 +182,14 @@ describe('ExpenseDocumentsService', () => {
       expect(accrual.execute).not.toHaveBeenCalled();
     });
     it('calls Accrual template when paymentMethod missing', async () => {
+      const { Decimal } = require('@prisma/client/runtime/library');
       prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
         id: 'doc-2',
         status: 'DRAFT',
         documentType: 'EXPENSE',
         paymentMethod: null,
         depositAccountCode: null,
+        totalAmount: new Decimal('300.00'),
       });
       transition.resolveTargetStatus.mockReturnValue('ACCRUAL');
       await service.post('doc-2', 'user-1');
@@ -193,8 +197,10 @@ describe('ExpenseDocumentsService', () => {
       expect(sameDay.execute).not.toHaveBeenCalled();
     });
     it('rejects post when transition guard throws', async () => {
+      const { Decimal } = require('@prisma/client/runtime/library');
       prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
         id: 'doc-3', status: 'POSTED', documentType: 'EXPENSE', paymentMethod: 'CASH',
+        totalAmount: new Decimal('100.00'),
       });
       transition.assertCanPost.mockImplementation(() => { throw new BadRequestException('not draft'); });
       await expect(service.post('doc-3', 'user-1')).rejects.toThrow(BadRequestException);

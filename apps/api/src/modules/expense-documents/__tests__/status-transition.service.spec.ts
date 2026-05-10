@@ -17,6 +17,26 @@ describe('StatusTransitionService', () => {
     it('reject post from VOIDED', () => {
       expect(() => service.assertCanPost({ type: 'EXPENSE', from: 'VOIDED', hasPaymentMethod: true })).toThrow(BadRequestException);
     });
+    it('reject post when totalAmount is placeholder value 0.01 (number)', () => {
+      expect(() =>
+        service.assertCanPost({ type: 'EXPENSE', from: 'DRAFT', hasPaymentMethod: true, totalAmount: 0.01 }),
+      ).toThrow(BadRequestException);
+    });
+    it('reject post when totalAmount is placeholder value 0.01 (string)', () => {
+      expect(() =>
+        service.assertCanPost({ type: 'EXPENSE', from: 'DRAFT', hasPaymentMethod: true, totalAmount: '0.01' }),
+      ).toThrow(BadRequestException);
+    });
+    it('allow post when totalAmount is above threshold', () => {
+      expect(() =>
+        service.assertCanPost({ type: 'EXPENSE', from: 'DRAFT', hasPaymentMethod: true, totalAmount: '100.00' }),
+      ).not.toThrow();
+    });
+    it('allow post when totalAmount is omitted (backward compat)', () => {
+      expect(() =>
+        service.assertCanPost({ type: 'EXPENSE', from: 'DRAFT', hasPaymentMethod: true }),
+      ).not.toThrow();
+    });
   });
 
   describe('resolveTargetStatus', () => {

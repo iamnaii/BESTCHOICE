@@ -155,7 +155,9 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
         if (!state.originalDocumentId || !state.cnReason.trim()) {
           throw new Error('กรุณาเลือกเอกสารต้นฉบับและระบุเหตุผล');
         }
-        // Use server-side preview to compute totals — avoids client-side rounding drift
+        // Use server-side preview to compute totals — avoids client-side rounding drift.
+        // Totals are returned as Decimal strings; pass them directly to the CN endpoint
+        // to avoid any float-cast at the money boundary (W-1).
         const exPayload = {
           documentType: 'EXPENSE',
           branchId: state.branchId,
@@ -173,9 +175,16 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
               whtPercent: parseFloat(l.whtPercent) || 0,
             })),
         };
-        const previewResp = await api.post('/expense-documents/preview-je', exPayload);
-        const subtotal = parseFloat(previewResp.data.totals.subtotal);
-        const vatAmount = parseFloat(previewResp.data.totals.vatAmount);
+        let previewResp;
+        try {
+          previewResp = await api.post('/expense-documents/preview-je', exPayload);
+        } catch (e) {
+          // Re-wrap with CN context so the error toast names "ใบลดหนี้" not "ใบรายจ่าย" (W-5)
+          throw new Error(`ไม่สามารถคำนวณยอดใบลดหนี้: ${getErrorMessage(e)}`);
+        }
+        // Pass strings directly — CreateCreditNoteDto.subtotal/vatAmount are @IsString()
+        const subtotal: string = previewResp.data.totals.subtotal;
+        const vatAmount: string = previewResp.data.totals.vatAmount;
         const { data } = await api.post('/expense-documents/credit-note', {
           branchId: state.branchId,
           documentDate: state.documentDate,
@@ -290,100 +299,108 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
             />
           )}
 
-          {/* Section 1: Type tabs */}
-          <Section num={1} title="ประเภทเอกสาร" Icon={FileText}>
-            <TypeTabs
-              value={state.docType}
-              onChange={(t) => patch({ docType: t })}
-              invoiceDateIsToday={invoiceIsToday}
-            />
-          </Section>
+          {/* Dynamic section numbers — sections are conditionally rendered so we
+              compute the counter inline to avoid visible gaps (e.g. 1,3,4,5,6). */}
+          {(() => {
+            let n = 0;
+            const next = () => ++n;
+            const showVendor =
+              state.docType === 'EXPENSE_SAMEDAY' ||
+              state.docType === 'EXPENSE_ACCRUAL' ||
+              state.docType === 'CREDIT_NOTE';
+            const showCash =
+              state.docType === 'EXPENSE_SAMEDAY' ||
+              state.docType === 'PAYROLL' ||
+              state.docType === 'VENDOR_SETTLEMENT';
+            return (
+              <>
+                {/* Section: Type tabs — always visible */}
+                <Section num={next()} title="ประเภทเอกสาร" Icon={FileText}>
+                  <TypeTabs
+                    value={state.docType}
+                    onChange={(t) => patch({ docType: t })}
+                    invoiceDateIsToday={invoiceIsToday}
+                  />
+                </Section>
 
-          {/* Section 2: Vendor — EX/CN only */}
-          {(state.docType === 'EXPENSE_SAMEDAY' ||
-            state.docType === 'EXPENSE_ACCRUAL' ||
-            state.docType === 'CREDIT_NOTE') && (
-            <Section num={2} title="ผู้ขาย & วันที่ใบกำกับ" Icon={Users}>
-              <VendorSection state={state} onChange={patch} />
-            </Section>
-          )}
+                {/* Section: Vendor — EX/CN only */}
+                {showVendor && (
+                  <Section num={next()} title="ผู้ขาย & วันที่ใบกำกับ" Icon={Users}>
+                    <VendorSection state={state} onChange={patch} />
+                  </Section>
+                )}
 
-          {/* Section 3: Lines — EX only (PR/SE/CN in Task 20) */}
-          {(state.docType === 'EXPENSE_SAMEDAY' || state.docType === 'EXPENSE_ACCRUAL') && (
-            <Section num={3} title="รายการบัญชี" Icon={Receipt}>
-              <ItemLinesSection
-                lines={state.lines}
-                onChange={(lines) => patch({ lines })}
-                priceTypeLabel={state.priceType === 'INCLUSIVE' ? 'ราคารวม VAT' : 'ราคาไม่รวม VAT'}
-              />
-            </Section>
-          )}
+                {/* Section: Lines — mutually exclusive per docType */}
+                {(state.docType === 'EXPENSE_SAMEDAY' || state.docType === 'EXPENSE_ACCRUAL') && (
+                  <Section num={next()} title="รายการบัญชี" Icon={Receipt}>
+                    <ItemLinesSection
+                      lines={state.lines}
+                      onChange={(lines) => patch({ lines })}
+                      priceTypeLabel={state.priceType === 'INCLUSIVE' ? 'ราคารวม VAT' : 'ราคาไม่รวม VAT'}
+                    />
+                  </Section>
+                )}
+                {state.docType === 'PAYROLL' && (
+                  <Section num={next()} title="งวดเงินเดือน + พนักงาน" Icon={Users}>
+                    <PayrollLinesSection
+                      value={state.payroll}
+                      onChange={(p) => patch({ payroll: p })}
+                      documentDate={state.documentDate}
+                      onDocumentDateChange={(d) => patch({ documentDate: d })}
+                    />
+                  </Section>
+                )}
+                {state.docType === 'VENDOR_SETTLEMENT' && (
+                  <Section num={next()} title="เอกสารตั้งหนี้ที่จะล้าง" Icon={FileText}>
+                    <SettlementLinesSection
+                      branchId={state.branchId}
+                      value={state.settlement}
+                      onChange={(s) => patch({ settlement: s })}
+                    />
+                  </Section>
+                )}
+                {state.docType === 'CREDIT_NOTE' && (
+                  <Section num={next()} title="ใบลดหนี้ — เอกสารต้นฉบับ + รายการ" Icon={Receipt}>
+                    <CreditNoteLinesSection
+                      state={state}
+                      onChange={patch}
+                      onLinesChange={(lines) => patch({ lines })}
+                    />
+                  </Section>
+                )}
 
-          {/* Section 3: PAYROLL lines */}
-          {state.docType === 'PAYROLL' && (
-            <Section num={3} title="งวดเงินเดือน + พนักงาน" Icon={Users}>
-              <PayrollLinesSection
-                value={state.payroll}
-                onChange={(p) => patch({ payroll: p })}
-                documentDate={state.documentDate}
-                onDocumentDateChange={(d) => patch({ documentDate: d })}
-              />
-            </Section>
-          )}
+                {/* Section: Cash account (SAMEDAY, PAYROLL, VENDOR_SETTLEMENT) */}
+                {showCash && (
+                  <Section num={next()} title="ช่องทางจ่ายเงิน" Icon={Banknote}>
+                    <CashAccountVisualPicker
+                      value={state.depositAccountCode}
+                      onChange={(code) => patch({ depositAccountCode: code })}
+                    />
+                    {state.docType === 'EXPENSE_SAMEDAY' && (
+                      <div className="grid grid-cols-3 gap-2 mt-4 text-xs">
+                        <Stat label="ที่ต้องจ่าย" value={preview?.totals.netPayment ?? '0.00'} />
+                        <Stat label="จ่ายจริง" value={preview?.totals.netPayment ?? '0.00'} />
+                        <Stat label="ผลต่าง" value="0.00" highlight />
+                      </div>
+                    )}
+                  </Section>
+                )}
 
-          {/* Section 3: VENDOR_SETTLEMENT lines */}
-          {state.docType === 'VENDOR_SETTLEMENT' && (
-            <Section num={3} title="เอกสารตั้งหนี้ที่จะล้าง" Icon={FileText}>
-              <SettlementLinesSection
-                branchId={state.branchId}
-                value={state.settlement}
-                onChange={(s) => patch({ settlement: s })}
-              />
-            </Section>
-          )}
+                {/* Section: JE Preview */}
+                <Section num={next()} title="AUTO JOURNAL PREVIEW" Icon={Check}>
+                  <JePreview preview={preview} loading={loading} error={error} />
+                </Section>
 
-          {/* Section 3: CREDIT_NOTE — original EX picker + reason + item lines */}
-          {state.docType === 'CREDIT_NOTE' && (
-            <Section num={3} title="ใบลดหนี้ — เอกสารต้นฉบับ + รายการ" Icon={Receipt}>
-              <CreditNoteLinesSection
-                state={state}
-                onChange={patch}
-                onLinesChange={(lines) => patch({ lines })}
-              />
-            </Section>
-          )}
-
-          {/* Section 4: Cash account (SAMEDAY, PAYROLL, VENDOR_SETTLEMENT) */}
-          {(state.docType === 'EXPENSE_SAMEDAY' ||
-            state.docType === 'PAYROLL' ||
-            state.docType === 'VENDOR_SETTLEMENT') && (
-            <Section num={4} title="ช่องทางจ่ายเงิน" Icon={Banknote}>
-              <CashAccountVisualPicker
-                value={state.depositAccountCode}
-                onChange={(code) => patch({ depositAccountCode: code })}
-              />
-              {state.docType === 'EXPENSE_SAMEDAY' && (
-                <div className="grid grid-cols-3 gap-2 mt-4 text-xs">
-                  <Stat label="ที่ต้องจ่าย" value={preview?.totals.netPayment ?? '0.00'} />
-                  <Stat label="จ่ายจริง" value={preview?.totals.netPayment ?? '0.00'} />
-                  <Stat label="ผลต่าง" value="0.00" highlight />
-                </div>
-              )}
-            </Section>
-          )}
-
-          {/* Section 5: JE Preview */}
-          <Section num={5} title="AUTO JOURNAL PREVIEW" Icon={Check}>
-            <JePreview preview={preview} loading={loading} error={error} />
-          </Section>
-
-          {/* Section 6: Approver */}
-          <Section num={6} title="ผู้บันทึก & ผู้อนุมัติ" Icon={Users}>
-            <ApproverSection
-              approvedById={state.approvedById}
-              onChange={(id) => patch({ approvedById: id })}
-            />
-          </Section>
+                {/* Section: Approver */}
+                <Section num={next()} title="ผู้บันทึก & ผู้อนุมัติ" Icon={Users}>
+                  <ApproverSection
+                    approvedById={state.approvedById}
+                    onChange={(id) => patch({ approvedById: id })}
+                  />
+                </Section>
+              </>
+            );
+          })()}
         </div>
 
         {/* Footer */}

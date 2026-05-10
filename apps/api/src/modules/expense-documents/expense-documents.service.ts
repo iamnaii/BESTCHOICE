@@ -841,6 +841,7 @@ export class ExpenseDocumentsService {
         type: doc.documentType,
         from: doc.status,
         hasPaymentMethod: !!doc.paymentMethod && !!doc.depositAccountCode,
+        totalAmount: doc.totalAmount.toString(),
       });
 
       // EXPENSE + CREDIT_NOTE + PAYROLL + VENDOR_SETTLEMENT supported

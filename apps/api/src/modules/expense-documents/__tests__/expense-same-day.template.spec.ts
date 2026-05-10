@@ -45,7 +45,7 @@ describe('ExpenseSameDayTemplate', () => {
       depositAccountCode: '11-1101',
       paymentMethod: 'CASH',
       journalEntryId: null,
-      expenseDetail: { priceType: 'EXCLUSIVE', lines: [{ lineNo: 1, category: '53-1302' }] },
+      expenseDetail: { priceType: 'EXCLUSIVE', lines: [{ lineNo: 1, category: '53-1302', amountBeforeVat: new Decimal('1000.00') }] },
     });
 
     const result = await template.execute(docId);
@@ -80,7 +80,7 @@ describe('ExpenseSameDayTemplate', () => {
       depositAccountCode: '11-1101',
       paymentMethod: 'CASH',
       journalEntryId: null,
-      expenseDetail: { priceType: 'EXCLUSIVE', lines: [{ lineNo: 1, category: '53-1302' }] },
+      expenseDetail: { priceType: 'EXCLUSIVE', lines: [{ lineNo: 1, category: '53-1302', amountBeforeVat: new Decimal('500.00') }] },
     });
 
     await template.execute(docId);
@@ -104,7 +104,7 @@ describe('ExpenseSameDayTemplate', () => {
       depositAccountCode: '11-1201',
       paymentMethod: 'BANK_TRANSFER',
       journalEntryId: null,
-      expenseDetail: { priceType: 'EXCLUSIVE', lines: [{ lineNo: 1, category: '53-1702' }] },
+      expenseDetail: { priceType: 'EXCLUSIVE', lines: [{ lineNo: 1, category: '53-1702', amountBeforeVat: new Decimal('1000.00') }] },
     });
 
     await template.execute(docId);
@@ -132,7 +132,7 @@ describe('ExpenseSameDayTemplate', () => {
       depositAccountCode: '11-1201',
       paymentMethod: 'BANK_TRANSFER',
       journalEntryId: null,
-      expenseDetail: { priceType: 'EXCLUSIVE', lines: [{ lineNo: 1, category: '53-1702' }] },
+      expenseDetail: { priceType: 'EXCLUSIVE', lines: [{ lineNo: 1, category: '53-1702', amountBeforeVat: new Decimal('1000.00') }] },
     });
 
     await template.execute(docId);
@@ -168,7 +168,7 @@ describe('ExpenseSameDayTemplate', () => {
       depositAccountCode: '11-1101',
       paymentMethod: 'CASH',
       journalEntryId: null,
-      expenseDetail: { priceType: 'EXCLUSIVE', lines: [{ lineNo: 1, category: '53-1302' }] },
+      expenseDetail: { priceType: 'EXCLUSIVE', lines: [{ lineNo: 1, category: '53-1302', amountBeforeVat: new Decimal('500.00') }] },
     });
 
     await template.execute(docId);
@@ -183,5 +183,59 @@ describe('ExpenseSameDayTemplate', () => {
         }),
       }),
     );
+  });
+
+  it('multi-line: 2 categories aggregate to 2 Dr rows', async () => {
+    prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+      id: 'doc-multi', number: 'EX-20260511-0010',
+      documentType: 'EXPENSE',
+      documentDate: new Date('2026-05-11'),
+      subtotal: new Decimal('1500'),
+      vatAmount: new Decimal('105'),
+      withholdingTax: new Decimal('0'),
+      totalAmount: new Decimal('1605'),
+      depositAccountCode: '11-1101',
+      journalEntryId: null,
+      expenseDetail: {
+        priceType: 'EXCLUSIVE',
+        lines: [
+          { lineNo: 1, category: '53-1101', amountBeforeVat: new Decimal('1000'), vatAmount: new Decimal('70'), whtAmount: new Decimal('0') },
+          { lineNo: 2, category: '53-1404', amountBeforeVat: new Decimal('500'),  vatAmount: new Decimal('35'), whtAmount: new Decimal('0') },
+        ],
+      },
+    });
+    await template.execute('doc-multi');
+    const args = journal.createAndPost.mock.calls[0][0];
+    const dr5x = args.lines.filter((l: { accountCode: string }) => l.accountCode.startsWith('5'));
+    expect(dr5x).toHaveLength(2);
+    expect(dr5x.find((l: { accountCode: string; dr: { toString: () => string } }) => l.accountCode === '53-1101').dr.toString()).toBe('1000');
+  });
+
+  it('multi-line: 3 lines, 2 share category — 2 Dr rows (1000+500 vs 800)', async () => {
+    prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+      id: 'doc-collapse', number: 'EX-20260511-0011',
+      documentType: 'EXPENSE',
+      documentDate: new Date('2026-05-11'),
+      subtotal: new Decimal('2300'),
+      vatAmount: new Decimal('161'),
+      withholdingTax: new Decimal('0'),
+      totalAmount: new Decimal('2461'),
+      depositAccountCode: '11-1101',
+      journalEntryId: null,
+      expenseDetail: {
+        priceType: 'EXCLUSIVE',
+        lines: [
+          { lineNo: 1, category: '53-1101', amountBeforeVat: new Decimal('1000'), vatAmount: new Decimal('70'),  whtAmount: new Decimal('0') },
+          { lineNo: 2, category: '53-1404', amountBeforeVat: new Decimal('800'),  vatAmount: new Decimal('56'),  whtAmount: new Decimal('0') },
+          { lineNo: 3, category: '53-1101', amountBeforeVat: new Decimal('500'),  vatAmount: new Decimal('35'),  whtAmount: new Decimal('0') },
+        ],
+      },
+    });
+    await template.execute('doc-collapse');
+    const args = journal.createAndPost.mock.calls[0][0];
+    const dr5x = args.lines.filter((l: { accountCode: string }) => l.accountCode.startsWith('5'));
+    expect(dr5x).toHaveLength(2);
+    expect(dr5x.find((l: { accountCode: string; dr: { toString: () => string } }) => l.accountCode === '53-1101').dr.toString()).toBe('1500');
+    expect(dr5x.find((l: { accountCode: string; dr: { toString: () => string } }) => l.accountCode === '53-1404').dr.toString()).toBe('800');
   });
 });

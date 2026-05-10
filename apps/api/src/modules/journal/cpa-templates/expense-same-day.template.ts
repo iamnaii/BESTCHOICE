@@ -62,29 +62,31 @@ export class ExpenseSameDayTemplate {
         return { entryNo: existing?.entryNumber ?? doc.journalEntryId };
       }
 
-      const zero = new Decimal(0);
-      const subtotal = new Decimal(doc.subtotal.toString());
-      const vat = new Decimal(doc.vatAmount.toString());
-      const wht = new Decimal(doc.withholdingTax.toString());
-      const total = new Decimal(doc.totalAmount.toString());
-      const cashAmount = total.minus(wht);
-
-      const primaryCategory = doc.expenseDetail?.lines?.[0]?.category;
-      if (!primaryCategory) {
-        throw new Error(`ExpenseDocument ${documentId} missing expenseDetail lines/category`);
+      const expenseLines = doc.expenseDetail?.lines ?? [];
+      if (expenseLines.length === 0) {
+        throw new Error(`ExpenseDocument ${documentId} has no expense lines`);
       }
       if (!doc.depositAccountCode) {
         throw new Error(`ExpenseDocument ${documentId} missing depositAccountCode`);
       }
 
-      const lines: JeLineInput[] = [
-        {
-          accountCode: primaryCategory,
-          dr: subtotal,
-          cr: zero,
-          description: `ค่าใช้จ่าย — ${doc.number}`,
-        },
-      ];
+      const zero = new Decimal(0);
+      const vat = new Decimal(doc.vatAmount.toString());
+      const wht = new Decimal(doc.withholdingTax.toString());
+      const total = new Decimal(doc.totalAmount.toString());
+      const cashAmount = total.minus(wht);
+
+      // Aggregate Dr by category (multiple lines with same category collapse)
+      const byCategory = new Map<string, Decimal>();
+      for (const l of expenseLines) {
+        const amt = new Decimal(l.amountBeforeVat.toString());
+        byCategory.set(l.category, (byCategory.get(l.category) ?? zero).plus(amt));
+      }
+
+      const lines: JeLineInput[] = [];
+      for (const [code, amt] of byCategory.entries()) {
+        lines.push({ accountCode: code, dr: amt, cr: zero, description: `ค่าใช้จ่าย — ${doc.number}` });
+      }
       if (vat.gt(zero)) {
         lines.push({
           accountCode: '11-2104',
@@ -120,6 +122,7 @@ export class ExpenseSameDayTemplate {
             documentNumber: doc.number,
             documentType: doc.documentType,
             flow: 'expense-same-day',
+            lineCount: expenseLines.length,
           },
           postedAt: doc.documentDate,
           lines,

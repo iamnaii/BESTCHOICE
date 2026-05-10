@@ -15,6 +15,8 @@ describe('ExpenseDocumentsService', () => {
   let accrual: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let creditNote: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let payroll: any;
 
   beforeEach(() => {
     prisma = {
@@ -43,7 +45,16 @@ describe('ExpenseDocumentsService', () => {
     sameDay = { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-1' }) };
     accrual = { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-2' }) };
     creditNote = { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-3' }) };
-    service = new ExpenseDocumentsService(prisma, docNumber, transition, sameDay, accrual, creditNote);
+    payroll = { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-4' }) };
+    service = new ExpenseDocumentsService(
+      prisma,
+      docNumber,
+      transition,
+      sameDay,
+      accrual,
+      creditNote,
+      payroll,
+    );
   });
 
   describe('create', () => {

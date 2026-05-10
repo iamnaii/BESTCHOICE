@@ -11,10 +11,12 @@ import { StatusTransitionService } from './services/status-transition.service';
 import { ExpenseSameDayTemplate } from '../journal/cpa-templates/expense-same-day.template';
 import { ExpenseAccrualTemplate } from '../journal/cpa-templates/expense-accrual.template';
 import { CreditNoteTemplate } from '../journal/cpa-templates/credit-note.template';
+import { PayrollTemplate } from '../journal/cpa-templates/payroll.template';
 import { CreateExpenseDocumentDto } from './dto/create.dto';
 import { UpdateExpenseDocumentDto } from './dto/update.dto';
 import { ListExpenseDocumentsQueryDto } from './dto/list-query.dto';
 import { CreateCreditNoteDto } from './dto/create-credit-note.dto';
+import { CreatePayrollDto } from './dto/create-payroll.dto';
 import { hasCrossBranchAccess } from '../auth/branch-access.util';
 
 @Injectable()
@@ -28,6 +30,7 @@ export class ExpenseDocumentsService {
     private readonly sameDayTemplate: ExpenseSameDayTemplate,
     private readonly accrualTemplate: ExpenseAccrualTemplate,
     private readonly creditNoteTemplate: CreditNoteTemplate,
+    private readonly payrollTemplate: PayrollTemplate,
   ) {}
 
   // ─── Create ──────────────────────────────────────────────────────────
@@ -161,6 +164,79 @@ export class ExpenseDocumentsService {
           },
         },
         include: { creditNote: true },
+      });
+    });
+  }
+
+  // ─── Payroll create — multi-line, computes netPaid per line ──────────
+  async createPayroll(dto: CreatePayrollDto, userId: string) {
+    // Compute netPaid per line + validate
+    const linesPrepared = dto.lines.map((l) => {
+      const base = new Prisma.Decimal(l.baseSalary);
+      const sso = new Prisma.Decimal(l.ssoEmployee ?? 0);
+      const wht = new Prisma.Decimal(l.whtAmount ?? 0);
+      const netPaid = base.minus(sso).minus(wht);
+      if (netPaid.lt(0)) {
+        throw new BadRequestException(
+          `พนักงาน "${l.employeeName}" — เงินสุทธิติดลบ (ฐาน ${base} - SSO ${sso} - WHT ${wht})`,
+        );
+      }
+      return {
+        employeeName: l.employeeName,
+        employeeTaxId: l.employeeTaxId ?? null,
+        baseSalary: base,
+        ssoEmployee: sso,
+        whtAmount: wht,
+        netPaid,
+      };
+    });
+
+    if (linesPrepared.length === 0) {
+      throw new BadRequestException('ต้องมีพนักงานอย่างน้อย 1 คน');
+    }
+
+    const sumBase = linesPrepared.reduce(
+      (s, l) => s.plus(l.baseSalary),
+      new Prisma.Decimal(0),
+    );
+    const sumWht = linesPrepared.reduce(
+      (s, l) => s.plus(l.whtAmount),
+      new Prisma.Decimal(0),
+    );
+    const sumNet = linesPrepared.reduce(
+      (s, l) => s.plus(l.netPaid),
+      new Prisma.Decimal(0),
+    );
+
+    const documentDate = new Date(dto.documentDate);
+    return this.prisma.$transaction(async (tx) => {
+      const number = await this.docNumber.next(tx, 'PAYROLL', documentDate);
+      return tx.expenseDocument.create({
+        data: {
+          number,
+          documentType: 'PAYROLL',
+          branchId: dto.branchId,
+          documentDate,
+          description: dto.description ?? null,
+          subtotal: sumBase,
+          vatAmount: new Prisma.Decimal(0),
+          withholdingTax: sumWht,
+          totalAmount: sumBase,
+          netPayment: sumNet,
+          depositAccountCode: dto.depositAccountCode,
+          paymentMethod: (dto.paymentMethod as never) ?? null,
+          status: 'DRAFT',
+          reference: dto.reference ?? null,
+          note: dto.note ?? null,
+          createdById: userId,
+          payroll: {
+            create: {
+              payrollPeriod: dto.payrollPeriod,
+              lines: { create: linesPrepared },
+            },
+          },
+        },
+        include: { payroll: { include: { lines: true } } },
       });
     });
   }
@@ -375,13 +451,16 @@ export class ExpenseDocumentsService {
         hasPaymentMethod: !!doc.paymentMethod && !!doc.depositAccountCode,
       });
 
-      // EXPENSE + CREDIT_NOTE supported (PR-3..4: PAYROLL, ASSET to follow)
-      if (!['EXPENSE', 'CREDIT_NOTE'].includes(doc.documentType)) {
-        throw new BadRequestException(`type ${doc.documentType} จะมาใน PR-3..4`);
+      // EXPENSE + CREDIT_NOTE + PAYROLL supported (PR-4: ASSET to follow)
+      if (!['EXPENSE', 'CREDIT_NOTE', 'PAYROLL'].includes(doc.documentType)) {
+        throw new BadRequestException(`type ${doc.documentType} จะมาใน PR-4`);
       }
 
       if (doc.documentType === 'CREDIT_NOTE') {
         return this.creditNoteTemplate.execute(id, tx);
+      }
+      if (doc.documentType === 'PAYROLL') {
+        return this.payrollTemplate.execute(id, tx);
       }
       const target = this.transition.resolveTargetStatus(
         doc.documentType,

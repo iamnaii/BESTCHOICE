@@ -59,6 +59,7 @@ import { PaySolutionsModule } from './modules/paysolutions/paysolutions.module';
 import { FinanceReceivableModule } from './modules/finance-receivable/finance-receivable.module';
 import { AccountingModule } from './modules/accounting/accounting.module';
 import { OtherIncomeModule } from './modules/other-income/other-income.module';
+import { ExpenseDocumentsModule } from './modules/expense-documents/expense-documents.module';
 import { PaymentMethodConfigModule } from './modules/payment-method-config/payment-method-config.module';
 import { CompanyModule } from './modules/company/company.module';
 import { InterCompanyModule } from './modules/inter-company/inter-company.module';
@@ -212,6 +213,8 @@ import { AppCacheModule } from './cache/cache.module';
     AccountingModule,
     // Other Income (รายได้อื่น — FINANCE only)
     OtherIncomeModule,
+    // Expense Documents (เอกสารค่าใช้จ่าย — accrual workflow)
+    ExpenseDocumentsModule,
     // Payment method ↔ Cash account mapping (cashier wizard filter)
     PaymentMethodConfigModule,
     // Company Info (multi-entity foundation)

@@ -115,7 +115,8 @@
       "/cpa-templates/.*\\.spec\\.ts$",
       "/journal/.*__tests__/.*\\.spec\\.ts$",
       "/journal/cron/.*\\.spec\\.ts$",
-      "/installments/reschedule\\.service\\.spec\\.ts$"
+      "/installments/reschedule\\.service\\.spec\\.ts$",
+      ".*\\.integration\\.spec\\.ts$"
     ],
     "transform": {
       "^.+\\.ts$": "ts-jest"

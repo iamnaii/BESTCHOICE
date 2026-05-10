@@ -71,8 +71,8 @@ export class ExpenseSameDayTemplate {
       }
 
       const zero = new Decimal(0);
-      const vat = new Decimal(doc.vatAmount.toString());
-      const wht = new Decimal(doc.withholdingTax.toString());
+      const vat = new Decimal(doc.vatAmount?.toString() ?? '0');
+      const wht = new Decimal(doc.withholdingTax?.toString() ?? '0');
       const total = new Decimal(doc.totalAmount.toString());
       const cashAmount = total.minus(wht);
 
@@ -85,6 +85,7 @@ export class ExpenseSameDayTemplate {
 
       const lines: JeLineInput[] = [];
       for (const [code, amt] of byCategory.entries()) {
+        if (amt.lte(zero)) continue; // skip zero/negative aggregations
         lines.push({ accountCode: code, dr: amt, cr: zero, description: `ค่าใช้จ่าย — ${doc.number}` });
       }
       if (vat.gt(zero)) {
@@ -114,7 +115,7 @@ export class ExpenseSameDayTemplate {
       const companyId = await this.getShopCompanyId(tx);
       const result = await this.journal.createAndPost(
         {
-          description: `รับชำระค่าใช้จ่าย ${doc.number}`,
+          description: `บันทึกจ่ายค่าใช้จ่าย ${doc.number}`,
           reference: doc.id,
           metadata: {
             tag: 'EXPENSE_SAME_DAY',

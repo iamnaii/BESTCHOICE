@@ -95,7 +95,7 @@ export class CreditNoteTemplate {
       }
 
       const zero = new Decimal(0);
-      const vat = new Decimal(cn.vatAmount.toString());
+      const vat = new Decimal(cn.vatAmount?.toString() ?? '0');
       const total = new Decimal(cn.totalAmount.toString());
 
       const lines: JeLineInput[] = [];
@@ -117,12 +117,29 @@ export class CreditNoteTemplate {
             `CreditNote ${cn.id} on POSTED original requires depositAccountCode for refund`,
           );
         }
+        // Cash refund out = total − WHT-of-original-being-reversed (if any).
+        // Reasoning: original POSTED entry was Dr expense+VAT / Cr cash + Cr WHT-payable.
+        // Reversing means Dr cash (less WHT, since WHT was never given to vendor) +
+        // Dr WHT-payable (clears the liability) / Cr expense + Cr VAT.
+        // NOTE: createCreditNote service blocks CN on docs with WHT > 0 (defense-in-depth
+        // guard prevents this branch in production), but we reverse it correctly anyway.
+        const origWht = new Decimal(original.withholdingTax?.toString() ?? '0');
+        const cashRefund = total.minus(origWht);
         lines.push({
           accountCode: refundAccount,
-          dr: total,
+          dr: cashRefund,
           cr: zero,
           description: `รับคืนเงิน — ${cn.number}`,
         });
+        if (origWht.gt(zero)) {
+          const whtAccount = original.whtFormType === 'PND53' ? '21-3103' : '21-3102';
+          lines.push({
+            accountCode: whtAccount,
+            dr: origWht,
+            cr: zero,
+            description: `กลับรายการ WHT ${original.whtFormType ?? 'PND3'}`,
+          });
+        }
       }
 
       // Cr expense legs — aggregate by category (collapse lines with same category)
@@ -132,6 +149,7 @@ export class CreditNoteTemplate {
         byCategory.set(l.category, (byCategory.get(l.category) ?? zero).plus(amt));
       }
       for (const [code, amt] of byCategory.entries()) {
+        if (amt.lte(zero)) continue; // skip zero/negative aggregations
         lines.push({ accountCode: code, dr: zero, cr: amt, description: `กลับค่าใช้จ่าย — ${cn.number}` });
       }
       if (vat.gt(zero)) {

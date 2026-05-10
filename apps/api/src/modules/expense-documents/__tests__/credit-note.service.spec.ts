@@ -196,7 +196,6 @@ describe('ExpenseDocumentsService.createCreditNote', () => {
             create: expect.objectContaining({
               originalDocumentId: ORIG_ID,
               reason: 'partial return',
-              category: '53-1302',
             }),
           },
         }),

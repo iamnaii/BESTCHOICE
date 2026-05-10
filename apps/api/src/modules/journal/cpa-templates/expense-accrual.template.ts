@@ -67,7 +67,7 @@ export class ExpenseAccrualTemplate {
       }
 
       const zero = new Decimal(0);
-      const vat = new Decimal(doc.vatAmount.toString());
+      const vat = new Decimal(doc.vatAmount?.toString() ?? '0');
       const total = new Decimal(doc.totalAmount.toString());
 
       // Aggregate Dr by category (multiple lines with same category collapse)
@@ -79,6 +79,7 @@ export class ExpenseAccrualTemplate {
 
       const lines: JeLineInput[] = [];
       for (const [code, amt] of byCategory.entries()) {
+        if (amt.lte(zero)) continue; // skip zero/negative aggregations
         lines.push({ accountCode: code, dr: amt, cr: zero, description: `ค่าใช้จ่าย — ${doc.number}` });
       }
       if (vat.gt(zero)) {

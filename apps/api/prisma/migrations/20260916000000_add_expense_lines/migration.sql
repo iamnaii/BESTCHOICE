@@ -19,7 +19,7 @@ CREATE TABLE "expense_lines" (
   CONSTRAINT "expense_lines_pkey" PRIMARY KEY ("id")
 );
 
-CREATE INDEX "expense_lines_expense_detail_id_line_no_idx"
+CREATE UNIQUE INDEX "expense_lines_expense_detail_id_line_no_key"
   ON "expense_lines"("expense_detail_id", "line_no");
 
 ALTER TABLE "expense_lines"
@@ -29,6 +29,9 @@ ALTER TABLE "expense_lines"
 
 -- Drop the legacy single-category column on ExpenseDetail
 ALTER TABLE "expense_details" DROP COLUMN IF EXISTS "category";
+
+-- Drop legacy CreditNoteDetail.category (CN now uses ExpenseLine.category via expenseDetail.lines[])
+ALTER TABLE "credit_note_details" DROP COLUMN IF EXISTS "category";
 
 -- Add priceType discriminator
 ALTER TABLE "expense_details"

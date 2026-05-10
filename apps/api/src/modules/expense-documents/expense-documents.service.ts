@@ -197,12 +197,6 @@ export class ExpenseDocumentsService {
         );
       }
 
-      // Mirror primary category from original's first line
-      const category = original.expenseDetail?.lines?.[0]?.category;
-      if (!category) {
-        throw new BadRequestException('เอกสารต้นฉบับไม่มีหมวดบัญชี (data corruption)');
-      }
-
       const documentDate = new Date(dto.documentDate);
       const number = await this.docNumber.next(tx, 'CREDIT_NOTE', documentDate);
 
@@ -229,7 +223,6 @@ export class ExpenseDocumentsService {
             create: {
               originalDocumentId: dto.originalDocumentId,
               reason: dto.reason,
-              category,
             },
           },
         },
@@ -644,10 +637,10 @@ export class ExpenseDocumentsService {
         byPaymentMethod[mKey] = mBucket;
       }
 
-      // By category — EXPENSE: primary line category; CREDIT_NOTE: creditNote.category
+      // By category — primary line category (works for both EXPENSE and CREDIT_NOTE since
+      // CN now uses expenseDetail.lines[] rather than the legacy creditNote.category column)
       const cat =
-        (d as { expenseDetail?: { lines?: { category: string }[] } | null }).expenseDetail?.lines?.[0]?.category ??
-        (d as { creditNote?: { category: string } | null }).creditNote?.category;
+        (d as { expenseDetail?: { lines?: { category: string }[] } | null }).expenseDetail?.lines?.[0]?.category;
       if (cat) {
         const cBucket = byCategory[cat] ?? { count: 0, total: '0' };
         cBucket.count++;

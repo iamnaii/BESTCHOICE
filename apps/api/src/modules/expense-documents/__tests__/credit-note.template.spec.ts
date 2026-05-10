@@ -101,6 +101,8 @@ describe('CreditNoteTemplate', () => {
         id: 'orig-2',
         status: 'POSTED',
         depositAccountCode: '11-1101',
+        withholdingTax: null,
+        whtFormType: null,
       });
       return Promise.reject(new Error('unknown id'));
     });
@@ -196,6 +198,8 @@ describe('CreditNoteTemplate', () => {
         id: 'orig-5',
         status: 'POSTED',
         depositAccountCode: '11-1101',
+        withholdingTax: null,
+        whtFormType: null,
       });
       return Promise.reject(new Error('unknown id'));
     });
@@ -396,5 +400,52 @@ describe('CreditNoteTemplate', () => {
     const args = journal.createAndPost.mock.calls[0][0];
     const cr5x = args.lines.filter((l: { accountCode: string; cr: Decimal }) => l.accountCode.startsWith('5') && l.cr.gt(0));
     expect(cr5x).toHaveLength(2);
+  });
+
+  it('POSTED-path CN: WHT reversal — Dr 21-3102 for original WHT + cash Dr reduced by WHT', async () => {
+    // Defense-in-depth test: even though service blocks CN on WHT'd docs in production,
+    // the template should correctly reverse the WHT liability if it ever reaches this path.
+    prisma.expenseDocument.findUniqueOrThrow.mockImplementation((args: { where: { id: string } }) => {
+      if (args.where.id === 'cn-wht') return Promise.resolve({
+        id: 'cn-wht',
+        number: 'CN-20260510-0099',
+        documentType: 'CREDIT_NOTE',
+        branchId: 'branch-1',
+        documentDate: new Date('2026-05-10'),
+        subtotal: new Decimal('1000.00'),
+        vatAmount: new Decimal('0.00'),
+        withholdingTax: new Decimal('0.00'),
+        totalAmount: new Decimal('1000.00'),
+        depositAccountCode: '11-1101',
+        journalEntryId: null,
+        creditNote: { originalDocumentId: 'orig-wht', reason: 'full return' },
+        expenseDetail: {
+          priceType: 'EXCLUSIVE',
+          lines: [{ lineNo: 1, category: '53-1302', amountBeforeVat: new Decimal('1000.00') }],
+        },
+      });
+      if (args.where.id === 'orig-wht') return Promise.resolve({
+        id: 'orig-wht',
+        status: 'POSTED',
+        depositAccountCode: '11-1101',
+        withholdingTax: new Decimal('30.00'),
+        whtFormType: 'PND3',
+      });
+      return Promise.reject(new Error('unknown id'));
+    });
+    prisma.chartOfAccount.findMany.mockResolvedValueOnce([{ code: '53-1302', type: 'ค่าใช้จ่าย' }]);
+
+    await template.execute('cn-wht');
+    const [callArgs] = journal.createAndPost.mock.calls[0];
+    const drLines = callArgs.lines.filter((l: { dr: Decimal }) => l.dr.gt(0));
+
+    // Cash refund should be total − origWht = 1000 − 30 = 970
+    expect(drLines).toEqual(expect.arrayContaining([
+      expect.objectContaining({ accountCode: '11-1101', dr: new Decimal('970.00') }),
+    ]));
+    // WHT payable reversal
+    expect(drLines).toEqual(expect.arrayContaining([
+      expect.objectContaining({ accountCode: '21-3102', dr: new Decimal('30.00') }),
+    ]));
   });
 });

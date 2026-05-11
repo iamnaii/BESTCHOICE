@@ -1,4 +1,4 @@
-// Asset module — entry page (Phase 1, Task 15)
+// Asset module — entry page (Asset Acquisition v3 design)
 // Form glue: hooks 5 sections together via FormProvider, drives live JE preview
 // via useAssetCalculation, and exposes save-draft / save-and-post mutations.
 //
@@ -6,16 +6,21 @@
 // - Edit mode (`/assets/:id/edit`): hydrate from API; redirect to detail page
 //   if status != DRAFT (server-side guard remains authoritative).
 
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { useForm, FormProvider } from 'react-hook-form';
+import {
+  useForm,
+  FormProvider,
+  type FieldErrors,
+  type FieldError,
+} from 'react-hook-form';
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, AlertCircle, Save, Send, X } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
-import PageHeader from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { assetsApi } from './api';
 import { assetEntrySchema, type AssetEntryFormValues } from './schema';
 import { useAssetCalculation } from './hooks/useAssetCalculation';
@@ -24,6 +29,7 @@ import { AssetEntrySection2Cost } from './components/AssetEntrySection2Cost';
 import { AssetEntrySection3Vendor } from './components/AssetEntrySection3Vendor';
 import { AssetEntrySection4Journal } from './components/AssetEntrySection4Journal';
 import { AssetEntrySection5Approver } from './components/AssetEntrySection5Approver';
+import { AccountingModuleTabBar } from '@/components/accounting/AccountingModuleTabBar';
 
 interface Branch {
   id: string;
@@ -48,6 +54,23 @@ const defaultValues: AssetEntryFormValues = {
   paymentAccount: '11-1201',
 };
 
+interface FlatError {
+  field: string;
+  message: string;
+}
+
+function flattenErrors(errors: FieldErrors<AssetEntryFormValues>): FlatError[] {
+  const out: FlatError[] = [];
+  for (const [field, err] of Object.entries(errors)) {
+    if (!err) continue;
+    const fe = err as FieldError;
+    if (typeof fe.message === 'string' && fe.message) {
+      out.push({ field, message: fe.message });
+    }
+  }
+  return out;
+}
+
 export default function AssetEntryPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -71,6 +94,7 @@ export default function AssetEntryPage() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: standardSchemaResolver(assetEntrySchema) as any,
     defaultValues,
+    mode: 'onBlur',
   });
 
   const watchedCategory = form.watch('category');
@@ -80,7 +104,6 @@ export default function AssetEntryPage() {
     enabled: !isEdit && !!watchedCategory,
   });
 
-  // Hydrate form when editing
   useEffect(() => {
     if (assetQuery.data) {
       const a = assetQuery.data;
@@ -132,7 +155,7 @@ export default function AssetEntryPage() {
   const createMutation = useMutation({
     mutationFn: (payload: AssetEntryFormValues) => assetsApi.create(payload),
     onSuccess: (asset) => {
-      toast.success(`สร้างสินทรัพย์ ${asset.assetCode} แล้ว`);
+      toast.success(`สร้างเอกสาร ${asset.assetCode} แล้ว`);
       queryClient.invalidateQueries({ queryKey: ['assets'] });
       queryClient.invalidateQueries({ queryKey: ['assets-summary'] });
       navigate(`/assets/${asset.id}`);
@@ -173,7 +196,6 @@ export default function AssetEntryPage() {
       postMutation.mutate();
     } else {
       const created = await createMutation.mutateAsync(values);
-      // Post directly via API after create — avoids extra round-trip through edit route
       try {
         const result = await assetsApi.post(created.id);
         toast.success(`POST แล้ว → ${result.entryNo}`);
@@ -189,22 +211,59 @@ export default function AssetEntryPage() {
 
   const branches = branchesQuery.data ?? [];
   const assetCode = isEdit ? assetQuery.data?.assetCode : codeQuery.data?.assetCode;
-  const isLoading = createMutation.isPending || updateMutation.isPending || postMutation.isPending;
+  const status = isEdit ? assetQuery.data?.status ?? 'DRAFT' : 'DRAFT';
+  const isLoading =
+    createMutation.isPending || updateMutation.isPending || postMutation.isPending;
+
+  // Stable signal: re-memo only when the set of error fields changes.
+  const errorKeys = Object.keys(form.formState.errors).sort().join(',');
+  const flatErrors = useMemo(
+    () => flattenErrors(form.formState.errors),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [errorKeys],
+  );
+  const errorCount = flatErrors.length;
+  const canPost = calc.isBalanced && errorCount === 0;
 
   if (isEdit && assetQuery.isLoading)
     return <div className="p-8 text-muted-foreground">กำลังโหลด...</div>;
 
   return (
     <FormProvider {...form}>
-      <div className="space-y-4 pb-24">
-        <PageHeader
-          title={isEdit ? `แก้ไขสินทรัพย์ ${assetCode ?? ''}` : 'สร้างสินทรัพย์ใหม่'}
-          action={
-            <Button variant="ghost" onClick={() => navigate('/assets')}>
-              <ArrowLeft className="mr-2 h-4 w-4" /> กลับ
-            </Button>
-          }
-        />
+      <div className="space-y-4 pb-32">
+        <AccountingModuleTabBar />
+
+        {/* Page header card */}
+        <div className="rounded-xl border border-border/60 bg-card p-5 shadow-sm">
+          <button
+            type="button"
+            onClick={() => navigate('/assets')}
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-3"
+          >
+            <ArrowLeft className="size-4" />
+            กลับไปหน้ารายการ
+          </button>
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0">
+              <h1 className="text-2xl font-bold text-foreground">
+                {isEdit ? 'แก้ไขเอกสารซื้อสินทรัพย์ถาวร' : 'บันทึกซื้อสินทรัพย์ถาวร'}
+              </h1>
+              <p className="mt-1 text-sm text-muted-foreground">
+                กลุ่มบัญชี 12-21XX · TFRS + Accrual VAT · Validation V1-V14 · Post-control
+                (Daily Review)
+              </p>
+            </div>
+            <div className="text-right">
+              <div className="text-xs text-muted-foreground">เลขที่เอกสาร</div>
+              <div className="font-mono text-lg font-semibold text-primary">
+                {assetCode ?? '— กำลังสร้าง —'}
+              </div>
+              <Badge variant="outline" className="mt-1">
+                {status}
+              </Badge>
+            </div>
+          </div>
+        </div>
 
         <AssetEntrySection1Info assetCode={assetCode} branches={branches} />
         <AssetEntrySection2Cost calc={calc} />
@@ -212,17 +271,58 @@ export default function AssetEntryPage() {
         <AssetEntrySection4Journal calc={calc} />
         <AssetEntrySection5Approver />
 
+        {/* Validation summary */}
+        {errorCount > 0 && (
+          <div className="rounded-xl border border-destructive/40 bg-destructive/5 p-4">
+            <div className="flex items-center gap-2 text-destructive font-semibold mb-2">
+              <AlertCircle className="size-4" />
+              พบ {errorCount} ข้อต้องแก้ไข
+            </div>
+            <ul className="space-y-1 text-sm text-foreground/90 list-disc pl-9">
+              {flatErrors.map((e) => (
+                <li key={e.field}>{e.message}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {/* Sticky action bar */}
-        <div className="fixed bottom-0 left-0 right-0 bg-background border-t p-4 flex justify-end gap-2 z-10">
-          <Button variant="outline" onClick={() => navigate('/assets')} disabled={isLoading}>
-            ยกเลิก
-          </Button>
-          <Button variant="secondary" onClick={onSaveDraft} disabled={isLoading}>
-            บันทึกร่าง
-          </Button>
-          <Button onClick={onSaveAndPost} disabled={isLoading || !calc.isBalanced}>
-            บันทึก & POST
-          </Button>
+        <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border z-10 shadow-lg">
+          <div className="container mx-auto flex flex-wrap items-center justify-between gap-3 p-4">
+            <div className="flex items-center gap-2 text-sm">
+              {errorCount > 0 ? (
+                <span className="inline-flex items-center gap-1.5 text-destructive">
+                  <AlertCircle className="size-4" />
+                  มี {errorCount} ข้อต้องแก้ไข
+                </span>
+              ) : !calc.isBalanced ? (
+                <span className="inline-flex items-center gap-1.5 text-warning">
+                  <AlertCircle className="size-4" />
+                  Auto Journal Preview ยังไม่สมดุล
+                </span>
+              ) : (
+                <span className="text-muted-foreground">พร้อมบันทึก & POST</span>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => navigate('/assets')}
+                disabled={isLoading}
+              >
+                <X className="size-4" />
+                ยกเลิก
+              </Button>
+              <Button variant="secondary" onClick={onSaveDraft} disabled={isLoading}>
+                <Save className="size-4" />
+                บันทึกร่าง
+              </Button>
+              <Button onClick={onSaveAndPost} disabled={isLoading || !canPost}>
+                <Send className="size-4" />
+                บันทึก & POST
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
     </FormProvider>

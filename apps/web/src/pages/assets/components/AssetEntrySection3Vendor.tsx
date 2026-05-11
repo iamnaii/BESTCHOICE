@@ -2,7 +2,7 @@
 // Pure presentation. Uses parent FormProvider for state.
 
 import { useFormContext } from 'react-hook-form';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import {
@@ -15,6 +15,7 @@ import {
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import type { AssetEntryFormValues } from '../schema';
 import { CASH_ACCOUNTS } from '../types';
+import { AssetSectionHeader } from './AssetSectionHeader';
 
 export function AssetEntrySection3Vendor() {
   const {
@@ -30,10 +31,39 @@ export function AssetEntrySection3Vendor() {
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>3. ผู้ขาย + การชำระเงิน</CardTitle>
-      </CardHeader>
+      <AssetSectionHeader number={3} title="ผู้ขาย & การชำระเงิน" />
       <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <Label>ชื่อผู้ขาย / บริษัท *</Label>
+          <Input {...register('supplierName')} placeholder="ชื่อร้านค้า / บริษัท" />
+          {errors.supplierName && (
+            <p className="text-sm text-destructive mt-1">{errors.supplierName.message}</p>
+          )}
+        </div>
+        <div>
+          <Label>เลขประจำตัวผู้เสียภาษี (13 หลัก)</Label>
+          <Input
+            {...register('supplierTaxId')}
+            maxLength={13}
+            placeholder="0123456789012"
+          />
+        </div>
+        <div>
+          <Label>เลขใบกำกับภาษี</Label>
+          <Input {...register('taxInvoiceNo')} placeholder="INV-2026-XXXXX" />
+        </div>
+        <div>
+          <Label>วันที่ใบกำกับ</Label>
+          <ThaiDateInput
+            value={invoiceDate ?? ''}
+            onChange={(e) => setValue('invoiceDate', e.target.value)}
+          />
+        </div>
+        <div>
+          <Label>อ้างอิง PR</Label>
+          <Input {...register('invoiceNo')} placeholder="PR-2026-XXXX" />
+          <p className="mt-1 text-xs text-muted-foreground">ปล่อยว่างถ้าไม่มี</p>
+        </div>
         <div>
           <Label>วันที่ซื้อ *</Label>
           <ThaiDateInput
@@ -43,32 +73,6 @@ export function AssetEntrySection3Vendor() {
           {errors.purchaseDate && (
             <p className="text-sm text-destructive mt-1">{errors.purchaseDate.message}</p>
           )}
-        </div>
-        <div>
-          <Label>วันที่ใบกำกับภาษี</Label>
-          <ThaiDateInput
-            value={invoiceDate ?? ''}
-            onChange={(e) => setValue('invoiceDate', e.target.value)}
-          />
-        </div>
-        <div>
-          <Label>ชื่อผู้ขาย</Label>
-          <Input {...register('supplierName')} />
-          {errors.supplierName && (
-            <p className="text-sm text-destructive mt-1">{errors.supplierName.message}</p>
-          )}
-        </div>
-        <div>
-          <Label>เลขผู้เสียภาษี (13 หลัก)</Label>
-          <Input {...register('supplierTaxId')} maxLength={13} />
-        </div>
-        <div>
-          <Label>เลขที่ใบสั่งซื้อ / ใบแจ้งหนี้</Label>
-          <Input {...register('invoiceNo')} />
-        </div>
-        <div>
-          <Label>เลขใบกำกับภาษี</Label>
-          <Input {...register('taxInvoiceNo')} />
         </div>
         <div>
           <Label>วิธีชำระ</Label>
@@ -89,7 +93,7 @@ export function AssetEntrySection3Vendor() {
           </Select>
         </div>
         <div>
-          <Label>บัญชีจ่ายเงิน *</Label>
+          <Label>ช่องทางการชำระเงิน (Cr) *</Label>
           <Select
             value={paymentAccount}
             onValueChange={(v) => setValue('paymentAccount', v, { shouldValidate: true })}

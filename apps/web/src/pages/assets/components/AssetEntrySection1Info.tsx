@@ -2,7 +2,8 @@
 // Pure presentation. Uses parent FormProvider for state.
 
 import { useFormContext } from 'react-hook-form';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -16,6 +17,7 @@ import {
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import type { AssetEntryFormValues } from '../schema';
 import { CATEGORY_LABEL } from '../types';
+import { AssetSectionHeader } from './AssetSectionHeader';
 
 interface Props {
   assetCode?: string; // shown read-only when editing
@@ -35,9 +37,15 @@ export function AssetEntrySection1Info({ assetCode, branches }: Props) {
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>1. ข้อมูลสินทรัพย์</CardTitle>
-      </CardHeader>
+      <AssetSectionHeader
+        number={1}
+        title="ข้อมูลสินทรัพย์ & เอกสาร"
+        badge={
+          <Badge variant="secondary" className="font-normal">
+            {CATEGORY_LABEL[category]}
+          </Badge>
+        }
+      />
       <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {assetCode && (
           <div>
@@ -57,7 +65,7 @@ export function AssetEntrySection1Info({ assetCode, branches }: Props) {
           <Textarea {...register('description')} rows={2} />
         </div>
         <div>
-          <Label>หมวดหมู่ *</Label>
+          <Label>ประเภทสินทรัพย์ *</Label>
           <Select
             value={category}
             onValueChange={(v) =>
@@ -67,7 +75,7 @@ export function AssetEntrySection1Info({ assetCode, branches }: Props) {
             }
           >
             <SelectTrigger>
-              <SelectValue placeholder="เลือกหมวด" />
+              <SelectValue placeholder="เลือกประเภท" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="EQUIPMENT">{CATEGORY_LABEL.EQUIPMENT}</SelectItem>
@@ -76,6 +84,7 @@ export function AssetEntrySection1Info({ assetCode, branches }: Props) {
               <SelectItem value="VEHICLE">{CATEGORY_LABEL.VEHICLE}</SelectItem>
             </SelectContent>
           </Select>
+          <p className="mt-1 text-xs text-muted-foreground">Dr 12-2101 / Cr 12-2102</p>
           {errors.category && (
             <p className="text-sm text-destructive mt-1">{errors.category.message}</p>
           )}
@@ -100,15 +109,18 @@ export function AssetEntrySection1Info({ assetCode, branches }: Props) {
           </Select>
         </div>
         <div>
-          <Label>ผู้ดูแล</Label>
-          <Input {...register('custodian')} placeholder="ชื่อ" />
+          <Label>ผู้รับผิดชอบ (Custodian) *</Label>
+          <Input {...register('custodian')} placeholder="ชื่อพนักงานผู้ดูแล" />
+          {errors.custodian && (
+            <p className="text-sm text-destructive mt-1">{errors.custodian.message}</p>
+          )}
         </div>
         <div>
-          <Label>ที่ตั้ง</Label>
-          <Input {...register('location')} placeholder="ห้อง/ชั้น/สาขา" />
+          <Label>สถานที่ตั้ง</Label>
+          <Input {...register('location')} placeholder="สำนักงาน / สาขา" />
         </div>
         <div>
-          <Label>Serial No.</Label>
+          <Label>Serial / S/N</Label>
           <Input {...register('serialNo')} />
         </div>
         <div>

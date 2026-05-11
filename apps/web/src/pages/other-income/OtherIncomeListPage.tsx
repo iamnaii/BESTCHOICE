@@ -6,6 +6,7 @@ import { Plus, Search, FileText, Receipt, RotateCcw, CheckCircle2, ChartBar, Arr
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { AccountingModuleTabBar } from '@/components/accounting/AccountingModuleTabBar';
 import { useDebounce } from '@/hooks/useDebounce';
 import { otherIncomeApi } from '@/lib/otherIncome';
 import type { OtherIncome, OtherIncomeStatus } from '@/lib/otherIncome.types';
@@ -156,7 +157,8 @@ export default function OtherIncomeListPage() {
   const reversedCount = reversedCountQuery.data ?? 0;
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="p-6 max-w-7xl mx-auto space-y-4">
+      <AccountingModuleTabBar />
       <PageHeader
         title="รายได้อื่น"
         subtitle="จัดการเอกสารรับรู้รายได้อื่น (กลุ่ม 42-XXXX) — ดอกเบี้ยเงินฝาก, ค่าปรับ, รายได้หักค่าจ้าง ฯลฯ"

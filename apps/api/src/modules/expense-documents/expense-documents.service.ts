@@ -86,6 +86,63 @@ export class ExpenseDocumentsService {
         if (t !== 'ค่าใช้จ่าย') throw new BadRequestException(`หมวดบัญชี ${c} ไม่ใช่ "ค่าใช้จ่าย"`);
       }
 
+      // Fix Report P0-4 — multi-line adjustment validation (V12/V13/V14).
+      // When `amountPaid` differs from `netExpected = totalAmount − wht`, the
+      // signed sum of adjustments must close the gap exactly.
+      const adjustments = dto.adjustments ?? [];
+      const totalAmount = new Prisma.Decimal(totals.totalAmount.toString());
+      const wht = new Prisma.Decimal(totals.withholdingTax.toString());
+      const netExpected = totalAmount.minus(wht);
+      const amountPaid =
+        dto.amountPaid !== undefined ? new Prisma.Decimal(dto.amountPaid) : netExpected;
+      const diff = amountPaid.minus(netExpected);
+
+      if (adjustments.length > 0 || !diff.eq(0)) {
+        // V13/V14 — each row must have accountCode + amount > 0
+        for (let i = 0; i < adjustments.length; i++) {
+          const a = adjustments[i];
+          if (!a.accountCode || !a.accountCode.trim()) {
+            throw new BadRequestException(
+              `V13: บัญชีปรับผลต่างแถวที่ ${i + 1} ยังไม่ได้เลือกบัญชี`,
+            );
+          }
+          const amt = new Prisma.Decimal(a.amount);
+          if (amt.lte(0)) {
+            throw new BadRequestException(
+              `V14: บัญชีปรับผลต่างแถวที่ ${i + 1}: จำนวนต้องมากกว่า 0`,
+            );
+          }
+        }
+
+        // V13 — adjustment account codes must exist in CoA (any type)
+        if (adjustments.length > 0) {
+          const adjCodes = [...new Set(adjustments.map((a) => a.accountCode))];
+          const adjCoaRows = await tx.chartOfAccount.findMany({
+            where: { code: { in: adjCodes }, deletedAt: null },
+            select: { code: true },
+          });
+          const adjFound = new Set(adjCoaRows.map((r) => r.code));
+          for (const c of adjCodes) {
+            if (!adjFound.has(c)) {
+              throw new BadRequestException(`V13: บัญชีปรับผลต่าง ${c} ไม่พบในผังบัญชี`);
+            }
+          }
+        }
+
+        // V12 — Σ signed(adjustments) must equal diff.
+        // Signed convention: side='CR' contributes +amount (offsets Dr); side='DR' contributes −amount (offsets Cr).
+        const signedSum = adjustments.reduce<Prisma.Decimal>((s, a) => {
+          const amt = new Prisma.Decimal(a.amount);
+          return a.side === 'CR' ? s.plus(amt) : s.minus(amt);
+        }, new Prisma.Decimal(0));
+        if (!signedSum.eq(diff)) {
+          throw new BadRequestException(
+            `V12: ผลรวมบัญชีปรับผลต่าง (signed = ${signedSum.toFixed(2)}) ` +
+              `ไม่เท่ากับผลต่าง amount_paid − net_expected (${diff.toFixed(2)})`,
+          );
+        }
+      }
+
       const number = await this.docNumber.next(tx, 'EXPENSE', documentDate);
 
       return tx.expenseDocument.create({
@@ -103,7 +160,7 @@ export class ExpenseDocumentsService {
           withholdingTax: totals.withholdingTax,
           whtFormType: dto.whtFormType ?? null,
           totalAmount: totals.totalAmount,
-          netPayment: dto.depositAccountCode ? totals.netPayment : null,
+          netPayment: dto.depositAccountCode ? amountPaid : null,
           paymentMethod: (dto.paymentMethod as never) ?? null,
           depositAccountCode: dto.depositAccountCode ?? null,
           status: 'DRAFT',
@@ -133,8 +190,23 @@ export class ExpenseDocumentsService {
               },
             },
           },
+          adjustments:
+            adjustments.length > 0
+              ? {
+                  create: adjustments.map((a, idx) => ({
+                    lineNo: idx + 1,
+                    accountCode: a.accountCode,
+                    side: a.side,
+                    amount: new Prisma.Decimal(a.amount),
+                    note: a.note ?? null,
+                  })),
+                }
+              : undefined,
         },
-        include: { expenseDetail: { include: { lines: { orderBy: { lineNo: 'asc' } } } } },
+        include: {
+          expenseDetail: { include: { lines: { orderBy: { lineNo: 'asc' } } } },
+          adjustments: { orderBy: { lineNo: 'asc' } },
+        },
       });
     });
   }

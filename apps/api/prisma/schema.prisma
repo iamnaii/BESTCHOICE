@@ -3524,6 +3524,7 @@ model ExpenseDocument {
   settlement              VendorSettlementDetail?
   settlementsClearingThis SettlementLine[]        @relation("SettlementCleared")
   creditNotesAgainst      CreditNoteDetail[]      @relation("CreditNoteOriginal")
+  adjustments             ExpenseAdjustment[]
 
   journalEntryId String? @unique @map("journal_entry_id")
 
@@ -3582,6 +3583,44 @@ model ExpenseLine {
 
   @@unique([expenseDetailId, lineNo])
   @@map("expense_lines")
+}
+
+enum ExpenseAdjustmentSide {
+  DR
+  CR
+}
+
+/// Fix Report P0-4 — Multi-line adjustment for amount_paid ≠ amount_expected
+/// cases (rounding tolerance, overpay/underpay, bank/vendor discounts).
+/// Captures the per-line breakdown of the difference into account-specific
+/// Dr/Cr postings so the JE still balances.
+///
+/// Each row carries its own direction (`side`) so the UI is explicit and the
+/// JE template doesn't need to infer signs from document-level math. `amount`
+/// is always stored as a positive Decimal; direction comes from `side`.
+///
+/// Validation rules (V12/V13/V14):
+///   - V12 — Σ (signed) adjustments = `amountPaid − netExpected`, where
+///     positive adjustments post Cr (offset Dr expense) and negative
+///     adjustments post Dr (offset Cr cash). Signed convention:
+///       signed[i] = side == 'CR' ? +amount : -amount
+///   - V13 — every row must have `accountCode`
+///   - V14 — `amount > 0` (signs go through `side`, not the amount itself)
+model ExpenseAdjustment {
+  id          String                @id @default(uuid())
+  documentId  String                @map("document_id")
+  document    ExpenseDocument       @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  lineNo      Int                   @map("line_no")
+  accountCode String                @map("account_code")
+  side        ExpenseAdjustmentSide
+  amount      Decimal               @db.Decimal(12, 2)
+  note        String?
+  createdAt   DateTime              @default(now()) @map("created_at")
+  updatedAt   DateTime              @updatedAt @map("updated_at")
+
+  @@unique([documentId, lineNo])
+  @@index([documentId])
+  @@map("expense_adjustments")
 }
 
 /// Lifecycle delegated to parent ExpenseDocument — timestamps/soft-delete intentionally omitted.

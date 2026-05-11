@@ -9,10 +9,15 @@ import { PrismaService } from '../../../prisma/prisma.service';
  *
  * Spec §4.1 — records expense + cash payment in one JE.
  *
- *   Dr 5x-xxxx ค่าใช้จ่ายตาม category    (subtotal)
- *   Dr 11-2104 ลูกหนี้-VAT                (vatAmount)        [if VAT > 0]
- *     Cr depositAccountCode               (totalAmount - whtAmount)
- *     Cr 21-3102/3103 หัก ณ ที่จ่าย       (whtAmount)        [if WHT > 0; route by whtFormType]
+ *   Dr 5x-xxxx ค่าใช้จ่ายตาม category     (subtotal)
+ *   Dr 11-4101 ภาษีซื้อ                   (vatAmount)        [if VAT > 0]
+ *   Dr <adj-account>                      (adjustment)       [if underpay diff < 0]
+ *     Cr depositAccountCode                (amountReceived if set, else totalAmount - whtAmount)
+ *     Cr 21-3102/3103 หัก ณ ที่จ่าย         (whtAmount)        [if WHT > 0; route by whtFormType]
+ *     Cr <adj-account>                      (adjustment)       [if overpay diff > 0]
+ *
+ * Fix Report P0-1: VAT input → 11-4101 (was 11-2104).
+ * Fix Report P0-4: adjustments line up to balance amount_paid ≠ amount_expected.
  *
  * ⚠️ CPA AUDIT REQUIRED — accounts logical-correct against Phase A.4 chart
  * but pending CPA case verification (Phase A.7).
@@ -49,7 +54,10 @@ export class ExpenseSameDayTemplate {
     const exec = async (tx: Prisma.TransactionClient): Promise<{ entryNo: string }> => {
       const doc = await tx.expenseDocument.findUniqueOrThrow({
         where: { id: documentId },
-        include: { expenseDetail: { include: { lines: { orderBy: { lineNo: 'asc' } } } } },
+        include: {
+          expenseDetail: { include: { lines: { orderBy: { lineNo: 'asc' } } } },
+          adjustments: { orderBy: { lineNo: 'asc' } },
+        },
       });
 
       // Idempotency — journalEntryId stores JournalEntry.id (UUID).
@@ -74,7 +82,12 @@ export class ExpenseSameDayTemplate {
       const vat = new Decimal(doc.vatAmount?.toString() ?? '0');
       const wht = new Decimal(doc.withholdingTax?.toString() ?? '0');
       const total = new Decimal(doc.totalAmount.toString());
-      const cashAmount = total.minus(wht);
+      // Cash leg: prefer `netPayment` (the actual amount paid; reconciled to
+      // `total − wht` ± Σ adjustments by V12 in the service). Fall back to
+      // `total − wht` for legacy docs without adjustments + amountPaid.
+      const cashAmount = doc.netPayment
+        ? new Decimal(doc.netPayment.toString())
+        : total.minus(wht);
 
       // Aggregate Dr by category (multiple lines with same category collapse)
       const byCategory = new Map<string, Decimal>();
@@ -83,6 +96,13 @@ export class ExpenseSameDayTemplate {
         byCategory.set(l.category, (byCategory.get(l.category) ?? zero).plus(amt));
       }
 
+      // Adjustments (Fix Report P0-4): per-line Dr/Cr postings that absorb the
+      // diff between cash leg actually paid and `totalAmount − wht`. Each row
+      // carries its own `side` (DR/CR) so the JE template doesn't infer signs
+      // from document-level math — V12 in the service has already validated
+      // that the signed sum balances.
+      const adjustments = doc.adjustments ?? [];
+
       const lines: JeLineInput[] = [];
       for (const [code, amt] of byCategory.entries()) {
         if (amt.lte(zero)) continue; // skip zero/negative aggregations
@@ -90,10 +110,20 @@ export class ExpenseSameDayTemplate {
       }
       if (vat.gt(zero)) {
         lines.push({
-          accountCode: '11-2104',
+          accountCode: '11-4101',
           dr: vat,
           cr: zero,
-          description: 'ลูกหนี้-VAT ที่ออกแทน',
+          description: 'ภาษีซื้อ',
+        });
+      }
+      for (const adj of adjustments) {
+        const amt = new Decimal(adj.amount.toString());
+        if (amt.lte(zero)) continue;
+        lines.push({
+          accountCode: adj.accountCode,
+          dr: adj.side === 'DR' ? amt : zero,
+          cr: adj.side === 'CR' ? amt : zero,
+          description: adj.note ?? `ปรับผลต่าง — ${doc.number}`,
         });
       }
       lines.push({

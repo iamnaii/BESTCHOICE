@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils';
 import { ExpenseFormState, newLine, newPayrollLine } from './types';
 import { useFormCompute } from './useFormCompute';
 import { QuickStartPanel } from './QuickStartPanel';
-import { TypeTabs } from './TypeTabs';
+import { DocTypePicker } from './DocTypePicker';
 import { VendorSection } from './VendorSection';
 import { ItemLinesSection } from './ItemLinesSection';
 import { PayrollLinesSection } from './PayrollLinesSection';
@@ -314,9 +314,9 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
               state.docType === 'VENDOR_SETTLEMENT';
             return (
               <>
-                {/* Section: Type tabs — always visible */}
+                {/* Section: Doc-type picker — always visible (P2-1 chip cards) */}
                 <Section num={next()} title="ประเภทเอกสาร" Icon={FileText}>
-                  <TypeTabs
+                  <DocTypePicker
                     value={state.docType}
                     onChange={(t) => patch({ docType: t })}
                     invoiceDateIsToday={invoiceIsToday}

@@ -50,7 +50,7 @@ describe('ExpenseAccrualTemplate', () => {
     expect(args.lines).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ accountCode: '53-1404', dr: new Decimal('5000.00') }),
-        expect.objectContaining({ accountCode: '11-2104', dr: new Decimal('350.00') }),
+        expect.objectContaining({ accountCode: '11-4101', dr: new Decimal('350.00') }),
         expect.objectContaining({ accountCode: '21-1104', cr: new Decimal('5350.00') }),
       ]),
     );

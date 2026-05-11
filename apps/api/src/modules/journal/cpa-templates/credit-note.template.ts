@@ -14,14 +14,16 @@ import { PrismaService } from '../../../prisma/prisma.service';
  * If original.status === 'ACCRUAL':
  *   Dr 21-1104                            (totalAmount)      — clear AP
  *     Cr 5x-xxxx ค่าใช้จ่าย               (subtotal)
- *     Cr 11-2104 ลูกหนี้-VAT              (vatAmount)        [if VAT > 0]
+ *     Cr 11-4101 ภาษีซื้อ                  (vatAmount)        [if VAT > 0]
  *
  * If original.status === 'POSTED' (refund):
  *   Dr depositAccountCode                 (totalAmount)      — refund cash in
  *     Cr 5x-xxxx ค่าใช้จ่าย               (subtotal)
- *     Cr 11-2104 ลูกหนี้-VAT              (vatAmount)        [if VAT > 0]
+ *     Cr 11-4101 ภาษีซื้อ                  (vatAmount)        [if VAT > 0]
  *
- * CPA AUDIT REQUIRED — high priority (ม.86/10 compliance).
+ * CN reverses the original VAT input recorded at acquisition (11-4101).
+ * Fix Report P0-1 — was incorrectly using 11-2104 (ลูกหนี้-VAT ที่ออกแทน,
+ * ม.83/6 only) which is not claimable on ภ.พ.30. ม.86/10 compliance.
  */
 @Injectable()
 export class CreditNoteTemplate {
@@ -154,10 +156,10 @@ export class CreditNoteTemplate {
       }
       if (vat.gt(zero)) {
         lines.push({
-          accountCode: '11-2104',
+          accountCode: '11-4101',
           dr: zero,
           cr: vat,
-          description: 'กลับ VAT',
+          description: 'กลับ VAT (ภาษีซื้อ)',
         });
       }
 

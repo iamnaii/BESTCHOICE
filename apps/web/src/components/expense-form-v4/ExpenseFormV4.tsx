@@ -211,10 +211,10 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
     : itemCount > 0;
 
   return (
-    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-start justify-center pt-8 pb-8 overflow-y-auto">
-      <div className="w-full max-w-5xl bg-background rounded-xl shadow-modal min-h-[80vh]">
-        {/* Header */}
-        <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b px-6 py-4 flex items-center justify-between">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+      <div className="w-full max-w-5xl bg-background rounded-xl shadow-modal max-h-[95vh] flex flex-col">
+        {/* Header — flex-none so it doesn't shrink */}
+        <div className="flex-none bg-background border-b px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button
               type="button"
@@ -230,7 +230,7 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
           <span className="text-xs px-2 py-1 rounded bg-muted text-muted-foreground">DRAFT</span>
         </div>
 
-        <div className="p-6 space-y-5">
+        <div className="flex-1 overflow-y-auto p-6 space-y-5">
           {/* Quick Start */}
           {showQuickStart && (
             <QuickStartPanel
@@ -387,7 +387,7 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
         </div>
 
         {/* Footer */}
-        <div className="sticky bottom-0 bg-background/95 backdrop-blur-sm border-t px-6 py-3 flex items-center justify-between">
+        <div className="flex-none bg-background border-t px-6 py-3 flex items-center justify-between">
           <Button variant="ghost" onClick={onClose}>
             ← ยกเลิก
           </Button>

@@ -1,12 +1,27 @@
-// Asset module — Phase 1 list page
-// Search debounced 300ms, filter by category/status, paginated 50/page,
-// copy + edit + delete row actions, AnimatedCounter for stat values.
+// Asset module — Phase 1 list page (Asset Acquisition v3 design)
+// Tabs: เอกสาร / รายงาน / ค่าเสื่อม / ปิดงบ / Audit
+// Stats: DRAFT, POSTED, REVERSED, TOTAL COST + Register/Journal nav cards.
 
 import { useState, useMemo, type ReactNode } from 'react';
-import { useNavigate, useSearchParams } from 'react-router';
+import { useNavigate, useSearchParams, NavLink } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Plus, Search, Copy, Edit, Trash2, Boxes } from 'lucide-react';
+import {
+  Plus,
+  Search,
+  Copy,
+  Edit,
+  Trash2,
+  Boxes,
+  FileEdit,
+  CheckCircle2,
+  RotateCcw,
+  Gem,
+  BookOpen,
+  ClipboardList,
+  ChevronRight,
+  Inbox,
+} from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -25,8 +40,10 @@ import AnimatedCounter from '@/components/ui/animated-counter';
 import { useDebounce } from '@/hooks/useDebounce';
 import { formatDateShortThai, formatNumberDecimal } from '@/utils/formatters';
 import { getErrorMessage } from '@/lib/api';
+import { cn } from '@/lib/utils';
 import { assetsApi } from './api';
 import { AssetStatusBadge } from './components/AssetStatusBadge';
+import { AccountingModuleTabBar } from '@/components/accounting/AccountingModuleTabBar';
 import {
   CATEGORY_LABEL,
   type Asset,
@@ -35,6 +52,23 @@ import {
 } from './types';
 
 const PAGE_SIZE = 50;
+
+interface StatCardConfig {
+  label: string;
+  caption: string;
+  value: number;
+  decimals: number;
+  icon: typeof FileEdit;
+  tone: 'muted' | 'primary' | 'warning' | 'success' | 'info';
+}
+
+const TONE_CLASSES: Record<StatCardConfig['tone'], string> = {
+  muted: 'text-muted-foreground bg-muted',
+  primary: 'text-primary bg-primary/10',
+  warning: 'text-warning bg-warning/10',
+  success: 'text-success bg-success/10',
+  info: 'text-info bg-info/10',
+};
 
 export default function AssetsListPage() {
   const navigate = useNavigate();
@@ -69,7 +103,7 @@ export default function AssetsListPage() {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => assetsApi.delete(id),
     onSuccess: () => {
-      toast.success('ลบสินทรัพย์สำเร็จ');
+      toast.success('ลบเอกสารสำเร็จ');
       queryClient.invalidateQueries({ queryKey: ['assets'] });
       queryClient.invalidateQueries({ queryKey: ['assets-summary'] });
       setDeleteId(null);
@@ -100,38 +134,41 @@ export default function AssetsListPage() {
     setParam('search', val || null);
   };
 
-  type StatCard = {
-    label: string;
-    value: number;
-    decimals: number;
-    accent?: string;
-  };
-
   const summary = summaryQuery.data;
 
-  const statCards: StatCard[] = useMemo(
+  const statCards: StatCardConfig[] = useMemo(
     () => [
-      { label: 'ร่าง', value: Number(summary?.draft ?? 0), decimals: 0 },
       {
-        label: 'ลงบัญชี',
+        label: 'DRAFT',
+        caption: 'ฉบับร่าง',
+        value: Number(summary?.draft ?? 0),
+        decimals: 0,
+        icon: FileEdit,
+        tone: 'muted',
+      },
+      {
+        label: 'POSTED',
+        caption: 'บันทึกแล้ว',
         value: Number(summary?.posted ?? 0),
         decimals: 0,
-        accent: 'text-primary',
+        icon: CheckCircle2,
+        tone: 'success',
       },
-      { label: 'กลับรายการ', value: Number(summary?.reversed ?? 0), decimals: 0 },
-      { label: 'จำหน่าย', value: Number(summary?.disposed ?? 0), decimals: 0 },
-      { label: 'ตัดบัญชี', value: Number(summary?.writtenOff ?? 0), decimals: 0 },
       {
-        label: 'ยอดทุนรวม (POSTED)',
+        label: 'REVERSED',
+        caption: 'กลับรายการ',
+        value: Number(summary?.reversed ?? 0),
+        decimals: 0,
+        icon: RotateCcw,
+        tone: 'warning',
+      },
+      {
+        label: 'TOTAL COST',
+        caption: 'ราคาทุนรวม',
         value: Number(summary?.totalPurchaseCost ?? 0),
         decimals: 2,
-        accent: 'text-foreground',
-      },
-      {
-        label: 'NBV รวม',
-        value: Number(summary?.totalNetBookValue ?? 0),
-        decimals: 2,
-        accent: 'text-primary',
+        icon: Gem,
+        tone: 'info',
       },
     ],
     [summary],
@@ -167,7 +204,7 @@ export default function AssetsListPage() {
       },
       {
         key: 'category',
-        label: 'หมวด',
+        label: 'ประเภท',
         render: (row: Asset): ReactNode => (
           <span className="text-sm text-muted-foreground">
             {CATEGORY_LABEL[row.category]}
@@ -258,43 +295,102 @@ export default function AssetsListPage() {
 
   return (
     <div className="space-y-4">
+      <AccountingModuleTabBar />
+
       <PageHeader
-        title="สินทรัพย์"
-        subtitle={`ทั้งหมด ${listQuery.data?.total ?? 0} รายการ`}
+        title="ซื้อสินทรัพย์ถาวร"
+        subtitle="จัดการการซื้อสินทรัพย์ถาวร (กลุ่ม 12-21XX) — อุปกรณ์ · ส่วนปรับปรุง · ตกแต่ง · ยานพาหนะ · TFRS + Accrual VAT"
         icon={<Boxes className="size-5" />}
         action={
           <Button variant="primary" size="md" onClick={() => navigate('/assets/new')}>
-            <Plus className="size-4" /> สินทรัพย์ใหม่
+            <Plus className="size-4" /> สร้างเอกสารใหม่
           </Button>
         }
       />
 
-      {/* Stat cards: 5 status counts + totalPurchaseCost + totalNetBookValue */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
-        {statCards.map((card) => (
-          <Card key={card.label} className="rounded-xl border border-border/50 bg-card shadow-sm">
-            <CardContent className="p-4">
-              <div className="text-xs font-medium text-muted-foreground mb-2">
-                {card.label}
+      {/* Stat row: 4 status counts + 2 navigation cards */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        {statCards.map((card) => {
+          const Icon = card.icon;
+          return (
+            <Card
+              key={card.label}
+              className="rounded-xl border border-border/60 bg-card shadow-sm"
+            >
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <div
+                    className={cn(
+                      'flex items-center justify-center size-7 rounded-md',
+                      TONE_CLASSES[card.tone],
+                    )}
+                  >
+                    <Icon className="size-4" />
+                  </div>
+                  <span className="text-[11px] font-semibold tracking-wider text-muted-foreground">
+                    {card.label}
+                  </span>
+                </div>
+                <AnimatedCounter
+                  value={card.value}
+                  decimals={card.decimals}
+                  className="text-2xl font-bold tabular-nums text-foreground"
+                />
+                <div className="mt-1 text-xs text-muted-foreground">{card.caption}</div>
+              </CardContent>
+            </Card>
+          );
+        })}
+
+        {/* Register nav card */}
+        <NavLink to="/assets/register" className="block">
+          <Card className="h-full rounded-xl border border-border/60 bg-card shadow-sm transition-colors hover:border-primary/40 hover:bg-accent/40">
+            <CardContent className="flex h-full flex-col p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center justify-center size-7 rounded-md bg-primary/10 text-primary">
+                  <BookOpen className="size-4" />
+                </div>
+                <span className="text-[11px] font-semibold tracking-wider text-muted-foreground">
+                  REGISTER
+                </span>
               </div>
-              <AnimatedCounter
-                value={card.value}
-                decimals={card.decimals}
-                className={`text-xl font-bold tabular-nums ${card.accent ?? 'text-foreground'}`}
-              />
+              <div className="mt-auto flex items-center justify-between">
+                <div className="text-sm font-medium text-foreground">ทะเบียน + NBV</div>
+                <ChevronRight className="size-4 text-muted-foreground" />
+              </div>
             </CardContent>
           </Card>
-        ))}
+        </NavLink>
+
+        {/* Journal nav card */}
+        <NavLink to="/assets/journal" className="block">
+          <Card className="h-full rounded-xl border border-border/60 bg-card shadow-sm transition-colors hover:border-primary/40 hover:bg-accent/40">
+            <CardContent className="flex h-full flex-col p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center justify-center size-7 rounded-md bg-warning/10 text-warning">
+                  <ClipboardList className="size-4" />
+                </div>
+                <span className="text-[11px] font-semibold tracking-wider text-muted-foreground">
+                  JOURNAL
+                </span>
+              </div>
+              <div className="mt-auto flex items-center justify-between">
+                <div className="text-sm font-medium text-foreground">สมุดรายวัน</div>
+                <ChevronRight className="size-4 text-muted-foreground" />
+              </div>
+            </CardContent>
+          </Card>
+        </NavLink>
       </div>
 
       {/* Filters */}
-      <Card className="rounded-xl border border-border/50 bg-card shadow-sm">
+      <Card className="rounded-xl border border-border/60 bg-card shadow-sm">
         <CardContent className="p-4 flex flex-col md:flex-row gap-3">
           <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
             <Input
               className="pl-10"
-              placeholder="ค้นหาชื่อ / รหัส / serial"
+              placeholder="ค้นหาเลขที่เอกสาร / รหัสสินทรัพย์ / ชื่อ / ผู้ขาย..."
               value={searchInput}
               onChange={(e) => onSearchChange(e.target.value)}
             />
@@ -304,10 +400,10 @@ export default function AssetsListPage() {
             onValueChange={(v) => setParam('category', v === 'ALL' ? null : v)}
           >
             <SelectTrigger className="w-full md:w-48">
-              <SelectValue placeholder="หมวด" />
+              <SelectValue placeholder="ประเภททั้งหมด" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="ALL">ทุกหมวด</SelectItem>
+              <SelectItem value="ALL">ประเภททั้งหมด</SelectItem>
               <SelectItem value="EQUIPMENT">{CATEGORY_LABEL.EQUIPMENT}</SelectItem>
               <SelectItem value="IMPROVEMENT">{CATEGORY_LABEL.IMPROVEMENT}</SelectItem>
               <SelectItem value="FURNITURE">{CATEGORY_LABEL.FURNITURE}</SelectItem>
@@ -319,13 +415,13 @@ export default function AssetsListPage() {
             onValueChange={(v) => setParam('status', v === 'ALL' ? null : v)}
           >
             <SelectTrigger className="w-full md:w-48">
-              <SelectValue placeholder="สถานะ" />
+              <SelectValue placeholder="สถานะทั้งหมด" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="ALL">ทุกสถานะ</SelectItem>
-              <SelectItem value="DRAFT">ร่าง</SelectItem>
-              <SelectItem value="POSTED">ลงบัญชีแล้ว</SelectItem>
-              <SelectItem value="REVERSED">กลับรายการ</SelectItem>
+              <SelectItem value="ALL">สถานะทั้งหมด</SelectItem>
+              <SelectItem value="DRAFT">DRAFT — ฉบับร่าง</SelectItem>
+              <SelectItem value="POSTED">POSTED — บันทึกแล้ว</SelectItem>
+              <SelectItem value="REVERSED">REVERSED — กลับรายการ</SelectItem>
               <SelectItem value="DISPOSED">จำหน่าย</SelectItem>
               <SelectItem value="WRITTEN_OFF">ตัดบัญชี</SelectItem>
             </SelectContent>
@@ -338,14 +434,15 @@ export default function AssetsListPage() {
         isError={listQuery.isError}
         error={listQuery.error}
         onRetry={listQuery.refetch}
-        errorTitle="ไม่สามารถโหลดรายการสินทรัพย์ได้"
+        errorTitle="ไม่สามารถโหลดรายการเอกสารได้"
       >
         <DataTable
           columns={columns}
           data={listQuery.data?.data ?? []}
           isLoading={listQuery.isFetching && !listQuery.data}
-          emptyMessage="ยังไม่มีสินทรัพย์"
-          emptyDescription="เริ่มต้นด้วยการสร้างสินทรัพย์ใหม่"
+          emptyIcon={Inbox}
+          emptyMessage="ยังไม่มีเอกสาร"
+          emptyDescription="เริ่มต้นโดยกด 'สร้างเอกสารใหม่'"
           pagination={
             listQuery.data && listQuery.data.total > PAGE_SIZE
               ? {
@@ -362,8 +459,8 @@ export default function AssetsListPage() {
       <ConfirmDialog
         open={!!deleteId}
         onOpenChange={(open) => !open && setDeleteId(null)}
-        title="ลบสินทรัพย์?"
-        description="การลบสินทรัพย์จะไม่สามารถกู้คืนได้ (DRAFT เท่านั้น)"
+        title="ลบเอกสาร?"
+        description="การลบเอกสารจะไม่สามารถกู้คืนได้ (DRAFT เท่านั้น)"
         variant="destructive"
         confirmLabel="ลบ"
         loading={deleteMutation.isPending}

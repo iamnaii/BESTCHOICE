@@ -2,7 +2,7 @@
 // Pure presentation. Uses parent FormProvider for state + useAssetCalculation result.
 
 import { useFormContext } from 'react-hook-form';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -13,9 +13,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Receipt, ReceiptText, Coins, Gem } from 'lucide-react';
 import { formatNumberDecimal } from '@/utils/formatters';
 import type { AssetEntryFormValues } from '../schema';
 import type { CalculationResult } from '../hooks/useAssetCalculation';
+import { AssetSectionHeader } from './AssetSectionHeader';
 
 const fmt = (n: number | string | null | undefined) =>
   n == null ? '-' : formatNumberDecimal(Number(n));
@@ -34,17 +36,17 @@ export function AssetEntrySection2Cost({ calc }: { calc: CalculationResult }) {
   const whtAccount = watch('whtAccount');
   const whtFormType = watch('whtFormType');
   const whtRate = watch('whtRate');
+  const basePrice = watch('basePrice');
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>2. รายละเอียดต้นทุน + ภาษี</CardTitle>
-      </CardHeader>
+      <AssetSectionHeader number={2} title="โครงสร้างต้นทุน · VAT · WHT" />
       <CardContent className="space-y-4">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div>
-            <Label>ราคาทุน (basePrice) *</Label>
+            <Label>ราคาก่อน VAT *</Label>
             <Input type="number" step="0.01" {...register('basePrice')} />
+            <p className="mt-1 text-xs text-muted-foreground">Base Price</p>
             {errors.basePrice && (
               <p className="text-sm text-destructive mt-1">{errors.basePrice.message}</p>
             )}
@@ -52,34 +54,48 @@ export function AssetEntrySection2Cost({ calc }: { calc: CalculationResult }) {
           <div>
             <Label>ค่าขนส่ง</Label>
             <Input type="number" step="0.01" {...register('shippingCost')} />
+            <p className="mt-1 text-xs text-muted-foreground">Capitalize → cost (TAS 16.16)</p>
           </div>
           <div>
             <Label>ค่าติดตั้ง</Label>
             <Input type="number" step="0.01" {...register('installationCost')} />
+            <p className="mt-1 text-xs text-muted-foreground">Capitalize → cost</p>
           </div>
           <div>
-            <Label>ค่าใช้จ่ายอื่น (capitalize)</Label>
+            <Label>ค่า capitalize อื่น</Label>
             <Input type="number" step="0.01" {...register('otherCapitalized')} />
+            <p className="mt-1 text-xs text-muted-foreground">ทดสอบ เตรียม ฯลฯ</p>
           </div>
         </div>
 
         {/* VAT */}
         <div className="rounded-lg border p-4 space-y-3">
           <div className="flex items-center gap-2">
-            <Switch checked={hasVat} onCheckedChange={(v) => setValue('hasVat', v)} />
-            <Label>มี VAT 7%</Label>
+            <Switch
+              id="asset-has-vat"
+              checked={hasVat}
+              onCheckedChange={(v) => setValue('hasVat', v)}
+            />
+            <ReceiptText className="size-4 text-muted-foreground" />
+            <Label htmlFor="asset-has-vat" className="font-semibold cursor-pointer">
+              มีใบกำกับภาษี (VAT 7%)
+            </Label>
+            <span className="text-xs text-muted-foreground">· ม.82/3 ประมวลรัษฎากร</span>
           </div>
           {hasVat && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 ml-6">
               <div className="flex items-center gap-2">
                 <Switch
+                  id="asset-vat-inclusive"
                   checked={vatInclusive}
                   onCheckedChange={(v) => setValue('vatInclusive', v)}
                 />
-                <Label>ราคารวม VAT แล้ว (inclusive)</Label>
+                <Label htmlFor="asset-vat-inclusive" className="cursor-pointer">
+                  ราคารวม VAT แล้ว (inclusive)
+                </Label>
               </div>
               <div>
-                <Label>บัญชี VAT</Label>
+                <Label>บัญชีภาษีซื้อ</Label>
                 <Select
                   value={vatAccount}
                   onValueChange={(v) =>
@@ -111,8 +127,18 @@ export function AssetEntrySection2Cost({ calc }: { calc: CalculationResult }) {
         {/* WHT */}
         <div className="rounded-lg border p-4 space-y-3">
           <div className="flex items-center gap-2">
-            <Switch checked={hasWht} onCheckedChange={(v) => setValue('hasWht', v)} />
-            <Label>มี WHT (หัก ณ ที่จ่าย)</Label>
+            <Switch
+              id="asset-has-wht"
+              checked={hasWht}
+              onCheckedChange={(v) => setValue('hasWht', v)}
+            />
+            <Receipt className="size-4 text-muted-foreground" />
+            <Label htmlFor="asset-has-wht" className="font-semibold cursor-pointer">
+              หัก ณ ที่จ่าย WHT
+            </Label>
+            <span className="text-xs text-muted-foreground">
+              · ทป.4/2528 · หักเฉพาะ &ldquo;ค่าบริการ&rdquo; — ไม่ใช่ค่าสินค้า (ม.50 ทวิ)
+            </span>
           </div>
           {hasWht && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 ml-6">
@@ -187,23 +213,34 @@ export function AssetEntrySection2Cost({ calc }: { calc: CalculationResult }) {
           )}
         </div>
 
-        {/* Live totals */}
-        <div className="rounded-lg bg-muted p-4 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+        {/* Live totals — basePrice / purchaseCost (capitalized) / monthlyDepr / totalPayable.
+            (calc.netBookValue starts equal to purchaseCost; not used here to avoid confusion.) */}
+        <div className="rounded-lg bg-muted/60 p-4 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
           <div>
-            <div className="text-muted-foreground">ราคาทุนรวม (purchaseCost)</div>
+            <div className="flex items-center gap-1.5 text-muted-foreground">
+              <Coins className="size-3.5" />
+              ราคาก่อน VAT
+            </div>
+            <div className="text-xl font-semibold tabular-nums">{fmt(basePrice)}</div>
+          </div>
+          <div>
+            <div className="flex items-center gap-1.5 text-muted-foreground">
+              <Gem className="size-3.5 text-info" />
+              Capitalized Cost
+            </div>
             <div className="text-xl font-semibold tabular-nums">{fmt(calc.purchaseCost)}</div>
           </div>
           <div>
-            <div className="text-muted-foreground">ยอดที่ต้องจ่ายจริง</div>
-            <div className="text-xl font-semibold tabular-nums">{fmt(calc.totalPayable)}</div>
+            <div className="text-muted-foreground">ค่าเสื่อม / เดือน</div>
+            <div className="text-xl font-semibold tabular-nums text-warning">
+              {fmt(calc.monthlyDepr)} <span className="text-xs">฿</span>
+            </div>
           </div>
           <div>
-            <div className="text-muted-foreground">ค่าเสื่อม/เดือน</div>
-            <div className="text-xl font-semibold tabular-nums">{fmt(calc.monthlyDepr)}</div>
-          </div>
-          <div>
-            <div className="text-muted-foreground">NBV เริ่มต้น</div>
-            <div className="text-xl font-semibold tabular-nums">{fmt(calc.netBookValue)}</div>
+            <div className="text-muted-foreground">สุทธิที่จ่าย</div>
+            <div className="text-xl font-semibold tabular-nums text-primary">
+              {fmt(calc.totalPayable)} <span className="text-xs">฿</span>
+            </div>
           </div>
         </div>
 

@@ -106,6 +106,27 @@ export class ValidationService {
       }
     });
 
+    // V15 — Bank interest income (42-1102) is VAT-exempt under ม.81(1)(ฏ) and
+    // is statutorily WHT-deducted at 15% by the bank (ม.50(2)(ข) + ม.50 ทวิ).
+    // Bookings that violate either are almost always a misclassified account.
+    doc.items?.forEach((it) => {
+      if (it.accountCode !== '42-1102') return;
+      if (it.vatPct.gt(0)) {
+        errors.push({
+          rule: 'V15',
+          lineNo: it.lineNo,
+          msg: `รายการที่ ${it.lineNo}: ดอกเบี้ยเงินฝาก (42-1102) ได้รับยกเว้น VAT (ม.81(1)(ฏ)) — กรุณาตั้ง VAT% = 0`,
+        });
+      }
+      if (!it.whtPct.eq(15)) {
+        warnings.push({
+          rule: 'V15',
+          lineNo: it.lineNo,
+          msg: `รายการที่ ${it.lineNo}: ดอกเบี้ยเงินฝาก (42-1102) ถูกหัก ณ ที่จ่าย 15% โดยธนาคารตามกฎหมาย — ตรวจสอบ WHT% อีกครั้ง`,
+        });
+      }
+    });
+
     // V6: if any item has VAT% > 0, vatAmount must be > 0
     const hasVatItem = doc.items?.some((it) => it.vatPct.gt(0)) ?? false;
     if (hasVatItem) {

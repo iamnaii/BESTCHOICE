@@ -24,16 +24,33 @@ export class DepreciationCron {
 
   @Cron('0 1 28-31 * *', { timeZone: 'Asia/Bangkok' })
   async tick(): Promise<{ processed: number; skipped: number; failed: number }> {
-    // Guard: only run on the actual last day of the month
+    // Guard: only run on the actual last day of the month — BKK time.
+    // The @Cron schedule fires at 01:00 BKK = 18:00 UTC the previous day.
+    // Using `new Date().getMonth()` reads the UTC date, which made the
+    // guard always return true (next-day-still-same-month) → cron never
+    // posted any JE. Compute "today BKK" + "tomorrow BKK" from Intl parts.
+    const bkkParts = (d: Date) =>
+      d.toLocaleString('en-CA', {
+        timeZone: 'Asia/Bangkok',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      });
     const now = new Date();
-    const tomorrow = new Date(now);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    if (tomorrow.getMonth() === now.getMonth()) {
+    const [todayY, todayM] = bkkParts(now)
+      .split('-')
+      .map((s) => parseInt(s, 10));
+    const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    const [tmrY, tmrM] = bkkParts(tomorrow)
+      .split('-')
+      .map((s) => parseInt(s, 10));
+    const isLastDay = todayY !== tmrY || todayM !== tmrM;
+    if (!isLastDay) {
       // Not the last day — exit silently
       return { processed: 0, skipped: 0, failed: 0 };
     }
 
-    const period = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
+    const period = `${todayY}-${todayM.toString().padStart(2, '0')}`;
     this.logger.log(`[Phase1] DepreciationCron: running for period ${period}`);
 
     const assets = await this.prisma.fixedAsset.findMany({

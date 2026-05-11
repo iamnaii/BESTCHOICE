@@ -104,9 +104,12 @@ export class DepreciationTemplate {
     }
 
     // ROUND_DOWN per accounting.md (matches installment accrual gross/12 convention).
+    // For the LAST month of the asset's life, post the remaining un-depreciated base
+    // instead of monthlyAmount — otherwise rounding drift (e.g. 107000 / 36 = 2972.22…)
+    // leaves a small residue on the balance sheet (NBV never reaches residualValue
+    // cleanly). monthsPostedSoFar must be queried inside the tx; actualAmount is
+    // therefore computed in `run` below.
     const monthlyAmount = depreciableBase.div(lifeMonths).toDecimalPlaces(2, Decimal.ROUND_DOWN);
-    // Final partial month: cap to remaining
-    const actualAmount = monthlyAmount.gt(remainingBase) ? remainingBase : monthlyAmount;
 
     // Resolve account codes — prefer asset.coa* snapshots (pinned at POST time)
     // over CATEGORY_ACCOUNT_MAP. Defensive fallback for legacy/test assets that
@@ -126,7 +129,9 @@ export class DepreciationTemplate {
 
     // Atomic block: idempotency + JE post + DepreciationEntry insert + asset update
     // all run inside ONE transaction (TOCTOU-safe and no orphan state).
-    const run = async (tx: Prisma.TransactionClient): Promise<{ entryNo: string } | null> => {
+    const run = async (
+      tx: Prisma.TransactionClient,
+    ): Promise<{ entryNo: string; amount: Decimal } | null> => {
       // Idempotency: query DepreciationEntry inside tx
       const existing = await tx.depreciationEntry.findUnique({
         where: { assetId_period: { assetId, period } },
@@ -135,8 +140,21 @@ export class DepreciationTemplate {
         this.logger.log(
           `[Phase1] DepreciationTemplate idempotency — entry already exists for asset ${asset.assetCode} period ${period}`,
         );
-        return existing.journalEntryNo ? { entryNo: existing.journalEntryNo } : null;
+        return existing.journalEntryNo
+          ? { entryNo: existing.journalEntryNo, amount: new Decimal(existing.amount.toString()) }
+          : null;
       }
+
+      // Decide actualAmount inside tx so monthsPostedSoFar is consistent with the
+      // DepreciationEntry insert that follows. Last-month detection cleans up
+      // rounding drift so Σ posts = depreciableBase exactly.
+      const monthsPostedSoFar = await tx.depreciationEntry.count({ where: { assetId } });
+      const isFinalMonth = monthsPostedSoFar + 1 >= lifeMonths;
+      const actualAmount = isFinalMonth
+        ? remainingBase
+        : monthlyAmount.gt(remainingBase)
+          ? remainingBase
+          : monthlyAmount;
 
       const result = await this.journal.createAndPost(
         {
@@ -192,7 +210,7 @@ export class DepreciationTemplate {
         },
       });
 
-      return { entryNo: result.entryNumber };
+      return { entryNo: result.entryNumber, amount: actualAmount };
     };
 
     const out = outerTx
@@ -201,7 +219,7 @@ export class DepreciationTemplate {
 
     if (out) {
       this.logger.log(
-        `[Phase1] DepreciationTemplate: posted JE ${out.entryNo} for asset ${asset.assetCode} period ${period} amount ${actualAmount.toFixed(2)}`,
+        `[Phase1] DepreciationTemplate: posted JE ${out.entryNo} for asset ${asset.assetCode} period ${period} amount ${out.amount.toFixed(2)}`,
       );
     }
 

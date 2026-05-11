@@ -551,10 +551,20 @@ export class OtherIncomeService {
   // -------------------------------------------------------------------------
 
   async dailySheet(date: string) {
-    const day = new Date(date);
-    day.setHours(0, 0, 0, 0);
-    const nextDay = new Date(day);
-    nextDay.setDate(nextDay.getDate() + 1);
+    // Use BKK day boundaries — NOT server local time. If the API runs on UTC
+    // (Cloud Run default), `setHours(0,0,0,0)` would put the day boundary at
+    // 00:00 UTC = 07:00 BKK, dropping docs issued 00:00–06:59 BKK into the
+    // wrong sheet. This mirrors DocNumberService.getBkkDayBounds().
+    const parts = new Date(date).toLocaleString('en-CA', {
+      timeZone: 'Asia/Bangkok',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    const [y, m, d] = parts.split('-').map((s) => parseInt(s, 10));
+    const bkkOffsetMs = 7 * 60 * 60 * 1000;
+    const day = new Date(Date.UTC(y, m - 1, d) - bkkOffsetMs);
+    const nextDay = new Date(day.getTime() + 24 * 60 * 60 * 1000);
 
     const docs = await this.prisma.otherIncome.findMany({
       where: {
@@ -738,6 +748,16 @@ export class OtherIncomeService {
       throw new BadRequestException('ไม่สามารถแนบไฟล์เอกสารที่ถูกกลับรายการ');
     }
 
+    // Defence-in-depth: controller's FileTypeValidator only inspects the
+    // Content-Type header (client-controlled). Re-verify against magic bytes
+    // here so a `.jpg` MIME wrapper around an SVG/exe payload is rejected
+    // before we persist anything (PII attachments).
+    if (!this.matchesMimeMagicBytes(file)) {
+      throw new BadRequestException(
+        'ประเภทไฟล์ไม่ตรงกับเนื้อหา (รองรับเฉพาะ PDF, JPEG, PNG, WEBP)',
+      );
+    }
+
     const decodedName = Buffer.from(file.originalname, 'latin1').toString('utf8');
     // eslint-disable-next-line no-control-regex
     const safeName = decodedName.replace(/[<>:"/\\|?* -\s]/g, '_');
@@ -773,6 +793,10 @@ export class OtherIncomeService {
         adjustments: { orderBy: { lineNo: 'asc' } },
         attachments: true,
         customer: true,
+        // `reversedBy` is the auto-derived inverse of the unique self-FK `reversesId`.
+        // The ViewPage uses this to render "ดูเอกสาร Reversing Entry" on the original
+        // doc once it has been reversed. Without this include the link never appears.
+        reversedBy: { select: { id: true, docNumber: true } },
       },
     });
     if (!doc) throw new NotFoundException(`OtherIncome ${id} not found`);
@@ -867,5 +891,53 @@ export class OtherIncomeService {
       vatAmount,
       whtAmount,
     };
+  }
+
+  /**
+   * Confirms the uploaded file's first bytes match the declared mimetype.
+   * Lightweight built-in check (no extra dep). Covers PDF/JPEG/PNG/WEBP —
+   * which are the only types the upload pipe accepts.
+   * Returns true if header matches; false on mismatch or unknown type.
+   */
+  private matchesMimeMagicBytes(file: Express.Multer.File): boolean {
+    const buf = file.buffer;
+    if (!buf || buf.length < 12) return false;
+    const mime = file.mimetype;
+
+    if (mime === 'application/pdf') {
+      // %PDF-
+      return buf[0] === 0x25 && buf[1] === 0x50 && buf[2] === 0x44 && buf[3] === 0x46 && buf[4] === 0x2d;
+    }
+    if (mime === 'image/jpeg') {
+      // FF D8 FF
+      return buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
+    }
+    if (mime === 'image/png') {
+      // 89 50 4E 47 0D 0A 1A 0A
+      return (
+        buf[0] === 0x89 &&
+        buf[1] === 0x50 &&
+        buf[2] === 0x4e &&
+        buf[3] === 0x47 &&
+        buf[4] === 0x0d &&
+        buf[5] === 0x0a &&
+        buf[6] === 0x1a &&
+        buf[7] === 0x0a
+      );
+    }
+    if (mime === 'image/webp') {
+      // RIFF .... WEBP  (offset 0-3 = 'RIFF', offset 8-11 = 'WEBP')
+      return (
+        buf[0] === 0x52 &&
+        buf[1] === 0x49 &&
+        buf[2] === 0x46 &&
+        buf[3] === 0x46 &&
+        buf[8] === 0x57 &&
+        buf[9] === 0x45 &&
+        buf[10] === 0x42 &&
+        buf[11] === 0x50
+      );
+    }
+    return false;
   }
 }

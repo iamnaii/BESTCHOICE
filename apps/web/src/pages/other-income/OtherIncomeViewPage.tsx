@@ -372,14 +372,14 @@ export default function OtherIncomeViewPage() {
                   </h2>
                   <InfoRow label="ประเภทเหตุผล" value={doc.reverseReason ?? '—'} />
                   <InfoRow label="รายละเอียด" value={doc.reverseNote ?? '—'} />
-                  {doc.reversedById && (
+                  {doc.reversedBy && (
                     <InfoRow label="เอกสาร Reversing" value={
                       <button
                         type="button"
-                        onClick={() => navigate(`/other-income/${doc.reversedById}`)}
+                        onClick={() => navigate(`/other-income/${doc.reversedBy!.id}`)}
                         className="font-mono text-primary hover:underline"
                       >
-                        ดูเอกสาร Reversing Entry
+                        {doc.reversedBy.docNumber} — ดูเอกสาร Reversing Entry
                       </button>
                     } />
                   )}

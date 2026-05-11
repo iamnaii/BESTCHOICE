@@ -18,6 +18,7 @@ import { CreditNoteLinesSection } from './CreditNoteLinesSection';
 import { CashAccountVisualPicker } from './CashAccountVisualPicker';
 import { JePreview } from './JePreview';
 import { ApproverSection } from './ApproverSection';
+import { AdjustmentSection } from './AdjustmentSection';
 import { formatNumberDecimal } from '@/utils/formatters';
 
 interface Props {
@@ -59,6 +60,8 @@ const initial = (branchId: string, defaultCash: string): ExpenseFormState => {
       whtAmount: '0',
       whtFormType: '',
     },
+    adjustments: [],
+    amountPaid: '',
   };
 };
 
@@ -115,6 +118,20 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
               vatPercent: parseFloat(l.vatPercent) || 0,
               whtPercent: parseFloat(l.whtPercent) || 0,
             })),
+          // Fix Report P0-4 — pass adjustments + amountPaid when set.
+          // Backend V12/V13/V14 verify the signed sum closes the diff.
+          adjustments:
+            state.adjustments.length > 0
+              ? state.adjustments
+                  .filter((a) => a.accountCode && parseFloat(a.amount) > 0)
+                  .map((a) => ({
+                    accountCode: a.accountCode,
+                    side: a.side,
+                    amount: a.amount,
+                    note: a.note || undefined,
+                  }))
+              : undefined,
+          amountPaid: state.amountPaid.trim() ? state.amountPaid : undefined,
         };
         const { data } = await api.post('/expense-documents', payload);
         createdId = data.id;
@@ -366,6 +383,33 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
                         <Stat label="ผลต่าง" value="0.00" highlight />
                       </div>
                     )}
+                  </Section>
+                )}
+
+                {/* Section: Multi-line Adjustment (Fix Report P0-4) — SAMEDAY only.
+                    Other doc types either have no cash leg (ACCRUAL, PAYROLL pre-pay)
+                    or post via a different flow (CREDIT_NOTE, VENDOR_SETTLEMENT). */}
+                {state.docType === 'EXPENSE_SAMEDAY' && (
+                  <Section num={next()} title="บัญชีปรับผลต่าง (ถ้ามี)" Icon={Receipt}>
+                    {(() => {
+                      const netExpected = preview?.totals.netPayment ?? '0.00';
+                      const paidNum =
+                        state.amountPaid.trim() !== ''
+                          ? parseFloat(state.amountPaid)
+                          : parseFloat(netExpected);
+                      const netNum = parseFloat(netExpected) || 0;
+                      const diff = (paidNum - netNum).toFixed(2);
+                      return (
+                        <AdjustmentSection
+                          diff={diff}
+                          amountPaid={state.amountPaid}
+                          onAmountPaidChange={(v) => patch({ amountPaid: v })}
+                          adjustments={state.adjustments}
+                          onChange={(rows) => patch({ adjustments: rows })}
+                          netExpected={netExpected}
+                        />
+                      );
+                    })()}
                   </Section>
                 )}
 

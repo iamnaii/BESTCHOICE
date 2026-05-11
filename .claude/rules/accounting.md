@@ -181,6 +181,53 @@ CLI source: `apps/api/src/cli/wipe-accounting.cli.ts`
 - **Late fees** (ค่าปรับล่าช้า) — NOT subject to VAT (owner policy, legally correct: penalties excluded from VAT base)
 - No WHT on customer transactions (deferred to A.5 for vendor/payroll flows)
 
+### VAT input account routing (P0-1 — Fix Report v1.0)
+
+Two accounts look similar; **use them differently**:
+
+| Account | When to use | Claimable on ภ.พ.30? |
+|---|---|---|
+| **11-4101** ภาษีซื้อ | Routine purchase VAT — invoiced from a registered vendor | ✅ Yes (Input Tax Credit) |
+| **11-2104** ลูกหนี้-VAT ที่ออกแทน | ม.83/6 cases only — VAT paid on behalf of an overseas service provider | ❌ No (different statute) |
+
+Expense module JE templates (`expense-accrual`, `expense-same-day`, `credit-note`) **all** book purchase VAT to **11-4101**. Booking to 11-2104 silently inflates the "ลูกหนี้" line on the balance sheet AND blocks the VAT refund. Anti-regression test exists in each template spec.
+
+---
+
+## V15 — ACCRUAL ห้ามมี WHT (ม.50 ป.รัษฎากร)
+
+`ExpenseDocumentsService.post()` rejects the transition `DRAFT → ACCRUAL` whenever `withholdingTax > 0`. ป.รัษฎากร ม.50 says WHT arises "ขณะที่จ่ายเงินได้" — at payment, not at accrual. Booking WHT on the accrual leg would misfile the ภงด.3/53 period and incur เบี้ยปรับ. The settlement step (VENDOR_SETTLEMENT) is where WHT lands.
+
+---
+
+## V17 — WHT base = `amountBeforeVat` (ป.รัษฎากร)
+
+WHT is computed on the **ฐานเงินได้สุทธิ** — the pre-VAT amount, never including VAT. Per `LineAggregatorService.computeLine`:
+
+```ts
+whtAmount = round2(amountBeforeVat × whtPercent / 100)
+```
+
+NEVER `totalAmount × whtPercent` (would double-tax the VAT). This applies uniformly across expense, other-income, and asset modules. Convention is enforced through service code, not a runtime guard — code-review must catch any drift.
+
+Reference: ป.รัษฎากร — WHT is calculated on the net taxable income, excluding VAT.
+
+---
+
+## SSO accounts (P0-3 — Fix Report v1.0)
+
+Payroll JE splits employee deduction + employer contribution into dedicated payables instead of lumping into 21-1104 ("เจ้าหนี้ค่าใช้จ่ายกิจการ"). This keeps the Trial Balance for 21-1104 = real AP and makes สปส.1-10 filing trivial.
+
+| Account | Side | Used for |
+|---|---|---|
+| **21-3105** | Cr | เงินสมทบประกันสังคม-พนักงานค้างนำส่ง (5% deduction from employee) |
+| **21-3106** | Cr | เงินสมทบประกันสังคม-นายจ้างค้างนำส่ง (5% employer match, capped 750/person) |
+| **53-1102** | Dr | เงินสมทบประกันสังคม (นายจ้าง) — the employer-side expense |
+
+Thai SSO law mandates identical 5% contributions from both sides (cap 750/person/month), so `payroll.template.ts` reuses the per-line `ssoEmployee` value for the employer side. If rates ever diverge, add an `ssoEmployer` column to `PayrollLine`.
+
+Legacy data migration (one-time): `apps/api/prisma/migrations-manual/2026-05-11-reclassify-sso-21-1104-to-21-3105.sql` — idempotent reclassification of historical Cr 21-1104 PAYROLL lines into 21-3105.
+
 ---
 
 ## DEFERRED to Phase A.5

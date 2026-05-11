@@ -1,4 +1,5 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { Decimal } from '@prisma/client/runtime/library';
 import { ExpenseDocumentsService } from '../expense-documents.service';
 import { LineAggregatorService } from '../services/line-aggregator.service';
 
@@ -167,7 +168,6 @@ describe('ExpenseDocumentsService', () => {
 
   describe('post', () => {
     it('calls SameDay template when paymentMethod set', async () => {
-      const { Decimal } = require('@prisma/client/runtime/library');
       prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
         id: 'doc-1',
         status: 'DRAFT',
@@ -182,7 +182,6 @@ describe('ExpenseDocumentsService', () => {
       expect(accrual.execute).not.toHaveBeenCalled();
     });
     it('calls Accrual template when paymentMethod missing', async () => {
-      const { Decimal } = require('@prisma/client/runtime/library');
       prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
         id: 'doc-2',
         status: 'DRAFT',
@@ -197,7 +196,6 @@ describe('ExpenseDocumentsService', () => {
       expect(sameDay.execute).not.toHaveBeenCalled();
     });
     it('rejects post when transition guard throws', async () => {
-      const { Decimal } = require('@prisma/client/runtime/library');
       prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
         id: 'doc-3', status: 'POSTED', documentType: 'EXPENSE', paymentMethod: 'CASH',
         totalAmount: new Decimal('100.00'),
@@ -273,8 +271,6 @@ describe('ExpenseDocumentsService', () => {
     });
 
     it('aggregates byType correctly across multiple docs', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { Decimal } = require('@prisma/client/runtime/library');
       prisma.expenseDocument.findMany.mockResolvedValue([
         {
           documentType: 'EXPENSE',
@@ -319,8 +315,6 @@ describe('ExpenseDocumentsService', () => {
     });
 
     it('aggregates cashMovement only for docs with paidAt today + depositAccountCode', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { Decimal } = require('@prisma/client/runtime/library');
       const today = new Date('2026-05-10T10:00:00Z');
       const yesterday = new Date('2026-05-09T10:00:00Z');
       prisma.expenseDocument.findMany.mockResolvedValue([

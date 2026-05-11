@@ -1,6 +1,8 @@
 import { Test } from '@nestjs/testing';
 import { ExpenseDocumentsController } from '../expense-documents.controller';
 import { ExpenseDocumentsService } from '../expense-documents.service';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../auth/guards/roles.guard';
 
 describe('ExpenseDocumentsController', () => {
   let controller: ExpenseDocumentsController;
@@ -30,9 +32,9 @@ describe('ExpenseDocumentsController', () => {
       controllers: [ExpenseDocumentsController],
       providers: [{ provide: ExpenseDocumentsService, useValue: service }],
     })
-      .overrideGuard(require('../../auth/guards/jwt-auth.guard').JwtAuthGuard)
+      .overrideGuard(JwtAuthGuard)
       .useValue({ canActivate: () => true })
-      .overrideGuard(require('../../auth/guards/roles.guard').RolesGuard)
+      .overrideGuard(RolesGuard)
       .useValue({ canActivate: () => true })
       .compile();
     controller = moduleRef.get(ExpenseDocumentsController);

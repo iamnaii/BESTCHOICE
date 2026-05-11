@@ -132,4 +132,4 @@ export class AccountRoleService implements OnModuleInit {
 }
 
 /** Re-exports the Prisma type so other files can import without depending on @prisma/client directly. */
-export type AccountRoleRow = Prisma.AccountRoleMapGetPayload<{}>;
+export type AccountRoleRow = Prisma.AccountRoleMapGetPayload<Record<string, never>>;

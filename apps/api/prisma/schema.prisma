@@ -3590,6 +3590,37 @@ model ExpenseLine {
   @@map("expense_lines")
 }
 
+/// Fix Report P1-3 — Maps a semantic role (e.g. `vat_input`, `payable_default`,
+/// `sso_employee`) to a specific CoA account code. Lets JE templates ask for
+/// "the VAT input account" instead of hard-coding `11-4101`. Owner can update
+/// the routing via admin UI without a deploy when the CoA evolves.
+///
+/// Schema:
+///   - `role` is the stable semantic key (unique). Templates reference this.
+///   - `accountCode` is the current CoA code (validated against
+///     `chart_of_accounts` at lookup time — fail-fast if drift).
+///   - `priority` is a tie-breaker when multiple rows share a role (future use:
+///     context-specific routing like `payable_canva` vs `payable_default`).
+///   - `isActive` lets an admin disable a mapping without deleting history.
+///   - `note` carries CPA rationale for the chosen code.
+///
+/// Lookups go through `AccountRoleService.code(role)` which throws if missing —
+/// boot-time validation (Phase A.6 pattern) catches drift before docs post.
+model AccountRoleMap {
+  id          String   @id @default(uuid())
+  role        String
+  accountCode String   @map("account_code")
+  priority    Int      @default(1)
+  isActive    Boolean  @default(true) @map("is_active")
+  note        String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([role, accountCode])
+  @@index([role, isActive, priority])
+  @@map("account_role_map")
+}
+
 enum ExpenseAdjustmentSide {
   DR
   CR

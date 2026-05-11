@@ -3,6 +3,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import { JournalAutoService, JeLineInput } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { AccountRoleService } from '../account-role.service';
 
 /**
  * Template — Payroll (PR เงินเดือนงวด).
@@ -36,6 +37,7 @@ export class PayrollTemplate {
   constructor(
     private readonly journal: JournalAutoService,
     private readonly prisma: PrismaService,
+    private readonly roles: AccountRoleService,
   ) {}
 
   async execute(
@@ -79,9 +81,17 @@ export class PayrollTemplate {
         zero,
       );
 
+      // Resolve account codes via role map (Fix Report P1-3 — POC integration).
+      // Owner can edit the mappings in admin UI without redeploying.
+      const codePayrollExpense = this.roles.code('payroll_expense');
+      const codeSsoExpense = this.roles.code('payroll_sso_expense');
+      const codeWhtPayroll = this.roles.code('wht_payroll');
+      const codeSsoEmployee = this.roles.code('sso_employee');
+      const codeSsoEmployer = this.roles.code('sso_employer');
+
       const lines: JeLineInput[] = [
         {
-          accountCode: '53-1101',
+          accountCode: codePayrollExpense,
           dr: sumBase,
           cr: zero,
           description: `เงินเดือน-ค่าจ้าง งวด ${doc.payroll.payrollPeriod}`,
@@ -93,7 +103,7 @@ export class PayrollTemplate {
       // the employer expense + payable.
       if (sumSso.gt(zero)) {
         lines.push({
-          accountCode: '53-1102',
+          accountCode: codeSsoExpense,
           dr: sumSso,
           cr: zero,
           description: `เงินสมทบประกันสังคม (นายจ้าง) งวด ${doc.payroll.payrollPeriod}`,
@@ -101,7 +111,7 @@ export class PayrollTemplate {
       }
       if (sumWht.gt(zero)) {
         lines.push({
-          accountCode: '21-3101',
+          accountCode: codeWhtPayroll,
           dr: zero,
           cr: sumWht,
           description: 'หัก ณ ที่จ่าย ภงด.1',
@@ -109,13 +119,13 @@ export class PayrollTemplate {
       }
       if (sumSso.gt(zero)) {
         lines.push({
-          accountCode: '21-3105',
+          accountCode: codeSsoEmployee,
           dr: zero,
           cr: sumSso,
           description: 'เงินสมทบประกันสังคม-พนักงานค้างนำส่ง',
         });
         lines.push({
-          accountCode: '21-3106',
+          accountCode: codeSsoEmployer,
           dr: zero,
           cr: sumSso,
           description: 'เงินสมทบประกันสังคม-นายจ้างค้างนำส่ง',

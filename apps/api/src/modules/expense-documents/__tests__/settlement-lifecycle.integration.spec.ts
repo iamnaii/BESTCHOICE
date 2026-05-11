@@ -42,7 +42,13 @@ describe('Vendor Settlement lifecycle (integration)', () => {
     const sameDay = new ExpenseSameDayTemplate(journal, prisma as never);
     const accrual = new ExpenseAccrualTemplate(journal, prisma as never);
     const cn = new CreditNoteTemplate(journal, prisma as never);
-    const payroll = new PayrollTemplate(journal, prisma as never);
+    const payroll = new PayrollTemplate(journal, prisma as never, { code: (r: string) => ({
+        payroll_expense: '53-1101',
+        payroll_sso_expense: '53-1102',
+        wht_payroll: '21-3101',
+        sso_employee: '21-3105',
+        sso_employer: '21-3106',
+      } as Record<string, string>)[r] ?? `__${r}__` } as never);
     const settlement = new VendorSettlementTemplate(journal, prisma as never);
     return new ExpenseDocumentsService(
       prisma as never,

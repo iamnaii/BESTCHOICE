@@ -8,6 +8,8 @@ describe('PayrollTemplate', () => {
   let prisma: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let journal: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let roles: any;
 
   const docId = 'pr-1';
 
@@ -28,7 +30,16 @@ describe('PayrollTemplate', () => {
         findFirst: jest.fn().mockResolvedValue({ id: 'shop-co-1' }),
       },
     };
-    template = new PayrollTemplate(journal, prisma);
+    // AccountRoleService mock — same defaults the seed migration ships.
+    const roleMap: Record<string, string> = {
+      payroll_expense: '53-1101',
+      payroll_sso_expense: '53-1102',
+      wht_payroll: '21-3101',
+      sso_employee: '21-3105',
+      sso_employer: '21-3106',
+    };
+    roles = { code: jest.fn((r: string) => roleMap[r] ?? `__missing_${r}`) };
+    template = new PayrollTemplate(journal, prisma, roles);
   });
 
   it('posts balanced JE: Dr 53-1101 + Dr 53-1102 / Cr 21-3101 + Cr 21-3105 + Cr 21-3106 + Cr cash (Fix Report P0-3)', async () => {

@@ -1,3 +1,5 @@
+import { CheckCircle2, XCircle } from 'lucide-react';
+
 interface JeLine {
   accountCode: string;
   debit: number;
@@ -52,12 +54,14 @@ export function AutoJournalPreview({ lines }: Props) {
       <div className="mt-2 pt-2 border-t flex items-center justify-between text-sm">
         <span className="text-muted-foreground text-xs">Dr รวม = Cr รวม</span>
         {balanced ? (
-          <span className="text-success font-bold font-mono">
-            ✓ {totalDr.toFixed(2)} = {totalCr.toFixed(2)} BALANCED
+          <span className="inline-flex items-center gap-1.5 text-success font-bold font-mono">
+            <CheckCircle2 size={14} />
+            {totalDr.toFixed(2)} = {totalCr.toFixed(2)} BALANCED
           </span>
         ) : (
-          <span className="text-destructive font-bold font-mono">
-            ✗ Dr {totalDr.toFixed(2)} ≠ Cr {totalCr.toFixed(2)}
+          <span className="inline-flex items-center gap-1.5 text-destructive font-bold font-mono">
+            <XCircle size={14} />
+            Dr {totalDr.toFixed(2)} ≠ Cr {totalCr.toFixed(2)}
           </span>
         )}
       </div>

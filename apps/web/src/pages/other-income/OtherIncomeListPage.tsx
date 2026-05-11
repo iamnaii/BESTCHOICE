@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Plus, Search, FileText, TrendingUp, Receipt, RotateCcw } from 'lucide-react';
+import { Plus, Search, FileText, Receipt, RotateCcw, CheckCircle2, ChartBar, ArrowRight } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -10,6 +10,7 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { otherIncomeApi } from '@/lib/otherIncome';
 import type { OtherIncome, OtherIncomeStatus } from '@/lib/otherIncome.types';
 import { formatThaiDateShort } from '@/lib/date';
+import { formatNumberDecimal } from '@/utils/formatters';
 
 const STATUS_LABELS: Record<OtherIncomeStatus, string> = {
   DRAFT: 'ร่าง',
@@ -35,12 +36,58 @@ function fmt(v: string | number | undefined | null) {
   if (v === undefined || v === null) return '—';
   const n = typeof v === 'string' ? parseFloat(v) : v;
   if (isNaN(n)) return '—';
-  return n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return formatNumberDecimal(n, 2);
 }
 
 function fmtDate(d: string | null | undefined) {
   if (!d) return '—';
   return formatThaiDateShort(d);
+}
+
+type StatusAccent = 'warning' | 'success' | 'muted';
+
+const ACCENT_BAR: Record<StatusAccent, string> = {
+  warning: 'bg-warning',
+  success: 'bg-success',
+  muted: 'bg-muted-foreground/50',
+};
+
+const ACCENT_ICON: Record<StatusAccent, string> = {
+  warning: 'bg-warning/10 text-warning',
+  success: 'bg-success/10 text-success',
+  muted: 'bg-muted text-muted-foreground',
+};
+
+function StatusCard({
+  label,
+  sub,
+  icon,
+  accent,
+  value,
+}: {
+  label: string;
+  sub: string;
+  icon: React.ReactNode;
+  accent: StatusAccent;
+  value: number;
+}) {
+  return (
+    <div className="rounded-xl border bg-card p-4 relative overflow-hidden">
+      <span className={`absolute inset-x-0 top-0 h-1 ${ACCENT_BAR[accent]}`} />
+      <div className="flex items-start justify-between mb-3">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-foreground leading-snug">{label}</p>
+          <p className="text-[10px] font-medium text-muted-foreground tracking-wider mt-0.5">
+            {sub}
+          </p>
+        </div>
+        <div className={`size-9 rounded-full flex items-center justify-center shrink-0 ${ACCENT_ICON[accent]}`}>
+          {icon}
+        </div>
+      </div>
+      <p className="text-3xl font-bold font-mono text-foreground tabular-nums">{value}</p>
+    </div>
+  );
 }
 
 export default function OtherIncomeListPage() {
@@ -70,6 +117,26 @@ export default function OtherIncomeListPage() {
       }),
   });
 
+  const COUNT_STALE_TIME = 60_000;
+  const draftCountQuery = useQuery({
+    queryKey: ['other-income', 'count', 'DRAFT'],
+    queryFn: () => otherIncomeApi.list({ status: 'DRAFT', page: 1, limit: 1 }),
+    select: (d) => d.total,
+    staleTime: COUNT_STALE_TIME,
+  });
+  const postedCountQuery = useQuery({
+    queryKey: ['other-income', 'count', 'POSTED'],
+    queryFn: () => otherIncomeApi.list({ status: 'POSTED', page: 1, limit: 1 }),
+    select: (d) => d.total,
+    staleTime: COUNT_STALE_TIME,
+  });
+  const reversedCountQuery = useQuery({
+    queryKey: ['other-income', 'count', 'REVERSED'],
+    queryFn: () => otherIncomeApi.list({ status: 'REVERSED', page: 1, limit: 1 }),
+    select: (d) => d.total,
+    staleTime: COUNT_STALE_TIME,
+  });
+
   const deleteMutation = useMutation({
     mutationFn: (id: string) => otherIncomeApi.softDelete(id),
     onSuccess: () => {
@@ -84,17 +151,15 @@ export default function OtherIncomeListPage() {
   const total = data?.total ?? 0;
   const totalPages = Math.ceil(total / 50) || 1;
 
-  // Summary cards from current page data
-  const postedDocs = docs.filter((d) => d.status === 'POSTED');
-  const draftDocs = docs.filter((d) => d.status === 'DRAFT');
-  const totalPostedGross = postedDocs.reduce((s, d) => s + parseFloat(d.incomeGross || '0'), 0);
-  const totalPostedNet = postedDocs.reduce((s, d) => s + parseFloat(d.netReceived || '0'), 0);
+  const draftCount = draftCountQuery.data ?? 0;
+  const postedCount = postedCountQuery.data ?? 0;
+  const reversedCount = reversedCountQuery.data ?? 0;
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
       <PageHeader
         title="รายได้อื่น"
-        subtitle="จัดการเอกสารรายได้นอกเหนือจากสัญญาผ่อนชำระ"
+        subtitle="จัดการเอกสารรับรู้รายได้อื่น (กลุ่ม 42-XXXX) — ดอกเบี้ยเงินฝาก, ค่าปรับ, รายได้หักค่าจ้าง ฯลฯ"
         icon={<Receipt size={20} />}
         action={
           <button
@@ -107,36 +172,50 @@ export default function OtherIncomeListPage() {
         }
       />
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <div className="rounded-xl border bg-card p-4">
-          <div className="flex items-center gap-2 mb-1">
-            <FileText size={16} className="text-muted-foreground" />
-            <span className="text-xs text-muted-foreground">เอกสารทั้งหมด</span>
+      {/* Status cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <StatusCard
+          label="ฉบับร่าง"
+          sub="DRAFT"
+          icon={<FileText size={16} />}
+          accent="warning"
+          value={draftCount}
+        />
+        <StatusCard
+          label="บันทึกแล้ว"
+          sub="POSTED"
+          icon={<CheckCircle2 size={16} />}
+          accent="success"
+          value={postedCount}
+        />
+        <StatusCard
+          label="กลับรายการ"
+          sub="REVERSED"
+          icon={<RotateCcw size={16} />}
+          accent="muted"
+          value={reversedCount}
+        />
+        <Link
+          to="/other-income/daily-sheet"
+          className="rounded-xl border bg-card p-4 relative overflow-hidden hover:bg-accent/40 transition-colors group"
+        >
+          <span className="absolute inset-x-0 top-0 h-1 bg-primary" />
+          <div className="flex items-start justify-between mb-3">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-foreground leading-snug">สรุปรายวัน</p>
+              <p className="text-[10px] font-medium text-muted-foreground tracking-wider mt-0.5">
+                DAILY SHEET
+              </p>
+            </div>
+            <div className="size-9 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0">
+              <ChartBar size={16} />
+            </div>
           </div>
-          <p className="text-2xl font-bold font-mono">{total}</p>
-        </div>
-        <div className="rounded-xl border bg-card p-4">
-          <div className="flex items-center gap-2 mb-1">
-            <TrendingUp size={16} className="text-success" />
-            <span className="text-xs text-muted-foreground">บันทึกแล้ว</span>
-          </div>
-          <p className="text-2xl font-bold font-mono text-success">{postedDocs.length}</p>
-        </div>
-        <div className="rounded-xl border bg-card p-4">
-          <div className="flex items-center gap-2 mb-1">
-            <Receipt size={16} className="text-primary" />
-            <span className="text-xs text-muted-foreground">รวมรายได้ก่อนภาษี</span>
-          </div>
-          <p className="text-xl font-bold font-mono">{fmt(totalPostedGross)} ฿</p>
-        </div>
-        <div className="rounded-xl border bg-card p-4">
-          <div className="flex items-center gap-2 mb-1">
-            <RotateCcw size={16} className="text-muted-foreground" />
-            <span className="text-xs text-muted-foreground">สุทธิที่รับ</span>
-          </div>
-          <p className="text-xl font-bold font-mono">{fmt(totalPostedNet)} ฿</p>
-        </div>
+          <p className="inline-flex items-center gap-1 text-sm font-semibold text-primary group-hover:translate-x-0.5 transition-transform">
+            เปิดดู
+            <ArrowRight size={14} />
+          </p>
+        </Link>
       </div>
 
       {/* Filters */}

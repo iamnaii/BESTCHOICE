@@ -13,11 +13,19 @@ interface UserRow {
   role: string;
 }
 
+const APPROVER_ROLES = ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'];
+
 export function ApproverSection({ approvedById, onChange }: Props) {
   const { user } = useAuth();
+  // /users returns paginated { data, total, page, limit } — not a bare array.
+  // Backend findAll doesn't filter by role, so we filter client-side.
   const { data: approvers } = useQuery<UserRow[]>({
     queryKey: ['users', 'approvers'],
-    queryFn: async () => (await api.get('/users?roles=OWNER,FINANCE_MANAGER,ACCOUNTANT')).data,
+    queryFn: async () => {
+      const res = await api.get('/users?limit=200');
+      const list: UserRow[] = res.data?.data ?? (Array.isArray(res.data) ? res.data : []);
+      return list.filter((u) => APPROVER_ROLES.includes(u.role));
+    },
     staleTime: 60_000,
   });
 

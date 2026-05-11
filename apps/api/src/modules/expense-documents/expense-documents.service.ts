@@ -907,6 +907,17 @@ export class ExpenseDocumentsService {
       if (target === 'POSTED') {
         return this.sameDayTemplate.execute(id, tx);
       } else {
+        // V15 — ACCRUAL ห้ามมี WHT (ม.50 ป.รัษฎากร).
+        // WHT เกิด "ขณะที่จ่ายเงินได้" → ACCRUAL is the accrual leg before
+        // payment, so WHT must defer to the SETTLEMENT step. Booking WHT now
+        // would put it in the wrong tax period and cause ภงด.53 misfile.
+        // Fix Report P0-2.
+        if (doc.withholdingTax && doc.withholdingTax.gt(0)) {
+          throw new BadRequestException(
+            'V15: เอกสารตั้งหนี้ (ACCRUAL) ห้ามมี WHT (มาตรา 50 ป.รัษฎากร) — ' +
+              'WHT จะถูกบันทึกตอน Settlement เมื่อจ่ายเงินจริง',
+          );
+        }
         return this.accrualTemplate.execute(id, tx);
       }
     });

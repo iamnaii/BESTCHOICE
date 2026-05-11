@@ -31,7 +31,7 @@ describe('PayrollTemplate', () => {
     template = new PayrollTemplate(journal, prisma);
   });
 
-  it('posts balanced JE: Dr 53-1101 = sum(baseSalary) / Cr 21-3101 = sum(wht) + Cr 21-1104 = sum(sso) + Cr cash = sum(netPaid)', async () => {
+  it('posts balanced JE: Dr 53-1101 + Dr 53-1102 / Cr 21-3101 + Cr 21-3105 + Cr 21-3106 + Cr cash (Fix Report P0-3)', async () => {
     prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
       id: docId,
       number: 'PR-20260510-0001',
@@ -58,16 +58,28 @@ describe('PayrollTemplate', () => {
     const drExpense = args.lines.find((l: { accountCode: string }) => l.accountCode === '53-1101');
     expect(drExpense.dr).toEqual(new Decimal('25000'));
 
+    // Employer SSO expense (Dr 53-1102) — matches sumSso
+    const drSsoEmployer = args.lines.find((l: { accountCode: string }) => l.accountCode === '53-1102');
+    expect(drSsoEmployer.dr).toEqual(new Decimal('1500'));
+
     const crWht = args.lines.find((l: { accountCode: string }) => l.accountCode === '21-3101');
     expect(crWht.cr).toEqual(new Decimal('300'));
 
-    const crSso = args.lines.find((l: { accountCode: string }) => l.accountCode === '21-1104');
-    expect(crSso.cr).toEqual(new Decimal('1500'));
+    // Employee SSO payable (Cr 21-3105) — new dedicated account
+    const crSsoEmp = args.lines.find((l: { accountCode: string }) => l.accountCode === '21-3105');
+    expect(crSsoEmp.cr).toEqual(new Decimal('1500'));
+
+    // Employer SSO payable (Cr 21-3106) — new dedicated account
+    const crSsoEr = args.lines.find((l: { accountCode: string }) => l.accountCode === '21-3106');
+    expect(crSsoEr.cr).toEqual(new Decimal('1500'));
+
+    // Old placeholder must NOT appear
+    expect(args.lines.find((l: { accountCode: string }) => l.accountCode === '21-1104')).toBeUndefined();
 
     const crCash = args.lines.find((l: { accountCode: string }) => l.accountCode === '11-1101');
     expect(crCash.cr).toEqual(new Decimal('23200'));
 
-    // Sanity: balanced
+    // Sanity: balanced — Dr (25000 + 1500) = Cr (300 + 1500 + 1500 + 23200) = 26500
     const sumDr = args.lines.reduce(
       (s: Decimal, l: { dr: Decimal }) => s.plus(l.dr),
       new Decimal(0),
@@ -76,8 +88,8 @@ describe('PayrollTemplate', () => {
       (s: Decimal, l: { cr: Decimal }) => s.plus(l.cr),
       new Decimal(0),
     );
-    expect(sumDr.toString()).toBe('25000');
-    expect(sumCr.toString()).toBe('25000');
+    expect(sumDr.toString()).toBe('26500');
+    expect(sumCr.toString()).toBe('26500');
   });
 
   it('idempotent: returns existing entryNo when journalEntryId set', async () => {
@@ -145,6 +157,9 @@ describe('PayrollTemplate', () => {
     const [args] = journal.createAndPost.mock.calls[0];
     const codes = args.lines.map((l: { accountCode: string }) => l.accountCode);
     expect(codes).not.toContain('21-3101');
+    expect(codes).not.toContain('21-3105');
+    expect(codes).not.toContain('21-3106');
+    expect(codes).not.toContain('53-1102');
     expect(codes).not.toContain('21-1104');
     expect(codes).toContain('53-1101');
     expect(codes).toContain('11-1101');

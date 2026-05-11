@@ -29,7 +29,7 @@ describe('CreditNoteTemplate', () => {
     template = new CreditNoteTemplate(journal, prisma);
   });
 
-  it('reverses ACCRUAL original: Dr 21-1104 + Dr cash=0 / Cr expense + Cr 11-2104', async () => {
+  it('reverses ACCRUAL original: Dr 21-1104 + Dr cash=0 / Cr expense + Cr 11-4101', async () => {
     // CN doc
     prisma.expenseDocument.findUniqueOrThrow.mockImplementation((args: { where: { id: string } }) => {
       if (args.where.id === 'cn-1') return Promise.resolve({
@@ -71,13 +71,13 @@ describe('CreditNoteTemplate', () => {
     // Credit expense + VAT
     expect(cr).toEqual(expect.arrayContaining([
       expect.objectContaining({ accountCode: '53-1404', cr: new Decimal('500.00') }),
-      expect.objectContaining({ accountCode: '11-2104', cr: new Decimal('35.00') }),
+      expect.objectContaining({ accountCode: '11-4101', cr: new Decimal('35.00') }),
     ]));
     // No cash account in lines (ACCRUAL didn't pay yet)
     expect(args.lines.find((l: { accountCode: string }) => l.accountCode.startsWith('11-1'))).toBeUndefined();
   });
 
-  it('reverses POSTED original: Dr cash + Dr 11-2104 / Cr expense (refund flow)', async () => {
+  it('reverses POSTED original: Dr cash + Dr 11-4101 / Cr expense (refund flow)', async () => {
     prisma.expenseDocument.findUniqueOrThrow.mockImplementation((args: { where: { id: string } }) => {
       if (args.where.id === 'cn-2') return Promise.resolve({
         id: 'cn-2',
@@ -114,7 +114,7 @@ describe('CreditNoteTemplate', () => {
     expect(args.lines).toEqual(expect.arrayContaining([
       expect.objectContaining({ accountCode: '11-1101', dr: new Decimal('1070.00') }),
       expect.objectContaining({ accountCode: '53-1302', cr: new Decimal('1000.00') }),
-      expect.objectContaining({ accountCode: '11-2104', cr: new Decimal('70.00') }),
+      expect.objectContaining({ accountCode: '11-4101', cr: new Decimal('70.00') }),
     ]));
   });
 

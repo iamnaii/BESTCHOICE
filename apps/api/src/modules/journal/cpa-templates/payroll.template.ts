@@ -9,21 +9,25 @@ import { PrismaService } from '../../../prisma/prisma.service';
  *
  * Spec §4.4 — aggregates PayrollLine[] into single balanced JE.
  *
- *   Dr 53-1101 เงินเดือน-ค่าจ้าง          (Σ baseSalary)
- *     Cr 21-3101 ภ.ง.ด. 1 ค้างจ่าย        (Σ whtAmount)      [if Σ > 0]
- *     Cr 21-1104 เจ้าหนี้ค่าใช้จ่ายกิจการ   (Σ ssoEmployee)    [if Σ > 0] — TODO: CPA review
- *     Cr depositAccountCode               (Σ netPaid)
+ *   Dr 53-1101 เงินเดือน-ค่าจ้าง           (Σ baseSalary)
+ *   Dr 53-1102 เงินสมทบประกันสังคม-นายจ้าง  (Σ ssoEmployee)   [if Σ > 0]
+ *     Cr 21-3101 ภ.ง.ด. 1 ค้างจ่าย         (Σ whtAmount)      [if Σ > 0]
+ *     Cr 21-3105 SSO พนักงานค้างนำส่ง       (Σ ssoEmployee)   [if Σ > 0]
+ *     Cr 21-3106 SSO นายจ้างค้างนำส่ง       (Σ ssoEmployee)   [if Σ > 0]
+ *     Cr depositAccountCode                (Σ netPaid)
  *
  * Line-level data stays in PayrollLine[]. ภงด.1 file generation deferred.
  *
- * Account code notes:
- *   - WHT employee = 21-3101 (ภ.ง.ด. 1 ค้างจ่าย — employee income tax payable)
- *   - SSO payable: NO dedicated account in CoA. Using 21-1104
- *     (เจ้าหนี้ค่าใช้จ่ายกิจการ — generic accrued expense payable) as a
- *     defensible placeholder. CPA must confirm or add dedicated SSO payable
- *     (e.g. 21-3105) in Phase A.7.
+ * Account code notes (Fix Report P0-3, 2026-05-11):
+ *   - WHT employee   = 21-3101 (ภ.ง.ด. 1 ค้างจ่าย — employee income tax payable)
+ *   - SSO employee   = 21-3105 (NEW — dedicated SSO payable)
+ *   - SSO employer   = 21-3106 (NEW — dedicated SSO payable, employer side)
+ *   - SSO employer expense = 53-1102 (เงินสมทบประกันสังคม)
  *
- * ⚠️ CPA AUDIT REQUIRED — Phase A.7 review.
+ * Thai SSO law: both employee and employer contribute 5% (cap 750/person).
+ * Per-line `ssoEmployee` is reused for the employer side since by law they
+ * match — if the rates ever diverge, add a separate `ssoEmployer` field to
+ * PayrollLine.
  */
 @Injectable()
 export class PayrollTemplate {
@@ -83,6 +87,18 @@ export class PayrollTemplate {
           description: `เงินเดือน-ค่าจ้าง งวด ${doc.payroll.payrollPeriod}`,
         },
       ];
+      // Employer-side SSO: by Thai law, employer contributes the same amount
+      // as the employee (5% of base salary, capped at 750/person). Hence we
+      // reuse `sumSso` (which currently captures the employee deduction) for
+      // the employer expense + payable.
+      if (sumSso.gt(zero)) {
+        lines.push({
+          accountCode: '53-1102',
+          dr: sumSso,
+          cr: zero,
+          description: `เงินสมทบประกันสังคม (นายจ้าง) งวด ${doc.payroll.payrollPeriod}`,
+        });
+      }
       if (sumWht.gt(zero)) {
         lines.push({
           accountCode: '21-3101',
@@ -93,12 +109,16 @@ export class PayrollTemplate {
       }
       if (sumSso.gt(zero)) {
         lines.push({
-          // TODO(CPA Phase A.7): no dedicated SSO payable in CoA.
-          // Using 21-1104 (เจ้าหนี้ค่าใช้จ่ายกิจการ) as defensible placeholder.
-          accountCode: '21-1104',
+          accountCode: '21-3105',
           dr: zero,
           cr: sumSso,
-          description: 'ประกันสังคมค้างจ่าย (รอ CPA ยืนยันบัญชี)',
+          description: 'เงินสมทบประกันสังคม-พนักงานค้างนำส่ง',
+        });
+        lines.push({
+          accountCode: '21-3106',
+          dr: zero,
+          cr: sumSso,
+          description: 'เงินสมทบประกันสังคม-นายจ้างค้างนำส่ง',
         });
       }
       lines.push({

@@ -10,12 +10,14 @@ import { PrismaService } from '../../../prisma/prisma.service';
  * Spec §4.2 — books expense as AP, awaits VENDOR_SETTLEMENT to clear.
  *
  *   Dr 5x-xxxx ค่าใช้จ่าย                 (subtotal)
- *   Dr 11-2104 ลูกหนี้-VAT                (vatAmount)        [if VAT > 0]
+ *   Dr 11-4101 ภาษีซื้อ                   (vatAmount)        [if VAT > 0]
  *     Cr 21-1104 เจ้าหนี้-ค่าใช้จ่ายกิจการ (totalAmount)
  *
- * WHT does not post here — defers to SE settlement time.
- *
- * ⚠️ CPA AUDIT REQUIRED — pending Phase A.7 review.
+ * WHT does not post here — defers to SE settlement time (ม.50 ป.รัษฎากร).
+ * VAT input is booked to **11-4101 ภาษีซื้อ** (Input Tax Credit, claimable
+ * in ภ.พ.30). The placeholder 11-2104 (ลูกหนี้-VAT ที่ออกแทน) used in earlier
+ * commits was wrong — that account is for VAT-on-behalf cases (ม.83/6) only,
+ * and is NOT claimable as input tax credit on ภ.พ.30. Fix Report P0-1.
  */
 @Injectable()
 export class ExpenseAccrualTemplate {
@@ -84,10 +86,10 @@ export class ExpenseAccrualTemplate {
       }
       if (vat.gt(zero)) {
         lines.push({
-          accountCode: '11-2104',
+          accountCode: '11-4101',
           dr: vat,
           cr: zero,
-          description: 'ลูกหนี้-VAT ที่ออกแทน',
+          description: 'ภาษีซื้อ',
         });
       }
       lines.push({

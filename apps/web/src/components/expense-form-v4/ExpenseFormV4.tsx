@@ -388,8 +388,9 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
 
         {/* Footer */}
         <div className="flex-none bg-background border-t px-6 py-3 flex items-center justify-between">
-          <Button variant="ghost" onClick={onClose}>
-            ← ยกเลิก
+          <Button variant="ghost" onClick={onClose} className="gap-1.5">
+            <ArrowLeft className="size-4" />
+            ยกเลิก
           </Button>
           <div className="flex items-center gap-3 text-xs">
             <span>Items: {itemCount}</span>

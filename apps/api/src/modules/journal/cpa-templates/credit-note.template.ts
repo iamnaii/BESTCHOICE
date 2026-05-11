@@ -144,15 +144,21 @@ export class CreditNoteTemplate {
         }
       }
 
-      // Cr expense legs — aggregate by category (collapse lines with same category)
-      const byCategory = new Map<string, Decimal>();
+      // Cr expense legs — Fix Report P2-2: emit one JE line per CN line so
+      // the reversal preserves the same breakdown shape as the original
+      // ExpenseDocument. Joining ExpenseLine → JournalLine becomes a simple
+      // lookup by line description (no aggregation to undo).
       for (const l of cnLines) {
         const amt = new Decimal(l.amountBeforeVat.toString());
-        byCategory.set(l.category, (byCategory.get(l.category) ?? zero).plus(amt));
-      }
-      for (const [code, amt] of byCategory.entries()) {
-        if (amt.lte(zero)) continue; // skip zero/negative aggregations
-        lines.push({ accountCode: code, dr: zero, cr: amt, description: `กลับค่าใช้จ่าย — ${cn.number}` });
+        if (amt.lte(zero)) continue;
+        lines.push({
+          accountCode: l.category,
+          dr: zero,
+          cr: amt,
+          description: l.description
+            ? `กลับค่าใช้จ่าย — ${l.description}`
+            : `กลับค่าใช้จ่าย — ${cn.number}#${l.lineNo}`,
+        });
       }
       if (vat.gt(zero)) {
         lines.push({

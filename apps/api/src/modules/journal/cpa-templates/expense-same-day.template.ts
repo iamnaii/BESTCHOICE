@@ -89,13 +89,6 @@ export class ExpenseSameDayTemplate {
         ? new Decimal(doc.netPayment.toString())
         : total.minus(wht);
 
-      // Aggregate Dr by category (multiple lines with same category collapse)
-      const byCategory = new Map<string, Decimal>();
-      for (const l of expenseLines) {
-        const amt = new Decimal(l.amountBeforeVat.toString());
-        byCategory.set(l.category, (byCategory.get(l.category) ?? zero).plus(amt));
-      }
-
       // Adjustments (Fix Report P0-4): per-line Dr/Cr postings that absorb the
       // diff between cash leg actually paid and `totalAmount − wht`. Each row
       // carries its own `side` (DR/CR) so the JE template doesn't infer signs
@@ -103,10 +96,23 @@ export class ExpenseSameDayTemplate {
       // that the signed sum balances.
       const adjustments = doc.adjustments ?? [];
 
+      // Dr expense — Fix Report P2-2: emit one JE line per ExpenseLine so the
+      // GL preserves the full breakdown (lines from different invoices, or
+      // different sub-descriptions within one category, no longer get squashed
+      // together). Description carries the line text so auditors can trace
+      // back to the original document line without joining.
       const lines: JeLineInput[] = [];
-      for (const [code, amt] of byCategory.entries()) {
-        if (amt.lte(zero)) continue; // skip zero/negative aggregations
-        lines.push({ accountCode: code, dr: amt, cr: zero, description: `ค่าใช้จ่าย — ${doc.number}` });
+      for (const l of expenseLines) {
+        const amt = new Decimal(l.amountBeforeVat.toString());
+        if (amt.lte(zero)) continue;
+        lines.push({
+          accountCode: l.category,
+          dr: amt,
+          cr: zero,
+          description: l.description
+            ? `ค่าใช้จ่าย — ${l.description}`
+            : `ค่าใช้จ่าย — ${doc.number}#${l.lineNo}`,
+        });
       }
       if (vat.gt(zero)) {
         lines.push({

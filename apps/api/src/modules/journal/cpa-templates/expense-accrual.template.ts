@@ -72,17 +72,21 @@ export class ExpenseAccrualTemplate {
       const vat = new Decimal(doc.vatAmount?.toString() ?? '0');
       const total = new Decimal(doc.totalAmount.toString());
 
-      // Aggregate Dr by category (multiple lines with same category collapse)
-      const byCategory = new Map<string, Decimal>();
+      // Dr expense — Fix Report P2-2: emit one JE line per ExpenseLine so the
+      // GL preserves the full breakdown. Description carries the line text so
+      // auditors can trace back without joining ExpenseDetail.
+      const lines: JeLineInput[] = [];
       for (const l of expenseLines) {
         const amt = new Decimal(l.amountBeforeVat.toString());
-        byCategory.set(l.category, (byCategory.get(l.category) ?? zero).plus(amt));
-      }
-
-      const lines: JeLineInput[] = [];
-      for (const [code, amt] of byCategory.entries()) {
-        if (amt.lte(zero)) continue; // skip zero/negative aggregations
-        lines.push({ accountCode: code, dr: amt, cr: zero, description: `ค่าใช้จ่าย — ${doc.number}` });
+        if (amt.lte(zero)) continue;
+        lines.push({
+          accountCode: l.category,
+          dr: amt,
+          cr: zero,
+          description: l.description
+            ? `ค่าใช้จ่าย — ${l.description}`
+            : `ค่าใช้จ่าย — ${doc.number}#${l.lineNo}`,
+        });
       }
       if (vat.gt(zero)) {
         lines.push({

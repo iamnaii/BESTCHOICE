@@ -6,9 +6,11 @@ import {
   IsArray,
   ArrayMinSize,
   IsIn,
+  IsNumberString,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ExpenseLineInput } from './expense-line-input.dto';
+import { ExpenseAdjustmentInput } from './expense-adjustment-input.dto';
 
 const PRICE_TYPES = ['EXCLUSIVE', 'INCLUSIVE'] as const;
 const CASH_ACCOUNT_CODES = ['11-1101', '11-1102', '11-1103', '11-1201', '11-1202', '11-1203'] as const;
@@ -84,4 +86,23 @@ export class CreateExpenseDocumentDto {
   @ValidateNested({ each: true })
   @Type(() => ExpenseLineInput)
   lines!: ExpenseLineInput[];
+
+  /**
+   * Optional `amount_paid ≠ amount_expected` adjustment rows (Fix Report P0-4).
+   * Service-level V12 enforces Σ signed(adjustments) = amountPaid − netExpected.
+   */
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ExpenseAdjustmentInput)
+  @IsOptional()
+  adjustments?: ExpenseAdjustmentInput[];
+
+  /**
+   * Optional explicit "what we actually paid" amount. When set, must reconcile
+   * to `totalAmount − wht` ± Σ signed(adjustments) (V12). When omitted, the
+   * cash leg defaults to `totalAmount − wht` (legacy zero-adjustment behaviour).
+   */
+  @IsNumberString({ no_symbols: true })
+  @IsOptional()
+  amountPaid?: string;
 }

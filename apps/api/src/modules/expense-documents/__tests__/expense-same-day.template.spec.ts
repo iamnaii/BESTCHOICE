@@ -56,7 +56,7 @@ describe('ExpenseSameDayTemplate', () => {
     expect(args.lines).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ accountCode: '53-1302', dr: new Decimal('1000.00') }),
-        expect.objectContaining({ accountCode: '11-2104', dr: new Decimal('70.00') }),
+        expect.objectContaining({ accountCode: '11-4101', dr: new Decimal('70.00') }),
         expect.objectContaining({ accountCode: '11-1101', cr: new Decimal('1070.00') }),
       ]),
     );

@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BESTCHOICE — Journey รายได้อื่น (Other Income 42-XXXX)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #fafaf9;
+    --paper: #ffffff;
+    --border: #d6d3d1;
+    --line: #e7e5e4;
+    --text: #0c0a09;
+    --muted: #57534e;
+    --subtle: #78716c;
+    --emerald: #047857;
+    --emerald-bg: #ecfdf5;
+    --emerald-border: #a7f3d0;
+    --rose: #be123c;
+    --rose-bg: #fef2f2;
+    --rose-border: #fecaca;
+    --amber: #b45309;
+    --amber-bg: #fffbeb;
+    --amber-border: #fde68a;
+    --blue: #1d4ed8;
+    --blue-bg: #eff6ff;
+    --blue-border: #bfdbfe;
+    --violet: #6d28d9;
+    --violet-bg: #f5f3ff;
+    --violet-border: #ddd6fe;
+    --zinc-bg: #f4f4f5;
+    --zinc-border: #d4d4d8;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans Thai', system-ui, sans-serif; font-size: 15px; line-height: 1.7; }
+  .page { max-width: 1024px; margin: 0 auto; padding: 56px 40px 80px; background: var(--paper); box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  .doc-header { border-bottom: 2px solid var(--text); padding-bottom: 20px; margin-bottom: 36px; }
+  .doc-header .org { font-size: 13px; color: var(--subtle); letter-spacing: 0.05em; margin-bottom: 6px; text-transform: uppercase; }
+  h1 { font-size: 28px; font-weight: 700; margin: 0 0 8px; letter-spacing: -0.01em; }
+  .doc-header .sub { color: var(--muted); font-size: 15px; margin: 0; }
+  .doc-meta { display: flex; gap: 28px; margin-top: 14px; font-size: 12px; color: var(--subtle); flex-wrap: wrap; }
+  .doc-meta strong { color: var(--text); }
+
+  .summary-box { background: var(--emerald-bg); border: 1px solid var(--emerald-border); border-radius: 10px; padding: 20px 24px; margin: 0 0 28px; }
+  .summary-box h3 { font-size: 14px; margin: 0 0 10px; font-weight: 700; color: var(--emerald); letter-spacing: 0.04em; text-transform: uppercase; }
+  .summary-list { margin: 0; padding-left: 20px; font-size: 14px; }
+  .summary-list li { margin-bottom: 6px; }
+  .summary-list strong { color: var(--text); }
+  .summary-list code { font-family: 'IBM Plex Mono', monospace; font-size: 12px; background: white; padding: 1px 6px; border-radius: 3px; border: 1px solid var(--emerald-border); }
+
+  section { margin-bottom: 44px; }
+  h2 { font-size: 20px; font-weight: 700; margin: 0 0 18px; padding-bottom: 8px; border-bottom: 1px solid var(--border); letter-spacing: -0.01em; }
+  h2 .badge-section { display: inline-block; background: var(--text); color: white; padding: 2px 10px; border-radius: 4px; font-size: 12px; font-weight: 600; margin-right: 10px; vertical-align: middle; }
+  h3 { font-size: 16px; margin: 24px 0 10px; font-weight: 600; }
+  h4 { font-size: 14px; margin: 16px 0 8px; font-weight: 600; color: var(--muted); }
+
+  .entry { background: var(--paper); border: 1px solid var(--border); border-radius: 8px; padding: 18px 22px; margin: 14px 0; }
+  .entry .title { font-size: 14px; font-weight: 600; margin: 0 0 4px; }
+  .entry .meta { font-size: 12px; color: var(--subtle); margin: 0 0 12px; }
+
+  table.je { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 13px; }
+  table.je th, table.je td { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--line); }
+  table.je th { background: var(--bg); color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+  table.je td.amt { text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 12px; }
+  table.je td.code { font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 500; color: var(--blue); white-space: nowrap; }
+  table.je tr.total td { font-weight: 700; background: var(--bg); border-top: 2px solid var(--text); border-bottom: none; }
+  table.je tr.total td.balanced { color: var(--emerald); }
+
+  .callout { padding: 14px 18px; border-radius: 8px; margin: 14px 0; border-left: 4px solid; font-size: 14px; }
+  .callout.info { background: var(--blue-bg); border-color: var(--blue); }
+  .callout.warn { background: var(--amber-bg); border-color: var(--amber); }
+  .callout.error { background: var(--rose-bg); border-color: var(--rose); }
+  .callout.success { background: var(--emerald-bg); border-color: var(--emerald); }
+  .callout p { margin: 0; }
+  .callout strong { color: var(--text); }
+
+  .status-flag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; margin-left: 8px; vertical-align: middle; }
+  .status-flag.live { background: var(--emerald-bg); color: var(--emerald); border: 1px solid var(--emerald-border); }
+  .status-flag.deferred { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber-border); }
+  .status-flag.blocked { background: var(--rose-bg); color: var(--rose); border: 1px solid var(--rose-border); }
+
+  .flow { display: flex; gap: 12px; align-items: center; margin: 18px 0; flex-wrap: wrap; }
+  .flow-step { background: var(--paper); border: 1px solid var(--border); border-radius: 6px; padding: 8px 14px; font-size: 13px; min-width: 100px; text-align: center; }
+  .flow-step.active { background: var(--emerald); color: white; border-color: var(--emerald); font-weight: 600; }
+  .flow-arrow { color: var(--subtle); font-size: 16px; }
+
+  ul.compact, ol.compact { margin: 8px 0; padding-left: 24px; }
+  ul.compact li, ol.compact li { margin-bottom: 4px; font-size: 14px; }
+  code { font-family: 'IBM Plex Mono', monospace; font-size: 12px; background: var(--bg); padding: 1px 6px; border-radius: 3px; border: 1px solid var(--border); }
+  pre code { display: block; padding: 10px 14px; line-height: 1.5; overflow-x: auto; }
+
+  table.ref { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 13px; }
+  table.ref th, table.ref td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.ref th { background: var(--bg); color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+  table.ref code { font-size: 11px; }
+
+  .case-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 14px 0; }
+  .case-card { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; }
+  .case-card h4 { margin: 0 0 8px; color: var(--text); }
+
+  .toc { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 16px 20px; margin-bottom: 36px; }
+  .toc h3 { margin: 0 0 8px; font-size: 13px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+  .toc ol { margin: 0; padding-left: 22px; }
+  .toc li { margin-bottom: 4px; font-size: 14px; }
+  .toc a { color: var(--text); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+
+  /* UI mockup styling */
+  .ui-mockup { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 18px; margin: 14px 0; }
+  .ui-mockup-header { font-size: 11px; color: var(--subtle); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px; font-weight: 600; }
+  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 12px; }
+  .stat-card { position: relative; background: var(--paper); border: 1px solid var(--border); border-radius: 8px; padding: 12px; overflow: hidden; }
+  .stat-card .accent-bar { position: absolute; top: 0; left: 0; right: 0; height: 3px; }
+  .stat-card.draft .accent-bar { background: var(--amber); }
+  .stat-card.posted .accent-bar { background: var(--emerald); }
+  .stat-card.reversed .accent-bar { background: var(--zinc-border); }
+  .stat-card.nav .accent-bar { background: var(--emerald); }
+  .stat-card .top { display: flex; justify-content: space-between; align-items: start; margin-top: 6px; margin-bottom: 8px; }
+  .stat-card .label { font-size: 12px; font-weight: 600; color: var(--text); }
+  .stat-card .label-en { font-size: 9px; color: var(--subtle); letter-spacing: 0.08em; margin-top: 2px; }
+  .stat-card .icon-circle { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0; }
+  .stat-card.draft .icon-circle { background: var(--amber-bg); color: var(--amber); }
+  .stat-card.posted .icon-circle { background: var(--emerald-bg); color: var(--emerald); }
+  .stat-card.reversed .icon-circle { background: var(--zinc-bg); color: var(--subtle); }
+  .stat-card.nav .icon-circle { background: var(--emerald-bg); color: var(--emerald); }
+  .stat-card .value { font-family: 'IBM Plex Mono', monospace; font-size: 22px; font-weight: 700; }
+  .stat-card .cta { font-size: 12px; font-weight: 600; color: var(--emerald); }
+
+  .section-block { background: var(--paper); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; margin: 8px 0; }
+  .section-num { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+  .section-num .num { width: 22px; height: 22px; border-radius: 4px; background: var(--emerald-bg); color: var(--emerald); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+  .section-num .title { font-size: 13px; font-weight: 700; }
+
+  .pill-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 8px 0; }
+  .pill { background: var(--paper); border: 2px solid var(--border); border-radius: 6px; padding: 8px 10px; display: flex; align-items: center; gap: 6px; font-size: 11px; }
+  .pill.selected { border-color: var(--emerald); background: var(--emerald-bg); }
+  .pill .pill-icon { width: 22px; height: 22px; border-radius: 4px; background: var(--zinc-bg); color: var(--subtle); display: flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0; }
+  .pill.selected .pill-icon { background: var(--emerald-border); color: var(--emerald); }
+  .pill .pill-name { font-weight: 600; }
+  .pill .pill-code { color: var(--subtle); font-family: 'IBM Plex Mono', monospace; font-size: 9px; margin-top: 2px; }
+
+  .validation-box { background: var(--rose-bg); border: 1px solid var(--rose-border); border-radius: 8px; padding: 12px 14px; margin: 10px 0; font-size: 13px; color: var(--rose); }
+  .validation-box .title-line { font-weight: 700; margin-bottom: 4px; }
+  .validation-box ul { margin: 4px 0 0; padding-left: 20px; }
+  .validation-box .hint { font-size: 11px; color: var(--muted); margin-top: 6px; }
+
+  .summary-tile-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 10px; }
+  .summary-tile { padding: 10px; border-radius: 6px; }
+  .summary-tile.primary { background: var(--emerald-bg); color: var(--emerald); }
+  .summary-tile.info { background: var(--violet-bg); color: var(--violet); }
+  .summary-tile.warning { background: var(--amber-bg); color: var(--amber); }
+  .summary-tile.success { background: var(--emerald-bg); color: var(--emerald); }
+  .summary-tile .stl { font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600; }
+  .summary-tile .stv { font-family: 'IBM Plex Mono', monospace; font-size: 16px; font-weight: 700; color: var(--text); margin-top: 4px; }
+
+  .footer-bar { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background: var(--paper); border: 1px solid var(--border); border-radius: 8px; margin-top: 10px; font-size: 12px; }
+  .footer-bar .err { color: var(--rose); font-weight: 600; }
+  .footer-bar .ok { color: var(--emerald); font-weight: 600; }
+  .footer-btns { display: flex; gap: 6px; }
+  .footer-btns button { font: inherit; font-size: 11px; padding: 5px 10px; border-radius: 4px; border: 1px solid var(--border); background: var(--paper); cursor: default; }
+  .footer-btns button.primary { background: var(--emerald); color: white; border-color: var(--emerald); font-weight: 600; }
+  .footer-btns button.primary:disabled { background: var(--zinc-bg); color: var(--subtle); border-color: var(--border); opacity: 0.5; }
+
+  @media print {
+    body { background: white; }
+    .page { box-shadow: none; padding: 0; max-width: none; }
+    section { break-inside: avoid; }
+    .entry { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+<header class="doc-header">
+  <div class="org">BESTCHOICE FINANCE</div>
+  <h1>เส้นทางการบันทึกรายได้อื่น — Other Income (42-XXXX)</h1>
+  <p class="sub">คู่มือสำหรับฝ่ายบัญชี — ครอบคลุม UI ใหม่ + บัญชี 42-XXXX ทั้งหมด + JE + Validation V1–V10</p>
+  <div class="doc-meta">
+    <span><strong>เวอร์ชั่น:</strong> v2 (deployed 2026-05-11, PR #805)</span>
+    <span><strong>มาตรฐาน:</strong> TFRS for NPAEs · ผัง CPA Phase A.4 (99 accounts FINANCE-only)</span>
+    <span><strong>ใช้แทน:</strong> รุ่นแรก (pre-redesign)</span>
+  </div>
+</header>
+
+<div class="summary-box">
+  <h3>สรุปสำคัญ — สิ่งที่ฝ่ายบัญชีต้องรู้</h3>
+  <ul class="summary-list">
+    <li><strong>รายได้อื่น = ทุกอย่างที่ไม่ใช่รายได้หลัก</strong> — กลุ่มบัญชี <code>42-XXXX</code> เช่น ดอกเบี้ยเงินฝาก, ค่าปรับ, รายได้หักค่าจ้าง, กำไรจากขายสินทรัพย์</li>
+    <li><strong>SHOP-side / FINANCE-side?</strong> — โมดูลนี้บันทึก <strong>FINANCE-side</strong> เท่านั้น (จดทะเบียน VAT 7%). SHOP ไม่จด VAT — รายได้ฝั่ง SHOP บันทึกแยก</li>
+    <li><strong>Lifecycle:</strong> <code>DRAFT</code> → <code>POSTED</code> → <code>REVERSED</code>. ห้าม hard-delete — ใช้ reverse แทน</li>
+    <li><strong>เลขเอกสาร:</strong> <code>OI-YYYYMMDD-NNNN</code> (advisory-lock per-day sequence) — auto-reset รายวัน</li>
+    <li><strong>JE ตั้งบัญชี:</strong> <code>Dr cash/bank</code> / <code>Cr รายได้ 42-XXXX</code> [+ Cr VAT 21-2101] [- Dr WHT 11-4103]</li>
+    <li><strong>ค่าปรับล่าช้า (42-1103):</strong> <strong>BLOCKED ใน module นี้</strong> — auto-posted ผ่าน <code>PaymentReceipt2BTemplate</code> ตอนรับเงินค่างวด ห้ามคีย์ซ้ำ</li>
+    <li><strong>Receipt:</strong> เลข <code>OI-... → RT-YYYYMM-NNNNN</code> ออกอัตโนมัติเมื่อ POST</li>
+    <li><strong>Daily Sheet:</strong> สรุปรายวันแยก by 42-XXXX + by cash account — ฝ่ายบัญชีปิดเงินสดประจำวันได้</li>
+  </ul>
+</div>
+
+<div class="toc">
+  <h3>สารบัญ</h3>
+  <ol>
+    <li><a href="#s1">ภาพรวมโมดูล + ผังบัญชี 42-XXXX</a></li>
+    <li><a href="#s2">วงจรชีวิตเอกสาร (DRAFT → POSTED → REVERSED)</a></li>
+    <li><a href="#s3">หน้ารายการ (List Page) — ใหม่ 2026-05-11</a></li>
+    <li><a href="#s4">หน้าสร้างเอกสาร (Entry Page) — 9 sections</a></li>
+    <li><a href="#s5">Validation V1–V10 — ระบบจะบล็อกอะไรบ้าง</a></li>
+    <li><a href="#s6">JE Templates per บัญชี (42-1102, 42-1104, 42-1105)</a></li>
+    <li><a href="#s7">ดอกเบี้ยเงินฝาก (42-1102) — WHT 15%, ยกเว้น VAT</a></li>
+    <li><a href="#s8">ค่าปรับล่าช้า (42-1103) — BLOCKED ใน UI</a></li>
+    <li><a href="#s9">รายได้หักค่าจ้าง (42-1104) — DEFERRED Pattern B</a></li>
+    <li><a href="#s10">กำไรจำหน่ายสินทรัพย์ (42-1105) — VAT 7%</a></li>
+    <li><a href="#s11">Reverse / ยกเลิกเอกสาร — Reversal JE</a></li>
+    <li><a href="#s12">Daily Sheet — สรุปรายวัน</a></li>
+    <li><a href="#s13">Receipt — ใบเสร็จ RT-YYYYMM-NNNNN</a></li>
+    <li><a href="#s14">เช็คลิสต์รายวัน/รายเดือนสำหรับฝ่ายบัญชี</a></li>
+    <li><a href="#s15">ข้อผิดพลาดที่พบบ่อย + วิธีแก้</a></li>
+    <li><a href="#s16">FAQ บัญชี</a></li>
+  </ol>
+</div>
+
+<!-- ───────────────────────────────────────────── Section 1 ───────── -->
+<section id="s1">
+  <h2><span class="badge-section">1</span>ภาพรวมโมดูล + ผังบัญชี 42-XXXX</h2>
+
+  <p>โมดูล <strong>รายได้อื่น (Other Income)</strong> รวมรายได้ที่ไม่ใช่ดอกเบี้ยจากสัญญาผ่อน (41-1101) ทั้งหมด. ใช้สำหรับ FINANCE บันทึก: ดอกเบี้ยเงินฝาก, ค่าปรับ, รายได้จากการหักค่าจ้าง, กำไรจากการขายสินทรัพย์, ฯลฯ</p>
+
+  <h3>ผังบัญชี 42-XXXX ที่ใช้ในระบบ</h3>
+
+  <table class="ref">
+    <thead><tr><th>รหัส</th><th>ชื่อบัญชี</th><th>VAT</th><th>WHT</th><th>สถานะใน UI</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>42-1102</code></td>
+        <td>ดอกเบี้ยเงินฝาก</td>
+        <td>ยกเว้น</td>
+        <td>15% (มาตรา 50)</td>
+        <td><span class="status-flag live">Live</span></td>
+      </tr>
+      <tr>
+        <td><code>42-1103</code></td>
+        <td>ค่าปรับชำระล่าช้า</td>
+        <td>ไม่อยู่ในฐาน</td>
+        <td>—</td>
+        <td><span class="status-flag blocked">Blocked</span> (auto via 2B)</td>
+      </tr>
+      <tr>
+        <td><code>42-1104</code></td>
+        <td>รายได้จากการหักค่าจ้าง</td>
+        <td>ยกเว้น</td>
+        <td>—</td>
+        <td><span class="status-flag deferred">Deferred</span> (Pattern B รอ Payroll module)</td>
+      </tr>
+      <tr>
+        <td><code>42-1105</code></td>
+        <td>กำไรจากการจำหน่ายสินทรัพย์</td>
+        <td>7%</td>
+        <td>—</td>
+        <td><span class="status-flag live">Live</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>บัญชีคู่ที่ใช้ร่วม</h3>
+
+  <table class="ref">
+    <thead><tr><th>รหัส</th><th>ชื่อบัญชี</th><th>ใช้เมื่อ</th></tr></thead>
+    <tbody>
+      <tr><td><code>11-1101</code></td><td>เงินสด — สุทธินีย์ คงเดช</td><td>รับเงินสดสุทธินีย์</td></tr>
+      <tr><td><code>11-1102</code></td><td>เงินสด — เอกนรินทร์</td><td>รับเงินสดเอกนรินทร์</td></tr>
+      <tr><td><code>11-1103</code></td><td>เงินสด — พนักงานบัญชี</td><td>รับเงินสดที่ฝ่ายบัญชี</td></tr>
+      <tr><td><code>11-1201</code></td><td>ธนาคาร KBank</td><td>รับโอน/เครดิตดอกเบี้ย</td></tr>
+      <tr><td><code>11-1202</code></td><td>ธนาคาร SCB (ค่าใช้จ่าย)</td><td>รับโอนผ่าน SCB</td></tr>
+      <tr><td><code>11-1203</code></td><td>ธนาคาร SCB (ค่าเสื่อม)</td><td>รับโอนผ่าน SCB</td></tr>
+      <tr><td><code>11-4103</code></td><td>ภาษีหัก ณ ที่จ่าย รอเรียกคืน</td><td>Dr ทุกครั้งที่ผู้จ่ายหัก WHT จากเรา</td></tr>
+      <tr><td><code>21-2101</code></td><td>ภาษีขาย ภ.พ.30 (VAT Output settled)</td><td>Cr เมื่อมี VAT ในรายได้ (เช่น 42-1105)</td></tr>
+      <tr><td><code>53-1503</code></td><td>กำไร/ขาดทุนจากการปัดเศษ</td><td>Cr ถ้ารับเงินมากกว่ายอดสุทธิ ≤1฿</td></tr>
+      <tr><td><code>52-1104</code></td><td>ส่วนลดเศษสตางค์</td><td>Dr ถ้ารับเงินน้อยกว่ายอดสุทธิ ≤1฿</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout info">
+    <p><strong>การ validate บัญชี:</strong> ระบบบังคับให้ <code>item.accountCode</code> ต้องขึ้นต้นด้วย <code>42-</code> และไม่ใช่ <code>42-1103</code> (ค่าปรับล่าช้า block ใน UI). ถ้าผู้ใช้พยายามใส่ <code>41-XXXX</code> หรือ <code>53-XXXX</code> → BadRequest "ต้องเป็นบัญชีกลุ่ม 42-XXXX"</p>
+  </div>
+</section>
+
+<!-- ───────────────────────────────────────────── Section 2 ───────── -->
+<section id="s2">
+  <h2><span class="badge-section">2</span>วงจรชีวิตเอกสาร</h2>
+
+  <div class="flow">
+    <span class="flow-step active">DRAFT</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-step">POSTED</span>
+    <span class="flow-arrow">↘</span>
+    <span class="flow-step" style="background: var(--rose-bg); color: var(--rose); border-color: var(--rose-border);">REVERSED</span>
+  </div>
+
+  <table class="ref">
+    <thead><tr><th>Status</th><th>ความหมาย</th><th>JE สร้างแล้ว?</th><th>แก้ไขได้?</th><th>ลบได้?</th></tr></thead>
+    <tbody>
+      <tr><td><strong>DRAFT</strong></td><td>ร่าง — ยังไม่ post — ไม่มีผลทางบัญชี</td><td>ไม่มี</td><td>แก้ไขได้</td><td>soft-delete ได้</td></tr>
+      <tr><td><strong>POSTED</strong></td><td>โพสต์แล้ว + ออกเลข receipt (RT-YYYYMM-NNNNN)</td><td>มี — Auto JE</td><td>ไม่ได้</td><td>ห้าม — ใช้ reverse</td></tr>
+      <tr><td><strong>REVERSED</strong></td><td>กลับรายการแล้ว — มี -R doc + reversal JE</td><td>มี 2 JE (ต้นฉบับ + reversal)</td><td>ไม่</td><td>ไม่ — สถานะ final</td></tr>
+    </tbody>
+  </table>
+
+  <h3>กฎการเปลี่ยนสถานะ</h3>
+  <ul class="compact">
+    <li><strong>DRAFT → POSTED:</strong> ผ่าน <code>POST /other-income/:id/post</code> — สร้าง JE + ออก receiptNo. ต้องผ่าน V1-V10 หมด</li>
+    <li><strong>POSTED → REVERSED:</strong> ผ่าน <code>POST /other-income/:id/reverse</code> — สร้าง doc ใหม่ที่ <code>docNumber + '-R'</code>, มี <code>reversesId</code> ชี้กลับ + JE สลับ Dr/Cr</li>
+    <li><strong>DRAFT → ลบ:</strong> ผ่าน <code>DELETE /other-income/:id</code> — soft-delete (set <code>deletedAt</code>)</li>
+    <li><strong>POSTED → ลบ:</strong> <span style="color: var(--rose);">ห้าม</span> — backend throws <code>ConflictException</code></li>
+    <li><strong>Concurrent post protection:</strong> ใช้ <code>pg_advisory_xact_lock</code> ป้องกัน race</li>
+  </ul>
+</section>
+
+<!-- ───────────────────────────────────────────── Section 3 ───────── -->
+<section id="s3">
+  <h2><span class="badge-section">3</span>หน้ารายการ (List Page) — UI ใหม่ 2026-05-11</h2>
+
+  <p>เข้าผ่าน <code>/other-income</code> — หน้านี้มี <strong>4 status cards</strong> + filter + tabel</p>
+
+  <div class="ui-mockup">
+    <div class="ui-mockup-header">Other Income List — `/other-income`</div>
+    <div class="stat-grid">
+      <div class="stat-card draft">
+        <div class="accent-bar"></div>
+        <div class="top">
+          <div>
+            <div class="label">ฉบับร่าง</div>
+            <div class="label-en">DRAFT</div>
+          </div>
+          <div class="icon-circle">📄</div>
+        </div>
+        <div class="value">3</div>
+      </div>
+      <div class="stat-card posted">
+        <div class="accent-bar"></div>
+        <div class="top">
+          <div>
+            <div class="label">บันทึกแล้ว</div>
+            <div class="label-en">POSTED</div>
+          </div>
+          <div class="icon-circle">✓</div>
+        </div>
+        <div class="value">42</div>
+      </div>
+      <div class="stat-card reversed">
+        <div class="accent-bar"></div>
+        <div class="top">
+          <div>
+            <div class="label">กลับรายการ</div>
+            <div class="label-en">REVERSED</div>
+          </div>
+          <div class="icon-circle">⟲</div>
+        </div>
+        <div class="value">1</div>
+      </div>
+      <div class="stat-card nav">
+        <div class="accent-bar"></div>
+        <div class="top">
+          <div>
+            <div class="label">สรุปรายวัน</div>
+            <div class="label-en">DAILY SHEET</div>
+          </div>
+          <div class="icon-circle">📊</div>
+        </div>
+        <div class="cta">เปิดดู →</div>
+      </div>
+    </div>
+  </div>
+
+  <h3>การคำนวณ count</h3>
+  <ul class="compact">
+    <li>นับจาก <strong>ทั้ง dataset</strong> ผ่าน 3 parallel queries (status-scoped, <code>limit:1</code>, อ่าน <code>.total</code>)</li>
+    <li><code>staleTime: 60s</code> — ไม่ refetch บ่อยตอน focus tab</li>
+    <li>Mutation (post / reverse / delete) → <code>invalidateQueries(['other-income'])</code> → count refresh อัตโนมัติ</li>
+  </ul>
+
+  <h3>Filter + Table</h3>
+  <table class="ref">
+    <thead><tr><th>Column</th><th>หมายเหตุ</th></tr></thead>
+    <tbody>
+      <tr><td>เลขเอกสาร</td><td>OI-YYYYMMDD-NNNN, click → /other-income/:id (view page)</td></tr>
+      <tr><td>วันที่</td><td>issueDate — Thai short format</td></tr>
+      <tr><td>คู่ค้า</td><td>counterpartyName หรือ customer.name (real FK)</td></tr>
+      <tr><td>รายได้ก่อนภาษี / VAT / WHT / สุทธิ</td><td>คำนวณจาก items + adjustments</td></tr>
+      <tr><td>สถานะ</td><td>DRAFT (zinc) / POSTED (success) / REVERSED (destructive)</td></tr>
+      <tr><td>Action</td><td>"ลบ" — เฉพาะ DRAFT เท่านั้น</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ───────────────────────────────────────────── Section 4 ───────── -->
+<section id="s4">
+  <h2><span class="badge-section">4</span>หน้าสร้างเอกสาร (Entry Page) — 9 sections</h2>
+
+  <p>เข้าผ่าน <code>/other-income/new</code> หรือ <code>/other-income/:id/edit</code>. <strong>เลขเอกสาร (OI-...) ออกหลังกดบันทึกร่างเท่านั้น</strong></p>
+
+  <div class="ui-mockup">
+    <div class="ui-mockup-header">Entry Page — 9 Numbered Sections</div>
+
+    <div class="section-block">
+      <div class="section-num"><span class="num">1</span><span class="title">ข้อมูลลูกค้า & เอกสาร</span></div>
+      <div style="font-size: 12px; color: var(--muted);">ลูกค้า * (search + free-text) · วันที่ออกเอกสาร * · วันที่ครบกำหนด · ประเภท VAT (แยกภาษี / รวมภาษี)</div>
+    </div>
+
+    <div class="section-block">
+      <div class="section-num"><span class="num">2</span><span class="title">รายการบันทึกทางบัญชี</span></div>
+      <div style="font-size: 12px; color: var(--muted);">Cards #N + รหัสบัญชี · 6-col grid: จำนวน / ราคา/หน่วย / ส่วนลด / VAT% / WHT% / ก่อนภาษี (read-only) · footer: VAT / WHT / รวม · "+ เพิ่มบัญชี" dashed</div>
+    </div>
+
+    <div class="section-block">
+      <div class="section-num"><span class="num">3</span><span class="title">ช่องทางการชำระเงิน</span></div>
+      <div style="font-size: 12px; color: var(--muted); margin-bottom: 8px;">6 pill buttons (radiogroup + aria-checked) — cash 3 / bank 3:</div>
+      <div class="pill-grid">
+        <div class="pill selected"><div class="pill-icon">$</div><div><div class="pill-name">สุทธินีย์</div><div class="pill-code">11-1101</div></div></div>
+        <div class="pill"><div class="pill-icon">$</div><div><div class="pill-name">เอกนรินทร์</div><div class="pill-code">11-1102</div></div></div>
+        <div class="pill"><div class="pill-icon">$</div><div><div class="pill-name">พนักงานบัญชี</div><div class="pill-code">11-1103</div></div></div>
+        <div class="pill"><div class="pill-icon">B</div><div><div class="pill-name">กสิกรไทย</div><div class="pill-code">11-1201</div></div></div>
+        <div class="pill"><div class="pill-icon">B</div><div><div class="pill-name">SCB ค่าใช้จ่าย</div><div class="pill-code">11-1202</div></div></div>
+        <div class="pill"><div class="pill-icon">B</div><div><div class="pill-name">SCB ค่าเสื่อม</div><div class="pill-code">11-1203</div></div></div>
+      </div>
+      <div style="font-size: 12px; color: var(--muted); margin-top: 8px;">วันที่ชำระ · จำนวนเงินที่ได้รับจริง * (มีปุ่ม "⚡ ใช้ยอดสุทธิ" auto-fill)</div>
+    </div>
+
+    <div class="section-block">
+      <div class="section-num"><span class="num">4</span><span class="title">หมายเหตุสำหรับลูกค้า</span></div>
+      <div style="font-size: 12px; color: var(--muted);">Textarea — ข้อความที่จะแสดงในใบเสร็จ (ไม่บังคับ)</div>
+    </div>
+
+    <div class="validation-box">
+      <div class="title-line">ต้องแก้ไข 2 ข้อก่อน POST:</div>
+      <ul>
+        <li>กรุณาเลือกลูกค้า</li>
+        <li>กรุณาระบุจำนวนเงินที่ได้รับจริง</li>
+      </ul>
+      <div class="hint">(สามารถบันทึกร่างไว้ก่อนได้)</div>
+    </div>
+
+    <div class="section-block">
+      <div class="section-num"><span class="num">6</span><span class="title">AUTO JOURNAL PREVIEW</span></div>
+      <table class="je">
+        <thead><tr><th>บัญชี</th><th>ชื่อบัญชี</th><th class="amt">DR</th><th class="amt">CR</th></tr></thead>
+        <tbody>
+          <tr><td class="code">42-1102</td><td>ดอกเบี้ยเงินฝาก</td><td class="amt">—</td><td class="amt">1,000.00</td></tr>
+          <tr><td class="code">11-4103</td><td>ภาษีหัก ณ ที่จ่าย (รอเรียกคืน)</td><td class="amt">150.00</td><td class="amt">—</td></tr>
+          <tr><td class="code">11-1201</td><td>ธนาคาร KBank (เงินรับ)</td><td class="amt">850.00</td><td class="amt">—</td></tr>
+          <tr class="total"><td colspan="2" class="balanced">✓ BALANCED</td><td class="amt">1,000.00</td><td class="amt balanced">1,000.00</td></tr>
+        </tbody>
+      </table>
+      <div class="summary-tile-grid">
+        <div class="summary-tile primary"><div class="stl">รายได้</div><div class="stv">1,000.00</div></div>
+        <div class="summary-tile info"><div class="stl">VAT</div><div class="stv">0.00</div></div>
+        <div class="summary-tile warning"><div class="stl">WHT</div><div class="stv">150.00</div></div>
+        <div class="summary-tile success"><div class="stl">สุทธิรับ</div><div class="stv">850.00</div></div>
+      </div>
+    </div>
+
+    <div class="section-block">
+      <div class="section-num"><span class="num">7</span><span class="title">ผู้บันทึก & ผู้อนุมัติ</span></div>
+      <div style="font-size: 12px; color: var(--muted);">Auto-fill จาก <code>useAuth().user.name</code> — pills แสดงทั้งผู้บันทึก + ผู้อนุมัติ (อาจเป็นคนเดียวกัน)</div>
+    </div>
+
+    <div class="section-block">
+      <div class="section-num"><span class="num">8</span><span class="title">แนบไฟล์เอกสาร (ไม่บังคับ)</span></div>
+      <div style="font-size: 12px; color: var(--muted);">Drop zone (PDF/JPG/PNG/WebP ≤ 5MB). บังคับแนบเมื่อยอดรับ ≥ <code>ATTACHMENT_THRESHOLD</code> (default 50,000 ฿)</div>
+    </div>
+
+    <div class="section-block">
+      <div class="section-num"><span class="num">9</span><span class="title">สรุปก่อนยืนยัน</span></div>
+      <div style="font-size: 12px; color: var(--muted);">Big primary card "จำนวนเงินทั้งสิ้น" + ยอดก่อนหักส่วนลด + ยอดสุทธิที่ควรได้รับ + ลูกค้า + บัญชีรายได้</div>
+    </div>
+
+    <div class="footer-bar">
+      <div class="err">⚠ มี 2 ข้อต้องแก้ไข</div>
+      <div class="footer-btns">
+        <button>← ยกเลิก</button>
+        <button>บันทึกร่าง</button>
+        <button class="primary" disabled>บันทึก &amp; POST</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout info">
+    <p><strong>Section 5 ไม่มี:</strong> เลข section ข้ามจาก 4 → 6 — Section 5 ใช้พื้นที่สำหรับ validation error box (ไม่มีเลข ตามต้นแบบ)</p>
+  </div>
+</section>
+
+<!-- ───────────────────────────────────────────── Section 5 ───────── -->
+<section id="s5">
+  <h2><span class="badge-section">5</span>Validation V1–V10 — ระบบจะบล็อกอะไรบ้าง</h2>
+
+  <table class="ref">
+    <thead><tr><th>ID</th><th>กฎ</th><th>ที่ไหน</th><th>Message</th></tr></thead>
+    <tbody>
+      <tr><td><strong>V1</strong></td><td>ต้องมีลูกค้า (customerId หรือ counterpartyName)</td><td>UI live</td><td>กรุณาเลือกลูกค้า</td></tr>
+      <tr><td><strong>V2</strong></td><td>วันที่ออกเอกสารต้องไม่ว่าง</td><td>schema (z.min(1))</td><td>กรุณาระบุวันที่</td></tr>
+      <tr><td><strong>V3</strong></td><td>อย่างน้อย 1 บรรทัด</td><td>schema (.min(1))</td><td>อย่างน้อย 1 รายการ</td></tr>
+      <tr><td><strong>V4</strong></td><td>จำนวน &gt; 0</td><td>schema</td><td>จำนวน &gt; 0</td></tr>
+      <tr><td><strong>V5</strong></td><td>ราคา &gt; 0</td><td>schema</td><td>ราคา &gt; 0</td></tr>
+      <tr><td><strong>V6</strong></td><td>accountCode ต้องขึ้นต้น 42-</td><td>schema (regex)</td><td>ต้องเป็นบัญชีกลุ่ม 42-XXXX</td></tr>
+      <tr><td><strong>V7</strong></td><td>VAT% 0..100</td><td>schema</td><td>VAT 0–100</td></tr>
+      <tr><td><strong>V8</strong></td><td>WHT% 0..100</td><td>schema</td><td>WHT 0–100</td></tr>
+      <tr><td><strong>V9</strong></td><td>paymentAccountCode ต้องเลือก</td><td>UI live</td><td>กรุณาเลือกช่องทางการชำระ</td></tr>
+      <tr><td><strong>V10</strong></td><td>amountReceived &gt; 0 (สำหรับ POST)</td><td>UI live</td><td>กรุณาระบุจำนวนเงินที่ได้รับจริง</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <p><strong>Draft vs POST:</strong> Schema ปลอด (lenient) สำหรับ draft → <code>amountReceived: min(0)</code> + <code>customerId/counterpartyName: optional</code> ทำให้ <code>safeParse</code> ผ่านได้แม้ยังไม่ครบ. UI block POST เท่านั้น ผ่าน <code>validationMessages</code> memo — Draft save ได้เสมอ</p>
+  </div>
+</section>
+
+<!-- ───────────────────────────────────────────── Section 6 ───────── -->
+<section id="s6">
+  <h2><span class="badge-section">6</span>JE Templates per บัญชี</h2>
+
+  <p>โมดูลใช้ template เดียว <code>OtherIncomeTemplate</code> ที่ <code>apps/api/src/modules/other-income/templates/other-income.template.ts</code> — generate JE จาก items + adjustments + amountReceived</p>
+
+  <h3>โครงสร้าง JE มาตรฐาน</h3>
+
+  <table class="je">
+    <thead><tr><th>Side</th><th>บัญชี</th><th>เงื่อนไข</th></tr></thead>
+    <tbody>
+      <tr><td>Cr</td><td class="code">42-XXXX</td><td>ทุก item.accountCode (จาก amountBeforeVat)</td></tr>
+      <tr><td>Cr</td><td class="code">21-2101</td><td>ถ้ามี VAT (vatPct &gt; 0)</td></tr>
+      <tr><td>Dr</td><td class="code">11-4103</td><td>ถ้ามี WHT (whtPct &gt; 0)</td></tr>
+      <tr><td>Dr/Cr</td><td class="code">adjustment.accountCode</td><td>ถ้า amountReceived ≠ netExpected (รับเกิน → Cr / รับขาด → Dr)</td></tr>
+      <tr><td>Dr</td><td class="code">paymentAccountCode</td><td>amountReceived (เงินจริงเข้ากระเป๋า/ธนาคาร)</td></tr>
+    </tbody>
+  </table>
+
+  <p><strong>Doc numbering:</strong> <code>OI-YYYYMMDD-NNNN</code> per-day sequence ด้วย <code>pg_advisory_xact_lock</code></p>
+</section>
+
+<!-- ───────────────────────────────────────────── Section 7 ───────── -->
+<section id="s7">
+  <h2><span class="badge-section">7</span>ดอกเบี้ยเงินฝาก (42-1102) <span class="status-flag live">Live</span></h2>
+
+  <p><strong>ใช้เมื่อ:</strong> ธนาคารคิดดอกเบี้ยให้ทุกครึ่งปี — ปกติ 25 มิ.ย. + 25 ธ.ค. KBank/SCB ลงเงินเข้าบัญชีแบบ net (หัก WHT 15% แล้ว)</p>
+
+  <div class="entry">
+    <h3 class="title">ตัวอย่าง — ดอกเบี้ยเงินฝาก KBank กลางปี</h3>
+    <p class="meta">KBank · 25/06/2026 · ดอกเบี้ย gross 1,000฿ · หัก WHT 15% = 150฿ · net 850฿ เข้าบัญชี</p>
+
+    <h4>กรอกใน UI</h4>
+    <ul class="compact">
+      <li>คู่ค้า: <code>KBank</code> (free-text, ไม่ใช่ Customer FK)</li>
+      <li>วันที่ออกเอกสาร: 25/06/2026 · วันที่ครบกำหนด: 25/06/2026 · ประเภท VAT: <code>EXCLUSIVE</code></li>
+      <li>รายการ #1: บัญชี <code>42-1102</code> · จำนวน 1 · ราคา 1,000 · ส่วนลด 0 · VAT 0% · WHT 15% · ก่อนภาษี = 1,000.00</li>
+      <li>ช่องทาง: <code>11-1201</code> ธนาคาร KBank · จำนวนเงินที่ได้รับจริง: 850.00 (หรือกด "ใช้ยอดสุทธิ")</li>
+    </ul>
+
+    <h4>JE ที่ระบบสร้าง (Auto)</h4>
+    <table class="je">
+      <thead><tr><th>บัญชี</th><th>ชื่อ</th><th class="amt">DR</th><th class="amt">CR</th></tr></thead>
+      <tbody>
+        <tr><td class="code">42-1102</td><td>ดอกเบี้ยเงินฝาก</td><td class="amt">—</td><td class="amt">1,000.00</td></tr>
+        <tr><td class="code">11-4103</td><td>ภาษีหัก ณ ที่จ่ายรอเรียกคืน</td><td class="amt">150.00</td><td class="amt">—</td></tr>
+        <tr><td class="code">11-1201</td><td>ธนาคาร KBank</td><td class="amt">850.00</td><td class="amt">—</td></tr>
+        <tr class="total"><td colspan="2" class="balanced">BALANCED</td><td class="amt">1,000.00</td><td class="amt balanced">1,000.00</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout success">
+    <p><strong>WHT 15% สำหรับดอกเบี้ยเงินฝาก = มาตรา 50 ป.รัษฎากร</strong> — บุคคลธรรมดารับดอกเบี้ยเงินฝากออมทรัพย์เกิน 20,000฿/ปี ต้องหัก ณ ที่จ่าย. นิติบุคคลรับดอกเบี้ยเงินฝากประจำ ฯลฯ — อัตราหัก 15% เหมือนกัน</p>
+  </div>
+</section>
+
+<!-- ───────────────────────────────────────────── Section 8 ───────── -->
+<section id="s8">
+  <h2><span class="badge-section">8</span>ค่าปรับล่าช้า (42-1103) <span class="status-flag blocked">Blocked in UI</span></h2>
+
+  <p><strong>ห้ามคีย์ใน module นี้</strong> — UI จะกรอง 42-1103 ออกจาก dropdown โดย <code>filter: a.code !== '42-1103'</code> ที่ <a href="#"><code>apps/web/src/pages/other-income/components/ItemsTable.tsx</code></a></p>
+
+  <div class="callout error">
+    <p><strong>ทำไม block:</strong> ค่าปรับล่าช้า auto-post ผ่าน <code>PaymentReceipt2BTemplate</code> ตอนรับเงินค่างวด — ถ้าคีย์ซ้ำใน Other Income จะ double-count รายได้. ระบบยังป้องกันที่ backend layer ด้วยถ้ามีคนพยายาม bypass</p>
+  </div>
+
+  <h3>JE ของค่าปรับล่าช้า (สร้างจาก 2B template ตอนรับเงินค่างวด)</h3>
+  <table class="je">
+    <thead><tr><th>บัญชี</th><th>ชื่อ</th><th class="amt">DR</th><th class="amt">CR</th></tr></thead>
+    <tbody>
+      <tr><td class="code">11-1XXX</td><td>เงินสด/แบงก์</td><td class="amt">50.00</td><td class="amt">—</td></tr>
+      <tr><td class="code">42-1103</td><td>ค่าปรับชำระล่าช้า</td><td class="amt">—</td><td class="amt">50.00</td></tr>
+    </tbody>
+  </table>
+
+  <p><strong>VAT:</strong> ค่าปรับ <strong>ไม่อยู่ในฐาน VAT</strong> ตามกฎ owner policy (legally correct: penalties excluded from VAT base)</p>
+</section>
+
+<!-- ───────────────────────────────────────────── Section 9 ───────── -->
+<section id="s9">
+  <h2><span class="badge-section">9</span>รายได้จากการหักค่าจ้าง (42-1104) <span class="status-flag deferred">Pattern B Deferred</span></h2>
+
+  <p><strong>รอ Payroll module เปิดใช้</strong> — บัญชีนี้ใช้เมื่อ FINANCE หักค่าจ้างพนักงาน (เช่น เงินกู้ฉุกเฉิน) ที่จ่ายให้ SHOP. การ post จะเชื่อมกับ Payroll cycle</p>
+
+  <div class="callout warn">
+    <p><strong>ยังไม่ live:</strong> ใน UI dropdown 42-1104 อาจขึ้นได้ แต่ workflow ที่เชื่อม Payroll ยังไม่ถูก implement. ถ้ามีจำเป็นต้องใช้ก่อน Payroll → ปรึกษานักบัญชีก่อน</p>
+  </div>
+</section>
+
+<!-- ───────────────────────────────────────────── Section 10 ───────── -->
+<section id="s10">
+  <h2><span class="badge-section">10</span>กำไรจากการจำหน่ายสินทรัพย์ (42-1105) <span class="status-flag live">Live</span></h2>
+
+  <p><strong>ใช้เมื่อ:</strong> ขายสินทรัพย์เก่า (เครื่องคอมเก่า, รถยนต์เก่า ฯลฯ) ได้ราคามากกว่ามูลค่าทางบัญชี — ส่วนต่างเป็น "กำไรจากการจำหน่าย" ต้องคิด <strong>VAT 7%</strong></p>
+
+  <div class="entry">
+    <h3 class="title">ตัวอย่าง — ขายเครื่อง MacBook เก่า 25,000฿ (BV = 18,000฿)</h3>
+    <p class="meta">ผู้ซื้อ: นาย ก. · ใบกำกับ 09/05/2026 · รับเงินสด</p>
+
+    <h4>กรอกใน UI</h4>
+    <ul class="compact">
+      <li>คู่ค้า: <code>นาย ก.</code> (free-text) — taxId/address ถ้ามี</li>
+      <li>ประเภท VAT: <code>EXCLUSIVE</code> (ราคา 25,000 ไม่รวม VAT)</li>
+      <li>รายการ #1: <code>42-1105</code> · ราคา 7,000 (กำไรส่วนต่าง 25,000 - 18,000) · VAT 7% · WHT 0%</li>
+      <li>ช่องทาง: <code>11-1101</code> เงินสด — สุทธินีย์ · จำนวนรับจริง: 7,490.00</li>
+    </ul>
+
+    <h4>JE</h4>
+    <table class="je">
+      <thead><tr><th>บัญชี</th><th>ชื่อ</th><th class="amt">DR</th><th class="amt">CR</th></tr></thead>
+      <tbody>
+        <tr><td class="code">42-1105</td><td>กำไรจากการจำหน่ายสินทรัพย์</td><td class="amt">—</td><td class="amt">7,000.00</td></tr>
+        <tr><td class="code">21-2101</td><td>ภาษีขาย ภ.พ.30</td><td class="amt">—</td><td class="amt">490.00</td></tr>
+        <tr><td class="code">11-1101</td><td>เงินสด — สุทธินีย์</td><td class="amt">7,490.00</td><td class="amt">—</td></tr>
+        <tr class="total"><td colspan="2" class="balanced">BALANCED</td><td class="amt">7,490.00</td><td class="amt balanced">7,490.00</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout warn">
+    <p><strong>หมายเหตุ:</strong> JE นี้บันทึก <strong>กำไรส่วนต่าง</strong> เท่านั้น. การปลดสินทรัพย์ออก (Cr 12-21XX · Dr ค่าเสื่อมสะสม) ต้องบันทึกแยกใน Asset module ก่อน. ถ้ายังไม่มี Asset module ให้นักบัญชี post manual JE แยก</p>
+  </div>
+</section>
+
+<!-- ───────────────────────────────────────────── Section 11 ───────── -->
+<section id="s11">
+  <h2><span class="badge-section">11</span>Reverse / ยกเลิกเอกสาร</h2>
+
+  <p>ใช้เมื่อพบว่า POST เอกสารผิด (ลูกค้าผิด, ยอดผิด, บัญชีผิด ฯลฯ). <strong>ห้าม edit หรือ hard-delete</strong> — ใช้ reverse</p>
+
+  <h3>วิธีทำใน UI</h3>
+  <ol class="compact">
+    <li>เข้า <code>/other-income/:id</code> (view page)</li>
+    <li>กดปุ่ม "Reverse" — เลือก <code>reverseReason</code>: INPUT_ERROR / CUSTOMER_REQUEST / DUPLICATE / WRONG_ACCOUNT / WRONG_AMOUNT / OTHER</li>
+    <li>กรอก <code>reverseNote</code> (optional)</li>
+    <li>ยืนยัน → ระบบสร้าง doc ใหม่ <code>{docNumber}-R</code> + JE สลับ Dr/Cr</li>
+    <li>เอกสารต้นฉบับ status → <code>REVERSED</code>, doc ใหม่ status = <code>POSTED</code></li>
+  </ol>
+
+  <h3>JE Reversal Pattern</h3>
+  <p>JE ใหม่ใช้ <code>postedAt</code> = วันที่ยกเลิก (BKK noon) — ไม่ใช่วันที่ต้นฉบับ. ทุกบรรทัดสลับ Dr/Cr</p>
+
+  <div class="callout error">
+    <p><strong>ระวัง:</strong> Reverse ทำให้รายงานเดือนเปลี่ยน! ถ้าต้นฉบับเป็นเดือน พ.ค. และ reverse ในเดือน มิ.ย. → P/L ทั้ง 2 เดือนกระทบ</p>
+  </div>
+</section>
+
+<!-- ───────────────────────────────────────────── Section 12 ───────── -->
+<section id="s12">
+  <h2><span class="badge-section">12</span>Daily Sheet — สรุปรายวัน</h2>
+
+  <p>เข้าผ่าน <code>/other-income/daily-sheet</code> หรือ click card "สรุปรายวัน" จาก list page</p>
+
+  <h3>โครงสร้างหน้า</h3>
+  <ul class="compact">
+    <li><strong>Summary:</strong> รายได้ก่อนภาษีรวม · VAT รวม · WHT รวม · สุทธิรับรวม · จำนวนเอกสาร</li>
+    <li><strong>By Account:</strong> แยกตาม 42-XXXX — 42-1102 รวม X฿, 42-1105 รวม Y฿</li>
+    <li><strong>By Payment:</strong> แยกตามช่องทางรับเงิน — 11-1101 รวม Z฿ ...</li>
+    <li><strong>Doc list:</strong> POSTED docs ของวันนั้น (เลขเอกสาร, ลูกค้า, ยอด)</li>
+  </ul>
+
+  <h3>การใช้ปิดเงินสดประจำวัน</h3>
+  <ol class="compact">
+    <li>ดูยอด "By Payment" — แต่ละช่องทางควรตรงกับเงินสดในมือ/ยอดธนาคาร</li>
+    <li>ถ้าไม่ตรง → ตรวจ docs ของวันนั้น ดูว่ามีคน reverse ภายหลังหรือไม่ (REVERSED ไม่ขึ้น Daily Sheet)</li>
+    <li>ปริ้นต์/save Daily Sheet เป็นหลักฐานการปิดวัน</li>
+  </ol>
+</section>
+
+<!-- ───────────────────────────────────────────── Section 13 ───────── -->
+<section id="s13">
+  <h2><span class="badge-section">13</span>Receipt — ใบเสร็จ</h2>
+
+  <p>เลข receipt <code>RT-YYYYMM-NNNNN</code> ออกอัตโนมัติเมื่อ POST — เข้าผ่าน <code>/other-income/:id/receipt</code> เพื่อปริ้นต์</p>
+
+  <table class="ref">
+    <thead><tr><th>Field</th><th>หมายเหตุ</th></tr></thead>
+    <tbody>
+      <tr><td><code>receiptNo</code></td><td>auto-generated ที่ post time, immutable</td></tr>
+      <tr><td><code>customerNote</code></td><td>ข้อความที่กรอกใน Section 4 — แสดงในใบเสร็จ</td></tr>
+      <tr><td><code>postedAt</code></td><td>วันที่ใน timestamp (ใบเสร็จจะ format เป็นวันที่ไทย)</td></tr>
+      <tr><td><code>items[]</code></td><td>list รายการที่ขึ้นใบเสร็จ</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ───────────────────────────────────────────── Section 14 ───────── -->
+<section id="s14">
+  <h2><span class="badge-section">14</span>เช็คลิสต์รายวัน/รายเดือนสำหรับฝ่ายบัญชี</h2>
+
+  <h3>รายวัน</h3>
+  <ul class="compact">
+    <li>เข้า list page → เช็ค DRAFT count — ถ้าค้างเยอะ → ตามนักการเงินให้ post/ลบ</li>
+    <li>เข้า Daily Sheet วันก่อนหน้า → ดูยอด "By Payment" ตรงกับยอดเงินสด/ธนาคารที่ปิดวัน</li>
+    <li>ถ้ามี dispute จากลูกค้า (วันนั้น) → ตรวจ docs + เตรียม reverse ถ้าจำเป็น</li>
+  </ul>
+
+  <h3>รายเดือน</h3>
+  <ul class="compact">
+    <li>Trial Balance (TB) → ดูบัญชี 42-XXXX มี balance ตรงกับ P/L หรือไม่</li>
+    <li>VAT report → 21-2101 movement = ยอด VAT จากใบกำกับ 42-1105 (ถ้ามี)</li>
+    <li>WHT certificate → ออกใบ ภงด.50/51 ให้ผู้จ่าย (ปกติ KBank/SCB ออกให้เราเอง)</li>
+    <li>ตรวจ docs REVERSED ของเดือน — เก็บเอกสารหลักฐาน (reverseReason + reverseNote)</li>
+  </ul>
+</section>
+
+<!-- ───────────────────────────────────────────── Section 15 ───────── -->
+<section id="s15">
+  <h2><span class="badge-section">15</span>ข้อผิดพลาดที่พบบ่อย + วิธีแก้</h2>
+
+  <table class="ref">
+    <thead><tr><th>อาการ</th><th>สาเหตุ</th><th>วิธีแก้</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>POST ไม่ได้ — ปุ่ม disabled</td>
+        <td>มี validation error อยู่ในกล่องแดง</td>
+        <td>อ่าน "ต้องแก้ไข N ข้อก่อน POST" → แก้ทีละข้อ. ระหว่างนี้ "บันทึกร่าง" ใช้ได้</td>
+      </tr>
+      <tr>
+        <td>กรอกบัญชี 41-1101 / 53-XXXX</td>
+        <td>ไม่ใช่บัญชีกลุ่ม 42-XXXX</td>
+        <td>เปลี่ยนเป็น 42-XXXX. ถ้าเป็นรายได้หลัก (HP interest) → ใช้ flow 2A/2B แทน</td>
+      </tr>
+      <tr>
+        <td>ยอดรับจริงต่างจากยอดสุทธิ &lt;= 1฿</td>
+        <td>เศษสตางค์</td>
+        <td>UI จะแสดง <code>AdjustmentTable</code> ให้เลือก <code>53-1503</code> (รับเกิน) หรือ <code>52-1104</code> (รับขาด, ต้องมี approver)</td>
+      </tr>
+      <tr>
+        <td>ยอดรับจริงต่างจากยอดสุทธิ &gt; 1฿</td>
+        <td>ผิดพลาดมาก</td>
+        <td>กลับไปเช็คตัวเลขใน Section 2 ก่อน. ถ้ายังต้องรับยอดไม่ตรง → ใส่ adjustment + note อธิบาย</td>
+      </tr>
+      <tr>
+        <td>กดบันทึก & POST แล้วเด้ง error "ต้องแนบไฟล์"</td>
+        <td>ยอดรับ ≥ ATTACHMENT_THRESHOLD แต่ไม่ได้แนบ</td>
+        <td>กลับไปบันทึกร่างก่อน → แนบไฟล์ใน Section 8 → POST</td>
+      </tr>
+      <tr>
+        <td>POST แล้วพบบัญชี/ยอดผิด</td>
+        <td>—</td>
+        <td><strong>ห้าม edit/delete</strong> — ใช้ reverse แล้ว post ใหม่</td>
+      </tr>
+      <tr>
+        <td>กรอก 42-1103 ใน dropdown ไม่ขึ้น</td>
+        <td>BLOCKED ใน UI (auto-posted ผ่าน 2B)</td>
+        <td>ค่าปรับล่าช้าจะ post อัตโนมัติตอนรับเงินค่างวด ไม่ต้องคีย์ในโมดูลนี้</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ───────────────────────────────────────────── Section 16 ───────── -->
+<section id="s16">
+  <h2><span class="badge-section">16</span>FAQ บัญชี</h2>
+
+  <div class="entry">
+    <h3 class="title">Q: ดอกเบี้ยเงินฝาก KBank — ใช้ "ลูกค้า" ฟิลด์ใส่อะไร?</h3>
+    <p>A: ใช้ <strong>free-text</strong> "KBank" (พิมพ์ในช่อง customer search โดยไม่เลือกจาก dropdown). ระบบจะเก็บเป็น <code>counterpartyName</code> ไม่ใช่ <code>customerId</code> FK</p>
+  </div>
+
+  <div class="entry">
+    <h3 class="title">Q: WHT 15% ที่ KBank หักจากเรา — ขอคืนได้?</h3>
+    <p>A: ได้. ระบบ Dr <code>11-4103</code> (ภาษีหัก ณ ที่จ่ายรอเรียกคืน) เก็บไว้. ปลายปียื่นภาษีนิติบุคคล → ขอคืนภาษี (refund) หรือเครดิตภาษีปีถัดไป</p>
+  </div>
+
+  <div class="entry">
+    <h3 class="title">Q: VAT จากกำไรขายสินทรัพย์ — นำส่งได้รึยัง?</h3>
+    <p>A: ระบบ Cr <code>21-2101</code> (VAT settled) ทันทีตอน POST — รวมใน ภ.พ.30 เดือนนั้น. ฝ่ายบัญชีต้องนำส่ง VAT รายเดือนตามจริง</p>
+  </div>
+
+  <div class="entry">
+    <h3 class="title">Q: มีรายได้อื่นที่อยากบันทึก แต่ไม่มีบัญชี 42-XXXX ที่ตรง?</h3>
+    <p>A: ปรึกษานักบัญชีก่อน — อาจต้องเพิ่ม account ใหม่ในผัง. <strong>ห้ามใส่ 41-XXXX</strong> (รายได้หลัก) เด็ดขาด เพราะจะปนกับยอดสัญญาผ่อน</p>
+  </div>
+
+  <div class="entry">
+    <h3 class="title">Q: ทำไมหน้านี้ไม่มี "รออนุมัติ" (READY)?</h3>
+    <p>A: Backend ปัจจุบันมี 3 สถานะเท่านั้น: DRAFT / POSTED / REVERSED. รายได้อื่นยอดน้อย — Owner approve ตอน POST อยู่แล้ว ไม่จำเป็นต้องมี middle state. ถ้าอยากเพิ่ม approval workflow → ต้องทำ feature ใหม่ (schema migration + endpoint + role + UI)</p>
+  </div>
+
+  <div class="entry">
+    <h3 class="title">Q: ผู้บันทึก + ผู้อนุมัติ ใน Section 7 ทำไมเป็นคนเดียวกัน?</h3>
+    <p>A: ตามต้นแบบ owner ตอนนี้ — auto-fill จาก current user. ถ้าจะแยก dual-sign approval ต้องเพิ่ม <code>approverId</code> field ใน schema + workflow ใหม่. รอ Phase ถัดไป</p>
+  </div>
+
+  <div class="entry">
+    <h3 class="title">Q: Reverse แล้วเอกสารต้นฉบับยังขึ้นในรายงาน?</h3>
+    <p>A: ใช่ — status เป็น REVERSED (ไม่ใช่ลบ). รายงาน P/L หัก reversal ออกอัตโนมัติเพราะ JE มี 2 entries (ต้นฉบับ + reversal สลับ DR/CR). Daily Sheet กรอง REVERSED ออก แต่ trial balance ยังเห็น</p>
+  </div>
+</section>
+
+<footer style="margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--border); font-size: 12px; color: var(--subtle); text-align: center;">
+  <p>BESTCHOICE FINANCE · Other Income Module v2 · PR #805 (2026-05-11) · TFRS for NPAEs · ผัง CPA Phase A.4</p>
+</footer>
+
+</div>
+</body>
+</html>

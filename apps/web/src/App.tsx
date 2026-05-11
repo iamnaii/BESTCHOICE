@@ -81,6 +81,7 @@ const LineOaSettingsPage = lazy(() => import('@/pages/LineOaSettingsPage'));
 const FinanceReceivablePage = lazy(() => import('@/pages/FinanceReceivablePage'));
 const FinancePortfolioPage = lazy(() => import('@/pages/FinancePortfolioPage'));
 const ExpensesPage = lazy(() => import('@/pages/ExpensesPage'));
+const APAgingPage = lazy(() => import('@/pages/APAgingPage'));
 const ExpenseDocumentNewPage = lazy(() => import('@/pages/ExpenseDocumentNewPage'));
 const ExpenseFavoritesPage = lazy(() => import('@/pages/ExpenseFavoritesPage'));
 const ExpenseDailySummaryPage = lazy(() => import('@/pages/ExpenseDailySummaryPage'));
@@ -450,6 +451,14 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
                 <ExpenseDailySummaryPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/expenses/ap-aging"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <APAgingPage />
               </ProtectedRoute>
             }
           />

@@ -91,6 +91,24 @@ export class ExpenseDocumentsController {
     return this.service.getSummary({ branchId: effective, startDate, endDate });
   }
 
+  /**
+   * AP Aging — Fix Report P1-1.
+   * Buckets unpaid ACCRUAL expenses by days-since-documentDate into
+   * 0-30 / 31-60 / 61-90 / >90 + Total. Optional filter by vendorName or
+   * single bucket. Cross-branch roles see all; others see their branch only.
+   */
+  @Get('ap-aging')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  apAging(
+    @Req() req: { user: { id: string; branchId?: string; role: string } },
+    @Query('branchId') branchId?: string,
+    @Query('vendor') vendor?: string,
+    @Query('bucket') bucket?: '0-30' | '31-60' | '61-90' | '90+',
+  ) {
+    const effective = hasCrossBranchAccess(req.user) ? branchId : req.user.branchId;
+    return this.service.getApAging({ branchId: effective, vendor, bucket });
+  }
+
   @Get('daily-summary')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   dailySummary(

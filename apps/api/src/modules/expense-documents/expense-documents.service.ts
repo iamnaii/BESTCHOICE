@@ -689,6 +689,120 @@ export class ExpenseDocumentsService {
     };
   }
 
+  /**
+   * AP Aging — Fix Report P1-1.
+   *
+   * Returns ACCRUAL (unpaid) expenses bucketed by age since `documentDate`,
+   * plus their per-bucket sums. Used by the APAgingPage with optional vendor /
+   * bucket filters.
+   *
+   * Buckets (per Fix Report §1.3 P1-1):
+   *   0-30 / 31-60 / 61-90 / 90+ days overdue
+   *
+   * Age is computed against "today BKK" (start-of-day) so a vendor's row that
+   * just crossed midnight in Asia/Bangkok doesn't shift bucket vs server-tz.
+   */
+  async getApAging(filters: { branchId?: string; vendor?: string; bucket?: '0-30' | '31-60' | '61-90' | '90+' }) {
+    const where: Prisma.ExpenseDocumentWhereInput = {
+      deletedAt: null,
+      status: 'ACCRUAL',
+      paidAt: null,
+    };
+    if (filters.branchId) where.branchId = filters.branchId;
+    if (filters.vendor) {
+      where.vendorName = { contains: filters.vendor, mode: 'insensitive' };
+    }
+
+    // Today in BKK at 00:00. (toLocaleString en-CA = YYYY-MM-DD; offset to UTC start.)
+    const bkkParts = new Date().toLocaleString('en-CA', {
+      timeZone: 'Asia/Bangkok',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    const [y, m, d] = bkkParts.split('-').map((s) => parseInt(s, 10));
+    const bkkOffsetMs = 7 * 60 * 60 * 1000;
+    const todayBkkStart = new Date(Date.UTC(y, m - 1, d) - bkkOffsetMs);
+
+    const rows = await this.prisma.expenseDocument.findMany({
+      where,
+      select: {
+        id: true,
+        number: true,
+        vendorName: true,
+        vendorTaxId: true,
+        documentDate: true,
+        totalAmount: true,
+        withholdingTax: true,
+        branchId: true,
+      },
+      orderBy: { documentDate: 'asc' },
+    });
+
+    type Bucket = '0-30' | '31-60' | '61-90' | '90+';
+    const toBucket = (ageDays: number): Bucket => {
+      if (ageDays <= 30) return '0-30';
+      if (ageDays <= 60) return '31-60';
+      if (ageDays <= 90) return '61-90';
+      return '90+';
+    };
+
+    const enriched = rows.map((r) => {
+      const ageDays = Math.max(
+        0,
+        Math.floor((todayBkkStart.getTime() - new Date(r.documentDate).getTime()) / (24 * 60 * 60 * 1000)),
+      );
+      return { ...r, ageDays, bucket: toBucket(ageDays) };
+    });
+
+    const filtered = filters.bucket ? enriched.filter((r) => r.bucket === filters.bucket) : enriched;
+
+    const zero = new Prisma.Decimal(0);
+    const totals: Record<Bucket | 'TOTAL', { count: number; amount: Prisma.Decimal }> = {
+      '0-30': { count: 0, amount: new Prisma.Decimal(0) },
+      '31-60': { count: 0, amount: new Prisma.Decimal(0) },
+      '61-90': { count: 0, amount: new Prisma.Decimal(0) },
+      '90+': { count: 0, amount: new Prisma.Decimal(0) },
+      TOTAL: { count: 0, amount: new Prisma.Decimal(0) },
+    };
+    // Bucket totals use the full unfiltered set so the user can see context even
+    // when bucket filter is active.
+    for (const r of enriched) {
+      const amt = new Prisma.Decimal(r.totalAmount.toString()).minus(
+        new Prisma.Decimal(r.withholdingTax?.toString() ?? '0'),
+      );
+      totals[r.bucket].count += 1;
+      totals[r.bucket].amount = totals[r.bucket].amount.plus(amt);
+      totals.TOTAL.count += 1;
+      totals.TOTAL.amount = totals.TOTAL.amount.plus(amt);
+    }
+    void zero;
+
+    return {
+      buckets: {
+        '0-30': { count: totals['0-30'].count, amount: totals['0-30'].amount.toFixed(2) },
+        '31-60': { count: totals['31-60'].count, amount: totals['31-60'].amount.toFixed(2) },
+        '61-90': { count: totals['61-90'].count, amount: totals['61-90'].amount.toFixed(2) },
+        '90+': { count: totals['90+'].count, amount: totals['90+'].amount.toFixed(2) },
+        TOTAL: { count: totals.TOTAL.count, amount: totals.TOTAL.amount.toFixed(2) },
+      },
+      docs: filtered.map((r) => ({
+        id: r.id,
+        number: r.number,
+        vendorName: r.vendorName,
+        vendorTaxId: r.vendorTaxId,
+        documentDate: r.documentDate.toISOString(),
+        ageDays: r.ageDays,
+        bucket: r.bucket,
+        // Net amount = totalAmount − wht (the cash leg pending payment).
+        netAmount: new Prisma.Decimal(r.totalAmount.toString())
+          .minus(new Prisma.Decimal(r.withholdingTax?.toString() ?? '0'))
+          .toFixed(2),
+        branchId: r.branchId,
+      })),
+    };
+  }
+
   // ─── Daily summary (print-ready aggregation) ─────────────────────────
   async getDailySummary(
     filters: { date: string; branchId?: string },

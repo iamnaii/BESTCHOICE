@@ -17,6 +17,19 @@ export interface ExpenseLineForm {
   whtAmount?: string;
 }
 
+/**
+ * Fix Report v1.0 P0-4 — per-line adjustment row absorbing diff between
+ * amountPaid and (totalAmount − wht). Each row carries its own Dr/Cr direction
+ * via `side`. V12 in the API ensures Σ signed(adjustments) = amountPaid − netExpected.
+ */
+export interface ExpenseAdjustmentForm {
+  uid: string; // local React key
+  accountCode: string;
+  side: 'DR' | 'CR';
+  amount: string;
+  note: string;
+}
+
 export interface PayrollLineForm {
   uid: string;
   employeeName: string;
@@ -69,6 +82,14 @@ export interface ExpenseFormState {
   payroll: PayrollFormFields;
   // SE-only
   settlement: SettlementFormFields;
+  // Multi-line adjustment (Fix Report P0-4) — Section 5 in the UI.
+  // Used when amountPaid ≠ totalAmount − wht (rounding tolerance, overpay/underpay).
+  // Empty array = no adjustments needed (legacy behaviour).
+  adjustments: ExpenseAdjustmentForm[];
+  // Explicit "what we actually paid" (string Decimal). Empty = default to
+  // computed totalAmount − wht. When set, signed Σ adjustments must equal
+  // (amountPaid − (totalAmount − wht)).
+  amountPaid: string;
 }
 
 export interface JePreviewLine {
@@ -113,5 +134,16 @@ export const newPayrollLine = (overrides?: Partial<PayrollLineForm>): PayrollLin
   baseSalary: '',
   ssoEmployee: '0',
   whtAmount: '0',
+  ...overrides,
+});
+
+export const newAdjustment = (
+  overrides?: Partial<ExpenseAdjustmentForm>,
+): ExpenseAdjustmentForm => ({
+  uid: Math.random().toString(36).slice(2),
+  accountCode: '',
+  side: 'CR',
+  amount: '',
+  note: '',
   ...overrides,
 });

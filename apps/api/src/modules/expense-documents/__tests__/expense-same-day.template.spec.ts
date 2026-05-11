@@ -141,6 +141,56 @@ describe('ExpenseSameDayTemplate', () => {
     expect(args.lines.find((l: { accountCode: string }) => l.accountCode === '21-3102')).toBeUndefined();
   });
 
+  // Fix Report P2-4 — per-line WHT routing
+  it('mixed PND3 + PND53: aggregates per-line whtFormType into 2 Cr rows', async () => {
+    prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+      id: 'doc-mixed-wht',
+      number: 'EX-20260511-0099',
+      documentType: 'EXPENSE',
+      branchId: 'branch-1',
+      documentDate: new Date('2026-05-11'),
+      subtotal: new Decimal('2000.00'),
+      vatAmount: new Decimal('0.00'),
+      withholdingTax: new Decimal('80.00'),
+      whtFormType: 'PND3', // doc default (irrelevant since all lines set their own)
+      totalAmount: new Decimal('2000.00'),
+      depositAccountCode: '11-1201',
+      paymentMethod: 'BANK_TRANSFER',
+      journalEntryId: null,
+      expenseDetail: {
+        priceType: 'EXCLUSIVE',
+        lines: [
+          {
+            lineNo: 1,
+            category: '53-1702',
+            amountBeforeVat: new Decimal('1000.00'),
+            whtAmount: new Decimal('30.00'),
+            whtFormType: 'PND3', // บุคคล → 21-3102
+          },
+          {
+            lineNo: 2,
+            category: '53-1303',
+            amountBeforeVat: new Decimal('1000.00'),
+            whtAmount: new Decimal('50.00'),
+            whtFormType: 'PND53', // นิติบุคคล → 21-3103
+          },
+        ],
+      },
+    });
+
+    await template.execute('doc-mixed-wht');
+    const [args] = journal.createAndPost.mock.calls[0];
+    const cr3102 = args.lines.find((l: { accountCode: string }) => l.accountCode === '21-3102');
+    const cr3103 = args.lines.find((l: { accountCode: string }) => l.accountCode === '21-3103');
+    expect(cr3102).toBeDefined();
+    expect(cr3102.cr).toEqual(new Decimal('30'));
+    expect(cr3103).toBeDefined();
+    expect(cr3103.cr).toEqual(new Decimal('50'));
+    // Cash leg = total − total wht (30 + 50 = 80) = 1920
+    const cashLine = args.lines.find((l: { accountCode: string }) => l.accountCode === '11-1201');
+    expect(cashLine.cr).toEqual(new Decimal('1920'));
+  });
+
   it('idempotent: returns existing entryNo when journalEntryId already set', async () => {
     prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
       id: docId,

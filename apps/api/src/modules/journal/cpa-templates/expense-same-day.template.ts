@@ -132,7 +132,40 @@ export class ExpenseSameDayTemplate {
         cr: cashAmount,
         description: `จ่ายเงิน ${cashAmount.toFixed(2)} ฿`,
       });
-      if (wht.gt(zero)) {
+      // WHT routing (Fix Report P2-4). When any ExpenseLine sets its own
+      // `whtFormType`, switch to per-line aggregation so a single doc with
+      // mixed individual + juristic vendors posts up to 2 Cr lines
+      // (21-3102 + 21-3103). Otherwise fall back to legacy doc-level routing
+      // (single Cr line) — keeps backwards compat with pre-P2-4 docs/tests
+      // where line-level whtFormType is null and line-level whtAmount is
+      // absent from the include.
+      const hasPerLineRouting = expenseLines.some(
+        (l: { whtFormType?: string | null }) => !!l.whtFormType,
+      );
+      if (hasPerLineRouting) {
+        const whtByForm = new Map<'PND3' | 'PND53', Decimal>();
+        for (const l of expenseLines) {
+          const rawWht = (l as { whtAmount?: unknown }).whtAmount;
+          if (rawWht == null) continue;
+          const lineWht = new Decimal(rawWht.toString());
+          if (lineWht.lte(zero)) continue;
+          const formType = ((l as { whtFormType?: string | null }).whtFormType ??
+            doc.whtFormType ??
+            'PND3') as 'PND3' | 'PND53';
+          whtByForm.set(formType, (whtByForm.get(formType) ?? zero).plus(lineWht));
+        }
+        for (const [form, amt] of whtByForm.entries()) {
+          if (amt.lte(zero)) continue;
+          const whtAccount = form === 'PND53' ? '21-3103' : '21-3102';
+          lines.push({
+            accountCode: whtAccount,
+            dr: zero,
+            cr: amt,
+            description: `หัก ณ ที่จ่าย ${form}`,
+          });
+        }
+      } else if (wht.gt(zero)) {
+        // Legacy / single-vendor doc: one Cr line, route by doc.whtFormType.
         const whtAccount = doc.whtFormType === 'PND53' ? '21-3103' : '21-3102';
         lines.push({
           accountCode: whtAccount,

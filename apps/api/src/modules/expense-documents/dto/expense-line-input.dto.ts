@@ -2,6 +2,7 @@ import {
   IsString,
   IsNumber,
   IsOptional,
+  IsIn,
   Min,
   Max,
   Matches,
@@ -44,4 +45,15 @@ export class ExpenseLineInput {
   @Max(100)
   @IsOptional()
   whtPercent?: number;
+
+  /**
+   * Per-line WHT form routing (Fix Report P2-4). When set, overrides the
+   * document-level whtFormType for THIS line's WHT amount. Lets a single
+   * EX doc mix individual (PND3 → 21-3102) and juristic (PND53 → 21-3103)
+   * vendors without splitting into two documents.
+   */
+  @IsString()
+  @IsIn(['PND3', 'PND53'])
+  @IsOptional()
+  whtFormType?: 'PND3' | 'PND53';
 }

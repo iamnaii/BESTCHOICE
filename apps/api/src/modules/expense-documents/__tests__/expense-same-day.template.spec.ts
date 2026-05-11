@@ -261,7 +261,8 @@ describe('ExpenseSameDayTemplate', () => {
     expect(dr5x.find((l: { accountCode: string; dr: { toString: () => string } }) => l.accountCode === '53-1101').dr.toString()).toBe('1000');
   });
 
-  it('multi-line: 3 lines, 2 share category — 2 Dr rows (1000+500 vs 800)', async () => {
+  // Fix Report P2-2 — per-line journal_lines (no collapse by category).
+  it('multi-line: 3 lines, 2 share category — 3 Dr rows (line-level preserved)', async () => {
     prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
       id: 'doc-collapse', number: 'EX-20260511-0011',
       documentType: 'EXPENSE',
@@ -275,17 +276,27 @@ describe('ExpenseSameDayTemplate', () => {
       expenseDetail: {
         priceType: 'EXCLUSIVE',
         lines: [
-          { lineNo: 1, category: '53-1101', amountBeforeVat: new Decimal('1000'), vatAmount: new Decimal('70'),  whtAmount: new Decimal('0') },
-          { lineNo: 2, category: '53-1404', amountBeforeVat: new Decimal('800'),  vatAmount: new Decimal('56'),  whtAmount: new Decimal('0') },
-          { lineNo: 3, category: '53-1101', amountBeforeVat: new Decimal('500'),  vatAmount: new Decimal('35'),  whtAmount: new Decimal('0') },
+          { lineNo: 1, category: '53-1101', description: 'รายการ A', amountBeforeVat: new Decimal('1000'), vatAmount: new Decimal('70'),  whtAmount: new Decimal('0') },
+          { lineNo: 2, category: '53-1404', description: 'รายการ B', amountBeforeVat: new Decimal('800'),  vatAmount: new Decimal('56'),  whtAmount: new Decimal('0') },
+          { lineNo: 3, category: '53-1101', description: 'รายการ C', amountBeforeVat: new Decimal('500'),  vatAmount: new Decimal('35'),  whtAmount: new Decimal('0') },
         ],
       },
     });
     await template.execute('doc-collapse');
     const args = journal.createAndPost.mock.calls[0][0];
     const dr5x = args.lines.filter((l: { accountCode: string }) => l.accountCode.startsWith('5'));
-    expect(dr5x).toHaveLength(2);
-    expect(dr5x.find((l: { accountCode: string; dr: { toString: () => string } }) => l.accountCode === '53-1101').dr.toString()).toBe('1500');
-    expect(dr5x.find((l: { accountCode: string; dr: { toString: () => string } }) => l.accountCode === '53-1404').dr.toString()).toBe('800');
+    expect(dr5x).toHaveLength(3); // P2-2: per-line, NOT collapsed by category
+    // Sum across the 53-1101 lines (2 of them) still = 1500 — total preserved
+    const sum1101 = dr5x
+      .filter((l: { accountCode: string }) => l.accountCode === '53-1101')
+      .reduce(
+        (s: number, l: { dr: { toString: () => string } }) => s + parseFloat(l.dr.toString()),
+        0,
+      );
+    expect(sum1101).toBe(1500);
+    const drA = dr5x.find((l: { description: string }) => l.description.includes('รายการ A'));
+    expect(drA.dr.toString()).toBe('1000');
+    const drC = dr5x.find((l: { description: string }) => l.description.includes('รายการ C'));
+    expect(drC.dr.toString()).toBe('500');
   });
 });

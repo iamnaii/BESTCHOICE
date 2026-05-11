@@ -1,6 +1,7 @@
 import eslint from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import jsxA11y from 'eslint-plugin-jsx-a11y';
+import reactHooks from 'eslint-plugin-react-hooks';
 import globals from 'globals';
 
 export default tseslint.config(
@@ -9,6 +10,9 @@ export default tseslint.config(
   {
     plugins: {
       'jsx-a11y': jsxA11y,
+      // Required because 5 source files use `// eslint-disable-next-line react-hooks/exhaustive-deps`.
+      // After typescript-eslint 8.59.2 the rule must be loaded or the directive becomes a hard error.
+      'react-hooks': reactHooks,
     },
     languageOptions: {
       globals: {

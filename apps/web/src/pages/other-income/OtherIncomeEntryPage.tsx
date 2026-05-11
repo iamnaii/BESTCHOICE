@@ -19,6 +19,7 @@ import {
   Lightbulb,
   XCircle,
 } from 'lucide-react';
+import Decimal from 'decimal.js';
 import QueryBoundary from '@/components/QueryBoundary';
 import { AccountingModuleTabBar } from '@/components/accounting/AccountingModuleTabBar';
 import { useAuth } from '@/contexts/AuthContext';
@@ -43,98 +44,105 @@ interface JeLine {
   description?: string;
 }
 
+// All money math uses Decimal to mirror the backend AutoJournalService — JS float
+// would let the preview show "BALANCED" while the server returns "UNBALANCED" for
+// edge cases like 0.10 + 0.20 = 0.30000000000000004.
+const D = (v: number | string | null | undefined) => new Decimal(v ?? 0);
+const r2 = (d: Decimal) => d.toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+
 function computeJePreview(values: OtherIncomeFormValues): JeLine[] {
   const lines: JeLine[] = [];
   if (!values.items || values.items.length === 0) return lines;
 
-  let totalAmountBeforeVat = 0;
-  let totalVat = 0;
-  let totalWht = 0;
+  let totalAmountBeforeVat = new Decimal(0);
+  let totalVat = new Decimal(0);
+  let totalWht = new Decimal(0);
 
   for (const item of values.items) {
-    const qty = Number(item.quantity) || 0;
-    const unit = Number(item.unitAmount) || 0;
-    const disc = Number(item.discountAmount) || 0;
-    const vatPct = Number(item.vatPct) || 0;
-    const whtPct = Number(item.whtPct) || 0;
-    const gross = qty * unit - disc;
+    const qty = D(item.quantity);
+    const unit = D(item.unitAmount);
+    const disc = D(item.discountAmount);
+    const vatPct = D(item.vatPct);
+    const whtPct = D(item.whtPct);
+    const gross = qty.mul(unit).minus(disc);
 
-    let amountBeforeVat: number;
-    let vatAmount: number;
-    if (vatPct > 0) {
+    let amountBeforeVat: Decimal;
+    let vatAmount: Decimal;
+    if (vatPct.gt(0)) {
       if (values.priceType === 'INCLUSIVE') {
-        amountBeforeVat = +(gross / (1 + vatPct / 100)).toFixed(2);
-        vatAmount = +(gross - amountBeforeVat).toFixed(2);
+        amountBeforeVat = r2(gross.div(new Decimal(1).plus(vatPct.div(100))));
+        vatAmount = r2(gross.minus(amountBeforeVat));
       } else {
         amountBeforeVat = gross;
-        vatAmount = +((gross * vatPct) / 100).toFixed(2);
+        vatAmount = r2(gross.mul(vatPct).div(100));
       }
     } else {
       amountBeforeVat = gross;
-      vatAmount = 0;
+      vatAmount = new Decimal(0);
     }
-    const whtAmount = +((amountBeforeVat * whtPct) / 100).toFixed(2);
+    const whtAmount = r2(amountBeforeVat.mul(whtPct).div(100));
 
-    totalAmountBeforeVat += amountBeforeVat;
-    totalVat += vatAmount;
-    totalWht += whtAmount;
+    totalAmountBeforeVat = totalAmountBeforeVat.plus(amountBeforeVat);
+    totalVat = totalVat.plus(vatAmount);
+    totalWht = totalWht.plus(whtAmount);
 
     // Cr revenue account (42-XXXX)
-    if (amountBeforeVat > 0) {
+    if (amountBeforeVat.gt(0)) {
       lines.push({
         accountCode: item.accountCode || '42-XXXX',
         debit: 0,
-        credit: +amountBeforeVat.toFixed(2),
+        credit: r2(amountBeforeVat).toNumber(),
         description: item.description || undefined,
       });
     }
   }
 
   // Cr VAT output (21-2101) if any
-  if (totalVat > 0) {
+  if (totalVat.gt(0)) {
     lines.push({
       accountCode: '21-2101',
       debit: 0,
-      credit: +totalVat.toFixed(2),
+      credit: r2(totalVat).toNumber(),
       description: 'ภาษีขาย',
     });
   }
 
   // Dr WHT receivable (11-4103) if any
-  if (totalWht > 0) {
+  if (totalWht.gt(0)) {
     lines.push({
       accountCode: '11-4103',
-      debit: +totalWht.toFixed(2),
+      debit: r2(totalWht).toNumber(),
       credit: 0,
       description: 'ภาษีหัก ณ ที่จ่าย (รอเรียกคืน)',
     });
   }
 
   // Adjustments (Dr/Cr depending on over/under)
-  const amountReceived = Number(values.amountReceived) || 0;
-  const netExpected = +(totalAmountBeforeVat + totalVat - totalWht).toFixed(2);
-  const diff = +(amountReceived - netExpected).toFixed(2);
+  const amountReceived = D(values.amountReceived);
+  const netExpected = r2(totalAmountBeforeVat.plus(totalVat).minus(totalWht));
+  const diff = r2(amountReceived.minus(netExpected));
 
   if (values.adjustments && values.adjustments.length > 0) {
     for (const adj of values.adjustments) {
-      const amt = Number(adj.amount) || 0;
-      if (amt > 0 && adj.accountCode) {
-        if (diff > 0) {
+      const amt = D(adj.amount);
+      if (amt.gt(0) && adj.accountCode) {
+        const amtN = r2(amt).toNumber();
+        if (diff.gt(0)) {
           // received more → Cr adjustment account
-          lines.push({ accountCode: adj.accountCode, debit: 0, credit: +amt.toFixed(2), description: adj.note || undefined });
+          lines.push({ accountCode: adj.accountCode, debit: 0, credit: amtN, description: adj.note || undefined });
         } else {
           // received less → Dr adjustment account (expense/discount)
-          lines.push({ accountCode: adj.accountCode, debit: +amt.toFixed(2), credit: 0, description: adj.note || undefined });
+          lines.push({ accountCode: adj.accountCode, debit: amtN, credit: 0, description: adj.note || undefined });
         }
       }
     }
   }
 
   // Dr cash/bank received
-  if (amountReceived > 0) {
+  if (amountReceived.gt(0)) {
     lines.push({
       accountCode: values.paymentAccountCode || '11-1201',
-      debit: +amountReceived.toFixed(2),
+      debit: r2(amountReceived).toNumber(),
       credit: 0,
       description: 'รับเงิน',
     });

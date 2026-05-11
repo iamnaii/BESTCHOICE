@@ -69,7 +69,10 @@ export interface OtherIncome {
   createdById: string;
   postedAt: string | null;
   reversesId: string | null;
-  reversedById: string | null;
+  // Auto-derived inverse of the self-FK `reversesId`; populated by the API when
+  // this original doc has been reversed. Not a stored scalar — must be included
+  // by the backend via Prisma `include: { reversedBy: { select: ... } }`.
+  reversedBy: { id: string; docNumber: string } | null;
   reverseReason: OtherIncomeReverseReason | null;
   reverseNote: string | null;
   copiedFromId: string | null;

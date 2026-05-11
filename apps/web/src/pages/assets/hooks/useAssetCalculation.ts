@@ -54,7 +54,10 @@ export function useAssetCalculation(values: Partial<AssetEntryFormValues>): Calc
     const whtAmount = values.hasWht && whtBase > 0 ? round2(whtBase * whtRate) : 0;
 
     const purchaseCost = round2(basePrice + shipping + installation + other);
-    const totalPayable = round2(purchaseCost + (values.vatInclusive ? 0 : vatAmount) - whtAmount);
+    // VAT goes to Dr 11-4101 regardless of inclusive/exclusive flag — the flag only
+    // changes how basePrice is parsed. Cash out always = (ex-VAT cost) + VAT − WHT.
+    // (Matches server-side asset-purchase.template.ts logic.)
+    const totalPayable = round2(purchaseCost + vatAmount - whtAmount);
     const monthlyDepr = round4((purchaseCost - residual) / usefulLife);
 
     // JE preview lines
@@ -69,7 +72,7 @@ export function useAssetCalculation(values: Partial<AssetEntryFormValues>): Calc
         credit: 0,
       });
     }
-    if (values.hasVat && !values.vatInclusive && vatAmount > 0 && values.vatAccount) {
+    if (values.hasVat && vatAmount > 0 && values.vatAccount) {
       lines.push({
         accountCode: values.vatAccount,
         accountName: 'Dr ภาษีซื้อ',

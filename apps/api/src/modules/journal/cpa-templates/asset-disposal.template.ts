@@ -106,104 +106,112 @@ export class AssetDisposalTemplate {
       : new Decimal(0);
     const totalCashReceived = proceeds.plus(vatOnSale);
 
-    const reader = (outerTx ?? this.prisma) as Prisma.TransactionClient;
-
-    const asset = await reader.fixedAsset.findFirst({
-      where: { id: assetId, deletedAt: null },
-    });
-
-    if (!asset) {
-      throw new BadRequestException(`ไม่พบสินทรัพย์ id=${assetId}`);
-    }
-
-    if (asset.status === 'DISPOSED' || asset.status === 'WRITTEN_OFF') {
-      throw new BadRequestException(
-        `สินทรัพย์ ${asset.assetCode} ถูกจำหน่ายแล้ว (status=${asset.status})`,
-      );
-    }
-
-    // Resolve asset cost / accumulated codes — prefer asset.coa* snapshots.
-    const fallback = CATEGORY_ASSET_CODE_MAP[asset.category];
-    const assetCostCode = asset.coaCostAccount ?? fallback?.[0];
-    const accumulatedCode = asset.coaDeprAccount ?? fallback?.[1];
-    if (!assetCostCode || !accumulatedCode) {
-      throw new BadRequestException(
-        `ไม่พบรหัสบัญชีสำหรับหมวดสินทรัพย์ ${asset.category} (asset ${asset.assetCode})`,
-      );
-    }
-
-    const purchaseCost = new Decimal(asset.purchaseCost.toString());
-    const accumulatedDepr = new Decimal(asset.accumulatedDepr.toString());
-    const nbv = purchaseCost.minus(accumulatedDepr);
     const zero = new Decimal(0);
-
     type Line = { accountCode: string; dr: Decimal; cr: Decimal; description?: string };
-    const lines: Line[] = [];
 
-    // Dr: derecognize accumulated depreciation
-    if (accumulatedDepr.gt(0)) {
-      lines.push({
-        accountCode: accumulatedCode,
-        dr: accumulatedDepr,
-        cr: zero,
-        description: `ตัดค่าเสื่อมราคาสะสม - ${asset.name}`,
+    // Atomic block — asset read + line building + idempotency + JE post + asset
+    // update all run inside ONE $transaction. Previously asset+lines were built
+    // outside the tx, opening a TOCTOU race with the depreciation cron — NBV and
+    // gain/loss could be stale by the time the JE was written (TAS 16 ¶71 compliance).
+    const run = async (
+      tx: Prisma.TransactionClient,
+    ): Promise<{ entryNo: string; assetCode: string; nbv: Decimal; gainOrLoss: Decimal }> => {
+      const asset = await tx.fixedAsset.findFirst({
+        where: { id: assetId, deletedAt: null },
       });
-    }
+      if (!asset) {
+        throw new BadRequestException(`ไม่พบสินทรัพย์ id=${assetId}`);
+      }
+      if (asset.status === 'DISPOSED' || asset.status === 'WRITTEN_OFF') {
+        throw new BadRequestException(
+          `สินทรัพย์ ${asset.assetCode} ถูกจำหน่ายแล้ว (status=${asset.status})`,
+        );
+      }
 
-    // Dr: cash/bank proceeds (proceeds + VAT if issuing tax invoice)
-    if (totalCashReceived.gt(0)) {
+      // Resolve asset cost / accumulated codes — prefer asset.coa* snapshots.
+      const fallback = CATEGORY_ASSET_CODE_MAP[asset.category];
+      const assetCostCode = asset.coaCostAccount ?? fallback?.[0];
+      const accumulatedCode = asset.coaDeprAccount ?? fallback?.[1];
+      if (!assetCostCode || !accumulatedCode) {
+        throw new BadRequestException(
+          `ไม่พบรหัสบัญชีสำหรับหมวดสินทรัพย์ ${asset.category} (asset ${asset.assetCode})`,
+        );
+      }
+
+      const purchaseCost = new Decimal(asset.purchaseCost.toString());
+      const accumulatedDepr = new Decimal(asset.accumulatedDepr.toString());
+
+      // Defensive guard — should never trip, but if cron writes an invalid value
+      // the disposal would over-debit accumulated and under-credit cost → balance
+      // sheet break. Fail-fast + Sentry alert downstream rather than corrupt GL.
+      if (accumulatedDepr.gt(purchaseCost)) {
+        throw new BadRequestException(
+          `[disposal] accumulatedDepr (${accumulatedDepr.toFixed(2)}) เกิน purchaseCost (${purchaseCost.toFixed(2)}) ของสินทรัพย์ ${asset.assetCode} — ตรวจสอบรายการค่าเสื่อมราคาก่อนจำหน่าย`,
+        );
+      }
+
+      const nbv = purchaseCost.minus(accumulatedDepr);
+      const lines: Line[] = [];
+
+      // Dr: derecognize accumulated depreciation
+      if (accumulatedDepr.gt(0)) {
+        lines.push({
+          accountCode: accumulatedCode,
+          dr: accumulatedDepr,
+          cr: zero,
+          description: `ตัดค่าเสื่อมราคาสะสม - ${asset.name}`,
+        });
+      }
+
+      // Dr: cash/bank proceeds (proceeds + VAT if issuing tax invoice)
+      if (totalCashReceived.gt(0)) {
+        lines.push({
+          accountCode: depositAccountCode,
+          dr: totalCashReceived,
+          cr: zero,
+          description: issueTaxInvoice
+            ? `รับเงินจากจำหน่ายสินทรัพย์ (รวม VAT) - ${asset.name}`
+            : `รับเงินจากจำหน่ายสินทรัพย์ - ${asset.name}`,
+        });
+      }
+
+      // Cr: derecognize asset cost
       lines.push({
-        accountCode: depositAccountCode,
-        dr: totalCashReceived,
-        cr: zero,
-        description: issueTaxInvoice
-          ? `รับเงินจากจำหน่ายสินทรัพย์ (รวม VAT) - ${asset.name}`
-          : `รับเงินจากจำหน่ายสินทรัพย์ - ${asset.name}`,
-      });
-    }
-
-    // Cr: derecognize asset cost
-    lines.push({
-      accountCode: assetCostCode,
-      dr: zero,
-      cr: purchaseCost,
-      description: `ตัดบัญชีสินทรัพย์ - ${asset.name}`,
-    });
-
-    // Cr: VAT output (CRITICAL #3 — ม.77/1 + ม.82)
-    if (vatOnSale.gt(0)) {
-      lines.push({
-        accountCode: VAT_OUTPUT_CODE,
+        accountCode: assetCostCode,
         dr: zero,
-        cr: vatOnSale,
-        description: `ภาษีขาย ภ.พ.30 (จำหน่ายสินทรัพย์) - ${asset.name}`,
+        cr: purchaseCost,
+        description: `ตัดบัญชีสินทรัพย์ - ${asset.name}`,
       });
-    }
 
-    // Gain or loss
-    const gainOrLoss = proceeds.minus(nbv); // positive = gain, negative = loss
+      // Cr: VAT output (CRITICAL #3 — ม.77/1 + ม.82)
+      if (vatOnSale.gt(0)) {
+        lines.push({
+          accountCode: VAT_OUTPUT_CODE,
+          dr: zero,
+          cr: vatOnSale,
+          description: `ภาษีขาย ภ.พ.30 (จำหน่ายสินทรัพย์) - ${asset.name}`,
+        });
+      }
 
-    if (gainOrLoss.lt(0)) {
-      // Loss on disposal
-      lines.push({
-        accountCode: LOSS_ON_DISPOSAL_CODE,
-        dr: gainOrLoss.abs(),
-        cr: zero,
-        description: `ขาดทุนจากการจำหน่ายสินทรัพย์ - ${asset.name}`,
-      });
-    } else if (gainOrLoss.gt(0)) {
-      // Gain on disposal — 42-1105 (FINANCE chart, Phase A.5c)
-      lines.push({
-        accountCode: GAIN_ON_DISPOSAL_CODE,
-        dr: zero,
-        cr: gainOrLoss,
-        description: `กำไรจากการจำหน่ายสินทรัพย์ - ${asset.name}`,
-      });
-    }
-    // If gainOrLoss == 0: no extra line needed — already balanced
+      // Gain or loss
+      const gainOrLoss = proceeds.minus(nbv);
+      if (gainOrLoss.lt(0)) {
+        lines.push({
+          accountCode: LOSS_ON_DISPOSAL_CODE,
+          dr: gainOrLoss.abs(),
+          cr: zero,
+          description: `ขาดทุนจากการจำหน่ายสินทรัพย์ - ${asset.name}`,
+        });
+      } else if (gainOrLoss.gt(0)) {
+        lines.push({
+          accountCode: GAIN_ON_DISPOSAL_CODE,
+          dr: zero,
+          cr: gainOrLoss,
+          description: `กำไรจากการจำหน่ายสินทรัพย์ - ${asset.name}`,
+        });
+      }
+      // gainOrLoss == 0: balanced without extra line
 
-    // Atomic block: idempotency + JE post + asset update inside ONE $transaction.
-    const run = async (tx: Prisma.TransactionClient): Promise<{ entryNo: string }> => {
       // Idempotency check — TOCTOU-safe inside the tx
       const existing = await tx.journalEntry.findFirst({
         where: {
@@ -218,7 +226,12 @@ export class AssetDisposalTemplate {
         this.logger.log(
           `[Phase1] AssetDisposalTemplate idempotency — JE ${existing.entryNumber} already exists for asset ${assetId}, skipping`,
         );
-        return { entryNo: existing.entryNumber };
+        return {
+          entryNo: existing.entryNumber,
+          assetCode: asset.assetCode,
+          nbv,
+          gainOrLoss,
+        };
       }
 
       const result = await this.journal.createAndPost(
@@ -244,7 +257,6 @@ export class AssetDisposalTemplate {
         tx,
       );
 
-      // Update asset status (Phase 2 will refactor to capture proceeds/note in dedicated fields)
       await tx.fixedAsset.update({
         where: { id: assetId },
         data: {
@@ -254,17 +266,20 @@ export class AssetDisposalTemplate {
         },
       });
 
-      return { entryNo: result.entryNumber };
+      return {
+        entryNo: result.entryNumber,
+        assetCode: asset.assetCode,
+        nbv,
+        gainOrLoss,
+      };
     };
 
-    const out = outerTx
-      ? await run(outerTx)
-      : await this.prisma.$transaction(run);
+    const out = outerTx ? await run(outerTx) : await this.prisma.$transaction(run);
 
     this.logger.log(
-      `[Phase1] AssetDisposalTemplate: posted JE ${out.entryNo} for asset ${asset.assetCode} proceeds=${proceeds.toFixed(2)} NBV=${nbv.toFixed(2)} gain/loss=${gainOrLoss.toFixed(2)}`,
+      `[Phase1] AssetDisposalTemplate: posted JE ${out.entryNo} for asset ${out.assetCode} proceeds=${proceeds.toFixed(2)} NBV=${out.nbv.toFixed(2)} gain/loss=${out.gainOrLoss.toFixed(2)}`,
     );
 
-    return out;
+    return { entryNo: out.entryNo };
   }
 }

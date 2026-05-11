@@ -230,6 +230,43 @@ Legacy data migration (one-time): `apps/api/prisma/migrations-manual/2026-05-11-
 
 ---
 
+## Document number convention (P2-3 — Fix Report v1.0)
+
+All accounting modules use the same convention:
+
+```
+<TYPE>-YYYYMMDD-NNNN
+```
+
+| Module | Prefix | Example |
+|---|---|---|
+| Expense | `EX` | `EX-20260511-0001` |
+| Credit Note | `CN` | `CN-20260511-0001` |
+| Payroll | `PR` | `PR-20260511-0001` |
+| Vendor Settlement | `SE` | `SE-20260511-0001` |
+| Other Income | `OI` | `OI-20260511-0001` |
+| Receipt (Other Income) | `RT` | `RT-202605-00001` (per-month seq) |
+
+YYYYMMDD is **Asia/Bangkok local date** (so a doc created at 00:30 BKK = 17:30 UTC the previous day still numbers under today's date). The 4-digit sequence (`NNNN`) resets at BKK midnight per `<TYPE, day>` pair via an advisory lock — see `DocNumberService.next()` and `OtherIncomeService` / `DocNumberService.getBkkDayBounds()`.
+
+Don't introduce alternative formats (`EX-2605110001`, `EX_2026-05-11_0001`, etc.) — keep one convention for grep-ability + downstream report parsing.
+
+---
+
+## Per-line WHT routing (P2-4 — Fix Report v1.0)
+
+`ExpenseLine.whtFormType` is **optional** and overrides the document-level `whtFormType` for that line's WHT amount. Lets a single EX document mix individual + juristic vendors:
+
+- Line.whtFormType = `'PND3'` → that line's WHT routes to **21-3102** (ภ.ง.ด. 3 ค้างจ่าย)
+- Line.whtFormType = `'PND53'` → routes to **21-3103** (ภ.ง.ด. 53 ค้างจ่าย)
+- Line.whtFormType = `null` → falls back to doc.whtFormType, defaults `'PND3'`
+
+`expense-same-day.template.ts` aggregates WHT by form type and posts up to 2 Cr lines when needed. Legacy docs (line-level `whtFormType` all null) keep the original single-Cr-line behavior — backwards compatible.
+
+VendorSettlement intentionally does NOT support per-line routing — by the model definition, a single SE doc clears one vendor only, so one form type applies to the whole settlement.
+
+---
+
 ## DEFERRED to Phase A.5
 
 | Item | Accounts | Notes |

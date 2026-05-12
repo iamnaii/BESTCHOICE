@@ -51,6 +51,15 @@ export class OtherIncomeController {
     return { threshold: await this.service.getAttachmentThreshold() };
   }
 
+  // CRITICAL: must stay before any :id route so the literal string
+  // 'maker-checker-enabled' is not captured as a UUID param.
+  @Get('maker-checker-enabled')
+  @Roles('OWNER', 'ACCOUNTANT', 'SALES', 'BRANCH_MANAGER', 'FINANCE_MANAGER')
+  async getMakerCheckerEnabled() {
+    const enabled = await this.service.isMakerCheckerEnabled();
+    return { enabled };
+  }
+
   @Get()
   list(@Query() query: ListOtherIncomeQueryDto) {
     return this.service.list(query);

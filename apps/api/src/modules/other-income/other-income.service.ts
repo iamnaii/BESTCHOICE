@@ -1008,7 +1008,7 @@ export class OtherIncomeService {
   }
 
   /** Read OTHER_INCOME_MAKER_CHECKER_ENABLED from SystemConfig. Default false. */
-  private async isMakerCheckerEnabled(): Promise<boolean> {
+  async isMakerCheckerEnabled(): Promise<boolean> {
     try {
       const row = await this.prisma.systemConfig.findUnique({
         where: { key: 'OTHER_INCOME_MAKER_CHECKER_ENABLED' },

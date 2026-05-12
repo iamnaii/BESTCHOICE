@@ -77,6 +77,9 @@ export const otherIncomeApi = {
       .get<{ threshold: number }>('/other-income/config/attachment-threshold')
       .then((r) => r.data.threshold),
 
+  isMakerCheckerEnabled: () =>
+    api.get<{ enabled: boolean }>('/other-income/maker-checker-enabled').then((r) => r.data.enabled),
+
   requestApproval: (id: string) =>
     api.post(`/other-income/${id}/request-approval`).then((r) => r.data),
 

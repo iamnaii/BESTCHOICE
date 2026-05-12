@@ -10,6 +10,12 @@ import { AccountSearchDropdown } from './AccountSearchDropdown';
 import { formatNumberDecimal } from '@/utils/formatters';
 import type { OtherIncomeFormValues } from '@/lib/otherIncome.schema';
 
+/** Per-account WHT% suggestion. Soft tooltip — never blocks. */
+const WHT_SUGGESTION: Record<string, { pct: number; reason: string }> = {
+  '42-1102': { pct: 1, reason: 'นิติบุคคล ออมทรัพย์ (ท.ป.4/2528)' },
+  '42-1105': { pct: 1, reason: 'ขายสินทรัพย์ให้นิติบุคคล (ท.ป.4/2528)' },
+};
+
 interface Props {
   control: Control<OtherIncomeFormValues>;
   register: UseFormRegister<OtherIncomeFormValues>;
@@ -152,6 +158,17 @@ export function ItemsTable({ control, register, watch, setValue }: Props) {
                       </option>
                     ))}
                   </select>
+                  {(() => {
+                    const acc = items[idx]?.accountCode ?? '';
+                    const sug = WHT_SUGGESTION[acc];
+                    if (!sug || whtPct === sug.pct) return null;
+                    return (
+                      <p className="mt-1 text-[10px] text-muted-foreground inline-flex items-center gap-1">
+                        <Lightbulb size={10} className="text-warning" />
+                        แนะนำ {sug.pct}% — {sug.reason}
+                      </p>
+                    );
+                  })()}
                 </div>
                 <div>
                   <label className="text-muted-foreground font-medium">ก่อนภาษี</label>

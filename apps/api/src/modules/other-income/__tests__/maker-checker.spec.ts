@@ -119,6 +119,17 @@ describe('OtherIncomeService — Maker-Checker', () => {
     });
   }, 30_000);
 
+  // Safety net: re-enable flag after every test. The "flag disabled" tests
+  // explicitly restore the flag, but if an assertion failure short-circuits
+  // before the restore line, subsequent tests would see the wrong state.
+  // This afterEach guarantees a clean baseline.
+  afterEach(async () => {
+    await prisma.systemConfig.update({
+      where: { key: 'OTHER_INCOME_MAKER_CHECKER_ENABLED' },
+      data: { value: 'true' },
+    }).catch(() => undefined);
+  });
+
   afterAll(async () => {
     // Clean up test data
     const ois = await prisma.otherIncome.findMany({
@@ -200,7 +211,7 @@ describe('OtherIncomeService — Maker-Checker', () => {
     const draft = await createStandardDraft();
 
     await expect(service.requestApproval(draft.id, makerId)).rejects.toMatchObject({
-      message: 'Maker-Checker disabled — use POST directly',
+      message: 'Maker-Checker ปิดอยู่ — ใช้ /post โดยตรง',
     });
 
     // Re-enable for subsequent tests
@@ -285,7 +296,7 @@ describe('OtherIncomeService — Maker-Checker', () => {
     });
 
     await expect(service.approve(draft.id, {}, approverId)).rejects.toMatchObject({
-      message: 'Maker-Checker disabled',
+      message: 'Maker-Checker ปิดอยู่',
     });
 
     // Re-enable
@@ -340,7 +351,7 @@ describe('OtherIncomeService — Maker-Checker', () => {
 
     await expect(
       service.reject(draft.id, { note: 'ปฏิเสธ' }, approverId),
-    ).rejects.toMatchObject({ message: 'Maker-Checker disabled' });
+    ).rejects.toMatchObject({ message: 'Maker-Checker ปิดอยู่' });
 
     // Re-enable
     await prisma.systemConfig.update({

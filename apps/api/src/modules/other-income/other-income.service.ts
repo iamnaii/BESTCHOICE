@@ -229,7 +229,7 @@ export class OtherIncomeService {
    */
   async requestApproval(id: string, userId: string) {
     if (!(await this.isMakerCheckerEnabled())) {
-      throw new BadRequestException('Maker-Checker disabled — use POST directly');
+      throw new BadRequestException('Maker-Checker ปิดอยู่ — ใช้ /post โดยตรง');
     }
     const doc = await this.findOneOrFail(id);
     if (doc.status !== OtherIncomeStatus.DRAFT) {
@@ -264,7 +264,7 @@ export class OtherIncomeService {
     userId: string,
   ) {
     if (!(await this.isMakerCheckerEnabled())) {
-      throw new BadRequestException('Maker-Checker disabled');
+      throw new BadRequestException('Maker-Checker ปิดอยู่');
     }
     const doc = await this.findOneOrFail(id);
     if (doc.status !== OtherIncomeStatus.READY) {
@@ -285,7 +285,8 @@ export class OtherIncomeService {
       });
     }
 
-    // Re-run validation (period lock, balance, etc.)
+    // Re-run validation (period lock, balance, etc.) — happens outside tx, fine
+    // because the CAS-claim below is the real concurrency gate.
     const companyId = await this.resolveFinanceCompanyId();
     await validatePeriodOpen(this.prisma, doc.issueDate, companyId);
 
@@ -342,8 +343,28 @@ export class OtherIncomeService {
     });
 
     return this.prisma.$transaction(async (tx) => {
-      const receiptNo = await this.docNumber.nextReceiptNumber(tx, doc.issueDate);
       const now = new Date();
+
+      // CAS-claim: atomically flip READY → POSTED, but only if still READY.
+      // This guards against two OWNERs approving simultaneously — only one
+      // updateMany will affect a row. The loser sees count===0 and bails out.
+      const claimed = await tx.otherIncome.updateMany({
+        where: { id, status: OtherIncomeStatus.READY },
+        data: {
+          status: OtherIncomeStatus.POSTED,
+          approverId: userId,
+          approvedAt: now,
+          approveNote: dto.note ?? null,
+          postedAt: now,
+        },
+      });
+      if (claimed.count === 0) {
+        throw new ConflictException(
+          `เอกสาร ${doc.docNumber} ถูกอนุมัติหรือปฏิเสธโดยผู้อื่นแล้ว — กรุณารีโหลด`,
+        );
+      }
+
+      const receiptNo = await this.docNumber.nextReceiptNumber(tx, doc.issueDate);
 
       const je = await this.template.post(
         {
@@ -358,15 +379,7 @@ export class OtherIncomeService {
 
       return tx.otherIncome.update({
         where: { id },
-        data: {
-          status: OtherIncomeStatus.POSTED,
-          receiptNo,
-          journalEntryId: je.id,
-          approverId: userId,
-          approvedAt: now,
-          approveNote: dto.note ?? null,
-          postedAt: now,
-        },
+        data: { receiptNo, journalEntryId: je.id },
         include: { items: true, adjustments: true },
       });
     });
@@ -383,7 +396,7 @@ export class OtherIncomeService {
     userId: string,
   ) {
     if (!(await this.isMakerCheckerEnabled())) {
-      throw new BadRequestException('Maker-Checker disabled');
+      throw new BadRequestException('Maker-Checker ปิดอยู่');
     }
     if (!dto.note || dto.note.trim().length === 0) {
       throw new BadRequestException('กรุณาระบุหมายเหตุการปฏิเสธ');
@@ -394,16 +407,23 @@ export class OtherIncomeService {
         `เอกสาร ${doc.docNumber} สถานะ ${doc.status} — ไม่สามารถปฏิเสธได้`,
       );
     }
-    return this.prisma.otherIncome.update({
-      where: { id },
+    // CAS: atomically flip READY → DRAFT, only if still READY.
+    // Mirrors the same guard used in approve() against concurrent approver actions.
+    const claimed = await this.prisma.otherIncome.updateMany({
+      where: { id, status: OtherIncomeStatus.READY },
       data: {
         status: OtherIncomeStatus.DRAFT,
         rejectedById: userId,
         rejectedAt: new Date(),
         rejectNote: dto.note,
       },
-      include: { items: true, adjustments: true },
     });
+    if (claimed.count === 0) {
+      throw new ConflictException(
+        `เอกสาร ${doc.docNumber} ถูกอนุมัติหรือปฏิเสธโดยผู้อื่นแล้ว — กรุณารีโหลด`,
+      );
+    }
+    return this.findOneOrFail(id);
   }
 
   // -------------------------------------------------------------------------

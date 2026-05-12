@@ -76,13 +76,13 @@ export class OtherIncomeController {
   // "templates" being captured as an OtherIncome doc id by Nest's matcher.
 
   @Get('templates')
-  @Roles('OWNER', 'ACCOUNTANT', 'SALES', 'FINANCE_MANAGER')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   listTemplates(@Query('q') q?: string, @Query('favoritesOnly') favoritesOnly?: string) {
     return this.templateService.list({ q, favoritesOnly: favoritesOnly === 'true' });
   }
 
   @Post('templates')
-  @Roles('OWNER', 'ACCOUNTANT', 'SALES', 'FINANCE_MANAGER')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   createTemplate(@Body() dto: CreateTemplateDto, @CurrentUser('id') userId: string) {
     return this.templateService.create(
       {
@@ -104,7 +104,7 @@ export class OtherIncomeController {
   }
 
   @Post('from-doc/:id/save-template')
-  @Roles('OWNER', 'ACCOUNTANT', 'SALES', 'FINANCE_MANAGER')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   saveAsTemplate(
     @Param('id') id: string,
     @Body() dto: CreateTemplateFromDocDto,
@@ -114,19 +114,19 @@ export class OtherIncomeController {
   }
 
   @Patch('templates/:id')
-  @Roles('OWNER', 'ACCOUNTANT', 'SALES', 'FINANCE_MANAGER')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   updateTemplate(@Param('id') id: string, @Body() dto: UpdateTemplateDto) {
     return this.templateService.update(id, dto);
   }
 
   @Delete('templates/:id')
-  @Roles('OWNER', 'ACCOUNTANT', 'SALES', 'FINANCE_MANAGER')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   deleteTemplate(@Param('id') id: string) {
     return this.templateService.softDelete(id);
   }
 
   @Post('templates/:id/use')
-  @Roles('OWNER', 'ACCOUNTANT', 'SALES', 'FINANCE_MANAGER')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   useTemplate(@Param('id') id: string) {
     return this.templateService.use(id);
   }
@@ -185,7 +185,7 @@ export class OtherIncomeController {
   }
 
   @Post(':id/request-approval')
-  @Roles('OWNER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   @HttpCode(200)
   requestApproval(@Param('id', new ParseUUIDPipe()) id: string, @CurrentUser('id') userId: string) {
     return this.service.requestApproval(id, userId);

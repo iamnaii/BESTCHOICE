@@ -4,6 +4,8 @@ import { Clock, Inbox } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { otherIncomeApi } from '@/lib/otherIncome';
+import { formatThaiDateShort } from '@/lib/date';
+import { formatNumberDecimal } from '@/utils/formatters';
 
 export default function OtherIncomePendingApprovalPage() {
   const navigate = useNavigate();
@@ -54,7 +56,7 @@ export default function OtherIncomePendingApprovalPage() {
                   >
                     <td className="px-4 py-2 font-mono font-semibold text-primary">{d.docNumber}</td>
                     <td className="px-4 py-2 text-muted-foreground">
-                      {new Date(d.issueDate).toLocaleDateString('th-TH')}
+                      {formatThaiDateShort(d.issueDate)}
                     </td>
                     <td className="px-4 py-2">
                       {d.counterpartyName ?? d.customer?.name ?? (
@@ -62,9 +64,7 @@ export default function OtherIncomePendingApprovalPage() {
                       )}
                     </td>
                     <td className="px-4 py-2 text-right font-mono">
-                      {Number(d.amountReceived).toLocaleString('en-US', {
-                        minimumFractionDigits: 2,
-                      })}
+                      {formatNumberDecimal(d.amountReceived)}
                     </td>
                     <td className="px-4 py-2 text-right">
                       <Clock size={14} className="inline text-warning" />

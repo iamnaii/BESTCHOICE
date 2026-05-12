@@ -313,7 +313,7 @@ export default function OtherIncomeViewPage() {
                     </>
                   ) : user?.role === 'OWNER' && doc.createdById === user.id ? (
                     <div className="rounded-md bg-muted text-muted-foreground text-sm px-3 py-2">
-                      ไม่สามารถอนุมัติเอกสารที่ตนสร้างได้ (V9)
+                      ไม่สามารถอนุมัติเอกสารที่ตนสร้างได้
                     </div>
                   ) : (
                     <div className="rounded-md bg-info/10 text-info text-sm px-3 py-2 inline-flex items-center gap-1">

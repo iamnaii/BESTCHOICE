@@ -76,4 +76,31 @@ export const otherIncomeApi = {
     api
       .get<{ threshold: number }>('/other-income/config/attachment-threshold')
       .then((r) => r.data.threshold),
+
+  // Templates (PR-3)
+  templates: {
+    list: (params?: { q?: string; favoritesOnly?: boolean }) =>
+      api.get('/other-income/templates', { params }).then((r) => r.data),
+    create: (data: {
+      name: string;
+      priceType: 'EXCLUSIVE' | 'INCLUSIVE';
+      items: Array<{
+        accountCode: string;
+        description?: string;
+        quantity: number | string;
+        unitAmount: number | string;
+        discountAmount: number | string;
+        vatPct: number | string;
+        whtPct: number | string;
+      }>;
+    }) => api.post('/other-income/templates', data).then((r) => r.data),
+    saveAsFromDoc: (docId: string, name: string) =>
+      api.post(`/other-income/from-doc/${docId}/save-template`, { name }).then((r) => r.data),
+    update: (id: string, data: { name?: string; isFavorite?: boolean }) =>
+      api.patch(`/other-income/templates/${id}`, data).then((r) => r.data),
+    remove: (id: string) =>
+      api.delete(`/other-income/templates/${id}`).then((r) => r.data),
+    use: (id: string) =>
+      api.post(`/other-income/templates/${id}/use`).then((r) => r.data),
+  },
 };

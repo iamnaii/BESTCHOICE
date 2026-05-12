@@ -119,6 +119,17 @@ describe('OtherIncomeService — Maker-Checker', () => {
     });
   }, 30_000);
 
+  // Safety net: re-enable flag after every test. The "flag disabled" tests
+  // explicitly restore the flag, but if an assertion failure short-circuits
+  // before the restore line, subsequent tests would see the wrong state.
+  // This afterEach guarantees a clean baseline.
+  afterEach(async () => {
+    await prisma.systemConfig.update({
+      where: { key: 'OTHER_INCOME_MAKER_CHECKER_ENABLED' },
+      data: { value: 'true' },
+    }).catch(() => undefined);
+  });
+
   afterAll(async () => {
     // Clean up test data
     const ois = await prisma.otherIncome.findMany({
@@ -200,7 +211,7 @@ describe('OtherIncomeService — Maker-Checker', () => {
     const draft = await createStandardDraft();
 
     await expect(service.requestApproval(draft.id, makerId)).rejects.toMatchObject({
-      message: 'Maker-Checker disabled — use POST directly',
+      message: 'Maker-Checker ปิดอยู่ — ใช้ /post โดยตรง',
     });
 
     // Re-enable for subsequent tests
@@ -285,7 +296,7 @@ describe('OtherIncomeService — Maker-Checker', () => {
     });
 
     await expect(service.approve(draft.id, {}, approverId)).rejects.toMatchObject({
-      message: 'Maker-Checker disabled',
+      message: 'Maker-Checker ปิดอยู่',
     });
 
     // Re-enable
@@ -340,7 +351,7 @@ describe('OtherIncomeService — Maker-Checker', () => {
 
     await expect(
       service.reject(draft.id, { note: 'ปฏิเสธ' }, approverId),
-    ).rejects.toMatchObject({ message: 'Maker-Checker disabled' });
+    ).rejects.toMatchObject({ message: 'Maker-Checker ปิดอยู่' });
 
     // Re-enable
     await prisma.systemConfig.update({
@@ -365,5 +376,32 @@ describe('OtherIncomeService — Maker-Checker', () => {
     expect(resubmitted.rejectedAt).toBeNull();
     expect(resubmitted.rejectedById).toBeNull();
     expect(resubmitted.rejectNote).toBeNull();
+  }, 30_000);
+
+  it('approve(): concurrent CAS-claim — only one approval wins on a single READY doc', async () => {
+    // Regression for review feedback (TOCTOU race in approve()):
+    // Two simultaneous approve() calls must not both succeed.
+    const draft = await createStandardDraft();
+    await service.requestApproval(draft.id, makerId);
+
+    const [resA, resB] = await Promise.allSettled([
+      service.approve(draft.id, { note: 'A' }, approverId),
+      service.approve(draft.id, { note: 'B' }, approverId),
+    ]);
+
+    const fulfilled = [resA, resB].filter((r) => r.status === 'fulfilled');
+    const rejected = [resA, resB].filter((r) => r.status === 'rejected');
+    expect(fulfilled.length).toBe(1);
+    expect(rejected.length).toBe(1);
+
+    // Loser must hit the CAS error, not pass silently
+    const err = (rejected[0] as PromiseRejectedResult).reason;
+    const msg = err?.message ?? err?.response?.message ?? '';
+    expect(msg).toMatch(/ผู้อื่น|สถานะ/);
+
+    // Doc lands in POSTED with exactly one journalEntryId
+    const final = await prisma.otherIncome.findUnique({ where: { id: draft.id } });
+    expect(final?.status).toBe('POSTED');
+    expect(final?.journalEntryId).toBeTruthy();
   }, 30_000);
 });

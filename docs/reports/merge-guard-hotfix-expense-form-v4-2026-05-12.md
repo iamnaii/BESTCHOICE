@@ -1,14 +1,15 @@
 # Pre-Merge Guard Report — Expense Form V4 Hotfixes
 
-**Date**: 2026-05-12  
-**Author**: Akenarin Kongdach  
+**Date**: 2026-05-12
+**Author**: Akenarin Kongdach
 **Base**: `origin/main`
+**Reviewer:** Pre-Merge Guard (automated)
 
 ---
 
 ## Branch 1: `hotfix/expense-form-v4-modal-scroll`
 
-**Recommendation**: ✅ APPROVE
+**Recommendation**: APPROVE
 
 ### File Changes
 
@@ -30,21 +31,25 @@ const list: UserRow[] = res.data?.data ?? (Array.isArray(res.data) ? res.data : 
 return list.filter((u) => APPROVER_ROLES.includes(u.role));
 ```
 
-Note: The original `?roles=OWNER,FINANCE_MANAGER,ACCOUNTANT` query param was silently ignored by the backend. The new approach calls `/users?limit=200` and filters client-side. This is a valid workaround — adding server-side role filtering to the users endpoint would be a cleaner long-term fix.
+Note: The original `?roles=OWNER,FINANCE_MANAGER,ACCOUNTANT` query param was silently ignored by the backend. The new approach calls `/users?limit=200` and filters client-side.
 
 ### Critical Issues
 
-**None.**
+None.
 
 ### Warning Issues
 
-**W-1**: Client-side role filtering fetches up to 200 users. Acceptable for current scale, but a `/users?role=OWNER,FINANCE_MANAGER,ACCOUNTANT` server-side filter would reduce the payload. Track as technical debt.
+**W-1**: `GET /users` has `@Roles('OWNER')` at the backend. Non-OWNER users (FINANCE_MANAGER, ACCOUNTANT) who open the expense form will receive a 403 and the approver dropdown will be empty — same behavior as before the fix (the crash was the new symptom, empty list was pre-existing). The fix resolves the crash; the empty-list problem for non-OWNER users requires a separate backend change.
+
+**Suggested follow-up:** Add `GET /users/approvers` with `@Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')` that returns only approver-eligible users.
+
+**W-2**: Client-side role filtering fetches up to 200 users. Acceptable for current scale, but server-side filtering would reduce payload. Track as technical debt.
 
 ---
 
 ## Branch 2: `hotfix/expense-form-v4-approvers-shape`
 
-**Recommendation**: ✅ APPROVE
+**Recommendation**: APPROVE (superseded by modal-scroll)
 
 ### File Changes
 
@@ -54,17 +59,17 @@ Note: The original `?roles=OWNER,FINANCE_MANAGER,ACCOUNTANT` query param was sil
 
 ### Summary
 
-Identical to the `ApproverSection.tsx` fix in `hotfix/expense-form-v4-modal-scroll`. This appears to be the same fix on a separate branch without the modal scroll change.
+Identical to the `ApproverSection.tsx` fix in `hotfix/expense-form-v4-modal-scroll`. This branch contains only the approver data shape fix without the modal scroll change.
 
 > **Note**: Both hotfix branches contain the same `ApproverSection.tsx` change. Merging both to `main` will cause a conflict. Only one should be merged, or the branches should be reconciled before merging.
 
 ### Critical Issues
 
-**None.**
+None.
 
 ### Warning Issues
 
-**None** (same as above — client-side filter workaround is acceptable).
+Same as W-1 above.
 
 ---
 
@@ -74,3 +79,4 @@ Since both hotfixes touch `ApproverSection.tsx` identically:
 
 1. Merge `hotfix/expense-form-v4-modal-scroll` first (it contains both fixes)
 2. Close `hotfix/expense-form-v4-approvers-shape` as superseded — its change is already included
+3. Create follow-up ticket for `GET /users/approvers` backend endpoint

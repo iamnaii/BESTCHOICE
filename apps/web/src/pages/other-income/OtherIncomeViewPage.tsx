@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ArrowLeft, CheckCircle2, Copy, Edit, History, Printer, RotateCcw, Receipt, FileText } from 'lucide-react';
+import { ArrowLeft, Check, CheckCircle2, Clock, Copy, Edit, History, Printer, RotateCcw, Receipt, FileText, Send, X } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { ReverseModal } from './components/ReverseModal';
@@ -172,13 +172,52 @@ export default function OtherIncomeViewPage() {
     onError: () => toast.error('ไม่สามารถคัดลอกเอกสารได้'),
   });
 
+  const flagQuery = useQuery({
+    queryKey: ['other-income-maker-checker-enabled'],
+    queryFn: () => otherIncomeApi.isMakerCheckerEnabled(),
+    staleTime: 5 * 60_000,
+  });
+  const makerCheckerEnabled = flagQuery.data ?? false;
+
+  const requestApprovalMutation = useMutation({
+    mutationFn: () => otherIncomeApi.requestApproval(id!),
+    onSuccess: () => {
+      toast.success('ส่งขออนุมัติแล้ว');
+      queryClient.invalidateQueries({ queryKey: ['other-income', id] });
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'ส่งขออนุมัติไม่สำเร็จ'),
+  });
+
+  const approveMutation = useMutation({
+    mutationFn: (note: string | undefined) => otherIncomeApi.approve(id!, note),
+    onSuccess: () => {
+      toast.success('อนุมัติและบันทึกบัญชีเรียบร้อย');
+      queryClient.invalidateQueries({ queryKey: ['other-income', id] });
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'อนุมัติไม่สำเร็จ'),
+  });
+
+  const rejectMutation = useMutation({
+    mutationFn: (note: string) => otherIncomeApi.reject(id!, note),
+    onSuccess: () => {
+      toast.success('ปฏิเสธคำขอแล้ว');
+      queryClient.invalidateQueries({ queryKey: ['other-income', id] });
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'ปฏิเสธไม่สำเร็จ'),
+  });
+
   const canReverse =
     user?.role && REVERSE_ROLES.includes(user.role) && docQuery.data?.status === 'POSTED';
 
   const doc = docQuery.data;
   const jeLines = doc ? buildJeFromDoc(doc) : [];
 
-  const isActionLoading = reverseMutation.isPending || copyMutation.isPending;
+  const isActionLoading =
+    reverseMutation.isPending ||
+    copyMutation.isPending ||
+    requestApprovalMutation.isPending ||
+    approveMutation.isPending ||
+    rejectMutation.isPending;
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -210,14 +249,79 @@ export default function OtherIncomeViewPage() {
                 </button>
               )}
               {doc.status === 'DRAFT' && (
-                <button
-                  type="button"
-                  onClick={() => navigate(`/other-income/${doc.id}/edit`)}
-                  className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium border rounded-lg hover:bg-accent"
-                >
-                  <Edit size={14} />
-                  แก้ไข
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/other-income/${doc.id}/edit`)}
+                    className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium border rounded-lg hover:bg-accent"
+                  >
+                    <Edit size={14} />
+                    แก้ไข
+                  </button>
+                  {makerCheckerEnabled ? (
+                    <button
+                      type="button"
+                      onClick={() => requestApprovalMutation.mutate()}
+                      disabled={requestApprovalMutation.isPending}
+                      className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
+                    >
+                      <Send size={14} />
+                      ส่งขออนุมัติ
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/other-income/${doc.id}/edit`)}
+                      className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
+                    >
+                      <Check size={14} />
+                      แก้ไขและ POST
+                    </button>
+                  )}
+                </>
+              )}
+              {doc.status === 'READY' && (
+                <>
+                  {doc.rejectNote && (
+                    <div className="rounded-md bg-warning/10 text-warning text-xs px-3 py-2">
+                      เคยถูกปฏิเสธ: {doc.rejectNote}
+                    </div>
+                  )}
+                  {user?.role === 'OWNER' && doc.createdById !== user.id ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => approveMutation.mutate(undefined)}
+                        disabled={approveMutation.isPending}
+                        className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
+                      >
+                        <Check size={14} />
+                        อนุมัติ + POST
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const note = window.prompt('เหตุผลการปฏิเสธ:');
+                          if (note?.trim()) rejectMutation.mutate(note.trim());
+                        }}
+                        disabled={rejectMutation.isPending}
+                        className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold border border-destructive text-destructive rounded-lg hover:bg-destructive/10 disabled:opacity-50"
+                      >
+                        <X size={14} />
+                        ปฏิเสธ
+                      </button>
+                    </>
+                  ) : user?.role === 'OWNER' && doc.createdById === user.id ? (
+                    <div className="rounded-md bg-muted text-muted-foreground text-sm px-3 py-2">
+                      ไม่สามารถอนุมัติเอกสารที่ตนสร้างได้ (V9)
+                    </div>
+                  ) : (
+                    <div className="rounded-md bg-info/10 text-info text-sm px-3 py-2 inline-flex items-center gap-1">
+                      <Clock size={14} />
+                      รออนุมัติจาก OWNER
+                    </div>
+                  )}
+                </>
               )}
               {canReverse && (
                 <button
@@ -486,14 +590,36 @@ export default function OtherIncomeViewPage() {
               {doc.status === 'DRAFT' && (
                 <div className="rounded-xl border bg-card p-5 space-y-2">
                   <p className="text-sm text-muted-foreground">เอกสารนี้ยังเป็นร่าง — ยังไม่มี Journal Entry</p>
-                  <button
-                    type="button"
-                    onClick={() => navigate(`/other-income/${doc.id}/edit`)}
-                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-semibold hover:bg-primary/90"
-                  >
-                    <Edit size={14} />
-                    แก้ไขและ POST
-                  </button>
+                  {makerCheckerEnabled ? (
+                    <button
+                      type="button"
+                      onClick={() => requestApprovalMutation.mutate()}
+                      disabled={requestApprovalMutation.isPending}
+                      className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-semibold hover:bg-primary/90 disabled:opacity-50"
+                    >
+                      <Send size={14} />
+                      ส่งขออนุมัติ
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/other-income/${doc.id}/edit`)}
+                      className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-semibold hover:bg-primary/90"
+                    >
+                      <Edit size={14} />
+                      แก้ไขและ POST
+                    </button>
+                  )}
+                </div>
+              )}
+              {/* READY shortcut info */}
+              {doc.status === 'READY' && (
+                <div className="rounded-xl border bg-card p-5 space-y-2">
+                  <div className="inline-flex items-center gap-2 text-warning text-sm font-semibold">
+                    <Clock size={16} />
+                    รออนุมัติ
+                  </div>
+                  <p className="text-xs text-muted-foreground">เอกสารนี้รอการอนุมัติจาก OWNER — ยังไม่มี Journal Entry</p>
                 </div>
               )}
             </div>

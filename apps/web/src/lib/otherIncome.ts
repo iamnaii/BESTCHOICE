@@ -76,4 +76,13 @@ export const otherIncomeApi = {
     api
       .get<{ threshold: number }>('/other-income/config/attachment-threshold')
       .then((r) => r.data.threshold),
+
+  requestApproval: (id: string) =>
+    api.post(`/other-income/${id}/request-approval`).then((r) => r.data),
+
+  approve: (id: string, note?: string) =>
+    api.post(`/other-income/${id}/approve`, { note }).then((r) => r.data),
+
+  reject: (id: string, note: string) =>
+    api.post(`/other-income/${id}/reject`, { note }).then((r) => r.data),
 };

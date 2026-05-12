@@ -17,7 +17,6 @@ interface PaymentTableProps {
   onToggleSelect: (id: string) => void;
   onToggleAll: () => void;
   onOpenPayModal: (payment: PendingPayment) => void;
-  onOpenAdvanceModal: (payment: PendingPayment) => void;
   onViewHistory: (contractId: string) => void;
   batchTotal: number;
   onShowBatchModal: () => void;
@@ -30,7 +29,6 @@ export default function PaymentTable({
   selectedIds,
   onToggleSelect,
   onOpenPayModal,
-  onOpenAdvanceModal,
   onViewHistory,
   batchTotal,
   onShowBatchModal,
@@ -121,16 +119,13 @@ export default function PaymentTable({
           <button onClick={() => onOpenPayModal(p)} className="px-2 py-1 text-xs bg-success text-success-foreground rounded hover:bg-success/90">
             รับชำระ
           </button>
-          <button onClick={() => onOpenAdvanceModal(p)} className="px-2 py-1 text-xs border border-primary text-primary rounded hover:bg-primary/10">
-            ล่วงหน้า
-          </button>
           <button onClick={() => onViewHistory(p.contract.id)} className="px-2 py-1 text-xs border border-muted-foreground/30 text-muted-foreground rounded hover:bg-muted">
             ประวัติ
           </button>
         </div>
       ),
     },
-  ], [onOpenPayModal, onOpenAdvanceModal, onViewHistory, selectedIds, onToggleSelect, copy]);
+  ], [onOpenPayModal, onViewHistory, selectedIds, onToggleSelect, copy]);
 
   return (
     <>

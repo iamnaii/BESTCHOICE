@@ -220,6 +220,193 @@ export class OtherIncomeService {
   }
 
   // -------------------------------------------------------------------------
+  // requestApproval(): PR-2 — DRAFT → READY
+  // -------------------------------------------------------------------------
+
+  /**
+   * PR-2: DRAFT → READY. Only callable when Maker-Checker flag is enabled.
+   * Maker initiates the approval cycle. State stays in DRAFT until approver acts.
+   */
+  async requestApproval(id: string, userId: string) {
+    if (!(await this.isMakerCheckerEnabled())) {
+      throw new BadRequestException('Maker-Checker disabled — use POST directly');
+    }
+    const doc = await this.findOneOrFail(id);
+    if (doc.status !== OtherIncomeStatus.DRAFT) {
+      throw new ConflictException(
+        `เอกสาร ${doc.docNumber} สถานะ ${doc.status} — ไม่สามารถส่งขออนุมัติได้`,
+      );
+    }
+    // Reset any prior reject metadata (re-submission after rejection)
+    return this.prisma.otherIncome.update({
+      where: { id },
+      data: {
+        status: OtherIncomeStatus.READY,
+        rejectedAt: null,
+        rejectedById: null,
+        rejectNote: null,
+      },
+      include: { items: true, adjustments: true },
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // approve(): PR-2 — READY → POSTED atomic
+  // -------------------------------------------------------------------------
+
+  /**
+   * PR-2: READY → POSTED atomically (APPROVED is transient inside tx).
+   * V9: approver must differ from maker (createdById).
+   */
+  async approve(
+    id: string,
+    dto: { note?: string },
+    userId: string,
+  ) {
+    if (!(await this.isMakerCheckerEnabled())) {
+      throw new BadRequestException('Maker-Checker disabled');
+    }
+    const doc = await this.findOneOrFail(id);
+    if (doc.status !== OtherIncomeStatus.READY) {
+      throw new ConflictException(
+        `เอกสาร ${doc.docNumber} สถานะ ${doc.status} — ไม่สามารถอนุมัติ`,
+      );
+    }
+    // V9: maker ≠ approver
+    if (doc.createdById === userId) {
+      throw new BadRequestException({
+        message: 'Validation failed',
+        errors: [
+          {
+            rule: 'V9',
+            msg: 'ผู้สร้างเอกสารไม่สามารถอนุมัติเอกสารตัวเองได้',
+          },
+        ],
+      });
+    }
+
+    // Re-run validation (period lock, balance, etc.)
+    const companyId = await this.resolveFinanceCompanyId();
+    await validatePeriodOpen(this.prisma, doc.issueDate, companyId);
+
+    const threshold = await this.getAttachmentThreshold();
+    const validationDoc = {
+      issueDate: doc.issueDate,
+      paymentAccountCode: doc.paymentAccountCode,
+      amountReceived: new D(doc.amountReceived.toString()),
+      netReceived: new D(doc.netReceived.toString()),
+      items: doc.items.map((it) => ({
+        lineNo: it.lineNo,
+        accountCode: it.accountCode,
+        vatPct: new D(it.vatPct.toString()),
+        whtPct: new D(it.whtPct.toString()),
+        amountBeforeVat: new D(it.amountBeforeVat.toString()),
+        vatAmount: new D(it.vatAmount.toString()),
+        whtAmount: new D(it.whtAmount.toString()),
+      })),
+      adjustments: doc.adjustments.map((a) => ({
+        lineNo: a.lineNo,
+        accountCode: a.accountCode,
+        amount: new D(a.amount.toString()),
+      })),
+    };
+    const { errors } = this.validation.validate(validationDoc, {
+      isPeriodOpen: () => true,
+      attachmentThreshold: threshold,
+      hasAttachment: doc.attachments.length > 0,
+    });
+    if (errors.length > 0) {
+      throw new BadRequestException({ message: 'ไม่ผ่านการตรวจสอบก่อนอนุมัติ', errors });
+    }
+
+    const jeLines = this.autoJournal.generate({
+      paymentAccountCode: doc.paymentAccountCode,
+      amountReceived: new D(doc.amountReceived.toString()),
+      netReceived: new D(doc.netReceived.toString()),
+      items: doc.items.map((it) => ({
+        lineNo: it.lineNo,
+        accountCode: it.accountCode,
+        accountName: it.accountName,
+        description: it.description ?? undefined,
+        amountBeforeVat: new D(it.amountBeforeVat.toString()),
+        vatAmount: new D(it.vatAmount.toString()),
+        whtAmount: new D(it.whtAmount.toString()),
+        whtPct: new D(it.whtPct.toString()),
+      })),
+      adjustments: doc.adjustments.map((a) => ({
+        lineNo: a.lineNo,
+        accountCode: a.accountCode,
+        amount: new D(a.amount.toString()),
+        note: a.note ?? undefined,
+      })),
+    });
+
+    return this.prisma.$transaction(async (tx) => {
+      const receiptNo = await this.docNumber.nextReceiptNumber(tx, doc.issueDate);
+      const now = new Date();
+
+      const je = await this.template.post(
+        {
+          description: `รายได้อื่น ${doc.docNumber}${doc.counterpartyName ? ` — ${doc.counterpartyName}` : ''}`,
+          entryDate: doc.issueDate,
+          otherIncomeId: doc.id,
+          docNumber: doc.docNumber,
+          lines: jeLines,
+        },
+        tx,
+      );
+
+      return tx.otherIncome.update({
+        where: { id },
+        data: {
+          status: OtherIncomeStatus.POSTED,
+          receiptNo,
+          journalEntryId: je.id,
+          approverId: userId,
+          approvedAt: now,
+          approveNote: dto.note ?? null,
+          postedAt: now,
+        },
+        include: { items: true, adjustments: true },
+      });
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // reject(): PR-2 — READY → DRAFT
+  // -------------------------------------------------------------------------
+
+  /** PR-2: READY → DRAFT. Persists rejection note + rejecter. */
+  async reject(
+    id: string,
+    dto: { note: string },
+    userId: string,
+  ) {
+    if (!(await this.isMakerCheckerEnabled())) {
+      throw new BadRequestException('Maker-Checker disabled');
+    }
+    if (!dto.note || dto.note.trim().length === 0) {
+      throw new BadRequestException('กรุณาระบุหมายเหตุการปฏิเสธ');
+    }
+    const doc = await this.findOneOrFail(id);
+    if (doc.status !== OtherIncomeStatus.READY) {
+      throw new ConflictException(
+        `เอกสาร ${doc.docNumber} สถานะ ${doc.status} — ไม่สามารถปฏิเสธได้`,
+      );
+    }
+    return this.prisma.otherIncome.update({
+      where: { id },
+      data: {
+        status: OtherIncomeStatus.DRAFT,
+        rejectedById: userId,
+        rejectedAt: new Date(),
+        rejectNote: dto.note,
+      },
+      include: { items: true, adjustments: true },
+    });
+  }
+
+  // -------------------------------------------------------------------------
   // post(): DRAFT → POSTED
   // -------------------------------------------------------------------------
 

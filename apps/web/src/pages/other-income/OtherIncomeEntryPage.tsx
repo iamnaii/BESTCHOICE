@@ -1,5 +1,5 @@
 import { useMemo, useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { useNavigate, useParams, useSearchParams } from 'react-router';
 import { useForm } from 'react-hook-form';
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -30,6 +30,7 @@ import { ItemsTable } from './components/ItemsTable';
 import { AdjustmentTable } from './components/AdjustmentTable';
 import { AutoJournalPreview } from './components/AutoJournalPreview';
 import { CounterpartyPicker } from './components/CounterpartyPicker';
+import { TemplatePickerCombobox } from './components/TemplatePickerCombobox';
 
 // Fallback while config is loading; live value comes from /other-income/config/attachment-threshold
 const ATTACHMENT_THRESHOLD_FALLBACK = 50_000;
@@ -234,6 +235,7 @@ function SectionHeader({
 export default function OtherIncomeEntryPage() {
   const navigate = useNavigate();
   const { id } = useParams<{ id?: string }>();
+  const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const isEdit = !!id;
 
@@ -288,6 +290,37 @@ export default function OtherIncomeEntryPage() {
       });
     }
   }, [loadQuery.data, isEdit, reset]);
+
+  // Template prefill — hydrate form when navigated from TemplatesPage with ?fromTemplate=1
+  const { setValue } = form;
+  useEffect(() => {
+    if (searchParams.get('fromTemplate') !== '1') return;
+    const raw = sessionStorage.getItem('oi-template-prefill');
+    if (!raw) return;
+    try {
+      const tpl = JSON.parse(raw);
+      setValue('priceType', tpl.priceType);
+      setValue(
+        'items',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        tpl.items.map((it: any, idx: number) => ({
+          accountCode: it.accountCode,
+          description: it.description ?? '',
+          quantity: it.quantity,
+          unitAmount: it.unitAmount,
+          discountAmount: it.discountAmount,
+          vatPct: it.vatPct,
+          whtPct: it.whtPct,
+          lineNo: idx + 1,
+        })),
+      );
+    } catch {
+      /* ignore malformed prefill */
+    } finally {
+      sessionStorage.removeItem('oi-template-prefill');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const saveDraftMutation = useMutation({
     mutationFn: (data: OtherIncomeFormValues) =>
@@ -637,7 +670,19 @@ export default function OtherIncomeEntryPage() {
 
           {/* Section 2 — Accounting items */}
           <section className="rounded-xl border bg-card p-5">
-            <SectionHeader num={2} title="รายการบันทึกทางบัญชี" />
+            <SectionHeader
+              num={2}
+              title="รายการบันทึกทางบัญชี"
+              action={
+                <TemplatePickerCombobox
+                  onApply={(items, priceType) => {
+                    setValue('priceType', priceType);
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    setValue('items', items.map((it: any, idx: number) => ({ ...it, lineNo: idx + 1 })));
+                  }}
+                />
+              }
+            />
             {form.formState.errors.items && typeof form.formState.errors.items.message === 'string' && (
               <p className="text-xs text-destructive mb-2">{form.formState.errors.items.message}</p>
             )}

@@ -6,6 +6,7 @@ import { OtherIncomeController } from './other-income.controller';
 import { DocNumberService } from './services/doc-number.service';
 import { ValidationService } from './services/validation.service';
 import { AutoJournalService } from './services/auto-journal.service';
+import { TemplateService } from './services/template.service';
 import { OtherIncomeTemplate } from './templates/other-income.template';
 
 // PrismaService is provided globally via PrismaModule (@Global) — no import needed.
@@ -18,8 +19,9 @@ import { OtherIncomeTemplate } from './templates/other-income.template';
     DocNumberService,
     ValidationService,
     AutoJournalService,
+    TemplateService,
     OtherIncomeTemplate,
   ],
-  exports: [OtherIncomeService],
+  exports: [OtherIncomeService, TemplateService],
 })
 export class OtherIncomeModule {}

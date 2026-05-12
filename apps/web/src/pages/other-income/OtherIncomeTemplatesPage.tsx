@@ -43,7 +43,7 @@ export default function OtherIncomeTemplatesPage() {
     },
   });
 
-  const useMutation_ = useMutation({
+  const applyTemplateMutation = useMutation({
     mutationFn: (id: string) => otherIncomeApi.templates.use(id),
     onSuccess: (data) => {
       sessionStorage.setItem('oi-template-prefill', JSON.stringify(data));
@@ -127,7 +127,7 @@ export default function OtherIncomeTemplatesPage() {
                 </div>
                 <div className="flex gap-1">
                   <button
-                    onClick={() => useMutation_.mutate(t.id)}
+                    onClick={() => applyTemplateMutation.mutate(t.id)}
                     className="px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs inline-flex items-center gap-1 hover:bg-primary/90"
                   >
                     <PlayCircle size={12} /> ใช้

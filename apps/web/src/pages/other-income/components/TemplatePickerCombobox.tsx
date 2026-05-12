@@ -27,7 +27,7 @@ export function TemplatePickerCombobox({ onApply }: Props) {
     queryFn: () => otherIncomeApi.templates.list(),
     enabled: open,
   });
-  const useMutation_ = useMutation({
+  const applyTemplateMutation = useMutation({
     mutationFn: (id: string) => otherIncomeApi.templates.use(id),
     onSuccess: (data) => {
       onApply(data.items, data.priceType);
@@ -50,7 +50,7 @@ export function TemplatePickerCombobox({ onApply }: Props) {
             <button
               key={t.id}
               type="button"
-              onClick={() => useMutation_.mutate(t.id)}
+              onClick={() => applyTemplateMutation.mutate(t.id)}
               className="w-full text-left px-3 py-2 hover:bg-accent text-xs"
             >
               <div className="font-semibold">{t.name}</div>

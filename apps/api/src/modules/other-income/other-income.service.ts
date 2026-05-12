@@ -231,8 +231,10 @@ export class OtherIncomeService {
       );
     }
 
-    // V8: period lock check (non-transactional pre-check)
-    await validatePeriodOpen(this.prisma, doc.issueDate);
+    // V8: period lock check (non-transactional pre-check) — B1: pass companyId so
+    // AccountingPeriod tier-1 check fires (without it, only legacy SystemConfig is consulted)
+    const companyId = await this.resolveFinanceCompanyId();
+    await validatePeriodOpen(this.prisma, doc.issueDate, companyId);
 
     // Compute attachment threshold
     const threshold = await this.getAttachmentThreshold();
@@ -367,8 +369,10 @@ export class OtherIncomeService {
       );
     }
 
-    // Period lock on today — the reversal JE is posted today, not on original's issueDate
-    await validatePeriodOpen(this.prisma, new Date());
+    // Period lock on today — the reversal JE is posted today, not on original's issueDate.
+    // B1: pass companyId so AccountingPeriod tier-1 check fires.
+    const companyId = await this.resolveFinanceCompanyId();
+    await validatePeriodOpen(this.prisma, new Date(), companyId);
 
     // Load original JE lines
     if (!original.journalEntryId) {

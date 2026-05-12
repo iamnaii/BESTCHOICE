@@ -701,6 +701,7 @@ model User {
   // Other Income module
   otherIncomesCreated    OtherIncome[]           @relation("OtherIncomeCreatedBy")
   otherIncomeAttachments OtherIncomeAttachment[] @relation("OtherIncomeAttachmentUploader")
+  otherIncomeTemplates   OtherIncomeTemplate[]   @relation("OtherIncomeTemplateCreator")
 
   @@index([branchId])
   @@index([yeastarExtension])
@@ -2979,7 +2980,8 @@ model CompanyInfo {
   taxReports         TaxReport[]
   ownedProducts      Product[]                 @relation("ProductOwnership")
   accountingPeriods  AccountingPeriod[]
-  otherIncomes       OtherIncome[]
+  otherIncomes          OtherIncome[]
+  otherIncomeTemplates  OtherIncomeTemplate[]
 
   @@map("company_info")
 }
@@ -5944,6 +5946,32 @@ model OtherIncomeAttachment {
 
   @@index([otherIncomeId])
   @@map("other_income_attachments")
+}
+
+model OtherIncomeTemplate {
+  id        String @id @default(uuid())
+  companyId String @map("company_id")
+  name      String
+
+  isFavorite Boolean   @default(false) @map("is_favorite")
+  useCount   Int       @default(0) @map("use_count")
+  lastUsedAt DateTime? @map("last_used_at")
+
+  /// JSON array of item snapshots: { lineNo, accountCode, description, quantity, unitAmount, discountAmount, vatPct, whtPct }
+  itemsJson Json                 @map("items_json")
+  priceType OtherIncomePriceType @default(EXCLUSIVE) @map("price_type")
+
+  createdById String    @map("created_by_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  company   CompanyInfo @relation(fields: [companyId], references: [id])
+  createdBy User        @relation("OtherIncomeTemplateCreator", fields: [createdById], references: [id])
+
+  @@index([companyId, deletedAt])
+  @@index([isFavorite, lastUsedAt])
+  @@map("other_income_templates")
 }
 
 /// Maps each payment method (CASH/TRANSFER/QR) to one or more Chart-of-Accounts

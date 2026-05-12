@@ -18,12 +18,14 @@ import { formatThaiDateLong } from '@/lib/date';
 
 const STATUS_LABELS: Record<OtherIncomeStatus, string> = {
   DRAFT: 'ร่าง',
+  READY: 'รออนุมัติ',
   POSTED: 'บันทึกแล้ว',
   REVERSED: 'กลับรายการแล้ว',
 };
 
 const STATUS_COLORS: Record<OtherIncomeStatus, string> = {
   DRAFT: 'bg-muted text-muted-foreground',
+  READY: 'bg-warning/10 text-warning',
   POSTED: 'bg-success/10 text-success',
   REVERSED: 'bg-destructive/10 text-destructive',
 };

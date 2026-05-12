@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Plus, Search, FileText, Receipt, RotateCcw, CheckCircle2, ChartBar, ArrowRight } from 'lucide-react';
+import { Plus, Search, FileText, Receipt, RotateCcw, CheckCircle2, ChartBar, ArrowRight, ClipboardCheck } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -15,12 +15,14 @@ import { formatNumberDecimal } from '@/utils/formatters';
 
 const STATUS_LABELS: Record<OtherIncomeStatus, string> = {
   DRAFT: 'ร่าง',
+  READY: 'รออนุมัติ',
   POSTED: 'บันทึกแล้ว',
   REVERSED: 'กลับรายการ',
 };
 
 const STATUS_COLORS: Record<OtherIncomeStatus, string> = {
   DRAFT: 'bg-muted text-muted-foreground',
+  READY: 'bg-warning/10 text-warning',
   POSTED: 'bg-success/10 text-success',
   REVERSED: 'bg-destructive/10 text-destructive',
 };
@@ -45,16 +47,18 @@ function fmtDate(d: string | null | undefined) {
   return formatThaiDateShort(d);
 }
 
-type StatusAccent = 'warning' | 'success' | 'muted';
+type StatusAccent = 'warning' | 'info' | 'success' | 'muted';
 
 const ACCENT_BAR: Record<StatusAccent, string> = {
   warning: 'bg-warning',
+  info: 'bg-info',
   success: 'bg-success',
   muted: 'bg-muted-foreground/50',
 };
 
 const ACCENT_ICON: Record<StatusAccent, string> = {
   warning: 'bg-warning/10 text-warning',
+  info: 'bg-info/10 text-info',
   success: 'bg-success/10 text-success',
   muted: 'bg-muted text-muted-foreground',
 };
@@ -138,6 +142,21 @@ export default function OtherIncomeListPage() {
     staleTime: COUNT_STALE_TIME,
   });
 
+  const flagQuery = useQuery({
+    queryKey: ['other-income-maker-checker-enabled'],
+    queryFn: () => otherIncomeApi.isMakerCheckerEnabled(),
+    staleTime: 5 * 60_000,
+  });
+  const makerCheckerEnabled = flagQuery.data ?? false;
+
+  const readyCountQuery = useQuery({
+    queryKey: ['other-income', 'count', 'READY'],
+    queryFn: () => otherIncomeApi.list({ status: 'READY', page: 1, limit: 1 }),
+    select: (d) => d.total,
+    staleTime: COUNT_STALE_TIME,
+    enabled: makerCheckerEnabled,
+  });
+
   const deleteMutation = useMutation({
     mutationFn: (id: string) => otherIncomeApi.softDelete(id),
     onSuccess: () => {
@@ -153,6 +172,7 @@ export default function OtherIncomeListPage() {
   const totalPages = Math.ceil(total / 50) || 1;
 
   const draftCount = draftCountQuery.data ?? 0;
+  const readyCount = readyCountQuery.data ?? 0;
   const postedCount = postedCountQuery.data ?? 0;
   const reversedCount = reversedCountQuery.data ?? 0;
 
@@ -175,7 +195,7 @@ export default function OtherIncomeListPage() {
       />
 
       {/* Status cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      <div className={`grid gap-3 mb-6 ${makerCheckerEnabled ? 'grid-cols-2 md:grid-cols-5' : 'grid-cols-2 md:grid-cols-4'}`}>
         <StatusCard
           label="ฉบับร่าง"
           sub="DRAFT"
@@ -183,6 +203,15 @@ export default function OtherIncomeListPage() {
           accent="warning"
           value={draftCount}
         />
+        {makerCheckerEnabled && (
+          <StatusCard
+            label="รออนุมัติ"
+            sub="READY"
+            icon={<ClipboardCheck size={16} />}
+            accent="info"
+            value={readyCount}
+          />
+        )}
         <StatusCard
           label="บันทึกแล้ว"
           sub="POSTED"
@@ -239,6 +268,7 @@ export default function OtherIncomeListPage() {
         >
           <option value="">ทุกสถานะ</option>
           <option value="DRAFT">ร่าง</option>
+          {makerCheckerEnabled && <option value="READY">รออนุมัติ</option>}
           <option value="POSTED">บันทึกแล้ว</option>
           <option value="REVERSED">กลับรายการ</option>
         </select>

@@ -103,7 +103,7 @@ export class OtherIncomeService {
     const existing = await this.findOneOrFail(id);
     if (existing.status !== OtherIncomeStatus.DRAFT) {
       throw new ConflictException(
-        `เอกสาร ${existing.docNumber} เป็น POSTED แล้ว ไม่สามารถแก้ไขได้ — ใช้ Reverse Entry`,
+        `เอกสาร ${existing.docNumber} สถานะ ${existing.status} — ไม่สามารถแก้ไขได้ใน DRAFT เท่านั้น`,
       );
     }
 

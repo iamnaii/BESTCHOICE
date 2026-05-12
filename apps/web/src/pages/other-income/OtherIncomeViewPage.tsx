@@ -6,6 +6,7 @@ import { ArrowLeft, Check, CheckCircle2, Clock, Copy, Edit, History, Printer, Ro
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { ReverseModal } from './components/ReverseModal';
+import { RejectModal } from './components/RejectModal';
 import { AutoJournalPreview } from './components/AutoJournalPreview';
 import { otherIncomeApi } from '@/lib/otherIncome';
 import type { OtherIncome, OtherIncomeStatus, OtherIncomeReverseReason } from '@/lib/otherIncome.types';
@@ -137,6 +138,7 @@ export default function OtherIncomeViewPage() {
   const { user } = useAuth();
 
   const [showReverseModal, setShowReverseModal] = useState(false);
+  const [showRejectModal, setShowRejectModal] = useState(false);
 
   const auditQuery = useQuery({
     queryKey: ['other-income', id, 'audit'],
@@ -300,10 +302,7 @@ export default function OtherIncomeViewPage() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => {
-                          const note = window.prompt('เหตุผลการปฏิเสธ:');
-                          if (note?.trim()) rejectMutation.mutate(note.trim());
-                        }}
+                        onClick={() => setShowRejectModal(true)}
                         disabled={rejectMutation.isPending}
                         className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold border border-destructive text-destructive rounded-lg hover:bg-destructive/10 disabled:opacity-50"
                       >
@@ -675,6 +674,19 @@ export default function OtherIncomeViewPage() {
           onCancel={() => setShowReverseModal(false)}
           onConfirm={(reason, note) => reverseMutation.mutate({ reason, note })}
           isLoading={reverseMutation.isPending}
+        />
+      )}
+
+      {/* Reject modal (PR-2 Maker-Checker) */}
+      {showRejectModal && doc && (
+        <RejectModal
+          docNumber={doc.docNumber}
+          isLoading={rejectMutation.isPending}
+          onCancel={() => setShowRejectModal(false)}
+          onConfirm={(note) => {
+            rejectMutation.mutate(note);
+            setShowRejectModal(false);
+          }}
         />
       )}
     </div>

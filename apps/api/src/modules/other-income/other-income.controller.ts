@@ -22,18 +22,24 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { OtherIncomeService } from './other-income.service';
+import { TemplateService } from './services/template.service';
 import { CreateOtherIncomeDto } from './dto/create-other-income.dto';
 import { UpdateOtherIncomeDto } from './dto/update-other-income.dto';
 import { PostOtherIncomeDto } from './dto/post-other-income.dto';
 import { ReverseOtherIncomeDto } from './dto/reverse-other-income.dto';
 import { ListOtherIncomeQueryDto } from './dto/list-other-income-query.dto';
 import { DailySheetQueryDto } from './dto/daily-sheet-query.dto';
+import { CreateTemplateDto, CreateTemplateFromDocDto } from './dto/create-template.dto';
+import { UpdateTemplateDto } from './dto/update-template.dto';
 
 @Controller('other-income')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
 export class OtherIncomeController {
-  constructor(private readonly service: OtherIncomeService) {}
+  constructor(
+    private readonly service: OtherIncomeService,
+    private readonly templateService: TemplateService,
+  ) {}
 
   // CRITICAL: declare daily-sheet BEFORE :id so the literal string
   // doesn't get parsed as a UUID by ParseUUIDPipe on the :id routes.
@@ -51,6 +57,68 @@ export class OtherIncomeController {
   list(@Query() query: ListOtherIncomeQueryDto) {
     return this.service.list(query);
   }
+
+  // ─── Templates (PR-3) ───────────────────────────────────────────────────
+  // CRITICAL: these routes MUST be declared BEFORE any /:id route to avoid
+  // "templates" being captured as an OtherIncome doc id by Nest's matcher.
+
+  @Get('templates')
+  @Roles('OWNER', 'ACCOUNTANT', 'SALES')
+  listTemplates(@Query('q') q?: string, @Query('favoritesOnly') favoritesOnly?: string) {
+    return this.templateService.list({ q, favoritesOnly: favoritesOnly === 'true' });
+  }
+
+  @Post('templates')
+  @Roles('OWNER', 'ACCOUNTANT', 'SALES')
+  createTemplate(@Body() dto: CreateTemplateDto, @CurrentUser('id') userId: string) {
+    return this.templateService.create(
+      {
+        name: dto.name,
+        priceType: dto.priceType,
+        itemsJson: dto.items.map((it, i) => ({
+          lineNo: i + 1,
+          accountCode: it.accountCode,
+          description: it.description ?? null,
+          quantity: Number(it.quantity),
+          unitAmount: Number(it.unitAmount),
+          discountAmount: Number(it.discountAmount ?? 0),
+          vatPct: Number(it.vatPct ?? 0),
+          whtPct: Number(it.whtPct ?? 0),
+        })),
+      },
+      userId,
+    );
+  }
+
+  @Post('from-doc/:id/save-template')
+  @Roles('OWNER', 'ACCOUNTANT', 'SALES')
+  saveAsTemplate(
+    @Param('id') id: string,
+    @Body() dto: CreateTemplateFromDocDto,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.templateService.createFromDoc(id, dto.name, userId);
+  }
+
+  @Patch('templates/:id')
+  @Roles('OWNER', 'ACCOUNTANT', 'SALES')
+  updateTemplate(@Param('id') id: string, @Body() dto: UpdateTemplateDto) {
+    return this.templateService.update(id, dto);
+  }
+
+  @Delete('templates/:id')
+  @Roles('OWNER', 'ACCOUNTANT', 'SALES')
+  deleteTemplate(@Param('id') id: string) {
+    return this.templateService.softDelete(id);
+  }
+
+  @Post('templates/:id/use')
+  @Roles('OWNER', 'ACCOUNTANT', 'SALES')
+  useTemplate(@Param('id') id: string) {
+    return this.templateService.use(id);
+  }
+
+  // ─── OtherIncome docs (parameterized — must stay AFTER literal routes) ──
 
   @Get(':id')
   findOne(@Param('id', new ParseUUIDPipe()) id: string) {

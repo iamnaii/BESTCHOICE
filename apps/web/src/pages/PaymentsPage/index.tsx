@@ -18,7 +18,7 @@ import { Upload, Camera } from 'lucide-react';
 import PaymentFilters from './components/PaymentFilters';
 import PaymentTable from './components/PaymentTable';
 import PaymentSummary from './components/PaymentSummary';
-import { RecordPaymentModal, BatchPaymentModal, AdvancePaymentModal } from './components/PaymentModals';
+import { RecordPaymentModal, BatchPaymentModal } from './components/PaymentModals';
 import { RecordPaymentWizard } from './components/RecordPaymentWizard';
 import { ToleranceApprovalDialog } from '@/components/ToleranceApprovalDialog';
 import type { PendingPayment, DailySummary, OcrPaymentSlipResult } from './types';
@@ -63,12 +63,6 @@ export default function PaymentsPage() {
   const [showBatchModal, setShowBatchModal] = useState(false);
   const [batchPayMethod, setBatchPayMethod] = useState('CASH');
 
-  // Advance payment state
-  const [showAdvanceModal, setShowAdvanceModal] = useState(false);
-  const [advanceContract, setAdvanceContract] = useState<PendingPayment | null>(null);
-  const [advanceAmount, setAdvanceAmount] = useState('');
-  const [advanceMethod, setAdvanceMethod] = useState('CASH');
-
   // OCR slip state
   const slipFileRef = useRef<HTMLInputElement>(null);
   const [ocrSlipLoading, setOcrSlipLoading] = useState(false);
@@ -78,11 +72,6 @@ export default function PaymentsPage() {
   const batchSlipFileRef = useRef<HTMLInputElement>(null);
   const [batchOcrLoading, setBatchOcrLoading] = useState(false);
   const [batchSlipResult, setBatchSlipResult] = useState<OcrPaymentSlipResult | null>(null);
-
-  // Advance slip state
-  const advanceSlipFileRef = useRef<HTMLInputElement>(null);
-  const [advanceOcrLoading, setAdvanceOcrLoading] = useState(false);
-  const [advanceSlipResult, setAdvanceSlipResult] = useState<OcrPaymentSlipResult | null>(null);
 
   // T16: Tolerance approval dialog state
   const [showToleranceDialog, setShowToleranceDialog] = useState(false);
@@ -165,26 +154,6 @@ export default function PaymentsPage() {
       setSelectedIds(new Set());
       setShowBatchModal(false);
       setBatchSlipResult(null);
-    },
-    onError: (err: unknown) => toast.error(getErrorMessage(err)),
-  });
-
-  // Advance payment mutation (auto-allocate)
-  const advanceMutation = useMutation({
-    mutationFn: async (body: { contractId: string; amount: number; paymentMethod: string; transactionRef?: string }) => {
-      const { data } = await api.post('/payments/auto-allocate', body);
-      return data;
-    },
-    onSuccess: (data) => {
-      toast.success(`จ่ายล่วงหน้าสำเร็จ — จัดสรรให้ ${data.allocatedPayments?.length || 0} งวด`);
-      if (data.overpayment > 0) {
-        toast.warning(`เงินเกิน ${data.overpayment.toLocaleString()} บาท ไม่มีงวดเหลือให้จัดสรร`);
-      }
-      queryClient.invalidateQueries({ queryKey: ['pending-payments'] });
-      setShowAdvanceModal(false);
-      setAdvanceContract(null);
-      setAdvanceAmount('');
-      setAdvanceSlipResult(null);
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
@@ -421,20 +390,6 @@ export default function PaymentsPage() {
     });
   };
 
-  // OCR Slip Scanner (advance payment)
-  const handleAdvanceSlipScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    await scanSlip(file, setAdvanceOcrLoading, setAdvanceSlipResult, advanceSlipFileRef, (data) => {
-      if (data.amount && data.amount > 0) setAdvanceAmount(String(data.amount));
-      if (data.slipType === 'QR_PAYMENT' || data.slipType === 'PROMPTPAY') {
-        setAdvanceMethod('QR_EWALLET');
-      } else if (data.slipType) {
-        setAdvanceMethod('BANK_TRANSFER');
-      }
-    });
-  };
-
   // Quick slip scan — opens the slip-review tab with the scanned result
   const handleQuickSlipScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -445,13 +400,6 @@ export default function PaymentsPage() {
       toast.success('สลิปถูกส่งไปตรวจสอบแล้ว');
     });
   };
-
-  const openAdvanceModal = useCallback((payment: PendingPayment) => {
-    setAdvanceContract(payment);
-    setAdvanceAmount('');
-    setAdvanceMethod('CASH');
-    setShowAdvanceModal(true);
-  }, []);
 
   return (
     <div>
@@ -562,7 +510,6 @@ export default function PaymentsPage() {
               onToggleSelect={toggleSelect}
               onToggleAll={toggleAll}
               onOpenPayModal={openPayModal}
-              onOpenAdvanceModal={openAdvanceModal}
               onViewHistory={(contractId) => setHistoryContractId(contractId)}
               batchTotal={batchTotal}
               onShowBatchModal={() => setShowBatchModal(true)}
@@ -628,7 +575,7 @@ export default function PaymentsPage() {
         />
       )}
 
-      {/* Record Payment Modal (legacy — kept for batch/advance flows) */}
+      {/* Record Payment Modal (legacy) */}
       <RecordPaymentModal
         show={showPayModal}
         payment={selectedPayment}
@@ -659,30 +606,6 @@ export default function PaymentsPage() {
         onBatchSlipScan={handleBatchSlipScan}
         batchOcrLoading={batchOcrLoading}
         batchSlipResult={batchSlipResult}
-      />
-
-      {/* Advance Payment Modal */}
-      <AdvancePaymentModal
-        show={showAdvanceModal}
-        contract={advanceContract}
-        onClose={() => { setShowAdvanceModal(false); setAdvanceContract(null); setAdvanceSlipResult(null); }}
-        advanceAmount={advanceAmount}
-        onAdvanceAmountChange={setAdvanceAmount}
-        advanceMethod={advanceMethod}
-        onAdvanceMethodChange={setAdvanceMethod}
-        onSubmit={() => {
-          advanceMutation.mutate({
-            contractId: advanceContract!.contract.id,
-            amount: parseFloat(advanceAmount) || 0,
-            paymentMethod: advanceMethod,
-            transactionRef: advanceSlipResult?.transactionRef || `ADV-${Date.now()}`,
-          });
-        }}
-        isPending={advanceMutation.isPending}
-        advanceSlipFileRef={advanceSlipFileRef}
-        onAdvanceSlipScan={handleAdvanceSlipScan}
-        advanceOcrLoading={advanceOcrLoading}
-        advanceSlipResult={advanceSlipResult}
       />
 
       {/* Slip Review Tab */}

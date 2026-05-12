@@ -110,3 +110,49 @@ describe('ValidationService', () => {
     expect(result.errors.find((e) => e.rule === 'V13')).toBeDefined();
   });
 });
+
+describe('V15 — bank interest policy (B2)', () => {
+  let service: ValidationService;
+
+  beforeEach(async () => {
+    const module = await Test.createTestingModule({
+      providers: [ValidationService],
+    }).compile();
+    service = module.get(ValidationService);
+  });
+
+  it('does NOT warn when 42-1102 uses WHT 1% (นิติบุคคล ออมทรัพย์)', () => {
+    const doc = {
+      ...goldenCases.bankInterest,
+      items: [
+        {
+          ...goldenCases.bankInterest.items[0],
+          whtPct: D(1),
+          whtAmount: D(10),
+        },
+      ],
+      whtAmount: D(10),
+      netReceived: D(990),
+      amountReceived: D(990),
+    };
+    const result = service.validate(doc, baseCtx);
+    const v15Warning = result.warnings.find((w) => w.rule === 'V15');
+    expect(v15Warning).toBeUndefined();
+  });
+
+  it('still errors when 42-1102 has VAT% > 0 (ม.81(1)(ฏ) violation)', () => {
+    const doc = {
+      ...goldenCases.bankInterest,
+      items: [
+        {
+          ...goldenCases.bankInterest.items[0],
+          vatPct: D(7),
+        },
+      ],
+    };
+    const result = service.validate(doc, baseCtx);
+    const v15Error = result.errors.find((e) => e.rule === 'V15');
+    expect(v15Error).toBeDefined();
+    expect(v15Error?.msg).toMatch(/ยกเว้น VAT/);
+  });
+});

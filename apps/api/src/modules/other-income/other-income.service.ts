@@ -820,6 +820,18 @@ export class OtherIncomeService {
     return co.id;
   }
 
+  /** Read OTHER_INCOME_MAKER_CHECKER_ENABLED from SystemConfig. Default false. */
+  async isMakerCheckerEnabled(): Promise<boolean> {
+    try {
+      const row = await this.prisma.systemConfig.findUnique({
+        where: { key: 'OTHER_INCOME_MAKER_CHECKER_ENABLED' },
+      });
+      return row?.value === 'true';
+    } catch {
+      return false;
+    }
+  }
+
   /** Read OTHER_INCOME_ATTACHMENT_THRESHOLD from SystemConfig. Falls back to 50_000. */
   async getAttachmentThreshold(): Promise<number> {
     try {

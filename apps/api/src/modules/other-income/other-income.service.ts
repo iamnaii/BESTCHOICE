@@ -264,7 +264,7 @@ export class OtherIncomeService {
     userId: string,
   ) {
     if (!(await this.isMakerCheckerEnabled())) {
-      throw new BadRequestException('Maker-Checker ปิดอยู่ — ใช้ /post โดยตรง');
+      throw new BadRequestException('Maker-Checker ปิดอยู่');
     }
     const doc = await this.findOneOrFail(id);
     if (doc.status !== OtherIncomeStatus.READY) {

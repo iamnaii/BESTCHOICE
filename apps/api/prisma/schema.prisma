@@ -700,6 +700,8 @@ model User {
 
   // Other Income module
   otherIncomesCreated    OtherIncome[]           @relation("OtherIncomeCreatedBy")
+  otherIncomesApproved   OtherIncome[]           @relation("OtherIncomeApprover")
+  otherIncomesRejected   OtherIncome[]           @relation("OtherIncomeRejecter")
   otherIncomeAttachments OtherIncomeAttachment[] @relation("OtherIncomeAttachmentUploader")
 
   @@index([branchId])
@@ -5780,6 +5782,8 @@ model SmsTemplate {
 
 enum OtherIncomeStatus {
   DRAFT
+  READY      // PR-2: requested for approval (Maker-Checker opt-in flow)
+  APPROVED   // PR-2: transient — approved + auto-posted in same tx
   POSTED
   REVERSED
 }
@@ -5854,10 +5858,20 @@ model OtherIncome {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
+  // PR-2 Maker-Checker (opt-in via SystemConfig OTHER_INCOME_MAKER_CHECKER_ENABLED)
+  approverId    String?   @map("approver_id")
+  approvedAt    DateTime? @map("approved_at")
+  approveNote   String?   @map("approve_note")
+  rejectedById  String?   @map("rejected_by_id")
+  rejectedAt    DateTime? @map("rejected_at")
+  rejectNote    String?   @map("reject_note")
+
   // Relations
   company    CompanyInfo   @relation(fields: [companyId], references: [id])
   customer   Customer?     @relation("CustomerOtherIncome", fields: [customerId], references: [id])
   createdBy  User          @relation("OtherIncomeCreatedBy", fields: [createdById], references: [id])
+  approver   User?         @relation("OtherIncomeApprover", fields: [approverId], references: [id])
+  rejectedBy User?         @relation("OtherIncomeRejecter", fields: [rejectedById], references: [id])
   reverses   OtherIncome?  @relation("OtherIncomeReverse", fields: [reversesId], references: [id])
   reversedBy OtherIncome?  @relation("OtherIncomeReverse")
   copiedFrom OtherIncome?  @relation("OtherIncomeCopy", fields: [copiedFromId], references: [id])

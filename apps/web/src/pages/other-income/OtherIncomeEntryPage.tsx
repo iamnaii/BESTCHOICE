@@ -319,6 +319,32 @@ export default function OtherIncomeEntryPage() {
     onError: () => toast.error('ไม่สามารถ POST เอกสารได้'),
   });
 
+  const flagQuery = useQuery({
+    queryKey: ['other-income-maker-checker-enabled'],
+    queryFn: () => otherIncomeApi.isMakerCheckerEnabled(),
+    staleTime: 5 * 60_000,
+  });
+  const makerCheckerEnabled = flagQuery.data ?? false;
+
+  const saveAndRequestApprovalMutation = useMutation({
+    mutationFn: async (data: OtherIncomeFormValues) => {
+      let docId = id;
+      if (!docId) {
+        const created = await otherIncomeApi.create(data);
+        docId = created.id;
+      } else {
+        await otherIncomeApi.update(docId, data);
+      }
+      return otherIncomeApi.requestApproval(docId);
+    },
+    onSuccess: (doc: any) => {
+      toast.success('บันทึกและส่งขออนุมัติแล้ว');
+      queryClient.invalidateQueries({ queryKey: ['other-income'] });
+      navigate(`/other-income/${doc.id}`);
+    },
+    onError: () => toast.error('ส่งขออนุมัติไม่สำเร็จ'),
+  });
+
   const values = form.watch();
 
   // Compute live JE preview
@@ -367,7 +393,10 @@ export default function OtherIncomeEntryPage() {
 
   const watchedAdjustments = form.watch('adjustments') ?? [];
 
-  const isSubmitting = saveDraftMutation.isPending || saveAndPostMutation.isPending;
+  const isSubmitting =
+    saveDraftMutation.isPending ||
+    saveAndPostMutation.isPending ||
+    saveAndRequestApprovalMutation.isPending;
 
   // Income totals across all items (for footer/summary cards)
   const incomeTotals = useMemo(() => {
@@ -1040,12 +1069,22 @@ export default function OtherIncomeEntryPage() {
                   toast.error('กรุณาตรวจสอบข้อมูลให้ครบถ้วน');
                   return;
                 }
-                saveAndPostMutation.mutate(result.data);
+                if (makerCheckerEnabled) {
+                  saveAndRequestApprovalMutation.mutate(result.data);
+                } else {
+                  saveAndPostMutation.mutate(result.data);
+                }
               }}
               className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-bold bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <Send size={14} />
-              {saveAndPostMutation.isPending ? 'กำลัง POST...' : 'บันทึก & POST'}
+              {saveAndRequestApprovalMutation.isPending
+                ? 'กำลังส่งขออนุมัติ...'
+                : saveAndPostMutation.isPending
+                  ? 'กำลัง POST...'
+                  : makerCheckerEnabled
+                    ? 'บันทึกและส่งขออนุมัติ'
+                    : 'บันทึก & POST'}
             </button>
           </div>
         </div>

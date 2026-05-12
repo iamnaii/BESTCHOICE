@@ -1,4 +1,4 @@
-export type OtherIncomeStatus = 'DRAFT' | 'POSTED' | 'REVERSED';
+export type OtherIncomeStatus = 'DRAFT' | 'READY' | 'POSTED' | 'REVERSED';
 export type OtherIncomePriceType = 'EXCLUSIVE' | 'INCLUSIVE';
 export type OtherIncomeReverseReason =
   | 'INPUT_ERROR'
@@ -67,6 +67,8 @@ export interface OtherIncome {
   isOverridden: boolean;
   customerNote: string | null;
   createdById: string;
+  rejectNote: string | null;
+  rejectedAt: string | null;
   postedAt: string | null;
   reversesId: string | null;
   // Auto-derived inverse of the self-FK `reversesId`; populated by the API when

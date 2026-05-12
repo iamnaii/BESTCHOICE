@@ -1,6 +1,9 @@
 import { Test } from '@nestjs/testing';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { TemplateService } from '../services/template.service';
+
+const D = (n: number | string) => new Prisma.Decimal(n);
 
 // ============================================================
 // Real-DB integration tests against bestchoice_oi_test
@@ -164,11 +167,11 @@ describe('TemplateService — integration', () => {
         issueDate: new Date('2026-05-06'),
         priceType: 'EXCLUSIVE',
         paymentAccountCode: '11-1201',
-        amountReceived: new (require('@prisma/client').Prisma.Decimal)(850),
-        incomeGross: new (require('@prisma/client').Prisma.Decimal)(1000),
-        vatAmount: new (require('@prisma/client').Prisma.Decimal)(0),
-        whtAmount: new (require('@prisma/client').Prisma.Decimal)(150),
-        netReceived: new (require('@prisma/client').Prisma.Decimal)(850),
+        amountReceived: D(850),
+        incomeGross: D(1000),
+        vatAmount: D(0),
+        whtAmount: D(150),
+        netReceived: D(850),
         items: {
           create: [
             {
@@ -176,14 +179,14 @@ describe('TemplateService — integration', () => {
               accountCode: '42-1102',
               accountName: 'รายได้ดอกเบี้ยฝากธนาคาร',
               description: 'ดอกเบี้ย พ.ค.',
-              quantity: new (require('@prisma/client').Prisma.Decimal)(1),
-              unitAmount: new (require('@prisma/client').Prisma.Decimal)(1000),
-              discountAmount: new (require('@prisma/client').Prisma.Decimal)(0),
-              vatPct: new (require('@prisma/client').Prisma.Decimal)(0),
-              whtPct: new (require('@prisma/client').Prisma.Decimal)(15),
-              amountBeforeVat: new (require('@prisma/client').Prisma.Decimal)(1000),
-              vatAmount: new (require('@prisma/client').Prisma.Decimal)(0),
-              whtAmount: new (require('@prisma/client').Prisma.Decimal)(150),
+              quantity: D(1),
+              unitAmount: D(1000),
+              discountAmount: D(0),
+              vatPct: D(0),
+              whtPct: D(15),
+              amountBeforeVat: D(1000),
+              vatAmount: D(0),
+              whtAmount: D(150),
             },
           ],
         },

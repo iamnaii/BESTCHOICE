@@ -89,6 +89,7 @@ export class TemplateService {
     return this.prisma.otherIncomeTemplate.findMany({
       where,
       orderBy: [{ isFavorite: 'desc' }, { lastUsedAt: 'desc' }, { createdAt: 'desc' }],
+      take: 200,
     });
   }
 

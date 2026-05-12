@@ -1,20 +1,50 @@
-import { IsArray, IsEnum, IsNotEmpty, IsString, MaxLength, ValidateNested } from 'class-validator';
+import {
+  IsArray,
+  IsEnum,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Min,
+  ValidateNested,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 class TemplateItemDto {
   @IsString()
+  @IsNotEmpty({ message: 'กรุณาเลือกบัญชี' })
   accountCode!: string;
 
+  @IsOptional()
   @IsString()
   @MaxLength(200)
   description?: string;
 
-  // Allow string or number from form
-  quantity!: number | string;
-  unitAmount!: number | string;
-  discountAmount!: number | string;
-  vatPct!: number | string;
-  whtPct!: number | string;
+  @Type(() => Number)
+  @IsNumber({ allowNaN: false }, { message: 'จำนวนต้องเป็นตัวเลข' })
+  @Min(0, { message: 'จำนวนต้องไม่ติดลบ' })
+  quantity!: number;
+
+  @Type(() => Number)
+  @IsNumber({ allowNaN: false }, { message: 'ราคา/หน่วยต้องเป็นตัวเลข' })
+  @Min(0, { message: 'ราคา/หน่วยต้องไม่ติดลบ' })
+  unitAmount!: number;
+
+  @Type(() => Number)
+  @IsNumber({ allowNaN: false })
+  @Min(0)
+  discountAmount!: number;
+
+  @Type(() => Number)
+  @IsNumber({ allowNaN: false })
+  @Min(0)
+  vatPct!: number;
+
+  @Type(() => Number)
+  @IsNumber({ allowNaN: false })
+  @Min(0)
+  whtPct!: number;
 }
 
 export class CreateTemplateDto {

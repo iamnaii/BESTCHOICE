@@ -63,13 +63,13 @@ export class OtherIncomeController {
   // "templates" being captured as an OtherIncome doc id by Nest's matcher.
 
   @Get('templates')
-  @Roles('OWNER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'ACCOUNTANT', 'SALES', 'FINANCE_MANAGER')
   listTemplates(@Query('q') q?: string, @Query('favoritesOnly') favoritesOnly?: string) {
     return this.templateService.list({ q, favoritesOnly: favoritesOnly === 'true' });
   }
 
   @Post('templates')
-  @Roles('OWNER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'ACCOUNTANT', 'SALES', 'FINANCE_MANAGER')
   createTemplate(@Body() dto: CreateTemplateDto, @CurrentUser('id') userId: string) {
     return this.templateService.create(
       {
@@ -79,11 +79,11 @@ export class OtherIncomeController {
           lineNo: i + 1,
           accountCode: it.accountCode,
           description: it.description ?? null,
-          quantity: Number(it.quantity),
-          unitAmount: Number(it.unitAmount),
-          discountAmount: Number(it.discountAmount ?? 0),
-          vatPct: Number(it.vatPct ?? 0),
-          whtPct: Number(it.whtPct ?? 0),
+          quantity: it.quantity,
+          unitAmount: it.unitAmount,
+          discountAmount: it.discountAmount,
+          vatPct: it.vatPct,
+          whtPct: it.whtPct,
         })),
       },
       userId,
@@ -91,7 +91,7 @@ export class OtherIncomeController {
   }
 
   @Post('from-doc/:id/save-template')
-  @Roles('OWNER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'ACCOUNTANT', 'SALES', 'FINANCE_MANAGER')
   saveAsTemplate(
     @Param('id') id: string,
     @Body() dto: CreateTemplateFromDocDto,
@@ -101,19 +101,19 @@ export class OtherIncomeController {
   }
 
   @Patch('templates/:id')
-  @Roles('OWNER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'ACCOUNTANT', 'SALES', 'FINANCE_MANAGER')
   updateTemplate(@Param('id') id: string, @Body() dto: UpdateTemplateDto) {
     return this.templateService.update(id, dto);
   }
 
   @Delete('templates/:id')
-  @Roles('OWNER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'ACCOUNTANT', 'SALES', 'FINANCE_MANAGER')
   deleteTemplate(@Param('id') id: string) {
     return this.templateService.softDelete(id);
   }
 
   @Post('templates/:id/use')
-  @Roles('OWNER', 'ACCOUNTANT', 'SALES')
+  @Roles('OWNER', 'ACCOUNTANT', 'SALES', 'FINANCE_MANAGER')
   useTemplate(@Param('id') id: string) {
     return this.templateService.use(id);
   }

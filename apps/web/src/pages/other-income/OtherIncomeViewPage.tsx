@@ -6,6 +6,7 @@ import { ArrowLeft, CheckCircle2, Copy, Edit, History, Printer, RotateCcw, Recei
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { ReverseModal } from './components/ReverseModal';
+import { SaveAsTemplateModal } from './components/SaveAsTemplateModal';
 import { AutoJournalPreview } from './components/AutoJournalPreview';
 import { otherIncomeApi } from '@/lib/otherIncome';
 import type { OtherIncome, OtherIncomeStatus, OtherIncomeReverseReason } from '@/lib/otherIncome.types';
@@ -135,6 +136,7 @@ export default function OtherIncomeViewPage() {
   const { user } = useAuth();
 
   const [showReverseModal, setShowReverseModal] = useState(false);
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
 
   const auditQuery = useQuery({
     queryKey: ['other-income', id, 'audit'],
@@ -170,6 +172,16 @@ export default function OtherIncomeViewPage() {
     onError: () => toast.error('ไม่สามารถคัดลอกเอกสารได้'),
   });
 
+  const saveTemplateMutation = useMutation({
+    mutationFn: (name: string) => otherIncomeApi.templates.saveAsFromDoc(id!, name),
+    onSuccess: () => {
+      toast.success('บันทึกเป็น template แล้ว');
+      setShowTemplateModal(false);
+    },
+    onError: (err: any) =>
+      toast.error(err?.response?.data?.message ?? 'บันทึก template ไม่สำเร็จ'),
+  });
+
   const canReverse =
     user?.role && REVERSE_ROLES.includes(user.role) && docQuery.data?.status === 'POSTED';
 
@@ -197,6 +209,15 @@ export default function OtherIncomeViewPage() {
                 <Copy size={14} />
                 คัดลอก
               </button>
+              {(doc.status === 'POSTED' || doc.status === 'REVERSED') && (
+                <button
+                  type="button"
+                  onClick={() => setShowTemplateModal(true)}
+                  className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium border rounded-lg hover:bg-accent"
+                >
+                  บันทึกเป็น Template
+                </button>
+              )}
               {doc.status === 'POSTED' && doc.customerId && (
                 <button
                   type="button"
@@ -547,6 +568,16 @@ export default function OtherIncomeViewPage() {
           onCancel={() => setShowReverseModal(false)}
           onConfirm={(reason, note) => reverseMutation.mutate({ reason, note })}
           isLoading={reverseMutation.isPending}
+        />
+      )}
+
+      {/* Save-as-template modal */}
+      {showTemplateModal && doc && (
+        <SaveAsTemplateModal
+          defaultName={`${doc.counterpartyName ?? 'รายได้อื่น'} — ${formatThaiDateShort(doc.issueDate)}`}
+          isLoading={saveTemplateMutation.isPending}
+          onCancel={() => setShowTemplateModal(false)}
+          onConfirm={(name) => saveTemplateMutation.mutate(name)}
         />
       )}
     </div>

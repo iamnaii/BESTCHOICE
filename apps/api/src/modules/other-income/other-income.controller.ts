@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -26,6 +27,9 @@ import { CreateOtherIncomeDto } from './dto/create-other-income.dto';
 import { UpdateOtherIncomeDto } from './dto/update-other-income.dto';
 import { PostOtherIncomeDto } from './dto/post-other-income.dto';
 import { ReverseOtherIncomeDto } from './dto/reverse-other-income.dto';
+import { RequestApprovalDto } from './dto/request-approval.dto';
+import { ApproveOtherIncomeDto } from './dto/approve-other-income.dto';
+import { RejectOtherIncomeDto } from './dto/reject-other-income.dto';
 import { ListOtherIncomeQueryDto } from './dto/list-other-income-query.dto';
 import { DailySheetQueryDto } from './dto/daily-sheet-query.dto';
 
@@ -101,6 +105,35 @@ export class OtherIncomeController {
     @CurrentUser('id') userId: string,
   ) {
     return this.service.reverse(id, dto, userId);
+  }
+
+  @Post(':id/request-approval')
+  @Roles('OWNER', 'ACCOUNTANT', 'SALES')
+  @HttpCode(200)
+  requestApproval(@Param('id', new ParseUUIDPipe()) id: string, @CurrentUser('id') userId: string) {
+    return this.service.requestApproval(id, userId);
+  }
+
+  @Post(':id/approve')
+  @Roles('OWNER')
+  @HttpCode(200)
+  approve(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: ApproveOtherIncomeDto,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.service.approve(id, dto, userId);
+  }
+
+  @Post(':id/reject')
+  @Roles('OWNER')
+  @HttpCode(200)
+  reject(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: RejectOtherIncomeDto,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.service.reject(id, dto, userId);
   }
 
   @Post(':id/copy')

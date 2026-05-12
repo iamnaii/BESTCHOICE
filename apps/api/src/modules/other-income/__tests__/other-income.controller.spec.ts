@@ -21,6 +21,7 @@ import { RolesGuard } from '../../auth/guards/roles.guard';
 import { ROLES_KEY } from '../../auth/decorators/roles.decorator';
 import { OtherIncomeController } from '../other-income.controller';
 import { OtherIncomeService } from '../other-income.service';
+import { TemplateService } from '../services/template.service';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -99,7 +100,20 @@ describe('OtherIncomeController — unit (mocked service)', () => {
 
     const module = await Test.createTestingModule({
       controllers: [OtherIncomeController],
-      providers: [{ provide: OtherIncomeService, useValue: mockService }],
+      providers: [
+        { provide: OtherIncomeService, useValue: mockService },
+        {
+          provide: TemplateService,
+          useValue: {
+            list: jest.fn().mockResolvedValue([]),
+            create: jest.fn(),
+            createFromDoc: jest.fn(),
+            update: jest.fn(),
+            softDelete: jest.fn(),
+            use: jest.fn(),
+          },
+        },
+      ],
     })
       .overrideGuard(JwtAuthGuard)
       .useValue({ canActivate: () => true })
@@ -186,7 +200,20 @@ describe('OtherIncomeController — ValidationPipe (TestingModule + http)', () =
   beforeAll(async () => {
     const module = await Test.createTestingModule({
       controllers: [OtherIncomeController],
-      providers: [{ provide: OtherIncomeService, useValue: mockService }],
+      providers: [
+        { provide: OtherIncomeService, useValue: mockService },
+        {
+          provide: TemplateService,
+          useValue: {
+            list: jest.fn().mockResolvedValue([]),
+            create: jest.fn(),
+            createFromDoc: jest.fn(),
+            update: jest.fn(),
+            softDelete: jest.fn(),
+            use: jest.fn(),
+          },
+        },
+      ],
     })
       .overrideGuard(JwtAuthGuard)
       .useValue({

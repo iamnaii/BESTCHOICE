@@ -521,3 +521,206 @@ describe('OtherIncomeService — post + reverse + copy', () => {
     expect(sheet.summary).toHaveProperty('wht');
   }, 30_000);
 });
+
+// ============================================================
+// Suite 3: post — period lock (B1)
+// ============================================================
+
+describe('OtherIncomeService — post — period lock (B1)', () => {
+  let service: OtherIncomeService;
+  let prisma: PrismaService;
+  let userId: string;
+  let financeCompanyId: string;
+
+  beforeAll(async () => {
+    const module = await Test.createTestingModule({
+      providers: [
+        OtherIncomeService,
+        DocNumberService,
+        ValidationService,
+        AutoJournalService,
+        OtherIncomeTemplate,
+        JournalAutoService,
+        PrismaService,
+        { provide: StorageService, useValue: stubStorage },
+      ],
+    }).compile();
+    await module.init();
+    service = module.get(OtherIncomeService);
+    prisma = module.get(PrismaService);
+
+    // Ensure FINANCE CompanyInfo
+    const company = await prisma.companyInfo.upsert({
+      where: { companyCode: 'FINANCE' },
+      update: {},
+      create: {
+        companyCode: 'FINANCE',
+        nameTh: 'BESTCHOICE FINANCE',
+        taxId: '0000000000001',
+        address: 'TEST',
+        directorName: 'ผู้อำนวยการ',
+        vatRegistered: true,
+      },
+    });
+    financeCompanyId = company.id;
+
+    // Ensure system user
+    await prisma.user.upsert({
+      where: { email: 'admin@bestchoice.com' },
+      update: {},
+      create: { email: 'admin@bestchoice.com', password: 'x', name: 'admin', role: 'OWNER' },
+    });
+
+    // Seed required CoA codes
+    const coaSeeds = [
+      { code: '42-1102', name: 'รายได้ดอกเบี้ยฝากธนาคาร', type: 'รายได้', normalBalance: 'Cr', category: 'รายได้อื่น' },
+      { code: '11-1201', name: 'ธนาคาร KBank', type: 'สินทรัพย์', normalBalance: 'Dr', category: 'เงินฝากธนาคาร' },
+      { code: '11-4103', name: 'ลูกหนี้ภาษีหัก ณ ที่จ่าย', type: 'สินทรัพย์', normalBalance: 'Dr', category: 'สินทรัพย์หมุนเวียน' },
+    ];
+    for (const seed of coaSeeds) {
+      await prisma.chartOfAccount.upsert({ where: { code: seed.code }, update: {}, create: seed });
+    }
+
+    const user = await prisma.user.create({
+      data: {
+        email: `oi-period-lock+${Date.now()}@bestchoice.test`,
+        password: 'x',
+        name: 'OI Period Lock Tester',
+        role: 'ACCOUNTANT',
+      },
+    });
+    userId = user.id;
+  }, 30_000);
+
+  afterAll(async () => {
+    const ois = await prisma.otherIncome.findMany({ where: { createdById: userId } });
+    const ourIds = ois.map((o) => o.id);
+    const jeIds = ois.filter((o) => o.journalEntryId).map((o) => o.journalEntryId as string);
+
+    await prisma.otherIncomeItem.deleteMany({ where: { otherIncomeId: { in: ourIds } } });
+    await prisma.otherIncomeAdjustment.deleteMany({ where: { otherIncomeId: { in: ourIds } } });
+    await prisma.otherIncome.deleteMany({ where: { createdById: userId } });
+
+    if (jeIds.length > 0) {
+      await prisma.journalLine.deleteMany({ where: { journalEntryId: { in: jeIds } } });
+      await prisma.journalEntry.deleteMany({ where: { id: { in: jeIds } } });
+    }
+
+    // Clean up accounting period rows created by this suite
+    // (2026-04 for the post() tests + today's period for the reverse() test)
+    const today = new Date();
+    await prisma.accountingPeriod.deleteMany({
+      where: {
+        companyId: financeCompanyId,
+        OR: [
+          { year: 2026, month: 4 },
+          { year: today.getFullYear(), month: today.getMonth() + 1 },
+        ],
+      },
+    });
+
+    await prisma.user.delete({ where: { id: userId } }).catch(() => {});
+    await prisma.$disconnect();
+  }, 30_000);
+
+  function createDraftOtherIncome(issueDate: string) {
+    return service.create(
+      {
+        issueDate,
+        priceType: 'EXCLUSIVE',
+        paymentAccountCode: '11-1201',
+        amountReceived: 850,
+        counterpartyName: 'KBank',
+        items: [
+          {
+            accountCode: '42-1102',
+            description: 'ดอกเบี้ยฝาก',
+            quantity: 1,
+            unitAmount: 1000,
+            vatPct: 0,
+            whtPct: 15,
+          },
+        ],
+      },
+      userId,
+    );
+  }
+
+  it('passes companyId so AccountingPeriod tier-1 check fires', async () => {
+    // Arrange: a CLOSED FINANCE AccountingPeriod for the doc's month
+    const doc = await createDraftOtherIncome('2026-04-15');
+    await prisma.accountingPeriod.upsert({
+      where: { companyId_year_month: { companyId: financeCompanyId, year: 2026, month: 4 } },
+      update: { status: 'CLOSED' },
+      create: { companyId: financeCompanyId, year: 2026, month: 4, status: 'CLOSED' },
+    });
+
+    // Act + Assert: should reject because period is CLOSED
+    await expect(service.post(doc.id, {}, userId)).rejects.toThrow(/งวดที่ปิดแล้ว/);
+
+    // Cleanup this doc (it was not posted, so no JE)
+    await prisma.otherIncomeItem.deleteMany({ where: { otherIncomeId: doc.id } });
+    await prisma.otherIncome.delete({ where: { id: doc.id } });
+  }, 30_000);
+
+  it('allows POST when period is OPEN', async () => {
+    // Arrange: ensure AccountingPeriod is OPEN for 2026-04
+    await prisma.accountingPeriod.upsert({
+      where: { companyId_year_month: { companyId: financeCompanyId, year: 2026, month: 4 } },
+      update: { status: 'OPEN' },
+      create: { companyId: financeCompanyId, year: 2026, month: 4, status: 'OPEN' },
+    });
+    const doc = await createDraftOtherIncome('2026-04-15');
+
+    const result = await service.post(doc.id, {}, userId);
+    expect(result.status).toBe('POSTED');
+  }, 30_000);
+
+  it('reverse() rejects when today\'s period is CLOSED (B1 — reverse path)', async () => {
+    // Arrange: today's year/month (reverse() uses new Date(), not original issueDate)
+    const today = new Date();
+    const todayYear = today.getFullYear();
+    const todayMonth = today.getMonth() + 1;
+
+    // Step 1: ensure today's period is OPEN so we can POST the doc first
+    await prisma.accountingPeriod.upsert({
+      where: {
+        companyId_year_month: {
+          companyId: financeCompanyId,
+          year: todayYear,
+          month: todayMonth,
+        },
+      },
+      update: { status: 'OPEN' },
+      create: {
+        companyId: financeCompanyId,
+        year: todayYear,
+        month: todayMonth,
+        status: 'OPEN',
+      },
+    });
+
+    // Step 2: create + POST a fresh doc dated today (so doc.issueDate also falls in OPEN period)
+    const issueDate = today.toISOString().slice(0, 10);
+    const draft = await createDraftOtherIncome(issueDate);
+    const posted = await service.post(draft.id, {}, userId);
+    expect(posted.status).toBe('POSTED');
+
+    // Step 3: flip today's period to CLOSED — now reverse() should reject
+    await prisma.accountingPeriod.update({
+      where: {
+        companyId_year_month: {
+          companyId: financeCompanyId,
+          year: todayYear,
+          month: todayMonth,
+        },
+      },
+      data: { status: 'CLOSED' },
+    });
+
+    // Act + Assert: reverse() must fail because today's period is CLOSED
+    await expect(
+      service.reverse(posted.id, { reason: 'INPUT_ERROR', note: 'test' }, userId),
+    ).rejects.toThrow(/งวดที่ปิดแล้ว/);
+  }, 30_000);
+});

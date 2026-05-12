@@ -147,6 +147,10 @@ const OtherIncomeEntryPage = lazy(() => import('@/pages/other-income/OtherIncome
 const OtherIncomeViewPage = lazy(() => import('@/pages/other-income/OtherIncomeViewPage'));
 const OtherIncomeReceiptPage = lazy(() => import('@/pages/other-income/OtherIncomeReceiptPage'));
 const OtherIncomeDailySheetPage = lazy(() => import('@/pages/other-income/OtherIncomeDailySheetPage'));
+const OtherIncomePendingApprovalPage = lazy(
+  () => import('@/pages/other-income/OtherIncomePendingApprovalPage'),
+);
+const OtherIncomeTemplatesPage = lazy(() => import('@/pages/other-income/OtherIncomeTemplatesPage'));
 const PeriodClosePage = lazy(() => import('@/pages/accounting/PeriodClosePage'));
 
 const PageLoader = () => (
@@ -980,7 +984,7 @@ function App() {
             }
           />
 
-          {/* รายได้อื่น (Other Income) — CRITICAL: /daily-sheet BEFORE /:id */}
+          {/* รายได้อื่น (Other Income) — CRITICAL: /daily-sheet and /templates BEFORE /:id */}
           <Route
             path="/other-income"
             element={
@@ -1002,6 +1006,22 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
                 <OtherIncomeDailySheetPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/other-income/pending-approval"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <OtherIncomePendingApprovalPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/other-income/templates"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <OtherIncomeTemplatesPage />
               </ProtectedRoute>
             }
           />

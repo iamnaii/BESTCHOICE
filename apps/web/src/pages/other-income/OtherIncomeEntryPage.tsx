@@ -1,5 +1,5 @@
 import { useMemo, useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { useNavigate, useParams, useSearchParams } from 'react-router';
 import { useForm } from 'react-hook-form';
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -30,6 +30,7 @@ import { ItemsTable } from './components/ItemsTable';
 import { AdjustmentTable } from './components/AdjustmentTable';
 import { AutoJournalPreview } from './components/AutoJournalPreview';
 import { CounterpartyPicker } from './components/CounterpartyPicker';
+import { TemplatePickerCombobox } from './components/TemplatePickerCombobox';
 
 // Fallback while config is loading; live value comes from /other-income/config/attachment-threshold
 const ATTACHMENT_THRESHOLD_FALLBACK = 50_000;
@@ -234,6 +235,7 @@ function SectionHeader({
 export default function OtherIncomeEntryPage() {
   const navigate = useNavigate();
   const { id } = useParams<{ id?: string }>();
+  const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const isEdit = !!id;
 
@@ -289,6 +291,37 @@ export default function OtherIncomeEntryPage() {
     }
   }, [loadQuery.data, isEdit, reset]);
 
+  // Template prefill — hydrate form when navigated from TemplatesPage with ?fromTemplate=1
+  const { setValue } = form;
+  useEffect(() => {
+    if (searchParams.get('fromTemplate') !== '1') return;
+    const raw = sessionStorage.getItem('oi-template-prefill');
+    if (!raw) return;
+    try {
+      const tpl = JSON.parse(raw);
+      setValue('priceType', tpl.priceType);
+      setValue(
+        'items',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        tpl.items.map((it: any, idx: number) => ({
+          accountCode: it.accountCode,
+          description: it.description ?? '',
+          quantity: it.quantity,
+          unitAmount: it.unitAmount,
+          discountAmount: it.discountAmount,
+          vatPct: it.vatPct,
+          whtPct: it.whtPct,
+          lineNo: idx + 1,
+        })),
+      );
+    } catch {
+      /* ignore malformed prefill */
+    } finally {
+      sessionStorage.removeItem('oi-template-prefill');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const saveDraftMutation = useMutation({
     mutationFn: (data: OtherIncomeFormValues) =>
       isEdit ? otherIncomeApi.update(id!, data) : otherIncomeApi.create(data),
@@ -317,6 +350,32 @@ export default function OtherIncomeEntryPage() {
       navigate(`/other-income/${doc.id}`);
     },
     onError: () => toast.error('ไม่สามารถ POST เอกสารได้'),
+  });
+
+  const flagQuery = useQuery({
+    queryKey: ['other-income-maker-checker-enabled'],
+    queryFn: () => otherIncomeApi.isMakerCheckerEnabled(),
+    staleTime: 5 * 60_000,
+  });
+  const makerCheckerEnabled = flagQuery.data ?? false;
+
+  const saveAndRequestApprovalMutation = useMutation({
+    mutationFn: async (data: OtherIncomeFormValues) => {
+      let docId = id;
+      if (!docId) {
+        const created = await otherIncomeApi.create(data);
+        docId = created.id;
+      } else {
+        await otherIncomeApi.update(docId, data);
+      }
+      return otherIncomeApi.requestApproval(docId);
+    },
+    onSuccess: (doc: any) => {
+      toast.success('บันทึกและส่งขออนุมัติแล้ว');
+      queryClient.invalidateQueries({ queryKey: ['other-income'] });
+      navigate(`/other-income/${doc.id}`);
+    },
+    onError: () => toast.error('ส่งขออนุมัติไม่สำเร็จ'),
   });
 
   const values = form.watch();
@@ -367,7 +426,10 @@ export default function OtherIncomeEntryPage() {
 
   const watchedAdjustments = form.watch('adjustments') ?? [];
 
-  const isSubmitting = saveDraftMutation.isPending || saveAndPostMutation.isPending;
+  const isSubmitting =
+    saveDraftMutation.isPending ||
+    saveAndPostMutation.isPending ||
+    saveAndRequestApprovalMutation.isPending;
 
   // Income totals across all items (for footer/summary cards)
   const incomeTotals = useMemo(() => {
@@ -608,7 +670,19 @@ export default function OtherIncomeEntryPage() {
 
           {/* Section 2 — Accounting items */}
           <section className="rounded-xl border bg-card p-5">
-            <SectionHeader num={2} title="รายการบันทึกทางบัญชี" />
+            <SectionHeader
+              num={2}
+              title="รายการบันทึกทางบัญชี"
+              action={
+                <TemplatePickerCombobox
+                  onApply={(items, priceType) => {
+                    setValue('priceType', priceType);
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    setValue('items', items.map((it: any, idx: number) => ({ ...it, lineNo: idx + 1 })));
+                  }}
+                />
+              }
+            />
             {form.formState.errors.items && typeof form.formState.errors.items.message === 'string' && (
               <p className="text-xs text-destructive mb-2">{form.formState.errors.items.message}</p>
             )}
@@ -1040,12 +1114,22 @@ export default function OtherIncomeEntryPage() {
                   toast.error('กรุณาตรวจสอบข้อมูลให้ครบถ้วน');
                   return;
                 }
-                saveAndPostMutation.mutate(result.data);
+                if (makerCheckerEnabled) {
+                  saveAndRequestApprovalMutation.mutate(result.data);
+                } else {
+                  saveAndPostMutation.mutate(result.data);
+                }
               }}
               className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-bold bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <Send size={14} />
-              {saveAndPostMutation.isPending ? 'กำลัง POST...' : 'บันทึก & POST'}
+              {saveAndRequestApprovalMutation.isPending
+                ? 'กำลังส่งขออนุมัติ...'
+                : saveAndPostMutation.isPending
+                  ? 'กำลัง POST...'
+                  : makerCheckerEnabled
+                    ? 'บันทึกและส่งขออนุมัติ'
+                    : 'บันทึก & POST'}
             </button>
           </div>
         </div>

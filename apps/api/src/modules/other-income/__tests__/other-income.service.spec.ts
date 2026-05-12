@@ -607,8 +607,16 @@ describe('OtherIncomeService — post — period lock (B1)', () => {
     }
 
     // Clean up accounting period rows created by this suite
+    // (2026-04 for the post() tests + today's period for the reverse() test)
+    const today = new Date();
     await prisma.accountingPeriod.deleteMany({
-      where: { companyId: financeCompanyId, year: 2026, month: 4 },
+      where: {
+        companyId: financeCompanyId,
+        OR: [
+          { year: 2026, month: 4 },
+          { year: today.getFullYear(), month: today.getMonth() + 1 },
+        ],
+      },
     });
 
     await prisma.user.delete({ where: { id: userId } }).catch(() => {});
@@ -666,5 +674,53 @@ describe('OtherIncomeService — post — period lock (B1)', () => {
 
     const result = await service.post(doc.id, {}, userId);
     expect(result.status).toBe('POSTED');
+  }, 30_000);
+
+  it('reverse() rejects when today\'s period is CLOSED (B1 — reverse path)', async () => {
+    // Arrange: today's year/month (reverse() uses new Date(), not original issueDate)
+    const today = new Date();
+    const todayYear = today.getFullYear();
+    const todayMonth = today.getMonth() + 1;
+
+    // Step 1: ensure today's period is OPEN so we can POST the doc first
+    await prisma.accountingPeriod.upsert({
+      where: {
+        companyId_year_month: {
+          companyId: financeCompanyId,
+          year: todayYear,
+          month: todayMonth,
+        },
+      },
+      update: { status: 'OPEN' },
+      create: {
+        companyId: financeCompanyId,
+        year: todayYear,
+        month: todayMonth,
+        status: 'OPEN',
+      },
+    });
+
+    // Step 2: create + POST a fresh doc dated today (so doc.issueDate also falls in OPEN period)
+    const issueDate = today.toISOString().slice(0, 10);
+    const draft = await createDraftOtherIncome(issueDate);
+    const posted = await service.post(draft.id, {}, userId);
+    expect(posted.status).toBe('POSTED');
+
+    // Step 3: flip today's period to CLOSED — now reverse() should reject
+    await prisma.accountingPeriod.update({
+      where: {
+        companyId_year_month: {
+          companyId: financeCompanyId,
+          year: todayYear,
+          month: todayMonth,
+        },
+      },
+      data: { status: 'CLOSED' },
+    });
+
+    // Act + Assert: reverse() must fail because today's period is CLOSED
+    await expect(
+      service.reverse(posted.id, { reason: 'INPUT_ERROR', note: 'test' }, userId),
+    ).rejects.toThrow(/งวดที่ปิดแล้ว/);
   }, 30_000);
 });

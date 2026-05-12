@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { ChevronDown } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { otherIncomeApi } from '@/lib/otherIncome';
 
 interface Props {
@@ -9,6 +9,19 @@ interface Props {
 
 export function TemplatePickerCombobox({ onApply }: Props) {
   const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
   const query = useQuery({
     queryKey: ['other-income-templates-picker'],
     queryFn: () => otherIncomeApi.templates.list(),
@@ -23,7 +36,7 @@ export function TemplatePickerCombobox({ onApply }: Props) {
   });
 
   return (
-    <div className="relative">
+    <div className="relative" ref={ref}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}

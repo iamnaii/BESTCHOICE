@@ -11,7 +11,7 @@ import { AutoJournalPreview } from './components/AutoJournalPreview';
 import { otherIncomeApi } from '@/lib/otherIncome';
 import type { OtherIncome, OtherIncomeStatus, OtherIncomeReverseReason } from '@/lib/otherIncome.types';
 import { useAuth } from '@/contexts/AuthContext';
-import { formatThaiDateLong } from '@/lib/date';
+import { formatThaiDateLong, formatThaiDateShort } from '@/lib/date';
 
 // ------------------------------------------------------------------
 // Helpers

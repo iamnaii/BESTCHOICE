@@ -461,6 +461,23 @@ export class MonthlyCloseService {
   }
 
   /**
+   * Returns all currently reopened periods (status = OPEN with reopenedAt set).
+   * Ordered by year/month descending.
+   */
+  async listReopenedPeriods() {
+    return this.prisma.accountingPeriod.findMany({
+      where: {
+        reopenedAt: { not: null },
+        status: 'OPEN',
+      },
+      include: {
+        reopenedBy: { select: { id: true, name: true } },
+      },
+      orderBy: [{ year: 'desc' }, { month: 'desc' }],
+    });
+  }
+
+  /**
    * Returns a 12-month overview for a given year.
    * Fills gaps (no DB record) with OPEN placeholders.
    */

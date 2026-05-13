@@ -13,6 +13,8 @@ import { AutoJournalService } from '../services/auto-journal.service';
 import { OtherIncomeTemplate } from '../templates/other-income.template';
 import { JournalAutoService } from '../../journal/journal-auto.service';
 import { StorageService } from '../../storage/storage.service';
+import { JournalOverrideService } from '../services/journal-override.service';
+import { AuditService } from '../../audit/audit.service';
 
 const stubStorage = {
   upload: async () => undefined,
@@ -42,6 +44,8 @@ describe('OtherIncomeService — Maker-Checker', () => {
         OtherIncomeTemplate,
         JournalAutoService,
         PrismaService,
+        JournalOverrideService,
+        AuditService,
         { provide: StorageService, useValue: stubStorage },
       ],
     }).compile();
@@ -404,4 +408,89 @@ describe('OtherIncomeService — Maker-Checker', () => {
     expect(final?.status).toBe('POSTED');
     expect(final?.journalEntryId).toBeTruthy();
   }, 30_000);
+
+  // ─────────────────────────────────────────────────────────────
+  // Override JV (V1/V2/V5) — Task 2
+  // ─────────────────────────────────────────────────────────────
+
+  describe('Override JV (V1/V2/V5)', () => {
+    let draftId: string;
+
+    beforeEach(async () => {
+      const draft = await createStandardDraft();
+      draftId = draft.id;
+    }, 30_000);
+
+    it('rejects override with fewer than 2 lines (V2)', async () => {
+      await expect(
+        service.post(draftId, {
+          override: true,
+          overrideLines: [
+            { accountCode: '11-1101', debit: 100, credit: 0 },
+          ],
+        }, makerId),
+      ).rejects.toMatchObject({
+        response: { errors: [{ rule: 'V2' }] },
+      });
+    }, 30_000);
+
+    it('rejects override with both Dr and Cr in one line (V5)', async () => {
+      await expect(
+        service.post(draftId, {
+          override: true,
+          overrideLines: [
+            { accountCode: '11-1101', debit: 50, credit: 50 },
+            { accountCode: '42-1102', debit: 0, credit: 100 },
+          ],
+        }, makerId),
+      ).rejects.toMatchObject({
+        response: { errors: [{ rule: 'V5' }] },
+      });
+    }, 30_000);
+
+    it('rejects unbalanced override (V1)', async () => {
+      await expect(
+        service.post(draftId, {
+          override: true,
+          overrideLines: [
+            { accountCode: '11-1101', debit: 100, credit: 0 },
+            { accountCode: '42-1102', debit: 0, credit: 90 },
+          ],
+        }, makerId),
+      ).rejects.toMatchObject({
+        response: { errors: [{ rule: 'V1' }] },
+      });
+    }, 30_000);
+
+    it('sets isOverridden=true and writes JV_OVERRIDDEN audit on successful override post', async () => {
+      const posted = await service.post(draftId, {
+        override: true,
+        overrideLines: [
+          { accountCode: '11-1201', debit: 1500, credit: 0 },
+          { accountCode: '42-1102', debit: 0, credit: 1500 },
+        ],
+      }, makerId);
+
+      expect(posted.isOverridden).toBe(true);
+
+      const audit = await prisma.auditLog.findFirst({
+        where: { action: 'JV_OVERRIDDEN', entityId: draftId },
+        orderBy: { createdAt: 'desc' },
+      });
+      expect(audit).toBeTruthy();
+      expect(audit!.oldValue).toMatchObject({ jvLines: expect.any(Array) }); // original auto JV
+      expect(audit!.newValue).toMatchObject({
+        jvLines: expect.any(Array),
+        diffSummary: expect.any(String),
+      });
+    }, 30_000);
+
+    it('does not write JV_OVERRIDDEN audit on non-override post', async () => {
+      await service.post(draftId, {}, makerId);
+      const audit = await prisma.auditLog.findFirst({
+        where: { action: 'JV_OVERRIDDEN', entityId: draftId },
+      });
+      expect(audit).toBeNull();
+    }, 30_000);
+  });
 });

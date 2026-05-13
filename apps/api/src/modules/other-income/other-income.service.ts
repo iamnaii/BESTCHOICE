@@ -18,6 +18,8 @@ import { PostOtherIncomeDto } from './dto/post-other-income.dto';
 import { ReverseOtherIncomeDto } from './dto/reverse-other-income.dto';
 import { ListOtherIncomeQueryDto } from './dto/list-other-income-query.dto';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
+import { JournalOverrideService, OverrideLine } from './services/journal-override.service';
+import { AuditService } from '../audit/audit.service';
 
 const D = Prisma.Decimal;
 type Decimal = Prisma.Decimal;
@@ -32,6 +34,8 @@ export class OtherIncomeService {
     private readonly autoJournal: AutoJournalService,
     private readonly template: OtherIncomeTemplate,
     private readonly storage: StorageService,
+    private readonly journalOverride: JournalOverrideService,
+    private readonly audit: AuditService,
   ) {}
 
   async create(dto: CreateOtherIncomeDto, userId: string) {
@@ -479,63 +483,55 @@ export class OtherIncomeService {
       throw new BadRequestException({ message: 'ไม่ผ่านการตรวจสอบก่อน POST', errors });
     }
 
-    // C3: validate override lines balance (Dr = Cr) before entering transaction
-    if (dto.override && dto.overrideLines && dto.overrideLines.length > 0) {
-      const totalDr = dto.overrideLines.reduce(
-        (s, l) => s.plus(new D(l.debit)),
-        new D(0),
-      );
-      const totalCr = dto.overrideLines.reduce(
-        (s, l) => s.plus(new D(l.credit)),
-        new D(0),
-      );
-      if (!totalDr.eq(totalCr)) {
-        throw new BadRequestException({
-          message: 'Validation failed',
-          errors: [
-            {
-              rule: 'V1',
-              msg: `บรรทัดที่แก้ไขเอง: Dr=${totalDr} ≠ Cr=${totalCr} — ยอดเดบิตและเครดิตต้องเท่ากัน`,
-            },
-          ],
-        });
-      }
-    }
+    // Always compute the auto baseline — needed for diff_summary when override is used
+    const autoJeLines: OverrideLine[] = this.autoJournal.generate({
+      paymentAccountCode: doc.paymentAccountCode,
+      amountReceived: new D(doc.amountReceived.toString()),
+      netReceived: new D(doc.netReceived.toString()),
+      items: doc.items.map((it) => ({
+        lineNo: it.lineNo,
+        accountCode: it.accountCode,
+        accountName: it.accountName,
+        description: it.description ?? undefined,
+        amountBeforeVat: new D(it.amountBeforeVat.toString()),
+        vatAmount: new D(it.vatAmount.toString()),
+        whtAmount: new D(it.whtAmount.toString()),
+        whtPct: new D(it.whtPct.toString()),
+      })),
+      adjustments: doc.adjustments.map((a) => ({
+        lineNo: a.lineNo,
+        accountCode: a.accountCode,
+        amount: new D(a.amount.toString()),
+        note: a.note ?? undefined,
+      })),
+    }).map((l) => ({
+      accountCode: l.accountCode,
+      debit: l.debit,
+      credit: l.credit,
+      description: l.description,
+    }));
 
-    // Generate or use override JE lines
-    let jeLines;
+    let jeLines: OverrideLine[];
+    let overrideLinesForAudit: OverrideLine[] | null = null;
+
     if (dto.override && dto.overrideLines && dto.overrideLines.length > 0) {
-      jeLines = dto.overrideLines.map((l) => ({
+      const overrideLines: OverrideLine[] = dto.overrideLines.map((l) => ({
         accountCode: l.accountCode,
         debit: new D(l.debit),
         credit: new D(l.credit),
         description: l.description,
       }));
+
+      // Throws BadRequestException with V1/V2/V5 errors
+      this.journalOverride.validate(overrideLines);
+
+      jeLines = overrideLines;
+      overrideLinesForAudit = overrideLines;
     } else {
-      jeLines = this.autoJournal.generate({
-        paymentAccountCode: doc.paymentAccountCode,
-        amountReceived: new D(doc.amountReceived.toString()),
-        netReceived: new D(doc.netReceived.toString()),
-        items: doc.items.map((it) => ({
-          lineNo: it.lineNo,
-          accountCode: it.accountCode,
-          accountName: it.accountName,
-          description: it.description ?? undefined,
-          amountBeforeVat: new D(it.amountBeforeVat.toString()),
-          vatAmount: new D(it.vatAmount.toString()),
-          whtAmount: new D(it.whtAmount.toString()),
-          whtPct: new D(it.whtPct.toString()),
-        })),
-        adjustments: doc.adjustments.map((a) => ({
-          lineNo: a.lineNo,
-          accountCode: a.accountCode,
-          amount: new D(a.amount.toString()),
-          note: a.note ?? undefined,
-        })),
-      });
+      jeLines = autoJeLines;
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const posted = await this.prisma.$transaction(async (tx) => {
       const receiptNo = await this.docNumber.nextReceiptNumber(tx, doc.issueDate);
       const now = new Date();
 
@@ -556,12 +552,42 @@ export class OtherIncomeService {
           status: OtherIncomeStatus.POSTED,
           receiptNo,
           journalEntryId: je.id,
-          isOverridden: !!(dto.override && dto.overrideLines && dto.overrideLines.length > 0),
+          isOverridden: overrideLinesForAudit !== null,
           postedAt: now,
         },
         include: { items: true, adjustments: true },
       });
     });
+
+    // Write JV_OVERRIDDEN audit outside transaction (non-blocking on TX connection)
+    if (overrideLinesForAudit) {
+      const diffSummary = this.journalOverride.computeDiffSummary(autoJeLines, overrideLinesForAudit);
+      await this.audit.log({
+        userId,
+        action: 'JV_OVERRIDDEN',
+        entity: 'other_income',
+        entityId: doc.id,
+        oldValue: {
+          jvLines: autoJeLines.map((l) => ({
+            accountCode: l.accountCode,
+            debit: l.debit.toString(),
+            credit: l.credit.toString(),
+            description: l.description ?? null,
+          })),
+        },
+        newValue: {
+          jvLines: overrideLinesForAudit.map((l) => ({
+            accountCode: l.accountCode,
+            debit: l.debit.toString(),
+            credit: l.credit.toString(),
+            description: l.description ?? null,
+          })),
+          diffSummary,
+        },
+      });
+    }
+
+    return posted;
   }
 
   // -------------------------------------------------------------------------

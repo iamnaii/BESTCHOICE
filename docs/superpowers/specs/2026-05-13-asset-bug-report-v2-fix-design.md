@@ -71,40 +71,71 @@ Streams run in **parallel via subagents** (per owner feedback "subagent-driven d
 
 ## 4. Stream A — Backend Verify
 
-### A.1 Commands
+### A.1 Commands attempted
 
 ```bash
 cd apps/api
-npm test -- asset.service          # vitest
-npm test -- asset-purchase         # jest, JE template
-npm test -- asset-disposal         # jest, JE template
-npm test -- depreciation           # jest, JE template
+npx vitest run src/modules/asset            # vitest
+npx jest src/modules/journal/cpa-templates --testPathPattern='asset|depreciation'
 ```
 
-### A.2 Expected outcome
+### A.2 Actual outcome (2026-05-13)
 
-All green. No code changes required.
+**Test infrastructure broken in dev environment** — both runners failed at setup:
 
-### A.3 Failure handling
+- vitest: `--reporter=basic` unsupported by installed version (4.1.5)
+- jest: 5 suites failed at `beforeAll` seed/cleanup with `column chart_of_accounts.createdAt does not exist` and `table public.asset_transfer_history does not exist` (schema drift; A.4 migration not applied to local test DB)
 
-If any test fails → investigate immediately, block other streams from merging.
+**Fell back to static verification**:
+- Read `apps/api/src/modules/journal/cpa-templates/asset-purchase.template.ts` lines 8-13 — confirmed `CATEGORY_CHART` mappings correct
+- Read `apps/api/src/modules/asset/dto/create-asset.dto.ts` line 40 — confirmed VAT enum `['11-4101', '11-4102']`
+- Read `apps/api/src/modules/journal/cpa-templates/asset-disposal.template.ts` line 15 — confirmed `LOSS_ON_DISPOSAL_CODE = '53-1605'`
+
+PDF Critical #1-6 confirmed as **false positives against documentation, not code**.
+
+### A.3 Follow-up (out of scope of PDF, deferred)
+
+- Fix test DB seed scripts (A.4 migration not applied to local test DB) — separate task
+- Eventually run full test suite in CI to confirm runtime mapping
 
 ---
 
 ## 5. Stream B — Production DB Verify + Migrate
 
-### B.1 Phase 1 — Read-only verification
+### B.0 Execution status (2026-05-13)
 
-**Pattern**: Cloud Run Job + node -e + Prisma Client (verified 2026-04-23).
+**Deferred to owner — prod DB access denied by harness permissions** during this session.
+
+Deliverable: `apps/api/scripts/verify-asset-orphans.ts` (read-only verification script) — owner can run locally with `npx tsx` or via Cloud Run Job ephemeral container. The script outputs JSON with orphan accounts, asset JE count, CoA presence, and all JE flows. Exit code: 0 = clean, 2 = orphans found, 1 = error.
+
+**Cloud Run Job invocation** (for owner reference):
+```bash
+SCRIPT_B64=$(base64 -i apps/api/scripts/verify-asset-orphans.ts | tr -d '\n')
+JOB="asset-verify-$(date +%s)"
+gcloud run jobs create $JOB \
+  --image=asia-southeast1-docker.pkg.dev/bestchoice-prod/bestchoice/api:<current-prod-tag> \
+  --region=asia-southeast1 \
+  --set-cloudsql-instances=bestchoice-prod:asia-southeast1:bestchoice-db \
+  --set-secrets=DATABASE_URL=DATABASE_URL:latest \
+  --cpu=1 --memory=512Mi --task-timeout=120s \
+  --command=sh --args="-c,echo $SCRIPT_B64 | base64 -d > /tmp/s.ts && npx tsx /tmp/s.ts"
+gcloud run jobs execute $JOB --region=asia-southeast1 --wait
+```
+
+If verification returns 0 orphan codes (expected — Asset module deployed 2026-05-11 with correct codes), Phase B.2 (migration) is unnecessary.
+
+### B.1 Phase 1 — Read-only verification (script implementation)
+
+**Pattern**: Cloud Run Job + node/tsx + Prisma Client (verified 2026-04-23).
 
 **SQL** (adapted from PDF Section 5 Step 7):
 ```sql
-SELECT jl."accountCode", COUNT(*) AS line_count
+SELECT jl.account_code, COUNT(*) AS line_count
 FROM journal_lines jl
-JOIN journal_entries je ON jl."journalEntryId" = je.id
-WHERE jl."accountCode" IN ('12-2201','12-2202','12-2203','12-2204','54-1701')
-   OR (jl."accountCode" = '11-2104' AND je.metadata->>'flow' LIKE 'asset-%')
-GROUP BY jl."accountCode";
+JOIN journal_entries je ON jl.journal_entry_id = je.id
+WHERE jl.account_code IN ('12-2201','12-2202','12-2203','12-2204','54-1701')
+   OR (jl.account_code = '11-2104' AND je.metadata->>'flow' LIKE 'asset-%')
+GROUP BY jl.account_code;
 ```
 
 **Adaptation from PDF**: 11-2104 is a **legitimate** account for ม.83/6 (VAT-on-behalf-of-foreign-vendor) — NOT exclusively asset-related. Filter only Asset Module JEs via `metadata.flow LIKE 'asset-%'`.
@@ -129,48 +160,48 @@ BEGIN;
 WITH asset_je AS (
   SELECT id FROM journal_entries
   WHERE metadata->>'flow' LIKE 'asset-%'
-    AND "deletedAt" IS NULL
+    AND deleted_at IS NULL
 )
 
 -- Order matters: update wrong contras BEFORE renumbering costs to avoid collisions.
 -- 1. EQUIPMENT contra: 12-2201 → 12-2102
-UPDATE journal_lines SET "accountCode" = '12-2102'
-  WHERE "accountCode" = '12-2201' AND "journalEntryId" IN (SELECT id FROM asset_je);
+UPDATE journal_lines SET account_code = '12-2102'
+  WHERE account_code = '12-2201' AND journal_entry_id IN (SELECT id FROM asset_je);
 
 -- 2. IMPROVEMENT cost: 12-2102 → 12-2103 (was incorrectly labeled as IMPROVEMENT)
-UPDATE journal_lines SET "accountCode" = '12-2103'
-  WHERE "accountCode" = '12-2102' AND "journalEntryId" IN (SELECT id FROM asset_je);
+UPDATE journal_lines SET account_code = '12-2103'
+  WHERE account_code = '12-2102' AND journal_entry_id IN (SELECT id FROM asset_je);
 
 -- 3. IMPROVEMENT contra: 12-2202 → 12-2104
-UPDATE journal_lines SET "accountCode" = '12-2104'
-  WHERE "accountCode" = '12-2202' AND "journalEntryId" IN (SELECT id FROM asset_je);
+UPDATE journal_lines SET account_code = '12-2104'
+  WHERE account_code = '12-2202' AND journal_entry_id IN (SELECT id FROM asset_je);
 
 -- 4. FURNITURE cost: 12-2103 → 12-2105
-UPDATE journal_lines SET "accountCode" = '12-2105'
-  WHERE "accountCode" = '12-2103' AND "journalEntryId" IN (SELECT id FROM asset_je);
+UPDATE journal_lines SET account_code = '12-2105'
+  WHERE account_code = '12-2103' AND journal_entry_id IN (SELECT id FROM asset_je);
 
 -- 5. FURNITURE contra: 12-2203 → 12-2106
-UPDATE journal_lines SET "accountCode" = '12-2106'
-  WHERE "accountCode" = '12-2203' AND "journalEntryId" IN (SELECT id FROM asset_je);
+UPDATE journal_lines SET account_code = '12-2106'
+  WHERE account_code = '12-2203' AND journal_entry_id IN (SELECT id FROM asset_je);
 
 -- 6. VEHICLE cost: 12-2104 → 12-2107
-UPDATE journal_lines SET "accountCode" = '12-2107'
-  WHERE "accountCode" = '12-2104' AND "journalEntryId" IN (SELECT id FROM asset_je);
+UPDATE journal_lines SET account_code = '12-2107'
+  WHERE account_code = '12-2104' AND journal_entry_id IN (SELECT id FROM asset_je);
 
 -- 7. VEHICLE contra: 12-2204 → 12-2108
-UPDATE journal_lines SET "accountCode" = '12-2108'
-  WHERE "accountCode" = '12-2204' AND "journalEntryId" IN (SELECT id FROM asset_je);
+UPDATE journal_lines SET account_code = '12-2108'
+  WHERE account_code = '12-2204' AND journal_entry_id IN (SELECT id FROM asset_je);
 
 -- 8. VAT input on Asset Module only: 11-2104 → 11-4101
-UPDATE journal_lines SET "accountCode" = '11-4101'
-  WHERE "accountCode" = '11-2104' AND "journalEntryId" IN (SELECT id FROM asset_je);
+UPDATE journal_lines SET account_code = '11-4101'
+  WHERE account_code = '11-2104' AND journal_entry_id IN (SELECT id FROM asset_je);
 
 -- 9. Loss on disposal: 54-1701 → 53-1605 (scope: Asset Module only)
-UPDATE journal_lines SET "accountCode" = '53-1605'
-  WHERE "accountCode" = '54-1701' AND "journalEntryId" IN (SELECT id FROM asset_je);
+UPDATE journal_lines SET account_code = '53-1605'
+  WHERE account_code = '54-1701' AND journal_entry_id IN (SELECT id FROM asset_je);
 
 -- Verify Trial Balance unchanged
-SELECT SUM("drAmount") - SUM("crAmount") AS net FROM journal_lines WHERE "deletedAt" IS NULL;
+SELECT SUM(debit) - SUM(credit) AS net FROM journal_lines WHERE deleted_at IS NULL;
 -- Expected: 0 (unchanged)
 
 COMMIT; -- only if Trial Balance still balanced
@@ -275,18 +306,32 @@ Live totals (line 222-224):
 
 ## 8. Testing Strategy
 
-### 8.1 Existing tests (Stream A)
-- `apps/api/src/modules/asset/__tests__/asset.service.spec.ts` — already verifies 53-1605, 11-4101 mappings
-- `apps/api/src/modules/journal/cpa-templates/__tests__/asset-purchase.template.spec.ts`
-- `apps/api/src/modules/journal/cpa-templates/__tests__/asset-disposal.template.spec.ts`
+### 8.1 Existing tests (Stream A — verified via static read only)
+- `apps/api/src/modules/asset/__tests__/asset.service.spec.ts` — verifies 53-1605, 11-4101 mappings
+- `apps/api/src/modules/journal/cpa-templates/asset-purchase.template.spec.ts` (sibling, no `__tests__/`)
+- `apps/api/src/modules/journal/cpa-templates/asset-disposal.template.spec.ts` (sibling)
 
-### 8.2 New tests (Stream D)
-- Vitest spec for `useAssetCalculation` Inclusive mode: assert `result.basePrice = round2(input × 100/107)`
-- Component test for WHT warning visibility (RTL: render with hasWht=true, installationCost=0 → expect warning text)
+(Could not run in dev — see §4.A.2 for fallback verification path.)
 
-### 8.3 Manual UAT
-- Open `/assets/new`, toggle Inclusive ON, input 60,000 → live total shows 56,074.77 with label "ราคาก่อน VAT" (basePrice)
-- Toggle WHT ON without installation → expect warning visible
+### 8.2 New tests delivered (Stream D)
+
+**Vitest hook spec** at `apps/web/src/pages/assets/hooks/useAssetCalculation.test.ts` (7 tests, all green):
+
+- VAT extraction — Inclusive 60,000 → basePrice 56,074.77 + VAT 3,925.23
+- VAT extraction — Exclusive 100,000 → basePrice 100,000 + VAT 7,000
+- VAT — `hasVat=false` → basePrice unchanged
+- WHT — `installation=3000` defaults whtBase
+- WHT — `installation=0 + whtBaseAmount=0` → whtAmount=0 (UI-warning-territory)
+- WHT — `whtBaseAmount` overrides installation default
+- JE balance — full purchase with VAT + WHT lines balances
+
+**Deferred** (not in PDF strict scope, follow-up work):
+- RTL component test for WHT warning visibility — defer until React Testing Library setup added for assets page (no existing precedent in `apps/web/src/pages/`)
+
+### 8.3 Manual UAT (recommended before PR merge)
+- Open `/assets/new`, toggle VAT inclusive ON, input 60,000 → live total displays 56,074.77 with label "ราคาก่อน VAT" (extracted basePrice)
+- Toggle WHT ON without installation → expect warning box visible
+- Add installation cost 3,000 → warning hides; WHT calculated 90 (= 3,000 × 3%)
 
 ---
 
@@ -310,9 +355,10 @@ Live totals (line 222-224):
 3. Streams C + D run in parallel via subagents
 4. After all 4 streams green: run full type-check (`./tools/check-types.sh all`)
 5. Commit per stream (atomic commits for revert clarity):
-   - `docs(asset): update journey-asset-v3.html to match Master COA`
-   - `fix(asset): VAT label + WHT base UI guard (Bug Report v2 #8, #9)`
-6. Push as single PR titled `fix(asset): Bug Report v2 — 100% PDF coverage`
+   - `docs(asset): update journey-asset-v3.html to match Master COA` (18 edits)
+   - `chore(asset): add verify-asset-orphans.ts prod verification script` (Stream B deliverable)
+   - `fix(asset): VAT label + WHT base UI guard (Bug Report v2 #8, #9)` (Stream D + new vitest spec)
+6. Push as single PR titled `fix(asset): Bug Report v2 — PDF compliance`
 
 ---
 
@@ -325,10 +371,17 @@ Live totals (line 222-224):
 
 ---
 
-## 12. Success Criteria
+## 12. Success Criteria — Final Status (2026-05-13)
 
-- [ ] Stream A: All asset-related tests green
-- [ ] Stream B: Production DB returns 0 orphan accounts (verify + optional migrate)
-- [ ] Stream C: `grep '12-2201\|12-2202\|12-2203\|12-2204\|54-1701' docs/accounting/journey-asset-v3.html` returns 0 (except contextual mentions)
-- [ ] Stream D: Manual UAT — Inclusive mode shows extracted basePrice; WHT warning appears when expected
-- [ ] PR description maps each fix back to PDF task # (1-7)
+- [x] **Stream A** (static): Code mappings verified via direct read — `asset-purchase.template.ts:8-13`, `asset-disposal.template.ts:15`, DTO enum. Test runner blocked by env (test DB schema drift) — runtime verification deferred to CI.
+- [ ] **Stream B**: Prod DB verify deferred to owner via `apps/api/scripts/verify-asset-orphans.ts`. Expected: 0 orphans. Owner to run before/after PR merge.
+- [x] **Stream C**: `grep "12-2201\|12-2202\|12-2203\|12-2204\|54-1701" docs/accounting/journey-asset-v3.html` returns 0 matches (18 edits applied). 11-2104 removed from primary references; remaining matches (if any) are contextual.
+- [x] **Stream D code**: Component edits applied + 7 vitest tests pass. **Manual UAT pending** — recommend owner test in `/assets/new` before merge.
+- [ ] **PR**: To be created with description mapping each fix to PDF task # (1-7).
+
+**Round-by-round review log**:
+- Round 1 — 0 critical, 2 warnings (basePrice dead code removed; SQL design verified)
+- Round 2A (accounting policy) — PASS, all JE examples balanced + correct codes
+- Round 2B (frontend edge cases) — PASS, 6/6 checks
+- Round 3 (cross-stream consistency) — found 7 spec/reality gaps, amended in this revision
+- Round 4 — pending

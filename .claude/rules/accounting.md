@@ -318,3 +318,13 @@ JE template: `OtherIncomeTemplate` at `apps/api/src/modules/other-income/templat
 Doc numbering: `OI-YYYYMMDD-NNNN` (advisory-lock per-day sequence)
 Lifecycle: DRAFT → POSTED → REVERSED (soft-delete via `deletedAt`)
 WHT: per-item `whtPct` field; WHT payable posts to `21-3101`
+
+### Override JV (manual JE edit before POST)
+
+`POST /other-income/:id/post` accepts optional `{ override: true, overrideLines: [...] }`. When provided:
+- Server validates V1 (Dr=Cr ±0.01), V2 (≥2 lines), V5 (Dr XOR Cr per line) via `JournalOverrideService`
+- Sets `OtherIncome.isOverridden = true`
+- Writes `AuditLog { action: 'JV_OVERRIDDEN', oldValue: { jvLines: <auto> }, newValue: { jvLines: <override>, diffSummary: <Thai> } }`
+- UI shows ✏ marker in list pages for these documents
+
+Audit `JV_OVERRIDDEN` action string — no Prisma enum (AuditLog.action is plain String).

@@ -328,3 +328,18 @@ WHT: per-item `whtPct` field; WHT payable posts to `21-3101`
 - UI shows ✏ marker in list pages for these documents
 
 Audit `JV_OVERRIDDEN` action string — no Prisma enum (AuditLog.action is plain String).
+
+### Maker-Checker toggle (Other Income)
+
+`PUT /other-income/maker-checker` (OWNER only) toggles `OTHER_INCOME_MAKER_CHECKER_ENABLED`. Emits `CONFIG_CHANGED` audit string. When turning OFF, UI shows count of READY docs from `GET /other-income/maker-checker/pending-ready-count` for awareness — they auto-approve on next post.
+
+### Reopen Period workflow
+
+`POST /expenses/periods/reopen` (OWNER only) accepts `ReopenPeriodDto { companyId, year, month, reasonType, reason, taxFiled, boardResolutionId? }`:
+- `reasonType`: enum (WRONG_ENTRY / MISSED_RECORD / AUDITOR_REQUEST / OTHER)
+- `reason`: free text, min 10 chars
+- `taxFiled`: true if ภ.พ.30 has been submitted (UI banner adds warning when true)
+
+Persists `reopenReason` (format `${reasonType}: ${reason}`) + `taxFiled` on `AccountingPeriod`. Emits `PERIOD_REOPENED` audit. `closePeriod()` emits `PERIOD_CLOSED`. Race-safe via CAS — `updateMany` with `status: 'CLOSED'` filter inside `$transaction` prevents concurrent reopen.
+
+`GET /expenses/periods/reopened` lists currently-reopened periods (status=OPEN AND reopenedAt set) for the `ReopenedPeriodBanner` shown on OtherIncomeListPage + ExpensesPage.

@@ -17,6 +17,7 @@ import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { Button } from '@/components/ui/button';
 import { formatDateShortThai, formatNumberDecimal } from '@/utils/formatters';
 import { ExpenseFormV4 } from '@/components/expense-form-v4/ExpenseFormV4';
+import { ReopenedPeriodBanner } from '@/components/accounting/ReopenedPeriodBanner';
 
 // ─── Types ───
 interface ExpenseDocument {
@@ -352,6 +353,7 @@ export default function ExpensesPage() {
 
   return (
     <div onClick={() => { setOpenMenuId(null); setShowCreateMenu(false); }} onKeyDown={(e) => { if (e.key === 'Escape') { setOpenMenuId(null); setShowCreateMenu(false); } }}>
+      <ReopenedPeriodBanner />
       {/* Compact branded header */}
       <div className="flex items-center justify-between gap-4 pb-4 mb-5 border-b border-border flex-wrap">
         <div className="flex items-center gap-3 min-w-0">

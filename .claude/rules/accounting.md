@@ -343,3 +343,21 @@ Audit `JV_OVERRIDDEN` action string — no Prisma enum (AuditLog.action is plain
 Persists `reopenReason` (format `${reasonType}: ${reason}`) + `taxFiled` on `AccountingPeriod`. Emits `PERIOD_REOPENED` audit. `closePeriod()` emits `PERIOD_CLOSED`. Race-safe via CAS — `updateMany` with `status: 'CLOSED'` filter inside `$transaction` prevents concurrent reopen.
 
 `GET /expenses/periods/reopened` lists currently-reopened periods (status=OPEN AND reopenedAt set) for the `ReopenedPeriodBanner` shown on OtherIncomeListPage + ExpensesPage.
+
+### Settings UI consolidation
+
+`/settings` is the 5-tab hub for system-wide configuration (OWNER only — non-OWNER redirected to `/`):
+- `#company` — CompanyInfo (name, address, tax ID, signer)
+- `#vat` — `VAT_RATE` + `VAT_PRICE_TYPE_DEFAULT` (exclusive/inclusive)
+- `#periods` — AccountingPeriod table (close/reopen actions, ReopenPeriodModal)
+- `#attachment` — `ATTACHMENT_REQUIRED_ABOVE_AMOUNT` + `ATTACHMENT_ALLOWED_TYPES`
+- `#users` — MakerCheckerToggle + link to `/users`
+
+URL hash sync: `/settings#vat` (etc.) is bookmarkable; back/forward respects `hashchange`.
+
+Operational settings live at dedicated routes (also OWNER-only):
+- `/settings/stickers` — StickerSettings
+- `/settings/collections` — CollectionsConfigCard
+- `/settings/general` — Banking, penalty, PDPA, payment_link (GeneralSettings pre+post)
+
+`/accounting/periods` redirects to `/settings#periods` via `window.location.replace` (preserves hash; react-router `<Navigate>` cannot set hash fragments).

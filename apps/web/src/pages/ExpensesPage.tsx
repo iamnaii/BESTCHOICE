@@ -1,6 +1,8 @@
 import { useState, useMemo } from 'react';
 import { useSearchParams, useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { usePaginationParams } from '@/hooks/usePaginationParams';
+import { PaginationBar } from '@/components/ui/PaginationBar';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -110,7 +112,7 @@ export default function ExpensesPage() {
   const branchFilter = searchParams.get('branch') || '';
   const startDate = searchParams.get('startDate') || '';
   const endDate = searchParams.get('endDate') || '';
-  const page = parseInt(searchParams.get('page') || '1');
+  const { page, size, setPage, setSize } = usePaginationParams({ defaultSize: 50 });
   const [search, setSearch] = useState(searchParams.get('search') || '');
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const debouncedSearch = useDebounce(search, 300);
@@ -124,14 +126,15 @@ export default function ExpensesPage() {
   const setFilter = (key: string, value: string) => {
     const params = new URLSearchParams(searchParams);
     if (value) params.set(key, value); else params.delete(key);
-    if (key !== 'page') params.delete('page');
+    // reset to page 1 whenever any filter changes (PDF AC-5.6)
+    params.set('page', '1');
     setSearchParams(params, { replace: true });
   };
 
   const setTab = (tab: string) => {
     const params = new URLSearchParams(searchParams);
     if (tab === 'all') params.delete('tab'); else params.set('tab', tab);
-    params.delete('page');
+    params.delete('page'); // reset pagination when switching tabs
     params.delete('status'); // tab supersedes manual status filter
     setSearchParams(params, { replace: true });
   };
@@ -167,9 +170,9 @@ export default function ExpensesPage() {
     error,
     refetch,
   } = useQuery<{ data: Expense[]; total: number }>({
-    queryKey: ['expenses', tabFilter, statusFilter, categoryFilter, branchFilter, startDate, endDate, debouncedSearch, page],
+    queryKey: ['expenses', tabFilter, statusFilter, categoryFilter, branchFilter, startDate, endDate, debouncedSearch, page, size],
     queryFn: async () => {
-      const p = new URLSearchParams({ limit: '20', page: String(page) });
+      const p = new URLSearchParams({ limit: String(size), page: String(page) });
       if (tabFilter && tabFilter !== 'all') p.set('tab', tabFilter);
       if (statusFilter) p.set('status', statusFilter);
       if (categoryFilter) p.set('category', categoryFilter);
@@ -196,7 +199,7 @@ export default function ExpensesPage() {
   const openEdit = (e: Expense) => { setEditingExpense(e); setShowForm(true); setOpenMenuId(null); };
   const handleFormSaved = () => { setShowForm(false); setEditingExpense(null); invalidateAll(); };
 
-  const totalPages = Math.ceil((expensesData?.total || 0) / 20);
+  const total = expensesData?.total ?? 0;
 
   // Tab counts derived from summary endpoint
   const totalCount = summary?.totalCount ?? 0;
@@ -445,7 +448,7 @@ export default function ExpensesPage() {
           <input
             type="text"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
             placeholder="ค้นหาเลขเอกสาร / ผู้ขาย / เลขใบกำกับ..."
             className="w-full pl-10 pr-3 py-2.5 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 outline-hidden bg-background"
           />
@@ -538,15 +541,13 @@ export default function ExpensesPage() {
       </QueryBoundary>
 
       {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between mt-4">
-          <span className="text-sm text-muted-foreground">หน้า {page} / {totalPages} (ทั้งหมด {expensesData?.total} รายการ)</span>
-          <div className="flex gap-1">
-            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setFilter('page', String(page - 1))}>ก่อนหน้า</Button>
-            <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setFilter('page', String(page + 1))}>ถัดไป</Button>
-          </div>
-        </div>
-      )}
+      <PaginationBar
+        total={total}
+        page={page}
+        size={size}
+        onPageChange={setPage}
+        onSizeChange={setSize}
+      />
 
       {/* Unified Expense Form V4 */}
       {showForm && (

@@ -1,4 +1,11 @@
-import { Injectable, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { AccountingPeriodStatus, Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -246,7 +253,7 @@ export class MonthlyCloseService {
         entity: 'accounting_period',
         entityId: existing.id,
         newValue: {
-          closedAt: new Date().toISOString(),
+          closedAt: period.closedAt?.toISOString() ?? new Date().toISOString(),
           period: `${year}-${String(month).padStart(2, '0')}`,
           forceClose: !!forceCloseReason,
         },
@@ -338,6 +345,7 @@ export class MonthlyCloseService {
     // Format compound reason string for storage
     const reopenReason = `${reasonType}: ${reason}`;
 
+    // Pre-flight checks: read current state once, validate before entering CAS loop.
     const existing = await this.prisma.accountingPeriod.findUnique({
       where: { companyId_year_month: { companyId, year, month } },
     });
@@ -369,22 +377,53 @@ export class MonthlyCloseService {
       }
     }
 
-    const period = await this.prisma.accountingPeriod.update({
-      where: { companyId_year_month: { companyId, year, month } },
-      data: {
-        status: 'OPEN',
-        reviewStartedAt: null,
-        reviewStartedById: null,
-        closedAt: null,
-        closedById: null,
-        auditIssues: Prisma.JsonNull,
-        reportSnapshot: Prisma.JsonNull,
-        reopenedAt: new Date(),
-        reopenedById: userId,
-        boardResolutionId: boardResolutionId ?? null,
-        reopenReason,
-        taxFiled,
-      },
+    // CAS via updateMany — only succeeds if the row is still CLOSED at update time.
+    // This prevents 2 concurrent OWNER requests from both passing the pre-flight
+    // check and both committing the reopen (TOCTOU race).
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.accountingPeriod.updateMany({
+        where: {
+          companyId,
+          year,
+          month,
+          status: 'CLOSED', // CAS guard — only matches if still CLOSED
+        },
+        data: {
+          status: 'OPEN',
+          reviewStartedAt: null,
+          reviewStartedById: null,
+          closedAt: null,
+          closedById: null,
+          auditIssues: Prisma.JsonNull,
+          reportSnapshot: Prisma.JsonNull,
+          reopenedAt: new Date(),
+          reopenedById: userId,
+          boardResolutionId: boardResolutionId ?? null,
+          reopenReason,
+          taxFiled,
+        },
+      });
+
+      if (result.count === 0) {
+        // CAS miss: re-read to give a precise error message.
+        const current = await tx.accountingPeriod.findUnique({
+          where: { companyId_year_month: { companyId, year, month } },
+        });
+        if (!current) {
+          throw new NotFoundException('ไม่พบงวดบัญชี');
+        }
+        if (current.status === 'OPEN') {
+          throw new BadRequestException('งวดนี้ยังเปิดอยู่ ไม่จำเป็นต้องเปิดซ้ำ');
+        }
+        throw new ConflictException(
+          `งวด ${year}-${String(month).padStart(2, '0')} ถูกแก้ไขโดยผู้ใช้คนอื่นพร้อมกัน — กรุณาลองใหม่`,
+        );
+      }
+
+      // Refetch the updated row so callers get the full record.
+      return tx.accountingPeriod.findUnique({
+        where: { companyId_year_month: { companyId, year, month } },
+      });
     });
 
     this.logger.log(
@@ -392,7 +431,8 @@ export class MonthlyCloseService {
         `(reasonType=${reasonType}, taxFiled=${taxFiled}).`,
     );
 
-    // Emit PERIOD_REOPENED audit outside DB update — best-effort, don't roll back on failure.
+    // Emit PERIOD_REOPENED audit OUTSIDE transaction — matches JV_OVERRIDDEN pattern;
+    // AuditService hash-chain is incompatible with nested $transaction.
     try {
       await this.auditService.log({
         userId,
@@ -403,8 +443,7 @@ export class MonthlyCloseService {
           reasonType,
           reason,
           taxFiled,
-          reopenReason,
-          reopenedAt: new Date().toISOString(),
+          reopenedAt: updated?.reopenedAt?.toISOString(),
           period: `${existing.year}-${String(existing.month).padStart(2, '0')}`,
           previousStatus: existing.status,
           boardResolutionId: boardResolutionId ?? null,
@@ -418,7 +457,7 @@ export class MonthlyCloseService {
       });
     }
 
-    return period as PeriodStatusResult;
+    return updated as PeriodStatusResult;
   }
 
   /**

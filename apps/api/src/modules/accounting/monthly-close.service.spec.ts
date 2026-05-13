@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { MonthlyCloseService } from './monthly-close.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
@@ -17,6 +17,7 @@ const makePrisma = () => {
       findUnique: jest.fn(),
       upsert: jest.fn(),
       update: jest.fn(),
+      updateMany: jest.fn(),
       findMany: jest.fn(),
       count: jest.fn(),
     },
@@ -438,18 +439,12 @@ describe('MonthlyCloseService', () => {
 
     it('allows reopen of a fresh CLOSED period (closedAt < 90 days ago)', async () => {
       const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
-      prisma.accountingPeriod.findUnique.mockResolvedValue({
-        ...base,
-        status: 'CLOSED',
-        closedAt: tenDaysAgo,
-        closedById: 'user-1',
-      });
-      prisma.accountingPeriod.update.mockResolvedValue({
-        ...base,
-        status: 'OPEN',
-        closedAt: null,
-        closedById: null,
-      });
+      const openPeriod = { ...base, status: 'OPEN', closedAt: null, closedById: null };
+      // First call: pre-flight read (CLOSED). Second call: refetch inside $transaction (OPEN).
+      prisma.accountingPeriod.findUnique
+        .mockResolvedValueOnce({ ...base, status: 'CLOSED', closedAt: tenDaysAgo, closedById: 'user-1' })
+        .mockResolvedValueOnce(openPeriod);
+      prisma.accountingPeriod.updateMany.mockResolvedValue({ count: 1 });
 
       const result = await service.reopenPeriod(
         {
@@ -465,7 +460,11 @@ describe('MonthlyCloseService', () => {
       );
 
       expect(result.status).toBe('OPEN');
-      expect(prisma.accountingPeriod.update).toHaveBeenCalled();
+      expect(prisma.accountingPeriod.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ status: 'CLOSED' }),
+        }),
+      );
     });
 
     it('blocks reopen of a stale CLOSED period (closedAt > 90 days ago) without boardResolutionId', async () => {
@@ -491,23 +490,16 @@ describe('MonthlyCloseService', () => {
           'user-OWNER-1',
         ),
       ).rejects.toThrow(ForbiddenException);
-      expect(prisma.accountingPeriod.update).not.toHaveBeenCalled();
+      expect(prisma.accountingPeriod.updateMany).not.toHaveBeenCalled();
     });
 
     it('allows reopen of a stale CLOSED period when boardResolutionId is supplied', async () => {
       const hundredDaysAgo = new Date(Date.now() - 100 * 24 * 60 * 60 * 1000);
-      prisma.accountingPeriod.findUnique.mockResolvedValue({
-        ...base,
-        status: 'CLOSED',
-        closedAt: hundredDaysAgo,
-        closedById: 'user-1',
-      });
-      prisma.accountingPeriod.update.mockResolvedValue({
-        ...base,
-        status: 'OPEN',
-        closedAt: null,
-        closedById: null,
-      });
+      const openPeriod = { ...base, status: 'OPEN', closedAt: null, closedById: null };
+      prisma.accountingPeriod.findUnique
+        .mockResolvedValueOnce({ ...base, status: 'CLOSED', closedAt: hundredDaysAgo, closedById: 'user-1' })
+        .mockResolvedValueOnce(openPeriod);
+      prisma.accountingPeriod.updateMany.mockResolvedValue({ count: 1 });
 
       const result = await service.reopenPeriod(
         {
@@ -523,7 +515,7 @@ describe('MonthlyCloseService', () => {
       );
 
       expect(result.status).toBe('OPEN');
-      expect(prisma.accountingPeriod.update).toHaveBeenCalled();
+      expect(prisma.accountingPeriod.updateMany).toHaveBeenCalled();
     });
 
     // F-6-004 — persists audit fields + creates AuditLog
@@ -537,13 +529,19 @@ describe('MonthlyCloseService', () => {
         closedAt: new Date(),
         closedById: 'user-CLOSER',
       };
-      prisma.accountingPeriod.findUnique.mockResolvedValue(period);
-      prisma.accountingPeriod.update.mockResolvedValue({
+      const openPeriod = {
         ...period,
         status: 'OPEN',
         closedAt: null,
         closedById: null,
-      });
+        reopenedAt: new Date(),
+        reopenedById: 'user-OWNER-1',
+      };
+      // Pre-flight findUnique returns CLOSED; refetch inside $transaction returns OPEN.
+      prisma.accountingPeriod.findUnique
+        .mockResolvedValueOnce(period)
+        .mockResolvedValueOnce(openPeriod);
+      prisma.accountingPeriod.updateMany.mockResolvedValue({ count: 1 });
 
       await service.reopenPeriod(
         {
@@ -558,9 +556,15 @@ describe('MonthlyCloseService', () => {
         'user-OWNER-1',
       );
 
-      // Verify period update includes new audit fields + reason metadata
-      expect(prisma.accountingPeriod.update).toHaveBeenCalledWith(
+      // Verify CAS updateMany includes audit fields + reason metadata
+      expect(prisma.accountingPeriod.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
+          where: expect.objectContaining({
+            status: 'CLOSED',
+            companyId: 'company-1',
+            year: 2026,
+            month: 3,
+          }),
           data: expect.objectContaining({
             status: 'OPEN',
             reopenedAt: expect.any(Date),
@@ -587,6 +591,74 @@ describe('MonthlyCloseService', () => {
           }),
         }),
       );
+    });
+
+    // CAS race condition tests — TOCTOU guard
+    it('throws BadRequestException when concurrent reopen already succeeded (period now OPEN after CAS miss)', async () => {
+      const period = {
+        ...base,
+        id: 'period-cas-1',
+        year: 2026,
+        month: 5,
+        status: 'CLOSED',
+        closedAt: new Date(),
+        closedById: 'user-CLOSER',
+      };
+      // Pre-flight returns CLOSED, but updateMany finds no matching CLOSED row (race won by other request).
+      // Re-read inside tx shows the period is now OPEN (other request already reopened it).
+      const openAfterRace = { ...period, status: 'OPEN', closedAt: null };
+      prisma.accountingPeriod.findUnique
+        .mockResolvedValueOnce(period)       // pre-flight
+        .mockResolvedValueOnce(openAfterRace); // re-read inside tx after CAS miss
+      prisma.accountingPeriod.updateMany.mockResolvedValue({ count: 0 }); // CAS miss
+
+      await expect(
+        service.reopenPeriod(
+          {
+            companyId: 'company-1',
+            year: 2026,
+            month: 5,
+            boardResolutionId: 'BR-RACE-1',
+            reasonType: ReopenReasonType.WRONG_ENTRY,
+            reason: reasonText,
+            taxFiled: false,
+          },
+          'user-OWNER-2',
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('throws ConflictException when CAS misses and period is in an unexpected state', async () => {
+      const period = {
+        ...base,
+        id: 'period-cas-2',
+        year: 2026,
+        month: 6,
+        status: 'CLOSED',
+        closedAt: new Date(),
+        closedById: 'user-CLOSER',
+      };
+      // Pre-flight returns CLOSED, CAS misses, re-read shows REVIEW (unexpected intermediate state).
+      const reviewAfterRace = { ...period, status: 'REVIEW' };
+      prisma.accountingPeriod.findUnique
+        .mockResolvedValueOnce(period)          // pre-flight
+        .mockResolvedValueOnce(reviewAfterRace); // re-read inside tx after CAS miss
+      prisma.accountingPeriod.updateMany.mockResolvedValue({ count: 0 }); // CAS miss
+
+      await expect(
+        service.reopenPeriod(
+          {
+            companyId: 'company-1',
+            year: 2026,
+            month: 6,
+            boardResolutionId: 'BR-RACE-2',
+            reasonType: ReopenReasonType.WRONG_ENTRY,
+            reason: reasonText,
+            taxFiled: false,
+          },
+          'user-OWNER-2',
+        ),
+      ).rejects.toThrow(ConflictException);
     });
   });
 

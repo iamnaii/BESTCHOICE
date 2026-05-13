@@ -13,12 +13,13 @@ export class ReopenPeriodDto {
   companyId!: string;
 
   @IsInt({ message: 'ปีต้องเป็นจำนวนเต็ม' })
-  @Min(2020)
+  @Min(2020, { message: 'ปีต้องไม่ต่ำกว่า 2020' })
+  @Max(2100, { message: 'ปีต้องไม่เกิน 2100' })
   year!: number;
 
-  @IsInt({ message: 'เดือนต้องเป็น 1-12' })
-  @Min(1)
-  @Max(12)
+  @IsInt({ message: 'เดือนต้องเป็นจำนวนเต็ม' })
+  @Min(1, { message: 'เดือนต้องอยู่ระหว่าง 1-12' })
+  @Max(12, { message: 'เดือนต้องอยู่ระหว่าง 1-12' })
   month!: number;
 
   /**

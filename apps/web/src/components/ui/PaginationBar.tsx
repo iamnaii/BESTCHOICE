@@ -57,7 +57,7 @@ export function PaginationBar({
         {pagesAround(page, totalPages).map((p) => (
           <Button
             key={p}
-            variant={p === page ? 'default' : 'ghost'}
+            variant={p === page ? 'primary' : 'ghost'}
             size="sm"
             onClick={() => onPageChange(p)}
             aria-current={p === page ? 'page' : undefined}

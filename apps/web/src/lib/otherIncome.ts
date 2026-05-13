@@ -17,6 +17,7 @@ export interface ListQuery {
   q?: string;
   page?: number;
   limit?: number;
+  sort?: string;
 }
 
 export const otherIncomeApi = {

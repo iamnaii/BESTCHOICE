@@ -926,6 +926,22 @@ export class OtherIncomeService {
     const limit = query.limit ?? 50;
     const skip = (page - 1) * limit;
 
+    // Parse sort expression — supports `<field>:asc` / `<field>:desc`
+    // Allowed fields: createdAt, issueDate (default). Unknown fields fall back to issueDate:desc.
+    const ALLOWED_SORT_FIELDS = ['createdAt', 'issueDate'] as const;
+    type SortField = (typeof ALLOWED_SORT_FIELDS)[number];
+    let sortField: SortField = 'issueDate';
+    let sortDir: 'asc' | 'desc' = 'desc';
+    if (query.sort) {
+      const [rawField, rawDir] = query.sort.split(':');
+      if (ALLOWED_SORT_FIELDS.includes(rawField as SortField)) {
+        sortField = rawField as SortField;
+      }
+      if (rawDir === 'asc' || rawDir === 'desc') {
+        sortDir = rawDir;
+      }
+    }
+
     const where: Prisma.OtherIncomeWhereInput = {
       deletedAt: null,
       ...(query.status ? { status: query.status } : {}),
@@ -952,7 +968,7 @@ export class OtherIncomeService {
       this.prisma.otherIncome.findMany({
         where,
         include: { items: { orderBy: { lineNo: 'asc' } } },
-        orderBy: { issueDate: 'desc' },
+        orderBy: { [sortField]: sortDir },
         skip,
         take: limit,
       }),

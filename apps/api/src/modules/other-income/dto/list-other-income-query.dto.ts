@@ -31,4 +31,13 @@ export class ListOtherIncomeQueryDto {
   @Min(1)
   @Max(200)
   limit?: number = 50;
+
+  /**
+   * Sort expression in the form `<field>:<asc|desc>`.
+   * Supported fields: createdAt, issueDate.
+   * Defaults to `issueDate:desc`.
+   */
+  @IsOptional()
+  @IsString()
+  sort?: string;
 }

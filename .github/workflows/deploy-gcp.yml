@@ -281,6 +281,8 @@ jobs:
           LIFF_CHANNEL_ID=2009442540,\
           SMS_PAYMENT_REMINDER_DISABLED=true,\
           FB_BOT_DISABLED=true,\
+          LINE_FINANCE_BOT_DISABLED=true,\
+          LINE_SHOP_BOT_DISABLED=true,\
           GOOGLE_CLOUD_PROJECT=${{ secrets.GCP_PROJECT_ID }},\
           VERTEX_LOCATION=us-central1,\
           VERTEX_EMBEDDING_MODEL=text-multilingual-embedding-002" \

@@ -10,6 +10,7 @@ import {
   Logger,
   HttpCode,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import * as Sentry from '@sentry/nestjs';
 import { ApiTags } from '@nestjs/swagger';
 import { Request } from 'express';
@@ -58,6 +59,7 @@ export class LineOaChatbotController {
     private storageService: StorageService,
     private webhookDedupService: WebhookDedupService,
     private messageRouter: MessageRouterService,
+    private configService: ConfigService,
   ) {}
 
   // ─── LINE Webhook ─────────────────────────────────────
@@ -98,6 +100,11 @@ export class LineOaChatbotController {
   }
 
   private async processEvent(event: LineWebhookBody['events'][number]): Promise<void> {
+    // Owner-controlled kill switch — drop all events without reply when paused
+    if (this.configService.get<string>('LINE_SHOP_BOT_DISABLED') === 'true') {
+      return;
+    }
+
     switch (event.type) {
       case 'message': {
         const msgEvent = event as LineMessageEvent;

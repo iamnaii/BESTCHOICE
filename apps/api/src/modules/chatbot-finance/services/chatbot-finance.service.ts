@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { MessageRole } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import {
@@ -45,6 +46,7 @@ export class ChatbotFinanceService {
     private handoff: HandoffService,
     private slipProcessing: SlipProcessingService,
     private feedback: FeedbackService,
+    private configService: ConfigService,
   ) {}
 
   /** Flex card สำหรับ prompt ยืนยันตัวตน — ปุ่มเปิด LINE Login OAuth */
@@ -120,6 +122,11 @@ export class ChatbotFinanceService {
   }
 
   async handleEvent(event: LineFinanceWebhookEvent): Promise<void> {
+    // Owner-controlled kill switch — drop all events without reply when paused
+    if (this.configService.get<string>('LINE_FINANCE_BOT_DISABLED') === 'true') {
+      return;
+    }
+
     if (event.source.type === 'group' && event.source.groupId) {
       this.logger.log(`📌 GROUP EVENT — groupId: ${event.source.groupId}`);
     }

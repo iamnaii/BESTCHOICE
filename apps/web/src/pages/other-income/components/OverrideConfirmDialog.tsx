@@ -21,7 +21,7 @@ export function OverrideConfirmDialog({ open, onConfirm, onCancel }: Props) {
     <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-amber-600">
+          <DialogTitle className="flex items-center gap-2 text-destructive">
             <AlertTriangle className="w-5 h-5" />
             คุณกำลังจะแก้ไข Auto Journal ด้วยตนเอง
           </DialogTitle>
@@ -34,10 +34,16 @@ export function OverrideConfirmDialog({ open, onConfirm, onCancel }: Props) {
             <li>เอกสารจะมีเครื่องหมาย ✏ Modified ในรายการ</li>
           </ul>
 
-          <label className="flex items-start gap-2 pt-2 cursor-pointer">
-            <Checkbox checked={acknowledged} onCheckedChange={(v) => setAcknowledged(Boolean(v))} />
-            <span className="text-sm">ฉันเข้าใจและรับผิดชอบความถูกต้อง</span>
-          </label>
+          <div className="flex items-start gap-2 pt-2">
+            <Checkbox
+              id="override-ack-checkbox"
+              checked={acknowledged}
+              onCheckedChange={(v) => setAcknowledged(Boolean(v))}
+            />
+            <label htmlFor="override-ack-checkbox" className="text-sm cursor-pointer">
+              ฉันเข้าใจและรับผิดชอบความถูกต้อง
+            </label>
+          </div>
         </div>
 
         <DialogFooter>

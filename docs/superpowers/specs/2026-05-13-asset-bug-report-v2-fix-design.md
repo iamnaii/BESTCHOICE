@@ -1,0 +1,334 @@
+# Asset Module — Bug Report v2 Fix (100% PDF Coverage)
+
+**Date**: 2026-05-13
+**Status**: Design — pending implementation
+**Scope**: Fix all 7 tasks listed in `BugReport_Asset_v2.pdf` Section 5
+**References**:
+- `BugReport_Asset_v2.pdf` (provided by accountant 2026-05-13)
+- `Handover.pdf` v3.5 (master spec)
+- `MasterCOA_AssetModule_v1.pdf` (99-account FINANCE chart)
+
+---
+
+## 1. Context
+
+Accountant ตรวจสอบ Asset Acquisition Module deployed 2026-05-11 (PR #806) เทียบกับ Master COA Reference v1.0 และพบ:
+- **6 Critical bugs** เกี่ยวกับ chart-of-accounts mapping
+- **3 Important issues** UX/documentation
+
+**ข้อค้นพบจากการตรวจ codebase 2026-05-13:** Critical #1-6 ทั้งหมด **ถูกต้องในโค้ดแล้ว** (`asset-purchase.template.ts`, `asset-disposal.template.ts`, `depreciation.template.ts`). Bug รายงานน่าจะมาจาก companion HTML doc (`docs/accounting/journey-asset-v3.html`) ที่ยังมีรหัสบัญชีเก่า — ไม่ใช่ live code.
+
+อย่างไรก็ตาม owner กำหนด **"ทำทั้งหมดที่เกี่ยวกับ PDF 100%"** — รวม production DB verify, doc update, frontend fixes.
+
+---
+
+## 2. Scope (7 Tasks per PDF Section 5)
+
+| # | PDF Task | Stream | Status |
+|---|---------|--------|--------|
+| 1 | Migrate COA in DB | B | Verify + migrate if needed |
+| 2 | Refactor category mapping | A | ✓ Already correct |
+| 3 | Run validation script | B | Read-only SELECT |
+| 4 | Re-test JE templates | A | Run existing test suites |
+| 5 | Update PDF documentation | C | Edit journey-asset-v3.html |
+| 6 | Add UI guard for WHT base (= Important issue #8) | D | Frontend fix |
+| 7 | Fix "ราคาก่อน VAT" label in Inclusive mode (= Important issue #9) | D | Frontend fix |
+
+**Note on numbering**: PDF uses TWO numbering schemes — Section 1 lists 9 numbered issues (Critical 1-6, Important 7-9), Section 5 lists 7 numbered tasks. This doc uses **Important issue numbers (#8, #9)** when referring to the WHT/VAT fixes (matching PDF Section 4 detail headings).
+
+---
+
+## 3. Architecture (4 Parallel Streams)
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Stream A — Backend Verify (5 min)                      │
+│  cd apps/api && npm test -- asset                       │
+│  → Confirms category mapping correct, no code change    │
+├─────────────────────────────────────────────────────────┤
+│  Stream B — Prod DB Verify + Migrate (15-30 min)        │
+│  Cloud Run Job (ephemeral, node -e + Prisma)            │
+│  Phase B.1: Read-only SELECT for orphan accounts        │
+│  Phase B.2 (conditional): pg_dump + UPDATE/DELETE       │
+├─────────────────────────────────────────────────────────┤
+│  Stream C — Update journey-asset-v3.html (15 min)       │
+│  ~16 sed-style replacements                             │
+│  12-2201/02/03/04 → 12-2102/04/06/08                    │
+│  11-2104 → 11-4101                                       │
+│  54-1701 → 53-1605                                       │
+├─────────────────────────────────────────────────────────┤
+│  Stream D — Frontend Fixes (10 min)                     │
+│  apps/web/src/pages/assets/components/                  │
+│    AssetEntrySection2Cost.tsx                           │
+│  Fix #9: VAT label dynamic (inclusive/exclusive)        │
+│  Fix #8: WHT base warning when no installation cost     │
+└─────────────────────────────────────────────────────────┘
+```
+
+Streams run in **parallel via subagents** (per owner feedback "subagent-driven dev works well").
+
+---
+
+## 4. Stream A — Backend Verify
+
+### A.1 Commands
+
+```bash
+cd apps/api
+npm test -- asset.service          # vitest
+npm test -- asset-purchase         # jest, JE template
+npm test -- asset-disposal         # jest, JE template
+npm test -- depreciation           # jest, JE template
+```
+
+### A.2 Expected outcome
+
+All green. No code changes required.
+
+### A.3 Failure handling
+
+If any test fails → investigate immediately, block other streams from merging.
+
+---
+
+## 5. Stream B — Production DB Verify + Migrate
+
+### B.1 Phase 1 — Read-only verification
+
+**Pattern**: Cloud Run Job + node -e + Prisma Client (verified 2026-04-23).
+
+**SQL** (adapted from PDF Section 5 Step 7):
+```sql
+SELECT jl."accountCode", COUNT(*) AS line_count
+FROM journal_lines jl
+JOIN journal_entries je ON jl."journalEntryId" = je.id
+WHERE jl."accountCode" IN ('12-2201','12-2202','12-2203','12-2204','54-1701')
+   OR (jl."accountCode" = '11-2104' AND je.metadata->>'flow' LIKE 'asset-%')
+GROUP BY jl."accountCode";
+```
+
+**Adaptation from PDF**: 11-2104 is a **legitimate** account for ม.83/6 (VAT-on-behalf-of-foreign-vendor) — NOT exclusively asset-related. Filter only Asset Module JEs via `metadata.flow LIKE 'asset-%'`.
+
+**Expected result**: 0 rows (since Asset module deployed 2026-05-11 with correct codes; no legacy data).
+
+### B.2 Phase 2 — Migration (conditional)
+
+**Trigger**: Only if Phase 1 returns ≥1 row.
+
+**Pre-flight**:
+1. `pg_dump` snapshot of journal_lines + journal_entries + chart_of_accounts
+2. Capture Trial Balance totals BEFORE migration (Dr/Cr sum)
+3. Get explicit owner confirmation showing exact records to be updated
+
+**Migration SQL** (adapted from PDF — all 8 account remaps, scoped to Asset Module JEs):
+
+```sql
+BEGIN;
+
+-- Helper CTE: Asset Module journal entry IDs
+WITH asset_je AS (
+  SELECT id FROM journal_entries
+  WHERE metadata->>'flow' LIKE 'asset-%'
+    AND "deletedAt" IS NULL
+)
+
+-- Order matters: update wrong contras BEFORE renumbering costs to avoid collisions.
+-- 1. EQUIPMENT contra: 12-2201 → 12-2102
+UPDATE journal_lines SET "accountCode" = '12-2102'
+  WHERE "accountCode" = '12-2201' AND "journalEntryId" IN (SELECT id FROM asset_je);
+
+-- 2. IMPROVEMENT cost: 12-2102 → 12-2103 (was incorrectly labeled as IMPROVEMENT)
+UPDATE journal_lines SET "accountCode" = '12-2103'
+  WHERE "accountCode" = '12-2102' AND "journalEntryId" IN (SELECT id FROM asset_je);
+
+-- 3. IMPROVEMENT contra: 12-2202 → 12-2104
+UPDATE journal_lines SET "accountCode" = '12-2104'
+  WHERE "accountCode" = '12-2202' AND "journalEntryId" IN (SELECT id FROM asset_je);
+
+-- 4. FURNITURE cost: 12-2103 → 12-2105
+UPDATE journal_lines SET "accountCode" = '12-2105'
+  WHERE "accountCode" = '12-2103' AND "journalEntryId" IN (SELECT id FROM asset_je);
+
+-- 5. FURNITURE contra: 12-2203 → 12-2106
+UPDATE journal_lines SET "accountCode" = '12-2106'
+  WHERE "accountCode" = '12-2203' AND "journalEntryId" IN (SELECT id FROM asset_je);
+
+-- 6. VEHICLE cost: 12-2104 → 12-2107
+UPDATE journal_lines SET "accountCode" = '12-2107'
+  WHERE "accountCode" = '12-2104' AND "journalEntryId" IN (SELECT id FROM asset_je);
+
+-- 7. VEHICLE contra: 12-2204 → 12-2108
+UPDATE journal_lines SET "accountCode" = '12-2108'
+  WHERE "accountCode" = '12-2204' AND "journalEntryId" IN (SELECT id FROM asset_je);
+
+-- 8. VAT input on Asset Module only: 11-2104 → 11-4101
+UPDATE journal_lines SET "accountCode" = '11-4101'
+  WHERE "accountCode" = '11-2104' AND "journalEntryId" IN (SELECT id FROM asset_je);
+
+-- 9. Loss on disposal: 54-1701 → 53-1605 (scope: Asset Module only)
+UPDATE journal_lines SET "accountCode" = '53-1605'
+  WHERE "accountCode" = '54-1701' AND "journalEntryId" IN (SELECT id FROM asset_je);
+
+-- Verify Trial Balance unchanged
+SELECT SUM("drAmount") - SUM("crAmount") AS net FROM journal_lines WHERE "deletedAt" IS NULL;
+-- Expected: 0 (unchanged)
+
+COMMIT; -- only if Trial Balance still balanced
+```
+
+**Important caveats**:
+- Do NOT delete `11-2104` from `chart_of_accounts` — used by ม.83/6 flow (other modules).
+- The UPDATE order is critical when both source and target codes exist in the same dataset (e.g., 12-2102 means both "EQUIPMENT contra" in new schema and "IMPROVEMENT cost" in old). Updating EQUIPMENT contra first (12-2201 → 12-2102) clears the way before renaming IMPROVEMENT cost (12-2102 → 12-2103). This is why the order in the SQL above is strict.
+- All UPDATE statements scope by `metadata->>'flow' LIKE 'asset-%'` to avoid touching non-Asset journal lines.
+
+### B.3 Verification
+
+Re-run Phase 1 SELECT → expect 0 rows.
+
+---
+
+## 6. Stream C — Update `journey-asset-v3.html`
+
+### C.1 File
+
+`/Users/iamnaii/Desktop/App/BESTCHOICE/docs/accounting/journey-asset-v3.html` (77KB, ~877 lines)
+
+### C.2 Replacements (≥16 occurrences)
+
+| Line(s) | Old | New |
+|--------|-----|-----|
+| 139 | `Dr 11-2104 (ลูกหนี้-VAT)` | `Dr 11-4101 (ภาษีซื้อ)` |
+| 186 | `12-2201` (EQUIPMENT contra) | `12-2102` |
+| 187 | `12-2202` IMPROVEMENT contra; text mentions `12-2102` | contra `12-2104`; text mentions `12-2103` |
+| 188 | `12-2203` FURNITURE contra; text mentions `12-2103` | contra `12-2106`; text mentions `12-2105` |
+| 189 | `12-2204` VEHICLE contra; text mentions `12-2104` | contra `12-2108`; text mentions `12-2107` |
+| 191-194 | Expense pairings referencing wrong contras | Update to paired contra codes |
+| 426, 501, 518, 762 | `12-2201` in JE examples | `12-2102` |
+| 519, 658 | `54-1701` | `53-1605` |
+| 646 | Sum `12-2201 + 12-2202 + 12-2203 + 12-2204` | `12-2102 + 12-2104 + 12-2106 + 12-2108` |
+
+### C.3 Verification
+
+```bash
+grep -n "12-2201\|12-2202\|12-2203\|12-2204\|11-2104\|54-1701" docs/accounting/journey-asset-v3.html
+```
+Expected: 0 matches (or only contextual matches like "เปลี่ยนจาก 11-2104 เป็น 11-4101").
+
+---
+
+## 7. Stream D — Frontend Fixes
+
+### D.1 File
+
+`apps/web/src/pages/assets/components/AssetEntrySection2Cost.tsx`
+
+### D.2 Fix #9 — "ราคาก่อน VAT" label in Inclusive mode
+
+**Bug**: In Inclusive mode, user types 60,000 (including VAT). UI shows label "ราคาก่อน VAT" but value displayed = 60,000 (user input), not the extracted 56,074.77.
+
+**Root cause**:
+- Line 47 input label hardcoded "ราคาก่อน VAT *"
+- Line 222 live totals label "ราคาก่อน VAT" with `{fmt(basePrice)}` (form-watched user input)
+
+**Fix**:
+
+Input label (line 47):
+```tsx
+<Label>{vatInclusive && hasVat ? 'ราคาที่กรอก (รวม VAT)' : 'ราคาก่อน VAT'} *</Label>
+```
+
+Live totals (line 222-224):
+```tsx
+<div className="flex items-center gap-1.5 text-muted-foreground">
+  <Coins className="size-3.5" />
+  ราคาก่อน VAT
+</div>
+<div className="text-xl font-semibold tabular-nums">{fmt(calc.basePrice)}</div>
+```
+(Changed `{fmt(basePrice)}` → `{fmt(calc.basePrice)}` — `useAssetCalculation` already returns extracted ex-VAT amount.)
+
+### D.3 Fix #8 — WHT base UI guard
+
+**Bug**: When user toggles `hasWht=true` but installationCost = 0 and whtBaseAmount is empty, WHT silently computes to 0. User assumes WHT is being deducted but it's not.
+
+**Fix**: Add warning UI inside WHT block when both inputs are zero/empty.
+
+```tsx
+{hasWht && (
+  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 ml-6">
+    {/* ... existing inputs ... */}
+  </div>
+)}
+{hasWht && (Number(whtBaseAmount) || 0) === 0 && (Number(installationCost) || 0) === 0 && (
+  <div className="ml-6 rounded-md border border-warning/30 bg-warning/5 p-3 text-sm">
+    <p className="font-medium text-warning">⚠ ไม่มีฐานคำนวณ WHT</p>
+    <p className="mt-1 text-muted-foreground">
+      ไม่มีค่าติดตั้งและไม่ระบุฐาน WHT → ระบบจะไม่หัก WHT (= 0). WHT หักเฉพาะค่าบริการตาม ทป.4/2528 — ถ้าซื้อสินค้าอย่างเดียวให้ปิด toggle WHT
+    </p>
+  </div>
+)}
+```
+
+(Watch `installationCost` and `whtBaseAmount` via `useFormContext`.)
+
+---
+
+## 8. Testing Strategy
+
+### 8.1 Existing tests (Stream A)
+- `apps/api/src/modules/asset/__tests__/asset.service.spec.ts` — already verifies 53-1605, 11-4101 mappings
+- `apps/api/src/modules/journal/cpa-templates/__tests__/asset-purchase.template.spec.ts`
+- `apps/api/src/modules/journal/cpa-templates/__tests__/asset-disposal.template.spec.ts`
+
+### 8.2 New tests (Stream D)
+- Vitest spec for `useAssetCalculation` Inclusive mode: assert `result.basePrice = round2(input × 100/107)`
+- Component test for WHT warning visibility (RTL: render with hasWht=true, installationCost=0 → expect warning text)
+
+### 8.3 Manual UAT
+- Open `/assets/new`, toggle Inclusive ON, input 60,000 → live total shows 56,074.77 with label "ราคาก่อน VAT" (basePrice)
+- Toggle WHT ON without installation → expect warning visible
+
+---
+
+## 9. Error Handling
+
+### 9.1 Stream B (DB)
+- If `pg_dump` fails → abort, do not proceed to UPDATE
+- If Trial Balance differs after migration → ROLLBACK, alert owner
+- If owner declines migration approval → exit with verify-only state
+
+### 9.2 Streams C, D
+- Standard error handling: if test fails, fix-forward
+- No data migration risk (HTML edits + frontend TSX)
+
+---
+
+## 10. Deployment Plan
+
+1. Stream A finishes first (test suite ~5 min) — confirm baseline green
+2. Stream B Phase 1 (read-only) finishes — confirm no orphans (likely path)
+3. Streams C + D run in parallel via subagents
+4. After all 4 streams green: run full type-check (`./tools/check-types.sh all`)
+5. Commit per stream (atomic commits for revert clarity):
+   - `docs(asset): update journey-asset-v3.html to match Master COA`
+   - `fix(asset): VAT label + WHT base UI guard (Bug Report v2 #8, #9)`
+6. Push as single PR titled `fix(asset): Bug Report v2 — 100% PDF coverage`
+
+---
+
+## 11. Out of Scope
+
+- ❌ Migrate the older `journey-asset-module.html` (v2, May 9) — superseded by v3
+- ❌ Update Handover.pdf v3.5 — it's already correct (has §0 Master COA Enforcement)
+- ❌ Re-architecting category → COA pinning (already done in Fix #1.2)
+- ❌ Adding new asset categories (out of bug report scope)
+
+---
+
+## 12. Success Criteria
+
+- [ ] Stream A: All asset-related tests green
+- [ ] Stream B: Production DB returns 0 orphan accounts (verify + optional migrate)
+- [ ] Stream C: `grep '12-2201\|12-2202\|12-2203\|12-2204\|54-1701' docs/accounting/journey-asset-v3.html` returns 0 (except contextual mentions)
+- [ ] Stream D: Manual UAT — Inclusive mode shows extracted basePrice; WHT warning appears when expected
+- [ ] PR description maps each fix back to PDF task # (1-7)

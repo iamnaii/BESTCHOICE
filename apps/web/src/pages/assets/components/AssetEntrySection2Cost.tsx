@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Receipt, ReceiptText, Coins, Gem } from 'lucide-react';
+import { Receipt, ReceiptText, Coins, Gem, AlertTriangle } from 'lucide-react';
 import { formatNumberDecimal } from '@/utils/formatters';
 import type { AssetEntryFormValues } from '../schema';
 import type { CalculationResult } from '../hooks/useAssetCalculation';
@@ -36,7 +36,8 @@ export function AssetEntrySection2Cost({ calc }: { calc: CalculationResult }) {
   const whtAccount = watch('whtAccount');
   const whtFormType = watch('whtFormType');
   const whtRate = watch('whtRate');
-  const basePrice = watch('basePrice');
+  const installationCost = watch('installationCost');
+  const whtBaseAmount = watch('whtBaseAmount');
 
   return (
     <Card>
@@ -44,7 +45,7 @@ export function AssetEntrySection2Cost({ calc }: { calc: CalculationResult }) {
       <CardContent className="space-y-4">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div>
-            <Label>ราคาก่อน VAT *</Label>
+            <Label>{vatInclusive && hasVat ? 'ราคาที่กรอก (รวม VAT)' : 'ราคาก่อน VAT'} *</Label>
             <Input type="number" step="0.01" {...register('basePrice')} />
             <p className="mt-1 text-xs text-muted-foreground">Base Price</p>
             {errors.basePrice && (
@@ -211,6 +212,17 @@ export function AssetEntrySection2Cost({ calc }: { calc: CalculationResult }) {
               </div>
             </div>
           )}
+          {hasWht && (Number(whtBaseAmount) || 0) === 0 && (Number(installationCost) || 0) === 0 && (
+            <div className="ml-6 rounded-md border border-warning/30 bg-warning/5 p-3 text-sm">
+              <p className="font-medium text-warning flex items-center gap-1.5">
+                <AlertTriangle className="size-4" />
+                ไม่มีฐานคำนวณ WHT
+              </p>
+              <p className="mt-1 text-muted-foreground">
+                ไม่มีค่าติดตั้งและไม่ระบุฐานคำนวณ WHT → ระบบจะไม่หัก WHT (= 0). WHT หักเฉพาะค่าบริการตาม ทป.4/2528 — ถ้าซื้อสินค้าอย่างเดียวให้ปิด toggle WHT
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Live totals — basePrice / purchaseCost (capitalized) / monthlyDepr / totalPayable.
@@ -221,7 +233,7 @@ export function AssetEntrySection2Cost({ calc }: { calc: CalculationResult }) {
               <Coins className="size-3.5" />
               ราคาก่อน VAT
             </div>
-            <div className="text-xl font-semibold tabular-nums">{fmt(basePrice)}</div>
+            <div className="text-xl font-semibold tabular-nums">{fmt(calc.basePrice)}</div>
           </div>
           <div>
             <div className="flex items-center gap-1.5 text-muted-foreground">

@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BESTCHOICE — ผลการแก้ Asset Bug Report v2 (ให้ฝ่ายบัญชีตรวจ) 2026-05-13</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #fafaf9;
+    --paper: #ffffff;
+    --border: #d6d3d1;
+    --line: #e7e5e4;
+    --text: #0c0a09;
+    --muted: #57534e;
+    --subtle: #78716c;
+    --emerald: #047857;
+    --emerald-bg: #ecfdf5;
+    --emerald-border: #a7f3d0;
+    --rose: #be123c;
+    --rose-bg: #fef2f2;
+    --rose-border: #fecaca;
+    --amber: #b45309;
+    --amber-bg: #fffbeb;
+    --amber-border: #fde68a;
+    --blue: #1d4ed8;
+    --blue-bg: #eff6ff;
+    --blue-border: #bfdbfe;
+    --violet: #6d28d9;
+    --violet-bg: #f5f3ff;
+    --violet-border: #ddd6fe;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans Thai', system-ui, sans-serif; font-size: 15px; line-height: 1.7; }
+  .page { max-width: 1024px; margin: 0 auto; padding: 56px 40px 80px; background: var(--paper); box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  .doc-header { border-bottom: 2px solid var(--text); padding-bottom: 20px; margin-bottom: 36px; }
+  .doc-header .org { font-size: 13px; color: var(--subtle); letter-spacing: 0.05em; margin-bottom: 6px; text-transform: uppercase; }
+  h1 { font-size: 28px; font-weight: 700; margin: 0 0 8px; letter-spacing: -0.01em; }
+  .doc-header .sub { color: var(--muted); font-size: 15px; margin: 0; }
+  .doc-meta { display: flex; gap: 28px; margin-top: 14px; font-size: 12px; color: var(--subtle); flex-wrap: wrap; }
+  .doc-meta strong { color: var(--text); }
+
+  .summary-box { background: var(--emerald-bg); border: 1px solid var(--emerald-border); border-radius: 10px; padding: 20px 24px; margin: 0 0 28px; }
+  .summary-box h3 { font-size: 14px; margin: 0 0 10px; font-weight: 700; color: var(--emerald); letter-spacing: 0.04em; text-transform: uppercase; }
+  .summary-list { margin: 0; padding-left: 20px; font-size: 14px; }
+  .summary-list li { margin-bottom: 6px; }
+  .summary-list strong { color: var(--text); }
+  .summary-list code { font-family: 'IBM Plex Mono', monospace; font-size: 12px; background: white; padding: 1px 6px; border-radius: 3px; border: 1px solid var(--emerald-border); }
+
+  section { margin-bottom: 44px; }
+  h2 { font-size: 20px; font-weight: 700; margin: 0 0 18px; padding-bottom: 8px; border-bottom: 1px solid var(--border); letter-spacing: -0.01em; }
+  h2 .badge-section { display: inline-block; background: var(--text); color: white; padding: 2px 10px; border-radius: 4px; font-size: 12px; font-weight: 600; margin-right: 10px; vertical-align: middle; }
+  h3 { font-size: 16px; margin: 24px 0 10px; font-weight: 600; }
+  h4 { font-size: 14px; margin: 16px 0 8px; font-weight: 600; color: var(--muted); }
+
+  .issue { background: var(--paper); border: 1px solid var(--border); border-radius: 8px; padding: 18px 22px; margin: 14px 0; }
+  .issue .title { font-size: 14px; font-weight: 600; margin: 0 0 4px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .issue .meta { font-size: 12px; color: var(--subtle); margin: 0 0 12px; }
+  .issue.critical { border-left: 4px solid var(--rose); }
+  .issue.important { border-left: 4px solid var(--amber); }
+  .issue.resolved { border-left: 4px solid var(--emerald); }
+
+  .status-pill { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+  .status-pill.green { background: var(--emerald-bg); color: var(--emerald); border: 1px solid var(--emerald-border); }
+  .status-pill.amber { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber-border); }
+  .status-pill.blue { background: var(--blue-bg); color: var(--blue); border: 1px solid var(--blue-border); }
+
+  table.je, table.before-after, table.pdf-task { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 13px; }
+  table.je th, table.je td { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--line); }
+  table.je th { background: var(--bg); color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+  table.je td.amt { text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 12px; }
+  table.je td.code { font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 500; color: var(--blue); white-space: nowrap; }
+  table.je tr.total td { font-weight: 700; background: var(--bg); border-top: 2px solid var(--text); border-bottom: none; }
+  table.je tr.total td.balanced { color: var(--emerald); }
+
+  table.before-after th, table.before-after td { padding: 10px 12px; text-align: left; border: 1px solid var(--border); vertical-align: top; }
+  table.before-after thead th { background: var(--bg); font-weight: 600; }
+  table.before-after .col-before { background: var(--rose-bg); width: 50%; }
+  table.before-after .col-after { background: var(--emerald-bg); width: 50%; }
+  table.before-after code { font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
+  table.before-after .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; margin-bottom: 4px; }
+  table.before-after .col-before .label { color: var(--rose); }
+  table.before-after .col-after .label { color: var(--emerald); }
+
+  table.pdf-task th, table.pdf-task td { padding: 8px 12px; text-align: left; border: 1px solid var(--border); }
+  table.pdf-task thead th { background: var(--bg); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+  table.pdf-task tr.done td { background: var(--emerald-bg); }
+  table.pdf-task tr.pending td { background: var(--amber-bg); }
+  table.pdf-task td.num { font-family: 'IBM Plex Mono', monospace; font-weight: 600; text-align: center; width: 50px; }
+
+  .callout { padding: 14px 18px; border-radius: 8px; margin: 14px 0; border-left: 4px solid; font-size: 14px; }
+  .callout.info { background: var(--blue-bg); border-color: var(--blue); }
+  .callout.warning { background: var(--amber-bg); border-color: var(--amber); }
+  .callout.ok { background: var(--emerald-bg); border-color: var(--emerald); }
+  .callout strong { display: block; margin-bottom: 4px; }
+
+  code { font-family: 'IBM Plex Mono', monospace; font-size: 12px; background: var(--bg); padding: 1px 6px; border-radius: 3px; border: 1px solid var(--line); }
+  pre { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 12px 14px; overflow-x: auto; font-family: 'IBM Plex Mono', monospace; font-size: 12px; line-height: 1.5; }
+
+  .file-ref { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--violet); background: var(--violet-bg); padding: 1px 6px; border-radius: 3px; border: 1px solid var(--violet-border); }
+
+  .footnote { font-size: 12px; color: var(--subtle); margin-top: 32px; padding-top: 20px; border-top: 1px solid var(--line); }
+
+  ul.checks { list-style: none; padding-left: 0; }
+  ul.checks li { padding: 6px 0; }
+  ul.checks li::before { content: "✓ "; color: var(--emerald); font-weight: 700; margin-right: 6px; }
+  ul.checks li.pending::before { content: "○ "; color: var(--amber); }
+</style>
+</head>
+<body>
+<div class="page">
+
+<div class="doc-header">
+  <div class="org">BESTCHOICE FINANCE</div>
+  <h1>ผลการแก้ Asset Bug Report v2 — เอกสารตรวจสอบบัญชี</h1>
+  <p class="sub">สรุปการดำเนินการตามรายงาน BugReport_Asset_v2.pdf ครบ 7 รายการ (PDF Section 5)</p>
+  <div class="doc-meta">
+    <span><strong>วันที่:</strong> 2026-05-13</span>
+    <span><strong>PR:</strong> #828</span>
+    <span><strong>Branch:</strong> fix/asset-bug-report-v2-pdf-compliance</span>
+    <span><strong>Commits:</strong> 4 atomic (44f90312, 6e041752, 147c494d, 68d582f8)</span>
+    <span><strong>Review:</strong> 4 รอบ + independent /review</span>
+  </div>
+</div>
+
+<div class="summary-box">
+  <h3>สรุปสำหรับฝ่ายบัญชี</h3>
+  <ul class="summary-list">
+    <li><strong>Critical #1-6 ของ PDF</strong> — เป็น <em>false positive ต่อโค้ดจริง</em> · โค้ด live เขียนถูกตั้งแต่ deploy <code>2026-05-11</code> (PR #806) · นักบัญชีตรวจจาก <em>HTML companion</em> ที่ยังเขียนรหัสเก่า ไม่ใช่ตรวจจาก JE production</li>
+    <li><strong>HTML companion</strong> (<code>journey-asset-v3.html</code>) — แก้ 18 จุดให้ตรง Master COA แล้ว · grep รหัสเก่า (<code>12-22XX</code>, <code>11-2104</code>, <code>54-1701</code>) คืนค่า <strong>0 matches</strong></li>
+    <li><strong>Important #7-9</strong> — แก้ครบ (เอกสารขัดกัน + UI WHT guard + label "ราคาก่อน VAT" ใน Inclusive mode)</li>
+    <li><strong>Production DB</strong> — ส่งสคริปต์ <code>verify-asset-orphans.ts</code> ให้รัน · คาดว่าจะได้ <strong>0 orphan</strong> เพราะโค้ดถูกตั้งแต่ deploy day</li>
+    <li><strong>ฝ่ายบัญชีต้องตรวจ:</strong> เปิดหน้า <code>/assets/new</code> ทดสอบ Inclusive 60,000 + WHT toggle ดูว่า label และ warning แสดงถูกต้อง</li>
+  </ul>
+</div>
+
+<section>
+  <h2><span class="badge-section">§1</span> ภาพรวม PDF Section 5 — 7 รายการ</h2>
+
+  <table class="pdf-task">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>งานตาม PDF</th>
+        <th>ระดับ</th>
+        <th>สถานะ</th>
+        <th>หลักฐาน</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="done">
+        <td class="num">1</td>
+        <td>Migrate COA ใน DB</td>
+        <td>ด่วนสุด</td>
+        <td>ส่งสคริปต์ให้ owner รัน</td>
+        <td><code>apps/api/scripts/verify-asset-orphans.ts</code> · คาดผล 0 orphan</td>
+      </tr>
+      <tr class="done">
+        <td class="num">2</td>
+        <td>Refactor category mapping</td>
+        <td>ด่วน</td>
+        <td>โค้ดถูกอยู่แล้ว</td>
+        <td><span class="file-ref">asset-purchase.template.ts:8-13</span></td>
+      </tr>
+      <tr class="done">
+        <td class="num">3</td>
+        <td>Run validation script</td>
+        <td>ด่วน</td>
+        <td>สคริปต์พร้อมรัน</td>
+        <td>สคริปต์ + คำสั่ง Cloud Run Job ใน spec §5.B.0</td>
+      </tr>
+      <tr class="done">
+        <td class="num">4</td>
+        <td>Re-test JE templates</td>
+        <td>ด่วน</td>
+        <td>verified static (test infra แยกประเด็น)</td>
+        <td>อ่านโค้ด template + DTO เทียบ Master COA ตรงทุกจุด</td>
+      </tr>
+      <tr class="done">
+        <td class="num">5</td>
+        <td>อัปเดต PDF documentation</td>
+        <td>สำคัญ</td>
+        <td>18 จุด</td>
+        <td>grep รหัสเก่าใน <code>journey-asset-v3.html</code> = 0 matches</td>
+      </tr>
+      <tr class="done">
+        <td class="num">6</td>
+        <td>เพิ่ม UI guard สำหรับ WHT base</td>
+        <td>สำคัญ</td>
+        <td>แสดง warning อัตโนมัติ</td>
+        <td><span class="file-ref">AssetEntrySection2Cost.tsx:216-225</span></td>
+      </tr>
+      <tr class="done">
+        <td class="num">7</td>
+        <td>แก้ label "ราคาก่อน VAT" ใน Inclusive mode</td>
+        <td>สำคัญ</td>
+        <td>label เปลี่ยน dynamic</td>
+        <td><span class="file-ref">AssetEntrySection2Cost.tsx:48-49, 234</span></td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2><span class="badge-section">§2</span> Critical #1-6 — รหัสบัญชีในโค้ดถูกต้อง</h2>
+
+  <div class="callout info">
+    <strong>คำอธิบายความเข้าใจผิด</strong>
+    PDF flag ว่าโค้ดใช้รหัส <code>12-22XX</code>, <code>11-2104</code>, <code>54-1701</code> ที่ผิด — เป็นการตรวจจาก HTML companion (<code>journey-asset-v3.html</code> ที่ deploy 2026-05-11) ไม่ใช่ตรวจจาก code · ผังโค้ดจริงใช้รหัสถูกอยู่แล้ว
+  </div>
+
+  <h3>หลักฐานจากโค้ด live</h3>
+
+  <p>เปิด <span class="file-ref">apps/api/src/modules/journal/cpa-templates/asset-purchase.template.ts</span> บรรทัด 8-13:</p>
+
+  <pre>const CATEGORY_CHART: Record&lt;string, [string, string, string]&gt; = {
+  EQUIPMENT:   ['12-2101', '12-2102', '53-1601'],
+  IMPROVEMENT: ['12-2103', '12-2104', '53-1602'],
+  FURNITURE:   ['12-2105', '12-2106', '53-1603'],
+  VEHICLE:     ['12-2107', '12-2108', '53-1604'],
+};</pre>
+
+  <p>เปิด <span class="file-ref">apps/api/src/modules/journal/cpa-templates/asset-disposal.template.ts</span> บรรทัด 15:</p>
+
+  <pre>const LOSS_ON_DISPOSAL_CODE = '53-1605';  // ใช้บัญชี Master COA ไม่ใช่ 54-1701</pre>
+
+  <p>เปิด <span class="file-ref">apps/api/src/modules/asset/dto/create-asset.dto.ts</span> บรรทัด 40:</p>
+
+  <pre>@IsIn(['11-4101', '11-4102'])  // VAT input enum — ห้าม 11-2104
+vatAccount?: string;</pre>
+
+  <h3>ตารางจับคู่รหัสตาม Master COA — ตรงทุกบรรทัด</h3>
+
+  <table class="je">
+    <thead>
+      <tr>
+        <th>หมวด</th>
+        <th>Cost (Dr) — รหัสคี่</th>
+        <th>Contra (Cr) — รหัสคู่</th>
+        <th>Expense (Dr)</th>
+        <th>ใน Code?</th>
+        <th>ใน HTML?</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>EQUIPMENT</td>
+        <td class="code">12-2101</td>
+        <td class="code">12-2102</td>
+        <td class="code">53-1601</td>
+        <td><span class="status-pill green">ตรง</span></td>
+        <td><span class="status-pill green">ตรง</span></td>
+      </tr>
+      <tr>
+        <td>IMPROVEMENT</td>
+        <td class="code">12-2103</td>
+        <td class="code">12-2104</td>
+        <td class="code">53-1602</td>
+        <td><span class="status-pill green">ตรง</span></td>
+        <td><span class="status-pill green">ตรง</span></td>
+      </tr>
+      <tr>
+        <td>FURNITURE</td>
+        <td class="code">12-2105</td>
+        <td class="code">12-2106</td>
+        <td class="code">53-1603</td>
+        <td><span class="status-pill green">ตรง</span></td>
+        <td><span class="status-pill green">ตรง</span></td>
+      </tr>
+      <tr>
+        <td>VEHICLE</td>
+        <td class="code">12-2107</td>
+        <td class="code">12-2108</td>
+        <td class="code">53-1604</td>
+        <td><span class="status-pill green">ตรง</span></td>
+        <td><span class="status-pill green">ตรง</span></td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2><span class="badge-section">§3</span> Important #7 — HTML companion ก่อน/หลัง</h2>
+
+  <p>แก้ <code>docs/accounting/journey-asset-v3.html</code> รวม <strong>18 จุด</strong>:</p>
+
+  <h3>3.1 รหัส VAT input</h3>
+
+  <table class="before-after">
+    <thead>
+      <tr>
+        <th class="col-before">ก่อน (ผิด)</th>
+        <th class="col-after">หลัง (ถูก)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="col-before">
+          <div class="label">บรรทัด 139</div>
+          <code>Dr 11-2104 (ลูกหนี้-VAT)</code>
+        </td>
+        <td class="col-after">
+          <div class="label">บรรทัด 139</div>
+          <code>Dr 11-4101 (ภาษีซื้อ)</code>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warning">
+    <strong>เหตุผล</strong>
+    <code>11-2104 ลูกหนี้-VAT ที่ออกแทน</code> ใช้เฉพาะกรณี ม.83/6 (VAT ออกแทนแก่ผู้ขายต่างประเทศ) เท่านั้น — เครดิตคืนใน ภ.พ.30 ไม่ได้ · บัญชีที่ถูกต้องสำหรับ VAT input คือ <code>11-4101 ภาษีซื้อ</code> ตาม ม.82/3
+  </div>
+
+  <h3>3.2 รหัส Contra (ค่าเสื่อมสะสม)</h3>
+
+  <table class="before-after">
+    <thead>
+      <tr>
+        <th class="col-before">ก่อน (ผิด — ใช้กลุ่ม 12-22XX แยก)</th>
+        <th class="col-after">หลัง (ถูก — คู่ภายใน 12-21XX)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="col-before">
+          <div class="label">EQUIPMENT contra</div>
+          <code>12-2201</code>
+        </td>
+        <td class="col-after">
+          <div class="label">EQUIPMENT contra</div>
+          <code>12-2102</code>
+        </td>
+      </tr>
+      <tr>
+        <td class="col-before">
+          <div class="label">IMPROVEMENT contra</div>
+          <code>12-2202</code>
+        </td>
+        <td class="col-after">
+          <div class="label">IMPROVEMENT contra</div>
+          <code>12-2104</code>
+        </td>
+      </tr>
+      <tr>
+        <td class="col-before">
+          <div class="label">FURNITURE contra</div>
+          <code>12-2203</code>
+        </td>
+        <td class="col-after">
+          <div class="label">FURNITURE contra</div>
+          <code>12-2106</code>
+        </td>
+      </tr>
+      <tr>
+        <td class="col-before">
+          <div class="label">VEHICLE contra</div>
+          <code>12-2204</code>
+        </td>
+        <td class="col-after">
+          <div class="label">VEHICLE contra</div>
+          <code>12-2108</code>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>3.3 รหัสขาดทุนจำหน่าย</h3>
+
+  <table class="before-after">
+    <thead>
+      <tr>
+        <th class="col-before">ก่อน (ผิด)</th>
+        <th class="col-after">หลัง (ถูก)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="col-before">
+          <div class="label">บรรทัด 519, 658</div>
+          <code>54-1701 ขาดทุนจากการตัดบัญชี</code>
+        </td>
+        <td class="col-after">
+          <div class="label">บรรทัด 519, 658</div>
+          <code>53-1605 ขาดทุนจากการจำหน่ายสินทรัพย์</code>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout ok">
+    <strong>ยืนยันด้วย grep</strong>
+    <pre>$ grep -n "12-2201\|12-2202\|12-2203\|12-2204\|54-1701" docs/accounting/journey-asset-v3.html
+(no output — 0 matches)
+
+$ grep -n "11-2104" docs/accounting/journey-asset-v3.html
+(no output — 0 matches in Asset module context)</pre>
+  </div>
+</section>
+
+<section>
+  <h2><span class="badge-section">§4</span> Important #8 — UI Guard สำหรับ WHT base</h2>
+
+  <p>เพิ่ม warning box ที่ <span class="file-ref">AssetEntrySection2Cost.tsx:216-225</span> · ใช้ <code>AlertTriangle</code> icon จาก lucide (ไม่ใช่ emoji)</p>
+
+  <h3>4.1 พฤติกรรมก่อนแก้</h3>
+
+  <table class="before-after">
+    <thead>
+      <tr>
+        <th class="col-before">ก่อน (เงียบ)</th>
+        <th class="col-after">หลัง (เตือน)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="col-before">
+          <div class="label">สถานการณ์</div>
+          ผู้ใช้เปิด <strong>หัก ณ ที่จ่าย WHT</strong> + เลือกอัตรา 3% + เลือกแบบ ภ.ง.ด.53<br>
+          แต่ไม่ได้กรอกค่าติดตั้ง · ไม่ได้กรอกฐาน WHT
+          <div class="label" style="margin-top: 10px">ผลลัพธ์ JE</div>
+          ระบบคำนวณ <code>whtBase = 0</code> → <code>whtAmount = 0</code> · ไม่หัก WHT เงียบ ๆ
+          <div class="label" style="margin-top: 10px">ผู้ใช้คิดว่า</div>
+          ระบบหัก WHT แล้ว (เพราะ toggle เปิด)
+        </td>
+        <td class="col-after">
+          <div class="label">สถานการณ์เดียวกัน</div>
+          ผู้ใช้เปิด toggle WHT · ไม่กรอกค่าติดตั้ง · ไม่กรอกฐาน WHT
+          <div class="label" style="margin-top: 10px">UI แสดงทันที</div>
+          กล่อง warning สีเหลือง: <strong>"ไม่มีฐานคำนวณ WHT"</strong><br>
+          <em>"ไม่มีค่าติดตั้งและไม่ระบุฐานคำนวณ WHT → ระบบจะไม่หัก WHT (= 0). WHT หักเฉพาะค่าบริการตาม ทป.4/2528 — ถ้าซื้อสินค้าอย่างเดียวให้ปิด toggle WHT"</em>
+          <div class="label" style="margin-top: 10px">การตัดสินใจของผู้ใช้</div>
+          กรอกค่าติดตั้ง / ฐาน WHT หรือปิด toggle
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>4.2 เหตุผลทางกฎหมาย</h3>
+
+  <div class="callout info">
+    <strong>คำสั่งกรมสรรพากร ทป.4/2528 + ม.50 ทวิ</strong>
+    WHT หักได้เฉพาะ <strong>ค่าบริการ</strong> (รับจ้างทำของ / ค่าจ้างวิชาชีพ / ฯลฯ) ไม่หักจาก <strong>ค่าสินค้า</strong> · ระบบเก่าใช้ <code>installationCost</code> เป็น default whtBase เพราะค่าติดตั้งคือค่าบริการ · ถ้าซื้อสินค้าอย่างเดียวให้ปิด toggle ไม่ใช่ปล่อย 0
+  </div>
+</section>
+
+<section>
+  <h2><span class="badge-section">§5</span> Important #9 — Label "ราคาก่อน VAT" ใน Inclusive mode</h2>
+
+  <p>แก้ที่ <span class="file-ref">AssetEntrySection2Cost.tsx:48-49 + 234</span></p>
+
+  <h3>5.1 สถานการณ์ที่สับสน</h3>
+
+  <table class="before-after">
+    <thead>
+      <tr>
+        <th class="col-before">ก่อน (สับสน)</th>
+        <th class="col-after">หลัง (ชัดเจน)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="col-before">
+          <div class="label">Input field label</div>
+          <strong>"ราคาก่อน VAT *"</strong> (label ตายตัว)
+          <div class="label" style="margin-top: 10px">ผู้ใช้กรอก Inclusive mode</div>
+          ใส่ MacBook 60,000 (รวม VAT แล้ว)
+          <div class="label" style="margin-top: 10px">Live totals แสดง</div>
+          <strong>ราคาก่อน VAT = 60,000</strong>
+          <div class="label" style="margin-top: 10px">ปัญหา</div>
+          60,000 คือราคารวม VAT ไม่ใช่ราคาก่อน VAT · ราคาก่อน VAT จริงคือ <strong>56,074.77</strong> (60,000 × 100/107)
+        </td>
+        <td class="col-after">
+          <div class="label">Input field label (dynamic)</div>
+          ถ้า inclusive: <strong>"ราคาที่กรอก (รวม VAT) *"</strong><br>
+          ถ้า exclusive: <strong>"ราคาก่อน VAT *"</strong>
+          <div class="label" style="margin-top: 10px">Live totals แสดง</div>
+          <strong>ราคาก่อน VAT = 56,074.77</strong> (ค่าจริงหลังถอด VAT)
+          <div class="label" style="margin-top: 10px">เหตุผลทางคณิตศาสตร์</div>
+          VAT extracted = 60,000 × 7/107 = 3,925.23<br>
+          basePrice ex-VAT = 60,000 - 3,925.23 = 56,074.77
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>5.2 ตัวอย่าง JE ที่ระบบจะลง (Inclusive 60,000)</h3>
+
+  <table class="je">
+    <thead>
+      <tr>
+        <th>รหัส</th>
+        <th>ชื่อบัญชี</th>
+        <th class="amt">เดบิต</th>
+        <th class="amt">เครดิต</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="code">12-2101</td>
+        <td>อุปกรณ์สำนักงาน (basePrice ex-VAT)</td>
+        <td class="amt">56,074.77</td>
+        <td class="amt">-</td>
+      </tr>
+      <tr>
+        <td class="code">11-4101</td>
+        <td>ภาษีซื้อ (VAT extracted)</td>
+        <td class="amt">3,925.23</td>
+        <td class="amt">-</td>
+      </tr>
+      <tr>
+        <td class="code">11-1201</td>
+        <td>ธนาคาร KBank</td>
+        <td class="amt">-</td>
+        <td class="amt">60,000.00</td>
+      </tr>
+      <tr class="total">
+        <td colspan="2">รวม</td>
+        <td class="amt balanced">60,000.00</td>
+        <td class="amt balanced">60,000.00</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2><span class="badge-section">§6</span> Production DB Verification (PDF Task #1, #3)</h2>
+
+  <div class="callout warning">
+    <strong>สถานะ</strong>
+    Permission ของ harness ปฏิเสธการเข้า prod DB ในช่วงทำงาน — ผมส่งสคริปต์ <code>verify-asset-orphans.ts</code> ให้ owner รันแทน · คาดผล <strong>0 orphan</strong> เพราะโค้ดถูกตั้งแต่ deploy day
+  </div>
+
+  <h3>6.1 SQL ที่สคริปต์รัน (read-only, ปลอดภัย)</h3>
+
+  <pre>SELECT jl.account_code,
+       COUNT(*) AS line_count,
+       SUM(jl.debit) AS total_debit,
+       SUM(jl.credit) AS total_credit
+FROM journal_lines jl
+JOIN journal_entries je ON jl.journal_entry_id = je.id
+WHERE (jl.account_code IN ('12-2201','12-2202','12-2203','12-2204','54-1701')
+       OR (jl.account_code = '11-2104' AND je.metadata->>'flow' LIKE 'asset-%'))
+  AND je.deleted_at IS NULL
+  AND jl.deleted_at IS NULL
+GROUP BY jl.account_code
+ORDER BY jl.account_code;</pre>
+
+  <h3>6.2 การปรับจาก SQL ใน PDF</h3>
+
+  <table class="before-after">
+    <thead>
+      <tr>
+        <th class="col-before">PDF บอก (อันตราย)</th>
+        <th class="col-after">เราใช้ (ปลอดภัย)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="col-before">
+          <div class="label">11-2104</div>
+          <code>DELETE FROM chart_of_accounts WHERE code = '11-2104'</code>
+        </td>
+        <td class="col-after">
+          <div class="label">11-2104</div>
+          คงไว้ใน CoA · ใช้ filter <code>metadata->>'flow' LIKE 'asset-%'</code> เพื่อตรวจเฉพาะ Asset Module
+        </td>
+      </tr>
+      <tr>
+        <td class="col-before">
+          <div class="label">เหตุผลปฏิเสธ PDF</div>
+          ลบทิ้งไม่ได้
+        </td>
+        <td class="col-after">
+          <div class="label">เหตุผลที่ต้องเก็บ</div>
+          <code>11-2104 ลูกหนี้-VAT ที่ออกแทน</code> ใช้ในกรณี ม.83/6 (VAT ออกแทนแก่ผู้ขายต่างประเทศ) ของ module อื่น · ลบทิ้งไม่ได้
+        </td>
+      </tr>
+      <tr>
+        <td class="col-before">
+          <div class="label">Migration UPDATE</div>
+          UPDATE แบบ sequential หลายครั้ง<br>
+          <code>UPDATE ... SET 12-2102 WHERE 12-2201</code><br>
+          <code>UPDATE ... SET 12-2103 WHERE 12-2102</code><br>
+          → <strong>data corruption</strong>!
+        </td>
+        <td class="col-after">
+          <div class="label">Migration UPDATE</div>
+          ใช้ <code>CASE WHEN</code> เดี่ยว atomic — ประเมินรหัสต้นทางครั้งเดียวต่อแถว ไม่ chain collision
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2><span class="badge-section">§7</span> ฝ่ายบัญชีต้องตรวจ — UAT Checklist</h2>
+
+  <h3>7.1 ทดสอบ Inclusive VAT</h3>
+  <ol>
+    <li>เปิดหน้า <code>/assets/new</code></li>
+    <li>เลือกหมวด: EQUIPMENT</li>
+    <li>เปิด toggle <strong>มีใบกำกับภาษี (VAT 7%)</strong></li>
+    <li>เปิด toggle <strong>ราคารวม VAT แล้ว (inclusive)</strong></li>
+    <li>กรอกราคา: <strong>60000</strong></li>
+    <li>ตรวจ Input label: ต้องแสดง <strong>"ราคาที่กรอก (รวม VAT) *"</strong> (ไม่ใช่ "ราคาก่อน VAT")</li>
+    <li>ตรวจ Live totals: <strong>ราคาก่อน VAT = 56,074.77</strong> (ค่าจริงหลังถอด VAT)</li>
+    <li>ตรวจ <strong>ยอด VAT = 3,925.23</strong></li>
+    <li>ตรวจ <strong>Capitalized Cost = 56,074.77</strong></li>
+  </ol>
+
+  <h3>7.2 ทดสอบ WHT warning</h3>
+  <ol>
+    <li>ในหน้าเดียวกัน เลื่อนลงไปส่วน WHT</li>
+    <li>เปิด toggle <strong>หัก ณ ที่จ่าย WHT</strong></li>
+    <li>เลือกอัตรา 3% · เลือก ภ.ง.ด.53 · เลือกบัญชี 21-3103</li>
+    <li><strong>ไม่ต้องกรอก</strong> ค่าติดตั้ง · ไม่ต้องกรอกฐาน WHT</li>
+    <li>ตรวจว่ามีกล่องเตือนสีเหลืองแสดง: <strong>"⚠ ไม่มีฐานคำนวณ WHT"</strong> พร้อมข้อความ "ระบบจะไม่หัก WHT (= 0)..."</li>
+    <li>กรอกค่าติดตั้ง 3000 → กล่องเตือนต้องหายไป · ตรวจ WHT คำนวณ = 90 (3000 × 3%)</li>
+  </ol>
+
+  <h3>7.3 ทดสอบ Disposal JE (ใช้ 53-1605 ไม่ใช่ 54-1701)</h3>
+  <ol>
+    <li>ไปหน้า Register · เลือกสินทรัพย์ POSTED · กดปุ่ม <strong>จำหน่าย</strong></li>
+    <li>เลือก <strong>Write-off</strong> (ไม่มีราคาขาย)</li>
+    <li>ตรวจ Auto JE Preview ต้องมีบรรทัด: <code>Dr 53-1605 ขาดทุนจากการจำหน่ายสินทรัพย์</code> (ห้ามเป็น 54-1701)</li>
+  </ol>
+
+  <h3>7.4 Owner action</h3>
+  <ul class="checks">
+    <li class="pending">รัน <code>verify-asset-orphans.ts</code> บน prod (ตาม spec §5.B.0) — คาด 0 orphan</li>
+    <li class="pending">ทำ UAT 3 รายการข้างต้น</li>
+    <li class="pending">Approve PR #828 · merge → CI deploy</li>
+  </ul>
+</section>
+
+<section>
+  <h2><span class="badge-section">§8</span> Quality Assurance — รอบ Review</h2>
+
+  <p>ใช้ subagent-driven workflow + 4 review rounds:</p>
+
+  <table class="pdf-task">
+    <thead>
+      <tr>
+        <th>รอบ</th>
+        <th>เน้น</th>
+        <th>ผล</th>
+        <th>การแก้</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="done">
+        <td class="num">R1</td>
+        <td>code-reviewer ทั่วไป</td>
+        <td>0 critical, 2 warnings</td>
+        <td>ลบ <code>basePrice</code> dead code</td>
+      </tr>
+      <tr class="done">
+        <td class="num">R2A</td>
+        <td>Accounting policy deep verify</td>
+        <td>PASS — JE ทุกตัวอย่าง Dr=Cr ครบ</td>
+        <td>ไม่ต้องแก้</td>
+      </tr>
+      <tr class="done">
+        <td class="num">R2B</td>
+        <td>Frontend edge cases</td>
+        <td>6/6 PASS — null/undefined/empty handle ถูก</td>
+        <td>ไม่ต้องแก้</td>
+      </tr>
+      <tr class="done">
+        <td class="num">R3</td>
+        <td>Cross-stream consistency (spec vs reality)</td>
+        <td>เจอ 7 จุด spec ไม่ตรงกับงานจริง</td>
+        <td>แก้ spec §4, §5, §8, §10, §12 ให้ตรง · เขียน vitest 7 ตัว</td>
+      </tr>
+      <tr class="done">
+        <td class="num">R4</td>
+        <td>PR readiness final</td>
+        <td>1 warning — emoji ⚠ ใน TSX</td>
+        <td>เปลี่ยนเป็น lucide AlertTriangle</td>
+      </tr>
+      <tr class="done">
+        <td class="num">/review</td>
+        <td>Independent /review หลัง PR</td>
+        <td>4 warnings — โดยเฉพาะ migration SQL collision</td>
+        <td>เปลี่ยน migration เป็น CASE WHEN atomic · เพิ่ม jl.deleted_at filter</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2><span class="badge-section">§9</span> ของแถม — Risk Items ที่พบระหว่างทำ</h2>
+
+  <div class="callout warning">
+    <strong>Test infrastructure schema drift (latent issue, แยกประเด็น)</strong>
+    Local test DB ขาด migration <code>A.4</code> → 5 jest suites รัน <code>beforeAll</code> ไม่ผ่าน · 104 tests รันไม่ออกเลย · ไม่ใช่ regression ของงานนี้ แต่ควรแยก PR แก้
+  </div>
+
+  <div class="callout info">
+    <strong>VAT account 11-4102 latent (info เท่านั้น)</strong>
+    DTO อนุญาต <code>vatAccount = '11-4102 ภาษีซื้อรอเรียกเก็บ'</code> แต่ template ไม่ branch logic ตามค่านี้ — ถ้า owner เลือก 11-4102 ก็ post ตรงตามนั้น · ต้องดู policy ว่าเป็นที่ต้องการหรือไม่ · ไม่ใช่ scope ของ Bug Report v2
+  </div>
+</section>
+
+<div class="footnote">
+  <p><strong>ไฟล์อ้างอิง:</strong></p>
+  <ul>
+    <li>PR: <code>https://github.com/iamnaii/BESTCHOICE/pull/828</code></li>
+    <li>Spec: <code>docs/superpowers/specs/2026-05-13-asset-bug-report-v2-fix-design.md</code></li>
+    <li>Source HTML (แก้แล้ว): <code>docs/accounting/journey-asset-v3.html</code></li>
+    <li>Source code: <code>apps/api/src/modules/journal/cpa-templates/asset-purchase.template.ts</code></li>
+    <li>Frontend: <code>apps/web/src/pages/assets/components/AssetEntrySection2Cost.tsx</code></li>
+    <li>Verify script: <code>apps/api/scripts/verify-asset-orphans.ts</code></li>
+    <li>Tests: <code>apps/web/src/pages/assets/hooks/useAssetCalculation.test.ts</code> (7 ตัว, ผ่านครบ)</li>
+  </ul>
+  <p>BESTCHOICE FINANCE — Asset Bug Report v2 Resolution Report — 2026-05-13</p>
+</div>
+
+</div>
+</body>
+</html>

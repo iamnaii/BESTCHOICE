@@ -31,16 +31,23 @@ const prisma = new PrismaClient();
 
 async function getOrphanAccountsInAssetScope() {
   return prisma.$queryRaw<
-    Array<{ account_code: string; line_count: bigint; total_amount: Prisma.Decimal }>
+    Array<{
+      account_code: string;
+      line_count: bigint;
+      total_debit: Prisma.Decimal;
+      total_credit: Prisma.Decimal;
+    }>
   >(Prisma.sql`
     SELECT jl.account_code,
            COUNT(*)::bigint AS line_count,
-           ROUND(SUM(jl.debit + jl.credit)::numeric, 2) AS total_amount
+           ROUND(SUM(jl.debit)::numeric, 2) AS total_debit,
+           ROUND(SUM(jl.credit)::numeric, 2) AS total_credit
     FROM journal_lines jl
     JOIN journal_entries je ON jl.journal_entry_id = je.id
     WHERE (jl.account_code IN ('12-2201','12-2202','12-2203','12-2204','54-1701')
            OR (jl.account_code = '11-2104' AND je.metadata->>'flow' LIKE 'asset-%'))
       AND je.deleted_at IS NULL
+      AND jl.deleted_at IS NULL
     GROUP BY jl.account_code
     ORDER BY jl.account_code
   `);
@@ -94,7 +101,8 @@ async function main() {
     orphans: orphans.map((o) => ({
       account_code: o.account_code,
       line_count: Number(o.line_count),
-      total_amount: o.total_amount.toString(),
+      total_debit: o.total_debit.toString(),
+      total_credit: o.total_credit.toString(),
     })),
     coa_presence: coaPresence,
     all_flows: allFlows.map((f) => ({ flow: f.flow, count: Number(f.cnt) })),

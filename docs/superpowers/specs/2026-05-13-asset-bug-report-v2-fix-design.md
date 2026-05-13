@@ -151,54 +151,33 @@ GROUP BY jl.account_code;
 2. Capture Trial Balance totals BEFORE migration (Dr/Cr sum)
 3. Get explicit owner confirmation showing exact records to be updated
 
-**Migration SQL** (adapted from PDF — all 8 account remaps, scoped to Asset Module JEs):
+**Migration SQL** (atomic single CASE — avoids the collision trap where sequential UPDATEs would re-rename freshly-updated rows. Example collision: Step 1 renames `12-2201 → 12-2102`; Step 2 then sees the newly-renamed rows alongside legitimate `12-2102` rows and reclassifies BOTH as IMPROVEMENT cost. The CASE expression evaluates source codes ONCE per row, so the mapping is unambiguous.):
 
 ```sql
 BEGIN;
 
--- Helper CTE: Asset Module journal entry IDs
-WITH asset_je AS (
-  SELECT id FROM journal_entries
-  WHERE metadata->>'flow' LIKE 'asset-%'
-    AND deleted_at IS NULL
-)
-
--- Order matters: update wrong contras BEFORE renumbering costs to avoid collisions.
--- 1. EQUIPMENT contra: 12-2201 → 12-2102
-UPDATE journal_lines SET account_code = '12-2102'
-  WHERE account_code = '12-2201' AND journal_entry_id IN (SELECT id FROM asset_je);
-
--- 2. IMPROVEMENT cost: 12-2102 → 12-2103 (was incorrectly labeled as IMPROVEMENT)
-UPDATE journal_lines SET account_code = '12-2103'
-  WHERE account_code = '12-2102' AND journal_entry_id IN (SELECT id FROM asset_je);
-
--- 3. IMPROVEMENT contra: 12-2202 → 12-2104
-UPDATE journal_lines SET account_code = '12-2104'
-  WHERE account_code = '12-2202' AND journal_entry_id IN (SELECT id FROM asset_je);
-
--- 4. FURNITURE cost: 12-2103 → 12-2105
-UPDATE journal_lines SET account_code = '12-2105'
-  WHERE account_code = '12-2103' AND journal_entry_id IN (SELECT id FROM asset_je);
-
--- 5. FURNITURE contra: 12-2203 → 12-2106
-UPDATE journal_lines SET account_code = '12-2106'
-  WHERE account_code = '12-2203' AND journal_entry_id IN (SELECT id FROM asset_je);
-
--- 6. VEHICLE cost: 12-2104 → 12-2107
-UPDATE journal_lines SET account_code = '12-2107'
-  WHERE account_code = '12-2104' AND journal_entry_id IN (SELECT id FROM asset_je);
-
--- 7. VEHICLE contra: 12-2204 → 12-2108
-UPDATE journal_lines SET account_code = '12-2108'
-  WHERE account_code = '12-2204' AND journal_entry_id IN (SELECT id FROM asset_je);
-
--- 8. VAT input on Asset Module only: 11-2104 → 11-4101
-UPDATE journal_lines SET account_code = '11-4101'
-  WHERE account_code = '11-2104' AND journal_entry_id IN (SELECT id FROM asset_je);
-
--- 9. Loss on disposal: 54-1701 → 53-1605 (scope: Asset Module only)
-UPDATE journal_lines SET account_code = '53-1605'
-  WHERE account_code = '54-1701' AND journal_entry_id IN (SELECT id FROM asset_je);
+-- Single-pass atomic remap. CASE evaluates the ORIGINAL account_code for each
+-- row exactly once — no intermediate state where a row could match two rules.
+UPDATE journal_lines SET account_code = CASE account_code
+    WHEN '12-2201' THEN '12-2102'  -- EQUIPMENT contra
+    WHEN '12-2202' THEN '12-2104'  -- IMPROVEMENT contra
+    WHEN '12-2203' THEN '12-2106'  -- FURNITURE contra
+    WHEN '12-2204' THEN '12-2108'  -- VEHICLE contra
+    WHEN '12-2102' THEN '12-2103'  -- IMPROVEMENT cost (was mislabeled)
+    WHEN '12-2103' THEN '12-2105'  -- FURNITURE cost (was mislabeled)
+    WHEN '12-2104' THEN '12-2107'  -- VEHICLE cost (was mislabeled)
+    WHEN '11-2104' THEN '11-4101'  -- VAT input (Asset scope only)
+    WHEN '54-1701' THEN '53-1605'  -- Loss on disposal
+    ELSE account_code              -- safety: leave unrelated codes untouched
+  END
+  WHERE account_code IN ('12-2201','12-2202','12-2203','12-2204',
+                         '12-2102','12-2103','12-2104',
+                         '11-2104','54-1701')
+    AND journal_entry_id IN (
+      SELECT id FROM journal_entries
+      WHERE metadata->>'flow' LIKE 'asset-%' AND deleted_at IS NULL
+    )
+    AND deleted_at IS NULL;
 
 -- Verify Trial Balance unchanged
 SELECT SUM(debit) - SUM(credit) AS net FROM journal_lines WHERE deleted_at IS NULL;
@@ -209,8 +188,9 @@ COMMIT; -- only if Trial Balance still balanced
 
 **Important caveats**:
 - Do NOT delete `11-2104` from `chart_of_accounts` — used by ม.83/6 flow (other modules).
-- The UPDATE order is critical when both source and target codes exist in the same dataset (e.g., 12-2102 means both "EQUIPMENT contra" in new schema and "IMPROVEMENT cost" in old). Updating EQUIPMENT contra first (12-2201 → 12-2102) clears the way before renaming IMPROVEMENT cost (12-2102 → 12-2103). This is why the order in the SQL above is strict.
-- All UPDATE statements scope by `metadata->>'flow' LIKE 'asset-%'` to avoid touching non-Asset journal lines.
+- The CASE expression is essential: sequential UPDATEs would corrupt data because target codes (`12-2102`, `12-2103`, `12-2104`) collide with source codes in the rename map.
+- The WHERE-clause IN-list is critical safety: without it, every row would re-write itself to `ELSE account_code` (no-op but full table scan + bloat).
+- All scope by `metadata->>'flow' LIKE 'asset-%'` to avoid touching non-Asset journal lines.
 
 ### B.3 Verification
 
@@ -292,7 +272,10 @@ Live totals (line 222-224):
 )}
 {hasWht && (Number(whtBaseAmount) || 0) === 0 && (Number(installationCost) || 0) === 0 && (
   <div className="ml-6 rounded-md border border-warning/30 bg-warning/5 p-3 text-sm">
-    <p className="font-medium text-warning">⚠ ไม่มีฐานคำนวณ WHT</p>
+    <p className="font-medium text-warning flex items-center gap-1.5">
+      <AlertTriangle className="size-4" />
+      ไม่มีฐานคำนวณ WHT
+    </p>
     <p className="mt-1 text-muted-foreground">
       ไม่มีค่าติดตั้งและไม่ระบุฐาน WHT → ระบบจะไม่หัก WHT (= 0). WHT หักเฉพาะค่าบริการตาม ทป.4/2528 — ถ้าซื้อสินค้าอย่างเดียวให้ปิด toggle WHT
     </p>

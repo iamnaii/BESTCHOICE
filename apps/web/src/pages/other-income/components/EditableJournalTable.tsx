@@ -25,6 +25,10 @@ function validateClientSide(lines: EditableJournalLine[]): ValidationIssue[] {
   }
 
   for (const line of lines) {
+    // Skip rows the user hasn't started filling (avoids V5 false-positive on new empty rows)
+    const isBlank = !line.accountCode.trim() && (line.debit || 0) === 0 && (line.credit || 0) === 0;
+    if (isBlank) continue;
+
     const hasDr = line.debit > 0;
     const hasCr = line.credit > 0;
     if (hasDr && hasCr) {
@@ -34,9 +38,12 @@ function validateClientSide(lines: EditableJournalLine[]): ValidationIssue[] {
     }
   }
 
-  const drTotal = lines.reduce((s, l) => s + (l.debit || 0), 0);
-  const crTotal = lines.reduce((s, l) => s + (l.credit || 0), 0);
-  if (Math.abs(drTotal - crTotal) > 0.01) {
+  const drTotalCents = lines.reduce((s, l) => s + Math.round((l.debit || 0) * 100), 0);
+  const crTotalCents = lines.reduce((s, l) => s + Math.round((l.credit || 0) * 100), 0);
+  if (Math.abs(drTotalCents - crTotalCents) > 1) {
+    // 1 cent = 0.01 THB tolerance
+    const drTotal = drTotalCents / 100;
+    const crTotal = crTotalCents / 100;
     issues.push({
       rule: 'V1',
       msg: `Dr (${drTotal.toFixed(2)}) ≠ Cr (${crTotal.toFixed(2)}) — ผลต่าง ${(drTotal - crTotal).toFixed(2)} บาท`,
@@ -48,8 +55,10 @@ function validateClientSide(lines: EditableJournalLine[]): ValidationIssue[] {
 
 export function EditableJournalTable({ lines, onChange }: Props) {
   const issues = useMemo(() => validateClientSide(lines), [lines]);
-  const drTotal = lines.reduce((s, l) => s + (l.debit || 0), 0);
-  const crTotal = lines.reduce((s, l) => s + (l.credit || 0), 0);
+  const drTotalCents = lines.reduce((s, l) => s + Math.round((l.debit || 0) * 100), 0);
+  const crTotalCents = lines.reduce((s, l) => s + Math.round((l.credit || 0) * 100), 0);
+  const drTotal = (drTotalCents / 100).toFixed(2);
+  const crTotal = (crTotalCents / 100).toFixed(2);
 
   const updateLine = (idx: number, patch: Partial<EditableJournalLine>) => {
     onChange(lines.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
@@ -108,7 +117,12 @@ export function EditableJournalTable({ lines, onChange }: Props) {
                   />
                 </td>
                 <td className="px-2 py-1">
-                  <Button variant="ghost" size="icon" onClick={() => deleteLine(idx)}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`ลบบรรทัดที่ ${idx + 1}`}
+                    onClick={() => deleteLine(idx)}
+                  >
                     <Trash2 className="w-4 h-4 text-destructive" />
                   </Button>
                 </td>
@@ -116,8 +130,8 @@ export function EditableJournalTable({ lines, onChange }: Props) {
             ))}
             <tr className="border-t border-border bg-muted font-mono text-sm">
               <td className="px-2 py-2 font-semibold">รวม</td>
-              <td className="px-2 py-2 text-right">{drTotal.toFixed(2)}</td>
-              <td className="px-2 py-2 text-right">{crTotal.toFixed(2)}</td>
+              <td className="px-2 py-2 text-right">{drTotal}</td>
+              <td className="px-2 py-2 text-right">{crTotal}</td>
               <td colSpan={2}></td>
             </tr>
           </tbody>
@@ -129,7 +143,7 @@ export function EditableJournalTable({ lines, onChange }: Props) {
       </Button>
 
       {issues.length > 0 && (
-        <div className="rounded border border-destructive bg-destructive/10 p-3 space-y-1">
+        <div role="alert" aria-live="polite" className="rounded border border-destructive bg-destructive/10 p-3 space-y-1">
           {issues.map((iss, i) => (
             <div key={i} className="text-sm text-destructive flex items-start gap-2">
               <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />

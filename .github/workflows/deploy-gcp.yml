@@ -252,6 +252,10 @@ jobs:
           LINE_FINANCE_CHANNEL_SECRET=LINE_FINANCE_CHANNEL_SECRET:latest,\
           LINE_FINANCE_CHANNEL_ACCESS_TOKEN=LINE_FINANCE_CHANNEL_ACCESS_TOKEN:latest,\
           LINE_LOGIN_CHANNEL_SECRET=LINE_LOGIN_CHANNEL_SECRET:latest,\
+          FB_APP_SECRET=FB_APP_SECRET:latest,\
+          FB_VERIFY_TOKEN=FB_VERIFY_TOKEN:latest,\
+          FB_PAGE_ACCESS_TOKEN=FB_PAGE_ACCESS_TOKEN:latest,\
+          FB_PAGE_ID=FB_PAGE_ID:latest,\
           PII_ENCRYPTION_KEY=pii-encryption-key:latest,\
           PII_HASH_SALT=pii-hash-salt:latest" \
             --set-env-vars="\
@@ -276,6 +280,7 @@ jobs:
           API_BASE_URL=https://api.bestchoicephone.app,\
           LIFF_CHANNEL_ID=2009442540,\
           SMS_PAYMENT_REMINDER_DISABLED=true,\
+          FB_BOT_DISABLED=true,\
           GOOGLE_CLOUD_PROJECT=${{ secrets.GCP_PROJECT_ID }},\
           VERTEX_LOCATION=us-central1,\
           VERTEX_EMBEDDING_MODEL=text-multilingual-embedding-002" \

@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { ChatChannel, MessageType } from '@prisma/client';
 import {
   IDomainHandler,
@@ -25,7 +26,10 @@ export class FacebookDomainHandler implements IDomainHandler {
   readonly supportedChannels: ChatChannel[] = [ChatChannel.FACEBOOK];
   private readonly logger = new Logger(FacebookDomainHandler.name);
 
-  constructor(private quickReply: FacebookQuickReplyService) {}
+  constructor(
+    private quickReply: FacebookQuickReplyService,
+    private config: ConfigService,
+  ) {}
 
   supportsChannel(channel: ChatChannel): boolean {
     return this.supportedChannels.includes(channel);
@@ -33,6 +37,11 @@ export class FacebookDomainHandler implements IDomainHandler {
 
   async handleMessage(context: DomainContext): Promise<DomainResult> {
     const { room, message, isVerified, isHandoff } = context;
+
+    // Owner-controlled kill switch — return empty replies (no welcome, no AI)
+    if (this.config.get<string>('FB_BOT_DISABLED') === 'true') {
+      return { replies: [] };
+    }
 
     // If in handoff mode, don't process with AI
     if (isHandoff) {

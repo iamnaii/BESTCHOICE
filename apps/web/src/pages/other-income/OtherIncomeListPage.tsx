@@ -343,7 +343,7 @@ export default function OtherIncomeListPage() {
                         <span className="flex items-center gap-1">
                           {doc.isOverridden && (
                             <span
-                              className="text-amber-500"
+                              className="text-warning"
                               title="POST ด้วย Override JV — ตรวจ audit log"
                               aria-label="Override JV"
                             >

@@ -127,7 +127,7 @@
   <div class="doc-meta">
     <span><strong>เวอร์ชั่น:</strong> v3 (deployed 2026-05-11)</span>
     <span><strong>มาตรฐาน:</strong> TAS 16 (PPE) · TFRS for NPAEs · ผังบัญชี CPA Phase A.4</span>
-    <span><strong>กลุ่มบัญชี:</strong> 12-21XX (PPE) + Contra 12-22XX (Acc. Depr.)</span>
+    <span><strong>กลุ่มบัญชี:</strong> 12-21XX (PPE: odd = cost, even = contra Acc. Depr.)</span>
     <span><strong>ใช้แทน:</strong> journey-asset-module.html</span>
   </div>
 </header>
@@ -136,7 +136,7 @@
   <h3>สรุปสำคัญ — สิ่งที่ฝ่ายบัญชีต้องรู้</h3>
   <ul class="summary-list">
     <li>ระบบ <strong>ระบุ "ราคาทุน" = <code>basePrice + shippingCost + installationCost + otherCapitalized</code></strong> ตาม <strong>TAS 16 ¶16</strong> — ค่าขนส่ง, ค่าติดตั้ง, ค่าทดสอบ ทุกอย่างที่ <em>จำเป็น</em>ต่อการใช้งาน → capitalize เข้าทุน (ไม่ลงเป็นค่าใช้จ่าย)</li>
-    <li><strong>VAT 7%</strong> — เลือก inclusive/exclusive ได้ ระบบคำนวณ VAT amount ให้เอง Dr <code>11-2104</code> (ลูกหนี้-VAT) แยกบรรทัด ไม่ปนเข้าทุน</li>
+    <li><strong>VAT 7%</strong> — เลือก inclusive/exclusive ได้ ระบบคำนวณ VAT amount ให้เอง Dr <code>11-4101</code> (ภาษีซื้อ) แยกบรรทัด ไม่ปนเข้าทุน</li>
     <li><strong>WHT (หัก ณ ที่จ่าย)</strong> — เลือกได้ ภ.ง.ด.3 (บุคคล) หรือ ภ.ง.ด.53 (นิติบุคคล) · <strong>หักเฉพาะ "ค่าบริการ"</strong> (ม.50 ทวิ, ทป.4/2528) — ไม่หัก WHT จากราคาสินค้า</li>
     <li><strong>ค่าเสื่อมราคา</strong> — Straight-line: <code>(purchaseCost − residualValue) / usefulLifeMonths</code> · อายุใช้งานผู้ใช้กำหนดเอง (ดู พ.ร.ฎ. 145 + TAS 16 ¶57)</li>
     <li><strong>การจำหน่าย</strong> — มี 3 เส้นทาง: ขาย (มีรายได้/VAT), ตัดบัญชี (write-off, ขาดทุน), แลกเปลี่ยน (deferred)</li>
@@ -179,19 +179,19 @@
     <thead><tr><th>รหัส</th><th>ชื่อบัญชี</th><th>ประเภท</th><th>Normal</th><th>ใช้เมื่อ</th></tr></thead>
     <tbody>
       <tr><td><code>12-2101</code></td><td>อุปกรณ์สำนักงาน — ราคาทุน</td><td>สินทรัพย์</td><td>Dr</td><td>คอมพิวเตอร์ โน้ตบุ๊ก เครื่องพิมพ์ printer scanner POS ฯลฯ</td></tr>
-      <tr><td><code>12-2102</code></td><td>ส่วนปรับปรุงอาคารเช่า — ราคาทุน</td><td>สินทรัพย์</td><td>Dr</td><td>ติดผนัง ฉาก ป้าย counter ปรับปรุงสาขา</td></tr>
-      <tr><td><code>12-2103</code></td><td>เครื่องตกแต่งติดตั้ง — ราคาทุน</td><td>สินทรัพย์</td><td>Dr</td><td>โต๊ะ เก้าอี้ ตู้ ชั้นวาง</td></tr>
-      <tr><td><code>12-2104</code></td><td>ยานพาหนะ — ราคาทุน</td><td>สินทรัพย์</td><td>Dr</td><td>มอเตอร์ไซค์ส่งของ รถยนต์บริษัท</td></tr>
+      <tr><td><code>12-2103</code></td><td>ส่วนปรับปรุงอาคารเช่า — ราคาทุน</td><td>สินทรัพย์</td><td>Dr</td><td>ติดผนัง ฉาก ป้าย counter ปรับปรุงสาขา</td></tr>
+      <tr><td><code>12-2105</code></td><td>เครื่องตกแต่งติดตั้ง — ราคาทุน</td><td>สินทรัพย์</td><td>Dr</td><td>โต๊ะ เก้าอี้ ตู้ ชั้นวาง</td></tr>
+      <tr><td><code>12-2107</code></td><td>ยานพาหนะ — ราคาทุน</td><td>สินทรัพย์</td><td>Dr</td><td>มอเตอร์ไซค์ส่งของ รถยนต์บริษัท</td></tr>
       <tr class="total"><td colspan="5" style="background: var(--bg); text-align: center; font-size: 11px; color: var(--muted); padding: 6px;">— Contra Assets (ค่าเสื่อมสะสม) —</td></tr>
-      <tr><td><code>12-2201</code></td><td>ค่าเสื่อมสะสม — อุปกรณ์สำนักงาน</td><td>Contra Asset</td><td>Cr</td><td>สะสมค่าเสื่อมรายเดือนของ 12-2101</td></tr>
-      <tr><td><code>12-2202</code></td><td>ค่าเสื่อมสะสม — ส่วนปรับปรุง</td><td>Contra Asset</td><td>Cr</td><td>สะสมค่าเสื่อมรายเดือนของ 12-2102</td></tr>
-      <tr><td><code>12-2203</code></td><td>ค่าเสื่อมสะสม — เครื่องตกแต่ง</td><td>Contra Asset</td><td>Cr</td><td>สะสมค่าเสื่อมรายเดือนของ 12-2103</td></tr>
-      <tr><td><code>12-2204</code></td><td>ค่าเสื่อมสะสม — ยานพาหนะ</td><td>Contra Asset</td><td>Cr</td><td>สะสมค่าเสื่อมรายเดือนของ 12-2104</td></tr>
+      <tr><td><code>12-2102</code></td><td>ค่าเสื่อมสะสม — อุปกรณ์สำนักงาน</td><td>Contra Asset</td><td>Cr</td><td>สะสมค่าเสื่อมรายเดือนของ 12-2101</td></tr>
+      <tr><td><code>12-2104</code></td><td>ค่าเสื่อมสะสม — ส่วนปรับปรุง</td><td>Contra Asset</td><td>Cr</td><td>สะสมค่าเสื่อมรายเดือนของ 12-2103</td></tr>
+      <tr><td><code>12-2106</code></td><td>ค่าเสื่อมสะสม — เครื่องตกแต่ง</td><td>Contra Asset</td><td>Cr</td><td>สะสมค่าเสื่อมรายเดือนของ 12-2105</td></tr>
+      <tr><td><code>12-2108</code></td><td>ค่าเสื่อมสะสม — ยานพาหนะ</td><td>Contra Asset</td><td>Cr</td><td>สะสมค่าเสื่อมรายเดือนของ 12-2107</td></tr>
       <tr class="total"><td colspan="5" style="background: var(--bg); text-align: center; font-size: 11px; color: var(--muted); padding: 6px;">— ค่าเสื่อมราคา (Expense) —</td></tr>
-      <tr><td><code>53-1601</code></td><td>ค่าเสื่อมราคา — อุปกรณ์สำนักงาน</td><td>ค่าใช้จ่าย</td><td>Dr</td><td>คู่กับ 12-2201</td></tr>
-      <tr><td><code>53-1602</code></td><td>ค่าเสื่อมราคา — ส่วนปรับปรุง</td><td>ค่าใช้จ่าย</td><td>Dr</td><td>คู่กับ 12-2202</td></tr>
-      <tr><td><code>53-1603</code></td><td>ค่าเสื่อมราคา — เครื่องตกแต่ง</td><td>ค่าใช้จ่าย</td><td>Dr</td><td>คู่กับ 12-2203</td></tr>
-      <tr><td><code>53-1604</code></td><td>ค่าเสื่อมราคา — ยานพาหนะ</td><td>ค่าใช้จ่าย</td><td>Dr</td><td>คู่กับ 12-2204</td></tr>
+      <tr><td><code>53-1601</code></td><td>ค่าเสื่อมราคา — อุปกรณ์สำนักงาน</td><td>ค่าใช้จ่าย</td><td>Dr</td><td>คู่กับ 12-2102</td></tr>
+      <tr><td><code>53-1602</code></td><td>ค่าเสื่อมราคา — ส่วนปรับปรุง</td><td>ค่าใช้จ่าย</td><td>Dr</td><td>คู่กับ 12-2104</td></tr>
+      <tr><td><code>53-1603</code></td><td>ค่าเสื่อมราคา — เครื่องตกแต่ง</td><td>ค่าใช้จ่าย</td><td>Dr</td><td>คู่กับ 12-2106</td></tr>
+      <tr><td><code>53-1604</code></td><td>ค่าเสื่อมราคา — ยานพาหนะ</td><td>ค่าใช้จ่าย</td><td>Dr</td><td>คู่กับ 12-2108</td></tr>
       <tr class="total"><td colspan="5" style="background: var(--bg); text-align: center; font-size: 11px; color: var(--muted); padding: 6px;">— VAT + WHT —</td></tr>
       <tr><td><code>11-4101</code></td><td>ภาษีซื้อ (เครดิตได้ทันที)</td><td>สินทรัพย์</td><td>Dr</td><td>VAT ใบกำกับเต็มรูป — เครดิตเข้า ภพ.30 ได้</td></tr>
       <tr><td><code>11-4102</code></td><td>ภาษีซื้อรอเรียกเก็บ</td><td>สินทรัพย์</td><td>Dr</td><td>VAT ใบกำกับยังไม่ถึง (ค้างทาง vendor)</td></tr>
@@ -338,7 +338,7 @@
     <table class="je">
       <thead><tr><th>รหัส</th><th>ชื่อบัญชี</th><th>Dr</th><th>Cr</th></tr></thead>
       <tbody>
-        <tr><td class="code">12-2103</td><td>เครื่องตกแต่งติดตั้ง — ราคาทุน</td><td class="amt">5,000.00</td><td class="amt">-</td></tr>
+        <tr><td class="code">12-2105</td><td>เครื่องตกแต่งติดตั้ง — ราคาทุน</td><td class="amt">5,000.00</td><td class="amt">-</td></tr>
         <tr><td class="code">11-1201</td><td>ธนาคาร KBank</td><td class="amt">-</td><td class="amt">5,000.00</td></tr>
         <tr class="total"><td colspan="2">รวม</td><td class="amt balanced">5,000.00</td><td class="amt balanced">5,000.00</td></tr>
       </tbody>
@@ -423,7 +423,7 @@
       <thead><tr><th>รหัส</th><th>ชื่อบัญชี</th><th>Dr</th><th>Cr</th></tr></thead>
       <tbody>
         <tr><td class="code">53-1601</td><td>ค่าเสื่อมราคา — อุปกรณ์สำนักงาน</td><td class="amt">833.33</td><td class="amt">-</td></tr>
-        <tr><td class="code">12-2201</td><td>ค่าเสื่อมสะสม — อุปกรณ์สำนักงาน</td><td class="amt">-</td><td class="amt">833.33</td></tr>
+        <tr><td class="code">12-2102</td><td>ค่าเสื่อมสะสม — อุปกรณ์สำนักงาน</td><td class="amt">-</td><td class="amt">833.33</td></tr>
         <tr class="total"><td colspan="2">รวม</td><td class="amt balanced">833.33</td><td class="amt balanced">833.33</td></tr>
       </tbody>
     </table>
@@ -498,7 +498,7 @@
       <thead><tr><th>รหัส</th><th>ชื่อบัญชี</th><th>Dr</th><th>Cr</th></tr></thead>
       <tbody>
         <tr><td class="code">11-1201</td><td>ธนาคาร KBank</td><td class="amt">10,700.00</td><td class="amt">-</td></tr>
-        <tr><td class="code">12-2201</td><td>ค่าเสื่อมสะสม — อุปกรณ์ <em>(ล้าง)</em></td><td class="amt">24,000.00</td><td class="amt">-</td></tr>
+        <tr><td class="code">12-2102</td><td>ค่าเสื่อมสะสม — อุปกรณ์ <em>(ล้าง)</em></td><td class="amt">24,000.00</td><td class="amt">-</td></tr>
         <tr><td class="code">12-2101</td><td>อุปกรณ์สำนักงาน — ราคาทุน <em>(ตัดออก)</em></td><td class="amt">-</td><td class="amt">30,000.00</td></tr>
         <tr><td class="code">21-2101</td><td>ภาษีขาย ภ.พ.30</td><td class="amt">-</td><td class="amt">700.00</td></tr>
         <tr><td class="code">42-1105</td><td>กำไรจากการจำหน่ายสินทรัพย์</td><td class="amt">-</td><td class="amt">4,000.00</td></tr>
@@ -515,8 +515,8 @@
     <table class="je">
       <thead><tr><th>รหัส</th><th>ชื่อบัญชี</th><th>Dr</th><th>Cr</th></tr></thead>
       <tbody>
-        <tr><td class="code">12-2201</td><td>ค่าเสื่อมสะสม — อุปกรณ์ <em>(ล้าง)</em></td><td class="amt">24,000.00</td><td class="amt">-</td></tr>
-        <tr><td class="code">54-1701</td><td>ขาดทุนจากการตัดบัญชีสินทรัพย์</td><td class="amt">6,000.00</td><td class="amt">-</td></tr>
+        <tr><td class="code">12-2102</td><td>ค่าเสื่อมสะสม — อุปกรณ์ <em>(ล้าง)</em></td><td class="amt">24,000.00</td><td class="amt">-</td></tr>
+        <tr><td class="code">53-1605</td><td>ขาดทุนจากการจำหน่ายสินทรัพย์</td><td class="amt">6,000.00</td><td class="amt">-</td></tr>
         <tr><td class="code">12-2101</td><td>อุปกรณ์สำนักงาน — ราคาทุน <em>(ตัดออก)</em></td><td class="amt">-</td><td class="amt">30,000.00</td></tr>
         <tr class="total"><td colspan="2">รวม</td><td class="amt balanced">30,000.00</td><td class="amt balanced">30,000.00</td></tr>
       </tbody>
@@ -558,7 +558,7 @@
 
   <div class="entry">
     <p class="title">JE กลับ (postedAt 11/05/2569)</p>
-    <p class="meta">reason = "ลงรหัสบัญชีผิด — ต้องลง 12-2104 (ยานพาหนะ)"</p>
+    <p class="meta">reason = "ลงรหัสบัญชีผิด — ต้องลง 12-2107 (ยานพาหนะ)"</p>
     <table class="je">
       <thead><tr><th>รหัส</th><th>ชื่อบัญชี</th><th>Dr</th><th>Cr</th></tr></thead>
       <tbody>
@@ -643,7 +643,8 @@
   <ul class="compact">
     <li>เปิด <code>/depreciation</code> → ตรวจดูว่า cron run แล้ว (มี JE entry ประจำเดือนนั้น)</li>
     <li>เปิด <code>/assets/journal</code> filter เดือนปัจจุบัน → เช็ค JE_ASSET_DEPRECIATION ครบทุก asset ที่ POSTED</li>
-    <li>เช็ค Trial Balance: <code>12-2201 + 12-2202 + 12-2203 + 12-2204</code> เพิ่มขึ้น = <code>53-1601 + 53-1602 + 53-1603 + 53-1604</code> ของเดือนนั้น</li>
+    <li>เช็ค Trial Balance: <code>12-2102 + 12-2104 + 12-2106 + 12-2108</code> เพิ่มขึ้น = <code>53-1601 + 53-1602 + 53-1603 + 53-1604</code> ของเดือนนั้น</li>
+
   </ul>
 
   <h3>ตรวจ asset ที่ POSTED ในเดือน</h3>
@@ -655,9 +656,9 @@
 
   <h3>ตรวจ asset ที่ DISPOSED / WRITTEN_OFF</h3>
   <ul class="compact">
-    <li>กำไร/ขาดทุนจากการจำหน่ายเข้า 42-1105 หรือ 54-1701 ตามชนิด</li>
+    <li>กำไร/ขาดทุนจากการจำหน่ายเข้า 42-1105 หรือ 53-1605 ตามชนิด</li>
     <li>VAT ขาย (21-2101) ตรงกับ ภพ.30</li>
-    <li>เช็คว่า <code>12-21XX</code> + <code>12-22XX</code> ของ asset นั้นถูกล้างหมด (NBV = 0 หลัง JE จำหน่าย)</li>
+    <li>เช็คว่า <code>12-21XX</code> (cost + Acc.Depr.) ของ asset นั้นถูกล้างหมด (NBV = 0 หลัง JE จำหน่าย)</li>
   </ul>
 
   <h3>ตรวจ asset ที่ REVERSED</h3>
@@ -677,9 +678,9 @@
   <table class="ref">
     <thead><tr><th>ตรวจสอบ</th><th>วิธี</th><th>คาดหวัง</th></tr></thead>
     <tbody>
-      <tr><td>ทุนรวม</td><td>Σ 12-21XX (Dr balance)</td><td>= สรุปจากหน้า Register</td></tr>
-      <tr><td>ค่าเสื่อมสะสม</td><td>Σ 12-22XX (Cr balance, contra)</td><td>= ผลรวม Schedule ทุกตัว</td></tr>
-      <tr><td>NBV รวม</td><td>(12-21XX) − (12-22XX)</td><td>= ยอด NBV หน้า dashboard</td></tr>
+      <tr><td>ทุนรวม</td><td>Σ cost (12-2101, 12-2103, 12-2105, 12-2107) Dr balance</td><td>= สรุปจากหน้า Register</td></tr>
+      <tr><td>ค่าเสื่อมสะสม</td><td>Σ contra (12-2102, 12-2104, 12-2106, 12-2108) Cr balance</td><td>= ผลรวม Schedule ทุกตัว</td></tr>
+      <tr><td>NBV รวม</td><td>cost − contra (per pair)</td><td>= ยอด NBV หน้า dashboard</td></tr>
       <tr><td>ค่าเสื่อมราคาเดือนนี้</td><td>53-16XX</td><td>= Σ (purchaseCost − residual) / life ของ asset POSTED ทั้งหมด</td></tr>
       <tr><td>VAT ซื้อ</td><td>11-4101 + 11-4102 (เพิ่มในเดือน)</td><td>= ยอดในรายงานภพ.30 ฝั่งซื้อ</td></tr>
       <tr><td>WHT ค้างจ่าย</td><td>21-3102 + 21-3103</td><td>= ยอดที่จะนำส่งภายในวันที่ 7 ของเดือนถัดไป</td></tr>
@@ -688,8 +689,8 @@
 
   <h3>Red flags — ถ้าพบสัญญาณนี้ → escalate</h3>
   <ul class="compact">
-    <li><code>12-21XX Cr balance</code> → ผิดแน่นอน (assets ต้อง Dr) — เช็ค JE reversal ผิดด้าน</li>
-    <li><code>12-22XX Dr balance</code> → ผิด (contra ต้อง Cr) — เช็ค disposal ไม่ล้าง contra ครบ</li>
+    <li>Cost accounts (12-2101, 12-2103, 12-2105, 12-2107) Cr balance → ผิดแน่นอน (assets ต้อง Dr) — เช็ค JE reversal ผิดด้าน</li>
+    <li>Contra accounts (12-2102, 12-2104, 12-2106, 12-2108) Dr balance → ผิด (contra ต้อง Cr) — เช็ค disposal ไม่ล้าง contra ครบ</li>
     <li>NBV ติดลบ → bug ใน DepreciationService (ค่าเสื่อมเกินทุน) — Sentry alert</li>
     <li>Asset POSTED แต่ไม่มี JE — orphan record — query: <code>SELECT * FROM assets WHERE status='POSTED' AND id NOT IN (SELECT entityId FROM journal_entries WHERE entityType='ASSET')</code></li>
     <li>JE entry ที่ Σ Dr ≠ Σ Cr → bug ใน JournalAutoService — should be impossible (guard at write time) แต่ถ้าเจอ ต้อง alert ทันที</li>
@@ -759,7 +760,7 @@
     <table class="je">
       <tbody>
         <tr><td class="code">53-1601</td><td>ค่าเสื่อมราคา — อุปกรณ์สำนักงาน</td><td class="amt">1,557.63</td><td class="amt">-</td></tr>
-        <tr><td class="code">12-2201</td><td>ค่าเสื่อมสะสม — อุปกรณ์สำนักงาน</td><td class="amt">-</td><td class="amt">1,557.63</td></tr>
+        <tr><td class="code">12-2102</td><td>ค่าเสื่อมสะสม — อุปกรณ์สำนักงาน</td><td class="amt">-</td><td class="amt">1,557.63</td></tr>
       </tbody>
     </table>
   </div>
@@ -781,7 +782,7 @@
     <table class="je">
       <tbody>
         <tr><td class="code">11-1201</td><td>ธนาคาร KBank</td><td class="amt">5,350.00</td><td class="amt">-</td></tr>
-        <tr><td class="code">12-2201</td><td>ค่าเสื่อมสะสม — อุปกรณ์ <em>(ล้าง)</em></td><td class="amt">56,074.77</td><td class="amt">-</td></tr>
+        <tr><td class="code">12-2102</td><td>ค่าเสื่อมสะสม — อุปกรณ์ <em>(ล้าง)</em></td><td class="amt">56,074.77</td><td class="amt">-</td></tr>
         <tr><td class="code">12-2101</td><td>อุปกรณ์สำนักงาน <em>(ตัด)</em></td><td class="amt">-</td><td class="amt">56,074.77</td></tr>
         <tr><td class="code">21-2101</td><td>ภาษีขาย ภพ.30</td><td class="amt">-</td><td class="amt">350.00</td></tr>
         <tr><td class="code">42-1105</td><td>กำไรจากการจำหน่ายสินทรัพย์</td><td class="amt">-</td><td class="amt">5,000.00</td></tr>
@@ -795,13 +796,13 @@
 <section id="s14">
   <h2><span class="badge-section">14</span>FAQ — คำถามที่บัญชีถามบ่อย</h2>
 
-  <h3>Q1: ระบบรู้ได้ยังไงว่าจะลง 12-2101 หรือ 12-2102?</h3>
+  <h3>Q1: ระบบรู้ได้ยังไงว่าจะลง 12-2101 หรือ 12-2103?</h3>
   <p>จาก field <code>category</code> ที่ผู้บันทึกเลือกใน Section 1:</p>
   <ul class="compact">
-    <li>EQUIPMENT → 12-2101 + Acc.Depr. 12-2201 + Dep.Expense 53-1601</li>
-    <li>IMPROVEMENT → 12-2102 + 12-2202 + 53-1602</li>
-    <li>FURNITURE → 12-2103 + 12-2203 + 53-1603</li>
-    <li>VEHICLE → 12-2104 + 12-2204 + 53-1604</li>
+    <li>EQUIPMENT → 12-2101 + Acc.Depr. 12-2102 + Dep.Expense 53-1601</li>
+    <li>IMPROVEMENT → 12-2103 + 12-2104 + 53-1602</li>
+    <li>FURNITURE → 12-2105 + 12-2106 + 53-1603</li>
+    <li>VEHICLE → 12-2107 + 12-2108 + 53-1604</li>
   </ul>
 
   <h3>Q2: ทำไม Capitalized Cost ใน Live totals ไม่เท่า basePrice?</h3>

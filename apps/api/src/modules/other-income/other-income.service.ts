@@ -1095,6 +1095,37 @@ export class OtherIncomeService {
     }
   }
 
+  /** OWNER: toggle OTHER_INCOME_MAKER_CHECKER_ENABLED and emit CONFIG_CHANGED audit. */
+  async setMakerCheckerEnabled(enabled: boolean, userId: string): Promise<{ success: true; enabled: boolean }> {
+    await this.prisma.systemConfig.upsert({
+      where: { key: 'OTHER_INCOME_MAKER_CHECKER_ENABLED' },
+      update: { value: enabled ? 'true' : 'false' },
+      create: { key: 'OTHER_INCOME_MAKER_CHECKER_ENABLED', value: enabled ? 'true' : 'false' },
+    });
+
+    try {
+      await this.audit.log({
+        userId,
+        action: 'CONFIG_CHANGED',
+        entity: 'system_config',
+        entityId: 'OTHER_INCOME_MAKER_CHECKER_ENABLED',
+        newValue: { enabled },
+      });
+    } catch (err) {
+      Sentry.captureException(err);
+    }
+
+    return { success: true, enabled };
+  }
+
+  /** OWNER: count OtherIncome docs with status=READY that are not soft-deleted. */
+  async pendingReadyCount(): Promise<{ count: number }> {
+    const count = await this.prisma.otherIncome.count({
+      where: { status: 'READY', deletedAt: null },
+    });
+    return { count };
+  }
+
   /** Read OTHER_INCOME_ATTACHMENT_THRESHOLD from SystemConfig. Falls back to 50_000. */
   async getAttachmentThreshold(): Promise<number> {
     try {

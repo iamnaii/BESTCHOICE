@@ -44,9 +44,11 @@ describe('JournalOverrideService', () => {
     });
 
     it('V5: throws when a line has both Dr and Cr', () => {
+      expect(() =>
+        svc.validate([line('11-1101', 50, 50), line('42-1102', 0, 100)]),
+      ).toThrow(BadRequestException);
       try {
         svc.validate([line('11-1101', 50, 50), line('42-1102', 0, 100)]);
-        fail('should have thrown');
       } catch (e: any) {
         expect(e.response.errors[0].rule).toBe('V5');
         expect(e.response.errors[0].msg).toContain('11-1101');
@@ -55,9 +57,11 @@ describe('JournalOverrideService', () => {
     });
 
     it('V5: throws when a line has neither Dr nor Cr', () => {
+      expect(() =>
+        svc.validate([line('11-1101', 100, 0), line('42-1102', 0, 0), line('21-2101', 0, 100)]),
+      ).toThrow(BadRequestException);
       try {
         svc.validate([line('11-1101', 100, 0), line('42-1102', 0, 0), line('21-2101', 0, 100)]);
-        fail('should have thrown');
       } catch (e: any) {
         expect(e.response.errors[0].rule).toBe('V5');
         expect(e.response.errors[0].msg).toContain('42-1102');
@@ -65,7 +69,7 @@ describe('JournalOverrideService', () => {
       }
     });
 
-    it('errors are returned in V1 → V2 → V5 order — V2 short-circuits before V5', () => {
+    it('short-circuit priority — V2 fires before V5 when both would apply', () => {
       // 1 line that's also missing dr/cr should report V2 first
       try { svc.validate([line('11-1101', 0, 0)]); } catch (e: any) {
         expect(e.response.errors[0].rule).toBe('V2');

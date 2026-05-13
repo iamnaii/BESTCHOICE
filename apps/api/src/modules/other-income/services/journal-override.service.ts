@@ -101,8 +101,10 @@ export class JournalOverrideService {
 
   private fmt(d: Decimal): string {
     // Thai-style number with 2 decimals, comma thousands
-    return new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-      .format(d.toNumber());
+    // Avoid Decimal.toNumber() — use toFixed + regex grouping (accounting rule)
+    const [intPart, decPart = '00'] = d.toFixed(2).split('.');
+    const intFormatted = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return `${intFormatted}.${decPart}`;
   }
 
   private fail(rule: 'V1' | 'V2' | 'V5', msg: string): never {

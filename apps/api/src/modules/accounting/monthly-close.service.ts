@@ -7,6 +7,8 @@ import { JournalAutoService } from '../journal/journal-auto.service';
 import { TaxService } from '../tax/tax.service';
 import { AccountingService } from './accounting.service';
 import { PeakService } from '../peak/peak.service';
+import { AuditService } from '../audit/audit.service';
+import { ReopenPeriodDto } from './dto/reopen-period.dto';
 
 export interface PeriodStatusResult {
   companyId: string;
@@ -44,6 +46,7 @@ export class MonthlyCloseService {
     private readonly taxService: TaxService,
     private readonly accountingService: AccountingService,
     private readonly peakService: PeakService,
+    private readonly auditService: AuditService,
   ) {}
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -235,6 +238,26 @@ export class MonthlyCloseService {
         (forceCloseReason ? ' [FORCE_CLOSE]' : ''),
     );
 
+    // Emit PERIOD_CLOSED audit outside transaction — best-effort, don't roll back on failure.
+    try {
+      await this.auditService.log({
+        userId,
+        action: 'PERIOD_CLOSED',
+        entity: 'accounting_period',
+        entityId: existing.id,
+        newValue: {
+          closedAt: new Date().toISOString(),
+          period: `${year}-${String(month).padStart(2, '0')}`,
+          forceClose: !!forceCloseReason,
+        },
+      });
+    } catch (err) {
+      Sentry.captureException(err, {
+        tags: { module: 'accounting', action: 'PERIOD_CLOSED' },
+        extra: { companyId, year, month, userId },
+      });
+    }
+
     return period as PeriodStatusResult;
   }
 
@@ -306,10 +329,14 @@ export class MonthlyCloseService {
    * `boardResolutionId` and `reason` (≥20 chars).
    */
   async reopenPeriod(
-    dto: { companyId: string; year: number; month: number; boardResolutionId: string; reason: string },
+    dto: ReopenPeriodDto,
     userId: string,
+    ipAddress?: string,
   ): Promise<PeriodStatusResult> {
-    const { companyId, year, month, boardResolutionId, reason } = dto;
+    const { companyId, year, month, boardResolutionId, reasonType, reason, taxFiled } = dto;
+
+    // Format compound reason string for storage
+    const reopenReason = `${reasonType}: ${reason}`;
 
     const existing = await this.prisma.accountingPeriod.findUnique({
       where: { companyId_year_month: { companyId, year, month } },
@@ -342,45 +369,54 @@ export class MonthlyCloseService {
       }
     }
 
-    const period = await this.prisma.$transaction(async (tx) => {
-      const updated = await tx.accountingPeriod.update({
-        where: { companyId_year_month: { companyId, year, month } },
-        data: {
-          status: 'OPEN',
-          reviewStartedAt: null,
-          reviewStartedById: null,
-          closedAt: null,
-          closedById: null,
-          auditIssues: Prisma.JsonNull,
-          reportSnapshot: Prisma.JsonNull,
-          reopenedAt: new Date(),
-          reopenedById: userId,
-          boardResolutionId,
-        },
-      });
-
-      await tx.auditLog.create({
-        data: {
-          userId,
-          action: 'PERIOD_REOPEN',
-          entity: 'accounting_period',
-          entityId: existing.id,
-          newValue: {
-            boardResolutionId,
-            reason,
-            period: `${existing.year}-${String(existing.month).padStart(2, '0')}`,
-            previousStatus: existing.status,
-          } as unknown as import('@prisma/client').Prisma.JsonObject,
-        },
-      });
-
-      return updated;
+    const period = await this.prisma.accountingPeriod.update({
+      where: { companyId_year_month: { companyId, year, month } },
+      data: {
+        status: 'OPEN',
+        reviewStartedAt: null,
+        reviewStartedById: null,
+        closedAt: null,
+        closedById: null,
+        auditIssues: Prisma.JsonNull,
+        reportSnapshot: Prisma.JsonNull,
+        reopenedAt: new Date(),
+        reopenedById: userId,
+        boardResolutionId: boardResolutionId ?? null,
+        reopenReason,
+        taxFiled,
+      },
     });
 
     this.logger.log(
       `Period ${year}/${month} (company ${companyId}) reopened to OPEN by ${userId} ` +
-        `(boardResolutionId=${boardResolutionId}).`,
+        `(reasonType=${reasonType}, taxFiled=${taxFiled}).`,
     );
+
+    // Emit PERIOD_REOPENED audit outside DB update — best-effort, don't roll back on failure.
+    try {
+      await this.auditService.log({
+        userId,
+        action: 'PERIOD_REOPENED',
+        entity: 'accounting_period',
+        entityId: existing.id,
+        newValue: {
+          reasonType,
+          reason,
+          taxFiled,
+          reopenReason,
+          reopenedAt: new Date().toISOString(),
+          period: `${existing.year}-${String(existing.month).padStart(2, '0')}`,
+          previousStatus: existing.status,
+          boardResolutionId: boardResolutionId ?? null,
+        },
+        ipAddress,
+      });
+    } catch (err) {
+      Sentry.captureException(err, {
+        tags: { module: 'accounting', action: 'PERIOD_REOPENED' },
+        extra: { companyId, year, month, userId },
+      });
+    }
 
     return period as PeriodStatusResult;
   }

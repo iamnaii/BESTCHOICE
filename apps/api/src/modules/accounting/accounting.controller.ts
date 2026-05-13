@@ -178,8 +178,8 @@ export class AccountingController {
   @Roles('OWNER')
   reopenPeriod(
     @Body() dto: ReopenPeriodDto,
-    @Request() req: { user: { id: string } },
+    @Request() req: { user: { id: string }; ip?: string },
   ) {
-    return this.monthlyCloseService.reopenPeriod(dto, req.user.id);
+    return this.monthlyCloseService.reopenPeriod(dto, req.user.id, req.ip);
   }
 }

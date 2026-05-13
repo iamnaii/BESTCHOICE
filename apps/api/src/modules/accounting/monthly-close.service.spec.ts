@@ -6,6 +6,8 @@ import { JournalAutoService } from '../journal/journal-auto.service';
 import { TaxService } from '../tax/tax.service';
 import { AccountingService } from './accounting.service';
 import { PeakService } from '../peak/peak.service';
+import { AuditService } from '../audit/audit.service';
+import { ReopenReasonType } from './dto/reopen-period.dto';
 
 // ─── Minimal mock factories ────────────────────────────────────────────────
 
@@ -53,6 +55,10 @@ const makePeakService = () => ({
   exportJournalEntries: jest.fn(),
 });
 
+const makeAuditService = () => ({
+  log: jest.fn().mockResolvedValue(undefined),
+});
+
 // ─── Tests ────────────────────────────────────────────────────────────────
 
 describe('MonthlyCloseService', () => {
@@ -62,6 +68,7 @@ describe('MonthlyCloseService', () => {
   let taxService: ReturnType<typeof makeTaxService>;
   let accountingService: ReturnType<typeof makeAccountingService>;
   let peakService: ReturnType<typeof makePeakService>;
+  let auditService: ReturnType<typeof makeAuditService>;
 
   beforeEach(async () => {
     prisma = makePrisma();
@@ -69,6 +76,7 @@ describe('MonthlyCloseService', () => {
     taxService = makeTaxService();
     accountingService = makeAccountingService();
     peakService = makePeakService();
+    auditService = makeAuditService();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -78,6 +86,7 @@ describe('MonthlyCloseService', () => {
         { provide: TaxService, useValue: taxService },
         { provide: AccountingService, useValue: accountingService },
         { provide: PeakService, useValue: peakService },
+        { provide: AuditService, useValue: auditService },
       ],
     }).compile();
 
@@ -448,7 +457,9 @@ describe('MonthlyCloseService', () => {
           year: 2025,
           month: 2,
           boardResolutionId: 'BR-FRESH-1',
+          reasonType: ReopenReasonType.AUDITOR_REQUEST,
           reason: reasonText,
+          taxFiled: false,
         },
         'user-OWNER-1',
       );
@@ -473,7 +484,9 @@ describe('MonthlyCloseService', () => {
             year: 2025,
             month: 2,
             boardResolutionId: '',
+            reasonType: ReopenReasonType.WRONG_ENTRY,
             reason: reasonText,
+            taxFiled: true,
           },
           'user-OWNER-1',
         ),
@@ -502,7 +515,9 @@ describe('MonthlyCloseService', () => {
           year: 2025,
           month: 2,
           boardResolutionId: 'BOARD-RES-2026-04-19',
+          reasonType: ReopenReasonType.MISSED_RECORD,
           reason: reasonText,
+          taxFiled: false,
         },
         'user-OWNER-1',
       );
@@ -536,12 +551,14 @@ describe('MonthlyCloseService', () => {
           year: 2026,
           month: 3,
           boardResolutionId: 'BR-2026-001',
+          reasonType: ReopenReasonType.AUDITOR_REQUEST,
           reason: reasonText,
+          taxFiled: true,
         },
         'user-OWNER-1',
       );
 
-      // Verify period update includes new audit fields
+      // Verify period update includes new audit fields + reason metadata
       expect(prisma.accountingPeriod.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
@@ -549,23 +566,24 @@ describe('MonthlyCloseService', () => {
             reopenedAt: expect.any(Date),
             reopenedById: 'user-OWNER-1',
             boardResolutionId: 'BR-2026-001',
+            reopenReason: `AUDITOR_REQUEST: ${reasonText}`,
+            taxFiled: true,
           }),
         }),
       );
 
-      // Verify AuditLog created
-      expect(prisma.auditLog.create).toHaveBeenCalledWith(
+      // Verify PERIOD_REOPENED audit emitted via AuditService (not prisma.auditLog.create)
+      expect(auditService.log).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({
-            userId: 'user-OWNER-1',
-            action: 'PERIOD_REOPEN',
-            entity: 'accounting_period',
-            entityId: 'period-f6004-1',
-            newValue: expect.objectContaining({
-              boardResolutionId: 'BR-2026-001',
-              reason: reasonText,
-              period: '2026-03',
-            }),
+          userId: 'user-OWNER-1',
+          action: 'PERIOD_REOPENED',
+          entity: 'accounting_period',
+          entityId: 'period-f6004-1',
+          newValue: expect.objectContaining({
+            reasonType: ReopenReasonType.AUDITOR_REQUEST,
+            reason: reasonText,
+            taxFiled: true,
+            period: '2026-03',
           }),
         }),
       );

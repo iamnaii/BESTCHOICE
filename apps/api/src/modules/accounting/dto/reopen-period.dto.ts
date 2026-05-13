@@ -1,4 +1,4 @@
-import { IsBoolean, IsEnum, IsString, MinLength } from 'class-validator';
+import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, Max, Min, MinLength } from 'class-validator';
 
 export enum ReopenReasonType {
   WRONG_ENTRY = 'WRONG_ENTRY',
@@ -8,6 +8,27 @@ export enum ReopenReasonType {
 }
 
 export class ReopenPeriodDto {
+  // ─── Period locators (mirrors CloseMonthDto) ─────────────────────────────
+  @IsString({ message: 'companyId ต้องเป็น string' })
+  companyId!: string;
+
+  @IsInt({ message: 'ปีต้องเป็นจำนวนเต็ม' })
+  @Min(2020)
+  year!: number;
+
+  @IsInt({ message: 'เดือนต้องเป็น 1-12' })
+  @Min(1)
+  @Max(12)
+  month!: number;
+
+  /**
+   * T2-C10 — Required only when reopening a CLOSED period older than 90 days.
+   */
+  @IsString()
+  @IsOptional()
+  boardResolutionId?: string;
+
+  // ─── Reason taxonomy ─────────────────────────────────────────────────────
   @IsEnum(ReopenReasonType, { message: 'reasonType ต้องเป็นหนึ่งใน WRONG_ENTRY, MISSED_RECORD, AUDITOR_REQUEST, OTHER' })
   reasonType!: ReopenReasonType;
 

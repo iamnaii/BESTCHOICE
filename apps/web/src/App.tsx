@@ -12,6 +12,14 @@ function ExternalRedirect({ to }: { to: string }) {
   return null;
 }
 
+// Redirect /accounting/periods → /settings#periods (preserves hash via window.location.replace).
+function PeriodsRedirect() {
+  useEffect(() => {
+    window.location.replace('/settings#periods');
+  }, []);
+  return null;
+}
+
 // Lazy-load all pages (separate chunks, loaded on demand)
 const LandingPage = lazy(() => import('@/pages/LandingPage'));
 const PrivacyPolicyPage = lazy(() => import('@/pages/PrivacyPolicyPage'));
@@ -40,6 +48,9 @@ const ReportsPage = lazy(() => import('@/pages/ReportsPage'));
 const MigrationPage = lazy(() => import('@/pages/MigrationPage'));
 const UsersPage = lazy(() => import('@/pages/UsersPage'));
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
+const StickersSettingsPage = lazy(() => import('@/pages/SettingsPage/StickersPage'));
+const CollectionsSettingsPage = lazy(() => import('@/pages/SettingsPage/CollectionsPage'));
+const GeneralSettingsPage = lazy(() => import('@/pages/SettingsPage/GeneralSettingsPage'));
 const PaymentMethodSettingsPage = lazy(() => import('@/pages/PaymentMethodSettingsPage'));
 const DefectExchangePage = lazy(() => import('@/pages/DefectExchangePage'));
 const AuditLogsPage = lazy(() => import('@/pages/AuditLogsPage'));
@@ -392,6 +403,9 @@ function App() {
           <Route path="/ads" element={<ProtectedRoute roles={['OWNER']}><AdsTrackingPage /></ProtectedRoute>} />
           <Route path="/settings/channels" element={<ProtectedRoute roles={['OWNER']}><ChannelSettingsPage /></ProtectedRoute>} />
           <Route path="/settings/payment-methods" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER']}><PaymentMethodSettingsPage /></ProtectedRoute>} />
+          <Route path="/settings/stickers" element={<ProtectedRoute roles={['OWNER']}><StickersSettingsPage /></ProtectedRoute>} />
+          <Route path="/settings/collections" element={<ProtectedRoute roles={['OWNER']}><CollectionsSettingsPage /></ProtectedRoute>} />
+          <Route path="/settings/general" element={<ProtectedRoute roles={['OWNER']}><GeneralSettingsPage /></ProtectedRoute>} />
           <Route path="/chatbot-finance" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER']}><ChatbotFinanceAnalyticsPage /></ProtectedRoute>} />
           <Route path="/chatbot-finance/sessions" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}><ChatbotFinanceSessionsPage /></ProtectedRoute>} />
           <Route path="/chatbot-finance/knowledge" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER']}><ChatbotFinanceKnowledgePage /></ProtectedRoute>} />
@@ -1050,15 +1064,8 @@ function App() {
             }
           />
 
-          {/* งวดบัญชี (Accounting Periods) */}
-          <Route
-            path="/accounting/periods"
-            element={
-              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
-                <PeriodClosePage />
-              </ProtectedRoute>
-            }
-          />
+          {/* งวดบัญชี → /settings#periods (Task 7 backward-compat redirect) */}
+          <Route path="/accounting/periods" element={<PeriodsRedirect />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

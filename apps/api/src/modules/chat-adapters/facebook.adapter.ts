@@ -129,25 +129,22 @@ export class FacebookAdapter implements IChannelAdapter {
   }
 
   async getUserProfile(externalUserId: string): Promise<UserProfile | null> {
-    if (!this.pageAccessToken) return null;
+    if (!this.pageAccessToken || !this.pageId) return null;
     try {
-      const res = await fetch(
-        `https://graph.facebook.com/v25.0/${externalUserId}?fields=first_name,last_name,profile_pic`,
-        {
-          headers: { Authorization: `Bearer ${this.pageAccessToken}` },
-          signal: AbortSignal.timeout(10000),
-        },
-      );
+      // FB v25 deprecated direct /{psid}?fields=name lookups even with pages_messaging.
+      // Targeted conversation lookup via user_id returns participants with name.
+      const url =
+        `https://graph.facebook.com/v25.0/me/conversations?user_id=${encodeURIComponent(externalUserId)}` +
+        `&fields=participants&access_token=${encodeURIComponent(this.pageAccessToken)}`;
+      const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
       if (!res.ok) return null;
-      const data = (await res.json()) as {
-        first_name?: string;
-        last_name?: string;
-        profile_pic?: string;
+      const json = (await res.json()) as {
+        data?: Array<{ participants?: { data?: Array<{ id: string; name?: string }> } }>;
       };
-      return {
-        displayName: `${data.first_name ?? ''} ${data.last_name ?? ''}`.trim(),
-        avatarUrl: data.profile_pic,
-      };
+      const conv = json.data?.[0];
+      const user = conv?.participants?.data?.find((p) => p.id === externalUserId);
+      if (!user?.name) return null;
+      return { displayName: user.name };
     } catch (err) {
       const isTimeout = err instanceof Error && err.name === 'TimeoutError';
       if (isTimeout) {

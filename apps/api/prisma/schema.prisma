@@ -5077,6 +5077,8 @@ model AccountingPeriod {
   reopenedAt        DateTime? @map("reopened_at")
   reopenedById      String?   @map("reopened_by_id")
   reopenedBy        User?     @relation("PeriodReopenedBy", fields: [reopenedById], references: [id])
+  reopenReason      String?   @map("reopen_reason")
+  taxFiled          Boolean?  @map("tax_filed")
   boardResolutionId String?   @map("board_resolution_id")
 
   peakSyncedAt   DateTime? @map("peak_synced_at")

@@ -8,6 +8,8 @@ import { AutoJournalService } from '../services/auto-journal.service';
 import { OtherIncomeTemplate } from '../templates/other-income.template';
 import { JournalAutoService } from '../../journal/journal-auto.service';
 import { StorageService } from '../../storage/storage.service';
+import { JournalOverrideService } from '../services/journal-override.service';
+import { AuditService } from '../../audit/audit.service';
 
 const stubStorage = {
   upload: async () => undefined,
@@ -38,6 +40,8 @@ describe('OtherIncomeService — CRUD', () => {
         PrismaService,
         { provide: OtherIncomeTemplate, useValue: stubTemplate },
         { provide: StorageService, useValue: stubStorage },
+        JournalOverrideService,
+        AuditService,
       ],
     }).compile();
     await module.init();
@@ -239,6 +243,8 @@ describe('OtherIncomeService — post + reverse + copy', () => {
         JournalAutoService,
         PrismaService,
         { provide: StorageService, useValue: stubStorage },
+        JournalOverrideService,
+        AuditService,
       ],
     }).compile();
     await module.init();
@@ -543,6 +549,8 @@ describe('OtherIncomeService — post — period lock (B1)', () => {
         JournalAutoService,
         PrismaService,
         { provide: StorageService, useValue: stubStorage },
+        JournalOverrideService,
+        AuditService,
       ],
     }).compile();
     await module.init();

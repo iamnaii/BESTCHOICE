@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { OtherIncomeStatus, Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
+import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { DocNumberService } from './services/doc-number.service';
@@ -562,29 +563,38 @@ export class OtherIncomeService {
     // Write JV_OVERRIDDEN audit outside transaction (non-blocking on TX connection)
     if (overrideLinesForAudit) {
       const diffSummary = this.journalOverride.computeDiffSummary(autoJeLines, overrideLinesForAudit);
-      await this.audit.log({
-        userId,
-        action: 'JV_OVERRIDDEN',
-        entity: 'other_income',
-        entityId: doc.id,
-        oldValue: {
-          jvLines: autoJeLines.map((l) => ({
-            accountCode: l.accountCode,
-            debit: l.debit.toString(),
-            credit: l.credit.toString(),
-            description: l.description ?? null,
-          })),
-        },
-        newValue: {
-          jvLines: overrideLinesForAudit.map((l) => ({
-            accountCode: l.accountCode,
-            debit: l.debit.toString(),
-            credit: l.credit.toString(),
-            description: l.description ?? null,
-          })),
-          diffSummary,
-        },
-      });
+      try {
+        await this.audit.log({
+          userId,
+          action: 'JV_OVERRIDDEN',
+          entity: 'other_income',
+          entityId: doc.id,
+          oldValue: {
+            jvLines: autoJeLines.map((l) => ({
+              accountCode: l.accountCode,
+              debit: l.debit.toString(),
+              credit: l.credit.toString(),
+              description: l.description ?? null,
+            })),
+          },
+          newValue: {
+            jvLines: overrideLinesForAudit.map((l) => ({
+              accountCode: l.accountCode,
+              debit: l.debit.toString(),
+              credit: l.credit.toString(),
+              description: l.description ?? null,
+            })),
+            diffSummary,
+          },
+        });
+      } catch (err) {
+        // OtherIncome is already POSTED — never throw and rollback the response.
+        // Capture to Sentry so accounting can manually reconcile audit gaps.
+        Sentry.captureException(err, {
+          tags: { module: 'other-income', action: 'JV_OVERRIDDEN' },
+          extra: { otherIncomeId: doc.id, docNumber: doc.docNumber },
+        });
+      }
     }
 
     return posted;

@@ -942,8 +942,8 @@ export default function OtherIncomeEntryPage() {
                 // Snapshot the current auto-generated JE lines as the editable baseline
                 const snapshot: EditableJournalLine[] = jeLines.map((l) => ({
                   accountCode: l.accountCode,
-                  debit: Number(l.debit),
-                  credit: Number(l.credit),
+                  debit: Number(Number(l.debit).toFixed(2)),
+                  credit: Number(Number(l.credit).toFixed(2)),
                   description: l.description ?? '',
                 }));
                 setOverrideLines(snapshot);

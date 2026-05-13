@@ -1,4 +1,5 @@
 import { Injectable, Logger, Inject, Optional, forwardRef } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { ChatChannel, MessageRole, MessageType } from '@prisma/client';
 import {
   IChannelAdapter,
@@ -33,6 +34,7 @@ export class MessageRouterService {
   constructor(
     private roomManager: RoomManagerService,
     private handoffManager: HandoffManagerService,
+    private configService: ConfigService,
     @Optional()
     @Inject(forwardRef(() => AfterHoursService))
     private afterHoursService?: AfterHoursService,
@@ -140,6 +142,15 @@ export class MessageRouterService {
       channel: message.channel,
       roomId: room.id,
     });
+
+    // 3a. Global FB kill switch — stop ALL bot pathways (welcome, AI, after-hours)
+    // when FB_BOT_DISABLED=true. Inbound is still saved and staff are notified above.
+    if (
+      message.channel === ChatChannel.FACEBOOK &&
+      this.configService.get<string>('FB_BOT_DISABLED') === 'true'
+    ) {
+      return;
+    }
 
     // 3b. Check handoff mode — if staff is handling, don't run AI
     if (room.handoffMode) {

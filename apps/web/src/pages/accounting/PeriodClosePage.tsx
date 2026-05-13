@@ -7,6 +7,7 @@ import QueryBoundary from '@/components/QueryBoundary';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatThaiDate } from '@/lib/date';
+import { ReopenPeriodModal } from './components/ReopenPeriodModal';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -72,10 +73,8 @@ export default function PeriodClosePage() {
   // Confirm close dialog state
   const [confirmingClose, setConfirmingClose] = useState<number | null>(null);
 
-  // Reopen dialog state
-  const [reopenMonth, setReopenMonth] = useState<number | null>(null);
-  const [boardResolutionId, setBoardResolutionId] = useState('');
-  const [reopenReason, setReopenReason] = useState('');
+  // Reopen dialog state — modal captures reasonType + reason + taxFiled
+  const [reopenTarget, setReopenTarget] = useState<{ companyId: string; year: number; month: number } | null>(null);
 
   // Load companies and auto-select FINANCE
   const companiesQuery = useQuery<Company[]>({
@@ -115,24 +114,28 @@ export default function PeriodClosePage() {
     },
   });
 
+  type ReopenDto = {
+    companyId: string;
+    year: number;
+    month: number;
+    reasonType: 'WRONG_ENTRY' | 'MISSED_RECORD' | 'AUDITOR_REQUEST' | 'OTHER';
+    reason: string;
+    taxFiled: boolean;
+    boardResolutionId?: string;
+  };
+
   const reopenMutation = useMutation({
-    mutationFn: ({ month, resolutionId, reason }: { month: number; resolutionId: string; reason: string }) =>
-      api
-        .post('/expenses/periods/reopen', {
-          companyId,
-          year,
-          month,
-          boardResolutionId: resolutionId,
-          reason,
-        })
-        .then((r) => r.data),
+    mutationFn: (dto: ReopenDto) =>
+      api.post('/expenses/periods/reopen', dto).then((r) => r.data),
     onSuccess: () => {
       toast.success('เปิดงวดเรียบร้อย');
       qc.invalidateQueries({ queryKey: ['accounting-periods', companyId, year] });
+      qc.invalidateQueries({ queryKey: ['accounting-periods', 'reopened'] });
+      setReopenTarget(null);
     },
     onError: (e: unknown) => {
       const msg =
-        e instanceof Error ? e.message : 'เปิดงวดไม่สำเร็จ';
+        (e as any)?.response?.data?.message ?? (e instanceof Error ? e.message : 'เปิดงวดไม่สำเร็จ');
       toast.error(msg);
     },
   });
@@ -256,11 +259,7 @@ export default function PeriodClosePage() {
                           <button
                             type="button"
                             disabled={isActing}
-                            onClick={() => {
-                              setReopenMonth(p.month);
-                              setBoardResolutionId('');
-                              setReopenReason('');
-                            }}
+                            onClick={() => setReopenTarget({ companyId: p.companyId, year: p.year, month: p.month })}
                             className="inline-flex items-center gap-1 px-3 py-1.5 text-xs border border-border rounded-md hover:bg-accent disabled:opacity-50"
                           >
                             <Unlock size={12} /> เปิดงวด
@@ -306,73 +305,20 @@ export default function PeriodClosePage() {
         }}
       />
 
-      {/* Reopen period dialog — requires boardResolutionId + reason */}
-      {reopenMonth !== null && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-card rounded-xl border shadow-lg p-6 w-full max-w-md mx-4 space-y-4">
-            <h3 className="font-bold text-base leading-snug">
-              เปิดงวด {THAI_MONTHS[reopenMonth - 1]} {year + 543} ใหม่
-            </h3>
-            <p className="text-sm text-muted-foreground leading-snug">
-              กรุณากรอกข้อมูลเพื่อบันทึกเหตุผลการเปิดงวดย้อนหลัง (audit trail)
-            </p>
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs font-medium text-muted-foreground block mb-1">
-                  เลขที่มติกรรมการ (Board Resolution ID) <span className="text-destructive">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={boardResolutionId}
-                  onChange={(e) => setBoardResolutionId(e.target.value)}
-                  placeholder="เช่น BRD-2569-001"
-                  className="w-full border border-border rounded-md px-3 py-2 text-sm bg-background"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-muted-foreground block mb-1">
-                  เหตุผล <span className="text-destructive">*</span> (อย่างน้อย 10 ตัวอักษร)
-                </label>
-                <textarea
-                  value={reopenReason}
-                  onChange={(e) => setReopenReason(e.target.value)}
-                  placeholder="ระบุเหตุผลการเปิดงวดย้อนหลัง..."
-                  rows={3}
-                  className="w-full border border-border rounded-md px-3 py-2 text-sm bg-background resize-none"
-                />
-              </div>
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setReopenMonth(null)}
-                className="px-4 py-2 text-sm border border-border rounded-md hover:bg-accent"
-              >
-                ยกเลิก
-              </button>
-              <button
-                type="button"
-                disabled={
-                  reopenMutation.isPending ||
-                  boardResolutionId.trim().length === 0 ||
-                  reopenReason.trim().length < 10
-                }
-                onClick={() => {
-                  reopenMutation.mutate({
-                    month: reopenMonth,
-                    resolutionId: boardResolutionId.trim(),
-                    reason: reopenReason.trim(),
-                  });
-                  setReopenMonth(null);
-                }}
-                className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {reopenMutation.isPending ? 'กำลังดำเนินการ...' : 'เปิดงวด'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Reopen period modal — structured reason taxonomy */}
+      <ReopenPeriodModal
+        open={reopenTarget !== null}
+        period={
+          reopenTarget
+            ? `${THAI_MONTHS[reopenTarget.month - 1]} ${reopenTarget.year + 543}`
+            : ''
+        }
+        onConfirm={(payload) => {
+          if (!reopenTarget) return;
+          reopenMutation.mutate({ ...reopenTarget, ...payload });
+        }}
+        onCancel={() => setReopenTarget(null)}
+      />
     </div>
   );
 }

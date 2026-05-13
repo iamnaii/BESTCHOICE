@@ -8,6 +8,7 @@ import { ValidationService } from './services/validation.service';
 import { AutoJournalService } from './services/auto-journal.service';
 import { TemplateService } from './services/template.service';
 import { OtherIncomeTemplate } from './templates/other-income.template';
+import { JournalOverrideService } from './services/journal-override.service';
 
 // PrismaService is provided globally via PrismaModule (@Global) — no import needed.
 
@@ -21,6 +22,7 @@ import { OtherIncomeTemplate } from './templates/other-income.template';
     AutoJournalService,
     TemplateService,
     OtherIncomeTemplate,
+    JournalOverrideService,
   ],
   exports: [OtherIncomeService, TemplateService],
 })

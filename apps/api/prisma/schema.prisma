@@ -3553,6 +3553,7 @@ model ExpenseDocument {
   @@index([branchId, deletedAt])
   @@index([documentType, status])
   @@index([status, paidAt])
+  @@index([status, createdAt(sort: Desc)])
   @@index([fromTemplateId])
   @@map("expense_documents")
 }
@@ -5885,6 +5886,7 @@ model OtherIncome {
 
   @@index([companyId])
   @@index([status, issueDate])
+  @@index([status, createdAt(sort: Desc)])
   @@index([customerId])
   @@index([deletedAt])
   @@index([issueDate])

@@ -10,6 +10,7 @@ import CompanySettings from './components/CompanySettings';
 import GeneralSettings from './components/GeneralSettings';
 import CollectionsConfigCard from './components/CollectionsConfigCard';
 import StickerSettings from './components/StickerSettings';
+import { MakerCheckerToggle } from './components/MakerCheckerToggle';
 import type { ConfigItem } from './components/shared';
 
 export default function SettingsPage() {
@@ -81,6 +82,8 @@ export default function SettingsPage() {
   return (
     <div>
       <PageHeader title="ตั้งค่าระบบ" subtitle="กำหนดพารามิเตอร์การทำงานของระบบ" />
+
+      <MakerCheckerToggle />
 
       <QueryBoundary
         isLoading={isLoading}

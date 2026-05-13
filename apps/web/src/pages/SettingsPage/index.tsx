@@ -1,160 +1,66 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { Navigate } from 'react-router';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { toast } from 'sonner';
-import api, { getErrorMessage } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 import PageHeader from '@/components/ui/PageHeader';
-import QueryBoundary from '@/components/QueryBoundary';
-import SystemSettings from './components/SystemSettings';
-import CompanySettings from './components/CompanySettings';
-import GeneralSettings from './components/GeneralSettings';
-import CollectionsConfigCard from './components/CollectionsConfigCard';
-import StickerSettings from './components/StickerSettings';
-import type { ConfigItem } from './components/shared';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { CompanyTab } from './tabs/CompanyTab';
+import { VatTab } from './tabs/VatTab';
+import { PeriodsTab } from './tabs/PeriodsTab';
+import { AttachmentTab } from './tabs/AttachmentTab';
+import { UsersTab } from './tabs/UsersTab';
+
+const TAB_IDS = ['company', 'vat', 'periods', 'attachment', 'users'] as const;
+type TabId = typeof TAB_IDS[number];
+
+function readHash(): TabId {
+  const h = (typeof window !== 'undefined' ? window.location.hash.slice(1) : '') as TabId;
+  return TAB_IDS.includes(h) ? h : 'company';
+}
 
 export default function SettingsPage() {
-  useDocumentTitle('ตั้งค่า');
-  const queryClient = useQueryClient();
-  const [values, setValues] = useState<Record<string, string>>({});
-  const [editingSection, setEditingSection] = useState<string | null>(null);
+  useDocumentTitle('ตั้งค่าระบบ');
+  const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState<TabId>(readHash());
 
-  const [draftSignatureImage, setDraftSignatureImage] = useState('');
-  const [draftSignerName, setDraftSignerName] = useState('');
+  // Permission guard — Sprint 2 placed MakerCheckerToggle on this page, so user.role === OWNER assumed for full access
+  if (user && user.role !== 'OWNER') {
+    return <Navigate to="/" replace />;
+  }
 
-  const { data: configs = [], isLoading, isError, error, refetch } = useQuery<ConfigItem[]>({
-    queryKey: ['settings'],
-    queryFn: async () => (await api.get('/settings')).data,
-  });
-
+  // Sync URL hash <-> activeTab
   useEffect(() => {
-    if (configs.length > 0 && !editingSection) {
-      const map: Record<string, string> = {};
-      configs.forEach((c) => {
-        map[c.key] = c.value;
-      });
-      setValues(map);
+    if (window.location.hash.slice(1) !== activeTab) {
+      window.history.replaceState(null, '', `#${activeTab}`);
     }
-  }, [configs]);
+  }, [activeTab]);
 
-  const saveMutation = useMutation({
-    mutationFn: async (items: { key: string; value: string }[]) =>
-      api.patch('/settings', { items }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['settings'] });
-      toast.success('บันทึกสำเร็จ');
-      setEditingSection(null);
-    },
-    onError: (err: unknown) => toast.error(getErrorMessage(err)),
-  });
-
-  const handleEdit = (sectionKey: string) => {
-    if (editingSection && editingSection !== sectionKey) {
-      toast.error('กรุณาบันทึกหรือยกเลิกการแก้ไขก่อน');
-      return;
-    }
-    setEditingSection(sectionKey);
-    if (sectionKey === 'company') {
-      setDraftSignatureImage(values['lessor_signature_image'] || '');
-      setDraftSignerName(values['lessor_signer_name'] || '');
-    }
-  };
-
-  const handleCancel = () => setEditingSection(null);
-
-  const handleSave = (items: { key: string; value: string }[]) => {
-    let finalItems = items;
-    if (editingSection === 'company') {
-      finalItems = [
-        ...items,
-        { key: 'lessor_signature_image', value: draftSignatureImage },
-        { key: 'lessor_signer_name', value: draftSignerName },
-      ];
-    }
-    saveMutation.mutate(finalItems);
-    const updated = { ...values };
-    finalItems.forEach(({ key, value }) => {
-      updated[key] = value;
-    });
-    setValues(updated);
-  };
+  // React to back/forward
+  useEffect(() => {
+    const handler = () => setActiveTab(readHash());
+    window.addEventListener('hashchange', handler);
+    return () => window.removeEventListener('hashchange', handler);
+  }, []);
 
   return (
     <div>
       <PageHeader title="ตั้งค่าระบบ" subtitle="กำหนดพารามิเตอร์การทำงานของระบบ" />
 
-      <QueryBoundary
-        isLoading={isLoading}
-        isError={isError}
-        error={error}
-        onRetry={refetch}
-        errorTitle="ไม่สามารถโหลดการตั้งค่าระบบได้"
-      >
-      <div className="flex flex-col gap-5 lg:gap-7.5">
-        <SystemSettings />
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabId)}>
+        <TabsList className="grid grid-cols-2 md:grid-cols-5 mb-4">
+          <TabsTrigger value="company">บริษัท</TabsTrigger>
+          <TabsTrigger value="vat">VAT</TabsTrigger>
+          <TabsTrigger value="periods">งวดบัญชี</TabsTrigger>
+          <TabsTrigger value="attachment">เอกสารแนบ</TabsTrigger>
+          <TabsTrigger value="users">ผู้ใช้งาน</TabsTrigger>
+        </TabsList>
 
-        {/* penalty + pdpa (match original configGroups order: penalty → pdpa → company → banking → payment_link) */}
-        <GeneralSettings
-          slot="pre"
-          values={values}
-          editingSection={editingSection}
-          onEdit={handleEdit}
-          onSave={handleSave}
-          onCancel={handleCancel}
-          isSaving={saveMutation.isPending}
-        />
-
-        <CompanySettings
-          values={values}
-          editingSection={editingSection}
-          onEdit={handleEdit}
-          onSave={handleSave}
-          onCancel={handleCancel}
-          isSaving={saveMutation.isPending}
-          draftSignatureImage={draftSignatureImage}
-          draftSignerName={draftSignerName}
-          setDraftSignatureImage={setDraftSignatureImage}
-          setDraftSignerName={setDraftSignerName}
-        />
-
-        {/* banking + payment_link */}
-        <GeneralSettings
-          slot="post"
-          values={values}
-          editingSection={editingSection}
-          onEdit={handleEdit}
-          onSave={handleSave}
-          onCancel={handleCancel}
-          isSaving={saveMutation.isPending}
-        />
-
-        {/* Sticker defaults — OWNER only */}
-        <StickerSettings
-          values={values}
-          editingSection={editingSection}
-          onEdit={handleEdit}
-          onSave={handleSave}
-          onCancel={handleCancel}
-          isSaving={saveMutation.isPending}
-        />
-
-        {/* Collections — Phase 2 tuning knobs (auto-assign + pool + session) */}
-        <CollectionsConfigCard />
-
-        {/* Payment method × cash account mapping — settings page link */}
-        <a
-          href="/settings/payment-methods"
-          className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card p-4 hover:bg-accent transition-colors"
-        >
-          <div>
-            <div className="text-base font-semibold leading-snug">ช่องทางรับชำระ × บัญชี</div>
-            <div className="text-sm text-muted-foreground leading-snug mt-0.5">
-              ตั้งค่าว่าช่องทาง CASH / TRANSFER / QR ใช้บัญชีไหนได้บ้าง · เลือก default ของแต่ละช่องทาง
-            </div>
-          </div>
-          <span className="text-sm text-muted-foreground">→</span>
-        </a>
-      </div>
-      </QueryBoundary>
+        <TabsContent value="company"><CompanyTab /></TabsContent>
+        <TabsContent value="vat"><VatTab /></TabsContent>
+        <TabsContent value="periods"><PeriodsTab /></TabsContent>
+        <TabsContent value="attachment"><AttachmentTab /></TabsContent>
+        <TabsContent value="users"><UsersTab /></TabsContent>
+      </Tabs>
     </div>
   );
 }

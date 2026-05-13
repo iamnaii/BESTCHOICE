@@ -7,7 +7,10 @@ import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { AccountingModuleTabBar } from '@/components/accounting/AccountingModuleTabBar';
+import { ReopenedPeriodBanner } from '@/components/accounting/ReopenedPeriodBanner';
 import { useDebounce } from '@/hooks/useDebounce';
+import { usePaginationParams } from '@/hooks/usePaginationParams';
+import { PaginationBar } from '@/components/ui/PaginationBar';
 import { otherIncomeApi } from '@/lib/otherIncome';
 import type { OtherIncome, OtherIncomeStatus } from '@/lib/otherIncome.types';
 import { formatThaiDateShort } from '@/lib/date';
@@ -103,14 +106,17 @@ export default function OtherIncomeListPage() {
   const [status, setStatus] = useState<OtherIncomeStatus | ''>('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [page, setPage] = useState(1);
+  const { page, size, setPage, setSize } = usePaginationParams({ defaultSize: 50 });
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [confirmDeleteNumber, setConfirmDeleteNumber] = useState<string>('');
 
   const debouncedQ = useDebounce(q, 300);
 
+  // PDF AC-5: READY filter sorts oldest first (ascending) so approvers see the oldest pending items
+  const sortDir = status === 'READY' ? 'asc' : 'desc';
+
   const listQuery = useQuery({
-    queryKey: ['other-income', 'list', debouncedQ, status, startDate, endDate, page],
+    queryKey: ['other-income', 'list', { page, size, q: debouncedQ, status, startDate, endDate }],
     queryFn: () =>
       otherIncomeApi.list({
         q: debouncedQ || undefined,
@@ -118,7 +124,8 @@ export default function OtherIncomeListPage() {
         startDate: startDate || undefined,
         endDate: endDate || undefined,
         page,
-        limit: 50,
+        limit: size,
+        sort: `createdAt:${sortDir}`,
       }),
   });
 
@@ -169,7 +176,6 @@ export default function OtherIncomeListPage() {
   const data = listQuery.data;
   const docs = data?.data ?? [];
   const total = data?.total ?? 0;
-  const totalPages = Math.ceil(total / 50) || 1;
 
   const draftCount = draftCountQuery.data ?? 0;
   const readyCount = readyCountQuery.data ?? 0;
@@ -179,6 +185,7 @@ export default function OtherIncomeListPage() {
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-4">
       <AccountingModuleTabBar />
+      <ReopenedPeriodBanner />
       <PageHeader
         title="รายได้อื่น"
         subtitle="จัดการเอกสารรับรู้รายได้อื่น (กลุ่ม 42-XXXX) — ดอกเบี้ยเงินฝาก, ค่าปรับ, รายได้หักค่าจ้าง ฯลฯ"
@@ -340,7 +347,18 @@ export default function OtherIncomeListPage() {
                       onClick={() => navigate(`/other-income/${doc.id}`)}
                     >
                       <td className="px-4 py-3 font-mono font-semibold text-primary">
-                        {doc.docNumber}
+                        <span className="flex items-center gap-1">
+                          {doc.isOverridden && (
+                            <span
+                              className="text-warning"
+                              title="POST ด้วย Override JV — ตรวจ audit log"
+                              aria-label="Override JV"
+                            >
+                              ✏
+                            </span>
+                          )}
+                          {doc.docNumber}
+                        </span>
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">
                         {fmtDate(doc.issueDate)}
@@ -389,32 +407,13 @@ export default function OtherIncomeListPage() {
         </div>
 
         {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between mt-4 text-sm">
-            <span className="text-muted-foreground">
-              แสดง {docs.length} จาก {total} รายการ
-            </span>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page === 1}
-                className="px-3 py-1.5 border rounded-md hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                ก่อนหน้า
-              </button>
-              <span className="px-3 py-1.5 text-muted-foreground">
-                {page} / {totalPages}
-              </span>
-              <button
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page === totalPages}
-                className="px-3 py-1.5 border rounded-md hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                ถัดไป
-              </button>
-            </div>
-          </div>
-        )}
+        <PaginationBar
+          total={total}
+          page={page}
+          size={size}
+          onPageChange={setPage}
+          onSizeChange={setSize}
+        />
       </QueryBoundary>
 
       <ConfirmDialog

@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BESTCHOICE — รายรับอื่นๆ v2.2 · เอกสารตรวจสอบฝ่ายบัญชี</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #fafaf9;
+    --paper: #ffffff;
+    --border: #d6d3d1;
+    --line: #e7e5e4;
+    --text: #0c0a09;
+    --muted: #57534e;
+    --subtle: #78716c;
+    --emerald: #047857;
+    --emerald-bg: #ecfdf5;
+    --emerald-border: #a7f3d0;
+    --rose: #be123c;
+    --rose-bg: #fef2f2;
+    --rose-border: #fecaca;
+    --amber: #b45309;
+    --amber-bg: #fffbeb;
+    --amber-border: #fde68a;
+    --blue: #1d4ed8;
+    --blue-bg: #eff6ff;
+    --blue-border: #bfdbfe;
+    --violet: #6d28d9;
+    --violet-bg: #f5f3ff;
+    --violet-border: #ddd6fe;
+    --zinc-bg: #f4f4f5;
+    --zinc-border: #d4d4d8;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans Thai', system-ui, sans-serif; font-size: 15px; line-height: 1.7; }
+  .page { max-width: 1024px; margin: 0 auto; padding: 56px 40px 80px; background: var(--paper); box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  .doc-header { border-bottom: 2px solid var(--text); padding-bottom: 20px; margin-bottom: 36px; }
+  .doc-header .org { font-size: 13px; color: var(--subtle); letter-spacing: 0.05em; margin-bottom: 6px; text-transform: uppercase; }
+  h1 { font-size: 28px; font-weight: 700; margin: 0 0 8px; letter-spacing: -0.01em; }
+  .doc-header .sub { color: var(--muted); font-size: 15px; margin: 0; }
+  .doc-meta { display: flex; gap: 28px; margin-top: 14px; font-size: 12px; color: var(--subtle); flex-wrap: wrap; }
+  .doc-meta strong { color: var(--text); }
+
+  .summary-box { background: var(--emerald-bg); border: 1px solid var(--emerald-border); border-radius: 10px; padding: 20px 24px; margin: 0 0 28px; }
+  .summary-box h3 { font-size: 14px; margin: 0 0 10px; font-weight: 700; color: var(--emerald); letter-spacing: 0.04em; text-transform: uppercase; }
+  .summary-list { margin: 0; padding-left: 20px; font-size: 14px; }
+  .summary-list li { margin-bottom: 6px; }
+  .summary-list strong { color: var(--text); }
+  .summary-list code { font-family: 'IBM Plex Mono', monospace; font-size: 12px; background: white; padding: 1px 6px; border-radius: 3px; border: 1px solid var(--emerald-border); }
+
+  .toc { background: var(--zinc-bg); border: 1px solid var(--zinc-border); border-radius: 10px; padding: 18px 24px; margin: 0 0 28px; }
+  .toc h3 { margin: 0 0 8px; font-size: 13px; color: var(--muted); letter-spacing: 0.05em; text-transform: uppercase; }
+  .toc ol { margin: 0; padding-left: 22px; font-size: 14px; }
+  .toc ol li { margin-bottom: 4px; }
+  .toc a { color: var(--text); text-decoration: none; }
+  .toc a:hover { color: var(--blue); text-decoration: underline; }
+
+  section { margin-bottom: 44px; }
+  h2 { font-size: 20px; font-weight: 700; margin: 0 0 18px; padding-bottom: 8px; border-bottom: 1px solid var(--border); letter-spacing: -0.01em; }
+  h2 .badge-section { display: inline-block; background: var(--text); color: white; padding: 2px 10px; border-radius: 4px; font-size: 12px; font-weight: 600; margin-right: 10px; vertical-align: middle; }
+  h3 { font-size: 16px; margin: 24px 0 10px; font-weight: 600; }
+  h4 { font-size: 14px; margin: 16px 0 8px; font-weight: 600; color: var(--muted); }
+
+  .entry { background: var(--paper); border: 1px solid var(--border); border-radius: 8px; padding: 18px 22px; margin: 14px 0; }
+  .entry .title { font-size: 14px; font-weight: 600; margin: 0 0 4px; }
+  .entry .meta { font-size: 12px; color: var(--subtle); margin: 0 0 12px; }
+
+  table.je { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 13px; }
+  table.je th, table.je td { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--line); }
+  table.je th { background: var(--bg); color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+  table.je td.amt { text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 12px; }
+  table.je td.code { font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 500; color: var(--blue); white-space: nowrap; }
+  table.je tr.total td { font-weight: 700; background: var(--bg); border-top: 2px solid var(--text); border-bottom: none; }
+  table.je tr.total td.balanced { color: var(--emerald); }
+
+  .callout { padding: 14px 18px; border-radius: 8px; margin: 14px 0; border-left: 4px solid; font-size: 14px; }
+  .callout.info { background: var(--blue-bg); border-color: var(--blue); }
+  .callout.warn { background: var(--amber-bg); border-color: var(--amber); }
+  .callout.error { background: var(--rose-bg); border-color: var(--rose); }
+  .callout.success { background: var(--emerald-bg); border-color: var(--emerald); }
+  .callout p { margin: 0; }
+  .callout strong { color: var(--text); }
+
+  .status-flag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; margin-left: 8px; vertical-align: middle; }
+  .flag-new { background: var(--emerald); color: white; }
+  .flag-fixed { background: var(--blue); color: white; }
+  .flag-warn { background: var(--amber); color: white; }
+  .flag-skip { background: var(--zinc-border); color: var(--muted); }
+
+  .check-list { list-style: none; padding: 0; margin: 12px 0; }
+  .check-list li { padding: 8px 12px; margin-bottom: 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--paper); font-size: 14px; display: flex; align-items: flex-start; gap: 10px; }
+  .check-list li::before { content: '☐'; font-size: 18px; color: var(--muted); flex-shrink: 0; margin-top: -2px; }
+  .check-list li strong { color: var(--text); }
+  .check-list li code { font-family: 'IBM Plex Mono', monospace; font-size: 12px; background: var(--zinc-bg); padding: 1px 6px; border-radius: 3px; }
+
+  code.inline { font-family: 'IBM Plex Mono', monospace; font-size: 13px; background: var(--zinc-bg); padding: 1px 6px; border-radius: 3px; border: 1px solid var(--zinc-border); }
+
+  .api-table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13px; }
+  .api-table th, .api-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .api-table th { background: var(--zinc-bg); color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+  .api-table .method { font-family: 'IBM Plex Mono', monospace; font-size: 11px; padding: 2px 6px; border-radius: 3px; font-weight: 600; }
+  .api-table .method.get { background: var(--emerald-bg); color: var(--emerald); }
+  .api-table .method.post { background: var(--blue-bg); color: var(--blue); }
+  .api-table .method.put { background: var(--amber-bg); color: var(--amber); }
+  .api-table .path { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text); }
+
+  .flow-step { background: var(--zinc-bg); border: 1px solid var(--zinc-border); border-radius: 8px; padding: 14px 18px; margin: 10px 0; position: relative; padding-left: 50px; }
+  .flow-step .num { position: absolute; left: 14px; top: 14px; width: 26px; height: 26px; background: var(--text); color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; }
+  .flow-step strong { color: var(--text); }
+  .flow-step .meta { font-size: 12px; color: var(--subtle); margin-top: 4px; }
+
+  .mock { background: #0c0a09; color: #f4f4f5; border-radius: 8px; padding: 16px 18px; margin: 12px 0; font-family: 'IBM Plex Mono', monospace; font-size: 12px; line-height: 1.5; overflow-x: auto; }
+  .mock .key { color: #fbbf24; }
+  .mock .str { color: #86efac; }
+  .mock .num { color: #93c5fd; }
+  .mock .com { color: var(--subtle); }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 768px) { .grid-2 { grid-template-columns: 1fr; } }
+
+  .footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--border); font-size: 12px; color: var(--subtle); text-align: center; }
+  .footer p { margin: 4px 0; }
+
+  @media print {
+    body { background: white; }
+    .page { box-shadow: none; padding: 20px; max-width: none; }
+    section { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+<header class="doc-header">
+  <div class="org">BESTCHOICE FINANCE · เอกสารตรวจสอบฝ่ายบัญชี</div>
+  <h1>รายรับอื่นๆ (Other Income 42-XXXX) — v2.2 Release</h1>
+  <p class="sub">เอกสารสำหรับฝ่ายบัญชีตรวจสอบความถูกต้องของระบบใหม่ ก่อน sign-off go-live</p>
+  <div class="doc-meta">
+    <span><strong>วันที่</strong>: 13 พฤษภาคม 2569</span>
+    <span><strong>เวอร์ชัน</strong>: v2.2 (ต่อจาก v2.1)</span>
+    <span><strong>PR</strong>: <a href="https://github.com/iamnaii/BESTCHOICE/pull/827">#827</a></span>
+    <span><strong>ขอบเขต</strong>: ครอบคลุม 5 ข้อจาก PDF v2.2</span>
+  </div>
+</header>
+
+<div class="summary-box">
+  <h3>สรุปการเปลี่ยนแปลงในเวอร์ชัน v2.2</h3>
+  <ol class="summary-list">
+    <li><strong>Override JV</strong> — ยอมให้แก้รายการบัญชีเองก่อน POST (มี V1/V2/V5 validation + audit log)</li>
+    <li><strong>Maker-Checker Toggle UI</strong> — ผู้บริหาร (OWNER) เปิด/ปิดระบบอนุมัติเองได้ที่หน้า Settings</li>
+    <li><strong>Reopen Period Workflow</strong> — เปิดงวดที่ปิดแล้วต้องระบุเหตุผล (4 ตัวเลือก) + ภ.พ.30 ยื่นหรือยัง + Banner เตือน</li>
+    <li><strong>Settings 5-Tab Consolidation</strong> — รวมการตั้งค่าทั้งหมดที่ <code>/settings</code> เป็น 5 แท็บ (บริษัท / VAT / งวด / เอกสารแนบ / ผู้ใช้)</li>
+    <li><strong>Pagination ทุกหน้า List</strong> — แบ่งหน้าแบบ URL params, bookmark ได้, จำนวนต่อหน้าเลือกได้</li>
+  </ol>
+</div>
+
+<div class="toc">
+  <h3>สารบัญ — สิ่งที่ฝ่ายบัญชีต้องตรวจสอบ</h3>
+  <ol>
+    <li><a href="#sect-1">Override JV — แก้รายการบัญชีเองก่อน POST</a></li>
+    <li><a href="#sect-2">Maker-Checker Toggle — เปิด/ปิดระบบอนุมัติ</a></li>
+    <li><a href="#sect-3">Reopen Period — เปิดงวดที่ปิดแล้ว</a></li>
+    <li><a href="#sect-4">Settings 5-Tab — การตั้งค่าระบบ</a></li>
+    <li><a href="#sect-5">Pagination — แบ่งหน้ารายการ</a></li>
+    <li><a href="#sect-audit">Audit Log — รายการที่ระบบจะบันทึก</a></li>
+    <li><a href="#sect-checklist">Checklist สุดท้าย — ฝ่ายบัญชี sign-off</a></li>
+  </ol>
+</div>
+
+<!-- ============================================================ -->
+<!-- SECTION 1: OVERRIDE JV -->
+<!-- ============================================================ -->
+<section id="sect-1">
+  <h2><span class="badge-section">1</span>Override JV — แก้รายการบัญชีเองก่อน POST<span class="status-flag flag-new">ใหม่</span></h2>
+
+  <p>ปกติระบบจะ generate รายการบัญชี (JE) อัตโนมัติจากข้อมูลในเอกสาร — แต่ในบางกรณีฝ่ายบัญชีจำเป็นต้องแก้รายการเองก่อน POST (เช่น แยกบัญชีย่อย, จัดทำ JE พิเศษ, ปรับ contra-account)</p>
+
+  <h3>ขั้นตอนการใช้งาน</h3>
+  <div class="flow-step"><span class="num">1</span><strong>กรอกเอกสารตามปกติ</strong> — ระบบ generate JE อัตโนมัติให้ดู</div>
+  <div class="flow-step"><span class="num">2</span><strong>กด checkbox "ใช้เอง (Override)"</strong><div class="meta">ระบบจะแสดงคำเตือน + ให้กด checkbox ยืนยันว่ารับผิดชอบความถูกต้อง</div></div>
+  <div class="flow-step"><span class="num">3</span><strong>แก้ไขตาราง JE ได้</strong><div class="meta">เพิ่ม/ลบ/แก้บรรทัด ระบบตรวจสด V1/V2/V5 ทันที</div></div>
+  <div class="flow-step"><span class="num">4</span><strong>กด POST</strong><div class="meta">ระบบ validate อีกครั้ง + บันทึก audit log (original vs modified)</div></div>
+  <div class="flow-step"><span class="num">5</span><strong>เอกสารแสดง ✏ marker</strong><div class="meta">หน้ารายการแสดง icon ดินสอข้างหมายเลข เพื่อให้สังเกตว่าเอกสารนี้ถูก override</div></div>
+
+  <h3>กฎ Validation (V1/V2/V5) ที่ระบบบังคับ</h3>
+  <table class="api-table">
+    <thead><tr><th>กฎ</th><th>คำอธิบาย</th><th>ข้อความ error (ไทย)</th></tr></thead>
+    <tbody>
+      <tr><td><strong>V1</strong></td><td>ยอด Dr รวม = ยอด Cr รวม (tolerance ±0.01 บาท)</td><td>Dr (X) ≠ Cr (Y) — ผลต่าง Z บาท</td></tr>
+      <tr><td><strong>V2</strong></td><td>ต้องมีอย่างน้อย 2 บรรทัด</td><td>ต้องมีอย่างน้อย 2 บรรทัด</td></tr>
+      <tr><td><strong>V5</strong></td><td>แต่ละบรรทัดต้องเป็น Dr <em>หรือ</em> Cr ไม่ใช่ทั้งคู่</td><td>บรรทัด XX-XXXX มีทั้ง Dr และ Cr / ไม่มีทั้ง Dr และ Cr</td></tr>
+    </tbody>
+  </table>
+
+  <h3>ตัวอย่าง Audit Log เมื่อ Override</h3>
+  <div class="mock">{
+  <span class="key">"action"</span>: <span class="str">"JV_OVERRIDDEN"</span>,
+  <span class="key">"entity"</span>: <span class="str">"other_income"</span>,
+  <span class="key">"entityId"</span>: <span class="str">"OI-20260513-0042"</span>,
+  <span class="key">"userId"</span>: <span class="str">"USER-001"</span>,
+  <span class="key">"oldValue"</span>: { <span class="com">// JE ที่ระบบ generate</span>
+    <span class="key">"jvLines"</span>: [
+      { <span class="key">"accountCode"</span>: <span class="str">"11-1201"</span>, <span class="key">"debit"</span>: <span class="str">"1000.00"</span>, <span class="key">"credit"</span>: <span class="str">"0"</span> },
+      { <span class="key">"accountCode"</span>: <span class="str">"42-1102"</span>, <span class="key">"debit"</span>: <span class="str">"0"</span>, <span class="key">"credit"</span>: <span class="str">"1000.00"</span> }
+    ]
+  },
+  <span class="key">"newValue"</span>: { <span class="com">// JE หลังถูก override</span>
+    <span class="key">"jvLines"</span>: [
+      { <span class="key">"accountCode"</span>: <span class="str">"11-1201"</span>, <span class="key">"debit"</span>: <span class="str">"1500.00"</span>, <span class="key">"credit"</span>: <span class="str">"0"</span> },
+      { <span class="key">"accountCode"</span>: <span class="str">"42-1102"</span>, <span class="key">"debit"</span>: <span class="str">"0"</span>, <span class="key">"credit"</span>: <span class="str">"1500.00"</span> }
+    ],
+    <span class="key">"diffSummary"</span>: <span class="str">"แก้ Dr 11-1201 จาก 1,000.00 → 1,500.00; แก้ Cr 42-1102 จาก 1,000.00 → 1,500.00"</span>
+  }
+}</div>
+
+  <div class="callout warn">
+    <p><strong>หมายเหตุสำคัญ:</strong> เอกสารที่ถูก override จะมี flag <code class="inline">isOverridden=true</code> ใน DB ตลอดไป แม้จะ reverse แล้วก็ตาม — ใช้เป็นหลักฐานในการ audit ได้</p>
+  </div>
+
+  <h3>สิ่งที่ฝ่ายบัญชีต้องตรวจ (Override JV)</h3>
+  <ul class="check-list">
+    <li><strong>ทดสอบกด Override</strong> — ใส่ Dr=1000 / Cr=999 ระบบควรกัน POST + ขึ้น error V1</li>
+    <li><strong>ทดสอบลบบรรทัดให้เหลือ 1</strong> — ระบบควรกัน POST + ขึ้น error V2</li>
+    <li><strong>ทดสอบใส่ทั้ง Dr+Cr ในบรรทัดเดียว</strong> — ระบบควรกัน POST + ขึ้น error V5</li>
+    <li><strong>POST สำเร็จ → เปิด View page</strong> — ต้องเห็น JV_OVERRIDDEN ใน audit log พร้อมสรุป diff ภาษาไทย</li>
+    <li><strong>เปิด List page</strong> — เอกสารที่ override ต้องมีไอคอน ✏ ข้างหมายเลข</li>
+    <li><strong>ทดสอบกด Override + ยกเลิก (ไม่ติ๊ก checkbox ยืนยัน)</strong> — ระบบไม่ควรเข้า override mode</li>
+  </ul>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION 2: MAKER-CHECKER TOGGLE -->
+<!-- ============================================================ -->
+<section id="sect-2">
+  <h2><span class="badge-section">2</span>Maker-Checker Toggle — เปิด/ปิดระบบอนุมัติ<span class="status-flag flag-new">ใหม่</span></h2>
+
+  <p>ปกติฝ่ายบัญชีจะกำหนดให้ <strong>คนสร้างเอกสาร ≠ คนอนุมัติ</strong> (segregation of duties) — แต่บางช่วงต้องการความเร็ว เช่น ช่วงปิดบัญชี/ทำ adjustment เร่งด่วน — สามารถปิดได้ที่หน้า Settings (เฉพาะ <strong>OWNER</strong>)</p>
+
+  <h3>วิธีใช้</h3>
+  <ol>
+    <li>เปิด <code class="inline">/settings#users</code> (Tab "ผู้ใช้งาน")</li>
+    <li>กด Switch "ระบบ Maker-Checker"</li>
+    <li>ระบบแสดง confirmation dialog แตกต่างตามทิศทาง:
+      <div class="grid-2" style="margin-top: 12px;">
+        <div>
+          <h4 style="margin-top: 0; color: var(--emerald);">เปิดระบบ (OFF → ON)</h4>
+          <ul style="font-size: 13px; margin: 0;">
+            <li>เอกสารทุกฉบับต้องผ่านผู้อนุมัติก่อน POST</li>
+            <li>เอกสาร DRAFT ปัจจุบันต้องส่งอนุมัติ</li>
+            <li>ผู้สร้าง ≠ ผู้อนุมัติ</li>
+          </ul>
+        </div>
+        <div>
+          <h4 style="margin-top: 0; color: var(--rose);">ปิดระบบ (ON → OFF)</h4>
+          <ul style="font-size: 13px; margin: 0;">
+            <li>เอกสาร READY จะ auto-approve ทันที</li>
+            <li>เอกสารใหม่ POST ทันที (ไม่ต้องอนุมัติ)</li>
+            <li><strong>ระบบแสดงจำนวนเอกสาร READY ตอนนี้</strong>: N ฉบับ</li>
+          </ul>
+        </div>
+      </div>
+    </li>
+    <li>ติ๊ก checkbox "ฉันเข้าใจและยืนยัน..."</li>
+    <li>กด "ยืนยันเปิด" / "ยืนยันปิด"</li>
+  </ol>
+
+  <div class="callout info">
+    <p><strong>กฎสิทธิ์:</strong> ผู้ใช้ที่ไม่ใช่ OWNER เห็น Toggle แต่กดไม่ได้ (disabled) พร้อมข้อความ "เฉพาะ OWNER เท่านั้นที่เปลี่ยนได้"</p>
+  </div>
+
+  <h3>API + Audit Log</h3>
+  <table class="api-table">
+    <thead><tr><th>Method</th><th>Path</th><th>Role</th><th>หมายเหตุ</th></tr></thead>
+    <tbody>
+      <tr><td><span class="method put">PUT</span></td><td class="path">/other-income/maker-checker</td><td>OWNER</td><td>Toggle ค่า + บันทึก audit <code class="inline">CONFIG_CHANGED</code></td></tr>
+      <tr><td><span class="method get">GET</span></td><td class="path">/other-income/maker-checker/pending-ready-count</td><td>OWNER</td><td>นับเอกสาร READY (ใช้ใน ON→OFF confirmation)</td></tr>
+      <tr><td><span class="method get">GET</span></td><td class="path">/other-income/maker-checker-enabled</td><td>ทุก role</td><td>อ่านสถานะปัจจุบัน (เดิมจาก v2.1)</td></tr>
+    </tbody>
+  </table>
+
+  <h3>ตัวอย่าง Audit Log</h3>
+  <div class="mock">{
+  <span class="key">"action"</span>: <span class="str">"CONFIG_CHANGED"</span>,
+  <span class="key">"entity"</span>: <span class="str">"system_config"</span>,
+  <span class="key">"entityId"</span>: <span class="str">"OTHER_INCOME_MAKER_CHECKER_ENABLED"</span>,
+  <span class="key">"userId"</span>: <span class="str">"OWNER-001"</span>,
+  <span class="key">"oldValue"</span>: { <span class="key">"value"</span>: <span class="str">"true"</span> },
+  <span class="key">"newValue"</span>: { <span class="key">"value"</span>: <span class="str">"false"</span> }
+}</div>
+
+  <h3>สิ่งที่ฝ่ายบัญชีต้องตรวจ (Maker-Checker)</h3>
+  <ul class="check-list">
+    <li><strong>OWNER เข้า Settings#users</strong> — เห็น Switch Maker-Checker</li>
+    <li><strong>ไม่ใช่ OWNER เข้าหน้านี้</strong> — Switch disabled + ข้อความเตือน</li>
+    <li><strong>กด Switch (OFF→ON)</strong> — Dialog แสดงรายการผลกระทบ 3 ข้อ + checkbox ยืนยัน</li>
+    <li><strong>กด Switch (ON→OFF)</strong> — Dialog แสดง <strong>จำนวนเอกสาร READY ตอนนี้</strong> ด้วย</li>
+    <li><strong>ยกเลิก dialog</strong> — สถานะไม่เปลี่ยน</li>
+    <li><strong>ยืนยัน</strong> — สถานะเปลี่ยน + บันทึก CONFIG_CHANGED audit</li>
+    <li><strong>ตรวจประวัติ audit log</strong> — เห็น oldValue / newValue ชัดเจน</li>
+  </ul>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION 3: REOPEN PERIOD -->
+<!-- ============================================================ -->
+<section id="sect-3">
+  <h2><span class="badge-section">3</span>Reopen Period — เปิดงวดที่ปิดแล้ว<span class="status-flag flag-new">ใหม่</span></h2>
+
+  <p>เมื่อปิดงวดบัญชีไปแล้วแต่ต้องการเปิดใหม่ชั่วคราว (เช่น พบเอกสารผิด, ลืมบันทึก, auditor ขอแก้) — ระบบมี <strong>SOP บังคับใน UI</strong> ให้บันทึกเหตุผล + ภ.พ.30 ยื่นหรือยัง + audit log</p>
+
+  <h3>Modal บังคับใส่เหตุผล</h3>
+  <p>เมื่อกด <strong>เปิดงวด</strong> ที่ปิดแล้ว ระบบจะแสดง modal ที่กรอกครบ 3 ส่วนถึงจะส่งได้:</p>
+
+  <table class="api-table">
+    <thead><tr><th>ฟิลด์</th><th>ประเภท</th><th>ข้อมูล</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>reasonType</strong></td>
+        <td>Radio (เลือก 1)</td>
+        <td>
+          <code class="inline">WRONG_ENTRY</code> — พบเอกสารผิดต้อง reverse<br>
+          <code class="inline">MISSED_RECORD</code> — ลืมบันทึกรายการสำคัญ<br>
+          <code class="inline">AUDITOR_REQUEST</code> — แก้ไขตามคำขอ auditor<br>
+          <code class="inline">OTHER</code> — อื่นๆ (ระบุในบันทึก)
+        </td>
+      </tr>
+      <tr><td><strong>reason</strong></td><td>Free text (≥ 10 ตัวอักษร)</td><td>บันทึกรายละเอียดของเหตุผล (เช่น "เอกสาร OI-20260415-0042 ระบุลูกค้าผิด ต้อง reverse")</td></tr>
+      <tr><td><strong>taxFiled</strong></td><td>Radio (ใช่/ยังไม่)</td><td>ภ.พ.30 งวดนี้ยื่นแล้วหรือยัง — ถ้ายื่นแล้วต้องยื่นแก้ไข</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Banner เตือนบนหน้า List</h3>
+  <p>ระหว่างที่งวดเปิดอยู่ — ทุกหน้า <code class="inline">/other-income</code> และ <code class="inline">/expenses</code> จะแสดง Banner สีเหลือง:</p>
+
+  <div class="callout warn">
+    <p><strong>⚠ งวด 2569-04 ถูกเปิดชั่วคราว</strong><br>
+    เปิดเมื่อ: 13 พฤษภาคม 2569 14:30 โดย สุทธินีย์ คงเดช<br>
+    เหตุผล: WRONG_ENTRY: เอกสาร OI-20260415-0042 ระบุลูกค้าผิด<br>
+    <span style="color: var(--rose); font-weight: 600;">⚠ ภ.พ.30 ยื่นแล้ว — ต้องยื่นแก้ไขด้วย</span></p>
+  </div>
+
+  <h3>ความปลอดภัย (Race Condition)</h3>
+  <div class="callout success">
+    <p><strong>ป้องกันการแก้พร้อมกัน:</strong> ระบบใช้ <em>optimistic locking</em> (CAS) — ถ้า 2 OWNER กดเปิดงวดเดียวกันพร้อมกัน เฉพาะคนแรกที่สำเร็จเท่านั้น คนที่สองจะได้ error "งวดถูกแก้ไขโดยผู้ใช้คนอื่น กรุณาลองใหม่"</p>
+  </div>
+
+  <h3>API + Audit Log</h3>
+  <table class="api-table">
+    <thead><tr><th>Method</th><th>Path</th><th>Role</th><th>หมายเหตุ</th></tr></thead>
+    <tbody>
+      <tr><td><span class="method post">POST</span></td><td class="path">/expenses/periods/reopen</td><td>OWNER</td><td>เปิดงวด + บันทึก <code class="inline">PERIOD_REOPENED</code></td></tr>
+      <tr><td><span class="method post">POST</span></td><td class="path">/expenses/periods/close</td><td>OWNER, ACCOUNTANT</td><td>ปิดงวด + บันทึก <code class="inline">PERIOD_CLOSED</code> (เพิ่มใหม่)</td></tr>
+      <tr><td><span class="method get">GET</span></td><td class="path">/expenses/periods/reopened</td><td>OWNER, ACCOUNTANT, FINANCE_MANAGER</td><td>List งวดที่กำลังเปิดอยู่ (ใช้ใน Banner)</td></tr>
+    </tbody>
+  </table>
+
+  <div class="mock">{
+  <span class="key">"action"</span>: <span class="str">"PERIOD_REOPENED"</span>,
+  <span class="key">"entity"</span>: <span class="str">"accounting_period"</span>,
+  <span class="key">"entityId"</span>: <span class="str">"2026-04"</span>,
+  <span class="key">"userId"</span>: <span class="str">"OWNER-001"</span>,
+  <span class="key">"newValue"</span>: {
+    <span class="key">"reasonType"</span>: <span class="str">"WRONG_ENTRY"</span>,
+    <span class="key">"reason"</span>: <span class="str">"เอกสาร OI-20260415-0042 ระบุลูกค้าผิด ต้อง reverse"</span>,
+    <span class="key">"taxFiled"</span>: <span class="num">true</span>,
+    <span class="key">"reopenedAt"</span>: <span class="str">"2026-05-13T07:30:00.000Z"</span>
+  }
+}</div>
+
+  <h3>สิ่งที่ฝ่ายบัญชีต้องตรวจ (Reopen Period)</h3>
+  <ul class="check-list">
+    <li><strong>OWNER กดเปิดงวดที่ปิดแล้ว</strong> — Modal บังคับใส่เหตุผล + note ≥ 10 ตัว + taxFiled</li>
+    <li><strong>กรอกไม่ครบ</strong> — ปุ่ม "ยืนยันเปิดงวด" disabled</li>
+    <li><strong>ส่งสำเร็จ</strong> — Banner เตือนขึ้นทันทีในหน้า OtherIncome list + Expenses list</li>
+    <li><strong>taxFiled = ใช่</strong> — Banner แสดงข้อความ <em>"ภ.พ.30 ยื่นแล้ว — ต้องยื่นแก้ไขด้วย"</em></li>
+    <li><strong>ตรวจ audit log</strong> — เห็น <code class="inline">PERIOD_REOPENED</code> พร้อมข้อมูลครบ</li>
+    <li><strong>ปิดงวดอีกครั้ง</strong> — Banner หาย + บันทึก <code class="inline">PERIOD_CLOSED</code></li>
+    <li><strong>ผู้ใช้ที่ไม่ใช่ OWNER กดเปิดงวด</strong> — ระบบ block (403 Forbidden)</li>
+  </ul>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION 4: SETTINGS 5-TAB -->
+<!-- ============================================================ -->
+<section id="sect-4">
+  <h2><span class="badge-section">4</span>Settings 5-Tab — การตั้งค่าระบบ<span class="status-flag flag-new">โครงสร้างใหม่</span></h2>
+
+  <p>หน้า <code class="inline">/settings</code> ถูกจัดใหม่เป็น <strong>5 แท็บการเงิน</strong> สำหรับ OWNER (คนอื่นเข้าไม่ได้) — แท็บฝ่ายปฏิบัติการ (Stickers, Collections, ทั่วไป) ย้ายไป route แยก</p>
+
+  <h3>โครงสร้าง 5 Tabs</h3>
+  <table class="api-table">
+    <thead><tr><th>Tab</th><th>URL</th><th>เนื้อหา</th><th>SystemConfig keys</th></tr></thead>
+    <tbody>
+      <tr><td><strong>บริษัท</strong></td><td class="path">/settings#company</td><td>ข้อมูลนิติบุคคล, ลายเซ็น, ที่อยู่, เลข VAT</td><td><code class="inline">company_*</code>, <code class="inline">lessor_*</code></td></tr>
+      <tr><td><strong>VAT</strong> <span class="status-flag flag-new">ใหม่</span></td><td class="path">/settings#vat</td><td>อัตรา VAT (default 7%) + ราคา exclusive/inclusive</td><td><code class="inline">VAT_RATE</code>, <code class="inline">VAT_PRICE_TYPE_DEFAULT</code></td></tr>
+      <tr><td><strong>งวดบัญชี</strong></td><td class="path">/settings#periods</td><td>ตารางงวด + ปุ่มปิด/เปิดงวด (ย้ายจาก <code class="inline">/accounting/periods</code>)</td><td>—</td></tr>
+      <tr><td><strong>เอกสารแนบ</strong> <span class="status-flag flag-new">ใหม่</span></td><td class="path">/settings#attachment</td><td>ยอดที่ต้องบังคับแนบเอกสาร + ประเภทไฟล์ที่อนุญาต</td><td><code class="inline">ATTACHMENT_REQUIRED_ABOVE_AMOUNT</code>, <code class="inline">ATTACHMENT_ALLOWED_TYPES</code></td></tr>
+      <tr><td><strong>ผู้ใช้งาน</strong></td><td class="path">/settings#users</td><td>Maker-Checker Toggle + link ไปหน้า /users</td><td>—</td></tr>
+    </tbody>
+  </table>
+
+  <h3>ค่าตั้งต้น (Seed Values)</h3>
+  <ul>
+    <li><code class="inline">VAT_RATE</code> = <strong>7</strong> (เปอร์เซ็นต์)</li>
+    <li><code class="inline">VAT_PRICE_TYPE_DEFAULT</code> = <strong>exclusive</strong> (ราคาไม่รวม VAT)</li>
+    <li><code class="inline">ATTACHMENT_REQUIRED_ABOVE_AMOUNT</code> = <strong>0</strong> (0 = ไม่บังคับ ; > 0 = บังคับแนบเมื่อยอดเกิน)</li>
+    <li><code class="inline">ATTACHMENT_ALLOWED_TYPES</code> = <strong>PDF, JPG, PNG</strong></li>
+  </ul>
+
+  <h3>Routes ที่ย้ายไปแยก</h3>
+  <table class="api-table">
+    <thead><tr><th>เดิม</th><th>ใหม่</th><th>หมายเหตุ</th></tr></thead>
+    <tbody>
+      <tr><td>SettingsPage tab "Stickers"</td><td class="path">/settings/stickers</td><td>StickerSettings (ค่าเริ่มต้นสติกเกอร์)</td></tr>
+      <tr><td>SettingsPage tab "Collections"</td><td class="path">/settings/collections</td><td>CollectionsConfigCard (auto-assign, session)</td></tr>
+      <tr><td>SettingsPage tab "ทั่วไป" pre+post</td><td class="path">/settings/general</td><td>ค่าปรับ, PDPA, ธนาคาร, payment_link</td></tr>
+      <tr><td class="path">/accounting/periods</td><td>→ <code class="inline">/settings#periods</code></td><td>301 redirect (preserve hash via window.location.replace)</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout info">
+    <p><strong>Bookmark เดิมยังทำงานได้:</strong> URL <code class="inline">/accounting/periods</code> ที่ฝ่ายบัญชีอาจ bookmark ไว้ — ระบบ redirect ไป <code class="inline">/settings#periods</code> ให้อัตโนมัติ</p>
+  </div>
+
+  <h3>สิ่งที่ฝ่ายบัญชีต้องตรวจ (Settings)</h3>
+  <ul class="check-list">
+    <li><strong>OWNER เข้า /settings</strong> — เห็น 5 แท็บครบตามลำดับ</li>
+    <li><strong>ไม่ใช่ OWNER เข้า /settings</strong> — Redirect ไปหน้าหลัก (/) อัตโนมัติ</li>
+    <li><strong>กด tab "VAT"</strong> — แก้อัตรา VAT ได้ + บันทึกได้</li>
+    <li><strong>กด tab "เอกสารแนบ"</strong> — ตั้งค่ายอดที่ต้องบังคับแนบได้</li>
+    <li><strong>กด tab "งวดบัญชี"</strong> — ใช้งานเหมือนหน้า /accounting/periods เดิม (ปิด/เปิดงวด)</li>
+    <li><strong>กด tab "ผู้ใช้งาน"</strong> — เห็น Maker-Checker Toggle (ตามข้อ 2)</li>
+    <li><strong>เปิด URL /accounting/periods</strong> — redirect ไป /settings#periods ทันที</li>
+    <li><strong>Bookmark URL พร้อม hash</strong> — <code class="inline">/settings#vat</code> เปิดมาแล้วต้องอยู่ที่ tab VAT</li>
+    <li><strong>กดปุ่ม Back ของ browser</strong> — tab เปลี่ยนตาม</li>
+  </ul>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION 5: PAGINATION -->
+<!-- ============================================================ -->
+<section id="sect-5">
+  <h2><span class="badge-section">5</span>Pagination — แบ่งหน้ารายการ<span class="status-flag flag-new">ทุก List page</span></h2>
+
+  <p>ทุกหน้าที่แสดงรายการ (OtherIncome, Pending Approval, Expenses, Audit Logs) ตอนนี้แบ่งหน้าผ่าน <strong>URL parameters</strong> — bookmark ได้, share ลิงก์หน้าที่ตรวจไว้ได้, refresh แล้วยังอยู่หน้าเดิม</p>
+
+  <h3>UI Component</h3>
+  <p>ทุกหน้ามี PaginationBar เดียวกัน:</p>
+  <div class="mock">แสดง 1-50 จาก 247 รายการ          [« First] [‹ Prev] 1 2 <strong>3</strong> 4 5 [Next ›] [Last »]    [ไปหน้า: ___]    แสดงต่อหน้า: [50 ▾]</div>
+
+  <h3>Default Page Size</h3>
+  <table class="api-table">
+    <thead><tr><th>หน้า</th><th>Default size</th><th>เรียงลำดับ</th></tr></thead>
+    <tbody>
+      <tr><td>OtherIncome List (ปกติ)</td><td>50</td><td><code class="inline">createdAt DESC</code></td></tr>
+      <tr><td>OtherIncome List (filter = READY)</td><td>50</td><td><code class="inline">createdAt ASC</code> (เก่าก่อน)</td></tr>
+      <tr><td>Pending Approval</td><td>50</td><td><code class="inline">createdAt ASC</code></td></tr>
+      <tr><td>Expenses</td><td>50 (เดิม 20)</td><td><code class="inline">createdAt DESC</code></td></tr>
+      <tr><td>Audit Logs</td><td>100 (เดิม 25)</td><td><code class="inline">eventAt DESC</code></td></tr>
+    </tbody>
+  </table>
+
+  <h3>URL Parameters</h3>
+  <ul>
+    <li><code class="inline">?page=3</code> — ไปหน้าที่ 3</li>
+    <li><code class="inline">?size=100</code> — เปลี่ยนจำนวนต่อหน้าเป็น 100 (และ reset page ไป 1)</li>
+    <li>ตัวอย่าง: <code class="inline">/other-income?page=5&amp;size=50&amp;status=POSTED</code></li>
+  </ul>
+
+  <h3>สิ่งที่ฝ่ายบัญชีต้องตรวจ (Pagination)</h3>
+  <ul class="check-list">
+    <li><strong>เปิด /other-income</strong> — เห็น PaginationBar พร้อม "แสดง X-Y จาก Z รายการ"</li>
+    <li><strong>กด Next</strong> — URL เปลี่ยนเป็น <code class="inline">?page=2</code></li>
+    <li><strong>เปลี่ยน size เป็น 100</strong> — URL update + page reset ไป 1</li>
+    <li><strong>พิมพ์ "ไปหน้า 5" + Enter</strong> — ไปหน้า 5 ทันที</li>
+    <li><strong>Refresh browser</strong> — อยู่หน้าเดิม (URL state)</li>
+    <li><strong>กรอง filter (เช่น status)</strong> — page reset ไป 1 อัตโนมัติ</li>
+    <li><strong>เปลี่ยน filter เป็น READY</strong> — เรียงตามเก่าก่อน (ผู้รอ approve นานสุดอยู่บนสุด)</li>
+  </ul>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION AUDIT LOG OVERVIEW -->
+<!-- ============================================================ -->
+<section id="sect-audit">
+  <h2><span class="badge-section">A</span>Audit Log — รายการที่ระบบจะบันทึก</h2>
+
+  <p>การกระทำที่มีผลต่อระบบบัญชีในเวอร์ชัน v2.2 ที่ระบบจะ <strong>บันทึก audit log อัตโนมัติทุกครั้ง</strong> (immutable + hash-chained):</p>
+
+  <table class="api-table">
+    <thead><tr><th>Action String</th><th>เมื่อไร</th><th>Entity</th><th>ข้อมูลที่บันทึก</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code class="inline">JV_OVERRIDDEN</code></td>
+        <td>POST เอกสาร Other Income ด้วย override</td>
+        <td><code class="inline">other_income</code></td>
+        <td>oldValue = JE auto / newValue = JE override + diffSummary ภาษาไทย</td>
+      </tr>
+      <tr>
+        <td><code class="inline">CONFIG_CHANGED</code></td>
+        <td>OWNER toggle Maker-Checker</td>
+        <td><code class="inline">system_config</code></td>
+        <td>oldValue = ค่าเดิม / newValue = ค่าใหม่</td>
+      </tr>
+      <tr>
+        <td><code class="inline">PERIOD_REOPENED</code></td>
+        <td>OWNER เปิดงวดที่ปิดแล้ว</td>
+        <td><code class="inline">accounting_period</code></td>
+        <td>newValue = { reasonType, reason, taxFiled, reopenedAt }</td>
+      </tr>
+      <tr>
+        <td><code class="inline">PERIOD_CLOSED</code></td>
+        <td>OWNER/ACCOUNTANT ปิดงวด</td>
+        <td><code class="inline">accounting_period</code></td>
+        <td>newValue = { closedAt }</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout info">
+    <p><strong>Audit log Properties (ทุก record):</strong> userId (FK ไป User), action (string), entity (lowercase), entityId, oldValue (JSON), newValue (JSON), ipAddress, createdAt, rowHash (sha256 chain)</p>
+  </div>
+
+  <h3>คำสั่ง SQL สำหรับฝ่ายบัญชีตรวจประวัติย้อนหลัง</h3>
+  <div class="mock"><span class="com">-- รายการ Override JV ในเดือนนี้</span>
+SELECT created_at, user_id, entity_id, new_value->'diffSummary' as diff
+FROM audit_logs
+WHERE action = 'JV_OVERRIDDEN'
+  AND created_at >= '2026-05-01'
+ORDER BY created_at DESC;
+
+<span class="com">-- ประวัติการเปิดงวด</span>
+SELECT created_at, user_id, entity_id, new_value
+FROM audit_logs
+WHERE action IN ('PERIOD_REOPENED', 'PERIOD_CLOSED')
+ORDER BY created_at DESC;
+
+<span class="com">-- ประวัติการเปิด/ปิด Maker-Checker</span>
+SELECT created_at, user_id, old_value, new_value
+FROM audit_logs
+WHERE action = 'CONFIG_CHANGED'
+  AND entity_id = 'OTHER_INCOME_MAKER_CHECKER_ENABLED'
+ORDER BY created_at DESC;</div>
+</section>
+
+<!-- ============================================================ -->
+<!-- FINAL CHECKLIST -->
+<!-- ============================================================ -->
+<section id="sect-checklist">
+  <h2><span class="badge-section">✓</span>Checklist สุดท้าย — ฝ่ายบัญชี Sign-off</h2>
+
+  <p>ก่อนกด <strong>"อนุมัติให้ go-live"</strong> ฝ่ายบัญชีกรุณาตรวจรายการต่อไปนี้ครบทุกข้อ:</p>
+
+  <h3>ก. การทดสอบ Workflow (Manual UAT)</h3>
+  <ul class="check-list">
+    <li><strong>Override JV</strong> — ทดสอบ V1/V2/V5 ครบ 3 errors + POST สำเร็จ 1 เคส + ตรวจ ✏ marker + ตรวจ audit log diff</li>
+    <li><strong>Maker-Checker</strong> — OWNER toggle ON→OFF + ตรวจจำนวน READY ที่แสดง + ตรวจ audit log</li>
+    <li><strong>Reopen Period</strong> — เปิดงวดด้วยเหตุผล 4 ประเภท + ตรวจ Banner + ตรวจ audit log + ปิดงวดอีกครั้ง</li>
+    <li><strong>Settings 5 Tabs</strong> — เปิดทุก tab + แก้ VAT rate + แก้ attachment threshold + ทดสอบ <code class="inline">/accounting/periods</code> redirect</li>
+    <li><strong>Pagination</strong> — ทดสอบ Next/Prev/Jump-to-page + เปลี่ยน size + refresh ยังอยู่หน้าเดิม</li>
+  </ul>
+
+  <h3>ข. การตรวจสอบความปลอดภัย</h3>
+  <ul class="check-list">
+    <li><strong>ผู้ใช้ไม่ใช่ OWNER</strong> — เข้า /settings ไม่ได้ (redirect ไปหน้าหลัก)</li>
+    <li><strong>ผู้ใช้ไม่ใช่ OWNER</strong> — กด Maker-Checker Toggle ไม่ได้ (disabled)</li>
+    <li><strong>ผู้ใช้ไม่ใช่ OWNER</strong> — เปิดงวด (POST /expenses/periods/reopen) ไม่ได้ (403)</li>
+    <li><strong>Override JV requires confirmation</strong> — ติ๊ก checkbox "ฉันเข้าใจ..." ก่อนถึงจะกด "เปิดโหมดแก้ไข" ได้</li>
+  </ul>
+
+  <h3>ค. การตรวจสอบ Audit Trail</h3>
+  <ul class="check-list">
+    <li><strong>JV_OVERRIDDEN audit</strong> — มี oldValue (auto JE) + newValue (override + diff)</li>
+    <li><strong>CONFIG_CHANGED audit</strong> — มี oldValue + newValue ของ Maker-Checker flag</li>
+    <li><strong>PERIOD_REOPENED audit</strong> — มี reasonType + reason + taxFiled + reopenedAt</li>
+    <li><strong>PERIOD_CLOSED audit</strong> — มี closedAt</li>
+    <li><strong>ทุก audit เก็บ userId จริงและ ipAddress</strong> — ไม่ใช่ NULL หรือ "system"</li>
+  </ul>
+
+  <h3>ง. การตรวจสอบ Data Integrity</h3>
+  <ul class="check-list">
+    <li><strong>Override JV เอกสาร</strong> — ค่า isOverridden ใน DB = true (persist ถาวร)</li>
+    <li><strong>Reopened Period</strong> — ค่า reopenReason + taxFiled ใน DB ครบ</li>
+    <li><strong>Migration applied</strong> — รัน <code class="inline">prisma migrate deploy</code> สำเร็จ (3 migrations: pagination indexes, reopen metadata, seed PR3 keys)</li>
+    <li><strong>SystemConfig seed</strong> — มี 4 keys ใหม่ใน DB (VAT_RATE, VAT_PRICE_TYPE_DEFAULT, ATTACHMENT_REQUIRED_ABOVE_AMOUNT, ATTACHMENT_ALLOWED_TYPES)</li>
+  </ul>
+
+  <h3>จ. การ Sign-off</h3>
+  <table class="api-table">
+    <tbody>
+      <tr><td><strong>ฝ่ายบัญชีผู้ตรวจ</strong></td><td>______________________________</td><td>วันที่: __________</td></tr>
+      <tr><td><strong>เจ้าของกิจการ (OWNER)</strong></td><td>______________________________</td><td>วันที่: __________</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout success">
+    <p><strong>หากตรวจครบทุกข้อแล้ว</strong> — สามารถ Merge PR <a href="https://github.com/iamnaii/BESTCHOICE/pull/827">#827</a> ลง main ได้ ซึ่งจะ trigger auto-deploy ไป production ผ่าน GitHub Actions</p>
+  </div>
+</section>
+
+<div class="footer">
+  <p>เอกสารนี้สร้างเมื่อ 13 พฤษภาคม 2569 · BESTCHOICE FINANCE</p>
+  <p>เพื่อตรวจสอบโค้ดดู <a href="https://github.com/iamnaii/BESTCHOICE/pull/827">PR #827</a> · ข้อมูลทางเทคนิคดู <code>docs/superpowers/specs/2026-05-13-other-income-v2-2-design.md</code></p>
+</div>
+
+</div>
+</body>
+</html>

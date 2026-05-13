@@ -31,6 +31,9 @@ import { AdjustmentTable } from './components/AdjustmentTable';
 import { AutoJournalPreview } from './components/AutoJournalPreview';
 import { CounterpartyPicker } from './components/CounterpartyPicker';
 import { TemplatePickerCombobox } from './components/TemplatePickerCombobox';
+import { OverrideConfirmDialog } from './components/OverrideConfirmDialog';
+import { EditableJournalTable, getJournalIssues } from './components/EditableJournalTable';
+import type { EditableJournalLine } from './components/EditableJournalTable';
 
 // Fallback while config is loading; live value comes from /other-income/config/attachment-threshold
 const ATTACHMENT_THRESHOLD_FALLBACK = 50_000;
@@ -322,6 +325,11 @@ export default function OtherIncomeEntryPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Override JV state — declared before saveAndPostMutation which captures these in closure
+  const [overrideMode, setOverrideMode] = useState(false);
+  const [showOverrideDialog, setShowOverrideDialog] = useState(false);
+  const [overrideLines, setOverrideLines] = useState<EditableJournalLine[]>([]);
+
   const saveDraftMutation = useMutation({
     mutationFn: (data: OtherIncomeFormValues) =>
       isEdit ? otherIncomeApi.update(id!, data) : otherIncomeApi.create(data),
@@ -342,14 +350,33 @@ export default function OtherIncomeEntryPage() {
       } else {
         await otherIncomeApi.update(docId, data);
       }
-      return otherIncomeApi.post(docId);
+      return otherIncomeApi.post(
+        docId,
+        overrideMode && overrideLines.length > 0
+          ? {
+              lines: overrideLines.map((l) => ({
+                accountCode: l.accountCode,
+                debit: l.debit,
+                credit: l.credit,
+                description: l.description,
+              })),
+            }
+          : undefined,
+      );
     },
     onSuccess: (doc) => {
       toast.success('บันทึกและ POST เอกสารแล้ว');
       queryClient.invalidateQueries({ queryKey: ['other-income'] });
       navigate(`/other-income/${doc.id}`);
     },
-    onError: () => toast.error('ไม่สามารถ POST เอกสารได้'),
+    onError: (err: any) => {
+      const apiErrors = err?.response?.data?.errors;
+      if (Array.isArray(apiErrors)) {
+        apiErrors.forEach((e: any) => toast.error(`${e.rule}: ${e.msg}`));
+      } else {
+        toast.error(err?.response?.data?.message ?? 'ไม่สามารถ POST เอกสารได้');
+      }
+    },
   });
 
   const flagQuery = useQuery({
@@ -430,6 +457,12 @@ export default function OtherIncomeEntryPage() {
     saveDraftMutation.isPending ||
     saveAndPostMutation.isPending ||
     saveAndRequestApprovalMutation.isPending;
+
+  // Live V1/V2/V5 validation for override lines
+  const journalIssues = useMemo(
+    () => (overrideMode ? getJournalIssues(overrideLines) : []),
+    [overrideMode, overrideLines],
+  );
 
   // Income totals across all items (for footer/summary cards)
   const incomeTotals = useMemo(() => {
@@ -538,7 +571,7 @@ export default function OtherIncomeEntryPage() {
   const docNumber = loadQuery.data?.docNumber;
   const docStatus = loadQuery.data?.status ?? 'DRAFT';
   const errorCount = validationMessages.length;
-  const canPost = errorCount === 0 && !needsAttachment;
+  const canPost = errorCount === 0 && !needsAttachment && journalIssues.length === 0;
   const userDisplayName = user?.name || user?.email || 'ผู้ใช้ปัจจุบัน';
 
   return (
@@ -876,25 +909,64 @@ export default function OtherIncomeEntryPage() {
             </section>
           )}
 
-          {/* Section 6 — Auto Journal Preview */}
+          {/* Section 6 — Auto Journal Preview / Override */}
           <section className="rounded-xl border bg-card p-5">
             <SectionHeader
               num={6}
-              title="AUTO JOURNAL PREVIEW"
+              title={overrideMode ? 'JOURNAL LINES (OVERRIDE)' : 'AUTO JOURNAL PREVIEW'}
               action={
-                <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground cursor-not-allowed opacity-60">
-                  <input type="checkbox" disabled className="size-3.5" />
-                  แก้ไขเอง (Override)
+                <label className="inline-flex items-center gap-1.5 text-xs cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={overrideMode}
+                    className="size-3.5"
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setShowOverrideDialog(true);
+                      } else {
+                        setOverrideMode(false);
+                        setOverrideLines([]);
+                      }
+                    }}
+                  />
+                  <span className={overrideMode ? 'text-warning font-semibold' : 'text-muted-foreground'}>
+                    ใช้เอง (Override)
+                  </span>
                 </label>
               }
             />
-            <AutoJournalPreview lines={jeLines} />
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
-              <SummaryTile label="รายได้" value={incomeTotals.beforeVat} tone="primary" />
-              <SummaryTile label="VAT" value={incomeTotals.vat} tone="info" />
-              <SummaryTile label="WHT" value={incomeTotals.wht} tone="warning" />
-              <SummaryTile label="สุทธิรับ" value={incomeTotals.net} tone="success" />
-            </div>
+
+            <OverrideConfirmDialog
+              open={showOverrideDialog}
+              onConfirm={() => {
+                // Snapshot the current auto-generated JE lines as the editable baseline
+                const snapshot: EditableJournalLine[] = jeLines.map((l) => ({
+                  accountCode: l.accountCode,
+                  debit: Number(Number(l.debit).toFixed(2)),
+                  credit: Number(Number(l.credit).toFixed(2)),
+                  description: l.description ?? '',
+                }));
+                setOverrideLines(snapshot);
+                setOverrideMode(true);
+                setShowOverrideDialog(false);
+              }}
+              onCancel={() => setShowOverrideDialog(false)}
+            />
+
+            {overrideMode ? (
+              <EditableJournalTable lines={overrideLines} onChange={setOverrideLines} />
+            ) : (
+              <AutoJournalPreview lines={jeLines} />
+            )}
+
+            {!overrideMode && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
+                <SummaryTile label="รายได้" value={incomeTotals.beforeVat} tone="primary" />
+                <SummaryTile label="VAT" value={incomeTotals.vat} tone="info" />
+                <SummaryTile label="WHT" value={incomeTotals.wht} tone="warning" />
+                <SummaryTile label="สุทธิรับ" value={incomeTotals.net} tone="success" />
+              </div>
+            )}
           </section>
 
           {/* Section 7 — Recorder & Approver */}

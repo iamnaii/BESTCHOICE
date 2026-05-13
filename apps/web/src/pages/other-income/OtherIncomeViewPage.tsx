@@ -658,15 +658,67 @@ export default function OtherIncomeViewPage() {
               <ul className="space-y-2">
                 {auditQuery.data.map((log) => (
                   <li key={log.id} className="border-l-2 pl-3 py-1.5 border-border">
-                    <div className="flex items-center gap-2 text-xs flex-wrap">
-                      <span className="px-2 py-0.5 rounded bg-muted font-mono text-xs">
-                        {log.action}
-                      </span>
-                      <span className="text-muted-foreground">{fmtDate(log.createdAt)}</span>
-                      {log.user && (
-                        <span>โดย <strong>{log.user.name}</strong></span>
-                      )}
-                    </div>
+                    {log.action === 'JV_OVERRIDDEN' ? (
+                      <div className="rounded border border-warning/50 bg-warning/10 p-3 space-y-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="px-2 py-0.5 rounded bg-warning/20 font-mono text-xs font-semibold text-warning">
+                            JV_OVERRIDDEN
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {log.user?.name ?? '—'} · {new Date(log.createdAt).toLocaleString('th-TH')}
+                          </span>
+                        </div>
+                        <p className="text-sm italic text-muted-foreground">
+                          {(log.newValue as any)?.diffSummary ?? '(ไม่มีสรุปการเปลี่ยนแปลง)'}
+                        </p>
+
+                        <details className="text-xs">
+                          <summary className="cursor-pointer text-muted-foreground hover:text-foreground font-medium">
+                            ดูรายละเอียดทั้งหมด
+                          </summary>
+                          <div className="grid grid-cols-2 gap-4 mt-3 pt-3 border-t border-warning/30">
+                            <div>
+                              <p className="font-semibold text-xs mb-2 text-muted-foreground">Original (Auto)</p>
+                              <table className="w-full font-mono text-[11px]">
+                                <tbody>
+                                  {(log.oldValue as any)?.jvLines?.map((l: any, i: number) => (
+                                    <tr key={i} className="border-b border-border/30">
+                                      <td className="py-1 pr-2">{l.accountCode}</td>
+                                      <td className="text-right pr-2">{Number(l.debit).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                      <td className="text-right">{Number(l.credit).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                            <div>
+                              <p className="font-semibold text-xs mb-2 text-muted-foreground">Modified</p>
+                              <table className="w-full font-mono text-[11px]">
+                                <tbody>
+                                  {(log.newValue as any)?.jvLines?.map((l: any, i: number) => (
+                                    <tr key={i} className="border-b border-border/30">
+                                      <td className="py-1 pr-2">{l.accountCode}</td>
+                                      <td className="text-right pr-2">{Number(l.debit).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                      <td className="text-right">{Number(l.credit).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        </details>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 text-xs flex-wrap">
+                        <span className="px-2 py-0.5 rounded bg-muted font-mono text-xs">
+                          {log.action}
+                        </span>
+                        <span className="text-muted-foreground">{fmtDate(log.createdAt)}</span>
+                        {log.user && (
+                          <span>โดย <strong>{log.user.name}</strong></span>
+                        )}
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>

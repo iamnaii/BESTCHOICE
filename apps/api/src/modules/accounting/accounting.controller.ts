@@ -132,6 +132,12 @@ export class AccountingController {
     return this.monthlyCloseService.getPeriodsOverview(companyId, parseInt(year));
   }
 
+  @Get('periods/reopened')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getReopenedPeriods() {
+    return this.monthlyCloseService.listReopenedPeriods();
+  }
+
   @Get('periods/:companyId/:year/:month')
   @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   getMonthlyPeriodStatus(
@@ -178,8 +184,8 @@ export class AccountingController {
   @Roles('OWNER')
   reopenPeriod(
     @Body() dto: ReopenPeriodDto,
-    @Request() req: { user: { id: string } },
+    @Request() req: { user: { id: string }; ip?: string },
   ) {
-    return this.monthlyCloseService.reopenPeriod(dto, req.user.id);
+    return this.monthlyCloseService.reopenPeriod(dto, req.user.id, req.ip);
   }
 }

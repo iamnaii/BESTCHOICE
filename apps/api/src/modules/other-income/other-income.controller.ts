@@ -8,6 +8,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
   Request,
   UploadedFile,
@@ -35,6 +36,7 @@ import { ListOtherIncomeQueryDto } from './dto/list-other-income-query.dto';
 import { DailySheetQueryDto } from './dto/daily-sheet-query.dto';
 import { CreateTemplateDto, CreateTemplateFromDocDto } from './dto/create-template.dto';
 import { UpdateTemplateDto } from './dto/update-template.dto';
+import { ToggleMakerCheckerDto } from './dto/toggle-maker-checker.dto';
 
 @Controller('other-income')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -64,6 +66,25 @@ export class OtherIncomeController {
   async getMakerCheckerEnabled() {
     const enabled = await this.service.isMakerCheckerEnabled();
     return { enabled };
+  }
+
+  // CRITICAL: literal routes must stay before any :id route.
+
+  /** OWNER: toggle Maker-Checker flow on/off. */
+  @Put('maker-checker')
+  @Roles('OWNER')
+  toggleMakerChecker(
+    @Body() dto: ToggleMakerCheckerDto,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.service.setMakerCheckerEnabled(dto.enabled, userId);
+  }
+
+  /** OWNER: count docs pending approval (status=READY). */
+  @Get('maker-checker/pending-ready-count')
+  @Roles('OWNER')
+  pendingReadyCount() {
+    return this.service.pendingReadyCount();
   }
 
   @Get()

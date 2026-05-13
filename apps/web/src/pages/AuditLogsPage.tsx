@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useQuery } from '@tanstack/react-query';
+import { usePaginationParams } from '@/hooks/usePaginationParams';
+import { PaginationBar } from '@/components/ui/PaginationBar';
 import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -125,12 +127,11 @@ export default function AuditLogsPage() {
   const [action, setAction] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const [page, setPage] = useState(1);
+  const { page, size, setPage, setSize } = usePaginationParams({ defaultSize: 100 });
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [collectionPreset, setCollectionPreset] = useState<CollectionPreset>(null);
   // Server-side filter for preset actions (multi-action filter, sent as `actions` query param)
   const [presetActions, setPresetActions] = useState<string[]>([]);
-  const limit = 25;
 
   const debouncedEntity = useDebounce(entity, 300);
 
@@ -147,11 +148,11 @@ export default function AuditLogsPage() {
     page: number;
     totalPages: number;
   }>({
-    queryKey: ['audit-logs', debouncedEntity, action, dateFrom, dateTo, page, presetActionsKey],
+    queryKey: ['audit-logs', debouncedEntity, action, dateFrom, dateTo, page, size, presetActionsKey],
     queryFn: async () => {
       const params: Record<string, string | string[]> = {
         page: String(page),
-        limit: String(limit),
+        limit: String(size),
       };
       if (debouncedEntity) params.entity = debouncedEntity;
       // `actions` (multi) takes precedence over `action` (single) — matches backend
@@ -167,7 +168,7 @@ export default function AuditLogsPage() {
   });
 
   const logs = result?.data || [];
-  const totalPages = result?.totalPages || 1;
+  const total = result?.total ?? 0;
 
   function applyPreset(key: string) {
     setCollectionPreset(key as CollectionPreset);
@@ -435,32 +436,13 @@ export default function AuditLogsPage() {
         )}
 
         {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t bg-muted">
-            <p className="text-xs text-muted-foreground">
-              แสดง {logs.length} จาก {result?.total?.toLocaleString()} รายการ
-            </p>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page <= 1}
-                className="px-3 py-1.5 text-xs border rounded-lg disabled:opacity-50 hover:bg-muted/50"
-              >
-                ก่อนหน้า
-              </button>
-              <span className="text-xs text-muted-foreground">
-                {page} / {totalPages}
-              </span>
-              <button
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page >= totalPages}
-                className="px-3 py-1.5 text-xs border rounded-lg disabled:opacity-50 hover:bg-muted/50"
-              >
-                ถัดไป
-              </button>
-            </div>
-          </div>
-        )}
+        <PaginationBar
+          total={total}
+          page={page}
+          size={size}
+          onPageChange={setPage}
+          onSizeChange={setSize}
+        />
         </QueryBoundary>
       </Card>
     </div>

@@ -17,6 +17,7 @@ export interface ListQuery {
   q?: string;
   page?: number;
   limit?: number;
+  sort?: string;
 }
 
 export const otherIncomeApi = {
@@ -79,6 +80,12 @@ export const otherIncomeApi = {
 
   isMakerCheckerEnabled: () =>
     api.get<{ enabled: boolean }>('/other-income/maker-checker-enabled').then((r) => r.data.enabled),
+
+  setMakerCheckerEnabled: (enabled: boolean) =>
+    api.put('/other-income/maker-checker', { enabled }).then((r) => r.data),
+
+  getPendingReadyCount: () =>
+    api.get<{ count: number }>('/other-income/maker-checker/pending-ready-count').then((r) => r.data.count),
 
   requestApproval: (id: string) =>
     api.post(`/other-income/${id}/request-approval`).then((r) => r.data),

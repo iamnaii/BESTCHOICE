@@ -318,3 +318,46 @@ JE template: `OtherIncomeTemplate` at `apps/api/src/modules/other-income/templat
 Doc numbering: `OI-YYYYMMDD-NNNN` (advisory-lock per-day sequence)
 Lifecycle: DRAFT → POSTED → REVERSED (soft-delete via `deletedAt`)
 WHT: per-item `whtPct` field; WHT payable posts to `21-3101`
+
+### Override JV (manual JE edit before POST)
+
+`POST /other-income/:id/post` accepts optional `{ override: true, overrideLines: [...] }`. When provided:
+- Server validates V1 (Dr=Cr ±0.01), V2 (≥2 lines), V5 (Dr XOR Cr per line) via `JournalOverrideService`
+- Sets `OtherIncome.isOverridden = true`
+- Writes `AuditLog { action: 'JV_OVERRIDDEN', oldValue: { jvLines: <auto> }, newValue: { jvLines: <override>, diffSummary: <Thai> } }`
+- UI shows ✏ marker in list pages for these documents
+
+Audit `JV_OVERRIDDEN` action string — no Prisma enum (AuditLog.action is plain String).
+
+### Maker-Checker toggle (Other Income)
+
+`PUT /other-income/maker-checker` (OWNER only) toggles `OTHER_INCOME_MAKER_CHECKER_ENABLED`. Emits `CONFIG_CHANGED` audit string. When turning OFF, UI shows count of READY docs from `GET /other-income/maker-checker/pending-ready-count` for awareness — they auto-approve on next post.
+
+### Reopen Period workflow
+
+`POST /expenses/periods/reopen` (OWNER only) accepts `ReopenPeriodDto { companyId, year, month, reasonType, reason, taxFiled, boardResolutionId? }`:
+- `reasonType`: enum (WRONG_ENTRY / MISSED_RECORD / AUDITOR_REQUEST / OTHER)
+- `reason`: free text, min 10 chars
+- `taxFiled`: true if ภ.พ.30 has been submitted (UI banner adds warning when true)
+
+Persists `reopenReason` (format `${reasonType}: ${reason}`) + `taxFiled` on `AccountingPeriod`. Emits `PERIOD_REOPENED` audit. `closePeriod()` emits `PERIOD_CLOSED`. Race-safe via CAS — `updateMany` with `status: 'CLOSED'` filter inside `$transaction` prevents concurrent reopen.
+
+`GET /expenses/periods/reopened` lists currently-reopened periods (status=OPEN AND reopenedAt set) for the `ReopenedPeriodBanner` shown on OtherIncomeListPage + ExpensesPage.
+
+### Settings UI consolidation
+
+`/settings` is the 5-tab hub for system-wide configuration (OWNER only — non-OWNER redirected to `/`):
+- `#company` — CompanyInfo (name, address, tax ID, signer)
+- `#vat` — `VAT_RATE` + `VAT_PRICE_TYPE_DEFAULT` (exclusive/inclusive)
+- `#periods` — AccountingPeriod table (close/reopen actions, ReopenPeriodModal)
+- `#attachment` — `ATTACHMENT_REQUIRED_ABOVE_AMOUNT` + `ATTACHMENT_ALLOWED_TYPES`
+- `#users` — MakerCheckerToggle + link to `/users`
+
+URL hash sync: `/settings#vat` (etc.) is bookmarkable; back/forward respects `hashchange`.
+
+Operational settings live at dedicated routes (also OWNER-only):
+- `/settings/stickers` — StickerSettings
+- `/settings/collections` — CollectionsConfigCard
+- `/settings/general` — Banking, penalty, PDPA, payment_link (GeneralSettings pre+post)
+
+`/accounting/periods` redirects to `/settings#periods` via `window.location.replace` (preserves hash; react-router `<Navigate>` cannot set hash fragments).

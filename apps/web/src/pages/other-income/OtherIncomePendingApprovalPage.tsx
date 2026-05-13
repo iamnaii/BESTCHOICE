@@ -3,18 +3,24 @@ import { useNavigate } from 'react-router';
 import { Clock, Inbox } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
+import { usePaginationParams } from '@/hooks/usePaginationParams';
+import { PaginationBar } from '@/components/ui/PaginationBar';
 import { otherIncomeApi } from '@/lib/otherIncome';
 import { formatThaiDateShort } from '@/lib/date';
 import { formatNumberDecimal } from '@/utils/formatters';
 
 export default function OtherIncomePendingApprovalPage() {
   const navigate = useNavigate();
+  const { page, size, setPage, setSize } = usePaginationParams({ defaultSize: 50 });
+
   const query = useQuery({
-    queryKey: ['other-income', 'list', { status: 'READY' }],
-    queryFn: () => otherIncomeApi.list({ status: 'READY', limit: 100 }),
+    queryKey: ['other-income', 'list', { status: 'READY', page, size }],
+    queryFn: () =>
+      otherIncomeApi.list({ status: 'READY', limit: size, page, sort: 'createdAt:asc' }),
   });
 
   const data = query.data;
+  const total = data?.total ?? 0;
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -75,6 +81,13 @@ export default function OtherIncomePendingApprovalPage() {
             </table>
           </div>
         )}
+        <PaginationBar
+          total={total}
+          page={page}
+          size={size}
+          onPageChange={setPage}
+          onSizeChange={setSize}
+        />
       </QueryBoundary>
     </div>
   );

@@ -1065,7 +1065,14 @@ function App() {
           />
 
           {/* งวดบัญชี → /settings#periods (Task 7 backward-compat redirect) */}
-          <Route path="/accounting/periods" element={<PeriodsRedirect />} />
+          <Route
+            path="/accounting/periods"
+            element={
+              <ProtectedRoute roles={['OWNER']}>
+                <PeriodsRedirect />
+              </ProtectedRoute>
+            }
+          />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

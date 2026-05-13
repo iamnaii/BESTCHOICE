@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle } from 'lucide-react';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { accountingApi, type ReopenedPeriod } from '@/lib/accounting';
+import { formatThaiDateTime } from '@/lib/date';
 
 export function ReopenedPeriodBanner() {
   const { data } = useQuery<ReopenedPeriod[]>({
@@ -22,7 +23,7 @@ export function ReopenedPeriodBanner() {
             <AlertTitle>งวด {periodLabel} ถูกเปิดชั่วคราว</AlertTitle>
             <AlertDescription className="space-y-1">
               <p>
-                เปิดเมื่อ: {new Date(p.reopenedAt).toLocaleString('th-TH')}
+                เปิดเมื่อ: {formatThaiDateTime(p.reopenedAt)}
                 {p.reopenedBy?.name ? ` โดย ${p.reopenedBy.name}` : ''}
               </p>
               {p.reopenReason && <p>เหตุผล: {p.reopenReason}</p>}

@@ -106,6 +106,7 @@ export default function PeriodClosePage() {
     onSuccess: () => {
       toast.success('ปิดงวดเรียบร้อย');
       qc.invalidateQueries({ queryKey: ['accounting-periods', companyId, year] });
+      qc.invalidateQueries({ queryKey: ['accounting-periods', 'reopened'] }); // banner refresh
     },
     onError: (e: unknown) => {
       const msg =

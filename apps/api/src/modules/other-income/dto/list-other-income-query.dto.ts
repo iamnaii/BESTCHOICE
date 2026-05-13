@@ -1,4 +1,4 @@
-import { IsDateString, IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsDateString, IsEnum, IsInt, IsOptional, IsString, Matches, Max, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 import { OtherIncomeStatus } from '@prisma/client';
 
@@ -39,5 +39,8 @@ export class ListOtherIncomeQueryDto {
    */
   @IsOptional()
   @IsString()
+  @Matches(/^(createdAt|issueDate):(asc|desc)$/, {
+    message: 'sort ต้องอยู่ในรูปแบบ <field>:<direction> เช่น createdAt:desc (field=createdAt|issueDate, direction=asc|desc)',
+  })
   sort?: string;
 }

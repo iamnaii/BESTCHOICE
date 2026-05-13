@@ -340,7 +340,18 @@ export default function OtherIncomeListPage() {
                       onClick={() => navigate(`/other-income/${doc.id}`)}
                     >
                       <td className="px-4 py-3 font-mono font-semibold text-primary">
-                        {doc.docNumber}
+                        <span className="flex items-center gap-1">
+                          {doc.isOverridden && (
+                            <span
+                              className="text-amber-500"
+                              title="POST ด้วย Override JV — ตรวจ audit log"
+                              aria-label="Override JV"
+                            >
+                              ✏
+                            </span>
+                          )}
+                          {doc.docNumber}
+                        </span>
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">
                         {fmtDate(doc.issueDate)}

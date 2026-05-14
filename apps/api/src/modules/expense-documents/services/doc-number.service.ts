@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { DocumentType, Prisma } from '@prisma/client';
 
 const PREFIX_MAP: Record<DocumentType, string> = {
@@ -15,6 +15,19 @@ export class DocNumberService {
    * advisory lock per (type, BKK-day) key. Mirrors OI/RT pattern.
    *
    * Format: <TYPE>-YYYYMMDD-NNNN — daily reset, 4-digit seq.
+   *
+   * `issueDate` convention (W5): the BKK-day is derived from the user-chosen
+   * `documentDate` (NOT server "now"), so a same-day creation backdated to
+   * yesterday will still number under yesterday's sequence. This is intentional
+   * — auditors expect a doc dated 2026-05-13 to carry an EX-20260513-NNNN
+   * number regardless of when it was keyed in. The per-day advisory lock still
+   * prevents collisions across concurrent backdates onto the same day. If the
+   * convention ever needs to change, see the W5 note in fix report v1.1.
+   *
+   * W4 — explicit throw when seq > 9999 (would overflow the 4-digit slot and
+   * silently produce a 5-digit number that sorts wrong). Real-world limit is
+   * ~100 docs/day, so this is purely a guard against runaway loops / data
+   * corruption / future high-volume regimes.
    */
   async next(
     tx: Prisma.TransactionClient,
@@ -34,7 +47,13 @@ export class DocNumberService {
     const lastSeq = last
       ? parseInt(last.number.slice(prefix.length), 10) || 0
       : 0;
-    const seq = String(lastSeq + 1).padStart(4, '0');
+    const nextSeq = lastSeq + 1;
+    if (nextSeq > 9999) {
+      throw new BadRequestException(
+        `เลขที่เอกสาร ${PREFIX_MAP[type]} เกิน 9999 ใน 1 วัน (BKK ${yyyymmdd}) — ติดต่อผู้ดูแลระบบ`,
+      );
+    }
+    const seq = String(nextSeq).padStart(4, '0');
     return `${prefix}${seq}`;
   }
 

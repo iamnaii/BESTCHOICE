@@ -13,7 +13,13 @@ import { PrismaService } from '../../../prisma/prisma.service';
  *   Dr 11-4101 ภาษีซื้อ                   (vatAmount)        [if VAT > 0]
  *     Cr 21-1104 เจ้าหนี้-ค่าใช้จ่ายกิจการ (totalAmount)
  *
- * WHT does not post here — defers to SE settlement time (ม.50 ป.รัษฎากร).
+ * V15 (ม.50 ป.รัษฎากร): WHT only arises at payment, not accrual.
+ * Therefore expense-accrual has NO WHT routing leg and is intentionally
+ * exempt from `assertWhtFormType`. WHT lands at vendor-settlement (the
+ * payment step), where the assertion runs. Service-level guard
+ * (expense-documents.service.ts → V15 check) rejects DRAFT→ACCRUAL when
+ * withholdingTax > 0; if the doc reaches here, wht is guaranteed zero.
+ *
  * VAT input is booked to **11-4101 ภาษีซื้อ** (Input Tax Credit, claimable
  * in ภ.พ.30). The placeholder 11-2104 (ลูกหนี้-VAT ที่ออกแทน) used in earlier
  * commits was wrong — that account is for VAT-on-behalf cases (ม.83/6) only,

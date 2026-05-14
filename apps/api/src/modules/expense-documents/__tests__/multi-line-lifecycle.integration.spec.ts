@@ -151,7 +151,7 @@ describe('ExpenseDocuments multi-line lifecycle (integration)', () => {
     const codes = je.lines.map((l) => l.accountCode);
     expect(codes).toContain('53-1302'); // Expense category
     expect(codes).toContain('53-1404'); // Expense category
-    expect(codes).toContain('11-2104'); // VAT Input
+    expect(codes).toContain('11-4101'); // VAT Input (Input Tax Credit) — Fix Report P0-1
     expect(codes).toContain('11-1201'); // Bank
     expect(codes).toContain('21-3103'); // WHT Payable
 
@@ -169,7 +169,7 @@ describe('ExpenseDocuments multi-line lifecycle (integration)', () => {
     const expenseSum = expenseLines.reduce((s, l) => s + Number(l.debit), 0);
     expect(expenseSum).toBeCloseTo(7000, 2);
 
-    const vatInputLine = je.lines.find((l) => l.accountCode === '11-2104');
+    const vatInputLine = je.lines.find((l) => l.accountCode === '11-4101');
     expect(vatInputLine?.debit).toBeDefined();
     expect(Number(vatInputLine!.debit)).toBeCloseTo(455, 2);
 

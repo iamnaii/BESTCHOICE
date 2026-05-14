@@ -4,6 +4,7 @@ import {
   NotFoundException,
   ForbiddenException,
   Logger,
+  OnModuleInit,
 } from '@nestjs/common';
 import { Prisma, DocumentStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -24,6 +25,27 @@ import { CreateSettlementDto } from './dto/create-settlement.dto';
 import { hasCrossBranchAccess } from '../auth/branch-access.util';
 import { LineAggregatorService } from './services/line-aggregator.service';
 import { JePreviewService } from './services/je-preview.service';
+import { validatePeriodOpen } from '../../utils/period-lock.util';
+
+/**
+ * Allow-list of account codes that may appear on a multi-line Adjustment row
+ * (W1 hardening). The adjustment rows absorb cash-leg deltas between
+ * amount_paid and (totalAmount − wht); only small-amount tolerance / bank-fee
+ * / discount accounts are sensible here. Allowing arbitrary CoA codes lets the
+ * preparer pick Revenue or Cash, balancing the JE but causing accounting drift.
+ *
+ * Codes from accounting.md FINANCE chart (apps/api/src/modules/journal/__tests__/fixtures/cpa-cases/finance-coa.csv):
+ *   52-1104 — ส่วนลดเศษสตางค์ (≤1฿ rounding tolerance)
+ *   52-1106 — ส่วนลดดอกเบี้ย-ปิดยอด (Early payoff discount)
+ *   53-1303 — ค่าธรรมเนียมธนาคาร
+ *   53-1503 — กำไร/ขาดทุนจากการปัดเศษ
+ */
+const ADJUSTMENT_ALLOWLIST = new Set<string>([
+  '52-1104',
+  '52-1106',
+  '53-1303',
+  '53-1503',
+]);
 
 /**
  * Returns a Date representing 12:00 noon Asia/Bangkok on the same calendar day
@@ -43,8 +65,37 @@ function bkkBusinessDate(now: Date): Date {
 }
 
 @Injectable()
-export class ExpenseDocumentsService {
+export class ExpenseDocumentsService implements OnModuleInit {
   private readonly logger = new Logger(ExpenseDocumentsService.name);
+
+  /**
+   * W1 (Round 2) — Boot-time validation that every ADJUSTMENT_ALLOWLIST code
+   * actually exists (active, not deleted) in chart_of_accounts. Pattern
+   * mirrors AccountRoleService.assertCodesExistInCoa. Without this, a CoA
+   * rename or soft-delete would let the allow-list silently reference a
+   * dead account and a preparer could still pick it. Boot fails loud so
+   * the drift is caught before the first doc posts.
+   */
+  async onModuleInit(): Promise<void> {
+    const codes = [...ADJUSTMENT_ALLOWLIST];
+    const found = await this.prisma.chartOfAccount.findMany({
+      where: { code: { in: codes }, deletedAt: null },
+      select: { code: true },
+    });
+    const foundSet = new Set(found.map((c) => c.code));
+    const missing = codes.filter((c) => !foundSet.has(c));
+    if (missing.length > 0) {
+      throw new Error(
+        `ExpenseDocumentsService: ADJUSTMENT_ALLOWLIST references ` +
+          `${missing.length} code(s) not present (or soft-deleted) in ` +
+          `chart_of_accounts: ${missing.join(', ')}. Either seed the ` +
+          `accounts or update the allow-list constant.`,
+      );
+    }
+    this.logger.log(
+      `[W1] Adjustment allow-list verified: ${codes.length} codes present in CoA`,
+    );
+  }
 
   constructor(
     private readonly prisma: PrismaService,
@@ -114,7 +165,17 @@ export class ExpenseDocumentsService {
           }
         }
 
-        // V13 — adjustment account codes must exist in CoA (any type)
+        // V13 — adjustment account codes must exist in CoA AND be on the
+        // explicit allow-list. Without the allow-list, an accountant could
+        // pick Revenue (41-xxxx) or Cash (11-1101) as the offset, balancing
+        // the JE arithmetically but causing P&L / cash-flow drift.
+        //
+        // Allow-list scope: small-amount rounding tolerance + bank fees +
+        // early-payoff discounts. Source: accounting.md chart.
+        //   52-1104 — ส่วนลดเศษสตางค์ (≤1฿ rounding tolerance)
+        //   52-1106 — ส่วนลดดอกเบี้ย-ปิดยอด
+        //   53-1303 — ค่าธรรมเนียมธนาคาร
+        //   53-1503 — กำไร/ขาดทุนจากการปัดเศษ
         if (adjustments.length > 0) {
           const adjCodes = [...new Set(adjustments.map((a) => a.accountCode))];
           const adjCoaRows = await tx.chartOfAccount.findMany({
@@ -125,6 +186,12 @@ export class ExpenseDocumentsService {
           for (const c of adjCodes) {
             if (!adjFound.has(c)) {
               throw new BadRequestException(`V13: บัญชีปรับผลต่าง ${c} ไม่พบในผังบัญชี`);
+            }
+            if (!ADJUSTMENT_ALLOWLIST.has(c)) {
+              throw new BadRequestException(
+                `V13: บัญชีปรับผลต่าง ${c} ไม่อยู่ในรายการที่อนุญาต — ` +
+                  `อนุญาตเฉพาะ ${[...ADJUSTMENT_ALLOWLIST].join(', ')}`,
+              );
             }
           }
         }
@@ -238,7 +305,19 @@ export class ExpenseDocumentsService {
         if (t !== 'ค่าใช้จ่าย') throw new BadRequestException(`หมวดบัญชี ${c} ไม่ใช่ "ค่าใช้จ่าย"`);
       }
 
-      // Load + validate original
+      // I2 fix — acquire the advisory lock BEFORE loading the original so a
+      // concurrent void/edit can't slip between the read and the cap check.
+      // Then re-read the original under the lock. Previously the original was
+      // read once before the lock, so two threads could both see status=ACCRUAL
+      // (or matching totalAmount) even after one of them was about to flip it
+      // via a concurrent operation. Locking first → reading second gives
+      // serialisable semantics for the cap branch.
+      await tx.$executeRawUnsafe(
+        `SELECT pg_advisory_xact_lock(hashtext($1))`,
+        dto.originalDocumentId,
+      );
+
+      // Load + validate original (now under the advisory lock).
       const original = await tx.expenseDocument.findUniqueOrThrow({
         where: { id: dto.originalDocumentId },
         include: { expenseDetail: { include: { lines: { orderBy: { lineNo: 'asc' } } } } },
@@ -262,13 +341,6 @@ export class ExpenseDocumentsService {
           'ไม่รองรับใบลดหนี้บนเอกสารที่มีการหัก ณ ที่จ่าย — กรุณาใช้การยกเลิก (void) แล้วสร้างเอกสารใหม่',
         );
       }
-
-      // Prevent race condition: two concurrent CN creations on same original could
-      // both pass the cap check. Lock per original-document for the tx.
-      await tx.$executeRawUnsafe(
-        `SELECT pg_advisory_xact_lock(hashtext($1))`,
-        dto.originalDocumentId,
-      );
 
       // Cumulative cap check — use server-computed totals.totalAmount
       const priorAgg = await tx.expenseDocument.aggregate({
@@ -715,16 +787,27 @@ export class ExpenseDocumentsService {
       where.vendorName = { contains: filters.vendor, mode: 'insensitive' };
     }
 
-    // Today in BKK at 00:00. (toLocaleString en-CA = YYYY-MM-DD; offset to UTC start.)
-    const bkkParts = new Date().toLocaleString('en-CA', {
-      timeZone: 'Asia/Bangkok',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    });
-    const [y, m, d] = bkkParts.split('-').map((s) => parseInt(s, 10));
-    const bkkOffsetMs = 7 * 60 * 60 * 1000;
-    const todayBkkStart = new Date(Date.UTC(y, m - 1, d) - bkkOffsetMs);
+    // W2 fix — age in calendar days, computed on BKK date strings.
+    // Previous implementation took (todayBkkStart UTC ms − documentDate UTC ms)
+    // / 86_400_000 and floored. Because documentDate stores UTC midnight (00:00Z
+    // = 07:00 BKK same day) while todayBkkStart was UTC minus 7h (=BKK midnight
+    // mapped to 17:00Z previous UTC day), the ms-diff was non-integer around
+    // the boundary, so floor() shifted some rows by ±1 day (e.g. a doc dated
+    // today appeared as 1 day old, pushing it from 0-30 to 31-60 right at
+    // 17:00 BKK / 30 days later). Switch to calendar-day diff on YYYY-MM-DD
+    // strings instead.
+    const toBkkDate = (d: Date): string =>
+      d.toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
+    const todayBkkStr = toBkkDate(new Date());
+    const daysBetween = (a: string, b: string): number => {
+      // a, b are 'YYYY-MM-DD'. Build UTC midnights and subtract — exact integer
+      // because both sides are at the same UTC hour.
+      const [ay, am, ad] = a.split('-').map(Number);
+      const [by, bm, bd] = b.split('-').map(Number);
+      const aMs = Date.UTC(ay, am - 1, ad);
+      const bMs = Date.UTC(by, bm - 1, bd);
+      return Math.round((bMs - aMs) / (24 * 60 * 60 * 1000));
+    };
 
     const rows = await this.prisma.expenseDocument.findMany({
       where,
@@ -750,10 +833,8 @@ export class ExpenseDocumentsService {
     };
 
     const enriched = rows.map((r) => {
-      const ageDays = Math.max(
-        0,
-        Math.floor((todayBkkStart.getTime() - new Date(r.documentDate).getTime()) / (24 * 60 * 60 * 1000)),
-      );
+      const docBkkStr = toBkkDate(new Date(r.documentDate));
+      const ageDays = Math.max(0, daysBetween(docBkkStr, todayBkkStr));
       return { ...r, ageDays, bucket: toBucket(ageDays) };
     });
 
@@ -829,7 +910,14 @@ export class ExpenseDocumentsService {
         deletedAt: null,
       },
       include: {
-        expenseDetail: { include: { lines: { orderBy: { lineNo: 'asc' }, take: 1 } } },
+        // I4 fix — pull ALL expense lines (not just the first) so the
+        // "by category" aggregation reflects every line's category, weighted
+        // by amountBeforeVat. Previously `take: 1` made multi-line docs all
+        // collapse to their first line's category — a 3-line doc with 1k of
+        // category A and 2x 5k of B would attribute all 11k to A. With this
+        // include the daily summary instead sums per-line amounts into the
+        // right buckets.
+        expenseDetail: { include: { lines: { orderBy: { lineNo: 'asc' } } } },
         creditNote: true,
         payroll: true,
         settlement: true,
@@ -867,14 +955,27 @@ export class ExpenseDocumentsService {
         byPaymentMethod[mKey] = mBucket;
       }
 
-      // By category — primary line category (works for both EXPENSE and CREDIT_NOTE since
-      // CN now uses expenseDetail.lines[] rather than the legacy creditNote.category column)
-      const cat =
-        (d as { expenseDetail?: { lines?: { category: string }[] } | null }).expenseDetail?.lines?.[0]?.category;
-      if (cat) {
+      // I4 — By category: sum per-line amounts into category buckets so a
+      // multi-line doc contributes correctly to each category. count uses
+      // 1 per distinct category in the doc (not per line) so a doc with
+      // 3 cleaning lines counts once for "cleaning", not three times.
+      // Defensive: legacy rows without `amountBeforeVat` (data migration
+      // artefacts) fall back to 0 — they still count toward the bucket's
+      // doc count but contribute no value.
+      const lines =
+        (d as { expenseDetail?: { lines?: { category: string; amountBeforeVat?: unknown }[] } | null })
+          .expenseDetail?.lines ?? [];
+      const seenInDoc = new Set<string>();
+      for (const l of lines) {
+        const cat = l.category;
+        const raw = l.amountBeforeVat;
+        const lineAmt = raw != null ? new Prisma.Decimal(raw.toString()) : new Prisma.Decimal(0);
         const cBucket = byCategory[cat] ?? { count: 0, total: '0' };
-        cBucket.count++;
-        cBucket.total = new Prisma.Decimal(cBucket.total).plus(total).toFixed(2);
+        if (!seenInDoc.has(cat)) {
+          cBucket.count++;
+          seenInDoc.add(cat);
+        }
+        cBucket.total = new Prisma.Decimal(cBucket.total).plus(lineAmt).toFixed(2);
         byCategory[cat] = cBucket;
       }
 
@@ -938,9 +1039,19 @@ export class ExpenseDocumentsService {
     const codes = new Set<string>();
     for (const l of dto.lines) codes.add(l.category);
     if (dto.depositAccountCode) codes.add(dto.depositAccountCode);
-    codes.add('11-2104');
+    // W8 — preload adjustment row codes + per-line WHT routes so the preview
+    // can resolve names for the new sections (adjustments + multi-line WHT).
+    for (const adj of dto.adjustments ?? []) {
+      if (adj.accountCode) codes.add(adj.accountCode);
+    }
+    // 11-4101 = ภาษีซื้อ (Input Tax Credit, claimable). Mirrors expense
+    // templates' VAT routing — must match what post() actually books.
+    codes.add('11-4101');
     codes.add('21-1104');
-    if (dto.whtFormType === 'PND53') codes.add('21-3103'); else codes.add('21-3102');
+    // Always preload both WHT routes — the preview may emit either or both
+    // depending on per-line whtFormType (P2-4).
+    codes.add('21-3102');
+    codes.add('21-3103');
 
     const rows = await this.prisma.chartOfAccount.findMany({
       where: { code: { in: [...codes] }, deletedAt: null },
@@ -951,14 +1062,37 @@ export class ExpenseDocumentsService {
   }
 
   // ─── Find one ────────────────────────────────────────────────────────
+  // I5 — include type-specific detail so single-doc views (PaymentVoucher,
+  // CN view, payroll view, SE view) don't need a follow-up roundtrip. The
+  // base includes (expenseDetail / branch / approver) work for every type;
+  // creditNote / payroll / settlement detail are added based on documentType.
   async findOne(id: string) {
+    // First pass to read documentType, then a typed include.
+    const docType = await this.prisma.expenseDocument.findUniqueOrThrow({
+      where: { id },
+      select: { documentType: true, deletedAt: true },
+    });
+    if (docType.deletedAt) throw new NotFoundException('เอกสารถูกลบแล้ว');
+
     const doc = await this.prisma.expenseDocument.findUniqueOrThrow({
       where: { id },
       include: {
         expenseDetail: { include: { lines: { orderBy: { lineNo: 'asc' } } } },
+        adjustments: { orderBy: { lineNo: 'asc' } },
         branch: { select: { id: true, name: true } },
         createdBy: { select: { id: true, name: true } },
         approvedBy: { select: { id: true, name: true } },
+        // Conditional includes by documentType — Prisma allows boolean here
+        // and noop when the relation row doesn't exist for the type.
+        creditNote: docType.documentType === 'CREDIT_NOTE',
+        payroll:
+          docType.documentType === 'PAYROLL'
+            ? { include: { lines: true } }
+            : false,
+        settlement:
+          docType.documentType === 'VENDOR_SETTLEMENT'
+            ? { include: { settlementLines: true } }
+            : false,
       },
     });
     if (doc.deletedAt) throw new NotFoundException('เอกสารถูกลบแล้ว');
@@ -1075,9 +1209,130 @@ export class ExpenseDocumentsService {
         totalAmount: doc.totalAmount.toString(),
       });
 
+      // Fix #C9 (Round 2 — moved from journal-auto.service.createAndPost):
+      // Period-open guard at the module boundary. Previously the guard lived
+      // inside createAndPost, which broke payment + contract atomicity (it
+      // would reject mid-tx JE writes and roll back the Payment record).
+      // The guard belongs HERE because:
+      //   1. We know the canonical posting date — doc.documentDate, not
+      //      "now" (which would let a backdated post slip through if the
+      //      clock crossed midnight between create + post).
+      //   2. We know the canonical companyId — SHOP (all expense flows post
+      //      SHOP-side per accounting.md §VAT Policy; expense template
+      //      resolves SHOP later, this guard mirrors that).
+      // Resolve SHOP companyId once via tx + cache; re-using the same
+      // pattern as expense templates' getShopCompanyId.
+      const shopForPeriod = await tx.companyInfo.findFirst({
+        where: { companyCode: 'SHOP', deletedAt: null },
+        select: { id: true },
+      });
+      if (!shopForPeriod) {
+        throw new NotFoundException(
+          'CompanyInfo with companyCode=SHOP not found — seed accounting data first',
+        );
+      }
+      // documentDate is required on the schema but defend against legacy
+      // rows with NULL via fallback to "now" (matches receipts.service +
+      // payments.service behavior — neither has a per-row date column on
+      // the doc, both pass new Date()).
+      const periodDate = doc.documentDate ?? new Date();
+      await validatePeriodOpen(tx, periodDate, shopForPeriod.id);
+
+      // Fix #C10 — attachment threshold enforced server-side.
+      // ATTACHMENT_REQUIRED_ABOVE_AMOUNT is set in /settings#attachment but
+      // was previously only enforced by the frontend submit button. A direct
+      // API call could POST a 500k expense with no receiptImageUrl → tax-audit
+      // risk. Defense in depth: re-check at post() before any JE is written.
+      const thresholdCfg = await tx.systemConfig.findUnique({
+        where: { key: 'ATTACHMENT_REQUIRED_ABOVE_AMOUNT' },
+      });
+      const rawThreshold = thresholdCfg?.value ?? '0';
+      const threshold = new Prisma.Decimal(
+        Number.isFinite(Number(rawThreshold)) ? rawThreshold : '0',
+      );
+      const docTotal = new Prisma.Decimal(doc.totalAmount.toString());
+      if (threshold.gt(0) && docTotal.gte(threshold) && !doc.receiptImageUrl) {
+        throw new BadRequestException(
+          `เอกสารยอด ${docTotal.toFixed(2)} บาท ต้องแนบไฟล์ประกอบ (เกณฑ์ ${threshold.toFixed(2)} บาท)`,
+        );
+      }
+
       // EXPENSE + CREDIT_NOTE + PAYROLL + VENDOR_SETTLEMENT supported
       if (!['EXPENSE', 'CREDIT_NOTE', 'PAYROLL', 'VENDOR_SETTLEMENT'].includes(doc.documentType)) {
         throw new BadRequestException(`type ${doc.documentType} not supported`);
+      }
+
+      // Fix #C12 — WHT routing invariant. When the doc has WHT > 0, doc.whtFormType
+      // MUST be non-null (and a recognised form). Previously the JE template silently
+      // defaulted to PND3 → routed to 21-3102, misfiling juristic-vendor WHT under
+      // ภ.ง.ด.3 instead of ภ.ง.ด.53 (government compliance bug).
+      //
+      // C12-symmetry (this PR): mirror the guard across all 4 doc types so any
+      // future bypass surfaces at post() instead of being silently misrouted by
+      // the template. Each doc type carries WHT differently:
+      //   - EXPENSE: doc.whtFormType OR every ExpenseLine.whtFormType is set
+      //     (per-line routing — P2-4)
+      //   - PAYROLL: doc.withholdingTax > 0 → always Cr 21-3101 (ภ.ง.ด.1) —
+      //     payroll WHT is employee income tax, NOT PND3/PND53, so no formType
+      //     enforcement here (BUT we still require it to be null since the field
+      //     is meaningless for payroll)
+      //   - VENDOR_SETTLEMENT: single-vendor invariant means doc-level form type
+      //     applies (intentionally no per-line routing per accounting.md)
+      //   - CREDIT_NOTE: createCreditNote already blocks original-with-WHT
+      //     (so CN itself ideally has no WHT), but if the original had WHT and
+      //     this branch is reached, we still need doc-level formType
+      const wht = new Prisma.Decimal(doc.withholdingTax?.toString() ?? '0');
+      if (wht.gt(0)) {
+        if (doc.documentType === 'EXPENSE') {
+          if (!doc.whtFormType) {
+            // Check if every WHT-bearing line has its own form type → fall through to
+            // per-line routing in the template. Otherwise the doc-level is mandatory.
+            const detail = await tx.expenseDetail.findUnique({
+              where: { documentId: id },
+              include: { lines: true },
+            });
+            const whtLines = (detail?.lines ?? []).filter(
+              (l) => l.whtAmount && new Prisma.Decimal(l.whtAmount.toString()).gt(0),
+            );
+            const allLinesHaveFormType =
+              whtLines.length > 0 && whtLines.every((l) => !!l.whtFormType);
+            if (!allLinesHaveFormType) {
+              throw new BadRequestException(
+                'whtFormType ต้องระบุเมื่อมี WHT — เลือก PND3 หรือ PND53',
+              );
+            }
+            // If every line has a form type, validate each is PND3/PND53 (no other strings)
+            for (const l of whtLines) {
+              if (l.whtFormType !== 'PND3' && l.whtFormType !== 'PND53') {
+                throw new BadRequestException(
+                  `whtFormType ของบรรทัด ${(l as { lineNo?: number }).lineNo ?? '?'} ` +
+                    `ต้องเป็น PND3 หรือ PND53 (พบ ${l.whtFormType ?? 'null'})`,
+                );
+              }
+            }
+          } else if (doc.whtFormType !== 'PND3' && doc.whtFormType !== 'PND53') {
+            throw new BadRequestException(
+              `whtFormType ต้องเป็น PND3 หรือ PND53 (พบ ${doc.whtFormType})`,
+            );
+          }
+        } else if (doc.documentType === 'VENDOR_SETTLEMENT' || doc.documentType === 'CREDIT_NOTE') {
+          // Per-line routing intentionally NOT supported for SE (single-vendor
+          // invariant per accounting.md) and CN (template routes by original.whtFormType
+          // since CN itself carries no WHT — but defense in depth).
+          if (!doc.whtFormType) {
+            throw new BadRequestException(
+              'whtFormType ต้องระบุเมื่อมี WHT — เลือก PND3 หรือ PND53',
+            );
+          }
+          if (doc.whtFormType !== 'PND3' && doc.whtFormType !== 'PND53') {
+            throw new BadRequestException(
+              `whtFormType ต้องเป็น PND3 หรือ PND53 (พบ ${doc.whtFormType})`,
+            );
+          }
+        }
+        // PAYROLL: doc.whtFormType is meaningless (employee income tax always
+        // routes to 21-3101 / ภ.ง.ด.1). No enforcement — payroll.template
+        // posts to 21-3101 unconditionally when sumWht > 0.
       }
 
       if (doc.documentType === 'CREDIT_NOTE') {
@@ -1142,6 +1397,22 @@ export class ExpenseDocumentsService {
 
       this.transition.assertCanVoid({ from: doc.status });
 
+      // Fix #C9 (Round 2 — moved from journal-auto.service.createAndPost):
+      // Period-open guard at the module boundary. The reversal JE postedAt
+      // is BKK noon "today" (bkkBusinessDate(new Date())), so the check uses
+      // the same "now" reference. SHOP companyId resolved fresh (cache lives
+      // on JournalAutoService) — small cost, but voids are rare.
+      const shopForVoidPeriod = await tx.companyInfo.findFirst({
+        where: { companyCode: 'SHOP', deletedAt: null },
+        select: { id: true },
+      });
+      if (!shopForVoidPeriod) {
+        throw new NotFoundException(
+          'CompanyInfo with companyCode=SHOP not found — seed accounting data first',
+        );
+      }
+      await validatePeriodOpen(tx, bkkBusinessDate(new Date()), shopForVoidPeriod.id);
+
       // Post reversal JE (flipped Dr/Cr) if doc had one. The original JE stays
       // intact; the reversal lives as a separate POSTED entry tagged via metadata.
       // Reversal postedAt is BKK noon "today" — keeps the entry inside the
@@ -1151,6 +1422,27 @@ export class ExpenseDocumentsService {
           where: { id: doc.journalEntryId },
           include: { lines: true },
         });
+        // W6 fix — fall back to SHOP company id when legacy JE rows lack
+        // companyId (pre-A.1b migration). Without this, voiding an old EX
+        // throws "companyId required" from journal-auto.service. SHOP is the
+        // canonical home for expense-side flows per accounting.md.
+        let companyId = original.companyId;
+        if (!companyId) {
+          const shop = await tx.companyInfo.findFirst({
+            where: { companyCode: 'SHOP', deletedAt: null },
+            select: { id: true },
+          });
+          if (!shop) {
+            // W6 (Round 2) — replace bare Error with NestJS exception so the
+            // response is a clean 404 instead of a 500 with stack trace. Same
+            // wording shape as the post()/voidDocument() period-guard SHOP
+            // fallback and the FINANCE fallback in resolveFinanceCompanyId.
+            throw new NotFoundException(
+              'CompanyInfo with companyCode=SHOP not found — seed accounting data first',
+            );
+          }
+          companyId = shop.id;
+        }
         await this.journal.createAndPost(
           {
             description: `กลับรายการ ${doc.number}`,
@@ -1164,7 +1456,7 @@ export class ExpenseDocumentsService {
               flow: `expense-${doc.documentType.toLowerCase()}-void`,
             },
             postedAt: bkkBusinessDate(new Date()),
-            companyId: original.companyId,
+            companyId,
             lines: original.lines.map((l) => ({
               accountCode: l.accountCode,
               dr: new Prisma.Decimal(l.credit.toString()),

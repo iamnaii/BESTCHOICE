@@ -14,13 +14,14 @@ import { useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Printer } from 'lucide-react';
+import Decimal from 'decimal.js';
 import api from '@/lib/api';
 import QueryBoundary from '@/components/QueryBoundary';
 import { formatNumberDecimal } from '@/utils/formatters';
 import { formatThaiDateLong } from '@/lib/date';
 import { numToThaiText } from '@/utils/numToThaiText';
 
-interface ExpenseLine {
+export interface ExpenseLine {
   lineNo: number;
   category: string;
   description: string | null;
@@ -29,6 +30,10 @@ interface ExpenseLine {
   amountBeforeVat: string;
   vatAmount: string;
   whtAmount: string;
+  // W7 — used by WhtCertificate to render a per-rate breakdown so the form
+  // 50 ทวิ requirement (itemize the WHT rate per income type) is met when a
+  // single document mixes vendors with different rates.
+  whtPercent?: string;
 }
 
 interface JournalLine {
@@ -299,11 +304,52 @@ function Sheet({
   );
 }
 
+/**
+ * W7 (Round 2) — exported for unit testing. Form 50 ทวิ is a legal cert;
+ * per-row sums MUST equal the line-by-line totals exactly. Decimal.plus()
+ * preserves precision where parseFloat + += would drift a satang on
+ * mixed-rate docs.
+ */
+export interface RateBucket {
+  rate: Decimal;
+  base: Decimal;
+  tax: Decimal;
+}
+export function bucketWhtByRate(
+  lines: ExpenseLine[],
+  subtotal: Decimal,
+  wht: Decimal,
+): RateBucket[] {
+  const ratedLines = lines.filter(
+    (l) => new Decimal(l.whtAmount ?? '0').gt(0) && l.whtPercent != null,
+  );
+  if (ratedLines.length === 0) {
+    // Legacy / fallback: single weighted-average row from doc totals.
+    const avgRate = subtotal.gt(0) ? wht.div(subtotal).times(100) : new Decimal(0);
+    return [{ rate: avgRate, base: subtotal, tax: wht }];
+  }
+  const map = new Map<string, RateBucket>();
+  for (const l of ratedLines) {
+    const rate = new Decimal(l.whtPercent ?? '0');
+    const key = rate.toFixed(2);
+    const b = map.get(key) ?? { rate, base: new Decimal(0), tax: new Decimal(0) };
+    b.base = b.base.plus(l.amountBeforeVat ?? '0');
+    b.tax = b.tax.plus(l.whtAmount ?? '0');
+    map.set(key, b);
+  }
+  // Sort descending by tax amount for a stable, readable layout.
+  return [...map.values()].sort((a, b) => b.tax.cmp(a.tax));
+}
+
 function WhtCertificate({ doc }: { doc: VoucherDoc }) {
-  const wht = parseFloat(doc.withholdingTax);
-  const subtotal = parseFloat(doc.subtotal);
-  const whtPercent = subtotal > 0 ? (wht / subtotal) * 100 : 0;
+  // W7 (Round 2) — see bucketWhtByRate above for the Decimal-precision
+  // rationale. Convert to display strings only at render time via toFixed.
+  const wht = new Decimal(doc.withholdingTax || '0');
+  const subtotal = new Decimal(doc.subtotal || '0');
   const formLabel = doc.whtFormType === 'PND53' ? 'ภ.ง.ด. 53' : 'ภ.ง.ด. 3';
+  const lines = doc.expenseDetail?.lines ?? [];
+  const buckets = bucketWhtByRate(lines, subtotal, wht);
+  const hasMixedRates = buckets.length > 1;
   return (
     <article
       className="voucher-sheet bg-white border border-border rounded-md p-8 shadow-sm print:border-0 print:p-0 print:shadow-none"
@@ -341,20 +387,24 @@ function WhtCertificate({ doc }: { doc: VoucherDoc }) {
           </tr>
         </thead>
         <tbody>
-          <tr>
-            <td className="border border-border p-2">
-              ค่าบริการ / ค่าจ้าง (ตาม {formLabel})
-            </td>
-            <td className="border border-border p-2 text-right tabular-nums">
-              {formatNumberDecimal(doc.subtotal)}
-            </td>
-            <td className="border border-border p-2 text-right tabular-nums">
-              {whtPercent.toFixed(2)}
-            </td>
-            <td className="border border-border p-2 text-right tabular-nums">
-              {formatNumberDecimal(doc.withholdingTax)}
-            </td>
-          </tr>
+          {buckets.map((b, idx) => (
+            <tr key={`${b.rate.toFixed(2)}-${idx}`}>
+              <td className="border border-border p-2">
+                {hasMixedRates
+                  ? `ค่าบริการ / ค่าจ้าง (อัตรา ${b.rate.toFixed(2)}%, ตาม ${formLabel})`
+                  : `ค่าบริการ / ค่าจ้าง (ตาม ${formLabel})`}
+              </td>
+              <td className="border border-border p-2 text-right tabular-nums">
+                {formatNumberDecimal(b.base.toFixed(2))}
+              </td>
+              <td className="border border-border p-2 text-right tabular-nums">
+                {b.rate.toFixed(2)}
+              </td>
+              <td className="border border-border p-2 text-right tabular-nums">
+                {formatNumberDecimal(b.tax.toFixed(2))}
+              </td>
+            </tr>
+          ))}
           <tr className="bg-muted/30">
             <td className="border border-border p-2 font-semibold">รวม</td>
             <td className="border border-border p-2 text-right tabular-nums font-semibold">
@@ -370,7 +420,7 @@ function WhtCertificate({ doc }: { doc: VoucherDoc }) {
 
       <section className="mt-6 rounded-md border border-border bg-muted/20 p-4 text-sm">
         <p className="text-xs text-muted-foreground mb-1">ภาษีที่หักเป็นเงิน (ตัวอักษร)</p>
-        <p className="font-semibold leading-relaxed">{numToThaiText(wht)}</p>
+        <p className="font-semibold leading-relaxed">{numToThaiText(wht.toFixed(2))}</p>
       </section>
 
       <p className="mt-8 text-xs text-muted-foreground">

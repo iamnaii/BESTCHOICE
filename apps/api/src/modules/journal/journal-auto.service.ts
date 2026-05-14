@@ -66,11 +66,37 @@ export class JournalAutoService {
       }
     }
 
-    // 3. entry number via advisory lock (per-month series)
+    // 3. resolve companyId — defaults to FINANCE if caller didn't pass one.
     const postedAt = input.postedAt ?? new Date();
+    const companyId = input.companyId ?? (await this.resolveFinanceCompanyId(client));
+
+    // Fix #C9 (Round 2 — blast-radius correction):
+    // The period-open guard was previously called HERE on every createAndPost
+    // invocation. That broke payment + contract atomicity: a reopened FINANCE
+    // period would reject the mid-tx JE write and roll back the Payment record.
+    // Per-module guards are the right boundary — they run BEFORE opening the tx
+    // and they know each module's date semantics (Payment.paidAt vs
+    // EX.documentDate vs contract activation date). Module callers that already
+    // honor period lock (verified 2026-05-14):
+    //   - payments.service.ts:138       → validatePeriodOpen(new Date())
+    //   - payments.service.ts:649,1003  → inside that same outer tx
+    //   - contract-payment.service.ts:256 → validatePeriodOpen(paidDate)
+    //   - receipts.service.ts:450       → validatePeriodOpen(new Date())
+    //   - asset.service.ts (×4)         → validatePeriodOpen(activityDate, FINANCE)
+    //   - asset-transfer.service.ts:105 → validatePeriodOpen(transferDate)
+    //   - depreciation.service.ts (×2)  → validatePeriodOpen(periodStart)
+    //   - journal.service.ts:62,201     → manual journal post + void
+    //   - installment-accrual.cron:90   → validatePeriodOpen(inst.dueDate)
+    // Expense module now guards at its own service entry points
+    // (expense-documents.service.ts post() + voidDocument()) — see those
+    // sites for the per-module period-lock invocation.
+    // OtherIncomeTemplate sits inside other-income.service.post(), which is
+    // also wrapped by its own period validation.
+
+    // 4. entry number via advisory lock (per-month series)
     const entryNumber = await this.generateEntryNumber(postedAt, client);
 
-    // 4. create entry + lines (POSTED immediately — auto-generated entries skip DRAFT/SoD)
+    // 5. create entry + lines (POSTED immediately — auto-generated entries skip DRAFT/SoD)
     const entry = await client.journalEntry.create({
       data: {
         entryNumber,
@@ -83,7 +109,7 @@ export class JournalAutoService {
         postedAt,
         // companyId required by schema. Defaults to FINANCE; callers (e.g.
         // expense-documents PR #795) pass SHOP id when posting SHOP-side flows.
-        companyId: input.companyId ?? (await this.resolveFinanceCompanyId(client)),
+        companyId,
         createdById: await this.resolveSystemUserId(client),
         lines: {
           create: input.lines.map((l) => ({

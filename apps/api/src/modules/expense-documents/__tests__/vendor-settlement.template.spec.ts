@@ -18,11 +18,20 @@ describe('VendorSettlementTemplate', () => {
       $transaction: jest.fn(async (cb: (tx: unknown) => unknown) => cb(prisma)),
       expenseDocument: {
         findUniqueOrThrow: jest.fn(),
+        // C8 Round 2 — cheap pre-check before the heavy findUniqueOrThrow.
+        // Default: returns { journalEntryId: null } so the cheap idempotency
+        // short-circuit treats the doc as un-posted and falls through.
+        findUnique: jest.fn().mockResolvedValue({ journalEntryId: null }),
         // findMany used for single-vendor invariant check (added in PR-1 hardening)
+        // AND for partial-vs-full settlement lookup (Fix #C8 — totalAmount per cleared id).
         findMany: jest.fn().mockResolvedValue([]),
         update: jest.fn().mockResolvedValue({}),
         // updateMany used for batched cleared-EX status flip (replaces N x update)
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      // groupBy used for cumulative-settled lookup (Fix #C8 — partial vs full).
+      settlementLine: {
+        groupBy: jest.fn().mockResolvedValue([]),
       },
       journalEntry: {
         findUnique: jest.fn().mockResolvedValue({ entryNumber: 'JE-SE-001' }),
@@ -51,6 +60,14 @@ describe('VendorSettlementTemplate', () => {
         ],
       },
     });
+    // findMany #1 — single-vendor invariant (one vendor, OK)
+    prisma.expenseDocument.findMany.mockResolvedValueOnce([
+      { id: 'ex-1', vendorTaxId: '1234567890123', vendorName: 'Vendor A' },
+    ]);
+    // findMany #2 — totalAmount lookup (Fix #C8 partial vs full check)
+    prisma.expenseDocument.findMany.mockResolvedValueOnce([
+      { id: 'ex-1', totalAmount: new Decimal('1000.00') },
+    ]);
 
     const result = await template.execute(docId);
     expect(result.entryNo).toBe('JE-SE-001');
@@ -99,6 +116,16 @@ describe('VendorSettlementTemplate', () => {
         ],
       },
     });
+    prisma.expenseDocument.findMany.mockResolvedValueOnce([
+      { id: 'ex-1', vendorTaxId: '1234567890123', vendorName: 'Vendor A' },
+      { id: 'ex-2', vendorTaxId: '1234567890123', vendorName: 'Vendor A' },
+      { id: 'ex-3', vendorTaxId: '1234567890123', vendorName: 'Vendor A' },
+    ]);
+    prisma.expenseDocument.findMany.mockResolvedValueOnce([
+      { id: 'ex-1', totalAmount: new Decimal('1000.00') },
+      { id: 'ex-2', totalAmount: new Decimal('2000.00') },
+      { id: 'ex-3', totalAmount: new Decimal('3000.00') },
+    ]);
 
     await template.execute(docId);
 
@@ -138,6 +165,12 @@ describe('VendorSettlementTemplate', () => {
         ],
       },
     });
+    prisma.expenseDocument.findMany.mockResolvedValueOnce([
+      { id: 'ex-1', vendorTaxId: '1234567890123', vendorName: 'Vendor A' },
+    ]);
+    prisma.expenseDocument.findMany.mockResolvedValueOnce([
+      { id: 'ex-1', totalAmount: new Decimal('5000.00') },
+    ]);
 
     await template.execute(docId);
 
@@ -162,7 +195,7 @@ describe('VendorSettlementTemplate', () => {
     expect(sumCr.toString()).toBe('5000');
   });
 
-  it('side effect — each cleared EX status → POSTED + paidAt = SE.documentDate', async () => {
+  it('side effect — each fully-cleared EX status → POSTED + paidAt = SE.documentDate', async () => {
     const documentDate = new Date('2026-05-10');
     prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
       id: docId,
@@ -181,6 +214,15 @@ describe('VendorSettlementTemplate', () => {
         ],
       },
     });
+    prisma.expenseDocument.findMany.mockResolvedValueOnce([
+      { id: 'ex-a', vendorTaxId: '1234567890123', vendorName: 'Vendor A' },
+      { id: 'ex-b', vendorTaxId: '1234567890123', vendorName: 'Vendor A' },
+    ]);
+    // Both EXs fully settled by this SE (settled == totalAmount).
+    prisma.expenseDocument.findMany.mockResolvedValueOnce([
+      { id: 'ex-a', totalAmount: new Decimal('1000.00') },
+      { id: 'ex-b', totalAmount: new Decimal('2000.00') },
+    ]);
 
     await template.execute(docId);
 
@@ -238,22 +280,189 @@ describe('VendorSettlementTemplate', () => {
   });
 
   it('idempotent — returns existing entryNo when journalEntryId already set, no createAndPost call', async () => {
-    prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
-      id: docId,
-      number: 'SE-20260510-0005',
-      documentType: 'VENDOR_SETTLEMENT',
-      documentDate: new Date('2026-05-10'),
+    // C8 Round 2 — the cheap pre-check `findUnique({select:journalEntryId})`
+    // runs first. Returning journalEntryId here trips the short-circuit
+    // BEFORE the heavy findUniqueOrThrow{include settlement} ever fires.
+    prisma.expenseDocument.findUnique.mockResolvedValue({
       journalEntryId: 'je-existing-uuid',
-      settlement: {
-        settlementLines: [
-          { id: 'l1', clearedDocumentId: 'ex-1', amountSettled: new Decimal('1000.00') },
-        ],
-      },
     });
     prisma.journalEntry.findUnique.mockResolvedValueOnce({ entryNumber: 'JE-EXISTING' });
 
     const result = await template.execute(docId);
     expect(result.entryNo).toBe('JE-EXISTING');
     expect(journal.createAndPost).not.toHaveBeenCalled();
+    // Heavy findUniqueOrThrow{include settlement} MUST NOT be called.
+    expect(prisma.expenseDocument.findUniqueOrThrow).not.toHaveBeenCalled();
+  });
+
+  // C8 Round 2 — concurrent retry that beats the cheap pre-check but
+  // races into the heavy fetch must still bail at the secondary check.
+  it('C8 belt-and-braces — also idempotent at secondary check after heavy fetch', async () => {
+    // First call (pre-check) returns null → proceed; then findUniqueOrThrow
+    // shows the JE was just posted by a parallel retry.
+    prisma.expenseDocument.findUnique.mockResolvedValue({ journalEntryId: null });
+    prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+      id: docId,
+      number: 'SE-20260510-0005b',
+      documentType: 'VENDOR_SETTLEMENT',
+      documentDate: new Date('2026-05-10'),
+      journalEntryId: 'je-race-winner',
+      settlement: {
+        settlementLines: [
+          { id: 'l1', clearedDocumentId: 'ex-1', amountSettled: new Decimal('1000.00') },
+        ],
+      },
+    });
+    prisma.journalEntry.findUnique.mockResolvedValueOnce({ entryNumber: 'JE-RACE-WINNER' });
+
+    const result = await template.execute(docId);
+    expect(result.entryNo).toBe('JE-RACE-WINNER');
+    expect(journal.createAndPost).not.toHaveBeenCalled();
+  });
+
+  // Fix #C8 — partial settlement (settled < total) must keep EX status=ACCRUAL
+  // so a subsequent SE can clear the residual. Without this guard the AP balance
+  // strands forever (cap check at expense-documents.service blocks SE on non-ACCRUAL).
+  it('Fix #C8 — keeps EX status=ACCRUAL when partial settlement < total', async () => {
+    const documentDate = new Date('2026-05-10');
+    prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+      id: docId,
+      number: 'SE-20260510-0010',
+      documentType: 'VENDOR_SETTLEMENT',
+      documentDate,
+      totalAmount: new Decimal('6000.00'),
+      withholdingTax: new Decimal('0.00'),
+      whtFormType: null,
+      depositAccountCode: '11-1101',
+      journalEntryId: null,
+      settlement: {
+        settlementLines: [
+          { id: 'l1', clearedDocumentId: 'ex-1', amountSettled: new Decimal('6000.00') },
+        ],
+      },
+    });
+    prisma.expenseDocument.findMany.mockResolvedValueOnce([
+      { id: 'ex-1', vendorTaxId: '1234567890123', vendorName: 'Vendor A' },
+    ]);
+    // EX total = 10,000 but we only settle 6,000 → partial, must stay ACCRUAL.
+    prisma.expenseDocument.findMany.mockResolvedValueOnce([
+      { id: 'ex-1', totalAmount: new Decimal('10000.00') },
+    ]);
+
+    await template.execute(docId);
+
+    // EX must NOT be flipped to POSTED — updateMany on cleared EXs should not be
+    // called at all (no fullyPaidIds). The SE itself flips to POSTED via the
+    // separate single `update` call below; that's unrelated to the cleared EX.
+    const clearedFlipCalls = (prisma.expenseDocument.updateMany.mock.calls as unknown[][]).filter(
+      (args) => {
+        const where = (args[0] as { where: { id?: { in?: string[] } } }).where;
+        return where.id?.in?.includes('ex-1') ?? false;
+      },
+    );
+    expect(clearedFlipCalls).toHaveLength(0);
+    // SE itself still flips to POSTED (separate `update` call on SE.id)
+    expect(prisma.expenseDocument.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: docId },
+        data: expect.objectContaining({ status: 'POSTED', paidAt: documentDate }),
+      }),
+    );
+  });
+
+  // Fix #C8 — when cumulative prior + this SE = total, the EX must flip POSTED.
+  // Tests the "second SE clears the residual" path.
+  it('Fix #C8 — flips EX status=POSTED only when cumulative settled = total', async () => {
+    const documentDate = new Date('2026-05-12');
+    prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+      id: docId,
+      number: 'SE-20260512-0001',
+      documentType: 'VENDOR_SETTLEMENT',
+      documentDate,
+      totalAmount: new Decimal('4000.00'),
+      withholdingTax: new Decimal('0.00'),
+      whtFormType: null,
+      depositAccountCode: '11-1101',
+      journalEntryId: null,
+      settlement: {
+        settlementLines: [
+          { id: 'l2', clearedDocumentId: 'ex-1', amountSettled: new Decimal('4000.00') },
+        ],
+      },
+    });
+    prisma.expenseDocument.findMany.mockResolvedValueOnce([
+      { id: 'ex-1', vendorTaxId: '1234567890123', vendorName: 'Vendor A' },
+    ]);
+    prisma.expenseDocument.findMany.mockResolvedValueOnce([
+      { id: 'ex-1', totalAmount: new Decimal('10000.00') },
+    ]);
+    // Prior POSTED SE already settled 6,000 → this SE adds 4,000 = 10,000 (full).
+    prisma.settlementLine.groupBy.mockResolvedValueOnce([
+      { clearedDocumentId: 'ex-1', _sum: { amountSettled: new Decimal('6000.00') } },
+    ]);
+
+    await template.execute(docId);
+
+    expect(prisma.expenseDocument.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: { in: ['ex-1'] },
+          deletedAt: null,
+        }),
+        data: expect.objectContaining({ status: 'POSTED', paidAt: documentDate }),
+      }),
+    );
+  });
+
+  // C12-symmetry — template-level defense throws when whtFormType is unknown.
+  // Service-level guard normally rejects first, but template throws too so any
+  // bypass surfaces here instead of silently misrouting under PND3.
+  it('C12-symmetry: throws when wht > 0 and whtFormType is null', async () => {
+    prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+      id: docId,
+      number: 'SE-20260514-C12A',
+      documentType: 'VENDOR_SETTLEMENT',
+      documentDate: new Date('2026-05-14'),
+      totalAmount: new Decimal('5000.00'),
+      withholdingTax: new Decimal('100.00'),
+      whtFormType: null,
+      depositAccountCode: '11-1101',
+      journalEntryId: null,
+      settlement: {
+        settlementLines: [
+          { id: 'l1', clearedDocumentId: 'ex-1', amountSettled: new Decimal('5000.00') },
+        ],
+      },
+    });
+    prisma.expenseDocument.findMany.mockResolvedValueOnce([
+      { id: 'ex-1', vendorTaxId: '1234567890123', vendorName: 'Vendor A' },
+    ]);
+
+    await expect(template.execute(docId)).rejects.toThrow(/whtFormType ต้องเป็น PND3 หรือ PND53/);
+    expect(journal.createAndPost).not.toHaveBeenCalled();
+  });
+
+  it('C12-symmetry: throws when whtFormType is unknown string (defensive)', async () => {
+    prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+      id: docId,
+      number: 'SE-20260514-C12B',
+      documentType: 'VENDOR_SETTLEMENT',
+      documentDate: new Date('2026-05-14'),
+      totalAmount: new Decimal('5000.00'),
+      withholdingTax: new Decimal('100.00'),
+      whtFormType: 'PND91',
+      depositAccountCode: '11-1101',
+      journalEntryId: null,
+      settlement: {
+        settlementLines: [
+          { id: 'l1', clearedDocumentId: 'ex-1', amountSettled: new Decimal('5000.00') },
+        ],
+      },
+    });
+    prisma.expenseDocument.findMany.mockResolvedValueOnce([
+      { id: 'ex-1', vendorTaxId: '1234567890123', vendorName: 'Vendor A' },
+    ]);
+
+    await expect(template.execute(docId)).rejects.toThrow(/whtFormType ต้องเป็น PND3 หรือ PND53/);
   });
 });

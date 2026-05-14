@@ -261,6 +261,79 @@ describe('ExpenseSameDayTemplate', () => {
     expect(dr5x.find((l: { accountCode: string; dr: { toString: () => string } }) => l.accountCode === '53-1101').dr.toString()).toBe('1000');
   });
 
+  // Fix #C12 — template-level defense: throw when WHT > 0 but no resolvable
+  // whtFormType anywhere. The service guard at expense-documents.service.ts
+  // post() catches this at request time; the template re-checks to surface
+  // any future caller bypass instead of silently misfiling under PND3.
+  it('Fix #C12: throws when WHT > 0 and doc.whtFormType is null (no per-line override)', async () => {
+    prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+      id: docId,
+      number: 'EX-20260511-C12-1',
+      documentType: 'EXPENSE',
+      branchId: 'branch-1',
+      documentDate: new Date('2026-05-11'),
+      subtotal: new Decimal('1000.00'),
+      vatAmount: new Decimal('0.00'),
+      withholdingTax: new Decimal('30.00'),
+      whtFormType: null, // ← missing
+      totalAmount: new Decimal('1000.00'),
+      depositAccountCode: '11-1201',
+      paymentMethod: 'BANK_TRANSFER',
+      journalEntryId: null,
+      expenseDetail: {
+        priceType: 'EXCLUSIVE',
+        lines: [
+          {
+            lineNo: 1,
+            category: '53-1702',
+            amountBeforeVat: new Decimal('1000.00'),
+            // no per-line whtFormType override either
+          },
+        ],
+      },
+    });
+
+    await expect(template.execute(docId)).rejects.toThrow(/PND3 หรือ PND53/);
+    expect(journal.createAndPost).not.toHaveBeenCalled();
+  });
+
+  // Fix #C12 — per-line override still works when doc-level is null. As long
+  // as every WHT-bearing line has its own form type, the template aggregates
+  // them per the P2-4 routing rule.
+  it('Fix #C12: per-line override allowed when every WHT-line has its own form type', async () => {
+    prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+      id: docId,
+      number: 'EX-20260511-C12-2',
+      documentType: 'EXPENSE',
+      branchId: 'branch-1',
+      documentDate: new Date('2026-05-11'),
+      subtotal: new Decimal('1000.00'),
+      vatAmount: new Decimal('0.00'),
+      withholdingTax: new Decimal('50.00'),
+      whtFormType: null,
+      totalAmount: new Decimal('1000.00'),
+      depositAccountCode: '11-1201',
+      paymentMethod: 'BANK_TRANSFER',
+      journalEntryId: null,
+      expenseDetail: {
+        priceType: 'EXCLUSIVE',
+        lines: [
+          {
+            lineNo: 1,
+            category: '53-1303',
+            amountBeforeVat: new Decimal('1000.00'),
+            whtAmount: new Decimal('50.00'),
+            whtFormType: 'PND53', // line-level override
+          },
+        ],
+      },
+    });
+
+    await template.execute(docId);
+    const [args] = journal.createAndPost.mock.calls[0];
+    expect(args.lines.find((l: { accountCode: string }) => l.accountCode === '21-3103')).toBeDefined();
+  });
+
   // Fix Report P2-2 — per-line journal_lines (no collapse by category).
   it('multi-line: 3 lines, 2 share category — 3 Dr rows (line-level preserved)', async () => {
     prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({

@@ -3,6 +3,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import { JournalAutoService, JeLineInput } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { assertWhtFormType } from '../utils/wht-form-type';
 
 /**
  * Template — Vendor Settlement (SE จ่ายเจ้าหนี้).
@@ -34,12 +35,32 @@ export class VendorSettlementTemplate {
     outerTx?: Prisma.TransactionClient,
   ): Promise<{ entryNo: string }> {
     const exec = async (tx: Prisma.TransactionClient): Promise<{ entryNo: string }> => {
+      // C8 (Round 2) — cheap idempotency short-circuit BEFORE the heavy
+      // include query. A concurrent retry from a webhook / cron / manual
+      // re-post used to fetch the full settlement+settlementLines payload
+      // first, then bail at the secondary check below. Doing the cheap
+      // `select journalEntryId` first avoids the redundant join on every
+      // retry. Mirrors expense-accrual / expense-same-day templates.
+      const idemCheck = await tx.expenseDocument.findUnique({
+        where: { id: documentId },
+        select: { journalEntryId: true },
+      });
+      if (idemCheck?.journalEntryId) {
+        const existing = await tx.journalEntry.findUnique({
+          where: { id: idemCheck.journalEntryId },
+          select: { entryNumber: true },
+        });
+        return { entryNo: existing?.entryNumber ?? idemCheck.journalEntryId };
+      }
+
       const se = await tx.expenseDocument.findUniqueOrThrow({
         where: { id: documentId },
         include: { settlement: { include: { settlementLines: true } } },
       });
 
-      // Idempotency
+      // Belt-and-braces — same check after the heavy fetch, in case the
+      // window between the cheap select and this row was used by a parallel
+      // call that succeeded. Same shape as the cheap check above.
       if (se.journalEntryId) {
         const existing = await tx.journalEntry.findUnique({
           where: { id: se.journalEntryId },
@@ -98,12 +119,17 @@ export class VendorSettlementTemplate {
         },
       ];
       if (wht.gt(zero)) {
-        const whtAccount = se.whtFormType === 'PND53' ? '21-3103' : '21-3102';
+        // C12-symmetry + I1 — narrowing helper. Service-level guard at
+        // expense-documents.service.post() already rejects null / bad form
+        // types when withholdingTax > 0; this template-level assertion is
+        // defense-in-depth for any future caller that bypasses the service.
+        const formType = assertWhtFormType(se.whtFormType, `SE wht=${wht.toString()}`);
+        const whtAccount = formType === 'PND53' ? '21-3103' : '21-3102';
         lines.push({
           accountCode: whtAccount,
           dr: zero,
           cr: wht,
-          description: `หัก ณ ที่จ่าย ${se.whtFormType ?? 'PND3'}`,
+          description: `หัก ณ ที่จ่าย ${formType}`,
         });
       }
 
@@ -128,18 +154,72 @@ export class VendorSettlementTemplate {
         tx,
       );
 
-      // SIDE EFFECT: each cleared EX → POSTED + paidAt (single batched update).
-      // Note: does NOT overwrite cleared.journalEntryId — original ACCRUAL JE stays intact.
-      await tx.expenseDocument.updateMany({
-        where: {
-          id: { in: se.settlement.settlementLines.map((l) => l.clearedDocumentId) },
-          deletedAt: null,
-        },
-        data: {
-          status: 'POSTED',
-          paidAt: se.documentDate,
-        },
+      // SIDE EFFECT: each cleared EX status flip.
+      // Fix #C8 — only flip to POSTED when cumulative settled = totalAmount.
+      // For partial settlements (Σ POSTED SettlementLine.amountSettled including
+      // *this* SE < cleared.totalAmount), keep the EX as ACCRUAL so a subsequent
+      // SE can clear the residual. Without this guard, partial-paying EX once
+      // strands the residual AP forever (expense-documents.service rejects any
+      // SE on non-ACCRUAL docs at line ~480).
+      //
+      // Original ACCRUAL JE on cleared.journalEntryId stays intact — we only
+      // toggle status/paidAt here. paidAt is set only when the doc is fully
+      // settled; partial-settled docs keep paidAt = null.
+      const clearedIds = se.settlement.settlementLines.map((l) => l.clearedDocumentId);
+      const clearedDocsAmts = await tx.expenseDocument.findMany({
+        where: { id: { in: clearedIds }, deletedAt: null },
+        select: { id: true, totalAmount: true },
       });
+      // Aggregate prior POSTED settlements per cleared doc so we know the
+      // cumulative settled-amount once *this* SE posts.
+      const priorAgg = await tx.settlementLine.groupBy({
+        by: ['clearedDocumentId'],
+        where: {
+          clearedDocumentId: { in: clearedIds },
+          settlement: {
+            document: {
+              status: 'POSTED',
+              deletedAt: null,
+            },
+          },
+        },
+        _sum: { amountSettled: true },
+      });
+      const priorByDoc = new Map(
+        priorAgg.map((a) => [a.clearedDocumentId, new Decimal(a._sum.amountSettled?.toString() ?? '0')]),
+      );
+      const thisByDoc = new Map<string, Decimal>();
+      for (const sl of se.settlement.settlementLines) {
+        const cur = thisByDoc.get(sl.clearedDocumentId) ?? zero;
+        thisByDoc.set(sl.clearedDocumentId, cur.plus(sl.amountSettled.toString()));
+      }
+      const fullyPaidIds: string[] = [];
+      const partiallyPaidIds: string[] = [];
+      for (const d of clearedDocsAmts) {
+        const cumulative = (priorByDoc.get(d.id) ?? zero).plus(thisByDoc.get(d.id) ?? zero);
+        const total = new Decimal(d.totalAmount.toString());
+        // ≥ instead of = because residual < 0.005 should still close the doc
+        // (tolerance — same approach as journal balanced check at 0.01).
+        if (cumulative.gte(total.minus(new Decimal('0.005')))) {
+          fullyPaidIds.push(d.id);
+        } else {
+          partiallyPaidIds.push(d.id);
+        }
+      }
+      if (fullyPaidIds.length > 0) {
+        await tx.expenseDocument.updateMany({
+          where: { id: { in: fullyPaidIds }, deletedAt: null },
+          data: {
+            status: 'POSTED',
+            paidAt: se.documentDate,
+          },
+        });
+      }
+      // Partial settlements keep status=ACCRUAL and paidAt=null so a
+      // subsequent SE can clear the residual. The cap check at
+      // expense-documents.service.ts ~488-500 only counts POSTED SE lines,
+      // so this partial SE will consume the cap correctly once it itself
+      // becomes POSTED below.
 
       // Update SE itself
       await tx.expenseDocument.update({

@@ -274,7 +274,19 @@ export class ExpenseDocumentsService {
         if (t !== 'ค่าใช้จ่าย') throw new BadRequestException(`หมวดบัญชี ${c} ไม่ใช่ "ค่าใช้จ่าย"`);
       }
 
-      // Load + validate original
+      // I2 fix — acquire the advisory lock BEFORE loading the original so a
+      // concurrent void/edit can't slip between the read and the cap check.
+      // Then re-read the original under the lock. Previously the original was
+      // read once before the lock, so two threads could both see status=ACCRUAL
+      // (or matching totalAmount) even after one of them was about to flip it
+      // via a concurrent operation. Locking first → reading second gives
+      // serialisable semantics for the cap branch.
+      await tx.$executeRawUnsafe(
+        `SELECT pg_advisory_xact_lock(hashtext($1))`,
+        dto.originalDocumentId,
+      );
+
+      // Load + validate original (now under the advisory lock).
       const original = await tx.expenseDocument.findUniqueOrThrow({
         where: { id: dto.originalDocumentId },
         include: { expenseDetail: { include: { lines: { orderBy: { lineNo: 'asc' } } } } },
@@ -298,13 +310,6 @@ export class ExpenseDocumentsService {
           'ไม่รองรับใบลดหนี้บนเอกสารที่มีการหัก ณ ที่จ่าย — กรุณาใช้การยกเลิก (void) แล้วสร้างเอกสารใหม่',
         );
       }
-
-      // Prevent race condition: two concurrent CN creations on same original could
-      // both pass the cap check. Lock per original-document for the tx.
-      await tx.$executeRawUnsafe(
-        `SELECT pg_advisory_xact_lock(hashtext($1))`,
-        dto.originalDocumentId,
-      );
 
       // Cumulative cap check — use server-computed totals.totalAmount
       const priorAgg = await tx.expenseDocument.aggregate({
@@ -874,7 +879,14 @@ export class ExpenseDocumentsService {
         deletedAt: null,
       },
       include: {
-        expenseDetail: { include: { lines: { orderBy: { lineNo: 'asc' }, take: 1 } } },
+        // I4 fix — pull ALL expense lines (not just the first) so the
+        // "by category" aggregation reflects every line's category, weighted
+        // by amountBeforeVat. Previously `take: 1` made multi-line docs all
+        // collapse to their first line's category — a 3-line doc with 1k of
+        // category A and 2x 5k of B would attribute all 11k to A. With this
+        // include the daily summary instead sums per-line amounts into the
+        // right buckets.
+        expenseDetail: { include: { lines: { orderBy: { lineNo: 'asc' } } } },
         creditNote: true,
         payroll: true,
         settlement: true,
@@ -912,14 +924,27 @@ export class ExpenseDocumentsService {
         byPaymentMethod[mKey] = mBucket;
       }
 
-      // By category — primary line category (works for both EXPENSE and CREDIT_NOTE since
-      // CN now uses expenseDetail.lines[] rather than the legacy creditNote.category column)
-      const cat =
-        (d as { expenseDetail?: { lines?: { category: string }[] } | null }).expenseDetail?.lines?.[0]?.category;
-      if (cat) {
+      // I4 — By category: sum per-line amounts into category buckets so a
+      // multi-line doc contributes correctly to each category. count uses
+      // 1 per distinct category in the doc (not per line) so a doc with
+      // 3 cleaning lines counts once for "cleaning", not three times.
+      // Defensive: legacy rows without `amountBeforeVat` (data migration
+      // artefacts) fall back to 0 — they still count toward the bucket's
+      // doc count but contribute no value.
+      const lines =
+        (d as { expenseDetail?: { lines?: { category: string; amountBeforeVat?: unknown }[] } | null })
+          .expenseDetail?.lines ?? [];
+      const seenInDoc = new Set<string>();
+      for (const l of lines) {
+        const cat = l.category;
+        const raw = l.amountBeforeVat;
+        const lineAmt = raw != null ? new Prisma.Decimal(raw.toString()) : new Prisma.Decimal(0);
         const cBucket = byCategory[cat] ?? { count: 0, total: '0' };
-        cBucket.count++;
-        cBucket.total = new Prisma.Decimal(cBucket.total).plus(total).toFixed(2);
+        if (!seenInDoc.has(cat)) {
+          cBucket.count++;
+          seenInDoc.add(cat);
+        }
+        cBucket.total = new Prisma.Decimal(cBucket.total).plus(lineAmt).toFixed(2);
         byCategory[cat] = cBucket;
       }
 
@@ -1006,14 +1031,37 @@ export class ExpenseDocumentsService {
   }
 
   // ─── Find one ────────────────────────────────────────────────────────
+  // I5 — include type-specific detail so single-doc views (PaymentVoucher,
+  // CN view, payroll view, SE view) don't need a follow-up roundtrip. The
+  // base includes (expenseDetail / branch / approver) work for every type;
+  // creditNote / payroll / settlement detail are added based on documentType.
   async findOne(id: string) {
+    // First pass to read documentType, then a typed include.
+    const docType = await this.prisma.expenseDocument.findUniqueOrThrow({
+      where: { id },
+      select: { documentType: true, deletedAt: true },
+    });
+    if (docType.deletedAt) throw new NotFoundException('เอกสารถูกลบแล้ว');
+
     const doc = await this.prisma.expenseDocument.findUniqueOrThrow({
       where: { id },
       include: {
         expenseDetail: { include: { lines: { orderBy: { lineNo: 'asc' } } } },
+        adjustments: { orderBy: { lineNo: 'asc' } },
         branch: { select: { id: true, name: true } },
         createdBy: { select: { id: true, name: true } },
         approvedBy: { select: { id: true, name: true } },
+        // Conditional includes by documentType — Prisma allows boolean here
+        // and noop when the relation row doesn't exist for the type.
+        creditNote: docType.documentType === 'CREDIT_NOTE',
+        payroll:
+          docType.documentType === 'PAYROLL'
+            ? { include: { lines: true } }
+            : false,
+        settlement:
+          docType.documentType === 'VENDOR_SETTLEMENT'
+            ? { include: { settlementLines: true } }
+            : false,
       },
     });
     if (doc.deletedAt) throw new NotFoundException('เอกสารถูกลบแล้ว');

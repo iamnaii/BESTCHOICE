@@ -3,6 +3,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import { JournalAutoService, JeLineInput } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { assertWhtFormType, WhtFormType } from '../utils/wht-form-type';
 
 /**
  * Template — Expense Same-day (EX paid same day).
@@ -149,22 +150,22 @@ export class ExpenseSameDayTemplate {
         (l: { whtFormType?: string | null }) => !!l.whtFormType,
       );
       if (hasPerLineRouting) {
-        const whtByForm = new Map<'PND3' | 'PND53', Decimal>();
+        const whtByForm = new Map<WhtFormType, Decimal>();
         for (const l of expenseLines) {
           const rawWht = (l as { whtAmount?: unknown }).whtAmount;
           if (rawWht == null) continue;
           const lineWht = new Decimal(rawWht.toString());
           if (lineWht.lte(zero)) continue;
-          const formType = (l as { whtFormType?: string | null }).whtFormType ?? doc.whtFormType;
-          // Fix #C12 — defense in depth. The service-level guard at post()
-          // already rejects WHT > 0 without a resolvable form type, but the
+          const raw = (l as { whtFormType?: string | null }).whtFormType ?? doc.whtFormType;
+          // Fix #C12 + I1 — narrowing helper centralises the throw message
+          // and removes the inline cast pattern. Service-level guard at
+          // post() rejects WHT > 0 without a resolvable form type, but the
           // template throws too so any future caller bypass surfaces here
           // instead of silently misfiling under PND3.
-          if (formType !== 'PND3' && formType !== 'PND53') {
-            throw new Error(
-              `whtFormType ต้องเป็น PND3 หรือ PND53 (got ${formType ?? 'null'}) — line wht=${lineWht}`,
-            );
-          }
+          const formType = assertWhtFormType(
+            raw,
+            `line wht=${lineWht.toString()} on ${doc.number}`,
+          );
           whtByForm.set(
             formType,
             (whtByForm.get(formType) ?? zero).plus(lineWht),
@@ -183,18 +184,17 @@ export class ExpenseSameDayTemplate {
       } else if (wht.gt(zero)) {
         // Legacy / single-vendor doc: one Cr line, route by doc.whtFormType.
         // Fix #C12 — no silent PND3 fallback. Service guard guarantees
-        // doc.whtFormType is set when wht > 0; template re-checks.
-        if (doc.whtFormType !== 'PND3' && doc.whtFormType !== 'PND53') {
-          throw new Error(
-            `whtFormType ต้องเป็น PND3 หรือ PND53 (got ${doc.whtFormType ?? 'null'}) — doc wht=${wht}`,
-          );
-        }
-        const whtAccount = doc.whtFormType === 'PND53' ? '21-3103' : '21-3102';
+        // doc.whtFormType is set when wht > 0; helper enforces narrowing.
+        const formType = assertWhtFormType(
+          doc.whtFormType,
+          `doc wht=${wht.toString()} on ${doc.number}`,
+        );
+        const whtAccount = formType === 'PND53' ? '21-3103' : '21-3102';
         lines.push({
           accountCode: whtAccount,
           dr: zero,
           cr: wht,
-          description: `หัก ณ ที่จ่าย ${doc.whtFormType}`,
+          description: `หัก ณ ที่จ่าย ${formType}`,
         });
       }
 

@@ -3,6 +3,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import { JournalAutoService, JeLineInput } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { assertWhtFormType } from '../utils/wht-form-type';
 
 /**
  * Template — Credit Note (CN ใบลดหนี้). Reverses prior EXPENSE document,
@@ -134,22 +135,21 @@ export class CreditNoteTemplate {
           description: `รับคืนเงิน — ${cn.number}`,
         });
         if (origWht.gt(zero)) {
-          // C12-symmetry — hard throw on unknown form type when reversing
-          // original WHT. The createCreditNote service blocks CN on docs with
-          // WHT > 0 (defense in depth), so this branch is unreachable in
-          // practice, but we still validate so any future relaxation surfaces
-          // here instead of misrouting under PND3.
-          if (original.whtFormType !== 'PND3' && original.whtFormType !== 'PND53') {
-            throw new Error(
-              `whtFormType ต้องเป็น PND3 หรือ PND53 (got ${original.whtFormType ?? 'null'}) — original wht=${origWht}`,
-            );
-          }
-          const whtAccount = original.whtFormType === 'PND53' ? '21-3103' : '21-3102';
+          // C12-symmetry + I1 — narrowing helper when reversing original WHT.
+          // The createCreditNote service blocks CN on docs with WHT > 0 (defense
+          // in depth), so this branch is unreachable in practice, but we still
+          // validate so any future relaxation surfaces here instead of
+          // misrouting under PND3.
+          const formType = assertWhtFormType(
+            original.whtFormType,
+            `original wht=${origWht.toString()}`,
+          );
+          const whtAccount = formType === 'PND53' ? '21-3103' : '21-3102';
           lines.push({
             accountCode: whtAccount,
             dr: origWht,
             cr: zero,
-            description: `กลับรายการ WHT ${original.whtFormType}`,
+            description: `กลับรายการ WHT ${formType}`,
           });
         }
       }

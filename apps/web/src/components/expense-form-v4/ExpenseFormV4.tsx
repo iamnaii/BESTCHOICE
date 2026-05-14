@@ -422,10 +422,15 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
                   </Section>
                 )}
 
-                {/* Section: JE Preview */}
-                <Section num={next()} title="AUTO JOURNAL PREVIEW" Icon={Check}>
-                  <JePreview preview={preview} loading={loading} error={error} />
-                </Section>
+                {/* Section: JE Preview — only meaningful for EXPENSE flows.
+                    JePreviewService server-side only handles EXPENSE_SAMEDAY /
+                    EXPENSE_ACCRUAL today; PAYROLL / VENDOR_SETTLEMENT /
+                    CREDIT_NOTE previews are deferred (I3). */}
+                {(state.docType === 'EXPENSE_SAMEDAY' || state.docType === 'EXPENSE_ACCRUAL') && (
+                  <Section num={next()} title="AUTO JOURNAL PREVIEW" Icon={Check}>
+                    <JePreview preview={preview} loading={loading} error={error} />
+                  </Section>
+                )}
 
                 {/* Section: Approver */}
                 <Section num={next()} title="ผู้บันทึก & ผู้อนุมัติ" Icon={Users}>

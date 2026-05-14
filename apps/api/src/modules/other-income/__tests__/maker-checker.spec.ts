@@ -254,7 +254,7 @@ describe('OtherIncomeService — Maker-Checker', () => {
     expect(posted.approvedAt).toBeTruthy();
     expect(posted.approveNote).toBe('อนุมัติแล้ว');
     expect(posted.journalEntryId).toBeTruthy();
-    expect(posted.receiptNo).toMatch(/^RC-\d{8}-\d{3}$/);
+    expect(posted.receiptNo).toMatch(/^RT-\d{6}-\d{5}$/);
     expect(posted.postedAt).toBeTruthy();
 
     // Verify JE was created

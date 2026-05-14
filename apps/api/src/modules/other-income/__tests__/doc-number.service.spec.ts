@@ -58,8 +58,8 @@ describe('DocNumberService', () => {
     expect(b).toBe('OI-20260507-0001');
   });
 
-  it('generates RC-YYYYMMDD-001 receipt number', async () => {
+  it('generates RT-YYYYMM-00001 receipt number (monthly seq)', async () => {
     const rc = await service.nextReceiptNumber(prisma, new Date('2026-05-06'));
-    expect(rc).toBe('RC-20260506-001');
+    expect(rc).toBe('RT-202605-00001');
   });
 });

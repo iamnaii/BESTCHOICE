@@ -377,7 +377,7 @@ describe('OtherIncomeService — post + reverse + copy', () => {
 
     expect(posted.status).toBe('POSTED');
     expect(posted.journalEntryId).toBeTruthy();
-    expect(posted.receiptNo).toMatch(/^RC-20260506-\d{3}$/);
+    expect(posted.receiptNo).toMatch(/^RT-202605-\d{5}$/);
     expect(posted.postedAt).toBeTruthy();
 
     // Verify JE was created correctly

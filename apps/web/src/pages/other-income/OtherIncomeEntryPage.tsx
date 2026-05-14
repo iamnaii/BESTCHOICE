@@ -178,7 +178,7 @@ const defaultValues: OtherIncomeFormValues = {
       unitAmount: 0,
       discountAmount: 0,
       vatPct: 0,
-      whtPct: 15,
+      whtPct: 1,
       description: '',
     },
   ],

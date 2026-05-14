@@ -134,28 +134,24 @@ const REVERSE_ROLES = ['OWNER', 'FINANCE_MANAGER'];
  * Fetch server-rendered PDF receipt and open in a new tab.
  * Uses axios (JWT in-memory) since the in-memory token isn't on cookies.
  */
-async function openReceiptPdf(docId: string, docNumber: string): Promise<void> {
-  try {
-    const res = await api.get(`/other-income/${docId}/receipt.pdf`, {
-      responseType: 'blob',
-    });
-    const blob = new Blob([res.data], { type: 'application/pdf' });
-    const url = URL.createObjectURL(blob);
-    const win = window.open(url, '_blank');
-    if (!win) {
-      // Popup blocked — fall back to download
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${docNumber}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-    }
-    // Revoke after a delay to avoid breaking the new tab before it loads
-    setTimeout(() => URL.revokeObjectURL(url), 60_000);
-  } catch {
-    toast.error('ไม่สามารถสร้างใบเสร็จ PDF ได้');
+async function fetchAndOpenReceiptPdf(docId: string, docNumber: string): Promise<void> {
+  const res = await api.get(`/other-income/${docId}/receipt.pdf`, {
+    responseType: 'blob',
+  });
+  const blob = new Blob([res.data], { type: 'application/pdf' });
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, '_blank');
+  if (!win) {
+    // Popup blocked — fall back to download
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${docNumber}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
   }
+  // Revoke after a delay to avoid breaking the new tab before it loads
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 // ------------------------------------------------------------------
@@ -250,6 +246,12 @@ export default function OtherIncomeViewPage() {
       toast.error(err?.response?.data?.message ?? 'บันทึก template ไม่สำเร็จ'),
   });
 
+  const printReceiptMutation = useMutation({
+    mutationFn: ({ docId, docNumber }: { docId: string; docNumber: string }) =>
+      fetchAndOpenReceiptPdf(docId, docNumber),
+    onError: () => toast.error('ไม่สามารถสร้างใบเสร็จ PDF ได้'),
+  });
+
   const canReverse =
     user?.role && REVERSE_ROLES.includes(user.role) && docQuery.data?.status === 'POSTED';
 
@@ -294,11 +296,12 @@ export default function OtherIncomeViewPage() {
               {doc.status === 'POSTED' && doc.customerId && (
                 <button
                   type="button"
-                  onClick={() => openReceiptPdf(doc.id, doc.docNumber)}
-                  className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium border rounded-lg hover:bg-accent"
+                  onClick={() => printReceiptMutation.mutate({ docId: doc.id, docNumber: doc.docNumber })}
+                  disabled={printReceiptMutation.isPending}
+                  className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium border rounded-lg hover:bg-accent disabled:opacity-50"
                 >
                   <Printer size={14} />
-                  พิมพ์ใบเสร็จ
+                  {printReceiptMutation.isPending ? 'กำลังสร้าง...' : 'พิมพ์ใบเสร็จ'}
                 </button>
               )}
               {doc.status === 'DRAFT' && (
@@ -367,10 +370,11 @@ export default function OtherIncomeViewPage() {
               </div>
               {doc.customerId && (
                 <button
-                  onClick={() => openReceiptPdf(doc.id, doc.docNumber)}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-bold bg-primary text-primary-foreground rounded-md animate-pulse"
+                  onClick={() => printReceiptMutation.mutate({ docId: doc.id, docNumber: doc.docNumber })}
+                  disabled={printReceiptMutation.isPending}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-bold bg-primary text-primary-foreground rounded-md animate-pulse disabled:opacity-50 disabled:animate-none"
                 >
-                  <Printer size={16} /> พิมพ์ใบเสร็จ
+                  <Printer size={16} /> {printReceiptMutation.isPending ? 'กำลังสร้าง...' : 'พิมพ์ใบเสร็จ'}
                 </button>
               )}
             </div>

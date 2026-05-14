@@ -170,7 +170,7 @@ export default function TopBar() {
   }, [pathname]);
 
   return (
-    <header className="sticky top-0 z-10 h-[60px] bg-background border-b border-border flex items-center justify-between shrink-0 px-5 lg:px-6">
+    <header data-print-hide="true" className="sticky top-0 z-10 h-[60px] bg-background border-b border-border flex items-center justify-between shrink-0 px-5 lg:px-6">
 
       {/* ── Left: hamburger (mobile) + breadcrumb ── */}
       <div className="flex items-center gap-2.5">

@@ -1,19 +1,11 @@
 import { Calendar } from 'lucide-react';
+import { THAI_MONTHS_FULL, THAI_MONTHS_SHORT } from '@/lib/date';
 
 interface DateRangeChipsProps {
   startDate: string; // YYYY-MM-DD or ''
   endDate: string;   // YYYY-MM-DD or ''
   onChange: (next: { startDate: string; endDate: string }) => void;
 }
-
-const THAI_MONTHS_FULL = [
-  'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
-  'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม',
-];
-const THAI_MONTHS_ABBR = [
-  'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
-  'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.',
-];
 
 function toIsoDate(d: Date): string {
   const y = d.getFullYear();
@@ -65,7 +57,7 @@ function formatRangeLabel(startDate: string, endDate: string): string {
     const mm = String(startMonthIdx + 1).padStart(2, '0');
     return `${THAI_MONTHS_FULL[startMonthIdx]} ${beYear} (${sd}/${mm} - ${ed}/${mm})`;
   }
-  return `${startDay} ${THAI_MONTHS_ABBR[startMonthIdx]} - ${endDay} ${THAI_MONTHS_ABBR[endMonthIdx]} ${end.getFullYear() + 543}`;
+  return `${startDay} ${THAI_MONTHS_SHORT[startMonthIdx]} - ${endDay} ${THAI_MONTHS_SHORT[endMonthIdx]} ${end.getFullYear() + 543}`;
 }
 
 export function DateRangeChips({ startDate, endDate, onChange }: DateRangeChipsProps) {

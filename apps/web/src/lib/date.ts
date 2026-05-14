@@ -23,7 +23,7 @@ export const THAI_MONTHS_FULL = [
   'ธันวาคม',
 ];
 
-const THAI_MONTHS_SHORT = [
+export const THAI_MONTHS_SHORT = [
   'ม.ค.',
   'ก.พ.',
   'มี.ค.',

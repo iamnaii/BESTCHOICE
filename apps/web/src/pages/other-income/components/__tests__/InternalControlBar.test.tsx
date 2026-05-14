@@ -46,6 +46,11 @@ describe('InternalControlBar', () => {
     expect(screen.queryByText('ต้องอนุมัติ')).not.toBeInTheDocument();
   });
 
+  it('shows "ต้องอนุมัติ" badge when status=READY and Maker-Checker enabled', () => {
+    render(<InternalControlBar {...baseProps} status="READY" makerCheckerEnabled={true} />);
+    expect(screen.getByText('ต้องอนุมัติ')).toBeInTheDocument();
+  });
+
   it('DRAFT + maker-checker OFF: shows ยกเลิก / บันทึกร่าง / บันทึก & POST', () => {
     render(<InternalControlBar {...baseProps} status="DRAFT" />);
     expect(screen.getByRole('button', { name: /ยกเลิก/ })).toBeInTheDocument();

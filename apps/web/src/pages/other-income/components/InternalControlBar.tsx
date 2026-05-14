@@ -36,7 +36,13 @@ function StateMachineBar({
   makerCheckerEnabled: boolean;
 }) {
   const statesAll: DocStatus[] = ['DRAFT', 'READY', 'POSTED', 'REVERSED'];
-  const states = makerCheckerEnabled ? statesAll : (['DRAFT', 'POSTED', 'REVERSED'] as DocStatus[]);
+  // Force the 4-step bar whenever doc is in READY, even if the flag is still
+  // loading or temporarily off — otherwise indexOf('READY') in a 3-step array
+  // returns -1 and every dot renders as "future" (no active dot).
+  const states =
+    makerCheckerEnabled || status === 'READY'
+      ? statesAll
+      : (['DRAFT', 'POSTED', 'REVERSED'] as DocStatus[]);
   const currentIndex = states.indexOf(status);
 
   return (
@@ -123,7 +129,7 @@ export function InternalControlBar({
             </span>
             {showApprovalBadge && (
               <span
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-500/15 text-amber-600 text-xs font-semibold"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-warning/15 text-warning text-xs font-semibold"
                 title="เอกสารนี้ต้องผ่านการอนุมัติก่อนลงบัญชี"
               >
                 <ShieldAlert size={13} />
@@ -148,7 +154,7 @@ export function InternalControlBar({
               <span className="text-destructive font-semibold">มี {errorCount} ข้อต้องแก้ไข</span>
             )}
             {status === 'READY' && !isViewerApprover && (
-              <span className="text-muted-foreground">รออนุมัติจากผู้ตรวจสอบ</span>
+              <span className="text-muted-foreground">รออนุมัติจาก OWNER</span>
             )}
           </div>
           <div className="flex items-center gap-2">

@@ -161,8 +161,8 @@ function todayBangkok(): string {
 
 const defaultValues: OtherIncomeFormValues = {
   issueDate: todayBangkok(),
-  dueDate: '',
-  paymentDate: '',
+  dueDate: todayBangkok(),
+  paymentDate: todayBangkok(),
   priceType: 'EXCLUSIVE',
   customerId: '',
   counterpartyName: '',

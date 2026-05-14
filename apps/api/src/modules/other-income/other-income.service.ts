@@ -942,9 +942,18 @@ export class OtherIncomeService {
       }
     }
 
+    // statusIn (comma-separated) takes precedence over single `status` —
+    // supports "ค้างดำเนินการ" card which filters DRAFT+READY together.
+    const statusInArr = query.statusIn
+      ? (query.statusIn.split(',').filter(Boolean) as OtherIncomeStatus[])
+      : null;
     const where: Prisma.OtherIncomeWhereInput = {
       deletedAt: null,
-      ...(query.status ? { status: query.status } : {}),
+      ...(statusInArr && statusInArr.length > 0
+        ? { status: { in: statusInArr } }
+        : query.status
+          ? { status: query.status }
+          : {}),
       ...(query.startDate || query.endDate
         ? {
             issueDate: {

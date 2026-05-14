@@ -307,6 +307,7 @@ layer(base);
     --color-editor-variable-bg: #d1fae5;
     --color-editor-variable-text: #047857;
     --color-editor-placeholder: #9ca3af;
+    --accent-purple: 280 60% 55%;
   }
 
   .dark {
@@ -345,6 +346,7 @@ layer(base);
     --chart-3: 48 96% 53%;
     --chart-4: 0 84% 60%;
     --chart-5: 271 91% 65%;
+    --accent-purple: 280 65% 65%;
   }
 
   /* Global focus style */

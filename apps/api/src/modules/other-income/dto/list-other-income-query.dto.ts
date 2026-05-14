@@ -7,6 +7,18 @@ export class ListOtherIncomeQueryDto {
   @IsEnum(OtherIncomeStatus)
   status?: OtherIncomeStatus;
 
+  /**
+   * Comma-separated list of statuses (e.g. "DRAFT,READY"). Used by the
+   * "ค้างดำเนินการ" (in-progress) status card which folds DRAFT + READY into
+   * one filter. Takes precedence over `status` when both are provided.
+   */
+  @IsOptional()
+  @IsString()
+  @Matches(/^(DRAFT|READY|POSTED|REVERSED)(,(DRAFT|READY|POSTED|REVERSED))*$/, {
+    message: 'statusIn ต้องเป็น comma-separated เช่น "DRAFT,READY"',
+  })
+  statusIn?: string;
+
   @IsOptional()
   @IsDateString()
   startDate?: string;

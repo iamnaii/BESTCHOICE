@@ -2,13 +2,14 @@ import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ArrowLeft, Check, CheckCircle2, Clock, Copy, Edit, History, Printer, RotateCcw, Receipt, FileText, Send, X } from 'lucide-react';
+import { Check, CheckCircle2, Clock, Copy, Edit, History, Printer, RotateCcw, Receipt, FileText, Send } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { ReverseModal } from './components/ReverseModal';
 import { RejectModal } from './components/RejectModal';
 import { SaveAsTemplateModal } from './components/SaveAsTemplateModal';
 import { AutoJournalPreview } from './components/AutoJournalPreview';
+import { InternalControlBar } from './components/InternalControlBar';
 import { otherIncomeApi } from '@/lib/otherIncome';
 import type { OtherIncome, OtherIncomeStatus, OtherIncomeReverseReason } from '@/lib/otherIncome.types';
 import { useAuth } from '@/contexts/AuthContext';
@@ -234,7 +235,7 @@ export default function OtherIncomeViewPage() {
     rejectMutation.isPending;
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="p-6 max-w-7xl mx-auto pb-44 md:pb-40">
       <PageHeader
         title="รายละเอียดเอกสารรายได้อื่น"
         icon={<Receipt size={20} />}
@@ -303,56 +304,15 @@ export default function OtherIncomeViewPage() {
                   )}
                 </>
               )}
-              {doc.status === 'READY' && (
-                <>
-                  {doc.rejectNote && (
-                    <div className="rounded-md bg-warning/10 text-warning text-xs px-3 py-2">
-                      เคยถูกปฏิเสธ: {doc.rejectNote}
-                    </div>
-                  )}
-                  {user?.role === 'OWNER' && doc.createdById !== user.id ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => approveMutation.mutate(undefined)}
-                        disabled={approveMutation.isPending}
-                        className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
-                      >
-                        <Check size={14} />
-                        อนุมัติ + POST
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setShowRejectModal(true)}
-                        disabled={rejectMutation.isPending}
-                        className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold border border-destructive text-destructive rounded-lg hover:bg-destructive/10 disabled:opacity-50"
-                      >
-                        <X size={14} />
-                        ปฏิเสธ
-                      </button>
-                    </>
-                  ) : user?.role === 'OWNER' && doc.createdById === user.id ? (
-                    <div className="rounded-md bg-muted text-muted-foreground text-sm px-3 py-2">
-                      ไม่สามารถอนุมัติเอกสารที่ตนสร้างได้
-                    </div>
-                  ) : (
-                    <div className="rounded-md bg-info/10 text-info text-sm px-3 py-2 inline-flex items-center gap-1">
-                      <Clock size={14} />
-                      รออนุมัติจาก OWNER
-                    </div>
-                  )}
-                </>
+              {doc.status === 'READY' && doc.rejectNote && (
+                <div className="rounded-md bg-warning/10 text-warning text-xs px-3 py-2">
+                  เคยถูกปฏิเสธ: {doc.rejectNote}
+                </div>
               )}
-              {canReverse && (
-                <button
-                  type="button"
-                  disabled={isActionLoading}
-                  onClick={() => setShowReverseModal(true)}
-                  className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold border border-destructive text-destructive rounded-lg hover:bg-destructive/10 disabled:opacity-50"
-                >
-                  <RotateCcw size={14} />
-                  กลับรายการ
-                </button>
+              {doc.status === 'READY' && user?.role === 'OWNER' && doc.createdById === user.id && (
+                <div className="rounded-md bg-muted text-muted-foreground text-sm px-3 py-2">
+                  ไม่สามารถอนุมัติเอกสารที่ตนสร้างได้
+                </div>
               )}
             </div>
           ) : undefined
@@ -728,17 +688,29 @@ export default function OtherIncomeViewPage() {
         )}
       </QueryBoundary>
 
-      {/* Back button at bottom */}
-      <div className="mt-8 flex justify-start">
-        <button
-          type="button"
-          onClick={() => navigate('/other-income')}
-          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium border rounded-lg hover:bg-accent"
-        >
-          <ArrowLeft size={14} />
-          กลับรายการ
-        </button>
-      </div>
+      {/* Internal Control Bar — bottom sticky (v2.3) */}
+      {doc && (
+        <InternalControlBar
+          status={doc.status}
+          recorder={{
+            name:
+              doc.createdById === user?.id
+                ? user?.name || user?.email || '—'
+                : '—',
+          }}
+          approver={{
+            name: user?.role === 'OWNER' ? user?.name || user?.email || 'OWNER' : '—',
+          }}
+          makerCheckerEnabled={makerCheckerEnabled}
+          isViewerApprover={user?.role === 'OWNER' && doc.createdById !== user.id}
+          isOwnDoc={doc.createdById === user?.id}
+          isLoading={isActionLoading}
+          onCancel={() => navigate('/other-income')}
+          onApprove={() => approveMutation.mutate(undefined)}
+          onReject={() => setShowRejectModal(true)}
+          onReverse={canReverse ? () => setShowReverseModal(true) : undefined}
+        />
+      )}
 
       {/* Reverse modal */}
       {showReverseModal && doc && (

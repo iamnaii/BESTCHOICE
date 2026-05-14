@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Plus, Search, FileText, Receipt, RotateCcw, CheckCircle2, ChartBar, ArrowRight, ClipboardCheck } from 'lucide-react';
+import { Plus, Search, FileText, Receipt, RotateCcw, CheckCircle2, ChartBar, ClipboardCheck } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -15,6 +15,7 @@ import { otherIncomeApi } from '@/lib/otherIncome';
 import type { OtherIncome, OtherIncomeStatus } from '@/lib/otherIncome.types';
 import { formatThaiDateShort } from '@/lib/date';
 import { formatNumberDecimal } from '@/utils/formatters';
+import { DateRangeChips } from './components/DateRangeChips';
 
 const STATUS_LABELS: Record<OtherIncomeStatus, string> = {
   DRAFT: 'ร่าง',
@@ -50,21 +51,24 @@ function fmtDate(d: string | null | undefined) {
   return formatThaiDateShort(d);
 }
 
-type StatusAccent = 'warning' | 'info' | 'success' | 'muted';
+type StatusAccent = 'primary' | 'warning' | 'success' | 'muted';
 
 const ACCENT_BAR: Record<StatusAccent, string> = {
+  primary: 'bg-primary',
   warning: 'bg-warning',
-  info: 'bg-info',
   success: 'bg-success',
   muted: 'bg-muted-foreground/50',
 };
 
 const ACCENT_ICON: Record<StatusAccent, string> = {
+  primary: 'bg-primary/10 text-primary',
   warning: 'bg-warning/10 text-warning',
-  info: 'bg-info/10 text-info',
   success: 'bg-success/10 text-success',
   muted: 'bg-muted text-muted-foreground',
 };
+
+/** Filter keys for the 4 Status Cards (PDF v2.2 spec). */
+type StatusFilter = 'ALL' | 'IN_PROGRESS' | 'POSTED' | 'REVERSED';
 
 function StatusCard({
   label,
@@ -72,15 +76,26 @@ function StatusCard({
   icon,
   accent,
   value,
+  active,
+  onClick,
 }: {
   label: string;
   sub: string;
   icon: React.ReactNode;
   accent: StatusAccent;
   value: number;
+  active: boolean;
+  onClick: () => void;
 }) {
   return (
-    <div className="rounded-xl border bg-card p-4 relative overflow-hidden">
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`text-left rounded-xl border bg-card p-4 relative overflow-hidden transition-all hover:border-foreground/30 hover:bg-accent/30 ${
+        active ? 'ring-2 ring-primary border-primary/40 bg-primary/5' : ''
+      }`}
+    >
       <span className={`absolute inset-x-0 top-0 h-1 ${ACCENT_BAR[accent]}`} />
       <div className="flex items-start justify-between mb-3">
         <div className="min-w-0">
@@ -94,7 +109,7 @@ function StatusCard({
         </div>
       </div>
       <p className="text-3xl font-bold font-mono text-foreground tabular-nums">{value}</p>
-    </div>
+    </button>
   );
 }
 
@@ -103,24 +118,47 @@ export default function OtherIncomeListPage() {
   const queryClient = useQueryClient();
 
   const [q, setQ] = useState('');
-  const [status, setStatus] = useState<OtherIncomeStatus | ''>('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+  });
+  const [endDate, setEndDate] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
   const { page, size, setPage, setSize } = usePaginationParams({ defaultSize: 50 });
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [confirmDeleteNumber, setConfirmDeleteNumber] = useState<string>('');
 
   const debouncedQ = useDebounce(q, 300);
 
-  // PDF AC-5: READY filter sorts oldest first (ascending) so approvers see the oldest pending items
-  const sortDir = status === 'READY' ? 'asc' : 'desc';
+  const flagQuery = useQuery({
+    queryKey: ['other-income-maker-checker-enabled'],
+    queryFn: () => otherIncomeApi.isMakerCheckerEnabled(),
+    staleTime: 5 * 60_000,
+  });
+  const makerCheckerEnabled = flagQuery.data ?? false;
+
+  // Map filter key → API params. IN_PROGRESS folds DRAFT+READY when MC is on,
+  // falls back to DRAFT-only otherwise (READY status only exists with MC).
+  const filterParams: { status?: OtherIncomeStatus; statusIn?: string } = (() => {
+    if (statusFilter === 'ALL') return {};
+    if (statusFilter === 'IN_PROGRESS') {
+      return makerCheckerEnabled ? { statusIn: 'DRAFT,READY' } : { status: 'DRAFT' };
+    }
+    return { status: statusFilter };
+  })();
+
+  // PDF AC-5: sort oldest first for READY-heavy filters (IN_PROGRESS), newest first otherwise
+  const sortDir = statusFilter === 'IN_PROGRESS' ? 'asc' : 'desc';
 
   const listQuery = useQuery({
-    queryKey: ['other-income', 'list', { page, size, q: debouncedQ, status, startDate, endDate }],
+    queryKey: ['other-income', 'list', { page, size, q: debouncedQ, statusFilter, makerCheckerEnabled, startDate, endDate }],
     queryFn: () =>
       otherIncomeApi.list({
         q: debouncedQ || undefined,
-        status: status || undefined,
+        ...filterParams,
         startDate: startDate || undefined,
         endDate: endDate || undefined,
         page,
@@ -130,9 +168,20 @@ export default function OtherIncomeListPage() {
   });
 
   const COUNT_STALE_TIME = 60_000;
-  const draftCountQuery = useQuery({
-    queryKey: ['other-income', 'count', 'DRAFT'],
-    queryFn: () => otherIncomeApi.list({ status: 'DRAFT', page: 1, limit: 1 }),
+  const allCountQuery = useQuery({
+    queryKey: ['other-income', 'count', 'ALL'],
+    queryFn: () => otherIncomeApi.list({ page: 1, limit: 1 }),
+    select: (d) => d.total,
+    staleTime: COUNT_STALE_TIME,
+  });
+  const inProgressCountQuery = useQuery({
+    queryKey: ['other-income', 'count', 'IN_PROGRESS', makerCheckerEnabled],
+    queryFn: () =>
+      otherIncomeApi.list(
+        makerCheckerEnabled
+          ? { statusIn: 'DRAFT,READY', page: 1, limit: 1 }
+          : { status: 'DRAFT', page: 1, limit: 1 },
+      ),
     select: (d) => d.total,
     staleTime: COUNT_STALE_TIME,
   });
@@ -149,21 +198,6 @@ export default function OtherIncomeListPage() {
     staleTime: COUNT_STALE_TIME,
   });
 
-  const flagQuery = useQuery({
-    queryKey: ['other-income-maker-checker-enabled'],
-    queryFn: () => otherIncomeApi.isMakerCheckerEnabled(),
-    staleTime: 5 * 60_000,
-  });
-  const makerCheckerEnabled = flagQuery.data ?? false;
-
-  const readyCountQuery = useQuery({
-    queryKey: ['other-income', 'count', 'READY'],
-    queryFn: () => otherIncomeApi.list({ status: 'READY', page: 1, limit: 1 }),
-    select: (d) => d.total,
-    staleTime: COUNT_STALE_TIME,
-    enabled: makerCheckerEnabled,
-  });
-
   const deleteMutation = useMutation({
     mutationFn: (id: string) => otherIncomeApi.softDelete(id),
     onSuccess: () => {
@@ -177,10 +211,15 @@ export default function OtherIncomeListPage() {
   const docs = data?.data ?? [];
   const total = data?.total ?? 0;
 
-  const draftCount = draftCountQuery.data ?? 0;
-  const readyCount = readyCountQuery.data ?? 0;
+  const allCount = allCountQuery.data ?? 0;
+  const inProgressCount = inProgressCountQuery.data ?? 0;
   const postedCount = postedCountQuery.data ?? 0;
   const reversedCount = reversedCountQuery.data ?? 0;
+
+  const handleFilterClick = (filter: StatusFilter) => {
+    setStatusFilter(filter);
+    setPage(1);
+  };
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-4">
@@ -191,72 +230,66 @@ export default function OtherIncomeListPage() {
         subtitle="จัดการเอกสารรับรู้รายได้อื่น (กลุ่ม 42-XXXX) — ดอกเบี้ยเงินฝาก, ค่าปรับ, รายได้หักค่าจ้าง ฯลฯ"
         icon={<Receipt size={20} />}
         action={
-          <button
-            onClick={() => navigate('/other-income/new')}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors"
-          >
-            <Plus size={16} />
-            สร้างเอกสารใหม่
-          </button>
+          <div className="flex items-center gap-2">
+            <Link
+              to="/other-income/daily-sheet"
+              className="inline-flex items-center gap-2 px-3 py-2 border rounded-lg text-sm font-medium hover:bg-accent transition-colors"
+            >
+              <ChartBar size={16} />
+              สรุปรายวัน
+            </Link>
+            <button
+              onClick={() => navigate('/other-income/new')}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors"
+            >
+              <Plus size={16} />
+              สร้างเอกสารใหม่
+            </button>
+          </div>
         }
       />
 
-      {/* Status cards */}
-      <div className={`grid gap-3 mb-6 ${makerCheckerEnabled ? 'grid-cols-2 md:grid-cols-5' : 'grid-cols-2 md:grid-cols-4'}`}>
+      {/* Status filter cards — 4 clickable cards per PDF v2.2 spec */}
+      <div className="grid gap-3 mb-6 grid-cols-2 md:grid-cols-4">
         <StatusCard
-          label="ฉบับร่าง"
-          sub="DRAFT"
+          label="ทั้งหมด"
+          sub="ALL DOCS"
           icon={<FileText size={16} />}
-          accent="warning"
-          value={draftCount}
+          accent="primary"
+          value={allCount}
+          active={statusFilter === 'ALL'}
+          onClick={() => handleFilterClick('ALL')}
         />
-        {makerCheckerEnabled && (
-          <StatusCard
-            label="รออนุมัติ"
-            sub="READY"
-            icon={<ClipboardCheck size={16} />}
-            accent="info"
-            value={readyCount}
-          />
-        )}
         <StatusCard
-          label="บันทึกแล้ว"
+          label="ค้างดำเนินการ"
+          sub={makerCheckerEnabled ? 'DRAFT + READY' : 'DRAFT'}
+          icon={<ClipboardCheck size={16} />}
+          accent="warning"
+          value={inProgressCount}
+          active={statusFilter === 'IN_PROGRESS'}
+          onClick={() => handleFilterClick('IN_PROGRESS')}
+        />
+        <StatusCard
+          label="ลงบัญชีแล้ว"
           sub="POSTED"
           icon={<CheckCircle2 size={16} />}
           accent="success"
           value={postedCount}
+          active={statusFilter === 'POSTED'}
+          onClick={() => handleFilterClick('POSTED')}
         />
         <StatusCard
-          label="กลับรายการ"
+          label="ยกเลิก"
           sub="REVERSED"
           icon={<RotateCcw size={16} />}
           accent="muted"
           value={reversedCount}
+          active={statusFilter === 'REVERSED'}
+          onClick={() => handleFilterClick('REVERSED')}
         />
-        <Link
-          to="/other-income/daily-sheet"
-          className="rounded-xl border bg-card p-4 relative overflow-hidden hover:bg-accent/40 transition-colors group"
-        >
-          <span className="absolute inset-x-0 top-0 h-1 bg-primary" />
-          <div className="flex items-start justify-between mb-3">
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-foreground leading-snug">สรุปรายวัน</p>
-              <p className="text-[10px] font-medium text-muted-foreground tracking-wider mt-0.5">
-                DAILY SHEET
-              </p>
-            </div>
-            <div className="size-9 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0">
-              <ChartBar size={16} />
-            </div>
-          </div>
-          <p className="inline-flex items-center gap-1 text-sm font-semibold text-primary group-hover:translate-x-0.5 transition-transform">
-            เปิดดู
-            <ArrowRight size={14} />
-          </p>
-        </Link>
       </div>
 
-      {/* Filters */}
+      {/* Filters — search + date range (status filter moved to cards above) */}
       <div className="flex flex-wrap gap-3 mb-4">
         <div className="relative flex-1 min-w-[200px]">
           <Search size={14} className="absolute left-3 top-3 text-muted-foreground" />
@@ -268,40 +301,37 @@ export default function OtherIncomeListPage() {
             className="w-full pl-9 pr-3 py-2 border rounded-md text-sm bg-background"
           />
         </div>
-        <select
-          value={status}
-          onChange={(e) => { setStatus(e.target.value as OtherIncomeStatus | ''); setPage(1); }}
-          className="border rounded-md px-3 py-2 text-sm bg-background min-w-[130px]"
-        >
-          <option value="">ทุกสถานะ</option>
-          <option value="DRAFT">ร่าง</option>
-          {makerCheckerEnabled && <option value="READY">รออนุมัติ</option>}
-          <option value="POSTED">บันทึกแล้ว</option>
-          <option value="REVERSED">กลับรายการ</option>
-        </select>
-        <input
-          type="date"
-          value={startDate}
-          onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
-          className="border rounded-md px-3 py-2 text-sm bg-background"
-          placeholder="วันที่เริ่ม"
-        />
-        <input
-          type="date"
-          value={endDate}
-          onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
-          className="border rounded-md px-3 py-2 text-sm bg-background"
-          placeholder="วันที่สิ้นสุด"
-        />
-        {(q || status || startDate || endDate) && (
-          <button
-            type="button"
-            onClick={() => { setQ(''); setStatus(''); setStartDate(''); setEndDate(''); setPage(1); }}
-            className="px-3 py-2 text-sm border rounded-md hover:bg-accent"
-          >
-            ล้างตัวกรอง
-          </button>
-        )}
+        {/* Date Range Quick Chips (v2.3 — replaces old date inputs + clear button) */}
+        <div className="w-full">
+          <DateRangeChips
+            startDate={startDate}
+            endDate={endDate}
+            onChange={({ startDate: sd, endDate: ed }) => {
+              setStartDate(sd);
+              setEndDate(ed);
+              setPage(1);
+            }}
+          />
+        </div>
+        {/* Custom-range inputs: always rendered so users can type exact dates;
+            the "ช่วงวันที่..." chip focuses the first input via DOM query. */}
+        <div className="flex flex-wrap items-center gap-2 w-full">
+          <input
+            type="date"
+            data-date-range-custom-start="true"
+            value={startDate}
+            onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
+            className="border rounded-md px-3 py-2 text-sm bg-background"
+            placeholder="วันที่เริ่ม"
+          />
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
+            className="border rounded-md px-3 py-2 text-sm bg-background"
+            placeholder="วันที่สิ้นสุด"
+          />
+        </div>
       </div>
 
       {/* Table */}

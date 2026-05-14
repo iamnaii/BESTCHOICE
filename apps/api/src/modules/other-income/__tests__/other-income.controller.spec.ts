@@ -132,6 +132,12 @@ describe('OtherIncomeController — unit (mocked service)', () => {
     expect(result).toHaveProperty('data');
   });
 
+  it('list() forwards statusIn (DRAFT,READY) for "ค้างดำเนินการ" filter card', async () => {
+    const query = { page: 1, limit: 50, statusIn: 'DRAFT,READY' };
+    await controller.list(query as any);
+    expect(service.list).toHaveBeenCalledWith(query);
+  });
+
   it('findOne() delegates to service.findOneOrFail() with id', async () => {
     const id = '00000000-0000-0000-0000-000000000001';
     const result = await controller.findOne(id);

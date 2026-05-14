@@ -465,16 +465,23 @@ describe('OtherIncomeService — post + reverse + copy', () => {
   }, 30_000);
 
   // ----------------------------------------------------------------
-  // Test 4: copy() — clones as new DRAFT with cleared amounts
+  // Test 4: copy() — clones as new DRAFT, ready to POST without V10 error
   // ----------------------------------------------------------------
-  it('copy(): clones as new DRAFT with cleared amountReceived and copiedFromId set', async () => {
+  // W8 + W-R6 — copy() now CARRIES amountReceived from the source doc so the
+  // cloned DRAFT can be POSTed immediately without a V10 (diff ≠ 0) violation.
+  // For recurring templates whose monthly amount varies (e.g. bank interest),
+  // the EntryPage shows a yellow "verify amount" banner via the `?fromCopy=1`
+  // query string the ViewPage navigates with.
+  it('copy(): clones as new DRAFT carrying amountReceived, with copiedFromId set', async () => {
     const draft = await createStandardDraft();
+    const srcAmount = new Prisma.Decimal(draft.amountReceived.toString());
 
     const copied = await service.copy(draft.id, userId);
 
     expect(copied.status).toBe('DRAFT');
     expect(copied.copiedFromId).toBe(draft.id);
-    expect(new Prisma.Decimal(copied.amountReceived.toString()).eq(0)).toBe(true);
+    // amountReceived is carried over (not zeroed) so the cloned doc is POSTable.
+    expect(new Prisma.Decimal(copied.amountReceived.toString()).eq(srcAmount)).toBe(true);
     expect(copied.items.length).toBe(1);
     expect(copied.items[0].accountCode).toBe('42-1102');
     // Doc number should be different
@@ -525,9 +532,44 @@ describe('OtherIncomeService — post + reverse + copy', () => {
     expect(Array.isArray(sheet.byPayment)).toBe(true);
     expect(sheet.byPayment.some((r) => r.code === '11-1201')).toBe(true);
 
+    // W13 — byPayment entries should include the resolved CoA name
+    // (e.g. "ธนาคาร KBank") so the Daily Sheet payment-channel table reads
+    // as "11-1201 ธนาคาร KBank" rather than the bare code.
+    const bankRow = sheet.byPayment.find((r) => r.code === '11-1201');
+    expect(bankRow).toBeDefined();
+    expect(typeof bankRow!.name).toBe('string');
+    expect(bankRow!.name.length).toBeGreaterThan(0);
+    // The name must NOT just echo the code — it should be a human-readable label.
+    expect(bankRow!.name).not.toBe(bankRow!.code);
+
     // summary should use vat/wht keys (B2 fix)
     expect(sheet.summary).toHaveProperty('vat');
     expect(sheet.summary).toHaveProperty('wht');
+  }, 30_000);
+
+  // ----------------------------------------------------------------
+  // Test 6: list() — W4 unknown enum values are filtered out
+  // ----------------------------------------------------------------
+  // W4 — `statusIn` is a CSV string from the URL. We must filter out values that
+  // are not real `OtherIncomeStatus` enum members BEFORE handing the array to
+  // Prisma; otherwise Prisma raises `Invalid enum value` and the request 500s.
+  // When every value is invalid the filter is dropped entirely so the page
+  // still loads (instead of returning an empty list with a hidden 500).
+  it('list(): drops unknown statusIn values without 500ing', async () => {
+    // Mix one valid + one bogus value — only DRAFT should reach the where clause.
+    const result = await service.list({
+      page: 1,
+      limit: 5,
+      statusIn: 'DRAFT,NOT_A_STATUS',
+    } as any);
+
+    expect(result).toHaveProperty('data');
+    expect(result).toHaveProperty('total');
+    expect(Array.isArray(result.data)).toBe(true);
+    // Every returned row must be DRAFT (the bogus value is dropped, not 500ing).
+    for (const row of result.data) {
+      expect(row.status).toBe('DRAFT');
+    }
   }, 30_000);
 });
 

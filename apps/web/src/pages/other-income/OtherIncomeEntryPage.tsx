@@ -8,6 +8,7 @@ import {
   ArrowLeft,
   FileText,
   AlertTriangle,
+  Info,
   Upload,
   Wallet,
   Building2,
@@ -18,6 +19,7 @@ import {
 import Decimal from 'decimal.js';
 import QueryBoundary from '@/components/QueryBoundary';
 import { useAuth } from '@/contexts/AuthContext';
+import { useDebounce } from '@/hooks/useDebounce';
 import { formatNumber, formatNumberDecimal } from '@/utils/formatters';
 import { otherIncomeApi } from '@/lib/otherIncome';
 import { otherIncomeFormSchema, type OtherIncomeFormValues } from '@/lib/otherIncome.schema';
@@ -129,10 +131,20 @@ function computeJePreview(values: OtherIncomeFormValues): JeLine[] {
         const amtN = r2(amt).toNumber();
         if (diff.gt(0)) {
           // received more → Cr adjustment account
-          lines.push({ accountCode: adj.accountCode, debit: 0, credit: amtN, description: adj.note || undefined });
+          lines.push({
+            accountCode: adj.accountCode,
+            debit: 0,
+            credit: amtN,
+            description: adj.note || undefined,
+          });
         } else {
           // received less → Dr adjustment account (expense/discount)
-          lines.push({ accountCode: adj.accountCode, debit: amtN, credit: 0, description: adj.note || undefined });
+          lines.push({
+            accountCode: adj.accountCode,
+            debit: amtN,
+            credit: 0,
+            description: adj.note || undefined,
+          });
         }
       }
     }
@@ -221,9 +233,7 @@ function SectionHeader({
         </span>
         <h2 className="text-sm font-bold text-foreground leading-snug">{title}</h2>
         {hint && (
-          <span className="text-xs text-muted-foreground font-normal hidden md:inline">
-            {hint}
-          </span>
+          <span className="text-xs text-muted-foreground font-normal hidden md:inline">{hint}</span>
         )}
       </div>
       {action}
@@ -325,6 +335,14 @@ export default function OtherIncomeEntryPage() {
   const [overrideMode, setOverrideMode] = useState(false);
   const [showOverrideDialog, setShowOverrideDialog] = useState(false);
   const [overrideLines, setOverrideLines] = useState<EditableJournalLine[]>([]);
+
+  // W-R6 — copy-from banner. ViewPage's `copyMutation.onSuccess` navigates here
+  // with `?fromCopy=1`. Recurring templates (e.g. bank interest) often vary the
+  // amount month-over-month, so we surface a yellow reminder until the operator
+  // dismisses it.
+  const fromCopy = searchParams.get('fromCopy') === '1';
+  const [fromCopyDismissed, setFromCopyDismissed] = useState(false);
+  const showFromCopyBanner = fromCopy && !fromCopyDismissed;
 
   const saveDraftMutation = useMutation({
     mutationFn: (data: OtherIncomeFormValues) =>
@@ -547,7 +565,7 @@ export default function OtherIncomeEntryPage() {
     onError: () => toast.error('ไม่สามารถแนบไฟล์ได้'),
   });
 
-  function handleFileSelect(file: File) {
+  async function handleFileSelect(file: File) {
     if (!ALLOWED_MIME.includes(file.type)) {
       toast.error('รองรับเฉพาะ PDF / JPG / PNG / WebP');
       return;
@@ -561,19 +579,30 @@ export default function OtherIncomeEntryPage() {
       return;
     }
     // W12 — auto-save the draft, then upload to the newly-created doc id.
+    // W-R3 — Tighten the navigate-then-mutate race: only navigate AFTER the
+    // upload succeeds. If the upload fails, keep the user on the draft so they
+    // can retry without losing their place. `replace: false` so back-button
+    // returns to the new-document URL.
     setAutoSavingForUpload(true);
-    otherIncomeApi
-      .create(form.getValues())
-      .then((doc) => {
-        toast.success('บันทึกร่างอัตโนมัติเพื่อแนบไฟล์');
-        queryClient.invalidateQueries({ queryKey: ['other-income'] });
-        // Navigate to edit URL so subsequent saves target this doc. Upload
-        // continues regardless because we already have the new doc.id in hand.
-        navigate(`/other-income/${doc.id}/edit`, { replace: true });
-        uploadAttachmentMutation.mutate({ docId: doc.id, file });
-      })
-      .catch(() => toast.error('บันทึกร่างเพื่อแนบไฟล์ไม่สำเร็จ'))
-      .finally(() => setAutoSavingForUpload(false));
+    try {
+      const doc = await otherIncomeApi.create(form.getValues());
+      toast.success('บันทึกร่างอัตโนมัติเพื่อแนบไฟล์');
+      queryClient.invalidateQueries({ queryKey: ['other-income'] });
+      try {
+        await otherIncomeApi.uploadAttachment(doc.id, file);
+        toast.success('แนบไฟล์เรียบร้อยแล้ว');
+        queryClient.invalidateQueries({ queryKey: ['other-income', doc.id] });
+        navigate(`/other-income/${doc.id}/edit`, { replace: false });
+      } catch {
+        toast.error('แนบไฟล์ไม่สำเร็จ — กรุณาลองอีกครั้งบนเอกสารที่บันทึกไว้แล้ว');
+        // Still navigate so user can retry the upload — the draft already exists.
+        navigate(`/other-income/${doc.id}/edit`, { replace: false });
+      }
+    } catch {
+      toast.error('บันทึกร่างเพื่อแนบไฟล์ไม่สำเร็จ');
+    } finally {
+      setAutoSavingForUpload(false);
+    }
   }
 
   const thresholdQuery = useQuery({
@@ -588,6 +617,12 @@ export default function OtherIncomeEntryPage() {
   //   - AND a customerId is selected
   //   - AND the same customer has Payment.lateFee > 0 in the issueDate's BKK month.
   // Re-runs whenever the operator changes customer / issue date / items. Non-blocking.
+  // W-R4 — debounce the items-hash key so rapid accountCode keystrokes don't fire
+  // a new request per character. `staleTime` alone only deduplicates identical
+  // keys, so without debouncing each intermediate character would still issue
+  // its own backend call.
+  const itemsAccountHash = (values.items ?? []).map((it) => it.accountCode).join('|');
+  const debouncedItemsAccountHash = useDebounce(itemsAccountHash, 400);
   const has42_1103 = (values.items ?? []).some((it) => it.accountCode === '42-1103');
   const lateFeeCollisionQuery = useQuery({
     queryKey: [
@@ -595,7 +630,7 @@ export default function OtherIncomeEntryPage() {
       values.customerId,
       values.issueDate,
       // Stable key derived from line accountCodes only — collision is per-account
-      (values.items ?? []).map((it) => it.accountCode).join('|'),
+      debouncedItemsAccountHash,
     ],
     queryFn: () =>
       otherIncomeApi.checkLateFeeCollision({
@@ -669,6 +704,34 @@ export default function OtherIncomeEntryPage() {
           >
             <></>
           </QueryBoundary>
+        )}
+
+        {/* W-R6 — copy-from-template reminder. amountReceived was carried over from
+            the source doc to avoid V10 errors (see service.copy()), so the operator
+            must verify it matches reality before posting. */}
+        {showFromCopyBanner && (
+          <div
+            role="status"
+            className="mb-4 flex items-start gap-3 rounded-lg border border-warning/40 bg-warning/10 p-3"
+          >
+            <Info size={16} className="text-warning mt-0.5 shrink-0" aria-hidden="true" />
+            <div className="flex-1 text-xs leading-snug text-foreground">
+              <p className="font-medium">คัดลอกจากเอกสารเดิมเรียบร้อย</p>
+              <p className="text-muted-foreground mt-0.5">
+                กรุณาตรวจสอบ <span className="font-medium">จำนวนเงิน</span> และ
+                <span className="font-medium"> รายการ</span> ก่อนบันทึก —
+                แม่แบบที่ใช้ซ้ำมักมียอดต่างกันในแต่ละเดือน
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setFromCopyDismissed(true)}
+              className="text-xs text-muted-foreground hover:text-foreground shrink-0"
+              aria-label="ปิดข้อความแจ้งเตือน"
+            >
+              <XCircle size={16} aria-hidden="true" />
+            </button>
+          </div>
         )}
 
         <form onSubmit={(e) => e.preventDefault()} className="space-y-6">
@@ -782,14 +845,20 @@ export default function OtherIncomeEntryPage() {
                   onApply={(items, priceType) => {
                     setValue('priceType', priceType);
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    setValue('items', items.map((it: any, idx: number) => ({ ...it, lineNo: idx + 1 })));
+                    setValue(
+                      'items',
+                      items.map((it: any, idx: number) => ({ ...it, lineNo: idx + 1 })),
+                    );
                   }}
                 />
               }
             />
-            {form.formState.errors.items && typeof form.formState.errors.items.message === 'string' && (
-              <p className="text-xs text-destructive mb-2">{form.formState.errors.items.message}</p>
-            )}
+            {form.formState.errors.items &&
+              typeof form.formState.errors.items.message === 'string' && (
+                <p className="text-xs text-destructive mb-2">
+                  {form.formState.errors.items.message}
+                </p>
+              )}
             <ItemsTable
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               control={form.control as any}
@@ -851,7 +920,9 @@ export default function OtherIncomeEntryPage() {
                       >
                         <div
                           className={`size-8 rounded-md flex items-center justify-center shrink-0 ${
-                            selected ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
+                            selected
+                              ? 'bg-primary/15 text-primary'
+                              : 'bg-muted text-muted-foreground'
                           }`}
                         >
                           <Icon size={16} />
@@ -1000,7 +1071,11 @@ export default function OtherIncomeEntryPage() {
                       }
                     }}
                   />
-                  <span className={overrideMode ? 'text-warning font-semibold' : 'text-muted-foreground'}>
+                  <span
+                    className={
+                      overrideMode ? 'text-warning font-semibold' : 'text-muted-foreground'
+                    }
+                  >
                     ใช้เอง (Override)
                   </span>
                 </label>
@@ -1041,12 +1116,10 @@ export default function OtherIncomeEntryPage() {
           </section>
 
           {/* Section 7 — Attachments */}
-          <section className={`rounded-xl border p-5 ${needsAttachment ? 'border-warning bg-warning/5' : 'bg-card'}`}>
-            <SectionHeader
-              num={7}
-              title="แนบไฟล์เอกสาร (ไม่บังคับ)"
-              hint="PDF/JPG/PNG ≤ 5MB"
-            />
+          <section
+            className={`rounded-xl border p-5 ${needsAttachment ? 'border-warning bg-warning/5' : 'bg-card'}`}
+          >
+            <SectionHeader num={7} title="แนบไฟล์เอกสาร (ไม่บังคับ)" hint="PDF/JPG/PNG ≤ 5MB" />
             {!isEdit && (
               <p className="text-xs text-muted-foreground italic mb-2">
                 {/* W12 — file selection auto-saves the draft to unblock attachment. */}
@@ -1072,7 +1145,9 @@ export default function OtherIncomeEntryPage() {
                       >
                         <FileText size={14} className="text-muted-foreground shrink-0" />
                         <span className="flex-1 truncate font-medium">{att.filename}</span>
-                        <span className="text-muted-foreground">{(att.size / 1024).toFixed(1)} KB</span>
+                        <span className="text-muted-foreground">
+                          {(att.size / 1024).toFixed(1)} KB
+                        </span>
                       </li>
                     ))}
                   </ul>
@@ -1133,14 +1208,14 @@ export default function OtherIncomeEntryPage() {
                       className={isDraggingFile ? 'text-primary' : 'text-muted-foreground'}
                     />
                     <p className="text-sm text-muted-foreground">
-                      {autoSavingForUpload
-                        ? 'กำลังบันทึกร่างเพื่อแนบไฟล์...'
-                        : (
-                          <>
-                            ลากไฟล์มาวางที่นี่ หรือ{' '}
-                            <span className="text-primary font-semibold">คลิกเพื่อเลือกไฟล์</span>
-                          </>
-                        )}
+                      {autoSavingForUpload ? (
+                        'กำลังบันทึกร่างเพื่อแนบไฟล์...'
+                      ) : (
+                        <>
+                          ลากไฟล์มาวางที่นี่ หรือ{' '}
+                          <span className="text-primary font-semibold">คลิกเพื่อเลือกไฟล์</span>
+                        </>
+                      )}
                     </p>
                   </button>
                 </div>
@@ -1155,7 +1230,9 @@ export default function OtherIncomeEntryPage() {
               <div className="space-y-2 text-sm font-mono">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">ยอดรวมก่อนหักส่วนลด</span>
-                  <span className="font-semibold">{fmt(incomeTotals.beforeVat + incomeTotals.vat)} ฿</span>
+                  <span className="font-semibold">
+                    {fmt(incomeTotals.beforeVat + incomeTotals.vat)} ฿
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">ยอดสุทธิที่ควรได้รับ</span>
@@ -1243,7 +1320,9 @@ function SummaryTile({
   return (
     <div className={`rounded-lg p-3 ${toneCls}`}>
       <p className="text-[10px] font-semibold tracking-wider uppercase">{label}</p>
-      <p className="font-mono font-bold text-lg mt-1 text-foreground">{formatNumberDecimal(value, 2)}</p>
+      <p className="font-mono font-bold text-lg mt-1 text-foreground">
+        {formatNumberDecimal(value, 2)}
+      </p>
     </div>
   );
 }

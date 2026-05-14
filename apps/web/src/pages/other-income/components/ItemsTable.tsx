@@ -93,6 +93,11 @@ export function ItemsTable({ control, register, watch, setValue }: Props) {
                       setValue(`items.${idx}.accountCode`, c, { shouldValidate: true });
                     }}
                     filter={(a) => a.code.startsWith('42-')}
+                    // W-R5 — surface server-blocked codes up-front. Server V4 rejects
+                    // 42-1104 (Payroll deduction — Pattern B deferred), so disable it
+                    // here instead of letting the operator pick it then bounce.
+                    blockedCodes={['42-1104']}
+                    blockedReason="ยังไม่รองรับ — รอ payroll module"
                   />
                 </div>
               </div>
@@ -189,10 +194,12 @@ export function ItemsTable({ control, register, watch, setValue }: Props) {
             </div>
             <div className="flex items-center justify-end gap-4 px-3 py-2 border-t bg-muted/20 text-xs font-mono text-muted-foreground">
               <span>
-                VAT: <span className="text-foreground font-semibold">{fmt(row?.vatAmount ?? 0)}</span>
+                VAT:{' '}
+                <span className="text-foreground font-semibold">{fmt(row?.vatAmount ?? 0)}</span>
               </span>
               <span>
-                WHT: <span className="text-foreground font-semibold">{fmt(row?.whtAmount ?? 0)}</span>
+                WHT:{' '}
+                <span className="text-foreground font-semibold">{fmt(row?.whtAmount ?? 0)}</span>
               </span>
               <span className="text-foreground font-semibold">
                 รวม: {fmt((row?.amountBeforeVat ?? 0) + (row?.vatAmount ?? 0))}

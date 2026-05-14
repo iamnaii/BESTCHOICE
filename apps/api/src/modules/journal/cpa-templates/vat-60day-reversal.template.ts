@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
+import * as Sentry from '@sentry/nestjs';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 
@@ -52,27 +53,64 @@ export class Vat60dayReversalTemplate {
 
       const c = await tx.contract.findUniqueOrThrow({ where: { id: inst.contractId } });
 
-      // W8 fix: refuse to recompute vatPerInst at reversal time. The mandatory
-      // JE persists vatPerInst in its metadata so the reversal mirrors it 1:1.
-      // If Contract.vatAmount / interestTotal / storeCommission were edited
-      // between mandatory and reversal (e.g. amend / correction), the
-      // recomputed value would drift from the mandatory pair and leave a
-      // permanent imbalance on 21-2103 / 11-2104. Better to fail loudly so an
-      // accountant fixes the metadata than silently book a drifted reversal.
+      // W8 fix: prefer mandatory JE's persisted vatPerInst so reversal mirrors
+      // the mandatory pair 1:1. If Contract.vatAmount / interestTotal /
+      // storeCommission were edited between mandatory and reversal, the
+      // recomputed value would drift and leave a permanent imbalance on
+      // 21-2103 / 11-2104.
+      //
+      // Round 2 W8 fix: legacy mandatory JEs posted before vatPerInst was
+      // added to metadata MUST still be reversible — otherwise customers
+      // who paid an overdue installment would be permanently blocked from
+      // payment receipt + early payoff. Fall back to the original recompute
+      // (Vat60dayMandatoryTemplate.execute mirrors this exact formula) and
+      // Sentry-capture the drift risk so we can run the backfill before
+      // contract data drifts further.
+      //
+      // Backfill script: `apps/api/src/cli/backfill-vat60-metadata.cli.ts`
+      // (TODO — see follow-up issue). Transition removed once Sentry warning
+      // count drops to zero.
       const mandatoryEntry = await tx.journalEntry.findUnique({
         where: { entryNumber: inst.vat60dayJournalEntryId },
         select: { metadata: true },
       });
       const meta = (mandatoryEntry?.metadata ?? {}) as Record<string, unknown>;
-      if (typeof meta.vatPerInst !== 'string' || !meta.vatPerInst) {
-        throw new Error(
-          `VAT 60-day reversal refused — mandatory JE ${inst.vat60dayJournalEntryId} ` +
-            'is missing vatPerInst in metadata. Recomputation would drift if ' +
-            'contract VAT/interest fields changed between mandatory and reversal. ' +
-            'Backfill the metadata or post a manual reversal JE.',
+      let vatPerInst: Decimal;
+      if (typeof meta.vatPerInst === 'string' && meta.vatPerInst) {
+        vatPerInst = new Decimal(meta.vatPerInst);
+      } else {
+        // Legacy fallback — recompute from current Contract fields. Mirrors
+        // Vat60dayMandatoryTemplate's formula exactly so values match for
+        // any contract whose VAT/interest fields haven't drifted.
+        const total = new Decimal(c.totalMonths);
+        const financed = new Decimal(c.financedAmount.toString());
+        const commission =
+          c.storeCommission != null
+            ? new Decimal(c.storeCommission.toString())
+            : financed.times('0.10').toDecimalPlaces(2);
+        const interest = new Decimal(c.interestTotal.toString());
+        const grossExclVat = financed.plus(commission).plus(interest);
+        const vat =
+          c.vatAmount != null
+            ? new Decimal(c.vatAmount.toString())
+            : grossExclVat.times('0.07').toDecimalPlaces(2);
+        vatPerInst = vat.div(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+        Sentry.captureMessage(
+          'VAT 60-day reversal missing vatPerInst — falling back to recompute',
+          {
+            level: 'warning',
+            tags: { module: 'journal', action: 'vat60_reversal_legacy_fallback' },
+            extra: {
+              installmentScheduleId: inst.id,
+              installmentNo: inst.installmentNo,
+              contractId: c.id,
+              contractNumber: c.contractNumber,
+              mandatoryEntryNumber: inst.vat60dayJournalEntryId,
+              recomputedVatPerInst: vatPerInst.toFixed(2),
+            },
+          },
         );
       }
-      const vatPerInst = new Decimal(meta.vatPerInst);
 
       const zero = new Decimal(0);
 

@@ -126,14 +126,29 @@ export class PaymentsService {
     user: { role: string; branchId: string | null },
   ) {
     if (hasCrossBranchAccess(user)) return;
+    // Round 2 W1 fix: collapse the previous 2 queries (payment.findUnique →
+    // contract.findUnique) into a single join. Saves a roundtrip on every
+    // waive-late-fee + partial-QR call. Inline the branchId check here so
+    // we don't re-fetch the contract via validateBranchAccess().
     const payment = await this.prisma.payment.findUnique({
       where: { id: paymentId },
-      select: { contractId: true, deletedAt: true },
+      select: {
+        deletedAt: true,
+        contract: { select: { branchId: true, deletedAt: true } },
+      },
     });
     if (!payment || payment.deletedAt) {
       throw new NotFoundException('ไม่พบรายการชำระ');
     }
-    await this.validateBranchAccess(payment.contractId, user);
+    const contract = payment.contract;
+    if (
+      contract &&
+      !contract.deletedAt &&
+      user.branchId &&
+      contract.branchId !== user.branchId
+    ) {
+      throw new ForbiddenException('ไม่สามารถบันทึกชำระเงินข้ามสาขาได้');
+    }
   }
 
   // ─── Record a single payment (บังคับ upload หลักฐาน) ──
@@ -1252,6 +1267,17 @@ export class PaymentsService {
         // Re-importing the same row will compute the same ref, and the
         // existing idempotency check in recordPayment (notes contains
         // `ref:<value>`) will reject it as a duplicate.
+        //
+        // Round 2 C6 fix: date component MUST be Asia/Bangkok local date.
+        // `new Date().toISOString().slice(0, 10)` returns UTC, so a CSV
+        // imported at 01:00 BKK (= 18:00 UTC previous day) hashes as
+        // yesterday — losing idempotency for ~7 hours every night when the
+        // operator retries spanning UTC midnight. en-CA `Intl.DateTimeFormat`
+        // outputs `YYYY-MM-DD` in the chosen timeZone (matches getBkkYyyymm
+        // pattern from PR #840).
+        const bkkDate = new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'Asia/Bangkok',
+        }).format(new Date());
         const stableRef =
           transactionRef ||
           `csv:${createHash('sha256')
@@ -1260,7 +1286,7 @@ export class PaymentsService {
                 contractNumber,
                 String(installmentNo),
                 amount.toFixed(2),
-                new Date().toISOString().slice(0, 10),
+                bkkDate,
               ].join('|'),
             )
             .digest('hex')

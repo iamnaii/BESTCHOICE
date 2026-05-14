@@ -560,6 +560,12 @@ export default function PaymentsPage() {
               slipUrl: payload.slipUrl,
               memo: payload.memo,
               case: payload.case,
+              // Round 2 W7 fix: forward the wizard's lateFee so the DTO field
+              // added in C1 actually carries the user's input across the wire.
+              // Server still recomputes its own value as the source of truth,
+              // but populating the field keeps the request body aligned with
+              // form state + makes the user intent traceable in request logs.
+              lateFee: payload.lateFee,
             };
             if (absDiff >= 0.01) {
               setPendingPayload(mutationPayload);

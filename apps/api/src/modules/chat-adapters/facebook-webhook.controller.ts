@@ -19,7 +19,7 @@ import { MessageRouterService } from '../chat-engine/services/message-router.ser
 import { InboundMessage } from '../chat-engine/interfaces/channel-adapter.interface';
 import { ConfigService } from '@nestjs/config';
 import { createHmac, timingSafeEqual } from 'crypto';
-import { ChatChannel, MessageType } from '@prisma/client';
+import { ChatChannel, MessageRole, MessageType } from '@prisma/client';
 import { RawBodyRequest } from '../../common/types/raw-body-request';
 import { WebhookAnomalyService } from '../webhook-security/webhook-anomaly.service';
 
@@ -150,16 +150,25 @@ export class FacebookWebhookController {
 
   /**
    * Process a single messaging event from Facebook.
-   * Supports: text messages, attachments (image/audio/video/file), postbacks.
-   * Ignores: read receipts, delivery confirmations, echoes.
+   * Supports: text messages, attachments (image/audio/video/file), postbacks,
+   * and echoes (admin replied via Meta Business Suite / Page Inbox).
+   * Ignores: read receipts, delivery confirmations.
    */
   private async processMessagingEvent(event: any): Promise<void> {
     const senderId: string | undefined = event.sender?.id;
+    const recipientId: string | undefined = event.recipient?.id;
     const message = event.message;
     const postback = event.postback;
 
-    // Skip echo messages (sent by our page), delivery, and read events
     if (!senderId) return;
+
+    // Echo: admin replied via Meta Business Suite / FB Page Inbox / FB Page app.
+    // sender.id = our PAGE_ID, recipient.id = customer PSID, message.is_echo = true.
+    // Record as STAFF so the reply shows up in /chat alongside our own sends.
+    if (message?.is_echo === true) {
+      await this.processEchoEvent(event, recipientId);
+      return;
+    }
 
     // Handle postback events (persistent menu clicks, button taps)
     if (postback && !message) {
@@ -192,7 +201,7 @@ export class FacebookWebhookController {
       return;
     }
 
-    if (!message || message.is_echo) return;
+    if (!message) return;
 
     const { type, text, mediaUrl } = this.parseMessage(message);
 
@@ -224,6 +233,62 @@ export class FacebookWebhookController {
     );
 
     await this.messageRouter.routeInbound(inbound);
+  }
+
+  /**
+   * Persist a Facebook `message_echoes` event as a STAFF message so admin
+   * replies sent outside our /chat UI (Meta Business Suite, Page Inbox, FB
+   * Page mobile app) still appear in the unified inbox.
+   *
+   * Dedup strategy (two layers):
+   * 1. Skip echoes whose `message.app_id` matches our own FACEBOOK_APP_ID — those
+   *    were sent by `sendStaffMessage` and are already in the DB.
+   * 2. Fallback: rely on the UNIQUE constraint on `ChatMessage.externalMessageId`
+   *    (FB `mid`). `mirrorOutbound` swallows P2002 conflicts so retried webhook
+   *    deliveries don't double-record.
+   *
+   * Identifying *which* admin clicked Send is not possible — Facebook removed
+   * page-admin enumeration in Graph API v15+ and echoes do not carry the admin's
+   * user id. Source of the reply (Meta Business Suite vs Page Inbox vs an app)
+   * is only knowable via `message.app_id`, which we log but don't persist.
+   */
+  private async processEchoEvent(event: any, recipientId: string | undefined): Promise<void> {
+    const message = event.message;
+
+    if (!recipientId) {
+      this.logger.warn('[FB Webhook] Echo event missing recipient.id — cannot map to customer room');
+      return;
+    }
+
+    const ownAppId = this.configService.get<string>('FACEBOOK_APP_ID');
+    const echoAppId = message.app_id != null ? String(message.app_id) : undefined;
+
+    if (ownAppId && echoAppId && echoAppId === ownAppId) {
+      // Our own sendStaffMessage already persisted this message — skip.
+      return;
+    }
+
+    if (!ownAppId) {
+      this.logger.warn(
+        '[FB Webhook] FACEBOOK_APP_ID not set — cannot distinguish own sends from external echoes; relying on externalMessageId UNIQUE for dedup',
+      );
+    }
+
+    const { type, text, mediaUrl } = this.parseMessage(message);
+
+    this.logger.log(
+      `[FB Webhook] Echo ${type} → PSID ${recipientId} (mid: ${message.mid}, app_id: ${echoAppId ?? 'none'})`,
+    );
+
+    await this.messageRouter.mirrorOutbound({
+      externalUserId: recipientId,
+      channel: ChatChannel.FACEBOOK,
+      role: MessageRole.STAFF,
+      type,
+      text: text ?? undefined,
+      mediaUrl: mediaUrl ?? undefined,
+      externalMessageId: message.mid,
+    });
   }
 
   /**

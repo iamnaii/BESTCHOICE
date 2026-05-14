@@ -369,7 +369,15 @@ export class MessageRouterService {
     });
   }
 
-  /** Mirror an outbound (bot/staff) message to ChatRoom — for channels that send outside MessageRouter */
+  /**
+   * Mirror an outbound (bot/staff) message to ChatRoom — for channels that send
+   * outside MessageRouter (e.g. Facebook `message_echoes` when an admin replied
+   * via Meta Business Suite / Page Inbox instead of through our /chat UI).
+   *
+   * `externalMessageId` (if provided) carries the platform's message id (FB `mid`)
+   * — relies on the UNIQUE constraint on ChatMessage.externalMessageId to
+   * silently dedupe if the same echo is re-delivered.
+   */
   async mirrorOutbound(params: {
     externalUserId: string;
     channel: ChatChannel;
@@ -378,18 +386,40 @@ export class MessageRouterService {
     type?: MessageType;
     mediaUrl?: string;
     staffId?: string;
+    externalMessageId?: string;
   }): Promise<void> {
     const room = await this.roomManager.getOrCreateRoom({
       externalUserId: params.externalUserId,
       channel: params.channel,
     });
-    await this.roomManager.saveMessage({
-      roomId: room.id,
-      role: params.role,
+    try {
+      await this.roomManager.saveMessage({
+        roomId: room.id,
+        externalMessageId: params.externalMessageId,
+        role: params.role,
+        text: params.text,
+        type: params.type,
+        mediaUrl: params.mediaUrl,
+        staffId: params.staffId,
+      });
+    } catch (err) {
+      // UNIQUE violation on externalMessageId — echo replay; safe to ignore.
+      const code = (err as { code?: string })?.code;
+      if (params.externalMessageId && code === 'P2002') {
+        this.logger.debug(
+          `[mirrorOutbound] Duplicate echo skipped: ${params.externalMessageId}`,
+        );
+        return;
+      }
+      throw err;
+    }
+
+    this.gateway?.emitNewMessage(room.id, {
+      role: params.role === MessageRole.BOT ? 'BOT' : 'STAFF',
       text: params.text,
-      type: params.type,
-      mediaUrl: params.mediaUrl,
-      staffId: params.staffId,
+      type: params.type ?? MessageType.TEXT,
+      channel: params.channel,
+      roomId: room.id,
     });
   }
 

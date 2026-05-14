@@ -241,7 +241,7 @@ export const kbSuggestionStatusMap: Record<string, StatusConfig> = {
 
 export const kbSuggestionSourceMap: Record<string, StatusConfig> = {
   handoff: { variant: 'warning', appearance: 'light', label: 'Handoff' },
-  low_rating: { variant: 'destructive', appearance: 'light', label: 'Feedback 👎' },
+  low_rating: { variant: 'destructive', appearance: 'light', label: 'Feedback ต่ำ' },
   auto_analysis: { variant: 'info', appearance: 'light', label: 'Auto' },
 };
 

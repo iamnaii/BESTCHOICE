@@ -5,6 +5,16 @@ import api, { getErrorMessage } from '@/lib/api';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
+import {
+  CheckCircle2,
+  Link2,
+  AlertTriangle,
+  Check,
+  Megaphone,
+  Smartphone,
+  Receipt,
+  MessageSquare,
+} from 'lucide-react';
 
 interface BotInfo {
   displayName: string;
@@ -207,7 +217,7 @@ export default function LineOaSettingsPage() {
                 ? 'bg-info/20'
                 : 'bg-warning/20'
           }`}>
-            {data?.isConfigured && testResult?.success ? '✅' : data?.isConfigured ? '🔗' : '⚠️'}
+            {data?.isConfigured && testResult?.success ? <CheckCircle2 className="size-4 text-success" /> : data?.isConfigured ? <Link2 className="size-4 text-primary" /> : <AlertTriangle className="size-4 text-warning" />}
           </div>
           <div className="flex-1">
             <h3 className="font-semibold text-lg">
@@ -256,7 +266,7 @@ export default function LineOaSettingsPage() {
             <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
               hasToken && hasSecret ? 'bg-success text-success-foreground' : 'bg-muted text-muted-foreground'
             }`}>
-              {hasToken && hasSecret ? '✓' : '1'}
+              {hasToken && hasSecret ? <Check className="size-4" /> : '1'}
             </div>
             <div>
               <h3 className="font-semibold">ขั้นตอนที่ 1: เชื่อมต่อ LINE Channel</h3>
@@ -373,7 +383,7 @@ export default function LineOaSettingsPage() {
             <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
               hasLiff ? 'bg-success text-success-foreground' : 'bg-muted text-muted-foreground'
             }`}>
-              {hasLiff ? '✓' : '3'}
+              {hasLiff ? <Check className="size-4" /> : '3'}
             </div>
             <div>
               <h3 className="font-semibold">ขั้นตอนที่ 3: ตั้งค่า LIFF <span className="text-xs font-normal text-muted-foreground">(ไม่บังคับ)</span></h3>
@@ -584,15 +594,15 @@ export default function LineOaSettingsPage() {
         <h3 className="font-semibold text-foreground mb-4">เมื่อเชื่อมต่อแล้ว ระบบจะทำสิ่งนี้ได้อัตโนมัติ</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {[
-            { icon: '📢', title: 'แจ้งเตือนค่างวด', desc: 'ส่ง Flex Message สวยๆ ก่อนถึงกำหนด 1 และ 3 วัน' },
-            { icon: '⚠️', title: 'แจ้งเตือนค้างชำระ', desc: 'ส่งเตือนอัตโนมัติเมื่อเลยกำหนดชำระ' },
-            { icon: '📱', title: 'QR พร้อมเพย์', desc: 'ลูกค้าพิมพ์ "ชำระ" แล้วได้ QR สแกนจ่ายทันที' },
-            { icon: '🧾', title: 'รับสลิปผ่านไลน์', desc: 'ลูกค้าส่งรูปสลิป เข้าระบบตรวจสอบทันที' },
-            { icon: '✅', title: 'แจ้งผลการชำระ', desc: 'อนุมัติสลิปแล้ว ส่ง Flex แจ้งลูกค้าอัตโนมัติ' },
-            { icon: '💬', title: 'ตอบอัตโนมัติ', desc: 'พิมพ์ "เช็คยอด" "งวด" "ช่วยเหลือ" ตอบทันที' },
+            { icon: <Megaphone className="size-5" />, title: 'แจ้งเตือนค่างวด', desc: 'ส่ง Flex Message สวยๆ ก่อนถึงกำหนด 1 และ 3 วัน' },
+            { icon: <AlertTriangle className="size-5" />, title: 'แจ้งเตือนค้างชำระ', desc: 'ส่งเตือนอัตโนมัติเมื่อเลยกำหนดชำระ' },
+            { icon: <Smartphone className="size-5" />, title: 'QR พร้อมเพย์', desc: 'ลูกค้าพิมพ์ "ชำระ" แล้วได้ QR สแกนจ่ายทันที' },
+            { icon: <Receipt className="size-5" />, title: 'รับสลิปผ่านไลน์', desc: 'ลูกค้าส่งรูปสลิป เข้าระบบตรวจสอบทันที' },
+            { icon: <CheckCircle2 className="size-5" />, title: 'แจ้งผลการชำระ', desc: 'อนุมัติสลิปแล้ว ส่ง Flex แจ้งลูกค้าอัตโนมัติ' },
+            { icon: <MessageSquare className="size-5" />, title: 'ตอบอัตโนมัติ', desc: 'พิมพ์ "เช็คยอด" "งวด" "ช่วยเหลือ" ตอบทันที' },
           ].map((f) => (
             <div key={f.title} className="flex items-start gap-3 bg-muted rounded-lg p-3">
-              <span className="text-xl">{f.icon}</span>
+              <span className="text-muted-foreground shrink-0 mt-0.5">{f.icon}</span>
               <div>
                 <p className="text-sm font-medium text-foreground">{f.title}</p>
                 <p className="text-xs text-muted-foreground">{f.desc}</p>

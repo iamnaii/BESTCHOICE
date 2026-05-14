@@ -518,9 +518,10 @@ describe('OtherIncomeService — post + reverse + copy', () => {
     );
     await service.post(draft.id, {}, userId);
 
-    const sheet = await service.dailySheet(testDate);
+    const sheet = await service.dailySheet(testDate, testDate);
 
-    expect(sheet.date).toBe(testDate);
+    expect(sheet.startDate).toBe(testDate);
+    expect(sheet.endDate).toBe(testDate);
     expect(sheet.summary.docCount).toBeGreaterThanOrEqual(1);
     expect(new Prisma.Decimal(sheet.summary.incomeGross.toString()).gte(1000)).toBe(true);
 
@@ -550,13 +551,7 @@ describe('OtherIncomeService — post + reverse + copy', () => {
   // ----------------------------------------------------------------
   // Test 6: list() — W4 unknown enum values are filtered out
   // ----------------------------------------------------------------
-  // W4 — `statusIn` is a CSV string from the URL. We must filter out values that
-  // are not real `OtherIncomeStatus` enum members BEFORE handing the array to
-  // Prisma; otherwise Prisma raises `Invalid enum value` and the request 500s.
-  // When every value is invalid the filter is dropped entirely so the page
-  // still loads (instead of returning an empty list with a hidden 500).
   it('list(): drops unknown statusIn values without 500ing', async () => {
-    // Mix one valid + one bogus value — only DRAFT should reach the where clause.
     const result = await service.list({
       page: 1,
       limit: 5,
@@ -566,11 +561,22 @@ describe('OtherIncomeService — post + reverse + copy', () => {
     expect(result).toHaveProperty('data');
     expect(result).toHaveProperty('total');
     expect(Array.isArray(result.data)).toBe(true);
-    // Every returned row must be DRAFT (the bogus value is dropped, not 500ing).
     for (const row of result.data) {
       expect(row.status).toBe('DRAFT');
     }
   }, 30_000);
+
+  it('dailySheet(): rejects when endDate < startDate', async () => {
+    await expect(service.dailySheet('2026-05-10', '2026-05-01')).rejects.toThrow(
+      /endDate ต้อง >= startDate/,
+    );
+  });
+
+  it('dailySheet(): rejects range > 366 days', async () => {
+    await expect(service.dailySheet('2024-01-01', '2026-01-01')).rejects.toThrow(
+      /ช่วงวันที่ต้องไม่เกิน 366 วัน/,
+    );
+  });
 });
 
 // ============================================================

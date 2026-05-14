@@ -1,5 +1,6 @@
 import { Component, ErrorInfo, ReactNode } from 'react';
 import * as Sentry from '@sentry/react';
+import { AlertTriangle } from 'lucide-react';
 
 interface Props {
   children: ReactNode;
@@ -71,7 +72,7 @@ export default class ErrorBoundary extends Component<Props, State> {
       return (
         <div className="min-h-screen flex items-center justify-center bg-background">
           <div className="text-center max-w-md px-6">
-            <div className="text-5xl mb-4">⚠️</div>
+            <AlertTriangle className="size-12 mx-auto mb-4 text-warning" />
             <h1 className="text-xl font-bold text-foreground mb-2">เกิดข้อผิดพลาด</h1>
             <p className="text-sm text-muted-foreground mb-4">
               {this.state.error?.message || 'ระบบเกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง'}

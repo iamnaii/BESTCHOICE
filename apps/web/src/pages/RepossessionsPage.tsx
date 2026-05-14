@@ -12,6 +12,7 @@ import { formatDateShort } from '@/utils/formatters';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, repossessionStatusMap, conditionGradeMap } from '@/lib/status-badges';
+import { Check, X } from 'lucide-react';
 
 interface Repossession {
   id: string;
@@ -616,7 +617,7 @@ export default function RepossessionsPage() {
                       <div className={`flex justify-between items-center mt-2 p-3 rounded-lg ${previewData.calculation.profitLoss >= 0 ? 'bg-success/10 ring-1 ring-success/30' : 'bg-destructive/10 ring-1 ring-destructive/30'}`}>
                         <div>
                           <div className={`text-xs font-medium ${previewData.calculation.profitLoss >= 0 ? 'text-success' : 'text-destructive'}`}>
-                            {previewData.calculation.profitLoss >= 0 ? '✓ บริษัทได้กำไร' : '✗ บริษัทขาดทุน'}
+                            {previewData.calculation.profitLoss >= 0 ? <><Check className="size-4 inline mr-1" />บริษัทได้กำไร</> : <><X className="size-4 inline mr-1" />บริษัทขาดทุน</>}
                           </div>
                           <div className="text-xs text-muted-foreground">ราคากลาง - ต้นทุนคงเหลือ - เงินคืน</div>
                         </div>

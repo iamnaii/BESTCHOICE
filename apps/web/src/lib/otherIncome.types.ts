@@ -94,7 +94,8 @@ export interface OtherIncome {
 }
 
 export interface DailySheet {
-  date: string;
+  startDate: string;
+  endDate: string;
   summary: {
     incomeGross: string;
     vat: string;

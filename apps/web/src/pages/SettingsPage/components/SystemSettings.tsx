@@ -1,5 +1,6 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
+import { Clock, XCircle, CheckCircle2, BookOpen, AlertTriangle, HelpCircle } from 'lucide-react';
 import { checkCardReaderStatus, type CardReaderStatus } from '@/lib/cardReader';
 
 const CARD_READER_DOWNLOAD_URL =
@@ -26,25 +27,25 @@ function CardReaderSetup() {
     typeof status === 'object' &&
     ['waiting', 'card_inserted', 'reading'].includes(status.status);
 
-  const statusInfo = (() => {
-    if (status === 'checking') return { color: 'gray', icon: '⏳', text: 'กำลังตรวจสอบ...' };
+  const statusInfo: { color: string; icon: ReactNode; text: string } = (() => {
+    if (status === 'checking') return { color: 'gray', icon: <Clock className="size-5 text-muted-foreground" />, text: 'กำลังตรวจสอบ...' };
     if (status === null)
-      return { color: 'red', icon: '❌', text: 'ยังไม่ได้ติดตั้ง หรือโปรแกรมไม่ได้เปิดอยู่' };
+      return { color: 'red', icon: <XCircle className="size-5 text-destructive" />, text: 'ยังไม่ได้ติดตั้ง หรือโปรแกรมไม่ได้เปิดอยู่' };
     switch (status.status) {
       case 'waiting':
-        return { color: 'green', icon: '✅', text: `เชื่อมต่อแล้ว — ${status.readerName || 'รอเสียบบัตร'}` };
+        return { color: 'green', icon: <CheckCircle2 className="size-5 text-success" />, text: `เชื่อมต่อแล้ว — ${status.readerName || 'รอเสียบบัตร'}` };
       case 'card_inserted':
-        return { color: 'green', icon: '✅', text: 'พร้อมอ่านบัตร' };
+        return { color: 'green', icon: <CheckCircle2 className="size-5 text-success" />, text: 'พร้อมอ่านบัตร' };
       case 'reading':
-        return { color: 'blue', icon: '📖', text: 'กำลังอ่านบัตร...' };
+        return { color: 'blue', icon: <BookOpen className="size-5 text-info" />, text: 'กำลังอ่านบัตร...' };
       case 'no_reader':
-        return { color: 'yellow', icon: '⚠️', text: 'โปรแกรมทำงานอยู่ แต่ไม่พบเครื่องอ่านบัตร USB' };
+        return { color: 'yellow', icon: <AlertTriangle className="size-5 text-warning" />, text: 'โปรแกรมทำงานอยู่ แต่ไม่พบเครื่องอ่านบัตร USB' };
       case 'no_pcsc':
-        return { color: 'red', icon: '❌', text: 'ไม่พบ Smart Card Service บนเครื่อง' };
+        return { color: 'red', icon: <XCircle className="size-5 text-destructive" />, text: 'ไม่พบ Smart Card Service บนเครื่อง' };
       case 'error':
-        return { color: 'red', icon: '❌', text: status.error || 'เกิดข้อผิดพลาด' };
+        return { color: 'red', icon: <XCircle className="size-5 text-destructive" />, text: status.error || 'เกิดข้อผิดพลาด' };
       default:
-        return { color: 'gray', icon: '❓', text: 'ไม่ทราบสถานะ' };
+        return { color: 'gray', icon: <HelpCircle className="size-5 text-muted-foreground" />, text: 'ไม่ทราบสถานะ' };
     }
   })();
 

@@ -111,6 +111,11 @@ layer(base);
   --color-sidebar-hover: hsl(var(--sidebar-hover));
   --color-sidebar-border: hsl(var(--sidebar-border));
 
+  --color-accent-purple: hsl(var(--accent-purple));
+  --color-accent-purple-foreground: hsl(var(--accent-purple-foreground));
+  --color-accent-sky: hsl(var(--accent-sky));
+  --color-accent-sky-foreground: hsl(var(--accent-sky-foreground));
+
   --color-chart-1: hsl(var(--chart-1));
   --color-chart-2: hsl(var(--chart-2));
   --color-chart-3: hsl(var(--chart-3));
@@ -307,6 +312,9 @@ layer(base);
     --color-editor-variable-text: #047857;
     --color-editor-placeholder: #9ca3af;
     --accent-purple: 280 60% 55%;
+    --accent-purple-foreground: 0 0% 100%;
+    --accent-sky: 199 89% 48%;
+    --accent-sky-foreground: 0 0% 100%;
   }
 
   .dark {
@@ -321,7 +329,8 @@ layer(base);
     --secondary: 230 4% 20%;
     --secondary-foreground: 0 0% 95%;
     --muted: 230 4% 20%;
-    --muted-foreground: 230 5% 55%;
+    /* Muted-foreground at 65% lightness gives ~5.0:1 contrast on dark bg (WCAG AA) */
+    --muted-foreground: 230 6% 65%;
     --accent: 230 4% 20%;
     --accent-foreground: 0 0% 95%;
     --destructive: 0 72% 55%;
@@ -346,6 +355,9 @@ layer(base);
     --chart-4: 0 84% 60%;
     --chart-5: 271 91% 65%;
     --accent-purple: 280 65% 65%;
+    --accent-purple-foreground: 0 0% 100%;
+    --accent-sky: 199 89% 58%;
+    --accent-sky-foreground: 0 0% 100%;
   }
 
   /* Global focus style */

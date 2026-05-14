@@ -20,6 +20,7 @@ import {
   Smartphone,
   Link2,
   Lock,
+  LockOpen,
   ExternalLink,
   Zap,
   Shield,
@@ -27,6 +28,8 @@ import {
   Banknote,
   Landmark,
   QrCode,
+  XCircle,
+  CheckCircle2,
 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -480,13 +483,13 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
         <SectionHeader icon={Smartphone} label="สถานะ MDM" />
         {firstContract?.mdmLockedAt ? (
           <div className="px-0 py-0 text-[12px]">
-            <span className="text-destructive font-medium">🔒 ล็อคอยู่</span>
+            <span className="text-destructive font-medium"><Lock className="size-3.5 inline mr-1" />ล็อคอยู่</span>
             <span className="text-muted-foreground ml-2">
               ตั้งแต่ {format(new Date(firstContract.mdmLockedAt), 'dd MMM yyyy', { locale: th })}
             </span>
           </div>
         ) : (
-          <div className="text-[12px] text-success font-medium">🔓 ไม่ได้ล็อค</div>
+          <div className="text-[12px] text-success font-medium"><LockOpen className="size-3.5 inline mr-1" />ไม่ได้ล็อค</div>
         )}
       </div>
 
@@ -514,31 +517,31 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
               return (
                 <div key={c.id} className="text-[12px]">
                   <p className="font-medium text-foreground/80 mb-1">
-                    📱 {productName}{' '}
+                    <Smartphone className="size-3.5 inline mr-1" />{productName}{' '}
                     <span className="text-[10px] text-muted-foreground font-normal">({conditionLabel})</span>
                   </p>
 
                   {/* Manufacturer warranty */}
                   {mfrDate ? (
                     mfrExpired ? (
-                      <p className="text-destructive ml-3">❌ ศูนย์: หมดแล้ว</p>
+                      <p className="text-destructive ml-3"><XCircle className="size-3.5 inline mr-1" />ศูนย์: หมดแล้ว</p>
                     ) : (
                       <p className="text-success ml-3">
-                        ✅ ศูนย์: ถึง {format(mfrDate, 'dd MMM yyyy', { locale: th })}{' '}
+                        <CheckCircle2 className="size-3.5 inline mr-1 text-success" />ศูนย์: ถึง {format(mfrDate, 'dd MMM yyyy', { locale: th })}{' '}
                         <span className="text-muted-foreground">(เหลือ {mfrDays} วัน)</span>
                       </p>
                     )
                   ) : (
-                    <p className="text-destructive ml-3">❌ ศูนย์: หมดแล้ว</p>
+                    <p className="text-destructive ml-3"><XCircle className="size-3.5 inline mr-1" />ศูนย์: หมดแล้ว</p>
                   )}
 
                   {/* Shop warranty — only show when exists */}
                   {shopDate && (
                     shopExpired ? (
-                      <p className="text-destructive ml-3">❌ ร้าน: หมดแล้ว</p>
+                      <p className="text-destructive ml-3"><XCircle className="size-3.5 inline mr-1" />ร้าน: หมดแล้ว</p>
                     ) : (
                       <p className="text-success ml-3">
-                        ✅ ร้าน: ถึง {format(shopDate, 'dd MMM yyyy', { locale: th })}{' '}
+                        <CheckCircle2 className="size-3.5 inline mr-1 text-success" />ร้าน: ถึง {format(shopDate, 'dd MMM yyyy', { locale: th })}{' '}
                         <span className="text-muted-foreground">(เหลือ {shopDays} วัน)</span>
                       </p>
                     )

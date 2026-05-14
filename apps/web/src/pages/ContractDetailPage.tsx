@@ -17,7 +17,7 @@ import ContractDocuments from '@/components/contract/ContractDocuments';
 import { ContractEarlyPayoffQuote, EarlyPayoffOverlay } from '@/components/contract/ContractEarlyPayoff';
 import { toast } from 'sonner';
 import { useState, useRef, useEffect } from 'react';
-import { Copy, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
+import { Copy, CheckCircle2, XCircle, AlertTriangle, Check, ChevronRight } from 'lucide-react';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import { useAuth } from '@/contexts/AuthContext';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -405,7 +405,7 @@ const deleteMutation = useMutation({
                 <div key={i} className="flex items-center flex-1 last:flex-none">
                   <div className="flex flex-col items-center gap-1 min-w-0">
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${step.done ? 'bg-success text-success-foreground' : i === currentStep ? 'bg-primary text-primary-foreground ring-2 ring-primary/30 ring-offset-1' : 'bg-muted text-muted-foreground'}`}>
-                      {step.done ? '✓' : i + 1}
+                      {step.done ? <Check className="size-4" /> : i + 1}
                     </div>
                     <span className={`text-2xs md:text-xs text-center leading-tight ${step.done ? 'text-success font-medium' : i === currentStep ? 'text-primary font-medium' : 'text-muted-foreground'}`}>
                       {step.label}
@@ -573,7 +573,7 @@ const deleteMutation = useMutation({
                 {presentItems.length > 0 && (
                   <details open={missingItems.length === 0} className="group">
                     <summary className="text-sm font-medium text-muted-foreground mb-2 cursor-pointer hover:text-foreground select-none list-none flex items-center gap-1.5">
-                      <span className="group-open:rotate-90 transition-transform inline-block">▶</span>
+                      <ChevronRight className="size-4 group-open:rotate-90 transition-transform" />
                       เอกสารที่พร้อมแล้ว ({presentItems.length})
                     </summary>
                     <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 mt-2 pl-5">

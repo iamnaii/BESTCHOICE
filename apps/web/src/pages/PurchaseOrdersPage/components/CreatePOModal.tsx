@@ -129,7 +129,7 @@ export function CreatePOModal({
                     className={selectClass}
                     required
                   >
-                    <option value="">{suppliersLoading ? 'กำลังโหลด...' : suppliersError ? '⚠ โหลดข้อมูลไม่ได้' : '-- เลือกผู้ขาย --'}</option>
+                    <option value="">{suppliersLoading ? 'กำลังโหลด...' : suppliersError ? 'โหลดข้อมูลไม่ได้' : '-- เลือกผู้ขาย --'}</option>
                     {suppliers.map((s) => (
                       <option key={s.id} value={s.id}>{s.name}{s.contactName && s.contactName !== s.name ? ` (${s.contactName})` : ''}{s.hasVat ? ' [VAT]' : ''}</option>
                     ))}

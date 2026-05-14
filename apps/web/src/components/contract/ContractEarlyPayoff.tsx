@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { AlertTriangle, Check } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
 import { formatNumber, formatNumberDecimal } from '@/utils/formatters';
 import { CashAccountSelect } from '@/components/CashAccountSelect';
@@ -438,7 +439,7 @@ function Row({
 function Effect({ text, warning }: { text: string; warning?: boolean }) {
   return (
     <li className="flex items-start gap-2">
-      <span className={warning ? 'text-warning' : 'text-success'}>{warning ? '⚠' : '✓'}</span>
+      <span className={warning ? 'text-warning' : 'text-success'}>{warning ? <AlertTriangle className="size-4 inline" /> : <Check className="size-4 inline" />}</span>
       <span className={warning ? 'text-warning' : 'text-foreground'}>{text}</span>
     </li>
   );

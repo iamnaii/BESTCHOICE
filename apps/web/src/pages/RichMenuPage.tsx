@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { LayoutGrid, Trash2, Star, Upload, Plus, ImageIcon, Pencil, Copy, Sparkles, Phone } from 'lucide-react';
+import { LayoutGrid, Trash2, Star, Upload, Plus, ImageIcon, Pencil, Copy, Sparkles, Phone, Check } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
@@ -640,8 +640,8 @@ export default function RichMenuPage() {
       {/* Channel tabs (SHOP / FINANCE) */}
       <div className="flex gap-1 mb-6 border-b border-border">
         {[
-          { key: 'shop', label: '🛍 SHOP' },
-          { key: 'finance', label: '💰 FINANCE' },
+          { key: 'shop', label: 'SHOP' },
+          { key: 'finance', label: 'FINANCE' },
         ].map((ch) => (
           <button
             key={ch.key}
@@ -1015,12 +1015,12 @@ export default function RichMenuPage() {
                         </div>
                         {isDefault && (
                           <Badge className="bg-success/10 text-success hover:bg-success/10 border-success/30 shrink-0">
-                            ⭐ Default
+                            <Star className="size-3.5 inline mr-1" />Default
                           </Badge>
                         )}
                         {isVerified && (
                           <Badge className="bg-primary/10 text-primary hover:bg-primary/10 border-primary/30 shrink-0">
-                            ✓ Verified
+                            <Check className="size-3.5 inline mr-1" />Verified
                           </Badge>
                         )}
                       </div>
@@ -1038,14 +1038,14 @@ export default function RichMenuPage() {
                                 setAliasMutation.mutate({ menuId: menu.richMenuId, variant: 'default' })
                               }
                             >
-                              ⭐ Default (ลูกค้าใหม่)
+                              <Star className="size-3.5 inline mr-1" />Default (ลูกค้าใหม่)
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() =>
                                 setAliasMutation.mutate({ menuId: menu.richMenuId, variant: 'verified' })
                               }
                             >
-                              ✓ Verified (ลูกค้าที่ verify แล้ว)
+                              <Check className="size-3.5 inline mr-1" />Verified (ลูกค้าที่ verify แล้ว)
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>

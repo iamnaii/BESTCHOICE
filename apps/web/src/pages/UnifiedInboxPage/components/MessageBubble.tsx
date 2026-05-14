@@ -2,6 +2,7 @@ import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { PaymentFlexPreview, parsePaymentFlex } from './PaymentFlexPreview';
 import FlexBubblePreview from './FlexBubblePreview';
+import { Check, CheckCheck, Lock } from 'lucide-react';
 
 interface MessageBubbleProps {
   message: {
@@ -53,7 +54,7 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
             </span>
             {isStaff && (
               <span className={cn('text-[10px] ml-1', message.readAt ? 'text-primary' : 'text-muted-foreground')}>
-                {message.readAt ? '✓✓' : '✓'}
+                {message.readAt ? <CheckCheck className="size-3" /> : <Check className="size-3" />}
               </span>
             )}
           </span>
@@ -90,7 +91,7 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
             </span>
             {isStaff && (
               <span className={cn('text-[10px] ml-1', message.readAt ? 'text-info' : 'text-muted-foreground')}>
-                {message.readAt ? '✓✓' : '✓'}
+                {message.readAt ? <CheckCheck className="size-3" /> : <Check className="size-3" />}
               </span>
             )}
           </span>
@@ -117,7 +118,7 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
             </span>
             {isStaff && (
               <span className={cn('text-[10px] ml-1', message.readAt ? 'text-primary' : 'text-muted-foreground')}>
-                {message.readAt ? '✓✓' : '✓'}
+                {message.readAt ? <CheckCheck className="size-3" /> : <Check className="size-3" />}
               </span>
             )}
           </span>
@@ -139,7 +140,7 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
           <div className="w-[240px] rounded-2xl overflow-hidden border border-border bg-card shadow-sm">
             <div className="bg-primary px-3.5 py-2 text-primary-foreground">
               <div className="text-[10px] opacity-90 leading-snug">BEST CHOICE FINANCE</div>
-              <div className="text-sm font-semibold leading-snug mt-0.5">🔐 ยืนยันตัวตน</div>
+              <div className="text-sm font-semibold leading-snug mt-0.5"><Lock className="size-4 inline" /> ยืนยันตัวตน</div>
             </div>
             <div className="px-3.5 py-3 text-sm text-foreground leading-snug">
               รบกวนยืนยันตัวตนก่อนนะคะ เพื่อความปลอดภัยของข้อมูลค่ะ
@@ -193,7 +194,7 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
             </span>
             {isStaff && (
               <span className={cn('text-[10px] ml-1', message.readAt ? 'text-info' : 'text-muted-foreground')}>
-                {message.readAt ? '✓✓' : '✓'}
+                {message.readAt ? <CheckCheck className="size-3" /> : <Check className="size-3" />}
               </span>
             )}
           </span>
@@ -263,7 +264,7 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
           </span>
           {message.role === 'STAFF' && (
             <span className={cn('text-[10px] ml-1', message.readAt ? 'text-primary' : 'text-muted-foreground')}>
-              {message.readAt ? '✓✓' : '✓'}
+              {message.readAt ? <CheckCheck className="size-3" /> : <Check className="size-3" />}
             </span>
           )}
         </span>

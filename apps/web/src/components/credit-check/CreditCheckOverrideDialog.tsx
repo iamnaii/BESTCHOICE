@@ -214,7 +214,7 @@ export default function CreditCheckOverrideDialog({
                   <option value="">-- เลือกเหตุผล --</option>
                   {REASON_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>
-                      {opt.label}{opt.requiresDetail ? '' : ' ✓'}
+                      {opt.label}{opt.requiresDetail ? '' : ' (ไม่ต้องระบุรายละเอียดเพิ่ม)'}
                     </option>
                   ))}
                 </select>

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Loader2, ArrowRightLeft, AlertTriangle, CheckCircle2, History } from 'lucide-react';
+import { Loader2, ArrowRightLeft, AlertTriangle, Check, CheckCircle2, History } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
@@ -146,7 +146,7 @@ export default function IntercompanySettlementPage() {
               {balance.balanced ? (
                 <div className="flex items-center gap-2 text-sm text-primary">
                   <CheckCircle2 className="h-4 w-4" />
-                  ยอดสองฝั่งตรงกัน (Inter-company invariant ✓)
+                  ยอดสองฝั่งตรงกัน (Inter-company invariant <Check className="size-3.5 inline" />)
                 </div>
               ) : (
                 <div className="flex items-start gap-2 rounded-md border border-destructive bg-destructive/10 p-3 text-sm text-destructive">

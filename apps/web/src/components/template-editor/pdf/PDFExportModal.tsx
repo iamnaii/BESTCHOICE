@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { X, Download, Eye, Loader2 } from 'lucide-react';
+import { X, Download, Eye, Loader2, FileText } from 'lucide-react';
 import { useTemplateStore } from '@/store/templateStore';
 import { generatePDF } from './pdfGenerator';
 import { toast } from 'sonner';
@@ -65,7 +65,7 @@ export default function PDFExportModal() {
             />
           ) : (
             <div className="text-center py-16">
-              <div className="text-6xl mb-4">📄</div>
+              <FileText className="size-14 mx-auto mb-4 text-muted-foreground" />
               <h3 className="text-lg font-medium text-foreground mb-2">{currentTemplate.name}</h3>
               <p className="text-base text-muted-foreground mb-6">
                 {currentTemplate.blocks.length} blocks | A4 | TH Sarabun PSK

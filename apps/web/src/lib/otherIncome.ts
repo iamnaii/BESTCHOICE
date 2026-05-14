@@ -59,9 +59,9 @@ export const otherIncomeApi = {
   copy: (id: string) =>
     api.post<OtherIncome>(`/other-income/${id}/copy`).then((r) => r.data),
 
-  dailySheet: (date: string) =>
+  dailySheet: (startDate: string, endDate: string) =>
     api
-      .get<DailySheet>('/other-income/daily-sheet', { params: { date } })
+      .get<DailySheet>('/other-income/daily-sheet', { params: { startDate, endDate } })
       .then((r) => r.data),
 
   getAuditTrail: (id: string) =>

@@ -5,6 +5,8 @@ interface DateRangeChipsProps {
   startDate: string; // YYYY-MM-DD or ''
   endDate: string;   // YYYY-MM-DD or ''
   onChange: (next: { startDate: string; endDate: string }) => void;
+  /** When false, hide the "ทั้งหมด" preset (use on pages where empty range is invalid). */
+  showAllChip?: boolean;
 }
 
 function toIsoDate(d: Date): string {
@@ -66,7 +68,7 @@ function formatRangeLabel(startDate: string, endDate: string): string {
   return `${startDay} ${THAI_MONTHS_SHORT[startMonthIdx]} ${beYear} - ${endDay} ${THAI_MONTHS_SHORT[endMonthIdx]} ${endBeYear}`;
 }
 
-export function DateRangeChips({ startDate, endDate, onChange }: DateRangeChipsProps) {
+export function DateRangeChips({ startDate, endDate, onChange, showAllChip = true }: DateRangeChipsProps) {
   const today = new Date();
   const current = { startDate, endDate };
   const presets = {
@@ -90,15 +92,17 @@ export function DateRangeChips({ startDate, endDate, onChange }: DateRangeChipsP
   return (
     <div className="flex items-center justify-between flex-wrap gap-2 w-full">
       <div role="radiogroup" aria-label="ช่วงวันที่" className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          role="radio"
-          aria-checked={isAll}
-          className={chipClass(isAll)}
-          onClick={() => onChange(presets.all)}
-        >
-          ทั้งหมด
-        </button>
+        {showAllChip && (
+          <button
+            type="button"
+            role="radio"
+            aria-checked={isAll}
+            className={chipClass(isAll)}
+            onClick={() => onChange(presets.all)}
+          >
+            ทั้งหมด
+          </button>
+        )}
         <button
           type="button"
           role="radio"

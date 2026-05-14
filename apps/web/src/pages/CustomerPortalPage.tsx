@@ -1,5 +1,6 @@
 import { useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
+import { Lock } from 'lucide-react';
 import api from '@/lib/api';
 import { formatDateShort, formatDateTime } from '@/utils/formatters';
 import { Badge } from '@/components/ui/badge';
@@ -92,7 +93,7 @@ function CustomerPortalPage() {
     return (
       <div className="min-h-screen bg-muted flex items-center justify-center">
         <div className="bg-card rounded-xl border border-border/50 p-8 max-w-md text-center shadow-sm">
-          <div className="text-4xl mb-4">🔒</div>
+          <Lock className="size-10 mx-auto mb-4 text-muted-foreground" />
           <h1 className="text-lg font-semibold text-foreground mb-2">ไม่สามารถเข้าถึงได้</h1>
           <p className="text-sm text-muted-foreground">{error || 'ลิงก์ไม่ถูกต้องหรือหมดอายุ'}</p>
           <p className="text-xs text-muted-foreground mt-3">กรุณาติดต่อร้านเพื่อขอลิงก์ใหม่</p>

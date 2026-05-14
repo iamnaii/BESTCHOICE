@@ -842,29 +842,44 @@ export class OtherIncomeService {
   }
 
   // -------------------------------------------------------------------------
-  // dailySheet(): summary + docs for a given date
+  // dailySheet(): summary + docs for a date range (inclusive both ends)
   // -------------------------------------------------------------------------
 
-  async dailySheet(date: string) {
+  async dailySheet(startDate: string, endDate: string) {
     // Use BKK day boundaries — NOT server local time. If the API runs on UTC
     // (Cloud Run default), `setHours(0,0,0,0)` would put the day boundary at
     // 00:00 UTC = 07:00 BKK, dropping docs issued 00:00–06:59 BKK into the
     // wrong sheet. This mirrors DocNumberService.getBkkDayBounds().
-    const parts = new Date(date).toLocaleString('en-CA', {
-      timeZone: 'Asia/Bangkok',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    });
-    const [y, m, d] = parts.split('-').map((s) => parseInt(s, 10));
     const bkkOffsetMs = 7 * 60 * 60 * 1000;
-    const day = new Date(Date.UTC(y, m - 1, d) - bkkOffsetMs);
-    const nextDay = new Date(day.getTime() + 24 * 60 * 60 * 1000);
+    const toBkkStart = (iso: string): Date => {
+      const parts = new Date(iso).toLocaleString('en-CA', {
+        timeZone: 'Asia/Bangkok',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      });
+      const [y, m, d] = parts.split('-').map((s) => parseInt(s, 10));
+      return new Date(Date.UTC(y, m - 1, d) - bkkOffsetMs);
+    };
+
+    const rangeStart = toBkkStart(startDate);
+    const rangeEnd = new Date(toBkkStart(endDate).getTime() + 24 * 60 * 60 * 1000); // exclusive upper
+
+    if (rangeEnd <= rangeStart) {
+      throw new BadRequestException('endDate ต้อง >= startDate');
+    }
+
+    // Cap range at 366 days to bound query cost (one full year + leap-day slack).
+    const MAX_RANGE_DAYS = 366;
+    const spanDays = (rangeEnd.getTime() - rangeStart.getTime()) / (24 * 60 * 60 * 1000);
+    if (spanDays > MAX_RANGE_DAYS) {
+      throw new BadRequestException(`ช่วงวันที่ต้องไม่เกิน ${MAX_RANGE_DAYS} วัน`);
+    }
 
     const docs = await this.prisma.otherIncome.findMany({
       where: {
         status: OtherIncomeStatus.POSTED,
-        issueDate: { gte: day, lt: nextDay },
+        issueDate: { gte: rangeStart, lt: rangeEnd },
         deletedAt: null,
       },
       include: {
@@ -957,7 +972,8 @@ export class OtherIncomeService {
       }));
 
     return {
-      date,
+      startDate,
+      endDate,
       summary: {
         docCount: docs.length,
         incomeGross: incomeGross.toFixed(2),

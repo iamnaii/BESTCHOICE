@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Pencil } from 'lucide-react';
 
 type Props = {
   open: boolean;
@@ -31,7 +31,7 @@ export function OverrideConfirmDialog({ open, onConfirm, onCancel }: Props) {
           <ul className="space-y-1 list-disc list-inside text-muted-foreground">
             <li>ระบบจะตรวจสอบ V1/V2/V5 ก่อน POST</li>
             <li>การกระทำนี้จะถูกบันทึกใน Audit Log</li>
-            <li>เอกสารจะมีเครื่องหมาย ✏ Modified ในรายการ</li>
+            <li>เอกสารจะมีเครื่องหมาย <Pencil className="size-3.5 inline" /> Modified ในรายการ</li>
           </ul>
 
           <div className="flex items-start gap-2 pt-2">

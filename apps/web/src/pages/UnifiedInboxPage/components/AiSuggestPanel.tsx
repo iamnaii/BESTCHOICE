@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
-import { Sparkles, Loader2 } from 'lucide-react';
+import { Sparkles, Loader2, Banknote, Target, Smartphone, Package, Gift, HelpCircle, Hand, Phone } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import type { LucideIcon } from 'lucide-react';
 
 interface AiSuggestion {
   text: string;
@@ -49,15 +50,15 @@ export default function AiSuggestPanel({
     return null;
   }
 
-  const intentLabel: Record<string, string> = {
-    answer_price: '💰 ตอบราคา',
-    close_sale: '🎯 ปิดการขาย',
-    answer_spec: '📱 ตอบสเปค',
-    answer_stock: '📦 ตอบสต็อก',
-    answer_promotion: '🎁 แนะนำโปร',
-    ask_preference: '❓ ถามความต้องการ',
-    greet: '👋 ทักทาย',
-    follow_up: '📞 ติดตาม',
+  const intentMeta: Record<string, { icon: LucideIcon; label: string }> = {
+    answer_price:     { icon: Banknote,    label: 'ตอบราคา' },
+    close_sale:       { icon: Target,      label: 'ปิดการขาย' },
+    answer_spec:      { icon: Smartphone,  label: 'ตอบสเปค' },
+    answer_stock:     { icon: Package,     label: 'ตอบสต็อก' },
+    answer_promotion: { icon: Gift,        label: 'แนะนำโปร' },
+    ask_preference:   { icon: HelpCircle,  label: 'ถามความต้องการ' },
+    greet:            { icon: Hand,        label: 'ทักทาย' },
+    follow_up:        { icon: Phone,       label: 'ติดตาม' },
   };
 
   return (
@@ -78,26 +79,30 @@ export default function AiSuggestPanel({
         </div>
       ) : (
         <div className="flex gap-2 overflow-x-auto pb-1">
-          {data?.suggestions.map((suggestion, i) => (
-            <button
-              key={i}
-              onClick={() => {
-                onSelectSuggestion(suggestion.text, { aiDraft: suggestion.text, intent: suggestion.intent });
-                setDismissed(true);
-              }}
-              className={cn(
-                'flex-1 min-w-[200px] max-w-[300px] text-left px-3 py-2 rounded-lg border transition-all duration-150',
-                'text-[12px] leading-relaxed text-foreground/80',
-                'border-border/60 bg-background hover:border-primary/40 hover:bg-primary/5',
-                'active:scale-[0.98]',
-              )}
-            >
-              <p className="line-clamp-3">{suggestion.text}</p>
-              <span className="text-[10px] text-muted-foreground/60 mt-1 block">
-                {intentLabel[suggestion.intent] ?? suggestion.intent}
-              </span>
-            </button>
-          ))}
+          {data?.suggestions.map((suggestion, i) => {
+            const meta = intentMeta[suggestion.intent];
+            const Icon = meta?.icon;
+            return (
+              <button
+                key={i}
+                onClick={() => {
+                  onSelectSuggestion(suggestion.text, { aiDraft: suggestion.text, intent: suggestion.intent });
+                  setDismissed(true);
+                }}
+                className={cn(
+                  'flex-1 min-w-[200px] max-w-[300px] text-left px-3 py-2 rounded-lg border transition-all duration-150',
+                  'text-[12px] leading-relaxed text-foreground/80',
+                  'border-border/60 bg-background hover:border-primary/40 hover:bg-primary/5',
+                  'active:scale-[0.98]',
+                )}
+              >
+                <p className="line-clamp-3">{suggestion.text}</p>
+                <span className="text-[10px] text-muted-foreground/60 mt-1 flex items-center gap-1">
+                  {meta && Icon ? <><Icon className="size-3" />{meta.label}</> : suggestion.intent}
+                </span>
+              </button>
+            );
+          })}
         </div>
       )}
     </div>

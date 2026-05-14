@@ -1,4 +1,5 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
+import { Camera, FolderOpen } from 'lucide-react';
 
 interface IdCardCaptureProps {
   onCapture: (imageBase64: string) => void;
@@ -152,7 +153,7 @@ export default function IdCardCapture({ onCapture, disabled }: IdCardCaptureProp
           disabled={disabled}
           className="flex-1 px-4 py-4 text-sm border-2 border-dashed border-primary/40 rounded-xl hover:bg-primary/5 flex flex-col items-center gap-2 disabled:opacity-50"
         >
-          <span className="text-2xl">📷</span>
+          <Camera className="size-6" />
           <span className="font-medium">เปิดกล้องถ่ายรูป</span>
         </button>
         <button
@@ -160,7 +161,7 @@ export default function IdCardCapture({ onCapture, disabled }: IdCardCaptureProp
           disabled={disabled}
           className="flex-1 px-4 py-4 text-sm border-2 border-dashed border-input rounded-xl hover:bg-muted flex flex-col items-center gap-2 disabled:opacity-50"
         >
-          <span className="text-2xl">📁</span>
+          <FolderOpen className="size-6" />
           <span className="font-medium">อัปโหลดรูป</span>
         </button>
       </div>

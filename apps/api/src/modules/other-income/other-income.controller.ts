@@ -58,7 +58,7 @@ export class OtherIncomeController {
   // doesn't get parsed as a UUID by ParseUUIDPipe on the :id routes.
   @Get('daily-sheet')
   dailySheet(@Query() q: DailySheetQueryDto) {
-    return this.service.dailySheet(q.date);
+    return this.service.dailySheet(q.startDate, q.endDate);
   }
 
   @Get('config/attachment-threshold')

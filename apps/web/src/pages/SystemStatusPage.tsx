@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Check, X } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
@@ -390,7 +391,7 @@ export default function SystemStatusPage() {
             ].map(item => (
               <div key={item.label} className="flex items-center gap-2">
                 <Badge variant={item.ok ? 'success' : 'destructive'} appearance="light" className="w-4 h-4 inline-flex items-center justify-center p-0 text-[10px] font-bold rounded">
-                  {item.ok ? '✓' : '✗'}
+                  {item.ok ? <Check className="size-4 text-success" /> : <X className="size-4 text-destructive" />}
                 </Badge>
                 <span className={item.ok ? 'text-foreground' : 'text-muted-foreground'}>{item.label}</span>
               </div>

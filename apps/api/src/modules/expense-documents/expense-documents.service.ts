@@ -1105,30 +1105,73 @@ export class ExpenseDocumentsService {
       // MUST be non-null (and a recognised form). Previously the JE template silently
       // defaulted to PND3 → routed to 21-3102, misfiling juristic-vendor WHT under
       // ภ.ง.ด.3 instead of ภ.ง.ด.53 (government compliance bug).
-      // Per-line override (P2-4) still works — when any ExpenseLine.whtFormType is set,
-      // the template uses per-line aggregation. For lines that don't set their own
-      // form type, they fall back to doc.whtFormType, which is now guaranteed non-null.
-      if (
-        doc.documentType === 'EXPENSE' &&
-        doc.withholdingTax &&
-        new Prisma.Decimal(doc.withholdingTax.toString()).gt(0) &&
-        !doc.whtFormType
-      ) {
-        // Check if every WHT-bearing line has its own form type → fall through to
-        // per-line routing in the template. Otherwise the doc-level is mandatory.
-        const detail = await tx.expenseDetail.findUnique({
-          where: { documentId: id },
-          include: { lines: true },
-        });
-        const whtLines = (detail?.lines ?? []).filter(
-          (l) => l.whtAmount && new Prisma.Decimal(l.whtAmount.toString()).gt(0),
-        );
-        const allLinesHaveFormType = whtLines.length > 0 && whtLines.every((l) => !!l.whtFormType);
-        if (!allLinesHaveFormType) {
-          throw new BadRequestException(
-            'whtFormType ต้องระบุเมื่อมี WHT — เลือก PND3 หรือ PND53',
-          );
+      //
+      // C12-symmetry (this PR): mirror the guard across all 4 doc types so any
+      // future bypass surfaces at post() instead of being silently misrouted by
+      // the template. Each doc type carries WHT differently:
+      //   - EXPENSE: doc.whtFormType OR every ExpenseLine.whtFormType is set
+      //     (per-line routing — P2-4)
+      //   - PAYROLL: doc.withholdingTax > 0 → always Cr 21-3101 (ภ.ง.ด.1) —
+      //     payroll WHT is employee income tax, NOT PND3/PND53, so no formType
+      //     enforcement here (BUT we still require it to be null since the field
+      //     is meaningless for payroll)
+      //   - VENDOR_SETTLEMENT: single-vendor invariant means doc-level form type
+      //     applies (intentionally no per-line routing per accounting.md)
+      //   - CREDIT_NOTE: createCreditNote already blocks original-with-WHT
+      //     (so CN itself ideally has no WHT), but if the original had WHT and
+      //     this branch is reached, we still need doc-level formType
+      const wht = new Prisma.Decimal(doc.withholdingTax?.toString() ?? '0');
+      if (wht.gt(0)) {
+        if (doc.documentType === 'EXPENSE') {
+          if (!doc.whtFormType) {
+            // Check if every WHT-bearing line has its own form type → fall through to
+            // per-line routing in the template. Otherwise the doc-level is mandatory.
+            const detail = await tx.expenseDetail.findUnique({
+              where: { documentId: id },
+              include: { lines: true },
+            });
+            const whtLines = (detail?.lines ?? []).filter(
+              (l) => l.whtAmount && new Prisma.Decimal(l.whtAmount.toString()).gt(0),
+            );
+            const allLinesHaveFormType =
+              whtLines.length > 0 && whtLines.every((l) => !!l.whtFormType);
+            if (!allLinesHaveFormType) {
+              throw new BadRequestException(
+                'whtFormType ต้องระบุเมื่อมี WHT — เลือก PND3 หรือ PND53',
+              );
+            }
+            // If every line has a form type, validate each is PND3/PND53 (no other strings)
+            for (const l of whtLines) {
+              if (l.whtFormType !== 'PND3' && l.whtFormType !== 'PND53') {
+                throw new BadRequestException(
+                  `whtFormType ของบรรทัด ${(l as { lineNo?: number }).lineNo ?? '?'} ` +
+                    `ต้องเป็น PND3 หรือ PND53 (พบ ${l.whtFormType ?? 'null'})`,
+                );
+              }
+            }
+          } else if (doc.whtFormType !== 'PND3' && doc.whtFormType !== 'PND53') {
+            throw new BadRequestException(
+              `whtFormType ต้องเป็น PND3 หรือ PND53 (พบ ${doc.whtFormType})`,
+            );
+          }
+        } else if (doc.documentType === 'VENDOR_SETTLEMENT' || doc.documentType === 'CREDIT_NOTE') {
+          // Per-line routing intentionally NOT supported for SE (single-vendor
+          // invariant per accounting.md) and CN (template routes by original.whtFormType
+          // since CN itself carries no WHT — but defense in depth).
+          if (!doc.whtFormType) {
+            throw new BadRequestException(
+              'whtFormType ต้องระบุเมื่อมี WHT — เลือก PND3 หรือ PND53',
+            );
+          }
+          if (doc.whtFormType !== 'PND3' && doc.whtFormType !== 'PND53') {
+            throw new BadRequestException(
+              `whtFormType ต้องเป็น PND3 หรือ PND53 (พบ ${doc.whtFormType})`,
+            );
+          }
         }
+        // PAYROLL: doc.whtFormType is meaningless (employee income tax always
+        // routes to 21-3101 / ภ.ง.ด.1). No enforcement — payroll.template
+        // posts to 21-3101 unconditionally when sumWht > 0.
       }
 
       if (doc.documentType === 'CREDIT_NOTE') {

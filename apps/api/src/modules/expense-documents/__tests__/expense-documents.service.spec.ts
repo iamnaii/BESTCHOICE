@@ -331,6 +331,66 @@ describe('ExpenseDocumentsService', () => {
       await expect(service.post('doc-c12c', 'user-1')).resolves.toBeDefined();
       expect(sameDay.execute).toHaveBeenCalled();
     });
+
+    // C12-symmetry — extend service-level guard to SE / CN / PAYROLL
+    it('C12-symmetry: rejects post on VENDOR_SETTLEMENT when wht > 0 and whtFormType null', async () => {
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-se-c12', status: 'DRAFT', documentType: 'VENDOR_SETTLEMENT',
+        paymentMethod: 'CASH', depositAccountCode: '11-1101',
+        totalAmount: new Decimal('5000.00'),
+        receiptImageUrl: null,
+        withholdingTax: new Decimal('100.00'),
+        whtFormType: null,
+      });
+      transition.resolveTargetStatus.mockReturnValue('POSTED');
+      await expect(service.post('doc-se-c12', 'user-1')).rejects.toThrow(
+        /whtFormType ต้องระบุ/,
+      );
+      expect(settlement.execute).not.toHaveBeenCalled();
+    });
+
+    it('C12-symmetry: allows post on VENDOR_SETTLEMENT when wht > 0 and whtFormType=PND53', async () => {
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-se-c12b', status: 'DRAFT', documentType: 'VENDOR_SETTLEMENT',
+        paymentMethod: 'CASH', depositAccountCode: '11-1101',
+        totalAmount: new Decimal('5000.00'),
+        receiptImageUrl: null,
+        withholdingTax: new Decimal('100.00'),
+        whtFormType: 'PND53',
+      });
+      transition.resolveTargetStatus.mockReturnValue('POSTED');
+      await expect(service.post('doc-se-c12b', 'user-1')).resolves.toBeDefined();
+      expect(settlement.execute).toHaveBeenCalled();
+    });
+
+    it('C12-symmetry: rejects post on VENDOR_SETTLEMENT when whtFormType is unknown string', async () => {
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-se-c12c', status: 'DRAFT', documentType: 'VENDOR_SETTLEMENT',
+        paymentMethod: 'CASH', depositAccountCode: '11-1101',
+        totalAmount: new Decimal('5000.00'),
+        receiptImageUrl: null,
+        withholdingTax: new Decimal('100.00'),
+        whtFormType: 'PND91',
+      });
+      transition.resolveTargetStatus.mockReturnValue('POSTED');
+      await expect(service.post('doc-se-c12c', 'user-1')).rejects.toThrow(
+        /whtFormType ต้องเป็น PND3 หรือ PND53/,
+      );
+    });
+
+    it('C12-symmetry: allows PAYROLL post with wht > 0 (whtFormType not required — always 21-3101)', async () => {
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-pr-c12', status: 'DRAFT', documentType: 'PAYROLL',
+        depositAccountCode: '11-1101',
+        totalAmount: new Decimal('30000.00'),
+        receiptImageUrl: null,
+        withholdingTax: new Decimal('500.00'),
+        whtFormType: null, // payroll WHT always ภ.ง.ด.1 → 21-3101
+      });
+      transition.resolveTargetStatus.mockReturnValue('POSTED');
+      await expect(service.post('doc-pr-c12', 'user-1')).resolves.toBeDefined();
+      expect(payroll.execute).toHaveBeenCalled();
+    });
   });
 
   describe('update', () => {

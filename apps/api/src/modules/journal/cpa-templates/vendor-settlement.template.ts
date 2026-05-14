@@ -98,12 +98,21 @@ export class VendorSettlementTemplate {
         },
       ];
       if (wht.gt(zero)) {
+        // C12-symmetry — hard throw on unknown form type. The service-level
+        // guard at expense-documents.service.post() already rejects null /
+        // bad form types when withholdingTax > 0; this template-level check
+        // is defense-in-depth for any future caller that bypasses the service.
+        if (se.whtFormType !== 'PND3' && se.whtFormType !== 'PND53') {
+          throw new Error(
+            `whtFormType ต้องเป็น PND3 หรือ PND53 (got ${se.whtFormType ?? 'null'}) — SE wht=${wht}`,
+          );
+        }
         const whtAccount = se.whtFormType === 'PND53' ? '21-3103' : '21-3102';
         lines.push({
           accountCode: whtAccount,
           dr: zero,
           cr: wht,
-          description: `หัก ณ ที่จ่าย ${se.whtFormType ?? 'PND3'}`,
+          description: `หัก ณ ที่จ่าย ${se.whtFormType}`,
         });
       }
 

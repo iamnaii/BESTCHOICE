@@ -388,4 +388,56 @@ describe('VendorSettlementTemplate', () => {
       }),
     );
   });
+
+  // C12-symmetry — template-level defense throws when whtFormType is unknown.
+  // Service-level guard normally rejects first, but template throws too so any
+  // bypass surfaces here instead of silently misrouting under PND3.
+  it('C12-symmetry: throws when wht > 0 and whtFormType is null', async () => {
+    prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+      id: docId,
+      number: 'SE-20260514-C12A',
+      documentType: 'VENDOR_SETTLEMENT',
+      documentDate: new Date('2026-05-14'),
+      totalAmount: new Decimal('5000.00'),
+      withholdingTax: new Decimal('100.00'),
+      whtFormType: null,
+      depositAccountCode: '11-1101',
+      journalEntryId: null,
+      settlement: {
+        settlementLines: [
+          { id: 'l1', clearedDocumentId: 'ex-1', amountSettled: new Decimal('5000.00') },
+        ],
+      },
+    });
+    prisma.expenseDocument.findMany.mockResolvedValueOnce([
+      { id: 'ex-1', vendorTaxId: '1234567890123', vendorName: 'Vendor A' },
+    ]);
+
+    await expect(template.execute(docId)).rejects.toThrow(/whtFormType ต้องเป็น PND3 หรือ PND53/);
+    expect(journal.createAndPost).not.toHaveBeenCalled();
+  });
+
+  it('C12-symmetry: throws when whtFormType is unknown string (defensive)', async () => {
+    prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+      id: docId,
+      number: 'SE-20260514-C12B',
+      documentType: 'VENDOR_SETTLEMENT',
+      documentDate: new Date('2026-05-14'),
+      totalAmount: new Decimal('5000.00'),
+      withholdingTax: new Decimal('100.00'),
+      whtFormType: 'PND91',
+      depositAccountCode: '11-1101',
+      journalEntryId: null,
+      settlement: {
+        settlementLines: [
+          { id: 'l1', clearedDocumentId: 'ex-1', amountSettled: new Decimal('5000.00') },
+        ],
+      },
+    });
+    prisma.expenseDocument.findMany.mockResolvedValueOnce([
+      { id: 'ex-1', vendorTaxId: '1234567890123', vendorName: 'Vendor A' },
+    ]);
+
+    await expect(template.execute(docId)).rejects.toThrow(/whtFormType ต้องเป็น PND3 หรือ PND53/);
+  });
 });

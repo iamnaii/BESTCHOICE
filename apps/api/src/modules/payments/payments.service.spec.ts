@@ -100,6 +100,11 @@ describe('PaymentsService', () => {
       partialPaymentLink: {
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
+      // W3 fix: autoAllocate / applyCreditBalance write audit rows inside
+      // the serializable tx so allocated payments leave a forensic trail.
+      auditLog: {
+        create: jest.fn().mockResolvedValue({ id: 'audit-1' }),
+      },
       $transaction: jest.fn((cb) => cb(mockPrisma)),
     };
 

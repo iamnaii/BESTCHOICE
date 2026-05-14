@@ -112,6 +112,30 @@ export class PaymentsService {
     }
   }
 
+  /**
+   * W1 fix: enforce branch-level access when the caller only knows the
+   * paymentId (waive-late-fee + partial-QR endpoints). Looks up the
+   * payment's contractId and delegates to validateBranchAccess.
+   *
+   * Routes guarded by class-level BranchGuard pass only when the request
+   * carries `branchId` — these payment-keyed routes don't, so they were
+   * silently bypassing the cross-branch check. This helper closes the gap.
+   */
+  async validateBranchAccessByPayment(
+    paymentId: string,
+    user: { role: string; branchId: string | null },
+  ) {
+    if (hasCrossBranchAccess(user)) return;
+    const payment = await this.prisma.payment.findUnique({
+      where: { id: paymentId },
+      select: { contractId: true, deletedAt: true },
+    });
+    if (!payment || payment.deletedAt) {
+      throw new NotFoundException('ไม่พบรายการชำระ');
+    }
+    await this.validateBranchAccess(payment.contractId, user);
+  }
+
   // ─── Record a single payment (บังคับ upload หลักฐาน) ──
   async recordPayment(
     contractId: string,
@@ -524,6 +548,12 @@ export class PaymentsService {
     const financeCompanyId = await this.resolveFinanceCompanyId();
     const shopCompanyId = await this.resolveShopCompanyId();
 
+    // W2 fix: resolve the deposit-account code for the recorder ONCE (mirrors
+    // recordPayment line ~160). Previously the per-installment Payment.update
+    // omitted depositAccountCode, so the downstream JE fell back to '11-1101'
+    // (สุทธินีย์) regardless of who actually collected the money.
+    const resolvedDepositAccountCode = await this.resolveUserDefaultCashAccount(recordedById);
+
     // Wrap entire allocation in a serializable transaction to prevent double-payment
     const allocationResult = await this.prisma.$transaction(async (tx) => {
       const contract = await tx.contract.findUnique({
@@ -562,7 +592,28 @@ export class PaymentsService {
             status: isPaidInFull ? 'PAID' : 'PARTIALLY_PAID',
             recordedById,
             notes: notes || payment.notes,
+            depositAccountCode: resolvedDepositAccountCode,
             ...(isFirstPayment && evidenceUrl ? { evidenceUrl } : {}),
+          },
+        });
+
+        // W3 fix: audit-log each per-installment payment created here.
+        // Previously only recordPayment emitted PAYMENT_RECORDED — the bulk
+        // path skipped audit, so allocated payments showed no audit trail.
+        await tx.auditLog.create({
+          data: {
+            userId: recordedById,
+            action: isPaidInFull ? 'PAYMENT_RECORDED' : 'PAYMENT_PARTIAL',
+            entity: 'payment',
+            entityId: updated.id,
+            newValue: {
+              contractId,
+              installmentNo: updated.installmentNo,
+              amount: payAmount.toString(),
+              paymentMethod,
+              source: 'AUTO_ALLOCATE',
+              depositAccountCode: resolvedDepositAccountCode,
+            },
           },
         });
 
@@ -588,7 +639,11 @@ export class PaymentsService {
             await this.paymentReceipt2BTemplate.execute({
               installmentScheduleId: instSchedBulk.id,
               amountReceived: new Prisma.Decimal(updated.amountPaid.toString()),
-              depositAccountCode: updated.depositAccountCode ?? '11-1101',
+              // W2 fix: use the resolvedDepositAccountCode that we just
+              // wrote on Payment.update — previously this read the field
+              // off the in-memory Prisma return value which may not yet
+              // reflect the same value (and read '11-1101' fallback).
+              depositAccountCode: updated.depositAccountCode ?? resolvedDepositAccountCode,
               existingPaymentId: updated.id,
             });
           } else {
@@ -649,9 +704,12 @@ export class PaymentsService {
         // Phase A.4b: replaced createCustomerCreditOverpaymentJournal (old stub)
         // with inline createAndPost. JE: Dr Cash (deposit) / Cr 21-5101 Customer Credit Balance.
         // 21-5101 = เงินเกินของลูกค้า (confirmed in finance-chart-of-accounts.csv).
+        // W2 fix: use the resolvedDepositAccountCode (caller's actual cash
+        // account) instead of the per-row fallback which masked the user's
+        // default and silently re-routed every overpayment JE to 11-1101.
         const depositCode = results.length > 0
-          ? (results[results.length - 1].updated.depositAccountCode ?? '11-1101')
-          : '11-1101';
+          ? (results[results.length - 1].updated.depositAccountCode ?? resolvedDepositAccountCode)
+          : resolvedDepositAccountCode;
         const zero = new Prisma.Decimal(0);
         await this.journalAutoService.createAndPost(
           {
@@ -855,11 +913,22 @@ export class PaymentsService {
       );
     });
 
+    // W6 fix: the previous Math.round(Decimal.toNumber()) silently dropped
+    // satang on every daily total — a day collecting 152.50 + 99.17 + ...
+    // was rounded to whole baht for the summary card. Drop the Math.round
+    // and keep two-decimal precision; the UI side already calls .toLocaleString
+    // which formats both ints and floats consistently.
+    const totalAmount = new Prisma.Decimal(aggregation._sum.amountPaid ?? 0)
+      .toDecimalPlaces(2)
+      .toNumber();
+    const totalLateFees = new Prisma.Decimal(aggregation._sum.lateFee ?? 0)
+      .toDecimalPlaces(2)
+      .toNumber();
     return {
       date,
       totalPayments: total,
-      totalAmount: Math.round(new Prisma.Decimal(aggregation._sum.amountPaid ?? 0).toNumber()),
-      totalLateFees: Math.round(new Prisma.Decimal(aggregation._sum.lateFee ?? 0).toNumber()),
+      totalAmount,
+      totalLateFees,
       byMethod,
       data: payments,
       total,
@@ -991,6 +1060,24 @@ export class PaymentsService {
             status: isPaidInFull ? 'PAID' : 'PARTIALLY_PAID',
             recordedById,
             notes: [payment.notes, `ใช้เครดิต ${payAmount.toNumber().toLocaleString()} บาท`].filter(Boolean).join(' | '),
+          },
+        });
+
+        // W3 fix: previously applyCreditBalance left no audit trail.
+        // Emit CREDIT_APPLIED per installment for forensic visibility.
+        await tx.auditLog.create({
+          data: {
+            userId: recordedById,
+            action: 'CREDIT_APPLIED',
+            entity: 'payment',
+            entityId: updated.id,
+            newValue: {
+              contractId,
+              installmentNo: updated.installmentNo,
+              payAmount: payAmount.toString(),
+              totalPaidAfter: totalPaid.toString(),
+              becamePaidInFull: isPaidInFull,
+            },
           },
         });
 

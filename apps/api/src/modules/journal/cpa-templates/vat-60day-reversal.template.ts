@@ -22,10 +22,11 @@ import { PrismaService } from '../../../prisma/prisma.service';
  * same tx. When called from PaymentReceipt2BTemplate the caller passes
  * its own tx; otherwise we open one here.
  *
- * vatPerInst is read from the original mandatory JE's metadata — avoids
- * recomputation drift if Contract fields changed between mandatory and
- * reversal (e.g. amend / fix). Falls back to recomputing for legacy
- * mandatory JEs posted before vatPerInst was persisted.
+ * vatPerInst is read from the original mandatory JE's metadata so the
+ * reversal mirrors the mandatory 1:1. Refuses to recompute if metadata
+ * is missing — drift between mandatory and reversal would leave a
+ * permanent imbalance on 21-2103 / 11-2104 if Contract fields changed
+ * (W8 fix).
  *
  * Idempotent: returns null if vat60dayJournalEntryId is already null
  * (no mandatory JE was ever posted, or already reversed).
@@ -51,33 +52,27 @@ export class Vat60dayReversalTemplate {
 
       const c = await tx.contract.findUniqueOrThrow({ where: { id: inst.contractId } });
 
-      // Read vatPerInst from the original mandatory JE's metadata — guarantees
-      // the reversal mirrors the mandatory exactly. Falls back to recomputing
-      // for legacy entries posted before vatPerInst was persisted.
-      let vatPerInst: Decimal | null = null;
+      // W8 fix: refuse to recompute vatPerInst at reversal time. The mandatory
+      // JE persists vatPerInst in its metadata so the reversal mirrors it 1:1.
+      // If Contract.vatAmount / interestTotal / storeCommission were edited
+      // between mandatory and reversal (e.g. amend / correction), the
+      // recomputed value would drift from the mandatory pair and leave a
+      // permanent imbalance on 21-2103 / 11-2104. Better to fail loudly so an
+      // accountant fixes the metadata than silently book a drifted reversal.
       const mandatoryEntry = await tx.journalEntry.findUnique({
         where: { entryNumber: inst.vat60dayJournalEntryId },
         select: { metadata: true },
       });
       const meta = (mandatoryEntry?.metadata ?? {}) as Record<string, unknown>;
-      if (typeof meta.vatPerInst === 'string' && meta.vatPerInst) {
-        vatPerInst = new Decimal(meta.vatPerInst);
+      if (typeof meta.vatPerInst !== 'string' || !meta.vatPerInst) {
+        throw new Error(
+          `VAT 60-day reversal refused — mandatory JE ${inst.vat60dayJournalEntryId} ` +
+            'is missing vatPerInst in metadata. Recomputation would drift if ' +
+            'contract VAT/interest fields changed between mandatory and reversal. ' +
+            'Backfill the metadata or post a manual reversal JE.',
+        );
       }
-      if (!vatPerInst) {
-        const total = new Decimal(c.totalMonths);
-        const financed = new Decimal(c.financedAmount.toString());
-        const commission =
-          c.storeCommission != null
-            ? new Decimal(c.storeCommission.toString())
-            : financed.times('0.10').toDecimalPlaces(2);
-        const interest = new Decimal(c.interestTotal.toString());
-        const grossExclVat = financed.plus(commission).plus(interest);
-        const vat =
-          c.vatAmount != null
-            ? new Decimal(c.vatAmount.toString())
-            : grossExclVat.times('0.07').toDecimalPlaces(2);
-        vatPerInst = vat.div(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-      }
+      const vatPerInst = new Decimal(meta.vatPerInst);
 
       const zero = new Decimal(0);
 

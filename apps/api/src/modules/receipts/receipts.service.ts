@@ -36,9 +36,18 @@ export class ReceiptsService {
    */
   private async generateReceiptNumber(tx?: Prisma.TransactionClient): Promise<string> {
     const db = tx || this.prisma;
+    // W5 fix: pin YYYY/MM to Asia/Bangkok so a receipt issued at 00:30 BKK
+    // on May 1 (17:30 UTC Apr 30) numbers under May, not April. Server-local
+    // .getFullYear()/.getMonth() on UTC Cloud Run produced the wrong month
+    // prefix at the BKK calendar boundary.
     const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const bkkParts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Bangkok',
+      year: 'numeric',
+      month: '2-digit',
+    }).formatToParts(now);
+    const year = parseInt(bkkParts.find((p) => p.type === 'year')!.value, 10);
+    const month = bkkParts.find((p) => p.type === 'month')!.value;
     const prefix = `RT-${year}${month}-`;
 
     const lockKey = parseInt(`1${year}${month}`, 10);

@@ -269,12 +269,18 @@ export class PaymentsController {
 
   @Patch(':paymentId/waive-late-fee')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
-  waiveLateFee(
+  async waiveLateFee(
     @Param('paymentId') paymentId: string,
     @Body() dto: WaiveLateFeeDto,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: { id: string; role: string; branchId: string | null },
     @Req() req: Request,
   ) {
+    // W1 fix: BranchGuard at class level only fires when request carries
+    // branchId. Waiver payload carries only paymentId, so cross-branch
+    // bypass was possible. Resolve the contract from the payment and run
+    // validateBranchAccess explicitly.
+    await this.paymentsService.validateBranchAccessByPayment(paymentId, user);
+
     // T3-C4: capture IP + UA of the APPROVER for the immutable audit row.
     // Trust proxy forwarding is already configured at the app bootstrap
     // level (req.ip honours X-Forwarded-For); user-agent comes straight
@@ -317,7 +323,11 @@ export class PaymentsController {
   async createPartialQr(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: CreatePartialQrDto,
+    @CurrentUser() user: { id: string; role: string; branchId: string | null },
   ) {
+    // W1 fix: enforce branch access — class-level BranchGuard only fires
+    // when the request carries branchId, partial-QR routes carry only id.
+    await this.paymentsService.validateBranchAccessByPayment(id, user);
     return this.paySolutionsService.createPartialPaymentQR({
       paymentId: id,
       amount: dto.amount,
@@ -326,13 +336,23 @@ export class PaymentsController {
 
   @Get(':id/partial-qr/active')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
-  async getActivePartialQr(@Param('id', ParseUUIDPipe) id: string) {
+  async getActivePartialQr(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: { id: string; role: string; branchId: string | null },
+  ) {
+    // W1 fix: same as above — explicit branch check on paymentId-keyed route.
+    await this.paymentsService.validateBranchAccessByPayment(id, user);
     return this.paymentsService.getActivePartialQr(id);
   }
 
   @Delete(':id/partial-qr')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
-  async cancelPartialQr(@Param('id', ParseUUIDPipe) id: string) {
+  async cancelPartialQr(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: { id: string; role: string; branchId: string | null },
+  ) {
+    // W1 fix: same as above — explicit branch check on paymentId-keyed route.
+    await this.paymentsService.validateBranchAccessByPayment(id, user);
     return this.paymentsService.cancelActivePartialQr(id);
   }
 }

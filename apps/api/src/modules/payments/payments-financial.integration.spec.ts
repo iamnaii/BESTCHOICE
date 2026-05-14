@@ -82,6 +82,10 @@ describe('PaymentsService — Financial Integration', () => {
       partialPaymentLink: {
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
+      // W3 fix: bulk-allocate + credit-allocate paths emit AuditLog rows
+      auditLog: {
+        create: jest.fn().mockResolvedValue({ id: 'audit-1' }),
+      },
     };
 
     const module: TestingModule = await Test.createTestingModule({

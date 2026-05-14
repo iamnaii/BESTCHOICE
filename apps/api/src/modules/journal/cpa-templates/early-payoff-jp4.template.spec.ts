@@ -7,6 +7,8 @@ import { ContractActivation1ATemplate } from './contract-activation-1a.template'
 import { InstallmentAccrual2ATemplate } from './installment-accrual-2a.template';
 import { PaymentReceipt2BTemplate } from './payment-receipt-2b.template';
 import { EarlyPayoffJP4Template } from './early-payoff-jp4.template';
+import { Vat60dayMandatoryTemplate } from './vat-60day-mandatory.template';
+import { Vat60dayReversalTemplate } from './vat-60day-reversal.template';
 import { JournalAutoService } from '../journal-auto.service';
 
 const prisma = new PrismaClient();
@@ -288,6 +290,65 @@ describe('EarlyPayoffJP4Template', () => {
     const cr21_2101 = je.lines.find((l) => l.accountCode === '21-2101');
     expect(cr21_2101).toBeDefined();
     expect(new Decimal(cr21_2101!.credit.toString()).gte(0)).toBe(true);
+  });
+
+  // C3 fix regression: when JP4 closes installments that had been 60-day flagged,
+  // it must call Vat60dayReversalTemplate to clear 11-2104 + 21-2103. Before the
+  // fix, those balances stayed on the books forever for early-paid-off contracts.
+  it('C3 — reverses VAT 60-day mandatory JEs on early-paid-off installments', async () => {
+    const journal = await setup();
+    const c = await seedStandard17k12m(prisma);
+    await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
+
+    // Accrue first 6 installments, mark them paid via 2B
+    await payFirstN(journal, c.id, 6);
+
+    // Accrue installment 7 + 8 so they have a Cr 21-2102 balance to mandate-VAT against
+    const accrual = new InstallmentAccrual2ATemplate(journal, prisma as any);
+    const insts = await prisma.installmentSchedule.findMany({
+      where: { contractId: c.id },
+      orderBy: { installmentNo: 'asc' },
+    });
+    await accrual.execute(insts[6].id);
+    await accrual.execute(insts[7].id);
+
+    // Backdate installments 7 + 8 to >60 days overdue + run mandatory VAT
+    await prisma.installmentSchedule.updateMany({
+      where: { id: { in: [insts[6].id, insts[7].id] } },
+      data: { dueDate: new Date(Date.now() - 70 * 24 * 60 * 60 * 1000) },
+    });
+    const mandatory = new Vat60dayMandatoryTemplate(journal, prisma as any);
+    await mandatory.execute(insts[6].id);
+    await mandatory.execute(insts[7].id);
+
+    // Verify mandatory flags are set
+    const flaggedBefore = await prisma.installmentSchedule.findMany({
+      where: { id: { in: [insts[6].id, insts[7].id] } },
+      select: { id: true, vat60dayJournalEntryId: true },
+    });
+    expect(flaggedBefore.every((f) => f.vat60dayJournalEntryId !== null)).toBe(true);
+
+    // Run early payoff WITH reversal injected
+    const reversal = new Vat60dayReversalTemplate(journal, prisma as any);
+    const jp4 = new EarlyPayoffJP4Template(journal, prisma as any, reversal);
+    await jp4.execute({
+      contractId: c.id,
+      depositAccountCode: '11-1101',
+      interestDiscountPercent: new Decimal('0'),
+    });
+
+    // Both flagged installments should have their vat60dayJournalEntryId cleared
+    const flaggedAfter = await prisma.installmentSchedule.findMany({
+      where: { id: { in: [insts[6].id, insts[7].id] } },
+      select: { id: true, vat60dayJournalEntryId: true },
+    });
+    expect(flaggedAfter.every((f) => f.vat60dayJournalEntryId === null)).toBe(true);
+
+    // 2 reversal JEs should exist (one per flagged installment)
+    const reversalEntries = await prisma.journalEntry.findMany({
+      where: { metadata: { path: ['tag'], equals: 'VAT60-REVERSAL' } } as any,
+    });
+    expect(reversalEntries.length).toBe(2);
   });
 
   it('throws when all installments are already paid', async () => {

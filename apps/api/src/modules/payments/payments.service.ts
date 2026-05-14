@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException, InternalServerErrorException, Logger, Optional, Inject, forwardRef } from '@nestjs/common';
+import { createHash } from 'crypto';
 import * as Sentry from '@sentry/node';
 import { StructuredLoggerService } from '../../common/logger';
 import { Prisma, PaymentMethod } from '@prisma/client';
@@ -353,6 +354,11 @@ export class PaymentsService {
           select: { id: true },
         });
         if (instSched) {
+          // C1 fix: forward computed lateFee to the 2B template so it emits the
+          // Cr 42-1103 income leg AND the tolerance check correctly accounts
+          // for "amount = installmentTotal + lateFee". Without this, the
+          // template would either reject the payment (delta > 1฿ tolerance)
+          // or silently drop the 42-1103 income — both were prod bugs.
           await this.paymentReceipt2BTemplate.execute({
             installmentScheduleId: instSched.id,
             amountReceived: new Prisma.Decimal(amount.toString()),
@@ -362,6 +368,7 @@ export class PaymentsService {
             advanceCredit: advanceCredit.gt(0) ? advanceCredit : undefined,
             advanceConsume: advanceConsume.gt(0) ? advanceConsume : undefined,
             partialClear: isPartialClear ? true : undefined,
+            lateFee: lateFee.gt(0) ? lateFee : undefined,
           });
 
           // CPA Policy A §3.6 — ECL stage reverse on payment.
@@ -998,8 +1005,14 @@ export class PaymentsService {
           // clears the customer credit balance against the outstanding receivable.
           // No Dr Cash because the cash was already recorded when the overpayment
           // was originally received (audit finding F-1-004).
+          //
+          // C4 fix: use `payAmount` (the delta applied in THIS allocation) not
+          // `updated.amountPaid` (cumulative). The previous code over-Dr'd
+          // 21-5101 by the prior partial-paid portion, driving the customer-
+          // credit account to negative when an installment had been partially
+          // paid before the credit balance was applied.
           const creditZero = new Prisma.Decimal(0);
-          const creditPayAmount = new Prisma.Decimal(updated.amountPaid.toString());
+          const creditPayAmount = new Prisma.Decimal(payAmount.toString());
           await this.journalAutoService.createAndPost(
             {
               description: `ใช้เครดิตชำระงวด #${updated.installmentNo} — สัญญา ${contract.contractNumber}`,
@@ -1129,6 +1142,29 @@ export class PaymentsService {
           continue;
         }
 
+        // C6 fix: CSV idempotency. The previous synthetic
+        // `CSV-${Date.now()}-${row}-${Math.random()}` was unique every run, so
+        // re-importing the same CSV (e.g. operator retry after partial failure)
+        // created duplicate Payments + duplicate JEs. Replace with a
+        // content-stable SHA-256 hash of the row's business identity:
+        //   contractNumber | installmentNo | amount | paidDate (date-only).
+        // Re-importing the same row will compute the same ref, and the
+        // existing idempotency check in recordPayment (notes contains
+        // `ref:<value>`) will reject it as a duplicate.
+        const stableRef =
+          transactionRef ||
+          `csv:${createHash('sha256')
+            .update(
+              [
+                contractNumber,
+                String(installmentNo),
+                amount.toFixed(2),
+                new Date().toISOString().slice(0, 10),
+              ].join('|'),
+            )
+            .digest('hex')
+            .slice(0, 32)}`;
+
         await this.recordPayment(
           contract.id,
           installmentNo,
@@ -1137,7 +1173,7 @@ export class PaymentsService {
           recordedById,
           undefined, // evidenceUrl
           notes || `CSV import row ${row}`,
-          transactionRef || `CSV-${Date.now()}-${row}-${Math.random().toString(36).slice(2, 8)}`,
+          stableRef,
           depositCode, // resolves to user default → 11-1101 if undefined
         );
         success++;

@@ -57,6 +57,7 @@ describe('PaymentsService', () => {
     const mockPrisma = {
       contract: {
         findUnique: jest.fn().mockResolvedValue(mockContract),
+        findFirst: jest.fn().mockResolvedValue(mockContract),
         update: jest.fn().mockResolvedValue(mockContract),
       },
       payment: {
@@ -119,7 +120,7 @@ describe('PaymentsService', () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: ReceiptsService, useValue: mockReceiptsService },
         { provide: AuditService, useValue: mockAuditService },
-        { provide: JournalAutoService, useValue: { createPaymentJournal: jest.fn().mockResolvedValue('je-1'), createExpenseJournal: jest.fn(), createContractActivationJournal: jest.fn(), createBadDebtWriteOffJournal: jest.fn(), createCustomerCreditOverpaymentJournal: jest.fn().mockResolvedValue('je-2'), createCreditAllocationJournal: jest.fn().mockResolvedValue({ financeEntryId: 'je-3', shopEntryId: 'je-4' }) } },
+        { provide: JournalAutoService, useValue: { createPaymentJournal: jest.fn().mockResolvedValue('je-1'), createExpenseJournal: jest.fn(), createContractActivationJournal: jest.fn(), createBadDebtWriteOffJournal: jest.fn(), createCustomerCreditOverpaymentJournal: jest.fn().mockResolvedValue('je-2'), createCreditAllocationJournal: jest.fn().mockResolvedValue({ financeEntryId: 'je-3', shopEntryId: 'je-4' }), createAndPost: jest.fn().mockResolvedValue({ entryNumber: 'JE-CR' }) } },
         { provide: ProductsService, useValue: { transferOwnership: jest.fn() } },
         { provide: LineOaService, useValue: { buildPaymentSuccess: jest.fn().mockReturnValue({}), sendFlexMessage: jest.fn() } },
         {
@@ -312,6 +313,69 @@ describe('PaymentsService', () => {
       expect(updatedPayment.status).toBe('PAID');
       // Template execute is not called when installmentSchedule is null (logged as warn)
       expect(templateMock.execute).not.toHaveBeenCalled();
+    });
+
+    it('C1 fix: forwards computed lateFee to PaymentReceipt2BTemplate (Cr 42-1103)', async () => {
+      // Bug: recordPayment computed Payment.lateFee but never forwarded it to the
+      // 2B template, so the Cr 42-1103 income line was silently dropped AND the
+      // tolerance check rejected the late payment (cash > installmentTotal by lateFee).
+      //
+      // Set up a payment overdue by 5 days. The service computes a late fee
+      // capped at LATE_FEE_CAP_PCT * amountDue (~5% by default). For
+      // amountDue=1000, that's ~50฿. Customer pays amountDue + lateFee_capped.
+      const dueDate = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+      const overduePayment = {
+        ...mockPayment,
+        amountDue: 1000,
+        amountPaid: 0,
+        lateFee: 0,
+        lateFeeWaived: false,
+        dueDate,
+        status: 'PENDING',
+      };
+      prisma.payment.findFirst.mockResolvedValue(overduePayment);
+      // The post-update mock — payment fully paid for installmentTotal + capped lateFee
+      // Use a generous amountPaid since the exact lateFee depends on BUSINESS_RULES.
+      prisma.payment.update.mockImplementation(({ data }: any) => ({
+        ...overduePayment,
+        ...data,
+        status: 'PAID',
+        paidDate: new Date(),
+      }));
+      prisma.systemConfig.findUnique.mockResolvedValue(null); // use defaults
+
+      // Spy on the InstallmentSchedule lookup so template.execute is reached
+      prisma.installmentSchedule.findUnique.mockResolvedValue({ id: 'inst-sched-1' });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const templateMock = (service as any).paymentReceipt2BTemplate;
+
+      // To avoid relying on the exact business-rule cap value, query the
+      // service's computed lateFee by inspecting the Payment.update call.
+      // We pay (amountDue + plenty) and use OVERPAY_ADVANCE to bypass the
+      // overage check, then verify lateFee was forwarded to the template.
+      await service.recordPayment(
+        'contract-1',
+        1,
+        1000, // amount = amountDue exactly (no overage; lateFee is internal)
+        'CASH',
+        'user-1',
+        'http://slip.jpg',
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        'PARTIAL', // allow underpay since fee makes "remaining" > amount paid
+      );
+
+      // Verify lateFee was passed to the template. Must be a Decimal-like > 0
+      // (the precise value depends on BUSINESS_RULES.LATE_FEE_CAP_PCT, which
+      // is exercised here — what matters is that the field is FORWARDED, not
+      // dropped on the floor as the pre-fix code did).
+      expect(templateMock.execute).toHaveBeenCalled();
+      const callArgs = templateMock.execute.mock.calls[0][0];
+      expect(callArgs.lateFee).toBeDefined();
+      expect(Number(callArgs.lateFee.toString())).toBeGreaterThan(0);
     });
   });
 
@@ -973,6 +1037,112 @@ describe('PaymentsService', () => {
           daysToShift: 5,
         }),
       ).rejects.toThrow(/ยังไม่ได้ทำ accrual/);
+    });
+  });
+
+  // C6 regression: CSV importer used Date.now()+Math.random() as a synthetic
+  // transactionRef, defeating recordPayment idempotency. Re-imports of the
+  // same CSV produced duplicate Payments + JEs. Fix is a content-stable SHA-256
+  // hash of (contractNumber|installmentNo|amount|date).
+  describe('importPaymentsFromCsv — C6 idempotency', () => {
+    it('generates the SAME transactionRef for the same row across re-imports (deterministic hash)', async () => {
+      // Spy on recordPayment to capture the transactionRef threaded into each row
+      // (without re-running all the recordPayment logic — out of scope for this unit test).
+      const recordSpy = jest
+        .spyOn(service, 'recordPayment')
+        .mockResolvedValue({ id: 'p', status: 'PAID' } as any);
+
+      // CSV body with one row (header + 1 data row). No explicit transactionRef
+      // → service must derive a content-stable hash.
+      prisma.contract.findFirst.mockResolvedValue({ id: 'contract-csv-1' });
+
+      const csv =
+        'contractNumber,installmentNo,amount,paymentMethod,transactionRef,notes\n' +
+        'BC-2026-100,3,1515.83,CASH,,\n';
+
+      // Import the same CSV twice
+      await service.importPaymentsFromCsv(csv, 'CASH', 'user-1');
+      await service.importPaymentsFromCsv(csv, 'CASH', 'user-1');
+
+      // Capture both calls' transactionRef
+      const refs = recordSpy.mock.calls.map((c: any[]) => c[7]); // 8th positional arg = transactionRef
+      expect(refs.length).toBe(2);
+      expect(refs[0]).toBeDefined();
+      expect(refs[0]).toBe(refs[1]); // deterministic — same row → same ref
+      expect(refs[0]).toMatch(/^csv:[0-9a-f]+$/); // sha256 hex prefix
+
+      recordSpy.mockRestore();
+    });
+
+    it('honours explicit transactionRef from CSV row when provided', async () => {
+      const recordSpy = jest
+        .spyOn(service, 'recordPayment')
+        .mockResolvedValue({ id: 'p', status: 'PAID' } as any);
+      prisma.contract.findFirst.mockResolvedValue({ id: 'contract-csv-1' });
+
+      const csv =
+        'contractNumber,installmentNo,amount,paymentMethod,transactionRef,notes\n' +
+        'BC-2026-100,3,1515.83,CASH,REAL-BANK-REF-9999,\n';
+
+      await service.importPaymentsFromCsv(csv, 'CASH', 'user-1');
+
+      const refs = recordSpy.mock.calls.map((c: any[]) => c[7]);
+      expect(refs[0]).toBe('REAL-BANK-REF-9999');
+
+      recordSpy.mockRestore();
+    });
+  });
+
+  // C4 regression: applyCreditBalance had been passing `updated.amountPaid`
+  // (cumulative) to the JE instead of the delta — over-Dr 21-5101 and
+  // over-Cr 11-2103 when the installment had a prior partial payment.
+  describe('applyCreditBalance — C4 regression (use delta, not cumulative)', () => {
+    it('Dr/Cr the delta payAmount, not cumulative amountPaid, when installment had a prior partial', async () => {
+      // Installment had 500฿ already paid (prior partial). amountDue = 1500฿.
+      // Customer has 1000฿ credit balance → enough to fully clear.
+      const partiallyPaidInst = {
+        ...mockPayment,
+        id: 'inst-7',
+        installmentNo: 7,
+        amountDue: 1500,
+        amountPaid: 500, // prior partial
+        lateFee: 0,
+        status: 'PARTIALLY_PAID',
+        deletedAt: null,
+      };
+      const contractWithCredit = {
+        ...mockContract,
+        creditBalance: 1000,
+        deletedAt: null,
+        payments: [partiallyPaidInst],
+      };
+      prisma.contract.findUnique.mockResolvedValue(contractWithCredit);
+      // After update, amountPaid = 1500 (cumulative)
+      prisma.payment.update.mockResolvedValue({
+        ...partiallyPaidInst,
+        amountPaid: 1500,
+        status: 'PAID',
+        paidDate: new Date(),
+      });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const journal = (service as any).journalAutoService;
+
+      await service.applyCreditBalance('contract-1', 'user-1');
+
+      expect(journal.createAndPost).toHaveBeenCalled();
+      const jeArg = journal.createAndPost.mock.calls[0][0];
+
+      // C4 fix: JE amounts must equal the DELTA (1000 = remaining gap to clear
+      // the installment), NOT the cumulative amountPaid (1500). The prior 500฿
+      // was already booked as a partial JE when it was received.
+      const dr21_5101 = jeArg.lines.find((l: any) => l.accountCode === '21-5101');
+      const cr11_2103 = jeArg.lines.find((l: any) => l.accountCode === '11-2103');
+      expect(dr21_5101).toBeDefined();
+      expect(cr11_2103).toBeDefined();
+      // Use Number() because the line.dr/cr is a Prisma.Decimal
+      expect(Number(dr21_5101.dr.toString())).toBe(1000);
+      expect(Number(cr11_2103.cr.toString())).toBe(1000);
     });
   });
 });

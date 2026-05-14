@@ -74,6 +74,11 @@ describe('PaySolutionsService.handlePaymentCallback — payment JE (F-1-003)', (
       contract: {
         update: jest.fn().mockResolvedValue({ productId: null }),
       },
+      // C2 fix: in-tx JE post calls tx.installmentSchedule.findUnique to map
+      // installmentNo → installmentScheduleId.
+      installmentSchedule: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'inst-sched-1' }),
+      },
     };
 
     prisma = {
@@ -163,7 +168,7 @@ describe('PaySolutionsService.handlePaymentCallback — payment JE (F-1-003)', (
       .mockResolvedValue(undefined);
   });
 
-  it('posts payment JE on successful webhook callback (F-1-003)', async () => {
+  it('posts payment JE on successful webhook callback (F-1-003, C2 in-tx)', async () => {
     await service.handlePaymentCallback({
       refno: 'refno-1',
       result_code: '00',
@@ -172,7 +177,8 @@ describe('PaySolutionsService.handlePaymentCallback — payment JE (F-1-003)', (
       total: '1000',
     });
 
-    // Phase A.4b: JE now posted via PaymentReceipt2BTemplate (not JournalAutoService)
+    // Phase A.4b + C2: JE posted via PaymentReceipt2BTemplate INSIDE the tx
+    // (2nd arg = outer tx for atomicity).
     expect(paymentReceiptTemplate.execute).toHaveBeenCalledTimes(1);
     expect(paymentReceiptTemplate.execute).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -180,29 +186,40 @@ describe('PaySolutionsService.handlePaymentCallback — payment JE (F-1-003)', (
         depositAccountCode: '11-1202',
         existingPaymentId: paymentId,
       }),
+      prisma.__tx,
     );
   });
 
-  it('JE failure does not roll back payment.update — tx-poisoning prevention (F-1-003 follow-up)', async () => {
-    // The JE call lives AFTER the main tx commits (caught by try/catch per payment).
-    // A JE rejection must NOT undo Payment.update to PAID.
+  it('C2 fix: JE failure inside tx rolls back Payment.update — no orphan PAID rows', async () => {
+    // C2 fix (2026-05-14): the previous behavior swallowed JE errors AFTER
+    // the Payment.update committed → orphan PAID rows with no ledger entries.
+    // Now the JE post lives INSIDE the same $transaction, so a JE rejection
+    // throws out of the tx callback → Prisma aborts the whole tx → no
+    // orphan PAID rows can exist.
     paymentReceiptTemplate.execute.mockRejectedValueOnce(
-      new Error('JE failed'),
+      new Error('JE post failed (unbalanced)'),
     );
 
-    await service.handlePaymentCallback({
-      refno: 'refno-1',
-      result_code: '00',
-      order_no: 'order-1',
-      transaction_id: 'tx-1',
-      total: '1000',
-    });
-
-    // Payment was committed to PAID despite the JE rejection.
-    expect(prisma.__tx.payment.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ status: 'PAID' }),
+    // The error propagates because the $transaction wrapper re-throws on
+    // callback failure. The test asserts that behavior — webhook handler
+    // does not swallow this (legitimate atomicity over P2 acknowledgement
+    // for an INVALID-data error like an unbalanced JE).
+    await expect(
+      service.handlePaymentCallback({
+        refno: 'refno-1',
+        result_code: '00',
+        order_no: 'order-1',
+        transaction_id: 'tx-1',
+        total: '1000',
       }),
+    ).rejects.toThrow(/JE post failed/);
+
+    // The template WAS called (mock counts even with thrown error)
+    expect(paymentReceiptTemplate.execute).toHaveBeenCalled();
+    // And it was called with the outer tx as the second arg (atomicity)
+    expect(paymentReceiptTemplate.execute).toHaveBeenCalledWith(
+      expect.any(Object),
+      prisma.__tx, // outerTx passed through
     );
   });
 
@@ -217,54 +234,18 @@ describe('PaySolutionsService.handlePaymentCallback — payment JE (F-1-003)', (
       total: '1000',
     });
 
-    // No JE was attempted — guard prevents FK violation that would otherwise
-    // be swallowed by the inner try/catch.
+    // No JE was attempted — guard prevents FK violation. The Payment.update
+    // still happens (the systemUserId check gates JE only, not the payment
+    // mutation), which is acceptable because the JE can be reconciled later.
     expect(paymentReceiptTemplate.execute).not.toHaveBeenCalled();
-    // But payment was still committed (P2 — webhook MUST acknowledge).
     expect(prisma.__tx.payment.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ status: 'PAID' }),
       }),
     );
-    // And Sentry was alerted via captureMessage (different from captureException).
     expect(Sentry.captureMessage as jest.Mock).toHaveBeenCalledWith(
       expect.stringContaining('no OWNER user'),
       expect.objectContaining({ level: 'error' }),
-    );
-  });
-
-  it('does not block payment processing if JE creation fails (F-1-003 P2 pattern)', async () => {
-    paymentReceiptTemplate.execute.mockRejectedValueOnce(
-      new Error('JE post failed'),
-    );
-
-    await expect(
-      service.handlePaymentCallback({
-        refno: 'refno-1',
-        result_code: '00',
-        order_no: 'order-1',
-        transaction_id: 'tx-1',
-        total: '1000',
-      }),
-    ).resolves.not.toThrow();
-
-    // Payment.update was still called with PAID status — the JE failure
-    // must NOT cause the webhook to abort. Customer paid real money via QR;
-    // we acknowledge and reconcile the JE manually from Sentry alert.
-    expect(prisma.__tx.payment.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ status: 'PAID' }),
-      }),
-    );
-
-    expect(Sentry.captureException as jest.Mock).toHaveBeenCalledWith(
-      expect.any(Error),
-      expect.objectContaining({
-        tags: expect.objectContaining({
-          module: 'paysolutions',
-          event: 'webhook-je-failure',
-        }),
-      }),
     );
   });
 });

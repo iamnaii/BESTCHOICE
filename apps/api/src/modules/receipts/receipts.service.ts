@@ -999,7 +999,15 @@ export class ReceiptsService {
 </body>
 </html>`;
 
-    await page.setContent(html, { waitUntil: 'networkidle0' });
+    // C5 fix: cap the puppeteer network wait so a fonts.googleapis.com outage
+    // doesn't stall PDF generation for the full default 30s. Mirrors the
+    // OtherIncome receipt-pdf.service pattern. If the fetch fails, fall back
+    // to system Thai fonts — acceptable degradation vs a 30s timeout.
+    try {
+      await page.setContent(html, { waitUntil: 'networkidle0', timeout: 8_000 });
+    } catch {
+      await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 5_000 });
+    }
 
     const pdf = await page.pdf({
       format: 'A4',

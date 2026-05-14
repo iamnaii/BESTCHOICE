@@ -724,13 +724,17 @@ export class ReceiptsService {
     });
     const page = await browser.newPage();
 
+    // C5 fix: no external font fetch. We rely on the puppeteer Chromium image's
+    // bundled fonts (Noto Sans Thai on Cloud Run / Linux) and a cursive fallback
+    // for the Sriracha-style signature flourish. Removing the Google Fonts
+    // <link> lets the PDF render with waitUntil: 'domcontentloaded' and a
+    // sub-second turnaround — previously a fonts.googleapis.com outage stalled
+    // every receipt for ~8 s.
     const html = `
 <!DOCTYPE html>
 <html lang="th">
 <head>
   <meta charset="UTF-8">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Sriracha&display=swap" rel="stylesheet">
   <style>
     @page { size: A4; margin: 0; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -740,7 +744,7 @@ export class ReceiptsService {
       --red-500:#ef4444;
     }
     body {
-      font-family: 'IBM Plex Sans Thai', sans-serif;
+      font-family: 'Noto Sans Thai', 'IBM Plex Sans Thai', system-ui, -apple-system, sans-serif;
       color: var(--zinc-900);
       font-size: 9.5pt;
       line-height: 1.45;
@@ -758,7 +762,7 @@ export class ReceiptsService {
     .meta-card { background:var(--emerald-50); border:1px solid var(--emerald-100); border-radius:6px; padding:10px 14px; font-size:9pt; align-self:start; }
     .meta-row { display:flex; justify-content:space-between; padding:3px 0; }
     .meta-label { color:var(--emerald-800); font-weight:600; }
-    .meta-value { color:var(--zinc-900); font-family:'IBM Plex Mono',monospace; font-size:8.5pt; font-weight:500; }
+    .meta-value { color:var(--zinc-900); font-family:'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size:8.5pt; font-weight:500; }
     .contact-info { margin-top:14px; font-size:9pt; }
     .contact-info .heading { color:var(--zinc-700); margin-bottom:4px; }
     .icon-line { display:grid; grid-template-columns:16px 1fr; gap:6px; align-items:start; color:var(--zinc-700); font-size:9pt; margin-top:2px; }
@@ -818,7 +822,7 @@ export class ReceiptsService {
     .qr-pane img { width:104px; height:104px; }
     .sig-block { text-align:left; }
     .sig-role { font-size:9.5pt; color:var(--zinc-900); font-weight:600; margin-bottom:2px; }
-    .sig-handwriting { font-family:'Sriracha',cursive; font-size:22pt; color:var(--zinc-600); line-height:1; transform:rotate(-3deg); transform-origin:left center; display:inline-block; opacity:0.85; margin-top:4px; }
+    .sig-handwriting { font-family:'Sriracha', 'Apple Chancery', 'Brush Script MT', cursive; font-size:22pt; color:var(--zinc-600); line-height:1; transform:rotate(-3deg); transform-origin:left center; display:inline-block; opacity:0.85; margin-top:4px; }
     .sig-rule { width:200px; border-top:1px dotted var(--zinc-300); margin:14px 0 5px; }
     .sig-name { font-size:10pt; font-weight:700; color:var(--zinc-900); }
     .sig-date { font-size:9pt; color:var(--zinc-500); margin-top:1px; font-variant-numeric:tabular-nums; }
@@ -999,15 +1003,11 @@ export class ReceiptsService {
 </body>
 </html>`;
 
-    // C5 fix: cap the puppeteer network wait so a fonts.googleapis.com outage
-    // doesn't stall PDF generation for the full default 30s. Mirrors the
-    // OtherIncome receipt-pdf.service pattern. If the fetch fails, fall back
-    // to system Thai fonts — acceptable degradation vs a 30s timeout.
-    try {
-      await page.setContent(html, { waitUntil: 'networkidle0', timeout: 8_000 });
-    } catch {
-      await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 5_000 });
-    }
+    // C5 fix: no external assets in the HTML — domcontentloaded is sufficient
+    // and avoids any fonts.googleapis.com stall. System Thai fonts (Noto Sans
+    // Thai on Cloud Run Chromium) render the body; cursive fallback covers the
+    // signature flourish.
+    await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 10_000 });
 
     const pdf = await page.pdf({
       format: 'A4',

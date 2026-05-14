@@ -330,7 +330,7 @@ export class OtherIncomeReceiptPdfService {
       --zinc-200:#e4e4e7; --zinc-300:#d4d4d8; --zinc-400:#a1a1aa; --zinc-500:#71717a; --zinc-600:#52525b; --zinc-700:#3f3f46; --zinc-900:#18181b;
       --red-500:#ef4444;
     }
-    body { font-family: 'IBM Plex Sans Thai', sans-serif; color: var(--zinc-900); font-size: 9.5pt; line-height: 1.45; padding: 11mm 12mm 10mm; }
+    body { font-family: 'Noto Sans Thai', 'IBM Plex Sans Thai', system-ui, -apple-system, sans-serif; color: var(--zinc-900); font-size: 9.5pt; line-height: 1.45; padding: 11mm 12mm 10mm; }
     .header { display:flex; justify-content:space-between; align-items:flex-start; padding-bottom:10px; border-bottom:1.5px solid var(--zinc-300); }
     .logo-block svg { height: 32px; width: auto; }
     .doc-title { font-size:20pt; font-weight:700; color:var(--emerald-700); line-height:1; text-align:right; letter-spacing:-0.01em; }
@@ -343,7 +343,7 @@ export class OtherIncomeReceiptPdfService {
     .meta-card { background:var(--emerald-50); border:1px solid var(--emerald-100); border-radius:6px; padding:10px 14px; font-size:9pt; align-self:start; }
     .meta-row { display:flex; justify-content:space-between; padding:3px 0; gap:8px; }
     .meta-label { color:var(--emerald-800); font-weight:600; white-space:nowrap; }
-    .meta-value { color:var(--zinc-900); font-family:'IBM Plex Mono',monospace; font-size:8.5pt; font-weight:500; text-align:right; word-break:break-all; }
+    .meta-value { color:var(--zinc-900); font-family:'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size:8.5pt; font-weight:500; text-align:right; word-break:break-all; }
     .contact-info { margin-top:14px; font-size:9pt; }
     .contact-info .heading { color:var(--zinc-700); margin-bottom:4px; }
     .icon-line { display:grid; grid-template-columns:16px 1fr; gap:6px; align-items:start; color:var(--zinc-700); font-size:9pt; margin-top:2px; }
@@ -356,7 +356,7 @@ export class OtherIncomeReceiptPdfService {
     table.items tbody td.right { text-align:right; }
     table.items td.no { color:var(--zinc-500); width:22px; }
     .item-name { font-weight:600; }
-    .item-code { color:var(--zinc-500); font-weight:500; font-family:'IBM Plex Mono',monospace; font-size:8.5pt; }
+    .item-code { color:var(--zinc-500); font-weight:500; font-family:'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size:8.5pt; }
     .item-meta { color:var(--zinc-500); font-size:8.5pt; margin-top:2px; }
 
     .partial-tag { display:block; margin:6px 0 0; color:var(--emerald-700); font-size:9pt; padding:3px 0 10px; border-bottom:1px solid var(--zinc-200); margin-bottom:12px; }
@@ -403,7 +403,7 @@ export class OtherIncomeReceiptPdfService {
     .qr-pane img { width:104px; height:104px; }
     .sig-block { text-align:left; }
     .sig-role { font-size:9.5pt; color:var(--zinc-900); font-weight:600; margin-bottom:2px; }
-    .sig-handwriting { font-family:'Sriracha',cursive; font-size:22pt; color:var(--zinc-600); line-height:1; transform:rotate(-3deg); transform-origin:left center; display:inline-block; opacity:0.85; margin-top:4px; }
+    .sig-handwriting { font-family:'Sriracha', 'Apple Chancery', 'Brush Script MT', cursive; font-size:22pt; color:var(--zinc-600); line-height:1; transform:rotate(-3deg); transform-origin:left center; display:inline-block; opacity:0.85; margin-top:4px; }
     .sig-rule { width:200px; border-top:1px dotted var(--zinc-300); margin:14px 0 5px; }
     .sig-name { font-size:10pt; font-weight:700; color:var(--zinc-900); }
     .sig-date { font-size:9pt; color:var(--zinc-500); margin-top:1px; font-variant-numeric:tabular-nums; }

@@ -15,6 +15,7 @@ import { otherIncomeApi } from '@/lib/otherIncome';
 import type { OtherIncome, OtherIncomeStatus } from '@/lib/otherIncome.types';
 import { formatThaiDateShort } from '@/lib/date';
 import { formatNumberDecimal } from '@/utils/formatters';
+import { DateRangeChips } from './components/DateRangeChips';
 
 const STATUS_LABELS: Record<OtherIncomeStatus, string> = {
   DRAFT: 'ร่าง',
@@ -104,8 +105,11 @@ export default function OtherIncomeListPage() {
 
   const [q, setQ] = useState('');
   const [status, setStatus] = useState<OtherIncomeStatus | ''>('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const todayInit = new Date();
+  const firstOfMonthInit = `${todayInit.getFullYear()}-${String(todayInit.getMonth() + 1).padStart(2, '0')}-01`;
+  const todayIsoInit = `${todayInit.getFullYear()}-${String(todayInit.getMonth() + 1).padStart(2, '0')}-${String(todayInit.getDate()).padStart(2, '0')}`;
+  const [startDate, setStartDate] = useState(firstOfMonthInit);
+  const [endDate, setEndDate] = useState(todayIsoInit);
   const { page, size, setPage, setSize } = usePaginationParams({ defaultSize: 50 });
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [confirmDeleteNumber, setConfirmDeleteNumber] = useState<string>('');
@@ -279,29 +283,37 @@ export default function OtherIncomeListPage() {
           <option value="POSTED">บันทึกแล้ว</option>
           <option value="REVERSED">กลับรายการ</option>
         </select>
-        <input
-          type="date"
-          value={startDate}
-          onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
-          className="border rounded-md px-3 py-2 text-sm bg-background"
-          placeholder="วันที่เริ่ม"
-        />
-        <input
-          type="date"
-          value={endDate}
-          onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
-          className="border rounded-md px-3 py-2 text-sm bg-background"
-          placeholder="วันที่สิ้นสุด"
-        />
-        {(q || status || startDate || endDate) && (
-          <button
-            type="button"
-            onClick={() => { setQ(''); setStatus(''); setStartDate(''); setEndDate(''); setPage(1); }}
-            className="px-3 py-2 text-sm border rounded-md hover:bg-accent"
-          >
-            ล้างตัวกรอง
-          </button>
-        )}
+        {/* Date Range Quick Chips (v2.3 — replaces old date inputs + clear button) */}
+        <div className="w-full">
+          <DateRangeChips
+            startDate={startDate}
+            endDate={endDate}
+            onChange={({ startDate: sd, endDate: ed }) => {
+              setStartDate(sd);
+              setEndDate(ed);
+              setPage(1);
+            }}
+          />
+        </div>
+        {/* Custom-range inputs: always rendered so users can type exact dates;
+            the "ช่วงวันที่..." chip focuses the first input via DOM query. */}
+        <div className="flex flex-wrap items-center gap-2 w-full">
+          <input
+            type="date"
+            data-date-range-custom-start="true"
+            value={startDate}
+            onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
+            className="border rounded-md px-3 py-2 text-sm bg-background"
+            placeholder="วันที่เริ่ม"
+          />
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
+            className="border rounded-md px-3 py-2 text-sm bg-background"
+            placeholder="วันที่สิ้นสุด"
+          />
+        </div>
       </div>
 
       {/* Table */}

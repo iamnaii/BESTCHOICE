@@ -92,7 +92,7 @@ export function ItemsTable({ control, register, watch, setValue }: Props) {
                     onChange={(c) => {
                       setValue(`items.${idx}.accountCode`, c, { shouldValidate: true });
                     }}
-                    filter={(a) => a.code.startsWith('42-') && a.code !== '42-1103'}
+                    filter={(a) => a.code.startsWith('42-')}
                   />
                 </div>
               </div>

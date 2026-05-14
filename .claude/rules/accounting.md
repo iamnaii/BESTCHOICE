@@ -310,7 +310,7 @@ Routes: `/other-income`, `/other-income/new`, `/other-income/:id`, `/other-incom
 
 Key accounts (from FINANCE 99-account chart):
 - `42-1102` — ดอกเบี้ยเงินฝาก (Bank interest income — exempt from VAT, subject to 15% WHT)
-- `42-1103` — ค่าปรับชำระล่าช้า (Late fee — auto-posted via `PaymentReceipt2BTemplate`; **blocked at V4 in this module to prevent duplicate entry**)
+- `42-1103` — ค่าปรับชำระล่าช้า (Late fee — usually auto-posted via `PaymentReceipt2BTemplate` together with installment payment. Also bookable here for "late-fee-only" scenarios where customer pays just the penalty without settling the installment. **Watch for duplicate-entry risk**: if booked here, do NOT also pass `lateFee` on the next installment Payment for the same month, or 42-1103 will be credited twice.)
 - `42-1104` — รายได้จากการหักค่าจ้าง (Payroll deduction — Pattern B deferred until payroll module exists)
 - `42-1105` — กำไรจากการจำหน่ายสินทรัพย์ (Gain on disposal of assets — VAT 7%)
 

@@ -48,14 +48,13 @@ describe('ValidationService', () => {
     expect(result.errors.find((e) => e.rule === 'V4')).toBeDefined();
   });
 
-  it('V4: blocks 42-1103 (already auto-posted by PaymentReceipt2BTemplate)', () => {
+  it('V4: allows 42-1103 (late-fee-only payment scenario)', () => {
     const doc = {
       ...goldenCases.bankInterest,
       items: [{ ...goldenCases.bankInterest.items[0], accountCode: '42-1103' }],
     };
     const result = service.validate(doc, baseCtx);
-    const v4 = result.errors.find((e) => e.rule === 'V4');
-    expect(v4?.msg).toMatch(/42-1103/);
+    expect(result.errors.find((e) => e.rule === 'V4')).toBeUndefined();
   });
 
   it('V6: VAT% > 0 must coexist with VAT account on JE', () => {

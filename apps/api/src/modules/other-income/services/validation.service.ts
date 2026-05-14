@@ -48,7 +48,6 @@ export interface ValidationResult {
 }
 
 const VALID_WHT_PCT = [0, 1, 2, 3, 5, 7, 10, 15];
-const BLOCKED_INCOME_CODES = new Set(['42-1103']);
 
 /**
  * Validation rule numbering — aligned to the accountant's PDF Spec v1.0
@@ -97,12 +96,6 @@ export class ValidationService {
           rule: 'V4',
           lineNo: it.lineNo,
           msg: `รายการที่ ${it.lineNo}: ต้องเลือกบัญชีกลุ่ม 42-XXXX`,
-        });
-      } else if (BLOCKED_INCOME_CODES.has(it.accountCode)) {
-        errors.push({
-          rule: 'V4',
-          lineNo: it.lineNo,
-          msg: `บัญชี ${it.accountCode} ถูกบันทึกอัตโนมัติผ่านหน้ารับชำระค่างวดอยู่แล้ว — ไม่ต้องบันทึกซ้ำที่นี่`,
         });
       }
 

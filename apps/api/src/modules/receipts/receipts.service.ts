@@ -9,6 +9,7 @@ import { LineOaService } from '../line-oa/line-oa.service';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { ReceiptVoidReversalTemplate } from '../journal/cpa-templates/receipt-void-reversal.template';
+import { EMBEDDED_FONT_FACES } from '../../assets/fonts/embedded-fonts';
 
 // Embedded BESTCHOICE logo. Single source of truth for the receipt header.
 // Loaded inline so the PDF renders without network access.
@@ -740,18 +741,19 @@ export class ReceiptsService {
     });
     const page = await browser.newPage();
 
-    // C5 fix: no external font fetch. We rely on the puppeteer Chromium image's
-    // bundled fonts (Noto Sans Thai on Cloud Run / Linux) and a cursive fallback
-    // for the Sriracha-style signature flourish. Removing the Google Fonts
-    // <link> lets the PDF render with waitUntil: 'domcontentloaded' and a
-    // sub-second turnaround — previously a fonts.googleapis.com outage stalled
-    // every receipt for ~8 s.
+    // C5 fix (round 2): self-host Thai fonts via base64-embedded @font-face.
+    // Cloud Run's `node:20-slim` and the puppeteer-bundled Chromium do NOT
+    // ship Thai fonts — without these embedded faces every Thai glyph
+    // renders as a tofu box. Fonts are loaded once at module init from
+    // `apps/api/src/assets/fonts/` (bundled into dist via nest-cli.json).
+    // Keep `domcontentloaded/10s` wait — no network assets remain.
     const html = `
 <!DOCTYPE html>
 <html lang="th">
 <head>
   <meta charset="UTF-8">
   <style>
+    ${EMBEDDED_FONT_FACES}
     @page { size: A4; margin: 0; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -1019,10 +1021,8 @@ export class ReceiptsService {
 </body>
 </html>`;
 
-    // C5 fix: no external assets in the HTML — domcontentloaded is sufficient
-    // and avoids any fonts.googleapis.com stall. System Thai fonts (Noto Sans
-    // Thai on Cloud Run Chromium) render the body; cursive fallback covers the
-    // signature flourish.
+    // C5 fix (round 2): fonts are embedded as base64 @font-face data URIs.
+    // No external network needed — domcontentloaded is sufficient.
     await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 10_000 });
 
     const pdf = await page.pdf({

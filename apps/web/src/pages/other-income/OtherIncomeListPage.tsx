@@ -6,7 +6,6 @@ import { Plus, Search, FileText, Receipt, RotateCcw, CheckCircle2, ChartBar, Cli
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { AccountingModuleTabBar } from '@/components/accounting/AccountingModuleTabBar';
 import { ReopenedPeriodBanner } from '@/components/accounting/ReopenedPeriodBanner';
 import { useDebounce } from '@/hooks/useDebounce';
 import { usePaginationParams } from '@/hooks/usePaginationParams';
@@ -223,7 +222,6 @@ export default function OtherIncomeListPage() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-4">
-      <AccountingModuleTabBar />
       <ReopenedPeriodBanner />
       <PageHeader
         title="รายได้อื่น"
